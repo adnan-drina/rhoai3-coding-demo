@@ -19,7 +19,7 @@ Official grounding: https://hermes-agent.nousresearch.com/docs/user-guide/featur
 **N1 — Leaf name is an imperative verb-object phrase.** Name the action the
 skill performs (`validate-contracts`, `dispatch-phase`), not the quality it
 embodies (`auditability-repeatability`) and not its subject area alone
-(`role-authority`). The agent is choosing an action; name it as one.
+(`enforce-authority-boundary`). The agent is choosing an action; name it as one.
 
 **Gerund considered, imperative chosen (E-20260813T140501Z).** Anthropic
 best-practices §Naming conventions says "Consider using gerund form" and
@@ -68,7 +68,7 @@ so a mid-chain rename breaks live anchors. Rename between chains only.
 | `harness/grounded-generation` | `harness/ground-in-harvest` | N1 (quality → action) |
 | `harness/harness-validate` | `harness/validate-contracts` | N2 (triple-declared) |
 | `harness/phase-dispatch` | `harness/dispatch-phase` | N1 (noun → verb) |
-| `harness/role-authority` | `harness/enforce-role-authority` | N1 (noun → verb) |
+| `harness/role-authority` | `harness/enforce-authority-boundary` | N1 (noun → verb); role persona retired E-144117Z |
 | `sdd/sdd-readiness` | `sdd/check-spec-readiness` | N1, N2 |
 | `sdd/specify-workspace-init` | `sdd/init-spec-workspace` | N1 (verb leads) |
 

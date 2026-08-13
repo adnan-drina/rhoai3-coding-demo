@@ -22,7 +22,7 @@ Sections covered (in order):
   no .hermes.md / HERMES.md override      sdd-readiness (+ S.6)
   domain-gates admission (W2 S10)         G-1 PIT dry-run parse
   AR-3.6 G-1 acceptance operand           mta-analysis findings schema
-  inventory-entry-points smoke            role-authority (AD-H S16)
+  inventory-entry-points smoke            enforce-authority-boundary (AD-H S16)
   ack/comment authority (S16.5/AR-1.1-1.2) write-fence proving-min (S16.4/F2)
   grounded-generation (AD-H S17)          validation-release-gates (AD-H S18)
   workspace recovery proving-min (S5.1/F4) external_dirs (AD-S relocate)
@@ -166,32 +166,21 @@ print("OK: inventory smoke", d["counts"])
 PY
 rm -rf "${tmp}"
 
-echo "== role-authority (AD-H §16) =="
-bash "${SKILLS}/harness/role-authority/scripts/check-acks.sh" M1 "${ROOT}" || rc=1
+echo "== enforce-authority-boundary (AD-H §16) =="
+bash "${SKILLS}/harness/enforce-authority-boundary/scripts/check-acks.sh" M1 "${ROOT}" || rc=1
 # M2 without ack must fail
-if bash "${SKILLS}/harness/role-authority/scripts/check-acks.sh" M2 "${ROOT}" >/dev/null 2>&1; then
+if bash "${SKILLS}/harness/enforce-authority-boundary/scripts/check-acks.sh" M2 "${ROOT}" >/dev/null 2>&1; then
   echo "FAIL: M2 should require m1-findings ack when absent" >&2
   rc=1
 else
   echo "OK: M2 refuses without m1-findings ack"
 fi
-python3 "${SKILLS}/harness/role-authority/scripts/check-role-writes.py" "${ROOT}" || rc=1
-# cross-role write smoke
-rw_tmp="$(mktemp -d)"
-mkdir -p "${rw_tmp}/migration/tasks"
-printf '%s\n' '{"role":"planner","writes":["src/main/java/X.java"],"ac_ids":["AC-1"],"files_in_scope":[],"deps":[],"brief_id":"B-1"}' \
-  > "${rw_tmp}/migration/tasks/bad.json"
-if python3 "${SKILLS}/harness/role-authority/scripts/check-role-writes.py" "${rw_tmp}" >/dev/null 2>&1; then
-  echo "FAIL: planner write to src/ should refuse" >&2
-  rc=1
-else
-  echo "OK: planner→src write refused"
-fi
-rm -rf "${rw_tmp}"
+# check-role-writes.py retired (Architect E-20260813T144117Z) — scope refuse is
+# check-write-fence.py --body (files_in_scope); global deny via write fence.
 
 echo "== ack/comment authority (AD-H §16.5 / AR-1.1 / AR-1.2) =="
 # fixture feed must refuse impersonating override
-if python3 "${SKILLS}/harness/role-authority/scripts/check-comment-authority.py" "${ROOT}" >/dev/null 2>&1; then
+if python3 "${SKILLS}/harness/enforce-authority-boundary/scripts/check-comment-authority.py" "${ROOT}" >/dev/null 2>&1; then
   echo "FAIL: AR-1.2 impersonating override fixture should refuse" >&2
   rc=1
 else
@@ -201,7 +190,7 @@ ar11_tmp="$(mktemp -d)"
 mkdir -p "${ar11_tmp}/migration/acks"
 printf '%s\n' '{"kind":"migration-ack","ack_type":"brief-identity","status":"acknowledged","acknowledged_by":"planner (M2)","acknowledged_at":"2026-08-09T17:00:00Z"}' \
   > "${ar11_tmp}/migration/acks/brief-identity.json"
-if python3 "${SKILLS}/harness/role-authority/scripts/check-ack-authority.py" "${ar11_tmp}" >/dev/null 2>&1; then
+if python3 "${SKILLS}/harness/enforce-authority-boundary/scripts/check-ack-authority.py" "${ar11_tmp}" >/dev/null 2>&1; then
   echo "FAIL: AR-1.1 planner self-ACK should refuse" >&2
   rc=1
 else
@@ -210,7 +199,7 @@ fi
 printf '%s\n' '{"kind":"migration-ack","ack_type":"brief-identity","status":"acknowledged","acknowledged_by":"Operator","acknowledged_at":"2026-08-10T00:00:00Z","task_id":"t_demo","artifact_digests":{"brief":"abc"}}' \
   > "${ar11_tmp}/migration/acks/brief-identity.ack.json"
 rm -f "${ar11_tmp}/migration/acks/brief-identity.json"
-python3 "${SKILLS}/harness/role-authority/scripts/check-ack-authority.py" "${ar11_tmp}" || rc=1
+python3 "${SKILLS}/harness/enforce-authority-boundary/scripts/check-ack-authority.py" "${ar11_tmp}" || rc=1
 rm -rf "${ar11_tmp}"
 
 echo "== write-fence proving-min (AD-H §16.4 / F2) =="
@@ -220,8 +209,8 @@ mkdir -p "${fence_tmp}/migration/acks" "${fence_tmp}/migration/verdicts" \
   "${fence_tmp}/src/main/java"
 printf '%s\n' 'ok' > "${fence_tmp}/migration/acks/README.md"
 printf '%s\n' 'ok' > "${fence_tmp}/migration/fixtures/keep.txt"
-bash "${SKILLS}/harness/role-authority/scripts/apply-write-fence.sh" "${fence_tmp}" lock || rc=1
-if python3 "${SKILLS}/harness/role-authority/scripts/probe-write-fence.py" "${fence_tmp}"; then
+bash "${SKILLS}/harness/enforce-authority-boundary/scripts/apply-write-fence.sh" "${fence_tmp}" lock || rc=1
+if python3 "${SKILLS}/harness/enforce-authority-boundary/scripts/probe-write-fence.py" "${fence_tmp}"; then
   echo "OK: F2 seat probe PASS on temp tree"
 else
   echo "FAIL: F2 seat probe" >&2
@@ -230,7 +219,7 @@ fi
 # scope refuse smoke
 printf '%s\n' '{"files_in_scope":["src/main/java/Foo.java"]}' > "${fence_tmp}/body.json"
 printf '%s\n' 'x' > "${fence_tmp}/src/main/java/OutOfScope.java"
-if python3 "${SKILLS}/harness/role-authority/scripts/check-write-fence.py" "${fence_tmp}" \
+if python3 "${SKILLS}/harness/enforce-authority-boundary/scripts/check-write-fence.py" "${fence_tmp}" \
   --no-git-status --body "${fence_tmp}/body.json" \
   --writes src/main/java/OutOfScope.java migration/acks/forged.json >/dev/null 2>&1; then
   echo "FAIL: write-fence should refuse OOS + ack forge" >&2
@@ -238,7 +227,7 @@ if python3 "${SKILLS}/harness/role-authority/scripts/check-write-fence.py" "${fe
 else
   echo "OK: write-fence refuses OOS + deny-path writes"
 fi
-bash "${SKILLS}/harness/role-authority/scripts/apply-write-fence.sh" "${fence_tmp}" unlock >/dev/null || true
+bash "${SKILLS}/harness/enforce-authority-boundary/scripts/apply-write-fence.sh" "${fence_tmp}" unlock >/dev/null || true
 rm -rf "${fence_tmp}"
 
 echo "== grounded-generation (AD-H §17) =="

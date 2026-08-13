@@ -123,7 +123,7 @@ When a skill is loaded, prefer `"${HERMES_SKILL_DIR}/scripts/…"`.
 
 | Governs | Skill | Authoritative |
 |---------|-------|---------------|
-| Role preload, one-role-one-task, ack artifacts | `role-authority` | `migration/contracts/role-authority.md` |
+| Task-type preload, one-task-one-type, ack artifacts | `enforce-authority-boundary` | `migration/contracts/task-authority.md` |
 | Citation / no-invention write fence | `grounded-generation` | `migration/contracts/grounded-generation.md` |
 | Phase matrix, verdict legality, M4/M5 routing | `validation-release-gates` | `migration/contracts/validation-release-gates.md` |
 | G-1..G-4 measurement oracles | `domain-gates` | skill `SKILL.md` + gate scripts |

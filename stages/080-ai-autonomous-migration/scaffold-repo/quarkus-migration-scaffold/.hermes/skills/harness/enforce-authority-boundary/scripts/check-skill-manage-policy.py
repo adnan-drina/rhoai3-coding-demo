@@ -28,8 +28,8 @@ def main() -> int:
     bad = 0
 
     policy_files = [
-        root / "migration" / "contracts" / "role-authority.md",
-        root / ".hermes" / "skills" / "role-authority" / "SKILL.md",
+        root / "migration" / "contracts" / "task-authority.md",
+        root / ".hermes" / "skills" / "harness" / "enforce-authority-boundary" / "SKILL.md",
         root / "AGENTS.md",
     ]
     policy_blob = ""

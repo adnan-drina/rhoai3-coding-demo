@@ -13,7 +13,7 @@ Standing context **MUST NOT** drown the task packet. Per-phase attach is
 | Phase | Attach law | Enforcer |
 |-------|------------|----------|
 | M3 | **exact** `{sdd-readiness, spring-to-quarkus-patterns}` | `check-phase-attach-matrix.py` |
-| M2 | **min** `{sdd-readiness, role-authority}` (+ role-specific helpers) | same |
+| M2 | **min** `{sdd-readiness, enforce-authority-boundary}` (+ role-specific helpers) | same |
 | M1/M4/M5 | required minimums; helpers allowed | same |
 
 Create helpers refuse when the matrix drifts (`create-m3-implementer.sh`).

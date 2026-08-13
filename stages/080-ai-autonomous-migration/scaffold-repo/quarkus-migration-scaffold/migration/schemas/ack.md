@@ -70,6 +70,6 @@ notes: "Non-Goals + AC set accepted"
 
 ## Fail closed
 
-Skill `role-authority` refuses phase advance when
+Skill `enforce-authority-boundary` refuses phase advance when
 `.hermes/phase-dispatch.yaml` `requires_acks` are missing or not
 `status: acknowledged`.

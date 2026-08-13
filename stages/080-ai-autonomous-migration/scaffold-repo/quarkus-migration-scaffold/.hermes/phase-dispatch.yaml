@@ -3,7 +3,8 @@
 # recovery: SIGTERM + re-queue, outcome=timed_out). Do not omit.
 #
 # skills[] = declared preload / intended skill set (AD-H §16) — not Hermes RBAC.
-# One Kanban task ⇒ one role. Enforcement: SOUL + write-safe-root + acks + lints.
+# One Kanban task ⇒ one task type (examining / planning / writing / checking).
+# Enforcement: SOUL + write-safe-root + acks + write-fence + lints.
 # Spec-kit /speckit-* skills live under ~/.hermes/skills (Path.home()); keep
 # that path on skills.external_dirs. Never include /speckit-implement.
 #
@@ -14,11 +15,12 @@
 #     workspace_path to the migration repo
 #
 # Watchdog STUCK_SECONDS (observation, §15.2) must exceed max(budgets).
+# Role persona keys (role:/roles:/skills_by_role:) retired — Architect
+# E-20260813T144117Z / Operator E-20260813T143534Z.
 
 phases:
   M1:
     # ANALYZE — MTA/kantra + inventory + profile authoring
-    role: evidence-analyst
     skills:
       - derive-legacy-boot3
       - mta-analysis
@@ -29,19 +31,9 @@ phases:
   M2:
     # DEPRECATED monolithic PLAN — use M2a then M2b (R-AB.2 / pre-v12 R1).
     # Kept for matrix/docs; dispatch-phase refuses bare M2.
-    role: planner
-    alternate_roles:
-      - spec-author
     skills:
       - sdd-readiness
-      - role-authority
-    skills_by_role:
-      planner:
-        - sdd-readiness
-        - role-authority
-      spec-author:
-        - sdd-readiness
-        - role-authority
+      - enforce-authority-boundary
     max_runtime_seconds: 3600
     requires_acks:
       - m1-findings
@@ -52,10 +44,9 @@ phases:
     # speckit-specify: Architect E-20260811T115316Z invoke-or-needs_input BIND
     # provision-owns-tools (Architect E-20260811T121308Z): Spec Kit init is
     # workspace provision / postStart — not an agent skill on M2a.
-    role: planner
     skills:
       - sdd-readiness
-      - role-authority
+      - enforce-authority-boundary
       - mta-analysis
       - speckit-specify
     max_runtime_seconds: 3600
@@ -63,10 +54,9 @@ phases:
       - m1-findings
   M2b:
     # R-AB.2 / pre-v12 R1 — SDD emit + create-m3 children (after M2a partition)
-    role: spec-author
     skills:
       - sdd-readiness
-      - role-authority
+      - enforce-authority-boundary
       - mta-analysis
       # /speckit-specify|plan|tasks|analyze from ~/.hermes/skills (not implement)
     max_runtime_seconds: 3600
@@ -77,11 +67,10 @@ phases:
     # Children MUST be created via
     # .hermes/skills/harness/phase-dispatch/scripts/create-m3-implementer.sh
     # (bare hermes kanban create omits these skills — grounding study 20260809).
-    role: implementer
     # AD-002F — useful = influence. M3 default preload is the workhorse + body lint
-    # only. Drop zero-touch (domain-gates→M4, role-authority/grounded-generation/
-    # auditability-repeatability unread on S-001…S-006). Workers consult via
-    # skill_view; unused preloads need skills_unused (AD-002E).
+    # only. Drop zero-touch (domain-gates→M4, enforce-authority-boundary/
+    # grounded-generation/auditability-repeatability unread on S-001…S-006).
+    # Workers consult via skill_view; unused preloads need skills_unused (AD-002E).
     skills:
       - sdd-readiness
       - spring-to-quarkus-patterns
@@ -97,7 +86,6 @@ phases:
   M4:
     # VERIFY — verdict token PROVISIONAL_ACCEPT (AD-H §18.0). G-1 = volume+substance;
     # g1_kill_ratio must be pending_threshold until threshold pinned (option A).
-    role: validator
     verdict_token: PROVISIONAL_ACCEPT
     accept_kind: provisional
     # AD-002G matrix: sdd-readiness + domain-gates required; helpers allowed.
@@ -106,7 +94,7 @@ phases:
       - domain-gates
       - validation-release-gates
       - harness-validate
-      - role-authority
+      - enforce-authority-boundary
     required_checks:
       - mvn_clean_verify
       - unit_it_contract
@@ -122,7 +110,6 @@ phases:
     # CLOSE — full ACCEPT (G-4 closes G-1 residue). Kill-ratio PASS+pin or
     # typed Operator waiver. G-4 fail after provisional → reopen that story.
     # Standing entry-point descopes ⇒ SCOPED_ACCEPT only (check-accept-scope.py).
-    role: validator
     accept_kind: full
     # AD-002G matrix: sdd-readiness + domain-gates required; helpers allowed.
     skills:
@@ -131,7 +118,7 @@ phases:
       - domain-gates
       - validation-release-gates
       - harness-validate
-      - role-authority
+      - enforce-authority-boundary
     required_checks:
       - preflight
       - regression_suite
@@ -149,7 +136,6 @@ phases:
     # Candidate SHA → factory green → promote that SHA (§16.3 / §18.1 / finding 4).
     # must_not_contradict_m5_accept = full M5 ACCEPT only (§18.0).
     # Provisional M4 / provisional-labeled M5 must refuse.
-    role: validator
     required_checks:
       - compile
       - unit_it_contract
@@ -159,25 +145,6 @@ phases:
       - must_not_contradict_m5_accept
       - candidate_sha_then_promote
 
-
-# Reviewer is not an M-phase seed — used between phases / on blocked.
-roles:
-  evidence-analyst:
-    phase: M1
-  planner:
-    phase: M2
-  spec-author:
-    phase: M2
-  implementer:
-    phase: M3
-  reviewer:
-    phase: between
-    skills:
-      - domain-gates
-      - harness-validate
-      - role-authority
-  validator:
-    phase: M4
 
 watchdog:
   # max(phases)=3600 + 600s grace for "still running after native recovery"

@@ -15,7 +15,7 @@
  (`kanban-body.md`)
 
 ```bash
-python3 .hermes/skills/harness/role-authority/scripts/check-ack-authority.py .
+python3 .hermes/skills/harness/enforce-authority-boundary/scripts/check-ack-authority.py .
 ```
 
 ## AR-1.2 — Comments ≠ authority
@@ -24,5 +24,5 @@ python3 .hermes/skills/harness/role-authority/scripts/check-ack-authority.py .
 - Control-flow changes use `migration/schemas/typed-revision.md` envelopes only
 
 ```bash
-python3 .hermes/skills/harness/role-authority/scripts/check-comment-authority.py .
+python3 .hermes/skills/harness/enforce-authority-boundary/scripts/check-comment-authority.py .
 ```

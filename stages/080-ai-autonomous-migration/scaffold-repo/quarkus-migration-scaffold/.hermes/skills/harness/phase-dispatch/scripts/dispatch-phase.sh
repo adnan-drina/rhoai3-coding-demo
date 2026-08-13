@@ -183,7 +183,6 @@ text = open(path, encoding="utf-8").read().splitlines()
 # find phases: then phase key
 in_phases = False
 in_phase = False
-role = ""
 skills = []
 max_rt = ""
 indent_phase = None
@@ -195,7 +194,7 @@ while i < len(text):
         i += 1
         continue
     if in_phases and re.match(r"^[A-Za-z]", ln) and not ln.startswith(" "):
-        # left phases block (roles:/watchdog:)
+        # left phases block (watchdog:)
         break
     m = re.match(r"^  ([A-Za-z0-9_]+):\s*$", ln)
     if in_phases and m:
@@ -205,9 +204,6 @@ while i < len(text):
     if in_phase:
         if re.match(r"^  [A-Za-z0-9_]+:\s*$", ln):
             break  # next phase
-        rm = re.match(r"^    role:\s*(\S+)\s*$", ln)
-        if rm:
-            role = rm.group(1).strip()
         mm = re.match(r"^    max_runtime_seconds:\s*(\d+)\s*$", ln)
         if mm:
             max_rt = mm.group(1)
@@ -221,16 +217,15 @@ while i < len(text):
                 i += 1
             continue
     i += 1
-if not role or not max_rt:
-    print(f"print('die missing role/max_runtime for phase={phase!r}', file=__import__('sys').stderr); raise SystemExit(2)")
+if not max_rt:
+    print(f"print('die missing max_runtime for phase={phase!r}', file=__import__('sys').stderr); raise SystemExit(2)")
     raise SystemExit(2)
 # emit bash assignments
 def sh_escape(s):
     return "'" + s.replace("'", "'\"'\"'") + "'"
-print(f"ROLE={sh_escape(role)}")
 print(f"MAX_RUNTIME={sh_escape(max_rt)}")
 print("SKILLS=(" + " ".join(sh_escape(s) for s in skills) + ")")
-print(f"TITLE={sh_escape(f'{phase} ({role}): migration phase seed')}")
+print(f"TITLE={sh_escape(f'{phase}: migration phase seed')}")
 PY
 )"
 
@@ -245,7 +240,7 @@ case "${PHASE}" in
 # M1 ANALYZE - Hermes-native (evidence-analyst)
 
 Phase: M1 per `.hermes/phase-dispatch.yaml`
-Role: evidence-analyst
+Task-type: examining
 orchestration: hermes_native (required)
 
 ## Job (in order)
@@ -418,7 +413,7 @@ grounded-generation + spring-to-quarkus-patterns before edits. One task ⇒ one 
 
 ## Typed body (required — not a pointer to tasks.md)
 Write/attach `migration/bodies/<task>.json` with:
-- `task_id`, `role=implementer`, `phase=M3`
+- `task_id`, `task_type=implementing`, `phase=M3`
 - `files_in_scope`: non-empty paths
 - `refs[]` including `brief_identity_ack` (`pending` until Operator ack, then 64-hex)
   and `legacy_locus` (64-hex of primary legacy file)
@@ -497,7 +492,7 @@ for p in "${PARENTS[@]:-}"; do
   [[ -n "${p}" ]] && CREATE_ARGS+=(--parent "${p}")
 done
 
-echo "dispatch-phase: phase=${PHASE} role=${ROLE} max_runtime=${MAX_RUNTIME}s skills=${SKILLS[*]}"
+echo "dispatch-phase: phase=${PHASE} phase=${PHASE} max_runtime=${MAX_RUNTIME}s skills=${SKILLS[*]}"
 echo "dispatch-phase: idempotency_key=${IDEM_KEY} workspace=dir:${WORKSPACE_DIR}"
 
 if [[ "${DRY_RUN}" -eq 1 ]]; then

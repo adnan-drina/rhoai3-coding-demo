@@ -180,7 +180,7 @@ trap 'rm -f "${BODY_MD}"' EXIT
   echo "# ${TITLE}"
   echo
   echo "Phase: M3 per \`.hermes/phase-dispatch.yaml\`"
-  echo "Role: implementer"
+  echo "Task-type: implementing"
   echo "Typed body (W2 §6): \`${BODY_JSON}\`"
   echo "Body digest (AR-4.3): \`${BODY_DIGEST}\`"
   echo

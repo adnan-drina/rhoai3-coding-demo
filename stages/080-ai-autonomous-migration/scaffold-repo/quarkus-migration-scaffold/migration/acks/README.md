@@ -15,7 +15,7 @@ scaffold — only the schema/README. Per-run repos get real acks in the workspac
 - Keep `migration/acks/` **owner-writable** (`chmod u+rwx`) so Operator/Lead can
   write `*.ack.yaml` out of band. `README.md` may stay mode 444.
 - Worker write-fence may lock this directory mid-run — Operator unlocks with
-  `bash .hermes/skills/harness/role-authority/scripts/apply-write-fence.sh unlock`
+  `bash .hermes/skills/harness/enforce-authority-boundary/scripts/apply-write-fence.sh unlock`
   before granting stage-advance acks, then re-locks if policy requires.
 - Bare `m1-findings.json` / `brief-identity.json` worker grants are **not**
   authoritative (`ack.md` / AR-1.1).

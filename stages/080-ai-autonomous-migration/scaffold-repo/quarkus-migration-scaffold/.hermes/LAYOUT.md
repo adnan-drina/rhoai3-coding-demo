@@ -15,7 +15,7 @@ for new procedures.
 | Harness meta-validate | `.hermes/skills/harness/harness-validate/` | specimen-free suite |
 | Provision assets (not runtime) | `.hermes/provision/` | Spec Kit Non-Goals override template |
 | Phase / run data | `migration/` | findings, inventory JSON, fixtures, contracts, schemas, acks |
-| Role authority contract | `migration/contracts/role-authority.md` | AD-H §16 — roles, privilege, human checkpoints |
+| Task authority contract | `migration/contracts/task-authority.md` | AD-H §16 — task-type obligations, privilege, human checkpoints |
 | Grounded generation contract | `migration/contracts/grounded-generation.md` | AD-H §17 — consult order, citation, anti-invention |
 | Validation / release contract | `migration/contracts/validation-release-gates.md` | AD-H §18 — phase gates, regression, failure routing |
 | Validation / release skill | `.hermes/skills/gates/validation-release-gates/` | matrix lint + verdict routing |
@@ -64,7 +64,7 @@ bash .hermes/skills/gates/domain-gates/scripts/run-admission.sh
 | `domain-gates` | G-1..G-4 + admission fixtures (parser/fixture only until live prove) |
 | `harness-validate` | One entrypoint for the above (+ context-override lint) |
 | *(platform)* `harness-skill-authoring` | CS-9 / R-SK land-time lint — not golden (R-SK.9) |
-| `role-authority` | AD-H §16 acks + role-write refuses; phase `skills[]` in `phase-dispatch.yaml` |
+| `enforce-authority-boundary` | AD-H §16 acks + write fence; phase `skills[]` in `phase-dispatch.yaml` |
 | `grounded-generation` | AD-H §17 citation lint + invent-without-locus refuse |
 | `spring-to-quarkus-patterns` | IMPLEMENT mapping cards (REST / DI / persistence); quarkusio-first |
 | `validation-release-gates` | AD-H §18 phase matrix + INCONCLUSIVE-never-ship routing |
