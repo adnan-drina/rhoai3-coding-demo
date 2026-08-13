@@ -200,11 +200,17 @@ commands:
           echo "installed but not configured — governed MaaS credentials come"
           echo "from the platform init script."
         fi
-        # AD-S: Spec Kit via specify-workspace-init skill (lands from golden).
-        SPECIFY_INIT="${PROJECT_DIR}/.hermes/skills/specify-workspace-init/scripts/init-workspace.sh"
+        # AD-S / provision-owns-tools (Architect E-20260811T121308Z): Spec Kit
+        # init is workspace setup — fail-closed; agents verify-or-BLOCK only.
+        # Path must match golden skill tree (UPLIFT-6 + sdd/ category): Operator
+        # E-20260813T175514Z — stale specify-workspace-init silently WARN'd.
+        SPECIFY_INIT="${PROJECT_DIR}/.hermes/skills/sdd/init-spec-workspace/scripts/init-workspace.sh"
         if [ -f "${SPECIFY_INIT}" ]; then
           bash "${SPECIFY_INIT}" "${PROJECT_DIR}" \
-            || echo "WARN: specify-workspace-init failed (AD-S) — re-run: bash ${SPECIFY_INIT} ${PROJECT_DIR}"
+            || { echo "ERROR: init-spec-workspace failed (AD-S provision-owns-tools)"; exit 1; }
+        else
+          echo "ERROR: missing ${SPECIFY_INIT} — cannot provision Spec Kit"
+          exit 1
         fi
         # Deputy E-20260813T152939Z — neutralize ~/.hermes/SOUL.md decoy so a
         # mis-launched process (HERMES_HOME unset) fails loudly instead of
