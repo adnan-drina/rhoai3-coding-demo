@@ -447,7 +447,7 @@ data:
     OPENCODE_ESCALATION_FILE="${PROJECT_DIR}/.rhoai3-model-escalation.json"
     if [ -n "${REDHAT_MODELS_BASE_URL}" ] && [ -n "${REDHAT_MODELS_API_KEY}" ] \
       && [ -f "${OPENCODE_ESCALATION_FILE}" ]; then
-      if cat <<'ESCV' | sed -e 's/^          //' | python3 - "${OPENCODE_ESCALATION_FILE}"
+      if cat <<'ESCV' | sed -e 's/^      //' | python3 - "${OPENCODE_ESCALATION_FILE}"
           import json, sys
           path = sys.argv[1]
           try:
@@ -1232,7 +1232,7 @@ data:
       ensure_opencode_compat_path
       # AD-008 / CS-1 — fail-closed if default model is not platform Qwen.
       export PROJECT_DIR OPENCODE_CFG_TARGET OPENCODE_PIN_MODE OPENCODE_MANAGED_CFG
-      cat <<'PINOC' | sed -e 's/^          //' | python3 -
+      cat <<'PINOC' | sed -e 's/^      //' | python3 -
           import json, os, sys
           mode = os.environ.get("OPENCODE_PIN_MODE", "legacy")
           cfg = os.environ.get("OPENCODE_CFG_TARGET") or os.path.expanduser("~/.config/opencode/opencode.json")
