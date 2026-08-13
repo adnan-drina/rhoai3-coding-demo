@@ -91,3 +91,85 @@ ride the enforcement-tree completion; causes 2-3 need an Operator ruling; cause
 4 is a measurement after the others.
 
 — Operator (via Deputy)
+
+---
+
+## E-20260813T211843Z — 2026-08-13T21:18:43Z — decide — OPERATOR: remove the M2a/M2b split. Deputy proposes removing it by MOVING THE MINT OUT, not by merging two workloads into one worker — Operator (via Deputy)
+
+**Needs:** Operator:choose-m2-removal-path(E-20260813T211843Z) — DESIGN; Lead:none-yet (v14)
+**Done:** Deputy:design-m2-split-removal — CLOSED
+**Re:** E-20260813T211435Z, AD-016
+
+**Operator: remove the M2a/M2b split.** Deputy had proposed re-testing after
+other cuts (E-20260813T211435Z). **The Operator's instinct is better** — but the
+*method* matters, and a naive merge would re-create the problem the split was
+invented for.
+
+### Why the split exists — read the reason precisely
+
+`phase-dispatch.yaml` calls it a **"turn-volume cut"** (R-AB.2), not a context
+overflow. That distinction decides everything:
+
+- **Context problem** → reducing loaded skills fixes it → merge is safe.
+- **Turn-volume problem** → the *work* is too big for one worker
+  (`max_runtime_seconds: 3600`, tool-loop guardrail) → **reducing skills does
+  not help**, because partition + SDD emit + minting **13 story cards** is still
+  the same amount of work.
+
+It is the second. **So a straight merge trades an ugly phase boundary for a
+worker that may not finish** — and M2 is the phase that mints every M3 card, so
+a timeout there is expensive.
+
+### The clean removal — take the MINT out of the worker
+
+M2b does two unlike things: **emit SDD artifacts** (spec/plan/tasks) and **mint
+the M3 children** (create-m3). Only the first is agent work.
+
+**Minting is orchestration**, and this harness already has a ruling heading that
+way: **AD-016 orchestrator-owned mint** — `kanban_create` belongs to the
+orchestrator toolset, with `dispatch-phase` shrinking to templates.
+
+**Therefore:**
+
+| Today | Proposed |
+|---|---|
+| **M2a** partition + briefs | **M2 PLAN** — partition, briefs, SDD emit (one worker, one phase) |
+| **M2b** SDD emit **+ create-m3** | mint moves to the **orchestrator**, driven by the partition artifact |
+
+**The split disappears because the second half stops being a worker phase at
+all** — not because two workloads were crammed together. M2 rejoins M1/M3/M4/M5
+as a single phase, and the M-stage model becomes uniform again.
+
+### Why this is better than merging
+
+1. **Turn volume genuinely drops** — the worker no longer mints 13 cards; it
+   produces one partition + briefs + SDD artifacts.
+2. **It composes with the cuts already ratified** — skill split (R-SK.14),
+   phase-scoped gates, dropping the `scan-with-mta` shim attachment.
+3. **It aligns with AD-016** instead of fighting it. `dispatch-phase` is already
+   the v14 retirement target and already sits in `.hermes/enforcement/`.
+4. **Deterministic minting** — cards created by the orchestrator from a
+   validated partition are reproducible; cards created by an LLM mid-session are
+   the mint-gate-bypass class we hit in v13 (9 cards born running, 4 oversized).
+5. **It makes the story-id persistence trivial** — the orchestrator holds the
+   partition and writes the id into every card body, which is the fix that makes
+   an "N/N done" claim auditable.
+
+### The honest risk
+
+The orchestrator must then own **story sizing / FIS** and the
+`assert-mint-constraints-complete` checks that today run inside the worker's
+skill. That is a **transfer of responsibility, not a deletion** — and it must be
+designed, not assumed. This is the single reason Deputy would not do it
+mid-chain.
+
+### Operator's choice
+
+- **(A) Move the mint out** (Deputy recommends) — split removed, uniform
+  M-stages, aligned with AD-016, deterministic minting.
+- **(B) Straight merge** — simplest to describe, but re-creates the turn-volume
+  problem the split solved, in the phase that mints every downstream card.
+
+**v14 design work. M2b is running — do not touch the live chain.**
+
+— Operator (via Deputy)
