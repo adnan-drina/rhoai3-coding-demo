@@ -64,8 +64,8 @@ from a pointer README).
 |------|------|
 | Standing conventions | this `AGENTS.md` only (`agent.coding_instructions` unused) |
 | Identity | `.hermes/SOUL.md` |
-| Procedures / tool invocations | `.hermes/skills/<name>/` |
-| Domain gates G-1..G-4 | skill `domain-gates` (vocabulary names below) |
+| Procedures / tool invocations | `.hermes/skills/<category>/<name>/` |
+| Domain gates G-1..G-4 | skill `domain-gates` (router below) |
 | Run / phase data | `migration/` |
 | SDD stack | `.specify/` (workspace provision only — AD-S) |
 
@@ -75,74 +75,24 @@ from a pointer README).
 |------|------|
 | `$HERMES_MANAGED_DIR` | Platform config + secrets — not in this repo |
 | `$HERMES_HOME` → `.hermes/home/` | Runtime (sessions/logs gitignored) |
-| `.hermes/skills/` | Scaffold golden skills on `skills.external_dirs` (R-SK.9: attach **or** script/contract-invoked **or** provision-invoked) |
-| `.agents/skills/hermes-configuration/` (platform repo) | Config source-of-truth for agents — consult BEFORE Hermes config change; AD-013 (CS-8 curated refs under `references/scaffold-curated/`) |
-| `.agents/skills/harness-skill-authoring/` (platform repo) | CS-9 / R-SK.5+R-SK.9 land-time lint (relocated E-190021Z): consult before new/edited golden skills; run `scripts/check-skill-conformance.py --all --flat-ok --root .hermes/skills` |
+| `.hermes/skills/` | Scaffold golden skills on `skills.external_dirs` (R-SK.9) |
+| Hermes config | **Not yours to change.** Factory-owned / write-fenced (AD-013). Raise typed `needs_input` — never edit Managed Scope |
+| `.hermes/skills/harness/harness-validate/` | Land-time lint (R-SK.*); naming law in `references/skill-naming-convention.md` |
 | `~/.hermes/skills/` | Also on `external_dirs` (spec-kit `Path.home()` install) |
 | `.hermes/provision/` | Provision assets (e.g. Spec Kit Non-Goals override) |
 
-Demo users extend skills via official `skills.external_dirs` / taps / `hermes skills install` (workshop-extensions dir removed in tidy-up 2026-08-12).
-
 Do **not** add `.hermes.md` / `HERMES.md` (shadows this file).
-
 `auth.json` under any Hermes home means Portal onboarding — remove; use Managed Scope.
 
-Hermes worker **provider/auth** config is **Managed Scope** (`HERMES_MANAGED_DIR`,
-typically `/projects/.platform/hermes`) — **R-HX.5:** do not copy secrets into
-writable `$HERMES_HOME`. `$HERMES_HOME` holds kanban DB / logs / sessions, not
-`~/.hermes/config.yaml` (often absent / wiped by Managed Scope init). Platform
-Managed Scope pins for `qwen3-6-27b`:
-- `stale_timeout_seconds: 900` (AD-009 §3.2) — **inter-chunk** / long thinking
-- **TTFC 90s** (AD-009 §3.2a) — zero-chunk waits must not use the 900s knob;
-  Hermes has one stale timer today → detect/typed-stamp family
-  `check-stream-liveness.py --ttfc-sec 90 --stamp` each tick
-  (`migration/contracts/stream-liveness.md`; corpse `kanban-stuck-watchdog` removed)
-- `max_tokens: 8192` — **required**; unset Hermes defaults to half of
-  `context_length` (65536), which with ≥65537 prompt tokens exceeds the 131072
-  vLLM ceiling and yields `VLLMValidationError` (not a proxy timeout)
-- **Compaction headroom + fast-deny** — compress at
-  `compression.threshold_tokens: 110000` (≤ `context_length − max_tokens − margin`);
-  never sleep-retry a context/max_tokens 4xx. Watchdog calls
-  `check-vllm-validation-fast-deny.py --stamp`
-  (`migration/contracts/compaction-headroom-and-fast-deny.md`)
+Worker **provider/auth** is Managed Scope only (**R-HX.5**). Seat pins
+(`stale_timeout_seconds`, TTFC, `max_tokens`, compaction / fast-deny) live in
+factory Managed Scope + contracts `stream-liveness.md` /
+`compaction-headroom-and-fast-deny.md` — do not MiniMax either class.
 
-Do not MiniMax either class.
+### Scope-stop and typed blockage
 
-### Domain gate vocabulary
-
-| ID | Name | Skill script |
-|----|------|----------------|
-| G-1 | characterization | `domain-gates/scripts/g1-characterization.py` |
-| G-2 | harvest-fidelity | `domain-gates/scripts/g2-harvest-fidelity.py` |
-| G-3 | findings-delta | `domain-gates/scripts/g3-findings-delta.py` |
-| G-4 | runtime-parity | `domain-gates/scripts/g4-runtime-parity.py` |
-
-### Common invocations
-
-```bash
-# Specimen-free suite
-bash .hermes/skills/harness/harness-validate/scripts/validate.sh
-
-# SDD readiness (pattern-steals + AD-S §S.6)
-bash .hermes/skills/sdd/sdd-readiness/scripts/check-readiness.sh
-
-# Entry-point inventory (W2 §11.3)
-python3 .hermes/skills/analysis/inventory-entry-points/scripts/inventory-entry-points.py \
-  /projects/.derived/legacy-at-3 -o migration/entry-point-inventory.json
-
-# M1 ANALYZE — Hermes Kanban only (skill phase-dispatch → mta-analysis inside worker)
-# Forbidden for orchestration: nohup …/mta-analyze-legacy.sh & (tasks=0 / not hermes_native)
-bash .hermes/skills/harness/phase-dispatch/scripts/dispatch-phase.sh M1
-# Domain script (runs inside the M1 worker after skill load — not the control plane):
-#   bash .hermes/skills/analysis/mta-analysis/scripts/mta-analyze-legacy.sh
-
-# Spec Kit provision (AD-S / provision-owns-tools) — postStart owns init
-# Agents on M2a verify-or-needs_input only — never specify init / invent .specify/
-bash .hermes/skills/sdd/specify-workspace-init/scripts/init-workspace.sh /projects/modernized
-python3 .hermes/skills/harness/phase-dispatch/scripts/check-specify-preseed.py /projects/modernized
-```
-
-When a skill is loaded, prefer `"${HERMES_SKILL_DIR}/scripts/…"`.
+When evidence and intent diverge: stop the current scope, emit a typed block /
+`needs_input`, and do not invent around the gap (pairs with `SOUL.md`).
 
 ### Spec Kit stop rule (AD-S)
 
@@ -158,52 +108,7 @@ run-report line must carry the **same task id**.
 
 Brief identity carries unchanged; graph order build → security → schema →
 API → test infra → feature → surfaces; IMPLEMENT workers must not re-plan.
-See `migration/contracts/sdd-ordering.md`.
-
-### Role authority (AD-H §16)
-
-Hermes orchestrates tightly bounded roles (evidence analyst, planner, spec
-author, implementer, reviewer, validator). One Kanban task ⇒ one role; phase
-`skills[]` is declared preload (not Hermes RBAC) in
-`.hermes/phase-dispatch.yaml`. Human checkpoints are ack artifacts under
-`migration/acks/` — not mid-run approval prompts.
-
-```bash
-bash .hermes/skills/harness/role-authority/scripts/check-acks.sh M2
-python3 .hermes/skills/harness/role-authority/scripts/check-role-writes.py .
-```
-
-See `migration/contracts/role-authority.md` and `migration/schemas/ack.md`.
-
-### Grounded generation (AD-H §17)
-
-Implementers consult, in order: task packet → approved brief/spec → legacy RO
-→ destination reference/`AGENTS.md` → approved Quarkus docs (BOM-matched
-version + scaffold skills/`RULES.md` only — how only).
-Non-trivial changes cite task id, brief/story id, and legacy locus. Invention
-outside evidence is a `blocked` outcome, not improvisation.
-
-```bash
-python3 .hermes/skills/harness/grounded-generation/scripts/check-citation.py .
-python3 .hermes/skills/harness/grounded-generation/scripts/check-citation.py . --commit-msg MSGFILE
-```
-
-See `migration/contracts/grounded-generation.md`.
-
-### Validation and release (AD-H §18)
-
-M3: compile + task-scoped tests. M4: full verify, Sonar, boot, G-1 (G-2 if
-harvest). M5: MTA re-scan → G-3, G-4 parity, preflight + deploy smoke. Factory
-must not contradict M5 ACCEPT. REFUSE → fix/retry; INCONCLUSIVE → human queue;
-rollback = last bad task tip only; wave block stops new stories.
-
-```bash
-python3 .hermes/skills/gates/validation-release-gates/scripts/check-phase-matrix.py .
-python3 .hermes/skills/gates/validation-release-gates/scripts/check-phase-matrix.py . --print M4
-python3 .hermes/skills/gates/validation-release-gates/scripts/check-verdict-routing.py .
-```
-
-See `migration/contracts/validation-release-gates.md`.
+Authoritative: `migration/contracts/sdd-ordering.md` (skill `sdd-readiness`).
 
 ### Standing conventions home
 
@@ -211,27 +116,21 @@ See `migration/contracts/validation-release-gates.md`.
 standing-convention surface. Leave `agent.coding_instructions` empty/omitted in
 Managed Scope / factory writers — do not recreate a second home.
 
-### Kanban body (W2 §6.1)
+## Skill routers (procedure lives in the skill)
 
-Typed `body` only — digest refs, not inlined blobs. See
-`migration/schemas/kanban-body.md`.
+One line each: what it governs → which skill → authoritative contract/schema.
+When a skill is loaded, prefer `"${HERMES_SKILL_DIR}/scripts/…"`.
 
-```bash
-python3 .hermes/skills/sdd/sdd-readiness/scripts/check-kanban-body.py .
-```
-
-### Auditability and repeatability (AD-H §19)
-
-Task id joins Kanban, git subject, sessions/logs, gates, and run report.
-Non-trivial IMPLEMENT must leave Kanban completion metadata with
-`worker_session_id`, `soul_sha`, `skill_tips`, `model_id` (or `unknown`), plus
-§17 citations. Kanban metadata is authoritative; do not dual-write full
-provenance into commit trailers. Early bad-agent signal = unsupported claims
-(§17).
-
-```bash
-python3 .hermes/skills/harness/auditability-repeatability/scripts/check-provenance.py .
-python3 .hermes/skills/harness/auditability-repeatability/scripts/reconstruct-from-commit.py . [<commit>]
-```
-
-See `migration/contracts/auditability-repeatability.md`.
+| Governs | Skill | Authoritative |
+|---------|-------|---------------|
+| Role preload, one-role-one-task, ack artifacts | `role-authority` | `migration/contracts/role-authority.md` |
+| Citation / no-invention write fence | `grounded-generation` | `migration/contracts/grounded-generation.md` |
+| Phase matrix, verdict legality, M4/M5 routing | `validation-release-gates` | `migration/contracts/validation-release-gates.md` |
+| G-1..G-4 measurement oracles | `domain-gates` | skill `SKILL.md` + gate scripts |
+| Specimen-free harness self-lint | `harness-validate` | skill `SKILL.md` → `scripts/validate.sh` |
+| M-phase mint/dispatch (Hermes-native) | `phase-dispatch` | `.hermes/phase-dispatch.yaml` |
+| Spec/story-body legality + kanban body shape | `sdd-readiness` | `migration/contracts/*` + `migration/schemas/kanban-body.md` |
+| Spec Kit provision (postStart only) | `specify-workspace-init` | skill `SKILL.md` |
+| Entry-point inventory | `inventory-entry-points` | skill `SKILL.md` |
+| Provenance / reconstruct | `auditability-repeatability` | `migration/contracts/auditability-repeatability.md` |
+| Spring→Quarkus pattern cards | `spring-to-quarkus-patterns` | skill `references/` |
