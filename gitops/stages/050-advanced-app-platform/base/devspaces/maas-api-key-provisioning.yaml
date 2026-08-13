@@ -735,6 +735,19 @@ data:
             "dispatch_stale_timeout_seconds": 14400,
             "review_dispatch": False,
         },
+        # Dashboard bank (Operator ruling: ai-developer/redhat123 demo auth;
+        # product refuses unauthenticated non-localhost bind). Seeded here so
+        # the devfile autostart (--host 0.0.0.0 --port 9119) is auth-gated on
+        # every fresh seat; hash = scrypt via plugins.dashboard_auth.basic.
+        "dashboard": {
+            "basic_auth": {
+                "username": "ai-developer",
+                "password_hash": (
+                    "scrypt$16384$8$1$uVJKZcdCp3vPd1IQniG+vg==$"
+                    "Dob/0Rk0eZnUmcBXrJu0q5YmCvHmrcrotg/i8pDaUGY="
+                ),
+            },
+        },
         # AD-009 §3.2 / E-20260809T164127Z — Qwen thinking can exceed the
         # default proxy idle / Hermes stale window (~minutes) before the
         # first content token. Class A amplifier; not MiniMax.

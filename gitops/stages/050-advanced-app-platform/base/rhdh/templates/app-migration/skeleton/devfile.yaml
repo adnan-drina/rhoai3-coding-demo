@@ -91,11 +91,11 @@ components:
           secure: false
           protocol: https
         # Hermes dashboard — Operator E-20260812T171806Z W1 rider:
-        # process stays on 127.0.0.1:9119 (official security model —
-        # hermes-kanban: do NOT --host 0.0.0.0; plugin routes are
-        # unauthenticated). che-gateway proxies pod-localhost behind
-        # OpenShift OAuth (exposure public + secure true). Verify on
-        # fresh-seat: endpoint reachable + authed + board renders.
+        # binds 0.0.0.0:9119 — che-gateway routes to the
+        # pod IP (not pod-localhost), so a localhost bind 503s the route.
+        # Public bind is auth-gated: Managed Scope seeds dashboard.basic_auth
+        # (product refuses unauthenticated non-localhost bind). Verify on
+        # fresh-seat: endpoint reachable + basic-auth login + board renders.
         - name: hermes-dash
           targetPort: 9119
           exposure: public
@@ -213,7 +213,7 @@ commands:
           . "${HOME}/.bashrc" 2>/dev/null || true
         fi
         if ! command -v hermes >/dev/null 2>&1; then
-          echo "WARN: hermes absent — dashboard not started (recovery: hermes dashboard --skip-build --host 127.0.0.1 --port 9119 --no-open)"
+          echo "WARN: hermes absent — dashboard not started (recovery: hermes dashboard --skip-build --host 0.0.0.0 --port 9119 --no-open)"
           exit 0
         fi
         UI="${HOME}/.hermes/hermes-agent/hermes_cli/web_dist/index.html"
@@ -227,7 +227,7 @@ commands:
         fi
         cd "${PROJECT_DIR}" 2>/dev/null || cd /projects/modernized || true
         start_dash() {
-          nohup hermes dashboard --skip-build --host 127.0.0.1 --port 9119 --no-open \
+          nohup hermes dashboard --skip-build --host 0.0.0.0 --port 9119 --no-open \
             >/tmp/hermes-dashboard.log 2>&1 &
           echo $!
         }
@@ -259,14 +259,14 @@ commands:
                 continue
               fi
               echo "dashboard-watchdog: port 9119 down — restart once" >>/tmp/hermes-dashboard.log
-              nohup hermes dashboard --skip-build --host 127.0.0.1 --port 9119 --no-open \
+              nohup hermes dashboard --skip-build --host 0.0.0.0 --port 9119 --no-open \
                 >>/tmp/hermes-dashboard.log 2>&1 &
               exit 0
             done
           ' >/tmp/hermes-dashboard-watchdog.log 2>&1 &
           echo "Hermes dashboard postStart: LISTENING on 127.0.0.1:9119 (watchdog armed; open hermes-dashboard endpoint via che-gateway/OAuth)"
         else
-          echo "WARN: dashboard still not listening — best-effort only; recovery: hermes dashboard --skip-build --host 127.0.0.1 --port 9119 --no-open"
+          echo "WARN: dashboard still not listening — best-effort only; recovery: hermes dashboard --skip-build --host 0.0.0.0 --port 9119 --no-open"
         fi
   # The UDI base image documents JAVA_HOME_<version> variables as the
   # supported way to select a JDK (sdkman default is Java 17; the pom
