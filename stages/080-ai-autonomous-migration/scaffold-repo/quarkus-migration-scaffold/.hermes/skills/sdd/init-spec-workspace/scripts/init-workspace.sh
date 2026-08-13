@@ -141,11 +141,120 @@ EOF
 }
 note_external_dirs
 
+# Provision-owns-tools (Operator E-20260813T191700Z): when HERMES_HOME is
+# relocated, init-ai-tools may skip Managed Scope config (Hermes venv absent)
+# — leaving no config.yaml. Spec Kit still installs under
+# Path.home()/.hermes/skills; ensure both dirs are listed before assert so
+# postStart does not fail-closed after a successful specify init.
+ensure_external_dirs_config() {
+  local project_skills="${ROOT}/.hermes/skills"
+  local home_skills="${HOME}/.hermes/skills"
+  mkdir -p "${project_skills}" "${home_skills}"
+  local cfg=""
+  if [ -n "${HERMES_MANAGED_DIR:-}" ]; then
+    mkdir -p "${HERMES_MANAGED_DIR}"
+    cfg="${HERMES_MANAGED_DIR}/config.yaml"
+  elif [ -n "${HERMES_HOME:-}" ]; then
+    mkdir -p "${HERMES_HOME}"
+    cfg="${HERMES_HOME}/config.yaml"
+  else
+    cfg="${ROOT}/.hermes/home/config.yaml"
+    mkdir -p "$(dirname "${cfg}")"
+  fi
+  PROJECT_SKILLS="${project_skills}" HOME_SKILLS="${home_skills}" CFG="${cfg}" \
+    python3 - <<'PY'
+import os
+from pathlib import Path
+
+cfg_path = Path(os.environ["CFG"])
+project = str(Path(os.environ["PROJECT_SKILLS"]).resolve())
+home = str(Path(os.environ["HOME_SKILLS"]).resolve())
+text = cfg_path.read_text(encoding="utf-8") if cfg_path.is_file() else ""
+
+
+def parse_external_dirs(raw: str) -> list[str]:
+    dirs: list[str] = []
+    in_block = False
+    for raw_ln in raw.splitlines():
+        ln = raw_ln.split("#", 1)[0].rstrip()
+        if "external_dirs" in ln and ":" in ln:
+            in_block = True
+            rest = ln.split(":", 1)[1].strip()
+            if rest.startswith("[") and rest.endswith("]"):
+                for part in rest[1:-1].split(","):
+                    part = part.strip().strip("\"'")
+                    if part:
+                        dirs.append(part)
+                in_block = False
+            continue
+        if not in_block:
+            continue
+        s = ln.strip()
+        if s.startswith("- "):
+            dirs.append(s[2:].strip().strip("\"'"))
+            continue
+        if s and not ln.startswith((" ", "\t")):
+            in_block = False
+    return dirs
+
+
+def resolve_one(d: str) -> str:
+    p = Path(os.path.expandvars(os.path.expanduser(d)))
+    return str(p.resolve()) if p.is_absolute() else str((Path.cwd() / p).resolve())
+
+
+existing = [resolve_one(d) for d in parse_external_dirs(text)]
+need = [project, home]
+if cfg_path.is_file() and all(n in existing for n in need):
+    print(f"ensure_external_dirs: OK ({cfg_path})")
+    raise SystemExit(0)
+
+try:
+    import yaml  # type: ignore
+except ImportError:
+    yaml = None
+
+if yaml is not None:
+    data = yaml.safe_load(text) if text.strip() else {}
+    if not isinstance(data, dict):
+        data = {}
+    skills = data.get("skills")
+    if not isinstance(skills, dict):
+        skills = {}
+        data["skills"] = skills
+    dirs = list(skills.get("external_dirs") or [])
+    resolved = [resolve_one(str(x)) for x in dirs]
+    for n in need:
+        if n not in resolved:
+            dirs.append(n)
+            resolved.append(n)
+    skills["external_dirs"] = dirs
+    cfg_path.parent.mkdir(parents=True, exist_ok=True)
+    cfg_path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+else:
+    block = (
+        "# AD-S ensure_external_dirs (postStart provision)\n"
+        "skills:\n"
+        "  external_dirs:\n"
+        f"    - {project}\n"
+        f"    - {home}\n"
+    )
+    cfg_path.parent.mkdir(parents=True, exist_ok=True)
+    if text.strip():
+        cfg_path.write_text(text.rstrip() + "\n" + block, encoding="utf-8")
+    else:
+        cfg_path.write_text(block, encoding="utf-8")
+print(f"ensure_external_dirs: wrote {cfg_path}")
+PY
+  log "ensured skills.external_dirs in ${cfg}"
+}
+
 # Enforce (not merely remind) when HERMES_HOME is relocated — Operator
 # no-compromise E-20260808T075048Z / AD-S.
 if [ -n "${HERMES_HOME:-}" ]; then
   default_hh="${HOME}/.hermes"
   if [ "$(cd "${HERMES_HOME}" 2>/dev/null && pwd -P)" != "$(cd "${default_hh}" 2>/dev/null && pwd -P)" ]; then
+    ensure_external_dirs_config
     python3 "$(cd "$(dirname "$0")" && pwd)/check-external-dirs.py" "${ROOT}" \
       || die "external_dirs assert failed (HERMES_HOME relocated)"
   fi

@@ -48,7 +48,7 @@ Idempotent via `.specify/.rhoai3-ads-provisioned`. Spec Kit is pinned
 3. Copies Non-Goals override from
    `${HERMES_SKILL_DIR}/assets/spec-template.md` →
    `.specify/templates/overrides/spec-template.md`
-4. Writes `external_dirs` reminder beside this skill
+4. Writes `external_dirs` reminder beside this skill; when `HERMES_HOME` is relocated, **ensures** `skills.external_dirs` on managed/`HERMES_HOME` `config.yaml` before assert (covers init-ai-tools skip when Hermes venv absent)
 5. Stamps `.specify/AD-S-STOP-RULE.md`
 
 ## Stop rule (non-negotiable)
