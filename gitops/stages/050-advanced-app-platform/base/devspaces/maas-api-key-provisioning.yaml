@@ -612,7 +612,12 @@ data:
       # the git-tracked project; scaffold skills via skills.external_dirs
       # (no symlink loop). Secrets stay in managed .env — never under
       # HERMES_HOME. Verified model facts: qwen3-6-27b, context 131072.
-      local venv_py="${HOME}/.hermes/hermes-agent/venv/bin/python"
+      # Installer may place the agent under HERMES_HOME (project-managed)
+      # rather than ~/.hermes — prefer PROJECT_DIR runtime tree, then HOME.
+      local venv_py="${PROJECT_DIR}/.hermes/home/hermes-agent/venv/bin/python"
+      if [ ! -x "${venv_py}" ]; then
+        venv_py="${HOME}/.hermes/hermes-agent/venv/bin/python"
+      fi
       if [ ! -x "${venv_py}" ]; then
         echo "Hermes venv python not found; skipping Hermes MaaS config."
         return
