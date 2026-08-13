@@ -26,6 +26,11 @@ def main() -> int:
     if not root.is_dir():
         print(f"FAIL: bad root {root}", file=sys.stderr)
         return 2
+    # Live seats provision .specify/ under /projects/* (AD-S). This assert is
+    # golden-tip only — idle on workspace roots so seat validate.sh can go green.
+    if root.as_posix().startswith("/projects/"):
+        print(f"OK: live workspace root ({root}) — .specify-absent assert idle")
+        return 0
     specify = root / ".specify"
     if specify.exists():
         print(

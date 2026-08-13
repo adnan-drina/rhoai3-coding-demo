@@ -66,7 +66,13 @@ RULES = [
         r"|(?:^|[\s\"'=])/home/(?!(?:user|tooling)(?:[/\s\"']|$))[a-z]",
         re.M,
     ), TEXT_SUFFIXES),
-    ("H3", re.compile(r"harness-refactoring/|rhoai3-coding-demo"), EXEC_SUFFIXES),
+    # Trailing slash required so branding comments (`# rhoai3-coding-demo:`)
+    # do not false-positive. Negative lookbehind skips the quay.io registry
+    # org path used by stamped destination repos (seat k8s/app.yaml).
+    ("H3", re.compile(
+        r"harness-refactoring/"
+        r"|(?<!quay\.io/)rhoai3-coding-demo/"
+    ), EXEC_SUFFIXES),
 ]
 
 DETAIL = {
