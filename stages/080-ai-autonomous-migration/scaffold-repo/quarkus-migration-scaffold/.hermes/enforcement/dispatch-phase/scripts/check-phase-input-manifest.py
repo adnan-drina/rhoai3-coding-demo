@@ -54,6 +54,7 @@ def parse_items(section: str) -> list[str]:
 
 def resolve_dispatch(root: Path) -> Path | None:
     candidates = [
+        root / ".hermes" / "enforcement" / "dispatch-phase" / "scripts" / "dispatch-phase.sh",
         root
         / ".hermes"
         / "skills"

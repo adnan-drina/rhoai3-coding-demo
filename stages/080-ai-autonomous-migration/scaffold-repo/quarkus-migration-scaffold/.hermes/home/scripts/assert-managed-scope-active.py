@@ -30,10 +30,17 @@ PIN_ENV = "HERMES_MANAGED_DIR_PIN"
 
 
 def _hermes_venv_python() -> Optional[Path]:
-    for cand in (
-        Path.home() / ".hermes" / "hermes-agent" / "venv" / "bin" / "python",
-        Path("/home/user/.hermes/hermes-agent/venv/bin/python"),
-    ):
+    home = (os.environ.get("HERMES_HOME") or "").strip()
+    cands = []
+    if home:
+        cands.append(Path(home) / "hermes-agent" / "venv" / "bin" / "python")
+    cands.extend(
+        (
+            Path.home() / ".hermes" / "hermes-agent" / "venv" / "bin" / "python",
+            Path("/home/user/.hermes/hermes-agent/venv/bin/python"),
+        )
+    )
+    for cand in cands:
         if cand.is_file() and os.access(cand, os.X_OK):
             return cand
     return None
@@ -61,10 +68,17 @@ def _ensure_hermes_importable() -> None:
         return
     except ImportError:
         pass
-    for cand in (
-        Path.home() / ".hermes" / "hermes-agent",
-        Path("/home/user/.hermes/hermes-agent"),
-    ):
+    home = (os.environ.get("HERMES_HOME") or "").strip()
+    cands = []
+    if home:
+        cands.append(Path(home) / "hermes-agent")
+    cands.extend(
+        (
+            Path.home() / ".hermes" / "hermes-agent",
+            Path("/home/user/.hermes/hermes-agent"),
+        )
+    )
+    for cand in cands:
         if (cand / "hermes_cli").is_dir():
             p = str(cand)
             if p not in sys.path:

@@ -15,6 +15,8 @@ Rules (fail-closed):
   G3  presence under the golden root is itself a violation (Deputy
       E-20260813T183214Z) — gitignore alone must not greenwash run-state
       that regenerates into the tip tree (e.g. free-primitives apply log)
+  G4  governance/**/target directories must be absent (E-193314Z;
+      gitignore alone hid Maven fixture build dirt from G1/G3 file scan)
 
 Usage:
   python3 check-golden-cleanliness.py --root .
@@ -39,6 +41,18 @@ FORBIDDEN_NAME_GLOBS = (
     ("evidence/derived", "phase-*-task-id.txt"),
     ("evidence/derived", "created-cards-*.json"),
 )
+
+
+def governance_target_dirs(root: Path) -> list[Path]:
+    """E-193314Z — Maven target/ under governance fixtures re-dirties the tip tree.
+
+    GOLDEN_CLEANLINESS was blind because target/ is gitignored. Presence under
+    governance/ is itself a violation; fixtures must build in a temp copy.
+    """
+    gov = root / "governance"
+    if not gov.is_dir():
+        return []
+    return sorted(p for p in gov.rglob("target") if p.is_dir())
 
 
 def git(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -115,6 +129,10 @@ def main() -> int:
             errs.append(f"G1:tracked:{rel}")
 
     files = on_disk_forbidden(root)
+
+    for p in governance_target_dirs(root):
+        rel = str(p.relative_to(root)).replace("\\", "/")
+        errs.append(f"G4:governance-target-present:{rel}")
     for p in files:
         rel = str(p.relative_to(root)).replace("\\", "/")
         # G3: presence is a violation even when gitignored (regenerating dirt).

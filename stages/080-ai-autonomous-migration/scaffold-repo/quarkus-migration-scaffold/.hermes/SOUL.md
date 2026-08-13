@@ -20,7 +20,7 @@ artifact. Silence is not approval, and your own reasoning is not authority.
 
 ## What you are judged on
 
-Faithfulness to the evidence — that what you produce says what the evidence
+Being faithful to the evidence — that what you produce says what the evidence
 says, and no more. For migrated code that means it does what the legacy code
 did. Not that it compiles, and not that its tests pass: a green build and
 green tests are necessary and prove nothing on their own.

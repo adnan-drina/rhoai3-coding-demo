@@ -78,10 +78,26 @@ def extract_body_scripts(dispatch_sh: Path) -> dict[str, set[str]]:
 
 
 def skill_script_exists(root: Path, skill: str, name: str) -> bool:
-    """Accept tip scaffold path OR runtime Hermes discovery symlink target."""
-    scaffold = root / ".hermes" / "skills" / skill / "scripts" / name
-    if scaffold.is_file():
-        return True
+    """Accept tip scaffold path OR runtime Hermes discovery symlink target.
+
+    Skills live under categorized dirs (analysis/gates/migration/sdd) after the
+    flat-tree move; dispatch-phase scripts live under enforcement/.
+    """
+    candidates = [
+        root / ".hermes" / "skills" / skill / "scripts" / name,
+        root / ".hermes" / "enforcement" / skill / "scripts" / name,
+    ]
+    for cat in ("analysis", "gates", "migration", "sdd"):
+        candidates.append(root / ".hermes" / "skills" / cat / skill / "scripts" / name)
+    # Also accept any category depth-1 match (future categories).
+    skills_root = root / ".hermes" / "skills"
+    if skills_root.is_dir():
+        for cat_dir in skills_root.iterdir():
+            if cat_dir.is_dir():
+                candidates.append(cat_dir / skill / "scripts" / name)
+    for scaffold in candidates:
+        if scaffold.is_file():
+            return True
     runtime = (
         root
         / ".hermes"
@@ -149,9 +165,20 @@ def resolve_ok(root: Path, phase: str, skills: list[str], ref: str) -> bool:
 def main() -> int:
     root = Path(sys.argv[1] if len(sys.argv) > 1 else ".").resolve()
     yaml = root / ".hermes" / "phase-dispatch.yaml"
-    dispatch = root / ".hermes" / "skills" / "dispatch-phase" / "scripts" / "dispatch-phase.sh"
+    # CS-7 / enforcement home (post skills→enforcement move). Fallback: legacy
+    # skills/ path if a seat still carries the pre-move layout.
+    candidates = (
+        root / ".hermes" / "enforcement" / "dispatch-phase" / "scripts" / "dispatch-phase.sh",
+        root / ".hermes" / "skills" / "dispatch-phase" / "scripts" / "dispatch-phase.sh",
+    )
+    dispatch = next((c for c in candidates if c.is_file()), candidates[0])
     if not yaml.is_file() or not dispatch.is_file():
-        print("BODY_SCRIPT_LINT: missing phase-dispatch.yaml or dispatch-phase.sh", file=sys.stderr)
+        print(
+            "BODY_SCRIPT_LINT: missing phase-dispatch.yaml or dispatch-phase.sh "
+            f"(looked under enforcement/ and skills/; yaml={yaml.is_file()} "
+            f"dispatch={dispatch})",
+            file=sys.stderr,
+        )
         return 1
     phases = parse_phase_skills(yaml.read_text(encoding="utf-8"))
     bodies = extract_body_scripts(dispatch)
