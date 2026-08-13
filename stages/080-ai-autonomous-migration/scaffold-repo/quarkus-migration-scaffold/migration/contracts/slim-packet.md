@@ -31,6 +31,12 @@ completion must pass those child ids in `created_cards` (see
 `check-created-cards-claim.py`). `created_cards=[]` to skip the claim check
 is **REJECT** when `migration/derived/created-cards-<parent>.json` is nonempty.
 
+**Story id on card (Operator E-20260813T180236Z):** create-m3 refuses bodies
+without `identity.story_id` and prefixes the Kanban title
+`${story_id}: …` so completion is arithmetic (`partition ids ⊆ titled cards`),
+not an unverifiable "N/N done" claim. Also stamps
+`migration/derived/created-story-cards.json`.
+
 **Block signals worker:** use
 `.hermes/home/scripts/block-and-signal-worker.sh` — board block alone does not
 kill in-flight workers.

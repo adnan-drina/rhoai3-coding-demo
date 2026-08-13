@@ -14,7 +14,7 @@ standalone `migration/bodies/*.json`). Free prose as the whole body → refuse.
 | `role` | string | AD-H §16 role |
 | `phase` | `M1`…`M5` \| `factory` | |
 | `refs` | list of `{ key, path, sha256 }` | digest-anchored; see sha256 rules below |
-| `identity` | object | `story_id` / `brief_id` / `ac_ids` as phase requires; **F6 stamp below**; M3 also **operand_count** + **sizing_basis** (`story-sizing.md`) |
+| `identity` | object | `story_id` / `brief_id` / `ac_ids` as phase requires; **F6 stamp below**; M3 also **operand_count** + **sizing_basis** (`story-sizing.md`). **M3 create (Operator E-20260813T180236Z):** `identity.story_id` required; create-m3 prefixes Kanban title `${story_id}: …` and stamps `migration/derived/created-story-cards.json` so completion is arithmetic. |
 | `files_in_scope` | list | **M3 required non-empty** — see dual-path rule below |
 | `files_writable` / `write_set` | list | **AR-4.4 preferred** — allowed destination writes |
 | `files_readable` / `readable_deps` | list | **AR-4.4** — readable deps (not write authority) |

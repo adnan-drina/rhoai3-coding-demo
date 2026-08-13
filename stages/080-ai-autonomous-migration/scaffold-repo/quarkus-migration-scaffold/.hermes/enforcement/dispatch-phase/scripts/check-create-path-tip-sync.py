@@ -571,6 +571,16 @@ REQUIRED_SUBSTRINGS = [
         "BANK-CONV-LIVE-WD-1",
         "CONV-LIVE arm-on-dispatch contract",
     ),
+    (
+        ".hermes/enforcement/dispatch-phase/scripts/create-m3-implementer.sh",
+        "identity.story_id required",
+        "D3 story id persisted on M3 card (Operator E-180236Z)",
+    ),
+    (
+        ".hermes/enforcement/dispatch-phase/scripts/create-m3-implementer.sh",
+        "created-story-cards.json",
+        "D3 story↔card map stamped at create",
+    ),
 ]
 
 
