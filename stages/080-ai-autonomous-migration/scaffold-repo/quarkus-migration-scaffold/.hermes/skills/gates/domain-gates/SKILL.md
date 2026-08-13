@@ -167,7 +167,8 @@ Operand first, then live evidence, then pin. Scripts are under
 
 - `run-admission.sh` exits 0 and prints `OK: admission fixtures — G-1..G-4 emit
   ACCEPT/REFUSE/INCONCLUSIVE as specified`. A disagreeing evaluator prints
-  `FAIL <gate>/<fixture>: got X, want Y` and the run exits 1.
+  `FAIL <gate>/<fixture>: got X, want Y` on **stderr** (UPLIFT-2; JSON
+  `{gate,fixture,got,want,ok}` per fixture on stdout) and the run exits 1.
 - One verdict JSON exists per fixture under
   `migration/fixtures/admission/out/<gate>/<fixture>.json`, and every G-4 file
   carries `"g4_mode": "SAMPLE"` — `g4-runtime-parity.py` re-reads its own write

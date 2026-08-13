@@ -83,7 +83,7 @@ def main() -> int:
     for name, want in expected.items():
         fixture = base / name
         if not fixture.is_dir():
-            print(f"FAIL G-1/{name}: missing fixture dir {fixture}")
+            print(f"FAIL G-1/{name}: missing fixture dir {fixture}", file=sys.stderr)
             rc = 1
             continue
         got = evaluate(fixture)

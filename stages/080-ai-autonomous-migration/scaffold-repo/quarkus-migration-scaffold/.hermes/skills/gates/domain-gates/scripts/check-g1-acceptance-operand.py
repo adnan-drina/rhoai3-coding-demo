@@ -47,13 +47,22 @@ def main() -> int:
         action="store_true",
         help="Permit harness-only when G1_OPERAND=tooling_smoke (non-acceptance)",
     )
+    sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+    from output_format import add_format_arg, emit_result  # noqa: E402
+
+    add_format_arg(ap)
     args = ap.parse_args()
     root = Path(args.root).resolve()
     operand = os.environ.get("G1_OPERAND", "acceptance").strip().lower()
 
     tests = test_paths(root)
     if not tests:
-        print("FAIL: AR-3.6 no *Test.java — G-1 acceptance operand empty", file=sys.stderr)
+        emit_result(
+            args.format,
+            {"check": "g1-acceptance-operand", "ok": False, "reason": "empty"},
+            "FAIL: AR-3.6 no *Test.java — G-1 acceptance operand empty",
+            ok=False,
+        )
         return 1
 
     product = [p for p in tests if not is_harness(p, root)]
@@ -61,23 +70,46 @@ def main() -> int:
 
     if not product:
         if args.allow_tooling_smoke or operand == "tooling_smoke":
-            print(
+            emit_result(
+                args.format,
+                {
+                    "check": "g1-acceptance-operand",
+                    "ok": True,
+                    "mode": "tooling_smoke",
+                    "harness": len(harness),
+                },
                 "OK: harness-only tests under G1_OPERAND=tooling_smoke "
-                "(NOT acceptance evidence)"
+                "(NOT acceptance evidence)",
+                ok=True,
             )
             return 0
-        print(
+        emit_result(
+            args.format,
+            {
+                "check": "g1-acceptance-operand",
+                "ok": False,
+                "reason": "probe_only",
+                "harness": len(harness),
+            },
             "FAIL: AR-3.6 probe-only tests (com.demo.harness.*) — "
             "REFUSE as G-1 acceptance operand",
-            file=sys.stderr,
+            ok=False,
         )
         for p in harness[:20]:
             print(f"  probe_test: {p.relative_to(root)}", file=sys.stderr)
         return 1
 
-    print(
+    emit_result(
+        args.format,
+        {
+            "check": "g1-acceptance-operand",
+            "ok": True,
+            "product": len(product),
+            "harness": len(harness),
+        },
         f"OK: G-1 acceptance operand has {len(product)} product test(s) "
-        f"(harness smoke={len(harness)})"
+        f"(harness smoke={len(harness)})",
+        ok=True,
     )
     return 0
 
