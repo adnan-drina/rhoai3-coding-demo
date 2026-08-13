@@ -25,16 +25,23 @@ EXIT_CODES = """Exit codes:
 """
 
 FAMILY_CHECKS: dict[str, frozenset[str]] = {
-    "create_fk": frozenset({"create_fk", "owner_pet_visit_create"}),
+    "create_fk": frozenset({"create_fk"}),  # F1: dropped specimen owner_pet_visit_create
     "route_contract": frozenset({"route_contract", "endpoint_contract"}),
     "hql_entity_path": frozenset({"hql_entity_path", "delete_cascade_it"}),
     "http_semantics": frozenset({"http_semantics", "exception_mapping"}),
     "tx_rmw": frozenset({"tx_rmw", "concurrency"}),
+    # Non-REST families (F1)
+    "build_resolves": frozenset({"build_resolves"}),
+    "config_profile_load": frozenset({"config_profile_load"}),
+    "test_suite_runs": frozenset({"test_suite_runs"}),
+    "log_output": frozenset({"log_output"}),
+    "cache_hit": frozenset({"cache_hit"}),
+    "health_probe": frozenset({"health_probe"}),
 }
 
 RESTISH = ("RestController", "Repository", "ApplicationService")
 
-COMPILE_ONLY = frozenset({"quarkus_compile", "compile", "mvn_compile", "mvn_test_compile"})
+from specimen_agnostic import COMPILE_ONLY, is_oracle_unavailable  # noqa: E402
 
 
 
@@ -128,11 +135,23 @@ def main() -> int:
                 check = str(x.get("check") or "").strip()
                 if not check or check in COMPILE_ONLY:
                     continue
+                # F5: oracle_unavailable needs reason, not cmd
+                if check == "oracle_unavailable":
+                    if not is_oracle_unavailable(x):
+                        print(
+                            f"FAIL: AR-2.3–2.7 {label}: oracle_unavailable lacks reason "
+                            f"(E-20260813T220250Z F5)",
+                            file=sys.stderr,
+                        )
+                        bad = 1
+                    checked += 1
+                    continue
                 cmd = x.get("cmd")
                 if not (isinstance(cmd, str) and cmd.strip()):
                     print(
                         f"FAIL: AR-2.3–2.7 {label}: exit {check!r} has no cmd "
-                        f"(unmeasurable; add cmd or drop — E-20260813T215058Z L2)",
+                        f"(unmeasurable; add cmd, use oracle_unavailable+reason, or drop — "
+                        f"E-20260813T215058Z L2 / E-20260813T220250Z F5)",
                         file=sys.stderr,
                     )
                     bad = 1
@@ -175,11 +194,22 @@ def main() -> int:
             check = str(x.get("check") or "").strip()
             if not check or check in COMPILE_ONLY:
                 continue
+            # F5: oracle_unavailable needs reason, not cmd (Lead triage)
+            if check == "oracle_unavailable":
+                if not is_oracle_unavailable(x):
+                    print(
+                        f"FAIL: AR-2.3–2.7 {label}: oracle_unavailable lacks reason "
+                        f"(E-20260813T220250Z F5)",
+                        file=sys.stderr,
+                    )
+                    bad = 1
+                continue
             cmd = x.get("cmd")
             if not (isinstance(cmd, str) and cmd.strip()):
                 print(
                     f"FAIL: AR-2.3–2.7 {label}: exit {check!r} has no cmd "
-                    f"(unmeasurable; add cmd or drop — E-20260813T215058Z L2)",
+                    f"(unmeasurable; add cmd, use oracle_unavailable+reason, or drop — "
+                    f"E-20260813T215058Z L2 / E-20260813T220250Z F5)",
                     file=sys.stderr,
                 )
                 bad = 1

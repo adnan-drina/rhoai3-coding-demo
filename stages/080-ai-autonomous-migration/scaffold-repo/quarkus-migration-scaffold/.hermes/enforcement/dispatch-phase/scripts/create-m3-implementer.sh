@@ -390,6 +390,14 @@ print(path)
 PY
 echo "CREATED_CARDS_CLAIM=${CLAIM_FILE}"
 
+# Deputy E-20260813T220250Z F8 — enforce claim coherence in machinery (not prose).
+# Re-read derived ids and fail-closed if stamp/claim diverges.
+CLAIM_IDS="$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(" ".join(c.get("id","") for c in (d.get("cards") or []) if isinstance(c,dict) and c.get("id")))' "${CLAIM_FILE}")"
+python3 "${ROOT}/.hermes/enforcement/dispatch-phase/scripts/check-created-cards-claim.py" \
+  --root "${ROOT}" --parent "${PARENT_PRIMARY}" --claimed ${CLAIM_IDS} \
+  || die "CREATED_CARDS_CLAIM check failed after stamp (E-20260813T220250Z F8)"
+
+
 # Architect E-20260811T155332Z Class A — atomic create→digest→ack-request
 # (freeze exception). Emit unsigned ack-request so Operator/Deputy signs
 # without hand-copying digests; dispatch still verifies ack↔card↔live (AR-4.3).

@@ -288,3 +288,128 @@ def inventory_http_expected(inventory: dict) -> int:
     if not isinstance(eps, list):
         return 0
     return sum(1 for e in eps if isinstance(e, dict) and e.get("kind") == "http")
+
+
+# ---------------------------------------------------------------------------
+# Shared exit vocabulary (Deputy E-20260813T220250Z F1/F4/F5)
+# One definition for surgical-scopes + semantic-exits. Specimen literals
+# (e.g. owner_pet_visit_create) must NOT appear here — R-SK.5.
+# ---------------------------------------------------------------------------
+
+# Unified compile-shaped checks (union of prior surgical + semantic sets).
+COMPILE_ONLY = frozenset(
+    {
+        "compile",
+        "mvn_compile",
+        "mvn_test_compile",
+        "quarkus_compile",
+        "residue",
+        "spring_residue",
+        "skills",
+        "claim_accuracy",
+        "scope",
+    }
+)
+
+# Legal non-compile semantic exit check names (closed set, specimen-agnostic).
+SEMANTIC_EXIT_VOCAB = frozenset(
+    {
+        # REST / persistence
+        "endpoint_contract",
+        "route_contract",
+        "http_status",
+        "http_semantics",
+        "route_auth",
+        "create_fk",
+        "hql_entity_path",
+        "delete_cascade_it",
+        "exception_mapping",
+        "tx_rmw",
+        "concurrency",
+        "security_authz",
+        # Non-REST story classes (F1 — honest terms for build/config/test/infra/obs)
+        "build_resolves",
+        "config_profile_load",
+        "test_suite_runs",
+        "log_output",
+        "cache_hit",
+        "health_probe",
+        # Typed escape when no measurable oracle exists (F5)
+        "oracle_unavailable",
+    }
+)
+
+# Backward-compatible alias used by older call sites / docs.
+ENDPOINTISH = SEMANTIC_EXIT_VOCAB
+
+# operand_class → preferred semantic exit checks (at least one required unless
+# oracle_unavailable with reason). Unknown classes fall back to ENDPOINTISH ∩ REST-ish.
+OPERAND_CLASS_SEMANTIC_EXITS: dict[str, frozenset[str]] = {
+    "build_config": frozenset({"build_resolves", "oracle_unavailable"}),
+    "build-config": frozenset({"build_resolves", "oracle_unavailable"}),
+    "config": frozenset({"config_profile_load", "oracle_unavailable"}),
+    "pom": frozenset({"build_resolves", "oracle_unavailable"}),
+    "test": frozenset({"test_suite_runs", "oracle_unavailable"}),
+    "infra": frozenset({"cache_hit", "health_probe", "oracle_unavailable"}),
+    "observability": frozenset({"log_output", "health_probe", "oracle_unavailable"}),
+    "rest": frozenset(
+        {
+            "endpoint_contract",
+            "route_contract",
+            "http_status",
+            "http_semantics",
+            "route_auth",
+            "create_fk",
+            "exception_mapping",
+            "security_authz",
+            "oracle_unavailable",
+        }
+    ),
+    "api": frozenset(
+        {
+            "endpoint_contract",
+            "route_contract",
+            "http_semantics",
+            "oracle_unavailable",
+        }
+    ),
+    "src_code": frozenset(SEMANTIC_EXIT_VOCAB),  # default: full vocab
+}
+
+
+def normalize_operand_class(body: dict) -> str:
+    ident = body.get("identity") if isinstance(body.get("identity"), dict) else {}
+    raw = str(
+        ident.get("operand_class") or body.get("operand_class") or "src_code"
+    ).strip().lower()
+    return raw or "src_code"
+
+
+def required_semantic_exits_for(body: dict) -> frozenset[str]:
+    oc = normalize_operand_class(body)
+    if oc in OPERAND_CLASS_SEMANTIC_EXITS:
+        return OPERAND_CLASS_SEMANTIC_EXITS[oc]
+    # aliases
+    if oc in {"build_config", "build-config", "config", "pom"}:
+        return OPERAND_CLASS_SEMANTIC_EXITS["build_config"]
+    return SEMANTIC_EXIT_VOCAB
+
+
+def is_compile_only_check(name: str) -> bool:
+    return str(name or "").strip() in COMPILE_ONLY
+
+
+def is_oracle_unavailable(exit_item: dict) -> bool:
+    if not isinstance(exit_item, dict):
+        return False
+    check = str(exit_item.get("check") or "").strip()
+    if check != "oracle_unavailable":
+        return False
+    reason = exit_item.get("reason") or exit_item.get("why") or exit_item.get("detail")
+    return isinstance(reason, str) and bool(reason.strip())
+
+
+def oracle_unavailable_routes_to_lead(exit_item: dict) -> bool:
+    """F5 escape is legal only with a non-empty reason (Lead triage signal)."""
+    return is_oracle_unavailable(exit_item)
+

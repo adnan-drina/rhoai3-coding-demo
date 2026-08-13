@@ -20,38 +20,19 @@ EXIT_CODES = """Exit codes:
   0  pass — every M3 body has a surgical, non-overlapping destination write set
      with at least one endpoint/semantic exit, or idle (no M3 bodies)
   1  BLOCK — unreadable body passed explicitly, empty destination write set,
-     unsequenced overlapping write, missing endpoint/semantic exit_criteria, or
+     missing endpoint/semantic exit_criteria (by operand_class), or
      compile-shaped-only exit_criteria (AR-4.4)
   2  usage / harness defect (bad or unknown argument)
 """
 
-COMPILE_ONLY = frozenset(
-    {
-        "compile",
-        "mvn_compile",
-        "residue",
-        "spring_residue",
-        "skills",
-        "claim_accuracy",
-        "scope",
-    }
-)
-ENDPOINTISH = frozenset(
-    {
-        "endpoint_contract",
-        "route_contract",
-        "http_status",
-        "http_semantics",
-        "route_auth",
-        "create_fk",
-        "owner_pet_visit_create",
-        "hql_entity_path",
-        "delete_cascade_it",
-        "exception_mapping",
-        "tx_rmw",
-        "concurrency",
-        "security_authz",
-    }
+# F4: single shared definition (specimen_agnostic). F1: vocab by operand_class.
+# F5: oracle_unavailable escape. Cross-story overlap owned by partition-coverage.
+from specimen_agnostic import (  # noqa: E402
+    COMPILE_ONLY,
+    ENDPOINTISH,
+    is_oracle_unavailable,
+    normalize_operand_class,
+    required_semantic_exits_for,
 )
 
 
@@ -168,42 +149,48 @@ def main() -> int:
         return 0
 
     bad = 0
-    ownership: dict[str, str] = {}
+    # F4: cross-story write overlap is owned solely by check-partition-coverage.py
+    # (honours sequence_after + pom exemption). This gate owns body-local facts.
     for label, body in bodies:
         writes = dest_write_set(body)
         if not writes:
             print(f"FAIL: AR-4.4 {label}: empty destination write set", file=sys.stderr)
             bad = 1
             continue
-        seq = body.get("sequence_after") or (body.get("identity") or {}).get("sequence_after")
-        sequenced = isinstance(seq, list) and bool(seq)
-        for w in writes:
-            norm = w.lstrip("./")
-            prev = ownership.get(norm)
-            if prev and prev != label and not sequenced:
-                print(
-                    f"FAIL: AR-4.4 overlapping write {norm} owned by {prev} and {label} "
-                    f"(set sequence_after or split ownership)",
-                    file=sys.stderr,
-                )
-                bad = 1
-            else:
-                ownership[norm] = label
 
         exits = body.get("exit_criteria") or body.get("done_when") or []
+        if not isinstance(exits, list):
+            exits = []
         checks = {
             str(x.get("check") or "")
             for x in exits
             if isinstance(x, dict)
         }
-        if not (checks & ENDPOINTISH):
+        # F5: typed escape — oracle_unavailable with reason routes to Lead
+        has_oracle_escape = any(
+            is_oracle_unavailable(x) for x in exits if isinstance(x, dict)
+        )
+        oclass = normalize_operand_class(body)
+        required = required_semantic_exits_for(body)
+        if has_oracle_escape:
+            # legal standalone semantic exit for any class
+            pass
+        elif not (checks & required):
             print(
-                f"FAIL: AR-4.4 {label}: no endpoint/semantic exit_criteria "
-                f"(compile-only insufficient; need one of {sorted(ENDPOINTISH)[:6]}…)",
+                f"FAIL: AR-4.4 {label}: no semantic exit for operand_class={oclass!r} "
+                f"(need one of {sorted(required)[:8]}; or oracle_unavailable+reason — "
+                f"E-20260813T220250Z F1/F5)",
                 file=sys.stderr,
             )
             bad = 1
-        if checks and checks <= COMPILE_ONLY:
+        elif not (checks & ENDPOINTISH):
+            print(
+                f"FAIL: AR-4.4 {label}: exit check not in shared SEMANTIC_EXIT_VOCAB "
+                f"(got {sorted(checks - COMPILE_ONLY)})",
+                file=sys.stderr,
+            )
+            bad = 1
+        if checks and checks <= COMPILE_ONLY and not has_oracle_escape:
             print(
                 f"FAIL: AR-4.4 {label}: exit_criteria are compile-shaped only {sorted(checks)}",
                 file=sys.stderr,
