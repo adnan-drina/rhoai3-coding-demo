@@ -4,13 +4,32 @@
 # Idle exit 0 when phase has no requires_acks.
 set -euo pipefail
 SKILL_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
+case "${1:-}" in
+  -h|--help)
+    cat <<'USAGE'
+check-acks.sh — require acknowledged ack artifacts before phase advance (AD-H §16.3).
+
+Usage:
+  check-acks.sh <M1|M2|M2a|M2b|M3|M4|M5|factory> [project_root]
+  check-acks.sh -h|--help
+
+Exit codes:
+  0  all required acks present, or phase has no requires_acks (idle)
+  1  BLOCK — missing or non-authoritative ack
+  2  usage error
+USAGE
+    exit 0
+    ;;
+esac
+
 ROOT="$(cd "${2:-${SKILL_DIR}/../../..}" && pwd)"
 PHASE="${1:-}"
 DISPATCH="${ROOT}/.hermes/phase-dispatch.yaml"
 ACK_DIR="${ROOT}/migration/acks"
 
 die() { echo "FAIL: $*" >&2; exit 1; }
-[ -n "${PHASE}" ] || die "usage: check-acks.sh <phase> [root]"
+[ -n "${PHASE}" ] || { echo "usage: check-acks.sh <phase> [root]" >&2; exit 2; }
 [ -f "${DISPATCH}" ] || die "missing ${DISPATCH}"
 
 REQUIRED_TXT="$(python3 - "${DISPATCH}" "${PHASE}" <<'PY'

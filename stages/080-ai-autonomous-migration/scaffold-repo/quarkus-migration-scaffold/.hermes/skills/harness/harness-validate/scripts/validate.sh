@@ -70,7 +70,7 @@ bash "${SKILLS}/sdd/sdd-readiness/scripts/check-readiness.sh" || rc=1
 sdd_tmp="$(mktemp -d)"
 mkdir -p "${sdd_tmp}/migration/tasks" "${sdd_tmp}/migration/briefs"
 printf '%s\n' '## Non-Goals' '- NG-001: x' > "${sdd_tmp}/migration/briefs/b.md"
-printf '%s\n' '{"id":"T-1","phase":"M3","replan":true,"ac_ids":["AC-1"],"files_in_scope":["src/"],"deps":[],"brief_id":"B-1"}' \
+printf '%s\n' '{"id":"t_a1b2c3d4e5","phase":"M3","replan":true,"ac_ids":["AC-1"],"files_in_scope":["src/"],"deps":[],"brief_id":"B-1"}' \
   > "${sdd_tmp}/migration/tasks/bad.json"
 if python3 "${SKILLS}/sdd/sdd-readiness/scripts/check-ordering.py" "${sdd_tmp}" >/dev/null 2>&1; then
   echo "FAIL: §S.6 should refuse IMPLEMENT replan" >&2
@@ -78,7 +78,7 @@ if python3 "${SKILLS}/sdd/sdd-readiness/scripts/check-ordering.py" "${sdd_tmp}" 
 else
   echo "OK: §S.6 refuses IMPLEMENT replan"
 fi
-printf '%s\n' '{"id":"T-1","phase":"M3","ac_ids":["AC-1"],"files_in_scope":["src/"],"deps":[],"brief_id":"B-1"}' \
+printf '%s\n' '{"id":"t_a1b2c3d4e5","phase":"M3","ac_ids":["AC-1"],"files_in_scope":["src/"],"deps":[],"brief_id":"B-1"}' \
   > "${sdd_tmp}/migration/tasks/bad.json"
 python3 "${SKILLS}/sdd/sdd-readiness/scripts/check-ordering.py" "${sdd_tmp}" || rc=1
 rm -rf "${sdd_tmp}"
@@ -244,11 +244,11 @@ else
   echo "OK: invent-without-locus refused"
 fi
 # good non-trivial packet
-printf '%s\n' '{"id":"T-1","phase":"M3","role":"implementer","brief_id":"B-1","ac_ids":["AC-1"],"files_in_scope":["src/"],"deps":[],"legacy_locus":"projects/legacy/Foo.java:10-40","writes":["src/Foo.java"]}' \
+printf '%s\n' '{"id":"t_a1b2c3d4e5","phase":"M3","role":"implementer","brief_id":"B-1","ac_ids":["AC-1"],"files_in_scope":["src/"],"deps":[],"legacy_locus":"projects/legacy/Foo.java:10-40","writes":["src/Foo.java"]}' \
   > "${gg_tmp}/migration/tasks/bad.json"
 python3 "${SKILLS}/harness/grounded-generation/scripts/check-citation.py" "${gg_tmp}" || rc=1
 # commit message lint
-printf '%s\n' 'T-1: port Foo (brief B-1; legacy projects/legacy/Foo.java:10-40)' > "${gg_tmp}/msg.txt"
+printf '%s\n' 't_a1b2c3d4e5: port Foo (brief B-1; legacy projects/legacy/Foo.java:10-40)' > "${gg_tmp}/msg.txt"
 python3 "${SKILLS}/harness/grounded-generation/scripts/check-citation.py" "${gg_tmp}" --commit-msg "${gg_tmp}/msg.txt" || rc=1
 printf '%s\n' 'fix formatting' > "${gg_tmp}/msg-bad.txt"
 if python3 "${SKILLS}/harness/grounded-generation/scripts/check-citation.py" "${gg_tmp}" --commit-msg "${gg_tmp}/msg-bad.txt" >/dev/null 2>&1; then
@@ -349,6 +349,21 @@ else
 fi
 printf '%s\n' '{"phase":"M5","verdict":"ACCEPT","g1_kill_ratio":"pending_threshold","g1_kill_ratio_waiver":true}' \
   > "${vr_tmp}/migration/verdicts/m5.json"
+# Self-reported waiver alone must refuse (Deputy E-20260813T144954Z P1)
+if python3 "${SKILLS}/gates/validation-release-gates/scripts/check-factory-m5.py" "${vr_tmp}" >/dev/null 2>&1; then
+  echo "FAIL: factory with self-reported g1_kill_ratio_waiver should refuse" >&2
+  rc=1
+else
+  echo "OK: factory self-reported kill-ratio waiver refused"
+fi
+mkdir -p "${vr_tmp}/migration/acks"
+cat > "${vr_tmp}/migration/acks/g1-kill-ratio-waiver-S-1.ack.yaml" <<'ACK'
+kind: migration-ack
+ack_type: g1-kill-ratio-waiver
+status: acknowledged
+acknowledged_by: Operator
+acknowledged_at: "2026-08-13T00:00:00Z"
+ACK
 python3 "${SKILLS}/gates/validation-release-gates/scripts/check-factory-m5.py" "${vr_tmp}" || rc=1
 # candidate→promote (finding 4)
 python3 "${SKILLS}/gates/validation-release-gates/scripts/check-candidate-promote.py" "${ROOT}" || rc=1
@@ -434,7 +449,7 @@ echo "== kanban-body (W2 §6.1) =="
 python3 "${SKILLS}/sdd/sdd-readiness/scripts/check-kanban-body.py" "${ROOT}" || rc=1
 kb_tmp="$(mktemp -d)"
 mkdir -p "${kb_tmp}/migration/bodies"
-printf '%s\n' '{"task_id":"T-1","role":"implementer","phase":"M3","refs":[],"files_in_scope":["src/"]}' \
+printf '%s\n' '{"task_id":"t_a1b2c3d4e5","role":"implementer","phase":"M3","refs":[],"files_in_scope":["src/"]}' \
   > "${kb_tmp}/migration/bodies/bad.json"
 if python3 "${SKILLS}/sdd/sdd-readiness/scripts/check-kanban-body.py" "${kb_tmp}" >/dev/null 2>&1; then
   echo "FAIL: M3 body missing required refs should refuse" >&2
@@ -442,11 +457,11 @@ if python3 "${SKILLS}/sdd/sdd-readiness/scripts/check-kanban-body.py" "${kb_tmp}
 else
   echo "OK: BODY_REF_MISSING refused"
 fi
-printf '%s\n' '{"task_id":"T-1","role":"implementer","phase":"M3","identity":{"transform_class":"HARVEST","g2_applicability":"not_applicable","operand_count":1,"sizing_basis":"operand_count"},"files_in_scope":["src/Foo.java"],"exit_criteria":[{"check":"compile","cmd":"true","expect":"rc=0"},{"check":"skills","assert":"AD-002E: consult or skills_unused; silence invalid"},{"check":"endpoint_contract","assert":"fixture"}],"refs":[{"key":"brief_identity_ack","path":"migration/acks/brief-identity.ack","sha256":"pending"},{"key":"legacy_locus","path":"projects/legacy/Foo.java","sha256":"0000000000000000000000000000000000000000000000000000000000000000"}]}' \
+printf '%s\n' '{"task_id":"t_a1b2c3d4e5","role":"implementer","phase":"M3","identity":{"transform_class":"HARVEST","g2_applicability":"not_applicable","operand_count":1,"sizing_basis":"operand_count"},"files_in_scope":["src/Foo.java"],"exit_criteria":[{"check":"compile","cmd":"true","expect":"rc=0"},{"check":"skills","assert":"AD-002E: consult or skills_unused; silence invalid"},{"check":"endpoint_contract","assert":"fixture"}],"refs":[{"key":"brief_identity_ack","path":"migration/acks/brief-identity.ack","sha256":"pending"},{"key":"legacy_locus","path":"projects/legacy/Foo.java","sha256":"0000000000000000000000000000000000000000000000000000000000000000"}]}' \
   > "${kb_tmp}/migration/bodies/bad.json"
 python3 "${SKILLS}/sdd/sdd-readiness/scripts/check-kanban-body.py" "${kb_tmp}" || rc=1
 # Deputy E-20260811T131200Z — prose in sha256 slots must refuse
-printf '%s\n' '{"task_id":"T-1","role":"implementer","phase":"M3","identity":{"transform_class":"HARVEST","g2_applicability":"not_applicable","operand_count":1,"sizing_basis":"operand_count"},"files_in_scope":["src/Foo.java"],"exit_criteria":[{"check":"compile","cmd":"true","expect":"rc=0"},{"check":"skills","assert":"AD-002E: consult or skills_unused; silence invalid"},{"check":"endpoint_contract","assert":"fixture"}],"refs":[{"key":"brief_identity_ack","path":"migration/acks/brief-identity.ack","sha256":"pending"},{"key":"legacy_locus","path":"projects/legacy/Foo.java","sha256":"see-harvest-referent"}]}' \
+printf '%s\n' '{"task_id":"t_a1b2c3d4e5","role":"implementer","phase":"M3","identity":{"transform_class":"HARVEST","g2_applicability":"not_applicable","operand_count":1,"sizing_basis":"operand_count"},"files_in_scope":["src/Foo.java"],"exit_criteria":[{"check":"compile","cmd":"true","expect":"rc=0"},{"check":"skills","assert":"AD-002E: consult or skills_unused; silence invalid"},{"check":"endpoint_contract","assert":"fixture"}],"refs":[{"key":"brief_identity_ack","path":"migration/acks/brief-identity.ack","sha256":"pending"},{"key":"legacy_locus","path":"projects/legacy/Foo.java","sha256":"see-harvest-referent"}]}' \
   > "${kb_tmp}/migration/bodies/bad.json"
 if python3 "${SKILLS}/sdd/sdd-readiness/scripts/check-kanban-body.py" "${kb_tmp}" >/dev/null 2>&1; then
   echo "FAIL: non-hex sha256 prose should refuse" >&2
@@ -565,7 +580,7 @@ echo "== auditability-repeatability (AD-H §19) =="
 python3 "${SKILLS}/harness/auditability-repeatability/scripts/check-provenance.py" "${ROOT}" || rc=1
 ap_tmp="$(mktemp -d)"
 mkdir -p "${ap_tmp}/migration/tasks"
-printf '%s\n' '{"id":"T-1","phase":"M3","role":"implementer","status":"done","brief_id":"B-1","ac_ids":["AC-1"],"files_in_scope":["src/"],"deps":[]}' \
+printf '%s\n' '{"id":"t_a1b2c3d4e5","phase":"M3","role":"implementer","status":"done","brief_id":"B-1","ac_ids":["AC-1"],"files_in_scope":["src/"],"deps":[]}' \
   > "${ap_tmp}/migration/tasks/bad.json"
 if python3 "${SKILLS}/harness/auditability-repeatability/scripts/check-provenance.py" "${ap_tmp}" >/dev/null 2>&1; then
   echo "FAIL: complete IMPLEMENT without worker_session_id should refuse" >&2
@@ -573,7 +588,7 @@ if python3 "${SKILLS}/harness/auditability-repeatability/scripts/check-provenanc
 else
   echo "OK: missing worker_session_id refused"
 fi
-printf '%s\n' '{"id":"T-1","phase":"M3","role":"implementer","status":"done","provenance":{"task_id":"T-1","task_run_id":"1","worker_session_id":"sess1","soul_path":"/tmp/no-such-soul.md","soul_sha":"deadbeef","skill_tips":{"grounded-generation":"abc"},"model_id":"unknown","citations":{"brief_or_story_id":"B-1","legacy_locus":"projects/legacy/Foo.java:1-10"},"artifacts":[]}}' \
+printf '%s\n' '{"id":"t_a1b2c3d4e5","phase":"M3","role":"implementer","status":"done","provenance":{"task_id":"t_a1b2c3d4e5","task_run_id":"1","worker_session_id":"sess1","soul_path":"/tmp/no-such-soul.md","soul_sha":"deadbeef","skill_tips":{"grounded-generation":"abc"},"model_id":"unknown","citations":{"brief_or_story_id":"B-1","legacy_locus":"projects/legacy/Foo.java:1-10"},"artifacts":[]}}' \
   > "${ap_tmp}/migration/tasks/bad.json"
 if python3 "${SKILLS}/harness/auditability-repeatability/scripts/check-provenance.py" "${ap_tmp}" >/dev/null 2>&1; then
   echo "FAIL: model_id=unknown without model_id_gap should refuse" >&2
@@ -585,7 +600,7 @@ fi
 soul_tmp="$(mktemp)"
 printf 'test soul\n' > "${soul_tmp}"
 soul_sha="$(python3 -c "import hashlib,pathlib; print(hashlib.sha256(pathlib.Path('${soul_tmp}').read_bytes()).hexdigest())")"
-printf '%s\n' "{\"id\":\"T-1\",\"phase\":\"M3\",\"role\":\"implementer\",\"status\":\"done\",\"provenance\":{\"task_id\":\"T-1\",\"task_run_id\":\"1\",\"campaign_id\":\"fixture\",\"worker_session_id\":\"sess1\",\"soul_path\":\"${soul_tmp}\",\"soul_sha\":\"${soul_sha}\",\"skill_tips\":{\"grounded-generation\":\"abc\"},\"model_id\":\"unknown\",\"model_id_gap\":true,\"citations\":{\"brief_or_story_id\":\"B-1\",\"legacy_locus\":\"projects/legacy/Foo.java:1-10\"},\"artifacts\":[]}}" \
+printf '%s\n' "{\"id\":\"t_a1b2c3d4e5\",\"phase\":\"M3\",\"role\":\"implementer\",\"status\":\"done\",\"provenance\":{\"task_id\":\"t_a1b2c3d4e5\",\"task_run_id\":\"1\",\"campaign_id\":\"fixture\",\"worker_session_id\":\"sess1\",\"soul_path\":\"${soul_tmp}\",\"soul_sha\":\"${soul_sha}\",\"skill_tips\":{\"grounded-generation\":\"abc\"},\"model_id\":\"unknown\",\"model_id_gap\":true,\"citations\":{\"brief_or_story_id\":\"B-1\",\"legacy_locus\":\"projects/legacy/Foo.java:1-10\"},\"artifacts\":[]}}" \
   > "${ap_tmp}/migration/tasks/bad.json"
 python3 "${SKILLS}/harness/auditability-repeatability/scripts/check-provenance.py" "${ap_tmp}" || rc=1
 rm -f "${soul_tmp}"

@@ -75,10 +75,87 @@ def factory_claims(root: Path) -> list[str]:
     return claims
 
 
+def typed_g1_waiver(root: Path) -> str | None:
+    """Return relative path of a typed Operator g1 kill-ratio waiver ack, else None.
+
+    Self-reported `g1_kill_ratio_waiver: true` on a verdict is NOT authority
+    (Deputy E-20260813T144954Z P1). Waiver path is the pin contract location:
+    migration/acks/g1-kill-ratio-waiver*.ack.yaml
+    """
+    adir = root / "migration" / "acks"
+    if not adir.is_dir():
+        return None
+    for path in sorted(adir.glob("g1-kill-ratio-waiver*.ack.yaml")) + sorted(
+        adir.glob("g1-kill-ratio-waiver*.ack.yml")
+    ) + sorted(adir.glob("g1-kill-ratio-waiver*.ack.json")):
+        try:
+            raw = path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        if path.suffix == ".json":
+            try:
+                doc = json.loads(raw)
+            except Exception:
+                continue
+        else:
+            def field(name: str) -> str:
+                import re
+
+                m = re.search(rf"(?im)^{name}:\s*(.+)$", raw)
+                return m.group(1).strip().strip("\"'") if m else ""
+
+            doc = {
+                "kind": field("kind"),
+                "ack_type": field("ack_type"),
+                "status": field("status"),
+            }
+        if doc.get("kind") != "migration-ack":
+            continue
+        if str(doc.get("status", "")).lower() != "acknowledged":
+            continue
+        # Filename already matched g1-kill-ratio-waiver*; status/kind checked above.
+        return str(path.relative_to(root))
+    return None
+
+
+def pinned_kill_ratio_pass(root: Path) -> str | None:
+    """Return label if a g1 kill-ratio pin artifact evaluates PASS, else None."""
+    candidates = [
+        root / "migration" / "verdicts" / "g1-kill-ratio-pin.json",
+        root / "migration" / "derived" / "g1-kill-ratio-pin.json",
+    ]
+    vdir = root / "migration" / "verdicts"
+    if vdir.is_dir():
+        candidates.extend(sorted(vdir.glob("*kill-ratio*pin*.json")))
+    for path in candidates:
+        if not path.is_file():
+            continue
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if not isinstance(data, dict):
+            continue
+        ev = data.get("evaluation_against_measurement") or {}
+        if isinstance(ev, dict) and ev.get("pass") in (True, "true", "yes", 1):
+            pinned = data.get("status") == "PINNED" or data.get(
+                "g1_kill_ratio_threshold_pinned"
+            ) in (True, "true", "yes", 1)
+            if pinned or data.get("schema", "").startswith("migration/g1-kill-ratio-pin"):
+                return str(path.relative_to(root))
+        if data.get("g1_kill_ratio") in ("PASS", "pass") and data.get(
+            "g1_kill_ratio_threshold_pinned"
+        ) in (True, "true", "yes", 1):
+            return str(path.relative_to(root))
+    return None
+
+
 def m5_accept_state(root: Path) -> tuple[str, str, dict]:
     """Return (state, label, obj) where state is ACCEPT|REFUSE|INCONCLUSIVE|MISSING.
 
     ACCEPT here means **full** M5 ACCEPT (AD-H §18.0). Provisional is rejected.
+    Does not invent kill-ratio waiver flags — those must come from the verdict
+    object or typed waiver / pin artifacts (Deputy E-20260813T144954Z P1).
     """
     best: tuple[str, str, dict] = ("MISSING", "", {})
     vdir = root / "migration/verdicts"
@@ -97,7 +174,7 @@ def m5_accept_state(root: Path) -> tuple[str, str, dict]:
                 continue
     ack = root / "migration/acks/m5-accept.ack"
     if ack.is_file() and best[0] == "MISSING":
-        return ("ACCEPT", str(ack.relative_to(root)), {"accept_kind": "full", "g1_kill_ratio_waiver": True})
+        return ("ACCEPT", str(ack.relative_to(root)), {"accept_kind": "full"})
     for d in (root / "migration/bodies", root / "migration/tasks"):
         if not d.is_dir():
             continue
@@ -119,14 +196,14 @@ def m5_accept_state(root: Path) -> tuple[str, str, dict]:
                             best = (
                                 "ACCEPT",
                                 str(path.relative_to(root)) + " (m5_accept ref)",
-                                {"accept_kind": "full", "g1_kill_ratio_waiver": True},
+                                {"accept_kind": "full"},
                             )
             except Exception:
                 continue
     return best
 
 
-def full_accept_ok(obj: dict) -> str | None:
+def full_accept_ok(root: Path, obj: dict) -> str | None:
     """Return error string if M5 ACCEPT is not composition-complete, else None."""
     verdict = str(obj.get("verdict") or obj.get("gate_verdict") or "").upper().replace(
         "-", "_"
@@ -156,15 +233,32 @@ def full_accept_ok(obj: dict) -> str | None:
             f"use SCOPED_ACCEPT (AD-H §18 / finding 3)"
         )
     kill = str(obj.get("g1_kill_ratio") or obj.get("g1KillRatio") or "").lower()
-    pinned = obj.get("g1_kill_ratio_threshold_pinned") in (True, "true", "yes", 1)
-    waiver = obj.get("g1_kill_ratio_waiver") in (True, "true", "yes", 1) or (
+    pinned_field = obj.get("g1_kill_ratio_threshold_pinned") in (True, "true", "yes", 1)
+    pin_art = pinned_kill_ratio_pass(root)
+    waiver_art = typed_g1_waiver(root)
+    self_waiver = obj.get("g1_kill_ratio_waiver") in (True, "true", "yes", 1) or (
         isinstance(obj.get("operator_waiver"), dict)
         and obj["operator_waiver"].get("g1_kill_ratio") in (True, "true", "yes", 1)
     )
-    if kill == "pass" and not pinned:
-        return "g1_kill_ratio=PASS without threshold pin"
-    if kill in {"", "pending_threshold"} and not waiver:
-        return "M5 full ACCEPT needs kill-ratio PASS (pinned) or typed waiver"
+    if kill == "pass" and not (pinned_field or pin_art):
+        return "g1_kill_ratio=PASS without threshold pin artifact or field"
+    if kill in {"", "pending_threshold"}:
+        if waiver_art:
+            return None
+        if self_waiver and not waiver_art:
+            return (
+                "TRUST_UNVERIFIED: g1_kill_ratio_waiver on verdict is not authority — "
+                "need migration/acks/g1-kill-ratio-waiver*.ack.yaml or pin PASS "
+                "(Deputy E-20260813T144954Z P1)"
+            )
+        if pin_art:
+            return None
+        return (
+            "M5 full ACCEPT needs kill-ratio PASS (pinned artifact) or typed "
+            "g1-kill-ratio-waiver ack"
+        )
+    if kill == "pass" and (pinned_field or pin_art):
+        return None
     return None
 
 
@@ -200,7 +294,7 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
-    err = full_accept_ok(obj)
+    err = full_accept_ok(root, obj)
     if err:
         print(f"FAIL: factory vs {where}: {err}", file=sys.stderr)
         return 1

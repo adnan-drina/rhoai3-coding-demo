@@ -366,6 +366,8 @@ SPECIMEN_LITERAL_RX = [
     re.compile(r"\bOwner/Pet\b"),
     re.compile(r"(?i)\bpetclinic\b"),
     re.compile(r"/owners/\{[^}]*\}/pets"),
+    # Derived reference-app type names (Deputy E-20260813T144954Z P2)
+    re.compile(r"\bClinicService\b"),
 ]
 
 
@@ -425,6 +427,14 @@ def check_specimen_literals(scaffold: Path) -> list[str]:
             p
             for p in contracts.rglob("*")
             if p.is_file() and p.suffix in {".md", ".txt", ".yaml", ".yml"}
+        )
+    # R-SK.5 P2 — also scan Java fixtures (Deputy E-20260813T144954Z)
+    fixtures = scaffold / "migration" / "fixtures"
+    if fixtures.is_dir():
+        scan.extend(
+            p
+            for p in fixtures.rglob("*")
+            if p.is_file() and p.suffix in {".java", ".md", ".txt", ".yaml", ".yml"}
         )
     for p in scan:
         try:

@@ -4,7 +4,7 @@
 
 ## Problem
 
-Amending an M3 typed body to fix one hole (e.g. ClinicService interface-closure)
+Amending an M3 typed body to fix one hole (e.g. ApplicationService interface-closure)
 can silently drop the entire `constraints[]` block — including
 `@IfBuildProfile` forbid, di-config required path, and sequence notes.
 Proven twice: `t_29ccead3` forbid-drop class; S-002a prefer-fresh

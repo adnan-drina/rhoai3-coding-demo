@@ -17,8 +17,14 @@ import re
 import sys
 from pathlib import Path
 
-# Task id: T-1, TASK-001, M3-T12, etc.
-TASK_ID_RE = re.compile(r"\b(?:T|TASK|M[0-9]+-T)[-_]?\d+\b", re.I)
+# Task id: Hermes kanban `t_<hex>` (canonical) plus legacy story-shaped
+# T-1 / TASK-001 / M3-T12. Fixtures must exercise the Hermes form — a suite
+# that only mints T-1 never proves the commit lint works on live cards
+# (Deputy E-20260813T144954Z P1).
+TASK_ID_RE = re.compile(
+    r"\b(?:t_[a-f0-9]{6,}|(?:T|TASK|M[0-9]+-T)[-_]?\d+)\b",
+    re.I,
+)
 # Brief / story: B-1, STORY-12, brief B-1, story_id: …
 BRIEF_ID_RE = re.compile(
     r"\b(?:B|BRIEF|STORY|S)[-_]?\d+\b|"
@@ -219,8 +225,14 @@ def main() -> int:
             impl_checked += 1
             checked += 1
             label = rel if len(items) == 1 else f"{rel}[{i}]"
-            if not task_id_of(obj):
+            tid = task_id_of(obj)
+            if not tid:
                 fail(f"{label}: IMPLEMENT packet missing task id")
+            elif not TASK_ID_RE.fullmatch(tid) and not TASK_ID_RE.search(tid):
+                fail(
+                    f"{label}: task id {tid!r} not Hermes t_<hex> or story-shaped "
+                    f"T-N (AD-H §17)"
+                )
 
             if invent_without_locus(obj):
                 fail(f"{label}: invent-without-locus refused (AD-H §17)")

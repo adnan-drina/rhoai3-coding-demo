@@ -43,9 +43,10 @@ from pathlib import Path
 
 VERDICT_PREFIXES = ("OK:", "PASS:", "OK ", "PASS ")
 # Summary lines are also pass-shaped answers to an interface probe
-# (Deputy E-20260813T140743Z): BUNDLES=/CHECKED=/SCRIPTS=/VIOLATIONS= etc.
+# (Deputy E-20260813T140743Z / E-20260813T144954Z P2). Keep this list of
+# known suite-summary keys — do not match arbitrary ENV=1 examples in --help.
 VERDICT_SUMMARY_RX = re.compile(
-    r"\b(VIOLATIONS|CHECKED|BUNDLES|SCRIPTS|HERMETICITY_FILES)=\d+"
+    r"\b(VIOLATIONS|CHECKED|BUNDLES|SCRIPTS|HERMETICITY_FILES|GOLDEN_CLEANLINESS_FILES)=\d+"
 )
 SKIP_DIRS = {"__pycache__", "examples", "assets", "references", "templates"}
 # Library modules are imported, never invoked as an agent entry point.

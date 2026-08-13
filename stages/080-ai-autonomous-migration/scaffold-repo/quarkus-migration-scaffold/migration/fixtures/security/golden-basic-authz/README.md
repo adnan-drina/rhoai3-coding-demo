@@ -1,6 +1,6 @@
 # Golden — basic authz (R-HX.13 / security A-bar)
 
-Neutral (non-PetClinic) example for `references/security-config.md`.
+Neutral (non-ReferenceApp) example for `references/security-config.md`.
 
 ## Expected runtime
 

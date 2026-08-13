@@ -2,7 +2,7 @@
 """Fail-closed: body amend must not silently drop constraints (Class A).
 
 Architect E-20260811T182820Z / Operator E-20260811T182650Z — regression #2
-(same class as t_29ccead3 forbid-drop): ClinicService scope fix dropped the
+(same class as t_29ccead3 forbid-drop): ApplicationService scope fix dropped the
 entire constraints block (IfBuildProfile forbid / di-config path / sequence).
 
 Usage:

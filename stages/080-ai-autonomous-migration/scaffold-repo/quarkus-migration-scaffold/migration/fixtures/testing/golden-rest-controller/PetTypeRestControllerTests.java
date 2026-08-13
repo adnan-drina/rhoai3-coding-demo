@@ -1,4 +1,4 @@
-package org.springframework.samples.petclinic.rest.controller;
+package com.example.app.rest.controller;
 
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.CoreMatchers.is;
@@ -9,10 +9,10 @@ import io.quarkus.test.InjectMock;
 import io.quarkus.test.junit.QuarkusTest;
 import io.restassured.http.ContentType;
 import org.junit.jupiter.api.Test;
-import org.springframework.samples.petclinic.mapper.PetTypeMapper;
-import org.springframework.samples.petclinic.model.PetType;
-import org.springframework.samples.petclinic.rest.dto.PetTypeDto;
-import org.springframework.samples.petclinic.service.ClinicService;
+import com.example.app.mapper.SampleTypeMapper;
+import com.example.app.model.SampleType;
+import com.example.app.rest.dto.SampleTypeDto;
+import com.example.app.service.ApplicationService;
 
 /**
  * Golden copy-pattern for Quarkus REST controller tests (S-010 / testing.md).
@@ -23,25 +23,25 @@ import org.springframework.samples.petclinic.service.ClinicService;
  * the request path calls.
  */
 @QuarkusTest
-class PetTypeRestControllerTests {
+class SampleTypeRestControllerTests {
 
     @InjectMock
-    ClinicService clinicService;
+    ApplicationService clinicService;
 
     @InjectMock
-    PetTypeMapper petTypeMapper;
+    SampleTypeMapper sampleTypeMapper;
 
     @Test
     void getPetType_happyPath() {
-        PetType entity = new PetType();
+        SampleType entity = new SampleType();
         entity.setId(1);
         entity.setName("cat");
-        PetTypeDto dto = new PetTypeDto();
+        SampleTypeDto dto = new SampleTypeDto();
         dto.setId(1);
         dto.setName("cat");
 
         when(clinicService.findPetTypeById(1)).thenReturn(entity);
-        when(petTypeMapper.toPetTypeDto(any(PetType.class))).thenReturn(dto);
+        when(sampleTypeMapper.toPetTypeDto(any(SampleType.class))).thenReturn(dto);
 
         given()
                 .accept(ContentType.JSON)

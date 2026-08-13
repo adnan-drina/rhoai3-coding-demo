@@ -6,7 +6,7 @@ BANK-CREATE-PATH-IFACE-1 elevated: every interface an in-scope / writable class
 on destination, or (c) declared in dependencies[].
 
 Fail-closed before create-m3 / dispatch so workers are not cornered into
-typed-BLOCK vs OOS-create (proven: S-002a t_f3e44947 ClinicService).
+typed-BLOCK vs OOS-create (proven: S-002a t_f3e44947 ApplicationService).
 
 Usage:
   python3 check-interface-closure.py /projects/modernized --body migration/bodies/m3-s-002a.json

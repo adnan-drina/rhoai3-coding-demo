@@ -8,7 +8,7 @@ An M3 body can place `FooImpl.java` in `files_writable` while omitting the
 interface `Foo.java` from scope, dest, and `dependencies[]`. The impl cannot
 compile without the interface. Workers are cornered into typed `needs_input`
 BLOCK vs OOS-create invent (proven: S-002a reclaim `t_f3e44947`
-`ClinicService` after quoting coverage-gap BLOCK law).
+`ApplicationService` after quoting coverage-gap BLOCK law).
 
 ## Rule
 

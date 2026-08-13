@@ -32,7 +32,7 @@ FAMILY_CHECKS: dict[str, frozenset[str]] = {
     "tx_rmw": frozenset({"tx_rmw", "concurrency"}),
 }
 
-RESTISH = ("RestController", "Repository", "ClinicService")
+RESTISH = ("RestController", "Repository", "ApplicationService")
 
 
 def load_m3(root: Path) -> list[tuple[str, dict]]:
