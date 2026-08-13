@@ -17,7 +17,13 @@ def main() -> int:
     marker = specify / ".rhoai3-ads-provisioned"
     override = specify / "templates" / "overrides" / "spec-template.md"
     provision_asset = (
-        root / ".hermes" / "provision" / "spec-kit" / "overrides" / "spec-template.md"
+        root
+        / ".hermes"
+        / "skills"
+        / "sdd"
+        / "init-spec-workspace"
+        / "assets"
+        / "spec-template.md"
     )
     bad = 0
 
@@ -60,13 +66,13 @@ def main() -> int:
 
     if not provision_asset.is_file():
         print(
-            "FAIL: missing tip provision asset "
-            ".hermes/provision/spec-kit/overrides/spec-template.md",
+            "FAIL: missing tip skill asset "
+            ".hermes/skills/sdd/init-spec-workspace/assets/spec-template.md",
             file=sys.stderr,
         )
         bad = 1
     else:
-        print("OK: tip provision Non-Goals asset present")
+        print("OK: tip Non-Goals skill asset present")
 
     if bad:
         print("FAIL: Spec Kit preseed (R0 / provision-owns-tools)", file=sys.stderr)

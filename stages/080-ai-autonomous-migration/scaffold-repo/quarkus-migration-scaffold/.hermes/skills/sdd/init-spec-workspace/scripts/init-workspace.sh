@@ -5,7 +5,7 @@
 # golden scaffold — it creates .specify/ in the live workspace only.
 #
 #   specify init --here --integration hermes --force --ignore-agent-tools
-#   + Non-Goals override from .hermes/provision/spec-kit/overrides/
+#   + Non-Goals override from this skill's assets/spec-template.md
 #   + external_dirs reminder when HERMES_HOME is relocated
 #
 # Idempotent: skips when .specify/.rhoai3-ads-provisioned exists.
@@ -20,22 +20,22 @@ DRY_RUN="${DRY_RUN:-0}"
 
 ROOT="$(cd "${1:-.}" && pwd)"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-# Non-Goals override lives under the workspace project tree
-# (`${ROOT}/.hermes/provision/...`), not relative to the skill script.
-# Hermes may invoke this skill from `.hermes/skills/...` OR from
-# `.hermes/home/skills/software-development/...` — walking up from
-# SCRIPT_DIR mis-resolves PROJECT_HERMES in the latter case (v12 M2a
-# t_44c55c31 exit 1 / Deputy E-120800Z).
-ASSET_OVERRIDE="${ROOT}/.hermes/provision/spec-kit/overrides/spec-template.md"
+# Skill root = parent of scripts/ (self-contained asset home — Deputy E-172448Z).
+SKILL_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+ASSET_OVERRIDE="${SKILL_DIR}/assets/spec-template.md"
+# Workspace tip may also carry the skill under ROOT/.hermes/skills/... when
+# HERMES_SKILL_DIR is not this SCRIPT_DIR tree (relocated home copy).
 if [ ! -f "${ASSET_OVERRIDE}" ]; then
-  # Fallback: tip skill tree under .hermes/skills/... → ../../.. = .hermes
-  PROJECT_HERMES="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
-  if [ -f "${PROJECT_HERMES}/provision/spec-kit/overrides/spec-template.md" ]; then
-    ASSET_OVERRIDE="${PROJECT_HERMES}/provision/spec-kit/overrides/spec-template.md"
+  ALT="${ROOT}/.hermes/skills/sdd/init-spec-workspace/assets/spec-template.md"
+  if [ -f "${ALT}" ]; then
+    ASSET_OVERRIDE="${ALT}"
+    SKILL_DIR="$(cd "$(dirname "${ALT}")/.." && pwd)"
   fi
 fi
 MARKER="${ROOT}/.specify/.rhoai3-ads-provisioned"
 LOG_PREFIX="init-spec-workspace"
+# AD-S scaffold guard lives beside .hermes/ (not inside skill leaf — R-SK.1).
+GUARD_MARKER="${ROOT}/.hermes/DO_NOT_COMMIT_SPECIFY"
 
 log() { echo "[${LOG_PREFIX}] $*" >&2; }
 die() { echo "[${LOG_PREFIX}] ERROR: $*" >&2; exit 1; }
@@ -49,7 +49,7 @@ emit_ok() {
 }
 
 [ -d "${ROOT}" ] || die "missing root ${ROOT}"
-[ -f "${ASSET_OVERRIDE}" ] || die "missing Non-Goals override asset at ${ASSET_OVERRIDE} (expected under ${ROOT}/.hermes/provision/spec-kit/overrides/)"
+[ -f "${ASSET_OVERRIDE}" ] || die "missing Non-Goals override asset at ${ASSET_OVERRIDE} (expected under init-spec-workspace/assets/)"
 
 if [[ "${DRY_RUN}" == "1" ]]; then
   log "DRY-RUN: ROOT=${ROOT}"
@@ -72,7 +72,7 @@ fi
 # Refuse runs that would create .specify/ inside the golden scaffold source
 # tree (AD-S S.4). Workspaces live under /projects/*; intentional dry-runs
 # set FORCE_AD_S_PROVISION=1.
-if [ -f "${ROOT}/.hermes/provision/spec-kit/DO_NOT_COMMIT_SPECIFY" ]; then
+if [ -f "${GUARD_MARKER}" ]; then
   case "${ROOT}" in
     /projects/*) ;;
     *)
@@ -122,7 +122,7 @@ log "installed Non-Goals override → .specify/templates/overrides/spec-template
 # external_dirs: when HERMES_HOME is relocated away from ~/.hermes, spec-kit
 # still writes skills to Path.home()/.hermes/skills — keep both on the list.
 note_external_dirs() {
-  local note="${ROOT}/.hermes/provision/spec-kit/EXTERNAL_DIRS.note"
+  local note="${ROOT}/.hermes/skills/sdd/init-spec-workspace/EXTERNAL_DIRS.note"
   mkdir -p "$(dirname "${note}")"
   cat > "${note}" <<'EOF'
 AD-S / AD-002B — skills.external_dirs after specify init

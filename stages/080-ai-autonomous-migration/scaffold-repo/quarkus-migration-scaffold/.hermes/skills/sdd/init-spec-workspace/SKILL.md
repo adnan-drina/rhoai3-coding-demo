@@ -28,7 +28,7 @@ metadata:
   reads spec content.
 - **Not** on the golden scaffold source tree and **not** in
   `harness-refactoring/` — init refuses outside `/projects/*` when the
-  `DO_NOT_COMMIT_SPECIFY` marker is present (`FORCE_AD_S_PROVISION=1` dry-run).
+  `DO_NOT_COMMIT_SPECIFY` marker is present under `.hermes/` (`FORCE_AD_S_PROVISION=1` dry-run).
 
 ## Procedure
 
@@ -46,9 +46,9 @@ Idempotent via `.specify/.rhoai3-ads-provisioned`. Spec Kit is pinned
 1. Ensures `specify-cli` (`uv tool install specify-cli` if needed)
 2. `specify init --here --integration hermes --force --ignore-agent-tools`
 3. Copies Non-Goals override from
-   `.hermes/provision/spec-kit/overrides/spec-template.md` →
+   `${HERMES_SKILL_DIR}/assets/spec-template.md` →
    `.specify/templates/overrides/spec-template.md`
-4. Writes `external_dirs` reminder under `.hermes/provision/spec-kit/`
+4. Writes `external_dirs` reminder beside this skill
 5. Stamps `.specify/AD-S-STOP-RULE.md`
 
 ## Stop rule (non-negotiable)
@@ -71,7 +71,7 @@ After `/speckit-tasks` (optional `/speckit-analyze`) → `kanban_create()`.
 - Four artifacts must exist **together** under the workspace root: `.specify/`
   (from `specify init`), `.specify/templates/overrides/spec-template.md`,
   `.specify/AD-S-STOP-RULE.md`, and
-  `.hermes/provision/spec-kit/EXTERNAL_DIRS.note`.
+  `.hermes/skills/sdd/init-spec-workspace/EXTERNAL_DIRS.note`.
 - `.specify/.rhoai3-ads-provisioned` holds a UTC timestamp and is written
   **last**; a second run prints `already provisioned (<ts>) — skip` on stderr
   (plus one JSON object on stdout with `skipped:true`) and exits 0.

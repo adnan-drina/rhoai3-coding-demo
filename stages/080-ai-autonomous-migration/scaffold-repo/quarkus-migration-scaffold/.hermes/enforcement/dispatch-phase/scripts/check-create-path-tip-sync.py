@@ -23,7 +23,7 @@ REQUIRED_FILES = [
     ".hermes/skills/analysis/scan-with-mta/scripts/check-findings-handoff.py",
     ".hermes/skills/sdd/check-spec-readiness/scripts/check-findings-handoff.py",
     # AD-S / Deputy E-120800Z — Non-Goals override must ride tip+overlay/R0
-    ".hermes/provision/spec-kit/overrides/spec-template.md",
+    ".hermes/skills/sdd/init-spec-workspace/assets/spec-template.md",
     # Architect E-121308Z — R0 Spec Kit preseed gate (live assert; script on tip)
     ".hermes/enforcement/dispatch-phase/scripts/check-specify-preseed.py",
     # Architect E-122959Z — decision-complete card lint
@@ -253,7 +253,7 @@ REQUIRED_SUBSTRINGS = [
     ),
     (
         ".hermes/skills/sdd/init-spec-workspace/scripts/init-workspace.sh",
-        'ASSET_OVERRIDE="${ROOT}/.hermes/provision/spec-kit/overrides/spec-template.md"',
+        'ASSET_OVERRIDE="${SKILL_DIR}/assets/spec-template.md"',
         "init-workspace resolves Non-Goals via ROOT (not SCRIPT_DIR walk)",
     ),
     (
