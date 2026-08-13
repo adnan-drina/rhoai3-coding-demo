@@ -92,7 +92,7 @@ components:
         # Hermes dashboard — Operator E-20260812T171806Z W1 rider:
         # bind stays 127.0.0.1:9119 (no --host 0.0.0.0); che-gateway
         # endpoint (public + secure) for OAuth-wrapped viewer path.
-        - name: hermes-dashboard
+        - name: hermes-dash
           targetPort: 9119
           exposure: public
           secure: true

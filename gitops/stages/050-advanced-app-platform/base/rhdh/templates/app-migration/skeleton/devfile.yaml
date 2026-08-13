@@ -96,7 +96,7 @@ components:
         # unauthenticated). che-gateway proxies pod-localhost behind
         # OpenShift OAuth (exposure public + secure true). Verify on
         # fresh-seat: endpoint reachable + authed + board renders.
-        - name: hermes-dashboard
+        - name: hermes-dash
           targetPort: 9119
           exposure: public
           secure: true
