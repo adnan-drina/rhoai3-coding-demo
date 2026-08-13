@@ -32,6 +32,14 @@ Paraphrased public API names. Prefer living Full-path from
 
 **REJECT:** Spring MVC stack on destination; `quarkus-spring-web` compat.
 
+### Tip-bank B3 — discovery / CDI (v13 M5 JAX-RS 404)
+
+| id | Spring habit | Quarkus rule | status |
+|----|--------------|--------------|--------|
+| rest-cdi-scope | implicit Spring component scan | `@ApplicationScoped` (or `@Singleton`) on every `@Path` resource + exception mappers | ADOPT |
+| rest-package | keep `org.springframework.samples…` | **Move** JAX-RS resources out of `org.springframework.*` — Quarkus build-time discovery skips that prefix | ADOPT |
+| rest-cors | `@CrossOrigin` / filters in story | **OUT OF SCOPE** for REST stories (tip-bank B2) — platform/infra | REJECT in-story |
+
 ## Binding (AR-3.4 / AR-2.4)
 
 1. **Path patterns:** convert Spring wildcards to Jakarta templates; never leave

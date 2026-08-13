@@ -82,6 +82,21 @@ def standard_constraints(story_id: str, operand_class: str) -> list[str]:
             "BUILD_CONFIG: edit only declared properties/config operands; do not expand "
             "into src_code without typed needs_input / Lead rescope."
         )
+    # Tip-bank B2 (Operator E-20260813T111910Z / v13 s-008): CORS is infra,
+    # not a REST story operand. HARD forbid at mint — never mid-run amend tip.
+    sid_u = story_id.upper().replace("S-", "").lstrip("0") or story_id.upper()
+    rest_hint = (
+        operand_class in {"src_code", "rest", "api"}
+        or "REST" in story_id.upper()
+        or sid_u in {"8", "008"}
+        or "controller" in operand_class.lower()
+    )
+    if rest_hint:
+        out.append(
+            "CORS_OUT_OF_SCOPE (HARD / tip-bank B2): do NOT implement @CrossOrigin, "
+            "CORS filters, or CORS essays. CORS is platform/infra — write REST "
+            "resources first; typed needs_input if blocked, never thrash on CORS."
+        )
     return out
 
 

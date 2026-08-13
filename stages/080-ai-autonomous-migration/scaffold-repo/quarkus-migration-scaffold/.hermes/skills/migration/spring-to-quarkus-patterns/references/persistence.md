@@ -28,6 +28,18 @@ Primary cites: Research `20260810-artifact-review-quarkus-cites.md` (datasource 
 Flyway). Do not leave `db-kind=h2` with `jdbc:hsqldb:` URLs or non-Flyway
 `initDB.sql` filenames as the default runnable path.
 
+### Datasource kind (tip-bank B7 — Quarkus 3.27+)
+
+**Prefer** `h2` (scaffold starter / tests), `postgresql`, or `mysql` —
+extensions Quarkus still ships. **Do not** target `db-kind=hsqldb` or
+`jdbc:hsqldb:` as the destination runnable profile: Quarkus dropped the
+HSQLDB JDBC extension from the current catalog (extension catalog /
+Quarkus JDBC guides). Legacy Spring specimens that used HSQLDB must map
+to **h2 mem** (or postgres/mysql profiles), not a 1:1 hsqldb retarget.
+`application-hsqldb.properties` profiles are **RETIRE candidates** — do not
+mint new stories that require them. Cite AR-2.1 mismatch rules above when
+URLs and `db-kind` disagree.
+
 ### EntityManager vs Panache (decide before claim)
 
 | Prefer | When |

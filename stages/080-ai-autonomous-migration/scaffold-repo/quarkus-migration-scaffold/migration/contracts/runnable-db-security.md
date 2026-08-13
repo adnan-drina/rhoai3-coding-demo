@@ -8,6 +8,8 @@
 Default profile MUST:
 
 1. `db-kind` match JDBC URL family (no `h2` + `jdbc:hsqldb:`)
+1b. Tip-bank B7: do **not** ship `db-kind=hsqldb` as a destination profile on Quarkus 3.27+
+   (extension dropped). Prefer `h2` / `postgresql` / `mysql`. HSQLDB profiles are RETIRE candidates.
 2. Include `quarkus-jdbc-*` + `quarkus-flyway` in `pom.xml`
 3. `quarkus.flyway.migrate-at-start=true` with `V*__*.sql` under a Flyway location
 4. `hibernate-orm.database.generation=none` (Flyway owns schema)

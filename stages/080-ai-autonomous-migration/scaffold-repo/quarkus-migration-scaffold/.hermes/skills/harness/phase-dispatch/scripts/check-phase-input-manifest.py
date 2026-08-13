@@ -37,24 +37,51 @@ ITEM_RE = re.compile(r"^-\s+(`?)([^`\n]+)\1\s*$", re.M)
 def extract_body(dispatch_sh: Path, phase: str) -> str | None:
     text = dispatch_sh.read_text(encoding="utf-8")
     m = re.search(
-        rf"^\s+{re.escape(phase)}\)\s*\n.*?<<'EOF'\n(.*?)EOF",
+        rf"^\s+{re.escape(phase)}\)\s*\n"
+        rf"((?:(?!^\s+(?:M[1-5][ab]?|factory)\)).)*)",
         text,
         re.M | re.S,
     )
-    return m.group(1) if m else None
+    if not m:
+        return None
+    hm = re.search(r"<<'EOF'\n(.*?)EOF", m.group(1), re.S)
+    return hm.group(1) if hm else None
 
 
 def parse_items(section: str) -> list[str]:
     return [m.group(2).strip() for m in ITEM_RE.finditer(section)]
 
 
+def resolve_dispatch(root: Path) -> Path | None:
+    candidates = [
+        root
+        / ".hermes"
+        / "skills"
+        / "harness"
+        / "phase-dispatch"
+        / "scripts"
+        / "dispatch-phase.sh",
+        root / ".hermes" / "skills" / "phase-dispatch" / "scripts" / "dispatch-phase.sh",
+    ]
+    for p in candidates:
+        if p.is_file():
+            return p
+    return None
+
+
 def main() -> int:
     root = Path(sys.argv[1] if len(sys.argv) > 1 else ".").resolve()
     only = sys.argv[2] if len(sys.argv) > 2 else ""
-    dispatch = root / ".hermes" / "skills" / "phase-dispatch" / "scripts" / "dispatch-phase.sh"
-    if not dispatch.is_file():
+    dispatch = resolve_dispatch(root)
+    if dispatch is None:
         print("INPUT_MANIFEST: missing dispatch-phase.sh", file=sys.stderr)
         return 1
+    # Tip-bank B4 (Operator E-20260813T111910Z / V13_M4_SKIP_NON_PLANNER):
+    # Planner manifests (M2a/M2b) only. Passing M1/M3/M4/M5 must NOT re-lint
+    # M2a/M2b forbidden globs after M3 bodies exist.
+    if only and only not in PHASES:
+        print(f"OK: phase input manifests N/A for non-planner phase {only}")
+        return 0
     live_ws = (root / "migration" / "findings-handoff.json").is_file() or (
         root / "migration" / "acks" / "m1-findings.ack.yaml"
     ).is_file()

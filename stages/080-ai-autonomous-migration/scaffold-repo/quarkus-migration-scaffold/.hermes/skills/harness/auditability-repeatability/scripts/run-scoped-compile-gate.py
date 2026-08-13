@@ -91,9 +91,23 @@ def main() -> int:
     if isinstance(body.get("body"), dict):
         body = body["body"]
     scope = writable_rels(body, root)
-    if not scope:
-        print("FAIL: files_writable empty — cannot scope-filter compile", file=sys.stderr)
-        return 1
+    # build_config tasks (pom.xml only) have no src/ Java files in scope —
+    # fall back to whole-tree compile (no scope filtering needed).
+    has_java_scope = bool(scope)
+    if not has_java_scope:
+        # Check whether any writable path looks like a build config
+        all_writable = [
+            str(item) if isinstance(item, str) else item.get("dest") or item.get("dst") or item.get("path") or ""
+            for item in body.get("files_writable") or body.get("write_set") or []
+        ]
+        is_build_config = any(
+            x.endswith("pom.xml") or x.endswith(".gradle") or x.endswith("build.gradle")
+            for x in all_writable
+        )
+        if not is_build_config:
+            print("FAIL: files_writable empty — cannot scope-filter compile", file=sys.stderr)
+            return 1
+        # build_config: run whole-tree compile; any error is in-scope
 
     mvn_goal = "test-compile" if args.goal == "test-compile" else "compile"
     cp = subprocess.run(

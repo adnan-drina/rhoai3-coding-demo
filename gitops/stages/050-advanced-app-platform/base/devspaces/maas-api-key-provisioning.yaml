@@ -707,11 +707,17 @@ data:
             "inline_shell": False,
             "external_dirs": [skills_dir, global_skills],
         },
-        # AD-H §7 / E-20260808T110515Z — pin documented default in Managed
-        # Scope so mid-flight mode=off cannot silently reappear on reprovision
-        # (user ~/.hermes/config.yaml is removed below).
+        # Tip-bank B1 (Operator E-20260813T111910Z / v13 M1 evidence):
+        # Headless Dev Spaces kanban workers have no human for interactive
+        # terminal consent. Official approvals.mode=smart waits for a user
+        # (or aux model) and burned ~7m on a compound `ls` during M1
+        # (monitoring/20260812-v13-m1-dispatch.md). Factory default for this
+        # Managed Scope seat is therefore mode=off. skills.write_approval
+        # (above) still gates skill writes; cron_mode=deny unchanged.
+        # Cite: hermes-agent tools/approval.py + hermes-configuration /
+        # hermes-managed-scope seat pins.
         "approvals": {
-            "mode": "smart",
+            "mode": "off",
             "timeout": 300,
             "cron_mode": "deny",
         },

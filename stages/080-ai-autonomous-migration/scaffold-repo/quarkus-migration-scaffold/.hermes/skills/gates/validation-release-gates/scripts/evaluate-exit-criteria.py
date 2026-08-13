@@ -30,6 +30,7 @@ def run_scoped_compile(
         root
         / ".hermes"
         / "skills"
+        / "harness"
         / "auditability-repeatability"
         / "scripts"
         / "run-scoped-compile-gate.py"
@@ -38,6 +39,7 @@ def run_scoped_compile(
         # Fallback relative to this script tree (tip layout)
         scoped = (
             Path(__file__).resolve().parents[2]
+            / "harness"
             / "auditability-repeatability"
             / "scripts"
             / "run-scoped-compile-gate.py"

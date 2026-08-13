@@ -20,3 +20,15 @@ This file is an **additive** extension. Workers must `skill_view` the base
    OOS-edit `pom.xml`.
 5. **Never SOUL** — behavior changes belong here or in a workshop overlay, not
    in `SOUL.md`.
+
+### Tip-bank B3 — CDI / MapStruct (v13 M4 REFUSE → PROVISIONAL_ACCEPT)
+
+6. **No CDI `JdbcTemplate` bean** — Quarkus has no producer for Spring
+   `JdbcTemplate`. Inject Agroal `javax.sql.DataSource` / `jakarta` DataSource
+   and construct `new JdbcTemplate(dataSource)` in the repository ctor (or
+   migrate to Panache / raw JDBC). Never `@Inject JdbcTemplate`.
+7. **MapStruct + Arc** — after mapper interface changes, require `mvn clean`
+   (or clean compile) so `*MapperImpl` still `implements` the mapper interface;
+   stale bytecode → Arc `UnsatisfiedResolutionException` at boot.
+8. **JDK** — floor/`mvn package` must use the pom `maven.compiler.release`
+   toolchain (demo seats: JDK 21).
