@@ -173,3 +173,112 @@ mid-chain.
 **v14 design work. M2b is running — do not touch the live chain.**
 
 — Operator (via Deputy)
+
+---
+
+## E-20260813T212742Z — 2026-08-13T21:27:42Z — decide — REVIEW COMMISSION: systematic Hermes-log analysis — are our skills actually loaded, used, and helping? Measured, not impressionistic — Operator (via Deputy)
+
+**Needs:** Review:hermes-log-effectiveness-analysis(E-20260813T212742Z) — the commission
+**Done:** Deputy:author-review-commission — CLOSED
+**Re:** E-20260813T201506Z, E-20260813T134203Z
+
+**Note on mode:** two-agent mode (E-20260813T184858Z) suspended Review. This
+commission **re-activates Review for this task only**. Lead remains the sole
+seat actor; Review reads logs, does not touch the seat or the tree.
+
+---
+
+## COMMISSION — Hermes log effectiveness analysis
+
+### Purpose
+
+Determine whether our skills are **loaded**, **used**, and **actually reducing
+the agent's work** — and produce the evidence base for cleaning up and improving
+the Hermes resources. This is **R-SK.8** (reasoning-driven skill evolution)
+executed systematically instead of anecdotally.
+
+### Corpus
+
+All Hermes kanban logs for the **v17 seat** chain (`petclinic-rest-v17-refac`),
+board `default`: **M1 `t_0a8d4092` · M2a `t_7d40349d` · M2b `t_bf6a59e8`**, plus
+M3-M5 tasks as they complete. Read via `hermes kanban --board default log <id>`
+(and `tail`/`watch` for live). Include the **Reasoning blocks**, not only tool
+calls.
+
+### THE RULE THAT MAKES THIS USEFUL
+
+**Every finding carries a log locus** (task id + a quoted excerpt). A count
+without loci is an impression. This campaign has repeatedly been misled by
+green-looking summaries — *"7 self-corrections"* with no citations is worth
+nothing; *"7, here are the 7"* is actionable.
+
+**Do not grade the agent. Grade the resources.** The question is never "did the
+agent do well" — it is **"did the skill spare it work, and if not, why not."**
+
+### Metrics — count each, cite each
+
+**A. Load and use**
+1. Which skills were **attached** per task (card `skills[]`) vs **actually
+   opened** (`skill_view` / hard-invoke)? **Attached-but-never-opened = dead
+   weight in the selection triple.**
+2. Which **references** inside a skill were opened (`references/*.md`)? A
+   reference never opened across the whole chain is a retire candidate.
+3. Any skill opened that was **not attached** (agent found it itself)? That is
+   evidence the attach matrix is wrong.
+
+**B. Did the skill help — the core question**
+4. **Skill-then-act**: agent opened a skill and proceeded without further
+   exploration. **This is the success case — count it.**
+5. **Reasoning-that-a-skill-already-answered**: agent derived, searched, or
+   deliberated over something present in an attached skill. Quote both the
+   reasoning **and** the skill text it duplicates. **This is the highest-value
+   finding class** — it means the skill exists but failed to reach the agent
+   (wrong description? buried in a reference? not attached?).
+6. **Guessing** — an assertion with no citation to evidence, packet, or skill;
+   an invented path/API/class later corrected or refuted. Count and quote.
+
+**C. Rework signals**
+7. **Self-correction** — agent reversed or rewrote its own prior output within a
+   task. Note whether a skill would have prevented it.
+8. **Retries / repeated identical tool calls** — search thrash, re-reading the
+   same file, re-running a failing command unchanged.
+9. **Gate refusals hit** — which gate, and did the agent respond with a **typed**
+   outcome (`needs_input` / BLOCK) or improvise around it?
+
+**D. Cost**
+10. Rough turn/tool-call count per task, and the share consumed by A5/B6/C7-8
+    (i.e. **work a better resource could have removed**).
+
+### Output
+
+`source-analysis/hermes/20260813-v17-log-effectiveness.md`:
+
+- `## Scoreboard` — one table: per skill → attached N · opened N · references
+  opened · "spared work" instances · "should have spared work" instances
+- `## Top findings` — ranked, each with task id + quoted excerpt + the resource
+  change it implies
+- `## Skill-by-skill disposition` — **keep as-is / fix description / move
+  content / retire**, with the evidence for each
+- `## Reasoning the skills should have prevented` — the R-SK.8 harvest: the
+  concrete text that belongs in a skill next
+- `## Method + limits` — what was and was not readable
+
+### Constraints
+
+- **Read-only.** No seat changes, no tree edits.
+- **Specimen-agnostic** in recommendations (R-SK.5 is lint-enforced).
+- **Report absence honestly** — "logs unreadable for X" is a finding, not a gap
+  to paper over. Three postStart failures today were undiagnosable because
+  output died with the pod.
+- Distinguish **v17 (current, post-refactor skills)** from any v13 comparison —
+  the skill tree changed substantially today (rename, enforcement split, two new
+  skills, SOUL v2).
+
+### Why this matters now
+
+The Operator's original concern was that workers reason their way to things a
+skill should have told them. **This commission measures that directly** and
+turns it into a cleanup list. It is also the first read of the **rebuilt** skill
+tree under real load.
+
+— Operator (via Deputy)
