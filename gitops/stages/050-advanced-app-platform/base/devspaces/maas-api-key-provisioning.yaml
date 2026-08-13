@@ -948,9 +948,12 @@ data:
 
       # AD-H §14 — load-time smoke (not standing machinery): exercise Hermes
       # scan+load. Placement hashing cannot catch scanner alteration at load.
-      local hermes_agent_root="${HOME}/.hermes/hermes-agent"
+      local hermes_agent_root="${hermes_home}/hermes-agent"
       if [ ! -d "${hermes_agent_root}" ]; then
-        echo "ERROR: Hermes agent tree missing at ${hermes_agent_root}; cannot smoke-test SOUL.md load (AD-H §14)." >&2
+        hermes_agent_root="${HOME}/.hermes/hermes-agent"
+      fi
+      if [ ! -d "${hermes_agent_root}" ]; then
+        echo "ERROR: Hermes agent tree missing at ${hermes_home}/hermes-agent; cannot smoke-test SOUL.md load (AD-H §14)." >&2
         return
       fi
       if ! (
@@ -1048,7 +1051,10 @@ data:
       # pulls vitest types); --omit=dev fails the pre-warm. Viewer path is
       # loopback 127.0.0.1:9119 via Che/VS Code port-forward — not a public
       # Dev Spaces route (Host-header rejects public bind).
-      local hermes_agent="${HOME}/.hermes/hermes-agent"
+      local hermes_agent="${hermes_home}/hermes-agent"
+      if [ ! -d "${hermes_agent}" ]; then
+        hermes_agent="${HOME}/.hermes/hermes-agent"
+      fi
       local hermes_web="${hermes_agent}/web"
       local hermes_dist="${hermes_agent}/hermes_cli/web_dist/index.html"
       if [ -f "${hermes_web}/package.json" ] && [ ! -f "${hermes_dist}" ]; then
