@@ -36,6 +36,9 @@ REQUIRED_FILES = [
     ".hermes/skills/sdd/sdd-readiness/scripts/assert-quarantine-tombstones.py",
     ".hermes/skills/sdd/sdd-readiness/scripts/register-quarantine-tombstone.py",
     "migration/contracts/quarantine-survives-dispatch.md",
+    # S-008 / W4 — Owner→Pet→Visit resurrection order
+    ".hermes/skills/harness/phase-dispatch/scripts/check-s008-resurrection-order.py",
+    "migration/contracts/s008-quarantine-resurrection-order.md",
     # Architect E-20260811T173254Z Class A — residual worker kill+verify
     ".hermes/home/scripts/kill-and-verify-task-worker.sh",
     ".hermes/home/scripts/stamp-worker-pid-from-ps.py",
@@ -87,6 +90,14 @@ REQUIRED_FILES = [
     # Architect E-20260812T090529Z Class A — CONV-LIVE arm on dispatch path (D4)
     ".hermes/home/scripts/arm-conv-live-watchdog.sh",
     "migration/contracts/conv-live-arm-on-dispatch.md",
+    # A2 — stream-liveness + fast-deny (watchdog callers)
+    ".hermes/home/scripts/kanban-stuck-watchdog.py",
+    ".hermes/home/scripts/check-stream-liveness.py",
+    ".hermes/home/scripts/check-vllm-validation-fast-deny.py",
+    "migration/contracts/stream-liveness.md",
+    "migration/contracts/compaction-headroom-and-fast-deny.md",
+    # A5 — spring-compat REJECT reference
+    ".hermes/skills/migration/spring-to-quarkus-patterns/references/spring-compat-reject.md",
 ]
 
 REQUIRED_SUBSTRINGS = [

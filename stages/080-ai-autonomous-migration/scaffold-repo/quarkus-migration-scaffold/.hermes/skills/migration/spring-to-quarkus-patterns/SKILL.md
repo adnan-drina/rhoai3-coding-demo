@@ -60,6 +60,7 @@ new behaviour, weaken G-1…G-4, or replace free-primitives / MTA.
 | `references/testing.md` | `@QuarkusTest` / REST Assured vs Spring test slices; **§Failure / Import / Mock procedures** + golden REST fixture path |
 | `references/security-config.md` | A-bar security map + golden basic-authz (R-HX.13) |
 | `references/security-anti-essay.md` | Write-first / anti-placeholder (synced from extensions) |
+| `references/spring-compat-reject.md` | REJECT `quarkus-spring-*` — metadata shim ≠ Spring runtime (mechanism only) |
 | `references/observability.md` | Actuator `HealthIndicator` → SmallRye `HealthCheck`; probe-type choice; fixed `/q/health*` paths |
 
 ## Source policy

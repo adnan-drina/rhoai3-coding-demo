@@ -94,6 +94,7 @@ def main() -> int:
     # Architect E-20260813T152211Z / Lead wire-or-retire: AD-H §17/§19 must not
     # depend on skill_view. Invoke enforcement scripts on the complete path.
     skills = root / ".hermes" / "skills" / "harness"
+    gates = root / ".hermes" / "skills" / "gates" / "validation-release-gates" / "scripts"
     citation = skills / "grounded-generation" / "scripts" / "check-citation.py"
     body_digest = (
         skills / "auditability-repeatability" / "scripts" / "check-body-digest-match.py"
@@ -101,6 +102,8 @@ def main() -> int:
     provenance = (
         skills / "auditability-repeatability" / "scripts" / "check-provenance.py"
     )
+    runnable_db = gates / "check-runnable-db-config.py"
+    empty_security = gates / "check-empty-security.py"
     for label, cmd in (
         (
             "body-digest",
@@ -119,6 +122,15 @@ def main() -> int:
         (
             "provenance",
             [sys.executable, str(provenance), str(root)],
+        ),
+        # A2 / runnable-db-security — refuse complete on HSQLDB / empty security
+        (
+            "runnable-db-config",
+            [sys.executable, str(runnable_db), str(root)],
+        ),
+        (
+            "empty-security",
+            [sys.executable, str(empty_security), str(root)],
         ),
     ):
         if not Path(cmd[1]).is_file():

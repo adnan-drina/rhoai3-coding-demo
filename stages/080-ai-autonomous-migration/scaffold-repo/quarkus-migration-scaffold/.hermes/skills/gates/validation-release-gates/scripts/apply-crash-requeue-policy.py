@@ -126,6 +126,35 @@ def main() -> int:
     )
     args = ap.parse_args()
     root = Path(args.root).resolve()
+
+    # A2 / workspace-recovery — F4 restore-or-refuse before soft reclaim / requeue
+    restore_py = Path(__file__).resolve().parent / "restore-or-refuse-requeue.py"
+    if not restore_py.is_file():
+        print(f"FAIL: missing {restore_py.name}", file=sys.stderr)
+        return 2
+    f4 = subprocess.run(
+        [
+            sys.executable,
+            str(restore_py),
+            str(root),
+            "--terminal",
+            "crashed",
+            "--action",
+            "check",
+        ],
+        text=True,
+        capture_output=True,
+    )
+    sys.stdout.write(f4.stdout or "")
+    sys.stderr.write(f4.stderr or "")
+    if f4.returncode != 0:
+        print(
+            f"FAIL: refuse crash reclaim — F4 restore-or-refuse rc={f4.returncode} "
+            f"(migration/contracts/workspace-recovery.md)",
+            file=sys.stderr,
+        )
+        return 1 if f4.returncode == 1 else f4.returncode
+
     n = count_crashed(args.task_id)
     print(f"crash-policy: crashed_count={n} k_crash={args.k_crash} cause={args.cause}")
 

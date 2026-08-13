@@ -266,6 +266,23 @@ python3 "${SKILLS}/gates/validation-release-gates/scripts/check-verdict-routing.
 python3 "${SKILLS}/gates/validation-release-gates/scripts/check-semantics-manifest.py" "${ROOT}" || rc=1
 # Quarkus platform pin ↔ pom (manage-quarkus-extensions)
 python3 "${SKILLS}/migration/manage-quarkus-extensions/scripts/check-pom-platform-pins.py" "${ROOT}" || rc=1
+# A2 / runnable-db-security — fixture refuse paths (scaffold root may fail until B3)
+if python3 "${SKILLS}/gates/validation-release-gates/scripts/check-runnable-db-config.py" \
+  "${ROOT}/migration/fixtures/runnable-db-security/bad-hsqldb-destination" >/dev/null 2>&1; then
+  echo "FAIL: B7 HSQLDB destination should refuse" >&2
+  rc=1
+else
+  echo "OK: B7 HSQLDB destination refused"
+fi
+if python3 "${SKILLS}/gates/validation-release-gates/scripts/check-empty-security.py" \
+  "${ROOT}/migration/fixtures/runnable-db-security/bad-placeholder-security" >/dev/null 2>&1; then
+  echo "FAIL: AR-2.2 placeholder security should refuse" >&2
+  rc=1
+else
+  echo "OK: AR-2.2 placeholder security refused"
+fi
+# S-008 resurrection order (create/remint path)
+python3 "${SKILLS}/harness/phase-dispatch/scripts/check-s008-resurrection-order.py" "${ROOT}" || rc=1
 if python3 "${SKILLS}/gates/validation-release-gates/scripts/check-semantics-manifest.py" \
   "${ROOT}/migration/fixtures/check-semantics-manifest/bad-endpoint-smoke-overpromise" >/dev/null 2>&1; then
   echo "FAIL: B8 narrowed smoke should refuse endpoint_smoke id" >&2

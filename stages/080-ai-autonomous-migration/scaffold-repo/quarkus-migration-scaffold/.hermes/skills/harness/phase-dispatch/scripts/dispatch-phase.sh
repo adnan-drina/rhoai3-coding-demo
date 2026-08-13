@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # Create + dispatch a Hermes Kanban task for one M-phase from phase-dispatch.yaml.
+# Cite: migration/contracts/devspaces-dispatcher-posture.md (B5 daemon/gateway;
+# B6 promote vs park-at-birth). This script is the interim dispatcher half.
 # Usage:
 #   bash .hermes/skills/harness/phase-dispatch/scripts/dispatch-phase.sh M1
 #   bash .hermes/skills/harness/phase-dispatch/scripts/dispatch-phase.sh M2 --parent t_xxx
@@ -63,6 +65,9 @@ python3 "${ROOT}/.hermes/skills/harness/phase-dispatch/scripts/check-create-path
 # Architect E-20260811T170706Z Class A — quarantine tombstones before any phase create
 python3 "${ROOT}/.hermes/skills/sdd/sdd-readiness/scripts/assert-quarantine-tombstones.py" "${ROOT}" \
   || die "quarantine tombstones resurrected — wipe + purge restorer (migration/contracts/quarantine-survives-dispatch.md)"
+# S-008 / W4 — Owner→Pet→Visit resurrection order (distinct from tombstones)
+python3 "${ROOT}/.hermes/skills/harness/phase-dispatch/scripts/check-s008-resurrection-order.py" "${ROOT}" \
+  || die "S-008 resurrection-order failed (migration/contracts/s008-quarantine-resurrection-order.md)"
 python3 "${ROOT}/.hermes/skills/harness/phase-dispatch/scripts/check-phase-attach-matrix.py" "${ROOT}" \
   || die "phase attach matrix failed"
 python3 "${ROOT}/.hermes/skills/harness/phase-dispatch/scripts/check-phase-body-script-refs.py" "${ROOT}" \

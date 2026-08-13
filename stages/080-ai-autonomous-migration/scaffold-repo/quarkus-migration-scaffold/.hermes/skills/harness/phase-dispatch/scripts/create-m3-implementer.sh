@@ -15,6 +15,9 @@
 # Do NOT use bare `hermes kanban create` for M3 — that path omits skills
 # (Review grounding study 20260809: M3 workers loaded zero skills).
 #
+# Cite: migration/contracts/devspaces-dispatcher-posture.md (B5/B6 — single dispatcher;
+# park-at-birth nursing until AD-016). This script implements create/park half.
+#
 # Architect E-20260811T155332Z Class A (tip FREEZE exception): after create,
 # emit unsigned migration/acks/ack-request-<story>.yaml with task_id + body +
 # partition digests so Operator/Deputy can sign without hand-copy races.
@@ -84,6 +87,10 @@ python3 "${ROOT}/.hermes/skills/sdd/sdd-readiness/scripts/check-partition-covera
 # Architect E-20260811T170706Z Class A — quarantine tombstones must survive create/dispatch
 python3 "${ROOT}/.hermes/skills/sdd/sdd-readiness/scripts/assert-quarantine-tombstones.py" "${ROOT}" \
   || die "quarantine tombstones resurrected — wipe + purge restorer before create (migration/contracts/quarantine-survives-dispatch.md)"
+
+# S-008 / W4 — Owner→Pet→Visit resurrection order (distinct from tombstones)
+python3 "${ROOT}/.hermes/skills/harness/phase-dispatch/scripts/check-s008-resurrection-order.py" "${ROOT}" \
+  || die "S-008 resurrection-order failed — Owner before Pet before Visit (migration/contracts/s008-quarantine-resurrection-order.md)"
 
 # Architect E-20260811T200911Z Class A — mint-completeness (inject standard constraints
 # when absent/empty; distinct from preservation). Refuse later if still empty.

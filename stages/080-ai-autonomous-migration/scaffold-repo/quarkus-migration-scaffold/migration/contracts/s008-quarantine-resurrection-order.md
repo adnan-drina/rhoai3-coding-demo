@@ -21,3 +21,6 @@ per card (`check-operand-count.py --v13`).
 - Tombstones hold across create/dispatch (existing assert).
 - Partition plan for S-008-class work lists Owner → Pet → Visit with parent ids.
 - False `pre-exists` on wiped paths fails D1 (`assert-dependency-closure.py`).
+- **Lint (Wave A):** `check-s008-resurrection-order.py` — create/remint
+  (`create-m3-implementer.sh`, `dispatch-phase.sh`) refuse Pet-before-Owner or
+  Visit-before-Pet when the triad co-occurs in `partition.json` / bodies.
