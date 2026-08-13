@@ -74,9 +74,23 @@ def derived_story_ids(cards: list[dict]) -> set[str]:
 
 
 def partition_story_ids(root: Path) -> set[str]:
+    """Prefer Deputy F8a truth: specs/*/tasks.md Phase headers; else partition.json."""
+    import re
+
+    part: set[str] = set()
+    specs = list(root.glob("specs/*/tasks.md"))
+    if not specs:
+        specs = [p for p in root.glob("**/specs/*/tasks.md") if p.is_file()]
+    for tasks in specs:
+        text = tasks.read_text(encoding="utf-8", errors="replace")
+        part |= set(re.findall(r"^## Phase \d+: (S-\d+[a-zA-Z0-9-]*)", text, re.M))
+    if part:
+        return part
     path = partition_path(root)
     if not path.is_file():
-        raise FileNotFoundError(f"missing partition at {path}")
+        raise FileNotFoundError(
+            f"missing partition at {path} (and no specs/*/tasks.md)"
+        )
     data = json.loads(path.read_text(encoding="utf-8"))
     stories = data.get("stories") if isinstance(data, dict) else None
     if not isinstance(stories, list):
@@ -91,10 +105,27 @@ def partition_story_ids(root: Path) -> set[str]:
     return out
 
 
+def minted_story_ids(root: Path, parent: str) -> set[str]:
+    """Prefer created-story-cards.json (Deputy baseline); else derived stamp."""
+    csc = root / "evidence" / "derived" / "created-story-cards.json"
+    if csc.is_file():
+        try:
+            data = json.loads(csc.read_text(encoding="utf-8"))
+            cards = data.get("cards") if isinstance(data, dict) else data
+            out: set[str] = set()
+            if isinstance(cards, list):
+                for c in cards:
+                    if isinstance(c, dict) and c.get("story_id"):
+                        out.add(str(c["story_id"]).strip())
+            if out:
+                return out
+        except (OSError, json.JSONDecodeError, TypeError):
+            pass
+    return derived_story_ids(load_derived(derived_path(root, parent)))
+
+
 def check_partition(root: Path, parent: str, *, mode: str) -> int:
-    path = derived_path(root, parent)
-    cards = load_derived(path)
-    created = derived_story_ids(cards)
+    created = minted_story_ids(root, parent)
     try:
         wanted = partition_story_ids(root)
     except (FileNotFoundError, ValueError, json.JSONDecodeError) as e:
@@ -121,7 +152,7 @@ def check_partition(root: Path, parent: str, *, mode: str) -> int:
                 file=sys.stderr,
             )
         print(
-            f"OK: created_cards ⊆ partition "
+            f"OK: minted ⊆ partition "
             f"({len(created)}/{len(wanted)} stories; parent={parent})"
         )
         return 0
@@ -136,7 +167,7 @@ def check_partition(root: Path, parent: str, *, mode: str) -> int:
         )
         return 1
     print(
-        f"OK: partition == created_cards story_ids "
+        f"OK: partition == minted story_ids (tasks.md|partition.json ↔ created-story-cards) "
         f"({len(wanted)} stories; parent={parent}) — F8a"
     )
     return 0
