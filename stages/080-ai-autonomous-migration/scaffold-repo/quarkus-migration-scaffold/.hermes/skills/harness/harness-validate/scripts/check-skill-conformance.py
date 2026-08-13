@@ -3,9 +3,14 @@
 
 Usage:
   check-skill-conformance.py <skill-dir> [<skill-dir>...]
-  check-skill-conformance.py --all [--root DIR] [--flat-ok] [--skip-r-sk9]
+  check-skill-conformance.py --all [--root DIR] [--flat-ok] [--skip-r-sk9] [--skip-specimen]
 
 Exit: 0 all pass; 1 violations (printed SKILL:RULE:detail).
+
+R-SK.5 specimen literals (Operator E-20260813T075411Z / Deputy E-20260813T122115Z):
+  under --all, scan skills SKILL.md+references/templates and migration/contracts
+  for petclinic/package/entity path literals unless Architect KEEP listed in
+  references/r-sk5-specimen-keep.txt.
 
 R-SK.9 (Architect E-20260812T190021Z): golden skills under a scaffold
 `.hermes/skills` root must be card-attachable OR script/contract-invoked OR
@@ -232,11 +237,100 @@ def check_r_sk9(skills_root: Path, skill_dirs: list[Path]) -> list[str]:
     return errs
 
 
+# R-SK.5 specimen-literal choke-point (Operator E-20260813T075411Z /
+# Deputy E-20260813T122115Z). Guidance under skills references + migration
+# contracts must stay specimen-agnostic; Architect KEEP lines may cite EID.
+SPECIMEN_LITERAL_RX = [
+    re.compile(r"org\.springframework\.samples\.petclinic"),
+    re.compile(r"\bOwner/Pet\b"),
+    re.compile(r"(?i)\bpetclinic\b"),
+    re.compile(r"/owners/\{[^}]*\}/pets"),
+]
+
+
+def load_specimen_keep(scaffold: Path) -> set[str]:
+    """Allowlist entries: 'relpath:lineno' or 'relpath' (whole file)."""
+    keep: set[str] = set()
+    path = (
+        scaffold
+        / ".hermes/skills/harness/harness-validate/references"
+        / "r-sk5-specimen-keep.txt"
+    )
+    if not path.is_file():
+        # flat layout fallback
+        path = (
+            scaffold
+            / ".hermes/skills/harness-validate/references"
+            / "r-sk5-specimen-keep.txt"
+        )
+    if not path.is_file():
+        return keep
+    for ln in path.read_text(encoding="utf-8").splitlines():
+        s = ln.split("#", 1)[0].strip()
+        if s:
+            keep.add(s)
+    return keep
+
+
+def check_specimen_literals(scaffold: Path) -> list[str]:
+    errs: list[str] = []
+    keep = load_specimen_keep(scaffold)
+    scan: list[Path] = []
+    skills = scaffold / ".hermes" / "skills"
+    if skills.is_dir():
+        for p in skills.rglob("*"):
+            if not p.is_file() or p.suffix not in {".md", ".txt", ".yaml", ".yml"}:
+                continue
+            rel_parts = p.relative_to(skills).parts
+            if any(x in rel_parts for x in ("scripts", "examples", "assets")):
+                continue
+            # SKILL.md + references/ (+ templates) only
+            if p.name == "SKILL.md" or "references" in rel_parts or "templates" in rel_parts:
+                scan.append(p)
+    contracts = scaffold / "migration" / "contracts"
+    if contracts.is_dir():
+        scan.extend(
+            p
+            for p in contracts.rglob("*")
+            if p.is_file() and p.suffix in {".md", ".txt", ".yaml", ".yml"}
+        )
+    for p in scan:
+        try:
+            rel = str(p.relative_to(scaffold)).replace("\\", "/")
+        except ValueError:
+            continue
+        if rel in keep:
+            continue
+        try:
+            text = p.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        for i, line in enumerate(text.splitlines(), 1):
+            key = f"{rel}:{i}"
+            if key in keep or rel in keep:
+                continue
+            for rx in SPECIMEN_LITERAL_RX:
+                m = rx.search(line)
+                if m:
+                    errs.append(
+                        f"specimen:R-SK.5:{rel}:{i}:literal {m.group(0)!r} "
+                        f"(specimen-agnostic law; Architect KEEP via "
+                        f"r-sk5-specimen-keep.txt)"
+                    )
+                    break
+    return errs
+
+
 def main() -> None:
     args = sys.argv[1:]
     flat_ok = "--flat-ok" in args
     skip_r_sk9 = "--skip-r-sk9" in args
-    args = [a for a in args if a not in {"--flat-ok", "--skip-r-sk9"}]
+    skip_specimen = "--skip-specimen" in args
+    args = [
+        a
+        for a in args
+        if a not in {"--flat-ok", "--skip-r-sk9", "--skip-specimen"}
+    ]
     skills_root: Path | None = None
     if args and args[0] == "--all":
         root = (
@@ -251,7 +345,7 @@ def main() -> None:
     if not dirs:
         print(
             "usage: check-skill-conformance.py <skill-dir>|--all "
-            "[--root DIR] [--flat-ok] [--skip-r-sk9]",
+            "[--root DIR] [--flat-ok] [--skip-r-sk9] [--skip-specimen]",
             file=sys.stderr,
         )
         sys.exit(2)
@@ -260,6 +354,10 @@ def main() -> None:
         all_errs += check(d, flat_ok)
     if skills_root is not None and not skip_r_sk9:
         all_errs += check_r_sk9(skills_root, dirs)
+    if skills_root is not None and not skip_specimen:
+        scaffold = scaffold_root_from_skills(skills_root)
+        if scaffold is not None:
+            all_errs += check_specimen_literals(scaffold)
     for e in all_errs:
         print(e)
     print(f"CHECKED={len(dirs)} VIOLATIONS={len(all_errs)}")

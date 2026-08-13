@@ -16,7 +16,7 @@ sibling gap.
    - Every `dependencies[]` entry with `provider=pre-exists` must exist on the
      destination filesystem.
 2. Optional `--imports`: existing `files_writable` `.java` files must not import
-   petclinic types that are DEST_MISS and lack an owner in writable/scope/deps.
+   specimen domain types that are DEST_MISS and lack an owner in writable/scope/deps.
 3. Distinct from `interface-closure.md` (implements) and
    `partition-coverage.md` (endpoints/overlaps).
 

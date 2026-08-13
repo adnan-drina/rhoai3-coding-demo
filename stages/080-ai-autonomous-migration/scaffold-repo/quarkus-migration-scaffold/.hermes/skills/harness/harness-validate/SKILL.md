@@ -1,7 +1,7 @@
 ---
 name: harness-validate
 description: Validate harness contracts and pins
-version: 1.1.0
+version: 1.2.0
 author: rhoai3-harness-team
 license: Apache-2.0
 platforms: [linux]

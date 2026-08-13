@@ -611,7 +611,7 @@ else
 fi
 echo "== CS-7 bundle exists-assert =="
 python3 "${SKILL_DIR}/scripts/check-bundle-manifest.py" --root "${ROOT}/.hermes/skills" --bundles "${ROOT}/.hermes/home/skill-bundles" || rc=1
-echo "== CS-9 skill conformance (R-SK.7 categorized) =="
+echo "== CS-9 skill conformance (R-SK.7 categorized + R-SK.5 specimen literals) =="
 if [ -f "${SKILL_DIR}/scripts/check-skill-conformance.py" ]; then
   python3 "${SKILL_DIR}/scripts/check-skill-conformance.py" --all --root "${ROOT}/.hermes/skills" || rc=1
 elif [ -f "${ROOT}/../../.agents/skills/harness-skill-authoring/scripts/check-skill-conformance.py" ]; then

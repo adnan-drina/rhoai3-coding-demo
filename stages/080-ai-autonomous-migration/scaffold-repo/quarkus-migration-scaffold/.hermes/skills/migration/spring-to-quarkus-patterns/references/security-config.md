@@ -31,7 +31,7 @@ Internal pack (secondary): `source-analysis/external-review/20260810-artifact-re
 4. **tests:** anonymous → **401**; wrong role → **403**; allowed → **200**  
 5. **refuse:** `check-empty-security.py` before `kanban_complete`
 
-## Worked neutral example (not PetClinic-bound)
+## Worked neutral example (not specimen-bound)
 
 Golden tree: `migration/fixtures/security/golden-basic-authz/`
 
@@ -47,7 +47,7 @@ Copy the pattern; adapt package/paths to the specimen. Do **not** leave javadoc-
 ## Anti-pattern (V-negative)
 
 - Empty or javadoc-only `*AuthenticationConfig` / `*SecurityConfig`  
-- `petclinic.security.enable=true` (or JDBC enabled) without elytron JDBC + real props  
+- Specimen-prefixed toggles like `app.security.enable=true` (or JDBC enabled) without elytron JDBC + real props  
 - Claiming “Quarkus security” with only a mapping essay  
 
 Fixture: `migration/fixtures/runnable-db-security/bad-placeholder-security/`  
