@@ -20,6 +20,7 @@ provision-invoked (devfile/postStart). Optional Architect KEEP allowlist:
 """
 from __future__ import annotations
 
+import argparse
 import re
 import sys
 from pathlib import Path
@@ -27,18 +28,18 @@ from pathlib import Path
 # Architect ratify E-20260812T104706Z — fixed five (migration/ fifth; not pair-named)
 CATEGORIES = {"analysis", "sdd", "gates", "harness", "migration"}
 
-# R-SK.10 — OFFICIAL skill naming rules (Operator E-20260813T125500Z, AD-013
-# official-first). Source: official Agent Skills naming guidance.
-#   charset lowercase a-z 0-9 and '-' only; max 64 chars; no leading/trailing
-#   hyphen; no consecutive hyphens; reserved words prohibited; name must equal
-#   the parent folder (checked separately); GERUND form (verb+-ing) so the name
-#   designates an activity, e.g. analyzing-spreadsheets, testing-code.
+# R-SK.10 — skill naming (AD-013 official-first + house pattern).
+# Spec MUSTs (agentskills.io): charset a-z0-9-; ≤64; no edge/consecutive
+# hyphens; name == directory; reserved words prohibited.
+# House pattern (Architect A7 / Deputy E-20260813T140501Z): imperative
+# verb-object, applied consistently. Gerund is Anthropic "Consider using",
+# NOT a MUST — and imperative is an explicit acceptable alternative.
+# Do not fail on non-gerund; the mint-boundary rename (t_4dc3ea97) brings
+# leaves onto the house pattern. r-sk10-name-keep.txt holds N3 pair skills
+# and other Architect-justified exceptions to N1/N2.
 NAME_MAX = 64
 NAME_CHARSET_RX = re.compile(r"^[a-z0-9-]+$")
 NAME_RESERVED = {"anthropic", "claude"}
-# Gerund heuristic: first hyphen-segment ends in -ing and is more than the bare
-# word "ing". Non-gerund leaves must be justified in r-sk10-name-keep.txt.
-NAME_GERUND_RX = re.compile(r"^[a-z]{2,}ing$")
 # Official description budget (skills spec allows up to 1024). The former
 # 60-char house cap forced title-restating descriptions and actively fought
 # the selection signal progressive disclosure depends on — raised, not removed.
@@ -46,7 +47,7 @@ DESC_MAX = 1024
 
 
 def load_name_keep(root):
-    """Architect-justified non-gerund leaf names (R-SK.10 exception list)."""
+    """Architect-justified N1/N2 exception leaf names (R-SK.10 KEEP list)."""
     keep = set()
     for cand in (
         root / "harness" / "harness-validate" / "references" / "r-sk10-name-keep.txt",
@@ -128,7 +129,7 @@ def check_spec_frontmatter(name, fm, text):
 
 
 def check_name_rules(name):
-    """R-SK.10 official naming rules. Returns a list of violation strings."""
+    """R-SK.10 naming rules (spec MUSTs). Returns a list of violation strings."""
     errs = []
     if len(name) > NAME_MAX:
         errs.append(f"{name}:R-SK.10:name {len(name)} chars (max {NAME_MAX})")
@@ -141,12 +142,8 @@ def check_name_rules(name):
     for word in NAME_RESERVED:
         if word in name:
             errs.append(f"{name}:R-SK.10:reserved word '{word}'")
-    head = name.split("-", 1)[0]
-    if not NAME_GERUND_RX.match(head) and name not in NAME_KEEP:
-        errs.append(
-            f"{name}:R-SK.10:not gerund form — official naming uses verb+-ing "
-            f"(e.g. analyzing-spreadsheets); justify in r-sk10-name-keep.txt"
-        )
+    # Gerund is NOT enforced (E-20260813T140501Z). House imperative consistency
+    # is delivered by the rename mapping in skill-naming-convention.md.
     return errs
 ALLOWED_SUBDIRS = {"references", "templates", "scripts", "examples", "assets"}
 REQ_SECTIONS = ["## When to Use", "## Procedure", "## Verification"]
@@ -457,41 +454,49 @@ def check_specimen_literals(scaffold: Path) -> list[str]:
 
 
 def main() -> None:
-    args = sys.argv[1:]
-    flat_ok = "--flat-ok" in args
-    skip_r_sk9 = "--skip-r-sk9" in args
-    skip_specimen = "--skip-specimen" in args
-    args = [
-        a
-        for a in args
-        if a not in {"--flat-ok", "--skip-r-sk9", "--skip-specimen"}
-    ]
+    ap = argparse.ArgumentParser(
+        description=(
+            "R-SK.5 / R-SK.9 / R-SK.10 / R-SK.11 skill conformance lint. "
+            "Exit 0 all pass; exit 1 violations."
+        ),
+        epilog="Exit codes: 0=pass, 1=violations, 2=usage.",
+    )
+    ap.add_argument(
+        "skills",
+        nargs="*",
+        help="skill directories (omit when using --all)",
+    )
+    ap.add_argument(
+        "--all",
+        action="store_true",
+        help="scan every SKILL.md under --root",
+    )
+    ap.add_argument(
+        "--root",
+        default=".hermes/skills",
+        help="skills root for --all (default: .hermes/skills)",
+    )
+    ap.add_argument("--flat-ok", action="store_true")
+    ap.add_argument("--skip-r-sk9", action="store_true")
+    ap.add_argument("--skip-specimen", action="store_true")
+    args = ap.parse_args()
+
     skills_root: Path | None = None
-    if args and args[0] == "--all":
-        root = (
-            Path(args[args.index("--root") + 1])
-            if "--root" in args
-            else Path(".hermes/skills")
-        )
-        skills_root = root
-        dirs = [p.parent for p in root.rglob("SKILL.md")]
+    if args.all:
+        skills_root = Path(args.root)
+        dirs = [p.parent for p in skills_root.rglob("SKILL.md")]
     else:
-        dirs = [Path(a) for a in args]
+        dirs = [Path(a) for a in args.skills]
     if not dirs:
-        print(
-            "usage: check-skill-conformance.py <skill-dir>|--all "
-            "[--root DIR] [--flat-ok] [--skip-r-sk9] [--skip-specimen]",
-            file=sys.stderr,
-        )
-        sys.exit(2)
+        ap.error("provide skill dirs or --all")
     global NAME_KEEP
     NAME_KEEP = load_name_keep(skills_root if skills_root is not None else dirs[0].parent)
     all_errs: list[str] = []
     for d in dirs:
-        all_errs += check(d, flat_ok)
-    if skills_root is not None and not skip_r_sk9:
+        all_errs += check(d, args.flat_ok)
+    if skills_root is not None and not args.skip_r_sk9:
         all_errs += check_r_sk9(skills_root, dirs)
-    if skills_root is not None and not skip_specimen:
+    if skills_root is not None and not args.skip_specimen:
         scaffold = scaffold_root_from_skills(skills_root)
         if scaffold is not None:
             all_errs += check_specimen_literals(scaffold)

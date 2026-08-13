@@ -1,3 +1,4 @@
-# R-SK.10 non-gerund leaf-name KEEP list (Architect-justified only).
+# R-SK.10 Architect-justified KEEP list (N1/N2/N3 exceptions).
 # One leaf name per line; trailing # comment must cite a ledger EID.
-# Empty = every skill name is gerund form, as official naming requires.
+# Gerund is NOT required (E-20260813T140501Z). Pair skills (N3) and other
+# justified exceptions to the imperative house pattern live here after rename.

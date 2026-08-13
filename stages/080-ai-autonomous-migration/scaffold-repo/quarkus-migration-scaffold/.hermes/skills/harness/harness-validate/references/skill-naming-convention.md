@@ -21,6 +21,13 @@ skill performs (`validate-contracts`, `dispatch-phase`), not the quality it
 embodies (`auditability-repeatability`) and not its subject area alone
 (`role-authority`). The agent is choosing an action; name it as one.
 
+**Gerund considered, imperative chosen (E-20260813T140501Z).** Anthropic
+best-practices §Naming conventions says "Consider using gerund form" and
+lists action-oriented imperative (`process-pdfs`) as an **acceptable
+alternative**. Gerund is not an agentskills.io spec MUST. House law is
+imperative verb-object applied consistently (Architect A7). The lint
+enforces spec MUSTs only; the rename table below delivers N1 consistency.
+
 **N2 — A leaf name never repeats its category.** `harness/harness-validate`
 declares "harness" three times: directory, `metadata.hermes.category`, and
 name prefix. Category already ships in the selection triple; the prefix only

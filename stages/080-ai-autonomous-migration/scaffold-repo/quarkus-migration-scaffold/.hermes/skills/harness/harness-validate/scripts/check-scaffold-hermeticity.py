@@ -56,13 +56,15 @@ SKIP_DIRS = {".git", "__pycache__", "node_modules", "target", ".specify", "out"}
 
 RULES = [
     ("H1", re.compile(r"\.agents/"), EXEC_SUFFIXES | {".md", ".txt"}),
-    # Anchor to a real path start: `(?<![\w.])` stops `.hermes/home/scripts`
-    # from reading as `/home/scripts`. `/home/user/` is the Dev Spaces seat
-    # home and /home/tooling is the Dev Spaces tooling image — both portable.
-    # Only other homes are authoring-host leaks.
+    # Absolute path starts only: line-start / whitespace / quote / `=`.
+    # Do NOT use `(?<![\w.])` — `>` / `)` before `/home/` (e.g. argparse help
+    # `<skills-parent>/home/skill-bundles`) is a relative path fragment, not a
+    # host leak (Deputy E-20260813T140743Z H2 false positive).
+    # `/home/user/` and `/home/tooling` remain portable Dev Spaces paths.
     ("H2", re.compile(
-        r"(?<![\w.])/Users/"
-        r"|(?<![\w.])/home/(?!(?:user|tooling)(?:[/\s\"']|$))[a-z]"
+        r"(?:^|[\s\"'=])/Users/"
+        r"|(?:^|[\s\"'=])/home/(?!(?:user|tooling)(?:[/\s\"']|$))[a-z]",
+        re.M,
     ), TEXT_SUFFIXES),
     ("H3", re.compile(r"harness-refactoring/|rhoai3-coding-demo"), EXEC_SUFFIXES),
 ]

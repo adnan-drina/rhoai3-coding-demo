@@ -35,12 +35,18 @@ from __future__ import annotations
 
 import argparse
 import py_compile
+import re
 import subprocess
 import tempfile
 import sys
 from pathlib import Path
 
 VERDICT_PREFIXES = ("OK:", "PASS:", "OK ", "PASS ")
+# Summary lines are also pass-shaped answers to an interface probe
+# (Deputy E-20260813T140743Z): BUNDLES=/CHECKED=/SCRIPTS=/VIOLATIONS= etc.
+VERDICT_SUMMARY_RX = re.compile(
+    r"\b(VIOLATIONS|CHECKED|BUNDLES|SCRIPTS|HERMETICITY_FILES)=\d+"
+)
 SKIP_DIRS = {"__pycache__", "examples", "assets", "references", "templates"}
 # Library modules are imported, never invoked as an agent entry point.
 LIB_SUFFIXES = ("_lib.py", "specimen_agnostic.py", "verdict.py", "resolve_loaded_soul.py")
@@ -97,7 +103,7 @@ def check_help(path: Path) -> list[str]:
     combined = (r.stdout or "") + (r.returncode == 0 and "" or "")
     for line in (r.stdout or "").splitlines():
         s = line.strip()
-        if s.startswith(VERDICT_PREFIXES):
+        if s.startswith(VERDICT_PREFIXES) or VERDICT_SUMMARY_RX.search(s):
             return [
                 f"{rel}:R-SK.12-HELP:--help emitted a gate verdict "
                 f"({s[:60]!r}) with exit {r.returncode} — an interface probe "
