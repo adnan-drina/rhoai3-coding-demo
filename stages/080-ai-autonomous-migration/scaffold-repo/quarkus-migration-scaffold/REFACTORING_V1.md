@@ -282,3 +282,81 @@ turns it into a cleanup list. It is also the first read of the **rebuilt** skill
 tree under real load.
 
 — Operator (via Deputy)
+
+---
+
+## E-20260813T213321Z — 2026-08-13T21:33:21Z — decide — DEPUTY AUDIT M2: **ACK** — 13 stories, all park-at-birth, v13 defects not repeated. One agreed gap: `story_id` still absent from bodies — Deputy
+
+**Needs:** Lead:land-streaming-pin-before-m3(E-20260813T213321Z) — **HARD, the M2→M3 gap is now**; Lead:add-story-id-to-body(E-20260813T213321Z) — **HARD, one field, do it before M3 writes**
+**Done:** Deputy:audit-m2-output(E-20260813T213321Z) — **ACK**
+**Re:** E-20260813T210050Z, E-20260813T180236Z, E-20260813T193314Z
+
+M2a/M2b complete. Audited by execution against the live board and the produced
+artifacts.
+
+### ACK — M2 landed well, and the v13 defects did NOT repeat
+
+**13 M3 stories minted, every one `blocked` at birth:**
+```
+S-001 Build foundation: Quarkus POM/BOM      S-008 REST: Vets/Specialties/Users
+S-002 Application properties + profiles      S-009 Exception handling + validation
+S-003 JPA entities → Panache                 S-010 Startup + health endpoint
+S-004 Spring Data repos → Panache            S-011 Test infrastructure
+S-005 CDI service layer                      S-012 Dev services + cache
+S-006 Security + authentication              S-013 Logging + i18n
+S-007 REST: Owners/Pets/Visits
+```
+
+| v13 defect | v17 result |
+|---|---|
+| 9 cards **born running** (mint-gate bypass) | **all 13 `blocked` at birth** — park-at-birth holds |
+| 4 cards **oversized** (s-005 FIS=23) | REST **split across two stories** (S-007/S-008) — sizing applied |
+| body drift | **26 files = 13 bodies + 13 `.sha256.json`** — body-immutability wired |
+
+Ordering respects `sdd-ordering §S.6`: foundation → config → model → repo →
+service → security → rest → exceptions → startup → test → devservices →
+logging. **Deputy ACKs M2.**
+
+### THE GAP — `story_id` is still not in the body
+
+Body keys (`evidence/bodies/m3-s-001.json`):
+```
+task_id · role · phase · identity · refs · files_in_scope · files_writable
+exit_criteria · rules · layer · dependencies · constraints
+```
+**No `story_id`.** The partition↔card correspondence lives **only in the card
+title** (`S-001: …`).
+
+Better than v13 — titles now carry `S-NNN`, so a human can reconcile — but
+**nothing machine-readable links body to partition**, and a title is not a
+stable identifier. This is precisely the hole that made v13's *"M3 9/9 done"*
+**unauditable** (E-20260813T180212Z): the mapping was never persisted and the
+seat that held it is gone.
+
+**Ask: add `story_id` to the body in `create-m3-implementer.sh`.** One field.
+It converts the final completion claim from an assertion into arithmetic —
+`partition ids ⊇ completed card ids`. **Do it before M3 writes**, or 13 bodies
+are already committed without it and the fix becomes a migration.
+
+### The M2→M3 gap is NOW — streaming pin
+
+Operator ruled (E-20260813T210050Z) the streaming pin is **not banked**: it
+lands **after M2, before M3 dispatches**. **That gap is open.**
+
+Order: **verify with `hermes kanban --board default watch` first.** If it
+already streams, the work is only the **factory pin** — assert the default so a
+Hermes upgrade cannot silently remove it; **do not touch the live seat**. Live
+Managed Scope edits mid-chain are a real risk (re-read on every worker spawn, a
+malformed edit takes out every later phase).
+
+### Neither blocks M3 on correctness
+
+Both are **agreed items scheduled for this exact gap**. M3 is otherwise clear:
+13 parked stories, bodies digest-stamped, ordering sound.
+
+**Deputy will audit M3 per story**, watching: skills actually opened vs
+attached · `spring-to-quarkus-patterns` references used (incl. the new
+`exception-mapping.md` at S-009 and `observability.md` at S-010) · typed BLOCK
+rather than improvisation on refusal.
+
+— Deputy
