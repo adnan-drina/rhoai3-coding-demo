@@ -1,7 +1,8 @@
 # M2b per-artifact Spec Kit resume ladder
 
 **Status:** bound — (decision-complete cards)
-**Supersedes for M2b:** inverted v11 R-M2.6 compound jump (`spec.md` → `/speckit-tasks`)
+**Supersedes:** `m2-resume-from-artifacts.md` (retired R-M2.6 inverted compound jump
+`spec.md` → `/speckit-tasks`). Architect E-20260813T162123Z §B.
 
 Under M2a/M2b split, M2a normally leaves `spec.md`. Jumping to `/speckit-tasks`
 because `spec.md` exists **skips planning** and is a card defect.
@@ -16,7 +17,16 @@ because `spec.md` exists **skips planning** and is a card defect.
 
 Missing precondition → typed `needs_input` BLOCK. Never invent Spec Kit trees.
 
+## Folded live constraints (ex-R-M2.6, still binding)
+
+- Do **not** rewrite write-once `migration/briefs/partition.json`.
+- Do **not** mid-run digest-breaking body rewrite on a live task — tip body
+  lands here; apply on next reclaim/redisp.
+- Prefer R-M2.5 wall raise (3600s) over further M2a/M2b split unless 3600+resume
+  still dies before `tasks.md`.
+
 ## Lint
 
 `check-decision-complete-cards.py` fail-closes compound jump-over-plan language
-on the M2b seed body (R0 create-path).
+on the M2b seed body (R0 create-path). Contract path:
+`migration/contracts/m2b-resume-ladder.md`.

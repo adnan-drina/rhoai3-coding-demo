@@ -2,14 +2,19 @@
 """R0 — decision-complete card lint (Architect E-20260811T122959Z).
 
 Card steps must state their own precondition + skip rule. Compound jump
-conditionals that embed cross-step assumptions (e.g. v11 R-M2.6
+conditionals that embed cross-step assumptions (e.g. retired R-M2.6
 `spec.md` → jump to `/speckit-tasks`) are fail-closed.
+
+Contract: migration/contracts/m2b-resume-ladder.md
+(supersedes retired migration/contracts/m2-resume-from-artifacts.md).
 """
 from __future__ import annotations
 
 import re
 import sys
 from pathlib import Path
+
+CONTRACT = "migration/contracts/m2b-resume-ladder.md"
 
 
 def extract_bodies(dispatch_sh: Path) -> dict[str, str]:
@@ -28,7 +33,9 @@ def check_m2b(body: str) -> list[str]:
     bad: list[str] = []
     # Forbidden inverted monolithic resume jump
     if re.search(r"jump\s+to\s+`?/speckit-tasks", body, re.I):
-        bad.append("M2b forbids compound 'jump to /speckit-tasks' (use per-artifact ladder)")
+        bad.append(
+            "M2b forbids compound 'jump to /speckit-tasks' (use per-artifact ladder)"
+        )
     if re.search(
         r"spec\.md[^\n]{0,80}plan\.md[^\n]{0,80}(?:jump|skip re-partition|/speckit-tasks)",
         body,
@@ -39,8 +46,14 @@ def check_m2b(body: str) -> list[str]:
     required = [
         (r"Skip iff.*spec\.md", "M2b must state skip-/speckit-specify iff spec.md"),
         (r"Skip iff.*plan\.md", "M2b must state skip-/speckit-plan iff plan.md"),
-        (r"/speckit-tasks.*always last|always last.*/speckit-tasks", "M2b must keep /speckit-tasks always last"),
-        (r"Never.*jump over plan|Never.*jump over plan", "M2b must forbid jump-over-plan"),
+        (
+            r"/speckit-tasks.*always last|always last.*/speckit-tasks",
+            "M2b must keep /speckit-tasks always last",
+        ),
+        (
+            r"Never.*jump over plan|Never.*jump over plan",
+            "M2b must forbid jump-over-plan",
+        ),
     ]
     for pat, label in required:
         if not re.search(pat, body, re.I | re.S):
@@ -50,6 +63,10 @@ def check_m2b(body: str) -> list[str]:
 
 def main() -> int:
     root = Path(sys.argv[1] if len(sys.argv) > 1 else ".").resolve()
+    contract = root / CONTRACT
+    if not contract.is_file():
+        print(f"FAIL: missing {CONTRACT}", file=sys.stderr)
+        return 1
     dispatch = root / ".hermes/skills/harness/phase-dispatch/scripts/dispatch-phase.sh"
     if not dispatch.is_file():
         print(f"FAIL: missing {dispatch}", file=sys.stderr)
@@ -64,9 +81,12 @@ def main() -> int:
         print(f"FAIL: {msg}", file=sys.stderr)
         bad = 1
     if bad:
-        print("FAIL: decision-complete card lint (Architect E-122959Z)", file=sys.stderr)
+        print(
+            "FAIL: decision-complete card lint (Architect E-122959Z)",
+            file=sys.stderr,
+        )
         return 1
-    print("OK: decision-complete card lint (M2b per-artifact resume ladder)")
+    print(f"OK: decision-complete card lint (cites {CONTRACT})")
     return 0
 
 
