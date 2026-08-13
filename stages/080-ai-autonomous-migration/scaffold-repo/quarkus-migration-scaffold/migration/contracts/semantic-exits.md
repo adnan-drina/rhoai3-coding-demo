@@ -19,5 +19,5 @@ When `identity.semantic_families` is absent but write-set paths match
 families from the table (proving-min default for REST stories).
 
 ```bash
-python3 .hermes/skills/sdd/sdd-readiness/scripts/check-semantic-exits.py .
+python3 .hermes/skills/sdd/check-spec-readiness/scripts/check-semantic-exits.py .
 ```

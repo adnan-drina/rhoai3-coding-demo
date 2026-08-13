@@ -8,7 +8,7 @@ rewrite a criterion to N/A / not-applicable and `kanban_complete`.
 ## Gate
 
 ```bash
-python3 .hermes/skills/harness/phase-dispatch/scripts/check-completion-na-reject.py \
+python3 .hermes/enforcement/dispatch-phase/scripts/check-completion-na-reject.py \
  --task-id t_… # or --text / --file
 ```
 

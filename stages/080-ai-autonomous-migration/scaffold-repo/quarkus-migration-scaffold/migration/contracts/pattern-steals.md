@@ -6,8 +6,8 @@
 Never `harness-refactoring/` authoring trees; never committed `.specify/`.
 
 AD-S / Hermes / Kanban / `github/spec-kit` stand. These are **fail-closed
-shapes** we absorb; enforcement lives in skill **`sdd-readiness`**
-(`.hermes/skills/sdd/sdd-readiness/`).
+shapes** we absorb; enforcement lives in skill **`check-spec-readiness`**
+(`.hermes/skills/sdd/check-spec-readiness/`).
 
 **Companion:** brief identity carry-forward, graph layering, and re-plan
 authority live in `migration/contracts/sdd-ordering.md` (**AD-S §S.6**).
@@ -17,12 +17,12 @@ Homes: `.hermes/LAYOUT.md`.
 
 | Pri | Steal | Land |
 |-----|--------|------|
-| P0 | No-invention + open-question exit; Non-Goals | **Landed** — skill `sdd-readiness` (+ AD-S Non-Goals override) |
+| P0 | No-invention + open-question exit; Non-Goals | **Landed** — skill `check-spec-readiness` (+ AD-S Non-Goals override) |
 | P0 | Task packet shape (`AC-IDs`, `files_in_scope`, deps) | **Landed** — same skill; Kanban body fill rides phase schema |
 | P0 | Waiver re-open triggers | **Landed** — `migration/schemas/mta-exception.md` + readiness lint |
 | P1 | Baseline-aware brownfield | **After** first specimen runs — `_baseline`-shaped artifact under `migration/` |
 | P1 | EARS-lite / AC traceability | **After** M2 Spec Kit (`speckit-specify` → plan → tasks) + typed M3 IMPLEMENT bodies produce stable AC IDs — evaluate companion |
-| P1 | Single validate entrypoint | **Landed** — skill `harness-validate` |
+| P1 | Single validate entrypoint | **Landed** — skill `validate-contracts` |
 | P2 | Confirmed-red (assertion-red only) | **After** fixtures; optional pre-IMPLEMENT; does not replace G-1 |
 | P2 | Forbid skip / silent threshold drop | **With** CI/factory preflight |
 

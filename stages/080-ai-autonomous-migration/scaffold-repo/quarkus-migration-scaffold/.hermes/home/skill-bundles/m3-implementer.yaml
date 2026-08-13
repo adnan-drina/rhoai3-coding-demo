@@ -1,10 +1,10 @@
 name: m3-implementer
 skills:
-- sdd-readiness
+- check-spec-readiness
 - spring-to-quarkus-patterns
 description: M3 IMPLEMENT phase bundle (AD-002G attach matrix)
 instruction: >-
-  AD-002E/F/G: preloaded skills are sdd-readiness + spring-to-quarkus-patterns
+  AD-002E/F/G: preloaded skills are check-spec-readiness + spring-to-quarkus-patterns
   only. Each → skill_view consult OR typed skills_unused:<skill>:<reason> before
   kanban_complete. Silence invalid. Hard invoke /spring-to-quarkus-patterns (or
   skill_view) before first destination edit; then open needed references/*

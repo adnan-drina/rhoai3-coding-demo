@@ -18,13 +18,13 @@
 
 ```bash
 # R-M3.5 substrate / S-001 exit helper
-python3 .hermes/skills/sdd/sdd-readiness/scripts/check-persistence-bom.py .
+python3 .hermes/skills/sdd/check-spec-readiness/scripts/check-persistence-bom.py .
 
 # R-M3.7 before first model write
-python3 .hermes/skills/sdd/sdd-readiness/scripts/check-compile-deps-preflight.py .
+python3 .hermes/skills/sdd/check-spec-readiness/scripts/check-compile-deps-preflight.py .
 
 # R-M3.6 when dependency_wait fires (dispatcher)
-python3 .hermes/skills/gates/validation-release-gates/scripts/apply-dependency-wait-hold.py \
+python3 .hermes/skills/gates/check-release-readiness/scripts/apply-dependency-wait-hold.py \
  . --task-id t_xxx --stamp --block
 ```
 

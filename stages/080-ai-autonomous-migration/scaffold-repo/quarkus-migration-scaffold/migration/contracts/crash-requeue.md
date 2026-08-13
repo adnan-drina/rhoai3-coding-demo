@@ -19,10 +19,10 @@ must not be unbounded while wall soft-K reports green.
 On `crashed` (dispatcher hook) — after F4 restore-or-refuse:
 
 ```bash
-python3 .hermes/skills/gates/validation-release-gates/scripts/restore-or-refuse-requeue.py \
+python3 .hermes/skills/gates/check-release-readiness/scripts/restore-or-refuse-requeue.py \
  . --terminal crashed
 
-python3 .hermes/skills/gates/validation-release-gates/scripts/apply-crash-requeue-policy.py \
+python3 .hermes/skills/gates/check-release-readiness/scripts/apply-crash-requeue-policy.py \
  . --task-id t_xxx --k-crash 1 --cause harness_fault --stamp
 ```
 

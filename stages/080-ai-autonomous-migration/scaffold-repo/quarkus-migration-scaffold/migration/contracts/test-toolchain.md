@@ -12,7 +12,7 @@ something each specimen rediscovers. Tip `pom.xml` MUST include (test scope):
 - `org.assertj:assertj-core` (BOM-managed version preferred)
 
 ```bash
-python3 .hermes/skills/gates/validation-release-gates/scripts/check-test-toolchain.py .
+python3 .hermes/skills/gates/check-release-readiness/scripts/check-test-toolchain.py .
 ```
 
 ## In-loop invariant

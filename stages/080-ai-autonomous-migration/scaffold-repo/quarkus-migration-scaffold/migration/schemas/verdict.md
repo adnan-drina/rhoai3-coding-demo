@@ -1,6 +1,6 @@
 # Verdict artifact schema (AD-H §18 / §18.0)
 
-**Status:** binding · lints in `validation-release-gates`  
+**Status:** binding · lints in `check-release-readiness`  
 **Home:** `migration/verdicts/*.json` (also preflight when it carries a verdict)
 
 ## Fields

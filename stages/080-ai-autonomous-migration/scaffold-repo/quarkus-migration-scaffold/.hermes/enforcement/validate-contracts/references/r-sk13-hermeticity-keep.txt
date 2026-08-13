@@ -1,0 +1,3 @@
+# R-SK.13 hermeticity KEEP (Architect-justified only).
+# The detector must contain the patterns it detects.
+.hermes/enforcement/validate-contracts/scripts/check-scaffold-hermeticity.py

@@ -14,7 +14,7 @@ On terminals `crashed` / `gave_up` / `kill` / `timed_out`:
 1. Run `restore-or-refuse-requeue.py` **before** unblock/requeue/dispatch.
 2. If the workspace is dirty → **refuse** requeue (exit 1) **or** `--action restore`
  to a known baseline, then re-check `workspace_clean`.
-3. Dirty-workspace fixture must fail the check (see harness-validate smoke).
+3. Dirty-workspace fixture must fail the check (see validate-contracts smoke).
 4. On **`timed_out` / wall**: also run `evaluate-exit-criteria.py` +
  `check-wall-exit-eval.py` (`wall-exit-eval.md`) — wall is a terminal.
 
@@ -22,15 +22,15 @@ On terminals `crashed` / `gave_up` / `kill` / `timed_out`:
 
 ```bash
 # Refuse silent requeue onto dirt
-python3 .hermes/skills/gates/validation-release-gates/scripts/restore-or-refuse-requeue.py . \
+python3 .hermes/skills/gates/check-release-readiness/scripts/restore-or-refuse-requeue.py . \
  --terminal crashed
 
 # Explicit restore then allow
-python3 .hermes/skills/gates/validation-release-gates/scripts/restore-or-refuse-requeue.py . \
+python3 .hermes/skills/gates/check-release-readiness/scripts/restore-or-refuse-requeue.py . \
  --terminal gave_up --action restore --baseline HEAD
 
 # Clean-only probe
-python3 .hermes/skills/gates/validation-release-gates/scripts/check-workspace-clean.py .
+python3 .hermes/skills/gates/check-release-readiness/scripts/check-workspace-clean.py .
 ```
 
 ## Deferred (release)

@@ -27,8 +27,8 @@ restate platform versions in this skill.
 - When deciding whether an extension is **unused** and can be removed.
 - When `quarkus ext ls` / Maven `quarkus:list` disagrees with what the story
   thinks is on the classpath.
-- **Not** for project create / skeleton retirement — that is the mint-gated
-  `bootstrap-quarkus-project` skill (plan only until v14 mint).
+- **Not** for project create / skeleton retirement — use
+  `bootstrap-quarkus-project`.
 - **Not** for Spring→Quarkus form mapping (`spring-to-quarkus-patterns`).
 
 ## Procedure

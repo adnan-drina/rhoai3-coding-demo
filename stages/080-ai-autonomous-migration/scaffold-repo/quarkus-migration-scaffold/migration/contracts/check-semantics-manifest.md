@@ -24,14 +24,14 @@
 |----------|----------|----------------|----------|-------------------|------|
 | `boot_health` | `mvn -DskipTests package` (JDK matching pom release); Quarkus boot; probe `/q/health` (or contract URL) | Whole-app **packages and boots**; health endpoint returns success | **SEMANTIC** | Does **not** claim REST API fidelity, CDI bean completeness beyond boot wiring, or G-4 parity | Receipt schema requires `package_rc` + `health_status`; forbid PASS if package skipped |
 | `endpoint_smoke` | Configured smoke URL(s) from floor contract (historically health/root — **not** `/api/*`) | Named smoke path returns success **after** boot | **SEMANTIC (narrow)** | Name suggests “endpoints”; operand is often health/root only — **must not** be read as REST CRUD proof | Manifest + runner: smoke URL list declared; if list excludes `/api/*`, check id must be `endpoint_smoke_health` **or** claim text must say “health/root only” |
-| `g4_hook` | Admission G-4 fixtures / hook script under validation-release-gates | Hook **ran**; admission fixtures evaluated | **ADMISSION** until product partitions harvested | PASS/INCONCLUSIVE on fixtures ≠ product G-4 runtime parity | Verdict router: `g4_mode=SAMPLE` ⇒ forbid mapping hook PASS → product G-4 closed; M5 ACCEPT blocked on INCONCLUSIVE (already AD-H §18) |
+| `g4_hook` | Admission G-4 fixtures / hook script under check-release-readiness | Hook **ran**; admission fixtures evaluated | **ADMISSION** until product partitions harvested | PASS/INCONCLUSIVE on fixtures ≠ product G-4 runtime parity | Verdict router: `g4_mode=SAMPLE` ⇒ forbid mapping hook PASS → product G-4 closed; M5 ACCEPT blocked on INCONCLUSIVE (already AD-H §18) |
 
 **Campaign proof:** M4 run#1 `boot_health` FAIL correctly caught whole-app CDI (`JdbcTemplate`) while per-story scoped-compile stayed green — **SEMANTIC adequacy of `boot_health` validated**.
 **Campaign scar:** run#1 verifier patched product to chase boot — conduct breach (separate); does not weaken the check’s semantic claim.
 
 ---
 
-## M4 `required_checks` (phase-dispatch / validation-release-gates)
+## M4 `required_checks` (dispatch-phase / check-release-readiness)
 
 | Check id | Operands | Coverage claim | Adequacy | Over-promise risk | Lint |
 |----------|----------|----------------|----------|-------------------|------|
@@ -82,10 +82,10 @@
 | Item | State |
 |------|-------|
 | Manifest authored (Review Need) | **DONE** — this file |
-| Lint tooling | **DONE** — `validation-release-gates/scripts/check-semantics-manifest.py` (B8 tip `Lead:wire-b8-check-semantics-manifest`) |
+| Lint tooling | **DONE** — `check-release-readiness/scripts/check-semantics-manifest.py` (B8 tip `Lead:wire-b8-check-semantics-manifest`) |
 | Rename `endpoint_smoke` / path lists | **DONE** — floor runner emits `endpoint_smoke_health` when smoke paths exclude `/api/*` |
 | G-4 harvest vs admission | **OPEN** (lint forbids SAMPLE→product-closed; harvest still required for SEMANTIC close) |
 
-Callers: `check-m4-floor-receipts.py`, `run-m4-floor.sh` / `write-receipt.py`, `harness-validate` (negative fixtures under `migration/fixtures/check-semantics-manifest/`).
+Callers: `check-m4-floor-receipts.py`, `run-m4-floor.sh` / `write-receipt.py`, `validate-contracts` (negative fixtures under `migration/fixtures/check-semantics-manifest/`).
 
 — Review

@@ -5,7 +5,7 @@
 
 `HERMES_WRITE_SAFE_ROOT=/projects/modernized` alone is **insufficient**: ACKs,
 gate verdicts, and ballot-adjacent stores live inside that tree. Proving-min
-adds **operand separation** so the implementer seat cannot forge those paths.
+adds **operand separation** so an Implementing-task worker cannot forge those paths.
 
 ## Tier (a) — proving min (this contract)
 
@@ -24,18 +24,18 @@ Authenticated human approvals bound to artifact digests in a store the worker
 ## Commands
 
 ```bash
-# Lock implementer deny-list (default role)
-bash .hermes/skills/harness/enforce-authority-boundary/scripts/apply-write-fence.sh lock
+# Lock Implementing-task deny-list (default worker fence)
+bash .hermes/enforcement/enforce-authority-boundary/scripts/apply-write-fence.sh lock
 
 # /human temporarily unlock to grant an ack, then re-lock
-bash .hermes/skills/harness/enforce-authority-boundary/scripts/apply-write-fence.sh unlock
-bash .hermes/skills/harness/enforce-authority-boundary/scripts/apply-write-fence.sh lock
+bash .hermes/enforcement/enforce-authority-boundary/scripts/apply-write-fence.sh unlock
+bash .hermes/enforcement/enforce-authority-boundary/scripts/apply-write-fence.sh lock
 
 # Seat probe (must PASS after lock)
-python3 .hermes/skills/harness/enforce-authority-boundary/scripts/probe-write-fence.py .
+python3 .hermes/enforcement/enforce-authority-boundary/scripts/probe-write-fence.py .
 
 # Pre-complete refuse (git dirty + optional body scope)
-python3 .hermes/skills/harness/enforce-authority-boundary/scripts/check-write-fence.py . \
+python3 .hermes/enforcement/enforce-authority-boundary/scripts/check-write-fence.py . \
  --body migration/bodies/S-010.json
 ```
 

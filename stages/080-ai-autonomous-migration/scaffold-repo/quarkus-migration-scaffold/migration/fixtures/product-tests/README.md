@@ -2,14 +2,14 @@
 
 ```bash
 # REFUSE — harness probe only
-python3 .hermes/skills/gates/domain-gates/scripts/check-product-tests.py \
+python3 .hermes/skills/gates/check-domain-parity/scripts/check-product-tests.py \
   migration/fixtures/product-tests/ar28-probe-only
 
 # REFUSE — security IT alone (missing boot/crud/db)
-python3 .hermes/skills/gates/domain-gates/scripts/check-product-tests.py \
+python3 .hermes/skills/gates/check-domain-parity/scripts/check-product-tests.py \
   migration/fixtures/product-tests/ar28-thin-security
 
 # OK — all four families marked
-python3 .hermes/skills/gates/domain-gates/scripts/check-product-tests.py \
+python3 .hermes/skills/gates/check-domain-parity/scripts/check-product-tests.py \
   migration/fixtures/product-tests/ar28-good
 ```

@@ -25,10 +25,10 @@ dispatch) rather than normalizing dual-dispatchers.
 ## B6 — promote vs park-at-birth
 
 Create-path law: M3 children are **parked/blocked at birth** (serial drain).
-Native Hermes may auto-promote children when the parent planner reaches
+Native Hermes may auto-promote children when the parent Planning task reaches
 `done` (observed v13: all nine M3s flipped ready on M2b complete).
 
-**Interim control (until v14):** after planner Done, human steward re-parks
+**Interim control (until v14):** after Planning-task Done, human steward re-parks
 non-GO stories and promotes exactly one serial GO. Do not resurrect custom
 dispatch wrappers to fight the engine.
 

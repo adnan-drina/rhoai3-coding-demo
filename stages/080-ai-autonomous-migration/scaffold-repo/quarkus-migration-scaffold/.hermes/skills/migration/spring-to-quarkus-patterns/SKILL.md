@@ -29,7 +29,7 @@ metadata:
 - Before `kanban_complete`, when the summary is about to name a technology
   (Panache, Quarkus security, "tests roll back") — the cards state what must
   appear in the diff to earn each claim.
-- **Not** for authoring or validating story bodies (`sdd-readiness`), and not
+- **Not** for authoring or validating story bodies (`check-spec-readiness`), and not
   for the Boot 2→3 precondition (`derive-legacy-boot3`).
 
 
@@ -87,7 +87,7 @@ This skill carries no scripts — it is a consult-then-write contract.
    `references/security-anti-essay.md` — both before the first edit of that
    class.
 3. **Preflight deps for that class** before sinking file writes (scripts live
-   under the `sdd-readiness` skill): `check-persistence-bom.py` /
+   under the `check-spec-readiness` skill): `check-persistence-bom.py` /
    `check-compile-deps-preflight.py` ahead of entity/repository writes,
    `check-jdbc-deps-preflight.py` ahead of the first JDBC repository write.
    Security deps land in the same story as the security write, not a follow-up.
@@ -122,7 +122,7 @@ Verification here is the migrated code's provable parity, not a script exit.
   no schema owner is a BLOCK, not an accept.
 - **Security, when touched:** destination tests prove 401 anonymous / 403 wrong
   role / 200 allowed, and
-  `python3 .hermes/skills/gates/validation-release-gates/scripts/check-empty-security.py <tree>`
+  `python3 .hermes/skills/gates/check-release-readiness/scripts/check-empty-security.py <tree>`
   does not flag the destination (it must still fail on
   `migration/fixtures/runnable-db-security/bad-placeholder-security/`).
 - **Health, when touched:** the `/q/health` payload names **every** check

@@ -23,41 +23,41 @@ phases:
     # ANALYZE — MTA/kantra + inventory + profile authoring
     skills:
       - derive-legacy-boot3
-      - mta-analysis
+      - scan-with-mta
       - inventory-entry-points
-      - sdd-readiness
+      - check-spec-readiness
     max_runtime_seconds: 3600
     requires_acks: []
   M2:
     # DEPRECATED monolithic PLAN — use M2a then M2b (R-AB.2 / pre-v12 R1).
     # Kept for matrix/docs; dispatch-phase refuses bare M2.
+    # Wave B: enforce-authority-boundary is harness path-invoke only (not card-attach).
     skills:
-      - sdd-readiness
-      - enforce-authority-boundary
+      - check-spec-readiness
     max_runtime_seconds: 3600
     requires_acks:
       - m1-findings
   M2a:
     # R-AB.2 / pre-v12 R1 — PLAN partition + briefs only (turn-volume cut)
-    # mta-analysis attached so check-findings-handoff.py resolves via skill_view
+    # scan-with-mta attached so check-findings-handoff.py resolves via skill_view
     # (Deputy E-20260811T112700Z — R1 split had omitted it).
     # speckit-specify: Architect E-20260811T115316Z invoke-or-needs_input BIND
     # provision-owns-tools (Architect E-20260811T121308Z): Spec Kit init is
     # workspace provision / postStart — not an agent skill on M2a.
+    # Wave B: enforce-authority-boundary moved to .hermes/enforcement/ (path-invoke).
     skills:
-      - sdd-readiness
-      - enforce-authority-boundary
-      - mta-analysis
+      - check-spec-readiness
+      - scan-with-mta
       - speckit-specify
     max_runtime_seconds: 3600
     requires_acks:
       - m1-findings
   M2b:
     # R-AB.2 / pre-v12 R1 — SDD emit + create-m3 children (after M2a partition)
+    # Wave B: enforce-authority-boundary path-invoke only.
     skills:
-      - sdd-readiness
-      - enforce-authority-boundary
-      - mta-analysis
+      - check-spec-readiness
+      - scan-with-mta
       # /speckit-specify|plan|tasks|analyze from ~/.hermes/skills (not implement)
     max_runtime_seconds: 3600
     requires_acks:
@@ -65,21 +65,21 @@ phases:
   M3:
     # IMPLEMENT — per-unit transform
     # Children MUST be created via
-    # .hermes/skills/harness/phase-dispatch/scripts/create-m3-implementer.sh
+    # .hermes/enforcement/dispatch-phase/scripts/create-m3-implementer.sh
     # (bare hermes kanban create omits these skills — grounding study 20260809).
     # AD-002F — useful = influence. M3 default preload is the workhorse + body lint
-    # only. Drop zero-touch (domain-gates→M4, enforce-authority-boundary/
-    # grounded-generation/auditability-repeatability unread on S-001…S-006).
+    # only. Drop zero-touch (check-domain-parity→M4, enforce-authority-boundary/
+    # ground-in-harvest/record-run-evidence unread on S-001…S-006).
     # Workers consult via skill_view; unused preloads need skills_unused (AD-002E).
     #
     # Architect E-20260813T152211Z / Lead wire-or-retire: do NOT re-attach
-    # grounded-generation or auditability-repeatability to skills[] (opt-in ≠
+    # ground-in-harvest or record-run-evidence to skills[] (opt-in ≠
     # enforcement). They are harness-invoked on create (body digest /
     # checkpoint) and on complete via assert-complete-exit-criteria.py
     # (citation + body-digest + provenance). Physical move → .hermes/enforcement/
     # at v14 mint with UPLIFT-6.
     skills:
-      - sdd-readiness
+      - check-spec-readiness
       - spring-to-quarkus-patterns
     # AD-H §18 required_checks (validator/sensor matrix)
     required_checks:
@@ -95,13 +95,13 @@ phases:
     # g1_kill_ratio must be pending_threshold until threshold pinned (option A).
     verdict_token: PROVISIONAL_ACCEPT
     accept_kind: provisional
-    # AD-002G matrix: sdd-readiness + domain-gates required; helpers allowed.
+    # AD-002G matrix: check-spec-readiness + check-domain-parity required; helpers allowed.
+    # Wave B: validate-contracts + enforce-authority-boundary are enforcement
+    # path-invoke only — never card-attach.
     skills:
-      - sdd-readiness
-      - domain-gates
-      - validation-release-gates
-      - harness-validate
-      - enforce-authority-boundary
+      - check-spec-readiness
+      - check-domain-parity
+      - check-release-readiness
     required_checks:
       - mvn_clean_verify
       - unit_it_contract
@@ -118,14 +118,13 @@ phases:
     # typed Operator waiver. G-4 fail after provisional → reopen that story.
     # Standing entry-point descopes ⇒ SCOPED_ACCEPT only (check-accept-scope.py).
     accept_kind: full
-    # AD-002G matrix: sdd-readiness + domain-gates required; helpers allowed.
+    # AD-002G matrix: check-spec-readiness + check-domain-parity required; helpers allowed.
+    # Wave B: enforcement leaves path-invoke only.
     skills:
-      - sdd-readiness
-      - mta-analysis
-      - domain-gates
-      - validation-release-gates
-      - harness-validate
-      - enforce-authority-boundary
+      - check-spec-readiness
+      - scan-with-mta
+      - check-domain-parity
+      - check-release-readiness
     required_checks:
       - preflight
       - regression_suite

@@ -4,7 +4,7 @@
 **Basis:** plan / AD-H §17
 **Placement:** this golden scaffold only (consumed in `/projects/modernized`).
 
-Applies to the **implementer** role (M3). SOUL / AD-S §S.6 / AD-H §16
+Applies to **Implementing** tasks (M3). SOUL / AD-S §S.6 / AD-H §16
 pattern-steals / G-1…G-4 stand. Higher-priority sources win on conflict; lower
 sources may only supply *expression*, never new *behaviour*.
 
@@ -63,12 +63,12 @@ Citation lints do **not** replace domain-gate oracles.
 
 | Piece | Path |
 |-------|------|
-| Citation + invent-without-locus | `.hermes/skills/harness/grounded-generation/scripts/check-citation.py` |
-| Wired into | `harness-validate`; M3 `skills[]` in `phase-dispatch.yaml` |
+| Citation + invent-without-locus | `.hermes/enforcement/ground-in-harvest/scripts/check-citation.py` |
+| Wired into | `validate-contracts` (path-invoke); create/complete harness — **not** M3 `skills[]` |
 
 ```bash
-python3 .hermes/skills/harness/grounded-generation/scripts/check-citation.py .
-python3 .hermes/skills/harness/grounded-generation/scripts/check-citation.py . --commit-msg MSGFILE
+python3 .hermes/enforcement/ground-in-harvest/scripts/check-citation.py .
+python3 .hermes/enforcement/ground-in-harvest/scripts/check-citation.py . --commit-msg MSGFILE
 ```
 
 Non-blocking vs open Review / deferred items. Citation lints do **not** replace

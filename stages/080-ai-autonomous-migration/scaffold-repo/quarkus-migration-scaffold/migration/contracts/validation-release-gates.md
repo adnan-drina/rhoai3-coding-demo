@@ -4,7 +4,7 @@
 **Basis:** plan / AD-H §18 ( pending on ledger)
 **Placement:** this golden scaffold only (consumed in `/projects/modernized`).
 
-Cross-refs: W2 G-1…G-4 (`domain-gates`), AD-H §16 validator/acks, AGENTS
+Cross-refs: W2 G-1…G-4 (`check-domain-parity`), AD-H §16 validator/acks, AGENTS
 factory bar, `.hermes/phase-dispatch.yaml` M4/M5.
 
 **Defaults:** no per-task full G-4; no wave-wide wipe of prior **full** ACCEPT
@@ -21,7 +21,7 @@ Re-open: the failing story **and** every other non-full-ACCEPT story whose
 §11.3 slice closure intersects implicated shared substrate — **not** wave wipe,
 **not** only the failing story id. Missing closure map → INCONCLUSIVE/`blocked`.
 
-`harness-validate` fixture green ≠ live specimen prove.
+`validate-contracts` fixture green ≠ live specimen prove.
 
 ## Gates after each stage
 
@@ -66,25 +66,25 @@ never ships.
 | Piece | Path |
 |-------|------|
 | Phase `required_checks` matrix | `.hermes/phase-dispatch.yaml` (M3/M4/M5/factory) |
-| Matrix lint + checklist print | `.hermes/skills/gates/validation-release-gates/scripts/check-phase-matrix.py` |
-| Verdict routing + §18.0 composition | `.hermes/skills/gates/validation-release-gates/scripts/check-verdict-routing.py` |
-| Shared-substrate reopen set | `.hermes/skills/gates/validation-release-gates/scripts/compute-substrate-reopen.py` |
-| Factory ↔ M5 **ACCEPT** oracle | `.hermes/skills/gates/validation-release-gates/scripts/check-factory-m5.py` |
+| Matrix lint + checklist print | `.hermes/skills/gates/check-release-readiness/scripts/check-phase-matrix.py` |
+| Verdict routing + §18.0 composition | `.hermes/skills/gates/check-release-readiness/scripts/check-verdict-routing.py` |
+| Shared-substrate reopen set | `.hermes/skills/gates/check-release-readiness/scripts/compute-substrate-reopen.py` |
+| Factory ↔ M5 **ACCEPT** oracle | `.hermes/skills/gates/check-release-readiness/scripts/check-factory-m5.py` |
 | Verdict field schema | `migration/schemas/verdict.md` |
 | Closure map (§11.3 operand) | `migration/slices/closure-map.json` |
-| Wired into | `harness-validate`; M4/M5 `skills[]` |
-| Chaos matrix (plan #7) | `.hermes/skills/gates/validation-release-gates/scripts/run-chaos-matrix.py` |
+| Wired into | `validate-contracts`; M4/M5 `skills[]` |
+| Chaos matrix (plan #7) | `.hermes/skills/gates/check-release-readiness/scripts/run-chaos-matrix.py` |
 
 ```bash
-python3 .hermes/skills/gates/validation-release-gates/scripts/check-phase-matrix.py .
-python3 .hermes/skills/gates/validation-release-gates/scripts/check-phase-matrix.py . --print M5
-python3 .hermes/skills/gates/validation-release-gates/scripts/check-verdict-routing.py .
-python3 .hermes/skills/gates/validation-release-gates/scripts/compute-substrate-reopen.py . --implicated com.example.shared.Entity --print
-python3 .hermes/skills/gates/validation-release-gates/scripts/check-factory-m5.py .
+python3 .hermes/skills/gates/check-release-readiness/scripts/check-phase-matrix.py .
+python3 .hermes/skills/gates/check-release-readiness/scripts/check-phase-matrix.py . --print M5
+python3 .hermes/skills/gates/check-release-readiness/scripts/check-verdict-routing.py .
+python3 .hermes/skills/gates/check-release-readiness/scripts/compute-substrate-reopen.py . --implicated com.example.shared.Entity --print
+python3 .hermes/skills/gates/check-release-readiness/scripts/check-factory-m5.py .
 # Live chaos (Hermes venv; isolated board; no LLM spawn):
 # HERMES_AGENT_ROOT=$HOME/.hermes/hermes-agent \
 # $HERMES_AGENT_ROOT/venv/bin/python \
-# .hermes/skills/gates/validation-release-gates/scripts/run-chaos-matrix.py .
+# .hermes/skills/gates/check-release-readiness/scripts/run-chaos-matrix.py .
 ```
 
 `must_not_contradict_m5_accept` is a **required oracle**, not an aspirational
@@ -93,4 +93,4 @@ label. Does not replace G-1…G-4 oracles.
 ## M4 floor (Phase-2)
 
 See `migration/contracts/m4-floor-runner.md` and
-`.hermes/skills/gates/validation-release-gates/scripts/run-m4-floor.sh`.
+`.hermes/skills/gates/check-release-readiness/scripts/run-m4-floor.sh`.

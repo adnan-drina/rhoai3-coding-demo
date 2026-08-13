@@ -57,8 +57,8 @@ M1→M2 **seam** artifact (Architect `E-20260809T072752Z` · AD-H §16.7 AR-4.1/
 ## Tools
 
 ```bash
-python3 .hermes/skills/analysis/mta-analysis/scripts/emit-findings-handoff.py /projects/modernized
-python3 .hermes/skills/analysis/mta-analysis/scripts/check-findings-handoff.py /projects/modernized
+python3 .hermes/skills/analysis/scan-with-mta/scripts/emit-findings-handoff.py /projects/modernized
+python3 .hermes/skills/analysis/scan-with-mta/scripts/check-findings-handoff.py /projects/modernized
 ```
 
 Emit runs after normalize in `mta-analyze-legacy.sh` **and** after inventory exists

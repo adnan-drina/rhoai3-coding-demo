@@ -1,6 +1,6 @@
 # `generation-provenance` (Kanban completion metadata)
 
-**Status:** binding · lint `.hermes/skills/harness/auditability-repeatability/scripts/check-provenance.py`  
+**Status:** binding · lint `.hermes/enforcement/record-run-evidence/scripts/check-provenance.py`  
 **Home:** Hermes Kanban task-run `metadata` on IMPLEMENT complete (authoritative).
 Optional export: `migration/provenance/<task_id>.json` generated **from** that
 metadata (AD-H §19.3).
@@ -60,7 +60,7 @@ P0 integrity failure.
   "soul_path": "/projects/modernized/.hermes/home/SOUL.md",
   "soul_sha": "…",
   "skill_tips": {
-    "grounded-generation": "abc1234",
+    "ground-in-harvest": "abc1234",
     "spring-to-quarkus-patterns": "def5678"
   },
   "model_id": "qwen3-6-27b",

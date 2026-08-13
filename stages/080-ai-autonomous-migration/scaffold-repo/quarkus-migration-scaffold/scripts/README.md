@@ -6,6 +6,6 @@ New procedures and gates **do not** live here (AD-H §7).
 |------|--------|
 | Run anything | `.hermes/skills/<skill>/scripts/` or load the skill |
 | Map of homes | `.hermes/LAYOUT.md` |
-| Specimen-free validate | `.hermes/skills/harness/harness-validate/scripts/validate.sh` |
+| Specimen-free validate | `.hermes/enforcement/validate-contracts/scripts/validate.sh` |
 
 Creating a new top-level script without classifying it first is a defect.

@@ -13,7 +13,7 @@ fail the tree while AR-4.4 forbids fixing them. Workers corner into
 ## Rule
 
 1. **Scoped gate:** run
- `python3 .hermes/skills/harness/auditability-repeatability/scripts/run-scoped-compile-gate.py \
+ `python3 .hermes/enforcement/record-run-evidence/scripts/run-scoped-compile-gate.py \
  . --task-id <id> --body <typed body> --goal test-compile|compile`
 2. FAIL-CLOSED only when Maven error paths intersect the body's
  `files_writable` (own scope).

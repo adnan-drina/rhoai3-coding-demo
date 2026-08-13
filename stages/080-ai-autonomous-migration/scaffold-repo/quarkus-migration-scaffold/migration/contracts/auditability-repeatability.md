@@ -52,13 +52,13 @@ Secondary: failed validation, rework, task-order reversals, human overrides.
 | Piece | Path |
 |-------|------|
 | Provenance schema | `migration/schemas/generation-provenance.md` |
-| Cheap lint | `.hermes/skills/harness/auditability-repeatability/scripts/check-provenance.py` |
-| Reconstruct | `.hermes/skills/harness/auditability-repeatability/scripts/reconstruct-from-commit.py` |
-| Wired into | `harness-validate`; M3 `skills[]` |
+| Cheap lint | `.hermes/enforcement/record-run-evidence/scripts/check-provenance.py` |
+| Reconstruct | `.hermes/enforcement/record-run-evidence/scripts/reconstruct-from-commit.py` |
+| Wired into | `validate-contracts` (path-invoke); create/complete harness — **not** M3 `skills[]` |
 
 ```bash
-python3 .hermes/skills/harness/auditability-repeatability/scripts/check-provenance.py .
-python3 .hermes/skills/harness/auditability-repeatability/scripts/reconstruct-from-commit.py . [<commit>] -o /tmp/reconstruct.json
+python3 .hermes/enforcement/record-run-evidence/scripts/check-provenance.py .
+python3 .hermes/enforcement/record-run-evidence/scripts/reconstruct-from-commit.py . [<commit>] -o /tmp/reconstruct.json
 ```
 
 Derive apply log must appear in `artifacts[]` when `derive-legacy-boot3`

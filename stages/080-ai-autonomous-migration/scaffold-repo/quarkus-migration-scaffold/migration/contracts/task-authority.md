@@ -18,7 +18,7 @@ gates + authority-boundary refuse lints.
 
 | Task type | Phase | May | Must not |
 |-----------|-------|-----|----------|
-| **Examining** | M1 (+ pre-M1 derive) | `mta-analysis`, inventory, `derive-legacy-boot3`; write `migration/` analysis + findings | Edit modernized app source; invent findings; waive without `mta-exception`; edit legacy/derived; `/speckit-implement` |
+| **Examining** | M1 (+ pre-M1 derive) | `scan-with-mta`, inventory, `derive-legacy-boot3`; write `migration/` analysis + findings | Edit modernized app source; invent findings; waive without `mta-exception`; edit legacy/derived; `/speckit-implement` |
 | **Planning** | M2a | Stories/briefs; roadmap deps per §S.6; re-plan graph under same identity | Destination app code; silent identity change; IMPLEMENT; author constitution/`AGENTS.md` |
 | **Spec-writing** | M2b | `/speckit-specify\|plan\|tasks\|analyze`; Non-Goals; `tasks.md` → `kanban_create` | `/speckit-implement`; expand scope/AC/Non-Goals without escalate; app source outside SDD paths |
 | **Implementing** | M3 | Edit `files_in_scope` only; task-id commits; stop → `blocked` | Re-plan; legacy/derived; `.hermes/skills/**`, `SOUL.md`, Managed Scope; invent units; weaken gates/tests |
@@ -74,10 +74,10 @@ Record under `migration/acks/` (or Kanban metadata):
 | §16.8 AR-1.6 untrusted | `check-untrusted-boundary.py` + `fixtures/authority/ar16-untrusted/` |
 
 ```bash
-bash .hermes/skills/harness/enforce-authority-boundary/scripts/check-acks.sh M2
-bash .hermes/skills/harness/enforce-authority-boundary/scripts/apply-write-fence.sh lock
-python3 .hermes/skills/harness/enforce-authority-boundary/scripts/probe-write-fence.py .
-python3 .hermes/skills/harness/enforce-authority-boundary/scripts/check-write-fence.py . \
+bash .hermes/enforcement/enforce-authority-boundary/scripts/check-acks.sh M2
+bash .hermes/enforcement/enforce-authority-boundary/scripts/apply-write-fence.sh lock
+python3 .hermes/enforcement/enforce-authority-boundary/scripts/probe-write-fence.py .
+python3 .hermes/enforcement/enforce-authority-boundary/scripts/check-write-fence.py . \
   --body migration/bodies/S-010.json
 ```
 

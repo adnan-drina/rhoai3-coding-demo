@@ -66,10 +66,12 @@ from a pointer README).
 |------|------|
 | Standing conventions | this `AGENTS.md` only (`agent.coding_instructions` unused) |
 | Identity | authored `.hermes/SOUL.md` → loaded `$HERMES_HOME/SOUL.md` (factory places + sha256-verifies) |
-| Procedures / tool invocations | `.hermes/skills/<category>/<name>/` |
-| Domain gates G-1..G-4 | skill `domain-gates` (router below) |
+| Guidance procedures | `.hermes/skills/<category>/<name>/` (card-attachable) |
+| Enforcement scripts | `.hermes/enforcement/<name>/` (path-invoke only — not `skills[]`) |
+| Domain gates G-1..G-4 | skill `check-domain-parity` (router below) |
 | Run / phase data | `migration/` |
 | SDD stack | `.specify/` (workspace provision only — AD-S) |
+| Destination app create | skill `bootstrap-quarkus-project` (see root `BOOTSTRAP.md`) |
 
 ### Paths
 
@@ -77,9 +79,10 @@ from a pointer README).
 |------|------|
 | `$HERMES_MANAGED_DIR` | Platform config + secrets — not in this repo |
 | `$HERMES_HOME` → `.hermes/home/` | Runtime (sessions/logs gitignored) |
-| `.hermes/skills/` | Scaffold golden skills on `skills.external_dirs` (R-SK.9) |
+| `.hermes/skills/` | Scaffold golden **guidance** skills on `skills.external_dirs` (R-SK.9) |
+| `.hermes/enforcement/` | Harness enforcement packages (path-invoke; not progressive-disclosure attach) |
 | Hermes config | **Not yours to change.** Factory-owned / write-fenced (AD-013). Raise typed `needs_input` — never edit Managed Scope |
-| `.hermes/skills/harness/harness-validate/` | Land-time lint (R-SK.*); naming law in `references/skill-naming-convention.md` |
+| `.hermes/enforcement/validate-contracts/` | Land-time lint (R-SK.*); naming law in `references/skill-naming-convention.md` |
 | `~/.hermes/skills/` | Also on `external_dirs` (spec-kit `Path.home()` install) |
 | `.hermes/provision/` | Provision assets (e.g. Spec Kit Non-Goals override) |
 
@@ -110,7 +113,7 @@ run-report line must carry the **same task id**.
 
 Brief identity carries unchanged; graph order build → security → schema →
 API → test infra → feature → surfaces; IMPLEMENT workers must not re-plan.
-Authoritative: `migration/contracts/sdd-ordering.md` (skill `sdd-readiness`).
+Authoritative: `migration/contracts/sdd-ordering.md` (skill `check-spec-readiness`).
 
 ### Standing conventions home
 
@@ -123,17 +126,18 @@ Managed Scope / factory writers — do not recreate a second home.
 One line each: what it governs → which skill → authoritative contract/schema.
 When a skill is loaded, prefer `"${HERMES_SKILL_DIR}/scripts/…"`.
 
-| Governs | Skill | Authoritative |
-|---------|-------|---------------|
-| Task-type preload, one-task-one-type, ack artifacts | `enforce-authority-boundary` | `migration/contracts/task-authority.md` |
-| Citation / no-invention write fence | `grounded-generation` | `migration/contracts/grounded-generation.md` |
-| Phase matrix, verdict legality, M4/M5 routing | `validation-release-gates` | `migration/contracts/validation-release-gates.md` |
-| G-1..G-4 measurement oracles | `domain-gates` | skill `SKILL.md` + gate scripts |
-| Specimen-free harness self-lint | `harness-validate` | skill `SKILL.md` → `scripts/validate.sh` |
-| M-phase mint/dispatch (Hermes-native) | `phase-dispatch` | `.hermes/phase-dispatch.yaml` |
-| Spec/story-body legality + kanban body shape | `sdd-readiness` | `migration/contracts/*` + `migration/schemas/kanban-body.md` |
-| Spec Kit provision (postStart only) | `specify-workspace-init` | skill `SKILL.md` |
+| Governs | Skill / package | Authoritative |
+|---------|-----------------|---------------|
+| Task-type preload, one-task-one-type, ack artifacts | `enforce-authority-boundary` *(enforcement)* | `migration/contracts/task-authority.md` |
+| Citation / no-invention write fence | `ground-in-harvest` *(enforcement)* | `migration/contracts/grounded-generation.md` |
+| Phase matrix, verdict legality, M4/M5 routing | `check-release-readiness` | `migration/contracts/validation-release-gates.md` |
+| G-1..G-4 measurement oracles | `check-domain-parity` | skill `SKILL.md` + gate scripts |
+| Specimen-free harness self-lint | `validate-contracts` *(enforcement)* | `scripts/validate.sh` |
+| M-phase mint/dispatch (Hermes-native) | `dispatch-phase` *(enforcement)* | `.hermes/phase-dispatch.yaml` |
+| Spec/story-body legality + kanban body shape | `check-spec-readiness` | `migration/contracts/*` + `migration/schemas/kanban-body.md` |
+| Spec Kit provision (postStart only) | `init-spec-workspace` | skill `SKILL.md` |
 | Entry-point inventory | `inventory-entry-points` | skill `SKILL.md` |
-| Provenance / reconstruct | `auditability-repeatability` | `migration/contracts/auditability-repeatability.md` |
+| Provenance / reconstruct | `record-run-evidence` *(enforcement)* | `migration/contracts/auditability-repeatability.md` |
 | Spring→Quarkus pattern cards | `spring-to-quarkus-patterns` | skill `references/` |
-| Quarkus extension add/rm | `manage-quarkus-extensions` | `.hermes/skills/migration/manage-quarkus-extensions/` + `tooling-pins.md` |
+| Quarkus extension add/rm | `manage-quarkus-extensions` | skill + `tooling-pins.md` |
+| Destination Quarkus project create | `bootstrap-quarkus-project` | root `BOOTSTRAP.md` + `tooling-pins.md` |

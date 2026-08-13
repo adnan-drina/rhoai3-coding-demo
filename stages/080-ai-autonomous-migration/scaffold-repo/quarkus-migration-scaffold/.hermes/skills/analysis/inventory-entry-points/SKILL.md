@@ -20,14 +20,14 @@ metadata:
 - M1 ANALYZE, **before** the M1→M2 handoff: `emit-findings-handoff.py` refuses
   (exit 2, AR-4.1) unless `migration/entry-point-inventory.json` already exists.
 - Before M2 plan / Kanban populate: the inventory is a declared phase input
-  (`phase-dispatch/scripts/check-phase-input-manifest.py`) and an accept-scope
-  path (`validation-release-gates/scripts/check-accept-scope.py`).
+  (`dispatch-phase/scripts/check-phase-input-manifest.py`) and an accept-scope
+  path (`check-release-readiness/scripts/check-accept-scope.py`).
 - Before writing `migration/story-endpoint-partition.json`: the partition's
   endpoint union must equal this inventory exactly (conservation gate in
   `check-findings-handoff.py`).
 - After slices land, or after any re-derivation of the referent — re-scan to
   detect entry-point drift, then re-emit the handoff (the digest changes).
-- Not a substitute for `mta-analysis`: this is a regex scan of `*.java` that
+- Not a substitute for `scan-with-mta`: this is a regex scan of `*.java` that
   answers "what can call into this app", not a rules engine. Rule violations
   come from the analyzer, never from here.
 
@@ -69,4 +69,4 @@ skipped relative to the scan root only, so a referent living under
 - Digest coupling: `check-findings-handoff.py` re-hashes this file and compares
   it to `handoff.inventory.sha256` plus `endpoint_count`. Re-running the scanner
   after `migration/findings-handoff.json` was emitted invalidates the handoff —
-  re-emit it (skill `mta-analysis`).
+  re-emit it (skill `scan-with-mta`).

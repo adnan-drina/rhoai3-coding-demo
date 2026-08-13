@@ -2,7 +2,7 @@
 
 Specimen-free ACCEPT / REFUSE / INCONCLUSIVE pairs for G-1..G-4.
 
-**Not admission yet.** `harness-validate` and `run-admission.sh` exercise
+**Not admission yet.** `validate-contracts` and `run-admission.sh` exercise
 **parser + fixture** paths only. They do **not** prove toolchain-faithful
 admission (W2 §10 condition 2 / Criterion 10) — that requires live sensors on a
 specimen (e.g. `count-pit-dry-run.sh` for G-1 volume; running apps for G-4).

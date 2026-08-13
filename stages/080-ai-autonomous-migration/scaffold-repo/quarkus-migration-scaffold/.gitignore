@@ -1,5 +1,5 @@
 # Spec Kit workspace tree (AD-S) — created at provision by skill
-# specify-workspace-init; never commit into the golden scaffold.
+# init-spec-workspace; never commit into the golden scaffold.
 .specify/
 
 # Admission fixture run output (UPLIFT-7 — never tip-commit)

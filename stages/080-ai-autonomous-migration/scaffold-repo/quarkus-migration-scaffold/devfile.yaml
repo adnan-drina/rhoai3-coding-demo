@@ -199,10 +199,10 @@ commands:
         fi
         # AD-S / provision-owns-tools (Architect E-20260811T121308Z): Spec Kit
         # init is workspace setup — fail-closed; agents verify-or-BLOCK only.
-        SPECIFY_INIT="${PROJECT_DIR}/.hermes/skills/sdd/specify-workspace-init/scripts/init-workspace.sh"
+        SPECIFY_INIT="${PROJECT_DIR}/.hermes/skills/sdd/init-spec-workspace/scripts/init-workspace.sh"
         if [ -f "${SPECIFY_INIT}" ]; then
           bash "${SPECIFY_INIT}" "${PROJECT_DIR}" \
-            || { echo "ERROR: specify-workspace-init failed (AD-S provision-owns-tools)"; exit 1; }
+            || { echo "ERROR: init-spec-workspace failed (AD-S provision-owns-tools)"; exit 1; }
         else
           echo "ERROR: missing ${SPECIFY_INIT} — cannot provision Spec Kit"
           exit 1

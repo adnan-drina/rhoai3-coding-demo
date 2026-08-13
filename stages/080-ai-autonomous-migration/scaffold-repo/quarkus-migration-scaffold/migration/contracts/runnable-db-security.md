@@ -18,7 +18,7 @@ Default profile MUST:
 5. Clean start → `/q/health` → seeded-entity read; second start idempotent
 
 ```bash
-python3 .hermes/skills/gates/validation-release-gates/scripts/check-runnable-db-config.py .
+python3 .hermes/skills/gates/check-release-readiness/scripts/check-runnable-db-config.py .
 ```
 
 ## AR-2.2 — Real security
@@ -29,5 +29,5 @@ python3 .hermes/skills/gates/validation-release-gates/scripts/check-runnable-db-
 3. `@RolesAllowed` uses **compile-time constant** role names (AR-3.1).
 
 ```bash
-python3 .hermes/skills/gates/validation-release-gates/scripts/check-empty-security.py .
+python3 .hermes/skills/gates/check-release-readiness/scripts/check-empty-security.py .
 ```

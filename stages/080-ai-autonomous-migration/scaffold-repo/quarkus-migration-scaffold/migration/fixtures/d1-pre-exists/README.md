@@ -5,7 +5,7 @@ destination path is missing (`test -f` / `Path.is_file()`).
 
 ```bash
 mkdir -p /tmp/d1-empty-dest
-python3 .hermes/skills/sdd/sdd-readiness/scripts/assert-dependency-closure.py /tmp/d1-empty-dest \
+python3 .hermes/skills/sdd/check-spec-readiness/scripts/assert-dependency-closure.py /tmp/d1-empty-dest \
   --body migration/fixtures/d1-pre-exists/body-false-pre-exists.json
 # expect: FAIL DEPENDENCY_CLOSURE + pre-exists DEST_MISS (rc=1)
 ```

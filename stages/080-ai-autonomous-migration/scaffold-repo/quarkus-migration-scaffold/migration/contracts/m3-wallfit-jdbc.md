@@ -16,6 +16,6 @@
 ## Commands
 
 ```bash
-python3 .hermes/skills/sdd/sdd-readiness/scripts/check-operand-count.py . BODY.json --wall-fit
-python3 .hermes/skills/sdd/sdd-readiness/scripts/check-jdbc-deps-preflight.py .
+python3 .hermes/skills/sdd/check-spec-readiness/scripts/check-operand-count.py . BODY.json --wall-fit
+python3 .hermes/skills/sdd/check-spec-readiness/scripts/check-jdbc-deps-preflight.py .
 ```

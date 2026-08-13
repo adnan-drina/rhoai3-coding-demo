@@ -51,7 +51,7 @@ Copy the pattern; adapt package/paths to the specimen. Do **not** leave javadoc-
 - Claiming “Quarkus security” with only a mapping essay  
 
 Fixture: `migration/fixtures/runnable-db-security/bad-placeholder-security/`  
-Gate: `python3 .hermes/skills/gates/validation-release-gates/scripts/check-empty-security.py <tree>` → **rc≠0**
+Gate: `python3 .hermes/skills/gates/check-release-readiness/scripts/check-empty-security.py <tree>` → **rc≠0**
 
 ## Runtime proof (must land in dest tests)
 
@@ -73,7 +73,7 @@ Passwords one-way encoded; absent from responses/logs.
 ## Validate
 
 ```bash
-python3 .hermes/skills/gates/validation-release-gates/scripts/check-empty-security.py \
+python3 .hermes/skills/gates/check-release-readiness/scripts/check-empty-security.py \
   migration/fixtures/runnable-db-security/bad-placeholder-security   # expect FAIL
 # Golden IT (when module runnable / copied into product):
 # mvn -q -Dtest=SecurityAuthzIT test
