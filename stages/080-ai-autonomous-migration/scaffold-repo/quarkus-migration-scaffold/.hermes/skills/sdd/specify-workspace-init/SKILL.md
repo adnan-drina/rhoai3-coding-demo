@@ -72,10 +72,15 @@ After `/speckit-tasks` (optional `/speckit-analyze`) → `kanban_create()`.
   `.specify/AD-S-STOP-RULE.md`, and
   `.hermes/provision/spec-kit/EXTERNAL_DIRS.note`.
 - `.specify/.rhoai3-ads-provisioned` holds a UTC timestamp and is written
-  **last**; a second run prints `already provisioned (<ts>) — skip` and exits 0.
+  **last**; a second run prints `already provisioned (<ts>) — skip` on stderr
+  (plus one JSON object on stdout with `skipped:true`) and exits 0.
   **Silent-failure catch:** marker present but the Non-Goals override missing
   means a partial or hand-made init — delete the marker and re-run, because the
   marker alone suppresses all later provisioning.
+- Fresh provision: stderr ends with
+  `[specify-workspace-init] OK — AD-S provision complete (marker …)`; stdout is
+  one JSON object `{script,ok,skipped,root,marker,provisioned_at}` (UPLIFT-2).
+  Progress/`log` lines are stderr-only.
 - Relocated `HERMES_HOME`: `check-external-dirs.py` must print
   `OK: external_dirs lists project + home skills (<config>)`. `assert idle`
   means `HERMES_HOME` is unset or default — it is not evidence for a relocated

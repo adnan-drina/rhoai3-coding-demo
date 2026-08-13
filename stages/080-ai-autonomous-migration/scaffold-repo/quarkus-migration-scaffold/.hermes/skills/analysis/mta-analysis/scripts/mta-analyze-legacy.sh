@@ -18,6 +18,14 @@ JSON_OUT="${MTA_JSON_OUT:-${ROOT}/migration/mta-findings.json}"
 
 die() { echo "mta-analyze-legacy: $*" >&2; exit 1; }
 
+# UPLIFT-2: progress + human OK on stderr; one JSON object on stdout.
+emit_ok() {
+  local human="$1"
+  shift
+  python3 -c 'import json,sys; print(json.dumps(json.loads(sys.argv[1]),separators=(",",":")))' "$1"
+  printf '%s\n' "${human}" >&2
+}
+
 ensure_cli() {
   # Prefer absolute kantra path; keep mta-cli as atomic symlink alias (F-M1.3).
   local kantra_bin="/projects/.tools/kantra/kantra"
@@ -46,7 +54,7 @@ ensure_cli() {
     return 0
   fi
   if [ -x "${HOME}/.local/bin/kantra-ensure" ]; then
-    echo "mta-analyze-legacy: running kantra-ensure (lazy ~690MB install)…"
+    echo "mta-analyze-legacy: running kantra-ensure (lazy ~690MB install)…" >&2
     "${HOME}/.local/bin/kantra-ensure"
     export PATH="/projects/.tools/kantra:${HOME}/.local/bin:${PATH}"
     _link_mta_alias || true
@@ -129,17 +137,17 @@ mkdir -p "${MTA_RUN_CWD}"
 ANALYZE_INPUT="${INPUT}"
 if ! ( touch "${INPUT}/.mta-write-probe" 2>/dev/null && rm -f "${INPUT}/.mta-write-probe" ); then
   ANALYZE_INPUT="${MTA_ANALYZE_INPUT:-/projects/.derived/legacy-at-3-mta-input}"
-  echo "mta-analyze-legacy: harvest_referent is not writable — cloning to ${ANALYZE_INPUT}"
+  echo "mta-analyze-legacy: harvest_referent is not writable — cloning to ${ANALYZE_INPUT}" >&2
   rm -rf "${ANALYZE_INPUT}"
   mkdir -p "${ANALYZE_INPUT}"
   tar -C "${INPUT}" -cf - . | tar -C "${ANALYZE_INPUT}" -xf -
   chmod -R u+w "${ANALYZE_INPUT}" 2>/dev/null || true
 fi
 
-echo "Analyzing INPUT=${ANALYZE_INPUT} (legacy@3.x referent; frozen source=${INPUT})"
-echo "MTA_RUN_CWD=${MTA_RUN_CWD} (Equinox -configuration ./ containment)"
-echo "Targets:${TARGET_LIST}"
-echo "NOTE: --source is intentionally omitted (AD-003 amendment A)."
+echo "Analyzing INPUT=${ANALYZE_INPUT} (legacy@3.x referent; frozen source=${INPUT})" >&2
+echo "MTA_RUN_CWD=${MTA_RUN_CWD} (Equinox -configuration ./ containment)" >&2
+echo "Targets:${TARGET_LIST}" >&2
+echo "NOTE: --source is intentionally omitted (AD-003 amendment A)." >&2
 
 # --json-output can fail after a successful analysis (kantra marshal of
 # dependencies.yaml: map[interface{}]interface{}). Treat tool exit as soft if
@@ -159,7 +167,7 @@ set -e
 
 if [[ ! -s "${JSON_OUT}" ]]; then
   if [[ -s "${OUT_DIR}/output.json" ]]; then
-    echo "mta-analyze-legacy: --json-output missing/empty (analyze_rc=${analyze_rc}); falling back to ${OUT_DIR}/output.json"
+    echo "mta-analyze-legacy: --json-output missing/empty (analyze_rc=${analyze_rc}); falling back to ${OUT_DIR}/output.json" >&2
     cp -f "${OUT_DIR}/output.json" "${JSON_OUT}"
   elif [[ -s "${OUT_DIR}/output.yaml" ]]; then
     die "analyze wrote output.yaml but not output.json — convert YAML offline (analyze_rc=${analyze_rc})"
@@ -187,4 +195,17 @@ python3 "$(cd "$(dirname "$0")" && pwd)/emit-findings-handoff.py" "${ROOT}" "${J
 python3 "$(cd "$(dirname "$0")" && pwd)/check-findings-handoff.py" "${ROOT}" \
   || die "findings-handoff gate failed after emit"
 
-echo "OK: findings → ${JSON_OUT}  handoff → ${ROOT}/migration/findings-handoff.json  report → ${OUT_DIR}"
+HANDOFF="${ROOT}/migration/findings-handoff.json"
+HUMAN="OK: findings → ${JSON_OUT}  handoff → ${HANDOFF}  report → ${OUT_DIR}"
+emit_ok "${HUMAN}" "$(python3 - "${JSON_OUT}" "${HANDOFF}" "${OUT_DIR}" "${ANALYZE_INPUT}" <<'PY'
+import json, sys
+print(json.dumps({
+    "script": "mta-analyze-legacy",
+    "ok": True,
+    "findings": sys.argv[1],
+    "handoff": sys.argv[2],
+    "report_dir": sys.argv[3],
+    "analyze_input": sys.argv[4],
+}))
+PY
+)"

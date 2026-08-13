@@ -37,8 +37,16 @@ fi
 MARKER="${ROOT}/.specify/.rhoai3-ads-provisioned"
 LOG_PREFIX="specify-workspace-init"
 
-log() { echo "[${LOG_PREFIX}] $*"; }
+log() { echo "[${LOG_PREFIX}] $*" >&2; }
 die() { echo "[${LOG_PREFIX}] ERROR: $*" >&2; exit 1; }
+
+# UPLIFT-2: progress + human lines on stderr; one JSON object on stdout.
+emit_ok() {
+  local human="$1"
+  shift
+  python3 -c 'import json,sys; print(json.dumps(json.loads(sys.argv[1]),separators=(",",":")))' "$1"
+  printf '%s\n' "${human}" >&2
+}
 
 [ -d "${ROOT}" ] || die "missing root ${ROOT}"
 [ -f "${ASSET_OVERRIDE}" ] || die "missing Non-Goals override asset at ${ASSET_OVERRIDE} (expected under ${ROOT}/.hermes/provision/spec-kit/overrides/)"
@@ -50,11 +58,14 @@ if [[ "${DRY_RUN}" == "1" ]]; then
   log "DRY-RUN: would run: specify init --here --integration hermes --force --ignore-agent-tools"
   log "DRY-RUN: would copy override → .specify/templates/overrides/spec-template.md"
   log "DRY-RUN: would write marker ${MARKER}"
+  emit_ok "[${LOG_PREFIX}] DRY-RUN complete" "$(python3 -c 'import json,sys; print(json.dumps({"script":"init-workspace","ok":True,"dry_run":True,"root":sys.argv[1]}))' "${ROOT}")"
   exit 0
 fi
 
 if [ -f "${MARKER}" ]; then
-  log "already provisioned ($(cat "${MARKER}")) — skip"
+  TS="$(cat "${MARKER}")"
+  HUMAN="[${LOG_PREFIX}] already provisioned (${TS}) — skip"
+  emit_ok "${HUMAN}" "$(python3 -c 'import json,sys; print(json.dumps({"script":"init-workspace","ok":True,"skipped":True,"root":sys.argv[1],"marker":sys.argv[2],"provisioned_at":sys.argv[3]}))' "${ROOT}" "${MARKER}" "${TS}")"
   exit 0
 fi
 
@@ -154,5 +165,7 @@ Hermes `kanban_create()` calls.
 EOF
 
 date -u +%Y-%m-%dT%H:%M:%SZ > "${MARKER}"
-log "OK — AD-S provision complete (marker ${MARKER})"
+TS="$(cat "${MARKER}")"
+HUMAN="[${LOG_PREFIX}] OK — AD-S provision complete (marker ${MARKER})"
+emit_ok "${HUMAN}" "$(python3 -c 'import json,sys; print(json.dumps({"script":"init-workspace","ok":True,"skipped":False,"root":sys.argv[1],"marker":sys.argv[2],"provisioned_at":sys.argv[3]}))' "${ROOT}" "${MARKER}" "${TS}")"
 log "Stop rule: /speckit-tasks → kanban_create(); NEVER /speckit-implement"

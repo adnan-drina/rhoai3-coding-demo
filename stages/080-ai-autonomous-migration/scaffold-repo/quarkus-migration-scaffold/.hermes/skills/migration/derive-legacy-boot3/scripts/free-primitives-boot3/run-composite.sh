@@ -6,6 +6,8 @@
 #   COMPOSITE_ROOT   tree to transform (default: cwd)
 #   APPLY_LOG_PATH   where to write free-primitives-apply-log.json
 #   SKIP_MTA_JAKARTA=1  force package-map fallback (skip mta-cli)
+#
+# UPLIFT-2: progress + human OK on stderr; one JSON object on stdout.
 set -euo pipefail
 
 # --dry-run as first arg or DRY_RUN=1: list rules that would run; no python.
@@ -19,8 +21,15 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 export COMPOSITE_ROOT="${COMPOSITE_ROOT:-$(pwd)}"
 export PYTHONPATH="${HERE}${PYTHONPATH:+:$PYTHONPATH}"
 
-echo "free-primitives-boot3: COMPOSITE_ROOT=${COMPOSITE_ROOT}"
-echo "free-primitives-boot3: APPLY_LOG_PATH=${APPLY_LOG_PATH:-<default under COMPOSITE_ROOT>}"
+emit_ok() {
+  local human="$1"
+  shift
+  python3 -c 'import json,sys; print(json.dumps(json.loads(sys.argv[1]),separators=(",",":")))' "$1"
+  printf '%s\n' "${human}" >&2
+}
+
+echo "free-primitives-boot3: COMPOSITE_ROOT=${COMPOSITE_ROOT}" >&2
+echo "free-primitives-boot3: APPLY_LOG_PATH=${APPLY_LOG_PATH:-<default under COMPOSITE_ROOT>}" >&2
 
 RULES=(
   "${HERE}/rules/r00_javax_to_jakarta.py"
@@ -35,10 +44,12 @@ RULES=(
 )
 
 if [[ "${DRY_RUN}" == "1" ]]; then
-  echo "DRY-RUN: free-primitives-boot3 would run ${#RULES[@]} rules:"
+  echo "DRY-RUN: free-primitives-boot3 would run ${#RULES[@]} rules:" >&2
   for script in "${RULES[@]}"; do
-    echo "DRY-RUN:   $(basename "$script")"
+    echo "DRY-RUN:   $(basename "$script")" >&2
   done
+  emit_ok "DRY-RUN: free-primitives-boot3 would run ${#RULES[@]} rules" \
+    "$(python3 -c 'import json,sys; print(json.dumps({"script":"run-composite","ok":True,"dry_run":True,"rule_count":int(sys.argv[1])}))' "${#RULES[@]}")"
   exit 0
 fi
 
@@ -50,7 +61,7 @@ fi
 
 run_rule() {
   local script="$1"
-  echo "=== $(basename "$script") ==="
+  echo "=== $(basename "$script") ===" >&2
   python3 "$script"
 }
 
@@ -59,4 +70,5 @@ for script in "${RULES[@]}"; do
   run_rule "${script}"
 done
 
-echo "free-primitives-boot3: OK"
+HUMAN="free-primitives-boot3: OK"
+emit_ok "${HUMAN}" "$(python3 -c 'import json,sys; print(json.dumps({"script":"run-composite","ok":True,"composite_root":sys.argv[1],"rule_count":int(sys.argv[2]),"apply_log":sys.argv[3]}))' "${COMPOSITE_ROOT}" "${#RULES[@]}" "${APPLY_LOG_PATH:-}")"

@@ -73,10 +73,15 @@ bash "${HERMES_SKILL_DIR}/scripts/check-manifest.sh"
 
 ## Verification
 
+- `derive-legacy-boot3.sh` exits 0 with human `OK: …` on stderr and one JSON
+  object on stdout (`script`,`ok`,`mode`,`harvest_referent`,… — UPLIFT-2).
+  Progress and DRY-RUN lines are on stderr only.
 - `check-manifest.sh` exits 0 printing `OK: legacy-at-3 mode=<identity|derived>
   harvest_referent=<path> jdk A→B boot X→Y`. It fails closed when any of the
   eight required fields is empty, the schema is not `legacy-at-3/v2`, or
   `harvest_referent` is not a directory.
+- `run-composite.sh` (free-primitives) emits `free-primitives-boot3: OK` on
+  stderr and `{script:run-composite,ok,composite_root,rule_count,…}` on stdout.
 - `mode=derived`: `/projects/.derived/legacy-at-3` exists, its `pom.xml`
   resolves to Boot ≥ 3, and the tree is write-protected (`chmod a-w`, dirs keep
   `+x`). A writable derived tree means the freeze never ran or something edited

@@ -140,8 +140,10 @@ Both are required environment facts, not optional tuning.
 
 ## Verification
 
-- Last stdout line is
+- Last stderr line is
   `OK: findings → … handoff → … report → …` and the script exits 0.
+  Stdout is one JSON object
+  `{script,ok,findings,handoff,report_dir,analyze_input}` (UPLIFT-2).
 - `migration/mta-findings.json`: `schema: rhoai3.mta-findings/v1-provisional`,
   `execution_evidence.analyzer_ran: true`, `execution_evidence.rule_set`
   matching `migration.yaml` `analysis.targets`, `execution_evidence.input_digest`

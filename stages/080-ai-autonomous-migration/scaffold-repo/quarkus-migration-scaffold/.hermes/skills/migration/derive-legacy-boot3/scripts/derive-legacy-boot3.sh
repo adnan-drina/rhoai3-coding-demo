@@ -34,13 +34,22 @@ APPLY_LOG_DEFAULT="${DERIVED_ROOT}/.rhoai3-free-primitives-apply-log.json"
 
 die() { echo "derive-legacy-boot3: $*" >&2; exit 1; }
 
+# UPLIFT-2: progress + human OK on stderr; one JSON object on stdout.
+emit_ok() {
+  local human="$1"
+  shift
+  python3 -c 'import json,sys; print(json.dumps(json.loads(sys.argv[1]),separators=(",",":")))' "$1"
+  printf '%s\n' "${human}" >&2
+}
+
 if [[ "${DRY_RUN}" == "1" ]]; then
-  echo "DRY-RUN: derive-legacy-boot3 plan"
-  echo "DRY-RUN: LEGACY_SRC=${LEGACY_SRC}"
-  echo "DRY-RUN: DERIVED_ROOT=${DERIVED_ROOT}"
-  echo "DRY-RUN: MANIFEST=${MANIFEST}"
-  echo "DRY-RUN: COMPOSITE_SCRIPT=${COMPOSITE_SCRIPT}"
-  echo "DRY-RUN: APPLY_LOG_DEFAULT=${APPLY_LOG_DEFAULT}"
+  echo "DRY-RUN: derive-legacy-boot3 plan" >&2
+  echo "DRY-RUN: LEGACY_SRC=${LEGACY_SRC}" >&2
+  echo "DRY-RUN: DERIVED_ROOT=${DERIVED_ROOT}" >&2
+  echo "DRY-RUN: MANIFEST=${MANIFEST}" >&2
+  echo "DRY-RUN: COMPOSITE_SCRIPT=${COMPOSITE_SCRIPT}" >&2
+  echo "DRY-RUN: APPLY_LOG_DEFAULT=${APPLY_LOG_DEFAULT}" >&2
+  emit_ok "DRY-RUN: derive-legacy-boot3 plan" "$(python3 -c 'import json; print(json.dumps({"script":"derive-legacy-boot3","ok":True,"dry_run":True}))')"
   exit 0
 fi
 
@@ -174,7 +183,7 @@ doc = {
 with open(path, "w", encoding="utf-8") as fh:
     json.dump(doc, fh, indent=2)
     fh.write("\n")
-print(f"Wrote manifest {path}")
+print(f"Wrote manifest {path}", file=__import__("sys").stderr)
 PY
 }
 
@@ -182,18 +191,19 @@ SRC_VER="$(detect_boot_version "${LEGACY_SRC}/pom.xml")"
 [ -n "${SRC_VER}" ] || die "could not detect spring-boot version in ${LEGACY_SRC}/pom.xml"
 SRC_JDK="$(detect_jdk_version "${LEGACY_SRC}")"
 [ -n "${SRC_JDK}" ] || die "could not detect JDK/language level in ${LEGACY_SRC}/pom.xml (java.version / compiler.* / mvn evaluate)"
-echo "legacy@2.x mount: ${LEGACY_SRC} (spring-boot ${SRC_VER}, jdk ${SRC_JDK})"
+echo "legacy@2.x mount: ${LEGACY_SRC} (spring-boot ${SRC_VER}, jdk ${SRC_JDK})" >&2
 
 if version_ge_3 "${SRC_VER}"; then
-  echo "mode=identity — already Boot 3.x; derivation is the RO mount"
+  echo "mode=identity — already Boot 3.x; derivation is the RO mount" >&2
+  SHA_ID="$(tree_sha256 "${LEGACY_SRC}")"
   write_manifest "identity" "${SRC_VER}" "${SRC_VER}" "${SRC_JDK}" "${SRC_JDK}" \
-    "$(tree_sha256 "${LEGACY_SRC}")" "${LEGACY_SRC}"
-  echo "OK: harvest_referent=${LEGACY_SRC}"
+    "${SHA_ID}" "${LEGACY_SRC}"
+  HUMAN="OK: harvest_referent=${LEGACY_SRC}"
+  emit_ok "${HUMAN}" "$(python3 -c 'import json,sys; print(json.dumps({"script":"derive-legacy-boot3","ok":True,"mode":"identity","harvest_referent":sys.argv[1],"sha256":sys.argv[2],"spring_boot":sys.argv[3],"jdk":sys.argv[4]}))' "${LEGACY_SRC}" "${SHA_ID}" "${SRC_VER}" "${SRC_JDK}")"
   exit 0
 fi
 
-echo "mode=derived — producing frozen legacy@3.x under ${DERIVED_ROOT}"
-
+echo "mode=derived — producing frozen legacy@3.x under ${DERIVED_ROOT}" >&2
 mkdir -p "$(dirname "${DERIVED_ROOT}")"
 
 # Rebuild cleanly when re-running (frozen trees cannot be updated in place).
@@ -211,7 +221,7 @@ if command -v rsync >/dev/null 2>&1; then
     --exclude 'target/' \
     "${LEGACY_SRC}/" "${DERIVED_ROOT}/"
 else
-  echo "rsync unavailable — copying via tar (exclude .git/ and target/)"
+  echo "rsync unavailable — copying via tar (exclude .git/ and target/)" >&2
   (
     cd "${LEGACY_SRC}"
     tar -cf - \
@@ -225,7 +235,7 @@ fi
 
 run_upgrade() {
   if [ -n "${DERIVE_UPGRADE_CMD:-}" ]; then
-    echo "Running DERIVE_UPGRADE_CMD in ${DERIVED_ROOT}"
+    echo "Running DERIVE_UPGRADE_CMD in ${DERIVED_ROOT}" >&2
     ( cd "${DERIVED_ROOT}" && bash -c "${DERIVE_UPGRADE_CMD}" )
     return
   fi
@@ -233,7 +243,7 @@ run_upgrade() {
   # UpgradeSpringBoot_3_0 remains never-automatic (E-20260807T184100Z).
   [ -x "${COMPOSITE_SCRIPT}" ] || [ -f "${COMPOSITE_SCRIPT}" ] \
     || die "missing free-primitives composite at ${COMPOSITE_SCRIPT}"
-  echo "Running free-primitives-boot3 composite in ${DERIVED_ROOT}"
+  echo "Running free-primitives-boot3 composite in ${DERIVED_ROOT}" >&2
   (
     cd "${DERIVED_ROOT}"
     APPLY_LOG_PATH="${APPLY_LOG_DEFAULT}" COMPOSITE_ROOT="${DERIVED_ROOT}" \
@@ -254,6 +264,7 @@ SHA="$(tree_sha256 "${DERIVED_ROOT}")"
 freeze_tree "${DERIVED_ROOT}"
 write_manifest "derived" "${SRC_VER}" "${DER_VER}" "${SRC_JDK}" "${DER_JDK}" \
   "${SHA}" "${DERIVED_ROOT}"
-echo "OK: frozen legacy@3.x at ${DERIVED_ROOT} sha256=${SHA}"
-echo "    harvest_referent=${DERIVED_ROOT} (do not compare harvest to ${LEGACY_SRC})"
-echo "    versions: jdk ${SRC_JDK}→${DER_JDK}; spring-boot ${SRC_VER}→${DER_VER}"
+HUMAN="OK: frozen legacy@3.x at ${DERIVED_ROOT} sha256=${SHA}"
+emit_ok "${HUMAN}" "$(python3 -c 'import json,sys; print(json.dumps({"script":"derive-legacy-boot3","ok":True,"mode":"derived","harvest_referent":sys.argv[1],"sha256":sys.argv[2],"jdk_source":sys.argv[3],"jdk_derived":sys.argv[4],"boot_source":sys.argv[5],"boot_derived":sys.argv[6]}))' "${DERIVED_ROOT}" "${SHA}" "${SRC_JDK}" "${DER_JDK}" "${SRC_VER}" "${DER_VER}")"
+echo "    harvest_referent=${DERIVED_ROOT} (do not compare harvest to ${LEGACY_SRC})" >&2
+echo "    versions: jdk ${SRC_JDK}→${DER_JDK}; spring-boot ${SRC_VER}→${DER_VER}" >&2
