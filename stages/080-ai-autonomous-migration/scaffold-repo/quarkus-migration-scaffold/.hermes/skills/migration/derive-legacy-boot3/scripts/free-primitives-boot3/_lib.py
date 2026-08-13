@@ -16,12 +16,18 @@ def repo_root() -> Path:
 
 
 def apply_log_path() -> Path:
-    p = os.environ.get("APPLY_LOG_PATH", "")
+    p = os.environ.get("APPLY_LOG_PATH", "").strip()
     if p:
-        return Path(p)
-    # Prefer under COMPOSITE_ROOT (derived tree), never the golden
-    # evidence/derived/ path (UPLIFT-7 / e3925b3b regression class).
-    return repo_root() / ".rhoai3-free-primitives-apply-log.json"
+        return Path(p).expanduser().resolve()
+    root = repo_root()
+    # Fail-closed (Deputy E-20260813T183635Z): never default-write into the
+    # golden scaffold tip. Detect tip via BOOTSTRAP.md + governance/.
+    if (root / "BOOTSTRAP.md").is_file() and (root / "governance").is_dir():
+        import tempfile
+
+        return Path(tempfile.gettempdir()) / "rhoai3-free-primitives-apply-log.json"
+    # Derived / composite trees: keep beside COMPOSITE_ROOT (outside golden).
+    return root / ".rhoai3-free-primitives-apply-log.json"
 
 
 def iter_files(root: Path, suffixes: Iterable[str]) -> list[Path]:

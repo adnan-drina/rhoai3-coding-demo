@@ -5,6 +5,8 @@
 # Env:
 #   COMPOSITE_ROOT   tree to transform (default: cwd)
 #   APPLY_LOG_PATH   where to write free-primitives-apply-log.json
+#                    (default: TMPDIR when COMPOSITE_ROOT looks like golden tip;
+#                     else COMPOSITE_ROOT/.rhoai3-free-primitives-apply-log.json)
 #   SKIP_MTA_JAKARTA=1  force package-map fallback (skip mta-cli)
 #
 # UPLIFT-2: progress + human OK on stderr; one JSON object on stdout.
@@ -21,6 +23,13 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 export COMPOSITE_ROOT="${COMPOSITE_ROOT:-$(pwd)}"
 export PYTHONPATH="${HERE}${PYTHONPATH:+:$PYTHONPATH}"
 
+# Fail-closed default when unset and cwd/COMPOSITE_ROOT is the golden tip.
+if [[ -z "${APPLY_LOG_PATH:-}" ]]; then
+  if [[ -f "${COMPOSITE_ROOT}/BOOTSTRAP.md" && -d "${COMPOSITE_ROOT}/governance" ]]; then
+    export APPLY_LOG_PATH="${TMPDIR:-/tmp}/rhoai3-free-primitives-apply-log.json"
+  fi
+fi
+
 emit_ok() {
   local human="$1"
   shift
@@ -29,7 +38,7 @@ emit_ok() {
 }
 
 echo "free-primitives-boot3: COMPOSITE_ROOT=${COMPOSITE_ROOT}" >&2
-echo "free-primitives-boot3: APPLY_LOG_PATH=${APPLY_LOG_PATH:-<default under COMPOSITE_ROOT>}" >&2
+echo "free-primitives-boot3: APPLY_LOG_PATH=${APPLY_LOG_PATH:-<default beside COMPOSITE_ROOT>}" >&2
 
 RULES=(
   "${HERE}/rules/r00_javax_to_jakarta.py"
