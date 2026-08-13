@@ -3,7 +3,7 @@
 # Domain-gates skill mechanism — AD-H §7 deterministic gates.
 set -euo pipefail
 SKILL_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-# check-domain-parity → skills → .hermes → repo root (migration/fixtures live here)
+# check-domain-parity → skills → .hermes → repo root (governance/fixtures live here)
 ROOT="$(cd "${1:-${SKILL_DIR}/../../..}" && pwd)"
 SCRIPTS="${SKILL_DIR}/scripts"
 cd "${ROOT}"

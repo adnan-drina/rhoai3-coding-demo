@@ -1,0 +1,26 @@
+{
+  "schema": "rhoai3.exit-eval/v1",
+  "task_id": "t_fixture_wall",
+  "body_path": "evidence/bodies/m3-s-010.json",
+  "body_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "trigger": "timed_out",
+  "evaluated_at": "2026-08-10T11:00:00Z",
+  "results": [
+    {
+      "check": "test_compile",
+      "kind": "cmd",
+      "rc": 1,
+      "ok": false,
+      "cmd": "mvn -q test-compile"
+    },
+    {
+      "check": "scope",
+      "kind": "assert",
+      "ok": null,
+      "status": "unevaluated_assert"
+    }
+  ],
+  "cmd_failed": ["test_compile"],
+  "overall_ok": false,
+  "wallish": true
+}

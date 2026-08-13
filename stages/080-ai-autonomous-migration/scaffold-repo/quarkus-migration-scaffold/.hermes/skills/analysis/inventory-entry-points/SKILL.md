@@ -18,7 +18,7 @@ metadata:
 ## When to Use
 
 - M1 ANALYZE, **before** the M1→M2 handoff: `emit-findings-handoff.py` refuses
-  (exit 2, AR-4.1) unless `migration/entry-point-inventory.json` already exists.
+  (exit 2, AR-4.1) unless `evidence/entry-point-inventory.json` already exists.
 - Before M2 plan / Kanban populate: the inventory is a declared phase input
   (`dispatch-phase/scripts/check-phase-input-manifest.py`) and an accept-scope
   path (`check-release-readiness/scripts/check-accept-scope.py`).
@@ -34,15 +34,15 @@ metadata:
 ## Procedure
 
 1. Resolve the referent — `harvest_referent` in
-   `migration/derived/legacy-at-3.json` (legacy@3.x, typically
+   `evidence/derived/legacy-at-3.json` (legacy@3.x, typically
    `/projects/.derived/legacy-at-3`). Never scan the read-only 2.x mount.
 2. Scan it. Positional arg is the scan root; `-o` defaults to
-   `migration/entry-point-inventory.json` (relative to cwd).
+   `evidence/entry-point-inventory.json` (relative to cwd).
 
 ```bash
 python3 "${HERMES_SKILL_DIR}/scripts/inventory-entry-points.py" \
   /projects/.derived/legacy-at-3 \
-  -o migration/entry-point-inventory.json
+  -o evidence/entry-point-inventory.json
 ```
 
 3. Read the printed counts and confirm the run was not vacuous (below).
@@ -57,7 +57,7 @@ skipped relative to the scan root only, so a referent living under
 
 ## Verification
 
-- `migration/entry-point-inventory.json` exists with
+- `evidence/entry-point-inventory.json` exists with
   `schema: rhoai3.entry-point-inventory/v1` and a fresh `scanned_at`.
 - `execution_evidence.ran == true` and `execution_evidence.vacuous == false`.
   `vacuous: "zero_java_files"` means the root was wrong or empty — the result
@@ -68,5 +68,5 @@ skipped relative to the scan root only, so a referent living under
   exits 0. Exit 2 = scan root is not a directory (nothing was written).
 - Digest coupling: `check-findings-handoff.py` re-hashes this file and compares
   it to `handoff.inventory.sha256` plus `endpoint_count`. Re-running the scanner
-  after `migration/findings-handoff.json` was emitted invalidates the handoff —
+  after `evidence/findings-handoff.json` was emitted invalidates the handoff —
   re-emit it (skill `scan-with-mta`).

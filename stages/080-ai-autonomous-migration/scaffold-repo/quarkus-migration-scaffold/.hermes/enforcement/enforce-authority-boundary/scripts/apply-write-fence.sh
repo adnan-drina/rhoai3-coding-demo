@@ -33,8 +33,8 @@ done
 ROOT="$(cd "${ROOT}" && pwd)"
 
 DENY_DIRS=(
-  "migration/acks"
-  "migration/verdicts"
+  "evidence/acks"
+  "evidence/verdicts"
   ".hermes/skills"
 )
 # Note: do NOT chmod .hermes/home/kanban.db — Hermes kanban tools must write it.
@@ -47,7 +47,7 @@ DENY_FILES=(
 # Validator may write verdicts; keep other deny paths locked.
 if [[ "${ROLE}" == "validator" ]]; then
   DENY_DIRS=(
-    "migration/acks"
+    "evidence/acks"
     ".hermes/skills"
   )
 fi

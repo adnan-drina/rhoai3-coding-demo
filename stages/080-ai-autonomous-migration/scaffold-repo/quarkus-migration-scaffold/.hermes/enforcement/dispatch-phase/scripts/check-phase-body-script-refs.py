@@ -131,7 +131,7 @@ def resolve_ok(root: Path, phase: str, skills: list[str], ref: str) -> bool:
             return False
         return skill_script_exists(root, sk, name)
 
-    if ref.startswith(".hermes/skills/") or ref.startswith("migration/"):
+    if ref.startswith(".hermes/skills/") or ref.startswith(("migration/", "governance/", "evidence/")):
         return (root / ref).is_file()
     if ref.startswith(".hermes/home/scripts/"):
         return (root / ref).is_file()

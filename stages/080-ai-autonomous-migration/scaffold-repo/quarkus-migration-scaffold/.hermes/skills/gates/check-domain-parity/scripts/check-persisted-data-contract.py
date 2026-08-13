@@ -42,7 +42,7 @@ def main() -> int:
     )
     args = ap.parse_args()
     root = Path(args.root).resolve()
-    claim_path = root / "migration" / "persisted-data" / "claim.json"
+    claim_path = root / "evidence" / "persisted-data" / "claim.json"
     if not claim_path.is_file():
         print("OK: no persisted-data claim — §11.1 dedicated checks idle")
         return 0
@@ -51,7 +51,7 @@ def main() -> int:
         print("OK: persisted-data claim without pre_existing_db — idle")
         return 0
 
-    checks_dir = root / "migration" / "persisted-data" / "checks"
+    checks_dir = root / "evidence" / "persisted-data" / "checks"
     needed = {"schema_compat", "quarkus_db_copy_read_all"}
     found: set[str] = set()
     if checks_dir.is_dir():

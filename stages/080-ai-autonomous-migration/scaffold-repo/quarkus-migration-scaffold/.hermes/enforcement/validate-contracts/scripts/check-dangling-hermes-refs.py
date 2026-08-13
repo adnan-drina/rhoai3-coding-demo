@@ -18,18 +18,24 @@ import sys
 from pathlib import Path
 
 # Path-like citations under .hermes/ or governance/ (post-split ready).
+# Lookbehind includes '-' so record-run-evidence/... is not parsed as evidence/...
 PATH_RX = re.compile(
-    r"(?<![A-Za-z0-9_./$])"
-    r"((?:\.hermes|governance)/[A-Za-z0-9_./${}-]+\."
+    r"(?<![A-Za-z0-9_./$-])"
+    r"((?:\.hermes|governance|evidence)/[A-Za-z0-9_./${}-]+\."
     r"(?:py|sh|md|yaml|yml|json|txt))"
 )
 
-SKIP_PARTS = frozenset({"__pycache__", ".git", "migration/derived"})
+SKIP_PARTS = frozenset({"__pycache__", ".git", "evidence/derived"})
 SCAN_SUFFIXES = {".md", ".py", ".sh", ".yaml", ".yml", ".txt"}
 
 # Legitimate absences: run-state, seat provision, or template noise.
 ALLOW_EXACT = frozenset(
     {
+        # Runtime analysis outputs (seat-generated)
+        "evidence/entry-point-inventory.json",
+        "evidence/findings-handoff.json",
+        "evidence/mta-findings.json",
+        "governance/contracts/g1-kill-ratio-pin.json",
         # Seat / Managed Scope provision (not golden-committed)
         ".hermes/home/SOUL.md",
         ".hermes/home/config.yaml",
@@ -41,13 +47,23 @@ ALLOW_EXACT = frozenset(
     }
 )
 ALLOW_PREFIXES = (
-    "migration/runs/",
-    "migration/receipts/",
-    "migration/derived/",
-    "migration/acks/",
-    "migration/verdicts/",
-    "migration/bodies/",
-    "migration/briefs/",
+    "evidence/runs/",
+    "evidence/receipts/",
+    "evidence/derived/",
+    "evidence/acks/",
+    "evidence/verdicts/",
+    "evidence/bodies/",
+    "evidence/briefs/",
+    "evidence/mta-analyze-out/",
+    "evidence/slices/",
+    "evidence/preflight/",
+    "evidence/fixtures/admission/out/",
+    "evidence/examples/",
+    "evidence/recovery/",
+    "evidence/authority/",
+    "evidence/tasks/",
+    "evidence/kanban/",
+    "evidence/provenance/",
     ".specify/",
 )
 
@@ -84,7 +100,7 @@ def main() -> int:
             continue
         if any(part in SKIP_PARTS or part == "derived" for part in p.parts):
             continue
-        if "migration/derived" in rel_p:
+        if "evidence/derived" in rel_p:
             continue
         try:
             text = p.read_text(encoding="utf-8", errors="replace")

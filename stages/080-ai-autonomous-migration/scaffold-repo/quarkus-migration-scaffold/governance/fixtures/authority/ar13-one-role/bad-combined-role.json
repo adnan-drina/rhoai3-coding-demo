@@ -1,0 +1,6 @@
+{
+  "role": "planner+implementer",
+  "writes": ["evidence/briefs/x.md"],
+  "files_in_scope": [],
+  "note": "AR-1.3 fixture — combined role must REFUSE"
+}

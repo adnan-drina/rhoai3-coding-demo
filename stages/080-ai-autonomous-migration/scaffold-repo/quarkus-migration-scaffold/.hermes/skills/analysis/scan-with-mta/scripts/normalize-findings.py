@@ -3,7 +3,7 @@
 
 If the file already has our schema, validate-only path is a no-op rewrite.
 Raw Konveyor JSON is typically { violations: { ruleID: {…}}} or a list —
-we normalize to the envelope in migration/schemas/mta-findings.md.
+we normalize to the envelope in governance/schemas/mta-findings.md.
 """
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from pathlib import Path
 
 
 def main() -> int:
-    path = Path(sys.argv[1] if len(sys.argv) > 1 else "migration/mta-findings.json")
+    path = Path(sys.argv[1] if len(sys.argv) > 1 else "evidence/mta-findings.json")
     meta_cli = sys.argv[2] if len(sys.argv) > 2 else "unknown"
     rule_set = sys.argv[3].split(",") if len(sys.argv) > 3 and sys.argv[3] else []
     input_digest = sys.argv[4] if len(sys.argv) > 4 else ""

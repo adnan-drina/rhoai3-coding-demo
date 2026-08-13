@@ -35,7 +35,7 @@ def kanban_db(root: Path) -> Path:
 
 
 def run_dir(root: Path, task_id: str) -> Path:
-    return root / "migration" / "runs" / task_id
+    return root / "evidence" / "runs" / task_id
 
 
 def has_waiver(root: Path, task_id: str) -> bool:

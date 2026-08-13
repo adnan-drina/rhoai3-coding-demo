@@ -11,10 +11,10 @@ set -euo pipefail
 
 # Skill layout: .hermes/skills/analysis/scan-with-mta/scripts/ → project root is ../../../..
 ROOT="$(cd "$(dirname "$0")/../../../.." && pwd)"
-MANIFEST="${ROOT}/migration/derived/legacy-at-3.json"
+MANIFEST="${ROOT}/evidence/derived/legacy-at-3.json"
 MIGRATION_YAML="${ROOT}/migration.yaml"
 OUT_DIR="${MTA_OUT_DIR:-${ROOT}/migration/mta-analyze-out}"
-JSON_OUT="${MTA_JSON_OUT:-${ROOT}/migration/mta-findings.json}"
+JSON_OUT="${MTA_JSON_OUT:-${ROOT}/evidence/mta-findings.json}"
 
 die() { echo "mta-analyze-legacy: $*" >&2; exit 1; }
 
@@ -186,16 +186,16 @@ PY
 python3 "$(cd "$(dirname "$0")" && pwd)/normalize-findings.py" \
   "${JSON_OUT}" "${CLI}" "$(echo "${TARGET_LIST}" | xargs | tr ' ' ',')" "legacy-at-3:${INPUT_DIGEST}"
 python3 "$(cd "$(dirname "$0")" && pwd)/validate-findings-schema.py" "${JSON_OUT}" \
-  || die "findings failed provisional schema validation (migration/schemas/mta-findings.md; skill scan-with-mta)"
+  || die "findings failed provisional schema validation (governance/schemas/mta-findings.md; skill scan-with-mta)"
 
 # M1→M2 seam: bounded handoff index (no codeSnip). Evidence store stays at JSON_OUT.
 python3 "$(cd "$(dirname "$0")" && pwd)/emit-findings-handoff.py" "${ROOT}" "${JSON_OUT}" \
-  "${ROOT}/migration/findings-handoff.json" \
-  || die "emit findings-handoff failed (migration/schemas/findings-handoff.md)"
+  "${ROOT}/evidence/findings-handoff.json" \
+  || die "emit findings-handoff failed (governance/schemas/findings-handoff.md)"
 python3 "$(cd "$(dirname "$0")" && pwd)/check-findings-handoff.py" "${ROOT}" \
   || die "findings-handoff gate failed after emit"
 
-HANDOFF="${ROOT}/migration/findings-handoff.json"
+HANDOFF="${ROOT}/evidence/findings-handoff.json"
 HUMAN="OK: findings → ${JSON_OUT}  handoff → ${HANDOFF}  report → ${OUT_DIR}"
 emit_ok "${HUMAN}" "$(python3 - "${JSON_OUT}" "${HANDOFF}" "${OUT_DIR}" "${ANALYZE_INPUT}" <<'PY'
 import json, sys

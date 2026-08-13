@@ -4,7 +4,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../../../../.." && pwd)"
-PINS="${ROOT}/migration/contracts/tooling-pins.md"
+PINS="${ROOT}/governance/contracts/tooling-pins.md"
 MODE="${BOOTSTRAP_MODE:-auto}"
 ARTIFACT_ID="${BOOTSTRAP_ARTIFACT_ID:-quarkus-migration-app}"
 GROUP_ID="${BOOTSTRAP_GROUP_ID:-com.demo}"

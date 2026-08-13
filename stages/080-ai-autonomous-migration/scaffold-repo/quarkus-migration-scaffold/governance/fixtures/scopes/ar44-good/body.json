@@ -1,0 +1,22 @@
+{
+  "task_id": "t_ar44_good",
+  "role": "implementer",
+  "phase": "M3",
+  "refs": [
+    {"key": "brief_identity_ack", "path": "evidence/acks/brief-identity.json", "sha256": "pending"},
+    {"key": "legacy_locus", "path": "evidence/acks/legacy.json", "sha256": "0000000000000000000000000000000000000000000000000000000000000000"}
+  ],
+  "identity": {
+    "story_id": "S-AR44G",
+    "transform_class": "REWRITE",
+    "g2_applicability": "not_applicable",
+    "semantic_families": ["create_fk", "http_semantics"]
+  },
+  "files_writable": ["src/main/java/com/demo/rest/OwnerRestController.java"],
+  "files_readable": ["/projects/.derived/legacy-at-3/src/main/java/org/springframework/samples/petclinic/rest/OwnerRestController.java"],
+  "exit_criteria": [
+    {"check": "skills", "assert": "consult each preload or skills_unused; silence invalid (AD-002E)"},
+    {"check": "create_fk", "assert": "Owner POST 201 editable-fields; reject client id; nested FK parents"},
+    {"check": "http_semantics", "assert": "validation→400 missing→404 unexpected→opaque 500"}
+  ]
+}

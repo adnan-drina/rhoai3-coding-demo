@@ -22,7 +22,7 @@ from pathlib import Path
 
 
 def derived_path(root: Path, parent: str) -> Path:
-    return root / "migration" / "derived" / f"created-cards-{parent}.json"
+    return root / "evidence" / "derived" / f"created-cards-{parent}.json"
 
 
 def load_derived(path: Path) -> list[str]:

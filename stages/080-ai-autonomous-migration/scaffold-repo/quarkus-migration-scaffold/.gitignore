@@ -3,20 +3,20 @@
 .specify/
 
 # Admission fixture run output (UPLIFT-7 — never tip-commit)
-migration/fixtures/admission/out/
+evidence/fixtures/admission/out/
 
-# Derive / dispatch run-state under migration/derived/ (UPLIFT-7).
+# Derive / dispatch run-state under evidence/derived/ (UPLIFT-7).
 # Intentional in-seat manifests (legacy-at-3.json) may exist; these globs
 # are regenerating exhaust that previously contaminated the golden tip.
-migration/derived/free-primitives-apply-log.json
-migration/derived/phase-*-task-id.txt
-migration/derived/review-adhere-observe-needed.yaml
-migration/derived/created-cards-*.json
+evidence/derived/free-primitives-apply-log.json
+evidence/derived/phase-*-task-id.txt
+evidence/derived/review-adhere-observe-needed.yaml
+evidence/derived/created-cards-*.json
 
 # Live analysis / inventory outputs (regenerated in workspace)
-migration/entry-point-inventory.json
-migration/mta-findings.json
-migration/mta-analyze-out/
+evidence/entry-point-inventory.json
+evidence/mta-findings.json
+evidence/mta-analyze-out/
 
 # Maven / Quarkus build output
 target/
@@ -48,8 +48,8 @@ org.eclipse.osgi/
 
 # Derived legacy@3.x trees must never be committed (workspace path is
 # /projects/.derived/; guard against accidental copies under modernized).
-migration/derived/tree/
-migration/derived/legacy-at-3/
+evidence/derived/tree/
+evidence/derived/legacy-at-3/
 
 # Hermes runtime under relocated HERMES_HOME (AD-H §1c). Agent-authored
 # skills under .hermes/home/skills/ stay versioned; sessions/logs/cron

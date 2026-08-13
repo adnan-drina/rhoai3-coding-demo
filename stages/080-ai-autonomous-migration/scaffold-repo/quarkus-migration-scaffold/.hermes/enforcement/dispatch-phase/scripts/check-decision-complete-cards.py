@@ -5,8 +5,8 @@ Card steps must state their own precondition + skip rule. Compound jump
 conditionals that embed cross-step assumptions (e.g. retired R-M2.6
 `spec.md` → jump to `/speckit-tasks`) are fail-closed.
 
-Contract: migration/contracts/m2b-resume-ladder.md
-(supersedes retired migration/contracts/m2-resume-from-artifacts.md).
+Contract: governance/contracts/m2b-resume-ladder.md
+(supersedes retired governance/contracts/m2-resume-from-artifacts.md).
 """
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ import re
 import sys
 from pathlib import Path
 
-CONTRACT = "migration/contracts/m2b-resume-ladder.md"
+CONTRACT = "governance/contracts/m2b-resume-ladder.md"
 
 
 def extract_bodies(dispatch_sh: Path) -> dict[str, str]:

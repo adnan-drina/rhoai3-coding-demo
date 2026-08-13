@@ -5,11 +5,11 @@ Fails when a comment feed contains impersonating override prose from
 `default` / worker authors (e.g. 'P1-B OVERRIDE (Lead)').
 
 Inputs (any present):
-  - migration/authority/comment-feed.jsonl  (role, text per line)
-  - migration/fixtures/authority/*.jsonl     (admission fixtures)
+  - evidence/authority/comment-feed.jsonl  (role, text per line)
+  - governance/fixtures/authority/*.jsonl     (admission fixtures)
   - --feed PATH
 
-Typed revisions live under migration/authority/typed-revisions/*.json and
+Typed revisions live under evidence/authority/typed-revisions/*.json and
 are the only comment-adjacent control-flow source (schema-validated separately).
 """
 from __future__ import annotations
@@ -61,13 +61,13 @@ def main() -> int:
 
     feeds: list[Path] = []
     for rel in (
-        "migration/authority/comment-feed.jsonl",
-        "migration/authority/comment-feed.json",
+        "evidence/authority/comment-feed.jsonl",
+        "evidence/authority/comment-feed.json",
     ):
         p = root / rel
         if p.is_file():
             feeds.append(p)
-    fix = root / "migration/fixtures/authority"
+    fix = root / "governance/fixtures/authority"
     if fix.is_dir():
         feeds.extend(sorted(fix.glob("*.jsonl")))
         feeds.extend(sorted(fix.glob("*.json")))

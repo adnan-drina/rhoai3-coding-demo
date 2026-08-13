@@ -5,7 +5,7 @@ Usage:
   compute-substrate-reopen.py <root> [--check verdict.json]
   compute-substrate-reopen.py <root> --implicated a,b --print
 
-Closure map: migration/slices/closure-map.json
+Closure map: evidence/slices/closure-map.json
 {
   "stories": {
     "S-1": {"closure": ["com.example.Entity", "src/Foo.java"]},
@@ -32,7 +32,7 @@ FULL_ACCEPT = {"ACCEPT", "FULL_ACCEPT", "FULL"}
 
 
 def load_closure_map(root: Path) -> dict | None:
-    path = root / "migration/slices/closure-map.json"
+    path = root / "evidence/slices/closure-map.json"
     if not path.is_file():
         return None
     return json.loads(path.read_text(encoding="utf-8"))
@@ -84,7 +84,7 @@ def main() -> int:
     cmap = load_closure_map(root)
     if cmap is None:
         print(
-            "INCONCLUSIVE: missing migration/slices/closure-map.json "
+            "INCONCLUSIVE: missing evidence/slices/closure-map.json "
             "(AD-H §18.0 ¶4 — do not invent a smaller set)",
             file=sys.stderr,
         )

@@ -11,6 +11,6 @@ instruction: >-
   (rest / di-config / persistence / testing / security-config).
   BANK-DEST-INV-HARDINVOKE-1: any missing/absent/DEST_MISS/empty-destination
   conclusion is INVALID unless Reasoning cites refs.destination_inventory
-  (path+sha256) or migration/receipts/destination-inventory/; dependency_wait
+  (path+sha256) or evidence/receipts/destination-inventory/; dependency_wait
   REQUIRES that citation first — do not invent OOS owners. Do not invent outside
   files_in_scope. Tip FREEZE for story bodies unless Architect Class A BIND.

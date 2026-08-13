@@ -71,10 +71,10 @@ bash "${ENFORCEMENT}/validate-contracts/scripts/check-no-hermes-context-override
 echo "== check-spec-readiness (+ §S.6) =="
 bash "${SKILLS}/sdd/check-spec-readiness/scripts/check-readiness.sh" || rc=1
 sdd_tmp="$(mktemp -d)"
-mkdir -p "${sdd_tmp}/migration/tasks" "${sdd_tmp}/migration/briefs"
-printf '%s\n' '## Non-Goals' '- NG-001: x' > "${sdd_tmp}/migration/briefs/b.md"
+mkdir -p "${sdd_tmp}/evidence/tasks" "${sdd_tmp}/evidence/briefs"
+printf '%s\n' '## Non-Goals' '- NG-001: x' > "${sdd_tmp}/evidence/briefs/b.md"
 printf '%s\n' '{"id":"t_a1b2c3d4e5","phase":"M3","replan":true,"ac_ids":["AC-1"],"files_in_scope":["src/"],"deps":[],"brief_id":"B-1"}' \
-  > "${sdd_tmp}/migration/tasks/bad.json"
+  > "${sdd_tmp}/evidence/tasks/bad.json"
 if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/check-ordering.py" "${sdd_tmp}" >/dev/null 2>&1; then
   echo "FAIL: §S.6 should refuse IMPLEMENT replan" >&2
   rc=1
@@ -82,7 +82,7 @@ else
   echo "OK: §S.6 refuses IMPLEMENT replan"
 fi
 printf '%s\n' '{"id":"t_a1b2c3d4e5","phase":"M3","ac_ids":["AC-1"],"files_in_scope":["src/"],"deps":[],"brief_id":"B-1"}' \
-  > "${sdd_tmp}/migration/tasks/bad.json"
+  > "${sdd_tmp}/evidence/tasks/bad.json"
 python3 "${SKILLS}/sdd/check-spec-readiness/scripts/check-ordering.py" "${sdd_tmp}" || rc=1
 rm -rf "${sdd_tmp}"
 
@@ -92,9 +92,9 @@ bash "${SKILLS}/gates/check-domain-parity/scripts/run-admission.sh" "${ROOT}" ||
 # Parser/fixture only — not live specimen admission (Architect E-20260808T080815Z #3).
 echo "== G-1 PIT dry-run parse (R1 pin; not live admission) =="
 python3 "${SKILLS}/gates/check-domain-parity/scripts/parse-pit-mutations.py" \
-  "${ROOT}/migration/fixtures/pit-dry-run/mutations.xml" || rc=1
+  "${ROOT}/governance/fixtures/pit-dry-run/mutations.xml" || rc=1
 if python3 "${SKILLS}/gates/check-domain-parity/scripts/parse-pit-mutations.py" \
-  "${ROOT}/migration/fixtures/pit-dry-run/missing.xml" >/dev/null 2>&1; then
+  "${ROOT}/governance/fixtures/pit-dry-run/missing.xml" >/dev/null 2>&1; then
   echo "FAIL: missing mutations.xml should refuse" >&2
   rc=1
 else
@@ -142,7 +142,7 @@ rm -rf "${g1op_tmp}"
 
 echo "== scan-with-mta findings schema (fixture known-good) =="
 python3 "${SKILLS}/analysis/scan-with-mta/scripts/validate-findings-schema.py" \
-  migration/fixtures/admission/g3-findings-delta/known-good/mta-findings.json || rc=1
+  governance/fixtures/admission/g3-findings-delta/known-good/mta-findings.json || rc=1
 
 echo "== inventory-entry-points smoke =="
 tmp="$(mktemp -d)"
@@ -190,9 +190,9 @@ else
   echo "OK: AR-1.2 impersonating comment refused"
 fi
 ar11_tmp="$(mktemp -d)"
-mkdir -p "${ar11_tmp}/migration/acks"
+mkdir -p "${ar11_tmp}/evidence/acks"
 printf '%s\n' '{"kind":"migration-ack","ack_type":"brief-identity","status":"acknowledged","acknowledged_by":"planner (M2)","acknowledged_at":"2026-08-09T17:00:00Z"}' \
-  > "${ar11_tmp}/migration/acks/brief-identity.json"
+  > "${ar11_tmp}/evidence/acks/brief-identity.json"
 if python3 "${ENFORCEMENT}/enforce-authority-boundary/scripts/check-ack-authority.py" "${ar11_tmp}" >/dev/null 2>&1; then
   echo "FAIL: AR-1.1 planner self-ACK should refuse" >&2
   rc=1
@@ -200,18 +200,18 @@ else
   echo "OK: AR-1.1 planner self-ACK refused"
 fi
 printf '%s\n' '{"kind":"migration-ack","ack_type":"brief-identity","status":"acknowledged","acknowledged_by":"Operator","acknowledged_at":"2026-08-10T00:00:00Z","task_id":"t_demo","artifact_digests":{"brief":"abc"}}' \
-  > "${ar11_tmp}/migration/acks/brief-identity.ack.json"
-rm -f "${ar11_tmp}/migration/acks/brief-identity.json"
+  > "${ar11_tmp}/evidence/acks/brief-identity.ack.json"
+rm -f "${ar11_tmp}/evidence/acks/brief-identity.json"
 python3 "${ENFORCEMENT}/enforce-authority-boundary/scripts/check-ack-authority.py" "${ar11_tmp}" || rc=1
 rm -rf "${ar11_tmp}"
 
 echo "== write-fence proving-min (AD-H §16.4 / F2) =="
 fence_tmp="$(mktemp -d)"
-mkdir -p "${fence_tmp}/migration/acks" "${fence_tmp}/migration/verdicts" \
-  "${fence_tmp}/.hermes/skills" "${fence_tmp}/migration/fixtures" \
+mkdir -p "${fence_tmp}/evidence/acks" "${fence_tmp}/evidence/verdicts" \
+  "${fence_tmp}/.hermes/skills" "${fence_tmp}/governance/fixtures" \
   "${fence_tmp}/src/main/java"
-printf '%s\n' 'ok' > "${fence_tmp}/migration/acks/README.md"
-printf '%s\n' 'ok' > "${fence_tmp}/migration/fixtures/keep.txt"
+printf '%s\n' 'ok' > "${fence_tmp}/evidence/acks/README.md"
+printf '%s\n' 'ok' > "${fence_tmp}/governance/fixtures/keep.txt"
 bash "${ENFORCEMENT}/enforce-authority-boundary/scripts/apply-write-fence.sh" "${fence_tmp}" lock || rc=1
 if python3 "${ENFORCEMENT}/enforce-authority-boundary/scripts/probe-write-fence.py" "${fence_tmp}"; then
   echo "OK: F2 seat probe PASS on temp tree"
@@ -224,7 +224,7 @@ printf '%s\n' '{"files_in_scope":["src/main/java/Foo.java"]}' > "${fence_tmp}/bo
 printf '%s\n' 'x' > "${fence_tmp}/src/main/java/OutOfScope.java"
 if python3 "${ENFORCEMENT}/enforce-authority-boundary/scripts/check-write-fence.py" "${fence_tmp}" \
   --no-git-status --body "${fence_tmp}/body.json" \
-  --writes src/main/java/OutOfScope.java migration/acks/forged.json >/dev/null 2>&1; then
+  --writes src/main/java/OutOfScope.java evidence/acks/forged.json >/dev/null 2>&1; then
   echo "FAIL: write-fence should refuse OOS + ack forge" >&2
   rc=1
 else
@@ -236,10 +236,10 @@ rm -rf "${fence_tmp}"
 echo "== ground-in-harvest (AD-H §17) =="
 python3 "${ENFORCEMENT}/ground-in-harvest/scripts/check-citation.py" "${ROOT}" || rc=1
 gg_tmp="$(mktemp -d)"
-mkdir -p "${gg_tmp}/migration/tasks"
+mkdir -p "${gg_tmp}/evidence/tasks"
 # invent-without-locus: writes without legacy_locus
 printf '%s\n' '{"id":"T-bad","phase":"M3","role":"implementer","brief_id":"B-1","ac_ids":["AC-1"],"files_in_scope":["src/"],"deps":[],"writes":["src/X.java"]}' \
-  > "${gg_tmp}/migration/tasks/bad.json"
+  > "${gg_tmp}/evidence/tasks/bad.json"
 if python3 "${ENFORCEMENT}/ground-in-harvest/scripts/check-citation.py" "${gg_tmp}" >/dev/null 2>&1; then
   echo "FAIL: invent-without-locus should refuse" >&2
   rc=1
@@ -248,7 +248,7 @@ else
 fi
 # good non-trivial packet
 printf '%s\n' '{"id":"t_a1b2c3d4e5","phase":"M3","role":"implementer","brief_id":"B-1","ac_ids":["AC-1"],"files_in_scope":["src/"],"deps":[],"legacy_locus":"projects/legacy/Foo.java:10-40","writes":["src/Foo.java"]}' \
-  > "${gg_tmp}/migration/tasks/bad.json"
+  > "${gg_tmp}/evidence/tasks/bad.json"
 python3 "${ENFORCEMENT}/ground-in-harvest/scripts/check-citation.py" "${gg_tmp}" || rc=1
 # commit message lint
 printf '%s\n' 't_a1b2c3d4e5: port Foo (brief B-1; legacy projects/legacy/Foo.java:10-40)' > "${gg_tmp}/msg.txt"
@@ -265,7 +265,7 @@ rm -rf "${gg_tmp}"
 echo "== check-release-readiness (AD-H §18) =="
 python3 "${SKILLS}/gates/check-release-readiness/scripts/check-phase-matrix.py" "${ROOT}" || rc=1
 python3 "${SKILLS}/gates/check-release-readiness/scripts/check-verdict-routing.py" "${ROOT}" || rc=1
-# B8 — check-semantics-manifest (migration/contracts/check-semantics-manifest.md)
+# B8 — check-semantics-manifest (governance/contracts/check-semantics-manifest.md)
 python3 "${SKILLS}/gates/check-release-readiness/scripts/check-semantics-manifest.py" "${ROOT}" || rc=1
 # Quarkus platform pin ↔ pom (manage-quarkus-extensions) — Wave B: skip until bootstrap
 if [ -f "${ROOT}/pom.xml" ]; then
@@ -276,14 +276,14 @@ else
 fi
 # A2 / runnable-db-security — fixture refuse paths (scaffold root may fail until B3)
 if python3 "${SKILLS}/gates/check-release-readiness/scripts/check-runnable-db-config.py" \
-  "${ROOT}/migration/fixtures/runnable-db-security/bad-hsqldb-destination" >/dev/null 2>&1; then
+  "${ROOT}/governance/fixtures/runnable-db-security/bad-hsqldb-destination" >/dev/null 2>&1; then
   echo "FAIL: B7 HSQLDB destination should refuse" >&2
   rc=1
 else
   echo "OK: B7 HSQLDB destination refused"
 fi
 if python3 "${SKILLS}/gates/check-release-readiness/scripts/check-empty-security.py" \
-  "${ROOT}/migration/fixtures/runnable-db-security/bad-placeholder-security" >/dev/null 2>&1; then
+  "${ROOT}/governance/fixtures/runnable-db-security/bad-placeholder-security" >/dev/null 2>&1; then
   echo "FAIL: AR-2.2 placeholder security should refuse" >&2
   rc=1
 else
@@ -292,47 +292,47 @@ fi
 # S-008 resurrection order (create/remint path)
 python3 "${ENFORCEMENT}/dispatch-phase/scripts/check-s008-resurrection-order.py" "${ROOT}" || rc=1
 if python3 "${SKILLS}/gates/check-release-readiness/scripts/check-semantics-manifest.py" \
-  "${ROOT}/migration/fixtures/check-semantics-manifest/bad-endpoint-smoke-overpromise" >/dev/null 2>&1; then
+  "${ROOT}/governance/fixtures/check-semantics-manifest/bad-endpoint-smoke-overpromise" >/dev/null 2>&1; then
   echo "FAIL: B8 narrowed smoke should refuse endpoint_smoke id" >&2
   rc=1
 else
   echo "OK: B8 endpoint_smoke over-promise refused"
 fi
 python3 "${SKILLS}/gates/check-release-readiness/scripts/check-semantics-manifest.py" \
-  "${ROOT}/migration/fixtures/check-semantics-manifest/good-endpoint-smoke-health" || rc=1
+  "${ROOT}/governance/fixtures/check-semantics-manifest/good-endpoint-smoke-health" || rc=1
 if python3 "${SKILLS}/gates/check-release-readiness/scripts/check-semantics-manifest.py" \
-  "${ROOT}/migration/fixtures/check-semantics-manifest/bad-boot-health-skipped-package" >/dev/null 2>&1; then
+  "${ROOT}/governance/fixtures/check-semantics-manifest/bad-boot-health-skipped-package" >/dev/null 2>&1; then
   echo "FAIL: B8 boot_health skipped package should refuse" >&2
   rc=1
 else
   echo "OK: B8 boot_health skipped package refused"
 fi
 python3 "${SKILLS}/gates/check-release-readiness/scripts/check-semantics-manifest.py" \
-  "${ROOT}/migration/fixtures/check-semantics-manifest/good-boot-health" || rc=1
+  "${ROOT}/governance/fixtures/check-semantics-manifest/good-boot-health" || rc=1
 if python3 "${SKILLS}/gates/check-release-readiness/scripts/check-semantics-manifest.py" \
-  "${ROOT}/migration/fixtures/check-semantics-manifest/bad-g4-sample-as-product-closed" >/dev/null 2>&1; then
+  "${ROOT}/governance/fixtures/check-semantics-manifest/bad-g4-sample-as-product-closed" >/dev/null 2>&1; then
   echo "FAIL: B8 SAMPLE g4_hook→product closed should refuse" >&2
   rc=1
 else
   echo "OK: B8 SAMPLE g4 product-closed refused"
 fi
 if python3 "${SKILLS}/gates/check-release-readiness/scripts/check-semantics-manifest.py" \
-  "${ROOT}/migration/fixtures/check-semantics-manifest/bad-mvn-verify-no-clean" >/dev/null 2>&1; then
+  "${ROOT}/governance/fixtures/check-semantics-manifest/bad-mvn-verify-no-clean" >/dev/null 2>&1; then
   echo "FAIL: B8 mvn_clean_verify without clean should refuse" >&2
   rc=1
 else
   echo "OK: B8 mvn verify without clean refused"
 fi
 if python3 "${SKILLS}/gates/check-release-readiness/scripts/check-semantics-manifest.py" \
-  "${ROOT}/migration/fixtures/check-semantics-manifest/bad-unit-it-zero-tests" >/dev/null 2>&1; then
+  "${ROOT}/governance/fixtures/check-semantics-manifest/bad-unit-it-zero-tests" >/dev/null 2>&1; then
   echo "FAIL: B8 unit_it_contract zero tests PASS should refuse" >&2
   rc=1
 else
   echo "OK: B8 unit_it zero-test PASS refused"
 fi
 vr_tmp="$(mktemp -d)"
-mkdir -p "${vr_tmp}/migration/verdicts"
-printf '%s\n' '{"phase":"M5","verdict":"INCONCLUSIVE","ship":true}' > "${vr_tmp}/migration/verdicts/bad.json"
+mkdir -p "${vr_tmp}/evidence/verdicts"
+printf '%s\n' '{"phase":"M5","verdict":"INCONCLUSIVE","ship":true}' > "${vr_tmp}/evidence/verdicts/bad.json"
 if python3 "${SKILLS}/gates/check-release-readiness/scripts/check-verdict-routing.py" "${vr_tmp}" >/dev/null 2>&1; then
   echo "FAIL: INCONCLUSIVE ship should refuse" >&2
   rc=1
@@ -341,7 +341,7 @@ else
 fi
 # §18.0 — ACCEPT+provisional footnote refused at M4
 printf '%s\n' '{"phase":"M4","verdict":"ACCEPT","accept_kind":"provisional","g1_kill_ratio":"pending_threshold","ship":false}' \
-  > "${vr_tmp}/migration/verdicts/bad.json"
+  > "${vr_tmp}/evidence/verdicts/bad.json"
 if python3 "${SKILLS}/gates/check-release-readiness/scripts/check-verdict-routing.py" "${vr_tmp}" >/dev/null 2>&1; then
   echo "FAIL: M4 ACCEPT+provisional footnote should refuse" >&2
   rc=1
@@ -350,7 +350,7 @@ else
 fi
 # §18.0 — PROVISIONAL_ACCEPT must not ship
 printf '%s\n' '{"phase":"M4","verdict":"PROVISIONAL_ACCEPT","g1_kill_ratio":"pending_threshold","ship":true}' \
-  > "${vr_tmp}/migration/verdicts/bad.json"
+  > "${vr_tmp}/evidence/verdicts/bad.json"
 if python3 "${SKILLS}/gates/check-release-readiness/scripts/check-verdict-routing.py" "${vr_tmp}" >/dev/null 2>&1; then
   echo "FAIL: PROVISIONAL_ACCEPT ship should refuse" >&2
   rc=1
@@ -359,7 +359,7 @@ else
 fi
 # §18.0 — kill-ratio PASS without pin refused
 printf '%s\n' '{"phase":"M4","verdict":"PROVISIONAL_ACCEPT","g1_kill_ratio":"PASS","ship":false}' \
-  > "${vr_tmp}/migration/verdicts/bad.json"
+  > "${vr_tmp}/evidence/verdicts/bad.json"
 if python3 "${SKILLS}/gates/check-release-readiness/scripts/check-verdict-routing.py" "${vr_tmp}" >/dev/null 2>&1; then
   echo "FAIL: g1_kill_ratio=PASS without pin should refuse" >&2
   rc=1
@@ -368,39 +368,39 @@ else
 fi
 # good M4 PROVISIONAL_ACCEPT
 printf '%s\n' '{"phase":"M4","verdict":"PROVISIONAL_ACCEPT","g1_kill_ratio":"pending_threshold","ship":false}' \
-  > "${vr_tmp}/migration/verdicts/bad.json"
+  > "${vr_tmp}/evidence/verdicts/bad.json"
 python3 "${SKILLS}/gates/check-release-readiness/scripts/check-verdict-routing.py" "${vr_tmp}" || rc=1
 # good M5 full with waiver (threshold not yet pinned)
 printf '%s\n' '{"phase":"M5","verdict":"ACCEPT","g1_kill_ratio":"pending_threshold","g1_kill_ratio_waiver":true,"ship":true,"routing":"close"}' \
-  > "${vr_tmp}/migration/verdicts/bad.json"
+  > "${vr_tmp}/evidence/verdicts/bad.json"
 python3 "${SKILLS}/gates/check-release-readiness/scripts/check-verdict-routing.py" "${vr_tmp}" || rc=1
 # single-unit composition reopen
 printf '%s\n' '{"phase":"M5","verdict":"REFUSE","gate":"g4_runtime_parity","prior_verdict":"PROVISIONAL_ACCEPT","routing":"reopen_story"}' \
-  > "${vr_tmp}/migration/verdicts/bad.json"
+  > "${vr_tmp}/evidence/verdicts/bad.json"
 python3 "${SKILLS}/gates/check-release-readiness/scripts/check-verdict-routing.py" "${vr_tmp}" || rc=1
 # shared-substrate reopen (fixture closure map)
-mkdir -p "${vr_tmp}/migration/slices"
-cp "${ROOT}/migration/fixtures/substrate-reopen/closure-map.json" \
-  "${vr_tmp}/migration/slices/closure-map.json"
+mkdir -p "${vr_tmp}/evidence/slices"
+cp "${ROOT}/governance/fixtures/substrate-reopen/closure-map.json" \
+  "${vr_tmp}/evidence/slices/closure-map.json"
 printf '%s\n' '{"phase":"M5","verdict":"REFUSE","gate":"g4_runtime_parity","story_id":"S-1","prior_verdict":"PROVISIONAL_ACCEPT","implicated_substrate":["com.example.shared.Entity"],"reopen_story_ids":["S-1","S-2"],"routing":"reopen_story"}' \
-  > "${vr_tmp}/migration/verdicts/bad.json"
+  > "${vr_tmp}/evidence/verdicts/bad.json"
 python3 "${SKILLS}/gates/check-release-readiness/scripts/check-verdict-routing.py" "${vr_tmp}" || rc=1
 # wrong reopen set refused
 printf '%s\n' '{"phase":"M5","verdict":"REFUSE","gate":"g4_runtime_parity","story_id":"S-1","implicated_substrate":["com.example.shared.Entity"],"reopen_story_ids":["S-1"],"routing":"reopen_story"}' \
-  > "${vr_tmp}/migration/verdicts/bad.json"
+  > "${vr_tmp}/evidence/verdicts/bad.json"
 if python3 "${SKILLS}/gates/check-release-readiness/scripts/check-verdict-routing.py" "${vr_tmp}" >/dev/null 2>&1; then
   echo "FAIL: under-sized reopen set should refuse" >&2
   rc=1
 else
   echo "OK: under-sized substrate reopen set refused"
 fi
-printf '%s\n' '{"phase":"M4","verdict":"REFUSE","routing":"auto_fix"}' > "${vr_tmp}/migration/verdicts/bad.json"
+printf '%s\n' '{"phase":"M4","verdict":"REFUSE","routing":"auto_fix"}' > "${vr_tmp}/evidence/verdicts/bad.json"
 python3 "${SKILLS}/gates/check-release-readiness/scripts/check-verdict-routing.py" "${vr_tmp}" || rc=1
 # factory M5 oracle
 python3 "${SKILLS}/gates/check-release-readiness/scripts/check-factory-m5.py" "${ROOT}" || rc=1
-mkdir -p "${vr_tmp}/migration/preflight" "${vr_tmp}/migration/verdicts"
-printf '%s\n' '{"phase":"factory","status":"factory_ready"}' > "${vr_tmp}/migration/preflight/factory.json"
-rm -f "${vr_tmp}/migration/verdicts/"*.json
+mkdir -p "${vr_tmp}/evidence/preflight" "${vr_tmp}/evidence/verdicts"
+printf '%s\n' '{"phase":"factory","status":"factory_ready"}' > "${vr_tmp}/evidence/preflight/factory.json"
+rm -f "${vr_tmp}/evidence/verdicts/"*.json
 if python3 "${SKILLS}/gates/check-release-readiness/scripts/check-factory-m5.py" "${vr_tmp}" >/dev/null 2>&1; then
   echo "FAIL: factory without M5 ACCEPT should refuse" >&2
   rc=1
@@ -408,7 +408,7 @@ else
   echo "OK: factory without M5 ACCEPT refused"
 fi
 printf '%s\n' '{"phase":"M5","verdict":"PROVISIONAL_ACCEPT","g1_kill_ratio":"pending_threshold"}' \
-  > "${vr_tmp}/migration/verdicts/m5.json"
+  > "${vr_tmp}/evidence/verdicts/m5.json"
 if python3 "${SKILLS}/gates/check-release-readiness/scripts/check-factory-m5.py" "${vr_tmp}" >/dev/null 2>&1; then
   echo "FAIL: factory with PROVISIONAL_ACCEPT should refuse" >&2
   rc=1
@@ -416,7 +416,7 @@ else
   echo "OK: factory PROVISIONAL_ACCEPT refused"
 fi
 printf '%s\n' '{"phase":"M5","verdict":"ACCEPT","g1_kill_ratio":"pending_threshold","g1_kill_ratio_waiver":true}' \
-  > "${vr_tmp}/migration/verdicts/m5.json"
+  > "${vr_tmp}/evidence/verdicts/m5.json"
 # Self-reported waiver alone must refuse (Deputy E-20260813T144954Z P1)
 if python3 "${SKILLS}/gates/check-release-readiness/scripts/check-factory-m5.py" "${vr_tmp}" >/dev/null 2>&1; then
   echo "FAIL: factory with self-reported g1_kill_ratio_waiver should refuse" >&2
@@ -425,17 +425,17 @@ else
   echo "OK: factory self-reported kill-ratio waiver refused"
 fi
 # P0 — empty touch'd m5-accept.ack must NOT count as ACCEPT (Deputy E-20260813T151402Z)
-rm -f "${vr_tmp}/migration/verdicts/"*.json
-mkdir -p "${vr_tmp}/migration/acks"
-: > "${vr_tmp}/migration/acks/m5-accept.ack"
+rm -f "${vr_tmp}/evidence/verdicts/"*.json
+mkdir -p "${vr_tmp}/evidence/acks"
+: > "${vr_tmp}/evidence/acks/m5-accept.ack"
 if python3 "${SKILLS}/gates/check-release-readiness/scripts/check-factory-m5.py" "${vr_tmp}" >/dev/null 2>&1; then
   echo "FAIL: empty touch m5-accept.ack must not satisfy factory ship gate" >&2
   rc=1
 else
   echo "OK: empty touch m5-accept.ack refused (P0)"
 fi
-mkdir -p "${vr_tmp}/migration/acks"
-cat > "${vr_tmp}/migration/acks/g1-kill-ratio-waiver-S-1.ack.yaml" <<'ACK'
+mkdir -p "${vr_tmp}/evidence/acks"
+cat > "${vr_tmp}/evidence/acks/g1-kill-ratio-waiver-S-1.ack.yaml" <<'ACK'
 kind: migration-ack
 ack_type: g1-kill-ratio-waiver
 status: acknowledged
@@ -444,12 +444,12 @@ acknowledged_at: "2026-08-13T00:00:00Z"
 ACK
 # Proper M5 verdict + typed waiver → pass
 printf '%s\n' '{"phase":"M5","verdict":"ACCEPT","accept_kind":"full","g1_kill_ratio":"pending_threshold"}' \
-  > "${vr_tmp}/migration/verdicts/m5.json"
+  > "${vr_tmp}/evidence/verdicts/m5.json"
 python3 "${SKILLS}/gates/check-release-readiness/scripts/check-factory-m5.py" "${vr_tmp}" || rc=1
 # candidate→promote (finding 4)
 python3 "${SKILLS}/gates/check-release-readiness/scripts/check-candidate-promote.py" "${ROOT}" || rc=1
 printf '%s\n' '{"phase":"factory","status":"push_main","promoted_to_main":true,"factory_result":"fail"}' \
-  > "${vr_tmp}/migration/preflight/factory.json"
+  > "${vr_tmp}/evidence/preflight/factory.json"
 if python3 "${SKILLS}/gates/check-release-readiness/scripts/check-candidate-promote.py" "${vr_tmp}" >/dev/null 2>&1; then
   echo "FAIL: promote without candidate_sha / on factory fail should refuse" >&2
   rc=1
@@ -457,7 +457,7 @@ else
   echo "OK: illegal promote refused"
 fi
 printf '%s\n' '{"phase":"factory","status":"factory_ready","candidate_sha":"abcdef1","factory_result":"pass","promoted_to_main":false}' \
-  > "${vr_tmp}/migration/preflight/factory.json"
+  > "${vr_tmp}/evidence/preflight/factory.json"
 python3 "${SKILLS}/gates/check-release-readiness/scripts/check-candidate-promote.py" "${vr_tmp}" || rc=1
 # side-effect recovery idle + persisted-data idle
 python3 "${SKILLS}/gates/check-release-readiness/scripts/check-side-effect-recovery.py" "${ROOT}" || rc=1
@@ -497,7 +497,7 @@ rm -rf "${f4_tmp}" "${f4_home}"
 # SCOPED_ACCEPT gate (finding 3)
 python3 "${SKILLS}/gates/check-release-readiness/scripts/check-accept-scope.py" "${ROOT}" || rc=1
 printf '%s\n' '{"phase":"M5","verdict":"ACCEPT","accept_kind":"full","entry_point_descope_count":2}' \
-  > "${vr_tmp}/migration/verdicts/m5.json"
+  > "${vr_tmp}/evidence/verdicts/m5.json"
 if python3 "${SKILLS}/gates/check-release-readiness/scripts/check-accept-scope.py" "${vr_tmp}" >/dev/null 2>&1; then
   echo "FAIL: full ACCEPT with descopes should refuse" >&2
   rc=1
@@ -505,7 +505,7 @@ else
   echo "OK: full ACCEPT with descopes refused"
 fi
 printf '%s\n' '{"phase":"M5","verdict":"SCOPED_ACCEPT","accept_kind":"scoped","entry_point_descope_count":2}' \
-  > "${vr_tmp}/migration/verdicts/m5.json"
+  > "${vr_tmp}/evidence/verdicts/m5.json"
 python3 "${SKILLS}/gates/check-release-readiness/scripts/check-accept-scope.py" "${vr_tmp}" || rc=1
 rm -rf "${vr_tmp}"
 
@@ -529,21 +529,21 @@ rm -rf "${ed_tmp}"
 echo "== kanban-body (W2 §6.1) =="
 python3 "${SKILLS}/sdd/check-spec-readiness/scripts/check-kanban-body.py" "${ROOT}" || rc=1
 kb_tmp="$(mktemp -d)"
-mkdir -p "${kb_tmp}/migration/bodies"
+mkdir -p "${kb_tmp}/evidence/bodies"
 printf '%s\n' '{"task_id":"t_a1b2c3d4e5","role":"implementer","phase":"M3","refs":[],"files_in_scope":["src/"]}' \
-  > "${kb_tmp}/migration/bodies/bad.json"
+  > "${kb_tmp}/evidence/bodies/bad.json"
 if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/check-kanban-body.py" "${kb_tmp}" >/dev/null 2>&1; then
   echo "FAIL: M3 body missing required refs should refuse" >&2
   rc=1
 else
   echo "OK: BODY_REF_MISSING refused"
 fi
-printf '%s\n' '{"task_id":"t_a1b2c3d4e5","role":"implementer","phase":"M3","identity":{"transform_class":"HARVEST","g2_applicability":"not_applicable","operand_count":1,"sizing_basis":"operand_count"},"files_in_scope":["src/Foo.java"],"exit_criteria":[{"check":"compile","cmd":"true","expect":"rc=0"},{"check":"skills","assert":"AD-002E: consult or skills_unused; silence invalid"},{"check":"endpoint_contract","assert":"fixture"}],"refs":[{"key":"brief_identity_ack","path":"migration/acks/brief-identity.ack","sha256":"pending"},{"key":"legacy_locus","path":"projects/legacy/Foo.java","sha256":"0000000000000000000000000000000000000000000000000000000000000000"}]}' \
-  > "${kb_tmp}/migration/bodies/bad.json"
+printf '%s\n' '{"task_id":"t_a1b2c3d4e5","role":"implementer","phase":"M3","identity":{"transform_class":"HARVEST","g2_applicability":"not_applicable","operand_count":1,"sizing_basis":"operand_count"},"files_in_scope":["src/Foo.java"],"exit_criteria":[{"check":"compile","cmd":"true","expect":"rc=0"},{"check":"skills","assert":"AD-002E: consult or skills_unused; silence invalid"},{"check":"endpoint_contract","assert":"fixture"}],"refs":[{"key":"brief_identity_ack","path":"evidence/acks/brief-identity.ack","sha256":"pending"},{"key":"legacy_locus","path":"projects/legacy/Foo.java","sha256":"0000000000000000000000000000000000000000000000000000000000000000"}]}' \
+  > "${kb_tmp}/evidence/bodies/bad.json"
 python3 "${SKILLS}/sdd/check-spec-readiness/scripts/check-kanban-body.py" "${kb_tmp}" || rc=1
 # Deputy E-20260811T131200Z — prose in sha256 slots must refuse
-printf '%s\n' '{"task_id":"t_a1b2c3d4e5","role":"implementer","phase":"M3","identity":{"transform_class":"HARVEST","g2_applicability":"not_applicable","operand_count":1,"sizing_basis":"operand_count"},"files_in_scope":["src/Foo.java"],"exit_criteria":[{"check":"compile","cmd":"true","expect":"rc=0"},{"check":"skills","assert":"AD-002E: consult or skills_unused; silence invalid"},{"check":"endpoint_contract","assert":"fixture"}],"refs":[{"key":"brief_identity_ack","path":"migration/acks/brief-identity.ack","sha256":"pending"},{"key":"legacy_locus","path":"projects/legacy/Foo.java","sha256":"see-harvest-referent"}]}' \
-  > "${kb_tmp}/migration/bodies/bad.json"
+printf '%s\n' '{"task_id":"t_a1b2c3d4e5","role":"implementer","phase":"M3","identity":{"transform_class":"HARVEST","g2_applicability":"not_applicable","operand_count":1,"sizing_basis":"operand_count"},"files_in_scope":["src/Foo.java"],"exit_criteria":[{"check":"compile","cmd":"true","expect":"rc=0"},{"check":"skills","assert":"AD-002E: consult or skills_unused; silence invalid"},{"check":"endpoint_contract","assert":"fixture"}],"refs":[{"key":"brief_identity_ack","path":"evidence/acks/brief-identity.ack","sha256":"pending"},{"key":"legacy_locus","path":"projects/legacy/Foo.java","sha256":"see-harvest-referent"}]}' \
+  > "${kb_tmp}/evidence/bodies/bad.json"
 if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/check-kanban-body.py" "${kb_tmp}" >/dev/null 2>&1; then
   echo "FAIL: non-hex sha256 prose should refuse" >&2
   rc=1
@@ -554,25 +554,25 @@ rm -rf "${kb_tmp}"
 
 echo "== story-sizing operand_count (Architect E-110403Z) =="
 python3 "${SKILLS}/sdd/check-spec-readiness/scripts/check-operand-count.py" "${ROOT}" \
-  "${ROOT}/migration/fixtures/story-sizing/ar-size-good.json" || rc=1
+  "${ROOT}/governance/fixtures/story-sizing/ar-size-good.json" || rc=1
 if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/check-operand-count.py" "${ROOT}" \
-  "${ROOT}/migration/fixtures/story-sizing/ar-size-bad-missing.json" >/dev/null 2>&1; then
+  "${ROOT}/governance/fixtures/story-sizing/ar-size-bad-missing.json" >/dev/null 2>&1; then
   echo "FAIL: missing operand_count should refuse" >&2
   rc=1
 else
   echo "OK: missing operand_count refused"
 fi
 if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/check-operand-count.py" "${ROOT}" \
-  "${ROOT}/migration/fixtures/story-sizing/ar-size-bad-overcap.json" >/dev/null 2>&1; then
+  "${ROOT}/governance/fixtures/story-sizing/ar-size-bad-overcap.json" >/dev/null 2>&1; then
   echo "FAIL: over-cap operand_count should refuse" >&2
   rc=1
 else
   echo "OK: over-cap operand_count refused"
 fi
 python3 "${SKILLS}/sdd/check-spec-readiness/scripts/check-operand-count.py" "${ROOT}" \
-  "${ROOT}/migration/fixtures/story-sizing/ar-size-good.json" --wall-fit || rc=1
+  "${ROOT}/governance/fixtures/story-sizing/ar-size-good.json" --wall-fit || rc=1
 if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/check-operand-count.py" "${ROOT}" \
-  "${ROOT}/migration/fixtures/story-sizing/ar-size-bad-wallfit.json" --wall-fit \
+  "${ROOT}/governance/fixtures/story-sizing/ar-size-bad-wallfit.json" --wall-fit \
   >/dev/null 2>&1; then
   echo "FAIL: wall-fit 60@3600 should refuse" >&2
   rc=1
@@ -582,9 +582,9 @@ fi
 
 echo "== wall-as-terminal exit-eval (Architect E-110403Z) =="
 wall_tmp="$(mktemp -d)"
-mkdir -p "${wall_tmp}/migration/runs/t_fixture_wall"
-cp "${ROOT}/migration/fixtures/wall-exit-eval/ar-wall-good/exit-eval.json" \
-  "${wall_tmp}/migration/runs/t_fixture_wall/exit-eval.json"
+mkdir -p "${wall_tmp}/evidence/runs/t_fixture_wall"
+cp "${ROOT}/governance/fixtures/wall-exit-eval/ar-wall-good/exit-eval.json" \
+  "${wall_tmp}/evidence/runs/t_fixture_wall/exit-eval.json"
 python3 "${SKILLS}/gates/check-release-readiness/scripts/check-wall-exit-eval.py" "${wall_tmp}" \
   --task-id t_fixture_wall --trigger timed_out --require-test-compile || rc=1
 if python3 "${SKILLS}/gates/check-release-readiness/scripts/check-wall-exit-eval.py" "${wall_tmp}" \
@@ -598,12 +598,12 @@ rm -rf "${wall_tmp}"
 
 echo "== checkpoint lag check (Deputy E-121112Z) =="
 lag_tmp="$(mktemp -d)"
-mkdir -p "${lag_tmp}/migration/runs/t_lag" "${lag_tmp}/src/test/java/com/demo"
+mkdir -p "${lag_tmp}/evidence/runs/t_lag" "${lag_tmp}/src/test/java/com/demo"
 printf '%s\n' 'class ATests {}' > "${lag_tmp}/src/test/java/com/demo/ATests.java"
 printf '%s\n' '{"schema":"rhoai3.implementer-checkpoint/v1","task_id":"t_lag","body_path":"x","body_sha256":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","work_list":["src/test/java/com/demo/ATests.java"],"completed":[],"next":"src/test/java/com/demo/ATests.java","updated_at":"2026-08-10T00:00:00Z"}' \
-  > "${lag_tmp}/migration/runs/t_lag/checkpoint.json"
+  > "${lag_tmp}/evidence/runs/t_lag/checkpoint.json"
 if python3 "${ENFORCEMENT}/record-run-evidence/scripts/check-test-write-checkpoint-lag.py" \
-  "${lag_tmp}/migration/runs/t_lag/checkpoint.json" --root "${lag_tmp}" >/dev/null 2>&1; then
+  "${lag_tmp}/evidence/runs/t_lag/checkpoint.json" --root "${lag_tmp}" >/dev/null 2>&1; then
   echo "FAIL: disk lag should refuse" >&2
   rc=1
 else
@@ -613,12 +613,12 @@ rm -rf "${lag_tmp}"
 
 echo "== #1b test-compile gate on checkpoint stamp (Deputy E-115113Z) =="
 tc_tmp="$(mktemp -d)"
-mkdir -p "${tc_tmp}/migration/runs/t_tcgate"
+mkdir -p "${tc_tmp}/evidence/runs/t_tcgate"
 printf '%s\n' '{"schema":"rhoai3.implementer-checkpoint/v1","task_id":"t_tcgate","body_path":"x","body_sha256":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","work_list":["src/test/java/com/demo/ATests.java","src/main/java/com/demo/A.java"],"completed":[],"next":"src/test/java/com/demo/ATests.java","updated_at":"2026-08-10T00:00:00Z"}' \
-  > "${tc_tmp}/migration/runs/t_tcgate/checkpoint.json"
+  > "${tc_tmp}/evidence/runs/t_tcgate/checkpoint.json"
 # No pom at tmp root → stamp must REFUSE (structural gate, not advisory)
 if python3 "${ENFORCEMENT}/record-run-evidence/scripts/stamp-implementer-checkpoint.py" \
-  "${tc_tmp}/migration/runs/t_tcgate/checkpoint.json" \
+  "${tc_tmp}/evidence/runs/t_tcgate/checkpoint.json" \
   --completed src/test/java/com/demo/ATests.java >/dev/null 2>&1; then
   echo "FAIL: src/test stamp without pom/test-compile should refuse" >&2
   rc=1
@@ -627,7 +627,7 @@ else
 fi
 # Fixture skip path still works for shape tests (env-gated; live seats FORBIDDEN)
 if python3 "${ENFORCEMENT}/record-run-evidence/scripts/stamp-implementer-checkpoint.py" \
-  "${tc_tmp}/migration/runs/t_tcgate/checkpoint.json" \
+  "${tc_tmp}/evidence/runs/t_tcgate/checkpoint.json" \
   --completed src/test/java/com/demo/ATests.java --skip-test-compile-gate >/dev/null 2>&1; then
   echo "FAIL: --skip-test-compile-gate without fixture env should refuse" >&2
   rc=1
@@ -636,19 +636,19 @@ else
 fi
 RHOAI3_FIXTURE_ALLOW_SKIP_TEST_COMPILE=1 \
 python3 "${ENFORCEMENT}/record-run-evidence/scripts/stamp-implementer-checkpoint.py" \
-  "${tc_tmp}/migration/runs/t_tcgate/checkpoint.json" \
+  "${tc_tmp}/evidence/runs/t_tcgate/checkpoint.json" \
   --completed src/test/java/com/demo/ATests.java --skip-test-compile-gate || rc=1
 python3 "${ENFORCEMENT}/record-run-evidence/scripts/check-implementer-checkpoint.py" \
-  "${tc_tmp}/migration/runs/t_tcgate/checkpoint.json" || rc=1
+  "${tc_tmp}/evidence/runs/t_tcgate/checkpoint.json" || rc=1
 rm -rf "${tc_tmp}"
 
 echo "== body-digest immutability (Architect E-111424Z) =="
-DIGEST="$(python3 -c "import hashlib,pathlib; print(hashlib.sha256(pathlib.Path('${ROOT}/migration/fixtures/body-digest/ar-digest-good/body.json').read_bytes()).hexdigest())")"
+DIGEST="$(python3 -c "import hashlib,pathlib; print(hashlib.sha256(pathlib.Path('${ROOT}/governance/fixtures/body-digest/ar-digest-good/body.json').read_bytes()).hexdigest())")"
 python3 "${ENFORCEMENT}/record-run-evidence/scripts/check-body-digest-match.py" "${ROOT}" \
-  --body "${ROOT}/migration/fixtures/body-digest/ar-digest-good/body.json" \
+  --body "${ROOT}/governance/fixtures/body-digest/ar-digest-good/body.json" \
   --expect "${DIGEST}" || rc=1
 if python3 "${ENFORCEMENT}/record-run-evidence/scripts/check-body-digest-match.py" "${ROOT}" \
-  --body "${ROOT}/migration/fixtures/body-digest/ar-digest-good/body.json" \
+  --body "${ROOT}/governance/fixtures/body-digest/ar-digest-good/body.json" \
   --expect deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef \
   >/dev/null 2>&1; then
   echo "FAIL: digest mismatch should refuse" >&2
@@ -660,9 +660,9 @@ fi
 echo "== record-run-evidence (AD-H §19) =="
 python3 "${ENFORCEMENT}/record-run-evidence/scripts/check-provenance.py" "${ROOT}" || rc=1
 ap_tmp="$(mktemp -d)"
-mkdir -p "${ap_tmp}/migration/tasks"
+mkdir -p "${ap_tmp}/evidence/tasks"
 printf '%s\n' '{"id":"t_a1b2c3d4e5","phase":"M3","role":"implementer","status":"done","brief_id":"B-1","ac_ids":["AC-1"],"files_in_scope":["src/"],"deps":[]}' \
-  > "${ap_tmp}/migration/tasks/bad.json"
+  > "${ap_tmp}/evidence/tasks/bad.json"
 if python3 "${ENFORCEMENT}/record-run-evidence/scripts/check-provenance.py" "${ap_tmp}" >/dev/null 2>&1; then
   echo "FAIL: complete IMPLEMENT without worker_session_id should refuse" >&2
   rc=1
@@ -670,7 +670,7 @@ else
   echo "OK: missing worker_session_id refused"
 fi
 printf '%s\n' '{"id":"t_a1b2c3d4e5","phase":"M3","role":"implementer","status":"done","provenance":{"task_id":"t_a1b2c3d4e5","task_run_id":"1","worker_session_id":"sess1","soul_path":"/tmp/no-such-soul.md","soul_sha":"deadbeef","skill_tips":{"ground-in-harvest":"abc"},"model_id":"unknown","citations":{"brief_or_story_id":"B-1","legacy_locus":"projects/legacy/Foo.java:1-10"},"artifacts":[]}}' \
-  > "${ap_tmp}/migration/tasks/bad.json"
+  > "${ap_tmp}/evidence/tasks/bad.json"
 if python3 "${ENFORCEMENT}/record-run-evidence/scripts/check-provenance.py" "${ap_tmp}" >/dev/null 2>&1; then
   echo "FAIL: model_id=unknown without model_id_gap should refuse" >&2
   rc=1
@@ -682,7 +682,7 @@ soul_tmp="$(mktemp)"
 printf 'test soul\n' > "${soul_tmp}"
 soul_sha="$(python3 -c "import hashlib,pathlib; print(hashlib.sha256(pathlib.Path('${soul_tmp}').read_bytes()).hexdigest())")"
 printf '%s\n' "{\"id\":\"t_a1b2c3d4e5\",\"phase\":\"M3\",\"role\":\"implementer\",\"status\":\"done\",\"provenance\":{\"task_id\":\"t_a1b2c3d4e5\",\"task_run_id\":\"1\",\"campaign_id\":\"fixture\",\"worker_session_id\":\"sess1\",\"soul_path\":\"${soul_tmp}\",\"soul_sha\":\"${soul_sha}\",\"skill_tips\":{\"ground-in-harvest\":\"abc\"},\"model_id\":\"unknown\",\"model_id_gap\":true,\"citations\":{\"brief_or_story_id\":\"B-1\",\"legacy_locus\":\"projects/legacy/Foo.java:1-10\"},\"artifacts\":[]}}" \
-  > "${ap_tmp}/migration/tasks/bad.json"
+  > "${ap_tmp}/evidence/tasks/bad.json"
 python3 "${ENFORCEMENT}/record-run-evidence/scripts/check-provenance.py" "${ap_tmp}" || rc=1
 rm -f "${soul_tmp}"
 # Interventions audit — a BOARD-SIDE reviewer tool, not part of this scaffold.
@@ -706,10 +706,10 @@ else
   echo "OK: persistence/compile preflights idle until bootstrap creates pom.xml"
 fi
 dep_tmp="$(mktemp -d)"
-mkdir -p "${dep_tmp}/migration/verdicts"
+mkdir -p "${dep_tmp}/evidence/verdicts"
 python3 "${SKILLS}/gates/check-release-readiness/scripts/apply-dependency-wait-hold.py" \
   "${dep_tmp}" --task-id t_fixture_dep_wait --stamp || rc=1
-if [ ! -f "${dep_tmp}/migration/verdicts/dependency-wait-hold-t_fixture_dep_wait.json" ]; then
+if [ ! -f "${dep_tmp}/evidence/verdicts/dependency-wait-hold-t_fixture_dep_wait.json" ]; then
   echo "FAIL: dependency-wait-hold stamp missing" >&2
   rc=1
 else
@@ -734,7 +734,7 @@ python3 "${SKILLS}/sdd/check-spec-readiness/scripts/assert-dest-inventory-hardin
   "${ROOT}" || rc=1
 
 echo "== AD-011 skill extension overlay =="
-if [ ! -f "${ROOT}/migration/contracts/ad011-skill-extension.md" ]; then
+if [ ! -f "${ROOT}/governance/contracts/ad011-skill-extension.md" ]; then
   echo "FAIL: missing ad011-skill-extension.md" >&2
   rc=1
 else

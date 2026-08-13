@@ -1,7 +1,7 @@
 # Destination bootstrap (Wave B)
 
 This golden scaffold ships the **harness tree only** for the destination
-app shape: `.hermes/`, `migration/contracts/`, fixtures, `AGENTS.md`,
+app shape: `.hermes/`, `governance/contracts/`, fixtures, `AGENTS.md`,
 `.hermes/SOUL.md`. There is **no** hand-maintained destination `pom.xml`
 or `src/` skeleton.
 
@@ -27,7 +27,7 @@ Dual path (plan
 python3 .hermes/skills/migration/manage-quarkus-extensions/scripts/check-pom-platform-pins.py .
 ```
 
-Platform GAV values: `migration/contracts/tooling-pins.md` only.
+Platform GAV values: `governance/contracts/tooling-pins.md` only.
 
 ## Keep
 

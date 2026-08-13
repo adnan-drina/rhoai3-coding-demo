@@ -16,7 +16,7 @@ metadata:
 ## When to Use
 
 - Before committing any change under `.hermes/skills/**`,
-  `migration/contracts/**`, or `migration/fixtures/**` — this is the single
+  `governance/contracts/**`, or `governance/fixtures/**` — this is the single
   run that exercises the whole harness at once.
 - After adding, renaming, or re-categorizing a skill: the R-SK conformance
   lint (frontmatter, `category` = parent directory, required headings in

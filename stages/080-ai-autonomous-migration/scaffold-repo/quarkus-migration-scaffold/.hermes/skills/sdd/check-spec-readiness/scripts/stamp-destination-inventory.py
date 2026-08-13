@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Stamp destination-inventory receipt + body ref (Operator E-20260811T144200Z).
 
-Writes migration/receipts/destination-inventory/<story_id>.json with
+Writes evidence/receipts/destination-inventory/<story_id>.json with
 paths + sha256 digests for each files_writable destination path. Digests prefer
 existing modernized content; if missing, hash the legacy referent (baseline).
 
@@ -9,7 +9,7 @@ Attaches refs[] entry key=destination_inventory (path + sha256).
 
 Usage:
   python3 stamp-destination-inventory.py /projects/modernized \
-    --body migration/bodies/m3-s-002a.json --write
+    --body evidence/bodies/m3-s-002a.json --write
 """
 from __future__ import annotations
 
@@ -137,7 +137,7 @@ def main() -> int:
         "entries": entries,
         "operator_bind": "E-20260811T144200Z",
     }
-    out_rel = f"migration/receipts/destination-inventory/{sid}.json"
+    out_rel = f"evidence/receipts/destination-inventory/{sid}.json"
     out_path = root / out_rel
     receipt_json = json.dumps(receipt, indent=2) + "\n"
     receipt_digest = sha256_bytes(receipt_json.encode("utf-8"))

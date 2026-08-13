@@ -17,7 +17,7 @@ metadata:
 
 ## When to Use
 
-- Before M1 ANALYZE, when `migration/derived/legacy-at-3.json` is missing or
+- Before M1 ANALYZE, when `evidence/derived/legacy-at-3.json` is missing or
   `check-manifest.sh` fails (empty required field, schema ≠ `legacy-at-3/v2`,
   `harvest_referent` not a directory).
 - After a wipe of `/projects/.derived/legacy-at-3` — the manifest then names a
@@ -49,7 +49,7 @@ bash "${HERMES_SKILL_DIR}/scripts/check-manifest.sh"
 - If `spring-boot.version >= 3` already: `mode=identity` — `harvest_referent`
   is `/projects/legacy`.
 - Otherwise: copy → Boot 2→3 upgrade → freeze under
-  `/projects/.derived/legacy-at-3`; write `migration/derived/legacy-at-3.json`.
+  `/projects/.derived/legacy-at-3`; write `evidence/derived/legacy-at-3.json`.
 - Manifest schema `legacy-at-3/v2` records **JDK and Spring Boot versions
   before and after** (W2 §3.1) beside `sha256` / `harvest_referent`, so a later
   failure can attribute the bundled upgrades without splitting the frozen stage.
@@ -59,7 +59,7 @@ bash "${HERMES_SKILL_DIR}/scripts/check-manifest.sh"
   (`E-20260807T184100Z`); there is no fall-through to `UpgradeSpringBoot_3_0`.
   Override with `DERIVE_UPGRADE_CMD` only for explicit experiments. Admit table
   + cites: `scripts/free-primitives-boot3/RULES.md`. Apply log:
-  `migration/derived/free-primitives-apply-log.json` (W2 §12.3).
+  `evidence/derived/free-primitives-apply-log.json` (W2 §12.3).
 
 ## Pitfalls
 
@@ -90,7 +90,7 @@ bash "${HERMES_SKILL_DIR}/scripts/check-manifest.sh"
 - **Silent-failure catch:** `harvest_referent=/projects/legacy` while
   `spring_boot_version_source` is < 3. That combination means harvest is being
   compared to the 2.x mount, which reads every Boot-3 API change as infidelity.
-- Default composite path leaves `migration/derived/free-primitives-apply-log.json`
+- Default composite path leaves `evidence/derived/free-primitives-apply-log.json`
   (`schema free-primitives-apply-log/v1`) with one entry per rule — `rule_id`,
   `cite`, `pre_digest`/`post_digest`, `skipped`. Missing log with `mode=derived`
   and `DERIVE_UPGRADE_CMD` unset ⇒ the upgrade did not run.

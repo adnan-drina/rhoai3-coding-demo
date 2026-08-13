@@ -30,7 +30,7 @@ def check_pair(body: Path, expect: str, label: str) -> int:
         print(
             f"FAIL: {label}: body digest mismatch "
             f"(expect={expect} actual={actual}) — dispatched body immutable "
-            f"(Architect E-111424Z / migration/contracts/body-immutability.md)",
+            f"(Architect E-111424Z / governance/contracts/body-immutability.md)",
             file=sys.stderr,
         )
         return 1
@@ -106,7 +106,7 @@ def main() -> int:
             p = root / args.sidecar
         sidecars = [p]
     else:
-        d = root / "migration" / "bodies"
+        d = root / "evidence" / "bodies"
         if d.is_dir():
             sidecars = sorted(d.glob("*.sha256.json"))
 
@@ -130,7 +130,7 @@ def main() -> int:
         bpath = Path(str(stamp.get("body_path") or ""))
         if not bpath.is_file():
             name = sc.name[: -len(".sha256.json")]
-            cand = root / "migration" / "bodies" / name
+            cand = root / "evidence" / "bodies" / name
             bpath = cand if cand.is_file() else bpath
         if not bpath.is_file() and args.body:
             bpath = resolve_body(root, args.body)

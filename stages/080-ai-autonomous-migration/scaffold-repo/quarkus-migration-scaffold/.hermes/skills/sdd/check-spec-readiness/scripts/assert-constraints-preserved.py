@@ -8,15 +8,15 @@ entire constraints block (IfBuildProfile forbid / di-config path / sequence).
 Usage:
   # Snapshot before amend
   python3 assert-constraints-preserved.py /projects/modernized \
-    --body migration/bodies/m3-s-002a.json --snapshot-before
+    --body evidence/bodies/m3-s-002a.json --snapshot-before
 
   # After amend (compares to snapshot, or to --baseline)
   python3 assert-constraints-preserved.py /projects/modernized \
-    --body migration/bodies/m3-s-002a.json --check
+    --body evidence/bodies/m3-s-002a.json --check
 
   # Explicit baseline file
   python3 assert-constraints-preserved.py /projects/modernized \
-    --body migration/bodies/m3-s-002a.json --baseline /tmp/old.json --check
+    --body evidence/bodies/m3-s-002a.json --baseline /tmp/old.json --check
 """
 from __future__ import annotations
 
@@ -59,7 +59,7 @@ def norm_set(items: list[str]) -> set[str]:
 
 def snapshot_path(root: Path, body: Path) -> Path:
     digest = hashlib.sha256(str(body.resolve()).encode()).hexdigest()[:12]
-    return root / "migration" / "receipts" / "constraints-snapshots" / f"{digest}.json"
+    return root / "evidence" / "receipts" / "constraints-snapshots" / f"{digest}.json"
 
 
 def main() -> int:

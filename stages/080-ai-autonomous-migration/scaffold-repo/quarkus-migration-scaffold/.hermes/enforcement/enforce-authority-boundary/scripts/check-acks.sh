@@ -26,7 +26,7 @@ esac
 ROOT="$(cd "${2:-${SKILL_DIR}/../../..}" && pwd)"
 PHASE="${1:-}"
 DISPATCH="${ROOT}/.hermes/phase-dispatch.yaml"
-ACK_DIR="${ROOT}/migration/acks"
+ACK_DIR="${ROOT}/evidence/acks"
 
 die() { echo "FAIL: $*" >&2; exit 1; }
 [ -n "${PHASE}" ] || { echo "usage: check-acks.sh <phase> [root]" >&2; exit 2; }
@@ -142,7 +142,7 @@ PY
 )"
       hint="; found non-authoritative ${bare#"${ROOT}"/} status=${bare_status} — want ${ack_type}.ack.yaml|.ack.json kind=migration-ack status=acknowledged (AR-1.1; bare *.json worker grants refused)"
     else
-      hint="; want migration/acks/${ack_type}.ack.yaml|.ack.json kind=migration-ack status=acknowledged (no matching .ack.* file)"
+      hint="; want evidence/acks/${ack_type}.ack.yaml|.ack.json kind=migration-ack status=acknowledged (no matching .ack.* file)"
     fi
     echo "FAIL: phase ${PHASE} missing authoritative ack '${ack_type}'${hint}" >&2
     bad=1

@@ -21,7 +21,7 @@ def main() -> int:
     ap.add_argument("root", type=Path)
     args = ap.parse_args()
     root = args.root.resolve()
-    tomb_path = root / "migration" / "quarantine" / "tombstones.json"
+    tomb_path = root / "evidence" / "quarantine" / "tombstones.json"
     if not tomb_path.is_file():
         print("OK: no tombstones.json (nothing to assert)")
         return 0

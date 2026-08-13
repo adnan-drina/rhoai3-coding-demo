@@ -7,8 +7,8 @@ After BANK-CONV-LIVE-WD-1 fires, classify whether the stall looks like:
   - unknown: cannot probe
 
 Does NOT mutate the board. Emits a JSON receipt under
-migration/receipts/conv-live-classify/ for Lead reclaim + bounded-retry policy
-(`migration/contracts/conv-live-bounded-retry.md`).
+evidence/receipts/conv-live-classify/ for Lead reclaim + bounded-retry policy
+(`governance/contracts/conv-live-bounded-retry.md`).
 
 Usage:
   classify-conv-live-stall.py <root> --task-id t_xxx [--stamp]
@@ -105,7 +105,7 @@ def main() -> int:
     }
     print(f"CONV_LIVE_CLASSIFY class={klass} action={action} probe={probe}")
     if args.stamp:
-        outdir = root / "migration" / "receipts" / "conv-live-classify"
+        outdir = root / "evidence" / "receipts" / "conv-live-classify"
         outdir.mkdir(parents=True, exist_ok=True)
         path = outdir / f"{args.task_id}-{int(time.time())}.json"
         path.write_text(json.dumps(receipt, indent=2) + "\n", encoding="utf-8")

@@ -266,7 +266,7 @@ def scenario_dup_dispatch(kb, conn, board: str) -> dict:
 
 def scenario_digest_mismatch(kb, conn, board: str, root: Path, out: Path) -> dict:
     """Wrong sha256 on typed body ref → BODY_REF_DIGEST + Kanban blocked."""
-    anchor = root / "migration" / "contracts" / "check-release-readiness.md"
+    anchor = root / "governance" / "contracts" / "check-release-readiness.md"
     if not anchor.is_file():
         anchor = root / "pom.xml"
     actual = sha256_file(anchor) if anchor.is_file() else "0" * 64
@@ -287,7 +287,7 @@ def scenario_digest_mismatch(kb, conn, board: str, root: Path, out: Path) -> dic
             }
         ],
     }
-    bodies_dir = root / "migration" / "bodies"
+    bodies_dir = root / "evidence" / "bodies"
     bodies_dir.mkdir(parents=True, exist_ok=True)
     body_path = bodies_dir / "chaos7-digest-mismatch.json"
     body_path.write_text(json.dumps({"body": body}, indent=2) + "\n", encoding="utf-8")
@@ -368,9 +368,7 @@ def scenario_gate_refusal(kb, conn, board: str, root: Path, out: Path) -> dict:
     (out / "gate-refusal-g1.log").write_text(combined, encoding="utf-8")
 
     refuse_path = (
-        root
-        / "migration"
-        / "fixtures"
+        root / "governance" / "fixtures"
         / "admission"
         / "out"
         / "g1-characterization"
@@ -378,9 +376,7 @@ def scenario_gate_refusal(kb, conn, board: str, root: Path, out: Path) -> dict:
     )
     if not refuse_path.is_file():
         refuse_path = (
-            root
-            / "migration"
-            / "fixtures"
+            root / "governance" / "fixtures"
             / "admission"
             / "out"
             / "g1"
@@ -403,7 +399,7 @@ def scenario_gate_refusal(kb, conn, board: str, root: Path, out: Path) -> dict:
         "story_id": "CHAOS-7",
         "reason": "Plan #7 gate refusal exercise (known-bad admission)",
     }
-    vdir = root / "migration" / "verdicts"
+    vdir = root / "evidence" / "verdicts"
     vdir.mkdir(parents=True, exist_ok=True)
     vpath = vdir / "chaos7-gate-refusal.json"
     vpath.write_text(json.dumps(chaos_verdict, indent=2) + "\n", encoding="utf-8")
@@ -448,7 +444,7 @@ def main() -> int:
     ap.add_argument("--board", default="chaos-matrix-7", help="isolated Kanban board slug")
     args = ap.parse_args()
     root = Path(args.root).resolve()
-    out = Path(args.out).resolve() if args.out else root / "migration" / "chaos" / "live-7"
+    out = Path(args.out).resolve() if args.out else root / "evidence" / "chaos" / "live-7"
     out.mkdir(parents=True, exist_ok=True)
 
     kb = load_hermes_db()

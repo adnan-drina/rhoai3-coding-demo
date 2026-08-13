@@ -6,9 +6,9 @@ Every gate output stamps g4_mode=SAMPLE until partitions + permitted
 equivalence + zero unverified entry points land for release_qualified.
 
 Runs the three admission fixtures under
-`migration/fixtures/admission/g4-runtime-parity/` (known-good / known-bad /
+`governance/fixtures/admission/g4-runtime-parity/` (known-good / known-bad /
 known-vacuous) and writes each verdict under
-`migration/fixtures/admission/out/g4-runtime-parity/`.
+`evidence/fixtures/admission/out/g4-runtime-parity/`.
 
 Usage:
   python3 g4-runtime-parity.py .
@@ -71,11 +71,11 @@ def main() -> int:
         "root",
         nargs="?",
         default=".",
-        help="product root containing migration/fixtures/admission (default: .)",
+        help="product root containing governance/fixtures/admission (default: .)",
     )
     args = ap.parse_args()
     root = Path(args.root)
-    base = root / "migration/fixtures/admission/g4-runtime-parity"
+    base = root / "governance/fixtures/admission/g4-runtime-parity"
     expected = {
         "known-good": "ACCEPT",
         "known-bad": "REFUSE",

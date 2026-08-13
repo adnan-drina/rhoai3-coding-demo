@@ -10,7 +10,7 @@ already-landed substrate). Orphans that must be migration targets should be
 assigned in partition/bodies before create — this stamp does not invent owners.
 
 Usage:
-  python3 stamp-body-dependencies.py /projects/modernized --body migration/bodies/m3-s-002a.json --write
+  python3 stamp-body-dependencies.py /projects/modernized --body evidence/bodies/m3-s-002a.json --write
 """
 from __future__ import annotations
 
@@ -135,7 +135,7 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("root", nargs="?", default=".")
     ap.add_argument("--body", required=True)
-    ap.add_argument("--bodies", default="migration/bodies")
+    ap.add_argument("--bodies", default="evidence/bodies")
     ap.add_argument("--write", action="store_true")
     args = ap.parse_args()
     root = Path(args.root).resolve()

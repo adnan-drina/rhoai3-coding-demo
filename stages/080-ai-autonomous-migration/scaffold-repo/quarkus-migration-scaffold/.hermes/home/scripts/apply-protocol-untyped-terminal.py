@@ -31,7 +31,7 @@ def write_stamp(
     detail: str,
     secondary_to: str,
 ) -> Path:
-    out_dir = root / "migration" / "verdicts"
+    out_dir = root / "evidence" / "verdicts"
     out_dir.mkdir(parents=True, exist_ok=True)
     stamp = {
         "schema": "rhoai3.protocol-untyped-block/v1",

@@ -53,7 +53,7 @@ def main() -> int:
     sys.stdout.write(cp.stdout or "")
     sys.stderr.write(cp.stderr or "")
 
-    eval_path = root / "migration" / "runs" / args.task_id / "exit-eval.json"
+    eval_path = root / "evidence" / "runs" / args.task_id / "exit-eval.json"
     overall_ok = False
     cmd_failed: list = []
     if eval_path.is_file():
@@ -64,7 +64,7 @@ def main() -> int:
         except (OSError, json.JSONDecodeError, TypeError):
             pass
 
-    out_dir = root / "migration" / "runs" / args.task_id
+    out_dir = root / "evidence" / "runs" / args.task_id
     out_dir.mkdir(parents=True, exist_ok=True)
     receipt = {
         "schema": SCHEMA,

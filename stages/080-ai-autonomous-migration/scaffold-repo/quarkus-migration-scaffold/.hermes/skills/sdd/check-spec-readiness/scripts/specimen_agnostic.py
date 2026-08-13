@@ -120,8 +120,8 @@ def path_rewrites(root: Path) -> list[tuple[str, str]]:
     # Discover: inventory legacy java dirs vs modernized dest dirs in bodies
     inv = None
     for cand in (
-        root / "migration/entry-point-inventory.json",
-        root / "migration/fixtures/inventory/entry-point-inventory-petclinic-f11.json",
+        root / "evidence/entry-point-inventory.json",
+        root / "governance/fixtures/inventory/entry-point-inventory-petclinic-f11.json",
     ):
         inv = load_json(cand)
         if isinstance(inv, dict):
@@ -138,7 +138,7 @@ def path_rewrites(root: Path) -> list[tuple[str, str]]:
                 legacy_pkgs.add(m.group(1).rsplit("/", 1)[0] + "/")
 
     dest_pkgs: set[str] = set()
-    bodies = root / "migration/bodies"
+    bodies = root / "evidence/bodies"
     if bodies.is_dir():
         for path in bodies.glob("m3-*.json"):
             if path.name.endswith(".sha256.json"):
@@ -219,8 +219,8 @@ def legacy_java_prefixes(root: Path) -> list[str]:
             return [b]
     # Derive from inventory file paths
     for cand in (
-        root / "migration/entry-point-inventory.json",
-        root / "migration/fixtures/inventory/entry-point-inventory-petclinic-f11.json",
+        root / "evidence/entry-point-inventory.json",
+        root / "governance/fixtures/inventory/entry-point-inventory-petclinic-f11.json",
     ):
         inv = load_json(cand)
         if not isinstance(inv, dict):
@@ -254,11 +254,11 @@ def resolve_inventory_path(root: Path, explicit: str = "", *, allow_specimen_fix
         if not p.is_absolute():
             p = root / p
         return p if p.is_file() else None
-    primary = root / "migration/entry-point-inventory.json"
+    primary = root / "evidence/entry-point-inventory.json"
     if primary.is_file():
         return primary
     if allow_specimen_fixture:
-        fixture = root / "migration/fixtures/inventory/entry-point-inventory-petclinic-f11.json"
+        fixture = root / "governance/fixtures/inventory/entry-point-inventory-petclinic-f11.json"
         if fixture.is_file():
             return fixture
     return None

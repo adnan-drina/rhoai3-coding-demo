@@ -2,8 +2,8 @@
 """AD-H §16.9 / AR-4.3 — run journal body + pre/post digests.
 
 Sources:
-  - migration/runs/*.json          (run journals, schema rhoai3.run-journal/v1)
-  - migration/bodies/*.sha256.json (body digest sidecars)
+  - evidence/runs/*.json          (run journals, schema rhoai3.run-journal/v1)
+  - evidence/bodies/*.sha256.json (body digest sidecars)
 
 Refuses schema drift, missing journal fields, body digest drift, and retries
 that reused more than one body digest for the same task_id.
@@ -51,9 +51,9 @@ def main() -> int:
     )
     args = ap.parse_args()
     root = Path(args.root).resolve()
-    runs = root / "migration" / "runs"
-    sidecars = list((root / "migration" / "bodies").glob("*.sha256.json")) if (
-        root / "migration" / "bodies"
+    runs = root / "evidence" / "runs"
+    sidecars = list((root / "evidence" / "bodies").glob("*.sha256.json")) if (
+        root / "evidence" / "bodies"
     ).is_dir() else []
     journals = list(runs.glob("*.json")) if runs.is_dir() else []
 
@@ -72,10 +72,10 @@ def main() -> int:
             continue
         bpath = Path(stamp.get("body_path") or "")
         if not bpath.is_file():
-            cand = root / "migration" / "bodies" / sc.name.replace(".sha256.json", "")
+            cand = root / "evidence" / "bodies" / sc.name.replace(".sha256.json", "")
             # *.json.sha256.json → *.json
             name = sc.name[: -len(".sha256.json")]
-            cand = root / "migration" / "bodies" / name
+            cand = root / "evidence" / "bodies" / name
             bpath = cand if cand.is_file() else bpath
         if not bpath.is_file():
             print(f"FAIL: AR-4.3 {sc.name}: body_path missing", file=sys.stderr)

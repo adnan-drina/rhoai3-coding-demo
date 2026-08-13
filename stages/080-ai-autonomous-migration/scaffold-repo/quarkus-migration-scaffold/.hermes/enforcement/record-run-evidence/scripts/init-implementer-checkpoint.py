@@ -105,7 +105,7 @@ def main() -> int:
         rel_body = str(body_path.resolve().relative_to(root))
     except ValueError:
         rel_body = str(body_path)
-    out_dir = root / "migration" / "runs" / args.task_id
+    out_dir = root / "evidence" / "runs" / args.task_id
     out = out_dir / "checkpoint.json"
 
     if out.is_file() and not args.force:

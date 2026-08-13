@@ -35,7 +35,7 @@ def load_items(path: Path) -> list[dict]:
 
 def factory_claims(root: Path) -> list[str]:
     claims: list[str] = []
-    for d in (root / "migration/preflight", root / "migration/verdicts"):
+    for d in (root / "evidence/preflight", root / "evidence/verdicts"):
         if not d.is_dir():
             continue
         for path in sorted(d.glob("*.json")):
@@ -52,7 +52,7 @@ def factory_claims(root: Path) -> list[str]:
                         claims.append(str(path.relative_to(root)))
             except Exception:
                 continue
-    for d in (root / "migration/tasks", root / "migration/kanban"):
+    for d in (root / "evidence/tasks", root / "evidence/kanban"):
         if not d.is_dir():
             continue
         for path in sorted(d.glob("*.json")):
@@ -80,9 +80,9 @@ def typed_g1_waiver(root: Path) -> str | None:
 
     Self-reported `g1_kill_ratio_waiver: true` on a verdict is NOT authority
     (Deputy E-20260813T144954Z P1). Waiver path is the pin contract location:
-    migration/acks/g1-kill-ratio-waiver*.ack.yaml
+    evidence/acks/g1-kill-ratio-waiver*.ack.yaml
     """
-    adir = root / "migration" / "acks"
+    adir = root / "evidence" / "acks"
     if not adir.is_dir():
         return None
     for path in sorted(adir.glob("g1-kill-ratio-waiver*.ack.yaml")) + sorted(
@@ -121,10 +121,10 @@ def typed_g1_waiver(root: Path) -> str | None:
 def pinned_kill_ratio_pass(root: Path) -> str | None:
     """Return label if a g1 kill-ratio pin artifact evaluates PASS, else None."""
     candidates = [
-        root / "migration" / "verdicts" / "g1-kill-ratio-pin.json",
-        root / "migration" / "derived" / "g1-kill-ratio-pin.json",
+        root / "evidence" / "verdicts" / "g1-kill-ratio-pin.json",
+        root / "evidence" / "derived" / "g1-kill-ratio-pin.json",
     ]
-    vdir = root / "migration" / "verdicts"
+    vdir = root / "evidence" / "verdicts"
     if vdir.is_dir():
         candidates.extend(sorted(vdir.glob("*kill-ratio*pin*.json")))
     for path in candidates:
@@ -187,14 +187,14 @@ def m5_accept_state(root: Path) -> tuple[str, str, dict]:
     ACCEPT means **full** M5 ACCEPT (AD-H §18.0). Provisional is rejected.
 
     Authority sources (Deputy E-20260813T151402Z P0):
-      1. A real M5 verdict JSON under migration/verdicts/ (preferred).
+      1. A real M5 verdict JSON under evidence/verdicts/ (preferred).
       2. A non-empty migration-ack for m5-accept with kind/status acknowledged.
     A zero-byte `touch` of m5-accept.ack is NOT ACCEPT — Research reproduced
     that bypass; file presence alone is refused.
     Body `refs: [{key: m5_accept}]` is NOT proof of ACCEPT.
     """
     best: tuple[str, str, dict] = ("MISSING", "", {})
-    vdir = root / "migration/verdicts"
+    vdir = root / "evidence/verdicts"
     if vdir.is_dir():
         for path in sorted(vdir.glob("*.json")):
             try:
@@ -211,7 +211,7 @@ def m5_accept_state(root: Path) -> tuple[str, str, dict]:
     if best[0] != "MISSING":
         return best
 
-    adir = root / "migration" / "acks"
+    adir = root / "evidence" / "acks"
     candidates: list[Path] = []
     if adir.is_dir():
         for name in (
@@ -290,7 +290,7 @@ def full_accept_ok(root: Path, obj: dict) -> str | None:
         if self_waiver and not waiver_art:
             return (
                 "TRUST_UNVERIFIED: g1_kill_ratio_waiver on verdict is not authority — "
-                "need migration/acks/g1-kill-ratio-waiver*.ack.yaml or pin PASS "
+                "need evidence/acks/g1-kill-ratio-waiver*.ack.yaml or pin PASS "
                 "(Deputy E-20260813T144954Z P1)"
             )
         if pin_art:
@@ -314,7 +314,7 @@ def main() -> int:
         "root",
         nargs="?",
         default=".",
-        help="product root containing migration/preflight, verdicts, tasks (default: .)",
+        help="product root containing evidence/preflight, verdicts, tasks (default: .)",
     )
     args = ap.parse_args()
     root = Path(args.root).resolve()

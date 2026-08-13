@@ -1,0 +1,11 @@
+{
+  "schema": "rhoai3.run-journal/v1",
+  "task_id": "t_demo",
+  "run_id": "1",
+  "body_path": "evidence/bodies/demo.json",
+  "body_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "pre_tree_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "post_tree_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "changed_files": [],
+  "recorded_at": "2026-08-10T00:00:00Z"
+}

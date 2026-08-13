@@ -22,10 +22,10 @@ def load(path: Path) -> dict:
 
 def main() -> int:
     root = Path(sys.argv[1] if len(sys.argv) > 1 else ".").resolve()
-    # accept either a receipts dir or a product root with migration/receipts/m4-floor
+    # accept either a receipts dir or a product root with evidence/receipts/m4-floor
     candidates = [
         root,
-        root / "migration/receipts/m4-floor",
+        root / "evidence/receipts/m4-floor",
         root / "receipts",
     ]
     receipts_dir = next((c for c in candidates if c.is_dir() and any(c.glob("*.json"))), None)
@@ -67,7 +67,7 @@ def main() -> int:
     if smoke_name is None:
         print(
             "FAIL: missing receipt for endpoint_smoke or endpoint_smoke_health "
-            "(B8 / migration/contracts/check-semantics-manifest.md)",
+            "(B8 / governance/contracts/check-semantics-manifest.md)",
             file=sys.stderr,
         )
         bad = 1

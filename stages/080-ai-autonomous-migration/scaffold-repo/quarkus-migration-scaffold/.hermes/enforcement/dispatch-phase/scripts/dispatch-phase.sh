@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Create + dispatch a Hermes Kanban task for one M-phase from phase-dispatch.yaml.
-# Cite: migration/contracts/devspaces-dispatcher-posture.md (B5 daemon/gateway;
+# Cite: governance/contracts/devspaces-dispatcher-posture.md (B5 daemon/gateway;
 # B6 promote vs park-at-birth). This script is the interim dispatcher half.
 # Usage:
 #   bash .hermes/enforcement/dispatch-phase/scripts/dispatch-phase.sh M1
@@ -79,10 +79,10 @@ python3 "${ROOT}/.hermes/enforcement/dispatch-phase/scripts/check-create-path-ti
   || die "create-path tip sync failed (R0/R3)"
 # Architect E-20260811T170706Z Class A — quarantine tombstones before any phase create
 python3 "${ROOT}/.hermes/skills/sdd/check-spec-readiness/scripts/assert-quarantine-tombstones.py" "${ROOT}" \
-  || die "quarantine tombstones resurrected — wipe + purge restorer (migration/contracts/quarantine-survives-dispatch.md)"
+  || die "quarantine tombstones resurrected — wipe + purge restorer (governance/contracts/quarantine-survives-dispatch.md)"
 # S-008 / W4 — parent-chain triad resurrection order (distinct from tombstones)
 python3 "${ROOT}/.hermes/enforcement/dispatch-phase/scripts/check-s008-resurrection-order.py" "${ROOT}" \
-  || die "S-008 resurrection-order failed (migration/contracts/s008-quarantine-resurrection-order.md)"
+  || die "S-008 resurrection-order failed (governance/contracts/s008-quarantine-resurrection-order.md)"
 python3 "${ROOT}/.hermes/enforcement/dispatch-phase/scripts/check-phase-attach-matrix.py" "${ROOT}" \
   || die "phase attach matrix failed"
 python3 "${ROOT}/.hermes/enforcement/dispatch-phase/scripts/check-phase-body-script-refs.py" "${ROOT}" \
@@ -264,25 +264,25 @@ Task-type: examining
 orchestration: hermes_native (required)
 
 ## Job (in order)
-1. Load/run **derive-legacy-boot3** - ensure `migration/derived/legacy-at-3.json` and frozen harvest_referent.
-2. Load/run **inventory-entry-points** - write `migration/entry-point-inventory.json` (**before** MTA handoff emit).
-3. Load/run **scan-with-mta** - `bash "${HERMES_SKILL_DIR}/scripts/mta-analyze-legacy.sh"` (never invent `--source`; use MTA_RUN_CWD + writable clone when freeze is a-w). Script normalizes findings and emits `migration/findings-handoff.json` (requires inventory).
+1. Load/run **derive-legacy-boot3** - ensure `evidence/derived/legacy-at-3.json` and frozen harvest_referent.
+2. Load/run **inventory-entry-points** - write `evidence/entry-point-inventory.json` (**before** MTA handoff emit).
+3. Load/run **scan-with-mta** - `bash "${HERMES_SKILL_DIR}/scripts/mta-analyze-legacy.sh"` (never invent `--source`; use MTA_RUN_CWD + writable clone when freeze is a-w). Script normalizes findings and emits `evidence/findings-handoff.json` (requires inventory).
 4. Schema-validate findings + handoff (runtime skill root / AD-H §7.1):
    `python3 "${HERMES_SKILL_DIR:-.hermes/home/skills/software-development/scan-with-mta}/scripts/check-findings-handoff.py" /projects/modernized`
    Exit: **0=pass**; **1=FAIL→typed BLOCK**; **2=missing script** (harness/lint defect — do not invent).
-   **Do not** write stage-advance acks — Operator grants `migration/acks/m1-findings.ack.yaml` per `ack.md` / AR-1.1.
+   **Do not** write stage-advance acks — Operator grants `evidence/acks/m1-findings.ack.yaml` per `ack.md` / AR-1.1.
 
 ## Constraints
 - workspace: dir:/projects/modernized
 - Do not hand-edit destination app source.
 - Do not run analyze as a detached shell outside this Kanban task.
-- Do **not** grant `migration/acks/m1-findings.json` or any `acknowledged_by` worker role (AR-1.1).
+- Do **not** grant `evidence/acks/m1-findings.json` or any `acknowledged_by` worker role (AR-1.1).
 - If blocked, report typed BLOCK and stop.
 
 ## Done when
-- `migration/mta-findings.json` validates (`rhoai3.mta-findings/v1-provisional`) — evidence store
-- `migration/entry-point-inventory.json` present
-- `migration/findings-handoff.json` validates (`rhoai3.findings-handoff/v1`) — M2 planner input
+- `evidence/mta-findings.json` validates (`rhoai3.mta-findings/v1-provisional`) — evidence store
+- `evidence/entry-point-inventory.json` present
+- `evidence/findings-handoff.json` validates (`rhoai3.findings-handoff/v1`) — M2 planner input
 - Stage-advance ack is **out of band** (Operator) — not a worker Done criterion
 EOF
     TITLE="M1 ANALYZE: derive + MTA/kantra + inventory"
@@ -292,7 +292,7 @@ EOF
 # M2a PLAN — partition + briefs only (R-AB.2 / pre-v12 R1)
 
 Phase: M2a per `.hermes/phase-dispatch.yaml`
-Requires: Operator `migration/acks/m1-findings.ack.yaml` + findings-handoff gate
+Requires: Operator `evidence/acks/m1-findings.ack.yaml` + findings-handoff gate
 
 ## Execute-as-defined-or-stop (Operator E-20260811T113700Z)
 Any obligation unexecutable as written (unresolvable gate script, missing
@@ -301,14 +301,14 @@ substitution / path invention / specimen-body priming. Measure the harness.
 
 ## Input manifest
 ### Required present
-- migration/acks/m1-findings.ack.yaml
-- migration/findings-handoff.json
-- migration/entry-point-inventory.json
-- migration/mta-findings.json
-- migration/schemas/partition.md
+- evidence/acks/m1-findings.ack.yaml
+- evidence/findings-handoff.json
+- evidence/entry-point-inventory.json
+- evidence/mta-findings.json
+- governance/schemas/partition.md
 ### Forbidden absent
-- migration/bodies/*.json
-- migration/bodies/m3-*.json
+- evidence/bodies/*.json
+- evidence/bodies/m3-*.json
 
 ## Job
 0. **Spec Kit preseed verify-or-BLOCK** (Architect E-20260811T121308Z provision-owns-tools):
@@ -327,19 +327,19 @@ substitution / path invention / specimen-body priming. Measure the harness.
      **Do not** freeform-write `partition.json` as a silent substitute.
    - Evidence: Spec Kit seed (e.g. `specs/**/spec.md`) **or** a typed
      `needs_input` block comment — required before Done.
-3. **Write-once** `migration/briefs/partition.json` (`rhoai3.partition/v1`) **only after**
+3. **Write-once** `evidence/briefs/partition.json` (`rhoai3.partition/v1`) **only after**
    Spec Kit seed (or Operator disposition of a typed BLOCK) — Input-manifest sources
-   only; **not** `migration/bodies/*`.
+   only; **not** `evidence/bodies/*`.
 4. **Partition-coverage gate** (Architect E-20260811T133858Z): run
-   `python3 .hermes/skills/sdd/check-spec-readiness/scripts/check-partition-coverage.py . --write-receipt migration/receipts/partition-coverage/latest.json`
+   `python3 .hermes/skills/sdd/check-spec-readiness/scripts/check-partition-coverage.py . --write-receipt evidence/receipts/partition-coverage/latest.json`
    — must print `PARTITION_COVERAGE: VALID` (fail-closed). See
-   `migration/contracts/partition-coverage.md`.
+   `governance/contracts/partition-coverage.md`.
 5. **STOP** — do **not** run `/speckit-tasks` or `create-m3-implementer.sh` here.
    Lead/Operator dispatch **M2b** next (parent = this task).
 
 ## Done when
 - Spec Kit invoke evidenced (seed artifact) **or** typed `needs_input` BLOCK recorded
-- `migration/briefs/partition.json` present (write-once) only after Spec Kit path satisfied
+- `evidence/briefs/partition.json` present (write-once) only after Spec Kit path satisfied
 - `check-partition-coverage.py` → **VALID** (+ receipt)
 - **No** M3 children created on this card
 
@@ -366,17 +366,17 @@ Unexecutable obligation → typed **`needs_input` BLOCK**. Never silent substitu
 
 ## Input manifest
 ### Required present
-- migration/acks/m1-findings.ack.yaml
-- migration/findings-handoff.json
-- migration/briefs/partition.json
-- migration/schemas/partition.md
+- evidence/acks/m1-findings.ack.yaml
+- evidence/findings-handoff.json
+- evidence/briefs/partition.json
+- governance/schemas/partition.md
 ### Forbidden absent
-- migration/bodies/m3-*.json
+- evidence/bodies/m3-*.json
 
 ## Job
-1. Require `migration/briefs/partition.json` — typed `needs_input` BLOCK if missing (run M2a first).
+1. Require `evidence/briefs/partition.json` — typed `needs_input` BLOCK if missing (run M2a first).
 2. **Per-artifact Spec Kit resume ladder** (Architect E-20260811T122959Z — decision-complete;
-   contract `migration/contracts/m2b-resume-ladder.md`; retired inverted v11 R-M2.6
+   contract `governance/contracts/m2b-resume-ladder.md`; retired inverted v11 R-M2.6
    compound jump under M2a/M2b split — see retired `m2-resume-from-artifacts.md`):
    - **`/speckit-specify`:** precondition = no `specs/**/spec.md` (or workspace Spec Kit
      equiv). **Skip iff** `spec.md` already exists (M2a normally left it). Do **not**
@@ -393,14 +393,14 @@ Unexecutable obligation → typed **`needs_input` BLOCK**. Never silent substitu
    children from M2b (Deputy E-20260811T131900Z serial law).
    **Body refs (Deputy E-20260811T131200Z):**
    - `brief_identity_ack`: `sha256: "pending"` + intended future ack path
-     (e.g. `migration/acks/brief-identity-<story>.ack.yaml`). Do **not**
+     (e.g. `evidence/acks/brief-identity-<story>.ack.yaml`). Do **not**
      substitute `partition.json` or invent prose digests.
    - `legacy_locus`: 64-hex of the primary legacy **file** (not a directory;
      not `see-harvest-referent` prose).
 4. Before `kanban_complete`: run
    `python3 .hermes/enforcement/dispatch-phase/scripts/check-created-cards-claim.py --parent $TASK_ID --claimed <ids…>`
    Pass those ids as `created_cards`. **`created_cards=[]` is REJECT** when
-   `migration/derived/created-cards-$TASK_ID.json` is nonempty.
+   `evidence/derived/created-cards-$TASK_ID.json` is nonempty.
 5. Stop for Operator `brief-identity.ack.yaml`.
 
 ## Done when
@@ -433,7 +433,7 @@ Execute only `files_in_scope` from the typed W2 §6 body. Consult
 ground-in-harvest + spring-to-quarkus-patterns before edits. One task ⇒ one role.
 
 ## Typed body (required — not a pointer to tasks.md)
-Write/attach `migration/bodies/<task>.json` with:
+Write/attach `evidence/bodies/<task>.json` with:
 - `task_id`, `task_type=implementing`, `phase=M3`
 - `files_in_scope`: non-empty paths
 - `refs[]` including `brief_identity_ack` (`pending` until Operator ack, then 64-hex)
@@ -443,7 +443,7 @@ Validate: `python3 .hermes/skills/sdd/check-spec-readiness/scripts/check-kanban-
 
 ## Done when
 - Scoped compile/tests for files_in_scope pass, or typed BLOCK with residue named
-- Provenance record writable under migration/tasks/ (AD-H §19)
+- Provenance record writable under evidence/tasks/ (AD-H §19)
 
 ## Constraints
 - workspace: dir:/projects/modernized
@@ -463,13 +463,13 @@ EOF
 # M4 VERIFY - Hermes-native (validator)
 
 Phase: M4 — verdict token PROVISIONAL_ACCEPT (accept_kind=provisional).
-Run required_checks from phase-dispatch.yaml. Write verdict JSON under migration/verdicts/.
+Run required_checks from phase-dispatch.yaml. Write verdict JSON under evidence/verdicts/.
 
 ## Pre-v12 R2 — M4 floor (required)
 1. `bash .hermes/skills/gates/check-release-readiness/scripts/run-m4-floor.sh /projects/modernized`
-2. `python3 .hermes/skills/gates/check-release-readiness/scripts/check-m4-floor-receipts.py migration/receipts/m4-floor/latest`
+2. `python3 .hermes/skills/gates/check-release-readiness/scripts/check-m4-floor-receipts.py evidence/receipts/m4-floor/latest`
 3. Bank receipts; do **not** claim PROVISIONAL_ACCEPT without boot_health + endpoint_smoke PASS (g4_hook may be INCONCLUSIVE / SAMPLE).
-Contract: `migration/contracts/m4-floor-runner.md`. `ad010_demo=false` until Architect promotes.
+Contract: `governance/contracts/m4-floor-runner.md`. `ad010_demo=false` until Architect promotes.
 EOF
     TITLE="M4 VERIFY: provisional accept"
     ;;
@@ -530,8 +530,8 @@ OUT="$(hermes kanban create "${CREATE_ARGS[@]}" "${TITLE}")"
 echo "${OUT}"
 TASK_ID="$(python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("id") or "")' <<<"${OUT}")"
 [[ -n "${TASK_ID}" ]] || die "kanban create returned no id"
-mkdir -p "${ROOT}/migration/derived"
-echo "${TASK_ID}" >"${ROOT}/migration/derived/phase-${PHASE}-task-id.txt"
+mkdir -p "${ROOT}/evidence/derived"
+echo "${TASK_ID}" >"${ROOT}/evidence/derived/phase-${PHASE}-task-id.txt"
 # Operator E-20260811T114300Z — every dispatch must commission Review live adherence
 # observation. Host Lead files ledger Need from this marker (same commit as dispatch).
 {
@@ -541,7 +541,7 @@ echo "${TASK_ID}" >"${ROOT}/migration/derived/phase-${PHASE}-task-id.txt"
   echo "need: Review:adhere-observe-${TASK_ID}"
   echo "operator_event: E-20260811T114300Z"
   date -u +'ts: %Y-%m-%dT%H:%M:%SZ'
-} >"${ROOT}/migration/derived/review-adhere-observe-needed.yaml"
+} >"${ROOT}/evidence/derived/review-adhere-observe-needed.yaml"
 echo "REVIEW_ADHERE_OBSERVE=${TASK_ID}"
 echo "dispatch-phase: created ${TASK_ID} (Review:adhere-observe-${TASK_ID} REQUIRED)"
 

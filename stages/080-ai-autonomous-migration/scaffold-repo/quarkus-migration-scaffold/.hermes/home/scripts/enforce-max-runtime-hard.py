@@ -4,7 +4,7 @@
 Scans HERMES_HOME/kanban.db for running tasks whose elapsed time exceeds
 max_runtime_seconds. For each over-budget task:
 
-  1. Write migration/verdicts/max-runtime-<task_id>.json
+  1. Write evidence/verdicts/max-runtime-<task_id>.json
      (block_class=max_runtime_exceeded)
   2. If --apply: hermes kanban block with typed reason (does not MiniMax)
 
@@ -66,7 +66,7 @@ def write_stamp(
     elapsed_seconds: int,
     phase_hint: str,
 ) -> Path:
-    out_dir = root / "migration" / "verdicts"
+    out_dir = root / "evidence" / "verdicts"
     out_dir.mkdir(parents=True, exist_ok=True)
     stamp = {
         "schema": "rhoai3.max-runtime-exceeded/v1",

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Architect E-20260810T144150Z — stamp harness_fault/lost_turn under migration/verdicts/."""
+"""Architect E-20260810T144150Z — stamp harness_fault/lost_turn under evidence/verdicts/."""
 from __future__ import annotations
 
 import argparse
@@ -32,7 +32,7 @@ def main() -> int:
     ap.add_argument("--note", default="")
     args = ap.parse_args()
     root = Path(args.root)
-    out_dir = root / "migration" / "verdicts"
+    out_dir = root / "evidence" / "verdicts"
     out_dir.mkdir(parents=True, exist_ok=True)
     secondary = args.secondary_class or (
         "lost_turn" if args.primary_class == "environmental_provider" else ""

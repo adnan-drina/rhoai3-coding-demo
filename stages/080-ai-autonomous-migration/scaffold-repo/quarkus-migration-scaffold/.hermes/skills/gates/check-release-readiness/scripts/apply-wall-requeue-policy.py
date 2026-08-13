@@ -143,7 +143,7 @@ def main() -> int:
             return 1
 
     # Lag sync obligation (harness-driven stamp catch-up)
-    ck = root / "migration" / "runs" / args.task_id / "checkpoint.json"
+    ck = root / "evidence" / "runs" / args.task_id / "checkpoint.json"
     if ck.is_file():
         sync = (
             root

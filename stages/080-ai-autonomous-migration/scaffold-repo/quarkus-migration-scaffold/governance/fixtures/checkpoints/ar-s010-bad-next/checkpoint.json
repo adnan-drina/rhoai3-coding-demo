@@ -1,0 +1,14 @@
+{
+  "schema": "rhoai3.implementer-checkpoint/v1",
+  "task_id": "t_fixture",
+  "body_path": "evidence/bodies/m3-s-010.json",
+  "body_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "work_list": [
+    "src/test/java/com/demo/rest/OwnerRestControllerTests.java",
+    "src/test/java/com/demo/rest/PetRestControllerTests.java"
+  ],
+  "completed": [],
+  "next": "src/test/java/com/demo/rest/PetRestControllerTests.java",
+  "updated_at": "2026-08-10T10:00:00Z",
+  "notes": "bad next — should be Owner first"
+}

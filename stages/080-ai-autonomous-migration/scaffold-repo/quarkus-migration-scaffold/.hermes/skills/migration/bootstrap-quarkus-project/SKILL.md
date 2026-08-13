@@ -18,8 +18,8 @@ metadata:
 
 Guidance only (R-SK.14). Creates the **destination application** under the
 scaffold root (or `/projects/modernized`). Does **not** replace the harness
-tree (`.hermes/`, `migration/contracts/`, `AGENTS.md`, `SOUL.md`). Platform
-GAV values live only in `migration/contracts/tooling-pins.md`.
+tree (`.hermes/`, `governance/contracts/`, `AGENTS.md`, `SOUL.md`). Platform
+GAV values live only in `governance/contracts/tooling-pins.md`.
 
 Plan basis: `harness-refactoring/monitoring/20260813-v14-quarkus-bootstrap-plan.md`
 (CLI ADOPTABLE with RH registry-first + GA Maven; Maven `:create` first-class
@@ -35,7 +35,7 @@ fallback).
 
 ## Procedure
 
-1. Read `migration/contracts/tooling-pins.md` (Red Hat Quarkus platform row)
+1. Read `governance/contracts/tooling-pins.md` (Red Hat Quarkus platform row)
    and `../manage-quarkus-extensions/references/rh-bom-and-mandatory-deps.md`.
 2. **Prereqs (CLI path):** `~/.quarkus/config.yaml` lists
    `registry.quarkus.redhat.com` **first**; Maven reaches
@@ -64,6 +64,6 @@ fallback).
 - `quarkus.platform.group-id` is `com.redhat.quarkus.platform` (no community
   rewrite).
 - Harness tree still present: `.hermes/enforcement/validate-contracts/`,
-  `migration/contracts/`, `AGENTS.md`.
+  `governance/contracts/`, `AGENTS.md`.
 - Silent failure catch: missing pins → pins script exit 1; CLI without RH
   registry-first → refuse CLI path and use Maven fallback (or typed block).

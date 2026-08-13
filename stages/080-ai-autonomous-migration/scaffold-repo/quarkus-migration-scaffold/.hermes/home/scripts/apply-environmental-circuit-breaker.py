@@ -57,7 +57,7 @@ def write_stamp(
     prior_run_ids: list[str],
     phase: str,
 ) -> Path:
-    out_dir = root / "migration" / "verdicts"
+    out_dir = root / "evidence" / "verdicts"
     out_dir.mkdir(parents=True, exist_ok=True)
     stamp = {
         "schema": "rhoai3.environmental-provider-block/v1",

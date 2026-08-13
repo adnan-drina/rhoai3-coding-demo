@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """R-M3.5 — require persistence stack in pom.xml for JPA successors.
 
-Architect E-20260810T172800Z / migration/contracts/pom-persistence-handoff.md
+Architect E-20260810T172800Z / governance/contracts/pom-persistence-handoff.md
 """
 from __future__ import annotations
 

@@ -18,7 +18,7 @@ metadata:
 
 - **A verdict is about to be written or consumed** at M4/M5/factory: confirm
   `.hermes/phase-dispatch.yaml` `required_checks` still cover the §18 matrix and
-  that every JSON under `migration/verdicts/` and `migration/preflight/` carries
+  that every JSON under `evidence/verdicts/` and `evidence/preflight/` carries
   a legal token + routing pair (M4 is literally `PROVISIONAL_ACCEPT`).
 - **A ship or `promoted_to_main` claim exists**: factory must not contradict a
   *full* M5 `ACCEPT`, the claim must name a candidate SHA, and standing entry-
@@ -37,8 +37,8 @@ metadata:
 
 ## Contracts
 
-- `migration/contracts/validation-release-gates.md`
-- `migration/schemas/verdict.md`
+- `governance/contracts/validation-release-gates.md`
+- `governance/schemas/verdict.md`
 - Phase `required_checks` + `accept_kind`: `.hermes/phase-dispatch.yaml`
 
 **§18.0:** M4 verdict = literal `PROVISIONAL_ACCEPT` (never ship); M5 = `ACCEPT`
@@ -57,16 +57,16 @@ and is idle (exit 0) when its trigger artifact is absent. Commands under
    `check-runnable-db-config.py`, `check-empty-security.py`,
    `check-test-toolchain.py`, and `../check-domain-parity/scripts/check-product-tests.py`.
 3. **Verdict composition** — `check-verdict-routing.py` over
-   `migration/verdicts/` + `migration/preflight/`; `check-accept-scope.py` for
+   `evidence/verdicts/` + `evidence/preflight/`; `check-accept-scope.py` for
    descope ⇒ `SCOPED_ACCEPT`; `compute-substrate-reopen.py --check <verdict>`
-   (or `--implicated a,b --print`) against `migration/slices/closure-map.json`.
+   (or `--implicated a,b --print`) against `evidence/slices/closure-map.json`.
 4. **Semantics (B8)** — `check-semantics-manifest.py` (contract
    `check-semantics-manifest.md`; also via `check-m4-floor-receipts.py`).
 5. **Terminals and requeue** — `evaluate-exit-criteria.py`, wall/crash apply
    scripts, `restore-or-refuse-requeue.py`, `check-workspace-clean.py`,
    `apply-dependency-wait-hold.py`, `check-side-effect-recovery.py`.
 6. **Completion** — `assert-complete-exit-criteria.py --task-id --body` →
-   `migration/runs/<task>/complete-exit-ok.json` before `kanban_complete`.
+   `evidence/runs/<task>/complete-exit-ok.json` before `kanban_complete`.
 7. **Ship** — `check-factory-m5.py` (required oracle) and
    `check-candidate-promote.py` (candidate SHA before `promoted_to_main`).
 8. **Floor / chaos** — `run-m4-floor.sh` then `check-m4-floor-receipts.py`;
@@ -113,23 +113,23 @@ python3 "${HERMES_SKILL_DIR}/scripts/check-test-toolchain.py" /projects/moderniz
 
 # Architect E-110403Z / E-121300Z — wall exit-eval + soft K requeue policy
 python3 "${HERMES_SKILL_DIR}/scripts/evaluate-exit-criteria.py" /projects/modernized \
-  --body migration/bodies/m3-s-010.json --task-id t_xxx --trigger timed_out
+  --body evidence/bodies/m3-s-010.json --task-id t_xxx --trigger timed_out
 python3 "${HERMES_SKILL_DIR}/scripts/check-wall-exit-eval.py" /projects/modernized \
   --task-id t_xxx --trigger timed_out --require-test-compile
 python3 "${HERMES_SKILL_DIR}/scripts/apply-wall-requeue-policy.py" /projects/modernized \
-  --task-id t_xxx --body migration/bodies/m3-s-010.json --k-soft 1
+  --task-id t_xxx --body evidence/bodies/m3-s-010.json --k-soft 1
 
 # Architect E-20260810T142650Z — crash requeue ceiling (does not spend wall soft-K)
 python3 "${HERMES_SKILL_DIR}/scripts/apply-crash-requeue-policy.py" /projects/modernized \
   --task-id t_xxx --k-crash 1 --cause harness_fault --stamp
 ```
 
-Contracts: `migration/contracts/workspace-recovery.md`,
-`migration/contracts/runnable-db-security.md`,
-`migration/contracts/product-tests.md`,
-`migration/contracts/test-toolchain.md`,
-`migration/contracts/wall-exit-eval.md`,
-`migration/contracts/crash-requeue.md`.
+Contracts: `governance/contracts/workspace-recovery.md`,
+`governance/contracts/runnable-db-security.md`,
+`governance/contracts/product-tests.md`,
+`governance/contracts/test-toolchain.md`,
+`governance/contracts/wall-exit-eval.md`,
+`governance/contracts/crash-requeue.md`.
 
 Domain-gate oracles (G-1…G-4) remain authoritative; this skill does not replace them.
 
@@ -137,16 +137,16 @@ Domain-gate oracles (G-1…G-4) remain authoritative; this skill does not replac
 
 Minimum ordered runner for Phase-3 dual-arm verify — **not** full AD-010.
 
-Contract: `migration/contracts/m4-floor-runner.md`  
-Schema: `migration/schemas/gate-receipt.md`
+Contract: `governance/contracts/m4-floor-runner.md`  
+Schema: `governance/schemas/gate-receipt.md`
 
 ```bash
 bash "${HERMES_SKILL_DIR}/scripts/run-m4-floor.sh" /path/to/frozen-modernized
 python3 "${HERMES_SKILL_DIR}/scripts/check-m4-floor-receipts.py" \
-  /path/to/frozen-modernized/migration/receipts/m4-floor/<run-id>
+  /path/to/frozen-modernized/evidence/receipts/m4-floor/<run-id>
 # dry fixtures
 python3 "${HERMES_SKILL_DIR}/scripts/check-m4-floor-receipts.py" \
-  /projects/modernized/migration/fixtures/m4-floor/known-good
+  /projects/modernized/governance/fixtures/m4-floor/known-good
 ```
 
 ## Chaos matrix (plan #7)
@@ -183,14 +183,14 @@ Full inventory: `references/available-scripts.md` (UPLIFT-4). Includes
 - No artifact carries `ship: true` with a verdict other than a full M5 `ACCEPT`,
   no `PROVISIONAL_ACCEPT` outside M4, and no `g1_kill_ratio: PASS` without
   `g1_kill_ratio_threshold_pinned` or a typed waiver.
-- M4 floor: `migration/receipts/m4-floor/<run-id>/` holds all three receipts —
+- M4 floor: `evidence/receipts/m4-floor/<run-id>/` holds all three receipts —
   `boot_health.json`, `endpoint_smoke.json`, `g4_hook.json`, schema
   `rhoai3.gate-receipt/v1` — and `check-m4-floor-receipts.py` prints `OK: M4
   floor receipts complete`. `boot_health`/`endpoint_smoke` must be `PASS`;
   `g4_hook` `INCONCLUSIVE` is honest for the SAMPLE floor, `REFUSE` fails.
   Every receipt has `ad010_demo: false` —   floor green is not `release_qualified`. B8: health-only smoke →
   `endpoint_smoke_health`; `check-semantics-manifest.py` must pass.
-- Wall/crash: each terminal has `migration/runs/<task>/exit-eval.json` with
+- Wall/crash: each terminal has `evidence/runs/<task>/exit-eval.json` with
   schema `rhoai3.exit-eval/v1`; `apply-wall-requeue-policy.py` exit 2 is the
   hard ceiling (block, do not requeue) and must not be read as a soft pass.
 - Conformance lint passes for this skill.

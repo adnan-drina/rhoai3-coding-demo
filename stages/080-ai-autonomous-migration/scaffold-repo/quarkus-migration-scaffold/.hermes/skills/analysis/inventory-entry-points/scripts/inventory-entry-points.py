@@ -182,7 +182,7 @@ def main() -> int:
     ap.add_argument(
         "-o",
         "--output",
-        default="migration/entry-point-inventory.json",
+        default="evidence/entry-point-inventory.json",
         help="Output JSON path (relative to cwd unless absolute)",
     )
     args = ap.parse_args()

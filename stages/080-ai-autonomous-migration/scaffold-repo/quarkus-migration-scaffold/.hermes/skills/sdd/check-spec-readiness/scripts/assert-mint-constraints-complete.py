@@ -7,10 +7,10 @@ the standard applicable constraint set for the story class.
 
 Usage:
   # Check only
-  python3 assert-mint-constraints-complete.py . --body migration/bodies/m3-s-003.json
+  python3 assert-mint-constraints-complete.py . --body evidence/bodies/m3-s-003.json
 
   # Inject standard set when absent/empty, then check
-  python3 assert-mint-constraints-complete.py . --body migration/bodies/m3-s-003.json --inject
+  python3 assert-mint-constraints-complete.py . --body evidence/bodies/m3-s-003.json --inject
 """
 from __future__ import annotations
 
@@ -157,7 +157,7 @@ def main() -> int:
             f"FAIL: MINT_COMPLETENESS: {body_path.name} constraints absent/empty "
             f"(story={sid or '?'} operand_class={oc}). Inject standard set "
             f"(--inject) or tag constraint_free. "
-            f"(Architect E-20260811T200911Z / migration/contracts/mint-completeness-constraints.md)",
+            f"(Architect E-20260811T200911Z / governance/contracts/mint-completeness-constraints.md)",
             file=sys.stderr,
         )
         return 1

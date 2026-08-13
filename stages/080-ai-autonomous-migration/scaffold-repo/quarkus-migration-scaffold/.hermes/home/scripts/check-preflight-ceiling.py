@@ -29,7 +29,7 @@ def main() -> int:
     ap.add_argument(
         "--stamp",
         action="store_true",
-        help="On refuse, write migration/verdicts/context-budget-<task>.json",
+        help="On refuse, write evidence/verdicts/context-budget-<task>.json",
     )
     ap.add_argument("--root", default=".")
     ap.add_argument("--json-out", default="", help="Optional path for machine result JSON")

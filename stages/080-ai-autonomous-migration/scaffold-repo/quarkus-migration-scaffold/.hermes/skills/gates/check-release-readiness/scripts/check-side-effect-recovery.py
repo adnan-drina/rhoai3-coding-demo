@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """AD-H §18.3 — side-effect recovery boundaries (external review finding 6).
 
-When migration/recovery/*.json (or verdict recovery blocks) exist, each must
+When evidence/recovery/*.json (or verdict recovery blocks) exist, each must
 declare: side_effect_class, terminal_record, replay_digest, reset_rule.
 Re-queue alone is insufficient — workspace restore must be named.
 
@@ -44,18 +44,18 @@ def main() -> int:
         "root",
         nargs="?",
         default=".",
-        help="product root containing migration/recovery + migration/verdicts (default: .)",
+        help="product root containing migration/recovery + evidence/verdicts (default: .)",
     )
     args = ap.parse_args()
     root = Path(args.root).resolve()
     claims: list[tuple[str, dict]] = []
-    rdir = root / "migration" / "recovery"
+    rdir = root / "evidence" / "recovery"
     if rdir.is_dir():
         for path in sorted(rdir.glob("*.json")):
             for obj in load_items(path):
                 if isinstance(obj, dict):
                     claims.append((str(path.relative_to(root)), obj))
-    vdir = root / "migration" / "verdicts"
+    vdir = root / "evidence" / "verdicts"
     if vdir.is_dir():
         for path in sorted(vdir.glob("*.json")):
             for obj in load_items(path):

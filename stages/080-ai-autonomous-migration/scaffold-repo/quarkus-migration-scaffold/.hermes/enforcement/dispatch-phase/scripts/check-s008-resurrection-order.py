@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """S-008 / W4 — parent→child→grandchild (scar triad) resurrection order.
 
-Contract: migration/contracts/s008-quarantine-resurrection-order.md
+Contract: governance/contracts/s008-quarantine-resurrection-order.md
 Distinct from quarantine-survives-dispatch (tombstones). This lint refuses
 partition / story bodies that list grandchild before child, or child before
 parent, when the triad appears together.
@@ -23,7 +23,7 @@ EXIT_CODES = """Exit codes:
   2  usage
 """
 
-CONTRACT = "migration/contracts/s008-quarantine-resurrection-order.md"
+CONTRACT = "governance/contracts/s008-quarantine-resurrection-order.md"
 # Scar role tokens (W4) — matched in partition/bodies; guidance prose must not
 # use specimen slash-forms (R-SK.5).
 ROLE_RX = {
@@ -93,15 +93,15 @@ def main() -> int:
 
     bad = 0
     checked = 0
-    part = root / "migration" / "briefs" / "partition.json"
+    part = root / "evidence" / "briefs" / "partition.json"
     if part.is_file():
         checked += 1
         bad |= check_order(
-            "migration/briefs/partition.json",
+            "evidence/briefs/partition.json",
             part.read_text(encoding="utf-8"),
         )
 
-    bodies = root / "migration" / "bodies"
+    bodies = root / "evidence" / "bodies"
     if bodies.is_dir():
         for path in sorted(bodies.glob("*.json")):
             try:

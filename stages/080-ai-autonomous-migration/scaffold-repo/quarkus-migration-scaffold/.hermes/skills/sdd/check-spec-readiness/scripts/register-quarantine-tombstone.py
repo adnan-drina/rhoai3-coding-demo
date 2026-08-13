@@ -50,7 +50,7 @@ def main() -> int:
     args = ap.parse_args()
 
     root = args.root.resolve()
-    out = root / "migration" / "quarantine" / "tombstones.json"
+    out = root / "evidence" / "quarantine" / "tombstones.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     data = load(out)
     by_path = {

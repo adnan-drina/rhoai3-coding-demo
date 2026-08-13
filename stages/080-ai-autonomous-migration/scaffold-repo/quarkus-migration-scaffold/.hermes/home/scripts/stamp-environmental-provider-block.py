@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""AD-009: write typed environmental_provider BLOCK stamp under migration/verdicts/."""
+"""AD-009: write typed environmental_provider BLOCK stamp under evidence/verdicts/."""
 from __future__ import annotations
 
 import argparse
@@ -21,7 +21,7 @@ def main() -> int:
     )
     args = ap.parse_args()
     root = Path(args.root)
-    out_dir = root / "migration" / "verdicts"
+    out_dir = root / "evidence" / "verdicts"
     out_dir.mkdir(parents=True, exist_ok=True)
     prior = [p.strip() for p in args.prior_run_ids.split(",") if p.strip()]
     stamp = {

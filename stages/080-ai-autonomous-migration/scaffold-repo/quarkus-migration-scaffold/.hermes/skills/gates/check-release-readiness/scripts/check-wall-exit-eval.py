@@ -24,7 +24,7 @@ def main() -> int:
     args = ap.parse_args()
     root = Path(args.root).resolve()
     trigger = args.trigger.strip().lower()
-    path = root / "migration" / "runs" / args.task_id / "exit-eval.json"
+    path = root / "evidence" / "runs" / args.task_id / "exit-eval.json"
     if trigger not in WALLISH:
         print(f"OK: trigger={trigger} not wallish — exit-eval not required")
         return 0

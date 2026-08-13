@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """AD-H §16.5 / AR-1.1 — refuse worker self-ACK as stage authority.
 
-Scans migration/acks/*.{json,yaml,yml,ack.yaml,...}.
+Scans evidence/acks/*.{json,yaml,yml,ack.yaml,...}.
 Fail closed when an acknowledged ack is authored by a worker role, lacks
 task_id / digests, or is a bare .json grant without authenticated signer.
 
@@ -22,7 +22,7 @@ from pathlib import Path
 EXIT_CODES = """\
 Exit codes:
   0  pass — every acknowledged grant carries non-worker signer, task_id and
-     digests; or lint idle (no migration/acks dir, no grant files, or no
+     digests; or lint idle (no evidence/acks dir, no grant files, or no
      acknowledged grants to validate)
   1  BLOCK — at least one FAIL: line on stderr (parse error, worker/self ACK
      author, missing task_id, missing artifact_digests, or a bare .json grant)
@@ -107,13 +107,13 @@ def main() -> int:
         "root",
         nargs="?",
         default=".",
-        help="workspace root containing migration/acks (default: current directory)",
+        help="workspace root containing evidence/acks (default: current directory)",
     )
     args = ap.parse_args()
     root = Path(args.root).resolve()
-    adir = root / "migration" / "acks"
+    adir = root / "evidence" / "acks"
     if not adir.is_dir():
-        print("OK: no migration/acks — AR-1.1 idle")
+        print("OK: no evidence/acks — AR-1.1 idle")
         return 0
 
     paths = sorted(

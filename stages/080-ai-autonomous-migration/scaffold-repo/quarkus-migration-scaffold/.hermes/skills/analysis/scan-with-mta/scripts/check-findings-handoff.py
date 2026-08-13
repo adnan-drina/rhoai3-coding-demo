@@ -49,7 +49,7 @@ def ep_key(ep: dict) -> str:
 
 def check_partition_conservation(root: Path, inv: dict) -> int:
     """AR-4.1 — if story partition present, union must equal inventory endpoints."""
-    part_p = root / "migration" / "story-endpoint-partition.json"
+    part_p = root / "evidence" / "story-endpoint-partition.json"
     if not part_p.is_file():
         return 0
     part = json.loads(part_p.read_text(encoding="utf-8"))
@@ -93,18 +93,18 @@ def check_partition_conservation(root: Path, inv: dict) -> int:
 
 def main() -> int:
     root = Path(sys.argv[1] if len(sys.argv) > 1 else ".")
-    handoff_p = root / "migration" / "findings-handoff.json"
-    evidence_p = root / "migration" / "mta-findings.json"
-    inventory_p = root / "migration" / "entry-point-inventory.json"
+    handoff_p = root / "evidence" / "findings-handoff.json"
+    evidence_p = root / "evidence" / "mta-findings.json"
+    inventory_p = root / "evidence" / "entry-point-inventory.json"
 
     if not handoff_p.is_file():
-        print("FAIL: missing migration/findings-handoff.json (typed blocked)", file=sys.stderr)
+        print("FAIL: missing evidence/findings-handoff.json (typed blocked)", file=sys.stderr)
         return 1
     if not evidence_p.is_file():
-        print("FAIL: missing migration/mta-findings.json evidence store", file=sys.stderr)
+        print("FAIL: missing evidence/mta-findings.json evidence store", file=sys.stderr)
         return 1
     if not inventory_p.is_file():
-        print("FAIL: AR-4.1 missing migration/entry-point-inventory.json", file=sys.stderr)
+        print("FAIL: AR-4.1 missing evidence/entry-point-inventory.json", file=sys.stderr)
         return 1
 
     raw = handoff_p.read_bytes()

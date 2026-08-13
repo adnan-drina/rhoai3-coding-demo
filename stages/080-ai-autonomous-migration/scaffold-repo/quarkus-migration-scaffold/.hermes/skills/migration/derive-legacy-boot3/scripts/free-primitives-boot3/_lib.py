@@ -20,7 +20,7 @@ def apply_log_path() -> Path:
     if p:
         return Path(p)
     # Prefer under COMPOSITE_ROOT (derived tree), never the golden
-    # migration/derived/ path (UPLIFT-7 / e3925b3b regression class).
+    # evidence/derived/ path (UPLIFT-7 / e3925b3b regression class).
     return repo_root() / ".rhoai3-free-primitives-apply-log.json"
 
 

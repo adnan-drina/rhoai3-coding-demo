@@ -4,7 +4,7 @@
 Default (fixture self-test): scan ar16-untrusted pack; exit 1 when adversarial
 content is present (proves REFUSE path — same pattern as AR-1.2 validate.sh).
 
-`--as-gate`: exit 0 when live `migration/authority/` feeds are clean; fixtures
+`--as-gate`: exit 0 when live `evidence/authority/` feeds are clean; fixtures
 alone do not fail the gate.
 
 Usage:
@@ -23,12 +23,12 @@ from pathlib import Path
 EXIT_CODES = """\
 Exit codes (NOTE: the default mode is INVERTED by design):
 
-  --as-gate mode (live gate over migration/authority/):
-    0  pass — live authority feeds clean, or no migration/authority dir
+  --as-gate mode (live gate over evidence/authority/):
+    0  pass — live authority feeds clean, or no evidence/authority dir
     1  BLOCK — a live authority feed carries control injection
     2  usage error (bad/unknown arguments; emitted by argparse)
 
-  default mode (fixture self-test over migration/fixtures/authority/ar16-untrusted):
+  default mode (fixture self-test over governance/fixtures/authority/ar16-untrusted):
     1  EXPECTED PASS — adversarial fixture content was detected and REFUSED.
        Exit 1 is the proof of the refuse path, not a failure. Recognise it by
        the stdout line 'OK: AR-1.6 fixture self-test — adversarial inputs
@@ -123,17 +123,17 @@ def main() -> int:
     ap.add_argument(
         "--as-gate",
         action="store_true",
-        help="run as a live gate over migration/authority/ instead of the "
+        help="run as a live gate over evidence/authority/ instead of the "
         "inverted fixture self-test",
     )
     args = ap.parse_args()
     as_gate = args.as_gate
     root = Path(args.root)
     root = root.resolve()
-    fixture_dir = root / "migration" / "fixtures" / "authority" / "ar16-untrusted"
+    fixture_dir = root / "governance" / "fixtures" / "authority" / "ar16-untrusted"
 
     if as_gate:
-        live = root / "migration" / "authority"
+        live = root / "evidence" / "authority"
         bad = 0
         if live.is_dir():
             for p in sorted(live.rglob("*")):

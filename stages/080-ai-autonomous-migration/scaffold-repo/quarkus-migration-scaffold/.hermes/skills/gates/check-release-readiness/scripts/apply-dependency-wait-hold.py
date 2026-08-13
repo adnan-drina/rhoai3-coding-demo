@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """R-M3.6 — hold dependency_wait; do not soft-promote without upstream fix.
 
-Architect E-20260810T172800Z / migration/contracts/pom-persistence-handoff.md
+Architect E-20260810T172800Z / governance/contracts/pom-persistence-handoff.md
 
 On typed dependency_wait: stamp verdict + optional hard block. Names actor Need
 `steward:fix-upstream-pom` (peer of AD-010 §3d). Never MiniMax.
@@ -17,7 +17,7 @@ from pathlib import Path
 
 
 def write_stamp(root: Path, *, task_id: str, note: str) -> Path:
-    out_dir = root / "migration" / "verdicts"
+    out_dir = root / "evidence" / "verdicts"
     out_dir.mkdir(parents=True, exist_ok=True)
     stamp = {
         "schema": "rhoai3.dependency-wait-hold/v1",
@@ -60,7 +60,7 @@ def main() -> int:
     ap.add_argument(
         "--stamp",
         action="store_true",
-        help="write migration/verdicts/dependency-wait-hold-<task>.json",
+        help="write evidence/verdicts/dependency-wait-hold-<task>.json",
     )
     ap.add_argument(
         "--block",
@@ -83,7 +83,7 @@ def main() -> int:
         f"Needs: steward:fix-upstream-pom({args.task_id})"
     )
     if args.stamp:
-        stamp_path = root / "migration" / "verdicts" / f"dependency-wait-hold-{args.task_id}.json"
+        stamp_path = root / "evidence" / "verdicts" / f"dependency-wait-hold-{args.task_id}.json"
         if args.dry_run:
             print(f"DRY-RUN: would stamp {stamp_path} (skipped write)")
         else:

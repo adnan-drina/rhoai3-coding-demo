@@ -6,7 +6,7 @@ typed-body sidecar sha256. Closes the stale-digest family at the ack-regen /
 create-ack choke point (third surface after v11 bodies + complete-cmd scan).
 
 Usage:
-  assert-card-body-digest-match.py <root> --task-id t_xxx --body migration/bodies/m3-s-003.json
+  assert-card-body-digest-match.py <root> --task-id t_xxx --body evidence/bodies/m3-s-003.json
 """
 from __future__ import annotations
 

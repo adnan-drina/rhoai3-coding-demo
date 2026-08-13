@@ -31,15 +31,15 @@ metadata:
 
 ## Contracts
 
-- `migration/contracts/task-authority.md`, `write-fence.md`,
+- `governance/contracts/task-authority.md`, `write-fence.md`,
   `ack-authority.md`, `slim-packet.md`
-- `migration/schemas/ack.md`
+- `governance/schemas/ack.md`
 - Phase `skills[]` + `requires_acks`: `.hermes/phase-dispatch.yaml`
 
 ## Procedure
 
 1. **Ack presence for the target phase.** Reads `requires_acks` for that phase
-   and resolves `migration/acks/<type>.ack.{yaml,yml,json}` (plus
+   and resolves `evidence/acks/<type>.ack.{yaml,yml,json}` (plus
    story-scoped `<type>-<story>.ack.yaml`). Exits 0 as idle when the phase
    requires none.
 
@@ -57,7 +57,7 @@ python3 "${HERMES_SKILL_DIR}/scripts/check-comment-authority.py" /projects/moder
 ```
 
 3. **Arm and prove the write fence** (AD-H §16.4 / ER#2 F2). `lock` chmods
-   `migration/acks`, `migration/verdicts`, `.hermes/skills` and `SOUL.md`
+   `evidence/acks`, `evidence/verdicts`, `.hermes/skills` and `SOUL.md`
    read-only (`WRITE_FENCE_ROLE=validator` keeps verdicts writable); the probe
    asserts the deny paths reject writes **and** that a control path still
    writes.
@@ -74,7 +74,7 @@ bash "${HERMES_SKILL_DIR}/scripts/apply-write-fence.sh" /projects/modernized sta
 
 ```bash
 python3 "${HERMES_SKILL_DIR}/scripts/check-write-fence.py" /projects/modernized \
-  --body migration/bodies/m3-s-010.json
+  --body evidence/bodies/m3-s-010.json
 ```
 
 5. **Skill-manage policy, attach matrix, untrusted boundary** (AR-1.4–1.6).
@@ -99,8 +99,8 @@ One Kanban task ⇒ one task type. Never `/speckit-implement`. Never edit
 ## Verification
 
 - `check-acks.sh <phase>` prints `OK: all required acks present for <phase>`
-  and one `OK: ack <type> ← migration/acks/…` line per requirement. A bare
-  `migration/acks/<type>.json` is **not** accepted; the failure names it as
+  and one `OK: ack <type> ← evidence/acks/…` line per requirement. A bare
+  `evidence/acks/<type>.json` is **not** accepted; the failure names it as
   non-authoritative and demands `*.ack.yaml|.ack.json` with
   `kind: migration-ack` and `status: acknowledged`.
 - `probe-write-fence.py` prints `OK: F2 proving-min seat probe PASS` — every

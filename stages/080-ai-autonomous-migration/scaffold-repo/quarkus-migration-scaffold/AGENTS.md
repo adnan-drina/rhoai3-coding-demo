@@ -29,7 +29,7 @@ repository (`/projects/modernized`).
   (`/q/*` deliberately sits outside the application root path).
 - Pattern cards (on demand): skill `spring-to-quarkus-patterns`.
 - Extension add/rm (on demand): skill `manage-quarkus-extensions` (RH BOM policy;
-  versions in `migration/contracts/tooling-pins.md` only).
+  versions in `governance/contracts/tooling-pins.md` only).
 
 ## Build and test
 
@@ -113,7 +113,7 @@ run-report line must carry the **same task id**.
 
 Brief identity carries unchanged; graph order build → security → schema →
 API → test infra → feature → surfaces; IMPLEMENT workers must not re-plan.
-Authoritative: `migration/contracts/sdd-ordering.md` (skill `check-spec-readiness`).
+Authoritative: `governance/contracts/sdd-ordering.md` (skill `check-spec-readiness`).
 
 ### Standing conventions home
 
@@ -128,16 +128,16 @@ When a skill is loaded, prefer `"${HERMES_SKILL_DIR}/scripts/…"`.
 
 | Governs | Skill / package | Authoritative |
 |---------|-----------------|---------------|
-| Task-type preload, one-task-one-type, ack artifacts | `enforce-authority-boundary` *(enforcement)* | `migration/contracts/task-authority.md` |
-| Citation / no-invention write fence | `ground-in-harvest` *(enforcement)* | `migration/contracts/grounded-generation.md` |
-| Phase matrix, verdict legality, M4/M5 routing | `check-release-readiness` | `migration/contracts/validation-release-gates.md` |
+| Task-type preload, one-task-one-type, ack artifacts | `enforce-authority-boundary` *(enforcement)* | `governance/contracts/task-authority.md` |
+| Citation / no-invention write fence | `ground-in-harvest` *(enforcement)* | `governance/contracts/grounded-generation.md` |
+| Phase matrix, verdict legality, M4/M5 routing | `check-release-readiness` | `governance/contracts/validation-release-gates.md` |
 | G-1..G-4 measurement oracles | `check-domain-parity` | skill `SKILL.md` + gate scripts |
 | Specimen-free harness self-lint | `validate-contracts` *(enforcement)* | `scripts/validate.sh` |
 | M-phase mint/dispatch (Hermes-native) | `dispatch-phase` *(enforcement)* | `.hermes/phase-dispatch.yaml` |
-| Spec/story-body legality + kanban body shape | `check-spec-readiness` | `migration/contracts/*` + `migration/schemas/kanban-body.md` |
+| Spec/story-body legality + kanban body shape | `check-spec-readiness` | `governance/contracts/*` + `governance/schemas/kanban-body.md` |
 | Spec Kit provision (postStart only) | `init-spec-workspace` | skill `SKILL.md` |
 | Entry-point inventory | `inventory-entry-points` | skill `SKILL.md` |
-| Provenance / reconstruct | `record-run-evidence` *(enforcement)* | `migration/contracts/auditability-repeatability.md` |
+| Provenance / reconstruct | `record-run-evidence` *(enforcement)* | `governance/contracts/auditability-repeatability.md` |
 | Spring→Quarkus pattern cards | `spring-to-quarkus-patterns` | skill `references/` |
 | Quarkus extension add/rm | `manage-quarkus-extensions` | skill + `tooling-pins.md` |
 | Destination Quarkus project create | `bootstrap-quarkus-project` | root `BOOTSTRAP.md` + `tooling-pins.md` |

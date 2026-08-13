@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Assert destination pom quarkus.platform.* matches tooling-pins.md.
 
-Contract: migration/contracts/tooling-pins.md
+Contract: governance/contracts/tooling-pins.md
 Skill: manage-quarkus-extensions (Architect E-20260813T162238Z — no version
 literals in skills; pom ↔ pins lint).
 
@@ -21,7 +21,7 @@ EXIT_CODES = """Exit codes:
   2  usage
 """
 
-PINS = "migration/contracts/tooling-pins.md"
+PINS = "governance/contracts/tooling-pins.md"
 PROP_KEYS = (
     "quarkus.platform.group-id",
     "quarkus.platform.artifact-id",

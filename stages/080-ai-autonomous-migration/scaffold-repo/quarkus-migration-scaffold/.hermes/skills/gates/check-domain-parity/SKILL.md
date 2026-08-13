@@ -48,12 +48,12 @@ permitted equivalence, and zero unverified entry points.
 
 ## Admission fixtures (W2 §10)
 
-Specimen-free pairs under `migration/fixtures/admission/gN-<name>/`.
+Specimen-free pairs under `governance/fixtures/admission/gN-<name>/`.
 
 **Honesty bound:** green fixtures prove **parser + fixture shape**, not
 toolchain-faithful admission. Live sensors (PIT dry-run on a specimen, running
 apps for G-4) are a separate prove step — see
-`migration/fixtures/admission/README.md`. Do not treat 12/12 as admission.
+`governance/fixtures/admission/README.md`. Do not treat 12/12 as admission.
 
 ```bash
 bash "${HERMES_SKILL_DIR}/scripts/run-admission.sh"
@@ -84,7 +84,7 @@ Probe-only trees **REFUSE**
 as acceptance (`check-g1-acceptance-operand.py`).
 
 **AR-2.8:** acceptance also requires product-test **families** boot + security +
-crud + db (`check-product-tests.py`; contract `migration/contracts/product-tests.md`).
+crud + db (`check-product-tests.py`; contract `governance/contracts/product-tests.md`).
 
 ```bash
 # Acceptance operand preflight (probe refuse)
@@ -102,7 +102,7 @@ G1_OPERAND=tooling_smoke bash "${HERMES_SKILL_DIR}/scripts/count-pit-dry-run.sh"
 
 # Parse an existing mutations.xml (fail closed if missing/empty)
 python3 "${HERMES_SKILL_DIR}/scripts/parse-pit-mutations.py" \
-  migration/fixtures/pit-dry-run/mutations.xml
+  governance/fixtures/pit-dry-run/mutations.xml
 ```
 
 ## G-1 kill-ratio pin (plan #8) — live PIT only
@@ -113,7 +113,7 @@ Dry-run volume is **not** a kill-ratio pin. After live
 ```bash
 python3 "${HERMES_SKILL_DIR}/scripts/pin-kill-ratio-from-pit.py" \
   target/pit-reports/mutations.xml \
-  -o migration/contracts/g1-kill-ratio-pin.json \
+  -o governance/contracts/g1-kill-ratio-pin.json \
   --coverage-min 0.41 --kill-attempted-min 0.60 --kill-generated-min 0.38 \
   --source declared_engineering_target \
   --rationale "Architect stringency <entry>: declared margins, not measured-at-equality"
@@ -124,7 +124,7 @@ kill strength `killed/attempted`; sole attempted PASS predicate forbidden.
 `--source` is required — `declared_engineering_target` (bars from outside this
 subject's score) or `ratchet_from_measured` (margins recorded under this tree's
 measured score). Typed Operator/deputy waiver
-(sole alternate M5 path): `migration/schemas/g1-kill-ratio-waiver.md`.
+(sole alternate M5 path): `governance/schemas/g1-kill-ratio-waiver.md`.
 Pinning ≠ M5 `ACCEPT` (#1e).
 
 ## Home rule
@@ -154,7 +154,7 @@ Operand first, then live evidence, then pin. Scripts are under
 4. **Exercise the evaluators** — `g1-characterization.py`,
    `g2-harvest-fidelity.py`, `g3-findings-delta.py`, `g4-runtime-parity.py`,
    each taking `<root>`; `run-admission.sh <root>` runs all four. Each walks the
-   named fixture dirs under `<root>/migration/fixtures/admission/<gate>/`,
+   named fixture dirs under `<root>/governance/fixtures/admission/<gate>/`,
    compares the computed verdict to the fixture's expected verdict, and writes
    `…/admission/out/<gate>/<fixture>.json`. Disagreement ⇒ exit 1.
 5. **Pin the kill ratio** (after live `mutationCoverage`, never after a dry run)
@@ -171,7 +171,7 @@ Operand first, then live evidence, then pin. Scripts are under
   `FAIL <gate>/<fixture>: got X, want Y` on **stderr** (UPLIFT-2; JSON
   `{gate,fixture,got,want,ok}` per fixture on stdout) and the run exits 1.
 - One verdict JSON exists per fixture under
-  `migration/fixtures/admission/out/<gate>/<fixture>.json`, and every G-4 file
+  `evidence/fixtures/admission/out/<gate>/<fixture>.json`, and every G-4 file
   carries `"g4_mode": "SAMPLE"` — `g4-runtime-parity.py` re-reads its own write
   and fails if the stamp is absent (ER#2 F8).
 - **Silent-failure assertion:** a green admission run is *not* admission — it

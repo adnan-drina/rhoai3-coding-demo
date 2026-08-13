@@ -187,7 +187,7 @@ def main() -> int:
         "wall-fit PASS bodies as sizing defects"
     ]
     cp_incomplete = False
-    cp_path = root / "migration" / "runs" / args.task_id / "checkpoint.json"
+    cp_path = root / "evidence" / "runs" / args.task_id / "checkpoint.json"
     if cp_path.is_file():
         try:
             cp = json.loads(cp_path.read_text(encoding="utf-8"))
@@ -219,7 +219,7 @@ def main() -> int:
         "checkpoint_incomplete": cp_incomplete,
         "notes": notes,
     }
-    out_dir = root / "migration" / "runs" / args.task_id
+    out_dir = root / "evidence" / "runs" / args.task_id
     out_dir.mkdir(parents=True, exist_ok=True)
     out = out_dir / "exit-eval.json"
     out.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")

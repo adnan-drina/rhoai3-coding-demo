@@ -17,10 +17,10 @@ import sys
 from pathlib import Path
 
 DENY_PREFIXES = (
-    "migration/acks/",
-    "migration/acks",
-    "migration/verdicts/",
-    "migration/verdicts",
+    "evidence/acks/",
+    "evidence/acks",
+    "evidence/verdicts/",
+    "evidence/verdicts",
     ".hermes/skills/",
     ".hermes/skills",
     "SOUL.md",
@@ -140,7 +140,7 @@ def main() -> int:
             bad = 1
             continue
         if scope and not in_scope(n, scope):
-            # Ignore noise under migration/fixtures probe crumbs and .git
+            # Ignore noise under governance/fixtures probe crumbs and .git
             if n.startswith(".git/") or n.endswith(".f2-positive-control"):
                 continue
             # Allow migration analysis noise? F2 says out-of-scope must fail.

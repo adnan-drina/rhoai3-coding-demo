@@ -87,7 +87,7 @@ def main() -> int:
         print(f"FAIL: {msg}", file=sys.stderr)
         bad = 1
 
-    task_dirs = [root / "migration/tasks", root / "migration/kanban"]
+    task_dirs = [root / "evidence/tasks", root / "evidence/kanban"]
     plan_dirs = [root / "migration/plans"]
     plan_files: list[Path] = []
     for d in plan_dirs:
@@ -105,7 +105,7 @@ def main() -> int:
 
     briefs_exist = any(
         (root / p).is_dir() and any((root / p).rglob("*.md"))
-        for p in ("migration/briefs", "migration/specs", "specs", ".specify/specs")
+        for p in ("evidence/briefs", "migration/specs", "specs", ".specify/specs")
     )
 
     for path in task_files:

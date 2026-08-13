@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Emit migration/findings-handoff.json (rhoai3.findings-handoff/v1).
+"""Emit evidence/findings-handoff.json (rhoai3.findings-handoff/v1).
 
 Seam artifact: identity + rule/locus index + digests. NO codeSnip / raw blobs.
-Evidence store remains migration/mta-findings.json.
+Evidence store remains evidence/mta-findings.json.
 
 AD-H §16.7 / AR-4.1: inventory digest REQUIRED (refuse emit without inventory).
 AD-H §16.7 / AR-4.2: each rule carries bounded description + disposition.
@@ -88,9 +88,9 @@ def disposition_of(v: dict, description: str) -> str:
 
 def main() -> int:
     root = Path(sys.argv[1] if len(sys.argv) > 1 else ".")
-    evidence = Path(sys.argv[2]) if len(sys.argv) > 2 else root / "migration" / "mta-findings.json"
-    out = Path(sys.argv[3]) if len(sys.argv) > 3 else root / "migration" / "findings-handoff.json"
-    inventory = root / "migration" / "entry-point-inventory.json"
+    evidence = Path(sys.argv[2]) if len(sys.argv) > 2 else root / "evidence" / "mta-findings.json"
+    out = Path(sys.argv[3]) if len(sys.argv) > 3 else root / "evidence" / "findings-handoff.json"
+    inventory = root / "evidence" / "entry-point-inventory.json"
 
     if not evidence.is_file():
         print(f"emit-findings-handoff: missing evidence {evidence}", file=sys.stderr)
@@ -98,7 +98,7 @@ def main() -> int:
     # AR-4.1 — inventory before handoff or force re-emit
     if not inventory.is_file():
         print(
-            "emit-findings-handoff: AR-4.1 missing migration/entry-point-inventory.json "
+            "emit-findings-handoff: AR-4.1 missing evidence/entry-point-inventory.json "
             "— run inventory-entry-points before emit (refuse)",
             file=sys.stderr,
         )

@@ -61,7 +61,7 @@ M3 children take the dedicated create path (`--parent` is **required**):
 ```bash
 bash "${HERMES_SKILL_DIR}/scripts/create-m3-implementer.sh" \
   --title "M3 IMPLEMENT: <story>" \
-  --body-json migration/bodies/m3-s-010.json \
+  --body-json evidence/bodies/m3-s-010.json \
   --parent <m2b_task_id>
 ```
 
@@ -82,7 +82,7 @@ bash "${HERMES_SKILL_DIR}/scripts/create-m3-implementer.sh" \
 4. Ensures a standalone `hermes kanban daemon --force` (Dev Spaces has no gateway).
 5. `hermes kanban create` with `--workspace dir:/projects/modernized`, one
    `--skill` per declared skill, `--max-runtime`, and the idempotency key;
-   records the id under `migration/derived/`.
+   records the id under `evidence/derived/`.
 6. Ticks `hermes kanban dispatch --max 1`. **The M3 create path does not** —
    cards are born `--initial-status blocked` and unpark only after M2b ledger
    PASS + brief-identity ack + serial GO (Deputy `E-20260811T131900Z`).
@@ -94,8 +94,8 @@ Stamps the body digest (AR-4.3), runs the body-scoped create gates
 mint constraints, dependency closure, `check-kanban-body.py --body`, surgical
 scopes, semantic exits, operand-count `--wall-fit`), builds the markdown card
 from the typed body **by reference** (never inlined), forces park-at-birth and
-verifies it, appends to `migration/derived/created-cards-<parent>.json`, emits
-an unsigned `migration/acks/ack-request-<story>.yaml`, then cross-asserts card
+verifies it, appends to `evidence/derived/created-cards-<parent>.json`, emits
+an unsigned `evidence/acks/ack-request-<story>.yaml`, then cross-asserts card
 digest ↔ live sidecar.
 
 ### M1 body contract (evidence-analyst)
@@ -103,7 +103,7 @@ digest ↔ live sidecar.
 The created M1 task instructs the worker to, in order:
 
 1. `derive-legacy-boot3` (manifest check / derive if missing)
-2. `inventory-entry-points` → `migration/entry-point-inventory.json` (before handoff emit)
+2. `inventory-entry-points` → `evidence/entry-point-inventory.json` (before handoff emit)
 3. `scan-with-mta` → `mta-analyze-legacy.sh` (writable clone + `MTA_RUN_CWD`; emits findings-handoff)
 4. Validate findings + handoff — **do not** grant stage-advance acks (Operator writes `m1-findings.ack.yaml` per AR-1.1)
 
@@ -133,12 +133,12 @@ The created M1 task instructs the worker to, in order:
 
 ## Verification
 
-- `migration/derived/phase-<PHASE>-task-id.txt` contains the new task id.
+- `evidence/derived/phase-<PHASE>-task-id.txt` contains the new task id.
   The script dies if `kanban create` returned no id, so an absent or stale
   file means no card was created.
 - Stdout ends with `OK: <PHASE> → <task_id> (Hermes-native)` and prints
   `REVIEW_ADHERE_OBSERVE=<task_id>`;
-  `migration/derived/review-adhere-observe-needed.yaml` carries the same id.
+  `evidence/derived/review-adhere-observe-needed.yaml` carries the same id.
 - **Silent-failure catch:** the card must actually carry the declared skills.
   `hermes kanban show <task_id>` listing zero skills means the bare-create
   path was used — refuse the run and recreate via these scripts.
@@ -146,7 +146,7 @@ The created M1 task instructs the worker to, in order:
   `ready` / `todo` / `running` after create is a fail-closed die — a
   dispatchable M3 mint races M2b.
 - M3 only: `CREATED_CARDS_CLAIM=<path>` names a
-  `migration/derived/created-cards-<parent>.json` containing the new id, and
+  `evidence/derived/created-cards-<parent>.json` containing the new id, and
   `ACK_REQUEST=<path>` names an unsigned `ack-request-<story>.yaml` whose
   body digest matches the sidecar.
 - `--dry-run` exits 0 and prints the argv without touching the board — use it

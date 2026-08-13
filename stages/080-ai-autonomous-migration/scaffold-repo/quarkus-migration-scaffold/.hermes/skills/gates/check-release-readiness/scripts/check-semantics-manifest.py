@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""B8 — enforce migration/contracts/check-semantics-manifest.md lints.
+"""B8 — enforce governance/contracts/check-semantics-manifest.md lints.
 
 Fixture-proof ≠ semantically adequate. Bind check ids to adequacy class and
 refuse over-promise receipts / verdicts.
@@ -7,7 +7,7 @@ refuse over-promise receipts / verdicts.
 Usage:
   python3 check-semantics-manifest.py .
   python3 check-semantics-manifest.py /projects/modernized
-  python3 check-semantics-manifest.py migration/fixtures/check-semantics-manifest/bad-endpoint-smoke-overpromise
+  python3 check-semantics-manifest.py governance/fixtures/check-semantics-manifest/bad-endpoint-smoke-overpromise
 """
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ EXIT_CODES = """Exit codes:
 """
 
 # Canonical adequacy map — must stay aligned with
-# migration/contracts/check-semantics-manifest.md
+# governance/contracts/check-semantics-manifest.md
 ADEQUACY: dict[str, str] = {
     "boot_health": "SEMANTIC",
     "endpoint_smoke": "SEMANTIC",
@@ -44,7 +44,7 @@ ADEQUACY: dict[str, str] = {
     "accept_scope": "TOOLING",
 }
 
-CONTRACT_REL = "migration/contracts/check-semantics-manifest.md"
+CONTRACT_REL = "governance/contracts/check-semantics-manifest.md"
 API_PATH_RE = re.compile(r"(^|/)/?api(/|$)", re.IGNORECASE)
 
 
@@ -322,8 +322,8 @@ def find_receipt_dirs(root: Path) -> list[Path]:
     if any((root / name).is_file() for name in root_markers):
         dirs.append(root)
     for candidate in (
-        root / "migration/receipts/m4-floor",
-        root / "migration/receipts",
+        root / "evidence/receipts/m4-floor",
+        root / "evidence/receipts",
         root / "receipts",
     ):
         if not candidate.is_dir():
@@ -395,8 +395,8 @@ def main() -> int:
                 bad |= lint_receipt(rel, obj)
 
     verdict_dirs = [
-        root / "migration/verdicts",
-        root / "migration/preflight",
+        root / "evidence/verdicts",
+        root / "evidence/preflight",
         root / "verdicts",
     ]
     for vdir in verdict_dirs:

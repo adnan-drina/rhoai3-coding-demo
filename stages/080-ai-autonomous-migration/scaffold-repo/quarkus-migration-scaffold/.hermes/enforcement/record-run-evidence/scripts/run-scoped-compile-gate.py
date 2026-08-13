@@ -7,7 +7,7 @@ This gate runs Maven, then FAIL-CLOSED only when error paths intersect the story
 
 Usage:
   python3 run-scoped-compile-gate.py /projects/modernized \\
-    --task-id t_xxx --body migration/bodies/m3-s-004.json [--goal test-compile|compile]
+    --task-id t_xxx --body evidence/bodies/m3-s-004.json [--goal test-compile|compile]
 """
 from __future__ import annotations
 
@@ -137,7 +137,7 @@ def main() -> int:
             ok = True
             reason = "oos_only_compile_errors_scoped_ok"
 
-    out_dir = root / "migration" / "runs" / args.task_id
+    out_dir = root / "evidence" / "runs" / args.task_id
     out_dir.mkdir(parents=True, exist_ok=True)
     payload = {
         "schema": SCHEMA,

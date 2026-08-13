@@ -4,7 +4,7 @@
 # W2 §3.1: also require JDK + Spring Boot before/after version fields.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/../../../.." && pwd)"
-manifest="${root}/migration/derived/legacy-at-3.json"
+manifest="${root}/evidence/derived/legacy-at-3.json"
 if [ ! -f "${manifest}" ]; then
   echo "FAIL: ${manifest} missing — run the derive-legacy-boot3 skill (bash \"\${HERMES_SKILL_DIR}/scripts/derive-legacy-boot3.sh\")" >&2
   exit 1

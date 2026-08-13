@@ -2,9 +2,9 @@
 """G-2 admission evaluator — field/obligation conservation (W2 §10).
 
 Runs the three admission fixtures under
-`migration/fixtures/admission/g2-harvest-fidelity/` (known-good / known-bad /
+`governance/fixtures/admission/g2-harvest-fidelity/` (known-good / known-bad /
 known-vacuous) and writes each verdict under
-`migration/fixtures/admission/out/g2-harvest-fidelity/`.
+`evidence/fixtures/admission/out/g2-harvest-fidelity/`.
 
 Usage:
   python3 g2-harvest-fidelity.py .
@@ -66,11 +66,11 @@ def main() -> int:
         "root",
         nargs="?",
         default=".",
-        help="product root containing migration/fixtures/admission (default: .)",
+        help="product root containing governance/fixtures/admission (default: .)",
     )
     args = ap.parse_args()
     root = Path(args.root)
-    base = root / "migration/fixtures/admission/g2-harvest-fidelity"
+    base = root / "governance/fixtures/admission/g2-harvest-fidelity"
     expected = {
         "known-good": "ACCEPT",
         "known-bad": "REFUSE",

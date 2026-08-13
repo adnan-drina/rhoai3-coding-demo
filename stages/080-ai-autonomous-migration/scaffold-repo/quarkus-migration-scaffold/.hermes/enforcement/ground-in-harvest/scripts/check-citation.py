@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """AD-H §17 — commit/packet citation lint + refuse invent-without-locus (cheap).
 
-Looks under migration/tasks/*.json and migration/kanban/*.json for IMPLEMENT /
+Looks under evidence/tasks/*.json and evidence/kanban/*.json for IMPLEMENT /
 implementer packets. Non-trivial packets must cite task id, brief/story id, and
 legacy locus (path:lines or staging/harvest path). Trivial exemption: trivial=true.
 
@@ -218,7 +218,7 @@ def main() -> int:
         # continue to also check packets when present
 
     files: list[Path] = []
-    for d in (root / "migration/tasks", root / "migration/kanban"):
+    for d in (root / "evidence/tasks", root / "evidence/kanban"):
         if d.is_dir():
             files.extend(sorted(d.glob("*.json")))
     for raw in args.packet:

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""AD-009 §3.1 — stamp block_class=protocol_untyped under migration/verdicts/.
+"""AD-009 §3.1 — stamp block_class=protocol_untyped under evidence/verdicts/.
 
 Use when a worker exits rc=0 without kanban_complete/kanban_block so the board
 does not leave silence as an untyped protocol_violation narrative.
@@ -28,7 +28,7 @@ def main() -> int:
     )
     args = ap.parse_args()
     root = Path(args.root)
-    out_dir = root / "migration" / "verdicts"
+    out_dir = root / "evidence" / "verdicts"
     out_dir.mkdir(parents=True, exist_ok=True)
     stamp = {
         "schema": "rhoai3.protocol-untyped-block/v1",

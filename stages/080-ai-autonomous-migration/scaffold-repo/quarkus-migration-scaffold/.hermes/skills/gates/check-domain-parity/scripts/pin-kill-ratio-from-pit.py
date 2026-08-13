@@ -17,7 +17,7 @@ E-20260808T125536Z):
   - measured_from_this_run at equality — forbidden (script refuses)
 
 Usage:
-  pin-kill-ratio-from-pit.py <mutations.xml> -o migration/contracts/g1-kill-ratio-pin.json \\
+  pin-kill-ratio-from-pit.py <mutations.xml> -o governance/contracts/g1-kill-ratio-pin.json \\
     --coverage-min 0.41 --kill-attempted-min 0.60 --kill-generated-min 0.38 \\
     --source ratchet_from_measured \\
     --rationale "Architect E-… ratchet margins under live pack"
@@ -257,7 +257,7 @@ def main() -> int:
             "authority": "Operator or deputy typed waiver only",
             "effect": "sole alternate M5 path when pin cannot be met; "
             "must name story_id + rationale + expiry/re_open_trigger",
-            "location": "migration/acks/g1-kill-ratio-waiver-<story_id>.ack.yaml",
+            "location": "evidence/acks/g1-kill-ratio-waiver-<story_id>.ack.yaml",
         },
         "m5_note": "Pinning does NOT grant M5 ACCEPT — plan #1e still required "
         "(G-4 both-modes + dual-denominator kill-ratio PASS).",

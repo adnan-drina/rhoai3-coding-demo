@@ -2,7 +2,7 @@
 
 **Shared reference** for `manage-quarkus-extensions` and (at v14 mint)
 `bootstrap-quarkus-project`. Policy only — **version values** live in
-`migration/contracts/tooling-pins.md` and destination `pom.xml`.
+`governance/contracts/tooling-pins.md` and destination `pom.xml`.
 
 ## Platform policy
 

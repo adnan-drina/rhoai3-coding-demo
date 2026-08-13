@@ -40,7 +40,7 @@ def load_items(path: Path) -> list[dict]:
 
 def factory_claims(root: Path) -> list[tuple[str, dict]]:
     out: list[tuple[str, dict]] = []
-    for d in (root / "migration/preflight", root / "migration/verdicts"):
+    for d in (root / "evidence/preflight", root / "evidence/verdicts"):
         if not d.is_dir():
             continue
         for path in sorted(d.glob("*.json")):
@@ -72,7 +72,7 @@ def main() -> int:
         "root",
         nargs="?",
         default=".",
-        help="product root containing migration/preflight + migration/verdicts (default: .)",
+        help="product root containing evidence/preflight + evidence/verdicts (default: .)",
     )
     args = ap.parse_args()
     root = Path(args.root).resolve()

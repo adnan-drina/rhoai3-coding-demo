@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""AD-009 §3.3/§3.5 — stamp typed context_budget BLOCK under migration/verdicts/."""
+"""AD-009 §3.3/§3.5 — stamp typed context_budget BLOCK under evidence/verdicts/."""
 from __future__ import annotations
 
 import argparse
@@ -28,7 +28,7 @@ def main() -> int:
     )
     args = ap.parse_args()
     root = Path(args.root)
-    out_dir = root / "migration" / "verdicts"
+    out_dir = root / "evidence" / "verdicts"
     out_dir.mkdir(parents=True, exist_ok=True)
     total = args.prompt_tokens + args.max_tokens
     stamp = {

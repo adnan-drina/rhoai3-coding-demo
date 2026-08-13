@@ -9,7 +9,7 @@ Fail-closed before create-m3 / dispatch so workers are not cornered into
 typed-BLOCK vs OOS-create (proven: S-002a t_f3e44947 ApplicationService).
 
 Usage:
-  python3 check-interface-closure.py /projects/modernized --body migration/bodies/m3-s-002a.json
+  python3 check-interface-closure.py /projects/modernized --body evidence/bodies/m3-s-002a.json
 """
 from __future__ import annotations
 

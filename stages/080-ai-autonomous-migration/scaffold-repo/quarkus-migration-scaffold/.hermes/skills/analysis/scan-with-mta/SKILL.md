@@ -20,15 +20,15 @@ metadata:
 - M1 ANALYZE needs a fresh analyzer run on the **legacy@3.x** tree
 - M5 (or any findings-delta step, G-3) needs findings regenerated against the
   same referent the harvest compared to
-- M2 is blocked because `migration/findings-handoff.json` is missing or its
-  `evidence.sha256` no longer matches `migration/mta-findings.json`
-- `migration/mta-findings.json` exists but fails
+- M2 is blocked because `evidence/findings-handoff.json` is missing or its
+  `evidence.sha256` no longer matches `evidence/mta-findings.json`
+- `evidence/mta-findings.json` exists but fails
   `validate-findings-schema.py` (wrong schema, missing `codeSnip`/`category`)
 
 Preconditions — all four, or the script dies before analyzing:
-`migration/derived/legacy-at-3.json` (skill `derive-legacy-boot3`),
+`evidence/derived/legacy-at-3.json` (skill `derive-legacy-boot3`),
 `migration.yaml` with non-empty `analysis.targets`, Java 21 on `PATH`,
-`JVM_MAX_MEM` set. `migration/entry-point-inventory.json` must also exist
+`JVM_MAX_MEM` set. `evidence/entry-point-inventory.json` must also exist
 before the handoff step (AR-4.1) — skill `inventory-entry-points`.
 
 Not this skill: entry-point enumeration (`inventory-entry-points`), harvest
@@ -45,7 +45,7 @@ keeps it off the token budget until M1/M5.
 
 ## What you are analyzing
 
-Input is `harvest_referent` from `migration/derived/legacy-at-3.json`
+Input is `harvest_referent` from `evidence/derived/legacy-at-3.json`
 (**legacy@3.x**), never the read-only 2.x mount alone. Comparing findings or
 harvest fidelity to 2.x while the contract is Boot-3 is wrong.
 
@@ -70,7 +70,7 @@ What it does, in order (each step dies non-zero on failure):
 1. Resolve the CLI: `/projects/.tools/kantra/kantra`, else `kantra`/`mta-cli`
    on `PATH`, else run `~/.local/bin/kantra-ensure` (lazy ~690MB PVC install)
    and re-resolve. Keeps `mta-cli` as a symlink alias to `kantra`.
-2. Assert `migration/derived/legacy-at-3.json` + `migration.yaml`, export
+2. Assert `evidence/derived/legacy-at-3.json` + `migration.yaml`, export
    `JAVA_HOME_21`, assert `JVM_MAX_MEM`.
 3. Read `harvest_referent` from the manifest; write-probe it and, if frozen,
    clone to `/projects/.derived/legacy-at-3-mta-input` (JDT/m2e needs to write
@@ -82,15 +82,15 @@ What it does, in order (each step dies non-zero on failure):
 5. `normalize-findings.py <json> <cli> <targets-csv> legacy-at-3:<sha256>` →
    envelope `rhoai3.mta-findings/v1-provisional` with `execution_evidence`
    and `codeSnip` preserved; then `validate-findings-schema.py <json>`.
-   See `migration/schemas/mta-findings.md`.
+   See `governance/schemas/mta-findings.md`.
 6. `emit-findings-handoff.py <root> <findings> <handoff>` → the M1→M2 seam
-   `migration/findings-handoff.json` (`rhoai3.findings-handoff/v1`: rule IDs,
+   `evidence/findings-handoff.json` (`rhoai3.findings-handoff/v1`: rule IDs,
    category, bounded `description`, `disposition`, loci, digests — **no**
    `codeSnip`), then `check-findings-handoff.py <root>` as the gate.
-   See `migration/schemas/findings-handoff.md`.
+   See `governance/schemas/findings-handoff.md`.
 
 Defaults: `MTA_OUT_DIR=migration/mta-analyze-out`,
-`MTA_JSON_OUT=migration/mta-findings.json`, both under the project root.
+`MTA_JSON_OUT=evidence/mta-findings.json`, both under the project root.
 
 AD-H §16.7 / AR-4.1–4.2: inventory digest **required** before emit; each rule
 carries bounded `description` + `disposition`; optional
@@ -145,15 +145,15 @@ Both are required environment facts, not optional tuning.
   `OK: findings → … handoff → … report → …` and the script exits 0.
   Stdout is one JSON object
   `{script,ok,findings,handoff,report_dir,analyze_input}` (UPLIFT-2).
-- `migration/mta-findings.json`: `schema: rhoai3.mta-findings/v1-provisional`,
+- `evidence/mta-findings.json`: `schema: rhoai3.mta-findings/v1-provisional`,
   `execution_evidence.analyzer_ran: true`, `execution_evidence.rule_set`
   matching `migration.yaml` `analysis.targets`, `execution_evidence.input_digest`
   = `legacy-at-3:<manifest sha256>`. Re-run `validate-findings-schema.py` for
   the assertion: every incident carries `uri`, `lineNumber`, `message`,
   `codeSnip`; every violation carries `category`.
-- `migration/mta-analyze-out/output.json` exists (raw analyzer report kept
+- `evidence/mta-analyze-out/output.json` exists (raw analyzer report kept
   beside the normalized envelope).
-- `migration/findings-handoff.json` passes
+- `evidence/findings-handoff.json` passes
   `python3 "${HERMES_SKILL_DIR}/scripts/check-findings-handoff.py" .` — exit 0.
   It re-hashes both `mta-findings.json` and `entry-point-inventory.json` and
   fails on digest drift, size > 65536 B, handoff/evidence ratio ≥ 0.25, any

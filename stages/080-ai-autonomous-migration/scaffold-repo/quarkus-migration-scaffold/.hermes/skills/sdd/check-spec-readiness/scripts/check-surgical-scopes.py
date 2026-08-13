@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """AD-H §16.9 / AR-4.4 — surgical write sets + non-overlap + non-compile-only exits.
 
-Lints every M3 body under `<root>/migration/bodies` and `<root>/migration/tasks`,
+Lints every M3 body under `<root>/evidence/bodies` and `<root>/evidence/tasks`,
 or only the body files named after ROOT (create-m3 passes the single body it is
 about to mint).
 
 Usage:
   python3 check-surgical-scopes.py .
-  python3 check-surgical-scopes.py . migration/bodies/m3-s-010.json
+  python3 check-surgical-scopes.py . evidence/bodies/m3-s-010.json
 """
 from __future__ import annotations
 
@@ -57,7 +57,7 @@ ENDPOINTISH = frozenset(
 
 def load_bodies(root: Path) -> list[tuple[str, dict]]:
     out: list[tuple[str, dict]] = []
-    for d in (root / "migration/bodies", root / "migration/tasks"):
+    for d in (root / "evidence/bodies", root / "evidence/tasks"):
         if not d.is_dir():
             continue
         for path in sorted(d.glob("*.json")):
@@ -123,7 +123,7 @@ def main() -> int:
         "root",
         nargs="?",
         default=".",
-        help="product root containing migration/bodies + migration/tasks (default: .)",
+        help="product root containing evidence/bodies + evidence/tasks (default: .)",
     )
     ap.add_argument(
         "bodies",

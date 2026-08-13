@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """AR-2.3–2.7 — semantic product exit_criteria for REST/persistence stories.
 
-Lints every M3 body under `<root>/migration/bodies` and `<root>/migration/tasks`,
+Lints every M3 body under `<root>/evidence/bodies` and `<root>/evidence/tasks`,
 or only the body files named after ROOT (create-m3 passes the single body it is
 about to mint).
 
 Usage:
   python3 check-semantic-exits.py .
-  python3 check-semantic-exits.py . migration/bodies/m3-s-010.json
+  python3 check-semantic-exits.py . evidence/bodies/m3-s-010.json
 """
 from __future__ import annotations
 
@@ -37,7 +37,7 @@ RESTISH = ("RestController", "Repository", "ApplicationService")
 
 def load_m3(root: Path) -> list[tuple[str, dict]]:
     out = []
-    for d in (root / "migration/bodies", root / "migration/tasks"):
+    for d in (root / "evidence/bodies", root / "evidence/tasks"):
         if not d.is_dir():
             continue
         for path in sorted(d.glob("*.json")):
@@ -74,7 +74,7 @@ def main() -> int:
         "root",
         nargs="?",
         default=".",
-        help="product root containing migration/bodies + migration/tasks (default: .)",
+        help="product root containing evidence/bodies + evidence/tasks (default: .)",
     )
     ap.add_argument(
         "bodies",

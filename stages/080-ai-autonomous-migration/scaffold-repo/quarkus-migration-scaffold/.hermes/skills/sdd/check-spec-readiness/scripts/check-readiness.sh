@@ -16,8 +16,8 @@ and check-kanban-body.py (W2 S6.1 Kanban body vocabulary).
 Arguments:
   none. The scaffold root is derived from this script's own location
   (<script>/../../../..). Scanned under that root:
-    .specify/specs, specs, migration/briefs, migration/specs (*.md)
-    migration/tasks, migration/kanban (*.json)
+    .specify/specs, specs, evidence/briefs, migration/specs (*.md)
+    evidence/tasks, evidence/kanban (*.json)
     migration/waivers, migration/mta-exceptions (*.yaml|*.yml|*.json)
 
   -h, --help   print this usage and exit 0
@@ -62,7 +62,7 @@ spec_roots=()
 for d in \
   "${root}/.specify/specs" \
   "${root}/specs" \
-  "${root}/migration/briefs" \
+  "${root}/evidence/briefs" \
   "${root}/migration/specs"; do
   [ -d "${d}" ] && spec_roots+=("${d}")
 done
@@ -93,7 +93,7 @@ done
 
 # --- task packets ---
 task_files=()
-for d in "${root}/migration/tasks" "${root}/migration/kanban"; do
+for d in "${root}/evidence/tasks" "${root}/evidence/kanban"; do
   [ -d "${d}" ] || continue
   for f in "${d}"/*.json; do
     [ -f "${f}" ] && task_files+=("${f}")
@@ -189,7 +189,7 @@ fi
 checked=$((checked + 1))
 
 if [ "${checked}" -eq 0 ]; then
-  note "OK: no SDD specs/tasks/waivers yet — readiness lint idle (P0 shapes documented under migration/contracts/)."
+  note "OK: no SDD specs/tasks/waivers yet — readiness lint idle (P0 shapes documented under governance/contracts/)."
   exit 0
 fi
 

@@ -34,13 +34,13 @@ metadata:
 
 ## Contracts
 
-- `migration/contracts/grounded-generation.md`
+- `governance/contracts/grounded-generation.md`
 - Consult order + citation + anti-invention (Architect; Operator ACK pending)
 
 ## Procedure
 
-1. **Lint the packet corpus.** Scans `migration/tasks/*.json` and
-   `migration/kanban/*.json`, selecting objects whose `phase` is `M3`/`IMPLEMENT`,
+1. **Lint the packet corpus.** Scans `evidence/tasks/*.json` and
+   `evidence/kanban/*.json`, selecting objects whose `phase` is `M3`/`IMPLEMENT`,
    whose `role` is implementer/worker, or whose `kind` is
    implement/harvest/redesign. Exits 0 as idle when none are present.
 
@@ -74,8 +74,8 @@ Citation lints do **not** replace domain-gate oracles (G-1…G-4).
   **N ≥ 1**.
 - **Silent-failure catch:** `OK: no IMPLEMENT packets / commit-msg — citation
   lint idle` is exit 0 while proving nothing. An idle line during M3 means
-  the packets are not where the lint looks (`migration/tasks/`,
-  `migration/kanban/`), not that they are grounded.
+  the packets are not where the lint looks (`evidence/tasks/`,
+  `evidence/kanban/`), not that they are grounded.
 - Commit-message run prints `OK: commit message citation passed`; a missing
   task id, brief/story id, or locus prints `FAIL: commit message missing …`
   and exits 1.

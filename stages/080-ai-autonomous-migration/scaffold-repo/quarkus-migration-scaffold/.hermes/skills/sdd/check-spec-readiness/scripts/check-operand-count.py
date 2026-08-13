@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Architect E-104925Z / E-110403Z — M3 bodies must carry measured operand_count.
 
-Lints every M3 body under `<root>/migration/bodies` and `<root>/migration/tasks`,
+Lints every M3 body under `<root>/evidence/bodies` and `<root>/evidence/tasks`,
 or only the body files named after ROOT (create-m3 passes the single body it is
 about to mint).
 
 Usage:
   python3 check-operand-count.py .
-  python3 check-operand-count.py . migration/bodies/m3-s-010.json --wall-fit
+  python3 check-operand-count.py . evidence/bodies/m3-s-010.json --wall-fit
   python3 check-operand-count.py /projects/modernized BODY.json --wall-fit --v13
 """
 from __future__ import annotations
@@ -141,7 +141,7 @@ def load_bodies(root: Path, only: list[Path]) -> list[tuple[str, dict]]:
                 out.append((str(p), body))
         return out
     out = []
-    for d in (root / "migration/bodies", root / "migration/tasks"):
+    for d in (root / "evidence/bodies", root / "evidence/tasks"):
         if not d.is_dir():
             continue
         for path in sorted(d.glob("*.json")):
@@ -258,7 +258,7 @@ def main() -> int:
         "root",
         nargs="?",
         default=".",
-        help="product root containing migration/bodies + migration/tasks (default: .)",
+        help="product root containing evidence/bodies + evidence/tasks (default: .)",
     )
     ap.add_argument(
         "bodies",

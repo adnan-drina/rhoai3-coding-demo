@@ -1,0 +1,19 @@
+{
+  "schema": "rhoai3.findings-handoff/v1",
+  "emitted_at": "2026-08-10T00:00:00Z",
+  "evidence": {
+    "path": "evidence/mta-findings.json",
+    "sha256": "deadbeef"
+  },
+  "rules": [
+    {
+      "rule_id": "demo.rule",
+      "category": "optional",
+      "incident_count": 1,
+      "description": "demo description for AR-4.2",
+      "disposition": "apply",
+      "loci": [{"path": "src/main/java/A.java", "line": 1}]
+    }
+  ],
+  "ack_obligation": "demo"
+}

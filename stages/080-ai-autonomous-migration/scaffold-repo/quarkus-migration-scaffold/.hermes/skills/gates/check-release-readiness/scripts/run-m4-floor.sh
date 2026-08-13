@@ -19,7 +19,7 @@ CHECK_RECEIPTS="${SCRIPT_DIR}/check-m4-floor-receipts.py"
 G4_EVAL="$(cd "${SCRIPT_DIR}/../../check-domain-parity/scripts" && pwd)/g4-runtime-parity.py"
 
 RUN_ID="${M4_RUN_ID:-$(date -u +%Y%m%dT%H%M%SZ)}"
-RECEIPT_DIR="${PRODUCT_ROOT}/migration/receipts/m4-floor/${RUN_ID}"
+RECEIPT_DIR="${PRODUCT_ROOT}/evidence/receipts/m4-floor/${RUN_ID}"
 mkdir -p "${RECEIPT_DIR}"
 PORT="${M4_PORT:-8080}"
 BASE_URL="${BASE_URL_OVERRIDE:-http://127.0.0.1:${PORT}}"
@@ -183,7 +183,7 @@ else
 fi
 
 # --- 3) G-4 hook ---
-PARITY_DIR="${M4_PARITY_DIR:-${PRODUCT_ROOT}/migration/fixtures/admission/g4-runtime-parity}"
+PARITY_DIR="${M4_PARITY_DIR:-${PRODUCT_ROOT}/governance/fixtures/admission/g4-runtime-parity}"
 G4_RESULT="INCONCLUSIVE"
 G4_NOTE="no product parity.json; SAMPLE fixture admission only"
 if [[ -f "${PRODUCT_ROOT}/migration/parity.json" ]]; then
@@ -230,7 +230,7 @@ python3 "${WRITE_RECEIPT}" --out "${RECEIPT_DIR}/g4_hook.json" --check g4_hook \
   --g4-mode SAMPLE --adequacy ADMISSION
 
 # symlink latest
-ln -sfn "${RUN_ID}" "${PRODUCT_ROOT}/migration/receipts/m4-floor/latest" 2>/dev/null || true
+ln -sfn "${RUN_ID}" "${PRODUCT_ROOT}/evidence/receipts/m4-floor/latest" 2>/dev/null || true
 
 log "receipts in ${RECEIPT_DIR}"
 python3 "${CHECK_RECEIPTS}" "${RECEIPT_DIR}"

@@ -50,7 +50,7 @@ def main() -> int:
         "floor": "m4-minimum",
         "ad010_demo": False,
         # Contract citation — inbound ref for B8 check-semantics-manifest
-        "contract": "migration/contracts/check-semantics-manifest.md",
+        "contract": "governance/contracts/check-semantics-manifest.md",
     }
     if args.package_rc is not None:
         receipt["package_rc"] = args.package_rc

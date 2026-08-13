@@ -9,5 +9,5 @@ python3 ../manage-quarkus-extensions/scripts/check-pom-platform-pins.py <root>
 Shared BOM / Jacoco policy:
 `../manage-quarkus-extensions/references/rh-bom-and-mandatory-deps.md`.
 
-Platform GAV: `migration/contracts/tooling-pins.md` (do not restate versions
+Platform GAV: `governance/contracts/tooling-pins.md` (do not restate versions
 here).

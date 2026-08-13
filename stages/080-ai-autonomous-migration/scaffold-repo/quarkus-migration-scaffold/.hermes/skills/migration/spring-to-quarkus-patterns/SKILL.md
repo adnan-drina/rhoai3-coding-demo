@@ -97,9 +97,9 @@ This skill carries no scripts — it is a consult-then-write contract.
    wrong pick.
 5. **Write one operand at a time** from checkpoint `next`, stamping after each
    successful destination write. Copy the golden fixtures rather than inventing:
-   `migration/fixtures/security/golden-basic-authz/`,
-   `migration/fixtures/testing/golden-rest-controller/`,
-   `migration/fixtures/testing/golden-test-application.properties`.
+   `governance/fixtures/security/golden-basic-authz/`,
+   `governance/fixtures/testing/golden-rest-controller/`,
+   `governance/fixtures/testing/golden-test-application.properties`.
 6. **Run `mvn -q test-compile` in-loop** after test writes. Once a pattern is
    green in this task, copy it — do not restate the map per file.
 
@@ -124,7 +124,7 @@ Verification here is the migrated code's provable parity, not a script exit.
   role / 200 allowed, and
   `python3 .hermes/skills/gates/check-release-readiness/scripts/check-empty-security.py <tree>`
   does not flag the destination (it must still fail on
-  `migration/fixtures/runnable-db-security/bad-placeholder-security/`).
+  `governance/fixtures/runnable-db-security/bad-placeholder-security/`).
 - **Health, when touched:** the `/q/health` payload names **every** check
   migrated from a legacy indicator; `/q/health/live` and `/q/health/ready` both
   resolve; a dependency-backed check reports DOWN under readiness.

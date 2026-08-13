@@ -5,8 +5,8 @@ Exit 0 only when every deny-path probe gets PermissionError (or equivalent)
 after apply-write-fence.sh lock. Does not claim release_qualified.
 
 This probe MUTATES the tree under ROOT: it attempts (and, where the fence is
-absent, succeeds at) creating and deleting probe files under migration/acks,
-migration/verdicts, .hermes/skills and migration/fixtures. Point it at the
+absent, succeeds at) creating and deleting probe files under evidence/acks,
+evidence/verdicts, .hermes/skills and governance/fixtures. Point it at the
 workspace you actually mean to probe.
 
 Usage:
@@ -32,8 +32,8 @@ Exit codes:
 """
 
 DENY_PROBE_RELS = (
-    "migration/acks/.f2-seat-probe",
-    "migration/verdicts/.f2-seat-probe",
+    "evidence/acks/.f2-seat-probe",
+    "evidence/verdicts/.f2-seat-probe",
     ".hermes/skills/.f2-seat-probe",
 )
 
@@ -82,7 +82,7 @@ def main() -> int:
             print(f"OK: probe denied {rel} ({outcome})")
 
     # Positive control: implementer must still write under src/ (or tmp under root)
-    ctrl_dir = root / "migration" / "fixtures"
+    ctrl_dir = root / "governance" / "fixtures"
     ctrl_dir.mkdir(parents=True, exist_ok=True)
     # Prefer a path that should remain writable; fall back to tempfile under root
     ctrl = ctrl_dir / ".f2-positive-control"

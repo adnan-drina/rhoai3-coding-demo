@@ -18,7 +18,7 @@ metadata:
 - An M3 implementer card is about to `kanban_complete` — provenance,
   body digest and checkpoint must be proven before the claim lands.
 - Resuming a requeued / re-dispatched M3 task: read `next` from
-  `migration/runs/<task_id>/checkpoint.json` instead of cold re-walking
+  `evidence/runs/<task_id>/checkpoint.json` instead of cold re-walking
   operands already marked `completed`.
 - After a destination write under `src/test/**` — the stamp runs a scoped
   test-compile gate and REFUSEs on in-scope red.
@@ -31,10 +31,10 @@ metadata:
 
 ## Contracts
 
-- `migration/contracts/auditability-repeatability.md`
-- `migration/contracts/body-immutability.md`
-- `migration/contracts/implementer-checkpoint.md`
-- `migration/schemas/generation-provenance.md`, `run-journal.md`,
+- `governance/contracts/auditability-repeatability.md`
+- `governance/contracts/body-immutability.md`
+- `governance/contracts/implementer-checkpoint.md`
+- `governance/schemas/generation-provenance.md`, `run-journal.md`,
   `implementer-checkpoint.md`
 
 ## Procedure
@@ -45,7 +45,7 @@ metadata:
 
 ```bash
 python3 "${HERMES_SKILL_DIR}/scripts/stamp-body-digest.py" \
-  /projects/modernized/migration/bodies/m3-s-010.json
+  /projects/modernized/evidence/bodies/m3-s-010.json
 ```
 
 2. **Refuse body drift after dispatch.** With `--body` alone the check is
@@ -54,9 +54,9 @@ python3 "${HERMES_SKILL_DIR}/scripts/stamp-body-digest.py" \
 
 ```bash
 python3 "${HERMES_SKILL_DIR}/scripts/check-body-digest-match.py" /projects/modernized \
-  --body migration/bodies/m3-s-010.json
+  --body evidence/bodies/m3-s-010.json
 python3 "${HERMES_SKILL_DIR}/scripts/assert-card-body-digest-match.py" /projects/modernized \
-  --task-id t_example --body migration/bodies/m3-s-010.json
+  --task-id t_example --body evidence/bodies/m3-s-010.json
 ```
 
 3. **Init the resume seam before the first destination edit.** `work_list`
@@ -65,7 +65,7 @@ python3 "${HERMES_SKILL_DIR}/scripts/assert-card-body-digest-match.py" /projects
 
 ```bash
 python3 "${HERMES_SKILL_DIR}/scripts/init-implementer-checkpoint.py" \
-  /projects/modernized/migration/bodies/m3-s-010.json --task-id t_example \
+  /projects/modernized/evidence/bodies/m3-s-010.json --task-id t_example \
   --root /projects/modernized
 ```
 
@@ -75,10 +75,10 @@ python3 "${HERMES_SKILL_DIR}/scripts/init-implementer-checkpoint.py" \
 
 ```bash
 python3 "${HERMES_SKILL_DIR}/scripts/run-scoped-compile-gate.py" /projects/modernized \
-  --task-id t_example --body migration/bodies/m3-s-010.json --goal test-compile
+  --task-id t_example --body evidence/bodies/m3-s-010.json --goal test-compile
 python3 "${HERMES_SKILL_DIR}/scripts/stamp-implementer-checkpoint.py" \
-  /projects/modernized/migration/runs/t_example/checkpoint.json \
-  --body /projects/modernized/migration/bodies/m3-s-010.json \
+  /projects/modernized/evidence/runs/t_example/checkpoint.json \
+  --body /projects/modernized/evidence/bodies/m3-s-010.json \
   --completed src/test/java/com/example/rest/SomeResourceTest.java
 ```
 
@@ -87,10 +87,10 @@ python3 "${HERMES_SKILL_DIR}/scripts/stamp-implementer-checkpoint.py" \
 
 ```bash
 python3 "${HERMES_SKILL_DIR}/scripts/check-test-write-checkpoint-lag.py" \
-  /projects/modernized/migration/runs/t_example/checkpoint.json --root /projects/modernized
+  /projects/modernized/evidence/runs/t_example/checkpoint.json --root /projects/modernized
 python3 "${HERMES_SKILL_DIR}/scripts/sync-checkpoint-from-test-writes.py" \
-  /projects/modernized/migration/runs/t_example/checkpoint.json --root /projects/modernized \
-  --body /projects/modernized/migration/bodies/m3-s-010.json
+  /projects/modernized/evidence/runs/t_example/checkpoint.json --root /projects/modernized \
+  --body /projects/modernized/evidence/bodies/m3-s-010.json
 ```
 
 6. **Verify before completing.** Checkpoint shape + run-journal / sidecar
@@ -98,14 +98,14 @@ python3 "${HERMES_SKILL_DIR}/scripts/sync-checkpoint-from-test-writes.py" \
 
 ```bash
 python3 "${HERMES_SKILL_DIR}/scripts/check-implementer-checkpoint.py" \
-  /projects/modernized/migration/runs/t_example/checkpoint.json
+  /projects/modernized/evidence/runs/t_example/checkpoint.json
 python3 "${HERMES_SKILL_DIR}/scripts/check-run-digests.py" /projects/modernized
 python3 "${HERMES_SKILL_DIR}/scripts/check-provenance.py" /projects/modernized
 ```
 
-`check-provenance.py` reads `migration/provenance/*.json` plus the
+`check-provenance.py` reads `evidence/provenance/*.json` plus the
 `provenance` / `metadata` / `completion_metadata` fields of
-`migration/tasks/*.json` and `migration/kanban/*.json`. It requires
+`evidence/tasks/*.json` and `evidence/kanban/*.json`. It requires
 `task_id`, `task_run_id`, `worker_session_id`, `soul_path` + `soul_sha`,
 `skill_tips`, `model_id`, and `citations{brief_or_story_id, legacy_locus}`.
 `soul_sha` is re-hashed against the **loaded** SOUL path
@@ -128,12 +128,12 @@ Missing `worker_session_id`, unresolved session store, non-git-sha
 
 ## Verification
 
-- `migration/runs/<task_id>/checkpoint.json` carries schema
+- `evidence/runs/<task_id>/checkpoint.json` carries schema
   `rhoai3.implementer-checkpoint/v1`, `completed ⊆ work_list` with no
   duplicates, 64-hex `body_sha256`, and `next` equal to the first uncompleted
   entry — `check-implementer-checkpoint.py` recomputes `next` and exits 1 on drift.
 - `run-scoped-compile-gate.py` wrote
-  `migration/runs/<task_id>/scoped-test-compile-gate.json` with `"ok": true`
+  `evidence/runs/<task_id>/scoped-test-compile-gate.json` with `"ok": true`
   and empty `in_scope_errors`.
 - `<body>.json.sha256.json` exists and its `body_sha256` equals sha256 of the
   live body; `--body` without a sidecar is a REFUSE, not a skip.

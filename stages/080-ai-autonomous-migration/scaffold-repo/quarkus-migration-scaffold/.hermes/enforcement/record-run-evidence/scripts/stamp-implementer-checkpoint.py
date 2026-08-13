@@ -30,7 +30,7 @@ def is_test_operand(p: str) -> bool:
 
 
 def workspace_root(checkpoint: Path) -> Path:
-    # .../migration/runs/<task>/checkpoint.json → repo root
+    # .../evidence/runs/<task>/checkpoint.json → repo root
     return checkpoint.resolve().parents[3]
 
 
@@ -43,7 +43,7 @@ def resolve_body(root: Path, ck: dict) -> Path | None:
                 p = root / raw
             if p.is_file():
                 return p
-    # Convention: migration/bodies/m3-s-NNN.json from task title/story — scan refs
+    # Convention: evidence/bodies/m3-s-NNN.json from task title/story — scan refs
     refs = ck.get("refs") or []
     for ref in refs:
         if not isinstance(ref, dict):
@@ -55,10 +55,10 @@ def resolve_body(root: Path, ck: dict) -> Path | None:
     # Fallback: body mentioned in work metadata
     story = ck.get("story_id") or ck.get("story")
     if story:
-        cand = root / "migration" / "bodies" / f"m3-{str(story).lower()}.json"
+        cand = root / "evidence" / "bodies" / f"m3-{str(story).lower()}.json"
         if cand.is_file():
             return cand
-        cand = root / "migration" / "bodies" / f"{story}.json"
+        cand = root / "evidence" / "bodies" / f"{story}.json"
         if cand.is_file():
             return cand
     return None

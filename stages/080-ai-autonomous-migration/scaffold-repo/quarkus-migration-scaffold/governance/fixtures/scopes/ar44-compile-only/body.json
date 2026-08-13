@@ -1,0 +1,20 @@
+{
+  "task_id": "t_ar44_bad",
+  "role": "implementer",
+  "phase": "M3",
+  "refs": [
+    {"key": "brief_identity_ack", "path": "evidence/acks/brief-identity.json", "sha256": "pending"},
+    {"key": "legacy_locus", "path": "evidence/acks/legacy.json", "sha256": "0000000000000000000000000000000000000000000000000000000000000000"}
+  ],
+  "identity": {
+    "story_id": "S-AR44",
+    "transform_class": "REWRITE",
+    "g2_applicability": "not_applicable"
+  },
+  "files_writable": ["src/main/java/com/demo/rest/OwnerRestController.java"],
+  "files_readable": ["/projects/.derived/legacy-at-3/src/main/java/org/springframework/samples/petclinic/rest/OwnerRestController.java"],
+  "exit_criteria": [
+    {"check": "compile", "cmd": "mvn -q -DskipTests compile", "expect": "rc=0"},
+    {"check": "skills", "assert": "consult each preload or skills_unused; silence invalid (AD-002E)"}
+  ]
+}

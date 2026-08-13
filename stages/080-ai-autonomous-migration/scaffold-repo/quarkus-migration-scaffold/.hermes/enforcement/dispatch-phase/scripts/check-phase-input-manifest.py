@@ -9,7 +9,7 @@ M2a/M2b bodies must enumerate:
   - path or glob…
 
 At create/dispatch: every Required path must exist; every Forbidden path/glob
-must match zero files. Stale specimen bodies under migration/bodies/ fail closed
+must match zero files. Stale specimen bodies under evidence/bodies/ fail closed
 (R-HX.15 promoted pre-M2).
 """
 from __future__ import annotations
@@ -82,8 +82,8 @@ def main() -> int:
     if only and only not in PHASES:
         print(f"OK: phase input manifests N/A for non-planner phase {only}")
         return 0
-    live_ws = (root / "migration" / "findings-handoff.json").is_file() or (
-        root / "migration" / "acks" / "m1-findings.ack.yaml"
+    live_ws = (root / "evidence" / "findings-handoff.json").is_file() or (
+        root / "evidence" / "acks" / "m1-findings.ack.yaml"
     ).is_file()
     phases = (only,) if only in PHASES else PHASES
     bad = 0
@@ -118,10 +118,10 @@ def main() -> int:
         # Tip golden tree never ships M1 outputs / Operator acks / M2a partition.
         # Declare + live-enforce; hard-fail only scaffold-shipped contracts.
         LIVE_ENFORCED_PREFIXES = (
-            "migration/acks/",
-            "migration/findings-handoff.json",
-            "migration/entry-point-inventory.json",
-            "migration/mta-findings.json",
+            "evidence/acks/",
+            "evidence/findings-handoff.json",
+            "evidence/entry-point-inventory.json",
+            "evidence/mta-findings.json",
         )
         for rel in required:
             if rel.endswith(" (after M2a)") or rel.startswith("OPTIONAL:"):
@@ -132,7 +132,7 @@ def main() -> int:
                 print(f"OK: {phase} present {rel}")
             else:
                 # Partition is only hard when dispatching M2b specifically.
-                if rel == "migration/briefs/partition.json" and only != "M2b":
+                if rel == "evidence/briefs/partition.json" and only != "M2b":
                     print(f"OK: {phase} partition declared (hard on M2b dispatch)")
                     continue
                 soft = (not live_ws) and any(

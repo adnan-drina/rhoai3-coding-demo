@@ -2,8 +2,8 @@
 """UPLIFT-7 / R-SK.13 companion — golden tree must not accumulate run-state.
 
 Gates and composites historically wrote under:
-  migration/fixtures/admission/out/**
-  migration/derived/free-primitives-apply-log.json
+  evidence/fixtures/admission/out/**
+  evidence/derived/free-primitives-apply-log.json
 Those paths regenerate on validate/derive and must never be tip-committed
 (regression of e3925b3b). R-SK.13 skips `out/` so hermeticity alone cannot
 catch this — this lint does.
@@ -25,15 +25,15 @@ from pathlib import Path
 
 # Exact files + directory prefixes relative to scaffold root.
 FORBIDDEN_FILES = (
-    "migration/derived/free-primitives-apply-log.json",
-    "migration/derived/review-adhere-observe-needed.yaml",
+    "evidence/derived/free-primitives-apply-log.json",
+    "evidence/derived/review-adhere-observe-needed.yaml",
 )
 FORBIDDEN_PREFIXES = (
-    "migration/fixtures/admission/out/",
+    "evidence/fixtures/admission/out/",
 )
 FORBIDDEN_NAME_GLOBS = (
-    ("migration/derived", "phase-*-task-id.txt"),
-    ("migration/derived", "created-cards-*.json"),
+    ("evidence/derived", "phase-*-task-id.txt"),
+    ("evidence/derived", "created-cards-*.json"),
 )
 
 
@@ -51,7 +51,7 @@ def on_disk_forbidden(root: Path) -> list[Path]:
         p = root / rel
         if p.is_file():
             hits.append(p)
-    out_root = root / "migration/fixtures/admission/out"
+    out_root = root / "evidence/fixtures/admission/out"
     if out_root.is_dir():
         hits.extend(sorted(p for p in out_root.rglob("*") if p.is_file()))
     for parent, pattern in FORBIDDEN_NAME_GLOBS:
@@ -68,7 +68,7 @@ def on_disk_forbidden(root: Path) -> list[Path]:
 
 def tracked_forbidden(root: Path) -> list[str]:
     """Return tracked paths that match forbidden prefixes/names."""
-    ls = git(root, "ls-files", "-z", "--", "migration/")
+    ls = git(root, "ls-files", "-z", "--", "evidence/")
     if ls.returncode != 0:
         return [f"G1:git-ls-files-failed:{ls.stderr.strip()}"]
     bad: list[str] = []

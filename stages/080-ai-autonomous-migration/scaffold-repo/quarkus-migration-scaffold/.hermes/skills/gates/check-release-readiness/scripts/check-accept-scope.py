@@ -35,9 +35,9 @@ def descope_count(root: Path) -> tuple[int, str]:
     """Return (count, source_label). Prefer explicit fields; else count ack rows."""
     # Explicit on inventory / residue
     for rel in (
-        "migration/entry-point-inventory.json",
+        "evidence/entry-point-inventory.json",
         "migration/residue/entry-point-descopes.json",
-        "migration/acks/entry-point-descopes.json",
+        "evidence/acks/entry-point-descopes.json",
     ):
         path = root / rel
         if not path.is_file():
@@ -64,20 +64,20 @@ def descope_count(root: Path) -> tuple[int, str]:
             return len(data), rel
 
     # Count descope ack files
-    adir = root / "migration/acks"
+    adir = root / "evidence/acks"
     if adir.is_dir():
         n = 0
         for path in adir.glob("*descope*"):
             if path.is_file():
                 n += 1
         if n:
-            return n, "migration/acks/*descope*"
+            return n, "evidence/acks/*descope*"
     return 0, "none"
 
 
 def m5_verdicts(root: Path) -> list[tuple[str, dict]]:
     out: list[tuple[str, dict]] = []
-    vdir = root / "migration/verdicts"
+    vdir = root / "evidence/verdicts"
     if not vdir.is_dir():
         return out
     for path in sorted(vdir.glob("*.json")):
@@ -103,7 +103,7 @@ def main() -> int:
         "root",
         nargs="?",
         default=".",
-        help="product root containing migration/verdicts (default: .)",
+        help="product root containing evidence/verdicts (default: .)",
     )
     args = ap.parse_args()
     root = Path(args.root).resolve()

@@ -70,7 +70,7 @@ def write_stamp(
     k_crash: int,
     note: str,
 ) -> Path:
-    out_dir = root / "migration" / "verdicts"
+    out_dir = root / "evidence" / "verdicts"
     out_dir.mkdir(parents=True, exist_ok=True)
     stamp = {
         "schema": "rhoai3.crash-requeue-block/v1",
@@ -150,7 +150,7 @@ def main() -> int:
     if f4.returncode != 0:
         print(
             f"FAIL: refuse crash reclaim — F4 restore-or-refuse rc={f4.returncode} "
-            f"(migration/contracts/workspace-recovery.md)",
+            f"(governance/contracts/workspace-recovery.md)",
             file=sys.stderr,
         )
         return 1 if f4.returncode == 1 else f4.returncode
@@ -167,7 +167,7 @@ def main() -> int:
         print(msg, file=sys.stderr)
         if args.stamp:
             stamp_path = (
-                root / "migration" / "verdicts" / f"crash-requeue-{args.cause}-{args.task_id}.json"
+                root / "evidence" / "verdicts" / f"crash-requeue-{args.cause}-{args.task_id}.json"
             )
             if args.dry_run:
                 print(f"DRY-RUN: would stamp {stamp_path} (skipped write)")

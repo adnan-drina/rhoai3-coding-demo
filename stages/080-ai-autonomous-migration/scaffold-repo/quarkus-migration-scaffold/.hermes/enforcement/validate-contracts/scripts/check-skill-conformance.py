@@ -8,7 +8,7 @@ Usage:
 Exit: 0 all pass; 1 violations (printed SKILL:RULE:detail).
 
 R-SK.5 specimen literals (Operator E-20260813T075411Z / Deputy E-20260813T122115Z):
-  under --all, scan skills SKILL.md+references/templates and migration/contracts
+  under --all, scan skills SKILL.md+references/templates and governance/contracts
   for petclinic/package/entity path literals unless Architect KEEP listed in
   references/r-sk5-specimen-keep.txt.
 
@@ -311,7 +311,7 @@ def collect_path_invoked_names(scaffold: Path) -> set[str]:
     names: set[str] = set()
     scan_roots = [
         scaffold / ".hermes",
-        scaffold / "migration" / "contracts",
+        scaffold / "governance" / "contracts",
         scaffold / "AGENTS.md",
         scaffold / "devfile.yaml",
     ]
@@ -463,7 +463,7 @@ def check_specimen_literals(scaffold: Path) -> list[str]:
         enforcement,
         suffixes={".py", ".sh", ".md", ".txt", ".yaml", ".yml"},
     )
-    contracts = scaffold / "migration" / "contracts"
+    contracts = scaffold / "governance" / "contracts"
     if contracts.is_dir():
         scan.extend(
             p
@@ -471,7 +471,7 @@ def check_specimen_literals(scaffold: Path) -> list[str]:
             if p.is_file() and p.suffix in {".md", ".txt", ".yaml", ".yml"}
         )
     # R-SK.5 P2 — also scan Java fixtures (Deputy E-20260813T144954Z)
-    fixtures = scaffold / "migration" / "fixtures"
+    fixtures = scaffold / "governance" / "fixtures"
     if fixtures.is_dir():
         scan.extend(
             p

@@ -87,14 +87,14 @@ def skill_tree_sha(repo: Path, commit: str, skill: str) -> str | None:
 
 def find_provenance(repo: Path, task_id: str) -> tuple[Path | None, dict | None]:
     candidates = [
-        repo / "migration" / "provenance" / f"{task_id}-provenance.json",
-        repo / "migration" / "provenance" / f"{task_id}.json",
+        repo / "evidence" / "provenance" / f"{task_id}-provenance.json",
+        repo / "evidence" / "provenance" / f"{task_id}.json",
     ]
     for path in candidates:
         data = load_json(path)
         if isinstance(data, dict):
             return path, data
-    prov_dir = repo / "migration" / "provenance"
+    prov_dir = repo / "evidence" / "provenance"
     if prov_dir.is_dir():
         for path in sorted(prov_dir.glob("*.json")):
             data = load_json(path)
@@ -104,7 +104,7 @@ def find_provenance(repo: Path, task_id: str) -> tuple[Path | None, dict | None]
 
 
 def find_task_packet(repo: Path, task_id: str) -> tuple[Path | None, dict | None]:
-    for d in ("migration/tasks", "migration/kanban"):
+    for d in ("evidence/tasks", "evidence/kanban"):
         base = repo / d
         if not base.is_dir():
             continue
@@ -285,7 +285,7 @@ def soul_at_commit(repo: Path, commit: str, prov: dict | None = None) -> dict:
 
 def find_gates(repo: Path, task_id: str, story_id: str | None) -> dict:
     out: dict = {"ok": False, "verdicts": [], "gaps": []}
-    vdir = repo / "migration" / "verdicts"
+    vdir = repo / "evidence" / "verdicts"
     if not vdir.is_dir():
         out["gaps"].append("missing_verdicts_dir")
         return out
@@ -321,7 +321,7 @@ def find_gates(repo: Path, task_id: str, story_id: str | None) -> dict:
 def find_approval(repo: Path, story_id: str | None) -> dict:
     """§19.4 — acks prove human acceptance; digests do not substitute."""
     out: dict = {"ok": False, "acks": [], "gaps": []}
-    adir = repo / "migration" / "acks"
+    adir = repo / "evidence" / "acks"
     if not adir.is_dir():
         out["gaps"].append("missing_acks_dir")
         return out

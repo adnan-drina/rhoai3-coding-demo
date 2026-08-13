@@ -28,7 +28,7 @@ def main() -> int:
     bad = 0
 
     policy_files = [
-        root / "migration" / "contracts" / "task-authority.md",
+        root / "governance" / "contracts" / "task-authority.md",
         root / ".hermes" / "skills" / "harness" / "enforce-authority-boundary" / "SKILL.md",
         root / "AGENTS.md",
     ]
@@ -45,7 +45,7 @@ def main() -> int:
 
     # Fixture / prompt surfaces that must not enable mutating skill_manage
     scan_roots = [
-        root / "migration" / "fixtures" / "authority",
+        root / "governance" / "fixtures" / "authority",
         root / ".hermes" / "home" / "config",
     ]
     scanned = 0

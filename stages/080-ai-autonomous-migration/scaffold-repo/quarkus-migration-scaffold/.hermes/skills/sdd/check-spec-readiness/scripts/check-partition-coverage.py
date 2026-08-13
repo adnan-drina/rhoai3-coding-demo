@@ -17,7 +17,7 @@ rewrites are derived from inventory / migration.yaml — never hardcoded.
 
 Usage:
   python3 check-partition-coverage.py /projects/modernized
-  python3 check-partition-coverage.py . --write-receipt migration/receipts/partition-coverage.json
+  python3 check-partition-coverage.py . --write-receipt evidence/receipts/partition-coverage.json
   python3 check-partition-coverage.py . --retro   # evidence-only: never exit 1
 """
 from __future__ import annotations
@@ -120,15 +120,15 @@ def body_files_for_story(bodies_dir: Path, story_id: str) -> list[str]:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("root", nargs="?", default=".")
-    ap.add_argument("--partition", default="migration/briefs/partition.json")
+    ap.add_argument("--partition", default="evidence/briefs/partition.json")
     ap.add_argument("--inventory", default="")
     ap.add_argument(
         "--allow-specimen-fixture",
         action="store_true",
-        help="Permit falling back to migration/fixtures/inventory/* specimen inventories",
+        help="Permit falling back to governance/fixtures/inventory/* specimen inventories",
     )
-    ap.add_argument("--findings", default="migration/mta-findings.json")
-    ap.add_argument("--bodies", default="migration/bodies")
+    ap.add_argument("--findings", default="evidence/mta-findings.json")
+    ap.add_argument("--bodies", default="evidence/bodies")
     ap.add_argument("--write-receipt", default="")
     ap.add_argument("--retro", action="store_true")
     args = ap.parse_args()

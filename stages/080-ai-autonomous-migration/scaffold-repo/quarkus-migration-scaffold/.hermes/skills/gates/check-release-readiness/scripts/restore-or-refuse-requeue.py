@@ -50,7 +50,7 @@ def is_git_repo(root: Path) -> bool:
 def resolve_baseline(root: Path, baseline: str | None) -> str:
     if baseline:
         return baseline
-    marker = root / "migration" / "recovery" / "baseline-sha"
+    marker = root / "evidence" / "recovery" / "baseline-sha"
     if marker.is_file():
         return marker.read_text(encoding="utf-8").strip()
     # Prefer origin/HEAD when present; else HEAD
@@ -98,7 +98,7 @@ def main() -> int:
     ap.add_argument(
         "--baseline",
         default=None,
-        help="git ref/SHA to restore (default: migration/recovery/baseline-sha or HEAD)",
+        help="git ref/SHA to restore (default: evidence/recovery/baseline-sha or HEAD)",
     )
     ap.add_argument(
         "--dry-run",

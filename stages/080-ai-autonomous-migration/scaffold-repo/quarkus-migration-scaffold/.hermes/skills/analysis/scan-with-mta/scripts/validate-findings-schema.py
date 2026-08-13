@@ -13,7 +13,7 @@ def fail(msg: str) -> int:
 
 
 def main() -> int:
-    path = Path(sys.argv[1] if len(sys.argv) > 1 else "migration/mta-findings.json")
+    path = Path(sys.argv[1] if len(sys.argv) > 1 else "evidence/mta-findings.json")
     if not path.is_file():
         return fail(f"missing {path}")
     data = json.loads(path.read_text(encoding="utf-8"))

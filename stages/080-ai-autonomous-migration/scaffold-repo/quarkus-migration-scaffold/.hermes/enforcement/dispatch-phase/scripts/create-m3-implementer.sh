@@ -5,7 +5,7 @@
 # Usage:
 #   bash .hermes/enforcement/dispatch-phase/scripts/create-m3-implementer.sh \
 #     --title "M3 IMPLEMENT: Owner Management" \
-#     --body-json migration/bodies/m3-001-owner.json \
+#     --body-json evidence/bodies/m3-001-owner.json \
 #     --parent t_xxx [--idempotency-key KEY]
 #
 # --parent is REQUIRED (Operator E-20260811T133000Z #5 created_cards attribution).
@@ -15,11 +15,11 @@
 # Do NOT use bare `hermes kanban create` for M3 — that path omits skills
 # (Review grounding study 20260809: M3 workers loaded zero skills).
 #
-# Cite: migration/contracts/devspaces-dispatcher-posture.md (B5/B6 — single dispatcher;
+# Cite: governance/contracts/devspaces-dispatcher-posture.md (B5/B6 — single dispatcher;
 # park-at-birth nursing until AD-016). This script implements create/park half.
 #
 # Architect E-20260811T155332Z Class A (tip FREEZE exception): after create,
-# emit unsigned migration/acks/ack-request-<story>.yaml with task_id + body +
+# emit unsigned evidence/acks/ack-request-<story>.yaml with task_id + body +
 # partition digests so Operator/Deputy can sign without hand-copy races.
 set -euo pipefail
 
@@ -98,16 +98,16 @@ python3 "${ROOT}/.hermes/skills/sdd/check-spec-readiness/scripts/stamp-destinati
   || die "stamp-destination-inventory failed"
 # Partition coverage fail-closed before create (gate already tip-loaded)
 python3 "${ROOT}/.hermes/skills/sdd/check-spec-readiness/scripts/check-partition-coverage.py" "${ROOT}" \
-  --write-receipt migration/receipts/partition-coverage/latest.json \
+  --write-receipt evidence/receipts/partition-coverage/latest.json \
   || die "PARTITION_COVERAGE not VALID — remediate partition/bodies before create"
 
 # Architect E-20260811T170706Z Class A — quarantine tombstones must survive create/dispatch
 python3 "${ROOT}/.hermes/skills/sdd/check-spec-readiness/scripts/assert-quarantine-tombstones.py" "${ROOT}" \
-  || die "quarantine tombstones resurrected — wipe + purge restorer before create (migration/contracts/quarantine-survives-dispatch.md)"
+  || die "quarantine tombstones resurrected — wipe + purge restorer before create (governance/contracts/quarantine-survives-dispatch.md)"
 
 # S-008 / W4 — parent-chain triad resurrection order (distinct from tombstones)
 python3 "${ROOT}/.hermes/enforcement/dispatch-phase/scripts/check-s008-resurrection-order.py" "${ROOT}" \
-  || die "S-008 resurrection-order failed — parent before child before grandchild (migration/contracts/s008-quarantine-resurrection-order.md)"
+  || die "S-008 resurrection-order failed — parent before child before grandchild (governance/contracts/s008-quarantine-resurrection-order.md)"
 
 # Architect E-20260811T200911Z Class A — mint-completeness (inject standard constraints
 # when absent/empty; distinct from preservation). Refuse later if still empty.
@@ -121,10 +121,10 @@ python3 "${ROOT}/.hermes/skills/sdd/check-spec-readiness/scripts/assert-mint-con
 # Architect E-20260811T203657Z Class A — dependency/pre-exists closure
 python3 "${ROOT}/.hermes/skills/sdd/check-spec-readiness/scripts/assert-dependency-closure.py" "${ROOT}" \
   --body "${BODY_JSON}" \
-  || die "DEPENDENCY_CLOSURE: fix false pre-exists or absorb missing types into scope (migration/contracts/dependency-closure.md)"
+  || die "DEPENDENCY_CLOSURE: fix false pre-exists or absorb missing types into scope (governance/contracts/dependency-closure.md)"
 
 # Validate THE body being created (Operator E-20260811T124000Z) — not whole
-# migration/bodies/ (incomplete siblings must not block a single create).
+# evidence/bodies/ (incomplete siblings must not block a single create).
 # Whole-corpus lint remains available as: check-kanban-body.py "${ROOT}"
 python3 "${ROOT}/.hermes/skills/sdd/check-spec-readiness/scripts/check-kanban-body.py" "${ROOT}" \
   --body "${BODY_JSON}" \
@@ -211,31 +211,31 @@ trap 'rm -f "${BODY_MD}"' EXIT
   echo
   echo "## Obligation"
   echo "Read the typed body JSON path above first (\`exit_criteria\`, \`files_in_scope\`/\`files_writable\`, \`dependencies\`, \`refs\` incl. \`destination_inventory\`)."
-  echo "**Dest-inventory hard-invoke (BANK-DEST-INV-HARDINVOKE-1 / Architect E-20260812T074514Z):** any conclusion that a dependency/path is missing/absent/DEST_MISS/\`empty destination\` is **INVALID** unless Reasoning cites \`refs.destination_inventory\` (path+sha256) or the stamped receipt under \`migration/receipts/destination-inventory/\`. Typed \`dependency_wait\` **REQUIRES** that citation first. Do **not** invent OOS owners or OOS-create \"missing\" deps."
+  echo "**Dest-inventory hard-invoke (BANK-DEST-INV-HARDINVOKE-1 / Architect E-20260812T074514Z):** any conclusion that a dependency/path is missing/absent/DEST_MISS/\`empty destination\` is **INVALID** unless Reasoning cites \`refs.destination_inventory\` (path+sha256) or the stamped receipt under \`evidence/receipts/destination-inventory/\`. Typed \`dependency_wait\` **REQUIRES** that citation first. Do **not** invent OOS owners or OOS-create \"missing\" deps."
   echo "**Dependencies (Operator E-20260811T144200Z):** treat \`dependencies[]\` as authority for import provenance (\`provider\` = owning story or \`pre-exists\`). Coverage-gap on orphan model/interface ⇒ typed BLOCK — do **not** invent owners or OOS-create deps."
-  echo "**Interface-closure Class A (Architect E-20260811T181749Z):** create path refuses bodies where an in-scope \`*Impl\` lacks its interface in scope/deps/dest (\`check-interface-closure.py\` / \`migration/contracts/interface-closure.md\`). Mid-run OOS-create of a missing interface = ABORT — typed \`needs_input\` only."
+  echo "**Interface-closure Class A (Architect E-20260811T181749Z):** create path refuses bodies where an in-scope \`*Impl\` lacks its interface in scope/deps/dest (\`check-interface-closure.py\` / \`governance/contracts/interface-closure.md\`). Mid-run OOS-create of a missing interface = ABORT — typed \`needs_input\` only."
   echo "Verify body sha256 matches \`${BODY_DIGEST}\` before first destination edit; retries must reuse this digest."
-  echo "**Body immutability (Architect E-111424Z):** do **not** rewrite the typed body after dispatch. Run \`python3 .hermes/enforcement/record-run-evidence/scripts/check-body-digest-match.py . --body ${BODY_JSON} --expect ${BODY_DIGEST}\` — mismatch ⇒ REFUSE (\`migration/contracts/body-immutability.md\`)."
-  echo "Record pre/post write-set digests under \`migration/runs/\` (schema \`rhoai3.run-journal/v1\`)."
-  echo "**Checkpoint/resume (Class A implementer-checkpoint):** before first edit, init or load \`migration/runs/<task_id>/checkpoint.json\` via \`python3 .hermes/enforcement/record-run-evidence/scripts/init-implementer-checkpoint.py\` / \`check-implementer-checkpoint.py\` (same dir). After each successful dest write, \`python3 .hermes/enforcement/record-run-evidence/scripts/stamp-implementer-checkpoint.py --completed <path>\`. On retry/re-dispatch: resume at \`next\` — do **not** cold re-walk completed operands (\`migration/contracts/implementer-checkpoint.md\`). Basename-only search is incomplete — resolve these path-anchored refs; Approval/timeout ≠ absent."
+  echo "**Body immutability (Architect E-111424Z):** do **not** rewrite the typed body after dispatch. Run \`python3 .hermes/enforcement/record-run-evidence/scripts/check-body-digest-match.py . --body ${BODY_JSON} --expect ${BODY_DIGEST}\` — mismatch ⇒ REFUSE (\`governance/contracts/body-immutability.md\`)."
+  echo "Record pre/post write-set digests under \`evidence/runs/\` (schema \`rhoai3.run-journal/v1\`)."
+  echo "**Checkpoint/resume (Class A implementer-checkpoint):** before first edit, init or load \`evidence/runs/<task_id>/checkpoint.json\` via \`python3 .hermes/enforcement/record-run-evidence/scripts/init-implementer-checkpoint.py\` / \`check-implementer-checkpoint.py\` (same dir). After each successful dest write, \`python3 .hermes/enforcement/record-run-evidence/scripts/stamp-implementer-checkpoint.py --completed <path>\`. On retry/re-dispatch: resume at \`next\` — do **not** cold re-walk completed operands (\`governance/contracts/implementer-checkpoint.md\`). Basename-only search is incomplete — resolve these path-anchored refs; Approval/timeout ≠ absent."
   echo "Do NOT bulk-read all files_in_scope in one turn — migrate file-by-file (prefer \`next\` from checkpoint)."
   echo "Satisfy every \`exit_criteria\` item before \`kanban_complete\` (endpoint/semantic exits required — AR-4.4)."
-  echo "**Complete-cmd Class A (Architect E-20260811T175509Z):** before \`kanban_complete\` run \`python3 .hermes/skills/gates/check-release-readiness/scripts/assert-complete-exit-criteria.py . --task-id <this-task-id> --body ${BODY_JSON}\` — rc≠0 ⇒ REFUSE complete (\`migration/contracts/complete-cmd-exit-criteria.md\`). That script also harness-invokes body-digest + ground-in-harvest citation + provenance (Architect E-20260813T152211Z — do not rely on skill_view). Do not invent N/A."
-  echo "**In-loop testCompile invariant (Class A #1b / Architect E-20260811T175305Z scoped):** \`stamp-implementer-checkpoint.py --completed src/test/**\` **REFUSE**s unless scoped \`run-scoped-compile-gate.py --goal test-compile\` is green for own \`files_writable\` — not whole-tree rc=0. \`--skip-test-compile-gate\` FORBIDDEN on live seats (fixture env only). OOS-only errors ⇒ scoped OK; in-scope red ⇒ fix. Typed \`needs_input\` if blocked (\`migration/contracts/compile-scope-filtered.md\` / \`test-toolchain.md\`)."
-  echo "**Wall / requeue (Architect E-110403Z / E-121300Z):** on \`timed_out\`, run \`apply-wall-requeue-policy.py\` (exit-eval + checkpoint sync; soft K=1 then hard-block). Unbounded silent requeue REJECT (\`migration/contracts/wall-exit-eval.md\`)."
-  echo "**Crash / reclaim (Architect E-20260810T142650Z):** on \`crashed\`, run \`apply-crash-requeue-policy.py\` (K_crash=1; does not spend wall soft-K). Hard ceiling → typed \`harness_fault\`/\`environmental_provider\`/\`context_budget\` — never budget/timed_out (\`migration/contracts/crash-requeue.md\`)."
-  echo "**R-M3.5/7 POM handoff (Architect E-20260810T172800Z):** before first destination edit on JPA/model stories, run \`python3 .hermes/skills/sdd/check-spec-readiness/scripts/check-compile-deps-preflight.py .\` — fail ⇒ typed \`dependency_wait\` (no N-file sunk cost). Scaffold/S-001-class must leave \`quarkus-hibernate-orm\` + \`quarkus-hibernate-validator\` (\`migration/contracts/pom-persistence-handoff.md\`)."
+  echo "**Complete-cmd Class A (Architect E-20260811T175509Z):** before \`kanban_complete\` run \`python3 .hermes/skills/gates/check-release-readiness/scripts/assert-complete-exit-criteria.py . --task-id <this-task-id> --body ${BODY_JSON}\` — rc≠0 ⇒ REFUSE complete (\`governance/contracts/complete-cmd-exit-criteria.md\`). That script also harness-invokes body-digest + ground-in-harvest citation + provenance (Architect E-20260813T152211Z — do not rely on skill_view). Do not invent N/A."
+  echo "**In-loop testCompile invariant (Class A #1b / Architect E-20260811T175305Z scoped):** \`stamp-implementer-checkpoint.py --completed src/test/**\` **REFUSE**s unless scoped \`run-scoped-compile-gate.py --goal test-compile\` is green for own \`files_writable\` — not whole-tree rc=0. \`--skip-test-compile-gate\` FORBIDDEN on live seats (fixture env only). OOS-only errors ⇒ scoped OK; in-scope red ⇒ fix. Typed \`needs_input\` if blocked (\`governance/contracts/compile-scope-filtered.md\` / \`test-toolchain.md\`)."
+  echo "**Wall / requeue (Architect E-110403Z / E-121300Z):** on \`timed_out\`, run \`apply-wall-requeue-policy.py\` (exit-eval + checkpoint sync; soft K=1 then hard-block). Unbounded silent requeue REJECT (\`governance/contracts/wall-exit-eval.md\`)."
+  echo "**Crash / reclaim (Architect E-20260810T142650Z):** on \`crashed\`, run \`apply-crash-requeue-policy.py\` (K_crash=1; does not spend wall soft-K). Hard ceiling → typed \`harness_fault\`/\`environmental_provider\`/\`context_budget\` — never budget/timed_out (\`governance/contracts/crash-requeue.md\`)."
+  echo "**R-M3.5/7 POM handoff (Architect E-20260810T172800Z):** before first destination edit on JPA/model stories, run \`python3 .hermes/skills/sdd/check-spec-readiness/scripts/check-compile-deps-preflight.py .\` — fail ⇒ typed \`dependency_wait\` (no N-file sunk cost). Scaffold/S-001-class must leave \`quarkus-hibernate-orm\` + \`quarkus-hibernate-validator\` (\`governance/contracts/pom-persistence-handoff.md\`)."
   echo "**R-M3.6/8 dependency_wait (Architect E-20260810T172800Z):** on \`dependency_wait\`, do **not** soft-promote or OOS-edit \`pom.xml\`. Stamp/hold via \`apply-dependency-wait-hold.py --stamp --block\`; escalate \`Needs: Lead:fix-upstream-pom\`. After typed wait, **forbid** re-litigating \`files_writable\` in Reasoning — wait or escalate."
-  echo "**R-M3.9 wall-fit (Architect E-20260810T184700Z):** create path refuses FIS×90s > budget and dual-stack JPA+JDBC ≥20 — prefer JPA-repos vs JDBC-repos split; do **not** raise wall alone (\`migration/contracts/m3-wallfit-jdbc.md\` / \`story-sizing.md\`)."
+  echo "**R-M3.9 wall-fit (Architect E-20260810T184700Z):** create path refuses FIS×90s > budget and dual-stack JPA+JDBC ≥20 — prefer JPA-repos vs JDBC-repos split; do **not** raise wall alone (\`governance/contracts/m3-wallfit-jdbc.md\` / \`story-sizing.md\`)."
   echo "**R-M3.10/12 JDBC (Architect E-20260810T184700Z):** before first \`repository/jdbc/**\` edit — \`skill_view\` persistence (+ jdbc notes); write-first mechanical transforms; **forbid** multi-kB Spring-replacement redesign essays in Reasoning."
   echo "**R-M3.11 JDBC deps:** run \`python3 .hermes/skills/sdd/check-spec-readiness/scripts/check-jdbc-deps-preflight.py .\` before first JDBC write — require \`spring-jdbc\` + \`spring-data-jdbc-core\` (no OOS pom)."
   echo "**R-M3.13 lean reclaim (FIS≥20):** on soft reclaim, resume from checkpoint \`next\` only — do **not** re-bulk-read all legacy JDBC/JPA sources."
-  echo "**AD-011 / R-AD011.2 overlay (Architect E-20260810T185500Z):** author overlays under \`extensions/<skill>/references/*\`; create path syncs them into \`.hermes/skills/<skill>/references/\` (R-M3.32). \`skill_view\` in-skill \`references/<file>\` after sync. Never SOUL. See \`migration/contracts/ad011-skill-extension.md\` + \`m3-security-write-first.md\`."
+  echo "**AD-011 / R-AD011.2 overlay (Architect E-20260810T185500Z):** author overlays under \`extensions/<skill>/references/*\`; create path syncs them into \`.hermes/skills/<skill>/references/\` (R-M3.32). \`skill_view\` in-skill \`references/<file>\` after sync. Never SOUL. See \`governance/contracts/ad011-skill-extension.md\` + \`m3-security-write-first.md\`."
   echo "**R-M3.29/32/39 security write-first:** before first \`security/**\` edit — hard \`skill_view\` \`references/security-config.md\` **and** \`references/security-anti-essay.md\` (Hermes skill tree; create refuses if sync/--check fails); write-first / anti-essay; stamp after each dest write. **R-M3.39:** javadoc-only shells FAIL — land pom (\`quarkus-security\` + \`quarkus-elytron-security-jdbc\`) + \`application.properties\` auth wiring; \`check-empty-security.py .\` must be rc=0 before complete."
   echo "**R-M3.28/31 wall narrative (Architect E-20260810T230310Z):** exit-eval credits AD-009 freeze/>300s latency; \`overall_ok=false\` when wallish + incomplete checkpoint (compile-only green ≠ product PASS)."
   echo "**Checkpoint lag (Deputy E-121112Z):** after \`src/test/**\` writes — and on every wall — run \`sync-checkpoint-from-test-writes.py\` so stamp/#1b gate is harness-driven, not voluntary."
   echo "**AD-002E/F/G:** preloaded skills are \`check-spec-readiness\` + \`spring-to-quarkus-patterns\` only. Each → \`skill_view\` consult **or** typed \`skills_unused:<skill>:<reason>\` before \`kanban_complete\`. Silence invalid; no false \"skills consulted\" claim."
-  echo "**Hard invoke (AD-002G P0.3):** run \`/spring-to-quarkus-patterns\` (or equivalent \`skill_view\` on that skill) before first destination edit; then open needed \`references/*\` (rest / di-config / persistence / testing / security-config). For security cards also open the R-M3.29 extension. For test/controller work open \`references/testing.md\` §Failure/Import/Mock procedures + golden fixture \`migration/fixtures/testing/golden-rest-controller/PetTypeRestControllerTests.java\`."
+  echo "**Hard invoke (AD-002G P0.3):** run \`/spring-to-quarkus-patterns\` (or equivalent \`skill_view\` on that skill) before first destination edit; then open needed \`references/*\` (rest / di-config / persistence / testing / security-config). For security cards also open the R-M3.29 extension. For test/controller work open \`references/testing.md\` §Failure/Import/Mock procedures + golden fixture \`governance/fixtures/testing/golden-rest-controller/PetTypeRestControllerTests.java\`."
   echo "**Pre-v12 R5 hard-invoke traps (Architect E-20260811T102405Z):** when story touches REST/DTO/MapStruct — \`skill_view\` \`references/di-config.md\` and set MapStruct \`componentModel = \"cdi\"\` (no default/spring). When story touches \`@IfBuildProfile\` / profile-gated beans — forbid that API; use \`%profile\` config / build-time alternatives per di-config. When story touches QuarkusTest / continuous testing props — \`skill_view\` \`references/testing.md\` continuous-testing enum (boolean props FAIL). Cite the ref path in Reasoning before first related dest write."
   echo "**Pre-flight ceiling (AD-002 §1 / AD-009 §3.5):** before large API turns, refuse emit when \`prompt_tokens + max_tokens > max-model-len\` via \`check-preflight-ceiling.py\` (stamp \`context_budget\` on refuse). Do **not** discover the ceiling via \`VLLMValidationError\`."
   echo "**F3–F6 predictions (when body carries them):** score \`injectmock_reasoning_blocks\` / \`import_hunt\` / reasoning-share gates at terminal — Architect ACCEPT \`E-20260810T131445Z\`; missing scores ⇒ cannot claim skill-guide DEMONSTRATED."
@@ -287,10 +287,10 @@ OUT="$(hermes kanban create "${CREATE_ARGS[@]}" "${TITLE}")"
 echo "${OUT}"
 TASK_ID="$(python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("id") or "")' <<<"${OUT}")"
 [[ -n "${TASK_ID}" ]] || die "kanban create returned no id"
-mkdir -p "${ROOT}/migration/derived"
-echo "${TASK_ID}" >"${ROOT}/migration/derived/phase-M3-task-id.txt"
+mkdir -p "${ROOT}/evidence/derived"
+echo "${TASK_ID}" >"${ROOT}/evidence/derived/phase-M3-task-id.txt"
 # Operator E-20260813T180236Z — story↔card map for completion arithmetic
-python3 - "${ROOT}/migration/derived/created-story-cards.json" "${STORY_ID}" "${TASK_ID}" "${TITLE}" "${BODY_JSON}" <<'PY'
+python3 - "${ROOT}/evidence/derived/created-story-cards.json" "${STORY_ID}" "${TASK_ID}" "${TITLE}" "${BODY_JSON}" <<'PY'
 import json, sys
 from pathlib import Path
 path, story, task, title, body = Path(sys.argv[1]), sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5]
@@ -342,7 +342,7 @@ PY
   _park_status="$(_read_status "${TASK_ID}")"
 fi
 if [[ "${_park_status}" == "ready" || "${_park_status}" == "todo" || "${_park_status}" == "running" || -z "${_park_status}" ]]; then
-  die "PARK_AT_BIRTH: ${TASK_ID} status=${_park_status:-unknown} still dispatchable after create — refuse mint (migration/contracts/park-at-birth.md)"
+  die "PARK_AT_BIRTH: ${TASK_ID} status=${_park_status:-unknown} still dispatchable after create — refuse mint (governance/contracts/park-at-birth.md)"
 fi
 echo "PARK_AT_BIRTH=${TASK_ID} status=${_park_status}"
 # Operator E-20260811T114300Z — Review live adherence observation on every dispatch
@@ -353,7 +353,7 @@ echo "PARK_AT_BIRTH=${TASK_ID} status=${_park_status}"
   echo "need: Review:adhere-observe-${TASK_ID}"
   echo "operator_event: E-20260811T114300Z"
   date -u +'ts: %Y-%m-%dT%H:%M:%SZ'
-} >"${ROOT}/migration/derived/review-adhere-observe-needed.yaml"
+} >"${ROOT}/evidence/derived/review-adhere-observe-needed.yaml"
 echo "REVIEW_ADHERE_OBSERVE=${TASK_ID}"
 # Do NOT dispatch here — cards are born blocked; unpark is gate-driven
 # (M2b ledger PASS + brief-identity ack + serial order). Deputy E-131900Z.
@@ -361,7 +361,7 @@ hermes kanban comment "${TASK_ID}" \
   "born-parked: initial-status=blocked + park-at-birth verify; unpark only after M2b PASS + brief-identity ack + serial GO (Deputy E-20260811T131900Z / Architect E-20260811T200911Z)" \
   >/dev/null 2>&1 || true
 # Stamp derived claim list for parent completion (Operator E-133000Z #5)
-DERIVED_DIR="${ROOT}/migration/derived"
+DERIVED_DIR="${ROOT}/evidence/derived"
 mkdir -p "${DERIVED_DIR}"
 CLAIM_FILE="${DERIVED_DIR}/created-cards-${PARENT_PRIMARY}.json"
 python3 - "${CLAIM_FILE}" "${PARENT_PRIMARY}" "${TASK_ID}" "${BODY_DIGEST}" <<'PY'
@@ -403,10 +403,10 @@ if not sid:
   sid=("S-"+m.group(1).upper()) if m else ""
 print(sid)' "${BODY_JSON}")"
 [[ -n "${STORY_ID}" ]] || die "cannot derive story_id for ack-request from ${BODY_JSON}"
-PARTITION_JSON="${ROOT}/migration/briefs/partition.json"
+PARTITION_JSON="${ROOT}/evidence/briefs/partition.json"
 [[ -f "${PARTITION_JSON}" ]] || die "missing ${PARTITION_JSON} for ack-request"
 PARTITION_DIGEST="$(python3 -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "${PARTITION_JSON}")"
-ACK_DIR="${ROOT}/migration/acks"
+ACK_DIR="${ROOT}/evidence/acks"
 mkdir -p "${ACK_DIR}"
 # sanitize story id for filename (S-002a → S-002a)
 ACK_REQ="${ACK_DIR}/ack-request-${STORY_ID}.yaml"
@@ -422,7 +422,7 @@ ACK_REQ="${ACK_DIR}/ack-request-${STORY_ID}.yaml"
   echo "  - story_id: ${STORY_ID}"
   echo "  - path: ${BODY_JSON}"
   echo "    sha256: ${BODY_DIGEST}"
-  echo "  - path: migration/briefs/partition.json"
+  echo "  - path: evidence/briefs/partition.json"
   echo "    sha256: ${PARTITION_DIGEST}"
   echo "notes: \"Architect E-20260811T155332Z Class A atomic create→ack-request; Operator/Deputy signs by completing into brief-identity ack (no hand-copied digests)\""
 } >"${ACK_REQ}"
@@ -433,7 +433,7 @@ echo "ACK_REQUEST_DIGESTS body=${BODY_DIGEST} partition=${PARTITION_DIGEST} task
 # card↔sidecar digest cross-assert at ack-regen choke point (refuse dead digests).
 python3 "${ROOT}/.hermes/enforcement/record-run-evidence/scripts/assert-card-body-digest-match.py" \
   "${ROOT}" --task-id "${TASK_ID}" --body "${BODY_JSON}" \
-  || die "card↔sidecar digest cross-assert REFUSE for ${TASK_ID} (migration/contracts/card-sidecar-digest-cross-assert.md)"
+  || die "card↔sidecar digest cross-assert REFUSE for ${TASK_ID} (governance/contracts/card-sidecar-digest-cross-assert.md)"
 
 echo "OK: M3 → ${TASK_ID} (blocked/parked; parent=${PARENT_PRIMARY}). File ledger Need Review:adhere-observe-${TASK_ID}"
 echo "NOTE: parent must kanban_complete with created_cards including ${TASK_ID} (empty list REJECT)"

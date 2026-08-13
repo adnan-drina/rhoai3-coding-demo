@@ -27,7 +27,7 @@ DERIVED_ROOT="${DERIVED_ROOT:-/projects/.derived/legacy-at-3}"
 # Skill layout: .hermes/skills/migration/derive-legacy-boot3/scripts/ → project root is ../../../..
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 MODERNIZED_ROOT="$(cd "${SCRIPT_DIR}/../../../.." && pwd)"
-MANIFEST_DIR="${MODERNIZED_ROOT}/migration/derived"
+MANIFEST_DIR="${MODERNIZED_ROOT}/evidence/derived"
 MANIFEST="${MANIFEST_DIR}/legacy-at-3.json"
 COMPOSITE_SCRIPT="${SCRIPT_DIR}/free-primitives-boot3/run-composite.sh"
 APPLY_LOG_DEFAULT="${DERIVED_ROOT}/.rhoai3-free-primitives-apply-log.json"

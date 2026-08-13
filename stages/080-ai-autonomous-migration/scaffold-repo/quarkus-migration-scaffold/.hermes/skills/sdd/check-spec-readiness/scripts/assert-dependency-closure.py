@@ -10,8 +10,8 @@ create-m3 / partition path fail-closed when:
 Sibling to interface-closure (implements-only).
 
 Usage:
-  python3 assert-dependency-closure.py . --body migration/bodies/m3-s-003.json
-  python3 assert-dependency-closure.py . --body migration/bodies/m3-s-003.json --imports
+  python3 assert-dependency-closure.py . --body evidence/bodies/m3-s-003.json
+  python3 assert-dependency-closure.py . --body evidence/bodies/m3-s-003.json --imports
 """
 from __future__ import annotations
 
@@ -166,7 +166,7 @@ def main() -> int:
         for line in bad:
             print(f"  - {line}", file=sys.stderr)
         print(
-            "Architect E-20260811T203657Z / migration/contracts/dependency-closure.md",
+            "Architect E-20260811T203657Z / governance/contracts/dependency-closure.md",
             file=sys.stderr,
         )
         return 1

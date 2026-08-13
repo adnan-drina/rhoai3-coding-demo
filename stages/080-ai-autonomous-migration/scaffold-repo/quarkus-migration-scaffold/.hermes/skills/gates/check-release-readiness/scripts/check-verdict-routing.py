@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """AD-H §18 / §18.0 — verdict routing, PROVISIONAL_ACCEPT token, substrate reopen.
 
-Looks under migration/verdicts/*.json and migration/preflight/*.json.
+Looks under evidence/verdicts/*.json and evidence/preflight/*.json.
 Idle (exit 0) when no verdict artifacts exist.
 
 Usage:
@@ -179,7 +179,7 @@ def check_composition(label: str, obj: dict, root: Path) -> int:
         and isinstance(implicated, list)
         and implicated
     ):
-        cmap = root / "migration/slices/closure-map.json"
+        cmap = root / "evidence/slices/closure-map.json"
         if not cmap.is_file():
             if verdict != "INCONCLUSIVE" and routing not in {"blocked", "human", "human_queue"}:
                 print(
@@ -241,12 +241,12 @@ def main() -> int:
         "root",
         nargs="?",
         default=".",
-        help="product root containing migration/verdicts + migration/preflight (default: .)",
+        help="product root containing evidence/verdicts + evidence/preflight (default: .)",
     )
     args = ap.parse_args()
     root = Path(args.root).resolve()
     files: list[Path] = []
-    for d in (root / "migration/verdicts", root / "migration/preflight"):
+    for d in (root / "evidence/verdicts", root / "evidence/preflight"):
         if d.is_dir():
             files.extend(sorted(d.glob("*.json")))
     if not files:

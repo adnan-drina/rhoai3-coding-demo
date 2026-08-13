@@ -2,9 +2,9 @@
 """W2 §6.1 — typed Kanban body vocabulary + stable failure codes.
 
 Looks for body objects in:
-  - migration/tasks/*.json  (field body, or whole object if phase+refs present)
-  - migration/bodies/*.json
-  - migration/kanban/*.json (field body)
+  - evidence/tasks/*.json  (field body, or whole object if phase+refs present)
+  - evidence/bodies/*.json
+  - evidence/kanban/*.json (field body)
 
 Idle (exit 0) when no body artifacts exist.
 """
@@ -351,7 +351,7 @@ def check_body(label: str, body: dict, root: Path) -> int:
                     "phase=M3 with src/test in files_in_scope requires "
                     "exit_criteria check=test_compile "
                     "(cmd: mvn -q test-compile; in-loop invariant — "
-                    "migration/contracts/test-toolchain.md)",
+                    "governance/contracts/test-toolchain.md)",
                 )
                 bad = 1
 
@@ -445,9 +445,9 @@ def main() -> int:
             files.append(path)
     else:
         for d in (
-            root / "migration/tasks",
-            root / "migration/bodies",
-            root / "migration/kanban",
+            root / "evidence/tasks",
+            root / "evidence/bodies",
+            root / "evidence/kanban",
         ):
             if d.is_dir():
                 files.extend(sorted(d.glob("*.json")))

@@ -2,8 +2,8 @@
 """AD-H §19 — cheap lint of generation provenance for non-trivial IMPLEMENT.
 
 Sources:
-  - migration/provenance/*.json
-  - migration/tasks/*.json / migration/kanban/*.json fields:
+  - evidence/provenance/*.json
+  - evidence/tasks/*.json / evidence/kanban/*.json fields:
       provenance | metadata | completion_metadata
 
 Fail closed if IMPLEMENT complete / non-trivial packet lacks worker_session_id
@@ -30,7 +30,7 @@ from resolve_loaded_soul import resolve_loaded_soul  # noqa: E402
 EXIT_CODES = """\
 Exit codes:
   0  pass — provenance checks passed, or lint idle (no IMPLEMENT provenance
-     artifacts under migration/provenance, migration/tasks, migration/kanban)
+     artifacts under evidence/provenance, evidence/tasks, evidence/kanban)
   1  BLOCK — at least one FAIL: line on stderr (missing mandatory provenance
      field, soul_sha drift, unnamed model_id gap, missing derive apply log,
      or an unparseable artifact)
@@ -52,7 +52,7 @@ MANDATORY = (
 
 APPLY_LOG_HINTS = (
     "free-primitives-apply-log.json",
-    "migration/derived/free-primitives-apply-log.json",
+    "evidence/derived/free-primitives-apply-log.json",
     "derive_apply_log",
 )
 
@@ -230,7 +230,7 @@ def main() -> int:
     bad = 0
 
     # Standalone provenance exports always checked
-    prov_dir = root / "migration/provenance"
+    prov_dir = root / "evidence/provenance"
     if prov_dir.is_dir():
         for path in sorted(prov_dir.glob("*.json")):
             rel = str(path.relative_to(root))
@@ -254,7 +254,7 @@ def main() -> int:
                 print(f"FAIL: {rel}: {e}", file=sys.stderr)
                 bad = 1
 
-    for d in (root / "migration/tasks", root / "migration/kanban"):
+    for d in (root / "evidence/tasks", root / "evidence/kanban"):
         if not d.is_dir():
             continue
         for path in sorted(d.glob("*.json")):

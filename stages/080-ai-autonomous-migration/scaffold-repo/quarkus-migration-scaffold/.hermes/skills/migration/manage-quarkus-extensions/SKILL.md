@@ -17,7 +17,7 @@ metadata:
 
 Guidance only (R-SK.14). Does **not** replace persistence/JDBC/compile
 preflight gates. Version **values** live in
-`migration/contracts/tooling-pins.md` and the destination `pom.xml` — never
+`governance/contracts/tooling-pins.md` and the destination `pom.xml` — never
 restate platform versions in this skill.
 
 ## When to Use
@@ -35,7 +35,7 @@ restate platform versions in this skill.
 
 1. Read `references/rh-bom-and-mandatory-deps.md` (shared BOM policy + Jacoco
    gotcha). Confirm destination `quarkus.platform.*` matches
-   `migration/contracts/tooling-pins.md` (or run
+   `governance/contracts/tooling-pins.md` (or run
    `scripts/check-pom-platform-pins.py <root>`).
 2. **Inventory** installed extensions:
    - Prefer: `quarkus ext ls` (inside the RH-pinned project).
