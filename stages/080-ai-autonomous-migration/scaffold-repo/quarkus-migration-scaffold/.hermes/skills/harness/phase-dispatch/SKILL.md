@@ -73,8 +73,8 @@ The created M1 task instructs the worker to, in order:
   `tasks=0` and cannot stamp `orchestration=hermes_native`.
 - Do **not** omit `--workspace dir:/projects/modernized` (scratch default is wrong).
 - Start `hermes kanban watch` **before** dispatch for the demo audience.
-  Convenience wrapper (native only): `bash .hermes/home/scripts/kanban-track.sh follow`
-  (daemon + watch) or `… watch` / `… dispatch` in two panes.
+  Companion pane: `hermes kanban tail <task_id>` or `hermes kanban log <task_id>`
+  (native CLI — do **not** revive `kanban-track.sh`; W6 REMOVE 2026-08-13).
 
 
 ## Verification
