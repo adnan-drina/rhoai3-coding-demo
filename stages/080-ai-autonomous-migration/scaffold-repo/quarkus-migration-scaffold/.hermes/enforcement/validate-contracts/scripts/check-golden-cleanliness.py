@@ -12,6 +12,9 @@ Rules (fail-closed):
   G1  forbidden paths must not be git-tracked
   G2  if present on disk under the golden root, they must be gitignored
       (so `git add -A` cannot sweep them)
+  G3  presence under the golden root is itself a violation (Deputy
+      E-20260813T183214Z) — gitignore alone must not greenwash run-state
+      that regenerates into the tip tree (e.g. free-primitives apply log)
 
 Usage:
   python3 check-golden-cleanliness.py --root .
@@ -27,6 +30,7 @@ from pathlib import Path
 FORBIDDEN_FILES = (
     "evidence/derived/free-primitives-apply-log.json",
     "evidence/derived/review-adhere-observe-needed.yaml",
+    ".rhoai3-free-primitives-apply-log.json",
 )
 FORBIDDEN_PREFIXES = (
     "evidence/fixtures/admission/out/",
@@ -68,7 +72,7 @@ def on_disk_forbidden(root: Path) -> list[Path]:
 
 def tracked_forbidden(root: Path) -> list[str]:
     """Return tracked paths that match forbidden prefixes/names."""
-    ls = git(root, "ls-files", "-z", "--", "evidence/")
+    ls = git(root, "ls-files", "-z", "--", "evidence/", ".rhoai3-free-primitives-apply-log.json")
     if ls.returncode != 0:
         return [f"G1:git-ls-files-failed:{ls.stderr.strip()}"]
     bad: list[str] = []
@@ -113,6 +117,8 @@ def main() -> int:
     files = on_disk_forbidden(root)
     for p in files:
         rel = str(p.relative_to(root)).replace("\\", "/")
+        # G3: presence is a violation even when gitignored (regenerating dirt).
+        errs.append(f"G3:present:{rel}")
         ig = git(root, "check-ignore", "-q", rel)
         if ig.returncode != 0:
             errs.append(f"G2:not-gitignored:{rel}")

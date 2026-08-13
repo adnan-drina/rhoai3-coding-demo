@@ -34,8 +34,6 @@ if [ ! -f "${ASSET_OVERRIDE}" ]; then
 fi
 MARKER="${ROOT}/.specify/.rhoai3-ads-provisioned"
 LOG_PREFIX="init-spec-workspace"
-# AD-S scaffold guard lives beside .hermes/ (not inside skill leaf — R-SK.1).
-GUARD_MARKER="${ROOT}/.hermes/DO_NOT_COMMIT_SPECIFY"
 
 log() { echo "[${LOG_PREFIX}] $*" >&2; }
 die() { echo "[${LOG_PREFIX}] ERROR: $*" >&2; exit 1; }
@@ -69,19 +67,18 @@ if [ -f "${MARKER}" ]; then
   exit 0
 fi
 
-# Refuse runs that would create .specify/ inside the golden scaffold source
-# tree (AD-S S.4). Workspaces live under /projects/*; intentional dry-runs
-# set FORCE_AD_S_PROVISION=1.
-if [ -f "${GUARD_MARKER}" ]; then
-  case "${ROOT}" in
-    /projects/*) ;;
-    *)
-      if [ "${FORCE_AD_S_PROVISION:-}" != "1" ]; then
-        die "refusing AD-S init in scaffold/source tree (workspace: /projects/*; dry-run: FORCE_AD_S_PROVISION=1)"
-      fi
-      ;;
-  esac
-fi
+# Refuse runs that would create .specify/ outside a live workspace (AD-S S.4).
+# Mechanical assert (check-specify-absent.py) replaces the retired
+# DO_NOT_COMMIT_SPECIFY note. Workspaces live under /projects/*; intentional
+# dry-runs set FORCE_AD_S_PROVISION=1.
+case "${ROOT}" in
+  /projects/*) ;;
+  *)
+    if [ "${FORCE_AD_S_PROVISION:-}" != "1" ]; then
+      die "refusing AD-S init in scaffold/source tree (workspace: /projects/*; dry-run: FORCE_AD_S_PROVISION=1)"
+    fi
+    ;;
+esac
 
 ensure_specify() {
   if command -v specify >/dev/null 2>&1; then

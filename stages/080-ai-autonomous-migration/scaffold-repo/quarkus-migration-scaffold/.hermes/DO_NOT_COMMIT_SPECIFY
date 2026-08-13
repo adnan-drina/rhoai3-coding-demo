@@ -1,6 +1,0 @@
-AD-S scaffold guard (not a skill leaf).
-
-Do not commit a workspace `.specify/` tree into the golden scaffold (AD-S S.4).
-`.specify/` is created at provision by
-`.hermes/skills/sdd/init-spec-workspace/scripts/init-workspace.sh`.
-Non-Goals override asset lives under that skill's `assets/spec-template.md`.

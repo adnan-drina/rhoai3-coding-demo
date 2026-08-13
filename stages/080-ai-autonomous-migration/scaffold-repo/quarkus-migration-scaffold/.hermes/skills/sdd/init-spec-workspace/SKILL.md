@@ -28,7 +28,7 @@ metadata:
   reads spec content.
 - **Not** on the golden scaffold source tree and **not** in
   `harness-refactoring/` — init refuses outside `/projects/*` when the
-  `DO_NOT_COMMIT_SPECIFY` marker is present under `.hermes/` (`FORCE_AD_S_PROVISION=1` dry-run).
+  ROOT is outside `/projects/*` (`FORCE_AD_S_PROVISION=1` dry-run). Golden assert: `check-specify-absent.py`.
 
 ## Procedure
 
