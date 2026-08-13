@@ -466,7 +466,7 @@ data:
               sys.exit(1)
           print(f"AD-008: escalation OK prior_failure_run_id={d.get('prior_failure_run_id')}")
           sys.exit(0)
-      ESCV
+    ESCV
       then
         OPENCODE_ENABLED='["qwen27b", "redhat"]'
         OPENCODE_REDHAT_PROVIDER="$(cat <<REDHATEOF
@@ -1271,7 +1271,7 @@ data:
                   else:
                       fh.write("minimax=disabled\n")
               print(f"AD-008 OpenCode legacy pin OK: {legacy_stamp} (minimax={'on' if 'redhat' in enabled else 'off'})")
-      PINOC
+    PINOC
       rm -rf "${HOME}/.config/kilo"
       echo "Kilo config removed — this is an OpenCode workspace."
     else
