@@ -484,6 +484,13 @@ def check_specimen_literals(scaffold: Path) -> list[str]:
         scaffold / "src",
         suffixes={".java", ".kt", ".properties", ".yml", ".yaml", ".md", ".txt"},
     )
+    # R-SK.5 P3 — root migration.yaml is the load-bearing specimen descriptor
+    # (Deputy E-20260813T184217Z). Golden must stay empty/fake; scanning it
+    # closes the third false-zero hole (after src/ and .java fixtures).
+    for name in ("migration.yaml", "migration.yml"):
+        mig = scaffold / name
+        if mig.is_file():
+            scan.append(mig)
     for p in scan:
         try:
             rel = str(p.relative_to(scaffold)).replace("\\", "/")

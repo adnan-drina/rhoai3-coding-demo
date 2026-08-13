@@ -46,6 +46,10 @@ def _parse_migration_yaml_lite(text: str) -> dict:
         elif s.startswith("legacy_base_package:"):
             mig["legacy_base_package"] = s.split(":", 1)[1].strip().strip('"').strip("'")
             in_rewrites = False
+        elif s.startswith("legacyPackage:"):
+            # RHDH app-migration skeleton stamp key (alias of legacyBasePackage)
+            mig["legacyPackage"] = s.split(":", 1)[1].strip().strip('"').strip("'")
+            in_rewrites = False
         elif s.startswith("path_rewrites:") or s.startswith("packageRemap:"):
             key = "path_rewrites" if s.startswith("path_rewrites") else "packageRemap"
             mig[key] = []
@@ -209,19 +213,33 @@ def path_rewrites(root: Path) -> list[tuple[str, str]]:
     return rewrites
 
 
-def legacy_java_prefixes(root: Path) -> list[str]:
-    """Import prefixes like 'org.springframework.samples.petclinic.' for deps stamp."""
+def legacy_java_prefixes(
+    root: Path, *, allow_specimen_fixture: bool = False
+) -> list[str]:
+    """Import prefixes like 'com.example.app.' for deps stamp.
+
+    Order: migration.yaml stamp → live evidence inventory → (opt-in) fixture.
+    Never silently fall back to a demo fixture on the golden tip
+    (Deputy E-20260813T184217Z).
+    """
     mig = load_migration_yaml(root).get("migration") or {}
     if isinstance(mig, dict):
-        base = mig.get("legacyBasePackage") or mig.get("legacy_base_package")
+        base = (
+            mig.get("legacyBasePackage")
+            or mig.get("legacy_base_package")
+            or mig.get("legacyPackage")
+        )
         if base:
             b = str(base).strip().rstrip(".") + "."
             return [b]
-    # Derive from inventory file paths
-    for cand in (
-        root / "evidence/entry-point-inventory.json",
-        root / "governance/fixtures/inventory/entry-point-inventory-petclinic-f11.json",
-    ):
+    # Derive from inventory file paths (live evidence only by default)
+    cands = [root / "evidence/entry-point-inventory.json"]
+    if allow_specimen_fixture:
+        cands.append(
+            root
+            / "governance/fixtures/inventory/entry-point-inventory-petclinic-f11.json"
+        )
+    for cand in cands:
         inv = load_json(cand)
         if not isinstance(inv, dict):
             continue

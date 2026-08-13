@@ -1,18 +1,17 @@
 # Golden scaffold defaults — per-run repos overwrite provenance via the
 # app-migration template stamp. analysis.targets is the harness contract
 # (AD-003 amendment A): --target only, never --source.
+#
+# Specimen-agnostic (Deputy E-20260813T184217Z): golden must NOT ship a demo
+# legacyBasePackage / path_rewrites. Stamp comes from the RHDH app-migration
+# template or from M1 inventory derive — never inherit a specimen by copy.
 migration:
   legacyRepoUrl: ""
   target: quarkus
   provisionedBy: quarkus-migration-scaffold
   needsDatabase: false
-  # Per-run package stamp (Operator E-20260811T150800Z) — coolstore overwrites
-  legacyBasePackage: org.springframework.samples.petclinic
-  path_rewrites:
-    - from: src/main/java/com/demo/
-      to: src/main/java/org/springframework/samples/petclinic/
-    - from: src/test/java/com/demo/
-      to: src/test/java/org/springframework/samples/petclinic/
+  legacyBasePackage: ""
+  path_rewrites: []
 
 analysis:
   targets:
