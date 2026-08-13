@@ -20,8 +20,8 @@
 ### Runnable DB profile (AR-2.1 — binding)
 
 A profile is **not** migrated until a **clean checkout** against an empty intended
-DB: starts → `/q/health` → Flyway history + schema → required seed → Owner/Pet
-query succeeds; **second start idempotent**. `hibernate.schema-generation=none`
+DB: starts → `/q/health` → Flyway history + schema → required seed → a
+seeded-entity read succeeds; **second start idempotent**. `hibernate.schema-generation=none`
 without Flyway (or other schema owner) is a **BLOCK**, not ACCEPT.
 
 Primary cites: Research `20260810-artifact-review-quarkus-cites.md` (datasource +

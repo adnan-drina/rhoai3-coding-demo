@@ -49,7 +49,7 @@ Paraphrased public API names. Prefer living Full-path from
    - manual: no endpoint `@Valid`; controller builds legacy-shaped error bodies.
    Mixing so `@Valid` short-circuits a custom BindingResult path is a defect.
 3. Designate one authoritative OpenAPI/contract and validate registered routes
-   against it (owner-nested vs plural top-level).
+   against it (parent-nested child resources vs plural top-level collections).
 
 ## Agent text
 

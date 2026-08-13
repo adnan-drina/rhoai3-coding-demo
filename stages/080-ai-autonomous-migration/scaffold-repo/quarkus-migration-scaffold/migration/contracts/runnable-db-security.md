@@ -13,7 +13,7 @@ Default profile MUST:
 2. Include `quarkus-jdbc-*` + `quarkus-flyway` in `pom.xml`
 3. `quarkus.flyway.migrate-at-start=true` with `V*__*.sql` under a Flyway location
 4. `hibernate-orm.database.generation=none` (Flyway owns schema)
-5. Clean start → `/q/health` → Owner/Pet query; second start idempotent
+5. Clean start → `/q/health` → seeded-entity read; second start idempotent
 
 ```bash
 python3 .hermes/skills/gates/validation-release-gates/scripts/check-runnable-db-config.py .
