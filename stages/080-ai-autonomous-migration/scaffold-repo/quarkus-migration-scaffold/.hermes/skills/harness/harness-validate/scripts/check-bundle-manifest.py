@@ -5,6 +5,7 @@ Official bundles skip missing skills — FORBIDDEN under our doctrine.
 """
 from __future__ import annotations
 
+import argparse
 import re
 import sys
 from pathlib import Path
@@ -37,27 +38,49 @@ def resolve(leaf: str, root: Path) -> Path | None:
     return None
 
 
-def main() -> None:
-    args = sys.argv[1:]
-    root = Path(".hermes/skills")
-    if "--root" in args:
-        root = Path(args[args.index("--root") + 1])
-    bdir = root.parent / "home" / "skill-bundles"
-    if "--bundles" in args:
-        bdir = Path(args[args.index("--bundles") + 1])
+def main() -> int:
+    ap = argparse.ArgumentParser(
+        description=(
+            "CS-7 fail-closed: every skill listed in a tip skill-bundle MUST "
+            "resolve under the skills root. Exit 0 when all resolve; exit 1 "
+            "when any listed skill is missing."
+        ),
+        epilog="Exit codes: 0=pass, 1=missing skill(s) or usage error.",
+    )
+    ap.add_argument(
+        "--root",
+        default=".hermes/skills",
+        help="skills root (default: .hermes/skills)",
+    )
+    ap.add_argument(
+        "--bundles",
+        default=None,
+        help="bundles dir (default: <skills-parent>/home/skill-bundles)",
+    )
+    args = ap.parse_args()
+    root = Path(args.root)
+    bdir = (
+        Path(args.bundles)
+        if args.bundles is not None
+        else root.parent / "home" / "skill-bundles"
+    )
     if not bdir.is_dir():
-        print(f"OK: no bundles dir {bdir}")
-        sys.exit(0)
+        # Real-run idle message: avoid OK:/PASS: so --help lints stay clean if
+        # argparse ever falls through; stderr keeps humans informed.
+        print(f"idle: no bundles dir {bdir}", file=sys.stderr)
+        print(f"BUNDLES=0 VIOLATIONS=0")
+        return 0
     errs: list[str] = []
-    for yml in sorted(bdir.glob("*.yaml")):
+    ymls = sorted(bdir.glob("*.yaml"))
+    for yml in ymls:
         for leaf in parse_skills(yml):
             if resolve(leaf, root) is None:
                 errs.append(f"{yml.name}: missing skill '{leaf}'")
     for e in errs:
         print(e)
-    print(f"BUNDLES={len(list(bdir.glob('*.yaml')))} VIOLATIONS={len(errs)}")
-    sys.exit(1 if errs else 0)
+    print(f"BUNDLES={len(ymls)} VIOLATIONS={len(errs)}")
+    return 1 if errs else 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

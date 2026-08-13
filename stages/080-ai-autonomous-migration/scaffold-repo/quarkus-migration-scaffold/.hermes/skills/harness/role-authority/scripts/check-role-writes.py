@@ -4,12 +4,27 @@
 Looks under migration/tasks/*.json and migration/kanban/*.json.
 Optional fields: role, writes / files_touched / files_written (list of paths).
 Idle (exit 0) when no task packets exist.
+
+Usage:
+  python3 check-role-writes.py                 # scan the current directory
+  python3 check-role-writes.py /path/to/repo   # explicit workspace root
 """
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 from pathlib import Path
+
+EXIT_CODES = """\
+Exit codes:
+  0  pass — declared writes stay inside each role's authority; also printed
+     when no task packets exist, or none declare both role and writes
+  1  BLOCK — at least one FAIL: line on stderr (unparseable packet, write to a
+     globally banned path, role-denied prefix, or implementer write outside
+     files_in_scope)
+  2  usage error (bad/unknown arguments; emitted by argparse)
+"""
 
 BANNED_FOR_ALL_PREFIXES = (
     "projects/legacy",
@@ -59,7 +74,19 @@ def in_scope(path: str, scope: list[str]) -> bool:
 
 
 def main() -> int:
-    root = Path(sys.argv[1] if len(sys.argv) > 1 else ".").resolve()
+    ap = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=EXIT_CODES,
+    )
+    ap.add_argument(
+        "root",
+        nargs="?",
+        default=".",
+        help="workspace root to scan (default: current directory)",
+    )
+    args = ap.parse_args()
+    root = Path(args.root).resolve()
     files: list[Path] = []
     for d in (root / "migration/tasks", root / "migration/kanban"):
         if d.is_dir():

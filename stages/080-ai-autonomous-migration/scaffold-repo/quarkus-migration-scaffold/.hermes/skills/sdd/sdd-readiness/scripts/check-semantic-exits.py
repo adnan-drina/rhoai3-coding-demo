@@ -1,10 +1,28 @@
 #!/usr/bin/env python3
-"""AR-2.3–2.7 — semantic product exit_criteria for REST/persistence stories."""
+"""AR-2.3–2.7 — semantic product exit_criteria for REST/persistence stories.
+
+Lints every M3 body under `<root>/migration/bodies` and `<root>/migration/tasks`,
+or only the body files named after ROOT (create-m3 passes the single body it is
+about to mint).
+
+Usage:
+  python3 check-semantic-exits.py .
+  python3 check-semantic-exits.py . migration/bodies/m3-s-010.json
+"""
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 from pathlib import Path
+
+EXIT_CODES = """Exit codes:
+  0  pass — every REST/persistence M3 body carries its semantic exit_criteria,
+     or idle (no M3 bodies / no REST-ish bodies)
+  1  BLOCK — unreadable body passed explicitly, unknown semantic family, or
+     missing semantic exits for a declared family (AR-2.3–2.7)
+  2  usage / harness defect (bad or unknown argument)
+"""
 
 FAMILY_CHECKS: dict[str, frozenset[str]] = {
     "create_fk": frozenset({"create_fk", "owner_pet_visit_create"}),
@@ -47,7 +65,25 @@ def write_paths(body: dict) -> list[str]:
 
 
 def main() -> int:
-    args = [a for a in sys.argv[1:] if not a.startswith("-")]
+    ap = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=EXIT_CODES,
+    )
+    ap.add_argument(
+        "root",
+        nargs="?",
+        default=".",
+        help="product root containing migration/bodies + migration/tasks (default: .)",
+    )
+    ap.add_argument(
+        "bodies",
+        nargs="*",
+        help="optional body JSON paths (absolute, or relative to ROOT) — "
+        "restricts the lint to those bodies; non-existent paths are ignored",
+    )
+    parsed = ap.parse_args()
+    args = [parsed.root, *parsed.bodies]
     root = Path(args[0] if args else ".").resolve()
     only: list[Path] = []
     for a in args[1:]:

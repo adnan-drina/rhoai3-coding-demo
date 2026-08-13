@@ -9,13 +9,26 @@ Rules when a factory ship / push_main claim exists:
     (main unchanged)
 
 Idle when no factory claim present.
+
+Usage:
+  python3 check-candidate-promote.py .
+  python3 check-candidate-promote.py /projects/modernized
 """
 from __future__ import annotations
 
+import argparse
 import json
 import re
 import sys
 from pathlib import Path
+
+EXIT_CODES = """Exit codes:
+  0  pass — every factory claim names an immutable candidate_sha and any
+     promotion is backed by a green factory_result, or gate idle (no claim)
+  1  BLOCK — factory claim missing candidate_sha, or promoted_to_main with a
+     failing / non-green factory_result
+  2  usage / harness defect (bad or unknown argument)
+"""
 
 SHA_RE = re.compile(r"^[0-9a-fA-F]{7,40}$")
 
@@ -50,7 +63,19 @@ def factory_claims(root: Path) -> list[tuple[str, dict]]:
 
 
 def main() -> int:
-    root = Path(sys.argv[1] if len(sys.argv) > 1 else ".").resolve()
+    ap = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=EXIT_CODES,
+    )
+    ap.add_argument(
+        "root",
+        nargs="?",
+        default=".",
+        help="product root containing migration/preflight + migration/verdicts (default: .)",
+    )
+    args = ap.parse_args()
+    root = Path(args.root).resolve()
     claims = factory_claims(root)
     if not claims:
         print("OK: no factory claim — candidate→promote gate idle")

@@ -63,9 +63,7 @@ python3 "${ROOT}/.hermes/skills/harness/phase-dispatch/scripts/check-phase-body-
 
 # R-M3.32: materialize AD-011 overlays into Hermes skill tree before create
 # CS-2: sync retired — overlays modify-in-place under skill references/ (W3)
-  || die "sync-extension-overlays-into-skills failed"
 # CS-2: sync retired — overlays modify-in-place under skill references/ (W3)
-  || die "R-M3.32: extension overlays missing from .hermes/skills/*/references/ (skill_view will fail)"
 
 # Operator E-20260811T144200Z — dependencies + destination-inventory at create
 python3 "${ROOT}/.hermes/skills/sdd/sdd-readiness/scripts/stamp-body-dependencies.py" "${ROOT}" \

@@ -43,7 +43,7 @@ if [ "${G1_OPERAND}" = "tooling_smoke" ]; then
   PIT_TARGET_TESTS="${PIT_TARGET_TESTS:-com.demo.harness.*}"
   echo "WARN: G1_OPERAND=tooling_smoke — harness probe is NOT acceptance evidence" >&2
 else
-  # Product packages commonly used by this scaffold / petclinic dest.
+  # Product packages commonly used by this scaffold's destination tree.
   PIT_TARGET_CLASSES="${PIT_TARGET_CLASSES:-com.demo.model.*,com.demo.service.*,com.demo.repository.*,com.demo.rest.*,com.demo.mapper.*,com.demo.dto.*,com.demo.security.*}"
   PIT_TARGET_TESTS="${PIT_TARGET_TESTS:-com.demo.model.*,com.demo.service.*,com.demo.repository.*,com.demo.rest.*,com.demo.mapper.*,com.demo.security.*}"
   # Refuse accidental harness-as-acceptance unless explicitly overridden.

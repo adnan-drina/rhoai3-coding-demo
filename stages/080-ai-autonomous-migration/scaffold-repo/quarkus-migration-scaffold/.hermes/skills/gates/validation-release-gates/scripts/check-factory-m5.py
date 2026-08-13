@@ -6,12 +6,26 @@ M5 ACCEPT verdict (or ack). Refuses factory ship if M5 is missing, REFUSE,
 or INCONCLUSIVE.
 
 Idle (exit 0) when no factory claim is present.
+
+Usage:
+  python3 check-factory-m5.py .
+  python3 check-factory-m5.py /projects/modernized
 """
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 from pathlib import Path
+
+EXIT_CODES = """Exit codes:
+  0  pass — factory claim is coherent with a full M5 ACCEPT, or gate idle
+     (no factory claim present)
+  1  BLOCK — factory claim without M5 ACCEPT, factory contradicting an M5
+     REFUSE/INCONCLUSIVE, or an M5 ACCEPT that is not composition-complete
+     (provisional / scoped / standing descopes / unpinned kill-ratio)
+  2  usage / harness defect (bad or unknown argument)
+"""
 
 
 def load_items(path: Path) -> list[dict]:
@@ -155,7 +169,19 @@ def full_accept_ok(obj: dict) -> str | None:
 
 
 def main() -> int:
-    root = Path(sys.argv[1] if len(sys.argv) > 1 else ".").resolve()
+    ap = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=EXIT_CODES,
+    )
+    ap.add_argument(
+        "root",
+        nargs="?",
+        default=".",
+        help="product root containing migration/preflight, verdicts, tasks (default: .)",
+    )
+    args = ap.parse_args()
+    root = Path(args.root).resolve()
     claims = factory_claims(root)
     if not claims:
         print("OK: no factory advance claim — M5-contradict oracle idle")

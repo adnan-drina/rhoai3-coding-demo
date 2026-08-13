@@ -1,11 +1,11 @@
 ---
 name: validation-release-gates
-description: Enforce validation and release gates
-version: 1.1.0
-author: rhoai3-harness-team
+description: Before advancing, requeueing or shipping — lint verdict tokens, phase required_checks and floor receipts
 license: Apache-2.0
-platforms: [linux]
+compatibility: Linux seat; Python 3.11+; reads migration/ receipts
 metadata:
+  author: rhoai3-harness-team
+  version: "1.2.0"
   hermes:
     tags:
     - gates
@@ -15,8 +15,22 @@ metadata:
 ---
 ## When to Use
 
-Use this skill when its name matches the active phase or gate.
-
+- **A verdict is about to be written or consumed** at M4/M5/factory: confirm
+  `.hermes/phase-dispatch.yaml` `required_checks` still cover the §18 matrix and
+  that every JSON under `migration/verdicts/` and `migration/preflight/` carries
+  a legal token + routing pair (M4 is literally `PROVISIONAL_ACCEPT`).
+- **A ship or `promoted_to_main` claim exists**: factory must not contradict a
+  *full* M5 `ACCEPT`, the claim must name a candidate SHA, and standing entry-
+  point descopes must force `SCOPED_ACCEPT`.
+- **A task hit `timed_out` / `crashed` / `gave_up`**, or a card with cmd-shaped
+  `exit_criteria` is about to be completed: evaluate exits, apply the wall/crash
+  requeue ceilings, and prove workspace restore before requeue.
+- **A Phase-3 dual-arm verify needs the M4 floor** (boot health, endpoint smoke,
+  G-4 hook) or a chaos sweep proving every failure leaves a named terminal.
+- **Not this skill** when the question is whether migrated code still behaves
+  like the referent — mutation volume, field conservation, findings delta and
+  HTTP parity are `domain-gates`. This skill lints the verdicts those oracles
+  feed and the completion/ship policy around them; it never re-derives them.
 
 # Validation and release gates (AD-H §18 / §18.0)
 
@@ -32,7 +46,34 @@ forbidden until threshold pinned — use `pending_threshold` or typed waiver.
 
 ## Procedure
 
-Run the checks below.
+Ordered stages; each script takes the product root as its first positional arg
+and is idle (exit 0) when its trigger artifact is absent. Commands under
+**Checks**.
+
+1. **Matrix** — `check-phase-matrix.py <root>` asserts `required_checks` per
+   phase; `--print M4|M5|factory` emits the validator preflight checklist.
+2. **Completion floors** (refuse a phase that never ran anything real) —
+   `check-runnable-db-config.py`, `check-empty-security.py`,
+   `check-test-toolchain.py`, and `../domain-gates/scripts/check-product-tests.py`.
+3. **Verdict composition** — `check-verdict-routing.py` over
+   `migration/verdicts/` + `migration/preflight/`; `check-accept-scope.py` for
+   descope ⇒ `SCOPED_ACCEPT`; `compute-substrate-reopen.py --check <verdict>`
+   (or `--implicated a,b --print`) against `migration/slices/closure-map.json`.
+4. **Terminals and requeue** — `evaluate-exit-criteria.py --body … --task-id …
+   --trigger …` writes `migration/runs/<task>/exit-eval.json`;
+   `check-wall-exit-eval.py` refuses a wall terminal without it;
+   `apply-wall-requeue-policy.py --k-soft` and `apply-crash-requeue-policy.py
+   --k-crash --cause` bound soft requeues; `restore-or-refuse-requeue.py
+   --terminal <t>` (`check` default, `restore` mode) plus
+   `check-workspace-clean.py`; `apply-dependency-wait-hold.py` for typed
+   `dependency_wait`; `check-side-effect-recovery.py` for recovery claims.
+5. **Completion** — `assert-complete-exit-criteria.py --task-id --body` must
+   exit 0 before `kanban_complete`; it writes
+   `migration/runs/<task>/complete-exit-ok.json`.
+6. **Ship** — `check-factory-m5.py` (required oracle) and
+   `check-candidate-promote.py` (candidate SHA before `promoted_to_main`).
+7. **Floor / chaos** — `run-m4-floor.sh` then `check-m4-floor-receipts.py`;
+   `run-chaos-matrix.py` under the Hermes venv.
 
 ## Checks
 
@@ -125,5 +166,26 @@ HERMES_AGENT_ROOT="${HOME}/.hermes/hermes-agent"
 
 ## Verification
 
-- Scripts under `scripts/` exit 0 on a healthy seat.
+- `check-phase-matrix.py` prints `OK: AD-H §18 phase-matrix present in
+  phase-dispatch.yaml` after one `OK: <phase> required_checks cover §18 matrix`
+  line per phase; a missing check names the phase and the absent ids.
+- `check-verdict-routing.py` prints `OK: verdict-routing checks passed (N
+  artifact(s))`. **Silent-failure assertion: N must be > 0.** `N = 0` — or the
+  idle line `OK: no verdict/preflight artifacts — routing lint idle` — means
+  nothing was policed, not that the phase is clean. The same rule applies to the
+  idle lines from `check-factory-m5.py`, `check-candidate-promote.py`,
+  `check-accept-scope.py`, `check-side-effect-recovery.py` and
+  `check-persisted-data-contract.py`: idle is not a pass.
+- No artifact carries `ship: true` with a verdict other than a full M5 `ACCEPT`,
+  no `PROVISIONAL_ACCEPT` outside M4, and no `g1_kill_ratio: PASS` without
+  `g1_kill_ratio_threshold_pinned` or a typed waiver.
+- M4 floor: `migration/receipts/m4-floor/<run-id>/` holds all three receipts —
+  `boot_health.json`, `endpoint_smoke.json`, `g4_hook.json`, schema
+  `rhoai3.gate-receipt/v1` — and `check-m4-floor-receipts.py` prints `OK: M4
+  floor receipts complete`. `boot_health`/`endpoint_smoke` must be `PASS`;
+  `g4_hook` `INCONCLUSIVE` is honest for the SAMPLE floor, `REFUSE` fails.
+  Every receipt has `ad010_demo: false` — floor green is not `release_qualified`.
+- Wall/crash: each terminal has `migration/runs/<task>/exit-eval.json` with
+  schema `rhoai3.exit-eval/v1`; `apply-wall-requeue-policy.py` exit 2 is the
+  hard ceiling (block, do not requeue) and must not be read as a soft pass.
 - Conformance lint passes for this skill.

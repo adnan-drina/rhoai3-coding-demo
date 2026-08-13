@@ -5,13 +5,30 @@ Refuses:
   - phase-dispatch.yaml phase with missing/blank role
   - task packets declaring combined roles (planner+implementer, "a/b", list)
   - M2 planner/spec packets that claim destination source writes (seat probe)
+
+Usage:
+  python3 check-one-role-dispatch.py                        # current directory
+  python3 check-one-role-dispatch.py /path/to/repo          # explicit root
+  python3 check-one-role-dispatch.py /path/to/repo --fixtures
+  python3 check-one-role-dispatch.py . extra/packet.json extra/packets/
 """
 from __future__ import annotations
 
+import argparse
 import json
 import re
 import sys
 from pathlib import Path
+
+EXIT_CODES = """\
+Exit codes:
+  0  pass — phase-dispatch roles single-valued and every packet declares exactly
+     one role; also printed when no phase-dispatch.yaml exists and no packet
+     declares a role (packets_checked=0)
+  1  BLOCK — at least one FAIL: line on stderr (missing/combined phase role,
+     unparseable packet, absent or multi role, or an M2 source-write probe)
+  2  usage error (bad/unknown arguments; emitted by argparse)
+"""
 
 COMBINED = re.compile(r"[+,/|]| and ")
 M2_ROLES = frozenset({"planner", "spec-author", "spec_author"})
@@ -61,7 +78,30 @@ def writes_of(obj: dict) -> list[str]:
 
 
 def main() -> int:
-    root = Path(sys.argv[1] if len(sys.argv) > 1 else ".").resolve()
+    ap = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=EXIT_CODES,
+    )
+    ap.add_argument(
+        "root",
+        nargs="?",
+        default=".",
+        help="workspace root to scan (default: current directory)",
+    )
+    ap.add_argument(
+        "extra",
+        nargs="*",
+        metavar="PACKET",
+        help="additional task-packet .json files or directories of them",
+    )
+    ap.add_argument(
+        "--fixtures",
+        action="store_true",
+        help="also scan migration/fixtures/authority/ar13-one-role under root",
+    )
+    args = ap.parse_args()
+    root = Path(args.root).resolve()
     bad = 0
 
     yml = root / ".hermes" / "phase-dispatch.yaml"
@@ -83,11 +123,11 @@ def main() -> int:
         if d.is_dir():
             packets.extend(sorted(d.glob("*.json")))
     # Explicit fixture self-test: pass fixture dir or --fixtures
-    if "--fixtures" in sys.argv:
+    if args.fixtures:
         fix = root / "migration/fixtures/authority/ar13-one-role"
         if fix.is_dir():
             packets.extend(sorted(fix.glob("*.json")))
-    for arg in sys.argv[2:]:
+    for arg in args.extra:
         if arg.startswith("-"):
             continue
         p = Path(arg)

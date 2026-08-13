@@ -17,6 +17,7 @@ NEEDLE = "BANK-DEST-INV-HARDINVOKE-1"
 CREATE = (
     Path(".hermes")
     / "skills"
+    / "harness"
     / "phase-dispatch"
     / "scripts"
     / "create-m3-implementer.sh"

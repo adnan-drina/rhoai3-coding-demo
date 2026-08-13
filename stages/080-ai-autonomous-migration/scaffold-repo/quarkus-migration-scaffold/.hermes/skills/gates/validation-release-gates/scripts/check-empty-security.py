@@ -1,10 +1,30 @@
 #!/usr/bin/env python3
-"""AD-H §16.6 / AR-2.2 — refuse empty/placeholder security as completion."""
+"""AD-H §16.6 / AR-2.2 — refuse empty/placeholder security as completion.
+
+Scans `<root>/src/main/java` for `*Security*.java` / `*Authentication*.java`
+types plus `<root>/src/main/resources/application*.properties` and
+`<root>/pom.xml`. Idle when no security types exist and security is not
+enabled.
+
+Usage:
+  python3 check-empty-security.py .
+  python3 check-empty-security.py /projects/modernized
+"""
 from __future__ import annotations
 
+import argparse
 import re
 import sys
 from pathlib import Path
+
+EXIT_CODES = """Exit codes:
+  0  pass — functional security surface present, or gate idle (no security
+     types and security not enabled)
+  1  BLOCK — missing quarkus-security / quarkus-elytron-security-jdbc, no
+     security types while security is enabled, or empty / placeholder /
+     javadoc-only security classes (AR-2.2, R-M3.39)
+  2  usage / harness defect (bad or unknown argument)
+"""
 
 PLACEHOLDER_MARKERS = (
     "structural placeholder",
@@ -20,7 +40,19 @@ PLACEHOLDER_MARKERS = (
 
 
 def main() -> int:
-    root = Path(sys.argv[1] if len(sys.argv) > 1 else ".").resolve()
+    ap = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=EXIT_CODES,
+    )
+    ap.add_argument(
+        "root",
+        nargs="?",
+        default=".",
+        help="product root containing src/ and pom.xml (default: .)",
+    )
+    args = ap.parse_args()
+    root = Path(args.root).resolve()
     sec = root / "src/main/java"
     props_blob = "\n".join(
         p.read_text(encoding="utf-8")
@@ -36,7 +68,10 @@ def main() -> int:
         )
 
     security_enabled = bool(
-        re.search(r"(?m)^petclinic\.security\.enable\s*=\s*true\s*$", props_blob)
+        # R-SK.5: match any <app>.security.enable=true, not one specimen's
+        # property name. A legacy app names this after itself; hardcoding
+        # one made the gate blind to every other codebase.
+        re.search(r"(?m)^[\w.-]+\.security\.enable\s*=\s*true\s*$", props_blob)
         or re.search(r"(?m)^quarkus\.security\.jdbc\.enabled\s*=\s*true\s*$", props_blob)
         or "quarkus-elytron-security-jdbc" in pom
     )

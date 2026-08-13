@@ -30,7 +30,9 @@ bash .hermes/home/scripts/log-intervention.sh B copy_payload "thin M2" '{"phase"
 ## Audit
 
 ```bash
-python3 "${HARNESS_BOARD_TOOLS:-../../harness-refactoring/.wake/tools}/audit-interventions.py" /projects/modernized
+# Board-side reviewer tool. Not shipped in this scaffold (hermeticity:
+# a deployed seat has no link to the authoring repo). Set the path explicitly:
+python3 "${HARNESS_BOARD_TOOLS:?set to the board .wake/tools dir}/audit-interventions.py" /projects/modernized
 ```
 
 Log **as interventions happen**, classified A/B at the moment — do not reconstruct

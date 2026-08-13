@@ -1,10 +1,29 @@
 #!/usr/bin/env python3
-"""AD-H §16.6 / AR-2.1 — refuse non-runnable default DB profiles."""
+"""AD-H §16.6 / AR-2.1 — refuse non-runnable default DB profiles.
+
+Reads `<root>/pom.xml`, `<root>/src/main/resources/application*.properties`
+and Flyway migrations under `<root>/src/main/resources/`. Idle when the
+specimen shows no DB intent at all.
+
+Usage:
+  python3 check-runnable-db-config.py .
+  python3 check-runnable-db-config.py /projects/modernized
+"""
 from __future__ import annotations
 
+import argparse
 import re
 import sys
 from pathlib import Path
+
+EXIT_CODES = """Exit codes:
+  0  pass — runnable default DB profile, or gate idle (no DB intent in
+     pom / properties / migrations)
+  1  BLOCK — missing quarkus-jdbc-*/quarkus-flyway, db-kind vs JDBC URL
+     mismatch, missing quarkus.flyway.migrate-at-start=true, or no Flyway
+     V*__*.sql migrations
+  2  usage / harness defect (bad or unknown argument)
+"""
 
 
 def read(path: Path) -> str:
@@ -12,7 +31,19 @@ def read(path: Path) -> str:
 
 
 def main() -> int:
-    root = Path(sys.argv[1] if len(sys.argv) > 1 else ".").resolve()
+    ap = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=EXIT_CODES,
+    )
+    ap.add_argument(
+        "root",
+        nargs="?",
+        default=".",
+        help="product root containing pom.xml and src/main/resources (default: .)",
+    )
+    args = ap.parse_args()
+    root = Path(args.root).resolve()
     pom = read(root / "pom.xml")
     props_files = list((root / "src/main/resources").glob("application*.properties"))
     blob = "\n".join(read(p) for p in sorted(props_files))

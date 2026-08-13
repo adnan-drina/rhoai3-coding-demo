@@ -6,12 +6,25 @@ declare: side_effect_class, terminal_record, replay_digest, reset_rule.
 Re-queue alone is insufficient — workspace restore must be named.
 
 Idle when no recovery claims present.
+
+Usage:
+  python3 check-side-effect-recovery.py .
+  python3 check-side-effect-recovery.py /projects/modernized
 """
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 from pathlib import Path
+
+EXIT_CODES = """Exit codes:
+  0  pass — every recovery claim declares its boundaries, or gate idle
+     (no recovery claims present)
+  1  BLOCK — a recovery claim is missing side_effect_class / terminal_record /
+     replay_digest / reset_rule, or declares requeue_only=true
+  2  usage / harness defect (bad or unknown argument)
+"""
 
 REQUIRED = ("side_effect_class", "terminal_record", "replay_digest", "reset_rule")
 
@@ -22,7 +35,19 @@ def load_items(path: Path) -> list[dict]:
 
 
 def main() -> int:
-    root = Path(sys.argv[1] if len(sys.argv) > 1 else ".").resolve()
+    ap = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=EXIT_CODES,
+    )
+    ap.add_argument(
+        "root",
+        nargs="?",
+        default=".",
+        help="product root containing migration/recovery + migration/verdicts (default: .)",
+    )
+    args = ap.parse_args()
+    root = Path(args.root).resolve()
     claims: list[tuple[str, dict]] = []
     rdir = root / "migration" / "recovery"
     if rdir.is_dir():

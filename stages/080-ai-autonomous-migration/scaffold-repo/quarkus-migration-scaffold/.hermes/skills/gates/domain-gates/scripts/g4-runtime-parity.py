@@ -4,15 +4,33 @@
 ER#2 F8 / AD-H §G.4: current depth is SAMPLE, not behavioral-equivalence.
 Every gate output stamps g4_mode=SAMPLE until partitions + permitted
 equivalence + zero unverified entry points land for release_qualified.
+
+Runs the three admission fixtures under
+`migration/fixtures/admission/g4-runtime-parity/` (known-good / known-bad /
+known-vacuous) and writes each verdict under
+`migration/fixtures/admission/out/g4-runtime-parity/`.
+
+Usage:
+  python3 g4-runtime-parity.py .
+  python3 g4-runtime-parity.py /projects/modernized
 """
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
 from verdict import expect, write_verdict  # noqa: E402
+
+EXIT_CODES = """Exit codes:
+  0  pass — every admission fixture produced its expected verdict and every
+     written verdict carries the g4_mode=SAMPLE stamp
+  1  BLOCK — a fixture verdict differs from expectation, or a written verdict
+     is missing the g4_mode=SAMPLE stamp (ER#2 F8)
+  2  usage / harness defect (bad or unknown argument)
+"""
 
 # AD-H §G.4 / ER#2 F8 — honest label until equivalence bar is met
 G4_MODE = "SAMPLE"
@@ -44,7 +62,19 @@ def evaluate(fixture_dir: Path) -> str:
 
 
 def main() -> int:
-    root = Path(sys.argv[1] if len(sys.argv) > 1 else ".")
+    ap = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=EXIT_CODES,
+    )
+    ap.add_argument(
+        "root",
+        nargs="?",
+        default=".",
+        help="product root containing migration/fixtures/admission (default: .)",
+    )
+    args = ap.parse_args()
+    root = Path(args.root)
     base = root / "migration/fixtures/admission/g4-runtime-parity"
     expected = {
         "known-good": "ACCEPT",

@@ -1,13 +1,31 @@
 #!/usr/bin/env python3
-"""G-3 admission evaluator — MTA findings / asserted-resolved (W2 §10)."""
+"""G-3 admission evaluator — MTA findings / asserted-resolved (W2 §10).
+
+Runs the three admission fixtures under
+`migration/fixtures/admission/g3-findings-delta/` (known-good / known-bad /
+known-vacuous) and writes each verdict under
+`migration/fixtures/admission/out/g3-findings-delta/`.
+
+Usage:
+  python3 g3-findings-delta.py .
+  python3 g3-findings-delta.py /projects/modernized
+"""
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
 from verdict import expect, write_verdict  # noqa: E402
+
+EXIT_CODES = """Exit codes:
+  0  pass — every admission fixture produced its expected verdict
+  1  BLOCK — at least one fixture verdict differs from expectation
+     (printed as `FAIL G-3/<fixture>: got X, want Y`)
+  2  usage / harness defect (bad or unknown argument)
+"""
 
 
 def evaluate(fixture_dir: Path) -> str:
@@ -31,7 +49,19 @@ def evaluate(fixture_dir: Path) -> str:
 
 
 def main() -> int:
-    root = Path(sys.argv[1] if len(sys.argv) > 1 else ".")
+    ap = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=EXIT_CODES,
+    )
+    ap.add_argument(
+        "root",
+        nargs="?",
+        default=".",
+        help="product root containing migration/fixtures/admission (default: .)",
+    )
+    args = ap.parse_args()
+    root = Path(args.root)
     base = root / "migration/fixtures/admission/g3-findings-delta"
     expected = {
         "known-good": "ACCEPT",

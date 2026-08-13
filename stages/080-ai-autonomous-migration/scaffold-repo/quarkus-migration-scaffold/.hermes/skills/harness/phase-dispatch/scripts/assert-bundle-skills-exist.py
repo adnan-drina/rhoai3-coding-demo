@@ -38,6 +38,21 @@ def parse_skills(path: Path) -> tuple[str, list[str]]:
     return name, skills
 
 
+def resolve_skill_md(skills_root: Path, leaf: str) -> Path:
+    """Resolve <leaf>/SKILL.md under the R-SK.7 category tree.
+
+    Skills live at `.hermes/skills/<category>/<leaf>/SKILL.md`. Bundles list
+    bare leaf names (that is the attach identifier), so resolution must search
+    the category dirs. The pre-category flat layout is still accepted so an
+    older seat does not hard-fail on layout alone.
+    """
+    flat = skills_root / leaf / "SKILL.md"
+    if flat.is_file():
+        return flat
+    hits = sorted(skills_root.glob(f"*/{leaf}/SKILL.md"))
+    return hits[0] if hits else flat
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("root", nargs="?", default=".")
@@ -72,7 +87,7 @@ def main() -> int:
             bad = 1
             continue
         for sk in skills:
-            skill_md = skills_root / sk / "SKILL.md"
+            skill_md = resolve_skill_md(skills_root, sk)
             if not skill_md.is_file():
                 print(
                     f"FAIL: bundle {name} lists skill `{sk}` but "

@@ -1,13 +1,31 @@
 #!/usr/bin/env python3
-"""G-2 admission evaluator — field/obligation conservation (W2 §10)."""
+"""G-2 admission evaluator — field/obligation conservation (W2 §10).
+
+Runs the three admission fixtures under
+`migration/fixtures/admission/g2-harvest-fidelity/` (known-good / known-bad /
+known-vacuous) and writes each verdict under
+`migration/fixtures/admission/out/g2-harvest-fidelity/`.
+
+Usage:
+  python3 g2-harvest-fidelity.py .
+  python3 g2-harvest-fidelity.py /projects/modernized
+"""
 from __future__ import annotations
 
+import argparse
 import re
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
 from verdict import expect, write_verdict  # noqa: E402
+
+EXIT_CODES = """Exit codes:
+  0  pass — every admission fixture produced its expected verdict
+  1  BLOCK — at least one fixture verdict differs from expectation
+     (printed as `FAIL G-2/<fixture>: got X, want Y`)
+  2  usage / harness defect (bad or unknown argument)
+"""
 
 FIELD_RE = re.compile(r"\bprivate\s+[\w.<>,\s\[\]]+\s+(\w+)\s*;")
 
@@ -39,7 +57,19 @@ def evaluate(fixture_dir: Path) -> str:
 
 
 def main() -> int:
-    root = Path(sys.argv[1] if len(sys.argv) > 1 else ".")
+    ap = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=EXIT_CODES,
+    )
+    ap.add_argument(
+        "root",
+        nargs="?",
+        default=".",
+        help="product root containing migration/fixtures/admission (default: .)",
+    )
+    args = ap.parse_args()
+    root = Path(args.root)
     base = root / "migration/fixtures/admission/g2-harvest-fidelity"
     expected = {
         "known-good": "ACCEPT",

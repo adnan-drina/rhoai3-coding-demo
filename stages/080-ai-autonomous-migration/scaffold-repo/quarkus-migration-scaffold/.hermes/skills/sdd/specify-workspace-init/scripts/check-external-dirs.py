@@ -2,13 +2,30 @@
 """AD-S — when HERMES_HOME is relocated, require both skills dirs on external_dirs.
 
 Idle when HERMES_HOME unset or equals ~/.hermes.
+
+Reads HERMES_CONFIG / HERMES_MANAGED_DIR / HERMES_HOME from the environment,
+falling back to <root>/.hermes/home/config.yaml then ~/.hermes/config.yaml.
+
+Usage:
+  python3 check-external-dirs.py                 # assert against current dir
+  python3 check-external-dirs.py /path/to/repo   # explicit workspace root
 """
 from __future__ import annotations
 
+import argparse
 import os
 import re
 import sys
 from pathlib import Path
+
+EXIT_CODES = """\
+Exit codes:
+  0  pass — skills.external_dirs lists both the project and the home skills
+     dir; also printed when HERMES_HOME is unset or equals ~/.hermes (idle)
+  1  BLOCK — HERMES_HOME is relocated and either no config.yaml was found, or
+     external_dirs omits the project / home skills dir (FAIL: on stderr)
+  2  usage error (bad/unknown arguments; emitted by argparse)
+"""
 
 
 def is_relocated() -> bool:
@@ -71,7 +88,19 @@ def expand(p: str, root: Path) -> Path:
 
 
 def main() -> int:
-    root = Path(sys.argv[1] if len(sys.argv) > 1 else ".").resolve()
+    ap = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=EXIT_CODES,
+    )
+    ap.add_argument(
+        "root",
+        nargs="?",
+        default=".",
+        help="workspace root to assert against (default: current directory)",
+    )
+    args = ap.parse_args()
+    root = Path(args.root).resolve()
     if not is_relocated():
         print("OK: HERMES_HOME not relocated — external_dirs assert idle")
         return 0

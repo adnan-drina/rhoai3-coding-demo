@@ -2,13 +2,26 @@
 """AD-S §S.6 cheap checks — identity presence, refuse worker re-plan, plan_revision.
 
 Idle (exit 0) when no plan/task artifacts exist.
+
+Usage:
+  python3 check-ordering.py .
+  python3 check-ordering.py /projects/modernized
 """
 from __future__ import annotations
 
+import argparse
 import json
 import re
 import sys
 from pathlib import Path
+
+EXIT_CODES = """Exit codes:
+  0  pass — ordering lint clean, or idle (no plan/task artifacts yet)
+  1  BLOCK — unreadable artifact, missing brief/story/unit identity ref,
+     IMPLEMENT worker carrying a re-plan flag, or supersession without
+     plan_revision (AD-S §S.6)
+  2  usage / harness defect (bad or unknown argument)
+"""
 
 
 def load_json(path: Path):
@@ -53,7 +66,19 @@ def has_identity(obj: dict) -> bool:
 
 
 def main() -> int:
-    root = Path(sys.argv[1] if len(sys.argv) > 1 else ".").resolve()
+    ap = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=EXIT_CODES,
+    )
+    ap.add_argument(
+        "root",
+        nargs="?",
+        default=".",
+        help="product root containing migration/ and specs/ (default: .)",
+    )
+    args = ap.parse_args()
+    root = Path(args.root).resolve()
     bad = 0
     checked = 0
 

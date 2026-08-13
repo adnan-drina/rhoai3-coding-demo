@@ -8,16 +8,40 @@ Requires two explicit check records when a specimen claims pre-existing DB:
 Seeded-fixture runs without these records must NOT claim §11.1 DEMONSTRATED.
 Idle (exit 0) when no `migration/persisted-data/claim.json` with
 `pre_existing_db=true`.
+
+Usage:
+  python3 check-persisted-data-contract.py .
+  python3 check-persisted-data-contract.py /projects/modernized
 """
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 from pathlib import Path
 
+EXIT_CODES = """Exit codes:
+  0  pass — dedicated checks present, or gate idle (no pre_existing_db claim)
+  1  BLOCK — pre_existing_db claim without schema_compat +
+     quarkus_db_copy_read_all pass records
+  2  usage / harness defect (bad or unknown argument)
+"""
+
 
 def main() -> int:
-    root = Path(sys.argv[1] if len(sys.argv) > 1 else ".").resolve()
+    ap = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=EXIT_CODES,
+    )
+    ap.add_argument(
+        "root",
+        nargs="?",
+        default=".",
+        help="product root containing migration/persisted-data (default: .)",
+    )
+    args = ap.parse_args()
+    root = Path(args.root).resolve()
     claim_path = root / "migration" / "persisted-data" / "claim.json"
     if not claim_path.is_file():
         print("OK: no persisted-data claim — §11.1 dedicated checks idle")

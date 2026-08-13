@@ -1,11 +1,11 @@
 ---
 name: domain-gates
-description: Run domain acceptance gates for M4/M5
-version: 1.1.0
-author: rhoai3-harness-team
+description: Measures the destination against the referent and emits G-1..G-4 ACCEPT/REFUSE/INCONCLUSIVE verdicts. Use at M4 for volume and substance, at M5 for findings delta and runtime parity, or when pinning a kill ratio or re-proving an edited evaluator.
 license: Apache-2.0
-platforms: [linux]
+compatibility: Linux seat; Maven and Java 21 for PIT and product tests
 metadata:
+  author: rhoai3-harness-team
+  version: "1.2.0"
   hermes:
     tags:
     - gates
@@ -15,8 +15,18 @@ metadata:
 ---
 ## When to Use
 
-Use this skill when its name matches the active phase or gate.
-
+- **M4 needs fidelity evidence** — the destination tree must show G-1 mutation
+  volume/substance (plus G-2 field conservation when the packet claims HARVEST)
+  before an M4 verdict can cite anything measured.
+- **M5 needs closure evidence** — after MTA re-scan and live acceptance: G-3
+  (no finding present-but-asserted-resolved) and G-4 (referent vs destination
+  status + body on the same scenario).
+- **Pinning or re-pinning the G-1 kill ratio** from a live `mutationCoverage`
+  report, or re-proving an edited evaluator against the admission fixtures.
+- **Not this skill** when the question is whether a verdict token, phase
+  `required_checks`, requeue, or ship claim is *legal* — that is
+  `validation-release-gates`. This skill measures code against the referent and
+  emits a gate verdict; it never decides what may advance, ship, or requeue.
 
 # Domain gates (ours — AD-H)
 
@@ -104,12 +114,15 @@ python3 "${HERMES_SKILL_DIR}/scripts/pin-kill-ratio-from-pit.py" \
   target/pit-reports/mutations.xml \
   -o migration/contracts/g1-kill-ratio-pin.json \
   --coverage-min 0.41 --kill-attempted-min 0.60 --kill-generated-min 0.38 \
+  --source declared_engineering_target \
   --rationale "Architect stringency <entry>: declared margins, not measured-at-equality"
 ```
 
 Dual-denominator (AD-H §18.0¶5): coverage floor `attempted/generated` **and**
 kill strength `killed/attempted`; sole attempted PASS predicate forbidden.
-`source` must be `declared_engineering_target`. Typed Operator/deputy waiver
+`--source` is required — `declared_engineering_target` (bars from outside this
+subject's score) or `ratchet_from_measured` (margins recorded under this tree's
+measured score). Typed Operator/deputy waiver
 (sole alternate M5 path): `migration/schemas/g1-kill-ratio-waiver.md`.
 Pinning ≠ M5 `ACCEPT` (#1e).
 
@@ -121,10 +134,52 @@ Do **not** add gate logic under top-level `scripts/` or invent parallel names
 
 ## Procedure
 
-Follow the skill contracts and scripts under `scripts/`.
+Operand first, then live evidence, then pin. Scripts are under
+`${HERMES_SKILL_DIR}/scripts/`; `<root>` is the product tree (e.g.
+`/projects/modernized`).
 
+1. **Qualify the operand** — `check-g1-acceptance-operand.py <root>`. Exit 1
+   when `src/test/java` holds no `*Test.java`/`*IT.java` outside
+   `com.demo.harness.*`. `G1_OPERAND=tooling_smoke` permits harness-only, and
+   that result is never acceptance evidence.
+2. **Qualify the test families** — `check-product-tests.py <root>`. Exit 1
+   unless boot, security, crud and db are each matched by a non-harness test
+   (regex heuristics; explicit `AR28:<family>` markers accepted).
+3. **Measure G-1 volume live** — `count-pit-dry-run.sh <module> [evidence.json]`
+   re-runs steps 1–2 itself, then `mvn test-compile … pitest mutationCoverage
+   -Dpit.dryRun=true`, refuses a missing JUnit-5 plugin or a zero-test skip, and
+   parses `target/pit-reports/mutations.xml` via `parse-pit-mutations.py`
+   (zero mutants ⇒ exit 1).
+4. **Exercise the evaluators** — `g1-characterization.py`,
+   `g2-harvest-fidelity.py`, `g3-findings-delta.py`, `g4-runtime-parity.py`,
+   each taking `<root>`; `run-admission.sh <root>` runs all four. Each walks the
+   named fixture dirs under `<root>/migration/fixtures/admission/<gate>/`,
+   compares the computed verdict to the fixture's expected verdict, and writes
+   `…/admission/out/<gate>/<fixture>.json`. Disagreement ⇒ exit 1.
+5. **Pin the kill ratio** (after live `mutationCoverage`, never after a dry run)
+   — `pin-kill-ratio-from-pit.py <mutations.xml> -o <pin.json> --coverage-min
+   --kill-attempted-min [--kill-generated-min] --source --rationale`.
+6. **Persisted data** — when `migration/persisted-data/claim.json` sets
+   `pre_existing_db`, `check-persisted-data-contract.py <root>` requires passing
+   `schema_compat` **and** `quarkus_db_copy_read_all` records; otherwise idle.
 
 ## Verification
 
-- Scripts under `scripts/` exit 0 on a healthy seat.
+- `run-admission.sh` exits 0 and prints `OK: admission fixtures — G-1..G-4 emit
+  ACCEPT/REFUSE/INCONCLUSIVE as specified`. A disagreeing evaluator prints
+  `FAIL <gate>/<fixture>: got X, want Y` and the run exits 1.
+- One verdict JSON exists per fixture under
+  `migration/fixtures/admission/out/<gate>/<fixture>.json`, and every G-4 file
+  carries `"g4_mode": "SAMPLE"` — `g4-runtime-parity.py` re-reads its own write
+  and fails if the stamp is absent (ER#2 F8).
+- **Silent-failure assertion:** a green admission run is *not* admission — it
+  proves parser + fixture shape only. A G-1 claim is live only when
+  `mutations.xml` exists with `mutations_total > 0`; a G-4 claim is live only
+  when a product `parity.json` had `execution_evidence.scenarios_ran` true and
+  at least one scenario that was not an identical ≥500 pair. ACCEPT without
+  those inputs is vacuous and must be read as INCONCLUSIVE.
+- Kill-ratio pin file has `status: PINNED`, `threshold.source` of
+  `ratchet_from_measured` or `declared_engineering_target`, and floors that do
+  not equal the measured ratios (the script refuses circular pins) — and all
+  mutants `NOT_STARTED` is refused outright. Pinning is not M5 `ACCEPT`.
 - Conformance lint passes for this skill.

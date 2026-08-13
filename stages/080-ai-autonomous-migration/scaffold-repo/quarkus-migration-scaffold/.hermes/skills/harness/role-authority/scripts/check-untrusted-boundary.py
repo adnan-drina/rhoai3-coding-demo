@@ -6,13 +6,43 @@ content is present (proves REFUSE path — same pattern as AR-1.2 validate.sh).
 
 `--as-gate`: exit 0 when live `migration/authority/` feeds are clean; fixtures
 alone do not fail the gate.
+
+Usage:
+  python3 check-untrusted-boundary.py /path/to/repo --as-gate   # live gate
+  python3 check-untrusted-boundary.py /path/to/repo             # fixture self-test
+  python3 check-untrusted-boundary.py --as-gate                 # gate on cwd
 """
 from __future__ import annotations
 
+import argparse
 import json
 import re
 import sys
 from pathlib import Path
+
+EXIT_CODES = """\
+Exit codes (NOTE: the default mode is INVERTED by design):
+
+  --as-gate mode (live gate over migration/authority/):
+    0  pass — live authority feeds clean, or no migration/authority dir
+    1  BLOCK — a live authority feed carries control injection
+    2  usage error (bad/unknown arguments; emitted by argparse)
+
+  default mode (fixture self-test over migration/fixtures/authority/ar16-untrusted):
+    1  EXPECTED PASS — adversarial fixture content was detected and REFUSED.
+       Exit 1 is the proof of the refuse path, not a failure. Recognise it by
+       the stdout line 'OK: AR-1.6 fixture self-test — adversarial inputs
+       REFUSED ...'.
+    1  also the genuine failure code when fixtures exist but nothing adversarial
+       was detected — recognise it by the stderr line
+       'FAIL: AR-1.6 fixtures present but no adversarial control-injection
+       detected'. Distinguish the two by the emitted line, not the exit code.
+    0  fixture pack absent — self-test idle.
+    2  usage error (bad/unknown arguments; emitted by argparse)
+
+This script therefore deviates from the house 0=pass / 1=block contract in
+default mode. Use --as-gate for a conventional 0/1 gate verdict.
+"""
 
 CONTROL_INJECTION = re.compile(
     r"(?i)("
@@ -79,8 +109,26 @@ def scan_findings(path: Path) -> int:
 
 
 def main() -> int:
-    as_gate = "--as-gate" in sys.argv
-    root = Path(sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith("-") else ".")
+    ap = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=EXIT_CODES,
+    )
+    ap.add_argument(
+        "root",
+        nargs="?",
+        default=".",
+        help="workspace root to scan (default: current directory)",
+    )
+    ap.add_argument(
+        "--as-gate",
+        action="store_true",
+        help="run as a live gate over migration/authority/ instead of the "
+        "inverted fixture self-test",
+    )
+    args = ap.parse_args()
+    as_gate = args.as_gate
+    root = Path(args.root)
     root = root.resolve()
     fixture_dir = root / "migration" / "fixtures" / "authority" / "ar16-untrusted"
 

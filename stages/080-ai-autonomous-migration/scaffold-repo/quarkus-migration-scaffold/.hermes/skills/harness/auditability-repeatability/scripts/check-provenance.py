@@ -11,9 +11,14 @@ or other mandatory fields. Require derive apply log in artifacts[] when
 derive_apply_log / harvest claims present.
 
 Idle (exit 0) when no provenance-bearing IMPLEMENT artifacts exist.
+
+Usage:
+  python3 check-provenance.py                 # scan the current directory
+  python3 check-provenance.py /path/to/repo   # scan an explicit workspace root
 """
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 from pathlib import Path
@@ -21,6 +26,18 @@ from pathlib import Path
 # Local helper (same directory)
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from resolve_loaded_soul import resolve_loaded_soul  # noqa: E402
+
+EXIT_CODES = """\
+Exit codes:
+  0  pass — provenance checks passed, or lint idle (no IMPLEMENT provenance
+     artifacts under migration/provenance, migration/tasks, migration/kanban)
+  1  BLOCK — at least one FAIL: line on stderr (missing mandatory provenance
+     field, soul_sha drift, unnamed model_id gap, missing derive apply log,
+     or an unparseable artifact)
+  2  usage error (bad/unknown arguments; emitted by argparse)
+
+Note: WARN: lines (e.g. missing campaign_id) do not affect the exit code.
+"""
 
 MANDATORY = (
     "task_id",
@@ -196,7 +213,19 @@ def check_prov(
 
 
 def main() -> int:
-    root = Path(sys.argv[1] if len(sys.argv) > 1 else ".").resolve()
+    ap = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=EXIT_CODES,
+    )
+    ap.add_argument(
+        "root",
+        nargs="?",
+        default=".",
+        help="workspace root to scan (default: current directory)",
+    )
+    args = ap.parse_args()
+    root = Path(args.root).resolve()
     checked = 0
     bad = 0
 

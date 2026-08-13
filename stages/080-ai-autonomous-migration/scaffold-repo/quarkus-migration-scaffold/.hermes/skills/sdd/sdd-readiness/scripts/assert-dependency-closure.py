@@ -21,6 +21,12 @@ import re
 import sys
 from pathlib import Path
 
+_SCRIPTS = Path(__file__).resolve().parent
+if str(_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS))
+
+from specimen_agnostic import legacy_java_prefixes  # noqa: E402
+
 IMPORT_RE = re.compile(r"^\s*import\s+([\w.]+)\s*;", re.M)
 PKG_RE = re.compile(r"^\s*package\s+([\w.]+)\s*;", re.M)
 
@@ -76,8 +82,15 @@ def check_pre_exists(root: Path, body: dict) -> list[str]:
     return bad
 
 
-def java_type_to_path(fqcn: str) -> Path | None:
-    if not fqcn.startswith("org.springframework.samples.petclinic."):
+def java_type_to_path(fqcn: str, prefixes: list[str]) -> Path | None:
+    """Map a legacy FQCN to its source path, for any specimen.
+
+    R-SK.5: the legacy base package is derived from migration.yaml / the
+    entry-point inventory via legacy_java_prefixes(). Hardcoding one
+    specimen's package made this gate a silent no-op on every other
+    codebase — it recognised no types, so it found no violations.
+    """
+    if not any(fqcn.startswith(p) for p in prefixes):
         return None
     return Path("src/main/java") / Path(*fqcn.split(".")).with_suffix(".java")
 
@@ -96,7 +109,8 @@ def owned_basenames(body: dict, root: Path) -> set[str]:
 
 
 def check_imports(root: Path, body: dict) -> list[str]:
-    """Fail when writable Java imports petclinic types that are not owned and DEST_MISS."""
+    """Fail when writable Java imports legacy types not owned and DEST_MISS."""
+    prefixes = legacy_java_prefixes(root)
     bad: list[str] = []
     owned = owned_basenames(body, root)
     for item in body.get("files_writable") or []:
@@ -110,7 +124,7 @@ def check_imports(root: Path, body: dict) -> list[str]:
         text = path.read_text(encoding="utf-8", errors="replace")
         for m in IMPORT_RE.finditer(text):
             fqcn = m.group(1)
-            rel = java_type_to_path(fqcn)
+            rel = java_type_to_path(fqcn, prefixes)
             if rel is None:
                 continue
             base = rel.name

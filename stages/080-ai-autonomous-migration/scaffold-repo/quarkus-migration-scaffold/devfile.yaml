@@ -137,10 +137,10 @@ commands:
           export PATH="${JAVA_HOME}/bin:${PATH}"
           for rc in "${HOME}/.bashrc" "${HOME}/.zshrc"; do
             touch "${rc}"
-            if ! grep -q "rhoai3-coding-demo: java 21 default" "${rc}"; then
+            if ! grep -q "quarkus-migration-scaffold: java 21 default" "${rc}"; then
               {
                 printf '\n'
-                printf '# rhoai3-coding-demo: java 21 default\n'
+                printf '# quarkus-migration-scaffold: java 21 default\n'
                 printf 'export JAVA_HOME="%s"\n' "${java21_home}"
                 printf 'export PATH="${JAVA_HOME}/bin:${PATH}"\n'
               } >> "${rc}"

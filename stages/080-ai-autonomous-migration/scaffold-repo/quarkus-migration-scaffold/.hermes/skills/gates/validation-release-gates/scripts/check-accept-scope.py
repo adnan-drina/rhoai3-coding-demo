@@ -5,12 +5,25 @@ Full ACCEPT is mechanically impossible when entry_point_descope_count > 0.
 Standing descopes ⇒ verdict must be SCOPED_ACCEPT (or accept_kind=scoped).
 
 Idle (exit 0) when no M5 ACCEPT / SCOPED_ACCEPT verdict is present.
+
+Usage:
+  python3 check-accept-scope.py .
+  python3 check-accept-scope.py /projects/modernized
 """
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 from pathlib import Path
+
+EXIT_CODES = """Exit codes:
+  0  pass — no full ACCEPT contradicts a standing entry-point descope, or
+     gate idle (no M5 verdict present)
+  1  BLOCK — full ACCEPT with entry_point_descope_count > 0 (only
+     SCOPED_ACCEPT allowed), or a non-integer entry_point_descope_count
+  2  usage / harness defect (bad or unknown argument)
+"""
 
 
 def load_items(path: Path) -> list[dict]:
@@ -81,7 +94,19 @@ def m5_verdicts(root: Path) -> list[tuple[str, dict]]:
 
 
 def main() -> int:
-    root = Path(sys.argv[1] if len(sys.argv) > 1 else ".").resolve()
+    ap = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=EXIT_CODES,
+    )
+    ap.add_argument(
+        "root",
+        nargs="?",
+        default=".",
+        help="product root containing migration/verdicts (default: .)",
+    )
+    args = ap.parse_args()
+    root = Path(args.root).resolve()
     verdicts = m5_verdicts(root)
     if not verdicts:
         print("OK: no M5 verdict — SCOPED_ACCEPT gate idle")

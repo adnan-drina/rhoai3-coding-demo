@@ -1,0 +1,3 @@
+# R-SK.10 non-gerund leaf-name KEEP list (Architect-justified only).
+# One leaf name per line; trailing # comment must cite a ledger EID.
+# Empty = every skill name is gerund form, as official naming requires.

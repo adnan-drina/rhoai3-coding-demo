@@ -6,13 +6,28 @@ Fail closed when an acknowledged ack is authored by a worker role, lacks
 task_id / digests, or is a bare .json grant without authenticated signer.
 
 Human unlock/lock around real ACK remains F2 residual.
+
+Usage:
+  python3 check-ack-authority.py                 # scan the current directory
+  python3 check-ack-authority.py /path/to/repo   # explicit workspace root
 """
 from __future__ import annotations
 
+import argparse
 import json
 import re
 import sys
 from pathlib import Path
+
+EXIT_CODES = """\
+Exit codes:
+  0  pass — every acknowledged grant carries non-worker signer, task_id and
+     digests; or lint idle (no migration/acks dir, no grant files, or no
+     acknowledged grants to validate)
+  1  BLOCK — at least one FAIL: line on stderr (parse error, worker/self ACK
+     author, missing task_id, missing artifact_digests, or a bare .json grant)
+  2  usage error (bad/unknown arguments; emitted by argparse)
+"""
 
 WORKER_AUTHORS = frozenset(
     {
@@ -83,7 +98,19 @@ def has_digests(doc: dict) -> bool:
 
 
 def main() -> int:
-    root = Path(sys.argv[1] if len(sys.argv) > 1 else ".").resolve()
+    ap = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=EXIT_CODES,
+    )
+    ap.add_argument(
+        "root",
+        nargs="?",
+        default=".",
+        help="workspace root containing migration/acks (default: current directory)",
+    )
+    args = ap.parse_args()
+    root = Path(args.root).resolve()
     adir = root / "migration" / "acks"
     if not adir.is_dir():
         print("OK: no migration/acks — AR-1.1 idle")

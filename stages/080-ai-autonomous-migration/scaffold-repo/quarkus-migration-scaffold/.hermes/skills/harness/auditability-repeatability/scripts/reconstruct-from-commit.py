@@ -298,7 +298,7 @@ def find_gates(repo: Path, task_id: str, story_id: str | None) -> dict:
             hit = True
         if story_id and data.get("story_id") == story_id:
             hit = True
-        # Owner/Pet M4 verdict may only carry story_id — accept story join
+        # an M4 verdict may only carry story_id — accept the story join
         if hit:
             out["verdicts"].append(
                 {

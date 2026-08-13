@@ -3,13 +3,33 @@
 
 Exit 0 only when every deny-path probe gets PermissionError (or equivalent)
 after apply-write-fence.sh lock. Does not claim release_qualified.
+
+This probe MUTATES the tree under ROOT: it attempts (and, where the fence is
+absent, succeeds at) creating and deleting probe files under migration/acks,
+migration/verdicts, .hermes/skills and migration/fixtures. Point it at the
+workspace you actually mean to probe.
+
+Usage:
+  python3 probe-write-fence.py                 # probe the current directory
+  python3 probe-write-fence.py /path/to/repo   # probe an explicit root
 """
 from __future__ import annotations
 
+import argparse
 import os
 import sys
 import tempfile
 from pathlib import Path
+
+EXIT_CODES = """\
+Exit codes:
+  0  pass — every deny path refused the write AND the positive control was
+     still writable (fence effective, not a total lockdown)
+  1  BLOCK — at least one FAIL: line on stderr (a deny path accepted the write,
+     i.e. the fence is not effective; or the positive control was not writable,
+     i.e. the fence is too broad)
+  2  usage error (bad/unknown arguments; emitted by argparse)
+"""
 
 DENY_PROBE_RELS = (
     "migration/acks/.f2-seat-probe",
@@ -35,7 +55,19 @@ def try_write(path: Path) -> str:
 
 
 def main() -> int:
-    root = Path(sys.argv[1] if len(sys.argv) > 1 else ".").resolve()
+    ap = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=EXIT_CODES,
+    )
+    ap.add_argument(
+        "root",
+        nargs="?",
+        default=".",
+        help="workspace root to probe — WRITES here (default: current directory)",
+    )
+    args = ap.parse_args()
+    root = Path(args.root).resolve()
     bad = 0
     results: list[tuple[str, str]] = []
 

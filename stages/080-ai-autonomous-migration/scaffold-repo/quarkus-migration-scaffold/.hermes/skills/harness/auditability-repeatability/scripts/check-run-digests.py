@@ -1,7 +1,20 @@
 #!/usr/bin/env python3
-"""AD-H §16.9 / AR-4.3 — run journal body + pre/post digests."""
+"""AD-H §16.9 / AR-4.3 — run journal body + pre/post digests.
+
+Sources:
+  - migration/runs/*.json          (run journals, schema rhoai3.run-journal/v1)
+  - migration/bodies/*.sha256.json (body digest sidecars)
+
+Refuses schema drift, missing journal fields, body digest drift, and retries
+that reused more than one body digest for the same task_id.
+
+Usage:
+  python3 check-run-digests.py                 # scan the current directory
+  python3 check-run-digests.py /path/to/repo   # scan an explicit workspace root
+"""
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
 import sys
@@ -9,13 +22,35 @@ from pathlib import Path
 
 SCHEMA = "rhoai3.run-journal/v1"
 
+EXIT_CODES = """\
+Exit codes:
+  0  pass — digests consistent, or lint idle (no run journals and no body
+     digest sidecars)
+  1  BLOCK — at least one FAIL: line on stderr (unparseable journal/sidecar,
+     bad schema, missing required field, body digest drift, or multi-digest
+     retries for one task_id)
+  2  usage error (bad/unknown arguments; emitted by argparse)
+"""
+
 
 def sha256_file(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def main() -> int:
-    root = Path(sys.argv[1] if len(sys.argv) > 1 else ".").resolve()
+    ap = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=EXIT_CODES,
+    )
+    ap.add_argument(
+        "root",
+        nargs="?",
+        default=".",
+        help="workspace root to scan (default: current directory)",
+    )
+    args = ap.parse_args()
+    root = Path(args.root).resolve()
     runs = root / "migration" / "runs"
     sidecars = list((root / "migration" / "bodies").glob("*.sha256.json")) if (
         root / "migration" / "bodies"

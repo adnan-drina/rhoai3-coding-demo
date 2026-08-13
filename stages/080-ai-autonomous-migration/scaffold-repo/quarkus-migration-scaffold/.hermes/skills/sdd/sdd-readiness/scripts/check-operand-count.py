@@ -1,11 +1,31 @@
 #!/usr/bin/env python3
-"""Architect E-104925Z / E-110403Z — M3 bodies must carry measured operand_count."""
+"""Architect E-104925Z / E-110403Z — M3 bodies must carry measured operand_count.
+
+Lints every M3 body under `<root>/migration/bodies` and `<root>/migration/tasks`,
+or only the body files named after ROOT (create-m3 passes the single body it is
+about to mint).
+
+Usage:
+  python3 check-operand-count.py .
+  python3 check-operand-count.py . migration/bodies/m3-s-010.json --wall-fit
+  python3 check-operand-count.py /projects/modernized BODY.json --wall-fit --v13
+"""
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 from pathlib import Path
 from typing import Any, Optional
+
+EXIT_CODES = """Exit codes:
+  0  pass — every M3 body carries a measured operand_count within cap (and
+     within wall budget under --wall-fit), or idle (no M3 bodies)
+  1  BLOCK — BODY_SIZE refusal: no measurable dest operands, sizing_basis not
+     'operand_count', operand_count missing/mismatched, over cap, dual-stack
+     JPA+JDBC split required, or wall-fit estimate over budget
+  2  usage / harness defect (bad or unknown argument)
+"""
 
 DEFAULT_MAX = 40
 HIGH_MAX = 80
@@ -229,13 +249,40 @@ def check_one(label: str, body: dict, *, wall_fit: bool) -> int:
     return 0
 
 def main() -> int:
-    wall_fit = "--wall-fit" in sys.argv[1:]
-    v13 = "--v13" in sys.argv[1:]
-    if v13:
+    ap = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=EXIT_CODES,
+    )
+    ap.add_argument(
+        "root",
+        nargs="?",
+        default=".",
+        help="product root containing migration/bodies + migration/tasks (default: .)",
+    )
+    ap.add_argument(
+        "bodies",
+        nargs="*",
+        help="optional body JSON paths (absolute, or relative to ROOT) — "
+        "restricts the lint to those bodies; non-existent paths are ignored",
+    )
+    ap.add_argument(
+        "--wall-fit",
+        action="store_true",
+        help="also refuse scopes whose estimated runtime exceeds runtime_budget_sec",
+    )
+    ap.add_argument(
+        "--v13",
+        action="store_true",
+        help="apply the v13 mint caps (default max 5, effort-high max 8)",
+    )
+    parsed = ap.parse_args()
+    wall_fit = parsed.wall_fit
+    if parsed.v13:
         global DEFAULT_MAX, HIGH_MAX
         DEFAULT_MAX = V13_DEFAULT_MAX
         HIGH_MAX = V13_HIGH_MAX
-    args = [a for a in sys.argv[1:] if not a.startswith("-")]
+    args = [parsed.root, *parsed.bodies]
     root = Path(args[0] if args else ".").resolve()
     only: list[Path] = []
     for a in args[1:]:

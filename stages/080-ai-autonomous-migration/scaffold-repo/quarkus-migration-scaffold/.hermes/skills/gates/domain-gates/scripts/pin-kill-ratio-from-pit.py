@@ -117,7 +117,7 @@ def main() -> int:
     ap.add_argument("--story-id", default="B-OWNER-PET-1")
     ap.add_argument(
         "--scope",
-        default="Owner/Pet slice (measured live PIT)",
+        default="measured live PIT slice",
     )
     ap.add_argument("--coverage-min", type=float, required=True)
     ap.add_argument("--kill-attempted-min", type=float, required=True)

@@ -26,6 +26,128 @@ from pathlib import Path
 
 # Architect ratify E-20260812T104706Z — fixed five (migration/ fifth; not pair-named)
 CATEGORIES = {"analysis", "sdd", "gates", "harness", "migration"}
+
+# R-SK.10 — OFFICIAL skill naming rules (Operator E-20260813T125500Z, AD-013
+# official-first). Source: official Agent Skills naming guidance.
+#   charset lowercase a-z 0-9 and '-' only; max 64 chars; no leading/trailing
+#   hyphen; no consecutive hyphens; reserved words prohibited; name must equal
+#   the parent folder (checked separately); GERUND form (verb+-ing) so the name
+#   designates an activity, e.g. analyzing-spreadsheets, testing-code.
+NAME_MAX = 64
+NAME_CHARSET_RX = re.compile(r"^[a-z0-9-]+$")
+NAME_RESERVED = {"anthropic", "claude"}
+# Gerund heuristic: first hyphen-segment ends in -ing and is more than the bare
+# word "ing". Non-gerund leaves must be justified in r-sk10-name-keep.txt.
+NAME_GERUND_RX = re.compile(r"^[a-z]{2,}ing$")
+# Official description budget (skills spec allows up to 1024). The former
+# 60-char house cap forced title-restating descriptions and actively fought
+# the selection signal progressive disclosure depends on — raised, not removed.
+DESC_MAX = 1024
+
+
+def load_name_keep(root):
+    """Architect-justified non-gerund leaf names (R-SK.10 exception list)."""
+    keep = set()
+    for cand in (
+        root / "harness" / "harness-validate" / "references" / "r-sk10-name-keep.txt",
+        root / "harness-validate" / "references" / "r-sk10-name-keep.txt",
+    ):
+        if cand.is_file():
+            for line in cand.read_text(encoding="utf-8").splitlines():
+                line = line.split("#", 1)[0].strip()
+                if line:
+                    keep.add(line)
+            break
+    return keep
+
+
+NAME_KEEP = set()
+
+# R-SK.11 — OFFICIAL Agent Skills spec frontmatter (agentskills.io/specification).
+# The spec defines exactly these frontmatter fields. Anything else belongs
+# inside `metadata` (the spec's own example carries author/version there).
+SPEC_FIELDS = {
+    "name",
+    "description",
+    "license",
+    "compatibility",
+    "metadata",
+    "allowed-tools",
+}
+COMPAT_MAX = 500
+# Spec: "Keep your main SKILL.md under 500 lines" (progressive disclosure).
+SKILL_MAX_LINES = 500
+# Best practice: a description must say what the skill does AND when to use it.
+WHEN_RX = re.compile(r"\b(when|before|after|during|use it|if )\b", re.I)
+
+
+def check_spec_frontmatter(name, fm, text):
+    """R-SK.11 official spec conformance for frontmatter + body budget."""
+    errs = []
+    top = []
+    for line in fm.splitlines():
+        m = re.match(r"^([A-Za-z][A-Za-z0-9_-]*):", line)
+        if m:
+            top.append(m.group(1))
+    for key in top:
+        if key not in SPEC_FIELDS:
+            errs.append(
+                f"{name}:R-SK.11:non-spec frontmatter field '{key}' — official "
+                f"fields are {sorted(SPEC_FIELDS)}; move the rest under metadata"
+            )
+    # metadata: the spec calls for string values but explicitly blesses
+    # client-specific extension under uniquely-named keys. Hermes documents
+    # `metadata.hermes.{tags, category, ...}` as its own namespace, so a single
+    # vendor-namespaced nested block is conformant-by-intent and stays. Only
+    # flag a bare list directly under metadata, which no client can consume.
+    mblock = re.search(r"^metadata:\s*$(.*?)(?=^\S|\Z)", fm + "\n", re.M | re.S)
+    if mblock:
+        for line in mblock.group(1).splitlines():
+            if re.match(r"^\s{2}-\s", line):
+                errs.append(
+                    f"{name}:R-SK.11:metadata holds a bare list — spec requires "
+                    f"a map of string keys to string values"
+                )
+                break
+    compat = field(fm, "compatibility") or ""
+    if compat and len(compat) > COMPAT_MAX:
+        errs.append(f"{name}:R-SK.11:compatibility {len(compat)} chars (max {COMPAT_MAX})")
+    nlines = len(text.splitlines())
+    if nlines > SKILL_MAX_LINES:
+        errs.append(
+            f"{name}:R-SK.11:SKILL.md {nlines} lines (spec recommends < "
+            f"{SKILL_MAX_LINES}) — move detail into references/"
+        )
+    desc = field(fm, "description") or ""
+    if desc and not WHEN_RX.search(desc):
+        errs.append(
+            f"{name}:R-SK.11:description states what but not WHEN to use it — "
+            f"official guidance requires both"
+        )
+    return errs
+
+
+def check_name_rules(name):
+    """R-SK.10 official naming rules. Returns a list of violation strings."""
+    errs = []
+    if len(name) > NAME_MAX:
+        errs.append(f"{name}:R-SK.10:name {len(name)} chars (max {NAME_MAX})")
+    if not NAME_CHARSET_RX.match(name):
+        errs.append(f"{name}:R-SK.10:charset — lowercase a-z, 0-9, '-' only")
+    if name.startswith("-") or name.endswith("-"):
+        errs.append(f"{name}:R-SK.10:must not start or end with a hyphen")
+    if "--" in name:
+        errs.append(f"{name}:R-SK.10:consecutive hyphens")
+    for word in NAME_RESERVED:
+        if word in name:
+            errs.append(f"{name}:R-SK.10:reserved word '{word}'")
+    head = name.split("-", 1)[0]
+    if not NAME_GERUND_RX.match(head) and name not in NAME_KEEP:
+        errs.append(
+            f"{name}:R-SK.10:not gerund form — official naming uses verb+-ing "
+            f"(e.g. analyzing-spreadsheets); justify in r-sk10-name-keep.txt"
+        )
+    return errs
 ALLOWED_SUBDIRS = {"references", "templates", "scripts", "examples", "assets"}
 REQ_SECTIONS = ["## When to Use", "## Procedure", "## Verification"]
 SEMVER = re.compile(r"^\d+\.\d+\.\d+$")
@@ -68,11 +190,13 @@ def check(skill_dir: Path, flat_ok: bool) -> list[str]:
         return errs + [f"{name}:R-SK.2:no frontmatter"]
     if field(fm, "name") != name:
         errs.append(f"{name}:R-SK.2:name != leaf directory")
+    errs.extend(check_name_rules(name))
+    errs.extend(check_spec_frontmatter(name, fm, text))
     desc = field(fm, "description") or ""
     if not desc:
         errs.append(f"{name}:R-SK.2:missing description")
-    elif len(desc) > 60:
-        errs.append(f"{name}:R-SK.2:description {len(desc)} chars (max 60)")
+    elif len(desc) > DESC_MAX:
+        errs.append(f"{name}:R-SK.2:description {len(desc)} chars (max {DESC_MAX})")
     ver = field(fm, "version") or ""
     if not SEMVER.match(ver):
         errs.append(f"{name}:R-SK.2:version '{ver}' not semver")
@@ -282,11 +406,22 @@ def check_specimen_literals(scaffold: Path) -> list[str]:
             if not p.is_file() or p.suffix not in {".md", ".txt", ".yaml", ".yml"}:
                 continue
             rel_parts = p.relative_to(skills).parts
-            if any(x in rel_parts for x in ("scripts", "examples", "assets")):
+            if any(x in rel_parts for x in ("examples", "assets")):
                 continue
             # SKILL.md + references/ (+ templates) only
             if p.name == "SKILL.md" or "references" in rel_parts or "templates" in rel_parts:
                 scan.append(p)
+    # R-SK.5 extension: gate LOGIC must be specimen-agnostic too. A hardcoded
+    # specimen package in a gate is worse than one in prose — the gate silently
+    # matches nothing on any other codebase and passes vacuously (found in
+    # assert-dependency-closure.py, Deputy E-20260813T125813Z audit).
+    if skills.is_dir():
+        for p in skills.rglob("*"):
+            if not p.is_file() or p.suffix not in {".py", ".sh"}:
+                continue
+            if "__pycache__" in p.parts:
+                continue
+            scan.append(p)
     contracts = scaffold / "migration" / "contracts"
     if contracts.is_dir():
         scan.extend(
@@ -349,6 +484,8 @@ def main() -> None:
             file=sys.stderr,
         )
         sys.exit(2)
+    global NAME_KEEP
+    NAME_KEEP = load_name_keep(skills_root if skills_root is not None else dirs[0].parent)
     all_errs: list[str] = []
     for d in dirs:
         all_errs += check(d, flat_ok)

@@ -13,11 +13,35 @@ import runpy
 import sys
 from pathlib import Path
 
-# Sibling under the same skills parent:
-#   .hermes/skills/{sdd-readiness,mta-analysis}/scripts/
-#   or HERMES_HOME/.../software-development/{sdd-readiness,mta-analysis}/scripts/
-_skills_parent = Path(__file__).resolve().parents[2]
-CANON = _skills_parent / "mta-analysis" / "scripts" / "check-findings-handoff.py"
+# Resolve the canonical implementation, which lives in a DIFFERENT skill.
+# Layouts seen in the wild:
+#   categorized: .hermes/skills/<category>/<leaf>/scripts/   (R-SK.7, current)
+#   flat:        .hermes/skills/<leaf>/scripts/              (pre-category)
+#   runtime:     HERMES_HOME/.../software-development/<leaf>/scripts/
+# parents[2] alone assumes the flat layout and resolves to
+# `skills/sdd/mta-analysis/...`, which never exists under the category tree —
+# the shim then always exited 2 and its callers read that as a harness defect.
+_here = Path(__file__).resolve()
+_TARGET = Path("mta-analysis") / "scripts" / "check-findings-handoff.py"
+
+
+def _find_canonical() -> Path:
+    for up in (2, 3):
+        try:
+            parent = _here.parents[up]
+        except IndexError:
+            continue
+        direct = parent / _TARGET
+        if direct.is_file():
+            return direct
+        # categorized: search one category level down
+        for hit in sorted(parent.glob(str(Path("*") / _TARGET))):
+            if hit.is_file():
+                return hit
+    return _here.parents[2] / _TARGET
+
+
+CANON = _find_canonical()
 
 if not CANON.is_file():
     print(

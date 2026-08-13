@@ -106,8 +106,9 @@ def scan_file(path: Path, root: Path) -> list[EntryPoint]:
             ):
                 continue
             # F11 / Architect E-20260811T070235Z: type-level @RequestMapping/@Path
-            # path prefixes are not independently callable handlers (PetClinic
-            # inflated 42→34). Keep method-level Get/Post/… and method @RequestMapping.
+            # path prefixes are not independently callable handlers (counting
+            # them inflated the reference measurement 42→34). Keep method-level
+            # Get/Post/… and method @RequestMapping.
             if re.search(r"@(?:RequestMapping|Path)\b", line) and not re.search(
                 r"@(?:GetMapping|PostMapping|PutMapping|DeleteMapping|PatchMapping)\b",
                 line,

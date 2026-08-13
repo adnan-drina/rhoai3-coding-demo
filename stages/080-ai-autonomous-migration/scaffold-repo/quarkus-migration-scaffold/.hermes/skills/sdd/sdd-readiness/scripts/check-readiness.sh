@@ -2,6 +2,52 @@
 # sdd-readiness skill — P0 pattern-steals + AD-S §S.6 (Architect E-20260808T061327Z): fail closed on
 # unresolved Q-*, missing Non-Goals, incomplete task packets, waivers
 # without re_open_trigger. Skips cleanly when no SDD artifacts exist yet.
+
+usage() {
+  cat <<'USAGE'
+check-readiness.sh — sdd-readiness gate (P0 pattern-steals + AD-S S.6).
+
+Fails closed on: specs/briefs missing "## Non-Goals" or carrying unresolved
+Q-* open questions; task packets missing ac_ids / files_in_scope / deps;
+waivers without a checkable re_open_trigger. Then delegates to
+check-ordering.py (AD-S S.6 identity / refuse worker re-plan / plan_revision)
+and check-kanban-body.py (W2 S6.1 Kanban body vocabulary).
+
+Arguments:
+  none. The scaffold root is derived from this script's own location
+  (<script>/../../../..). Scanned under that root:
+    .specify/specs, specs, migration/briefs, migration/specs (*.md)
+    migration/tasks, migration/kanban (*.json)
+    migration/waivers, migration/mta-exceptions (*.yaml|*.yml|*.json)
+
+  -h, --help   print this usage and exit 0
+
+Examples:
+  bash .hermes/skills/sdd/sdd-readiness/scripts/check-readiness.sh
+  bash .hermes/skills/sdd/sdd-readiness/scripts/check-readiness.sh --help
+
+Exit codes:
+  0  pass — readiness passed, or lint idle (no SDD specs/tasks/waivers yet)
+  1  BLOCK — at least one FAIL: line on stderr, or a delegated check refused
+  2  usage error (unexpected argument)
+USAGE
+}
+
+case "${1:-}" in
+  -h|--help)
+    usage
+    exit 0
+    ;;
+  "")
+    ;;
+  *)
+    printf 'Error: this script takes no arguments. Received: "%s". Usage: %s [--help]\n' \
+      "$1" "$(basename "$0")" >&2
+    usage >&2
+    exit 2
+    ;;
+esac
+
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/../../../.." && pwd)"

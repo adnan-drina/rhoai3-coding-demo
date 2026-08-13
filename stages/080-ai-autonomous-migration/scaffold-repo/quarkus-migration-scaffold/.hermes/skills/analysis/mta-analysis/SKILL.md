@@ -1,11 +1,11 @@
 ---
 name: mta-analysis
-description: Run MTA/kantra on legacy@3.x for M1/M5
-version: 1.1.0
-author: rhoai3-harness-team
+description: Runs kantra against the legacy@3.x referent and emits normalized findings plus the bounded M2 handoff. Use at M1 ANALYZE, at M5 for the findings delta, or when findings-handoff.json is missing, stale by digest, or failing schema validation.
 license: Apache-2.0
-platforms: [linux]
+compatibility: Linux seat; kantra CLI and Java 21; network for rule bundles
 metadata:
+  author: rhoai3-harness-team
+  version: "1.2.0"
   hermes:
     tags:
     - analysis
@@ -17,8 +17,21 @@ metadata:
 ## When to Use
 
 - M1 ANALYZE needs a fresh analyzer run on the **legacy@3.x** tree
-- M5 (or any findings-delta step) needs findings regenerated against the same
-  referent the harvest compared to
+- M5 (or any findings-delta step, G-3) needs findings regenerated against the
+  same referent the harvest compared to
+- M2 is blocked because `migration/findings-handoff.json` is missing or its
+  `evidence.sha256` no longer matches `migration/mta-findings.json`
+- `migration/mta-findings.json` exists but fails
+  `validate-findings-schema.py` (wrong schema, missing `codeSnip`/`category`)
+
+Preconditions — all four, or the script dies before analyzing:
+`migration/derived/legacy-at-3.json` (skill `derive-legacy-boot3`),
+`migration.yaml` with non-empty `analysis.targets`, Java 21 on `PATH`,
+`JVM_MAX_MEM` set. `migration/entry-point-inventory.json` must also exist
+before the handoff step (AR-4.1) — skill `inventory-entry-points`.
+
+Not this skill: entry-point enumeration (`inventory-entry-points`), harvest
+derivation (`derive-legacy-boot3`), gate scoring (`domain-gates`).
 
 **Orchestration:** start M1 via skill `phase-dispatch`
 (`dispatch-phase.sh M1`) so Kanban owns the task, role, budget, and recovery.
@@ -45,30 +58,42 @@ bash .hermes/skills/migration/derive-legacy-boot3/scripts/check-manifest.sh
 
 ## Procedure
 
-Run the bundled mechanism (self-contained: reads env + files; no CLI args):
+One entry point — self-contained, reads env + files, takes no CLI args:
 
 ```bash
 bash "${HERMES_SKILL_DIR}/scripts/mta-analyze-legacy.sh"
 ```
 
-Requires `JVM_MAX_MEM` and Java 21 on `PATH` (`JAVA_HOME_21` preferred).
-Optional overrides: `MTA_OUT_DIR`, `MTA_JSON_OUT`.
+What it does, in order (each step dies non-zero on failure):
 
-If `mta-cli`/`kantra` are missing, the script runs `kantra-ensure` (lazy PVC
-install under `/projects/.tools/kantra`). Findings are normalized
-(`normalize-findings.py`) to `rhoai3.mta-findings/v1-provisional`
-(`codeSnip` required) and schema-checked (`validate-findings-schema.py`) —
-see `migration/schemas/mta-findings.md`. After validate, emit the M1→M2 seam
-artifact `migration/findings-handoff.json` (`emit-findings-handoff.py`, schema
-`rhoai3.findings-handoff/v1` — **no** `codeSnip`) and run
-`check-findings-handoff.py`. See `migration/schemas/findings-handoff.md`.
+1. Resolve the CLI: `/projects/.tools/kantra/kantra`, else `kantra`/`mta-cli`
+   on `PATH`, else run `~/.local/bin/kantra-ensure` (lazy ~690MB PVC install)
+   and re-resolve. Keeps `mta-cli` as a symlink alias to `kantra`.
+2. Assert `migration/derived/legacy-at-3.json` + `migration.yaml`, export
+   `JAVA_HOME_21`, assert `JVM_MAX_MEM`.
+3. Read `harvest_referent` from the manifest; write-probe it and, if frozen,
+   clone to `/projects/.derived/legacy-at-3-mta-input` (JDT/m2e needs to write
+   `.project`). Expand `analysis.targets` into repeated `--target` flags.
+4. `cd "${MTA_RUN_CWD}"` (default `/projects/.tools/mta-run`) and run
+   `analyze --input … --output "${MTA_OUT_DIR}" --target … --json-output
+   "${MTA_JSON_OUT}" --overwrite`. Non-zero tool exit is soft if
+   `<out-dir>/output.json` exists (it is copied to the JSON out).
+5. `normalize-findings.py <json> <cli> <targets-csv> legacy-at-3:<sha256>` →
+   envelope `rhoai3.mta-findings/v1-provisional` with `execution_evidence`
+   and `codeSnip` preserved; then `validate-findings-schema.py <json>`.
+   See `migration/schemas/mta-findings.md`.
+6. `emit-findings-handoff.py <root> <findings> <handoff>` → the M1→M2 seam
+   `migration/findings-handoff.json` (`rhoai3.findings-handoff/v1`: rule IDs,
+   category, bounded `description`, `disposition`, loci, digests — **no**
+   `codeSnip`), then `check-findings-handoff.py <root>` as the gate.
+   See `migration/schemas/findings-handoff.md`.
+
+Defaults: `MTA_OUT_DIR=migration/mta-analyze-out`,
+`MTA_JSON_OUT=migration/mta-findings.json`, both under the project root.
 
 AD-H §16.7 / AR-4.1–4.2: inventory digest **required** before emit; each rule
 carries bounded `description` + `disposition`; optional
 `story-endpoint-partition.json` conservation gate.
-
-The script expands `migration.yaml` `analysis.targets` into repeated
-`--target` flags, writes JSON findings, and overwrites the output dir.
 
 ## Why these flags (do not "simplify" them away)
 
@@ -115,5 +140,26 @@ Both are required environment facts, not optional tuning.
 
 ## Verification
 
-- Scripts under `scripts/` exit 0 on a healthy seat.
-- Conformance lint passes for this skill.
+- Last stdout line is
+  `OK: findings → … handoff → … report → …` and the script exits 0.
+- `migration/mta-findings.json`: `schema: rhoai3.mta-findings/v1-provisional`,
+  `execution_evidence.analyzer_ran: true`, `execution_evidence.rule_set`
+  matching `migration.yaml` `analysis.targets`, `execution_evidence.input_digest`
+  = `legacy-at-3:<manifest sha256>`. Re-run `validate-findings-schema.py` for
+  the assertion: every incident carries `uri`, `lineNumber`, `message`,
+  `codeSnip`; every violation carries `category`.
+- `migration/mta-analyze-out/output.json` exists (raw analyzer report kept
+  beside the normalized envelope).
+- `migration/findings-handoff.json` passes
+  `python3 "${HERMES_SKILL_DIR}/scripts/check-findings-handoff.py" .` — exit 0.
+  It re-hashes both `mta-findings.json` and `entry-point-inventory.json` and
+  fails on digest drift, size > 65536 B, handoff/evidence ratio ≥ 0.25, any
+  `codeSnip`/`raw` key, a `rule_id` absent from the evidence store, a missing
+  `description`, a `disposition` outside
+  {`apply`,`false_positive`,`needs_review`,`opaque_exception`}, or an
+  `opaque:` description not dispositioned as opaque/needs_review.
+  Exit 1 = typed BLOCK (product/gate residue); exit 2 = harness path defect —
+  do not paper over it.
+- Silent-failure catch: `violations` = `{}` (handoff gate reports
+  `handoff.rules empty`) or an empty `rule_set` means targets never expanded or
+  the analyzer produced nothing — treat as INCONCLUSIVE, not "clean".

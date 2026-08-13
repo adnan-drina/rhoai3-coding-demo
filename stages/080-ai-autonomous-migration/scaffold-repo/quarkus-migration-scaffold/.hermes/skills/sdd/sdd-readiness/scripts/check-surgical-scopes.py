@@ -1,10 +1,29 @@
 #!/usr/bin/env python3
-"""AD-H §16.9 / AR-4.4 — surgical write sets + non-overlap + non-compile-only exits."""
+"""AD-H §16.9 / AR-4.4 — surgical write sets + non-overlap + non-compile-only exits.
+
+Lints every M3 body under `<root>/migration/bodies` and `<root>/migration/tasks`,
+or only the body files named after ROOT (create-m3 passes the single body it is
+about to mint).
+
+Usage:
+  python3 check-surgical-scopes.py .
+  python3 check-surgical-scopes.py . migration/bodies/m3-s-010.json
+"""
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 from pathlib import Path
+
+EXIT_CODES = """Exit codes:
+  0  pass — every M3 body has a surgical, non-overlapping destination write set
+     with at least one endpoint/semantic exit, or idle (no M3 bodies)
+  1  BLOCK — unreadable body passed explicitly, empty destination write set,
+     unsequenced overlapping write, missing endpoint/semantic exit_criteria, or
+     compile-shaped-only exit_criteria (AR-4.4)
+  2  usage / harness defect (bad or unknown argument)
+"""
 
 COMPILE_ONLY = frozenset(
     {
@@ -95,7 +114,25 @@ def dest_write_set(body: dict) -> list[str]:
 
 
 def main() -> int:
-    args = [a for a in sys.argv[1:] if not a.startswith("-")]
+    ap = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=EXIT_CODES,
+    )
+    ap.add_argument(
+        "root",
+        nargs="?",
+        default=".",
+        help="product root containing migration/bodies + migration/tasks (default: .)",
+    )
+    ap.add_argument(
+        "bodies",
+        nargs="*",
+        help="optional body JSON paths (absolute, or relative to ROOT) — "
+        "restricts the lint to those bodies; non-existent paths are ignored",
+    )
+    parsed = ap.parse_args()
+    args = [parsed.root, *parsed.bodies]
     root = Path(args[0] if args else ".").resolve()
     # Optional extra body paths restrict the check (create-helper passes one body)
     only: list[Path] = []

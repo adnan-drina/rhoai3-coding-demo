@@ -1,11 +1,11 @@
 ---
 name: specify-workspace-init
-description: Initialize Spec Kit workspace for M2
-version: 1.1.0
-author: rhoai3-harness-team
+description: When a workspace has no .specify/ — installs pinned Spec Kit, the Non-Goals override and the AD-S stop rule
 license: Apache-2.0
-platforms: [linux]
+compatibility: Linux seat; network to install pinned Spec Kit CLI
 metadata:
+  author: rhoai3-harness-team
+  version: "1.2.0"
   hermes:
     tags:
     - sdd
@@ -16,17 +16,29 @@ metadata:
 
 ## When to Use
 
-- Fresh migration workspace with no `.specify/` under `/projects/modernized`
-- After a wipe that removed `.specify/`
-- **Not** on the golden scaffold source tree; **not** in `harness-refactoring/`
+- `/projects/modernized` has no `.specify/` (fresh workspace, or a wipe removed
+  it) and M2 needs `/speckit-*` — provisioning must precede `/speckit-specify`,
+  since the Non-Goals override is a template, not a post-edit.
+- `specify` is not on PATH at postStart and the seat still owes M2 authoring.
+- After `HERMES_HOME` is relocated — re-run to **assert** `skills.external_dirs`
+  still lists both skills roots (relocation silently hides `/speckit-*`).
+- **Not** for checking what spec-kit produced — `sdd-readiness` lints specs,
+  Kanban bodies, and partition coverage. This skill provisions only; it never
+  reads spec content.
+- **Not** on the golden scaffold source tree and **not** in
+  `harness-refactoring/` — init refuses outside `/projects/*` when the
+  `DO_NOT_COMMIT_SPECIFY` marker is present (`FORCE_AD_S_PROVISION=1` dry-run).
 
 ## Procedure
 
 ```bash
 bash "${HERMES_SKILL_DIR}/scripts/init-workspace.sh" /projects/modernized
+# standalone re-assert (also runs inside init when HERMES_HOME is relocated)
+python3 "${HERMES_SKILL_DIR}/scripts/check-external-dirs.py" /projects/modernized
 ```
 
-Idempotent via `.specify/.rhoai3-ads-provisioned`.
+Idempotent via `.specify/.rhoai3-ads-provisioned`. Spec Kit is pinned
+(`specify-cli==0.16.1`, R-HX.1); override only via `SPECIFY_CLI_VERSION`.
 
 ## What it does (AD-S)
 
@@ -55,5 +67,19 @@ After `/speckit-tasks` (optional `/speckit-analyze`) → `kanban_create()`.
 
 ## Verification
 
-- Scripts under `scripts/` exit 0 on a healthy seat.
-- Conformance lint passes for this skill.
+- Four artifacts must exist **together** under the workspace root: `.specify/`
+  (from `specify init`), `.specify/templates/overrides/spec-template.md`,
+  `.specify/AD-S-STOP-RULE.md`, and
+  `.hermes/provision/spec-kit/EXTERNAL_DIRS.note`.
+- `.specify/.rhoai3-ads-provisioned` holds a UTC timestamp and is written
+  **last**; a second run prints `already provisioned (<ts>) — skip` and exits 0.
+  **Silent-failure catch:** marker present but the Non-Goals override missing
+  means a partial or hand-made init — delete the marker and re-run, because the
+  marker alone suppresses all later provisioning.
+- Relocated `HERMES_HOME`: `check-external-dirs.py` must print
+  `OK: external_dirs lists project + home skills (<config>)`. `assert idle`
+  means `HERMES_HOME` is unset or default — it is not evidence for a relocated
+  seat.
+- Every failure path exits non-zero with `[specify-workspace-init] ERROR: …`
+  before the marker is written (missing override asset, `specify` absent after
+  install, `.specify/` not created, external_dirs assert failed).

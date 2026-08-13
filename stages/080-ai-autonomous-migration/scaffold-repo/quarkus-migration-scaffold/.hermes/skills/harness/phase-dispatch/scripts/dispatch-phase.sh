@@ -77,9 +77,7 @@ if [[ "${PHASE}" == "M2a" ]]; then
     || die "Spec Kit preseed failed (R0 / provision-owns-tools) — run postStart init-workspace.sh; do not agent-init"
 fi
 # CS-2: sync retired — overlays modify-in-place under skill references/ (W3)
-  || die "extension overlay sync failed"
 # CS-2: sync retired — overlays modify-in-place under skill references/ (W3)
-  || die "extension overlay --check failed (R-M3.32)"
 
 # R-HX.5 + Hermes Managed Scope (official):
 #   Providers/secrets live under HERMES_MANAGED_DIR and *overlay* HERMES_HOME.

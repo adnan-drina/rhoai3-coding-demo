@@ -3,13 +3,27 @@
 
 Looks under migration/verdicts/*.json and migration/preflight/*.json.
 Idle (exit 0) when no verdict artifacts exist.
+
+Usage:
+  python3 check-verdict-routing.py .
+  python3 check-verdict-routing.py /projects/modernized
 """
 from __future__ import annotations
 
+import argparse
 import json
 import subprocess
 import sys
 from pathlib import Path
+
+EXIT_CODES = """Exit codes:
+  0  pass — every verdict artifact routes legally, or gate idle (no
+     verdict/preflight artifacts)
+  1  BLOCK — unreadable artifact, missing verdict, illegal verdict→routing
+     pair, ship without full ACCEPT, PROVISIONAL_ACCEPT misuse, kill-ratio
+     composition breach, or a failed shared-substrate reopen check
+  2  usage / harness defect (bad or unknown argument)
+"""
 
 VALID_ROUTING = {
     "REFUSE": {
@@ -218,7 +232,19 @@ def check_composition(label: str, obj: dict, root: Path) -> int:
 
 
 def main() -> int:
-    root = Path(sys.argv[1] if len(sys.argv) > 1 else ".").resolve()
+    ap = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=EXIT_CODES,
+    )
+    ap.add_argument(
+        "root",
+        nargs="?",
+        default=".",
+        help="product root containing migration/verdicts + migration/preflight (default: .)",
+    )
+    args = ap.parse_args()
+    root = Path(args.root).resolve()
     files: list[Path] = []
     for d in (root / "migration/verdicts", root / "migration/preflight"):
         if d.is_dir():

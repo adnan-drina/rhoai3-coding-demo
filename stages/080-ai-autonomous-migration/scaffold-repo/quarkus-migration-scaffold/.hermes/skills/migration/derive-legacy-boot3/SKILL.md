@@ -1,11 +1,11 @@
 ---
 name: derive-legacy-boot3
-description: Derive Boot-3 harvest_referent for M1
-version: 1.1.0
-author: rhoai3-harness-team
+description: Before M1 on a Boot 2.x legacy mount — freezes a derived legacy@3.x tree and stamps the harvest_referent manifest
 license: Apache-2.0
-platforms: [linux]
+compatibility: Linux seat; Java 21 and Maven; writable derived tree
 metadata:
+  author: rhoai3-harness-team
+  version: "1.2.0"
   hermes:
     tags:
     - migration
@@ -16,10 +16,16 @@ metadata:
 
 ## When to Use
 
-- Before M1 ANALYZE, when `migration/derived/legacy-at-3.json` is missing
-- After a wipe of `/projects/.derived/legacy-at-3` that requires re-freeze
+- Before M1 ANALYZE, when `migration/derived/legacy-at-3.json` is missing or
+  `check-manifest.sh` fails (empty required field, schema ≠ `legacy-at-3/v2`,
+  `harvest_referent` not a directory).
+- After a wipe of `/projects/.derived/legacy-at-3` — the manifest then names a
+  tree that no longer exists; re-derive, never repoint at the 2.x mount.
+- When the legacy mount is swapped for a different specimen or revision: the
+  recorded `sha256` no longer describes what M1 would harvest against.
 
 Do **not** load this on ordinary coding turns — it is a one-time precondition.
+Harvest and MTA **read** the manifest; they never re-derive.
 
 ## Why this exists
 
@@ -67,5 +73,20 @@ bash "${HERMES_SKILL_DIR}/scripts/check-manifest.sh"
 
 ## Verification
 
-- Scripts under `scripts/` exit 0 on a healthy seat.
-- Conformance lint passes for this skill.
+- `check-manifest.sh` exits 0 printing `OK: legacy-at-3 mode=<identity|derived>
+  harvest_referent=<path> jdk A→B boot X→Y`. It fails closed when any of the
+  eight required fields is empty, the schema is not `legacy-at-3/v2`, or
+  `harvest_referent` is not a directory.
+- `mode=derived`: `/projects/.derived/legacy-at-3` exists, its `pom.xml`
+  resolves to Boot ≥ 3, and the tree is write-protected (`chmod a-w`, dirs keep
+  `+x`). A writable derived tree means the freeze never ran or something edited
+  it afterwards — re-derive; do not `chmod` it back.
+- **Silent-failure catch:** `harvest_referent=/projects/legacy` while
+  `spring_boot_version_source` is < 3. That combination means harvest is being
+  compared to the 2.x mount, which reads every Boot-3 API change as infidelity.
+- Default composite path leaves `migration/derived/free-primitives-apply-log.json`
+  (`schema free-primitives-apply-log/v1`) with one entry per rule — `rule_id`,
+  `cite`, `pre_digest`/`post_digest`, `skipped`. Missing log with `mode=derived`
+  and `DERIVE_UPGRADE_CMD` unset ⇒ the upgrade did not run.
+- `/projects/legacy` is byte-identical afterwards — the derivation copies out
+  (rsync, or tar when rsync is absent) and never writes to the RO mount.
