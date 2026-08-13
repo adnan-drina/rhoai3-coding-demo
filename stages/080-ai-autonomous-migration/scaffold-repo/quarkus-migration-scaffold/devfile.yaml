@@ -212,18 +212,20 @@ commands:
         # loading the generic Nous starter identity.
         DECOY_SOUL="${HOME}/.hermes/SOUL.md"
         mkdir -p "${HOME}/.hermes"
-        cat > "${DECOY_SOUL}" <<'DECOY'
-# REFUSE — wrong SOUL.md
-
-This path is NOT the migration workspace identity.
-
-Set HERMES_HOME=/projects/modernized/.hermes/home (container env / login
-profile) and load $HERMES_HOME/SOUL.md. The authored copy lives at
-/projects/modernized/.hermes/SOUL.md and is factory-placed under HERMES_HOME
-with sha256 verification (AD-H §14).
-
-Do not use the auto-seeded Hermes starter identity in this seat.
-DECOY
+        # Use printf (not a column-0 heredoc): a bare heredoc body ends the
+        # YAML | block and Dev Spaces fails with "Can't parse devfile yaml".
+        printf '%s\n' \
+          '# REFUSE - wrong SOUL.md' \
+          '' \
+          'This path is NOT the migration workspace identity.' \
+          '' \
+          'Set HERMES_HOME=/projects/modernized/.hermes/home (container env / login' \
+          'profile) and load $HERMES_HOME/SOUL.md. The authored copy lives at' \
+          '/projects/modernized/.hermes/SOUL.md and is factory-placed under HERMES_HOME' \
+          'with sha256 verification (AD-H section 14).' \
+          '' \
+          'Do not use the auto-seeded Hermes starter identity in this seat.' \
+          > "${DECOY_SOUL}"
         echo "Neutralized decoy SOUL at ${DECOY_SOUL} (Deputy E-20260813T152939Z)."
   - id: start-hermes-dashboard
     exec:
