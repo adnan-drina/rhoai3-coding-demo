@@ -36,6 +36,9 @@ Before `create-m3` / dispatch:
 
 ## Related
 
+Bank id: `BANK-CREATE-PATH-IFACE-1`
+
+
 - `partition-coverage.md` — whole-partition VALID
 - `compile-scope-filtered.md` — in-scope compile errors FAIL (raises corner pressure)
 - Bank: board monitoring record `v12-m3-s002a-t_f3e44947-create-path-iface-closure` (authoring repo; not present in a deployed seat)

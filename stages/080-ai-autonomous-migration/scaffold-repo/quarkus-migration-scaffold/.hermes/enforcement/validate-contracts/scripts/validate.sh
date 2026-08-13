@@ -749,6 +749,10 @@ echo "== R-SK.13 scaffold hermeticity (no link to the authoring project) =="
 python3 "${SKILL_DIR}/scripts/check-scaffold-hermeticity.py" --root "${ROOT}" || rc=1
 echo "== UPLIFT-7 golden cleanliness (no run-state in tip tree) =="
 python3 "${SKILL_DIR}/scripts/check-golden-cleanliness.py" --root "${ROOT}" || rc=1
+echo "== dangling .hermes refs (Deputy E-174046Z relocation residue) =="
+python3 "${SKILL_DIR}/scripts/check-dangling-hermes-refs.py" --root "${ROOT}" || rc=1
+echo "== create-path tip sync (R0/R3) =="
+python3 "${ROOT}/.hermes/enforcement/dispatch-phase/scripts/check-create-path-tip-sync.py" "${ROOT}" || rc=1
 echo "== R-SK.12 script CLI contract (syntax + no false-green --help) =="
 python3 "${SKILL_DIR}/scripts/check-script-cli-contract.py" --root "${ROOT}/.hermes/skills" || rc=1
 python3 "${SKILL_DIR}/scripts/check-script-cli-contract.py" --root "${ROOT}/.hermes/enforcement" || rc=1

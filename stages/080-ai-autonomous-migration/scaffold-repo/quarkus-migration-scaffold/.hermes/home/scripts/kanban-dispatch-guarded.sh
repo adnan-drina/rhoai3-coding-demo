@@ -20,4 +20,16 @@ python3 "${ASSERT}" || {
   exit 1
 }
 
+# Architect E-20260812T090529Z Class A — BANK-CONV-LIVE-WD-1 must arm on
+# dispatch path (Hermes gateway cron often down in Dev Spaces). Fail-closed.
+ARM_CL="${ROOT}/.hermes/home/scripts/arm-conv-live-watchdog.sh"
+[[ -x "${ARM_CL}" || -f "${ARM_CL}" ]] || {
+  echo "kanban-dispatch-guarded: missing ${ARM_CL} (CONV-LIVE arm required)" >&2
+  exit 1
+}
+bash "${ARM_CL}" || {
+  echo "kanban-dispatch-guarded: CONV-LIVE arm failed — refuse dispatch" >&2
+  exit 1
+}
+
 exec hermes kanban dispatch "$@"

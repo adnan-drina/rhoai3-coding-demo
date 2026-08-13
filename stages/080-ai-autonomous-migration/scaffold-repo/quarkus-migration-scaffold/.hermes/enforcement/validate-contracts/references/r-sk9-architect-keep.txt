@@ -1,0 +1,3 @@
+# R-SK.9 Architect KEEP allowlist (empty = no exceptions).
+# One entry per line: relative/path.md OR relative/path.md:lineno
+# Trailing # comment should cite ledger EID.
