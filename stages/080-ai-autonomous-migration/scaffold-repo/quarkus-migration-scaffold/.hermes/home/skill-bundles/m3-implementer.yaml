@@ -3,17 +3,20 @@ skills:
 - check-spec-readiness
 - derive-story-oracles
 - configure-quarkus-profiles
+- form-entity-persistence
 - spring-to-quarkus-patterns
 description: M3 IMPLEMENT phase bundle (AD-002G attach matrix)
 instruction: >-
-  AD-002E/F/G: preloaded skills are check-spec-readiness + derive-story-oracles
-  + configure-quarkus-profiles + spring-to-quarkus-patterns. Each → skill_view
-  consult OR typed skills_unused:<skill>:<reason> before kanban_complete.
-  Silence invalid. Derive exit_criteria via derive-story-oracles (class-legal
-  only; no dual correct+wrong). Config/properties stories: invoke
-  configure-quarkus-profiles. Hard invoke /spring-to-quarkus-patterns (or
-  skill_view) before first destination edit; then open needed references/*
-  (rest / di-config / persistence / testing / security-config).
+  AD-002E/F/G: preloaded skills include check-spec-readiness,
+  derive-story-oracles, configure-quarkus-profiles, form-entity-persistence,
+  spring-to-quarkus-patterns. Each → skill_view consult OR typed
+  skills_unused:<skill>:<reason> before kanban_complete. Silence invalid.
+  Derive exit_criteria via derive-story-oracles (class-legal only; no dual
+  correct+wrong). Config stories: configure-quarkus-profiles. Entity/mapping
+  stories: form-entity-persistence. Hard invoke /spring-to-quarkus-patterns
+  (or skill_view) before first destination edit; then open needed references/*
+  (rest / di-config / persistence / testing / security-config /
+  transitive-supporting-types / cache-adopt-defer / cdi-service-facade).
   BANK-DEST-INV-HARDINVOKE-1: any missing/absent/DEST_MISS/empty-destination
   conclusion is INVALID unless Reasoning cites refs.destination_inventory
   (path+sha256) or evidence/receipts/destination-inventory/; dependency_wait

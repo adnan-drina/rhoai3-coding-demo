@@ -142,6 +142,9 @@ REQUIRED_FILES = [
     ".hermes/skills/migration/reference-rh-quarkus-pom/references/pom-structure.md",
     # RS1 / Z2
     ".hermes/skills/migration/configure-quarkus-profiles/SKILL.md",
+    # T-7 / R-SKILL / Z2
+    ".hermes/skills/migration/form-entity-persistence/SKILL.md",
+    ".hermes/skills/migration/spring-to-quarkus-patterns/references/transitive-supporting-types.md",
 ]
 
 # Tip-sync substring table (R0/R3).
@@ -235,6 +238,26 @@ REQUIRED_SUBSTRINGS = [
         ".hermes/phase-dispatch.yaml",
         "configure-quarkus-profiles",
         "RS1 skill attached on M3",
+    ),
+    (
+        ".hermes/skills/migration/form-entity-persistence/SKILL.md",
+        "MappedSuperclass",
+        "T-7 form-entity-persistence skill",
+    ),
+    (
+        ".hermes/skills/migration/spring-to-quarkus-patterns/references/transitive-supporting-types.md",
+        "supporting type",
+        "R-SKILL-A transitive supporting types",
+    ),
+    (
+        ".hermes/skills/migration/spring-to-quarkus-patterns/references/cache-adopt-defer.md",
+        "CacheResult",
+        "R-SKILL-C cache adopt/defer",
+    ),
+    (
+        ".hermes/skills/migration/spring-to-quarkus-patterns/references/cdi-service-facade.md",
+        "readOnly",
+        "R-SKILL-D CDI service facade",
     ),
     (
         "devfile.yaml",

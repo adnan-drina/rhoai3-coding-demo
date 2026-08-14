@@ -23,6 +23,19 @@ Internal pack (secondary): `source-analysis/external-review/20260810-artifact-re
 | sec-disable | profile-based security off | Quarkus `%profile` props / build-time disable | ADOPT | Disabled mode = tested policy, not silent no-op |
 | sec-cdi | `@Component` security helpers | `@ApplicationScoped` | ADOPT | Same CDI rules as `di-config.md` |
 
+### Declarative props vs Java (R-SKILL-B)
+
+- **Path/policy layer** (`quarkus.http.auth.permission.*` / `policy.*`) lives
+  entirely in `application.properties` — no Java required for common cases.
+- **Identity verification** needs an `IdentityProvider`; for JDBC realm the
+  extension + `quarkus.security.jdbc.*` properties supply it (no hand-written
+  provider).
+- A story whose write-set **excludes** `application.properties` **cannot**
+  complete the declarative layer — escalate missing-owner; do not essay two
+  write-sets together.
+- Default: one auth mechanism per path; multiple mechanisms need Inclusive
+  Authentication or a custom `HttpAuthenticationMechanism`.
+
 ### Mechanical transform checklist
 
 1. **pom:** `quarkus-security` + (for JDBC store) `quarkus-elytron-security-jdbc`  

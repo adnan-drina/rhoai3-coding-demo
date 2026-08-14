@@ -42,14 +42,17 @@ URLs and `db-kind` disagree.
 
 ### EntityManager vs Panache (decide before claim)
 
+Deep form (MappedSuperclass vs Inheritance, entity-only oracles): skill
+`form-entity-persistence`.
+
 | Prefer | When |
 |--------|------|
 | **Panache repository** | CRUD aligned with Spring Data method names; simple queries |
-| **`@Inject EntityManager`** | Custom JPQL/merge/delete patterns; profile-specific impl merge (S-004) |
+| **`@Inject EntityManager`** | Custom JPQL/merge/delete patterns; profile-specific impl merge |
 | **Neither Spring Data** | Never `quarkus-spring-data-*` |
 
 Do **not** claim “Panache” in the completion summary unless Panache types appear
-in the diff (`claim_accuracy` / S-004 lesson).
+in the diff (`claim_accuracy`).
 
 ### Absent result + transactions (AR-3.5)
 

@@ -5,7 +5,7 @@ license: Apache-2.0
 compatibility: Linux seat; guidance only, no scripts
 metadata:
   author: rhoai3-harness-team
-  version: "1.3.0"
+  version: "1.4.0"
   hermes:
     tags:
     - migration
@@ -55,11 +55,14 @@ new behaviour, weaken G-1…G-4, or replace free-primitives / MTA.
 | `references/rest-annotations.md` | JAX-RS / RESTEasy → `quarkus-rest` annotation map |
 | `references/exception-mapping.md` | Local/global exception handlers; the advice-class gotcha; legacy error-body shape |
 | `references/di-config.md` | Scopes, profiles, MapStruct `componentModel=cdi` (Phase-4 feedforward) |
-| `references/persistence.md` | Spring Data → Panache **or** EntityManager (decide before claim) |
+| `references/persistence.md` | Spring Data → Panache **or** EntityManager (decide before claim); deep form → skill `form-entity-persistence` |
+| `references/transitive-supporting-types.md` | Partitioned DTO/mapper closure — supporting types decision (R-SKILL-A) |
 | `references/jdbc-anti-essay.md` | Raw `JdbcTemplate` on destination — write the Agroal/injection form, do not essay |
 | `references/testing.md` | `@QuarkusTest` / REST Assured vs Spring test slices; **§Failure / Import / Mock procedures** + golden REST fixture path |
-| `references/security-config.md` | A-bar security map + golden basic-authz (R-HX.13) |
+| `references/security-config.md` | A-bar security map + declarative props vs Java identity (R-SKILL-B) |
 | `references/security-anti-essay.md` | Write-first / anti-placeholder (synced from extensions) |
+| `references/cache-adopt-defer.md` | `@Cacheable` → `@CacheResult` adopt/defer (R-SKILL-C) |
+| `references/cdi-service-facade.md` | `@Service` → CDI ctor inject / `@Transactional` / `readOnly` (R-SKILL-D) |
 | `references/spring-compat-reject.md` | REJECT `quarkus-spring-*` — metadata shim ≠ Spring runtime (mechanism only) |
 | `references/observability.md` | Actuator `HealthIndicator` → SmallRye `HealthCheck`; probe-type choice; fixed `/q/health*` paths |
 
