@@ -730,6 +730,99 @@ else
   echo "FAIL: legal-only build_resolves should pass" >&2
   rc=1
 fi
+# persistence + mapping_valid PASS; persistence + http_semantics FAIL
+python3 - <<PY
+import json, pathlib
+root = pathlib.Path("${t8_tmp}")
+body = {
+  "phase": "M3",
+  "identity": {"operand_class": "persistence", "story_id": "S-T8p"},
+  "files_writable": ["src/main/java/x/Repo.java"],
+  "exit_criteria": [{"check": "mapping_valid"}],
+}
+(root / "evidence/bodies/m3-dual-oracle.json").write_text(json.dumps(body), encoding="utf-8")
+PY
+if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/check-surgical-scopes.py" "${t8_tmp}" \
+  >/dev/null 2>&1; then
+  echo "OK: T-8 legal-only persistence mapping_valid passed"
+else
+  echo "FAIL: legal-only mapping_valid should pass" >&2
+  rc=1
+fi
+python3 - <<PY
+import json, pathlib
+root = pathlib.Path("${t8_tmp}")
+body = {
+  "phase": "M3",
+  "identity": {"operand_class": "persistence", "story_id": "S-T8pw"},
+  "files_writable": ["src/main/java/x/Repo.java"],
+  "exit_criteria": [{"check": "mapping_valid"}, {"check": "http_semantics"}],
+}
+(root / "evidence/bodies/m3-dual-oracle.json").write_text(json.dumps(body), encoding="utf-8")
+PY
+if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/check-surgical-scopes.py" "${t8_tmp}" \
+  >/dev/null 2>&1; then
+  echo "FAIL: persistence+http_semantics should refuse" >&2
+  rc=1
+else
+  echo "OK: T-8 persistence foreign http_semantics refused"
+fi
+# bootstrap + app_boots PASS; bootstrap + health_probe FAIL
+python3 - <<PY
+import json, pathlib
+root = pathlib.Path("${t8_tmp}")
+body = {
+  "phase": "M3",
+  "identity": {"operand_class": "bootstrap", "story_id": "S-T8bstrap"},
+  "files_writable": ["src/main/java/x/App.java"],
+  "exit_criteria": [{"check": "app_boots"}],
+}
+(root / "evidence/bodies/m3-dual-oracle.json").write_text(json.dumps(body), encoding="utf-8")
+PY
+if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/check-surgical-scopes.py" "${t8_tmp}" \
+  >/dev/null 2>&1; then
+  echo "OK: T-8 legal-only bootstrap app_boots passed"
+else
+  echo "FAIL: legal-only app_boots should pass" >&2
+  rc=1
+fi
+python3 - <<PY
+import json, pathlib
+root = pathlib.Path("${t8_tmp}")
+body = {
+  "phase": "M3",
+  "identity": {"operand_class": "bootstrap", "story_id": "S-T8bh"},
+  "files_writable": ["src/main/java/x/App.java"],
+  "exit_criteria": [{"check": "health_probe"}],
+}
+(root / "evidence/bodies/m3-dual-oracle.json").write_text(json.dumps(body), encoding="utf-8")
+PY
+if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/check-surgical-scopes.py" "${t8_tmp}" \
+  >/dev/null 2>&1; then
+  echo "FAIL: bootstrap+health_probe should refuse" >&2
+  rc=1
+else
+  echo "OK: T-8 bootstrap foreign health_probe refused"
+fi
+# unknown class fail-closed (not full vocab)
+python3 - <<PY
+import json, pathlib
+root = pathlib.Path("${t8_tmp}")
+body = {
+  "phase": "M3",
+  "identity": {"operand_class": "not_a_class", "story_id": "S-T8u"},
+  "files_writable": ["pom.xml"],
+  "exit_criteria": [{"check": "http_semantics"}],
+}
+(root / "evidence/bodies/m3-dual-oracle.json").write_text(json.dumps(body), encoding="utf-8")
+PY
+if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/check-surgical-scopes.py" "${t8_tmp}" \
+  >/dev/null 2>&1; then
+  echo "FAIL: unknown operand_class should refuse (not inherit full vocab)" >&2
+  rc=1
+else
+  echo "OK: T-8 unknown operand_class fail-closed"
+fi
 rm -rf "${t8_tmp}"
 if [ -f "${ROOT}/governance/contracts/semantic-exits.md" ]; then
   echo "FAIL: semantic-exits.md still under contracts/ (T-8/GRT retire)" >&2

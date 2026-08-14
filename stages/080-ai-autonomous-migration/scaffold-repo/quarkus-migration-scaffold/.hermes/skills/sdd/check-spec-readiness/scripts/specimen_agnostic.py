@@ -385,6 +385,9 @@ SEMANTIC_EXIT_VOCAB = frozenset(
         "log_output",
         "cache_hit",
         "health_probe",
+        # T-8 closed classes (Architect E-20260814T181701Z)
+        "mapping_valid",
+        "app_boots",
         # Typed escape when no measurable oracle exists (F5)
         "oracle_unavailable",
     }
@@ -393,13 +396,15 @@ SEMANTIC_EXIT_VOCAB = frozenset(
 # Backward-compatible alias used by older call sites / docs.
 ENDPOINTISH = SEMANTIC_EXIT_VOCAB
 
-# operand_class → preferred semantic exit checks (at least one required unless
-# oracle_unavailable with reason). Unknown classes fall back to ENDPOINTISH ∩ REST-ish.
+# operand_class → legal semantic exit checks (at least one required unless
+# oracle_unavailable with reason). Unknown classes fail-closed (empty set) —
+# they must not inherit the full vocab (Architect E-20260814T181701Z).
 # F5a (Deputy E-20260813T221456Z): oracle_unavailable is NOT legal for
-# rest/api/src_code — those always have a measurable oracle. Escape remains
-# for build/config/test/infra/observability classes that genuinely lack one.
+# rest/api/src_code/bootstrap/persistence — those always have a measurable oracle.
+# Escape remains for build/config/test/infra/observability classes that genuinely
+# lack one.
 ORACLE_UNAVAILABLE_FORBIDDEN_CLASSES: frozenset[str] = frozenset(
-    {"rest", "api", "src_code"}
+    {"rest", "api", "src_code", "bootstrap", "persistence"}
 )
 # F5b: mint-wide fail-closed when escape count exceeds this (of ~13 stories).
 ORACLE_UNAVAILABLE_MINT_CAP: int = 2
@@ -409,6 +414,8 @@ OPERAND_CLASS_SEMANTIC_EXITS: dict[str, frozenset[str]] = {
     "build-config": frozenset({"build_resolves", "oracle_unavailable"}),
     "config": frozenset({"config_profile_load", "oracle_unavailable"}),
     "pom": frozenset({"build_resolves", "oracle_unavailable"}),
+    "bootstrap": frozenset({"app_boots"}),
+    "persistence": frozenset({"mapping_valid"}),
     "test": frozenset({"test_suite_runs", "oracle_unavailable"}),
     "infra": frozenset({"cache_hit", "health_probe", "oracle_unavailable"}),
     "observability": frozenset({"log_output", "health_probe", "oracle_unavailable"}),
@@ -435,6 +442,34 @@ OPERAND_CLASS_SEMANTIC_EXITS: dict[str, frozenset[str]] = {
     "src_code": frozenset(SEMANTIC_EXIT_VOCAB - {"oracle_unavailable"}),
 }
 
+# Singleton preferred stamp for the deterministic assembler (one name per class).
+# rest/api: concern-table first named HTTP check. src_code has no singleton.
+PREFERRED_SEMANTIC_EXIT: dict[str, str] = {
+    "build_config": "build_resolves",
+    "build-config": "build_resolves",
+    "config": "config_profile_load",
+    "pom": "build_resolves",
+    "bootstrap": "app_boots",
+    "persistence": "mapping_valid",
+    "test": "test_suite_runs",
+    "infra": "health_probe",
+    "observability": "log_output",
+    "rest": "http_semantics",
+    "api": "http_semantics",
+}
+
+# Official technique strings for assembler `cmd` (concern-oracle-table.md).
+PREFERRED_SEMANTIC_EXIT_CMD: dict[str, str] = {
+    "build_resolves": "mvn compile / quarkus:build exit 0",
+    "config_profile_load": "ConfigValidationException; build-time mismatch fail; @TestProfile",
+    "mapping_valid": "database.generation=validate / SchemaManager.validateMappedObjects()",
+    "app_boots": "boot and observe failure; @QuarkusTest with no HTTP — unsatisfied CDI fails start",
+    "http_semantics": "@QuarkusTest + REST Assured status/body",
+    "test_suite_runs": "mvn test exit 0",
+    "health_probe": "HTTP contract on /q/health/ready",
+    "log_output": "InMemoryLogHandler (internal API caveat)",
+}
+
 
 def normalize_operand_class(body: dict) -> str:
     ident = body.get("identity") if isinstance(body.get("identity"), dict) else {}
@@ -448,11 +483,22 @@ def required_semantic_exits_for(body: dict) -> frozenset[str]:
     oc = normalize_operand_class(body)
     if oc in OPERAND_CLASS_SEMANTIC_EXITS:
         return OPERAND_CLASS_SEMANTIC_EXITS[oc]
-    # aliases
-    if oc in {"build_config", "build-config", "config", "pom"}:
-        return OPERAND_CLASS_SEMANTIC_EXITS["build_config"]
-    # Unknown class: full vocab without universal escape (F5a posture)
-    return frozenset(SEMANTIC_EXIT_VOCAB - {"oracle_unavailable"})
+    # Unknown class: empty set — mint lint fail-closed (Architect E-20260814T181701Z).
+    # Do not widen to full vocab (that licensed http_semantics on JPA/bootstrap).
+    return frozenset()
+
+
+def preferred_semantic_exit_for(operand_class: str) -> str | None:
+    """One class-legal stamp for the assembler. None ⇒ unknown class (refuse)."""
+    oc = str(operand_class or "").strip().lower()
+    allowed = OPERAND_CLASS_SEMANTIC_EXITS.get(oc)
+    if not allowed:
+        return None
+    pref = PREFERRED_SEMANTIC_EXIT.get(oc)
+    if pref and pref in allowed:
+        return pref
+    measurable = sorted(allowed - {"oracle_unavailable"})
+    return measurable[0] if measurable else None
 
 
 def is_compile_only_check(name: str) -> bool:

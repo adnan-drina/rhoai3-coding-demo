@@ -6,7 +6,8 @@ Specimen-agnostic. Prefer framework-exposed signals over greps.
 |---------|----------------------|----------------------------------|
 | Build resolves | `mvn compile` / `quarkus:build` exit 0 | `build_resolves` |
 | Config loads | `ConfigValidationException`; build-time mismatch fail; `@TestProfile` — see skill `configure-quarkus-profiles` | `config_profile_load` |
-| Mapping valid | `database.generation=validate` / `SchemaManager.validateMappedObjects()` | (entity stories: prefer test that runs validate; avoid query oracles with no query write-set) |
+| Mapping valid | `database.generation=validate` / `SchemaManager.validateMappedObjects()` | `mapping_valid` |
+| Bootstrap / DI | Boot and observe failure; `@QuarkusTest` with no HTTP (unsatisfied CDI fails start) | `app_boots` |
 | HTTP contract | `@QuarkusTest` + REST Assured status/body | `http_semantics`, `route_contract`, `endpoint_contract` |
 | Security enforced | `@TestSecurity` asserting live 401/403 vs 200 | `security_authz`, `route_auth` |
 | Cache effective | spy/counter on underlying work (thinner official grounding) | `cache_hit` |

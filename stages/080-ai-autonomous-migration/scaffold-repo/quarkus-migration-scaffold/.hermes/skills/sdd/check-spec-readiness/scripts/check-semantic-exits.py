@@ -37,6 +37,8 @@ FAMILY_CHECKS: dict[str, frozenset[str]] = {
     "log_output": frozenset({"log_output"}),
     "cache_hit": frozenset({"cache_hit"}),
     "health_probe": frozenset({"health_probe"}),
+    "mapping_valid": frozenset({"mapping_valid"}),
+    "app_boots": frozenset({"app_boots"}),
 }
 
 RESTISH = ("RestController", "Repository", "ApplicationService")

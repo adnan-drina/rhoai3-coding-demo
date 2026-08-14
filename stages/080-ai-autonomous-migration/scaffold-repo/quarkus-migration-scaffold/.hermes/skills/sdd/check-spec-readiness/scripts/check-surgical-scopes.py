@@ -31,6 +31,7 @@ EXIT_CODES = """Exit codes:
 from specimen_agnostic import (  # noqa: E402
     COMPILE_ONLY,
     ENDPOINTISH,
+    OPERAND_CLASS_SEMANTIC_EXITS,
     ORACLE_UNAVAILABLE_MINT_CAP,
     collect_oracle_unavailable,
     is_oracle_unavailable,
@@ -164,6 +165,16 @@ def main() -> int:
             bad = 1
             continue
 
+        oclass = normalize_operand_class(body)
+        if oclass not in OPERAND_CLASS_SEMANTIC_EXITS:
+            print(
+                f"FAIL: AR-4.4 {label}: unknown operand_class={oclass!r} "
+                f"— no legal exit set (T-8 fail-closed, Architect E-20260814T181701Z)",
+                file=sys.stderr,
+            )
+            bad = 1
+            continue
+
         exits = body.get("exit_criteria") or body.get("done_when") or []
         if not isinstance(exits, list):
             exits = []
@@ -172,7 +183,7 @@ def main() -> int:
             for x in exits
             if isinstance(x, dict)
         }
-        # F5a/F5b: oracle_unavailable only for non-rest/api/src_code + reason; routes
+        # F5a/F5b: oracle_unavailable only for classes that allow the escape.
         oclass = normalize_operand_class(body)
         required = required_semantic_exits_for(body)
         escape_items = [
@@ -195,8 +206,9 @@ def main() -> int:
             if not oracle_unavailable_allowed_for_class(oclass):
                 print(
                     f"FAIL: AR-4.4 {label}: oracle_unavailable forbidden for "
-                    f"operand_class={oclass!r} (F5a E-20260813T221456Z — rest/api/"
-                    f"src_code always have an oracle)",
+                    f"operand_class={oclass!r} (F5a E-20260813T221456Z / "
+                    f"E-20260814T181701Z — rest/api/src_code/bootstrap/"
+                    f"persistence always have an oracle)",
                     file=sys.stderr,
                 )
                 bad = 1

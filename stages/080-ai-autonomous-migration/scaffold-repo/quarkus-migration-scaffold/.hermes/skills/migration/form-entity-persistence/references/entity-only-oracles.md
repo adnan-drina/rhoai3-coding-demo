@@ -12,8 +12,10 @@ wiring, cascade correctness, or fetch strategy.
 
 Do **not** stamp `hql_entity_path` / `http_semantics` on mapping-only bodies —
 wrong-class (see `derive-story-oracles` / R-SKILL-E). Prefer class-legal exits
-from `OPERAND_CLASS_SEMANTIC_EXITS` for the entity operand class, or
-`oracle_unavailable` when capped and receipted.
+from `OPERAND_CLASS_SEMANTIC_EXITS` for the `persistence` class (`mapping_valid`
+only — Architect E-20260814T181701Z). Do **not** stamp `hql_entity_path` /
+`http_semantics` / `create_fk` on mapping-only bodies. `oracle_unavailable` is
+forbidden for `persistence` (F5a).
 
 HQL/JPQL: attribute paths only (`book.title`), never column names — dialects
 may silently pass a column identifier, which is non-portable.

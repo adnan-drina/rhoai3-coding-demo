@@ -17,7 +17,9 @@ including the **relationship** between them (T-8 / v17 wrong-class oracles).
 2. **Class-legal exits** — stamp `exit_criteria` only from
    `OPERAND_CLASS_SEMANTIC_EXITS[operand_class]` via skill
    `derive-story-oracles`. Foreign semantic exits FAIL even beside a legal one
-   (dual-oracle refuse).
+   (dual-oracle refuse). **Unknown `operand_class` fail-closed** (empty legal
+   set — do not inherit the full vocab). `bootstrap` → `app_boots`;
+   `persistence` → `mapping_valid` (Architect E-20260814T181701Z).
 3. **Sizing / wall-fit** — `check-operand-count.py --wall-fit`.
 4. **Complete-cmd / product / DB security** — respective gates under
    check-spec-readiness / check-domain-parity / check-release-readiness.

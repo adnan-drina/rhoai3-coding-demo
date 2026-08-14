@@ -40,10 +40,13 @@ Official technique table and failure classes: `references/concern-oracle-table.m
 
 ## Procedure
 
-1. Read `identity.operand_class` (or infer from write-set: pom/build →
-   `build_config`/`pom`, properties/config → `config`, REST → `rest`, …).
+1. Read `identity.operand_class`. If it is **not** a key in
+   `OPERAND_CLASS_SEMANTIC_EXITS`, **stop** — unknown class is fail-closed
+   (Architect E-20260814T181701Z). Do not infer REST/HTTP exits.
 2. Open `references/concern-oracle-table.md` — pick the **official executable
    technique** for the concern this story can actually produce evidence for.
+   `bootstrap` stamps only `app_boots`. `persistence` stamps only `mapping_valid`.
+   Do not alias those onto `health_probe` / `hql_entity_path` / `create_fk`.
 3. Stamp `exit_criteria` using **only** checks in
    `OPERAND_CLASS_SEMANTIC_EXITS[operand_class]` (see
    `../check-spec-readiness/scripts/specimen_agnostic.py`). At least one
