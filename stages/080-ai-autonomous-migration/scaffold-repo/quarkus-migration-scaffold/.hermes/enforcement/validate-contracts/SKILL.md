@@ -69,7 +69,7 @@ Each `== … ==` banner is one section. In order, it asserts:
    exit-eval.
 10. Checkpoint lag, the `src/test` test-compile stamp gate and its
     fixture-only skip, body-digest immutability, and AD-H §19 provenance.
-11. POM / `dependency_wait` handoff stamp.
+11. R-M3.6 `dependency_wait` hold stamp (R-M3.5/7 persistence BOM retired DD4).
 12. CS-7 bundle exists-assert and CS-9 skill conformance (see below), AD-011
     overlay presence, R-M3.9 wall-fit refusal at 42 operands @3600s.
 

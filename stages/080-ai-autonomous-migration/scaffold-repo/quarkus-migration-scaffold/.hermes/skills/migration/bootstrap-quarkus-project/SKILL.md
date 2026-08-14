@@ -53,9 +53,10 @@ hand-authoring as a dedicated path (Research E-20260814T074356Z).
      story's write-set includes the POM (A-3 / H3)
 3. Run
    `../manage-quarkus-extensions/scripts/check-pom-platform-pins.py <root>`.
-4. **Extensions (evidence-driven):** invoke `manage-quarkus-extensions`
-   (`quarkus ext ls/search/add` when CLI present — W1; else Maven). Do not
-   paste a fixed extension menu; derive from inventory / story evidence.
+4. **Extensions (evidence-driven, DD3):** invoke `manage-quarkus-extensions`
+   (`quarkus ext ls/search/add` when CLI present — W1; else Maven). The
+   **needing story owns** the extension and its config/artifacts — do not
+   paste a fixed menu on foundation for later stories.
 5. Refuse `quarkus-spring-*` compatibility extensions (native Quarkus only).
 
 ## Verification

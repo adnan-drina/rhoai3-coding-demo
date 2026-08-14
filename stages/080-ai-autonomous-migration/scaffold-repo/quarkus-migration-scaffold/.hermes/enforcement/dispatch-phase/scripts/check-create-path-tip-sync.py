@@ -34,6 +34,7 @@ REQUIRED_FILES = [
     "governance/contracts/contract-lifecycle.md",
     "governance/retired/README.md",
     "governance/retired/m2-resume-from-artifacts.md",
+    "governance/retired/pom-persistence-handoff.md",
     # Architect E-122959Z — decision-complete card lint
     ".hermes/enforcement/dispatch-phase/scripts/check-decision-complete-cards.py",
     # Operator E-20260811T144200Z — deps + dest-inventory at create

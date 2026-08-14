@@ -29,7 +29,7 @@ Sections covered (in order):
   kanban-body (W2 S6.1)                   story-sizing operand_count
   wall-as-terminal exit-eval              checkpoint lag check
   #1b test-compile gate on checkpoint      body-digest immutability
-  record-run-evidence (AD-H S19)   R-M3.5-8 POM / dependency_wait
+  record-run-evidence (AD-H S19)   R-M3.6 dependency_wait hold
   CS-7 m3-implementer bundle assert        BANK-DEST-INV-HARDINVOKE-1 (RW-2)
   AD-011 skill extension overlay           R-SK.12 script CLI contract
   CS-7 bundle exists-assert                CS-9 skill conformance
@@ -698,13 +698,8 @@ else
 fi
 rm -rf "${ap_tmp}"
 
-echo "== R-M3.5–8 POM / dependency_wait handoff =="
-if [ -f "${ROOT}/pom.xml" ]; then
-  python3 "${SKILLS}/sdd/check-spec-readiness/scripts/check-persistence-bom.py" "${ROOT}" || rc=1
-  python3 "${SKILLS}/sdd/check-spec-readiness/scripts/check-compile-deps-preflight.py" "${ROOT}" || rc=1
-else
-  echo "OK: persistence/compile preflights idle until bootstrap creates pom.xml"
-fi
+echo "== R-M3.6 dependency_wait hold stamp (DD4: R-M3.5/7 persistence BOM retired) =="
+echo "OK: R-M3.5/7 persistence/compile preflights retired (DD3 story-owns-extensions)"
 dep_tmp="$(mktemp -d)"
 mkdir -p "${dep_tmp}/evidence/verdicts"
 python3 "${SKILLS}/gates/check-release-readiness/scripts/apply-dependency-wait-hold.py" \

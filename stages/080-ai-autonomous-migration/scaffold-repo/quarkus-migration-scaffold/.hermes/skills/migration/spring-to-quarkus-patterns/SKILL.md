@@ -86,11 +86,13 @@ This skill carries no scripts — it is a consult-then-write contract.
    `security/**` read `references/security-config.md` **and**
    `references/security-anti-essay.md` — both before the first edit of that
    class.
-3. **Preflight deps for that class** before sinking file writes (scripts live
-   under the `check-spec-readiness` skill): `check-persistence-bom.py` /
-   `check-compile-deps-preflight.py` ahead of entity/repository writes,
-   `check-jdbc-deps-preflight.py` ahead of the first JDBC repository write.
-   Security deps land in the same story as the security write, not a follow-up.
+3. **Preflight deps for that class** before sinking file writes: under DD3
+   (story-owns-extensions), add the needed Quarkus extensions in **this**
+   story's `pom.xml` write — do **not** call retired
+   `check-persistence-bom.py` / `check-compile-deps-preflight.py`.
+   Still run `check-jdbc-deps-preflight.py` ahead of the first JDBC repository
+   write when that path applies. Security deps land in the same story as the
+   security write, not a follow-up.
 4. **Take the forced decisions before the claim**, not after: Panache repository
    vs injected `EntityManager`; automatic `@Valid` vs manual validation;
    `@Liveness` vs `@Readiness`. Each card names the failure that follows the

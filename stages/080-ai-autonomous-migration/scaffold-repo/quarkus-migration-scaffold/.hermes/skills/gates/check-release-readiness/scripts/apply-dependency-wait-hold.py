@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """R-M3.6 — hold dependency_wait; do not soft-promote without upstream fix.
 
-Architect E-20260810T172800Z / governance/contracts/pom-persistence-handoff.md
+Architect E-20260810T172800Z. R-M3.5/7 persistence BOM handoff retired (DD4);
+dependency_wait remains for other producers (dest-inventory, JDBC preflight).
+See governance/retired/pom-persistence-handoff.md for history.
 
 On typed dependency_wait: stamp verdict + optional hard block. Names actor Need
 `steward:fix-upstream-pom` (peer of AD-010 §3d). Never MiniMax.

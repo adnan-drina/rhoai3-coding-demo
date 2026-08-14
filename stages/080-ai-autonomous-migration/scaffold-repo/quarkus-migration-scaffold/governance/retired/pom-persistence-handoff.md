@@ -1,6 +1,8 @@
 # Cross-story POM / dependency_wait handoff (R-M3.5–8)
 
-**Status:** binding proving-min
+**Status:** retired (DD4 E-20260814T070901Z).
+**Attic:** `governance/retired/` (DD4 E-20260814T070901Z) — R-M3.5/7 retired under story-owns-extensions (DD3).
+**Superseded by:** story-owned extension add + story exit assert (no cross-story persistence BOM handoff).
 **Basis:** AD-H §6.5 · `20260810-m3-s002-harness-review.md`
 
 ## Bindings

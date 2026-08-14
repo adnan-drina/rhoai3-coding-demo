@@ -72,8 +72,8 @@ python3 "${HERMES_SKILL_DIR}/scripts/check-partition-coverage.py" /projects/mode
 - `scripts/check-partition-coverage.py` — M2a partition VALID receipt
 - `scripts/check-interface-closure.py` — interface closure Class-A gate
 - `scripts/check-findings-handoff.py` — findings handoff schema (also under mta)
-- `scripts/check-persistence-bom.py` — R-M3.5 persistence BOM in pom.xml
-- `scripts/check-compile-deps-preflight.py` — R-M3.7 wraps persistence BOM
+- `scripts/check-persistence-bom.py` — **RETIRED** (DD4; was R-M3.5)
+- `scripts/check-compile-deps-preflight.py` — **RETIRED** (DD4; was R-M3.7)
 - `scripts/check-jdbc-deps-preflight.py` — R-M3.11 JDBC deps preflight
 - `scripts/assert-dependency-closure.py` — Class-A dependency closure
 - `scripts/assert-mint-constraints-complete.py` — mint constraints complete

@@ -1,57 +1,34 @@
 #!/usr/bin/env python3
-"""R-M3.5 — require persistence stack in pom.xml for JPA successors.
+"""RETIRED — R-M3.5 persistence BOM handoff (DD4 / Operator E-20260814T070901Z).
 
-Architect E-20260810T172800Z / governance/contracts/pom-persistence-handoff.md
+Story-owns-extensions (DD3): the needing story adds hibernate/validator itself.
+Do not call this script. See governance/retired/pom-persistence-handoff.md.
+
+Usage:
+  python3 check-persistence-bom.py --help
 """
 from __future__ import annotations
 
 import argparse
 import sys
-from pathlib import Path
-
-REQUIRED = (
-    "quarkus-hibernate-orm",
-    "quarkus-hibernate-validator",
-)
-
-EXIT_CODES = """\
-Exit codes (house contract UPLIFT-3):
-  0  pass — required artifacts present in pom.xml
-  1  BLOCK — missing pom.xml or missing required deps (typed dependency_wait)
-  2  usage / harness defect (bad or unknown arguments)
-"""
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=EXIT_CODES,
+        epilog="Exit: 0 --help only; 1 RETIRED for any other invocation",
     )
-    ap.add_argument(
-        "root",
-        nargs="?",
-        default=".",
-        help="product root containing pom.xml (default: .)",
+    ap.add_argument("root", nargs="?", default=".")
+    if len(sys.argv) == 2 and sys.argv[1] in ("-h", "--help"):
+        ap.print_help()
+        return 0
+    print(
+        "RETIRED: R-M3.5 check-persistence-bom.py — DD4 E-20260814T070901Z "
+        "(story owns extensions; see governance/retired/pom-persistence-handoff.md)",
+        file=sys.stderr,
     )
-    args = ap.parse_args()
-    root = Path(args.root).resolve()
-    pom = root / "pom.xml"
-    if not pom.is_file():
-        print(f"FAIL: missing {pom}", file=sys.stderr)
-        return 1
-    text = pom.read_text(encoding="utf-8")
-    missing = [a for a in REQUIRED if a not in text]
-    if missing:
-        print(
-            "FAIL: R-M3.5 persistence BOM incomplete — missing "
-            + ", ".join(missing)
-            + " (Architect E-20260810T172800Z)",
-            file=sys.stderr,
-        )
-        return 1
-    print("OK: R-M3.5 persistence BOM present (" + ", ".join(REQUIRED) + ")")
-    return 0
+    return 1
 
 
 if __name__ == "__main__":
