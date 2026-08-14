@@ -812,6 +812,10 @@ echo "== BANK-DEST-INV-HARDINVOKE-1 (RW-2) =="
 python3 "${SKILLS}/sdd/check-spec-readiness/scripts/assert-dest-inventory-hardinvoke.py" \
   "${ROOT}" || rc=1
 
+echo "== Z3-a / A-6 migration.yaml package stamp (idle on golden) =="
+python3 "${SKILLS}/sdd/check-spec-readiness/scripts/assert-migration-yaml-stamp.py" \
+  "${ROOT}" || rc=1
+
 echo "== AD-011 skill extension overlay =="
 if [ -f "${ROOT}/governance/contracts/ad011-skill-extension.md" ]; then
   echo "FAIL: ad011-skill-extension.md still active (GRT retire)" >&2

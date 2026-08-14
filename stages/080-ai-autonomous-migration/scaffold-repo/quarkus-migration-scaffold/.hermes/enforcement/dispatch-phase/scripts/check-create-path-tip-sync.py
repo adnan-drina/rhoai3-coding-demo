@@ -44,6 +44,8 @@ REQUIRED_FILES = [
     ".hermes/enforcement/dispatch-phase/references/m3-implementer-standing.md",
     # Operator E-20260811T144200Z — deps + dest-inventory at create
     ".hermes/skills/sdd/check-spec-readiness/scripts/stamp-body-dependencies.py",
+    # Z3-a / A-6 — migration.yaml package stamp assert
+    ".hermes/skills/sdd/check-spec-readiness/scripts/assert-migration-yaml-stamp.py",
     ".hermes/skills/sdd/check-spec-readiness/scripts/stamp-destination-inventory.py",
     ".hermes/skills/sdd/check-spec-readiness/scripts/check-partition-coverage.py",
     # Deputy E-20260814T074759Z V1 — M2 created-cards claim wrapper (F8a/F8b)
@@ -534,6 +536,11 @@ REQUIRED_SUBSTRINGS = [
         ".hermes/skills/sdd/check-spec-readiness/scripts/stamp-body-dependencies.py",
         "DEPENDENCY_HOLE",
         "body dependencies stamp (Operator E-144200Z)",
+    ),
+    (
+        ".hermes/skills/sdd/check-spec-readiness/scripts/assert-migration-yaml-stamp.py",
+        "MIGRATION_YAML_STAMP_VACUOUS",
+        "Z3-a migration.yaml package stamp assert",
     ),
     (
         ".hermes/skills/sdd/check-spec-readiness/scripts/stamp-destination-inventory.py",

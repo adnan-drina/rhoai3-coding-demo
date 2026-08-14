@@ -49,7 +49,10 @@ def _parse_migration_yaml_lite(text: str) -> dict:
             i += 1
             continue
         s = raw.strip()
-        if s.startswith("legacyBasePackage:"):
+        if s.startswith("legacyRepoUrl:"):
+            mig["legacyRepoUrl"] = s.split(":", 1)[1].strip().strip('"').strip("'")
+            in_rewrites = False
+        elif s.startswith("legacyBasePackage:"):
             mig["legacyBasePackage"] = s.split(":", 1)[1].strip().strip('"').strip("'")
             in_rewrites = False
         elif s.startswith("legacy_base_package:"):

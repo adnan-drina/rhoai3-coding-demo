@@ -15,15 +15,29 @@ migration:
   provisionedBy: app-migration golden-path template
   needsDatabase: ${{ values.needsDatabase }}
 {%- if is_petclinic %}
+  legacyBasePackage: org.springframework.samples.petclinic
   legacyPackage: org.springframework.samples.petclinic
   targetPackage: com.demo
+  path_rewrites:
+    - from: src/main/java/com/demo/
+      to: src/main/java/org/springframework/samples/petclinic/
+    - from: src/test/java/com/demo/
+      to: src/test/java/org/springframework/samples/petclinic/
 {%- elif is_cart %}
+  legacyBasePackage: com.redhat.coolstore
   legacyPackage: com.redhat.coolstore
   targetPackage: com.demo
+  path_rewrites:
+    - from: src/main/java/com/demo/
+      to: src/main/java/com/redhat/coolstore/
+    - from: src/test/java/com/demo/
+      to: src/test/java/com/redhat/coolstore/
 {%- else %}
-  # Unknown specimen — set legacyPackage/targetPackage before M1.
+  # Unknown specimen — set legacyBasePackage/targetPackage before M1.
+  legacyBasePackage: ""
   legacyPackage: ""
   targetPackage: com.demo
+  path_rewrites: []
 {%- endif %}
 
 {%- if is_petclinic %}
