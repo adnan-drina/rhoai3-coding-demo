@@ -6,7 +6,7 @@ conditionals that embed cross-step assumptions (e.g. retired R-M2.6
 `spec.md` → jump to `/speckit-tasks`) are fail-closed.
 
 Contract: governance/contracts/m2b-resume-ladder.md
-(supersedes retired governance/contracts/m2-resume-from-artifacts.md).
+(supersedes retired governance/retired/m2-resume-from-artifacts.md).
 """
 from __future__ import annotations
 

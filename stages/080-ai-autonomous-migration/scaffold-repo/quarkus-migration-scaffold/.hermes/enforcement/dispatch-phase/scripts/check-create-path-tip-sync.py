@@ -29,6 +29,11 @@ REQUIRED_FILES = [
     ".hermes/enforcement/validate-contracts/scripts/check-specify-absent.py",
     # Deputy E-20260813T184709Z — root scripts/ negative-space retired
     ".hermes/enforcement/validate-contracts/scripts/check-scripts-absent.py",
+    # GR1 / Deputy E-20260814T081104Z — contract lifecycle (no EOL in active dir)
+    ".hermes/enforcement/validate-contracts/scripts/check-contract-lifecycle.py",
+    "governance/contracts/contract-lifecycle.md",
+    "governance/retired/README.md",
+    "governance/retired/m2-resume-from-artifacts.md",
     # Architect E-122959Z — decision-complete card lint
     ".hermes/enforcement/dispatch-phase/scripts/check-decision-complete-cards.py",
     # Operator E-20260811T144200Z — deps + dest-inventory at create

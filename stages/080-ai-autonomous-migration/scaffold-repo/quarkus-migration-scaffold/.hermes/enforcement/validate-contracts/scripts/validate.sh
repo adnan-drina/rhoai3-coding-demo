@@ -753,6 +753,8 @@ echo "== AD-S S.4 .specify absent from golden =="
 python3 "${SKILL_DIR}/scripts/check-specify-absent.py" --root "${ROOT}" || rc=1
 echo "== AD-H §7 root scripts/ absent from golden =="
 python3 "${SKILL_DIR}/scripts/check-scripts-absent.py" --root "${ROOT}" || rc=1
+echo "== GR1 contract lifecycle (no EOL tombstones in governance/contracts/) =="
+python3 "${SKILL_DIR}/scripts/check-contract-lifecycle.py" --root "${ROOT}" || rc=1
 echo "== dangling .hermes refs (Deputy E-174046Z relocation residue) =="
 python3 "${SKILL_DIR}/scripts/check-dangling-hermes-refs.py" --root "${ROOT}" || rc=1
 echo "== create-path tip sync (R0/R3) =="

@@ -1,8 +1,9 @@
 # M2b per-artifact Spec Kit resume ladder
 
 **Status:** bound — (decision-complete cards)
-**Supersedes:** `m2-resume-from-artifacts.md` (retired R-M2.6 inverted compound jump
-`spec.md` → `/speckit-tasks`). Architect E-20260813T162123Z §B.
+**Supersedes:** `governance/retired/m2-resume-from-artifacts.md` (retired R-M2.6
+inverted compound jump `spec.md` → `/speckit-tasks`). Architect
+E-20260813T162123Z §B; attic move GR1 E-20260814T081104Z.
 
 Under M2a/M2b split, M2a normally leaves `spec.md`. Jumping to `/speckit-tasks`
 because `spec.md` exists **skips planning** and is a card defect.

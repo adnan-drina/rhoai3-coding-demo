@@ -1,6 +1,7 @@
 # RETIRED — see `m2b-resume-ladder.md`
 
 **Status:** retired (Architect E-20260813T162123Z §B).
+**Attic:** `governance/retired/` (GR1 E-20260814T081104Z) — not an active contract.
 **Superseded by:** `governance/contracts/m2b-resume-ladder.md`.
 
 The inverted R-M2.6 compound jump (`spec.md` → `/speckit-tasks`) is forbidden

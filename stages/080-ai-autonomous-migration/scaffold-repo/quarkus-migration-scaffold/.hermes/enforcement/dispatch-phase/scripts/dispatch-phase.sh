@@ -377,7 +377,7 @@ Unexecutable obligation → typed **`needs_input` BLOCK**. Never silent substitu
 1. Require `evidence/briefs/partition.json` — typed `needs_input` BLOCK if missing (run M2a first).
 2. **Per-artifact Spec Kit resume ladder** (Architect E-20260811T122959Z — decision-complete;
    contract `governance/contracts/m2b-resume-ladder.md`; retired inverted v11 R-M2.6
-   compound jump under M2a/M2b split — see retired `m2-resume-from-artifacts.md`):
+   compound jump under M2a/M2b split — see `governance/retired/m2-resume-from-artifacts.md`):
    - **`/speckit-specify`:** precondition = no `specs/**/spec.md` (or workspace Spec Kit
      equiv). **Skip iff** `spec.md` already exists (M2a normally left it). Do **not**
      invent specs.
