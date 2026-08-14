@@ -24,15 +24,23 @@ def _parse_migration_yaml_lite(text: str) -> dict:
     while i < len(lines):
         ln = lines[i]
         raw = ln.rstrip()
-        if not raw.strip() or raw.strip().startswith("#"):
-            i += 1
-            continue
-        if raw == "migration:":
+        # A-6: stamp corruption glues `migration:` onto the preceding comment
+        # ("...wrong.migration:"). Treat that as section open even inside #.
+        if raw.strip().startswith("#") and raw.rstrip().endswith("migration:"):
             in_migration = True
             in_rewrites = False
             i += 1
             continue
-        if in_migration and raw and not raw.startswith(" ") and not raw.startswith("	"):
+        if not raw.strip() or raw.strip().startswith("#"):
+            i += 1
+            continue
+        # Tolerate non-comment glued forms too.
+        if raw == "migration:" or raw.rstrip().endswith("migration:"):
+            in_migration = True
+            in_rewrites = False
+            i += 1
+            continue
+        if in_migration and raw and not raw.startswith(" ") and not raw.startswith("\t"):
             # left migration section
             in_migration = False
             in_rewrites = False
@@ -50,6 +58,9 @@ def _parse_migration_yaml_lite(text: str) -> dict:
         elif s.startswith("legacyPackage:"):
             # RHDH app-migration skeleton stamp key (alias of legacyBasePackage)
             mig["legacyPackage"] = s.split(":", 1)[1].strip().strip('"').strip("'")
+            in_rewrites = False
+        elif s.startswith("targetPackage:") or s.startswith("target_package:"):
+            mig["targetPackage"] = s.split(":", 1)[1].strip().strip('"').strip("'")
             in_rewrites = False
         elif s.startswith("path_rewrites:") or s.startswith("packageRemap:"):
             key = "path_rewrites" if s.startswith("path_rewrites") else "packageRemap"
@@ -99,13 +110,19 @@ def load_migration_yaml(root: Path) -> dict[str, Any]:
         return {}
 
 
+def _pkg_to_java_prefix(pkg: str) -> str:
+    p = str(pkg).strip().strip(".").replace(".", "/")
+    return f"src/main/java/{p}/" if p else ""
+
+
 def path_rewrites(root: Path) -> list[tuple[str, str]]:
     """Return (dest_prefix, legacy_prefix) pairs for norm_file remaps.
 
     Sources (first non-empty wins):
       1) migration.yaml migration.path_rewrites: [{from, to}, ...]
          where *from* is dest-tree prefix and *to* is legacy-tree prefix
-      2) Discover from inventory HTTP files vs bodies dual-path (best-effort)
+      2) migration.yaml legacyPackage + targetPackage synthesis (A-6)
+      3) Discover from inventory HTTP files vs bodies dual-path (best-effort)
     """
     mig = load_migration_yaml(root).get("migration") or {}
     if isinstance(mig, dict):
@@ -121,6 +138,24 @@ def path_rewrites(root: Path) -> list[tuple[str, str]]:
                     out.append((frm.rstrip("/") + "/", to.rstrip("/") + "/"))
         if out:
             return out
+        # Synthesize from package stamps when explicit rewrites absent.
+        legacy_pkg = (
+            mig.get("legacyBasePackage")
+            or mig.get("legacy_base_package")
+            or mig.get("legacyPackage")
+            or ""
+        )
+        target_pkg = mig.get("targetPackage") or mig.get("target_package") or ""
+        dest_p = _pkg_to_java_prefix(str(target_pkg))
+        leg_p = _pkg_to_java_prefix(str(legacy_pkg))
+        if dest_p and leg_p and dest_p != leg_p:
+            return [
+                (dest_p, leg_p),
+                (
+                    dest_p.replace("src/main/java/", "src/test/java/", 1),
+                    leg_p.replace("src/main/java/", "src/test/java/", 1),
+                ),
+            ]
 
     # Discover: inventory legacy java dirs vs modernized dest dirs in bodies
     inv = None
@@ -161,28 +196,8 @@ def path_rewrites(root: Path) -> list[tuple[str, str]]:
                 if m:
                     dest_pkgs.add(m.group(1).rsplit("/", 1)[0] + "/")
 
-    # Pair by java/(main|test) + depth-1 package root swap when unique
     rewrites: list[tuple[str, str]] = []
-    # Prefer remapping dest base → legacy base when both have single java root
-    def java_roots(pkgs: set[str]) -> set[str]:
-        roots: set[str] = set()
-        for p in pkgs:
-            m = re.match(r"(src/(?:main|test)/java/[^/]+(?:/[^/]+){0,3})/", p)
-            if m:
-                # take up to 3 segments after java/ as base package guess
-                parts = m.group(1).split("/")
-                # src/main/java/a/b/c → keep a/b/c if present
-                if len(parts) >= 4:
-                    roots.add("/".join(parts[: min(7, len(parts))]) + "/")
-        return roots
 
-    # Simpler: if exactly one dest root under com/ and one legacy under org/, pair them
-    dest_bases = sorted(
-        {re.sub(r"(src/(?:main|test)/java/)(.+?)/$", r"\1\2/", p) for p in dest_pkgs}
-    )
-    leg_bases = sorted(legacy_pkgs)
-    # Collapse to package-root (strip trailing entity folder noise) — use
-    # longest common prefix within each set
     def lcp(paths: list[str]) -> str:
         if not paths:
             return ""
@@ -191,7 +206,6 @@ def path_rewrites(root: Path) -> list[tuple[str, str]]:
         i = 0
         while i < len(s1) and i < len(s2) and s1[i] == s2[i]:
             i += 1
-        # trim to last /
         pref = s1[:i]
         if "/" in pref:
             pref = pref[: pref.rfind("/") + 1]

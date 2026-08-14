@@ -107,10 +107,30 @@ def resolve_legacy(root: Path, rel: str) -> Path | None:
         cand = (base / rel).resolve()
         if cand.is_file():
             return cand
-    # also try under root (modernized may still hold referent)
-    cand = root / rel
-    if cand.is_file():
-        return cand
+    return None
+
+
+def resolve_scope_legacy(body: dict, basename: str) -> str | None:
+    """Pick a legacy relative path from files_in_scope by basename."""
+    for item in body.get("files_in_scope") or []:
+        if not isinstance(item, str):
+            continue
+        p = item.replace("\\", "/")
+        if p.endswith("/" + basename) or p.endswith(basename):
+            # prefer spring/legacy-shaped paths over dest
+            if "org/springframework" in p or "/.derived/" in p or p.startswith(
+                "src/main/java/"
+            ):
+                # strip absolute prefixes
+                for prefix in (
+                    "/projects/.derived/legacy-at-3/",
+                    "/projects/legacy/",
+                    "projects/.derived/legacy-at-3/",
+                ):
+                    if p.startswith(prefix):
+                        p = p[len(prefix) :]
+                if p.startswith("src/"):
+                    return p
     return None
 
 
@@ -125,14 +145,26 @@ def imports_for(java_path: Path, pkg_prefixes: list[str]) -> list[str]:
             continue
         if not pkg_prefixes:
             # no prefix discovered — only accept imports under src/main/java tree shape
-            if not imp or imp.startswith("java.") or imp.startswith("javax.") or imp.startswith("jakarta."):
+            if (
+                not imp
+                or imp.startswith("java.")
+                or imp.startswith("javax.")
+                or imp.startswith("jakarta.")
+            ):
                 continue
         out.append("src/main/java/" + imp.replace(".", "/") + ".java")
     return out
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser()
+    ap = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "Exit: 0=stamp ok (deps may be empty only with proof), "
+            "1=DEPENDENCY_HOLE or DEPENDENCY_STAMP_VACUOUS, 2=usage"
+        ),
+    )
     ap.add_argument("root", nargs="?", default=".")
     ap.add_argument("--body", required=True)
     ap.add_argument("--bodies", default="evidence/bodies")
@@ -152,14 +184,33 @@ def main() -> int:
     pkg_prefixes = legacy_java_prefixes(root)
     own = provider_map(root / args.bodies, norm_file)
     deps: dict[str, str] = {}
+    java_writables = 0
+    resolved_sources = 0
+    in_pkg_imports_seen = 0
     for wf in writable_paths(body):
         rel = norm_file(wf)
         if not rel.endswith(".java"):
             continue
+        java_writables += 1
         lp = resolve_legacy(root, rel)
         if lp is None:
+            # Fallback: files_in_scope may still name the legacy referent
+            scope_rel = resolve_scope_legacy(body, Path(rel).name)
+            if scope_rel:
+                lp = resolve_legacy(root, scope_rel)
+                if lp is None:
+                    # absolute scope path already under legacy tree
+                    for item in body.get("files_in_scope") or []:
+                        if isinstance(item, str) and item.endswith(Path(rel).name):
+                            cand = Path(item)
+                            if cand.is_file():
+                                lp = cand
+                                break
+        if lp is None:
             continue
+        resolved_sources += 1
         for dep_rel in imports_for(lp, pkg_prefixes):
+            in_pkg_imports_seen += 1
             if dep_rel == rel:
                 continue
             provider = own.get(dep_rel)
@@ -176,6 +227,44 @@ def main() -> int:
         for f in sorted(deps.keys())
     ]
     body["dependencies"] = ordered
+
+    # A-6 / Deputy E-20260814T103448Z — vacuous stamp must fail closed.
+    # A stamper that writes [] and exits 0 is indistinguishable from success.
+    vacuous_ok = bool(body.get("dependencies_vacuous_ok"))
+    if java_writables and not ordered and not vacuous_ok:
+        if not pkg_prefixes:
+            print(
+                "DEPENDENCY_STAMP_VACUOUS: body has Java writables but "
+                "legacyBasePackage/legacyPackage is unset and inventory "
+                "prefix discovery failed — fix migration.yaml stamp "
+                "(A-6 E-20260814T103448Z)",
+                file=sys.stderr,
+            )
+            return 1
+        if not resolved_sources:
+            print(
+                "DEPENDENCY_STAMP_VACUOUS: could not resolve any legacy "
+                "Java sources for files_writable (path_rewrites / "
+                "legacyPackage+targetPackage missing or wrong) — "
+                "refusing empty dependencies stamp (A-6)",
+                file=sys.stderr,
+            )
+            return 1
+        if in_pkg_imports_seen:
+            print(
+                "DEPENDENCY_STAMP_VACUOUS: resolved sources have in-package "
+                "imports but stamped dependencies=[] — provider map / "
+                "norm mismatch (A-6)",
+                file=sys.stderr,
+            )
+            return 1
+        # True leaf: resolved sources, package prefix known, zero in-pkg imports.
+        print(
+            f"OK: stamped dependencies=0 "
+            f"(resolved={resolved_sources} java_writables={java_writables} "
+            f"no in-package imports)"
+        )
+
     if args.write:
         body_path.write_text(json.dumps(body, indent=2) + "\n", encoding="utf-8")
         print(f"OK: stamped dependencies={len(ordered)} → {body_path}")
