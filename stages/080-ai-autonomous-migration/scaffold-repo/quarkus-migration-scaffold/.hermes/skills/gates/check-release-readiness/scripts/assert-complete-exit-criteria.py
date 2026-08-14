@@ -93,15 +93,24 @@ def main() -> int:
 
     # Architect E-20260813T152211Z / Lead wire-or-retire: AD-H §17/§19 must not
     # depend on skill_view. Invoke enforcement scripts on the complete path.
+    # Wave B tip layout: enforcement scripts live under .hermes/enforcement/
+    # (skills/harness retained as legacy fallback).
     skills = root / ".hermes" / "skills" / "harness"
+    enforcement = root / ".hermes" / "enforcement"
     gates = root / ".hermes" / "skills" / "gates" / "check-release-readiness" / "scripts"
-    citation = skills / "ground-in-harvest" / "scripts" / "check-citation.py"
-    body_digest = (
-        skills / "record-run-evidence" / "scripts" / "check-body-digest-match.py"
+
+    def find_script(rel: str) -> Path:
+        for base in (enforcement, skills):
+            cand = base / rel
+            if cand.is_file():
+                return cand
+        return skills / rel  # for missing-script error path
+
+    citation = find_script("ground-in-harvest/scripts/check-citation.py")
+    body_digest = find_script(
+        "record-run-evidence/scripts/check-body-digest-match.py"
     )
-    provenance = (
-        skills / "record-run-evidence" / "scripts" / "check-provenance.py"
-    )
+    provenance = find_script("record-run-evidence/scripts/check-provenance.py")
     runnable_db = gates / "check-runnable-db-config.py"
     empty_security = gates / "check-empty-security.py"
     for label, cmd in (

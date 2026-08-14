@@ -95,6 +95,13 @@ def brief_id_of(obj: dict) -> str:
         v = obj.get(key)
         if v not in (None, ""):
             return str(v).strip()
+    # M3 typed body: identity.story_id
+    identity = obj.get("identity")
+    if isinstance(identity, dict):
+        for key in ("story_id", "storyId", "unit_id", "unitId", "brief_id", "briefId"):
+            v = identity.get(key)
+            if v not in (None, ""):
+                return str(v).strip()
     return ""
 
 
@@ -124,6 +131,16 @@ def locus_of(obj: dict) -> str:
             v = cite.get(key)
             if v not in (None, ""):
                 return str(v).strip()
+    # M3 typed body: refs[].key == legacy_locus → path
+    refs = obj.get("refs")
+    if isinstance(refs, list):
+        for ref in refs:
+            if not isinstance(ref, dict):
+                continue
+            if ref.get("key") in {"legacy_locus", "legacyLocus", "locus"}:
+                path = ref.get("path") or ref.get("value") or ""
+                if str(path).strip():
+                    return str(path).strip()
     return ""
 
 

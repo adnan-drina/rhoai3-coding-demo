@@ -36,7 +36,17 @@ def run_scoped_compile(
         / "run-scoped-compile-gate.py"
     )
     if not scoped.is_file():
-        # Fallback relative to this script tree (tip layout)
+        # Tip layout after Wave B: scripts live under .hermes/enforcement/
+        scoped = (
+            root
+            / ".hermes"
+            / "enforcement"
+            / "record-run-evidence"
+            / "scripts"
+            / "run-scoped-compile-gate.py"
+        )
+    if not scoped.is_file():
+        # Fallback relative to this script tree (older skills/harness layout)
         scoped = (
             Path(__file__).resolve().parents[2]
             / "harness"

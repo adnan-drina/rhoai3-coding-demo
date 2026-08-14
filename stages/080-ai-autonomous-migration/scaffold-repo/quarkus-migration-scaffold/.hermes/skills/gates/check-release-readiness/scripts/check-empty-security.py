@@ -67,13 +67,23 @@ def main() -> int:
             sec.rglob("*Authentication*.java")
         )
 
+    # POM-only security deps (foundation / S-001 handoff) are NOT "enabled".
+    # Enabled requires properties or security Java types; else gate stays idle
+    # so later stories can land config/types without false-failing compile-only cards.
     security_enabled = bool(
         # R-SK.5: match any <app>.security.enable=true, not one specimen's
         # property name. A legacy app names this after itself; hardcoding
         # one made the gate blind to every other codebase.
         re.search(r"(?m)^[\w.-]+\.security\.enable\s*=\s*true\s*$", props_blob)
         or re.search(r"(?m)^quarkus\.security\.jdbc\.enabled\s*=\s*true\s*$", props_blob)
-        or "quarkus-elytron-security-jdbc" in pom
+        or (
+            "quarkus-elytron-security-jdbc" in pom
+            and (
+                bool(re.search(r"(?m)^quarkus\.security\.", props_blob))
+                or bool(java_files)
+            )
+        )
+        or bool(java_files)
     )
 
     if not java_files and not security_enabled:

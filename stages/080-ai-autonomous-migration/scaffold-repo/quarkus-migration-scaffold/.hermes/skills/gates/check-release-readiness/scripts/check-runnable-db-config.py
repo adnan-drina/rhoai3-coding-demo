@@ -51,15 +51,23 @@ def main() -> int:
     mig = list((root / "src/main/resources").rglob("V*__*.sql"))
     init_sql = list((root / "src/main/resources").rglob("initDB.sql"))
 
-    db_intent = bool(
+    # Properties / migrations / init SQL are active DB intent.
+    # POM-only jdbc/flyway deps (foundation handoff) stay idle — later stories
+    # land datasource props + Flyway V* scripts without false-failing S-001.
+    active_db_intent = bool(
         re.search(r"(?m)^quarkus\.datasource\.", blob)
-        or "quarkus-jdbc-" in pom
-        or "quarkus-flyway" in pom
         or mig
         or init_sql
     )
-    if not db_intent:
+    pom_db_deps = "quarkus-jdbc-" in pom or "quarkus-flyway" in pom
+    if not active_db_intent and not pom_db_deps:
         print("OK: AR-2.1 idle (no DB intent in pom/properties/migrations)")
+        return 0
+    if not active_db_intent and pom_db_deps:
+        print(
+            "OK: AR-2.1 idle (POM declares jdbc/flyway deps but no datasource "
+            "properties or migrations yet — foundation handoff)"
+        )
         return 0
 
     bad = 0
