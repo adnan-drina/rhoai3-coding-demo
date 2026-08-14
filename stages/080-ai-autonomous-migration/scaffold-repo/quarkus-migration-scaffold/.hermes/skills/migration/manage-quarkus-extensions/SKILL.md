@@ -1,11 +1,11 @@
 ---
 name: manage-quarkus-extensions
-description: Before adding or removing a Quarkus extension on an M3 destination pom — inventory installed deps, search the RH platform catalog, and apply add/rm without rewriting the Red Hat BOM or claiming unused from compile alone
+description: Before adding or removing a Quarkus extension on an M3 destination pom — inventory installed deps, search the RH catalog, apply add/rm without rewriting the Red Hat BOM, and carry per-extension obligations (config/SQL/migrations) owned by the needing story
 license: Apache-2.0
 compatibility: Linux seat; Red Hat Quarkus platform; quarkus CLI optional
 metadata:
   author: rhoai3-harness-team
-  version: "1.0.0"
+  version: "1.1.0"
   hermes:
     tags:
     - migration
@@ -13,22 +13,29 @@ metadata:
     category: migration
     kind: guidance
 ---
-# Manage Quarkus extensions (M3)
+# Manage Quarkus extensions (M3 / T-3)
 
 Guidance only (R-SK.14). Does **not** replace persistence/JDBC/compile
 preflight gates. Version **values** live in
 `governance/contracts/tooling-pins.md` and the destination `pom.xml` — never
 restate platform versions in this skill.
 
+**DD3:** the story that needs an extension **adds it and owns** its
+configuration/artifacts. Do not paste a fixed foundation menu.
+
+Obligations once present: `references/extension-obligations.md`.
+Spring→extension decision aid: `references/spring-dep-to-extension.md`.
+
 ## When to Use
 
 - Before the first `pom.xml` dependency change that adds a Quarkus extension
   for an M3 story (REST, JDBC, security, Flyway, Jacoco, …).
+- When deciding whether a Spring dependency implies an extension at all.
 - When deciding whether an extension is **unused** and can be removed.
 - When `quarkus ext ls` / Maven `quarkus:list` disagrees with what the story
   thinks is on the classpath.
 - **Not** for project create / skeleton retirement — use
-  `bootstrap-quarkus-project`.
+  `bootstrap-quarkus-project` + `reference-rh-quarkus-pom`.
 - **Not** for Spring→Quarkus form mapping (`spring-to-quarkus-patterns`).
 
 ## Procedure
@@ -40,36 +47,36 @@ restate platform versions in this skill.
    `scripts/assert-extension-tooling.py` (W3) before the first CLI/Maven
    extension mutation — CLI without RH-first registry is a hard fail;
    CLI absent → typed `MAVEN_FALLBACK`.
-2. **Inventory** installed extensions:
+2. If the ask comes from a Spring dependency, consult
+   `references/spring-dep-to-extension.md` first — many deps need **no**
+   extension or a native rewrite pair, not a lookalike add.
+3. **Inventory** installed extensions:
    - Prefer: `quarkus ext ls` (inside the RH-pinned project).
    - Fallback: `mvn -q quarkus:list` via the Red Hat
      `quarkus-maven-plugin` from the pom (CLI absent / air-gap).
-3. **Search** before inventing GAVs:
+4. **Search** before inventing GAVs:
    - Prefer: `quarkus ext list --installable -s <term> --support-scope`
      (support-scope **column may be blank** on RH streams — still use RH
      versions; do not over-claim support metadata).
    - Fallback: Maven plugin list/search goals; never paste community
      `io.quarkus.platform` coords into an RH-pinned pom.
-4. **Add** (inherits BOM version — never pin extension versions independently):
+   - Ambiguous partial names fail loudly (`Multiple extensions matching`) —
+     narrow the term; do not guess.
+5. **Add** (inherits BOM version — never pin extension versions independently):
    - Prefer: `quarkus ext add <artifactId>`
    - Fallback: `mvn -q quarkus:add-extension -Dextensions="<artifactId>"`
    - After add: confirm `quarkus.platform.group-id` is still
      `com.redhat.quarkus.platform` (must not rewrite to
      `io.quarkus.platform`).
-5. **Remove** only when the remove-unused BAR in
+6. **Carry obligations** from `references/extension-obligations.md` for that
+   family in this story's write-set (config, SQL, migrations, annotations).
+   Artifact-only adds with silent-inert defaults are not done.
+7. **Remove** only when the remove-unused BAR in
    `references/rh-bom-and-mandatory-deps.md` is met. Prefer **do not remove**
-   when uncertain.
-6. Refuse `quarkus-spring-*` compatibility extensions (native Quarkus only —
+   when uncertain. Removal does **not** auto-clean orphaned
+   `quarkus.<ext>.*` properties — scrub or leave intentionally.
+8. Refuse `quarkus-spring-*` compatibility extensions (native Quarkus only —
    AGENTS + `spring-to-quarkus-patterns`).
-
-## Gotchas
-
-- CLI without `registry.quarkus.redhat.com` **first** + Red Hat GA Maven
-  reachability resolves community catalogs and may fail RH `-P` create.
-- `--support-scope` values can be empty on RH platforms — do not treat blank
-  as "unsupported".
-- "Nothing imports it" is **not** unused on Quarkus (build-time wiring).
-- Jacoco: adding `quarkus-jacoco` alone is incomplete — see shared reference.
 
 ## Pitfalls
 
@@ -78,6 +85,10 @@ restate platform versions in this skill.
 - Treating compile-clean alone as proof an extension is unused (build-time
   wiring; see remove-unused BAR).
 - Adding `quarkus-jacoco` without dual Sonar paths + surefire `argLine`.
+- Adding Flyway / security-jdbc / cache and stopping at the dependency line
+  (silent failure modes in `extension-obligations.md`).
+- Over-provisioning from "Spring has X → Quarkus must have X" without the
+  mapping table.
 
 ## Verification
 
@@ -89,5 +100,7 @@ restate platform versions in this skill.
 - After add/rm: `quarkus.platform.group-id` remains
   `com.redhat.quarkus.platform` and `quarkus.platform.version` still matches
   `tooling-pins.md` (no community rewrite).
+- After add: story write-set includes the family's required obligations (or a
+  typed wait with destination-inventory citation).
 - Removals: story notes cite inventory + wiring absence + runtime smoke; else
   REFUSE the remove.

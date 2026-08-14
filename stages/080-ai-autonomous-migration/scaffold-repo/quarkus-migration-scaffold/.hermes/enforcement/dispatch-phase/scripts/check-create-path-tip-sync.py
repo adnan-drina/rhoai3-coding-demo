@@ -220,6 +220,11 @@ REQUIRED_SUBSTRINGS = [
         "bootstrap cites in-tree T-1 skill",
     ),
     (
+        ".hermes/skills/migration/manage-quarkus-extensions/references/extension-obligations.md",
+        "migrate-at-start",
+        "T-3 extension obligations reference",
+    ),
+    (
         "devfile.yaml",
         "provision-quarkus-cli.sh",
         "W1 Quarkus CLI provisioned from postStart",
