@@ -2,16 +2,16 @@
 
 **Status:** binding proving-min
 **Basis:** in-tree harness obligations (sibling contracts + skills).
+**GR4 (E-20260814T114609Z):** cross-story write overlap is **not** owned here —
+see `partition-coverage.md` (sole owner since F4 / `effdad9c`).
 
 ## Rule
 
 1. Separate **readable deps** (`files_readable` / `readable_deps`) from
- **allowed writes** (`files_writable` / `write_set`).
-2. Destination write ownership is **non-overlapping** across concurrent M3
- bodies, or bodies declare explicit `sequence_after: [story_id, …]`.
-3. `exit_criteria` MUST include endpoint/semantic checks — compile/residue/skills
- alone are insufficient.
-4. Diff outside `files_writable` → REFUSE (`check-write-set.py` / write fence).
+   **allowed writes** (`files_writable` / `write_set`).
+2. `exit_criteria` MUST include endpoint/semantic checks — compile/residue/skills
+   alone are insufficient (see `semantic-exits.md` + `specimen_agnostic.py`).
+3. Diff outside `files_writable` → REFUSE (`check-write-set.py` / write fence).
 
 Compat: if only `files_in_scope` is present, destination paths in that list are
 treated as the write set; legacy/referent paths are readable-only.

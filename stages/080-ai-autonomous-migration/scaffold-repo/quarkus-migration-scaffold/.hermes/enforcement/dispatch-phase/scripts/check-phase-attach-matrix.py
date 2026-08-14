@@ -13,9 +13,9 @@ from pathlib import Path
 # Architect AD-002G / SOLUTION-ARCHITECTURE phase attach matrix (initial).
 REQUIRED_MIN: dict[str, frozenset[str]] = {
     "M1": frozenset({"derive-legacy-boot3", "scan-with-mta", "check-spec-readiness"}),
-    # Wave B: enforce-authority-boundary is .hermes/enforcement/ path-invoke only.
-    "M2": frozenset({"check-spec-readiness"}),
-    # provision-owns-tools: no init-spec-workspace on M2a (Architect E-121308Z)
+    # GR2 — unified M2 PLAN (partition + Spec Kit); mint via mint-m3-wave.sh
+    "M2": frozenset({"check-spec-readiness", "scan-with-mta", "speckit-specify"}),
+    # RETIRED stubs (GR2) — attach-matrix still validates until F9 drops keys
     "M2a": frozenset({"check-spec-readiness", "scan-with-mta", "speckit-specify"}),
     "M2b": frozenset({"check-spec-readiness", "scan-with-mta"}),
     "M3": frozenset({"check-spec-readiness", "spring-to-quarkus-patterns"}),

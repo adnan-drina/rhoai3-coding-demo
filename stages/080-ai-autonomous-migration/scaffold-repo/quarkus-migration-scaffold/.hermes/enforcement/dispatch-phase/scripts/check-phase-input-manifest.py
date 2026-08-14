@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """R0 input-manifest lint for planner cards (Operator E-20260811T113700Z).
 
-M2a/M2b bodies must enumerate:
+M2 body must enumerate (GR2 — M2a/M2b retired):
   ## Input manifest
   ### Required present
   - path…
@@ -18,7 +18,7 @@ import re
 import sys
 from pathlib import Path
 
-PHASES = ("M2a", "M2b")
+PHASES = ("M2",)
 MANIFEST_RE = re.compile(
     r"## Input manifest.*?(?=^## |\Z)",
     re.M | re.S,
@@ -78,8 +78,8 @@ def main() -> int:
         print("INPUT_MANIFEST: missing dispatch-phase.sh", file=sys.stderr)
         return 1
     # Tip-bank B4 (Operator E-20260813T111910Z / V13_M4_SKIP_NON_PLANNER):
-    # Planner manifests (M2a/M2b) only. Passing M1/M3/M4/M5 must NOT re-lint
-    # M2a/M2b forbidden globs after M3 bodies exist.
+    # Planner manifest (M2) only. Passing M1/M3/M4/M5 must NOT re-lint
+    # M2 forbidden globs after M3 bodies exist.
     if only and only not in PHASES:
         print(f"OK: phase input manifests N/A for non-planner phase {only}")
         return 0
@@ -116,7 +116,7 @@ def main() -> int:
             print(f"FAIL: {phase} empty required/forbidden lists", file=sys.stderr)
             bad = 1
             continue
-        # Tip golden tree never ships M1 outputs / Operator acks / M2a partition.
+        # Tip golden tree never ships M1 outputs / Operator acks / M2 partition.
         # Declare + live-enforce; hard-fail only scaffold-shipped contracts.
         LIVE_ENFORCED_PREFIXES = (
             "evidence/acks/",
@@ -125,17 +125,13 @@ def main() -> int:
             "evidence/mta-findings.json",
         )
         for rel in required:
-            if rel.endswith(" (after M2a)") or rel.startswith("OPTIONAL:"):
+            if rel.endswith(" (after M2)") or rel.startswith("OPTIONAL:"):
                 print(f"OK: {phase} required deferred/optional {rel}")
                 continue
             path = root / rel
             if path.is_file() or path.is_dir():
                 print(f"OK: {phase} present {rel}")
             else:
-                # Partition is only hard when dispatching M2b specifically.
-                if rel == "evidence/briefs/partition.json" and only != "M2b":
-                    print(f"OK: {phase} partition declared (hard on M2b dispatch)")
-                    continue
                 soft = (not live_ws) and any(
                     rel.startswith(p) or rel == p for p in LIVE_ENFORCED_PREFIXES
                 )

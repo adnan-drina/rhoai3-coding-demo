@@ -1,7 +1,9 @@
-# Partition-coverage gate (M2a exit)
+# Partition-coverage gate (M2 PLAN exit)
 
 **Status:** binding ·
 **Lint:** `.hermes/skills/sdd/check-spec-readiness/scripts/check-partition-coverage.py`
+**GR4 (E-20260814T114609Z):** sole owner of cross-story destination write
+overlap (F4 removed that duty from `check-surgical-scopes.py`).
 
 ## Why
 
@@ -13,8 +15,8 @@ variance becomes measured data.
 
 | Phase | Rule |
 |-------|------|
-| **M2a exit** | Fail-closed before M2a `kanban_complete` / before M2b dispatch |
-| **Create-path** | Tip-sync + R0 needle; run before next M2a |
+| **M2 exit** | Fail-closed before M2 `kanban_complete` / before orchestrator mint (`mint-m3-wave.sh`) |
+| **Create-path** | Tip-sync + R0 needle; run before next M2 |
 | **Live mid-campaign** | `--retro` evidence only — no re-plan of an armed M3 wave |
 
 ## Checks
@@ -24,7 +26,10 @@ variance becomes measured data.
  owning the controller file, or explicit `endpoints` lists). Package remaps
  come from `migration.yaml` `path_rewrites` / discovery — not hardcoded roots.
  Specimen fixtures only with `--allow-specimen-fixture`.
-2. **No file overlaps** — non-`pom.xml` paths claimed by two stories → INVALID.
+2. **No file overlaps** — destination paths claimed by two stories → INVALID,
+   **except** (a) paths ending in `pom.xml` (deliberate shared write; DD3 every
+   story may touch the POM) and (b) explicit `sequence_after: [story_id, …]`
+   pairs that legalize sequenced overlap.
 3. **MTA** — when `evidence/mta-findings.json` present, each rule id is in some
  story `rules` or partition `mta_oos` / `findings_oos`; missing findings file →
  not INVALID (checked as skipped).

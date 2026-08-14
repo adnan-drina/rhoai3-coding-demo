@@ -34,6 +34,7 @@ REQUIRED_FILES = [
     "governance/contracts/contract-lifecycle.md",
     "governance/retired/README.md",
     "governance/retired/m2-resume-from-artifacts.md",
+    "governance/retired/m2b-resume-ladder.md",
     "governance/retired/pom-persistence-handoff.md",
     # Architect E-122959Z — decision-complete card lint
     ".hermes/enforcement/dispatch-phase/scripts/check-decision-complete-cards.py",
@@ -41,9 +42,11 @@ REQUIRED_FILES = [
     ".hermes/skills/sdd/check-spec-readiness/scripts/stamp-body-dependencies.py",
     ".hermes/skills/sdd/check-spec-readiness/scripts/stamp-destination-inventory.py",
     ".hermes/skills/sdd/check-spec-readiness/scripts/check-partition-coverage.py",
-    # Deputy E-20260814T074759Z V1 — M2b created-cards claim wrapper (F8a/F8b)
+    # Deputy E-20260814T074759Z V1 — M2 created-cards claim wrapper (F8a/F8b)
+    # GR2: assert stays; mint moves to mint-m3-wave.sh (orchestrator-owned)
     ".hermes/enforcement/dispatch-phase/scripts/assert-m2b-created-cards-claim.sh",
     ".hermes/enforcement/dispatch-phase/scripts/check-created-cards-claim.py",
+    ".hermes/enforcement/dispatch-phase/scripts/mint-m3-wave.sh",
     ".hermes/home/scripts/enforce-m2b-created-cards-claim.py",
     # Architect E-20260811T170706Z Class A — quarantine survives dispatch
     ".hermes/skills/sdd/check-spec-readiness/scripts/assert-quarantine-tombstones.py",
@@ -177,8 +180,8 @@ REQUIRED_SUBSTRINGS = [
     ),
     (
         ".hermes/enforcement/dispatch-phase/scripts/dispatch-phase.sh",
-        "REFUSE bare M2",
-        "R1 bare M2 refuse",
+        "REFUSE M2a/M2b",
+        "R1/GR2 refuse retired M2a/M2b",
     ),
     (
         ".hermes/enforcement/dispatch-phase/scripts/dispatch-phase.sh",
@@ -188,17 +191,17 @@ REQUIRED_SUBSTRINGS = [
     (
         ".hermes/phase-dispatch.yaml",
         "M2a:",
-        "R1 M2a phase key",
+        "R1 M2a phase key (retired stub GR2)",
     ),
     (
         ".hermes/phase-dispatch.yaml",
         "M2b:",
-        "R1 M2b phase key",
+        "R1 M2b phase key (retired stub GR2)",
     ),
     (
         ".hermes/phase-dispatch.yaml",
         "scan-with-mta",
-        "M2a/M2b attach scan-with-mta (Deputy E-112700Z)",
+        "M2 attach scan-with-mta (Deputy E-112700Z / GR2)",
     ),
     (
         ".hermes/enforcement/dispatch-phase/scripts/check-phase-body-script-refs.py",
@@ -208,7 +211,7 @@ REQUIRED_SUBSTRINGS = [
     (
         ".hermes/enforcement/dispatch-phase/scripts/dispatch-phase.sh",
         "HERMES_SKILL_DIR:-.hermes/home/skills/software-development/check-spec-readiness",
-        "M2a runtime skill-root anchor (Deputy E-113300Z)",
+        "M2 runtime skill-root anchor (Deputy E-113300Z / GR2)",
     ),
     (
         ".hermes/enforcement/dispatch-phase/scripts/check-phase-body-script-refs.py",
@@ -228,7 +231,7 @@ REQUIRED_SUBSTRINGS = [
     (
         ".hermes/enforcement/dispatch-phase/scripts/dispatch-phase.sh",
         "Input manifest",
-        "M2a/M2b input manifests (Operator E-113700Z)",
+        "M2 input manifests (Operator E-113700Z / GR2)",
     ),
     (
         ".hermes/enforcement/dispatch-phase/scripts/dispatch-phase.sh",
@@ -248,12 +251,12 @@ REQUIRED_SUBSTRINGS = [
     (
         ".hermes/phase-dispatch.yaml",
         "speckit-specify",
-        "M2a attaches speckit-specify (Architect E-115316Z)",
+        "M2 attaches speckit-specify (Architect E-115316Z / GR2)",
     ),
     (
         ".hermes/enforcement/dispatch-phase/scripts/dispatch-phase.sh",
         "Spec Kit invoke-or-BLOCK",
-        "M2a Spec Kit invoke-or-needs_input (Architect E-115316Z)",
+        "M2 Spec Kit invoke-or-needs_input (Architect E-115316Z / GR2)",
     ),
     (
         ".hermes/enforcement/dispatch-phase/scripts/check-completion-na-reject.py",
@@ -263,17 +266,17 @@ REQUIRED_SUBSTRINGS = [
     (
         ".hermes/enforcement/dispatch-phase/scripts/dispatch-phase.sh",
         "verify-or-BLOCK",
-        "M2a step0 verify-or-BLOCK (Architect E-121308Z provision-owns-tools)",
+        "M2 step0 verify-or-BLOCK (Architect E-121308Z provision-owns-tools)",
     ),
     (
         ".hermes/enforcement/dispatch-phase/scripts/dispatch-phase.sh",
         "check-specify-preseed.py",
-        "M2a dispatch wires Spec Kit preseed R0",
+        "M2 dispatch wires Spec Kit preseed R0",
     ),
     (
         ".hermes/enforcement/dispatch-phase/scripts/dispatch-phase.sh",
         "no init authority",
-        "M2a forbids agent specify init",
+        "M2 forbids agent specify init",
     ),
     (
         ".hermes/skills/sdd/init-spec-workspace/scripts/init-workspace.sh",
@@ -288,7 +291,7 @@ REQUIRED_SUBSTRINGS = [
     (
         ".hermes/enforcement/dispatch-phase/scripts/dispatch-phase.sh",
         "Per-artifact Spec Kit resume ladder",
-        "M2b per-artifact resume ladder (Operator E-122500Z)",
+        "M2 per-artifact resume ladder (Operator E-122500Z / GR2)",
     ),
     (
         ".hermes/enforcement/dispatch-phase/scripts/dispatch-phase.sh",
@@ -346,32 +349,36 @@ REQUIRED_SUBSTRINGS = [
         "block-and-signal-worker (Operator E-133000Z #2)",
     ),
     # V1 (E-20260814T074759Z): assert property chain, not a bare script-name
-    # inside dispatch-phase.sh. F8a wrapped the claim check; the land-time lint
-    # must follow the wrapper + receipt, or a correct rename false-fails green.
+    # inside dispatch-phase.sh. GR2: claim check lives on mint-m3-wave.sh.
     (
-        ".hermes/enforcement/dispatch-phase/scripts/dispatch-phase.sh",
+        ".hermes/enforcement/dispatch-phase/scripts/mint-m3-wave.sh",
         "assert-m2b-created-cards-claim.sh",
-        "M2b wires created_cards claim check (wrapper name in phase card)",
+        "mint-m3-wave wires created_cards claim check (GR2 orchestrator mint)",
+    ),
+    (
+        ".hermes/enforcement/dispatch-phase/scripts/mint-m3-wave.sh",
+        "orchestrator-owned mint",
+        "GR2/AD-016 mint-m3-wave is orchestrator-owned",
     ),
     (
         ".hermes/enforcement/dispatch-phase/scripts/assert-m2b-created-cards-claim.sh",
         "check-created-cards-claim.py",
-        "M2b claim wrapper invokes check-created-cards-claim.py",
+        "M2 claim wrapper invokes check-created-cards-claim.py",
     ),
     (
         ".hermes/enforcement/dispatch-phase/scripts/assert-m2b-created-cards-claim.sh",
         "m2b-created-cards-ok.json",
-        "M2b claim wrapper stamps m2b-created-cards-ok.json receipt",
+        "M2 claim wrapper stamps m2b-created-cards-ok.json receipt",
     ),
     (
         ".hermes/enforcement/dispatch-phase/scripts/assert-m2b-created-cards-claim.sh",
         "rhoai3.m2b-created-cards-ok/v1",
-        "M2b claim receipt schema id",
+        "M2 claim receipt schema id",
     ),
     (
         ".hermes/home/scripts/enforce-m2b-created-cards-claim.py",
         "m2b-created-cards-ok.json",
-        "F8b machinery reclaims done without M2b ok receipt",
+        "F8b machinery reclaims done without M2 ok receipt",
     ),
     (
         ".hermes/skills/sdd/check-spec-readiness/scripts/check-partition-coverage.py",
@@ -411,7 +418,7 @@ REQUIRED_SUBSTRINGS = [
     (
         ".hermes/enforcement/dispatch-phase/scripts/dispatch-phase.sh",
         "Partition-coverage gate",
-        "M2a wires partition-coverage VALID",
+        "M2 wires partition-coverage VALID (GR2)",
     ),
     (
         ".hermes/skills/sdd/check-spec-readiness/scripts/stamp-body-dependencies.py",

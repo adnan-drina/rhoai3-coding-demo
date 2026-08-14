@@ -29,22 +29,18 @@ phases:
     max_runtime_seconds: 3600
     requires_acks: []
   M2:
-    # DEPRECATED monolithic PLAN — use M2a then M2b (R-AB.2 / pre-v12 R1).
-    # Kept for matrix/docs; dispatch-phase refuses bare M2.
-    # Wave B: enforce-authority-boundary is harness path-invoke only (not card-attach).
+    # GR2 / Operator E-20260813T211843Z — unified PLAN (partition + Spec Kit).
+    # Mint is orchestrator-owned: mint-m3-wave.sh after M2 done (AD-016).
+    # M2a/M2b split retired; stubs below kept for tip-sync / attach-matrix until F9.
     skills:
       - check-spec-readiness
+      - scan-with-mta
+      - speckit-specify
     max_runtime_seconds: 3600
     requires_acks:
       - m1-findings
   M2a:
-    # R-AB.2 / pre-v12 R1 — PLAN partition + briefs only (turn-volume cut)
-    # scan-with-mta attached so check-findings-handoff.py resolves via skill_view
-    # (Deputy E-20260811T112700Z — R1 split had omitted it).
-    # speckit-specify: Architect E-20260811T115316Z invoke-or-needs_input BIND
-    # provision-owns-tools (Architect E-20260811T121308Z): Spec Kit init is
-    # workspace provision / postStart — not an agent skill on M2a.
-    # Wave B: enforce-authority-boundary moved to .hermes/enforcement/ (path-invoke).
+    # RETIRED GR2 — do not dispatch; use M2. Stub skills mirror M2 for attach-matrix.
     skills:
       - check-spec-readiness
       - scan-with-mta
@@ -53,12 +49,10 @@ phases:
     requires_acks:
       - m1-findings
   M2b:
-    # R-AB.2 / pre-v12 R1 — SDD emit + create-m3 children (after M2a partition)
-    # Wave B: enforce-authority-boundary path-invoke only.
+    # RETIRED GR2 — do not dispatch; use M2 + mint-m3-wave.sh. Stub for attach-matrix.
     skills:
       - check-spec-readiness
       - scan-with-mta
-      # /speckit-specify|plan|tasks|analyze from ~/.hermes/skills (not implement)
     max_runtime_seconds: 3600
     requires_acks:
       - m1-findings

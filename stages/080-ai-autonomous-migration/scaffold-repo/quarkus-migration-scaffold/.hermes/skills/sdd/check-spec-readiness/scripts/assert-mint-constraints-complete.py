@@ -45,8 +45,9 @@ def operand_class_of(body: dict) -> str:
     return str(ident.get("operand_class") or body.get("operand_class") or "src_code")
 
 
-def standard_constraints(story_id: str, operand_class: str) -> list[str]:
-    """Standard applicable set (Architect E-20260811T200911Z / Operator E-200426Z)."""
+def standard_constraints(story_id: str, operand_class: str, body: dict | None = None) -> list[str]:
+    """Standard applicable set (Architect E-200911Z / Operator E-200426Z / F3)."""
+    body = body or {}
     forbid = (
         "FORBIDDEN API: do not use @IfBuildProfile (any profile). Required path: "
         "%profile config / build-time alternatives per skill_view references/di-config.md "
@@ -67,16 +68,29 @@ def standard_constraints(story_id: str, operand_class: str) -> list[str]:
         "kanban_complete."
     )
     out = [forbid, write_set, coverage, residue]
-    # S-009 / profile-gated properties: emphasize %profile required path
-    if story_id.upper() in {"S-009", "009"} or "profile" in operand_class.lower():
+    # F3: de-key from story numbers. Profile locality = operand_class / write-set.
+    oc = operand_class.lower().replace("-", "_")
+    writable = [
+        str(p.get("dest") or p.get("path") or p) if isinstance(p, dict) else str(p)
+        for p in (
+            body.get("files_writable")
+            or body.get("write_set")
+            or body.get("files_in_scope")
+            or []
+        )
+    ]
+    has_app_props = any(
+        "application" in p.lower() and p.lower().endswith(".properties") for p in writable
+    )
+    profile_hint = "profile" in oc or (oc == "config" and has_app_props)
+    if profile_hint:
         out.insert(
             1,
             "REQUIRED PATH (profile locality): use %mysql / %postgresql (or matching) "
             "Quarkus profile config in application-*.properties — never @IfBuildProfile / "
             "@Profile on beans for this story's writable set (Operator E-20260811T200426Z).",
         )
-    if operand_class == "build_config":
-        # build_config still gets forbid+write+coverage; residue less about java
+    if oc in {"build_config", "pom"}:
         out = [c for c in out if not c.startswith("RESIDUE:")]
         out.append(
             "BUILD_CONFIG: edit only declared properties/config operands; do not expand "
@@ -87,15 +101,8 @@ def standard_constraints(story_id: str, operand_class: str) -> list[str]:
             "`config_profile_load`), never `quarkus_compile` / `mvn clean compile` — "
             "do not invent Application.java to satisfy compile (E-20260814T073620Z)."
         )
-    # Tip-bank B2 (Operator E-20260813T111910Z / v13 s-008): CORS is infra,
-    # not a REST story operand. HARD forbid at mint — never mid-run amend tip.
-    sid_u = story_id.upper().replace("S-", "").lstrip("0") or story_id.upper()
-    rest_hint = (
-        operand_class in {"src_code", "rest", "api"}
-        or "REST" in story_id.upper()
-        or sid_u in {"8", "008"}
-        or "controller" in operand_class.lower()
-    )
+    # Tip-bank B2 / F3: CORS forbid for REST/api — never key on S-008.
+    rest_hint = oc in {"src_code", "rest", "api"} or "controller" in oc
     if rest_hint:
         out.append(
             "CORS_OUT_OF_SCOPE (HARD / tip-bank B2): do NOT implement @CrossOrigin, "
@@ -167,7 +174,7 @@ def main() -> int:
         )
         return 1
 
-    injected = standard_constraints(sid, oc)
+    injected = standard_constraints(sid, oc, body)
     body["constraints"] = injected
     if "body" in raw and isinstance(raw["body"], dict):
         raw["body"] = body

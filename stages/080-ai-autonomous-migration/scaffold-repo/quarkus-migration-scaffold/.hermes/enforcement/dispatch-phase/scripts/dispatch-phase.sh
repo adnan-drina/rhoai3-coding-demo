@@ -6,6 +6,7 @@
 #   bash .hermes/enforcement/dispatch-phase/scripts/dispatch-phase.sh M1
 #   bash .hermes/enforcement/dispatch-phase/scripts/dispatch-phase.sh M2 --parent t_xxx
 #   bash .hermes/enforcement/dispatch-phase/scripts/dispatch-phase.sh M1 --dry-run
+# After M2 done: mint-m3-wave.sh --parent <m2_task_id> (orchestrator-owned mint AD-016/GR2)
 set -euo pipefail
 
 case "${1:-}" in
@@ -14,8 +15,8 @@ case "${1:-}" in
 dispatch-phase.sh — create + dispatch one M-phase Kanban task from phase-dispatch.yaml.
 
 Usage:
-  dispatch-phase.sh M1|M2a|M2b|M3|M4|M5|factory [--parent ID] [--dry-run]
-  (bare M2 refused — use M2a then M2b)
+  dispatch-phase.sh M1|M2|M3|M4|M5|factory [--parent ID] [--dry-run]
+  (M2a/M2b retired GR2 — use M2; then mint-m3-wave.sh for M3 children)
 
 This is an interface probe / help surface only when -h/--help is passed.
 USAGE
@@ -54,12 +55,12 @@ while [[ $# -gt 0 ]]; do
 done
 
 [[ -n "${PHASE}" ]] || {
-  echo "usage: dispatch-phase.sh M1|M2a|M2b|M3|M4|M5|factory [--parent ID] [--dry-run]" >&2
-  echo "  (bare M2 refused — use M2a then M2b; R-AB.2 / pre-v12 R1)" >&2
+  echo "usage: dispatch-phase.sh M1|M2|M3|M4|M5|factory [--parent ID] [--dry-run]" >&2
+  echo "  (M2a/M2b retired — use M2; mint via mint-m3-wave.sh; AD-016/GR2)" >&2
   exit 2
 }
-if [[ "${PHASE}" == "M2" ]]; then
-  echo "dispatch-phase: REFUSE bare M2 — dispatch M2a (partition) then M2b (SDD+create-m3); R-AB.2" >&2
+if [[ "${PHASE}" == "M2a" || "${PHASE}" == "M2b" ]]; then
+  echo "dispatch-phase: REFUSE M2a/M2b — M2a/M2b split retired (GR2); dispatch M2 then mint-m3-wave.sh" >&2
   exit 2
 fi
 
@@ -91,8 +92,8 @@ python3 "${ROOT}/.hermes/enforcement/dispatch-phase/scripts/check-phase-input-ma
   || die "phase input manifests failed (R0 / Operator E-20260811T113700Z)"
 python3 "${ROOT}/.hermes/enforcement/dispatch-phase/scripts/check-decision-complete-cards.py" "${ROOT}" \
   || die "decision-complete card lint failed (R0 / Architect E-20260811T122959Z)"
-# Architect E-20260811T121308Z — provision-owns-tools: Spec Kit preseed before M2a
-if [[ "${PHASE}" == "M2a" ]]; then
+# Architect E-20260811T121308Z — provision-owns-tools: Spec Kit preseed before M2
+if [[ "${PHASE}" == "M2" ]]; then
   python3 "${ROOT}/.hermes/enforcement/dispatch-phase/scripts/check-specify-preseed.py" "${ROOT}" \
     || die "Spec Kit preseed failed (R0 / provision-owns-tools) — run postStart init-workspace.sh; do not agent-init"
 fi
@@ -287,12 +288,14 @@ orchestration: hermes_native (required)
 EOF
     TITLE="M1 ANALYZE: derive + MTA/kantra + inventory"
     ;;
-  M2a)
+  M2)
     cat >"${BODY_FILE}" <<'EOF'
-# M2a PLAN — partition + briefs only (R-AB.2 / pre-v12 R1)
+# M2 PLAN — partition + Spec Kit (GR2 / AD-016)
 
-Phase: M2a per `.hermes/phase-dispatch.yaml`
+Phase: M2 per `.hermes/phase-dispatch.yaml`
 Requires: Operator `evidence/acks/m1-findings.ack.yaml` + findings-handoff gate
+**Mint is orchestrator-owned** — do **not** run `create-m3-implementer.sh` on this card.
+After Done, Lead runs `mint-m3-wave.sh --parent $TASK_ID`.
 
 ## Execute-as-defined-or-stop (Operator E-20260811T113700Z)
 Any obligation unexecutable as written (unresolvable gate script, missing
@@ -334,95 +337,40 @@ substitution / path invention / specimen-body priming. Measure the harness.
    `python3 .hermes/skills/sdd/check-spec-readiness/scripts/check-partition-coverage.py . --write-receipt evidence/receipts/partition-coverage/latest.json`
    — must print `PARTITION_COVERAGE: VALID` (fail-closed). See
    `governance/contracts/partition-coverage.md`.
-5. **STOP** — do **not** run `/speckit-tasks` or `create-m3-implementer.sh` here.
-   Lead/Operator dispatch **M2b** next (parent = this task).
-
-## Done when
-- Spec Kit invoke evidenced (seed artifact) **or** typed `needs_input` BLOCK recorded
-- `evidence/briefs/partition.json` present (write-once) only after Spec Kit path satisfied
-- `check-partition-coverage.py` → **VALID** (+ receipt)
-- **No** M3 children created on this card
-
-## Constraints
-- workspace: dir:/projects/modernized
-- AD-009 hard budget / crash requeue / protocol_untyped as for prior M2 law
-- Soft-K @2700 not used on M2a (max_runtime=3600); no MiniMax
-- **Completion consumer (Operator E-20260811T120200Z):** never self-declare a binding
-  Done criterion **N/A**. Before `kanban_complete`, run
-  `python3 .hermes/enforcement/dispatch-phase/scripts/check-completion-na-reject.py --text "$YOUR_RESULT_SUMMARY"`.
-  Exit 1 ⇒ typed `needs_input` (do not complete). Workers satisfy or BLOCK — never amend.
-EOF
-    TITLE="M2a PLAN: story partition + briefs"
-    ;;
-  M2b)
-    cat >"${BODY_FILE}" <<'EOF'
-# M2b PLAN — SDD emit + create-m3 children (R-AB.2 / pre-v12 R1)
-
-Phase: M2b per `.hermes/phase-dispatch.yaml`
-Requires: M2a partition present; m1-findings ack
-
-## Execute-as-defined-or-stop (Operator E-20260811T113700Z)
-Unexecutable obligation → typed **`needs_input` BLOCK**. Never silent substitution.
-
-## Input manifest
-### Required present
-- evidence/acks/m1-findings.ack.yaml
-- evidence/findings-handoff.json
-- evidence/briefs/partition.json
-- governance/schemas/partition.md
-### Forbidden absent
-- evidence/bodies/m3-*.json
-
-## Job
-1. Require `evidence/briefs/partition.json` — typed `needs_input` BLOCK if missing (run M2a first).
-2. **Per-artifact Spec Kit resume ladder** (Architect E-20260811T122959Z — decision-complete;
-   contract `governance/contracts/m2b-resume-ladder.md`; retired inverted v11 R-M2.6
-   compound jump under M2a/M2b split — see `governance/retired/m2-resume-from-artifacts.md`):
+5. **Per-artifact Spec Kit resume ladder** (Architect E-20260811T122959Z — decision-complete;
+   contract `governance/contracts/sdd-ordering.md`; retired inverted v11 R-M2.6 and
+   M2a/M2b split — see `governance/retired/m2b-resume-ladder.md`):
    - **`/speckit-specify`:** precondition = no `specs/**/spec.md` (or workspace Spec Kit
-     equiv). **Skip iff** `spec.md` already exists (M2a normally left it). Do **not**
-     invent specs.
+     equiv). **Skip iff** `spec.md` already exists. Do **not** invent specs.
    - **`/speckit-plan`:** precondition = `spec.md` present. **Skip iff** `plan.md`
      already exists. Otherwise run `/speckit-plan` (cite `sdd-ordering.md` +
      `story-sizing.md`). **Never** jump over plan just because `spec.md` exists.
    - **`/speckit-tasks`:** always last. Precondition = `plan.md` present — else typed
-     `needs_input` BLOCK. Then emit tasks artifacts.
-3. Create implementer cards via **`create-m3-implementer.sh`** only (not bare create).
-   **Required:** `--parent <this task id>` on every create (Operator E-20260811T133000Z #5).
-   Bodies are generated here — do not consume golden specimen packets.
-   Cards are **born blocked** (no auto-dispatch). Do **not** unblock/dispatch M3
-   children from M2b (Deputy E-20260811T131900Z serial law).
-   **Body refs (Deputy E-20260811T131200Z):**
-   - `brief_identity_ack`: `sha256: "pending"` + intended future ack path
-     (e.g. `evidence/acks/brief-identity-<story>.ack.yaml`). Do **not**
-     substitute `partition.json` or invent prose digests.
-   - `legacy_locus`: 64-hex of the primary legacy **file** (not a directory;
-     not `see-harvest-referent` prose).
-4. Before `kanban_complete`: run
-   `bash .hermes/enforcement/dispatch-phase/scripts/assert-m2b-created-cards-claim.sh . $TASK_ID`
-   (writes `evidence/runs/$TASK_ID/m2b-created-cards-ok.json`). Asserts
-   **partition story_ids == created card story_ids** (F8a — not stamp self-check).
-   Pass matching ids as `created_cards`. **`created_cards=[]` is REJECT** when
-   derived claim is nonempty.
-   **F8b machinery:** `python3 .hermes/home/scripts/enforce-m2b-created-cards-claim.py . --task $TASK_ID`
-   reclaims `done` without the ok receipt — prose is not the gate.
-5. Stop for Operator `brief-identity.ack.yaml`.
+     `needs_input` BLOCK. Then emit tasks artifacts + typed M3 body JSONs under
+     `evidence/bodies/` (bodies only — **no** `kanban create`).
+6. **STOP** — do **not** run `create-m3-implementer.sh` or `mint-m3-wave.sh` here.
+   Lead/Operator runs **`mint-m3-wave.sh --parent $TASK_ID`** after M2 Done
+   (orchestrator-owned mint AD-016/GR2). Cards remain born-parked; serial GO separate.
 
 ## Done when
-- Spec Kit tasks artifacts present
-- M3 children created via `create-m3-implementer.sh --parent $TASK_ID`
-- `assert-m2b-created-cards-claim.sh` OK (partition set equality + receipt)
-- brief-identity ack out of band (Operator)
+- Spec Kit invoke evidenced (seed + plan + tasks) **or** typed `needs_input` BLOCK recorded
+- `evidence/briefs/partition.json` present (write-once) only after Spec Kit path satisfied
+- `check-partition-coverage.py` → **VALID** (+ receipt)
+- Typed M3 body JSONs present for every partition story (mint consumes them)
+- **No** M3 Kanban children created on this card
 
 ## Constraints
 - workspace: dir:/projects/modernized
 - Do not rewrite write-once `partition.json`
 - Prefer short tool results; avoid bulk-pasting bodies (context margin)
-- AD-009 / crash requeue / protocol_untyped as prior M2 law; no MiniMax
+- AD-009 hard budget / crash requeue / protocol_untyped as prior M2 law; no MiniMax
+- Soft-K @2700 not used on M2 (max_runtime=3600); no MiniMax
+- **Completion consumer (Operator E-20260811T120200Z):** never self-declare a binding
+  Done criterion **N/A**. Before `kanban_complete`, run
+  `python3 .hermes/enforcement/dispatch-phase/scripts/check-completion-na-reject.py --text "$YOUR_RESULT_SUMMARY"`.
+  Exit 1 ⇒ typed `needs_input` (do not complete). Workers satisfy or BLOCK — never amend.
 EOF
-    TITLE="M2b PLAN: SDD + create-m3 children"
-    ;;
-  M2)
-    die "bare M2 refused — use M2a then M2b (R-AB.2)"
+    TITLE="M2 PLAN: partition + Spec Kit (orchestrator mints M3)"
     ;;
   M3)
     cat >"${BODY_FILE}" <<'EOF'
@@ -430,7 +378,7 @@ EOF
 
 Phase: M3 per `.hermes/phase-dispatch.yaml`
 Requires acks: m1-findings, brief-identity
-Prefer create path: `create-m3-implementer.sh` (skills preloaded).
+Prefer create path: `create-m3-implementer.sh` via `mint-m3-wave.sh` (skills preloaded).
 
 ## Job
 Execute only `files_in_scope` from the typed W2 §6 body. Consult

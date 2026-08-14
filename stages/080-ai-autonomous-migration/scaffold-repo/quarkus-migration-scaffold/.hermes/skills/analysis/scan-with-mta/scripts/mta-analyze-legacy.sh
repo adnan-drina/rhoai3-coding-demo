@@ -9,8 +9,22 @@
 # not the RO 2.x mount working copy.
 set -euo pipefail
 
-# Skill layout: .hermes/skills/analysis/scan-with-mta/scripts/ → project root is ../../../..
-ROOT="$(cd "$(dirname "$0")/../../../.." && pwd)"
+# Resolve project root by walking up to migration.yaml (depth-safe after
+# categorized skill tree: .hermes/skills/<cat>/<skill>/scripts/).
+# Fixed-depth ../../../.. incorrectly landed on .hermes/ after analysis/ was inserted.
+resolve_project_root() {
+  local d
+  d="$(cd "$(dirname "$0")" && pwd)"
+  while [ "$d" != "/" ]; do
+    if [ -f "$d/migration.yaml" ]; then
+      printf "%s\n" "$d"
+      return 0
+    fi
+    d="$(dirname "$d")"
+  done
+  return 1
+}
+ROOT="$(resolve_project_root)" || { echo "mta-analyze-legacy: cannot find migration.yaml walking up from $(dirname "$0")" >&2; exit 1; }
 MANIFEST="${ROOT}/evidence/derived/legacy-at-3.json"
 MIGRATION_YAML="${ROOT}/migration.yaml"
 OUT_DIR="${MTA_OUT_DIR:-${ROOT}/migration/mta-analyze-out}"

@@ -38,6 +38,22 @@ parallel `[P]` markers, Kanban `body` packaging.
 Expanding scope, dropping Non-Goals, rewriting AC meaning, inventing units not
 in the brief/model.
 
+## Spec Kit per-artifact resume ladder (GR2)
+
+**Absorbs** retired `m2b-resume-ladder.md` (M2a/M2b split removed — Operator
+E-20260813T211843Z / GR2). Unified **M2 PLAN** still must not jump over plan on
+reclaim.
+
+| Step | Precondition | Skip iff | Else |
+|------|--------------|----------|------|
+| `/speckit-specify` | no `spec.md` | `spec.md` exists | run specify |
+| `/speckit-plan` | `spec.md` present | `plan.md` exists | run plan |
+| `/speckit-tasks` | `plan.md` present | never skip ahead of plan | run tasks (always last) |
+
+Missing precondition → typed `needs_input` BLOCK. Never invent Spec Kit trees.
+Do **not** rewrite write-once `evidence/briefs/partition.json`.
+Lint: `check-decision-complete-cards.py` on the M2 seed body.
+
 ## Implementation-graph ordering
 
 Kanban `parents` / task `deps` encode edges. Build order (earlier before later):

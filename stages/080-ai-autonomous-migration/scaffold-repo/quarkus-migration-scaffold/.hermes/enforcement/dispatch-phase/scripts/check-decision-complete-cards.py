@@ -5,8 +5,8 @@ Card steps must state their own precondition + skip rule. Compound jump
 conditionals that embed cross-step assumptions (e.g. retired R-M2.6
 `spec.md` → jump to `/speckit-tasks`) are fail-closed.
 
-Contract: governance/contracts/m2b-resume-ladder.md
-(supersedes retired governance/retired/m2-resume-from-artifacts.md).
+Contract: governance/contracts/sdd-ordering.md (Spec Kit ladder; GR2)
+(supersedes retired governance/retired/m2b-resume-ladder.md).
 """
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ import re
 import sys
 from pathlib import Path
 
-CONTRACT = "governance/contracts/m2b-resume-ladder.md"
+CONTRACT = "governance/contracts/sdd-ordering.md"
 
 
 def extract_bodies(dispatch_sh: Path) -> dict[str, str]:
@@ -29,30 +29,30 @@ def extract_bodies(dispatch_sh: Path) -> dict[str, str]:
     return out
 
 
-def check_m2b(body: str) -> list[str]:
+def check_m2_ladder(body: str) -> list[str]:
     bad: list[str] = []
     # Forbidden inverted monolithic resume jump
     if re.search(r"jump\s+to\s+`?/speckit-tasks", body, re.I):
         bad.append(
-            "M2b forbids compound 'jump to /speckit-tasks' (use per-artifact ladder)"
+            "M2 forbids compound 'jump to /speckit-tasks' (use per-artifact ladder)"
         )
     if re.search(
         r"spec\.md[^\n]{0,80}plan\.md[^\n]{0,80}(?:jump|skip re-partition|/speckit-tasks)",
         body,
         re.I | re.S,
     ):
-        bad.append("M2b forbids compound spec.md+plan.md jump-over-plan resume")
+        bad.append("M2 forbids compound spec.md+plan.md jump-over-plan resume")
     # Required per-artifact ladder markers (decision-complete)
     required = [
-        (r"Skip iff.*spec\.md", "M2b must state skip-/speckit-specify iff spec.md"),
-        (r"Skip iff.*plan\.md", "M2b must state skip-/speckit-plan iff plan.md"),
+        (r"Skip iff.*spec\.md", "M2 must state skip-/speckit-specify iff spec.md"),
+        (r"Skip iff.*plan\.md", "M2 must state skip-/speckit-plan iff plan.md"),
         (
             r"/speckit-tasks.*always last|always last.*/speckit-tasks",
-            "M2b must keep /speckit-tasks always last",
+            "M2 must keep /speckit-tasks always last",
         ),
         (
             r"Never.*jump over plan|Never.*jump over plan",
-            "M2b must forbid jump-over-plan",
+            "M2 must forbid jump-over-plan",
         ),
     ]
     for pat, label in required:
@@ -73,16 +73,16 @@ def main() -> int:
         return 1
     bodies = extract_bodies(dispatch)
     bad = 0
-    m2b = bodies.get("M2b")
-    if not m2b:
-        print("FAIL: M2b body missing from dispatch-phase.sh", file=sys.stderr)
+    m2 = bodies.get("M2")
+    if not m2:
+        print("FAIL: M2 body missing from dispatch-phase.sh", file=sys.stderr)
         return 1
-    for msg in check_m2b(m2b):
+    for msg in check_m2_ladder(m2):
         print(f"FAIL: {msg}", file=sys.stderr)
         bad = 1
     if bad:
         print(
-            "FAIL: decision-complete card lint (Architect E-122959Z)",
+            "FAIL: decision-complete card lint (Architect E-122959Z / GR2)",
             file=sys.stderr,
         )
         return 1

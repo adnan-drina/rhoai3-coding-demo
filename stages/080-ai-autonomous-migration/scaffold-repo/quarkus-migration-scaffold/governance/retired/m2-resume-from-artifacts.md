@@ -1,8 +1,8 @@
-# RETIRED — see `m2b-resume-ladder.md`
+# RETIRED — see `sdd-ordering.md (Spec Kit ladder; GR2 retired m2b-resume-ladder.md)`
 
 **Status:** retired (Architect E-20260813T162123Z §B).
 **Attic:** `governance/retired/` (GR1 E-20260814T081104Z) — not an active contract.
-**Superseded by:** `governance/contracts/m2b-resume-ladder.md`.
+**Superseded by:** `governance/contracts/sdd-ordering.md (Spec Kit ladder; GR2 retired m2b-resume-ladder.md)`.
 
 The inverted R-M2.6 compound jump (`spec.md` → `/speckit-tasks`) is forbidden
 under the M2a/M2b split. Live constraints that survived (write-once partition,

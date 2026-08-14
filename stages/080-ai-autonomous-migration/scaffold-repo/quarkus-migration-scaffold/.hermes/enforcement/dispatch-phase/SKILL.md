@@ -5,7 +5,7 @@ license: Apache-2.0
 compatibility: Linux seat; Hermes CLI on PATH for kanban create/dispatch
 metadata:
   author: rhoai3-harness-team
-  version: "1.2.0"
+  version: "1.3.0"
   hermes:
     tags:
     - harness
@@ -18,15 +18,14 @@ metadata:
 ## When to Use
 
 - Starting **any** M-phase, especially **M1 ANALYZE** (derive + MTA + inventory).
-- Creating M3 implementer children after M2b — always via
-  `create-m3-implementer.sh`; bare `hermes kanban create` attaches **zero**
-  skills and the worker runs blind.
+- After **M2 PLAN** Done — mint M3 children via **`mint-m3-wave.sh`** (AD-016/GR2
+  orchestrator-owned mint). Always uses `create-m3-implementer.sh` under the hood;
+  bare `hermes kanban create` attaches **zero** skills.
 - Seeding the next phase after an ack is granted (`--parent <prior task id>`).
 - Replacing a forbidden detached `mta-analyze-legacy.sh` / derive shell under
   PPID 1 — that path yields `tasks=0` and cannot stamp
   `orchestration=hermes_native`.
-- Bare `M2` is refused: dispatch `M2a` (partition) then `M2b` (SDD +
-  create-m3).
+- **M2a/M2b are refused** (GR2). Dispatch **M2**, then `mint-m3-wave.sh`.
 
 ## Standing rule
 
@@ -44,8 +43,9 @@ cd /projects/modernized
 # Ensure watch is already running in another pane (demo Act D).
 bash "${HERMES_SKILL_DIR}/scripts/dispatch-phase.sh" M1
 # later:
-bash "${HERMES_SKILL_DIR}/scripts/dispatch-phase.sh" M2a --parent <m1_task_id>
-bash "${HERMES_SKILL_DIR}/scripts/dispatch-phase.sh" M2b --parent <m2a_task_id>
+bash "${HERMES_SKILL_DIR}/scripts/dispatch-phase.sh" M2 --parent <m1_task_id>
+# after M2 Done:
+bash "${HERMES_SKILL_DIR}/scripts/mint-m3-wave.sh" --parent <m2_task_id>
 ```
 
 `--dry-run` prints the exact `hermes kanban create` argv without creating.
@@ -59,10 +59,13 @@ bash .hermes/enforcement/dispatch-phase/scripts/dispatch-phase.sh M1
 M3 children take the dedicated create path (`--parent` is **required**):
 
 ```bash
+bash .hermes/enforcement/dispatch-phase/scripts/mint-m3-wave.sh \
+  --parent <m2_task_id>
+# or per-story:
 bash "${HERMES_SKILL_DIR}/scripts/create-m3-implementer.sh" \
   --title "M3 IMPLEMENT: <story>" \
   --body-json evidence/bodies/m3-s-010.json \
-  --parent <m2b_task_id>
+  --parent <m2_task_id>
 ```
 
 ### What dispatch-phase.sh does
@@ -70,7 +73,7 @@ bash "${HERMES_SKILL_DIR}/scripts/create-m3-implementer.sh" \
 1. Runs the pre-create gate chain, dying on the first refusal: tip sync,
    quarantine tombstones, `check-phase-attach-matrix.py`,
    `check-phase-body-script-refs.py`, `check-phase-input-manifest.py`,
-   `check-decision-complete-cards.py`, and — for M2a only —
+   `check-decision-complete-cards.py`, and — for M2 only —
    `check-specify-preseed.py` (provision owns `specify init`; agents verify
    or BLOCK).
 2. Reads `.hermes/phase-dispatch.yaml` for `role`, `skills[]`,
@@ -84,19 +87,19 @@ bash "${HERMES_SKILL_DIR}/scripts/create-m3-implementer.sh" \
    `--skill` per declared skill, `--max-runtime`, and the idempotency key;
    records the id under `evidence/derived/`.
 6. Ticks `hermes kanban dispatch --max 1`. **The M3 create path does not** —
-   cards are born `--initial-status blocked` and unpark only after M2b ledger
+   cards are born `--initial-status blocked` and unpark only after M2 ledger
    PASS + brief-identity ack + serial GO (Deputy `E-20260811T131900Z`).
 
-### What create-m3-implementer.sh adds
+### What create-m3-implementer.sh / mint-m3-wave.sh add
 
-Stamps the body digest (AR-4.3), runs the body-scoped create gates
-(dependencies, interface closure, destination inventory, partition coverage,
-mint constraints, dependency closure, `check-kanban-body.py --body`, surgical
-scopes, semantic exits, operand-count `--wall-fit`), builds the markdown card
-from the typed body **by reference** (never inlined), forces park-at-birth and
-verifies it, appends to `evidence/derived/created-cards-<parent>.json`, emits
-an unsigned `evidence/acks/ack-request-<story>.yaml`, then cross-asserts card
-digest ↔ live sidecar.
+`mint-m3-wave.sh` walks `evidence/briefs/partition.json`, invokes
+`create-m3-implementer.sh` per story, then runs
+`assert-m2b-created-cards-claim.sh` (F8a/F8b receipt).
+
+`create-m3-implementer.sh` stamps the body digest (AR-4.3), runs the body-scoped
+create gates, builds the markdown card from the typed body **by reference**,
+forces park-at-birth, appends to `evidence/derived/created-cards-<parent>.json`,
+emits an unsigned ack-request, then cross-asserts card digest ↔ live sidecar.
 
 ### M1 body contract (evidence-analyst)
 
@@ -111,7 +114,7 @@ The created M1 task instructs the worker to, in order:
 
 - Do **not** start M1 by `nohup …/mta-analyze-legacy.sh &`.
 - Do **not** omit `--workspace dir:/projects/modernized` (scratch default is wrong).
-- Do **not** dispatch M3 children from M2b — serial law.
+- Do **not** dispatch M3 children from the M2 worker — use `mint-m3-wave.sh`.
 - Start `hermes kanban watch` **before** dispatch for the demo audience.
   Companion pane: `hermes kanban tail <task_id>` or `hermes kanban log <task_id>`
   (native CLI — do **not** revive `kanban-track.sh`; W6 REMOVE 2026-08-13).
@@ -119,6 +122,7 @@ The created M1 task instructs the worker to, in order:
 ## Available scripts
 
 - `scripts/dispatch-phase.sh` — create a phase seed card from `phase-dispatch.yaml`
+- `scripts/mint-m3-wave.sh` — orchestrator-owned M3 mint from partition (GR2/AD-016)
 - `scripts/create-m3-implementer.sh` — M3 child with required skills + park-at-birth
 - `scripts/check-phase-attach-matrix.py` — skills[] vs attach-matrix law
 - `scripts/check-create-path-tip-sync.py` — BLOCKING R0/R3 create-path tip sync
@@ -144,7 +148,7 @@ The created M1 task instructs the worker to, in order:
   path was used — refuse the run and recreate via these scripts.
 - M3 only: `PARK_AT_BIRTH=<task_id> status=blocked` (or `triage`). Any of
   `ready` / `todo` / `running` after create is a fail-closed die — a
-  dispatchable M3 mint races M2b.
+  dispatchable M3 mint races M2.
 - M3 only: `CREATED_CARDS_CLAIM=<path>` names a
   `evidence/derived/created-cards-<parent>.json` containing the new id, and
   `ACK_REQUEST=<path>` names an unsigned `ack-request-<story>.yaml` whose

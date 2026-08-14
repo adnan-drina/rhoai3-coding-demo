@@ -1,6 +1,14 @@
+# RETIRED — M2b Spec Kit resume ladder
+
+**Status:** retired (GR2 / Lead E-20260814T114609Z).
+**Superseded by:** `governance/contracts/sdd-ordering.md` (Spec Kit per-artifact resume ladder section).
+**Why:** Operator removed the M2a/M2b split (E-20260813T211843Z); mint is orchestrator-owned (`mint-m3-wave.sh`). Ladder content survives under sdd-ordering; this file is attic-only.
+
+---
+
 # M2b per-artifact Spec Kit resume ladder
 
-**Status:** bound — (decision-complete cards)
+**Status:** retired — see header
 **Supersedes:** `governance/retired/m2-resume-from-artifacts.md` (retired R-M2.6
 inverted compound jump `spec.md` → `/speckit-tasks`). Architect
 E-20260813T162123Z §B; attic move GR1 E-20260814T081104Z.
@@ -29,5 +37,5 @@ Missing precondition → typed `needs_input` BLOCK. Never invent Spec Kit trees.
 ## Lint
 
 `check-decision-complete-cards.py` fail-closes compound jump-over-plan language
-on the M2b seed body (R0 create-path). Contract path:
-`governance/contracts/m2b-resume-ladder.md`.
+on the M2 seed body (R0 create-path). Live contract path:
+`governance/contracts/sdd-ordering.md` (this attic file is historical only).
