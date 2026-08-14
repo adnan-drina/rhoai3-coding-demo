@@ -2,7 +2,7 @@
 
 Structure-only fragments grounded in official RHBQ / quarkus.io Maven
 tooling chapters. **Do not paste version literals** — substitute from
-`.hermes/pins.yaml`.
+`.hermes/pins.json`.
 
 Story `<dependencies>` stay empty at mint (DD3). Foundation Jacoco /
 Sonar wiring is **not** a story extension — see
@@ -22,7 +22,7 @@ plugin config — not both).
   <maven.compiler.release><!-- pins, typically 21 --></maven.compiler.release>
   <quarkus.platform.group-id>com.redhat.quarkus.platform</quarkus.platform.group-id>
   <quarkus.platform.artifact-id>quarkus-bom</quarkus.platform.artifact-id>
-  <quarkus.platform.version><!-- `.hermes/pins.yaml` only --></quarkus.platform.version>
+  <quarkus.platform.version><!-- `.hermes/pins.json` only --></quarkus.platform.version>
   <surefire-plugin.version><!-- pins --></surefire-plugin.version>
   <skipITs>true</skipITs>
   <!-- dual Sonar paths: foundation-jacoco-wiring.md -->

@@ -20,6 +20,6 @@ esac
 
 printf '%s\n' \
   "CREATE_PATH_RETIRED: do not quarkus create / maven :create into the destination (DD1 E-20260814T065925Z)." \
-  "Author pom.xml from T-1 + `.hermes/pins.yaml`; see skill bootstrap-quarkus-project." \
+  "Author pom.xml from T-1 + `.hermes/pins.json`; see skill bootstrap-quarkus-project." \
   >&2
 exit 1

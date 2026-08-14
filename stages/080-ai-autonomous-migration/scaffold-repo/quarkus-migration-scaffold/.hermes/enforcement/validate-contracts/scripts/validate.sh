@@ -837,12 +837,20 @@ python3 "${SKILL_DIR}/scripts/check-specify-absent.py" --root "${ROOT}" || rc=1
 echo "== AD-H §7 root scripts/ absent from golden =="
 python3 "${SKILL_DIR}/scripts/check-scripts-absent.py" --root "${ROOT}" || rc=1
 
-# GRT — pins.yaml present
-if [ ! -f "${ROOT}/.hermes/pins.yaml" ]; then
-  echo "FAIL: missing .hermes/pins.yaml" >&2
+# GRT — pins.json present; yaml loader and .hermes/lib retired (PJ-1/2)
+if [ ! -f "${ROOT}/.hermes/pins.json" ]; then
+  echo "FAIL: missing .hermes/pins.json" >&2
   rc=1
 else
-  echo "OK: .hermes/pins.yaml present"
+  echo "OK: .hermes/pins.json present"
+fi
+if [ -f "${ROOT}/.hermes/pins.yaml" ]; then
+  echo "FAIL: leftover pins.yaml on disk (retired; pins.json is the pin file)" >&2
+  rc=1
+fi
+if [ -e "${ROOT}/.hermes/lib" ]; then
+  echo "FAIL: leftover lib/ directory (retired with the yaml pin loader)" >&2
+  rc=1
 fi
 
 echo "== GR1/GRT contract lifecycle (no EOL in .hermes references; no governance/contracts) =="

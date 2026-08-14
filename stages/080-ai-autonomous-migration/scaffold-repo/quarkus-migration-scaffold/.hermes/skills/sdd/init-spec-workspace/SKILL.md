@@ -92,7 +92,7 @@ After `/speckit-tasks` (optional `/speckit-analyze`) → `kanban_create()`.
 
 ## Hermes Spec Kit skill names
 
-Installed under `~/.hermes/skills` as hyphenated packages (pins: `.hermes/pins.yaml`
+Installed under `~/.hermes/skills` as hyphenated packages (pins: `.hermes/pins.json`
 `spec_kit`). Hard-invoke Hermes names, not dotted GitHub slash paths:
 
 | Wrong (obsolete dotted) | Correct (Hermes skill) |

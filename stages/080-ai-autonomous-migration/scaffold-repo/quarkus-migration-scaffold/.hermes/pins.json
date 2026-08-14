@@ -1,0 +1,21 @@
+{
+  "schema": "rhoai3.tooling-pins/v1",
+  "pins": {
+    "hermes_agent": {
+      "version": "v0.20.0",
+      "build": "2026.8.3",
+      "install_surface": "Platform Dev Spaces init (Managed Scope)"
+    },
+    "spec_kit": {
+      "package": "specify-cli",
+      "version": "0.16.1",
+      "install": "uv tool install 'specify-cli==0.16.1'"
+    },
+    "quarkus_platform": {
+      "group_id": "com.redhat.quarkus.platform",
+      "bom_artifact_id": "quarkus-bom",
+      "version": "3.27.3.SP1-redhat-00002",
+      "plugin_artifact_id": "quarkus-maven-plugin"
+    }
+  }
+}

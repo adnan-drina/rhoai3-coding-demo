@@ -108,7 +108,7 @@ ensure_specify() {
     export PATH="${HOME}/.local/bin:${PATH}"
   fi
   command -v uv >/dev/null 2>&1 || die "uv not available after install"
-  # R-HX.1 — pin Spec Kit (see .hermes/pins.yaml)
+  # R-HX.1 — pin Spec Kit (see .hermes/pins.json)
   local SPECIFY_PIN="${SPECIFY_CLI_VERSION:-0.16.1}"
   log "installing specify-cli==${SPECIFY_PIN} via uv tool…"
   uv tool install "specify-cli==${SPECIFY_PIN}"

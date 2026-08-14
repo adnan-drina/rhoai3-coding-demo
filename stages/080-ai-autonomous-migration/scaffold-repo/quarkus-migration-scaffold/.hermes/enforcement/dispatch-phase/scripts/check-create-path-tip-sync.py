@@ -32,7 +32,7 @@ REQUIRED_FILES = [
     # GR1 / Deputy E-20260814T081104Z — contract lifecycle (no EOL in active dir)
     ".hermes/enforcement/validate-contracts/scripts/check-contract-lifecycle.py",
     ".hermes/enforcement/validate-contracts/references/contract-lifecycle.md",
-    ".hermes/pins.yaml",
+    ".hermes/pins.json",
     ".hermes/platform/known-hermes-behaviours.md",
     ".hermes/skills/sdd/check-spec-readiness/references/story-scope-and-exit.md",
     ".hermes/skills/sdd/check-spec-readiness/references/body-integrity.md",

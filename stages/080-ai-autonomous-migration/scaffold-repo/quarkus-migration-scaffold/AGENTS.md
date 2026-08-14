@@ -29,7 +29,7 @@ repository (`/projects/modernized`).
   (`/q/*` deliberately sits outside the application root path).
 - Pattern cards (on demand): skill `spring-to-quarkus-patterns`.
 - Extension add/rm (on demand): skill `manage-quarkus-extensions` (RH BOM policy;
-  versions in `.hermes/pins.yaml` only).
+  versions in `.hermes/pins.json` only).
 
 ## Build and test
 
@@ -178,13 +178,13 @@ When a skill is loaded, prefer `"${HERMES_SKILL_DIR}/scripts/…"`.
 | Spring→Quarkus pattern cards | `spring-to-quarkus-patterns` | skill `references/` |
 | Quarkus extension add/rm + obligations (T-3) | `manage-quarkus-extensions` | skill + `extension-obligations.md` + pins |
 | RH Quarkus POM structure (T-1) | `reference-rh-quarkus-pom` | skill `references/pom-structure.md` + pins |
-| Destination Quarkus POM authoring | `bootstrap-quarkus-project` | T-1 skill + `.hermes/pins.yaml` (DD1: no create-app) |
+| Destination Quarkus POM authoring | `bootstrap-quarkus-project` | T-1 skill + `.hermes/pins.json` (DD1: no create-app) |
 | Hard-stop a Hermes worker session | `stop-worker-session.sh` *(home script)* | `.hermes/platform/known-hermes-behaviours.md` (A-5) |
 
 
 ## Governance doctrine (GRX/GRT)
 
-- **No `governance/` folder** on the tip. Pins: `.hermes/pins.yaml`. Fixtures:
+- **No `governance/` folder** on the tip. Pins: `.hermes/pins.json`. Fixtures:
   per enforcement/skill package. Platform Hermes behaviours:
   `.hermes/platform/known-hermes-behaviours.md`.
 - **Scope + exit are one concern** — skill `derive-story-oracles` +
