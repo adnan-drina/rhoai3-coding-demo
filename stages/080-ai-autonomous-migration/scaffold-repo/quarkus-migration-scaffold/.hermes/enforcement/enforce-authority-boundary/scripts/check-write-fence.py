@@ -32,7 +32,13 @@ DENY_PREFIXES = (
 
 
 def norm(p: str) -> str:
-    return p.lstrip("./")
+    # Prefix-strip "./" only. Never use str.lstrip("./") — that strips any
+    # leading '.' or '/' character, so ".hermes/enforcement/x" becomes
+    # "hermes/enforcement/x" and misses DENY_PREFIXES (Z15-a / A-1 hole).
+    s = p.replace("\\", "/")
+    while s.startswith("./"):
+        s = s[2:]
+    return s
 
 
 def is_denied(path: str) -> bool:

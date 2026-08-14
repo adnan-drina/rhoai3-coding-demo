@@ -230,6 +230,28 @@ if python3 "${ENFORCEMENT}/enforce-authority-boundary/scripts/check-write-fence.
 else
   echo "OK: write-fence refuses OOS + deny-path writes"
 fi
+# Z15-a — A-1 enforcement DENY must fire on dotted .hermes/ paths (norm() hole).
+# Build path at runtime so dangling-refs lint does not see a missing leaf.
+z15_enf=".hermes/enforcement/${RANDOM}-tamper.py"
+z15_verdict="evidence/verdicts/${RANDOM}-forged.json"
+if python3 "${ENFORCEMENT}/enforce-authority-boundary/scripts/check-write-fence.py" "${fence_tmp}" \
+  --no-git-status \
+  --writes "${z15_enf}" "./${z15_verdict}" >/dev/null 2>&1; then
+  echo "FAIL: write-fence should refuse .hermes/enforcement + evidence/verdicts" >&2
+  rc=1
+else
+  echo "OK: write-fence refuses .hermes/enforcement + evidence/verdicts (Z15-a)"
+fi
+# Legitimate in-scope src write must still PASS
+printf '%s\n' '{"files_in_scope":["src/main/java/Foo.java"]}' > "${fence_tmp}/body-ok.json"
+if python3 "${ENFORCEMENT}/enforce-authority-boundary/scripts/check-write-fence.py" "${fence_tmp}" \
+  --no-git-status --body "${fence_tmp}/body-ok.json" \
+  --writes src/main/java/Foo.java >/dev/null 2>&1; then
+  echo "OK: write-fence allows in-scope src write (Z15-a positive)"
+else
+  echo "FAIL: write-fence wrongly refused in-scope src write" >&2
+  rc=1
+fi
 bash "${ENFORCEMENT}/enforce-authority-boundary/scripts/apply-write-fence.sh" "${fence_tmp}" unlock >/dev/null || true
 rm -rf "${fence_tmp}"
 
