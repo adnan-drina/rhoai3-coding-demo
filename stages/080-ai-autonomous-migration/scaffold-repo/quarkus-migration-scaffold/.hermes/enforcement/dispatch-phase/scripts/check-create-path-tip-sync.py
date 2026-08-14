@@ -35,6 +35,10 @@ REQUIRED_FILES = [
     ".hermes/skills/sdd/check-spec-readiness/scripts/stamp-body-dependencies.py",
     ".hermes/skills/sdd/check-spec-readiness/scripts/stamp-destination-inventory.py",
     ".hermes/skills/sdd/check-spec-readiness/scripts/check-partition-coverage.py",
+    # Deputy E-20260814T074759Z V1 — M2b created-cards claim wrapper (F8a/F8b)
+    ".hermes/enforcement/dispatch-phase/scripts/assert-m2b-created-cards-claim.sh",
+    ".hermes/enforcement/dispatch-phase/scripts/check-created-cards-claim.py",
+    ".hermes/home/scripts/enforce-m2b-created-cards-claim.py",
     # Architect E-20260811T170706Z Class A — quarantine survives dispatch
     ".hermes/skills/sdd/check-spec-readiness/scripts/assert-quarantine-tombstones.py",
     ".hermes/skills/sdd/check-spec-readiness/scripts/register-quarantine-tombstone.py",
@@ -108,6 +112,12 @@ REQUIRED_FILES = [
     ".hermes/skills/migration/manage-quarkus-extensions/scripts/check-pom-platform-pins.py",
 ]
 
+# Tip-sync substring table (R0/R3).
+# V2 audit (E-20260814T074759Z): prefer receipt / invocation chains over bare
+# script-name greps inside callers. Name literals remain only where the
+# *behaviour* is the presence of that token (schema ids, reject tokens,
+# contract BANK-* ids). The M2b created-cards row was converted to the
+# wrapper→claim-check→receipt chain after F8a (V1).
 REQUIRED_SUBSTRINGS = [
     (
         ".hermes/skills/migration/spring-to-quarkus-patterns/references/di-config.md",
@@ -324,10 +334,33 @@ REQUIRED_SUBSTRINGS = [
         "SIGTERM",
         "block-and-signal-worker (Operator E-133000Z #2)",
     ),
+    # V1 (E-20260814T074759Z): assert property chain, not a bare script-name
+    # inside dispatch-phase.sh. F8a wrapped the claim check; the land-time lint
+    # must follow the wrapper + receipt, or a correct rename false-fails green.
     (
         ".hermes/enforcement/dispatch-phase/scripts/dispatch-phase.sh",
+        "assert-m2b-created-cards-claim.sh",
+        "M2b wires created_cards claim check (wrapper name in phase card)",
+    ),
+    (
+        ".hermes/enforcement/dispatch-phase/scripts/assert-m2b-created-cards-claim.sh",
         "check-created-cards-claim.py",
-        "M2b wires created_cards claim check",
+        "M2b claim wrapper invokes check-created-cards-claim.py",
+    ),
+    (
+        ".hermes/enforcement/dispatch-phase/scripts/assert-m2b-created-cards-claim.sh",
+        "m2b-created-cards-ok.json",
+        "M2b claim wrapper stamps m2b-created-cards-ok.json receipt",
+    ),
+    (
+        ".hermes/enforcement/dispatch-phase/scripts/assert-m2b-created-cards-claim.sh",
+        "rhoai3.m2b-created-cards-ok/v1",
+        "M2b claim receipt schema id",
+    ),
+    (
+        ".hermes/home/scripts/enforce-m2b-created-cards-claim.py",
+        "m2b-created-cards-ok.json",
+        "F8b machinery reclaims done without M2b ok receipt",
     ),
     (
         ".hermes/skills/sdd/check-spec-readiness/scripts/check-partition-coverage.py",
