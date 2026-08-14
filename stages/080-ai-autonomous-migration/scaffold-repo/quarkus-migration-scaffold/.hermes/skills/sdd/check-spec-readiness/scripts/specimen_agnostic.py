@@ -280,8 +280,41 @@ def legacy_java_prefixes(
             else:
                 break
         if common:
-            return [".".join(common) + "."]
+            return [_product_package_prefix(common)]
     return []
+
+
+# HTTP/lifecycle scanners usually live one package below the product root
+# (`…petclinic.rest`). v17 inventory fallback used raw LCP and collapsed to
+# `…petclinic.rest.` — too specific for import-prefix scans, so A-6 starved
+# even when inventory existed (Lead V18-2 / Deputy E-20260814T141027Z).
+_LEAF_PACKAGE_SEGMENTS = frozenset(
+    {
+        "rest",
+        "web",
+        "api",
+        "controller",
+        "controllers",
+        "config",
+        "configuration",
+        "service",
+        "services",
+        "repository",
+        "repositories",
+        "endpoint",
+        "endpoints",
+        "resource",
+        "resources",
+    }
+)
+
+
+def _product_package_prefix(segments: list[str]) -> str:
+    segs = list(segments)
+    while len(segs) > 1 and segs[-1].lower() in _LEAF_PACKAGE_SEGMENTS:
+        segs.pop()
+    return ".".join(segs) + "."
+
 
 
 def resolve_inventory_path(root: Path, explicit: str = "", *, allow_specimen_fixture: bool = False) -> Path | None:
