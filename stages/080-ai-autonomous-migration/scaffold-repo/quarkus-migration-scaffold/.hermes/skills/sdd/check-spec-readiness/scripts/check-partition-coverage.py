@@ -92,29 +92,8 @@ def story_files(story: dict) -> list[str]:
 
 
 
-def story_id_tokens(sid: str) -> set[str]:
-    """Normalize story id forms: S-012, s-012, m3-s-012, 012."""
-    s = str(sid or "").strip().lower().replace("_", "-")
-    if not s:
-        return set()
-    out = {s}
-    if s.startswith("m3-"):
-        s = s[3:]
-        out.add(s)
-    if s.startswith("s-"):
-        out.add(s)
-        out.add(s[2:])
-        bare = s[2:].lstrip("0") or "0"
-        out.add(bare)
-        out.add(f"s-{s[2:]}")
-    else:
-        out.add(f"s-{s}")
-        bare = s.lstrip("0") or "0"
-        out.add(bare)
-    return {t for t in out if t}
-
-
 def sequence_refs(body: dict) -> set[str]:
+    """Carried story ids only — no filename/title/regex (SR-9)."""
     refs: set[str] = set()
     for key in ("sequence_after", "dependencies"):
         raw = body.get(key)
@@ -125,12 +104,12 @@ def sequence_refs(body: dict) -> set[str]:
         if not isinstance(raw, list):
             continue
         for item in raw:
-            if isinstance(item, str):
-                refs |= story_id_tokens(item)
+            if isinstance(item, str) and item.strip():
+                refs.add(item.strip())
             elif isinstance(item, dict):
-                for k in ("story_id", "id", "task_id", "ref"):
-                    if item.get(k):
-                        refs |= story_id_tokens(str(item[k]))
+                sid = item.get("story_id")
+                if sid:
+                    refs.add(str(sid).strip())
     return refs
 
 
@@ -145,30 +124,27 @@ def load_body_doc(path: Path) -> dict | None:
 
 def sequenced_overlap_ok(sid_a: str, sid_b: str, seq_by_story: dict[str, set[str]]) -> bool:
     """True when either story declares an ordering edge toward the other."""
-    a_toks = story_id_tokens(sid_a)
-    b_toks = story_id_tokens(sid_b)
     a_refs = seq_by_story.get(sid_a, set())
     b_refs = seq_by_story.get(sid_b, set())
-    if a_refs & b_toks:
-        return True
-    if b_refs & a_toks:
-        return True
-    return False
+    return sid_b in a_refs or sid_a in b_refs
+
+
+def _carried_story_id(data: dict) -> str:
+    ident = data.get("identity") if isinstance(data.get("identity"), dict) else {}
+    return str(ident.get("story_id") or data.get("story_id") or "").strip()
+
 
 def body_files_for_story(bodies_dir: Path, story_id: str) -> list[str]:
     if not bodies_dir.is_dir():
         return []
-    want = story_id_tokens(story_id)
-    candidates = list(bodies_dir.glob("m3-*.json"))
-    for path in candidates:
+    # Glob enumerates files; identity is the JSON field (SR-9c).
+    for path in bodies_dir.glob("*.json"):
         if path.name.endswith(".sha256.json"):
             continue
         data = load_body_doc(path)
         if not isinstance(data, dict):
             continue
-        ident = data.get("identity") if isinstance(data.get("identity"), dict) else {}
-        bid = str(ident.get("story_id") or data.get("story_id") or "")
-        if not (story_id_tokens(bid) & want):
+        if _carried_story_id(data) != story_id:
             continue
         out: list[str] = []
         for key in ("files_writable", "write_set", "files_in_scope", "filesInScope"):
@@ -187,30 +163,21 @@ def body_files_for_story(bodies_dir: Path, story_id: str) -> list[str]:
 
 
 def body_sequence_map(bodies_dir: Path, story_ids: list[str]) -> dict[str, set[str]]:
-    """Map each partition story_id -> normalized sequence_after/dependencies tokens."""
+    """Map each partition story_id -> carried sequence_after/dependencies ids."""
     out: dict[str, set[str]] = {sid: set() for sid in story_ids}
     if not bodies_dir.is_dir():
         return out
-    by_tok: dict[str, str] = {}
-    for sid in story_ids:
-        for tok in story_id_tokens(sid):
-            by_tok[tok] = sid
-    for path in bodies_dir.glob("m3-*.json"):
+    wanted = set(story_ids)
+    for path in bodies_dir.glob("*.json"):
         if path.name.endswith(".sha256.json"):
             continue
         data = load_body_doc(path)
         if not isinstance(data, dict):
             continue
-        ident = data.get("identity") if isinstance(data.get("identity"), dict) else {}
-        bid = str(ident.get("story_id") or data.get("story_id") or "")
-        sid = None
-        for tok in story_id_tokens(bid):
-            if tok in by_tok:
-                sid = by_tok[tok]
-                break
-        if not sid:
+        bid = _carried_story_id(data)
+        if bid not in wanted:
             continue
-        out[sid] = sequence_refs(data)
+        out[bid] = sequence_refs(data)
     return out
 
 

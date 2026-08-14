@@ -31,13 +31,12 @@ def load_body(path: Path) -> tuple[dict, dict]:
 
 def story_id_of(body: dict, path: Path) -> str:
     ident = body.get("identity") if isinstance(body.get("identity"), dict) else {}
-    sid = str(ident.get("story_id") or body.get("story_id") or "")
+    sid = str(ident.get("story_id") or body.get("story_id") or "").strip()
     if sid:
         return sid
-    name = path.name
-    if name.startswith("m3-s-") and name.endswith(".json"):
-        return "S-" + name[len("m3-s-") : -len(".json")].upper()
-    return ""
+    raise SystemExit(
+        f"FAIL: {path}: missing identity.story_id (SR-9 — do not derive from filename)"
+    )
 
 
 def operand_class_of(body: dict) -> str:

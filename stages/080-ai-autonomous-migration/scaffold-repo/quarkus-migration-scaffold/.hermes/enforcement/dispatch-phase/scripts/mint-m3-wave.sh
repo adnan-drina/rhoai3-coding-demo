@@ -61,7 +61,7 @@ stories = data.get("stories") or data.get("units") or []
 ids = []
 for s in stories:
     if isinstance(s, dict):
-        sid = s.get("story_id") or s.get("id") or s.get("unit_id")
+        sid = s.get("story_id")
         if sid:
             ids.append(str(sid))
     elif isinstance(s, str):
@@ -76,21 +76,30 @@ PY
 echo "mint-m3-wave: parent=${PARENT} stories=${#STORY_IDS[@]} dry_run=${DRY_RUN}" >&2
 
 for sid in "${STORY_IDS[@]}"; do
-  # Normalize S-001 → m3-s-001.json naming used by create path.
-  slug="$(python3 -c "import re,sys; s=sys.argv[1].lower().replace('_','-'); print(re.sub(r'^s-','',s) if s.startswith('s-') else s)" "${sid}")"
-  body=""
-  for cand in \
-    "${ROOT}/evidence/bodies/m3-${sid}.json" \
-    "${ROOT}/evidence/bodies/m3-${sid,,}.json" \
-    "${ROOT}/evidence/bodies/m3-s-${slug}.json" \
-    "${ROOT}/evidence/bodies/m3-${slug}.json"
-  do
-    if [[ -f "${cand}" ]]; then
-      body="${cand}"
-      break
-    fi
-  done
-  [[ -n "${body}" ]] || die "missing body JSON for story ${sid} under evidence/bodies/"
+  # Identity is the JSON field, not the filename (SR-9).
+  body="$(python3 - "${ROOT}/evidence/bodies" "${sid}" <<'PY'
+import json, sys
+from pathlib import Path
+root, want = Path(sys.argv[1]), sys.argv[2]
+if not root.is_dir():
+    sys.exit(0)
+for p in sorted(root.glob("*.json")):
+    if p.name.endswith(".sha256.json"):
+        continue
+    try:
+        d = json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        continue
+    if isinstance(d.get("body"), dict):
+        d = d["body"]
+    ident = d.get("identity") if isinstance(d.get("identity"), dict) else {}
+    sid = str(ident.get("story_id") or d.get("story_id") or "").strip()
+    if sid == want:
+        print(p)
+        sys.exit(0)
+PY
+)"
+  [[ -n "${body}" ]] || die "missing body JSON with identity.story_id=${sid} under evidence/bodies/"
 
   title="M3 IMPLEMENT: ${sid}"
   if [[ "${DRY_RUN}" -eq 1 ]]; then

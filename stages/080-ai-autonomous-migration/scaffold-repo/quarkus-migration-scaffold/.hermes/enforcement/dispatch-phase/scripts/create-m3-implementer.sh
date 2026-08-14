@@ -60,7 +60,7 @@ PARENT_PRIMARY="${PARENTS[0]}"
 
 # D3 / Operator E-20260813T180236Z — persist partition story id on the card so
 # "N/N done" is arithmetic (partition ids ⊆ completed titles), not assertion.
-STORY_ID="$(python3 -c 'import json,sys,re
+STORY_ID="$(python3 -c 'import json,sys
 d=json.load(open(sys.argv[1], encoding="utf-8"))
 ident=d.get("identity") if isinstance(d.get("identity"), dict) else {}
 sid=(ident.get("story_id") or d.get("story_id") or "").strip()
@@ -343,15 +343,12 @@ hermes kanban comment "${TASK_ID}" \
   >/dev/null 2>&1 || true
 # Stamp derived claim list for parent completion (Operator E-133000Z #5)
 # F8a: stamp carries story_id so claim can compare to partition (not self).
-STORY_ID="$(python3 -c 'import json,sys,re,pathlib
+STORY_ID="$(python3 -c 'import json,sys,pathlib
 p=pathlib.Path(sys.argv[1])
 d=json.load(open(p))
 sid=(d.get("identity") or {}).get("story_id") or d.get("story_id") or ""
-if not sid:
-  m=re.search(r"m3-s-([0-9a-z]+)", p.name, re.I)
-  sid=("S-"+m.group(1).upper()) if m else ""
 print(sid)' "${BODY_JSON}")"
-[[ -n "${STORY_ID}" ]] || die "cannot derive story_id for ack-request from ${BODY_JSON}"
+[[ -n "${STORY_ID}" ]] || die "missing identity.story_id in ${BODY_JSON} (SR-9 — no filename fallback)"
 DERIVED_DIR="${ROOT}/evidence/derived"
 mkdir -p "${DERIVED_DIR}"
 CLAIM_FILE="${DERIVED_DIR}/created-cards-${PARENT_PRIMARY}.json"
