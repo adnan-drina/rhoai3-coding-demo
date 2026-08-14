@@ -619,6 +619,26 @@ REQUIRED_SUBSTRINGS = [
         "CONV-LIVE arm-on-dispatch contract",
     ),
     (
+        ".hermes/enforcement/enforce-authority-boundary/scripts/apply-write-fence.sh",
+        ".hermes/enforcement",
+        "A-1 FS-RO write-fence locks .hermes/enforcement (DD5)",
+    ),
+    (
+        "AGENTS.md",
+        "DD5",
+        "DD5 refusal doctrine in AGENTS.md",
+    ),
+    (
+        ".hermes/SOUL.md",
+        "DD5",
+        "DD5 refusal doctrine in SOUL.md",
+    ),
+    (
+        "governance/contracts/story-sizing.md",
+        "DD6",
+        "DD6 foundation asserts resolution in story-sizing",
+    ),
+    (
         ".hermes/enforcement/dispatch-phase/scripts/create-m3-implementer.sh",
         "identity.story_id required",
         "D3 story id persisted on M3 card (Operator E-180236Z)",

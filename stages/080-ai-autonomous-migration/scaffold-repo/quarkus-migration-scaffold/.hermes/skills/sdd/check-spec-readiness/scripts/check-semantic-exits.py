@@ -126,8 +126,31 @@ def main() -> int:
 
     bad = 0
     checked = 0
+    # DD6 — foundation / build_config must not carry compile oracles (B-S1 class).
+    FOUNDATION_FORBIDDEN_CHECKS = frozenset(
+        {"quarkus_compile", "compile", "mvn_compile", "mvn_test_compile"}
+    )
     for label, body in bodies:
         identity = body.get("identity") if isinstance(body.get("identity"), dict) else {}
+        oclass = normalize_operand_class(body)
+        exits_all = body.get("exit_criteria") or []
+        if oclass in {"build_config", "build-config", "pom", "config"} and isinstance(
+            exits_all, list
+        ):
+            for x in exits_all:
+                if not isinstance(x, dict):
+                    continue
+                check = str(x.get("check") or "").strip()
+                if check in FOUNDATION_FORBIDDEN_CHECKS:
+                    print(
+                        f"FAIL: DD6 {label}: operand_class={oclass!r} must not carry "
+                        f"exit {check!r} — use build_resolves / config_profile_load "
+                        f"(foundation asserts resolution, not compilation; "
+                        f"E-20260814T073620Z)",
+                        file=sys.stderr,
+                    )
+                    bad = 1
+                    checked += 1
         families = identity.get("semantic_families") or identity.get("semanticFamilies")
         paths = " ".join(write_paths(body))
         restish = any(tok in paths for tok in RESTISH)

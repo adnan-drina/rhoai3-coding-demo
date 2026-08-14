@@ -94,10 +94,31 @@ Worker **provider/auth** is Managed Scope only (**R-HX.5**). Seat pins
 factory Managed Scope + contracts `stream-liveness.md` /
 `compaction-headroom-and-fast-deny.md` — do not MiniMax either class.
 
-### Scope-stop and typed blockage
+### Scope-stop and typed blockage (DD5)
 
 When evidence and intent diverge: stop the current scope, emit a typed block /
 `needs_input`, and do not invent around the gap (pairs with `SOUL.md`).
+
+**Unconditional (always on — not a skill):**
+
+1. **Never patch `.hermes/enforcement/**`** (or any gate/lint to make a red check
+   green). Enforcement is Lead/Operator territory. A-1: the write fence locks
+   that tree read-only for implementers.
+2. On any gate refusal you **cannot** resolve **within your `files_writable`**,
+   emit a typed block and **stop**. Do not OOS-write, do not edit the refuser.
+3. **"Unclassifiable" is a legal outcome** — typed `needs_input` + ESCALATE.
+
+**Routing table (resolver must be named):**
+
+| Class | Resolver | You |
+|-------|----------|-----|
+| body mint defect | Lead remints/restamps | stop |
+| harness path miss | Lead fixes the path | stop |
+| story-class false-fail (wrong oracle) | Lead remints the exit | stop |
+| no route identifiable | typed `needs_input`, ESCALATE | stop |
+
+Prose in `constraints` is **not** enforcement (F8). If a check has teeth and
+you cannot see a resolver, stop — do not change the check.
 
 ### Spec Kit stop rule (AD-S)
 

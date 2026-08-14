@@ -36,6 +36,7 @@ DENY_DIRS=(
   "evidence/acks"
   "evidence/verdicts"
   ".hermes/skills"
+  ".hermes/enforcement"
 )
 # Note: do NOT chmod .hermes/home/kanban.db — Hermes kanban tools must write it.
 # Ballot/DB tampering via write_file is refused by check-write-fence.py deny-list.
@@ -49,6 +50,7 @@ if [[ "${ROLE}" == "validator" ]]; then
   DENY_DIRS=(
     "evidence/acks"
     ".hermes/skills"
+    ".hermes/enforcement"
   )
 fi
 

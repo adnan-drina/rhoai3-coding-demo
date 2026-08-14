@@ -23,6 +23,8 @@ DENY_PREFIXES = (
     "evidence/verdicts",
     ".hermes/skills/",
     ".hermes/skills",
+    ".hermes/enforcement/",
+    ".hermes/enforcement",
     "SOUL.md",
     ".hermes/SOUL.md",
     ".hermes/home/kanban.db",

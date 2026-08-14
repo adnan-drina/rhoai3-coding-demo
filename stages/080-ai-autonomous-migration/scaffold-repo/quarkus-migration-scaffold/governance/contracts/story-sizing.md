@@ -18,6 +18,12 @@ On M3 `identity`:
 | `sizing_basis` | required; must be `operand_count` (not `phase_name`) |
 | `operand_class` | optional; default `src_code`. Use `build_config` for pom.xml / resources-only CONFIG stories |
 
+**DD6 (Operator E-20260814T073620Z):** foundation / `build_config` / `pom`
+stories assert **resolution** (`build_resolves`), not compilation. Do **not**
+mint `quarkus_compile` / `mvn clean compile` on a POM-only write-set — that
+oracle forces inventing `Application.java` (B-S1). Write-set stays the declared
+config/pom paths; do not widen to legalise a compile oracle.
+
 ### Operand classes (specimen-agnostic)
 
 | `operand_class` | Measured destinations | Default max | Sec/operand (wall-fit) |

@@ -11,8 +11,8 @@ adds **operand separation** so an Implementing-task worker cannot forge those pa
 
 | Mechanism | What it does |
 |-----------|--------------|
-| Path deny-list | `evidence/acks/**`, `evidence/verdicts/**`, `.hermes/skills/**`, `SOUL.md`, `.hermes/home/kanban.db` (lint) |
-| OS fence | `apply-write-fence.sh lock` → ACK/verdict/skills/SOUL not writable by the worker UID (`kanban.db` stays tool-writable; lint still denies file-tool tamper) |
+| Path deny-list | `evidence/acks/**`, `evidence/verdicts/**`, `.hermes/skills/**`, `.hermes/enforcement/**` (A-1 / DD5), `SOUL.md`, `.hermes/home/kanban.db` (lint) |
+| OS fence | `apply-write-fence.sh lock` → ACK/verdict/skills/enforcement/SOUL not writable by the worker UID (`kanban.db` stays tool-writable; lint still denies file-tool tamper) |
 | Scope refuse | `check-write-fence.py` fails dirty/out-of-scope paths **before** `kanban_complete` |
 | Seat probe | `probe-write-fence.py` must observe `PermissionError` / refuse on deny paths |
 

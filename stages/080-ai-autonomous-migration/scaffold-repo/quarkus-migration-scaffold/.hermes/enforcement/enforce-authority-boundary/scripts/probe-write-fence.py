@@ -35,6 +35,7 @@ DENY_PROBE_RELS = (
     "evidence/acks/.f2-seat-probe",
     "evidence/verdicts/.f2-seat-probe",
     ".hermes/skills/.f2-seat-probe",
+    ".hermes/enforcement/.f2-seat-probe",
 )
 
 
