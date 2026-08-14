@@ -170,6 +170,7 @@ When a skill is loaded, prefer `"${HERMES_SKILL_DIR}/scripts/…"`.
 | M-phase mint/dispatch (Hermes-native) | `dispatch-phase` *(enforcement)* | `.hermes/phase-dispatch.yaml` |
 | Spec/story-body legality + kanban body shape | `check-spec-readiness` | `governance/contracts/*` + `governance/schemas/kanban-body.md` |
 | Story-class exit / oracle derivation (T-8) | `derive-story-oracles` | `surgical-scopes.md` + skill references/ |
+| Quarkus config / profiles / `config_profile_load` (RS1) | `configure-quarkus-profiles` | skill references/ (sources, oracles) |
 | Spec Kit provision (postStart only) | `init-spec-workspace` | skill `SKILL.md` |
 | Entry-point inventory | `inventory-entry-points` | skill `SKILL.md` |
 | Provenance / reconstruct | `record-run-evidence` *(enforcement)* | `governance/contracts/auditability-repeatability.md` |

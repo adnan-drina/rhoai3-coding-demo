@@ -78,6 +78,7 @@ phases:
     skills:
       - check-spec-readiness
       - derive-story-oracles
+      - configure-quarkus-profiles
       - spring-to-quarkus-patterns
     # AD-H §18 required_checks (validator/sensor matrix)
     required_checks:

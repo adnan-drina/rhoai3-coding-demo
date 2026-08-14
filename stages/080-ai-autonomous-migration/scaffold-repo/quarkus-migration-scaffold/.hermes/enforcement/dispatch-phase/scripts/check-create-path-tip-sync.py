@@ -140,6 +140,8 @@ REQUIRED_FILES = [
     # T-1 / Z2
     ".hermes/skills/migration/reference-rh-quarkus-pom/SKILL.md",
     ".hermes/skills/migration/reference-rh-quarkus-pom/references/pom-structure.md",
+    # RS1 / Z2
+    ".hermes/skills/migration/configure-quarkus-profiles/SKILL.md",
 ]
 
 # Tip-sync substring table (R0/R3).
@@ -223,6 +225,16 @@ REQUIRED_SUBSTRINGS = [
         ".hermes/skills/migration/manage-quarkus-extensions/references/extension-obligations.md",
         "migrate-at-start",
         "T-3 extension obligations reference",
+    ),
+    (
+        ".hermes/skills/migration/configure-quarkus-profiles/SKILL.md",
+        "config_profile_load",
+        "RS1 configure-quarkus-profiles skill",
+    ),
+    (
+        ".hermes/phase-dispatch.yaml",
+        "configure-quarkus-profiles",
+        "RS1 skill attached on M3",
     ),
     (
         "devfile.yaml",
