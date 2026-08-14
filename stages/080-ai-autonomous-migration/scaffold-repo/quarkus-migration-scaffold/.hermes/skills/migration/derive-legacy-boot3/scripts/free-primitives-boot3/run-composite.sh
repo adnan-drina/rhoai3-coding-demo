@@ -25,7 +25,7 @@ export PYTHONPATH="${HERE}${PYTHONPATH:+:$PYTHONPATH}"
 
 # Fail-closed default when unset and cwd/COMPOSITE_ROOT is the golden tip.
 if [[ -z "${APPLY_LOG_PATH:-}" ]]; then
-  if [[ -f "${COMPOSITE_ROOT}/BOOTSTRAP.md" && -d "${COMPOSITE_ROOT}/governance" ]]; then
+  if [[ -f "${COMPOSITE_ROOT}/AGENTS.md" && -d "${COMPOSITE_ROOT}/.hermes" ]]; then
     export APPLY_LOG_PATH="${TMPDIR:-/tmp}/rhoai3-free-primitives-apply-log.json"
   fi
 fi

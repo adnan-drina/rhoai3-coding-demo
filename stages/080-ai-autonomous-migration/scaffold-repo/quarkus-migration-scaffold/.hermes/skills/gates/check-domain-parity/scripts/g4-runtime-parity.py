@@ -6,7 +6,7 @@ Every gate output stamps g4_mode=SAMPLE until partitions + permitted
 equivalence + zero unverified entry points land for release_qualified.
 
 Runs the three admission fixtures under
-`governance/fixtures/admission/g4-runtime-parity/` (known-good / known-bad /
+`.hermes/skills/gates/check-release-readiness/fixtures/admission/g4-runtime-parity/` (known-good / known-bad /
 known-vacuous) and writes each verdict under
 `evidence/fixtures/admission/out/g4-runtime-parity/`.
 
@@ -75,7 +75,7 @@ def main() -> int:
     )
     args = ap.parse_args()
     root = Path(args.root)
-    base = root / "governance/fixtures/admission/g4-runtime-parity"
+    base = root / ".hermes/skills/gates/check-release-readiness/fixtures/admission/g4-runtime-parity"
     expected = {
         "known-good": "ACCEPT",
         "known-bad": "REFUSE",

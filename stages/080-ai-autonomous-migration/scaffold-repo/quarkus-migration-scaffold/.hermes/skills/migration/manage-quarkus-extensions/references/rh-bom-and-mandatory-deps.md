@@ -2,14 +2,14 @@
 
 **Shared reference** for `manage-quarkus-extensions` and (at v14 mint)
 `bootstrap-quarkus-project`. Policy only — **version values** live in
-`governance/contracts/tooling-pins.md` and destination `pom.xml`.
+`.hermes/pins.yaml` and destination `pom.xml`.
 
 ## Platform policy
 
 - Use **Red Hat build of Quarkus** only:
   `quarkus.platform.group-id=com.redhat.quarkus.platform`
   `quarkus.platform.artifact-id=quarkus-bom`
-- Platform version: read `tooling-pins.md` row **Red Hat Quarkus platform** —
+- Platform version: read `.hermes/pins.yaml` row **Red Hat Quarkus platform** —
   do not copy a version string into skills or cards.
 - Extensions **inherit** the BOM version. Never add independent
   `<version>` on `io.quarkus:*` / platform-managed artifacts.

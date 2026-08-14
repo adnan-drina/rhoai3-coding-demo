@@ -92,9 +92,9 @@ bash "${SKILLS}/gates/check-domain-parity/scripts/run-admission.sh" "${ROOT}" ||
 # Parser/fixture only — not live specimen admission (Architect E-20260808T080815Z #3).
 echo "== G-1 PIT dry-run parse (R1 pin; not live admission) =="
 python3 "${SKILLS}/gates/check-domain-parity/scripts/parse-pit-mutations.py" \
-  "${ROOT}/governance/fixtures/pit-dry-run/mutations.xml" || rc=1
+  "${ROOT}/.hermes/enforcement/validate-contracts/fixtures/pit-dry-run/mutations.xml" || rc=1
 if python3 "${SKILLS}/gates/check-domain-parity/scripts/parse-pit-mutations.py" \
-  "${ROOT}/governance/fixtures/pit-dry-run/missing.xml" >/dev/null 2>&1; then
+  "${ROOT}/.hermes/enforcement/validate-contracts/fixtures/pit-dry-run/missing.xml" >/dev/null 2>&1; then
   echo "FAIL: missing mutations.xml should refuse" >&2
   rc=1
 else
@@ -142,7 +142,7 @@ rm -rf "${g1op_tmp}"
 
 echo "== scan-with-mta findings schema (fixture known-good) =="
 python3 "${SKILLS}/analysis/scan-with-mta/scripts/validate-findings-schema.py" \
-  governance/fixtures/admission/g3-findings-delta/known-good/mta-findings.json || rc=1
+  .hermes/skills/gates/check-release-readiness/fixtures/admission/g3-findings-delta/known-good/mta-findings.json || rc=1
 
 echo "== inventory-entry-points smoke =="
 tmp="$(mktemp -d)"
@@ -208,10 +208,10 @@ rm -rf "${ar11_tmp}"
 echo "== write-fence proving-min (AD-H §16.4 / F2) =="
 fence_tmp="$(mktemp -d)"
 mkdir -p "${fence_tmp}/evidence/acks" "${fence_tmp}/evidence/verdicts" \
-  "${fence_tmp}/.hermes/skills" "${fence_tmp}/governance/fixtures" \
+  "${fence_tmp}/.hermes/skills" "${fence_tmp}/.hermes/enforcement/validate-contracts/fixtures" \
   "${fence_tmp}/src/main/java"
 printf '%s\n' 'ok' > "${fence_tmp}/evidence/acks/README.md"
-printf '%s\n' 'ok' > "${fence_tmp}/governance/fixtures/keep.txt"
+printf '%s\n' 'ok' > "${fence_tmp}/.hermes/enforcement/validate-contracts/fixtures/keep.txt"
 bash "${ENFORCEMENT}/enforce-authority-boundary/scripts/apply-write-fence.sh" "${fence_tmp}" lock || rc=1
 if python3 "${ENFORCEMENT}/enforce-authority-boundary/scripts/probe-write-fence.py" "${fence_tmp}"; then
   echo "OK: F2 seat probe PASS on temp tree"
@@ -287,14 +287,17 @@ rm -rf "${gg_tmp}"
 echo "== check-release-readiness (AD-H §18) =="
 python3 "${SKILLS}/gates/check-release-readiness/scripts/check-phase-matrix.py" "${ROOT}" || rc=1
 python3 "${SKILLS}/gates/check-release-readiness/scripts/check-verdict-routing.py" "${ROOT}" || rc=1
-# B8 — check-semantics-manifest (governance/contracts/check-semantics-manifest.md)
+# B8 — check-semantics-manifest (.hermes/skills/gates/check-release-readiness/references/check-semantics-manifest.md)
 python3 "${SKILLS}/gates/check-release-readiness/scripts/check-semantics-manifest.py" "${ROOT}" || rc=1
 # Quarkus platform pin ↔ pom (manage-quarkus-extensions) — Wave B: skip until bootstrap
 if [ -f "${ROOT}/pom.xml" ]; then
   python3 "${SKILLS}/migration/manage-quarkus-extensions/scripts/check-pom-platform-pins.py" "${ROOT}" || rc=1
 else
-  echo "OK: no destination pom yet (BOOTSTRAP.md / bootstrap-quarkus-project)"
-  [ -f "${ROOT}/BOOTSTRAP.md" ] || { echo "FAIL: missing pom.xml and BOOTSTRAP.md" >&2; rc=1; }
+  echo "OK: no destination pom yet (bootstrap-quarkus-project skill)"
+  [ -f "${ROOT}/.hermes/skills/migration/bootstrap-quarkus-project/SKILL.md" ] || {
+    echo "FAIL: missing pom.xml and bootstrap-quarkus-project skill" >&2
+    rc=1
+  }
 fi
 # A-3 / H-3 — Jacoco dual Sonar paths + surefire argLine (idle without pom)
 python3 "${SKILLS}/migration/manage-quarkus-extensions/scripts/check-pom-jacoco-wiring.py" "${ROOT}" || rc=1
@@ -302,14 +305,14 @@ python3 "${SKILLS}/migration/manage-quarkus-extensions/scripts/check-pom-jacoco-
 python3 "${SKILLS}/migration/manage-quarkus-extensions/scripts/assert-extension-tooling.py" || rc=1
 # A2 / runnable-db-security — fixture refuse paths (scaffold root may fail until B3)
 if python3 "${SKILLS}/gates/check-release-readiness/scripts/check-runnable-db-config.py" \
-  "${ROOT}/governance/fixtures/runnable-db-security/bad-hsqldb-destination" >/dev/null 2>&1; then
+  "${ROOT}/.hermes/enforcement/validate-contracts/fixtures/runnable-db-security/bad-hsqldb-destination" >/dev/null 2>&1; then
   echo "FAIL: B7 HSQLDB destination should refuse" >&2
   rc=1
 else
   echo "OK: B7 HSQLDB destination refused"
 fi
 if python3 "${SKILLS}/gates/check-release-readiness/scripts/check-empty-security.py" \
-  "${ROOT}/governance/fixtures/runnable-db-security/bad-placeholder-security" >/dev/null 2>&1; then
+  "${ROOT}/.hermes/enforcement/validate-contracts/fixtures/runnable-db-security/bad-placeholder-security" >/dev/null 2>&1; then
   echo "FAIL: AR-2.2 placeholder security should refuse" >&2
   rc=1
 else
@@ -318,39 +321,39 @@ fi
 # S-008 resurrection order (create/remint path)
 python3 "${ENFORCEMENT}/dispatch-phase/scripts/check-s008-resurrection-order.py" "${ROOT}" || rc=1
 if python3 "${SKILLS}/gates/check-release-readiness/scripts/check-semantics-manifest.py" \
-  "${ROOT}/governance/fixtures/check-semantics-manifest/bad-endpoint-smoke-overpromise" >/dev/null 2>&1; then
+  "${ROOT}/.hermes/skills/gates/check-release-readiness/fixtures/check-semantics-manifest/bad-endpoint-smoke-overpromise" >/dev/null 2>&1; then
   echo "FAIL: B8 narrowed smoke should refuse endpoint_smoke id" >&2
   rc=1
 else
   echo "OK: B8 endpoint_smoke over-promise refused"
 fi
 python3 "${SKILLS}/gates/check-release-readiness/scripts/check-semantics-manifest.py" \
-  "${ROOT}/governance/fixtures/check-semantics-manifest/good-endpoint-smoke-health" || rc=1
+  "${ROOT}/.hermes/skills/gates/check-release-readiness/fixtures/check-semantics-manifest/good-endpoint-smoke-health" || rc=1
 if python3 "${SKILLS}/gates/check-release-readiness/scripts/check-semantics-manifest.py" \
-  "${ROOT}/governance/fixtures/check-semantics-manifest/bad-boot-health-skipped-package" >/dev/null 2>&1; then
+  "${ROOT}/.hermes/skills/gates/check-release-readiness/fixtures/check-semantics-manifest/bad-boot-health-skipped-package" >/dev/null 2>&1; then
   echo "FAIL: B8 boot_health skipped package should refuse" >&2
   rc=1
 else
   echo "OK: B8 boot_health skipped package refused"
 fi
 python3 "${SKILLS}/gates/check-release-readiness/scripts/check-semantics-manifest.py" \
-  "${ROOT}/governance/fixtures/check-semantics-manifest/good-boot-health" || rc=1
+  "${ROOT}/.hermes/skills/gates/check-release-readiness/fixtures/check-semantics-manifest/good-boot-health" || rc=1
 if python3 "${SKILLS}/gates/check-release-readiness/scripts/check-semantics-manifest.py" \
-  "${ROOT}/governance/fixtures/check-semantics-manifest/bad-g4-sample-as-product-closed" >/dev/null 2>&1; then
+  "${ROOT}/.hermes/skills/gates/check-release-readiness/fixtures/check-semantics-manifest/bad-g4-sample-as-product-closed" >/dev/null 2>&1; then
   echo "FAIL: B8 SAMPLE g4_hook→product closed should refuse" >&2
   rc=1
 else
   echo "OK: B8 SAMPLE g4 product-closed refused"
 fi
 if python3 "${SKILLS}/gates/check-release-readiness/scripts/check-semantics-manifest.py" \
-  "${ROOT}/governance/fixtures/check-semantics-manifest/bad-mvn-verify-no-clean" >/dev/null 2>&1; then
+  "${ROOT}/.hermes/skills/gates/check-release-readiness/fixtures/check-semantics-manifest/bad-mvn-verify-no-clean" >/dev/null 2>&1; then
   echo "FAIL: B8 mvn_clean_verify without clean should refuse" >&2
   rc=1
 else
   echo "OK: B8 mvn verify without clean refused"
 fi
 if python3 "${SKILLS}/gates/check-release-readiness/scripts/check-semantics-manifest.py" \
-  "${ROOT}/governance/fixtures/check-semantics-manifest/bad-unit-it-zero-tests" >/dev/null 2>&1; then
+  "${ROOT}/.hermes/skills/gates/check-release-readiness/fixtures/check-semantics-manifest/bad-unit-it-zero-tests" >/dev/null 2>&1; then
   echo "FAIL: B8 unit_it_contract zero tests PASS should refuse" >&2
   rc=1
 else
@@ -406,7 +409,7 @@ printf '%s\n' '{"phase":"M5","verdict":"REFUSE","gate":"g4_runtime_parity","prio
 python3 "${SKILLS}/gates/check-release-readiness/scripts/check-verdict-routing.py" "${vr_tmp}" || rc=1
 # shared-substrate reopen (fixture closure map)
 mkdir -p "${vr_tmp}/evidence/slices"
-cp "${ROOT}/governance/fixtures/substrate-reopen/closure-map.json" \
+cp "${ROOT}/.hermes/enforcement/validate-contracts/fixtures/substrate-reopen/closure-map.json" \
   "${vr_tmp}/evidence/slices/closure-map.json"
 printf '%s\n' '{"phase":"M5","verdict":"REFUSE","gate":"g4_runtime_parity","story_id":"S-1","prior_verdict":"PROVISIONAL_ACCEPT","implicated_substrate":["com.example.shared.Entity"],"reopen_story_ids":["S-1","S-2"],"routing":"reopen_story"}' \
   > "${vr_tmp}/evidence/verdicts/bad.json"
@@ -580,25 +583,25 @@ rm -rf "${kb_tmp}"
 
 echo "== story-sizing operand_count (Architect E-110403Z) =="
 python3 "${SKILLS}/sdd/check-spec-readiness/scripts/check-operand-count.py" "${ROOT}" \
-  "${ROOT}/governance/fixtures/story-sizing/ar-size-good.json" || rc=1
+  "${ROOT}/.hermes/enforcement/validate-contracts/fixtures/story-sizing/ar-size-good.json" || rc=1
 if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/check-operand-count.py" "${ROOT}" \
-  "${ROOT}/governance/fixtures/story-sizing/ar-size-bad-missing.json" >/dev/null 2>&1; then
+  "${ROOT}/.hermes/enforcement/validate-contracts/fixtures/story-sizing/ar-size-bad-missing.json" >/dev/null 2>&1; then
   echo "FAIL: missing operand_count should refuse" >&2
   rc=1
 else
   echo "OK: missing operand_count refused"
 fi
 if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/check-operand-count.py" "${ROOT}" \
-  "${ROOT}/governance/fixtures/story-sizing/ar-size-bad-overcap.json" >/dev/null 2>&1; then
+  "${ROOT}/.hermes/enforcement/validate-contracts/fixtures/story-sizing/ar-size-bad-overcap.json" >/dev/null 2>&1; then
   echo "FAIL: over-cap operand_count should refuse" >&2
   rc=1
 else
   echo "OK: over-cap operand_count refused"
 fi
 python3 "${SKILLS}/sdd/check-spec-readiness/scripts/check-operand-count.py" "${ROOT}" \
-  "${ROOT}/governance/fixtures/story-sizing/ar-size-good.json" --wall-fit || rc=1
+  "${ROOT}/.hermes/enforcement/validate-contracts/fixtures/story-sizing/ar-size-good.json" --wall-fit || rc=1
 if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/check-operand-count.py" "${ROOT}" \
-  "${ROOT}/governance/fixtures/story-sizing/ar-size-bad-wallfit.json" --wall-fit \
+  "${ROOT}/.hermes/enforcement/validate-contracts/fixtures/story-sizing/ar-size-bad-wallfit.json" --wall-fit \
   >/dev/null 2>&1; then
   echo "FAIL: wall-fit 60@3600 should refuse" >&2
   rc=1
@@ -609,7 +612,7 @@ fi
 echo "== wall-as-terminal exit-eval (Architect E-110403Z) =="
 wall_tmp="$(mktemp -d)"
 mkdir -p "${wall_tmp}/evidence/runs/t_fixture_wall"
-cp "${ROOT}/governance/fixtures/wall-exit-eval/ar-wall-good/exit-eval.json" \
+cp "${ROOT}/.hermes/enforcement/validate-contracts/fixtures/wall-exit-eval/ar-wall-good/exit-eval.json" \
   "${wall_tmp}/evidence/runs/t_fixture_wall/exit-eval.json"
 python3 "${SKILLS}/gates/check-release-readiness/scripts/check-wall-exit-eval.py" "${wall_tmp}" \
   --task-id t_fixture_wall --trigger timed_out --require-test-compile || rc=1
@@ -669,12 +672,12 @@ python3 "${ENFORCEMENT}/record-run-evidence/scripts/check-implementer-checkpoint
 rm -rf "${tc_tmp}"
 
 echo "== body-digest immutability (Architect E-111424Z) =="
-DIGEST="$(python3 -c "import hashlib,pathlib; print(hashlib.sha256(pathlib.Path('${ROOT}/governance/fixtures/body-digest/ar-digest-good/body.json').read_bytes()).hexdigest())")"
+DIGEST="$(python3 -c "import hashlib,pathlib; print(hashlib.sha256(pathlib.Path('${ROOT}/.hermes/enforcement/validate-contracts/fixtures/body-digest/ar-digest-good/body.json').read_bytes()).hexdigest())")"
 python3 "${ENFORCEMENT}/record-run-evidence/scripts/check-body-digest-match.py" "${ROOT}" \
-  --body "${ROOT}/governance/fixtures/body-digest/ar-digest-good/body.json" \
+  --body "${ROOT}/.hermes/enforcement/validate-contracts/fixtures/body-digest/ar-digest-good/body.json" \
   --expect "${DIGEST}" || rc=1
 if python3 "${ENFORCEMENT}/record-run-evidence/scripts/check-body-digest-match.py" "${ROOT}" \
-  --body "${ROOT}/governance/fixtures/body-digest/ar-digest-good/body.json" \
+  --body "${ROOT}/.hermes/enforcement/validate-contracts/fixtures/body-digest/ar-digest-good/body.json" \
   --expect deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef \
   >/dev/null 2>&1; then
   echo "FAIL: digest mismatch should refuse" >&2
@@ -729,12 +732,12 @@ else
 fi
 rm -rf "${t8_tmp}"
 if [ -f "${ROOT}/governance/contracts/semantic-exits.md" ]; then
-  echo "FAIL: semantic-exits.md still under contracts/ (T-8 retire → governance/retired/)" >&2
+  echo "FAIL: semantic-exits.md still under contracts/ (T-8/GRT retire)" >&2
   rc=1
-elif [ -f "${ROOT}/governance/retired/semantic-exits.md" ]; then
-  echo "OK: semantic-exits.md retired (T-8)"
+elif [ -f "${ROOT}/.hermes/skills/sdd/derive-story-oracles/SKILL.md" ]; then
+  echo "OK: semantic-exits retired; derive-story-oracles present (T-8)"
 else
-  echo "FAIL: missing governance/retired/semantic-exits.md" >&2
+  echo "FAIL: semantic-exits retirement incomplete" >&2
   rc=1
 fi
 
@@ -810,11 +813,11 @@ python3 "${SKILLS}/sdd/check-spec-readiness/scripts/assert-dest-inventory-hardin
   "${ROOT}" || rc=1
 
 echo "== AD-011 skill extension overlay =="
-if [ ! -f "${ROOT}/governance/contracts/ad011-skill-extension.md" ]; then
-  echo "FAIL: missing ad011-skill-extension.md" >&2
+if [ -f "${ROOT}/governance/contracts/ad011-skill-extension.md" ]; then
+  echo "FAIL: ad011-skill-extension.md still active (GRT retire)" >&2
   rc=1
 else
-  echo "OK: AD-011 contract present"
+  echo "OK: AD-011 contract retired (GRT)"
 fi
 # Retired: workshop-extensions/ and extensions/ were ruled REMOVE in the
 # tidy-up disposition (20260812-TIDYUP-DISPOSITION.md rows 16-17) — CS-2
@@ -829,7 +832,16 @@ echo "== AD-S S.4 .specify absent from golden =="
 python3 "${SKILL_DIR}/scripts/check-specify-absent.py" --root "${ROOT}" || rc=1
 echo "== AD-H §7 root scripts/ absent from golden =="
 python3 "${SKILL_DIR}/scripts/check-scripts-absent.py" --root "${ROOT}" || rc=1
-echo "== GR1 contract lifecycle (no EOL tombstones in governance/contracts/) =="
+
+# GRT — pins.yaml present
+if [ ! -f "${ROOT}/.hermes/pins.yaml" ]; then
+  echo "FAIL: missing .hermes/pins.yaml" >&2
+  rc=1
+else
+  echo "OK: .hermes/pins.yaml present"
+fi
+
+echo "== GR1/GRT contract lifecycle (no EOL in .hermes references; no governance/contracts) =="
 python3 "${SKILL_DIR}/scripts/check-contract-lifecycle.py" --root "${ROOT}" || rc=1
 echo "== dangling .hermes refs (Deputy E-174046Z relocation residue) =="
 python3 "${SKILL_DIR}/scripts/check-dangling-hermes-refs.py" --root "${ROOT}" || rc=1

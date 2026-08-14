@@ -15,5 +15,5 @@ Shared BOM / Jacoco policy:
 `../manage-quarkus-extensions/references/rh-bom-and-mandatory-deps.md`.
 Foundation fragments: `foundation-jacoco-wiring.md`.
 
-Platform GAV: `governance/contracts/tooling-pins.md` (do not restate versions
+Platform GAV: `.hermes/pins.yaml` (do not restate versions
 here).

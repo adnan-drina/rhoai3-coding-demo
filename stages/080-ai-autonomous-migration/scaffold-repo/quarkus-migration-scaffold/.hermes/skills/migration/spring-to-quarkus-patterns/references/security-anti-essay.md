@@ -21,12 +21,12 @@ when migrating `security/**` / S-005-class cards.
    JDBC userstore props per `security-config.md` / AR-2.2. Do not redesign the
    auth product surface in Reasoning or in javadoc-only shells.
 4. **Worked example** — copy pattern from
-   `governance/fixtures/security/golden-basic-authz/` (Roles + resource + props +
+   `.hermes/enforcement/dispatch-phase/fixtures/security/golden-basic-authz/` (Roles + resource + props +
    `SecurityAuthzIT` 401/403/200). Official cites live in `security-config.md`.
 5. **Anti-essay / anti-placeholder (R-M3.39)** — forbid multi-kB architecture
    debates **and** javadoc-only `*AuthenticationConfig` that claim “declarative
    in properties” without writing those properties + deps. Run
    `check-empty-security.py .` before `kanban_complete`. Negative fixture:
-   `governance/fixtures/runnable-db-security/bad-placeholder-security/`.
+   `.hermes/enforcement/validate-contracts/fixtures/runnable-db-security/bad-placeholder-security/`.
 6. **Never SOUL** — behavior changes belong here or in a workshop overlay, not
    in `SOUL.md`.

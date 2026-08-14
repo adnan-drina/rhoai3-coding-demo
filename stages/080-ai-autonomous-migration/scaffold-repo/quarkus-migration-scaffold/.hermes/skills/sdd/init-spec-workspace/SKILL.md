@@ -89,3 +89,16 @@ After `/speckit-tasks` (optional `/speckit-analyze`) → `kanban_create()`.
 - Every failure path exits non-zero with `[init-spec-workspace] ERROR: …`
   before the marker is written (missing override asset, `specify` absent after
   install, `.specify/` not created, external_dirs assert failed).
+
+## Hermes Spec Kit skill names
+
+Installed under `~/.hermes/skills` as hyphenated packages (pins: `.hermes/pins.yaml`
+`spec_kit`). Hard-invoke Hermes names, not dotted GitHub slash paths:
+
+| Wrong (obsolete dotted) | Correct (Hermes skill) |
+|-------------------------|------------------------|
+| `/speckit.specify` | `/speckit-specify` |
+| `/speckit.plan` | `/speckit-plan` |
+| `/speckit.tasks` | `/speckit-tasks` |
+| `/speckit.analyze` | `/speckit-analyze` |
+| `/speckit.implement` | **FORBIDDEN** — Kanban only |

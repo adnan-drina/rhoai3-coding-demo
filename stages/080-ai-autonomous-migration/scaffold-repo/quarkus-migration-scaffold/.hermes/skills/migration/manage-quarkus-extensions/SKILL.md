@@ -17,7 +17,7 @@ metadata:
 
 Guidance only (R-SK.14). Does **not** replace persistence/JDBC/compile
 preflight gates. Version **values** live in
-`governance/contracts/tooling-pins.md` and the destination `pom.xml` — never
+`.hermes/pins.yaml` and the destination `pom.xml` — never
 restate platform versions in this skill.
 
 **DD3:** the story that needs an extension **adds it and owns** its
@@ -42,7 +42,7 @@ Spring→extension decision aid: `references/spring-dep-to-extension.md`.
 
 1. Read `references/rh-bom-and-mandatory-deps.md` (shared BOM policy + Jacoco
    gotcha). Confirm destination `quarkus.platform.*` matches
-   `governance/contracts/tooling-pins.md` (or run
+   `.hermes/pins.yaml` (or run
    `scripts/check-pom-platform-pins.py <root>`). Run
    `scripts/assert-extension-tooling.py` (W3) before the first CLI/Maven
    extension mutation — CLI without RH-first registry is a hard fail;
@@ -93,13 +93,13 @@ Spring→extension decision aid: `references/spring-dep-to-extension.md`.
 ## Verification
 
 - `scripts/check-pom-platform-pins.py <root>` exits 0 with
-  `OK: pom platform pins match tooling-pins.md`.
+  `OK: pom platform pins match `.hermes/pins.yaml``.
 - When pom exists: `scripts/check-pom-jacoco-wiring.py <root>` exits 0
   (foundation Jacoco / dual Sonar paths / surefire argLine).
 - `scripts/assert-extension-tooling.py` exits 0 (CLI+RH-first or Maven fallback).
 - After add/rm: `quarkus.platform.group-id` remains
   `com.redhat.quarkus.platform` and `quarkus.platform.version` still matches
-  `tooling-pins.md` (no community rewrite).
+  `.hermes/pins.yaml` (no community rewrite).
 - After add: story write-set includes the family's required obligations (or a
   typed wait with destination-inventory citation).
 - Removals: story notes cite inventory + wiring absence + runtime smoke; else

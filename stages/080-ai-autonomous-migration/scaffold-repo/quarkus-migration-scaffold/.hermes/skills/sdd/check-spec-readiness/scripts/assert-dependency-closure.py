@@ -166,7 +166,7 @@ def main() -> int:
         for line in bad:
             print(f"  - {line}", file=sys.stderr)
         print(
-            "Architect E-20260811T203657Z / governance/contracts/dependency-closure.md",
+            "Architect E-20260811T203657Z / .hermes/skills/sdd/check-spec-readiness/references/story-scope-and-exit.md",
             file=sys.stderr,
         )
         return 1

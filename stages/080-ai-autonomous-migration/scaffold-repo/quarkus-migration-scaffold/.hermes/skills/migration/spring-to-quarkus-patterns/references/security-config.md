@@ -46,7 +46,7 @@ Internal pack (secondary): `source-analysis/external-review/20260810-artifact-re
 
 ## Worked neutral example (not specimen-bound)
 
-Golden tree: `governance/fixtures/security/golden-basic-authz/`
+Golden tree: `.hermes/enforcement/dispatch-phase/fixtures/security/golden-basic-authz/`
 
 | Piece | Role |
 |-------|------|
@@ -63,7 +63,7 @@ Copy the pattern; adapt package/paths to the specimen. Do **not** leave javadoc-
 - Specimen-prefixed toggles like `app.security.enable=true` (or JDBC enabled) without elytron JDBC + real props  
 - Claiming “Quarkus security” with only a mapping essay  
 
-Fixture: `governance/fixtures/runnable-db-security/bad-placeholder-security/`  
+Fixture: `.hermes/enforcement/validate-contracts/fixtures/runnable-db-security/bad-placeholder-security/`  
 Gate: `python3 .hermes/skills/gates/check-release-readiness/scripts/check-empty-security.py <tree>` → **rc≠0**
 
 ## Runtime proof (must land in dest tests)
@@ -87,7 +87,7 @@ Passwords one-way encoded; absent from responses/logs.
 
 ```bash
 python3 .hermes/skills/gates/check-release-readiness/scripts/check-empty-security.py \
-  governance/fixtures/runnable-db-security/bad-placeholder-security   # expect FAIL
+  .hermes/enforcement/validate-contracts/fixtures/runnable-db-security/bad-placeholder-security   # expect FAIL
 # Golden IT (when module runnable / copied into product):
 # mvn -q -Dtest=SecurityAuthzIT test
 ```

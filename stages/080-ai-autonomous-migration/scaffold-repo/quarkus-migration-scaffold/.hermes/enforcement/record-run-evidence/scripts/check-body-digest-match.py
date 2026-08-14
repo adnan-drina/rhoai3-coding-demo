@@ -30,7 +30,7 @@ def check_pair(body: Path, expect: str, label: str) -> int:
         print(
             f"FAIL: {label}: body digest mismatch "
             f"(expect={expect} actual={actual}) — dispatched body immutable "
-            f"(Architect E-111424Z / governance/contracts/body-immutability.md)",
+            f"(Architect E-111424Z / .hermes/skills/sdd/check-spec-readiness/references/body-integrity.md)",
             file=sys.stderr,
         )
         return 1

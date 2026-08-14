@@ -12,14 +12,14 @@ REQUIRED_FILES = [
     ".hermes/skills/gates/check-release-readiness/scripts/run-m4-floor.sh",
     ".hermes/skills/gates/check-release-readiness/scripts/check-m4-floor-receipts.py",
     ".hermes/skills/gates/check-release-readiness/scripts/write-receipt.py",
-    "governance/contracts/m4-floor-runner.md",
+    ".hermes/skills/gates/check-release-readiness/references/m4-floor-runner.md",
     ".hermes/skills/migration/spring-to-quarkus-patterns/references/security-config.md",
     ".hermes/skills/migration/spring-to-quarkus-patterns/references/security-anti-essay.md",
     ".hermes/skills/migration/spring-to-quarkus-patterns/references/di-config.md",
     ".hermes/skills/migration/spring-to-quarkus-patterns/references/testing.md",
-    "governance/fixtures/security/golden-basic-authz/README.md",
-    "governance/fixtures/testing/golden-test-application.properties",
-    "governance/fixtures/inventory/entry-point-inventory-petclinic-f11.json",
+    ".hermes/enforcement/dispatch-phase/fixtures/security/golden-basic-authz/README.md",
+    ".hermes/enforcement/dispatch-phase/fixtures/testing/golden-test-application.properties",
+    ".hermes/skills/sdd/check-spec-readiness/fixtures/inventory/entry-point-inventory-petclinic-f11.json",
     ".hermes/skills/analysis/scan-with-mta/scripts/check-findings-handoff.py",
     ".hermes/skills/sdd/check-spec-readiness/scripts/check-findings-handoff.py",
     # AD-S / Deputy E-120800Z — Non-Goals override must ride tip+overlay/R0
@@ -31,18 +31,17 @@ REQUIRED_FILES = [
     ".hermes/enforcement/validate-contracts/scripts/check-scripts-absent.py",
     # GR1 / Deputy E-20260814T081104Z — contract lifecycle (no EOL in active dir)
     ".hermes/enforcement/validate-contracts/scripts/check-contract-lifecycle.py",
-    "governance/contracts/contract-lifecycle.md",
-    "governance/retired/README.md",
-    "governance/retired/m2-resume-from-artifacts.md",
-    "governance/retired/m2b-resume-ladder.md",
-    "governance/retired/pom-persistence-handoff.md",
+    ".hermes/enforcement/validate-contracts/references/contract-lifecycle.md",
+    ".hermes/pins.yaml",
+    ".hermes/platform/known-hermes-behaviours.md",
+    ".hermes/skills/sdd/check-spec-readiness/references/story-scope-and-exit.md",
+    ".hermes/skills/sdd/check-spec-readiness/references/body-integrity.md",
     # Architect E-122959Z — decision-complete card lint
     ".hermes/enforcement/dispatch-phase/scripts/check-decision-complete-cards.py",
     # F2 / F6 / F9
     ".hermes/skills/sdd/check-spec-readiness/scripts/injection_receipt.py",
-    "governance/contracts/injection-receipts.md",
-    "governance/contracts/m3-implementer-standing.md",
-    "governance/contracts/scar-archive-triage.md",
+    ".hermes/skills/sdd/check-spec-readiness/references/body-integrity.md",
+    ".hermes/enforcement/dispatch-phase/references/m3-implementer-standing.md",
     # Operator E-20260811T144200Z — deps + dest-inventory at create
     ".hermes/skills/sdd/check-spec-readiness/scripts/stamp-body-dependencies.py",
     ".hermes/skills/sdd/check-spec-readiness/scripts/stamp-destination-inventory.py",
@@ -56,71 +55,62 @@ REQUIRED_FILES = [
     # Architect E-20260811T170706Z Class A — quarantine survives dispatch
     ".hermes/skills/sdd/check-spec-readiness/scripts/assert-quarantine-tombstones.py",
     ".hermes/skills/sdd/check-spec-readiness/scripts/register-quarantine-tombstone.py",
-    "governance/contracts/quarantine-survives-dispatch.md",
     # S-008 / W4 — parent-chain triad resurrection order
     ".hermes/enforcement/dispatch-phase/scripts/check-s008-resurrection-order.py",
-    "governance/contracts/s008-quarantine-resurrection-order.md",
     # Architect E-20260811T173254Z Class A — residual worker kill+verify
     ".hermes/home/scripts/kill-and-verify-task-worker.sh",
     ".hermes/home/scripts/stamp-worker-pid-from-ps.py",
     ".hermes/home/scripts/assert-no-residual-workers.py",
-    "governance/contracts/residual-worker-kill.md",
+    ".hermes/platform/known-hermes-behaviours.md",
     # Architect E-20260811T175305Z Class A — scope-filtered compile
     ".hermes/enforcement/record-run-evidence/scripts/run-scoped-compile-gate.py",
-    "governance/contracts/compile-scope-filtered.md",
+    ".hermes/skills/sdd/check-spec-readiness/references/story-scope-and-exit.md",
     # Architect E-20260811T175509Z Class A — complete enforces cmd exits
     ".hermes/skills/gates/check-release-readiness/scripts/assert-complete-exit-criteria.py",
     ".hermes/home/scripts/enforce-complete-exit-criteria.py",
-    "governance/contracts/complete-cmd-exit-criteria.md",
+    ".hermes/skills/sdd/check-spec-readiness/references/story-scope-and-exit.md",
     # Architect E-20260811T181749Z Class A — interface-closure at create
     ".hermes/skills/sdd/check-spec-readiness/scripts/check-interface-closure.py",
-    "governance/contracts/interface-closure.md",
+    ".hermes/skills/sdd/check-spec-readiness/references/story-scope-and-exit.md",
     # Architect E-20260811T182820Z Class A — constraints preservation on amend
     ".hermes/skills/sdd/check-spec-readiness/scripts/assert-constraints-preserved.py",
-    "governance/contracts/constraints-preservation-on-amend.md",
+    ".hermes/skills/sdd/check-spec-readiness/references/body-integrity.md",
     # Operator E-20260811T184628Z — Managed Scope required at spawn (not symlink)
     ".hermes/home/scripts/assert-managed-scope-active.py",
-    "governance/contracts/managed-scope-at-spawn.md",
     # Architect E-20260811T205329Z Class A — pin Managed Scope dir + guarded dispatch
     ".hermes/home/scripts/kanban-dispatch-guarded.sh",
     # Architect E-20260811T195141Z Class A — own-body digest at complete
     ".hermes/enforcement/record-run-evidence/scripts/check-body-digest-match.py",
-    "governance/contracts/body-digest-own-story.md",
+    ".hermes/skills/sdd/check-spec-readiness/references/body-integrity.md",
     # Architect E-20260811T200911Z Class A — mint-completeness + park-at-birth
     ".hermes/skills/sdd/check-spec-readiness/scripts/assert-mint-constraints-complete.py",
-    "governance/contracts/mint-completeness-constraints.md",
-    "governance/contracts/park-at-birth.md",
+    ".hermes/skills/sdd/check-spec-readiness/references/body-integrity.md",
     # Architect E-20260811T203657Z Class A — dependency/pre-exists closure
     ".hermes/skills/sdd/check-spec-readiness/scripts/assert-dependency-closure.py",
-    "governance/contracts/dependency-closure.md",
+    ".hermes/skills/sdd/check-spec-readiness/references/story-scope-and-exit.md",
     # Architect E-20260812T055516Z Class A — BANK-CONV-LIVE-WD-1 (stream-stale / warm-hb)
     ".hermes/home/scripts/check-conversation-liveness.py",
     # Operator E-20260812T061639Z / Architect E-20260812T061718Z Class A — card↔sidecar
     ".hermes/enforcement/record-run-evidence/scripts/assert-card-body-digest-match.py",
-    "governance/contracts/card-sidecar-digest-cross-assert.md",
+    ".hermes/skills/sdd/check-spec-readiness/references/body-integrity.md",
     # Architect E-20260812T064611Z / E-20260812T064637Z Class A — AD-012 lint + CS-7 bundle
     ".hermes/enforcement/validate-contracts/scripts/check-skill-conformance.py",
     ".hermes/enforcement/dispatch-phase/scripts/assert-bundle-skills-exist.py",
     ".hermes/home/skill-bundles/m3-implementer.yaml",
     # Architect E-20260812T074514Z RW-2 BANK-DEST-INV-HARDINVOKE-1
     ".hermes/skills/sdd/check-spec-readiness/scripts/assert-dest-inventory-hardinvoke.py",
-    "governance/contracts/dest-inventory-hardinvoke.md",
     # Architect E-20260812T074514Z RW-1 CONV-LIVE deepen
     ".hermes/home/scripts/classify-conv-live-stall.py",
-    "governance/contracts/conv-live-bounded-retry.md",
     # Architect E-20260812T090529Z Class A — CONV-LIVE arm on dispatch path (D4)
     ".hermes/home/scripts/arm-conv-live-watchdog.sh",
-    "governance/contracts/conv-live-arm-on-dispatch.md",
     # A2 — stream-liveness + fast-deny (watchdog callers)
     ".hermes/home/scripts/kanban-stuck-watchdog.py",
     ".hermes/home/scripts/check-stream-liveness.py",
     ".hermes/home/scripts/check-vllm-validation-fast-deny.py",
-    "governance/contracts/stream-liveness.md",
-    "governance/contracts/compaction-headroom-and-fast-deny.md",
+    ".hermes/platform/known-hermes-behaviours.md",
     # A5 — spring-compat REJECT reference
     ".hermes/skills/migration/spring-to-quarkus-patterns/references/spring-compat-reject.md",
     # Wave B — bootstrap skill + skeleton retirement
-    "BOOTSTRAP.md",
     ".hermes/skills/migration/bootstrap-quarkus-project/SKILL.md",
     ".hermes/skills/migration/bootstrap-quarkus-project/scripts/bootstrap.sh",
     ".hermes/skills/migration/manage-quarkus-extensions/scripts/check-pom-platform-pins.py",
@@ -132,11 +122,10 @@ REQUIRED_FILES = [
     "devfile.yaml",
     # §K / A-5
     ".hermes/home/scripts/stop-worker-session.sh",
-    "governance/contracts/residual-worker-kill.md",
+    ".hermes/platform/known-hermes-behaviours.md",
     # T-8 / Z2
     ".hermes/skills/sdd/derive-story-oracles/SKILL.md",
-    "governance/retired/semantic-exits.md",
-    "governance/contracts/surgical-scopes.md",
+        ".hermes/skills/sdd/check-spec-readiness/references/story-scope-and-exit.md",
     # T-1 / Z2
     ".hermes/skills/migration/reference-rh-quarkus-pom/SKILL.md",
     ".hermes/skills/migration/reference-rh-quarkus-pom/references/pom-structure.md",
@@ -170,9 +159,9 @@ REQUIRED_SUBSTRINGS = [
         "R-M3.59 continuous-testing enum",
     ),
     (
-        "BOOTSTRAP.md",
-        "bootstrap-quarkus-project",
-        "Wave B skeleton retired — bootstrap skill cited",
+        ".hermes/skills/migration/bootstrap-quarkus-project/SKILL.md",
+        "quarkus create app",
+        "Wave B skeleton retired — bootstrap skill forbids create-app",
     ),
     (
         ".hermes/skills/migration/bootstrap-quarkus-project/SKILL.md",
@@ -210,9 +199,9 @@ REQUIRED_SUBSTRINGS = [
         "T-8 skill attached on M2/M3",
     ),
     (
-        "governance/retired/semantic-exits.md",
-        "Status:** retired",
-        "T-8 semantic-exits contract retired",
+        ".hermes/skills/sdd/derive-story-oracles/SKILL.md",
+        "derive-story-oracles",
+        "T-8 derive-story-oracles present (semantic-exits retired)",
     ),
     (
         ".hermes/skills/migration/reference-rh-quarkus-pom/SKILL.md",
@@ -280,9 +269,9 @@ REQUIRED_SUBSTRINGS = [
         "W3 extension tooling typed preflight",
     ),
     (
-        "BOOTSTRAP.md",
+        ".hermes/skills/migration/bootstrap-quarkus-project/SKILL.md",
         "Author",
-        "BOOTSTRAP.md documents POM authoring (DD1/DD2)",
+        "bootstrap skill documents POM authoring (DD1/DD2)",
     ),
     (
         ".hermes/enforcement/dispatch-phase/scripts/create-m3-implementer.sh",
@@ -435,7 +424,7 @@ REQUIRED_SUBSTRINGS = [
         "create-m3 validates single body (Operator E-124000Z)",
     ),
     (
-        "governance/contracts/story-sizing.md",
+        ".hermes/skills/sdd/check-spec-readiness/references/story-scope-and-exit.md",
         "operand_class",
         "story-sizing documents operand classes",
     ),
@@ -517,12 +506,12 @@ REQUIRED_SUBSTRINGS = [
         "Class A quarantine tombstones at dispatch-phase (Architect E-170706Z)",
     ),
     (
-        "governance/contracts/quarantine-survives-dispatch.md",
+        ".hermes/skills/sdd/check-spec-readiness/scripts/assert-quarantine-tombstones.py",
         "rhoai3.quarantine-tombstones/v1",
-        "quarantine-survives-dispatch contract",
+        "quarantine-survives-dispatch wired (assert schema)",
     ),
     (
-        "governance/contracts/partition-coverage.md",
+        ".hermes/skills/sdd/check-spec-readiness/references/story-scope-and-exit.md",
         "runtime inventory count",
         "partition-coverage contract (specimen-agnostic)",
     ),
@@ -567,17 +556,17 @@ REQUIRED_SUBSTRINGS = [
         "Class A complete-cmd assert before kanban_complete",
     ),
     (
-        "governance/contracts/m3-implementer-standing.md",
+        ".hermes/enforcement/dispatch-phase/references/m3-implementer-standing.md",
         "run-scoped-compile-gate.py",
         "Class A scoped compile cited in M3 standing procedure (F6)",
     ),
     (
-        "governance/contracts/compile-scope-filtered.md",
+        ".hermes/skills/sdd/check-spec-readiness/references/story-scope-and-exit.md",
         "files_writable",
         "compile-scope-filtered contract",
     ),
     (
-        "governance/contracts/complete-cmd-exit-criteria.md",
+        ".hermes/skills/sdd/check-spec-readiness/references/story-scope-and-exit.md",
         "complete-exit-ok.json",
         "complete-cmd-exit-criteria contract",
     ),
@@ -587,7 +576,7 @@ REQUIRED_SUBSTRINGS = [
         "Class A interface-closure wired into create-m3",
     ),
     (
-        "governance/contracts/interface-closure.md",
+        ".hermes/skills/sdd/check-spec-readiness/references/story-scope-and-exit.md",
         "BANK-CREATE-PATH-IFACE-1",
         "interface-closure contract",
     ),
@@ -602,9 +591,9 @@ REQUIRED_SUBSTRINGS = [
         "F9 create-m3 wires constraints snapshot-before",
     ),
     (
-        "governance/contracts/scar-archive-triage.md",
-        "WIRED",
-        "F9 scar-archive triage record",
+        ".hermes/enforcement/dispatch-phase/scripts/create-m3-implementer.sh",
+        "assert-constraints-preserved.py",
+        "F9 scar-archive triage: constraints snapshot wired at create",
     ),
     (
         ".hermes/skills/sdd/check-spec-readiness/scripts/assert-mint-constraints-complete.py",
@@ -612,7 +601,7 @@ REQUIRED_SUBSTRINGS = [
         "F7 constraints are short imperatives",
     ),
     (
-        "governance/contracts/constraints-preservation-on-amend.md",
+        ".hermes/skills/sdd/check-spec-readiness/references/body-integrity.md",
         "silently drop",
         "constraints-preservation-on-amend contract",
     ),
@@ -622,9 +611,9 @@ REQUIRED_SUBSTRINGS = [
         "Managed Scope spawn assert (dir pin)",
     ),
     (
-        "governance/contracts/managed-scope-at-spawn.md",
-        "not equal to pin",
-        "managed-scope-at-spawn contract (pin)",
+        ".hermes/home/scripts/assert-managed-scope-active.py",
+        "HERMES_MANAGED_DIR_PIN",
+        "managed-scope-at-spawn pin assert present",
     ),
     (
         ".hermes/home/scripts/kanban-dispatch-guarded.sh",
@@ -647,7 +636,7 @@ REQUIRED_SUBSTRINGS = [
         "own-body digest scope at --body alone",
     ),
     (
-        "governance/contracts/body-digest-own-story.md",
+        ".hermes/skills/sdd/check-spec-readiness/references/body-integrity.md",
         "own sidecar",
         "body-digest-own-story contract",
     ),
@@ -657,7 +646,7 @@ REQUIRED_SUBSTRINGS = [
         "Class A mint-completeness script",
     ),
     (
-        "governance/contracts/mint-completeness-constraints.md",
+        ".hermes/skills/sdd/check-spec-readiness/references/body-integrity.md",
         "preserve ≠ invent",
         "mint-completeness-constraints contract",
     ),
@@ -667,9 +656,9 @@ REQUIRED_SUBSTRINGS = [
         "Class A park-at-birth verify after create",
     ),
     (
-        "governance/contracts/park-at-birth.md",
+        ".hermes/enforcement/dispatch-phase/scripts/create-m3-implementer.sh",
         "auto-promote",
-        "park-at-birth contract",
+        "park-at-birth: create path refuses auto-promote",
     ),
     (
         ".hermes/home/scripts/kanban-stuck-watchdog.py",
@@ -692,7 +681,7 @@ REQUIRED_SUBSTRINGS = [
         "Class A card↔sidecar digest cross-assert script",
     ),
     (
-        "governance/contracts/card-sidecar-digest-cross-assert.md",
+        ".hermes/skills/sdd/check-spec-readiness/references/body-integrity.md",
         "card↔sidecar",
         "card-sidecar-digest-cross-assert contract",
     ),
@@ -707,7 +696,7 @@ REQUIRED_SUBSTRINGS = [
         "Class A dependency-closure script",
     ),
     (
-        "governance/contracts/dependency-closure.md",
+        ".hermes/skills/sdd/check-spec-readiness/references/story-scope-and-exit.md",
         "BANK-DEP-CLOSURE-1",
         "dependency-closure contract",
     ),
@@ -722,9 +711,9 @@ REQUIRED_SUBSTRINGS = [
         "RW-2 dest-inventory hard-invoke lint",
     ),
     (
-        "governance/contracts/dest-inventory-hardinvoke.md",
+        ".hermes/enforcement/dispatch-phase/references/m3-implementer-standing.md",
         "BANK-DEST-INV-HARDINVOKE-1",
-        "dest-inventory-hardinvoke contract",
+        "dest-inventory-hardinvoke standing cite",
     ),
     (
         ".hermes/enforcement/dispatch-phase/scripts/create-m3-implementer.sh",
@@ -732,7 +721,7 @@ REQUIRED_SUBSTRINGS = [
         "RW-2 dest-inventory cite obligation on create-m3",
     ),
     (
-        "governance/contracts/m3-implementer-standing.md",
+        ".hermes/enforcement/dispatch-phase/references/m3-implementer-standing.md",
         "BANK-DEST-INV-HARDINVOKE-1",
         "F6 standing procedure carries BANK-DEST-INV detail",
     ),
@@ -752,7 +741,7 @@ REQUIRED_SUBSTRINGS = [
         "F2 injection receipt helper",
     ),
     (
-        "governance/contracts/injection-receipts.md",
+        ".hermes/skills/sdd/check-spec-readiness/references/body-integrity.md",
         "rhoai3.injection-receipt/v1",
         "F2 injection-receipts contract",
     ),
@@ -782,9 +771,9 @@ REQUIRED_SUBSTRINGS = [
         "RW-1 CONV-LIVE stream-layer classifier",
     ),
     (
-        "governance/contracts/conv-live-bounded-retry.md",
-        "BOUNDED_RETRY",
-        "RW-1 CONV-LIVE bounded in-turn retry contract",
+        ".hermes/home/scripts/classify-conv-live-stall.py",
+        "CONV_LIVE_CLASSIFY",
+        "RW-1 CONV-LIVE bounded retry classifier present",
     ),
     (
         ".hermes/home/scripts/arm-conv-live-watchdog.sh",
@@ -797,9 +786,9 @@ REQUIRED_SUBSTRINGS = [
         "Class A CONV-LIVE arm wired into guarded dispatch",
     ),
     (
-        "governance/contracts/conv-live-arm-on-dispatch.md",
+        ".hermes/home/scripts/arm-conv-live-watchdog.sh",
         "BANK-CONV-LIVE-WD-1",
-        "CONV-LIVE arm-on-dispatch contract",
+        "CONV-LIVE arm-on-dispatch bank id present",
     ),
     (
         ".hermes/enforcement/enforce-authority-boundary/scripts/apply-write-fence.sh",
@@ -817,7 +806,7 @@ REQUIRED_SUBSTRINGS = [
         "DD5 refusal doctrine in SOUL.md",
     ),
     (
-        "governance/contracts/story-sizing.md",
+        ".hermes/skills/sdd/check-spec-readiness/references/story-scope-and-exit.md",
         "DD6",
         "DD6 foundation asserts resolution in story-sizing",
     ),

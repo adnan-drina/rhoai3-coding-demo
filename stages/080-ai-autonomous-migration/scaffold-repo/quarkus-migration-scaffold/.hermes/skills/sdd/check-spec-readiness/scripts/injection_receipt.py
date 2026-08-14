@@ -14,7 +14,7 @@ Usage (library or CLI):
     --summary "stamped dependencies n=4"
 
 Schema: rhoai3.injection-receipt/v1
-Contract: governance/contracts/injection-receipts.md
+Contract: .hermes/skills/sdd/check-spec-readiness/references/body-integrity.md
 """
 from __future__ import annotations
 

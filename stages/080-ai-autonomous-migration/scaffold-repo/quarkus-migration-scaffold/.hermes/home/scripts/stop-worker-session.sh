@@ -4,7 +4,7 @@
 # `hermes kanban block` alone does NOT stop the worker process (proven twice
 # on v17: S-001 completed ~6h after block; S-008 already terminal). Use this
 # script (or block-and-signal-worker.sh directly). Contract:
-#   governance/contracts/residual-worker-kill.md
+#   .hermes/platform/known-hermes-behaviours.md
 set -euo pipefail
 
 case "${1:-}" in

@@ -222,7 +222,7 @@ def main() -> int:
     ap.add_argument(
         "--allow-specimen-fixture",
         action="store_true",
-        help="Permit falling back to governance/fixtures/inventory/* specimen inventories",
+        help="Permit falling back to .hermes/skills/sdd/check-spec-readiness/fixtures/inventory/* specimen inventories",
     )
     ap.add_argument("--findings", default="evidence/mta-findings.json")
     ap.add_argument("--bodies", default="evidence/bodies")

@@ -69,6 +69,9 @@ ALLOW_PREFIXES = (
 
 
 def allowed(rel: str) -> bool:
+    # GRT: governance/ removed from scaffold; cites are attic/history pointers
+    if rel.startswith("governance/"):
+        return True
     if rel in ALLOW_EXACT:
         return True
     if "${" in rel or "}" in rel or "<" in rel:

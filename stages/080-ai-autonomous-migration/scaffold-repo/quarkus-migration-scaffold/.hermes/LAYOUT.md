@@ -16,9 +16,9 @@ for new procedures.
 | Harness meta-validate | `.hermes/enforcement/validate-contracts/` | specimen-free suite |
 | Provision assets (not runtime) | `.hermes/provision/` | Spec Kit Non-Goals override template |
 | Phase / run data | `migration/` | findings, inventory JSON, fixtures, contracts, schemas, acks |
-| Task authority contract | `governance/contracts/task-authority.md` | AD-H §16 — task-type obligations, privilege, human checkpoints |
+| Task authority contract | `.hermes/enforcement/enforce-authority-boundary/references/task-authority.md` | AD-H §16 — task-type obligations, privilege, human checkpoints |
 | Grounded generation contract | `governance/contracts/grounded-generation.md` | AD-H §17 — consult order, citation, anti-invention |
-| Validation / release contract | `governance/contracts/validation-release-gates.md` | AD-H §18 — phase gates, regression, failure routing |
+| Validation / release contract | `AGENTS.md (doctrine; was validation-release-gates)` | AD-H §18 — phase gates, regression, failure routing |
 | Validation / release skill | `.hermes/skills/gates/check-release-readiness/` | matrix lint + verdict routing |
 | Auditability contract | `governance/contracts/auditability-repeatability.md` | AD-H §19 — provenance, digests, early metric |
 | Provenance schema | `governance/schemas/generation-provenance.md` | Kanban metadata fields |
@@ -35,7 +35,7 @@ for new procedures.
 | G-3 | `g3-findings-delta` | MTA findings closure |
 | G-4 | `g4-runtime-parity` | observed runtime parity |
 
-Admission fixture trees: `governance/fixtures/admission/<stem>/`.
+Admission fixture trees: `.hermes/skills/gates/check-release-readiness/fixtures/admission/<stem>/`.
 
 ## How to invoke
 

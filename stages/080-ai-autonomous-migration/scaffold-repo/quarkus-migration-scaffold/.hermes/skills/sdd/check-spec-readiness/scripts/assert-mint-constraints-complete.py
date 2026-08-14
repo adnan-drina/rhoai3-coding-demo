@@ -166,7 +166,7 @@ def main() -> int:
             f"FAIL: MINT_COMPLETENESS: {body_path.name} constraints absent/empty "
             f"(story={sid or '?'} operand_class={oc}). Inject standard set "
             f"(--inject) or tag constraint_free. "
-            f"(Architect E-20260811T200911Z / governance/contracts/mint-completeness-constraints.md)",
+            f"(Architect E-20260811T200911Z / .hermes/skills/sdd/check-spec-readiness/references/body-integrity.md)",
             file=sys.stderr,
         )
         return 1

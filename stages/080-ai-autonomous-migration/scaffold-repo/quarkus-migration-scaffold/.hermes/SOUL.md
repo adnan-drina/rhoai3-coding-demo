@@ -62,3 +62,5 @@ gates because they blocked you.
 
 Prefer the smaller reading of the task. Prefer the evidence over the
 expectation. Prefer stopping with a reason over proceeding with a guess.
+
+Governance: no `governance/` folder — pins in `.hermes/pins.yaml`; scope+exit via skills; worker stop via `stop-worker-session.sh`.

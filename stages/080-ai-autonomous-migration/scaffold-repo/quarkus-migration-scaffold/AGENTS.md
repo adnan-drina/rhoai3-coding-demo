@@ -29,7 +29,7 @@ repository (`/projects/modernized`).
   (`/q/*` deliberately sits outside the application root path).
 - Pattern cards (on demand): skill `spring-to-quarkus-patterns`.
 - Extension add/rm (on demand): skill `manage-quarkus-extensions` (RH BOM policy;
-  versions in `governance/contracts/tooling-pins.md` only).
+  versions in `.hermes/pins.yaml` only).
 
 ## Build and test
 
@@ -71,7 +71,7 @@ from a pointer README).
 | Domain gates G-1..G-4 | skill `check-domain-parity` (router below) |
 | Run / phase data | `migration/` |
 | SDD stack | `.specify/` (workspace provision only — AD-S) |
-| Destination POM authoring | skill `bootstrap-quarkus-project` (see root `BOOTSTRAP.md`; create-app path retired DD1) |
+| Destination POM authoring | skill `bootstrap-quarkus-project` (create-app path retired DD1) |
 
 ### Paths
 
@@ -130,7 +130,7 @@ bash .hermes/home/scripts/stop-worker-session.sh [--kind needs_input] <task_id> 
 ```
 
 Then sweep: `python3 .hermes/home/scripts/assert-no-residual-workers.py .`
-Contract: `governance/contracts/residual-worker-kill.md`. Never report
+Contract: `.hermes/platform/known-hermes-behaviours.md`. Never report
 containment from board block alone.
 
 ### Spec Kit stop rule (AD-S)
@@ -147,7 +147,7 @@ run-report line must carry the **same task id**.
 
 Brief identity carries unchanged; graph order build → security → schema →
 API → test infra → feature → surfaces; IMPLEMENT workers must not re-plan.
-Authoritative: `governance/contracts/sdd-ordering.md` (skill `check-spec-readiness`).
+Authoritative: `.hermes/skills/sdd/check-spec-readiness/references/sdd-ordering.md` (skill `check-spec-readiness`).
 
 ### Standing conventions home
 
@@ -162,21 +162,35 @@ When a skill is loaded, prefer `"${HERMES_SKILL_DIR}/scripts/…"`.
 
 | Governs | Skill / package | Authoritative |
 |---------|-----------------|---------------|
-| Task-type preload, one-task-one-type, ack artifacts | `enforce-authority-boundary` *(enforcement)* | `governance/contracts/task-authority.md` |
-| Citation / no-invention write fence | `ground-in-harvest` *(enforcement)* | `governance/contracts/grounded-generation.md` |
-| Phase matrix, verdict legality, M4/M5 routing | `check-release-readiness` | `governance/contracts/validation-release-gates.md` |
+| Task-type preload, one-task-one-type, ack artifacts | `enforce-authority-boundary` *(enforcement)* | `.hermes/enforcement/enforce-authority-boundary/references/task-authority.md` |
+| Citation / no-invention write fence | `ground-in-harvest` *(enforcement)* | write-fence + citation gates |
+| Phase matrix, verdict legality, M4/M5 routing | `check-release-readiness` | phase-dispatch + skill (doctrine) |
 | G-1..G-4 measurement oracles | `check-domain-parity` | skill `SKILL.md` + gate scripts |
 | Specimen-free harness self-lint | `validate-contracts` *(enforcement)* | `scripts/validate.sh` |
 | M-phase mint/dispatch (Hermes-native) | `dispatch-phase` *(enforcement)* | `.hermes/phase-dispatch.yaml` |
-| Spec/story-body legality + kanban body shape | `check-spec-readiness` | `governance/contracts/*` + `governance/schemas/kanban-body.md` |
-| Story-class exit / oracle derivation (T-8) | `derive-story-oracles` | `surgical-scopes.md` + skill references/ |
+| Spec/story-body legality + kanban body shape | `check-spec-readiness` | `references/story-scope-and-exit.md` + `body-integrity.md` |
+| Story-class exit / oracle derivation (T-8) | `derive-story-oracles` | `story-scope-and-exit.md` + skill references/ |
 | Quarkus config / profiles / `config_profile_load` (RS1) | `configure-quarkus-profiles` | skill references/ (sources, oracles) |
 | Entity / persistence form (T-7) | `form-entity-persistence` | skill references/ + `persistence.md` cards |
 | Spec Kit provision (postStart only) | `init-spec-workspace` | skill `SKILL.md` |
 | Entry-point inventory | `inventory-entry-points` | skill `SKILL.md` |
-| Provenance / reconstruct | `record-run-evidence` *(enforcement)* | `governance/contracts/auditability-repeatability.md` |
+| Provenance / reconstruct | `record-run-evidence` *(enforcement)* | evidence layout + digests |
 | Spring→Quarkus pattern cards | `spring-to-quarkus-patterns` | skill `references/` |
 | Quarkus extension add/rm + obligations (T-3) | `manage-quarkus-extensions` | skill + `extension-obligations.md` + pins |
 | RH Quarkus POM structure (T-1) | `reference-rh-quarkus-pom` | skill `references/pom-structure.md` + pins |
-| Destination Quarkus POM authoring | `bootstrap-quarkus-project` | root `BOOTSTRAP.md` + T-1 skill + pins (DD1: no create-app) |
-| Hard-stop a Hermes worker session | `stop-worker-session.sh` *(home script)* | `governance/contracts/residual-worker-kill.md` (A-5) |
+| Destination Quarkus POM authoring | `bootstrap-quarkus-project` | T-1 skill + `.hermes/pins.yaml` (DD1: no create-app) |
+| Hard-stop a Hermes worker session | `stop-worker-session.sh` *(home script)* | `.hermes/platform/known-hermes-behaviours.md` (A-5) |
+
+
+## Governance doctrine (GRX/GRT)
+
+- **No `governance/` folder** on the tip. Pins: `.hermes/pins.yaml`. Fixtures:
+  per enforcement/skill package. Platform Hermes behaviours:
+  `.hermes/platform/known-hermes-behaviours.md`.
+- **Scope + exit are one concern** — skill `derive-story-oracles` +
+  `check-spec-readiness/references/story-scope-and-exit.md`. Dual-oracle refuse
+  stands.
+- **Phase / verdict legality** is enforced by `dispatch-phase` /
+  `check-release-readiness` — do not restate matrix prose as a contract.
+- **Worker containment:** use `stop-worker-session.sh` (A-5); do not rediscover
+  kill procedure from attic contracts.

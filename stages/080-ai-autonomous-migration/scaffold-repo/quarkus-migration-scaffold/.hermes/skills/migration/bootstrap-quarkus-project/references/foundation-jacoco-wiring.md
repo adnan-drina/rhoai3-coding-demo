@@ -5,7 +5,7 @@ extension (DD3). Carry these on every foundation POM; gate:
 `scripts/check-pom-jacoco-wiring.py`.
 
 Versions: inherit the Red Hat BOM / surefire pin from
-`governance/contracts/tooling-pins.md` — do not paste version literals here.
+`.hermes/pins.yaml` — do not paste version literals here.
 
 ## 1. Dependency (`quarkus-jacoco`, test scope)
 

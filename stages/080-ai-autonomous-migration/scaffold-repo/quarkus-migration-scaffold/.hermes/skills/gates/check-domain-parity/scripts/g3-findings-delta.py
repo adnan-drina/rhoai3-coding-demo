@@ -2,7 +2,7 @@
 """G-3 admission evaluator — MTA findings / asserted-resolved (W2 §10).
 
 Runs the three admission fixtures under
-`governance/fixtures/admission/g3-findings-delta/` (known-good / known-bad /
+`.hermes/skills/gates/check-release-readiness/fixtures/admission/g3-findings-delta/` (known-good / known-bad /
 known-vacuous) and writes each verdict under
 `evidence/fixtures/admission/out/g3-findings-delta/`.
 
@@ -62,7 +62,7 @@ def main() -> int:
     )
     args = ap.parse_args()
     root = Path(args.root)
-    base = root / "governance/fixtures/admission/g3-findings-delta"
+    base = root / ".hermes/skills/gates/check-release-readiness/fixtures/admission/g3-findings-delta"
     expected = {
         "known-good": "ACCEPT",
         "known-bad": "REFUSE",

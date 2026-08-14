@@ -351,7 +351,7 @@ def check_body(label: str, body: dict, root: Path) -> int:
                     "phase=M3 with src/test in files_in_scope requires "
                     "exit_criteria check=test_compile "
                     "(cmd: mvn -q test-compile; in-loop invariant — "
-                    "governance/contracts/test-toolchain.md)",
+                    ".hermes/skills/migration/manage-quarkus-extensions/references/test-toolchain.md)",
                 )
                 bad = 1
 

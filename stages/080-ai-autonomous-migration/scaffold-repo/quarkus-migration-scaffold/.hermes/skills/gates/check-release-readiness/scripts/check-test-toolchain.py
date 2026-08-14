@@ -69,7 +69,7 @@ def main() -> int:
         )
         print(
             "  harness must ship assertj-core + rest-assured (test scope); "
-            "see governance/contracts/test-toolchain.md",
+            "see .hermes/skills/migration/manage-quarkus-extensions/references/test-toolchain.md",
             file=sys.stderr,
         )
         return 1

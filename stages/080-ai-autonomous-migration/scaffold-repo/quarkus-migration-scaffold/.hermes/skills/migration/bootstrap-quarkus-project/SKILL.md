@@ -18,8 +18,8 @@ metadata:
 
 Guidance only (R-SK.14). Authors the **destination application POM** under the
 scaffold root (or `/projects/modernized`). Does **not** replace the harness
-tree (`.hermes/`, `governance/`, `AGENTS.md`, `SOUL.md`). Platform GAV values
-live only in `governance/contracts/tooling-pins.md`.
+tree (`.hermes/`, `AGENTS.md`, `.hermes/SOUL.md`, `devfile.yaml` — write-fenced).
+Platform GAV values live only in `.hermes/pins.yaml`.
 
 **DD1 (Operator E-20260814T065925Z):** `quarkus create app` /
 `quarkus-maven-plugin:create` into the destination is **retired**. Foundation
@@ -29,7 +29,7 @@ documents hand-authoring as a dedicated path.
 ## When to Use
 
 - The golden scaffold has no hand-maintained destination `pom.xml` /
-  `src/` (see root `BOOTSTRAP.md`) and M3 needs a real Quarkus app tree.
+  `src/` and M3 needs a real Quarkus app tree.
 - Fresh seat / factory provision after harness-only tip checkout.
 - **Not** for mid-story extension add/rm — use `manage-quarkus-extensions`.
 - **Not** for Spring→Quarkus form mapping (`spring-to-quarkus-patterns`).
@@ -38,7 +38,7 @@ documents hand-authoring as a dedicated path.
 
 ## Procedure
 
-1. Read `governance/contracts/tooling-pins.md` (Red Hat Quarkus platform row)
+1. Read `.hermes/pins.yaml` (Red Hat Quarkus platform row)
    and `../manage-quarkus-extensions/references/rh-bom-and-mandatory-deps.md`.
 2. Open skill `reference-rh-quarkus-pom` (`../reference-rh-quarkus-pom/`) —
    assemble structure from `references/pom-structure.md` +
@@ -72,7 +72,7 @@ documents hand-authoring as a dedicated path.
 - Leaving Jacoco dual Sonar paths / surefire `argLine` off the foundation POM
   (A-3 gate fails once `pom.xml` exists).
 - Using community `io.quarkus.platform` plugin GAV instead of
-  `com.redhat.quarkus.platform` from `tooling-pins.md`.
+  `com.redhat.quarkus.platform` from `.hermes/pins.yaml`.
 - Citing out-of-scaffold ledger paths for structure — use
   `reference-rh-quarkus-pom` in-tree (R-SK.13).
 
@@ -80,12 +80,12 @@ documents hand-authoring as a dedicated path.
 
 - Destination `pom.xml` exists and
   `check-pom-platform-pins.py <root>` prints
-  `OK: pom platform pins match tooling-pins.md`.
+  `OK: pom platform pins match `.hermes/pins.yaml``.
 - `check-pom-jacoco-wiring.py <root>` prints
   `OK: pom Jacoco/Sonar dual-path + argLine wiring present`.
 - `quarkus.platform.group-id` is `com.redhat.quarkus.platform`.
 - Harness tree still present: `.hermes/enforcement/validate-contracts/`,
-  `governance/contracts/`, `AGENTS.md`.
+  `AGENTS.md`, `devfile.yaml`.
 - `scripts/bootstrap.sh` exits non-zero with `CREATE_PATH_RETIRED` if invoked
   for create (DD1 fail-closed). Do **not** depend on `rsync` (W2 — seat has
   `tar`; create sync path is retired).

@@ -59,7 +59,7 @@ def evaluate(fixture_dir: Path) -> str:
 
 def main() -> int:
     root = Path(sys.argv[1] if len(sys.argv) > 1 else ".")
-    base = root / "governance/fixtures/admission/g1-characterization"
+    base = root / ".hermes/skills/gates/check-release-readiness/fixtures/admission/g1-characterization"
     # known-vacuous SUPERSEDED by F9: zero mutants with ran=true → FAIL
     expected = {
         "known-good": "ACCEPT",

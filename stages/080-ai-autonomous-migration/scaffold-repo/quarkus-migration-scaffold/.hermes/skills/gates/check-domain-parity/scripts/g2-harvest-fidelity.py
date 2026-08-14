@@ -2,7 +2,7 @@
 """G-2 admission evaluator — field/obligation conservation (W2 §10).
 
 Runs the three admission fixtures under
-`governance/fixtures/admission/g2-harvest-fidelity/` (known-good / known-bad /
+`.hermes/skills/gates/check-release-readiness/fixtures/admission/g2-harvest-fidelity/` (known-good / known-bad /
 known-vacuous) and writes each verdict under
 `evidence/fixtures/admission/out/g2-harvest-fidelity/`.
 
@@ -70,7 +70,7 @@ def main() -> int:
     )
     args = ap.parse_args()
     root = Path(args.root)
-    base = root / "governance/fixtures/admission/g2-harvest-fidelity"
+    base = root / ".hermes/skills/gates/check-release-readiness/fixtures/admission/g2-harvest-fidelity"
     expected = {
         "known-good": "ACCEPT",
         "known-bad": "REFUSE",

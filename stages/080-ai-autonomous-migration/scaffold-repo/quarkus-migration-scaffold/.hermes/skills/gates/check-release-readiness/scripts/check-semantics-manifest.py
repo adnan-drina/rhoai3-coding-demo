@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""B8 — enforce governance/contracts/check-semantics-manifest.md lints.
+"""B8 — enforce .hermes/skills/gates/check-release-readiness/references/check-semantics-manifest.md lints.
 
 Fixture-proof ≠ semantically adequate. Bind check ids to adequacy class and
 refuse over-promise receipts / verdicts.
@@ -7,7 +7,7 @@ refuse over-promise receipts / verdicts.
 Usage:
   python3 check-semantics-manifest.py .
   python3 check-semantics-manifest.py /projects/modernized
-  python3 check-semantics-manifest.py governance/fixtures/check-semantics-manifest/bad-endpoint-smoke-overpromise
+  python3 check-semantics-manifest.py .hermes/skills/gates/check-release-readiness/fixtures/check-semantics-manifest/bad-endpoint-smoke-overpromise
 """
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ EXIT_CODES = """Exit codes:
 """
 
 # Canonical adequacy map — must stay aligned with
-# governance/contracts/check-semantics-manifest.md
+# .hermes/skills/gates/check-release-readiness/references/check-semantics-manifest.md
 ADEQUACY: dict[str, str] = {
     "boot_health": "SEMANTIC",
     "endpoint_smoke": "SEMANTIC",
@@ -44,7 +44,7 @@ ADEQUACY: dict[str, str] = {
     "accept_scope": "TOOLING",
 }
 
-CONTRACT_REL = "governance/contracts/check-semantics-manifest.md"
+CONTRACT_REL = ".hermes/skills/gates/check-release-readiness/references/check-semantics-manifest.md"
 API_PATH_RE = re.compile(r"(^|/)/?api(/|$)", re.IGNORECASE)
 
 

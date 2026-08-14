@@ -48,12 +48,12 @@ permitted equivalence, and zero unverified entry points.
 
 ## Admission fixtures (W2 §10)
 
-Specimen-free pairs under `governance/fixtures/admission/gN-<name>/`.
+Specimen-free pairs under `.hermes/skills/gates/check-release-readiness/fixtures/admission/gN-<name>/`.
 
 **Honesty bound:** green fixtures prove **parser + fixture shape**, not
 toolchain-faithful admission. Live sensors (PIT dry-run on a specimen, running
 apps for G-4) are a separate prove step — see
-`governance/fixtures/admission/README.md`. Do not treat 12/12 as admission.
+`.hermes/skills/gates/check-release-readiness/fixtures/admission/README.md`. Do not treat 12/12 as admission.
 
 ```bash
 bash "${HERMES_SKILL_DIR}/scripts/run-admission.sh"
@@ -84,7 +84,7 @@ Probe-only trees **REFUSE**
 as acceptance (`check-g1-acceptance-operand.py`).
 
 **AR-2.8:** acceptance also requires product-test **families** boot + security +
-crud + db (`check-product-tests.py`; contract `governance/contracts/product-tests.md`).
+crud + db (`check-product-tests.py`; contract `.hermes/skills/sdd/check-spec-readiness/references/story-scope-and-exit.md`).
 
 ```bash
 # Acceptance operand preflight (probe refuse)
@@ -102,7 +102,7 @@ G1_OPERAND=tooling_smoke bash "${HERMES_SKILL_DIR}/scripts/count-pit-dry-run.sh"
 
 # Parse an existing mutations.xml (fail closed if missing/empty)
 python3 "${HERMES_SKILL_DIR}/scripts/parse-pit-mutations.py" \
-  governance/fixtures/pit-dry-run/mutations.xml
+  .hermes/enforcement/validate-contracts/fixtures/pit-dry-run/mutations.xml
 ```
 
 ## G-1 kill-ratio pin (plan #8) — live PIT only
@@ -154,7 +154,7 @@ Operand first, then live evidence, then pin. Scripts are under
 4. **Exercise the evaluators** — `g1-characterization.py`,
    `g2-harvest-fidelity.py`, `g3-findings-delta.py`, `g4-runtime-parity.py`,
    each taking `<root>`; `run-admission.sh <root>` runs all four. Each walks the
-   named fixture dirs under `<root>/governance/fixtures/admission/<gate>/`,
+   named fixture dirs under `<root>/.hermes/skills/gates/check-release-readiness/fixtures/admission/<gate>/`,
    compares the computed verdict to the fixture's expected verdict, and writes
    `…/admission/out/<gate>/<fixture>.json`. Disagreement ⇒ exit 1.
 5. **Pin the kill ratio** (after live `mutationCoverage`, never after a dry run)

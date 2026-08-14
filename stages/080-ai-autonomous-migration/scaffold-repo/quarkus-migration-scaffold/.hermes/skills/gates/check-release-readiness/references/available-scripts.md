@@ -3,7 +3,7 @@
 
 - `scripts/check-phase-matrix.py` — AD-H §18 required_checks present in dispatch
 - `scripts/check-verdict-routing.py` — ship/routing legality on verdicts
-- `scripts/check-semantics-manifest.py` — B8 check-semantics adequacy / over-promise lints (`governance/contracts/check-semantics-manifest.md`)
+- `scripts/check-semantics-manifest.py` — B8 check-semantics adequacy / over-promise lints (`.hermes/skills/gates/check-release-readiness/references/check-semantics-manifest.md`)
 - `scripts/check-factory-m5.py` — factory must not contradict M5 full ACCEPT
 - `scripts/check-candidate-promote.py` — candidate_sha → promote gate
 - `scripts/check-accept-scope.py` — SCOPED_ACCEPT when descopes stand

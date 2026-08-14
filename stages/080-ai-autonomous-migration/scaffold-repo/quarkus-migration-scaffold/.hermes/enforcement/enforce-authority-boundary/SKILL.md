@@ -31,7 +31,7 @@ metadata:
 
 ## Contracts
 
-- `governance/contracts/task-authority.md`, `write-fence.md`,
+- `.hermes/enforcement/enforce-authority-boundary/references/task-authority.md`, `write-fence.md`,
   `ack-authority.md`, `slim-packet.md`
 - `governance/schemas/ack.md`
 - Phase `skills[]` + `requires_acks`: `.hermes/phase-dispatch.yaml`

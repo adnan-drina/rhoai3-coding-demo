@@ -149,7 +149,7 @@ def check_name_rules(name):
     # Gerund is NOT enforced (E-20260813T140501Z). House imperative consistency
     # is delivered by the rename mapping in skill-naming-convention.md.
     return errs
-ALLOWED_SUBDIRS = {"references", "templates", "scripts", "examples", "assets"}
+ALLOWED_SUBDIRS = {"references", "templates", "scripts", "examples", "assets", "fixtures"}
 # House rule §K (Operator/Deputy E-20260814T104744Z): sole selection heading is
 # ## When to Use (not ## Required When). Pitfalls sit after Procedure.
 REQ_SECTIONS = [

@@ -67,7 +67,7 @@ def main() -> int:
     if smoke_name is None:
         print(
             "FAIL: missing receipt for endpoint_smoke or endpoint_smoke_health "
-            "(B8 / governance/contracts/check-semantics-manifest.md)",
+            "(B8 / .hermes/skills/gates/check-release-readiness/references/check-semantics-manifest.md)",
             file=sys.stderr,
         )
         bad = 1

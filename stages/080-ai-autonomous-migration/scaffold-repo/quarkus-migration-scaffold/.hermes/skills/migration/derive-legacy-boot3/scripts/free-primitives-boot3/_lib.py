@@ -22,7 +22,8 @@ def apply_log_path() -> Path:
     root = repo_root()
     # Fail-closed (Deputy E-20260813T183635Z): never default-write into the
     # golden scaffold tip. Detect tip via BOOTSTRAP.md + governance/.
-    if (root / "BOOTSTRAP.md").is_file() and (root / "governance").is_dir():
+    # Tip detect: AGENTS.md + .hermes/ (BOOTSTRAP.md + governance/ retired by GRT).
+    if (root / "AGENTS.md").is_file() and (root / ".hermes").is_dir():
         import tempfile
 
         return Path(tempfile.gettempdir()) / "rhoai3-free-primitives-apply-log.json"

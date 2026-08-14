@@ -23,7 +23,13 @@ CREATE = (
     / "scripts"
     / "create-m3-implementer.sh"
 )
-STANDING = Path("governance") / "contracts" / "m3-implementer-standing.md"
+STANDING = (
+    Path(".hermes")
+    / "enforcement"
+    / "dispatch-phase"
+    / "references"
+    / "m3-implementer-standing.md"
+)
 
 
 def main() -> int:

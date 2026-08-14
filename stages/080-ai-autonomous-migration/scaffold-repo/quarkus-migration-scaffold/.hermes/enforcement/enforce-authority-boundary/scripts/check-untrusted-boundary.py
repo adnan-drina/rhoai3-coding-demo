@@ -28,7 +28,7 @@ Exit codes (NOTE: the default mode is INVERTED by design):
     1  BLOCK — a live authority feed carries control injection
     2  usage error (bad/unknown arguments; emitted by argparse)
 
-  default mode (fixture self-test over governance/fixtures/authority/ar16-untrusted):
+  default mode (fixture self-test over .hermes/enforcement/enforce-authority-boundary/fixtures/authority/ar16-untrusted):
     1  EXPECTED PASS — adversarial fixture content was detected and REFUSED.
        Exit 1 is the proof of the refuse path, not a failure. Recognise it by
        the stdout line 'OK: AR-1.6 fixture self-test — adversarial inputs

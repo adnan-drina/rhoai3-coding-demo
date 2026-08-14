@@ -18,7 +18,7 @@ metadata:
 
 Guidance only (R-SK.14). **Structure reference**, not a shipped template file
 and not a create-app path. Platform GAV values live only in
-`governance/contracts/tooling-pins.md` — never paste pin versions into this
+`.hermes/pins.yaml` — never paste pin versions into this
 skill.
 
 Consumers: skill `bootstrap-quarkus-project` (authors the destination POM);
@@ -41,7 +41,7 @@ Annotated fragments: `references/pom-structure.md`. Repository resolution:
 
 ## Procedure
 
-1. Open `governance/contracts/tooling-pins.md` — take
+1. Open `.hermes/pins.yaml` — take
    `quarkus.platform.group-id` / `artifact-id` / `version`, compiler release,
    surefire pin. Do not hard-code versions from memory or docs examples.
 2. Assemble `pom.xml` from `references/pom-structure.md`:

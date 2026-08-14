@@ -32,8 +32,8 @@ metadata:
 ## Contracts
 
 - `governance/contracts/auditability-repeatability.md`
-- `governance/contracts/body-immutability.md`
-- `governance/contracts/implementer-checkpoint.md`
+- `.hermes/skills/sdd/check-spec-readiness/references/body-integrity.md`
+- `.hermes/enforcement/dispatch-phase/references/implementer-checkpoint.md`
 - `governance/schemas/generation-provenance.md`, `run-journal.md`,
   `implementer-checkpoint.md`
 

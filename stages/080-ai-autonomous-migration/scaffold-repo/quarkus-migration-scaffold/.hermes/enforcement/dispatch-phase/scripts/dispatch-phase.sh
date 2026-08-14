@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Create + dispatch a Hermes Kanban task for one M-phase from phase-dispatch.yaml.
-# Cite: governance/contracts/devspaces-dispatcher-posture.md (B5 daemon/gateway;
+# Cite: platform/known-hermes-behaviours (B5 daemon/gateway;
 # B6 promote vs park-at-birth). This script is the interim dispatcher half.
 # Usage:
 #   bash .hermes/enforcement/dispatch-phase/scripts/dispatch-phase.sh M1
@@ -80,10 +80,10 @@ python3 "${ROOT}/.hermes/enforcement/dispatch-phase/scripts/check-create-path-ti
   || die "create-path tip sync failed (R0/R3)"
 # Architect E-20260811T170706Z Class A — quarantine tombstones before any phase create
 python3 "${ROOT}/.hermes/skills/sdd/check-spec-readiness/scripts/assert-quarantine-tombstones.py" "${ROOT}" \
-  || die "quarantine tombstones resurrected — wipe + purge restorer (governance/contracts/quarantine-survives-dispatch.md)"
+  || die "quarantine tombstones resurrected — wipe + purge restorer (write-fence / quarantine tombstones)"
 # S-008 / W4 — parent-chain triad resurrection order (distinct from tombstones)
 python3 "${ROOT}/.hermes/enforcement/dispatch-phase/scripts/check-s008-resurrection-order.py" "${ROOT}" \
-  || die "S-008 resurrection-order failed (governance/contracts/s008-quarantine-resurrection-order.md)"
+  || die "S-008 resurrection-order failed (s008-resurrection-order)"
 python3 "${ROOT}/.hermes/enforcement/dispatch-phase/scripts/check-phase-attach-matrix.py" "${ROOT}" \
   || die "phase attach matrix failed"
 python3 "${ROOT}/.hermes/enforcement/dispatch-phase/scripts/check-phase-body-script-refs.py" "${ROOT}" \
@@ -336,9 +336,9 @@ substitution / path invention / specimen-body priming. Measure the harness.
 4. **Partition-coverage gate** (Architect E-20260811T133858Z): run
    `python3 .hermes/skills/sdd/check-spec-readiness/scripts/check-partition-coverage.py . --write-receipt evidence/receipts/partition-coverage/latest.json`
    — must print `PARTITION_COVERAGE: VALID` (fail-closed). See
-   `governance/contracts/partition-coverage.md`.
+   `.hermes/skills/sdd/check-spec-readiness/references/story-scope-and-exit.md`.
 5. **Per-artifact Spec Kit resume ladder** (Architect E-20260811T122959Z — decision-complete;
-   contract `governance/contracts/sdd-ordering.md`; retired inverted v11 R-M2.6 and
+   contract `.hermes/skills/sdd/check-spec-readiness/references/sdd-ordering.md`; retired inverted v11 R-M2.6 and
    M2a/M2b split — see `governance/retired/m2b-resume-ladder.md`):
    - **`/speckit-specify`:** precondition = no `specs/**/spec.md` (or workspace Spec Kit
      equiv). **Skip iff** `spec.md` already exists. Do **not** invent specs.
@@ -421,7 +421,7 @@ Run required_checks from phase-dispatch.yaml. Write verdict JSON under evidence/
 1. `bash .hermes/skills/gates/check-release-readiness/scripts/run-m4-floor.sh /projects/modernized`
 2. `python3 .hermes/skills/gates/check-release-readiness/scripts/check-m4-floor-receipts.py evidence/receipts/m4-floor/latest`
 3. Bank receipts; do **not** claim PROVISIONAL_ACCEPT without boot_health + endpoint_smoke PASS (g4_hook may be INCONCLUSIVE / SAMPLE).
-Contract: `governance/contracts/m4-floor-runner.md`. `ad010_demo=false` until Architect promotes.
+Contract: `.hermes/skills/gates/check-release-readiness/references/m4-floor-runner.md`. `ad010_demo=false` until Architect promotes.
 EOF
     TITLE="M4 VERIFY: provisional accept"
     ;;

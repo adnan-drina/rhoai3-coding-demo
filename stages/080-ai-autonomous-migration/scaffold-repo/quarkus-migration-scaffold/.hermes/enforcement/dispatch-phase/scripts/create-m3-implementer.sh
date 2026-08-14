@@ -15,7 +15,7 @@
 # Do NOT use bare `hermes kanban create` for M3 — that path omits skills
 # (Review grounding study 20260809: M3 workers loaded zero skills).
 #
-# Cite: governance/contracts/devspaces-dispatcher-posture.md (B5/B6 — single dispatcher;
+# Cite: platform/known-hermes-behaviours (B5/B6 — single dispatcher;
 # park-at-birth nursing until AD-016). This script implements create/park half.
 #
 # Architect E-20260811T155332Z Class A (tip FREEZE exception): after create,
@@ -103,11 +103,11 @@ python3 "${ROOT}/.hermes/skills/sdd/check-spec-readiness/scripts/check-partition
 
 # Architect E-20260811T170706Z Class A — quarantine tombstones must survive create/dispatch
 python3 "${ROOT}/.hermes/skills/sdd/check-spec-readiness/scripts/assert-quarantine-tombstones.py" "${ROOT}" \
-  || die "quarantine tombstones resurrected — wipe + purge restorer before create (governance/contracts/quarantine-survives-dispatch.md)"
+  || die "quarantine tombstones resurrected — wipe + purge restorer before create (write-fence / quarantine tombstones)"
 
 # S-008 / W4 — parent-chain triad resurrection order (distinct from tombstones)
 python3 "${ROOT}/.hermes/enforcement/dispatch-phase/scripts/check-s008-resurrection-order.py" "${ROOT}" \
-  || die "S-008 resurrection-order failed — parent before child before grandchild (governance/contracts/s008-quarantine-resurrection-order.md)"
+  || die "S-008 resurrection-order failed — parent before child before grandchild (s008-resurrection-order)"
 
 # Architect E-20260811T200911Z Class A — mint-completeness (inject standard constraints
 # when absent/empty; distinct from preservation). Refuse later if still empty.
@@ -126,7 +126,7 @@ python3 "${ROOT}/.hermes/skills/sdd/check-spec-readiness/scripts/assert-constrai
 # Architect E-20260811T203657Z Class A — dependency/pre-exists closure
 python3 "${ROOT}/.hermes/skills/sdd/check-spec-readiness/scripts/assert-dependency-closure.py" "${ROOT}" \
   --body "${BODY_JSON}" \
-  || die "DEPENDENCY_CLOSURE: fix false pre-exists or absorb missing types into scope (governance/contracts/dependency-closure.md)"
+  || die "DEPENDENCY_CLOSURE: fix false pre-exists or absorb missing types into scope (.hermes/skills/sdd/check-spec-readiness/references/story-scope-and-exit.md)"
 
 # Validate THE body being created (Operator E-20260811T124000Z) — not whole
 # evidence/bodies/ (incomplete siblings must not block a single create).
@@ -204,7 +204,7 @@ python3 "${ROOT}/.hermes/skills/sdd/check-spec-readiness/scripts/check-operand-c
 
 # Human-readable markdown wrapper + attach typed JSON path as obligation.
 # F6 — card ≤1500 chars; standing procedure lives in
-# governance/contracts/m3-implementer-standing.md (not pasted ×N).
+# .hermes/enforcement/dispatch-phase/references/m3-implementer-standing.md (not pasted ×N).
 BODY_MD="$(mktemp)"
 trap 'rm -f "${BODY_MD}"' EXIT
 {
@@ -218,7 +218,7 @@ trap 'rm -f "${BODY_MD}"' EXIT
   echo "## Job"
   echo "1. Read the typed body JSON first (\`exit_criteria\`, write-set, \`dependencies\`, \`refs\`)."
   echo "2. Verify digest: \`python3 .hermes/enforcement/record-run-evidence/scripts/check-body-digest-match.py . --body ${BODY_JSON} --expect ${BODY_DIGEST}\` — mismatch ⇒ REFUSE."
-  echo "3. Follow standing procedure (binding): \`governance/contracts/m3-implementer-standing.md\` — includes BANK-DEST-INV-HARDINVOKE-1 / \`refs.destination_inventory\`, Pre-v12 R5 hard-invoke traps, checkpoint/complete-cmd, DD3, wall/crash, AD-002 skills."
+  echo "3. Follow standing procedure (binding): \`.hermes/enforcement/dispatch-phase/references/m3-implementer-standing.md\` — includes BANK-DEST-INV-HARDINVOKE-1 / \`refs.destination_inventory\`, Pre-v12 R5 hard-invoke traps, checkpoint/complete-cmd, DD3, wall/crash, AD-002 skills."
   echo "4. Write only \`files_writable\`. Satisfy every \`exit_criteria\` before complete."
   echo "5. Before \`kanban_complete\`: \`python3 .hermes/skills/gates/check-release-readiness/scripts/assert-complete-exit-criteria.py . --task-id <this-task-id> --body ${BODY_JSON}\`."
   echo
@@ -323,7 +323,7 @@ PY
   _park_status="$(_read_status "${TASK_ID}")"
 fi
 if [[ "${_park_status}" == "ready" || "${_park_status}" == "todo" || "${_park_status}" == "running" || -z "${_park_status}" ]]; then
-  die "PARK_AT_BIRTH: ${TASK_ID} status=${_park_status:-unknown} still dispatchable after create — refuse mint (governance/contracts/park-at-birth.md)"
+  die "PARK_AT_BIRTH: ${TASK_ID} status=${_park_status:-unknown} still dispatchable after create — refuse mint (park-at-birth)"
 fi
 echo "PARK_AT_BIRTH=${TASK_ID} status=${_park_status}"
 # Operator E-20260811T114300Z — Review live adherence observation on every dispatch
@@ -431,7 +431,7 @@ echo "ACK_REQUEST_DIGESTS body=${BODY_DIGEST} partition=${PARTITION_DIGEST} task
 # card↔sidecar digest cross-assert at ack-regen choke point (refuse dead digests).
 python3 "${ROOT}/.hermes/enforcement/record-run-evidence/scripts/assert-card-body-digest-match.py" \
   "${ROOT}" --task-id "${TASK_ID}" --body "${BODY_JSON}" \
-  || die "card↔sidecar digest cross-assert REFUSE for ${TASK_ID} (governance/contracts/card-sidecar-digest-cross-assert.md)"
+  || die "card↔sidecar digest cross-assert REFUSE for ${TASK_ID} (.hermes/skills/sdd/check-spec-readiness/references/body-integrity.md)"
 
 echo "OK: M3 → ${TASK_ID} (blocked/parked; parent=${PARENT_PRIMARY}). File ledger Need Review:adhere-observe-${TASK_ID}"
 echo "NOTE: parent must kanban_complete with created_cards including ${TASK_ID} (empty list REJECT)"

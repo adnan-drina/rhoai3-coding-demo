@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """S-008 / W4 — parent→child→grandchild (scar triad) resurrection order.
 
-Contract: governance/contracts/s008-quarantine-resurrection-order.md
+Contract: .hermes/enforcement/dispatch-phase/references/s008-resurrection-order.md
 Distinct from quarantine-survives-dispatch (tombstones). This lint refuses
 partition / story bodies that list grandchild before child, or child before
 parent, when the triad appears together.
@@ -23,7 +23,7 @@ EXIT_CODES = """Exit codes:
   2  usage
 """
 
-CONTRACT = "governance/contracts/s008-quarantine-resurrection-order.md"
+CONTRACT = ".hermes/enforcement/dispatch-phase/references/s008-resurrection-order.md"
 # Scar role tokens (W4) — matched in partition/bodies; guidance prose must not
 # use specimen slash-forms (R-SK.5).
 ROLE_RX = {

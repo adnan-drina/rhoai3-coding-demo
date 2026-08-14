@@ -6,7 +6,7 @@ Fails when a comment feed contains impersonating override prose from
 
 Inputs (any present):
   - evidence/authority/comment-feed.jsonl  (role, text per line)
-  - governance/fixtures/authority/*.jsonl     (admission fixtures)
+  - .hermes/enforcement/enforce-authority-boundary/fixtures/authority/*.jsonl     (admission fixtures)
   - --feed PATH
 
 Typed revisions live under evidence/authority/typed-revisions/*.json and
@@ -67,7 +67,7 @@ def main() -> int:
         p = root / rel
         if p.is_file():
             feeds.append(p)
-    fix = root / "governance/fixtures/authority"
+    fix = root / ".hermes/enforcement/enforce-authority-boundary/fixtures/authority"
     if fix.is_dir():
         feeds.extend(sorted(fix.glob("*.jsonl")))
         feeds.extend(sorted(fix.glob("*.json")))

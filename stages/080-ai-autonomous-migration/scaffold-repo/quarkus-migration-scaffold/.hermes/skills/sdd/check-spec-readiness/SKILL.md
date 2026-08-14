@@ -54,10 +54,10 @@ python3 "${HERMES_SKILL_DIR}/scripts/check-partition-coverage.py" /projects/mode
 ## Contracts
 
 - `governance/contracts/pattern-steals.md`
-- `governance/contracts/sdd-ordering.md` (AD-S §S.6)
-- `governance/contracts/surgical-scopes.md` (AR-4.4; T-8 class-legal + dual-oracle)
+- `.hermes/skills/sdd/check-spec-readiness/references/sdd-ordering.md` (AD-S §S.6)
+- `.hermes/skills/sdd/check-spec-readiness/references/story-scope-and-exit.md` (AR-4.4; T-8 class-legal + dual-oracle)
 - skill `derive-story-oracles` (exit derivation; `semantic-exits.md` retired)
-- `governance/contracts/story-sizing.md` (operand_count)
+- `.hermes/skills/sdd/check-spec-readiness/references/story-scope-and-exit.md` (operand_count)
 - `governance/schemas/mta-exception.md`
 - `governance/schemas/kanban-body.md` (W2 §6.1)
 

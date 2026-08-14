@@ -161,7 +161,7 @@ def path_rewrites(root: Path) -> list[tuple[str, str]]:
     inv = None
     for cand in (
         root / "evidence/entry-point-inventory.json",
-        root / "governance/fixtures/inventory/entry-point-inventory-petclinic-f11.json",
+        root / ".hermes/skills/sdd/check-spec-readiness/fixtures/inventory/entry-point-inventory-petclinic-f11.json",
     ):
         inv = load_json(cand)
         if isinstance(inv, dict):
@@ -252,7 +252,7 @@ def legacy_java_prefixes(
     if allow_specimen_fixture:
         cands.append(
             root
-            / "governance/fixtures/inventory/entry-point-inventory-petclinic-f11.json"
+            / ".hermes/skills/sdd/check-spec-readiness/fixtures/inventory/entry-point-inventory-petclinic-f11.json"
         )
     for cand in cands:
         inv = load_json(cand)
@@ -291,7 +291,7 @@ def resolve_inventory_path(root: Path, explicit: str = "", *, allow_specimen_fix
     if primary.is_file():
         return primary
     if allow_specimen_fixture:
-        fixture = root / "governance/fixtures/inventory/entry-point-inventory-petclinic-f11.json"
+        fixture = root / ".hermes/skills/sdd/check-spec-readiness/fixtures/inventory/entry-point-inventory-petclinic-f11.json"
         if fixture.is_file():
             return fixture
     return None

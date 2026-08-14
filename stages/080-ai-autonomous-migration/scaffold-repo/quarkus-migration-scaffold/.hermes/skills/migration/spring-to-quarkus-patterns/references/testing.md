@@ -34,12 +34,12 @@
 4. **Toolchain:** scaffold `pom.xml` ships `assertj-core` + `rest-assured`
    (test scope). Prefer AssertJ `assertThat` over inventing a new library.
    After writing tests, run `mvn -q test-compile` in-loop
-   (`governance/contracts/test-toolchain.md`).
+   (`.hermes/skills/migration/manage-quarkus-extensions/references/test-toolchain.md`).
 5. **`quarkus.test.continuous-testing` enum (R-M3.59 / S-008 Class B):** valid
    values are `disabled` | `enabled` | `paused` only. Never write
    `false`/`true` — Quarkus rejects them (`SRCFG00049`) and `mvn test` fails
    before suites run. Prefer `disabled` for CI/`mvn test`. Golden snippet:
-   `governance/fixtures/testing/golden-test-application.properties`.
+   `.hermes/enforcement/dispatch-phase/fixtures/testing/golden-test-application.properties`.
 
 ## Agent text
 
@@ -64,7 +64,7 @@ in pom). If `test-compile` fails, read the pom artifactId — **do not invent**
 **Isolation card `test-rest-isolation`:** legacy MockMvc + `@MockBean(service)` →
 Quarkus `@QuarkusTest` + `@InjectMock` **service** + REST Assured hitting the
 real JAX-RS stack. Copy once:
-`governance/fixtures/testing/golden-rest-controller/PetTypeRestControllerTests.java`
+`.hermes/enforcement/dispatch-phase/fixtures/testing/golden-rest-controller/PetTypeRestControllerTests.java`
 
 **Failure triage (red tests — once per failure class):**
 1. Classify 400 vs 500 vs assertion.

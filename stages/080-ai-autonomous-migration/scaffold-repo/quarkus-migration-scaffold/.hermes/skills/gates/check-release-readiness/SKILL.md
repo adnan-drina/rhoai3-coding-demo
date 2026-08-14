@@ -37,7 +37,7 @@ metadata:
 
 ## Contracts
 
-- `governance/contracts/validation-release-gates.md`
+- `AGENTS.md (doctrine; was validation-release-gates)`
 - `governance/schemas/verdict.md`
 - Phase `required_checks` + `accept_kind`: `.hermes/phase-dispatch.yaml`
 
@@ -125,9 +125,9 @@ python3 "${HERMES_SKILL_DIR}/scripts/apply-crash-requeue-policy.py" /projects/mo
 ```
 
 Contracts: `governance/contracts/workspace-recovery.md`,
-`governance/contracts/runnable-db-security.md`,
-`governance/contracts/product-tests.md`,
-`governance/contracts/test-toolchain.md`,
+`.hermes/skills/sdd/check-spec-readiness/references/story-scope-and-exit.md`,
+`.hermes/skills/sdd/check-spec-readiness/references/story-scope-and-exit.md`,
+`.hermes/skills/migration/manage-quarkus-extensions/references/test-toolchain.md`,
 `governance/contracts/wall-exit-eval.md`,
 `governance/contracts/crash-requeue.md`.
 
@@ -137,7 +137,7 @@ Domain-gate oracles (G-1…G-4) remain authoritative; this skill does not replac
 
 Minimum ordered runner for Phase-3 dual-arm verify — **not** full AD-010.
 
-Contract: `governance/contracts/m4-floor-runner.md`  
+Contract: `.hermes/skills/gates/check-release-readiness/references/m4-floor-runner.md`  
 Schema: `governance/schemas/gate-receipt.md`
 
 ```bash
@@ -146,7 +146,7 @@ python3 "${HERMES_SKILL_DIR}/scripts/check-m4-floor-receipts.py" \
   /path/to/frozen-modernized/evidence/receipts/m4-floor/<run-id>
 # dry fixtures
 python3 "${HERMES_SKILL_DIR}/scripts/check-m4-floor-receipts.py" \
-  /projects/modernized/governance/fixtures/m4-floor/known-good
+  /projects/modernized/.hermes/skills/gates/check-release-readiness/fixtures/m4-floor/known-good
 ```
 
 ## Chaos matrix (plan #7)

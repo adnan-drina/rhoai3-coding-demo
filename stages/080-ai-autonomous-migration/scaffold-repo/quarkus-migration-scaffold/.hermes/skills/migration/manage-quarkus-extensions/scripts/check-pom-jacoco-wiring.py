@@ -7,7 +7,7 @@ When pom.xml exists, require:
   3. surefire <argLine>${argLine}</argLine> (or @{argLine}) so the agent attaches
 
 Idle (exit 0) when pom.xml is absent — golden scaffold is harness-only until
-foundation authors the POM (BOOTSTRAP.md / DD1).
+foundation authors the POM (bootstrap-quarkus-project / DD1).
 
 Contract reference: manage-quarkus-extensions/references/rh-bom-and-mandatory-deps.md
 Fragments: bootstrap-quarkus-project/references/foundation-jacoco-wiring.md
