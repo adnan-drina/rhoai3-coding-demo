@@ -1,14 +1,10 @@
 # Semantic product exits (AR-2.3–2.7)
 
-**Status:** binding proving-min
-**Basis:** in-tree harness obligations (sibling contracts + skills).
-**GR3 (E-20260814T114609Z):** specimen literals (e.g. `owner_pet_visit_create`)
-are **forbidden** here (R-SK.5). Legal check names live in
-`.hermes/skills/sdd/check-spec-readiness/scripts/specimen_agnostic.py`
-(`SEMANTIC_EXIT_VOCAB`, `OPERAND_CLASS_SEMANTIC_EXITS`, `FAMILY_CHECKS` in
-`check-semantic-exits.py`). **T-8** (oracle derivation by story class) supersedes
-hand-maintained family tables when that skill lands; until then this contract
-binds the checker + closed vocab only.
+**Status:** retired (GR3 / T-8 Z2 land)
+**Superseded by:** skill `derive-story-oracles` + contract `surgical-scopes.md`
+  (class-legal exits + dual-oracle refuse in `check-surgical-scopes.py`).
+**Basis:** was in-tree AR-2.3–2.7 family table; derivation replaces enumeration.
+**History:** GR3 removed specimen literals; T-8 skill retires the contract.
 
 Bodies that touch REST/persistence CRUD **MUST** name falsifiable exits — not
 compile-only. Stamp families via `identity.semantic_families` (list).

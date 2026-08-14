@@ -55,8 +55,8 @@ python3 "${HERMES_SKILL_DIR}/scripts/check-partition-coverage.py" /projects/mode
 
 - `governance/contracts/pattern-steals.md`
 - `governance/contracts/sdd-ordering.md` (AD-S §S.6)
-- `governance/contracts/surgical-scopes.md` (AR-4.4)
-- `governance/contracts/semantic-exits.md` (AR-2.3–2.7)
+- `governance/contracts/surgical-scopes.md` (AR-4.4; T-8 class-legal + dual-oracle)
+- skill `derive-story-oracles` (exit derivation; `semantic-exits.md` retired)
 - `governance/contracts/story-sizing.md` (operand_count)
 - `governance/schemas/mta-exception.md`
 - `governance/schemas/kanban-body.md` (W2 §6.1)
@@ -66,8 +66,8 @@ python3 "${HERMES_SKILL_DIR}/scripts/check-partition-coverage.py" /projects/mode
 - `scripts/check-readiness.sh` — corpus SDD readiness + ordering + body lint
 - `scripts/check-kanban-body.py` — W2 §6.1 typed body vocabulary (`--body` optional)
 - `scripts/check-ordering.py` — §S.6 story/spec ordering
-- `scripts/check-surgical-scopes.py` — AR-4.4 write-set / exit surgery
-- `scripts/check-semantic-exits.py` — AR-2.3–2.7 product exit semantics
+- `scripts/check-surgical-scopes.py` — AR-4.4 write-set + class-legal / dual-oracle
+- `scripts/check-semantic-exits.py` — optional `semantic_families` family lint
 - `scripts/check-operand-count.py` — measured operand_count / wall-fit
 - `scripts/check-partition-coverage.py` — M2a partition VALID receipt
 - `scripts/check-interface-closure.py` — interface closure Class-A gate

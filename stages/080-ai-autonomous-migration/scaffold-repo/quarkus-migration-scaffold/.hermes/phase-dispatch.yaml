@@ -34,6 +34,7 @@ phases:
     # M2a/M2b split retired; stubs below kept for tip-sync / attach-matrix until F9.
     skills:
       - check-spec-readiness
+      - derive-story-oracles
       - scan-with-mta
       - speckit-specify
     max_runtime_seconds: 3600
@@ -43,6 +44,7 @@ phases:
     # RETIRED GR2 — do not dispatch; use M2. Stub skills mirror M2 for attach-matrix.
     skills:
       - check-spec-readiness
+      - derive-story-oracles
       - scan-with-mta
       - speckit-specify
     max_runtime_seconds: 3600
@@ -52,6 +54,7 @@ phases:
     # RETIRED GR2 — do not dispatch; use M2 + mint-m3-wave.sh. Stub for attach-matrix.
     skills:
       - check-spec-readiness
+      - derive-story-oracles
       - scan-with-mta
     max_runtime_seconds: 3600
     requires_acks:
@@ -74,6 +77,7 @@ phases:
     # at v14 mint with UPLIFT-6.
     skills:
       - check-spec-readiness
+      - derive-story-oracles
       - spring-to-quarkus-patterns
     # AD-H §18 required_checks (validator/sensor matrix)
     required_checks:

@@ -20,8 +20,9 @@ EXIT_CODES = """Exit codes:
   0  pass — every M3 body has a surgical, non-overlapping destination write set
      with at least one endpoint/semantic exit, or idle (no M3 bodies)
   1  BLOCK — unreadable body passed explicitly, empty destination write set,
-     missing endpoint/semantic exit_criteria (by operand_class), or
-     compile-shaped-only exit_criteria (AR-4.4)
+     missing endpoint/semantic exit_criteria (by operand_class),
+     wrong-class/foreign semantic exit alongside a legal one (T-8 dual-oracle),
+     or compile-shaped-only exit_criteria (AR-4.4)
   2  usage / harness defect (bad or unknown argument)
 """
 
@@ -178,6 +179,18 @@ def main() -> int:
             x for x in exits if isinstance(x, dict) and is_oracle_unavailable(x)
         ]
         has_oracle_escape = bool(escape_items)
+        # T-8 / Z2 — every named semantic exit must be legal for the class.
+        # At-least-one intersection alone let correct+wrong mint (Review item 6).
+        semantic_named = {c for c in checks if c in ENDPOINTISH}
+        foreign = semantic_named - required
+        if foreign:
+            print(
+                f"FAIL: AR-4.4 {label}: wrong-class/foreign semantic exit(s) "
+                f"{sorted(foreign)} for operand_class={oclass!r} "
+                f"(allowed {sorted(required)}; T-8 dual-oracle refuse)",
+                file=sys.stderr,
+            )
+            bad = 1
         if has_oracle_escape:
             if not oracle_unavailable_allowed_for_class(oclass):
                 print(

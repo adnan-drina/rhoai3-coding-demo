@@ -133,6 +133,10 @@ REQUIRED_FILES = [
     # §K / A-5
     ".hermes/home/scripts/stop-worker-session.sh",
     "governance/contracts/residual-worker-kill.md",
+    # T-8 / Z2
+    ".hermes/skills/sdd/derive-story-oracles/SKILL.md",
+    "governance/retired/semantic-exits.md",
+    "governance/contracts/surgical-scopes.md",
 ]
 
 # Tip-sync substring table (R0/R3).
@@ -172,7 +176,7 @@ REQUIRED_SUBSTRINGS = [
         "CREATE_PATH_RETIRED",
         "bootstrap create path retired (DD1)",
     ),
-    (
+(
         "AGENTS.md",
         "stop-worker-session.sh",
         "A-5 AGENTS cites worker stop entry point",
@@ -187,7 +191,22 @@ REQUIRED_SUBSTRINGS = [
         "## Pitfalls",
         "§K Pitfalls is a required skill section",
     ),
-(
+    (
+        ".hermes/skills/sdd/check-spec-readiness/scripts/check-surgical-scopes.py",
+        "dual-oracle refuse",
+        "T-8 dual-oracle refuse in surgical-scopes",
+    ),
+    (
+        ".hermes/phase-dispatch.yaml",
+        "derive-story-oracles",
+        "T-8 skill attached on M2/M3",
+    ),
+    (
+        "governance/retired/semantic-exits.md",
+        "Status:** retired",
+        "T-8 semantic-exits contract retired",
+    ),
+    (
         "devfile.yaml",
         "provision-quarkus-cli.sh",
         "W1 Quarkus CLI provisioned from postStart",

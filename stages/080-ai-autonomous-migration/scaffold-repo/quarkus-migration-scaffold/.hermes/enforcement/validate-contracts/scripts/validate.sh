@@ -683,6 +683,61 @@ else
   echo "OK: body digest mismatch refused"
 fi
 
+echo "== T-8 dual-oracle refuse (AR-4.4 / derive-story-oracles) =="
+t8_tmp="$(mktemp -d)"
+mkdir -p "${t8_tmp}/evidence/bodies"
+# correct + wrong on build_config must FAIL
+python3 - <<PY
+import json, pathlib
+root = pathlib.Path("${t8_tmp}")
+body = {
+  "phase": "M3",
+  "identity": {"operand_class": "build_config", "story_id": "S-T8"},
+  "files_writable": ["pom.xml"],
+  "exit_criteria": [
+    {"check": "build_resolves"},
+    {"check": "http_semantics"},
+  ],
+}
+(root / "evidence/bodies/m3-dual-oracle.json").write_text(json.dumps(body), encoding="utf-8")
+PY
+if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/check-surgical-scopes.py" "${t8_tmp}" \
+  >/dev/null 2>&1; then
+  echo "FAIL: dual-oracle (build_resolves+http_semantics on build_config) should refuse" >&2
+  rc=1
+else
+  echo "OK: T-8 dual-oracle refused"
+fi
+# legal-only must PASS
+python3 - <<PY
+import json, pathlib
+root = pathlib.Path("${t8_tmp}")
+body = {
+  "phase": "M3",
+  "identity": {"operand_class": "build_config", "story_id": "S-T8b"},
+  "files_writable": ["pom.xml"],
+  "exit_criteria": [{"check": "build_resolves"}],
+}
+(root / "evidence/bodies/m3-dual-oracle.json").write_text(json.dumps(body), encoding="utf-8")
+PY
+if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/check-surgical-scopes.py" "${t8_tmp}" \
+  >/dev/null 2>&1; then
+  echo "OK: T-8 legal-only build_config exit passed"
+else
+  echo "FAIL: legal-only build_resolves should pass" >&2
+  rc=1
+fi
+rm -rf "${t8_tmp}"
+if [ -f "${ROOT}/governance/contracts/semantic-exits.md" ]; then
+  echo "FAIL: semantic-exits.md still under contracts/ (T-8 retire → governance/retired/)" >&2
+  rc=1
+elif [ -f "${ROOT}/governance/retired/semantic-exits.md" ]; then
+  echo "OK: semantic-exits.md retired (T-8)"
+else
+  echo "FAIL: missing governance/retired/semantic-exits.md" >&2
+  rc=1
+fi
+
 echo "== record-run-evidence (AD-H §19) =="
 python3 "${ENFORCEMENT}/record-run-evidence/scripts/check-provenance.py" "${ROOT}" || rc=1
 ap_tmp="$(mktemp -d)"
