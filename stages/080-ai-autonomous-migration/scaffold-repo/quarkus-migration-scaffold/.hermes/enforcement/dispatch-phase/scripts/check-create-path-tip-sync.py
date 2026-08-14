@@ -151,8 +151,13 @@ REQUIRED_SUBSTRINGS = [
     ),
     (
         ".hermes/skills/migration/bootstrap-quarkus-project/scripts/bootstrap.sh",
-        "BOOTSTRAP_MODE",
-        "bootstrap dual-path CLI|Maven",
+        "CREATE_PATH_RETIRED",
+        "bootstrap create path retired (DD1)",
+    ),
+    (
+        "BOOTSTRAP.md",
+        "Author",
+        "BOOTSTRAP.md documents POM authoring (DD1/DD2)",
     ),
     (
         ".hermes/enforcement/dispatch-phase/scripts/create-m3-implementer.sh",

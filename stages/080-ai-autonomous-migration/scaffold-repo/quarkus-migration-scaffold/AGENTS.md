@@ -71,7 +71,7 @@ from a pointer README).
 | Domain gates G-1..G-4 | skill `check-domain-parity` (router below) |
 | Run / phase data | `migration/` |
 | SDD stack | `.specify/` (workspace provision only — AD-S) |
-| Destination app create | skill `bootstrap-quarkus-project` (see root `BOOTSTRAP.md`) |
+| Destination POM authoring | skill `bootstrap-quarkus-project` (see root `BOOTSTRAP.md`; create-app path retired DD1) |
 
 ### Paths
 
@@ -140,4 +140,4 @@ When a skill is loaded, prefer `"${HERMES_SKILL_DIR}/scripts/…"`.
 | Provenance / reconstruct | `record-run-evidence` *(enforcement)* | `governance/contracts/auditability-repeatability.md` |
 | Spring→Quarkus pattern cards | `spring-to-quarkus-patterns` | skill `references/` |
 | Quarkus extension add/rm | `manage-quarkus-extensions` | skill + `tooling-pins.md` |
-| Destination Quarkus project create | `bootstrap-quarkus-project` | root `BOOTSTRAP.md` + `tooling-pins.md` |
+| Destination Quarkus POM authoring | `bootstrap-quarkus-project` | root `BOOTSTRAP.md` + `tooling-pins.md` (DD1: no create-app) |
