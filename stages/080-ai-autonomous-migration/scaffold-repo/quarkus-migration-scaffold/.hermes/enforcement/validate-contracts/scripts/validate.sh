@@ -274,6 +274,10 @@ else
   echo "OK: no destination pom yet (BOOTSTRAP.md / bootstrap-quarkus-project)"
   [ -f "${ROOT}/BOOTSTRAP.md" ] || { echo "FAIL: missing pom.xml and BOOTSTRAP.md" >&2; rc=1; }
 fi
+# A-3 / H-3 — Jacoco dual Sonar paths + surefire argLine (idle without pom)
+python3 "${SKILLS}/migration/manage-quarkus-extensions/scripts/check-pom-jacoco-wiring.py" "${ROOT}" || rc=1
+# W3 — extension tooling typed preflight (CLI absent → MAVEN_FALLBACK exit 0)
+python3 "${SKILLS}/migration/manage-quarkus-extensions/scripts/assert-extension-tooling.py" || rc=1
 # A2 / runnable-db-security — fixture refuse paths (scaffold root may fail until B3)
 if python3 "${SKILLS}/gates/check-release-readiness/scripts/check-runnable-db-config.py" \
   "${ROOT}/governance/fixtures/runnable-db-security/bad-hsqldb-destination" >/dev/null 2>&1; then

@@ -16,16 +16,28 @@ Use guidance skill `bootstrap-quarkus-project`:
 1. Read `governance/contracts/tooling-pins.md` (Red Hat Quarkus platform row).
 2. **Author** destination `pom.xml` from the T-1 structure reference
    (BOM import via `dependencyManagement`, Red Hat
-   `quarkus-maven-plugin` in `<build>`, empty dependency block at mint —
-   extensions come later via `manage-quarkus-extensions`).
+   `com.redhat.quarkus.platform:quarkus-maven-plugin` in `<build>`, story
+   extension deps empty at mint — DD3). Carry foundation Jacoco/Sonar
+   wiring from
+   `.hermes/skills/migration/bootstrap-quarkus-project/references/foundation-jacoco-wiring.md`
+   (A-3).
 3. Lint:
 
 ```bash
 python3 .hermes/skills/migration/manage-quarkus-extensions/scripts/check-pom-platform-pins.py .
+python3 .hermes/skills/migration/manage-quarkus-extensions/scripts/check-pom-jacoco-wiring.py .
+python3 .hermes/skills/migration/manage-quarkus-extensions/scripts/assert-extension-tooling.py
 ```
 
 4. Add extensions **evidence-driven** with `manage-quarkus-extensions`
    (`quarkus ext ls/add/search` when CLI is present — W1 purpose; not create).
+   Dev Spaces seats provision the CLI + RH-first `~/.quarkus/config.yaml` in
+   `devfile.yaml` postStart (`provision-quarkus-cli.sh`). Pipeline / air-gap:
+   typed Maven fallback (W3).
+
+**Do not** require `rsync` (W2). The UDI seat has `tar`; the retired create
+path no longer syncs a generated app tree. `derive-legacy-boot3` already
+falls back to `tar` when `rsync` is absent.
 
 Platform GAV values: `governance/contracts/tooling-pins.md` only.
 

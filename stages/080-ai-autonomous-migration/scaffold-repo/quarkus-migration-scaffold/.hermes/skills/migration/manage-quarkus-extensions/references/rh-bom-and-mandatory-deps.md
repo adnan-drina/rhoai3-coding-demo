@@ -46,20 +46,21 @@ If any step is uncertain → **do not remove**.
 Mandatory Jacoco wiring is **not** "add `quarkus-jacoco`":
 
 1. Dependency: `quarkus-jacoco` (BOM-managed).
-2. Quarkus Jacoco config under `application.properties` (data-file / report
-   location) as used by the destination harness.
-3. Sonar property naming **both** report paths (QuarkusTest report **and**
-   plain Surefire Jacoco report), matching the destination pom pattern:
+2. Sonar property naming **both** report paths (QuarkusTest report **and**
+   plain Surefire Jacoco report):
    `sonar.coverage.jacoco.xmlReportPaths` lists both
-   `target/jacoco-report/jacoco.xml` and `target/site/jacoco/jacoco.xml`
-   (or the seat's declared equivalents).
+   `target/jacoco-report/jacoco.xml` and `target/site/jacoco/jacoco.xml`.
+3. Surefire forwards `<argLine>${argLine}</argLine>` (or `@{argLine}`) so the
+   coverage agent attaches.
 
-Adding the dependency without both paths produces a clean compile and a
-silent coverage hole — the exact false-green class this reference exists to
-prevent.
+Fragments + gate: `bootstrap-quarkus-project/references/foundation-jacoco-wiring.md`
+and `scripts/check-pom-jacoco-wiring.py` (A-3 / H-3). Adding the dependency
+without both paths / argLine produces a clean compile and a silent coverage
+hole — the exact false-green class this reference exists to prevent.
 
 ## Related gates (do not weaken)
 
+- `check-pom-platform-pins.py` / `check-pom-jacoco-wiring.py` (when pom exists)
+- `assert-extension-tooling.py` (W3 — CLI+RH-first or typed Maven fallback)
 - `check-runnable-db-config.py` / `runnable-db-security.md` (JDBC + Flyway)
-- Persistence / compile-deps preflights
 - `check-semantics-manifest.py` (B8) for gate claim adequacy

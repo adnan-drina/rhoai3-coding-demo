@@ -125,9 +125,9 @@ commands:
         # the modernized project (it carries .opencode/ -> OpenCode-only).
         PROJECT_DIR="/projects/modernized"
         PROFILE="modernized"
-        # The UDI base image documents JAVA_HOME_<version> variables as the
-        # supported way to select a JDK; its sdkman default (plain
-        # JAVA_HOME) is Java 17, while this project targets 21.
+        # Prefer JAVA_HOME_21 from the UDI image contract. This seat's
+        # udi-rhel9 image does not ship sdkman (Deputy E-20260814T064712Z);
+        # the ~/.sdkman candidates below are defensive fallbacks only.
         java21_home="${JAVA_HOME_21:-}"
         if [ -z "${java21_home}" ] || [ ! -x "${java21_home}/bin/java" ]; then
           for candidate in \
@@ -227,6 +227,18 @@ commands:
           'Do not use the auto-seeded Hermes starter identity in this seat.' \
           > "${DECOY_SOUL}"
         echo "Neutralized decoy SOUL at ${DECOY_SOUL} (Deputy E-20260813T152939Z)."
+        # W1 — Quarkus CLI (ext ls/add/search only; create path retired DD1) +
+        # RH registry-first ~/.quarkus/config.yaml. User-space via JBang into
+        # ~/.local|~/.jbang (no root / no rsync / no custom image). Idempotent.
+        # Failure is WARN — Maven quarkus:* remains (W3 typed fallback).
+        PROVISION_CLI="${PROJECT_DIR}/.hermes/skills/migration/manage-quarkus-extensions/scripts/provision-quarkus-cli.sh"
+        if [ -f "${PROVISION_CLI}" ]; then
+          export PATH="${HOME}/.local/bin:${HOME}/.jbang/bin:${PATH}"
+          bash "${PROVISION_CLI}" \
+            || echo "WARN: Quarkus CLI provision failed — Maven quarkus:* fallback (W3)"
+        else
+          echo "WARN: missing ${PROVISION_CLI} — Quarkus CLI not provisioned"
+        fi
   - id: start-hermes-dashboard
     exec:
       component: development-tooling
@@ -294,15 +306,14 @@ commands:
         else
           echo "WARN: dashboard still not listening — best-effort only; recovery: hermes dashboard --skip-build --host 0.0.0.0 --port 9119 --no-open"
         fi
-  # The UDI base image documents JAVA_HOME_<version> variables as the
-  # supported way to select a JDK (sdkman default is Java 17; the pom
-  # targets 21). Each Maven command selects Java 21 through that contract.
+  # Prefer JAVA_HOME_21 (UDI contract). sdkman is not present on this
+  # seat's image — do not assume it. Pom targets Java 21.
   - id: test
     exec:
       label: "1. Run tests (modernized)"
       component: development-tooling
       workingDir: /projects/modernized
-      commandLine: 'export JAVA_HOME="${JAVA_HOME_21:-${JAVA_HOME}}" && export PATH="${JAVA_HOME}/bin:${PATH}" && mvn -q test'
+      commandLine: 'export JAVA_HOME="${JAVA_HOME_21:-${JAVA_HOME}}" && export PATH="${JAVA_HOME}/bin:${HOME}/.local/bin:${HOME}/.jbang/bin:${PATH}" && mvn -q test'
       group:
         kind: test
         isDefault: true
@@ -311,7 +322,7 @@ commands:
       label: "2. Start Development mode (modernized, hot reload + debug)"
       component: development-tooling
       workingDir: /projects/modernized
-      commandLine: 'export JAVA_HOME="${JAVA_HOME_21:-${JAVA_HOME}}" && export PATH="${JAVA_HOME}/bin:${PATH}" && mvn compile quarkus:dev'
+      commandLine: 'export JAVA_HOME="${JAVA_HOME_21:-${JAVA_HOME}}" && export PATH="${JAVA_HOME}/bin:${HOME}/.local/bin:${HOME}/.jbang/bin:${PATH}" && mvn compile quarkus:dev'
       group:
         kind: run
         isDefault: true

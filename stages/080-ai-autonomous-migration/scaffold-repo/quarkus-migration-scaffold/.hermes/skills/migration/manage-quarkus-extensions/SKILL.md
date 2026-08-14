@@ -36,7 +36,10 @@ restate platform versions in this skill.
 1. Read `references/rh-bom-and-mandatory-deps.md` (shared BOM policy + Jacoco
    gotcha). Confirm destination `quarkus.platform.*` matches
    `governance/contracts/tooling-pins.md` (or run
-   `scripts/check-pom-platform-pins.py <root>`).
+   `scripts/check-pom-platform-pins.py <root>`). Run
+   `scripts/assert-extension-tooling.py` (W3) before the first CLI/Maven
+   extension mutation — CLI without RH-first registry is a hard fail;
+   CLI absent → typed `MAVEN_FALLBACK`.
 2. **Inventory** installed extensions:
    - Prefer: `quarkus ext ls` (inside the RH-pinned project).
    - Fallback: `mvn -q quarkus:list` via the Red Hat
@@ -72,6 +75,9 @@ restate platform versions in this skill.
 
 - `scripts/check-pom-platform-pins.py <root>` exits 0 with
   `OK: pom platform pins match tooling-pins.md`.
+- When pom exists: `scripts/check-pom-jacoco-wiring.py <root>` exits 0
+  (foundation Jacoco / dual Sonar paths / surefire argLine).
+- `scripts/assert-extension-tooling.py` exits 0 (CLI+RH-first or Maven fallback).
 - After add/rm: `quarkus.platform.group-id` remains
   `com.redhat.quarkus.platform` and `quarkus.platform.version` still matches
   `tooling-pins.md` (no community rewrite).

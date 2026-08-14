@@ -124,6 +124,12 @@ REQUIRED_FILES = [
     ".hermes/skills/migration/bootstrap-quarkus-project/SKILL.md",
     ".hermes/skills/migration/bootstrap-quarkus-project/scripts/bootstrap.sh",
     ".hermes/skills/migration/manage-quarkus-extensions/scripts/check-pom-platform-pins.py",
+    # W1 / W3 / A-3 — CLI provision, tooling assert, Jacoco gate
+    ".hermes/skills/migration/manage-quarkus-extensions/scripts/provision-quarkus-cli.sh",
+    ".hermes/skills/migration/manage-quarkus-extensions/scripts/assert-extension-tooling.py",
+    ".hermes/skills/migration/manage-quarkus-extensions/scripts/check-pom-jacoco-wiring.py",
+    ".hermes/skills/migration/bootstrap-quarkus-project/references/foundation-jacoco-wiring.md",
+    "devfile.yaml",
 ]
 
 # Tip-sync substring table (R0/R3).
@@ -162,6 +168,26 @@ REQUIRED_SUBSTRINGS = [
         ".hermes/skills/migration/bootstrap-quarkus-project/scripts/bootstrap.sh",
         "CREATE_PATH_RETIRED",
         "bootstrap create path retired (DD1)",
+    ),
+    (
+        "devfile.yaml",
+        "provision-quarkus-cli.sh",
+        "W1 Quarkus CLI provisioned from postStart",
+    ),
+    (
+        ".hermes/skills/migration/manage-quarkus-extensions/scripts/provision-quarkus-cli.sh",
+        "registry.quarkus.redhat.com",
+        "W1 RH registry-first config",
+    ),
+    (
+        ".hermes/enforcement/validate-contracts/scripts/validate.sh",
+        "check-pom-jacoco-wiring.py",
+        "A-3 Jacoco wiring gate in validate-contracts",
+    ),
+    (
+        ".hermes/enforcement/validate-contracts/scripts/validate.sh",
+        "assert-extension-tooling.py",
+        "W3 extension tooling typed preflight",
     ),
     (
         "BOOTSTRAP.md",
