@@ -85,6 +85,13 @@ python3 "${HERMES_SKILL_DIR}/scripts/check-partition-coverage.py" /projects/mode
 - `scripts/stamp-destination-inventory.py` — mutate: `--write` dest inventory
 - `scripts/specimen_agnostic.py` — library helper (not an agent entry point)
 
+## Pitfalls
+
+- Treating SDD readiness green as permission to `/speckit-implement` (AD-S
+  stop: never implement via Spec Kit).
+- Skipping JDBC preflight before first `repository/jdbc/**` write.
+- Reading retired R-M3.5/7 persistence/compile preflight stubs as live gates.
+
 ## Verification
 
 - `check-readiness.sh` ends `OK: SDD readiness passed (N artifact(s) checked)`;

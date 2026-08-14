@@ -55,6 +55,13 @@ are deliberately **not** counted — only independently callable handlers are.
 skipped relative to the scan root only, so a referent living under
 `/projects/.derived/…` still scans.
 
+## Pitfalls
+
+- Inventorying the RO legacy mount without the Boot-3 derived harvest
+  referent when Boot source is still 2.x.
+- Treating HTTP-only inventory as complete when non-HTTP entry points exist.
+- Writing inventory into `/projects/legacy` (read-only provenance).
+
 ## Verification
 
 - `evidence/entry-point-inventory.json` exists with

@@ -77,7 +77,7 @@ Two sub-lints are also runnable standalone:
 
 ```bash
 python3 "${HERMES_SKILL_DIR}/scripts/check-skill-conformance.py" --all \
-  --root /projects/modernized/.hermes/skills
+  --include-enforcement --root /projects/modernized/.hermes/skills
 python3 "${HERMES_SKILL_DIR}/scripts/check-bundle-manifest.py" \
   --root /projects/modernized/.hermes/skills \
   --bundles /projects/modernized/.hermes/home/skill-bundles
@@ -89,6 +89,13 @@ bash "${HERMES_SKILL_DIR}/scripts/check-no-hermes-context-override.sh"
 literals may be exempted only via
 `references/r-sk5-specimen-keep.txt` (`relpath` or `relpath:lineno`, ledger
 EID in a trailing comment).
+
+## Pitfalls
+
+- Judging success by the last `OK:` line — check `$?` and grep for `FAIL:`.
+- Running only guidance skills under `.hermes/skills` and skipping
+  `.hermes/enforcement` (§K coverage).
+- Expecting this suite to admit a specimen migration (use domain gates).
 
 ## Verification
 

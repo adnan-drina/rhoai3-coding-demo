@@ -763,9 +763,10 @@ python3 "${SKILL_DIR}/scripts/check-script-cli-contract.py" --root "${ROOT}/.her
 python3 "${SKILL_DIR}/scripts/check-script-cli-contract.py" --root "${ROOT}/.hermes/enforcement" || rc=1
 echo "== CS-7 bundle exists-assert =="
 python3 "${SKILL_DIR}/scripts/check-bundle-manifest.py" --root "${ROOT}/.hermes/skills" --bundles "${ROOT}/.hermes/home/skill-bundles" || rc=1
-echo "== CS-9 skill conformance (R-SK.7 categorized + R-SK.5 specimen literals) =="
+echo "== CS-9 skill conformance (R-SK.7 categorized + enforcement + R-SK.5) =="
 if [ -f "${SKILL_DIR}/scripts/check-skill-conformance.py" ]; then
-  python3 "${SKILL_DIR}/scripts/check-skill-conformance.py" --all --root "${ROOT}/.hermes/skills" || rc=1
+  python3 "${SKILL_DIR}/scripts/check-skill-conformance.py" --all \
+    --include-enforcement --root "${ROOT}/.hermes/skills" || rc=1
 else
   echo "FAIL: missing R-SK conformance lint at ${SKILL_DIR}/scripts/" >&2
   rc=1

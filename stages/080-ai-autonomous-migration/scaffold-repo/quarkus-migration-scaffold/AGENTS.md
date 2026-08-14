@@ -120,6 +120,19 @@ When evidence and intent diverge: stop the current scope, emit a typed block /
 Prose in `constraints` is **not** enforcement (F8). If a check has teeth and
 you cannot see a resolver, stop — do not change the check.
 
+### Worker containment (A-5)
+
+`hermes kanban block` marks the **card**, not the **process**. A blocked card
+can keep writing for hours (v17 S-001). To stop a session:
+
+```bash
+bash .hermes/home/scripts/stop-worker-session.sh [--kind needs_input] <task_id> "<reason>"
+```
+
+Then sweep: `python3 .hermes/home/scripts/assert-no-residual-workers.py .`
+Contract: `governance/contracts/residual-worker-kill.md`. Never report
+containment from board block alone.
+
 ### Spec Kit stop rule (AD-S)
 
 After `/speckit-tasks` (optional `/speckit-analyze`) → `kanban_create()`.
@@ -162,3 +175,4 @@ When a skill is loaded, prefer `"${HERMES_SKILL_DIR}/scripts/…"`.
 | Spring→Quarkus pattern cards | `spring-to-quarkus-patterns` | skill `references/` |
 | Quarkus extension add/rm | `manage-quarkus-extensions` | skill + `tooling-pins.md` |
 | Destination Quarkus POM authoring | `bootstrap-quarkus-project` | root `BOOTSTRAP.md` + `tooling-pins.md` (DD1: no create-app) |
+| Hard-stop a Hermes worker session | `stop-worker-session.sh` *(home script)* | `governance/contracts/residual-worker-kill.md` (A-5) |

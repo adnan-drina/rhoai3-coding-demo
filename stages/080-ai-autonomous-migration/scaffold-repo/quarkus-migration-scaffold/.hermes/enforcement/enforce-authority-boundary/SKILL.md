@@ -96,6 +96,12 @@ examining · planning · spec-writing · implementing · checking
 One Kanban task ⇒ one task type. Never `/speckit-implement`. Never edit
 `.hermes/skills/**` from a worker. `skill_manage` unavailable / proposal-only.
 
+## Pitfalls
+
+- Self-ACK or impersonating another role's ack artifact.
+- Crossing phase write scope because the next task looked blocked.
+- Patching enforcement to clear an authority refusal (DD5 / A-1).
+
 ## Verification
 
 - `check-acks.sh <phase>` prints `OK: all required acks present for <phase>`

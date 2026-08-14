@@ -126,6 +126,12 @@ Missing `worker_session_id`, unresolved session store, non-git-sha
 `skill_tips`, `soul_sha` mismatch vs provenance, no gate verdict, or no ack →
 `verdict: REFUSE`, exit 1. Never invent a session id, ack, or gate row.
 
+## Pitfalls
+
+- Reconstructing a run from memory instead of stamped receipts / digests.
+- Omitting task-id correlation across kanban, commits, and gate results.
+- Treating a green build as provenance of what ran.
+
 ## Verification
 
 - `evidence/runs/<task_id>/checkpoint.json` carries schema

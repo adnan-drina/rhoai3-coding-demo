@@ -67,6 +67,12 @@ python3 "${HERMES_SKILL_DIR}/scripts/check-citation.py" /projects/modernized \
 
 Citation lints do **not** replace domain-gate oracles (G-1…G-4).
 
+## Pitfalls
+
+- Inventing symbols, paths, or capabilities not present in harvest/findings.
+- Softening a citation miss into prose instead of typed stop.
+- Editing the write-fence or harvest locus to clear a refusal (DD5).
+
 ## Verification
 
 - `check-citation.py <root>` prints

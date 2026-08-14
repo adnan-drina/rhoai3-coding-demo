@@ -130,6 +130,9 @@ REQUIRED_FILES = [
     ".hermes/skills/migration/manage-quarkus-extensions/scripts/check-pom-jacoco-wiring.py",
     ".hermes/skills/migration/bootstrap-quarkus-project/references/foundation-jacoco-wiring.md",
     "devfile.yaml",
+    # §K / A-5
+    ".hermes/home/scripts/stop-worker-session.sh",
+    "governance/contracts/residual-worker-kill.md",
 ]
 
 # Tip-sync substring table (R0/R3).
@@ -170,6 +173,21 @@ REQUIRED_SUBSTRINGS = [
         "bootstrap create path retired (DD1)",
     ),
     (
+        "AGENTS.md",
+        "stop-worker-session.sh",
+        "A-5 AGENTS cites worker stop entry point",
+    ),
+    (
+        ".hermes/enforcement/validate-contracts/scripts/validate.sh",
+        "--include-enforcement",
+        "§K skill conformance covers enforcement packages",
+    ),
+    (
+        ".hermes/enforcement/validate-contracts/scripts/check-skill-conformance.py",
+        "## Pitfalls",
+        "§K Pitfalls is a required skill section",
+    ),
+(
         "devfile.yaml",
         "provision-quarkus-cli.sh",
         "W1 Quarkus CLI provisioned from postStart",

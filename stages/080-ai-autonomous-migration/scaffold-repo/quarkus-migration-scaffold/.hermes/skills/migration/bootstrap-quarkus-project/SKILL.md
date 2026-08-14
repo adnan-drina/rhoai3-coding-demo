@@ -68,6 +68,14 @@ hand-authoring as a dedicated path (Research E-20260814T074356Z).
    paste a fixed menu on foundation for later stories.
 6. Refuse `quarkus-spring-*` compatibility extensions (native Quarkus only).
 
+## Pitfalls
+
+- Invoking `scripts/bootstrap.sh` for create — it refuses (`CREATE_PATH_RETIRED`).
+- Leaving Jacoco dual Sonar paths / surefire `argLine` off the foundation POM
+  (A-3 gate fails once `pom.xml` exists).
+- Using community `io.quarkus.platform` plugin GAV instead of
+  `com.redhat.quarkus.platform` from `tooling-pins.md`.
+
 ## Verification
 
 - Destination `pom.xml` exists and

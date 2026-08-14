@@ -164,6 +164,12 @@ Operand first, then live evidence, then pin. Scripts are under
    `pre_existing_db`, `check-persisted-data-contract.py <root>` requires passing
    `schema_compat` **and** `quarkus_db_copy_read_all` records; otherwise idle.
 
+## Pitfalls
+
+- Claiming G-1 ACCEPT without `mutations.xml` / non-zero mutants (vacuous).
+- Claiming G-4 ACCEPT without live parity execution evidence.
+- Pinning kill-ratio from a dry run or equal-to-measured circular floors.
+
 ## Verification
 
 - `run-admission.sh` exits 0 and prints `OK: admission fixtures — G-1..G-4 emit

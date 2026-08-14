@@ -163,10 +163,12 @@ HERMES_AGENT_ROOT="${HOME}/.hermes/hermes-agent"
   --out /tmp/chaos-7-out --board chaos-matrix-7
 ```
 
-## Available scripts
+## Pitfalls
 
-Full inventory: `references/available-scripts.md` (UPLIFT-4). Includes
-`write-receipt.py` (creates the receipts `check-m4-floor-receipts.py` validates).
+- Reading idle `OK: no … artifacts` lines as a pass — N must be > 0 for the
+  lint to have policed anything.
+- Shipping on `PROVISIONAL_ACCEPT` or unpinned G-1 kill-ratio.
+- Treating M4 floor green (`ad010_demo`) as `release_qualified`.
 
 ## Verification
 

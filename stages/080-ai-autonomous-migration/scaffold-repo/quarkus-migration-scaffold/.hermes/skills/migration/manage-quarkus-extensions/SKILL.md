@@ -71,6 +71,14 @@ restate platform versions in this skill.
 - "Nothing imports it" is **not** unused on Quarkus (build-time wiring).
 - Jacoco: adding `quarkus-jacoco` alone is incomplete — see shared reference.
 
+## Pitfalls
+
+- Running `quarkus ext *` without RH-first `~/.quarkus/config.yaml` (community
+  catalog silently wins — run `assert-extension-tooling.py` first).
+- Treating compile-clean alone as proof an extension is unused (build-time
+  wiring; see remove-unused BAR).
+- Adding `quarkus-jacoco` without dual Sonar paths + surefire `argLine`.
+
 ## Verification
 
 - `scripts/check-pom-platform-pins.py <root>` exits 0 with

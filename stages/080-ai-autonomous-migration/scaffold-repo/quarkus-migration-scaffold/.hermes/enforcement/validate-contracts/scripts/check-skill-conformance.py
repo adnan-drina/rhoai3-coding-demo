@@ -150,7 +150,14 @@ def check_name_rules(name):
     # is delivered by the rename mapping in skill-naming-convention.md.
     return errs
 ALLOWED_SUBDIRS = {"references", "templates", "scripts", "examples", "assets"}
-REQ_SECTIONS = ["## When to Use", "## Procedure", "## Verification"]
+# House rule §K (Operator/Deputy E-20260814T104744Z): sole selection heading is
+# ## When to Use (not ## Required When). Pitfalls sit after Procedure.
+REQ_SECTIONS = [
+    "## When to Use",
+    "## Procedure",
+    "## Pitfalls",
+    "## Verification",
+]
 SEMVER = re.compile(r"^\d+\.\d+\.\d+$")
 SKILL_LIST_ITEM = re.compile(r"^\s*-\s+([A-Za-z0-9][A-Za-z0-9_-]*)\s*$")
 # Guidance under skills/<category>/leaf; enforcement under enforcement/leaf.
@@ -206,6 +213,8 @@ def check(skill_dir: Path, flat_ok: bool) -> list[str]:
             errs.append(f"{name}:R-SK.2:missing {req}")
     if "metadata:" not in fm or "tags:" not in fm or "category:" not in fm:
         errs.append(f"{name}:R-SK.2:missing metadata.hermes.tags/category")
+    # R-SK.14 Slice A — Architect E-20260813T145219Z / E-20260813T152211Z
+    kind = field(fm, "kind")
     cat = field(fm, "category")
     parent = skill_dir.parent.name
     if parent in CATEGORIES:
@@ -213,17 +222,29 @@ def check(skill_dir: Path, flat_ok: bool) -> list[str]:
             errs.append(
                 f"{name}:R-SK.7:metadata category '{cat}' != directory '{parent}'"
             )
+    elif parent == "enforcement":
+        # §K — enforcement packages live under .hermes/enforcement/<leaf>
+        # (not skills/<category>/). kind must be enforcement; category is
+        # conventionally "harness".
+        if kind != "enforcement":
+            errs.append(
+                f"{name}:R-SK.7:enforcement-tree skill must declare "
+                f"kind=enforcement (got {kind!r})"
+            )
     elif not flat_ok:
         errs.append(
-            f"{name}:R-SK.7:not under a category dir {sorted(CATEGORIES)}"
+            f"{name}:R-SK.7:not under a category dir {sorted(CATEGORIES)} "
+            f"or .hermes/enforcement/"
         )
-    # R-SK.14 Slice A — Architect E-20260813T145219Z / E-20260813T152211Z:
-    # every package declares guidance vs enforcement until the tree cutover.
-    kind = field(fm, "kind")
     if kind not in {"guidance", "enforcement"}:
         errs.append(
             f"{name}:R-SK.14:metadata.hermes.kind must be "
             f"'guidance' or 'enforcement' (got {kind!r})"
+        )
+    if "## Required When" in text:
+        errs.append(
+            f"{name}:R-SK.3:use '## When to Use' not '## Required When' "
+            f"(house rule §K)"
         )
     pos = -1
     for s in REQ_SECTIONS:
@@ -244,7 +265,10 @@ def check(skill_dir: Path, flat_ok: bool) -> list[str]:
 
 def scaffold_root_from_skills(skills_root: Path) -> Path | None:
     skills_root = skills_root.resolve()
-    if skills_root.name == "skills" and skills_root.parent.name == ".hermes":
+    if skills_root.parent.name == ".hermes" and skills_root.name in {
+        "skills",
+        "enforcement",
+    }:
         return skills_root.parent.parent
     return None
 
@@ -558,6 +582,14 @@ def main() -> None:
         default=".hermes/skills",
         help="skills root for --all (default: .hermes/skills)",
     )
+    ap.add_argument(
+        "--include-enforcement",
+        action="store_true",
+        help=(
+            "with --all on a .hermes/skills root, also scan sibling "
+            "../enforcement (§K coverage gap)"
+        ),
+    )
     ap.add_argument("--flat-ok", action="store_true")
     ap.add_argument("--skip-r-sk9", action="store_true")
     ap.add_argument("--skip-specimen", action="store_true")
@@ -567,10 +599,29 @@ def main() -> None:
     if args.all:
         skills_root = Path(args.root)
         dirs = [p.parent for p in skills_root.rglob("SKILL.md")]
+        if args.include_enforcement:
+            enf = skills_root.resolve().parent / "enforcement"
+            if enf.is_dir():
+                dirs.extend(p.parent for p in enf.rglob("SKILL.md"))
+            else:
+                print(
+                    f"FAIL: --include-enforcement but missing {enf}",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
     else:
         dirs = [Path(a) for a in args.skills]
     if not dirs:
         ap.error("provide skill dirs or --all")
+    # de-dupe while preserving order
+    seen: set[Path] = set()
+    uniq: list[Path] = []
+    for d in dirs:
+        r = d.resolve()
+        if r not in seen:
+            seen.add(r)
+            uniq.append(d)
+    dirs = uniq
     global NAME_KEEP
     NAME_KEEP = load_name_keep(skills_root if skills_root is not None else dirs[0].parent)
     all_errs: list[str] = []

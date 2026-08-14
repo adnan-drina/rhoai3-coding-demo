@@ -44,10 +44,13 @@ selection signal, not a title. "Apply Spring→Quarkus migration patterns"
 restates the name; a description earns its place by saying what condition
 makes this the right skill and what it produces.
 
-**N5 — The three required sections carry skill-specific content.** R-SK
-requires `## When to Use`, `## Procedure`, `## Verification` to be *present*.
-Presence was satisfiable with filler, and was: before this uplift, `##
-Verification` read "Scripts under `scripts/` exit 0 on a healthy seat." in
+**N5 — The four required sections carry skill-specific content.** R-SK
+requires `## When to Use`, `## Procedure`, `## Pitfalls`, `## Verification`
+in that order. **House rule §K:** selection lives only under `## When to Use`
+— never `## Required When`. `## Pitfalls` names silent-failure modes (not a
+restatement of Procedure). Presence was once satisfiable with filler, and was:
+before this uplift, `## Verification` read "Scripts under `scripts/` exit 0 on a
+healthy seat." in
 **13 of 13** skills, and 8 of 13 had a placeholder `## When to Use`. Identical
 prose across skills is a content defect even though it passes a
 section-presence check. `## Verification` must name the artifact produced and

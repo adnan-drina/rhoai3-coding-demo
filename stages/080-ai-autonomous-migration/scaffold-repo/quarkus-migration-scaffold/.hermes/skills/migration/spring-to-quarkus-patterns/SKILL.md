@@ -106,6 +106,14 @@ This skill carries no scripts — it is a consult-then-write contract.
    green in this task, copy it — do not restate the map per file.
 
 
+## Pitfalls
+
+- Accepting MTA `quarkus-spring-*` compatibility suggestions (native Quarkus
+  only — refuse).
+- Translating Spring Boot properties by supplementation; Quarkus does not
+  auto-map them — replace keys explicitly.
+- Inventing specimen-specific type names in skill prose (R-SK.5).
+
 ## Verification
 
 Verification here is the migrated code's provable parity, not a script exit.
