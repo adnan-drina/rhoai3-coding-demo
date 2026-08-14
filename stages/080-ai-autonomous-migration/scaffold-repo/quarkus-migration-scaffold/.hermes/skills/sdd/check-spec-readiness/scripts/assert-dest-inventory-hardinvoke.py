@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""BANK-DEST-INV-HARDINVOKE-1 — R0 lint: create-m3 must stamp dest-inventory cite law.
+"""BANK-DEST-INV-HARDINVOKE-1 — R0 lint: create-m3 + standing procedure.
 
 REFUSE when create-m3-implementer.sh lacks the BANK-DEST-INV-HARDINVOKE-1
-obligation (any dependency-absent / empty-destination conclusion requires citing
-refs.destination_inventory). Architect E-20260812T074514Z / Operator E-074401Z.
+cite, or when the full obligation (destination_inventory + dependency_wait
+REQUIRES) is absent from both the card seed and the F6 standing contract.
+
+Architect E-20260812T074514Z / Operator E-074401Z / F6 E-20260814T115900Z.
 
 Usage:
   assert-dest-inventory-hardinvoke.py <root>
@@ -21,6 +23,7 @@ CREATE = (
     / "scripts"
     / "create-m3-implementer.sh"
 )
+STANDING = Path("governance") / "contracts" / "m3-implementer-standing.md"
 
 
 def main() -> int:
@@ -42,15 +45,27 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
-    if "dependency_wait" not in text or "REQUIRES" not in text:
-        # Soft: obligation should tie dependency_wait to citation
-        if "dependency_wait" not in text.split(NEEDLE, 1)[-1][:500]:
-            print(
-                "FAIL: DEST_INV_HARDINVOKE obligation must bind dependency_wait cite",
-                file=sys.stderr,
-            )
-            return 1
-    print(f"OK: DEST_INV_HARDINVOKE {NEEDLE} stamped in create-m3")
+
+    standing_path = root / STANDING
+    standing = standing_path.read_text(encoding="utf-8") if standing_path.is_file() else ""
+    combined = text + "\n" + standing
+    # Full cite law may live on the slim card *or* in F6 standing procedure.
+    if "dependency_wait" not in combined or "REQUIRES" not in combined:
+        print(
+            "FAIL: DEST_INV_HARDINVOKE obligation must bind dependency_wait cite "
+            "(create-m3 card and/or m3-implementer-standing.md)",
+            file=sys.stderr,
+        )
+        return 1
+    if NEEDLE not in standing and "dependency_wait" not in text.split(NEEDLE, 1)[-1][:800]:
+        # Prefer standing to carry the long form when card is slim (F6).
+        print(
+            "FAIL: DEST_INV_HARDINVOKE standing procedure missing "
+            f"`{NEEDLE}` detail (F6)",
+            file=sys.stderr,
+        )
+        return 1
+    print(f"OK: DEST_INV_HARDINVOKE {NEEDLE} stamped in create-m3 (+ standing)")
     return 0
 
 

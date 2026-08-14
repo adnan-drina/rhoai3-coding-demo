@@ -166,8 +166,30 @@ def main() -> int:
             if isinstance(r, dict) and r.get("key") == "destination_inventory":
                 r["sha256"] = receipt_digest
         body_path.write_text(json.dumps(body, indent=2) + "\n", encoding="utf-8")
+        try:
+            from injection_receipt import write_injection_receipt
+        except ImportError:
+            sys.path.insert(0, str(Path(__file__).resolve().parent))
+            from injection_receipt import write_injection_receipt
+        inj = write_injection_receipt(
+            root,
+            script="stamp-destination-inventory.py",
+            target=body_path,
+            fields=["refs"],
+            source=(
+                f"destination inventory scan → {out_rel} "
+                "(legacy_baseline / modernized / missing)"
+            ),
+            summary=f"stamped refs.destination_inventory entries={len(entries)}",
+            extra={
+                "inventory_receipt": out_rel,
+                "entries": len(entries),
+                "sha256": receipt_digest,
+            },
+        )
         print(f"OK: destination-inventory entries={len(entries)} → {out_path}")
         print(f"OK: body ref destination_inventory sha256={receipt_digest}")
+        print(f"OK: injection receipt → {inj}")
     else:
         print(json.dumps(receipt, indent=2))
     return 0

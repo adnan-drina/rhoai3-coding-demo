@@ -182,10 +182,29 @@ def main() -> int:
     else:
         out_doc = body
     body_path.write_text(json.dumps(out_doc, indent=2) + "\n", encoding="utf-8")
+    # F2 — every --inject leaves an auditable receipt (not silent nursing).
+    try:
+        from injection_receipt import write_injection_receipt
+    except ImportError:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from injection_receipt import write_injection_receipt
+    receipt = write_injection_receipt(
+        root,
+        script="assert-mint-constraints-complete.py",
+        target=body_path,
+        fields=["constraints"],
+        source=(
+            f"standard_constraints(story_id={sid or '?'}, "
+            f"operand_class={oc}) — F3 class/write-set signals"
+        ),
+        summary=f"injected standard constraints n={len(injected)}",
+        extra={"n": len(injected), "operand_class": oc},
+    )
     print(
         f"OK: injected standard constraints n={len(injected)} story={sid or '?'} "
         f"operand_class={oc} → {body_path}"
     )
+    print(f"OK: injection receipt → {receipt}")
     return 0
 
 

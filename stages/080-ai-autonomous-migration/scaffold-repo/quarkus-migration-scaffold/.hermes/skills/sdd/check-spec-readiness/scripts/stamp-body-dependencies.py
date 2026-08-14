@@ -267,7 +267,25 @@ def main() -> int:
 
     if args.write:
         body_path.write_text(json.dumps(body, indent=2) + "\n", encoding="utf-8")
+        try:
+            from injection_receipt import write_injection_receipt
+        except ImportError:
+            sys.path.insert(0, str(Path(__file__).resolve().parent))
+            from injection_receipt import write_injection_receipt
+        receipt = write_injection_receipt(
+            root,
+            script="stamp-body-dependencies.py",
+            target=body_path,
+            fields=["dependencies"],
+            source=(
+                "legacy source import scan + provider map from evidence/bodies "
+                "(migration.yaml path_rewrites / package prefixes)"
+            ),
+            summary=f"stamped dependencies n={len(ordered)}",
+            extra={"n": len(ordered)},
+        )
         print(f"OK: stamped dependencies={len(ordered)} → {body_path}")
+        print(f"OK: injection receipt → {receipt}")
     else:
         print(json.dumps({"dependencies": ordered}, indent=2))
     # Fail closed when any dep is pre-exists but looks like a migration target

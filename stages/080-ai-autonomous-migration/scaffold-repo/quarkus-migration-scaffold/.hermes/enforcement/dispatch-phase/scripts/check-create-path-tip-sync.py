@@ -38,6 +38,10 @@ REQUIRED_FILES = [
     "governance/retired/pom-persistence-handoff.md",
     # Architect E-122959Z — decision-complete card lint
     ".hermes/enforcement/dispatch-phase/scripts/check-decision-complete-cards.py",
+    # F2 / F6
+    ".hermes/skills/sdd/check-spec-readiness/scripts/injection_receipt.py",
+    "governance/contracts/injection-receipts.md",
+    "governance/contracts/m3-implementer-standing.md",
     # Operator E-20260811T144200Z — deps + dest-inventory at create
     ".hermes/skills/sdd/check-spec-readiness/scripts/stamp-body-dependencies.py",
     ".hermes/skills/sdd/check-spec-readiness/scripts/stamp-destination-inventory.py",
@@ -446,9 +450,9 @@ REQUIRED_SUBSTRINGS = [
         "Class A complete-cmd assert before kanban_complete",
     ),
     (
-        ".hermes/enforcement/dispatch-phase/scripts/create-m3-implementer.sh",
+        "governance/contracts/m3-implementer-standing.md",
         "run-scoped-compile-gate.py",
-        "Class A scoped compile cited in M3 body",
+        "Class A scoped compile cited in M3 standing procedure (F6)",
     ),
     (
         "governance/contracts/compile-scope-filtered.md",
@@ -594,6 +598,46 @@ REQUIRED_SUBSTRINGS = [
         ".hermes/enforcement/dispatch-phase/scripts/create-m3-implementer.sh",
         "BANK-DEST-INV-HARDINVOKE-1",
         "RW-2 dest-inventory cite obligation on create-m3",
+    ),
+    (
+        "governance/contracts/m3-implementer-standing.md",
+        "BANK-DEST-INV-HARDINVOKE-1",
+        "F6 standing procedure carries BANK-DEST-INV detail",
+    ),
+    (
+        ".hermes/enforcement/dispatch-phase/scripts/create-m3-implementer.sh",
+        "m3-implementer-standing.md",
+        "F6 card points at standing procedure (≤1500 chars)",
+    ),
+    (
+        ".hermes/enforcement/dispatch-phase/scripts/create-m3-implementer.sh",
+        "F6 card budget exceeded",
+        "F6 fail-closed card char budget",
+    ),
+    (
+        ".hermes/skills/sdd/check-spec-readiness/scripts/injection_receipt.py",
+        "rhoai3.injection-receipt/v1",
+        "F2 injection receipt helper",
+    ),
+    (
+        "governance/contracts/injection-receipts.md",
+        "rhoai3.injection-receipt/v1",
+        "F2 injection-receipts contract",
+    ),
+    (
+        ".hermes/skills/sdd/check-spec-readiness/scripts/assert-mint-constraints-complete.py",
+        "write_injection_receipt",
+        "F2 mint-constraints --inject stamps receipt",
+    ),
+    (
+        ".hermes/skills/sdd/check-spec-readiness/scripts/stamp-body-dependencies.py",
+        "write_injection_receipt",
+        "F2 dependencies --write stamps receipt",
+    ),
+    (
+        ".hermes/skills/sdd/check-spec-readiness/scripts/stamp-destination-inventory.py",
+        "write_injection_receipt",
+        "F2 dest-inventory --write stamps receipt",
     ),
     (
         ".hermes/enforcement/dispatch-phase/scripts/create-m3-implementer.sh",

@@ -197,59 +197,35 @@ python3 "${ROOT}/.hermes/skills/sdd/check-spec-readiness/scripts/check-operand-c
   --wall-fit \
   || die "BODY_SIZE operand-count/wall-fit failed for ${BODY_JSON}"
 
-# Human-readable markdown wrapper + attach typed JSON path as obligation
+# Human-readable markdown wrapper + attach typed JSON path as obligation.
+# F6 — card ≤1500 chars; standing procedure lives in
+# governance/contracts/m3-implementer-standing.md (not pasted ×N).
 BODY_MD="$(mktemp)"
 trap 'rm -f "${BODY_MD}"' EXIT
 {
   echo "# ${TITLE}"
   echo
-  echo "Phase: M3 per \`.hermes/phase-dispatch.yaml\`"
-  echo "Task-type: implementing"
+  echo "Phase: M3 per \`.hermes/phase-dispatch.yaml\` · Task-type: implementing"
   echo "Story id (partition): \`${STORY_ID}\`"
   echo "Typed body (W2 §6): \`${BODY_JSON}\`"
   echo "Body digest (AR-4.3): \`${BODY_DIGEST}\`"
   echo
-  echo "## Obligation"
-  echo "Read the typed body JSON path above first (\`exit_criteria\`, \`files_in_scope\`/\`files_writable\`, \`dependencies\`, \`refs\` incl. \`destination_inventory\`)."
-  echo "**Dest-inventory hard-invoke (BANK-DEST-INV-HARDINVOKE-1 / Architect E-20260812T074514Z):** any conclusion that a dependency/path is missing/absent/DEST_MISS/\`empty destination\` is **INVALID** unless Reasoning cites \`refs.destination_inventory\` (path+sha256) or the stamped receipt under \`evidence/receipts/destination-inventory/\`. Typed \`dependency_wait\` **REQUIRES** that citation first. Do **not** invent OOS owners or OOS-create \"missing\" deps."
-  echo "**Dependencies (Operator E-20260811T144200Z):** treat \`dependencies[]\` as authority for import provenance (\`provider\` = owning story or \`pre-exists\`). Coverage-gap on orphan model/interface ⇒ typed BLOCK — do **not** invent owners or OOS-create deps."
-  echo "**Interface-closure Class A (Architect E-20260811T181749Z):** create path refuses bodies where an in-scope \`*Impl\` lacks its interface in scope/deps/dest (\`check-interface-closure.py\` / \`governance/contracts/interface-closure.md\`). Mid-run OOS-create of a missing interface = ABORT — typed \`needs_input\` only."
-  echo "Verify body sha256 matches \`${BODY_DIGEST}\` before first destination edit; retries must reuse this digest."
-  echo "**Body immutability (Architect E-111424Z):** do **not** rewrite the typed body after dispatch. Run \`python3 .hermes/enforcement/record-run-evidence/scripts/check-body-digest-match.py . --body ${BODY_JSON} --expect ${BODY_DIGEST}\` — mismatch ⇒ REFUSE (\`governance/contracts/body-immutability.md\`)."
-  echo "Record pre/post write-set digests under \`evidence/runs/\` (schema \`rhoai3.run-journal/v1\`)."
-  echo "**Checkpoint/resume (Class A implementer-checkpoint):** before first edit, init or load \`evidence/runs/<task_id>/checkpoint.json\` via \`python3 .hermes/enforcement/record-run-evidence/scripts/init-implementer-checkpoint.py\` / \`check-implementer-checkpoint.py\` (same dir). After each successful dest write, \`python3 .hermes/enforcement/record-run-evidence/scripts/stamp-implementer-checkpoint.py --completed <path>\`. On retry/re-dispatch: resume at \`next\` — do **not** cold re-walk completed operands (\`governance/contracts/implementer-checkpoint.md\`). Basename-only search is incomplete — resolve these path-anchored refs; Approval/timeout ≠ absent."
-  echo "Do NOT bulk-read all files_in_scope in one turn — migrate file-by-file (prefer \`next\` from checkpoint)."
-  echo "Satisfy every \`exit_criteria\` item before \`kanban_complete\` (endpoint/semantic exits required — AR-4.4)."
-  echo "**Complete-cmd Class A (Architect E-20260811T175509Z):** before \`kanban_complete\` run \`python3 .hermes/skills/gates/check-release-readiness/scripts/assert-complete-exit-criteria.py . --task-id <this-task-id> --body ${BODY_JSON}\` — rc≠0 ⇒ REFUSE complete (\`governance/contracts/complete-cmd-exit-criteria.md\`). That script also harness-invokes body-digest + ground-in-harvest citation + provenance (Architect E-20260813T152211Z — do not rely on skill_view). Do not invent N/A."
-  echo "**In-loop testCompile invariant (Class A #1b / Architect E-20260811T175305Z scoped):** \`stamp-implementer-checkpoint.py --completed src/test/**\` **REFUSE**s unless scoped \`run-scoped-compile-gate.py --goal test-compile\` is green for own \`files_writable\` — not whole-tree rc=0. \`--skip-test-compile-gate\` FORBIDDEN on live seats (fixture env only). OOS-only errors ⇒ scoped OK; in-scope red ⇒ fix. Typed \`needs_input\` if blocked (\`governance/contracts/compile-scope-filtered.md\` / \`test-toolchain.md\`)."
-  echo "**Wall / requeue (Architect E-110403Z / E-121300Z):** on \`timed_out\`, run \`apply-wall-requeue-policy.py\` (exit-eval + checkpoint sync; soft K=1 then hard-block). Unbounded silent requeue REJECT (\`governance/contracts/wall-exit-eval.md\`)."
-  echo "**Crash / reclaim (Architect E-20260810T142650Z):** on \`crashed\`, run \`apply-crash-requeue-policy.py\` (K_crash=1; does not spend wall soft-K). Hard ceiling → typed \`harness_fault\`/\`environmental_provider\`/\`context_budget\` — never budget/timed_out (\`governance/contracts/crash-requeue.md\`)."
-  echo "**DD3 story-owns-extensions (Operator E-20260814T070901Z):** the needing story adds its Quarkus extensions (and owns their config/artifacts). Do **not** pre-provision hibernate/validator/flyway/jdbc on foundation for later stories. R-M3.5/7 persistence BOM handoff is **retired**."
-  echo "**dependency_wait (kept for non-BOM producers):** on typed \`dependency_wait\` (e.g. dest-inventory / JDBC preflight), do **not** soft-promote or OOS-edit \`pom.xml\`. Stamp/hold via \`apply-dependency-wait-hold.py --stamp --block\`; escalate \`Needs: Lead:fix-upstream-pom\`. After typed wait, **forbid** re-litigating \`files_writable\` in Reasoning — wait or escalate."
-  echo "**R-M3.9 wall-fit (Architect E-20260810T184700Z):** create path refuses FIS×90s > budget and dual-stack JPA+JDBC ≥20 — prefer JPA-repos vs JDBC-repos split; do **not** raise wall alone (\`governance/contracts/m3-wallfit-jdbc.md\` / \`story-sizing.md\`)."
-  echo "**R-M3.10/12 JDBC (Architect E-20260810T184700Z):** before first \`repository/jdbc/**\` edit — \`skill_view\` persistence (+ jdbc notes); write-first mechanical transforms; **forbid** multi-kB Spring-replacement redesign essays in Reasoning."
-  echo "**R-M3.11 JDBC deps:** run \`python3 .hermes/skills/sdd/check-spec-readiness/scripts/check-jdbc-deps-preflight.py .\` before first JDBC write — require \`spring-jdbc\` + \`spring-data-jdbc-core\` (no OOS pom)."
-  echo "**R-M3.13 lean reclaim (FIS≥20):** on soft reclaim, resume from checkpoint \`next\` only — do **not** re-bulk-read all legacy JDBC/JPA sources."
-  echo "**AD-011 / R-AD011.2 overlay (Architect E-20260810T185500Z):** author overlays under \`extensions/<skill>/references/*\`; create path syncs them into \`.hermes/skills/<skill>/references/\` (R-M3.32). \`skill_view\` in-skill \`references/<file>\` after sync. Never SOUL. See \`governance/contracts/ad011-skill-extension.md\` + \`m3-security-write-first.md\`."
-  echo "**R-M3.29/32/39 security write-first:** before first \`security/**\` edit — hard \`skill_view\` \`references/security-config.md\` **and** \`references/security-anti-essay.md\` (Hermes skill tree; create refuses if sync/--check fails); write-first / anti-essay; stamp after each dest write. **R-M3.39:** javadoc-only shells FAIL — land pom (\`quarkus-security\` + \`quarkus-elytron-security-jdbc\`) + \`application.properties\` auth wiring; \`check-empty-security.py .\` must be rc=0 before complete."
-  echo "**R-M3.28/31 wall narrative (Architect E-20260810T230310Z):** exit-eval credits AD-009 freeze/>300s latency; \`overall_ok=false\` when wallish + incomplete checkpoint (compile-only green ≠ product PASS)."
-  echo "**Checkpoint lag (Deputy E-121112Z):** after \`src/test/**\` writes — and on every wall — run \`sync-checkpoint-from-test-writes.py\` so stamp/#1b gate is harness-driven, not voluntary."
-  echo "**AD-002E/F/G:** preloaded skills are \`check-spec-readiness\` + \`spring-to-quarkus-patterns\` only. Each → \`skill_view\` consult **or** typed \`skills_unused:<skill>:<reason>\` before \`kanban_complete\`. Silence invalid; no false \"skills consulted\" claim."
-  echo "**Hard invoke (AD-002G P0.3):** run \`/spring-to-quarkus-patterns\` (or equivalent \`skill_view\` on that skill) before first destination edit; then open needed \`references/*\` (rest / di-config / persistence / testing / security-config). For security cards also open the R-M3.29 extension. For test/controller work open \`references/testing.md\` §Failure/Import/Mock procedures + golden fixture \`governance/fixtures/testing/golden-rest-controller/PetTypeRestControllerTests.java\`."
-  echo "**Pre-v12 R5 hard-invoke traps (Architect E-20260811T102405Z):** when story touches REST/DTO/MapStruct — \`skill_view\` \`references/di-config.md\` and set MapStruct \`componentModel = \"cdi\"\` (no default/spring). When story touches \`@IfBuildProfile\` / profile-gated beans — forbid that API; use \`%profile\` config / build-time alternatives per di-config. When story touches QuarkusTest / continuous testing props — \`skill_view\` \`references/testing.md\` continuous-testing enum (boolean props FAIL). Cite the ref path in Reasoning before first related dest write."
-  echo "**Pre-flight ceiling (AD-002 §1 / AD-009 §3.5):** before large API turns, refuse emit when \`prompt_tokens + max_tokens > max-model-len\` via \`check-preflight-ceiling.py\` (stamp \`context_budget\` on refuse). Do **not** discover the ceiling via \`VLLMValidationError\`."
-  echo "**F3–F6 predictions (when body carries them):** score \`injectmock_reasoning_blocks\` / \`import_hunt\` / reasoning-share gates at terminal — Architect ACCEPT \`E-20260810T131445Z\`; missing scores ⇒ cannot claim skill-guide DEMONSTRATED."
-  echo "Progressive disclosure — do not bulk-paste skill bodies. Run: \`python3 .hermes/skills/sdd/check-spec-readiness/scripts/check-kanban-body.py /projects/modernized\`"
+  echo "## Job"
+  echo "1. Read the typed body JSON first (\`exit_criteria\`, write-set, \`dependencies\`, \`refs\`)."
+  echo "2. Verify digest: \`python3 .hermes/enforcement/record-run-evidence/scripts/check-body-digest-match.py . --body ${BODY_JSON} --expect ${BODY_DIGEST}\` — mismatch ⇒ REFUSE."
+  echo "3. Follow standing procedure (binding): \`governance/contracts/m3-implementer-standing.md\` — includes BANK-DEST-INV-HARDINVOKE-1 / \`refs.destination_inventory\`, Pre-v12 R5 hard-invoke traps, checkpoint/complete-cmd, DD3, wall/crash, AD-002 skills."
+  echo "4. Write only \`files_writable\`. Satisfy every \`exit_criteria\` before complete."
+  echo "5. Before \`kanban_complete\`: \`python3 .hermes/skills/gates/check-release-readiness/scripts/assert-complete-exit-criteria.py . --task-id <this-task-id> --body ${BODY_JSON}\`."
   echo
-  # Do NOT inline the typed JSON here — it bloated M3 prompts to ~30k before any
-  # tool use (v10 S-001 hang at API#4 in=62473). Path above is authoritative.
   echo "## Constraints"
   echo "- workspace: dir:${WORKSPACE_DIR}"
-  echo "- Do not re-plan scope. Typed BLOCK if inputs wrong."
-  echo "- Write only \`files_writable\` / destination write-set (AR-4.4); readable deps are not write authority."
-  echo "- **AD-009:** max-runtime=${MAX_RUNTIME}s; no MiniMax (AD-008)."
-  echo "- Skills preload ≠ consultation (AD-002D/E) — consult or typed unused."
+  echo "- Do not rewrite typed body or re-plan scope. Typed BLOCK if inputs wrong."
+  echo "- max-runtime=${MAX_RUNTIME}s · no MiniMax (AD-008) · skills preload ≠ consultation (AD-002E)"
 } >"${BODY_MD}"
+CARD_CHARS="$(wc -c <"${BODY_MD}" | tr -d ' ')"
+[[ "${CARD_CHARS}" -le 1500 ]] \
+  || die "F6 card budget exceeded: ${CARD_CHARS} chars > 1500 (slim standing procedure; see m3-implementer-standing.md)"
+echo "create-m3-implementer: F6 card_chars=${CARD_CHARS}/1500" >&2
 
 # Deputy E-20260811T131900Z — M3 cards MUST be born parked. v12 lost v11
 # born-parked behavior; create+dispatch let the daemon race M2b (serial breach).
