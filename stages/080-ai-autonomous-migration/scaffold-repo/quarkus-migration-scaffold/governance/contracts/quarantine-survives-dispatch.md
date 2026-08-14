@@ -36,9 +36,12 @@ Paths are workspace-relative under `/projects/modernized`.
 
 ## Scripts
 
-- `register-quarantine-tombstone.py` — add/update tombstones after wipe
-- `assert-quarantine-tombstones.py` — fail if any tombstoned path exists in dest
-- Wired into `create-m3-implementer.sh` (pre-create) and `dispatch-phase.sh` (pre-dispatch)
+- `assert-quarantine-tombstones.py` — fail if any tombstoned path exists in dest;
+  **wired** into `create-m3-implementer.sh` (pre-create) and `dispatch-phase.sh`
+  (pre-dispatch) — every-chain.
+- `register-quarantine-tombstone.py` — **on-demand mutate** after a wipe
+  (F9 triage): no automatic create-path caller by design. Paying register cost
+  on every create would be scar tax; assert remains every-chain.
 
 ## Sync mechanism (corrected — ABSORB )
 

@@ -117,6 +117,11 @@ python3 "${ROOT}/.hermes/skills/sdd/check-spec-readiness/scripts/assert-mint-con
 python3 "${ROOT}/.hermes/skills/sdd/check-spec-readiness/scripts/assert-mint-constraints-complete.py" "${ROOT}" \
   --body "${BODY_JSON}" \
   || die "MINT_COMPLETENESS: constraints still absent/empty (tag constraint_free if intentional)"
+# F9 — wire constraints-preservation: snapshot after mint inject so later
+# pre-dispatch amends cannot silently drop constraints (was callerless).
+python3 "${ROOT}/.hermes/skills/sdd/check-spec-readiness/scripts/assert-constraints-preserved.py" "${ROOT}" \
+  --body "${BODY_JSON}" --snapshot-before \
+  || die "CONSTRAINTS_PRESERVATION snapshot-before failed for ${BODY_JSON}"
 
 # Architect E-20260811T203657Z Class A — dependency/pre-exists closure
 python3 "${ROOT}/.hermes/skills/sdd/check-spec-readiness/scripts/assert-dependency-closure.py" "${ROOT}" \

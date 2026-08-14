@@ -38,10 +38,11 @@ REQUIRED_FILES = [
     "governance/retired/pom-persistence-handoff.md",
     # Architect E-122959Z — decision-complete card lint
     ".hermes/enforcement/dispatch-phase/scripts/check-decision-complete-cards.py",
-    # F2 / F6
+    # F2 / F6 / F9
     ".hermes/skills/sdd/check-spec-readiness/scripts/injection_receipt.py",
     "governance/contracts/injection-receipts.md",
     "governance/contracts/m3-implementer-standing.md",
+    "governance/contracts/scar-archive-triage.md",
     # Operator E-20260811T144200Z — deps + dest-inventory at create
     ".hermes/skills/sdd/check-spec-readiness/scripts/stamp-body-dependencies.py",
     ".hermes/skills/sdd/check-spec-readiness/scripts/stamp-destination-inventory.py",
@@ -478,6 +479,21 @@ REQUIRED_SUBSTRINGS = [
         ".hermes/skills/sdd/check-spec-readiness/scripts/assert-constraints-preserved.py",
         "CONSTRAINTS_PRESERVATION",
         "Class A constraints-preservation script",
+    ),
+    (
+        ".hermes/enforcement/dispatch-phase/scripts/create-m3-implementer.sh",
+        "assert-constraints-preserved.py",
+        "F9 create-m3 wires constraints snapshot-before",
+    ),
+    (
+        "governance/contracts/scar-archive-triage.md",
+        "WIRED",
+        "F9 scar-archive triage record",
+    ),
+    (
+        ".hermes/skills/sdd/check-spec-readiness/scripts/assert-mint-constraints-complete.py",
+        "F7 short imperatives",
+        "F7 constraints are short imperatives",
     ),
     (
         "governance/contracts/constraints-preservation-on-amend.md",

@@ -46,29 +46,30 @@ def operand_class_of(body: dict) -> str:
 
 
 def standard_constraints(story_id: str, operand_class: str, body: dict | None = None) -> list[str]:
-    """Standard applicable set (Architect E-200911Z / Operator E-200426Z / F3)."""
+    """Standard applicable set — F7 short imperatives (no archaeology prose).
+
+    Provenance of *why* a constraint was injected lives on the F2 injection
+    receipt, not in the constraint text the worker must act on.
+    """
     body = body or {}
+    # F7: ≤1 line each; no Pre-v12 / tip-bank / v13 specimen archaeology.
     forbid = (
-        "FORBIDDEN API: do not use @IfBuildProfile (any profile). Required path: "
-        "%profile config / build-time alternatives per skill_view references/di-config.md "
-        "(Pre-v12 R5 / Architect E-20260811T102405Z). Silent adoption after quoting this "
-        "forbid = execute-as-defined FAIL/abort."
+        "FORBIDDEN: do not use @IfBuildProfile. Use %profile config or "
+        "build-time alternatives (skill_view references/di-config.md)."
     )
     write_set = (
-        "WRITE-SET (AR-4.4): write only files_writable / destination write-set. Readable "
-        "deps and OOS paths are not write authority. Silent OOS writes = FAIL/abort."
+        "WRITE-SET: write only files_writable. Readable deps are not write "
+        "authority; silent OOS writes = FAIL."
     )
     coverage = (
-        "COVERAGE-GAP: orphan model/interface / missing dependency owner ⇒ typed "
-        "needs_input BLOCK (escalate Lead) — NEVER OOS-invent types or owners."
+        "COVERAGE-GAP: orphan type / missing owner → typed needs_input. "
+        "Never OOS-invent types or owners."
     )
     residue = (
-        "RESIDUE: do not leave Spring/javax migration residue in files_writable that the "
-        "story claims to migrate; unfinished in-scope residue ⇒ typed needs_input, not "
-        "kanban_complete."
+        "RESIDUE: unfinished in-scope Spring/javax residue → typed "
+        "needs_input, not kanban_complete."
     )
     out = [forbid, write_set, coverage, residue]
-    # F3: de-key from story numbers. Profile locality = operand_class / write-set.
     oc = operand_class.lower().replace("-", "_")
     writable = [
         str(p.get("dest") or p.get("path") or p) if isinstance(p, dict) else str(p)
@@ -86,28 +87,24 @@ def standard_constraints(story_id: str, operand_class: str, body: dict | None = 
     if profile_hint:
         out.insert(
             1,
-            "REQUIRED PATH (profile locality): use %mysql / %postgresql (or matching) "
-            "Quarkus profile config in application-*.properties — never @IfBuildProfile / "
-            "@Profile on beans for this story's writable set (Operator E-20260811T200426Z).",
+            "PROFILE: use %mysql/%postgresql (or matching) in "
+            "application-*.properties — never @IfBuildProfile/@Profile on beans.",
         )
     if oc in {"build_config", "pom"}:
         out = [c for c in out if not c.startswith("RESIDUE:")]
         out.append(
-            "BUILD_CONFIG: edit only declared properties/config operands; do not expand "
-            "into src_code without typed needs_input / Lead rescope."
+            "BUILD_CONFIG: edit only declared config operands; no src_code "
+            "without typed needs_input / Lead rescope."
         )
         out.append(
-            "DD6 FOUNDATION: assert resolution (`build_resolves` / "
-            "`config_profile_load`), never `quarkus_compile` / `mvn clean compile` — "
-            "do not invent Application.java to satisfy compile (E-20260814T073620Z)."
+            "FOUNDATION: assert build_resolves/config_profile_load — never "
+            "quarkus_compile; do not invent Application.java."
         )
-    # Tip-bank B2 / F3: CORS forbid for REST/api — never key on S-008.
     rest_hint = oc in {"src_code", "rest", "api"} or "controller" in oc
     if rest_hint:
         out.append(
-            "CORS_OUT_OF_SCOPE (HARD / tip-bank B2): do NOT implement @CrossOrigin, "
-            "CORS filters, or CORS essays. CORS is platform/infra — write REST "
-            "resources first; typed needs_input if blocked, never thrash on CORS."
+            "CORS: do not implement @CrossOrigin or CORS filters. Platform/infra "
+            "only — typed needs_input if blocked."
         )
     return out
 
