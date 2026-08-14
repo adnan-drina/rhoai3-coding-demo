@@ -137,6 +137,9 @@ REQUIRED_FILES = [
     ".hermes/skills/sdd/derive-story-oracles/SKILL.md",
     "governance/retired/semantic-exits.md",
     "governance/contracts/surgical-scopes.md",
+    # T-1 / Z2
+    ".hermes/skills/migration/reference-rh-quarkus-pom/SKILL.md",
+    ".hermes/skills/migration/reference-rh-quarkus-pom/references/pom-structure.md",
 ]
 
 # Tip-sync substring table (R0/R3).
@@ -205,6 +208,16 @@ REQUIRED_SUBSTRINGS = [
         "governance/retired/semantic-exits.md",
         "Status:** retired",
         "T-8 semantic-exits contract retired",
+    ),
+    (
+        ".hermes/skills/migration/reference-rh-quarkus-pom/SKILL.md",
+        "reference-rh-quarkus-pom",
+        "T-1 RH Quarkus POM structure skill",
+    ),
+    (
+        ".hermes/skills/migration/bootstrap-quarkus-project/SKILL.md",
+        "reference-rh-quarkus-pom",
+        "bootstrap cites in-tree T-1 skill",
     ),
     (
         "devfile.yaml",

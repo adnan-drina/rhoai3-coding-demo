@@ -175,5 +175,6 @@ When a skill is loaded, prefer `"${HERMES_SKILL_DIR}/scripts/…"`.
 | Provenance / reconstruct | `record-run-evidence` *(enforcement)* | `governance/contracts/auditability-repeatability.md` |
 | Spring→Quarkus pattern cards | `spring-to-quarkus-patterns` | skill `references/` |
 | Quarkus extension add/rm | `manage-quarkus-extensions` | skill + `tooling-pins.md` |
-| Destination Quarkus POM authoring | `bootstrap-quarkus-project` | root `BOOTSTRAP.md` + `tooling-pins.md` (DD1: no create-app) |
+| RH Quarkus POM structure (T-1) | `reference-rh-quarkus-pom` | skill `references/pom-structure.md` + pins |
+| Destination Quarkus POM authoring | `bootstrap-quarkus-project` | root `BOOTSTRAP.md` + T-1 skill + pins (DD1: no create-app) |
 | Hard-stop a Hermes worker session | `stop-worker-session.sh` *(home script)* | `governance/contracts/residual-worker-kill.md` (A-5) |

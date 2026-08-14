@@ -14,7 +14,7 @@ Dockerfiles, and sample resources this scaffold does not want.
 Use guidance skill `bootstrap-quarkus-project`:
 
 1. Read `governance/contracts/tooling-pins.md` (Red Hat Quarkus platform row).
-2. **Author** destination `pom.xml` from the T-1 structure reference
+2. **Author** destination `pom.xml` from skill `reference-rh-quarkus-pom`
    (BOM import via `dependencyManagement`, Red Hat
    `com.redhat.quarkus.platform:quarkus-maven-plugin` in `<build>`, story
    extension deps empty at mint — DD3). Carry foundation Jacoco/Sonar

@@ -1,6 +1,6 @@
 ---
 name: bootstrap-quarkus-project
-description: Before the first destination app sources exist — author a Red Hat Quarkus pom.xml from the T-1 structure reference and tooling-pins, lint with check-pom-platform-pins, then add evidence-driven extensions via manage-quarkus-extensions; use when provisioning /projects/modernized app code (create-app path retired)
+description: Before the first destination app sources exist — author a Red Hat Quarkus pom.xml from skill reference-rh-quarkus-pom and tooling-pins, lint with check-pom-platform-pins, then add evidence-driven extensions via manage-quarkus-extensions; use when provisioning /projects/modernized app code (create-app path retired)
 license: Apache-2.0
 compatibility: Linux seat; Red Hat Quarkus platform; quarkus CLI optional (extensions only)
 metadata:
@@ -23,8 +23,8 @@ live only in `governance/contracts/tooling-pins.md`.
 
 **DD1 (Operator E-20260814T065925Z):** `quarkus create app` /
 `quarkus-maven-plugin:create` into the destination is **retired**. Foundation
-stories author `pom.xml` from the T-1 reference. Official RHBQ documents
-hand-authoring as a dedicated path (Research E-20260814T074356Z).
+stories author `pom.xml` from skill `reference-rh-quarkus-pom`. Official RHBQ
+documents hand-authoring as a dedicated path.
 
 ## When to Use
 
@@ -40,33 +40,31 @@ hand-authoring as a dedicated path (Research E-20260814T074356Z).
 
 1. Read `governance/contracts/tooling-pins.md` (Red Hat Quarkus platform row)
    and `../manage-quarkus-extensions/references/rh-bom-and-mandatory-deps.md`.
-2. **Author** `pom.xml` at the destination root using the T-1 structure
-   (ledger: `harness-refactoring/monitoring/20260814-t1-canonical-rh-quarkus-pom-grounding.md`):
-   - properties: `quarkus.platform.group-id` /
-     `quarkus.platform.artifact-id` / `quarkus.platform.version` from pins
-   - `dependencyManagement` imports `quarkus-bom` from that stream
-   - `<build>` declares `com.redhat.quarkus.platform:quarkus-maven-plugin`
-     with the three-goal execution (`build` / `generate-code` /
-     `generate-code-tests`) — **never** `io.quarkus` / `io.quarkus.platform`
-     plugin GAV (H-1)
+2. Open skill `reference-rh-quarkus-pom` (`../reference-rh-quarkus-pom/`) —
+   assemble structure from `references/pom-structure.md` +
+   `references/maven-repos.md`.
+3. **Author** `pom.xml` at the destination root:
+   - properties / BOM import / plugin executions per that reference
+   - `<build>` uses `com.redhat.quarkus.platform:quarkus-maven-plugin`
+     — **never** `io.quarkus` / `io.quarkus.platform` plugin GAV (H-1)
    - Story extensions stay empty at mint (DD3); **exception:** carry
      foundation Jacoco/Sonar wiring from
      `references/foundation-jacoco-wiring.md` (A-3 / H-3 — build
      infrastructure, not story-owned)
-   - Java release **21**; surefire version from pins
-3. Run
+   - Java release and surefire from pins
+4. Run
    `../manage-quarkus-extensions/scripts/check-pom-platform-pins.py <root>`
    and
    `../manage-quarkus-extensions/scripts/check-pom-jacoco-wiring.py <root>`.
-4. **Tooling preflight (W3):** run
+5. **Tooling preflight (W3):** run
    `../manage-quarkus-extensions/scripts/assert-extension-tooling.py`
    before the first `ext` / Maven extension mutation. CLI absent → typed
    `MAVEN_FALLBACK` (not improvisation).
-5. **Extensions (evidence-driven, DD3):** invoke `manage-quarkus-extensions`
+6. **Extensions (evidence-driven, DD3):** invoke `manage-quarkus-extensions`
    (`quarkus ext ls/search/add` when CLI present — W1; else Maven). The
    **needing story owns** the extension and its config/artifacts — do not
    paste a fixed menu on foundation for later stories.
-6. Refuse `quarkus-spring-*` compatibility extensions (native Quarkus only).
+7. Refuse `quarkus-spring-*` compatibility extensions (native Quarkus only).
 
 ## Pitfalls
 
@@ -75,6 +73,8 @@ hand-authoring as a dedicated path (Research E-20260814T074356Z).
   (A-3 gate fails once `pom.xml` exists).
 - Using community `io.quarkus.platform` plugin GAV instead of
   `com.redhat.quarkus.platform` from `tooling-pins.md`.
+- Citing out-of-scaffold ledger paths for structure — use
+  `reference-rh-quarkus-pom` in-tree (R-SK.13).
 
 ## Verification
 
