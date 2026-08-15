@@ -15,7 +15,7 @@ for new procedures.
 | Entry-point inventory | `.hermes/skills/analysis/inventory-entry-points/` | W2 §11.3 scanner |
 | Harness meta-validate | `.hermes/skills/harness/validate-contracts/` | specimen-free suite |
 | Provision assets (not runtime) | `.hermes/provision/` | Spec Kit Non-Goals override template |
-| Phase / run data | `migration/` | findings, inventory JSON, fixtures, contracts, schemas, acks |
+| Phase / run data | `evidence/` | findings, inventory JSON, fixtures, acks; MTA raw report is `evidence/mta/` (SR-8) |
 | Task authority contract | `.hermes/skills/harness/enforce-authority-boundary/references/task-authority.md` | AD-H §16 — task-type obligations, privilege, human checkpoints |
 | Grounded generation contract | `governance/contracts/grounded-generation.md` | AD-H §17 — consult order, citation, anti-invention |
 | Validation / release contract | `AGENTS.md (doctrine; was validation-release-gates)` | AD-H §18 — phase gates, regression, failure routing |

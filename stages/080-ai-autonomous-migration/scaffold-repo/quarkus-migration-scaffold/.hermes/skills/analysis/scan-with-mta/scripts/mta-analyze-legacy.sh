@@ -27,7 +27,7 @@ resolve_project_root() {
 ROOT="$(resolve_project_root)" || { echo "mta-analyze-legacy: cannot find migration.yaml walking up from $(dirname "$0")" >&2; exit 1; }
 MANIFEST="${ROOT}/evidence/derived/legacy-at-3.json"
 MIGRATION_YAML="${ROOT}/migration.yaml"
-OUT_DIR="${MTA_OUT_DIR:-${ROOT}/migration/mta-analyze-out}"
+OUT_DIR="${MTA_OUT_DIR:-${ROOT}/evidence/mta}"
 JSON_OUT="${MTA_JSON_OUT:-${ROOT}/evidence/mta-findings.json}"
 
 die() { echo "mta-analyze-legacy: $*" >&2; exit 1; }

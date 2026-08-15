@@ -186,7 +186,7 @@ def path_rewrites(root: Path) -> list[tuple[str, str]]:
     dest_pkgs: set[str] = set()
     bodies = root / "evidence/bodies"
     if bodies.is_dir():
-        for path in bodies.glob("m3-*.json"):
+        for path in bodies.glob("*.json"):
             if path.name.endswith(".sha256.json"):
                 continue
             data = load_json(path)

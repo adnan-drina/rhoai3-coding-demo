@@ -5,7 +5,7 @@ license: Apache-2.0
 compatibility: Linux seat; Python 3.11+ and bash; runs specimen-free
 metadata:
   author: rhoai3-harness-team
-  version: "1.3.0"
+  version: "1.4.0"
   hermes:
     tags:
     - harness
@@ -96,6 +96,8 @@ EID in a trailing comment).
 - Running only guidance categories and skipping `.hermes/skills/harness/`
   (EX-3: that is where dispatch/validate/fence packs live).
 - Expecting this suite to admit a specimen migration (use domain gates).
+- Gitignoring `migration/` to hide a resurrected directory — SR-8a. Fix the
+  writer (`MTA_OUT_DIR` defaults to `evidence/mta/`). Unattributed paths fail.
 
 ## Verification
 

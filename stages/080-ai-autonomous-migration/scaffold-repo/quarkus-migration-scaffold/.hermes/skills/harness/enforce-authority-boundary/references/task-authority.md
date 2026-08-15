@@ -18,7 +18,7 @@ gates + authority-boundary refuse lints.
 
 | Task type | Phase | May | Must not |
 |-----------|-------|-----|----------|
-| **Examining** | M1 (+ pre-M1 derive) | `scan-with-mta`, inventory, `derive-legacy-boot3`; write `migration/` analysis + findings | Edit modernized app source; invent findings; waive without `mta-exception`; edit legacy/derived; `/speckit-implement` |
+| **Examining** | M1 (+ pre-M1 derive) | `scan-with-mta`, inventory, `derive-legacy-boot3`; write `evidence/` analysis + findings | Edit modernized app source; invent findings; waive without `mta-exception`; edit legacy/derived; `/speckit-implement` |
 | **Planning** | M2a | Stories/briefs; roadmap deps per §S.6; re-plan graph under same identity | Destination app code; silent identity change; IMPLEMENT; author constitution/`AGENTS.md` |
 | **Spec-writing** | M2b | `/speckit-specify\|plan\|tasks\|analyze`; Non-Goals; `tasks.md` → `kanban_create` | `/speckit-implement`; expand scope/AC/Non-Goals without escalate; app source outside SDD paths |
 | **Implementing** | M3 | Edit `files_in_scope` only; task-id commits; stop → `blocked` | Re-plan; legacy/derived; `.hermes/skills/**`, `SOUL.md`, Managed Scope; invent units; weaken gates/tests |
@@ -39,8 +39,8 @@ the safe root).
 |---------|------------|
 | `/projects/legacy`, frozen `legacy-at-3` | **nobody** (derive once then freeze) |
 | Modernized app tree | **Implementing** tasks only, `files_in_scope` |
-| `migration/` analysis / briefs / specs | Examining / Planning / Spec-writing (their fields) |
-| `migration/` verdicts / delta | Checking |
+| `evidence/` analysis / briefs | Examining / Planning (their fields) |
+| `evidence/` verdicts / delta | Checking |
 | `.specify/` / `specs/` | Spec-writing |
 | `.hermes/skills/**`, Managed Scope, `.env` | **nobody** (steering humans via PR) |
 

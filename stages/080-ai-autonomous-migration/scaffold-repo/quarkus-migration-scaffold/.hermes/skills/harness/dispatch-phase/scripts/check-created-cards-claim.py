@@ -31,13 +31,6 @@ def derived_path(root: Path, parent: str) -> Path:
 
 
 def partition_path(root: Path) -> Path:
-    for rel in (
-        "evidence/briefs/partition.json",
-        "migration/briefs/partition.json",
-    ):
-        p = root / rel
-        if p.is_file():
-            return p
     return root / "evidence" / "briefs" / "partition.json"
 
 
@@ -74,34 +67,25 @@ def derived_story_ids(cards: list[dict]) -> set[str]:
 
 
 def partition_story_ids(root: Path) -> set[str]:
-    """Prefer Deputy F8a truth: specs/*/tasks.md Phase headers; else partition.json."""
-    import re
-
-    part: set[str] = set()
-    specs = list(root.glob("specs/*/tasks.md"))
-    if not specs:
-        specs = [p for p in root.glob("**/specs/*/tasks.md") if p.is_file()]
-    for tasks in specs:
-        text = tasks.read_text(encoding="utf-8", errors="replace")
-        part |= set(re.findall(r"^## Phase \d+: (S-\d+[a-zA-Z0-9-]*)", text, re.M))
-    if part:
-        return part
+    """Identity is partition.json stories[].story_id (SR-9). Not titles, not filenames."""
     path = partition_path(root)
     if not path.is_file():
-        raise FileNotFoundError(
-            f"missing partition at {path} (and no specs/*/tasks.md)"
-        )
+        raise FileNotFoundError(f"missing partition at {path}")
     data = json.loads(path.read_text(encoding="utf-8"))
     stories = data.get("stories") if isinstance(data, dict) else None
     if not isinstance(stories, list):
         raise ValueError(f"partition missing stories[]: {path}")
     out: set[str] = set()
-    for s in stories:
+    for i, s in enumerate(stories):
         if not isinstance(s, dict):
-            continue
-        sid = str(s.get("story_id") or s.get("id") or "").strip()
-        if sid:
-            out.add(sid)
+            raise ValueError(f"partition stories[{i}] is not an object: {path}")
+        sid = str(s.get("story_id") or "").strip()
+        if not sid:
+            raise ValueError(
+                f"partition stories[{i}] missing story_id (SR-9 — do not "
+                f"derive from title or id): {path}"
+            )
+        out.add(sid)
     return out
 
 
@@ -167,8 +151,8 @@ def check_partition(root: Path, parent: str, *, mode: str) -> int:
         )
         return 1
     print(
-        f"OK: partition == minted story_ids (tasks.md|partition.json ↔ created-story-cards) "
-        f"({len(wanted)} stories; parent={parent}) — F8a"
+        f"OK: partition == minted story_ids (partition.json story_id ↔ created-story-cards) "
+        f"({len(wanted)} stories; parent={parent}) — F8a/SR-9c"
     )
     return 0
 

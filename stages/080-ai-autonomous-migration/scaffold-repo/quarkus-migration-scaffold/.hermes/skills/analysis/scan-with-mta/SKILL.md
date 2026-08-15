@@ -5,7 +5,7 @@ license: Apache-2.0
 compatibility: Linux seat; kantra CLI and Java 21; network for rule bundles
 metadata:
   author: rhoai3-harness-team
-  version: "1.2.0"
+  version: "1.3.0"
   hermes:
     tags:
     - analysis
@@ -89,8 +89,9 @@ What it does, in order (each step dies non-zero on failure):
    `codeSnip`), then `check-findings-handoff.py <root>` as the gate.
    See `governance/schemas/findings-handoff.md`.
 
-Defaults: `MTA_OUT_DIR=migration/mta-analyze-out`,
+Defaults: `MTA_OUT_DIR=evidence/mta`,
 `MTA_JSON_OUT=evidence/mta-findings.json`, both under the project root.
+Do **not** write under `migration/` (GRT-retired; SR-8a).
 
 AD-H §16.7 / AR-4.1–4.2: inventory digest **required** before emit; each rule
 carries bounded `description` + `disposition`; optional
@@ -151,7 +152,7 @@ Both are required environment facts, not optional tuning.
   = `legacy-at-3:<manifest sha256>`. Re-run `validate-findings-schema.py` for
   the assertion: every incident carries `uri`, `lineNumber`, `message`,
   `codeSnip`; every violation carries `category`.
-- `evidence/mta-analyze-out/output.json` exists (raw analyzer report kept
+- `evidence/mta/output.json` exists (raw analyzer report kept
   beside the normalized envelope).
 - `evidence/findings-handoff.json` passes
   `python3 "${HERMES_SKILL_DIR}/scripts/check-findings-handoff.py" .` — exit 0.

@@ -97,6 +97,8 @@ REQUIRED_FILES = [
     ".hermes/skills/harness/validate-contracts/scripts/check-skill-conformance.py",
     ".hermes/skills/harness/validate-contracts/scripts/check-sr2-sentinel-root.py",
     ".hermes/skills/harness/validate-contracts/scripts/check-sr12-root-allowlist.py",
+    ".hermes/skills/harness/validate-contracts/scripts/check-sr8-path-producers.py",
+    ".hermes/skills/harness/validate-contracts/references/path-producers.json",
     ".hermes/skills/harness/dispatch-phase/scripts/read-phase-dispatch.py",
     ".hermes/skills/harness/enforce-authority-boundary/scripts/write-set-hook.py",
     ".hermes/skills/harness/dispatch-phase/scripts/resolve-seat-assignee.py",
@@ -231,6 +233,16 @@ REQUIRED_SUBSTRINGS = [
         ".hermes/skills/harness/validate-contracts/scripts/validate.sh",
         "SR-12 refuses root tmp/",
         "SR-12 allow-list sees directories (LG5)",
+    ),
+    (
+        ".hermes/skills/harness/validate-contracts/scripts/validate.sh",
+        "SR-8 refuses retired migration/",
+        "SR-8 path-provenance lint (SR-8a)",
+    ),
+    (
+        ".hermes/skills/analysis/scan-with-mta/scripts/mta-analyze-legacy.sh",
+        "${ROOT}/evidence/mta",
+        "SR-8a MTA output under evidence/ (not retired migration/)",
     ),
     (
         ".hermes/skills/harness/validate-contracts/scripts/validate.sh",

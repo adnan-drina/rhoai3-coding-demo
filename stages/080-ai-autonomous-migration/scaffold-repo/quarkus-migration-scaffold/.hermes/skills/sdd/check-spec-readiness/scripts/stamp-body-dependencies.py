@@ -79,7 +79,7 @@ def provider_map(bodies_dir: Path, norm_file) -> dict[str, str]:
     own: dict[str, str] = {}
     if not bodies_dir.is_dir():
         return own
-    for path in sorted(bodies_dir.glob("m3-*.json")):
+    for path in sorted(bodies_dir.glob("*.json")):
         if path.name.endswith(".sha256.json"):
             continue
         data = load_json(path)

@@ -69,7 +69,7 @@ from a pointer README).
 | Guidance procedures | `.hermes/skills/<category>/<name>/` (card-attachable) |
 | Enforcement scripts | `.hermes/skills/harness/<name>/` (path-invoke only — not `skills[]`) |
 | Domain gates G-1..G-4 | skill `check-domain-parity` (router below) |
-| Run / phase data | `migration/` |
+| Run / phase data | `evidence/` (SR-8 producers; retired `migration/` must not reappear) |
 | SDD stack | `.specify/` (workspace provision only — AD-S) |
 | Destination POM authoring | skill `bootstrap-quarkus-project` (create-app path retired DD1) |
 

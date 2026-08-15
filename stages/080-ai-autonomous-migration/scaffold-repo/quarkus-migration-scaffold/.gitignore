@@ -16,7 +16,9 @@ evidence/derived/created-cards-*.json
 # Live analysis / inventory outputs (regenerated in workspace)
 evidence/entry-point-inventory.json
 evidence/mta-findings.json
-evidence/mta-analyze-out/
+evidence/mta/
+# Do not gitignore migration/ — GRT retired it; SR-8 flags resurrection
+# (SR-8a). Ignoring the path would greenwash the MTA writer.
 
 # Maven / Quarkus build output
 target/

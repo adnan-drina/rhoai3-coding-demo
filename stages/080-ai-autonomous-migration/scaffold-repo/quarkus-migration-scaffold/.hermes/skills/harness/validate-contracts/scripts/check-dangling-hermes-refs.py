@@ -54,7 +54,7 @@ ALLOW_PREFIXES = (
     "evidence/verdicts/",
     "evidence/bodies/",
     "evidence/briefs/",
-    "evidence/mta-analyze-out/",
+    "evidence/mta/",
     "evidence/slices/",
     "evidence/preflight/",
     "evidence/fixtures/admission/out/",

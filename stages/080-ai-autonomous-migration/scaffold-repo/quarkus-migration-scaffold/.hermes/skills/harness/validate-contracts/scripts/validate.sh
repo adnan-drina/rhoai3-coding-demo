@@ -1749,6 +1749,18 @@ else
   echo "OK: SR-12 refuses root tmp/ via iterdir (LG5)"
 fi
 rm -rf "${sr12_bad}"
+echo "== SR-8 path producers (declared producer, not a deny-list) =="
+python3 "${SKILL_DIR}/scripts/check-sr8-path-producers.py" --root "${ROOT}" --mode golden || rc=1
+sr8_bad="$(mktemp -d "${TMPDIR:-/tmp}/sr8-retired.XXXXXX")"
+mkdir "${sr8_bad}/migration"
+SR8_TABLE="${SKILL_DIR}/references/path-producers.json"
+if python3 "${SKILL_DIR}/scripts/check-sr8-path-producers.py" --root "${sr8_bad}" --table "${SR8_TABLE}" --mode golden >/dev/null 2>&1; then
+  echo "FAIL: SR-8 should refuse a resurrected migration/ directory (SR-8a)" >&2
+  rc=1
+else
+  echo "OK: SR-8 refuses retired migration/ (SR-8a)"
+fi
+rm -rf "${sr8_bad}"
 echo "== LG7 phase-dispatch parser is JSON, not eval =="
 READER="${HARNESS}/dispatch-phase/scripts/read-phase-dispatch.py"
 if python3 "${READER}" --yaml "${ROOT}/.hermes/phase-dispatch.yaml" --phase M3 >/dev/null; then
