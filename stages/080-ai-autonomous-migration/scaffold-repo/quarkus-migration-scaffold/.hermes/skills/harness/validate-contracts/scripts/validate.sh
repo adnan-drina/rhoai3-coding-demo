@@ -1433,7 +1433,7 @@ def body(**kw):
 
 
 errs = exit_cmd_discriminating_errors(dest, body())
-expect(bool(errs) and "vacuous" in errs[0], "vacuous mvn -q test refused")
+expect(bool(errs) and "proving test" in errs[0], "vacuous mvn -q test refused")
 
 errs = exit_cmd_discriminating_errors(
     dest,
@@ -1454,7 +1454,42 @@ testp = dest / "src/test/java/x/ExistingTest.java"
 testp.parent.mkdir(parents=True)
 testp.write_text("class ExistingTest {}\n", encoding="utf-8")
 errs = exit_cmd_discriminating_errors(dest, body())
-expect(errs == [], "mvn test with remaining test source can fail")
+expect(
+    bool(errs) and "proving test" in errs[0],
+    "L2a unrelated remaining test does not satisfy SR-13",
+)
+named = body(
+    files_writable=[
+        "src/main/java/x/Foo.java",
+        "src/test/java/x/FooTest.java",
+    ],
+    exit_criteria=[
+        {
+            "check": "http_semantics",
+            "cmd": "mvn -q test",
+            "proves": ["src/test/java/x/FooTest.java"],
+        }
+    ],
+)
+errs = exit_cmd_discriminating_errors(dest, named)
+expect(
+    errs == [],
+    "L2a named proving test in write-set passes despite unrelated dest test",
+)
+stolen = body(
+    exit_criteria=[
+        {
+            "check": "http_semantics",
+            "cmd": "mvn -q test",
+            "proves": ["src/test/java/x/ExistingTest.java"],
+        }
+    ]
+)
+errs = exit_cmd_discriminating_errors(dest, stolen)
+expect(
+    bool(errs) and "files_writable" in errs[0],
+    "L2a proves outside this write-set refused",
+)
 testp.unlink()
 
 fit = Path(tempfile.mkdtemp())
@@ -1466,7 +1501,10 @@ fit = Path(tempfile.mkdtemp())
     encoding="utf-8",
 )
 errs = exit_cmd_discriminating_errors(fit, body())
-expect(errs == [], "failIfNoTests=true can fail (not a mint recipe)")
+expect(
+    bool(errs) and "proving test" in errs[0],
+    "failIfNoTests=true is not a mint recipe (L2a/L4)",
+)
 
 expect(
     bool(minted_task_id_errors({"task_id": "story-006"})),

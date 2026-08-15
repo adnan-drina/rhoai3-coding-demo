@@ -9,9 +9,11 @@ transform_class from the closed operand_class map, measured operand_count,
 brief_identity_ack pending, legacy_locus digest **and path** of the harvest
 file that was hashed (not a dest-relative alias). Mint refuses unless
 sha256(resolve(path)) equals the stamped digest (pending fail-closed except
-creation-time ack keys). SR-13: `mvn … test` that cannot fail on the
-pre-story tree (no remaining src/test sources, failIfNoTests unset) refuses
-— do not invent a better cmd here (L4). DD3: every story gets identity.extensions_declared
+creation-time ack keys). SR-13/L2a: a test-shaped `mvn … test` must name
+`proves` test source(s) in this story's write-set — an unrelated dest
+`src/test` file must not satisfy the oracle. Assembler copies test paths
+already in `files_writable` onto `proves`; it does not invent a test file
+(L4). DD3: every story gets identity.extensions_declared
 (T-3 path heuristic); the sole pom.xml writer gets identity.extensions_apply
 = sorted unique union. Non-writers omit extensions_apply (key absent).
 
@@ -34,8 +36,10 @@ from specimen_agnostic import (  # noqa: E402
     OPERAND_CLASS_SEMANTIC_EXITS,
     PREFERRED_SEMANTIC_EXIT_CMD,
     exit_cmd_discriminating_errors,
+    is_test_source_rel,
     preferred_semantic_exit_for,
     refs_path_sha_errors,
+    semantic_exit_cmd_is_maven,
     semantic_exit_cmd_ok,
     stamp_dd3_extensions,
 )
@@ -147,6 +151,12 @@ def assemble_one(story: dict, root: Path, *, measured_operands) -> dict:
             "(stamp `mvn -q compile` or `mvn -q test`; prose belongs in assert; "
             "evaluator runs cmd via shell=True)"
         )
+    semantic_exit: dict = {"check": check, "cmd": cmd}
+    ok_mvn, mvn_parts = semantic_exit_cmd_is_maven(cmd)
+    if ok_mvn and mvn_parts and mvn_parts[-1] == "test":
+        proves = [p for p in fis if is_test_source_rel(p)]
+        if proves:
+            semantic_exit["proves"] = proves
 
     ident_src = story.get("identity") if isinstance(story.get("identity"), dict) else {}
     tc = str(
@@ -174,7 +184,7 @@ def assemble_one(story: dict, root: Path, *, measured_operands) -> dict:
         "files_in_scope": fis,
         "files_writable": list(fis),
         "exit_criteria": [
-            {"check": check, "cmd": cmd},
+            semantic_exit,
             dict(SKILLS_EXIT),
         ],
         "refs": [

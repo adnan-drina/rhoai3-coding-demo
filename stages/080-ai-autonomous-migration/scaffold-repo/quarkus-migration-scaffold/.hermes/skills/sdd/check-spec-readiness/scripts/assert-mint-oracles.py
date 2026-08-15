@@ -11,11 +11,11 @@ corrected body (SR-6 both ways).
   2. task_id — body.task_id is a Hermes card id (`t_<hex>`). After create,
      it must equal the card just minted. Do not require t_* in
      check-kanban-body pre-create (assembler stamps story_id first).
-  3. discriminating exit — run (statically prove) the cmd against the
-     pre-story tree (dest minus files_writable). Exit 0 ⇒ refuse.
-     `true` and vacuous `mvn -q test` (no remaining src/test sources,
-     surefire failIfNoTests unset) are the historical negatives.
-     Golden must not require mvn on PATH.
+  3. discriminating exit — a test-shaped `mvn … test` must name `proves`
+     test source(s) in this body's `files_writable` (L2a). `true` and a
+     test cmd with no named proving test refuse. An unrelated dest
+     `src/test` file must not flip the oracle. Compile-shaped cmds are
+     unchanged. Golden must not require mvn on PATH.
 
 Usage:
   python3 assert-mint-oracles.py . --body evidence/bodies/m3-s-003.json

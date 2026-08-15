@@ -23,9 +23,9 @@ created the FK / schema / route). Executable but not informative about **this**
 story.
 
 **Rule:** prefer before/after delta, or scope the claim to artifacts in **this**
-body's `files_writable`. Mint-time: `assert-mint-oracles.py` refuses a cmd
-that already exits 0 on the pre-story tree (SR-13 — vacuous `mvn -q test`
-on a dest with no remaining `src/test` sources).
+body's `files_writable`. Mint-time: `assert-mint-oracles.py` refuses a
+test-shaped cmd that does not name `proves` test source(s) in this write-set
+(SR-13 / L2a). An unrelated dest `src/test` file must not satisfy the oracle.
 
 ## 3. Comment-satisfiable oracle
 

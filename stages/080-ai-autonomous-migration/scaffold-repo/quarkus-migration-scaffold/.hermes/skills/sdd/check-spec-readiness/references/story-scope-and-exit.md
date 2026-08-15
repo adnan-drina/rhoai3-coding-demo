@@ -23,13 +23,14 @@ including the **relationship** between them (T-8 / v17 wrong-class oracles).
 3. **Sizing / wall-fit** — `check-operand-count.py --wall-fit`.
 4. **Complete-cmd / product / DB security** — respective gates under
    check-spec-readiness / check-domain-parity / check-release-readiness.
-5. **SR-13 discriminating exit (L2 mint)** — `assert-mint-oracles.py`.
-   `exit_criteria[].cmd` must be able to fail on the pre-story tree
-   (dest minus `files_writable`). `true` and vacuous `mvn -q test` (no
-   remaining `src/test` sources; surefire `failIfNoTests` unset) refuse.
-   Shape (`shlex` + `mvn`) is necessary and not sufficient. Golden does
-   not require `mvn` on PATH. Do not stamp `failIfNoTests=true` as a mint
-   recipe (test-framework gap is L4).
+5. **SR-13 discriminating exit (L2 mint / L2a)** — `assert-mint-oracles.py`.
+   A test-shaped `exit_criteria[].cmd` (`mvn … test`) must name `proves`
+   test source(s) that sit in **this** `files_writable`. An unrelated dest
+   `src/test` file must not satisfy the oracle. `true` and a test cmd with
+   no named proving test refuse. Compile-shaped cmds are unchanged. Shape
+   (`shlex` + `mvn`) is necessary and not sufficient. Golden does not
+   require `mvn` on PATH. Do not stamp `failIfNoTests=true` as a mint
+   recipe (the story that needs a test is the story that adds it).
 
 ## Bank vocabulary (tip-sync / doctrine pins)
 

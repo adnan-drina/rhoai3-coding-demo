@@ -5,7 +5,7 @@ license: Apache-2.0
 compatibility: Linux seat; Python 3.11+; reads migration/ specs and bodies
 metadata:
   author: rhoai3-harness-team
-  version: "1.3.0"
+  version: "1.4.0"
   hermes:
     tags:
     - sdd
@@ -24,7 +24,8 @@ metadata:
 - When a body's `exit_criteria`, `files_in_scope`, or `operand_count` changed —
   these are the fields the gates refuse on.
 - Before `create-m3-implementer` or assemble — `assert-mint-oracles.py` (refs,
-  Hermes `task_id`, SR-13 discriminating exit on the pre-story tree).
+  Hermes `task_id`, SR-13/L2a discriminating exit: test-shaped cmds name
+  `proves` tests in this write-set).
 - **Not** for creating `.specify/` or installing `specify-cli` — that is
   `init-spec-workspace`. This skill reads artifacts and writes only receipts
   and stamps you explicitly ask for.
@@ -97,6 +98,8 @@ Do **not** invoke DD4-retired R-M3.5/7 stubs (`check-persistence-bom.py`,
   stop: never implement via Spec Kit).
 - Skipping JDBC preflight before first `repository/jdbc/**` write.
 - Reading retired R-M3.5/7 persistence/compile preflight stubs as live gates.
+- Treating any dest `src/test` file as proof a `mvn … test` exit can fail —
+  L2a: name the proving test in this `files_writable`.
 
 ## Verification
 
@@ -122,9 +125,10 @@ Do **not** invoke DD4-retired R-M3.5/7 stubs (`check-persistence-bom.py`,
   `http_endpoint_count`. Only `VALID` exits 0 — `INCONCLUSIVE` (no story files
   found) is not a pass.
 - `assert-mint-oracles.py --body` exits 0 only when refs resolve, `task_id` is
-  a Hermes card id (or `--skip-task-id` pre-create), and every `cmd` can fail
-  on dest minus `files_writable`. `--corpus DIR` exits 0 only when **every**
-  body fails at least one oracle.
+  a Hermes card id (or `--skip-task-id` pre-create), and every test-shaped
+  `cmd` names `proves` test source(s) in this `files_writable` (L2a). An
+  unrelated dest `src/test` file must not pass. `--corpus DIR` exits 0 only
+  when **every** body fails at least one oracle.
 - Exit condition for the gate: every command above exits 0 **and** reports a
   non-zero artifact/body count. All-idle output on a populated workspace is a
   path defect to fix before dispatch.

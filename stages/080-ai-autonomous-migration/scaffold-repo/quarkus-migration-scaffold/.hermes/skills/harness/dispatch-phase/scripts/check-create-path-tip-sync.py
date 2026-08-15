@@ -901,6 +901,11 @@ REQUIRED_SUBSTRINGS = [
         "pre-story tree",
         "L2 discriminating-exit evaluates dest minus write-set",
     ),
+    (
+        ".hermes/skills/harness/validate-contracts/scripts/validate.sh",
+        "L2a unrelated remaining test does not satisfy SR-13",
+        "L2a per-story proving test (Deputy E-20260815T014500Z)",
+    ),
 ]
 
 

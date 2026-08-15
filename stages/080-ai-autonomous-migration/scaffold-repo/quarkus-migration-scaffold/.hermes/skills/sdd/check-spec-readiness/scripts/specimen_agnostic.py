@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import re
 import shlex
 from pathlib import Path
@@ -830,28 +829,15 @@ def stamp_dd3_extensions(bodies: list[dict]) -> None:
 # L2 mint oracles — SR-13 discriminating exit + Hermes task_id identity
 # Operator E-20260815T010500Z / Lead L2 entry gate.
 # shlex+mvn is necessary (semantic_exit_cmd_ok) and not sufficient: `true`
-# and vacuous `mvn -q test` (no remaining src/test sources, surefire
-# failIfNoTests unset) both satisfy the shape lint and exit 0 on the
-# pre-story tree. Executable-and-undiscriminating is worse than unexecutable.
+# and a test-shaped cmd with no named proving test in this write-set both
+# satisfy the shape lint while asserting nothing about this story. An
+# unrelated dest src/test file must not flip the oracle (L2a /
+# E-20260815T014500Z). Provenance over mint-time Maven invocation.
 # ---------------------------------------------------------------------------
 
 CARD_TASK_ID_RE = re.compile(r"^t_[0-9a-f]{8,}$")
 ALWAYS_OK_CMD_TOKENS = frozenset({"true", ":", "true.exe"})
 _TEST_SOURCE_SUFFIXES = {".java", ".kt", ".scala"}
-_WALK_SKIP_DIR_NAMES = frozenset(
-    {
-        ".git",
-        ".hermes",
-        ".derived",
-        "target",
-        "node_modules",
-        "evidence",
-        "__pycache__",
-    }
-)
-_FAIL_IF_NO_TESTS_RE = re.compile(
-    r"<failIfNoTests>\s*true\s*</failIfNoTests>", re.I
-)
 
 
 def _rel_posix(path: str) -> str:
@@ -901,43 +887,23 @@ def is_test_source_rel(rel: str) -> bool:
     return n.startswith("src/test/") or "/src/test/" in n
 
 
-def remaining_test_sources(root: Path, writable: set[str]) -> list[str]:
-    """Test sources still present after subtracting files_writable."""
+def proving_test_rels(exit_item: dict) -> tuple[list[str], str | None]:
+    """Named tests that prove this exit (L2a). Missing key → empty, not error."""
+    if not isinstance(exit_item, dict) or "proves" not in exit_item:
+        return [], None
+    raw = exit_item.get("proves")
+    if isinstance(raw, str):
+        items = [raw]
+    elif isinstance(raw, list):
+        items = raw
+    else:
+        return [], "proves must be a string or list of dest-relative test paths"
     out: list[str] = []
-    root = Path(root)
-    if not root.is_dir():
-        return out
-    for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [d for d in dirnames if d not in _WALK_SKIP_DIR_NAMES]
-        for name in filenames:
-            p = Path(dirpath) / name
-            if not p.is_file():
-                continue
-            try:
-                rel = p.relative_to(root).as_posix()
-            except ValueError:
-                continue
-            if _path_excluded(rel, writable):
-                continue
-            if is_test_source_rel(rel):
-                out.append(rel)
-    return out
-
-
-def pre_tree_pom(root: Path, writable: set[str]) -> Path | None:
-    """Root pom.xml if it remains in the pre-story tree."""
-    if _path_excluded("pom.xml", writable):
-        return None
-    pom = Path(root) / "pom.xml"
-    return pom if pom.is_file() else None
-
-
-def pom_fail_if_no_tests(pom: Path) -> bool:
-    try:
-        text = pom.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return False
-    return bool(_FAIL_IF_NO_TESTS_RE.search(text))
+    for item in items:
+        if not isinstance(item, str) or not item.strip():
+            return [], "proves entries must be non-empty strings"
+        out.append(_rel_posix(item))
+    return out, None
 
 
 def minted_task_id_errors(
@@ -966,25 +932,23 @@ def minted_task_id_errors(
 
 
 def exit_cmd_discriminating_errors(root: Path, body: dict) -> list[str]:
-    """SR-13: cmd must be able to fail on the pre-story tree (dest − write-set).
+    """SR-13 / L2a: cmd must be able to fail *for this story*.
 
     Static (no mvn on PATH — golden must not require it):
       * first token `true` / `:` → always succeeds → refuse
-      * `mvn … test` with zero remaining src/test sources and pom not
-        failIfNoTests=true → vacuous → refuse
-      * `mvn … test` or `compile` with no pom in the pre-tree → can fail → pass
-      * `mvn … compile` with a remaining pom → static cannot prove vacuity;
-        optional empirical run is env-gated (MINT_ORACLE_RUN_CMD=1)
+      * `mvn … test` must name `proves` test source(s) that sit in
+        **this** `files_writable`. An unrelated dest `src/test` file must
+        not satisfy the oracle (Deputy E-20260815T014500Z).
+      * `mvn … compile` is not test-shaped; remaining pom / no pom as before.
+      * surefire `failIfNoTests=true` is not a mint recipe (L4).
 
-    Do not stamp failIfNoTests=true as a mint recipe (L4 / test-framework gap).
+    Provenance over mint-time Maven invocation.
     """
     errs: list[str] = []
     writable = files_writable_rels(body)
     exits = (body or {}).get("exit_criteria") or (body or {}).get("done_when") or []
     if not isinstance(exits, list):
         return ["exit_criteria must be a list"]
-    remaining = remaining_test_sources(root, writable)
-    pom = pre_tree_pom(root, writable)
     for x in exits:
         if not isinstance(x, dict):
             continue
@@ -1015,18 +979,32 @@ def exit_cmd_discriminating_errors(root: Path, body: dict) -> list[str]:
         ok, mvn_parts = semantic_exit_cmd_is_maven(s)
         if not ok or not mvn_parts:
             continue
-        goal = mvn_parts[-1]
-        if goal != "test":
+        if mvn_parts[-1] != "test":
             continue
-        if pom is None:
+        proves, perr = proving_test_rels(x)
+        if perr:
+            errs.append(
+                f"exit {check!r} cmd {cmd!r} {perr} "
+                "(L2a per-story test provenance refuse)"
+            )
             continue
-        if remaining:
+        if not proves:
+            errs.append(
+                f"exit {check!r} cmd {cmd!r} names no proving test "
+                "(L2a: a test-shaped exit must name the test in this "
+                "files_writable; an unrelated src/test file cannot satisfy SR-13)"
+            )
             continue
-        if pom_fail_if_no_tests(pom):
-            continue
-        errs.append(
-            f"exit {check!r} cmd {cmd!r} is vacuous on the pre-story tree "
-            "(no remaining src/test sources; surefire failIfNoTests not true; "
-            "SR-13 discriminating-exit refuse)"
-        )
+        for rel in proves:
+            if not is_test_source_rel(rel):
+                errs.append(
+                    f"exit {check!r} proves {rel!r} is not a test source "
+                    "(L2a per-story test provenance refuse)"
+                )
+                continue
+            if not _path_excluded(rel, writable):
+                errs.append(
+                    f"exit {check!r} proves {rel!r} is not in this "
+                    "files_writable (L2a per-story test provenance refuse)"
+                )
     return errs
