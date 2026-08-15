@@ -2,7 +2,7 @@
 name: maintain-rules-and-skills
 metadata:
   author: rhoai3-coding-demo
-  version: 3.0.0
+  version: 3.1.0
   platform-family: "rhoai"
   platform-baseline: "repo"
   ocp-baseline: "repo"
@@ -84,6 +84,16 @@ Use `project-red-hat-doc-skill-authoring` for new `rhoai-*`, `ocp-*`, and `odf-*
 - Put multi-step procedures in `.agents/skills/`
 
 ### Creating a Skill
+
+**Consult `agentskills-authoring` FIRST** — it encodes the official
+agentskills.io standard that `.agents/skills/` is the default discovery
+path for. Its format constraints are binding (name ≤64 chars,
+lowercase-hyphen, matching the folder; description ≤1024 chars; SKILL.md
+under 500 lines with depth in `references/`). Use
+`agentskills-descriptions` for the description field and
+`agentskills-evaluation` before landing a substantial skill. The
+conventions below are this repo's additions on top — stricter, never
+looser.
 
 - `name` in frontmatter MUST match the parent folder name
 - Include `metadata` with `version`, `platform-family`, `platform-baseline`, `ocp-baseline`, and `skill-group`
