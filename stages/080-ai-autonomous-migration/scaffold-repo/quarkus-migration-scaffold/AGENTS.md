@@ -67,7 +67,7 @@ from a pointer README).
 | Standing conventions | this `AGENTS.md` only (`agent.coding_instructions` unused) |
 | Identity | authored `.hermes/SOUL.md` → loaded `$HERMES_HOME/SOUL.md` (factory places + sha256-verifies) |
 | Guidance procedures | `.hermes/skills/<category>/<name>/` (card-attachable) |
-| Enforcement scripts | `.hermes/enforcement/<name>/` (path-invoke only — not `skills[]`) |
+| Enforcement scripts | `.hermes/skills/harness/<name>/` (path-invoke only — not `skills[]`) |
 | Domain gates G-1..G-4 | skill `check-domain-parity` (router below) |
 | Run / phase data | `migration/` |
 | SDD stack | `.specify/` (workspace provision only — AD-S) |
@@ -80,9 +80,12 @@ from a pointer README).
 | `$HERMES_MANAGED_DIR` | Platform config + secrets — not in this repo |
 | `$HERMES_HOME` → `.hermes/home/` | Runtime (sessions/logs gitignored) |
 | `.hermes/skills/` | Scaffold golden **guidance** skills on `skills.external_dirs` (R-SK.9) |
-| `.hermes/enforcement/` | Harness enforcement packages (path-invoke; not progressive-disclosure attach) |
+| `.hermes/skills/harness/` | Harness enforcement packages (path-invoke; not progressive-disclosure attach) |
+| Seat Kanban assignees | Named Hermes profiles `analyzer`/`planner`/`implementer`/`validator` (EX-4). Not `default`. Pillar heads stay Cursor. |
 | Hermes config | **Not yours to change.** Factory-owned / write-fenced (AD-013). Raise typed `needs_input` — never edit Managed Scope |
-| `.hermes/enforcement/validate-contracts/` | Land-time lint (R-SK.*); naming law in `references/skill-naming-convention.md` |
+| Seat constraint layers | EX-5 overlays: `approvals.deny` (survives `mode: off`), `HERMES_WRITE_SAFE_ROOT` in managed `.env`, `terminal.backend: local`. Do not retire the write-set hook. |
+| Phase DAG | Kanban `--parent` / `link` graph (`hermes kanban show --json` parents/children). Not card titles. `evidence/derived/phase-*-task-id.txt` is a Review pointer only. |
+| `.hermes/skills/harness/validate-contracts/` | Land-time lint (R-SK.*); naming law in `references/skill-naming-convention.md` |
 | `~/.hermes/skills/` | Also on `external_dirs` (spec-kit `Path.home()` install) |
 | `.hermes/provision/` | Provision assets (e.g. Spec Kit Non-Goals override) |
 
@@ -101,7 +104,7 @@ When evidence and intent diverge: stop the current scope, emit a typed block /
 
 **Unconditional (always on — not a skill):**
 
-1. **Never patch `.hermes/enforcement/**`** (or any gate/lint to make a red check
+1. **Never patch `.hermes/skills/harness/**`** (or any gate/lint to make a red check
    green). Enforcement is Lead/Operator territory. A-1: the write fence locks
    that tree read-only for implementers.
 2. On any gate refusal you **cannot** resolve **within your `files_writable`**,
@@ -129,7 +132,6 @@ can keep writing for hours (v17 S-001). To stop a session:
 bash .hermes/home/scripts/stop-worker-session.sh [--kind needs_input] <task_id> "<reason>"
 ```
 
-Then sweep: `python3 .hermes/home/scripts/assert-no-residual-workers.py .`
 Contract: `.hermes/platform/known-hermes-behaviours.md`. Never report
 containment from board block alone.
 
@@ -162,7 +164,7 @@ When a skill is loaded, prefer `"${HERMES_SKILL_DIR}/scripts/…"`.
 
 | Governs | Skill / package | Authoritative |
 |---------|-----------------|---------------|
-| Task-type preload, one-task-one-type, ack artifacts | `enforce-authority-boundary` *(enforcement)* | `.hermes/enforcement/enforce-authority-boundary/references/task-authority.md` |
+| Task-type preload, one-task-one-type, ack artifacts | `enforce-authority-boundary` *(enforcement)* | `.hermes/skills/harness/enforce-authority-boundary/references/task-authority.md` |
 | Citation / no-invention write fence | `ground-in-harvest` *(enforcement)* | write-fence + citation gates |
 | Phase matrix, verdict legality, M4/M5 routing | `check-release-readiness` | phase-dispatch + skill (doctrine) |
 | G-1..G-4 measurement oracles | `check-domain-parity` | skill `SKILL.md` + gate scripts |

@@ -208,7 +208,13 @@ PY
 elif [[ -d "${PARITY_DIR}/known-good" ]]; then
   # tip/scaffold admission fixtures — prove evaluator wiring, not product parity
   if python3 "${G4_EVAL}" "${PRODUCT_ROOT}" >/dev/null 2>&1 \
-    || python3 "${G4_EVAL}" "$(cd "${SCRIPT_DIR}/../../../.." && pwd)" >/dev/null 2>&1; then
+    || python3 "${G4_EVAL}" "$(
+         d="${SCRIPT_DIR}"
+         while [ "$d" != "/" ]; do
+           if [ -f "$d/migration.yaml" ]; then printf '%s\n' "$d"; break; fi
+           d="$(dirname "$d")"
+         done
+       )" >/dev/null 2>&1; then
     G4_RESULT="INCONCLUSIVE"
     G4_NOTE="admission fixtures evaluated; product G-4 still SAMPLE/INCONCLUSIVE until harvested parity"
   else

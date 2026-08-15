@@ -4,9 +4,11 @@ Structure-only fragments grounded in official RHBQ / quarkus.io Maven
 tooling chapters. **Do not paste version literals** — substitute from
 `.hermes/pins.json`.
 
-Story `<dependencies>` stay empty at mint (DD3). Foundation Jacoco /
-Sonar wiring is **not** a story extension — see
-`../bootstrap-quarkus-project/references/foundation-jacoco-wiring.md`.
+Story `<dependencies>` on the sole `pom.xml` writer carry foundation
+Jacoco / Sonar wiring **and** `identity.extensions_apply` (sorted unique
+union of every story's `identity.extensions_declared`, DD3
+Architect E-20260814T205052Z). Later stories do not write `pom.xml`.
+See `../bootstrap-quarkus-project/references/foundation-jacoco-wiring.md`.
 
 ## Properties
 
@@ -49,8 +51,9 @@ plugin config — not both).
 
 ```xml
 <dependencies>
-  <!-- INTENTIONALLY EMPTY for story extensions — manage-quarkus-extensions.
-       Exception: quarkus-jacoco test-scope (foundation-jacoco-wiring.md). -->
+  <!-- Foundation Jacoco: foundation-jacoco-wiring.md.
+       Story extensions: identity.extensions_apply on the sole pom.xml writer
+       (DD3 declare/apply/own). Later stories do not write this file. -->
 </dependencies>
 ```
 

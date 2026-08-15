@@ -102,7 +102,7 @@ G1_OPERAND=tooling_smoke bash "${HERMES_SKILL_DIR}/scripts/count-pit-dry-run.sh"
 
 # Parse an existing mutations.xml (fail closed if missing/empty)
 python3 "${HERMES_SKILL_DIR}/scripts/parse-pit-mutations.py" \
-  .hermes/enforcement/validate-contracts/fixtures/pit-dry-run/mutations.xml
+  .hermes/skills/harness/validate-contracts/fixtures/pit-dry-run/mutations.xml
 ```
 
 ## G-1 kill-ratio pin (plan #8) — live PIT only

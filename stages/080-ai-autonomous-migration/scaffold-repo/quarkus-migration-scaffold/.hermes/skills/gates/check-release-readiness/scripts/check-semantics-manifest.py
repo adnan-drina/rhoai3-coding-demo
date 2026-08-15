@@ -360,10 +360,19 @@ def main() -> int:
     contract = root / CONTRACT_REL
     if not contract.is_file():
         # fixture trees may omit the contract file; resolve from script → scaffold
-        scaffold = Path(__file__).resolve().parents[5]
-        alt = scaffold / CONTRACT_REL
-        if alt.is_file():
-            contract = alt
+        cur = Path(__file__).resolve().parent
+        scaffold = None
+        while True:
+            if (cur / "migration.yaml").is_file():
+                scaffold = cur
+                break
+            if cur == cur.parent:
+                break
+            cur = cur.parent
+        if scaffold is not None:
+            alt = scaffold / CONTRACT_REL
+            if alt.is_file():
+                contract = alt
     if contract.is_file():
         # touch read for tooling; keep a visible stdout citation
         _ = contract.read_text(encoding="utf-8")[:80]

@@ -37,7 +37,7 @@ reported blockage is a correct outcome, and improvising is not.
 If an input is wrong, report it and stop. Do not repair another task's output
 to make your own possible. The task that owns it will fix it.
 
-**Refusal doctrine (DD5 — always on):** never patch `.hermes/enforcement/**`
+**Refusal doctrine (DD5 — always on):** never patch `.hermes/skills/harness/**`
 or any gate to clear a refusal. If a check fails and the fix is outside your
 write-set, typed-block and stop. If you cannot classify the failure, that
 itself is a legal typed outcome (ESCALATE) — not a licence to invent.

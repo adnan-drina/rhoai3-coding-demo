@@ -60,6 +60,13 @@ evidence/derived/legacy-at-3/
 .hermes/home/auth.json
 .hermes/home/.env
 
+# EX-2/EX-3 retirement attic must never ship in the golden scaffold
+# (E-20260815T094500Z LG4). Backup lives in the authoring repo-root tmp/.
+tmp/
+
+# Authoring-board leak (E-20260815T000600Z / LG3). Not a product file.
+REFACTORING_V1.md
+
 # Free-primitives apply log (UPLIFT-7) — under derived tree or mis-cwd scaffold root
 .rhoai3-free-primitives-apply-log.json
 **/.rhoai3-free-primitives-apply-log.json

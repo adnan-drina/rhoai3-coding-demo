@@ -1,0 +1,12 @@
+# R-SK.5 specimen-literal KEEP allowlist (Architect-justified only).
+# One entry per line: relative/path.md OR relative/path.md:lineno
+# Trailing # comment should cite ledger EID. Empty = no exceptions.
+# --- Architect-justified KEEP (Deputy E-20260813T125813Z, R-SK.5 extended to scripts) ---
+# The detector must contain the literals it detects (incl. spaced triad slash-form).
+.hermes/skills/harness/validate-contracts/scripts/check-skill-conformance.py
+# The module whose job is DERIVING the legacy package, incl. its documented
+# fallback to the known fixture inventory. Removing these breaks the very
+# helper that makes the other gates specimen-agnostic.
+.hermes/skills/sdd/check-spec-readiness/scripts/specimen_agnostic.py
+# Fixture FILENAMES are legitimate concrete paths, not guidance literals.
+.hermes/skills/harness/dispatch-phase/scripts/check-create-path-tip-sync.py

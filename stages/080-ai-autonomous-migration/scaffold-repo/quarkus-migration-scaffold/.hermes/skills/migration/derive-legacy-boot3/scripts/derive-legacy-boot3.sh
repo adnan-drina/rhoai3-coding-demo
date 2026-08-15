@@ -24,9 +24,21 @@ DRY_RUN="${DRY_RUN:-0}"
 
 LEGACY_SRC="${LEGACY_SRC:-/projects/legacy}"
 DERIVED_ROOT="${DERIVED_ROOT:-/projects/.derived/legacy-at-3}"
-# Skill layout: .hermes/skills/migration/derive-legacy-boot3/scripts/ → project root is ../../../..
+# SR-2: walk up to migration.yaml — never a parent-count (V18-F1: 4-up landed on .hermes).
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-MODERNIZED_ROOT="$(cd "${SCRIPT_DIR}/../../../.." && pwd)"
+resolve_migration_root() {
+  local d="$1"
+  while [ "$d" != "/" ]; do
+    if [ -f "$d/migration.yaml" ]; then
+      printf '%s\n' "$d"
+      return 0
+    fi
+    d="$(dirname "$d")"
+  done
+  echo "cannot find project root (migration.yaml) walking up from $1 (SR-2)" >&2
+  return 1
+}
+MODERNIZED_ROOT="$(resolve_migration_root "${SCRIPT_DIR}")" || exit 1
 MANIFEST_DIR="${MODERNIZED_ROOT}/evidence/derived"
 MANIFEST="${MANIFEST_DIR}/legacy-at-3.json"
 COMPOSITE_SCRIPT="${SCRIPT_DIR}/free-primitives-boot3/run-composite.sh"

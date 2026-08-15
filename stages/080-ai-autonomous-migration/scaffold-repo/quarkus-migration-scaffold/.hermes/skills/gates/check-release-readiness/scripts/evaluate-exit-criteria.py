@@ -22,38 +22,39 @@ def sha256_file(path: Path) -> str:
     return h.hexdigest()
 
 
+def _migration_root(start: Path) -> Path:
+    cur = start.resolve()
+    if cur.is_file():
+        cur = cur.parent
+    while True:
+        if (cur / "migration.yaml").is_file():
+            return cur
+        if cur == cur.parent:
+            raise FileNotFoundError(
+                f"no migration.yaml walking up from {start} (SR-2)"
+            )
+        cur = cur.parent
+
+
 def run_scoped_compile(
     root: Path, task_id: str, body_path: Path, check: str
 ) -> tuple[bool, int, str]:
     """Return (ok, rc, cmd_label) via scope-filtered gate."""
-    scoped = (
-        root
-        / ".hermes"
+    rel = (
+        Path(".hermes")
         / "skills"
         / "harness"
         / "record-run-evidence"
         / "scripts"
         / "run-scoped-compile-gate.py"
     )
+    scoped = root / rel
     if not scoped.is_file():
-        # Tip layout after Wave B: scripts live under .hermes/enforcement/
-        scoped = (
-            root
-            / ".hermes"
-            / "enforcement"
-            / "record-run-evidence"
-            / "scripts"
-            / "run-scoped-compile-gate.py"
-        )
-    if not scoped.is_file():
-        # Fallback relative to this script tree (older skills/harness layout)
-        scoped = (
-            Path(__file__).resolve().parents[2]
-            / "harness"
-            / "record-run-evidence"
-            / "scripts"
-            / "run-scoped-compile-gate.py"
-        )
+        try:
+            mig = _migration_root(Path(__file__))
+        except FileNotFoundError:
+            mig = root
+        scoped = mig / rel
     goal = "test-compile" if check == "test_compile" else "compile"
     cp = subprocess.run(
         [

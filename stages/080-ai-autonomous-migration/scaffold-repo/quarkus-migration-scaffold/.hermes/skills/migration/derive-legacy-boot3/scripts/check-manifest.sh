@@ -19,7 +19,21 @@ case "${1:-}" in
     exit 0
     ;;
 esac
-root="$(cd "$(dirname "$0")/../../../.." && pwd)"
+# SR-2: walk up to migration.yaml — never a parent-count.
+resolve_migration_root() {
+  local d
+  d="$(cd "$(dirname "$0")" && pwd)"
+  while [ "$d" != "/" ]; do
+    if [ -f "$d/migration.yaml" ]; then
+      printf '%s\n' "$d"
+      return 0
+    fi
+    d="$(dirname "$d")"
+  done
+  echo "cannot find project root (migration.yaml) walking up from $(dirname "$0") (SR-2)" >&2
+  return 1
+}
+root="$(resolve_migration_root)" || exit 1
 manifest="${root}/evidence/derived/legacy-at-3.json"
 if [ ! -f "${manifest}" ]; then
   echo "FAIL: ${manifest} missing — run the derive-legacy-boot3 skill (bash \"\${HERMES_SKILL_DIR}/scripts/derive-legacy-boot3.sh\")" >&2

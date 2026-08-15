@@ -137,10 +137,8 @@ def check_ttfc(task_id: str, root: Path, ttfc: int) -> str | None:
     """Return alert line if TTFC breached; None if OK/skip."""
     script = hermes_home() / "scripts" / "check-stream-liveness.py"
     if not script.is_file():
-        return (
-            f"WATCHDOG: TTFC checker missing at {script} "
-            f"(task {task_id}) — detector not invocable"
-        )
+        # EX-2 retired the TTFC detector (idle-stall cluster). Skip, do not alert.
+        return None
     try:
         cp = subprocess.run(
             [

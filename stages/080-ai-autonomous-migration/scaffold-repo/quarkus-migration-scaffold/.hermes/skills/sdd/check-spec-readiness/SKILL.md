@@ -1,11 +1,11 @@
 ---
 name: check-spec-readiness
-description: Before kanban_create or M3 dispatch — lints SDD specs and story bodies, refuses with typed BODY_* codes
+description: Before kanban_create or M3 dispatch — lints SDD specs and story bodies, refuses with typed BODY_* codes. Run assert-mint-oracles when assembling or creating an M3 body (refs path-sha, Hermes task_id, SR-13 discriminating exit).
 license: Apache-2.0
 compatibility: Linux seat; Python 3.11+; reads migration/ specs and bodies
 metadata:
   author: rhoai3-harness-team
-  version: "1.2.0"
+  version: "1.3.0"
   hermes:
     tags:
     - sdd
@@ -23,6 +23,8 @@ metadata:
   write overlap), which per-body lint cannot show.
 - When a body's `exit_criteria`, `files_in_scope`, or `operand_count` changed —
   these are the fields the gates refuse on.
+- Before `create-m3-implementer` or assemble — `assert-mint-oracles.py` (refs,
+  Hermes `task_id`, SR-13 discriminating exit on the pre-story tree).
 - **Not** for creating `.specify/` or installing `specify-cli` — that is
   `init-spec-workspace`. This skill reads artifacts and writes only receipts
   and stamps you explicitly ask for.
@@ -42,6 +44,9 @@ python3 "${HERMES_SKILL_DIR}/scripts/check-surgical-scopes.py" /projects/moderni
 python3 "${HERMES_SKILL_DIR}/scripts/check-semantic-exits.py" /projects/modernized
 # Architect E-104925Z / E-110403Z — measured operand_count (phase-name REJECT)
 python3 "${HERMES_SKILL_DIR}/scripts/check-operand-count.py" /projects/modernized
+# L2 / SR-13 — refs + Hermes task_id + discriminating exit
+python3 "${HERMES_SKILL_DIR}/scripts/assert-mint-oracles.py" /projects/modernized \
+  --body evidence/bodies/m3-s-003.json
 # M2a exit — partition VALID as a whole (writes a tri-state receipt)
 python3 "${HERMES_SKILL_DIR}/scripts/check-partition-coverage.py" /projects/modernized \
   --write-receipt evidence/receipts/partition-coverage/latest.json
@@ -75,6 +80,7 @@ python3 "${HERMES_SKILL_DIR}/scripts/check-partition-coverage.py" /projects/mode
 - `scripts/check-jdbc-deps-preflight.py` — R-M3.11 JDBC deps preflight
 - `scripts/assert-dependency-closure.py` — Class-A dependency closure
 - `scripts/assert-mint-constraints-complete.py` — mint constraints complete
+- `scripts/assert-mint-oracles.py` — L2 refs / task_id / SR-13 discriminating exit
 - `scripts/assert-constraints-preserved.py` — constraints survive amend
 - `scripts/assert-quarantine-tombstones.py` — quarantine tombstone presence
 - `scripts/assert-dest-inventory-hardinvoke.py` — dest inventory hard-invoke
@@ -115,6 +121,10 @@ Do **not** invoke DD4-retired R-M3.5/7 stubs (`check-persistence-bom.py`,
   (`schema: rhoai3.partition-coverage/v1`) with `verdict`, `gaps[]`,
   `http_endpoint_count`. Only `VALID` exits 0 — `INCONCLUSIVE` (no story files
   found) is not a pass.
+- `assert-mint-oracles.py --body` exits 0 only when refs resolve, `task_id` is
+  a Hermes card id (or `--skip-task-id` pre-create), and every `cmd` can fail
+  on dest minus `files_writable`. `--corpus DIR` exits 0 only when **every**
+  body fails at least one oracle.
 - Exit condition for the gate: every command above exits 0 **and** reports a
   non-zero artifact/body count. All-idle output on a populated workspace is a
   path defect to fix before dispatch.

@@ -13,32 +13,33 @@ import runpy
 import sys
 from pathlib import Path
 
-# Resolve the canonical implementation, which lives in a DIFFERENT skill.
-# Layouts seen in the wild:
-#   categorized: .hermes/skills/<category>/<leaf>/scripts/   (R-SK.7, current)
-#   flat:        .hermes/skills/<leaf>/scripts/              (pre-category)
-#   runtime:     HERMES_HOME/.../software-development/<leaf>/scripts/
-# parents[2] alone assumes the flat layout and resolves to
-# `skills/sdd/scan-with-mta/...`, which never exists under the category tree —
-# the shim then always exited 2 and its callers read that as a harness defect.
 _here = Path(__file__).resolve()
 _TARGET = Path("scan-with-mta") / "scripts" / "check-findings-handoff.py"
 
 
+def _migration_root(start: Path) -> Path | None:
+    cur = start.resolve()
+    if cur.is_file():
+        cur = cur.parent
+    while True:
+        if (cur / "migration.yaml").is_file():
+            return cur
+        if cur == cur.parent:
+            return None
+        cur = cur.parent
+
+
 def _find_canonical() -> Path:
-    for up in (2, 3):
-        try:
-            parent = _here.parents[up]
-        except IndexError:
-            continue
-        direct = parent / _TARGET
-        if direct.is_file():
-            return direct
-        # categorized: search one category level down
-        for hit in sorted(parent.glob(str(Path("*") / _TARGET))):
+    mig = _migration_root(_here)
+    if mig is not None:
+        skills = mig / ".hermes" / "skills"
+        for hit in sorted(skills.glob(str(Path("*") / _TARGET))):
             if hit.is_file():
                 return hit
-    return _here.parents[2] / _TARGET
+        flat = skills / _TARGET
+        if flat.is_file():
+            return flat
+    return _here.parent / "missing-check-findings-handoff.py"
 
 
 CANON = _find_canonical()

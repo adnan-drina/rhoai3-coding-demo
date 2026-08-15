@@ -8,15 +8,15 @@ for new procedures.
 | Standing convention | `AGENTS.md` | Java 21, native Quarkus, task-id correlation |
 | Identity | authored `.hermes/SOUL.md`; loaded `$HERMES_HOME/SOUL.md` | factory places + sha256-verifies (AD-H §14) |
 | Procedural knowledge + tool invocation | `.hermes/skills/<category>/<name>/` | `scan-with-mta`, `derive-legacy-boot3`, `init-spec-workspace` |
-| Deterministic **enforcement** (path-invoke) | `.hermes/enforcement/<name>/` | `validate-contracts`, `dispatch-phase`, `enforce-authority-boundary` |
+| Deterministic **enforcement** (path-invoke) | `.hermes/skills/harness/<name>/` | `validate-contracts`, `dispatch-phase`, `enforce-authority-boundary` |
 | Deterministic **domain** gate | `.hermes/skills/gates/check-domain-parity/` | G-1..G-4 vocabulary names below |
-| Scaffold lint | `.hermes/enforcement/validate-contracts/scripts/check-no-hermes-context-override.sh` | no `.hermes.md` override |
+| Scaffold lint | `.hermes/skills/harness/validate-contracts/scripts/check-no-hermes-context-override.sh` | no `.hermes.md` override |
 | SDD readiness checks | `.hermes/skills/sdd/check-spec-readiness/` | Non-Goals, Q-*, §S.6 |
 | Entry-point inventory | `.hermes/skills/analysis/inventory-entry-points/` | W2 §11.3 scanner |
-| Harness meta-validate | `.hermes/enforcement/validate-contracts/` | specimen-free suite |
+| Harness meta-validate | `.hermes/skills/harness/validate-contracts/` | specimen-free suite |
 | Provision assets (not runtime) | `.hermes/provision/` | Spec Kit Non-Goals override template |
 | Phase / run data | `migration/` | findings, inventory JSON, fixtures, contracts, schemas, acks |
-| Task authority contract | `.hermes/enforcement/enforce-authority-boundary/references/task-authority.md` | AD-H §16 — task-type obligations, privilege, human checkpoints |
+| Task authority contract | `.hermes/skills/harness/enforce-authority-boundary/references/task-authority.md` | AD-H §16 — task-type obligations, privilege, human checkpoints |
 | Grounded generation contract | `governance/contracts/grounded-generation.md` | AD-H §17 — consult order, citation, anti-invention |
 | Validation / release contract | `AGENTS.md (doctrine; was validation-release-gates)` | AD-H §18 — phase gates, regression, failure routing |
 | Validation / release skill | `.hermes/skills/gates/check-release-readiness/` | matrix lint + verdict routing |
@@ -48,7 +48,7 @@ bash "${HERMES_SKILL_DIR}/scripts/<script>"
 From a shell without a loaded skill:
 
 ```bash
-bash .hermes/enforcement/validate-contracts/scripts/validate.sh
+bash .hermes/skills/harness/validate-contracts/scripts/validate.sh
 bash .hermes/skills/gates/check-domain-parity/scripts/run-admission.sh
 ```
 
@@ -68,9 +68,9 @@ Guidance (card-attachable) and enforcement (path-invoke only):
 | `spring-to-quarkus-patterns` | guidance | IMPLEMENT mapping cards |
 | `manage-quarkus-extensions` | guidance | Extension add/rm (RH BOM) |
 | `bootstrap-quarkus-project` | guidance | Destination Quarkus create (CLI\|Maven) |
-| `dispatch-phase` | enforcement | Kanban create+dispatch from `phase-dispatch.yaml` |
+| `dispatch-phase` | enforcement | Kanban create+dispatch; `--parent`/`link` is the phase DAG (BV19-3); named seat assignees |
 | `validate-contracts` | enforcement | Specimen-free harness suite |
-| `enforce-authority-boundary` | enforcement | Acks + write fence + untrusted |
+| `enforce-authority-boundary` | enforcement | Acks + write fence + write-set hook; EX-5 overlay lint |
 | `ground-in-harvest` | enforcement | Citation lint + invent-without-locus refuse |
-| `record-run-evidence` | enforcement | Provenance lint + reconstruct |
+| `record-run-evidence` | enforcement | Provenance lint + scoped compile gate |
 | *(platform)* `harness-skill-authoring` | — | CS-9 / R-SK land-time lint — not golden (R-SK.9) |

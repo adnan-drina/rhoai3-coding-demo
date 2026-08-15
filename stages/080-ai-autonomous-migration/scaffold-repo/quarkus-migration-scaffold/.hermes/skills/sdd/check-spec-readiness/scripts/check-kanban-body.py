@@ -17,6 +17,28 @@ import re
 import sys
 from pathlib import Path
 
+try:
+    from specimen_agnostic import (
+        extensions_union,
+        parse_extensions_declared,
+        refs_path_sha_errors,
+        writes_pom_xml,
+    )
+except ImportError:  # invoked with a cwd that is not this scripts dir
+    _sa = Path(__file__).with_name("specimen_agnostic.py")
+    _spec = importlib.util.spec_from_file_location("specimen_agnostic", _sa)
+    refs_path_sha_errors = None
+    parse_extensions_declared = None
+    extensions_union = None
+    writes_pom_xml = None
+    if _spec is not None and _spec.loader is not None:
+        _mod = importlib.util.module_from_spec(_spec)
+        _spec.loader.exec_module(_mod)
+        refs_path_sha_errors = _mod.refs_path_sha_errors
+        parse_extensions_declared = _mod.parse_extensions_declared
+        extensions_union = _mod.extensions_union
+        writes_pom_xml = _mod.writes_pom_xml
+
 
 def _operand_count_rc(label: str, body: dict) -> int:
     """Architect E-104925Z / E-110403Z — measured operand_count refuse."""
@@ -81,6 +103,77 @@ def fail(code: str, detail: str) -> None:
     print(f"{code}: {detail}", file=sys.stderr)
 
 
+def check_m3_extensions(label: str, body: dict, sibling_m3: list[dict]) -> int:
+    """Architect E-20260814T205052Z — declared on every M3; apply on sole pom writer."""
+    bad = 0
+    identity = body.get("identity")
+    if not isinstance(identity, dict):
+        return 0  # BODY_IDENTITY already fired
+    if parse_extensions_declared is None or writes_pom_xml is None or extensions_union is None:
+        fail("BODY_EXTENSIONS_DECLARED", f"{label}: DD3 helpers failed to load")
+        return 1
+    declared, err = parse_extensions_declared(identity)
+    if err:
+        fail("BODY_EXTENSIONS_DECLARED", f"{label}: {err}")
+        bad = 1
+        declared = None
+    apply_present = "extensions_apply" in identity
+    apply_raw = identity.get("extensions_apply") if apply_present else None
+    is_writer = bool(writes_pom_xml and writes_pom_xml(body))
+    writers = [b for b in sibling_m3 if writes_pom_xml and writes_pom_xml(b)]
+    if len(writers) > 1:
+        fail(
+            "BODY_EXTENSIONS_APPLY",
+            f"{label}: {len(writers)} pom.xml writers in corpus "
+            "(DD3 requires exactly one)",
+        )
+        bad = 1
+    sibling_declared: list[list[str]] = []
+    for sib in sibling_m3:
+        ident = sib.get("identity") if isinstance(sib.get("identity"), dict) else {}
+        lst, _e = parse_extensions_declared(ident) if parse_extensions_declared else (None, "unloaded")
+        if lst is not None:
+            sibling_declared.append(lst)
+    union = extensions_union(sibling_declared) if extensions_union else []
+    if is_writer:
+        if not apply_present:
+            fail(
+                "BODY_EXTENSIONS_APPLY",
+                f"{label}: pom.xml writer missing identity.extensions_apply "
+                "(must equal sorted unique union of siblings' extensions_declared)",
+            )
+            return 1
+        if not isinstance(apply_raw, list) or not all(
+            isinstance(x, str) and x.strip() for x in apply_raw
+        ):
+            fail(
+                "BODY_EXTENSIONS_APPLY",
+                f"{label}: identity.extensions_apply must be string[]",
+            )
+            return 1
+        got = [x.strip() for x in apply_raw]
+        if got != sorted(set(got)):
+            fail(
+                "BODY_EXTENSIONS_APPLY",
+                f"{label}: identity.extensions_apply must be sorted unique",
+            )
+            bad = 1
+        if set(got) != set(union):
+            fail(
+                "BODY_EXTENSIONS_APPLY",
+                f"{label}: identity.extensions_apply {got} != union {union}",
+            )
+            bad = 1
+    elif apply_present:
+        fail(
+            "BODY_EXTENSIONS_APPLY",
+            f"{label}: identity.extensions_apply is only legal on the sole "
+            "pom.xml writer (omit the key; do not stamp [])",
+        )
+        bad = 1
+    return bad
+
+
 def sha256_file(path: Path) -> str:
     h = hashlib.sha256()
     h.update(path.read_bytes())
@@ -102,7 +195,7 @@ def bodies_from(path: Path) -> list[tuple[str, dict]]:
     return out
 
 
-def check_body(label: str, body: dict, root: Path) -> int:
+def check_body(label: str, body: dict, root: Path, sibling_m3: list[dict] | None = None) -> int:
     bad = 0
     if not isinstance(body, dict):
         fail("BODY_SCHEMA", "body must be typed object with task_id, role, phase, refs[]")
@@ -191,21 +284,10 @@ def check_body(label: str, body: dict, root: Path) -> int:
             )
             bad = 1
             continue
-        if path_s:
-            p = (root / path_s).resolve() if not Path(path_s).is_absolute() else Path(path_s)
-            # Also try relative to root without resolve escape
-            if not p.is_file():
-                p = root / path_s
-            if p.is_file():
-                actual = sha256_file(p)
-                if actual != exp:
-                    fail(
-                        "BODY_REF_DIGEST",
-                        f"key={key} path={path_s} expected={exp} actual={actual}",
-                    )
-                    bad = 1
-            # missing file: digest check deferred (path may be workspace-only)
-            # do not BODY_REF_DIGEST on missing — create-time may precede files
+        # Architect E-20260814T212425Z — missing file fail-closed.
+        for err in refs_path_sha_errors(root, [ref]):
+            fail("BODY_REF_DIGEST", err)
+            bad = 1
 
     for req in REQUIRED_KEYS[phase]:
         if req not in seen:
@@ -267,6 +349,8 @@ def check_body(label: str, body: dict, root: Path) -> int:
                     f"(got transform_class={tc!r} g2_applicability={g2!r})",
                 )
                 bad = 1
+            if phase == "M3":
+                bad |= check_m3_extensions(label, body, sibling_m3 or [body])
 
     # Deputy E-20260809T190500Z / W2 §6 completion half — M3/M4/M5 must name
     # falsifiable done-when (exit_criteria), not only refs + scope.
@@ -467,10 +551,40 @@ def main() -> int:
         print("OK: no Kanban body artifacts — §6.1 body lint idle")
         return 0
 
+    sibling_m3: list[dict] = []
+    seen_tid: set[str] = set()
+
+    def _add_sib(body: dict) -> None:
+        if str(body.get("phase") or "").upper() != "M3":
+            return
+        ident = body.get("identity") if isinstance(body.get("identity"), dict) else {}
+        tid = str(body.get("task_id") or body.get("id") or ident.get("story_id") or "")
+        key = tid or f"anon-{len(seen_tid)}"
+        if key in seen_tid:
+            return
+        seen_tid.add(key)
+        sibling_m3.append(body)
+
+    for d in (
+        root / "evidence/tasks",
+        root / "evidence/bodies",
+        root / "evidence/kanban",
+    ):
+        if not d.is_dir():
+            continue
+        for f in sorted(d.glob("*.json")):
+            try:
+                for _, body in bodies_from(f):
+                    _add_sib(body)
+            except Exception:
+                continue
+    for _, body in pairs:
+        _add_sib(body)
+
     bad = 0
     for label, body in pairs:
         rel = label.replace(str(root) + "/", "")
-        bad |= check_body(rel, body, root)
+        bad |= check_body(rel, body, root, sibling_m3)
 
     if bad:
         print(f"Kanban body checks FAILED ({len(pairs)} body(ies)).", file=sys.stderr)

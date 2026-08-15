@@ -668,12 +668,14 @@ data:
       mkdir -p "${HERMES_GLOBAL_SKILLS_DIR}"
       # AD-002 §6: harness launches from PROJECT_DIR (/projects/modernized) —
       # CLI default cwd is correct; do not set terminal.cwd.
+      # EX-5 L3: pin terminal.backend=local (below). Nested docker is not
+      # provisioned; official container backends skip dangerous-command checks.
       # W1 five pins (Operator E-171354Z / Review service-CA nit): in-cluster
       # .svc + ssl_ca_cert + 900s + aux-title off + display.streaming true
       # (asserted — Operator E-20260813T210050Z / hermes-configuration display.streaming).
       # Dashboard: loopback bind + che-gateway secure endpoint (E-171806Z).
       "${venv_py}" - <<'HERMESEOF'
-    import os, yaml
+    import os, shutil, yaml
     managed = os.environ["HERMES_MANAGED_DIR"]
     skills_dir = os.environ["HERMES_SKILLS_DIR"]
     global_skills = os.environ["HERMES_GLOBAL_SKILLS_DIR"]
@@ -720,12 +722,29 @@ data:
         # (monitoring/20260812-v13-m1-dispatch.md). Factory default for this
         # Managed Scope seat is therefore mode=off. skills.write_approval
         # (above) still gates skill writes; cron_mode=deny unchanged.
+        # EX-5 L1: approvals.deny is checked BEFORE mode off / --yolo
+        # (hermes-managed-scope Security / User-Defined Deny Rules). Hardline
+        # Blocklist stays product always-on. Do not glob-deny mvn/oc/hermes.
         # Cite: hermes-agent tools/approval.py + hermes-configuration /
         # hermes-managed-scope seat pins.
         "approvals": {
             "mode": "off",
             "timeout": 300,
             "cron_mode": "deny",
+            "deny": [
+                "git push --force*",
+                "*curl*|*sh*",
+                "dd if=* of=/dev/*",
+                "rm -rf /",
+                "rm -rf /*",
+            ],
+        },
+        # EX-5 L3: explicit local pin so PVC drift cannot switch backends.
+        # Workspace pod isolates from the node. Nested docker/singularity/
+        # modal/daytona/vercel_sandbox are not provisioned (no docker.sock)
+        # and would skip dangerous-command checks (weaken L1).
+        "terminal": {
+            "backend": "local",
         },
         # W2 §4.5 / E-20260807T154519Z — engine must not invent untyped
         # subtasks outside our per-phase schema (AD-H §3).
@@ -788,11 +807,9 @@ data:
         "display": {
             "streaming": True,
         },
-        # W2 CS-5 #4/#5 — REHOST exit-criteria + write-fence onto official
-        # hooks (Operator E-201707Z fire-live). Policy ours; mechanism official
-        # (hermes-hooks: pre_verify + pre_tool_call fail_closed). Init runs
-        # `hermes hooks doctor` after seed (script edits are trusted by
-        # command string — doctor catches drift).
+        # EX-3: ONE pre_tool_call hook — in-repo write-set (B-S2) plus SAFE_ROOT.
+        # Canonical script lives in the golden; copy into managed so workers
+        # cannot overwrite the hook (HKN-12 / hermes-hooks fail_closed).
         "hooks": {
             "hooks_auto_accept": True,
             "pre_tool_call": [
@@ -816,47 +833,25 @@ data:
     for _edir in (cfg.get("skills") or {}).get("external_dirs") or []:
         if not os.path.isdir(_edir):
             raise SystemExit(f"ERROR: A1 skills.external_dirs missing: {_edir}")
+    deny = (cfg.get("approvals") or {}).get("deny") or []
+    if len(deny) < 3:
+        raise SystemExit("ERROR: EX-5 approvals.deny too short (need >=3 globs)")
+    if (cfg.get("terminal") or {}).get("backend") != "local":
+        raise SystemExit("ERROR: EX-5 terminal.backend must be local")
+    safe_root = (os.environ.get("HERMES_WRITE_SAFE_ROOT") or "").strip()
+    if not safe_root:
+        raise SystemExit("ERROR: EX-5 HERMES_WRITE_SAFE_ROOT unset")
     hooks_dir = os.path.join(managed, "agent-hooks")
     os.makedirs(hooks_dir, exist_ok=True)
     write_fence_py = os.path.join(hooks_dir, "write-fence.py")
     pre_verify_py = os.path.join(hooks_dir, "pre-verify-assert.py")
-    with open(write_fence_py, "w") as fh:
-        fh.write(
-            "#!/usr/bin/env python3\n"
-            '"""W2 write-fence — HERMES_WRITE_SAFE_ROOT on pre_tool_call fail_closed."""\n'
-            "import json, os, sys\n"
-            "from pathlib import Path\n"
-            "d = json.load(sys.stdin)\n"
-            'tool = d.get("tool_name") or ""\n'
-            'ti = d.get("tool_input") or {}\n'
-            'WRITE_TOOLS = {"write_file", "patch", "edit_file", "apply_patch", "create_file"}\n'
-            "if tool not in WRITE_TOOLS:\n"
-            '    print("{}"); raise SystemExit(0)\n'
-            "path = None\n"
-            'for k in ("path", "file", "filename", "target"):\n'
-            "    if isinstance(ti.get(k), str) and ti[k]:\n"
-            "        path = ti[k]; break\n"
-            'targets = ti.get("targets") if isinstance(ti.get("targets"), dict) else {}\n'
-            "if path is None:\n"
-            '    for k in ("path", "file"):\n'
-            "        if isinstance(targets.get(k), str) and targets[k]:\n"
-            "            path = targets[k]; break\n"
-            "if not path:\n"
-            '    print("{}"); raise SystemExit(0)\n'
-            'safe = os.environ.get("HERMES_WRITE_SAFE_ROOT", os.environ.get("PROJECT_DIR", "/projects/modernized"))\n'
-            "safe_p = Path(safe).resolve()\n"
-            "norm = Path(path)\n"
-            "if not norm.is_absolute():\n"
-            "    norm = Path.cwd() / norm\n"
-            "norm = Path(os.path.abspath(str(norm)))\n"
-            "try:\n"
-            "    norm.relative_to(safe_p)\n"
-            '    print("{}"); raise SystemExit(0)\n'
-            "except ValueError:\n"
-            '    msg = f"write-fence: path {norm} outside HERMES_WRITE_SAFE_ROOT={safe_p}"\n'
-            '    print(json.dumps({"action": "block", "message": msg}))\n'
-            "    raise SystemExit(2)\n"
-        )
+    src_hook = os.path.join(
+        os.environ.get("HERMES_WRITE_SAFE_ROOT", "/projects/modernized"),
+        ".hermes/skills/harness/enforce-authority-boundary/scripts/write-set-hook.py",
+    )
+    if not os.path.isfile(src_hook):
+        raise SystemExit(f"ERROR: EX-3 write-set hook missing: {src_hook}")
+    shutil.copy2(src_hook, write_fence_py)
     with open(pre_verify_py, "w") as fh:
         fh.write(
             "#!/usr/bin/env python3\n"
@@ -885,6 +880,10 @@ data:
     with open(env_path, "w") as fh:
         fh.write(f"MAAS_API_BASE_URL={model_base}\n")
         fh.write(f"MAAS_API_KEY={os.environ['MAAS_API_KEY_QWEN27B']}\n")
+        # EX-5 L2: pin write sandbox in managed .env (beats shell per
+        # Managed Scope). Native guards are write_file/patch only; in-repo
+        # B-S2 stays the EX-3 hook (HKN-12).
+        fh.write(f"HERMES_WRITE_SAFE_ROOT={safe_root}\n")
     os.chmod(cfg_path, 0o644)
     os.chmod(env_path, 0o600)
     # Architect E-20260808T151907Z — pin demo model binding (qwen / platform MaaS).
@@ -1007,6 +1006,89 @@ data:
     SOULSMOKE
       ); then
         echo "ERROR: SOUL.md load-time smoke failed (AD-H §14)." >&2
+        return
+      fi
+
+      # EX-4 — seat assignee profiles (product). Pillar heads stay Cursor.
+      # Official: `hermes profile create --description` is the kanban
+      # decomposer routing input. Dispatcher silent-fails unknown names.
+      local catalog="${PROJECT_DIR}/.hermes/skills/harness/dispatch-phase/references/assignee-profiles.json"
+      local hermes_bin="${HOME}/.local/bin/hermes"
+      if [ ! -x "${hermes_bin}" ] && command -v hermes >/dev/null 2>&1; then
+        hermes_bin="$(command -v hermes)"
+      fi
+      if [ ! -f "${catalog}" ]; then
+        echo "ERROR: EX-4 catalog missing: ${catalog}" >&2
+        return
+      fi
+      if [ ! -x "${hermes_bin}" ]; then
+        echo "ERROR: EX-4 hermes CLI missing — cannot create seat assignee profiles." >&2
+        return
+      fi
+      if ! (
+        export HERMES_HOME="${hermes_home}"
+        export HERMES_MANAGED_DIR="${managed_dir}"
+        export PATH="${HOME}/.local/bin:${PATH}"
+        python3 - "${catalog}" "${hermes_bin}" <<'EX4PROF'
+    import json, subprocess, sys
+
+    catalog, hermes = sys.argv[1], sys.argv[2]
+    data = json.loads(open(catalog, encoding="utf-8").read())
+    profiles = data.get("profiles") or {}
+    if not profiles:
+        print("ERROR: EX-4 catalog has no profiles", file=sys.stderr)
+        sys.exit(1)
+    for name, spec in profiles.items():
+        if name == "default":
+            print("ERROR: EX-4 forbids profile name default", file=sys.stderr)
+            sys.exit(1)
+        desc = ((spec or {}).get("description") or "").strip()
+        if not desc:
+            print(f"ERROR: EX-4 {name} missing description", file=sys.stderr)
+            sys.exit(1)
+        show = subprocess.run([hermes, "profile", "show", name], capture_output=True)
+        if show.returncode != 0:
+            cr = subprocess.run(
+                [
+                    hermes,
+                    "profile",
+                    "create",
+                    name,
+                    "--clone",
+                    "--no-alias",
+                    "--description",
+                    desc,
+                ],
+                capture_output=True,
+                text=True,
+            )
+            if cr.returncode != 0:
+                err = (cr.stderr or cr.stdout or "").strip()
+                print(f"ERROR: EX-4 profile create {name} failed: {err}", file=sys.stderr)
+                sys.exit(1)
+            print(f"EX-4: created seat profile {name} (--description set)")
+        else:
+            dr = subprocess.run(
+                [
+                    hermes,
+                    "profile",
+                    "describe",
+                    name,
+                    "--text",
+                    desc,
+                    "--overwrite",
+                ],
+                capture_output=True,
+                text=True,
+            )
+            if dr.returncode != 0:
+                err = (dr.stderr or dr.stdout or "").strip()
+                print(f"ERROR: EX-4 profile describe {name} failed: {err}", file=sys.stderr)
+                sys.exit(1)
+            print(f"EX-4: refreshed seat profile {name} (--description set)")
+    EX4PROF
+      ); then
+        echo "ERROR: EX-4 seat assignee profiles failed." >&2
         return
       fi
 

@@ -18,14 +18,16 @@ from pathlib import Path
 NEEDLE = "BANK-DEST-INV-HARDINVOKE-1"
 CREATE = (
     Path(".hermes")
-    / "enforcement"
+    / "skills"
+    / "harness"
     / "dispatch-phase"
     / "scripts"
     / "create-m3-implementer.sh"
 )
 STANDING = (
     Path(".hermes")
-    / "enforcement"
+    / "skills"
+    / "harness"
     / "dispatch-phase"
     / "references"
     / "m3-implementer-standing.md"

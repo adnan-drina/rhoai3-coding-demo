@@ -41,13 +41,17 @@ FAMILY_CHECKS: dict[str, frozenset[str]] = {
     "app_boots": frozenset({"app_boots"}),
 }
 
-RESTISH = ("RestController", "Repository", "ApplicationService")
+# RestController only. *Repository* is persistence (T-8); do not default
+# those write-sets onto create_fk / http_semantics (Architect E-20260814T181701Z).
+RESTISH = ("RestController",)
 
 from specimen_agnostic import (  # noqa: E402
     COMPILE_ONLY,
     is_oracle_unavailable,
     normalize_operand_class,
     oracle_unavailable_allowed_for_class,
+    preferred_semantic_exit_for,
+    semantic_exit_cmd_ok,
 )
 
 
@@ -194,13 +198,25 @@ def main() -> int:
                     )
                     bad = 1
                     checked += 1
+                    continue
+                if not semantic_exit_cmd_ok(check, str(cmd)):
+                    print(
+                        f"FAIL: AR-2.3–2.7 {label}: exit {check!r} cmd {cmd!r} is not "
+                        f"a Maven invocation (stamp `mvn -q compile` or `mvn -q test`; "
+                        f"technique prose belongs in assert; evaluator shell=True)",
+                        file=sys.stderr,
+                    )
+                    bad = 1
+                    checked += 1
             continue
         checked += 1
         if isinstance(families, str):
             families = [families]
         if not isinstance(families, list) or not families:
-            # default proving-min for REST-ish write sets
-            families = ["create_fk", "http_semantics"]
+            # T-8: default the class preferred stamp, not create_fk+http_semantics.
+            # That pair is the v17 wrong-class/vacuous path on persistence.
+            pref = preferred_semantic_exit_for(oclass)
+            families = [pref] if pref else ["http_semantics"]
         exits = body.get("exit_criteria") or []
         checks = {
             str(x.get("check") or "")
@@ -256,6 +272,15 @@ def main() -> int:
                     f"FAIL: AR-2.3–2.7 {label}: exit {check!r} has no cmd "
                     f"(unmeasurable; add cmd, use oracle_unavailable+reason, or drop — "
                     f"E-20260813T215058Z L2 / E-20260813T220250Z F5)",
+                    file=sys.stderr,
+                )
+                bad = 1
+                continue
+            if not semantic_exit_cmd_ok(check, str(cmd)):
+                print(
+                    f"FAIL: AR-2.3–2.7 {label}: exit {check!r} cmd {cmd!r} is not "
+                    f"a Maven invocation (stamp `mvn -q compile` or `mvn -q test`; "
+                    f"technique prose belongs in assert; evaluator shell=True)",
                     file=sys.stderr,
                 )
                 bad = 1

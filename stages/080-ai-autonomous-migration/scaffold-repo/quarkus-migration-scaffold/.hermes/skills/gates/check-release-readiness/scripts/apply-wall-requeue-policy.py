@@ -147,7 +147,7 @@ def main() -> int:
     if ck.is_file():
         sync = (
             root
-            / ".hermes/enforcement/record-run-evidence/scripts/sync-checkpoint-from-test-writes.py"
+            / ".hermes/skills/harness/record-run-evidence/scripts/sync-checkpoint-from-test-writes.py"
         )
         subprocess.run(
             [sys.executable, str(sync), str(ck), "--root", str(root)],

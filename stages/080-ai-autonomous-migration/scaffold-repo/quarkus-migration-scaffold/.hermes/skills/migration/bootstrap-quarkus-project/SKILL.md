@@ -47,10 +47,14 @@ documents hand-authoring as a dedicated path.
    - properties / BOM import / plugin executions per that reference
    - `<build>` uses `com.redhat.quarkus.platform:quarkus-maven-plugin`
      — **never** `io.quarkus` / `io.quarkus.platform` plugin GAV (H-1)
-   - Story extensions stay empty at mint (DD3); **exception:** carry
+   - Story extensions: the sole `pom.xml` writer applies
+     `identity.extensions_apply` (sorted unique union of every story's
+     `identity.extensions_declared`, Architect E-20260814T205052Z DD3).
+     Later stories do **not** write `pom.xml`. **Exception:** carry
      foundation Jacoco/Sonar wiring from
      `references/foundation-jacoco-wiring.md` (A-3 / H-3 — build
-     infrastructure, not story-owned)
+     infrastructure, not story-owned). "Story extensions stay empty at
+     mint" is the **old** DD3.
    - Java release and surefire from pins
 4. Run
    `../manage-quarkus-extensions/scripts/check-pom-platform-pins.py <root>`
@@ -60,10 +64,13 @@ documents hand-authoring as a dedicated path.
    `../manage-quarkus-extensions/scripts/assert-extension-tooling.py`
    before the first `ext` / Maven extension mutation. CLI absent → typed
    `MAVEN_FALLBACK` (not improvisation).
-6. **Extensions (evidence-driven, DD3):** invoke `manage-quarkus-extensions`
-   (`quarkus ext ls/search/add` when CLI present — W1; else Maven). The
-   **needing story owns** the extension and its config/artifacts — do not
-   paste a fixed menu on foundation for later stories.
+6. **Extensions (evidence-driven, DD3 declare/apply/own):** invoke
+   `manage-quarkus-extensions` (`quarkus ext ls/search/add` when CLI
+   present — W1; else Maven). The **pom.xml writer** applies
+   `identity.extensions_apply` (union). Other stories declare
+   `identity.extensions_declared` only — they do not write `pom.xml`
+   and must not paste a fixed menu. T-3 path heuristic stamps declared
+   at mint; do not invent artifactIds/GAVs.
 7. Refuse `quarkus-spring-*` compatibility extensions (native Quarkus only).
 
 ## Pitfalls
@@ -84,7 +91,7 @@ documents hand-authoring as a dedicated path.
 - `check-pom-jacoco-wiring.py <root>` prints
   `OK: pom Jacoco/Sonar dual-path + argLine wiring present`.
 - `quarkus.platform.group-id` is `com.redhat.quarkus.platform`.
-- Harness tree still present: `.hermes/enforcement/validate-contracts/`,
+- Harness tree still present: `.hermes/skills/harness/validate-contracts/`,
   `AGENTS.md`, `devfile.yaml`.
 - `scripts/bootstrap.sh` exits non-zero with `CREATE_PATH_RETIRED` if invoked
   for create (DD1 fail-closed). Do **not** depend on `rsync` (W2 — seat has

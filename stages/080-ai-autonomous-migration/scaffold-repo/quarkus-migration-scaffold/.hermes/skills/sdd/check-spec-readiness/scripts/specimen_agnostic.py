@@ -6,8 +6,11 @@ fixtures / per-run migration.yaml stamps — never in gate logic constants.
 """
 from __future__ import annotations
 
+import hashlib
 import json
+import os
 import re
+import shlex
 from pathlib import Path
 from typing import Any
 
@@ -458,17 +461,59 @@ PREFERRED_SEMANTIC_EXIT: dict[str, str] = {
     "api": "http_semantics",
 }
 
-# Official technique strings for assembler `cmd` (concern-oracle-table.md).
+# Assembler `exit_criteria[].cmd` values. evaluate-exit-criteria.py runs `cmd`
+# via subprocess shell=True unless the string ends with " compile" (Class A
+# scoped-compile intercept). Stamp Maven invocations, not concern-oracle-table
+# technique prose (Architect E-20260814T204807Z). Prose belongs in `assert`.
 PREFERRED_SEMANTIC_EXIT_CMD: dict[str, str] = {
-    "build_resolves": "mvn compile / quarkus:build exit 0",
-    "config_profile_load": "ConfigValidationException; build-time mismatch fail; @TestProfile",
-    "mapping_valid": "database.generation=validate / SchemaManager.validateMappedObjects()",
-    "app_boots": "boot and observe failure; @QuarkusTest with no HTTP — unsatisfied CDI fails start",
-    "http_semantics": "@QuarkusTest + REST Assured status/body",
-    "test_suite_runs": "mvn test exit 0",
-    "health_probe": "HTTP contract on /q/health/ready",
-    "log_output": "InMemoryLogHandler (internal API caveat)",
+    "build_resolves": "mvn -q compile",
+    "config_profile_load": "mvn -q test",
+    "mapping_valid": "mvn -q test",
+    "app_boots": "mvn -q test",
+    "http_semantics": "mvn -q test",
+    "test_suite_runs": "mvn -q test",
+    "health_probe": "mvn -q test",
+    "log_output": "mvn -q test",
 }
+
+
+def semantic_exit_cmd_is_maven(cmd: str) -> tuple[bool, list[str]]:
+    """SR-13 AMEND: shlex first token is `mvn`, not shutil.which.
+
+    Mint-time golden/validate may lack mvn on PATH. Executability of the
+    field is 'this is a Maven invocation', not 'this host can run it now'.
+    ` / ` is concern-table OR prose; shell=True would treat `/` as a path.
+    """
+    s = (cmd or "").strip()
+    if not s or " / " in s:
+        return False, []
+    try:
+        parts = shlex.split(s)
+    except ValueError:
+        return False, []
+    if not parts:
+        return False, []
+    token = parts[0].rsplit("/", 1)[-1]
+    return token == "mvn", parts
+
+
+def semantic_exit_cmd_ok(check: str, cmd: str) -> bool:
+    """True when cmd is a class-legal Maven vehicle (Architect E-204807Z).
+
+    build_resolves must end with ` compile` (scoped-compile intercept).
+    Other cmd-bearing semantic checks use `mvn … test` (not compile — DD6).
+    """
+    ok, parts = semantic_exit_cmd_is_maven(cmd)
+    if not ok:
+        return False
+    if check == "build_resolves":
+        return cmd.strip().endswith(" compile")
+    return parts[-1] == "test"
+
+
+def build_resolves_cmd_is_executable(cmd: str) -> bool:
+    """Compat wrapper — prefer semantic_exit_cmd_ok(check, cmd)."""
+    return semantic_exit_cmd_ok("build_resolves", cmd)
 
 
 def normalize_operand_class(body: dict) -> str:
@@ -592,3 +637,396 @@ def write_oracle_unavailable_receipt(
     }
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     return path
+
+
+# Architect E-20260814T212425Z — refs path-sha oracle (SR-13).
+# sha256(resolve(path)) must equal the stamped digest. Missing file fail-closed.
+# Typed `pending` is fail-closed except creation-time ack keys (Operator artifact
+# does not exist at mint). AMEND: not every pending ref is refused — only
+# digest-bearing harvest refs (legacy_locus and any non-ack hex/pending slot).
+REF_SHA256_HEX = re.compile(r"^[0-9a-f]{64}$")
+REF_PENDING = "pending"
+REF_PENDING_ALLOWED_KEYS = frozenset({"brief_identity_ack", "m1_findings_ack"})
+
+
+def resolve_ref_file(root: Path, path_s: str) -> Path | None:
+    """Return the file `path_s` names, or None if unresolvable."""
+    s = (path_s or "").strip()
+    if not s:
+        return None
+    p = Path(s)
+    try:
+        if p.is_absolute():
+            return p if p.is_file() else None
+        cand = Path(root) / s
+        if cand.is_file():
+            return cand.resolve()
+    except OSError:
+        return None
+    return None
+
+
+def sha256_file(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def refs_path_sha_errors(
+    root: Path,
+    refs: list,
+    *,
+    pending_allowed: frozenset[str] | None = None,
+) -> list[str]:
+    """Errors when a ref digest does not match the file at `path`.
+
+    `pending` on non-ack keys is fail-closed. Hex digest with a missing file
+    is fail-closed (do not defer — that licensed dest-relative locus stamps).
+    """
+    allowed = (
+        pending_allowed if pending_allowed is not None else REF_PENDING_ALLOWED_KEYS
+    )
+    errs: list[str] = []
+    if not isinstance(refs, list):
+        return ["refs must be a list"]
+    for ref in refs:
+        if not isinstance(ref, dict):
+            continue
+        key = str(ref.get("key") or "")
+        path_s = str(ref.get("path") or "").strip()
+        exp = str(ref.get("sha256") or "").strip().lower()
+        if not exp:
+            continue
+        if exp == REF_PENDING:
+            if key not in allowed:
+                errs.append(
+                    f"key={key} sha256=pending fail-closed "
+                    f"(pending only for {sorted(allowed)})"
+                )
+            continue
+        if not REF_SHA256_HEX.match(exp):
+            continue
+        if not path_s:
+            errs.append(f"key={key} path missing (cannot verify sha256)")
+            continue
+        got = resolve_ref_file(root, path_s)
+        if got is None:
+            errs.append(
+                f"key={key} path={path_s} unresolvable "
+                "(path-sha oracle fail-closed)"
+            )
+            continue
+        actual = sha256_file(got)
+        if actual != exp:
+            errs.append(
+                f"key={key} path={path_s} expected={exp} actual={actual} "
+                f"resolved={got}"
+            )
+    return errs
+
+
+# Architect E-20260814T205052Z — DD3 declare/apply/own.
+# identity.extensions_declared: every M3 body, string[] artifactIds (empty = none).
+# identity.extensions_apply: only the sole pom.xml writer; sorted unique union.
+# Path heuristic is T-3 (spring-dep-to-extension.md). Do not invent GAVs or
+# jdbc drivers. /repository/jdbc/ → [] (JdbcTemplate often needs no extension).
+_REST_EXTENSIONS = ("quarkus-rest", "quarkus-rest-jackson")
+_JPA_EXTENSIONS = ("quarkus-hibernate-orm",)
+
+
+def body_scope_paths(body: dict) -> list[str]:
+    """Dest-relative or absolute paths from writable/in-scope fields."""
+    out: list[str] = []
+    for key in ("files_writable", "write_set", "files_in_scope", "filesInScope"):
+        raw = body.get(key) if isinstance(body, dict) else None
+        if not isinstance(raw, list):
+            continue
+        for item in raw:
+            if isinstance(item, str) and item.strip():
+                out.append(item.replace("\\", "/").strip())
+            elif isinstance(item, dict):
+                for k in ("legacy", "src", "source", "path", "file", "dest", "dst"):
+                    if item.get(k):
+                        out.append(str(item[k]).replace("\\", "/").strip())
+    return out
+
+
+def writes_pom_xml(body: dict) -> bool:
+    """True when this body claims pom.xml on a write/scope path."""
+    return any(p.rstrip("/").endswith("pom.xml") for p in body_scope_paths(body))
+
+
+def declared_extensions_for_paths(paths: list[str]) -> list[str]:
+    """T-3 path heuristic → sorted unique artifactIds. Empty = none."""
+    found: set[str] = set()
+    for raw in paths:
+        p = (raw or "").replace("\\", "/").lower()
+        base = p.rsplit("/", 1)[-1]
+        if "/rest/" in p or base.endswith("restcontroller.java"):
+            found.update(_REST_EXTENSIONS)
+        if "/repository/jpa/" in p or "/springdatajpa/" in p:
+            found.update(_JPA_EXTENSIONS)
+    return sorted(found)
+
+
+def parse_extensions_declared(identity: dict) -> tuple[list[str] | None, str | None]:
+    """Return (artifactIds, None) or (None, error). Missing key is an error."""
+    if not isinstance(identity, dict) or "extensions_declared" not in identity:
+        return None, "identity.extensions_declared missing (fail-closed)"
+    raw = identity["extensions_declared"]
+    if not isinstance(raw, list):
+        return None, "identity.extensions_declared must be string[]"
+    out: list[str] = []
+    for i, item in enumerate(raw):
+        if not isinstance(item, str) or not item.strip():
+            return None, f"identity.extensions_declared[{i}] must be a non-empty string"
+        s = item.strip()
+        if ":" in s or "/" in s:
+            return None, (
+                f"identity.extensions_declared[{i}]={s!r} is not an artifactId "
+                "(no GAV / path)"
+            )
+        out.append(s)
+    return out, None
+
+
+def extensions_union(declared_lists: list[list[str]]) -> list[str]:
+    found: set[str] = set()
+    for lst in declared_lists:
+        found.update(lst)
+    return sorted(found)
+
+
+def stamp_dd3_extensions(bodies: list[dict]) -> None:
+    """Stamp declared on every body; apply on the sole pom.xml writer.
+
+    Raises ValueError unless exactly one writer. Non-writers must not carry
+    extensions_apply (key absent, not []).
+    """
+    if not bodies:
+        raise ValueError("stamp_dd3_extensions: no bodies")
+    declared_lists: list[list[str]] = []
+    for body in bodies:
+        ident = body.setdefault("identity", {})
+        if not isinstance(ident, dict):
+            raise ValueError("stamp_dd3_extensions: identity must be an object")
+        ident["extensions_declared"] = declared_extensions_for_paths(
+            body_scope_paths(body)
+        )
+        ident.pop("extensions_apply", None)
+        declared_lists.append(list(ident["extensions_declared"]))
+    writers = [b for b in bodies if writes_pom_xml(b)]
+    if len(writers) != 1:
+        sids = []
+        for b in writers:
+            ident = b.get("identity") if isinstance(b.get("identity"), dict) else {}
+            sids.append(str(ident.get("story_id") or b.get("task_id") or "?"))
+        raise ValueError(
+            f"stamp_dd3_extensions: need exactly 1 pom.xml writer, "
+            f"got {len(writers)} {sids}"
+        )
+    writers[0]["identity"]["extensions_apply"] = extensions_union(declared_lists)
+
+
+# ---------------------------------------------------------------------------
+# L2 mint oracles — SR-13 discriminating exit + Hermes task_id identity
+# Operator E-20260815T010500Z / Lead L2 entry gate.
+# shlex+mvn is necessary (semantic_exit_cmd_ok) and not sufficient: `true`
+# and vacuous `mvn -q test` (no remaining src/test sources, surefire
+# failIfNoTests unset) both satisfy the shape lint and exit 0 on the
+# pre-story tree. Executable-and-undiscriminating is worse than unexecutable.
+# ---------------------------------------------------------------------------
+
+CARD_TASK_ID_RE = re.compile(r"^t_[0-9a-f]{8,}$")
+ALWAYS_OK_CMD_TOKENS = frozenset({"true", ":", "true.exe"})
+_TEST_SOURCE_SUFFIXES = {".java", ".kt", ".scala"}
+_WALK_SKIP_DIR_NAMES = frozenset(
+    {
+        ".git",
+        ".hermes",
+        ".derived",
+        "target",
+        "node_modules",
+        "evidence",
+        "__pycache__",
+    }
+)
+_FAIL_IF_NO_TESTS_RE = re.compile(
+    r"<failIfNoTests>\s*true\s*</failIfNoTests>", re.I
+)
+
+
+def _rel_posix(path: str) -> str:
+    return path.replace("\\", "/").strip().lstrip("./")
+
+
+def files_writable_rels(body: dict) -> set[str]:
+    """Dest-relative write-set only (not files_in_scope)."""
+    out: set[str] = set()
+    if not isinstance(body, dict):
+        return out
+    for key in ("files_writable", "write_set"):
+        raw = body.get(key)
+        if not isinstance(raw, list):
+            continue
+        for item in raw:
+            if isinstance(item, str) and item.strip():
+                out.add(_rel_posix(item))
+            elif isinstance(item, dict):
+                for k in ("dest", "dst", "path", "file"):
+                    if item.get(k):
+                        out.add(_rel_posix(str(item[k])))
+                        break
+    return out
+
+
+def _path_excluded(rel: str, writable: set[str]) -> bool:
+    rel = _rel_posix(rel)
+    if rel in writable:
+        return True
+    for w in writable:
+        ww = _rel_posix(w)
+        if not ww:
+            continue
+        if ww.endswith("/"):
+            if rel.startswith(ww):
+                return True
+        elif rel.startswith(ww + "/"):
+            return True
+    return False
+
+
+def is_test_source_rel(rel: str) -> bool:
+    n = _rel_posix(rel)
+    if Path(n).suffix.lower() not in _TEST_SOURCE_SUFFIXES:
+        return False
+    return n.startswith("src/test/") or "/src/test/" in n
+
+
+def remaining_test_sources(root: Path, writable: set[str]) -> list[str]:
+    """Test sources still present after subtracting files_writable."""
+    out: list[str] = []
+    root = Path(root)
+    if not root.is_dir():
+        return out
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in _WALK_SKIP_DIR_NAMES]
+        for name in filenames:
+            p = Path(dirpath) / name
+            if not p.is_file():
+                continue
+            try:
+                rel = p.relative_to(root).as_posix()
+            except ValueError:
+                continue
+            if _path_excluded(rel, writable):
+                continue
+            if is_test_source_rel(rel):
+                out.append(rel)
+    return out
+
+
+def pre_tree_pom(root: Path, writable: set[str]) -> Path | None:
+    """Root pom.xml if it remains in the pre-story tree."""
+    if _path_excluded("pom.xml", writable):
+        return None
+    pom = Path(root) / "pom.xml"
+    return pom if pom.is_file() else None
+
+
+def pom_fail_if_no_tests(pom: Path) -> bool:
+    try:
+        text = pom.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    return bool(_FAIL_IF_NO_TESTS_RE.search(text))
+
+
+def minted_task_id_errors(
+    body: dict, *, expect_task_id: str | None = None
+) -> list[str]:
+    """Refuse story-slug task_id. Equality is post-bind only.
+
+    Assembler stamps task_id=story_id before create. Do not require t_* in
+    check-kanban-body pre-create — that would break mint. After bind,
+    body.task_id must equal the Hermes card id.
+    """
+    tid = str((body or {}).get("task_id") or "").strip()
+    if expect_task_id:
+        exp = str(expect_task_id).strip()
+        if tid != exp:
+            return [f"task_id={tid!r} != card {exp!r}"]
+        if not CARD_TASK_ID_RE.fullmatch(tid):
+            return [f"task_id={tid!r} is not a Hermes card id (t_<hex>)"]
+        return []
+    if not CARD_TASK_ID_RE.fullmatch(tid):
+        return [
+            f"task_id={tid!r} is not a Hermes card id (t_<hex>) "
+            "(do not widen to story-N)"
+        ]
+    return []
+
+
+def exit_cmd_discriminating_errors(root: Path, body: dict) -> list[str]:
+    """SR-13: cmd must be able to fail on the pre-story tree (dest − write-set).
+
+    Static (no mvn on PATH — golden must not require it):
+      * first token `true` / `:` → always succeeds → refuse
+      * `mvn … test` with zero remaining src/test sources and pom not
+        failIfNoTests=true → vacuous → refuse
+      * `mvn … test` or `compile` with no pom in the pre-tree → can fail → pass
+      * `mvn … compile` with a remaining pom → static cannot prove vacuity;
+        optional empirical run is env-gated (MINT_ORACLE_RUN_CMD=1)
+
+    Do not stamp failIfNoTests=true as a mint recipe (L4 / test-framework gap).
+    """
+    errs: list[str] = []
+    writable = files_writable_rels(body)
+    exits = (body or {}).get("exit_criteria") or (body or {}).get("done_when") or []
+    if not isinstance(exits, list):
+        return ["exit_criteria must be a list"]
+    remaining = remaining_test_sources(root, writable)
+    pom = pre_tree_pom(root, writable)
+    for x in exits:
+        if not isinstance(x, dict):
+            continue
+        check = str(x.get("check") or "").strip()
+        if is_oracle_unavailable(x):
+            continue
+        cmd = x.get("cmd")
+        if not (isinstance(cmd, str) and cmd.strip()):
+            continue
+        s = cmd.strip()
+        try:
+            parts = shlex.split(s)
+        except ValueError:
+            errs.append(
+                f"exit {check!r} cmd {cmd!r} unparseable "
+                "(SR-13 discriminating-exit refuse)"
+            )
+            continue
+        if not parts:
+            continue
+        token0 = parts[0].rsplit("/", 1)[-1]
+        if token0 in ALWAYS_OK_CMD_TOKENS:
+            errs.append(
+                f"exit {check!r} cmd {cmd!r} always succeeds "
+                "(SR-13 discriminating-exit refuse)"
+            )
+            continue
+        ok, mvn_parts = semantic_exit_cmd_is_maven(s)
+        if not ok or not mvn_parts:
+            continue
+        goal = mvn_parts[-1]
+        if goal != "test":
+            continue
+        if pom is None:
+            continue
+        if remaining:
+            continue
+        if pom_fail_if_no_tests(pom):
+            continue
+        errs.append(
+            f"exit {check!r} cmd {cmd!r} is vacuous on the pre-story tree "
+            "(no remaining src/test sources; surefire failIfNoTests not true; "
+            "SR-13 discriminating-exit refuse)"
+        )
+    return errs

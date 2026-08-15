@@ -145,10 +145,8 @@ def list_over_budget(db_path: Path, now: float) -> list[dict]:
         conn.close()
 
 
-def phase_hint(title: str) -> str:
-    for p in ("M1", "M2", "M3", "M4", "M5"):
-        if title.startswith(p) or f" {p} " in f" {title} ":
-            return p
+def phase_hint(_title: str) -> str:
+    # BV19-3: do not derive phase from the card title. The link graph is the DAG.
     return ""
 
 

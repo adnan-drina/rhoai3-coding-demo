@@ -1,6 +1,6 @@
 ---
 name: reference-rh-quarkus-pom
-description: Before authoring a destination Quarkus pom.xml — assemble the Red Hat platform structure (properties, BOM import, quarkus-maven-plugin executions, native profile) from official fragments with empty story deps and pins-only GAV; use when foundation stories hand-author the POM
+description: Before authoring a destination Quarkus pom.xml — assemble the Red Hat platform structure (properties, BOM import, quarkus-maven-plugin executions, native profile) from official fragments with pins-only GAV; foundation Jacoco plus the pom-writer identity.extensions_apply union; use when foundation stories hand-author the POM
 license: Apache-2.0
 compatibility: Linux seat; Red Hat Quarkus platform; Maven
 metadata:
@@ -35,7 +35,9 @@ Annotated fragments: `references/pom-structure.md`. Repository resolution:
   retired).
 - Reminding an agent of the official `<build>` execution goals or native
   Maven profile shape without regenerating from memory.
-- **Not** for adding story extensions — `manage-quarkus-extensions`.
+- **Not** for adding later-story extensions — those stay on
+  `identity.extensions_declared`; the sole pom writer applies
+  `identity.extensions_apply` via `manage-quarkus-extensions`.
 - **Not** for Spring→Quarkus form mapping — `spring-to-quarkus-patterns`.
 - **Not** to invoke `quarkus create app` / `quarkus-maven-plugin:create`.
 
@@ -48,8 +50,10 @@ Annotated fragments: `references/pom-structure.md`. Repository resolution:
    - properties feed both BOM import and plugin version via
      `${quarkus.platform.*}`
    - `dependencyManagement` imports the BOM (`type=pom`, `scope=import`)
-   - story `<dependencies>` stay empty at mint (DD3) except foundation
-     Jacoco test-scope wiring (see foundation-jacoco reference)
+   - story `<dependencies>` carry foundation Jacoco test-scope wiring
+     (see foundation-jacoco reference) plus the sole pom-writer
+     `identity.extensions_apply` union (DD3). Later stories do not
+     write `pom.xml`.
    - `<build>` declares
      `${quarkus.platform.group-id}:quarkus-maven-plugin` with
      `<extensions>true</extensions>` and explicit goals `build` /
@@ -78,5 +82,6 @@ Annotated fragments: `references/pom-structure.md`. Repository resolution:
 
 - `quarkus.platform.group-id` resolves to `com.redhat.quarkus.platform`.
 - Plugin groupId equals the BOM groupId property (same stream).
-- Story extension deps empty except Jacoco foundation wiring.
+- Story extension deps = foundation Jacoco plus `identity.extensions_apply`
+  on the sole pom.xml writer (later stories do not write the POM).
 - `check-pom-platform-pins.py <root>` → OK once authored.

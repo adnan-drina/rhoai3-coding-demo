@@ -8,9 +8,10 @@ M2a exit / create-path fail-closed: prove the partition is VALID as a whole
 
 Checks:
   1) Endpoint coverage — each inventory HTTP entry_point maps to exactly one story
-  2) No file overlaps across stories (write-conflict), except when a body
-     declares sequence_after / dependencies that order the writers
-     (Deputy E-20260813T215058Z / Review B2 — legal sequenced overlap)
+  2) No file overlaps across stories (write-conflict), including pom.xml
+     (Architect E-20260814T205052Z DD3 — do not skip pom.xml). Sequenced
+     overlap remains legal when a body declares sequence_after / dependencies
+     (Deputy E-20260813T215058Z / Review B2).
   3) Optional MTA findings addressed via story.rules or typed oos
   4) Composes with bodies' files_in_scope when present (M2b+)
 
@@ -253,7 +254,7 @@ def main() -> int:
     owner: dict[str, str] = {}
     for sid, files in story_file_map.items():
         for f in files:
-            if not f or f.endswith("pom.xml"):
+            if not f:
                 continue
             if f in owner and owner[f] != sid:
                 prev = owner[f]

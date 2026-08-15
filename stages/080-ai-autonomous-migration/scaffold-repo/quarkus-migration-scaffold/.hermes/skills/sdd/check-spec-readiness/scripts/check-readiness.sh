@@ -14,8 +14,8 @@ check-ordering.py (AD-S S.6 identity / refuse worker re-plan / plan_revision)
 and check-kanban-body.py (W2 S6.1 Kanban body vocabulary).
 
 Arguments:
-  none. The scaffold root is derived from this script's own location
-  (<script>/../../../..). Scanned under that root:
+  none. The scaffold root is found by walking up to migration.yaml (SR-2).
+  Scanned under that root:
     .specify/specs, specs, evidence/briefs, migration/specs (*.md)
     evidence/tasks, evidence/kanban (*.json)
     migration/waivers, migration/mta-exceptions (*.yaml|*.yml|*.json)
@@ -50,7 +50,21 @@ esac
 
 set -euo pipefail
 
-root="$(cd "$(dirname "$0")/../../../.." && pwd)"
+# SR-2: walk up to migration.yaml — never a parent-count.
+resolve_migration_root() {
+  local d
+  d="$(cd "$(dirname "$0")" && pwd)"
+  while [ "$d" != "/" ]; do
+    if [ -f "$d/migration.yaml" ]; then
+      printf '%s\n' "$d"
+      return 0
+    fi
+    d="$(dirname "$d")"
+  done
+  echo "cannot find project root (migration.yaml) walking up from $(dirname "$0") (SR-2)" >&2
+  return 1
+}
+root="$(resolve_migration_root)" || exit 1
 bad=0
 checked=0
 

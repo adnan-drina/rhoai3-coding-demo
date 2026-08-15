@@ -17,6 +17,9 @@
 # Watchdog STUCK_SECONDS (observation, §15.2) must exceed max(budgets).
 # Role persona keys (role:/roles:/skills_by_role:) retired — Architect
 # E-20260813T144117Z / Operator E-20260813T143534Z.
+# EX-4 seat assignees: named Hermes profiles (analyzer/planner/implementer/
+# validator), catalog `.hermes/skills/harness/dispatch-phase/references/assignee-profiles.json`.
+# Pillar heads stay Cursor. Do not use assignee default.
 
 phases:
   M1:
@@ -62,7 +65,7 @@ phases:
   M3:
     # IMPLEMENT — per-unit transform
     # Children MUST be created via
-    # .hermes/enforcement/dispatch-phase/scripts/create-m3-implementer.sh
+    # .hermes/skills/harness/dispatch-phase/scripts/create-m3-implementer.sh
     # (bare hermes kanban create omits these skills — grounding study 20260809).
     # AD-002F — useful = influence. M3 default preload is the workhorse + body lint
     # only. Drop zero-touch (check-domain-parity→M4, enforce-authority-boundary/
@@ -73,7 +76,7 @@ phases:
     # ground-in-harvest or record-run-evidence to skills[] (opt-in ≠
     # enforcement). They are harness-invoked on create (body digest /
     # checkpoint) and on complete via assert-complete-exit-criteria.py
-    # (citation + body-digest + provenance). Physical move → .hermes/enforcement/
+    # (citation + body-digest + provenance). Physical move → .hermes/skills/harness/
     # at v14 mint with UPLIFT-6.
     skills:
       - check-spec-readiness

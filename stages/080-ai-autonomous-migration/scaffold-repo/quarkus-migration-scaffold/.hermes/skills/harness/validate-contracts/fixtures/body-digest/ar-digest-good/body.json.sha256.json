@@ -1,0 +1,7 @@
+{
+  "schema": "rhoai3.body-digest/v1",
+  "task_id": "S-FIX-DIGEST",
+  "body_path": ".hermes/skills/harness/validate-contracts/fixtures/body-digest/ar-digest-good/body.json",
+  "body_sha256": "738c3b153e9e8341521cf213d4bed416268749ba72d87cb17a9e0a8b2c6983d1",
+  "stamped_at": "2026-08-10T11:15:20Z"
+}

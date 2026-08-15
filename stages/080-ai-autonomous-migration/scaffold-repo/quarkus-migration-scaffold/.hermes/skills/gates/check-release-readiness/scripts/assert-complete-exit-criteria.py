@@ -76,6 +76,7 @@ def main() -> int:
         "stamped_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "notes": [
             "Architect E-20260811T175509Z Class A — BANK-COMPLETE-CMD-1 elevated",
+            "Architect E-20260814T205052Z DD3 — check-kanban-body on complete path",
             "kanban_complete MUST NOT be called unless ok=true",
             "compile/test_compile use scope-filtered gate (compile-scope-filtered.md)",
         ],
@@ -93,7 +94,7 @@ def main() -> int:
 
     # Architect E-20260813T152211Z / Lead wire-or-retire: AD-H §17/§19 must not
     # depend on skill_view. Invoke enforcement scripts on the complete path.
-    # Wave B tip layout: enforcement scripts live under .hermes/enforcement/
+    # Wave B tip layout: enforcement scripts live under .hermes/skills/harness/
     # (skills/harness retained as legacy fallback).
     skills = root / ".hermes" / "skills" / "harness"
     enforcement = root / ".hermes" / "enforcement"
@@ -113,7 +114,20 @@ def main() -> int:
     provenance = find_script("record-run-evidence/scripts/check-provenance.py")
     runnable_db = gates / "check-runnable-db-config.py"
     empty_security = gates / "check-empty-security.py"
+    kanban_body = (
+        root
+        / ".hermes"
+        / "skills"
+        / "sdd"
+        / "check-spec-readiness"
+        / "scripts"
+        / "check-kanban-body.py"
+    )
     for label, cmd in (
+        (
+            "kanban-body",
+            [sys.executable, str(kanban_body), str(root), "--body", str(body)],
+        ),
         (
             "body-digest",
             [sys.executable, str(body_digest), str(root), "--body", str(body)],
