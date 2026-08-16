@@ -5,7 +5,7 @@ license: Apache-2.0
 compatibility: Linux seat; Python 3.11+; reads migration/ specs and bodies
 metadata:
   author: rhoai3-harness-team
-  version: "1.4.0"
+  version: "1.4.1"
   hermes:
     tags:
     - sdd
@@ -122,8 +122,11 @@ Do **not** invoke DD4-retired R-M3.5/7 stubs (`check-persistence-bom.py`,
 - `check-partition-coverage.py --write-receipt` leaves
   `evidence/receipts/partition-coverage/latest.json`
   (`schema: rhoai3.partition-coverage/v1`) with `verdict`, `gaps[]`,
-  `http_endpoint_count`. Only `VALID` exits 0 — `INCONCLUSIVE` (no story files
-  found) is not a pass.
+  `http_endpoint_count`, `mta_status`. Only `VALID` exits 0.
+  `INCONCLUSIVE` is not a pass: no story files, **or** findings file
+  missing (`mta_status=skipped_missing` / gap `mta_skipped_missing`).
+  Findings present as a violations map with no `story.rules` / `mta_oos`
+  is `INVALID` (`mta_unaddressed`), not a silent VALID.
 - `assert-mint-oracles.py --body` exits 0 only when refs resolve, `task_id` is
   a Hermes card id (or `--skip-task-id` pre-create), and every test-shaped
   `cmd` names `proves` test source(s) in this `files_writable` (L2a). An

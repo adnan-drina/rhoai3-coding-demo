@@ -5,7 +5,7 @@ license: Apache-2.0
 compatibility: Linux seat; kantra CLI and Java 21; network for rule bundles
 metadata:
   author: rhoai3-harness-team
-  version: "1.3.0"
+  version: "1.4.0"
   hermes:
     tags:
     - analysis
@@ -79,9 +79,15 @@ What it does, in order (each step dies non-zero on failure):
    `analyze --input … --output "${MTA_OUT_DIR}" --target … --json-output
    "${MTA_JSON_OUT}" --overwrite`. Non-zero tool exit is soft if
    `<out-dir>/output.json` exists (it is copied to the JSON out).
-5. `normalize-findings.py <json> <cli> <targets-csv> legacy-at-3:<sha256>` →
-   envelope `rhoai3.mta-findings/v1-provisional` with `execution_evidence`
-   and `codeSnip` preserved; then `validate-findings-schema.py <json>`.
+5. `normalize-findings.py <json> <cli> <targets-csv> legacy-at-3:<sha256>
+   [rules-coverage.json] [static-report/index.html]` → envelope
+   `rhoai3.mta-findings/v1-provisional` with `execution_evidence` and
+   `codeSnip` preserved; **also** `evidence/mta/rules-coverage.json`
+   (fired / unmatched / skipped / errors per ruleset — WC-2; do not
+   discard those analyzer fields) and a pointer to the static HTML
+   report already written under `evidence/mta/static-report/` (we do
+   **not** pass `--skip-static-report`). Then
+   `validate-findings-schema.py <json>`.
    See `governance/schemas/mta-findings.md`.
 6. `emit-findings-handoff.py <root> <findings> <handoff>` → the M1→M2 seam
    `evidence/findings-handoff.json` (`rhoai3.findings-handoff/v1`: rule IDs,
@@ -143,9 +149,10 @@ Both are required environment facts, not optional tuning.
 ## Verification
 
 - Last stderr line is
-  `OK: findings → … handoff → … report → …` and the script exits 0.
+  `OK: findings → … handoff → … coverage → … report → …` and the script exits 0.
   Stdout is one JSON object
-  `{script,ok,findings,handoff,report_dir,analyze_input}` (UPLIFT-2).
+  `{script,ok,findings,handoff,report_dir,analyze_input,rules_coverage,static_report,static_report_present}`
+  (UPLIFT-2).
 - `evidence/mta-findings.json`: `schema: rhoai3.mta-findings/v1-provisional`,
   `execution_evidence.analyzer_ran: true`, `execution_evidence.rule_set`
   matching `migration.yaml` `analysis.targets`, `execution_evidence.input_digest`
@@ -153,7 +160,9 @@ Both are required environment facts, not optional tuning.
   the assertion: every incident carries `uri`, `lineNumber`, `message`,
   `codeSnip`; every violation carries `category`.
 - `evidence/mta/output.json` exists (raw analyzer report kept
-  beside the normalized envelope).
+  beside the normalized envelope). `evidence/mta/rules-coverage.json` names
+  fired/unmatched/skipped/errors per ruleset. `evidence/mta/static-report/index.html`
+  is the human report (absent only if the analyzer failed to render it).
 - `evidence/findings-handoff.json` passes
   `python3 "${HERMES_SKILL_DIR}/scripts/check-findings-handoff.py" .` — exit 0.
   It re-hashes both `mta-findings.json` and `entry-point-inventory.json` and

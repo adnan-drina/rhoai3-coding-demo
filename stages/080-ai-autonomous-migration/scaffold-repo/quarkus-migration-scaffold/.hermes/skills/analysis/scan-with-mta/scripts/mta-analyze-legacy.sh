@@ -32,6 +32,37 @@ JSON_OUT="${MTA_JSON_OUT:-${ROOT}/evidence/mta-findings.json}"
 
 die() { echo "mta-analyze-legacy: $*" >&2; exit 1; }
 
+# B-19: PyYAML lives on python3.11 (UDI python3 → 3.9). Prefer 3.11 for
+# upstream YAML; lite-parser fallback stays in the targets reader below.
+python_for_yaml() {
+  if command -v python3.11 >/dev/null 2>&1 && python3.11 -c "import yaml" >/dev/null 2>&1; then
+    printf '%s\n' "python3.11"
+    return 0
+  fi
+  printf '%s\n' "python3"
+}
+
+convert_yaml_json() {
+  local src="$1" dest="$2"
+  if command -v python3.11 >/dev/null 2>&1 && python3.11 -c "import yaml" >/dev/null 2>&1; then
+    python3.11 - "${src}" "${dest}" <<'PY'
+import json, sys, yaml
+src, dest = sys.argv[1], sys.argv[2]
+json.dump(yaml.safe_load(open(src, encoding="utf-8")), open(dest, "w", encoding="utf-8"), indent=2)
+print(f"converted {src} -> {dest}", file=sys.stderr)
+PY
+    return 0
+  fi
+  if command -v yq >/dev/null 2>&1; then
+    yq -o=json "${src}" > "${dest}"
+    echo "converted ${src} -> ${dest} (yq)" >&2
+    return 0
+  fi
+  return 1
+}
+
+PYTHON_YAML="$(python_for_yaml)"
+
 # UPLIFT-2: progress + human OK on stderr; one JSON object on stdout.
 emit_ok() {
   local human="$1"
@@ -113,7 +144,7 @@ while IFS= read -r t; do
   [ -n "${t}" ] || continue
   TARGET_FLAGS+=(--target "${t}")
   TARGET_LIST="${TARGET_LIST} ${t}"
-done < <(python3 - "${MIGRATION_YAML}" <<'PY'
+done < <("${PYTHON_YAML}" - "${MIGRATION_YAML}" <<'PY'
 import sys
 try:
     import yaml
@@ -184,7 +215,9 @@ if [[ ! -s "${JSON_OUT}" ]]; then
     echo "mta-analyze-legacy: --json-output missing/empty (analyze_rc=${analyze_rc}); falling back to ${OUT_DIR}/output.json" >&2
     cp -f "${OUT_DIR}/output.json" "${JSON_OUT}"
   elif [[ -s "${OUT_DIR}/output.yaml" ]]; then
-    die "analyze wrote output.yaml but not output.json — convert YAML offline (analyze_rc=${analyze_rc})"
+    echo "mta-analyze-legacy: --json-output missing/empty (analyze_rc=${analyze_rc}); converting ${OUT_DIR}/output.yaml" >&2
+    convert_yaml_json "${OUT_DIR}/output.yaml" "${JSON_OUT}" \
+      || die "analyze wrote output.yaml but YAML→JSON conversion failed (need python3.11+PyYAML or yq; analyze_rc=${analyze_rc})"
   else
     die "mta-cli analyze failed (rc=${analyze_rc}) with no ${OUT_DIR}/output.json|output.yaml"
   fi
@@ -198,7 +231,9 @@ PY
 # Preserve model: envelope + codeSnip required (provisional schema lock).
 # Digest form matches live P10: legacy-at-3:<sha256>
 python3 "$(cd "$(dirname "$0")" && pwd)/normalize-findings.py" \
-  "${JSON_OUT}" "${CLI}" "$(echo "${TARGET_LIST}" | xargs | tr ' ' ',')" "legacy-at-3:${INPUT_DIGEST}"
+  "${JSON_OUT}" "${CLI}" "$(echo "${TARGET_LIST}" | xargs | tr ' ' ',')" "legacy-at-3:${INPUT_DIGEST}" \
+  "${OUT_DIR}/rules-coverage.json" \
+  "${OUT_DIR}/static-report/index.html"
 python3 "$(cd "$(dirname "$0")" && pwd)/validate-findings-schema.py" "${JSON_OUT}" \
   || die "findings failed provisional schema validation (governance/schemas/mta-findings.md; skill scan-with-mta)"
 
@@ -210,9 +245,11 @@ python3 "$(cd "$(dirname "$0")" && pwd)/check-findings-handoff.py" "${ROOT}" \
   || die "findings-handoff gate failed after emit"
 
 HANDOFF="${ROOT}/evidence/findings-handoff.json"
-HUMAN="OK: findings → ${JSON_OUT}  handoff → ${HANDOFF}  report → ${OUT_DIR}"
-emit_ok "${HUMAN}" "$(python3 - "${JSON_OUT}" "${HANDOFF}" "${OUT_DIR}" "${ANALYZE_INPUT}" <<'PY'
-import json, sys
+STATIC_REPORT="${OUT_DIR}/static-report/index.html"
+COVERAGE="${OUT_DIR}/rules-coverage.json"
+HUMAN="OK: findings → ${JSON_OUT}  handoff → ${HANDOFF}  coverage → ${COVERAGE}  report → ${OUT_DIR}"
+emit_ok "${HUMAN}" "$(python3 - "${JSON_OUT}" "${HANDOFF}" "${OUT_DIR}" "${ANALYZE_INPUT}" "${COVERAGE}" "${STATIC_REPORT}" <<'PY'
+import json, os, sys
 print(json.dumps({
     "script": "mta-analyze-legacy",
     "ok": True,
@@ -220,6 +257,9 @@ print(json.dumps({
     "handoff": sys.argv[2],
     "report_dir": sys.argv[3],
     "analyze_input": sys.argv[4],
+    "rules_coverage": sys.argv[5],
+    "static_report": sys.argv[6],
+    "static_report_present": os.path.isfile(sys.argv[6]),
 }))
 PY
 )"

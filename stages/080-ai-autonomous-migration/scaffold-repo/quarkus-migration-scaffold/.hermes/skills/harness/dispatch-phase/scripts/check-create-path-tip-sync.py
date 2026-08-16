@@ -25,11 +25,15 @@ REQUIRED_FILES = [
     ".hermes/skills/sdd/check-spec-readiness/scripts/check-findings-handoff.py",
     # AD-S / Deputy E-120800Z — Non-Goals override must ride tip+overlay/R0
     ".hermes/skills/sdd/init-spec-workspace/assets/spec-template.md",
+    ".hermes/skills/sdd/init-spec-workspace/assets/constitution.md",
+    ".hermes/skills/sdd/init-spec-workspace/assets/sdd-to-tasks.workflow.yml",
     # Architect E-121308Z — R0 Spec Kit preseed gate (live assert; script on tip)
     ".hermes/skills/harness/dispatch-phase/scripts/check-specify-preseed.py",
     ".hermes/skills/harness/validate-contracts/scripts/check-specify-absent.py",
     # Deputy E-20260813T184709Z — root scripts/ negative-space retired
     ".hermes/skills/harness/validate-contracts/scripts/check-scripts-absent.py",
+    ".hermes/skills/harness/validate-contracts/scripts/pre-commit-index-suite.sh",
+    ".hermes/skills/harness/dispatch-phase/scripts/park-on-block-loop.py",
     # GR1 / Deputy E-20260814T081104Z — contract lifecycle (no EOL in active dir)
     ".hermes/skills/harness/validate-contracts/scripts/check-contract-lifecycle.py",
     ".hermes/skills/harness/validate-contracts/references/contract-lifecycle.md",
@@ -895,6 +899,31 @@ REQUIRED_SUBSTRINGS = [
         ".hermes/skills/harness/dispatch-phase/scripts/check-create-path-tip-sync.py",
         "SR-14 untracked (not in git index)",
         "SR-14 check is wired into tip-sync",
+    ),
+    (
+        ".hermes/skills/harness/validate-contracts/scripts/pre-commit-index-suite.sh",
+        "git checkout-index -a --prefix=",
+        "LG9a index snapshot pre-commit",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/scripts/park-on-block-loop.py",
+        "HOLD_STATUS = \"triage\"",
+        "L7 loop-breaker parks in triage",
+    ),
+    (
+        ".hermes/skills/sdd/check-spec-readiness/references/story-scope-and-exit.md",
+        "exactly one owner",
+        "V19-8 file-granular ownership after grouping",
+    ),
+    (
+        ".hermes/skills/sdd/check-spec-readiness/scripts/stamp-body-dependencies.py",
+        "M2 partition shape",
+        "A-6 stamper accepts {legacy, dest} scope",
+    ),
+    (
+        ".hermes/skills/sdd/init-spec-workspace/scripts/init-workspace.sh",
+        "assets/constitution.md",
+        "V20-3 constitution overlay at provision",
     ),
     (
         ".hermes/skills/sdd/check-spec-readiness/scripts/assert-mint-oracles.py",

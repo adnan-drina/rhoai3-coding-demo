@@ -25,6 +25,26 @@ def main() -> int:
         / "assets"
         / "spec-template.md"
     )
+    provision_constitution = (
+        root
+        / ".hermes"
+        / "skills"
+        / "sdd"
+        / "init-spec-workspace"
+        / "assets"
+        / "constitution.md"
+    )
+    provision_workflow = (
+        root
+        / ".hermes"
+        / "skills"
+        / "sdd"
+        / "init-spec-workspace"
+        / "assets"
+        / "sdd-to-tasks.workflow.yml"
+    )
+    dest_constitution = specify / "memory" / "constitution.md"
+    dest_workflow = specify / "workflows" / "sdd-to-tasks.yml"
     bad = 0
 
     if not specify.is_dir():
@@ -73,6 +93,81 @@ def main() -> int:
         bad = 1
     else:
         print("OK: tip Non-Goals skill asset present")
+
+    if not provision_constitution.is_file():
+        print(
+            "FAIL: missing tip constitution asset "
+            ".hermes/skills/sdd/init-spec-workspace/assets/constitution.md",
+            file=sys.stderr,
+        )
+        bad = 1
+    else:
+        ctext = provision_constitution.read_text(encoding="utf-8")
+        if "[PRINCIPLE_1" in ctext or "[PROJECT_NAME]" in ctext:
+            print("FAIL: constitution asset still has spec-kit placeholders", file=sys.stderr)
+            bad = 1
+        elif "3.27.3.SP1" not in ctext or "Java 21" not in ctext:
+            print(
+                "FAIL: constitution asset missing Quarkus 3.27.3.SP1 / Java 21",
+                file=sys.stderr,
+            )
+            bad = 1
+        else:
+            print("OK: tip constitution asset names Red Hat Quarkus + Java 21")
+
+    if not provision_workflow.is_file():
+        print(
+            "FAIL: missing tip workflow "
+            ".hermes/skills/sdd/init-spec-workspace/assets/sdd-to-tasks.workflow.yml",
+            file=sys.stderr,
+        )
+        bad = 1
+    else:
+        wtext = provision_workflow.read_text(encoding="utf-8")
+        if "command: speckit.implement" in wtext:
+            print(
+                "FAIL: sdd-to-tasks workflow must not invoke speckit.implement",
+                file=sys.stderr,
+            )
+            bad = 1
+        elif "speckit.clarify" not in wtext or "handoff-kanban" not in wtext:
+            print(
+                "FAIL: workflow missing speckit.clarify or handoff-kanban gate",
+                file=sys.stderr,
+            )
+            bad = 1
+        else:
+            print("OK: tip sdd-to-tasks workflow (clarify, no implement)")
+
+    if specify.is_dir():
+        if not dest_constitution.is_file():
+            print(
+                "FAIL: missing .specify/memory/constitution.md "
+                "(provision overlay; not spec-kit placeholders)",
+                file=sys.stderr,
+            )
+            bad = 1
+        else:
+            dtext = dest_constitution.read_text(encoding="utf-8")
+            if "[PRINCIPLE_1" in dtext or "[PROJECT_NAME]" in dtext:
+                print(
+                    "FAIL: dest constitution still spec-kit placeholders",
+                    file=sys.stderr,
+                )
+                bad = 1
+            elif "3.27.3.SP1" not in dtext:
+                print("FAIL: dest constitution missing Quarkus pin", file=sys.stderr)
+                bad = 1
+            else:
+                print("OK: dest constitution populated")
+        if not dest_workflow.is_file():
+            print(
+                "FAIL: missing .specify/workflows/sdd-to-tasks.yml",
+                file=sys.stderr,
+            )
+            bad = 1
+        else:
+            print("OK: dest sdd-to-tasks workflow installed")
 
     if bad:
         print("FAIL: Spec Kit preseed (R0 / provision-owns-tools)", file=sys.stderr)

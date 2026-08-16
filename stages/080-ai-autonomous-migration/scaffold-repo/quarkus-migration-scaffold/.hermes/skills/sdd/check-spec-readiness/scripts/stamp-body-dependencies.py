@@ -110,9 +110,36 @@ def resolve_legacy(root: Path, rel: str) -> Path | None:
     return None
 
 
-def resolve_scope_legacy(body: dict, basename: str) -> str | None:
-    """Pick a legacy relative path from files_in_scope by basename."""
+def resolve_scope_legacy(body: dict, rel_or_basename: str) -> str | None:
+    """Pick a legacy relative path from files_in_scope by dest rel or basename.
+
+    Accepts string scope entries and {legacy, dest} dicts (M2 partition shape).
+    """
+    rel_n = rel_or_basename.replace("\\", "/")
+    basename = Path(rel_n).name
     for item in body.get("files_in_scope") or []:
+        if isinstance(item, dict):
+            dest = str(item.get("dest") or item.get("dst") or "").replace("\\", "/")
+            legacy = str(item.get("legacy") or item.get("src") or "").replace(
+                "\\", "/"
+            )
+            if not legacy:
+                continue
+            if dest and dest != rel_n and not dest.endswith("/" + basename):
+                continue
+            if dest or legacy.endswith("/" + basename) or legacy.endswith(basename):
+                p = legacy.replace("\\", "/")
+                for prefix in (
+                    "/projects/.derived/legacy-at-3/",
+                    "/projects/legacy/",
+                    "projects/.derived/legacy-at-3/",
+                    "projects/legacy/",
+                ):
+                    if p.startswith(prefix):
+                        p = p[len(prefix) :]
+                if p.startswith("src/"):
+                    return p
+            continue
         if not isinstance(item, str):
             continue
         p = item.replace("\\", "/")
@@ -187,15 +214,20 @@ def main() -> int:
     java_writables = 0
     resolved_sources = 0
     in_pkg_imports_seen = 0
+    self_owned_imports = 0
     for wf in writable_paths(body):
         rel = norm_file(wf)
         if not rel.endswith(".java"):
+            continue
+        nrel = rel.replace("\\", "/")
+        if nrel.startswith("src/test/") or "/src/test/" in nrel:
+            # L2a dest proving tests are authored here; no legacy twin.
             continue
         java_writables += 1
         lp = resolve_legacy(root, rel)
         if lp is None:
             # Fallback: files_in_scope may still name the legacy referent
-            scope_rel = resolve_scope_legacy(body, Path(rel).name)
+            scope_rel = resolve_scope_legacy(body, rel)
             if scope_rel:
                 lp = resolve_legacy(root, scope_rel)
                 if lp is None:
@@ -215,6 +247,7 @@ def main() -> int:
                 continue
             provider = own.get(dep_rel)
             if provider == self_sid:
+                self_owned_imports += 1
                 continue
             if provider:
                 deps[dep_rel] = provider
@@ -251,13 +284,20 @@ def main() -> int:
             )
             return 1
         if in_pkg_imports_seen:
-            print(
-                "DEPENDENCY_STAMP_VACUOUS: resolved sources have in-package "
-                "imports but stamped dependencies=[] — provider map / "
-                "norm mismatch (A-6)",
-                file=sys.stderr,
-            )
-            return 1
+            if self_owned_imports and not ordered:
+                print(
+                    f"OK: stamped dependencies=0 "
+                    f"(self-owned imports={self_owned_imports}; "
+                    f"same-story closure is not a hole)"
+                )
+            else:
+                print(
+                    "DEPENDENCY_STAMP_VACUOUS: resolved sources have in-package "
+                    "imports but stamped dependencies=[] — provider map / "
+                    "norm mismatch (A-6)",
+                    file=sys.stderr,
+                )
+                return 1
         # True leaf: resolved sources, package prefix known, zero in-pkg imports.
         print(
             f"OK: stamped dependencies=0 "

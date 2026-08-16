@@ -31,6 +31,12 @@ including the **relationship** between them (T-8 / v17 wrong-class oracles).
    (`shlex` + `mvn`) is necessary and not sufficient. Golden does not
    require `mvn` on PATH. Do not stamp `failIfNoTests=true` as a mint
    recipe (the story that needs a test is the story that adds it).
+6. **File-granular ownership (V19-8)** — story grouping and file ownership
+   are separate steps. Native story-per-US does not make a multi-endpoint
+   controller unrepresentable (one story may create the resource file; a
+   later story may add verbs to the same file). After grouping exists, the
+   handover assigns each destination file **exactly one owner**. Overlaps
+   are a partition defect, not a grouping feature.
 
 ## Bank vocabulary (tip-sync / doctrine pins)
 

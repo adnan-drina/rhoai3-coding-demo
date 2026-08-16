@@ -12,7 +12,8 @@ Checks:
      (Architect E-20260814T205052Z DD3 — do not skip pom.xml). Sequenced
      overlap remains legal when a body declares sequence_after / dependencies
      (Deputy E-20260813T215058Z / Review B2).
-  3) Optional MTA findings addressed via story.rules or typed oos
+  3) MTA findings: missing file is INCONCLUSIVE (never a silent VALID).
+     Present rule IDs must land on story.rules or typed mta_oos
   4) Composes with bodies' files_in_scope when present (M2b+)
 
 Specimen-agnostic (Operator E-20260811T150800Z): HTTP denominator and package
@@ -298,7 +299,11 @@ def main() -> int:
     findings_path = root / args.findings
     findings = load_json(findings_path)
     mta_status = "skipped_missing"
-    if isinstance(findings, dict):
+    if not findings_path.is_file() or not isinstance(findings, dict):
+        # WC-8: missing findings is INCONCLUSIVE, never a silent VALID.
+        mta_status = "skipped_missing"
+        gaps.append("mta_skipped_missing")
+    else:
         items = findings.get("violations") or findings.get("findings") or findings.get("rules") or []
         oos = set()
         for story in stories:
@@ -307,18 +312,21 @@ def main() -> int:
         typed_oos = partition.get("mta_oos") or partition.get("findings_oos") or []
         if isinstance(typed_oos, list):
             oos.update(str(x) for x in typed_oos)
-        if isinstance(items, list) and items:
-            mta_status = "checked"
-            missing_rules: list[str] = []
+        rule_ids: list[str] = []
+        if isinstance(items, dict):
+            rule_ids = [str(k) for k in items.keys() if k]
+        elif isinstance(items, list):
             for it in items:
                 if isinstance(it, str):
-                    rid = it
+                    if it:
+                        rule_ids.append(it)
                 elif isinstance(it, dict):
                     rid = str(it.get("rule") or it.get("ruleID") or it.get("id") or "")
-                else:
-                    continue
-                if rid and rid not in oos:
-                    missing_rules.append(rid)
+                    if rid:
+                        rule_ids.append(rid)
+        if rule_ids:
+            mta_status = "checked"
+            missing_rules = [rid for rid in rule_ids if rid not in oos]
             if missing_rules:
                 gaps.append(f"mta_unaddressed={len(missing_rules)}")
                 for r in missing_rules[:10]:
@@ -326,11 +334,14 @@ def main() -> int:
         else:
             mta_status = "empty_findings"
 
+    coverage_gaps = [g for g in gaps if g != "mta_skipped_missing"]
     if not story_file_map or all(len(v) == 0 for v in story_file_map.values()):
         verdict = "INCONCLUSIVE"
         gaps.append("no_story_files_in_partition_or_bodies")
-    elif gaps:
+    elif coverage_gaps:
         verdict = "INVALID"
+    elif mta_status == "skipped_missing":
+        verdict = "INCONCLUSIVE"
     else:
         verdict = "VALID"
 

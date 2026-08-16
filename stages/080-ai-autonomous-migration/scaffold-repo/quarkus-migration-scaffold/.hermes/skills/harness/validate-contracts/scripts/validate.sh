@@ -35,6 +35,8 @@ Sections covered (in order):
   LG4 no scaffold tmp/ or authoring ledger
   SR-12 scaffold-root allow-list            LG7 no eval of phase-dispatch parser
   SR-14 required tip files are git-tracked
+  L7 park-on-block-loop self-test
+  LG9a pre-commit-index-suite script present
   record-run-evidence (AD-H S19)   R-M3.6 dependency_wait hold
   CS-7 m3-implementer bundle assert        BANK-DEST-INV-HARDINVOKE-1 (RW-2)
   AD-011 skill extension overlay           R-SK.12 script CLI contract
@@ -996,6 +998,122 @@ else
   fi
 fi
 rm -rf "${pc_tmp}"
+
+# WC-8: missing findings → INCONCLUSIVE (never silent VALID)
+pc_tmp="$(mktemp -d)"
+mkdir -p "${pc_tmp}/evidence/briefs"
+printf '%s\n' '{"stories":[{"story_id":"story-001","files_in_scope":["src/Foo.java"]}]}' \
+  > "${pc_tmp}/evidence/briefs/partition.json"
+printf '%s\n' '{"entry_points":[{"kind":"http","file":"src/Foo.java","symbol":"foo"}],"totals":{"http_endpoints":1}}' \
+  > "${pc_tmp}/inventory.json"
+if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/check-partition-coverage.py" \
+    "${pc_tmp}" --partition evidence/briefs/partition.json --inventory inventory.json \
+    >/tmp/pc-wc8-miss.out 2>/tmp/pc-wc8-miss.err; then
+  echo "FAIL: missing findings should be INCONCLUSIVE, not VALID" >&2
+  cat /tmp/pc-wc8-miss.out /tmp/pc-wc8-miss.err >&2
+  rc=1
+else
+  if grep -q 'INCONCLUSIVE' /tmp/pc-wc8-miss.out /tmp/pc-wc8-miss.err \
+     && grep -q 'mta_skipped_missing' /tmp/pc-wc8-miss.out /tmp/pc-wc8-miss.err; then
+    echo "OK: PARTITION_COVERAGE missing findings is INCONCLUSIVE (WC-8)"
+  else
+    echo "FAIL: expected INCONCLUSIVE + mta_skipped_missing" >&2
+    cat /tmp/pc-wc8-miss.out /tmp/pc-wc8-miss.err >&2
+    rc=1
+  fi
+fi
+# WC-8: envelope violations dict present, no story.rules → INVALID
+mkdir -p "${pc_tmp}/evidence"
+printf '%s\n' '{"schema":"rhoai3.mta-findings/v1-provisional","violations":{"springboot-to-quarkus-00000":{"ruleID":"springboot-to-quarkus-00000","category":"mandatory","incidents":[]}}}' \
+  > "${pc_tmp}/evidence/mta-findings.json"
+if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/check-partition-coverage.py" \
+    "${pc_tmp}" --partition evidence/briefs/partition.json --inventory inventory.json \
+    >/tmp/pc-wc8-unaddr.out 2>/tmp/pc-wc8-unaddr.err; then
+  echo "FAIL: findings present with no story.rules should be INVALID" >&2
+  cat /tmp/pc-wc8-unaddr.out /tmp/pc-wc8-unaddr.err >&2
+  rc=1
+else
+  if grep -q 'INVALID' /tmp/pc-wc8-unaddr.out /tmp/pc-wc8-unaddr.err \
+     && grep -q 'mta_unaddressed' /tmp/pc-wc8-unaddr.out /tmp/pc-wc8-unaddr.err; then
+    echo "OK: PARTITION_COVERAGE unaddressed findings is INVALID (WC-8)"
+  else
+    echo "FAIL: expected INVALID + mta_unaddressed" >&2
+    cat /tmp/pc-wc8-unaddr.out /tmp/pc-wc8-unaddr.err >&2
+    rc=1
+  fi
+fi
+# WC-8: story.rules covers the fired id → VALID
+printf '%s\n' '{"stories":[{"story_id":"story-001","files_in_scope":["src/Foo.java"],"rules":["springboot-to-quarkus-00000"]}]}' \
+  > "${pc_tmp}/evidence/briefs/partition.json"
+if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/check-partition-coverage.py" \
+    "${pc_tmp}" --partition evidence/briefs/partition.json --inventory inventory.json \
+    >/tmp/pc-wc8-ok.out 2>/tmp/pc-wc8-ok.err; then
+  if grep -q 'VALID' /tmp/pc-wc8-ok.out; then
+    echo "OK: PARTITION_COVERAGE addressed findings is VALID (WC-8)"
+  else
+    echo "FAIL: expected VALID when story.rules covers findings" >&2
+    cat /tmp/pc-wc8-ok.out /tmp/pc-wc8-ok.err >&2
+    rc=1
+  fi
+else
+  echo "FAIL: addressed findings should be VALID" >&2
+  cat /tmp/pc-wc8-ok.out /tmp/pc-wc8-ok.err >&2
+  rc=1
+fi
+rm -rf "${pc_tmp}"
+
+# WC-2: normalize keeps unmatched/skipped/errors and writes rules-coverage.json
+nf_tmp="$(mktemp -d)"
+python3 - "${nf_tmp}" <<'PY'
+import json, sys
+from pathlib import Path
+d = Path(sys.argv[1])
+raw = [
+  {
+    "name": "quarkus/springboot",
+    "violations": {
+      "springboot-to-quarkus-00000": {
+        "category": "mandatory",
+        "incidents": [{"uri": "file://x", "lineNumber": 1, "message": "m", "codeSnip": "c"}],
+      }
+    },
+    "unmatched": ["springboot-to-quarkus-00001"],
+    "skipped": ["eap-00000"],
+    "errors": {"broken-rule-00000": "failed to evaluate"},
+  }
+]
+(d / "raw.json").write_text(json.dumps(raw) + "\n")
+PY
+if python3 "${SKILLS}/analysis/scan-with-mta/scripts/normalize-findings.py" \
+    "${nf_tmp}/raw.json" "/projects/.tools/kantra/kantra" "quarkus" "legacy-at-3:deadbeef" \
+    "${nf_tmp}/rules-coverage.json" "${nf_tmp}/static-report/index.html" \
+    >/tmp/nf-wc2.out 2>/tmp/nf-wc2.err; then
+  python3 - "${nf_tmp}" <<'PY' || rc=1
+import json, sys
+from pathlib import Path
+d = Path(sys.argv[1])
+env = json.loads((d / "raw.json").read_text())
+cov = json.loads((d / "rules-coverage.json").read_text())
+assert env["schema"] == "rhoai3.mta-findings/v1-provisional"
+assert "springboot-to-quarkus-00000" in env["violations"]
+assert env["rules_coverage"]["totals"]["fired"] == 1
+assert env["rules_coverage"]["totals"]["unmatched"] == 1
+assert env["rules_coverage"]["totals"]["skipped"] == 1
+assert env["rules_coverage"]["totals"]["errors"] == 1
+assert env["rules_coverage"]["static_report_present"] is False
+rs = cov["rulesets"][0]
+assert rs["unmatched"] == ["springboot-to-quarkus-00001"]
+assert rs["skipped"] == ["eap-00000"]
+assert "broken-rule-00000" in rs["errors"]
+assert "unmatched" in env["raw_tool_keys"]
+print("OK: normalize-findings keeps unmatched/skipped/errors (WC-2)")
+PY
+else
+  echo "FAIL: normalize-findings WC-2 fixture" >&2
+  cat /tmp/nf-wc2.out /tmp/nf-wc2.err >&2
+  rc=1
+fi
+rm -rf "${nf_tmp}"
 rm -rf "${kb_tmp}"
 
 echo "== story-sizing operand_count (Architect E-110403Z) =="
@@ -1834,6 +1952,15 @@ echo "== dangling .hermes refs (Deputy E-174046Z relocation residue) =="
 python3 "${SKILL_DIR}/scripts/check-dangling-hermes-refs.py" --root "${ROOT}" || rc=1
 echo "== create-path tip sync (R0/R3) =="
 python3 "${ROOT}/.hermes/skills/harness/dispatch-phase/scripts/check-create-path-tip-sync.py" "${ROOT}" || rc=1
+echo "== L7 park-on-block-loop self-test =="
+python3 "${ROOT}/.hermes/skills/harness/dispatch-phase/scripts/park-on-block-loop.py" --self-test || rc=1
+echo "== LG9a pre-commit-index-suite script =="
+if [ ! -f "${SKILL_DIR}/scripts/pre-commit-index-suite.sh" ]; then
+  echo "FAIL: missing pre-commit-index-suite.sh (LG9a)" >&2
+  rc=1
+else
+  echo "OK: LG9a pre-commit-index-suite.sh present"
+fi
 echo "== R-SK.12 script CLI contract (syntax + no false-green --help) =="
 python3 "${SKILL_DIR}/scripts/check-script-cli-contract.py" --root "${ROOT}/.hermes/skills" || rc=1
 echo "== CS-7 bundle exists-assert =="

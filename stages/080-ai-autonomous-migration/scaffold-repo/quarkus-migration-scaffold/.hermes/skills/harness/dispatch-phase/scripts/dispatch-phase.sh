@@ -463,6 +463,9 @@ fi
 command -v hermes >/dev/null 2>&1 || die "hermes not on PATH"
 hermes profile show "${ASSIGNEE}" >/dev/null 2>&1 \
   || die "EX-4: assignee profile '${ASSIGNEE}' missing (dispatcher would silent-fail)"
+python3 "${ROOT}/.hermes/skills/harness/dispatch-phase/scripts/park-on-block-loop.py" \
+  --db "${HERMES_HOME}/kanban.db" \
+  || die "L7 park-on-block-loop failed"
 ensure_daemon
 cd "${WORKSPACE_DIR}"
 OUT="$(hermes kanban create "${CREATE_ARGS[@]}" "${TITLE}")"

@@ -23,15 +23,19 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # Skill root = parent of scripts/ (self-contained asset home — Deputy E-172448Z).
 SKILL_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 ASSET_OVERRIDE="${SKILL_DIR}/assets/spec-template.md"
+ASSET_CONSTITUTION="${SKILL_DIR}/assets/constitution.md"
+ASSET_WORKFLOW="${SKILL_DIR}/assets/sdd-to-tasks.workflow.yml"
 # Workspace tip may also carry the skill under ROOT/.hermes/skills/... when
 # HERMES_SKILL_DIR is not this SCRIPT_DIR tree (relocated home copy).
-if [ ! -f "${ASSET_OVERRIDE}" ]; then
-  ALT="${ROOT}/.hermes/skills/sdd/init-spec-workspace/assets/spec-template.md"
-  if [ -f "${ALT}" ]; then
-    ASSET_OVERRIDE="${ALT}"
-    SKILL_DIR="$(cd "$(dirname "${ALT}")/.." && pwd)"
+  if [ ! -f "${ASSET_OVERRIDE}" ]; then
+    ALT="${ROOT}/.hermes/skills/sdd/init-spec-workspace/assets/spec-template.md"
+    if [ -f "${ALT}" ]; then
+      ASSET_OVERRIDE="${ALT}"
+      SKILL_DIR="$(cd "$(dirname "${ALT}")/.." && pwd)"
+      ASSET_CONSTITUTION="${SKILL_DIR}/assets/constitution.md"
+      ASSET_WORKFLOW="${SKILL_DIR}/assets/sdd-to-tasks.workflow.yml"
+    fi
   fi
-fi
 MARKER="${ROOT}/.specify/.rhoai3-ads-provisioned"
 LOG_PREFIX="init-spec-workspace"
 
@@ -48,13 +52,63 @@ emit_ok() {
 
 [ -d "${ROOT}" ] || die "missing root ${ROOT}"
 [ -f "${ASSET_OVERRIDE}" ] || die "missing Non-Goals override asset at ${ASSET_OVERRIDE} (expected under init-spec-workspace/assets/)"
+[ -f "${ASSET_CONSTITUTION}" ] || die "missing constitution asset at ${ASSET_CONSTITUTION}"
+[ -f "${ASSET_WORKFLOW}" ] || die "missing sdd-to-tasks workflow asset at ${ASSET_WORKFLOW}"
+
+install_ads_overlays() {
+  mkdir -p "${ROOT}/.specify/templates/overrides" \
+    "${ROOT}/.specify/memory" \
+    "${ROOT}/.specify/workflows"
+  cp "${ASSET_OVERRIDE}" "${ROOT}/.specify/templates/overrides/spec-template.md"
+  log "installed Non-Goals override → .specify/templates/overrides/spec-template.md"
+
+  local const_dest="${ROOT}/.specify/memory/constitution.md"
+  if [ ! -f "${const_dest}" ] || grep -q '\[PROJECT_NAME\]\|\[PRINCIPLE_1' "${const_dest}" 2>/dev/null; then
+    cp "${ASSET_CONSTITUTION}" "${const_dest}"
+    log "installed destination constitution → .specify/memory/constitution.md"
+  else
+    log "constitution present and not placeholder — leave in place"
+  fi
+
+  cp "${ASSET_WORKFLOW}" "${ROOT}/.specify/workflows/sdd-to-tasks.yml"
+  log "installed SDD-to-tasks workflow → .specify/workflows/sdd-to-tasks.yml"
+
+  cat > "${ROOT}/.specify/AD-S-STOP-RULE.md" <<'EOF'
+# AD-S stop rule
+
+After `/speckit-tasks` (optional `/speckit-analyze`), convert `tasks.md` into
+Hermes `kanban_create()` calls.
+
+**Never run `/speckit-implement`.** Kanban is the only executor (AD-006 / AD-H).
+
+Project workflow (terminates at tasks; includes speckit-clarify):
+
+  specify workflow run .specify/workflows/sdd-to-tasks.yml
+
+Do not run the stock `speckit` workflow — it ends at `implement` with no gate.
+EOF
+
+  if [ -d "${ROOT}/.git/hooks" ]; then
+    cat > "${ROOT}/.git/hooks/pre-commit" <<'HOOK'
+#!/bin/sh
+ROOT=$(git rev-parse --show-toplevel)
+exec bash "${ROOT}/.hermes/skills/harness/validate-contracts/scripts/pre-commit-index-suite.sh"
+HOOK
+    chmod +x "${ROOT}/.git/hooks/pre-commit"
+    log "installed LG9a pre-commit hook → .git/hooks/pre-commit"
+  fi
+}
 
 if [[ "${DRY_RUN}" == "1" ]]; then
   log "DRY-RUN: ROOT=${ROOT}"
   log "DRY-RUN: MARKER=${MARKER}"
   log "DRY-RUN: ASSET_OVERRIDE=${ASSET_OVERRIDE}"
+  log "DRY-RUN: ASSET_CONSTITUTION=${ASSET_CONSTITUTION}"
+  log "DRY-RUN: ASSET_WORKFLOW=${ASSET_WORKFLOW}"
   log "DRY-RUN: would run: specify init --here --integration hermes --force --ignore-agent-tools"
   log "DRY-RUN: would copy override → .specify/templates/overrides/spec-template.md"
+  log "DRY-RUN: would copy constitution → .specify/memory/constitution.md"
+  log "DRY-RUN: would copy workflow → .specify/workflows/sdd-to-tasks.yml"
   log "DRY-RUN: would write marker ${MARKER}"
   emit_ok "[${LOG_PREFIX}] DRY-RUN complete" "$(python3 -c 'import json,sys; print(json.dumps({"script":"init-workspace","ok":True,"dry_run":True,"root":sys.argv[1]}))' "${ROOT}")"
   exit 0
@@ -76,8 +130,9 @@ if [ -f "${MARKER}" ]; then
       log "removed legacy skill-tree EXTERNAL_DIRS.note (dest already present)"
     fi
   fi
-  HUMAN="[${LOG_PREFIX}] already provisioned (${TS}) — skip"
-  emit_ok "${HUMAN}" "$(python3 -c 'import json,sys; print(json.dumps({"script":"init-workspace","ok":True,"skipped":True,"root":sys.argv[1],"marker":sys.argv[2],"provisioned_at":sys.argv[3]}))' "${ROOT}" "${MARKER}" "${TS}")"
+  install_ads_overlays
+  HUMAN="[${LOG_PREFIX}] already provisioned (${TS}) — skip specify init; overlays refreshed"
+  emit_ok "${HUMAN}" "$(python3 -c 'import json,sys; print(json.dumps({"script":"init-workspace","ok":True,"skipped":True,"overlays_refreshed":True,"root":sys.argv[1],"marker":sys.argv[2],"provisioned_at":sys.argv[3]}))' "${ROOT}" "${MARKER}" "${TS}")"
   exit 0
 fi
 
@@ -126,9 +181,7 @@ specify init --here --integration hermes --force --ignore-agent-tools
 
 [ -d "${ROOT}/.specify" ] || die "specify init did not create .specify/"
 
-mkdir -p "${ROOT}/.specify/templates/overrides"
-cp "${ASSET_OVERRIDE}" "${ROOT}/.specify/templates/overrides/spec-template.md"
-log "installed Non-Goals override → .specify/templates/overrides/spec-template.md"
+install_ads_overlays
 
 # external_dirs: when HERMES_HOME is relocated away from ~/.hermes, spec-kit
 # still writes skills to Path.home()/.hermes/skills — keep both on the list.
@@ -278,18 +331,8 @@ if [ -n "${HERMES_HOME:-}" ]; then
   fi
 fi
 
-# Stop rule stamp (also in AGENTS.md / skill)
-cat > "${ROOT}/.specify/AD-S-STOP-RULE.md" <<'EOF'
-# AD-S stop rule
-
-After `/speckit-tasks` (optional `/speckit-analyze`), convert `tasks.md` into
-Hermes `kanban_create()` calls.
-
-**Never run `/speckit-implement`.** Kanban is the only executor (AD-006 / AD-H).
-EOF
-
 date -u +%Y-%m-%dT%H:%M:%SZ > "${MARKER}"
 TS="$(cat "${MARKER}")"
 HUMAN="[${LOG_PREFIX}] OK — AD-S provision complete (marker ${MARKER})"
 emit_ok "${HUMAN}" "$(python3 -c 'import json,sys; print(json.dumps({"script":"init-workspace","ok":True,"skipped":False,"root":sys.argv[1],"marker":sys.argv[2],"provisioned_at":sys.argv[3]}))' "${ROOT}" "${MARKER}" "${TS}")"
-log "Stop rule: /speckit-tasks → kanban_create(); NEVER /speckit-implement"
+log "Stop rule: /speckit-tasks → kanban_create(); NEVER /speckit-implement; workflow sdd-to-tasks.yml"

@@ -1,0 +1,72 @@
+# Destination Quarkus Constitution
+
+Non-negotiable principles for this migration destination. Every `/speckit-*`
+command consults this file; a plan's **Constitution Check must validate
+against these articles by name** — a check that lists generic principles
+instead is a failed check.
+
+Version literals live in `.hermes/pins.json`. Do not invent GAVs.
+
+## I. Red Hat Quarkus platform
+
+The destination is a Quarkus application on the Red Hat build:
+`com.redhat.quarkus.platform` BOM artifact `quarkus-bom` version
+**3.27.3.SP1-redhat-00002** (see `.hermes/pins.json` `quarkus_platform`).
+The Quarkus Maven plugin uses the same group/version. Foundation Jacoco /
+Sonar wiring and extension coordinates come from that BOM import — never
+from a community BOM and never from an invented version.
+
+## II. Java 21
+
+Compiler release is Java 21. The seat's default JDK may be older; shells
+that compile or test must pin `JAVA_HOME` to Java 21 before `mvn`. Maven
+has no wrapper — use `mvn`.
+
+## III. Native layering
+
+- Package root: `com.demo`.
+- **Native Quarkus only** — never add `quarkus-spring-*` compatibility
+  extensions (MTA may suggest them; reject).
+- Default CDI scope for services and repositories: `@ApplicationScoped`.
+- Prefer constructor injection; config via `@ConfigProperty` / `%profile`
+  keys (or `QUARKUS_PROFILE`). Do not invent Spring-style
+  `application-*.properties` trees on the destination.
+- REST resources under `/api/`; JSON via Jackson; health at `/q/health`
+  (`/q/*` sits outside the application root path).
+- One `pom.xml` writer (foundation story) owns BOM, plugin, and the
+  sorted-unique extension union. Later stories do not rewrite the POM
+  structure.
+
+## IV. Quality is an input
+
+Tests ship with the code. Delivery bars: **zero new Sonar violations**,
+**≥ 80% new-code line coverage**, **≤ 3% duplicated new lines**. Never
+weaken tests or suppress rules to pass. The repository must build
+self-contained from Maven Central and in-repo sources.
+
+## V. Security
+
+Constructor injection over field injection. Do not widen authz, disable
+CSRF/auth, or add a permit-all fallback to make a test green. Persistence
+and secrets stay in destination config — no credentials in Git. Reject
+Spring Security compatibility extensions; map to Quarkus Security.
+
+## VI. Performance and simplicity (YAGNI)
+
+Build only what the spec and harvest require. Extra config classes,
+wrapper DTOs, error taxonomies, and pre-flight probes of downstream
+services the spec does not demand are complexity-tracking violations.
+Hot-path work stays in native Quarkus APIs, not compatibility shims.
+
+## Governance
+
+- `.hermes/pins.json` is the version authority; this constitution names
+  the stack so every native spec-kit command sees it as context.
+- After `/speckit-tasks`, convert `tasks.md` into Hermes `kanban_create`
+  calls. **Never run `/speckit-implement`.**
+- File-granular write ownership is assigned **after** story grouping
+  exists: each destination file has exactly one owner story.
+- Deviations from these articles must appear in the plan's Complexity
+  Tracking table — silent deviations are review findings.
+
+**Version**: 1.0.0 | **Ratified**: 2026-08-15 | **Last Amended**: 2026-08-15

@@ -5,7 +5,7 @@ license: Apache-2.0
 compatibility: Linux seat; Hermes CLI on PATH for kanban create/dispatch
 metadata:
   author: rhoai3-harness-team
-  version: "1.4.0"
+  version: "1.4.1"
   hermes:
     tags:
     - harness
@@ -47,6 +47,11 @@ pass `--parent`. After live create, dispatch and create-m3 read
 `evidence/derived/phase-*-task-id.txt` is a Review pointer, not the DAG.
 Do not derive phase identity from card titles. Official: dispatcher promotes
 `todo→ready` when all parents are `done`; CLI is `hermes kanban link`.
+
+**L7:** `block_loop_detected` is not a hold by itself — Hermes may leave the
+card `blocked`, which promote lifts. `park-on-block-loop.py` runs before
+daemon start and sets those cards to `triage`. `--self-test` proves promote
+does not claim a loop-broken card.
 
 ## Procedure
 
