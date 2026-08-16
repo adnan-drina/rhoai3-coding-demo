@@ -358,6 +358,8 @@ if [[ "${_park_status}" == "ready" || "${_park_status}" == "todo" || "${_park_st
   die "PARK_AT_BIRTH: ${TASK_ID} status=${_park_status:-unknown} still dispatchable after create — refuse mint (park-at-birth)"
 fi
 echo "PARK_AT_BIRTH=${TASK_ID} status=${_park_status}"
+# Phase 5 run-audit — create is not a Hermes kanban hook. Fail-open.
+bash "${ROOT}/.hermes/skills/harness/record-run-evidence/scripts/snapshot-card-boundary.sh" create || true
 # SR-9 / Deputy E-20260814T214613Z — body.task_id := Hermes card id (not story-001).
 # Digest restamp after the write; replace AR-4.3 hex in the card markdown.
 BODY_DIGEST="$(python3 - "${BODY_JSON}" "${TASK_ID}" "${HERMES_HOME}/kanban.db" "${BODY_DIGEST}" <<'PY'

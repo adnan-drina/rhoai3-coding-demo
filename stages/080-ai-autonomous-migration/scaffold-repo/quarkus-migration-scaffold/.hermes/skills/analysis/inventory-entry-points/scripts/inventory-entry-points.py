@@ -52,6 +52,86 @@ class EntryPoint:
     line: int
     symbol: str
     evidence: str
+    http_method: str = ""
+    http_path: str = ""
+
+
+def _norm_http_path(raw: str) -> str:
+    p = (raw or "").strip()
+    if not p:
+        return ""
+    if not p.startswith("/"):
+        p = "/" + p
+    if len(p) > 1:
+        p = p.rstrip("/")
+    return p
+
+
+def _join_http_path(prefix: str, rel: str) -> str:
+    prefix = _norm_http_path(prefix)
+    rel = (rel or "").strip()
+    if rel in {"", "/"}:
+        return prefix or "/"
+    rel_n = _norm_http_path(rel)
+    if not prefix or prefix == "/":
+        return rel_n
+    return _norm_http_path(prefix.rstrip("/") + "/" + rel_n.lstrip("/"))
+
+
+def _annotation_paths(line: str) -> list[str]:
+    found: list[str] = []
+    for rx in (
+        r'(?:value|path)\s*=\s*"([^"]*)"',
+        r'@(?:Get|Post|Put|Delete|Patch)Mapping\(\s*"([^"]*)"',
+        r'@Path\(\s*"([^"]*)"',
+        r'@RequestMapping\(\s*"([^"]*)"',
+    ):
+        found.extend(re.findall(rx, line))
+    return found
+
+
+def _annotation_methods(line: str) -> list[str]:
+    methods: list[str] = []
+    for ann, verb in (
+        ("GetMapping", "GET"),
+        ("PostMapping", "POST"),
+        ("PutMapping", "PUT"),
+        ("DeleteMapping", "DELETE"),
+        ("PatchMapping", "PATCH"),
+    ):
+        if re.search(rf"@{ann}\b", line):
+            methods.append(verb)
+    methods.extend(
+        re.findall(r"RequestMethod\.(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)", line)
+    )
+    out: list[str] = []
+    for m in methods:
+        if m not in out:
+            out.append(m)
+    return out
+
+
+def _is_type_level_mapping(lines: list[str], idx: int) -> bool:
+    if not re.search(r"@(?:RequestMapping|Path)\b", lines[idx]):
+        return False
+    if re.search(
+        r"@(?:GetMapping|PostMapping|PutMapping|DeleteMapping|PatchMapping)\b",
+        lines[idx],
+    ):
+        return False
+    for j in range(idx + 1, min(idx + 12, len(lines))):
+        nxt = lines[j]
+        if re.search(
+            r"^\s*(public\s+|protected\s+|private\s+)?(class|interface|enum)\b",
+            nxt,
+        ):
+            return True
+        if re.search(
+            r"^\s*(public|protected|private|static).+\(.*\).*\{?\s*$",
+            nxt,
+        ):
+            return False
+    return False
 
 
 def iter_java(root: Path):
@@ -95,8 +175,21 @@ def scan_file(path: Path, root: Path) -> list[EntryPoint]:
     rel = str(path.relative_to(root))
     found: list[EntryPoint] = []
     seen: set[tuple[int, str]] = set()
+    class_prefix: dict[str, str] = {}
+    pending_type_path = ""
+    current_class = ""
 
     for i, line in enumerate(lines):
+        cm = re.search(r"\b(?:class|interface|enum|record)\s+(\w+)", line)
+        if cm:
+            current_class = cm.group(1)
+            if pending_type_path:
+                class_prefix[current_class] = pending_type_path
+                pending_type_path = ""
+        if _is_type_level_mapping(lines, i):
+            paths = _annotation_paths(line)
+            pending_type_path = _norm_http_path(paths[0]) if paths else ""
+            continue
         if HTTP_ANN.search(line) or HTTP_METHOD_ANN.search(line):
             # Prefer method-level HTTP mappings; class-level @RestController alone
             # is not an entry point without a mapping.
@@ -108,31 +201,18 @@ def scan_file(path: Path, root: Path) -> list[EntryPoint]:
             # F11 / Architect E-20260811T070235Z: type-level @RequestMapping/@Path
             # path prefixes are not independently callable handlers (counting
             # them inflated the reference measurement 42→34). Keep method-level
-            # Get/Post/… and method @RequestMapping.
-            if re.search(r"@(?:RequestMapping|Path)\b", line) and not re.search(
-                r"@(?:GetMapping|PostMapping|PutMapping|DeleteMapping|PatchMapping)\b",
-                line,
-            ):
-                type_level = False
-                for j in range(i + 1, min(i + 12, len(lines))):
-                    nxt = lines[j]
-                    if re.search(
-                        r"^\s*(public\s+|protected\s+|private\s+)?(class|interface|enum)\b",
-                        nxt,
-                    ):
-                        type_level = True
-                        break
-                    if re.search(
-                        r"^\s*(public|protected|private|static).+\(.*\).*\{?\s*$",
-                        nxt,
-                    ):
-                        break
-                if type_level:
-                    continue
+            # Get/Post/… and method @RequestMapping. Prefix is still captured
+            # above for http_path join (Architect E-20260816T193813Z).
+            if _is_type_level_mapping(lines, i):
+                continue
             key = (i + 1, "http")
             if key in seen:
                 continue
             seen.add(key)
+            rel_paths = _annotation_paths(line)
+            methods = _annotation_methods(line)
+            prefix = class_prefix.get(current_class, "")
+            joined = _join_http_path(prefix, rel_paths[0] if rel_paths else "")
             found.append(
                 EntryPoint(
                     kind="http",
@@ -141,6 +221,8 @@ def scan_file(path: Path, root: Path) -> list[EntryPoint]:
                     line=i + 1,
                     symbol=enclosing_symbol(lines, i),
                     evidence=line.strip()[:200],
+                    http_method=methods[0] if methods else "",
+                    http_path=joined,
                 )
             )
         for subtype, pat in NON_HTTP_PATTERNS:

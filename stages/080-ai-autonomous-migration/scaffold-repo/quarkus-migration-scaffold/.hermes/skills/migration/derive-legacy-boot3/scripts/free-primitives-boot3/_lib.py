@@ -4,11 +4,25 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import tempfile
 from pathlib import Path
 from typing import Iterable
 
-COMPOSITE_VERSION = "1.2.0"
+COMPOSITE_VERSION = "1.2.1"
 SKIP_DIRS = {".git", "target", ".idea", ".derived", "node_modules"}
+DERIVED_MARKER = ".rhoai3-derived-tree"
+
+
+def _is_derived_tree(root: Path) -> bool:
+    """Write-beside only for a positively derived tree (FP-1).
+
+    APPLY_LOG_PATH (caller) still wins. Otherwise: marker file, or a
+    `.derived` path segment. Not-golden is not enough (Deputy
+    E-20260816T160604Z).
+    """
+    if (root / DERIVED_MARKER).is_file():
+        return True
+    return any(part == ".derived" for part in root.parts)
 
 
 def repo_root() -> Path:
@@ -20,15 +34,16 @@ def apply_log_path() -> Path:
     if p:
         return Path(p).expanduser().resolve()
     root = repo_root()
-    # Fail-closed (Deputy E-20260813T183635Z): never default-write into the
-    # golden scaffold tip. Detect tip via BOOTSTRAP.md + governance/.
-    # Tip detect: AGENTS.md + .hermes/ (BOOTSTRAP.md + governance/ retired by GRT).
-    if (root / "AGENTS.md").is_file() and (root / ".hermes").is_dir():
-        import tempfile
+    if _is_derived_tree(root):
+        return root / ".rhoai3-free-primitives-apply-log.json"
+    return Path(tempfile.gettempdir()) / "rhoai3-free-primitives-apply-log.json"
 
-        return Path(tempfile.gettempdir()) / "rhoai3-free-primitives-apply-log.json"
-    # Derived / composite trees: keep beside COMPOSITE_ROOT (outside golden).
-    return root / ".rhoai3-free-primitives-apply-log.json"
+
+def has_candidate_sources(root: Path | None = None) -> bool:
+    root = root or repo_root()
+    if (root / "pom.xml").is_file():
+        return True
+    return bool(iter_files(root, (".java",)))
 
 
 def iter_files(root: Path, suffixes: Iterable[str]) -> list[Path]:

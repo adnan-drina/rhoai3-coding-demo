@@ -1,0 +1,8 @@
+name: run-audit-boundary
+version: "1.0.0"
+description: Fail-open run-audit snapshot at kanban claim, complete, and block
+author: rhoai3-harness-team
+provides_hooks:
+  - kanban_task_claimed
+  - kanban_task_completed
+  - kanban_task_blocked

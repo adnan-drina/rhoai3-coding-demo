@@ -1,6 +1,6 @@
 # Free-primitives Boot 2→3 composite — admit table
 
-**Version:** `1.2.0` · **Path:** W2 §12 SETTLED · Operator free-primitives
+**Version:** `1.2.1` · **Path:** W2 §12 SETTLED · Operator free-primitives
 **Invocation:** `run-composite.sh` (default `DERIVE_UPGRADE_CMD`)
 
 Specimen-agnostic: no coolstore/petclinic/jhipster literals. Behavioral rules

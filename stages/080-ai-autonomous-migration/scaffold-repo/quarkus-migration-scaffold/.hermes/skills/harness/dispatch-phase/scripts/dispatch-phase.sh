@@ -21,6 +21,11 @@ Usage:
   BV19-3: --parent required except M1.
 
 This is an interface probe / help surface only when -h/--help is passed.
+
+Env (v20-flow / Architect E-20260816T185414Z):
+  DISPATCH_START_DAEMON=0  default — do not spawn `kanban daemon --force`
+  DISPATCH_MAX=0           default — dispatcher off (serial park-at-birth)
+  Set both to 1 only for a campaign that has claimed C-1(a).
 USAGE
     exit 0
     ;;
@@ -30,7 +35,8 @@ PHASE="${1:-}"
 shift || true
 PARENTS=()
 DRY_RUN=0
-DISPATCH_MAX="${DISPATCH_MAX:-1}"
+DISPATCH_MAX="${DISPATCH_MAX:-0}"
+DISPATCH_START_DAEMON="${DISPATCH_START_DAEMON:-0}"
 WORKSPACE_DIR="${WORKSPACE_DIR:-/projects/modernized}"
 IDEM_PREFIX="${IDEM_PREFIX:-migration}"
 IDEM_OVERRIDE=""
@@ -196,6 +202,10 @@ PY
 }
 
 ensure_daemon() {
+  if [[ "${DISPATCH_START_DAEMON}" != "1" ]]; then
+    echo "dispatch-phase: daemon not started (DISPATCH_START_DAEMON=${DISPATCH_START_DAEMON}; Architect E-20260816T185414Z daemon never on v20-flow)"
+    return 0
+  fi
   if pgrep -f '/hermes-agent/hermes kanban daemon' >/dev/null 2>&1; then
     return 0
   fi
@@ -337,6 +347,10 @@ substitution / path invention / specimen-body priming. Measure the harness.
 
 ## Constraints
 - workspace: dir:/projects/modernized
+- Write-set (Architect E-20260816T185414Z / AD-013): `.specify/` and `specs/`
+  only. Native Spec Kit writes those trees. Do **not** export
+  `SPECIFY_FEATURE_DIRECTORY` to dodge `.specify/feature.json`. Do not write
+  `src/` or `pom.xml` on this card.
 - Do not author `partition.json` (handover-mint receipt only)
 - Prefer short tool results; avoid bulk-pasting bodies (context margin)
 - AD-009 hard budget / crash requeue / protocol_untyped as prior M2 law; no MiniMax
@@ -492,7 +506,25 @@ echo "${TASK_ID}" >"${ROOT}/evidence/derived/phase-${PHASE}-task-id.txt"
 echo "REVIEW_ADHERE_OBSERVE=${TASK_ID}"
 echo "dispatch-phase: created ${TASK_ID} (Review:adhere-observe-${TASK_ID} REQUIRED)"
 
-hermes kanban dispatch --max "${DISPATCH_MAX}" --json || true
+if [[ "${PHASE}" == "M2" ]]; then
+  mkdir -p "${ROOT}/evidence/runtime/write-sets"
+  python3 - "${ROOT}" "${TASK_ID}" <<'PY'
+import json, sys
+from pathlib import Path
+root, task = Path(sys.argv[1]), sys.argv[2]
+doc = {"task_id": task, "files_writable": [".specify/", "specs/"]}
+ws = root / "evidence" / "runtime" / "write-sets"
+ws.mkdir(parents=True, exist_ok=True)
+(ws / f"{task}.json").write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
+print(f"dispatch-phase: M2 write-set {task} → .specify/ + specs/")
+PY
+fi
+
+if [[ "${DISPATCH_MAX}" -gt 0 ]]; then
+  hermes kanban dispatch --max "${DISPATCH_MAX}" --json || true
+else
+  echo "dispatch-phase: dispatcher off (DISPATCH_MAX=${DISPATCH_MAX}; Architect E-20260816T185414Z)"
+fi
 hermes kanban ls 2>&1 | head -40
 echo "OK: ${PHASE} → ${TASK_ID} (Hermes-native). Track: hermes kanban watch / show ${TASK_ID}"
 echo "OK: file ledger Need Review:adhere-observe-${TASK_ID} (marker: evidence/derived/review-adhere-observe-needed.yaml)"

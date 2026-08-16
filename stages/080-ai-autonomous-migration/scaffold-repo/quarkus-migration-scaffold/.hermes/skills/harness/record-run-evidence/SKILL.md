@@ -112,7 +112,9 @@ python3 "${HERMES_SKILL_DIR}/scripts/check-provenance.py" /projects/modernized
 7. **Run audit (fail-open observer, never a gate).** Snapshot dest mtimes at
    card boundaries; analyze out-of-window edits as INTERVENTION. Procedure:
    `references/run-audit.md`. Scripts: `snapshot-run-audit.py`,
-   `analyze-run-audit.py`.
+   `analyze-run-audit.py`, `snapshot-card-boundary.sh`. Caller: create-m3
+   plus plugin `run-audit-boundary` (claim/complete/block). Analyze with
+   `--baseline` against t0 so provision files are not scored.
 
 ## Reconstruction (AD-H §19.1)
 

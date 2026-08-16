@@ -5,7 +5,7 @@ license: Apache-2.0
 compatibility: Linux seat; Python 3.11+; POSIX chmod for the write fence
 metadata:
   author: rhoai3-harness-team
-  version: "2.0.1"
+  version: "2.0.2"
   hermes:
     tags:
     - harness
@@ -32,7 +32,6 @@ metadata:
 
 - `.hermes/skills/harness/enforce-authority-boundary/references/task-authority.md`, `write-fence.md`,
   `ack-authority.md`, `slim-packet.md`
-- `governance/schemas/ack.md`
 - Phase `skills[]` + `requires_acks`: `.hermes/phase-dispatch.yaml`
 
 ## Procedure

@@ -245,6 +245,11 @@ else
   ) | ( cd "${DERIVED_ROOT}" && tar -xf - )
 fi
 
+# FP-1: positive derived-tree marker (Deputy E-20260816T160604Z). Apply-log
+# defaults write beside COMPOSITE_ROOT only when this file exists or the path
+# has a `.derived` segment — "not the golden tip" is not enough.
+printf '%s\n' 'schema: rhoai3.derived-tree/v1' > "${DERIVED_ROOT}/.rhoai3-derived-tree"
+
 run_upgrade() {
   if [ -n "${DERIVE_UPGRADE_CMD:-}" ]; then
     echo "Running DERIVE_UPGRADE_CMD in ${DERIVED_ROOT}" >&2

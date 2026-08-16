@@ -5,7 +5,7 @@ license: Apache-2.0
 compatibility: Linux seat; Java 21 and Maven; writable derived tree
 metadata:
   author: rhoai3-harness-team
-  version: "1.2.0"
+  version: "1.2.1"
   hermes:
     tags:
     - migration
@@ -70,6 +70,11 @@ bash "${HERMES_SKILL_DIR}/scripts/check-manifest.sh"
   default — operator-declined even where the Agreement reading is permissive.
 - Do not leave this procedure in `AGENTS.md` — it is phase-scoped; conventions
   stay always-on.
+- Do not treat "not the golden tip" as "therefore a derived tree". Apply-log
+  defaults write beside `COMPOSITE_ROOT` only when `APPLY_LOG_PATH` is set or
+  the tree is positively derived (`.rhoai3-derived-tree` or a `.derived` path
+  segment). A tree with no `pom.xml` and no `*.java` is `no_candidate_sources`
+  (typed exit 2, no receipt) — not a completed derivation.
 
 
 ## Verification
@@ -93,6 +98,10 @@ bash "${HERMES_SKILL_DIR}/scripts/check-manifest.sh"
 - Default composite path leaves `evidence/derived/free-primitives-apply-log.json`
   (`schema free-primitives-apply-log/v1`) with one entry per rule — `rule_id`,
   `cite`, `pre_digest`/`post_digest`, `skipped`. Missing log with `mode=derived`
-  and `DERIVE_UPGRADE_CMD` unset ⇒ the upgrade did not run.
+  and `DERIVE_UPGRADE_CMD` unset ⇒ the upgrade did not run. A tree with no
+  `pom.xml` and no `*.java` is `no_candidate_sources` (exit 2, no receipt).
+- Apply-log default is beside `COMPOSITE_ROOT` only when `APPLY_LOG_PATH` is set
+  or the tree is positively derived (`.rhoai3-derived-tree` or a `.derived`
+  path segment). Any other cwd writes `$TMPDIR` (FP-1).
 - `/projects/legacy` is byte-identical afterwards — the derivation copies out
   (rsync, or tar when rsync is absent) and never writes to the RO mount.

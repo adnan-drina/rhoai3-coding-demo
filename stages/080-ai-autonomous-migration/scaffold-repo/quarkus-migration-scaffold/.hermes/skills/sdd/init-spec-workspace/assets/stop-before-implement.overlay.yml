@@ -3,11 +3,15 @@
 # Inspect: specify workflow resolve speckit
 # Run:     specify workflow run speckit
 # Never run the stock speckit workflow without this overlay (it ends at implement).
+# 163200Z §S.7 / Research 174900Z: stock review-spec and review-plan are type: gate.
+# Unattended path must remove those gates as well as implement.
 id: "stop-before-implement"
 extends: "speckit"
 priority: 10
 edits:
   - remove: implement
+  - remove: review-spec
+  - remove: review-plan
   - insert_before: plan
     step:
       id: clarify

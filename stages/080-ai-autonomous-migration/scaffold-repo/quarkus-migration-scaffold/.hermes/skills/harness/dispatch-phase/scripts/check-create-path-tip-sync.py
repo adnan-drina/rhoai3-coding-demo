@@ -60,12 +60,23 @@ REQUIRED_FILES = [
     ".hermes/skills/harness/dispatch-phase/scripts/mint-m3-wave.sh",
     ".hermes/skills/harness/dispatch-phase/scripts/handover-mint.py",
     ".hermes/skills/harness/dispatch-phase/references/handover-mint.md",
-    ".hermes/skills/harness/dispatch-phase/fixtures/handover/tasks.good.md",
+        ".hermes/skills/harness/dispatch-phase/fixtures/handover/tasks.good.md",
+        ".hermes/skills/harness/dispatch-phase/fixtures/handover/tasks.native-speckit.md",
+        ".hermes/skills/harness/dispatch-phase/fixtures/handover/inventory.native-speckit.json",
+        ".hermes/skills/harness/dispatch-phase/fixtures/handover/tasks.a8-routes.md",
+        ".hermes/skills/harness/dispatch-phase/fixtures/handover/inventory.a8-routes.json",
+        ".hermes/skills/harness/dispatch-phase/fixtures/handover/inventory.a8-uncovered-post.json",
+        ".hermes/skills/analysis/inventory-entry-points/scripts/inventory-entry-points.py",
+        ".hermes/skills/analysis/inventory-entry-points/SKILL.md",
     ".hermes/skills/harness/dispatch-phase/scripts/m3-attach-skills.py",
     ".hermes/skills/harness/dispatch-phase/scripts/mint-remediation-card.py",
     ".hermes/skills/harness/record-run-evidence/scripts/snapshot-run-audit.py",
     ".hermes/skills/harness/record-run-evidence/scripts/analyze-run-audit.py",
+    ".hermes/skills/harness/record-run-evidence/scripts/snapshot-card-boundary.sh",
     ".hermes/skills/harness/record-run-evidence/references/run-audit.md",
+    ".hermes/home/plugins/run-audit-boundary/plugin.yaml",
+    ".hermes/home/plugins/run-audit-boundary/plugin.py",
+    ".hermes/home/plugins/run-audit-boundary/__init__.py",
     ".hermes/home/scripts/enforce-m2b-created-cards-claim.py",
     # Architect E-20260811T170706Z Class A — quarantine survives dispatch
     ".hermes/skills/sdd/check-spec-readiness/scripts/assert-quarantine-tombstones.py",
@@ -113,6 +124,8 @@ REQUIRED_FILES = [
     ".hermes/skills/harness/validate-contracts/references/path-producers.json",
     ".hermes/skills/harness/dispatch-phase/scripts/read-phase-dispatch.py",
     ".hermes/skills/harness/enforce-authority-boundary/scripts/write-set-hook.py",
+    ".hermes/skills/harness/enforce-authority-boundary/scripts/check-ack-authority.py",
+    ".hermes/skills/harness/enforce-authority-boundary/references/ack-authority.md",
     ".hermes/skills/harness/dispatch-phase/scripts/resolve-seat-assignee.py",
     ".hermes/skills/harness/dispatch-phase/scripts/check-seat-assignee-profiles.py",
     ".hermes/skills/harness/dispatch-phase/references/assignee-profiles.json",
@@ -574,6 +587,21 @@ REQUIRED_SUBSTRINGS = [
         "create-m3 fail-closed when park-at-birth parent is already done",
     ),
     (
+        ".hermes/skills/harness/dispatch-phase/scripts/create-m3-implementer.sh",
+        "snapshot-card-boundary.sh",
+        "create-m3 snapshots run-audit at create (no Hermes create hook)",
+    ),
+    (
+        ".hermes/skills/harness/record-run-evidence/scripts/analyze-run-audit.py",
+        "migration.yaml",
+        "run-audit include-gate covers dest files this seat has before src/",
+    ),
+    (
+        ".hermes/skills/harness/record-run-evidence/scripts/analyze-run-audit.py",
+        "--baseline",
+        "run-audit analyzer accepts t0 baseline so provision files are not scored",
+    ),
+    (
         ".hermes/skills/harness/dispatch-phase/scripts/assert-m2b-created-cards-claim.sh",
         "check-created-cards-claim.py",
         "M2 claim wrapper invokes check-created-cards-claim.py",
@@ -729,6 +757,21 @@ REQUIRED_SUBSTRINGS = [
         "Class A Managed Scope pin in dispatch-phase",
     ),
     (
+        ".hermes/skills/harness/dispatch-phase/scripts/dispatch-phase.sh",
+        "DISPATCH_START_DAEMON",
+        "v20-flow does not spawn kanban daemon --force from dispatch-phase",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/scripts/dispatch-phase.sh",
+        "SPECIFY_FEATURE_DIRECTORY",
+        "M2 write-set is .specify/ + specs/; no SPECIFY_FEATURE_DIRECTORY dodge",
+    ),
+    (
+        ".hermes/skills/harness/enforce-authority-boundary/scripts/write-set-hook.py",
+        'n.startswith("specs/")',
+        "specs/ is a product write (fail-closed without M2 write-set)",
+    ),
+    (
         ".hermes/home/scripts/kanban-stuck-watchdog.py",
         "STILLBORN",
         "null-heartbeat stillborn watchdog",
@@ -869,6 +912,21 @@ REQUIRED_SUBSTRINGS = [
         "A-1 FS-RO write-fence locks .hermes/skills/harness (DD5)",
     ),
     (
+        ".hermes/skills/harness/enforce-authority-boundary/scripts/check-ack-authority.py",
+        "block mappings",
+        "AR-1.1 ack YAML parser accepts block-mapping artifact_digests",
+    ),
+    (
+        ".hermes/skills/harness/enforce-authority-boundary/references/ack-authority.md",
+        "artifact_digests",
+        "AR-1.1 ack schema lives in the skill, not retired governance/",
+    ),
+    (
+        "evidence/acks/README.md",
+        "task_id:",
+        "acks README example carries task_id (AR-1.1)",
+    ),
+    (
         "AGENTS.md",
         "DD5",
         "DD5 refusal doctrine in AGENTS.md",
@@ -945,12 +1003,17 @@ REQUIRED_SUBSTRINGS = [
     ),
     (
         ".hermes/skills/sdd/init-spec-workspace/assets/stop-before-implement.overlay.yml",
+        "remove: review-spec",
+        "A-1 overlay removes type:gate review-spec (unattended)",
+    ),
+    (
+        ".hermes/skills/sdd/init-spec-workspace/assets/stop-before-implement.overlay.yml",
         "evidence/findings-handoff.json",
         "A-3 specify args name M1 findings-handoff",
     ),
     (
         ".hermes/skills/harness/validate-contracts/scripts/validate.sh",
-        "specify workflow resolve speckit (no implement; gates + clarify)",
+        "specify workflow resolve speckit (no implement; no gates; clarify)",
         "A-1 overlay resolve is in validate-contracts",
     ),
     (
@@ -1000,6 +1063,16 @@ REQUIRED_SUBSTRINGS = [
     ),
     (
         ".hermes/skills/harness/dispatch-phase/scripts/handover-mint.py",
+        "--ensure-wave-holder",
+        "HKN-2 look-ahead: mint under a still-open wave-holder, not a done M2",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/scripts/handover-mint.py",
+        "per-story native speckit",
+        "A-4 transcribes native per-story User Story bullets",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/scripts/handover-mint.py",
         "PATH_A_PARTITION",
         "A-6 Path-A authored partition.json is not handover input",
     ),
@@ -1007,6 +1080,26 @@ REQUIRED_SUBSTRINGS = [
         ".hermes/skills/harness/dispatch-phase/scripts/handover-mint.py",
         "endpoints_uncovered",
         "A-8 endpoint coverage vs M1 inventory is fail-closed",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/scripts/handover-mint.py",
+        "http_path",
+        "A-8 mint joins on transcribed http_path, not RestController filename",
+    ),
+    (
+        ".hermes/skills/analysis/inventory-entry-points/scripts/inventory-entry-points.py",
+        "http_method",
+        "A-8 scanner emits structured http_method",
+    ),
+    (
+        ".hermes/skills/analysis/inventory-entry-points/SKILL.md",
+        "http_path",
+        "A-8 inventory procedure documents http_path",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/references/handover-mint.md",
+        "E-20260816T193813Z",
+        "A-8 mint contract is route/symbol join, not a filename mapper",
     ),
     (
         ".hermes/skills/harness/dispatch-phase/scripts/mint-m3-wave.sh",

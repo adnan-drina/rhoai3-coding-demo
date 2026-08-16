@@ -118,6 +118,11 @@ def main(argv: list[str] | None = None) -> int:
         default="",
         help="output path (default: evidence/run-audit/<ts>.json)",
     )
+    p.add_argument(
+        "--boundary",
+        default="",
+        help="optional card-boundary label (create|claim|block|reclaim|complete)",
+    )
     args = p.parse_args(argv)
     root = Path(args.root).resolve()
     if not root.is_dir():
@@ -141,6 +146,8 @@ def main(argv: list[str] | None = None) -> int:
         "files": walk_files(root),
         "claim_windows": windows,
     }
+    if args.boundary:
+        doc["boundary"] = str(args.boundary)
     if args.out:
         out = Path(args.out)
     else:

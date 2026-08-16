@@ -1,0 +1,27 @@
+{
+  "schema": "rhoai3.entry-point-inventory/v1",
+  "counts": {
+    "total": 2,
+    "http": 2,
+    "non_http": 0
+  },
+  "totals": {
+    "http_endpoints": 2
+  },
+  "entry_points": [
+    {
+      "kind": "http",
+      "file": "src/main/java/legacy/web/OwnerRestController.java",
+      "symbol": "OwnerRestController#listOwners",
+      "http_method": "GET",
+      "http_path": "/api/owners"
+    },
+    {
+      "kind": "http",
+      "file": "src/main/java/legacy/web/PetRestController.java",
+      "symbol": "PetRestController#listPets",
+      "http_method": "GET",
+      "http_path": "/api/pets"
+    }
+  ]
+}

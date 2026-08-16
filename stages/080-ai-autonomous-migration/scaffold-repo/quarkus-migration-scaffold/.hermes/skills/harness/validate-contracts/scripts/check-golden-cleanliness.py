@@ -14,7 +14,9 @@ Rules (fail-closed):
       (so `git add -A` cannot sweep them)
   G3  presence under the golden root is itself a violation (Deputy
       E-20260813T183214Z) — gitignore alone must not greenwash run-state
-      that regenerates into the tip tree (e.g. free-primitives apply log)
+      that regenerates into the tip tree (e.g. free-primitives apply log).
+      Gitignoring `.rhoai3-free-primitives-apply-log.json` is a sweep-guard,
+      not the FP-1 fix (Deputy E-20260816T160604Z).
   G4  governance/**/target directories must be absent (E-193314Z;
       gitignore alone hid Maven fixture build dirt from G1/G3 file scan)
 

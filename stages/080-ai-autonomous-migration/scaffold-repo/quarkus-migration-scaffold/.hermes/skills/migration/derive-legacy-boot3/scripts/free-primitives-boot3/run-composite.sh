@@ -5,8 +5,8 @@
 # Env:
 #   COMPOSITE_ROOT   tree to transform (default: cwd)
 #   APPLY_LOG_PATH   where to write free-primitives-apply-log.json
-#                    (default: TMPDIR when COMPOSITE_ROOT looks like golden tip;
-#                     else COMPOSITE_ROOT/.rhoai3-free-primitives-apply-log.json)
+#                    (default: beside COMPOSITE_ROOT only when it is positively
+#                     a derived tree; otherwise $TMPDIR — FP-1)
 #   SKIP_MTA_JAKARTA=1  force package-map fallback (skip mta-cli)
 #
 # UPLIFT-2: progress + human OK on stderr; one JSON object on stdout.
@@ -23,12 +23,8 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 export COMPOSITE_ROOT="${COMPOSITE_ROOT:-$(pwd)}"
 export PYTHONPATH="${HERE}${PYTHONPATH:+:$PYTHONPATH}"
 
-# Fail-closed default when unset and cwd/COMPOSITE_ROOT is the golden tip.
-if [[ -z "${APPLY_LOG_PATH:-}" ]]; then
-  if [[ -f "${COMPOSITE_ROOT}/AGENTS.md" && -d "${COMPOSITE_ROOT}/.hermes" ]]; then
-    export APPLY_LOG_PATH="${TMPDIR:-/tmp}/rhoai3-free-primitives-apply-log.json"
-  fi
-fi
+# FP-1: python owns the default (positive derived-tree test, not "not golden").
+# Candidate-source refuse (FP-2) runs before any apply-log write.
 
 emit_ok() {
   local human="$1"
@@ -38,7 +34,7 @@ emit_ok() {
 }
 
 echo "free-primitives-boot3: COMPOSITE_ROOT=${COMPOSITE_ROOT}" >&2
-echo "free-primitives-boot3: APPLY_LOG_PATH=${APPLY_LOG_PATH:-<default beside COMPOSITE_ROOT>}" >&2
+echo "free-primitives-boot3: APPLY_LOG_PATH=${APPLY_LOG_PATH:-<default: derived-tree or TMPDIR>}" >&2
 
 RULES=(
   "${HERE}/rules/r00_javax_to_jakarta.py"
@@ -62,11 +58,27 @@ if [[ "${DRY_RUN}" == "1" ]]; then
   exit 0
 fi
 
-# Fresh apply log for this invocation
-if [ -n "${APPLY_LOG_PATH:-}" ]; then
-  mkdir -p "$(dirname "${APPLY_LOG_PATH}")"
-  rm -f "${APPLY_LOG_PATH}"
+# FP-2: no pom.xml and no *.java is not a quiet success — refuse before a receipt.
+python3 -c '
+from _lib import has_candidate_sources, repo_root
+import sys
+root = repo_root()
+if not has_candidate_sources(root):
+    print(
+        "free-primitives-boot3: no_candidate_sources: "
+        f"COMPOSITE_ROOT={root} (need pom.xml or *.java)",
+        file=sys.stderr,
+    )
+    sys.exit(2)
+'
+if [[ -z "${APPLY_LOG_PATH:-}" ]]; then
+  APPLY_LOG_PATH="$(python3 -c 'from _lib import apply_log_path; print(apply_log_path())')"
+  export APPLY_LOG_PATH
 fi
+
+# Fresh apply log for this invocation
+mkdir -p "$(dirname "${APPLY_LOG_PATH}")"
+rm -f "${APPLY_LOG_PATH}"
 
 run_rule() {
   local script="$1"

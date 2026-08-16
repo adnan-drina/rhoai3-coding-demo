@@ -27,10 +27,19 @@ python3 .hermes/skills/harness/record-run-evidence/scripts/analyze-run-audit.py 
 
 Checks:
 
-1. Dest `src/**` or `pom.xml` mtime inside **no** claim window → `INTERVENTION`
+1. Dest path mtime inside **no** claim window → `INTERVENTION`.
+   Include-gate: `pom.xml`, `src/**`, plus dest files this seat has before
+   those exist (`migration.yaml`, `AGENTS.md`, `devfile.yaml`, `k8s/`,
+   `Containerfile`, `catalog-info.yaml`). Pass `--baseline <t0.json>` so
+   provision-time files are not scored; t0-vs-self must be 0.
 2. In-window but not in that card's `files_writable` → `OOS_WRITE`
 3. `done` with no worker `kanban_complete` → `FORCED_TRANSITION`
 4. `task_comments` whose author is not the card worker → `FOREIGN_COMMENT`
+
+**Caller:** `snapshot-card-boundary.sh` from `create-m3-implementer.sh`
+(create — Hermes has no create hook) and plugin
+`.hermes/home/plugins/run-audit-boundary/` (`kanban_task_claimed` /
+`completed` / `blocked`). Fail-open. Never a gate.
 
 SR-8 `evidence/**` (and `.hermes/`) are harness-written and not dest
 interventions. Same-window edits on a worker's own path are not

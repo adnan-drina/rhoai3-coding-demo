@@ -11,7 +11,7 @@ out-of-set `pom.xml` is refused. Dest-relative paths stay dest-relative
 under a worktree SAFE_ROOT (scope enforcement, not collision prevention).
 
 If HERMES_KANBAN_TASK is set but the write-set cannot be loaded, product
-writes (`src/`, `pom.xml`) fail closed.
+writes (`src/`, `pom.xml`, `.specify/`, `specs/`) fail closed.
 
 If no kanban task is published, deny-prefix only — validate/dev seats
 keep working without a write-set.
@@ -79,7 +79,12 @@ def is_denied(rel: str) -> bool:
 
 def is_product_write(rel: str) -> bool:
     n = norm_rel(rel)
-    return n == "pom.xml" or n.startswith("src/") or n.startswith(".specify/")
+    return (
+        n == "pom.xml"
+        or n.startswith("src/")
+        or n.startswith(".specify/")
+        or n.startswith("specs/")
+    )
 
 
 def in_write_set(rel: str, writable: list[str]) -> bool:

@@ -47,24 +47,117 @@ WORKER_AUTHORS = frozenset(
 )
 
 
+def _unquote(s: str) -> str:
+    s = s.strip()
+    if len(s) >= 2 and s[0] == s[-1] and s[0] in "\"'":
+        return s[1:-1]
+    return s
+
+
+def _parse_flow_map(raw: str) -> dict[str, str]:
+    s = raw.strip()
+    if s.startswith("{") and s.endswith("}"):
+        s = s[1:-1].strip()
+    out: dict[str, str] = {}
+    if not s:
+        return out
+    for part in s.split(","):
+        if ":" not in part:
+            continue
+        k, v = part.split(":", 1)
+        k, v = _unquote(k), _unquote(v)
+        if k:
+            out[k] = v
+    return out
+
+
+def _parse_yaml_ack(raw: str) -> dict:
+    """Subset YAML for Operator acks (no PyYAML).
+
+    Scalars, inline `{k: v}` maps, indented block maps, and list-of-maps
+    (`artifact_refs:`) are enough for AR-1.1. A line-scrape of
+    `artifact_digests:` missed block mappings (Deputy E-20260816T173510Z).
+    """
+    lines = raw.splitlines()
+    doc: dict = {}
+    i = 0
+    n = len(lines)
+
+    def _is_top(s: str) -> bool:
+        return bool(s.strip()) and not s.startswith(" ") and not s.startswith("\t")
+
+    while i < n:
+        ln = lines[i]
+        if not ln.strip() or ln.lstrip().startswith("#"):
+            i += 1
+            continue
+        if not _is_top(ln) or ":" not in ln:
+            i += 1
+            continue
+        key, rest = ln.split(":", 1)
+        key = key.strip()
+        rest = rest.strip()
+        if key == "artifact_digests":
+            if rest.startswith("{") or (rest and ":" in rest and not rest.startswith("-")):
+                doc[key] = _parse_flow_map(rest)
+            else:
+                mapping: dict[str, str] = {}
+                i += 1
+                while i < n:
+                    ch = lines[i]
+                    if not ch.strip() or ch.lstrip().startswith("#"):
+                        i += 1
+                        continue
+                    if _is_top(ch):
+                        i -= 1
+                        break
+                    if ":" in ch:
+                        k, v = ch.strip().split(":", 1)
+                        mapping[_unquote(k)] = _unquote(v)
+                    i += 1
+                doc[key] = mapping
+                continue
+        elif key == "artifact_refs":
+            refs: list[dict[str, str]] = []
+            i += 1
+            cur: dict[str, str] = {}
+            while i < n:
+                ch = lines[i]
+                if not ch.strip() or ch.lstrip().startswith("#"):
+                    i += 1
+                    continue
+                if _is_top(ch):
+                    i -= 1
+                    break
+                st = ch.strip()
+                if st.startswith("- "):
+                    if cur:
+                        refs.append(cur)
+                    cur = {}
+                    rest2 = st[2:].strip()
+                    if ":" in rest2:
+                        k, v = rest2.split(":", 1)
+                        cur[_unquote(k)] = _unquote(v)
+                elif ":" in st:
+                    k, v = st.split(":", 1)
+                    cur[_unquote(k)] = _unquote(v)
+                i += 1
+            if cur:
+                refs.append(cur)
+            doc[key] = refs
+            continue
+        else:
+            doc[key] = _unquote(rest)
+        i += 1
+    return doc
+
+
 def load_doc(path: Path) -> dict:
     raw = path.read_text(encoding="utf-8")
     if path.suffix == ".json" or path.name.endswith(".json"):
         data = json.loads(raw)
         return data if isinstance(data, dict) else {}
-    # minimal YAML field scrape (no PyYAML required)
-    def field(name: str) -> str:
-        m = re.search(rf"(?im)^{name}:\s*(.+)$", raw)
-        return m.group(1).strip().strip("\"'") if m else ""
-
-    return {
-        "kind": field("kind"),
-        "ack_type": field("ack_type"),
-        "status": field("status"),
-        "acknowledged_by": field("acknowledged_by"),
-        "task_id": field("task_id"),
-        "artifact_digests": field("artifact_digests"),
-    }
+    return _parse_yaml_ack(raw)
 
 
 def author_is_worker(author: str) -> bool:

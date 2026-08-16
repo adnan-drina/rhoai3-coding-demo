@@ -5,7 +5,7 @@ license: Apache-2.0
 compatibility: Linux seat; network to install pinned Spec Kit CLI
 metadata:
   author: rhoai3-harness-team
-  version: "1.4.0"
+  version: "1.4.1"
   hermes:
     tags:
     - sdd
@@ -89,8 +89,8 @@ After `/speckit-tasks` (optional `/speckit-analyze`) → Kanban mint.
   **last**; a second run prints `already provisioned (<ts>) — skip specify init; overlays refreshed` on stderr
   (plus one JSON object on stdout with `skipped:true`) and still refreshes
   constitution / speckit overlay when the dest constitution is placeholders.
-- `specify workflow resolve speckit` shows no `implement` step; `review-spec`
-  and `review-plan` stay; `clarify` is present.
+- `specify workflow resolve speckit` shows no `implement` step and no
+  `review-spec` / `review-plan` gates; `clarify` is present.
 - Fresh provision: stderr ends with
   `[init-spec-workspace] OK — AD-S provision complete (marker …)`; stdout is
   one JSON object `{script,ok,skipped,root,marker,provisioned_at}` (UPLIFT-2).

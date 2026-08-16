@@ -159,7 +159,9 @@ def main() -> int:
                 continue
             # Allow migration analysis noise? F2 says out-of-scope must fail.
             # Limit scope check to src/ and .specify/ style app paths when scope set.
-            if n.startswith("src/") or n.startswith("pom.xml") or n.startswith(".specify/"):
+            if n.startswith("src/") or n.startswith("pom.xml") or n.startswith(
+                ".specify/"
+            ) or n.startswith("specs/"):
                 print(
                     f"FAIL: FENCE_SCOPE write/dirty {p} outside files_in_scope",
                     file=sys.stderr,

@@ -224,7 +224,34 @@ d=json.load(open("${tmp}/inv.json"))
 assert d["execution_evidence"]["ran"] is True
 assert d["counts"]["http"] >= 1
 assert d["counts"]["non_http"] >= 1
-print("OK: inventory smoke", d["counts"])
+http=[e for e in d["entry_points"] if e.get("kind")=="http"]
+assert http and http[0].get("http_method")=="GET"
+assert http[0].get("http_path")=="/api/demo"
+print("OK: inventory smoke", d["counts"], "route", http[0]["http_method"], http[0]["http_path"])
+PY
+# class-level @RequestMapping prefix joined onto method path
+mkdir -p "${tmp}/pref/src"
+cat > "${tmp}/pref/src/Owners.java" <<'EOF'
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.bind.annotation.RestController;
+@RestController
+@RequestMapping("/api/owners")
+public class Owners {
+  @RequestMapping(value = "/{id}", method = RequestMethod.GET)
+  String get() { return ""; }
+}
+EOF
+python3 "${SKILLS}/analysis/inventory-entry-points/scripts/inventory-entry-points.py" \
+  "${tmp}/pref" -o "${tmp}/pref.json" || rc=1
+python3 - <<PY || rc=1
+import json
+d=json.load(open("${tmp}/pref.json"))
+http=[e for e in d["entry_points"] if e.get("kind")=="http"]
+assert len(http)==1, http
+assert http[0]["http_method"]=="GET"
+assert http[0]["http_path"]=="/api/owners/{id}"
+print("OK: inventory class-prefix join", http[0]["http_path"])
 PY
 rm -rf "${tmp}"
 
@@ -262,6 +289,37 @@ printf '%s\n' '{"kind":"migration-ack","ack_type":"brief-identity","status":"ack
   > "${ar11_tmp}/evidence/acks/brief-identity.ack.json"
 rm -f "${ar11_tmp}/evidence/acks/brief-identity.json"
 python3 "${HARNESS}/enforce-authority-boundary/scripts/check-ack-authority.py" "${ar11_tmp}" || rc=1
+# Deputy E-20260816T173510Z — block-mapping artifact_digests is valid YAML
+cat > "${ar11_tmp}/evidence/acks/m1-findings.ack.yaml" <<'EOF'
+kind: migration-ack
+ack_type: m1-findings
+status: acknowledged
+acknowledged_by: Operator
+acknowledged_at: 2026-08-16T00:00:00Z
+task_id: t_demo
+artifact_digests:
+  evidence/mta-findings.json: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  evidence/findings-handoff.json: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+EOF
+rm -f "${ar11_tmp}/evidence/acks/brief-identity.ack.json"
+python3 "${HARNESS}/enforce-authority-boundary/scripts/check-ack-authority.py" "${ar11_tmp}" \
+  && echo "OK: AR-1.1 block-mapping artifact_digests accepted" \
+  || { echo "FAIL: AR-1.1 block-mapping artifact_digests refused" >&2; rc=1; }
+# artifact_refs with sha256, no artifact_digests map
+cat > "${ar11_tmp}/evidence/acks/m1-findings.ack.yaml" <<'EOF'
+kind: migration-ack
+ack_type: m1-findings
+status: acknowledged
+acknowledged_by: Operator
+acknowledged_at: 2026-08-16T00:00:00Z
+task_id: t_demo
+artifact_refs:
+  - path: evidence/mta-findings.json
+    sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+EOF
+python3 "${HARNESS}/enforce-authority-boundary/scripts/check-ack-authority.py" "${ar11_tmp}" \
+  && echo "OK: AR-1.1 artifact_refs sha256 accepted" \
+  || { echo "FAIL: AR-1.1 artifact_refs sha256 refused" >&2; rc=1; }
 rm -rf "${ar11_tmp}"
 
 echo "== write-fence proving-min (AD-H §16.4 / F2) =="
@@ -368,6 +426,37 @@ mkdir -p "${hook_tmp}/src/main/java"
     exit 1
   else
     echo "OK: write-set hook fail-closed without published write-set (B-2)"
+  fi
+  # Architect E-20260816T185414Z — specs/ is a product write; missing write-set
+  # must not let Spec Kit (or SPECIFY_FEATURE_DIRECTORY) through.
+  if printf '%s\n' '{"tool_name":"write_file","tool_input":{"path":"specs/001/spec.md"}}' \
+    | python3 "${HOOK}" >/dev/null; then
+    echo "FAIL: write-set hook should refuse specs/ when write-set missing" >&2
+    exit 1
+  else
+    echo "OK: write-set hook fail-closed on specs/ without write-set (AD-013)"
+  fi
+  export HERMES_KANBAN_FILES_WRITABLE='[".specify/","specs/"]'
+  if printf '%s\n' '{"tool_name":"write_file","tool_input":{"path":"specs/001/spec.md"}}' \
+    | python3 "${HOOK}" >/dev/null; then
+    echo "OK: M2 write-set allows specs/ (native speckit)"
+  else
+    echo "FAIL: M2 write-set refused specs/" >&2
+    exit 1
+  fi
+  if printf '%s\n' '{"tool_name":"write_file","tool_input":{"path":".specify/feature.json"}}' \
+    | python3 "${HOOK}" >/dev/null; then
+    echo "OK: M2 write-set allows .specify/ (native speckit)"
+  else
+    echo "FAIL: M2 write-set refused .specify/" >&2
+    exit 1
+  fi
+  if printf '%s\n' '{"tool_name":"write_file","tool_input":{"path":"src/main/java/x/App.java"}}' \
+    | python3 "${HOOK}" >/dev/null; then
+    echo "FAIL: M2 write-set should refuse src/" >&2
+    exit 1
+  else
+    echo "OK: M2 write-set refuses src/"
   fi
 ) || rc=1
 rm -rf "${hook_tmp}"
@@ -2301,6 +2390,52 @@ fi
 rm -rf "${lg3tmp}"
 echo "== UPLIFT-7 golden cleanliness (no run-state in tip tree) =="
 python3 "${SKILL_DIR}/scripts/check-golden-cleanliness.py" --root "${ROOT}" || rc=1
+echo "== FP-1/FP-2 free-primitives apply-log invert + no-source refuse =="
+FP_COMP="${SKILLS}/migration/derive-legacy-boot3/scripts/free-primitives-boot3/run-composite.sh"
+fp1="$(mktemp -d "${TMPDIR:-/tmp}/fp1-nongolden.XXXXXX")"
+printf '%s\n' '<project><modelVersion>4.0.0</modelVersion></project>' >"${fp1}/pom.xml"
+mkdir -p "${fp1}/src"
+printf '%s\n' 'class T {}' >"${fp1}/src/T.java"
+if ! ( cd "${fp1}" && COMPOSITE_ROOT="${fp1}" bash "${FP_COMP}" >/dev/null 2>"${fp1}/err" ); then
+  echo "FAIL: FP-1 composite should run on a tree with sources" >&2
+  tail -n 20 "${fp1}/err" >&2 || true
+  rc=1
+elif [ -f "${fp1}/.rhoai3-free-primitives-apply-log.json" ]; then
+  echo "FAIL: FP-1 wrote apply log beside a non-derived tree" >&2
+  rc=1
+else
+  echo "OK: FP-1 non-derived tree has no beside-root apply log"
+fi
+rm -rf "${fp1}"
+fp2="$(mktemp -d "${TMPDIR:-/tmp}/fp2-empty.XXXXXX")"
+printf '%s\n' 'readme' >"${fp2}/README"
+if ( cd "${fp2}" && COMPOSITE_ROOT="${fp2}" bash "${FP_COMP}" >/dev/null 2>"${fp2}/err" ); then
+  echo "FAIL: FP-2 should refuse a tree with no candidate sources" >&2
+  rc=1
+elif [ -f "${fp2}/.rhoai3-free-primitives-apply-log.json" ]; then
+  echo "FAIL: FP-2 wrote apply log on refuse" >&2
+  rc=1
+elif ! grep -q 'no_candidate_sources' "${fp2}/err"; then
+  echo "FAIL: FP-2 refuse was not typed no_candidate_sources" >&2
+  rc=1
+else
+  echo "OK: FP-2 refuses zero-source tree (no receipt)"
+fi
+rm -rf "${fp2}"
+fpd="$(mktemp -d "${TMPDIR:-/tmp}/fp-derived.XXXXXX")"
+printf '%s\n' '<project><modelVersion>4.0.0</modelVersion></project>' >"${fpd}/pom.xml"
+printf '%s\n' 'schema: rhoai3.derived-tree/v1' >"${fpd}/.rhoai3-derived-tree"
+if ! ( cd "${fpd}" && COMPOSITE_ROOT="${fpd}" bash "${FP_COMP}" >/dev/null 2>"${fpd}/err" ); then
+  echo "FAIL: derived-marker tree should run" >&2
+  tail -n 20 "${fpd}/err" >&2 || true
+  rc=1
+elif [ ! -f "${fpd}/.rhoai3-free-primitives-apply-log.json" ]; then
+  echo "FAIL: derived-marker tree should write apply log beside root" >&2
+  rc=1
+else
+  echo "OK: derived-marker tree writes apply log beside COMPOSITE_ROOT"
+fi
+rm -rf "${fpd}"
 echo "== AD-S S.4 .specify absent from golden =="
 python3 "${SKILL_DIR}/scripts/check-specify-absent.py" --root "${ROOT}" || rc=1
 echo "== A-1/A-2/A-3 speckit overlay (stop-before-implement) =="
@@ -2315,6 +2450,10 @@ elif grep -q 'command: speckit.implement' "${overlay}"; then
 elif ! grep -q 'remove: implement' "${overlay}"; then
   echo "FAIL: overlay missing remove: implement" >&2
   rc=1
+elif ! grep -q 'remove: review-spec' "${overlay}" \
+  || ! grep -q 'remove: review-plan' "${overlay}"; then
+  echo "FAIL: overlay missing remove: review-spec/review-plan (163200Z unattended gates)" >&2
+  rc=1
 elif ! grep -q 'speckit.clarify' "${overlay}"; then
   echo "FAIL: overlay missing speckit.clarify" >&2
   rc=1
@@ -2325,7 +2464,7 @@ elif ! grep -q 'evidence/entry-point-inventory.json' "${overlay}"; then
   echo "FAIL: overlay missing M1 entry-point inventory path" >&2
   rc=1
 else
-  echo "OK: tip speckit overlay (clarify, no implement, M1 paths)"
+  echo "OK: tip speckit overlay (clarify, no implement, no gates, M1 paths)"
 fi
 if [ ! -f "${constitution}" ]; then
   echo "FAIL: missing constitution asset" >&2
@@ -2358,9 +2497,9 @@ if command -v specify >/dev/null 2>&1; then
       echo "FAIL: resolved speckit still has implement step" >&2
       echo "${resolve_out}" >&2
       rc=1
-    elif ! echo "${resolve_out}" | grep -E '^[[:space:]]+• review-spec:' >/dev/null \
-      || ! echo "${resolve_out}" | grep -E '^[[:space:]]+• review-plan:' >/dev/null; then
-      echo "FAIL: resolved speckit missing review-spec/review-plan gates" >&2
+    elif echo "${resolve_out}" | grep -E '^[[:space:]]+• review-spec:' >/dev/null \
+      || echo "${resolve_out}" | grep -E '^[[:space:]]+• review-plan:' >/dev/null; then
+      echo "FAIL: resolved speckit still has review-spec/review-plan gates" >&2
       echo "${resolve_out}" >&2
       rc=1
     elif ! echo "${resolve_out}" | grep -E '^[[:space:]]+• clarify:' >/dev/null; then
@@ -2368,7 +2507,7 @@ if command -v specify >/dev/null 2>&1; then
       echo "${resolve_out}" >&2
       rc=1
     else
-      echo "OK: specify workflow resolve speckit (no implement; gates + clarify)"
+      echo "OK: specify workflow resolve speckit (no implement; no gates; clarify)"
     fi
   else
     echo "FAIL: specify init in overlay temp tree failed" >&2
@@ -2461,6 +2600,81 @@ if not any("[P]" in line for line in us["US1"]["phase_checklist"]):
     print("FAIL: [P] missing from phase_checklist", file=sys.stderr)
     raise SystemExit(1)
 print("OK: handover-mint dry-run (ids, disjoint, pom_owner, parents, [P], worktree)")
+
+# Native speckit specimen (attempt-1 harvest). A-4 must parse. US3 omitting
+# Foundational is typed DEPENDENCIES (192444Z). Harvested inventory lacks
+# structured http_path; A-8 join is tested separately (inventory.a8-routes.json).
+native_tasks = fixtures / "tasks.native-speckit.md"
+native_inv = fixtures / "inventory.native-speckit.json"
+if native_tasks.is_file() and native_inv.is_file():
+    (tmp / "native").mkdir(parents=True, exist_ok=True)
+    cp = run(
+        [
+            str(tmp / "native"),
+            "--dry-run",
+            "--tasks",
+            str(native_tasks),
+            "--inventory",
+            str(native_inv),
+        ]
+    )
+    blob = (cp.stdout or "") + (cp.stderr or "")
+    if "DEPENDENCIES_MISSING" in blob:
+        print("FAIL: native speckit still DEPENDENCIES_MISSING", file=sys.stderr)
+        print(blob, file=sys.stderr)
+        raise SystemExit(1)
+    if cp.returncode == 0:
+        print("OK: native speckit handover-mint dry-run")
+    elif "endpoints_uncovered" in blob:
+        print("OK: native speckit parses A-4; harvested inventory has no http_path — uncovered is truthful (no filename mapper)")
+    elif "DEPENDENCIES:" in blob and "Foundational must be in parents" in blob:
+        print("OK: native speckit A-4 transcribed; US omitting Foundational is DEPENDENCIES (192444Z), not dest rewrite")
+    else:
+        print("FAIL: native speckit unexpected refuse", file=sys.stderr)
+        print(blob, file=sys.stderr)
+        raise SystemExit(1)
+else:
+    print("FAIL: missing tasks.native-speckit.md / inventory.native-speckit.json", file=sys.stderr)
+    raise SystemExit(1)
+
+# A-8: transcribed GET /api/owners covers GET even when inventory file is
+# OwnerRestController.java and dest write-set is OwnerResource.java.
+a8 = tmp / "a8"
+a8.mkdir()
+cp = run(
+    [
+        str(a8),
+        "--dry-run",
+        "--print-receipt",
+        "--tasks",
+        str(fixtures / "tasks.a8-routes.md"),
+        "--inventory",
+        str(fixtures / "inventory.a8-routes.json"),
+    ]
+)
+blob = (cp.stdout or "") + (cp.stderr or "")
+if cp.returncode != 0:
+    print("FAIL: A-8 transcribed-route dry-run", file=sys.stderr)
+    print(blob, file=sys.stderr)
+    raise SystemExit(1)
+a8_receipt = json.loads(cp.stdout[cp.stdout.index("{") :])
+a8_us = {s["story_id"]: s for s in a8_receipt["stories"]}
+if not any("GET /api/owners" in e or e.endswith("/api/owners") for e in a8_us["US1"].get("endpoints") or []):
+    print(f"FAIL: A-8 US1 endpoints {a8_us['US1'].get('endpoints')}", file=sys.stderr)
+    raise SystemExit(1)
+print("OK: A-8 transcribed GET /api/owners covers legacy RestController inventory")
+expect_fail(
+    [
+        str(tmp / "a8-post"),
+        "--dry-run",
+        "--tasks",
+        str(fixtures / "tasks.a8-routes.md"),
+        "--inventory",
+        str(fixtures / "inventory.a8-uncovered-post.json"),
+    ],
+    "endpoints_uncovered",
+    "A-8 GET transcription does not cover POST without path/method/symbol",
+)
 
 expect_fail(
     [
@@ -2842,6 +3056,22 @@ else:
         file=sys.stderr,
     )
     raise SystemExit(1)
+r = subprocess.run(
+    [sys.executable, str(an_py), str(snap), "--baseline", str(snap), "--out", str(td / "self.json")],
+    capture_output=True,
+    text=True,
+)
+if r.returncode != 0:
+    print(f"FAIL: analyze-run-audit --baseline: {r.stderr}", file=sys.stderr)
+    raise SystemExit(1)
+self_doc = json.loads((td / "self.json").read_text(encoding="utf-8"))
+if self_doc.get("intervention_count") != 0:
+    print(
+        f"FAIL: t0-vs-self must be 0 INTERVENTION, got {self_doc}",
+        file=sys.stderr,
+    )
+    raise SystemExit(1)
+print("OK: run-audit t0-vs-self is 0 with --baseline")
 PY
 
 echo "== create-path tip sync (R0/R3) =="

@@ -5,7 +5,7 @@ license: Apache-2.0
 compatibility: Linux seat; Hermes CLI on PATH for kanban create/dispatch
 metadata:
   author: rhoai3-harness-team
-  version: "1.4.3"
+  version: "1.4.4"
   hermes:
     tags:
     - harness
@@ -101,14 +101,15 @@ bash "${HERMES_SKILL_DIR}/scripts/create-m3-implementer.sh" \
    `HERMES_HOME` (DB/logs only). Pins `HERMES_MANAGED_DIR` and refuses a
    mismatched export; writes `skills.external_dirs` into `HERMES_HOME/config.yaml`
    so tip skills resolve.
-4. Ensures a standalone `hermes kanban daemon --force` (Dev Spaces has no gateway).
-5. `hermes kanban create` with `--workspace dir:/projects/modernized`, one
-   `--skill` per declared skill, `--max-runtime`, and the idempotency key;
-   records the id under `evidence/derived/` (pointer only — the DAG is the
-   parent/child link graph).
-6. Ticks `hermes kanban dispatch --max 1`. **The M3 create path does not** —
-   cards are born `--initial-status blocked` and unpark only after M2 ledger
-   PASS + brief-identity ack + serial GO (Deputy `E-20260811T131900Z`).
+4. Daemon/dispatcher stay **off** unless `DISPATCH_START_DAEMON=1` /
+   `DISPATCH_MAX>0` (Architect `E-20260816T185414Z`: `--force` is a restart
+   trigger, not a dispatch side-effect).
+5. `hermes kanban create` (`dir:/projects/modernized`, skills, budget,
+   idempotency key); id under `evidence/derived/` (pointer, not the DAG).
+   M2 stamps `evidence/runtime/write-sets/<id>.json` = `.specify/` + `specs/`
+   (AD-013; do not invent `SPECIFY_FEATURE_DIRECTORY`).
+6. M3 create does **not** auto-dispatch — cards born `--initial-status blocked`
+   until M2 ledger PASS + brief-identity ack + serial GO.
 
 ### What create-m3-implementer.sh / mint-m3-wave.sh add
 

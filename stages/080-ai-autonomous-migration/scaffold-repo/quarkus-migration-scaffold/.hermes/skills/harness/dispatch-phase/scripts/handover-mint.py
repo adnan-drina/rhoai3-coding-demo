@@ -6,12 +6,13 @@ Parents are transcribed from the Dependencies section (not inferred).
 File-granular ownership is a distinct step after grouping. Endpoint coverage
 is vs M1 inventory. OBJECT spec-kit hooks (V20-5 advisory).
 
-Does not call hermes unless --parent is passed (then mint-m3-wave.sh).
+Does not call hermes unless --parent or --ensure-wave-holder is passed (then mint-m3-wave.sh).
 
 Usage:
   python3 handover-mint.py <root> --dry-run
   python3 handover-mint.py <root> --write
   python3 handover-mint.py <root> --write --parent <wave_holder>
+  python3 handover-mint.py <root> --write --ensure-wave-holder
 """
 from __future__ import annotations
 
@@ -115,6 +116,7 @@ class Phase:
     acceptance_criteria: list[dict[str, Any]] = field(default_factory=list)
     workspace_kind: str = "dir"
     endpoints: list[str] = field(default_factory=list)
+    extended_proves: list[str] = field(default_factory=list)
 
 
 def _die(code: str, detail: str) -> None:
@@ -182,6 +184,10 @@ def parse_phases(text: str) -> list[Phase]:
         checklist = [m.group(0) for line in body.splitlines() if (m := CHECKBOX.match(line))]
         files: list[str] = []
         for line in body.splitlines():
+            # Native speckit later stories "Extend" / "Add POST" existing files.
+            # Those are AC on an earlier owner, not a second write-set claim (A-5).
+            if _is_amend_existing_line(line):
+                continue
             for raw in PATH_TOKEN.findall(line):
                 p = _norm_path(raw)
                 if p not in files:
@@ -211,7 +217,61 @@ def parse_phases(text: str) -> list[Phase]:
         if ph.story_id in seen:
             _die("STORY_ID", f"duplicate story_id {ph.story_id!r}")
         seen.add(ph.story_id)
+    _resolve_backtick_test_oracles(phases)
     return phases
+
+
+def _resolve_backtick_test_oracles(phases: list[Phase]) -> None:
+    """Native speckit Extend lines name `FooTest` without a path.
+
+    Map those names onto test files already listed by an earlier phase so
+    later stories have proves without taking write-set ownership (A-5).
+    """
+    known: dict[str, str] = {}
+    for ph in phases:
+        for p in ph.files:
+            if is_test_source_rel(p):
+                known.setdefault(Path(p).stem, p)
+        if ph.kind != KIND_USER_STORY:
+            continue
+        for line in ph.body.splitlines():
+            if not _is_amend_existing_line(line):
+                continue
+            if not re.match(r"(?i)^- \[[ xX]\].*\bExtend\b", line):
+                continue
+            for name in BACKTICK_TEST.findall(line):
+                path = known.get(name)
+                if path and path not in ph.extended_proves:
+                    ph.extended_proves.append(path)
+
+
+AMEND_EXISTING = re.compile(
+    r"^- \[[ xX]\]\s+(?:T\d+\s+)?(?:\[P\]\s+)?(?:\[US\d+\]\s+)?"
+    r"(Extend|Add create/update/delete|Add POST/PUT/DELETE|Verify)\b",
+    re.I,
+)
+BACKTICK_TEST = re.compile(r"`([A-Za-z][A-Za-z0-9_]*Test)`")
+
+
+def _is_amend_existing_line(line: str) -> bool:
+    return bool(CHECKBOX.match(line) and AMEND_EXISTING.search(line))
+
+
+def _parents_from_rest(rest: str, by_id: dict[str, Phase]) -> list[str]:
+    parents: list[str] = []
+
+    def add(sid: str) -> None:
+        if sid in by_id and sid not in parents:
+            parents.append(sid)
+
+    if re.search(r"depends on foundational|after foundational", rest, re.I):
+        add(KIND_FOUNDATIONAL)
+    if re.search(r"depends on setup|after setup", rest, re.I):
+        add(KIND_SETUP)
+    for dm in DEPENDS_ON_US.finditer(rest):
+        n = dm.group(1) or dm.group(2)
+        add(f"US{n}")
+    return parents
 
 
 def transcribe_parents(text: str, phases: list[Phase]) -> None:
@@ -246,31 +306,55 @@ def transcribe_parents(text: str, phases: list[Phase]) -> None:
             by_id[KIND_FOUNDATIONAL].parents = [KIND_SETUP]
         else:
             _die("DEPENDENCIES", f"Foundational parents not transcribed: {found_line.group(1)!r}")
-    default_us_parents = [KIND_FOUNDATIONAL]
+    default_us_parents = [KIND_FOUNDATIONAL] if KIND_FOUNDATIONAL in by_id else []
+    per_us: dict[str, list[str]] = {}
     if us_ids:
-        if not us_all or not re.search(r"depend on Foundational", us_all.group(1), re.I):
+        collective = bool(
+            us_all and re.search(r"depend on Foundational", us_all.group(1), re.I)
+        )
+        if collective:
+            if KIND_FOUNDATIONAL not in by_id:
+                _die("DEPENDENCIES", "user stories depend on Foundational but that phase is absent")
+            for sid in us_ids:
+                per_us[sid] = list(default_us_parents)
+        for m in US_LINE_DEPS.finditer(block):
+            sid = f"US{m.group(1)}"
+            rest = m.group(2)
+            parsed = _parents_from_rest(rest, by_id)
+            extra = [x for x in parsed if x.startswith("US")]
+            base = [x for x in parsed if not x.startswith("US")]
+            if not base and collective:
+                base = list(default_us_parents)
+            if not base and not extra:
+                continue
+            per_us[sid] = base + extra
+        missing = [sid for sid in us_ids if sid not in per_us or not per_us[sid]]
+        if missing:
             _die(
                 "DEPENDENCIES_MISSING",
-                "User Stories bullet must say they depend on Foundational",
+                "each user story needs a Dependencies bullet "
+                "(per-story native speckit, or collective "
+                "'User Stories (Phase 3+) depend on Foundational'); "
+                f"missing parents for {missing}",
             )
-        if KIND_FOUNDATIONAL not in by_id:
-            _die("DEPENDENCIES", "user stories depend on Foundational but that phase is absent")
-    per_us: dict[str, list[str]] = {sid: list(default_us_parents) for sid in us_ids}
-    for m in US_LINE_DEPS.finditer(block):
-        sid = f"US{m.group(1)}"
-        rest = m.group(2)
-        extra: list[str] = []
-        for dm in DEPENDS_ON_US.finditer(rest):
-            n = dm.group(1) or dm.group(2)
-            extra.append(f"US{n}")
-        if extra:
-            per_us[sid] = default_us_parents + extra
     for sid, parents in per_us.items():
         if sid in by_id:
             by_id[sid].parents = parents
+    if us_ids and KIND_FOUNDATIONAL in by_id:
+        omitted = [
+            sid
+            for sid in us_ids
+            if sid in by_id and KIND_FOUNDATIONAL not in (by_id[sid].parents or [])
+        ]
+        if omitted:
+            _die(
+                "DEPENDENCIES",
+                "Foundational must be in parents of every user-story phase "
+                f"(Architect E-20260816T192444Z); omitted by {omitted}",
+            )
     if KIND_POLISH in by_id:
         if not polish_line or not re.search(
-            r"depends on all desired user stories", polish_line.group(1), re.I
+            r"depends on all (?:desired )?user stories", polish_line.group(1), re.I
         ):
             _die("DEPENDENCIES_MISSING", "Polish bullet must depend on all user stories")
         by_id[KIND_POLISH].parents = list(us_ids)
@@ -342,12 +426,33 @@ def _proves_for(ph: Phase) -> list[str]:
     from_ind = [p for p in from_ind if is_test_source_rel(p) and p in ph.files]
     if from_ind:
         return from_ind
-    return [p for p in ph.files if is_test_source_rel(p)]
+    in_scope = [p for p in ph.files if is_test_source_rel(p)]
+    if in_scope:
+        return in_scope
+    if ph.extended_proves:
+        return list(ph.extended_proves)
+    # Native speckit later stories Extend tests owned by an earlier phase.
+    # Those paths are oracles, not a second write-set claim.
+    extended: list[str] = []
+    for line in ph.body.splitlines():
+        if not CHECKBOX.match(line) or not AMEND_EXISTING.search(line):
+            continue
+        for raw in PATH_TOKEN.findall(line):
+            p = _norm_path(raw)
+            if is_test_source_rel(p) and p not in extended:
+                extended.append(p)
+    return extended
 
 
 def stamp_oracles(phases: list[Phase]) -> None:
     for ph in phases:
         if not ph.files:
+            if ph.kind == KIND_POLISH:
+                ph.operand_class = ["build_config"]
+                ph.acceptance_criteria = [
+                    {"check": "build_resolves", "cmd": "mvn -q verify"}
+                ]
+                continue
             _die("FILES_IN_SCOPE", f"{ph.story_id}: empty files_in_scope after ownership")
         ph.operand_class = _classes_for(ph)
         src_n = len([p for p in ph.files if p.startswith("src/")])
@@ -386,6 +491,13 @@ def stamp_oracles(phases: list[Phase]) -> None:
                 f"{ph.story_id}: user-story phase has no Independent Test",
             )
         if not proves:
+            if ph.kind != KIND_USER_STORY:
+                # Native speckit: Setup/Foundational/Polish are compile/verify
+                # checkpoints, not independently testable user-story increments.
+                ph.acceptance_criteria = [
+                    {"check": "build_resolves", "cmd": "mvn -q compile"}
+                ]
+                continue
             _die(
                 "PHASE_AC",
                 f"{ph.story_id}: phase AC cannot be a test (no proving test in "
@@ -418,6 +530,50 @@ def stamp_workspaces(phases: list[Phase]) -> None:
             ph.workspace_kind = "dir"
 
 
+def _norm_http_path(raw: str) -> str:
+    p = (raw or "").strip()
+    if not p:
+        return ""
+    if not p.startswith("/"):
+        p = "/" + p
+    if len(p) > 1:
+        p = p.rstrip("/")
+    return re.sub(r"\{[^}]+\}", "{var}", p)
+
+
+def _transcribed_http(ph: Phase) -> tuple[set[str], set[str], set[str]]:
+    """Routes, methods, and inventory symbols named in the phase body."""
+    body = ph.body or ""
+    methods = {m.upper() for m in re.findall(r"\b(GET|POST|PUT|DELETE|PATCH)\b", body, re.I)}
+    methods.update(
+        m.upper() for m in re.findall(r"@(GET|POST|PUT|DELETE|PATCH)\b", body, re.I)
+    )
+    paths = {_norm_http_path(p) for p in re.findall(r'@Path\(\s*"([^"]+)"\)', body)}
+    paths.update(
+        _norm_http_path(p)
+        for p in re.findall(
+            r"\b(?:GET|POST|PUT|DELETE|PATCH)\s+(/[A-Za-z0-9_./{}*|-]*)",
+            body,
+            re.I,
+        )
+    )
+    symbols = set(re.findall(r"\b([A-Za-z]\w*#[A-Za-z]\w*)\b", body))
+    symbols.update(re.findall(r"`([A-Za-z]\w*#[A-Za-z]\w*)`", body))
+    return paths, methods, symbols
+
+
+def _path_covered(ep_path: str, paths: set[str]) -> bool:
+    ep_path = _norm_http_path(ep_path)
+    if not ep_path:
+        return False
+    for p in paths:
+        if not p:
+            continue
+        if ep_path == p or ep_path.startswith(p + "/"):
+            return True
+    return False
+
+
 def cover_endpoints(phases: list[Phase], inventory: dict[str, Any]) -> None:
     eps = inventory.get("entry_points") or []
     if not isinstance(eps, list) or not eps:
@@ -429,18 +585,46 @@ def cover_endpoints(phases: list[Phase], inventory: dict[str, Any]) -> None:
     for ph in phases:
         for f in ph.files:
             file_owner[f] = ph.story_id
+    transcribed = {ph.story_id: _transcribed_http(ph) for ph in phases}
     uncovered: list[str] = []
     multi: list[str] = []
     claimed: dict[str, list[str]] = {ph.story_id: [] for ph in phases}
     for ep in http:
-        f = _norm_path(str(ep.get("file") or ""))
+        f = _norm_path(str(ep.get("file") or "")) if ep.get("file") else ""
         sym = str(ep.get("symbol") or "")
-        key = f"{f}#{sym}" if sym else f
-        owner = file_owner.get(f)
-        if not owner:
+        method = str(ep.get("http_method") or "").upper()
+        route = str(ep.get("http_path") or "")
+        key = f"{method} {route}".strip() if route else (f"{f}#{sym}" if sym else f)
+        owners: list[str] = []
+        if f and f in file_owner:
+            owners.append(file_owner[f])
+        for ph in phases:
+            paths, methods, symbols = transcribed[ph.story_id]
+            hit = False
+            if sym and (sym in symbols or sym in ph.body):
+                hit = True
+            elif route and _path_covered(route, paths):
+                if not method or method in methods:
+                    hit = True
+            if hit and ph.story_id not in owners:
+                owners.append(ph.story_id)
+        if not owners:
             uncovered.append(key)
             continue
-        claimed[owner].append(key)
+        if len(owners) > 1:
+            # Prefer the phase that named the HTTP method when several match.
+            if method:
+                method_owners = [
+                    sid
+                    for sid in owners
+                    if method in transcribed[sid][1]
+                ]
+                if len(method_owners) == 1:
+                    owners = method_owners
+        if len(owners) > 1:
+            multi.append(f"{key}:{'+'.join(owners)}")
+            continue
+        claimed[owners[0]].append(key)
     if uncovered:
         _die(
             "endpoints_uncovered",
@@ -574,6 +758,75 @@ def mint_wave(root: Path, parent: str, dry_run: bool) -> int:
     return subprocess.run(cmd, cwd=str(root)).returncode
 
 
+def _parent_status(task_id: str) -> str:
+    proc = subprocess.run(
+        ["hermes", "kanban", "show", task_id, "--json"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if proc.returncode != 0 or not (proc.stdout or "").strip():
+        return ""
+    try:
+        data = json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        return ""
+    task = data.get("task") if isinstance(data.get("task"), dict) else data
+    if not isinstance(task, dict):
+        return ""
+    return str(task.get("status") or "").lower()
+
+
+def ensure_open_wave_holder() -> str:
+    """HKN-2 look-ahead: never --parent a done M2. Mint under a still-open holder."""
+    title = "M3 WAVE HOLDER"
+    proc = subprocess.run(
+        [
+            "hermes",
+            "kanban",
+            "create",
+            "--json",
+            "--assignee",
+            "default",
+            "--initial-status",
+            "blocked",
+            "--created-by",
+            "handover-mint",
+            title,
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    blob = (proc.stdout or "") + (proc.stderr or "")
+    if proc.returncode != 0:
+        _die("WAVE_HOLDER", f"hermes kanban create failed: {blob.strip()[:400]}")
+    try:
+        data = json.loads(proc.stdout or "{}")
+    except json.JSONDecodeError:
+        _die("WAVE_HOLDER", f"create returned non-JSON: {blob.strip()[:400]}")
+    tid = str(data.get("id") or "")
+    if not tid:
+        _die("WAVE_HOLDER", "create returned no id")
+    print(f"OK: wave-holder {tid} status=blocked (HKN-2; do not --parent a done M2)", file=sys.stderr)
+    return tid
+
+
+def assert_parent_open(parent: str) -> None:
+    status = _parent_status(parent)
+    if status in {"done", "archived"}:
+        _die(
+            "PARENT_DONE",
+            f"{parent} status={status} — PARK_AT_BIRTH children auto-promote "
+            "(HKN-2). Pass --ensure-wave-holder instead of a done M2 id.",
+        )
+    if not status:
+        _die(
+            "PARENT_DONE",
+            f"{parent} status unreadable — fail-closed (cannot prove parent is not done)",
+        )
+
+
 def run(root: Path, args: argparse.Namespace) -> dict[str, Any]:
     tasks_md = find_tasks_md(root, args.tasks)
     text = tasks_md.read_text(encoding="utf-8")
@@ -592,6 +845,10 @@ def run(root: Path, args: argparse.Namespace) -> dict[str, Any]:
         root=root,
     )
     if args.write or args.parent:
+        if args.ensure_wave_holder:
+            args.parent = ensure_open_wave_holder()
+        elif args.parent:
+            assert_parent_open(args.parent)
         path_a_partition_on_disk(root)
         out = root / "evidence" / "briefs" / "partition.json"
         out.parent.mkdir(parents=True, exist_ok=True)
@@ -621,9 +878,17 @@ def main() -> int:
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--write", action="store_true")
     ap.add_argument("--parent", default="")
+    ap.add_argument(
+        "--ensure-wave-holder",
+        action="store_true",
+        help="create a still-open blocked wave-holder and mint under it (HKN-2)",
+    )
     ap.add_argument("--print-receipt", action="store_true")
     args = ap.parse_args()
-    if args.parent:
+    if args.ensure_wave_holder and args.parent:
+        print("FAIL: use --ensure-wave-holder or --parent, not both", file=sys.stderr)
+        return 2
+    if args.parent or args.ensure_wave_holder:
         args.write = True
     if not args.write:
         args.dry_run = True

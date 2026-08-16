@@ -26,6 +26,21 @@ HARNESS_PREFIXES = (
     ".git/",
 )
 
+# Include-gate (Deputy 175134Z / Architect 185414Z). Keep HARNESS_PREFIXES as
+# the exclude. pom.xml + src/ remain so M3 product writes are scored; the
+# extra names are paths this dest has before those exist.
+DEST_FILES = frozenset(
+    {
+        "pom.xml",
+        "migration.yaml",
+        "AGENTS.md",
+        "devfile.yaml",
+        "Containerfile",
+        "catalog-info.yaml",
+    }
+)
+DEST_PREFIXES = ("src/", "k8s/")
+
 
 def _in_window(mtime: float, windows: list[dict]) -> dict | None:
     for w in windows:
@@ -53,25 +68,58 @@ def _in_window(mtime: float, windows: list[dict]) -> dict | None:
 
 
 def _is_dest_path(rel: str) -> bool:
-    if rel == "pom.xml" or rel.startswith("src/"):
+    if rel in DEST_FILES:
         return True
-    return False
+    return any(rel.startswith(p) for p in DEST_PREFIXES)
+
+
+def _changed_since_baseline(rel: str, meta: dict, baseline_files: dict | None) -> bool:
+    """When a t0 baseline is supplied, only score new or content-changed files.
+
+    Analyzing t0 in isolation would flag every provision-time dest file as
+    INTERVENTION. t0-vs-self must be 0; later snapshots vs t0 are the metric.
+    """
+    if baseline_files is None:
+        return True
+    prev = baseline_files.get(rel)
+    if not isinstance(prev, dict):
+        return True
+    cur_hash = meta.get("sha256") or ""
+    prev_hash = prev.get("sha256") or ""
+    if cur_hash and prev_hash:
+        return cur_hash != prev_hash
+    try:
+        return float(meta.get("mtime")) != float(prev.get("mtime"))
+    except (TypeError, ValueError):
+        return True
 
 
 def _is_harness(rel: str) -> bool:
     return any(rel == p.rstrip("/") or rel.startswith(p) for p in HARNESS_PREFIXES)
 
 
-def analyze(snap: dict, events: list[dict] | None, comments: list[dict] | None) -> dict:
+def analyze(
+    snap: dict,
+    events: list[dict] | None,
+    comments: list[dict] | None,
+    baseline: dict | None = None,
+) -> dict:
     windows = snap.get("claim_windows") or []
     if not isinstance(windows, list):
         windows = []
     files = snap.get("files") or {}
+    baseline_files = None
+    if isinstance(baseline, dict):
+        bf = baseline.get("files")
+        if isinstance(bf, dict):
+            baseline_files = bf
     findings: list[dict] = []
     for rel, meta in files.items():
         if not isinstance(meta, dict):
             continue
         if _is_harness(rel) or not _is_dest_path(rel):
+            continue
+        if not _changed_since_baseline(rel, meta, baseline_files):
             continue
         mtime = meta.get("mtime")
         try:
@@ -183,6 +231,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("snapshot", help="snapshot JSON from snapshot-run-audit.py")
     p.add_argument("--events-json", default="", help="optional task_event list")
     p.add_argument("--comments-json", default="", help="optional task_comments list")
+    p.add_argument(
+        "--baseline",
+        default="",
+        help="t0 snapshot JSON; only score dest files changed since that snapshot",
+    )
     p.add_argument("--out", default="", help="optional findings JSON path")
     args = p.parse_args(argv)
     path = Path(args.snapshot)
@@ -196,7 +249,14 @@ def main(argv: list[str] | None = None) -> int:
         events = json.loads(Path(args.events_json).read_text(encoding="utf-8"))
     if args.comments_json:
         comments = json.loads(Path(args.comments_json).read_text(encoding="utf-8"))
-    report = analyze(snap, events, comments)
+    baseline = None
+    if args.baseline:
+        bpath = Path(args.baseline)
+        if not bpath.is_file():
+            print(f"FAIL: missing baseline {bpath}", file=sys.stderr)
+            return 2
+        baseline = json.loads(bpath.read_text(encoding="utf-8"))
+    report = analyze(snap, events, comments, baseline=baseline)
     text = json.dumps(report, indent=2) + "\n"
     if args.out:
         out = Path(args.out)

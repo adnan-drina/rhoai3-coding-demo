@@ -83,14 +83,16 @@ into Hermes Kanban cards.
 
 **Never run `/speckit-implement`.** Kanban is the only executor (AD-006 / AD-H).
 
-Project overlay (stock `speckit` minus `implement`, plus `clarify`, M1 paths
-in specify args):
+Project overlay (stock `speckit` minus `implement` and the `type: gate`
+steps `review-spec` / `review-plan`, plus `clarify`, M1 paths in specify
+args):
 
   specify workflow run speckit
-  specify workflow resolve speckit   # no implement; review-spec + review-plan stay
+  specify workflow resolve speckit   # no implement; no review-spec/review-plan
 
-Gates stay in the graph. Unattended abort is scripted (spec-kit generates ·
-scripts refuse). Do not wait on a human gate click.
+Gates are removed from the graph (163200Z unattended). Do not wait on a
+human gate click. Do not restore those steps on a live dest — stop, fix
+golden, publish, wipe, restart.
 EOF
 
   if [ -d "${ROOT}/.git/hooks" ]; then
