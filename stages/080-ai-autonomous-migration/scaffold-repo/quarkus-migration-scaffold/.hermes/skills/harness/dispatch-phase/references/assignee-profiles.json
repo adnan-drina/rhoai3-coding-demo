@@ -1,29 +1,16 @@
 {
   "schema": "rhoai3.seat-assignee-profiles/v1",
-  "cite": "EX-4 E-20260814T195323Z; hermes profile create --description (Profiles / Blank profile); dispatcher silent-fail on unknown names (Kanban / How the orchestrator behaves)",
-  "note": "Product worker identities on the seat. Pillar heads stay Cursor — do not create Lead/Architect/Deputy/Review/Research as Hermes profiles and do not touch .wake/.",
-  "profiles": {
-    "analyzer": {
-      "description": "Examines the legacy Spring application: MTA findings, Boot 2 to 3 derivation, and entry-point inventory. Does not write destination product code."
-    },
-    "planner": {
-      "description": "Plans the migration: partitions stories, derives oracles, and runs Spec Kit specify. Does not implement destination code."
-    },
-    "implementer": {
-      "description": "Implements one M3 story against the destination Quarkus tree. Writes only files_writable; completes from typed body exit_criteria."
-    },
-    "validator": {
-      "description": "Checks the destination: domain-parity gates, release readiness, and close-out verdicts. Does not expand story scope."
-    }
-  },
+  "cite": "C-2(a) E-20260816T100136Z / R-V14.10 — single-persona; EX-4 named profiles retired",
+  "note": "Product worker identity is Hermes profile default. Named analyzer/planner/implementer/validator profiles are retired. Pillar heads stay Cursor — do not create them as Hermes profiles and do not touch .wake/. Catalog kept as the phase map so resolve-seat-assignee.py still loads a file.",
+  "profiles": {},
   "phases": {
-    "M1": "analyzer",
-    "M2": "planner",
-    "M2a": "planner",
-    "M2b": "planner",
-    "M3": "implementer",
-    "M4": "validator",
-    "M5": "validator",
-    "factory": "validator"
+    "M1": "default",
+    "M2": "default",
+    "M2a": "default",
+    "M2b": "default",
+    "M3": "default",
+    "M4": "default",
+    "M5": "default",
+    "factory": "default"
   }
 }

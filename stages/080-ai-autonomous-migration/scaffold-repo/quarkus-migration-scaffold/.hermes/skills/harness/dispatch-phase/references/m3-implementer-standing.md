@@ -37,8 +37,9 @@ of a missing interface = ABORT — typed `needs_input` only.
 
 ### Pre-v12 R5 hard-invoke traps
 
-When story touches REST/DTO/MapStruct — `skill_view` `references/di-config.md`
-and set MapStruct `componentModel = "cdi"`. When story touches
+When story touches REST/DTO/MapStruct — `skill_view` `references/di-config.md`.
+Do **not** mandate MapStruct `componentModel = "cdi"` (B-3; doctrine pending
+R-SKILL-F). When story touches
 `@IfBuildProfile` / profile-gated beans — forbid that API; use `%profile`
 config. When story touches QuarkusTest / continuous testing props —
 `skill_view` `references/testing.md` continuous-testing enum. Cite the ref path
@@ -46,7 +47,12 @@ in Reasoning before first related dest write.
 
 ## During the story
 
-- Write only `files_writable` / destination write-set (AR-4.4).
+- Write only `files_writable` / destination write-set (AR-4.4). The
+  `write-set-hook.py` pre_tool_call fence allow-lists that set when
+  `HERMES_KANBAN_FILES_WRITABLE`, `HERMES_KANBAN_BODY`, or
+  `HERMES_KANBAN_TASK` + `evidence/bodies/*.json` publish it (B-2).
+  An out-of-set `pom.xml` is refused. Worktree `HERMES_WRITE_SAFE_ROOT`
+  keeps dest-relative paths dest-relative.
 - After each successful dest write: `stamp-implementer-checkpoint.py --completed <path>`.
 - Do NOT bulk-read all files_in_scope in one turn — migrate file-by-file.
 - Record pre/post write-set digests under `evidence/runs/` (`rhoai3.run-journal/v1`).

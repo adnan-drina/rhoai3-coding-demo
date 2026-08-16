@@ -18,6 +18,11 @@ import sys
 from pathlib import Path
 from typing import Any, Optional
 
+_SCRIPTS = Path(__file__).resolve().parent
+if str(_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS))
+from specimen_agnostic import operand_classes_of  # noqa: E402
+
 EXIT_CODES = """Exit codes:
   0  pass — every M3 body carries a measured operand_count within cap (and
      within wall budget under --wall-fit), or idle (no M3 bodies)
@@ -49,14 +54,14 @@ DUAL_STACK_SPLIT_MIN = 20
 
 OPERAND_CLASS_SRC = "src_code"
 OPERAND_CLASS_BUILD = "build_config"
+BUILD_CLASSES = frozenset({"build_config", "config", "pom"})
 
 
 def operand_class(body: dict) -> str:
-    ident = body.get("identity") if isinstance(body.get("identity"), dict) else {}
-    raw = str(ident.get("operand_class") or OPERAND_CLASS_SRC).strip().lower()
-    if raw in {"build_config", "build-config", "config", "pom"}:
-        return OPERAND_CLASS_BUILD
-    return OPERAND_CLASS_SRC
+    classes = operand_classes_of(body)
+    if any(c not in BUILD_CLASSES for c in classes):
+        return OPERAND_CLASS_SRC
+    return OPERAND_CLASS_BUILD
 
 
 def normalize_dest(item: Any, *, oclass: str = OPERAND_CLASS_SRC) -> Optional[str]:

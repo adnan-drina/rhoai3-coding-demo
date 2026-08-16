@@ -5,7 +5,7 @@ license: Apache-2.0
 compatibility: Linux seat; Python 3.11+; git for commit audits
 metadata:
   author: rhoai3-harness-team
-  version: "1.2.0"
+  version: "1.2.1"
   hermes:
     tags:
     - harness
@@ -108,6 +108,11 @@ python3 "${HERMES_SKILL_DIR}/scripts/check-provenance.py" /projects/modernized
 `soul_sha` is re-hashed against the **loaded** SOUL path
 (`resolve_loaded_soul.py`: `$HERMES_HOME` → `~/.hermes` → repo home → repo).
 `model_id: unknown` needs `model_id_gap: true`.
+
+7. **Run audit (fail-open observer, never a gate).** Snapshot dest mtimes at
+   card boundaries; analyze out-of-window edits as INTERVENTION. Procedure:
+   `references/run-audit.md`. Scripts: `snapshot-run-audit.py`,
+   `analyze-run-audit.py`.
 
 ## Reconstruction (AD-H §19.1)
 

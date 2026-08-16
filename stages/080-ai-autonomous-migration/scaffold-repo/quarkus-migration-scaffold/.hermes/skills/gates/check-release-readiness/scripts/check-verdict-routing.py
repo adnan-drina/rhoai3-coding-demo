@@ -43,11 +43,41 @@ VALID_ROUTING = {
         "steerer",
         "reopen_story",
     },
+    "INCONCLUSIVE_FIXTURE": {
+        "human",
+        "human_queue",
+        "blocked",
+        "steerer",
+        "reopen_story",
+    },
     "ACCEPT": {"advance", "ship", "close", "none", ""},
     "PROVISIONAL_ACCEPT": {"advance", "none", ""},
 }
 
 SCRIPT_DIR = Path(__file__).resolve().parent
+MINT_REL = (
+    Path(".hermes")
+    / "skills"
+    / "harness"
+    / "dispatch-phase"
+    / "scripts"
+    / "mint-remediation-card.py"
+)
+
+
+def mint_remediation_script(start: Path) -> Path:
+    cur = start.resolve()
+    if cur.is_file():
+        cur = cur.parent
+    while True:
+        cand = cur / MINT_REL
+        if cand.is_file():
+            return cand
+        if cur == cur.parent:
+            raise SystemExit(
+                f"cannot find {MINT_REL} (walk up to migration.yaml) (SR-2)"
+            )
+        cur = cur.parent
 
 
 def load_items(path: Path) -> list[dict]:
@@ -80,6 +110,11 @@ def check_composition(label: str, obj: dict, root: Path) -> int:
         isinstance(obj.get("operator_waiver"), dict)
         and truthy(obj["operator_waiver"].get("g1_kill_ratio"))
     )
+    if "g1_kill_ratio_waiver" in obj or (
+        isinstance(obj.get("operator_waiver"), dict)
+        and "g1_kill_ratio" in obj["operator_waiver"]
+    ):
+        waiver = True
     routing = str(obj.get("routing") or obj.get("failure_class") or "").lower().replace(
         "-", "_"
     )
@@ -143,16 +178,24 @@ def check_composition(label: str, obj: dict, root: Path) -> int:
             )
             bad = 1
         # Prefer explicit full; bare ACCEPT at M5 is allowed as full token
+        if waiver:
+            print(
+                f"FAIL: {label}: g1_kill_ratio_waiver / operator_waiver cannot "
+                f"author ACCEPT (B-4/C-3(a))",
+                file=sys.stderr,
+            )
+            bad = 1
         if kill == "pass" and not pinned:
             print(
                 f"FAIL: {label}: g1_kill_ratio=PASS without threshold pin (AD-H §18.0)",
                 file=sys.stderr,
             )
             bad = 1
-        if kill in {"", "pending_threshold"} and not waiver:
+        if kill != "pass" or not pinned:
             print(
-                f"FAIL: {label}: M5 ACCEPT needs g1_kill_ratio PASS "
-                f"(threshold pinned) or g1_kill_ratio_waiver (AD-H §18.0)",
+                f"FAIL: {label}: M5 ACCEPT needs g1_kill_ratio PASS and "
+                f"threshold pin — if G-1 cannot be computed the verdict is "
+                f"not ACCEPT (B-4)",
                 file=sys.stderr,
             )
             bad = 1
@@ -288,8 +331,18 @@ def main() -> int:
                 bad = 1
                 continue
 
-            if verdict == "INCONCLUSIVE" and ship:
-                print(f"FAIL: {label}: INCONCLUSIVE must never ship (AD-H §18)", file=sys.stderr)
+            if verdict in {"INCONCLUSIVE", "INCONCLUSIVE_FIXTURE"} and ship:
+                print(
+                    f"FAIL: {label}: {verdict} must never ship (AD-H §18 / B-5)",
+                    file=sys.stderr,
+                )
+                bad = 1
+            if verdict == "ACCEPT" and "INCONCLUSIVE_FIXTURE" in json.dumps(obj):
+                print(
+                    f"FAIL: {label}: ACCEPT embeds INCONCLUSIVE_FIXTURE "
+                    f"(B-5: a fixture run cannot score ACCEPT)",
+                    file=sys.stderr,
+                )
                 bad = 1
 
             if ship and verdict not in {"ACCEPT"}:
@@ -325,6 +378,35 @@ def main() -> int:
                 bad = 1
 
             bad |= check_composition(label, obj, root)
+
+            if verdict == "REFUSE":
+                try:
+                    mint_py = mint_remediation_script(SCRIPT_DIR)
+                except SystemExit as exc:
+                    print(f"FAIL: {label}: C-3(a) {exc}", file=sys.stderr)
+                    bad = 1
+                    continue
+                mint = subprocess.run(
+                    [
+                        sys.executable,
+                        str(mint_py),
+                        str(root),
+                        "--verdict-file",
+                        str(path),
+                        "--index",
+                        str(i),
+                    ],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                if mint.returncode != 0:
+                    err = (mint.stderr or mint.stdout or "").strip()
+                    print(
+                        f"FAIL: {label}: C-3(a) remediation receipt failed: {err}",
+                        file=sys.stderr,
+                    )
+                    bad = 1
 
     if bad:
         print(f"Verdict-routing checks FAILED ({checked} artifact(s)).", file=sys.stderr)

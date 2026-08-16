@@ -26,7 +26,7 @@ REQUIRED_FILES = [
     # AD-S / Deputy E-120800Z — Non-Goals override must ride tip+overlay/R0
     ".hermes/skills/sdd/init-spec-workspace/assets/spec-template.md",
     ".hermes/skills/sdd/init-spec-workspace/assets/constitution.md",
-    ".hermes/skills/sdd/init-spec-workspace/assets/sdd-to-tasks.workflow.yml",
+    ".hermes/skills/sdd/init-spec-workspace/assets/stop-before-implement.overlay.yml",
     # Architect E-121308Z — R0 Spec Kit preseed gate (live assert; script on tip)
     ".hermes/skills/harness/dispatch-phase/scripts/check-specify-preseed.py",
     ".hermes/skills/harness/validate-contracts/scripts/check-specify-absent.py",
@@ -58,6 +58,14 @@ REQUIRED_FILES = [
     ".hermes/skills/harness/dispatch-phase/scripts/assert-m2b-created-cards-claim.sh",
     ".hermes/skills/harness/dispatch-phase/scripts/check-created-cards-claim.py",
     ".hermes/skills/harness/dispatch-phase/scripts/mint-m3-wave.sh",
+    ".hermes/skills/harness/dispatch-phase/scripts/handover-mint.py",
+    ".hermes/skills/harness/dispatch-phase/references/handover-mint.md",
+    ".hermes/skills/harness/dispatch-phase/fixtures/handover/tasks.good.md",
+    ".hermes/skills/harness/dispatch-phase/scripts/m3-attach-skills.py",
+    ".hermes/skills/harness/dispatch-phase/scripts/mint-remediation-card.py",
+    ".hermes/skills/harness/record-run-evidence/scripts/snapshot-run-audit.py",
+    ".hermes/skills/harness/record-run-evidence/scripts/analyze-run-audit.py",
+    ".hermes/skills/harness/record-run-evidence/references/run-audit.md",
     ".hermes/home/scripts/enforce-m2b-created-cards-claim.py",
     # Architect E-20260811T170706Z Class A — quarantine survives dispatch
     ".hermes/skills/sdd/check-spec-readiness/scripts/assert-quarantine-tombstones.py",
@@ -160,8 +168,8 @@ REQUIRED_FILES = [
 REQUIRED_SUBSTRINGS = [
     (
         ".hermes/skills/migration/spring-to-quarkus-patterns/references/di-config.md",
-        'componentModel = "cdi"',
-        "MapStruct CDI feedforward",
+        "doctrine pending R-SKILL-F",
+        "MapStruct CDI doctrine pending R-SKILL-F (B-3)",
     ),
     (
         ".hermes/skills/migration/spring-to-quarkus-patterns/references/di-config.md",
@@ -210,8 +218,8 @@ REQUIRED_SUBSTRINGS = [
     ),
     (
         ".hermes/skills/harness/validate-contracts/scripts/validate.sh",
-        "EX-4 M3 cards resolve to assignee implementer",
-        "EX-4 seat assignee profiles",
+        "C-2(a) M3 cards resolve to assignee default",
+        "C-2(a) single-persona assignee",
     ),
     (
         ".hermes/skills/harness/validate-contracts/scripts/validate.sh",
@@ -266,7 +274,7 @@ REQUIRED_SUBSTRINGS = [
     (
         ".hermes/skills/harness/dispatch-phase/scripts/create-m3-implementer.sh",
         "resolve-seat-assignee.py",
-        "EX-4 create-m3 uses named seat assignee",
+        "C-2(a) create-m3 uses assignee default",
     ),
     (
         ".hermes/skills/harness/validate-contracts/scripts/check-skill-conformance.py",
@@ -622,8 +630,8 @@ REQUIRED_SUBSTRINGS = [
     ),
     (
         ".hermes/skills/harness/dispatch-phase/scripts/dispatch-phase.sh",
-        "Partition-coverage gate",
-        "M2 wires partition-coverage VALID (GR2)",
+        "handover-mint.py",
+        "M2 does not author partition.json; handover-mint writes the receipt",
     ),
     (
         ".hermes/skills/sdd/check-spec-readiness/scripts/stamp-body-dependencies.py",
@@ -916,6 +924,11 @@ REQUIRED_SUBSTRINGS = [
         "V19-8 file-granular ownership after grouping",
     ),
     (
+        ".hermes/skills/sdd/check-spec-readiness/references/story-scope-and-exit.md",
+        "Live HTTP acceptance belongs to M4/M5",
+        "A-3c.1 reversal: HTTP is a @QuarkusTest, not curl",
+    ),
+    (
         ".hermes/skills/sdd/check-spec-readiness/scripts/stamp-body-dependencies.py",
         "M2 partition shape",
         "A-6 stamper accepts {legacy, dest} scope",
@@ -926,6 +939,26 @@ REQUIRED_SUBSTRINGS = [
         "V20-3 constitution overlay at provision",
     ),
     (
+        ".hermes/skills/sdd/init-spec-workspace/assets/stop-before-implement.overlay.yml",
+        "remove: implement",
+        "A-1 speckit overlay removes implement",
+    ),
+    (
+        ".hermes/skills/sdd/init-spec-workspace/assets/stop-before-implement.overlay.yml",
+        "evidence/findings-handoff.json",
+        "A-3 specify args name M1 findings-handoff",
+    ),
+    (
+        ".hermes/skills/harness/validate-contracts/scripts/validate.sh",
+        "specify workflow resolve speckit (no implement; gates + clarify)",
+        "A-1 overlay resolve is in validate-contracts",
+    ),
+    (
+        ".hermes/skills/sdd/init-spec-workspace/scripts/init-workspace.sh",
+        "overlays/speckit/stop-before-implement.yml",
+        "provision installs speckit overlay not Path-A workflow",
+    ),
+    (
         ".hermes/skills/sdd/check-spec-readiness/scripts/assert-mint-oracles.py",
         "pre-story tree",
         "L2 discriminating-exit evaluates dest minus write-set",
@@ -934,6 +967,86 @@ REQUIRED_SUBSTRINGS = [
         ".hermes/skills/harness/validate-contracts/scripts/validate.sh",
         "L2a unrelated remaining test does not satisfy SR-13",
         "L2a per-story proving test (Deputy E-20260815T014500Z)",
+    ),
+    (
+        ".hermes/skills/harness/validate-contracts/scripts/validate.sh",
+        "script card exit refused",
+        "A-3c.1 reversal: curl/scripts are not card exits",
+    ),
+    (
+        ".hermes/skills/sdd/check-spec-readiness/scripts/specimen_agnostic.py",
+        "B-1: a file with methods but no executable test fails the card",
+        "B-1 proves must be an executable @Test",
+    ),
+    (
+        ".hermes/skills/gates/check-domain-parity/scripts/lib/verdict.py",
+        "INCONCLUSIVE_FIXTURE",
+        "B-5 fixture ACCEPT cannot close product gates",
+    ),
+    (
+        ".hermes/skills/analysis/scan-with-mta/scripts/assert-mta-rescan.py",
+        "handoff presence is not a rescan",
+        "WC-5 mta_rescan proves analyzer ran",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/scripts/handover-mint.py",
+        "FILE_OVERLAP",
+        "A-5 mint-time disjointness refuses overlapping write-sets",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/scripts/handover-mint.py",
+        "DEPENDENCIES_MISSING",
+        "A-4 parents transcribed from Dependencies; missing section refuses",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/scripts/handover-mint.py",
+        "PATH_A_PARTITION",
+        "A-6 Path-A authored partition.json is not handover input",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/scripts/handover-mint.py",
+        "endpoints_uncovered",
+        "A-8 endpoint coverage vs M1 inventory is fail-closed",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/scripts/mint-m3-wave.sh",
+        "PATH_A_PARTITION",
+        "mint-m3-wave refuses Path-A partition.json",
+    ),
+    (
+        ".hermes/skills/sdd/check-spec-readiness/references/story-scope-and-exit.md",
+        "pom owner unique",
+        "A-5 pom.xml has exactly one writer",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/scripts/create-m3-implementer.sh",
+        "block --kind dependency",
+        "B-6 harness park-at-birth uses kind=dependency",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/scripts/m3-attach-skills.py",
+        "operand_skills",
+        "B-16 attach from identity.operand_skills",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/scripts/mint-remediation-card.py",
+        "leave-triage",
+        "C-3(a) remediation forbids leave-triage",
+    ),
+    (
+        ".hermes/skills/harness/record-run-evidence/scripts/analyze-run-audit.py",
+        "INTERVENTION",
+        "Phase 5 run-audit out-of-window edit is INTERVENTION",
+    ),
+    (
+        ".hermes/pins.json",
+        '"status": "unpinned"',
+        "B-3 MapStruct GAV unpinned pending R-SKILL-F",
+    ),
+    (
+        ".hermes/skills/harness/validate-contracts/scripts/validate.sh",
+        "A-4/A-5/A-8 handover-mint",
+        "handover-mint dry-run is in validate-contracts",
     ),
 ]
 

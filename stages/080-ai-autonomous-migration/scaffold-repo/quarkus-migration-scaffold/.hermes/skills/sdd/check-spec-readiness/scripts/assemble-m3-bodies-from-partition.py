@@ -1,19 +1,22 @@
 #!/usr/bin/env python3
-"""Deterministic M3 body assembler (Architect E-20260814T181701Z).
+"""Deterministic M3 body assembler (Architect E-20260814T181701Z / T-8 AMEND).
 
-Copies partition fields. Stamps the singleton class-legal exit. Does not invent
-oracles. Unknown operand_class refuses (T-8 fail-closed).
+Copies partition fields. Exit cmds come from phase acceptance criteria.
+`operand_class` is a set (string or list) used for B-16 skill attachment
+and class-legal names — not the exit selector. Unknown tokens fail-closed.
+`user_story` is AC-sourced. OBJECT a default `mvn -q test` on every card.
 
 Mint-schema stamps (not oracles): role/task_id, AD-002E skills exit, F6
 transform_class from the closed operand_class map, measured operand_count,
 brief_identity_ack pending, legacy_locus digest **and path** of the harvest
 file that was hashed (not a dest-relative alias). Mint refuses unless
 sha256(resolve(path)) equals the stamped digest (pending fail-closed except
-creation-time ack keys). SR-13/L2a: a test-shaped `mvn … test` must name
+creation-time ack keys). SR-13/L2a: a test-shaped `mvn … test` or `mvn … verify` must name
 `proves` test source(s) in this story's write-set — an unrelated dest
-`src/test` file must not satisfy the oracle. Assembler copies test paths
-already in `files_writable` onto `proves`; it does not invent a test file
-(L4). DD3: every story gets identity.extensions_declared
+`src/test` file must not satisfy the oracle. curl / scripts are not
+card exits. Assembler copies test paths already in `files_writable`
+onto `proves`; it does not invent a test file (L4). DD3: every story
+gets identity.extensions_declared
 (T-3 path heuristic); the sole pom.xml writer gets identity.extensions_apply
 = sorted unique union. Non-writers omit extensions_apply (key absent).
 
@@ -33,15 +36,22 @@ import sys
 from pathlib import Path
 
 from specimen_agnostic import (  # noqa: E402
-    OPERAND_CLASS_SEMANTIC_EXITS,
+    AC_SOURCED_OPERAND_CLASSES,
+    DEFAULT_TEST_CMD,
     PREFERRED_SEMANTIC_EXIT_CMD,
+    ac_sourced_operand_classes,
     exit_cmd_discriminating_errors,
     is_test_source_rel,
+    known_operand_classes,
+    parse_operand_classes,
     preferred_semantic_exit_for,
     refs_path_sha_errors,
     semantic_exit_cmd_is_maven,
     semantic_exit_cmd_ok,
+    skills_for_operand_classes,
     stamp_dd3_extensions,
+    stamp_operand_class,
+    unknown_operand_classes,
 )
 
 # F6 closed map — partition stories do not carry transform_class.
@@ -127,47 +137,132 @@ def _legacy_locus(root: Path, rel: str) -> tuple[str, str]:
     raise ValueError(f"legacy_locus: no file for {rel!r}")
 
 
+def _acceptance_exits(story: dict) -> list[dict]:
+    for key in ("acceptance_criteria", "exit_criteria", "done_when"):
+        raw = story.get(key)
+        if not isinstance(raw, list) or not raw:
+            continue
+        out: list[dict] = []
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+            cmd = item.get("cmd")
+            check = str(item.get("check") or "").strip()
+            if not (isinstance(cmd, str) and cmd.strip() and check):
+                continue
+            entry = {"check": check, "cmd": cmd.strip()}
+            if "proves" in item:
+                entry["proves"] = item["proves"]
+            if item.get("assert"):
+                entry["assert"] = item["assert"]
+            out.append(entry)
+        if out:
+            return out
+    return []
+
+
+def _semantic_exit_from_item(item: dict, fis: list[str], sid: str) -> dict:
+    check = str(item.get("check") or "").strip()
+    cmd = str(item.get("cmd") or "").strip()
+    if not semantic_exit_cmd_ok(check, cmd):
+        raise ValueError(
+            f"{sid}: exit {check!r} cmd {cmd!r} is not a discriminating "
+            f"Maven vehicle (mvn test|verify|test-compile, or compile for "
+            f"build_resolves; curl/scripts are not card exits — SR-13)"
+        )
+    semantic_exit: dict = {"check": check, "cmd": cmd}
+    if "assert" in item:
+        semantic_exit["assert"] = item["assert"]
+    proves = item.get("proves")
+    ok_mvn, mvn_parts = semantic_exit_cmd_is_maven(cmd)
+    if ok_mvn and mvn_parts and mvn_parts[-1] in {"test", "verify"}:
+        if isinstance(proves, list) and proves:
+            semantic_exit["proves"] = proves
+        else:
+            inferred = [p for p in fis if is_test_source_rel(p)]
+            if inferred:
+                semantic_exit["proves"] = inferred
+    elif proves:
+        semantic_exit["proves"] = proves
+    return semantic_exit
+
+
 def assemble_one(story: dict, root: Path, *, measured_operands) -> dict:
     sid = str(story.get("story_id") or "").strip()
-    oc = str(story.get("operand_class") or "").strip()
+    ident_src = story.get("identity") if isinstance(story.get("identity"), dict) else {}
+    raw_oc = story.get("operand_class")
+    if raw_oc is None:
+        raw_oc = ident_src.get("operand_class")
+    classes = parse_operand_classes(raw_oc)
     if not sid:
         raise ValueError("partition story missing story_id")
-    if oc not in OPERAND_CLASS_SEMANTIC_EXITS:
+    if not classes:
+        raise ValueError(f"{sid}: missing operand_class (OBJECT dropping the field)")
+    unknown = unknown_operand_classes(classes)
+    if unknown:
         raise ValueError(
-            f"{sid}: unknown operand_class={oc!r} — no legal exit set "
+            f"{sid}: unknown operand_class={unknown!r} — no legal exit set "
             "(T-8 fail-closed, Architect E-20260814T181701Z)"
         )
-    check = preferred_semantic_exit_for(oc)
-    if not check:
-        raise ValueError(f"{sid}: operand_class={oc!r} has no preferred stamp")
+    known = known_operand_classes(classes)
+    ac_only = ac_sourced_operand_classes(classes)
+    if not known and not ac_only:
+        raise ValueError(
+            f"{sid}: unknown operand_class={classes!r} — no legal exit set "
+            "(T-8 fail-closed, Architect E-20260814T181701Z)"
+        )
     fis = [_dest_rel(_paths(x)) for x in (story.get("files_in_scope") or [])]
     fis = [p for p in fis if p]
     if not fis:
         raise ValueError(f"{sid}: empty files_in_scope (PB-2 / S-012)")
-    cmd = PREFERRED_SEMANTIC_EXIT_CMD.get(check, check)
-    if not semantic_exit_cmd_ok(check, cmd):
-        raise ValueError(
-            f"{sid}: exit {check!r} cmd {cmd!r} is not a Maven invocation "
-            "(stamp `mvn -q compile` or `mvn -q test`; prose belongs in assert; "
-            "evaluator runs cmd via shell=True)"
-        )
-    semantic_exit: dict = {"check": check, "cmd": cmd}
-    ok_mvn, mvn_parts = semantic_exit_cmd_is_maven(cmd)
-    if ok_mvn and mvn_parts and mvn_parts[-1] == "test":
-        proves = [p for p in fis if is_test_source_rel(p)]
-        if proves:
-            semantic_exit["proves"] = proves
 
-    ident_src = story.get("identity") if isinstance(story.get("identity"), dict) else {}
+    ac = _acceptance_exits(story)
+    semantic_exits: list[dict] = []
+    if ac:
+        semantic_exits = [_semantic_exit_from_item(x, fis, sid) for x in ac]
+    elif len(classes) != 1 or classes[0] in AC_SOURCED_OPERAND_CLASSES:
+        raise ValueError(
+            f"{sid}: multi-class / user_story card needs acceptance_criteria "
+            f"cmds (T-8 AMEND; OBJECT default {DEFAULT_TEST_CMD!r})"
+        )
+    else:
+        oc = classes[0]
+        check = preferred_semantic_exit_for(oc)
+        if not check:
+            raise ValueError(f"{sid}: operand_class={oc!r} has no preferred stamp")
+        cmd = PREFERRED_SEMANTIC_EXIT_CMD.get(check, check)
+        if cmd == DEFAULT_TEST_CMD:
+            proves = [p for p in fis if is_test_source_rel(p)]
+            if not proves:
+                raise ValueError(
+                    f"{sid}: OBJECT default {DEFAULT_TEST_CMD!r} — stamp "
+                    "acceptance_criteria or include the proving test in "
+                    "files_in_scope (T-8 AMEND / SR-13)"
+                )
+            semantic_exits = [
+                _semantic_exit_from_item(
+                    {"check": check, "cmd": cmd, "proves": proves}, fis, sid
+                )
+            ]
+        else:
+            semantic_exits = [_semantic_exit_from_item({"check": check, "cmd": cmd}, fis, sid)]
+
+    oc_stamp = stamp_operand_class(classes)
+    oc_for_transform = classes[0]
+    for c in classes:
+        if c in TRANSFORM_CLASS_FOR_OPERAND:
+            oc_for_transform = c
+            break
     tc = str(
         ident_src.get("transform_class")
         or story.get("transform_class")
-        or TRANSFORM_CLASS_FOR_OPERAND.get(oc, DEFAULT_TRANSFORM_CLASS)
+        or TRANSFORM_CLASS_FOR_OPERAND.get(oc_for_transform, DEFAULT_TRANSFORM_CLASS)
     ).upper()
     g2 = str(
         ident_src.get("g2_applicability") or story.get("g2_applicability") or DEFAULT_G2
     ).lower()
     locus_path, locus_sha = _legacy_locus(root, fis[0])
+    operand_skills = skills_for_operand_classes(classes)
 
     body = {
         "phase": "M3",
@@ -176,15 +271,17 @@ def assemble_one(story: dict, root: Path, *, measured_operands) -> dict:
         "task_type": "implementing",
         "identity": {
             "story_id": sid,
-            "operand_class": oc,
+            "operand_class": oc_stamp,
+            "operand_skills": operand_skills,
             "transform_class": tc,
             "g2_applicability": g2,
             "sizing_basis": "operand_count",
         },
         "files_in_scope": fis,
         "files_writable": list(fis),
+        "phase_checklist": list(story.get("phase_checklist") or []),
         "exit_criteria": [
-            semantic_exit,
+            *semantic_exits,
             dict(SKILLS_EXIT),
         ],
         "refs": [
@@ -213,6 +310,14 @@ def assemble_one(story: dict, root: Path, *, measured_operands) -> dict:
             f"(files_writable={fis!r})"
         )
     body["identity"]["operand_count"] = len(measured)
+    parents = story.get("parents") or ident_src.get("parents") or []
+    if isinstance(parents, list) and parents:
+        body["identity"]["parents"] = [str(x) for x in parents if str(x).strip()]
+    wk = story.get("workspace_kind") or ident_src.get("workspace_kind")
+    if wk:
+        body["identity"]["workspace_kind"] = str(wk)
+    if not body["phase_checklist"]:
+        body.pop("phase_checklist", None)
     return body
 
 

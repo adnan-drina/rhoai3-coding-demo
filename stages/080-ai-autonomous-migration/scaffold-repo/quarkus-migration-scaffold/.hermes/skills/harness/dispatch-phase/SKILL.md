@@ -1,11 +1,11 @@
 ---
 name: dispatch-phase
-description: Creates and dispatches an M1-M5 Kanban card with declared skills, budget and park-at-birth. Use when starting any migration phase, when splitting M3 into child stories, or when a card must be minted with its skills and exit criteria already attached.
+description: Creates and dispatches an M1-M5 Kanban card with declared skills, budget and park-at-birth. Use when starting any migration phase, after speckit.tasks when minting one parked card per User-Story phase from tasks.md, when splitting M3 into child stories, or when a card must be minted with its skills and exit criteria already attached.
 license: Apache-2.0
 compatibility: Linux seat; Hermes CLI on PATH for kanban create/dispatch
 metadata:
   author: rhoai3-harness-team
-  version: "1.4.1"
+  version: "1.4.3"
   hermes:
     tags:
     - harness
@@ -18,9 +18,9 @@ metadata:
 ## When to Use
 
 - Starting **any** M-phase, especially **M1 ANALYZE** (derive + MTA + inventory).
-- After **M2 PLAN** Done — mint M3 children via **`mint-m3-wave.sh`** (AD-016/GR2
-  orchestrator-owned mint). Always uses `create-m3-implementer.sh` under the hood;
-  bare `hermes kanban create` attaches **zero** skills.
+- After **speckit.tasks** — **`handover-mint.py`** then **`mint-m3-wave.sh`**
+  (one parked card per User-Story phase; AD-016/GR2). Bare `kanban create`
+  attaches **zero** skills. See `references/handover-mint.md`.
 - Seeding the next phase after an ack is granted (`--parent <prior task id>`).
 - Replacing a forbidden detached `mta-analyze-legacy.sh` / derive shell under
   PPID 1 — that path yields `tasks=0` and cannot stamp
@@ -33,12 +33,11 @@ metadata:
 `derive-legacy-boot3.sh`, …) run **inside** a Kanban worker that loaded the
 declared skills — they are not the demo control plane.
 
-**EX-4 seat assignees** are named Hermes profiles (`analyzer` / `planner` /
-`implementer` / `validator`), created with `--description` for kanban routing.
-Never `--assignee default`. Pillar heads stay Cursor — do not create them as
-Hermes profiles and do not touch `.wake/`. Catalog:
-`references/assignee-profiles.json`. Unknown names silent-fail in the
-dispatcher; mint/dispatch fail-closed via `hermes profile show`.
+**C-2(a) single-persona.** Cards use Hermes profile `default` (R-V14.10).
+Named analyzer/planner/implementer/validator profiles are retired. Pillar
+heads stay Cursor — do not create them as Hermes profiles and do not touch
+`.wake/`. Catalog: `references/assignee-profiles.json`. Mint/dispatch
+fail-closed via `hermes profile show default`.
 
 **BV19-3:** the Kanban `--parent` / `link` graph is the phase DAG. M1 is the
 only root (no `--parent`). M2 / M3 / M4 / M5 / factory and M3 mint **must**
@@ -113,9 +112,9 @@ bash "${HERMES_SKILL_DIR}/scripts/create-m3-implementer.sh" \
 
 ### What create-m3-implementer.sh / mint-m3-wave.sh add
 
-`mint-m3-wave.sh` walks `evidence/briefs/partition.json`, invokes
-`create-m3-implementer.sh` per story, then runs
-`assert-m2b-created-cards-claim.sh` (F8a/F8b receipt).
+`handover-mint.py` turns `tasks.md` into a partition **receipt** (A-4/A-5/A-8).
+`mint-m3-wave.sh` mints parked cards from that receipt, then
+`assert-m2b-created-cards-claim.sh`. Path-A authored partition is refused.
 
 `create-m3-implementer.sh` stamps the body digest (AR-4.3), runs the body-scoped
 create gates, builds the markdown card from the typed body **by reference**,
@@ -142,8 +141,6 @@ The created M1 task instructs the worker to, in order:
 - Start `hermes kanban watch` **before** dispatch for the demo audience.
   Companion pane: `hermes kanban tail <task_id>` or `hermes kanban log <task_id>`
   (native CLI — do **not** revive `kanban-track.sh`; W6 REMOVE 2026-08-13).
-- Do **not** `--assignee default` — that is the EX-4 identity hole. Unknown
-  profile names silent-fail in the dispatcher.
 - Do **not** omit `--parent` on M2–M5 / factory (BV19-3). A card with no parent
   link is an unrooted DAG node — recreate via these scripts with `--parent`.
 - Do **not** treat `phase-*-task-id.txt` as the DAG, and do not derive phase
@@ -152,13 +149,16 @@ The created M1 task instructs the worker to, in order:
 ## Available scripts
 
 - `scripts/dispatch-phase.sh` — create a phase seed card from `phase-dispatch.yaml`
-- `scripts/mint-m3-wave.sh` — orchestrator-owned M3 mint from partition (GR2/AD-016)
+- `scripts/handover-mint.py` — tasks.md phases → receipt + bodies (A-4/A-5/A-8)
+- `scripts/mint-m3-wave.sh` — orchestrator-owned M3 mint from that receipt
 - `scripts/create-m3-implementer.sh` — M3 child with required skills + park-at-birth
 - `scripts/read-link-graph.py` — BV19-3 parse `kanban show --json` parents/children
 - `scripts/read-phase-dispatch.py` — LG7 JSON phase seed (no eval of parser output)
 - `scripts/check-link-graph.py` — BV19-3 lint: `--parent` required except M1
-- `scripts/resolve-seat-assignee.py` — EX-4 phase → named seat profile
-- `scripts/check-seat-assignee-profiles.py` — EX-4 catalog + no-default lint
+- `scripts/resolve-seat-assignee.py` — C-2(a) phase → `default`
+- `scripts/check-seat-assignee-profiles.py` — C-2(a) catalog + GitOps skip lint
+- `scripts/m3-attach-skills.py` — B-16 attach from `identity.operand_skills`
+- `scripts/mint-remediation-card.py` — C-3(a) REFUSE → remediation receipt
 - `scripts/check-phase-attach-matrix.py` — skills[] vs attach-matrix law
 - `scripts/check-create-path-tip-sync.py` — BLOCKING R0/R3 create-path tip sync
 - `scripts/check-phase-input-manifest.py` — phase input manifest present
@@ -192,5 +192,5 @@ The created M1 task instructs the worker to, in order:
   `ACK_REQUEST=<path>` names an unsigned `ack-request-<story>.yaml` whose
   body digest matches the sidecar.
 - `--dry-run` exits 0 and prints the argv without touching the board — use it
-  to confirm skills, `max_runtime`, and `--assignee <named-profile>` before a
-  live create. M3 dry-run must show `--assignee implementer`, never `default`.
+  to confirm skills, `max_runtime`, and `--assignee default` before a
+  live create. M3 dry-run must show `--assignee default`.

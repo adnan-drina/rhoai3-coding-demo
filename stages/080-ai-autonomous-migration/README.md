@@ -311,8 +311,10 @@ Concepts need a runner. This stage uses **[Hermes Agent](https://hermes-agent.no
 
 Nothing merges on agent authority, and no human approval substitutes for the factory either.
 
-1. After M5 (full `ACCEPT` path — **after** kill-ratio pin or typed waiver),
-   re-analyze migrated code; done is the Step 3 baseline resolved or waived.
+1. After M5 (full `ACCEPT` path — **after** kill-ratio pin; a waiver cannot
+   author ACCEPT),
+   re-analyze migrated code; done is the Step 3 baseline resolved or the
+   gate REFUSE with a remediation card.
 2. Push from the workspace (Git credentials required). The report ends:
    "pushed; the factory pipeline decides."
 3. Watch the project's pipeline: clone → build → SonarQube quality gate → image.

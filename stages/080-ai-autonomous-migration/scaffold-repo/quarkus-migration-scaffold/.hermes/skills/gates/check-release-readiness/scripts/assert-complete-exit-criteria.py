@@ -170,6 +170,41 @@ def main() -> int:
             )
             return 1 if sub.returncode == 1 else sub.returncode
 
+    phase = ""
+    try:
+        raw_body = json.loads(body.read_text(encoding="utf-8"))
+        inner = raw_body.get("body") if isinstance(raw_body.get("body"), dict) else raw_body
+        if isinstance(inner, dict):
+            phase = str(inner.get("phase") or "").upper()
+    except (OSError, json.JSONDecodeError, TypeError):
+        phase = ""
+    if phase == "M5":
+        rescan = (
+            root
+            / ".hermes"
+            / "skills"
+            / "analysis"
+            / "scan-with-mta"
+            / "scripts"
+            / "assert-mta-rescan.py"
+        )
+        if not rescan.is_file():
+            print(f"FAIL: missing mta_rescan script: {rescan}", file=sys.stderr)
+            return 2
+        sub = subprocess.run(
+            [sys.executable, str(rescan), str(root)],
+            text=True,
+            capture_output=True,
+        )
+        sys.stdout.write(sub.stdout or "")
+        sys.stderr.write(sub.stderr or "")
+        if sub.returncode != 0:
+            print(
+                f"FAIL: refuse kanban_complete — mta_rescan rc={sub.returncode} (WC-5)",
+                file=sys.stderr,
+            )
+            return 1 if sub.returncode == 1 else sub.returncode
+
     print(f"OK: complete-exit green → {out.relative_to(root)}")
     return 0
 

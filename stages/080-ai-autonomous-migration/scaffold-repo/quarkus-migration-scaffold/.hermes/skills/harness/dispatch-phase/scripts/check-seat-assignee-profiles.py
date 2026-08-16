@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""EX-4 lint: named seat profiles, no --assignee default, --description present.
+"""C-2(a) lint: single-persona default; GitOps must not create named profiles.
 
-Golden suite does not require a live hermes profile list (seat init owns create).
+Golden suite does not require a live hermes profile list.
 """
 from __future__ import annotations
 
@@ -35,11 +35,13 @@ CREATE_SCRIPTS = (
     / "create-m3-implementer.sh",
 )
 RESOLVER_NEEDLE = "resolve-seat-assignee.py"
-FORBIDDEN = "--assignee default"
+FORBIDDEN_HOLE = "assignee default is the identity hole"
+REQUIRED_ASSIGNEE = '--assignee "${ASSIGNEE}"'
 GITOPS_REL = Path(
     "gitops/stages/050-advanced-app-platform/base/devspaces/"
     "maas-api-key-provisioning.yaml"
 )
+GITOPS_SKIP = "C-2(a): skip hermes profile create"
 
 
 def find_gitops(start: Path) -> Path | None:
@@ -55,7 +57,7 @@ def find_gitops(start: Path) -> Path | None:
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(
-        description="Lint EX-4 seat assignee profiles (catalog + create paths)."
+        description="Lint C-2(a) single-persona assignee (catalog + create + GitOps skip)."
     )
     p.add_argument(
         "root",
@@ -67,19 +69,18 @@ def main(argv: list[str] | None = None) -> int:
     root = Path(args.root).resolve() if args.root else migration_root(Path(__file__))
     rc = 0
     data = load_catalog(root)
-    profiles = data.get("profiles") or {}
     phases = data.get("phases") or {}
-    if "default" in profiles or "default" in (phases.values() if isinstance(phases, dict) else []):
-        print("FAIL: EX-4 catalog must not use profile name default", file=sys.stderr)
+    if not isinstance(phases, dict) or not phases:
+        print("FAIL: C-2(a) catalog has no phases map", file=sys.stderr)
         rc = 1
-    if not profiles:
-        print("FAIL: EX-4 catalog has no profiles", file=sys.stderr)
-        rc = 1
-    for name, spec in profiles.items():
-        desc = (spec or {}).get("description") or ""
-        if not str(desc).strip():
-            print(f"FAIL: EX-4 profile {name!r} missing description", file=sys.stderr)
-            rc = 1
+    else:
+        for phase, name in phases.items():
+            if name != "default":
+                print(
+                    f"FAIL: C-2(a) catalog phase {phase!r} maps to {name!r}, want default",
+                    file=sys.stderr,
+                )
+                rc = 1
     for phase in ("M1", "M2", "M3", "M4", "M5", "factory"):
         try:
             got = resolve(phase, data)
@@ -87,9 +88,9 @@ def main(argv: list[str] | None = None) -> int:
             print(f"FAIL: {exc}", file=sys.stderr)
             rc = 1
             continue
-        if phase == "M3" and got != "implementer":
+        if got != "default":
             print(
-                f"FAIL: EX-4 M3 must assignee implementer (got {got!r})",
+                f"FAIL: C-2(a) {phase} must assignee default (got {got!r})",
                 file=sys.stderr,
             )
             rc = 1
@@ -100,31 +101,45 @@ def main(argv: list[str] | None = None) -> int:
             rc = 1
             continue
         text = path.read_text(encoding="utf-8")
-        if FORBIDDEN in text:
-            print(f"FAIL: {rel} still has {FORBIDDEN!r} (identity hole)", file=sys.stderr)
+        if FORBIDDEN_HOLE in text:
+            print(
+                f"FAIL: {rel} still treats default as the identity hole",
+                file=sys.stderr,
+            )
+            rc = 1
+        if 'ASSIGNEE}" != "default"' in text or "ASSIGNEE}\" != \"default\"" in text:
+            print(f"FAIL: {rel} still refuses assignee default", file=sys.stderr)
             rc = 1
         if RESOLVER_NEEDLE not in text:
             print(f"FAIL: {rel} does not call {RESOLVER_NEEDLE}", file=sys.stderr)
             rc = 1
+        if REQUIRED_ASSIGNEE not in text:
+            print(f"FAIL: {rel} missing {REQUIRED_ASSIGNEE}", file=sys.stderr)
+            rc = 1
     gitops = find_gitops(root)
     if gitops is None:
-        print("FAIL: EX-4 cannot find GitOps maas-api-key-provisioning.yaml", file=sys.stderr)
+        print("FAIL: C-2(a) cannot find GitOps maas-api-key-provisioning.yaml", file=sys.stderr)
         rc = 1
     else:
         gtxt = gitops.read_text(encoding="utf-8")
-        for needle, label in (
-            ("assignee-profiles.json", "catalog path"),
-            ("profile create", "hermes profile create"),
-            ("--description", "description flag"),
-            ("--no-alias", "no command alias"),
-            ("EX-4", "EX-4 marker"),
-        ):
-            if needle not in gtxt:
-                print(f"FAIL: GitOps init missing {label} ({needle!r})", file=sys.stderr)
-                rc = 1
+        if GITOPS_SKIP not in gtxt:
+            print(
+                f"FAIL: GitOps init missing skip marker ({GITOPS_SKIP!r})",
+                file=sys.stderr,
+            )
+            rc = 1
+        if "profile create" in gtxt and GITOPS_SKIP not in gtxt:
+            print("FAIL: GitOps still creates named Hermes profiles", file=sys.stderr)
+            rc = 1
+        if '"--clone"' in gtxt:
+            print(
+                "FAIL: GitOps still uses hermes profile create --clone (B-9/C-2(a))",
+                file=sys.stderr,
+            )
+            rc = 1
     if rc == 0:
         print(
-            "OK: EX-4 seat assignee profiles "
+            "OK: C-2(a) single-persona assignee "
             f"(M3={resolve('M3', data)}; catalog={root / CATALOG_REL})"
         )
     return rc

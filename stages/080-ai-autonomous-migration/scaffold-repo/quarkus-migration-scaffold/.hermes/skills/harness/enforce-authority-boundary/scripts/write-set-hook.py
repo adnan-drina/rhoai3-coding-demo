@@ -1,10 +1,20 @@
 #!/usr/bin/env python3
-"""EX-3 B-S2 — in-repo write-set fence as a Hermes pre_tool_call hook.
+"""EX-3 B-S2 / B-2 — in-repo write-set fence as a Hermes pre_tool_call hook.
 
 Native / SAFE_ROOT sandbox only blocks *outside* HERMES_WRITE_SAFE_ROOT
 (HKN-12: a deny-prefix path inside the project is still allowed natively).
-This hook is the one registered pre_tool_call: it also refuses deny-prefix
-paths inside the repo. Legitimate product writes (src/, pom.xml, …) pass.
+This hook is the one registered pre_tool_call.
+
+Allow-model (B-2): when a write-set is published for the active kanban
+task, only `files_writable` paths pass (deny-prefixes still refuse). An
+out-of-set `pom.xml` is refused. Dest-relative paths stay dest-relative
+under a worktree SAFE_ROOT (scope enforcement, not collision prevention).
+
+If HERMES_KANBAN_TASK is set but the write-set cannot be loaded, product
+writes (`src/`, `pom.xml`) fail closed.
+
+If no kanban task is published, deny-prefix only — validate/dev seats
+keep working without a write-set.
 
 Hermes shell hook contract (hermes-hooks):
   stdin  JSON {tool_name, tool_input}
@@ -41,7 +51,6 @@ DENY_PREFIXES = (
     ".hermes/home/kanban.db",
 )
 
-
 def _allow() -> int:
     print("{}")
     return 0
@@ -68,6 +77,27 @@ def is_denied(rel: str) -> bool:
     return False
 
 
+def is_product_write(rel: str) -> bool:
+    n = norm_rel(rel)
+    return n == "pom.xml" or n.startswith("src/") or n.startswith(".specify/")
+
+
+def in_write_set(rel: str, writable: list[str]) -> bool:
+    n = norm_rel(rel)
+    for raw in writable:
+        ww = norm_rel(str(raw))
+        if not ww:
+            continue
+        if n == ww:
+            return True
+        if ww.endswith("/"):
+            if n.startswith(ww):
+                return True
+        elif n.startswith(ww + "/"):
+            return True
+    return False
+
+
 def extract_path(payload: dict) -> str | None:
     ti = payload.get("tool_input") or {}
     if not isinstance(ti, dict):
@@ -84,11 +114,110 @@ def extract_path(payload: dict) -> str | None:
     return None
 
 
+def _writable_from_obj(obj: object) -> list[str] | None:
+    if not isinstance(obj, dict):
+        return None
+    body = obj.get("body") if isinstance(obj.get("body"), dict) else obj
+    if not isinstance(body, dict):
+        return None
+    fw = body.get("files_writable") or body.get("write_set")
+    if isinstance(fw, list) and fw:
+        return [str(x) for x in fw if str(x).strip()]
+    return None
+
+
+def load_write_set(safe_p: Path) -> tuple[list[str] | None, str]:
+    """Return (writable, source).
+
+    writable is None when no kanban task is in play (deny-prefix only).
+    writable is [] when a task is set but the write-set cannot be loaded
+    (fail-closed on product writes).
+    """
+    env_fw = os.environ.get("HERMES_KANBAN_FILES_WRITABLE", "").strip()
+    if env_fw:
+        try:
+            data = json.loads(env_fw)
+        except json.JSONDecodeError:
+            data = [x.strip() for x in env_fw.split(",") if x.strip()]
+        if isinstance(data, list) and data:
+            return [str(x) for x in data], "env:HERMES_KANBAN_FILES_WRITABLE"
+        if isinstance(data, str) and data.strip():
+            return [data.strip()], "env:HERMES_KANBAN_FILES_WRITABLE"
+
+    env_body = os.environ.get("HERMES_KANBAN_BODY", "").strip()
+    if env_body:
+        parsed: object | None = None
+        if env_body[:1] in "{[":
+            try:
+                parsed = json.loads(env_body)
+            except json.JSONDecodeError:
+                parsed = None
+        fw = _writable_from_obj(parsed) if parsed is not None else None
+        if fw:
+            return fw, "env:HERMES_KANBAN_BODY"
+        bp = Path(env_body)
+        if not bp.is_absolute():
+            bp = safe_p / env_body
+        if bp.is_file():
+            try:
+                fw = _writable_from_obj(json.loads(bp.read_text(encoding="utf-8")))
+            except (OSError, json.JSONDecodeError, TypeError):
+                fw = None
+            if fw:
+                return fw, str(bp)
+
+    task = os.environ.get("HERMES_KANBAN_TASK", "").strip()
+    if not task:
+        return None, "unpublished"
+
+    runtime = safe_p / "evidence" / "runtime" / "active-write-set.json"
+    if runtime.is_file():
+        try:
+            data = json.loads(runtime.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError, TypeError):
+            data = None
+        if isinstance(data, dict) and str(data.get("task_id") or "").strip() == task:
+            fw = _writable_from_obj(data)
+            if fw:
+                return fw, "evidence/runtime/active-write-set.json"
+
+    ws_dir = safe_p / "evidence" / "runtime" / "write-sets"
+    per_task = ws_dir / f"{task}.json"
+    if per_task.is_file():
+        try:
+            fw = _writable_from_obj(json.loads(per_task.read_text(encoding="utf-8")))
+        except (OSError, json.JSONDecodeError, TypeError):
+            fw = None
+        if fw:
+            return fw, str(per_task.relative_to(safe_p))
+
+    bodies = safe_p / "evidence" / "bodies"
+    if bodies.is_dir():
+        for path in sorted(bodies.glob("*.json")):
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError, TypeError):
+                continue
+            body = data.get("body") if isinstance(data, dict) and isinstance(
+                data.get("body"), dict
+            ) else data
+            if not isinstance(body, dict):
+                continue
+            if str(body.get("task_id") or "").strip() != task:
+                continue
+            fw = _writable_from_obj(body)
+            if fw:
+                return fw, str(path.relative_to(safe_p))
+
+    return [], f"task-set-unresolved:{task}"
+
+
 def main() -> int:
     if len(sys.argv) > 1 and sys.argv[1] in {"-h", "--help"}:
         print(
             "write-set-hook.py — Hermes pre_tool_call write fence. "
-            "Reads stdin JSON; exit 2 blocks deny-prefix / out-of-SAFE_ROOT writes."
+            "Reads stdin JSON; exit 2 blocks deny-prefix / out-of-SAFE_ROOT "
+            "/ out-of-write-set (B-2) writes."
         )
         return 0
     try:
@@ -122,6 +251,21 @@ def main() -> int:
     if is_denied(rel_s):
         return _block(
             f"write-set-hook: in-repo OOS path {rel_s} (B-S2 deny-prefix)"
+        )
+    writable, source = load_write_set(safe_p)
+    if writable is None:
+        return _allow()
+    if not writable:
+        if is_product_write(rel_s):
+            return _block(
+                f"write-set-hook: {rel_s} refused — kanban task set but "
+                f"write-set not loaded ({source})"
+            )
+        return _allow()
+    if not in_write_set(rel_s, writable):
+        return _block(
+            f"write-set-hook: {rel_s} outside files_writable "
+            f"({source}; B-2 allow-model)"
         )
     return _allow()
 

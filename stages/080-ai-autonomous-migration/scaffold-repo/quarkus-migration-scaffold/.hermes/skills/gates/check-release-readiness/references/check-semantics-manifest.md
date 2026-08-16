@@ -38,7 +38,7 @@
 | `mvn_clean_verify` | `mvn clean verify` (± `-DskipTests` per body); `JAVA_HOME` = pom release | Clean rebuild + verify succeed | **SEMANTIC** | SkipTests hides test emptiness; stale MapStruct bytecode can false-green without `clean` | Require `clean` token in command line for PASS; tip-bank B3 |
 | `unit_it_contract` | `mvn test` / product `*Test`/`*IT` discovery scripts | Unit/IT contract as declared | **SEMANTIC or TOOLING** | Empty suite + exit 0 = false ACCEPT path (seen as M5 `no-product-tests`) | FAIL (not SKIP) when AR-2.8 requires tests and zero found — or explicit `SKIP` with `accept_scope` block |
 | `sonar` | `mvn sonar:sonar` | Quality gate if configured | **TOOLING** | Unconfigured plugin → SKIP must not upgrade ACCEPT | SKIP allowed only when plugin absent; never maps to ship |
-| `g1_characterization` | G-1 scripts + fixtures (volume probe / characterization) | Characterization gate per AD | **ADMISSION** until product thresholds pinned | Fixture PASS ≠ kill-ratio PASS (`g1_kill_ratio=pending_threshold`) | Schema: pending_threshold ⇒ PASS forbidden for ship (already noted in verdicts) |
+| `g1_characterization` | G-1 scripts + fixtures (volume probe / characterization) | Characterization gate per AD | **ADMISSION** until product thresholds pinned | Fixture PASS ≠ kill-ratio PASS (`g1_kill_ratio=pending_threshold`) | Schema: pending_threshold ⇒ PASS forbidden for ship; ADMISSION PASS cannot close product M5 ACCEPT (B-5 `--product` / `INCONCLUSIVE_FIXTURE`) |
 | `g2_if_harvest` | G-2 harvest-fidelity scripts/fixtures | Harvest fidelity if harvest present | **ADMISSION** on fixtures | Same family | Label `ADMISSION` in manifest until harvest product artifacts exist |
 
 ---
@@ -49,8 +49,8 @@
 |----------|----------|----------------|----------|-------------------|------|
 | `preflight` | Phase preflight scripts | Preconditions for M5 runner | **TOOLING** | Does not prove runtime API | — |
 | `regression_suite` | Product regression command | Product regressions green | **SEMANTIC** | SKIP when no tests = hole | Same as unit_it_contract |
-| `mta_rescan` | MTA / analysis scripts | Findings scan executed | **SEMANTIC (analysis)** | Not runtime | — |
-| `g3_findings_delta` | G-3 delta scripts/fixtures | Findings delta within bound | **ADMISSION** on fixtures | Fixture PASS ≠ product finding close | — |
+| `mta_rescan` | `assert-mta-rescan.py` (analyzer_ran + digest newer than M1 snapshot and last M3 complete) | Findings scan executed after M3 | **SEMANTIC (analysis)** | File-present / findings-handoff is not a rescan (v19 WC-5) | `analyzer_ran: true` and `input_digest` ≠ M1 snapshot |
+| `g3_findings_delta` | G-3 delta scripts/fixtures | Findings delta within bound | **ADMISSION** on fixtures | Fixture PASS ≠ product finding close | Product `--product` emits `INCONCLUSIVE_FIXTURE`; ADMISSION PASS cannot close M5 ACCEPT |
 | `acceptance_live` | Live HTTP against running app (paths exercised) | Named live acceptance paths behave | **SEMANTIC** | Must list paths; `/q/health` PASS must not imply `/api/*` | **Path manifest required**; M5 REFUSE correctly used JAX-RS 404 on `/api/*` |
 | `g4_runtime_parity` | Product G-4 partitions + runtime compare | Product runtime parity closed | **SEMANTIC** only with harvested partitions | Admission fixtures → INCONCLUSIVE ≠ ACCEPT | Block M5 ACCEPT on INCONCLUSIVE (held); policy rules harvest vs admission change |
 | `accept_scope` | Closure / promote policy | Scope of ACCEPT idle/active | **TOOLING** | IDLE must block ship | — |

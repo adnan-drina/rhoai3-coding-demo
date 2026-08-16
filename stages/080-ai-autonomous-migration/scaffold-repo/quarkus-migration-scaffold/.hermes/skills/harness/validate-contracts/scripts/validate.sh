@@ -21,6 +21,8 @@ Arguments:
 Sections covered (in order):
   no .hermes.md / HERMES.md override      check-spec-readiness (+ S.6)
   check-domain-parity admission (W2 S10)         G-1 PIT dry-run parse
+  B-5 product mode cannot ACCEPT from fixtures
+  AR-3.6 G-1 acceptance operand           scan-with-mta findings schema
   AR-3.6 G-1 acceptance operand           scan-with-mta findings schema
   inventory-entry-points smoke            enforce-authority-boundary (AD-H S16)
   ack/comment authority (S16.5/AR-1.1-1.2) write-fence proving-min (S16.4/F2)
@@ -30,11 +32,14 @@ Sections covered (in order):
   wall-as-terminal exit-eval              checkpoint lag check
   #1b test-compile gate on checkpoint      body-digest immutability
   T-8 dual-oracle refuse                   L2 mint oracles (SR-13)
+  A-3c AC oracles + operand_class set
   EX-5 constraint layers (L1-3 overlays)
   BV19-3 link graph is the phase DAG
   LG4 no scaffold tmp/ or authoring ledger
   SR-12 scaffold-root allow-list            LG7 no eval of phase-dispatch parser
-  SR-14 required tip files are git-tracked
+  AD-S S.4 .specify absent from golden     A-1 speckit overlay resolve
+  AD-H §7 root scripts/ absent from golden
+  WC-5 mta_rescan proves analyzer ran
   L7 park-on-block-loop self-test
   LG9a pre-commit-index-suite script present
   record-run-evidence (AD-H S19)   R-M3.6 dependency_wait hold
@@ -109,6 +114,39 @@ rm -rf "${sdd_tmp}"
 
 echo "== check-domain-parity admission (W2 §10) =="
 bash "${SKILLS}/gates/check-domain-parity/scripts/run-admission.sh" "${ROOT}" || rc=1
+
+echo "== B-5 product mode cannot ACCEPT from fixtures =="
+b5_out="$(python3 "${SKILLS}/gates/check-domain-parity/scripts/g1-characterization.py" "${ROOT}" --product 2>/dev/null || true)"
+if printf '%s\n' "${b5_out}" | grep -q 'INCONCLUSIVE_FIXTURE' \
+  && ! printf '%s\n' "${b5_out}" | grep -qE '(^| )ACCEPT($| )'; then
+  echo "OK: G-1 --product on golden is INCONCLUSIVE_FIXTURE (B-5)"
+else
+  echo "FAIL: G-1 --product must not score ACCEPT (got: ${b5_out})" >&2
+  rc=1
+fi
+python3 - "${SKILLS}/gates/check-domain-parity/scripts" "${ROOT}" <<'PY' || rc=1
+import sys
+from pathlib import Path
+scripts, root = Path(sys.argv[1]), Path(sys.argv[2])
+sys.path.insert(0, str(scripts / "lib"))
+from verdict import INCONCLUSIVE_FIXTURE, product_gate_verdict
+fx = (
+    root
+    / ".hermes/skills/gates/check-release-readiness/fixtures/admission/g1-characterization/known-good"
+)
+got = product_gate_verdict("ACCEPT", fx)
+assert got == INCONCLUSIVE_FIXTURE, got
+print("OK: fixture ACCEPT remapped to INCONCLUSIVE_FIXTURE (B-5)")
+PY
+for gate in g2-harvest-fidelity g3-findings-delta g4-runtime-parity; do
+  out="$(python3 "${SKILLS}/gates/check-domain-parity/scripts/${gate}.py" "${ROOT}" --product 2>/dev/null || true)"
+  if printf '%s\n' "${out}" | grep -q 'INCONCLUSIVE_FIXTURE'; then
+    echo "OK: ${gate} --product is INCONCLUSIVE_FIXTURE (B-5)"
+  else
+    echo "FAIL: ${gate} --product must be INCONCLUSIVE_FIXTURE (got: ${out})" >&2
+    rc=1
+  fi
+done
 
 # Parser/fixture only — not live specimen admission (Architect E-20260808T080815Z #3).
 echo "== G-1 PIT dry-run parse (R1 pin; not live admission) =="
@@ -273,6 +311,15 @@ else
   echo "FAIL: write-fence wrongly refused in-scope src write" >&2
   rc=1
 fi
+printf '%s\n' '{"files_writable":["src/main/java/Foo.java"]}' > "${fence_tmp}/body-writable.json"
+if python3 "${HARNESS}/enforce-authority-boundary/scripts/check-write-fence.py" "${fence_tmp}" \
+  --no-git-status --body "${fence_tmp}/body-writable.json" \
+  --writes pom.xml >/dev/null 2>&1; then
+  echo "FAIL: write-fence should refuse OOS pom.xml under files_writable (B-2)" >&2
+  rc=1
+else
+  echo "OK: write-fence refuses OOS pom.xml under files_writable (B-2)"
+fi
 bash "${HARNESS}/enforce-authority-boundary/scripts/apply-write-fence.sh" "${fence_tmp}" unlock >/dev/null || true
 rm -rf "${fence_tmp}"
 
@@ -298,16 +345,40 @@ mkdir -p "${hook_tmp}/src/main/java"
     echo "FAIL: write-set hook wrongly refused in-scope src write" >&2
     exit 1
   fi
+  export HERMES_KANBAN_FILES_WRITABLE='["src/main/java/com/demo/Ok.java"]'
+  if printf '%s\n' '{"tool_name":"write_file","tool_input":{"path":"pom.xml"}}' \
+    | python3 "${HOOK}" >/dev/null; then
+    echo "FAIL: write-set hook should refuse OOS pom.xml (B-2)" >&2
+    exit 1
+  else
+    echo "OK: write-set hook refuses OOS pom.xml (B-2)"
+  fi
+  if printf '%s\n' '{"tool_name":"write_file","tool_input":{"path":"src/main/java/com/demo/Ok.java"}}' \
+    | python3 "${HOOK}" >/dev/null; then
+    echo "OK: write-set hook allows files_writable src (B-2)"
+  else
+    echo "FAIL: write-set hook wrongly refused in-set src write" >&2
+    exit 1
+  fi
+  unset HERMES_KANBAN_FILES_WRITABLE
+  export HERMES_KANBAN_TASK="t_deadbeef"
+  if printf '%s\n' '{"tool_name":"write_file","tool_input":{"path":"pom.xml"}}' \
+    | python3 "${HOOK}" >/dev/null; then
+    echo "FAIL: write-set hook should fail-closed when task set but write-set missing" >&2
+    exit 1
+  else
+    echo "OK: write-set hook fail-closed without published write-set (B-2)"
+  fi
 ) || rc=1
 rm -rf "${hook_tmp}"
 
-echo "== EX-4 seat assignee profiles (product, not pillar heads) =="
+echo "== C-2(a) single-persona assignee (product default) =="
 python3 "${HARNESS}/dispatch-phase/scripts/check-seat-assignee-profiles.py" "${ROOT}" || rc=1
 ex4_m3="$(python3 "${HARNESS}/dispatch-phase/scripts/resolve-seat-assignee.py" M3 --root "${ROOT}")"
-if [ "${ex4_m3}" = "implementer" ]; then
-  echo "OK: EX-4 M3 cards resolve to assignee implementer"
+if [ "${ex4_m3}" = "default" ]; then
+  echo "OK: C-2(a) M3 cards resolve to assignee default"
 else
-  echo "FAIL: EX-4 M3 assignee is ${ex4_m3:-empty}, want implementer" >&2
+  echo "FAIL: C-2(a) M3 assignee is ${ex4_m3:-empty}, want default" >&2
   rc=1
 fi
 
@@ -502,10 +573,36 @@ fi
 printf '%s\n' '{"phase":"M4","verdict":"PROVISIONAL_ACCEPT","g1_kill_ratio":"pending_threshold","ship":false}' \
   > "${vr_tmp}/evidence/verdicts/bad.json"
 python3 "${SKILLS}/gates/check-release-readiness/scripts/check-verdict-routing.py" "${vr_tmp}" || rc=1
-# good M5 full with waiver (threshold not yet pinned)
+# B-4 — waiver cannot author M5 ACCEPT
 printf '%s\n' '{"phase":"M5","verdict":"ACCEPT","g1_kill_ratio":"pending_threshold","g1_kill_ratio_waiver":true,"ship":true,"routing":"close"}' \
   > "${vr_tmp}/evidence/verdicts/bad.json"
+if python3 "${SKILLS}/gates/check-release-readiness/scripts/check-verdict-routing.py" "${vr_tmp}" >/dev/null 2>&1; then
+  echo "FAIL: M5 ACCEPT with g1_kill_ratio_waiver should refuse (B-4)" >&2
+  rc=1
+else
+  echo "OK: M5 ACCEPT via kill-ratio waiver refused (B-4)"
+fi
+# good M5 full with PASS+pin
+printf '%s\n' '{"phase":"M5","verdict":"ACCEPT","g1_kill_ratio":"pass","g1_kill_ratio_threshold_pinned":true,"ship":true,"routing":"close"}' \
+  > "${vr_tmp}/evidence/verdicts/bad.json"
 python3 "${SKILLS}/gates/check-release-readiness/scripts/check-verdict-routing.py" "${vr_tmp}" || rc=1
+# B-5 — INCONCLUSIVE_FIXTURE must never ship; ACCEPT must not embed it
+printf '%s\n' '{"phase":"M5","verdict":"INCONCLUSIVE_FIXTURE","ship":true,"routing":"blocked"}' \
+  > "${vr_tmp}/evidence/verdicts/bad.json"
+if python3 "${SKILLS}/gates/check-release-readiness/scripts/check-verdict-routing.py" "${vr_tmp}" >/dev/null 2>&1; then
+  echo "FAIL: INCONCLUSIVE_FIXTURE ship should refuse (B-5)" >&2
+  rc=1
+else
+  echo "OK: INCONCLUSIVE_FIXTURE ship refused (B-5)"
+fi
+printf '%s\n' '{"phase":"M5","verdict":"ACCEPT","g1_kill_ratio":"pass","g1_kill_ratio_threshold_pinned":true,"ship":true,"routing":"close","g1_characterization":{"verdict":"INCONCLUSIVE_FIXTURE"}}' \
+  > "${vr_tmp}/evidence/verdicts/bad.json"
+if python3 "${SKILLS}/gates/check-release-readiness/scripts/check-verdict-routing.py" "${vr_tmp}" >/dev/null 2>&1; then
+  echo "FAIL: ACCEPT embedding INCONCLUSIVE_FIXTURE should refuse (B-5)" >&2
+  rc=1
+else
+  echo "OK: ACCEPT embedding INCONCLUSIVE_FIXTURE refused (B-5)"
+fi
 # single-unit composition reopen
 printf '%s\n' '{"phase":"M5","verdict":"REFUSE","gate":"g4_runtime_parity","prior_verdict":"PROVISIONAL_ACCEPT","routing":"reopen_story"}' \
   > "${vr_tmp}/evidence/verdicts/bad.json"
@@ -549,7 +646,7 @@ else
 fi
 printf '%s\n' '{"phase":"M5","verdict":"ACCEPT","g1_kill_ratio":"pending_threshold","g1_kill_ratio_waiver":true}' \
   > "${vr_tmp}/evidence/verdicts/m5.json"
-# Self-reported waiver alone must refuse (Deputy E-20260813T144954Z P1)
+# Self-reported waiver alone must refuse (Deputy E-20260813T144954Z P1 / B-4)
 if python3 "${SKILLS}/gates/check-release-readiness/scripts/check-factory-m5.py" "${vr_tmp}" >/dev/null 2>&1; then
   echo "FAIL: factory with self-reported g1_kill_ratio_waiver should refuse" >&2
   rc=1
@@ -574,8 +671,20 @@ status: acknowledged
 acknowledged_by: Operator
 acknowledged_at: "2026-08-13T00:00:00Z"
 ACK
-# Proper M5 verdict + typed waiver → pass
+# Typed waiver ack must also refuse (B-4 / C-3(a) — no waiver path)
 printf '%s\n' '{"phase":"M5","verdict":"ACCEPT","accept_kind":"full","g1_kill_ratio":"pending_threshold"}' \
+  > "${vr_tmp}/evidence/verdicts/m5.json"
+if python3 "${SKILLS}/gates/check-release-readiness/scripts/check-factory-m5.py" "${vr_tmp}" >/dev/null 2>&1; then
+  echo "FAIL: factory with typed g1-kill-ratio-waiver ack should refuse (B-4)" >&2
+  rc=1
+else
+  echo "OK: factory typed kill-ratio waiver refused (B-4)"
+fi
+rm -f "${vr_tmp}/evidence/acks/g1-kill-ratio-waiver-S-1.ack.yaml"
+mkdir -p "${vr_tmp}/evidence/verdicts"
+printf '%s\n' '{"schema":"migration/g1-kill-ratio-pin/v2-dual-denominator","status":"PINNED","g1_kill_ratio_threshold_pinned":true,"evaluation_against_measurement":{"pass":true}}' \
+  > "${vr_tmp}/evidence/verdicts/g1-kill-ratio-pin.json"
+printf '%s\n' '{"phase":"M5","verdict":"ACCEPT","accept_kind":"full","g1_kill_ratio":"pass","g1_kill_ratio_threshold_pinned":true}' \
   > "${vr_tmp}/evidence/verdicts/m5.json"
 python3 "${SKILLS}/gates/check-release-readiness/scripts/check-factory-m5.py" "${vr_tmp}" || rc=1
 # candidate→promote (finding 4)
@@ -1358,6 +1467,91 @@ if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/check-surgical-scopes.py"
 else
   echo "OK: T-8 unknown operand_class fail-closed"
 fi
+# T-8 AMEND: multi-class union is legal (rest+persistence)
+python3 - <<PY
+import json, pathlib
+root = pathlib.Path("${t8_tmp}")
+body = {
+  "phase": "M3",
+  "identity": {"operand_class": ["rest", "persistence"], "story_id": "S-T8m"},
+  "files_writable": [
+    "src/main/java/x/OwnerRestController.java",
+    "src/main/java/x/Owner.java",
+  ],
+  "exit_criteria": [
+    {"check": "http_semantics", "cmd": "mvn -q test"},
+    {"check": "mapping_valid", "cmd": "mvn -q verify"},
+  ],
+}
+(root / "evidence/bodies/m3-dual-oracle.json").write_text(json.dumps(body), encoding="utf-8")
+PY
+if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/check-surgical-scopes.py" "${t8_tmp}" \
+  >/dev/null 2>&1; then
+  echo "OK: T-8 multi-class rest+persistence union passed"
+else
+  echo "FAIL: multi-class rest+persistence should pass AR-4.4 (T-8 AMEND)" >&2
+  rc=1
+fi
+python3 - <<PY
+import json, pathlib
+root = pathlib.Path("${t8_tmp}")
+body = {
+  "phase": "M3",
+  "identity": {"operand_class": "user_story", "story_id": "S-T8us"},
+  "files_writable": ["src/main/java/x/OwnerRestController.java"],
+  "exit_criteria": [
+    {"check": "http_semantics", "cmd": "mvn -q test"},
+  ],
+}
+(root / "evidence/bodies/m3-dual-oracle.json").write_text(json.dumps(body), encoding="utf-8")
+PY
+if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/check-surgical-scopes.py" "${t8_tmp}" \
+  >/dev/null 2>&1; then
+  echo "OK: T-8 user_story AC Maven test passed AR-4.4"
+else
+  echo "FAIL: user_story with AC mvn -q test should pass AR-4.4 (A-3c.2)" >&2
+  rc=1
+fi
+python3 - <<PY
+import json, pathlib
+root = pathlib.Path("${t8_tmp}")
+body = {
+  "phase": "M3",
+  "identity": {"operand_class": "user_story", "story_id": "S-T8us-curl"},
+  "files_writable": ["src/main/java/x/OwnerRestController.java"],
+  "exit_criteria": [
+    {"check": "http_semantics", "cmd": "curl -sf http://127.0.0.1:8080/api/owners"},
+  ],
+}
+(root / "evidence/bodies/m3-dual-oracle.json").write_text(json.dumps(body), encoding="utf-8")
+PY
+if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/check-semantic-exits.py" "${t8_tmp}" \
+  >/dev/null 2>&1; then
+  echo "FAIL: user_story AC curl should refuse (not a card exit)" >&2
+  rc=1
+else
+  echo "OK: T-8 user_story AC curl refused"
+fi
+python3 - <<PY
+import json, pathlib
+root = pathlib.Path("${t8_tmp}")
+body = {
+  "phase": "M3",
+  "identity": {"operand_class": "user_story", "story_id": "S-T8us-sh"},
+  "files_writable": ["src/main/java/x/OwnerRestController.java"],
+  "exit_criteria": [
+    {"check": "http_semantics", "cmd": "./verify-ac.sh"},
+  ],
+}
+(root / "evidence/bodies/m3-dual-oracle.json").write_text(json.dumps(body), encoding="utf-8")
+PY
+if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/check-semantic-exits.py" "${t8_tmp}" \
+  >/dev/null 2>&1; then
+  echo "FAIL: user_story AC script should refuse (not a card exit)" >&2
+  rc=1
+else
+  echo "OK: T-8 user_story AC script refused"
+fi
 # AR-2.3–2.7 must follow T-8 class stamps (not filename RESTISH → create_fk)
 python3 - <<PY
 import json, pathlib
@@ -1490,6 +1684,7 @@ sys.path.insert(0, str(scripts))
 from specimen_agnostic import (
     exit_cmd_discriminating_errors,
     minted_task_id_errors,
+    proves_executable_errors,
     refs_path_sha_errors,
 )
 
@@ -1568,6 +1763,49 @@ errs = exit_cmd_discriminating_errors(
 )
 expect(errs == [], "compile + writable pom can fail")
 
+errs = exit_cmd_discriminating_errors(
+    dest,
+    body(
+        exit_criteria=[
+            {
+                "check": "http_semantics",
+                "cmd": "curl -sf http://127.0.0.1:8080/api/owners",
+            }
+        ]
+    ),
+)
+expect(
+    bool(errs) and "Maven vehicle" in errs[0],
+    "AC curl is not a card exit",
+)
+
+errs = exit_cmd_discriminating_errors(
+    dest,
+    body(exit_criteria=[{"check": "http_semantics", "cmd": "./verify-ac.sh"}]),
+)
+expect(
+    bool(errs) and "Maven vehicle" in errs[0],
+    "script card exit refused",
+)
+
+errs = exit_cmd_discriminating_errors(
+    dest,
+    body(exit_criteria=[{"check": "http_semantics", "cmd": "mvn -q verify"}]),
+)
+expect(
+    bool(errs) and "proving test" in errs[0],
+    "mvn verify is L2a test-shaped",
+)
+
+errs = exit_cmd_discriminating_errors(
+    dest,
+    body(
+        files_writable=["pom.xml"],
+        exit_criteria=[{"check": "http_semantics", "cmd": "mvn -q test-compile"}],
+    ),
+)
+expect(errs == [], "mvn test-compile is not L2a test-shaped (Issue 6)")
+
 testp = dest / "src/test/java/x/ExistingTest.java"
 testp.parent.mkdir(parents=True)
 testp.write_text("class ExistingTest {}\n", encoding="utf-8")
@@ -1608,6 +1846,36 @@ expect(
     bool(errs) and "files_writable" in errs[0],
     "L2a proves outside this write-set refused",
 )
+b1p = dest / "src/test/java/x/FooTest.java"
+b1p.parent.mkdir(parents=True, exist_ok=True)
+b1p.write_text("class FooTest { void restSemantics() { } }\n", encoding="utf-8")
+errs = exit_cmd_discriminating_errors(dest, named)
+expect(
+    bool(errs) and "@Test" in " ".join(errs),
+    "B-1 file with methods but no @Test fails the card",
+)
+b1p.write_text(
+    "import org.junit.jupiter.api.Test;\n"
+    "class FooTest { @Test void restSemantics() { } }\n",
+    encoding="utf-8",
+)
+errs = exit_cmd_discriminating_errors(dest, named)
+expect(errs == [], "B-1 existing @Test in write-set mints")
+c_errs = proves_executable_errors(dest, named, stage="complete")
+expect(
+    bool(c_errs) and "surefire" in " ".join(c_errs).lower(),
+    "B-1 complete requires surefire report",
+)
+sure = dest / "target" / "surefire-reports"
+sure.mkdir(parents=True)
+(sure / "TEST-x.FooTest.xml").write_text(
+    '<?xml version="1.0"?><testsuite name="x.FooTest" tests="1">'
+    '<testcase classname="x.FooTest" name="restSemantics"/></testsuite>\n',
+    encoding="utf-8",
+)
+c_errs = proves_executable_errors(dest, named, stage="complete")
+expect(c_errs == [], "B-1 complete with @Test + surefire passes")
+b1p.unlink()
 testp.unlink()
 
 fit = Path(tempfile.mkdtemp())
@@ -1724,6 +1992,186 @@ shutil.rmtree(fit, ignore_errors=True)
 if failures:
     raise SystemExit(1)
 print("OK: L2 mint oracles both-ways")
+PY
+
+echo "== A-3c T-8 AMEND (AC oracles + operand_class set) =="
+python3 - "${SKILLS}/sdd/check-spec-readiness/scripts" <<'PY' || rc=1
+import hashlib
+import importlib.util
+import json
+import sys
+import tempfile
+from pathlib import Path
+
+scripts = Path(sys.argv[1])
+sys.path.insert(0, str(scripts))
+from specimen_agnostic import (
+    operand_classes_of,
+    semantic_exit_cmd_ok,
+    skills_for_operand_classes,
+)
+
+spec = importlib.util.spec_from_file_location(
+    "assemble_m3", scripts / "assemble-m3-bodies-from-partition.py"
+)
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+oc_mod = importlib.util.spec_from_file_location(
+    "check_operand_count", scripts / "check-operand-count.py"
+)
+ocount = importlib.util.module_from_spec(oc_mod)
+oc_mod.loader.exec_module(ocount)
+
+failures: list[str] = []
+
+
+def expect(cond: bool, msg: str) -> None:
+    if cond:
+        print(f"OK: {msg}")
+        return
+    failures.append(msg)
+    print(f"FAIL: {msg}", file=sys.stderr)
+
+
+expect(not semantic_exit_cmd_ok("http_semantics", "curl -sf http://127.0.0.1:8080/x"), "curl refused")
+expect(not semantic_exit_cmd_ok("http_semantics", "./verify-ac.sh"), "script refused")
+expect(semantic_exit_cmd_ok("http_semantics", "mvn -q verify"), "mvn verify ok")
+expect(semantic_exit_cmd_ok("http_semantics", "mvn -q test-compile"), "mvn test-compile ok")
+expect(not semantic_exit_cmd_ok("http_semantics", "true"), "true still refused")
+expect(not semantic_exit_cmd_ok("http_semantics", "@QuarkusTest + REST Assured status/body"), "prose still refused")
+expect(
+    operand_classes_of({"identity": {"operand_class": ["rest", "persistence"]}})
+    == ["rest", "persistence"],
+    "operand_class list parses",
+)
+expect(
+    operand_classes_of({"identity": {"operand_class": "['rest', 'persistence']"}})
+    == ["rest", "persistence"],
+    "str(list) accident parses",
+)
+expect(
+    skills_for_operand_classes(["rest", "persistence"])
+    == ["spring-to-quarkus-patterns", "form-entity-persistence"],
+    "B-16 skills attach by class",
+)
+
+td = Path(tempfile.mkdtemp())
+root = td / "dest"
+harvest = td / ".derived" / "legacy-at-3" / "src/main/java/x/OwnerResource.java"
+harvest.parent.mkdir(parents=True)
+harvest.write_text("class OwnerResource {}\n", encoding="utf-8")
+root.mkdir()
+(root / "pom.xml").write_text("<project/>\n", encoding="utf-8")
+test_src = root / "src/test/java/x/OwnerResourceTest.java"
+test_src.parent.mkdir(parents=True)
+test_src.write_text(
+    "import org.junit.jupiter.api.Test;\n"
+    "class OwnerResourceTest { @Test void httpSemantics() { } }\n",
+    encoding="utf-8",
+)
+
+story = {
+    "story_id": "story-owners",
+    "operand_class": ["rest", "persistence"],
+    "files_in_scope": [
+        "src/main/java/x/OwnerResource.java",
+        "src/main/java/x/Owner.java",
+        "src/test/java/x/OwnerResourceTest.java",
+    ],
+    "acceptance_criteria": [
+        {
+            "check": "http_semantics",
+            "cmd": "mvn -q test",
+            "proves": ["src/test/java/x/OwnerResourceTest.java"],
+        },
+        {"check": "mapping_valid", "cmd": "mvn -q verify"},
+    ],
+}
+body = mod.assemble_one(story, root, measured_operands=ocount.measured_operands)
+cmds = [x.get("cmd") for x in body["exit_criteria"] if isinstance(x, dict)]
+expect(body["identity"]["operand_class"] == ["rest", "persistence"], "assembler stamps class set")
+expect(
+    body["identity"]["operand_skills"]
+    == ["spring-to-quarkus-patterns", "form-entity-persistence"],
+    "assembler stamps B-16 skills",
+)
+expect("mvn -q test" in cmds, "AC Maven test stamped")
+expect("mvn -q verify" in cmds, "AC Maven verify stamped")
+expect(
+    [x.get("check") for x in body["exit_criteria"] if isinstance(x, dict)].count(
+        "http_semantics"
+    )
+    == 1,
+    "no extra default http_semantics",
+)
+
+vacuous = dict(story)
+vacuous["story_id"] = "story-true"
+vacuous["acceptance_criteria"] = [
+    {"check": "http_semantics", "cmd": "true"}
+]
+try:
+    mod.assemble_one(vacuous, root, measured_operands=ocount.measured_operands)
+except ValueError as exc:
+    expect("discriminating" in str(exc) or "true" in str(exc), "vacuous true AC refused at assemble")
+else:
+    expect(False, "vacuous true AC refused at assemble")
+
+bare = {
+    "story_id": "story-bare-rest",
+    "operand_class": "rest",
+    "files_in_scope": ["src/main/java/x/OwnerResource.java"],
+}
+try:
+    mod.assemble_one(bare, root, measured_operands=ocount.measured_operands)
+except ValueError as exc:
+    expect("OBJECT default" in str(exc), "rest without AC/tests refuses default mvn -q test")
+else:
+    expect(False, "rest without AC/tests refuses default mvn -q test")
+
+scripted = dict(story)
+scripted["story_id"] = "story-script"
+scripted["acceptance_criteria"] = [
+    {"check": "http_semantics", "cmd": "./verify-ac.sh"}
+]
+try:
+    mod.assemble_one(scripted, root, measured_operands=ocount.measured_operands)
+except ValueError as exc:
+    expect("Maven vehicle" in str(exc) or "curl/scripts" in str(exc), "script AC refused at assemble")
+else:
+    expect(False, "script AC refused at assemble")
+
+unknown = {
+    "story_id": "story-unknown",
+    "operand_class": "not_a_class",
+    "files_in_scope": ["src/main/java/x/OwnerResource.java"],
+    "acceptance_criteria": [
+        {"check": "http_semantics", "cmd": "mvn -q test"}
+    ],
+}
+try:
+    mod.assemble_one(unknown, root, measured_operands=ocount.measured_operands)
+except ValueError as exc:
+    expect("unknown operand_class" in str(exc), "unknown class still fail-closed")
+else:
+    expect(False, "unknown class still fail-closed")
+
+cfg_harvest = td / ".derived" / "legacy-at-3" / "pom.xml"
+cfg_harvest.write_text("harvest-pom\n", encoding="utf-8")
+cfg = {
+    "story_id": "story-pom",
+    "operand_class": "build_config",
+    "files_in_scope": ["pom.xml"],
+}
+cfg_body = mod.assemble_one(cfg, root, measured_operands=ocount.measured_operands)
+expect(
+    cfg_body["exit_criteria"][0]["cmd"] == "mvn -q compile",
+    "build_config still stamps compile (not test)",
+)
+
+if failures:
+    raise SystemExit(1)
+print("OK: A-3c Maven-only AC oracles + operand_class set")
 PY
 
 echo "== record-run-evidence (AD-H §19) =="
@@ -1855,6 +2303,239 @@ echo "== UPLIFT-7 golden cleanliness (no run-state in tip tree) =="
 python3 "${SKILL_DIR}/scripts/check-golden-cleanliness.py" --root "${ROOT}" || rc=1
 echo "== AD-S S.4 .specify absent from golden =="
 python3 "${SKILL_DIR}/scripts/check-specify-absent.py" --root "${ROOT}" || rc=1
+echo "== A-1/A-2/A-3 speckit overlay (stop-before-implement) =="
+overlay="${SKILLS}/sdd/init-spec-workspace/assets/stop-before-implement.overlay.yml"
+constitution="${SKILLS}/sdd/init-spec-workspace/assets/constitution.md"
+if [ ! -f "${overlay}" ]; then
+  echo "FAIL: missing speckit overlay asset" >&2
+  rc=1
+elif grep -q 'command: speckit.implement' "${overlay}"; then
+  echo "FAIL: overlay invokes speckit.implement" >&2
+  rc=1
+elif ! grep -q 'remove: implement' "${overlay}"; then
+  echo "FAIL: overlay missing remove: implement" >&2
+  rc=1
+elif ! grep -q 'speckit.clarify' "${overlay}"; then
+  echo "FAIL: overlay missing speckit.clarify" >&2
+  rc=1
+elif ! grep -q 'evidence/findings-handoff.json' "${overlay}"; then
+  echo "FAIL: overlay missing M1 findings-handoff path" >&2
+  rc=1
+elif ! grep -q 'evidence/entry-point-inventory.json' "${overlay}"; then
+  echo "FAIL: overlay missing M1 entry-point inventory path" >&2
+  rc=1
+else
+  echo "OK: tip speckit overlay (clarify, no implement, M1 paths)"
+fi
+if [ ! -f "${constitution}" ]; then
+  echo "FAIL: missing constitution asset" >&2
+  rc=1
+elif grep -q '\[PROJECT_NAME\]\|\[PRINCIPLE_1\|\[PLACEHOLDER\]' "${constitution}"; then
+  echo "FAIL: constitution asset still has spec-kit placeholders" >&2
+  rc=1
+elif ! grep -q '3.27.3.SP1' "${constitution}" || ! grep -q 'Java 21' "${constitution}"; then
+  echo "FAIL: constitution asset missing Quarkus 3.27.3.SP1 / Java 21" >&2
+  rc=1
+else
+  echo "OK: constitution asset has zero placeholders (V20-3)"
+fi
+if command -v specify >/dev/null 2>&1; then
+  ov_tmp="$(mktemp -d "${TMPDIR:-/tmp}/speckit-overlay.XXXXXX")"
+  git -C "${ov_tmp}" init -q
+  if (
+    cd "${ov_tmp}"
+    specify init --here --integration hermes --force --ignore-agent-tools >/dev/null 2>&1
+    mkdir -p .specify/workflows/overlays/speckit
+    cp "${overlay}" .specify/workflows/overlays/speckit/stop-before-implement.yml
+    cp "${constitution}" .specify/memory/constitution.md
+  ); then
+    resolve_out="$(cd "${ov_tmp}" && specify workflow resolve speckit 2>&1)" || resolve_out="RESOLVE_FAILED"
+    if echo "${resolve_out}" | grep -q 'RESOLVE_FAILED'; then
+      echo "FAIL: specify workflow resolve speckit failed" >&2
+      echo "${resolve_out}" >&2
+      rc=1
+    elif echo "${resolve_out}" | grep -E '^[[:space:]]+• implement:' >/dev/null; then
+      echo "FAIL: resolved speckit still has implement step" >&2
+      echo "${resolve_out}" >&2
+      rc=1
+    elif ! echo "${resolve_out}" | grep -E '^[[:space:]]+• review-spec:' >/dev/null \
+      || ! echo "${resolve_out}" | grep -E '^[[:space:]]+• review-plan:' >/dev/null; then
+      echo "FAIL: resolved speckit missing review-spec/review-plan gates" >&2
+      echo "${resolve_out}" >&2
+      rc=1
+    elif ! echo "${resolve_out}" | grep -E '^[[:space:]]+• clarify:' >/dev/null; then
+      echo "FAIL: resolved speckit missing clarify" >&2
+      echo "${resolve_out}" >&2
+      rc=1
+    else
+      echo "OK: specify workflow resolve speckit (no implement; gates + clarify)"
+    fi
+  else
+    echo "FAIL: specify init in overlay temp tree failed" >&2
+    rc=1
+  fi
+  rm -rf "${ov_tmp}"
+else
+  echo "OK: specify CLI absent — overlay resolve deferred to a provisioned seat"
+fi
+echo "== A-4/A-5/A-8 handover-mint (tasks.md → receipt) =="
+handover="${SKILLS}/harness/dispatch-phase/scripts/handover-mint.py"
+fix="${SKILLS}/harness/dispatch-phase/fixtures/handover"
+if [ ! -f "${handover}" ]; then
+  echo "FAIL: missing handover-mint.py" >&2
+  rc=1
+else
+  ho_tmp="$(mktemp -d "${TMPDIR:-/tmp}/handover-mint.XXXXXX")"
+  python3 - "${handover}" "${fix}" "${ho_tmp}" "${SKILLS}/sdd/check-spec-readiness/scripts" <<'PY' || rc=1
+import json, shutil, subprocess, sys
+from pathlib import Path
+
+handover, fixtures, tmp, ready = (Path(sys.argv[1]), Path(sys.argv[2]), Path(sys.argv[3]), Path(sys.argv[4]))
+sys.path.insert(0, str(ready))
+
+
+def run(args, **kw):
+    return subprocess.run(
+        [sys.executable, str(handover), *args],
+        capture_output=True,
+        text=True,
+        **kw,
+    )
+
+
+def expect_fail(args, needle, label):
+    cp = run(args)
+    blob = (cp.stdout or "") + (cp.stderr or "")
+    if cp.returncode == 0 or needle not in blob:
+        print(f"FAIL: {label} expected refuse {needle!r} rc={cp.returncode}", file=sys.stderr)
+        print(blob, file=sys.stderr)
+        raise SystemExit(1)
+    print(f"OK: {label}")
+
+
+# good dry-run
+good = tmp / "good"
+good.mkdir()
+cp = run(
+    [
+        str(good),
+        "--dry-run",
+        "--print-receipt",
+        "--tasks",
+        str(fixtures / "tasks.good.md"),
+        "--inventory",
+        str(fixtures / "inventory.good.json"),
+    ]
+)
+blob = (cp.stdout or "") + (cp.stderr or "")
+if cp.returncode != 0:
+    print("FAIL: good handover dry-run", file=sys.stderr)
+    print(blob, file=sys.stderr)
+    raise SystemExit(1)
+receipt = json.loads(cp.stdout[cp.stdout.index("{") :])
+ids = [s["story_id"] for s in receipt["stories"]]
+if ids != ["setup", "foundational", "US1", "US2"]:
+    print(f"FAIL: story ids {ids}", file=sys.stderr)
+    raise SystemExit(1)
+if receipt.get("source") != "handover-mint" or receipt.get("pom_owner") != "setup":
+    print(f"FAIL: receipt source/pom_owner {receipt.get('source')} {receipt.get('pom_owner')}", file=sys.stderr)
+    raise SystemExit(1)
+owners = {}
+for s in receipt["stories"]:
+    for f in s["files_in_scope"]:
+        if f in owners:
+            print(f"FAIL: overlap {f} {owners[f]}+{s['story_id']}", file=sys.stderr)
+            raise SystemExit(1)
+        owners[f] = s["story_id"]
+if "pom.xml" in receipt["stories"][1]["files_in_scope"]:
+    print("FAIL: foundational still lists pom.xml after unique-owner assignment", file=sys.stderr)
+    raise SystemExit(1)
+us = {s["story_id"]: s for s in receipt["stories"]}
+if us["US1"]["parents"] != ["foundational"] or us["setup"]["parents"] != []:
+    print(f"FAIL: parents not transcribed {us['US1']['parents']} {us['setup']['parents']}", file=sys.stderr)
+    raise SystemExit(1)
+if us["US1"]["workspace_kind"] != "worktree" or us["setup"]["workspace_kind"] != "dir":
+    print("FAIL: worktree assignment", file=sys.stderr)
+    raise SystemExit(1)
+if not any("[P]" in line for line in us["US1"]["phase_checklist"]):
+    print("FAIL: [P] missing from phase_checklist", file=sys.stderr)
+    raise SystemExit(1)
+print("OK: handover-mint dry-run (ids, disjoint, pom_owner, parents, [P], worktree)")
+
+expect_fail(
+    [
+        str(tmp / "overlap"),
+        "--dry-run",
+        "--tasks",
+        str(fixtures / "tasks.overlap.md"),
+        "--inventory",
+        str(fixtures / "inventory.good.json"),
+    ],
+    "FILE_OVERLAP",
+    "overlapping write-sets refused",
+)
+expect_fail(
+    [
+        str(tmp / "nodeps"),
+        "--dry-run",
+        "--tasks",
+        str(fixtures / "tasks.no-deps.md"),
+        "--inventory",
+        str(fixtures / "inventory.good.json"),
+    ],
+    "DEPENDENCIES_MISSING",
+    "missing Dependencies section refused",
+)
+
+# uncovered endpoint
+uncovered = tmp / "uncovered"
+uncovered.mkdir()
+inv = json.loads((fixtures / "inventory.good.json").read_text())
+inv["entry_points"].append(
+    {"kind": "http", "file": "src/main/java/app/OrphanResource.java", "symbol": "orphan"}
+)
+inv["totals"]["http_endpoints"] = 3
+inv["counts"]["http"] = 3
+inv["counts"]["total"] = 3
+inv_path = uncovered / "inv.json"
+inv_path.write_text(json.dumps(inv))
+expect_fail(
+    [
+        str(uncovered),
+        "--dry-run",
+        "--tasks",
+        str(fixtures / "tasks.good.md"),
+        "--inventory",
+        str(inv_path),
+    ],
+    "endpoints_uncovered",
+    "uncovered HTTP endpoint refused",
+)
+
+# Path-A partition as write input
+pa = tmp / "patha"
+pa.mkdir(parents=True)
+(pa / "evidence" / "briefs").mkdir(parents=True)
+(pa / "evidence" / "briefs" / "partition.json").write_text(
+    json.dumps({"schema": "rhoai3.partition/v1", "stories": [{"story_id": "S-001"}]})
+)
+shutil.copy(fixtures / "tasks.good.md", pa / "tasks.md")
+expect_fail(
+    [
+        str(pa),
+        "--write",
+        "--tasks",
+        str(fixtures / "tasks.good.md"),
+        "--inventory",
+        str(fixtures / "inventory.good.json"),
+    ],
+    "PATH_A_PARTITION",
+    "Path-A partition.json as input refused",
+)
+print("OK: A-4/A-5/A-8 handover-mint negatives")
+PY
+  rm -rf "${ho_tmp}"
+fi
 echo "== AD-H §7 root scripts/ absent from golden =="
 python3 "${SKILL_DIR}/scripts/check-scripts-absent.py" --root "${ROOT}" || rc=1
 
@@ -1950,6 +2631,219 @@ else
 fi
 echo "== dangling .hermes refs (Deputy E-174046Z relocation residue) =="
 python3 "${SKILL_DIR}/scripts/check-dangling-hermes-refs.py" --root "${ROOT}" || rc=1
+echo "== WC-5 mta_rescan proves analyzer ran =="
+python3 - "${SKILLS}/analysis/scan-with-mta/scripts/assert-mta-rescan.py" <<'PY' || rc=1
+import json, subprocess, sys, tempfile
+from pathlib import Path
+from datetime import datetime, timedelta, timezone
+
+cli = Path(sys.argv[1])
+
+
+def run(args):
+    return subprocess.run(
+        [sys.executable, str(cli), *args], capture_output=True, text=True
+    )
+
+
+failures = []
+
+
+def expect(cond, msg):
+    if cond:
+        print(f"OK: {msg}")
+        return
+    failures.append(msg)
+    print(f"FAIL: {msg}", file=sys.stderr)
+
+
+td = Path(tempfile.mkdtemp())
+r = run([str(td)])
+expect(r.returncode == 1, "missing findings refuses")
+handoff = td / "evidence" / "findings-handoff.json"
+handoff.parent.mkdir(parents=True)
+handoff.write_text("{}\n", encoding="utf-8")
+r = run([str(td)])
+expect(r.returncode == 1, "handoff presence is not a rescan")
+findings = td / "evidence" / "mta-findings.json"
+findings.write_text(
+    json.dumps(
+        {
+            "normalized_at": "2026-08-16T00:00:00Z",
+            "execution_evidence": {
+                "analyzer_ran": False,
+                "input_digest": "legacy-at-3:aaa",
+            },
+        }
+    )
+    + "\n",
+    encoding="utf-8",
+)
+r = run([str(td)])
+expect(r.returncode == 1, "analyzer_ran false refuses")
+findings.write_text(
+    json.dumps(
+        {
+            "normalized_at": "2026-08-16T12:00:00Z",
+            "execution_evidence": {
+                "analyzer_ran": True,
+                "input_digest": "legacy-at-3:aaa",
+            },
+        }
+    )
+    + "\n",
+    encoding="utf-8",
+)
+r = run([str(td), "--snapshot-m1", "--findings", str(findings)])
+expect(r.returncode == 0, "M1 snapshot writes")
+r = run([str(td)])
+expect(r.returncode == 1, "copy of M1 (same digest) refuses")
+m3 = td / "evidence" / "runs" / "t_m3" / "complete-exit-ok.json"
+m3.parent.mkdir(parents=True)
+m3.write_text(
+    json.dumps({"stamped_at": "2026-08-16T11:00:00Z", "ok": True}) + "\n",
+    encoding="utf-8",
+)
+findings.write_text(
+    json.dumps(
+        {
+            "normalized_at": "2026-08-16T10:00:00Z",
+            "execution_evidence": {
+                "analyzer_ran": True,
+                "input_digest": "legacy-at-3:bbb",
+            },
+        }
+    )
+    + "\n",
+    encoding="utf-8",
+)
+r = run([str(td)])
+expect(r.returncode == 1, "rescan stamp older than last M3 refuses")
+findings.write_text(
+    json.dumps(
+        {
+            "normalized_at": "2026-08-16T12:00:00Z",
+            "execution_evidence": {
+                "analyzer_ran": True,
+                "input_digest": "legacy-at-3:bbb",
+            },
+        }
+    )
+    + "\n",
+    encoding="utf-8",
+)
+r = run([str(td)])
+expect(r.returncode == 0, "analyzer_ran + newer digest/timestamp passes")
+if failures:
+    raise SystemExit(1)
+print("OK: WC-5 mta_rescan both directions")
+PY
+
+echo "== B-3 MapStruct doctrine pending (no v19-broken mandate) =="
+DI_CFG="${SKILLS}/migration/spring-to-quarkus-patterns/references/di-config.md"
+if grep -q 'doctrine pending R-SKILL-F' "${DI_CFG}" \
+  && grep -q 'Do \*\*not\*\* mandate `componentModel = "cdi"`' "${DI_CFG}"; then
+  echo "OK: B-3 di-config.md does not mandate the v19-broken MapStruct CDI shape"
+else
+  echo "FAIL: B-3 di-config.md must record measured CDI break and pending R-SKILL-F" >&2
+  rc=1
+fi
+
+echo "== B-6 park-at-birth uses kind=dependency =="
+CREATE_M3="${HARNESS}/dispatch-phase/scripts/create-m3-implementer.sh"
+if grep -q 'block --kind needs_input' "${CREATE_M3}"; then
+  echo "FAIL: B-6 create-m3 still parks with kind=needs_input (spends worker recurrence)" >&2
+  rc=1
+elif grep -q 'block --kind dependency' "${CREATE_M3}"; then
+  echo "OK: B-6 park-at-birth uses kind=dependency"
+else
+  echo "FAIL: B-6 create-m3 missing harness park --kind dependency" >&2
+  rc=1
+fi
+
+echo "== B-16 M3 attach from operand_skills =="
+b16_body="$(mktemp "${TMPDIR:-/tmp}/b16-body.XXXXXX.json")"
+printf '%s\n' '{"identity":{"operand_skills":["form-entity-persistence"]}}' >"${b16_body}"
+b16_out="$(python3 "${HARNESS}/dispatch-phase/scripts/m3-attach-skills.py" "${b16_body}")"
+if printf '%s\n' "${b16_out}" | grep -qx 'check-spec-readiness' \
+  && printf '%s\n' "${b16_out}" | grep -qx 'form-entity-persistence' \
+  && ! printf '%s\n' "${b16_out}" | grep -qx 'derive-story-oracles' \
+  && ! printf '%s\n' "${b16_out}" | grep -qx 'configure-quarkus-profiles'; then
+  echo "OK: B-16 attach is lint + operand_skills, not the five-wide bundle"
+else
+  echo "FAIL: B-16 attach set was: ${b16_out}" >&2
+  rc=1
+fi
+rm -f "${b16_body}"
+
+echo "== C-3(a) REFUSE mints a remediation receipt =="
+c3_tmp="$(mktemp -d "${TMPDIR:-/tmp}/c3-refuse.XXXXXX")"
+mkdir -p "${c3_tmp}/evidence/verdicts"
+printf '%s\n' '{"phase":"M4","verdict":"REFUSE","gate":"g1_kill_ratio","reason":"not pinned","routing":"blocked"}' \
+  > "${c3_tmp}/evidence/verdicts/refuse.json"
+if python3 "${SKILLS}/gates/check-release-readiness/scripts/check-verdict-routing.py" "${c3_tmp}"; then
+  c3_receipt="$(find "${c3_tmp}/evidence/derived/remediation" -name '*.json' 2>/dev/null | head -1)"
+  if [ -n "${c3_receipt}" ] \
+    && grep -q 'rhoai3.remediation-needed/v1' "${c3_receipt}" \
+    && grep -q 'leave-triage' "${c3_receipt}"; then
+    echo "OK: C-3(a) REFUSE wrote remediation receipt (leave-triage forbidden, not a path)"
+  else
+    echo "FAIL: C-3(a) expected remediation receipt under evidence/derived/remediation/" >&2
+    rc=1
+  fi
+else
+  echo "FAIL: C-3(a) legal REFUSE routing should pass and mint a receipt" >&2
+  rc=1
+fi
+rm -rf "${c3_tmp}"
+
+echo "== Phase 5 run-audit done-test (touch outside any claim window) =="
+python3 - "${HARNESS}/record-run-evidence/scripts" <<'PY' || rc=1
+import json, subprocess, sys, tempfile
+from pathlib import Path
+
+scripts = Path(sys.argv[1])
+snap_py = scripts / "snapshot-run-audit.py"
+an_py = scripts / "analyze-run-audit.py"
+td = Path(tempfile.mkdtemp())
+src = td / "src" / "main" / "java"
+src.mkdir(parents=True)
+touched = src / "Touched.java"
+touched.write_text("class Touched {}\n", encoding="utf-8")
+snap = td / "snap.json"
+win = td / "windows.json"
+win.write_text("[]\n", encoding="utf-8")
+r = subprocess.run(
+    [sys.executable, str(snap_py), str(td), "--windows-json", str(win), "--out", str(snap)],
+    capture_output=True,
+    text=True,
+)
+if r.returncode != 0:
+    print(f"FAIL: snapshot-run-audit: {r.stderr}", file=sys.stderr)
+    raise SystemExit(1)
+findings = td / "findings.json"
+r = subprocess.run(
+    [sys.executable, str(an_py), str(snap), "--out", str(findings)],
+    capture_output=True,
+    text=True,
+)
+if r.returncode != 0:
+    print(f"FAIL: analyze-run-audit: {r.stderr}", file=sys.stderr)
+    raise SystemExit(1)
+doc = json.loads(findings.read_text(encoding="utf-8"))
+hits = [f for f in doc.get("findings") or [] if f.get("kind") == "INTERVENTION"]
+paths = {f.get("path") for f in hits}
+want = "src/main/java/Touched.java"
+if doc.get("intervention_count") == 1 and want in paths:
+    print("OK: run-audit reports one INTERVENTION naming the out-of-window dest path")
+else:
+    print(
+        f"FAIL: run-audit expected 1 INTERVENTION for {want}, got {doc}",
+        file=sys.stderr,
+    )
+    raise SystemExit(1)
+PY
+
 echo "== create-path tip sync (R0/R3) =="
 python3 "${ROOT}/.hermes/skills/harness/dispatch-phase/scripts/check-create-path-tip-sync.py" "${ROOT}" || rc=1
 echo "== L7 park-on-block-loop self-test =="

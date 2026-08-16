@@ -1,0 +1,24 @@
+# A-1 overlay — compose over stock speckit. Do not author a second workflow.
+# Install: copied to .specify/workflows/overlays/speckit/ at provision.
+# Inspect: specify workflow resolve speckit
+# Run:     specify workflow run speckit
+# Never run the stock speckit workflow without this overlay (it ends at implement).
+id: "stop-before-implement"
+extends: "speckit"
+priority: 10
+edits:
+  - remove: implement
+  - insert_before: plan
+    step:
+      id: clarify
+      command: speckit.clarify
+      integration: "{{ inputs.integration }}"
+      input:
+        args: "{{ inputs.spec }}"
+  - replace: specify
+    step:
+      id: specify
+      command: speckit.specify
+      integration: "{{ inputs.integration }}"
+      input:
+        args: "{{ inputs.spec }}\n\nM1 evidence (read these files; do not invent endpoints or rule IDs):\nevidence/findings-handoff.json\nevidence/entry-point-inventory.json"

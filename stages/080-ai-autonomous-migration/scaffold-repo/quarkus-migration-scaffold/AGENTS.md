@@ -27,6 +27,10 @@ repository (`/projects/modernized`).
   trees on the destination.
 - REST resources under `/api/`; JSON via Jackson; health at `/q/health`
   (`/q/*` deliberately sits outside the application root path).
+- Spec Kit reads `.specify/memory/constitution.md` (provision copy of
+  `.hermes/skills/sdd/init-spec-workspace/assets/constitution.md`). That
+  file is the spec-kit half of this identity and of **Delivery gate** —
+  zero `[PLACEHOLDER]` / `[PROJECT_NAME]` tokens. Do not dump `pins.json`.
 - Pattern cards (on demand): skill `spring-to-quarkus-patterns`.
 - Extension add/rm (on demand): skill `manage-quarkus-extensions` (RH BOM policy;
   versions in `.hermes/pins.json` only).
@@ -81,7 +85,7 @@ from a pointer README).
 | `$HERMES_HOME` → `.hermes/home/` | Runtime (sessions/logs gitignored) |
 | `.hermes/skills/` | Scaffold golden **guidance** skills on `skills.external_dirs` (R-SK.9) |
 | `.hermes/skills/harness/` | Harness enforcement packages (path-invoke; not progressive-disclosure attach) |
-| Seat Kanban assignees | Named Hermes profiles `analyzer`/`planner`/`implementer`/`validator` (EX-4). Not `default`. Pillar heads stay Cursor. |
+| Seat Kanban assignees | Hermes profile `default` (C-2(a) single-persona). Named analyzer/planner/implementer/validator profiles are retired. Pillar heads stay Cursor. |
 | Hermes config | **Not yours to change.** Factory-owned / write-fenced (AD-013). Raise typed `needs_input` — never edit Managed Scope |
 | Seat constraint layers | EX-5 overlays: `approvals.deny` (survives `mode: off`), `HERMES_WRITE_SAFE_ROOT` in managed `.env`, `terminal.backend: local`. Do not retire the write-set hook. |
 | Phase DAG | Kanban `--parent` / `link` graph (`hermes kanban show --json` parents/children). Not card titles. `evidence/derived/phase-*-task-id.txt` is a Review pointer only. |
@@ -137,8 +141,11 @@ containment from board block alone.
 
 ### Spec Kit stop rule (AD-S)
 
-After `/speckit-tasks` (optional `/speckit-analyze`) → `kanban_create()`.
-**Never** `/speckit-implement`.
+After `/speckit-tasks` (optional `/speckit-analyze`) → Kanban mint.
+**Never** `/speckit-implement`. Run `specify workflow run speckit` so the
+project overlay removes `implement` and inserts `clarify`. Review gates
+stay in the graph; unattended abort is scripted (spec-kit generates ·
+scripts refuse).
 
 ### Task-id correlation (AD-H §7.5)
 

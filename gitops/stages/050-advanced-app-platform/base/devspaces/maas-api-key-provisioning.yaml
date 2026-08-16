@@ -1009,88 +1009,10 @@ data:
         return
       fi
 
-      # EX-4 — seat assignee profiles (product). Pillar heads stay Cursor.
-      # Official: `hermes profile create --description` is the kanban
-      # decomposer routing input. Dispatcher silent-fails unknown names.
-      local catalog="${PROJECT_DIR}/.hermes/skills/harness/dispatch-phase/references/assignee-profiles.json"
-      local hermes_bin="${HOME}/.local/bin/hermes"
-      if [ ! -x "${hermes_bin}" ] && command -v hermes >/dev/null 2>&1; then
-        hermes_bin="$(command -v hermes)"
-      fi
-      if [ ! -f "${catalog}" ]; then
-        echo "ERROR: EX-4 catalog missing: ${catalog}" >&2
-        return
-      fi
-      if [ ! -x "${hermes_bin}" ]; then
-        echo "ERROR: EX-4 hermes CLI missing — cannot create seat assignee profiles." >&2
-        return
-      fi
-      if ! (
-        export HERMES_HOME="${hermes_home}"
-        export HERMES_MANAGED_DIR="${managed_dir}"
-        export PATH="${HOME}/.local/bin:${PATH}"
-        python3 - "${catalog}" "${hermes_bin}" <<'EX4PROF'
-    import json, subprocess, sys
-
-    catalog, hermes = sys.argv[1], sys.argv[2]
-    data = json.loads(open(catalog, encoding="utf-8").read())
-    profiles = data.get("profiles") or {}
-    if not profiles:
-        print("ERROR: EX-4 catalog has no profiles", file=sys.stderr)
-        sys.exit(1)
-    for name, spec in profiles.items():
-        if name == "default":
-            print("ERROR: EX-4 forbids profile name default", file=sys.stderr)
-            sys.exit(1)
-        desc = ((spec or {}).get("description") or "").strip()
-        if not desc:
-            print(f"ERROR: EX-4 {name} missing description", file=sys.stderr)
-            sys.exit(1)
-        show = subprocess.run([hermes, "profile", "show", name], capture_output=True)
-        if show.returncode != 0:
-            cr = subprocess.run(
-                [
-                    hermes,
-                    "profile",
-                    "create",
-                    name,
-                    "--clone",
-                    "--no-alias",
-                    "--description",
-                    desc,
-                ],
-                capture_output=True,
-                text=True,
-            )
-            if cr.returncode != 0:
-                err = (cr.stderr or cr.stdout or "").strip()
-                print(f"ERROR: EX-4 profile create {name} failed: {err}", file=sys.stderr)
-                sys.exit(1)
-            print(f"EX-4: created seat profile {name} (--description set)")
-        else:
-            dr = subprocess.run(
-                [
-                    hermes,
-                    "profile",
-                    "describe",
-                    name,
-                    "--text",
-                    desc,
-                    "--overwrite",
-                ],
-                capture_output=True,
-                text=True,
-            )
-            if dr.returncode != 0:
-                err = (dr.stderr or dr.stdout or "").strip()
-                print(f"ERROR: EX-4 profile describe {name} failed: {err}", file=sys.stderr)
-                sys.exit(1)
-            print(f"EX-4: refreshed seat profile {name} (--description set)")
-    EX4PROF
-      ); then
-        echo "ERROR: EX-4 seat assignee profiles failed." >&2
-        return
-      fi
+      # C-2(a) — single-persona. Do not create analyzer/planner/implementer/
+      # validator profiles (R-V14.10). hermes profile create --clone isolated
+      # $HOME and crashed v19 M1. Cards use the product default profile.
+      echo "C-2(a): skip hermes profile create (single-persona)"
 
       # Secrets must stay in Managed Scope — never under HERMES_HOME.
       if [ -e "${hermes_home}/.env" ] || [ -e "${hermes_home}/auth.json" ]; then

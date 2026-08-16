@@ -71,7 +71,8 @@ Each `== … ==` banner is one section. In order, it asserts:
     fixture-only skip, body-digest immutability, and AD-H §19 provenance.
 11. R-M3.6 `dependency_wait` hold stamp (R-M3.5/7 persistence BOM retired DD4).
 12. CS-7 bundle exists-assert and CS-9 skill conformance (see below), AD-011
-    overlay presence, R-M3.9 wall-fit refusal at 42 operands @3600s.
+    overlay presence, R-M3.9 wall-fit refusal at 42 operands @3600s,
+    A-4/A-5/A-8 handover-mint from tasks.md.
 
 Two sub-lints are also runnable standalone:
 

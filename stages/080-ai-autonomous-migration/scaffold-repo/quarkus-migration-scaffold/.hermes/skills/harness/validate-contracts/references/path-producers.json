@@ -28,6 +28,12 @@
       "declared_by": "phase contract"
     },
     {
+      "id": "run-audit",
+      "prefixes": ["evidence/run-audit"],
+      "producer": "snapshot-run-audit.py / analyze-run-audit.py",
+      "declared_by": "Phase 5 run audit (fail-open observer)"
+    },
+    {
       "id": "mta-analyze",
       "prefixes": ["evidence/mta"],
       "producer": "scan-with-mta / mta-analyze-legacy.sh",

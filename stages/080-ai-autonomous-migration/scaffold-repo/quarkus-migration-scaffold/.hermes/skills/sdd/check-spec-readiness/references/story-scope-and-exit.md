@@ -14,29 +14,38 @@ including the **relationship** between them (T-8 / v17 wrong-class oracles).
 1. **Write-set legality** — `check-surgical-scopes.py`,
    `check-partition-coverage.py`, `assert-dependency-closure.py`,
    interface/compile-scope filters.
-2. **Class-legal exits** — stamp `exit_criteria` only from
-   `OPERAND_CLASS_SEMANTIC_EXITS[operand_class]` via skill
-   `derive-story-oracles`. Foreign semantic exits FAIL even beside a legal one
-   (dual-oracle refuse). **Unknown `operand_class` fail-closed** (empty legal
-   set — do not inherit the full vocab). `bootstrap` → `app_boots`;
-   `persistence` → `mapping_valid` (Architect E-20260814T181701Z).
+2. **Class-legal exit names** — `operand_class` is a **set** (string or
+   list) used for B-16 skill attachment and the union of
+   `OPERAND_CLASS_SEMANTIC_EXITS` names. The exit **cmd** is the phase
+   acceptance criteria (T-8 AMEND / Architect E-20260816T115106Z).
+   **OBJECT dropping the field. OBJECT a default `mvn -q test` on every
+   card.** Foreign semantic names vs the union FAIL even beside a legal
+   one (dual-oracle refuse). Unknown tokens fail-closed (empty legal
+   set — do not inherit the full vocab). `user_story` is AC-sourced.
+   `bootstrap` → `app_boots`; `persistence` → `mapping_valid`
+   (Architect E-20260814T181701Z). Skill `derive-story-oracles`.
 3. **Sizing / wall-fit** — `check-operand-count.py --wall-fit`.
 4. **Complete-cmd / product / DB security** — respective gates under
    check-spec-readiness / check-domain-parity / check-release-readiness.
 5. **SR-13 discriminating exit (L2 mint / L2a)** — `assert-mint-oracles.py`.
-   A test-shaped `exit_criteria[].cmd` (`mvn … test`) must name `proves`
-   test source(s) that sit in **this** `files_writable`. An unrelated dest
-   `src/test` file must not satisfy the oracle. `true` and a test cmd with
-   no named proving test refuse. Compile-shaped cmds are unchanged. Shape
-   (`shlex` + `mvn`) is necessary and not sufficient. Golden does not
+   The test proving **this card's AC** lives in **this** `files_writable`.
+   A test-shaped `exit_criteria[].cmd` (`mvn … test` or `mvn … verify`)
+   must name `proves` test source(s) that sit in **this** `files_writable`.
+   Each `proves` path that exists must contain an executable `@Test`
+   (B-1); at complete the named class must appear in
+   `target/surefire-reports`. An unrelated dest `src/test` file must not
+   satisfy the oracle. `true`, a script/`curl` card exit, and a test cmd
+   with no named proving test refuse. `mvn test-compile` is not
+   test-shaped for L2a. Compile-shaped cmds are unchanged. Shape (`shlex`
+   + Maven vehicle) is necessary and not sufficient. Golden does not
    require `mvn` on PATH. Do not stamp `failIfNoTests=true` as a mint
    recipe (the story that needs a test is the story that adds it).
-6. **File-granular ownership (V19-8)** — story grouping and file ownership
-   are separate steps. Native story-per-US does not make a multi-endpoint
-   controller unrepresentable (one story may create the resource file; a
-   later story may add verbs to the same file). After grouping exists, the
-   handover assigns each destination file **exactly one owner**. Overlaps
-   are a partition defect, not a grouping feature.
+   Live HTTP acceptance belongs to M4/M5 gate scripts, not card exits.
+6. **File-granular ownership (A-5)** — grouping and ownership are separate
+   steps. After grouping, the handover assigns each destination file
+   **exactly one owner**. **pom owner unique** — `pom.xml` has one writer;
+   later phases do not keep it. Overlaps are a partition defect, not a
+   grouping feature. Worktrees do not relax that invariant.
 
 ## Bank vocabulary (tip-sync / doctrine pins)
 

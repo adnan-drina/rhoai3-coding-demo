@@ -35,6 +35,8 @@ ALLOW_EXACT = frozenset(
         "evidence/entry-point-inventory.json",
         "evidence/findings-handoff.json",
         "evidence/mta-findings.json",
+        "evidence/mutation-evidence.json",
+        "evidence/parity.json",
         "governance/contracts/g1-kill-ratio-pin.json",
         # Seat / Managed Scope provision (not golden-committed)
         ".hermes/home/SOUL.md",
@@ -48,6 +50,7 @@ ALLOW_EXACT = frozenset(
 )
 ALLOW_PREFIXES = (
     "evidence/runs/",
+    "evidence/runtime/",
     "evidence/receipts/",
     "evidence/derived/",
     "evidence/acks/",

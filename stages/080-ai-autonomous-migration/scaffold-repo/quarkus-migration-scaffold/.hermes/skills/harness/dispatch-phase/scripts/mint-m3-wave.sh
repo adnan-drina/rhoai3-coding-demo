@@ -7,9 +7,9 @@
 #     --parent <m2_task_id> [--dry-run]
 #
 # Requires:
-#   - evidence/briefs/partition.json (write-once from M2)
-#   - evidence/bodies/m3-*.json (or bodies generated here — one per partition story)
-#   - M2 parent task id for created_cards attribution
+#   - evidence/briefs/partition.json (handover-mint receipt; Path-A authored refuse)
+#   - evidence/bodies/m3-*.json (assembled from that receipt)
+#   - wave-holder parent task id for created_cards attribution (must not be done)
 set -euo pipefail
 
 # SR-2: walk up to migration.yaml — never a parent-count.
@@ -61,7 +61,18 @@ die() { echo "mint-m3-wave: $*" >&2; exit 1; }
 [[ -f "${LINK_GRAPH}" ]] || die "missing ${LINK_GRAPH} (BV19-3)"
 
 PARTITION="${ROOT}/evidence/briefs/partition.json"
-[[ -f "${PARTITION}" ]] || die "missing ${PARTITION} — run M2 PLAN first"
+[[ -f "${PARTITION}" ]] || die "missing ${PARTITION} — run handover-mint.py first"
+python3 - "${PARTITION}" <<'PY' || die "PATH_A_PARTITION: evidence/briefs/partition.json is not a handover-mint receipt"
+import json, sys
+from pathlib import Path
+p = Path(sys.argv[1])
+try:
+    data = json.loads(p.read_text(encoding="utf-8"))
+except Exception:
+    sys.exit(1)
+if not isinstance(data, dict) or data.get("source") != "handover-mint":
+    sys.exit(1)
+PY
 
 CREATE="${ROOT}/.hermes/skills/harness/dispatch-phase/scripts/create-m3-implementer.sh"
 ASSERT="${ROOT}/.hermes/skills/harness/dispatch-phase/scripts/assert-m2b-created-cards-claim.sh"

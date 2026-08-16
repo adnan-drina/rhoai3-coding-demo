@@ -178,14 +178,15 @@ python3 "${ROOT}/.hermes/skills/harness/dispatch-phase/scripts/assert-bundle-ski
   --bundle m3-implementer \
   || die "CS-7 bundle exists-assert failed — fix .hermes/home/skill-bundles/m3-implementer.yaml"
 
-# Parse M3 skills + max_runtime from yaml via JSON reader (LG7 — do not eval parser output).
+# Parse M3 max_runtime from yaml (LG7). skills[] is the allow-list pool, not
+# attach-all-five — B-16 attaches check-spec-readiness + identity.operand_skills.
 PHASE_READER="${ROOT}/.hermes/skills/harness/dispatch-phase/scripts/read-phase-dispatch.py"
 MAX_RUNTIME="$(python3 "${PHASE_READER}" --yaml "${DISPATCH_YAML}" --phase M3 --print max_runtime_seconds)" \
   || die "phase-dispatch parse failed for M3"
-mapfile -t SKILLS < <(python3 "${PHASE_READER}" --yaml "${DISPATCH_YAML}" --phase M3 --print skills) \
-  || die "phase-dispatch skills parse failed for M3"
+mapfile -t SKILLS < <(python3 "${ROOT}/.hermes/skills/harness/dispatch-phase/scripts/m3-attach-skills.py" "${BODY_JSON}") \
+  || die "B-16 attach skills failed for ${BODY_JSON}"
 
-[[ ${#SKILLS[@]} -gt 0 ]] || die "no M3 skills parsed from phase-dispatch.yaml"
+[[ ${#SKILLS[@]} -gt 0 ]] || die "B-16 attach set empty for ${BODY_JSON}"
 [[ -n "${MAX_RUNTIME}" ]] || die "no M3 max_runtime_seconds"
 
 # AD-010 §3b — optional per-story override when body stamps effort-high.
@@ -245,12 +246,12 @@ CARD_CHARS="$(wc -c <"${BODY_MD}" | tr -d ' ')"
   || die "F6 card budget exceeded: ${CARD_CHARS} chars > 1500 (slim standing procedure; see m3-implementer-standing.md)"
 echo "create-m3-implementer: F6 card_chars=${CARD_CHARS}/1500" >&2
 
-# EX-4 — named seat profile (not default). Dispatcher silent-fails unknown names.
+# C-2(a) — single-persona. Product default is the worker identity (R-V14.10).
 ASSIGNEE="$(
   python3 "${ROOT}/.hermes/skills/harness/dispatch-phase/scripts/resolve-seat-assignee.py" M3
 )"
-[[ -n "${ASSIGNEE}" && "${ASSIGNEE}" != "default" ]] \
-  || die "EX-4: M3 assignee resolve failed"
+[[ -n "${ASSIGNEE}" ]] \
+  || die "C-2(a): M3 assignee resolve failed"
 
 # Deputy E-20260811T131900Z — M3 cards MUST be born parked. v12 lost v11
 # born-parked behavior; create+dispatch let the daemon race M2b (serial breach).
@@ -284,7 +285,7 @@ fi
 
 command -v hermes >/dev/null 2>&1 || die "hermes not on PATH"
 hermes profile show "${ASSIGNEE}" >/dev/null 2>&1 \
-  || die "EX-4: assignee profile '${ASSIGNEE}' missing (dispatcher would silent-fail)"
+  || die "C-2(a): assignee profile '${ASSIGNEE}' missing (dispatcher would silent-fail)"
 cd "${WORKSPACE_DIR}"
 OUT="$(hermes kanban create "${CREATE_ARGS[@]}" "${TITLE}")"
 echo "${OUT}"
@@ -319,10 +320,11 @@ print(f"OK: story-card map {story} -> {task}")
 PY
 # Architect E-20260811T200911Z Class A — park-at-birth fail-closed.
 # Parent may already be done → Hermes auto-promotes dependency children to ready.
-# Force needs_input park and verify; never emit ack-request for dispatchable mint.
+# Force harness park with kind=dependency (B-6: must not spend needs_input
+# recurrence). Verify; never emit ack-request for dispatchable mint.
 # Architect E-20260811T200911Z Class A — park-at-birth fail-closed.
 # Parent may already be done → Hermes auto-promotes dependency children to ready.
-# Force needs_input park (CLI + sqlite fallback) and verify; never emit ack for ready.
+# Force dependency park (CLI + sqlite fallback) and verify; never emit ack for ready.
 _read_status() {
   hermes kanban show "$1" --json 2>/dev/null | python3 -c 'import json,sys
 try:
@@ -335,7 +337,9 @@ except Exception:
 _park_status="$(_read_status "${TASK_ID}")"
 if [[ "${_park_status}" != "blocked" && "${_park_status}" != "triage" ]]; then
   # Prefer CLI; --kind before task_id (Hermes argparse). Fallback: sqlite.
-  hermes kanban block --kind needs_input "${TASK_ID}" park-at-birth >/dev/null 2>&1 || true
+  # B-6: harness park uses kind=dependency so it does not spend the worker
+  # needs_input recurrence budget (v19 S-005 serial_park consumed recurrence 1).
+  hermes kanban block --kind dependency "${TASK_ID}" park-at-birth >/dev/null 2>&1 || true
   _park_status="$(_read_status "${TASK_ID}")"
 fi
 if [[ "${_park_status}" != "blocked" && "${_park_status}" != "triage" ]]; then

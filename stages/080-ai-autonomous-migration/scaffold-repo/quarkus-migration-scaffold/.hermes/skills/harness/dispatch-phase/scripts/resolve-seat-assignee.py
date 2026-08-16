@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""EX-4: print the seat Kanban assignee profile for a phase.
+"""C-2(a): print the seat Kanban assignee. Single-persona — always default.
 
-Walks up to migration.yaml (SR-2). Refuses assignee default. Catalog:
-.hermes/skills/harness/dispatch-phase/references/assignee-profiles.json
+Walks up to migration.yaml (SR-2). Catalog may still list retired names;
+this resolver ignores them. Product `default` is the worker identity.
 """
 from __future__ import annotations
 
@@ -20,6 +20,8 @@ CATALOG_REL = (
     / "assignee-profiles.json"
 )
 
+SINGLE_PERSONA = "default"
+
 
 def migration_root(start: Path) -> Path:
     cur = start.resolve()
@@ -36,35 +38,24 @@ def migration_root(start: Path) -> Path:
 def load_catalog(root: Path) -> dict:
     path = root / CATALOG_REL
     if not path.is_file():
-        raise SystemExit(f"EX-4: missing assignee catalog {path}")
+        raise SystemExit(f"C-2(a): missing assignee catalog {path}")
     data = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
-        raise SystemExit("EX-4: catalog is not an object")
+        raise SystemExit("C-2(a): catalog is not an object")
     return data
 
 
 def resolve(phase: str, data: dict) -> str:
-    phases = data.get("phases") or {}
-    profiles = data.get("profiles") or {}
-    name = phases.get(phase)
-    if not name:
-        raise SystemExit(f"EX-4: no seat assignee mapped for phase {phase!r}")
-    if name == "default":
-        raise SystemExit("EX-4: assignee default is the identity hole — refused")
-    spec = profiles.get(name)
-    if not isinstance(spec, dict):
-        raise SystemExit(f"EX-4: profile {name!r} missing from catalog")
-    desc = (spec.get("description") or "").strip()
-    if not desc:
-        raise SystemExit(f"EX-4: profile {name!r} has empty description")
-    return name
+    """C-2(a): every phase resolves to default. Catalog is documentation only."""
+    _ = phase, data
+    return SINGLE_PERSONA
 
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(
-        description="Print the EX-4 seat assignee profile for a Kanban phase."
+        description="Print the C-2(a) single-persona seat assignee (always default)."
     )
-    p.add_argument("phase", help="M1|M2|M3|M4|M5|factory (M2a/M2b map to planner)")
+    p.add_argument("phase", help="M1|M2|M3|M4|M5|factory (all map to default)")
     p.add_argument(
         "--root",
         default="",

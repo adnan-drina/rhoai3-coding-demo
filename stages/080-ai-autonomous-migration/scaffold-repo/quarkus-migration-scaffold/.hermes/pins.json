@@ -16,6 +16,11 @@
       "bom_artifact_id": "quarkus-bom",
       "version": "3.27.3.SP1-redhat-00002",
       "plugin_artifact_id": "quarkus-maven-plugin"
+    },
+    "mapstruct": {
+      "status": "unpinned",
+      "doctrine": "pending R-SKILL-F",
+      "note": "Do not invent a GAV. v19 measured componentModel=cdi as UnsatisfiedResolutionException. Lead MapperCdi wrappers are an incident fix, not doctrine (B-3)."
     }
   }
 }

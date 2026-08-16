@@ -62,11 +62,15 @@ Hot-path work stays in native Quarkus APIs, not compatibility shims.
 
 - `.hermes/pins.json` is the version authority; this constitution names
   the stack so every native spec-kit command sees it as context.
-- After `/speckit-tasks`, convert `tasks.md` into Hermes `kanban_create`
-  calls. **Never run `/speckit-implement`.**
+- After `/speckit-tasks`, convert `tasks.md` into Hermes Kanban cards.
+  **Never run `/speckit-implement`.** Run `specify workflow run speckit`
+  so the project overlay removes `implement`.
+- Phase acceptance criteria name the proving test in **that story's**
+  write-set (T-8). An HTTP assertion is a `@QuarkusTest` there, not
+  `curl`. Live HTTP acceptance is M4/M5.
 - File-granular write ownership is assigned **after** story grouping
   exists: each destination file has exactly one owner story.
 - Deviations from these articles must appear in the plan's Complexity
   Tracking table — silent deviations are review findings.
 
-**Version**: 1.0.0 | **Ratified**: 2026-08-15 | **Last Amended**: 2026-08-15
+**Version**: 1.1.0 | **Ratified**: 2026-08-15 | **Last Amended**: 2026-08-16

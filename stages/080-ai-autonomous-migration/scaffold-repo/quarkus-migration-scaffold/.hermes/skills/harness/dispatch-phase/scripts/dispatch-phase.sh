@@ -308,13 +308,12 @@ substitution / path invention / specimen-body priming. Measure the harness.
      **Do not** freeform-write `partition.json` as a silent substitute.
    - Evidence: Spec Kit seed (e.g. `specs/**/spec.md`) **or** a typed
      `needs_input` block comment — required before Done.
-3. **Write-once** `evidence/briefs/partition.json` (`rhoai3.partition/v1`) **only after**
-   Spec Kit seed (or Operator disposition of a typed BLOCK) — Input-manifest sources
-   only; **not** `evidence/bodies/*`.
-4. **Partition-coverage gate** (Architect E-20260811T133858Z): run
-   `python3 .hermes/skills/sdd/check-spec-readiness/scripts/check-partition-coverage.py . --write-receipt evidence/receipts/partition-coverage/latest.json`
-   — must print `PARTITION_COVERAGE: VALID` (fail-closed). See
-   `.hermes/skills/sdd/check-spec-readiness/references/story-scope-and-exit.md`.
+3. **Do not write** `evidence/briefs/partition.json`. Orchestrator
+   `handover-mint.py` writes that file as a **receipt** from `tasks.md`
+   (A-4/A-6). Path-A authoring is a fail-closed refuse.
+4. **Do not** run partition-coverage or assemble bodies here — handover-mint
+   does that after `tasks.md` exists. See
+   `.hermes/skills/harness/dispatch-phase/references/handover-mint.md`.
 5. **Per-artifact Spec Kit resume ladder** (Architect E-20260811T122959Z — decision-complete;
    contract `.hermes/skills/sdd/check-spec-readiness/references/sdd-ordering.md`; retired inverted v11 R-M2.6 and
    M2a/M2b split — see `governance/retired/m2b-resume-ladder.md`):
@@ -323,23 +322,22 @@ substitution / path invention / specimen-body priming. Measure the harness.
    - **`/speckit-plan`:** precondition = `spec.md` present. **Skip iff** `plan.md`
      already exists. Otherwise run `/speckit-plan` (cite `sdd-ordering.md` +
      `story-sizing.md`). **Never** jump over plan just because `spec.md` exists.
+   - **`/speckit-clarify`:** between specify and plan when the overlay inserted it.
    - **`/speckit-tasks`:** always last. Precondition = `plan.md` present — else typed
-     `needs_input` BLOCK. Then emit tasks artifacts + typed M3 body JSONs under
-     `evidence/bodies/` (bodies only — **no** `kanban create`).
+     `needs_input` BLOCK. Emit `tasks.md` only — **no** `kanban create`, **no**
+     typed M3 bodies, **no** `partition.json`.
 6. **STOP** — do **not** run `create-m3-implementer.sh` or `mint-m3-wave.sh` here.
    Lead/Operator runs **`mint-m3-wave.sh --parent $TASK_ID`** after M2 Done
    (orchestrator-owned mint AD-016/GR2). Cards remain born-parked; serial GO separate.
 
 ## Done when
-- Spec Kit invoke evidenced (seed + plan + tasks) **or** typed `needs_input` BLOCK recorded
-- `evidence/briefs/partition.json` present (write-once) only after Spec Kit path satisfied
-- `check-partition-coverage.py` → **VALID** (+ receipt)
-- Typed M3 body JSONs present for every partition story (mint consumes them)
+- Spec Kit invoke evidenced (seed + plan + tasks.md) **or** typed `needs_input` BLOCK recorded
+- **No** `partition.json` authored on this card (handover-mint writes the receipt)
 - **No** M3 Kanban children created on this card
 
 ## Constraints
 - workspace: dir:/projects/modernized
-- Do not rewrite write-once `partition.json`
+- Do not author `partition.json` (handover-mint receipt only)
 - Prefer short tool results; avoid bulk-pasting bodies (context margin)
 - AD-009 hard budget / crash requeue / protocol_untyped as prior M2 law; no MiniMax
 - Soft-K @2700 not used on M2 (max_runtime=3600); no MiniMax
@@ -427,12 +425,12 @@ esac
 
 ensure_hermes_home_config
 
-# EX-4 — named seat profile (not default). Dispatcher silent-fails unknown names.
+# C-2(a) — single-persona. Product default is the worker identity (R-V14.10).
 ASSIGNEE="$(
   python3 "${ROOT}/.hermes/skills/harness/dispatch-phase/scripts/resolve-seat-assignee.py" "${PHASE}"
 )"
-[[ -n "${ASSIGNEE}" && "${ASSIGNEE}" != "default" ]] \
-  || die "EX-4: assignee resolve failed for phase ${PHASE}"
+[[ -n "${ASSIGNEE}" ]] \
+  || die "C-2(a): assignee resolve failed for phase ${PHASE}"
 
 CREATE_ARGS=(
   --json
@@ -462,7 +460,7 @@ fi
 
 command -v hermes >/dev/null 2>&1 || die "hermes not on PATH"
 hermes profile show "${ASSIGNEE}" >/dev/null 2>&1 \
-  || die "EX-4: assignee profile '${ASSIGNEE}' missing (dispatcher would silent-fail)"
+  || die "C-2(a): assignee profile '${ASSIGNEE}' missing (dispatcher would silent-fail)"
 python3 "${ROOT}/.hermes/skills/harness/dispatch-phase/scripts/park-on-block-loop.py" \
   --db "${HERMES_HOME}/kanban.db" \
   || die "L7 park-on-block-loop failed"

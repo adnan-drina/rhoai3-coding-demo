@@ -76,11 +76,9 @@ def factory_claims(root: Path) -> list[str]:
 
 
 def typed_g1_waiver(root: Path) -> str | None:
-    """Return relative path of a typed Operator g1 kill-ratio waiver ack, else None.
+    """Return relative path of a g1-kill-ratio-waiver ack if present, else None.
 
-    Self-reported `g1_kill_ratio_waiver: true` on a verdict is NOT authority
-    (Deputy E-20260813T144954Z P1). Waiver path is the pin contract location:
-    evidence/acks/g1-kill-ratio-waiver*.ack.yaml
+    B-4/C-3(a): presence of this file refuses M5 ACCEPT — it is not authority.
     """
     adir = root / "evidence" / "acks"
     if not adir.is_dir():
@@ -278,30 +276,27 @@ def full_accept_ok(root: Path, obj: dict) -> str | None:
     pinned_field = obj.get("g1_kill_ratio_threshold_pinned") in (True, "true", "yes", 1)
     pin_art = pinned_kill_ratio_pass(root)
     waiver_art = typed_g1_waiver(root)
-    self_waiver = obj.get("g1_kill_ratio_waiver") in (True, "true", "yes", 1) or (
-        isinstance(obj.get("operator_waiver"), dict)
-        and obj["operator_waiver"].get("g1_kill_ratio") in (True, "true", "yes", 1)
+    self_waiver = (
+        "g1_kill_ratio_waiver" in obj
+        or obj.get("g1_kill_ratio_waiver") in (True, "true", "yes", 1)
+        or (
+            isinstance(obj.get("operator_waiver"), dict)
+            and "g1_kill_ratio" in obj["operator_waiver"]
+        )
     )
+    if self_waiver or waiver_art:
+        return (
+            "g1_kill_ratio_waiver / operator_waiver cannot author ACCEPT "
+            "(B-4/C-3(a); validator has no waiver path)"
+        )
     if kill == "pass" and not (pinned_field or pin_art):
         return "g1_kill_ratio=PASS without threshold pin artifact or field"
-    if kill in {"", "pending_threshold"}:
-        if waiver_art:
-            return None
-        if self_waiver and not waiver_art:
-            return (
-                "TRUST_UNVERIFIED: g1_kill_ratio_waiver on verdict is not authority — "
-                "need evidence/acks/g1-kill-ratio-waiver*.ack.yaml or pin PASS "
-                "(Deputy E-20260813T144954Z P1)"
-            )
-        if pin_art:
-            return None
-        return (
-            "M5 full ACCEPT needs kill-ratio PASS (pinned artifact) or typed "
-            "g1-kill-ratio-waiver ack"
-        )
     if kill == "pass" and (pinned_field or pin_art):
         return None
-    return None
+    return (
+        "M5 full ACCEPT needs g1_kill_ratio PASS and threshold pin — "
+        "if G-1 cannot be computed the verdict is not ACCEPT (B-4)"
+    )
 
 
 def main() -> int:

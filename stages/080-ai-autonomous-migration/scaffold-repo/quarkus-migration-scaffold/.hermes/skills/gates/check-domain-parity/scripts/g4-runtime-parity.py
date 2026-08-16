@@ -22,7 +22,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
-from verdict import expect, write_verdict  # noqa: E402
+from verdict import expect, product_gate_verdict, write_verdict, INCONCLUSIVE_FIXTURE  # noqa: E402
 
 EXIT_CODES = """Exit codes:
   0  pass — every admission fixture produced its expected verdict and every
@@ -73,8 +73,22 @@ def main() -> int:
         default=".",
         help="product root containing governance/fixtures/admission (default: .)",
     )
+    ap.add_argument(
+        "--product",
+        action="store_true",
+        help="score dest evidence only; fixtures cannot ACCEPT (B-5)",
+    )
     args = ap.parse_args()
     root = Path(args.root)
+    if args.product:
+        evidence = root / "evidence" / "parity.json"
+        computed = (
+            evaluate(root / "evidence") if evidence.is_file() else INCONCLUSIVE_FIXTURE
+        )
+        got = product_gate_verdict(computed, evidence if evidence.is_file() else None)
+        print(f"PRODUCT G-4: {got}")
+        print(f"PRODUCT G-4: {got}", file=sys.stderr)
+        return 0
     base = root / ".hermes/skills/gates/check-release-readiness/fixtures/admission/g4-runtime-parity"
     expected = {
         "known-good": "ACCEPT",

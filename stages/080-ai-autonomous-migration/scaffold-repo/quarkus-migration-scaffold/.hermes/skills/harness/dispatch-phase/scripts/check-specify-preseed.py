@@ -34,17 +34,20 @@ def main() -> int:
         / "assets"
         / "constitution.md"
     )
-    provision_workflow = (
+    provision_overlay = (
         root
         / ".hermes"
         / "skills"
         / "sdd"
         / "init-spec-workspace"
         / "assets"
-        / "sdd-to-tasks.workflow.yml"
+        / "stop-before-implement.overlay.yml"
     )
     dest_constitution = specify / "memory" / "constitution.md"
-    dest_workflow = specify / "workflows" / "sdd-to-tasks.yml"
+    dest_overlay = (
+        specify / "workflows" / "overlays" / "speckit" / "stop-before-implement.yml"
+    )
+    dest_legacy_workflow = specify / "workflows" / "sdd-to-tasks.yml"
     bad = 0
 
     if not specify.is_dir():
@@ -103,7 +106,7 @@ def main() -> int:
         bad = 1
     else:
         ctext = provision_constitution.read_text(encoding="utf-8")
-        if "[PRINCIPLE_1" in ctext or "[PROJECT_NAME]" in ctext:
+        if "[PRINCIPLE_1" in ctext or "[PROJECT_NAME]" in ctext or "[PLACEHOLDER]" in ctext:
             print("FAIL: constitution asset still has spec-kit placeholders", file=sys.stderr)
             bad = 1
         elif "3.27.3.SP1" not in ctext or "Java 21" not in ctext:
@@ -115,29 +118,42 @@ def main() -> int:
         else:
             print("OK: tip constitution asset names Red Hat Quarkus + Java 21")
 
-    if not provision_workflow.is_file():
+    if not provision_overlay.is_file():
         print(
-            "FAIL: missing tip workflow "
-            ".hermes/skills/sdd/init-spec-workspace/assets/sdd-to-tasks.workflow.yml",
+            "FAIL: missing tip overlay "
+            ".hermes/skills/sdd/init-spec-workspace/assets/"
+            "stop-before-implement.overlay.yml",
             file=sys.stderr,
         )
         bad = 1
     else:
-        wtext = provision_workflow.read_text(encoding="utf-8")
+        wtext = provision_overlay.read_text(encoding="utf-8")
         if "command: speckit.implement" in wtext:
             print(
-                "FAIL: sdd-to-tasks workflow must not invoke speckit.implement",
+                "FAIL: speckit overlay must not invoke speckit.implement",
                 file=sys.stderr,
             )
             bad = 1
-        elif "speckit.clarify" not in wtext or "handoff-kanban" not in wtext:
+        elif "remove: implement" not in wtext:
+            print("FAIL: speckit overlay missing remove: implement", file=sys.stderr)
+            bad = 1
+        elif "speckit.clarify" not in wtext:
+            print("FAIL: speckit overlay missing speckit.clarify", file=sys.stderr)
+            bad = 1
+        elif "evidence/findings-handoff.json" not in wtext:
             print(
-                "FAIL: workflow missing speckit.clarify or handoff-kanban gate",
+                "FAIL: speckit overlay missing M1 findings-handoff path",
+                file=sys.stderr,
+            )
+            bad = 1
+        elif "evidence/entry-point-inventory.json" not in wtext:
+            print(
+                "FAIL: speckit overlay missing M1 entry-point-inventory path",
                 file=sys.stderr,
             )
             bad = 1
         else:
-            print("OK: tip sdd-to-tasks workflow (clarify, no implement)")
+            print("OK: tip speckit overlay (clarify, no implement, M1 paths)")
 
     if specify.is_dir():
         if not dest_constitution.is_file():
@@ -160,14 +176,22 @@ def main() -> int:
                 bad = 1
             else:
                 print("OK: dest constitution populated")
-        if not dest_workflow.is_file():
+        if dest_legacy_workflow.is_file():
             print(
-                "FAIL: missing .specify/workflows/sdd-to-tasks.yml",
+                "FAIL: leftover Path-A .specify/workflows/sdd-to-tasks.yml "
+                "(A-1 overlay replaces it; re-run init-workspace.sh)",
+                file=sys.stderr,
+            )
+            bad = 1
+        if not dest_overlay.is_file():
+            print(
+                "FAIL: missing .specify/workflows/overlays/speckit/"
+                "stop-before-implement.yml",
                 file=sys.stderr,
             )
             bad = 1
         else:
-            print("OK: dest sdd-to-tasks workflow installed")
+            print("OK: dest speckit overlay installed")
 
     if bad:
         print("FAIL: Spec Kit preseed (R0 / provision-owns-tools)", file=sys.stderr)

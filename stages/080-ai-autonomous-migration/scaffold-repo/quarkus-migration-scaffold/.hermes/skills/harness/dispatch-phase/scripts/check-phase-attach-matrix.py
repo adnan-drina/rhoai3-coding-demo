@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """AD-002G P0.2 — phase-dispatch.yaml skills[] must match attach matrix law.
 
-Exit 0 when M3 is exactly the IMPLEMENT preload in phase-dispatch.yaml
-(check-spec-readiness + transform workhorse + T-8/RS1/T-7) and other phases
-include their required minimums. Drift → refuse create.
+Exit 0 when each phase lists its required minimums. M3 skills[] is the
+**allowed attach pool** (B-16); create-m3 attaches check-spec-readiness plus
+identity.operand_skills, not the whole five-wide bundle. Extra helpers on
+non-exact phases are allowed.
 """
 from __future__ import annotations
 
@@ -31,9 +32,9 @@ REQUIRED_MIN: dict[str, frozenset[str]] = {
     "M4": frozenset({"check-spec-readiness", "check-domain-parity"}),
     "M5": frozenset({"check-spec-readiness", "check-domain-parity"}),
 }
-# M3 is exact-set (AD-002F slim + later T-8/RS1/T-7 attaches that tip-sync
-# already requires). Other phases may attach additional helpers.
-EXACT: frozenset[str] = frozenset({"M3"})
+# M3 yaml skills[] is the allow-list pool (B-16), not an exact attach set.
+# Extra helpers may be listed. create-m3 subsets from identity.operand_skills.
+EXACT: frozenset[str] = frozenset()
 
 
 def parse_phase_skills(text: str) -> dict[str, list[str]]:

@@ -54,7 +54,7 @@ new behaviour, weaken G-1…G-4, or replace free-primitives / MTA.
 |------|----------|
 | `references/rest-annotations.md` | JAX-RS / RESTEasy → `quarkus-rest` annotation map |
 | `references/exception-mapping.md` | Local/global exception handlers; the advice-class gotcha; legacy error-body shape |
-| `references/di-config.md` | Scopes, profiles, MapStruct `componentModel=cdi` (Phase-4 feedforward) |
+| `references/di-config.md` | Scopes, profiles, MapStruct (doctrine pending R-SKILL-F; do not mandate `componentModel=cdi`) |
 | `references/persistence.md` | Spring Data → Panache **or** EntityManager (decide before claim); deep form → skill `form-entity-persistence` |
 | `references/transitive-supporting-types.md` | Partitioned DTO/mapper closure — supporting types decision (R-SKILL-A) |
 | `references/jdbc-anti-essay.md` | Raw `JdbcTemplate` on destination — write the Agroal/injection form, do not essay |

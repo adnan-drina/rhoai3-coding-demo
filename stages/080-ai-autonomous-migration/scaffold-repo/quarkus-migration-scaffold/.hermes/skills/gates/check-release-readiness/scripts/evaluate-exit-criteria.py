@@ -216,6 +216,48 @@ def main() -> int:
             "R-M3.31: wallish + incomplete checkpoint → overall_ok=false "
             "(compile-only green is not product PASS)"
         )
+    if not args.skip_cmds:
+        try:
+            mig = _migration_root(Path(__file__))
+        except FileNotFoundError:
+            mig = root
+        spec = (
+            mig
+            / ".hermes"
+            / "skills"
+            / "sdd"
+            / "check-spec-readiness"
+            / "scripts"
+        )
+        if spec.is_dir() and str(spec) not in sys.path:
+            sys.path.insert(0, str(spec))
+        try:
+            from specimen_agnostic import proves_executable_errors  # type: ignore
+        except ImportError:
+            proves_executable_errors = None  # type: ignore
+        if proves_executable_errors is None:
+            cmd_failed.append("proves_executable")
+            results.append(
+                {
+                    "check": "proves_executable",
+                    "kind": "assert",
+                    "ok": False,
+                    "detail": "specimen_agnostic.proves_executable_errors missing",
+                }
+            )
+        else:
+            for err in proves_executable_errors(root, body, stage="complete"):
+                cmd_failed.append("proves_executable")
+                results.append(
+                    {
+                        "check": "proves_executable",
+                        "kind": "assert",
+                        "ok": False,
+                        "detail": err,
+                    }
+                )
+        if cmd_failed:
+            overall_ok = False
     payload = {
         "schema": SCHEMA,
         "task_id": args.task_id,

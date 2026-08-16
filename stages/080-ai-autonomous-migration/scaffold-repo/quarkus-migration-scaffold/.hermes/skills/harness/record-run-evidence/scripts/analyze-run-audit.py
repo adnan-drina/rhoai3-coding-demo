@@ -1,0 +1,218 @@
+#!/usr/bin/env python3
+"""Phase 5 run-audit analyzer (fail-open observer). Never a gate.
+
+Three checks against a snapshot:
+  - out-of-window dest edit ⇒ INTERVENTION
+  - in-window but not in that card's files_writable ⇒ OOS write
+  - done with no matching worker kanban_complete / status change with no
+    task_event ⇒ forced transition
+
+Harness-written prefixes from SR-8 (evidence/**) are allow-listed.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+SCHEMA = "rhoai3.run-audit-findings/v1"
+HARNESS_PREFIXES = (
+    "evidence/",
+    ".hermes/",
+    ".specify/",
+    "specs/",
+    "target/",
+    ".git/",
+)
+
+
+def _in_window(mtime: float, windows: list[dict]) -> dict | None:
+    for w in windows:
+        start = w.get("started_at")
+        end = w.get("ended_at")
+        try:
+            start_f = float(start) if start is not None else None
+        except (TypeError, ValueError):
+            start_f = None
+        try:
+            end_f = float(end) if end is not None else None
+        except (TypeError, ValueError):
+            end_f = None
+        if start_f is None:
+            continue
+        if mtime < start_f:
+            continue
+        if end_f is not None and mtime > end_f:
+            continue
+        if end_f is None:
+            # open window
+            return w
+        return w
+    return None
+
+
+def _is_dest_path(rel: str) -> bool:
+    if rel == "pom.xml" or rel.startswith("src/"):
+        return True
+    return False
+
+
+def _is_harness(rel: str) -> bool:
+    return any(rel == p.rstrip("/") or rel.startswith(p) for p in HARNESS_PREFIXES)
+
+
+def analyze(snap: dict, events: list[dict] | None, comments: list[dict] | None) -> dict:
+    windows = snap.get("claim_windows") or []
+    if not isinstance(windows, list):
+        windows = []
+    files = snap.get("files") or {}
+    findings: list[dict] = []
+    for rel, meta in files.items():
+        if not isinstance(meta, dict):
+            continue
+        if _is_harness(rel) or not _is_dest_path(rel):
+            continue
+        mtime = meta.get("mtime")
+        try:
+            mtime_f = float(mtime)
+        except (TypeError, ValueError):
+            continue
+        hit = _in_window(mtime_f, windows)
+        if hit is None:
+            findings.append(
+                {
+                    "kind": "INTERVENTION",
+                    "path": rel,
+                    "mtime": mtime_f,
+                    "note": "dest mtime falls inside no worker claim window",
+                }
+            )
+            continue
+        writable = hit.get("files_writable") or []
+        if isinstance(writable, list) and writable:
+            allowed = {str(x) for x in writable}
+            if rel not in allowed:
+                findings.append(
+                    {
+                        "kind": "OOS_WRITE",
+                        "path": rel,
+                        "task_id": hit.get("task_id"),
+                        "note": "mtime inside claim window but path not in files_writable",
+                    }
+                )
+    events = events or []
+    comments = comments or []
+    done_ids = {
+        str(e.get("task_id"))
+        for e in events
+        if str(e.get("status") or "").lower() == "done"
+        or str(e.get("to_status") or "").lower() == "done"
+    }
+    completes = {
+        str(e.get("task_id"))
+        for e in events
+        if str(e.get("event") or e.get("kind") or "").lower()
+        in {"kanban_complete", "complete", "task_complete"}
+    }
+    for tid in sorted(done_ids):
+        if tid and tid not in completes:
+            findings.append(
+                {
+                    "kind": "FORCED_TRANSITION",
+                    "task_id": tid,
+                    "note": "status done with no matching worker kanban_complete",
+                }
+            )
+    status_changes = [
+        e
+        for e in events
+        if e.get("to_status") or str(e.get("event") or "").lower() == "status_change"
+    ]
+    evented = {
+        str(e.get("task_id"))
+        for e in events
+        if str(e.get("event") or e.get("kind") or "")
+        and str(e.get("event") or e.get("kind") or "").lower() != "status_change"
+    }
+    for e in status_changes:
+        tid = str(e.get("task_id") or "")
+        if tid and tid not in evented and str(e.get("event") or "").lower() == "status_change":
+            # status_change rows without a sibling task_event of another kind
+            if not any(
+                str(x.get("task_id")) == tid
+                and str(x.get("event") or x.get("kind") or "").lower()
+                not in {"status_change", ""}
+                for x in events
+            ):
+                findings.append(
+                    {
+                        "kind": "FORCED_TRANSITION",
+                        "task_id": tid,
+                        "note": "status change with no corresponding task_event",
+                    }
+                )
+    foreign_comments = 0
+    for c in comments:
+        author = str(c.get("author") or "")
+        worker = str(c.get("worker") or c.get("assignee") or "")
+        if author and worker and author != worker:
+            foreign_comments += 1
+            findings.append(
+                {
+                    "kind": "FOREIGN_COMMENT",
+                    "task_id": c.get("task_id"),
+                    "author": author,
+                    "note": "task_comments author is not the card worker",
+                }
+            )
+    interventions = [f for f in findings if f.get("kind") == "INTERVENTION"]
+    return {
+        "schema": SCHEMA,
+        "ts": snap.get("ts"),
+        "intervention_count": len(interventions),
+        "foreign_comment_count": foreign_comments,
+        "findings": findings,
+    }
+
+
+def main(argv: list[str] | None = None) -> int:
+    p = argparse.ArgumentParser(
+        description="Analyze a run-audit snapshot (observer, not a gate). Exit 0 always unless usage error."
+    )
+    p.add_argument("snapshot", help="snapshot JSON from snapshot-run-audit.py")
+    p.add_argument("--events-json", default="", help="optional task_event list")
+    p.add_argument("--comments-json", default="", help="optional task_comments list")
+    p.add_argument("--out", default="", help="optional findings JSON path")
+    args = p.parse_args(argv)
+    path = Path(args.snapshot)
+    if not path.is_file():
+        print(f"FAIL: missing snapshot {path}", file=sys.stderr)
+        return 2
+    snap = json.loads(path.read_text(encoding="utf-8"))
+    events = None
+    comments = None
+    if args.events_json:
+        events = json.loads(Path(args.events_json).read_text(encoding="utf-8"))
+    if args.comments_json:
+        comments = json.loads(Path(args.comments_json).read_text(encoding="utf-8"))
+    report = analyze(snap, events, comments)
+    text = json.dumps(report, indent=2) + "\n"
+    if args.out:
+        out = Path(args.out)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(text, encoding="utf-8")
+        print(f"RUN_AUDIT_FINDINGS={out}", file=sys.stderr)
+    else:
+        sys.stdout.write(text)
+    # Fail-open: never gate. Print a count on stderr for humans.
+    print(
+        f"RUN_AUDIT intervention_count={report['intervention_count']} "
+        f"findings={len(report['findings'])}",
+        file=sys.stderr,
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

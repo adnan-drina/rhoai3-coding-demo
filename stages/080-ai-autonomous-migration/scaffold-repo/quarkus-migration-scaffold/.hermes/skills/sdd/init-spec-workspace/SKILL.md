@@ -1,11 +1,11 @@
 ---
 name: init-spec-workspace
-description: When a workspace has no .specify/ — installs pinned Spec Kit, the Non-Goals override, the destination constitution, the sdd-to-tasks workflow (never implement), and the AD-S stop rule
+description: When a workspace has no .specify/ — installs pinned Spec Kit, the Non-Goals override, the destination constitution, the speckit overlay that removes implement, and the AD-S stop rule
 license: Apache-2.0
 compatibility: Linux seat; network to install pinned Spec Kit CLI
 metadata:
   author: rhoai3-harness-team
-  version: "1.3.0"
+  version: "1.4.0"
   hermes:
     tags:
     - sdd
@@ -52,17 +52,18 @@ Idempotent via `.specify/.rhoai3-ads-provisioned`. Spec Kit is pinned
    `${HERMES_SKILL_DIR}/assets/constitution.md` →
    `.specify/memory/constitution.md` when missing or still spec-kit
    placeholders (`[PROJECT_NAME]` / `[PRINCIPLE_1…]`)
-5. Copies `sdd-to-tasks.workflow.yml` →
-   `.specify/workflows/sdd-to-tasks.yml` (specify → clarify → plan → tasks;
-   **no** `speckit.implement`)
+5. Copies `stop-before-implement.overlay.yml` →
+   `.specify/workflows/overlays/speckit/stop-before-implement.yml`
+   (`extends: speckit`, `remove: implement`, inserts `clarify`, names M1
+   evidence paths on specify args). Removes leftover `sdd-to-tasks.yml`.
 6. Writes `external_dirs` reminder under `.specify/EXTERNAL_DIRS.note`; when `HERMES_HOME` is relocated, **ensures** `skills.external_dirs` on managed/`HERMES_HOME` `config.yaml` before assert (covers init-ai-tools skip when Hermes venv absent)
-7. Stamps `.specify/AD-S-STOP-RULE.md` (includes `specify workflow run .specify/workflows/sdd-to-tasks.yml`)
+7. Stamps `.specify/AD-S-STOP-RULE.md` (includes `specify workflow run speckit`)
 8. If `.git/hooks` exists, installs the LG9a pre-commit that runs the suite against `git checkout-index`
 
 ## Stop rule (non-negotiable)
 
-After `/speckit-tasks` (optional `/speckit-analyze`) → `kanban_create()`.
-**Never** `/speckit-implement`.
+After `/speckit-tasks` (optional `/speckit-analyze`) → Kanban mint.
+**Never** `/speckit-implement`. Run `specify workflow run speckit`.
 
 ## Pitfalls
 
@@ -72,6 +73,8 @@ After `/speckit-tasks` (optional `/speckit-analyze`) → `kanban_create()`.
   `skills.external_dirs` lists both `<modernized>/.hermes/skills` and
   `$HOME/.hermes/skills` — `scripts/check-external-dirs.py` (also in
   `validate-contracts`).
+- Stamping a second Path-A workflow YAML that has to be kept in sync with
+  upstream `speckit` — use the overlay (`extends: speckit`).
 
 
 ## Verification
@@ -79,13 +82,15 @@ After `/speckit-tasks` (optional `/speckit-analyze`) → `kanban_create()`.
 - These artifacts must exist **together** under the workspace root: `.specify/`
   (from `specify init`), `.specify/templates/overrides/spec-template.md`,
   `.specify/memory/constitution.md` (Quarkus 3.27.3.SP1 / Java 21 — not
-  placeholders), `.specify/workflows/sdd-to-tasks.yml`,
+  placeholders), `.specify/workflows/overlays/speckit/stop-before-implement.yml`,
   `.specify/AD-S-STOP-RULE.md`, and
   `.specify/EXTERNAL_DIRS.note` (workspace-only; gitignored — not under R-SK.5 skill scan).
 - `.specify/.rhoai3-ads-provisioned` holds a UTC timestamp and is written
   **last**; a second run prints `already provisioned (<ts>) — skip specify init; overlays refreshed` on stderr
   (plus one JSON object on stdout with `skipped:true`) and still refreshes
-  constitution / workflow overlays when the dest constitution is placeholders.
+  constitution / speckit overlay when the dest constitution is placeholders.
+- `specify workflow resolve speckit` shows no `implement` step; `review-spec`
+  and `review-plan` stay; `clarify` is present.
 - Fresh provision: stderr ends with
   `[init-spec-workspace] OK — AD-S provision complete (marker …)`; stdout is
   one JSON object `{script,ok,skipped,root,marker,provisioned_at}` (UPLIFT-2).

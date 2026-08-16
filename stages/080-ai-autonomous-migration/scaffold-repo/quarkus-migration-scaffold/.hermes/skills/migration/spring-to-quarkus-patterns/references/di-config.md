@@ -17,44 +17,38 @@
 | cfg-mapping | `@ConfigurationProperties` | `@ConfigMapping` | ADOPT | |
 | cfg-profile | `spring.profiles.active` / `application-dev.properties` | `%dev.key` in `application.properties` or `QUARKUS_PROFILE` | ADOPT | Quarkus also loads `application-<profile>.properties` when that profile is active |
 | di-profile | Spring `@Profile("x")` on beans | `@IfBuildProfile("x")` (`io.quarkus.arc.profile`) | ADOPT | **FORBIDDEN:** `io.quarkus.arc.Profile` / `@IfProfileActive` — not on Quarkus 3.27 classpath (Phase-3 Class B) |
-| di-mapstruct | Spring `@Mapper` / `@Autowired` mapper | MapStruct `@Mapper(componentModel = "cdi")` + inject interface | ADOPT | Phase-3 exp FAIL: interface without CDI componentModel ⇒ UnsatisfiedResolutionException |
+| di-mapstruct | Spring `@Mapper` / `@Autowired` mapper | **doctrine pending R-SKILL-F** | MEASURED | v19: `componentModel = "cdi"` produced ten Unsatisfied beans. Do not mandate that shape. |
 
 **REJECT:** `quarkus-spring-di` / Spring Boot autoconfig on destination.  
-**REJECT:** `import io.quarkus.arc.Profile` or `IfProfileActive` — use `IfBuildProfile` / `UnlessBuildProfile`.  
-**REJECT:** MapStruct `@Mapper` default (no `componentModel`) when controllers `@Inject` the mapper — Arc will not see a bean.
+**REJECT:** `import io.quarkus.arc.Profile` or `IfProfileActive` — use `IfBuildProfile` / `UnlessBuildProfile`.
 
-## MapStruct / CDI (Phase-4 feedforward — Architect E-20260811T101551Z)
+## MapStruct / CDI (B-3 — measured, doctrine pending R-SKILL-F)
 
-Measured on experiment arm: package fails with
-`UnsatisfiedResolutionException` for `*Mapper` injection points when MapStruct
-does not emit a CDI bean.
+**Do not instruct a worker to use a shape v19 measured as broken.**
 
-**Required pattern**
+v19 measured `MapStruct @Mapper(componentModel = "cdi")` plus `@Inject` of the
+generated mapper: `quarkus:build` UnsatisfiedResolutionException (ten beans).
+`Mappers.getMapper` failed under `@QuarkusTest`. The GAV `1.5.5.Final` was
+invented by S-003 and is **unpinned** (`pins.json` mapstruct.status=unpinned).
+Do not invent a replacement GAV here.
 
-```java
-@Mapper(componentModel = "cdi")
-public interface PetTypeMapper {
-    PetTypeDto toDto(PetType entity);
-}
-```
+**Incident repair is not doctrine.** A Lead dest wrap (`@ApplicationScoped
+*MapperCdi` delegating to `new *MapperImpl()`) unblocked M4 twice. That is an
+incident fix. **Do not promote it to ADOPT** until R-SKILL-F lands official
+grounding.
 
-**Checklist before `kanban_complete` / M4 package**
+Until R-SKILL-F:
 
-1. Every injected `*Mapper` interface uses `componentModel = "cdi"` (or `"jakarta"`
-   if the project MapStruct version documents that synonym — prefer `"cdi"`).
-2. `mapstruct` + annotation processor present in `pom.xml` (BOM-aligned).
-3. `mvn -q -DskipTests compile` resolves injection (no Unsatisfied `*Mapper`).
-4. Do **not** invent hand-written `@Produces` mapper shells to paper over a missing
-   `componentModel` — fix the annotation (tip law for v12 create).
-
-**Anti-pattern (experiment residual):** `@Mapper` + `@Inject PetTypeMapper` with
-Spring/`default` component model — compiles Java but Quarkus Arc fails at build.
-
-Official: MapStruct CDI/`componentModel` docs; Quarkus Arc unsatisfied resolution.
+- Do **not** mandate `componentModel = "cdi"`.
+- Do **not** REJECT `@Mapper` default as if that were the proven fix.
+- Prefer a compiling, injectable mapper the story's own tests prove.
+- Pin a MapStruct GAV only in `pins.json` after R-SKILL-F — not in a story POM
+  as a freehand version.
 
 ## Agent text
 
 Prefer ctor injection + `@ApplicationScoped`. Express config with Quarkus
 `%profile` / `@ConfigProperty` — do not copy Spring `application-*.properties`
 layout into the destination unless the brief requires equivalent keys.
-For DTO mappers under Quarkus, always set MapStruct `componentModel = "cdi"`.
+For DTO mappers, open this file and **do not** stamp `componentModel = "cdi"`
+as a required pattern. Doctrine pending R-SKILL-F.

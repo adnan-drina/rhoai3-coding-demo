@@ -5,7 +5,7 @@ license: Apache-2.0
 compatibility: Linux seat; Python 3.11+; reads migration/ specs and bodies
 metadata:
   author: rhoai3-harness-team
-  version: "1.4.1"
+  version: "1.5.1"
   hermes:
     tags:
     - sdd
@@ -15,20 +15,21 @@ metadata:
 ---
 ## When to Use
 
-- Before `kanban_create()` and before dispatching any M3 body — the phase-attach
-  matrix pins this skill to every phase M1–M5.
-- After authoring or amending a `evidence/bodies/*.json` — validate that one
-  body with `--body <path>` at create time, not only the whole corpus.
-- At M2a exit — prove the partition is VALID as a whole (endpoint coverage, no
-  write overlap), which per-body lint cannot show.
+- Before `kanban_create()` and before dispatching any M3 body — **lint only**.
+  The phase-attach matrix pins this skill to every phase M1–M5.
+- After a `evidence/bodies/*.json` is assembled — validate that one body with
+  `--body <path>` at create time, not only the whole corpus.
+- After `handover-mint.py` writes the partition **receipt** — prove coverage
+  (endpoint coverage, no write overlap) with `check-partition-coverage.py`.
+  This skill does **not** author `partition.json`.
 - When a body's `exit_criteria`, `files_in_scope`, or `operand_count` changed —
   these are the fields the gates refuse on.
 - Before `create-m3-implementer` or assemble — `assert-mint-oracles.py` (refs,
-  Hermes `task_id`, SR-13/L2a discriminating exit: test-shaped cmds name
-  `proves` tests in this write-set).
-- **Not** for creating `.specify/` or installing `specify-cli` — that is
-  `init-spec-workspace`. This skill reads artifacts and writes only receipts
-  and stamps you explicitly ask for.
+  Hermes `task_id`, SR-13/L2a discriminating exit: the test proving this
+  card's AC lives in this write-set; test-shaped cmds name `proves` tests
+  in this write-set).
+- **Not** for creating `.specify/`, installing `specify-cli`, or authoring
+  Path-A partitions — `init-spec-workspace` / `handover-mint.py`.
 
 
 # SDD readiness (pattern-steals + §S.6)
@@ -48,7 +49,7 @@ python3 "${HERMES_SKILL_DIR}/scripts/check-operand-count.py" /projects/modernize
 # L2 / SR-13 — refs + Hermes task_id + discriminating exit
 python3 "${HERMES_SKILL_DIR}/scripts/assert-mint-oracles.py" /projects/modernized \
   --body evidence/bodies/m3-s-003.json
-# M2a exit — partition VALID as a whole (writes a tri-state receipt)
+# M2a exit — partition VALID as a whole (lint of the handover receipt)
 python3 "${HERMES_SKILL_DIR}/scripts/check-partition-coverage.py" /projects/modernized \
   --write-receipt evidence/receipts/partition-coverage/latest.json
 ```
@@ -129,7 +130,8 @@ Do **not** invoke DD4-retired R-M3.5/7 stubs (`check-persistence-bom.py`,
   is `INVALID` (`mta_unaddressed`), not a silent VALID.
 - `assert-mint-oracles.py --body` exits 0 only when refs resolve, `task_id` is
   a Hermes card id (or `--skip-task-id` pre-create), and every test-shaped
-  `cmd` names `proves` test source(s) in this `files_writable` (L2a). An
+  `cmd` names `proves` test source(s) in this `files_writable` (L2a — the
+  test proving this card's AC). An
   unrelated dest `src/test` file must not pass. `--corpus DIR` exits 0 only
   when **every** body fails at least one oracle.
 - Exit condition for the gate: every command above exits 0 **and** reports a

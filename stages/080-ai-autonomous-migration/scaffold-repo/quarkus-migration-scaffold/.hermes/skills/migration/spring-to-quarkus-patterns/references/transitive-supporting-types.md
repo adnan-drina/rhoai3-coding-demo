@@ -18,8 +18,11 @@ decision**, not a free invent or silent skip.
    claiming done — loud beat narrative.
 
 ```java
-@Mapper(componentModel = "cdi", uses = { LineItemMapper.class })
+@Mapper(uses = { LineItemMapper.class })
 public interface OrderMapper {
   OrderDto toDto(Order entity); // needs LineItemDto/mapper on classpath
 }
 ```
+
+Do **not** stamp `componentModel = "cdi"` as required (B-3; doctrine pending
+R-SKILL-F). v19 measured that shape as Unsatisfied beans.

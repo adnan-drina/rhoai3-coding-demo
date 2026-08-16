@@ -19,6 +19,11 @@ import json
 import sys
 from pathlib import Path
 
+_SCRIPTS = Path(__file__).resolve().parent
+if str(_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS))
+from specimen_agnostic import operand_classes_of, parse_operand_classes  # noqa: E402
+
 SCHEMA_TAG = "constraint_free"
 
 
@@ -40,8 +45,7 @@ def story_id_of(body: dict, path: Path) -> str:
 
 
 def operand_class_of(body: dict) -> str:
-    ident = body.get("identity") if isinstance(body.get("identity"), dict) else {}
-    return str(ident.get("operand_class") or body.get("operand_class") or "src_code")
+    return ",".join(operand_classes_of(body))
 
 
 def standard_constraints(story_id: str, operand_class: str, body: dict | None = None) -> list[str]:
@@ -49,6 +53,7 @@ def standard_constraints(story_id: str, operand_class: str, body: dict | None = 
 
     Provenance of *why* a constraint was injected lives on the F2 injection
     receipt, not in the constraint text the worker must act on.
+    operand_class may be a comma-joined set (T-8 AMEND).
     """
     body = body or {}
     # F7: ≤1 line each; no Pre-v12 / tip-bank / v13 specimen archaeology.
@@ -69,7 +74,7 @@ def standard_constraints(story_id: str, operand_class: str, body: dict | None = 
         "needs_input, not kanban_complete."
     )
     out = [forbid, write_set, coverage, residue]
-    oc = operand_class.lower().replace("-", "_")
+    classes = parse_operand_classes(operand_class) or operand_classes_of(body)
     writable = [
         str(p.get("dest") or p.get("path") or p) if isinstance(p, dict) else str(p)
         for p in (
@@ -82,14 +87,20 @@ def standard_constraints(story_id: str, operand_class: str, body: dict | None = 
     has_app_props = any(
         "application" in p.lower() and p.lower().endswith(".properties") for p in writable
     )
-    profile_hint = "profile" in oc or (oc == "config" and has_app_props)
+    profile_hint = (
+        any("profile" in c for c in classes)
+        or ("config" in classes and has_app_props)
+    )
     if profile_hint:
         out.insert(
             1,
             "PROFILE: use %mysql/%postgresql (or matching) in "
             "application-*.properties — never @IfBuildProfile/@Profile on beans.",
         )
-    if oc in {"build_config", "pom"}:
+    foundation_only = bool(classes) and all(
+        c in {"build_config", "pom"} for c in classes
+    )
+    if any(c in {"build_config", "pom"} for c in classes) and foundation_only:
         out = [c for c in out if not c.startswith("RESIDUE:")]
         out.append(
             "BUILD_CONFIG: edit only declared config operands; no src_code "
@@ -99,7 +110,7 @@ def standard_constraints(story_id: str, operand_class: str, body: dict | None = 
             "FOUNDATION: assert build_resolves/config_profile_load — never "
             "quarkus_compile; do not invent Application.java."
         )
-    rest_hint = oc in {"src_code", "rest", "api"} or "controller" in oc
+    rest_hint = any(c in {"src_code", "rest", "api", "user_story"} for c in classes)
     if rest_hint:
         out.append(
             "CORS: do not implement @CrossOrigin or CORS filters. Platform/infra "

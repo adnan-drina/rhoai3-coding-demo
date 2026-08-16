@@ -9,9 +9,9 @@ An exit whose concern the story's write-set cannot produce evidence for
 (e.g. HTTP-semantics check on a config-only story; query-path check on an
 entity-mapping-only story).
 
-**Rule:** before stamping, confirm `operand_class` allow-list membership
-(`OPERAND_CLASS_SEMANTIC_EXITS`). Set membership is decidable **before** the
-oracle runs.
+**Rule:** before stamping, confirm each `operand_class` token's allow-list
+membership (`OPERAND_CLASS_SEMANTIC_EXITS` union). Set membership is
+decidable **before** the oracle runs. Phase AC supplies the **cmd**.
 
 **Gate:** `check-surgical-scopes.py` refuses foreign semantic exits even when a
 legal exit is also present (dual-oracle).

@@ -287,7 +287,28 @@ def lint_verdict(label: str, obj: dict) -> int:
                     )
                     bad = 1
 
-    # sonar never maps to ship alone
+    # ADMISSION PASS must not close product M5 ACCEPT (B-5)
+    if (
+        str(obj.get("phase") or "").upper() == "M5"
+        and verdict == "ACCEPT"
+        and isinstance(checks, dict)
+    ):
+        for cid, cobj in checks.items():
+            if ADEQUACY.get(str(cid)) != "ADMISSION":
+                continue
+            if isinstance(cobj, dict):
+                result = str(
+                    cobj.get("result") or cobj.get("verdict") or ""
+                ).upper()
+            else:
+                result = str(cobj or "").upper()
+            if result in {"PASS", "ACCEPT"}:
+                print(
+                    f"FAIL: {label}: ADMISSION {cid} {result} cannot close "
+                    f"product M5 ACCEPT (B-5 / {CONTRACT_REL})",
+                    file=sys.stderr,
+                )
+                bad = 1
     if ship and isinstance(checks, dict):
         only_sonar = set(checks.keys()) <= {"sonar", "preflight", "accept_scope"}
         if "sonar" in checks and only_sonar:

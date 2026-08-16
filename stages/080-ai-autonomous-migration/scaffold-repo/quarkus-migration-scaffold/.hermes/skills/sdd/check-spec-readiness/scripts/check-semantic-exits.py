@@ -47,9 +47,11 @@ RESTISH = ("RestController",)
 
 from specimen_agnostic import (  # noqa: E402
     COMPILE_ONLY,
+    FOUNDATION_OPERAND_CLASSES,
+    ac_sourced_operand_classes,
     is_oracle_unavailable,
-    normalize_operand_class,
-    oracle_unavailable_allowed_for_class,
+    operand_classes_of,
+    oracle_unavailable_allowed_for_body,
     preferred_semantic_exit_for,
     semantic_exit_cmd_ok,
 )
@@ -138,9 +140,10 @@ def main() -> int:
     )
     for label, body in bodies:
         identity = body.get("identity") if isinstance(body.get("identity"), dict) else {}
-        oclass = normalize_operand_class(body)
+        classes = operand_classes_of(body)
+        oclass = classes if len(classes) > 1 else classes[0]
         exits_all = body.get("exit_criteria") or []
-        if oclass in {"build_config", "build-config", "pom", "config"} and isinstance(
+        if set(classes) <= FOUNDATION_OPERAND_CLASSES and isinstance(
             exits_all, list
         ):
             for x in exits_all:
@@ -161,7 +164,10 @@ def main() -> int:
         paths = " ".join(write_paths(body))
         restish = any(tok in paths for tok in RESTISH)
         exits_pre = body.get("exit_criteria") or []
-        if not families and not restish:
+        skip_family_default = (
+            len(classes) != 1 or bool(ac_sourced_operand_classes(classes))
+        )
+        if not families and (not restish or skip_family_default):
             # Still enforce measurable non-compile exits (L2) even for non-REST bodies
             for x in exits_pre if isinstance(exits_pre, list) else []:
                 if not isinstance(x, dict):
@@ -171,8 +177,7 @@ def main() -> int:
                     continue
                 # F5: oracle_unavailable needs reason, not cmd
                 if check == "oracle_unavailable":
-                    oclass = normalize_operand_class(body)
-                    if not oracle_unavailable_allowed_for_class(oclass):
+                    if not oracle_unavailable_allowed_for_body(body):
                         print(
                             f"FAIL: AR-2.3–2.7 {label}: oracle_unavailable forbidden for "
                             f"operand_class={oclass!r} (F5a E-20260813T221456Z)",
@@ -202,8 +207,9 @@ def main() -> int:
                 if not semantic_exit_cmd_ok(check, str(cmd)):
                     print(
                         f"FAIL: AR-2.3–2.7 {label}: exit {check!r} cmd {cmd!r} is not "
-                        f"a Maven invocation (stamp `mvn -q compile` or `mvn -q test`; "
-                        f"technique prose belongs in assert; evaluator shell=True)",
+                        f"a Maven vehicle (mvn test|verify|test-compile; "
+                        f"curl/scripts are not card exits; technique prose "
+                        f"belongs in assert)",
                         file=sys.stderr,
                     )
                     bad = 1
@@ -215,7 +221,7 @@ def main() -> int:
         if not isinstance(families, list) or not families:
             # T-8: default the class preferred stamp, not create_fk+http_semantics.
             # That pair is the v17 wrong-class/vacuous path on persistence.
-            pref = preferred_semantic_exit_for(oclass)
+            pref = preferred_semantic_exit_for(classes[0])
             families = [pref] if pref else ["http_semantics"]
         exits = body.get("exit_criteria") or []
         checks = {
@@ -250,8 +256,7 @@ def main() -> int:
                 continue
             # F5: oracle_unavailable needs reason, not cmd (Lead triage)
             if check == "oracle_unavailable":
-                oclass = normalize_operand_class(body)
-                if not oracle_unavailable_allowed_for_class(oclass):
+                if not oracle_unavailable_allowed_for_body(body):
                     print(
                         f"FAIL: AR-2.3–2.7 {label}: oracle_unavailable forbidden for "
                         f"operand_class={oclass!r} (F5a E-20260813T221456Z)",
@@ -279,8 +284,9 @@ def main() -> int:
             if not semantic_exit_cmd_ok(check, str(cmd)):
                 print(
                     f"FAIL: AR-2.3–2.7 {label}: exit {check!r} cmd {cmd!r} is not "
-                    f"a Maven invocation (stamp `mvn -q compile` or `mvn -q test`; "
-                    f"technique prose belongs in assert; evaluator shell=True)",
+                    f"a Maven vehicle (mvn test|verify|test-compile; "
+                    f"curl/scripts are not card exits; technique prose "
+                    f"belongs in assert)",
                     file=sys.stderr,
                 )
                 bad = 1

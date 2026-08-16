@@ -6,7 +6,7 @@ Usage:
 
 Fails closed when:
   - any listed/dirty path is under the proving-min deny-list
-  - --body supplies files_in_scope and a write is outside that scope
+  - `--body` supplies files_writable (preferred) or files_in_scope and a write is outside that scope
 """
 from __future__ import annotations
 
@@ -94,8 +94,14 @@ def load_scope(body_path: Path) -> list[str]:
     data = json.loads(body_path.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
         return []
-    scope = data.get("files_in_scope") or data.get("filesInScope") or []
-    return [str(x) for x in scope] if isinstance(scope, list) else []
+    body = data.get("body") if isinstance(data.get("body"), dict) else data
+    if not isinstance(body, dict):
+        return []
+    for key in ("files_writable", "write_set", "files_in_scope", "filesInScope"):
+        scope = body.get(key)
+        if isinstance(scope, list) and scope:
+            return [str(x) for x in scope]
+    return []
 
 
 def main() -> int:

@@ -1,0 +1,50 @@
+# Handover mint (A-4 / A-5 / A-8)
+
+**Status:** binding · **Authority:** Architect `E-20260816T115106Z` (A-7/A-8
+closed into one post-workflow script). **OBJECT spec-kit hooks** (V20-5:
+advisory).
+
+## What it is
+
+After native `speckit` stops at `tasks`, the orchestrator runs
+`scripts/handover-mint.py`. That is the only new harness. It:
+
+1. Reads User-Story **phases** from `tasks.md` (one card per phase, not per
+   task). `[P]` stays inside the card body as `phase_checklist`.
+2. **Transcribes** parents from the `## Dependencies` section. It does not
+   infer a DAG from file overlap.
+3. Assigns file-granular ownership (A-5): each dest file has **exactly one
+   owner**. `pom.xml` has a unique owner (earliest phase that named it).
+   Any other overlap is a partition defect → refuse.
+4. Checks HTTP endpoint coverage against M1 `evidence/entry-point-inventory.json`.
+   Uncovered or multi-claimed endpoints refuse (`endpoints_multi` unreachable
+   when write-sets are disjoint).
+5. Writes `evidence/briefs/partition.json` as a **receipt**
+   (`source=handover-mint`, `stories[].story_id` unchanged for existing
+   readers). Path-A authored partition as input is refused.
+6. Assembles typed bodies (existing `assemble-m3-bodies-from-partition.py`)
+   and, with `--parent`, calls `mint-m3-wave.sh` (park-at-birth, FIS/wall-fit
+   already on the create path).
+
+The M2 worker does **not** `kanban_create` and does **not** author
+`partition.json`.
+
+## Worktrees
+
+Sibling user-story cards (parent is Foundational only) are stamped
+`workspace_kind=worktree`. Setup, Foundational, Polish, and stories that
+depend on another user story stay `dir`. Assignment is recorded on the
+receipt. Live parallel dispatch remains gated on a promotion-proof hold
+status (0.4). Worktrees do **not** relax the unique `pom.xml` owner.
+
+## Fail-closed
+
+| Symptom | Refuse |
+|---|---|
+| No `## Dependencies` section | `DEPENDENCIES_MISSING` |
+| File in two write-sets (not pom) | `FILE_OVERLAP` |
+| HTTP entry point with no owner | `endpoints_uncovered` |
+| User-story phase with no test-shaped AC | `PHASE_AC` (decomposition defect) |
+| Path-A `partition.json` already on disk | `PATH_A_PARTITION` |
+| FIS / dual-stack over cap | `BODY_SIZE` (R-V14.4 — split the phase, do not raise the wall) |
+| `mint-m3-wave --parent` of a `done` card | `PARENT_DONE` (HKN-2) |

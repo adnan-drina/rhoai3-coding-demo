@@ -31,14 +31,16 @@ EXIT_CODES = """Exit codes:
 from specimen_agnostic import (  # noqa: E402
     COMPILE_ONLY,
     ENDPOINTISH,
-    OPERAND_CLASS_SEMANTIC_EXITS,
     ORACLE_UNAVAILABLE_MINT_CAP,
+    ac_sourced_operand_classes,
     collect_oracle_unavailable,
     is_oracle_unavailable,
-    normalize_operand_class,
-    oracle_unavailable_allowed_for_class,
+    known_operand_classes,
+    operand_classes_of,
+    oracle_unavailable_allowed_for_body,
     oracle_unavailable_routes_to_lead,
     required_semantic_exits_for,
+    unknown_operand_classes,
     write_oracle_unavailable_receipt,
 )
 
@@ -165,10 +167,13 @@ def main() -> int:
             bad = 1
             continue
 
-        oclass = normalize_operand_class(body)
-        if oclass not in OPERAND_CLASS_SEMANTIC_EXITS:
+        classes = operand_classes_of(body)
+        unknown = unknown_operand_classes(classes)
+        known = known_operand_classes(classes)
+        ac_only = ac_sourced_operand_classes(classes)
+        if unknown or (not known and not ac_only):
             print(
-                f"FAIL: AR-4.4 {label}: unknown operand_class={oclass!r} "
+                f"FAIL: AR-4.4 {label}: unknown operand_class={classes!r} "
                 f"— no legal exit set (T-8 fail-closed, Architect E-20260814T181701Z)",
                 file=sys.stderr,
             )
@@ -184,26 +189,29 @@ def main() -> int:
             if isinstance(x, dict)
         }
         # F5a/F5b: oracle_unavailable only for classes that allow the escape.
-        oclass = normalize_operand_class(body)
+        oclass = classes if len(classes) > 1 else classes[0]
         required = required_semantic_exits_for(body)
         escape_items = [
             x for x in exits if isinstance(x, dict) and is_oracle_unavailable(x)
         ]
         has_oracle_escape = bool(escape_items)
-        # T-8 / Z2 — every named semantic exit must be legal for the class.
+        # T-8 / Z2 — every named semantic exit must be legal for the class set.
         # At-least-one intersection alone let correct+wrong mint (Review item 6).
+        # AC-sourced user_story with no known class skips foreign-name refuse
+        # (oracle is the AC cmd, not a class-map preferred stamp).
         semantic_named = {c for c in checks if c in ENDPOINTISH}
-        foreign = semantic_named - required
-        if foreign:
-            print(
-                f"FAIL: AR-4.4 {label}: wrong-class/foreign semantic exit(s) "
-                f"{sorted(foreign)} for operand_class={oclass!r} "
-                f"(allowed {sorted(required)}; T-8 dual-oracle refuse)",
-                file=sys.stderr,
-            )
-            bad = 1
+        if known:
+            foreign = semantic_named - required
+            if foreign:
+                print(
+                    f"FAIL: AR-4.4 {label}: wrong-class/foreign semantic exit(s) "
+                    f"{sorted(foreign)} for operand_class={oclass!r} "
+                    f"(allowed {sorted(required)}; T-8 dual-oracle refuse)",
+                    file=sys.stderr,
+                )
+                bad = 1
         if has_oracle_escape:
-            if not oracle_unavailable_allowed_for_class(oclass):
+            if not oracle_unavailable_allowed_for_body(body):
                 print(
                     f"FAIL: AR-4.4 {label}: oracle_unavailable forbidden for "
                     f"operand_class={oclass!r} (F5a E-20260813T221456Z / "
@@ -214,7 +222,7 @@ def main() -> int:
                 bad = 1
                 has_oracle_escape = False  # do not treat as satisfying semantic exit
             elif not all(
-                oracle_unavailable_routes_to_lead(x, operand_class=oclass)
+                oracle_unavailable_routes_to_lead(x, operand_class=classes[0])
                 for x in escape_items
             ):
                 print(
@@ -227,16 +235,23 @@ def main() -> int:
         if has_oracle_escape:
             # class-legal escape satisfies semantic-exit requirement for this body
             pass
-        elif not (checks & required):
+        elif known and not (checks & required):
             esc_hint = (
                 "oracle_unavailable+reason"
-                if oracle_unavailable_allowed_for_class(oclass)
+                if oracle_unavailable_allowed_for_body(body)
                 else "a measurable semantic exit (oracle_unavailable forbidden for this class)"
             )
             print(
                 f"FAIL: AR-4.4 {label}: no semantic exit for operand_class={oclass!r} "
                 f"(need one of {sorted(required)[:8]}; or {esc_hint} — "
                 f"E-20260813T220250Z F1/F5 / E-20260813T221456Z F5a)",
+                file=sys.stderr,
+            )
+            bad = 1
+        elif not known and ac_only and not (checks & ENDPOINTISH):
+            print(
+                f"FAIL: AR-4.4 {label}: user_story has no semantic/AC exit "
+                f"(got {sorted(checks - COMPILE_ONLY)})",
                 file=sys.stderr,
             )
             bad = 1

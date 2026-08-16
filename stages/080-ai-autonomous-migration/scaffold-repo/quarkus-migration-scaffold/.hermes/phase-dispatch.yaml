@@ -17,9 +17,15 @@
 # Watchdog STUCK_SECONDS (observation, §15.2) must exceed max(budgets).
 # Role persona keys (role:/roles:/skills_by_role:) retired — Architect
 # E-20260813T144117Z / Operator E-20260813T143534Z.
-# EX-4 seat assignees: named Hermes profiles (analyzer/planner/implementer/
-# validator), catalog `.hermes/skills/harness/dispatch-phase/references/assignee-profiles.json`.
-# Pillar heads stay Cursor. Do not use assignee default.
+# C-2(a) single-persona: cards use Hermes profile `default`. Named
+# analyzer/planner/implementer/validator profiles are retired (R-V14.10).
+# Pillar heads stay Cursor. Do not hermes profile create --clone.
+#
+# M3 skills[] is the **allowed attach pool** (B-16), not "attach all five".
+# create-m3-implementer.sh attaches check-spec-readiness plus
+# identity.operand_skills. Park-at-birth stays (0.4: no promotion-proof
+# status). Serial law is NOT retired. AD-002E skills_unused stays attached
+# as a measured signal (B-17 raised, not retired).
 
 phases:
   M1:
@@ -67,10 +73,12 @@ phases:
     # Children MUST be created via
     # .hermes/skills/harness/dispatch-phase/scripts/create-m3-implementer.sh
     # (bare hermes kanban create omits these skills — grounding study 20260809).
-    # AD-002F — useful = influence. M3 default preload is the workhorse + body lint
-    # only. Drop zero-touch (check-domain-parity→M4, enforce-authority-boundary/
+    # AD-002F — useful = influence. M3 skills[] is the allow-list pool (B-16).
+    # create-m3 attaches check-spec-readiness + identity.operand_skills.
+    # Drop zero-touch (check-domain-parity→M4, enforce-authority-boundary/
     # ground-in-harvest/record-run-evidence unread on S-001…S-006).
-    # Workers consult via skill_view; unused preloads need skills_unused (AD-002E).
+    # Workers consult via skill_view. Typed skills_unused is a measured
+    # signal (B-17 raised to Architect; not retired on the strength of a plan).
     #
     # Architect E-20260813T152211Z / Lead wire-or-retire: do NOT re-attach
     # ground-in-harvest or record-run-evidence to skills[] (opt-in ≠
@@ -117,8 +125,9 @@ phases:
       - m1-findings
       - brief-identity
   M5:
-    # CLOSE — full ACCEPT (G-4 closes G-1 residue). Kill-ratio PASS+pin or
-    # typed Operator waiver. G-4 fail after provisional → reopen that story.
+    # CLOSE — full ACCEPT (G-4 closes G-1 residue). Kill-ratio PASS+pin
+    # required; a waiver cannot author ACCEPT (B-4/C-3(a)). G-4 fail after
+    # provisional → reopen that story.
     # Standing entry-point descopes ⇒ SCOPED_ACCEPT only (check-accept-scope.py).
     accept_kind: full
     # AD-002G matrix: check-spec-readiness + check-domain-parity required; helpers allowed.

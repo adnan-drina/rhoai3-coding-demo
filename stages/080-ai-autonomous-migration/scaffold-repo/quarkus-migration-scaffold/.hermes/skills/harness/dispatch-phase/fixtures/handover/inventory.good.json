@@ -1,0 +1,23 @@
+{
+  "schema": "rhoai3.entry-point-inventory/v1",
+  "counts": {
+    "total": 2,
+    "http": 2,
+    "non_http": 0
+  },
+  "totals": {
+    "http_endpoints": 2
+  },
+  "entry_points": [
+    {
+      "kind": "http",
+      "file": "src/main/java/app/OwnerResource.java",
+      "symbol": "OwnerResource#list"
+    },
+    {
+      "kind": "http",
+      "file": "src/main/java/app/CompanionResource.java",
+      "symbol": "CompanionResource#list"
+    }
+  ]
+}

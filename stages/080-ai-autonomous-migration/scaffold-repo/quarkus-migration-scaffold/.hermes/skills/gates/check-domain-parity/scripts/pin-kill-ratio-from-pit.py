@@ -253,11 +253,11 @@ def main() -> int:
         "threshold": threshold,
         "evaluation_against_measurement": ev,
         "waiver_path": {
-            "token": "g1_kill_ratio_waiver",
-            "authority": "Operator or deputy typed waiver only",
-            "effect": "sole alternate M5 path when pin cannot be met; "
-            "must name story_id + rationale + expiry/re_open_trigger",
-            "location": "evidence/acks/g1-kill-ratio-waiver-<story_id>.ack.yaml",
+            "token": None,
+            "authority": "none",
+            "effect": "deleted — M5 ACCEPT requires kill-ratio PASS+pin; "
+            "a waiver cannot author ACCEPT (B-4/C-3(a))",
+            "location": None,
         },
         "m5_note": "Pinning does NOT grant M5 ACCEPT — plan #1e still required "
         "(G-4 both-modes + dual-denominator kill-ratio PASS).",

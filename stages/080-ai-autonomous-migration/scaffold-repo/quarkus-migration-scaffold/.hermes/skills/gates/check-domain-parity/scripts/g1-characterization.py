@@ -2,12 +2,18 @@
 """G-1 admission evaluator — mutation / char_surface (W2 §10; §G.1 F9 table)."""
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
-from verdict import expect, write_verdict  # noqa: E402
+from verdict import (  # noqa: E402
+    INCONCLUSIVE_FIXTURE,
+    expect,
+    product_gate_verdict,
+    write_verdict,
+)
 
 
 def evaluate(fixture_dir: Path) -> str:
@@ -58,7 +64,40 @@ def evaluate(fixture_dir: Path) -> str:
 
 
 def main() -> int:
-    root = Path(sys.argv[1] if len(sys.argv) > 1 else ".")
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("root", nargs="?", default=".")
+    ap.add_argument(
+        "--product",
+        action="store_true",
+        help="score dest evidence only; fixtures cannot ACCEPT (B-5)",
+    )
+    args = ap.parse_args()
+    root = Path(args.root)
+    if args.product:
+        evidence = root / "evidence" / "mutation-evidence.json"
+        got = product_gate_verdict(
+            evaluate(evidence.parent) if evidence.is_file() else INCONCLUSIVE_FIXTURE,
+            evidence if evidence.is_file() else None,
+        )
+        out_base = __import__("os").environ.get("RHOAI3_ADMISSION_OUT")
+        if out_base:
+            out_dir = Path(out_base) / "g1-characterization-product"
+        else:
+            out_dir = Path(__import__("tempfile").mkdtemp(prefix="rhoai3-g1-product-"))
+        write_verdict(
+            out_dir / "product.json",
+            "G-1",
+            "product",
+            got,
+            "dest evidence/mutation-evidence.json",
+            {"path": str(evidence) if evidence.is_file() else ""},
+        )
+        print(
+            f"PRODUCT G-1: {got}",
+            file=sys.stderr,
+        )
+        print(f"PRODUCT G-1: {got}")
+        return 0
     base = root / ".hermes/skills/gates/check-release-readiness/fixtures/admission/g1-characterization"
     # known-vacuous SUPERSEDED by F9: zero mutants with ran=true → FAIL
     expected = {

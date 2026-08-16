@@ -5,7 +5,7 @@ license: Apache-2.0
 compatibility: Linux seat; Python 3.11+; reads migration/ receipts
 metadata:
   author: rhoai3-harness-team
-  version: "1.2.0"
+  version: "1.3.0"
   hermes:
     tags:
     - gates
@@ -43,7 +43,8 @@ metadata:
 
 **§18.0:** M4 verdict = literal `PROVISIONAL_ACCEPT` (never ship); M5 = `ACCEPT`
 (G-4); shared-substrate reopen = closure ∩ implicated; kill-ratio `PASS`
-forbidden until threshold pinned — use `pending_threshold` or typed waiver.
+forbidden until threshold pinned — use `pending_threshold` at M4. M5 ACCEPT
+requires kill-ratio PASS+pin; a waiver cannot author ACCEPT (B-4/C-3(a)).
 
 ## Procedure
 
@@ -184,7 +185,8 @@ HERMES_AGENT_ROOT="${HOME}/.hermes/hermes-agent"
   `check-persisted-data-contract.py`: idle is not a pass.
 - No artifact carries `ship: true` with a verdict other than a full M5 `ACCEPT`,
   no `PROVISIONAL_ACCEPT` outside M4, and no `g1_kill_ratio: PASS` without
-  `g1_kill_ratio_threshold_pinned` or a typed waiver.
+  `g1_kill_ratio_threshold_pinned`. A `g1_kill_ratio_waiver` or
+  `operator_waiver` on an M5 ACCEPT is REFUSE.
 - M4 floor: `evidence/receipts/m4-floor/<run-id>/` holds all three receipts —
   `boot_health.json`, `endpoint_smoke.json`, `g4_hook.json`, schema
   `rhoai3.gate-receipt/v1` — and `check-m4-floor-receipts.py` prints `OK: M4

@@ -6,6 +6,7 @@ fixtures / per-run migration.yaml stamps — never in gate logic constants.
 """
 from __future__ import annotations
 
+import ast
 import hashlib
 import json
 import re
@@ -401,6 +402,10 @@ ENDPOINTISH = SEMANTIC_EXIT_VOCAB
 # operand_class → legal semantic exit checks (at least one required unless
 # oracle_unavailable with reason). Unknown classes fail-closed (empty set) —
 # they must not inherit the full vocab (Architect E-20260814T181701Z).
+# T-8 AMEND (Architect E-20260816T115106Z): operand_class is a *set* used for
+# B-16 skill attachment and class-legal *names*; the exit *cmd* comes from
+# phase acceptance criteria. Do not drop the field. Do not stamp a default
+# `mvn -q test` on every card.
 # F5a (Deputy E-20260813T221456Z): oracle_unavailable is NOT legal for
 # rest/api/src_code/bootstrap/persistence — those always have a measurable oracle.
 # Escape remains for build/config/test/infra/observability classes that genuinely
@@ -408,6 +413,29 @@ ENDPOINTISH = SEMANTIC_EXIT_VOCAB
 ORACLE_UNAVAILABLE_FORBIDDEN_CLASSES: frozenset[str] = frozenset(
     {"rest", "api", "src_code", "bootstrap", "persistence"}
 )
+# Native user-story phases (v20). Oracle source is acceptance criteria, not
+# a class-map preferred stamp. Unknown tokens that are *not* in this set
+# still fail-closed (do not inherit the full vocab).
+AC_SOURCED_OPERAND_CLASSES: frozenset[str] = frozenset({"user_story", "story"})
+FOUNDATION_OPERAND_CLASSES: frozenset[str] = frozenset(
+    {"build_config", "config", "pom"}
+)
+# B-16 — attach by class, not a uniform M3 bundle. Union across the set.
+OPERAND_CLASS_SKILLS: dict[str, tuple[str, ...]] = {
+    "rest": ("spring-to-quarkus-patterns",),
+    "api": ("spring-to-quarkus-patterns",),
+    "src_code": ("spring-to-quarkus-patterns",),
+    "persistence": ("form-entity-persistence",),
+    "build_config": ("manage-quarkus-extensions", "reference-rh-quarkus-pom"),
+    "pom": ("manage-quarkus-extensions", "reference-rh-quarkus-pom"),
+    "config": ("configure-quarkus-profiles",),
+    "bootstrap": ("bootstrap-quarkus-project",),
+    "test": (),
+    "infra": (),
+    "observability": (),
+    "user_story": (),
+    "story": (),
+}
 # F5b: mint-wide fail-closed when escape count exceeds this (of ~13 stories).
 ORACLE_UNAVAILABLE_MINT_CAP: int = 2
 
@@ -460,10 +488,9 @@ PREFERRED_SEMANTIC_EXIT: dict[str, str] = {
     "api": "http_semantics",
 }
 
-# Assembler `exit_criteria[].cmd` values. evaluate-exit-criteria.py runs `cmd`
-# via subprocess shell=True unless the string ends with " compile" (Class A
-# scoped-compile intercept). Stamp Maven invocations, not concern-oracle-table
-# technique prose (Architect E-20260814T204807Z). Prose belongs in `assert`.
+# Fallback cmds when a *single* known class has no acceptance_criteria and
+# the write-set already contains the proving test. OBJECT a default
+# `mvn -q test` on cards that do not name a proving test (T-8 AMEND).
 PREFERRED_SEMANTIC_EXIT_CMD: dict[str, str] = {
     "build_resolves": "mvn -q compile",
     "config_profile_load": "mvn -q test",
@@ -474,6 +501,10 @@ PREFERRED_SEMANTIC_EXIT_CMD: dict[str, str] = {
     "health_probe": "mvn -q test",
     "log_output": "mvn -q test",
 }
+
+DEFAULT_TEST_CMD = "mvn -q test"
+MAVEN_AC_GOALS = frozenset({"test", "verify", "test-compile"})
+ALWAYS_OK_CMD_TOKENS = frozenset({"true", ":", "true.exe"})
 
 
 def semantic_exit_cmd_is_maven(cmd: str) -> tuple[bool, list[str]]:
@@ -496,18 +527,37 @@ def semantic_exit_cmd_is_maven(cmd: str) -> tuple[bool, list[str]]:
     return token == "mvn", parts
 
 
-def semantic_exit_cmd_ok(check: str, cmd: str) -> bool:
-    """True when cmd is a class-legal Maven vehicle (Architect E-204807Z).
+def _cmd_token0(parts: list[str]) -> str:
+    return parts[0].rsplit("/", 1)[-1]
 
-    build_resolves must end with ` compile` (scoped-compile intercept).
-    Other cmd-bearing semantic checks use `mvn … test` (not compile — DD6).
+
+def semantic_exit_cmd_ok(check: str, cmd: str) -> bool:
+    """True when cmd is a Maven vehicle that can fail for this card's AC.
+
+    Keep the Maven vehicle (Operator course-correction 2026-08-16).
+    build_resolves must end with ` compile`. Other checks accept `test`,
+    `verify`, and `test-compile` (v19 Issue 6). curl / scripts / `./…` are
+    not card exits — live acceptance is M4/M5 gate scripts; an HTTP AC is a
+    @QuarkusTest in this write-set (B-1). Vacuous `true` / technique prose
+    / slash-OR gloss refuse (SR-13).
     """
-    ok, parts = semantic_exit_cmd_is_maven(cmd)
-    if not ok:
+    s = (cmd or "").strip()
+    if not s or " / " in s:
+        return False
+    try:
+        parts = shlex.split(s)
+    except ValueError:
+        return False
+    if not parts:
+        return False
+    if _cmd_token0(parts) in ALWAYS_OK_CMD_TOKENS:
+        return False
+    ok, mvn_parts = semantic_exit_cmd_is_maven(s)
+    if not ok or not mvn_parts:
         return False
     if check == "build_resolves":
-        return cmd.strip().endswith(" compile")
-    return parts[-1] == "test"
+        return s.endswith(" compile")
+    return mvn_parts[-1] in MAVEN_AC_GOALS
 
 
 def build_resolves_cmd_is_executable(cmd: str) -> bool:
@@ -515,26 +565,119 @@ def build_resolves_cmd_is_executable(cmd: str) -> bool:
     return semantic_exit_cmd_ok("build_resolves", cmd)
 
 
-def normalize_operand_class(body: dict) -> str:
+def canon_operand_class(token: str) -> str:
+    return str(token or "").strip().lower().replace("-", "_")
+
+
+def parse_operand_classes(raw: Any) -> list[str]:
+    """Accept a string, list, or the str(list) accident. Preserve order."""
+    items: list[str] = []
+    if raw is None:
+        return []
+    if isinstance(raw, str):
+        s = raw.strip()
+        if not s:
+            return []
+        if s.startswith("[") and s.endswith("]"):
+            try:
+                parsed = ast.literal_eval(s)
+            except (SyntaxError, ValueError):
+                parsed = None
+            if isinstance(parsed, (list, tuple, set, frozenset)):
+                return parse_operand_classes(list(parsed))
+        if "," in s:
+            items = [x.strip() for x in s.split(",")]
+        else:
+            items = [s]
+    elif isinstance(raw, (list, tuple, set, frozenset)):
+        for x in raw:
+            items.extend(parse_operand_classes(x))
+    else:
+        items = [str(raw).strip()]
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in items:
+        c = canon_operand_class(item)
+        if not c or c in seen:
+            continue
+        seen.add(c)
+        out.append(c)
+    return out
+
+
+def operand_classes_of(body: dict) -> list[str]:
+    """operand_class as a set (list for stable order). Defaults to src_code."""
     ident = body.get("identity") if isinstance(body.get("identity"), dict) else {}
-    raw = str(
-        ident.get("operand_class") or body.get("operand_class") or "src_code"
-    ).strip().lower()
-    return raw or "src_code"
+    if isinstance(ident, dict) and "operand_class" in ident:
+        raw = ident.get("operand_class")
+    else:
+        raw = body.get("operand_class")
+    parsed = parse_operand_classes(raw)
+    return parsed or ["src_code"]
+
+
+def stamp_operand_class(classes: list[str]) -> str | list[str]:
+    """Single class stays a string (compat); multiple become a list."""
+    cleaned = parse_operand_classes(classes)
+    if not cleaned:
+        return "src_code"
+    if len(cleaned) == 1:
+        return cleaned[0]
+    return cleaned
+
+
+def skills_for_operand_classes(classes: list[str] | tuple[str, ...] | str) -> list[str]:
+    """B-16 attach set — union of per-class skills, order-stable."""
+    out: list[str] = []
+    seen: set[str] = set()
+    for oc in parse_operand_classes(classes):
+        for skill in OPERAND_CLASS_SKILLS.get(oc, ()):
+            if skill not in seen:
+                seen.add(skill)
+                out.append(skill)
+    return out
+
+
+def known_operand_classes(classes: list[str]) -> list[str]:
+    return [c for c in classes if c in OPERAND_CLASS_SEMANTIC_EXITS]
+
+
+def ac_sourced_operand_classes(classes: list[str]) -> list[str]:
+    return [c for c in classes if c in AC_SOURCED_OPERAND_CLASSES]
+
+
+def unknown_operand_classes(classes: list[str]) -> list[str]:
+    return [
+        c
+        for c in classes
+        if c not in OPERAND_CLASS_SEMANTIC_EXITS
+        and c not in AC_SOURCED_OPERAND_CLASSES
+    ]
+
+
+def normalize_operand_class(body: dict) -> str:
+    """Compat scalar: first class. Prefer operand_classes_of for T-8 AMEND."""
+    classes = operand_classes_of(body)
+    return classes[0] if classes else "src_code"
 
 
 def required_semantic_exits_for(body: dict) -> frozenset[str]:
-    oc = normalize_operand_class(body)
-    if oc in OPERAND_CLASS_SEMANTIC_EXITS:
-        return OPERAND_CLASS_SEMANTIC_EXITS[oc]
-    # Unknown class: empty set — mint lint fail-closed (Architect E-20260814T181701Z).
-    # Do not widen to full vocab (that licensed http_semantics on JPA/bootstrap).
-    return frozenset()
+    """Union of class-legal names. Unknown-only → empty (fail-closed)."""
+    union: set[str] = set()
+    known = 0
+    for oc in operand_classes_of(body):
+        allowed = OPERAND_CLASS_SEMANTIC_EXITS.get(oc)
+        if allowed:
+            union |= set(allowed)
+            known += 1
+    if known == 0:
+        return frozenset()
+    return frozenset(union)
 
 
 def preferred_semantic_exit_for(operand_class: str) -> str | None:
-    """One class-legal stamp for the assembler. None ⇒ unknown class (refuse)."""
-    oc = str(operand_class or "").strip().lower()
+    """One class-legal stamp for a *single* known class. None ⇒ unknown / AC."""
+    oc = canon_operand_class(operand_class)
     allowed = OPERAND_CLASS_SEMANTIC_EXITS.get(oc)
     if not allowed:
         return None
@@ -561,8 +704,15 @@ def is_oracle_unavailable(exit_item: dict) -> bool:
 
 def oracle_unavailable_allowed_for_class(operand_class: str) -> bool:
     """F5a — escape forbidden for rest/api/src_code."""
-    oc = str(operand_class or "").strip().lower()
+    oc = canon_operand_class(operand_class)
     return oc not in ORACLE_UNAVAILABLE_FORBIDDEN_CLASSES
+
+
+def oracle_unavailable_allowed_for_body(body: dict) -> bool:
+    """Escape allowed only when *every* class in the set permits it."""
+    return all(
+        oracle_unavailable_allowed_for_class(c) for c in operand_classes_of(body)
+    )
 
 
 def oracle_unavailable_routes_to_lead(
@@ -836,7 +986,6 @@ def stamp_dd3_extensions(bodies: list[dict]) -> None:
 # ---------------------------------------------------------------------------
 
 CARD_TASK_ID_RE = re.compile(r"^t_[0-9a-f]{8,}$")
-ALWAYS_OK_CMD_TOKENS = frozenset({"true", ":", "true.exe"})
 _TEST_SOURCE_SUFFIXES = {".java", ".kt", ".scala"}
 
 
@@ -906,6 +1055,111 @@ def proving_test_rels(exit_item: dict) -> tuple[list[str], str | None]:
     return out, None
 
 
+_TEST_ANNOTATION_RE = re.compile(
+    r"@(?:org\.junit\.(?:jupiter\.api\.)?)?"
+    r"(?:Test|ParameterizedTest|RepeatedTest|TestFactory|TestTemplate)\b"
+)
+
+
+def java_has_executable_test(text: str) -> bool:
+    """True when the source contains a JUnit/TestNG executable test annotation."""
+    return bool(_TEST_ANNOTATION_RE.search(text or ""))
+
+
+def proves_to_fqcn(rel: str) -> str | None:
+    n = _rel_posix(rel)
+    m = re.search(r"(?:^|/)src/test/java/(.+)\.(java|kt)$", n)
+    if not m:
+        return None
+    return m.group(1).replace("/", ".")
+
+
+def surefire_has_class(root: Path, fqcn: str) -> bool:
+    reports = Path(root) / "target" / "surefire-reports"
+    if not reports.is_dir():
+        return False
+    xml = reports / f"TEST-{fqcn}.xml"
+    if xml.is_file() and xml.stat().st_size > 0:
+        return True
+    needle = f'classname="{fqcn}"'
+    for path in reports.glob("TEST-*.xml"):
+        try:
+            if needle in path.read_text(encoding="utf-8", errors="replace"):
+                return True
+        except OSError:
+            continue
+    return False
+
+
+def body_has_test_shaped_cmd(body: dict) -> bool:
+    for item in (body or {}).get("exit_criteria") or (body or {}).get("done_when") or []:
+        if not isinstance(item, dict):
+            continue
+        cmd = item.get("cmd")
+        if not (isinstance(cmd, str) and cmd.strip()):
+            continue
+        ok, parts = semantic_exit_cmd_is_maven(cmd)
+        if ok and parts and parts[-1] in {"test", "verify"}:
+            return True
+    return False
+
+
+def proves_executable_errors(
+    root: Path, body: dict, *, stage: str = "mint"
+) -> list[str]:
+    """B-1: each proves path contains an executable @Test.
+
+    mint: missing dest file is OK (the story may add it). An existing file
+    with methods but no @Test refuses.
+    complete: file must exist, contain @Test, and (when a test-shaped Maven
+    cmd ran) appear in target/surefire-reports.
+    """
+    errs: list[str] = []
+    root = Path(root)
+    exits = (body or {}).get("exit_criteria") or (body or {}).get("done_when") or []
+    if not isinstance(exits, list):
+        return errs
+    need_surefire = stage == "complete" and body_has_test_shaped_cmd(body)
+    for item in exits:
+        if not isinstance(item, dict):
+            continue
+        check = str(item.get("check") or "").strip()
+        proves, perr = proving_test_rels(item)
+        if perr or not proves:
+            continue
+        for rel in proves:
+            dest = root / rel
+            if not dest.is_file():
+                if stage == "complete":
+                    errs.append(
+                        f"exit {check!r} proves {rel!r} missing on dest "
+                        "(B-1 executable test refuse)"
+                    )
+                continue
+            try:
+                text = dest.read_text(encoding="utf-8", errors="replace")
+            except OSError as exc:
+                errs.append(
+                    f"exit {check!r} proves {rel!r} unreadable ({exc}) "
+                    "(B-1 executable test refuse)"
+                )
+                continue
+            if not java_has_executable_test(text):
+                errs.append(
+                    f"exit {check!r} proves {rel!r} has no @Test "
+                    "(B-1: a file with methods but no executable test fails the card)"
+                )
+                continue
+            if need_surefire:
+                fqcn = proves_to_fqcn(rel)
+                if not fqcn or not surefire_has_class(root, fqcn):
+                    errs.append(
+                        f"exit {check!r} proves {rel!r} did not appear in "
+                        "target/surefire-reports (B-1 surefire refuse)"
+                    )
+    return errs
+
+
 def minted_task_id_errors(
     body: dict, *, expect_task_id: str | None = None
 ) -> list[str]:
@@ -932,14 +1186,16 @@ def minted_task_id_errors(
 
 
 def exit_cmd_discriminating_errors(root: Path, body: dict) -> list[str]:
-    """SR-13 / L2a: cmd must be able to fail *for this story*.
+    """SR-13 / L2a: cmd must be able to fail *for this card's AC*.
 
     Static (no mvn on PATH — golden must not require it):
       * first token `true` / `:` → always succeeds → refuse
       * `mvn … test` must name `proves` test source(s) that sit in
         **this** `files_writable`. An unrelated dest `src/test` file must
         not satisfy the oracle (Deputy E-20260815T014500Z).
-      * `mvn … compile` is not test-shaped; remaining pom / no pom as before.
+      * `mvn … compile` / `test-compile` are not test-shaped for L2a
+        proves. `mvn … test` and `mvn … verify` must name `proves`.
+        curl / scripts are not card exits (Operator 2026-08-16).
       * surefire `failIfNoTests=true` is not a mint recipe (L4).
 
     Provenance over mint-time Maven invocation.
@@ -978,8 +1234,13 @@ def exit_cmd_discriminating_errors(root: Path, body: dict) -> list[str]:
             continue
         ok, mvn_parts = semantic_exit_cmd_is_maven(s)
         if not ok or not mvn_parts:
+            errs.append(
+                f"exit {check!r} cmd {cmd!r} is not a Maven vehicle "
+                "(SR-13: curl/scripts are not card exits; an HTTP AC is a "
+                "@QuarkusTest in this write-set)"
+            )
             continue
-        if mvn_parts[-1] != "test":
+        if mvn_parts[-1] not in {"test", "verify"}:
             continue
         proves, perr = proving_test_rels(x)
         if perr:
@@ -1007,4 +1268,5 @@ def exit_cmd_discriminating_errors(root: Path, body: dict) -> list[str]:
                     f"exit {check!r} proves {rel!r} is not in this "
                     "files_writable (L2a per-story test provenance refuse)"
                 )
+    errs.extend(proves_executable_errors(root, body, stage="mint"))
     return errs

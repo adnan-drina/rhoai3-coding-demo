@@ -234,6 +234,9 @@ python3 "$(cd "$(dirname "$0")" && pwd)/normalize-findings.py" \
   "${JSON_OUT}" "${CLI}" "$(echo "${TARGET_LIST}" | xargs | tr ' ' ',')" "legacy-at-3:${INPUT_DIGEST}" \
   "${OUT_DIR}/rules-coverage.json" \
   "${OUT_DIR}/static-report/index.html"
+python3 "$(cd "$(dirname "$0")" && pwd)/assert-mta-rescan.py" "${ROOT}" \
+  --snapshot-m1 --findings "${JSON_OUT}" \
+  || die "M1 findings digest snapshot failed (WC-5)"
 python3 "$(cd "$(dirname "$0")" && pwd)/validate-findings-schema.py" "${JSON_OUT}" \
   || die "findings failed provisional schema validation (governance/schemas/mta-findings.md; skill scan-with-mta)"
 

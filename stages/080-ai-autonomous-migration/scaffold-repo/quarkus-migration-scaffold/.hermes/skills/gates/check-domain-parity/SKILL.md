@@ -5,7 +5,7 @@ license: Apache-2.0
 compatibility: Linux seat; Maven and Java 21 for PIT and product tests
 metadata:
   author: rhoai3-harness-team
-  version: "1.2.0"
+  version: "1.3.0"
   hermes:
     tags:
     - gates
@@ -123,9 +123,8 @@ Dual-denominator (AD-H §18.0¶5): coverage floor `attempted/generated` **and**
 kill strength `killed/attempted`; sole attempted PASS predicate forbidden.
 `--source` is required — `declared_engineering_target` (bars from outside this
 subject's score) or `ratchet_from_measured` (margins recorded under this tree's
-measured score). Typed Operator/deputy waiver
-(sole alternate M5 path): `governance/schemas/g1-kill-ratio-waiver.md`.
-Pinning ≠ M5 `ACCEPT` (#1e).
+measured score). There is no kill-ratio waiver path: M5 ACCEPT requires
+PASS+pin (B-4/C-3(a)). Pinning ≠ M5 `ACCEPT` (#1e).
 
 ## Home rule
 
@@ -153,8 +152,12 @@ Operand first, then live evidence, then pin. Scripts are under
    (zero mutants ⇒ exit 1).
 4. **Exercise the evaluators** — `g1-characterization.py`,
    `g2-harvest-fidelity.py`, `g3-findings-delta.py`, `g4-runtime-parity.py`,
-   each taking `<root>`; `run-admission.sh <root>` runs all four. Each walks the
-   named fixture dirs under `<root>/.hermes/skills/gates/check-release-readiness/fixtures/admission/<gate>/`,
+   each taking `<root>`; `run-admission.sh <root>` runs all four **admission**
+   fixtures (those ACCEPTs are evaluator wiring, not product M4/M5). Product
+   scoring uses the same scripts with `--product`: missing dest evidence or a
+   path under `/fixtures/admission/` emits `INCONCLUSIVE_FIXTURE`, never
+   ACCEPT (B-5). Admission walks
+   `<root>/.hermes/skills/gates/check-release-readiness/fixtures/admission/<gate>/`,
    compares the computed verdict to the fixture's expected verdict, and writes
    `…/admission/out/<gate>/<fixture>.json`. Disagreement ⇒ exit 1.
 5. **Pin the kill ratio** (after live `mutationCoverage`, never after a dry run)

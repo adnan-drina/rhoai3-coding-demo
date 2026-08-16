@@ -5,7 +5,7 @@ license: Apache-2.0
 compatibility: Linux seat; kantra CLI and Java 21; network for rule bundles
 metadata:
   author: rhoai3-harness-team
-  version: "1.4.0"
+  version: "1.4.1"
   hermes:
     tags:
     - analysis
@@ -87,7 +87,12 @@ What it does, in order (each step dies non-zero on failure):
    discard those analyzer fields) and a pointer to the static HTML
    report already written under `evidence/mta/static-report/` (we do
    **not** pass `--skip-static-report`). Then
-   `validate-findings-schema.py <json>`.
+   `validate-findings-schema.py <json>`. Then
+   `assert-mta-rescan.py <root> --snapshot-m1 --findings <json>` writes
+   `evidence/derived/m1-findings-digest.json` if absent (WC-5). M5 complete
+   runs `assert-mta-rescan.py <root>` without `--snapshot-m1`:
+   `analyzer_ran` plus a digest/timestamp newer than M1 and last M3.
+   Presence of `findings-handoff.json` is not a rescan.
    See `governance/schemas/mta-findings.md`.
 6. `emit-findings-handoff.py <root> <findings> <handoff>` → the M1→M2 seam
    `evidence/findings-handoff.json` (`rhoai3.findings-handoff/v1`: rule IDs,
@@ -163,6 +168,11 @@ Both are required environment facts, not optional tuning.
   beside the normalized envelope). `evidence/mta/rules-coverage.json` names
   fired/unmatched/skipped/errors per ruleset. `evidence/mta/static-report/index.html`
   is the human report (absent only if the analyzer failed to render it).
+- `evidence/derived/m1-findings-digest.json` is written on the first analyze
+  (`assert-mta-rescan.py --snapshot-m1`). M5 `mta_rescan` is
+  `assert-mta-rescan.py <root>`: `analyzer_ran: true` and `input_digest`
+  different from that snapshot (a copy of M1 without a new run fails).
+  `check-findings-handoff.py` passing is not a rescan.
 - `evidence/findings-handoff.json` passes
   `python3 "${HERMES_SKILL_DIR}/scripts/check-findings-handoff.py" .` — exit 0.
   It re-hashes both `mta-findings.json` and `entry-point-inventory.json` and
