@@ -2663,6 +2663,70 @@ if not any("GET /api/owners" in e or e.endswith("/api/owners") for e in a8_us["U
     print(f"FAIL: A-8 US1 endpoints {a8_us['US1'].get('endpoints')}", file=sys.stderr)
     raise SystemExit(1)
 print("OK: A-8 transcribed GET /api/owners covers legacy RestController inventory")
+
+# Attempt-2 native shape: @Path("/owners") + GET /  (no GET /api/owners token).
+# Inventory still records /api/owners. Join via inventory servlet-prefix LCP.
+# Not a RestController→Resource filename mapper (223150Z offline loop).
+jaxrs = tmp / "a8-jaxrs"
+jaxrs.mkdir()
+cp = run(
+    [
+        str(jaxrs),
+        "--dry-run",
+        "--print-receipt",
+        "--tasks",
+        str(fixtures / "tasks.a8-jaxrs-class-path.md"),
+        "--inventory",
+        str(fixtures / "inventory.a8-jaxrs-class-path.json"),
+    ]
+)
+blob = (cp.stdout or "") + (cp.stderr or "")
+if cp.returncode != 0:
+    print("FAIL: A-8 JAX-RS @Path + inventory /api prefix dry-run", file=sys.stderr)
+    print(blob, file=sys.stderr)
+    raise SystemExit(1)
+jaxrs_receipt = json.loads(cp.stdout[cp.stdout.index("{") :])
+jaxrs_us = {s["story_id"]: s for s in jaxrs_receipt["stories"]}
+if not any("GET /api/owners" in e or e.endswith("/api/owners") for e in jaxrs_us["US1"].get("endpoints") or []):
+    print(f"FAIL: A-8 JAX-RS US1 endpoints {jaxrs_us['US1'].get('endpoints')}", file=sys.stderr)
+    raise SystemExit(1)
+if not any("GET /api/pets" in e or e.endswith("/api/pets") for e in jaxrs_us["US2"].get("endpoints") or []):
+    print(f"FAIL: A-8 JAX-RS US2 endpoints {jaxrs_us['US2'].get('endpoints')}", file=sys.stderr)
+    raise SystemExit(1)
+print("OK: A-8 JAX-RS @Path(\"/owners\") covers inventory GET /api/owners")
+
+# Attempt-2 harvested specimen (Operator 223150Z): real speckit tasks.md + inventory.
+attempt2_tasks = fixtures / "tasks.attempt-2-speckit.md"
+attempt2_inv = fixtures / "inventory.attempt-2.json"
+if attempt2_tasks.is_file() and attempt2_inv.is_file():
+    a2 = tmp / "attempt-2"
+    a2.mkdir()
+    cp = run(
+        [
+            str(a2),
+            "--dry-run",
+            "--print-receipt",
+            "--tasks",
+            str(attempt2_tasks),
+            "--inventory",
+            str(attempt2_inv),
+        ]
+    )
+    blob = (cp.stdout or "") + (cp.stderr or "")
+    if cp.returncode != 0:
+        print("FAIL: attempt-2 harvest handover-mint dry-run", file=sys.stderr)
+        print(blob, file=sys.stderr)
+        raise SystemExit(1)
+    a2r = json.loads(cp.stdout[cp.stdout.index("{") :])
+    n_eps = sum(len(s.get("endpoints") or []) for s in a2r["stories"])
+    if n_eps != 34:
+        print(f"FAIL: attempt-2 harvest endpoints {n_eps} want 34", file=sys.stderr)
+        raise SystemExit(1)
+    print("OK: attempt-2 harvest handover-mint dry-run (34 endpoints)")
+else:
+    print("FAIL: missing tasks.attempt-2-speckit.md / inventory.attempt-2.json", file=sys.stderr)
+    raise SystemExit(1)
+
 expect_fail(
     [
         str(tmp / "a8-post"),

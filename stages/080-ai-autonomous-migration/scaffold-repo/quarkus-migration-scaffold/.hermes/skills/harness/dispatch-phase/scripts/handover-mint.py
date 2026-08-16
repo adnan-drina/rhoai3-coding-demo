@@ -574,6 +574,55 @@ def _path_covered(ep_path: str, paths: set[str]) -> bool:
     return False
 
 
+def _inventory_servlet_prefix(inventory: dict[str, Any]) -> str:
+    """Shared first-segment prefix of inventory HTTP paths (e.g. /api).
+
+    Native Spec Kit writes JAX-RS ``@Path("/owners")`` plus ``GET /``; M1
+    inventory records the servlet-mounted path ``/api/owners``. The prefix
+    is taken from the inventory, not hardcoded, and never applied to
+    ``@Path("/")`` (that would claim every ``/api/...`` route).
+    """
+    segs_list: list[list[str]] = []
+    for ep in inventory.get("entry_points") or []:
+        if not isinstance(ep, dict) or ep.get("kind") != "http":
+            continue
+        p = _norm_http_path(str(ep.get("http_path") or ""))
+        if not p or p == "/":
+            continue
+        segs_list.append([s for s in p.split("/") if s])
+    if not segs_list:
+        return ""
+    common = segs_list[0]
+    for segs in segs_list[1:]:
+        n = 0
+        while n < len(common) and n < len(segs) and common[n] == segs[n]:
+            n += 1
+        common = common[:n]
+        if not common:
+            return ""
+    return "/" + "/".join(common)
+
+
+def _jaxrs_class_paths(body: str) -> set[str]:
+    return {
+        _norm_http_path(p)
+        for p in re.findall(r'@Path\(\s*"([^"]+)"\)', body or "")
+    }
+
+
+def _with_servlet_prefix(jaxrs: set[str], prefix: str) -> set[str]:
+    extra: set[str] = set()
+    if not prefix:
+        return extra
+    for p in jaxrs:
+        if not p or p == "/":
+            continue
+        if p == prefix or p.startswith(prefix + "/"):
+            continue
+        extra.add(_norm_http_path(prefix + p))
+    return extra
+
+
 def cover_endpoints(phases: list[Phase], inventory: dict[str, Any]) -> None:
     eps = inventory.get("entry_points") or []
     if not isinstance(eps, list) or not eps:
@@ -585,7 +634,12 @@ def cover_endpoints(phases: list[Phase], inventory: dict[str, Any]) -> None:
     for ph in phases:
         for f in ph.files:
             file_owner[f] = ph.story_id
-    transcribed = {ph.story_id: _transcribed_http(ph) for ph in phases}
+    prefix = _inventory_servlet_prefix(inventory)
+    transcribed: dict[str, tuple[set[str], set[str], set[str]]] = {}
+    for ph in phases:
+        paths, methods, symbols = _transcribed_http(ph)
+        paths = set(paths) | _with_servlet_prefix(_jaxrs_class_paths(ph.body), prefix)
+        transcribed[ph.story_id] = (paths, methods, symbols)
     uncovered: list[str] = []
     multi: list[str] = []
     claimed: dict[str, list[str]] = {ph.story_id: [] for ph in phases}

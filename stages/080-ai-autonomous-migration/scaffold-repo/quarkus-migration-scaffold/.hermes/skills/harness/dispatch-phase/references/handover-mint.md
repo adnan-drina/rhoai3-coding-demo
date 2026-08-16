@@ -27,7 +27,12 @@ After native `speckit` stops at `tasks`, the orchestrator runs
    `http_path` is transcribed (`@Path("…")` or `GET /api/…`) and
    `http_method` is named (or the inventory method is empty). `{id}` and
    `{ownerId}` normalize to `{var}`; a transcribed prefix covers nested
-   paths. Do **not** map `*RestController.java` → `*Resource.java` and
+   paths. Native Spec Kit writes JAX-RS `@Path("/owners")` plus `GET /`
+   (no `GET /api/owners` token). The mint joins that class path to the
+   inventory's shared servlet prefix (LCP of `http_path` values, e.g.
+   `/api`) so `@Path("/owners")` covers `GET /api/owners`. **Do not**
+   apply that prefix to `@Path("/")` (it would claim every `/api/…`
+   route). Do **not** map `*RestController.java` → `*Resource.java` and
    do **not** infer `/api/owners` from a filename. Uncovered entries
    refuse (`endpoints_uncovered`). `endpoints_multi` is unreachable when
    write-sets are disjoint unless two phases transcribe the same route.
