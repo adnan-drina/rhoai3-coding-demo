@@ -5,6 +5,8 @@ Fail-closed: tasks.md User-Story phases → typed partition receipt + bodies.
 Parents are transcribed from the Dependencies section (not inferred).
 File-granular ownership is a distinct step after grouping. Endpoint coverage
 is vs M1 inventory. OBJECT spec-kit hooks (V20-5 advisory).
+Domain `## Phase N:` headings mint as kind `phase` id `P{N}` (Architect
+E-20260817T013303Z). Do not infer Setup/Foundational from title prose.
 
 Does not call hermes unless --parent or --ensure-wave-holder is passed (then mint-m3-wave.sh).
 
@@ -81,11 +83,19 @@ US_LINE_DEPS = re.compile(
 DEPENDS_ON_US = re.compile(
     r"Depends on User Story\s+(\d+)|Depends on US(\d+)", re.I
 )
+# Native speckit: `- **Phase 7 (US1)**: Depends on Phases 2-6`
+PHASE_N_DEPS = re.compile(
+    r"^\s*[-*]\s+\*\*Phase\s+(\d+)\b[^*]*\*\*:\s*(.+)$",
+    re.I | re.M,
+)
+PHASE_RANGE = re.compile(r"Phases?\s+(\d+)\s*[-–—]\s*(\d+)", re.I)
+PHASE_ONE = re.compile(r"\bPhase\s+(\d+)\b", re.I)
 
 KIND_SETUP = "setup"
 KIND_FOUNDATIONAL = "foundational"
 KIND_USER_STORY = "user_story"
 KIND_POLISH = "polish"
+KIND_PHASE = "phase"
 
 RECEIPT_SOURCE = "handover-mint"
 RECEIPT_SCHEMA = "rhoai3.partition-receipt/v1"
@@ -117,6 +127,7 @@ class Phase:
     workspace_kind: str = "dir"
     endpoints: list[str] = field(default_factory=list)
     extended_proves: list[str] = field(default_factory=list)
+    phase_num: int | None = None
 
 
 def _die(code: str, detail: str) -> None:
@@ -134,7 +145,11 @@ def _is_pom(path: str) -> bool:
     return path == "pom.xml" or path.endswith("/pom.xml")
 
 
-def _kind_and_id(title: str, body: str) -> tuple[str, str]:
+def _kind_and_id(title: str, body: str, num: str) -> tuple[str, str]:
+    """Kind from closed tokens; else id is P{heading number}, not title prose.
+
+    Architect E-20260817T013303Z: do not alias 'foundations'→foundational.
+    """
     low = title.lower()
     if "user story" in low:
         m = US_HEADING.search(title)
@@ -154,8 +169,9 @@ def _kind_and_id(title: str, body: str) -> tuple[str, str]:
         return KIND_FOUNDATIONAL, KIND_FOUNDATIONAL
     if "polish" in low:
         return KIND_POLISH, KIND_POLISH
-    _die("PHASE_KIND", f"unrecognised phase heading: {title!r}")
-    raise AssertionError("unreachable")
+    if not str(num).isdigit():
+        _die("PHASE_KIND", f"unrecognised phase heading: {title!r}")
+    return KIND_PHASE, f"P{int(num)}"
 
 
 def parse_phases(text: str) -> list[Phase]:
@@ -177,10 +193,10 @@ def parse_phases(text: str) -> list[Phase]:
             "tasks.md has no '## Dependencies' section — parents cannot be transcribed",
         )
     phases: list[Phase] = []
-    for idx, (start, _num, title) in enumerate(starts):
+    for idx, (start, num, title) in enumerate(starts):
         end = starts[idx + 1][0] if idx + 1 < len(starts) else deps_at
         body = "\n".join(lines[start + 1 : end])
-        kind, sid = _kind_and_id(title, body)
+        kind, sid = _kind_and_id(title, body, num)
         checklist = [m.group(0) for line in body.splitlines() if (m := CHECKBOX.match(line))]
         files: list[str] = []
         for line in body.splitlines():
@@ -210,6 +226,7 @@ def parse_phases(text: str) -> list[Phase]:
                 checklist=checklist,
                 independent_test=ind,
                 priority=pri,
+                phase_num=int(num) if str(num).isdigit() else None,
             )
         )
     seen: set[str] = set()
@@ -247,7 +264,15 @@ def _resolve_backtick_test_oracles(phases: list[Phase]) -> None:
 
 AMEND_EXISTING = re.compile(
     r"^- \[[ xX]\]\s+(?:T\d+\s+)?(?:\[P\]\s+)?(?:\[US\d+\]\s+)?"
-    r"(Extend|Add create/update/delete|Add POST/PUT/DELETE|Verify)\b",
+    r"(?:"
+    r"Extend\b"
+    r"|Add create/update/delete\b"
+    r"|Add POST(?:\s*,\s*|/)PUT(?:\s*,\s*|/)DELETE\b"
+    r"|Verify\b"
+    r"|Add\b.+\sto\s+`?pom\.xml"
+    r"|Create\b.+\(extend existing file\)"
+    r"|Create\b.+\badd POST(?:\s*,\s*|/)PUT(?:\s*,\s*|/)DELETE tests"
+    r")",
     re.I,
 )
 BACKTICK_TEST = re.compile(r"`([A-Za-z][A-Za-z0-9_]*Test)`")
@@ -274,6 +299,41 @@ def _parents_from_rest(rest: str, by_id: dict[str, Phase]) -> list[str]:
     return parents
 
 
+def _parents_from_phase_n_rest(
+    rest: str,
+    self_id: str,
+    by_num: dict[int, str],
+    all_ids: list[str],
+    us_ids: list[str],
+) -> list[str]:
+    if re.search(r"no dependencies", rest, re.I):
+        return []
+    if re.search(r"depends on all phases", rest, re.I):
+        return [sid for sid in all_ids if sid != self_id]
+    if re.search(r"depends on all (?:desired )?user stories", rest, re.I):
+        return [sid for sid in us_ids if sid != self_id]
+    parents: list[str] = []
+    consumed: set[int] = set()
+
+    def add_num(n: int) -> None:
+        sid = by_num.get(n)
+        if sid and sid != self_id and sid not in parents:
+            parents.append(sid)
+
+    for m in PHASE_RANGE.finditer(rest):
+        a, b = int(m.group(1)), int(m.group(2))
+        lo, hi = min(a, b), max(a, b)
+        for n in range(lo, hi + 1):
+            consumed.add(n)
+            add_num(n)
+    for m in PHASE_ONE.finditer(rest):
+        n = int(m.group(1))
+        if n in consumed:
+            continue
+        add_num(n)
+    return parents
+
+
 def transcribe_parents(text: str, phases: list[Phase]) -> None:
     deps_at = None
     lines = text.splitlines()
@@ -284,28 +344,57 @@ def transcribe_parents(text: str, phases: list[Phase]) -> None:
     assert deps_at is not None
     block = "\n".join(lines[deps_at:])
     by_id = {p.story_id: p for p in phases}
+    by_num = {p.phase_num: p.story_id for p in phases if p.phase_num is not None}
+    all_ids = [p.story_id for p in phases]
     us_ids = [p.story_id for p in phases if p.kind == KIND_USER_STORY]
+    phase_n_us = False
+    for m in PHASE_N_DEPS.finditer(block):
+        n = int(m.group(1))
+        sid = by_num.get(n)
+        if not sid:
+            _die("DEPENDENCIES", f"Phase {n} bullet has no matching heading")
+        by_id[sid].parents = _parents_from_phase_n_rest(
+            m.group(2), sid, by_num, all_ids, us_ids
+        )
+        if sid in us_ids:
+            phase_n_us = True
 
     setup_line = SETUP_DEPS.search(block)
     found_line = FOUND_DEPS.search(block)
     us_all = US_ALL_DEPS.search(block)
     polish_line = POLISH_DEPS.search(block)
     if KIND_SETUP in by_id:
-        if not setup_line:
-            _die("DEPENDENCIES_MISSING", "Setup bullet missing from Dependencies")
-        if re.search(r"no dependencies", setup_line.group(1), re.I):
-            by_id[KIND_SETUP].parents = []
-        else:
-            _die("DEPENDENCIES", f"Setup is not 'No dependencies': {setup_line.group(1)!r}")
+        setup_from_phase_n = bool(
+            by_id[KIND_SETUP].phase_num is not None
+            and any(
+                int(m.group(1)) == by_id[KIND_SETUP].phase_num
+                for m in PHASE_N_DEPS.finditer(block)
+            )
+        )
+        if not setup_from_phase_n:
+            if not setup_line:
+                _die("DEPENDENCIES_MISSING", "Setup bullet missing from Dependencies")
+            if re.search(r"no dependencies", setup_line.group(1), re.I):
+                by_id[KIND_SETUP].parents = []
+            else:
+                _die("DEPENDENCIES", f"Setup is not 'No dependencies': {setup_line.group(1)!r}")
     if KIND_FOUNDATIONAL in by_id:
-        if not found_line:
-            _die("DEPENDENCIES_MISSING", "Foundational bullet missing from Dependencies")
-        if re.search(r"depends on setup", found_line.group(1), re.I):
-            if KIND_SETUP not in by_id:
-                _die("DEPENDENCIES", "Foundational depends on Setup but Setup phase is absent")
-            by_id[KIND_FOUNDATIONAL].parents = [KIND_SETUP]
-        else:
-            _die("DEPENDENCIES", f"Foundational parents not transcribed: {found_line.group(1)!r}")
+        found_from_phase_n = bool(
+            by_id[KIND_FOUNDATIONAL].phase_num is not None
+            and any(
+                int(m.group(1)) == by_id[KIND_FOUNDATIONAL].phase_num
+                for m in PHASE_N_DEPS.finditer(block)
+            )
+        )
+        if not found_from_phase_n:
+            if not found_line:
+                _die("DEPENDENCIES_MISSING", "Foundational bullet missing from Dependencies")
+            if re.search(r"depends on setup", found_line.group(1), re.I):
+                if KIND_SETUP not in by_id:
+                    _die("DEPENDENCIES", "Foundational depends on Setup but Setup phase is absent")
+                by_id[KIND_FOUNDATIONAL].parents = [KIND_SETUP]
+            else:
+                _die("DEPENDENCIES", f"Foundational parents not transcribed: {found_line.group(1)!r}")
     default_us_parents = [KIND_FOUNDATIONAL] if KIND_FOUNDATIONAL in by_id else []
     per_us: dict[str, list[str]] = {}
     if us_ids:
@@ -316,7 +405,8 @@ def transcribe_parents(text: str, phases: list[Phase]) -> None:
             if KIND_FOUNDATIONAL not in by_id:
                 _die("DEPENDENCIES", "user stories depend on Foundational but that phase is absent")
             for sid in us_ids:
-                per_us[sid] = list(default_us_parents)
+                if not by_id[sid].parents:
+                    per_us[sid] = list(default_us_parents)
         for m in US_LINE_DEPS.finditer(block):
             sid = f"US{m.group(1)}"
             rest = m.group(2)
@@ -328,19 +418,19 @@ def transcribe_parents(text: str, phases: list[Phase]) -> None:
             if not base and not extra:
                 continue
             per_us[sid] = base + extra
-        missing = [sid for sid in us_ids if sid not in per_us or not per_us[sid]]
+        for sid, parents in per_us.items():
+            if sid in by_id and not by_id[sid].parents:
+                by_id[sid].parents = parents
+        missing = [sid for sid in us_ids if not by_id[sid].parents]
         if missing:
             _die(
                 "DEPENDENCIES_MISSING",
                 "each user story needs a Dependencies bullet "
-                "(per-story native speckit, or collective "
+                "(Phase-N 'Depends on Phases …', per-story native speckit, or collective "
                 "'User Stories (Phase 3+) depend on Foundational'); "
                 f"missing parents for {missing}",
             )
-    for sid, parents in per_us.items():
-        if sid in by_id:
-            by_id[sid].parents = parents
-    if us_ids and KIND_FOUNDATIONAL in by_id:
+    if us_ids and KIND_FOUNDATIONAL in by_id and not phase_n_us:
         omitted = [
             sid
             for sid in us_ids
@@ -352,7 +442,7 @@ def transcribe_parents(text: str, phases: list[Phase]) -> None:
                 "Foundational must be in parents of every user-story phase "
                 f"(Architect E-20260816T192444Z); omitted by {omitted}",
             )
-    if KIND_POLISH in by_id:
+    if KIND_POLISH in by_id and not by_id[KIND_POLISH].parents:
         if not polish_line or not re.search(
             r"depends on all (?:desired )?user stories", polish_line.group(1), re.I
         ):

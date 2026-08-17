@@ -2727,6 +2727,64 @@ else:
     print("FAIL: missing tasks.attempt-2-speckit.md / inventory.attempt-2.json", file=sys.stderr)
     raise SystemExit(1)
 
+# Attempt-3 harvest (Architect E-20260817T013303Z): P{N} from heading number.
+# A-8 POST/PUT/DELETE lines that omit class @Path stay uncovered (no filename mapper).
+attempt3_tasks = fixtures / "tasks.attempt-3-speckit.md"
+attempt3_inv = fixtures / "inventory.attempt-3.json"
+if not attempt3_tasks.is_file() or not attempt3_inv.is_file():
+    print("FAIL: missing tasks.attempt-3-speckit.md / inventory.attempt-3.json", file=sys.stderr)
+    raise SystemExit(1)
+import importlib.util
+_hm_spec = importlib.util.spec_from_file_location("handover_mint_a3", handover)
+_hm = importlib.util.module_from_spec(_hm_spec)
+sys.modules["handover_mint_a3"] = _hm
+_hm_spec.loader.exec_module(_hm)
+_a3_text = attempt3_tasks.read_text(encoding="utf-8")
+_a3_phases = _hm.parse_phases(_a3_text)
+_hm.transcribe_parents(_a3_text, _a3_phases)
+_a3_pom = _hm.assign_ownership(_a3_phases)
+_a3_ids = [p.story_id for p in _a3_phases]
+if _a3_ids != ["P1", "P2", "P3", "P4", "P5", "P6", "US1", "US2", "US3", "US4", "P11", "polish"]:
+    print(f"FAIL: attempt-3 story ids {_a3_ids}", file=sys.stderr)
+    raise SystemExit(1)
+if _a3_pom != "P1":
+    print(f"FAIL: attempt-3 pom_owner {_a3_pom} want P1", file=sys.stderr)
+    raise SystemExit(1)
+_us1 = next(p for p in _a3_phases if p.story_id == "US1")
+if _us1.parents != ["P2", "P3", "P4", "P5", "P6"]:
+    print(f"FAIL: attempt-3 US1 parents {_us1.parents}", file=sys.stderr)
+    raise SystemExit(1)
+_p2 = next(p for p in _a3_phases if p.story_id == "P2")
+if any(_hm._is_pom(f) for f in _p2.files):
+    print("FAIL: attempt-3 P2 still claims pom.xml (T008 must be amend)", file=sys.stderr)
+    raise SystemExit(1)
+print("OK: attempt-3 Phase-N ids/parents/pom_owner (A-5 T008 amend)")
+a3 = tmp / "attempt-3"
+a3.mkdir()
+cp = run(
+    [
+        str(a3),
+        "--dry-run",
+        "--tasks",
+        str(attempt3_tasks),
+        "--inventory",
+        str(attempt3_inv),
+    ]
+)
+blob = (cp.stdout or "") + (cp.stderr or "")
+if "PHASE_KIND" in blob:
+    print("FAIL: attempt-3 still PHASE_KIND after Phase-N else-branch", file=sys.stderr)
+    print(blob, file=sys.stderr)
+    raise SystemExit(1)
+if cp.returncode == 0:
+    print("OK: attempt-3 harvest handover-mint dry-run")
+elif "endpoints_uncovered" in blob and "count=18" in blob:
+    print("OK: attempt-3 A-4/A-5 parse; A-8 POST/PUT/DELETE without class @Path is uncovered (no filename mapper)")
+else:
+    print("FAIL: attempt-3 harvest unexpected refuse", file=sys.stderr)
+    print(blob, file=sys.stderr)
+    raise SystemExit(1)
+
 expect_fail(
     [
         str(tmp / "a8-post"),

@@ -12,14 +12,20 @@ After native `speckit` stops at `tasks`, the orchestrator runs
 1. Reads User-Story **phases** from `tasks.md` (one card per phase, not per
    task). `[P]` stays inside the card body as `phase_checklist`.
 2. **Transcribes** parents from the `## Dependencies` section (native Spec Kit
-   heading `## Dependencies & Execution Order` included). Per-story bullets
-   (`**User Story 1 (Phase 3)**: Depends on Foundational`) are the contract;
-   the old collective `**User Stories (Phase 3+)**` bullet still works.
-   Polish accepts `all user stories` or `all desired user stories`.
+   heading `## Dependencies & Execution Order` included). Closed-vocabulary
+   bullets (`**Setup**` / `**Foundational**` / `**User Story N**` /
+   `**User Stories (Phase 3+)**`) still work. Native domain headings
+   (`## Phase 1: Build Foundations`) mint as kind `phase` id `P1` — the
+   heading **number**, not the title prose (Architect `E-20260817T013303Z`).
+   `**Phase 7 (US1)**: Depends on Phases 2-6` transcribes onto `US1` as
+   `[P2,…,P6]`. Do **not** require the word Foundational when native uses
+   Phase-N lists (`192444Z` AMEND). Polish accepts `all user stories`,
+   `all desired user stories`, or `all phases`.
 3. Assigns file-granular ownership (A-5): each dest file has **exactly one
-   owner**. `pom.xml` has a unique owner (earliest phase that named it).
-   Native later-story **Extend** / **Add POST** lines do not re-claim those
-   files. Any other overlap is a partition defect → refuse.
+   owner**. `pom.xml` has a unique owner (the phase that **creates** it).
+   Native later-story **Extend** / **Add POST, PUT, DELETE** / **Add … to
+   pom.xml** lines are amend, not a second write-set claim. Any other overlap
+   is a partition defect → refuse.
 4. Checks HTTP endpoint coverage against M1 `evidence/entry-point-inventory.json`
    (Architect `E-20260816T193813Z` A-8). An inventory HTTP entry is covered
    when **any** of these hold: dest-file equality (same-stack shortcut);

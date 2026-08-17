@@ -66,6 +66,8 @@ REQUIRED_FILES = [
         ".hermes/skills/harness/dispatch-phase/fixtures/handover/tasks.a8-routes.md",
         ".hermes/skills/harness/dispatch-phase/fixtures/handover/inventory.a8-routes.json",
         ".hermes/skills/harness/dispatch-phase/fixtures/handover/inventory.a8-uncovered-post.json",
+        ".hermes/skills/harness/dispatch-phase/fixtures/handover/tasks.attempt-3-speckit.md",
+        ".hermes/skills/harness/dispatch-phase/fixtures/handover/inventory.attempt-3.json",
         ".hermes/skills/analysis/inventory-entry-points/scripts/inventory-entry-points.py",
         ".hermes/skills/analysis/inventory-entry-points/SKILL.md",
     ".hermes/skills/harness/dispatch-phase/scripts/m3-attach-skills.py",
@@ -1075,6 +1077,11 @@ REQUIRED_SUBSTRINGS = [
         ".hermes/skills/harness/dispatch-phase/scripts/handover-mint.py",
         "PATH_A_PARTITION",
         "A-6 Path-A authored partition.json is not handover input",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/scripts/handover-mint.py",
+        "KIND_PHASE",
+        "Phase-N structural mint uses heading number, not title prose",
     ),
     (
         ".hermes/skills/harness/dispatch-phase/scripts/handover-mint.py",
