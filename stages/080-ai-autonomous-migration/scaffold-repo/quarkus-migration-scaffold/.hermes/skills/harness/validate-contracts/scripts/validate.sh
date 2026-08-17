@@ -2727,8 +2727,8 @@ else:
     print("FAIL: missing tasks.attempt-2-speckit.md / inventory.attempt-2.json", file=sys.stderr)
     raise SystemExit(1)
 
-# Attempt-3 harvest (Architect E-20260817T013303Z): P{N} from heading number.
-# A-8 POST/PUT/DELETE lines that omit class @Path stay uncovered (no filename mapper).
+# Attempt-3 harvest (Architect E-20260817T013303Z / E-20260817T015216Z):
+# P{N} from heading number; A-8 amend inherits earlier file @Path.
 attempt3_tasks = fixtures / "tasks.attempt-3-speckit.md"
 attempt3_inv = fixtures / "inventory.attempt-3.json"
 if not attempt3_tasks.is_file() or not attempt3_inv.is_file():
@@ -2776,14 +2776,16 @@ if "PHASE_KIND" in blob:
     print("FAIL: attempt-3 still PHASE_KIND after Phase-N else-branch", file=sys.stderr)
     print(blob, file=sys.stderr)
     raise SystemExit(1)
-if cp.returncode == 0:
-    print("OK: attempt-3 harvest handover-mint dry-run")
-elif "endpoints_uncovered" in blob and "count=18" in blob:
-    print("OK: attempt-3 A-4/A-5 parse; A-8 POST/PUT/DELETE without class @Path is uncovered (no filename mapper)")
-else:
-    print("FAIL: attempt-3 harvest unexpected refuse", file=sys.stderr)
+if cp.returncode != 0:
+    print("FAIL: attempt-3 harvest handover-mint dry-run", file=sys.stderr)
     print(blob, file=sys.stderr)
     raise SystemExit(1)
+a3r = json.loads(cp.stdout[cp.stdout.index("{") :])
+n_eps = sum(len(s.get("endpoints") or []) for s in a3r["stories"])
+if n_eps != 34:
+    print(f"FAIL: attempt-3 harvest endpoints {n_eps} want 34", file=sys.stderr)
+    raise SystemExit(1)
+print("OK: attempt-3 harvest handover-mint dry-run (34 endpoints, A-8 amend-inherits @Path)")
 
 expect_fail(
     [

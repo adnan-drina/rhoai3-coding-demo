@@ -43,8 +43,13 @@ After native `speckit` stops at `tasks`, the orchestrator runs
    refuse (`endpoints_uncovered`). `endpoints_multi` is unreachable when
    write-sets are disjoint unless two phases transcribe the same route.
    Inventories without `http_method`/`http_path` stay uncovered unless
-   symbol or dest-file match. Native US2 POST/PUT/DELETE lines that omit
-   the class `@Path` stay uncovered unless they name a `symbol`.
+   symbol or dest-file match. An `Add POST/PUT/DELETE` or `Extend` line that
+   names a dest path already owned by an earlier phase **inherits that file's
+   transcribed routes** (`@Path` / `GET /…` on the Create line) for A-8 only;
+   methods come from the amend body (Architect `E-20260817T015216Z`). Write-set
+   stays single-owner. This is **not** a RestController→Resource mapper and
+   **not** inferring `/api/owners` from a filename with no `@Path` on the
+   owner line.
 5. Writes `evidence/briefs/partition.json` as a **receipt**
    (`source=handover-mint`, `stories[].story_id` unchanged for existing
    readers). Path-A authored partition as input is refused.

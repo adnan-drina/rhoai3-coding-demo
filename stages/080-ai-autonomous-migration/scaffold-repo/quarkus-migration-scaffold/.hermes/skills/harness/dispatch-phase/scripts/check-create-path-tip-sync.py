@@ -1085,6 +1085,11 @@ REQUIRED_SUBSTRINGS = [
     ),
     (
         ".hermes/skills/harness/dispatch-phase/scripts/handover-mint.py",
+        "015216Z",
+        "A-8 amend inherits earlier file @Path; methods from the amend body",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/scripts/handover-mint.py",
         "endpoints_uncovered",
         "A-8 endpoint coverage vs M1 inventory is fail-closed",
     ),

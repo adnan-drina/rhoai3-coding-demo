@@ -726,10 +726,48 @@ def cover_endpoints(phases: list[Phase], inventory: dict[str, Any]) -> None:
             file_owner[f] = ph.story_id
     prefix = _inventory_servlet_prefix(inventory)
     transcribed: dict[str, tuple[set[str], set[str], set[str]]] = {}
+    jaxrs_only: dict[str, set[str]] = {}
     for ph in phases:
         paths, methods, symbols = _transcribed_http(ph)
-        paths = set(paths) | _with_servlet_prefix(_jaxrs_class_paths(ph.body), prefix)
-        transcribed[ph.story_id] = (paths, methods, symbols)
+        jaxrs = set(_jaxrs_class_paths(ph.body)) | _with_servlet_prefix(
+            _jaxrs_class_paths(ph.body), prefix
+        )
+        jaxrs_only[ph.story_id] = jaxrs
+        transcribed[ph.story_id] = (set(paths) | jaxrs, methods, symbols)
+    # A-8 amend inherit (Architect E-20260817T015216Z): Add POST/PUT/DELETE or
+    # Extend naming a dest path owned by an earlier phase inherits *that file's*
+    # transcribed routes (the Create line's @Path / GET /…), not the whole
+    # owner's phase. Methods stay from the amend body. Not a RestController mapper.
+    file_routes: dict[str, set[str]] = {}
+    for ph in phases:
+        for line in ph.body.splitlines():
+            if not CHECKBOX.match(line):
+                continue
+            line_paths = set(_jaxrs_class_paths(line)) | _with_servlet_prefix(
+                _jaxrs_class_paths(line), prefix
+            )
+            # GET / on a Create line is class-relative, not HTTP root. Inherit
+            # @Path only so US2 POST does not also claim `/` (endpoints_multi).
+            line_paths = {p for p in line_paths if p and p != "/"}
+            if not line_paths:
+                continue
+            for raw in PATH_TOKEN.findall(line):
+                dest = _norm_path(raw)
+                file_routes.setdefault(dest, set()).update(line_paths)
+    for ph in phases:
+        extra: set[str] = set()
+        for line in ph.body.splitlines():
+            if not _is_amend_existing_line(line):
+                continue
+            for raw in PATH_TOKEN.findall(line):
+                dest = _norm_path(raw)
+                owner_sid = file_owner.get(dest)
+                if owner_sid and owner_sid != ph.story_id:
+                    extra |= file_routes.get(dest, set())
+        if extra:
+            paths, methods, symbols = transcribed[ph.story_id]
+            transcribed[ph.story_id] = (paths | extra, methods, symbols)
+            jaxrs_only[ph.story_id] = jaxrs_only[ph.story_id] | extra
     uncovered: list[str] = []
     multi: list[str] = []
     claimed: dict[str, list[str]] = {ph.story_id: [] for ph in phases}
@@ -765,6 +803,14 @@ def cover_endpoints(phases: list[Phase], inventory: dict[str, Any]) -> None:
                 ]
                 if len(method_owners) == 1:
                     owners = method_owners
+        if len(owners) > 1 and route:
+            jaxrs_owners = [
+                sid
+                for sid in owners
+                if _path_covered(route, jaxrs_only.get(sid, set()))
+            ]
+            if len(jaxrs_owners) == 1:
+                owners = jaxrs_owners
         if len(owners) > 1:
             multi.append(f"{key}:{'+'.join(owners)}")
             continue
