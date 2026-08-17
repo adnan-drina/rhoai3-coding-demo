@@ -17,8 +17,11 @@ Checks:
      ``FILE_OVERLAP``, ``131858Z`` / ``152824Z``). Do **not** stamp
      ``sequence_after`` to nurse coverage. Restore in-flight overlap only
      when C-1(a) is claimed.
-  3) MTA findings: missing file is INCONCLUSIVE (never a silent VALID).
-     Present rule IDs must land on story.rules or typed mta_oos
+  3) MTA findings **presence** (WC-8): missing file is INCONCLUSIVE (never a
+     silent VALID). Create-path does **not** require every rule id on
+     ``story.rules`` / ``mta_oos`` (Architect ``E-20260817T154012Z`` /
+     ``E-20260817T154847Z`` — that join is the migration output). Addressed
+     findings stay M1 ``check-findings-handoff`` and M5 WC-5 rescan.
   4) Composes with bodies' files_in_scope when present (M2+)
 
 Specimen-agnostic (Operator E-20260811T150800Z): HTTP denominator and package
@@ -335,33 +338,11 @@ def main() -> int:
         mta_status = "skipped_missing"
         gaps.append("mta_skipped_missing")
     else:
+        # Presence only at create (154012Z / 154847Z). Do not join rule IDs
+        # to story.rules — findings are legacy-tree, bodies are dest-tree.
         items = findings.get("violations") or findings.get("findings") or findings.get("rules") or []
-        oos = set()
-        for story in stories:
-            for x in story.get("rules") or []:
-                oos.add(str(x))
-        typed_oos = partition.get("mta_oos") or partition.get("findings_oos") or []
-        if isinstance(typed_oos, list):
-            oos.update(str(x) for x in typed_oos)
-        rule_ids: list[str] = []
-        if isinstance(items, dict):
-            rule_ids = [str(k) for k in items.keys() if k]
-        elif isinstance(items, list):
-            for it in items:
-                if isinstance(it, str):
-                    if it:
-                        rule_ids.append(it)
-                elif isinstance(it, dict):
-                    rid = str(it.get("rule") or it.get("ruleID") or it.get("id") or "")
-                    if rid:
-                        rule_ids.append(rid)
-        if rule_ids:
+        if items:
             mta_status = "checked"
-            missing_rules = [rid for rid in rule_ids if rid not in oos]
-            if missing_rules:
-                gaps.append(f"mta_unaddressed={len(missing_rules)}")
-                for r in missing_rules[:10]:
-                    gaps.append(f"mta:{r}")
         else:
             mta_status = "empty_findings"
 

@@ -1299,25 +1299,26 @@ else
     rc=1
   fi
 fi
-# WC-8: envelope violations dict present, no story.rules → INVALID
+# WC-8: envelope violations dict present, no story.rules → still VALID
+# (Architect E-20260817T154012Z — create-path is presence, not addressed)
 mkdir -p "${pc_tmp}/evidence"
 printf '%s\n' '{"schema":"rhoai3.mta-findings/v1-provisional","violations":{"springboot-to-quarkus-00000":{"ruleID":"springboot-to-quarkus-00000","category":"mandatory","incidents":[]}}}' \
   > "${pc_tmp}/evidence/mta-findings.json"
 if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/check-partition-coverage.py" \
     "${pc_tmp}" --partition evidence/briefs/partition.json --inventory inventory.json \
     >/tmp/pc-wc8-unaddr.out 2>/tmp/pc-wc8-unaddr.err; then
-  echo "FAIL: findings present with no story.rules should be INVALID" >&2
-  cat /tmp/pc-wc8-unaddr.out /tmp/pc-wc8-unaddr.err >&2
-  rc=1
-else
-  if grep -q 'INVALID' /tmp/pc-wc8-unaddr.out /tmp/pc-wc8-unaddr.err \
-     && grep -q 'mta_unaddressed' /tmp/pc-wc8-unaddr.out /tmp/pc-wc8-unaddr.err; then
-    echo "OK: PARTITION_COVERAGE unaddressed findings is INVALID (WC-8)"
+  if grep -q 'VALID' /tmp/pc-wc8-unaddr.out \
+     && ! grep -q 'mta_unaddressed' /tmp/pc-wc8-unaddr.out /tmp/pc-wc8-unaddr.err; then
+    echo "OK: PARTITION_COVERAGE findings present without story.rules is VALID (presence-only)"
   else
-    echo "FAIL: expected INVALID + mta_unaddressed" >&2
+    echo "FAIL: expected VALID without mta_unaddressed when findings are present" >&2
     cat /tmp/pc-wc8-unaddr.out /tmp/pc-wc8-unaddr.err >&2
     rc=1
   fi
+else
+  echo "FAIL: findings present without story.rules should be VALID at create" >&2
+  cat /tmp/pc-wc8-unaddr.out /tmp/pc-wc8-unaddr.err >&2
+  rc=1
 fi
 # WC-8: story.rules covers the fired id → VALID
 printf '%s\n' '{"stories":[{"story_id":"story-001","files_in_scope":["src/Foo.java"],"endpoints":["foo"],"rules":["springboot-to-quarkus-00000"]}]}' \
