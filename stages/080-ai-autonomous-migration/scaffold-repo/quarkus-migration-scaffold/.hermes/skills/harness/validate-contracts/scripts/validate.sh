@@ -2589,7 +2589,10 @@ def expect_fail(args, needle, label):
     print(f"OK: {label}")
 
 
-# good dry-run
+# good dry-run — captured attempt-2 speckit harvest (Architect E-20260817T082353Z /
+# Operator E-20260817T120146Z). tasks.good.md retired as a positive PASS.
+good_tasks = fixtures / "tasks.attempt-2-speckit.md"
+good_inv = fixtures / "inventory.attempt-2.json"
 good = tmp / "good"
 good.mkdir()
 cp = run(
@@ -2598,19 +2601,20 @@ cp = run(
         "--dry-run",
         "--print-receipt",
         "--tasks",
-        str(fixtures / "tasks.good.md"),
+        str(good_tasks),
         "--inventory",
-        str(fixtures / "inventory.good.json"),
+        str(good_inv),
     ]
 )
 blob = (cp.stdout or "") + (cp.stderr or "")
 if cp.returncode != 0:
-    print("FAIL: good handover dry-run", file=sys.stderr)
+    print("FAIL: good handover dry-run (attempt-2 harvest)", file=sys.stderr)
     print(blob, file=sys.stderr)
     raise SystemExit(1)
 receipt = json.loads(cp.stdout[cp.stdout.index("{") :])
 ids = [s["story_id"] for s in receipt["stories"]]
-if ids != ["setup", "foundational", "US1", "US2"]:
+want_ids = ["setup", "foundational", "US1", "US2", "US3", "US4", "US5", "US6", "polish"]
+if ids != want_ids:
     print(f"FAIL: story ids {ids}", file=sys.stderr)
     raise SystemExit(1)
 if receipt.get("source") != "handover-mint" or receipt.get("pom_owner") != "setup":
@@ -2633,10 +2637,14 @@ if us["US1"]["parents"] != ["foundational"] or us["setup"]["parents"] != []:
 if us["US1"]["workspace_kind"] != "worktree" or us["setup"]["workspace_kind"] != "dir":
     print("FAIL: worktree assignment", file=sys.stderr)
     raise SystemExit(1)
-if not any("[P]" in line for line in us["US1"]["phase_checklist"]):
+if not any("[P]" in line for line in us["US3"]["phase_checklist"]):
     print("FAIL: [P] missing from phase_checklist", file=sys.stderr)
     raise SystemExit(1)
-print("OK: handover-mint dry-run (ids, disjoint, pom_owner, parents, [P], worktree)")
+n_eps = sum(len(s.get("endpoints") or []) for s in receipt["stories"])
+if n_eps != 34:
+    print(f"FAIL: attempt-2 harvest endpoints {n_eps} want 34", file=sys.stderr)
+    raise SystemExit(1)
+print("OK: handover-mint dry-run (attempt-2 harvest: ids, disjoint, pom_owner, parents, [P], worktree, 34 endpoints)")
 
 # Native speckit specimen (attempt-1 harvest). A-4 must parse. US3 omitting
 # Foundational is typed DEPENDENCIES (192444Z). Harvested inventory lacks
@@ -2732,37 +2740,7 @@ if not any("GET /api/pets" in e or e.endswith("/api/pets") for e in jaxrs_us["US
     raise SystemExit(1)
 print("OK: A-8 JAX-RS @Path(\"/owners\") covers inventory GET /api/owners")
 
-# Attempt-2 harvested specimen (Operator 223150Z): real speckit tasks.md + inventory.
-attempt2_tasks = fixtures / "tasks.attempt-2-speckit.md"
-attempt2_inv = fixtures / "inventory.attempt-2.json"
-if attempt2_tasks.is_file() and attempt2_inv.is_file():
-    a2 = tmp / "attempt-2"
-    a2.mkdir()
-    cp = run(
-        [
-            str(a2),
-            "--dry-run",
-            "--print-receipt",
-            "--tasks",
-            str(attempt2_tasks),
-            "--inventory",
-            str(attempt2_inv),
-        ]
-    )
-    blob = (cp.stdout or "") + (cp.stderr or "")
-    if cp.returncode != 0:
-        print("FAIL: attempt-2 harvest handover-mint dry-run", file=sys.stderr)
-        print(blob, file=sys.stderr)
-        raise SystemExit(1)
-    a2r = json.loads(cp.stdout[cp.stdout.index("{") :])
-    n_eps = sum(len(s.get("endpoints") or []) for s in a2r["stories"])
-    if n_eps != 34:
-        print(f"FAIL: attempt-2 harvest endpoints {n_eps} want 34", file=sys.stderr)
-        raise SystemExit(1)
-    print("OK: attempt-2 harvest handover-mint dry-run (34 endpoints)")
-else:
-    print("FAIL: missing tasks.attempt-2-speckit.md / inventory.attempt-2.json", file=sys.stderr)
-    raise SystemExit(1)
+# Attempt-2 harvest is the A-4/A-5 good-path (see dry-run above).
 
 # Attempt-3 harvest (Architect E-20260817T013303Z / E-20260817T015216Z):
 # P{N} from heading number; A-8 amend inherits earlier file @Path.
@@ -2862,16 +2840,15 @@ expect_fail(
     "missing Dependencies section refused",
 )
 
-# uncovered endpoint
+# uncovered endpoint (mutate the good-path harvest inventory)
 uncovered = tmp / "uncovered"
 uncovered.mkdir()
-inv = json.loads((fixtures / "inventory.good.json").read_text())
+inv = json.loads(good_inv.read_text())
 inv["entry_points"].append(
     {"kind": "http", "file": "src/main/java/app/OrphanResource.java", "symbol": "orphan"}
 )
-inv["totals"]["http_endpoints"] = 3
-inv["counts"]["http"] = 3
-inv["counts"]["total"] = 3
+inv["counts"]["http"] = int(inv["counts"]["http"]) + 1
+inv["counts"]["total"] = int(inv["counts"]["total"]) + 1
 inv_path = uncovered / "inv.json"
 inv_path.write_text(json.dumps(inv))
 expect_fail(
@@ -2879,7 +2856,7 @@ expect_fail(
         str(uncovered),
         "--dry-run",
         "--tasks",
-        str(fixtures / "tasks.good.md"),
+        str(good_tasks),
         "--inventory",
         str(inv_path),
     ],
@@ -2894,15 +2871,15 @@ pa.mkdir(parents=True)
 (pa / "evidence" / "briefs" / "partition.json").write_text(
     json.dumps({"schema": "rhoai3.partition/v1", "stories": [{"story_id": "S-001"}]})
 )
-shutil.copy(fixtures / "tasks.good.md", pa / "tasks.md")
+shutil.copy(good_tasks, pa / "tasks.md")
 expect_fail(
     [
         str(pa),
         "--write",
         "--tasks",
-        str(fixtures / "tasks.good.md"),
+        str(good_tasks),
         "--inventory",
-        str(fixtures / "inventory.good.json"),
+        str(good_inv),
     ],
     "PATH_A_PARTITION",
     "Path-A partition.json as input refused",

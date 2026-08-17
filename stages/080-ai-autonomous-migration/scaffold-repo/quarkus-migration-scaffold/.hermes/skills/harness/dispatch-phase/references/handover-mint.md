@@ -80,3 +80,8 @@ status (0.4). Worktrees do **not** relax the unique `pom.xml` owner.
 | Path-A `partition.json` already on disk | `PATH_A_PARTITION` |
 | FIS / dual-stack over cap | `BODY_SIZE` (R-V14.4 — split the phase, do not raise the wall) |
 | `mint-m3-wave --parent` of a `done` card | `PARENT_DONE` (HKN-2) — use `--ensure-wave-holder` |
+
+The A-4/A-5 **PASS** contract is the captured attempt-2 `speckit.tasks` harvest
+(`fixtures/handover/tasks.attempt-2-speckit.md`), not a hand-authored fixture.
+`tasks.good.md` was deleted (Architect `E-20260817T082353Z` / Operator `E-20260817T120146Z`).
+Named negatives remain `tasks.overlap.md` and `tasks.no-deps.md`.
