@@ -86,7 +86,7 @@ python3 "${HERMES_SKILL_DIR}/scripts/check-partition-coverage.py" /projects/mode
 - `scripts/assert-quarantine-tombstones.py` — quarantine tombstone presence
 - `scripts/assert-dest-inventory-hardinvoke.py` — dest inventory hard-invoke
 - `scripts/register-quarantine-tombstone.py` — mutate: register tombstone
-- `scripts/stamp-body-dependencies.py` — mutate: `--write` dest-path deps; add unowned project `extends` twins to this write-set; `DEPENDENCY_HOLE` lists every dest model/repo hole
+- `scripts/stamp-body-dependencies.py` — mutate: `--write` dest-path deps; HTTP sources = A-8 inventory `file`s (collect-all) + Java `legacy_locus`; unowned project `extends` twins join this write-set; `DEPENDENCY_HOLE` lists dest model/repo holes
 - `scripts/stamp-destination-inventory.py` — mutate: `--write` dest inventory
 - `scripts/specimen_agnostic.py` — library helper (not an agent entry point)
 

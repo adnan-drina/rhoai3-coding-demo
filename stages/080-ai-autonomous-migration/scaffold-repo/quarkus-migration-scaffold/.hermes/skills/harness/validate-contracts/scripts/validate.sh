@@ -1434,6 +1434,68 @@ else
 fi
 rm -rf "${dep_tmp}"
 
+# Architect E-20260817T164700Z — HTTP stamp sources = inventory files, not dest Resource
+http_tmp="$(mktemp -d)"
+mkdir -p "${http_tmp}/modernized/evidence/bodies" \
+  "${http_tmp}/modernized/evidence/briefs" \
+  "${http_tmp}/.derived/legacy-at-3/src/main/java/com/acme/legacy/rest" \
+  "${http_tmp}/.derived/legacy-at-3/src/main/java/com/acme/legacy/model"
+cat > "${http_tmp}/modernized/migration.yaml" <<'YAML'
+migration:
+  legacyBasePackage: com.acme.legacy
+  targetPackage: com.demo
+  path_rewrites:
+    - from: src/main/java/com/demo/
+      to: src/main/java/com/acme/legacy/
+YAML
+printf '%s\n' 'package com.acme.legacy.model;' 'public class Pet { }' \
+  > "${http_tmp}/.derived/legacy-at-3/src/main/java/com/acme/legacy/model/Pet.java"
+cat > "${http_tmp}/.derived/legacy-at-3/src/main/java/com/acme/legacy/rest/PetRestController.java" <<'JAVA'
+package com.acme.legacy.rest;
+import com.acme.legacy.model.Pet;
+public class PetRestController { Pet p; }
+JAVA
+printf '%s\n' '{"source":"handover-mint","stories":[{"story_id":"US1","kind":"user_story","endpoints":["GET /api/pets"],"operand_class":["rest"]}]}' \
+  > "${http_tmp}/modernized/evidence/briefs/partition.json"
+printf '%s\n' '{"entry_points":[{"kind":"http","file":"src/main/java/com/acme/legacy/rest/PetRestController.java","symbol":"PetRestController#list","http_method":"GET","http_path":"/api/pets"}]}' \
+  > "${http_tmp}/modernized/evidence/entry-point-inventory.json"
+python3 - "${http_tmp}" <<'PY'
+import json, sys
+from pathlib import Path
+root = Path(sys.argv[1]) / "modernized"
+(root / "evidence/bodies/m3-foundational.json").write_text(json.dumps({
+  "identity": {"story_id": "foundational"},
+  "files_writable": ["src/main/java/com/demo/model/Pet.java"],
+}) + "\n")
+body = {
+  "identity": {"story_id": "US1", "operand_class": ["rest"], "operand_count": 1},
+  "files_in_scope": ["src/main/java/com/demo/resource/PetResource.java"],
+  "files_writable": ["src/main/java/com/demo/resource/PetResource.java"],
+  "refs": [{"key": "legacy_locus", "path": "evidence/derived/legacy-at-3.json", "sha256": "pending"}],
+}
+(root / "evidence/bodies/m3-US1.json").write_text(json.dumps(body) + "\n")
+(root / "evidence/derived").mkdir(parents=True, exist_ok=True)
+(root / "evidence/derived/legacy-at-3.json").write_text("{}\n")
+PY
+if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/stamp-body-dependencies.py" \
+    "${http_tmp}/modernized" --body evidence/bodies/m3-US1.json \
+    >/tmp/dep-http.out 2>/tmp/dep-http.err; then
+  if grep -q 'PetRestController.java' /tmp/dep-http.out \
+     && grep -q 'src/main/java/com/demo/model/Pet.java' /tmp/dep-http.out \
+     && ! grep -q 'PetResource.java' /tmp/dep-http.out; then
+    echo "OK: HTTP stamp sources are inventory RestController files, not dest Resource"
+  else
+    echo "FAIL: expected inventory PetRestController parse root and dest Pet.java dep" >&2
+    cat /tmp/dep-http.out /tmp/dep-http.err >&2
+    rc=1
+  fi
+else
+  echo "FAIL: HTTP inventory stamp sources should not be VACUOUS" >&2
+  cat /tmp/dep-http.out /tmp/dep-http.err >&2
+  rc=1
+fi
+rm -rf "${http_tmp}"
+
 # WC-8: story.rules covers the fired id → VALID
 printf '%s\n' '{"stories":[{"story_id":"story-001","files_in_scope":["src/Foo.java"],"endpoints":["foo"],"rules":["springboot-to-quarkus-00000"]}]}' \
   > "${pc_tmp}/evidence/briefs/partition.json"

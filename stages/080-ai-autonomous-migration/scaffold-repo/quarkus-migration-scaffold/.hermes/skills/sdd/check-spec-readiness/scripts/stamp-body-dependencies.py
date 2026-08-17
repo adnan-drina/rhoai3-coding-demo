@@ -278,6 +278,137 @@ def project_type_closure(start: Path, pkg_prefixes: list[str]) -> list[Path]:
     return found
 
 
+def _endpoint_tokens(ep: str) -> set[str]:
+    s = " ".join(str(ep).split())
+    out = {s} if s else set()
+    parts = s.split(" ", 1)
+    if len(parts) == 2 and parts[1].strip():
+        out.add(parts[1].strip())
+    return out
+
+
+def _row_tokens(row: dict) -> set[str]:
+    method = str(row.get("http_method") or "").strip().upper()
+    path = str(row.get("http_path") or "").strip()
+    symbol = str(row.get("symbol") or "").strip()
+    out: set[str] = set()
+    if path:
+        out.add(path)
+        if method:
+            out.add(f"{method} {path}")
+    if symbol:
+        out.add(symbol)
+    return {x for x in out if x}
+
+
+def load_partition_story(root: Path, sid: str) -> dict | None:
+    path = root / "evidence/briefs/partition.json"
+    data = load_json(path)
+    if not isinstance(data, dict):
+        return None
+    for story in data.get("stories") or data.get("units") or []:
+        if not isinstance(story, dict):
+            continue
+        if str(story.get("story_id") or "").strip() == sid:
+            return story
+    return None
+
+
+def is_http_story(root: Path, body: dict, sid: str) -> bool:
+    story = load_partition_story(root, sid) or {}
+    if story.get("endpoints"):
+        return True
+    ident = body.get("identity") if isinstance(body.get("identity"), dict) else {}
+    raw = ident.get("operand_class") or body.get("operand_class")
+    classes = raw if isinstance(raw, list) else [raw]
+    return any(str(c).strip().lower() in {"rest", "api"} for c in classes if c)
+
+
+def inventory_files_collect_all(root: Path, story: dict) -> list[str]:
+    """A-8 join, collect-all unique inventory `file`s (Architect E-20260817T164700Z)."""
+    wanted: set[str] = set()
+    for ep in story.get("endpoints") or []:
+        wanted |= _endpoint_tokens(str(ep))
+    inv_path = root / "evidence/entry-point-inventory.json"
+    data = load_json(inv_path)
+    if not isinstance(data, dict) or not wanted:
+        return []
+    files: list[str] = []
+    seen: set[str] = set()
+    for row in data.get("entry_points") or []:
+        if not isinstance(row, dict):
+            continue
+        if not (wanted & _row_tokens(row)):
+            continue
+        rel = strip_abs_prefix(str(row.get("file") or ""))
+        if not rel.endswith(".java") or rel in seen:
+            continue
+        seen.add(rel)
+        files.append(rel)
+    return files
+
+
+def java_legacy_locus_file(root: Path, body: dict) -> Path | None:
+    """Parse refs.legacy_locus only when the path is Java, not harvest JSON."""
+    for ref in body.get("refs") or []:
+        if not isinstance(ref, dict):
+            continue
+        if str(ref.get("key") or "") != "legacy_locus":
+            continue
+        raw = str(ref.get("path") or "").strip()
+        if not raw.lower().endswith(".java"):
+            return None
+        p = Path(raw)
+        if p.is_file():
+            return p
+        rel = strip_abs_prefix(raw)
+        return resolve_legacy(root, rel)
+    return None
+
+
+def harvest_parse_roots(
+    root: Path,
+    body: dict,
+    *,
+    sid: str,
+    to_legacy,
+) -> list[Path]:
+    """Legacy Java to parse. HTTP: inventory files + Java locus. Never dest Resource."""
+    seen: set[str] = set()
+    out: list[Path] = []
+
+    def add(path: Path | None) -> None:
+        if path is None or not path.is_file():
+            return
+        try:
+            key = str(path.resolve())
+        except OSError:
+            return
+        if key in seen:
+            return
+        seen.add(key)
+        out.append(path)
+
+    if is_http_story(root, body, sid):
+        story = load_partition_story(root, sid) or {
+            "story_id": sid,
+            "endpoints": body.get("endpoints") or [],
+        }
+        for rel in inventory_files_collect_all(root, story):
+            add(resolve_legacy(root, rel))
+        add(java_legacy_locus_file(root, body))
+        return out
+    for wf in writable_paths(body):
+        rel = strip_abs_prefix(str(wf))
+        if not rel.endswith(".java"):
+            continue
+        nrel = rel.replace("\\", "/")
+        if nrel.startswith("src/test/") or "/src/test/" in nrel:
+            continue
+        add(resolve_writable_legacy(root, body, rel, to_legacy))
+    return out
+
+
 def resolve_writable_legacy(
     root: Path, body: dict, rel: str, to_legacy
 ) -> Path | None:
@@ -311,6 +442,7 @@ def close_write_set(
     pkg_prefixes: list[str],
     own: dict[str, str],
     self_sid: str,
+    harvest_roots: list[Path] | None = None,
 ) -> list[str]:
     """Add unowned dest twins of project types onto this story's write-set."""
     added: list[str] = []
@@ -323,16 +455,19 @@ def close_write_set(
     if not isinstance(fw, list):
         fw = list(writable)
         body["files_writable"] = fw
-    for wf in list(writable):
-        rel = to_dest(wf)
-        if not rel.endswith(".java"):
-            continue
-        nrel = rel.replace("\\", "/")
-        if nrel.startswith("src/test/") or "/src/test/" in nrel:
-            continue
-        lp = resolve_writable_legacy(root, body, rel, to_legacy)
-        if lp is None:
-            continue
+    starts = list(harvest_roots or [])
+    if not starts:
+        for wf in list(writable):
+            rel = to_dest(wf)
+            if not rel.endswith(".java"):
+                continue
+            nrel = rel.replace("\\", "/")
+            if nrel.startswith("src/test/") or "/src/test/" in nrel:
+                continue
+            lp = resolve_writable_legacy(root, body, rel, to_legacy)
+            if lp is not None:
+                starts.append(lp)
+    for lp in starts:
         for extra in project_type_closure(lp, pkg_prefixes):
             src_rel = src_rel_from_path(extra)
             if not src_rel:
@@ -402,6 +537,7 @@ def main() -> int:
     _pairs, to_dest, to_legacy = make_rewrites(root)
     pkg_prefixes = legacy_java_prefixes(root)
     own = provider_map(root / args.bodies, to_dest)
+    roots = harvest_parse_roots(root, body, sid=self_sid, to_legacy=to_legacy)
     added = close_write_set(
         root,
         body,
@@ -410,6 +546,7 @@ def main() -> int:
         pkg_prefixes=pkg_prefixes,
         own=own,
         self_sid=self_sid,
+        harvest_roots=roots,
     )
     if added:
         print(
@@ -418,9 +555,15 @@ def main() -> int:
             + " "
             + " ".join(added[:12])
         )
+    if roots:
+        print(
+            "OK: harvest parse roots n="
+            + str(len(roots))
+            + " "
+            + " ".join((src_rel_from_path(p) or p.name) for p in roots[:8])
+        )
     deps: dict[str, str] = {}
     java_writables = 0
-    resolved_sources = 0
     in_pkg_imports_seen = 0
     self_owned_imports = 0
     for wf in writable_paths(body):
@@ -431,17 +574,12 @@ def main() -> int:
         if nrel.startswith("src/test/") or "/src/test/" in nrel:
             continue
         java_writables += 1
-        lp = resolve_writable_legacy(root, body, rel, to_legacy)
-        if lp is None:
-            continue
-        resolved_sources += 1
+    resolved_sources = len(roots)
+    for lp in roots:
         for dep_rel in imports_for(lp, pkg_prefixes):
             in_pkg_imports_seen += 1
             dest = to_dest(dep_rel)
-            if dest == rel:
-                continue
             if looks_like_legacy_tree(dest) and dest == dep_rel:
-                # rewrite missed — do not emit a Spring path as dest-relative
                 continue
             provider = own.get(dest)
             if provider == self_sid:
