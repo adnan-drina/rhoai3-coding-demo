@@ -1320,6 +1320,120 @@ else
   cat /tmp/pc-wc8-unaddr.out /tmp/pc-wc8-unaddr.err >&2
   rc=1
 fi
+
+# Architect E-20260817T162352Z — dest-path deps + extends closure (not mint)
+dep_tmp="$(mktemp -d)"
+mkdir -p "${dep_tmp}/modernized/evidence/bodies" \
+  "${dep_tmp}/.derived/legacy-at-3/src/main/java/com/acme/legacy/model" \
+  "${dep_tmp}/.derived/legacy-at-3/src/main/java/com/acme/legacy/repository"
+cat > "${dep_tmp}/modernized/migration.yaml" <<'YAML'
+migration:
+  legacyBasePackage: com.acme.legacy
+  targetPackage: com.demo
+  path_rewrites:
+    - from: src/main/java/com/demo/
+      to: src/main/java/com/acme/legacy/
+YAML
+printf '%s\n' 'package com.acme.legacy.model; public class Base { private Integer id; }' \
+  > "${dep_tmp}/.derived/legacy-at-3/src/main/java/com/acme/legacy/model/Base.java"
+printf '%s\n' 'package com.acme.legacy.model; public class Mid extends Base { private String name; }' \
+  > "${dep_tmp}/.derived/legacy-at-3/src/main/java/com/acme/legacy/model/Mid.java"
+printf '%s\n' 'package com.acme.legacy.model; public class Leaf extends Mid { }' \
+  > "${dep_tmp}/.derived/legacy-at-3/src/main/java/com/acme/legacy/model/Leaf.java"
+printf '%s\n' 'package com.acme.legacy.model; public class Side extends Base { }' \
+  > "${dep_tmp}/.derived/legacy-at-3/src/main/java/com/acme/legacy/model/Side.java"
+printf '%s\n' 'package com.acme.legacy.model; import java.util.Set; public class Holder extends Base { private Set<Side> sides; }' \
+  > "${dep_tmp}/.derived/legacy-at-3/src/main/java/com/acme/legacy/model/Holder.java"
+printf '%s\n' 'package com.acme.legacy.repository; import com.acme.legacy.model.Leaf; public interface GhostRepository { Leaf find(); }' \
+  > "${dep_tmp}/.derived/legacy-at-3/src/main/java/com/acme/legacy/repository/GhostRepository.java"
+python3 - <<PY
+import json
+from pathlib import Path
+root = Path("${dep_tmp}/modernized")
+body = {
+  "identity": {"story_id": "foundational", "operand_count": 2},
+  "files_in_scope": [
+    "src/main/java/com/demo/model/Leaf.java",
+    "src/main/java/com/demo/model/Holder.java",
+  ],
+  "files_writable": [
+    "src/main/java/com/demo/model/Leaf.java",
+    "src/main/java/com/demo/model/Holder.java",
+  ],
+}
+(root / "evidence/bodies/m3-foundational.json").write_text(json.dumps(body) + "\n")
+PY
+if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/stamp-body-dependencies.py" \
+    "${dep_tmp}/modernized" --body evidence/bodies/m3-foundational.json --write \
+    >/tmp/dep-close.out 2>/tmp/dep-close.err; then
+  if python3 - "${dep_tmp}" <<'PY'
+import json, sys
+from pathlib import Path
+b = json.loads((Path(sys.argv[1]) / "modernized/evidence/bodies/m3-foundational.json").read_text())
+fw = b.get("files_writable") or []
+want = {
+  "src/main/java/com/demo/model/Base.java",
+  "src/main/java/com/demo/model/Mid.java",
+  "src/main/java/com/demo/model/Side.java",
+}
+missing = want - set(fw)
+deps = b.get("dependencies") or []
+legacy = [d.get("file") for d in deps if "acme/legacy" in str(d.get("file") or "")]
+raise SystemExit(1 if missing or legacy else 0)
+PY
+  then
+    echo "OK: stamp-body-dependencies dest-path closure adds extends twins"
+  else
+    echo "FAIL: expected dest Base/Mid/Side on files_writable and no legacy paths in deps" >&2
+    cat /tmp/dep-close.out /tmp/dep-close.err >&2
+    cat "${dep_tmp}/modernized/evidence/bodies/m3-foundational.json" >&2
+    rc=1
+  fi
+else
+  echo "FAIL: stamp-body-dependencies closure should exit 0" >&2
+  cat /tmp/dep-close.out /tmp/dep-close.err >&2
+  rc=1
+fi
+python3 - <<PY
+import json
+from pathlib import Path
+root = Path("${dep_tmp}/modernized")
+body = {
+  "identity": {"story_id": "leaf-only", "operand_count": 1},
+  "files_in_scope": ["src/main/java/com/demo/model/Leaf.java"],
+  "files_writable": ["src/main/java/com/demo/model/Leaf.java"],
+}
+# Force a dest-path repo hole: Leaf imports a repository with no owner.
+(root / "evidence/bodies/m3-leaf.json").write_text(json.dumps(body) + "\n")
+src = Path("${dep_tmp}/.derived/legacy-at-3/src/main/java/com/acme/legacy/model/Leaf.java")
+src.write_text(
+    "package com.acme.legacy.model;\n"
+    "import com.acme.legacy.repository.GhostRepository;\n"
+    "public class Leaf extends Mid { GhostRepository repo; }\n"
+)
+# Isolate from the closure body's write-set so GhostRepository stays unowned.
+for p in (root / "evidence/bodies").glob("m3-foundational.json"):
+    p.unlink()
+PY
+if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/stamp-body-dependencies.py" \
+    "${dep_tmp}/modernized" --body evidence/bodies/m3-leaf.json \
+    >/tmp/dep-hole.out 2>/tmp/dep-hole.err; then
+  echo "FAIL: unowned dest repository should DEPENDENCY_HOLE" >&2
+  cat /tmp/dep-hole.out /tmp/dep-hole.err >&2
+  rc=1
+else
+  if grep -q 'DEPENDENCY_HOLE' /tmp/dep-hole.err \
+     && grep -q 'src/main/java/com/demo/repository/GhostRepository.java' /tmp/dep-hole.err \
+     && ! grep -q 'acme/legacy' /tmp/dep-hole.err; then
+    echo "OK: DEPENDENCY_HOLE lists dest path, not legacy Spring/acme path"
+  else
+    echo "FAIL: expected dest GhostRepository.java in DEPENDENCY_HOLE" >&2
+    cat /tmp/dep-hole.out /tmp/dep-hole.err >&2
+    rc=1
+  fi
+fi
+rm -rf "${dep_tmp}"
+
 # WC-8: story.rules covers the fired id → VALID
 printf '%s\n' '{"stories":[{"story_id":"story-001","files_in_scope":["src/Foo.java"],"endpoints":["foo"],"rules":["springboot-to-quarkus-00000"]}]}' \
   > "${pc_tmp}/evidence/briefs/partition.json"

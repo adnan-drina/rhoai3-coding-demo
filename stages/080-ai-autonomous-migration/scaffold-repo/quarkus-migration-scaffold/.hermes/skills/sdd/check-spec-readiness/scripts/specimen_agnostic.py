@@ -234,6 +234,24 @@ def path_rewrites(root: Path) -> list[tuple[str, str]]:
     return rewrites
 
 
+def rewrite_across(
+    rel: str, pairs: list[tuple[str, str]], *, to_dest: bool
+) -> str:
+    """Map a src/... path between dest and legacy prefixes (path_rewrites).
+
+    `pairs` is `(dest_prefix, legacy_prefix)` as returned by `path_rewrites`.
+    Do not invent a second mapper — every stamp that crosses the trees uses this.
+    """
+    p = (rel or "").replace("\\", "/").lstrip("./")
+    for dest_p, leg_p in pairs:
+        if to_dest:
+            if p.startswith(leg_p):
+                return dest_p + p[len(leg_p) :]
+        elif p.startswith(dest_p):
+            return leg_p + p[len(dest_p) :]
+    return p
+
+
 def legacy_java_prefixes(
     root: Path, *, allow_specimen_fixture: bool = False
 ) -> list[str]:

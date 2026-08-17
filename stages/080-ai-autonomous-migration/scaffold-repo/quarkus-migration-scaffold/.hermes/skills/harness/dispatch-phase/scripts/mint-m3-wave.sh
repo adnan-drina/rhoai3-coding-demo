@@ -149,6 +149,31 @@ PY
 )"
   [[ -n "${body}" ]] || die "missing body JSON with identity.story_id=${sid} under evidence/bodies/"
 
+  # Architect E-20260817T162352Z — resume remaining creates; do not mint a
+  # second setup card when a child already exists (t_b348ddc3).
+  if [[ "${DRY_RUN}" -eq 0 ]] && command -v hermes >/dev/null 2>&1; then
+    _child_ids="$(hermes kanban show "${PARENT}" --json 2>/dev/null \
+      | python3 "${LINK_GRAPH}" --print children 2>/dev/null || true)"
+    _already=0
+    for _cid in ${_child_ids}; do
+      _title="$(hermes kanban show "${_cid}" --json 2>/dev/null \
+        | python3 -c 'import json,sys
+d=json.load(sys.stdin)
+t=d.get("task") if isinstance(d.get("task"), dict) else d
+print((t.get("title") or d.get("title") or ""))' 2>/dev/null || true)"
+      if [[ -z "${_title}" ]]; then
+        _title="$(hermes kanban show "${_cid}" 2>/dev/null | sed -n '1s/^Task [^:]*: //p' || true)"
+      fi
+      case "${_title}" in
+        "${sid}:"*|"${sid} "*) _already=1; break ;;
+      esac
+    done
+    if [[ "${_already}" -eq 1 ]]; then
+      echo "mint-m3-wave: skip ${sid} — already a child of ${PARENT}" >&2
+      continue
+    fi
+  fi
+
   title="M3 IMPLEMENT: ${sid}"
   if [[ "${DRY_RUN}" -eq 1 ]]; then
     echo "mint-m3-wave: DRY-RUN would create --title ${title} --body-json ${body} --parent ${PARENT}" >&2

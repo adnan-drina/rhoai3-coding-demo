@@ -2,12 +2,19 @@
 """Stamp body `dependencies:` from partition/body ownership (Operator E-20260811T144200Z).
 
 For each Java import reachable from this body's files_writable, emit:
-  { "file": "<rel path>", "provider": "<story_id>" | "pre-exists" }
+  { "file": "<dest-rel path>", "provider": "<story_id>" | "pre-exists" }
 
-`provider` is the story whose files_writable owns the file. When the file exists
-under legacy/modernized but is owned by no story → `pre-exists` (scaffold or
-already-landed substrate). Orphans that must be migration targets should be
-assigned in partition/bodies before create — this stamp does not invent owners.
+`provider` is the story whose files_writable owns the file. Paths are dest-tree
+(via migration.yaml `path_rewrites`). Never emit a legacy Spring path as
+dest-relative `pre-exists` (Architect E-20260817T162352Z / E-20260817T161821Z).
+
+Unowned dest twins of project `extends` (and same-package types the source
+names) are added to *this* story's write-set — transitive closure, stop at
+JDK/framework. That is not a dest→legacy filename mapper and not a tasks.md
+rewrite.
+
+Orphans that remain unowned dest model/repo paths → DEPENDENCY_HOLE listing
+the full dest-path set.
 
 Usage:
   python3 stamp-body-dependencies.py /projects/modernized --body evidence/bodies/m3-s-002a.json --write
@@ -21,36 +28,68 @@ import sys
 from pathlib import Path
 
 IMP_RE = re.compile(r"^\s*import\s+([a-zA-Z0-9_.]+)\s*;", re.M)
+EXTENDS_RE = re.compile(
+    r"\b(?:class|interface)\s+\w+(?:<[^>\n]*>)?\s+extends\s+([\w.]+)",
+    re.M,
+)
+COMMENT_BLOCK_RE = re.compile(r"/\*.*?\*/", re.S)
+COMMENT_LINE_RE = re.compile(r"//.*?$", re.M)
+_JDK_SUPERS = frozenset(
+    {"Object", "Enum", "Record", "java.lang.Object", "java.lang.Enum"}
+)
 
 _SCRIPTS = Path(__file__).resolve().parent
 if str(_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS))
 
-from specimen_agnostic import legacy_java_prefixes, path_rewrites  # noqa: E402
+from specimen_agnostic import (  # noqa: E402
+    legacy_java_prefixes,
+    path_rewrites,
+    rewrite_across,
+)
+
+_ABS_PREFIXES = (
+    "/projects/.derived/legacy-at-3/",
+    "/projects/modernized/",
+    "/projects/legacy/",
+    "projects/.derived/legacy-at-3/",
+    "projects/modernized/",
+    "projects/legacy/",
+)
 
 
-def make_norm_file(root: Path):
-    rewrites = path_rewrites(root)
+def strip_abs_prefix(path: str) -> str:
+    p = path.replace("\\", "/").lstrip("./")
+    for prefix in _ABS_PREFIXES:
+        if p.startswith(prefix):
+            return p[len(prefix) :]
+    return p
 
-    def norm_file(path: str) -> str:
-        p = path.replace("\\", "/")
-        for prefix in (
-            "/projects/.derived/legacy-at-3/",
-            "/projects/modernized/",
-            "/projects/legacy/",
-            "projects/.derived/legacy-at-3/",
-            "projects/modernized/",
-            "projects/legacy/",
-        ):
-            if p.startswith(prefix):
-                p = p[len(prefix) :]
-        for dest_p, leg_p in rewrites:
-            if p.startswith(dest_p):
-                p = leg_p + p[len(dest_p) :]
-                break
-        return p.lstrip("./")
 
-    return norm_file
+def src_rel_from_path(path: Path) -> str | None:
+    s = str(path).replace("\\", "/")
+    for marker in ("src/main/java/", "src/test/java/"):
+        idx = s.find(marker)
+        if idx >= 0:
+            return s[idx:]
+    return None
+
+
+def strip_java_comments(text: str) -> str:
+    text = COMMENT_BLOCK_RE.sub(" ", text)
+    return COMMENT_LINE_RE.sub(" ", text)
+
+
+def make_rewrites(root: Path):
+    pairs = path_rewrites(root)
+
+    def to_dest(path: str) -> str:
+        return rewrite_across(strip_abs_prefix(path), pairs, to_dest=True)
+
+    def to_legacy(path: str) -> str:
+        return rewrite_across(strip_abs_prefix(path), pairs, to_dest=False)
+
+    return pairs, to_dest, to_legacy
 
 
 def load_json(path: Path):
@@ -75,7 +114,7 @@ def writable_paths(body: dict) -> list[str]:
     return out
 
 
-def provider_map(bodies_dir: Path, norm_file) -> dict[str, str]:
+def provider_map(bodies_dir: Path, to_dest) -> dict[str, str]:
     own: dict[str, str] = {}
     if not bodies_dir.is_dir():
         return own
@@ -90,10 +129,9 @@ def provider_map(bodies_dir: Path, norm_file) -> dict[str, str]:
         if not sid:
             continue
         for f in writable_paths(data):
-            nf = norm_file(f)
+            nf = to_dest(f)
             if not nf or nf.endswith("pom.xml"):
                 continue
-            # First owner wins; overlaps are partition-coverage INVALID elsewhere
             own.setdefault(nf, sid)
     return own
 
@@ -128,15 +166,7 @@ def resolve_scope_legacy(body: dict, rel_or_basename: str) -> str | None:
             if dest and dest != rel_n and not dest.endswith("/" + basename):
                 continue
             if dest or legacy.endswith("/" + basename) or legacy.endswith(basename):
-                p = legacy.replace("\\", "/")
-                for prefix in (
-                    "/projects/.derived/legacy-at-3/",
-                    "/projects/legacy/",
-                    "projects/.derived/legacy-at-3/",
-                    "projects/legacy/",
-                ):
-                    if p.startswith(prefix):
-                        p = p[len(prefix) :]
+                p = strip_abs_prefix(legacy)
                 if p.startswith("src/"):
                     return p
             continue
@@ -144,18 +174,10 @@ def resolve_scope_legacy(body: dict, rel_or_basename: str) -> str | None:
             continue
         p = item.replace("\\", "/")
         if p.endswith("/" + basename) or p.endswith(basename):
-            # prefer spring/legacy-shaped paths over dest
             if "org/springframework" in p or "/.derived/" in p or p.startswith(
                 "src/main/java/"
             ):
-                # strip absolute prefixes
-                for prefix in (
-                    "/projects/.derived/legacy-at-3/",
-                    "/projects/legacy/",
-                    "projects/.derived/legacy-at-3/",
-                ):
-                    if p.startswith(prefix):
-                        p = p[len(prefix) :]
+                p = strip_abs_prefix(p)
                 if p.startswith("src/"):
                     return p
     return None
@@ -171,7 +193,6 @@ def imports_for(java_path: Path, pkg_prefixes: list[str]) -> list[str]:
         if pkg_prefixes and not any(imp.startswith(p) for p in pkg_prefixes):
             continue
         if not pkg_prefixes:
-            # no prefix discovered — only accept imports under src/main/java tree shape
             if (
                 not imp
                 or imp.startswith("java.")
@@ -181,6 +202,177 @@ def imports_for(java_path: Path, pkg_prefixes: list[str]) -> list[str]:
                 continue
         out.append("src/main/java/" + imp.replace(".", "/") + ".java")
     return out
+
+
+def _java_src_root(current: Path) -> Path | None:
+    s = str(current).replace("\\", "/")
+    for marker in ("/src/main/java/", "/src/test/java/"):
+        idx = s.find(marker)
+        if idx >= 0:
+            return Path(s[: idx + len(marker) - 1])
+    return None
+
+
+def resolve_type_file(current: Path, name: str, pkg_prefixes: list[str]) -> Path | None:
+    if name in _JDK_SUPERS:
+        return None
+    if "." in name:
+        if name.startswith("java.") or name.startswith("javax.") or name.startswith(
+            "jakarta."
+        ):
+            return None
+        if pkg_prefixes and not any(
+            name == p.rstrip(".") or name.startswith(p) for p in pkg_prefixes
+        ):
+            return None
+        root = _java_src_root(current)
+        if root is None:
+            return None
+        cand = root / (name.replace(".", "/") + ".java")
+        return cand if cand.is_file() else None
+    sibling = current.parent / f"{name}.java"
+    if sibling.is_file():
+        return sibling
+    return None
+
+
+def project_type_closure(start: Path, pkg_prefixes: list[str]) -> list[Path]:
+    """Transitive extends + same-package types named in the source. JDK/framework stop."""
+    seen: set[str] = set()
+    found: list[Path] = []
+    stack = [start]
+    while stack:
+        cur = stack.pop()
+        try:
+            key = str(cur.resolve())
+        except OSError:
+            continue
+        if key in seen:
+            continue
+        seen.add(key)
+        try:
+            raw = cur.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        text = strip_java_comments(raw)
+        names: list[str] = []
+        for m in EXTENDS_RE.finditer(text):
+            names.append(m.group(1))
+        for sib in sorted(cur.parent.glob("*.java")):
+            if sib.stem == cur.stem:
+                continue
+            if re.search(r"\b" + re.escape(sib.stem) + r"\b", text):
+                names.append(sib.stem)
+        for name in names:
+            nxt = resolve_type_file(cur, name, pkg_prefixes)
+            if nxt is None:
+                continue
+            try:
+                nkey = str(nxt.resolve())
+            except OSError:
+                continue
+            if nkey == key or nkey in seen:
+                continue
+            stack.append(nxt)
+            found.append(nxt)
+    return found
+
+
+def resolve_writable_legacy(
+    root: Path, body: dict, rel: str, to_legacy
+) -> Path | None:
+    lp = resolve_legacy(root, to_legacy(rel))
+    if lp is not None:
+        return lp
+    scope_rel = resolve_scope_legacy(body, rel)
+    if scope_rel:
+        lp = resolve_legacy(root, scope_rel)
+        if lp is not None:
+            return lp
+        for item in body.get("files_in_scope") or []:
+            if isinstance(item, str) and item.endswith(Path(rel).name):
+                cand = Path(item)
+                if cand.is_file():
+                    return cand
+    return None
+
+
+def append_unique(seq: list, item: str) -> None:
+    if item not in seq:
+        seq.append(item)
+
+
+def close_write_set(
+    root: Path,
+    body: dict,
+    *,
+    to_dest,
+    to_legacy,
+    pkg_prefixes: list[str],
+    own: dict[str, str],
+    self_sid: str,
+) -> list[str]:
+    """Add unowned dest twins of project types onto this story's write-set."""
+    added: list[str] = []
+    writable = [to_dest(x) for x in writable_paths(body)]
+    scope = body.get("files_in_scope")
+    if not isinstance(scope, list):
+        scope = list(writable)
+        body["files_in_scope"] = scope
+    fw = body.get("files_writable")
+    if not isinstance(fw, list):
+        fw = list(writable)
+        body["files_writable"] = fw
+    for wf in list(writable):
+        rel = to_dest(wf)
+        if not rel.endswith(".java"):
+            continue
+        nrel = rel.replace("\\", "/")
+        if nrel.startswith("src/test/") or "/src/test/" in nrel:
+            continue
+        lp = resolve_writable_legacy(root, body, rel, to_legacy)
+        if lp is None:
+            continue
+        for extra in project_type_closure(lp, pkg_prefixes):
+            src_rel = src_rel_from_path(extra)
+            if not src_rel:
+                continue
+            dest = to_dest(src_rel)
+            if dest in writable or dest in added:
+                continue
+            owner = own.get(dest)
+            if owner and owner != self_sid:
+                continue
+            append_unique(fw, dest)
+            append_unique(scope, dest)
+            own.setdefault(dest, self_sid)
+            added.append(dest)
+            writable.append(dest)
+    if added:
+        ident = body.get("identity") if isinstance(body.get("identity"), dict) else None
+        if ident is not None:
+            ident["operand_count"] = len(
+                [p for p in writable_paths(body) if isinstance(p, str) and p.strip()]
+            )
+    return added
+
+
+def is_model_or_repo_hole(dest_rel: str) -> bool:
+    f = dest_rel.replace("\\", "/")
+    if "/model/" in f:
+        return True
+    return (
+        "/repository/" in f
+        and f.endswith("Repository.java")
+        and "/jdbc/" not in f
+        and "/jpa/" not in f
+        and "/springdatajpa/" not in f
+    )
+
+
+def looks_like_legacy_tree(path: str) -> bool:
+    p = path.replace("\\", "/")
+    return "/org/springframework/samples/" in p or "/org/springframework/" in p
 
 
 def main() -> int:
@@ -207,62 +399,61 @@ def main() -> int:
         return 1
     ident = body.get("identity") if isinstance(body.get("identity"), dict) else {}
     self_sid = str(ident.get("story_id") or body.get("story_id") or "").strip()
-    norm_file = make_norm_file(root)
+    _pairs, to_dest, to_legacy = make_rewrites(root)
     pkg_prefixes = legacy_java_prefixes(root)
-    own = provider_map(root / args.bodies, norm_file)
+    own = provider_map(root / args.bodies, to_dest)
+    added = close_write_set(
+        root,
+        body,
+        to_dest=to_dest,
+        to_legacy=to_legacy,
+        pkg_prefixes=pkg_prefixes,
+        own=own,
+        self_sid=self_sid,
+    )
+    if added:
+        print(
+            "OK: supertype closure added dest twins n="
+            + str(len(added))
+            + " "
+            + " ".join(added[:12])
+        )
     deps: dict[str, str] = {}
     java_writables = 0
     resolved_sources = 0
     in_pkg_imports_seen = 0
     self_owned_imports = 0
     for wf in writable_paths(body):
-        rel = norm_file(wf)
+        rel = to_dest(wf)
         if not rel.endswith(".java"):
             continue
         nrel = rel.replace("\\", "/")
         if nrel.startswith("src/test/") or "/src/test/" in nrel:
-            # L2a dest proving tests are authored here; no legacy twin.
             continue
         java_writables += 1
-        lp = resolve_legacy(root, rel)
-        if lp is None:
-            # Fallback: files_in_scope may still name the legacy referent
-            scope_rel = resolve_scope_legacy(body, rel)
-            if scope_rel:
-                lp = resolve_legacy(root, scope_rel)
-                if lp is None:
-                    # absolute scope path already under legacy tree
-                    for item in body.get("files_in_scope") or []:
-                        if isinstance(item, str) and item.endswith(Path(rel).name):
-                            cand = Path(item)
-                            if cand.is_file():
-                                lp = cand
-                                break
+        lp = resolve_writable_legacy(root, body, rel, to_legacy)
         if lp is None:
             continue
         resolved_sources += 1
         for dep_rel in imports_for(lp, pkg_prefixes):
             in_pkg_imports_seen += 1
-            if dep_rel == rel:
+            dest = to_dest(dep_rel)
+            if dest == rel:
                 continue
-            provider = own.get(dep_rel)
+            if looks_like_legacy_tree(dest) and dest == dep_rel:
+                # rewrite missed — do not emit a Spring path as dest-relative
+                continue
+            provider = own.get(dest)
             if provider == self_sid:
                 self_owned_imports += 1
                 continue
             if provider:
-                deps[dep_rel] = provider
+                deps[dest] = provider
             else:
-                # exists on disk → pre-exists; missing → still record pre-exists
-                # only when readable from legacy (import resolved from source)
-                deps.setdefault(dep_rel, "pre-exists")
-    ordered = [
-        {"file": f, "provider": deps[f]}
-        for f in sorted(deps.keys())
-    ]
+                deps.setdefault(dest, "pre-exists")
+    ordered = [{"file": f, "provider": deps[f]} for f in sorted(deps.keys())]
     body["dependencies"] = ordered
 
-    # A-6 / Deputy E-20260814T103448Z — vacuous stamp must fail closed.
-    # A stamper that writes [] and exits 0 is indistinguishable from success.
     vacuous_ok = bool(body.get("dependencies_vacuous_ok"))
     if java_writables and not ordered and not vacuous_ok:
         if not pkg_prefixes:
@@ -298,7 +489,6 @@ def main() -> int:
                     file=sys.stderr,
                 )
                 return 1
-        # True leaf: resolved sources, package prefix known, zero in-pkg imports.
         print(
             f"OK: stamped dependencies=0 "
             f"(resolved={resolved_sources} java_writables={java_writables} "
@@ -316,34 +506,22 @@ def main() -> int:
             root,
             script="stamp-body-dependencies.py",
             target=body_path,
-            fields=["dependencies"],
+            fields=["dependencies", "files_writable", "files_in_scope"],
             source=(
-                "legacy source import scan + provider map from evidence/bodies "
-                "(migration.yaml path_rewrites / package prefixes)"
+                "legacy source import+extends scan + provider map from "
+                "evidence/bodies (migration.yaml path_rewrites; dest paths)"
             ),
-            summary=f"stamped dependencies n={len(ordered)}",
-            extra={"n": len(ordered)},
+            summary=f"stamped dependencies n={len(ordered)} closure={len(added)}",
+            extra={"n": len(ordered), "closure": len(added)},
         )
         print(f"OK: stamped dependencies={len(ordered)} → {body_path}")
         print(f"OK: injection receipt → {receipt}")
     else:
-        print(json.dumps({"dependencies": ordered}, indent=2))
-    # Fail closed when any dep is pre-exists but looks like a migration target
-    # under model/ or repository/ interface tree with no owner.
+        print(json.dumps({"dependencies": ordered, "closure": added}, indent=2))
     holes = [
         d["file"]
         for d in ordered
-        if d["provider"] == "pre-exists"
-        and (
-            "/model/" in d["file"]
-            or (
-                "/repository/" in d["file"]
-                and d["file"].endswith("Repository.java")
-                and "/jdbc/" not in d["file"]
-                and "/jpa/" not in d["file"]
-                and "/springdatajpa/" not in d["file"]
-            )
-        )
+        if d["provider"] == "pre-exists" and is_model_or_repo_hole(d["file"])
     ]
     if holes:
         print(
@@ -351,7 +529,7 @@ def main() -> int:
             "assign in partition/bodies before dispatch:",
             file=sys.stderr,
         )
-        for h in holes[:20]:
+        for h in holes:
             print(f"  - {h}", file=sys.stderr)
         return 1
     return 0
