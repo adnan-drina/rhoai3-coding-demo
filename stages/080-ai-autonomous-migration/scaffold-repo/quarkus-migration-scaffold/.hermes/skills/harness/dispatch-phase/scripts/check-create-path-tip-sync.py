@@ -595,8 +595,13 @@ REQUIRED_SUBSTRINGS = [
 
     (
         ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
-        "snapshot-card-boundary.sh",
-        "mint Procedure snapshots run-audit at create (no Hermes create hook)",
+        "Immediately after each `kanban_create`",
+        "run-audit create snapshot is after kanban_create not pre-create (182330Z)",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
+        "snapshot-card-boundary.sh create",
+        "mint Procedure snapshots run-audit after each kanban_create (no Hermes create hook)",
     ),
     (
         ".hermes/skills/harness/record-run-evidence/scripts/analyze-run-audit.py",

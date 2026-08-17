@@ -31,6 +31,7 @@ only** (`--write`, **no** `--parent`, **no** `--ensure-wave-holder`).
    on the holder. Sticky-block it. **Assert `status=blocked` from
    `kanban show`** — do not trust `kanban block` exit 0
    (`204830Z` silent no-op if `--kind` is after the task id).
+   Then snapshot this new id (After create).
 4. For each story in `evidence/briefs/partition.json` whose
    `identity.story_id` has a body under `evidence/bodies/`:
    - Skip if a child of the holder already has title prefix `{story_id}:`
@@ -41,7 +42,8 @@ only** (`--write`, **no** `--parent`, **no** `--ensure-wave-holder`).
      `workspace_path`, `max_runtime_seconds`, `assignee=default`,
      `created-by` / `created_by` = holder id, `--parent REQUIRED` twice
      (holder + ack_gate), parents **`[holder, ack_gate]`** (gate is a
-     parent, not a holder-child). **Do NOT dispatch here.**
+     parent, not a holder-child). Snapshot this new id (After create).
+     **Do NOT dispatch here.**
 5. After all stories exist (or were skipped), **`kanban_complete` this
    holder**. The gate must stay `blocked` (sticky event). Children stay
    `blocked` because `ack_gate` is incomplete. `dispatch --dry-run` must
@@ -103,7 +105,6 @@ Run per body, fail-closed, via `execute_code`.
 14. `stamp-body-digest.py` (AR-4.3)
 15. `check-surgical-scopes.py` + `check-semantic-exits.py` + `check-operand-count.py --wall-fit`
 16. `assert-mint-oracles.py --body <body> --skip-task-id`
-17. `snapshot-card-boundary.sh` create (run-audit; no Hermes create hook)
 
 Attach skills from `m3-attach-skills.py <body>` (B-16). Max runtime from
 `read-phase-dispatch.py --phase M3` or body `runtime_budget_sec`.
@@ -120,6 +121,15 @@ over 1500 chars.
 
 ## After create (same session)
 
+- Immediately after each `kanban_create` (ack_gate and every story id),
+  fail-open once per new id:
+
+  ```text
+  bash .hermes/skills/harness/record-run-evidence/scripts/snapshot-card-boundary.sh create || true
+  ```
+
+  Hermes has no create-hook. Absence is silent (`|| true`); this text is
+  the contract (`182330Z`). Do **not** run this as a pre-create gate.
 - Prove each new id has both parent links (holder + ack_gate) via
   `read-link-graph.py --expect-parent`.
 - Status must be `blocked` or `triage` (`PARK_AT_BIRTH`). `ready`/`todo`/`running` is refuse.
