@@ -126,6 +126,10 @@ The created M1 task instructs the worker to, in order:
 3. `scan-with-mta` → `mta-analyze-legacy.sh` (writable clone + `MTA_RUN_CWD`; emits findings-handoff)
 4. Validate findings + handoff — **do not** grant stage-advance acks (Operator writes `m1-findings.ack.yaml` per AR-1.1)
 
+### M2 body contract (planner)
+
+Job order (inventory before specify; `@Path` emit): `references/m2-planner.md`.
+
 ## Pitfalls
 
 - Do **not** start M1 by `nohup …/mta-analyze-legacy.sh &`.

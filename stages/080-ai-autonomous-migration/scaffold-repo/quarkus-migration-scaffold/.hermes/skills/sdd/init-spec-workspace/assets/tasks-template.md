@@ -50,6 +50,15 @@ Cover every HTTP row in `evidence/entry-point-inventory.json` (including
 `http_path: /`). Read inventory paths; do not invent a RestController-to-Resource
 filename mapper.
 
+## JAX-RS @Path emit (mandatory)
+
+The mint join is the literal regex `@Path("...")`. Every Resource
+implementation task that owns an HTTP route MUST include that token with the
+inventory `http_path` inside the quotes. Prose ``GET `/api/owners` `` is not
+enough.
+
+Example: Implement OwnerResource with @Path("/api/owners") in `src/main/java/com/demo/resource/OwnerResource.java`
+
 <!--
   ============================================================================
   IMPORTANT: The tasks below are SAMPLE TASKS for illustration purposes only.
@@ -113,7 +122,7 @@ Do **not** Configure `pom.xml` or `src/main/resources/application.properties` he
 
 ### Implementation for User Story 1
 
-- [ ] T012 [US1] Create OwnerResource JAX-RS class in src/main/java/com/demo/rest/OwnerResource.java
+- [ ] T012 [US1] Create OwnerResource JAX-RS class with @Path("/api/owners") in src/main/java/com/demo/resource/OwnerResource.java
 - [ ] T013 [US1] Verify pom.xml compiles: run `mvn clean compile`
 
 **Checkpoint**: At this point, User Story 1 should be fully functional and testable independently
@@ -132,8 +141,8 @@ Do **not** Configure `pom.xml` or `src/main/resources/application.properties` he
 
 ### Implementation for User Story 2
 
-- [ ] T020 [US2] Create PetResource JAX-RS class in src/main/java/com/demo/rest/PetResource.java
-- [ ] T021 [US2] Add POST, PUT, DELETE to src/main/java/com/demo/rest/OwnerResource.java
+- [ ] T020 [US2] Create PetResource JAX-RS class with @Path("/api/pets") in src/main/java/com/demo/resource/PetResource.java
+- [ ] T021 [US2] Add POST, PUT, DELETE with @Path("/api/owners") to src/main/java/com/demo/resource/OwnerResource.java
 - [ ] T022 [US2] Add profile-specific overrides in src/main/resources/application.properties
 
 **Checkpoint**: At this point, User Stories 1 AND 2 should both work independently
@@ -148,7 +157,7 @@ Do **not** Configure `pom.xml` or `src/main/resources/application.properties` he
 
 ### Implementation for User Story 3
 
-- [ ] T026 [US3] Create VetResource JAX-RS class in src/main/java/com/demo/rest/VetResource.java
+- [ ] T026 [US3] Create VetResource JAX-RS class with @Path("/api/vets") in src/main/java/com/demo/resource/VetResource.java
 
 **Checkpoint**: All user stories should now be independently functional
 

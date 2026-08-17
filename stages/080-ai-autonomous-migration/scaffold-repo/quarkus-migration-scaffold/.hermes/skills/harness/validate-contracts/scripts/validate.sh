@@ -2902,6 +2902,29 @@ elif ! grep -q 'one creator phase per dest path' "${tasks_tpl}"; then
 else
   echo "OK: unique-owner tasks-template asset present"
 fi
+if ! grep -q '@Path("' "${tasks_tpl}"; then
+  echo "FAIL: tasks-template asset lacks @Path emit pin (200540Z)" >&2
+  rc=1
+else
+  echo "OK: tasks-template @Path emit pin present"
+fi
+spec_tpl="${SKILLS}/sdd/init-spec-workspace/assets/spec-template.md"
+if [ ! -f "${spec_tpl}" ]; then
+  echo "FAIL: missing spec-template asset" >&2
+  rc=1
+elif ! grep -q 'enumerate every inventory http_path' "${spec_tpl}"; then
+  echo "FAIL: spec-template asset lacks inventory-enumerate pin (203500Z)" >&2
+  rc=1
+else
+  echo "OK: spec-template inventory-enumerate pin present"
+fi
+if ! grep -q 'Read inventory before specify' \
+  "${SKILLS}/harness/dispatch-phase/scripts/dispatch-phase.sh"; then
+  echo "FAIL: M2 body missing inventory-before-specify (203500Z)" >&2
+  rc=1
+else
+  echo "OK: M2 body names inventory-before-specify"
+fi
 # Architect E-20260817T122644Z / Operator E-20260817T133449Z — DW env is the
 # RHDH skeleton, not bootstrap-scaffold-repos golden. Do not re-edit 080
 # scaffold/devfile.yaml for DEFAULT_EXTENSIONS.

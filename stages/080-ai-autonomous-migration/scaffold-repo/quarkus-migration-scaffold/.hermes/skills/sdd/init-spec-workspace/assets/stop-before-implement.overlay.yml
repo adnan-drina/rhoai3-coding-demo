@@ -28,11 +28,11 @@ edits:
       command: speckit.specify
       integration: "{{ inputs.integration }}"
       input:
-        args: "{{ inputs.spec }}\n\nM1 evidence (read these files; do not invent endpoints or rule IDs):\nevidence/findings-handoff.json\nevidence/entry-point-inventory.json"
+        args: "{{ inputs.spec }}\n\nM1 evidence (read these files **before** writing spec.md; do not invent endpoints or rule IDs):\nevidence/findings-handoff.json\nevidence/entry-point-inventory.json\n\nFunctional Requirements MUST enumerate every inventory http_path (not a count)."
   - replace: tasks
     step:
       id: tasks
       command: speckit.tasks
       integration: "{{ inputs.integration }}"
       input:
-        args: "{{ inputs.spec }}\n\nM1 evidence (same files as specify; cover every HTTP row in evidence/entry-point-inventory.json, including http_path: /):\nevidence/findings-handoff.json\nevidence/entry-point-inventory.json\n\nFollow .specify/templates/overrides/tasks-template.md: one creator phase per dest path; Add/Verify remain amend. Destination REST is JAX-RS (constitution III). Do not invent a RestController-to-Resource filename mapper."
+        args: "{{ inputs.spec }}\n\nM1 evidence (same files as specify; cover every HTTP row in evidence/entry-point-inventory.json, including http_path: /):\nevidence/findings-handoff.json\nevidence/entry-point-inventory.json\n\nFollow .specify/templates/overrides/tasks-template.md: one creator phase per dest path; Add/Verify remain amend. Destination REST is JAX-RS (constitution III). Resource implementation lines MUST include literal @Path(\"...\") with the inventory http_path. Do not invent a RestController-to-Resource filename mapper."

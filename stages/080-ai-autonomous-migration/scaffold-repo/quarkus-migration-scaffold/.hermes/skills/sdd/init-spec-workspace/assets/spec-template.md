@@ -48,7 +48,14 @@
 
 ### Functional Requirements
 
-- **FR-001**: System MUST [specific capability]
+**Inventory (mandatory — Architect E-20260817T203500Z):** Read
+`evidence/entry-point-inventory.json` **before** filling this spec. Each HTTP
+capability MUST be its own FR that names one inventory `http_path` (and
+`http_method` when present). Do **not** replace the list with a count
+("all 34 endpoints"). Do **not** invent paths absent from the inventory.
+Must enumerate every inventory http_path.
+
+- **FR-001**: System MUST serve `GET /api/owners` *[example — replace with every inventory row]*
 - **FR-002**: System MUST [specific capability]
 
 ### Key Entities *(include if feature involves data)*

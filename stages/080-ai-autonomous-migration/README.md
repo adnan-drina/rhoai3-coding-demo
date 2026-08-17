@@ -238,7 +238,7 @@ per story. No big bang.
 | # | Stage | Enabling technology | Tasks it performs | Output artifacts |
 |---|---|---|---|---|
 | 1 | **M1 ANALYZE** | Hermes Kanban + `mta-analysis` / `inventory-entry-points` / `derive-legacy-boot3` | Derive findings-handoff + inventory; Operator ACK | `migration/findings-handoff.json`, inventory, ACK |
-| 2 | **M2 PLAN** | Hermes planner + Spec Kit (`speckit-specify` → `plan` → `tasks`) + holder mint (`mint-m3-hermes.md`) | Story partition, briefs, typed M3 body JSONs | `partition.json`, Spec Kit specs, `evidence/bodies/*.json` |
+| 2 | **M2 PLAN** | Hermes planner + Spec Kit (`speckit-specify` → `plan` → `tasks`) + holder mint (`mint-m3-hermes.md`) | Read inventory before specify; enumerate every `http_path`; Resource tasks emit `@Path("...")`; holder mints parked M3 | Spec Kit specs, then holder `partition.json` / `evidence/bodies/*.json` |
 | 3 | **M3 IMPLEMENT** | Hermes implementer workers + `spring-to-quarkus-patterns` / `sdd-readiness` | Surgical destination writes per story; soft-K then hard-block | Modernized sources under `files_writable` |
 | 4 | **M4 VERIFY** | Domain / validation-release gates | `PROVISIONAL_ACCEPT` evidence package | Gate receipts |
 | 5 | **M5 CLOSE** | Factory / full ACCEPT path | Story close when platform gates green | Pipeline + ACCEPT |

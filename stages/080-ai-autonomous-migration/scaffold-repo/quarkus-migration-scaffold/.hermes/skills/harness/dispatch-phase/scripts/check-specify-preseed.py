@@ -96,6 +96,15 @@ def main() -> int:
             bad = 1
         else:
             print("OK: Non-Goals override installed under .specify/")
+        if "enumerate every inventory http_path" not in text:
+            print(
+                "FAIL: spec-template override missing inventory-enumerate pin "
+                "(Architect E-20260817T203500Z)",
+                file=sys.stderr,
+            )
+            bad = 1
+        else:
+            print("OK: inventory-enumerate pin installed under .specify/spec-template")
 
     if not tasks_override.is_file():
         print(
@@ -114,6 +123,15 @@ def main() -> int:
             bad = 1
         else:
             print("OK: unique-owner tasks-template override installed under .specify/")
+        if '@Path("' not in ttext:
+            print(
+                "FAIL: tasks-template override missing @Path emit pin "
+                "(Architect E-20260817T200540Z)",
+                file=sys.stderr,
+            )
+            bad = 1
+        else:
+            print("OK: @Path emit pin installed under .specify/tasks-template")
 
     if not provision_asset.is_file():
         print(
@@ -124,6 +142,16 @@ def main() -> int:
         bad = 1
     else:
         print("OK: tip Non-Goals skill asset present")
+        pspec = provision_asset.read_text(encoding="utf-8")
+        if "enumerate every inventory http_path" not in pspec:
+            print(
+                "FAIL: tip spec-template asset lacks inventory-enumerate pin "
+                "(Architect E-20260817T203500Z)",
+                file=sys.stderr,
+            )
+            bad = 1
+        else:
+            print("OK: tip inventory-enumerate pin present")
 
     if not provision_tasks.is_file():
         print(
@@ -142,6 +170,15 @@ def main() -> int:
             bad = 1
         else:
             print("OK: tip unique-owner tasks-template skill asset present")
+        if '@Path("' not in ptt:
+            print(
+                "FAIL: tip tasks-template asset lacks @Path emit pin "
+                "(Architect E-20260817T200540Z)",
+                file=sys.stderr,
+            )
+            bad = 1
+        else:
+            print("OK: tip @Path emit pin present")
 
     if not provision_constitution.is_file():
         print(
@@ -202,6 +239,20 @@ def main() -> int:
             print(
                 "FAIL: speckit overlay must not cite handover-mint _transcribed_http "
                 "(ingress-only; emit pin is tasks-template override)",
+                file=sys.stderr,
+            )
+            bad = 1
+        elif "enumerate every inventory http_path" not in wtext:
+            print(
+                "FAIL: speckit overlay missing inventory-enumerate obligation "
+                "(Architect E-20260817T203500Z)",
+                file=sys.stderr,
+            )
+            bad = 1
+        elif '@Path("' not in wtext and r'@Path(\"' not in wtext:
+            print(
+                "FAIL: speckit overlay missing @Path emit obligation "
+                "(Architect E-20260817T200540Z)",
                 file=sys.stderr,
             )
             bad = 1

@@ -373,20 +373,26 @@ substitution / path invention / specimen-body priming. Measure the harness.
 1. Findings-handoff gate (canonical scan-with-mta — Operator E-20260817T105440Z / row 6):
    `python3 "${HERMES_SKILL_DIR:-.hermes/home/skills/software-development/scan-with-mta}/scripts/check-findings-handoff.py" /projects/modernized`
    Exit: **0=pass**; **1=FAIL→typed BLOCK**; **2=missing script** → `needs_input` (lint/harness defect — do not invent paths).
-2. **Spec Kit invoke-or-BLOCK** (Architect E-20260811T115316Z — not soft Prefer):
+2. **Read inventory before specify** (Architect E-20260817T203500Z):
+   Open `evidence/entry-point-inventory.json` **before** invoking
+   `/speckit-specify`. Prove the read (tool evidence). Spec functional
+   requirements MUST enumerate every inventory `http_path` (and `http_method`
+   when present). **Forbidden:** asserting a count ("all 34 endpoints") in
+   place of the list; inventing routes not in the inventory.
+3. **Spec Kit invoke-or-BLOCK** (Architect E-20260811T115316Z — not soft Prefer):
    - Hard-invoke attached skill `speckit-specify` via `skill_view` / `/speckit-specify`
      (discoverable under `/home/user/.hermes/skills/speckit-specify` when on `external_dirs`).
    - If Spec Kit cannot run as defined → typed **`needs_input` BLOCK** and STOP.
      **Do not** freeform-write `partition.json` as a silent substitute.
    - Evidence: Spec Kit seed (e.g. `specs/**/spec.md`) **or** a typed
      `needs_input` block comment — required before Done.
-3. **Do not write** `evidence/briefs/partition.json`. Orchestrator
+4. **Do not write** `evidence/briefs/partition.json`. Orchestrator
    `handover-mint.py` writes that file as a **receipt** from `tasks.md`
    (A-4/A-6). Path-A authoring is a fail-closed refuse.
-4. **Do not** run partition-coverage or assemble bodies here — handover-mint
+5. **Do not** run partition-coverage or assemble bodies here — handover-mint
    does that after `tasks.md` exists. See
    `.hermes/skills/harness/dispatch-phase/references/handover-mint.md`.
-5. **Per-artifact Spec Kit resume ladder** (Architect E-20260811T122959Z — decision-complete;
+6. **Per-artifact Spec Kit resume ladder** (Architect E-20260811T122959Z — decision-complete;
    contract `.hermes/skills/sdd/check-spec-readiness/references/sdd-ordering.md`; retired inverted v11 R-M2.6 and
    M2 unified PLAN — see `governance/retired/m2b-resume-ladder.md`):
    - **`/speckit-specify`:** precondition = no `specs/**/spec.md` (or workspace Spec Kit
@@ -398,13 +404,15 @@ substitution / path invention / specimen-body priming. Measure the harness.
    - **`/speckit-tasks`:** always last. Precondition = `plan.md` present — else typed
      `needs_input` BLOCK. Emit `tasks.md` only — **no** `kanban create`, **no**
      typed M3 bodies, **no** `partition.json`.
-6. **STOP** — do **not** create M3 Kanban children on this card and do
+7. **STOP** — do **not** create M3 Kanban children on this card and do
    **not** ask the demo user to run a mint script. The **holder** session
    follows `.hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md`
    (`165300Z`). Cards remain born-parked; serial GO separate.
 
 ## Done when
 - Spec Kit invoke evidenced (seed + plan + tasks.md) **or** typed `needs_input` BLOCK recorded
+- `spec.md` enumerates every inventory `http_path` (not a count)
+- Resource task lines include literal `@Path("...")` for owned HTTP routes
 - **No** `partition.json` authored on this card (handover-mint writes the receipt)
 - **No** M3 Kanban children created on this card
 

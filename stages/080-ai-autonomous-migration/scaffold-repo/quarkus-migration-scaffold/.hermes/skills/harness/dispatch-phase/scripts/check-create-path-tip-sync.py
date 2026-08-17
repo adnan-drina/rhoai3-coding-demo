@@ -61,6 +61,7 @@ REQUIRED_FILES = [
     ".hermes/skills/harness/dispatch-phase/references/handover-mint.md",
     ".hermes/skills/harness/dispatch-phase/references/delivery-path.md",
     ".hermes/skills/harness/dispatch-phase/references/native-dispatch.md",
+    ".hermes/skills/harness/dispatch-phase/references/m2-planner.md",
         ".hermes/skills/harness/dispatch-phase/fixtures/handover/tasks.attempt-2-speckit.md",
         ".hermes/skills/harness/dispatch-phase/fixtures/handover/inventory.attempt-2.json",
         ".hermes/skills/harness/dispatch-phase/fixtures/handover/tasks.native-speckit.md",
@@ -1021,6 +1022,26 @@ REQUIRED_SUBSTRINGS = [
         ".hermes/skills/sdd/init-spec-workspace/assets/tasks-template.md",
         "one creator phase per dest path",
         "tasks-template unique-owner emit pin (075500Z)",
+    ),
+    (
+        ".hermes/skills/sdd/init-spec-workspace/assets/tasks-template.md",
+        '@Path("',
+        "tasks-template @Path emit pin (200540Z)",
+    ),
+    (
+        ".hermes/skills/sdd/init-spec-workspace/assets/spec-template.md",
+        "enumerate every inventory http_path",
+        "spec-template inventory-enumerate pin (203500Z)",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/scripts/dispatch-phase.sh",
+        "Read inventory before specify",
+        "M2 job reads inventory before speckit-specify (203500Z)",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/references/m2-planner.md",
+        "Read `evidence/entry-point-inventory.json`",
+        "m2-planner names inventory-before-specify (203500Z)",
     ),
     (
         ".hermes/skills/sdd/init-spec-workspace/scripts/init-workspace.sh",
