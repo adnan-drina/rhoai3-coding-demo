@@ -72,9 +72,11 @@ spec:
             fi
             curl -fsSL --max-time 120 -o /tmp/mta.vsix "https://open-vsx.org/api/redhat/mta-vscode-extension/8.2.0/file/redhat.mta-vscode-extension-8.2.0.vsix"
             curl -fsSL --max-time 120 -o /tmp/mta-core.vsix "https://open-vsx.org/api/redhat/mta-core/8.2.0/file/redhat.mta-core-8.2.0.vsix"
+            curl -fsSL --max-time 120 -o /tmp/redhat-java.vsix "https://open-vsx.org/api/redhat/java/1.47.0/file/redhat.java-1.47.0.vsix"
             curl -fsSL --max-time 120 -o /tmp/mta-java.vsix "https://open-vsx.org/api/redhat/mta-java/8.2.0/file/redhat.mta-java-8.2.0.vsix"
             test -s /tmp/mta.vsix
             test -s /tmp/mta-core.vsix
+            test -s /tmp/redhat-java.vsix
             test -s /tmp/mta-java.vsix
             # Create kubeconfig from the workspace SA token so the MTA extension
             # can connect to the cluster. OIDC auth to the hub is still interactive.
@@ -110,7 +112,7 @@ spec:
           cpuRequest: 500m
           env:
             - name: DEFAULT_EXTENSIONS
-              value: "/tmp/kilo.vsix;/tmp/mta.vsix;/tmp/mta-core.vsix;/tmp/mta-java.vsix"
+              value: "/tmp/kilo.vsix;/tmp/mta.vsix;/tmp/mta-core.vsix;/tmp/redhat-java.vsix;/tmp/mta-java.vsix"
             - name: SHELL
               value: "/usr/bin/bash"
             - name: JAVA_HOME
@@ -197,9 +199,11 @@ spec:
             fi
             curl -fsSL --max-time 120 -o /tmp/mta.vsix "https://open-vsx.org/api/redhat/mta-vscode-extension/8.2.0/file/redhat.mta-vscode-extension-8.2.0.vsix"
             curl -fsSL --max-time 120 -o /tmp/mta-core.vsix "https://open-vsx.org/api/redhat/mta-core/8.2.0/file/redhat.mta-core-8.2.0.vsix"
+            curl -fsSL --max-time 120 -o /tmp/redhat-java.vsix "https://open-vsx.org/api/redhat/java/1.47.0/file/redhat.java-1.47.0.vsix"
             curl -fsSL --max-time 120 -o /tmp/mta-java.vsix "https://open-vsx.org/api/redhat/mta-java/8.2.0/file/redhat.mta-java-8.2.0.vsix"
             test -s /tmp/mta.vsix
             test -s /tmp/mta-core.vsix
+            test -s /tmp/redhat-java.vsix
             test -s /tmp/mta-java.vsix
             # Create kubeconfig from the workspace SA token so the MTA extension
             # can connect to the cluster. OIDC auth to the hub is still interactive.
@@ -235,7 +239,7 @@ spec:
           cpuRequest: 500m
           env:
             - name: DEFAULT_EXTENSIONS
-              value: "/tmp/kilo.vsix;/tmp/mta.vsix;/tmp/mta-core.vsix;/tmp/mta-java.vsix"
+              value: "/tmp/kilo.vsix;/tmp/mta.vsix;/tmp/mta-core.vsix;/tmp/redhat-java.vsix;/tmp/mta-java.vsix"
             - name: SHELL
               value: "/usr/bin/bash"
             - name: JAVA_HOME
@@ -322,9 +326,11 @@ spec:
             fi
             curl -fsSL --max-time 120 -o /tmp/mta.vsix "https://open-vsx.org/api/redhat/mta-vscode-extension/8.2.0/file/redhat.mta-vscode-extension-8.2.0.vsix"
             curl -fsSL --max-time 120 -o /tmp/mta-core.vsix "https://open-vsx.org/api/redhat/mta-core/8.2.0/file/redhat.mta-core-8.2.0.vsix"
+            curl -fsSL --max-time 120 -o /tmp/redhat-java.vsix "https://open-vsx.org/api/redhat/java/1.47.0/file/redhat.java-1.47.0.vsix"
             curl -fsSL --max-time 120 -o /tmp/mta-java.vsix "https://open-vsx.org/api/redhat/mta-java/8.2.0/file/redhat.mta-java-8.2.0.vsix"
             test -s /tmp/mta.vsix
             test -s /tmp/mta-core.vsix
+            test -s /tmp/redhat-java.vsix
             test -s /tmp/mta-java.vsix
             # Create kubeconfig from the workspace SA token so the MTA extension
             # can connect to the cluster. OIDC auth to the hub is still interactive.
@@ -360,7 +366,7 @@ spec:
           cpuRequest: 500m
           env:
             - name: DEFAULT_EXTENSIONS
-              value: "/tmp/kilo.vsix;/tmp/mta.vsix;/tmp/mta-core.vsix;/tmp/mta-java.vsix"
+              value: "/tmp/kilo.vsix;/tmp/mta.vsix;/tmp/mta-core.vsix;/tmp/redhat-java.vsix;/tmp/mta-java.vsix"
             - name: SHELL
               value: "/usr/bin/bash"
             - name: JAVA_HOME

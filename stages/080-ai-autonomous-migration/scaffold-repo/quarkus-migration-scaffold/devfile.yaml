@@ -49,7 +49,7 @@ components:
           value: "1"
         # MTA extension pack, downloaded by init-migration-tools below.
         - name: DEFAULT_EXTENSIONS
-          value: "/tmp/mta.vsix;/tmp/mta-core.vsix;/tmp/mta-java.vsix"
+          value: "/tmp/mta.vsix;/tmp/mta-core.vsix;/tmp/redhat-java.vsix;/tmp/mta-java.vsix"
         # MTA hub connection — stable internal cluster service URL.
         - name: HUB_URL
           value: "http://mta-ui.openshift-mta.svc.cluster.local:8080"
@@ -158,11 +158,13 @@ commands:
         fi
         # MTA VS Code extension pack (analysis of /projects/legacy against
         # the platform MTA hub). The pack does not reliably resolve its
-        # dependencies from a local VSIX — pin and download all three.
+        # dependencies from a local VSIX — pin and download MTA + redhat.java
+        # (vendor-required for mta-java; Operator E-20260817T104424Z).
         curl -fsSL --retry 3 --retry-delay 5 --retry-all-errors --max-time 300 -o /tmp/mta.vsix "https://open-vsx.org/api/redhat/mta-vscode-extension/8.2.0/file/redhat.mta-vscode-extension-8.2.0.vsix"
         curl -fsSL --retry 3 --retry-delay 5 --retry-all-errors --max-time 300 -o /tmp/mta-core.vsix "https://open-vsx.org/api/redhat/mta-core/8.2.0/file/redhat.mta-core-8.2.0.vsix"
+        curl -fsSL --retry 3 --retry-delay 5 --retry-all-errors --max-time 300 -o /tmp/redhat-java.vsix "https://open-vsx.org/api/redhat/java/1.47.0/file/redhat.java-1.47.0.vsix"
         curl -fsSL --retry 3 --retry-delay 5 --retry-all-errors --max-time 300 -o /tmp/mta-java.vsix "https://open-vsx.org/api/redhat/mta-java/8.2.0/file/redhat.mta-java-8.2.0.vsix"
-        test -s /tmp/mta.vsix && test -s /tmp/mta-core.vsix && test -s /tmp/mta-java.vsix
+        test -s /tmp/mta.vsix && test -s /tmp/mta-core.vsix && test -s /tmp/redhat-java.vsix && test -s /tmp/mta-java.vsix
         # kubeconfig from the workspace SA so the MTA extension can reach
         # the cluster; hub sign-in itself is interactive (OIDC device auth
         # through the platform realm).

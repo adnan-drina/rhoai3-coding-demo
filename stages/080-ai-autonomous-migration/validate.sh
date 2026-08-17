@@ -140,8 +140,9 @@ for ns in wksp-kubeadmin wksp-ai-admin wksp-ai-developer; do
     check "mca-coolstore workspace exists: $ns" \
         "oc get devworkspace mca-coolstore -n $ns -o jsonpath='{.metadata.name}'" \
         "mca-coolstore"
+    # Manifest presence only — does not assert Che-Code activation (Operator E-20260817T104424Z).
     check "mca-coolstore workspace declares Kilo Code and MTA default extensions: $ns" \
-        "oc get devworkspace mca-coolstore -n $ns -o yaml | grep -q '/tmp/kilo.vsix;/tmp/mta.vsix;/tmp/mta-core.vsix;/tmp/mta-java.vsix' && echo present || echo missing" \
+        "oc get devworkspace mca-coolstore -n $ns -o yaml | grep -q '/tmp/kilo.vsix;/tmp/mta.vsix;/tmp/mta-core.vsix;/tmp/redhat-java.vsix;/tmp/mta-java.vsix' && echo present || echo missing" \
         "present"
     check "mca-coolstore workspace downloads MTA VS Code extension 8.2.0: $ns" \
         "oc get devworkspace mca-coolstore -n $ns -o yaml | grep -q 'redhat.mta-vscode-extension-8.2.0.vsix' && echo present || echo missing" \
@@ -151,6 +152,9 @@ for ns in wksp-kubeadmin wksp-ai-admin wksp-ai-developer; do
         "present"
     check "mca-coolstore workspace downloads MTA Java extension 8.2.0: $ns" \
         "oc get devworkspace mca-coolstore -n $ns -o yaml | grep -q 'redhat.mta-java-8.2.0.vsix' && echo present || echo missing" \
+        "present"
+    check "mca-coolstore workspace downloads redhat.java 1.47.0 (mta-java dependency): $ns" \
+        "oc get devworkspace mca-coolstore -n $ns -o yaml | grep -q 'redhat.java-1.47.0.vsix' && echo present || echo missing" \
         "present"
     check "mca-coolstore workspace sets HUB_URL to the internal hub service: $ns" \
         "oc get devworkspace mca-coolstore -n $ns -o yaml | grep -q 'mta-ui.openshift-mta.svc.cluster.local:8080' && echo present || echo missing" \

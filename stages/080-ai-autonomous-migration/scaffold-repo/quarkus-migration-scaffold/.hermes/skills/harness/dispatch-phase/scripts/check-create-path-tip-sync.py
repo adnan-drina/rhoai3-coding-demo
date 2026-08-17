@@ -772,8 +772,8 @@ REQUIRED_SUBSTRINGS = [
     ),
     (
         ".hermes/skills/harness/enforce-authority-boundary/scripts/write-set-hook.py",
-        'n.startswith("specs/")',
-        "specs/ is a product write (fail-closed without M2 write-set)",
+        "A published empty list",
+        "published [] denies specs/ and every dest path (invert a158ef06)",
     ),
     (
         ".hermes/home/scripts/kanban-stuck-watchdog.py",
