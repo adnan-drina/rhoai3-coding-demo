@@ -24,14 +24,8 @@ Do **not** `hermes kanban daemon --force` (deprecated; two dispatchers on one
 
 ## M3 children
 
-M3 children take the dedicated create path (`--parent` is **required**):
-
-```bash
-bash .hermes/skills/harness/dispatch-phase/scripts/mint-m3-wave.sh \
-  --parent <m2_task_id>
-# or per-story:
-bash "${HERMES_SKILL_DIR}/scripts/create-m3-implementer.sh" \
-  --title "M3 IMPLEMENT: <story>" \
-  --body-json evidence/bodies/m3-s-010.json \
-  --parent <m2_task_id>
-```
+M3 children take the dedicated create path (`--parent` is **required**).
+The wave-holder Hermes session follows
+`references/mint-m3-hermes.md` (`kanban_create` + ack_gate). Do **not**
+run a deleted `mint-m3-wave.sh` / `create-m3-implementer.sh` from Cursor
+or ask the demo user to.

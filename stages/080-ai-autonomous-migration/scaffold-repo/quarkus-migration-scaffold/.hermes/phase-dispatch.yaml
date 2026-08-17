@@ -22,7 +22,7 @@
 # Pillar heads stay Cursor. Do not hermes profile create --clone.
 #
 # M3 skills[] is the **allowed attach pool** (B-16), not "attach all five".
-# create-m3-implementer.sh attaches check-spec-readiness plus
+# mint-m3-hermes.md attaches check-spec-readiness plus
 # identity.operand_skills. Park-at-birth stays (0.4: no promotion-proof
 # status). Serial law is NOT retired. AD-002E skills_unused stays attached
 # as a measured signal (B-17 raised, not retired).
@@ -44,7 +44,7 @@ phases:
     files_writable: []
   M2:
     # GR2 / Operator E-20260813T211843Z — unified PLAN (partition + Spec Kit).
-    # Mint is orchestrator-owned: mint-m3-wave.sh after M2 done (AD-016).
+    # Mint is the wave-holder session: references/mint-m3-hermes.md after M2 done.
     # M2a/M2b split retired; stubs below kept for tip-sync / attach-matrix until F9.
     skills:
       - scan-with-mta
@@ -63,7 +63,7 @@ phases:
     requires_acks:
       - m1-findings
   M2b:
-    # RETIRED GR2 — do not dispatch; use M2 + mint-m3-wave.sh. Stub for attach-matrix.
+    # RETIRED GR2 — do not dispatch; use M2 + holder mint-m3-hermes.md. Stub for attach-matrix.
     skills:
       - scan-with-mta
     max_runtime_seconds: 3600
@@ -72,10 +72,10 @@ phases:
   M3:
     # IMPLEMENT — per-unit transform
     # Children MUST be created via
-    # .hermes/skills/harness/dispatch-phase/scripts/create-m3-implementer.sh
+    # .hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md
     # (bare hermes kanban create omits these skills — grounding study 20260809).
     # AD-002F — useful = influence. M3 skills[] is the allow-list pool (B-16).
-    # create-m3 attaches check-spec-readiness + identity.operand_skills.
+    # mint Procedure attaches check-spec-readiness + identity.operand_skills.
     # Drop zero-touch (check-domain-parity→M4, enforce-authority-boundary/
     # ground-in-harvest/record-run-evidence unread on S-001…S-006).
     # Workers consult via skill_view. Typed skills_unused is a measured

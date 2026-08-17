@@ -27,12 +27,6 @@ CREATE_SCRIPTS = (
     / "dispatch-phase"
     / "scripts"
     / "dispatch-phase.sh",
-    Path(".hermes")
-    / "skills"
-    / "harness"
-    / "dispatch-phase"
-    / "scripts"
-    / "create-m3-implementer.sh",
 )
 RESOLVER_NEEDLE = "resolve-seat-assignee.py"
 FORBIDDEN_HOLE = "assignee default is the identity hole"

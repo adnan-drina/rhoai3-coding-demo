@@ -3383,8 +3383,7 @@ else
 fi
 rm -f "${m3wave}"
 if grep -E 'eval "\$\(python3' \
-  "${HARNESS}/dispatch-phase/scripts/dispatch-phase.sh" \
-  "${HARNESS}/dispatch-phase/scripts/create-m3-implementer.sh" >/dev/null; then
+  "${HARNESS}/dispatch-phase/scripts/dispatch-phase.sh" >/dev/null; then
   echo "FAIL: LG7 eval of python parser still present" >&2
   rc=1
 else
@@ -3510,15 +3509,13 @@ else
   rc=1
 fi
 
-echo "== B-6 park-at-birth uses kind=dependency =="
-CREATE_M3="${HARNESS}/dispatch-phase/scripts/create-m3-implementer.sh"
-if grep -q 'block --kind needs_input' "${CREATE_M3}"; then
-  echo "FAIL: B-6 create-m3 still parks with kind=needs_input (spends worker recurrence)" >&2
-  rc=1
-elif grep -q 'block --kind dependency' "${CREATE_M3}"; then
-  echo "OK: B-6 park-at-birth uses kind=dependency"
+echo "== B-6 story park is ack_gate parent, not sticky-block =="
+MINT_PROC="${HARNESS}/dispatch-phase/references/mint-m3-hermes.md"
+if grep -q 'OBJECT Option B' "${MINT_PROC}" \
+  && grep -q 'Sticky-block is' "${MINT_PROC}"; then
+  echo "OK: B-6 story park is incomplete ack_gate parent (OBJECT Option B)"
 else
-  echo "FAIL: B-6 create-m3 missing harness park --kind dependency" >&2
+  echo "FAIL: B-6 mint Procedure must OBJECT sticky-block on story cards" >&2
   rc=1
 fi
 

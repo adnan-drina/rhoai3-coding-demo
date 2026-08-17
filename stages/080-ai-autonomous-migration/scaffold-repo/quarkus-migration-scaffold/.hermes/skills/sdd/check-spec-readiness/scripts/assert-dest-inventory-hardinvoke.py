@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""BANK-DEST-INV-HARDINVOKE-1 — R0 lint: create-m3 + standing procedure.
+"""BANK-DEST-INV-HARDINVOKE-1 — R0 lint: mint Procedure + standing procedure.
 
-REFUSE when create-m3-implementer.sh lacks the BANK-DEST-INV-HARDINVOKE-1
+REFUSE when mint-m3-hermes.md lacks the BANK-DEST-INV-HARDINVOKE-1
 cite, or when the full obligation (destination_inventory + dependency_wait
-REQUIRES) is absent from both the card seed and the F6 standing contract.
+REQUIRES) is absent from both the Procedure and the F6 standing contract.
 
 Architect E-20260812T074514Z / Operator E-074401Z / F6 E-20260814T115900Z.
 
@@ -21,8 +21,8 @@ CREATE = (
     / "skills"
     / "harness"
     / "dispatch-phase"
-    / "scripts"
-    / "create-m3-implementer.sh"
+    / "references"
+    / "mint-m3-hermes.md"
 )
 STANDING = (
     Path(".hermes")
@@ -43,13 +43,13 @@ def main() -> int:
     text = path.read_text(encoding="utf-8")
     if NEEDLE not in text:
         print(
-            f"FAIL: DEST_INV_HARDINVOKE create-m3 lacks `{NEEDLE}` obligation",
+            f"FAIL: DEST_INV_HARDINVOKE mint Procedure lacks `{NEEDLE}` obligation",
             file=sys.stderr,
         )
         return 1
     if "destination_inventory" not in text:
         print(
-            "FAIL: DEST_INV_HARDINVOKE create-m3 must mention destination_inventory",
+            "FAIL: DEST_INV_HARDINVOKE mint Procedure must mention destination_inventory",
             file=sys.stderr,
         )
         return 1
@@ -61,7 +61,7 @@ def main() -> int:
     if "dependency_wait" not in combined or "REQUIRES" not in combined:
         print(
             "FAIL: DEST_INV_HARDINVOKE obligation must bind dependency_wait cite "
-            "(create-m3 card and/or m3-implementer-standing.md)",
+            "(mint-m3-hermes.md and/or m3-implementer-standing.md)",
             file=sys.stderr,
         )
         return 1
@@ -73,7 +73,7 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
-    print(f"OK: DEST_INV_HARDINVOKE {NEEDLE} stamped in create-m3 (+ standing)")
+    print(f"OK: DEST_INV_HARDINVOKE {NEEDLE} stamped in mint Procedure (+ standing)")
     return 0
 
 

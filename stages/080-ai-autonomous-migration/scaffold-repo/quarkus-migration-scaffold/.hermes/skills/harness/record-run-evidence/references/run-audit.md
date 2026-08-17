@@ -42,7 +42,7 @@ Checks:
 3. `done` with no worker `kanban_complete` → `FORCED_TRANSITION`
 4. `task_comments` whose author is not the card worker → `FOREIGN_COMMENT`
 
-**Caller:** `snapshot-card-boundary.sh` from `create-m3-implementer.sh`
+**Caller:** `snapshot-card-boundary.sh` from the M3 mint Procedure (`mint-m3-hermes.md`)
 (create — Hermes has no create hook) and plugin
 `.hermes/home/plugins/run-audit-boundary/` (`kanban_task_claimed` /
 `completed` / `blocked`). Fail-open. Never a gate.

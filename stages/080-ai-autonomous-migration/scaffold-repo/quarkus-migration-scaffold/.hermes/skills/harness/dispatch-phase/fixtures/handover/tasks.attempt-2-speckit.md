@@ -287,4 +287,4 @@ Phase 1+2 map to a bootstrap M3 card (foundation). Phase 9 maps to a polish/inte
 
 - **NG-001**: Implementation of any task — this file is planning only, executed by M3 implementers
 - **NG-002**: Writing `partition.json` — handover-mint writes the receipt after tasks.md exists
-- **NG-003**: Creating M3 Kanban cards — Lead/Operator runs `mint-m3-wave.sh` after M2 Done
+- **NG-003**: Creating M3 Kanban cards — the wave-holder session follows `mint-m3-hermes.md` after M2 Done

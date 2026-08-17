@@ -2,7 +2,7 @@
 
 **Status:** binding proving-min
 **Authority:** Lead F6 E-20260814T115900Z (card ≤1,500 chars; procedure lives here)
-**Consumed by:** M3 Kanban card body (pointer only) from `create-m3-implementer.sh`
+**Consumed by:** M3 Kanban card body (pointer only) from the holder mint Procedure (`mint-m3-hermes.md`)
 
 The Kanban card carries identity + typed-body path + digest. **This file** carries
 standing procedure that used to be pasted into every card (~9.5KB × N).

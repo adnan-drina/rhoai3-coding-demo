@@ -5,7 +5,7 @@ license: Apache-2.0
 compatibility: Linux seat; Hermes CLI on PATH for kanban create/dispatch
 metadata:
   author: rhoai3-harness-team
-  version: "1.5.1"
+  version: "1.5.2"
   hermes:
     tags:
     - harness
@@ -151,8 +151,6 @@ The created M1 task instructs the worker to, in order:
 - `scripts/dispatch-phase.sh` — create a phase seed card from `phase-dispatch.yaml`
 - `scripts/handover-mint.py` — tasks.md phases → receipt + bodies (A-4/A-5/A-8); lint only (`--write`, no `--parent`)
 - `references/mint-m3-hermes.md` — Hermes holder mint: gates + `kanban_create` + ack_gate
-- `scripts/mint-m3-wave.sh` — **retired control plane**; file kept for tip-sync pins
-- `scripts/create-m3-implementer.sh` — **retired control plane**; gates listed in mint-m3-hermes.md
 - `scripts/read-link-graph.py` — BV19-3 parse `kanban show --json` parents/children
 - `scripts/read-phase-dispatch.py` — LG7 JSON phase seed (no eval of parser output)
 - `scripts/check-link-graph.py` — BV19-3 lint: `--parent` required except M1

@@ -1,7 +1,7 @@
 """Fail-open run-audit snapshots on kanban lifecycle hooks.
 
 Observer only. Callback errors must not affect the worker. Hermes has no
-create-hook; create is snapshotted from create-m3-implementer.sh.
+create-hook; create is snapshotted from the mint Procedure (`mint-m3-hermes.md`).
 Reclaim is the claimed event firing again.
 """
 from __future__ import annotations

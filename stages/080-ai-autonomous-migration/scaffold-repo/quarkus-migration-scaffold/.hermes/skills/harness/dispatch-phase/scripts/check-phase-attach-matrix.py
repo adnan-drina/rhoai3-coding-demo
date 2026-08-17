@@ -15,7 +15,7 @@ from pathlib import Path
 # Architect AD-002G / SOLUTION-ARCHITECTURE phase attach matrix (initial).
 REQUIRED_MIN: dict[str, frozenset[str]] = {
     "M1": frozenset({"derive-legacy-boot3", "scan-with-mta"}),
-    # GR2 — unified M2 PLAN (partition + Spec Kit); mint via mint-m3-wave.sh
+    # GR2 — unified M2 PLAN (partition + Spec Kit); mint via mint-m3-hermes.md
     # Operator 093930Z: check-spec-readiness / derive-story-oracles not M2-attached
     "M2": frozenset({"scan-with-mta", "speckit-specify"}),
     # RETIRED stubs (GR2) — attach-matrix still validates until F9 drops keys

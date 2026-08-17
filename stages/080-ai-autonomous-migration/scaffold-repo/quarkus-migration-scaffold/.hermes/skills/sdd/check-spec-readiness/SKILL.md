@@ -24,7 +24,7 @@ metadata:
   This skill does **not** author `partition.json`.
 - When a body's `exit_criteria`, `files_in_scope`, or `operand_count` changed —
   these are the fields the gates refuse on.
-- Before `create-m3-implementer` or assemble — `assert-mint-oracles.py` (refs,
+- Before holder mint (`mint-m3-hermes.md`) or assemble — `assert-mint-oracles.py` (refs,
   Hermes `task_id`, SR-13/L2a discriminating exit: the test proving this
   card's AC lives in this write-set; test-shaped cmds name `proves` tests
   in this write-set).

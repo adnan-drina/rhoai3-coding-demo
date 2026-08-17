@@ -8,13 +8,11 @@ is vs M1 inventory. OBJECT spec-kit hooks (V20-5 advisory).
 Domain `## Phase N:` headings mint as kind `phase` id `P{N}` (Architect
 E-20260817T013303Z). Do not infer Setup/Foundational from title prose.
 
-Does not call hermes unless --parent or --ensure-wave-holder is passed (then mint-m3-wave.sh).
+Does not call hermes. --parent / --ensure-wave-holder REFUSE (mint-m3-wave retired; holder follows mint-m3-hermes.md).
 
 Usage:
   python3 handover-mint.py <root> --dry-run
   python3 handover-mint.py <root> --write
-  python3 handover-mint.py <root> --write --parent <wave_holder>
-  python3 handover-mint.py <root> --write --ensure-wave-holder
 """
 from __future__ import annotations
 
@@ -936,11 +934,11 @@ def assemble_bodies(root: Path) -> int:
 
 
 def mint_wave(root: Path, parent: str, dry_run: bool) -> int:
-    script = _SCRIPTS / "mint-m3-wave.sh"
-    cmd = ["bash", str(script), "--parent", parent]
-    if dry_run:
-        cmd.append("--dry-run")
-    return subprocess.run(cmd, cwd=str(root)).returncode
+    _die(
+        "MINT",
+        "mint-m3-wave.sh retired (165300Z / 2.4); holder session follows "
+        "references/mint-m3-hermes.md — do not --parent from Cursor",
+    )
 
 
 def _parent_status(task_id: str) -> str:
@@ -1030,10 +1028,12 @@ def run(root: Path, args: argparse.Namespace) -> dict[str, Any]:
         root=root,
     )
     if args.write or args.parent:
-        if args.ensure_wave_holder:
-            args.parent = ensure_open_wave_holder()
-        elif args.parent:
-            assert_parent_open(args.parent)
+        if args.parent or args.ensure_wave_holder:
+            _die(
+                "MINT",
+                "mint-m3-wave.sh retired (165300Z / 2.4); holder session follows "
+                "references/mint-m3-hermes.md — do not --parent from Cursor",
+            )
         path_a_partition_on_disk(root)
         out = root / "evidence" / "briefs" / "partition.json"
         out.parent.mkdir(parents=True, exist_ok=True)
@@ -1042,10 +1042,6 @@ def run(root: Path, args: argparse.Namespace) -> dict[str, Any]:
         rc = assemble_bodies(root)
         if rc != 0:
             _die("ASSEMBLE", f"assemble-m3-bodies-from-partition.py exited {rc}")
-        if args.parent:
-            mrc = mint_wave(root, args.parent, dry_run=False)
-            if mrc != 0:
-                _die("MINT", f"mint-m3-wave.sh exited {mrc}")
     else:
         print(
             f"OK: handover-mint dry-run stories={len(phases)} "

@@ -7,7 +7,7 @@
 #   bash .hermes/skills/harness/dispatch-phase/scripts/dispatch-phase.sh M2 --parent t_xxx
 #   bash .hermes/skills/harness/dispatch-phase/scripts/dispatch-phase.sh M1 --dry-run
 # BV19-3: --parent is required for every phase except M1 (the DAG root).
-# After M2 done: mint-m3-wave.sh --parent <m2_task_id> (orchestrator-owned mint AD-016/GR2)
+# After M2 done: holder session follows references/mint-m3-hermes.md (not mint-m3-wave.sh)
 set -euo pipefail
 
 case "${1:-}" in
@@ -17,7 +17,7 @@ dispatch-phase.sh — create + dispatch one M-phase Kanban task from phase-dispa
 
 Usage:
   dispatch-phase.sh M1|M2|M3|M4|M5|factory [--parent ID] [--dry-run]
-  (M2a/M2b retired GR2 — use M2; then mint-m3-wave.sh for M3 children)
+  (M2a/M2b retired GR2 — use M2; M3 mint is holder session / mint-m3-hermes.md)
   BV19-3: --parent required except M1.
 
 This is an interface probe / help surface only when -h/--help is passed.
@@ -70,11 +70,11 @@ done
 
 [[ -n "${PHASE}" ]] || {
   echo "usage: dispatch-phase.sh M1|M2|M3|M4|M5|factory [--parent ID] [--dry-run]" >&2
-  echo "  (M2a/M2b retired — use M2; mint via mint-m3-wave.sh; AD-016/GR2)" >&2
+  echo "  (M2a/M2b retired — use M2; M3 mint is holder session / mint-m3-hermes.md)" >&2
   exit 2
 }
 if [[ "${PHASE}" == "M2a" || "${PHASE}" == "M2b" ]]; then
-  echo "dispatch-phase: REFUSE M2a/M2b — M2a/M2b split retired (GR2); dispatch M2 then mint-m3-wave.sh" >&2
+  echo "dispatch-phase: REFUSE M2a/M2b — M2a/M2b split retired (GR2); dispatch M2 then holder mint-m3-hermes.md" >&2
   exit 2
 fi
 
@@ -343,8 +343,9 @@ EOF
 
 Phase: M2 per `.hermes/phase-dispatch.yaml`
 Requires: Operator `evidence/acks/m1-findings.ack.yaml` + findings-handoff gate
-**Mint is orchestrator-owned** — do **not** run `create-m3-implementer.sh` on this card.
-After Done, Lead runs `mint-m3-wave.sh --parent $TASK_ID`.
+**Mint is the wave-holder Hermes session** — do **not** run a pillar-head
+shell as the M3 create path. After Done, the holder follows
+`.hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md`.
 
 ## Execute-as-defined-or-stop (Operator E-20260811T113700Z)
 Any obligation unexecutable as written (unresolvable gate script, missing
@@ -397,9 +398,10 @@ substitution / path invention / specimen-body priming. Measure the harness.
    - **`/speckit-tasks`:** always last. Precondition = `plan.md` present — else typed
      `needs_input` BLOCK. Emit `tasks.md` only — **no** `kanban create`, **no**
      typed M3 bodies, **no** `partition.json`.
-6. **STOP** — do **not** run `create-m3-implementer.sh` or `mint-m3-wave.sh` here.
-   Lead/Operator runs **`mint-m3-wave.sh --parent $TASK_ID`** after M2 Done
-   (orchestrator-owned mint AD-016/GR2). Cards remain born-parked; serial GO separate.
+6. **STOP** — do **not** create M3 Kanban children on this card and do
+   **not** ask the demo user to run a mint script. The **holder** session
+   follows `.hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md`
+   (`165300Z`). Cards remain born-parked; serial GO separate.
 
 ## Done when
 - Spec Kit invoke evidenced (seed + plan + tasks.md) **or** typed `needs_input` BLOCK recorded
@@ -421,7 +423,7 @@ substitution / path invention / specimen-body priming. Measure the harness.
   `python3 .hermes/skills/harness/dispatch-phase/scripts/check-completion-na-reject.py --text "$YOUR_RESULT_SUMMARY"`.
   Exit 1 ⇒ typed `needs_input` (do not complete). Workers satisfy or BLOCK — never amend.
 EOF
-    TITLE="M2 PLAN: partition + Spec Kit (orchestrator mints M3)"
+    TITLE="M2 PLAN: partition + Spec Kit (holder mints M3)"
     ;;
   M3)
     cat >"${BODY_FILE}" <<'EOF'
@@ -429,7 +431,7 @@ EOF
 
 Phase: M3 per `.hermes/phase-dispatch.yaml`
 Requires acks: m1-findings, brief-identity
-Prefer create path: `create-m3-implementer.sh` via `mint-m3-wave.sh` (skills preloaded).
+Prefer create path: wave-holder session + `references/mint-m3-hermes.md` (skills on `kanban_create`).
 
 ## Job
 Execute only `files_in_scope` from the typed W2 §6 body. Consult

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Read one phase seed from phase-dispatch.yaml (no PyYAML, no eval).
 
-LG7: dispatch-phase.sh / create-m3-implementer.sh must not eval parser output.
+LG7: dispatch-phase.sh / mint-m3-hermes.md must not eval parser output.
 This script prints JSON on stdout. Missing max_runtime_seconds → exit 2
 (fail-closed; Deputy E-20260815T100000Z).
 

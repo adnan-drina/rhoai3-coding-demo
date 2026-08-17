@@ -84,7 +84,7 @@ status (0.4). Worktrees do **not** relax the unique `pom.xml` owner.
 | User-story phase whose Independent Test is prose (no test path in write-set) | *not a mint refuse* (`133449Z`); Spec Kit tests are optional; stamp `build_resolves` |
 | Path-A `partition.json` already on disk | `PATH_A_PARTITION` |
 | FIS / dual-stack over cap | `BODY_SIZE` (R-V14.4 — split the phase, do not raise the wall) |
-| `mint-m3-wave --parent` of a `done` card | `PARENT_DONE` (HKN-2) — use `--ensure-wave-holder` |
+| `handover-mint.py --parent` of a `done` card | `PARENT_DONE` (HKN-2) — refused; holder session follows `mint-m3-hermes.md` |
 
 The A-4/A-5 **PASS** contract is the captured attempt-2 `speckit.tasks` harvest
 (`fixtures/handover/tasks.attempt-2-speckit.md`), not a hand-authored fixture.

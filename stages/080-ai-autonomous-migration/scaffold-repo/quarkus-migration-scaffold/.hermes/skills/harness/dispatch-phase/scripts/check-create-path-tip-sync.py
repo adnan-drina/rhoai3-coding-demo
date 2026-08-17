@@ -54,10 +54,10 @@ REQUIRED_FILES = [
     ".hermes/skills/sdd/check-spec-readiness/scripts/stamp-destination-inventory.py",
     ".hermes/skills/sdd/check-spec-readiness/scripts/check-partition-coverage.py",
     # Deputy E-20260814T074759Z V1 — M2 created-cards claim wrapper (F8a/F8b)
-    # GR2: assert stays; mint moves to mint-m3-wave.sh (orchestrator-owned)
+    # GR2: assert stays; mint Procedure is mint-m3-hermes.md (holder kanban_create)
     ".hermes/skills/harness/dispatch-phase/scripts/assert-m2b-created-cards-claim.sh",
     ".hermes/skills/harness/dispatch-phase/scripts/check-created-cards-claim.py",
-    ".hermes/skills/harness/dispatch-phase/scripts/mint-m3-wave.sh",
+    ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
     ".hermes/skills/harness/dispatch-phase/scripts/handover-mint.py",
     ".hermes/skills/harness/dispatch-phase/references/handover-mint.md",
     ".hermes/skills/harness/dispatch-phase/references/delivery-path.md",
@@ -285,14 +285,14 @@ REQUIRED_SUBSTRINGS = [
         "LG7 dispatch reads phase-dispatch as JSON",
     ),
     (
-        ".hermes/skills/harness/dispatch-phase/scripts/create-m3-implementer.sh",
+        ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
         "read-phase-dispatch.py",
-        "LG7 create-m3 reads phase-dispatch as JSON",
+        "LG7 mint Procedure reads phase-dispatch as JSON",
     ),
     (
-        ".hermes/skills/harness/dispatch-phase/scripts/create-m3-implementer.sh",
-        "resolve-seat-assignee.py",
-        "C-2(a) create-m3 uses assignee default",
+        ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
+        "assignee=default",
+        "C-2(a) mint Procedure uses assignee default",
     ),
     (
         ".hermes/skills/harness/validate-contracts/scripts/check-skill-conformance.py",
@@ -385,12 +385,12 @@ REQUIRED_SUBSTRINGS = [
         "bootstrap skill documents POM authoring (DD1/DD2)",
     ),
     (
-        ".hermes/skills/harness/dispatch-phase/scripts/create-m3-implementer.sh",
+        ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
         "check-create-path-tip-sync.py",
-        "R0 wired into create-m3",
+        "R0 wired into mint Procedure",
     ),
     (
-        ".hermes/skills/harness/dispatch-phase/scripts/create-m3-implementer.sh",
+        ".hermes/skills/harness/dispatch-phase/references/m3-implementer-standing.md",
         "Pre-v12 R5 hard-invoke traps",
         "R5 M3 hard-invoke cites",
     ),
@@ -474,11 +474,7 @@ REQUIRED_SUBSTRINGS = [
         "REVIEW_ADHERE_OBSERVE=",
         "dispatch emits Review adhere-observe Need (Operator E-114300Z)",
     ),
-    (
-        ".hermes/skills/harness/dispatch-phase/scripts/create-m3-implementer.sh",
-        "REVIEW_ADHERE_OBSERVE=",
-        "create-m3 emits Review adhere-observe Need",
-    ),
+
     (
         ".hermes/phase-dispatch.yaml",
         "speckit-specify",
@@ -540,9 +536,9 @@ REQUIRED_SUBSTRINGS = [
         "operand_class build_config (Operator E-124000Z)",
     ),
     (
-        ".hermes/skills/harness/dispatch-phase/scripts/create-m3-implementer.sh",
-        '--body "${BODY_JSON}"',
-        "create-m3 validates single body (Operator E-124000Z)",
+        ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
+        "check-kanban-body.py --body",
+        "mint Procedure validates each body (Operator E-124000Z)",
     ),
     (
         ".hermes/skills/sdd/check-spec-readiness/references/story-scope-and-exit.md",
@@ -550,24 +546,24 @@ REQUIRED_SUBSTRINGS = [
         "story-sizing documents operand classes",
     ),
     (
-        ".hermes/skills/harness/dispatch-phase/scripts/create-m3-implementer.sh",
+        ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
         "--initial-status blocked",
         "M3 born parked (Deputy E-131900Z serial breach)",
     ),
     (
-        ".hermes/skills/harness/dispatch-phase/scripts/create-m3-implementer.sh",
+        ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
         "Do NOT dispatch here",
-        "create-m3 must not auto-dispatch (Deputy E-131900Z)",
+        "mint Procedure must not auto-dispatch (Deputy E-131900Z)",
     ),
     (
-        ".hermes/skills/harness/dispatch-phase/scripts/create-m3-implementer.sh",
+        ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
         "--parent REQUIRED",
-        "create-m3 requires --parent (Operator E-133000Z #5)",
+        "mint Procedure requires --parent (Operator E-133000Z #5)",
     ),
     (
-        ".hermes/skills/harness/dispatch-phase/scripts/create-m3-implementer.sh",
-        'created-by "${PARENT_PRIMARY}"',
-        "create-m3 created_by=parent for card-claim (Operator E-133000Z #5)",
+        ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
+        "created-by",
+        "mint Procedure created_by=holder for card-claim (Operator E-133000Z #5)",
     ),
     (
         ".hermes/skills/harness/dispatch-phase/scripts/check-created-cards-claim.py",
@@ -580,31 +576,27 @@ REQUIRED_SUBSTRINGS = [
         "block-and-signal-worker (Operator E-133000Z #2)",
     ),
     # V1 (E-20260814T074759Z): assert property chain, not a bare script-name
-    # inside dispatch-phase.sh. GR2: claim check lives on mint-m3-wave.sh.
+    # inside dispatch-phase.sh. GR2: claim check lives on mint Procedure.
     (
-        ".hermes/skills/harness/dispatch-phase/scripts/mint-m3-wave.sh",
+        ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
         "assert-m2b-created-cards-claim.sh",
-        "mint-m3-wave wires created_cards claim check (GR2 orchestrator mint)",
+        "mint Procedure wires created_cards claim check (GR2 holder mint)",
     ),
     (
-        ".hermes/skills/harness/dispatch-phase/scripts/mint-m3-wave.sh",
-        "orchestrator-owned mint",
-        "GR2/AD-016 mint-m3-wave is orchestrator-owned",
+        ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
+        "wave-holder worker",
+        "GR2/AD-016 M3 mint is holder-session kanban_create",
     ),
     (
-        ".hermes/skills/harness/dispatch-phase/scripts/mint-m3-wave.sh",
+        ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
         "PARENT_DONE",
-        "mint-m3-wave fail-closed when park-at-birth parent is already done",
+        "mint Procedure fail-closed when park-at-birth parent is already done",
     ),
+
     (
-        ".hermes/skills/harness/dispatch-phase/scripts/create-m3-implementer.sh",
-        "PARENT_DONE",
-        "create-m3 fail-closed when park-at-birth parent is already done",
-    ),
-    (
-        ".hermes/skills/harness/dispatch-phase/scripts/create-m3-implementer.sh",
+        ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
         "snapshot-card-boundary.sh",
-        "create-m3 snapshots run-audit at create (no Hermes create hook)",
+        "mint Procedure snapshots run-audit at create (no Hermes create hook)",
     ),
     (
         ".hermes/skills/harness/record-run-evidence/scripts/analyze-run-audit.py",
@@ -642,7 +634,7 @@ REQUIRED_SUBSTRINGS = [
         "partition-coverage gate script (Architect E-133858Z)",
     ),
     (
-        ".hermes/skills/harness/dispatch-phase/scripts/create-m3-implementer.sh",
+        ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
         "assert-quarantine-tombstones.py",
         "Class A quarantine tombstones at create (Architect E-170706Z)",
     ),
@@ -692,17 +684,17 @@ REQUIRED_SUBSTRINGS = [
         "destination inventory stamp (Operator E-144200Z)",
     ),
     (
-        ".hermes/skills/harness/dispatch-phase/scripts/create-m3-implementer.sh",
+        ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
         "stamp-body-dependencies.py",
-        "create-m3 wires dependencies stamp",
+        "mint Procedure wires dependencies stamp",
     ),
     (
-        ".hermes/skills/harness/dispatch-phase/scripts/create-m3-implementer.sh",
+        ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
         "stamp-destination-inventory.py",
-        "create-m3 wires destination-inventory stamp",
+        "mint Procedure wires destination-inventory stamp",
     ),
     (
-        ".hermes/skills/harness/dispatch-phase/scripts/create-m3-implementer.sh",
+        ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
         "assert-complete-exit-criteria.py",
         "Class A complete-cmd assert before kanban_complete",
     ),
@@ -722,9 +714,9 @@ REQUIRED_SUBSTRINGS = [
         "complete-cmd-exit-criteria contract",
     ),
     (
-        ".hermes/skills/harness/dispatch-phase/scripts/create-m3-implementer.sh",
+        ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
         "check-interface-closure.py",
-        "Class A interface-closure wired into create-m3",
+        "Class A interface-closure wired into mint Procedure",
     ),
     (
         ".hermes/skills/sdd/check-spec-readiness/references/story-scope-and-exit.md",
@@ -737,12 +729,12 @@ REQUIRED_SUBSTRINGS = [
         "Class A constraints-preservation script",
     ),
     (
-        ".hermes/skills/harness/dispatch-phase/scripts/create-m3-implementer.sh",
+        ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
         "assert-constraints-preserved.py",
-        "F9 create-m3 wires constraints snapshot-before",
+        "F9 mint Procedure wires constraints snapshot-before",
     ),
     (
-        ".hermes/skills/harness/dispatch-phase/scripts/create-m3-implementer.sh",
+        ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
         "assert-constraints-preserved.py",
         "F9 scar-archive triage: constraints snapshot wired at create",
     ),
@@ -812,12 +804,12 @@ REQUIRED_SUBSTRINGS = [
         "mint-completeness-constraints contract",
     ),
     (
-        ".hermes/skills/harness/dispatch-phase/scripts/create-m3-implementer.sh",
+        ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
         "PARK_AT_BIRTH",
         "Class A park-at-birth verify after create",
     ),
     (
-        ".hermes/skills/harness/dispatch-phase/scripts/create-m3-implementer.sh",
+        ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
         "auto-promote",
         "park-at-birth: create path refuses auto-promote",
     ),
@@ -842,9 +834,9 @@ REQUIRED_SUBSTRINGS = [
         "card-sidecar-digest-cross-assert contract",
     ),
     (
-        ".hermes/skills/harness/dispatch-phase/scripts/create-m3-implementer.sh",
+        ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
         "assert-card-body-digest-match.py",
-        "Class A card↔sidecar assert wired into create-m3 ack path",
+        "Class A card↔sidecar assert wired into mint Procedure ack path",
     ),
     (
         ".hermes/skills/sdd/check-spec-readiness/scripts/assert-dependency-closure.py",
@@ -857,9 +849,9 @@ REQUIRED_SUBSTRINGS = [
         "dependency-closure contract",
     ),
     (
-        ".hermes/skills/harness/dispatch-phase/scripts/create-m3-implementer.sh",
+        ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
         "assert-dependency-closure.py",
-        "Class A dependency-closure wired into create-m3",
+        "Class A dependency-closure wired into mint Procedure",
     ),
     (
         ".hermes/skills/sdd/check-spec-readiness/scripts/assert-dest-inventory-hardinvoke.py",
@@ -872,9 +864,9 @@ REQUIRED_SUBSTRINGS = [
         "dest-inventory-hardinvoke standing cite",
     ),
     (
-        ".hermes/skills/harness/dispatch-phase/scripts/create-m3-implementer.sh",
+        ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
         "BANK-DEST-INV-HARDINVOKE-1",
-        "RW-2 dest-inventory cite obligation on create-m3",
+        "RW-2 dest-inventory cite obligation on mint Procedure",
     ),
     (
         ".hermes/skills/harness/dispatch-phase/references/m3-implementer-standing.md",
@@ -882,12 +874,12 @@ REQUIRED_SUBSTRINGS = [
         "F6 standing procedure carries BANK-DEST-INV detail",
     ),
     (
-        ".hermes/skills/harness/dispatch-phase/scripts/create-m3-implementer.sh",
+        ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
         "m3-implementer-standing.md",
         "F6 card points at standing procedure (≤1500 chars)",
     ),
     (
-        ".hermes/skills/harness/dispatch-phase/scripts/create-m3-implementer.sh",
+        ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
         "F6 card budget exceeded",
         "F6 fail-closed card char budget",
     ),
@@ -917,9 +909,9 @@ REQUIRED_SUBSTRINGS = [
         "F2 dest-inventory --write stamps receipt",
     ),
     (
-        ".hermes/skills/harness/dispatch-phase/scripts/create-m3-implementer.sh",
+        ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
         "assert-bundle-skills-exist.py",
-        "RW-3 CS-7 bundle exists-assert wired into create-m3",
+        "RW-3 CS-7 bundle exists-assert wired into mint Procedure",
     ),
     (
         ".hermes/skills/harness/enforce-authority-boundary/scripts/apply-write-fence.sh",
@@ -957,19 +949,19 @@ REQUIRED_SUBSTRINGS = [
         "DD6 foundation asserts resolution in story-sizing",
     ),
     (
-        ".hermes/skills/harness/dispatch-phase/scripts/create-m3-implementer.sh",
+        ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
         "identity.story_id required",
         "D3 story id persisted on M3 card (Operator E-180236Z)",
     ),
     (
-        ".hermes/skills/harness/dispatch-phase/scripts/create-m3-implementer.sh",
+        ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
         "created-story-cards.json",
         "D3 story↔card map stamped at create",
     ),
     (
-        ".hermes/skills/harness/dispatch-phase/scripts/create-m3-implementer.sh",
+        ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
         "assert-mint-oracles.py",
-        "L2 mint oracles wired into create-m3 (SR-13)",
+        "L2 mint oracles wired into mint Procedure (SR-13)",
     ),
     (
         ".hermes/skills/sdd/check-spec-readiness/references/story-scope-and-exit.md",
@@ -1151,20 +1143,16 @@ REQUIRED_SUBSTRINGS = [
         "E-20260816T193813Z",
         "A-8 mint contract is route/symbol join, not a filename mapper",
     ),
-    (
-        ".hermes/skills/harness/dispatch-phase/scripts/mint-m3-wave.sh",
-        "PATH_A_PARTITION",
-        "mint-m3-wave refuses Path-A partition.json",
-    ),
+
     (
         ".hermes/skills/sdd/check-spec-readiness/references/story-scope-and-exit.md",
         "pom owner unique",
         "A-5 pom.xml has exactly one writer",
     ),
     (
-        ".hermes/skills/harness/dispatch-phase/scripts/create-m3-implementer.sh",
-        "block --kind dependency",
-        "B-6 harness park-at-birth uses kind=dependency",
+        ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
+        "OBJECT Option B",
+        "B-6 story park is incomplete ack_gate parent, not sticky-block",
     ),
     (
         ".hermes/skills/harness/dispatch-phase/scripts/m3-attach-skills.py",

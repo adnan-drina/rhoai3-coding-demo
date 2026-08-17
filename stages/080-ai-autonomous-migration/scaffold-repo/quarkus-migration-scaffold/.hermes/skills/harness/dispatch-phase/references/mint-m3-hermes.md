@@ -2,8 +2,9 @@
 
 **Status:** binding · **Authority:** Architect `E-20260817T165300Z` /
 `E-20260817T170800Z` / `E-20260817T173800Z` (ack_gate AMEND) /
-`E-20260817T173950Z`. **OBJECT** Cursor or demo-user `mint-m3-wave.sh` /
-`handover-mint.py --parent` as the create path.
+`E-20260817T173950Z` / `E-20260817T181020Z` (2.4). **OBJECT** Cursor or
+demo-user `mint-m3-wave.sh` / `handover-mint.py --parent` as the create
+path.
 
 The **wave-holder worker** (Hermes session on the M3 holder card) mints.
 Lint stays agent-invoked via `execute_code`. Create is native
@@ -15,7 +16,9 @@ only** (`--write`, **no** `--parent`, **no** `--ensure-wave-holder`).
 ## Sequence
 
 1. Confirm this session is the wave holder (`HERMES_KANBAN_TASK` is the
-   holder id). Holder must **not** be `done`/`archived` (HKN-2).
+   holder id). Holder must **not** be `done`/`archived` (HKN-2 /
+   `PARENT_DONE`). `PARK_AT_BIRTH` children **auto-promote** when every
+   parent is `done` — do not `--parent` a done card.
 2. Lint + assemble (no create):
 
    ```text
@@ -23,7 +26,7 @@ only** (`--write`, **no** `--parent`, **no** `--ensure-wave-holder`).
    ```
 
    Receipt `source` must be `handover-mint`. Path-A authored partition is
-   refuse.
+   refuse (`PATH_A_PARTITION`).
 3. Create **`ack_gate` first** (see ack_gate card). Do **not** parent it
    on the holder. Sticky-block it. **Assert `status=blocked` from
    `kanban show`** — do not trust `kanban block` exit 0
@@ -33,10 +36,12 @@ only** (`--write`, **no** `--parent`, **no** `--ensure-wave-holder`).
    - Skip if a child of the holder already has title prefix `{story_id}:`
      or `{story_id} `.
    - Run the **pre-create gates** below via `execute_code` on that body.
-   - `kanban_create` with skills, `initial_status=blocked`,
-     `idempotency_key`, `workspace_kind=dir`, `workspace_path`,
-     `max_runtime_seconds`, `assignee=default`, parents
-     **`[holder, ack_gate]`** (gate is a parent, not a holder-child).
+   - `kanban_create` with skills, `initial_status=blocked` /
+     `--initial-status blocked`, `idempotency_key`, `workspace_kind=dir`,
+     `workspace_path`, `max_runtime_seconds`, `assignee=default`,
+     `created-by` / `created_by` = holder id, `--parent REQUIRED` twice
+     (holder + ack_gate), parents **`[holder, ack_gate]`** (gate is a
+     parent, not a holder-child). **Do NOT dispatch here.**
 5. After all stories exist (or were skipped), **`kanban_complete` this
    holder**. The gate must stay `blocked` (sticky event). Children stay
    `blocked` because `ack_gate` is incomplete. `dispatch --dry-run` must
@@ -79,7 +84,8 @@ the unpark switch.
 
 ## Pre-create gates (moved from create-m3-implementer; do not drop)
 
-Run per body, fail-closed, via `execute_code`:
+Run per body, fail-closed, via `execute_code`.
+`identity.story_id required`.
 
 1. `check-create-path-tip-sync.py`
 2. `check-phase-body-script-refs.py`
@@ -97,6 +103,7 @@ Run per body, fail-closed, via `execute_code`:
 14. `stamp-body-digest.py` (AR-4.3)
 15. `check-surgical-scopes.py` + `check-semantic-exits.py` + `check-operand-count.py --wall-fit`
 16. `assert-mint-oracles.py --body <body> --skip-task-id`
+17. `snapshot-card-boundary.sh` create (run-audit; no Hermes create hook)
 
 Attach skills from `m3-attach-skills.py <body>` (B-16). Max runtime from
 `read-phase-dispatch.py --phase M3` or body `runtime_budget_sec`.
@@ -104,40 +111,36 @@ Workspace `dir:/projects/modernized`. Profile `default` must exist
 (`hermes profile show default`).
 
 Title: `{story_id}: M3 IMPLEMENT: {story_id}` (prefix once). Card markdown
-≤1500 chars; standing procedure stays in `m3-implementer-standing.md`.
+≤1500 chars; standing procedure stays in `m3-implementer-standing.md`
+(BANK-DEST-INV-HARDINVOKE-1 / `refs.destination_inventory`, Pre-v12 R5
+hard-invoke traps). **F6 card budget exceeded** if the card markdown is
+over 1500 chars.
 
 `idempotency_key`: `migration-m3-{story_id}-v1`.
 
 ## After create (same session)
 
-- Prove each new id has both parent links (holder + ack_gate).
-- Status must be `blocked` or `triage`. `ready`/`todo`/`running` is refuse.
+- Prove each new id has both parent links (holder + ack_gate) via
+  `read-link-graph.py --expect-parent`.
+- Status must be `blocked` or `triage` (`PARK_AT_BIRTH`). `ready`/`todo`/`running` is refuse.
 - Assert ack_gate is still `blocked` after holder complete.
 - Append `evidence/derived/created-story-cards.json`.
 - Emit unsigned `evidence/acks/ack-request-<story>.yaml` for the record;
   **unpark is still completing `ack_gate`**, not signing the file.
 - Run `assert-m2b-created-cards-claim.sh` (partition set equality) after
   the wave.
+- Worker complete-cmd (not mint): `assert-complete-exit-criteria.py` and
+  `assert-card-body-digest-match.py` before `kanban_complete` (standing
+  procedure).
 
-## Scratch proof (Phase 2.5, before any v21 dest)
+## Scratch proof (Phase 2.5)
 
-On a **scratch** `HERMES_HOME`, not attempt-10. Prove the **amended**
-gate (not holder-parented). Order (`204830Z` / `173950Z`):
+Filed `monitoring/v21/20260817-phase25-seven-card-scratch.md`. Authoring
+the Procedure is not that proof.
 
-1. Gate created, then `block --kind needs_input <id> …`; **status=blocked**.
-2. Seven stories `kanban_create` parents `[holder, ack_gate]`
-   `initial_status=blocked`.
-3. Holder completes → gate still `blocked`, seven still `blocked`,
-   `dispatch --dry-run` **Spawned: 0** (none, **including the gate**).
-4. Deputy completes the blocked gate → seven `ready`, dry-run lists seven.
+## Retired control-plane scripts (2.4)
 
-File the reproduction before Operator announces v21. Authoring the
-Procedure is not this proof.
-
-## Retired control-plane scripts
-
-`mint-m3-wave.sh` and `create-m3-implementer.sh` remain in tree so
-create-path tip-sync pins still match. Drop both scripts **and** their
-tip-sync pins in one pass (`173950Z` / 2.4) before v21 dest. They are
-**not** the mint path. Do not invoke them from Cursor, from M2, or from
-the demo user.
+`mint-m3-wave.sh` and `create-m3-implementer.sh` are **deleted**. Do not
+restore them. Do not invoke them from Cursor, from M2, or from the demo
+user. Pre-create gates live in this Procedure; tip-sync pins target this
+file.
