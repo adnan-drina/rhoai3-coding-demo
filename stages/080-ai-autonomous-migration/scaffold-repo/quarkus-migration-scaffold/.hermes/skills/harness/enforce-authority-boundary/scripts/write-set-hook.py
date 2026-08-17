@@ -79,19 +79,6 @@ def is_denied(rel: str) -> bool:
     return False
 
 
-def is_product_write(rel: str) -> bool:
-    """Historical product-path helper. B-2 is now path-bearing (091919Z);
-    kept so callers/tests that imported it still resolve.
-    """
-    n = norm_rel(rel)
-    return (
-        n == "pom.xml"
-        or n.startswith("src/")
-        or n.startswith(".specify/")
-        or n.startswith("specs/")
-    )
-
-
 def in_write_set(rel: str, writable: list[str]) -> bool:
     n = norm_rel(rel)
     for raw in writable:
@@ -247,8 +234,16 @@ def main() -> int:
     try:
         payload = json.load(sys.stdin)
     except json.JSONDecodeError:
+        if os.environ.get("HERMES_KANBAN_TASK", "").strip():
+            return _block(
+                "write-set-hook: malformed JSON with HERMES_KANBAN_TASK set"
+            )
         return _allow()
     if not isinstance(payload, dict):
+        if os.environ.get("HERMES_KANBAN_TASK", "").strip():
+            return _block(
+                "write-set-hook: non-object payload with HERMES_KANBAN_TASK set"
+            )
         return _allow()
     tool = payload.get("tool_name") or ""
     raw = extract_path(payload)
