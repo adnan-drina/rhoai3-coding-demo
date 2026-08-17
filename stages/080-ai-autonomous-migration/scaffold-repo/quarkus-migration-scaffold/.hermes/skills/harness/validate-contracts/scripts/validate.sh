@@ -3541,6 +3541,17 @@ else
   rc=1
 fi
 
+echo "== Card body contract on mint Procedure (035010Z / 224320Z) =="
+if grep -q 'check-body-digest-match.py --expect' "${MINT_PROC}" \
+  && grep -q 'skills = full m3-attach-skills.py stdout' "${MINT_PROC}" \
+  && grep -q 'evidence/bodies/m3-' "${MINT_PROC}" \
+  && grep -q 'AD-002E' "${MINT_PROC}"; then
+  echo "OK: mint Procedure declares card body contract (path+digest+standing+attach-stdout)"
+else
+  echo "FAIL: mint Procedure missing card body contract (035010Z)" >&2
+  rc=1
+fi
+
 echo "== B-16 M3 attach from operand_skills =="
 b16_body="$(mktemp "${TMPDIR:-/tmp}/b16-body.XXXXXX.json")"
 printf '%s\n' '{"identity":{"operand_skills":["form-entity-persistence"]}}' >"${b16_body}"

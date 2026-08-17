@@ -106,16 +106,60 @@ Run per body, fail-closed, via `execute_code`.
 15. `check-surgical-scopes.py` + `check-semantic-exits.py` + `check-operand-count.py --wall-fit`
 16. `assert-mint-oracles.py --body <body> --skip-task-id`
 
-Attach skills from `m3-attach-skills.py <body>` (B-16). Max runtime from
-`read-phase-dispatch.py --phase M3` or body `runtime_budget_sec`.
-Workspace `dir:/projects/modernized`. Profile `default` must exist
-(`hermes profile show default`).
+Attach skills from `m3-attach-skills.py <body>` (B-16).
+skills = full m3-attach-skills.py stdout
+(`kanban_create` skills: every line of that stdout, order-stable).
+Dropping any name is refuse — v22 setup/foundational kept only
+`check-spec-readiness` while attach printed three/four (`035010Z`).
+Max runtime from `read-phase-dispatch.py --phase M3` or body
+`runtime_budget_sec`. Workspace `dir:/projects/modernized`. Profile
+`default` must exist (`hermes profile show default`).
 
-Title: `{story_id}: M3 IMPLEMENT: {story_id}` (prefix once). Card markdown
-≤1500 chars; standing procedure stays in `m3-implementer-standing.md`
-(BANK-DEST-INV-HARDINVOKE-1 / `refs.destination_inventory`, Pre-v12 R5
-hard-invoke traps). **F6 card budget exceeded** if the card markdown is
-over 1500 chars.
+Title: `{story_id}: M3 IMPLEMENT: {story_id}` (prefix once).
+
+## Card body contract (binding — `035010Z` / `224320Z`)
+
+Phase 2.4 verified `kanban_create` *arguments* and never inventoried the
+*markdown* `create-m3-implementer.sh` composed. Argument parity is not
+contract parity. **Do not** grow `handover-mint.py`. **Do not** resurrect
+`create-m3-implementer.sh`. Put this prose on every story card.
+
+After `stamp-body-digest.py` (step 14), read `body_sha256` (64-hex) from
+stdout / the sidecar. Card markdown **must** include all of:
+
+1. Typed body path: `evidence/bodies/m3-{story_id}.json`
+2. AR-4.3 64-hex (`body_sha256`)
+3. `python3 .hermes/skills/harness/record-run-evidence/scripts/check-body-digest-match.py --expect <digest> --body evidence/bodies/m3-{story_id}.json .` — mismatch ⇒ REFUSE
+4. Pointer: `.hermes/skills/harness/dispatch-phase/references/m3-implementer-standing.md`
+   (BANK-DEST-INV-HARDINVOKE-1 / `refs.destination_inventory`, Pre-v12 R5
+   hard-invoke traps). Standing procedure stays there — do not paste it.
+5. Pre-complete: `assert-complete-exit-criteria.py` (rc≠0 ⇒ REFUSE complete)
+6. Constraints: workspace `dir:/projects/modernized`; do not re-plan;
+   max-runtime from phase-dispatch; AD-008 (no MiniMax); AD-002E
+   (`skill_view` each attached skill or typed `skills_unused`)
+
+Template (fill; keep card markdown ≤1500 chars — **F6 card budget exceeded**
+if over 1500 chars):
+
+```text
+Typed body: evidence/bodies/m3-{story_id}.json
+AR-4.3 digest: {64-hex}
+Verify: python3 .hermes/skills/harness/record-run-evidence/scripts/check-body-digest-match.py --expect {64-hex} --body evidence/bodies/m3-{story_id}.json .
+  mismatch ⇒ REFUSE
+Standing: .hermes/skills/harness/dispatch-phase/references/m3-implementer-standing.md
+Pre-complete: python3 .hermes/skills/gates/check-release-readiness/scripts/assert-complete-exit-criteria.py . --task-id {id} --body evidence/bodies/m3-{story_id}.json
+## Exit Criteria
+- {from body.exit_criteria, one line each}
+## Files Writable
+- {from body.files_writable, one path each}
+## Constraints
+- workspace: dir:/projects/modernized
+- Do not re-plan. max-runtime: {seconds}. AD-008. AD-002E.
+```
+
+A four-line operands/exit/files summary **without** path + digest +
+standing + `--expect` + Constraints is refuse. Do not dest-rewrite cards
+after create to chase this (`192117Z`).
 
 `idempotency_key`: `migration-m3-{story_id}-v1`.
 
@@ -133,6 +177,11 @@ over 1500 chars.
 - Prove each new id has both parent links (holder + ack_gate) via
   `read-link-graph.py --expect-parent`.
 - Status must be `blocked` or `triage` (`PARK_AT_BIRTH`). `ready`/`todo`/`running` is refuse.
+- **Card-contract assert:** `hermes kanban show <id>` markdown must contain
+  `evidence/bodies/m3-`, a 64-hex, `m3-implementer-standing.md`, and
+  `check-body-digest-match.py --expect`. Skills on the card must equal
+  full `m3-attach-skills.py` stdout. Any miss → typed `needs_input` BLOCK;
+  do not create the next story; do not `kanban_complete` this holder.
 - Assert ack_gate is still `blocked` after holder complete.
 - Append `evidence/derived/created-story-cards.json`.
 - Emit unsigned `evidence/acks/ack-request-<story>.yaml` for the record;

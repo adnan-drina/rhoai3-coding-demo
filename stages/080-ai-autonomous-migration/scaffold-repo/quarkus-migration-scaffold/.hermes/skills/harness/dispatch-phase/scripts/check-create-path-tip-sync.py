@@ -1199,6 +1199,26 @@ REQUIRED_SUBSTRINGS = [
         "A-4/A-5/A-8 handover-mint",
         "handover-mint dry-run is in validate-contracts",
     ),
+    (
+        ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
+        "check-body-digest-match.py --expect",
+        "card body contract AR-4.3 --expect REFUSE (035010Z)",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
+        "skills = full m3-attach-skills.py stdout",
+        "card body contract B-16 no-drop attach stdout (035010Z)",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
+        "evidence/bodies/m3-",
+        "card body contract typed-body path on kanban markdown (035010Z)",
+    ),
+    (
+        ".hermes/skills/harness/validate-contracts/scripts/validate.sh",
+        "Card body contract on mint Procedure",
+        "validate-contracts pins mint card body contract (035010Z)",
+    ),
 ]
 
 
