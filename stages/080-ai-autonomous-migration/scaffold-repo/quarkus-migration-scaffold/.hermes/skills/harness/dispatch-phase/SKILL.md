@@ -5,7 +5,7 @@ license: Apache-2.0
 compatibility: Linux seat; Hermes CLI on PATH for kanban create/dispatch
 metadata:
   author: rhoai3-harness-team
-  version: "1.5.0"
+  version: "1.5.1"
   hermes:
     tags:
     - harness
@@ -110,12 +110,13 @@ Create parks (`DISPATCH_MAX=0`). Spawn is native `hermes kanban dispatch --max 1
 ### What mint-m3-hermes.md adds
 
 `handover-mint.py --write` (no `--parent`) is lint+assemble. The holder
-then `kanban_create`s an **ack_gate** card and one parked child per
-partition story with parents `[holder, ack_gate]`, skills attached,
-`idempotency_key`, then `kanban_complete`s itself. Pre-create gates that
-lived in `create-m3-implementer.sh` run via `execute_code` (list in
-`references/mint-m3-hermes.md`). Grant = complete the gate card, not a
-YAML file.
+creates **ack_gate first** (no holder parent; sticky-block with `--kind`
+before the id; assert `status=blocked`), then one parked child per
+story with parents `[holder, ack_gate]`, then `kanban_complete`s itself.
+Pre-create gates that lived in `create-m3-implementer.sh` run via
+`execute_code` (list in `references/mint-m3-hermes.md`). Grant = complete
+the blocked gate card, not a YAML file. Do not parent the gate on the
+holder (`173800Z`).
 
 ### M1 body contract (evidence-analyst)
 
