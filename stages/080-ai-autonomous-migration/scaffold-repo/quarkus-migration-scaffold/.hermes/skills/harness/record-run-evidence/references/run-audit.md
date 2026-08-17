@@ -16,7 +16,10 @@ python3 .hermes/skills/harness/record-run-evidence/scripts/snapshot-run-audit.py
 
 Writes `evidence/run-audit/<ts>.json`: dest-tree path → mtime + sha256
 (skip `target/`, `.git/`), `git rev-parse HEAD` + last 5 commits, claim
-windows from sqlite `task_runs` when the DB is present.
+windows from sqlite `task_runs` when `--db` is present. Session
+`--windows-json` is retired (`075357Z`); live snapshots use `--db` only.
+Published write-sets under `evidence/runtime/write-sets/<task_id>.json`
+are joined onto those windows when present.
 
 ## Analyze
 
@@ -32,7 +35,10 @@ Checks:
    those exist (`migration.yaml`, `AGENTS.md`, `devfile.yaml`, `k8s/`,
    `Containerfile`, `catalog-info.yaml`). Pass `--baseline <t0.json>` so
    provision-time files are not scored; t0-vs-self must be 0.
-2. In-window but not in that card's `files_writable` → `OOS_WRITE`
+2. In-window dest write:
+   - write-set **omit** (unpublished) → `UNATTRIBUTED`
+   - write-set **`[]`** → `OOS_WRITE` (no worker dest writes)
+   - write-set **populated** → `OOS_WRITE` if the path is not listed
 3. `done` with no worker `kanban_complete` → `FORCED_TRANSITION`
 4. `task_comments` whose author is not the card worker → `FOREIGN_COMMENT`
 

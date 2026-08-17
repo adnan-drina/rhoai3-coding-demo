@@ -24,8 +24,14 @@ This is an interface probe / help surface only when -h/--help is passed.
 
 Env (v20-flow / Architect E-20260816T185414Z):
   DISPATCH_START_DAEMON=0  default — do not spawn `kanban daemon --force`
-  DISPATCH_MAX=0           default — dispatcher off (serial park-at-birth)
+  DISPATCH_MAX=0           default — create parks the card; does not spawn
   Set both to 1 only for a campaign that has claimed C-1(a).
+
+Serial GO (one in-flight) AFTER create — native claim+spawn, not chat -q:
+  hermes kanban dispatch --max 1
+That is Hermes _default_spawn: status running + $HERMES_HOME/kanban/logs/<id>.log
+Do NOT: hermes chat -q "work kanban task t_xxx"  (no claim, sqlite stays ready, no official log)
+Do NOT: hermes kanban daemon --force            (deprecated; claim races)
 USAGE
     exit 0
     ;;
@@ -505,6 +511,20 @@ echo "${TASK_ID}" >"${ROOT}/evidence/derived/phase-${PHASE}-task-id.txt"
 } >"${ROOT}/evidence/derived/review-adhere-observe-needed.yaml"
 echo "REVIEW_ADHERE_OBSERVE=${TASK_ID}"
 echo "dispatch-phase: created ${TASK_ID} (Review:adhere-observe-${TASK_ID} REQUIRED)"
+
+if [[ "${PHASE}" == "M1" ]]; then
+  mkdir -p "${ROOT}/evidence/runtime/write-sets"
+  python3 - "${ROOT}" "${TASK_ID}" <<'PY'
+import json, sys
+from pathlib import Path
+root, task = Path(sys.argv[1]), sys.argv[2]
+doc = {"task_id": task, "files_writable": []}
+ws = root / "evidence" / "runtime" / "write-sets"
+ws.mkdir(parents=True, exist_ok=True)
+(ws / f"{task}.json").write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
+print(f"dispatch-phase: M1 write-set {task} → [] (published empty; not omit)")
+PY
+fi
 
 if [[ "${PHASE}" == "M2" ]]; then
   mkdir -p "${ROOT}/evidence/runtime/write-sets"

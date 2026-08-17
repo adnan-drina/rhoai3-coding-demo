@@ -30,6 +30,9 @@
 phases:
   M1:
     # ANALYZE — MTA/kantra + inventory + profile authoring
+    # files_writable: [] = published empty set (Architect 073040Z). Omit was
+    # unpublished/fail-open. Empty list: no worker dest writes; in-window
+    # DEST_FILES edits are OOS unless a runtime SR-8 producer is cited.
     skills:
       - derive-legacy-boot3
       - scan-with-mta
@@ -37,6 +40,7 @@ phases:
       - check-spec-readiness
     max_runtime_seconds: 3600
     requires_acks: []
+    files_writable: []
   M2:
     # GR2 / Operator E-20260813T211843Z — unified PLAN (partition + Spec Kit).
     # Mint is orchestrator-owned: mint-m3-wave.sh after M2 done (AD-016).

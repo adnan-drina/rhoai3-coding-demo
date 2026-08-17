@@ -2457,6 +2457,9 @@ elif ! grep -q 'remove: review-spec' "${overlay}" \
 elif ! grep -q 'speckit.clarify' "${overlay}"; then
   echo "FAIL: overlay missing speckit.clarify" >&2
   rc=1
+elif grep -q '_transcribed_http' "${overlay}"; then
+  echo "FAIL: overlay cites handover-mint _transcribed_http (ingress-only SHA)" >&2
+  rc=1
 elif ! grep -q 'evidence/findings-handoff.json' "${overlay}"; then
   echo "FAIL: overlay missing M1 findings-handoff path" >&2
   rc=1
@@ -2464,7 +2467,7 @@ elif ! grep -q 'evidence/entry-point-inventory.json' "${overlay}"; then
   echo "FAIL: overlay missing M1 entry-point inventory path" >&2
   rc=1
 else
-  echo "OK: tip speckit overlay (clarify, no implement, no gates, M1 paths)"
+  echo "OK: tip speckit overlay (clarify, no implement, no gates, M1 paths, ingress-only)"
 fi
 if [ ! -f "${constitution}" ]; then
   echo "FAIL: missing constitution asset" >&2
@@ -2477,6 +2480,16 @@ elif ! grep -q '3.27.3.SP1' "${constitution}" || ! grep -q 'Java 21' "${constitu
   rc=1
 else
   echo "OK: constitution asset has zero placeholders (V20-3)"
+fi
+tasks_tpl="${SKILLS}/sdd/init-spec-workspace/assets/tasks-template.md"
+if [ ! -f "${tasks_tpl}" ]; then
+  echo "FAIL: missing unique-owner tasks-template asset" >&2
+  rc=1
+elif ! grep -q 'one creator phase per dest path' "${tasks_tpl}"; then
+  echo "FAIL: tasks-template asset lacks unique-owner pin" >&2
+  rc=1
+else
+  echo "OK: unique-owner tasks-template asset present"
 fi
 if command -v specify >/dev/null 2>&1; then
   ov_tmp="$(mktemp -d "${TMPDIR:-/tmp}/speckit-overlay.XXXXXX")"
@@ -3149,10 +3162,8 @@ src.mkdir(parents=True)
 touched = src / "Touched.java"
 touched.write_text("class Touched {}\n", encoding="utf-8")
 snap = td / "snap.json"
-win = td / "windows.json"
-win.write_text("[]\n", encoding="utf-8")
 r = subprocess.run(
-    [sys.executable, str(snap_py), str(td), "--windows-json", str(win), "--out", str(snap)],
+    [sys.executable, str(snap_py), str(td), "--out", str(snap)],
     capture_output=True,
     text=True,
 )

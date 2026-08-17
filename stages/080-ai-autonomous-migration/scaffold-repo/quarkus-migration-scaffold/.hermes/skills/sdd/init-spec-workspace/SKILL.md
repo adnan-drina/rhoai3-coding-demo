@@ -1,6 +1,6 @@
 ---
 name: init-spec-workspace
-description: When a workspace has no .specify/ — installs pinned Spec Kit, the Non-Goals override, the destination constitution, the speckit overlay that removes implement, and the AD-S stop rule
+description: When a workspace has no .specify/ — installs pinned Spec Kit, the Non-Goals override, the unique-owner tasks-template override, the destination constitution, the speckit overlay that removes implement, and the AD-S stop rule
 license: Apache-2.0
 compatibility: Linux seat; network to install pinned Spec Kit CLI
 metadata:
@@ -48,17 +48,22 @@ Idempotent via `.specify/.rhoai3-ads-provisioned`. Spec Kit is pinned
 3. Copies Non-Goals override from
    `${HERMES_SKILL_DIR}/assets/spec-template.md` →
    `.specify/templates/overrides/spec-template.md`
-4. Copies destination constitution from
+4. Copies unique-owner tasks override from
+   `${HERMES_SKILL_DIR}/assets/tasks-template.md` →
+   `.specify/templates/overrides/tasks-template.md` (one creator phase per
+   dest path; Add/Verify remain amend)
+5. Copies destination constitution from
    `${HERMES_SKILL_DIR}/assets/constitution.md` →
    `.specify/memory/constitution.md` when missing or still spec-kit
    placeholders (`[PROJECT_NAME]` / `[PRINCIPLE_1…]`)
-5. Copies `stop-before-implement.overlay.yml` →
+6. Copies `stop-before-implement.overlay.yml` →
    `.specify/workflows/overlays/speckit/stop-before-implement.yml`
    (`extends: speckit`, `remove: implement`, inserts `clarify`, names M1
-   evidence paths on specify args). Removes leftover `sdd-to-tasks.yml`.
-6. Writes `external_dirs` reminder under `.specify/EXTERNAL_DIRS.note`; when `HERMES_HOME` is relocated, **ensures** `skills.external_dirs` on managed/`HERMES_HOME` `config.yaml` before assert (covers init-ai-tools skip when Hermes venv absent)
-7. Stamps `.specify/AD-S-STOP-RULE.md` (includes `specify workflow run speckit`)
-8. If `.git/hooks` exists, installs the LG9a pre-commit that runs the suite against `git checkout-index`
+   evidence paths on specify args; emit pin is the tasks override, not
+   mint-transcribed HTTP). Removes leftover `sdd-to-tasks.yml`.
+7. Writes `external_dirs` reminder under `.specify/EXTERNAL_DIRS.note`; when `HERMES_HOME` is relocated, **ensures** `skills.external_dirs` on managed/`HERMES_HOME` `config.yaml` before assert (covers init-ai-tools skip when Hermes venv absent)
+8. Stamps `.specify/AD-S-STOP-RULE.md` (includes `specify workflow run speckit`)
+9. If `.git/hooks` exists, installs the LG9a pre-commit that runs the suite against `git checkout-index`
 
 ## Stop rule (non-negotiable)
 
@@ -81,6 +86,7 @@ After `/speckit-tasks` (optional `/speckit-analyze`) → Kanban mint.
 
 - These artifacts must exist **together** under the workspace root: `.specify/`
   (from `specify init`), `.specify/templates/overrides/spec-template.md`,
+  `.specify/templates/overrides/tasks-template.md` (unique dest-path owner),
   `.specify/memory/constitution.md` (Quarkus 3.27.3.SP1 / Java 21 — not
   placeholders), `.specify/workflows/overlays/speckit/stop-before-implement.yml`,
   `.specify/AD-S-STOP-RULE.md`, and

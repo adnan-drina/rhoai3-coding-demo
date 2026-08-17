@@ -23,6 +23,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # Skill root = parent of scripts/ (self-contained asset home — Deputy E-172448Z).
 SKILL_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 ASSET_OVERRIDE="${SKILL_DIR}/assets/spec-template.md"
+ASSET_TASKS="${SKILL_DIR}/assets/tasks-template.md"
 ASSET_CONSTITUTION="${SKILL_DIR}/assets/constitution.md"
 ASSET_OVERLAY="${SKILL_DIR}/assets/stop-before-implement.overlay.yml"
 # Workspace tip may also carry the skill under ROOT/.hermes/skills/... when
@@ -32,6 +33,7 @@ ASSET_OVERLAY="${SKILL_DIR}/assets/stop-before-implement.overlay.yml"
     if [ -f "${ALT}" ]; then
       ASSET_OVERRIDE="${ALT}"
       SKILL_DIR="$(cd "$(dirname "${ALT}")/.." && pwd)"
+      ASSET_TASKS="${SKILL_DIR}/assets/tasks-template.md"
       ASSET_CONSTITUTION="${SKILL_DIR}/assets/constitution.md"
       ASSET_OVERLAY="${SKILL_DIR}/assets/stop-before-implement.overlay.yml"
     fi
@@ -52,6 +54,7 @@ emit_ok() {
 
 [ -d "${ROOT}" ] || die "missing root ${ROOT}"
 [ -f "${ASSET_OVERRIDE}" ] || die "missing Non-Goals override asset at ${ASSET_OVERRIDE} (expected under init-spec-workspace/assets/)"
+[ -f "${ASSET_TASKS}" ] || die "missing tasks-template unique-owner asset at ${ASSET_TASKS}"
 [ -f "${ASSET_CONSTITUTION}" ] || die "missing constitution asset at ${ASSET_CONSTITUTION}"
 [ -f "${ASSET_OVERLAY}" ] || die "missing speckit overlay asset at ${ASSET_OVERLAY}"
 
@@ -61,6 +64,8 @@ install_ads_overlays() {
     "${ROOT}/.specify/workflows/overlays/speckit"
   cp "${ASSET_OVERRIDE}" "${ROOT}/.specify/templates/overrides/spec-template.md"
   log "installed Non-Goals override → .specify/templates/overrides/spec-template.md"
+  cp "${ASSET_TASKS}" "${ROOT}/.specify/templates/overrides/tasks-template.md"
+  log "installed unique-owner tasks override → .specify/templates/overrides/tasks-template.md"
 
   local const_dest="${ROOT}/.specify/memory/constitution.md"
   if [ ! -f "${const_dest}" ] || grep -q '\[PROJECT_NAME\]\|\[PRINCIPLE_1' "${const_dest}" 2>/dev/null; then
@@ -110,10 +115,12 @@ if [[ "${DRY_RUN}" == "1" ]]; then
   log "DRY-RUN: ROOT=${ROOT}"
   log "DRY-RUN: MARKER=${MARKER}"
   log "DRY-RUN: ASSET_OVERRIDE=${ASSET_OVERRIDE}"
+  log "DRY-RUN: ASSET_TASKS=${ASSET_TASKS}"
   log "DRY-RUN: ASSET_CONSTITUTION=${ASSET_CONSTITUTION}"
   log "DRY-RUN: ASSET_OVERLAY=${ASSET_OVERLAY}"
   log "DRY-RUN: would run: specify init --here --integration hermes --force --ignore-agent-tools"
   log "DRY-RUN: would copy override → .specify/templates/overrides/spec-template.md"
+  log "DRY-RUN: would copy unique-owner tasks override → .specify/templates/overrides/tasks-template.md"
   log "DRY-RUN: would copy constitution → .specify/memory/constitution.md"
   log "DRY-RUN: would copy overlay → .specify/workflows/overlays/speckit/stop-before-implement.yml"
   log "DRY-RUN: would write marker ${MARKER}"

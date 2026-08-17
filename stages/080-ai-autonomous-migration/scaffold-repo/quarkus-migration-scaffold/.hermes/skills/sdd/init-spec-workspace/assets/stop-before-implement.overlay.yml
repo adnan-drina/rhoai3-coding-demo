@@ -1,14 +1,13 @@
-# A-1 overlay — compose over stock speckit. Do not author a second workflow.
+# A-1 overlay — native ingress (Architect E-20260817T061720Z / E-20260817T063500Z).
 # Install: copied to .specify/workflows/overlays/speckit/ at provision.
 # Inspect: specify workflow resolve speckit
 # Run:     specify workflow run speckit
 # Never run the stock speckit workflow without this overlay (it ends at implement).
 # 163200Z §S.7 / Research 174900Z: stock review-spec and review-plan are type: gate.
 # Unattended path must remove those gates as well as implement.
-# Architect E-20260817T060552Z BIND: replace: tasks carries the A-8 emit
-# contract (METHOD /path and/or @Path, including /). Overlay asks; mint
-# endpoints_uncovered REFUSE if the generator declines. No dest rewrite.
+# OBJECT: do not put mint-transcribed HTTP endpoints or "no backticks" in args.
 # 192444Z OBJECT: do not lock Dependencies to the US_ALL_DEPS fixture regex.
+# Emit pin lives in .specify/templates/overrides/tasks-template.md (full-file override).
 id: "stop-before-implement"
 extends: "speckit"
 priority: 10
@@ -36,4 +35,4 @@ edits:
       command: speckit.tasks
       integration: "{{ inputs.integration }}"
       input:
-        args: "{{ inputs.spec }}\n\nA-8 emit contract (handover-mint _transcribed_http; do not paraphrase):\n- On each Create *Resource checkbox line write @Path(\"/api/...\") and METHOD /api/... (HTTP method, space, slash-path; no backticks between method and path). Prose such as 'at /api/owners with GET all' is not a path token.\n- Cover every HTTP row in evidence/entry-point-inventory.json, including http_path: / as Create RootResource @Path(\"/\").\n- Keep phase headings Setup / Foundational / User Story N / Polish. Do not skip Setup or Foundational.\n- Read inventory paths; do not invent a RestController-to-Resource filename mapper."
+        args: "{{ inputs.spec }}\n\nM1 evidence (same files as specify; cover every HTTP row in evidence/entry-point-inventory.json, including http_path: /):\nevidence/findings-handoff.json\nevidence/entry-point-inventory.json\n\nFollow .specify/templates/overrides/tasks-template.md: one creator phase per dest path; Add/Verify remain amend. Destination REST is JAX-RS (constitution III). Do not invent a RestController-to-Resource filename mapper."

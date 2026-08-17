@@ -102,17 +102,33 @@ def claim_windows_from_db(db: Path) -> list[dict]:
         return []
 
 
+def attach_write_sets(root: Path, windows: list[dict]) -> None:
+    """Join published write-sets onto claim windows (M1 [] honesty)."""
+    ws_dir = root / "evidence" / "runtime" / "write-sets"
+    for w in windows:
+        if not isinstance(w, dict):
+            continue
+        tid = str(w.get("task_id") or "")
+        if not tid:
+            continue
+        path = ws_dir / f"{tid}.json"
+        if not path.is_file():
+            continue
+        try:
+            doc = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if isinstance(doc, dict) and "files_writable" in doc:
+            w["files_writable"] = doc.get("files_writable")
+            w["files_writable_published"] = True
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(
         description="Snapshot dest-tree mtimes for the Phase 5 run audit (observer, not a gate)."
     )
     p.add_argument("root", help="destination / product root")
     p.add_argument("--db", default="", help="optional Hermes kanban.db for claim windows")
-    p.add_argument(
-        "--windows-json",
-        default="",
-        help="optional JSON list of claim windows (golden / tests)",
-    )
     p.add_argument(
         "--out",
         default="",
@@ -130,14 +146,9 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     windows: list[dict] = []
-    if args.windows_json:
-        wpath = Path(args.windows_json)
-        windows = json.loads(wpath.read_text(encoding="utf-8"))
-        if not isinstance(windows, list):
-            print("FAIL: --windows-json must be a list", file=sys.stderr)
-            return 2
-    elif args.db:
+    if args.db:
         windows = claim_windows_from_db(Path(args.db))
+        attach_write_sets(root, windows)
     doc = {
         "schema": SCHEMA,
         "ts": ts,

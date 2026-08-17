@@ -3,7 +3,8 @@
 
 Three checks against a snapshot:
   - out-of-window dest edit ⇒ INTERVENTION
-  - in-window but not in that card's files_writable ⇒ OOS write
+  - in-window dest write with unpublished files_writable ⇒ UNATTRIBUTED
+  - in-window dest write with published [] / populated set ⇒ OOS if not listed
   - done with no matching worker kanban_complete / status change with no
     task_event ⇒ forced transition
 
@@ -137,8 +138,19 @@ def analyze(
                 }
             )
             continue
-        writable = hit.get("files_writable") or []
-        if isinstance(writable, list) and writable:
+        writable_published = "files_writable" in hit
+        writable = hit.get("files_writable")
+        if not writable_published:
+            findings.append(
+                {
+                    "kind": "UNATTRIBUTED",
+                    "path": rel,
+                    "task_id": hit.get("task_id"),
+                    "note": "in-window dest write with unpublished files_writable (omit)",
+                }
+            )
+            continue
+        if isinstance(writable, list):
             allowed = {str(x) for x in writable}
             if rel not in allowed:
                 findings.append(

@@ -25,6 +25,7 @@ REQUIRED_FILES = [
     ".hermes/skills/sdd/check-spec-readiness/scripts/check-findings-handoff.py",
     # AD-S / Deputy E-120800Z — Non-Goals override must ride tip+overlay/R0
     ".hermes/skills/sdd/init-spec-workspace/assets/spec-template.md",
+    ".hermes/skills/sdd/init-spec-workspace/assets/tasks-template.md",
     ".hermes/skills/sdd/init-spec-workspace/assets/constitution.md",
     ".hermes/skills/sdd/init-spec-workspace/assets/stop-before-implement.overlay.yml",
     # Architect E-121308Z — R0 Spec Kit preseed gate (live assert; script on tip)
@@ -60,6 +61,7 @@ REQUIRED_FILES = [
     ".hermes/skills/harness/dispatch-phase/scripts/mint-m3-wave.sh",
     ".hermes/skills/harness/dispatch-phase/scripts/handover-mint.py",
     ".hermes/skills/harness/dispatch-phase/references/handover-mint.md",
+    ".hermes/skills/harness/dispatch-phase/references/native-dispatch.md",
         ".hermes/skills/harness/dispatch-phase/fixtures/handover/tasks.good.md",
         ".hermes/skills/harness/dispatch-phase/fixtures/handover/tasks.native-speckit.md",
         ".hermes/skills/harness/dispatch-phase/fixtures/handover/inventory.native-speckit.json",
@@ -1012,6 +1014,31 @@ REQUIRED_SUBSTRINGS = [
         ".hermes/skills/sdd/init-spec-workspace/assets/stop-before-implement.overlay.yml",
         "evidence/findings-handoff.json",
         "A-3 specify args name M1 findings-handoff",
+    ),
+    (
+        ".hermes/skills/sdd/init-spec-workspace/assets/tasks-template.md",
+        "one creator phase per dest path",
+        "tasks-template unique-owner emit pin (075500Z)",
+    ),
+    (
+        ".hermes/skills/sdd/init-spec-workspace/scripts/init-workspace.sh",
+        "overrides/tasks-template.md",
+        "provision installs unique-owner tasks override",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/scripts/dispatch-phase.sh",
+        "hermes kanban dispatch --max 1",
+        "serial GO is native dispatch --max 1 not chat -q",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/references/native-dispatch.md",
+        "hermes kanban dispatch --max 1",
+        "native-dispatch standing doc names GO (not a wrapper script)",
+    ),
+    (
+        ".hermes/skills/harness/record-run-evidence/scripts/snapshot-run-audit.py",
+        "attach_write_sets",
+        "run-audit joins published write-sets; session --windows-json retired",
     ),
     (
         ".hermes/skills/harness/validate-contracts/scripts/validate.sh",

@@ -75,17 +75,11 @@ From a shell without the skill loaded:
 bash .hermes/skills/harness/dispatch-phase/scripts/dispatch-phase.sh M1
 ```
 
-M3 children take the dedicated create path (`--parent` is **required**):
+### Serial GO (one in-flight)
 
-```bash
-bash .hermes/skills/harness/dispatch-phase/scripts/mint-m3-wave.sh \
-  --parent <m2_task_id>
-# or per-story:
-bash "${HERMES_SKILL_DIR}/scripts/create-m3-implementer.sh" \
-  --title "M3 IMPLEMENT: <story>" \
-  --body-json evidence/bodies/m3-s-010.json \
-  --parent <m2_task_id>
-```
+Create parks (`DISPATCH_MAX=0`). Spawn is native `hermes kanban dispatch --max 1`
+— not `chat -q`, not `kanban daemon --force`. Argv, official log path, and M3
+`--parent` create: `references/native-dispatch.md`.
 
 ### What dispatch-phase.sh does
 

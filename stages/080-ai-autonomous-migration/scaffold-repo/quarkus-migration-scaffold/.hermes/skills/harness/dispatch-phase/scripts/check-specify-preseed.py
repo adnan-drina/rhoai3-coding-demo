@@ -16,6 +16,7 @@ def main() -> int:
     specify = root / ".specify"
     marker = specify / ".rhoai3-ads-provisioned"
     override = specify / "templates" / "overrides" / "spec-template.md"
+    tasks_override = specify / "templates" / "overrides" / "tasks-template.md"
     provision_asset = (
         root
         / ".hermes"
@@ -24,6 +25,15 @@ def main() -> int:
         / "init-spec-workspace"
         / "assets"
         / "spec-template.md"
+    )
+    provision_tasks = (
+        root
+        / ".hermes"
+        / "skills"
+        / "sdd"
+        / "init-spec-workspace"
+        / "assets"
+        / "tasks-template.md"
     )
     provision_constitution = (
         root
@@ -87,6 +97,24 @@ def main() -> int:
         else:
             print("OK: Non-Goals override installed under .specify/")
 
+    if not tasks_override.is_file():
+        print(
+            "FAIL: missing unique-owner override at "
+            ".specify/templates/overrides/tasks-template.md",
+            file=sys.stderr,
+        )
+        bad = 1
+    else:
+        ttext = tasks_override.read_text(encoding="utf-8")
+        if "one creator phase per dest path" not in ttext:
+            print(
+                "FAIL: tasks-template override present but lacks unique-owner pin",
+                file=sys.stderr,
+            )
+            bad = 1
+        else:
+            print("OK: unique-owner tasks-template override installed under .specify/")
+
     if not provision_asset.is_file():
         print(
             "FAIL: missing tip skill asset "
@@ -96,6 +124,24 @@ def main() -> int:
         bad = 1
     else:
         print("OK: tip Non-Goals skill asset present")
+
+    if not provision_tasks.is_file():
+        print(
+            "FAIL: missing tip skill asset "
+            ".hermes/skills/sdd/init-spec-workspace/assets/tasks-template.md",
+            file=sys.stderr,
+        )
+        bad = 1
+    else:
+        ptt = provision_tasks.read_text(encoding="utf-8")
+        if "one creator phase per dest path" not in ptt:
+            print(
+                "FAIL: tip tasks-template asset lacks unique-owner pin",
+                file=sys.stderr,
+            )
+            bad = 1
+        else:
+            print("OK: tip unique-owner tasks-template skill asset present")
 
     if not provision_constitution.is_file():
         print(
@@ -152,8 +198,15 @@ def main() -> int:
                 file=sys.stderr,
             )
             bad = 1
+        elif "_transcribed_http" in wtext:
+            print(
+                "FAIL: speckit overlay must not cite handover-mint _transcribed_http "
+                "(ingress-only; emit pin is tasks-template override)",
+                file=sys.stderr,
+            )
+            bad = 1
         else:
-            print("OK: tip speckit overlay (clarify, no implement, M1 paths)")
+            print("OK: tip speckit overlay (clarify, no implement, M1 paths, ingress-only)")
 
     if specify.is_dir():
         if not dest_constitution.is_file():
