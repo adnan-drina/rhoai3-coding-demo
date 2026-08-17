@@ -5,7 +5,7 @@ M2 body must enumerate (GR2 — M2a/M2b retired):
   ## Input manifest
   ### Required present
   - path…
-  ### Forbidden absent
+  ### Must not exist
   - path or glob…
 
 At create/dispatch: every Required path must exist; every Forbidden path/glob
@@ -28,7 +28,7 @@ REQUIRED_RE = re.compile(
     re.M | re.S,
 )
 FORBIDDEN_RE = re.compile(
-    r"### Forbidden absent\s*\n(.*?)(?=^### |\Z)",
+    r"### Must not exist\s*\n(.*?)(?=^### |\Z)",
     re.M | re.S,
 )
 ITEM_RE = re.compile(r"^-\s+(`?)([^`\n]+)\1\s*$", re.M)
@@ -106,7 +106,7 @@ def main() -> int:
         if not req_m or not forb_m:
             print(
                 f"FAIL: {phase} Input manifest needs ### Required present "
-                f"and ### Forbidden absent",
+                f"and ### Must not exist",
                 file=sys.stderr,
             )
             bad = 1

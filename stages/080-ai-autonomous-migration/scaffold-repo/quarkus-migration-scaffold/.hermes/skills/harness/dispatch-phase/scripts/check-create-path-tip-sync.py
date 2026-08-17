@@ -33,7 +33,6 @@ REQUIRED_FILES = [
     # Deputy E-20260813T184709Z — root scripts/ negative-space retired
     ".hermes/skills/harness/validate-contracts/scripts/check-scripts-absent.py",
     ".hermes/skills/harness/validate-contracts/scripts/pre-commit-index-suite.sh",
-    ".hermes/skills/harness/dispatch-phase/scripts/park-on-block-loop.py",
     # GR1 / Deputy E-20260814T081104Z — contract lifecycle (no EOL in active dir)
     ".hermes/skills/harness/validate-contracts/scripts/check-contract-lifecycle.py",
     ".hermes/skills/harness/validate-contracts/references/contract-lifecycle.md",
@@ -982,11 +981,6 @@ REQUIRED_SUBSTRINGS = [
         ".hermes/skills/harness/validate-contracts/scripts/pre-commit-index-suite.sh",
         "git checkout-index -a --prefix=",
         "LG9a index snapshot pre-commit",
-    ),
-    (
-        ".hermes/skills/harness/dispatch-phase/scripts/park-on-block-loop.py",
-        "HOLD_STATUS = \"triage\"",
-        "L7 loop-breaker parks in triage",
     ),
     (
         ".hermes/skills/sdd/check-spec-readiness/references/story-scope-and-exit.md",

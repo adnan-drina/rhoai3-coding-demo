@@ -49,10 +49,9 @@ pass `--parent`. After live create, dispatch and create-m3 read
 Do not derive phase identity from card titles. Official: dispatcher promotes
 `todo→ready` when all parents are `done`; CLI is `hermes kanban link`.
 
-**L7:** `block_loop_detected` is not a hold by itself — Hermes may leave the
-card `blocked`, which promote lifts. `park-on-block-loop.py` runs before
-daemon start and sets those cards to `triage`. `--self-test` proves promote
-does not claim a loop-broken card.
+**L7:** at Hermes v0.20.2 a second same-kind re-block hits native
+`BLOCK_RECURRENCE_LIMIT` and the card goes `triage`. Promote will not
+reclaim it. Do not reimplement that hold in dispatch.
 
 ## Procedure
 

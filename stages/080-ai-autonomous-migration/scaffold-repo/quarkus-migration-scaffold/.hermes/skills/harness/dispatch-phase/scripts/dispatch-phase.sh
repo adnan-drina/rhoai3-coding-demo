@@ -359,7 +359,7 @@ substitution / path invention / specimen-body priming. Measure the harness.
 - evidence/entry-point-inventory.json
 - evidence/mta-findings.json
 - .hermes/skills/sdd/check-spec-readiness/scripts/check-partition-coverage.py
-### Forbidden absent
+### Must not exist
 - evidence/bodies/*.json
 - evidence/bodies/m3-*.json
 
@@ -538,9 +538,7 @@ fi
 command -v hermes >/dev/null 2>&1 || die "hermes not on PATH"
 hermes profile show "${ASSIGNEE}" >/dev/null 2>&1 \
   || die "C-2(a): assignee profile '${ASSIGNEE}' missing (dispatcher would silent-fail)"
-python3 "${ROOT}/.hermes/skills/harness/dispatch-phase/scripts/park-on-block-loop.py" \
-  --db "${HERMES_HOME}/kanban.db" \
-  || die "L7 park-on-block-loop failed"
+# L7: native BLOCK_RECURRENCE_LIMIT → triage at v0.20.2 (R2).
 ensure_daemon
 cd "${WORKSPACE_DIR}"
 OUT="$(hermes kanban create "${CREATE_ARGS[@]}" "${TITLE}")"

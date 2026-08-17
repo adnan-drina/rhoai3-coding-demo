@@ -40,7 +40,6 @@ Sections covered (in order):
   AD-S S.4 .specify absent from golden     A-1 speckit overlay resolve
   AD-H §7 root scripts/ absent from golden
   WC-5 mta_rescan proves analyzer ran
-  L7 park-on-block-loop self-test
   LG9a pre-commit-index-suite script present
   record-run-evidence (AD-H S19)   R-M3.6 dependency_wait hold
   CS-7 m3-implementer bundle assert        BANK-DEST-INV-HARDINVOKE-1 (RW-2)
@@ -3618,8 +3617,6 @@ PY
 
 echo "== create-path tip sync (R0/R3) =="
 python3 "${ROOT}/.hermes/skills/harness/dispatch-phase/scripts/check-create-path-tip-sync.py" "${ROOT}" || rc=1
-echo "== L7 park-on-block-loop self-test =="
-python3 "${ROOT}/.hermes/skills/harness/dispatch-phase/scripts/park-on-block-loop.py" --self-test || rc=1
 echo "== LG9a pre-commit-index-suite script =="
 if [ ! -f "${SKILL_DIR}/scripts/pre-commit-index-suite.sh" ]; then
   echo "FAIL: missing pre-commit-index-suite.sh (LG9a)" >&2
