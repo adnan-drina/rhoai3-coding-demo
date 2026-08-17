@@ -306,7 +306,7 @@ REQUIRED_SUBSTRINGS = [
     (
         ".hermes/phase-dispatch.yaml",
         "derive-story-oracles",
-        "T-8 skill attached on M2/M3",
+        "T-8 skill attached on M3",
     ),
     (
         ".hermes/skills/sdd/derive-story-oracles/SKILL.md",

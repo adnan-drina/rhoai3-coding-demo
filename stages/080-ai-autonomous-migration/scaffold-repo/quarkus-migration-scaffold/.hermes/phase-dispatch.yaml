@@ -37,7 +37,8 @@ phases:
       - derive-legacy-boot3
       - scan-with-mta
       - inventory-entry-points
-      - check-spec-readiness
+    # check-spec-readiness not attached (Operator 093930Z): M1 path-invokes
+    # scan-with-mta check-findings-handoff; do not preload 23-script skill.
     max_runtime_seconds: 3600
     requires_acks: []
     files_writable: []
@@ -46,18 +47,16 @@ phases:
     # Mint is orchestrator-owned: mint-m3-wave.sh after M2 done (AD-016).
     # M2a/M2b split retired; stubs below kept for tip-sync / attach-matrix until F9.
     skills:
-      - check-spec-readiness
-      - derive-story-oracles
       - scan-with-mta
       - speckit-specify
+    # Operator 093930Z: drop check-spec-readiness (path-invoke) and
+    # derive-story-oracles (zero scripts; M2 skill_view is speckit-*).
     max_runtime_seconds: 3600
     requires_acks:
       - m1-findings
   M2a:
     # RETIRED GR2 — do not dispatch; use M2. Stub skills mirror M2 for attach-matrix.
     skills:
-      - check-spec-readiness
-      - derive-story-oracles
       - scan-with-mta
       - speckit-specify
     max_runtime_seconds: 3600
@@ -66,8 +65,6 @@ phases:
   M2b:
     # RETIRED GR2 — do not dispatch; use M2 + mint-m3-wave.sh. Stub for attach-matrix.
     skills:
-      - check-spec-readiness
-      - derive-story-oracles
       - scan-with-mta
     max_runtime_seconds: 3600
     requires_acks:
