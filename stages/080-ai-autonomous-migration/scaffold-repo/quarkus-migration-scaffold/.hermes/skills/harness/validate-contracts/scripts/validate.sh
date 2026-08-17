@@ -458,6 +458,30 @@ mkdir -p "${hook_tmp}/src/main/java"
   else
     echo "OK: M2 write-set refuses src/"
   fi
+  unset HERMES_KANBAN_FILES_WRITABLE
+  export HERMES_KANBAN_TASK="t_daa654e9"
+  export HERMES_KANBAN_FILES_WRITABLE='[]'
+  if printf '%s\n' '{"tool_name":"write","tool_input":{"path":"migration.yaml"}}' \
+    | python3 "${HOOK}" >/dev/null; then
+    echo "FAIL: empty write-set must refuse Hermes write on migration.yaml" >&2
+    exit 1
+  else
+    echo "OK: empty write-set refuses Hermes write on migration.yaml (091919Z)"
+  fi
+  if printf '%s\n' '{"tool_name":"write_file","tool_input":{"path":"migration.yaml"}}' \
+    | python3 "${HOOK}" >/dev/null; then
+    echo "FAIL: empty write-set must refuse write_file on migration.yaml" >&2
+    exit 1
+  else
+    echo "OK: empty write-set refuses write_file on migration.yaml (091919Z)"
+  fi
+  if printf '%s\n' '{"tool_name":"patch","tool_input":{"path":"migration.yaml"}}' \
+    | python3 "${HOOK}" >/dev/null; then
+    echo "FAIL: empty write-set must refuse patch on migration.yaml" >&2
+    exit 1
+  else
+    echo "OK: empty write-set refuses patch on migration.yaml (091919Z)"
+  fi
 ) || rc=1
 rm -rf "${hook_tmp}"
 

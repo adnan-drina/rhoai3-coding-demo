@@ -16,11 +16,14 @@ adds **operand separation** so an Implementing-task worker cannot forge those pa
 | Scope refuse | `check-write-fence.py` fails dirty/out-of-scope paths **before** `kanban_complete` (`norm()` prefix-strips `./` only — never `lstrip("./")`, which defeated `.hermes/**` DENY; Z15-a) |
 | Seat probe | `probe-write-fence.py` must observe `PermissionError` / refuse on deny paths |
 
-`HERMES_WRITE_SAFE_ROOT` is also an EX-5 Managed Scope pin (layer 2). Official
-write guards still apply to `write_file`/`patch` only; a deny-prefix path
-**inside** SAFE_ROOT is rc 0 on the native fence (HKN-12). That inner refuse
-stays this contract + the EX-3 write-set hook. `approvals.deny` and
-`terminal.backend: local` are outer overlays, not a replacement.
+`HERMES_WRITE_SAFE_ROOT` is also an EX-5 Managed Scope pin (layer 2). The
+EX-3 write-set hook is **path-bearing** (Architect `091919Z`): a dest path
+is checked against `files_writable` regardless of `tool_name`. Published
+`[]` denies every dest-relative write. The GitOps `pre_tool_call` matcher
+is invocation-only (`write` included so Hermes actually calls the hook).
+A deny-prefix path **inside** SAFE_ROOT is rc 0 on the native fence
+(HKN-12). `approvals.deny` and `terminal.backend: local` are outer
+overlays, not a replacement.
 
 ## Tier (b) — release (deferred)
 

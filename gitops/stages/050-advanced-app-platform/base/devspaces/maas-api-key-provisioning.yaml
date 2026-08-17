@@ -807,14 +807,17 @@ data:
         "display": {
             "streaming": True,
         },
-        # EX-3: ONE pre_tool_call hook — in-repo write-set (B-S2) plus SAFE_ROOT.
+        # EX-3: ONE pre_tool_call hook — path-bearing B-2 (Architect
+        # E-20260817T091919Z). Matcher still names known write tools so
+        # Hermes invokes the hook; policy is dest-path + files_writable,
+        # not the name. `write` is the live Hermes tool (attempt-7 bypass).
         # Canonical script lives in the golden; copy into managed so workers
         # cannot overwrite the hook (HKN-12 / hermes-hooks fail_closed).
         "hooks": {
             "hooks_auto_accept": True,
             "pre_tool_call": [
                 {
-                    "matcher": "write_file|patch|edit_file|apply_patch|create_file",
+                    "matcher": "write|write_file|patch|edit_file|apply_patch|create_file",
                     "command": os.path.join(managed, "agent-hooks", "write-fence.py"),
                     "timeout": 5,
                     "fail_closed": True,

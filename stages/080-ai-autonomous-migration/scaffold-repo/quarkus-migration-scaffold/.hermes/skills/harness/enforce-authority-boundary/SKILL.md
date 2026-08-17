@@ -130,11 +130,12 @@ One Kanban task ⇒ one task type. Never `/speckit-implement`. Never edit
   Any `FAIL: FENCE_DENY` or `FAIL: FENCE_SCOPE` line ⇒ refuse `kanban_complete`.
 - `write-set-hook.py` exit 2 on in-repo deny-prefix (`.hermes/`, `AGENTS.md`,
   `SOUL.md`, `devfile.yaml`, acks, verdicts, `kanban.db`), on paths outside
-  `HERMES_WRITE_SAFE_ROOT`, and on product writes outside the published
-  `files_writable` (B-2 allow-model; an out-of-set `pom.xml` is refused).
-  Exit 0 on a legitimate in-set `src/` write. When no kanban task is set,
-  deny-prefix only. When `HERMES_KANBAN_TASK` is set but the write-set
-  cannot be loaded, product writes fail closed.
+  `HERMES_WRITE_SAFE_ROOT`, and on any dest path outside the published
+  `files_writable` (B-2 path-bearing; published `[]` denies all dest writes,
+  including `migration.yaml` under Hermes `write`). Exit 0 on a legitimate
+  in-set `src/` write. When no kanban task is set, deny-prefix only. When
+  `HERMES_KANBAN_TASK` is set but the write-set cannot be loaded, dest
+  writes fail closed.
 - **Silent-failure catch:** several of these are idle-safe. `AR-1.1 idle`,
   `AR-1.2 idle`, and `no required acks` are all exit 0 while asserting
   nothing. During a live phase advance, treat an idle line as a wiring

@@ -15,7 +15,7 @@
   ],
   "layer2_write_safe_root_env": "HERMES_WRITE_SAFE_ROOT",
   "layer2_write_safe_root_value": "${PROJECT_DIR}",
-  "layer2_residual": "HKN-12: native fence returns rc 0 on a deny-prefix path inside SAFE_ROOT. In-repo B-S2 stays the EX-3 write-set hook. Official write guards apply to write_file and patch only.",
+  "layer2_residual": "HKN-12: native fence returns rc 0 on a deny-prefix path inside SAFE_ROOT. In-repo B-S2 stays the EX-3 write-set hook. B-2 is path-bearing (Architect E-20260817T091919Z): dest path + files_writable, including published []. Tool-name matcher is invocation-only.",
   "layer3_terminal_backend": "local",
   "layer3_reason": "The Dev Spaces workspace pod is the isolation from the cluster node. Nested docker/singularity/modal/daytona/vercel_sandbox are not provisioned (no docker.sock in GitOps). Official container backends skip dangerous-command checks, which would weaken layer 1.",
   "forbidden_terminal_backends": [

@@ -5,13 +5,15 @@ Native / SAFE_ROOT sandbox only blocks *outside* HERMES_WRITE_SAFE_ROOT
 (HKN-12: a deny-prefix path inside the project is still allowed natively).
 This hook is the one registered pre_tool_call.
 
-Allow-model (B-2): when a write-set is published for the active kanban
-task, only `files_writable` paths pass (deny-prefixes still refuse). An
-out-of-set `pom.xml` is refused. Dest-relative paths stay dest-relative
-under a worktree SAFE_ROOT (scope enforcement, not collision prevention).
+Allow-model (B-2, Architect E-20260817T091919Z): when a write-set is
+published for the active kanban task, only `files_writable` paths pass
+(deny-prefixes still refuse). A published empty list (`[]`) denies every
+dest-relative write — not only `src/`/`pom.xml`. Enforcement is
+**path-bearing**: if `extract_path` yields a dest path, the tool name
+does not matter. `WRITE_TOOLS` is a no-path fail-closed fast-path only.
 
-If HERMES_KANBAN_TASK is set but the write-set cannot be loaded, product
-writes (`src/`, `pom.xml`, `.specify/`, `specs/`) fail closed.
+If HERMES_KANBAN_TASK is set but the write-set cannot be loaded, treat
+that as published `[]` (fail closed on dest paths).
 
 If no kanban task is published, deny-prefix only — validate/dev seats
 keep working without a write-set.
@@ -78,6 +80,9 @@ def is_denied(rel: str) -> bool:
 
 
 def is_product_write(rel: str) -> bool:
+    """Historical product-path helper. B-2 is now path-bearing (091919Z);
+    kept so callers/tests that imported it still resolve.
+    """
     n = norm_rel(rel)
     return (
         n == "pom.xml"
@@ -120,15 +125,26 @@ def extract_path(payload: dict) -> str | None:
 
 
 def _writable_from_obj(obj: object) -> list[str] | None:
+    """Return a list when a write-set key is present, including `[]`.
+
+    `files_writable: []` is a published empty set (deny all dest writes).
+    It must not collapse to None via `or` — that is how attempt-7 M1
+    treated honesty-`[]` as unpublished.
+    """
     if not isinstance(obj, dict):
         return None
     body = obj.get("body") if isinstance(obj.get("body"), dict) else obj
     if not isinstance(body, dict):
         return None
-    fw = body.get("files_writable") or body.get("write_set")
-    if isinstance(fw, list) and fw:
-        return [str(x) for x in fw if str(x).strip()]
-    return None
+    if "files_writable" in body:
+        fw = body.get("files_writable")
+    elif "write_set" in body:
+        fw = body.get("write_set")
+    else:
+        return None
+    if not isinstance(fw, list):
+        return None
+    return [str(x) for x in fw if str(x).strip()]
 
 
 def load_write_set(safe_p: Path) -> tuple[list[str] | None, str]:
@@ -144,8 +160,11 @@ def load_write_set(safe_p: Path) -> tuple[list[str] | None, str]:
             data = json.loads(env_fw)
         except json.JSONDecodeError:
             data = [x.strip() for x in env_fw.split(",") if x.strip()]
-        if isinstance(data, list) and data:
-            return [str(x) for x in data], "env:HERMES_KANBAN_FILES_WRITABLE"
+        if isinstance(data, list):
+            return (
+                [str(x) for x in data if str(x).strip()],
+                "env:HERMES_KANBAN_FILES_WRITABLE",
+            )
         if isinstance(data, str) and data.strip():
             return [data.strip()], "env:HERMES_KANBAN_FILES_WRITABLE"
 
@@ -158,7 +177,7 @@ def load_write_set(safe_p: Path) -> tuple[list[str] | None, str]:
             except json.JSONDecodeError:
                 parsed = None
         fw = _writable_from_obj(parsed) if parsed is not None else None
-        if fw:
+        if fw is not None:
             return fw, "env:HERMES_KANBAN_BODY"
         bp = Path(env_body)
         if not bp.is_absolute():
@@ -168,7 +187,7 @@ def load_write_set(safe_p: Path) -> tuple[list[str] | None, str]:
                 fw = _writable_from_obj(json.loads(bp.read_text(encoding="utf-8")))
             except (OSError, json.JSONDecodeError, TypeError):
                 fw = None
-            if fw:
+            if fw is not None:
                 return fw, str(bp)
 
     task = os.environ.get("HERMES_KANBAN_TASK", "").strip()
@@ -183,7 +202,7 @@ def load_write_set(safe_p: Path) -> tuple[list[str] | None, str]:
             data = None
         if isinstance(data, dict) and str(data.get("task_id") or "").strip() == task:
             fw = _writable_from_obj(data)
-            if fw:
+            if fw is not None:
                 return fw, "evidence/runtime/active-write-set.json"
 
     ws_dir = safe_p / "evidence" / "runtime" / "write-sets"
@@ -193,8 +212,8 @@ def load_write_set(safe_p: Path) -> tuple[list[str] | None, str]:
             fw = _writable_from_obj(json.loads(per_task.read_text(encoding="utf-8")))
         except (OSError, json.JSONDecodeError, TypeError):
             fw = None
-        if fw:
-            return fw, str(per_task.relative_to(safe_p))
+            if fw is not None:
+                return fw, str(per_task.relative_to(safe_p))
 
     bodies = safe_p / "evidence" / "bodies"
     if bodies.is_dir():
@@ -211,7 +230,7 @@ def load_write_set(safe_p: Path) -> tuple[list[str] | None, str]:
             if str(body.get("task_id") or "").strip() != task:
                 continue
             fw = _writable_from_obj(body)
-            if fw:
+            if fw is not None:
                 return fw, str(path.relative_to(safe_p))
 
     return [], f"task-set-unresolved:{task}"
@@ -232,16 +251,22 @@ def main() -> int:
     if not isinstance(payload, dict):
         return _allow()
     tool = payload.get("tool_name") or ""
-    if tool not in WRITE_TOOLS:
-        return _allow()
     raw = extract_path(payload)
-    if not raw:
-        return _allow()
     safe = os.environ.get(
         "HERMES_WRITE_SAFE_ROOT",
         os.environ.get("PROJECT_DIR", os.getcwd()),
     )
     safe_p = Path(safe).resolve()
+    writable, source = load_write_set(safe_p)
+    if not raw:
+        # Known write tool, no path, write-set in play → fail closed.
+        # Unknown tools with no path stay allow (reads, terminal, etc.).
+        if writable is not None and tool in WRITE_TOOLS:
+            return _block(
+                f"write-set-hook: {tool} missing path with write-set "
+                f"published ({source})"
+            )
+        return _allow()
     target = Path(raw)
     if not target.is_absolute():
         target = Path.cwd() / target
@@ -257,20 +282,12 @@ def main() -> int:
         return _block(
             f"write-set-hook: in-repo OOS path {rel_s} (B-S2 deny-prefix)"
         )
-    writable, source = load_write_set(safe_p)
     if writable is None:
-        return _allow()
-    if not writable:
-        if is_product_write(rel_s):
-            return _block(
-                f"write-set-hook: {rel_s} refused — kanban task set but "
-                f"write-set not loaded ({source})"
-            )
         return _allow()
     if not in_write_set(rel_s, writable):
         return _block(
             f"write-set-hook: {rel_s} outside files_writable "
-            f"({source}; B-2 allow-model)"
+            f"({source}; B-2 path-bearing allow-model)"
         )
     return _allow()
 
