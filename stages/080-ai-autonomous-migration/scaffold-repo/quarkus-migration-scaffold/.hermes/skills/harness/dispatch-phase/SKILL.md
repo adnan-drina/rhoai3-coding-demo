@@ -1,11 +1,11 @@
 ---
 name: dispatch-phase
-description: Creates and dispatches an M1-M5 Kanban card with declared skills, budget and park-at-birth. Use when starting any migration phase, after speckit.tasks when minting one parked card per User-Story phase from tasks.md, when splitting M3 into child stories, or when a card must be minted with its skills and exit criteria already attached.
+description: Creates and dispatches an M1-M5 Kanban card with declared skills, budget and park-at-birth. Use when starting any migration phase, after speckit.tasks when a Hermes wave-holder session must lint+assemble+stamp then kanban_create parked M3 children with an ack_gate parent, or when a card must be minted with skills already attached. Do not run mint-m3-wave.sh from Cursor.
 license: Apache-2.0
 compatibility: Linux seat; Hermes CLI on PATH for kanban create/dispatch
 metadata:
   author: rhoai3-harness-team
-  version: "1.4.4"
+  version: "1.5.0"
   hermes:
     tags:
     - harness
@@ -18,14 +18,16 @@ metadata:
 ## When to Use
 
 - Starting **any** M-phase, especially **M1 ANALYZE** (derive + MTA + inventory).
-- After **speckit.tasks** — **`handover-mint.py`** then **`mint-m3-wave.sh`**
-  (one parked card per User-Story phase; AD-016/GR2). Bare `kanban create`
-  attaches **zero** skills. See `references/handover-mint.md`.
+- After **speckit.tasks** — the **wave-holder Hermes session** loads this
+  skill and follows `references/mint-m3-hermes.md` (`kanban_create` +
+  ack_gate). Lint is `handover-mint.py --write` (no `--parent`).
+  Bare `kanban create` attaches **zero** skills.
 - Seeding the next phase after an ack is granted (`--parent <prior task id>`).
 - Replacing a forbidden detached `mta-analyze-legacy.sh` / derive shell under
   PPID 1 — that path yields `tasks=0` and cannot stamp
   `orchestration=hermes_native`.
-- **M2a/M2b are refused** (GR2). Dispatch **M2**, then `mint-m3-wave.sh`.
+- **M2a/M2b are refused** (GR2). Dispatch **M2**; M3 children are minted
+  by the holder session, not `mint-m3-wave.sh`.
 
 ## Standing rule
 
@@ -63,8 +65,8 @@ cd /projects/modernized
 bash "${HERMES_SKILL_DIR}/scripts/dispatch-phase.sh" M1
 # later:
 bash "${HERMES_SKILL_DIR}/scripts/dispatch-phase.sh" M2 --parent <m1_task_id>
-# after M2 Done:
-bash "${HERMES_SKILL_DIR}/scripts/mint-m3-wave.sh" --parent <m2_task_id>
+# after M2 Done: the M3 wave-holder worker follows references/mint-m3-hermes.md
+# (lint + kanban_create + ack_gate). Do not bash mint-m3-wave.sh.
 ```
 
 `--dry-run` prints the exact `hermes kanban create` argv without creating.
@@ -102,19 +104,18 @@ Create parks (`DISPATCH_MAX=0`). Spawn is native `hermes kanban dispatch --max 1
    idempotency key); id under `evidence/derived/` (pointer, not the DAG).
    M2 stamps `evidence/runtime/write-sets/<id>.json` = `.specify/` + `specs/`
    (AD-013; do not invent `SPECIFY_FEATURE_DIRECTORY`).
-6. M3 create does **not** auto-dispatch — cards born `--initial-status blocked`
-   until M2 ledger PASS + brief-identity ack + serial GO.
+6. M3 children are **not** created by this script. The holder session
+   follows `references/mint-m3-hermes.md`.
 
-### What create-m3-implementer.sh / mint-m3-wave.sh add
+### What mint-m3-hermes.md adds
 
-`handover-mint.py` turns `tasks.md` into a partition **receipt** (A-4/A-5/A-8).
-`mint-m3-wave.sh` mints parked cards from that receipt, then
-`assert-m2b-created-cards-claim.sh`. Path-A authored partition is refused.
-
-`create-m3-implementer.sh` stamps the body digest (AR-4.3), runs the body-scoped
-create gates, builds the markdown card from the typed body **by reference**,
-forces park-at-birth, appends to `evidence/derived/created-cards-<parent>.json`,
-emits an unsigned ack-request, then cross-asserts card digest ↔ live sidecar.
+`handover-mint.py --write` (no `--parent`) is lint+assemble. The holder
+then `kanban_create`s an **ack_gate** card and one parked child per
+partition story with parents `[holder, ack_gate]`, skills attached,
+`idempotency_key`, then `kanban_complete`s itself. Pre-create gates that
+lived in `create-m3-implementer.sh` run via `execute_code` (list in
+`references/mint-m3-hermes.md`). Grant = complete the gate card, not a
+YAML file.
 
 ### M1 body contract (evidence-analyst)
 
@@ -129,10 +130,13 @@ The created M1 task instructs the worker to, in order:
 
 - Do **not** start M1 by `nohup …/mta-analyze-legacy.sh &`.
 - Do **not** omit `--workspace dir:/projects/modernized` (scratch default is wrong).
-- Do **not** dispatch M3 children from the M2 worker — use `mint-m3-wave.sh`.
+- Do **not** dispatch M3 children from the M2 worker — the **holder**
+  session mints via `references/mint-m3-hermes.md`.
+- Do **not** run `mint-m3-wave.sh` / `create-m3-implementer.sh` from
+  Cursor or ask the demo user to (`165300Z`).
 - Do **not** `--parent` a `done` card when minting park-at-birth children
   (`PARENT_DONE`). Hermes auto-promotes those children (HKN-2); create-time
-  `blocked` is not durable. Mint under a still-open wave holder.
+  `blocked` is not durable. The incomplete **ack_gate** parent holds them.
 - Start `hermes kanban watch` **before** dispatch for the demo audience.
   Companion pane: `hermes kanban tail <task_id>` or `hermes kanban log <task_id>`
   (native CLI — do **not** revive `kanban-track.sh`; W6 REMOVE 2026-08-13).
@@ -144,9 +148,10 @@ The created M1 task instructs the worker to, in order:
 ## Available scripts
 
 - `scripts/dispatch-phase.sh` — create a phase seed card from `phase-dispatch.yaml`
-- `scripts/handover-mint.py` — tasks.md phases → receipt + bodies (A-4/A-5/A-8)
-- `scripts/mint-m3-wave.sh` — orchestrator-owned M3 mint from that receipt
-- `scripts/create-m3-implementer.sh` — M3 child with required skills + park-at-birth
+- `scripts/handover-mint.py` — tasks.md phases → receipt + bodies (A-4/A-5/A-8); lint only (`--write`, no `--parent`)
+- `references/mint-m3-hermes.md` — Hermes holder mint: gates + `kanban_create` + ack_gate
+- `scripts/mint-m3-wave.sh` — **retired control plane**; file kept for tip-sync pins
+- `scripts/create-m3-implementer.sh` — **retired control plane**; gates listed in mint-m3-hermes.md
 - `scripts/read-link-graph.py` — BV19-3 parse `kanban show --json` parents/children
 - `scripts/read-phase-dispatch.py` — LG7 JSON phase seed (no eval of parser output)
 - `scripts/check-link-graph.py` — BV19-3 lint: `--parent` required except M1
