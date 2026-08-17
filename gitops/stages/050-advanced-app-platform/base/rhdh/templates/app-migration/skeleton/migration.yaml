@@ -6,7 +6,10 @@
 # URLs get provenance + analysis only and contract.status: undecided — never
 # Coolstore cart literals. Do not "edit after create" for the two demo
 # specimens; recreate from the template if the stamp is wrong.
-# {% set %} (not {%- set -%}): stripping eats the newline before migration:
+# Plain set tags below, NOT the whitespace-stripping dash form: stripping eats
+# the newline before migration: and glues it onto this comment block.
+# Do not write template tag syntax in these comments — the scaffolder renders
+# this file before YAML parsing, so a tag inside a "#" comment is still parsed.
 {% set url = (values.legacyRepoUrl | default('', true) | lower) %}
 {% set is_petclinic = ('spring-petclinic-rest-legacy' in url) or ('petclinic-rest-legacy' in url) %}
 {% set is_cart = ('coolstore-cart-legacy' in url) %}
