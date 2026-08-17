@@ -5,6 +5,10 @@
 # Never run the stock speckit workflow without this overlay (it ends at implement).
 # 163200Z §S.7 / Research 174900Z: stock review-spec and review-plan are type: gate.
 # Unattended path must remove those gates as well as implement.
+# Architect E-20260817T060552Z BIND: replace: tasks carries the A-8 emit
+# contract (METHOD /path and/or @Path, including /). Overlay asks; mint
+# endpoints_uncovered REFUSE if the generator declines. No dest rewrite.
+# 192444Z OBJECT: do not lock Dependencies to the US_ALL_DEPS fixture regex.
 id: "stop-before-implement"
 extends: "speckit"
 priority: 10
@@ -26,3 +30,10 @@ edits:
       integration: "{{ inputs.integration }}"
       input:
         args: "{{ inputs.spec }}\n\nM1 evidence (read these files; do not invent endpoints or rule IDs):\nevidence/findings-handoff.json\nevidence/entry-point-inventory.json"
+  - replace: tasks
+    step:
+      id: tasks
+      command: speckit.tasks
+      integration: "{{ inputs.integration }}"
+      input:
+        args: "{{ inputs.spec }}\n\nA-8 emit contract (handover-mint _transcribed_http; do not paraphrase):\n- On each Create *Resource checkbox line write @Path(\"/api/...\") and METHOD /api/... (HTTP method, space, slash-path; no backticks between method and path). Prose such as 'at /api/owners with GET all' is not a path token.\n- Cover every HTTP row in evidence/entry-point-inventory.json, including http_path: / as Create RootResource @Path(\"/\").\n- Keep phase headings Setup / Foundational / User Story N / Polish. Do not skip Setup or Foundational.\n- Read inventory paths; do not invent a RestController-to-Resource filename mapper."
