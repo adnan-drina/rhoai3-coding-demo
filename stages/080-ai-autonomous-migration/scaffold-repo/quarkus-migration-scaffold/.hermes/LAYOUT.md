@@ -17,12 +17,12 @@ for new procedures.
 | Provision assets (not runtime) | `.hermes/provision/` | Spec Kit Non-Goals override template |
 | Phase / run data | `evidence/` | findings, inventory JSON, fixtures, acks; MTA raw report is `evidence/mta/` (SR-8) |
 | Task authority contract | `.hermes/skills/harness/enforce-authority-boundary/references/task-authority.md` | AD-H §16 — task-type obligations, privilege, human checkpoints |
-| Grounded generation contract | `governance/contracts/grounded-generation.md` | AD-H §17 — consult order, citation, anti-invention |
+| Grounded generation contract | `.hermes/skills/harness/ground-in-harvest/` | AD-H §17 — consult order, citation, anti-invention (no `governance/` folder) |
 | Validation / release contract | `AGENTS.md (doctrine; was validation-release-gates)` | AD-H §18 — phase gates, regression, failure routing |
 | Validation / release skill | `.hermes/skills/gates/check-release-readiness/` | matrix lint + verdict routing |
-| Auditability contract | `governance/contracts/auditability-repeatability.md` | AD-H §19 — provenance, digests, early metric |
-| Provenance schema | `governance/schemas/generation-provenance.md` | Kanban metadata fields |
-| Kanban body schema | `governance/schemas/kanban-body.md` | W2 §6.1 typed refs + failure codes |
+| Auditability contract | `.hermes/skills/harness/record-run-evidence/` | AD-H §19 — provenance, digests, early metric (no `governance/` folder) |
+| Provenance schema | `.hermes/skills/harness/record-run-evidence/` | Kanban metadata fields (retired `governance/schemas/generation-provenance.md`) |
+| Kanban body schema | `.hermes/skills/sdd/check-spec-readiness/` | W2 §6.1 typed refs + failure codes (retired `governance/schemas/kanban-body.md`) |
 | SDD stack (workspace only) | `.specify/` + `specs/` | AD-S — never commit `.specify/` in golden |
 | Task state | Hermes Kanban | not parallel CSV/ledgers |
 

@@ -65,7 +65,7 @@ Record under `evidence/acks/` (or Kanban metadata):
 | Piece | Home |
 |-------|------|
 | Phase `skills[]` + `requires_acks` | `.hermes/phase-dispatch.yaml` |
-| Ack schema | `governance/schemas/ack.md` + `evidence/acks/` |
+| Ack schema | `.hermes/skills/harness/enforce-authority-boundary/references/ack-authority.md` + `evidence/acks/` |
 | Ack presence before phase advance | skill `enforce-authority-boundary` → `check-acks.sh` |
 | Scope + deny-path write refuse | `write-fence.md` → `check-write-fence.py --body` (`files_in_scope`) + `write-set-hook.py` (EX-3 `pre_tool_call`) |
 | §16.4 proving-min fence | `write-fence.md` → `apply-write-fence.sh` / `probe-write-fence.py` / `check-write-fence.py` |

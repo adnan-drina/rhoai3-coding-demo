@@ -93,12 +93,12 @@ What it does, in order (each step dies non-zero on failure):
    runs `assert-mta-rescan.py <root>` without `--snapshot-m1`:
    `analyzer_ran` plus a digest/timestamp newer than M1 and last M3.
    Presence of `findings-handoff.json` is not a rescan.
-   See `governance/schemas/mta-findings.md`.
+   Schema lives with this skill (`validate-findings-schema.py`; no `governance/` folder).
 6. `emit-findings-handoff.py <root> <findings> <handoff>` → the M1→M2 seam
    `evidence/findings-handoff.json` (`rhoai3.findings-handoff/v1`: rule IDs,
    category, bounded `description`, `disposition`, loci, digests — **no**
    `codeSnip`), then `check-findings-handoff.py <root>` as the gate.
-   See `governance/schemas/findings-handoff.md`.
+   Schema lives with this skill (`check-findings-handoff.py`; no `governance/` folder).
 
 Defaults: `MTA_OUT_DIR=evidence/mta`,
 `MTA_JSON_OUT=evidence/mta-findings.json`, both under the project root.

@@ -38,7 +38,7 @@ metadata:
 ## Contracts
 
 - `AGENTS.md (doctrine; was validation-release-gates)`
-- `governance/schemas/verdict.md`
+- This skill (verdict / gate-receipt schemas live here; no `governance/` folder)
 - Phase `required_checks` + `accept_kind`: `.hermes/phase-dispatch.yaml`
 
 **§18.0:** M4 verdict = literal `PROVISIONAL_ACCEPT` (never ship); M5 = `ACCEPT`
@@ -125,12 +125,9 @@ python3 "${HERMES_SKILL_DIR}/scripts/apply-crash-requeue-policy.py" /projects/mo
   --task-id t_xxx --k-crash 1 --cause harness_fault --stamp
 ```
 
-Contracts: `governance/contracts/workspace-recovery.md`,
+Contracts: this skill (`apply-wall-requeue-policy.py`, `apply-crash-requeue-policy.py`; no `governance/` folder),
 `.hermes/skills/sdd/check-spec-readiness/references/story-scope-and-exit.md`,
-`.hermes/skills/sdd/check-spec-readiness/references/story-scope-and-exit.md`,
-`.hermes/skills/migration/manage-quarkus-extensions/references/test-toolchain.md`,
-`governance/contracts/wall-exit-eval.md`,
-`governance/contracts/crash-requeue.md`.
+`.hermes/skills/migration/manage-quarkus-extensions/references/test-toolchain.md`.
 
 Domain-gate oracles (G-1…G-4) remain authoritative; this skill does not replace them.
 
@@ -139,7 +136,7 @@ Domain-gate oracles (G-1…G-4) remain authoritative; this skill does not replac
 Minimum ordered runner for Phase-3 dual-arm verify — **not** full AD-010.
 
 Contract: `.hermes/skills/gates/check-release-readiness/references/m4-floor-runner.md`  
-Schema: `governance/schemas/gate-receipt.md`
+Schema: this skill (`check-m4-floor-receipts.py`; no `governance/` folder)
 
 ```bash
 bash "${HERMES_SKILL_DIR}/scripts/run-m4-floor.sh" /path/to/frozen-modernized

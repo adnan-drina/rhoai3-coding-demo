@@ -29,11 +29,9 @@ metadata:
 
 ## Contracts
 
-- `governance/contracts/auditability-repeatability.md`
+- This skill is the auditability / provenance contract (AD-H §19). There is no `governance/` folder.
 - `.hermes/skills/sdd/check-spec-readiness/references/body-integrity.md`
 - `.hermes/skills/harness/dispatch-phase/references/implementer-checkpoint.md`
-- `governance/schemas/generation-provenance.md`, `run-journal.md`,
-  `implementer-checkpoint.md`
 
 ## Procedure
 

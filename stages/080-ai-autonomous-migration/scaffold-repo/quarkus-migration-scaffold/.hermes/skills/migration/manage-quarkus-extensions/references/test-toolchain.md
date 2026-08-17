@@ -45,5 +45,5 @@ structural gate is landed (`enforce-1b-before-fresh-run`).
 ## Wall-as-terminal
 
 `timed_out` **must** evaluate cmd-shaped exits (at least `test_compile` when
-present). See `governance/contracts/wall-exit-eval.md`. Advisory in-loop prose
+present). See `.hermes/skills/gates/check-release-readiness/` (`apply-wall-requeue-policy.py`; no `governance/` folder). Advisory in-loop prose
 alone does not cover budget-wall death.

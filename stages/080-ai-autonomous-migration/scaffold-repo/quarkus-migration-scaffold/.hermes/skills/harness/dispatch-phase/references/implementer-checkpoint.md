@@ -38,4 +38,4 @@ python3 .hermes/skills/harness/record-run-evidence/scripts/check-implementer-che
 requires `RHOAI3_FIXTURE_ALLOW_SKIP_TEST_COMPILE=1` (live seats FORBIDDEN).
 See `compile-scope-filtered.md`.
 
-Schema: `governance/schemas/implementer-checkpoint.md`.
+Schema: `.hermes/skills/harness/dispatch-phase/references/implementer-checkpoint.md` (this file; no `governance/` folder).

@@ -60,13 +60,13 @@ python3 "${HERMES_SKILL_DIR}/scripts/check-partition-coverage.py" /projects/mode
 
 ## Contracts
 
-- `governance/contracts/pattern-steals.md`
+- This skill (pattern-steals + kanban-body live here; no `governance/` folder)
 - `.hermes/skills/sdd/check-spec-readiness/references/sdd-ordering.md` (AD-S §S.6)
 - `.hermes/skills/sdd/check-spec-readiness/references/story-scope-and-exit.md` (AR-4.4; T-8 class-legal + dual-oracle)
 - skill `derive-story-oracles` (exit derivation; `semantic-exits.md` retired)
 - `.hermes/skills/sdd/check-spec-readiness/references/story-scope-and-exit.md` (operand_count)
-- `governance/schemas/mta-exception.md`
-- `governance/schemas/kanban-body.md` (W2 §6.1)
+- skill `scan-with-mta` (MTA exception / findings schemas live with that skill)
+- `scripts/check-kanban-body.py` (W2 §6.1 typed body vocabulary)
 
 ## Available scripts
 

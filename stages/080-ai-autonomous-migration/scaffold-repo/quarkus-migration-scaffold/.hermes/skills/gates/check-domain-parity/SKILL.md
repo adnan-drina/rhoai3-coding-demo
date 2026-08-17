@@ -113,7 +113,7 @@ Dry-run volume is **not** a kill-ratio pin. After live
 ```bash
 python3 "${HERMES_SKILL_DIR}/scripts/pin-kill-ratio-from-pit.py" \
   target/pit-reports/mutations.xml \
-  -o governance/contracts/g1-kill-ratio-pin.json \
+  -o evidence/derived/g1-kill-ratio-pin.json \
   --coverage-min 0.41 --kill-attempted-min 0.60 --kill-generated-min 0.38 \
   --source declared_engineering_target \
   --rationale "Architect stringency <entry>: declared margins, not measured-at-equality"

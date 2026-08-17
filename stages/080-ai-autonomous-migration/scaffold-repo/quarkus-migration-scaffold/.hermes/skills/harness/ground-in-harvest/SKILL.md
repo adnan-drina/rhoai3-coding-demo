@@ -34,8 +34,7 @@ metadata:
 
 ## Contracts
 
-- `governance/contracts/grounded-generation.md`
-- Consult order + citation + anti-invention (Architect; Operator ACK pending)
+- This skill is the grounded-generation contract (AD-H §17). There is no `governance/` folder.
 
 ## Procedure
 

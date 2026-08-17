@@ -17,7 +17,7 @@ E-20260808T125536Z):
   - measured_from_this_run at equality — forbidden (script refuses)
 
 Usage:
-  pin-kill-ratio-from-pit.py <mutations.xml> -o governance/contracts/g1-kill-ratio-pin.json \\
+  pin-kill-ratio-from-pit.py <mutations.xml> -o evidence/derived/g1-kill-ratio-pin.json \\
     --coverage-min 0.41 --kill-attempted-min 0.60 --kill-generated-min 0.38 \\
     --source ratchet_from_measured \\
     --rationale "Architect E-… ratchet margins under live pack"

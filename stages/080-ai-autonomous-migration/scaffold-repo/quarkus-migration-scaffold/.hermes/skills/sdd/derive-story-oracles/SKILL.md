@@ -93,5 +93,4 @@ python3 ../check-spec-readiness/scripts/check-surgical-scopes.py <root> <body.js
 - `check-surgical-scopes.py` exits 0 on the body.
 - Wrong-only **and** correct+wrong foreign exits both FAIL.
 - Legal-only body for the class PASSES.
-- Retired contract lives only at `governance/retired/semantic-exits.md`
-  (not under active contracts/).
+- Retired `semantic-exits` contract is not in golden (no `governance/` folder).
