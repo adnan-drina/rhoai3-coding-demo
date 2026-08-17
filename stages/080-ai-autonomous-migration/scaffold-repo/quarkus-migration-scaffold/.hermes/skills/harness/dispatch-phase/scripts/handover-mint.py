@@ -451,28 +451,25 @@ def transcribe_parents(text: str, phases: list[Phase]) -> None:
 
 
 def assign_ownership(phases: list[Phase]) -> str:
-    """A-5: one dest file, one owner. pom owner unique (earliest claimant)."""
-    claimants: dict[str, list[str]] = {}
+    """A-5 is one dest file, one in-flight card — not one owner per phase.
+
+    Architect E-20260817T131858Z: mint-time FILE_OVERLAP (cross-phase artifact disjointness)
+    is not A-5. Dropped while serial. Restore a runtime in-flight check when
+    C-1(a) is claimed. pom.xml still unique owner (earliest claimant); later
+    phases keep non-pom shared paths in their write-sets.
+    """
+    pom_owner = ""
     for ph in phases:
         for f in ph.files:
-            claimants.setdefault(f, []).append(ph.story_id)
-    pom_owner = ""
-    overlaps: list[str] = []
-    for path, owners in claimants.items():
-        uniq = list(dict.fromkeys(owners))
-        if len(uniq) <= 1:
-            if _is_pom(path) and uniq:
-                pom_owner = uniq[0]
-            continue
-        if _is_pom(path):
-            pom_owner = uniq[0]
-            for ph in phases:
-                if ph.story_id != pom_owner:
-                    ph.files = [f for f in ph.files if not _is_pom(f)]
-            continue
-        overlaps.append(f"{path}:{'+'.join(uniq)}")
-    if overlaps:
-        _die("FILE_OVERLAP", "; ".join(overlaps))
+            if _is_pom(f):
+                pom_owner = ph.story_id
+                break
+        if pom_owner:
+            break
+    if pom_owner:
+        for ph in phases:
+            if ph.story_id != pom_owner:
+                ph.files = [f for f in ph.files if not _is_pom(f)]
     pom_writers = [
         ph.story_id for ph in phases if any(_is_pom(f) for f in ph.files)
     ]

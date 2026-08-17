@@ -2815,7 +2815,7 @@ expect_fail(
     "A-8 GET transcription does not cover POST without path/method/symbol",
 )
 
-expect_fail(
+cp = run(
     [
         str(tmp / "overlap"),
         "--dry-run",
@@ -2823,10 +2823,17 @@ expect_fail(
         str(fixtures / "tasks.overlap.md"),
         "--inventory",
         str(fixtures / "inventory.good.json"),
-    ],
-    "FILE_OVERLAP",
-    "overlapping write-sets refused",
+    ]
 )
+blob = (cp.stdout or "") + (cp.stderr or "")
+if "FILE_OVERLAP" in blob:
+    print(
+        "FAIL: FILE_OVERLAP still fail-closed while serial (Architect E-20260817T131858Z)",
+        file=sys.stderr,
+    )
+    print(blob, file=sys.stderr)
+    raise SystemExit(1)
+print("OK: overlapping write-sets not FILE_OVERLAP while serial")
 expect_fail(
     [
         str(tmp / "nodeps"),

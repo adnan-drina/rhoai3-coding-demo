@@ -21,11 +21,15 @@ After native `speckit` stops at `tasks`, the orchestrator runs
    `[P2,…,P6]`. Do **not** require the word Foundational when native uses
    Phase-N lists (`192444Z` AMEND). Polish accepts `all user stories`,
    `all desired user stories`, or `all phases`.
-3. Assigns file-granular ownership (A-5): each dest file has **exactly one
-   owner**. `pom.xml` has a unique owner (the phase that **creates** it).
-   Native later-story **Extend** / **Add POST, PUT, DELETE** / **Add … to
-   pom.xml** lines are amend, not a second write-set claim. Any other overlap
-   is a partition defect → refuse.
+3. Assigns file-granular write-sets and a unique `pom.xml` owner (the phase
+   that **creates** it). Native later-story **Extend** / **Add POST, PUT,
+   DELETE** / **Add … to pom.xml** lines stay on that later card. **S.10 /
+   A-5 is one dest file, one in-flight card**, not one file per phase in
+   `tasks.md`. Mint-time `FILE_OVERLAP` (global cross-phase disjointness)
+   was the stricter invented check; it is dropped while serial (Architect
+   `E-20260817T131858Z`). Restore a **runtime in-flight** overlap check
+   when C-1(a) is claimed — not a mint-time scan of the whole artifact.
+   Per-card `files_writable` still gates the fence.
 4. Checks HTTP endpoint coverage against M1 `evidence/entry-point-inventory.json`
    (Architect `E-20260816T193813Z` A-8). An inventory HTTP entry is covered
    when **any** of these hold: dest-file equality (same-stack shortcut);
@@ -74,7 +78,7 @@ status (0.4). Worktrees do **not** relax the unique `pom.xml` owner.
 | Symptom | Refuse |
 |---|---|
 | No `## Dependencies` section | `DEPENDENCIES_MISSING` |
-| File in two write-sets (not pom) | `FILE_OVERLAP` |
+| File in two write-sets (not pom) | *not a mint refuse while serial* (`131858Z`); restore in-flight when C-1(a) is claimed |
 | HTTP entry point with no owner | `endpoints_uncovered` |
 | User-story phase with no test-shaped AC | `PHASE_AC` (decomposition defect) |
 | Path-A `partition.json` already on disk | `PATH_A_PARTITION` |
@@ -84,4 +88,5 @@ status (0.4). Worktrees do **not** relax the unique `pom.xml` owner.
 The A-4/A-5 **PASS** contract is the captured attempt-2 `speckit.tasks` harvest
 (`fixtures/handover/tasks.attempt-2-speckit.md`), not a hand-authored fixture.
 `tasks.good.md` was deleted (Architect `E-20260817T082353Z` / Operator `E-20260817T120146Z`).
-Named negatives remain `tasks.overlap.md` and `tasks.no-deps.md`.
+Named negatives remain `tasks.no-deps.md` (`DEPENDENCIES_MISSING`) and
+`tasks.overlap.md` (must **not** `FILE_OVERLAP` while serial).

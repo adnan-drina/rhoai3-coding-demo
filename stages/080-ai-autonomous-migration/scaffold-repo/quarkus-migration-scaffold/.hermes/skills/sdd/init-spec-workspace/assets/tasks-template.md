@@ -39,7 +39,9 @@ creator phase. That is path-agnostic (not a `pom.xml`-only rule and not an
   Foundational must **not** **Configure** that same file; a later story may
   **Add** profile keys or **Verify** profile switching.
 - Two **Configure** / **Author** / **Create** lines for the same dest path is a
-  planning defect. Do not emit it. Mint `FILE_OVERLAP` is correct if you do.
+  planning defect. Do not emit it. Sequential **Add** of a creator-owned path
+  is legitimate under serial (Architect `E-20260817T131858Z`); mint does not
+  refuse that as `FILE_OVERLAP`.
 - **Verify** lines that name a dest path are not a second owner.
 
 ## Inventory (HTTP)

@@ -1083,8 +1083,8 @@ REQUIRED_SUBSTRINGS = [
     ),
     (
         ".hermes/skills/harness/dispatch-phase/scripts/handover-mint.py",
-        "FILE_OVERLAP",
-        "A-5 mint-time disjointness refuses overlapping write-sets",
+        "FILE_OVERLAP (cross-phase artifact disjointness)",
+        "A-5 is in-flight; mint FILE_OVERLAP dropped while serial (131858Z)",
     ),
     (
         ".hermes/skills/harness/dispatch-phase/scripts/handover-mint.py",
