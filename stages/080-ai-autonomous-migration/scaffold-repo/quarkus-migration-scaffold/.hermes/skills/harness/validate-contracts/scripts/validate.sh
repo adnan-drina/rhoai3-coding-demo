@@ -1496,6 +1496,83 @@ else
 fi
 rm -rf "${http_tmp}"
 
+# Architect E-20260817T170100Z — dest-only polish create is not VACUOUS
+dest_tmp="$(mktemp -d)"
+mkdir -p "${dest_tmp}/modernized/evidence/bodies" \
+  "${dest_tmp}/modernized/evidence/briefs" \
+  "${dest_tmp}/modernized/evidence/derived"
+cat > "${dest_tmp}/modernized/migration.yaml" <<'YAML'
+migration:
+  legacyBasePackage: com.acme.legacy
+  targetPackage: com.demo
+  path_rewrites:
+    - from: src/main/java/com/demo/
+      to: src/main/java/com/acme/legacy/
+YAML
+printf '%s\n' '{"source":"handover-mint","stories":[{"story_id":"polish","kind":"polish","endpoints":[],"operand_class":["src_code"]}]}' \
+  > "${dest_tmp}/modernized/evidence/briefs/partition.json"
+python3 - "${dest_tmp}" <<'PY'
+import json, sys
+from pathlib import Path
+root = Path(sys.argv[1]) / "modernized"
+body = {
+  "identity": {"story_id": "polish", "kind": "polish", "operand_class": ["src_code"], "operand_count": 1},
+  "files_writable": ["src/main/java/com/demo/config/HealthCheck.java"],
+  "refs": [{"key": "legacy_locus", "path": "evidence/derived/legacy-at-3.json", "sha256": "pending"}],
+}
+(root / "evidence/bodies/m3-polish.json").write_text(json.dumps(body) + "\n")
+(root / "evidence/derived/legacy-at-3.json").write_text("{}\n")
+PY
+if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/stamp-body-dependencies.py" \
+    "${dest_tmp}/modernized" --body evidence/bodies/m3-polish.json \
+    >/tmp/dep-destonly.out 2>/tmp/dep-destonly.err; then
+  if grep -q 'dest-only create' /tmp/dep-destonly.out /tmp/dep-destonly.err \
+     && grep -q '"dependencies": \[\]' /tmp/dep-destonly.out; then
+    echo "OK: dest-only polish HealthCheck stamps empty deps (not VACUOUS)"
+  else
+    echo "FAIL: expected dest-only empty-deps OK for polish HealthCheck" >&2
+    cat /tmp/dep-destonly.out /tmp/dep-destonly.err >&2
+    rc=1
+  fi
+else
+  echo "FAIL: dest-only polish should not be VACUOUS" >&2
+  cat /tmp/dep-destonly.out /tmp/dep-destonly.err >&2
+  rc=1
+fi
+# HTTP + JSON locus + unresolved dest Resource must still VACUOUS
+python3 - "${dest_tmp}" <<'PY'
+import json, sys
+from pathlib import Path
+root = Path(sys.argv[1]) / "modernized"
+(root / "evidence/briefs/partition.json").write_text(json.dumps({
+  "source": "handover-mint",
+  "stories": [{"story_id": "US1", "kind": "user_story", "endpoints": ["GET /api/pets"], "operand_class": ["rest"]}],
+}) + "\n")
+(root / "evidence/entry-point-inventory.json").write_text(json.dumps({"entry_points": []}) + "\n")
+body = {
+  "identity": {"story_id": "US1", "operand_class": ["rest"], "operand_count": 1},
+  "files_writable": ["src/main/java/com/demo/resource/PetResource.java"],
+  "refs": [{"key": "legacy_locus", "path": "evidence/derived/legacy-at-3.json", "sha256": "pending"}],
+}
+(root / "evidence/bodies/m3-US1.json").write_text(json.dumps(body) + "\n")
+PY
+if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/stamp-body-dependencies.py" \
+    "${dest_tmp}/modernized" --body evidence/bodies/m3-US1.json \
+    >/tmp/dep-http-vac.out 2>/tmp/dep-http-vac.err; then
+  echo "FAIL: HTTP unresolved dest Resource must still be VACUOUS" >&2
+  cat /tmp/dep-http-vac.out /tmp/dep-http-vac.err >&2
+  rc=1
+else
+  if grep -q 'DEPENDENCY_STAMP_VACUOUS' /tmp/dep-http-vac.err; then
+    echo "OK: HTTP stories still refuse VACUOUS when dest Resource has no harvest"
+  else
+    echo "FAIL: expected DEPENDENCY_STAMP_VACUOUS for HTTP dest Resource" >&2
+    cat /tmp/dep-http-vac.out /tmp/dep-http-vac.err >&2
+    rc=1
+  fi
+fi
+rm -rf "${dest_tmp}"
+
 # WC-8: story.rules covers the fired id → VALID
 printf '%s\n' '{"stories":[{"story_id":"story-001","files_in_scope":["src/Foo.java"],"endpoints":["foo"],"rules":["springboot-to-quarkus-00000"]}]}' \
   > "${pc_tmp}/evidence/briefs/partition.json"

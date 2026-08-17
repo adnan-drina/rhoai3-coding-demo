@@ -348,6 +348,49 @@ def inventory_files_collect_all(root: Path, story: dict) -> list[str]:
     return files
 
 
+_DEST_ONLY_KINDS = frozenset({"setup", "foundational", "polish"})
+
+
+def story_kind(root: Path, body: dict, sid: str) -> str:
+    ident = body.get("identity") if isinstance(body.get("identity"), dict) else {}
+    raw = str(ident.get("kind") or body.get("kind") or "").strip().lower()
+    if raw:
+        return raw
+    story = load_partition_story(root, sid) or {}
+    k = str(story.get("kind") or "").strip().lower()
+    if k:
+        return k
+    return sid.strip().lower()
+
+
+def locus_is_non_java(body: dict) -> bool:
+    for ref in body.get("refs") or []:
+        if not isinstance(ref, dict):
+            continue
+        if str(ref.get("key") or "") != "legacy_locus":
+            continue
+        raw = str(ref.get("path") or "").strip()
+        return bool(raw) and not raw.lower().endswith(".java")
+    return False
+
+
+def dest_only_empty_deps_ok(
+    root: Path, body: dict, sid: str, resolved_sources: int
+) -> bool:
+    """Architect E-20260817T170100Z: dest-only create is not VACUOUS.
+
+    kind in {setup, foundational, polish} + non-Java locus + dest Java that
+    does not resolve after package rewrite. HTTP stories still refuse.
+    """
+    if is_http_story(root, body, sid):
+        return False
+    if story_kind(root, body, sid) not in _DEST_ONLY_KINDS:
+        return False
+    if not locus_is_non_java(body):
+        return False
+    return resolved_sources == 0
+
+
 def java_legacy_locus_file(root: Path, body: dict) -> Path | None:
     """Parse refs.legacy_locus only when the path is Java, not harvest JSON."""
     for ref in body.get("refs") or []:
@@ -592,7 +635,15 @@ def main() -> int:
     ordered = [{"file": f, "provider": deps[f]} for f in sorted(deps.keys())]
     body["dependencies"] = ordered
 
-    vacuous_ok = bool(body.get("dependencies_vacuous_ok"))
+    dest_only_ok = dest_only_empty_deps_ok(
+        root, body, self_sid, resolved_sources
+    )
+    vacuous_ok = bool(body.get("dependencies_vacuous_ok")) or dest_only_ok
+    if dest_only_ok and java_writables and not ordered:
+        print(
+            "OK: stamped dependencies=0 "
+            "(dest-only create; non-Java locus; unresolved dest Java)"
+        )
     if java_writables and not ordered and not vacuous_ok:
         if not pkg_prefixes:
             print(
