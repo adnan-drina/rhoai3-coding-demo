@@ -199,8 +199,10 @@ def load_write_set(safe_p: Path) -> tuple[list[str] | None, str]:
             fw = _writable_from_obj(json.loads(per_task.read_text(encoding="utf-8")))
         except (OSError, json.JSONDecodeError, TypeError):
             fw = None
-            if fw is not None:
-                return fw, str(per_task.relative_to(safe_p))
+        # Same indent as env_body above. Inside-except this return never ran
+        # (Operator E-20260817T110743Z).
+        if fw is not None:
+            return fw, str(per_task.relative_to(safe_p))
 
     bodies = safe_p / "evidence" / "bodies"
     if bodies.is_dir():
