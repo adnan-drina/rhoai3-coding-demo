@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Partition-coverage gate (Operator E-20260811T134200Z / Architect E-133858Z).
 
-M2a exit / create-path fail-closed: prove the partition is VALID as a whole
+M2 exit / create-path fail-closed: prove the partition is VALID as a whole
 (not only per-story body lint). Verdict tri-state:
 
   VALID | INVALID | INCONCLUSIVE
@@ -14,7 +14,7 @@ Checks:
      (Deputy E-20260813T215058Z / Review B2).
   3) MTA findings: missing file is INCONCLUSIVE (never a silent VALID).
      Present rule IDs must land on story.rules or typed mta_oos
-  4) Composes with bodies' files_in_scope when present (M2b+)
+  4) Composes with bodies' files_in_scope when present (M2+)
 
 Specimen-agnostic (Operator E-20260811T150800Z): HTTP denominator and package
 rewrites are derived from inventory / migration.yaml — never hardcoded.

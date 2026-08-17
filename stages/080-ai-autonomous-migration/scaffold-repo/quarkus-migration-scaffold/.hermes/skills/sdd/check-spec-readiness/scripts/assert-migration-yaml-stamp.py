@@ -6,7 +6,7 @@ That state is **idle**: this assert exits 0.
 
 Once `legacyRepoUrl` is non-empty (RHDH app-migration stamp / per-run seat),
 at least one of `legacyBasePackage` / `legacyPackage` must be non-empty.
-Otherwise stamp-body-dependencies starves → DEPENDENCY_STAMP_VACUOUS at M2b
+Otherwise stamp-body-dependencies starves → DEPENDENCY_STAMP_VACUOUS at M2
 (Deputy E-20260814T135138Z — A-6 root cause was provisioning, not the stamper).
 
 Usage:
@@ -46,7 +46,7 @@ def main() -> int:
         print(
             "FAIL: MIGRATION_YAML_STAMP_VACUOUS — legacyRepoUrl is set but "
             "legacyBasePackage/legacyPackage is empty (A-6 / Z3-a). "
-            "RHDH app-migration skeleton must stamp the package before M2b.",
+            "RHDH app-migration skeleton must stamp the package before M2.",
             file=sys.stderr,
         )
         return 1

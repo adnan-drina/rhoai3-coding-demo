@@ -16,7 +16,7 @@ metadata:
 ## When to Use
 
 - Before advancing to a phase whose `requires_acks` is non-empty in
-  `.hermes/phase-dispatch.yaml` (M2/M2a/M2b need `m1-findings`; M3 also needs
+  `.hermes/phase-dispatch.yaml` (M2 needs `m1-findings`; M2a/M2b stubs kept; M3 also needs
   `brief-identity`).
 - Before `kanban_complete` on any card that wrote files — the write fence
   must show no deny-path and no out-of-scope dirty path.

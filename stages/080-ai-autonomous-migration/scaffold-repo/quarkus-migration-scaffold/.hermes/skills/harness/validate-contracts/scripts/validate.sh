@@ -2515,6 +2515,20 @@ elif ! grep -q 'one creator phase per dest path' "${tasks_tpl}"; then
 else
   echo "OK: unique-owner tasks-template asset present"
 fi
+# Architect E-20260817T122644Z / Operator E-20260817T133449Z — DW env is the
+# RHDH skeleton, not bootstrap-scaffold-repos golden. Do not re-edit 080
+# scaffold/devfile.yaml for DEFAULT_EXTENSIONS.
+rhdh_devfile="${ROOT}/../../../../gitops/stages/050-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml"
+if [ ! -f "${rhdh_devfile}" ]; then
+  echo "FAIL: missing RHDH app-migration skeleton devfile (${rhdh_devfile})" >&2
+  rc=1
+elif ! awk '/name: DEFAULT_EXTENSIONS/{f=1} f && /value:/{print; exit}' "${rhdh_devfile}" \
+  | grep -q 'redhat-java.vsix'; then
+  echo "FAIL: RHDH skeleton DEFAULT_EXTENSIONS missing redhat-java.vsix (122605Z delivery path)" >&2
+  rc=1
+else
+  echo "OK: RHDH skeleton DEFAULT_EXTENSIONS includes redhat-java.vsix (DW factory path)"
+fi
 if command -v specify >/dev/null 2>&1; then
   ov_tmp="$(mktemp -d "${TMPDIR:-/tmp}/speckit-overlay.XXXXXX")"
   git -C "${ov_tmp}" init -q

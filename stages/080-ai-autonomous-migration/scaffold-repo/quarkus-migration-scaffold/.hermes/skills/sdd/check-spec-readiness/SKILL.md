@@ -49,7 +49,7 @@ python3 "${HERMES_SKILL_DIR}/scripts/check-operand-count.py" /projects/modernize
 # L2 / SR-13 — refs + Hermes task_id + discriminating exit
 python3 "${HERMES_SKILL_DIR}/scripts/assert-mint-oracles.py" /projects/modernized \
   --body evidence/bodies/m3-s-003.json
-# M2a exit — partition VALID as a whole (lint of the handover receipt)
+# M2 exit — partition VALID as a whole (lint of the handover receipt)
 python3 "${HERMES_SKILL_DIR}/scripts/check-partition-coverage.py" /projects/modernized \
   --write-receipt evidence/receipts/partition-coverage/latest.json
 ```
@@ -76,9 +76,8 @@ python3 "${HERMES_SKILL_DIR}/scripts/check-partition-coverage.py" /projects/mode
 - `scripts/check-surgical-scopes.py` — AR-4.4 write-set + class-legal / dual-oracle
 - `scripts/check-semantic-exits.py` — optional `semantic_families` family lint
 - `scripts/check-operand-count.py` — measured operand_count / wall-fit
-- `scripts/check-partition-coverage.py` — M2a partition VALID receipt
+- `scripts/check-partition-coverage.py` — M2 partition VALID receipt
 - `scripts/check-interface-closure.py` — interface closure Class-A gate
-- `scripts/check-findings-handoff.py` — findings handoff schema (also under mta)
 - `scripts/check-jdbc-deps-preflight.py` — R-M3.11 JDBC deps preflight
 - `scripts/assert-dependency-closure.py` — Class-A dependency closure
 - `scripts/assert-mint-constraints-complete.py` — mint constraints complete

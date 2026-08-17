@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """R0 — Spec Kit preseed assert (Architect E-20260811T121308Z provision-owns-tools).
 
-Fail-closed before M2a dispatch: `.specify/` must already exist from workspace
+Fail-closed before M2 dispatch: `.specify/` must already exist from workspace
 provision (devfile postStart / init-workspace.sh), with Non-Goals override
 installed. Agents must not run `specify init` — verify-or-needs_input only.
 """

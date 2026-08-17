@@ -22,7 +22,6 @@ REQUIRED_FILES = [
     ".hermes/skills/harness/dispatch-phase/fixtures/testing/golden-test-application.properties",
     ".hermes/skills/sdd/check-spec-readiness/fixtures/inventory/entry-point-inventory-petclinic-f11.json",
     ".hermes/skills/analysis/scan-with-mta/scripts/check-findings-handoff.py",
-    ".hermes/skills/sdd/check-spec-readiness/scripts/check-findings-handoff.py",
     # AD-S / Deputy E-120800Z — Non-Goals override must ride tip+overlay/R0
     ".hermes/skills/sdd/init-spec-workspace/assets/spec-template.md",
     ".hermes/skills/sdd/init-spec-workspace/assets/tasks-template.md",
@@ -61,6 +60,7 @@ REQUIRED_FILES = [
     ".hermes/skills/harness/dispatch-phase/scripts/mint-m3-wave.sh",
     ".hermes/skills/harness/dispatch-phase/scripts/handover-mint.py",
     ".hermes/skills/harness/dispatch-phase/references/handover-mint.md",
+    ".hermes/skills/harness/dispatch-phase/references/delivery-path.md",
     ".hermes/skills/harness/dispatch-phase/references/native-dispatch.md",
         ".hermes/skills/harness/dispatch-phase/fixtures/handover/tasks.attempt-2-speckit.md",
         ".hermes/skills/harness/dispatch-phase/fixtures/handover/inventory.attempt-2.json",
@@ -431,8 +431,18 @@ REQUIRED_SUBSTRINGS = [
     ),
     (
         ".hermes/skills/harness/dispatch-phase/scripts/dispatch-phase.sh",
-        "HERMES_SKILL_DIR:-.hermes/home/skills/software-development/check-spec-readiness",
-        "M2 runtime skill-root anchor (Deputy E-113300Z / GR2)",
+        "HERMES_SKILL_DIR:-.hermes/home/skills/software-development/scan-with-mta",
+        "M1/M2 findings-handoff uses canonical scan-with-mta path",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/scripts/dispatch-phase.sh",
+        "skills.disabled",
+        "path-invoke harness packs hidden from skills_list (125528Z)",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/references/delivery-path.md",
+        "factory inlines dest",
+        "DEFAULT_EXTENSIONS delivery path is RHDH skeleton + factory create",
     ),
     (
         ".hermes/skills/harness/dispatch-phase/scripts/check-phase-body-script-refs.py",

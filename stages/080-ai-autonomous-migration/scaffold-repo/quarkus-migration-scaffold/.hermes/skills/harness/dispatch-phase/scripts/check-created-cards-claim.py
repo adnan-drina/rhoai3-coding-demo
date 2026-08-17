@@ -201,7 +201,7 @@ def check_stamp(root: Path, parent: str, claimed: list[str], claimed_empty: bool
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--root", default=".")
-    ap.add_argument("--parent", required=True, help="M2b / creating parent task id")
+    ap.add_argument("--parent", required=True, help="M2 / creating parent task id")
     ap.add_argument(
         "--mode",
         choices=("partition", "subset", "stamp"),

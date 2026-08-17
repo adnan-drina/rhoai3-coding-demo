@@ -290,7 +290,19 @@ def resolve_one(d: str) -> str:
 
 existing = [resolve_one(d) for d in parse_external_dirs(text)]
 need = [project, home]
-if cfg_path.is_file() and all(n in existing for n in need):
+disabled_need = [
+    "dispatch-phase",
+    "enforce-authority-boundary",
+    "ground-in-harvest",
+    "record-run-evidence",
+    "validate-contracts",
+]
+if (
+    cfg_path.is_file()
+    and all(n in existing for n in need)
+    and "disabled:" in text
+    and all(n in text for n in disabled_need)
+):
     print(f"ensure_external_dirs: OK ({cfg_path})")
     raise SystemExit(0)
 
@@ -314,12 +326,30 @@ if yaml is not None:
             dirs.append(n)
             resolved.append(n)
     skills["external_dirs"] = dirs
+    disabled = [
+        "dispatch-phase",
+        "enforce-authority-boundary",
+        "ground-in-harvest",
+        "record-run-evidence",
+        "validate-contracts",
+    ]
+    cur_dis = [str(x) for x in (skills.get("disabled") or [])]
+    for n in disabled:
+        if n not in cur_dis:
+            cur_dis.append(n)
+    skills["disabled"] = cur_dis
     cfg_path.parent.mkdir(parents=True, exist_ok=True)
     cfg_path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
 else:
     block = (
         "# AD-S ensure_external_dirs (postStart provision)\n"
         "skills:\n"
+        "  disabled:\n"
+        "    - dispatch-phase\n"
+        "    - enforce-authority-boundary\n"
+        "    - ground-in-harvest\n"
+        "    - record-run-evidence\n"
+        "    - validate-contracts\n"
         "  external_dirs:\n"
         f"    - {project}\n"
         f"    - {home}\n"

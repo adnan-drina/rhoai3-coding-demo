@@ -167,6 +167,14 @@ skills:
   # E-20260811T111800Z). Protect acks/golden via AR-1.1 + FS, not a global gate.
   write_approval: false
   inline_shell: false
+  # Research E-20260817T125528Z / Architect 131412Z — path-invoke only;
+  # hide from skills_list() (token tax). Scripts still run by path.
+  disabled:
+    - dispatch-phase
+    - enforce-authority-boundary
+    - ground-in-harvest
+    - record-run-evidence
+    - validate-contracts
   external_dirs:
     - ${ROOT}/.hermes/skills
     - ${HOME}/.hermes/skills
@@ -185,6 +193,53 @@ if new != text:
     print("dispatch-phase: rescoped skills.write_approval true→false (headless)")
 PY
   fi
+  python3 - "${HERMES_HOME}/config.yaml" <<'PY' || echo "dispatch-phase: WARN skills.disabled merge failed" >&2
+import pathlib, sys
+p = pathlib.Path(sys.argv[1])
+need = [
+    "dispatch-phase",
+    "enforce-authority-boundary",
+    "ground-in-harvest",
+    "record-run-evidence",
+    "validate-contracts",
+]
+text = p.read_text(encoding="utf-8") if p.is_file() else ""
+if all(n in text for n in need) and "disabled:" in text:
+    raise SystemExit(0)
+try:
+    import yaml  # type: ignore
+except ImportError:
+    yaml = None
+if yaml is not None:
+    data = yaml.safe_load(text) if text.strip() else {}
+    if not isinstance(data, dict):
+        data = {}
+    skills = data.get("skills")
+    if not isinstance(skills, dict):
+        skills = {}
+        data["skills"] = skills
+    cur = [str(x) for x in (skills.get("disabled") or [])]
+    for n in need:
+        if n not in cur:
+            cur.append(n)
+    skills["disabled"] = cur
+    p.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    print("dispatch-phase: merged skills.disabled (125528Z)")
+    raise SystemExit(0)
+if "disabled:" not in text:
+    block = (
+        "  disabled:\n"
+        "    - dispatch-phase\n"
+        "    - enforce-authority-boundary\n"
+        "    - ground-in-harvest\n"
+        "    - record-run-evidence\n"
+        "    - validate-contracts\n"
+    )
+    if "skills:" in text:
+        text = text.replace("skills:\n", "skills:\n" + block, 1)
+        p.write_text(text, encoding="utf-8")
+        print("dispatch-phase: appended skills.disabled (125528Z)")
+PY
   # Architect E-20260810T141120Z — provider knobs applied to Managed Scope only.
   local ensure_py="${ROOT}/.hermes/home/scripts/ensure-provider-max-tokens.py"
   if [[ -f "${ensure_py}" ]]; then
@@ -314,9 +369,9 @@ substitution / path invention / specimen-body priming. Measure the harness.
    `test -d .specify && test -f .specify/.rhoai3-ads-provisioned && ls -la .specify/templates/overrides/`
    If missing/invalid → typed **`needs_input` BLOCK** and STOP.
    **Forbidden:** inventing `.specify/`, manual `specify init`, copying overrides by hand.
-1. Findings-handoff gate (runtime skill root — Deputy E-20260811T113300Z):
-   `python3 "${HERMES_SKILL_DIR:-.hermes/home/skills/software-development/check-spec-readiness}/scripts/check-findings-handoff.py" /projects/modernized`
-   (shim → scan-with-mta canonical). Exit: **0=pass**; **1=FAIL→typed BLOCK**; **2=missing script** → `needs_input` (lint/harness defect — do not invent paths).
+1. Findings-handoff gate (canonical scan-with-mta — Operator E-20260817T105440Z / row 6):
+   `python3 "${HERMES_SKILL_DIR:-.hermes/home/skills/software-development/scan-with-mta}/scripts/check-findings-handoff.py" /projects/modernized`
+   Exit: **0=pass**; **1=FAIL→typed BLOCK**; **2=missing script** → `needs_input` (lint/harness defect — do not invent paths).
 2. **Spec Kit invoke-or-BLOCK** (Architect E-20260811T115316Z — not soft Prefer):
    - Hard-invoke attached skill `speckit-specify` via `skill_view` / `/speckit-specify`
      (discoverable under `/home/user/.hermes/skills/speckit-specify` when on `external_dirs`).
@@ -332,7 +387,7 @@ substitution / path invention / specimen-body priming. Measure the harness.
    `.hermes/skills/harness/dispatch-phase/references/handover-mint.md`.
 5. **Per-artifact Spec Kit resume ladder** (Architect E-20260811T122959Z — decision-complete;
    contract `.hermes/skills/sdd/check-spec-readiness/references/sdd-ordering.md`; retired inverted v11 R-M2.6 and
-   M2a/M2b split — see `governance/retired/m2b-resume-ladder.md`):
+   M2 unified PLAN — see `governance/retired/m2b-resume-ladder.md`):
    - **`/speckit-specify`:** precondition = no `specs/**/spec.md` (or workspace Spec Kit
      equiv). **Skip iff** `spec.md` already exists. Do **not** invent specs.
    - **`/speckit-plan`:** precondition = `spec.md` present. **Skip iff** `plan.md`

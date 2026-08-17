@@ -578,18 +578,16 @@ def stamp_oracles(phases: list[Phase]) -> None:
                 f"{ph.story_id}: user-story phase has no Independent Test",
             )
         if not proves:
-            if ph.kind != KIND_USER_STORY:
-                # Native speckit: Setup/Foundational/Polish are compile/verify
-                # checkpoints, not independently testable user-story increments.
-                ph.acceptance_criteria = [
-                    {"check": "build_resolves", "cmd": "mvn -q compile"}
-                ]
-                continue
-            _die(
-                "PHASE_AC",
-                f"{ph.story_id}: phase AC cannot be a test (no proving test in "
-                "write-set) — phase-decomposition defect, do not loosen the oracle",
-            )
+            # Spec Kit Independent Test is verification prose; tests are
+            # OPTIONAL. Requiring a test path in the write-set is not a Spec
+            # Kit contract (Operator E-20260817T133449Z — same lens as
+            # FILE_OVERLAP). Keep PHASE_AC only for a missing Independent
+            # Test heading. Stamp a non-test exit so mint-oracles does not
+            # demand proves. Do not invent a test file.
+            ph.acceptance_criteria = [
+                {"check": "build_resolves", "cmd": "mvn -q compile"}
+            ]
+            continue
         check = "http_semantics"
         if "rest" not in ph.operand_class and "persistence" in ph.operand_class:
             check = "mapping_valid"

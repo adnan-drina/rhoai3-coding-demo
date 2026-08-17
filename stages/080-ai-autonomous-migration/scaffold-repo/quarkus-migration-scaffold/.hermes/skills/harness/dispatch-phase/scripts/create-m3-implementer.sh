@@ -71,7 +71,7 @@ done
 [[ -f "${DISPATCH_YAML}" ]] || die "missing ${DISPATCH_YAML}"
 # Operator E-20260811T133000Z #5 — parent link + created_by=parent so
 # Hermes created_cards verification accepts CLI creates (not tool-only).
-[[ ${#PARENTS[@]} -gt 0 ]] || die "--parent REQUIRED (M2b/planner task id) for created_cards attribution"
+[[ ${#PARENTS[@]} -gt 0 ]] || die "--parent REQUIRED (M2/planner task id) for created_cards attribution"
 PARENT_PRIMARY="${PARENTS[0]}"
 
 # Architect E-20260814T190216Z — create-time blocked is not durable if any
@@ -254,7 +254,7 @@ ASSIGNEE="$(
   || die "C-2(a): M3 assignee resolve failed"
 
 # Deputy E-20260811T131900Z — M3 cards MUST be born parked. v12 lost v11
-# born-parked behavior; create+dispatch let the daemon race M2b (serial breach).
+# born-parked behavior; create+dispatch let the daemon race M2 (serial breach).
 # --initial-status blocked = human/gate unpark only (not todo/dispatchable).
 # Operator E-20260811T133000Z #5 — created_by=parent task id (not the script
 # name) so completing parent may list these ids in created_cards and pass
@@ -401,9 +401,9 @@ python3 "${ROOT}/.hermes/skills/sdd/check-spec-readiness/scripts/assert-mint-ora
 } >"${ROOT}/evidence/derived/review-adhere-observe-needed.yaml"
 echo "REVIEW_ADHERE_OBSERVE=${TASK_ID}"
 # Do NOT dispatch here — cards are born blocked; unpark is gate-driven
-# (M2b ledger PASS + brief-identity ack + serial order). Deputy E-131900Z.
+# (M2 ledger PASS + brief-identity ack + serial order). Deputy E-131900Z.
 hermes kanban comment "${TASK_ID}" \
-  "born-parked: initial-status=blocked + park-at-birth verify; unpark only after M2b PASS + brief-identity ack + serial GO (Deputy E-20260811T131900Z / Architect E-20260811T200911Z)" \
+  "born-parked: initial-status=blocked + park-at-birth verify; unpark only after M2 PASS + brief-identity ack + serial GO (Deputy E-20260811T131900Z / Architect E-20260811T200911Z)" \
   >/dev/null 2>&1 || true
 # Stamp derived claim list for parent completion (Operator E-133000Z #5)
 # F8a: stamp carries story_id so claim can compare to partition (not self).
@@ -453,7 +453,7 @@ PY
 echo "CREATED_CARDS_CLAIM=${CLAIM_FILE}"
 
 # F8a (Deputy E-20260813T221456Z): claim vs partition (subset during incremental mint).
-# Full set equality is enforced at M2b parent complete (assert-m2b + enforce).
+# Full set equality is enforced at M2 parent complete (assert-m2b + enforce).
 python3 "${ROOT}/.hermes/skills/harness/dispatch-phase/scripts/check-created-cards-claim.py" \
   --root "${ROOT}" --parent "${PARENT_PRIMARY}" --mode subset \
   || die "CREATED_CARDS_CLAIM partition-subset failed after stamp (E-20260813T221456Z F8a)"

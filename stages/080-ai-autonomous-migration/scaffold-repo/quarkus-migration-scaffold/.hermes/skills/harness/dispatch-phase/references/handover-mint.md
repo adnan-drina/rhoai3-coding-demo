@@ -80,7 +80,8 @@ status (0.4). Worktrees do **not** relax the unique `pom.xml` owner.
 | No `## Dependencies` section | `DEPENDENCIES_MISSING` |
 | File in two write-sets (not pom) | *not a mint refuse while serial* (`131858Z`); restore in-flight when C-1(a) is claimed |
 | HTTP entry point with no owner | `endpoints_uncovered` |
-| User-story phase with no test-shaped AC | `PHASE_AC` (decomposition defect) |
+| User-story phase with no Independent Test heading | `PHASE_AC` |
+| User-story phase whose Independent Test is prose (no test path in write-set) | *not a mint refuse* (`133449Z`); Spec Kit tests are optional; stamp `build_resolves` |
 | Path-A `partition.json` already on disk | `PATH_A_PARTITION` |
 | FIS / dual-stack over cap | `BODY_SIZE` (R-V14.4 — split the phase, do not raise the wall) |
 | `mint-m3-wave --parent` of a `done` card | `PARENT_DONE` (HKN-2) — use `--ensure-wave-holder` |
