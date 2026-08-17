@@ -1279,9 +1279,9 @@ rm -rf "${pc_tmp}"
 # WC-8: missing findings → INCONCLUSIVE (never silent VALID)
 pc_tmp="$(mktemp -d)"
 mkdir -p "${pc_tmp}/evidence/briefs"
-printf '%s\n' '{"stories":[{"story_id":"story-001","files_in_scope":["src/Foo.java"]}]}' \
+printf '%s\n' '{"stories":[{"story_id":"story-001","files_in_scope":["src/Foo.java"],"endpoints":["foo"]}]}' \
   > "${pc_tmp}/evidence/briefs/partition.json"
-printf '%s\n' '{"entry_points":[{"kind":"http","file":"src/Foo.java","symbol":"foo"}],"totals":{"http_endpoints":1}}' \
+printf '%s\n' '{"entry_points":[{"kind":"http","file":"src/Foo.java","symbol":"foo","http_method":"GET","http_path":"/foo"}],"totals":{"http_endpoints":1}}' \
   > "${pc_tmp}/inventory.json"
 if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/check-partition-coverage.py" \
     "${pc_tmp}" --partition evidence/briefs/partition.json --inventory inventory.json \
@@ -1320,7 +1320,7 @@ else
   fi
 fi
 # WC-8: story.rules covers the fired id → VALID
-printf '%s\n' '{"stories":[{"story_id":"story-001","files_in_scope":["src/Foo.java"],"rules":["springboot-to-quarkus-00000"]}]}' \
+printf '%s\n' '{"stories":[{"story_id":"story-001","files_in_scope":["src/Foo.java"],"endpoints":["foo"],"rules":["springboot-to-quarkus-00000"]}]}' \
   > "${pc_tmp}/evidence/briefs/partition.json"
 if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/check-partition-coverage.py" \
     "${pc_tmp}" --partition evidence/briefs/partition.json --inventory inventory.json \
@@ -1336,6 +1336,54 @@ else
   echo "FAIL: addressed findings should be VALID" >&2
   cat /tmp/pc-wc8-ok.out /tmp/pc-wc8-ok.err >&2
   rc=1
+fi
+rm -rf "${pc_tmp}"
+
+# Architect E-20260817T152824Z — serial non-pom overlap is not FILE_OVERLAP
+pc_tmp="$(mktemp -d)"
+mkdir -p "${pc_tmp}/evidence/briefs" "${pc_tmp}/evidence"
+printf '%s\n' '{"stories":[{"story_id":"setup","files_in_scope":["pom.xml","src/main/resources/application.properties"],"endpoints":[]},{"story_id":"US1","files_in_scope":["src/main/resources/application.properties","src/main/java/com/demo/resource/VetResource.java"],"endpoints":["GET /api/vets"],"rules":["springboot-to-quarkus-00000"]}]}' \
+  > "${pc_tmp}/evidence/briefs/partition.json"
+printf '%s\n' '{"entry_points":[{"kind":"http","file":"src/main/java/org/example/demo/rest/VetRestController.java","symbol":"VetRestController#getVets","http_method":"GET","http_path":"/api/vets"}],"totals":{"http_endpoints":1}}' \
+  > "${pc_tmp}/inventory.json"
+printf '%s\n' '{"schema":"rhoai3.mta-findings/v1-provisional","violations":{"springboot-to-quarkus-00000":{"ruleID":"springboot-to-quarkus-00000","category":"mandatory","incidents":[]}}}' \
+  > "${pc_tmp}/evidence/mta-findings.json"
+if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/check-partition-coverage.py" \
+    "${pc_tmp}" --partition evidence/briefs/partition.json --inventory inventory.json \
+    >/tmp/pc-serial.out 2>/tmp/pc-serial.err; then
+  if grep -q 'file_overlap:src/main/resources/application.properties' /tmp/pc-serial.out /tmp/pc-serial.err; then
+    echo "FAIL: serial application.properties overlap should not be file_overlap" >&2
+    cat /tmp/pc-serial.out /tmp/pc-serial.err >&2
+    rc=1
+  elif grep -q 'VALID' /tmp/pc-serial.out; then
+    echo "OK: PARTITION_COVERAGE serial non-pom overlap + A-8 route join VALID"
+  else
+    echo "FAIL: expected VALID for serial overlap + route join" >&2
+    cat /tmp/pc-serial.out /tmp/pc-serial.err >&2
+    rc=1
+  fi
+else
+  echo "FAIL: serial non-pom overlap + A-8 route join should be VALID" >&2
+  cat /tmp/pc-serial.out /tmp/pc-serial.err >&2
+  rc=1
+fi
+# dest Resource filename must not cover inventory RestController without endpoints
+printf '%s\n' '{"stories":[{"story_id":"US1","files_in_scope":["src/main/java/com/demo/resource/VetResource.java"],"endpoints":[],"rules":["springboot-to-quarkus-00000"]}]}' \
+  > "${pc_tmp}/evidence/briefs/partition.json"
+if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/check-partition-coverage.py" \
+    "${pc_tmp}" --partition evidence/briefs/partition.json --inventory inventory.json \
+    >/tmp/pc-filejoin.out 2>/tmp/pc-filejoin.err; then
+  echo "FAIL: dest Resource without endpoints should not cover inventory file" >&2
+  cat /tmp/pc-filejoin.out /tmp/pc-filejoin.err >&2
+  rc=1
+else
+  if grep -q 'endpoints_uncovered' /tmp/pc-filejoin.out /tmp/pc-filejoin.err; then
+    echo "OK: PARTITION_COVERAGE does not join inventory.file to dest Resource"
+  else
+    echo "FAIL: expected endpoints_uncovered when only dest Resource is in write-set" >&2
+    cat /tmp/pc-filejoin.out /tmp/pc-filejoin.err >&2
+    rc=1
+  fi
 fi
 rm -rf "${pc_tmp}"
 

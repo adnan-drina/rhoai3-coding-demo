@@ -7,11 +7,16 @@ M2 exit / create-path fail-closed: prove the partition is VALID as a whole
   VALID | INVALID | INCONCLUSIVE
 
 Checks:
-  1) Endpoint coverage — each inventory HTTP entry_point maps to exactly one story
-  2) No file overlaps across stories (write-conflict), including pom.xml
-     (Architect E-20260814T205052Z DD3 — do not skip pom.xml). Sequenced
-     overlap remains legal when a body declares sequence_after / dependencies
-     (Deputy E-20260813T215058Z / Review B2).
+  1) Endpoint coverage — each inventory HTTP entry_point maps to exactly one
+     story via transcribed ``story.endpoints`` ∩ inventory ``http_method``+
+     ``http_path`` / ``symbol`` (A-8). Do **not** join inventory ``file`` to
+     dest write-set paths (Architect ``E-20260817T152824Z``; that RestController
+     vs Resource lookup is not A-8). A-8 itself stays in handover-mint.
+  2) Unique ``pom.xml`` writer (DD3 / Architect E-20260814T205052Z). Non-pom
+     ``file_overlap`` is dropped while serial (same invented gate as mint
+     ``FILE_OVERLAP``, ``131858Z`` / ``152824Z``). Do **not** stamp
+     ``sequence_after`` to nurse coverage. Restore in-flight overlap only
+     when C-1(a) is claimed.
   3) MTA findings: missing file is INCONCLUSIVE (never a silent VALID).
      Present rule IDs must land on story.rules or typed mta_oos
   4) Composes with bodies' files_in_scope when present (M2+)
@@ -124,11 +129,39 @@ def load_body_doc(path: Path) -> dict | None:
     return data
 
 
-def sequenced_overlap_ok(sid_a: str, sid_b: str, seq_by_story: dict[str, set[str]]) -> bool:
-    """True when either story declares an ordering edge toward the other."""
-    a_refs = seq_by_story.get(sid_a, set())
-    b_refs = seq_by_story.get(sid_b, set())
-    return sid_b in a_refs or sid_a in b_refs
+def _is_pom_rel(rel: str) -> bool:
+    return Path(str(rel).replace("\\", "/")).name == "pom.xml"
+
+
+def _endpoint_tokens(ep: str) -> set[str]:
+    """Transcribed story.endpoints tokens (path-only or METHOD path). Not mint."""
+    s = " ".join(str(ep).split())
+    out = {s} if s else set()
+    parts = s.split(" ", 1)
+    if len(parts) == 2 and parts[1].strip():
+        out.add(parts[1].strip())
+    return out
+
+
+def _row_tokens(row: dict) -> set[str]:
+    method = str(row.get("http_method") or "").strip().upper()
+    path = str(row.get("http_path") or "").strip()
+    symbol = str(row.get("symbol") or "").strip()
+    out: set[str] = set()
+    if path:
+        out.add(path)
+        if method:
+            out.add(f"{method} {path}")
+    if symbol:
+        out.add(symbol)
+    return {x for x in out if x}
+
+
+def _story_claims_http(story: dict, row: dict) -> bool:
+    wanted: set[str] = set()
+    for ep in story.get("endpoints") or []:
+        wanted |= _endpoint_tokens(str(ep))
+    return bool(wanted & _row_tokens(row))
 
 
 def _carried_story_id(data: dict) -> str:
@@ -251,7 +284,6 @@ def main() -> int:
         chosen = body_fs if body_fs else files
         story_file_map[sid] = {norm_file(f) for f in chosen if f}
 
-    seq_by_story = body_sequence_map(bodies_dir, list(story_file_map.keys()))
     owner: dict[str, str] = {}
     for sid, files in story_file_map.items():
         for f in files:
@@ -259,8 +291,9 @@ def main() -> int:
                 continue
             if f in owner and owner[f] != sid:
                 prev = owner[f]
-                if sequenced_overlap_ok(sid, prev, seq_by_story):
-                    # Legal sequenced write (e.g. S-012 after S-002 on application.properties)
+                # Serial: non-pom overlap is A-5 (one in-flight card), not a
+                # partition refuse. Unique pom.xml stays (DD3 / 152824Z).
+                if not _is_pom_rel(f):
                     continue
                 gaps.append(f"file_overlap:{f}:{prev}+{sid}")
             else:
@@ -272,14 +305,12 @@ def main() -> int:
         f = norm_file(str(ep.get("file") or ""))
         sym = str(ep.get("symbol") or "")
         key = f"{f}#{sym}" if sym else f
-        claimants = [sid for sid, files in story_file_map.items() if f in files]
-        for story in stories:
-            sid = str(story.get("story_id") or "")
-            for field in ("endpoints", "entry_points", "symbols"):
-                vals = story.get(field) or []
-                if isinstance(vals, list) and (sym in vals or key in vals or f in vals):
-                    if sid not in claimants:
-                        claimants.append(sid)
+        # A-8: transcribed route/symbol, not inventory.file ∈ dest write-set.
+        claimants = [
+            str(story.get("story_id") or "")
+            for story in stories
+            if str(story.get("story_id") or "") and _story_claims_http(story, ep)
+        ]
         if len(claimants) == 0:
             uncovered.append(key)
         elif len(claimants) > 1:
