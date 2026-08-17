@@ -9,9 +9,13 @@ and class-legal names — not the exit selector. Unknown tokens fail-closed.
 Mint-schema stamps (not oracles): role/task_id, AD-002E skills exit, F6
 transform_class from the closed operand_class map, measured operand_count,
 brief_identity_ack pending, legacy_locus digest **and path** of the harvest
-file that was hashed (not a dest-relative alias). Mint refuses unless
-sha256(resolve(path)) equals the stamped digest (pending fail-closed except
-creation-time ack keys). SR-13/L2a: a test-shaped `mvn … test` or `mvn … verify` must name
+file that was hashed (not a dest-relative alias). HTTP stories join M1
+`entry-point-inventory.json` on transcribed route/symbol (A-8) and stamp
+**that row's** harvest file — never dest `*Resource.java` looked up in
+`/projects/legacy` (Architect `E-20260817T150714Z`). setup/foundational/polish
+stamp M1 `evidence/derived/legacy-at-3.json` (no Java-file locus). Mint
+refuses unless sha256(resolve(path)) equals the stamped digest (pending
+fail-closed except creation-time ack keys). SR-13/L2a: a test-shaped `mvn … test` or `mvn … verify` must name
 `proves` test source(s) in this story's write-set — an unrelated dest
 `src/test` file must not satisfy the oracle. curl / scripts are not
 card exits. Assembler copies test paths already in `files_writable`
@@ -118,7 +122,8 @@ def _legacy_locus(root: Path, rel: str) -> tuple[str, str]:
 
     Architect E-20260814T212425Z: returning dest-relative `rel` while hashing
     `.derived/legacy-at-3/<rel>` made the ref self-invalidating once the
-    worker wrote dest `pom.xml`.
+    worker wrote dest `pom.xml`. `rel` must already be a harvest-relative
+    path (inventory `file`, not dest `*Resource.java`).
     """
     rel = _dest_rel(rel)
     candidates = [
@@ -135,6 +140,80 @@ def _legacy_locus(root: Path, rel: str) -> tuple[str, str]:
         if resolved.is_file():
             return resolved.as_posix(), _sha256_file(resolved)
     raise ValueError(f"legacy_locus: no file for {rel!r}")
+
+
+_NO_JAVA_LOCUS_KINDS = frozenset({"setup", "foundational", "polish"})
+
+
+def _load_inventory(root: Path) -> list[dict]:
+    path = root / "evidence/entry-point-inventory.json"
+    if not path.is_file():
+        raise ValueError("legacy_locus: missing evidence/entry-point-inventory.json")
+    data = json.loads(path.read_text(encoding="utf-8"))
+    rows = data.get("entry_points") or []
+    if not isinstance(rows, list):
+        raise ValueError("legacy_locus: inventory entry_points is not a list")
+    return [r for r in rows if isinstance(r, dict)]
+
+
+def _endpoint_tokens(ep: str) -> set[str]:
+    s = " ".join(str(ep).split())
+    out = {s} if s else set()
+    parts = s.split(" ", 1)
+    if len(parts) == 2 and parts[1].strip():
+        out.add(parts[1].strip())
+    return out
+
+
+def _row_tokens(row: dict) -> set[str]:
+    method = str(row.get("http_method") or "").strip().upper()
+    path = str(row.get("http_path") or "").strip()
+    symbol = str(row.get("symbol") or "").strip()
+    out: set[str] = set()
+    if path:
+        out.add(path)
+        if method:
+            out.add(f"{method} {path}")
+    if symbol:
+        out.add(symbol)
+    return {x for x in out if x}
+
+
+def _inventory_row_for_story(story: dict, rows: list[dict]) -> dict:
+    wanted: set[str] = set()
+    for ep in story.get("endpoints") or []:
+        wanted |= _endpoint_tokens(str(ep))
+    for row in rows:
+        if wanted & _row_tokens(row):
+            return row
+    sid = str(story.get("story_id") or "")
+    raise ValueError(
+        f"{sid}: legacy_locus: no inventory row for endpoints "
+        f"{list(story.get('endpoints') or [])!r} (A-8 join; not dest filename)"
+    )
+
+
+def _harvest_referent_locus(root: Path) -> tuple[str, str]:
+    ref = root / "evidence/derived/legacy-at-3.json"
+    if not ref.is_file():
+        raise ValueError(
+            "legacy_locus: setup/foundational/polish need "
+            "evidence/derived/legacy-at-3.json (M1 harvest_referent); "
+            "no Java-file lookup"
+        )
+    resolved = ref.resolve()
+    return resolved.as_posix(), _sha256_file(resolved)
+
+
+def _stamp_legacy_locus(story: dict, root: Path) -> tuple[str, str]:
+    kind = str(story.get("kind") or "").strip().lower()
+    if kind in _NO_JAVA_LOCUS_KINDS:
+        return _harvest_referent_locus(root)
+    row = _inventory_row_for_story(story, _load_inventory(root))
+    rel = _dest_rel(str(row.get("file") or ""))
+    if not rel:
+        raise ValueError(f"{story.get('story_id')}: inventory row has empty file")
+    return _legacy_locus(root, rel)
 
 
 def _acceptance_exits(story: dict) -> list[dict]:
@@ -261,7 +340,7 @@ def assemble_one(story: dict, root: Path, *, measured_operands) -> dict:
     g2 = str(
         ident_src.get("g2_applicability") or story.get("g2_applicability") or DEFAULT_G2
     ).lower()
-    locus_path, locus_sha = _legacy_locus(root, fis[0])
+    locus_path, locus_sha = _stamp_legacy_locus(story, root)
     operand_skills = skills_for_operand_classes(classes)
 
     body = {

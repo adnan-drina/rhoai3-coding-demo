@@ -934,6 +934,61 @@ if errs:
     print("FAIL: harvest path+digest should pass:", errs, file=sys.stderr)
     raise SystemExit(1)
 print("OK: assembler stamps hashed harvest path; dest-relative alias refused")
+# Architect E-20260817T150714Z — HTTP locus is inventory.file, not dest Resource
+harvest_java = (
+    kb / ".derived/legacy-at-3/src/main/java/org/example/"
+    "demo/rest/VetRestController.java"
+)
+harvest_java.parent.mkdir(parents=True, exist_ok=True)
+harvest_java.write_text("class VetRestController {}\n")
+inv = {
+    "schema": "rhoai3.entry-point-inventory/v1",
+    "entry_points": [
+        {
+            "kind": "http",
+            "file": (
+                "src/main/java/org/example/demo/rest/"
+                "VetRestController.java"
+            ),
+            "symbol": "VetRestController#getVets",
+            "http_method": "GET",
+            "http_path": "/api/vets",
+        }
+    ],
+}
+(root / "evidence").mkdir(parents=True, exist_ok=True)
+(root / "evidence/entry-point-inventory.json").write_text(json.dumps(inv) + "\n")
+(root / "evidence/derived").mkdir(parents=True, exist_ok=True)
+(root / "evidence/derived/legacy-at-3.json").write_text('{"harvest_referent":true}\n')
+http_story = {
+    "story_id": "US1",
+    "kind": "user_story",
+    "operand_class": ["rest", "user_story"],
+    "files_in_scope": ["src/main/java/com/demo/resource/VetResource.java"],
+    "files_writable": ["src/main/java/com/demo/resource/VetResource.java"],
+    "endpoints": ["GET /api/vets"],
+    "acceptance_criteria": [{"check": "build_resolves", "cmd": "mvn -q compile"}],
+}
+path_http, sha_http = mod._stamp_legacy_locus(http_story, root)
+if Path(path_http).resolve() != harvest_java.resolve():
+    print(
+        f"FAIL: HTTP locus {path_http!r} not inventory harvest {harvest_java}",
+        file=sys.stderr,
+    )
+    raise SystemExit(1)
+setup_story = {
+    "story_id": "setup",
+    "kind": "setup",
+    "operand_class": ["build_config"],
+    "files_in_scope": ["pom.xml"],
+    "endpoints": [],
+}
+path_setup, _ = mod._stamp_legacy_locus(setup_story, root)
+ref_json = (root / "evidence/derived/legacy-at-3.json").resolve()
+if Path(path_setup).resolve() != ref_json:
+    print(f"FAIL: setup locus {path_setup!r} not harvest_referent", file=sys.stderr)
+    raise SystemExit(1)
+print("OK: assembler HTTP locus is inventory harvest file; setup uses M1 referent")
 # check-kanban-body positive with harvest path
 body = {
   "task_id": "t_a1b2c3d4e5",
@@ -2175,6 +2230,29 @@ harvest.parent.mkdir(parents=True)
 harvest.write_text("class OwnerResource {}\n", encoding="utf-8")
 root.mkdir()
 (root / "pom.xml").write_text("<project/>\n", encoding="utf-8")
+(root / "evidence").mkdir()
+(root / "evidence/derived").mkdir()
+(root / "evidence/derived/legacy-at-3.json").write_text(
+    '{"harvest_referent":true}\n', encoding="utf-8"
+)
+(root / "evidence/entry-point-inventory.json").write_text(
+    json.dumps(
+        {
+            "schema": "rhoai3.entry-point-inventory/v1",
+            "entry_points": [
+                {
+                    "kind": "http",
+                    "file": "src/main/java/x/OwnerResource.java",
+                    "symbol": "OwnerResource#list",
+                    "http_method": "GET",
+                    "http_path": "/api/owners",
+                }
+            ],
+        }
+    )
+    + "\n",
+    encoding="utf-8",
+)
 test_src = root / "src/test/java/x/OwnerResourceTest.java"
 test_src.parent.mkdir(parents=True)
 test_src.write_text(
@@ -2185,7 +2263,9 @@ test_src.write_text(
 
 story = {
     "story_id": "story-owners",
+    "kind": "user_story",
     "operand_class": ["rest", "persistence"],
+    "endpoints": ["GET /api/owners"],
     "files_in_scope": [
         "src/main/java/x/OwnerResource.java",
         "src/main/java/x/Owner.java",
@@ -2201,6 +2281,11 @@ story = {
     ],
 }
 body = mod.assemble_one(story, root, measured_operands=ocount.measured_operands)
+locus = next(r for r in body["refs"] if r.get("key") == "legacy_locus")
+expect(
+    Path(locus["path"]).resolve() == harvest.resolve(),
+    "HTTP assemble stamps inventory harvest file not dest Resource",
+)
 cmds = [x.get("cmd") for x in body["exit_criteria"] if isinstance(x, dict)]
 expect(body["identity"]["operand_class"] == ["rest", "persistence"], "assembler stamps class set")
 expect(
@@ -2273,6 +2358,7 @@ cfg_harvest = td / ".derived" / "legacy-at-3" / "pom.xml"
 cfg_harvest.write_text("harvest-pom\n", encoding="utf-8")
 cfg = {
     "story_id": "story-pom",
+    "kind": "setup",
     "operand_class": "build_config",
     "files_in_scope": ["pom.xml"],
 }
