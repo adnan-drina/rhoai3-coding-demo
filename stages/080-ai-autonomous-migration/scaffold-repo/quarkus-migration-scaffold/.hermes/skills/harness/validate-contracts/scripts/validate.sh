@@ -3571,6 +3571,38 @@ else
   rc=1
 fi
 
+echo "== B2/B3 holder kind map + one-three-one-rule pin (094840Z) =="
+DP_SKILL="${HARNESS}/dispatch-phase/SKILL.md"
+HOLDER_BODY="${HARNESS}/dispatch-phase/references/holder-card-body.md"
+if grep -q 'Fail-closed kind map' "${DP_SKILL}" \
+  && grep -q -- '--skill one-three-one-rule' "${DP_SKILL}" \
+  && grep -q 'Do \*\*not\*\* pin `check-spec-readiness`' "${DP_SKILL}"; then
+  echo "OK: dispatch-phase SKILL.md kind map + holder skill pin"
+else
+  echo "FAIL: dispatch-phase SKILL.md missing kind map / one-three-one-rule pin (094840Z)" >&2
+  rc=1
+fi
+if grep -q 'Fail-closed kind map' "${MINT_PROC}" \
+  && grep -q 'one-three-one-rule' "${MINT_PROC}" \
+  && grep -q 'Do \*\*not\*\* pin `check-spec-readiness`' "${MINT_PROC}"; then
+  echo "OK: mint Procedure kind map + holder skill pin"
+else
+  echo "FAIL: mint Procedure missing kind map / one-three-one-rule pin (094840Z)" >&2
+  rc=1
+fi
+if [ ! -f "${HOLDER_BODY}" ]; then
+  echo "FAIL: missing holder-card-body.md" >&2
+  rc=1
+elif ! grep -q 'Fail-closed kind map' "${HOLDER_BODY}" \
+  || ! grep -q 'needs_input' "${HOLDER_BODY}" \
+  || ! grep -q 'one-three-one-rule' "${HOLDER_BODY}" \
+  || ! grep -q 'Do \*\*not\*\* attach `check-spec-readiness`' "${HOLDER_BODY}"; then
+  echo "FAIL: holder-card-body.md missing kind map / needs_input / skill pin (094840Z)" >&2
+  rc=1
+else
+  echo "OK: holder card body carries fail-closed kind map + one-three-one-rule"
+fi
+
 echo "== Card body contract on mint Procedure (035010Z / 224320Z) =="
 if grep -q 'check-body-digest-match.py --expect' "${MINT_PROC}" \
   && grep -q 'skills = full m3-attach-skills.py stdout' "${MINT_PROC}" \

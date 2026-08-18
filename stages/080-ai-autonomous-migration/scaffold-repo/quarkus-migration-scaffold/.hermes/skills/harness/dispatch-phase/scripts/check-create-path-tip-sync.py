@@ -57,6 +57,7 @@ REQUIRED_FILES = [
     ".hermes/skills/harness/dispatch-phase/scripts/assert-m2b-created-cards-claim.sh",
     ".hermes/skills/harness/dispatch-phase/scripts/check-created-cards-claim.py",
     ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
+    ".hermes/skills/harness/dispatch-phase/references/holder-card-body.md",
     ".hermes/skills/harness/dispatch-phase/scripts/handover-mint.py",
     ".hermes/skills/harness/dispatch-phase/references/handover-mint.md",
     ".hermes/skills/harness/dispatch-phase/references/delivery-path.md",
@@ -1050,6 +1051,36 @@ REQUIRED_SUBSTRINGS = [
         ".hermes/skills/sdd/init-spec-workspace/assets/spec-template.md",
         "one user story per inventory HTTP shape",
         "spec-template HTTP-shape unique-owner restatement (120010Z)",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/SKILL.md",
+        "Fail-closed kind map",
+        "dispatch-phase fail-closed kind map at top (094840Z)",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/SKILL.md",
+        "--skill one-three-one-rule",
+        "holder create pins official one-three-one-rule (094840Z)",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
+        "Fail-closed kind map",
+        "mint Procedure fail-closed kind map (094316Z)",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
+        "one-three-one-rule",
+        "mint Procedure holder skill pin (094840Z)",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/references/holder-card-body.md",
+        "Fail-closed kind map",
+        "holder card body carries fail-closed kind map (094840Z)",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/references/holder-card-body.md",
+        "needs_input",
+        "holder body maps A-8 / dest-forbidden rewrite to needs_input (3a0b92b6)",
     ),
     (
         ".hermes/skills/harness/dispatch-phase/scripts/dispatch-phase.sh",

@@ -13,6 +13,25 @@ Lint stays agent-invoked via `execute_code`. Create is native
 Do not grow `handover-mint.py` (parser halt `061824Z`). Run it as **lint
 only** (`--write`, **no** `--parent`, **no** `--ensure-wave-holder`).
 
+## Fail-closed kind map (Architect `E-20260818T094316Z` / `094840Z`)
+
+Copy this table into the **holder card body**. Dest-forbidden rewrite and
+A-8 planning refuse are **not** parent waits.
+
+| Refusal class | `hermes kanban block --kind` | Why |
+|---|---|---|
+| A-8 refuse (`endpoints_multi` / `endpoints_uncovered` / lint exit 1) | `needs_input` | Defect is in `tasks.md`; do not dest-rewrite |
+| Dest-forbidden rewrite (`tasks.md` outside write-set) | `needs_input` | OBJECT dest-rewrite |
+| Missing parent / unsigned ack_gate | `dependency` | Auto-promotes when that parent completes |
+| Mint growth / dest-rewrite impulse | do not | OBJECT; halt `061824Z`; mint **1088** |
+
+`dependency` self-clears and does **not** count toward
+`BLOCK_RECURRENCE_LIMIT`. Argv: **`--kind` before the task id**.
+Do not restore `park-on-block-loop.py`.
+
+Holder create `--skill`: `dispatch-phase` + official `one-three-one-rule`.
+Do **not** pin `check-spec-readiness` on the holder until story bodies exist.
+
 ## Sequence
 
 1. Confirm this session is the wave holder (`HERMES_KANBAN_TASK` is the

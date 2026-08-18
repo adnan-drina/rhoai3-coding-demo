@@ -53,6 +53,39 @@ Do not derive phase identity from card titles. Official: dispatcher promotes
 `BLOCK_RECURRENCE_LIMIT` and the card goes `triage`. Promote will not
 reclaim it. Do not reimplement that hold in dispatch.
 
+## Fail-closed kind map (Architect `E-20260818T094316Z` / `094840Z`)
+
+Dest-forbidden rewrite and A-8 planning refuse are **not** parent waits.
+`dependency` self-clears (`dependency_wait` → `promoted`) and does **not**
+count toward `BLOCK_RECURRENCE_LIMIT` (Research `7af1f14f`). Wrong kind on
+a planning defect cycles the holder. Do **not** restore `park-on-block-loop.py`.
+
+| Refusal class | `hermes kanban block --kind` | Why |
+|---|---|---|
+| A-8 refuse (`endpoints_multi` / `endpoints_uncovered` / lint exit 1) | `needs_input` | Defect is in `tasks.md`; holder must not dest-rewrite |
+| Dest-forbidden rewrite (`tasks.md` outside write-set) | `needs_input` | Same — OBJECT dest-rewrite |
+| Missing parent / unsigned ack_gate | `dependency` | Auto-promotes when that parent completes |
+| Mint growth / dest-rewrite impulse | do not | OBJECT; halt `061824Z`; mint **1088** |
+
+Argv order: **`--kind` before the task id** (`204830Z` silent no-op if reversed).
+Then `kanban show` must report `status=blocked`.
+
+## Holder card (Option B — Architect `094840Z`)
+
+Create the M3 wave holder **before** the holder session mints children.
+Pin official `one-three-one-rule` (escalations). Do **not** pin `check-spec-readiness` on the holder until story bodies exist (v22 `skill_view` 0 / unused pin).
+
+```bash
+hermes kanban create --assignee default --workspace dir:/projects/modernized \
+  --skill dispatch-phase --skill one-three-one-rule \
+  --parent <m2_task_id> \
+  --body-file .hermes/skills/harness/dispatch-phase/references/holder-card-body.md \
+  "M3 WAVE HOLDER"
+```
+
+Holder body is `references/holder-card-body.md` (fail-closed kind map in
+the card, not only this skill). Mint procedure: `references/mint-m3-hermes.md`.
+
 ## Procedure
 
 ```bash
