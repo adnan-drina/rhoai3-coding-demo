@@ -302,8 +302,12 @@ MAX_RUNTIME="$(python3 "${PHASE_READER}" --yaml "${DISPATCH_YAML}" --phase "${PH
   || die "phase-dispatch parse failed for ${PHASE}"
 TITLE="$(python3 "${PHASE_READER}" --yaml "${DISPATCH_YAML}" --phase "${PHASE}" --print title)" \
   || die "phase-dispatch title parse failed for ${PHASE}"
-mapfile -t SKILLS < <(python3 "${PHASE_READER}" --yaml "${DISPATCH_YAML}" --phase "${PHASE}" --print skills) \
+_SK_OUT="$(python3 "${PHASE_READER}" --yaml "${DISPATCH_YAML}" --phase "${PHASE}" --print skills)" \
   || die "phase-dispatch skills parse failed for ${PHASE}"
+SKILLS=()
+while IFS= read -r _sk; do
+  [[ -n "${_sk}" ]] && SKILLS+=("${_sk}")
+done <<< "${_SK_OUT}"
 FW_JSON="$(python3 "${PHASE_READER}" --yaml "${DISPATCH_YAML}" --phase "${PHASE}" --print files_writable_json)" \
   || die "phase-dispatch files_writable parse failed for ${PHASE}"
 # Quote labels so check-phase-input-manifest extract_body (^\s+M2\)) skips this
