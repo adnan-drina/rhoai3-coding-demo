@@ -3005,6 +3005,72 @@ elif ! awk '/name: DEFAULT_EXTENSIONS/{f=1} f && /value:/{print; exit}' "${rhdh_
 else
   echo "OK: RHDH skeleton DEFAULT_EXTENSIONS includes redhat-java.vsix (DW factory path)"
 fi
+# Column-0 lines inside commandLine: | end the scalar (v25 factory parse fail).
+# YAML keys at column 0 (events:) end the block; script at column 0 is the bomb.
+if python3 - "${rhdh_devfile}" <<'PY'
+import re
+import sys
+from pathlib import Path
+path = Path(sys.argv[1])
+text = path.read_text(encoding="utf-8")
+in_cl = False
+bad = []
+yaml_key = re.compile(r"^[A-Za-z][\w.-]*:\s*")
+for i, line in enumerate(text.splitlines(), 1):
+    if line.rstrip().endswith("commandLine: |"):
+        in_cl = True
+        continue
+    if not in_cl or not line.strip():
+        continue
+    indent = len(line) - len(line.lstrip(" "))
+    stripped = line.lstrip()
+    if indent == 0:
+        if yaml_key.match(line):
+            in_cl = False
+            continue
+        bad.append(f"{i}:{line[:80]}")
+        continue
+    if indent <= 2 and stripped.startswith("- id:"):
+        in_cl = False
+if bad:
+    print("FAIL: RHDH skeleton commandLine | has column-0 lines:", "; ".join(bad))
+    sys.exit(1)
+want = 'want="239F"'
+if "23A7" in text:
+    print("FAIL: RHDH skeleton still has port hex 23A7 (9127); dash_bind must match 9119 = 239F")
+    sys.exit(1)
+if want not in text:
+    print("FAIL: RHDH skeleton dash_bind missing", want, "(9119 in /proc/net/tcp hex)")
+    sys.exit(1)
+print("OK: RHDH skeleton commandLine | has no column-0 lines; dash_bind port 239F")
+PY
+then
+  :
+else
+  rc=1
+fi
+if command -v ruby >/dev/null 2>&1; then
+  if ruby -ryaml -e 'YAML.load_file(ARGV[0]); puts "OK: RHDH skeleton YAML parses"' "${rhdh_devfile}"; then
+    :
+  else
+    echo "FAIL: RHDH skeleton is not valid YAML" >&2
+    rc=1
+  fi
+else
+  echo "WARN: ruby missing — skipped YAML.parse of RHDH skeleton"
+fi
+# Operator E-20260818T153010Z — parse gate lives in nested tools until this
+# call; dest seats without the nested repo skip it.
+platform_root="$(cd "${ROOT}/../../../.." && pwd)"
+preflight="${platform_root}/harness-refactoring/tools/preflight-publish.sh"
+if [ -x "${preflight}" ]; then
+  if bash "${preflight}" "${platform_root}"; then
+    echo "OK: preflight-publish parse gate"
+  else
+    echo "FAIL: preflight-publish parse gate" >&2
+    rc=1
+  fi
+fi
 if command -v specify >/dev/null 2>&1; then
   ov_tmp="$(mktemp -d "${TMPDIR:-/tmp}/speckit-overlay.XXXXXX")"
   git -C "${ov_tmp}" init -q

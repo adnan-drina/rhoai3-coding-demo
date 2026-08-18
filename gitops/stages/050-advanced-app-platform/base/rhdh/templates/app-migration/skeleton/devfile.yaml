@@ -279,19 +279,24 @@ commands:
           python3 -c 'import socket;s=socket.socket();s.settimeout(0.5);s.connect(("127.0.0.1",9119))' 2>/dev/null
         }
         dash_bind() {
-          python3 -c 'import pathlib
-want="23A7"
-addrs=[]
-for proc in ("/proc/net/tcp","/proc/net/tcp6"):
-    p=pathlib.Path(proc)
-    if not p.exists():
-        continue
-    for line in p.read_text().splitlines()[1:]:
-        f=line.split()
-        lip, lp = f[1].split(":")
-        if lp.upper()==want and f[3]=="0A":
-            addrs.append(lip)
-print("0.0.0.0" if any(a in ("00000000","00000000000000000000000000000000") for a in addrs) else ("127.0.0.1" if addrs else "none"))'
+          # Column-0 python would end the YAML | block (same class as a
+          # bare heredoc — Dev Spaces: "Can't parse devfile yaml").
+          printf '%s\n' \
+            'import pathlib' \
+            'want="239F"' \
+            'addrs=[]' \
+            'for proc in ("/proc/net/tcp", "/proc/net/tcp6"):' \
+            '    p = pathlib.Path(proc)' \
+            '    if not p.exists():' \
+            '        continue' \
+            '    for line in p.read_text().splitlines()[1:]:' \
+            '        f = line.split()' \
+            '        lip, lp = f[1].split(":")' \
+            '        if lp.upper() == want and f[3] == "0A":' \
+            '            addrs.append(lip)' \
+            'print("0.0.0.0" if any(a in ("00000000", "00000000000000000000000000000000") for a in addrs) else ("127.0.0.1" if addrs else "none"))' \
+            >/tmp/dash-bind.py
+          python3 /tmp/dash-bind.py
         }
         if [ ! -f "${HERMES_MANAGED_DIR}/config.yaml" ] || ! grep -q "basic_auth" "${HERMES_MANAGED_DIR}/config.yaml"; then
           dash_fail "Managed Scope dashboard.basic_auth missing; refusing unauthenticated 0.0.0.0 bind"

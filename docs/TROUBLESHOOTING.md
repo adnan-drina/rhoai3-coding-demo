@@ -986,6 +986,28 @@ oc exec -n <ws-ns> <workspace-pod> -c development-tooling -- \
 
 **Related docs:** `gitops/stages/050-advanced-app-platform/base/rhdh/templates/*/skeleton/devfile.yaml`
 
+## Factory Create Fails With Can't Parse Devfile Yaml
+
+**Affected stage:** Stage 050 RHDH app-migration skeleton (factory workspaces for 080)
+
+**Likely cause:** A line at column 0 inside `commandLine: |` ended the YAML block scalar. Dev Spaces reports `Can't parse devfile yaml` (example: a multi-line `python3 -c` whose body was not indented). Indenting Python to satisfy YAML breaks Python; keep every line of the scalar indented and write helper scripts with indented `printf` lines.
+
+**Diagnose:**
+
+```bash
+# Local skeleton (before publish / dest mint):
+ruby -ryaml -e 'YAML.load_file(ARGV[0])' \
+  gitops/stages/050-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml
+```
+
+**Recover:**
+
+- Do not click **Continue with default devfile**. That is not the migration seat.
+- Do not retry the factory URL pinned to the broken commit. Push a parseable `devfile.yaml` to dest `main`, then start a new workspace from current `main`.
+- Catalog re-stamp does not rewrite an existing dest repo.
+
+**Related docs:** `gitops/stages/050-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml`
+
 ## Factory Workspace hermes-dash Route Returns 503 Or Nothing Listens On 9119
 
 **Affected stage:** Stage 050 RHDH app-migration skeleton (factory workspaces for 080)
@@ -1002,7 +1024,7 @@ oc exec -n <ws-ns> <workspace-pod> -c development-tooling -- \
   grep -E 'Hermes dashboard|ERROR: Hermes dashboard' /tmp/hermes-dashboard.log /tmp/poststart-stdout.txt 2>/dev/null
 oc exec -n <ws-ns> <workspace-pod> -c development-tooling -- \
   python3 -c 'import pathlib
-want="23A7"
+want="239F"
 for proc in ("/proc/net/tcp","/proc/net/tcp6"):
     p=pathlib.Path(proc)
     if not p.exists():
@@ -1013,7 +1035,7 @@ for proc in ("/proc/net/tcp","/proc/net/tcp6"):
             print(proc, lip, lp)'
 ```
 
-`state=failed` with `basic_auth missing` means `ensure_hermes` did not write Managed Scope — do not bind `0.0.0.0` without it (kanban plugin routes skip HTTP auth). `web_dist missing` is a pre-warm miss, not a route bug. Bind hex `0100007F:23A7` is localhost-only (route 503); `00000000:23A7` is the pod-IP bind che-gateway needs.
+`state=failed` with `basic_auth missing` means `ensure_hermes` did not write Managed Scope — do not bind `0.0.0.0` without it (kanban plugin routes skip HTTP auth). `web_dist missing` is a pre-warm miss, not a route bug. Bind hex `0100007F:239F` is localhost-only (route 503); `00000000:239F` is the pod-IP bind che-gateway needs.
 
 **Recover:**
 
