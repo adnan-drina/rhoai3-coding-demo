@@ -397,6 +397,11 @@ REQUIRED_SUBSTRINGS = [
         "R0 wired into mint Procedure",
     ),
     (
+        ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
+        ".hermes/skills/sdd/check-spec-readiness/scripts/assert-quarantine-tombstones.py",
+        "C1 pre-create gates are repo-relative paths (173010Z)",
+    ),
+    (
         ".hermes/skills/harness/dispatch-phase/references/m3-implementer-standing.md",
         "Pre-v12 R5 hard-invoke traps",
         "R5 M3 hard-invoke cites",

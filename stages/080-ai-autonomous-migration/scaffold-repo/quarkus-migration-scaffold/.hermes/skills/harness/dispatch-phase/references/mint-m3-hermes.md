@@ -113,30 +113,33 @@ the unpark switch.
 
 Run per body, fail-closed, via `execute_code`.
 `identity.story_id required`.
+Paths are repo-relative from `/projects/modernized` (Operator `173010Z` C1).
+Bare filenames resolve under the wrong skill tree and become typed BLOCK
+(`exit 2` = missing script — do not invent paths).
 
-1. `check-create-path-tip-sync.py`
-2. `check-phase-body-script-refs.py`
-3. `stamp-body-dependencies.py --body <body> --write`
-4. `check-interface-closure.py --body <body>`
-5. `stamp-destination-inventory.py --body <body> --write`
-6. `check-partition-coverage.py --write-receipt evidence/receipts/partition-coverage/latest.json`
-7. `assert-quarantine-tombstones.py`
-8. `assert-mint-constraints-complete.py --body <body> --inject` then without `--inject`
-9. `assert-constraints-preserved.py --body <body> --snapshot-before`
-10. `assert-dependency-closure.py --body <body>`
-11. `check-kanban-body.py --body <body>`
-12. `check-phase-attach-matrix.py`
-13. `assert-bundle-skills-exist.py --bundle m3-implementer`
-14. `stamp-body-digest.py` (AR-4.3)
-15. `check-surgical-scopes.py` + `check-semantic-exits.py` + `check-operand-count.py --wall-fit`
-16. `assert-mint-oracles.py --body <body> --skip-task-id`
+1. `python3 .hermes/skills/harness/dispatch-phase/scripts/check-create-path-tip-sync.py /projects/modernized`
+2. `python3 .hermes/skills/harness/dispatch-phase/scripts/check-phase-body-script-refs.py /projects/modernized`
+3. `python3 .hermes/skills/sdd/check-spec-readiness/scripts/stamp-body-dependencies.py --body <body> --write`
+4. `python3 .hermes/skills/sdd/check-spec-readiness/scripts/check-interface-closure.py --body <body>`
+5. `python3 .hermes/skills/sdd/check-spec-readiness/scripts/stamp-destination-inventory.py --body <body> --write`
+6. `python3 .hermes/skills/sdd/check-spec-readiness/scripts/check-partition-coverage.py --write-receipt evidence/receipts/partition-coverage/latest.json`
+7. `python3 .hermes/skills/sdd/check-spec-readiness/scripts/assert-quarantine-tombstones.py`
+8. `python3 .hermes/skills/sdd/check-spec-readiness/scripts/assert-mint-constraints-complete.py --body <body> --inject` then without `--inject`
+9. `python3 .hermes/skills/sdd/check-spec-readiness/scripts/assert-constraints-preserved.py --body <body> --snapshot-before`
+10. `python3 .hermes/skills/sdd/check-spec-readiness/scripts/assert-dependency-closure.py --body <body>`
+11. `python3 .hermes/skills/sdd/check-spec-readiness/scripts/check-kanban-body.py --body <body>`
+12. `python3 .hermes/skills/harness/dispatch-phase/scripts/check-phase-attach-matrix.py /projects/modernized`
+13. `python3 .hermes/skills/harness/dispatch-phase/scripts/assert-bundle-skills-exist.py /projects/modernized --bundle m3-implementer`
+14. `python3 .hermes/skills/harness/record-run-evidence/scripts/stamp-body-digest.py` (AR-4.3)
+15. `python3 .hermes/skills/sdd/check-spec-readiness/scripts/check-surgical-scopes.py` + `python3 .hermes/skills/sdd/check-spec-readiness/scripts/check-semantic-exits.py` + `python3 .hermes/skills/sdd/check-spec-readiness/scripts/check-operand-count.py --wall-fit`
+16. `python3 .hermes/skills/sdd/check-spec-readiness/scripts/assert-mint-oracles.py --body <body> --skip-task-id`
 
-Attach skills from `m3-attach-skills.py <body>` (B-16).
+Attach skills from `python3 .hermes/skills/harness/dispatch-phase/scripts/m3-attach-skills.py <body>` (B-16).
 skills = full m3-attach-skills.py stdout
 (`kanban_create` skills: every line of that stdout, order-stable).
 Dropping any name is refuse — v22 setup/foundational kept only
 `check-spec-readiness` while attach printed three/four (`035010Z`).
-Max runtime from `read-phase-dispatch.py --phase M3` or body
+Max runtime from `python3 .hermes/skills/harness/dispatch-phase/scripts/read-phase-dispatch.py --yaml .hermes/phase-dispatch.yaml --phase M3` or body
 `runtime_budget_sec`. Workspace `dir:/projects/modernized`. Profile
 `default` must exist (`hermes profile show default`).
 
