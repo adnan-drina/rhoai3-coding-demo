@@ -70,10 +70,7 @@ filename mapper.
 
 ## JAX-RS @Path emit (mandatory)
 
-The mint join is the literal regex `@Path("...")`. Every Resource
-implementation task that owns an HTTP route MUST include that token with the
-inventory `http_path` inside the quotes. Prose ``GET `/api/owners` `` is not
-enough.
+The mint join is the literal regex `@Path("...")`. Every task that **creates a Resource class** MUST include `@Path("<class-level absolute path>")` with the inventory path inside the quotes. Prose is not enough **for a class-creating task**. Tasks that add handlers to an existing Resource do **not** carry a literal — name the handler in prose (see below). Do not emit `@Path("/api/pets/pettypes")` on a method task: class + method compose, and A-8 will still pass a wrong route (Probe H).
 
 **`@Path("…")` literals carry CLASS-LEVEL ABSOLUTE resource paths only.**
 A method-level sub-resource path is named in prose ("sub-resource handler at
@@ -173,7 +170,7 @@ Do **not** Configure `pom.xml` or `src/main/resources/application.properties` he
 ### Implementation for User Story 2
 
 - [ ] T020 [US2] Create PetResource JAX-RS class with @Path("/api/pets") in src/main/java/com/demo/resource/PetResource.java
-- [ ] T021 [US2] Add GET sub-resource handler at relative path /pettypes on PetResource (class-level @Path("/api/pets") already covers inventory GET /api/pets/pettypes) in src/main/java/com/demo/resource/PetResource.java
+- [ ] T021 [US2] Add GET sub-resource handler at relative path /pettypes on PetResource (class-level path /api/pets already covers inventory GET /api/pets/pettypes) in src/main/java/com/demo/resource/PetResource.java
 - [ ] T022 [US2] Add POST, PUT, DELETE on OwnerResource (OwnerResource already carries the class-level path /api/owners) in src/main/java/com/demo/resource/OwnerResource.java
 - [ ] T023 [US2] Add profile-specific overrides in src/main/resources/application.properties
 

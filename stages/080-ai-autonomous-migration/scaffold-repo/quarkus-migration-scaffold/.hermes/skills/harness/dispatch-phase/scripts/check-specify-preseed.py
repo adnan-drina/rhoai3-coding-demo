@@ -159,6 +159,15 @@ def main() -> int:
             bad = 1
         else:
             print("OK: class-level @Path pin installed under .specify/tasks-template")
+        if "creates a Resource class" not in ttext:
+            print(
+                "FAIL: tasks-template override @Path MUST not scoped to class tasks "
+                "(140510Z Probe H)",
+                file=sys.stderr,
+            )
+            bad = 1
+        else:
+            print("OK: class-creating @Path MUST scoped under .specify/tasks-template")
         if "already carries the class-level path" not in ttext:
             print(
                 "FAIL: tasks-template override T022 still has a foreign @Path literal "
@@ -239,6 +248,15 @@ def main() -> int:
             bad = 1
         else:
             print("OK: tip class-level @Path pin present")
+        if "creates a Resource class" not in ptt:
+            print(
+                "FAIL: tip tasks-template @Path MUST not scoped to class-creating tasks "
+                "(140510Z Probe H)",
+                file=sys.stderr,
+            )
+            bad = 1
+        else:
+            print("OK: tip class-creating @Path MUST scoped")
         if "already carries the class-level path" not in ptt:
             print(
                 "FAIL: tip tasks-template T022 still has a foreign @Path literal "

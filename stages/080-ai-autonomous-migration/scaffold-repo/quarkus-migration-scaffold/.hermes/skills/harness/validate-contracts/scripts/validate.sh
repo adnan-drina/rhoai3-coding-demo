@@ -2950,6 +2950,12 @@ if ! grep -q 'CLASS-LEVEL ABSOLUTE' "${tasks_tpl}"; then
 else
   echo "OK: tasks-template class-level @Path pin present"
 fi
+if ! grep -q 'creates a Resource class' "${tasks_tpl}"; then
+  echo "FAIL: tasks-template @Path MUST not scoped to class-creating tasks (140510Z)" >&2
+  rc=1
+else
+  echo "OK: tasks-template @Path MUST scoped to class-creating tasks (140510Z)"
+fi
 if ! grep -q 'already carries the class-level path' "${tasks_tpl}"; then
   echo "FAIL: tasks-template T022 still has a foreign @Path literal (135010Z)" >&2
   rc=1
@@ -3620,10 +3626,11 @@ else
   echo "FAIL: mint Procedure missing kind map / one-three-one-rule pin (094840Z)" >&2
   rc=1
 fi
-if grep -q 'status==blocked' "${MINT_PROC}"; then
-  echo "OK: mint Procedure story-card status==blocked readback (113245Z)"
+if grep -q 'the park protection' "${MINT_PROC}" \
+  && grep -q 'OBJECT requiring story' "${MINT_PROC}"; then
+  echo "OK: mint Procedure story park is ack_gate parent not status==blocked (113650Z)"
 else
-  echo "FAIL: mint Procedure missing status==blocked readback (113245Z; not handover-mint.py)" >&2
+  echo "FAIL: mint Procedure still treats story status==blocked as the v25 assert (113650Z retract)" >&2
   rc=1
 fi
 if [ ! -f "${HOLDER_BODY}" ]; then

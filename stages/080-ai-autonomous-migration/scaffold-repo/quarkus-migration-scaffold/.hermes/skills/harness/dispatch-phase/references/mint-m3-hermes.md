@@ -57,15 +57,18 @@ Do **not** pin `check-spec-readiness` on the holder until story bodies exist.
      or `{story_id} `.
    - Run the **pre-create gates** below via `execute_code` on that body.
    - `kanban_create` with skills, `initial_status=blocked` /
-     `--initial-status blocked`, `idempotency_key`, `workspace_kind=dir`,
+     `--initial-status blocked` (**not** the park protection — Architect
+     `113650Z`; the unfinished `ack_gate` parent is), `idempotency_key`,
+     `workspace_kind=dir`,
      `workspace_path`, `max_runtime_seconds`, `assignee=default`,
      `created-by` / `created_by` = holder id, `--parent REQUIRED` twice
      (holder + ack_gate), parents **`[holder, ack_gate]`** (gate is a
      parent, not a holder-child). Snapshot this new id (After create).
      Immediately `hermes kanban show <id> --json` and **refuse unless
-     `status==blocked`**. Omit `--initial-status` yields `ready`
-     (fail-open). Do **not** add this assert to `handover-mint.py`
-     (1088 freeze; Architect `113245Z`). **Do NOT dispatch here.**
+     `status=todo`** (not `ready`/`running`) **and** `parents` include the
+     unfinished `ack_gate`. OBJECT requiring story `status==blocked`.
+     Do **not** add this assert to `handover-mint.py` (1088 freeze).
+     **Do NOT dispatch here.**
 5. After all stories exist (or were skipped), **`kanban_complete` this
    holder**. The gate must stay `blocked` (sticky event). Children stay
    `blocked` because `ack_gate` is incomplete. `dispatch --dry-run` must
@@ -188,9 +191,10 @@ after create to chase this (`192117Z`).
 ## After create (same session)
 
 - Immediately after each story `kanban_create`, `hermes kanban show <id> --json`
-  and **refuse unless `status==blocked`**. Omit `--initial-status` yields
-  `ready` (fail-open; dest pin v0.20.4). Do **not** grow `handover-mint.py`
-  for this (1088 freeze).
+  and **refuse unless `status=todo`** (not `ready`/`running`) **and**
+  `parents` include the unfinished `ack_gate`. `initial_status` is **not**
+  the protection (`113650Z`). OBJECT story `status==blocked`. Do **not**
+  grow `handover-mint.py` for this (1088 freeze).
 - Immediately after each `kanban_create` (ack_gate skip write-set cache;
   every **story** id), emit dest write-set **cache** (not fence policy):
 

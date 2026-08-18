@@ -1057,6 +1057,11 @@ REQUIRED_SUBSTRINGS = [
     ),
     (
         ".hermes/skills/sdd/init-spec-workspace/assets/tasks-template.md",
+        "creates a Resource class",
+        "tasks-template @Path MUST scoped to class-creating tasks (140510Z)",
+    ),
+    (
+        ".hermes/skills/sdd/init-spec-workspace/assets/tasks-template.md",
         "already carries the class-level path",
         "tasks-template T022 foreign @Path in prose (135010Z)",
     ),
@@ -1127,8 +1132,8 @@ REQUIRED_SUBSTRINGS = [
     ),
     (
         ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
-        "status==blocked",
-        "mint Procedure story-card status==blocked readback (113245Z)",
+        "the park protection",
+        "mint Procedure initial_status is not the park protection (113650Z)",
     ),
     (
         ".hermes/skills/harness/dispatch-phase/references/holder-card-body.md",
