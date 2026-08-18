@@ -77,7 +77,9 @@ python3 "${HERMES_SKILL_DIR}/scripts/check-write-fence.py" /projects/modernized 
 
 5. **Write-set hook (EX-3 / B-S2).** The one registered `pre_tool_call`.
    GitOps copies this script into managed `agent-hooks/write-fence.py`.
-   Stdin JSON; exit 2 blocks. `--help` must not print an `OK:` verdict.
+   Policy is spawn-env `HERMES_KANBAN_FILES_WRITABLE` only; dest write-set
+   JSON is cache (Architect 35099226). Stdin JSON; exit 2 blocks.
+   `--help` must not print an `OK:` verdict.
 
 ```bash
 python3 "${HERMES_SKILL_DIR}/scripts/write-set-hook.py"
@@ -131,11 +133,12 @@ One Kanban task ⇒ one task type. Never `/speckit-implement`. Never edit
 - `write-set-hook.py` exit 2 on in-repo deny-prefix (`.hermes/`, `AGENTS.md`,
   `SOUL.md`, `devfile.yaml`, acks, verdicts, `kanban.db`), on paths outside
   `HERMES_WRITE_SAFE_ROOT`, and on any dest path outside the published
-  `files_writable` (B-2 path-bearing; published `[]` denies all dest writes,
-  including `migration.yaml` under Hermes `write`). Exit 0 on a legitimate
-  in-set `src/` write. When no kanban task is set, deny-prefix only. When
-  `HERMES_KANBAN_TASK` is set but the write-set cannot be loaded, dest
-  writes fail closed.
+  `files_writable` from spawn env `HERMES_KANBAN_FILES_WRITABLE` (B-2
+  path-bearing; published `[]` denies all dest writes, including
+  `migration.yaml` under Hermes `write`). Dest write-set JSON is ignored.
+  Exit 0 on a legitimate in-set `src/` write. When no kanban task is set,
+  deny-prefix only. When `HERMES_KANBAN_TASK` is set but spawn env is
+  unset, dest writes fail closed. Hole 2 (`$HOME`) is not claimed.
 - **Silent-failure catch:** several of these are idle-safe. `AR-1.1 idle`,
   `AR-1.2 idle`, and `no required acks` are all exit 0 while asserting
   nothing. During a live phase advance, treat an idle line as a wiring

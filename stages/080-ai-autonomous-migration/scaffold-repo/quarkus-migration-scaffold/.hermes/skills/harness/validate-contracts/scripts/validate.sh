@@ -419,12 +419,15 @@ mkdir -p "${hook_tmp}/src/main/java"
   fi
   unset HERMES_KANBAN_FILES_WRITABLE
   export HERMES_KANBAN_TASK="t_deadbeef"
+  mkdir -p "${hook_tmp}/evidence/runtime/write-sets"
+  printf '%s\n' '{"task_id":"t_deadbeef","files_writable":["pom.xml"]}' \
+    > "${hook_tmp}/evidence/runtime/write-sets/t_deadbeef.json"
   if printf '%s\n' '{"tool_name":"write_file","tool_input":{"path":"pom.xml"}}' \
     | python3 "${HOOK}" >/dev/null; then
-    echo "FAIL: write-set hook should fail-closed when task set but write-set missing" >&2
+    echo "FAIL: dest write-set cache must not allow pom.xml when env unset" >&2
     exit 1
   else
-    echo "OK: write-set hook fail-closed without published write-set (B-2)"
+    echo "OK: write-set hook ignores dest cache (v24 env-only fence)"
   fi
   # Architect E-20260816T185414Z — specs/ is a product write; missing write-set
   # must not let Spec Kit (or SPECIFY_FEATURE_DIRECTORY) through.
@@ -480,6 +483,21 @@ mkdir -p "${hook_tmp}/src/main/java"
     exit 1
   else
     echo "OK: empty write-set refuses patch on migration.yaml (091919Z)"
+  fi
+  if printf '%s\n' '{"tool_name":"write_file","tool_input":{"path":"evidence/runtime/write-sets/t_deadbeef.json"}}' \
+    | python3 "${HOOK}" >/dev/null; then
+    echo "FAIL: write-set cache path must be deny-prefix" >&2
+    exit 1
+  else
+    echo "OK: write-set hook denies write-set cache path (cache not worker-writable)"
+  fi
+  export HERMES_KANBAN_FILES_WRITABLE='["pom.xml"]'
+  if printf '%s\n' '{"tool_name":"terminal","tool_input":{"command":"echo x > evidence/runtime/write-sets/t_deadbeef.json"}}' \
+    | python3 "${HOOK}" >/dev/null; then
+    echo "FAIL: terminal argv targeting write-sets must block" >&2
+    exit 1
+  else
+    echo "OK: terminal argv targeting write-set cache is refused (defence-in-depth)"
   fi
 ) || rc=1
 rm -rf "${hook_tmp}"

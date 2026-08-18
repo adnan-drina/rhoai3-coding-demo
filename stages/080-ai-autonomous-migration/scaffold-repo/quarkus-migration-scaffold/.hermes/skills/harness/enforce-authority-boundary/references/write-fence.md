@@ -17,13 +17,17 @@ adds **operand separation** so an Implementing-task worker cannot forge those pa
 | Seat probe | `probe-write-fence.py` must observe `PermissionError` / refuse on deny paths |
 
 `HERMES_WRITE_SAFE_ROOT` is also an EX-5 Managed Scope pin (layer 2). The
-EX-3 write-set hook is **path-bearing** (Architect `091919Z`): a dest path
-is checked against `files_writable` regardless of `tool_name`. Published
-`[]` denies every dest-relative write. The GitOps `pre_tool_call` matcher
-is invocation-only (`write` included so Hermes actually calls the hook).
-A deny-prefix path **inside** SAFE_ROOT is rc 0 on the native fence
-(HKN-12). `approvals.deny` and `terminal.backend: local` are outer
-overlays, not a replacement.
+EX-3 write-set hook is **path-bearing** (Architect `091919Z` / v24 env+hook
+deny): a dest path is checked against spawn-env
+`HERMES_KANBAN_FILES_WRITABLE`. Published `[]` denies every dest-relative
+write. Dest `evidence/runtime/write-sets/*.json` is a mint **cache**
+(Architect 35099226) — the hook must not read it, whatever it contains.
+The GitOps `pre_tool_call` matcher is invocation-only (`write` plus
+`terminal` as in-workspace defence-in-depth; not a hole-1 fix; hole 2 /
+`$HOME` stays open). A deny-prefix path **inside** SAFE_ROOT is rc 0 on
+the native fence (HKN-12). `approvals.deny` and `terminal.backend: local`
+are outer overlays, not a replacement. v24 does not claim a new trust
+boundary.
 
 ## Tier (b) — release (deferred)
 

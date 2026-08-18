@@ -581,11 +581,19 @@ if [[ "${PHASE}" == "M1" ]]; then
 import json, sys
 from pathlib import Path
 root, task = Path(sys.argv[1]), sys.argv[2]
-doc = {"task_id": task, "files_writable": []}
+# Cache, not fence policy (Architect 35099226). Spawn hydrate may copy
+# this into HERMES_KANBAN_FILES_WRITABLE; write-set-hook.py must not
+# open it.
+doc = {
+    "schema": "rhoai3.write-set-cache/v1",
+    "authority": "cache-not-policy",
+    "task_id": task,
+    "files_writable": [],
+}
 ws = root / "evidence" / "runtime" / "write-sets"
 ws.mkdir(parents=True, exist_ok=True)
 (ws / f"{task}.json").write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
-print(f"dispatch-phase: M1 write-set {task} → [] (published empty; not omit)")
+print(f"dispatch-phase: M1 write-set cache {task} → [] (published empty; not omit)")
 PY
 fi
 
@@ -595,11 +603,16 @@ if [[ "${PHASE}" == "M2" ]]; then
 import json, sys
 from pathlib import Path
 root, task = Path(sys.argv[1]), sys.argv[2]
-doc = {"task_id": task, "files_writable": [".specify/", "specs/"]}
+doc = {
+    "schema": "rhoai3.write-set-cache/v1",
+    "authority": "cache-not-policy",
+    "task_id": task,
+    "files_writable": [".specify/", "specs/"],
+}
 ws = root / "evidence" / "runtime" / "write-sets"
 ws.mkdir(parents=True, exist_ok=True)
 (ws / f"{task}.json").write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
-print(f"dispatch-phase: M2 write-set {task} → .specify/ + specs/")
+print(f"dispatch-phase: M2 write-set cache {task} → .specify/ + specs/")
 PY
 fi
 

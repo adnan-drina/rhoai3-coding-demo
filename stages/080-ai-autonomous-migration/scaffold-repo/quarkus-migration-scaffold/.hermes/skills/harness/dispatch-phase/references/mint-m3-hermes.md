@@ -165,6 +165,19 @@ after create to chase this (`192117Z`).
 
 ## After create (same session)
 
+- Immediately after each `kanban_create` (ack_gate skip write-set cache;
+  every **story** id), emit dest write-set **cache** (not fence policy):
+
+  ```text
+  python3 .hermes/skills/harness/enforce-authority-boundary/scripts/emit-write-set-cache.py \
+    --root . --task-id <new_id> --body evidence/bodies/m3-{story_id}.json
+  ```
+
+  File `evidence/runtime/write-sets/<t_hex>.json` must exist and be
+  non-empty before the next story create (Architect 35099226). `task_id`
+  in that file is Hermes `t_<hex>` hygiene. Do **not** rewrite the typed
+  body `task_id` (AR-4.3 digest). Fence policy is spawn env
+  `HERMES_KANBAN_FILES_WRITABLE`, not this file.
 - Immediately after each `kanban_create` (ack_gate and every story id),
   fail-open once per new id:
 

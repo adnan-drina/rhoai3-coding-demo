@@ -34,7 +34,7 @@ GITOPS_REL = Path(
     "maas-api-key-provisioning.yaml"
 )
 EX3_HOOK = "write-set-hook.py"
-WRITE_MATCHER = "write_file|patch|edit_file|apply_patch|create_file"
+WRITE_MATCHER = "write|write_file|patch|edit_file|apply_patch|create_file|terminal"
 
 
 def migration_root(start: Path) -> Path:
@@ -155,6 +155,9 @@ def main(argv: list[str] | None = None) -> int:
             f"(found {gtxt.count(WRITE_MATCHER)})",
             file=sys.stderr,
         )
+        rc = 1
+    if "hermes-spawn-hydrate.py" not in gtxt:
+        print("FAIL: GitOps lost v24 spawn-hydrate wrapper copy", file=sys.stderr)
         rc = 1
     if rc == 0:
         print(

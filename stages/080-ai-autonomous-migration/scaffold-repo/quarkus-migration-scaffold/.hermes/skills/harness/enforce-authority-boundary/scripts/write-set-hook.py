@@ -5,15 +5,20 @@ Native / SAFE_ROOT sandbox only blocks *outside* HERMES_WRITE_SAFE_ROOT
 (HKN-12: a deny-prefix path inside the project is still allowed natively).
 This hook is the one registered pre_tool_call.
 
-Allow-model (B-2, Architect E-20260817T091919Z): when a write-set is
-published for the active kanban task, only `files_writable` paths pass
-(deny-prefixes still refuse). A published empty list (`[]`) denies every
-dest-relative write — not only `src/`/`pom.xml`. Enforcement is
-**path-bearing**: if `extract_path` yields a dest path, the tool name
-does not matter. `WRITE_TOOLS` is a no-path fail-closed fast-path only.
+Allow-model (B-2, Architect E-20260817T091919Z / v24 075113Z): when a
+write-set is published in **spawn env** `HERMES_KANBAN_FILES_WRITABLE`,
+only those paths pass (deny-prefixes still refuse). A published empty list
+(`[]`) denies every dest-relative write. Enforcement is **path-bearing**:
+if `extract_path` yields a dest path, the tool name does not matter.
+`WRITE_TOOLS` is a no-path fail-closed fast-path only.
 
-If HERMES_KANBAN_TASK is set but the write-set cannot be loaded, treat
-that as published `[]` (fail closed on dest paths).
+Policy is spawn env only. `evidence/runtime/write-sets/*.json` is a mint
+**cache** (forensics / spawn hydrate). This hook must not read dest JSON
+or typed bodies for allow/deny (Architect 35099226 / Operator 7e93fb41).
+v24 does not claim a new trust boundary (hole 2 / `$HOME` stays open).
+
+If HERMES_KANBAN_TASK is set but FILES_WRITABLE is unset/unparseable,
+treat as published `[]` (fail closed on dest paths).
 
 If no kanban task is published, deny-prefix only — validate/dev seats
 keep working without a write-set.
@@ -44,6 +49,8 @@ DENY_PREFIXES = (
     "evidence/acks",
     "evidence/verdicts/",
     "evidence/verdicts",
+    "evidence/runtime/write-sets/",
+    "evidence/runtime/write-sets",
     ".hermes/",
     ".hermes",
     "AGENTS.md",
@@ -134,95 +141,53 @@ def _writable_from_obj(obj: object) -> list[str] | None:
     return [str(x) for x in fw if str(x).strip()]
 
 
+def parse_files_writable_env(raw: str) -> list[str] | None:
+    """Parse spawn-env FILES_WRITABLE. None = unset/unparseable (not `[]`)."""
+    text = raw.strip()
+    if not text:
+        return None
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        return [x.strip() for x in text.split(",") if x.strip()]
+    if isinstance(data, list):
+        return [str(x) for x in data if str(x).strip()]
+    if isinstance(data, str) and data.strip():
+        return [data.strip()]
+    return None
+
+
 def load_write_set(safe_p: Path) -> tuple[list[str] | None, str]:
     """Return (writable, source).
 
     writable is None when no kanban task is in play (deny-prefix only).
-    writable is [] when a task is set but the write-set cannot be loaded
-    (fail-closed on product writes).
+    writable is [] when a task is set but spawn env is missing/unparseable
+    (fail-closed on product writes). Dest JSON is never consulted.
     """
-    env_fw = os.environ.get("HERMES_KANBAN_FILES_WRITABLE", "").strip()
-    if env_fw:
-        try:
-            data = json.loads(env_fw)
-        except json.JSONDecodeError:
-            data = [x.strip() for x in env_fw.split(",") if x.strip()]
-        if isinstance(data, list):
-            return (
-                [str(x) for x in data if str(x).strip()],
-                "env:HERMES_KANBAN_FILES_WRITABLE",
-            )
-        if isinstance(data, str) and data.strip():
-            return [data.strip()], "env:HERMES_KANBAN_FILES_WRITABLE"
-
-    env_body = os.environ.get("HERMES_KANBAN_BODY", "").strip()
-    if env_body:
-        parsed: object | None = None
-        if env_body[:1] in "{[":
-            try:
-                parsed = json.loads(env_body)
-            except json.JSONDecodeError:
-                parsed = None
-        fw = _writable_from_obj(parsed) if parsed is not None else None
-        if fw is not None:
-            return fw, "env:HERMES_KANBAN_BODY"
-        bp = Path(env_body)
-        if not bp.is_absolute():
-            bp = safe_p / env_body
-        if bp.is_file():
-            try:
-                fw = _writable_from_obj(json.loads(bp.read_text(encoding="utf-8")))
-            except (OSError, json.JSONDecodeError, TypeError):
-                fw = None
-            if fw is not None:
-                return fw, str(bp)
+    _ = safe_p  # kept so callers stay Path-shaped; dest tree is not policy
+    env_fw = os.environ.get("HERMES_KANBAN_FILES_WRITABLE", "")
+    parsed = parse_files_writable_env(env_fw)
+    if parsed is not None:
+        return parsed, "env:HERMES_KANBAN_FILES_WRITABLE"
 
     task = os.environ.get("HERMES_KANBAN_TASK", "").strip()
     if not task:
         return None, "unpublished"
-
-    runtime = safe_p / "evidence" / "runtime" / "active-write-set.json"
-    if runtime.is_file():
-        try:
-            data = json.loads(runtime.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError, TypeError):
-            data = None
-        if isinstance(data, dict) and str(data.get("task_id") or "").strip() == task:
-            fw = _writable_from_obj(data)
-            if fw is not None:
-                return fw, "evidence/runtime/active-write-set.json"
-
-    ws_dir = safe_p / "evidence" / "runtime" / "write-sets"
-    per_task = ws_dir / f"{task}.json"
-    if per_task.is_file():
-        try:
-            fw = _writable_from_obj(json.loads(per_task.read_text(encoding="utf-8")))
-        except (OSError, json.JSONDecodeError, TypeError):
-            fw = None
-        # Same indent as env_body above. Inside-except this return never ran
-        # (Operator E-20260817T110743Z).
-        if fw is not None:
-            return fw, str(per_task.relative_to(safe_p))
-
-    bodies = safe_p / "evidence" / "bodies"
-    if bodies.is_dir():
-        for path in sorted(bodies.glob("*.json")):
-            try:
-                data = json.loads(path.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError, TypeError):
-                continue
-            body = data.get("body") if isinstance(data, dict) and isinstance(
-                data.get("body"), dict
-            ) else data
-            if not isinstance(body, dict):
-                continue
-            if str(body.get("task_id") or "").strip() != task:
-                continue
-            fw = _writable_from_obj(body)
-            if fw is not None:
-                return fw, str(path.relative_to(safe_p))
-
     return [], f"task-set-unresolved:{task}"
+
+
+def extract_terminal_cmd(payload: dict) -> str:
+    ti = payload.get("tool_input") or {}
+    if not isinstance(ti, dict):
+        return ""
+    for k in ("command", "cmd"):
+        v = ti.get(k)
+        if isinstance(v, str) and v.strip():
+            return v
+    argv = ti.get("argv") or ti.get("args")
+    if isinstance(argv, list):
+        return " ".join(str(x) for x in argv)
+    return ""
 
 
 def main() -> int:
@@ -255,6 +220,16 @@ def main() -> int:
     )
     safe_p = Path(safe).resolve()
     writable, source = load_write_set(safe_p)
+    # Item 4: matcher may invoke this hook on `terminal`. In-workspace
+    # cache overwrite via argv is refused. Extra-workspace ($HOME) is not
+    # claimed (hole 2).
+    if writable is not None and str(tool).lower() in {"terminal", "bash", "shell"}:
+        cmd = extract_terminal_cmd(payload).replace("\\", "/")
+        if "evidence/runtime/write-sets" in cmd:
+            return _block(
+                "write-set-hook: terminal argv targets write-set cache "
+                "(defense-in-depth, not a trust boundary)"
+            )
     if not raw:
         # Known write tool, no path, write-set in play → fail closed.
         # Unknown tools with no path stay allow (reads, terminal, etc.).

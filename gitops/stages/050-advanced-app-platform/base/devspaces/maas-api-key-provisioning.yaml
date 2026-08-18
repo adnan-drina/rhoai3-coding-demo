@@ -808,16 +808,17 @@ data:
             "streaming": True,
         },
         # EX-3: ONE pre_tool_call hook — path-bearing B-2 (Architect
-        # E-20260817T091919Z). Matcher still names known write tools so
-        # Hermes invokes the hook; policy is dest-path + files_writable,
-        # not the name. `write` is the live Hermes tool (attempt-7 bypass).
+        # E-20260817T091919Z / v24 7e93fb41). Matcher names write tools
+        # plus `terminal` as in-workspace defence-in-depth (item 4 — not
+        # the hole-1 fix; hole 2 / $HOME stays open). Policy is spawn-env
+        # HERMES_KANBAN_FILES_WRITABLE; dest write-set JSON is cache only.
         # Canonical script lives in the golden; copy into managed so workers
         # cannot overwrite the hook (HKN-12 / hermes-hooks fail_closed).
         "hooks": {
             "hooks_auto_accept": True,
             "pre_tool_call": [
                 {
-                    "matcher": "write|write_file|patch|edit_file|apply_patch|create_file",
+                    "matcher": "write|write_file|patch|edit_file|apply_patch|create_file|terminal",
                     "command": os.path.join(managed, "agent-hooks", "write-fence.py"),
                     "timeout": 5,
                     "fail_closed": True,
@@ -855,6 +856,25 @@ data:
     if not os.path.isfile(src_hook):
         raise SystemExit(f"ERROR: EX-3 write-set hook missing: {src_hook}")
     shutil.copy2(src_hook, write_fence_py)
+    src_hydrate = os.path.join(
+        os.environ.get("HERMES_WRITE_SAFE_ROOT", "/projects/modernized"),
+        ".hermes/skills/harness/enforce-authority-boundary/scripts/hermes-spawn-hydrate.py",
+    )
+    if not os.path.isfile(src_hydrate):
+        raise SystemExit(f"ERROR: v24 spawn hydrate missing: {src_hydrate}")
+    bin_dir = os.path.join(managed, "bin")
+    os.makedirs(bin_dir, exist_ok=True)
+    hydrate_py = os.path.join(bin_dir, "hermes-spawn-hydrate.py")
+    shutil.copy2(src_hydrate, hydrate_py)
+    os.chmod(hydrate_py, 0o755)
+    hermes_wrap = os.path.join(bin_dir, "hermes")
+    real_hermes = os.path.expanduser("~/.local/bin/hermes")
+    with open(hermes_wrap, "w") as fh:
+        fh.write("#!/bin/bash\n")
+        fh.write("# v24: snapshot write-set cache into spawn env; not a trust boundary.\n")
+        fh.write(f'export HERMES_REAL_BIN="${{HERMES_REAL_BIN:-{real_hermes}}}"\n')
+        fh.write(f'exec python3 "{hydrate_py}" "$@"\n')
+    os.chmod(hermes_wrap, 0o755)
     with open(pre_verify_py, "w") as fh:
         fh.write(
             "#!/usr/bin/env python3\n"
@@ -887,6 +907,7 @@ data:
         # Managed Scope). Native guards are write_file/patch only; in-repo
         # B-S2 stays the EX-3 hook (HKN-12).
         fh.write(f"HERMES_WRITE_SAFE_ROOT={safe_root}\n")
+        fh.write(f"HERMES_REAL_BIN={os.path.expanduser('~/.local/bin/hermes')}\n")
     os.chmod(cfg_path, 0o644)
     os.chmod(env_path, 0o600)
     # Architect E-20260808T151907Z — pin demo model binding (qwen / platform MaaS).
@@ -919,6 +940,16 @@ data:
         )
     print(f"Hermes Managed Scope: wrote {cfg_path} + .env (W1 five pins + AD-008 qwen3-6-27b).")
     HERMESEOF
+
+      # v24 spawn hydrate: managed wrapper first on PATH so dispatcher
+      # `hermes` snapshots write-set cache into env. Not a trust boundary.
+      if ! grep -q "rhoai3-coding-demo: hermes spawn hydrate" "${HOME}/.bashrc" 2>/dev/null; then
+        {
+          printf '\n# rhoai3-coding-demo: hermes spawn hydrate\n'
+          printf 'export PATH="%s/bin:${PATH}"\n' "${managed_dir}"
+        } >> "${HOME}/.bashrc"
+      fi
+      export PATH="${managed_dir}/bin:${PATH}"
 
       # Architect E-20260808T151907Z / Deputy E-20260808T153444Z —
       # Model binding belongs in Managed Scope, not a human checklist.

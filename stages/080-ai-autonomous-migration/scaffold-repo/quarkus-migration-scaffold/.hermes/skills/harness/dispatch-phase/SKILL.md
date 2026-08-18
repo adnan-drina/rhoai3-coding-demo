@@ -101,8 +101,8 @@ Create parks (`DISPATCH_MAX=0`). Spawn is native `hermes kanban dispatch --max 1
    trigger, not a dispatch side-effect).
 5. `hermes kanban create` (`dir:/projects/modernized`, skills, budget,
    idempotency key); id under `evidence/derived/` (pointer, not the DAG).
-   M2 stamps `evidence/runtime/write-sets/<id>.json` = `.specify/` + `specs/`
-   (AD-013; do not invent `SPECIFY_FEATURE_DIRECTORY`).
+   M2 stamps dest write-set **cache** `evidence/runtime/write-sets/<id>.json`
+   = `.specify/` + `specs/` (AD-013; fence is spawn-env, not that file).
 6. M3 children are **not** created by this script. The holder session
    follows `references/mint-m3-hermes.md`.
 

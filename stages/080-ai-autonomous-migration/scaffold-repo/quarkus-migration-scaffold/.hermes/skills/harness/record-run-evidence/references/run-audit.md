@@ -18,8 +18,10 @@ Writes `evidence/run-audit/<ts>.json`: dest-tree path → mtime + sha256
 (skip `target/`, `.git/`), `git rev-parse HEAD` + last 5 commits, claim
 windows from sqlite `task_runs` when `--db` is present. Session
 `--windows-json` is retired (`075357Z`); live snapshots use `--db` only.
-Published write-sets under `evidence/runtime/write-sets/<task_id>.json`
-are joined onto those windows when present.
+Published write-set **cache** under
+`evidence/runtime/write-sets/<task_id>.json` is joined onto those windows
+when present (forensics / attribution). The EX-3 fence does not read
+that file for allow/deny.
 
 ## Analyze
 

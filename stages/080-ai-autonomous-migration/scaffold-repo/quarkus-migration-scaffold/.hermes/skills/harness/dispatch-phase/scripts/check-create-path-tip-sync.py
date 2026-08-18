@@ -129,6 +129,9 @@ REQUIRED_FILES = [
     ".hermes/skills/harness/validate-contracts/references/path-producers.json",
     ".hermes/skills/harness/dispatch-phase/scripts/read-phase-dispatch.py",
     ".hermes/skills/harness/enforce-authority-boundary/scripts/write-set-hook.py",
+    ".hermes/skills/harness/enforce-authority-boundary/scripts/emit-write-set-cache.py",
+    ".hermes/skills/harness/enforce-authority-boundary/scripts/hermes-spawn-hydrate.py",
+    ".hermes/skills/harness/enforce-authority-boundary/scripts/prove-v24-env-fence.sh",
     ".hermes/skills/harness/enforce-authority-boundary/scripts/check-ack-authority.py",
     ".hermes/skills/harness/enforce-authority-boundary/references/ack-authority.md",
     ".hermes/skills/harness/dispatch-phase/scripts/resolve-seat-assignee.py",
@@ -1218,6 +1221,36 @@ REQUIRED_SUBSTRINGS = [
         ".hermes/skills/harness/validate-contracts/scripts/validate.sh",
         "Card body contract on mint Procedure",
         "validate-contracts pins mint card body contract (035010Z)",
+    ),
+    (
+        ".hermes/skills/harness/enforce-authority-boundary/scripts/write-set-hook.py",
+        "task-set-unresolved",
+        "v24 fence DENIES when TASK set and FILES_WRITABLE unset",
+    ),
+    (
+        ".hermes/skills/harness/enforce-authority-boundary/scripts/write-set-hook.py",
+        "must not read dest JSON",
+        "v24 dest write-set JSON is cache not policy",
+    ),
+    (
+        ".hermes/skills/harness/enforce-authority-boundary/scripts/emit-write-set-cache.py",
+        "cache-not-policy",
+        "mint still emits write-set cache (Architect 35099226)",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
+        "emit-write-set-cache.py",
+        "M3 mint emits write-set cache after kanban_create",
+    ),
+    (
+        ".hermes/skills/harness/enforce-authority-boundary/scripts/write-set-hook.py",
+        "defense-in-depth, not a trust boundary",
+        "terminal matcher is defense-in-depth not hole-1/2 fix",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/references/m3-implementer-standing.md",
+        "HERMES_KANBAN_FILES_WRITABLE",
+        "M3 standing fence is spawn-env FILES_WRITABLE only",
     ),
 ]
 
