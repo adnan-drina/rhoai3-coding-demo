@@ -190,18 +190,26 @@ commands:
         KUBE_API="https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}"
         KUBE_CA="/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
         KUBE_TOKEN="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"
-        if curl -fsS --cacert "${KUBE_CA}" \
+        # SA token/CA are projected at container start; the race is CNI to
+        # 172.30.0.1:443. One curl timeout left workspaces Running with an
+        # empty /tmp/init-ai-tools.sh. Bounded retry matches the git wait
+        # above; --connect-timeout keeps each attempt inside startTimeout.
+        for i in $(seq 1 30); do
+          curl -fsS --connect-timeout 5 --max-time 20 --cacert "${KUBE_CA}" \
             -H "Authorization: Bearer ${KUBE_TOKEN}" \
             "${KUBE_API}/api/v1/namespaces/wksp-ai-developer/configmaps/devspace-ai-tools-init" \
             | jq -r '.data["init-ai-tools.sh"] // empty' >/tmp/init-ai-tools.sh \
-            && [ -s /tmp/init-ai-tools.sh ]; then
-          chmod 700 /tmp/init-ai-tools.sh
-          /tmp/init-ai-tools.sh "${PROJECT_DIR}" "${PROFILE}"
-        else
-          echo "devspace-ai-tools-init ConfigMap not reachable; OpenCode is"
-          echo "installed but not configured — governed MaaS credentials come"
-          echo "from the platform init script."
+            && [ -s /tmp/init-ai-tools.sh ] && break
+          sleep 2
+        done
+        if [ ! -s /tmp/init-ai-tools.sh ]; then
+          echo "ERROR: devspace-ai-tools-init ConfigMap not reachable after retries."
+          echo "Agent tooling is required; refusing a healthy workspace without it."
+          exit 1
         fi
+        chmod 700 /tmp/init-ai-tools.sh
+        /tmp/init-ai-tools.sh "${PROJECT_DIR}" "${PROFILE}" \
+          || { echo "ERROR: init-ai-tools.sh failed"; exit 1; }
         # AD-S / provision-owns-tools (Architect E-20260811T121308Z): Spec Kit
         # init is workspace setup — fail-closed; agents verify-or-BLOCK only.
         # Path must match golden skill tree (UPLIFT-6 + sdd/ category): Operator

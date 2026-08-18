@@ -956,6 +956,36 @@ oc logs -n wksp-ai-developer <workspace-pod> -c tooling-container --tail=100
 - Confirm resource requests/limits are sufficient.
 - Re-run Stage 060 validation.
 
+## Factory Workspace Starts Healthy With No Agent Tooling
+
+**Affected stage:** Stage 050 RHDH templates (factory workspaces for 070/080)
+
+**Likely cause:** `postStart` fetched `devspace-ai-tools-init` with a single `curl` against the Kubernetes API (`172.30.0.1:443`). When the pod's CNI was not ready yet, curl timed out (`curl: (28) Failed to connect ... Connection timed out`), wrote `/tmp/init-ai-tools.sh` at 0 bytes, printed a warning, and still exited 0. The workspace reported Running/Healthy with no `hermes` binary. The SA token and CA are projected volumes and are present at container start; the race is network, not credentials. Observed on 4 of 5 provisions (v21, v23, v24; v22 succeeded).
+
+Current templates retry the fetch with the same `seq 1 30` / `sleep 2` budget as the git-clone wait, cap each attempt with `--connect-timeout 5`, and `exit 1` if the script is still empty so the DevWorkspace cannot present as healthy.
+
+**Diagnose:**
+
+```bash
+# After this fix: workspace phase should be Failed, not Running.
+oc get devworkspace -n wksp-ai-developer
+oc logs -n wksp-ai-developer <workspace-pod> -c development-tooling --tail=80 \
+  | grep -E 'init-ai-tools|devspace-ai-tools-init|ERROR:'
+
+# On a workspace that already started under the old silent path:
+oc exec -n <ws-ns> <workspace-pod> -c development-tooling -- \
+  wc -c /tmp/init-ai-tools.sh
+oc exec -n <ws-ns> <workspace-pod> -c development-tooling -- \
+  command -v hermes || echo "hermes absent"
+```
+
+**Recover:**
+
+- **Next provision:** restart the workspace so `postStart` re-runs (the fetch is idempotent). Do not re-stamp the RHDH catalog solely for this; the template is SHA-pinned, so only a published artifact that includes the retry is live.
+- **Already-running workspace:** do not treat Running as success. Extract the live ConfigMap and run it in the tooling container (`PROJECT_DIR` / `PROFILE` as that workspace expects). Do not restart a live migration seat to pick this up.
+
+**Related docs:** `gitops/stages/050-advanced-app-platform/base/rhdh/templates/*/skeleton/devfile.yaml`
+
 ## Kilo Code Is Missing From A Dev Spaces Workspace
 
 **Affected stage:** Stage 060
