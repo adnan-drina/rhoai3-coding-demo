@@ -21,6 +21,10 @@ description: "Task list template for feature implementation"
 
 ## Path Conventions
 
+Task file paths are **repository-relative** (`src/main/java/…`).
+`/projects/modernized` is the container mount point of this repository,
+**never a path prefix in a task line.**
+
 - **Single project**: `src/`, `src/test/` at repository root (Java / Maven)
 - Paths shown below assume this migration dest — adjust only if plan.md says otherwise
 - Destination REST is JAX-RS (`*Resource.java`), not Spring `*RestController.java`
@@ -70,6 +74,19 @@ The mint join is the literal regex `@Path("...")`. Every Resource
 implementation task that owns an HTTP route MUST include that token with the
 inventory `http_path` inside the quotes. Prose ``GET `/api/owners` `` is not
 enough.
+
+**`@Path("…")` literals carry CLASS-LEVEL ABSOLUTE resource paths only.**
+A method-level sub-resource path is named in prose ("sub-resource handler at
+relative path /pettypes"), never as a bare `@Path` literal. The class-level
+path already covers its sub-resources by prefix. Do not emit
+`@Path("/pettypes")` on a method task — mint `_jaxrs_class_paths` treats
+every literal as absolute and will false-collide with `/api/pettypes*`.
+
+**A `@Path("…")` literal may appear only inside the story phase that owns
+that resource** — never restated in another story's task, even
+parenthetically, even correctly. Mint attributes every literal to the
+enclosing story phase. Name a foreign class-level path in prose
+("OwnerResource already carries the class-level path /api/owners").
 
 Example: Implement OwnerResource with @Path("/api/owners") in `src/main/java/com/demo/resource/OwnerResource.java`
 
@@ -156,8 +173,9 @@ Do **not** Configure `pom.xml` or `src/main/resources/application.properties` he
 ### Implementation for User Story 2
 
 - [ ] T020 [US2] Create PetResource JAX-RS class with @Path("/api/pets") in src/main/java/com/demo/resource/PetResource.java
-- [ ] T021 [US2] Add POST, PUT, DELETE with @Path("/api/owners") to src/main/java/com/demo/resource/OwnerResource.java
-- [ ] T022 [US2] Add profile-specific overrides in src/main/resources/application.properties
+- [ ] T021 [US2] Add GET sub-resource handler at relative path /pettypes on PetResource (class-level @Path("/api/pets") already covers inventory GET /api/pets/pettypes) in src/main/java/com/demo/resource/PetResource.java
+- [ ] T022 [US2] Add POST, PUT, DELETE on OwnerResource (OwnerResource already carries the class-level path /api/owners) in src/main/java/com/demo/resource/OwnerResource.java
+- [ ] T023 [US2] Add profile-specific overrides in src/main/resources/application.properties
 
 **Checkpoint**: At this point, User Stories 1 AND 2 should both work independently
 
@@ -251,4 +269,4 @@ Do **not** Configure `pom.xml` or `src/main/resources/application.properties` he
 - [Story] label maps task to specific user story for traceability
 - Each user story should be independently completable and testable
 - Verify tests fail before implementing
-- Avoid: two Create/Author/Configure lines for the same dest path; two stories owning one inventory HTTP shape; vague tasks; RestController→Resource filename mapping
+- Avoid: two Create/Author/Configure lines for the same dest path; two stories owning one inventory HTTP shape; `/projects/modernized/` as a task-path prefix; method-level `@Path("...")` literals; restating another story's `@Path` literal; vague tasks; RestController→Resource filename mapping

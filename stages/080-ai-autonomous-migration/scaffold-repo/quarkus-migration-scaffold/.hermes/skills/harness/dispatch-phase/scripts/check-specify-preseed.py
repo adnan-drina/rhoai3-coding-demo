@@ -141,6 +141,33 @@ def main() -> int:
             bad = 1
         else:
             print("OK: @Path emit pin installed under .specify/tasks-template")
+        if "never a path prefix in a task line" not in ttext:
+            print(
+                "FAIL: tasks-template override lacks repo-relative path pin "
+                "(131510Z)",
+                file=sys.stderr,
+            )
+            bad = 1
+        else:
+            print("OK: repo-relative task-path pin installed under .specify/tasks-template")
+        if "CLASS-LEVEL ABSOLUTE" not in ttext:
+            print(
+                "FAIL: tasks-template override lacks class-level @Path pin "
+                "(133010Z)",
+                file=sys.stderr,
+            )
+            bad = 1
+        else:
+            print("OK: class-level @Path pin installed under .specify/tasks-template")
+        if "already carries the class-level path" not in ttext:
+            print(
+                "FAIL: tasks-template override T022 still has a foreign @Path literal "
+                "(135010Z Probe F)",
+                file=sys.stderr,
+            )
+            bad = 1
+        else:
+            print("OK: T022 foreign class path is prose (135010Z)")
 
     if not provision_asset.is_file():
         print(
@@ -196,6 +223,31 @@ def main() -> int:
             bad = 1
         else:
             print("OK: tip @Path emit pin present")
+        if "never a path prefix in a task line" not in ptt:
+            print(
+                "FAIL: tip tasks-template asset lacks repo-relative path pin",
+                file=sys.stderr,
+            )
+            bad = 1
+        else:
+            print("OK: tip repo-relative task-path pin present")
+        if "CLASS-LEVEL ABSOLUTE" not in ptt:
+            print(
+                "FAIL: tip tasks-template asset lacks class-level @Path pin",
+                file=sys.stderr,
+            )
+            bad = 1
+        else:
+            print("OK: tip class-level @Path pin present")
+        if "already carries the class-level path" not in ptt:
+            print(
+                "FAIL: tip tasks-template T022 still has a foreign @Path literal "
+                "(135010Z Probe F)",
+                file=sys.stderr,
+            )
+            bad = 1
+        else:
+            print("OK: tip T022 foreign class path is prose")
 
     if not provision_constitution.is_file():
         print(

@@ -53,6 +53,10 @@ Do not derive phase identity from card titles. Official: dispatcher promotes
 `BLOCK_RECURRENCE_LIMIT` and the card goes `triage`. Promote will not
 reclaim it. Do not reimplement that hold in dispatch.
 
+**Seat pin:** `.hermes/pins.json` `hermes_agent.version` **v0.20.4**
+(binary-local `--help` + `VALID_INITIAL_STATUSES`; omit `--initial-status`
+yields `ready`). Live dispatch runs `scripts/assert-seat-hermes-pin.py`.
+
 ## Fail-closed kind map (Architect `E-20260818T094316Z` / `094840Z`)
 
 Dest-forbidden rewrite and A-8 planning refuse are **not** parent waits.
@@ -159,7 +163,7 @@ The created M1 task instructs the worker to, in order:
 1. `derive-legacy-boot3` (manifest check / derive if missing)
 2. `inventory-entry-points` → `evidence/entry-point-inventory.json` (before handoff emit)
 3. `scan-with-mta` → `mta-analyze-legacy.sh` (writable clone + `MTA_RUN_CWD`; emits findings-handoff)
-4. Validate findings + handoff — **do not** grant stage-advance acks (Operator writes `m1-findings.ack.yaml` per AR-1.1)
+4. Validate findings + handoff — **do not** grant stage-advance acks (Operator writes `m1-findings.ack.yaml` per AR-1.1). M1 ACK GATE complete is the **verifier card** in `references/m1-verifier.md` (`scripts/check-m1-verifier.py`, refuse-on-nonzero). This worker does not complete the gate.
 
 ### M2 body contract (planner)
 
@@ -187,6 +191,8 @@ Job order (inventory before specify; `@Path` emit): `references/m2-planner.md`.
 ## Available scripts
 
 - `scripts/dispatch-phase.sh` — create a phase seed card from `phase-dispatch.yaml`
+- `scripts/check-m1-verifier.py` / `references/m1-verifier.md` — M1 verifier (refuse-on-nonzero)
+- `scripts/assert-seat-hermes-pin.py` — seat Hermes vs `.hermes/pins.json` (`v0.20.4`)
 - `scripts/handover-mint.py` — tasks.md phases → receipt + bodies (A-4/A-5/A-8); lint only (`--write`, no `--parent`)
 - `references/mint-m3-hermes.md` — Hermes holder mint: gates + `kanban_create` + ack_gate
 - `scripts/read-link-graph.py` — BV19-3 parse `kanban show --json` parents/children

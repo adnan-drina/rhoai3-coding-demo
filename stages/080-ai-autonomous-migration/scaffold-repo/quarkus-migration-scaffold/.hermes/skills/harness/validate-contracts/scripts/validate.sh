@@ -2895,8 +2895,14 @@ elif ! grep -q 'evidence/findings-handoff.json' "${overlay}"; then
 elif ! grep -q 'evidence/entry-point-inventory.json' "${overlay}"; then
   echo "FAIL: overlay missing M1 entry-point inventory path" >&2
   rc=1
+elif ! grep -q 'never prefix /projects/modernized' "${overlay}"; then
+  echo "FAIL: overlay missing repo-relative path restatement (131510Z)" >&2
+  rc=1
+elif ! grep -q 'CLASS-LEVEL ABSOLUTE' "${overlay}"; then
+  echo "FAIL: overlay missing class-level @Path restatement (133010Z)" >&2
+  rc=1
 else
-  echo "OK: tip speckit overlay (clarify, no implement, no gates, M1 paths, ingress-only)"
+  echo "OK: tip speckit overlay (clarify, no implement, no gates, M1 paths, ingress-only, class-level @Path)"
 fi
 if [ ! -f "${constitution}" ]; then
   echo "FAIL: missing constitution asset" >&2
@@ -2931,6 +2937,30 @@ if ! grep -q '@Path("' "${tasks_tpl}"; then
   rc=1
 else
   echo "OK: tasks-template @Path emit pin present"
+fi
+if ! grep -q 'never a path prefix in a task line' "${tasks_tpl}"; then
+  echo "FAIL: tasks-template asset lacks repo-relative path pin (131510Z)" >&2
+  rc=1
+else
+  echo "OK: tasks-template repo-relative path pin present"
+fi
+if ! grep -q 'CLASS-LEVEL ABSOLUTE' "${tasks_tpl}"; then
+  echo "FAIL: tasks-template asset lacks class-level @Path pin (133010Z)" >&2
+  rc=1
+else
+  echo "OK: tasks-template class-level @Path pin present"
+fi
+if ! grep -q 'already carries the class-level path' "${tasks_tpl}"; then
+  echo "FAIL: tasks-template T022 still has a foreign @Path literal (135010Z)" >&2
+  rc=1
+else
+  echo "OK: tasks-template T022 foreign class path is prose (135010Z)"
+fi
+if ! grep -q 'only inside the story phase that owns' "${tasks_tpl}"; then
+  echo "FAIL: tasks-template lacks owning-story-phase @Path pin (135010Z)" >&2
+  rc=1
+else
+  echo "OK: tasks-template owning-story-phase @Path pin present"
 fi
 spec_tpl="${SKILLS}/sdd/init-spec-workspace/assets/spec-template.md"
 if [ ! -f "${spec_tpl}" ]; then
@@ -3590,6 +3620,12 @@ else
   echo "FAIL: mint Procedure missing kind map / one-three-one-rule pin (094840Z)" >&2
   rc=1
 fi
+if grep -q 'status==blocked' "${MINT_PROC}"; then
+  echo "OK: mint Procedure story-card status==blocked readback (113245Z)"
+else
+  echo "FAIL: mint Procedure missing status==blocked readback (113245Z; not handover-mint.py)" >&2
+  rc=1
+fi
 if [ ! -f "${HOLDER_BODY}" ]; then
   echo "FAIL: missing holder-card-body.md" >&2
   rc=1
@@ -3602,6 +3638,40 @@ elif ! grep -q 'Fail-closed kind map' "${HOLDER_BODY}" \
 else
   echo "OK: holder card body carries fail-closed kind map + one-three-one-rule"
 fi
+
+echo "== M1 verifier refuse-on-nonzero + seat Hermes pin (111730Z) =="
+PINS="${ROOT}/.hermes/pins.json"
+M1V="${HARNESS}/dispatch-phase/scripts/check-m1-verifier.py"
+M1VD="${HARNESS}/dispatch-phase/references/m1-verifier.md"
+if grep -q '"version": "v0.20.4"' "${PINS}" \
+  && grep -q 'binary-local' "${PINS}"; then
+  echo "OK: pins.json seat Hermes v0.20.4 binary-local contract"
+else
+  echo "FAIL: pins.json missing v0.20.4 / binary-local pin (132010Z)" >&2
+  rc=1
+fi
+if grep -q 'refuse-on-nonzero' "${M1VD}" \
+  && grep -q 'refuse-on-nonzero' "${M1V}" \
+  && grep -q 'M1 ONLY' "${M1V}"; then
+  echo "OK: M1 verifier refuse-on-nonzero (M1 only)"
+else
+  echo "FAIL: M1 verifier missing refuse-on-nonzero (095340Z)" >&2
+  rc=1
+fi
+if grep -q 'assert-seat-hermes-pin.py' "${HARNESS}/dispatch-phase/scripts/dispatch-phase.sh"; then
+  echo "OK: live dispatch asserts seat Hermes pin"
+else
+  echo "FAIL: dispatch-phase.sh missing assert-seat-hermes-pin.py (111730Z)" >&2
+  rc=1
+fi
+m1v_tmp="$(mktemp -d "${TMPDIR:-/tmp}/m1v.XXXXXX")"
+if python3 "${M1V}" "${m1v_tmp}" >/dev/null 2>&1; then
+  echo "FAIL: M1 verifier exit 0 on empty root (must refuse-on-nonzero)" >&2
+  rc=1
+else
+  echo "OK: M1 verifier refuse-on-nonzero on missing artifacts"
+fi
+rm -rf "${m1v_tmp}"
 
 echo "== Card body contract on mint Procedure (035010Z / 224320Z) =="
 if grep -q 'check-body-digest-match.py --expect' "${MINT_PROC}" \

@@ -115,6 +115,12 @@ command -v python3 >/dev/null 2>&1 || die "python3 required"
 # Pre-v12 R0/R3 — tip sync must be green before any phase create
 python3 "${ROOT}/.hermes/skills/harness/dispatch-phase/scripts/check-create-path-tip-sync.py" "${ROOT}" \
   || die "create-path tip sync failed (R0/R3)"
+# Seat Hermes pin (111730Z / 132010Z) — live dispatch only; dry-run stays laptop-safe.
+# Contract is binary-local (--help + VALID_INITIAL_STATUSES), not the public CLI page.
+if [[ "${DRY_RUN}" -eq 0 ]]; then
+  python3 "${ROOT}/.hermes/skills/harness/dispatch-phase/scripts/assert-seat-hermes-pin.py" "${ROOT}" \
+    || die "seat Hermes pin mismatch (pins.json v0.20.4; omit --initial-status yields ready)"
+fi
 # Architect E-20260811T170706Z Class A — quarantine tombstones before any phase create
 python3 "${ROOT}/.hermes/skills/sdd/check-spec-readiness/scripts/assert-quarantine-tombstones.py" "${ROOT}" \
   || die "quarantine tombstones resurrected — wipe + purge restorer (write-fence / quarantine tombstones)"
@@ -321,6 +327,9 @@ orchestration: hermes_native (required)
    `python3 "${HERMES_SKILL_DIR:-.hermes/home/skills/software-development/scan-with-mta}/scripts/check-findings-handoff.py" /projects/modernized`
    Exit: **0=pass**; **1=FAIL→typed BLOCK**; **2=missing script** (harness/lint defect — do not invent).
    **Do not** write stage-advance acks — Operator grants `evidence/acks/m1-findings.ack.yaml` per `ack.md` / AR-1.1.
+   M1 ACK GATE complete is the **verifier card** running
+   `python3 .hermes/skills/harness/dispatch-phase/scripts/check-m1-verifier.py /projects/modernized`
+   (**refuse-on-nonzero**; see `references/m1-verifier.md`). This worker does not complete the gate.
 
 ## Constraints
 - workspace: dir:/projects/modernized

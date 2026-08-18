@@ -58,6 +58,9 @@ REQUIRED_FILES = [
     ".hermes/skills/harness/dispatch-phase/scripts/check-created-cards-claim.py",
     ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
     ".hermes/skills/harness/dispatch-phase/references/holder-card-body.md",
+    ".hermes/skills/harness/dispatch-phase/references/m1-verifier.md",
+    ".hermes/skills/harness/dispatch-phase/scripts/check-m1-verifier.py",
+    ".hermes/skills/harness/dispatch-phase/scripts/assert-seat-hermes-pin.py",
     ".hermes/skills/harness/dispatch-phase/scripts/handover-mint.py",
     ".hermes/skills/harness/dispatch-phase/references/handover-mint.md",
     ".hermes/skills/harness/dispatch-phase/references/delivery-path.md",
@@ -1043,6 +1046,56 @@ REQUIRED_SUBSTRINGS = [
         "tasks-template @Path emit pin (200540Z)",
     ),
     (
+        ".hermes/skills/sdd/init-spec-workspace/assets/tasks-template.md",
+        "never a path prefix in a task line",
+        "tasks-template repo-relative path pin (131510Z)",
+    ),
+    (
+        ".hermes/skills/sdd/init-spec-workspace/assets/tasks-template.md",
+        "CLASS-LEVEL ABSOLUTE",
+        "tasks-template class-level @Path pin (133010Z)",
+    ),
+    (
+        ".hermes/skills/sdd/init-spec-workspace/assets/tasks-template.md",
+        "already carries the class-level path",
+        "tasks-template T022 foreign @Path in prose (135010Z)",
+    ),
+    (
+        ".hermes/skills/sdd/init-spec-workspace/assets/tasks-template.md",
+        "only inside the story phase that owns",
+        "tasks-template @Path owning-story-phase pin (135010Z)",
+    ),
+    (
+        ".hermes/skills/sdd/init-spec-workspace/assets/stop-before-implement.overlay.yml",
+        "CLASS-LEVEL ABSOLUTE",
+        "speckit.tasks overlay restates class-level @Path (133010Z)",
+    ),
+    (
+        ".hermes/skills/sdd/init-spec-workspace/assets/stop-before-implement.overlay.yml",
+        "never prefix /projects/modernized",
+        "speckit.tasks overlay restates repo-relative paths (131510Z)",
+    ),
+    (
+        ".hermes/pins.json",
+        '"version": "v0.20.4"',
+        "seat Hermes pin v0.20.4 (111730Z)",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/references/m1-verifier.md",
+        "refuse-on-nonzero",
+        "M1 verifier refuse-on-nonzero (095340Z)",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/scripts/dispatch-phase.sh",
+        "assert-seat-hermes-pin.py",
+        "live dispatch asserts seat Hermes pin (111730Z)",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/scripts/dispatch-phase.sh",
+        "check-m1-verifier.py",
+        "M1 body points verifier card at check-m1-verifier.py",
+    ),
+    (
         ".hermes/skills/sdd/init-spec-workspace/assets/spec-template.md",
         "enumerate every inventory http_path",
         "spec-template inventory-enumerate pin (203500Z)",
@@ -1071,6 +1124,11 @@ REQUIRED_SUBSTRINGS = [
         ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
         "one-three-one-rule",
         "mint Procedure holder skill pin (094840Z)",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
+        "status==blocked",
+        "mint Procedure story-card status==blocked readback (113245Z)",
     ),
     (
         ".hermes/skills/harness/dispatch-phase/references/holder-card-body.md",

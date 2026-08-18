@@ -62,7 +62,10 @@ Do **not** pin `check-spec-readiness` on the holder until story bodies exist.
      `created-by` / `created_by` = holder id, `--parent REQUIRED` twice
      (holder + ack_gate), parents **`[holder, ack_gate]`** (gate is a
      parent, not a holder-child). Snapshot this new id (After create).
-     **Do NOT dispatch here.**
+     Immediately `hermes kanban show <id> --json` and **refuse unless
+     `status==blocked`**. Omit `--initial-status` yields `ready`
+     (fail-open). Do **not** add this assert to `handover-mint.py`
+     (1088 freeze; Architect `113245Z`). **Do NOT dispatch here.**
 5. After all stories exist (or were skipped), **`kanban_complete` this
    holder**. The gate must stay `blocked` (sticky event). Children stay
    `blocked` because `ack_gate` is incomplete. `dispatch --dry-run` must
@@ -184,6 +187,10 @@ after create to chase this (`192117Z`).
 
 ## After create (same session)
 
+- Immediately after each story `kanban_create`, `hermes kanban show <id> --json`
+  and **refuse unless `status==blocked`**. Omit `--initial-status` yields
+  `ready` (fail-open; dest pin v0.20.4). Do **not** grow `handover-mint.py`
+  for this (1088 freeze).
 - Immediately after each `kanban_create` (ack_gate skip write-set cache;
   every **story** id), emit dest write-set **cache** (not fence policy):
 
