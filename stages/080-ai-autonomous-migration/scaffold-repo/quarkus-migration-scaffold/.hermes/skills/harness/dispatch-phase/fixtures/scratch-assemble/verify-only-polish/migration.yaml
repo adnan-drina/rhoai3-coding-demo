@@ -1,0 +1,12 @@
+# Tiny dest-less workspace: Verify-only polish must refuse scratch --write (I-16 / PB-2).
+migration:
+  legacyRepoUrl: ""
+  target: quarkus
+  provisionedBy: quarkus-migration-scaffold
+  needsDatabase: false
+  legacyBasePackage: ""
+  path_rewrites: []
+  intra_package_maps: []
+analysis:
+  targets:
+    - quarkus

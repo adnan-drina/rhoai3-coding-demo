@@ -417,12 +417,16 @@ substitution / path invention / specimen-body priming. Measure the harness.
      **Do not** freeform-write `partition.json` as a silent substitute.
    - Evidence: Spec Kit seed (e.g. `specs/**/spec.md`) **or** a typed
      `needs_input` block comment — required before Done.
-4. **Do not write** `evidence/briefs/partition.json`. Orchestrator
+4. **Do not write** `evidence/briefs/partition.json` on this dest. Orchestrator
    `handover-mint.py` writes that file as a **receipt** from `tasks.md`
    (A-4/A-6). Path-A authoring is a fail-closed refuse.
-5. **Do not** run partition-coverage or assemble bodies here — handover-mint
-   does that after `tasks.md` exists. See
-   `.hermes/skills/harness/dispatch-phase/references/handover-mint.md`.
+5. **Scratch-assembly Done oracle** (Architect E-20260818T221200Z form a):
+   After `tasks.md` exists, copy `tasks.md` + `evidence/` to a throwaway dir
+   and run `handover-mint.py --write` **there**. Require exit 0.
+   `python3 .hermes/skills/harness/dispatch-phase/scripts/scratch-assemble-mint.py /projects/modernized`
+   Exit: **0=mintable**; **nonzero=typed `needs_input` BLOCK** (plan cannot assemble — do not dest-rewrite).
+   **Forbidden:** `--dry-run` as this gate; authoring dest `partition.json`; growing `handover-mint.py`.
+   Holder mint still follows `mint-m3-hermes.md` after Done.
 6. **Per-artifact Spec Kit resume ladder** (Architect E-20260811T122959Z — decision-complete;
    contract `.hermes/skills/sdd/check-spec-readiness/references/sdd-ordering.md`; retired inverted v11 R-M2.6 and
    M2 unified PLAN — see `governance/retired/m2b-resume-ladder.md`):
@@ -444,6 +448,7 @@ substitution / path invention / specimen-body priming. Measure the harness.
 - Spec Kit invoke evidenced (seed + plan + tasks.md) **or** typed `needs_input` BLOCK recorded
 - `spec.md` enumerates every inventory `http_path` (not a count)
 - Resource task lines include literal `@Path("...")` for owned HTTP routes
+- Scratch `handover-mint.py --write` exit 0 (`scratch-assemble-mint.py`) — dest `partition.json` untouched
 - **No** `partition.json` authored on this card (handover-mint writes the receipt)
 - **No** M3 Kanban children created on this card
 

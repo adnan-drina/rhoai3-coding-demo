@@ -1,0 +1,10 @@
+{
+  "schema": "legacy-at-3/v2",
+  "mode": "derived",
+  "legacy_src": "/projects/legacy",
+  "derived_root": "/projects/.derived/legacy-at-3",
+  "harvest_referent": "/projects/.derived/legacy-at-3",
+  "sha256": "fixture",
+  "frozen_at": "2026-08-18T20:00:00Z",
+  "note": "Dest-less I-16 rehearsal only — not a live harvest."
+}

@@ -9,5 +9,7 @@ card instructs the worker to, in order:
    Spec FR enumerates every inventory `http_path` (not a count).
 4. Spec Kit resume ladder (`specify` → `plan` → `tasks`). Resource task
    lines emit literal `@Path("...")` with the inventory path.
-5. Stop — no `partition.json`, no M3 children. Holder follows
-   `mint-m3-hermes.md`.
+5. Stop — no dest `partition.json`, no M3 children. Before Done, run
+   `scratch-assemble-mint.py` (copy `tasks.md` + `evidence/` to a throwaway
+   dir, `handover-mint.py --write` there, exit 0). `--dry-run` is not this
+   gate. Holder follows `mint-m3-hermes.md`.

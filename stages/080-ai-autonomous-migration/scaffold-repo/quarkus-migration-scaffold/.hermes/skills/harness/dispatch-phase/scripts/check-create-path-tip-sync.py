@@ -62,6 +62,7 @@ REQUIRED_FILES = [
     ".hermes/skills/harness/dispatch-phase/scripts/check-m1-verifier.py",
     ".hermes/skills/harness/dispatch-phase/scripts/assert-seat-hermes-pin.py",
     ".hermes/skills/harness/dispatch-phase/scripts/handover-mint.py",
+    ".hermes/skills/harness/dispatch-phase/scripts/scratch-assemble-mint.py",
     ".hermes/skills/harness/dispatch-phase/references/handover-mint.md",
     ".hermes/skills/harness/dispatch-phase/references/delivery-path.md",
     ".hermes/skills/harness/dispatch-phase/references/native-dispatch.md",
@@ -698,8 +699,13 @@ REQUIRED_SUBSTRINGS = [
     ),
     (
         ".hermes/skills/harness/dispatch-phase/scripts/dispatch-phase.sh",
-        "handover-mint.py",
-        "M2 does not author partition.json; handover-mint writes the receipt",
+        "scratch-assemble-mint.py",
+        "M2 Done is scratch --write assembly (221200Z)",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/references/m2-planner.md",
+        "scratch-assemble-mint.py",
+        "m2-planner scratch-assembly Done oracle (221200Z)",
     ),
     (
         ".hermes/skills/sdd/check-spec-readiness/scripts/stamp-body-dependencies.py",
