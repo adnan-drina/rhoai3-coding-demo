@@ -2920,6 +2920,12 @@ elif ! grep -q 'one creator phase per dest path' "${tasks_tpl}"; then
 else
   echo "OK: unique-owner tasks-template asset present"
 fi
+if ! grep -q 'one user story per inventory HTTP shape' "${tasks_tpl}"; then
+  echo "FAIL: tasks-template asset lacks HTTP-shape unique-owner pin (120010Z)" >&2
+  rc=1
+else
+  echo "OK: HTTP-shape unique-owner tasks-template pin present"
+fi
 if ! grep -q '@Path("' "${tasks_tpl}"; then
   echo "FAIL: tasks-template asset lacks @Path emit pin (200540Z)" >&2
   rc=1
@@ -2935,6 +2941,12 @@ elif ! grep -q 'enumerate every inventory http_path' "${spec_tpl}"; then
   rc=1
 else
   echo "OK: spec-template inventory-enumerate pin present"
+fi
+if ! grep -q 'one user story per inventory HTTP shape' "${spec_tpl}"; then
+  echo "FAIL: spec-template asset lacks HTTP-shape unique-owner restatement (120010Z)" >&2
+  rc=1
+else
+  echo "OK: spec-template HTTP-shape unique-owner restatement present"
 fi
 if ! grep -q 'Read inventory before specify' \
   "${SKILLS}/harness/dispatch-phase/scripts/dispatch-phase.sh"; then

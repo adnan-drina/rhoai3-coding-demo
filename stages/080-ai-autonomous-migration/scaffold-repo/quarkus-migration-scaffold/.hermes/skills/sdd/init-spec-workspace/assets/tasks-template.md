@@ -44,6 +44,20 @@ creator phase. That is path-agnostic (not a `pom.xml`-only rule and not an
   refuse that as `FILE_OVERLAP`.
 - **Verify** lines that name a dest path are not a second owner.
 
+## Unique HTTP-shape ownership (mandatory)
+
+**one user story per inventory HTTP shape.** Each `http_method` + `http_path`
+row in `evidence/entry-point-inventory.json` is implemented by **exactly one**
+user story. Two stories must not both own the same collection (v24: US2 and
+US5 both claimed `/api/pettypes*` → A-8 `endpoints_multi`).
+
+- Assign each inventory row to one story's implementation tasks.
+- If two FRs would share a JAX-RS resource, **one** story Creates that
+  Resource; the other story does **not** also Create/Implement `@Path` for
+  those same inventory rows.
+- This is an authoring obligation. Do not emit a second owner. A-8 already
+  refuses `endpoints_multi`; do not grow the mint to restate this.
+
 ## Inventory (HTTP)
 
 Cover every HTTP row in `evidence/entry-point-inventory.json` (including
@@ -237,4 +251,4 @@ Do **not** Configure `pom.xml` or `src/main/resources/application.properties` he
 - [Story] label maps task to specific user story for traceability
 - Each user story should be independently completable and testable
 - Verify tests fail before implementing
-- Avoid: two Create/Author/Configure lines for the same dest path; vague tasks; RestController→Resource filename mapping
+- Avoid: two Create/Author/Configure lines for the same dest path; two stories owning one inventory HTTP shape; vague tasks; RestController→Resource filename mapping

@@ -123,6 +123,15 @@ def main() -> int:
             bad = 1
         else:
             print("OK: unique-owner tasks-template override installed under .specify/")
+        if "one user story per inventory HTTP shape" not in ttext:
+            print(
+                "FAIL: tasks-template override lacks HTTP-shape unique-owner pin "
+                "(Architect E-20260818T104321Z)",
+                file=sys.stderr,
+            )
+            bad = 1
+        else:
+            print("OK: HTTP-shape unique-owner pin installed under .specify/tasks-template")
         if '@Path("' not in ttext:
             print(
                 "FAIL: tasks-template override missing @Path emit pin "
@@ -170,6 +179,14 @@ def main() -> int:
             bad = 1
         else:
             print("OK: tip unique-owner tasks-template skill asset present")
+        if "one user story per inventory HTTP shape" not in ptt:
+            print(
+                "FAIL: tip tasks-template asset lacks HTTP-shape unique-owner pin",
+                file=sys.stderr,
+            )
+            bad = 1
+        else:
+            print("OK: tip HTTP-shape unique-owner tasks-template pin present")
         if '@Path("' not in ptt:
             print(
                 "FAIL: tip tasks-template asset lacks @Path emit pin "

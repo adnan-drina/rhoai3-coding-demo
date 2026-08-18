@@ -1022,9 +1022,19 @@ REQUIRED_SUBSTRINGS = [
         "A-3 specify args name M1 findings-handoff",
     ),
     (
+        ".hermes/skills/sdd/init-spec-workspace/assets/stop-before-implement.overlay.yml",
+        "one user story per inventory HTTP shape",
+        "speckit.tasks overlay restates HTTP-shape unique-owner (120010Z)",
+    ),
+    (
         ".hermes/skills/sdd/init-spec-workspace/assets/tasks-template.md",
         "one creator phase per dest path",
         "tasks-template unique-owner emit pin (075500Z)",
+    ),
+    (
+        ".hermes/skills/sdd/init-spec-workspace/assets/tasks-template.md",
+        "one user story per inventory HTTP shape",
+        "tasks-template HTTP-shape unique-owner pin (120010Z)",
     ),
     (
         ".hermes/skills/sdd/init-spec-workspace/assets/tasks-template.md",
@@ -1035,6 +1045,11 @@ REQUIRED_SUBSTRINGS = [
         ".hermes/skills/sdd/init-spec-workspace/assets/spec-template.md",
         "enumerate every inventory http_path",
         "spec-template inventory-enumerate pin (203500Z)",
+    ),
+    (
+        ".hermes/skills/sdd/init-spec-workspace/assets/spec-template.md",
+        "one user story per inventory HTTP shape",
+        "spec-template HTTP-shape unique-owner restatement (120010Z)",
     ),
     (
         ".hermes/skills/harness/dispatch-phase/scripts/dispatch-phase.sh",
