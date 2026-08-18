@@ -1407,6 +1407,11 @@ REQUIRED_SUBSTRINGS = [
         "do NOT publish files_writable here",
         "B2 M3 omits phase files_writable (card-resolved)",
     ),
+    (
+        ".hermes/skills/harness/dispatch-phase/scripts/dispatch-phase.sh",
+        '"M2")',
+        "B2 guard labels quoted so extract_body skips them (184010Z)",
+    ),
 ]
 
 FORBIDDEN_SUBSTRINGS = [

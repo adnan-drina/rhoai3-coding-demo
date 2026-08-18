@@ -3832,6 +3832,13 @@ else
   echo "FAIL: M4/M5 files_writable expected [] got M4=${fw_m4} M5=${fw_m5}" >&2
   rc=1
 fi
+# extract_body first-matches unquoted `M2)`; the B2 guard must not shadow the heredoc.
+if python3 "${HARNESS}/dispatch-phase/scripts/check-phase-input-manifest.py" "${ROOT}" M2; then
+  echo "OK: M2 card body extractable (Input manifest; 184010Z unshadow)"
+else
+  echo "FAIL: M2 body missing / extract_body captured B2 guard (184010Z)" >&2
+  rc=1
+fi
 
 echo "== B3 declared-vs-disabled refuse =="
 B3="${HARNESS}/dispatch-phase/scripts/assert-skills-not-disabled.py"

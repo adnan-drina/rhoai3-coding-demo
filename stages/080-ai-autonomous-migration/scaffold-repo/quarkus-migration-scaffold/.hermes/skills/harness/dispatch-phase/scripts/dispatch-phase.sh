@@ -306,16 +306,18 @@ mapfile -t SKILLS < <(python3 "${PHASE_READER}" --yaml "${DISPATCH_YAML}" --phas
   || die "phase-dispatch skills parse failed for ${PHASE}"
 FW_JSON="$(python3 "${PHASE_READER}" --yaml "${DISPATCH_YAML}" --phase "${PHASE}" --print files_writable_json)" \
   || die "phase-dispatch files_writable parse failed for ${PHASE}"
+# Quote labels so check-phase-input-manifest extract_body (^\s+M2\)) skips this
+# guard and captures the card heredoc (Operator E-20260818T184010Z).
 case "${PHASE}" in
-  M2)
+  "M2")
     [[ "${FW_JSON}" != "null" && "${FW_JSON}" != "[]" ]] \
       || die "M2 files_writable unpublished/empty (I-4 / BIND 25a7c1e9)"
     ;;
-  M1|M4|M5)
+  "M1"|"M4"|"M5")
     [[ "${FW_JSON}" != "null" ]] \
       || die "${PHASE} files_writable unpublished (I-4; [] is ok)"
     ;;
-  M3)
+  "M3")
     [[ "${FW_JSON}" == "null" ]] \
       || die "M3 must omit files_writable (card-resolved; no phase union)"
     ;;
