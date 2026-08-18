@@ -10,7 +10,8 @@ the write-set in this order:
 
   1. spawn env `HERMES_KANBAN_FILES_WRITABLE` (card set published at spawn)
   2. card `files_writable` when published (`HERMES_KANBAN_CARD_JSON` /
-     `HERMES_KANBAN_CARD_BODY` — not dest cache)
+     `HERMES_KANBAN_CARD_BODY`, else `kanban.db` body `## Files Writable`
+     via `HERMES_KANBAN_TASK` + `HERMES_KANBAN_DB` — not dest cache)
   3. phase-dispatch.yaml `files_writable` when that key is published
   4. else deny-all `[]` (`task-set-unresolved`)
 
@@ -42,6 +43,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import sqlite3
 import subprocess
 import sys
 from pathlib import Path
@@ -208,6 +210,42 @@ def _writable_from_card_env() -> tuple[list[str] | None, str]:
     return None, ""
 
 
+def _writable_from_kanban_db() -> tuple[list[str] | None, str]:
+    """Card markdown on the live board — not dest write-set JSON.
+
+    Native kanban workers exec the venv hermes-agent binary, so the
+    PATH hydrate wrapper never runs and FILES_WRITABLE / CARD_* stay
+    unset (I-5 / v29 t_89810ca5). Standing still names the card list.
+    """
+    task = os.environ.get("HERMES_KANBAN_TASK", "").strip()
+    db = os.environ.get("HERMES_KANBAN_DB", "").strip()
+    if not db:
+        home = os.environ.get("HERMES_HOME", "").strip()
+        if home:
+            db = str(Path(home) / "kanban.db")
+    if not task or not db:
+        return None, ""
+    db_p = Path(db)
+    if not db_p.is_file():
+        return None, ""
+    try:
+        con = sqlite3.connect(f"file:{db_p}?mode=ro", uri=True)
+        try:
+            row = con.execute(
+                "SELECT body FROM tasks WHERE id = ?", (task,)
+            ).fetchone()
+        finally:
+            con.close()
+    except sqlite3.Error:
+        return None, ""
+    if not row or not isinstance(row[0], str):
+        return None, ""
+    parsed = _parse_files_writable_markdown(row[0])
+    if parsed is not None:
+        return parsed, "card:kanban.db.body"
+    return None, ""
+
+
 def _phase_id(safe_p: Path, task: str) -> str:
     phase = os.environ.get("HERMES_KANBAN_PHASE", "").strip()
     if phase:
@@ -295,6 +333,10 @@ def load_write_set(safe_p: Path) -> tuple[list[str] | None, str]:
     card, card_src = _writable_from_card_env()
     if card is not None:
         return card, card_src
+
+    db_fw, db_src = _writable_from_kanban_db()
+    if db_fw is not None:
+        return db_fw, db_src
 
     phase = _phase_id(safe_p, task)
     yaml_fw, present = _writable_from_phase_yaml(safe_p, phase)

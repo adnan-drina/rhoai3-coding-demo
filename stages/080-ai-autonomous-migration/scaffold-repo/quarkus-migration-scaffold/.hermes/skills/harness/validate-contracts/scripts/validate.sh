@@ -429,6 +429,56 @@ mkdir -p "${hook_tmp}/src/main/java"
   else
     echo "OK: write-set hook ignores dest cache (v24 env-only fence)"
   fi
+  # I-5: native workers do not get FILES_WRITABLE; card markdown on kanban.db
+  # is policy. Dest cache still must not win.
+  python3 - <<PY
+import sqlite3
+from pathlib import Path
+root = Path("${hook_tmp}")
+db = root / "kanban.db"
+con = sqlite3.connect(db)
+con.execute(
+    "CREATE TABLE tasks (id TEXT PRIMARY KEY, title TEXT NOT NULL, body TEXT, "
+    "status TEXT NOT NULL, created_at INTEGER NOT NULL, workspace_kind TEXT)"
+)
+body = """Typed body: evidence/bodies/m3-setup.json
+## Files Writable
+- pom.xml
+- src/main/resources/application.properties
+## Constraints
+"""
+con.execute(
+    "INSERT INTO tasks (id, title, body, status, created_at, workspace_kind) "
+    "VALUES (?, ?, ?, ?, 0, 'dir')",
+    ("t_i5card", "setup: M3 IMPLEMENT: setup", body, "running"),
+)
+con.commit()
+con.close()
+(root / "evidence/runtime/write-sets/t_i5card.json").write_text(
+    '{"task_id":"t_i5card","files_writable":["src/hack.java"]}\n'
+)
+print("OK: scratch kanban.db fixture for I-5 card-body fallback")
+PY
+  unset HERMES_KANBAN_FILES_WRITABLE
+  unset HERMES_KANBAN_CARD_JSON || true
+  unset HERMES_KANBAN_CARD_BODY || true
+  export HERMES_KANBAN_TASK="t_i5card"
+  export HERMES_KANBAN_DB="${hook_tmp}/kanban.db"
+  if printf '%s\n' '{"tool_name":"write_file","tool_input":{"path":"pom.xml"}}' \
+    | python3 "${HOOK}" >/dev/null; then
+    echo "OK: I-5 kanban.db card body allows pom.xml when env unset"
+  else
+    echo "FAIL: I-5 kanban.db card body should allow pom.xml" >&2
+    exit 1
+  fi
+  if printf '%s\n' '{"tool_name":"write_file","tool_input":{"path":"src/hack.java"}}' \
+    | python3 "${HOOK}" >/dev/null; then
+    echo "FAIL: I-5 kanban.db card body should refuse src/hack.java" >&2
+    exit 1
+  else
+    echo "OK: I-5 kanban.db card body refuses OOS src/hack.java (dest cache ignored)"
+  fi
+  unset HERMES_KANBAN_DB
   # Architect E-20260816T185414Z — specs/ is a product write; missing write-set
   # must not let Spec Kit (or SPECIFY_FEATURE_DIRECTORY) through.
   if printf '%s\n' '{"tool_name":"write_file","tool_input":{"path":"specs/001/spec.md"}}' \

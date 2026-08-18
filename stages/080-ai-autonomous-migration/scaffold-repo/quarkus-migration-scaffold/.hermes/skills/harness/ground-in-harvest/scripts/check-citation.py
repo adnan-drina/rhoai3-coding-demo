@@ -21,6 +21,10 @@ from pathlib import Path
 # T-1 / TASK-001 / M3-T12. Fixtures must exercise the Hermes form — a suite
 # that only mints T-1 never proves the commit lint works on live cards
 # (Deputy E-20260813T144954Z P1).
+# Assembler stamps body.task_id = identity.story_id (setup, US1, polish, …)
+# before create. AR-4.3 forbids rewriting that field to t_<hex> after bind
+# (mint-m3-hermes.md / emit-write-set-cache.py). Complete-path citation must
+# accept that slug when it matches identity.story_id (v29 t_89810ca5).
 TASK_ID_RE = re.compile(
     r"\b(?:t_[a-f0-9]{6,}|(?:T|TASK|M[0-9]+-T)[-_]?\d+)\b",
     re.I,
@@ -69,6 +73,15 @@ def is_trivial(obj: dict) -> bool:
         if v in (True, "true", "yes", 1):
             return True
     return False
+
+
+def task_id_ok(tid: str, obj: dict) -> bool:
+    """True when tid is a Hermes card, a T-N story shape, or the assembler slug."""
+    if TASK_ID_RE.fullmatch(tid) or TASK_ID_RE.search(tid):
+        return True
+    ident = obj.get("identity") if isinstance(obj.get("identity"), dict) else {}
+    story = str(ident.get("story_id") or ident.get("storyId") or "").strip()
+    return bool(story) and tid == story
 
 
 def task_id_of(obj: dict) -> str:
@@ -267,10 +280,10 @@ def main() -> int:
             tid = task_id_of(obj)
             if not tid:
                 fail(f"{label}: IMPLEMENT packet missing task id")
-            elif not TASK_ID_RE.fullmatch(tid) and not TASK_ID_RE.search(tid):
+            elif not task_id_ok(tid, obj):
                 fail(
-                    f"{label}: task id {tid!r} not Hermes t_<hex> or story-shaped "
-                    f"T-N (AD-H §17)"
+                    f"{label}: task id {tid!r} not Hermes t_<hex>, story-shaped "
+                    f"T-N, or identity.story_id (AD-H §17 / AR-4.3)"
                 )
 
             if invent_without_locus(obj):

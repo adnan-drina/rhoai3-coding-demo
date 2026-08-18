@@ -50,7 +50,8 @@ in Reasoning before first related dest write.
 - Write only `files_writable` / destination write-set (AR-4.4). The
   `write-set-hook.py` pre_tool_call fence allow-lists that set from
   spawn env `HERMES_KANBAN_FILES_WRITABLE` when published, else the card
-  `files_writable` / `## Files Writable` list, else phase yaml, else
+  `files_writable` / `## Files Writable` list (CARD env or `kanban.db`
+  body via `HERMES_KANBAN_TASK`), else phase yaml, else
   deny-all (BIND `25a7c1e9`). Dest
   `evidence/runtime/write-sets/*.json` is cache, not policy. Native id is
   `HERMES_KANBAN_TASK` — do not scan the typed body for the card id.

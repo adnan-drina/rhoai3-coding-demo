@@ -1375,8 +1375,13 @@ REQUIRED_SUBSTRINGS = [
     ),
     (
         ".hermes/skills/harness/enforce-authority-boundary/scripts/write-set-hook.py",
-        "task-set-unresolved",
-        "v24 fence DENIES when TASK set and FILES_WRITABLE unset",
+        "card:kanban.db.body",
+        "I-5 fence falls back to kanban.db card markdown when spawn env unset",
+    ),
+    (
+        ".hermes/skills/harness/ground-in-harvest/scripts/check-citation.py",
+        "identity.story_id",
+        "AR-4.3 complete-path citation accepts assembler story slug",
     ),
     (
         ".hermes/skills/harness/enforce-authority-boundary/scripts/write-set-hook.py",
