@@ -35,7 +35,14 @@ def _find_tasks(root: Path) -> Path:
     direct = root / "tasks.md"
     if direct.is_file():
         return direct
-    hits = sorted(root.rglob("tasks.md"))
+    # Never discover a tasks.md inside the harness tree. `.hermes` ships INSIDE
+    # the dest (I-14), so on a real dest root this rglob also finds the
+    # fixtures/scratch-assemble/*/tasks.md shipped with this very script --
+    # len(hits) is then 3 (4 once M2 writes its plan) and the oracle dies on
+    # "multiple", making the M2 Done criterion unreachable on every dest.
+    # Fixture roots keep working because `direct` short-circuits above, which is
+    # why validate.sh stayed green while a dest could not run this at all.
+    hits = sorted(p for p in root.rglob("tasks.md") if ".hermes" not in p.parts)
     if len(hits) == 1:
         return hits[0]
     if hits:
