@@ -29,7 +29,9 @@ A-8 planning refuse are **not** parent waits.
 `BLOCK_RECURRENCE_LIMIT`. Argv: **`--kind` before the task id**.
 Do not restore `park-on-block-loop.py`.
 
-Holder create `--skill`: `dispatch-phase` + official `one-three-one-rule`.
+Holder create `--skill`: official `one-three-one-rule` only.
+Do **not** pin `dispatch-phase` on the holder (I-10 B / `25a7c1e9`);
+path-invoke this Procedure. Keep the five names in `skills.disabled`.
 Do **not** pin `check-spec-readiness` on the holder until story bodies exist.
 
 ## Sequence
@@ -133,6 +135,7 @@ Bare filenames resolve under the wrong skill tree and become typed BLOCK
 14. `python3 .hermes/skills/harness/record-run-evidence/scripts/stamp-body-digest.py` (AR-4.3)
 15. `python3 .hermes/skills/sdd/check-spec-readiness/scripts/check-surgical-scopes.py` + `python3 .hermes/skills/sdd/check-spec-readiness/scripts/check-semantic-exits.py` + `python3 .hermes/skills/sdd/check-spec-readiness/scripts/check-operand-count.py --wall-fit`
 16. `python3 .hermes/skills/sdd/check-spec-readiness/scripts/assert-mint-oracles.py --body <body> --skip-task-id`
+17. `python3 .hermes/skills/harness/dispatch-phase/scripts/assert-skills-not-disabled.py /projects/modernized` with `--skill` once per line of `m3-attach-skills.py` stdout (B3 / `25a7c1e9`). Intersection with `skills.disabled` ⇒ refuse. Do **not** grow `handover-mint.py`.
 
 Attach skills from `python3 .hermes/skills/harness/dispatch-phase/scripts/m3-attach-skills.py <body>` (B-16).
 skills = full m3-attach-skills.py stdout

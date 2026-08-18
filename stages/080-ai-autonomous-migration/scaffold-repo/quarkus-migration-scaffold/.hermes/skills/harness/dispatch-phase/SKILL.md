@@ -74,14 +74,16 @@ a planning defect cycles the holder. Do **not** restore `park-on-block-loop.py`.
 Argv order: **`--kind` before the task id** (`204830Z` silent no-op if reversed).
 Then `kanban show` must report `status=blocked`.
 
-## Holder card (Option B — Architect `094840Z`)
+## Holder card (I-10 B — Architect `25a7c1e9`)
 
 Create the M3 wave holder **before** the holder session mints children.
-Pin official `one-three-one-rule` (escalations). Do **not** pin `check-spec-readiness` on the holder until story bodies exist (v22 `skill_view` 0 / unused pin).
+Pin official `one-three-one-rule` (escalations). Do **not** pin `dispatch-phase` — path-invoke `references/mint-m3-hermes.md`. Keep the five names in `skills.disabled`. Do **not** pin `check-spec-readiness` on the holder until story bodies exist (v22 `skill_view` 0 / unused pin).
 
 ```bash
+python3 .hermes/skills/harness/dispatch-phase/scripts/assert-skills-not-disabled.py \
+  /projects/modernized --skill one-three-one-rule
 hermes kanban create --assignee default --workspace dir:/projects/modernized \
-  --skill dispatch-phase --skill one-three-one-rule \
+  --skill one-three-one-rule \
   --parent <m2_task_id> \
   --body-file .hermes/skills/harness/dispatch-phase/references/holder-card-body.md \
   "M3 WAVE HOLDER"
@@ -124,7 +126,8 @@ Create parks (`DISPATCH_MAX=0`). Spawn is native `hermes kanban dispatch --max 1
 1. Runs the pre-create gate chain, dying on the first refusal: tip sync,
    quarantine tombstones, `check-phase-attach-matrix.py`,
    `check-phase-body-script-refs.py`, `check-phase-input-manifest.py`,
-   `check-decision-complete-cards.py`, and — for M2 only —
+   `check-decision-complete-cards.py`, `assert-skills-not-disabled.py` (B3),
+   and — for M2 only —
    `check-specify-preseed.py` (provision owns `specify init`; agents verify
    or BLOCK).
 2. Reads `.hermes/phase-dispatch.yaml` for `role`, `skills[]`,

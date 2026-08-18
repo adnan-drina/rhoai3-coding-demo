@@ -499,6 +499,97 @@ mkdir -p "${hook_tmp}/src/main/java"
   else
     echo "OK: terminal argv targeting write-set cache is refused (defence-in-depth)"
   fi
+  unset HERMES_KANBAN_FILES_WRITABLE
+  unset HERMES_KANBAN_CARD_BODY || true
+  unset HERMES_KANBAN_CARD_JSON || true
+  mkdir -p "${hook_tmp}/.hermes/skills/harness/dispatch-phase/scripts"
+  cp "${HARNESS}/dispatch-phase/scripts/read-phase-dispatch.py" \
+    "${hook_tmp}/.hermes/skills/harness/dispatch-phase/scripts/"
+  cat >"${hook_tmp}/.hermes/phase-dispatch.yaml" <<'YAML'
+phases:
+  M2:
+    skills:
+      - speckit-specify
+    max_runtime_seconds: 3600
+    files_writable:
+      - .specify/
+      - specs/
+  M3:
+    skills:
+      - check-spec-readiness
+    max_runtime_seconds: 2700
+  M4:
+    skills:
+      - check-spec-readiness
+    max_runtime_seconds: 1800
+    files_writable: []
+  M5:
+    skills:
+      - check-spec-readiness
+    max_runtime_seconds: 2400
+    files_writable: []
+YAML
+  export HERMES_KANBAN_TASK="t_m2yaml"
+  export HERMES_KANBAN_PHASE=M2
+  if printf '%s\n' '{"tool_name":"write_file","tool_input":{"path":"specs/001/spec.md"}}' \
+    | python3 "${HOOK}" >/dev/null; then
+    echo "OK: B2 yaml fallback allows M2 specs/ when env unset"
+  else
+    echo "FAIL: B2 yaml fallback refused M2 specs/" >&2
+    exit 1
+  fi
+  if printf '%s\n' '{"tool_name":"write_file","tool_input":{"path":"src/main/java/x/App.java"}}' \
+    | python3 "${HOOK}" >/dev/null; then
+    echo "FAIL: B2 yaml fallback should refuse src/ on M2" >&2
+    exit 1
+  else
+    echo "OK: B2 yaml fallback refuses src/ on M2"
+  fi
+  export HERMES_KANBAN_PHASE=M3
+  export HERMES_KANBAN_TASK="t_m3omit"
+  if printf '%s\n' '{"tool_name":"write_file","tool_input":{"path":"src/main/java/x/App.java"}}' \
+    | python3 "${HOOK}" >/dev/null; then
+    echo "FAIL: M3 yaml omit must deny-all dest product writes" >&2
+    exit 1
+  else
+    echo "OK: M3 yaml omit is deny-all (no phase union)"
+  fi
+  export HERMES_KANBAN_PHASE=M4
+  export HERMES_KANBAN_TASK="t_m4empty"
+  if printf '%s\n' '{"tool_name":"write_file","tool_input":{"path":"src/main/java/x/App.java"}}' \
+    | python3 "${HOOK}" >/dev/null; then
+    echo "FAIL: M4 published [] must refuse src/" >&2
+    exit 1
+  else
+    echo "OK: M4 published [] refuses src/"
+  fi
+  unset HERMES_KANBAN_PHASE
+  export HERMES_KANBAN_TASK="t_story"
+  export HERMES_KANBAN_CARD_BODY="$(printf '%s\n' '## Files Writable' '- src/main/java/com/demo/resource/OwnerResource.java')"
+  if printf '%s\n' '{"tool_name":"write_file","tool_input":{"path":"src/main/java/com/demo/resource/OwnerResource.java"}}' \
+    | python3 "${HOOK}" >/dev/null; then
+    echo "OK: B2 card Files Writable allows the story path"
+  else
+    echo "FAIL: B2 card Files Writable refused the story path" >&2
+    exit 1
+  fi
+  if printf '%s\n' '{"tool_name":"write_file","tool_input":{"path":"pom.xml"}}' \
+    | python3 "${HOOK}" >/dev/null; then
+    echo "FAIL: B2 card Files Writable should refuse pom.xml" >&2
+    exit 1
+  else
+    echo "OK: B2 card Files Writable refuses pom.xml"
+  fi
+  export HERMES_KANBAN_PHASE=M2
+  if printf '%s\n' '{"tool_name":"write_file","tool_input":{"path":"specs/001/spec.md"}}' \
+    | python3 "${HOOK}" >/dev/null; then
+    echo "FAIL: published card must win over M2 yaml (no specs/ on the card)" >&2
+    exit 1
+  else
+    echo "OK: published card wins over phase yaml"
+  fi
+  unset HERMES_KANBAN_PHASE
+  unset HERMES_KANBAN_CARD_BODY
 ) || rc=1
 rm -rf "${hook_tmp}"
 
@@ -3678,18 +3769,21 @@ DP_SKILL="${HARNESS}/dispatch-phase/SKILL.md"
 HOLDER_BODY="${HARNESS}/dispatch-phase/references/holder-card-body.md"
 if grep -q 'Fail-closed kind map' "${DP_SKILL}" \
   && grep -q -- '--skill one-three-one-rule' "${DP_SKILL}" \
+  && grep -q 'Do \*\*not\*\* pin `dispatch-phase`' "${DP_SKILL}" \
+  && ! grep -q -- '--skill dispatch-phase' "${DP_SKILL}" \
   && grep -q 'Do \*\*not\*\* pin `check-spec-readiness`' "${DP_SKILL}"; then
-  echo "OK: dispatch-phase SKILL.md kind map + holder skill pin"
+  echo "OK: dispatch-phase SKILL.md kind map + holder skill pin (I-10 B)"
 else
-  echo "FAIL: dispatch-phase SKILL.md missing kind map / one-three-one-rule pin (094840Z)" >&2
+  echo "FAIL: dispatch-phase SKILL.md missing kind map / I-10 B holder pin (25a7c1e9)" >&2
   rc=1
 fi
 if grep -q 'Fail-closed kind map' "${MINT_PROC}" \
   && grep -q 'one-three-one-rule' "${MINT_PROC}" \
+  && grep -q 'Do \*\*not\*\* pin `dispatch-phase`' "${MINT_PROC}" \
   && grep -q 'Do \*\*not\*\* pin `check-spec-readiness`' "${MINT_PROC}"; then
-  echo "OK: mint Procedure kind map + holder skill pin"
+  echo "OK: mint Procedure kind map + holder skill pin (I-10 B)"
 else
-  echo "FAIL: mint Procedure missing kind map / one-three-one-rule pin (094840Z)" >&2
+  echo "FAIL: mint Procedure missing kind map / I-10 B holder pin (25a7c1e9)" >&2
   rc=1
 fi
 if grep -q 'the park protection' "${MINT_PROC}" \
@@ -3705,11 +3799,69 @@ if [ ! -f "${HOLDER_BODY}" ]; then
 elif ! grep -q 'Fail-closed kind map' "${HOLDER_BODY}" \
   || ! grep -q 'needs_input' "${HOLDER_BODY}" \
   || ! grep -q 'one-three-one-rule' "${HOLDER_BODY}" \
+  || ! grep -q 'Do \*\*not\*\* declare `dispatch-phase`' "${HOLDER_BODY}" \
   || ! grep -q 'Do \*\*not\*\* attach `check-spec-readiness`' "${HOLDER_BODY}"; then
-  echo "FAIL: holder-card-body.md missing kind map / needs_input / skill pin (094840Z)" >&2
+  echo "FAIL: holder-card-body.md missing kind map / needs_input / I-10 B pin (25a7c1e9)" >&2
   rc=1
 else
-  echo "OK: holder card body carries fail-closed kind map + one-three-one-rule"
+  echo "OK: holder card body carries fail-closed kind map + I-10 B path-invoke"
+fi
+
+echo "== B2 phase files_writable (M2/M4/M5 published; M3 omit) =="
+PD_YAML="${ROOT}/.hermes/phase-dispatch.yaml"
+PD_READ="${HARNESS}/dispatch-phase/scripts/read-phase-dispatch.py"
+fw_m2="$(python3 "${PD_READ}" --yaml "${PD_YAML}" --phase M2 --print files_writable_json)"
+fw_m3="$(python3 "${PD_READ}" --yaml "${PD_YAML}" --phase M3 --print files_writable_json)"
+fw_m4="$(python3 "${PD_READ}" --yaml "${PD_YAML}" --phase M4 --print files_writable_json)"
+fw_m5="$(python3 "${PD_READ}" --yaml "${PD_YAML}" --phase M5 --print files_writable_json)"
+if [ "${fw_m2}" = '[".specify/","specs/"]' ]; then
+  echo "OK: M2 files_writable is .specify/ + specs/"
+else
+  echo "FAIL: M2 files_writable expected [.specify/, specs/] got ${fw_m2}" >&2
+  rc=1
+fi
+if [ "${fw_m3}" = "null" ]; then
+  echo "OK: M3 omits files_writable (card-resolved)"
+else
+  echo "FAIL: M3 must omit files_writable, got ${fw_m3}" >&2
+  rc=1
+fi
+if [ "${fw_m4}" = "[]" ] && [ "${fw_m5}" = "[]" ]; then
+  echo "OK: M4/M5 files_writable published empty"
+else
+  echo "FAIL: M4/M5 files_writable expected [] got M4=${fw_m4} M5=${fw_m5}" >&2
+  rc=1
+fi
+
+echo "== B3 declared-vs-disabled refuse =="
+B3="${HARNESS}/dispatch-phase/scripts/assert-skills-not-disabled.py"
+if python3 "${B3}" "${ROOT}" --skill dispatch-phase >/dev/null 2>&1; then
+  echo "FAIL: B3 must refuse --skill dispatch-phase" >&2
+  rc=1
+else
+  echo "OK: B3 refuses a card declaring a disabled skill"
+fi
+if python3 "${B3}" "${ROOT}" --skill check-spec-readiness --skill one-three-one-rule >/dev/null; then
+  echo "OK: B3 allows declared skills outside skills.disabled"
+else
+  echo "FAIL: B3 refused a non-disabled skill" >&2
+  rc=1
+fi
+if python3 "${B3}" "${ROOT}" --from-phase M3 >/dev/null; then
+  echo "OK: B3 --from-phase M3 (pool is not disabled)"
+else
+  echo "FAIL: B3 --from-phase M3 refused the allow-list pool" >&2
+  rc=1
+fi
+
+echo "== F1 tasks-template mirror legacy sub-packages =="
+TASKS_TPL="${ROOT}/.hermes/skills/sdd/init-spec-workspace/assets/tasks-template.md"
+if grep -q 'mirror the legacy sub-package' "${TASKS_TPL}" \
+  && ! grep -q 'com/demo/entity/' "${TASKS_TPL}"; then
+  echo "OK: tasks-template mirrors legacy sub-packages (no entity/ hardcode)"
+else
+  echo "FAIL: tasks-template missing mirror rule or still hardcodes entity/" >&2
+  rc=1
 fi
 
 echo "== M1 verifier refuse-on-nonzero + seat Hermes pin (111730Z) =="

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Spawn-time cache → HERMES_KANBAN_FILES_WRITABLE, then exec real hermes.
 
-The fence reads spawn env only. This wrapper snapshots
-evidence/runtime/write-sets/<task>.json into env **once at exec**.
-It is resolution speed, not a trust boundary (relocatable managed dir
-and $HOME hermes bits remain worker-reachable; hole 2 stays open).
+Snapshots evidence/runtime/write-sets/<task>.json into env **once at exec**,
+else the published phase-dispatch.yaml files_writable key (M3 omit stays
+unset → hook deny-all). Speed, not a trust boundary. The hook must not
+read dest JSON for policy.
 
 Env:
   HERMES_REAL_BIN  real CLI (default: ~/.local/bin/hermes)
@@ -16,6 +16,75 @@ import json
 import os
 import sys
 from pathlib import Path
+
+
+def _apply_fw(fw: list) -> None:
+    os.environ["HERMES_KANBAN_FILES_WRITABLE"] = json.dumps(
+        [str(x) for x in fw if str(x).strip()]
+    )
+
+
+def _hydrate_phase_yaml(root: Path, task: str) -> bool:
+    phase = os.environ.get("HERMES_KANBAN_PHASE", "").strip()
+    if not phase:
+        derived = root / "evidence" / "derived"
+        for name in ("M1", "M2", "M4", "M5"):
+            ptr = derived / f"phase-{name}-task-id.txt"
+            try:
+                if ptr.is_file() and ptr.read_text(encoding="utf-8").strip() == task:
+                    phase = name
+                    break
+            except OSError:
+                continue
+    if not phase:
+        return False
+    reader = (
+        root
+        / ".hermes"
+        / "skills"
+        / "harness"
+        / "dispatch-phase"
+        / "scripts"
+        / "read-phase-dispatch.py"
+    )
+    yaml_path = root / ".hermes" / "phase-dispatch.yaml"
+    if not reader.is_file() or not yaml_path.is_file():
+        return False
+    import subprocess
+    import sys
+
+    try:
+        proc = subprocess.run(
+            [
+                sys.executable,
+                str(reader),
+                "--yaml",
+                str(yaml_path),
+                "--phase",
+                phase,
+                "--print",
+                "files_writable_json",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    if proc.returncode != 0:
+        return False
+    raw = proc.stdout.strip()
+    if raw in ("", "null"):
+        return False
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return False
+    if not isinstance(data, list):
+        return False
+    _apply_fw(data)
+    return True
 
 
 def hydrate() -> None:
@@ -31,21 +100,19 @@ def hydrate() -> None:
     ).strip()
     if not root:
         return
-    path = Path(root) / "evidence" / "runtime" / "write-sets" / f"{task}.json"
-    if not path.is_file():
-        return
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError, TypeError):
-        return
-    if not isinstance(data, dict):
-        return
-    fw = data.get("files_writable")
-    if not isinstance(fw, list):
-        return
-    os.environ["HERMES_KANBAN_FILES_WRITABLE"] = json.dumps(
-        [str(x) for x in fw if str(x).strip()]
-    )
+    root_p = Path(root)
+    path = root_p / "evidence" / "runtime" / "write-sets" / f"{task}.json"
+    if path.is_file():
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError, TypeError):
+            data = None
+        if isinstance(data, dict):
+            fw = data.get("files_writable")
+            if isinstance(fw, list):
+                _apply_fw(fw)
+                return
+    _hydrate_phase_yaml(root_p, task)
 
 
 def main() -> int:

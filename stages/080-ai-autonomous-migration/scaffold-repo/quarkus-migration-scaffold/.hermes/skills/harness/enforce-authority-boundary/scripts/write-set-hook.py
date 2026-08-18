@@ -5,20 +5,24 @@ Native / SAFE_ROOT sandbox only blocks *outside* HERMES_WRITE_SAFE_ROOT
 (HKN-12: a deny-prefix path inside the project is still allowed natively).
 This hook is the one registered pre_tool_call.
 
-Allow-model (B-2, Architect E-20260817T091919Z / v24 075113Z): when a
-write-set is published in **spawn env** `HERMES_KANBAN_FILES_WRITABLE`,
-only those paths pass (deny-prefixes still refuse). A published empty list
-(`[]`) denies every dest-relative write. Enforcement is **path-bearing**:
-if `extract_path` yields a dest path, the tool name does not matter.
-`WRITE_TOOLS` is a no-path fail-closed fast-path only.
+Allow-model (B-2, Architect E-20260817T091919Z / BIND 25a7c1e9): resolve
+the write-set in this order:
 
-Policy is spawn env only. `evidence/runtime/write-sets/*.json` is a mint
-**cache** (forensics / spawn hydrate). This hook must not read dest JSON
-or typed bodies for allow/deny (Architect 35099226 / Operator 7e93fb41).
-v24 does not claim a new trust boundary (hole 2 / `$HOME` stays open).
+  1. spawn env `HERMES_KANBAN_FILES_WRITABLE` (card set published at spawn)
+  2. card `files_writable` when published (`HERMES_KANBAN_CARD_JSON` /
+     `HERMES_KANBAN_CARD_BODY` — not dest cache)
+  3. phase-dispatch.yaml `files_writable` when that key is published
+  4. else deny-all `[]` (`task-set-unresolved`)
 
-If HERMES_KANBAN_TASK is set but FILES_WRITABLE is unset/unparseable,
-treat as published `[]` (fail closed on dest paths).
+A published empty list (`[]`) denies every dest-relative write. Enforcement
+is **path-bearing**: if `extract_path` yields a dest path, the tool name
+does not matter. `WRITE_TOOLS` is a no-path fail-closed fast-path only.
+
+`evidence/runtime/write-sets/*.json` is a mint **cache** (forensics /
+spawn hydrate). This hook must not read dest JSON or typed bodies for
+allow/deny (Architect 35099226 / Operator 7e93fb41). M3 omits the yaml
+key — story write-sets are per-card. v24 does not claim a new trust
+boundary (hole 2 / `$HOME` stays open).
 
 If no kanban task is published, deny-prefix only — validate/dev seats
 keep working without a write-set.
@@ -37,6 +41,8 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -157,14 +163,126 @@ def parse_files_writable_env(raw: str) -> list[str] | None:
     return None
 
 
+def _parse_files_writable_markdown(text: str) -> list[str] | None:
+    """Parse a `## Files Writable` list. None if the section is absent."""
+    in_sec = False
+    seen = False
+    items: list[str] = []
+    for ln in text.splitlines():
+        if re.match(r"^## Files Writable\s*$", ln, re.IGNORECASE):
+            in_sec = True
+            seen = True
+            continue
+        if in_sec:
+            if ln.startswith("## "):
+                break
+            m = re.match(r"^-\s+(.+)$", ln.strip())
+            if m:
+                items.append(m.group(1).strip())
+    if not seen:
+        return None
+    return items
+
+
+def _writable_from_card_env() -> tuple[list[str] | None, str]:
+    raw_json = os.environ.get("HERMES_KANBAN_CARD_JSON", "").strip()
+    if raw_json:
+        try:
+            obj = json.loads(raw_json)
+        except json.JSONDecodeError:
+            obj = None
+        if isinstance(obj, dict):
+            fw = _writable_from_obj(obj)
+            if fw is not None:
+                return fw, "card:HERMES_KANBAN_CARD_JSON"
+            body = obj.get("body")
+            if isinstance(body, str):
+                parsed = _parse_files_writable_markdown(body)
+                if parsed is not None:
+                    return parsed, "card:HERMES_KANBAN_CARD_JSON.body"
+    raw_md = os.environ.get("HERMES_KANBAN_CARD_BODY", "").strip()
+    if raw_md:
+        parsed = _parse_files_writable_markdown(raw_md)
+        if parsed is not None:
+            return parsed, "card:HERMES_KANBAN_CARD_BODY"
+    return None, ""
+
+
+def _phase_id(safe_p: Path, task: str) -> str:
+    phase = os.environ.get("HERMES_KANBAN_PHASE", "").strip()
+    if phase:
+        return phase
+    derived = safe_p / "evidence" / "derived"
+    if not task or not derived.is_dir():
+        return ""
+    for name in ("M1", "M2", "M4", "M5", "M3"):
+        ptr = derived / f"phase-{name}-task-id.txt"
+        try:
+            if ptr.is_file() and ptr.read_text(encoding="utf-8").strip() == task:
+                return name
+        except OSError:
+            continue
+    return ""
+
+
+def _writable_from_phase_yaml(
+    safe_p: Path, phase: str
+) -> tuple[list[str] | None, bool]:
+    """Return (list, key_present). Omit → (None, False). `[]` → ([], True)."""
+    if not phase:
+        return None, False
+    yaml_path = safe_p / ".hermes" / "phase-dispatch.yaml"
+    reader = (
+        safe_p
+        / ".hermes"
+        / "skills"
+        / "harness"
+        / "dispatch-phase"
+        / "scripts"
+        / "read-phase-dispatch.py"
+    )
+    if not yaml_path.is_file() or not reader.is_file():
+        return None, False
+    try:
+        proc = subprocess.run(
+            [
+                sys.executable,
+                str(reader),
+                "--yaml",
+                str(yaml_path),
+                "--phase",
+                phase,
+                "--print",
+                "files_writable_json",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None, False
+    if proc.returncode != 0:
+        return None, False
+    raw = proc.stdout.strip()
+    if raw in ("", "null"):
+        return None, False
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return None, False
+    if not isinstance(data, list):
+        return None, False
+    return [str(x) for x in data if str(x).strip()], True
+
+
 def load_write_set(safe_p: Path) -> tuple[list[str] | None, str]:
     """Return (writable, source).
 
     writable is None when no kanban task is in play (deny-prefix only).
-    writable is [] when a task is set but spawn env is missing/unparseable
+    writable is [] when a task is set but no card/yaml set is published
     (fail-closed on product writes). Dest JSON is never consulted.
     """
-    _ = safe_p  # kept so callers stay Path-shaped; dest tree is not policy
     env_fw = os.environ.get("HERMES_KANBAN_FILES_WRITABLE", "")
     parsed = parse_files_writable_env(env_fw)
     if parsed is not None:
@@ -173,6 +291,15 @@ def load_write_set(safe_p: Path) -> tuple[list[str] | None, str]:
     task = os.environ.get("HERMES_KANBAN_TASK", "").strip()
     if not task:
         return None, "unpublished"
+
+    card, card_src = _writable_from_card_env()
+    if card is not None:
+        return card, card_src
+
+    phase = _phase_id(safe_p, task)
+    yaml_fw, present = _writable_from_phase_yaml(safe_p, phase)
+    if present:
+        return yaml_fw if yaml_fw is not None else [], f"phase-yaml:{phase}"
     return [], f"task-set-unresolved:{task}"
 
 

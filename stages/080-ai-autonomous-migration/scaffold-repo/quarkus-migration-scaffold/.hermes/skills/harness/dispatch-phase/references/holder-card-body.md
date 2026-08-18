@@ -1,9 +1,9 @@
 # M3 WAVE HOLDER
 
-Phase: M3 mint (wave holder). Follow
+Phase: M3 mint (wave holder). Path-invoke
 `.hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md`.
-
-Pinned skills on this card: `dispatch-phase`, `one-three-one-rule`.
+Do **not** declare `dispatch-phase` on this card (I-10 B / `25a7c1e9`).
+Pinned skill: official `one-three-one-rule` only.
 Do **not** attach `check-spec-readiness` until story bodies exist.
 
 Workspace: `dir:/projects/modernized`.

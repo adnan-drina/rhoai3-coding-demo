@@ -29,6 +29,15 @@ Task file paths are **repository-relative** (`src/main/java/…`).
 - Paths shown below assume this migration dest — adjust only if plan.md says otherwise
 - Destination REST is JAX-RS (`*Resource.java`), not Spring `*RestController.java`
 
+## Destination sub-packages (mandatory)
+
+Destination Java sub-packages **mirror the legacy sub-package** under the
+rewritten package root. `path_rewrites` maps package roots only; the
+dependency deriver cannot follow a renamed leaf. Do not emit a destination
+path that substitutes a different sub-package name for the legacy one.
+Specimen-agnostic: derive the leaf from the legacy path. Do not hardcode a
+leaf-package rename.
+
 ## Unique dest-path ownership (mandatory)
 
 **one creator phase per dest path.** Each destination file has exactly one
@@ -126,8 +135,8 @@ Example: Implement OwnerResource with @Path("/api/owners") in `src/main/java/com
 Do **not** Configure `pom.xml` or `src/main/resources/application.properties` here
 — Setup already created them. Add/Verify only if a later story owns that amend.
 
-- [ ] T004 [P] Create Owner entity with JPA annotations in src/main/java/com/demo/entity/Owner.java
-- [ ] T005 [P] Create Pet entity with JPA annotations in src/main/java/com/demo/entity/Pet.java
+- [ ] T004 [P] Create Owner entity with JPA annotations in src/main/java/com/demo/model/Owner.java
+- [ ] T005 [P] Create Pet entity with JPA annotations in src/main/java/com/demo/model/Pet.java
 - [ ] T006 [P] Create OwnerRepository in src/main/java/com/demo/repository/OwnerRepository.java
 - [ ] T007 Create DTOs matching legacy API contracts in src/main/java/com/demo/dto/
 
@@ -266,4 +275,4 @@ Do **not** Configure `pom.xml` or `src/main/resources/application.properties` he
 - [Story] label maps task to specific user story for traceability
 - Each user story should be independently completable and testable
 - Verify tests fail before implementing
-- Avoid: two Create/Author/Configure lines for the same dest path; two stories owning one inventory HTTP shape; `/projects/modernized/` as a task-path prefix; method-level `@Path("...")` literals; restating another story's `@Path` literal; vague tasks; RestController→Resource filename mapping
+- Avoid: two Create/Author/Configure lines for the same dest path; two stories owning one inventory HTTP shape; `/projects/modernized/` as a task-path prefix; method-level `@Path("...")` literals; restating another story's `@Path` literal; vague tasks; RestController→Resource filename mapping; renaming a legacy sub-package on the destination path

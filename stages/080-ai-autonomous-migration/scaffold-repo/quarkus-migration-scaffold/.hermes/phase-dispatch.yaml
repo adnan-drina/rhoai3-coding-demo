@@ -22,9 +22,11 @@
 # Pillar heads stay Cursor. Do not hermes profile create --clone.
 #
 # M3 skills[] is the **allowed attach pool** (B-16), not "attach all five".
-# Wave holder (not this pool): --skill dispatch-phase + one-three-one-rule.
-# Do not pin check-spec-readiness on the holder until story bodies exist
-# (Architect 094840Z). mint-m3-hermes.md attaches check-spec-readiness plus
+# Wave holder (not this pool): path-invoke mint-m3-hermes.md; pin
+# one-three-one-rule only. Do not pin dispatch-phase (I-10 B / 25a7c1e9).
+# Keep the five names in skills.disabled. Do not pin check-spec-readiness
+# on the holder until story bodies exist (Architect 094840Z).
+# mint-m3-hermes.md attaches check-spec-readiness plus
 # identity.operand_skills on story children after bodies exist.
 # Park-at-birth stays (0.4: no promotion-proof
 # status). Serial law is NOT retired. AD-002E skills_unused stays attached
@@ -54,6 +56,12 @@ phases:
       - speckit-specify
     # Operator 093930Z: drop check-spec-readiness (path-invoke) and
     # derive-story-oracles (zero scripts; M2 skill_view is speckit-*).
+    # I-4 / Architect 132530Z / Operator 1411Z / BIND 25a7c1e9: publish
+    # the phase-fixed write-set. Omit was unpublished/deny-all. Fence:
+    # card/env, else this yaml key, else deny-all.
+    files_writable:
+      - .specify/
+      - specs/
     max_runtime_seconds: 3600
     requires_acks:
       - m1-findings
@@ -90,6 +98,10 @@ phases:
     # checkpoint) and on complete via assert-complete-exit-criteria.py
     # (citation + body-digest + provenance). Physical move → .hermes/skills/harness/
     # at v14 mint with UPLIFT-6.
+    #
+    # I-4 / BIND 25a7c1e9: do NOT publish files_writable here. Story
+    # write-sets are per-card (2–3 paths). A phase union would grant every
+    # story ~25 paths and destroy A-5. Fence: card, else yaml, else deny-all.
     skills:
       - check-spec-readiness
       - derive-story-oracles
@@ -124,6 +136,9 @@ phases:
       - boot_health
       - g1_characterization
       - g2_if_harvest
+    # I-4 / BIND 25a7c1e9: publish the phase-fixed set. VERIFY does not
+    # write dest product trees. [] = published empty (not omit).
+    files_writable: []
     max_runtime_seconds: 1800
     requires_acks:
       - m1-findings
@@ -150,6 +165,9 @@ phases:
       - acceptance_live
       - g4_runtime_parity
       - accept_scope  # check-accept-scope.py — SCOPED_ACCEPT if descopes
+    # I-4 / BIND 25a7c1e9: publish the phase-fixed set. CLOSE does not
+    # write dest product trees. [] = published empty (not omit).
+    files_writable: []
     max_runtime_seconds: 2400
     requires_acks:
       - m1-findings

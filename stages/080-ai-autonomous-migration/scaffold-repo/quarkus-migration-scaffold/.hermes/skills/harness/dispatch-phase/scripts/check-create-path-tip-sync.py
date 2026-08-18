@@ -78,6 +78,7 @@ REQUIRED_FILES = [
         ".hermes/skills/analysis/inventory-entry-points/scripts/inventory-entry-points.py",
         ".hermes/skills/analysis/inventory-entry-points/SKILL.md",
     ".hermes/skills/harness/dispatch-phase/scripts/m3-attach-skills.py",
+    ".hermes/skills/harness/dispatch-phase/scripts/assert-skills-not-disabled.py",
     ".hermes/skills/harness/dispatch-phase/scripts/mint-remediation-card.py",
     ".hermes/skills/harness/record-run-evidence/scripts/snapshot-run-audit.py",
     ".hermes/skills/harness/record-run-evidence/scripts/analyze-run-audit.py",
@@ -1097,6 +1098,11 @@ REQUIRED_SUBSTRINGS = [
     ),
     (
         ".hermes/skills/harness/dispatch-phase/scripts/dispatch-phase.sh",
+        "assert-skills-not-disabled.py",
+        "B3 wired into dispatch-phase create (25a7c1e9)",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/scripts/dispatch-phase.sh",
         "assert-seat-hermes-pin.py",
         "live dispatch asserts seat Hermes pin (111730Z)",
     ),
@@ -1364,7 +1370,50 @@ REQUIRED_SUBSTRINGS = [
     (
         ".hermes/skills/harness/dispatch-phase/references/m3-implementer-standing.md",
         "HERMES_KANBAN_FILES_WRITABLE",
-        "M3 standing fence is spawn-env FILES_WRITABLE only",
+        "M3 standing fence names spawn-env FILES_WRITABLE (144100Z card/yaml fallback)",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/SKILL.md",
+        "Do **not** pin `dispatch-phase`",
+        "I-10 B holder create must not pin dispatch-phase (25a7c1e9)",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/references/holder-card-body.md",
+        "Do **not** declare `dispatch-phase`",
+        "I-10 B holder body path-invokes mint Procedure (25a7c1e9)",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
+        "Do **not** pin `dispatch-phase`",
+        "I-10 B mint Procedure holder skill pin (25a7c1e9)",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
+        "assert-skills-not-disabled.py",
+        "B3 create-time declared-vs-disabled refuse (25a7c1e9)",
+    ),
+    (
+        ".hermes/skills/sdd/init-spec-workspace/assets/tasks-template.md",
+        "mirror the legacy sub-package",
+        "F1 destination sub-packages mirror legacy (25a7c1e9)",
+    ),
+    (
+        ".hermes/skills/harness/enforce-authority-boundary/scripts/write-set-hook.py",
+        "phase-yaml:",
+        "B2 fence falls back to phase yaml when card unpublished",
+    ),
+    (
+        ".hermes/phase-dispatch.yaml",
+        "do NOT publish files_writable here",
+        "B2 M3 omits phase files_writable (card-resolved)",
+    ),
+]
+
+FORBIDDEN_SUBSTRINGS = [
+    (
+        ".hermes/skills/harness/dispatch-phase/SKILL.md",
+        "--skill dispatch-phase",
+        "I-10 B holder create argv must not pass --skill dispatch-phase",
     ),
 ]
 
@@ -1418,6 +1467,18 @@ def main() -> int:
         text = path.read_text(encoding="utf-8")
         if needle not in text:
             print(f"FAIL: {label}: {rel} missing {needle!r}", file=sys.stderr)
+            bad = 1
+        else:
+            print(f"OK: {label}")
+    for rel, needle, label in FORBIDDEN_SUBSTRINGS:
+        path = root / rel
+        if not path.is_file():
+            print(f"FAIL: {label}: missing {rel}", file=sys.stderr)
+            bad = 1
+            continue
+        text = path.read_text(encoding="utf-8")
+        if needle in text:
+            print(f"FAIL: {label}: {rel} still has {needle!r}", file=sys.stderr)
             bad = 1
         else:
             print(f"OK: {label}")

@@ -304,6 +304,22 @@ TITLE="$(python3 "${PHASE_READER}" --yaml "${DISPATCH_YAML}" --phase "${PHASE}" 
   || die "phase-dispatch title parse failed for ${PHASE}"
 mapfile -t SKILLS < <(python3 "${PHASE_READER}" --yaml "${DISPATCH_YAML}" --phase "${PHASE}" --print skills) \
   || die "phase-dispatch skills parse failed for ${PHASE}"
+FW_JSON="$(python3 "${PHASE_READER}" --yaml "${DISPATCH_YAML}" --phase "${PHASE}" --print files_writable_json)" \
+  || die "phase-dispatch files_writable parse failed for ${PHASE}"
+case "${PHASE}" in
+  M2)
+    [[ "${FW_JSON}" != "null" && "${FW_JSON}" != "[]" ]] \
+      || die "M2 files_writable unpublished/empty (I-4 / BIND 25a7c1e9)"
+    ;;
+  M1|M4|M5)
+    [[ "${FW_JSON}" != "null" ]] \
+      || die "${PHASE} files_writable unpublished (I-4; [] is ok)"
+    ;;
+  M3)
+    [[ "${FW_JSON}" == "null" ]] \
+      || die "M3 must omit files_writable (card-resolved; no phase union)"
+    ;;
+esac
 
 IDEM_KEY="${IDEM_OVERRIDE:-${IDEM_PREFIX}-${PHASE}-v1}"
 
@@ -545,6 +561,14 @@ done
 echo "dispatch-phase: phase=${PHASE} assignee=${ASSIGNEE} max_runtime=${MAX_RUNTIME}s skills=${SKILLS[*]}"
 echo "dispatch-phase: idempotency_key=${IDEM_KEY} workspace=dir:${WORKSPACE_DIR}"
 
+B3_ARGS=("${ROOT}")
+for s in "${SKILLS[@]}"; do
+  [[ -n "${s}" ]] && B3_ARGS+=(--skill "${s}")
+done
+python3 "${ROOT}/.hermes/skills/harness/dispatch-phase/scripts/assert-skills-not-disabled.py" \
+  "${B3_ARGS[@]}" \
+  || die "B3: declared skill is in skills.disabled"
+
 if [[ "${DRY_RUN}" -eq 1 ]]; then
   echo "dispatch-phase: DRY_RUN — would create: ${TITLE}"
   printf '  %q' hermes kanban create "${CREATE_ARGS[@]}" "${TITLE}"
@@ -584,45 +608,28 @@ echo "${TASK_ID}" >"${ROOT}/evidence/derived/phase-${PHASE}-task-id.txt"
 echo "REVIEW_ADHERE_OBSERVE=${TASK_ID}"
 echo "dispatch-phase: created ${TASK_ID} (Review:adhere-observe-${TASK_ID} REQUIRED)"
 
-if [[ "${PHASE}" == "M1" ]]; then
+if [[ "${FW_JSON}" != "null" ]]; then
   mkdir -p "${ROOT}/evidence/runtime/write-sets"
-  python3 - "${ROOT}" "${TASK_ID}" <<'PY'
+  python3 - "${ROOT}" "${TASK_ID}" "${PHASE}" "${FW_JSON}" <<'PY'
 import json, sys
 from pathlib import Path
-root, task = Path(sys.argv[1]), sys.argv[2]
-# Cache, not fence policy (Architect 35099226). Spawn hydrate may copy
-# this into HERMES_KANBAN_FILES_WRITABLE; write-set-hook.py must not
-# open it.
+root, task, phase, fw_json = Path(sys.argv[1]), sys.argv[2], sys.argv[3], sys.argv[4]
+fw = json.loads(fw_json)
+if not isinstance(fw, list):
+    raise SystemExit(f"dispatch-phase: {phase} files_writable is not a list")
 doc = {
     "schema": "rhoai3.write-set-cache/v1",
     "authority": "cache-not-policy",
     "task_id": task,
-    "files_writable": [],
+    "files_writable": fw,
 }
 ws = root / "evidence" / "runtime" / "write-sets"
 ws.mkdir(parents=True, exist_ok=True)
 (ws / f"{task}.json").write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
-print(f"dispatch-phase: M1 write-set cache {task} → [] (published empty; not omit)")
+print(f"dispatch-phase: {phase} write-set cache {task} → {fw!r} (cache not policy)")
 PY
-fi
-
-if [[ "${PHASE}" == "M2" ]]; then
-  mkdir -p "${ROOT}/evidence/runtime/write-sets"
-  python3 - "${ROOT}" "${TASK_ID}" <<'PY'
-import json, sys
-from pathlib import Path
-root, task = Path(sys.argv[1]), sys.argv[2]
-doc = {
-    "schema": "rhoai3.write-set-cache/v1",
-    "authority": "cache-not-policy",
-    "task_id": task,
-    "files_writable": [".specify/", "specs/"],
-}
-ws = root / "evidence" / "runtime" / "write-sets"
-ws.mkdir(parents=True, exist_ok=True)
-(ws / f"{task}.json").write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
-print(f"dispatch-phase: M2 write-set cache {task} → .specify/ + specs/")
-PY
+else
+  echo "dispatch-phase: ${PHASE} omits files_writable — no phase write-set cache (card-resolved)"
 fi
 
 if [[ "${DISPATCH_MAX}" -gt 0 ]]; then
