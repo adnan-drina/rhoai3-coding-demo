@@ -677,6 +677,21 @@ REQUIRED_SUBSTRINGS = [
         "specimen-agnostic helpers (Operator E-150800Z)",
     ),
     (
+        ".hermes/skills/sdd/check-spec-readiness/scripts/specimen_agnostic.py",
+        "intra_package_maps",
+        "leaf maps beside path_rewrites (Architect E-20260818T180200Z)",
+    ),
+    (
+        ".hermes/skills/sdd/check-spec-readiness/scripts/stamp-body-dependencies.py",
+        "intra_package_maps",
+        "deriver applies leaf maps (Architect E-20260818T180200Z)",
+    ),
+    (
+        "migration.yaml",
+        "intra_package_maps:",
+        "golden declares empty leaf maps (Architect E-20260818T180200Z)",
+    ),
+    (
         ".hermes/skills/sdd/check-spec-readiness/scripts/check-partition-coverage.py",
         "allow-specimen-fixture",
         "coverage gate fixture-gated (Operator E-150800Z)",
@@ -1396,6 +1411,11 @@ REQUIRED_SUBSTRINGS = [
         ".hermes/skills/sdd/init-spec-workspace/assets/tasks-template.md",
         "mirror the legacy sub-package",
         "F1 destination sub-packages mirror legacy (25a7c1e9)",
+    ),
+    (
+        ".hermes/skills/sdd/init-spec-workspace/assets/tasks-template.md",
+        "intra_package_maps",
+        "F option 2 deriver maps named in tasks-template (180200Z)",
     ),
     (
         ".hermes/skills/harness/enforce-authority-boundary/scripts/write-set-hook.py",

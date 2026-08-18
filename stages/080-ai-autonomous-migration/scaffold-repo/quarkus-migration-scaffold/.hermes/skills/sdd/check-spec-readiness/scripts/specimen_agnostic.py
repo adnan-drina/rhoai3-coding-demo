@@ -15,15 +15,30 @@ from pathlib import Path
 from typing import Any
 
 def _parse_migration_yaml_lite(text: str) -> dict:
-    """Minimal migration.yaml reader (no PyYAML dep). Supports legacyBasePackage
-    and path_rewrites list used by portability stamps."""
+    """Minimal migration.yaml reader (no PyYAML dep). Supports legacyBasePackage,
+    path_rewrites, and intra_package_maps lists used by portability stamps."""
     out: dict = {"migration": {}}
     mig = out["migration"]
     lines = text.splitlines()
     i = 0
     in_migration = False
-    in_rewrites = False
+    in_list: str | None = None
     current: dict | None = None
+
+    def _scalar(key: str, s: str) -> None:
+        nonlocal in_list, current
+        mig[key] = s.split(":", 1)[1].strip().strip('"').strip("'")
+        in_list = None
+        current = None
+
+    def _start_list(canonical: str, also: str | None = None) -> None:
+        nonlocal in_list, current
+        mig[canonical] = []
+        if also:
+            mig[also] = mig[canonical]
+        in_list = canonical
+        current = None
+
     while i < len(lines):
         ln = lines[i]
         raw = ln.rstrip()
@@ -31,7 +46,7 @@ def _parse_migration_yaml_lite(text: str) -> dict:
         # ("...wrong.migration:"). Treat that as section open even inside #.
         if raw.strip().startswith("#") and raw.rstrip().endswith("migration:"):
             in_migration = True
-            in_rewrites = False
+            in_list = None
             i += 1
             continue
         if not raw.strip() or raw.strip().startswith("#"):
@@ -40,57 +55,48 @@ def _parse_migration_yaml_lite(text: str) -> dict:
         # Tolerate non-comment glued forms too.
         if raw == "migration:" or raw.rstrip().endswith("migration:"):
             in_migration = True
-            in_rewrites = False
+            in_list = None
             i += 1
             continue
         if in_migration and raw and not raw.startswith(" ") and not raw.startswith("\t"):
             # left migration section
             in_migration = False
-            in_rewrites = False
+            in_list = None
             continue
         if not in_migration:
             i += 1
             continue
         s = raw.strip()
         if s.startswith("legacyRepoUrl:"):
-            mig["legacyRepoUrl"] = s.split(":", 1)[1].strip().strip('"').strip("'")
-            in_rewrites = False
+            _scalar("legacyRepoUrl", s)
         elif s.startswith("legacyBasePackage:"):
-            mig["legacyBasePackage"] = s.split(":", 1)[1].strip().strip('"').strip("'")
-            in_rewrites = False
+            _scalar("legacyBasePackage", s)
         elif s.startswith("legacy_base_package:"):
-            mig["legacy_base_package"] = s.split(":", 1)[1].strip().strip('"').strip("'")
-            in_rewrites = False
+            _scalar("legacy_base_package", s)
         elif s.startswith("legacyPackage:"):
             # RHDH app-migration skeleton stamp key (alias of legacyBasePackage)
-            mig["legacyPackage"] = s.split(":", 1)[1].strip().strip('"').strip("'")
-            in_rewrites = False
+            _scalar("legacyPackage", s)
         elif s.startswith("targetPackage:") or s.startswith("target_package:"):
-            mig["targetPackage"] = s.split(":", 1)[1].strip().strip('"').strip("'")
-            in_rewrites = False
-        elif s.startswith("path_rewrites:") or s.startswith("packageRemap:"):
-            key = "path_rewrites" if s.startswith("path_rewrites") else "packageRemap"
-            mig[key] = []
-            in_rewrites = True
-            current = None
-        elif in_rewrites and s.startswith("- "):
+            _scalar("targetPackage", s)
+        elif s.startswith("path_rewrites:"):
+            _start_list("path_rewrites")
+        elif s.startswith("packageRemap:"):
+            _start_list("path_rewrites", also="packageRemap")
+        elif s.startswith("intra_package_maps:") or s.startswith("leaf_maps:"):
+            _start_list("intra_package_maps")
+        elif in_list and s.startswith("- "):
             current = {}
-            mig.setdefault("path_rewrites", mig.get("packageRemap") or [])
-            # normalize to path_rewrites
-            if "path_rewrites" not in mig:
-                mig["path_rewrites"] = []
-            if "packageRemap" in mig and mig["packageRemap"] is not mig.get("path_rewrites"):
-                mig["path_rewrites"] = mig["packageRemap"]
-            mig["path_rewrites"].append(current)
+            mig.setdefault(in_list, [])
+            mig[in_list].append(current)
             rest = s[2:].strip()
             if rest and ":" in rest:
                 k, v = rest.split(":", 1)
                 current[k.strip()] = v.strip().strip('"').strip("'")
-        elif in_rewrites and current is not None and ":" in s and s[0] not in "-":
+        elif in_list and current is not None and ":" in s and s[0] not in "-":
             k, v = s.split(":", 1)
             current[k.strip()] = v.strip().strip('"').strip("'")
         else:
-            in_rewrites = False
+            in_list = None
         i += 1
     return out
 
@@ -234,21 +240,94 @@ def path_rewrites(root: Path) -> list[tuple[str, str]]:
     return rewrites
 
 
+def _slash_dir(s: str) -> str:
+    p = str(s or "").replace("\\", "/").strip().strip("/")
+    return f"{p}/" if p else ""
+
+
+def intra_package_maps(root: Path) -> list[tuple[str, str]]:
+    """Return (dest_leaf, legacy_leaf) pairs under the rewritten package root.
+
+    Source: migration.yaml migration.intra_package_maps (alias leaf_maps):
+    [{from, to}, ...] with the same from=dest / to=legacy convention as
+    path_rewrites. Leaves are relative to the package prefix, not full paths.
+    Empty when dest leaves already mirror legacy. Do not hardcode specimen
+    leaf names in Python — stamps live in the per-run yaml.
+    """
+    mig = load_migration_yaml(root).get("migration") or {}
+    if not isinstance(mig, dict):
+        return []
+    raw = mig.get("intra_package_maps") or mig.get("leaf_maps") or []
+    out: list[tuple[str, str]] = []
+    if isinstance(raw, list):
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+            frm = _slash_dir(item.get("from") or item.get("dest") or "")
+            to = _slash_dir(item.get("to") or item.get("legacy") or "")
+            if frm and to and frm != to:
+                out.append((frm, to))
+    return out
+
+
+def dest_hole_leaves(root: Path) -> tuple[str, ...]:
+    """Dest directory names that count as domain-leaf DEPENDENCY_HOLE.
+
+    Unmapped seats keep the prior unmapped convention. Mapped seats use every
+    leaf named in the stamp (dest and legacy sides) so leftover either-side
+    paths still hole.
+    """
+    pairs = intra_package_maps(root)
+    if not pairs:
+        return ("model",)
+    names: list[str] = []
+    for dest_leaf, leg_leaf in pairs:
+        for raw in (dest_leaf, leg_leaf):
+            n = str(raw).strip("/")
+            if n and n not in names:
+                names.append(n)
+    return tuple(names) if names else ("model",)
+
+
+def _apply_leaf_remainder(
+    remainder: str, leaf_pairs: list[tuple[str, str]], *, to_dest: bool
+) -> str:
+    if not leaf_pairs:
+        return remainder
+    idx = 1 if to_dest else 0
+    ordered = sorted(leaf_pairs, key=lambda pair: len(pair[idx]), reverse=True)
+    for dest_leaf, leg_leaf in ordered:
+        src = _slash_dir(leg_leaf if to_dest else dest_leaf)
+        dst = _slash_dir(dest_leaf if to_dest else leg_leaf)
+        if src and remainder.startswith(src):
+            return dst + remainder[len(src) :]
+    return remainder
+
+
 def rewrite_across(
-    rel: str, pairs: list[tuple[str, str]], *, to_dest: bool
+    rel: str,
+    pairs: list[tuple[str, str]],
+    *,
+    to_dest: bool,
+    leaf_pairs: list[tuple[str, str]] | None = None,
 ) -> str:
     """Map a src/... path between dest and legacy prefixes (path_rewrites).
 
     `pairs` is `(dest_prefix, legacy_prefix)` as returned by `path_rewrites`.
+    `leaf_pairs` is `(dest_leaf, legacy_leaf)` from `intra_package_maps`,
+    applied to the remainder only after a prefix pair matches.
     Do not invent a second mapper — every stamp that crosses the trees uses this.
     """
     p = (rel or "").replace("\\", "/").lstrip("./")
+    leaves = leaf_pairs or []
     for dest_p, leg_p in pairs:
         if to_dest:
             if p.startswith(leg_p):
-                return dest_p + p[len(leg_p) :]
+                rem = _apply_leaf_remainder(p[len(leg_p) :], leaves, to_dest=True)
+                return dest_p + rem
         elif p.startswith(dest_p):
-            return leg_p + p[len(dest_p) :]
+            rem = _apply_leaf_remainder(p[len(dest_p) :], leaves, to_dest=False)
+            return leg_p + rem
     return p
 
 

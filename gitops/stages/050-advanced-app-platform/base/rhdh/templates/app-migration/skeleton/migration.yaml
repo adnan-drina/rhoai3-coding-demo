@@ -27,6 +27,11 @@ migration:
       to: src/main/java/org/springframework/samples/petclinic/
     - from: src/test/java/com/demo/
       to: src/test/java/org/springframework/samples/petclinic/
+  # Dest↔legacy leaves under the rewritten package root (from=dest, to=legacy).
+  # The deriver applies these; the plan may rename a leaf.
+  intra_package_maps:
+    - from: entity/
+      to: model/
 {%- elif is_cart %}
   legacyBasePackage: com.redhat.coolstore
   legacyPackage: com.redhat.coolstore
@@ -36,12 +41,14 @@ migration:
       to: src/main/java/com/redhat/coolstore/
     - from: src/test/java/com/demo/
       to: src/test/java/com/redhat/coolstore/
+  intra_package_maps: []
 {%- else %}
   # Unknown specimen — set legacyBasePackage/targetPackage before M1.
   legacyBasePackage: ""
   legacyPackage: ""
   targetPackage: com.demo
   path_rewrites: []
+  intra_package_maps: []
 {%- endif %}
 
 {%- if is_petclinic %}

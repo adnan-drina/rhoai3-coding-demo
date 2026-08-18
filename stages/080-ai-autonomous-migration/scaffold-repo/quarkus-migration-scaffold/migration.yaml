@@ -3,8 +3,9 @@
 # (AD-003 amendment A): --target only, never --source.
 #
 # Specimen-agnostic (Deputy E-20260813T184217Z): golden must NOT ship a demo
-# legacyBasePackage / path_rewrites. Stamp comes from the RHDH app-migration
-# template or from M1 inventory derive — never inherit a specimen by copy.
+# legacyBasePackage / path_rewrites / intra_package_maps. Stamp comes from the
+# RHDH app-migration template or from M1 inventory derive — never inherit a
+# specimen by copy.
 migration:
   legacyRepoUrl: ""
   target: quarkus
@@ -12,6 +13,7 @@ migration:
   needsDatabase: false
   legacyBasePackage: ""
   path_rewrites: []
+  intra_package_maps: []
 
 analysis:
   targets:

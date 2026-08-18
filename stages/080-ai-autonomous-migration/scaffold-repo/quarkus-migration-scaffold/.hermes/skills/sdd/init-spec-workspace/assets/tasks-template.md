@@ -32,11 +32,12 @@ Task file paths are **repository-relative** (`src/main/java/…`).
 ## Destination sub-packages (mandatory)
 
 Destination Java sub-packages **mirror the legacy sub-package** under the
-rewritten package root. `path_rewrites` maps package roots only; the
-dependency deriver cannot follow a renamed leaf. Do not emit a destination
-path that substitutes a different sub-package name for the legacy one.
-Specimen-agnostic: derive the leaf from the legacy path. Do not hardcode a
-leaf-package rename.
+rewritten package root (hygiene). `path_rewrites` maps package roots;
+`intra_package_maps` in `migration.yaml` maps dest↔legacy leaves when they
+differ. The deriver applies both — that is the gate; this prose is not.
+Do not invent a leaf rename that `migration.yaml` does not declare.
+Specimen-agnostic: derive the leaf from the legacy path plus stamped maps.
+Do not hardcode a leaf-package rename in the plan.
 
 ## Unique dest-path ownership (mandatory)
 

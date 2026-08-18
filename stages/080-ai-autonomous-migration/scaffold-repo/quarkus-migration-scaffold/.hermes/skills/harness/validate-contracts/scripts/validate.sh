@@ -1502,6 +1502,62 @@ else
   cat /tmp/dep-close.out /tmp/dep-close.err >&2
   rc=1
 fi
+# Architect E-20260818T180200Z — deriver applies intra_package_maps (no specimen literals)
+map_tmp="$(mktemp -d)"
+mkdir -p "${map_tmp}/modernized/evidence/bodies" \
+  "${map_tmp}/.derived/legacy-at-3/src/main/java/com/acme/legacy/beta"
+cat > "${map_tmp}/modernized/migration.yaml" <<'YAML'
+migration:
+  legacyBasePackage: com.acme.legacy
+  targetPackage: com.demo
+  path_rewrites:
+    - from: src/main/java/com/demo/
+      to: src/main/java/com/acme/legacy/
+  intra_package_maps:
+    - from: alpha/
+      to: beta/
+YAML
+printf '%s\n' 'package com.acme.legacy.beta; public class Base { private Integer id; }' \
+  > "${map_tmp}/.derived/legacy-at-3/src/main/java/com/acme/legacy/beta/Base.java"
+printf '%s\n' 'package com.acme.legacy.beta; public class Leaf extends Base { }' \
+  > "${map_tmp}/.derived/legacy-at-3/src/main/java/com/acme/legacy/beta/Leaf.java"
+python3 - <<PY
+import json
+from pathlib import Path
+root = Path("${map_tmp}/modernized")
+body = {
+  "identity": {"story_id": "foundational", "operand_count": 1},
+  "files_in_scope": ["src/main/java/com/demo/alpha/Leaf.java"],
+  "files_writable": ["src/main/java/com/demo/alpha/Leaf.java"],
+}
+(root / "evidence/bodies/m3-foundational.json").write_text(json.dumps(body) + "\n")
+PY
+if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/stamp-body-dependencies.py" \
+    "${map_tmp}/modernized" --body evidence/bodies/m3-foundational.json --write \
+    >/tmp/dep-map.out 2>/tmp/dep-map.err; then
+  if python3 - "${map_tmp}" <<'PY'
+import json, sys
+from pathlib import Path
+b = json.loads((Path(sys.argv[1]) / "modernized/evidence/bodies/m3-foundational.json").read_text())
+fw = set(b.get("files_writable") or [])
+ok = "src/main/java/com/demo/alpha/Base.java" in fw
+legacy = [d.get("file") for d in (b.get("dependencies") or []) if "acme/legacy" in str(d.get("file") or "")]
+raise SystemExit(0 if ok and not legacy else 1)
+PY
+  then
+    echo "OK: intra_package_maps rewrite dest alpha/ onto legacy beta/ and close dest twins"
+  else
+    echo "FAIL: expected dest alpha/Base.java on files_writable via leaf maps" >&2
+    cat /tmp/dep-map.out /tmp/dep-map.err >&2
+    cat "${map_tmp}/modernized/evidence/bodies/m3-foundational.json" >&2
+    rc=1
+  fi
+else
+  echo "FAIL: mapped dest alpha/Leaf.java should stamp (not HOLE/VACUOUS)" >&2
+  cat /tmp/dep-map.out /tmp/dep-map.err >&2
+  rc=1
+fi
+rm -rf "${map_tmp}"
 python3 - <<PY
 import json
 from pathlib import Path

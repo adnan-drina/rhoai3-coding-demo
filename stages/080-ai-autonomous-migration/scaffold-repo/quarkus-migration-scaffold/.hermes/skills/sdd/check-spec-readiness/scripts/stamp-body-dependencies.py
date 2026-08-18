@@ -5,16 +5,17 @@ For each Java import reachable from this body's files_writable, emit:
   { "file": "<dest-rel path>", "provider": "<story_id>" | "pre-exists" }
 
 `provider` is the story whose files_writable owns the file. Paths are dest-tree
-(via migration.yaml `path_rewrites`). Never emit a legacy Spring path as
-dest-relative `pre-exists` (Architect E-20260817T162352Z / E-20260817T161821Z).
+(via migration.yaml `path_rewrites` and `intra_package_maps`). Never emit a
+legacy Spring path as dest-relative `pre-exists`
+(Architect E-20260817T162352Z / E-20260817T161821Z).
 
 Unowned dest twins of project `extends` (and same-package types the source
 names) are added to *this* story's write-set — transitive closure, stop at
 JDK/framework. That is not a dest→legacy filename mapper and not a tasks.md
 rewrite.
 
-Orphans that remain unowned dest model/repo paths → DEPENDENCY_HOLE listing
-the full dest-path set.
+Orphans that remain unowned dest domain-leaf/repo paths → DEPENDENCY_HOLE
+listing the full dest-path set.
 
 Usage:
   python3 stamp-body-dependencies.py /projects/modernized --body evidence/bodies/m3-s-002a.json --write
@@ -43,6 +44,8 @@ if str(_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS))
 
 from specimen_agnostic import (  # noqa: E402
+    dest_hole_leaves,
+    intra_package_maps,
     legacy_java_prefixes,
     path_rewrites,
     rewrite_across,
@@ -82,12 +85,17 @@ def strip_java_comments(text: str) -> str:
 
 def make_rewrites(root: Path):
     pairs = path_rewrites(root)
+    leaves = intra_package_maps(root)
 
     def to_dest(path: str) -> str:
-        return rewrite_across(strip_abs_prefix(path), pairs, to_dest=True)
+        return rewrite_across(
+            strip_abs_prefix(path), pairs, to_dest=True, leaf_pairs=leaves
+        )
 
     def to_legacy(path: str) -> str:
-        return rewrite_across(strip_abs_prefix(path), pairs, to_dest=False)
+        return rewrite_across(
+            strip_abs_prefix(path), pairs, to_dest=False, leaf_pairs=leaves
+        )
 
     return pairs, to_dest, to_legacy
 
@@ -535,10 +543,14 @@ def close_write_set(
     return added
 
 
-def is_model_or_repo_hole(dest_rel: str) -> bool:
+def is_model_or_repo_hole(
+    dest_rel: str, leaves: tuple[str, ...] | None = None
+) -> bool:
     f = dest_rel.replace("\\", "/")
-    if "/model/" in f:
-        return True
+    for name in leaves if leaves else ("model",):
+        token = "/" + str(name).strip("/") + "/"
+        if token != "//" and token in f:
+            return True
     return (
         "/repository/" in f
         and f.endswith("Repository.java")
@@ -698,7 +710,8 @@ def main() -> int:
             fields=["dependencies", "files_writable", "files_in_scope"],
             source=(
                 "legacy source import+extends scan + provider map from "
-                "evidence/bodies (migration.yaml path_rewrites; dest paths)"
+                "evidence/bodies (migration.yaml path_rewrites + "
+                "intra_package_maps; dest paths)"
             ),
             summary=f"stamped dependencies n={len(ordered)} closure={len(added)}",
             extra={"n": len(ordered), "closure": len(added)},
@@ -707,14 +720,16 @@ def main() -> int:
         print(f"OK: injection receipt → {receipt}")
     else:
         print(json.dumps({"dependencies": ordered, "closure": added}, indent=2))
+    hole_leaves = dest_hole_leaves(root)
     holes = [
         d["file"]
         for d in ordered
-        if d["provider"] == "pre-exists" and is_model_or_repo_hole(d["file"])
+        if d["provider"] == "pre-exists"
+        and is_model_or_repo_hole(d["file"], hole_leaves)
     ]
     if holes:
         print(
-            "DEPENDENCY_HOLE: model/interface deps lack story owner — "
+            "DEPENDENCY_HOLE: domain-leaf/interface deps lack story owner — "
             "assign in partition/bodies before dispatch:",
             file=sys.stderr,
         )

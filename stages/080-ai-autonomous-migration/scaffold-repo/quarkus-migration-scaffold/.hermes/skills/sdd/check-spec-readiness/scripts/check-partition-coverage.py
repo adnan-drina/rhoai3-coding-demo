@@ -56,14 +56,17 @@ if str(_SCRIPTS) not in sys.path:
 
 from specimen_agnostic import (  # noqa: E402
     inventory_http_expected,
+    intra_package_maps,
     load_json,
     path_rewrites,
     resolve_inventory_path,
+    rewrite_across,
 )
 
 
 def make_norm_file(root: Path):
     rewrites = path_rewrites(root)
+    leaves = intra_package_maps(root)
 
     def norm_file(path: str) -> str:
         p = path.replace("\\", "/")
@@ -77,11 +80,9 @@ def make_norm_file(root: Path):
         ):
             if p.startswith(prefix):
                 p = p[len(prefix) :]
-        for dest_p, leg_p in rewrites:
-            if p.startswith(dest_p):
-                p = leg_p + p[len(dest_p) :]
-                break
-        return p.lstrip("./")
+        return rewrite_across(
+            p.lstrip("./"), rewrites, to_dest=False, leaf_pairs=leaves
+        )
 
     return norm_file
 
