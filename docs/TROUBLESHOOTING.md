@@ -986,6 +986,42 @@ oc exec -n <ws-ns> <workspace-pod> -c development-tooling -- \
 
 **Related docs:** `gitops/stages/050-advanced-app-platform/base/rhdh/templates/*/skeleton/devfile.yaml`
 
+## Factory Workspace hermes-dash Route Returns 503 Or Nothing Listens On 9119
+
+**Affected stage:** Stage 050 RHDH app-migration skeleton (factory workspaces for 080)
+
+**Likely cause:** Three defects in the factory `postStart`: (1) launch logs claimed loopback while che-gateway routes to the pod IP, so a 127.0.0.1-only bind 503s the route; (2) `start-hermes-dashboard` was fail-soft (`WARN` + exit 0); (3) it was a second `postStart` that skipped when Hermes was missing, and it looked for the pre-warmed UI under `~/.hermes` while `ensure_hermes` writes `web_dist` under `$HERMES_HOME`. Current template starts the dashboard in the same `postStart` as tools, after Hermes and Managed Scope `dashboard.basic_auth`, binds `0.0.0.0:9119`, and writes `/tmp/hermes-dashboard.status` (`state=listening` or `state=failed`). Dashboard failure does not fail the workspace (observability, not capability).
+
+**Diagnose:**
+
+```bash
+# Workspace stays Running; dashboard health is the sentinel, not phase.
+oc exec -n <ws-ns> <workspace-pod> -c development-tooling -- \
+  cat /tmp/hermes-dashboard.status
+oc exec -n <ws-ns> <workspace-pod> -c development-tooling -- \
+  grep -E 'Hermes dashboard|ERROR: Hermes dashboard' /tmp/hermes-dashboard.log /tmp/poststart-stdout.txt 2>/dev/null
+oc exec -n <ws-ns> <workspace-pod> -c development-tooling -- \
+  python3 -c 'import pathlib
+want="23A7"
+for proc in ("/proc/net/tcp","/proc/net/tcp6"):
+    p=pathlib.Path(proc)
+    if not p.exists():
+        continue
+    for line in p.read_text().splitlines()[1:]:
+        f=line.split(); lip,lp=f[1].split(":")
+        if lp.upper()==want and f[3]=="0A":
+            print(proc, lip, lp)'
+```
+
+`state=failed` with `basic_auth missing` means `ensure_hermes` did not write Managed Scope — do not bind `0.0.0.0` without it (kanban plugin routes skip HTTP auth). `web_dist missing` is a pre-warm miss, not a route bug. Bind hex `0100007F:23A7` is localhost-only (route 503); `00000000:23A7` is the pod-IP bind che-gateway needs.
+
+**Recover:**
+
+- **Next provision:** after golden publish + catalog re-stamp, a new workspace should show `state=listening` / `bind=0.0.0.0:9119`. Login is Managed Scope basic-auth (`ai-developer` / demo password) behind the che-gateway OAuth on the `hermes-dash` endpoint.
+- **Already-running workspace:** do not restart a live migration seat. If Hermes is already installed, start by hand in the tooling container only when the operator asks: `hermes dashboard --skip-build --host 0.0.0.0 --port 9119 --no-open` after confirming `grep basic_auth /projects/.platform/hermes/config.yaml`.
+
+**Related docs:** `gitops/stages/050-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml`
+
 ## Kilo Code Is Missing From A Dev Spaces Workspace
 
 **Affected stage:** Stage 060

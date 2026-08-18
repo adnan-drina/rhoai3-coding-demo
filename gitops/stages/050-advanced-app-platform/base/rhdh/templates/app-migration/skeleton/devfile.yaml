@@ -210,6 +210,11 @@ commands:
         chmod 700 /tmp/init-ai-tools.sh
         /tmp/init-ai-tools.sh "${PROJECT_DIR}" "${PROFILE}" \
           || { echo "ERROR: init-ai-tools.sh failed"; exit 1; }
+        export PATH="${HOME}/.local/bin:${HERMES_MANAGED_DIR:-/projects/.platform/hermes}/bin:${PATH}"
+        if ! command -v hermes >/dev/null 2>&1; then
+          echo "ERROR: hermes missing after init-ai-tools.sh"
+          exit 1
+        fi
         # AD-S / provision-owns-tools (Architect E-20260811T121308Z): Spec Kit
         # init is workspace setup — fail-closed; agents verify-or-BLOCK only.
         # Path must match golden skill tree (UPLIFT-6 + sdd/ category): Operator
@@ -256,74 +261,102 @@ commands:
         else
           echo "WARN: missing ${PROVISION_CLI} — Quarkus CLI not provisioned"
         fi
-  - id: start-hermes-dashboard
-    exec:
-      component: development-tooling
-      # Operator E-20260812T171806Z: loopback bind + che-gateway endpoint
-      # (secure public). Fail-soft: missing Hermes / pre-warm must not block IDE.
-      commandLine: |
-        set +e
-        export PATH="${HOME}/.local/bin:${PATH}"
-        PROJECT_DIR="/projects/modernized"
-        if [ -f "${HOME}/.bashrc" ]; then
-          # shellcheck disable=SC1090
-          . "${HOME}/.bashrc" 2>/dev/null || true
-        fi
-        if ! command -v hermes >/dev/null 2>&1; then
-          echo "WARN: hermes absent — dashboard not started (recovery: hermes dashboard --skip-build --host 0.0.0.0 --port 9119 --no-open)"
-          exit 0
-        fi
-        UI="${HOME}/.hermes/hermes-agent/hermes_cli/web_dist/index.html"
-        if [ ! -f "${UI}" ]; then
-          echo "WARN: Hermes dashboard UI pre-warm missing at ${UI} — skip auto-start"
-          exit 0
-        fi
-        if python3 -c 'import socket;s=socket.socket();s.settimeout(0.5);s.connect(("127.0.0.1",9119))' 2>/dev/null; then
-          echo "Hermes dashboard already listening on 127.0.0.1:9119"
-          exit 0
-        fi
-        cd "${PROJECT_DIR}" 2>/dev/null || cd /projects/modernized || true
-        start_dash() {
-          nohup hermes dashboard --skip-build --host 0.0.0.0 --port 9119 --no-open \
-            >/tmp/hermes-dashboard.log 2>&1 &
-          echo $!
+        # Hermes dashboard: che-gateway routes to the pod IP, so bind
+        # 0.0.0.0:9119. Official kanban docs: plugin routes skip HTTP auth
+        # and --host 0.0.0.0 exposes them; Managed Scope seeds
+        # dashboard.basic_auth first (ensure_hermes). Same postStart as
+        # tools so this cannot run before hermes/UI/auth exist (Dev Spaces
+        # 3.28 §12.5.3: one postStart). Observability only — fail visible
+        # via /tmp/hermes-dashboard.status, never fail the IDE.
+        DASH_STATUS="/tmp/hermes-dashboard.status"
+        dash_fail() {
+          echo "ERROR: Hermes dashboard: $*"
+          printf 'state=failed\nreason=%s\n' "$*" >"${DASH_STATUS}"
         }
-        listening() {
+        : "${HERMES_HOME:=/projects/modernized/.hermes/home}"
+        : "${HERMES_MANAGED_DIR:=/projects/.platform/hermes}"
+        dash_listening() {
           python3 -c 'import socket;s=socket.socket();s.settimeout(0.5);s.connect(("127.0.0.1",9119))' 2>/dev/null
         }
-        # Supervised start (Architect E-20260809T003929Z / E-20260809T005047Z):
-        # READY log alone is not liveness — mirror golden scaffold.
-        pid="$(start_dash)"
-        echo "Hermes dashboard postStart: launched pid=${pid} loopback 127.0.0.1:9119"
-        ok=0
-        for i in 1 2 3 4 5 6 7 8 9 10; do
-          sleep 1
-          if listening; then ok=1; break; fi
-        done
-        if [ "${ok}" -ne 1 ]; then
-          echo "WARN: dashboard not listening after 10s — one restart"
-          kill "${pid}" 2>/dev/null || true
-          pid="$(start_dash)"
-          sleep 3
-          if listening; then ok=1; fi
-        fi
-        if [ "${ok}" -eq 1 ]; then
-          # Tiny watchdog: restart once if the process dies within ~3m of workspace start.
-          nohup bash -c '
-            for _ in $(seq 1 36); do
-              sleep 5
-              if python3 -c "import socket;s=socket.socket();s.settimeout(0.5);s.connect((\"127.0.0.1\",9119))" 2>/dev/null; then
-                continue
-              fi
-              echo "dashboard-watchdog: port 9119 down — restart once" >>/tmp/hermes-dashboard.log
-              nohup hermes dashboard --skip-build --host 0.0.0.0 --port 9119 --no-open \
-                >>/tmp/hermes-dashboard.log 2>&1 &
-              exit 0
-            done
-          ' >/tmp/hermes-dashboard-watchdog.log 2>&1 &
-          echo "Hermes dashboard postStart: LISTENING on 127.0.0.1:9119 (watchdog armed; open hermes-dashboard endpoint via che-gateway/OAuth)"
+        dash_bind() {
+          python3 -c 'import pathlib
+want="23A7"
+addrs=[]
+for proc in ("/proc/net/tcp","/proc/net/tcp6"):
+    p=pathlib.Path(proc)
+    if not p.exists():
+        continue
+    for line in p.read_text().splitlines()[1:]:
+        f=line.split()
+        lip, lp = f[1].split(":")
+        if lp.upper()==want and f[3]=="0A":
+            addrs.append(lip)
+print("0.0.0.0" if any(a in ("00000000","00000000000000000000000000000000") for a in addrs) else ("127.0.0.1" if addrs else "none"))'
+        }
+        if [ ! -f "${HERMES_MANAGED_DIR}/config.yaml" ] || ! grep -q "basic_auth" "${HERMES_MANAGED_DIR}/config.yaml"; then
+          dash_fail "Managed Scope dashboard.basic_auth missing; refusing unauthenticated 0.0.0.0 bind"
         else
-          echo "WARN: dashboard still not listening — best-effort only; recovery: hermes dashboard --skip-build --host 0.0.0.0 --port 9119 --no-open"
+          UI=""
+          for candidate in \
+            "${HERMES_HOME}/hermes-agent/hermes_cli/web_dist/index.html" \
+            "${HOME}/.hermes/hermes-agent/hermes_cli/web_dist/index.html"; do
+            if [ -f "${candidate}" ]; then UI="${candidate}"; break; fi
+          done
+          if [ -z "${UI}" ]; then
+            dash_fail "web_dist missing under HERMES_HOME/HOME (pre-warm failed)"
+          elif dash_listening; then
+            b="$(dash_bind)"
+            if [ "${b}" = "0.0.0.0" ]; then
+              printf 'state=listening\nbind=0.0.0.0:9119\n' >"${DASH_STATUS}"
+              echo "Hermes dashboard already listening on 0.0.0.0:9119"
+            else
+              dash_fail "already bound ${b:-unknown}:9119, not 0.0.0.0 (che-gateway would 503)"
+            fi
+          else
+            cd "${PROJECT_DIR}" 2>/dev/null || cd /projects/modernized || true
+            start_dash() {
+              nohup hermes dashboard --skip-build --host 0.0.0.0 --port 9119 --no-open \
+                >/tmp/hermes-dashboard.log 2>&1 &
+              echo $!
+            }
+            pid="$(start_dash)"
+            echo "Hermes dashboard postStart: launched pid=${pid} bind 0.0.0.0:9119"
+            ok=0
+            for i in $(seq 1 10); do
+              sleep 1
+              dash_listening && ok=1 && break
+            done
+            if [ "${ok}" -ne 1 ]; then
+              echo "WARN: dashboard not listening after 10s — one restart"
+              kill "${pid}" 2>/dev/null || true
+              pid="$(start_dash)"
+              sleep 3
+              dash_listening && ok=1
+            fi
+            if [ "${ok}" -eq 1 ]; then
+              b="$(dash_bind)"
+              if [ "${b}" != "0.0.0.0" ]; then
+                dash_fail "listening but bind=${b:-unknown} (need 0.0.0.0 for che-gateway)"
+              else
+                printf 'state=listening\nbind=0.0.0.0:9119\npid=%s\n' "${pid}" >"${DASH_STATUS}"
+                nohup bash -c '
+                  for _ in $(seq 1 36); do
+                    sleep 5
+                    if python3 -c "import socket;s=socket.socket();s.settimeout(0.5);s.connect((\"127.0.0.1\",9119))" 2>/dev/null; then
+                      continue
+                    fi
+                    echo "dashboard-watchdog: port 9119 down — restart once" >>/tmp/hermes-dashboard.log
+                    nohup hermes dashboard --skip-build --host 0.0.0.0 --port 9119 --no-open \
+                      >>/tmp/hermes-dashboard.log 2>&1 &
+                    exit 0
+                  done
+                ' >/tmp/hermes-dashboard-watchdog.log 2>&1 &
+                echo "Hermes dashboard postStart: LISTENING on 0.0.0.0:9119 (watchdog armed)"
+              fi
+            else
+              dash_fail "not listening after start+restart; see /tmp/hermes-dashboard.log"
+            fi
+          fi
         fi
   # The UDI base image documents JAVA_HOME_<version> variables as the
   # supported way to select a JDK (sdkman default is Java 17; the pom
@@ -349,4 +382,3 @@ commands:
 events:
   postStart:
     - init-migration-tools
-    - start-hermes-dashboard
