@@ -708,6 +708,11 @@ REQUIRED_SUBSTRINGS = [
         "ownership strips dual-named polish path (203811Z)",
     ),
     (
+        ".hermes/skills/harness/dispatch-phase/scripts/scratch-assemble-mint.py",
+        "Never discover a tasks.md inside the harness tree",
+        "scratch oracle ignores dest-shipped fixture tasks.md",
+    ),
+    (
         ".hermes/skills/harness/dispatch-phase/references/m2-planner.md",
         "scratch-assemble-mint.py",
         "m2-planner scratch-assembly Done oracle (221200Z)",
