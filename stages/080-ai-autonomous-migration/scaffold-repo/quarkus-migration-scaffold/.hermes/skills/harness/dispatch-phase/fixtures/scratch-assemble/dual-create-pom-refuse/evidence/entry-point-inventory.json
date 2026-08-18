@@ -1,0 +1,27 @@
+{
+  "schema": "rhoai3.entry-point-inventory/v1",
+  "scanned_at": "2026-08-18T20:00:00Z",
+  "root": "/projects/.derived/legacy-at-3",
+  "execution_evidence": {
+    "scanner": "fixture",
+    "java_files_seen": 1,
+    "ran": true,
+    "vacuous": false
+  },
+  "counts": {
+    "total": 1,
+    "http": 1,
+    "non_http": 0
+  },
+  "entry_points": [
+    {
+      "kind": "http",
+      "subtype": "spring-mvc-or-jaxrs",
+      "file": "src/main/java/org/springframework/samples/petclinic/rest/FooRestController.java",
+      "line": 1,
+      "symbol": "FooRestController#getFoo",
+      "http_method": "GET",
+      "http_path": "/api/foo"
+    }
+  ]
+}

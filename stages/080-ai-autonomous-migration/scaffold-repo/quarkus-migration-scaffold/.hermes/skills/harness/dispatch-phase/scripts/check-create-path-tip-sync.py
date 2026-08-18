@@ -703,6 +703,11 @@ REQUIRED_SUBSTRINGS = [
         "M2 Done is scratch --write assembly (221200Z)",
     ),
     (
+        ".hermes/skills/harness/dispatch-phase/scripts/scratch-assemble-mint.py",
+        "assert-polish-excludes",
+        "ownership strips dual-named polish path (203811Z)",
+    ),
+    (
         ".hermes/skills/harness/dispatch-phase/references/m2-planner.md",
         "scratch-assemble-mint.py",
         "m2-planner scratch-assembly Done oracle (221200Z)",

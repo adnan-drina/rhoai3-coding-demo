@@ -8,11 +8,13 @@ Does not grow handover-mint.py (freeze 1088).
 Usage:
   python3 scratch-assemble-mint.py <dest-root>
   python3 scratch-assemble-mint.py <fixture-root> --expect-fail
+  python3 scratch-assemble-mint.py <fixture-root> --assert-polish-excludes pom.xml
 """
 from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import shutil
 import subprocess
 import sys
@@ -33,7 +35,7 @@ def _find_tasks(root: Path) -> Path:
     direct = root / "tasks.md"
     if direct.is_file():
         return direct
-    hits = sorted(src.rglob("tasks.md"))
+    hits = sorted(root.rglob("tasks.md"))
     if len(hits) == 1:
         return hits[0]
     if hits:
@@ -81,6 +83,19 @@ def _stage(src: Path, wrap: Path) -> Path:
     return modern
 
 
+def _polish_files(modern: Path) -> list[str]:
+    part = modern / "evidence" / "briefs" / "partition.json"
+    data = json.loads(part.read_text(encoding="utf-8"))
+    out: list[str] = []
+    for s in data.get("stories") or []:
+        if str(s.get("kind") or "").lower() != "polish":
+            continue
+        for p in s.get("files_in_scope") or []:
+            if isinstance(p, str) and p.strip():
+                out.append(p.replace("\\", "/"))
+    return out
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("root")
@@ -88,6 +103,11 @@ def main() -> int:
         "--expect-fail",
         action="store_true",
         help="rehearsal: require --write to refuse (Verify-only polish / PB-2)",
+    )
+    ap.add_argument(
+        "--assert-polish-excludes",
+        metavar="PATH",
+        help="after a successful --write, require PATH absent from polish files_in_scope",
     )
     args = ap.parse_args()
     src = Path(args.root).resolve()
@@ -142,6 +162,20 @@ def main() -> int:
             print(blob, file=sys.stderr)
             print(f"FAIL: scratch handover-mint --write rc={proc.returncode}", file=sys.stderr)
             return 1
+        if args.assert_polish_excludes:
+            want = args.assert_polish_excludes.replace("\\", "/")
+            held = _polish_files(modern)
+            if want in held:
+                print(
+                    f"FAIL: polish files_in_scope still holds {want}: {held}",
+                    file=sys.stderr,
+                )
+                return 1
+            print(
+                f"OK: ownership stripped {want} from polish "
+                f"(dest partition.json untouched)"
+            )
+            return 0
         print("OK: scratch handover-mint --write (dest partition.json untouched)")
         return 0
     finally:

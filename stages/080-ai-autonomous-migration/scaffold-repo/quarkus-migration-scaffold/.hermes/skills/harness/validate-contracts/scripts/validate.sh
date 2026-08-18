@@ -3610,6 +3610,8 @@ fi
 echo "== I-16 M2 scratch --write oracle (Verify-only polish must refuse) =="
 SCRATCH_ORACLE="${SKILLS}/harness/dispatch-phase/scripts/scratch-assemble-mint.py"
 SCRATCH_FIX="${SKILLS}/harness/dispatch-phase/fixtures/scratch-assemble/verify-only-polish"
+I16_ADMIT="${SKILLS}/harness/dispatch-phase/fixtures/scratch-assemble/create-healthtest-admit"
+POM_STRIP="${SKILLS}/harness/dispatch-phase/fixtures/scratch-assemble/dual-create-pom-refuse"
 if [ ! -f "${SCRATCH_ORACLE}" ]; then
   echo "FAIL: missing scratch-assemble-mint.py" >&2
   rc=1
@@ -3617,6 +3619,14 @@ elif python3 "${SCRATCH_ORACLE}" "${SCRATCH_FIX}" --expect-fail; then
   echo "OK: Verify-only polish scratch --write refuses (PB-2 rehearsal)"
 else
   echo "FAIL: Verify-only polish did not refuse scratch --write (221200Z)" >&2
+  rc=1
+fi
+echo "== I-16 Create HealthTest polish must assemble; dual-Create pom strips to Setup =="
+if python3 "${SCRATCH_ORACLE}" "${I16_ADMIT}" \
+  && python3 "${SCRATCH_ORACLE}" "${POM_STRIP}" --assert-polish-excludes pom.xml; then
+  echo "OK: Create HealthTest assembles; polish Create pom.xml is stripped to Setup"
+else
+  echo "FAIL: I-16 positive assemble / ownership-strip rehearsal (203811Z)" >&2
   rc=1
 fi
 echo "== AD-H §7 root scripts/ absent from golden =="
