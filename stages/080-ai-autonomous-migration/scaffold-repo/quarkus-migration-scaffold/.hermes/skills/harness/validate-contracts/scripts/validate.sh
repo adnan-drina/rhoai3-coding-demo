@@ -3115,6 +3115,15 @@ if ! grep -q 'only inside the story phase that owns' "${tasks_tpl}"; then
 else
   echo "OK: tasks-template owning-story-phase @Path pin present"
 fi
+if ! grep -q 'NAMES a dest file must CREATE it' "${tasks_tpl}"; then
+  echo "FAIL: tasks-template lacks polish Create-named-file pin (I-16 / 215010Z)" >&2
+  rc=1
+elif grep -q 'Verify quality gate' "${tasks_tpl}"; then
+  echo "FAIL: tasks-template polish sample still Verifies pom.xml (I-16 / 215010Z)" >&2
+  rc=1
+else
+  echo "OK: tasks-template polish names a dest file must Create it (I-16)"
+fi
 spec_tpl="${SKILLS}/sdd/init-spec-workspace/assets/spec-template.md"
 if [ ! -f "${spec_tpl}" ]; then
   echo "FAIL: missing spec-template asset" >&2

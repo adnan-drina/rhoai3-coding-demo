@@ -57,6 +57,10 @@ creator phase. That is path-agnostic (not a `pom.xml`-only rule and not an
   is legitimate under serial (Architect `E-20260817T131858Z`); mint does not
   refuse that as `FILE_OVERLAP`.
 - **Verify** lines that name a dest path are not a second owner.
+- **Polish exception:** a polish task that **NAMES a dest file must CREATE it**.
+  Verify/Add in polish leave `files_in_scope` empty (PB-2) or prove a file
+  polish never owned (SR-13). `pom.xml` is Setup-owned — do not name it in
+  polish. Create polish-owned files (README, a health test) instead.
 
 ## Unique HTTP-shape ownership (mandatory)
 
@@ -210,8 +214,8 @@ Do **not** Configure `pom.xml` or `src/main/resources/application.properties` he
 
 **Purpose**: Improvements that affect multiple user stories
 
-- [ ] TXXX [P] Documentation updates in README.md
-- [ ] TXXX Verify quality gate via `mvn clean verify` in pom.xml
+- [ ] TXXX Create README.md with destination build and run instructions
+- [ ] TXXX [P] Create HealthTest (@QuarkusTest, GET /q/health returns UP) in src/test/java/com/demo/HealthTest.java
 
 ---
 

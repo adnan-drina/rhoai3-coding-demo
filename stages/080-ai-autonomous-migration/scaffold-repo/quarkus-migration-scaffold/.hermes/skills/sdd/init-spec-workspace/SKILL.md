@@ -51,7 +51,8 @@ Idempotent via `.specify/.rhoai3-ads-provisioned`. Spec Kit is pinned
 4. Copies unique-owner tasks override from
    `${HERMES_SKILL_DIR}/assets/tasks-template.md` →
    `.specify/templates/overrides/tasks-template.md` (one creator phase per
-   dest path; Add/Verify remain amend)
+   dest path; Add/Verify remain amend; polish tasks that name a dest file
+   Create it)
 5. Copies destination constitution from
    `${HERMES_SKILL_DIR}/assets/constitution.md` →
    `.specify/memory/constitution.md` when missing or still spec-kit

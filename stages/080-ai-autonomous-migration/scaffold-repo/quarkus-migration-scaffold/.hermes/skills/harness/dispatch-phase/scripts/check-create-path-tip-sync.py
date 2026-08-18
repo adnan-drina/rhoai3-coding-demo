@@ -1418,6 +1418,16 @@ REQUIRED_SUBSTRINGS = [
         "F option 2 deriver maps named in tasks-template (180200Z)",
     ),
     (
+        ".hermes/skills/sdd/init-spec-workspace/assets/tasks-template.md",
+        "NAMES a dest file must CREATE it",
+        "I-16 polish task naming a file must Create it (215010Z)",
+    ),
+    (
+        ".hermes/skills/sdd/init-spec-workspace/assets/stop-before-implement.overlay.yml",
+        "NAMES a dest file must CREATE it",
+        "I-16 speckit.tasks overlay restates polish Create (215010Z)",
+    ),
+    (
         ".hermes/skills/harness/enforce-authority-boundary/scripts/write-set-hook.py",
         "phase-yaml:",
         "B2 fence falls back to phase yaml when card unpublished",
@@ -1439,6 +1449,11 @@ FORBIDDEN_SUBSTRINGS = [
         ".hermes/skills/harness/dispatch-phase/SKILL.md",
         "--skill dispatch-phase",
         "I-10 B holder create argv must not pass --skill dispatch-phase",
+    ),
+    (
+        ".hermes/skills/sdd/init-spec-workspace/assets/tasks-template.md",
+        "Verify quality gate",
+        "I-16 polish sample must not Verify pom.xml (215010Z)",
     ),
 ]
 

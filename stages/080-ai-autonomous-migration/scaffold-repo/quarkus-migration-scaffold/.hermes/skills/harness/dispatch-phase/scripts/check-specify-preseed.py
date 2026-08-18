@@ -177,6 +177,22 @@ def main() -> int:
             bad = 1
         else:
             print("OK: T022 foreign class path is prose (135010Z)")
+        if "NAMES a dest file must CREATE it" not in ttext:
+            print(
+                "FAIL: tasks-template override lacks polish Create-named-file pin "
+                "(I-16 / 215010Z)",
+                file=sys.stderr,
+            )
+            bad = 1
+        elif "Verify quality gate" in ttext:
+            print(
+                "FAIL: tasks-template override polish sample still Verifies pom.xml "
+                "(I-16 / 215010Z)",
+                file=sys.stderr,
+            )
+            bad = 1
+        else:
+            print("OK: polish Create-named-file pin installed under .specify/tasks-template")
 
     if not provision_asset.is_file():
         print(
@@ -266,6 +282,22 @@ def main() -> int:
             bad = 1
         else:
             print("OK: tip T022 foreign class path is prose")
+        if "NAMES a dest file must CREATE it" not in ptt:
+            print(
+                "FAIL: tip tasks-template lacks polish Create-named-file pin "
+                "(I-16 / 215010Z)",
+                file=sys.stderr,
+            )
+            bad = 1
+        elif "Verify quality gate" in ptt:
+            print(
+                "FAIL: tip tasks-template polish sample still Verifies pom.xml "
+                "(I-16 / 215010Z)",
+                file=sys.stderr,
+            )
+            bad = 1
+        else:
+            print("OK: tip polish Create-named-file pin present")
 
     if not provision_constitution.is_file():
         print(
