@@ -90,7 +90,7 @@ def main() -> int:
     invented = invented_routes(part, contract)
     if invented:
         print(
-            "FAIL: invented plan routes vs inventory (067420Z reverse-diff)",
+            "FAIL: invented plan routes vs inventory (067420Z reverse-diff): "
             + " ".join(invented),
             file=sys.stderr,
         )

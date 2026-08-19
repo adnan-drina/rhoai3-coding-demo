@@ -22,8 +22,8 @@
 # Pillar heads stay Cursor. Do not hermes profile create --clone.
 #
 # M3 skills[] is the **allowed attach pool** (B-16), not "attach all five".
-# Wave holder (not this pool): path-invoke mint-m3-hermes.md; pin
-# one-three-one-rule only. Do not pin dispatch-phase (I-10 B / 25a7c1e9).
+# Wave holder (not this pool): path-invoke mint-m3-hermes.md; do **not**
+# pin one-three-one-rule (I-11) or dispatch-phase (I-10 B / 25a7c1e9).
 # Keep the five names in skills.disabled. Do not pin check-spec-readiness
 # on the holder until story bodies exist (Architect 094840Z).
 # mint-m3-hermes.md attaches check-spec-readiness plus
