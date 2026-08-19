@@ -45,8 +45,10 @@ if str(_SCRIPTS) not in sys.path:
 
 from specimen_agnostic import (  # noqa: E402
     dest_hole_leaves,
+    dest_path_as_written,
     intra_package_maps,
     legacy_java_prefixes,
+    partition_story_writeset,
     path_rewrites,
     rewrite_across,
 )
@@ -494,8 +496,14 @@ def close_write_set(
     own: dict[str, str],
     self_sid: str,
     harvest_roots: list[Path] | None = None,
+    allowed: set[str] | None = None,
 ) -> list[str]:
-    """Add unowned dest twins of project types onto this story's write-set."""
+    """Add unowned dest twins of project types onto this story's write-set.
+
+    When ``allowed`` is set (partition story files_writable as written),
+    dest twins outside that declared frame are skipped. Mint-path extras
+    (entity/ beside partition model/) must not land before the digest stamp.
+    """
     added: list[str] = []
     writable = [to_dest(x) for x in writable_paths(body)]
     scope = body.get("files_in_scope")
@@ -525,6 +533,8 @@ def close_write_set(
                 continue
             dest = to_dest(src_rel)
             if dest in writable or dest in added:
+                continue
+            if allowed is not None and dest_path_as_written(dest) not in allowed:
                 continue
             owner = own.get(dest)
             if owner and owner != self_sid:
@@ -589,6 +599,18 @@ def main() -> int:
         return 1
     ident = body.get("identity") if isinstance(body.get("identity"), dict) else {}
     self_sid = str(ident.get("story_id") or body.get("story_id") or "").strip()
+    part_status, part_files = partition_story_writeset(root, self_sid)
+    allowed: set[str] | None = None
+    if part_status == "missing_story":
+        print(
+            "WRITESET_NOT_SUBSET: identity.story_id "
+            f"{self_sid!r} is not in evidence/briefs/partition.json "
+            "(assert-body-writeset-subset-of-partition / E-20260819T104254Z)",
+            file=sys.stderr,
+        )
+        return 1
+    if part_status == "ok" and part_files:
+        allowed = set(part_files)
     _pairs, to_dest, to_legacy = make_rewrites(root)
     pkg_prefixes = legacy_java_prefixes(root)
     own = provider_map(root / args.bodies, to_dest)
@@ -602,7 +624,25 @@ def main() -> int:
         own=own,
         self_sid=self_sid,
         harvest_roots=roots,
+        allowed=allowed,
     )
+    if allowed is not None:
+        extras = sorted(
+            {
+                dest_path_as_written(p)
+                for p in writable_paths(body)
+                if dest_path_as_written(p) not in allowed
+            }
+        )
+        if extras:
+            print(
+                "WRITESET_NOT_SUBSET: body.files_writable is not a subset of "
+                f"partition.stories[{self_sid}].files_writable extras="
+                + " ".join(extras[:12])
+                + " (repair body; do not stamp digest; E-20260819T104254Z)",
+                file=sys.stderr,
+            )
+            return 1
     if added:
         print(
             "OK: supertype closure added dest twins n="

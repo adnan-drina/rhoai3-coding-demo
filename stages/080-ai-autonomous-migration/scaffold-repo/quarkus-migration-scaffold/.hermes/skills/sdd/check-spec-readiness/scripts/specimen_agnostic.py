@@ -1090,6 +1090,85 @@ def _rel_posix(path: str) -> str:
     return path.replace("\\", "/").strip().lstrip("./")
 
 
+_DEST_AS_WRITTEN_PREFIXES = (
+    "/projects/.derived/legacy-at-3/",
+    "/projects/modernized/",
+    "/projects/legacy/",
+    "projects/.derived/legacy-at-3/",
+    "projects/modernized/",
+    "projects/legacy/",
+)
+
+
+def dest_path_as_written(path: str) -> str:
+    """Dest-relative path without intra_package_maps rewrite.
+
+    Write-set subset compares the body path as declared against the
+    partition story's declared frame. Rewriting dest leaves into the
+    other side of intra_package_maps would hide extras (entity vs model).
+    """
+    p = _rel_posix(path)
+    for prefix in _DEST_AS_WRITTEN_PREFIXES:
+        if p.startswith(prefix):
+            p = p[len(prefix) :]
+    return p.lstrip("./")
+
+
+def _paths_from_story_field(val: object) -> list[str]:
+    out: list[str] = []
+    if not isinstance(val, list):
+        return out
+    for item in val:
+        if isinstance(item, str) and item.strip():
+            out.append(item.strip())
+        elif isinstance(item, dict):
+            for k in ("dest", "dst", "legacy", "src", "source", "path", "file"):
+                if item.get(k):
+                    out.append(str(item[k]).strip())
+                    break
+    return out
+
+
+def story_declared_writeset(story: dict) -> list[str]:
+    """Single declared dest frame on a partition story.
+
+    First non-empty of files_writable, files, files_in_scope. Do not
+    union keys — that mixes frames (entity/ + model/) and hides extras.
+    """
+    if not isinstance(story, dict):
+        return []
+    for key in ("files_writable", "files", "files_in_scope", "legacy_files", "scope_files"):
+        paths = _paths_from_story_field(story.get(key))
+        if paths:
+            return paths
+    return []
+
+
+def partition_story_writeset(root: Path, story_id: str) -> tuple[str, set[str]]:
+    """Look up partition.stories[id] declared write-set.
+
+    Returns (status, files) where status is:
+      absent — no partition.json / invalid
+      missing_story — partition present, story_id not in stories[]
+      ok — story found (files may be empty)
+    """
+    path = root / "evidence" / "briefs" / "partition.json"
+    data = load_json(path)
+    if not isinstance(data, dict) or not isinstance(data.get("stories"), list):
+        return "absent", set()
+    sid = str(story_id or "").strip()
+    if not sid:
+        return "missing_story", set()
+    for story in data["stories"]:
+        if not isinstance(story, dict):
+            continue
+        if str(story.get("story_id") or "").strip() != sid:
+            continue
+        files = {dest_path_as_written(p) for p in story_declared_writeset(story) if p}
+        return "ok", files
+    return "missing_story", set()
+
+
 def files_writable_rels(body: dict) -> set[str]:
     """Dest-relative write-set only (not files_in_scope)."""
     out: set[str] = set()

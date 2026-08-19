@@ -53,7 +53,8 @@ Argv: **`--kind` before the task id**. Then `kanban show` must report
    pin it on this card.
 3. If lint passes: create `ack_gate` first, then story children per
    `mint-m3-hermes.md`. Do **not** dispatch children here.
-4. After children exist (or a typed `needs_input` block is recorded),
+4. After children exist, mint M4 then M5 per `mint-m3-hermes.md`
+   (M4 `--parent` every story child, not this holder). Then
    `kanban_complete` this holder **only if** no child title starts with
    `M4` or `M5`. Otherwise block `--kind needs_input` (graph defect).
    The gate stays blocked.

@@ -240,7 +240,7 @@ per story. No big bang.
 | 1 | **M1 ANALYZE** | Hermes Kanban + `mta-analysis` / `inventory-entry-points` / `derive-legacy-boot3` | Derive findings-handoff + inventory; Operator ACK | `migration/findings-handoff.json`, inventory, ACK |
 | 2 | **M2 PLAN** | Hermes planner + Spec Kit (`speckit-specify` → `plan` → `tasks`); mint is the M3 wave-holder card | Read inventory before specify; enumerate every `http_path`; Resource tasks emit `@Path("...")`; M2 does not mint Kanban children | Spec Kit specs + `tasks.md` |
 | 3 | **M3 IMPLEMENT** | Wave-holder session (`mint-m3-hermes.md`) then per-story implementers + `spring-to-quarkus-patterns` | Holder lints + mints parked story children (ack_gate parent); each story writes only `files_writable`; standing pointer on the card | Modernized sources under `files_writable` |
-| 4 | **M4 VERIFY** | Domain / validation-release gates | `PROVISIONAL_ACCEPT` evidence package | Gate receipts |
+| 4 | **M4 VERIFY** | Domain / validation-release gates | Waits on story children (not the mint holder); `PROVISIONAL_ACCEPT` evidence package | Gate receipts |
 | 5 | **M5 CLOSE** | Factory / full ACCEPT path | Story close when platform gates green | Pipeline + ACCEPT |
 
 The **inner loop** (gates → fix → re-dispatch) corrects the *work* within a

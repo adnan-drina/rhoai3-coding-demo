@@ -1608,6 +1608,119 @@ else
   rc=1
 fi
 rm -rf "${map_tmp}"
+
+# E-20260819T104254Z — body write-set extras vs partition declared frame
+ws_tmp="$(mktemp -d)"
+mkdir -p "${ws_tmp}/evidence/briefs" "${ws_tmp}/evidence/bodies" "${ws_tmp}/evidence"
+printf '%s\n' '{"stories":[{"story_id":"foundational","files_writable":["src/main/java/com/demo/model/Foo.java"],"endpoints":[{"http_method":"GET","http_path":"/foo"}]}]}' \
+  > "${ws_tmp}/evidence/briefs/partition.json"
+printf '%s\n' '{"phase":"M3","identity":{"story_id":"foundational"},"files_writable":["src/main/java/com/demo/model/Foo.java","src/main/java/com/demo/entity/Foo.java"],"files_in_scope":["src/main/java/com/demo/model/Foo.java","src/main/java/com/demo/entity/Foo.java"]}' \
+  > "${ws_tmp}/evidence/bodies/m3-foundational.json"
+printf '%s\n' '{"entry_points":[{"kind":"http","file":"src/Foo.java","symbol":"foo","http_method":"GET","http_path":"/foo"}],"totals":{"http_endpoints":1}}' \
+  > "${ws_tmp}/inventory.json"
+printf '%s\n' '{"schema":"rhoai3.mta-findings/v1-provisional","violations":{"springboot-to-quarkus-00000":{"ruleID":"springboot-to-quarkus-00000","category":"mandatory","incidents":[]}}}' \
+  > "${ws_tmp}/evidence/mta-findings.json"
+if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/check-partition-coverage.py" \
+    "${ws_tmp}" --partition evidence/briefs/partition.json --inventory inventory.json \
+    >/tmp/pc-ws.out 2>/tmp/pc-ws.err; then
+  echo "FAIL: entity/ extra beside partition model/ should refuse writeset_not_subset" >&2
+  cat /tmp/pc-ws.out /tmp/pc-ws.err >&2
+  rc=1
+else
+  if grep -q 'writeset_not_subset:foundational' /tmp/pc-ws.err /tmp/pc-ws.out; then
+    echo "OK: PARTITION_COVERAGE refused body write-set extras (writeset_not_subset)"
+  else
+    echo "FAIL: expected writeset_not_subset:foundational" >&2
+    cat /tmp/pc-ws.out /tmp/pc-ws.err >&2
+    rc=1
+  fi
+fi
+if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/stamp-body-dependencies.py" \
+    "${ws_tmp}" --body evidence/bodies/m3-foundational.json --write \
+    >/tmp/ws-extra.out 2>/tmp/ws-extra.err; then
+  echo "FAIL: stamp-body-dependencies should refuse extras outside partition" >&2
+  cat /tmp/ws-extra.out /tmp/ws-extra.err >&2
+  rc=1
+else
+  if grep -q 'WRITESET_NOT_SUBSET' /tmp/ws-extra.err; then
+    echo "OK: stamp-body-dependencies WRITESET_NOT_SUBSET on entity/ extra"
+  else
+    echo "FAIL: expected WRITESET_NOT_SUBSET" >&2
+    cat /tmp/ws-extra.out /tmp/ws-extra.err >&2
+    rc=1
+  fi
+fi
+rm -rf "${ws_tmp}"
+
+# E-20260819T104826Z — sidecar-only restamp refuse; atomic card+sidecar restamp
+rs_tmp="$(mktemp -d)"
+mkdir -p "${rs_tmp}/evidence/bodies" "${rs_tmp}/.hermes/home"
+printf '%s\n' '{"phase":"M3","identity":{"story_id":"polish"},"task_id":"t_aabbccdd"}' \
+  > "${rs_tmp}/evidence/bodies/m3-polish.json"
+if python3 "${SKILLS}/harness/record-run-evidence/scripts/stamp-body-digest.py" \
+    "${rs_tmp}/evidence/bodies/m3-polish.json" \
+    >/tmp/rs-stamp1.out 2>/tmp/rs-stamp1.err; then
+  echo "OK: first stamp-body-digest creates sidecar"
+else
+  echo "FAIL: first stamp-body-digest should succeed" >&2
+  cat /tmp/rs-stamp1.out /tmp/rs-stamp1.err >&2
+  rc=1
+fi
+d1="$(python3 -c "import hashlib,pathlib; p=pathlib.Path('${rs_tmp}/evidence/bodies/m3-polish.json'); print(hashlib.sha256(p.read_bytes()).hexdigest())")"
+if python3 "${SKILLS}/harness/record-run-evidence/scripts/stamp-body-digest.py" \
+    "${rs_tmp}/evidence/bodies/m3-polish.json" \
+    >/tmp/rs-stamp2.out 2>/tmp/rs-stamp2.err; then
+  echo "FAIL: second stamp-body-digest without --allow-sidecar-only should refuse" >&2
+  cat /tmp/rs-stamp2.out /tmp/rs-stamp2.err >&2
+  rc=1
+else
+  if grep -q 'sidecar already exists' /tmp/rs-stamp2.err; then
+    echo "OK: stamp-body-digest refuses sidecar-only restamp"
+  else
+    echo "FAIL: expected sidecar-already-exists refuse" >&2
+    cat /tmp/rs-stamp2.out /tmp/rs-stamp2.err >&2
+    rc=1
+  fi
+fi
+python3 - "${rs_tmp}" "${d1}" <<'PY'
+import json, sqlite3, sys
+from pathlib import Path
+root, d1 = Path(sys.argv[1]), sys.argv[2]
+db = root / ".hermes/home/kanban.db"
+conn = sqlite3.connect(str(db))
+conn.execute("create table tasks (id text primary key, body text)")
+card = (
+    "Typed body: evidence/bodies/m3-polish.json\n"
+    f"AR-4.3 digest: {d1}\n"
+    f"Verify: python3 x --expect {d1} --body evidence/bodies/m3-polish.json .\n"
+)
+conn.execute("insert into tasks (id, body) values (?, ?)", ("t_aabbccdd", card))
+conn.commit()
+conn.close()
+body = root / "evidence/bodies/m3-polish.json"
+body.write_text(json.dumps({"phase": "M3", "identity": {"story_id": "polish"}, "task_id": "t_aabbccdd", "repaired": True}) + "\n")
+PY
+if python3 "${SKILLS}/harness/record-run-evidence/scripts/restamp-card-and-sidecar.py" \
+    --root "${rs_tmp}" --body evidence/bodies/m3-polish.json --task-id t_aabbccdd \
+    --kanban-db "${rs_tmp}/.hermes/home/kanban.db" \
+    >/tmp/rs-atom.out 2>/tmp/rs-atom.err; then
+  d2="$(python3 -c "import hashlib,pathlib; p=pathlib.Path('${rs_tmp}/evidence/bodies/m3-polish.json'); print(hashlib.sha256(p.read_bytes()).hexdigest())")"
+  if python3 "${SKILLS}/harness/record-run-evidence/scripts/assert-card-body-digest-match.py" \
+      "${rs_tmp}" --task-id t_aabbccdd --body evidence/bodies/m3-polish.json \
+      >/tmp/rs-assert.out 2>/tmp/rs-assert.err; then
+    echo "OK: restamp-card-and-sidecar updates card and sidecar together"
+  else
+    echo "FAIL: card↔sidecar assert after restamp" >&2
+    cat /tmp/rs-atom.out /tmp/rs-atom.err /tmp/rs-assert.out /tmp/rs-assert.err >&2
+    rc=1
+  fi
+else
+  echo "FAIL: restamp-card-and-sidecar.py should exit 0" >&2
+  cat /tmp/rs-atom.out /tmp/rs-atom.err >&2
+  rc=1
+fi
+rm -rf "${rs_tmp}"
+
 python3 - <<PY
 import json
 from pathlib import Path

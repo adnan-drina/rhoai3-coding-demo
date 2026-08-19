@@ -44,6 +44,15 @@ python3 "${HERMES_SKILL_DIR}/scripts/stamp-body-digest.py" \
   /projects/modernized/evidence/bodies/m3-s-010.json
 ```
 
+After the first stamp, sidecar-only restamp is refuse. Repair the body
+and update card + sidecar together:
+
+```bash
+python3 "${HERMES_SKILL_DIR}/scripts/restamp-card-and-sidecar.py" \
+  --root /projects/modernized \
+  --body evidence/bodies/m3-s-010.json --task-id t_example
+```
+
 2. **Refuse body drift after dispatch.** With `--body` alone the check is
    scoped to that body's own sidecar (parked siblings must not fail it);
    with `--expect <card-digest>` it compares against the card.
@@ -125,6 +134,7 @@ python3 "${HERMES_SKILL_DIR}/scripts/check-provenance.py" /projects/modernized
 - Reconstructing a run from memory instead of stamped receipts / digests.
 - Omitting task-id correlation across kanban, commits, and gate results.
 - Treating a green build as provenance of what ran.
+- Re-stamping the sidecar without updating the card (card verify then FAILs).
 
 ## Verification
 

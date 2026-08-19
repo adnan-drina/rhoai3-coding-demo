@@ -136,6 +136,10 @@ Bare filenames resolve under the wrong skill tree and become typed BLOCK
 4. `python3 .hermes/skills/sdd/check-spec-readiness/scripts/check-interface-closure.py --body <body>`
 5. `python3 .hermes/skills/sdd/check-spec-readiness/scripts/stamp-destination-inventory.py --body <body> --write`
 6. `python3 .hermes/skills/sdd/check-spec-readiness/scripts/check-partition-coverage.py --write-receipt evidence/receipts/partition-coverage/latest.json`
+   (`writeset_not_subset` / `writeset_extra` is INVALID — body.files_writable
+   as written must be ⊆ partition.stories[id] declared frame. Do **not**
+   treat endpoint coverage as write-set coverage. Repair the body, re-run
+   stamps 3–6, **do not** stamp digest until green.)
 7. `python3 .hermes/skills/sdd/check-spec-readiness/scripts/assert-quarantine-tombstones.py`
 8. `python3 .hermes/skills/sdd/check-spec-readiness/scripts/assert-mint-constraints-complete.py --body <body> --inject` then without `--inject`
 9. `python3 .hermes/skills/sdd/check-spec-readiness/scripts/assert-constraints-preserved.py --body <body> --snapshot-before`
@@ -143,7 +147,7 @@ Bare filenames resolve under the wrong skill tree and become typed BLOCK
 11. `python3 .hermes/skills/sdd/check-spec-readiness/scripts/check-kanban-body.py --body <body>`
 12. `python3 .hermes/skills/harness/dispatch-phase/scripts/check-phase-attach-matrix.py /projects/modernized`
 13. `python3 .hermes/skills/harness/dispatch-phase/scripts/assert-bundle-skills-exist.py /projects/modernized --bundle m3-implementer`
-14. `python3 .hermes/skills/harness/record-run-evidence/scripts/stamp-body-digest.py` (AR-4.3)
+14. `python3 .hermes/skills/harness/record-run-evidence/scripts/stamp-body-digest.py` (AR-4.3 first stamp only). If the sidecar already exists, that script REFUSES unless `--allow-sidecar-only` (pre-create repair). After the card exists, body repair MUST use `restamp-card-and-sidecar.py --root . --body <body> --task-id <id>` — sidecar-only restamp is refuse.
 15. `python3 .hermes/skills/sdd/check-spec-readiness/scripts/check-surgical-scopes.py` + `python3 .hermes/skills/sdd/check-spec-readiness/scripts/check-semantic-exits.py` + `python3 .hermes/skills/sdd/check-spec-readiness/scripts/check-operand-count.py --wall-fit`
 16. `python3 .hermes/skills/sdd/check-spec-readiness/scripts/assert-mint-oracles.py --body <body> --skip-task-id`
 17. `python3 .hermes/skills/harness/dispatch-phase/scripts/assert-skills-not-disabled.py /projects/modernized` with `--skill` once per line of `m3-attach-skills.py` stdout (B3 / `25a7c1e9`). Intersection with `skills.disabled` ⇒ refuse. Do **not** grow `handover-mint.py`.
@@ -243,7 +247,28 @@ after create to chase this (`192117Z`).
   full `m3-attach-skills.py` stdout. Any miss → typed `needs_input` BLOCK;
   do not create the next story; do not `kanban_complete` this holder.
 - Assert ack_gate is still `blocked` after holder complete.
-- Append `evidence/derived/created-story-cards.json`.
+- Append `evidence/derived/created-story-cards.json` as
+  `{"cards":[{"id":"t_<hex>","story_id":"<id>"}, ...]}` (story children only;
+  not ack_gate, not this holder).
+- After every story child exists, path-invoke (do **not** `--skill` pin
+  `dispatch-phase`) so M4 waits on the **wave**, not this mint holder
+  (R-V14.6 / `Lead:m4-parent-is-the-wave-not-the-mint`):
+
+  ```text
+  DISPATCH_PARK_CHAIN=0 DISPATCH_MAX=0 DISPATCH_START_DAEMON=0 \
+    bash .hermes/skills/harness/dispatch-phase/scripts/dispatch-phase.sh M4 \
+      --parent <story-task-id> ...
+  DISPATCH_PARK_CHAIN=0 DISPATCH_MAX=0 DISPATCH_START_DAEMON=0 \
+    bash .hermes/skills/harness/dispatch-phase/scripts/dispatch-phase.sh M5 \
+      --parent "$(cat evidence/derived/phase-M4-task-id.txt)"
+  ```
+
+  `--parent` once per story id from `created-story-cards.json`. Not this
+  holder. Not ack_gate. Refuse holder complete if M4/M5 are children of
+  this holder. Refuse if `phase-M4-task-id.txt` is missing.
+- Holder pre-complete: for every story child,
+  `python3 .hermes/skills/harness/record-run-evidence/scripts/assert-card-body-digest-match.py . --task-id <id> --body evidence/bodies/m3-{story_id}.json`
+  — card-digest == sidecar-digest or refuse complete.
 - Emit unsigned `evidence/acks/ack-request-<story>.yaml` for the record;
   **unpark is still completing `ack_gate`**, not signing the file.
 - Run `assert-m2b-created-cards-claim.sh` (partition set equality) after

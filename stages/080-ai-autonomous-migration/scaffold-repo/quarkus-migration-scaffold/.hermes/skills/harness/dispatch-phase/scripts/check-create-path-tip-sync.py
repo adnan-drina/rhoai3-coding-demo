@@ -5,6 +5,7 @@ Fail-closed if Hermes skill tree / M4 floor / measured-trap refs are missing.
 """
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -131,6 +132,8 @@ REQUIRED_FILES = [
     # EX-2: check-conversation-liveness.py retired (not in golden scaffold)
     # Operator E-20260812T061639Z / Architect E-20260812T061718Z Class A — card↔sidecar
     ".hermes/skills/harness/record-run-evidence/scripts/assert-card-body-digest-match.py",
+    ".hermes/skills/harness/record-run-evidence/scripts/restamp-card-and-sidecar.py",
+    ".hermes/skills/harness/record-run-evidence/scripts/stamp-body-digest.py",
     ".hermes/skills/sdd/check-spec-readiness/references/body-integrity.md",
     # Architect E-20260812T064611Z / E-20260812T064637Z Class A — AD-012 lint + CS-7 bundle
     ".hermes/skills/harness/validate-contracts/scripts/check-skill-conformance.py",
@@ -1549,6 +1552,66 @@ REQUIRED_SUBSTRINGS = [
         "park-at-birth M3 title is wave holder not bounded transform",
     ),
     (
+        ".hermes/skills/harness/dispatch-phase/scripts/dispatch-phase.sh",
+        "holder-card-body.md",
+        "park-at-birth M3 body is holder-card-body.md (handover-mint never names the card)",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/scripts/dispatch-phase.sh",
+        "no implementer skill pin",
+        "M3 case clears SKILLS after yaml load (f5bfdb74 consumer, not yaml)",
+    ),
+    (
+        ".hermes/phase-dispatch.yaml",
+        "M3 skills[] is the allow-list pool (B-16)",
+        "do not empty yaml M3.skills to zero holder pins (f5bfdb74 trap)",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
+        "writeset_not_subset",
+        "mint Procedure fail-closes body write-set extras vs partition",
+    ),
+    (
+        ".hermes/skills/sdd/check-spec-readiness/scripts/check-partition-coverage.py",
+        "writeset_not_subset",
+        "coverage gate names writeset_not_subset (E-20260819T104254Z)",
+    ),
+    (
+        ".hermes/skills/sdd/check-spec-readiness/scripts/stamp-body-dependencies.py",
+        "WRITESET_NOT_SUBSET",
+        "dependency stamp refuses extras outside partition frame",
+    ),
+    (
+        ".hermes/skills/sdd/check-spec-readiness/references/story-scope-and-exit.md",
+        "assert-body-writeset-subset-of-partition",
+        "write-set subset bank vocabulary",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
+        "restamp-card-and-sidecar.py",
+        "mint Procedure restamps card and sidecar together",
+    ),
+    (
+        ".hermes/skills/harness/record-run-evidence/scripts/stamp-body-digest.py",
+        "sidecar already exists",
+        "first-stamp script refuses sidecar-only restamp",
+    ),
+    (
+        ".hermes/skills/harness/record-run-evidence/scripts/restamp-card-and-sidecar.py",
+        "card and sidecar",
+        "atomic restamp updates card and sidecar as one operation",
+    ),
+    (
+        ".hermes/skills/sdd/check-spec-readiness/references/body-integrity.md",
+        "restamp-card-and-sidecar-atomically",
+        "body-integrity names atomic restamp",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
+        "M4 waits on the **wave**",
+        "mint-time M4 parents are story children not the holder",
+    ),
+    (
         ".hermes/skills/harness/dispatch-phase/SKILL.md",
         "WAVE HOLDER",
         "skill names park-at-birth M3 as wave holder",
@@ -1597,6 +1660,67 @@ FORBIDDEN_SUBSTRINGS = [
         "do not park M4/M5 as children of the M3 holder",
     ),
 ]
+
+
+def _assert_m3_holder_consumer(root: Path) -> list[str]:
+    """Park-at-birth M3 is dispatch-phase.sh, not handover-mint / yaml.
+
+    Operator f5bfdb74: yaml M3.skills is the children's B-16 allow-list.
+    Emptying it to get zero holder pins is the trap. The M3 case must
+    cat holder-card-body.md, set the holder title, and SKILLS=() after
+    the yaml load so CREATE_ARGS grows no --skill pins.
+    """
+    fails: list[str] = []
+    sh = (
+        root
+        / ".hermes"
+        / "skills"
+        / "harness"
+        / "dispatch-phase"
+        / "scripts"
+        / "dispatch-phase.sh"
+    )
+    text = sh.read_text(encoding="utf-8") if sh.is_file() else ""
+    m = re.search(r"^\s+M3\)\s*\n(.*?)^\s+;;", text, re.M | re.S)
+    if not m:
+        fails.append("dispatch-phase.sh missing M3) case")
+        return fails
+    block = m.group(1)
+    if "holder-card-body.md" not in block:
+        fails.append(
+            "M3 case must cat holder-card-body.md "
+            "(handover-mint.py never names the park-at-birth card)"
+        )
+    if "M3 WAVE HOLDER" not in block:
+        fails.append("M3 case must override TITLE to WAVE HOLDER (yaml title is not the card)")
+    if "SKILLS=()" not in block:
+        fails.append(
+            "M3 case must SKILLS=() after yaml load "
+            "(yaml M3.skills is the child allow-list, not holder pins)"
+        )
+    if "M3 IMPLEMENT: bounded transform" in block:
+        fails.append("M3 case still hardcodes implementer title")
+    ypath = root / ".hermes" / "phase-dispatch.yaml"
+    ytext = ypath.read_text(encoding="utf-8") if ypath.is_file() else ""
+    ym = re.search(r"^  M3:\n(.*?)(?=^  M[0-9]|^  factory:|\Z)", ytext, re.M | re.S)
+    if not ym:
+        fails.append("phase-dispatch.yaml missing M3:")
+        return fails
+    yblock = ym.group(1)
+    skills = re.findall(r"^      - (\S+)", yblock, re.M)
+    if "check-spec-readiness" not in skills:
+        fails.append(
+            "yaml M3.skills must keep check-spec-readiness "
+            "(child allow-list; do not empty to un-pin the holder)"
+        )
+    if len(skills) < 3:
+        fails.append(
+            f"yaml M3.skills has {len(skills)} entries; "
+            "emptying the pool to zero holder pins is the f5bfdb74 trap"
+        )
+    if "allow-list pool" not in yblock:
+        fails.append("yaml M3 comment must keep allow-list pool (B-16)")
+    return fails
 
 
 def _git_index_status(root: Path, rel: str) -> str:
@@ -1663,6 +1787,12 @@ def main() -> int:
             bad = 1
         else:
             print(f"OK: {label}")
+    consumer_fails = _assert_m3_holder_consumer(root)
+    for msg in consumer_fails:
+        print(f"FAIL: {msg}", file=sys.stderr)
+        bad = 1
+    if not consumer_fails:
+        print("OK: park-at-birth M3 consumer clears skills; yaml pool stays")
     if sr14_untracked:
         print("FAIL: SR-14 required files missing from git index", file=sys.stderr)
     elif sr14_idle:

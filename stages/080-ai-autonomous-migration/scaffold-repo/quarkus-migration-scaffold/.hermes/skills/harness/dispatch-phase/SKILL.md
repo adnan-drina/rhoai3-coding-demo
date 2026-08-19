@@ -196,6 +196,7 @@ Job order (inventory before specify; `@Path` emit): `references/m2-planner.md`.
   `blocked` is not durable. The incomplete **ack_gate** parent holds stories.
 - Do **not** park M4/M5 as children of the M3 holder — holder
   `kanban_complete` after mint would unpark VERIFY on empty dest.
+  Mint creates M4 with `--parent` on every story child (R-V14.6).
 - Do **not** create the park-at-birth M3 card as an implementer (`M3
   IMPLEMENT: bounded transform` + implementer `skills[]`). That card **is
   the WAVE HOLDER** (Architect `102636Z`): holder body, zero skill pins.

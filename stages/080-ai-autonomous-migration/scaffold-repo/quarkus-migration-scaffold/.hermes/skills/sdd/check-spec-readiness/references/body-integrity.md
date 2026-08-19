@@ -8,8 +8,10 @@ An artefact says what it says; nobody edits it afterwards without a typed path.
 
 ## Binding rules (lints own precision)
 
-1. Body digest stamp / match — `stamp-body-digest.py`, `check-body-digest-match.py`
-2. Own-story digest / card-sidecar cross-assert — dispatch-phase create path
+1. Body digest stamp / match — `stamp-body-digest.py` (first stamp),
+   `restamp-card-and-sidecar.py` (repair), `check-body-digest-match.py`
+2. Own-story digest / card-sidecar cross-assert — dispatch-phase create path;
+   re-stamp updates card and sidecar as one operation or refuses
 3. Constraints preserved on amend — `assert-constraints-preserved.py`
 4. Mint completeness — `assert-mint-constraints-complete.py`
 5. Injection receipts — `injection_receipt.py` (F2)
@@ -20,4 +22,5 @@ An artefact says what it says; nobody edits it afterwards without a typed path.
 - Digest ownership is the story's **own sidecar** (body-digest-own-story).
 - Mint rule: **preserve ≠ invent** (mint-completeness-constraints).
 - Cross-assert **card↔sidecar** digests (card-sidecar-digest-cross-assert).
+  Re-stamp is atomic (restamp-card-and-sidecar-atomically).
 - F2 receipts use schema `rhoai3.injection-receipt/v1`.

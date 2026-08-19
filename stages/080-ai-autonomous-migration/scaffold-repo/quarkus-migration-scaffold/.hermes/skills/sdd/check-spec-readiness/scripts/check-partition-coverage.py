@@ -23,6 +23,12 @@ Checks:
      ``E-20260817T154847Z`` — that join is the migration output). Addressed
      findings stay M1 ``check-findings-handoff`` and M5 WC-5 rescan.
   4) Composes with bodies' files_in_scope when present (M2+)
+  5) Write-set subset (E-20260819T104254Z): each body's files_writable as
+     written is ⊆ that story's declared partition frame (files_writable,
+     else files, else files_in_scope). Does **not** rewrite dest leaves
+     through intra_package_maps — that hid entity/ extras beside model/.
+     Partition dual-frame (same basename under both mapped leaves) is
+     INVALID. Coverage still does not join inventory.file to dest write-set.
 
 Specimen-agnostic (Operator E-20260811T150800Z): HTTP denominator and package
 rewrites are derived from inventory / migration.yaml — never hardcoded.
@@ -55,12 +61,14 @@ if str(_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS))
 
 from specimen_agnostic import (  # noqa: E402
+    dest_path_as_written,
     inventory_http_expected,
     intra_package_maps,
     load_json,
     path_rewrites,
     resolve_inventory_path,
     rewrite_across,
+    story_declared_writeset,
 )
 
 
@@ -89,17 +97,44 @@ def make_norm_file(root: Path):
 
 def story_files(story: dict) -> list[str]:
     out: list[str] = []
-    for key in ("files", "files_in_scope", "legacy_files", "scope_files"):
+    for key in ("files_writable", "files", "files_in_scope", "legacy_files", "scope_files"):
         val = story.get(key)
         if isinstance(val, list):
             for item in val:
                 if isinstance(item, str):
                     out.append(item)
                 elif isinstance(item, dict):
-                    for k in ("legacy", "src", "source", "path", "file"):
+                    for k in ("dest", "dst", "legacy", "src", "source", "path", "file"):
                         if item.get(k):
                             out.append(str(item[k]))
     return out
+
+
+def partition_dual_frame_gaps(
+    files: set[str], pairs: list[tuple[str, str]]
+) -> list[str]:
+    """Refuse a partition story that declares both mapped dest leaves."""
+    gaps: list[str] = []
+    for dest_leaf, leg_leaf in pairs:
+        dtok = "/" + str(dest_leaf).strip("/").strip() + "/"
+        ltok = "/" + str(leg_leaf).strip("/").strip() + "/"
+        if dtok in {"//", "/"} or ltok in {"//", "/"} or dtok == ltok:
+            continue
+        dest_names: set[str] = set()
+        leg_names: set[str] = set()
+        for f in files:
+            fl = f.replace("\\", "/")
+            if not fl.endswith(".java"):
+                continue
+            name = fl.rsplit("/", 1)[-1]
+            padded = f"/{fl}/"
+            if dtok in padded or dtok in fl:
+                dest_names.add(name)
+            if ltok in padded or ltok in fl:
+                leg_names.add(name)
+        for name in sorted(dest_names & leg_names):
+            gaps.append(f"partition_dual_frame:{name}")
+    return gaps
 
 
 
@@ -277,6 +312,7 @@ def main() -> int:
 
     stories = [s for s in partition["stories"] if isinstance(s, dict)]
     bodies_dir = root / args.bodies
+    leaf_pairs = intra_package_maps(root)
     story_file_map: dict[str, set[str]] = {}
     for story in stories:
         sid = str(story.get("story_id") or "").strip()
@@ -287,6 +323,18 @@ def main() -> int:
         body_fs = body_files_for_story(bodies_dir, sid)
         chosen = body_fs if body_fs else files
         story_file_map[sid] = {norm_file(f) for f in chosen if f}
+        declared_writeset = {
+            dest_path_as_written(f) for f in story_declared_writeset(story) if f
+        }
+        body_as_written = {dest_path_as_written(f) for f in body_fs if f}
+        if declared_writeset and body_as_written:
+            extras = sorted(body_as_written - declared_writeset)
+            if extras:
+                gaps.append(f"writeset_not_subset:{sid}:{len(extras)}")
+                for extra in extras[:8]:
+                    gaps.append(f"writeset_extra:{sid}:{extra}")
+        if declared_writeset and leaf_pairs:
+            gaps.extend(partition_dual_frame_gaps(declared_writeset, leaf_pairs))
 
     owner: dict[str, str] = {}
     for sid, files in story_file_map.items():

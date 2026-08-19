@@ -17,7 +17,11 @@ import sqlite3
 import sys
 from pathlib import Path
 
-DIGEST_RE = re.compile(r"Body digest \(AR-4\.3\): `([0-9a-f]{64})`")
+DIGEST_RES = (
+    re.compile(r"Body digest \(AR-4\.3\): `([0-9a-f]{64})`"),
+    re.compile(r"AR-4\.3 digest: ([0-9a-f]{64})"),
+    re.compile(r"--expect ([0-9a-f]{64})"),
+)
 
 
 def sha256_file(path: Path) -> str:
@@ -50,25 +54,25 @@ def main() -> int:
     if not row or row[0] is None:
         print(f"FAIL: unknown task {args.task_id}", file=sys.stderr)
         return 1
-    m = DIGEST_RE.search(row[0])
-    if not m:
+    found: list[str] = []
+    for rx in DIGEST_RES:
+        found.extend(rx.findall(row[0]))
+    if not found:
         print(
-            f"FAIL: card {args.task_id} missing Body digest (AR-4.3) line",
+            f"FAIL: card {args.task_id} missing AR-4.3 digest line "
+            "(Body digest / AR-4.3 digest / --expect)",
             file=sys.stderr,
         )
         return 1
-    card = m.group(1)
-    if card != live:
+    mismatched = sorted({h for h in found if h != live})
+    if mismatched:
         print(
             f"REFUSE: card↔sidecar digest mismatch task={args.task_id} "
-            f"card={card} live={live} body={body} "
+            f"card={mismatched[0]} live={live} body={body} "
             f"(Operator E-20260812T061639Z / Architect E-20260812T061718Z)",
             file=sys.stderr,
         )
         return 1
-    # Also refuse any OTHER 64-hex digests in the card markdown (obligation
-    # "Verify … matches `…`" / --expect lines). Partial restamps left those
-    # stale and caused S-003 run#65 typed BLOCK (Review E-20260812T063915Z).
     extras = sorted({h for h in re.findall(r"[0-9a-f]{64}", row[0]) if h != live})
     if extras:
         print(

@@ -55,3 +55,5 @@ The wave-holder Hermes session follows
 `references/mint-m3-hermes.md` (`kanban_create` + ack_gate). Do **not**
 run a deleted `mint-m3-wave.sh` / `create-m3-implementer.sh` from Cursor
 or ask the demo user to. Do **not** park M4/M5 as children of the holder.
+Mint-time M4 `--parent` is the story-child id set (R-V14.6); M5 stays on
+M4. Holder complete means "cards minted", not "work done".
