@@ -125,6 +125,10 @@ commands:
         # the modernized project (it carries .opencode/ -> OpenCode-only).
         PROJECT_DIR="/projects/modernized"
         PROFILE="modernized"
+        mkdir -p /projects/.platform
+        if [ -w /projects/.platform ] && command -v tee >/dev/null 2>&1; then
+          exec > >(tee -a /projects/.platform/poststart.log) 2>&1
+        fi
         # Prefer JAVA_HOME_21 from the UDI image contract. This seat's
         # udi-rhel9 image does not ship sdkman (Deputy E-20260814T064712Z);
         # the ~/.sdkman candidates below are defensive fallbacks only.
@@ -184,16 +188,28 @@ commands:
           python3 -c "import json,sys; f='/projects/.code-workspace'; ws=json.load(open(f)); s=ws.setdefault('settings',{}); s['java.server.launchMode']='Standard'; s['mta-core.genai.enabled']=False; open(f,'w').write(json.dumps(ws,indent=2)); print('Workspace settings: JDT Standard mode, MTA GenAI disabled')" 2>&1 || true
         fi
         for i in $(seq 1 30); do [ -d "${PROJECT_DIR}/.git" ] && break; sleep 2; done
-        KUBE_API="https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}"
-        KUBE_CA="/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
-        KUBE_TOKEN="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"
-        if curl -fsS --cacert "${KUBE_CA}" \
-            -H "Authorization: Bearer ${KUBE_TOKEN}" \
-            "${KUBE_API}/api/v1/namespaces/wksp-ai-developer/configmaps/devspace-ai-tools-init" \
-            | jq -r '.data["init-ai-tools.sh"] // empty' >/tmp/init-ai-tools.sh \
-            && [ -s /tmp/init-ai-tools.sh ]; then
-          chmod 700 /tmp/init-ai-tools.sh
-          /tmp/init-ai-tools.sh "${PROJECT_DIR}" "${PROFILE}"
+        INIT_VOL="/etc/config/devspace-ai-tools-init/init-ai-tools.sh"
+        INIT_TMP="/tmp/init-ai-tools.sh"
+        INIT_SH=""
+        if [ -s "${INIT_VOL}" ]; then
+          INIT_SH="${INIT_VOL}"
+          echo "init-ai-tools.sh from ConfigMap volume ${INIT_VOL}"
+        else
+          KUBE_API="https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}"
+          KUBE_CA="/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+          KUBE_TOKEN="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"
+          echo "WARN: ConfigMap volume empty at ${INIT_VOL}; falling back to kube-API fetch"
+          if curl -fsS --cacert "${KUBE_CA}" \
+              -H "Authorization: Bearer ${KUBE_TOKEN}" \
+              "${KUBE_API}/api/v1/namespaces/wksp-ai-developer/configmaps/devspace-ai-tools-init" \
+              | jq -r '.data["init-ai-tools.sh"] // empty' >"${INIT_TMP}" \
+              && [ -s "${INIT_TMP}" ]; then
+            INIT_SH="${INIT_TMP}"
+          fi
+        fi
+        if [ -n "${INIT_SH}" ] && [ -s "${INIT_SH}" ]; then
+          chmod 700 "${INIT_SH}" 2>/dev/null || true
+          bash "${INIT_SH}" "${PROJECT_DIR}" "${PROFILE}"
         else
           echo "devspace-ai-tools-init ConfigMap not reachable; OpenCode is"
           echo "installed but not configured — governed MaaS credentials come"
@@ -240,6 +256,13 @@ commands:
             || echo "WARN: Quarkus CLI provision failed — Maven quarkus:* fallback (W3)"
         else
           echo "WARN: missing ${PROVISION_CLI} — Quarkus CLI not provisioned"
+        fi
+        GW_SUP="${PROJECT_DIR}/.hermes/home/scripts/supervise-gateway.sh"
+        if [ -f "${GW_SUP}" ]; then
+          bash "${GW_SUP}" --ensure \
+            || echo "WARN: supervise-gateway --ensure failed"
+        else
+          echo "WARN: ${GW_SUP} missing — gateway will not persist"
         fi
   - id: start-hermes-dashboard
     exec:

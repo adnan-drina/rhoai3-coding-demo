@@ -123,6 +123,12 @@ ensure_cli() {
 }
 
 CLI="$(ensure_cli)" || die "mta-cli/kantra missing after kantra-ensure — re-run once; prefer /projects/.tools/kantra/kantra"
+case "${CLI}" in
+  *$'\n'*)
+    die "ensure_cli captured a newline (kantra-ensure status leaked onto stdout): $(printf %q "${CLI}")"
+    ;;
+esac
+[ -x "${CLI}" ] || die "ensure_cli path is not executable: $(printf %q "${CLI}")"
 
 [ -f "${MANIFEST}" ] || die "missing ${MANIFEST} — run derive-legacy-boot3 skill: bash \"\${HERMES_SKILL_DIR}/scripts/derive-legacy-boot3.sh\""
 [ -f "${MIGRATION_YAML}" ] || die "missing ${MIGRATION_YAML}"

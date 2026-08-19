@@ -25,7 +25,10 @@ This is an interface probe / help surface only when -h/--help is passed.
 Env (v20-flow / Architect E-20260816T185414Z):
   DISPATCH_START_DAEMON=0  default — do not spawn `kanban daemon --force`
   DISPATCH_MAX=0           default — create parks the card; does not spawn
-  Set both to 1 only for a campaign that has claimed C-1(a).
+  DISPATCH_PARK_CHAIN=1    default — M1 create also parks M2..M5 blocked,
+                           each --parent its predecessor (Architect 085250Z).
+                           Set 0 to create a single phase card only.
+  Set DISPATCH_START_DAEMON/DISPATCH_MAX to 1 only for a campaign that has claimed C-1(a).
 
 Serial GO (one in-flight) AFTER create — native claim+spawn, not chat -q:
   hermes kanban dispatch --max 1
@@ -43,6 +46,7 @@ PARENTS=()
 DRY_RUN=0
 DISPATCH_MAX="${DISPATCH_MAX:-0}"
 DISPATCH_START_DAEMON="${DISPATCH_START_DAEMON:-0}"
+DISPATCH_PARK_CHAIN="${DISPATCH_PARK_CHAIN:-1}"
 WORKSPACE_DIR="${WORKSPACE_DIR:-/projects/modernized}"
 IDEM_PREFIX="${IDEM_PREFIX:-migration}"
 IDEM_OVERRIDE=""
@@ -575,6 +579,11 @@ done
 for p in "${PARENTS[@]:-}"; do
   [[ -n "${p}" ]] && CREATE_ARGS+=(--parent "${p}")
 done
+# Park-at-birth: M3 mint uses --initial-status blocked; parent graph is the
+# unpark switch (Architect 085250Z / mint-m3-hermes.md). M1 stays omit→ready.
+if [[ -n "${DISPATCH_INITIAL_STATUS:-}" ]]; then
+  CREATE_ARGS+=(--initial-status "${DISPATCH_INITIAL_STATUS}")
+fi
 
 echo "dispatch-phase: phase=${PHASE} assignee=${ASSIGNEE} max_runtime=${MAX_RUNTIME}s max_retries=${MAX_RETRIES} skills=${SKILLS[*]}"
 echo "dispatch-phase: idempotency_key=${IDEM_KEY} workspace=dir:${WORKSPACE_DIR}"
@@ -591,6 +600,9 @@ if [[ "${DRY_RUN}" -eq 1 ]]; then
   echo "dispatch-phase: DRY_RUN — would create: ${TITLE}"
   printf '  %q' hermes kanban create "${CREATE_ARGS[@]}" "${TITLE}"
   echo
+  if [[ "${PHASE}" == "M1" && "${DISPATCH_PARK_CHAIN}" == "1" ]]; then
+    echo "dispatch-phase: DRY_RUN park-at-birth would then create M2 M3 M4 M5 --initial-status blocked, each --parent predecessor"
+  fi
   exit 0
 fi
 
@@ -625,6 +637,24 @@ echo "${TASK_ID}" >"${ROOT}/evidence/derived/phase-${PHASE}-task-id.txt"
 } >"${ROOT}/evidence/derived/review-adhere-observe-needed.yaml"
 echo "REVIEW_ADHERE_OBSERVE=${TASK_ID}"
 echo "dispatch-phase: created ${TASK_ID} (Review:adhere-observe-${TASK_ID} REQUIRED)"
+
+# Architect 085250Z — park M2..M5 at M1 create (native parent-graph). Do not
+# dest-enable the dispatch-phase skill pin. Children inherit DISPATCH_MAX=0.
+if [[ "${PHASE}" == "M1" && "${DISPATCH_PARK_CHAIN}" == "1" ]]; then
+  prev="${TASK_ID}"
+  export DISPATCH_PARK_CHAIN=0
+  export DISPATCH_INITIAL_STATUS=blocked
+  export DISPATCH_MAX=0
+  export DISPATCH_START_DAEMON=0
+  _self="$(cd "$(dirname "$0")" && pwd)/dispatch-phase.sh"
+  for next in M2 M3 M4 M5; do
+    echo "dispatch-phase: park-at-birth ${next} --parent ${prev}"
+    "${_self}" "${next}" --parent "${prev}"
+    prev="$(cat "${ROOT}/evidence/derived/phase-${next}-task-id.txt")"
+    [[ -n "${prev}" ]] || die "park-at-birth: missing ${next} id after create"
+  done
+  unset DISPATCH_INITIAL_STATUS
+fi
 
 if [[ "${FW_JSON}" != "null" ]]; then
   mkdir -p "${ROOT}/evidence/runtime/write-sets"

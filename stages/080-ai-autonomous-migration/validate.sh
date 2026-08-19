@@ -126,6 +126,15 @@ check "init script ships the kantra-ensure lazy sensor helper (pinned)" \
 check "kantra-ensure download message is on stderr (ensure_cli captures stdout as the CLI path)" \
   "grep -c 'Downloading kantra.*>&2' \"$REPO_ROOT/gitops/stages/050-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml\" || echo 0" \
   "1"
+check "init ConfigMap is DWO-mounted (volume, not kube-API curl as the primary path)" \
+  "grep -c 'controller.devfile.io/mount-to-devworkspace' \"$REPO_ROOT/gitops/stages/050-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml\" || echo 0" \
+  "1"
+check "M1 park-at-birth chain is in dispatch-phase.sh" \
+  "grep -c 'DISPATCH_PARK_CHAIN:-1' \"$REPO_ROOT/stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/.hermes/skills/harness/dispatch-phase/scripts/dispatch-phase.sh\" || echo 0" \
+  "1"
+check "gateway supervisor script is in the golden scaffold" \
+  "test -f \"$REPO_ROOT/stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/.hermes/home/scripts/supervise-gateway.sh\" && echo 1 || echo 0" \
+  "1"
 check "harness tooling is gated on the modernized profile" \
   "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -c 'PROFILE}\" = \"modernized\"' || echo 0" \
   "1"

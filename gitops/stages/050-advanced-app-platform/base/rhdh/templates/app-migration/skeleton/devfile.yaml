@@ -128,6 +128,10 @@ commands:
         # the modernized project (it carries .opencode/ -> OpenCode-only).
         PROJECT_DIR="/projects/modernized"
         PROFILE="modernized"
+        mkdir -p /projects/.platform
+        if [ -w /projects/.platform ] && command -v tee >/dev/null 2>&1; then
+          exec > >(tee -a /projects/.platform/poststart.log) 2>&1
+        fi
         # The UDI base image documents JAVA_HOME_<version> variables as the
         # supported way to select a JDK; its sdkman default (plain
         # JAVA_HOME) is Java 17, while this project targets 21.
@@ -187,33 +191,48 @@ commands:
           python3 -c "import json,sys; f='/projects/.code-workspace'; ws=json.load(open(f)); s=ws.setdefault('settings',{}); s['java.server.launchMode']='Standard'; s['mta-core.genai.enabled']=False; open(f,'w').write(json.dumps(ws,indent=2)); print('Workspace settings: JDT Standard mode, MTA GenAI disabled')" 2>&1 || true
         fi
         for i in $(seq 1 30); do [ -d "${PROJECT_DIR}/.git" ] && break; sleep 2; done
-        KUBE_API="https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}"
-        KUBE_CA="/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
-        KUBE_TOKEN="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"
-        # SA token/CA are projected at container start; the race is CNI to
-        # 172.30.0.1:443. One curl timeout left workspaces Running with an
-        # empty /tmp/init-ai-tools.sh. Bounded retry matches the git wait
-        # above; --connect-timeout keeps each attempt inside startTimeout.
-        for i in $(seq 1 30); do
-          curl -fsS --connect-timeout 5 --max-time 20 --cacert "${KUBE_CA}" \
-            -H "Authorization: Bearer ${KUBE_TOKEN}" \
-            "${KUBE_API}/api/v1/namespaces/wksp-ai-developer/configmaps/devspace-ai-tools-init" \
-            | jq -r '.data["init-ai-tools.sh"] // empty' >/tmp/init-ai-tools.sh \
-            && [ -s /tmp/init-ai-tools.sh ] && break
-          sleep 2
-        done
-        if [ ! -s /tmp/init-ai-tools.sh ]; then
-          echo "ERROR: devspace-ai-tools-init ConfigMap not reachable after retries."
+        # DWO mounts ConfigMap devspace-ai-tools-init at the product default
+        # /etc/config/<name>/ (User Guide: Mount ConfigMaps). Volume first —
+        # v30 first cut Failed on 30x kube-API curl(28) with a 0-byte script.
+        INIT_VOL="/etc/config/devspace-ai-tools-init/init-ai-tools.sh"
+        INIT_TMP="/tmp/init-ai-tools.sh"
+        INIT_SH=""
+        if [ -s "${INIT_VOL}" ]; then
+          INIT_SH="${INIT_VOL}"
+          echo "init-ai-tools.sh from ConfigMap volume ${INIT_VOL}"
+        else
+          KUBE_API="https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}"
+          KUBE_CA="/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+          KUBE_TOKEN="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"
+          echo "WARN: ConfigMap volume empty at ${INIT_VOL}; falling back to kube-API fetch"
+          for i in $(seq 1 30); do
+            curl -fsS --connect-timeout 5 --max-time 20 --cacert "${KUBE_CA}" \
+              -H "Authorization: Bearer ${KUBE_TOKEN}" \
+              "${KUBE_API}/api/v1/namespaces/wksp-ai-developer/configmaps/devspace-ai-tools-init" \
+              | jq -r '.data["init-ai-tools.sh"] // empty' >"${INIT_TMP}" \
+              && [ -s "${INIT_TMP}" ] && INIT_SH="${INIT_TMP}" && break
+            sleep 2
+          done
+        fi
+        if [ -z "${INIT_SH}" ] || [ ! -s "${INIT_SH}" ]; then
+          echo "ERROR: devspace-ai-tools-init not mounted and not reachable after retries."
           echo "Agent tooling is required; refusing a healthy workspace without it."
           exit 1
         fi
-        chmod 700 /tmp/init-ai-tools.sh
-        /tmp/init-ai-tools.sh "${PROJECT_DIR}" "${PROFILE}" \
+        chmod 700 "${INIT_SH}" 2>/dev/null || true
+        bash "${INIT_SH}" "${PROJECT_DIR}" "${PROFILE}" \
           || { echo "ERROR: init-ai-tools.sh failed"; exit 1; }
         export PATH="${HOME}/.local/bin:${HERMES_MANAGED_DIR:-/projects/.platform/hermes}/bin:${PATH}"
         if ! command -v hermes >/dev/null 2>&1; then
           echo "ERROR: hermes missing after init-ai-tools.sh"
           exit 1
+        fi
+        GW_SUP="${PROJECT_DIR}/.hermes/home/scripts/supervise-gateway.sh"
+        if [ -f "${GW_SUP}" ]; then
+          bash "${GW_SUP}" --ensure \
+            || echo "WARN: supervise-gateway --ensure failed"
+        else
+          echo "WARN: ${GW_SUP} missing — gateway will not persist"
         fi
         # AD-S / provision-owns-tools (Architect E-20260811T121308Z): Spec Kit
         # init is workspace setup — fail-closed; agents verify-or-BLOCK only.

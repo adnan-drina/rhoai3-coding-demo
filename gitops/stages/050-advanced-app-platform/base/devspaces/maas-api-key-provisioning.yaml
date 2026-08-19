@@ -124,6 +124,9 @@ kind: ConfigMap
 metadata:
   name: devspace-ai-tools-init
   namespace: wksp-ai-developer
+  labels:
+    controller.devfile.io/mount-to-devworkspace: "true"
+    controller.devfile.io/watch-configmap: "true"
   annotations:
     argocd.argoproj.io/sync-wave: "17"
 data:
@@ -759,6 +762,10 @@ data:
             "failure_limit": 2,
             "dispatch_stale_timeout_seconds": 14400,
             "review_dispatch": False,
+            # Official default is true; pin so PVC drift cannot disable the
+            # gateway-embedded dispatcher (v30: gateway gone => board stall).
+            "dispatch_in_gateway": True,
+            "max_in_progress": 1,
         },
         # Dashboard bank (Operator ruling: ai-developer/redhat123 demo auth;
         # product refuses unauthenticated non-localhost bind). Seeded here so
@@ -1347,6 +1354,14 @@ data:
     if [ "${PROFILE}" = "modernized" ]; then
       ensure_hermes
       write_kantra_helper
+      # Item 2: persist `hermes gateway run` (no systemd; `start` is installer).
+      gw_sup="${PROJECT_DIR}/.hermes/home/scripts/supervise-gateway.sh"
+      if [ -f "${gw_sup}" ]; then
+        bash "${gw_sup}" --ensure \
+          || echo "WARN: supervise-gateway --ensure failed (see ${HERMES_HOME:-${PROJECT_DIR}/.hermes/home}/gateway-supervise.log)"
+      else
+        echo "WARN: ${gw_sup} missing — gateway will not persist across the creating session"
+      fi
     fi
     echo "Configured ${AI_TOOL} from the MaaS API key Secret for ${PROFILE}."
 ---

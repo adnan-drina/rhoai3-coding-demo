@@ -100,9 +100,10 @@ export HERMES_MANAGED_DIR="${HERMES_MANAGED_DIR:-/projects/.platform/hermes}"
 cd /projects/modernized
 
 # Ensure watch is already running in another pane (demo Act D).
+# M1 create parks M2..M5 (`--initial-status blocked`, each `--parent` its
+# predecessor). Do not dest-enable the `dispatch-phase` skill pin.
+# Unpark is native parent-done, not a later `dispatch-phase.sh M2` by hand.
 bash "${HERMES_SKILL_DIR}/scripts/dispatch-phase.sh" M1
-# later:
-bash "${HERMES_SKILL_DIR}/scripts/dispatch-phase.sh" M2 --parent <m1_task_id>
 # after M2 Done: the M3 wave-holder worker follows references/mint-m3-hermes.md
 # (lint + kanban_create + ack_gate). Do not bash mint-m3-wave.sh.
 ```
@@ -119,7 +120,7 @@ bash .hermes/skills/harness/dispatch-phase/scripts/dispatch-phase.sh M1
 
 Create parks (`DISPATCH_MAX=0`). Spawn is native `hermes kanban dispatch --max 1`
 — not `chat -q`, not `kanban daemon --force`. The long-running native loop is
-the gateway-embedded dispatcher (`hermes gateway start`, AD-013). Argv, official log path, and M3
+`hermes gateway run` (official; `gateway start` is the systemd installer). Argv, official log path, and M3
 `--parent` create: `references/native-dispatch.md`.
 
 ### What dispatch-phase.sh does
@@ -144,7 +145,10 @@ the gateway-embedded dispatcher (`hermes gateway start`, AD-013). Argv, official
    idempotency key); id under `evidence/derived/` (pointer, not the DAG).
    M2 stamps dest write-set **cache** `evidence/runtime/write-sets/<id>.json`
    = `.specify/` + `specs/` (AD-013; fence is spawn-env, not that file).
-6. M3 children are **not** created by this script. The holder session
+   On **M1**, also creates M2..M5 `--initial-status blocked` each `--parent`
+   predecessor (`DISPATCH_PARK_CHAIN=1`). Gateway persist is a separate
+   supervisor (`supervise-gateway.sh`); neither half alone advances the board.
+6. M3 **story** children are **not** created by this script. The holder session
    follows `references/mint-m3-hermes.md`.
 
 ### What mint-m3-hermes.md adds

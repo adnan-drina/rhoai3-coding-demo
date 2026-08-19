@@ -66,6 +66,8 @@ REQUIRED_FILES = [
     ".hermes/skills/harness/dispatch-phase/scripts/assert-partition-invented-routes.py",
     ".hermes/skills/harness/dispatch-phase/scripts/assert-compiled-route-fidelity.py",
     ".hermes/skills/gates/check-release-readiness/scripts/evaluate-exit-criteria.py",
+    ".hermes/home/scripts/supervise-gateway.sh",
+    ".hermes/skills/analysis/scan-with-mta/scripts/assert-ensure-cli-path.sh",
     ".hermes/skills/harness/dispatch-phase/references/handover-mint.md",
     ".hermes/skills/harness/dispatch-phase/references/delivery-path.md",
     ".hermes/skills/harness/dispatch-phase/references/native-dispatch.md",
@@ -295,6 +297,26 @@ REQUIRED_SUBSTRINGS = [
         ".hermes/skills/harness/dispatch-phase/scripts/dispatch-phase.sh",
         "read-phase-dispatch.py",
         "LG7 dispatch reads phase-dispatch as JSON",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/scripts/dispatch-phase.sh",
+        "DISPATCH_PARK_CHAIN",
+        "M1 create parks M2..M5 (Architect 085250Z)",
+    ),
+    (
+        "devfile.yaml",
+        "/etc/config/devspace-ai-tools-init",
+        "postStart prefers ConfigMap volume over kube-API curl",
+    ),
+    (
+        "devfile.yaml",
+        "/projects/.platform/poststart.log",
+        "postStart tees to PVC (survives FailedPostStartHook)",
+    ),
+    (
+        "devfile.yaml",
+        "supervise-gateway.sh",
+        "postStart ensures hermes gateway run supervisor",
     ),
     (
         ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
