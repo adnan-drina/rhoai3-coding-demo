@@ -354,6 +354,12 @@ def main() -> int:
                 file=sys.stderr,
             )
             bad = 1
+        elif "evidence/type-inventory.json" not in wtext:
+            print(
+                "FAIL: speckit overlay missing M1 type-inventory path",
+                file=sys.stderr,
+            )
+            bad = 1
         elif "_transcribed_http" in wtext:
             print(
                 "FAIL: speckit overlay must not cite handover-mint _transcribed_http "

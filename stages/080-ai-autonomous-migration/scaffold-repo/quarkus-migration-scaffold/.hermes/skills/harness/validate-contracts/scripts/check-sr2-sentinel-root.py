@@ -44,7 +44,7 @@ VAR_HOP = re.compile(
 )
 
 ROOT_ASSIGN = re.compile(
-    r'(?:ROOT|root|MODERNIZED_ROOT)\s*=\s*.*(?:\.\./){2,}'
+    r'(?:^|[^A-Za-z0-9_])(?:ROOT|root|MODERNIZED_ROOT)\s*=\s*.*(?:\.\./){2,}'
 )
 
 PY_PARENTS = re.compile(r"""\.parents\[\s*([2-9]|\d{2,})\s*\]""")

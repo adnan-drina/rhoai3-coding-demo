@@ -84,8 +84,13 @@ dest-rewrite a body to paper over a missing ladder branch.
 
 `stamp-body-dependencies.py` assigns inheritance-reachable unowned dest
 twins onto the owning story's partition frame (Architect `E-20260819T165142Z`
-/ V34-5). Do **not** grow this mint for that close. Do **not** dest-rewrite
-`tasks.md` to name specimen types.
+/ V34-5), including simple names reached through `import pkg.*;`. Generated
+types stamp `provider: generated` (dc66c244); they are not dest twins a
+story Creates. M2 covers source type-inventory dest twins; generated
+types require generator inputs owned (`GENERATOR_INPUTS`). V34-8 stamp +
+assert-dependency-closure remains the backstop. Do **not**
+grow this mint for that close. Do **not** dest-rewrite `tasks.md` to name
+specimen types.
 
 ## Fail-closed
 

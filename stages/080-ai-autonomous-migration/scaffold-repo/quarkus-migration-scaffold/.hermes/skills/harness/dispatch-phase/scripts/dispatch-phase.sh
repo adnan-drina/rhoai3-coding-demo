@@ -402,6 +402,8 @@ orchestration: hermes_native (required)
 ## Job (in order)
 1. Load/run **derive-legacy-boot3** - ensure `evidence/derived/legacy-at-3.json` and frozen harvest_referent.
 2. Load/run **inventory-entry-points** - write `evidence/entry-point-inventory.json` (**before** MTA handoff emit).
+2a. Walk types reachable from each inventory row file (no Kanban `--body`):
+   `python3 .hermes/skills/analysis/inventory-entry-points/scripts/inventory-type-graph.py --dest-root /projects/modernized --inventory evidence/entry-point-inventory.json -o evidence/type-inventory.json`
 3. Load/run **scan-with-mta** - `bash "${HERMES_SKILL_DIR}/scripts/mta-analyze-legacy.sh"` (never invent `--source`; use MTA_RUN_CWD + writable clone when freeze is a-w). Script normalizes findings and emits `evidence/findings-handoff.json` (requires inventory).
 4. Schema-validate findings + handoff (runtime skill root / AD-H §7.1):
    `python3 "${HERMES_SKILL_DIR:-.hermes/home/skills/software-development/scan-with-mta}/scripts/check-findings-handoff.py" /projects/modernized`
@@ -425,6 +427,7 @@ orchestration: hermes_native (required)
 ## Done when
 - `evidence/mta-findings.json` validates (`rhoai3.mta-findings/v1-provisional`) — evidence store
 - `evidence/entry-point-inventory.json` present
+- `evidence/type-inventory.json` present
 - `evidence/findings-handoff.json` validates (`rhoai3.findings-handoff/v1`) — M2 planner input
 - `evidence/acks/m1-findings.ack.yaml` exists as the 5.1 gate-record (issuer exit 0) — not an Operator GO
 EOF
@@ -450,6 +453,7 @@ substitution / path invention / specimen-body priming. Measure the harness.
 - evidence/acks/m1-findings.ack.yaml
 - evidence/findings-handoff.json
 - evidence/entry-point-inventory.json
+- evidence/type-inventory.json
 - evidence/mta-findings.json
 - .hermes/skills/harness/enforce-authority-boundary/scripts/issue-m1-findings-ack.py
 - .hermes/skills/sdd/check-spec-readiness/scripts/check-partition-coverage.py
@@ -476,10 +480,12 @@ substitution / path invention / specimen-body priming. Measure the harness.
    Exit **0** = `m1-findings.ack.yaml` is a gate-record. Exit **1** = handoff not green → typed BLOCK.
    Do **not** `needs_input` for a missing **human** yaml. **M3 brief-identity** stays Operator.
 2. **Read inventory before specify** (Architect E-20260817T203500Z):
-   Open `evidence/entry-point-inventory.json` **before** invoking
+   Open `evidence/entry-point-inventory.json` and `evidence/type-inventory.json` **before** invoking
    `/speckit-specify`. Prove the read (tool evidence). Spec functional
    requirements MUST enumerate every inventory `http_path` (and `http_method`
-   when present). **Forbidden:** asserting a count ("all 34 endpoints") in
+   when present). Cover every **source** type-inventory `dest_file` in `tasks.md` (one
+   creator phase per dest `.java` path). Generated types: carry the spec and
+   configure the dest generator — do not Create their `.java`. **Forbidden:** asserting a count ("all 34 endpoints") in
    place of the list; inventing routes not in the inventory.
 3. **Spec Kit invoke-or-BLOCK** (Architect E-20260811T115316Z — not soft Prefer):
    - Hard-invoke attached skill `speckit-specify` via `skill_view` / `/speckit-specify`
@@ -526,7 +532,7 @@ substitution / path invention / specimen-body priming. Measure the harness.
 - Spec Kit invoke evidenced (seed + plan + tasks.md) **or** typed `needs_input` BLOCK recorded
 - `spec.md` enumerates every inventory `http_path` (not a count)
 - Resource task lines include literal `@Path("...")` for owned HTTP routes
-- Scratch `handover-mint.py --write` exit 0 (`scratch-assemble-mint.py`) — dest `partition.json` untouched; invented endpoints refuse; type-closure (stamp + assert-dependency-closure) when scratch has legacy-at-3
+- Scratch `handover-mint.py --write` exit 0 (`scratch-assemble-mint.py`) — dest `partition.json` untouched; invented endpoints refuse; type-inventory source dest twins covered when that file is present (skip generated); type-closure (stamp + assert-dependency-closure) when scratch has legacy-at-3; `provider: generated` skips DEST_MISS and requires generator inputs owned
 - M2 `checkpoint.json` present (`holder-checkpoint.py check --kind m2`)
 - **No** `partition.json` authored on this card (handover-mint writes the receipt)
 - **No** M3 Kanban children created on this card

@@ -1975,7 +1975,379 @@ else
 fi
 rm -rf "${imp_tmp}"
 
-# V34-3 — M2 checkpoint is the holder script with --kind m2
+# Star-import simple names (import dto.*; used as a simple type)
+star_tmp="$(mktemp -d)"
+mkdir -p "${star_tmp}/modernized/evidence/bodies" \
+  "${star_tmp}/modernized/evidence/briefs" \
+  "${star_tmp}/.derived/legacy-at-3/src/main/java/com/acme/legacy/rest/dto"
+cat > "${star_tmp}/modernized/migration.yaml" <<'YAML'
+migration:
+  legacyBasePackage: com.acme.legacy
+  targetPackage: com.demo
+  path_rewrites:
+    - from: src/main/java/com/demo/
+      to: src/main/java/com/acme/legacy/
+YAML
+printf '%s\n' \
+  'package com.acme.legacy.rest.dto;' \
+  'public class OwnerDto { private String name; }' \
+  > "${star_tmp}/.derived/legacy-at-3/src/main/java/com/acme/legacy/rest/dto/OwnerDto.java"
+printf '%s\n' \
+  'package com.acme.legacy.rest;' \
+  'import com.acme.legacy.rest.dto.*;' \
+  'public class OwnerRest { OwnerDto d; }' \
+  > "${star_tmp}/.derived/legacy-at-3/src/main/java/com/acme/legacy/rest/OwnerRest.java"
+python3 - <<PY
+import json
+from pathlib import Path
+root = Path("${star_tmp}/modernized")
+leaf = "src/main/java/com/demo/rest/OwnerRest.java"
+part = {
+  "schema": "rhoai3.handover-receipt/v1",
+  "source": "handover-mint",
+  "stories": [{"story_id": "foundational", "files_writable": [leaf], "files_in_scope": [leaf]}],
+}
+(root / "evidence/briefs/partition.json").write_text(json.dumps(part) + "\n")
+body = {
+  "identity": {"story_id": "foundational", "operand_count": 1},
+  "files_in_scope": [leaf],
+  "files_writable": [leaf],
+}
+(root / "evidence/bodies/m3-foundational.json").write_text(json.dumps(body) + "\n")
+PY
+if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/stamp-body-dependencies.py" \
+    "${star_tmp}/modernized" --body evidence/bodies/m3-foundational.json --write \
+    >/tmp/star-imp.out 2>/tmp/star-imp.err; then
+  if python3 - "${star_tmp}" <<'PY'
+import json, sys
+from pathlib import Path
+root = Path(sys.argv[1]) / "modernized"
+b = json.loads((root / "evidence/bodies/m3-foundational.json").read_text())
+p = json.loads((root / "evidence/briefs/partition.json").read_text())
+want = {"src/main/java/com/demo/rest/dto/OwnerDto.java"}
+fw = set(b.get("files_writable") or [])
+owned = set((p.get("stories") or [{}])[0].get("files_writable") or [])
+pre = [d for d in (b.get("dependencies") or []) if isinstance(d, dict) and d.get("provider") == "pre-exists"]
+raise SystemExit(0 if not (want - fw) and not (want - owned) and not pre else 1)
+PY
+  then
+    echo "OK: stamp assigns star-import dest twins onto partition"
+  else
+    echo "FAIL: expected dest OwnerDto via star-import; no pre-exists" >&2
+    cat /tmp/star-imp.out /tmp/star-imp.err >&2
+    cat "${star_tmp}/modernized/evidence/bodies/m3-foundational.json" >&2
+    cat "${star_tmp}/modernized/evidence/briefs/partition.json" >&2
+    rc=1
+  fi
+else
+  echo "FAIL: star-import dest twins should stamp without DEPENDENCY_HOLE" >&2
+  cat /tmp/star-imp.out /tmp/star-imp.err >&2
+  rc=1
+fi
+rm -rf "${star_tmp}"
+
+# M1 type-graph inventory (no --body)
+tg_tmp="$(mktemp -d)"
+mkdir -p "${tg_tmp}/modernized/evidence" \
+  "${tg_tmp}/.derived/legacy-at-3/src/main/java/com/acme/legacy/rest/dto"
+cat > "${tg_tmp}/modernized/migration.yaml" <<'YAML'
+migration:
+  legacyBasePackage: com.acme.legacy
+  targetPackage: com.demo
+  path_rewrites:
+    - from: src/main/java/com/demo/
+      to: src/main/java/com/acme/legacy/
+YAML
+printf '%s\n' \
+  'package com.acme.legacy.rest.dto;' \
+  'public class OwnerDto { private String name; }' \
+  > "${tg_tmp}/.derived/legacy-at-3/src/main/java/com/acme/legacy/rest/dto/OwnerDto.java"
+printf '%s\n' \
+  'package com.acme.legacy.rest;' \
+  'import com.acme.legacy.rest.dto.*;' \
+  'public class OwnerRest { OwnerDto d; }' \
+  > "${tg_tmp}/.derived/legacy-at-3/src/main/java/com/acme/legacy/rest/OwnerRest.java"
+python3 - <<PY
+import json
+from pathlib import Path
+root = Path("${tg_tmp}/modernized")
+inv = {
+  "schema": "rhoai3.entry-point-inventory/v1",
+  "entry_points": [{
+    "kind": "http",
+    "file": "src/main/java/com/acme/legacy/rest/OwnerRest.java",
+    "symbol": "OwnerRest#get",
+    "http_method": "GET",
+    "http_path": "/api/owners",
+  }],
+}
+(root / "evidence/entry-point-inventory.json").write_text(json.dumps(inv) + "\n")
+PY
+if python3 "${SKILLS}/analysis/inventory-entry-points/scripts/inventory-type-graph.py" \
+    --dest-root "${tg_tmp}/modernized" \
+    --inventory evidence/entry-point-inventory.json \
+    --legacy "${tg_tmp}/.derived/legacy-at-3" \
+    -o evidence/type-inventory.json \
+    >/tmp/tg-inv.out 2>/tmp/tg-inv.err; then
+  if python3 - "${tg_tmp}" <<'PY'
+import json, sys
+from pathlib import Path
+data = json.loads((Path(sys.argv[1]) / "modernized/evidence/type-inventory.json").read_text())
+if data.get("schema") != "rhoai3.type-inventory/v1":
+    raise SystemExit(1)
+dests = {t.get("dest_file") for t in data.get("types") or []}
+want = "src/main/java/com/demo/rest/dto/OwnerDto.java"
+raise SystemExit(0 if want in dests else 1)
+PY
+  then
+    echo "OK: type-inventory lists dest twins from entry files"
+  else
+    echo "FAIL: type-inventory missing dest OwnerDto" >&2
+    cat /tmp/tg-inv.out /tmp/tg-inv.err >&2
+    cat "${tg_tmp}/modernized/evidence/type-inventory.json" >&2
+    rc=1
+  fi
+else
+  echo "FAIL: inventory-type-graph.py should emit type-inventory.json" >&2
+  cat /tmp/tg-inv.out /tmp/tg-inv.err >&2
+  rc=1
+fi
+rm -rf "${tg_tmp}"
+
+# Type-inventory dest twin absent from partition → types_uncovered
+tcov_tmp="$(mktemp -d)"
+mkdir -p "${tcov_tmp}/evidence/briefs"
+python3 - "${tcov_tmp}" <<'PY'
+import json, sys
+from pathlib import Path
+root = Path(sys.argv[1])
+(root / "evidence/briefs/partition.json").write_text(json.dumps({
+  "stories": [{
+    "story_id": "US1",
+    "files_writable": ["src/main/java/com/demo/resource/OwnerResource.java"],
+    "files_in_scope": ["src/main/java/com/demo/resource/OwnerResource.java"],
+    "endpoints": ["GET /api/owners"],
+    "rules": ["springboot-to-quarkus-00000"],
+  }]
+}) + "\n")
+(root / "inventory.json").write_text(json.dumps({
+  "entry_points": [{
+    "kind": "http",
+    "file": "src/main/java/org/example/demo/rest/OwnerRest.java",
+    "symbol": "OwnerRest#get",
+    "http_method": "GET",
+    "http_path": "/api/owners",
+  }],
+  "totals": {"http_endpoints": 1},
+}) + "\n")
+(root / "evidence/mta-findings.json").write_text(json.dumps({
+  "schema": "rhoai3.mta-findings/v1-provisional",
+  "violations": {"springboot-to-quarkus-00000": {"ruleID": "springboot-to-quarkus-00000", "category": "mandatory", "incidents": []}},
+}) + "\n")
+(root / "evidence/type-inventory.json").write_text(json.dumps({
+  "schema": "rhoai3.type-inventory/v1",
+  "types": [{
+    "legacy_file": "src/main/java/org/example/demo/rest/dto/OwnerDto.java",
+    "dest_file": "src/main/java/com/demo/dto/OwnerDto.java",
+    "layer": "dto",
+    "reached_from": ["src/main/java/org/example/demo/rest/OwnerRest.java"],
+  }],
+}) + "\n")
+PY
+if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/check-partition-coverage.py" \
+    "${tcov_tmp}" --partition evidence/briefs/partition.json --inventory inventory.json \
+    >/tmp/pc-types.out 2>/tmp/pc-types.err; then
+  echo "FAIL: uncovered type-inventory dest twin must be INVALID" >&2
+  cat /tmp/pc-types.out /tmp/pc-types.err >&2
+  rc=1
+elif grep -q 'types_uncovered' /tmp/pc-types.out /tmp/pc-types.err; then
+  echo "OK: PARTITION_COVERAGE types_uncovered when dest twin is unplanned"
+else
+  echo "FAIL: expected types_uncovered gap" >&2
+  cat /tmp/pc-types.out /tmp/pc-types.err >&2
+  rc=1
+fi
+rm -rf "${tcov_tmp}"
+
+# Generated types: classify provider generated; skip DEST_MISS; require inputs
+gen_tmp="$(mktemp -d)"
+mkdir -p "${gen_tmp}/modernized/evidence/bodies" \
+  "${gen_tmp}/modernized/evidence/briefs" \
+  "${gen_tmp}/modernized/src/main/resources" \
+  "${gen_tmp}/.derived/legacy-at-3/src/main/java/com/acme/legacy/mapper" \
+  "${gen_tmp}/.derived/legacy-at-3/target/generated-sources/openapi/src/main/java/com/acme/legacy/rest/dto"
+cat > "${gen_tmp}/modernized/migration.yaml" <<'YAML'
+migration:
+  legacyBasePackage: com.acme.legacy
+  targetPackage: com.demo
+  path_rewrites:
+    - from: src/main/java/com/demo/
+      to: src/main/java/com/acme/legacy/
+YAML
+cat > "${gen_tmp}/modernized/pom.xml" <<'XML'
+<project>
+  <build><plugins>
+    <plugin>
+      <artifactId>openapi-generator-maven-plugin</artifactId>
+      <configuration>
+        <inputSpec>src/main/resources/api-docs.yml</inputSpec>
+        <modelPackage>com.acme.legacy.rest.dto</modelPackage>
+        <output>target/generated-sources/openapi</output>
+      </configuration>
+    </plugin>
+  </plugins></build>
+</project>
+XML
+cp "${gen_tmp}/modernized/pom.xml" "${gen_tmp}/.derived/legacy-at-3/pom.xml"
+printf '%s\n' 'openapi: 3.0.0' > "${gen_tmp}/modernized/src/main/resources/api-docs.yml"
+printf '%s\n' \
+  'package com.acme.legacy.rest.dto;' \
+  '@javax.annotation.Generated("org.openapitools")' \
+  'public class GenType { private String id; }' \
+  > "${gen_tmp}/.derived/legacy-at-3/target/generated-sources/openapi/src/main/java/com/acme/legacy/rest/dto/GenType.java"
+printf '%s\n' \
+  'package com.acme.legacy.mapper;' \
+  'import com.acme.legacy.rest.dto.GenType;' \
+  'public class LeafMapper { private GenType t; }' \
+  > "${gen_tmp}/.derived/legacy-at-3/src/main/java/com/acme/legacy/mapper/LeafMapper.java"
+python3 - <<PY
+import json
+from pathlib import Path
+root = Path("${gen_tmp}/modernized")
+leaf = "src/main/java/com/demo/mapper/LeafMapper.java"
+pom = "pom.xml"
+spec = "src/main/resources/api-docs.yml"
+part = {
+  "schema": "rhoai3.handover-receipt/v1",
+  "source": "handover-mint",
+  "stories": [
+    {"story_id": "setup", "files_writable": [pom, spec], "files_in_scope": [pom, spec]},
+    {"story_id": "foundational", "files_writable": [leaf], "files_in_scope": [leaf]},
+  ],
+}
+(root / "evidence/briefs/partition.json").write_text(json.dumps(part) + "\n")
+body = {
+  "identity": {"story_id": "foundational", "operand_count": 1},
+  "files_in_scope": [leaf],
+  "files_writable": [leaf],
+}
+(root / "evidence/bodies/m3-foundational.json").write_text(json.dumps(body) + "\n")
+PY
+if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/stamp-body-dependencies.py" \
+    "${gen_tmp}/modernized" --body evidence/bodies/m3-foundational.json --write \
+    >/tmp/gen-stamp.out 2>/tmp/gen-stamp.err; then
+  if python3 - "${gen_tmp}" <<'PY'
+import json, sys
+from pathlib import Path
+b = json.loads((Path(sys.argv[1]) / "modernized/evidence/bodies/m3-foundational.json").read_text())
+deps = b.get("dependencies") or []
+got = [d for d in deps if isinstance(d, dict) and d.get("provider") == "generated"]
+fw = set(b.get("files_writable") or [])
+raise SystemExit(0 if got and not any("GenType.java" in x for x in fw) else 1)
+PY
+  then
+    echo "OK: stamp classifies generated types"
+  else
+    echo "FAIL: expected provider generated and GenType not assigned" >&2
+    cat /tmp/gen-stamp.out /tmp/gen-stamp.err >&2
+    cat "${gen_tmp}/modernized/evidence/bodies/m3-foundational.json" >&2
+    rc=1
+  fi
+else
+  echo "FAIL: generated types should stamp without DEPENDENCY_HOLE" >&2
+  cat /tmp/gen-stamp.out /tmp/gen-stamp.err >&2
+  rc=1
+fi
+if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/assert-dependency-closure.py" \
+    "${gen_tmp}/modernized" --body evidence/bodies/m3-foundational.json \
+    >/tmp/gen-assert.out 2>/tmp/gen-assert.err; then
+  echo "OK: generated DEST_MISS skipped when inputs owned"
+else
+  echo "FAIL: generated provider should skip DEST_MISS when spec+pom owned" >&2
+  cat /tmp/gen-assert.out /tmp/gen-assert.err >&2
+  rc=1
+fi
+# Same tree, spec dropped from the plan → GENERATOR_INPUTS
+python3 - "${gen_tmp}" <<'PY'
+import json, sys
+from pathlib import Path
+root = Path(sys.argv[1]) / "modernized"
+part = json.loads((root / "evidence/briefs/partition.json").read_text())
+part["stories"][0]["files_writable"] = ["pom.xml"]
+part["stories"][0]["files_in_scope"] = ["pom.xml"]
+(root / "evidence/briefs/partition.json").write_text(json.dumps(part) + "\n")
+PY
+if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/assert-dependency-closure.py" \
+    "${gen_tmp}/modernized" --body evidence/bodies/m3-foundational.json \
+    >/tmp/gen-miss.out 2>/tmp/gen-miss.err; then
+  echo "FAIL: missing generator spec must GENERATOR_INPUTS" >&2
+  cat /tmp/gen-miss.out /tmp/gen-miss.err >&2
+  rc=1
+elif grep -q 'GENERATOR_INPUTS' /tmp/gen-miss.err; then
+  echo "OK: GENERATOR_INPUTS when spec unowned"
+else
+  echo "FAIL: expected GENERATOR_INPUTS" >&2
+  cat /tmp/gen-miss.out /tmp/gen-miss.err >&2
+  rc=1
+fi
+rm -rf "${gen_tmp}"
+
+# Generated type-inventory rows are not types_uncovered
+tgen_tmp="$(mktemp -d)"
+mkdir -p "${tgen_tmp}/evidence/briefs"
+python3 - "${tgen_tmp}" <<'PY'
+import json, sys
+from pathlib import Path
+root = Path(sys.argv[1])
+(root / "evidence/briefs/partition.json").write_text(json.dumps({
+  "stories": [{
+    "story_id": "US1",
+    "files_writable": ["src/main/java/com/demo/resource/OwnerResource.java"],
+    "files_in_scope": ["src/main/java/com/demo/resource/OwnerResource.java"],
+    "endpoints": ["GET /api/owners"],
+    "rules": ["springboot-to-quarkus-00000"],
+  }]
+}) + "\n")
+(root / "inventory.json").write_text(json.dumps({
+  "entry_points": [{
+    "kind": "http",
+    "file": "src/main/java/org/example/demo/rest/OwnerRest.java",
+    "symbol": "OwnerRest#get",
+    "http_method": "GET",
+    "http_path": "/api/owners",
+  }],
+  "totals": {"http_endpoints": 1},
+}) + "\n")
+(root / "evidence/mta-findings.json").write_text(json.dumps({
+  "schema": "rhoai3.mta-findings/v1-provisional",
+  "violations": {"springboot-to-quarkus-00000": {"ruleID": "springboot-to-quarkus-00000", "category": "mandatory", "incidents": []}},
+}) + "\n")
+(root / "evidence/type-inventory.json").write_text(json.dumps({
+  "schema": "rhoai3.type-inventory/v1",
+  "types": [{
+    "dest_file": "src/main/java/com/demo/dto/OwnerDto.java",
+    "generated": True,
+    "layer": "dto",
+  }],
+}) + "\n")
+PY
+if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/check-partition-coverage.py" \
+    "${tgen_tmp}" --partition evidence/briefs/partition.json --inventory inventory.json \
+    >/tmp/pc-tgen.out 2>/tmp/pc-tgen.err; then
+  if grep -q 'VALID' /tmp/pc-tgen.out && ! grep -q 'types_uncovered' /tmp/pc-tgen.out /tmp/pc-tgen.err; then
+    echo "OK: PARTITION_COVERAGE skips generated type-inventory dest twins"
+  else
+    echo "FAIL: generated dest twins must not types_uncovered" >&2
+    cat /tmp/pc-tgen.out /tmp/pc-tgen.err >&2
+    rc=1
+  fi
+else
+  echo "FAIL: generated type-inventory rows should be VALID skip" >&2
+  cat /tmp/pc-tgen.out /tmp/pc-tgen.err >&2
+  rc=1
+fi
+rm -rf "${tgen_tmp}"
+
 cp_tmp="$(mktemp -d)"
 if python3 "${SKILLS}/harness/dispatch-phase/scripts/holder-checkpoint.py" \
     init --kind m2 --task-id t_m2fix --root "${cp_tmp}" \
@@ -3850,6 +4222,9 @@ elif ! grep -q 'never prefix /projects/modernized' "${overlay}"; then
 elif ! grep -q 'CLASS-LEVEL ABSOLUTE' "${overlay}"; then
   echo "FAIL: overlay missing class-level @Path restatement (133010Z)" >&2
   rc=1
+elif ! grep -q 'evidence/type-inventory.json' "${overlay}"; then
+  echo "FAIL: overlay missing M1 type-inventory path" >&2
+  rc=1
 else
   echo "OK: tip speckit overlay (clarify, no implement, no gates, M1 paths, ingress-only, class-level @Path)"
 fi
@@ -3928,6 +4303,21 @@ elif grep -q 'Verify quality gate' "${tasks_tpl}"; then
   rc=1
 else
   echo "OK: tasks-template polish names a dest file must Create it (I-16)"
+fi
+if ! grep -q 'evidence/type-inventory.json' "${tasks_tpl}"; then
+  echo "FAIL: tasks-template lacks type-inventory dest-twin pin" >&2
+  rc=1
+elif ! grep -q 'configure the dest generator' "${tasks_tpl}"; then
+  echo "FAIL: tasks-template lacks generated-types carry-spec pin" >&2
+  rc=1
+elif grep -q 'Create DTOs matching legacy API contracts' "${tasks_tpl}"; then
+  echo "FAIL: tasks-template still dumps DTOs as a Foundational directory" >&2
+  rc=1
+elif grep -q 'itemType ends `Dto`' "${tasks_tpl}" || grep -q 'itemType ends Dto' "${tasks_tpl}"; then
+  echo "FAIL: tasks-template still keys dest twins on a Dto name pattern" >&2
+  rc=1
+else
+  echo "OK: tasks-template type-inventory dest-twin pin present"
 fi
 spec_tpl="${SKILLS}/sdd/init-spec-workspace/assets/spec-template.md"
 if [ ! -f "${spec_tpl}" ]; then

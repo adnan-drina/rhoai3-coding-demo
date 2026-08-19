@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Dependency / pre-exists / import-closure gate (Class A).
+"""Dependency / pre-exists / generated / import-closure gate (Class A).
 
 Architect E-20260811T203657Z — elevate BANK-DEP-CLOSURE-1:
 create-m3 / partition path fail-closed when:
   1) dependencies[] declare provider=pre-exists but the dest file is DEST_MISS
   2) (optional --imports) Java imports under files_writable reference types
      with no owner in this body's writable/scope/deps and no dest file
+  3) provider=generated skips DEST_MISS (build output need not exist yet)
+     but the plan must own generator inputs (spec + build config)
 
 Sibling to interface-closure (implements-only).
 
@@ -25,7 +27,11 @@ _SCRIPTS = Path(__file__).resolve().parent
 if str(_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS))
 
-from specimen_agnostic import legacy_java_prefixes  # noqa: E402
+from generated_sources import (  # noqa: E402
+    generator_input_paths,
+    is_generated,
+)
+from specimen_agnostic import dest_path_as_written, legacy_java_prefixes  # noqa: E402
 
 IMPORT_RE = re.compile(r"^\s*import\s+([\w.]+)\s*;", re.M)
 PKG_RE = re.compile(r"^\s*package\s+([\w.]+)\s*;", re.M)
@@ -70,6 +76,8 @@ def check_pre_exists(root: Path, body: dict) -> list[str]:
         if not isinstance(dep, dict):
             continue
         provider = str(dep.get("provider") or "").strip().lower()
+        if provider in {"generated"}:
+            continue
         if provider not in {"pre-exists", "preexists", "pre_exists"}:
             continue
         f = dep.get("file") or dep.get("path")
@@ -79,6 +87,104 @@ def check_pre_exists(root: Path, body: dict) -> list[str]:
         dest = resolve_dest(root, str(f))
         if not dest.is_file():
             bad.append(f"pre-exists DEST_MISS: {f} (resolved {dest})")
+    return bad
+
+
+def _field_paths(raw: object) -> list[str]:
+    out: list[str] = []
+    if not isinstance(raw, list):
+        return out
+    for item in raw:
+        if isinstance(item, str) and item.strip():
+            out.append(item.strip())
+        elif isinstance(item, dict):
+            for k in ("dest", "dst", "path", "file", "src"):
+                if item.get(k):
+                    out.append(str(item[k]).strip())
+                    break
+    return out
+
+
+def plan_owned_files(root: Path) -> set[str]:
+    """Union of partition + body write-sets (generator inputs may sit on setup)."""
+    owned: set[str] = set()
+    part = root / "evidence" / "briefs" / "partition.json"
+    if part.is_file():
+        try:
+            data = json.loads(part.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            data = {}
+        for story in data.get("stories") or []:
+            if not isinstance(story, dict):
+                continue
+            for key in ("files_writable", "files", "files_in_scope"):
+                for p in _field_paths(story.get(key)):
+                    owned.add(dest_path_as_written(p))
+    bodies = root / "evidence" / "bodies"
+    if bodies.is_dir():
+        for path in bodies.glob("*.json"):
+            if path.name.endswith(".sha256.json"):
+                continue
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            if isinstance(data.get("body"), dict):
+                data = data["body"]
+            if not isinstance(data, dict):
+                continue
+            for key in ("files_writable", "files_in_scope"):
+                for p in _field_paths(data.get(key)):
+                    owned.add(dest_path_as_written(p))
+    return owned
+
+
+def check_generated_inputs(root: Path, body: dict) -> list[str]:
+    """If this body depends on generated types, the plan must own spec + build."""
+    has_generated = False
+    for dep in body.get("dependencies") or []:
+        if not isinstance(dep, dict):
+            continue
+        if str(dep.get("provider") or "").strip().lower() == "generated":
+            has_generated = True
+            break
+        f = dep.get("file") or dep.get("path")
+        if f and is_generated(root, str(f)):
+            has_generated = True
+            break
+    if not has_generated:
+        return []
+    wanted = generator_input_paths(root)
+    owned = plan_owned_files(root)
+    # This body also counts.
+    for key in ("files_writable", "files_in_scope"):
+        for p in _field_paths(body.get(key)):
+            owned.add(dest_path_as_written(p))
+    bad: list[str] = []
+    for spec in wanted.get("specs") or []:
+        s = dest_path_as_written(spec)
+        if s not in owned and Path(s).name not in {Path(x).name for x in owned}:
+            bad.append(f"GENERATOR_INPUTS: spec not owned: {s}")
+    build_ok = False
+    for b in wanted.get("builds") or ["pom.xml"]:
+        bn = dest_path_as_written(b)
+        pom_owned = any(
+            dest_path_as_written(x).endswith("pom.xml") for x in owned
+        )
+        if bn in owned or (bn.endswith("pom.xml") and pom_owned):
+            build_ok = True
+            break
+    if not build_ok:
+        bad.append(
+            "GENERATOR_INPUTS: dest build file not owned ("
+            + ",".join(wanted.get("builds") or ["pom.xml"])
+            + ")"
+        )
+    if not (wanted.get("specs") or []):
+        bad.append(
+            "GENERATOR_INPUTS: generator plugin declared but no spec path "
+            "parsed from the build file (inputSpec / equivalent)"
+        )
     return bad
 
 
@@ -159,6 +265,7 @@ def main() -> int:
         return 1
     body = load_body(body_path)
     bad = check_pre_exists(root, body)
+    bad.extend(check_generated_inputs(root, body))
     if args.imports:
         bad.extend(check_imports(root, body))
     if bad:

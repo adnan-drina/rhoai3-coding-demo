@@ -1,6 +1,6 @@
 ---
 name: inventory-entry-points
-description: Enumerates HTTP, lifecycle and scheduled entry points on legacy@3.x into entry-point-inventory.json. Use before the M1 to M2 handoff, when partition coverage must be checked against a real entry-point set, or when smoke sampling needs the inventory.
+description: Use when M1 must inventory legacy@3.x entry points and the types reachable from those files. Writes evidence/entry-point-inventory.json then evidence/type-inventory.json. Use before the M1 to M2 handoff, when partition coverage must cover dest twins as well as HTTP rows, when a collaborator layer is missing from the plan, or when smoke sampling needs the inventory — even if the user does not name type inventory. Do not use as a substitute for scan-with-mta.
 license: Apache-2.0
 compatibility: Linux seat; Python 3.11+; reads the legacy@3.x tree
 metadata:
@@ -46,6 +46,21 @@ python3 "${HERMES_SKILL_DIR}/scripts/inventory-entry-points.py" \
 ```
 
 3. Read the printed counts and confirm the run was not vacuous (below).
+4. Walk types reachable from each inventory row `file` (no Kanban body):
+
+```bash
+python3 "${HERMES_SKILL_DIR}/scripts/inventory-type-graph.py" \
+  --dest-root /projects/modernized \
+  --inventory evidence/entry-point-inventory.json \
+  --legacy /projects/.derived/legacy-at-3 \
+  -o evidence/type-inventory.json
+```
+
+Layer is the last package segment of the dest path, not a name pattern.
+Each row may set `generated: true` (path under `target/generated-sources`,
+`@Generated`, or a declared generator plugin — no Dto/name pattern). M2
+Creates source `dest_file`s; generated types carry the spec and configure
+the dest generator — do not Create their `.java`.
 
 Kinds: `http` (subtype `spring-mvc-or-jaxrs`) and `non-http`
 (`lifecycle`, `scheduled`, `messaging`, `cli`, `event`). Type-level
@@ -65,12 +80,18 @@ only, so a referent living under `/projects/.derived/…` still scans.
 - Inventorying the RO legacy mount without the Boot-3 derived harvest
   referent when Boot source is still 2.x.
 - Treating HTTP-only inventory as complete when non-HTTP entry points exist.
+- Treating HTTP inventory as complete for collaborator layers — those
+  dest twins live in `evidence/type-inventory.json`, not on a route.
+- Planning a Create for a `generated: true` dest twin — those are build
+  output; the story owns the spec and the generator config.
 - Writing inventory into `/projects/legacy` (read-only provenance).
 
 ## Verification
 
 - `evidence/entry-point-inventory.json` exists with
   `schema: rhoai3.entry-point-inventory/v1` and a fresh `scanned_at`.
+- `evidence/type-inventory.json` exists with
+  `schema: rhoai3.type-inventory/v1` after the type-graph walk.
 - `execution_evidence.ran == true` and `execution_evidence.vacuous == false`.
   `vacuous: "zero_java_files"` means the root was wrong or empty — the result
   is INCONCLUSIVE, not "no entry points"; fix the root before handing off.

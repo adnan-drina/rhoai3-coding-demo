@@ -123,6 +123,7 @@ def main() -> int:
             "evidence/acks/",
             "evidence/findings-handoff.json",
             "evidence/entry-point-inventory.json",
+            "evidence/type-inventory.json",
             "evidence/mta-findings.json",
         )
         for rel in required:

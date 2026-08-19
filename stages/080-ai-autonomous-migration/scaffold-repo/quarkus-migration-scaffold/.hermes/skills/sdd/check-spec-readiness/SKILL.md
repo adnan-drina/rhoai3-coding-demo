@@ -88,7 +88,9 @@ python3 "${HERMES_SKILL_DIR}/scripts/check-partition-coverage.py" /projects/mode
 - `scripts/assert-quarantine-tombstones.py` — quarantine tombstone presence
 - `scripts/assert-dest-inventory-hardinvoke.py` — dest inventory hard-invoke
 - `scripts/register-quarantine-tombstone.py` — mutate: register tombstone
-- `scripts/stamp-body-dependencies.py` — mutate: `--write` dest-path deps; HTTP sources = A-8 inventory `file`s (collect-all) + Java `legacy_locus`; dest-only kinds (setup/foundational/polish) with non-Java locus and unresolved dest Java may stamp `dependencies=[]`; unowned project `extends` twins join this write-set **and** the owning story's partition frame (V34-5 inheritance-reachable types); `DEPENDENCY_HOLE` lists dest domain-leaf/repo holes that remain unowned (`intra_package_maps` when stamped)
+- `scripts/stamp-body-dependencies.py` — mutate: `--write` dest-path deps; HTTP sources = A-8 inventory `file`s (collect-all) + Java `legacy_locus`; dest-only kinds (setup/foundational/polish) with non-Java locus and unresolved dest Java may stamp `dependencies=[]`; unowned project `extends`/import dest twins join this write-set **and** the owning story's partition frame (V34-5; walk in `type_graph.py`, including star-import packages); generated types stamp `provider: generated` (not assigned, not pre-exists); `DEPENDENCY_HOLE` lists dest domain-leaf/repo holes that remain unowned (`intra_package_maps` when stamped)
+- `scripts/type_graph.py` — library: in-prefix Java type walk without a `--body` (M1 `inventory-type-graph.py` reuses it)
+- `scripts/generated_sources.py` — library: classify generator output (path / `@Generated` / plugin); no name patterns
 - `scripts/stamp-destination-inventory.py` — mutate: `--write` dest inventory
 - `scripts/specimen_agnostic.py` — library helper (not an agent entry point)
 
@@ -127,6 +129,9 @@ Do **not** invoke DD4-retired R-M3.5/7 stubs (`check-persistence-bom.py`,
   `http_endpoint_count`, `mta_status`. Only `VALID` exits 0.
   `INCONCLUSIVE` is not a pass: no story files, **or** findings file
   missing (`mta_status=skipped_missing` / gap `mta_skipped_missing`).
+  When `evidence/type-inventory.json` is present, every `dest_file` must
+  be in some story write-set (`types_uncovered` otherwise). Missing file
+  is skip, not INVALID.
   Findings **presence** at create is enough (`mta_status=checked`);
   `story.rules` / `mta_oos` are not a create-path join
   (Architect `E-20260817T154012Z`). Addressed findings stay M1 handoff

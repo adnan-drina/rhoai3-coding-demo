@@ -33,6 +33,7 @@ ALLOW_EXACT = frozenset(
     {
         # Runtime analysis outputs (seat-generated)
         "evidence/entry-point-inventory.json",
+        "evidence/type-inventory.json",
         "evidence/findings-handoff.json",
         "evidence/mta-findings.json",
         "evidence/mutation-evidence.json",

@@ -3,8 +3,10 @@
 
 Copy tasks.md + evidence/ into a throwaway dir and run handover-mint.py
 --write *there*. Require that exit, then reverse-diff invented endpoints
-(assert-partition-invented-routes.py; Architect 067420Z). When scratch
-has legacy-at-3, run existing stamp-body-dependencies.py +
+(assert-partition-invented-routes.py; Architect 067420Z). When
+evidence/type-inventory.json is present, every dest twin must appear in
+the minted partition (same coverage class as HTTP rows; skip if absent).
+When scratch has legacy-at-3, run existing stamp-body-dependencies.py +
 assert-dependency-closure.py on minted bodies (V34-8; no second gate).
 Never write dest partition.json. Does not grow handover-mint.py (freeze 1088).
 
@@ -203,6 +205,46 @@ def _run_type_closure(modern: Path) -> int:
     return 0
 
 
+def _run_type_inventory_coverage(modern: Path) -> int:
+    """Plan coverage of type-inventory dest twins (skip if the file is absent)."""
+    if str(_STAMP.parent) not in sys.path:
+        sys.path.insert(0, str(_STAMP.parent))
+    from specimen_agnostic import dest_path_as_written, type_inventory_uncovered
+
+    part = modern / "evidence" / "briefs" / "partition.json"
+    if not part.is_file():
+        print("FAIL: scratch missing evidence/briefs/partition.json", file=sys.stderr)
+        return 1
+    try:
+        data = json.loads(part.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"FAIL: scratch partition.json: {exc}", file=sys.stderr)
+        return 1
+    owned: set[str] = set()
+    for story in data.get("stories") or []:
+        if not isinstance(story, dict):
+            continue
+        for key in ("files_writable", "files", "files_in_scope"):
+            raw = story.get(key)
+            if not isinstance(raw, list):
+                continue
+            for item in raw:
+                if isinstance(item, str) and item.strip():
+                    owned.add(dest_path_as_written(item))
+    missing = type_inventory_uncovered(modern, owned)
+    if missing is None:
+        print("OK: type-inventory coverage skipped (no evidence/type-inventory.json)")
+        return 0
+    if missing:
+        print(
+            f"FAIL: types_uncovered={len(missing)} " + " ".join(missing[:12]),
+            file=sys.stderr,
+        )
+        return 1
+    print("OK: type-inventory dest twins covered")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("root")
@@ -285,6 +327,9 @@ def main() -> int:
                 file=sys.stderr,
             )
             return 1
+        tic = _run_type_inventory_coverage(modern)
+        if tic != 0:
+            return tic
         tc = _run_type_closure(modern)
         if tc != 0:
             return tc

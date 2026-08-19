@@ -76,6 +76,28 @@ US5 both claimed `/api/pettypes*` → A-8 `endpoints_multi`).
 - This is an authoring obligation. Do not emit a second owner. A-8 already
   refuses `endpoints_multi`; do not grow the mint to restate this.
 
+## Generated types (build output)
+
+Do **not** Create `.java` paths for types a dest generator produces
+(`type-inventory.json` `generated: true`, `target/generated-sources/**`,
+or `@Generated`). Carry the spec the plugin reads and configure the
+plugin in the dest build file. One creator phase per dest path. Stories
+import those types as `provider: generated`. A Non-Goal may exclude a
+generator only if no story depends on its output.
+
+## Type inventory (source dest twins)
+
+Cover every `dest_file` in `evidence/type-inventory.json` that is **not**
+generated, the same way HTTP rows are covered. One creator phase per dest
+`.java` path on the user story that owns the entry point that reached it
+(`reached_from`). Layer is the last package segment — not a name pattern.
+A missing source collaborator is a row this plan was given and did not
+cover.
+
+- Mint harvests `src/…/*.java` tokens only. A directory is not a dest twin.
+- Do **not** dump every reachable type into Foundational.
+- Sample tasks below are illustration only.
+
 ## Inventory (HTTP)
 
 Cover every HTTP row in `evidence/entry-point-inventory.json` (including
@@ -143,7 +165,6 @@ Do **not** Configure `pom.xml` or `src/main/resources/application.properties` he
 - [ ] T004 [P] Create Owner entity with JPA annotations in src/main/java/com/demo/model/Owner.java
 - [ ] T005 [P] Create Pet entity with JPA annotations in src/main/java/com/demo/model/Pet.java
 - [ ] T006 [P] Create OwnerRepository in src/main/java/com/demo/repository/OwnerRepository.java
-- [ ] T007 Create DTOs matching legacy API contracts in src/main/java/com/demo/dto/
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 
@@ -165,7 +186,8 @@ Do **not** Configure `pom.xml` or `src/main/resources/application.properties` he
 ### Implementation for User Story 1
 
 - [ ] T012 [US1] Create OwnerResource JAX-RS class with @Path("/api/owners") in src/main/java/com/demo/resource/OwnerResource.java
-- [ ] T013 [US1] Verify pom.xml compiles: run `mvn clean compile`
+- [ ] T013 [US1] Carry generator spec in src/main/resources/api-docs.yml and configure the dest generator in pom.xml (generated types are build output — illustration only)
+- [ ] T014 [US1] Verify pom.xml compiles: run `mvn clean compile`
 
 **Checkpoint**: At this point, User Story 1 should be fully functional and testable independently
 
@@ -280,4 +302,4 @@ Do **not** Configure `pom.xml` or `src/main/resources/application.properties` he
 - [Story] label maps task to specific user story for traceability
 - Each user story should be independently completable and testable
 - Verify tests fail before implementing
-- Avoid: two Create/Author/Configure lines for the same dest path; two stories owning one inventory HTTP shape; `/projects/modernized/` as a task-path prefix; method-level `@Path("...")` literals; restating another story's `@Path` literal; vague tasks; RestController→Resource filename mapping; renaming a legacy sub-package on the destination path
+- Avoid: two Create/Author/Configure lines for the same dest path; two stories owning one inventory HTTP shape; `/projects/modernized/` as a task-path prefix; method-level `@Path("...")` literals; restating another story's `@Path` literal; vague tasks; RestController→Resource filename mapping; renaming a legacy sub-package on the destination path; Creating generator output `.java` instead of carrying the spec

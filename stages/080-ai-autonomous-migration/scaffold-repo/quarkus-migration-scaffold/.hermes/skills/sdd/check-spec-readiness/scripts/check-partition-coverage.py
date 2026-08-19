@@ -29,6 +29,9 @@ Checks:
      through intra_package_maps — that hid entity/ extras beside model/.
      Partition dual-frame (same basename under both mapped leaves) is
      INVALID. Coverage still does not join inventory.file to dest write-set.
+  6) Type-inventory dest twins (when ``evidence/type-inventory.json`` is
+     present): every ``types[].dest_file`` must appear in some story
+     write-set. Gap ``types_uncovered=N``. Missing file is skip, not INVALID.
 
 Specimen-agnostic (Operator E-20260811T150800Z): HTTP denominator and package
 rewrites are derived from inventory / migration.yaml — never hardcoded.
@@ -69,6 +72,7 @@ from specimen_agnostic import (  # noqa: E402
     resolve_inventory_path,
     rewrite_across,
     story_declared_writeset,
+    type_inventory_uncovered,
 )
 
 
@@ -378,6 +382,24 @@ def main() -> int:
         gaps.append(f"endpoints_multi={len(multi)}")
         for m in multi[:8]:
             gaps.append(f"multi:{m}")
+
+    owned_dest: set[str] = set()
+    for story in stories:
+        for f in story_files(story):
+            if f:
+                owned_dest.add(dest_path_as_written(f))
+        sid = str(story.get("story_id") or "").strip()
+        if sid:
+            for f in body_files_for_story(bodies_dir, sid):
+                if f:
+                    owned_dest.add(dest_path_as_written(f))
+    missing_types = type_inventory_uncovered(root, owned_dest)
+    if missing_types:
+        gaps.append(f"types_uncovered={len(missing_types)}")
+        for u in missing_types[:12]:
+            gaps.append(f"uncovered-type:{u}")
+        if len(missing_types) > 12:
+            gaps.append(f"uncovered-type:…(+{len(missing_types)-12})")
 
     findings_path = root / args.findings
     findings = load_json(findings_path)

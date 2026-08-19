@@ -1114,6 +1114,40 @@ def dest_path_as_written(path: str) -> str:
     return p.lstrip("./")
 
 
+def type_inventory_uncovered(root: Path, owned: set[str]) -> list[str] | None:
+    """Dest twins in evidence/type-inventory.json missing from ``owned``.
+
+    ``None`` means the file is absent — skip (I-16 / dests whose M1 predated
+    the walk). Empty list means present and covered. Rows with
+    ``generated: true`` are skipped — those are build output (spec + plugin),
+    not dest twins a story Creates.
+    """
+    path = root / "evidence" / "type-inventory.json"
+    if not path.is_file():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    if not isinstance(data, dict):
+        return []
+    owned_n = {dest_path_as_written(x) for x in owned if x}
+    missing: list[str] = []
+    seen: set[str] = set()
+    for rec in data.get("types") or []:
+        if not isinstance(rec, dict):
+            continue
+        dest = dest_path_as_written(str(rec.get("dest_file") or ""))
+        if not dest or dest in seen:
+            continue
+        seen.add(dest)
+        if rec.get("generated") is True:
+            continue
+        if dest not in owned_n:
+            missing.append(dest)
+    return missing
+
+
 def _paths_from_story_field(val: object) -> list[str]:
     out: list[str] = []
     if not isinstance(val, list):

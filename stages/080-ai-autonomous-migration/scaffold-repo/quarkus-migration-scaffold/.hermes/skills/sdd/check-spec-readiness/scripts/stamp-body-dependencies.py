@@ -2,7 +2,7 @@
 """Stamp body `dependencies:` from partition/body ownership (Operator E-20260811T144200Z).
 
 For each Java import reachable from this body's files_writable, emit:
-  { "file": "<dest-rel path>", "provider": "<story_id>" | "pre-exists" }
+  { "file": "<dest-rel path>", "provider": "<story_id>" | "pre-exists" | "generated" }
 
 `provider` is the story whose files_writable owns the file. Paths are dest-tree
 (via migration.yaml `path_rewrites` and `intra_package_maps`). Never emit a
@@ -11,12 +11,13 @@ legacy Spring path as dest-relative `pre-exists`
 
 Unowned dest twins of project `extends`, in-prefix `import`s, and
 same-package types the source names are added to *this* story's write-set
-— transitive closure, stop at JDK/framework. When partition.json names
-this story, those dest twins are assigned onto the story's declared frame
-first (V34-5 AMEND: any type reachable by inheritance or import from an
-owned type must itself be owned). Do not stamp unowned collaborators as
-`pre-exists`. That is not a dest→legacy filename mapper and not a
-tasks.md rewrite.
+— transitive closure, stop at JDK/framework. Generated types
+(target/generated-sources, @Generated, or a declared generator plugin)
+stamp `provider: "generated"` and are not assigned onto the partition.
+When partition.json names this story, source dest twins are assigned onto
+the story's declared frame first (V34-5). Do not stamp unowned collaborators as
+`pre-exists` (generated types are the third kind, not this fallthrough). The
+walk lives in `type_graph.py` so M1 can invoke it without a `--body`.
 
 Orphans that remain unowned dest domain-leaf/repo paths → DEPENDENCY_HOLE
 listing the full dest-path set. Body paths outside the expanded frame
@@ -33,21 +34,11 @@ import re
 import sys
 from pathlib import Path
 
-IMP_RE = re.compile(r"\bimport\s+([a-zA-Z0-9_.]+)\s*;")
-EXTENDS_RE = re.compile(
-    r"\b(?:class|interface)\s+\w+(?:<[^>\n]*>)?\s+extends\s+([\w.]+)",
-    re.M,
-)
-COMMENT_BLOCK_RE = re.compile(r"/\*.*?\*/", re.S)
-COMMENT_LINE_RE = re.compile(r"//.*?$", re.M)
-_JDK_SUPERS = frozenset(
-    {"Object", "Enum", "Record", "java.lang.Object", "java.lang.Enum"}
-)
-
 _SCRIPTS = Path(__file__).resolve().parent
 if str(_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS))
 
+from generated_sources import is_generated  # noqa: E402
 from specimen_agnostic import (  # noqa: E402
     dest_hole_leaves,
     dest_path_as_written,
@@ -56,6 +47,11 @@ from specimen_agnostic import (  # noqa: E402
     partition_story_writeset,
     path_rewrites,
     rewrite_across,
+)
+from type_graph import (  # noqa: E402
+    IMP_RE,
+    project_type_closure,
+    src_rel_from_path,
 )
 
 _ABS_PREFIXES = (
@@ -74,20 +70,6 @@ def strip_abs_prefix(path: str) -> str:
         if p.startswith(prefix):
             return p[len(prefix) :]
     return p
-
-
-def src_rel_from_path(path: Path) -> str | None:
-    s = str(path).replace("\\", "/")
-    for marker in ("src/main/java/", "src/test/java/"):
-        idx = s.find(marker)
-        if idx >= 0:
-            return s[idx:]
-    return None
-
-
-def strip_java_comments(text: str) -> str:
-    text = COMMENT_BLOCK_RE.sub(" ", text)
-    return COMMENT_LINE_RE.sub(" ", text)
 
 
 def make_rewrites(root: Path):
@@ -217,82 +199,6 @@ def imports_for(java_path: Path, pkg_prefixes: list[str]) -> list[str]:
                 continue
         out.append("src/main/java/" + imp.replace(".", "/") + ".java")
     return out
-
-
-def _java_src_root(current: Path) -> Path | None:
-    s = str(current).replace("\\", "/")
-    for marker in ("/src/main/java/", "/src/test/java/"):
-        idx = s.find(marker)
-        if idx >= 0:
-            return Path(s[: idx + len(marker) - 1])
-    return None
-
-
-def resolve_type_file(current: Path, name: str, pkg_prefixes: list[str]) -> Path | None:
-    if name in _JDK_SUPERS:
-        return None
-    if "." in name:
-        if name.startswith("java.") or name.startswith("javax.") or name.startswith(
-            "jakarta."
-        ):
-            return None
-        if pkg_prefixes and not any(
-            name == p.rstrip(".") or name.startswith(p) for p in pkg_prefixes
-        ):
-            return None
-        root = _java_src_root(current)
-        if root is None:
-            return None
-        cand = root / (name.replace(".", "/") + ".java")
-        return cand if cand.is_file() else None
-    sibling = current.parent / f"{name}.java"
-    if sibling.is_file():
-        return sibling
-    return None
-
-
-def project_type_closure(start: Path, pkg_prefixes: list[str]) -> list[Path]:
-    """Transitive extends + in-prefix imports + same-package types. JDK/framework stop."""
-    seen: set[str] = set()
-    found: list[Path] = []
-    stack = [start]
-    while stack:
-        cur = stack.pop()
-        try:
-            key = str(cur.resolve())
-        except OSError:
-            continue
-        if key in seen:
-            continue
-        seen.add(key)
-        try:
-            raw = cur.read_text(encoding="utf-8", errors="ignore")
-        except OSError:
-            continue
-        text = strip_java_comments(raw)
-        names: list[str] = []
-        for m in IMP_RE.finditer(text):
-            names.append(m.group(1))
-        for m in EXTENDS_RE.finditer(text):
-            names.append(m.group(1))
-        for sib in sorted(cur.parent.glob("*.java")):
-            if sib.stem == cur.stem:
-                continue
-            if re.search(r"\b" + re.escape(sib.stem) + r"\b", text):
-                names.append(sib.stem)
-        for name in names:
-            nxt = resolve_type_file(cur, name, pkg_prefixes)
-            if nxt is None:
-                continue
-            try:
-                nkey = str(nxt.resolve())
-            except OSError:
-                continue
-            if nkey == key or nkey in seen:
-                continue
-            stack.append(nxt)
-            found.append(nxt)
-    return found
 
 
 def _endpoint_tokens(ep: str) -> set[str]:
@@ -532,6 +438,10 @@ def inherited_unowned_dests(
             dest = to_dest(src_rel)
             if dest in writable or dest in found:
                 continue
+            if is_generated(
+                root, dest, source=extra, legacy_rel=to_legacy(dest)
+            ):
+                continue
             owner = own.get(dest)
             if owner and owner != self_sid:
                 continue
@@ -648,6 +558,10 @@ def close_write_set(
                 continue
             dest = to_dest(src_rel)
             if dest in writable or dest in added:
+                continue
+            if is_generated(
+                root, dest, source=extra, legacy_rel=to_legacy(dest)
+            ):
                 continue
             if allowed is not None and dest_path_as_written(dest) not in allowed:
                 continue
@@ -827,6 +741,9 @@ def main() -> int:
                 continue
             if provider:
                 deps[dest] = provider
+            elif is_generated(root, dest, legacy_rel=to_legacy(dest)):
+                # Classify before pre-exists / hole fallthrough (dc66c244).
+                deps[dest] = "generated"
             else:
                 # AMEND V34-5: unowned in-prefix dest twins are a hole, not
                 # pre-exists (pre-exists DEST_MISS at JAVA 0 is the wrong class).
@@ -843,7 +760,9 @@ def main() -> int:
             "OK: stamped dependencies=0 "
             "(dest-only create; non-Java locus; unresolved dest Java)"
         )
-    if java_writables and not ordered and not vacuous_ok:
+    # Unowned dest twins that remain after the walk are DEPENDENCY_HOLE
+    # below, not A-6 vacuous.
+    if java_writables and not ordered and not vacuous_ok and not unowned_imports:
         if not pkg_prefixes:
             print(
                 "DEPENDENCY_STAMP_VACUOUS: body has Java writables but "

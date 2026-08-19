@@ -181,6 +181,7 @@ The created M1 task instructs the worker to, in order:
 
 1. `derive-legacy-boot3` (manifest check / derive if missing)
 2. `inventory-entry-points` → `evidence/entry-point-inventory.json` (before handoff emit)
+2a. `inventory-type-graph.py` → `evidence/type-inventory.json` (no `--body`; types reachable from inventory files)
 3. `scan-with-mta` → `mta-analyze-legacy.sh` (writable clone + `MTA_RUN_CWD`; emits findings-handoff)
 4. Validate findings + handoff, then 5.1
    `python3 .hermes/skills/harness/enforce-authority-boundary/scripts/issue-m1-findings-ack.py`

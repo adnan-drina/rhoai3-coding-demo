@@ -90,6 +90,9 @@ REQUIRED_FILES = [
         ".hermes/skills/harness/dispatch-phase/fixtures/handover/tasks.attempt-3-speckit.md",
         ".hermes/skills/harness/dispatch-phase/fixtures/handover/inventory.attempt-3.json",
         ".hermes/skills/analysis/inventory-entry-points/scripts/inventory-entry-points.py",
+        ".hermes/skills/analysis/inventory-entry-points/scripts/inventory-type-graph.py",
+        ".hermes/skills/sdd/check-spec-readiness/scripts/type_graph.py",
+        ".hermes/skills/sdd/check-spec-readiness/scripts/generated_sources.py",
         ".hermes/skills/analysis/inventory-entry-points/SKILL.md",
     ".hermes/skills/harness/dispatch-phase/scripts/m3-attach-skills.py",
     ".hermes/skills/harness/dispatch-phase/scripts/assert-skills-not-disabled.py",
@@ -1677,6 +1680,111 @@ REQUIRED_SUBSTRINGS = [
         ".hermes/skills/harness/validate-contracts/scripts/validate.sh",
         "OK: stamp assigns import-reachable dest twins onto partition",
         "V34-5 AMEND validate lock: partition owns import closure",
+    ),
+    (
+        ".hermes/skills/sdd/init-spec-workspace/assets/tasks-template.md",
+        "evidence/type-inventory.json",
+        "type-inventory dest twins on the owning story",
+    ),
+    (
+        ".hermes/skills/sdd/init-spec-workspace/assets/tasks-template.md",
+        "configure the dest generator",
+        "generated types carry spec + configure generator",
+    ),
+    (
+        ".hermes/skills/sdd/check-spec-readiness/scripts/stamp-body-dependencies.py",
+        'deps[dest] = "generated"',
+        "stamp classifies generator output as provider generated",
+    ),
+    (
+        ".hermes/skills/sdd/check-spec-readiness/scripts/assert-dependency-closure.py",
+        "GENERATOR_INPUTS",
+        "closure requires generator spec + build owned",
+    ),
+    (
+        ".hermes/skills/sdd/check-spec-readiness/scripts/generated_sources.py",
+        "target/generated-sources",
+        "generated detection is path/plugin/@Generated, not a name pattern",
+    ),
+    (
+        ".hermes/skills/sdd/init-spec-workspace/assets/stop-before-implement.overlay.yml",
+        "evidence/type-inventory.json",
+        "speckit overlay names type-inventory.json",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/references/m2-planner.md",
+        "types_uncovered",
+        "M2 planner covers type-inventory dest twins",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/references/m2-planner.md",
+        "GENERATOR_INPUTS",
+        "M2 planner requires generator inputs owned",
+    ),
+    (
+        ".hermes/skills/sdd/init-spec-workspace/assets/stop-before-implement.overlay.yml",
+        "configure generator",
+        "speckit overlay generated types carry spec",
+    ),
+    (
+        ".hermes/skills/sdd/check-spec-readiness/scripts/type_graph.py",
+        "STAR_IMP_RE",
+        "type graph resolves star-import packages",
+    ),
+    (
+        ".hermes/skills/analysis/inventory-entry-points/scripts/inventory-type-graph.py",
+        "rhoai3.type-inventory/v1",
+        "M1 emits type-inventory.json without --body",
+    ),
+    (
+        ".hermes/skills/analysis/inventory-entry-points/SKILL.md",
+        "generated: true",
+        "M1 type-inventory marks generator output, not Creates",
+    ),
+    (
+        ".hermes/skills/sdd/check-spec-readiness/scripts/check-partition-coverage.py",
+        "types_uncovered",
+        "partition coverage gap for uncovered dest twins",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/scripts/dispatch-phase.sh",
+        "inventory-type-graph.py",
+        "M1 card walks type graph after HTTP inventory",
+    ),
+    (
+        ".hermes/skills/harness/validate-contracts/scripts/validate.sh",
+        "OK: stamp assigns star-import dest twins onto partition",
+        "star-import simple names join the write-set",
+    ),
+    (
+        ".hermes/skills/harness/validate-contracts/scripts/validate.sh",
+        "OK: type-inventory lists dest twins from entry files",
+        "M1 type-graph smoke emits dest_file rows",
+    ),
+    (
+        ".hermes/skills/harness/validate-contracts/scripts/validate.sh",
+        "OK: PARTITION_COVERAGE types_uncovered when dest twin is unplanned",
+        "coverage refuses a type-inventory dest twin missing from the partition",
+    ),
+    (
+        ".hermes/skills/harness/validate-contracts/scripts/validate.sh",
+        "OK: stamp classifies generated types",
+        "stamp provider generated for generator output",
+    ),
+    (
+        ".hermes/skills/harness/validate-contracts/scripts/validate.sh",
+        "OK: generated DEST_MISS skipped when inputs owned",
+        "assert skips DEST_MISS for provider generated",
+    ),
+    (
+        ".hermes/skills/harness/validate-contracts/scripts/validate.sh",
+        "OK: GENERATOR_INPUTS when spec unowned",
+        "assert requires generator spec owned",
+    ),
+    (
+        ".hermes/skills/harness/validate-contracts/scripts/validate.sh",
+        "OK: PARTITION_COVERAGE skips generated type-inventory dest twins",
+        "coverage does not require Creating generator output",
     ),
     (
         ".hermes/skills/harness/dispatch-phase/scripts/scratch-assemble-mint.py",
