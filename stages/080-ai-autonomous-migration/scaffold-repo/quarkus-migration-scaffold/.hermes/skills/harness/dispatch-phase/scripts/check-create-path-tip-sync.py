@@ -61,6 +61,9 @@ REQUIRED_FILES = [
     ".hermes/skills/harness/dispatch-phase/references/holder-card-body.md",
     ".hermes/skills/harness/dispatch-phase/scripts/assert-m3-child-skills.py",
     ".hermes/skills/harness/dispatch-phase/scripts/holder-checkpoint.py",
+    ".hermes/skills/harness/dispatch-phase/scripts/run-pre-create-gates.py",
+    ".hermes/skills/harness/dispatch-phase/scripts/compose-m3-card-markdown.py",
+    ".hermes/skills/harness/dispatch-phase/scripts/assert-story-parked.py",
     ".hermes/skills/harness/dispatch-phase/references/m1-verifier.md",
     ".hermes/skills/harness/dispatch-phase/scripts/check-m1-verifier.py",
     ".hermes/skills/harness/enforce-authority-boundary/scripts/issue-m1-findings-ack.py",
@@ -1723,6 +1726,31 @@ REQUIRED_SUBSTRINGS = [
         ".hermes/skills/harness/dispatch-phase/references/m3-implementer-standing.md",
         "does not start with",
         "standing wrong-card keys phase-first title not story_id: prefix (111244Z)",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
+        "run-pre-create-gates.py",
+        "V34-O7 holder pre-create is one OK/REFUSE wrapper",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
+        "compose-m3-card-markdown.py",
+        "V34-O7 holder card markdown is composed, not json.load",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
+        "assert-story-parked.py",
+        "V34-O7 park assert is sqlite one-liner, not show --json",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/references/holder-card-body.md",
+        "run-pre-create-gates.py",
+        "V34-O7 holder body path-invokes pre-create wrapper",
+    ),
+    (
+        ".hermes/skills/harness/validate-contracts/scripts/validate.sh",
+        "OK: compose-m3-card-markdown prints title without JSON",
+        "V34-O7 validate lock: composer starves JSON",
     ),
 ]
 

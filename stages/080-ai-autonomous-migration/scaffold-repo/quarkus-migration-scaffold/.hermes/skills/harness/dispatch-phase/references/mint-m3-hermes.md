@@ -7,8 +7,12 @@ demo-user `mint-m3-wave.sh` / `handover-mint.py --parent` as the create
 path.
 
 The **wave-holder worker** (Hermes session on the M3 holder card) mints.
-Lint stays agent-invoked via `execute_code`. Create is native
-`kanban_create`. Bare `kanban create` (zero skills) is still forbidden.
+Lint is `handover-mint.py --write`. Pre-create is
+`run-pre-create-gates.py` (one OK/REFUSE line). Card markdown is
+`compose-m3-card-markdown.py`. Create is native `kanban_create`. Bare
+`kanban create` (zero skills) is still forbidden. Do **not** `python3 -c`,
+`execute_code`, or `kanban show --json` unfiltered. Do **not** `json.load`
+a body in the worker.
 
 Do not grow `handover-mint.py` (parser halt `061824Z`). Run it as **lint
 only** (`--write`, **no** `--parent`, **no** `--ensure-wave-holder`).
@@ -76,7 +80,12 @@ Do **not** pin `check-spec-readiness` on the holder until story bodies exist.
      `{story_id}:` as a title prefix (`111244Z` doubled form is retired).
      `idempotency_key` `migration-m3-{story_id}-v1` is the second duplicate
      guard.
-   - Run the **pre-create gates** below via `execute_code` on that body.
+   - Run **one** command (do not batch remaining stories; do not dump the body):
+     `python3 .hermes/skills/harness/dispatch-phase/scripts/run-pre-create-gates.py --root /projects/modernized --body evidence/bodies/m3-{story_id}.json`
+     One `OK:` / `REFUSE:` line. On REFUSE: `kanban_block --kind needs_input`.
+     Then title then markdown (two commands, this story only):
+     `python3 .hermes/skills/harness/dispatch-phase/scripts/compose-m3-card-markdown.py --root /projects/modernized --body evidence/bodies/m3-{story_id}.json --print-title`
+     `python3 .hermes/skills/harness/dispatch-phase/scripts/compose-m3-card-markdown.py --root /projects/modernized --body evidence/bodies/m3-{story_id}.json`
    - `kanban_create` with skills, `initial_status=blocked` /
      `--initial-status blocked` (**not** the park protection — Architect
      `113650Z`; the unfinished `ack_gate` parent is), `idempotency_key`,
@@ -87,9 +96,11 @@ Do **not** pin `check-spec-readiness` on the holder until story bodies exist.
      `created-by` / `created_by` = holder id, `--parent REQUIRED` twice
      (holder + ack_gate), parents **`[holder, ack_gate]`** (gate is a
      parent, not a holder-child). Snapshot this new id (After create).
-     Immediately `hermes kanban show <id> --json` and **refuse unless
-     `status=todo`** (not `ready`/`running`) **and** `parents` include the
-     unfinished `ack_gate`. OBJECT requiring story `status==blocked`.
+     Immediately:
+     `python3 .hermes/skills/harness/dispatch-phase/scripts/assert-story-parked.py /projects/modernized --task-id <id> --ack-gate <ack_gate_id>`
+     One `OK:` / `REFUSE:` line. Refuse unless `status=todo` (not
+     `ready`/`running`) **and** `parents` include the unfinished `ack_gate`.
+     OBJECT requiring story `status==blocked`. Do **not** `kanban show --json`.
      Then:
      `python3 .hermes/skills/harness/dispatch-phase/scripts/assert-m3-child-skills.py /projects/modernized --task-id <id> --body evidence/bodies/m3-{story_id}.json`
      Empty skills / mismatch vs attach stdout ⇒ typed `needs_input`; do
@@ -145,7 +156,8 @@ the unpark switch.
 
 ## Pre-create gates (moved from create-m3-implementer; do not drop)
 
-Run per body, fail-closed, via `execute_code`.
+Holder invokes **only** `run-pre-create-gates.py` (this list is the
+wrapper sequence — do not run these from the worker). Fail-closed.
 `identity.story_id required`.
 Paths are repo-relative from `/projects/modernized` (Operator `173010Z` C1).
 Bare filenames resolve under the wrong skill tree and become typed BLOCK
@@ -218,8 +230,9 @@ Phase 2.4 verified `kanban_create` *arguments* and never inventoried the
 contract parity. **Do not** grow `handover-mint.py`. **Do not** resurrect
 `create-m3-implementer.sh`. Put this prose on every story card.
 
-After `stamp-body-digest.py` (step 14), read `body_sha256` (64-hex) from
-stdout / the sidecar. Card markdown **must** include all of:
+After `run-pre-create-gates.py` (which runs `stamp-body-digest.py`),
+`compose-m3-card-markdown.py` reads `body_sha256` from the sidecar. Card
+markdown **must** include all of:
 
 1. Typed body path: `evidence/bodies/m3-{story_id}.json`
 2. AR-4.3 64-hex (`body_sha256`)
@@ -259,11 +272,12 @@ after create to chase this (`192117Z`).
 
 ## After create (same session)
 
-- Immediately after each story `kanban_create`, `hermes kanban show <id> --json`
-  and **refuse unless `status=todo`** (not `ready`/`running`) **and**
+- Immediately after each story `kanban_create`:
+  `python3 .hermes/skills/harness/dispatch-phase/scripts/assert-story-parked.py /projects/modernized --task-id <id> --ack-gate <ack_gate_id>`
+  Refuse unless `status=todo` (not `ready`/`running`) **and**
   `parents` include the unfinished `ack_gate`. `initial_status` is **not**
   the protection (`113650Z`). OBJECT story `status==blocked`. Do **not**
-  grow `handover-mint.py` for this (1088 freeze).
+  `kanban show --json`. Do **not** grow `handover-mint.py` for this (1088 freeze).
 - Immediately after each `kanban_create` (ack_gate skip write-set cache;
   every **story** id), emit dest write-set **cache** (not fence policy):
 

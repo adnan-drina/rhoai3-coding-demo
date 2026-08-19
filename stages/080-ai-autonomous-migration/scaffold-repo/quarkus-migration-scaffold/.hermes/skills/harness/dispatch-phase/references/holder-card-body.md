@@ -62,10 +62,14 @@ Argv: **`--kind` before the task id**. Then `kanban show` must report
    pin it on this card. Do **not** SIGTERM this worker.
 3. If lint passes: create `ack_gate` first, then story children per
    `.hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md`.
-   After each `kanban_create`:
+   Per story, one command:
+   `python3 .hermes/skills/harness/dispatch-phase/scripts/run-pre-create-gates.py --root /projects/modernized --body evidence/bodies/m3-{story_id}.json`
+   then compose title/markdown via `compose-m3-card-markdown.py`, then
+   `kanban_create`. After each `kanban_create`:
+   `python3 .hermes/skills/harness/dispatch-phase/scripts/assert-story-parked.py /projects/modernized --task-id <id> --ack-gate <ack_gate_id>`
    `python3 .hermes/skills/harness/dispatch-phase/scripts/assert-m3-child-skills.py /projects/modernized --task-id <id> --body evidence/bodies/m3-{story_id}.json`
    Empty skills ⇒ `kanban_block --kind needs_input`. Do **not** halt after the gate. Do **not**
-   dispatch children here.
+   dispatch children here. Do **not** dump bodies or `kanban show --json`.
 4. After children exist, mint M4 then M5 per
    `.hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md`
    (M4 `--parent` every story child, not this holder). Then

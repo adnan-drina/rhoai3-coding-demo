@@ -167,8 +167,9 @@ Sqlite `running`/`done` is not observation. Address gaps before the next card.
 creates **ack_gate first** (no holder parent; sticky-block with `--kind`
 before the id; assert `status=blocked`), then one parked child per
 story with parents `[holder, ack_gate]`, then `kanban_complete`s itself.
-Pre-create gates that lived in `create-m3-implementer.sh` run via
-`execute_code` (list in `references/mint-m3-hermes.md`). Story card
+Pre-create gates run via `run-pre-create-gates.py` (one OK/REFUSE line;
+list in `references/mint-m3-hermes.md`). Card markdown is
+`compose-m3-card-markdown.py`. Story card
 markdown must carry typed-body path, AR-4.3 digest + `--expect` REFUSE,
 standing pointer, Constraints, and **full** attach-script skills
 (`035010Z`). Grant = complete the blocked gate card, not a YAML file.

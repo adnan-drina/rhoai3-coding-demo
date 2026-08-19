@@ -1902,6 +1902,101 @@ else
 fi
 rm -rf "${inh_tmp}"
 
+# E-20260819T173800Z — holder starves JSON (compose + pre-create wrapper + park)
+cm_tmp="$(mktemp -d)"
+mkdir -p "${cm_tmp}/evidence/bodies" "${cm_tmp}/evidence/briefs" \
+  "${cm_tmp}/.hermes/skills/harness/dispatch-phase/scripts" \
+  "${cm_tmp}/.hermes/home"
+cp "${ROOT}/.hermes/phase-dispatch.yaml" "${cm_tmp}/.hermes/phase-dispatch.yaml"
+cp "${SKILLS}/harness/dispatch-phase/scripts/read-phase-dispatch.py" \
+  "${cm_tmp}/.hermes/skills/harness/dispatch-phase/scripts/read-phase-dispatch.py"
+python3 - <<PY
+import hashlib, json
+from pathlib import Path
+root = Path("${cm_tmp}")
+sid = "setup"
+heading = "Setup (Shared Infrastructure)"
+paths = [f"src/main/java/com/demo/model/Type{i:02d}.java" for i in range(40)]
+body = {
+  "identity": {"story_id": sid, "operand_count": 1},
+  "exit_criteria": ["build_resolves"],
+  "files_writable": paths,
+}
+bp = root / "evidence/bodies/m3-setup.json"
+raw = json.dumps(body) + "\n"
+bp.write_text(raw)
+digest = hashlib.sha256(raw.encode()).hexdigest()
+(bp.with_suffix(bp.suffix + ".sha256.json")).write_text(
+    json.dumps({"body_sha256": digest}) + "\n"
+)
+(root / "evidence/briefs/partition.json").write_text(json.dumps({
+  "schema": "rhoai3.handover-receipt/v1",
+  "source": "handover-mint",
+  "stories": [{"story_id": sid, "heading": heading, "files_writable": paths[:1]}],
+}) + "\n")
+print(digest)
+PY
+if title="$(python3 "${SKILLS}/harness/dispatch-phase/scripts/compose-m3-card-markdown.py" \
+    --root "${cm_tmp}" --body evidence/bodies/m3-setup.json --print-title)"; then
+  if [ "${title}" = "M3 IMPLEMENT: setup — Shared Infrastructure" ] && \
+     ! printf '%s' "${title}" | grep -q '{'; then
+    echo "OK: compose-m3-card-markdown prints title without JSON"
+  else
+    echo "FAIL: compose title want house form, no JSON: ${title}" >&2
+    rc=1
+  fi
+else
+  echo "FAIL: compose --print-title" >&2
+  rc=1
+fi
+if md="$(python3 "${SKILLS}/harness/dispatch-phase/scripts/compose-m3-card-markdown.py" \
+    --root "${cm_tmp}" --body evidence/bodies/m3-setup.json)"; then
+  if printf '%s' "${md}" | grep -q 'Typed body: evidence/bodies/m3-setup.json' && \
+     printf '%s' "${md}" | grep -q 'see typed body (40 paths)' && \
+     ! printf '%s' "${md}" | grep -q '^{' && \
+     [ "${#md}" -le 1500 ]; then
+    echo "OK: compose-m3-card-markdown stays under F6 budget without JSON dump"
+  else
+    echo "FAIL: compose markdown leaked JSON or exceeded F6" >&2
+    printf '%s\n' "${md}" >&2
+    rc=1
+  fi
+else
+  echo "FAIL: compose markdown" >&2
+  rc=1
+fi
+refuse="$(python3 "${SKILLS}/harness/dispatch-phase/scripts/run-pre-create-gates.py" \
+    --root "${cm_tmp}" --body evidence/bodies/missing.json 2>/dev/null || true)"
+if printf '%s\n' "${refuse}" | grep -q '^REFUSE:' && \
+   [ "$(printf '%s\n' "${refuse}" | wc -l | tr -d ' ')" = 1 ] && \
+   ! printf '%s' "${refuse}" | grep -q '{'; then
+  echo "OK: run-pre-create-gates prints one REFUSE line without JSON"
+else
+  echo "FAIL: run-pre-create-gates should one-line REFUSE: ${refuse}" >&2
+  rc=1
+fi
+park_db="${cm_tmp}/.hermes/home/kanban.db"
+python3 - <<PY
+import sqlite3
+from pathlib import Path
+db = Path("${park_db}")
+con = sqlite3.connect(str(db))
+con.execute("create table tasks (id text, status text)")
+con.execute("create table task_links (parent_id text, child_id text)")
+con.execute("insert into tasks values ('t_child','todo')")
+con.execute("insert into task_links values ('t_holder','t_child')")
+con.execute("insert into task_links values ('t_gate','t_child')")
+con.commit()
+PY
+if python3 "${SKILLS}/harness/dispatch-phase/scripts/assert-story-parked.py" \
+    "${cm_tmp}" --task-id t_child --ack-gate t_gate | grep -q '^OK: parked t_child'; then
+  echo "OK: assert-story-parked one-line from sqlite"
+else
+  echo "FAIL: assert-story-parked should OK parked todo+ack parent" >&2
+  rc=1
+fi
+rm -rf "${cm_tmp}"
+
 # E-20260819T104826Z — sidecar-only restamp refuse; atomic card+sidecar restamp
 rs_tmp="$(mktemp -d)"
 mkdir -p "${rs_tmp}/evidence/bodies" "${rs_tmp}/.hermes/home"
