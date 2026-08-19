@@ -61,8 +61,11 @@ Do **not** pin `check-spec-readiness` on the holder until story bodies exist.
    Then snapshot this new id (After create).
 4. For each story in `evidence/briefs/partition.json` whose
    `identity.story_id` has a body under `evidence/bodies/`:
-   - Skip if a child of the holder already has title prefix `{story_id}:`
-     or `{story_id} `.
+   - Skip if a child of the holder already has title starting with `M3 IMPLEMENT: {story_id}`
+     (phase-first; description after ` — ` is optional). Do **not** key
+     `{story_id}:` as a title prefix (`111244Z` doubled form is retired).
+     `idempotency_key` `migration-m3-{story_id}-v1` is the second duplicate
+     guard.
    - Run the **pre-create gates** below via `execute_code` on that body.
    - `kanban_create` with skills, `initial_status=blocked` /
      `--initial-status blocked` (**not** the park protection — Architect
@@ -161,7 +164,28 @@ Max runtime **and** max retries from `python3 .hermes/skills/harness/dispatch-ph
 `runtime_budget_sec`. Refuse `kanban_create` unless both native flags are on the argv. Workspace `dir:/projects/modernized`. Profile
 `default` must exist (`hermes profile show default`).
 
-Title: `{story_id}: M3 IMPLEMENT: {story_id}` (prefix once).
+Title: `M3 IMPLEMENT: {story_id} — {description}` (house `<PHASE>: <descriptor>`;
+do **not** prefix `{story_id}:`).
+
+Derive `{description}` from `evidence/briefs/partition.json`
+`stories[].heading` for this `story_id`. Generic transforms only — do
+**not** hardcode specimen strings and do **not** synonym-expand
+(`Mgmt`→`Management` is not a transform):
+
+1. strip a trailing `(Priority: …)` (priority is already a card field)
+2. strip a leading label that merely restates `story_id` (`User Story N - `
+   when `story_id` is `USN`; the bare Setup / Foundational / Polish token
+   when it equals `story_id` case-insensitively)
+3. strip emoji
+
+Then trim leftover separators (`:`, `-`, `&`) and surrounding whitespace.
+
+Instances of the rule (not literals to copy): heading
+`Setup (Shared Infrastructure)` → `M3 IMPLEMENT: setup — Shared Infrastructure`;
+`User Story 3 - Visit Management (Priority: P1)` →
+`M3 IMPLEMENT: US3 — Visit Management`;
+`Polish & Cross-Cutting Concerns` →
+`M3 IMPLEMENT: polish — Cross-Cutting Concerns`.
 
 ## Card body contract (binding — `035010Z` / `224320Z`)
 

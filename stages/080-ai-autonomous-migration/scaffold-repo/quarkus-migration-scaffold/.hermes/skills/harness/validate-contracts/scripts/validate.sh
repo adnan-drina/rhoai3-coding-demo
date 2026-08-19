@@ -450,7 +450,7 @@ body = """Typed body: evidence/bodies/m3-setup.json
 con.execute(
     "INSERT INTO tasks (id, title, body, status, created_at, workspace_kind) "
     "VALUES (?, ?, ?, ?, 0, 'dir')",
-    ("t_i5card", "setup: M3 IMPLEMENT: setup", body, "running"),
+    ("t_i5card", "M3 IMPLEMENT: setup — Shared Infrastructure", body, "running"),
 )
 con.commit()
 con.close()

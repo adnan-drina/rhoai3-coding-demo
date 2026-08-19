@@ -1626,6 +1626,21 @@ REQUIRED_SUBSTRINGS = [
         "only if **no** child title starts with `M4` or `M5`",
         "holder must not complete if M4/M5 are children",
     ),
+    (
+        ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
+        "M3 IMPLEMENT: {story_id} —",
+        "child title is phase-first house form (111244Z)",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
+        "already has title starting with `M3 IMPLEMENT: {story_id}`",
+        "skip-if keys phase-first title not story_id: prefix (111244Z)",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/references/m3-implementer-standing.md",
+        "does not start with",
+        "standing wrong-card keys phase-first title not story_id: prefix (111244Z)",
+    ),
 ]
 
 FORBIDDEN_SUBSTRINGS = [
@@ -1658,6 +1673,21 @@ FORBIDDEN_SUBSTRINGS = [
         ".hermes/skills/harness/dispatch-phase/scripts/dispatch-phase.sh",
         "for next in M2 M3 M4 M5",
         "do not park M4/M5 as children of the M3 holder",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
+        "{story_id}: M3 IMPLEMENT: {story_id}",
+        "child titles must not double story_id (111244Z)",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
+        "already has title prefix `{story_id}:`",
+        "skip-if must not key the retired story_id: prefix (111244Z)",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/references/m3-implementer-standing.md",
+        "no `{story_id}:` prefix",
+        "wrong-card must not key the retired story_id: prefix (111244Z)",
     ),
 ]
 
