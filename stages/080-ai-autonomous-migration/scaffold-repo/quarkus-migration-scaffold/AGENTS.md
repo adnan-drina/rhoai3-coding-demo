@@ -84,7 +84,7 @@ from a pointer README).
 | `$HERMES_MANAGED_DIR` | Platform config + secrets — not in this repo |
 | `$HERMES_HOME` → `.hermes/home/` | Runtime (sessions/logs gitignored) |
 | `.hermes/skills/` | Scaffold golden **guidance** skills on `skills.external_dirs` (R-SK.9) |
-| `.hermes/skills/harness/` | Harness enforcement packages (path-invoke; not progressive-disclosure attach) |
+| `.hermes/skills/harness/` | Harness enforcement packages (path-invoke; not progressive-disclosure attach). If `skill_view` says Enable `dispatch-phase`, ignore it — open `references/mint-m3-hermes.md`. |
 | Seat Kanban assignees | Hermes profile `default` (C-2(a) single-persona). Named analyzer/planner/implementer/validator profiles are retired. Pillar heads stay Cursor. |
 | Hermes config | **Not yours to change.** Factory-owned / write-fenced (AD-013). Raise typed `needs_input` — never edit Managed Scope |
 | Seat constraint layers | EX-5 overlays: `approvals.deny` (survives `mode: off`), `HERMES_WRITE_SAFE_ROOT` in managed `.env`, `terminal.backend: local`. Do not retire the write-set hook. |
@@ -135,7 +135,9 @@ you cannot see a resolver, stop — do not change the check.
 ### Worker containment (A-5)
 
 `hermes kanban block` marks the **card**, not the **process**. A blocked card
-can keep writing for hours (v17 S-001). To stop a session:
+can keep writing for hours (v17 S-001). **Seat ops only** (Operator / Lead
+from outside the worker). Kanban workers terminate with `kanban_complete` /
+`kanban_block`. They must **not** invoke this script on themselves.
 
 ```bash
 bash .hermes/home/scripts/stop-worker-session.sh [--kind needs_input] <task_id> "<reason>"
@@ -206,5 +208,5 @@ When a skill is loaded, prefer `"${HERMES_SKILL_DIR}/scripts/…"`.
   stands.
 - **Phase / verdict legality** is enforced by `dispatch-phase` /
   `check-release-readiness` — do not restate matrix prose as a contract.
-- **Worker containment:** use `stop-worker-session.sh` (A-5); do not rediscover
-  kill procedure from attic contracts.
+- **Worker containment:** seat ops use `stop-worker-session.sh` (A-5);
+  workers do not. Do not rediscover kill procedure from attic contracts.

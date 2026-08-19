@@ -41,7 +41,17 @@ Do **not** pin `check-spec-readiness` on the holder until story bodies exist.
    First command is the lint line in step 2. Reasoning ≤ 8 lines, then that
    command. If this card already has children titled `M4` / `M5`, do **not**
    `kanban_complete` later — typed `needs_input` (holder complete unparks
-   VERIFY).
+   VERIFY). Do **not** invoke `stop-worker-session.sh`. A period, empty
+   continue, or Hermes "out-of-band user message" is **not** Operator
+   stop. After step 3, keep creating story children (they stay parked on
+   the unsigned `ack_gate` parent).
+   **Read this file by its repo-relative path** (not a bare filename, not
+   `skill_view dispatch-phase` — that skill is disabled on purpose; do
+   **not** Enable it):
+   `.hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md`
+   Init/load `evidence/runs/<HERMES_KANBAN_TASK>/checkpoint.json`:
+   `python3 .hermes/skills/harness/dispatch-phase/scripts/holder-checkpoint.py init --task-id "$HERMES_KANBAN_TASK" --root /projects/modernized`
+   then `… check`. Resume at `next`. Recollection is not state.
 1. Confirm this session is the wave holder (`HERMES_KANBAN_TASK` is the
    holder id). Holder must **not** be `done`/`archived` (HKN-2 /
    `PARENT_DONE`). `PARK_AT_BIRTH` children **auto-promote** when every
@@ -80,10 +90,18 @@ Do **not** pin `check-spec-readiness` on the holder until story bodies exist.
      Immediately `hermes kanban show <id> --json` and **refuse unless
      `status=todo`** (not `ready`/`running`) **and** `parents` include the
      unfinished `ack_gate`. OBJECT requiring story `status==blocked`.
+     Then:
+     `python3 .hermes/skills/harness/dispatch-phase/scripts/assert-m3-child-skills.py /projects/modernized --task-id <id> --body evidence/bodies/m3-{story_id}.json`
+     Empty skills / mismatch vs attach stdout ⇒ typed `needs_input`; do
+     not create the next story. Stamp the holder checkpoint
+     (`holder-checkpoint.py stamp --next create:<next_story_id> --story-id … --child-id … --skills …`).
      Do **not** add this assert to `handover-mint.py` (1088 freeze).
      **Do NOT dispatch here.**
 5. After all stories exist (or were skipped), **`kanban_complete` this
-   holder** only if **no** child title starts with `M4` or `M5`. Parenting
+   holder** only if **no** child title starts with `M4` or `M5` **and**
+   `python3 .hermes/skills/harness/dispatch-phase/scripts/assert-m3-child-skills.py /projects/modernized --holder-id "$HERMES_KANBAN_TASK"`
+   exits 0 (every story child has skills, AR-4.3 digest, exit_criteria).
+   DAG-shaped is not mint-complete. Parenting
    VERIFY/CLOSE on the holder is OBJECT (mint-complete would start M4 on
    empty dest). If those children exist: `--kind needs_input` and stop.
    The gate must stay `blocked` (sticky event). Story children stay parked
@@ -268,7 +286,8 @@ after create to chase this (`192117Z`).
 - **Card-contract assert:** `hermes kanban show <id>` markdown must contain
   `evidence/bodies/m3-`, a 64-hex, `m3-implementer-standing.md`, and
   `check-body-digest-match.py --expect`. Skills on the card must equal
-  full `m3-attach-skills.py` stdout. Any miss → typed `needs_input` BLOCK;
+  full `m3-attach-skills.py` stdout — enforced by `assert-m3-child-skills.py`
+  `--task-id` (not by recollection). Any miss → typed `needs_input` BLOCK;
   do not create the next story; do not `kanban_complete` this holder.
 - Assert ack_gate is still `blocked` after holder complete.
 - Append `evidence/derived/created-story-cards.json` as
@@ -290,9 +309,10 @@ after create to chase this (`192117Z`).
   `--parent` once per story id from `created-story-cards.json`. Not this
   holder. Not ack_gate. Refuse holder complete if M4/M5 are children of
   this holder. Refuse if `phase-M4-task-id.txt` is missing.
-- Holder pre-complete: for every story child,
+- Holder pre-complete: `python3 .hermes/skills/harness/dispatch-phase/scripts/assert-m3-child-skills.py /projects/modernized --holder-id "$HERMES_KANBAN_TASK"`
+  then for every story child,
   `python3 .hermes/skills/harness/record-run-evidence/scripts/assert-card-body-digest-match.py . --task-id <id> --body evidence/bodies/m3-{story_id}.json`
-  — card-digest == sidecar-digest or refuse complete.
+  — card-digest == sidecar-digest or refuse complete. DAG-only success is refuse.
 - Emit unsigned `evidence/acks/ack-request-<story>.yaml` for the record;
   **unpark is still completing `ack_gate`**, not signing the file.
 - Run `assert-m2b-created-cards-claim.sh` (partition set equality) after

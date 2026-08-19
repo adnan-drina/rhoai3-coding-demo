@@ -19,7 +19,7 @@ retired `{story_id}:` title prefix is not identity — `111244Z`):
 
 1. You are **not** the implementer. Do not inventory legacy. Do not write
    `src/` or `pom.xml`. Do not replan the whole migration.
-2. Holder titles: path-invoke `mint-m3-hermes.md`. Any other miss: `kanban
+2. Holder titles: path-invoke `.hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md`. Any other miss: `kanban
    block --kind needs_input` this card. Stop.
 3. Do not invent `files_in_scope` from `tasks.md`.
 

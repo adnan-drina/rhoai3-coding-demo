@@ -1,11 +1,11 @@
 ---
 name: dispatch-phase
-description: Creates and dispatches an M1-M5 Kanban card with declared skills, budget and park-at-birth. Use when starting any migration phase, after speckit.tasks when a Hermes wave-holder session must lint+assemble+stamp then kanban_create parked M3 children with an ack_gate parent, or when a card must be minted with skills already attached. Do not run mint-m3-wave.sh from Cursor.
+description: DISABLED for card attach — path-invoke references/mint-m3-hermes.md; do not Enable it. Creates and dispatches an M1-M5 Kanban card with declared skills, budget and park-at-birth. Use when starting any migration phase, after speckit.tasks when a Hermes wave-holder session must lint+assemble+stamp then kanban_create parked M3 children with an ack_gate parent, or when a card must be minted with skills already attached. Do not run mint-m3-wave.sh from Cursor.
 license: Apache-2.0
 compatibility: Linux seat; Hermes CLI on PATH for kanban create/dispatch
 metadata:
   author: rhoai3-harness-team
-  version: "1.5.3"
+  version: "1.5.4"
   hermes:
     tags:
     - harness
@@ -78,7 +78,11 @@ Then `kanban show` must report `status=blocked`.
 
 Create the M3 wave holder **before** the holder session mints children.
 Do **not** pin `one-three-one-rule` (I-11 unknown-skill; path-invoke on
-escalation). Do **not** pin `dispatch-phase` — path-invoke `references/mint-m3-hermes.md`. Keep the five names in `skills.disabled`. Do **not** pin `check-spec-readiness` on the holder until story bodies exist (v22 `skill_view` 0 / unused pin).
+escalation). Do **not** pin `dispatch-phase` — path-invoke `references/mint-m3-hermes.md`.
+If `skill_view` says Enable `dispatch-phase`, that message is wrong: keep it
+in `skills.disabled` and open
+`.hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md`.
+Keep the five names in `skills.disabled`. Do **not** pin `check-spec-readiness` on the holder until story bodies exist (v22 `skill_view` 0 / unused pin).
 
 ```bash
 python3 .hermes/skills/harness/dispatch-phase/scripts/assert-skills-not-disabled.py \

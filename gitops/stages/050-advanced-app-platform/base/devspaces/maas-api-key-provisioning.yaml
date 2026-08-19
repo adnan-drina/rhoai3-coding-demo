@@ -831,12 +831,6 @@ data:
                     "fail_closed": True,
                 }
             ],
-            "pre_verify": [
-                {
-                    "command": os.path.join(managed, "agent-hooks", "pre-verify-assert.py"),
-                    "timeout": 5,
-                }
-            ],
         },
     }
     # A1 exists-assert — every skills.external_dirs path must resolve to a dir
@@ -855,7 +849,6 @@ data:
     hooks_dir = os.path.join(managed, "agent-hooks")
     os.makedirs(hooks_dir, exist_ok=True)
     write_fence_py = os.path.join(hooks_dir, "write-fence.py")
-    pre_verify_py = os.path.join(hooks_dir, "pre-verify-assert.py")
     src_hook = os.path.join(
         os.environ.get("HERMES_WRITE_SAFE_ROOT", "/projects/modernized"),
         ".hermes/skills/harness/enforce-authority-boundary/scripts/write-set-hook.py",
@@ -882,27 +875,7 @@ data:
         fh.write(f'export HERMES_REAL_BIN="${{HERMES_REAL_BIN:-{real_hermes}}}"\n')
         fh.write(f'exec python3 "{hydrate_py}" "$@"\n')
     os.chmod(hermes_wrap, 0o755)
-    with open(pre_verify_py, "w") as fh:
-        fh.write(
-            "#!/usr/bin/env python3\n"
-            '"""W2 pre_verify host — idempotent on attempt>0 (CS-5 #4)."""\n'
-            "import json, os, sys\n"
-            "d = json.load(sys.stdin)\n"
-            'attempt = int(d.get("attempt") or 0)\n'
-            "if attempt:\n"
-            '    print("{}"); raise SystemExit(0)\n'
-            'require = os.environ.get("HERMES_PRE_VERIFY_REQUIRE_MARKER", "")\n'
-            'marker = os.environ.get("HERMES_PRE_VERIFY_MARKER", "/tmp/w2-pre-verify-ok")\n'
-            'if require == "1" and not os.path.exists(marker):\n'
-            "    print(json.dumps({\n"
-            '        "action": "continue",\n'
-            '        "message": f"pre_verify: missing marker {marker}",\n'
-            "    }))\n"
-            "else:\n"
-            '    print("{}")\n'
-        )
     os.chmod(write_fence_py, 0o755)
-    os.chmod(pre_verify_py, 0o755)
     cfg_path = os.path.join(managed, "config.yaml")
     with open(cfg_path, "w") as fh:
         yaml.safe_dump(cfg, fh, default_flow_style=False, sort_keys=False)

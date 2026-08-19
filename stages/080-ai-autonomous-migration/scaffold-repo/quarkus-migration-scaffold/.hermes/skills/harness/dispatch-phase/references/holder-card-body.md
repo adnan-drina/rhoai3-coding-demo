@@ -7,11 +7,17 @@ This card is not "M3 IMPLEMENT: bounded transform".
 **Turn law:** reasoning ≤ 8 lines, then **one** command. First command is
 the lint line in Job 1. Forbidden: "that's a lot, let me batch",
 search_files loops, re-reading `phase-dispatch.yaml` to invent a
-whole-wave write set. If lint or graph is wrong: block this turn, stop.
+whole-wave write set. If lint or graph is wrong: `kanban_block --kind
+needs_input` this card. That is the only "stop". Do **not** invoke `stop-worker-session.sh`.
+Do **not** treat a period, empty steer, or
+Hermes "out-of-band user message" as Operator stop — those are not a
+grant. After `ack_gate` exists, **keep minting** story children.
 
-Phase: M3 mint (wave holder). Path-invoke
-`.hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md`.
-Do **not** declare `dispatch-phase` on this card (I-10 B / `25a7c1e9`).
+Phase: M3 mint (wave holder). **Open this file** (not `skill_view`, not a
+bare filename):
+`.hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md`
+If `skill_view dispatch-phase` says Enable it — **OBJECT**. Path-invoke
+the Procedure. Do **not** declare `dispatch-phase` on this card (I-10 B / `25a7c1e9`).
 Do **not** pin `one-three-one-rule` (I-11; path-invoke on escalation).
 Do **not** attach `check-spec-readiness` until story bodies exist.
 
@@ -46,17 +52,27 @@ Argv: **`--kind` before the task id**. Then `kanban show` must report
 ## Job
 
 1. Lint + assemble: `python3 .hermes/skills/harness/dispatch-phase/scripts/handover-mint.py /projects/modernized --write`.
-2. On A-8 refuse or dest-forbidden rewrite: stop. Block this card
-   `--kind needs_input`. Do **not** rewrite `tasks.md`. Do **not** grow
+   Init checkpoint first:
+   `python3 .hermes/skills/harness/dispatch-phase/scripts/holder-checkpoint.py init --root /projects/modernized`
+   (uses `HERMES_KANBAN_TASK`). Resume at checkpoint `next`.
+2. On A-8 refuse or dest-forbidden rewrite: `kanban_block --kind
+   needs_input`. Do **not** rewrite `tasks.md`. Do **not** grow
    the mint. Escalate with official `one-three-one-rule` (path-invoke;
    one problem, three options, one recommendation). Do **not** `--skill`
-   pin it on this card.
+   pin it on this card. Do **not** SIGTERM this worker.
 3. If lint passes: create `ack_gate` first, then story children per
-   `mint-m3-hermes.md`. Do **not** dispatch children here.
-4. After children exist, mint M4 then M5 per `mint-m3-hermes.md`
+   `.hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md`.
+   After each `kanban_create`:
+   `python3 .hermes/skills/harness/dispatch-phase/scripts/assert-m3-child-skills.py /projects/modernized --task-id <id> --body evidence/bodies/m3-{story_id}.json`
+   Empty skills ⇒ `kanban_block --kind needs_input`. Do **not** halt after the gate. Do **not**
+   dispatch children here.
+4. After children exist, mint M4 then M5 per
+   `.hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md`
    (M4 `--parent` every story child, not this holder). Then
-   `kanban_complete` this holder **only if** no child title starts with
-   `M4` or `M5`. Otherwise block `--kind needs_input` (graph defect).
+   `python3 .hermes/skills/harness/dispatch-phase/scripts/assert-m3-child-skills.py /projects/modernized --holder-id "$HERMES_KANBAN_TASK"`
+   must exit 0 **before** `kanban_complete`. DAG-shaped is not enough.
+   Complete this holder **only if** that gate is green **and** no child
+   title starts with `M4` or `M5`. Otherwise block `--kind needs_input`.
    The gate stays blocked.
 
 ## Constraints
@@ -67,3 +83,4 @@ Argv: **`--kind` before the task id**. Then `kanban show` must report
 - OBJECT a third tick on a sticky `needs_input` dest (v24 park).
 - OBJECT implementing the whole `tasks.md` on this card.
 - Serial GO is orchestrator `hermes kanban dispatch --max 1`, not this card.
+- OBJECT `stop-worker-session.sh` from this worker (A-5 is seat ops).

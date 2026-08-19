@@ -59,6 +59,8 @@ REQUIRED_FILES = [
     ".hermes/skills/harness/dispatch-phase/scripts/check-created-cards-claim.py",
     ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
     ".hermes/skills/harness/dispatch-phase/references/holder-card-body.md",
+    ".hermes/skills/harness/dispatch-phase/scripts/assert-m3-child-skills.py",
+    ".hermes/skills/harness/dispatch-phase/scripts/holder-checkpoint.py",
     ".hermes/skills/harness/dispatch-phase/references/m1-verifier.md",
     ".hermes/skills/harness/dispatch-phase/scripts/check-m1-verifier.py",
     ".hermes/skills/harness/dispatch-phase/scripts/assert-seat-hermes-pin.py",
@@ -235,6 +237,11 @@ REQUIRED_SUBSTRINGS = [
         "AGENTS.md",
         "stop-worker-session.sh",
         "A-5 AGENTS cites worker stop entry point",
+    ),
+    (
+        ".hermes/home/scripts/stop-worker-session.sh",
+        "refuse self-stop",
+        "A-5 wrapper refuses worker self-SIGTERM (v32 t_adbb6995)",
     ),
     (
         ".hermes/skills/harness/validate-contracts/scripts/validate.sh",
@@ -742,8 +749,8 @@ REQUIRED_SUBSTRINGS = [
     ),
     (
         ".hermes/skills/harness/dispatch-phase/references/m2-planner.md",
-        "scratch-assemble-mint.py",
-        "m2-planner scratch-assembly Done oracle (221200Z)",
+        "python3 .hermes/skills/harness/dispatch-phase/scripts/scratch-assemble-mint.py",
+        "m2-planner names interpreter+path for scratch-assembly Done oracle (124443Z)",
     ),
     (
         ".hermes/skills/harness/dispatch-phase/scripts/scratch-assemble-mint.py",
@@ -1252,6 +1259,11 @@ REQUIRED_SUBSTRINGS = [
     ),
     (
         ".hermes/skills/harness/dispatch-phase/references/holder-card-body.md",
+        "Do **not** invoke `stop-worker-session.sh`",
+        "holder must not self-SIGTERM on imagined OOB (v32 t_adbb6995)",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/references/holder-card-body.md",
         "needs_input",
         "holder body maps A-8 / dest-forbidden rewrite to needs_input (3a0b92b6)",
     ),
@@ -1490,6 +1502,31 @@ REQUIRED_SUBSTRINGS = [
         ".hermes/skills/harness/dispatch-phase/references/holder-card-body.md",
         "Do **not** declare `dispatch-phase`",
         "I-10 B holder body path-invokes mint Procedure (25a7c1e9)",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/scripts/assert-m3-child-skills.py",
+        "bare create OBJECT",
+        "pre-create/pre-complete refuse empty skills (132404Z)",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/scripts/holder-checkpoint.py",
+        "rhoai3.m3-holder-checkpoint/v1",
+        "M3 holder checkpoint schema (132404Z)",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
+        "assert-m3-child-skills.py",
+        "mint Procedure wires empty-skills refuse after create and before complete",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/references/holder-card-body.md",
+        "holder-checkpoint.py init",
+        "holder body inits procedure checkpoint before lint",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/SKILL.md",
+        "do not Enable it",
+        "skill_view Enable dispatch-phase is OBJECT; path-invoke Procedure",
     ),
     (
         ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
