@@ -4,7 +4,10 @@ Architect `E-20260817T203500Z` / `E-20260817T200540Z`. The created M2
 card instructs the worker to, in order:
 
 1. Spec Kit preseed verify-or-BLOCK (provision owns `specify init`).
-2. Findings-handoff gate.
+2. Findings-handoff gate. Then 5.1
+   `python3 .hermes/skills/harness/enforce-authority-boundary/scripts/issue-m1-findings-ack.py`
+   — auto-issue `m1-findings.ack.yaml` as a gate-record. Do **not**
+   `needs_input` for a human yaml. **M3 brief-identity** stays Operator.
 3. Read `evidence/entry-point-inventory.json` **before** `/speckit-specify`.
    Spec FR enumerates every inventory `http_path` (not a count).
 4. Spec Kit resume ladder (`specify` → `plan` → `tasks`). Resource task

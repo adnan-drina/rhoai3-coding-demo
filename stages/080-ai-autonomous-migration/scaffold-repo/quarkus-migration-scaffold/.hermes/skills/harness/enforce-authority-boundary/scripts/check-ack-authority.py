@@ -46,6 +46,10 @@ WORKER_AUTHORS = frozenset(
     }
 )
 
+# 5.1 gate-record (Architect E-20260819T121859Z). Not a worker. Unknown
+# `gate:` prefixes are refuse — do not invent a second envelope checker.
+ALLOWED_GATE_SIGNERS = frozenset({"gate:check-findings-handoff"})
+
 
 def _unquote(s: str) -> str:
     s = s.strip()
@@ -160,12 +164,30 @@ def load_doc(path: Path) -> dict:
     return _parse_yaml_ack(raw)
 
 
+def author_head(author: str) -> str:
+    a = author.strip().lower()
+    if not a:
+        return ""
+    return re.split(r"[\s(/]", a, maxsplit=1)[0]
+
+
+def author_is_gate(author: str) -> bool:
+    return author_head(author) in ALLOWED_GATE_SIGNERS
+
+
+def author_is_unknown_gate(author: str) -> bool:
+    head = author_head(author)
+    return head.startswith("gate:") and head not in ALLOWED_GATE_SIGNERS
+
+
 def author_is_worker(author: str) -> bool:
     a = author.strip().lower()
     if not a:
         return True
+    if author_is_gate(author):
+        return False
     # "planner (M2 …)" → planner
-    head = re.split(r"[\s(/]", a, maxsplit=1)[0]
+    head = author_head(author)
     if head in WORKER_AUTHORS:
         return True
     for w in WORKER_AUTHORS:
@@ -245,7 +267,14 @@ def main() -> int:
         if status and status != "acknowledged":
             continue  # not claiming advance authority
         author = str(doc.get("acknowledged_by") or "")
-        if author_is_worker(author):
+        if author_is_unknown_gate(author):
+            print(
+                f"FAIL: AR-1.1 {rel}: unknown gate signer={author!r} "
+                f"— allowed {sorted(ALLOWED_GATE_SIGNERS)}",
+                file=sys.stderr,
+            )
+            bad = 1
+        elif author_is_worker(author):
             print(
                 f"FAIL: AR-1.1 {rel}: worker/self ACK author={author!r} "
                 f"— not stage authority",

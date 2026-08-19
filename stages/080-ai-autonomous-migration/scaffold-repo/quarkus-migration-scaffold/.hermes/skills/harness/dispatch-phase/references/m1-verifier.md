@@ -18,5 +18,8 @@ python3 .hermes/skills/harness/dispatch-phase/scripts/check-m1-verifier.py /proj
 | 1 | do **not** complete; `hermes kanban block --kind needs_input <gate-id> "M1 verifier refuse-on-nonzero"` |
 | 2 | harness defect — same `needs_input`; do not invent paths |
 
-The M1 worker never grants `m1-findings.ack.yaml` and never completes the
-gate. Unasserted residue → `needs_input`.
+The M1 worker never grants the yaml as Operator and never completes the
+gate. After handoff rc=0 the verifier runs
+`python3 .hermes/skills/harness/enforce-authority-boundary/scripts/issue-m1-findings-ack.py`
+(`acknowledged_by: gate:check-findings-handoff`, Architect `121859Z`).
+Unasserted residue → `needs_input`. **M3 brief-identity** stays Operator.

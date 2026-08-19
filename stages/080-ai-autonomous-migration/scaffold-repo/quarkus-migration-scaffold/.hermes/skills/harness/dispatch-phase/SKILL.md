@@ -5,7 +5,7 @@ license: Apache-2.0
 compatibility: Linux seat; Hermes CLI on PATH for kanban create/dispatch
 metadata:
   author: rhoai3-harness-team
-  version: "1.5.4"
+  version: "1.5.5"
   hermes:
     tags:
     - harness
@@ -181,7 +181,12 @@ The created M1 task instructs the worker to, in order:
 1. `derive-legacy-boot3` (manifest check / derive if missing)
 2. `inventory-entry-points` → `evidence/entry-point-inventory.json` (before handoff emit)
 3. `scan-with-mta` → `mta-analyze-legacy.sh` (writable clone + `MTA_RUN_CWD`; emits findings-handoff)
-4. Validate findings + handoff — **do not** grant stage-advance acks (Operator writes `m1-findings.ack.yaml` per AR-1.1). M1 ACK GATE complete is the **verifier card** in `references/m1-verifier.md` (`scripts/check-m1-verifier.py`, refuse-on-nonzero). This worker does not complete the gate.
+4. Validate findings + handoff, then 5.1
+   `python3 .hermes/skills/harness/enforce-authority-boundary/scripts/issue-m1-findings-ack.py`
+   (`acknowledged_by: gate:check-findings-handoff`). Do **not** grant as
+   Operator. **M3 brief-identity** stays Operator. M1 ACK GATE complete is
+   the **verifier card** in `references/m1-verifier.md`
+   (`scripts/check-m1-verifier.py`, refuse-on-nonzero). This worker does not complete the gate.
 
 ### M2 body contract (planner)
 
@@ -215,7 +220,7 @@ Job order (inventory before specify; `@Path` emit): `references/m2-planner.md`.
 ## Available scripts
 
 - `scripts/dispatch-phase.sh` — create a phase seed card from `phase-dispatch.yaml`
-- `scripts/check-m1-verifier.py` / `references/m1-verifier.md` — M1 verifier (refuse-on-nonzero)
+- `scripts/check-m1-verifier.py` / `references/m1-verifier.md` — M1 verifier (refuse-on-nonzero; issues 5.1 record)
 - `scripts/assert-seat-hermes-pin.py` — seat Hermes vs `.hermes/pins.json` (`v0.20.4`)
 - `scripts/handover-mint.py` — tasks.md phases → receipt + bodies (A-4/A-5/A-8); lint only (`--write`, no `--parent`)
 - `references/mint-m3-hermes.md` — Hermes holder mint: gates + `kanban_create` + ack_gate

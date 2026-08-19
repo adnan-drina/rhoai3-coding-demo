@@ -61,7 +61,35 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1 if proc.returncode == 1 else 2
-    print("OK: M1 verifier pass (refuse-on-nonzero would have blocked)")
+    issuer = (
+        root
+        / ".hermes"
+        / "skills"
+        / "harness"
+        / "enforce-authority-boundary"
+        / "scripts"
+        / "issue-m1-findings-ack.py"
+    )
+    if not issuer.is_file():
+        print("FAIL: missing issue-m1-findings-ack.py (harness)", file=sys.stderr)
+        return 2
+    issued = subprocess.run(
+        [sys.executable, str(issuer), str(root)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if issued.stdout:
+        sys.stdout.write(issued.stdout)
+    if issued.stderr:
+        sys.stderr.write(issued.stderr)
+    if issued.returncode != 0:
+        print(
+            f"FAIL: refuse-on-nonzero — 5.1 issue-m1-findings-ack exit {issued.returncode}",
+            file=sys.stderr,
+        )
+        return 1 if issued.returncode == 1 else 2
+    print("OK: M1 verifier pass (refuse-on-nonzero would have blocked; 5.1 record issued)")
     return 0
 
 

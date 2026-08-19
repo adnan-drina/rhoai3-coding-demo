@@ -63,6 +63,7 @@ REQUIRED_FILES = [
     ".hermes/skills/harness/dispatch-phase/scripts/holder-checkpoint.py",
     ".hermes/skills/harness/dispatch-phase/references/m1-verifier.md",
     ".hermes/skills/harness/dispatch-phase/scripts/check-m1-verifier.py",
+    ".hermes/skills/harness/enforce-authority-boundary/scripts/issue-m1-findings-ack.py",
     ".hermes/skills/harness/dispatch-phase/scripts/assert-seat-hermes-pin.py",
     ".hermes/skills/harness/dispatch-phase/scripts/handover-mint.py",
     ".hermes/skills/harness/dispatch-phase/scripts/scratch-assemble-mint.py",
@@ -1198,6 +1199,36 @@ REQUIRED_SUBSTRINGS = [
         "M1 verifier refuse-on-nonzero (095340Z)",
     ),
     (
+        ".hermes/skills/harness/enforce-authority-boundary/scripts/issue-m1-findings-ack.py",
+        "gate:check-findings-handoff",
+        "5.1 auto-issues m1-findings as gate-record (121859Z)",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/scripts/dispatch-phase.sh",
+        "issue-m1-findings-ack.py",
+        "M1/M2 bodies path-invoke 5.1 issuer",
+    ),
+    (
+        ".hermes/skills/harness/enforce-authority-boundary/scripts/check-ack-authority.py",
+        "ALLOWED_GATE_SIGNERS",
+        "AR-1.1 allowlists 5.1 gate signer",
+    ),
+    (
+        "evidence/acks/README.md",
+        "gate:check-findings-handoff",
+        "acks README documents 5.1 gate-record",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/scripts/handover-mint.py",
+        'elif "rest" not in ph.operand_class and "test" in ph.operand_class:',
+        "test-only stamps test_suite_runs; rest+test keeps http_semantics (155354Z)",
+    ),
+    (
+        ".hermes/skills/harness/validate-contracts/scripts/validate.sh",
+        "OK: polish test-only stamps test_suite_runs",
+        "stamp_oracles polish vs rest+test lock (155515Z)",
+    ),
+    (
         ".hermes/skills/harness/dispatch-phase/scripts/dispatch-phase.sh",
         "assert-skills-not-disabled.py",
         "B3 wired into dispatch-phase create (25a7c1e9)",
@@ -1401,6 +1432,11 @@ REQUIRED_SUBSTRINGS = [
         ".hermes/skills/harness/dispatch-phase/references/handover-mint.md",
         "E-20260816T193813Z",
         "A-8 mint contract is route/symbol join, not a filename mapper",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/references/handover-mint.md",
+        "test_suite_runs",
+        "oracle-stamps polish test-only (155354Z)",
     ),
 
     (

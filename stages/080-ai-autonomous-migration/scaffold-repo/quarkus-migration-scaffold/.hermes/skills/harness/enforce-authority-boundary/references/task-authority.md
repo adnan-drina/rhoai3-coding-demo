@@ -53,7 +53,7 @@ Record under `evidence/acks/` (or Kanban metadata):
 
 | Decision | Before | Human? |
 |----------|--------|--------|
-| Accept findings | M1 → M2 | **Yes** — `evidence/acks/m1-findings.ack` |
+| Accept findings | M1 → M2 | **No** — `evidence/acks/m1-findings.ack.yaml` is a 5.1 **gate-record** when findings-handoff rc=0 (`gate:check-findings-handoff`). Human GO only on rc≠0. |
 | Approve brief/spec identity | → first IMPLEMENT for story | **Yes** — identity ACK; readiness lint necessary not sufficient |
 | Modify code in-scope | IMPLEMENT | **No** per edit (packet + sensors) |
 | Expand scope / edit skills/SOUL/AGENTS / amend identity | anytime | **Yes** |

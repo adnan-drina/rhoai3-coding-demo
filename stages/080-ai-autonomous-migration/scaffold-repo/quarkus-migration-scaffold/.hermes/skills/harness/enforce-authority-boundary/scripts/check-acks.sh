@@ -118,6 +118,20 @@ PY
       fi
     fi
   done
+  # 5.1 — auto-issue m1-findings as a gate record when the envelope is green.
+  # Missing yaml is not a human GO. rc≠0 still typed-blocks. brief-identity
+  # is unchanged (Operator only).
+  if [ "${found}" -eq 0 ] && [ "${ack_type}" = "m1-findings" ]; then
+    ISSUER="${ROOT}/.hermes/skills/harness/enforce-authority-boundary/scripts/issue-m1-findings-ack.py"
+    if [ -f "${ISSUER}" ]; then
+      if python3 "${ISSUER}" "${ROOT}"; then
+        if [ -f "${ACK_DIR}/m1-findings.ack.yaml" ]; then
+          found=1
+          echo "OK: ack ${ack_type} ← evidence/acks/m1-findings.ack.yaml (5.1 gate-record)"
+        fi
+      fi
+    fi
+  fi
   # story-scoped brief-identity-*.ack.yaml
   if [ "${found}" -eq 0 ]; then
     for f in "${ACK_DIR}/${ack_type}"-*.ack.yaml "${ACK_DIR}/${ack_type}"-*.ack.yml; do

@@ -108,6 +108,7 @@ EID in a trailing comment).
   the last `OK:` line alone; check `$?`, and grep the run for `FAIL:`.
 - Negative controls must be present, not just absent failures. A healthy run
   prints lines such as `OK: M2 refuses without m1-findings ack`,
+  `OK: 5.1 gate-record issued when findings-handoff rc=0`,
   `OK: invent-without-locus refused`, and
   `OK: body digest mismatch refused`. If a negative control is missing from
   the output, that gate silently stopped refusing.

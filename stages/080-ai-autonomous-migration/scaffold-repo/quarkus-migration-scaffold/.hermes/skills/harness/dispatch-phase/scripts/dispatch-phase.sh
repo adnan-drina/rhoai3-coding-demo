@@ -355,7 +355,11 @@ orchestration: hermes_native (required)
 4. Schema-validate findings + handoff (runtime skill root / AD-H §7.1):
    `python3 "${HERMES_SKILL_DIR:-.hermes/home/skills/software-development/scan-with-mta}/scripts/check-findings-handoff.py" /projects/modernized`
    Exit: **0=pass**; **1=FAIL→typed BLOCK**; **2=missing script** (harness/lint defect — do not invent).
-   **Do not** write stage-advance acks — Operator grants `evidence/acks/m1-findings.ack.yaml` per `ack.md` / AR-1.1.
+5. **5.1 gate-record** (Architect `E-20260819T121859Z`): after handoff rc=0, run
+   `python3 .hermes/skills/harness/enforce-authority-boundary/scripts/issue-m1-findings-ack.py /projects/modernized`
+   (`acknowledged_by: gate:check-findings-handoff`). Do **not** grant as Operator
+   and do **not** write `acknowledged_by` worker. rc≠0 → typed BLOCK, not a
+   human `needs_input` for the yaml. **M3 brief-identity** stays Operator.
    M1 ACK GATE complete is the **verifier card** running
    `python3 .hermes/skills/harness/dispatch-phase/scripts/check-m1-verifier.py /projects/modernized`
    (**refuse-on-nonzero**; see `references/m1-verifier.md`). This worker does not complete the gate.
@@ -371,7 +375,7 @@ orchestration: hermes_native (required)
 - `evidence/mta-findings.json` validates (`rhoai3.mta-findings/v1-provisional`) — evidence store
 - `evidence/entry-point-inventory.json` present
 - `evidence/findings-handoff.json` validates (`rhoai3.findings-handoff/v1`) — M2 planner input
-- Stage-advance ack is **out of band** (Operator) — not a worker Done criterion
+- `evidence/acks/m1-findings.ack.yaml` exists as the 5.1 gate-record (issuer exit 0) — not an Operator GO
 EOF
     TITLE="M1 ANALYZE: derive + MTA/kantra + inventory"
     ;;
@@ -380,7 +384,7 @@ EOF
 # M2 PLAN — partition + Spec Kit (GR2 / AD-016)
 
 Phase: M2 per `.hermes/phase-dispatch.yaml`
-Requires: Operator `evidence/acks/m1-findings.ack.yaml` + findings-handoff gate
+Requires: findings-handoff gate + 5.1 `m1-findings.ack.yaml` gate-record (not a human GO)
 **Mint is the wave-holder Hermes session** — do **not** run a pillar-head
 shell as the M3 create path. After Done, the holder follows
 `.hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md`.
@@ -396,6 +400,7 @@ substitution / path invention / specimen-body priming. Measure the harness.
 - evidence/findings-handoff.json
 - evidence/entry-point-inventory.json
 - evidence/mta-findings.json
+- .hermes/skills/harness/enforce-authority-boundary/scripts/issue-m1-findings-ack.py
 - .hermes/skills/sdd/check-spec-readiness/scripts/check-partition-coverage.py
 ### Must not exist
 - evidence/bodies/*.json
@@ -411,6 +416,10 @@ substitution / path invention / specimen-body priming. Measure the harness.
 1. Findings-handoff gate (canonical scan-with-mta — Operator E-20260817T105440Z / row 6):
    `python3 "${HERMES_SKILL_DIR:-.hermes/home/skills/software-development/scan-with-mta}/scripts/check-findings-handoff.py" /projects/modernized`
    Exit: **0=pass**; **1=FAIL→typed BLOCK**; **2=missing script** → `needs_input` (lint/harness defect — do not invent paths).
+   Then 5.1 record (Architect `E-20260819T121859Z`):
+   `python3 .hermes/skills/harness/enforce-authority-boundary/scripts/issue-m1-findings-ack.py /projects/modernized`
+   Exit **0** = `m1-findings.ack.yaml` is a gate-record. Exit **1** = handoff not green → typed BLOCK.
+   Do **not** `needs_input` for a missing **human** yaml. **M3 brief-identity** stays Operator.
 2. **Read inventory before specify** (Architect E-20260817T203500Z):
    Open `evidence/entry-point-inventory.json` **before** invoking
    `/speckit-specify`. Prove the read (tool evidence). Spec functional

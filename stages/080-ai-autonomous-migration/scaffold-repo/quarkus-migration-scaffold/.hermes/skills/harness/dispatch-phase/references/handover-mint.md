@@ -73,6 +73,15 @@ depend on another user story stay `dir`. Assignment is recorded on the
 receipt. Live parallel dispatch remains gated on a promotion-proof hold
 status (0.4). Worktrees do **not** relax the unique `pom.xml` owner.
 
+## Oracle stamps
+
+`stamp_oracles` defaults REST-ish stories to `http_semantics`. Mixed
+`rest`+`test` **keep** `http_semantics` (US stories that ship tests).
+Test-only (no `rest` — polish) stamps `test_suite_runs` with
+`cmd: mvn -q test` (Architect `E-20260819T155354Z` / Operator
+`E-20260819T155515Z`). Persistence-only stays `mapping_valid`. Do **not**
+dest-rewrite a body to paper over a missing ladder branch.
+
 ## Fail-closed
 
 | Symptom | Refuse |

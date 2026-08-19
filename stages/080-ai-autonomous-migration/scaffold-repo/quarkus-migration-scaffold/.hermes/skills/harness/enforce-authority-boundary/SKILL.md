@@ -1,11 +1,11 @@
 ---
 name: enforce-authority-boundary
-description: Enforces ack gates, comment/ack provenance, the filesystem write fence, and the in-repo write-set pre_tool_call hook. Use before advancing a phase or calling kanban_complete, when arming a seat, or when an ack or comment may grant authority it does not have. Do not use to patch harness files or to run retired skill-manage / untrusted-boundary scripts.
+description: Enforces ack gates, comment/ack provenance, the filesystem write fence, and the in-repo write-set pre_tool_call hook. Use before advancing a phase or calling kanban_complete, when arming a seat, or when an ack or comment may grant authority it does not have. M1 findings ack is auto-issued as a gate record when findings-handoff passes; brief-identity stays Operator. Do not use to patch harness files or to run retired skill-manage / untrusted-boundary scripts.
 license: Apache-2.0
 compatibility: Linux seat; Python 3.11+; POSIX chmod for the write fence
 metadata:
   author: rhoai3-harness-team
-  version: "2.0.2"
+  version: "2.1.0"
   hermes:
     tags:
     - harness
@@ -16,8 +16,8 @@ metadata:
 ## When to Use
 
 - Before advancing to a phase whose `requires_acks` is non-empty in
-  `.hermes/phase-dispatch.yaml` (M2 needs `m1-findings`; M2a/M2b stubs kept; M3 also needs
-  `brief-identity`).
+  `.hermes/phase-dispatch.yaml` (M2 needs the 5.1 `m1-findings` **record**;
+  M2a/M2b stubs kept; M3 also needs Operator `brief-identity`).
 - Before `kanban_complete` on any card that wrote files — the write fence
   must show no deny-path and no out-of-scope dirty path.
 - When arming an implementing seat: lock the fence first, then prove the lock
@@ -42,8 +42,14 @@ metadata:
    requires none.
 
 ```bash
+python3 "${HERMES_SKILL_DIR}/scripts/issue-m1-findings-ack.py" /projects/modernized
 bash "${HERMES_SKILL_DIR}/scripts/check-acks.sh" M2 /projects/modernized
 ```
+
+On findings-handoff rc=0 the issuer writes `m1-findings.ack.yaml` as
+`gate:check-findings-handoff`. `check-acks.sh M2` calls the issuer if the
+yaml is missing. Do **not** invent a second envelope checker. **Do not**
+complete M3 `brief-identity`.
 
 2. **Ack and comment authority.** Refuses worker-authored grants, grants
    missing `task_id` or `artifact_digests`, bare `*.json` grant files, and

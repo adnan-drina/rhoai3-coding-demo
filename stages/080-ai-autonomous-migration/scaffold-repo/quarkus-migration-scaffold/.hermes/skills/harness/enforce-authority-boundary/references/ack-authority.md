@@ -3,6 +3,12 @@
 Operator/Lead stage-advance grants live in `evidence/acks/*.ack.yaml`
 (or `*.ack.json`). Workers do not author these files.
 
+**5.1 exception (M1 findings only):**
+`check-findings-handoff.py` rc=0 auto-issues `m1-findings.ack.yaml` with
+`acknowledged_by: gate:check-findings-handoff` (Architect
+`E-20260819T121859Z`). That is a **record**, not a human GO. Unknown
+`gate:` signers are refuse. **`brief-identity` stays Operator.**
+
 Required fields on an `acknowledged` grant:
 
 | Field | Rule |
@@ -10,7 +16,7 @@ Required fields on an `acknowledged` grant:
 | `kind` | `migration-ack` |
 | `ack_type` | matches the phase `requires_acks` name (`m1-findings`, `brief-identity`, …) |
 | `status` | `acknowledged` |
-| `acknowledged_by` | human role (`Operator`, `Lead`, …) — never a worker name |
+| `acknowledged_by` | human role (`Operator`, `Lead`, …) **or** `gate:check-findings-handoff` on `m1-findings` — never a worker name |
 | `task_id` | the Kanban card the grant is about |
 | `artifact_digests` | map of artifact → sha256 **or** `artifact_refs` entries with `sha256` |
 

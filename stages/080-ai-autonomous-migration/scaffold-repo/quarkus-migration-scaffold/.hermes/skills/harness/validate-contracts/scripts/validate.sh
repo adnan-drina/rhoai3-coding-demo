@@ -256,13 +256,155 @@ rm -rf "${tmp}"
 
 echo "== enforce-authority-boundary (AD-H §16) =="
 bash "${HARNESS}/enforce-authority-boundary/scripts/check-acks.sh" M1 "${ROOT}" || rc=1
-# M2 without ack must fail
+# M2 without ack must fail on a tree with no findings-handoff (5.1 cannot issue)
 if bash "${HARNESS}/enforce-authority-boundary/scripts/check-acks.sh" M2 "${ROOT}" >/dev/null 2>&1; then
   echo "FAIL: M2 should require m1-findings ack when absent" >&2
   rc=1
 else
   echo "OK: M2 refuses without m1-findings ack"
 fi
+# 5.1 issuer refuses when the envelope is missing (no second checker)
+iss51_empty="$(mktemp -d)"
+mkdir -p "${iss51_empty}/.hermes/skills/analysis/scan-with-mta/scripts" \
+  "${iss51_empty}/evidence/acks"
+ln -s "${SKILLS}/analysis/scan-with-mta/scripts/check-findings-handoff.py" \
+  "${iss51_empty}/.hermes/skills/analysis/scan-with-mta/scripts/check-findings-handoff.py"
+if python3 "${HARNESS}/enforce-authority-boundary/scripts/issue-m1-findings-ack.py" \
+  "${iss51_empty}" --task-id t_empty >/dev/null 2>&1; then
+  echo "FAIL: 5.1 issuer must refuse without findings-handoff" >&2
+  rc=1
+else
+  echo "OK: 5.1 issuer refuses without findings-handoff"
+fi
+if [ -f "${iss51_empty}/evidence/acks/m1-findings.ack.yaml" ]; then
+  echo "FAIL: 5.1 issuer wrote yaml on rc≠0" >&2
+  rc=1
+fi
+rm -rf "${iss51_empty}"
+# 5.1 green path: envelope rc=0 ⇒ record; check-acks M2 proceeds; fence does not block
+iss51="$(mktemp -d)"
+python3 - "${iss51}" "${ROOT}" "${HARNESS}" <<'PY' || rc=1
+import hashlib, json, shutil, subprocess, sys
+from pathlib import Path
+
+td, root, harness = map(Path, sys.argv[1:])
+(td / "evidence" / "acks").mkdir(parents=True)
+(td / "evidence" / "derived").mkdir(parents=True)
+(td / ".hermes" / "skills" / "analysis" / "scan-with-mta" / "scripts").mkdir(parents=True)
+(td / ".hermes" / "skills" / "harness" / "enforce-authority-boundary" / "scripts").mkdir(parents=True)
+shutil.copy(
+    root / ".hermes" / "phase-dispatch.yaml",
+    td / ".hermes" / "phase-dispatch.yaml",
+)
+shutil.copy(
+    root / ".hermes" / "skills" / "analysis" / "scan-with-mta" / "scripts" / "check-findings-handoff.py",
+    td / ".hermes" / "skills" / "analysis" / "scan-with-mta" / "scripts" / "check-findings-handoff.py",
+)
+shutil.copy(
+    harness / "enforce-authority-boundary" / "scripts" / "issue-m1-findings-ack.py",
+    td / ".hermes" / "skills" / "harness" / "enforce-authority-boundary" / "scripts" / "issue-m1-findings-ack.py",
+)
+(td / "evidence" / "derived" / "phase-M1-task-id.txt").write_text("t_51fix\n", encoding="utf-8")
+
+findings = {
+    "violations": {
+        "ee-to-quarkus-00001": {
+            "ruleID": "ee-to-quarkus-00001",
+            "description": "Replace javax with jakarta",
+        }
+    }
+}
+inv = {
+    "counts": {"total": 1},
+    "entry_points": [{"file": "Foo.java", "line": 1, "http_method": "GET", "http_path": "/api"}],
+}
+fp = td / "evidence" / "mta-findings.json"
+ip = td / "evidence" / "entry-point-inventory.json"
+fp.write_text(json.dumps(findings), encoding="utf-8")
+ip.write_text(json.dumps(inv), encoding="utf-8")
+
+
+def digest(p: Path) -> str:
+    return hashlib.sha256(p.read_bytes()).hexdigest()
+
+
+handoff = {
+    "schema": "rhoai3.findings-handoff/v1",
+    "ack_obligation": True,
+    "evidence": {"path": "evidence/mta-findings.json", "sha256": digest(fp)},
+    "inventory": {
+        "path": "evidence/entry-point-inventory.json",
+        "sha256": digest(ip),
+        "endpoint_count": 1,
+    },
+    "rules": [
+        {
+            "rule_id": "ee-to-quarkus-00001",
+            "description": "Replace javax with jakarta",
+            "disposition": "apply",
+        }
+    ],
+}
+(td / "evidence" / "findings-handoff.json").write_text(json.dumps(handoff), encoding="utf-8")
+
+# lock acks dir the way apply-write-fence does (a-w, keep +x)
+acks = td / "evidence" / "acks"
+acks.chmod(0o555)
+issuer = harness / "enforce-authority-boundary" / "scripts" / "issue-m1-findings-ack.py"
+r = subprocess.run([sys.executable, str(issuer), str(td), "--task-id", "t_51fix"], capture_output=True, text=True)
+if r.returncode != 0:
+    print(r.stdout + r.stderr, file=sys.stderr)
+    print("FAIL: 5.1 issuer on green envelope", file=sys.stderr)
+    sys.exit(1)
+ack = acks / "m1-findings.ack.yaml"
+if not ack.is_file():
+    print("FAIL: 5.1 missing yaml after green issuer", file=sys.stderr)
+    sys.exit(1)
+raw = ack.read_text(encoding="utf-8")
+if "gate:check-findings-handoff" not in raw or "gate_rc: 0" not in raw:
+    print("FAIL: 5.1 yaml missing gate signer / gate_rc", file=sys.stderr)
+    sys.exit(1)
+auth = subprocess.run(
+    [sys.executable, str(harness / "enforce-authority-boundary" / "scripts" / "check-ack-authority.py"), str(td)],
+    capture_output=True,
+    text=True,
+)
+if auth.returncode != 0:
+    print(auth.stdout + auth.stderr, file=sys.stderr)
+    print("FAIL: 5.1 gate-record failed AR-1.1", file=sys.stderr)
+    sys.exit(1)
+# second call is idempotent
+r2 = subprocess.run([sys.executable, str(issuer), str(td), "--task-id", "t_51fix"], capture_output=True, text=True)
+if r2.returncode != 0:
+    print(r2.stdout + r2.stderr, file=sys.stderr)
+    print("FAIL: 5.1 issuer not idempotent", file=sys.stderr)
+    sys.exit(1)
+ack.chmod(0o644)
+acks.chmod(0o755)
+ack.unlink()
+acks.chmod(0o555)
+cks = subprocess.run(
+    ["bash", str(harness / "enforce-authority-boundary" / "scripts" / "check-acks.sh"), "M2", str(td)],
+    capture_output=True,
+    text=True,
+)
+if cks.returncode != 0:
+    print(cks.stdout + cks.stderr, file=sys.stderr)
+    print("FAIL: check-acks M2 should auto-issue 5.1 record", file=sys.stderr)
+    sys.exit(1)
+if not ack.is_file():
+    print("FAIL: check-acks M2 did not recreate 5.1 yaml", file=sys.stderr)
+    sys.exit(1)
+print("OK: 5.1 gate-record issued when findings-handoff rc=0")
+PY
+if bash "${HARNESS}/enforce-authority-boundary/scripts/check-acks.sh" M2 "${iss51}" >/dev/null; then
+  echo "OK: M2 check-acks accepts 5.1 gate-record"
+else
+  echo "FAIL: M2 check-acks should accept 5.1 gate-record" >&2
+  rc=1
+fi
+chmod -R u+w "${iss51}" 2>/dev/null || true
+rm -rf "${iss51}"
 # check-role-writes.py retired (Architect E-20260813T144117Z) — scope refuse is
 # check-write-fence.py --body (files_in_scope); global deny via write fence.
 
@@ -319,6 +461,38 @@ EOF
 python3 "${HARNESS}/enforce-authority-boundary/scripts/check-ack-authority.py" "${ar11_tmp}" \
   && echo "OK: AR-1.1 artifact_refs sha256 accepted" \
   || { echo "FAIL: AR-1.1 artifact_refs sha256 refused" >&2; rc=1; }
+# 5.1 gate-record signer is not a worker
+cat > "${ar11_tmp}/evidence/acks/m1-findings.ack.yaml" <<'EOF'
+kind: migration-ack
+ack_type: m1-findings
+status: acknowledged
+acknowledged_by: gate:check-findings-handoff
+acknowledged_at: 2026-08-19T00:00:00Z
+task_id: t_demo
+gate_rc: 0
+artifact_digests:
+  evidence/mta-findings.json: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  evidence/findings-handoff.json: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+EOF
+python3 "${HARNESS}/enforce-authority-boundary/scripts/check-ack-authority.py" "${ar11_tmp}" \
+  && echo "OK: AR-1.1 5.1 gate:check-findings-handoff accepted" \
+  || { echo "FAIL: AR-1.1 5.1 gate signer refused" >&2; rc=1; }
+cat > "${ar11_tmp}/evidence/acks/m1-findings.ack.yaml" <<'EOF'
+kind: migration-ack
+ack_type: m1-findings
+status: acknowledged
+acknowledged_by: gate:invented-envelope
+acknowledged_at: 2026-08-19T00:00:00Z
+task_id: t_demo
+artifact_digests:
+  evidence/mta-findings.json: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+EOF
+if python3 "${HARNESS}/enforce-authority-boundary/scripts/check-ack-authority.py" "${ar11_tmp}" >/dev/null 2>&1; then
+  echo "FAIL: AR-1.1 unknown gate: signer should refuse" >&2
+  rc=1
+else
+  echo "OK: AR-1.1 unknown gate: signer refused"
+fi
 rm -rf "${ar11_tmp}"
 
 echo "== write-fence proving-min (AD-H §16.4 / F2) =="
@@ -2264,6 +2438,65 @@ if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/check-surgical-scopes.py"
 else
   echo "OK: T-8 unknown operand_class fail-closed"
 fi
+# test-only: http_semantics is foreign; test_suite_runs is legal
+# (Architect E-20260819T155354Z — v33 holder A-8). Mixed rest+test keeps HTTP.
+python3 - <<PY
+import json, pathlib
+root = pathlib.Path("${t8_tmp}")
+body = {
+  "phase": "M3",
+  "identity": {"operand_class": "test", "story_id": "polish"},
+  "files_writable": ["src/test/java/x/SuiteTest.java"],
+  "exit_criteria": [{"check": "http_semantics", "cmd": "mvn -q test"}],
+}
+(root / "evidence/bodies/m3-dual-oracle.json").write_text(json.dumps(body), encoding="utf-8")
+PY
+if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/check-surgical-scopes.py" "${t8_tmp}" \
+  >/dev/null 2>&1; then
+  echo "FAIL: test+http_semantics should refuse" >&2
+  rc=1
+else
+  echo "OK: T-8 test-only foreign http_semantics refused"
+fi
+python3 - <<PY
+import json, pathlib
+root = pathlib.Path("${t8_tmp}")
+body = {
+  "phase": "M3",
+  "identity": {"operand_class": "test", "story_id": "polish"},
+  "files_writable": ["src/test/java/x/SuiteTest.java"],
+  "exit_criteria": [{"check": "test_suite_runs", "cmd": "mvn -q test"}],
+}
+(root / "evidence/bodies/m3-dual-oracle.json").write_text(json.dumps(body), encoding="utf-8")
+PY
+if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/check-surgical-scopes.py" "${t8_tmp}" \
+  >/dev/null 2>&1; then
+  echo "OK: T-8 legal-only test test_suite_runs passed"
+else
+  echo "FAIL: legal-only test_suite_runs should pass" >&2
+  rc=1
+fi
+python3 - <<PY
+import json, pathlib
+root = pathlib.Path("${t8_tmp}")
+body = {
+  "phase": "M3",
+  "identity": {"operand_class": ["rest", "test", "user_story"], "story_id": "US1"},
+  "files_writable": [
+    "src/main/java/x/OwnerResource.java",
+    "src/test/java/x/OwnerResourceTest.java",
+  ],
+  "exit_criteria": [{"check": "http_semantics", "cmd": "mvn -q test"}],
+}
+(root / "evidence/bodies/m3-dual-oracle.json").write_text(json.dumps(body), encoding="utf-8")
+PY
+if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/check-surgical-scopes.py" "${t8_tmp}" \
+  >/dev/null 2>&1; then
+  echo "OK: T-8 rest+test keeps http_semantics"
+else
+  echo "FAIL: rest+test http_semantics should pass AR-4.4" >&2
+  rc=1
+fi
 # T-8 AMEND: multi-class union is legal (rest+persistence)
 python3 - <<PY
 import json, pathlib
@@ -3847,6 +4080,55 @@ expect_fail(
     "Path-A partition.json as input refused",
 )
 print("OK: A-4/A-5/A-8 handover-mint negatives")
+
+# Architect E-20260819T155354Z / Operator E-20260819T155515Z: test-only
+# stamps test_suite_runs; mixed rest+test keeps http_semantics.
+_polish = _hm.Phase(
+    heading="Polish",
+    kind=_hm.KIND_POLISH,
+    story_id="polish",
+    body="",
+    files=["src/test/java/org/x/SuiteTest.java"],
+)
+_hm.stamp_oracles([_polish])
+_pac = _polish.acceptance_criteria
+if (
+    _polish.operand_class != ["test"]
+    or not _pac
+    or _pac[0].get("check") != "test_suite_runs"
+    or _pac[0].get("cmd") != "mvn -q test"
+):
+    print(
+        f"FAIL: polish test-only stamp {_polish.operand_class} {_pac}",
+        file=sys.stderr,
+    )
+    raise SystemExit(1)
+print("OK: polish test-only stamps test_suite_runs")
+_us_rt = _hm.Phase(
+    heading="User Story 1",
+    kind=_hm.KIND_USER_STORY,
+    story_id="US1",
+    body="",
+    files=[
+        "src/main/java/x/OwnerResource.java",
+        "src/test/java/x/OwnerResourceTest.java",
+    ],
+    independent_test="Run src/test/java/x/OwnerResourceTest.java",
+)
+_hm.stamp_oracles([_us_rt])
+_uac = _us_rt.acceptance_criteria
+if (
+    "rest" not in _us_rt.operand_class
+    or "test" not in _us_rt.operand_class
+    or not _uac
+    or _uac[0].get("check") != "http_semantics"
+):
+    print(
+        f"FAIL: rest+test must keep http_semantics {_us_rt.operand_class} {_uac}",
+        file=sys.stderr,
+    )
+    raise SystemExit(1)
+print("OK: rest+test keeps http_semantics")
 PY
   rm -rf "${ho_tmp}"
 fi

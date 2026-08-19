@@ -595,6 +595,10 @@ def stamp_oracles(phases: list[Phase]) -> None:
                 {"check": check, "cmd": "mvn -q compile"}
             ]
             continue
+        elif "rest" not in ph.operand_class and "test" in ph.operand_class:
+            # Test-only (polish). Mixed rest+test keeps http_semantics
+            # (Architect E-20260819T155354Z / Operator E-20260819T155515Z).
+            check = "test_suite_runs"
         ph.acceptance_criteria = [
             {
                 "check": check,
