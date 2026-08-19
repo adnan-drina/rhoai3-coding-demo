@@ -100,7 +100,10 @@ ensure_cli() {
   fi
   if [ -x "${HOME}/.local/bin/kantra-ensure" ]; then
     echo "mta-analyze-legacy: running kantra-ensure (lazy ~690MB install)…" >&2
-    "${HOME}/.local/bin/kantra-ensure"
+    # Helper status must not join CLI="$(ensure_cli)" (v30: stdout "Downloading
+    # kantra…" became the analyze argv0). Discard helper stdout; path comes
+    # from the probes below.
+    "${HOME}/.local/bin/kantra-ensure" >/dev/null
     export PATH="/projects/.tools/kantra:${HOME}/.local/bin:${PATH}"
     _link_mta_alias || true
   fi

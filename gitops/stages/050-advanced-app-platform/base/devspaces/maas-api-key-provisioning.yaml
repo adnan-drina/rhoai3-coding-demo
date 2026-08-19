@@ -1173,10 +1173,13 @@ data:
       cat > "${HOME}/.local/bin/kantra-ensure" <<'KANTRAEOF'
     #!/usr/bin/env bash
     set -euo pipefail
+    # Human status on stderr only. mta-analyze-legacy.sh ensure_cli() captures
+    # stdout as the CLI path (`CLI="$(ensure_cli)"`); a progress line on stdout
+    # becomes the executed command (v30 t_573591fd: "Downloading kantra…").
     KANTRA_VERSION="v0.10.0-beta.1"
     KANTRA_HOME="${KANTRA_HOME:-/projects/.tools/kantra}"
     if [ -x "${KANTRA_HOME}/kantra" ]; then
-      echo "kantra ready: ${KANTRA_HOME}/kantra"
+      echo "kantra ready: ${KANTRA_HOME}/kantra" >&2
       exit 0
     fi
     # Migrate a prior /tmp install into the durable home when present.
@@ -1184,11 +1187,11 @@ data:
       mkdir -p "${KANTRA_HOME}"
       cp -a /tmp/kantra/. "${KANTRA_HOME}/" 2>/dev/null || true
       if [ -x "${KANTRA_HOME}/kantra" ]; then
-        echo "kantra ready: ${KANTRA_HOME}/kantra (migrated from /tmp)"
+        echo "kantra ready: ${KANTRA_HOME}/kantra (migrated from /tmp)" >&2
         exit 0
       fi
     fi
-    echo "Downloading kantra ${KANTRA_VERSION} (~690MB, once per workspace)..."
+    echo "Downloading kantra ${KANTRA_VERSION} (~690MB, once per workspace)..." >&2
     curl -fsSL --retry 3 --max-time 1200 -o /tmp/kantra.zip \
       "https://github.com/konveyor/kantra/releases/download/${KANTRA_VERSION}/kantra.linux.amd64.zip"
     mkdir -p "${KANTRA_HOME}"
@@ -1199,7 +1202,7 @@ data:
     fi
     rm -f /tmp/kantra.zip
     chmod +x "${KANTRA_HOME}/kantra"
-    echo "kantra ready: ${KANTRA_HOME}/kantra"
+    echo "kantra ready: ${KANTRA_HOME}/kantra" >&2
     KANTRAEOF
       chmod 755 "${HOME}/.local/bin/kantra-ensure"
       echo "Installed kantra-ensure helper (lazy harness sensor install)."
