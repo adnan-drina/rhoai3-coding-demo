@@ -66,12 +66,16 @@ def extract_body_scripts(dispatch_sh: Path) -> dict[str, set[str]]:
     text = dispatch_sh.read_text(encoding="utf-8")
     out: dict[str, set[str]] = {}
     for m in re.finditer(
-        r"^\s+(M[1-5][ab]?|factory)\)\s*\n.*?<<'EOF'\n(.*?)EOF",
+        r"^\s+(M[1-5][ab]?|factory)\)\s*\n"
+        r"((?:(?!^\s+(?:M[1-5][ab]?|factory)\)).)*)",
         text,
         re.M | re.S,
     ):
-        phase, body = m.group(1), m.group(2)
-        refs = set(SCRIPT_REF.findall(body))
+        phase, block = m.group(1), m.group(2)
+        hm = re.search(r"<<'EOF'\n(.*?)EOF", block, re.S)
+        if not hm:
+            continue
+        refs = set(SCRIPT_REF.findall(hm.group(1)))
         if refs:
             out[phase] = refs
     return out
@@ -183,6 +187,19 @@ def main() -> int:
         return 1
     phases = parse_phase_skills(yaml.read_text(encoding="utf-8"))
     bodies = extract_body_scripts(dispatch)
+    holder = (
+        root
+        / ".hermes"
+        / "skills"
+        / "harness"
+        / "dispatch-phase"
+        / "references"
+        / "holder-card-body.md"
+    )
+    if holder.is_file():
+        hrefs = set(SCRIPT_REF.findall(holder.read_text(encoding="utf-8")))
+        if hrefs:
+            bodies.setdefault("M3", set()).update(hrefs)
     bad = 0
     for phase, refs in sorted(bodies.items()):
         skills = phases.get(phase) or []

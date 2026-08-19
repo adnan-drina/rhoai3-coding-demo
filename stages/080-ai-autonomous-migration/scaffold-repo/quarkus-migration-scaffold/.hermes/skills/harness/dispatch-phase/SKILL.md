@@ -100,9 +100,10 @@ export HERMES_MANAGED_DIR="${HERMES_MANAGED_DIR:-/projects/.platform/hermes}"
 cd /projects/modernized
 
 # Ensure watch is already running in another pane (demo Act D).
-# M1 create parks M2..M5 (`--initial-status blocked`, each `--parent` its
-# predecessor). Do not dest-enable the `dispatch-phase` skill pin.
+# M1 create parks M2 + M3 WAVE HOLDER (`todo` + `--parent`; omit
+# `--initial-status blocked`). Do not dest-enable the `dispatch-phase` skill pin.
 # Unpark is native parent-done, not a later `dispatch-phase.sh M2` by hand.
+# Do not park M4/M5 as children of the holder.
 bash "${HERMES_SKILL_DIR}/scripts/dispatch-phase.sh" M1
 # after M2 Done: the M3 wave-holder worker follows references/mint-m3-hermes.md
 # (lint + kanban_create + ack_gate). Do not bash mint-m3-wave.sh.
@@ -122,6 +123,10 @@ Create parks (`DISPATCH_MAX=0`). Spawn is native `hermes kanban dispatch --max 1
 — not `chat -q`, not `kanban daemon --force`. The long-running native loop is
 `hermes gateway run` (official; `gateway start` is the systemd installer). Argv, official log path, and M3
 `--parent` create: `references/native-dispatch.md`.
+
+After spawn (or after the gateway claims): **in the same turn**, read
+`hermes kanban log <task_id>` / `$HERMES_HOME/kanban/logs/<task_id>.log`.
+Sqlite `running`/`done` is not observation. Address gaps before the next card.
 
 ### What dispatch-phase.sh does
 
@@ -145,8 +150,9 @@ Create parks (`DISPATCH_MAX=0`). Spawn is native `hermes kanban dispatch --max 1
    idempotency key); id under `evidence/derived/` (pointer, not the DAG).
    M2 stamps dest write-set **cache** `evidence/runtime/write-sets/<id>.json`
    = `.specify/` + `specs/` (AD-013; fence is spawn-env, not that file).
-   On **M1**, also creates M2..M5 `--initial-status blocked` each `--parent`
-   predecessor (`DISPATCH_PARK_CHAIN=1`). Gateway persist is a separate
+   On **M1**, also creates M2 + M3 WAVE HOLDER, each `--parent`
+   predecessor (`DISPATCH_PARK_CHAIN=1`; omit `--initial-status blocked`).
+   Do **not** park M4/M5 on the holder. Gateway persist is a separate
    supervisor (`supervise-gateway.sh`); neither half alone advances the board.
 6. M3 **story** children are **not** created by this script. The holder session
    follows `references/mint-m3-hermes.md`.
@@ -187,7 +193,12 @@ Job order (inventory before specify; `@Path` emit): `references/m2-planner.md`.
   Cursor or ask the demo user to (`165300Z`).
 - Do **not** `--parent` a `done` card when minting park-at-birth children
   (`PARENT_DONE`). Hermes auto-promotes those children (HKN-2); create-time
-  `blocked` is not durable. The incomplete **ack_gate** parent holds them.
+  `blocked` is not durable. The incomplete **ack_gate** parent holds stories.
+- Do **not** park M4/M5 as children of the M3 holder — holder
+  `kanban_complete` after mint would unpark VERIFY on empty dest.
+- Do **not** create the park-at-birth M3 card as an implementer (`M3
+  IMPLEMENT: bounded transform` + implementer `skills[]`). That card **is
+  the WAVE HOLDER** (Architect `102636Z`): holder body, zero skill pins.
 - Start `hermes kanban watch` **before** dispatch for the demo audience.
   Companion pane: `hermes kanban tail <task_id>` or `hermes kanban log <task_id>`
   (native CLI — do **not** revive `kanban-track.sh`; W6 REMOVE 2026-08-13).
@@ -235,9 +246,9 @@ Job order (inventory before specify; `@Path` emit): `references/m2-planner.md`.
 - **Silent-failure catch:** the card must actually carry the declared skills.
   `hermes kanban show <task_id>` listing zero skills means the bare-create
   path was used — refuse the run and recreate via these scripts.
-- M3 only: `PARK_AT_BIRTH=<task_id> status=blocked` (or `triage`). Any of
-  `ready` / `todo` / `running` after create is a fail-closed die — a
-  dispatchable M3 mint races M2.
+- M3 holder only: after create with an incomplete M2 parent, status is
+  `todo` (not `ready` / `running`). `blocked` is human/escalation, not
+  phase-chain park (Architect `100812Z`).
 - M3 only: `CREATED_CARDS_CLAIM=<path>` names a
   `evidence/derived/created-cards-<parent>.json` containing the new id, and
   `ACK_REQUEST=<path>` names an unsigned `ack-request-<story>.yaml` whose

@@ -21,15 +21,15 @@
 # analyzer/planner/implementer/validator profiles are retired (R-V14.10).
 # Pillar heads stay Cursor. Do not hermes profile create --clone.
 #
-# M3 skills[] is the **allowed attach pool** (B-16), not "attach all five".
-# Wave holder (not this pool): path-invoke mint-m3-hermes.md; do **not**
-# pin one-three-one-rule (I-11) or dispatch-phase (I-10 B / 25a7c1e9).
-# Keep the five names in skills.disabled. Do not pin check-spec-readiness
-# on the holder until story bodies exist (Architect 094840Z).
-# mint-m3-hermes.md attaches check-spec-readiness plus
+# M3 skills[] is the **story attach pool** (B-16), not the park-at-birth card.
+# Park-at-birth M3 is the WAVE HOLDER (Architect 102636Z): holder-card-body.md,
+# zero --skill pins, path-invoke mint-m3-hermes.md. dispatch-phase.sh clears
+# SKILLS=() for that card. Do **not** pin one-three-one-rule (I-11) or
+# dispatch-phase (I-10 B / 25a7c1e9). Keep the five names in skills.disabled.
+# Do not pin check-spec-readiness on the holder until story bodies exist
+# (Architect 094840Z). mint-m3-hermes.md attaches check-spec-readiness plus
 # identity.operand_skills on story children after bodies exist.
-# Park-at-birth stays (0.4: no promotion-proof
-# status). Serial law is NOT retired. AD-002E skills_unused stays attached
+# Serial law is NOT retired. AD-002E skills_unused stays attached
 # as a measured signal (B-17 raised, not retired).
 
 phases:
@@ -81,7 +81,8 @@ phases:
     requires_acks:
       - m1-findings
   M3:
-    # IMPLEMENT — per-unit transform
+    # STORY attach pool only. Park-at-birth card is the WAVE HOLDER (102636Z).
+    # IMPLEMENT — per-unit transform (minted story children)
     # Children MUST be created via
     # .hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md
     # (bare hermes kanban create omits these skills — grounding study 20260809).

@@ -7,6 +7,27 @@
 The Kanban card carries identity + typed-body path + digest. **This file** carries
 standing procedure that used to be pasted into every card (~9.5KB × N).
 
+## Wrong-card gate (always first — one tool, then stop)
+
+This standing file is for a **minted story child** whose card prints a typed
+body path `evidence/bodies/m3-<story_id>.json`.
+
+If that file is missing, or the title is a phase stub (`M3 IMPLEMENT:
+bounded transform`, `M3 WAVE HOLDER`, no `{story_id}:` prefix):
+
+1. You are **not** the implementer. Do not inventory legacy. Do not write
+   `src/` or `pom.xml`. Do not replan the whole migration.
+2. Holder titles: path-invoke `mint-m3-hermes.md`. Any other miss: `kanban
+   block --kind needs_input` this card. Stop.
+3. Do not invent `files_in_scope` from `tasks.md`.
+
+## Turn law
+
+Reasoning is at most **eight lines** and must end in **one** next action
+(read the typed body, or one dest write from `files_writable`, or a typed
+block). Forbidden cadence: "that's a lot, let me batch" → "more efficient"
+→ "find exact paths" → `search_files` loops. One story, write-set only.
+
 ## Before first destination edit
 
 1. Read the typed body JSON path on the card (`exit_criteria`,

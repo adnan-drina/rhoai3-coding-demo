@@ -9,8 +9,9 @@ export HERMES_HOME="${HERMES_HOME:-/projects/modernized/.hermes/home}"
 export HERMES_MANAGED_DIR="${HERMES_MANAGED_DIR:-/projects/.platform/hermes}"
 cd /projects/modernized
 hermes kanban dispatch --max 1
-tail -f .hermes/home/kanban/logs/<task_id>.log
-# or: hermes kanban log <task_id>
+# REQUIRED same-turn watch (not optional). Sqlite running/done is not observation.
+hermes kanban log <task_id>
+# same bytes: .hermes/home/kanban/logs/<task_id>.log
 ```
 
 Do **not** substitute `hermes -p default --cli chat -q "work kanban task t_…"`.
@@ -47,8 +48,10 @@ reclaims stale claims. Do not invent a harness reaper.
 
 ## M3 children
 
-M3 children take the dedicated create path (`--parent` is **required**).
+Park-at-birth **M3 is the WAVE HOLDER** (title `M3 WAVE HOLDER`, holder
+body, **zero** `--skill` pins). M3 **story** children take the dedicated
+create path (`--parent` is **required**).
 The wave-holder Hermes session follows
 `references/mint-m3-hermes.md` (`kanban_create` + ack_gate). Do **not**
 run a deleted `mint-m3-wave.sh` / `create-m3-implementer.sh` from Cursor
-or ask the demo user to.
+or ask the demo user to. Do **not** park M4/M5 as children of the holder.

@@ -301,7 +301,7 @@ REQUIRED_SUBSTRINGS = [
     (
         ".hermes/skills/harness/dispatch-phase/scripts/dispatch-phase.sh",
         "DISPATCH_PARK_CHAIN",
-        "M1 create parks M2..M5 (Architect 085250Z)",
+        "M1 create parks M2 + M3 holder (Architect 102636Z / 100812Z)",
     ),
     (
         "devfile.yaml",
@@ -1278,6 +1278,11 @@ REQUIRED_SUBSTRINGS = [
         "native-dispatch standing doc names GO (not a wrapper script)",
     ),
     (
+        ".hermes/skills/harness/dispatch-phase/references/native-dispatch.md",
+        "REQUIRED same-turn watch",
+        "watch official kanban log after spawn",
+    ),
+    (
         ".hermes/skills/harness/record-run-evidence/scripts/snapshot-run-audit.py",
         "attach_write_sets",
         "run-audit joins published write-sets; session --windows-json retired",
@@ -1528,6 +1533,36 @@ REQUIRED_SUBSTRINGS = [
         '"M2")',
         "B2 guard labels quoted so extract_body skips them (184010Z)",
     ),
+    (
+        ".hermes/skills/harness/dispatch-phase/references/holder-card-body.md",
+        "You mint story children",
+        "holder identity: mint not implement (102636Z)",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/references/m3-implementer-standing.md",
+        "Wrong-card gate",
+        "implementer standing fail-closes missing typed body",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/scripts/dispatch-phase.sh",
+        "M3 WAVE HOLDER",
+        "park-at-birth M3 title is wave holder not bounded transform",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/SKILL.md",
+        "WAVE HOLDER",
+        "skill names park-at-birth M3 as wave holder",
+    ),
+    (
+        ".hermes/SOUL.md",
+        "One next action per turn",
+        "SOUL turn law stops replan storms",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
+        "only if **no** child title starts with `M4` or `M5`",
+        "holder must not complete if M4/M5 are children",
+    ),
 ]
 
 FORBIDDEN_SUBSTRINGS = [
@@ -1550,6 +1585,16 @@ FORBIDDEN_SUBSTRINGS = [
         ".hermes/skills/sdd/init-spec-workspace/assets/tasks-template.md",
         "Verify quality gate",
         "I-16 polish sample must not Verify pom.xml (215010Z)",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/scripts/dispatch-phase.sh",
+        "M3 IMPLEMENT: bounded transform",
+        "park-at-birth M3 must not use implementer title",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/scripts/dispatch-phase.sh",
+        "for next in M2 M3 M4 M5",
+        "do not park M4/M5 as children of the M3 holder",
     ),
 ]
 

@@ -37,6 +37,11 @@ Do **not** pin `check-spec-readiness` on the holder until story bodies exist.
 
 ## Sequence
 
+0. **Turn law.** Do not inventory `/projects/legacy` or search dest `src/`.
+   First command is the lint line in step 2. Reasoning ≤ 8 lines, then that
+   command. If this card already has children titled `M4` / `M5`, do **not**
+   `kanban_complete` later — typed `needs_input` (holder complete unparks
+   VERIFY).
 1. Confirm this session is the wave holder (`HERMES_KANBAN_TASK` is the
    holder id). Holder must **not** be `done`/`archived` (HKN-2 /
    `PARENT_DONE`). `PARK_AT_BIRTH` children **auto-promote** when every
@@ -75,9 +80,12 @@ Do **not** pin `check-spec-readiness` on the holder until story bodies exist.
      Do **not** add this assert to `handover-mint.py` (1088 freeze).
      **Do NOT dispatch here.**
 5. After all stories exist (or were skipped), **`kanban_complete` this
-   holder**. The gate must stay `blocked` (sticky event). Children stay
-   `blocked` because `ack_gate` is incomplete. `dispatch --dry-run` must
-   select **none, including the gate**.
+   holder** only if **no** child title starts with `M4` or `M5`. Parenting
+   VERIFY/CLOSE on the holder is OBJECT (mint-complete would start M4 on
+   empty dest). If those children exist: `--kind needs_input` and stop.
+   The gate must stay `blocked` (sticky event). Story children stay parked
+   because `ack_gate` is incomplete. `dispatch --dry-run` must select
+   **none, including the gate**.
 6. Do **not** `kanban_list` / `kanban_unblock` from this worker (those
    tools are orchestrator-mode at v0.20.2). Idempotency + skip-by-title
    replace list-then-skip. Unpark is **completing** the blocked gate, not

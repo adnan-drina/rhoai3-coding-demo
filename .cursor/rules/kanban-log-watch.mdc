@@ -1,0 +1,21 @@
+---
+description: After every dest Hermes Kanban spawn, read the official worker log in the same turn.
+alwaysApply: true
+---
+
+# Kanban log watch
+
+When you create or dispatch a dest Hermes Kanban task, **do not end the turn** until you have read its official log.
+
+```bash
+export HERMES_HOME="${HERMES_HOME:-/projects/modernized/.hermes/home}"
+hermes kanban log <task_id>
+# same bytes: $HERMES_HOME/kanban/logs/<task_id>.log
+```
+
+- Confirm the worker is doing the card job (skills, scripts, evidence paths).
+- Treat sqlite `running`/`done` as insufficient without the log.
+- Address gaps in that turn (poisoned CLI, missing official log, fence refusal, mis-identified child, false complete).
+- Do not dest-complete Operator ack gates, dest-read `.env` values, or run `kanban daemon --force`.
+
+Canonical: `.agents/rules/kanban-log-watch.md` and dest `references/native-dispatch.md`.

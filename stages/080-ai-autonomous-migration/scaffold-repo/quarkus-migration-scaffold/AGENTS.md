@@ -106,6 +106,11 @@ factory Managed Scope + contracts `stream-liveness.md` /
 When evidence and intent diverge: stop the current scope, emit a typed block /
 `needs_input`, and do not invent around the gap (pairs with `SOUL.md`).
 
+**Turn law:** keep reasoning short (≤ 8 lines) and execute one next command.
+Long replanning of an underspecified wave is a harness defect — typed
+`needs_input`, not a `search_files` loop and not "implement everything on
+this card".
+
 **Unconditional (always on — not a skill):**
 
 1. **Never patch `.hermes/skills/harness/**`** (or any gate/lint to make a red check

@@ -25,6 +25,7 @@ Current rule taxonomy:
 |------|--------------|---------|
 | `project.md` | `project-` | Repo structure, GitOps authoring, docs, manifest review, Red Hat source alignment, and shared guidance |
 | `env.md` | (none) | Live demo environment deployment, validation, troubleshooting, shutdown, recovery, and redeploy |
+| `kanban-log-watch.md` | (none) | Dest Hermes Kanban: read the official worker log in the same turn as spawn |
 | `gitops.md` | (none) | GitOps authoring, manifests, labels, schema validation |
 | `docs.md` | (none) | Documentation standards, README structure, operations docs |
 | `rhoai.md` | `rhoai-` | Official-doc-backed RHOAI component behavior and configuration |

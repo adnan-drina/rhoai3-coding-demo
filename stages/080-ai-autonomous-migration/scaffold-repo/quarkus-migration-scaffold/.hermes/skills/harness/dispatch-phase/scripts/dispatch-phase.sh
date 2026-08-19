@@ -25,9 +25,10 @@ This is an interface probe / help surface only when -h/--help is passed.
 Env (v20-flow / Architect E-20260816T185414Z):
   DISPATCH_START_DAEMON=0  default — do not spawn `kanban daemon --force`
   DISPATCH_MAX=0           default — create parks the card; does not spawn
-  DISPATCH_PARK_CHAIN=1    default — M1 create also parks M2..M5 blocked,
-                           each --parent its predecessor (Architect 085250Z).
-                           Set 0 to create a single phase card only.
+  DISPATCH_PARK_CHAIN=1    default — M1 create also parks M2 + M3 holder
+                           (todo + --parent; omit --initial-status blocked).
+                           Do not park M4/M5 on the holder (mint-complete
+                           would unpark VERIFY). Set 0 for a single card.
   Set DISPATCH_START_DAEMON/DISPATCH_MAX to 1 only for a campaign that has claimed C-1(a).
 
 Serial GO (one in-flight) AFTER create — native claim+spawn, not chat -q:
@@ -480,42 +481,12 @@ EOF
     TITLE="M2 PLAN: partition + Spec Kit (holder mints M3)"
     ;;
   M3)
-    cat >"${BODY_FILE}" <<'EOF'
-# M3 IMPLEMENT - Hermes-native (implementer)
-
-Phase: M3 per `.hermes/phase-dispatch.yaml`
-Requires acks: m1-findings, brief-identity
-Prefer create path: wave-holder session + `references/mint-m3-hermes.md` (skills on `kanban_create`).
-
-## Job
-Execute only `files_in_scope` from the typed W2 §6 body. Consult
-ground-in-harvest + spring-to-quarkus-patterns before edits. One task ⇒ one role.
-
-## Typed body (required — not a pointer to tasks.md)
-Write/attach `evidence/bodies/<task>.json` with:
-- `task_id`, `task_type=implementing`, `phase=M3`
-- `files_in_scope`: non-empty paths
-- `refs[]` including `brief_identity_ack` (`pending` until Operator ack, then 64-hex)
-  and `legacy_locus` (64-hex of primary legacy file)
-- optional `spec_path` / `plan_path` / `tasks_path` digests
-Validate: `python3 .hermes/skills/sdd/check-spec-readiness/scripts/check-kanban-body.py /projects/modernized`
-
-## Done when
-- Scoped compile/tests for files_in_scope pass, or typed BLOCK with residue named
-- Provenance record writable under evidence/tasks/ (AD-H §19)
-
-## Constraints
-- workspace: dir:/projects/modernized
-- Do not re-plan scope. Typed BLOCK if inputs are wrong.
-- **AD-009:** if provider-stale / consecutive failures hit the failure cap,
-  typed BLOCK with `block_class=environmental_provider`. Prefer:
-  `python3 .hermes/home/scripts/apply-environmental-circuit-breaker.py --task-id $TASK --phase M3 --provider-stale-events N`
-  (or `stamp-environmental-provider-block.py`). Do **not** MiniMax-escalate
-  (AD-008). Native reclaim is allowed until the cap (M3 K=2).
-- **AD-009 §3.1 / hard budget:** silent exit → `protocol_untyped` stamp;
-  over `max_runtime_seconds` → `enforce-max-runtime-hard.py --apply`.
-EOF
-    TITLE="M3 IMPLEMENT: bounded transform"
+    # Architect 102636Z — park-at-birth M3 is the WAVE HOLDER (mint, do not
+    # implement). Body is holder-card-body.md; no implementer skill pin.
+    cat "${ROOT}/.hermes/skills/harness/dispatch-phase/references/holder-card-body.md" \
+      >"${BODY_FILE}"
+    TITLE="M3 WAVE HOLDER: mint story children"
+    SKILLS=()
     ;;
   M4)
     cat >"${BODY_FILE}" <<'EOF'
@@ -579,8 +550,8 @@ done
 for p in "${PARENTS[@]:-}"; do
   [[ -n "${p}" ]] && CREATE_ARGS+=(--parent "${p}")
 done
-# Park-at-birth: M3 mint uses --initial-status blocked; parent graph is the
-# unpark switch (Architect 085250Z / mint-m3-hermes.md). M1 stays omit→ready.
+# Park-at-birth: omit --initial-status (Architect 100812Z: todo+parent).
+# M1 stays omit→ready. M3 phase stub is the WAVE HOLDER (102636Z).
 if [[ -n "${DISPATCH_INITIAL_STATUS:-}" ]]; then
   CREATE_ARGS+=(--initial-status "${DISPATCH_INITIAL_STATUS}")
 fi
@@ -601,7 +572,7 @@ if [[ "${DRY_RUN}" -eq 1 ]]; then
   printf '  %q' hermes kanban create "${CREATE_ARGS[@]}" "${TITLE}"
   echo
   if [[ "${PHASE}" == "M1" && "${DISPATCH_PARK_CHAIN}" == "1" ]]; then
-    echo "dispatch-phase: DRY_RUN park-at-birth would then create M2 M3 M4 M5 --initial-status blocked, each --parent predecessor"
+    echo "dispatch-phase: DRY_RUN park-at-birth would then create M2 M3 (holder) todo+parent, omit --initial-status blocked"
   fi
   exit 0
 fi
@@ -638,22 +609,23 @@ echo "${TASK_ID}" >"${ROOT}/evidence/derived/phase-${PHASE}-task-id.txt"
 echo "REVIEW_ADHERE_OBSERVE=${TASK_ID}"
 echo "dispatch-phase: created ${TASK_ID} (Review:adhere-observe-${TASK_ID} REQUIRED)"
 
-# Architect 085250Z — park M2..M5 at M1 create (native parent-graph). Do not
-# dest-enable the dispatch-phase skill pin. Children inherit DISPATCH_MAX=0.
+# Architect 102636Z / 100812Z — park M2 + M3 WAVE HOLDER at M1 create
+# (todo + --parent; omit --initial-status blocked). Do not park M4/M5 as
+# children of the holder. Do not dest-enable the dispatch-phase skill pin.
+# Children inherit DISPATCH_MAX=0.
 if [[ "${PHASE}" == "M1" && "${DISPATCH_PARK_CHAIN}" == "1" ]]; then
   prev="${TASK_ID}"
   export DISPATCH_PARK_CHAIN=0
-  export DISPATCH_INITIAL_STATUS=blocked
+  unset DISPATCH_INITIAL_STATUS
   export DISPATCH_MAX=0
   export DISPATCH_START_DAEMON=0
   _self="$(cd "$(dirname "$0")" && pwd)/dispatch-phase.sh"
-  for next in M2 M3 M4 M5; do
+  for next in M2 M3; do
     echo "dispatch-phase: park-at-birth ${next} --parent ${prev}"
     "${_self}" "${next}" --parent "${prev}"
     prev="$(cat "${ROOT}/evidence/derived/phase-${next}-task-id.txt")"
     [[ -n "${prev}" ]] || die "park-at-birth: missing ${next} id after create"
   done
-  unset DISPATCH_INITIAL_STATUS
 fi
 
 if [[ "${FW_JSON}" != "null" ]]; then

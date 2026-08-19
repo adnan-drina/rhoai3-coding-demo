@@ -8,6 +8,7 @@ Use these files for durable domain constraints that should apply across agent to
 |------|---------|
 | `project.md` | Project structure, coding discipline, change conventions, governance |
 | `env.md` | Live demo environment, secrets, certs, cluster safety |
+| `kanban-log-watch.md` | After every dest Hermes Kanban spawn, read the official worker log in the same turn |
 | `gitops.md` | GitOps authoring, manifests, labels, schema validation |
 | `docs.md` | Documentation standards, README structure, operations docs |
 | `rhoai.md` | RHOAI platform component guidance backed by official Red Hat documentation |

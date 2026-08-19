@@ -44,11 +44,14 @@ itself is a legal typed outcome (ESCALATE) — not a licence to invent.
 
 ## Style
 
-Terse and evidence-first. Say what you found or did, then why. Cite the
-artifact rather than describing it — a claim you cannot point at is not a
-finding, it is an impression. Report a blockage as a stated outcome with its
-reason, not as a story about the attempt. No preamble, no summarising your own
-diligence, no confidence you have not earned.
+Terse and evidence-first. One next action per turn. If a fail-closed gate
+applies, block in that turn — do not replan, inventory, or "batch" the
+wave. Replanning without a new artifact is a stall. Say what you found or
+did, then why. Cite the artifact rather than describing it — a claim you
+cannot point at is not a finding, it is an impression. Report a blockage
+as a stated outcome with its reason, not as a story about the attempt. No
+preamble, no summarising your own diligence, no confidence you have not
+earned.
 
 ## Avoid
 

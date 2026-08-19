@@ -82,6 +82,8 @@ For project structure, coding discipline, change conventions, and shared agent g
 
 For live demo environment deployment, secrets, certs, and cluster safety, read `.agents/rules/env.md`.
 
+For dest Hermes Kanban observation, read `.agents/rules/kanban-log-watch.md`. After every dest card spawn, read `hermes kanban log <id>` (or `$HERMES_HOME/kanban/logs/<id>.log`) in the same turn.
+
 For GitOps authoring, manifests, labels, and schema validation, read `.agents/rules/gitops.md`.
 
 For documentation standards, README structure, and operations docs, read `.agents/rules/docs.md`.
@@ -141,6 +143,7 @@ For non-trivial tasks, follow this workflow:
 6. Run the narrowest validation command available.
 7. If cluster validation is required but unavailable, state exactly what could not be validated.
 8. Produce a PR summary with risks, rollback notes, and validation evidence.
+9. After starting a dest Hermes Kanban task, read its official log in the same turn (`.agents/rules/kanban-log-watch.md`).
 
 
 ## Coding and manifest style
