@@ -2347,6 +2347,83 @@ else
   echo "FAIL: http_semantics cmd 'mvn -q test' should pass AR-2.3–2.7" >&2
   rc=1
 fi
+
+echo "== task_scoped_tests: evaluator scopes mvn test via proves FQCNs =="
+python3 - "${SKILLS}" <<'PY' || rc=1
+import importlib.util
+import sys
+from pathlib import Path
+
+skills = Path(sys.argv[1])
+eval_py = skills / "gates/check-release-readiness/scripts/evaluate-exit-criteria.py"
+spec = skills / "sdd/check-spec-readiness/scripts"
+sys.path.insert(0, str(spec))
+mod_spec = importlib.util.spec_from_file_location("eec", eval_py)
+mod = importlib.util.module_from_spec(mod_spec)
+assert mod_spec.loader is not None
+mod_spec.loader.exec_module(mod)
+from specimen_agnostic import proving_test_rels, proves_to_fqcn, semantic_exit_cmd_is_maven
+
+helpers = {
+    "proving_test_rels": proving_test_rels,
+    "proves_to_fqcn": proves_to_fqcn,
+    "semantic_exit_cmd_is_maven": semantic_exit_cmd_is_maven,
+}
+item = {"proves": ["src/test/java/com/demo/HealthTest.java"]}
+cmd, err = mod.scoped_maven_test_cmd("mvn -q test", item, helpers)
+assert err is None, err
+assert "-Dtest=com.demo.HealthTest" in cmd, cmd
+assert cmd.endswith(" test"), cmd
+_, err2 = mod.scoped_maven_test_cmd("mvn -q test", {}, helpers)
+assert err2 and "unscoped" in err2, err2
+kept, err3 = mod.scoped_maven_test_cmd(
+    "mvn -q -Dtest=com.demo.HealthTest test", item, helpers
+)
+assert err3 is None and "-Dtest=com.demo.HealthTest" in kept
+print("OK: task_scoped_tests proves FQCN rewrite / unscoped refuse")
+PY
+echo "== M2 reverse-diff sibling: invented endpoints refuse; claimed inventory ok =="
+python3 - "${SKILLS}" <<'PY' || rc=1
+import importlib.util
+import json
+import sys
+import tempfile
+from pathlib import Path
+
+skills = Path(sys.argv[1])
+script = skills / "harness/dispatch-phase/scripts/assert-partition-invented-routes.py"
+spec = importlib.util.spec_from_file_location("rev", script)
+mod = importlib.util.module_from_spec(spec)
+assert spec.loader is not None
+spec.loader.exec_module(mod)
+inv = {
+    "entry_points": [
+        {"kind": "http", "http_method": "GET", "http_path": "/api/owners"},
+    ]
+}
+contract = mod.inventory_contract(inv)
+assert "GET /api/owners" in contract
+assert "/api/owners" in contract
+ok_part = {"stories": [{"story_id": "US1", "endpoints": ["GET /api/owners"]}]}
+assert mod.invented_routes(ok_part, contract) == []
+bad_part = {"stories": [{"story_id": "US5", "endpoints": ["/"]}]}
+assert mod.invented_routes(bad_part, contract) == ["US5:/"]
+wrap = Path(tempfile.mkdtemp(prefix="rev-diff-"))
+(wrap / "evidence/briefs").mkdir(parents=True)
+(wrap / "evidence/entry-point-inventory.json").write_text(json.dumps(inv) + "\n")
+(wrap / "evidence/briefs/partition.json").write_text(
+    json.dumps({"inventory": "evidence/entry-point-inventory.json", "stories": bad_part["stories"]})
+    + "\n"
+)
+import subprocess
+cp = subprocess.run([sys.executable, str(script), str(wrap)], capture_output=True, text=True)
+assert cp.returncode != 0, cp.stdout + cp.stderr
+assert "US5:/" in (cp.stderr or ""), cp.stderr
+import shutil
+shutil.rmtree(wrap, ignore_errors=True)
+print("OK: reverse-diff sibling refuses invented /")
+PY
+
 rm -rf "${t8_tmp}"
 if [ -f "${ROOT}/governance/contracts/semantic-exits.md" ]; then
   echo "FAIL: semantic-exits.md still under contracts/ (T-8/GRT retire)" >&2
@@ -3110,8 +3187,11 @@ elif grep -q '\[PROJECT_NAME\]\|\[PRINCIPLE_1\|\[PLACEHOLDER\]' "${constitution}
 elif ! grep -q '3.27.3.SP1' "${constitution}" || ! grep -q 'Java 21' "${constitution}"; then
   echo "FAIL: constitution asset missing Quarkus 3.27.3.SP1 / Java 21" >&2
   rc=1
+elif ! grep -q 'The legacy HTTP contract is immutable' "${constitution}"; then
+  echo "FAIL: constitution asset missing principle VII (067050Z)" >&2
+  rc=1
 else
-  echo "OK: constitution asset has zero placeholders (V20-3)"
+  echo "OK: constitution asset has zero placeholders (V20-3) + principle VII"
 fi
 tasks_tpl="${SKILLS}/sdd/init-spec-workspace/assets/tasks-template.md"
 if [ ! -f "${tasks_tpl}" ]; then
@@ -3901,26 +3981,27 @@ else
   rc=1
 fi
 
-echo "== B2/B3 holder kind map + one-three-one-rule pin (094840Z) =="
+echo "== B2/B3 holder kind map + one-three-one-rule path-invoke (I-11) =="
 DP_SKILL="${HARNESS}/dispatch-phase/SKILL.md"
 HOLDER_BODY="${HARNESS}/dispatch-phase/references/holder-card-body.md"
 if grep -q 'Fail-closed kind map' "${DP_SKILL}" \
-  && grep -q -- '--skill one-three-one-rule' "${DP_SKILL}" \
+  && grep -q 'Do \*\*not\*\* pin `one-three-one-rule`' "${DP_SKILL}" \
   && grep -q 'Do \*\*not\*\* pin `dispatch-phase`' "${DP_SKILL}" \
   && ! grep -q -- '--skill dispatch-phase' "${DP_SKILL}" \
+  && ! grep -q -- '--skill one-three-one-rule' "${DP_SKILL}" \
   && grep -q 'Do \*\*not\*\* pin `check-spec-readiness`' "${DP_SKILL}"; then
-  echo "OK: dispatch-phase SKILL.md kind map + holder skill pin (I-10 B)"
+  echo "OK: dispatch-phase SKILL.md kind map + I-10 B / I-11 no holder skill pin"
 else
-  echo "FAIL: dispatch-phase SKILL.md missing kind map / I-10 B holder pin (25a7c1e9)" >&2
+  echo "FAIL: dispatch-phase SKILL.md missing kind map / I-10 B / I-11 (25a7c1e9)" >&2
   rc=1
 fi
 if grep -q 'Fail-closed kind map' "${MINT_PROC}" \
-  && grep -q 'one-three-one-rule' "${MINT_PROC}" \
+  && grep -q 'Do \*\*not\*\* pin `one-three-one-rule`' "${MINT_PROC}" \
   && grep -q 'Do \*\*not\*\* pin `dispatch-phase`' "${MINT_PROC}" \
   && grep -q 'Do \*\*not\*\* pin `check-spec-readiness`' "${MINT_PROC}"; then
-  echo "OK: mint Procedure kind map + holder skill pin (I-10 B)"
+  echo "OK: mint Procedure kind map + I-10 B / I-11 (no holder skill pin)"
 else
-  echo "FAIL: mint Procedure missing kind map / I-10 B holder pin (25a7c1e9)" >&2
+  echo "FAIL: mint Procedure missing kind map / I-10 B / I-11" >&2
   rc=1
 fi
 if grep -q 'the park protection' "${MINT_PROC}" \
@@ -3936,12 +4017,13 @@ if [ ! -f "${HOLDER_BODY}" ]; then
 elif ! grep -q 'Fail-closed kind map' "${HOLDER_BODY}" \
   || ! grep -q 'needs_input' "${HOLDER_BODY}" \
   || ! grep -q 'one-three-one-rule' "${HOLDER_BODY}" \
+  || ! grep -q 'Do \*\*not\*\* pin `one-three-one-rule`' "${HOLDER_BODY}" \
   || ! grep -q 'Do \*\*not\*\* declare `dispatch-phase`' "${HOLDER_BODY}" \
   || ! grep -q 'Do \*\*not\*\* attach `check-spec-readiness`' "${HOLDER_BODY}"; then
-  echo "FAIL: holder-card-body.md missing kind map / needs_input / I-10 B pin (25a7c1e9)" >&2
+  echo "FAIL: holder-card-body.md missing kind map / needs_input / I-10 B / I-11" >&2
   rc=1
 else
-  echo "OK: holder card body carries fail-closed kind map + I-10 B path-invoke"
+  echo "OK: holder card body carries fail-closed kind map + I-10 B / I-11 path-invoke"
 fi
 
 echo "== B2 phase files_writable (M2/M4/M5 published; M3 omit) =="

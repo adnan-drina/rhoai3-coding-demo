@@ -27,13 +27,17 @@ including the **relationship** between them (T-8 / v17 wrong-class oracles).
 3. **Sizing / wall-fit** — `check-operand-count.py --wall-fit`.
 4. **Complete-cmd / product / DB security** — respective gates under
    check-spec-readiness / check-domain-parity / check-release-readiness.
-5. **SR-13 discriminating exit (L2 mint / L2a)** — `assert-mint-oracles.py`.
+5. **SR-13 discriminating exit (L2a mint / L2a complete)** — `assert-mint-oracles.py`.
    The test proving **this card's AC** lives in **this** `files_writable`.
    A test-shaped `exit_criteria[].cmd` (`mvn … test` or `mvn … verify`)
    must name `proves` test source(s) that sit in **this** `files_writable`.
    Each `proves` path that exists must contain an executable `@Test`
    (B-1); at complete the named class must appear in
-   `target/surefire-reports`. An unrelated dest `src/test` file must not
+   `target/surefire-reports`. **`evaluate-exit-criteria.py` must run
+   `mvn … test|verify` as `-Dtest=<proves FQCNs>`** (`task_scoped_tests`).
+   An unscoped `mvn -q test` that executes sibling-story tests is refuse —
+   do not treat a green isolation run plus a red full suite as a body-mint
+   defect. An unrelated dest `src/test` file must not
    satisfy the oracle. `true`, a script/`curl` card exit, and a test cmd
    with no named proving test refuse. `mvn test-compile` is not
    test-shaped for L2a. Compile-shaped cmds are unchanged. Shape (`shlex`

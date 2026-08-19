@@ -300,6 +300,8 @@ ensure_daemon() {
 PHASE_READER="${ROOT}/.hermes/skills/harness/dispatch-phase/scripts/read-phase-dispatch.py"
 MAX_RUNTIME="$(python3 "${PHASE_READER}" --yaml "${DISPATCH_YAML}" --phase "${PHASE}" --print max_runtime_seconds)" \
   || die "phase-dispatch parse failed for ${PHASE}"
+MAX_RETRIES="$(python3 "${PHASE_READER}" --yaml "${DISPATCH_YAML}" --phase "${PHASE}" --print max_retries)" \
+  || die "phase-dispatch max_retries parse failed for ${PHASE}"
 TITLE="$(python3 "${PHASE_READER}" --yaml "${DISPATCH_YAML}" --phase "${PHASE}" --print title)" \
   || die "phase-dispatch title parse failed for ${PHASE}"
 _SK_OUT="$(python3 "${PHASE_READER}" --yaml "${DISPATCH_YAML}" --phase "${PHASE}" --print skills)" \
@@ -425,6 +427,10 @@ substitution / path invention / specimen-body priming. Measure the harness.
    and run `handover-mint.py --write` **there**. Require exit 0.
    `python3 .hermes/skills/harness/dispatch-phase/scripts/scratch-assemble-mint.py /projects/modernized`
    Exit: **0=mintable**; **nonzero=typed `needs_input` BLOCK** (plan cannot assemble — do not dest-rewrite).
+   After `--write`, the oracle fail-closes invented receipt endpoints
+   (`assert-partition-invented-routes.py` — the only plan-level gate).
+   Constitution VII is guidance, not a gate. Keep
+   `assert-compiled-route-fidelity.py` for compiled-tree drift.
    **Forbidden:** `--dry-run` as this gate; authoring dest `partition.json`; growing `handover-mint.py`.
    Holder mint still follows `mint-m3-hermes.md` after Done.
 6. **Per-artifact Spec Kit resume ladder** (Architect E-20260811T122959Z — decision-complete;
@@ -448,7 +454,7 @@ substitution / path invention / specimen-body priming. Measure the harness.
 - Spec Kit invoke evidenced (seed + plan + tasks.md) **or** typed `needs_input` BLOCK recorded
 - `spec.md` enumerates every inventory `http_path` (not a count)
 - Resource task lines include literal `@Path("...")` for owned HTTP routes
-- Scratch `handover-mint.py --write` exit 0 (`scratch-assemble-mint.py`) — dest `partition.json` untouched
+- Scratch `handover-mint.py --write` exit 0 (`scratch-assemble-mint.py`) — dest `partition.json` untouched; invented endpoints refuse
 - **No** `partition.json` authored on this card (handover-mint writes the receipt)
 - **No** M3 Kanban children created on this card
 
@@ -558,6 +564,7 @@ CREATE_ARGS=(
   --assignee "${ASSIGNEE}"
   --workspace "dir:${WORKSPACE_DIR}"
   --max-runtime "${MAX_RUNTIME}"
+  --max-retries "${MAX_RETRIES}"
   --idempotency-key "${IDEM_KEY}"
   --created-by dispatch-phase
   --body "$(cat "${BODY_FILE}")"
@@ -569,7 +576,7 @@ for p in "${PARENTS[@]:-}"; do
   [[ -n "${p}" ]] && CREATE_ARGS+=(--parent "${p}")
 done
 
-echo "dispatch-phase: phase=${PHASE} assignee=${ASSIGNEE} max_runtime=${MAX_RUNTIME}s skills=${SKILLS[*]}"
+echo "dispatch-phase: phase=${PHASE} assignee=${ASSIGNEE} max_runtime=${MAX_RUNTIME}s max_retries=${MAX_RETRIES} skills=${SKILLS[*]}"
 echo "dispatch-phase: idempotency_key=${IDEM_KEY} workspace=dir:${WORKSPACE_DIR}"
 
 B3_ARGS=("${ROOT}")

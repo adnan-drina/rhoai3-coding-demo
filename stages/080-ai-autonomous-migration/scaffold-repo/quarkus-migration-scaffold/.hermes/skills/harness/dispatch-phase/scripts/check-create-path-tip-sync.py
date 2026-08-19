@@ -63,6 +63,9 @@ REQUIRED_FILES = [
     ".hermes/skills/harness/dispatch-phase/scripts/assert-seat-hermes-pin.py",
     ".hermes/skills/harness/dispatch-phase/scripts/handover-mint.py",
     ".hermes/skills/harness/dispatch-phase/scripts/scratch-assemble-mint.py",
+    ".hermes/skills/harness/dispatch-phase/scripts/assert-partition-invented-routes.py",
+    ".hermes/skills/harness/dispatch-phase/scripts/assert-compiled-route-fidelity.py",
+    ".hermes/skills/gates/check-release-readiness/scripts/evaluate-exit-criteria.py",
     ".hermes/skills/harness/dispatch-phase/references/handover-mint.md",
     ".hermes/skills/harness/dispatch-phase/references/delivery-path.md",
     ".hermes/skills/harness/dispatch-phase/references/native-dispatch.md",
@@ -718,6 +721,41 @@ REQUIRED_SUBSTRINGS = [
         "m2-planner scratch-assembly Done oracle (221200Z)",
     ),
     (
+        ".hermes/skills/harness/dispatch-phase/scripts/scratch-assemble-mint.py",
+        "assert-partition-invented-routes.py",
+        "M2 reverse-diff sibling after scratch --write (067420Z)",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/scripts/assert-compiled-route-fidelity.py",
+        "R-OF.1",
+        "compiled-tree route fidelity dest-local (5724ea24 KEEP)",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/references/native-dispatch.md",
+        "dispatch_in_gateway: true",
+        "gateway-embedded dispatcher not kanban daemon (066500Z)",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/references/native-dispatch.md",
+        "hermes kanban gc",
+        "native gc/repair not a harness reaper (063049Z)",
+    ),
+    (
+        ".hermes/skills/sdd/init-spec-workspace/assets/constitution.md",
+        "The legacy HTTP contract is immutable",
+        "constitution VII legacy HTTP immutable (067050Z)",
+    ),
+    (
+        ".hermes/skills/sdd/init-spec-workspace/assets/constitution.md",
+        "not a gate",
+        "constitution VII is guidance not a gate (070430Z)",
+    ),
+    (
+        ".hermes/skills/migration/spring-to-quarkus-patterns/references/testing.md",
+        "Do **not** use `java.net.http.HttpClient`",
+        "M3 HTTP tests are RestAssured not URI.resolve (064940Z)",
+    ),
+    (
         ".hermes/skills/sdd/check-spec-readiness/scripts/stamp-body-dependencies.py",
         "DEPENDENCY_HOLE",
         "body dependencies stamp (Operator E-144200Z)",
@@ -1159,8 +1197,8 @@ REQUIRED_SUBSTRINGS = [
     ),
     (
         ".hermes/skills/harness/dispatch-phase/SKILL.md",
-        "--skill one-three-one-rule",
-        "holder create pins official one-three-one-rule (094840Z)",
+        "Do **not** pin `one-three-one-rule`",
+        "holder create must not pin one-three-one-rule (I-11)",
     ),
     (
         ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
@@ -1169,8 +1207,13 @@ REQUIRED_SUBSTRINGS = [
     ),
     (
         ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
-        "one-three-one-rule",
-        "mint Procedure holder skill pin (094840Z)",
+        "Do **not** pin `one-three-one-rule`",
+        "mint Procedure holder does not skill-pin one-three-one-rule (I-11)",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
+        "assert-complete-exit-criteria.py . --body evidence/bodies/m3-{story_id}.json",
+        "pre-complete reads HERMES_KANBAN_TASK; no {id} placeholder",
     ),
     (
         ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
@@ -1470,6 +1513,16 @@ FORBIDDEN_SUBSTRINGS = [
         ".hermes/skills/harness/dispatch-phase/SKILL.md",
         "--skill dispatch-phase",
         "I-10 B holder create argv must not pass --skill dispatch-phase",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/SKILL.md",
+        "--skill one-three-one-rule",
+        "I-11 holder create argv must not pin one-three-one-rule",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
+        "--task-id {id}",
+        "do not mint {id} placeholder; complete-path uses HERMES_KANBAN_TASK",
     ),
     (
         ".hermes/skills/sdd/init-spec-workspace/assets/tasks-template.md",

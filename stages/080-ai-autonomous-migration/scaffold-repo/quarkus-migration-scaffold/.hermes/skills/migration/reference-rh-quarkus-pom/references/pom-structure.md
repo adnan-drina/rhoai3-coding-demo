@@ -53,7 +53,20 @@ plugin config — not both).
 <dependencies>
   <!-- Foundation Jacoco: foundation-jacoco-wiring.md.
        Story extensions: identity.extensions_apply on the sole pom.xml writer
-       (DD3 declare/apply/own). Later stories do not write this file. -->
+       (DD3 declare/apply/own). Later stories do not write this file.
+       Harness-owned test toolchain (S-010 / test-toolchain.md) is not a
+       Quarkus extension — the pom writer MUST still declare: -->
+  <dependency>
+    <groupId>io.rest-assured</groupId>
+    <artifactId>rest-assured</artifactId>
+    <scope>test</scope>
+  </dependency>
+  <dependency>
+    <groupId>org.assertj</groupId>
+    <artifactId>assertj-core</artifactId>
+    <version><!-- BOM may not manage this; pin a release --></version>
+    <scope>test</scope>
+  </dependency>
 </dependencies>
 ```
 

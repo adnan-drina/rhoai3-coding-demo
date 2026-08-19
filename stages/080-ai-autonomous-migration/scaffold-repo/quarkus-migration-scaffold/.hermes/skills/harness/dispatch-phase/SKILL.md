@@ -5,7 +5,7 @@ license: Apache-2.0
 compatibility: Linux seat; Hermes CLI on PATH for kanban create/dispatch
 metadata:
   author: rhoai3-harness-team
-  version: "1.5.2"
+  version: "1.5.3"
   hermes:
     tags:
     - harness
@@ -77,15 +77,15 @@ Then `kanban show` must report `status=blocked`.
 ## Holder card (I-10 B — Architect `25a7c1e9`)
 
 Create the M3 wave holder **before** the holder session mints children.
-Pin official `one-three-one-rule` (escalations). Do **not** pin `dispatch-phase` — path-invoke `references/mint-m3-hermes.md`. Keep the five names in `skills.disabled`. Do **not** pin `check-spec-readiness` on the holder until story bodies exist (v22 `skill_view` 0 / unused pin).
+Do **not** pin `one-three-one-rule` (I-11 unknown-skill; path-invoke on
+escalation). Do **not** pin `dispatch-phase` — path-invoke `references/mint-m3-hermes.md`. Keep the five names in `skills.disabled`. Do **not** pin `check-spec-readiness` on the holder until story bodies exist (v22 `skill_view` 0 / unused pin).
 
 ```bash
 python3 .hermes/skills/harness/dispatch-phase/scripts/assert-skills-not-disabled.py \
-  /projects/modernized --skill one-three-one-rule
+  /projects/modernized
 hermes kanban create --assignee default --workspace dir:/projects/modernized \
-  --skill one-three-one-rule \
   --parent <m2_task_id> \
-  --body-file .hermes/skills/harness/dispatch-phase/references/holder-card-body.md \
+  --body "$(cat .hermes/skills/harness/dispatch-phase/references/holder-card-body.md)" \
   "M3 WAVE HOLDER"
 ```
 
@@ -118,7 +118,8 @@ bash .hermes/skills/harness/dispatch-phase/scripts/dispatch-phase.sh M1
 ### Serial GO (one in-flight)
 
 Create parks (`DISPATCH_MAX=0`). Spawn is native `hermes kanban dispatch --max 1`
-— not `chat -q`, not `kanban daemon --force`. Argv, official log path, and M3
+— not `chat -q`, not `kanban daemon --force`. The long-running native loop is
+the gateway-embedded dispatcher (`hermes gateway start`, AD-013). Argv, official log path, and M3
 `--parent` create: `references/native-dispatch.md`.
 
 ### What dispatch-phase.sh does

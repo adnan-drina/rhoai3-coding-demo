@@ -3,7 +3,7 @@
 Phase: M3 mint (wave holder). Path-invoke
 `.hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md`.
 Do **not** declare `dispatch-phase` on this card (I-10 B / `25a7c1e9`).
-Pinned skill: official `one-three-one-rule` only.
+Do **not** pin `one-three-one-rule` (I-11; path-invoke on escalation).
 Do **not** attach `check-spec-readiness` until story bodies exist.
 
 Workspace: `dir:/projects/modernized`.
@@ -32,8 +32,9 @@ Argv: **`--kind` before the task id**. Then `kanban show` must report
 1. Lint + assemble: `python3 .hermes/skills/harness/dispatch-phase/scripts/handover-mint.py /projects/modernized --write`.
 2. On A-8 refuse or dest-forbidden rewrite: stop. Block this card
    `--kind needs_input`. Do **not** rewrite `tasks.md`. Do **not** grow
-   the mint. Escalate with official `one-three-one-rule` (one problem,
-   three options, one recommendation).
+   the mint. Escalate with official `one-three-one-rule` (path-invoke;
+   one problem, three options, one recommendation). Do **not** `--skill`
+   pin it on this card.
 3. If lint passes: create `ack_gate` first, then story children per
    `mint-m3-hermes.md`. Do **not** dispatch children here.
 4. After children exist (or a typed `needs_input` block is recorded),

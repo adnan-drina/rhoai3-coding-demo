@@ -19,6 +19,8 @@ standing procedure that used to be pasted into every card (~9.5KB × N).
    `init-implementer-checkpoint.py` / `check-implementer-checkpoint.py`.
 5. Hard-invoke `spring-to-quarkus-patterns` (`skill_view`) before first dest
    edit; open needed `references/*`. Progressive disclosure — no bulk-paste.
+   REST tests: RestAssured `given()` from the golden controller fixture.
+   Do **not** use `java.net.http.HttpClient` or `URI.resolve`.
 
 ### Dest-inventory hard-invoke (BANK-DEST-INV-HARDINVOKE-1)
 
@@ -54,7 +56,9 @@ in Reasoning before first related dest write.
   body via `HERMES_KANBAN_TASK`), else phase yaml, else
   deny-all (BIND `25a7c1e9`). Dest
   `evidence/runtime/write-sets/*.json` is cache, not policy. Native id is
-  `HERMES_KANBAN_TASK` — do not scan the typed body for the card id.
+  `HERMES_KANBAN_TASK` — complete-path scripts default `--task-id` from
+  that env. Do not scan the typed body for the card id and do not mint a
+  `{TASK_ID}` placeholder.
   An out-of-set `pom.xml` is refused. Worktree `HERMES_WRITE_SAFE_ROOT`
   keeps dest-relative paths dest-relative.
 - After each successful dest write: `stamp-implementer-checkpoint.py --completed <path>`.
@@ -93,8 +97,10 @@ in Reasoning before first related dest write.
 
 1. Satisfy every `exit_criteria` item (endpoint/semantic exits required — AR-4.4).
 2. Run:
-   `python3 .hermes/skills/gates/check-release-readiness/scripts/assert-complete-exit-criteria.py . --task-id <this-task-id> --body <body>`
-   — rc≠0 ⇒ REFUSE complete. Do not invent N/A.
+   `python3 .hermes/skills/gates/check-release-readiness/scripts/assert-complete-exit-criteria.py . --body <body>`
+   — card id from `HERMES_KANBAN_TASK` (native spawn). Do not pass a guessed
+   story slug and do not mint `{TASK_ID}` / `{id}` placeholders.
+   rc≠0 ⇒ REFUSE complete. Do not invent N/A.
 3. That script also harness-invokes body-digest + ground-in-harvest citation +
    provenance — do not rely on skill_view alone.
 

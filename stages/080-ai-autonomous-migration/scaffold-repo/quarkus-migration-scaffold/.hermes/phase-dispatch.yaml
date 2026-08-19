@@ -114,6 +114,7 @@ phases:
       - task_scoped_tests
       - g2_if_harvest
     max_runtime_seconds: 2700
+    max_retries: 2
     requires_acks:
       - m1-findings
       - brief-identity

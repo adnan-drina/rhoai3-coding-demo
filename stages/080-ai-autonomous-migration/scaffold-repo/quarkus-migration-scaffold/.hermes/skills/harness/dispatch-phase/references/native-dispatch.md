@@ -17,8 +17,31 @@ Do **not** substitute `hermes -p default --cli chat -q "work kanban task t_…"`
 That skips `_default_spawn`: sqlite stays `ready`, no official log,
 `hermes kanban log` reports "task may not have spawned yet".
 
-Do **not** `hermes kanban daemon --force` (deprecated; two dispatchers on one
-`kanban.db` cause claim races and are not supported).
+Do **not** `hermes kanban daemon --force` next to a gateway (deprecated;
+two dispatchers on one `kanban.db` cause claim races and are not
+supported). Official-first (AD-013 / Architect `21afefd3`): the
+long-running native loop is the **gateway-embedded dispatcher**.
+`--interval` / `--max` are **dispatch** flags, not daemon flags.
+Hand-looping `dispatch --max 1` is a GO, not architecture.
+
+```yaml
+# dest .hermes/home/config.yaml — official Kanban keys
+kanban:
+  dispatch_in_gateway: true
+  dispatch_interval_seconds: 60
+  max_in_progress: 1
+```
+
+```bash
+hermes gateway start
+# native hygiene (no new reaper): gc / repair / diagnostics
+hermes kanban gc
+hermes kanban repair
+hermes kanban diagnostics
+```
+
+`kanban_heartbeat` is the worker liveness signal; the dispatcher already
+reclaims stale claims. Do not invent a harness reaper.
 
 `dispatch-phase.sh --help` documents the same GO. There is no wrapper script.
 

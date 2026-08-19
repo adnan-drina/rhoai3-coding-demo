@@ -66,8 +66,11 @@ and is idle (exit 0) when its trigger artifact is absent. Commands under
 5. **Terminals and requeue** — `evaluate-exit-criteria.py`, wall/crash apply
    scripts, `restore-or-refuse-requeue.py`, `check-workspace-clean.py`,
    `apply-dependency-wait-hold.py`, `check-side-effect-recovery.py`.
-6. **Completion** — `assert-complete-exit-criteria.py --task-id --body` →
+6. **Completion** — `assert-complete-exit-criteria.py --body` →
    `evidence/runs/<task>/complete-exit-ok.json` before `kanban_complete`.
+   `--task-id` defaults to `HERMES_KANBAN_TASK`. `mvn test|verify` is
+   scoped to `proves` FQCNs. `check-test-toolchain.py` (rest-assured +
+   assertj) runs on this path.
 7. **Ship** — `check-factory-m5.py` (required oracle) and
    `check-candidate-promote.py` (candidate SHA before `promoted_to_main`).
 8. **Floor / chaos** — `run-m4-floor.sh` then `check-m4-floor-receipts.py`;

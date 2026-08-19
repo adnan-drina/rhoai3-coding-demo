@@ -58,6 +58,17 @@ wrapper DTOs, error taxonomies, and pre-flight probes of downstream
 services the spec does not demand are complexity-tracking violations.
 Hot-path work stays in native Quarkus APIs, not compatibility shims.
 
+## VII. The legacy HTTP contract is immutable
+
+Guidance for the planner (Architect `070430Z` — not a gate). Every HTTP
+row in `evidence/entry-point-inventory.json` should be claimed by exactly
+one story. The plan should not introduce a route absent from that
+inventory. Additive endpoints (health, root `/`, documentation) are out
+of scope. Do not treat a green `speckit-analyze` as route fidelity.
+Plan-level enforcement is only
+`assert-partition-invented-routes.py` (receipt endpoints vs inventory).
+Compiled-tree drift (`.bak`) is `assert-compiled-route-fidelity.py`.
+
 ## Governance
 
 - `.hermes/pins.json` is the version authority; this constitution names
@@ -73,4 +84,4 @@ Hot-path work stays in native Quarkus APIs, not compatibility shims.
 - Deviations from these articles must appear in the plan's Complexity
   Tracking table — silent deviations are review findings.
 
-**Version**: 1.1.0 | **Ratified**: 2026-08-15 | **Last Amended**: 2026-08-16
+**Version**: 1.2.0 | **Ratified**: 2026-08-15 | **Last Amended**: 2026-08-19

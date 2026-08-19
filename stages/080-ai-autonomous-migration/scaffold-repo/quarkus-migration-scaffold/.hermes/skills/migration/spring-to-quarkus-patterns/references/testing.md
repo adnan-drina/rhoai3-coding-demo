@@ -35,6 +35,10 @@
    (test scope). Prefer AssertJ `assertThat` over inventing a new library.
    After writing tests, run `mvn -q test-compile` in-loop
    (`.hermes/skills/migration/manage-quarkus-extensions/references/test-toolchain.md`).
+   HTTP `@QuarkusTest` assertions copy
+   `fixtures/testing/golden-rest-controller/PetTypeRestControllerTests.java`
+   (`io.restassured.RestAssured.given`). Do **not** use `java.net.http.HttpClient`
+   or `URI.resolve` — `URI.resolve` drops the servlet prefix and 404s.
 5. **`quarkus.test.continuous-testing` enum (R-M3.59 / S-008 Class B):** valid
    values are `disabled` | `enabled` | `paused` only. Never write
    `false`/`true` — Quarkus rejects them (`SRCFG00049`) and `mvn test` fails

@@ -2,8 +2,9 @@
 """M2 Done oracle (Architect E-20260818T221200Z form a).
 
 Copy tasks.md + evidence/ into a throwaway dir and run handover-mint.py
---write *there*. Require that exit. Never write dest partition.json.
-Does not grow handover-mint.py (freeze 1088).
+--write *there*. Require that exit, then reverse-diff invented endpoints
+(assert-partition-invented-routes.py; Architect 067420Z). Never write dest
+partition.json. Does not grow handover-mint.py (freeze 1088).
 
 Usage:
   python3 scratch-assemble-mint.py <dest-root>
@@ -23,6 +24,7 @@ from pathlib import Path
 
 _SCRIPTS = Path(__file__).resolve().parent
 _MINT = _SCRIPTS / "handover-mint.py"
+_REVERSE = _SCRIPTS / "assert-partition-invented-routes.py"
 
 
 def _sha(path: Path) -> str | None:
@@ -168,6 +170,22 @@ def main() -> int:
         if proc.returncode != 0:
             print(blob, file=sys.stderr)
             print(f"FAIL: scratch handover-mint --write rc={proc.returncode}", file=sys.stderr)
+            return 1
+        if not _REVERSE.is_file():
+            print(f"FAIL: missing {_REVERSE}", file=sys.stderr)
+            return 1
+        rev = subprocess.run(
+            [sys.executable, str(_REVERSE), str(modern)],
+            cwd=str(modern),
+            capture_output=True,
+            text=True,
+        )
+        if rev.returncode != 0:
+            print((rev.stdout or "") + (rev.stderr or ""), file=sys.stderr)
+            print(
+                "FAIL: invented plan routes vs inventory (067420Z reverse-diff)",
+                file=sys.stderr,
+            )
             return 1
         if args.assert_polish_excludes:
             want = args.assert_polish_excludes.replace("\\", "/")

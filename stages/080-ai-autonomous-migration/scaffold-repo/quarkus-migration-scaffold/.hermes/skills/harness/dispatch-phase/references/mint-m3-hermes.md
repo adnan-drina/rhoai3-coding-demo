@@ -29,7 +29,8 @@ A-8 planning refuse are **not** parent waits.
 `BLOCK_RECURRENCE_LIMIT`. Argv: **`--kind` before the task id**.
 Do not restore `park-on-block-loop.py`.
 
-Holder create `--skill`: official `one-three-one-rule` only.
+Holder create `--skill`: **none**. Do **not** pin `one-three-one-rule`
+(I-11 unknown-skill; that skill is for escalations — path-invoke it).
 Do **not** pin `dispatch-phase` on the holder (I-10 B / `25a7c1e9`);
 path-invoke this Procedure. Keep the five names in `skills.disabled`.
 Do **not** pin `check-spec-readiness` on the holder until story bodies exist.
@@ -62,7 +63,9 @@ Do **not** pin `check-spec-readiness` on the holder until story bodies exist.
      `--initial-status blocked` (**not** the park protection — Architect
      `113650Z`; the unfinished `ack_gate` parent is), `idempotency_key`,
      `workspace_kind=dir`,
-     `workspace_path`, `max_runtime_seconds`, `assignee=default`,
+     `workspace_path`, `max_runtime_seconds` **and** `max_retries` (native
+     `kanban_create --max-runtime` / `--max-retries`; read both from
+     `read-phase-dispatch.py`), `assignee=default`,
      `created-by` / `created_by` = holder id, `--parent REQUIRED` twice
      (holder + ack_gate), parents **`[holder, ack_gate]`** (gate is a
      parent, not a holder-child). Snapshot this new id (After create).
@@ -142,8 +145,8 @@ skills = full m3-attach-skills.py stdout
 (`kanban_create` skills: every line of that stdout, order-stable).
 Dropping any name is refuse — v22 setup/foundational kept only
 `check-spec-readiness` while attach printed three/four (`035010Z`).
-Max runtime from `python3 .hermes/skills/harness/dispatch-phase/scripts/read-phase-dispatch.py --yaml .hermes/phase-dispatch.yaml --phase M3` or body
-`runtime_budget_sec`. Workspace `dir:/projects/modernized`. Profile
+Max runtime **and** max retries from `python3 .hermes/skills/harness/dispatch-phase/scripts/read-phase-dispatch.py --yaml .hermes/phase-dispatch.yaml --phase M3` (`--print max_runtime_seconds` / `--print max_retries`) or body
+`runtime_budget_sec`. Refuse `kanban_create` unless both native flags are on the argv. Workspace `dir:/projects/modernized`. Profile
 `default` must exist (`hermes profile show default`).
 
 Title: `{story_id}: M3 IMPLEMENT: {story_id}` (prefix once).
@@ -178,7 +181,7 @@ AR-4.3 digest: {64-hex}
 Verify: python3 .hermes/skills/harness/record-run-evidence/scripts/check-body-digest-match.py --expect {64-hex} --body evidence/bodies/m3-{story_id}.json .
   mismatch ⇒ REFUSE
 Standing: .hermes/skills/harness/dispatch-phase/references/m3-implementer-standing.md
-Pre-complete: python3 .hermes/skills/gates/check-release-readiness/scripts/assert-complete-exit-criteria.py . --task-id {id} --body evidence/bodies/m3-{story_id}.json
+Pre-complete: python3 .hermes/skills/gates/check-release-readiness/scripts/assert-complete-exit-criteria.py . --body evidence/bodies/m3-{story_id}.json
 ## Exit Criteria
 - {from body.exit_criteria, one line each}
 ## Files Writable

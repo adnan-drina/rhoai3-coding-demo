@@ -23,6 +23,7 @@ from pathlib import Path
 
 PHASE_KEY = re.compile(r"^  ([A-Za-z0-9_-]+):\s*$")
 MAX_RT = re.compile(r"^    max_runtime_seconds:\s*(\d+)\s*$")
+MAX_RETRIES = re.compile(r"^    max_retries:\s*(\d+)\s*$")
 SKILL_ITEM = re.compile(r"^      -\s+(\S+)\s*$")
 FILES_WRITABLE = re.compile(r"^    files_writable:\s*(.*)$")
 
@@ -46,6 +47,7 @@ def parse_phase(text: str, phase: str) -> dict[str, object]:
     skills: list[str] = []
     files_writable: list[str] | None = None
     max_rt = ""
+    max_retries = ""
     i = 0
     while i < len(lines):
         ln = lines[i]
@@ -66,6 +68,9 @@ def parse_phase(text: str, phase: str) -> dict[str, object]:
             mm = MAX_RT.match(ln)
             if mm:
                 max_rt = mm.group(1)
+            mr = MAX_RETRIES.match(ln)
+            if mr:
+                max_retries = mr.group(1)
             if re.match(r"^    skills:\s*$", ln):
                 skills, i = _list_items(lines, i + 1)
                 continue
@@ -86,9 +91,11 @@ def parse_phase(text: str, phase: str) -> dict[str, object]:
             file=sys.stderr,
         )
         raise SystemExit(2)
+    retries = int(max_retries) if max_retries else 2
     return {
         "phase": phase,
         "max_runtime_seconds": int(max_rt),
+        "max_retries": retries,
         "skills": skills,
         "files_writable": files_writable,
         "title": f"{phase}: migration phase seed",
@@ -106,6 +113,7 @@ def main(argv: list[str] | None = None) -> int:
         dest="print_field",
         choices=(
             "max_runtime_seconds",
+            "max_retries",
             "skills",
             "title",
             "phase",

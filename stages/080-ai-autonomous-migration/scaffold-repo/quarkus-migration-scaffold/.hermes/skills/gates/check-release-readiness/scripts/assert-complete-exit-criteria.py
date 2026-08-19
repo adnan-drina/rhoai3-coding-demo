@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -21,9 +22,23 @@ SCHEMA = "rhoai3.complete-exit-ok/v1"
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("root", nargs="?", default=".")
-    ap.add_argument("--task-id", required=True)
+    ap.add_argument(
+        "--task-id",
+        default="",
+        help="Hermes card id; defaults to HERMES_KANBAN_TASK (native spawn)",
+    )
     ap.add_argument("--body", required=True)
     args = ap.parse_args()
+    task_id = (args.task_id or "").strip() or os.environ.get(
+        "HERMES_KANBAN_TASK", ""
+    ).strip()
+    if not task_id:
+        print(
+            "FAIL: --task-id or HERMES_KANBAN_TASK required "
+            "(do not guess story_id; native spawn publishes the card id)",
+            file=sys.stderr,
+        )
+        return 1
     root = Path(args.root).resolve()
     body = Path(args.body)
     if not body.is_file():
@@ -43,7 +58,7 @@ def main() -> int:
             "--body",
             str(body),
             "--task-id",
-            args.task_id,
+            task_id,
             "--trigger",
             "complete",
         ],
@@ -53,7 +68,7 @@ def main() -> int:
     sys.stdout.write(cp.stdout or "")
     sys.stderr.write(cp.stderr or "")
 
-    eval_path = root / "evidence" / "runs" / args.task_id / "exit-eval.json"
+    eval_path = root / "evidence" / "runs" / task_id / "exit-eval.json"
     overall_ok = False
     cmd_failed: list = []
     if eval_path.is_file():
@@ -64,11 +79,11 @@ def main() -> int:
         except (OSError, json.JSONDecodeError, TypeError):
             pass
 
-    out_dir = root / "evidence" / "runs" / args.task_id
+    out_dir = root / "evidence" / "runs" / task_id
     out_dir.mkdir(parents=True, exist_ok=True)
     receipt = {
         "schema": SCHEMA,
-        "task_id": args.task_id,
+        "task_id": task_id,
         "ok": overall_ok and cp.returncode == 0,
         "eval_rc": cp.returncode,
         "cmd_failed": cmd_failed,
@@ -79,6 +94,8 @@ def main() -> int:
             "Architect E-20260814T205052Z DD3 — check-kanban-body on complete path",
             "kanban_complete MUST NOT be called unless ok=true",
             "compile/test_compile use scope-filtered gate (compile-scope-filtered.md)",
+            "http_semantics mvn test/verify honors proves FQCNs (task_scoped_tests)",
+            "--task-id defaults to HERMES_KANBAN_TASK; do not mint {TASK_ID}",
         ],
     }
     out = out_dir / "complete-exit-ok.json"
@@ -114,6 +131,7 @@ def main() -> int:
     provenance = find_script("record-run-evidence/scripts/check-provenance.py")
     runnable_db = gates / "check-runnable-db-config.py"
     empty_security = gates / "check-empty-security.py"
+    test_toolchain = gates / "check-test-toolchain.py"
     kanban_body = (
         root
         / ".hermes"
@@ -154,6 +172,10 @@ def main() -> int:
         (
             "empty-security",
             [sys.executable, str(empty_security), str(root)],
+        ),
+        (
+            "test-toolchain",
+            [sys.executable, str(test_toolchain), str(root)],
         ),
     ):
         if not Path(cmd[1]).is_file():

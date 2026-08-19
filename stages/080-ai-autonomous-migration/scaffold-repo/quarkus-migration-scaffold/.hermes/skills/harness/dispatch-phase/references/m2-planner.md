@@ -11,5 +11,10 @@ card instructs the worker to, in order:
    lines emit literal `@Path("...")` with the inventory path.
 5. Stop — no dest `partition.json`, no M3 children. Before Done, run
    `scratch-assemble-mint.py` (copy `tasks.md` + `evidence/` to a throwaway
-   dir, `handover-mint.py --write` there, exit 0). `--dry-run` is not this
-   gate. Holder follows `mint-m3-hermes.md`.
+   dir, `handover-mint.py --write` there, then
+   `assert-partition-invented-routes.py` on that receipt). Exit 0. Invented
+   routes (`union(stories[].endpoints) - inventory`) are refuse — the only
+   plan-level gate (Architect `070430Z`). Constitution VII is guidance, not
+   a gate. `--dry-run` is not this gate. Do not grow `handover-mint.py`. Keep
+   code-level `assert-compiled-route-fidelity.py` (compiled `.bak`). Holder follows
+   `mint-m3-hermes.md`.

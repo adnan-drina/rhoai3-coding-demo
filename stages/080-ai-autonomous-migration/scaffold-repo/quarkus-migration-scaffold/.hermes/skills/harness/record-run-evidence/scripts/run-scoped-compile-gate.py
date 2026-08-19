@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -68,7 +69,11 @@ def error_paths(text: str, root: Path) -> set[str]:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("root", nargs="?", default=".")
-    ap.add_argument("--task-id", required=True)
+    ap.add_argument(
+        "--task-id",
+        default="",
+        help="Hermes card id; defaults to HERMES_KANBAN_TASK",
+    )
     ap.add_argument("--body", required=True, help="Typed body JSON (files_writable)")
     ap.add_argument(
         "--goal",
@@ -76,6 +81,15 @@ def main() -> int:
         default="test-compile",
     )
     args = ap.parse_args()
+    task_id = (args.task_id or "").strip() or os.environ.get(
+        "HERMES_KANBAN_TASK", ""
+    ).strip()
+    if not task_id:
+        print(
+            "FAIL: --task-id or HERMES_KANBAN_TASK required",
+            file=sys.stderr,
+        )
+        return 1
     root = Path(args.root).resolve()
     body_path = Path(args.body)
     if not body_path.is_file():
@@ -137,11 +151,11 @@ def main() -> int:
             ok = True
             reason = "oos_only_compile_errors_scoped_ok"
 
-    out_dir = root / "evidence" / "runs" / args.task_id
+    out_dir = root / "evidence" / "runs" / task_id
     out_dir.mkdir(parents=True, exist_ok=True)
     payload = {
         "schema": SCHEMA,
-        "task_id": args.task_id,
+        "task_id": task_id,
         "goal": mvn_goal,
         "cmd": f"mvn -q {mvn_goal}",
         "mvn_rc": cp.returncode,
