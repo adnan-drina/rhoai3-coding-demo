@@ -1704,6 +1704,11 @@ REQUIRED_SUBSTRINGS = [
         "Architect V34-6 dest-home kanban pin",
     ),
     (
+        ".hermes/skills/harness/dispatch-phase/references/native-dispatch.md",
+        "Do **not** invent a leave-triage CLI",
+        "V34-K2 official CLI refuses triage; do not invent leave-triage",
+    ),
+    (
         ".hermes/skills/sdd/check-spec-readiness/references/story-scope-and-exit.md",
         "assert-body-writeset-subset-of-partition",
         "write-set subset bank vocabulary",

@@ -47,6 +47,17 @@ reclaims stale claims. Do not invent a harness reaper.
 
 `dispatch-phase.sh --help` documents the same GO. There is no wrapper script.
 
+## Triage after block_loop_detected
+
+Official CLI `hermes kanban promote` / `unblock` / `block` refuse a
+`triage` task (v33 dest-cite). Recovery is `specify` / `decompose`
+(forbidden on the M3 holder) or a human. Do **not** invent a leave-triage CLI.
+Do **not** sqlite-reset `block_recurrences` unless Operator GO.
+Dest-home `auto_decompose: false` is the create-path pin so a holder in
+triage is not auto-decomposed. C-3(a) remediation already forbids
+leave-triage as a REFUSE path; this is the same OBJECT after the circuit
+breaker.
+
 ## M3 children
 
 Park-at-birth **M3 is the WAVE HOLDER** (title `M3 WAVE HOLDER`, holder
