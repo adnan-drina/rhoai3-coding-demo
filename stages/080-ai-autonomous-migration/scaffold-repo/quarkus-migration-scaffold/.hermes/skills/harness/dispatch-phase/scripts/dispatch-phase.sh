@@ -189,6 +189,12 @@ skills:
   external_dirs:
     - ${ROOT}/.hermes/skills
     - ${HOME}/.hermes/skills
+kanban:
+  # Architect V34-6: dest home must pin GitOps kanban keys. Official
+  # auto_decompose default is true (holder-decompose hazard in triage).
+  auto_decompose: false
+  dispatch_in_gateway: true
+  max_in_progress: 1
 EOF
     echo "dispatch-phase: wrote HERMES_HOME/config.yaml skills.external_dirs (skill discovery)"
   fi
@@ -251,6 +257,51 @@ if "disabled:" not in text:
         p.write_text(text, encoding="utf-8")
         print("dispatch-phase: appended skills.disabled (125528Z)")
 PY
+  python3 - "${HERMES_HOME}/config.yaml" <<'PY' || echo "dispatch-phase: WARN kanban pin merge failed" >&2
+import pathlib, sys
+p = pathlib.Path(sys.argv[1])
+want = {
+    "auto_decompose": False,
+    "dispatch_in_gateway": True,
+    "max_in_progress": 1,
+}
+text = p.read_text(encoding="utf-8") if p.is_file() else ""
+if all(
+    f"{k}:" in text and str(v).lower() in text.lower()
+    for k, v in (
+        ("auto_decompose", "false"),
+        ("dispatch_in_gateway", "true"),
+        ("max_in_progress", "1"),
+    )
+) and "kanban:" in text:
+    raise SystemExit(0)
+try:
+    import yaml  # type: ignore
+except ImportError:
+    yaml = None
+if yaml is None:
+    raise SystemExit(1)
+data = yaml.safe_load(text) if text.strip() else {}
+if not isinstance(data, dict):
+    data = {}
+kb = data.get("kanban")
+if not isinstance(kb, dict):
+    kb = {}
+    data["kanban"] = kb
+changed = False
+for k, v in want.items():
+    if kb.get(k) != v:
+        kb[k] = v
+        changed = True
+if changed:
+    p.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    print("dispatch-phase: merged dest-home kanban pins (V34-6)")
+PY
+  local stamp_rev="${ROOT}/.hermes/skills/harness/dispatch-phase/scripts/stamp-harness-rev.py"
+  if [[ -f "${stamp_rev}" ]]; then
+    python3 "${stamp_rev}" --root "${ROOT}" \
+      || echo "dispatch-phase: WARN HARNESS_REV stamp failed" >&2
+  fi
   # Architect E-20260810T141120Z — provider knobs applied to Managed Scope only.
   local ensure_py="${ROOT}/.hermes/home/scripts/ensure-provider-max-tokens.py"
   if [[ -f "${ensure_py}" ]]; then
@@ -408,6 +459,10 @@ substitution / path invention / specimen-body priming. Measure the harness.
 
 ## Job
 0. **Spec Kit preseed verify-or-BLOCK** (Architect E-20260811T121308Z provision-owns-tools):
+   First init M2 checkpoint (V34-3):
+   `python3 .hermes/skills/harness/dispatch-phase/scripts/holder-checkpoint.py init --kind m2 --root /projects/modernized`
+   Stamp `--next` after each step (`preseed|findings|inventory|speckit|assemble|done`).
+   Before Done: `python3 .hermes/skills/harness/dispatch-phase/scripts/holder-checkpoint.py check --kind m2 --root /projects/modernized`
    Workspace provision (devfile postStart) owns `specify init` + Non-Goals override.
    **Agent has no init authority.** Prove with command evidence:
    `test -d .specify && test -f .specify/.rhoai3-ads-provisioned && ls -la .specify/templates/overrides/`
@@ -442,7 +497,10 @@ substitution / path invention / specimen-body priming. Measure the harness.
    `python3 .hermes/skills/harness/dispatch-phase/scripts/scratch-assemble-mint.py /projects/modernized`
    Exit: **0=mintable**; **nonzero=typed `needs_input` BLOCK** (plan cannot assemble — do not dest-rewrite).
    After `--write`, the oracle fail-closes invented receipt endpoints
-   (`assert-partition-invented-routes.py` — the only plan-level gate).
+   (`assert-partition-invented-routes.py` — the only plan-level HTTP gate)
+   and, when scratch has `legacy-at-3`, runs existing
+   `stamp-body-dependencies.py` + `assert-dependency-closure.py` on minted
+   bodies (V34-8; no second gate).
    Constitution VII is guidance, not a gate. Keep
    `assert-compiled-route-fidelity.py` for compiled-tree drift.
    **Forbidden:** `--dry-run` as this gate; authoring dest `partition.json`; growing `handover-mint.py`.
@@ -468,7 +526,8 @@ substitution / path invention / specimen-body priming. Measure the harness.
 - Spec Kit invoke evidenced (seed + plan + tasks.md) **or** typed `needs_input` BLOCK recorded
 - `spec.md` enumerates every inventory `http_path` (not a count)
 - Resource task lines include literal `@Path("...")` for owned HTTP routes
-- Scratch `handover-mint.py --write` exit 0 (`scratch-assemble-mint.py`) — dest `partition.json` untouched; invented endpoints refuse
+- Scratch `handover-mint.py --write` exit 0 (`scratch-assemble-mint.py`) — dest `partition.json` untouched; invented endpoints refuse; type-closure (stamp + assert-dependency-closure) when scratch has legacy-at-3
+- M2 `checkpoint.json` present (`holder-checkpoint.py check --kind m2`)
 - **No** `partition.json` authored on this card (handover-mint writes the receipt)
 - **No** M3 Kanban children created on this card
 

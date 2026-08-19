@@ -3,6 +3,11 @@
 Architect `E-20260817T203500Z` / `E-20260817T200540Z`. The created M2
 card instructs the worker to, in order:
 
+0. Init/load checkpoint (V34-3, same script as the holder):
+   `python3 .hermes/skills/harness/dispatch-phase/scripts/holder-checkpoint.py init --kind m2 --root /projects/modernized`
+   (uses `HERMES_KANBAN_TASK`). Resume at checkpoint `next`. Stamp after
+   each step (`--next preseed|findings|inventory|speckit|assemble|done`).
+   Before Done: `python3 .hermes/skills/harness/dispatch-phase/scripts/holder-checkpoint.py check --kind m2 --root /projects/modernized`
 1. Spec Kit preseed verify-or-BLOCK (provision owns `specify init`).
 2. Findings-handoff gate. Then 5.1
    `python3 .hermes/skills/harness/enforce-authority-boundary/scripts/issue-m1-findings-ack.py`
@@ -16,9 +21,13 @@ card instructs the worker to, in order:
    `python3 .hermes/skills/harness/dispatch-phase/scripts/scratch-assemble-mint.py`
    (copy `tasks.md` + `evidence/` to a throwaway
    dir, `python3 .hermes/skills/harness/dispatch-phase/scripts/handover-mint.py --write` there, then
-   `python3 .hermes/skills/harness/dispatch-phase/scripts/assert-partition-invented-routes.py` on that receipt). Exit 0. Invented
+   `python3 .hermes/skills/harness/dispatch-phase/scripts/assert-partition-invented-routes.py` on that receipt).
+   When scratch has `legacy-at-3`, that oracle also runs
+   `python3 .hermes/skills/sdd/check-spec-readiness/scripts/stamp-body-dependencies.py`
+   and `python3 .hermes/skills/sdd/check-spec-readiness/scripts/assert-dependency-closure.py`
+   on minted bodies (V34-8; same graph as M3; no second gate). Exit 0. Invented
    routes (`union(stories[].endpoints) - inventory`) are refuse — the only
-   plan-level gate (Architect `070430Z`). Constitution VII is guidance, not
+   plan-level HTTP gate (Architect `070430Z`). Constitution VII is guidance, not
    a gate. `--dry-run` is not this gate. Do not grow `handover-mint.py`. Keep
    code-level `assert-compiled-route-fidelity.py` (compiled `.bak`). Holder follows
    `mint-m3-hermes.md`.

@@ -9,12 +9,14 @@ For each Java import reachable from this body's files_writable, emit:
 legacy Spring path as dest-relative `pre-exists`
 (Architect E-20260817T162352Z / E-20260817T161821Z).
 
-Unowned dest twins of project `extends` (and same-package types the source
-names) are added to *this* story's write-set — transitive closure, stop at
-JDK/framework. When partition.json names this story, those dest twins are
-assigned onto the story's declared frame first (V34-5: any type reachable
-by inheritance from an owned type must itself be owned). That is not a
-dest→legacy filename mapper and not a tasks.md rewrite.
+Unowned dest twins of project `extends`, in-prefix `import`s, and
+same-package types the source names are added to *this* story's write-set
+— transitive closure, stop at JDK/framework. When partition.json names
+this story, those dest twins are assigned onto the story's declared frame
+first (V34-5 AMEND: any type reachable by inheritance or import from an
+owned type must itself be owned). Do not stamp unowned collaborators as
+`pre-exists`. That is not a dest→legacy filename mapper and not a
+tasks.md rewrite.
 
 Orphans that remain unowned dest domain-leaf/repo paths → DEPENDENCY_HOLE
 listing the full dest-path set. Body paths outside the expanded frame
@@ -31,7 +33,7 @@ import re
 import sys
 from pathlib import Path
 
-IMP_RE = re.compile(r"^\s*import\s+([a-zA-Z0-9_.]+)\s*;", re.M)
+IMP_RE = re.compile(r"\bimport\s+([a-zA-Z0-9_.]+)\s*;")
 EXTENDS_RE = re.compile(
     r"\b(?:class|interface)\s+\w+(?:<[^>\n]*>)?\s+extends\s+([\w.]+)",
     re.M,
@@ -250,7 +252,7 @@ def resolve_type_file(current: Path, name: str, pkg_prefixes: list[str]) -> Path
 
 
 def project_type_closure(start: Path, pkg_prefixes: list[str]) -> list[Path]:
-    """Transitive extends + same-package types named in the source. JDK/framework stop."""
+    """Transitive extends + in-prefix imports + same-package types. JDK/framework stop."""
     seen: set[str] = set()
     found: list[Path] = []
     stack = [start]
@@ -269,6 +271,8 @@ def project_type_closure(start: Path, pkg_prefixes: list[str]) -> list[Path]:
             continue
         text = strip_java_comments(raw)
         names: list[str] = []
+        for m in IMP_RE.finditer(text):
+            names.append(m.group(1))
         for m in EXTENDS_RE.finditer(text):
             names.append(m.group(1))
         for sib in sorted(cur.parent.glob("*.java")):
@@ -500,7 +504,7 @@ def inherited_unowned_dests(
     self_sid: str,
     harvest_roots: list[Path] | None = None,
 ) -> list[str]:
-    """Dest twins reachable by inheritance from this story's owned Java.
+    """Dest twins reachable by inheritance or in-prefix import from owned Java.
 
     Specimen-agnostic: walk project_type_closure from harvest roots. Skip
     dests another story already owns. JDK/framework stop is inside the
@@ -610,9 +614,10 @@ def close_write_set(
     """Add unowned dest twins of project types onto this story's write-set.
 
     When ``allowed`` is set, dest twins outside that declared frame are
-    skipped. Callers expand ``allowed`` with inheritance-reachable unowned
-    dest twins first (V34-5). Mint-path extras that are not inheritance
-    (entity/ beside partition model/) still skip and WRITESET_NOT_SUBSET.
+    skipped. Callers expand ``allowed`` with dependency-reachable unowned
+    dest twins first (V34-5 AMEND: import+extends). Mint-path extras that
+    are not in that closure (entity/ beside partition model/) still skip
+    and WRITESET_NOT_SUBSET.
     """
     added: list[str] = []
     writable = [to_dest(x) for x in writable_paths(body)]
@@ -797,6 +802,7 @@ def main() -> int:
             + " ".join((src_rel_from_path(p) or p.name) for p in roots[:8])
         )
     deps: dict[str, str] = {}
+    unowned_imports: list[str] = []
     java_writables = 0
     in_pkg_imports_seen = 0
     self_owned_imports = 0
@@ -822,7 +828,9 @@ def main() -> int:
             if provider:
                 deps[dest] = provider
             else:
-                deps.setdefault(dest, "pre-exists")
+                # AMEND V34-5: unowned in-prefix dest twins are a hole, not
+                # pre-exists (pre-exists DEST_MISS at JAVA 0 is the wrong class).
+                append_unique(unowned_imports, dest)
     ordered = [{"file": f, "provider": deps[f]} for f in sorted(deps.keys())]
     body["dependencies"] = ordered
 
@@ -906,12 +914,21 @@ def main() -> int:
     else:
         print(json.dumps({"dependencies": ordered, "closure": added}, indent=2))
     hole_leaves = dest_hole_leaves(root)
-    holes = [
+    holes = list(unowned_imports)
+    holes.extend(
         d["file"]
         for d in ordered
         if d["provider"] == "pre-exists"
         and is_model_or_repo_hole(d["file"], hole_leaves)
-    ]
+    )
+    # unique, stable
+    seen_h: set[str] = set()
+    uniq: list[str] = []
+    for h in holes:
+        if h not in seen_h:
+            seen_h.add(h)
+            uniq.append(h)
+    holes = uniq
     if holes:
         print(
             "DEPENDENCY_HOLE: domain-leaf/interface deps lack story owner — "

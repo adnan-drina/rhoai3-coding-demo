@@ -257,6 +257,11 @@ commands:
         else
           echo "WARN: missing ${PROVISION_CLI} — Quarkus CLI not provisioned"
         fi
+        STAMP_REV="${PROJECT_DIR}/.hermes/skills/harness/dispatch-phase/scripts/stamp-harness-rev.py"
+        if [ -f "${STAMP_REV}" ]; then
+          python3 "${STAMP_REV}" --root "${PROJECT_DIR}" \
+            || echo "WARN: HARNESS_REV stamp failed"
+        fi
         GW_SUP="${PROJECT_DIR}/.hermes/home/scripts/supervise-gateway.sh"
         if [ -f "${GW_SUP}" ]; then
           bash "${GW_SUP}" --ensure \

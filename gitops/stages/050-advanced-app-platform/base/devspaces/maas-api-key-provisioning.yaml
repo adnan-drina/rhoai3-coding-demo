@@ -908,6 +908,13 @@ data:
     disp = pin.get("display") or {}
     if disp.get("streaming") is not True:
         raise SystemExit("ERROR: W1 pin display.streaming must be true")
+    kb = pin.get("kanban") or {}
+    if kb.get("auto_decompose") is not False:
+        raise SystemExit("ERROR: kanban.auto_decompose must be false")
+    if kb.get("dispatch_in_gateway") is not True:
+        raise SystemExit("ERROR: kanban.dispatch_in_gateway must be true")
+    if kb.get("max_in_progress") != 1:
+        raise SystemExit("ERROR: kanban.max_in_progress must be 1")
     with open(os.path.join(managed, ".rhoai3-model-pin"), "w") as fh:
         fh.write("default=qwen3-6-27b\nprovider=custom\nbase=in-cluster-kserve-qwen27b\nad=AD-008\n")
     with open(os.path.join(managed, ".rhoai3-w1-five-pins"), "w") as fh:
@@ -967,6 +974,13 @@ data:
         return
       fi
       echo "Hermes AD-H §14: placed SOUL.md at ${soul_dst} (sha256=${soul_src_hash:0:12})."
+
+      # V34-2 — dest cannot keep golden .git; stamp resolved main SHA.
+      local stamp_rev="${PROJECT_DIR}/.hermes/skills/harness/dispatch-phase/scripts/stamp-harness-rev.py"
+      if [ -f "${stamp_rev}" ]; then
+        python3 "${stamp_rev}" --root "${PROJECT_DIR}" \
+          || echo "WARN: HARNESS_REV stamp failed"
+      fi
 
       # AD-H §14 — load-time smoke (not standing machinery): exercise Hermes
       # scan+load. Placement hashing cannot catch scanner alteration at load.

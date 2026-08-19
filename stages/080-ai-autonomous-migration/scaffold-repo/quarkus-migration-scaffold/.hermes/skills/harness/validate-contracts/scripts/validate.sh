@@ -1902,6 +1902,127 @@ else
 fi
 rm -rf "${inh_tmp}"
 
+# V34-5 AMEND — import-reachable dest twins (collaborators, not supers)
+imp_tmp="$(mktemp -d)"
+mkdir -p "${imp_tmp}/modernized/evidence/bodies" \
+  "${imp_tmp}/modernized/evidence/briefs" \
+  "${imp_tmp}/.derived/legacy-at-3/src/main/java/com/acme/legacy/model" \
+  "${imp_tmp}/.derived/legacy-at-3/src/main/java/com/acme/legacy/dto"
+cat > "${imp_tmp}/modernized/migration.yaml" <<'YAML'
+migration:
+  legacyBasePackage: com.acme.legacy
+  targetPackage: com.demo
+  path_rewrites:
+    - from: src/main/java/com/demo/
+      to: src/main/java/com/acme/legacy/
+YAML
+printf '%s\n' \
+  'package com.acme.legacy.dto;' \
+  'public class LeafDto { private String name; }' \
+  > "${imp_tmp}/.derived/legacy-at-3/src/main/java/com/acme/legacy/dto/LeafDto.java"
+printf '%s\n' \
+  'package com.acme.legacy.model;' \
+  'import com.acme.legacy.dto.LeafDto;' \
+  'public class Leaf { private LeafDto dto; }' \
+  > "${imp_tmp}/.derived/legacy-at-3/src/main/java/com/acme/legacy/model/Leaf.java"
+python3 - <<PY
+import json
+from pathlib import Path
+root = Path("${imp_tmp}/modernized")
+leaf = "src/main/java/com/demo/model/Leaf.java"
+part = {
+  "schema": "rhoai3.handover-receipt/v1",
+  "source": "handover-mint",
+  "stories": [{"story_id": "foundational", "files_writable": [leaf], "files_in_scope": [leaf]}],
+}
+(root / "evidence/briefs/partition.json").write_text(json.dumps(part) + "\n")
+body = {
+  "identity": {"story_id": "foundational", "operand_count": 1},
+  "files_in_scope": [leaf],
+  "files_writable": [leaf],
+}
+(root / "evidence/bodies/m3-foundational.json").write_text(json.dumps(body) + "\n")
+PY
+if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/stamp-body-dependencies.py" \
+    "${imp_tmp}/modernized" --body evidence/bodies/m3-foundational.json --write \
+    >/tmp/imp-close.out 2>/tmp/imp-close.err; then
+  if python3 - "${imp_tmp}" <<'PY'
+import json, sys
+from pathlib import Path
+root = Path(sys.argv[1]) / "modernized"
+b = json.loads((root / "evidence/bodies/m3-foundational.json").read_text())
+p = json.loads((root / "evidence/briefs/partition.json").read_text())
+want = {"src/main/java/com/demo/dto/LeafDto.java"}
+fw = set(b.get("files_writable") or [])
+owned = set((p.get("stories") or [{}])[0].get("files_writable") or [])
+deps = b.get("dependencies") or []
+pre = [d for d in deps if isinstance(d, dict) and d.get("provider") == "pre-exists"]
+raise SystemExit(0 if not (want - fw) and not (want - owned) and not pre else 1)
+PY
+  then
+    echo "OK: stamp assigns import-reachable dest twins onto partition"
+  else
+    echo "FAIL: expected dest LeafDto on body and partition; no pre-exists" >&2
+    cat /tmp/imp-close.out /tmp/imp-close.err >&2
+    cat "${imp_tmp}/modernized/evidence/bodies/m3-foundational.json" >&2
+    cat "${imp_tmp}/modernized/evidence/briefs/partition.json" >&2
+    rc=1
+  fi
+else
+  echo "FAIL: import-reachable dest twins should stamp without DEPENDENCY_HOLE" >&2
+  cat /tmp/imp-close.out /tmp/imp-close.err >&2
+  rc=1
+fi
+rm -rf "${imp_tmp}"
+
+# V34-3 — M2 checkpoint is the holder script with --kind m2
+cp_tmp="$(mktemp -d)"
+if python3 "${SKILLS}/harness/dispatch-phase/scripts/holder-checkpoint.py" \
+    init --kind m2 --task-id t_m2fix --root "${cp_tmp}" \
+    >/tmp/m2cp.out 2>/tmp/m2cp.err \
+  && python3 "${SKILLS}/harness/dispatch-phase/scripts/holder-checkpoint.py" \
+    stamp --kind m2 --task-id t_m2fix --root "${cp_tmp}" --next assemble \
+    >/dev/null \
+  && python3 "${SKILLS}/harness/dispatch-phase/scripts/holder-checkpoint.py" \
+    check --kind m2 --task-id t_m2fix --root "${cp_tmp}" \
+    >/tmp/m2cp-check.out 2>/tmp/m2cp-check.err; then
+  if grep -q 'rhoai3.m2-checkpoint/v1' "${cp_tmp}/evidence/runs/t_m2fix/checkpoint.json" \
+    && grep -q 'next=assemble' /tmp/m2cp-check.out; then
+    echo "OK: M2 checkpoint init/stamp/check --kind m2"
+  else
+    echo "FAIL: M2 checkpoint schema or next missing" >&2
+    cat /tmp/m2cp.out /tmp/m2cp.err /tmp/m2cp-check.out >&2
+    rc=1
+  fi
+else
+  echo "FAIL: holder-checkpoint --kind m2" >&2
+  cat /tmp/m2cp.out /tmp/m2cp.err /tmp/m2cp-check.out /tmp/m2cp-check.err >&2
+  rc=1
+fi
+rm -rf "${cp_tmp}"
+
+# V34-2 — HARNESS_REV stamp
+rev_tmp="$(mktemp -d)"
+if python3 "${SKILLS}/harness/dispatch-phase/scripts/stamp-harness-rev.py" \
+    --root "${rev_tmp}" --sha aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+    >/tmp/hrev.out 2>/tmp/hrev.err \
+  && grep -qx 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' "${rev_tmp}/.hermes/HARNESS_REV"; then
+  echo "OK: stamp-harness-rev writes HARNESS_REV"
+else
+  echo "FAIL: stamp-harness-rev" >&2
+  cat /tmp/hrev.out /tmp/hrev.err >&2
+  rc=1
+fi
+rm -rf "${rev_tmp}"
+
+# Architect V34-6 — dest-home kanban pins in dispatch-phase write
+if grep -q 'auto_decompose: false' "${SKILLS}/harness/dispatch-phase/scripts/dispatch-phase.sh"; then
+  echo "OK: dest-home kanban auto_decompose false"
+else
+  echo "FAIL: dispatch-phase.sh missing dest-home auto_decompose false" >&2
+  rc=1
+fi
+
 # E-20260819T173800Z — holder starves JSON (compose + pre-create wrapper + park)
 cm_tmp="$(mktemp -d)"
 mkdir -p "${cm_tmp}/evidence/bodies" "${cm_tmp}/evidence/briefs" \
@@ -2088,19 +2209,56 @@ for p in (root / "evidence/bodies").glob("m3-foundational.json"):
     p.unlink()
 PY
 if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/stamp-body-dependencies.py" \
-    "${dep_tmp}/modernized" --body evidence/bodies/m3-leaf.json \
+    "${dep_tmp}/modernized" --body evidence/bodies/m3-leaf.json --write \
     >/tmp/dep-hole.out 2>/tmp/dep-hole.err; then
-  echo "FAIL: unowned dest repository should DEPENDENCY_HOLE" >&2
+  if python3 - "${dep_tmp}" <<'PY'
+import json, sys
+from pathlib import Path
+b = json.loads((Path(sys.argv[1]) / "modernized/evidence/bodies/m3-leaf.json").read_text())
+fw = set(b.get("files_writable") or [])
+want = "src/main/java/com/demo/repository/GhostRepository.java"
+pre = [
+    d for d in (b.get("dependencies") or [])
+    if isinstance(d, dict) and d.get("provider") == "pre-exists"
+]
+raise SystemExit(0 if want in fw and not pre else 1)
+PY
+  then
+    echo "OK: stamp assigns unowned dest repository onto the importing story"
+  else
+    echo "FAIL: expected GhostRepository on leaf files_writable, not pre-exists" >&2
+    cat /tmp/dep-hole.out /tmp/dep-hole.err >&2
+    cat "${dep_tmp}/modernized/evidence/bodies/m3-leaf.json" >&2
+    rc=1
+  fi
+else
+  echo "FAIL: existing GhostRepository dest twin should assign, not hole" >&2
   cat /tmp/dep-hole.out /tmp/dep-hole.err >&2
   rc=1
+fi
+# True orphan: import a type with no legacy file — DEPENDENCY_HOLE, not pre-exists.
+python3 - <<PY
+from pathlib import Path
+src = Path("${dep_tmp}/.derived/legacy-at-3/src/main/java/com/acme/legacy/model/Leaf.java")
+src.write_text(
+    "package com.acme.legacy.model;\n"
+    "import com.acme.legacy.repository.AbsentRepository;\n"
+    "public class Leaf extends Mid { AbsentRepository repo; }\n"
+)
+PY
+if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/stamp-body-dependencies.py" \
+    "${dep_tmp}/modernized" --body evidence/bodies/m3-leaf.json \
+    >/tmp/dep-orphan.out 2>/tmp/dep-orphan.err; then
+  echo "FAIL: missing dest twin should DEPENDENCY_HOLE" >&2
+  cat /tmp/dep-orphan.out /tmp/dep-orphan.err >&2
+  rc=1
 else
-  if grep -q 'DEPENDENCY_HOLE' /tmp/dep-hole.err \
-     && grep -q 'src/main/java/com/demo/repository/GhostRepository.java' /tmp/dep-hole.err \
-     && ! grep -q 'acme/legacy' /tmp/dep-hole.err; then
-    echo "OK: DEPENDENCY_HOLE lists dest path, not legacy Spring/acme path"
+  if grep -q 'DEPENDENCY_HOLE' /tmp/dep-orphan.err \
+     && grep -q 'AbsentRepository.java' /tmp/dep-orphan.err; then
+    echo "OK: DEPENDENCY_HOLE lists dest path for true orphan import"
   else
-    echo "FAIL: expected dest GhostRepository.java in DEPENDENCY_HOLE" >&2
-    cat /tmp/dep-hole.out /tmp/dep-hole.err >&2
+    echo "FAIL: expected dest AbsentRepository.java in DEPENDENCY_HOLE" >&2
+    cat /tmp/dep-orphan.out /tmp/dep-orphan.err >&2
     rc=1
   fi
 fi

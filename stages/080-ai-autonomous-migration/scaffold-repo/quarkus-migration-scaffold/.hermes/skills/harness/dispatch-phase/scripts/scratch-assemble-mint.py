@@ -3,8 +3,10 @@
 
 Copy tasks.md + evidence/ into a throwaway dir and run handover-mint.py
 --write *there*. Require that exit, then reverse-diff invented endpoints
-(assert-partition-invented-routes.py; Architect 067420Z). Never write dest
-partition.json. Does not grow handover-mint.py (freeze 1088).
+(assert-partition-invented-routes.py; Architect 067420Z). When scratch
+has legacy-at-3, run existing stamp-body-dependencies.py +
+assert-dependency-closure.py on minted bodies (V34-8; no second gate).
+Never write dest partition.json. Does not grow handover-mint.py (freeze 1088).
 
 Usage:
   python3 scratch-assemble-mint.py <dest-root>
@@ -25,6 +27,24 @@ from pathlib import Path
 _SCRIPTS = Path(__file__).resolve().parent
 _MINT = _SCRIPTS / "handover-mint.py"
 _REVERSE = _SCRIPTS / "assert-partition-invented-routes.py"
+
+
+def _find_under_skills(*parts: str) -> Path:
+    cur = _SCRIPTS
+    for _ in range(8):
+        cand = cur.joinpath(*parts)
+        if cand.is_file():
+            return cand
+        cur = cur.parent
+    return Path("/nonexistent").joinpath(*parts)
+
+
+_STAMP = _find_under_skills(
+    "sdd", "check-spec-readiness", "scripts", "stamp-body-dependencies.py"
+)
+_CLOSURE = _find_under_skills(
+    "sdd", "check-spec-readiness", "scripts", "assert-dependency-closure.py"
+)
 
 
 def _sha(path: Path) -> str | None:
@@ -83,12 +103,30 @@ def _stage(src: Path, wrap: Path) -> Path:
         shutil.copy2(yaml, modern / "migration.yaml")
     hermes_src = src / ".hermes"
     if not (hermes_src / "skills").is_dir():
-        hermes_src = _SCRIPTS.parents[3]
+        cur = _SCRIPTS
+        hermes_src = Path("/nonexistent")
+        for _ in range(8):
+            if (cur / ".hermes" / "skills").is_dir():
+                hermes_src = cur / ".hermes"
+                break
+            if cur.name == ".hermes" and (cur / "skills").is_dir():
+                hermes_src = cur
+                break
+            cur = cur.parent
     if (hermes_src / "skills").is_dir():
         _copy_tree(hermes_src, modern / ".hermes")
-    legacy = src / "legacy-at-3"
-    if legacy.is_dir():
-        _copy_tree(legacy, wrap / ".derived" / "legacy-at-3")
+    derived = None
+    for cand in (
+        src.parent / ".derived" / "legacy-at-3",
+        Path("/projects/.derived/legacy-at-3"),
+        src / ".derived" / "legacy-at-3",
+        src / "legacy-at-3",
+    ):
+        if cand.is_dir():
+            derived = cand
+            break
+    if derived is not None:
+        _copy_tree(derived, wrap / ".derived" / "legacy-at-3")
     return modern
 
 
@@ -103,6 +141,66 @@ def _polish_files(modern: Path) -> list[str]:
             if isinstance(p, str) and p.strip():
                 out.append(p.replace("\\", "/"))
     return out
+
+
+def _body_rank(path: Path) -> tuple[int, str]:
+    name = path.name.lower()
+    if "setup" in name:
+        return (0, name)
+    if "foundational" in name:
+        return (1, name)
+    return (2, name)
+
+
+def _run_type_closure(modern: Path) -> int:
+    """Reuse M3 stamp + dependency-closure on scratch bodies (V34-8)."""
+    bodies_dir = modern / "evidence" / "bodies"
+    bodies = []
+    if bodies_dir.is_dir():
+        bodies = sorted(
+            (
+                p
+                for p in bodies_dir.glob("m3-*.json")
+                if not p.name.endswith(".sha256.json")
+            ),
+            key=_body_rank,
+        )
+    if not bodies:
+        print("OK: type-closure skipped (no scratch bodies)")
+        return 0
+    legacy = modern.parent / ".derived" / "legacy-at-3"
+    if not legacy.is_dir():
+        print("OK: type-closure skipped (no legacy-at-3 in scratch)")
+        return 0
+    if not _STAMP.is_file() or not _CLOSURE.is_file():
+        print("FAIL: missing stamp-body-dependencies / assert-dependency-closure", file=sys.stderr)
+        return 1
+    for body in bodies:
+        rel = str(body.relative_to(modern))
+        stamp = subprocess.run(
+            [sys.executable, str(_STAMP), str(modern), "--body", rel, "--write"],
+            cwd=str(modern),
+            capture_output=True,
+            text=True,
+        )
+        blob = (stamp.stdout or "") + (stamp.stderr or "")
+        if stamp.returncode != 0:
+            print(blob, file=sys.stderr)
+            print(f"FAIL: M2 type-closure stamp rc={stamp.returncode} {rel}", file=sys.stderr)
+            return 1
+        clos = subprocess.run(
+            [sys.executable, str(_CLOSURE), str(modern), "--body", rel],
+            cwd=str(modern),
+            capture_output=True,
+            text=True,
+        )
+        cblob = (clos.stdout or "") + (clos.stderr or "")
+        if clos.returncode != 0:
+            print(cblob, file=sys.stderr)
+            print(f"FAIL: M2 type-closure assert rc={clos.returncode} {rel}", file=sys.stderr)
+            return 1
+    print(f"OK: type-closure stamp+assert n={len(bodies)}")
+    return 0
 
 
 def main() -> int:
@@ -187,6 +285,9 @@ def main() -> int:
                 file=sys.stderr,
             )
             return 1
+        tc = _run_type_closure(modern)
+        if tc != 0:
+            return tc
         if args.assert_polish_excludes:
             want = args.assert_polish_excludes.replace("\\", "/")
             held = _polish_files(modern)

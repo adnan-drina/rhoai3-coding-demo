@@ -61,6 +61,7 @@ REQUIRED_FILES = [
     ".hermes/skills/harness/dispatch-phase/references/holder-card-body.md",
     ".hermes/skills/harness/dispatch-phase/scripts/assert-m3-child-skills.py",
     ".hermes/skills/harness/dispatch-phase/scripts/holder-checkpoint.py",
+    ".hermes/skills/harness/dispatch-phase/scripts/stamp-harness-rev.py",
     ".hermes/skills/harness/dispatch-phase/scripts/run-pre-create-gates.py",
     ".hermes/skills/harness/dispatch-phase/scripts/compose-m3-card-markdown.py",
     ".hermes/skills/harness/dispatch-phase/scripts/assert-story-parked.py",
@@ -1663,9 +1664,44 @@ REQUIRED_SUBSTRINGS = [
         "V34-5 stamp assigns inheritance-reachable types onto partition",
     ),
     (
+        ".hermes/skills/sdd/check-spec-readiness/scripts/stamp-body-dependencies.py",
+        "Do not stamp unowned collaborators as",
+        "V34-5 AMEND: unowned import dest twins are not pre-exists",
+    ),
+    (
         ".hermes/skills/harness/validate-contracts/scripts/validate.sh",
         "OK: stamp assigns inheritance-reachable supers onto partition",
         "V34-5 validate lock: partition owns inheritance closure",
+    ),
+    (
+        ".hermes/skills/harness/validate-contracts/scripts/validate.sh",
+        "OK: stamp assigns import-reachable dest twins onto partition",
+        "V34-5 AMEND validate lock: partition owns import closure",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/scripts/scratch-assemble-mint.py",
+        "OK: type-closure stamp+assert",
+        "V34-8 scratch-assemble reuses stamp+assert-dependency-closure",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/references/m2-planner.md",
+        "holder-checkpoint.py init --kind m2",
+        "V34-3 M2 checkpoint same script as holder",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/scripts/holder-checkpoint.py",
+        "rhoai3.m2-checkpoint/v1",
+        "V34-3 M2 checkpoint schema",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/scripts/stamp-harness-rev.py",
+        "HARNESS_REV",
+        "V34-2 stamp resolved golden SHA at create",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/scripts/dispatch-phase.sh",
+        "auto_decompose: false",
+        "Architect V34-6 dest-home kanban pin",
     ),
     (
         ".hermes/skills/sdd/check-spec-readiness/references/story-scope-and-exit.md",

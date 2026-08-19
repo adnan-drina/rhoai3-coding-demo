@@ -28,6 +28,7 @@ Hand-looping `dispatch --max 1` is a GO, not architecture.
 ```yaml
 # dest .hermes/home/config.yaml — official Kanban keys
 kanban:
+  auto_decompose: false
   dispatch_in_gateway: true
   dispatch_interval_seconds: 60
   max_in_progress: 1
