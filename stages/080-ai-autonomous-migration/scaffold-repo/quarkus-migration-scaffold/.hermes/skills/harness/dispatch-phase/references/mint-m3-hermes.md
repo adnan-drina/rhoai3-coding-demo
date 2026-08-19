@@ -153,7 +153,13 @@ Bare filenames resolve under the wrong skill tree and become typed BLOCK
 
 1. `python3 .hermes/skills/harness/dispatch-phase/scripts/check-create-path-tip-sync.py /projects/modernized`
 2. `python3 .hermes/skills/harness/dispatch-phase/scripts/check-phase-body-script-refs.py /projects/modernized`
-3. `python3 .hermes/skills/sdd/check-spec-readiness/scripts/stamp-body-dependencies.py --body <body> --write`
+   3. `python3 .hermes/skills/sdd/check-spec-readiness/scripts/stamp-body-dependencies.py --body <body> --write`
+      Unowned dest twins reachable by inheritance from this story's owned
+      types are assigned onto the story's partition frame (V34-5), then
+      closed onto the body. `DEPENDENCY_HOLE` still names true orphans.
+      `WRITESET_NOT_SUBSET` still refuses extras that are not inheritance
+      (entity/ beside a model/ declaration). Do **not** dest-rewrite
+      `tasks.md`.
 4. `python3 .hermes/skills/sdd/check-spec-readiness/scripts/check-interface-closure.py --body <body>`
 5. `python3 .hermes/skills/sdd/check-spec-readiness/scripts/stamp-destination-inventory.py --body <body> --write`
 6. `python3 .hermes/skills/sdd/check-spec-readiness/scripts/check-partition-coverage.py --write-receipt evidence/receipts/partition-coverage/latest.json`

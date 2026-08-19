@@ -1826,6 +1826,82 @@ else
 fi
 rm -rf "${ws_tmp}"
 
+# V34-5 — partition owns leaves; stamp assigns inheritance-reachable supers
+# onto that story's frame so DEPENDENCY_HOLE does not fire. Specimen-agnostic
+# (no product type names). WRITESET_NOT_SUBSET above still refuses a
+# non-inheritance entity/ extra beside model/.
+inh_tmp="$(mktemp -d)"
+mkdir -p "${inh_tmp}/modernized/evidence/bodies" \
+  "${inh_tmp}/modernized/evidence/briefs" \
+  "${inh_tmp}/.derived/legacy-at-3/src/main/java/com/acme/legacy/model"
+cat > "${inh_tmp}/modernized/migration.yaml" <<'YAML'
+migration:
+  legacyBasePackage: com.acme.legacy
+  targetPackage: com.demo
+  path_rewrites:
+    - from: src/main/java/com/demo/
+      to: src/main/java/com/acme/legacy/
+YAML
+printf '%s\n' 'package com.acme.legacy.model; public class Base { private Integer id; }' \
+  > "${inh_tmp}/.derived/legacy-at-3/src/main/java/com/acme/legacy/model/Base.java"
+printf '%s\n' 'package com.acme.legacy.model; public class Mid extends Base { private String name; }' \
+  > "${inh_tmp}/.derived/legacy-at-3/src/main/java/com/acme/legacy/model/Mid.java"
+printf '%s\n' 'package com.acme.legacy.model; public class Leaf extends Mid { }' \
+  > "${inh_tmp}/.derived/legacy-at-3/src/main/java/com/acme/legacy/model/Leaf.java"
+python3 - <<PY
+import json
+from pathlib import Path
+root = Path("${inh_tmp}/modernized")
+leaf = "src/main/java/com/demo/model/Leaf.java"
+part = {
+  "schema": "rhoai3.handover-receipt/v1",
+  "source": "handover-mint",
+  "stories": [{"story_id": "foundational", "files_writable": [leaf], "files_in_scope": [leaf]}],
+}
+(root / "evidence/briefs/partition.json").write_text(json.dumps(part) + "\n")
+body = {
+  "identity": {"story_id": "foundational", "operand_count": 1},
+  "files_in_scope": [leaf],
+  "files_writable": [leaf],
+}
+(root / "evidence/bodies/m3-foundational.json").write_text(json.dumps(body) + "\n")
+PY
+if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/stamp-body-dependencies.py" \
+    "${inh_tmp}/modernized" --body evidence/bodies/m3-foundational.json --write \
+    >/tmp/inh-close.out 2>/tmp/inh-close.err; then
+  if python3 - "${inh_tmp}" <<'PY'
+import json, sys
+from pathlib import Path
+root = Path(sys.argv[1]) / "modernized"
+b = json.loads((root / "evidence/bodies/m3-foundational.json").read_text())
+p = json.loads((root / "evidence/briefs/partition.json").read_text())
+fw = set(b.get("files_writable") or [])
+want = {
+  "src/main/java/com/demo/model/Base.java",
+  "src/main/java/com/demo/model/Mid.java",
+}
+missing = want - fw
+story = (p.get("stories") or [{}])[0]
+owned = set(story.get("files_writable") or [])
+part_miss = want - owned
+raise SystemExit(0 if not missing and not part_miss else 1)
+PY
+  then
+    echo "OK: stamp assigns inheritance-reachable supers onto partition"
+  else
+    echo "FAIL: expected dest Base/Mid on body and partition files_writable" >&2
+    cat /tmp/inh-close.out /tmp/inh-close.err >&2
+    cat "${inh_tmp}/modernized/evidence/bodies/m3-foundational.json" >&2
+    cat "${inh_tmp}/modernized/evidence/briefs/partition.json" >&2
+    rc=1
+  fi
+else
+  echo "FAIL: inheritance-reachable supers should stamp without DEPENDENCY_HOLE" >&2
+  cat /tmp/inh-close.out /tmp/inh-close.err >&2
+  rc=1
+fi
+rm -rf "${inh_tmp}"
+
 # E-20260819T104826Z — sidecar-only restamp refuse; atomic card+sidecar restamp
 rs_tmp="$(mktemp -d)"
 mkdir -p "${rs_tmp}/evidence/bodies" "${rs_tmp}/.hermes/home"

@@ -60,8 +60,9 @@ including the **relationship** between them (T-8 / v17 wrong-class oracles).
 - **Complete-cmd** stamps `complete-exit-ok.json` when exit criteria hold.
 - **Interface closure** bank id: `BANK-CREATE-PATH-IFACE-1`.
 - **Write-set subset** — `body.files_writable` ⊆ partition story declared
-  frame (`assert-body-writeset-subset-of-partition`). Endpoint coverage is
-  not write-set coverage.
+  frame (`assert-body-writeset-subset-of-partition`). Inheritance-reachable
+  unowned dest twins are assigned onto that frame (V34-5) before subset.
+  Endpoint coverage is not write-set coverage.
 - **Dependency closure** bank id: `BANK-DEP-CLOSURE-1`.
 - **Story sizing / DD6** — foundation asserts resolve under story-sizing rules
   (`operand_class` taxonomy); DD6 stays named here so tip sync catches drift.

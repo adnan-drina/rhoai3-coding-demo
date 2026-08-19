@@ -21,7 +21,9 @@ metadata:
   `--body <path>` at create time, not only the whole corpus.
 - After `handover-mint.py` writes the partition **receipt** — prove coverage
   (endpoint coverage, no write overlap) with `check-partition-coverage.py`.
-  This skill does **not** author `partition.json`.
+  This skill does **not** author Path-A `partition.json`. `stamp-body-dependencies.py`
+  may append inheritance-reachable dest twins onto an existing story frame
+  (V34-5); it does not invent stories.
 - When a body's `exit_criteria`, `files_in_scope`, or `operand_count` changed —
   these are the fields the gates refuse on.
 - Before holder mint (`mint-m3-hermes.md`) or assemble — `assert-mint-oracles.py` (refs,
@@ -86,7 +88,7 @@ python3 "${HERMES_SKILL_DIR}/scripts/check-partition-coverage.py" /projects/mode
 - `scripts/assert-quarantine-tombstones.py` — quarantine tombstone presence
 - `scripts/assert-dest-inventory-hardinvoke.py` — dest inventory hard-invoke
 - `scripts/register-quarantine-tombstone.py` — mutate: register tombstone
-- `scripts/stamp-body-dependencies.py` — mutate: `--write` dest-path deps; HTTP sources = A-8 inventory `file`s (collect-all) + Java `legacy_locus`; dest-only kinds (setup/foundational/polish) with non-Java locus and unresolved dest Java may stamp `dependencies=[]`; unowned project `extends` twins join this write-set; `DEPENDENCY_HOLE` lists dest domain-leaf/repo holes (`intra_package_maps` when stamped)
+- `scripts/stamp-body-dependencies.py` — mutate: `--write` dest-path deps; HTTP sources = A-8 inventory `file`s (collect-all) + Java `legacy_locus`; dest-only kinds (setup/foundational/polish) with non-Java locus and unresolved dest Java may stamp `dependencies=[]`; unowned project `extends` twins join this write-set **and** the owning story's partition frame (V34-5 inheritance-reachable types); `DEPENDENCY_HOLE` lists dest domain-leaf/repo holes that remain unowned (`intra_package_maps` when stamped)
 - `scripts/stamp-destination-inventory.py` — mutate: `--write` dest inventory
 - `scripts/specimen_agnostic.py` — library helper (not an agent entry point)
 

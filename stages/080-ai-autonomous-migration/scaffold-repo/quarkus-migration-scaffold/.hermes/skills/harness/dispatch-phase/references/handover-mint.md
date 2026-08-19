@@ -82,6 +82,11 @@ Test-only (no `rest` — polish) stamps `test_suite_runs` with
 `E-20260819T155515Z`). Persistence-only stays `mapping_valid`. Do **not**
 dest-rewrite a body to paper over a missing ladder branch.
 
+`stamp-body-dependencies.py` assigns inheritance-reachable unowned dest
+twins onto the owning story's partition frame (Architect `E-20260819T165142Z`
+/ V34-5). Do **not** grow this mint for that close. Do **not** dest-rewrite
+`tasks.md` to name specimen types.
+
 ## Fail-closed
 
 | Symptom | Refuse |

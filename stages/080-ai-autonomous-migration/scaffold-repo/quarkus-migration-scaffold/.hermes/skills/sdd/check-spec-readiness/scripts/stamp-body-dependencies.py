@@ -11,11 +11,14 @@ legacy Spring path as dest-relative `pre-exists`
 
 Unowned dest twins of project `extends` (and same-package types the source
 names) are added to *this* story's write-set — transitive closure, stop at
-JDK/framework. That is not a dest→legacy filename mapper and not a tasks.md
-rewrite.
+JDK/framework. When partition.json names this story, those dest twins are
+assigned onto the story's declared frame first (V34-5: any type reachable
+by inheritance from an owned type must itself be owned). That is not a
+dest→legacy filename mapper and not a tasks.md rewrite.
 
 Orphans that remain unowned dest domain-leaf/repo paths → DEPENDENCY_HOLE
-listing the full dest-path set.
+listing the full dest-path set. Body paths outside the expanded frame
+still WRITESET_NOT_SUBSET (entity/ extra beside a model/ declaration).
 
 Usage:
   python3 stamp-body-dependencies.py /projects/modernized --body evidence/bodies/m3-s-002a.json --write
@@ -486,6 +489,112 @@ def append_unique(seq: list, item: str) -> None:
         seq.append(item)
 
 
+def inherited_unowned_dests(
+    root: Path,
+    body: dict,
+    *,
+    to_dest,
+    to_legacy,
+    pkg_prefixes: list[str],
+    own: dict[str, str],
+    self_sid: str,
+    harvest_roots: list[Path] | None = None,
+) -> list[str]:
+    """Dest twins reachable by inheritance from this story's owned Java.
+
+    Specimen-agnostic: walk project_type_closure from harvest roots. Skip
+    dests another story already owns. JDK/framework stop is inside the
+    closure walker.
+    """
+    found: list[str] = []
+    writable = {to_dest(x) for x in writable_paths(body)}
+    starts = list(harvest_roots or [])
+    if not starts:
+        for wf in writable_paths(body):
+            rel = to_dest(wf)
+            if not rel.endswith(".java"):
+                continue
+            nrel = rel.replace("\\", "/")
+            if nrel.startswith("src/test/") or "/src/test/" in nrel:
+                continue
+            lp = resolve_writable_legacy(root, body, rel, to_legacy)
+            if lp is not None:
+                starts.append(lp)
+    for lp in starts:
+        for extra in project_type_closure(lp, pkg_prefixes):
+            src_rel = src_rel_from_path(extra)
+            if not src_rel:
+                continue
+            dest = to_dest(src_rel)
+            if dest in writable or dest in found:
+                continue
+            owner = own.get(dest)
+            if owner and owner != self_sid:
+                continue
+            found.append(dest)
+    return found
+
+
+def _field_dests(raw: object) -> set[str]:
+    out: set[str] = set()
+    if not isinstance(raw, list):
+        return out
+    for item in raw:
+        if isinstance(item, str) and item.strip():
+            out.add(dest_path_as_written(item))
+        elif isinstance(item, dict):
+            for k in ("dest", "dst", "path", "file"):
+                if item.get(k):
+                    out.add(dest_path_as_written(str(item[k])))
+                    break
+    return out
+
+
+def assign_inherited_to_partition(
+    data: dict, sid: str, dests: list[str]
+) -> list[str]:
+    """Append unowned dest twins onto this story's declared write-set keys.
+
+    Only mutates keys that already hold paths so a new files_writable list
+    cannot hide files_in_scope as the declared frame.
+    """
+    assigned: list[str] = []
+    stories = data.get("stories")
+    if not isinstance(stories, list):
+        return assigned
+    for story in stories:
+        if not isinstance(story, dict):
+            continue
+        if str(story.get("story_id") or "").strip() != sid:
+            continue
+        keys = [
+            k
+            for k in (
+                "files_writable",
+                "files",
+                "files_in_scope",
+                "legacy_files",
+                "scope_files",
+            )
+            if _field_dests(story.get(k))
+        ]
+        for dest in dests:
+            written = dest_path_as_written(dest)
+            touched = False
+            for key in keys:
+                raw = story.get(key)
+                if not isinstance(raw, list):
+                    continue
+                if written in _field_dests(raw):
+                    continue
+                raw.append(dest)
+                touched = True
+            if touched:
+                assigned.append(dest)
+        return assigned
+    return assigned
+
+
 def close_write_set(
     root: Path,
     body: dict,
@@ -500,9 +609,10 @@ def close_write_set(
 ) -> list[str]:
     """Add unowned dest twins of project types onto this story's write-set.
 
-    When ``allowed`` is set (partition story files_writable as written),
-    dest twins outside that declared frame are skipped. Mint-path extras
-    (entity/ beside partition model/) must not land before the digest stamp.
+    When ``allowed`` is set, dest twins outside that declared frame are
+    skipped. Callers expand ``allowed`` with inheritance-reachable unowned
+    dest twins first (V34-5). Mint-path extras that are not inheritance
+    (entity/ beside partition model/) still skip and WRITESET_NOT_SUBSET.
     """
     added: list[str] = []
     writable = [to_dest(x) for x in writable_paths(body)]
@@ -615,6 +725,35 @@ def main() -> int:
     pkg_prefixes = legacy_java_prefixes(root)
     own = provider_map(root / args.bodies, to_dest)
     roots = harvest_parse_roots(root, body, sid=self_sid, to_legacy=to_legacy)
+    inherited = inherited_unowned_dests(
+        root,
+        body,
+        to_dest=to_dest,
+        to_legacy=to_legacy,
+        pkg_prefixes=pkg_prefixes,
+        own=own,
+        self_sid=self_sid,
+        harvest_roots=roots,
+    )
+    part_path = root / "evidence/briefs/partition.json"
+    part_data = load_json(part_path) if part_path.is_file() else None
+    assigned: list[str] = []
+    if (
+        allowed is not None
+        and inherited
+        and isinstance(part_data, dict)
+        and isinstance(part_data.get("stories"), list)
+    ):
+        assigned = assign_inherited_to_partition(part_data, self_sid, inherited)
+        for dest in assigned:
+            allowed.add(dest_path_as_written(dest))
+        if assigned:
+            print(
+                "OK: assigned inheritance-reachable dest twins onto partition n="
+                + str(len(assigned))
+                + " "
+                + " ".join(assigned[:12])
+            )
     added = close_write_set(
         root,
         body,
@@ -737,6 +876,12 @@ def main() -> int:
         )
 
     if args.write:
+        if assigned and isinstance(part_data, dict):
+            part_path.parent.mkdir(parents=True, exist_ok=True)
+            part_path.write_text(
+                json.dumps(part_data, indent=2) + "\n", encoding="utf-8"
+            )
+            print(f"OK: partition frame gained inheritance-reachable types → {part_path}")
         body_path.write_text(json.dumps(body, indent=2) + "\n", encoding="utf-8")
         try:
             from injection_receipt import write_injection_receipt
@@ -753,8 +898,8 @@ def main() -> int:
                 "evidence/bodies (migration.yaml path_rewrites + "
                 "intra_package_maps; dest paths)"
             ),
-            summary=f"stamped dependencies n={len(ordered)} closure={len(added)}",
-            extra={"n": len(ordered), "closure": len(added)},
+            summary=f"stamped dependencies n={len(ordered)} closure={len(added)} inherited={len(assigned)}",
+            extra={"n": len(ordered), "closure": len(added), "inherited": len(assigned)},
         )
         print(f"OK: stamped dependencies={len(ordered)} → {body_path}")
         print(f"OK: injection receipt → {receipt}")

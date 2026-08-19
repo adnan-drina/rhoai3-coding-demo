@@ -1655,6 +1655,16 @@ REQUIRED_SUBSTRINGS = [
         "dependency stamp refuses extras outside partition frame",
     ),
     (
+        ".hermes/skills/sdd/check-spec-readiness/scripts/stamp-body-dependencies.py",
+        "inheritance-reachable dest twins onto partition",
+        "V34-5 stamp assigns inheritance-reachable types onto partition",
+    ),
+    (
+        ".hermes/skills/harness/validate-contracts/scripts/validate.sh",
+        "OK: stamp assigns inheritance-reachable supers onto partition",
+        "V34-5 validate lock: partition owns inheritance closure",
+    ),
+    (
         ".hermes/skills/sdd/check-spec-readiness/references/story-scope-and-exit.md",
         "assert-body-writeset-subset-of-partition",
         "write-set subset bank vocabulary",
