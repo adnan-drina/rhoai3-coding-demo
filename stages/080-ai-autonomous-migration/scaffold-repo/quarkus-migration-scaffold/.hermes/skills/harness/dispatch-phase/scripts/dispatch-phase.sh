@@ -538,7 +538,7 @@ substitution / path invention / specimen-body priming. Measure the harness.
 - Spec Kit invoke evidenced (seed + plan + tasks.md) **or** typed `needs_input` BLOCK recorded
 - `spec.md` enumerates every inventory `http_path` (not a count)
 - Resource task lines include literal `@Path("...")` for owned HTTP routes
-- Scratch `handover-mint.py --write` exit 0 (`scratch-assemble-mint.py`) — dest `partition.json` untouched; invented endpoints refuse; type-inventory source dest twins covered when that file is present (skip generated); type-closure (stamp + assert-dependency-closure) when scratch has legacy-at-3; `provider: generated` skips DEST_MISS and requires generator inputs owned; generated types require a generator plugin token in `tasks.md` (`assert-tasks-generator-uptake.py`)
+- Scratch `handover-mint.py --write` exit 0 (`scratch-assemble-mint.py`) — dest `partition.json` untouched; invented endpoints refuse; type-inventory source dest twins covered when that file is present (skip generated); type-closure (stamp + assert-dependency-closure) when scratch has legacy-at-3; `provider: generated` skips DEST_MISS and requires generator inputs owned; generated types require a generator plugin token in `tasks.md` (`python3 .hermes/skills/sdd/check-spec-readiness/scripts/assert-tasks-generator-uptake.py`)
 - M2 `checkpoint.json` present (`holder-checkpoint.py check --kind m2`)
 - **No** `partition.json` authored on this card (handover-mint writes the receipt)
 - **No** M3 Kanban children created on this card

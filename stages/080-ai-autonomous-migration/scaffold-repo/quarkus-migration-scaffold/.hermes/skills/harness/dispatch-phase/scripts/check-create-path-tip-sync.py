@@ -1833,6 +1833,11 @@ REQUIRED_SUBSTRINGS = [
     ),
     (
         ".hermes/skills/harness/dispatch-phase/scripts/dispatch-phase.sh",
+        "python3 .hermes/skills/sdd/check-spec-readiness/scripts/assert-tasks-generator-uptake.py",
+        "M2 body full-path cites uptake (R0 body-script)",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/scripts/dispatch-phase.sh",
         "evidence/required-extensions.json",
         "V35-EXTENSIONS M1 Done / M2 input manifest names required-extensions.json",
     ),
