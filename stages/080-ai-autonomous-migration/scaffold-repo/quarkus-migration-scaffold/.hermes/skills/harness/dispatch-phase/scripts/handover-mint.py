@@ -2,11 +2,13 @@
 """Post-workflow handover mint (A-4 / A-5 / A-8).
 
 Fail-closed: tasks.md User-Story phases → typed partition receipt + bodies.
-Parents are transcribed from the Dependencies section (not inferred).
-File-granular ownership is a distinct step after grouping. Endpoint coverage
-is vs M1 inventory. OBJECT spec-kit hooks (V20-5 advisory).
+Parents come from the import graph (types a story imports that another
+phase owns). Dependencies-section prose is an additional signal, never
+the sole source. File-granular ownership is a distinct step after grouping.
+Endpoint coverage is vs M1 inventory. OBJECT spec-kit hooks (V20-5 advisory).
 Domain `## Phase N:` headings mint as kind `phase` id `P{N}` (Architect
 E-20260817T013303Z). Do not infer Setup/Foundational from title prose.
+A heading `[USn]` tag is the native spec-kit story token (same as task lines).
 
 Does not call hermes. --parent / --ensure-wave-holder REFUSE (mint-m3-wave retired; holder follows mint-m3-hermes.md).
 
@@ -58,7 +60,9 @@ from specimen_agnostic import (  # noqa: E402
     is_test_source_rel,
     load_json,
     resolve_inventory_path,
+    resolve_java_source,
 )
+from type_graph import IMP_RE, strip_java_comments  # noqa: E402
 
 PHASE_HEADING = re.compile(r"^## Phase\s+(\d+|N):\s+(.+?)\s*$", re.I)
 DEPS_HEADING = re.compile(r"^## Dependencies\b", re.I)
@@ -170,6 +174,16 @@ def _kind_and_id(title: str, body: str, num: str) -> tuple[str, str]:
         return KIND_FOUNDATIONAL, KIND_FOUNDATIONAL
     if "polish" in low:
         return KIND_POLISH, KIND_POLISH
+    tagged = US_TAG.search(title)
+    if tagged:
+        n = tagged.group(1)
+        tags = set(US_TAG.findall(body))
+        if tags and tags != {n}:
+            _die(
+                "STORY_ID_MISMATCH",
+                f"heading US{n} vs task tags {sorted(tags)}",
+            )
+        return KIND_USER_STORY, f"US{n}"
     if not str(num).isdigit():
         _die("PHASE_KIND", f"unrecognised phase heading: {title!r}")
     return KIND_PHASE, f"P{int(num)}"
@@ -201,10 +215,8 @@ def parse_phases(text: str) -> list[Phase]:
         checklist = [m.group(0) for line in body.splitlines() if (m := CHECKBOX.match(line))]
         files: list[str] = []
         for line in body.splitlines():
-            # Native speckit later stories "Extend" / "Add POST" existing files.
-            # Those are AC on an earlier owner, not a second write-set claim (A-5).
-            if _is_amend_existing_line(line):
-                continue
+            # spec-kit has no create/amend distinction. Extract every path
+            # token; pom uniqueness is earliest-claimant in assign_ownership.
             for raw in PATH_TOKEN.findall(line):
                 p = _norm_path(raw)
                 if p not in files:
@@ -348,7 +360,6 @@ def transcribe_parents(text: str, phases: list[Phase]) -> None:
     by_num = {p.phase_num: p.story_id for p in phases if p.phase_num is not None}
     all_ids = [p.story_id for p in phases]
     us_ids = [p.story_id for p in phases if p.kind == KIND_USER_STORY]
-    phase_n_us = False
     for m in PHASE_N_DEPS.finditer(block):
         n = int(m.group(1))
         sid = by_num.get(n)
@@ -357,8 +368,6 @@ def transcribe_parents(text: str, phases: list[Phase]) -> None:
         by_id[sid].parents = _parents_from_phase_n_rest(
             m.group(2), sid, by_num, all_ids, us_ids
         )
-        if sid in us_ids:
-            phase_n_us = True
 
     setup_line = SETUP_DEPS.search(block)
     found_line = FOUND_DEPS.search(block)
@@ -422,27 +431,8 @@ def transcribe_parents(text: str, phases: list[Phase]) -> None:
         for sid, parents in per_us.items():
             if sid in by_id and not by_id[sid].parents:
                 by_id[sid].parents = parents
-        missing = [sid for sid in us_ids if not by_id[sid].parents]
-        if missing:
-            _die(
-                "DEPENDENCIES_MISSING",
-                "each user story needs a Dependencies bullet "
-                "(Phase-N 'Depends on Phases …', per-story native speckit, or collective "
-                "'User Stories (Phase 3+) depend on Foundational'); "
-                f"missing parents for {missing}",
-            )
-    if us_ids and KIND_FOUNDATIONAL in by_id and not phase_n_us:
-        omitted = [
-            sid
-            for sid in us_ids
-            if sid in by_id and KIND_FOUNDATIONAL not in (by_id[sid].parents or [])
-        ]
-        if omitted:
-            _die(
-                "DEPENDENCIES",
-                "Foundational must be in parents of every user-story phase "
-                f"(Architect E-20260816T192444Z); omitted by {omitted}",
-            )
+        # Missing US parents are filled from the import graph after this
+        # transcription (merge_import_parents / assert_parents_resolved).
     if KIND_POLISH in by_id and not by_id[KIND_POLISH].parents:
         if not polish_line or not re.search(
             r"depends on all (?:desired )?user stories", polish_line.group(1), re.I
@@ -478,7 +468,112 @@ def assign_ownership(phases: list[Phase]) -> str:
         _die("POM_OWNER", f"pom.xml still claimed by {pom_writers}")
     if pom_writers:
         pom_owner = pom_writers[0]
+    if not pom_owner:
+        mentions = _pom_mention_lines(phases)
+        _die(
+            "POM_OWNER",
+            "tasks.md PATH_TOKEN extracted 0 pom.xml owners. "
+            "Surface=tasks.md checklists (PATH_TOKEN). "
+            f"Lines mentioning pom.xml: {mentions or 'none'}",
+        )
     return pom_owner
+
+
+def _pom_mention_lines(phases: list[Phase]) -> list[str]:
+    out: list[str] = []
+    for ph in phases:
+        for line in ph.body.splitlines():
+            if "pom.xml" in line:
+                out.append(f"{ph.story_id}:{line.strip()[:120]}")
+    return out
+
+
+def _would_cycle(child: str, parent: str, by_id: dict[str, Phase]) -> bool:
+    if child == parent:
+        return True
+    seen: set[str] = set()
+    stack = [parent]
+    while stack:
+        cur = stack.pop()
+        if cur == child:
+            return True
+        if not cur or cur in seen:
+            continue
+        seen.add(cur)
+        nxt = by_id.get(cur)
+        if nxt:
+            stack.extend(nxt.parents)
+    return False
+
+
+def merge_import_parents(root: Path, phases: list[Phase]) -> None:
+    """F-6: story A parents story B when A imports a type B owns.
+
+    Prose parents from transcribe_parents stay. Import-graph edges that
+    would cycle the existing DAG are skipped (facades belong on polish).
+    """
+    by_id = {p.story_id: p for p in phases}
+    owners: dict[str, str] = {}
+    for ph in phases:
+        for f in ph.files:
+            rel = str(f).replace("\\", "/")
+            if not rel.endswith(".java"):
+                continue
+            owners[rel] = ph.story_id
+            owners[Path(rel).name] = ph.story_id
+            owners[Path(rel).stem] = ph.story_id
+    for ph in phases:
+        for f in ph.files:
+            rel = str(f).replace("\\", "/")
+            if not rel.endswith(".java"):
+                continue
+            path = resolve_java_source(root, rel)
+            if path is None:
+                continue
+            try:
+                text = strip_java_comments(
+                    path.read_text(encoding="utf-8", errors="ignore")
+                )
+            except OSError:
+                continue
+            for m in IMP_RE.finditer(text):
+                name = m.group(1).rsplit(".", 1)[-1]
+                owner = owners.get(name)
+                if not owner or owner == ph.story_id or owner not in by_id:
+                    continue
+                if _would_cycle(ph.story_id, owner, by_id):
+                    continue
+                if owner not in ph.parents:
+                    ph.parents.append(owner)
+
+
+def assert_parents_resolved(phases: list[Phase]) -> None:
+    by_id = {p.story_id: p for p in phases}
+    us_ids = [p.story_id for p in phases if p.kind == KIND_USER_STORY]
+    missing = [sid for sid in us_ids if not by_id[sid].parents]
+    if missing:
+        _die(
+            "DEPENDENCIES_MISSING",
+            "each user story needs a Dependencies bullet "
+            "(Phase-N 'Depends on Phases …', per-story native speckit, or collective "
+            "'User Stories (Phase 3+) depend on Foundational') "
+            "and/or the import graph (a type this story imports that another "
+            "phase owns). Surface=tasks.md ## Dependencies plus dest/legacy "
+            f"Java imports. missing parents for {missing}",
+        )
+    if us_ids and KIND_FOUNDATIONAL in by_id:
+        omitted = [
+            sid
+            for sid in us_ids
+            if KIND_FOUNDATIONAL not in (by_id[sid].parents or [])
+        ]
+        if omitted:
+            _die(
+                "DEPENDENCIES",
+                "Foundational must be in parents of every user-story phase "
+                "(Architect E-20260816T192444Z). Surface=import graph plus "
+                f"Dependencies prose; omitted by {omitted}",
+            )
 
 
 def _classes_for(ph: Phase) -> list[str]:
@@ -685,7 +780,7 @@ def _with_servlet_prefix(jaxrs: set[str], prefix: str) -> set[str]:
             continue
         if p == prefix or p.startswith(prefix + "/"):
             continue
-        extra.add(_norm_http_path(prefix + p))
+        extra.add(_norm_http_path(prefix.rstrip("/") + (p if p.startswith("/") else "/" + p)))
     return extra
 
 
@@ -699,7 +794,10 @@ def cover_endpoints(phases: list[Phase], inventory: dict[str, Any]) -> None:
     file_owner = {}
     for ph in phases:
         for f in ph.files:
-            file_owner[f] = ph.story_id
+            # Earliest claimant (same rule as pom). Last-writer made F-1
+            # amend-line extraction skip A-8 inherit (owner_sid == self).
+            if f not in file_owner:
+                file_owner[f] = ph.story_id
     prefix = _inventory_servlet_prefix(inventory)
     transcribed: dict[str, tuple[set[str], set[str], set[str]]] = {}
     jaxrs_only: dict[str, set[str]] = {}
@@ -998,6 +1096,8 @@ def run(root: Path, args: argparse.Namespace) -> dict[str, Any]:
     text = tasks_md.read_text(encoding="utf-8")
     phases = parse_phases(text)
     transcribe_parents(text, phases)
+    merge_import_parents(root, phases)
+    assert_parents_resolved(phases)
     pom_owner = assign_ownership(phases)
     stamp_oracles(phases)
     stamp_workspaces(phases)

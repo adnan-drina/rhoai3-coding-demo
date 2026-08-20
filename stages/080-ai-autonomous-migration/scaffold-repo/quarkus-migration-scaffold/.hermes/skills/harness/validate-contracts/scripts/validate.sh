@@ -1552,10 +1552,27 @@ two_pom = [
 ]
 try:
     stamp_dd3_extensions(two_pom)
-except ValueError:
+except ValueError as exc:
+    msg = str(exc)
+    if "files_writable" not in msg or "writes_pom_xml" not in msg:
+        print(f"FAIL: two-pom refuse must name the body surface: {exc}", file=sys.stderr)
+        raise SystemExit(1)
     print("OK: stamp_dd3_extensions refuses two pom.xml writers")
 else:
     print("FAIL: two pom writers should refuse", file=sys.stderr)
+    raise SystemExit(1)
+try:
+    stamp_dd3_extensions(
+        [{"identity": {"story_id": "us1"}, "files_writable": ["src/Foo.java"]}]
+    )
+except ValueError as exc:
+    msg = str(exc)
+    if "got 0" not in msg or "us1" not in msg or "files_writable" not in msg:
+        print(f"FAIL: zero-writer refuse must name the body surface: {exc}", file=sys.stderr)
+        raise SystemExit(1)
+    print("OK: stamp_dd3_extensions zero writer names body surface")
+else:
+    print("FAIL: zero pom writer should refuse", file=sys.stderr)
     raise SystemExit(1)
 print("OK: stamp_dd3_extensions union + sole writer")
 # M1 required-extensions union onto pom writer declared (apply == sibling union)
@@ -3082,6 +3099,29 @@ else
   echo "FAIL: spring_dep_map.py --check" >&2
   rc=1
 fi
+echo "== F-4 jdbc keys follow spring.profiles.active =="
+python3 - "${SKILLS}/migration/manage-quarkus-extensions/scripts" <<'PY' || rc=1
+import sys, tempfile
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+from spring_dep_map import scan_legacy_jdbc_keys
+root = Path(tempfile.mkdtemp(prefix="jdbc-profile-"))
+(root / "src" / "main" / "resources").mkdir(parents=True)
+(root / "src" / "main" / "resources" / "application.properties").write_text(
+    "spring.profiles.active=hsqldb,spring-data-jpa\n", encoding="utf-8"
+)
+(root / "src" / "main" / "resources" / "application-hsqldb.properties").write_text(
+    "spring.datasource.url=jdbc:hsqldb:mem:testdb\n", encoding="utf-8"
+)
+(root / "src" / "main" / "resources" / "application-mysql.properties").write_text(
+    "spring.datasource.url=jdbc:mysql://localhost/testdb\n", encoding="utf-8"
+)
+got = scan_legacy_jdbc_keys(root)
+if got != ["jdbc:hsqldb"]:
+    print(f"FAIL: F-4 jdbc keys {got} want ['jdbc:hsqldb']", file=sys.stderr)
+    raise SystemExit(1)
+print("OK: F-4 scan_legacy_jdbc_keys follows spring.profiles.active (not mysql rglob)")
+PY
 
 jdbc_tmp="$(mktemp -d)"
 mkdir -p "${jdbc_tmp}/evidence" "${jdbc_tmp}/legacy"
@@ -5691,6 +5731,108 @@ except _hm.HandoverError as exc:
 PY
   rm -rf "${ho_tmp}"
 fi
+echo "== F-1 pom phrasing + F-6 import-graph parents =="
+python3 - "${handover}" "${SKILLS}/sdd/check-spec-readiness/scripts" <<'PY' || rc=1
+import sys, tempfile
+from pathlib import Path
+handover, ready = Path(sys.argv[1]), Path(sys.argv[2])
+sys.path.insert(0, str(ready))
+sys.path.insert(0, str(handover.parent))
+import importlib.util
+spec = importlib.util.spec_from_file_location("handover_mint_f16", handover)
+hm = importlib.util.module_from_spec(spec)
+sys.modules["handover_mint_f16"] = hm
+spec.loader.exec_module(hm)
+
+def mini(pom_line: str) -> str:
+    return f"""# Tasks
+
+## Phase 1: Setup (Shared Infrastructure)
+- [ ] T001 {pom_line}
+- [ ] T002 Create src/main/resources/application.properties
+
+## Phase 2: Foundational (Blocking Prerequisites)
+- [ ] T007 Create Owner in src/main/java/org/x/model/Owner.java
+
+## Phase 3: Polish
+- [ ] T099 Create src/test/java/org/x/OwnerTest.java
+
+## Dependencies
+**Setup**: No dependencies
+**Foundational**: depends on Setup
+**Polish**: depends on all desired user stories
+"""
+
+phrasings = [
+    "Add Quarkus extensions to pom.xml",
+    "Add Quarkus extensions to `pom.xml`",
+    "Create pom.xml with Red Hat BOM",
+    "Configure pom.xml with compiler plugin",
+    "Update pom.xml: add resteasy",
+]
+for phrase in phrasings:
+    phases = hm.parse_phases(mini(phrase))
+    owner = hm.assign_ownership(phases)
+    writers = [p.story_id for p in phases if any(hm._is_pom(f) for f in p.files)]
+    if owner != "setup" or writers != ["setup"]:
+        print(f"FAIL: F-1 {phrase!r} owner={owner!r} writers={writers!r}", file=sys.stderr)
+        raise SystemExit(1)
+print("OK: F-1 five pom phrasings register exactly one setup owner")
+
+root = Path(tempfile.mkdtemp(prefix="f6-parents-"))
+owner_java = root / "src/main/java/org/x/model/Owner.java"
+rest_java = root / "src/main/java/org/x/rest/OwnerResource.java"
+owner_java.parent.mkdir(parents=True)
+rest_java.parent.mkdir(parents=True)
+owner_java.write_text(
+    "package org.x.model;\npublic class Owner {}\n", encoding="utf-8"
+)
+rest_java.write_text(
+    "package org.x.rest;\nimport org.x.model.Owner;\n"
+    "public class OwnerResource { Owner o; }\n",
+    encoding="utf-8",
+)
+tasks = """# Tasks
+
+## Phase 1: Setup (Shared Infrastructure)
+- [ ] T001 Create pom.xml
+- [ ] T002 Create src/main/resources/application.properties
+
+## Phase 2: Foundational (Blocking Prerequisites)
+- [ ] T007 Create Owner in src/main/java/org/x/model/Owner.java
+
+## Phase 3: Owner CRUD [US1]
+- [ ] T020 Create OwnerResource in src/main/java/org/x/rest/OwnerResource.java
+
+## Phase 4: Polish
+- [ ] T099 Create src/test/java/org/x/OwnerResourceTest.java
+
+## Dependencies
+**Setup**: No dependencies
+**Foundational**: depends on Setup
+**Polish**: depends on all desired user stories
+"""
+(root / "src/test/java/org/x").mkdir(parents=True)
+(root / "src/test/java/org/x/OwnerResourceTest.java").write_text(
+    "package org.x;\npublic class OwnerResourceTest {}\n", encoding="utf-8"
+)
+(root / "src/main/resources").mkdir(parents=True)
+(root / "src/main/resources/application.properties").write_text("", encoding="utf-8")
+phases = hm.parse_phases(tasks)
+if phases[2].story_id != "US1":
+    print(f"FAIL: F-6 heading [US1] kinded {phases[2].story_id}", file=sys.stderr)
+    raise SystemExit(1)
+hm.transcribe_parents(tasks, phases)
+if phases[2].parents:
+    print(f"FAIL: F-6 expected empty prose parents, got {phases[2].parents}", file=sys.stderr)
+    raise SystemExit(1)
+hm.merge_import_parents(root, phases)
+hm.assert_parents_resolved(phases)
+if "foundational" not in phases[2].parents:
+    print(f"FAIL: F-6 US1 parents {phases[2].parents} missing foundational", file=sys.stderr)
+    raise SystemExit(1)
+print("OK: F-6 import graph parents foundational without the prose phrase")
+PY
 echo "== I-16 M2 scratch --write oracle (Verify-only polish must refuse) =="
 SCRATCH_ORACLE="${SKILLS}/harness/dispatch-phase/scripts/scratch-assemble-mint.py"
 SCRATCH_FIX="${SKILLS}/harness/dispatch-phase/fixtures/scratch-assemble/verify-only-polish"

@@ -109,8 +109,62 @@ def jdbc_urls_in_text(text: str) -> list[str]:
 
 
 def scan_legacy_jdbc_keys(legacy_root: Path | None) -> list[str]:
+    """JDBC URL kinds from the active Spring profile, not rglob order.
+
+    `spring.profiles.active` is the native declaration. Profile-specific
+    `application-{profile}.properties` (and `%profile.` keys in the base
+    file) win. Filesystem order is only the fallback when no active
+    profile is declared.
+    """
     if legacy_root is None or not legacy_root.is_dir():
         return []
+
+    def unique(keys: list[str]) -> list[str]:
+        seen: set[str] = set()
+        out: list[str] = []
+        for key in keys:
+            if key not in seen:
+                seen.add(key)
+                out.append(key)
+        return out
+
+    def urls_from(path: Path) -> list[str]:
+        try:
+            return jdbc_urls_in_text(path.read_text(encoding="utf-8", errors="ignore"))
+        except OSError:
+            return []
+
+    app_props: list[Path] = [
+        p for p in legacy_root.rglob("application.properties") if p.is_file()
+    ]
+    active: list[str] = []
+    base_text = ""
+    for path in app_props:
+        try:
+            text = path.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        m = re.search(r"(?m)^spring\.profiles\.active\s*=\s*(.+)$", text)
+        if m:
+            active = [p.strip() for p in m.group(1).split(",") if p.strip()]
+            base_text = text
+            break
+
+    if active:
+        profile_keys: list[str] = []
+        for profile in active:
+            for path in legacy_root.rglob(f"application-{profile}.properties"):
+                if path.is_file():
+                    profile_keys.extend(urls_from(path))
+            if base_text:
+                for m in re.finditer(
+                    rf"(?m)^%{re.escape(profile)}\.[^\n]*jdbc:([a-zA-Z0-9]+):",
+                    base_text,
+                ):
+                    key = f"jdbc:{m.group(1).strip().lower()}"
+                    profile_keys.append(key)
+        return unique(profile_keys)
+
     found: list[str] = []
     seen: set[str] = set()
     for path in legacy_root.rglob("*"):

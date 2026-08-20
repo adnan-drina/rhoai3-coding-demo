@@ -1270,12 +1270,24 @@ def stamp_dd3_extensions(bodies: list[dict], *, root: Path | None = None) -> Non
     writers = [b for b in bodies if writes_pom_xml(b)]
     if len(writers) != 1:
         sids = []
-        for b in writers:
+        details = []
+        for b in bodies:
             ident = b.get("identity") if isinstance(b.get("identity"), dict) else {}
-            sids.append(str(ident.get("story_id") or b.get("task_id") or "?"))
+            sid = str(ident.get("story_id") or b.get("task_id") or "?")
+            if writes_pom_xml(b):
+                sids.append(sid)
+            fw = body_scope_paths(b)
+            pom_hits = [
+                p
+                for p in fw
+                if str(p).replace("\\", "/").rstrip("/").endswith("pom.xml")
+            ]
+            details.append(f"{sid}: files_writable pom={pom_hits or 'none'}")
         raise ValueError(
             f"stamp_dd3_extensions: need exactly 1 pom.xml writer, "
-            f"got {len(writers)} {sids}"
+            f"got {len(writers)} {sids}. "
+            "Surface=typed bodies files_writable (writes_pom_xml). "
+            + "; ".join(details)
         )
     writers[0]["identity"]["extensions_apply"] = extensions_union(declared_lists)
 

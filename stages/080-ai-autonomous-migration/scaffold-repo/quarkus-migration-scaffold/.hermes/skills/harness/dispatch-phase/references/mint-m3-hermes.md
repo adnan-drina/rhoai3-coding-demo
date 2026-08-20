@@ -344,8 +344,9 @@ after create to chase this (`192117Z`).
   Sticky-block **only** the ack_gate.
 - **Card-contract assert:** `hermes kanban show <id>` markdown must contain
   `evidence/bodies/m3-`, a 64-hex, `m3-implementer-standing.md`, and
-  `check-body-digest-match.py --expect`. Skills on the card must equal
-  full `m3-attach-skills.py` stdout — enforced by `assert-m3-child-skills.py`
+  `check-body-digest-match.py --expect`. Skills on the card must include
+  every write-set required skill (`filter_attach_skills_for_write_set`) —
+  extras allowed; empty skills refuse. Enforced by `assert-m3-child-skills.py`
   `--task-id` (not by recollection). Any miss → typed `needs_input` BLOCK;
   do not create the next story; do not `kanban_complete` this holder.
 - Assert ack_gate is still `blocked` **until** the issuer PASS + complete

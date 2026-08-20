@@ -1465,6 +1465,51 @@ REQUIRED_SUBSTRINGS = [
         "A-8 mint joins on transcribed http_path, not RestController filename",
     ),
     (
+        ".hermes/skills/harness/dispatch-phase/scripts/handover-mint.py",
+        "def merge_import_parents",
+        "F-6 parents from import graph not Dependencies prose alone",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/scripts/handover-mint.py",
+        "PATH_TOKEN extracted 0 pom.xml owners",
+        "F-1/F-5 zero pom writer names tasks.md PATH_TOKEN surface",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/scripts/handover-mint.py",
+        "spec-kit has no create/amend distinction",
+        "F-1 AMEND_EXISTING no longer skips path extraction",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/scripts/scratch-assemble-mint.py",
+        "assert-partition-topological-order.py",
+        "M2 scratch exit wires existing topological gate",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/scripts/dispatch-phase.sh",
+        "assert-partition-topological-order.py",
+        "M2 body cites topological gate after scratch --write",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/references/m2-planner.md",
+        "assert-partition-topological-order.py",
+        "m2-planner names topological gate as M2 exit",
+    ),
+    (
+        ".hermes/skills/sdd/check-spec-readiness/scripts/specimen_agnostic.py",
+        "Surface=typed bodies files_writable (writes_pom_xml)",
+        "F-5 stamp_dd3 zero/multi writer names the body surface",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/scripts/assert-m3-child-skills.py",
+        "filter_attach_skills_for_write_set",
+        "F-3 child-skills gate asks write-set need not producer stdout",
+    ),
+    (
+        ".hermes/skills/migration/manage-quarkus-extensions/scripts/spring_dep_map.py",
+        "spring.profiles.active",
+        "F-4 jdbc keys follow active profile not rglob order",
+    ),
+    (
         ".hermes/skills/analysis/inventory-entry-points/scripts/inventory-entry-points.py",
         "http_method",
         "A-8 scanner emits structured http_method",

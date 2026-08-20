@@ -7,7 +7,8 @@ bare create; v32 minted 11 children with skills=None. This is the gate.
 Modes:
   --task-id t_xxx [--body evidence/bodies/m3-US1.json]
       After kanban_create: refuse unless card skills are non-empty.
-      With --body, skills must equal m3-attach-skills.py stdout (order-stable).
+      With --body, the card must carry every skill the write-set requires
+      (filter_attach_skills_for_write_set). Extra skills are allowed.
   --holder-id t_xxx
       Pre-complete: every child titled ``M3 IMPLEMENT:`` must have non-empty
       skills, an AR-4.3 digest line, and typed-body exit_criteria.
@@ -18,7 +19,6 @@ import argparse
 import json
 import re
 import sqlite3
-import subprocess
 import sys
 from pathlib import Path
 
@@ -56,6 +56,60 @@ def parse_skills(raw: object) -> list[str]:
     return []
 
 
+def skills_required_by_body(root: Path, body_path: Path) -> list[str]:
+    """Consumer: skills this write-set needs (not producer stdout equality)."""
+    data = json.loads(body_path.read_text(encoding="utf-8"))
+    inner = data.get("body") if isinstance(data.get("body"), dict) else data
+    if not isinstance(inner, dict):
+        inner = {}
+    ident = inner.get("identity") if isinstance(inner.get("identity"), dict) else {}
+    operand = ident.get("operand_skills") or []
+    if isinstance(operand, str):
+        operand = [operand]
+    names: list[str] = []
+    seen: set[str] = set()
+
+    def add(name: object) -> None:
+        n = str(name or "").strip()
+        if n and n not in seen:
+            seen.add(n)
+            names.append(n)
+
+    add("check-spec-readiness")
+    if isinstance(operand, list):
+        for s in operand:
+            add(s)
+    fw = inner.get("files_writable") or ident.get("files_writable") or []
+    if not isinstance(fw, list):
+        fw = []
+    ready = (
+        root
+        / ".hermes"
+        / "skills"
+        / "sdd"
+        / "check-spec-readiness"
+        / "scripts"
+    )
+    if not (ready / "specimen_agnostic.py").is_file():
+        cur = Path(__file__).resolve().parent
+        ready = Path("/nonexistent")
+        for _ in range(8):
+            cand = cur / "sdd" / "check-spec-readiness" / "scripts"
+            if (cand / "specimen_agnostic.py").is_file():
+                ready = cand
+                break
+            cand = cur / ".hermes" / "skills" / "sdd" / "check-spec-readiness" / "scripts"
+            if (cand / "specimen_agnostic.py").is_file():
+                ready = cand
+                break
+            cur = cur.parent
+    if str(ready) not in sys.path:
+        sys.path.insert(0, str(ready))
+    from specimen_agnostic import filter_attach_skills_for_write_set
+
+    return filter_attach_skills_for_write_set(names, fw)
+
+
 def connect(root: Path) -> sqlite3.Connection:
     db = kanban_db(root)
     if not db.is_file() or db.stat().st_size == 0:
@@ -63,29 +117,6 @@ def connect(root: Path) -> sqlite3.Connection:
     con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
     con.row_factory = sqlite3.Row
     return con
-
-
-def attach_stdout(root: Path, body: Path) -> list[str]:
-    script = (
-        root
-        / ".hermes"
-        / "skills"
-        / "harness"
-        / "dispatch-phase"
-        / "scripts"
-        / "m3-attach-skills.py"
-    )
-    cp = subprocess.run(
-        [sys.executable, str(script), str(body), "--root", str(root)],
-        cwd=str(root),
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    if cp.returncode != 0:
-        err = (cp.stderr or cp.stdout or "").strip()
-        raise RuntimeError(f"m3-attach-skills.py rc={cp.returncode}: {err}")
-    return [ln.strip() for ln in (cp.stdout or "").splitlines() if ln.strip()]
 
 
 def story_id_from_title(title: str) -> str:
@@ -117,10 +148,13 @@ def check_task(root: Path, task_id: str, body: Path | None) -> int:
         )
         return 1
     if body is not None:
-        expect = attach_stdout(root, body)
-        if skills != expect:
+        required = skills_required_by_body(root, body)
+        missing = [s for s in required if s not in skills]
+        if missing:
             print(
-                f"FAIL: {task_id} skills {skills!r} != attach stdout {expect!r}",
+                f"FAIL: {task_id} missing write-set skills {missing!r} "
+                f"(card={skills!r}; surface=typed body files_writable / "
+                "identity.operand_skills via filter_attach_skills_for_write_set)",
                 file=sys.stderr,
             )
             return 1
@@ -206,7 +240,7 @@ def main() -> int:
     g = ap.add_mutually_exclusive_group(required=True)
     g.add_argument("--task-id")
     g.add_argument("--holder-id")
-    ap.add_argument("--body", default="", help="typed body for attach-stdout compare")
+    ap.add_argument("--body", default="", help="typed body for write-set skill check")
     args = ap.parse_args()
     root = Path(args.root).resolve()
     if args.task_id:

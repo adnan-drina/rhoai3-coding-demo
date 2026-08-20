@@ -7,8 +7,10 @@ Copy tasks.md + evidence/ into a throwaway dir and run handover-mint.py
 evidence/type-inventory.json is present, every dest twin must appear in
 the minted partition (same coverage class as HTTP rows; skip if absent).
 When scratch has legacy-at-3, run existing stamp-body-dependencies.py +
-assert-dependency-closure.py on minted bodies (V34-8; no second gate).
-Never write dest partition.json. Does not grow handover-mint.py (freeze 1088).
+assert-dependency-closure.py on minted bodies (V34-8; no second gate),
+then existing assert-partition-topological-order.py (M2 must not exit
+done with a partition the holder would refuse).
+Never write dest partition.json. Dest workers do not grow handover-mint.py.
 
 Usage:
   python3 scratch-assemble-mint.py <dest-root>
@@ -49,6 +51,9 @@ _CLOSURE = _find_under_skills(
 )
 _UPTAKE = _find_under_skills(
     "sdd", "check-spec-readiness", "scripts", "assert-tasks-generator-uptake.py"
+)
+_TOPO = _find_under_skills(
+    "sdd", "check-spec-readiness", "scripts", "assert-partition-topological-order.py"
 )
 
 
@@ -208,6 +213,32 @@ def _run_type_closure(modern: Path) -> int:
     return 0
 
 
+def _run_topo(modern: Path) -> int:
+    """Existing M3 topological gate as M2 exit (family-fix wiring)."""
+    if not _TOPO.is_file():
+        print(f"FAIL: missing {_TOPO}", file=sys.stderr)
+        return 1
+    part = modern / "evidence" / "briefs" / "partition.json"
+    if not part.is_file():
+        print("FAIL: scratch missing partition.json for topological order", file=sys.stderr)
+        return 1
+    proc = subprocess.run(
+        [sys.executable, str(_TOPO), str(modern)],
+        cwd=str(modern),
+        capture_output=True,
+        text=True,
+    )
+    sys.stdout.write(proc.stdout or "")
+    sys.stderr.write(proc.stderr or "")
+    if proc.returncode != 0:
+        print(
+            f"FAIL: partition topological order rc={proc.returncode}",
+            file=sys.stderr,
+        )
+        return 1
+    return 0
+
+
 def _run_type_inventory_coverage(modern: Path) -> int:
     """Plan coverage of type-inventory dest twins (skip if the file is absent)."""
     if str(_STAMP.parent) not in sys.path:
@@ -363,6 +394,9 @@ def main() -> int:
         tc = _run_type_closure(modern)
         if tc != 0:
             return tc
+        topo = _run_topo(modern)
+        if topo != 0:
+            return topo
         if args.assert_polish_excludes:
             want = args.assert_polish_excludes.replace("\\", "/")
             held = _polish_files(modern)

@@ -32,7 +32,9 @@ card instructs the worker to, in order:
    When scratch has `legacy-at-3`, that oracle also runs
    `python3 .hermes/skills/sdd/check-spec-readiness/scripts/stamp-body-dependencies.py`
    and `python3 .hermes/skills/sdd/check-spec-readiness/scripts/assert-dependency-closure.py`
-   on minted bodies (V34-8; same graph as M3; no second gate). Exit 0. Invented
+   on minted bodies (V34-8; same graph as M3; no second gate), then
+   `python3 .hermes/skills/sdd/check-spec-readiness/scripts/assert-partition-topological-order.py`
+   (M2 must not complete with a partition the holder would refuse). Exit 0. Invented
    routes (`union(stories[].endpoints) - inventory`) are refuse — the only
    plan-level HTTP gate (Architect `070430Z`).    Type-inventory **source** dest twins are covered when that file is present
    (`types_uncovered`; skip `generated: true`). Generated types stamp

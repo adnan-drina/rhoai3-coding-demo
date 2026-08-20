@@ -516,7 +516,9 @@ substitution / path invention / specimen-body priming. Measure the harness.
    and, when scratch has `legacy-at-3`, runs existing
    `python3 .hermes/skills/sdd/check-spec-readiness/scripts/stamp-body-dependencies.py`
    + `python3 .hermes/skills/sdd/check-spec-readiness/scripts/assert-dependency-closure.py`
-   on minted bodies (V34-8; no second gate).
+   on minted bodies (V34-8; no second gate), then
+   `python3 .hermes/skills/sdd/check-spec-readiness/scripts/assert-partition-topological-order.py`
+   (M2 must not complete with a partition the holder would refuse).
    Constitution VII is guidance, not a gate. Keep
    `assert-compiled-route-fidelity.py` for compiled-tree drift.
    **Forbidden:** `--dry-run` as this gate; authoring dest `partition.json`; growing `handover-mint.py`.
@@ -542,7 +544,7 @@ substitution / path invention / specimen-body priming. Measure the harness.
 - Spec Kit invoke evidenced (seed + plan + tasks.md) **or** typed `needs_input` BLOCK recorded
 - `spec.md` enumerates every inventory `http_path` (not a count)
 - Resource task lines include literal `@Path("...")` for owned HTTP routes
-- Scratch `handover-mint.py --write` exit 0 (`scratch-assemble-mint.py`) — dest `partition.json` untouched; invented endpoints refuse; type-inventory source dest twins covered when that file is present (skip generated); type-closure (stamp + assert-dependency-closure) when scratch has legacy-at-3; `provider: generated` skips DEST_MISS and requires generator inputs owned; generated types require a generator plugin token in `tasks.md` (`python3 .hermes/skills/sdd/check-spec-readiness/scripts/assert-tasks-generator-uptake.py`)
+- Scratch `handover-mint.py --write` exit 0 (`scratch-assemble-mint.py`) — dest `partition.json` untouched; invented endpoints refuse; type-inventory source dest twins covered when that file is present (skip generated); type-closure (stamp + assert-dependency-closure) when scratch has legacy-at-3; scratch topological-order gate exit 0; `provider: generated` skips DEST_MISS and requires generator inputs owned; generated types require a generator plugin token in `tasks.md` (`python3 .hermes/skills/sdd/check-spec-readiness/scripts/assert-tasks-generator-uptake.py`)
 - M2 `checkpoint.json` present (`holder-checkpoint.py check --kind m2`)
 - **No** `partition.json` authored on this card (handover-mint writes the receipt)
 - **No** M3 Kanban children created on this card
