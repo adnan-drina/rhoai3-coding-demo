@@ -2586,6 +2586,77 @@ else
 fi
 rm -rf "${rev_tmp}"
 
+# Architect 075106Z / 140201Z — autostart known-bad fixtures MUST refuse
+as_tmp="$(mktemp -d)"
+mkdir -p "${as_tmp}/.hermes/home"
+printf '%s\n' 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' >"${as_tmp}/.hermes/HARNESS_REV"
+if python3 "${SKILLS}/harness/dispatch-phase/scripts/assert-autostart-gates.py" \
+    harness-rev --root "${as_tmp}" \
+    --expected-sha aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+    >/tmp/as-rev.out 2>/tmp/as-rev.err; then
+  echo "FAIL: autostart harness-rev mismatch did not refuse" >&2
+  cat /tmp/as-rev.out /tmp/as-rev.err >&2
+  rc=1
+else
+  echo "OK: autostart refuses HARNESS_REV mismatch"
+fi
+python3 - "${as_tmp}" <<'PY'
+import sqlite3, sys
+from pathlib import Path
+root = Path(sys.argv[1])
+db = root / ".hermes" / "home" / "kanban.db"
+con = sqlite3.connect(db)
+con.execute(
+    "CREATE TABLE tasks (id TEXT PRIMARY KEY, title TEXT NOT NULL, "
+    "skills TEXT, body TEXT, status TEXT, created_at INTEGER)"
+)
+con.execute(
+    "INSERT INTO tasks (id, title, skills, body, status, created_at) "
+    "VALUES (?,?,?,?,?,0)",
+    ("t_hold", "M3 WAVE HOLDER: mint story children", '["dispatch-phase"]', "", "todo"),
+)
+con.commit()
+con.close()
+PY
+if python3 "${SKILLS}/harness/dispatch-phase/scripts/assert-autostart-gates.py" \
+    holder --root "${as_tmp}" \
+    >/tmp/as-hold.out 2>/tmp/as-hold.err; then
+  echo "FAIL: autostart skill-pinned holder did not refuse" >&2
+  cat /tmp/as-hold.out /tmp/as-hold.err >&2
+  rc=1
+else
+  echo "OK: autostart refuses skill-pinned WAVE HOLDER"
+fi
+python3 - "${as_tmp}" <<'PY'
+import sqlite3, sys
+from pathlib import Path
+root = Path(sys.argv[1])
+db = root / ".hermes" / "home" / "kanban.db"
+con = sqlite3.connect(db)
+con.execute("UPDATE tasks SET skills='[]' WHERE id='t_hold'")
+con.commit()
+con.close()
+PY
+if python3 "${SKILLS}/harness/dispatch-phase/scripts/assert-autostart-gates.py" \
+    holder --root "${as_tmp}" \
+    >/tmp/as-hold-ok.out 2>/tmp/as-hold-ok.err; then
+  echo "OK: autostart holder skills=[] passes"
+else
+  echo "FAIL: autostart empty-skill holder should pass" >&2
+  cat /tmp/as-hold-ok.out /tmp/as-hold-ok.err >&2
+  rc=1
+fi
+if AUTO_START_MIGRATION=0 bash "${SKILLS}/harness/dispatch-phase/scripts/autostart-migration.sh" \
+    --root "${as_tmp}" --skip-dispatch >/tmp/as-skip.out 2>/tmp/as-skip.err \
+  && grep -q 'state: SKIPPED' "${as_tmp}/.hermes/AUTOSTART-STATUS"; then
+  echo "OK: autostart AUTO_START_MIGRATION=0 writes SKIPPED marker"
+else
+  echo "FAIL: autostart skip marker" >&2
+  cat /tmp/as-skip.out /tmp/as-skip.err >&2
+  rc=1
+fi
+rm -rf "${as_tmp}"
+
 # Architect V34-6 — dest-home kanban pins in dispatch-phase write
 if grep -q 'auto_decompose: false' "${SKILLS}/harness/dispatch-phase/scripts/dispatch-phase.sh"; then
   echo "OK: dest-home kanban auto_decompose false"
@@ -4987,6 +5058,14 @@ elif ! awk '/name: DEFAULT_EXTENSIONS/{f=1} f && /value:/{print; exit}' "${rhdh_
   rc=1
 else
   echo "OK: RHDH skeleton DEFAULT_EXTENSIONS includes redhat-java.vsix (DW factory path)"
+fi
+if [ -f "${rhdh_devfile}" ] \
+  && grep -q 'stamp-harness-rev.py' "${rhdh_devfile}" \
+  && grep -q 'autostart-migration.sh' "${rhdh_devfile}"; then
+  echo "OK: RHDH skeleton destfile stamps HARNESS_REV and calls autostart-migration.sh"
+else
+  echo "FAIL: RHDH skeleton destfile missing stamp-harness-rev or autostart-migration" >&2
+  rc=1
 fi
 # Column-0 lines inside commandLine: | end the scalar (v25 factory parse fail).
 # YAML keys at column 0 (events:) end the block; script at column 0 is the bomb.

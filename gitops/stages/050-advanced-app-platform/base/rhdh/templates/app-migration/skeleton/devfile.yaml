@@ -81,6 +81,9 @@ components:
           value: "/projects/modernized/.hermes/home"
         - name: HERMES_MANAGED_DIR
           value: "/projects/.platform/hermes"
+        # Architect 075106Z: demo default on. Template can turn this off.
+        - name: AUTO_START_MIGRATION
+          value: "${{ values.autoStartMigration }}"
       memoryLimit: 12Gi
       cpuLimit: 2500m
       volumeMounts:
@@ -279,6 +282,16 @@ commands:
             || echo "WARN: Quarkus CLI provision failed — Maven quarkus:* fallback (W3)"
         else
           echo "WARN: missing ${PROVISION_CLI} — Quarkus CLI not provisioned"
+        fi
+        STAMP_REV="${PROJECT_DIR}/.hermes/skills/harness/dispatch-phase/scripts/stamp-harness-rev.py"
+        if [ -f "${STAMP_REV}" ]; then
+          python3 "${STAMP_REV}" --root "${PROJECT_DIR}" \
+            || echo "WARN: HARNESS_REV stamp failed"
+        fi
+        AUTO_M1="${PROJECT_DIR}/.hermes/skills/harness/dispatch-phase/scripts/autostart-migration.sh"
+        if [ -f "${AUTO_M1}" ]; then
+          bash "${AUTO_M1}" --root "${PROJECT_DIR}" \
+            || echo "WARN: autostart-migration exited nonzero (see .hermes/AUTOSTART-STATUS)"
         fi
         # Hermes dashboard: che-gateway routes to the pod IP, so bind
         # 0.0.0.0:9119. Official kanban docs: plugin routes skip HTTP auth

@@ -269,6 +269,13 @@ commands:
         else
           echo "WARN: ${GW_SUP} missing — gateway will not persist"
         fi
+        # Autostart M1: create→check→dispatch (075106Z / 140201Z). Refuse is a
+        # marker file, never Unhealthy. Do not kanban daemon --force.
+        AUTO_M1="${PROJECT_DIR}/.hermes/skills/harness/dispatch-phase/scripts/autostart-migration.sh"
+        if [ -f "${AUTO_M1}" ]; then
+          bash "${AUTO_M1}" --root "${PROJECT_DIR}" \
+            || echo "WARN: autostart-migration exited nonzero (see .hermes/AUTOSTART-STATUS)"
+        fi
   - id: start-hermes-dashboard
     exec:
       component: development-tooling

@@ -62,6 +62,9 @@ REQUIRED_FILES = [
     ".hermes/skills/harness/dispatch-phase/scripts/assert-m3-child-skills.py",
     ".hermes/skills/harness/dispatch-phase/scripts/holder-checkpoint.py",
     ".hermes/skills/harness/dispatch-phase/scripts/stamp-harness-rev.py",
+    ".hermes/skills/harness/dispatch-phase/scripts/assert-autostart-gates.py",
+    ".hermes/skills/harness/dispatch-phase/scripts/autostart-migration.sh",
+    ".hermes/skills/harness/dispatch-phase/references/autostart-migration.md",
     ".hermes/skills/harness/dispatch-phase/scripts/run-pre-create-gates.py",
     ".hermes/skills/harness/dispatch-phase/scripts/compose-m3-card-markdown.py",
     ".hermes/skills/harness/dispatch-phase/scripts/assert-story-parked.py",
@@ -1856,6 +1859,26 @@ REQUIRED_SUBSTRINGS = [
         ".hermes/skills/harness/dispatch-phase/scripts/stamp-harness-rev.py",
         "HARNESS_REV",
         "V34-2 stamp resolved golden SHA at create",
+    ),
+    (
+        "devfile.yaml",
+        "autostart-migration.sh",
+        "postStart autostart M1 create-check-dispatch (075106Z)",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/scripts/autostart-migration.sh",
+        "hermes kanban dispatch --max 1",
+        "autostart spawn is native dispatch not kanban daemon --force",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/scripts/autostart-migration.sh",
+        "kanban daemon --force",
+        "autostart names the OBJECT daemon path",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/scripts/assert-autostart-gates.py",
+        "M3 WAVE HOLDER",
+        "autostart park-M3 discriminator",
     ),
     (
         ".hermes/skills/harness/dispatch-phase/scripts/dispatch-phase.sh",
