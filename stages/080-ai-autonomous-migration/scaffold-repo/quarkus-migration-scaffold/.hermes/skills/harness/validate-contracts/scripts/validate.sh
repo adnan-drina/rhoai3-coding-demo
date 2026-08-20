@@ -1083,6 +1083,52 @@ if python3 "${SKILLS}/gates/check-release-readiness/scripts/check-runnable-db-co
 else
   echo "OK: B7 HSQLDB destination refused"
 fi
+# LD-1 / LD-2 — one working schema mechanism; name idle→active (Review 213600Z)
+rdb_tmp="$(mktemp -d)"
+mkdir -p "${rdb_tmp}/good/src/main/resources" "${rdb_tmp}/bare/src/main/resources"
+cat > "${rdb_tmp}/good/pom.xml" <<'XML'
+<project>
+  <dependencies>
+    <dependency><artifactId>quarkus-jdbc-h2</artifactId></dependency>
+    <dependency><artifactId>quarkus-hibernate-orm</artifactId></dependency>
+  </dependencies>
+</project>
+XML
+printf '%s\n' \
+  'quarkus.datasource.db-kind=h2' \
+  'quarkus.datasource.jdbc.url=jdbc:h2:mem:testdb' \
+  'quarkus.hibernate-orm.database.generation=drop-and-create' \
+  > "${rdb_tmp}/good/src/main/resources/application.properties"
+printf '%s\n' 'INSERT INTO x(id) VALUES (1);' \
+  > "${rdb_tmp}/good/src/main/resources/import.sql"
+if python3 "${SKILLS}/gates/check-release-readiness/scripts/check-runnable-db-config.py" \
+  "${rdb_tmp}/good" >/tmp/rdb-good.out 2>/tmp/rdb-good.err; then
+  echo "OK: AR-2.1 schema generation + import.sql passes without Flyway"
+else
+  echo "FAIL: schema-gen + import.sql must PASS without quarkus-flyway" >&2
+  cat /tmp/rdb-good.out /tmp/rdb-good.err >&2
+  rc=1
+fi
+cp "${rdb_tmp}/good/pom.xml" "${rdb_tmp}/bare/pom.xml"
+printf '%s\n' \
+  'quarkus.datasource.db-kind=h2' \
+  'quarkus.datasource.jdbc.url=jdbc:h2:mem:testdb' \
+  > "${rdb_tmp}/bare/src/main/resources/application.properties"
+if python3 "${SKILLS}/gates/check-release-readiness/scripts/check-runnable-db-config.py" \
+  "${rdb_tmp}/bare" >/tmp/rdb-bare.out 2>/tmp/rdb-bare.err; then
+  echo "FAIL: datasource with no schema mechanism must refuse" >&2
+  cat /tmp/rdb-bare.out /tmp/rdb-bare.err >&2
+  rc=1
+elif grep -q 'idle→active' /tmp/rdb-bare.err \
+  && grep -q 'application.properties quarkus.datasource' /tmp/rdb-bare.err \
+  && grep -q 'no working schema mechanism' /tmp/rdb-bare.err; then
+  echo "OK: AR-2.1 names idle→active surface when datasource has no schema mechanism"
+else
+  echo "FAIL: expected idle→active Surface on bare datasource refuse" >&2
+  cat /tmp/rdb-bare.out /tmp/rdb-bare.err >&2
+  rc=1
+fi
+rm -rf "${rdb_tmp}"
 if python3 "${SKILLS}/gates/check-release-readiness/scripts/check-empty-security.py" \
   "${ROOT}/.hermes/skills/harness/validate-contracts/fixtures/runnable-db-security/bad-placeholder-security" >/dev/null 2>&1; then
   echo "FAIL: AR-2.2 placeholder security should refuse" >&2

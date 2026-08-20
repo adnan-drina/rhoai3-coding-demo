@@ -62,5 +62,5 @@ hole — the exact false-green class this reference exists to prevent.
 
 - `check-pom-platform-pins.py` / `check-pom-jacoco-wiring.py` (when pom exists)
 - `assert-extension-tooling.py` (W3 — CLI+RH-first or typed Maven fallback)
-- `check-runnable-db-config.py` / `runnable-db-security.md` (JDBC + Flyway)
+- `check-runnable-db-config.py` / `runnable-db-security.md` (JDBC + one working schema mechanism)
 - `check-semantics-manifest.py` (B8) for gate claim adequacy

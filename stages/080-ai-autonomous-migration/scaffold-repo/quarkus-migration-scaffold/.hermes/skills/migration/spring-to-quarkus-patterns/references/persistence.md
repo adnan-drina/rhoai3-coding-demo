@@ -13,20 +13,22 @@
 | pers-em | `@PersistenceContext EntityManager` | `@Inject EntityManager` CDI | ADOPT | Valid when Panache repo does not fit (S-004) |
 | pers-entity | `@Entity` JPA | `@Entity` (Jakarta) | ADOPT | `javax`→`jakarta` |
 | pers-tx | `@Transactional` (Spring) | `@Transactional` (Quarkus / Narayana) | ADOPT | Same name; confirm import |
-| pers-migrate | Flyway/Liquibase Spring setup | **Flyway** (project law) | STRENGTHEN | Do not invent boot-time DDL |
+| pers-migrate | Spring `sql.init` / Flyway / Liquibase | **one working schema mechanism** | ADOPT | Flyway only if the legacy used Flyway; else Hibernate schema generation + import/init SQL |
 | pers-jdbc | Spring datasource | `quarkus-jdbc-*` matching `db-kind` + URL | ADOPT | AR-2.1 — mismatch = non-startable |
-| pers-flyway-run | Flyway at boot | `quarkus-flyway` + `migrate-at-start=true` + `V*__*.sql` under `db/migration` | STRENGTHEN | Default migrate-at-start is **false** (Quarkus Flyway guide) |
+| pers-flyway-run | Flyway at boot | `quarkus-flyway` + `migrate-at-start=true` + `V*__*.sql` under `db/migration` | STRENGTHEN | Only when dest chose Flyway; default migrate-at-start is **false** |
 
 ### Runnable DB profile (AR-2.1 — binding)
 
 A profile is **not** migrated until a **clean checkout** against an empty intended
-DB: starts → `/q/health` → Flyway history + schema → required seed → a
-seeded-entity read succeeds; **second start idempotent**. `hibernate.schema-generation=none`
-without Flyway (or other schema owner) is a **BLOCK**, not ACCEPT.
+DB: starts → `/q/health` → schema + required seed → a seeded-entity read
+succeeds; **second start idempotent**. Require **one working schema mechanism**,
+not a named one: Flyway complete if dest chose it, otherwise schema generation
++ import/init SQL. `hibernate.schema-generation=none` without a schema owner
+is a **BLOCK**, not ACCEPT.
 
-Primary cites: Research `20260810-artifact-review-quarkus-cites.md` (datasource +
-Flyway). Do not leave `db-kind=h2` with `jdbc:hsqldb:` URLs or non-Flyway
-`initDB.sql` filenames as the default runnable path.
+Primary cites: Research `20260810-artifact-review-quarkus-cites.md` (datasource).
+Do not leave `db-kind=h2` with `jdbc:hsqldb:` URLs. Do not demand Flyway when
+the harvest referent has none.
 
 ### Datasource kind (tip-bank B7 — Quarkus 3.27+)
 
@@ -68,7 +70,8 @@ in the diff (`claim_accuracy`).
 ## Agent text
 
 Default to Panache repositories when they fit legacy behaviour; otherwise CDI
-`EntityManager` is an acceptable Quarkus layer — name what you shipped. Keep
-Flyway as the schema path. Do not add Spring Data or `quarkus-spring-data-*`.
+`EntityManager` is an acceptable Quarkus layer — name what you shipped. Use
+Flyway when the legacy did; otherwise schema generation + import/init SQL.
+Do not add Spring Data or `quarkus-spring-data-*`.
 Name absent-result and transaction ownership in the completion summary when
 touched.

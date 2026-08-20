@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Setup / dest-props honesty: datasource config needs a matching JDBC driver.
 
-check-runnable-db-config.py also requires Flyway — that is M4-shaped.
-This predicate only claims: if dest properties set quarkus.datasource.*,
-the dest pom declares quarkus-jdbc-<kind> matching the dest URL/db-kind
-through spring-dep-to-extension.md (never a Python H2 constant).
+check-runnable-db-config.py is the runnable-profile gate (one working schema
+mechanism, not named Flyway). This predicate only claims: if dest properties
+set quarkus.datasource.*, the dest pom declares quarkus-jdbc-<kind> matching
+the dest URL/db-kind through spring-dep-to-extension.md (never a Python H2
+constant).
 
 Usage:
   python3 assert-setup-datasource-driver.py <root>

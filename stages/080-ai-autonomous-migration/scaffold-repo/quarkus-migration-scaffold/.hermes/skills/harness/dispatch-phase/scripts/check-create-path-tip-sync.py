@@ -1956,6 +1956,31 @@ REQUIRED_SUBSTRINGS = [
         "H-6 T0 #3 foundational service refuse",
     ),
     (
+        ".hermes/skills/gates/check-release-readiness/scripts/check-runnable-db-config.py",
+        "one working schema mechanism",
+        "LD-1 AR-2.1 requires a working mechanism not named Flyway",
+    ),
+    (
+        ".hermes/skills/gates/check-release-readiness/scripts/check-runnable-db-config.py",
+        "idle→active",
+        "LD-2 refusal names the idle-to-active flip",
+    ),
+    (
+        ".hermes/skills/migration/spring-to-quarkus-patterns/references/persistence.md",
+        "one working schema mechanism",
+        "LD-1 persistence card is not Flyway project law",
+    ),
+    (
+        ".hermes/skills/harness/validate-contracts/scripts/validate.sh",
+        "OK: AR-2.1 schema generation + import.sql passes without Flyway",
+        "LD-1 schema-gen + import.sql is a satisfying dest path",
+    ),
+    (
+        ".hermes/skills/harness/validate-contracts/scripts/validate.sh",
+        "OK: AR-2.1 names idle→active surface when datasource has no schema mechanism",
+        "LD-2 validate lock: idle→active Surface on bare datasource",
+    ),
+    (
         ".hermes/skills/harness/validate-contracts/scripts/validate.sh",
         "OK: PARTITION_COVERAGE skips generated type-inventory dest twins",
         "coverage does not require Creating generator output",
@@ -2307,6 +2332,21 @@ FORBIDDEN_SUBSTRINGS = [
         ".hermes/skills/harness/dispatch-phase/references/m3-implementer-standing.md",
         "no `{story_id}:` prefix",
         "wrong-card must not key the retired story_id: prefix (111244Z)",
+    ),
+    (
+        ".hermes/skills/gates/check-release-readiness/scripts/check-runnable-db-config.py",
+        "initDB.sql without Flyway",
+        "LD-1 must not refuse init SQL for lacking Flyway",
+    ),
+    (
+        ".hermes/skills/migration/spring-to-quarkus-patterns/references/persistence.md",
+        "Keep Flyway as the schema path",
+        "LD-1 persistence agent text must not keep Flyway as the only schema path",
+    ),
+    (
+        ".hermes/skills/sdd/check-spec-readiness/scripts/assert-setup-datasource-driver.py",
+        "also requires Flyway",
+        "LD-1 setup-driver comment must not claim the runnable-db gate requires Flyway",
     ),
 ]
 
