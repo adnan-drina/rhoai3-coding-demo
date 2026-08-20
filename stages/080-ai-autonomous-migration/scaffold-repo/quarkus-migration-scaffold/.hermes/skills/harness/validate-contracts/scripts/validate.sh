@@ -2735,6 +2735,17 @@ else
 fi
 rm -rf "${pin_tmp}"
 
+# v38 dest-cite: dest create runs this live. Laptop greps were GREEN while
+# bare issue-m3-brief-identity-ack.py in M1/M2/holder failed R0 body-script lint.
+if python3 "${SKILLS}/harness/dispatch-phase/scripts/check-phase-body-script-refs.py" "${ROOT}" \
+    >/tmp/body-refs.out 2>/tmp/body-refs.err; then
+  echo "OK: phase body script refs (live; dest create runs this)"
+else
+  echo "FAIL: phase body script refs (v38 dest-cite)" >&2
+  cat /tmp/body-refs.out /tmp/body-refs.err >&2
+  rc=1
+fi
+
 # Architect V34-6 — dest-home kanban pins in dispatch-phase write
 if grep -q 'auto_decompose: false' "${SKILLS}/harness/dispatch-phase/scripts/dispatch-phase.sh"; then
   echo "OK: dest-home kanban auto_decompose false"

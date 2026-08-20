@@ -413,8 +413,8 @@ orchestration: hermes_native (required)
    (`acknowledged_by: gate:check-findings-handoff`). Do **not** grant as Operator
    and do **not** write `acknowledged_by` worker. rc≠0 → typed BLOCK, not a
    human `needs_input` for the yaml. **M3 brief-identity** is the same
-   5.1 pattern (`issue-m3-brief-identity-ack.py` /
-   `gate:check-body-digest-match`).
+   5.1 pattern (`gate:check-body-digest-match`). M1 must not cite or run
+   the M3 issuer.
    M1 ACK GATE complete is the **verifier card** running
    `python3 .hermes/skills/harness/dispatch-phase/scripts/check-m1-verifier.py /projects/modernized`
    (**refuse-on-nonzero**; see `references/m1-verifier.md`). This worker does not complete the gate.
@@ -483,8 +483,8 @@ substitution / path invention / specimen-body priming. Measure the harness.
    `python3 .hermes/skills/harness/enforce-authority-boundary/scripts/issue-m1-findings-ack.py /projects/modernized`
    Exit **0** = `m1-findings.ack.yaml` is a gate-record. Exit **1** = handoff not green → typed BLOCK.
    Do **not** `needs_input` for a missing **human** yaml. **M3 brief-identity**
-   is the same 5.1 pattern (`issue-m3-brief-identity-ack.py` /
-   `gate:check-body-digest-match`).
+   is the same 5.1 pattern (`gate:check-body-digest-match`). M2 must not
+   cite or run the M3 issuer.
 2. **Read inventory before specify** (Architect E-20260817T203500Z):
    Open `evidence/entry-point-inventory.json`, `evidence/type-inventory.json`,
    and `evidence/required-extensions.json` **before** invoking

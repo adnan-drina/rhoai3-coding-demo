@@ -1275,6 +1275,16 @@ REQUIRED_SUBSTRINGS = [
         "seat Hermes pin probe is binary-local --version not version subcommand (v37)",
     ),
     (
+        ".hermes/skills/harness/dispatch-phase/references/holder-card-body.md",
+        ".hermes/skills/harness/enforce-authority-boundary/scripts/issue-m3-brief-identity-ack.py",
+        "holder issues M3 gate-record via full issuer path (v38 body-script lint)",
+    ),
+    (
+        ".hermes/skills/harness/validate-contracts/scripts/validate.sh",
+        "OK: phase body script refs (live; dest create runs this)",
+        "validate.sh runs live R0 body-script lint (v38 dest-cite)",
+    ),
+    (
         ".hermes/skills/harness/dispatch-phase/scripts/dispatch-phase.sh",
         "check-m1-verifier.py",
         "M1 body points verifier card at check-m1-verifier.py",

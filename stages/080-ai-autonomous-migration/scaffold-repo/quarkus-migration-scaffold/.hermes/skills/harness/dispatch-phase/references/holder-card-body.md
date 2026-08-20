@@ -75,9 +75,9 @@ Argv: **`--kind` before the task id**. Then `kanban show` must report
    (M4 `--parent` every story child, not this holder). Then
    `python3 .hermes/skills/harness/dispatch-phase/scripts/assert-m3-child-skills.py /projects/modernized --holder-id "$HERMES_KANBAN_TASK"`
    must exit 0 **before** `kanban_complete`. DAG-shaped is not enough.
-   Then issue the M3 brief-identity gate-record
-   (`issue-m3-brief-identity-ack.py --task-id <ack_gate_id>`) and
-   `kanban_complete` the ack_gate on PASS. Complete this holder **only if**
+   Then issue the M3 brief-identity gate-record:
+   `python3 .hermes/skills/harness/enforce-authority-boundary/scripts/issue-m3-brief-identity-ack.py /projects/modernized --task-id <ack_gate_id>`
+   and `kanban_complete` the ack_gate on PASS. Complete this holder **only if**
    that issuer is green **and** no child title starts with `M4` or `M5`.
    Otherwise block `--kind needs_input`.
 
