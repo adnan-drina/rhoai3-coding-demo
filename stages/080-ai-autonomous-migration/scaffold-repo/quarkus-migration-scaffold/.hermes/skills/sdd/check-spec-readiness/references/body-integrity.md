@@ -21,6 +21,7 @@ An artefact says what it says; nobody edits it afterwards without a typed path.
 - Amend must not **silently drop** constraints (constraints-preservation-on-amend).
 - Digest ownership is the story's **own sidecar** (body-digest-own-story).
 - Mint rule: **preserve ≠ invent** (mint-completeness-constraints).
-- Cross-assert **card↔sidecar** digests (card-sidecar-digest-cross-assert).
-  Re-stamp is atomic (restamp-card-and-sidecar-atomically).
+- Cross-assert **card↔sidecar↔file** digests (card-sidecar-digest-cross-assert).
+  Re-stamp is atomic (restamp-card-and-sidecar-atomically). Live
+  `hermes kanban show --json` nests markdown under `task.body` (V35-DIGEST).
 - F2 receipts use schema `rhoai3.injection-receipt/v1`.

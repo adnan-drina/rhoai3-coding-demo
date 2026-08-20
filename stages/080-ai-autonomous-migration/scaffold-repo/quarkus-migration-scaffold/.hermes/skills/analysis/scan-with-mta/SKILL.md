@@ -98,7 +98,10 @@ What it does, in order (each step dies non-zero on failure):
    `evidence/findings-handoff.json` (`rhoai3.findings-handoff/v1`: rule IDs,
    category, bounded `description`, `disposition`, loci, digests — **no**
    `codeSnip`), then `check-findings-handoff.py <root>` as the gate.
-   Schema lives with this skill (`check-findings-handoff.py`; no `governance/` folder).
+   Then `emit-required-extensions.py <root>` → `evidence/required-extensions.json`
+   (T-3 rewrite of named Quarkus targets + legacy pom artifactIds; never
+   `quarkus-spring-*`). Schema lives with this skill (`check-findings-handoff.py`;
+   no `governance/` folder).
 
 Defaults: `MTA_OUT_DIR=evidence/mta`,
 `MTA_JSON_OUT=evidence/mta-findings.json`, both under the project root.
@@ -183,6 +186,9 @@ Both are required environment facts, not optional tuning.
   `opaque:` description not dispositioned as opaque/needs_review.
   Exit 1 = typed BLOCK (product/gate residue); exit 2 = harness path defect —
   do not paper over it.
+- `evidence/required-extensions.json` is present after emit (V35-EXTENSIONS).
+  ArtifactIds are T-3 native Quarkus targets (hibernate-orm, not
+  quarkus-spring-data-jpa). Empty list is valid; missing file is not.
 - Silent-failure catch: `violations` = `{}` (handoff gate reports
   `handoff.rules empty`) or an empty `rule_set` means targets never expanded or
   the analyzer produced nothing — treat as INCONCLUSIVE, not "clean".

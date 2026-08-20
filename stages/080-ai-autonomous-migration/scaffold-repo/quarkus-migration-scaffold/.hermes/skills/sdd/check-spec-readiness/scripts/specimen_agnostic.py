@@ -976,6 +976,9 @@ def refs_path_sha_errors(
 # jdbc drivers. /repository/jdbc/ → [] (JdbcTemplate often needs no extension).
 _REST_EXTENSIONS = ("quarkus-rest", "quarkus-rest-jackson")
 _JPA_EXTENSIONS = ("quarkus-hibernate-orm",)
+_GENERATOR_PLUGIN = "openapi-generator-maven-plugin"
+REQUIRED_EXTENSIONS_REL = "evidence/required-extensions.json"
+_SPEC_NAMES = ("api-docs.yml", "api-docs.yaml", "openapi.yml", "openapi.yaml", "openapi.json")
 
 
 def body_scope_paths(body: dict) -> list[str]:
@@ -1001,16 +1004,65 @@ def writes_pom_xml(body: dict) -> bool:
 
 
 def declared_extensions_for_paths(paths: list[str]) -> list[str]:
-    """T-3 path heuristic → sorted unique artifactIds. Empty = none."""
+    """T-3 path heuristic → sorted unique artifactIds. Empty = none.
+
+    Dest layouts use entity/ and resource/ (not only repository/jpa and /rest/).
+    /repository/jdbc/ stays [] (JdbcTemplate often needs no extension).
+    """
     found: set[str] = set()
     for raw in paths:
         p = (raw or "").replace("\\", "/").lower()
         base = p.rsplit("/", 1)[-1]
-        if "/rest/" in p or base.endswith("restcontroller.java"):
+        if "/repository/jdbc/" in p or "/jdbc/" in p:
+            continue
+        if (
+            "/rest/" in p
+            or "/resource/" in p
+            or base.endswith("restcontroller.java")
+            or base.endswith("resource.java")
+        ):
             found.update(_REST_EXTENSIONS)
-        if "/repository/jpa/" in p or "/springdatajpa/" in p:
+        if (
+            "/repository/jpa/" in p
+            or "/springdatajpa/" in p
+            or "/entity/" in p
+            or "/repository/" in p
+            or "entity" in base
+        ):
             found.update(_JPA_EXTENSIONS)
+        if base in _SPEC_NAMES or (
+            base.endswith((".yml", ".yaml", ".json"))
+            and any(tok in base for tok in ("api-docs", "openapi", "swagger"))
+        ):
+            found.add(_GENERATOR_PLUGIN)
     return sorted(found)
+
+
+def load_required_extensions(root: Path | None) -> list[str]:
+    """Read M1 evidence/required-extensions.json. Missing file → []."""
+    if root is None:
+        return []
+    p = Path(root) / REQUIRED_EXTENSIONS_REL
+    if not p.is_file():
+        return []
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    raw = data.get("extensions") if isinstance(data, dict) else None
+    if not isinstance(raw, list):
+        return []
+    out: list[str] = []
+    for item in raw:
+        if not isinstance(item, str) or not item.strip():
+            continue
+        s = item.strip()
+        if ":" in s or "/" in s:
+            continue
+        if s.startswith("quarkus-spring-"):
+            continue
+        out.append(s)
+    return sorted(set(out))
 
 
 def parse_extensions_declared(identity: dict) -> tuple[list[str] | None, str | None]:
@@ -1041,22 +1093,26 @@ def extensions_union(declared_lists: list[list[str]]) -> list[str]:
     return sorted(found)
 
 
-def stamp_dd3_extensions(bodies: list[dict]) -> None:
+def stamp_dd3_extensions(bodies: list[dict], *, root: Path | None = None) -> None:
     """Stamp declared on every body; apply on the sole pom.xml writer.
 
-    Raises ValueError unless exactly one writer. Non-writers must not carry
+    The pom writer also declares M1 required-extensions.json (when present)
+    so check-kanban-body apply == sibling union still holds. Raises
+    ValueError unless exactly one writer. Non-writers must not carry
     extensions_apply (key absent, not []).
     """
     if not bodies:
         raise ValueError("stamp_dd3_extensions: no bodies")
+    m1 = load_required_extensions(root)
     declared_lists: list[list[str]] = []
     for body in bodies:
         ident = body.setdefault("identity", {})
         if not isinstance(ident, dict):
             raise ValueError("stamp_dd3_extensions: identity must be an object")
-        ident["extensions_declared"] = declared_extensions_for_paths(
-            body_scope_paths(body)
-        )
+        declared = declared_extensions_for_paths(body_scope_paths(body))
+        if writes_pom_xml(body) and m1:
+            declared = extensions_union([declared, m1])
+        ident["extensions_declared"] = declared
         ident.pop("extensions_apply", None)
         declared_lists.append(list(ident["extensions_declared"]))
     writers = [b for b in bodies if writes_pom_xml(b)]

@@ -7,13 +7,14 @@
 
 ## Phase 2: Foundational (Blocking Prerequisites)
 
-- [ ] T002 Create Foo in src/main/java/com/demo/Foo.java
+- [ ] T002 Create FooEntity in src/main/java/com/demo/FooEntity.java
 
 ## Phase 3: User Story 1 - Foo (Priority: P1)
 
-**Independent Test**: GET /api/foo returns 200
+**Independent Test**: GET /api/foo returns 200; `@QuarkusTest` in `src/test/java/com/demo/resource/FooResourceTest.java`
 
 - [ ] T003 [US1] Create FooResource JAX-RS class with @Path("/api/foo") in src/main/java/com/demo/resource/FooResource.java
+- [ ] T003b [US1] Create FooResourceTest in src/test/java/com/demo/resource/FooResourceTest.java
 
 ## Phase 4: Polish & Cross-Cutting Concerns
 

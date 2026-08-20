@@ -86,20 +86,27 @@ Do **not** pin `check-spec-readiness` on the holder until story bodies exist.
      Then title then markdown (two commands, this story only):
      `python3 .hermes/skills/harness/dispatch-phase/scripts/compose-m3-card-markdown.py --root /projects/modernized --body evidence/bodies/m3-{story_id}.json --print-title`
      `python3 .hermes/skills/harness/dispatch-phase/scripts/compose-m3-card-markdown.py --root /projects/modernized --body evidence/bodies/m3-{story_id}.json`
-   - `kanban_create` with skills, `initial_status=blocked` /
-     `--initial-status blocked` (**not** the park protection — Architect
-     `113650Z`; the unfinished `ack_gate` parent is), `idempotency_key`,
+   -      `kanban_create` with skills, `initial_status=todo` /
+     `--initial-status todo` (**not** the park protection — Architect
+     `113650Z` / V35-CREATE-STATUS; the unfinished `ack_gate` parent is), `idempotency_key`,
      `workspace_kind=dir`,
      `workspace_path`, `max_runtime_seconds` **and** `max_retries` (native
      `kanban_create --max-runtime` / `--max-retries`; read both from
      `read-phase-dispatch.py`), `assignee=default`,
-     `created-by` / `created_by` = holder id, `--parent REQUIRED` twice
-     (holder + ack_gate), parents **`[holder, ack_gate]`** (gate is a
+     `created-by` / `created_by` = holder id, `--parent REQUIRED` for
+     holder + ack_gate **plus** each resolved `identity.parents` task id
+     from `created-story-cards.json` (V35-SERIAL; create order is already
+     setup → foundational → US*). Resolve with:
+     `python3 .hermes/skills/harness/dispatch-phase/scripts/resolve-story-parent-ids.py --root /projects/modernized --body evidence/bodies/m3-{story_id}.json`
+     REFUSE create if that script exits non-zero (parent story not minted
+     yet). Parents **`[holder, ack_gate, …identity.parents]`** (gate is a
      parent, not a holder-child). Snapshot this new id (After create).
      Immediately:
      `python3 .hermes/skills/harness/dispatch-phase/scripts/assert-story-parked.py /projects/modernized --task-id <id> --ack-gate <ack_gate_id>`
+     plus `--expect-parent <id>` once per resolved identity parent.
      One `OK:` / `REFUSE:` line. Refuse unless `status=todo` (not
-     `ready`/`running`) **and** `parents` include the unfinished `ack_gate`.
+     `ready`/`running`) **and** `parents` include the unfinished `ack_gate`
+     and those identity parents.
      OBJECT requiring story `status==blocked`. Do **not** `kanban show --json`.
      Then:
      `python3 .hermes/skills/harness/dispatch-phase/scripts/assert-m3-child-skills.py /projects/modernized --task-id <id> --body evidence/bodies/m3-{story_id}.json`
@@ -146,8 +153,10 @@ Holder complete must not `recompute_ready` the gate (`173800Z`).
 - skills: `check-spec-readiness` (non-empty; bare create OBJECT)
 - body: wait for Deputy/Operator `kanban_complete`; do not implement dest code
 
-Story children parents: **`[holder, ack_gate]`**. Create-time `blocked`
-is not sticky; the incomplete gate parent holds them. Sticky-block is
+Story children parents: **`[holder, ack_gate, …identity.parents]`**.
+Create-time `blocked` is not sticky and is **forbidden** on story cards
+(V35-CREATE-STATUS). The incomplete gate parent holds them until grant;
+`identity.parents` holds them until those stories are `done`. Sticky-block is
 **only** for the gate (OBJECT Option B on story cards).
 
 Deputy/Operator grant = `kanban_complete` on the **blocked** gate
@@ -274,9 +283,11 @@ after create to chase this (`192117Z`).
 
 - Immediately after each story `kanban_create`:
   `python3 .hermes/skills/harness/dispatch-phase/scripts/assert-story-parked.py /projects/modernized --task-id <id> --ack-gate <ack_gate_id>`
+  plus `--expect-parent` for each resolved `identity.parents` id.
   Refuse unless `status=todo` (not `ready`/`running`) **and**
-  `parents` include the unfinished `ack_gate`. `initial_status` is **not**
-  the protection (`113650Z`). OBJECT story `status==blocked`. Do **not**
+  `parents` include the unfinished `ack_gate` and those identity parents.
+  `initial_status` is **not** the protection (`113650Z` / V35-CREATE-STATUS).
+  OBJECT story `status==blocked`. Do **not**
   `kanban show --json`. Do **not** grow `handover-mint.py` for this (1088 freeze).
 - Immediately after each `kanban_create` (ack_gate skip write-set cache;
   every **story** id), emit dest write-set **cache** (not fence policy):
@@ -300,9 +311,10 @@ after create to chase this (`192117Z`).
 
   Hermes has no create-hook. Absence is silent (`|| true`); this text is
   the contract (`182330Z`). Do **not** run this as a pre-create gate.
-- Prove each new id has both parent links (holder + ack_gate) via
-  `read-link-graph.py --expect-parent`.
-- Status must be `blocked` or `triage` (`PARK_AT_BIRTH`). `ready`/`todo`/`running` is refuse.
+- Prove each new id has parent links (holder + ack_gate + identity.parents)
+  via `read-link-graph.py --expect-parent`.
+- Status must be `todo` (`PARK_AT_BIRTH` / V35-CREATE-STATUS). `ready`/`running`/`blocked` is refuse.
+  Sticky-block **only** the ack_gate.
 - **Card-contract assert:** `hermes kanban show <id>` markdown must contain
   `evidence/bodies/m3-`, a 64-hex, `m3-implementer-standing.md`, and
   `check-body-digest-match.py --expect`. Skills on the card must equal
@@ -332,7 +344,7 @@ after create to chase this (`192117Z`).
 - Holder pre-complete: `python3 .hermes/skills/harness/dispatch-phase/scripts/assert-m3-child-skills.py /projects/modernized --holder-id "$HERMES_KANBAN_TASK"`
   then for every story child,
   `python3 .hermes/skills/harness/record-run-evidence/scripts/assert-card-body-digest-match.py . --task-id <id> --body evidence/bodies/m3-{story_id}.json`
-  — card-digest == sidecar-digest or refuse complete. DAG-only success is refuse.
+  — card-digest == sidecar-digest == file or refuse complete (V35-DIGEST). DAG-only success is refuse.
 - Emit unsigned `evidence/acks/ack-request-<story>.yaml` for the record;
   **unpark is still completing `ack_gate`**, not signing the file.
 - Run `assert-m2b-created-cards-claim.sh` (partition set equality) after

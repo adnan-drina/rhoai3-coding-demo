@@ -2,6 +2,21 @@
 # Typed negative for v30 CLI="$(ensure_cli)" poison: with kantra cached,
 # stdout must be exactly one executable path (no newlines, no status text).
 set -euo pipefail
+case "${1:-}" in
+  -h|--help)
+    cat <<'USAGE'
+assert-ensure-cli-path.sh — cached kantra ensure_cli must print one path.
+
+Runs a temp-tree probe (no cluster). Exit 0 only after the gate assertions.
+Do not treat --help as a PASS.
+
+Usage:
+  bash assert-ensure-cli-path.sh
+  bash assert-ensure-cli-path.sh --help
+USAGE
+    exit 0
+    ;;
+esac
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=mta-analyze-legacy.sh
 # Cannot source the full analyzer (it runs analyze). Re-play ensure_cli

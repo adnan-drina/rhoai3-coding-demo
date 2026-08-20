@@ -125,6 +125,7 @@ def main() -> int:
             "evidence/entry-point-inventory.json",
             "evidence/type-inventory.json",
             "evidence/mta-findings.json",
+            "evidence/required-extensions.json",
         )
         for rel in required:
             if rel.endswith(" (after M2)") or rel.startswith("OPTIONAL:"):

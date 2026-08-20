@@ -255,12 +255,15 @@ python3 "$(cd "$(dirname "$0")" && pwd)/emit-findings-handoff.py" "${ROOT}" "${J
   || die "emit findings-handoff failed (governance/schemas/findings-handoff.md)"
 python3 "$(cd "$(dirname "$0")" && pwd)/check-findings-handoff.py" "${ROOT}" \
   || die "findings-handoff gate failed after emit"
+python3 "$(cd "$(dirname "$0")" && pwd)/emit-required-extensions.py" "${ROOT}" \
+  || die "emit required-extensions failed (V35-EXTENSIONS; M1 must emit the set)"
 
 HANDOFF="${ROOT}/evidence/findings-handoff.json"
+REQUIRED_EXT="${ROOT}/evidence/required-extensions.json"
 STATIC_REPORT="${OUT_DIR}/static-report/index.html"
 COVERAGE="${OUT_DIR}/rules-coverage.json"
-HUMAN="OK: findings → ${JSON_OUT}  handoff → ${HANDOFF}  coverage → ${COVERAGE}  report → ${OUT_DIR}"
-emit_ok "${HUMAN}" "$(python3 - "${JSON_OUT}" "${HANDOFF}" "${OUT_DIR}" "${ANALYZE_INPUT}" "${COVERAGE}" "${STATIC_REPORT}" <<'PY'
+HUMAN="OK: findings → ${JSON_OUT}  handoff → ${HANDOFF}  required-extensions → ${REQUIRED_EXT}  coverage → ${COVERAGE}  report → ${OUT_DIR}"
+emit_ok "${HUMAN}" "$(python3 - "${JSON_OUT}" "${HANDOFF}" "${OUT_DIR}" "${ANALYZE_INPUT}" "${COVERAGE}" "${STATIC_REPORT}" "${REQUIRED_EXT}" <<'PY'
 import json, os, sys
 print(json.dumps({
     "script": "mta-analyze-legacy",
@@ -272,6 +275,8 @@ print(json.dumps({
     "rules_coverage": sys.argv[5],
     "static_report": sys.argv[6],
     "static_report_present": os.path.isfile(sys.argv[6]),
+    "required_extensions": sys.argv[7],
+    "required_extensions_present": os.path.isfile(sys.argv[7]),
 }))
 PY
 )"

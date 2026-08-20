@@ -17,6 +17,44 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 SCHEMA = "rhoai3.complete-exit-ok/v1"
+_DEST_POM_REL = (
+    Path(".hermes")
+    / "skills"
+    / "sdd"
+    / "check-spec-readiness"
+    / "scripts"
+    / "assert-dest-pom-extensions.py"
+)
+_DEST_POM_FROM_SKILLS = (
+    Path("sdd")
+    / "check-spec-readiness"
+    / "scripts"
+    / "assert-dest-pom-extensions.py"
+)
+
+
+def _locate_dest_pom_extensions_script(root: Path) -> Path:
+    """Seat copy first; else walk from this file to the skills tree.
+
+    Do not use Path.parents[N] (SR-2). Fixtures often have no dest .hermes copy.
+    One dest-pom predicate; generator configuration is a case of it.
+    """
+    in_root = root / _DEST_POM_REL
+    if in_root.is_file():
+        return in_root
+    here = Path(__file__).resolve().parent
+    d = here
+    while True:
+        from_skills = d / _DEST_POM_FROM_SKILLS
+        if from_skills.is_file():
+            return from_skills
+        seat = d / _DEST_POM_REL
+        if seat.is_file():
+            return seat
+        parent = d.parent
+        if parent == d:
+            return in_root
+        d = parent
 
 
 def main() -> int:
@@ -191,6 +229,32 @@ def main() -> int:
                 file=sys.stderr,
             )
             return 1 if sub.returncode == 1 else sub.returncode
+
+    dest_pom = _locate_dest_pom_extensions_script(Path(root))
+    if dest_pom.is_file():
+        sub = subprocess.run(
+            [
+                sys.executable,
+                str(dest_pom),
+                str(root),
+                "--body",
+                str(body),
+            ],
+            text=True,
+            capture_output=True,
+        )
+        sys.stdout.write(sub.stdout or "")
+        sys.stderr.write(sub.stderr or "")
+        if sub.returncode != 0:
+            print(
+                f"FAIL: refuse kanban_complete — dest-pom-extensions rc={sub.returncode} "
+                f"(V35-EXTENSIONS dest-only; generator is a case; do not union legacy)",
+                file=sys.stderr,
+            )
+            return 1 if sub.returncode == 1 else sub.returncode
+    else:
+        print(f"FAIL: missing dest-pom-extensions script: {dest_pom}", file=sys.stderr)
+        return 2
 
     phase = ""
     try:

@@ -47,6 +47,9 @@ _STAMP = _find_under_skills(
 _CLOSURE = _find_under_skills(
     "sdd", "check-spec-readiness", "scripts", "assert-dependency-closure.py"
 )
+_UPTAKE = _find_under_skills(
+    "sdd", "check-spec-readiness", "scripts", "assert-tasks-generator-uptake.py"
+)
 
 
 def _sha(path: Path) -> str | None:
@@ -245,6 +248,30 @@ def _run_type_inventory_coverage(modern: Path) -> int:
     return 0
 
 
+def _run_generator_uptake(modern: Path, tasks: Path) -> int:
+    if not _UPTAKE.is_file():
+        print("FAIL: missing assert-tasks-generator-uptake.py", file=sys.stderr)
+        return 1
+    proc = subprocess.run(
+        [
+            sys.executable,
+            str(_UPTAKE),
+            str(modern),
+            "--tasks",
+            str(tasks),
+        ],
+        cwd=str(modern),
+        capture_output=True,
+        text=True,
+    )
+    sys.stdout.write(proc.stdout or "")
+    sys.stderr.write(proc.stderr or "")
+    if proc.returncode != 0:
+        print("FAIL: M2-UPTAKE generated types without plugin token in tasks.md", file=sys.stderr)
+        return 1
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("root")
@@ -330,6 +357,9 @@ def main() -> int:
         tic = _run_type_inventory_coverage(modern)
         if tic != 0:
             return tic
+        uptake = _run_generator_uptake(modern, tasks)
+        if uptake != 0:
+            return uptake
         tc = _run_type_closure(modern)
         if tc != 0:
             return tc

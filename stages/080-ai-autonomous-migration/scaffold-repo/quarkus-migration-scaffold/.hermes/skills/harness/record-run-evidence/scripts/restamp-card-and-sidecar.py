@@ -67,6 +67,26 @@ def replace_digests(text: str, olds: set[str], new: str) -> str:
     return out
 
 
+def card_markdown_from_show(doc: object) -> str:
+    """Live hermes kanban show --json nests markdown under task.body (V35-DIGEST)."""
+    if not isinstance(doc, dict):
+        raise RuntimeError("kanban show JSON must be an object")
+    body = doc.get("body")
+    if isinstance(body, str) and body.strip():
+        return body
+    task = doc.get("task")
+    if isinstance(task, dict):
+        nested = task.get("body")
+        if isinstance(nested, str) and nested.strip():
+            return nested
+        if isinstance(nested, dict):
+            for key in ("markdown", "text", "content", "body"):
+                val = nested.get(key)
+                if isinstance(val, str) and val.strip():
+                    return val
+    raise RuntimeError("kanban show missing body (looked at body and task.body)")
+
+
 def read_card_body_hermes(task_id: str) -> str:
     proc = subprocess.run(
         ["hermes", "kanban", "show", task_id, "--json"],
@@ -79,10 +99,7 @@ def read_card_body_hermes(task_id: str) -> str:
             f"hermes kanban show {task_id} rc={proc.returncode} {proc.stderr.strip()}"
         )
     doc = json.loads(proc.stdout)
-    body = doc.get("body")
-    if not isinstance(body, str):
-        raise RuntimeError(f"kanban show {task_id} missing body")
-    return body
+    return card_markdown_from_show(doc)
 
 
 def write_card_body_hermes(task_id: str, markdown: str) -> None:

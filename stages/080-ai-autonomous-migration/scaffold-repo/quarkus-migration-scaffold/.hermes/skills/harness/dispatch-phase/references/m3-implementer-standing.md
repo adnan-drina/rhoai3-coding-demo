@@ -88,11 +88,13 @@ in Reasoning before first related dest write.
 - Do NOT bulk-read all files_in_scope in one turn — migrate file-by-file.
 - Record pre/post write-set digests under `evidence/runs/` (`rhoai3.run-journal/v1`).
 - **DD3 declare/apply/own:** every story stamps `identity.extensions_declared`
-  (Quarkus extension artifactIds; empty = none). Only the sole `pom.xml`
-  writer applies `identity.extensions_apply` (sorted unique union of all
-  stories, including unminted). Later stories do not write `pom.xml`. Do
+  (Quarkus extension artifactIds; empty = none). The sole `pom.xml` writer
+  also declares M1 `evidence/required-extensions.json` (T-3 native rewrite)
+  and applies `identity.extensions_apply` (sorted unique union of all
+  stories, including that set). Later stories do not write `pom.xml`. Do
   not pre-provision a fixed hibernate/validator/flyway/jdbc menu on
-  foundation. R-M3.5/7 persistence BOM handoff is **retired**.
+  foundation — the required set is M1 emission, not a canned list.
+  R-M3.5/7 persistence BOM handoff is **retired**.
 - On typed `dependency_wait`: stamp/hold via `apply-dependency-wait-hold.py`;
   escalate `Needs: Lead:fix-upstream-pom`. Do not soft-promote or OOS-edit pom.
 - Security stories: hard `skill_view` `security-config.md` +

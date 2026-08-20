@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """After kanban_create: one-line park assert from sqlite (no show --json).
 
-Refuse unless status=todo and parents include the unfinished ack_gate.
+Refuse unless status=todo and parents include the unfinished ack_gate
+plus any --expect-parent ids (V35-SERIAL identity.parents).
 Do not print the card body or files_writable.
 
 Usage:
   python3 assert-story-parked.py /projects/modernized \\
-    --task-id t_xxx --ack-gate t_yyy
+    --task-id t_xxx --ack-gate t_yyy [--expect-parent t_zzz]...
 """
 from __future__ import annotations
 
@@ -29,6 +30,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("root", nargs="?", default=".")
     ap.add_argument("--task-id", required=True)
     ap.add_argument("--ack-gate", required=True)
+    ap.add_argument("--expect-parent", action="append", default=[], metavar="ID")
     args = ap.parse_args(argv)
     root = Path(args.root).resolve()
     db = kanban_db(root)
@@ -61,7 +63,12 @@ def main(argv: list[str] | None = None) -> int:
     if args.ack_gate not in parents:
         print(f"REFUSE: {args.task_id} parents missing ack_gate {args.ack_gate}")
         return 1
-    print(f"OK: parked {args.task_id} status=todo")
+    for pid in args.expect_parent:
+        if pid not in parents:
+            print(f"REFUSE: {args.task_id} parents missing identity parent {pid}")
+            return 1
+    extra = f" identity_parents={args.expect_parent}" if args.expect_parent else ""
+    print(f"OK: parked {args.task_id} status=todo{extra}")
     return 0
 
 

@@ -132,6 +132,7 @@ Single Maven module: `src/main/java/com/demo/`, `src/test/java/com/demo/`, `src/
 - [ ] T063 [US2] Add POST/PUT/DELETE to `PetTypeResource` (@POST returns 201, @PUT returns 200, @DELETE returns 200; @Transactional for mutations)
 - [ ] T064 [US2] Add POST/PUT/DELETE to `SpecialtyResource` (@POST returns 201, @PUT returns 200, @DELETE returns 200; @Transactional for mutations)
 - [ ] T065 [US2] Implement `UserResource` in `src/main/java/com/demo/resource/UserResource.java` (@Path("/api/users"), POST to create owner via user endpoint per legacy `UserRestController#addOwner`)
+- [ ] T065b [US2] Create `UserResourceTest` in `src/test/java/com/demo/resource/UserResourceTest.java` (@QuarkusTest, POST /api/users)
 
 **Checkpoint**: All 34 endpoints fully functional (GET + POST/PUT/DELETE). `mvn -q clean test` passes with ≥80% coverage. Cascade deletes verified.
 

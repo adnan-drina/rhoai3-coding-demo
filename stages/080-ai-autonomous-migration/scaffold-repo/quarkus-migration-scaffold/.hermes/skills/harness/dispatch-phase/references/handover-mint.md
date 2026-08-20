@@ -75,12 +75,16 @@ status (0.4). Worktrees do **not** relax the unique `pom.xml` owner.
 
 ## Oracle stamps
 
-`stamp_oracles` defaults REST-ish stories to `http_semantics`. Mixed
-`rest`+`test` **keep** `http_semantics` (US stories that ship tests).
+`stamp_oracles` uses one total `exit_for(operand_class, proves)` map
+(V35-ORACLE-REST). Mixed `rest`+`test` **keep** `http_semantics`.
 Test-only (no `rest` — polish) stamps `test_suite_runs` with
-`cmd: mvn -q test` (Architect `E-20260819T155354Z` / Operator
-`E-20260819T155515Z`). Persistence-only stays `mapping_valid`. Do **not**
-dest-rewrite a body to paper over a missing ladder branch.
+`cmd: mvn -q test`. Persistence-without-rest stamps `mapping_valid`
+(`mvn -q test` when a proving test is in-set, else `mvn -q test-compile`
+— compile is not a discriminating vehicle for that check).
+`build_config` stamps `build_resolves`. Rest without a test path is
+`ORACLE_UNMAPPED` / `PHASE_AC` — not a silent compile stamp. Unmapped
+combinations refuse at assembly. Do **not** dest-rewrite a body to paper
+over a missing ladder branch.
 
 `stamp-body-dependencies.py` assigns inheritance-reachable unowned dest
 twins onto the owning story's partition frame (Architect `E-20260819T165142Z`
@@ -100,7 +104,7 @@ specimen types.
 | File in two write-sets (not pom) | *not a mint refuse while serial* (`131858Z`); restore in-flight when C-1(a) is claimed |
 | HTTP entry point with no owner | `endpoints_uncovered` |
 | User-story phase with no Independent Test heading | `PHASE_AC` |
-| User-story phase whose Independent Test is prose (no test path in write-set) | *not a mint refuse* (`133449Z`); Spec Kit tests are optional; stamp `build_resolves` |
+| User-story phase whose Independent Test is prose (no test path in write-set) | `ORACLE_UNMAPPED` / `PHASE_AC` when `rest` is in operand_class (V35-ORACLE-REST); do not stamp `build_resolves` |
 | Path-A `partition.json` already on disk | `PATH_A_PARTITION` |
 | FIS / dual-stack over cap | `BODY_SIZE` (R-V14.4 — split the phase, do not raise the wall) |
 | `handover-mint.py --parent` of a `done` card | `PARENT_DONE` (HKN-2) — refused; holder session follows `mint-m3-hermes.md` |

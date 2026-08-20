@@ -6,7 +6,7 @@
 
 ## Phase 2: Foundational (Blocking Prerequisites)
 
-- [ ] T004 Configure src/main/java/app/PersistenceConfig.java
+- [ ] T004 Configure src/main/java/app/OwnerEntity.java
 
 ## Phase 3: User Story 1 - List owners (Priority: P1)
 

@@ -20,6 +20,7 @@ REQUIRED = (
     "evidence/entry-point-inventory.json",
     "evidence/mta-findings.json",
     "evidence/findings-handoff.json",
+    "evidence/required-extensions.json",
 )
 
 

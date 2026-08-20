@@ -21,8 +21,9 @@ fail-closed except creation-time ack keys). SR-13/L2a: a test-shaped `mvn … te
 card exits. Assembler copies test paths already in `files_writable`
 onto `proves`; it does not invent a test file (L4). DD3: every story
 gets identity.extensions_declared
-(T-3 path heuristic); the sole pom.xml writer gets identity.extensions_apply
-= sorted unique union. Non-writers omit extensions_apply (key absent).
+(T-3 path heuristic); the sole pom.xml writer also declares M1
+evidence/required-extensions.json so apply is the sibling union
+(including that set). Non-writers omit extensions_apply (key absent).
 
 Does not mint. Does not dispatch a worker.
 
@@ -438,7 +439,7 @@ def main() -> int:
         return 1
 
     try:
-        stamp_dd3_extensions([body for _, body in assembled])
+        stamp_dd3_extensions([body for _, body in assembled], root=root)
     except ValueError as exc:
         print(f"FAIL: {exc}", file=sys.stderr)
         return 1

@@ -23,3 +23,5 @@ gate. After handoff rc=0 the verifier runs
 `python3 .hermes/skills/harness/enforce-authority-boundary/scripts/issue-m1-findings-ack.py`
 (`acknowledged_by: gate:check-findings-handoff`, Architect `121859Z`).
 Unasserted residue → `needs_input`. **M3 brief-identity** stays Operator.
+M1 must also emit `evidence/required-extensions.json` (V35-EXTENSIONS;
+verifier refuses if the file is missing).

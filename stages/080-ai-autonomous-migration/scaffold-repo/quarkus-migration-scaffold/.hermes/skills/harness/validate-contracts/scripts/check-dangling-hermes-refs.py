@@ -35,6 +35,7 @@ ALLOW_EXACT = frozenset(
         "evidence/entry-point-inventory.json",
         "evidence/type-inventory.json",
         "evidence/findings-handoff.json",
+        "evidence/required-extensions.json",
         "evidence/mta-findings.json",
         "evidence/mutation-evidence.json",
         "evidence/parity.json",

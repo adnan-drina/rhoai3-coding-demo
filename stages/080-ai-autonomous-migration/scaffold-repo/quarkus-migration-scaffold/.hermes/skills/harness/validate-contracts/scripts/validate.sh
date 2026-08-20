@@ -1369,6 +1369,15 @@ if declared_extensions_for_paths(["pom.xml", "src/main/resources/application.pro
 if declared_extensions_for_paths(["src/main/java/org/x/repository/jdbc/VisitJdbc.java"]):
     print("FAIL: jdbc path must declare [] (T-3 JdbcTemplate)", file=sys.stderr)
     raise SystemExit(1)
+got_ent = declared_extensions_for_paths(
+    [
+        "src/main/java/com/demo/entity/Owner.java",
+        "src/main/java/com/demo/resource/PetResource.java",
+    ]
+)
+if got_ent != ["quarkus-hibernate-orm", "quarkus-rest", "quarkus-rest-jackson"]:
+    print(f"FAIL: entity/resource heuristic got {got_ent}", file=sys.stderr)
+    raise SystemExit(1)
 print("OK: T-3 declared_extensions_for_paths")
 pom = {
     "task_id": "t_aaaaaaaa",
@@ -1407,6 +1416,51 @@ else:
     print("FAIL: two pom writers should refuse", file=sys.stderr)
     raise SystemExit(1)
 print("OK: stamp_dd3_extensions union + sole writer")
+# M1 required-extensions union onto pom writer declared (apply == sibling union)
+req = kb / "evidence" / "required-extensions.json"
+req.parent.mkdir(parents=True, exist_ok=True)
+req.write_text(
+    json.dumps({
+        "schema": "rhoai3.required-extensions/v1",
+        "extensions": ["quarkus-hibernate-orm", "quarkus-hibernate-validator"],
+    })
+    + "\n"
+)
+pom_m1 = {
+    "task_id": "t_setupm1",
+    "identity": {"story_id": "setup"},
+    "files_writable": ["pom.xml"],
+    "files_in_scope": ["pom.xml"],
+}
+rest_m1 = {
+    "task_id": "t_restm1",
+    "identity": {"story_id": "US1"},
+    "files_writable": ["src/main/java/org/x/rest/PetResource.java"],
+    "files_in_scope": ["src/main/java/org/x/rest/PetResource.java"],
+}
+stamp_dd3_extensions([pom_m1, rest_m1], root=kb)
+want_apply = [
+    "quarkus-hibernate-orm",
+    "quarkus-hibernate-validator",
+    "quarkus-rest",
+    "quarkus-rest-jackson",
+]
+if pom_m1["identity"]["extensions_declared"] != [
+    "quarkus-hibernate-orm",
+    "quarkus-hibernate-validator",
+]:
+    print(
+        f"FAIL: pom declared with M1 {pom_m1['identity']['extensions_declared']}",
+        file=sys.stderr,
+    )
+    raise SystemExit(1)
+if pom_m1["identity"]["extensions_apply"] != want_apply:
+    print(
+        f"FAIL: apply with M1 {pom_m1['identity'].get('extensions_apply')}",
+        file=sys.stderr,
+    )
+    raise SystemExit(1)
+print("OK: stamp_dd3_extensions unions M1 required-extensions onto pom writer")
 PY
 # missing extensions_declared on pom writer
 python3 - "${kb_tmp}" <<'PY'
@@ -2558,6 +2612,176 @@ else
   rc=1
 fi
 rm -rf "${rs_tmp}"
+
+# V35-DIGEST nested task.body + sidecar↔file triple
+python3 - "${SKILLS}/harness/record-run-evidence/scripts" <<'PY' || rc=1
+import importlib.util
+import sys
+from pathlib import Path
+scripts = Path(sys.argv[1])
+spec = importlib.util.spec_from_file_location("restamp", scripts / "restamp-card-and-sidecar.py")
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+md = "AR-4.3 digest: " + ("a" * 64)
+got = mod.card_markdown_from_show({"task": {"body": md}})
+if got != md:
+    print(f"FAIL: nested task.body extract {got!r}", file=sys.stderr)
+    raise SystemExit(1)
+print("OK: restamp parses nested task.body")
+PY
+
+# V35-SERIAL identity.parents resolve + parked extra parent
+ser_tmp="$(mktemp -d)"
+mkdir -p "${ser_tmp}/evidence/bodies" "${ser_tmp}/evidence/derived" "${ser_tmp}/.hermes/home"
+printf '%s\n' '{"identity":{"story_id":"US1","parents":["foundational"]}}' \
+  > "${ser_tmp}/evidence/bodies/m3-US1.json"
+printf '%s\n' '{"cards":[{"id":"t_found","story_id":"foundational"}]}' \
+  > "${ser_tmp}/evidence/derived/created-story-cards.json"
+if ids="$(python3 "${SKILLS}/harness/dispatch-phase/scripts/resolve-story-parent-ids.py" \
+    --root "${ser_tmp}" --body evidence/bodies/m3-US1.json)" \
+   && [ "${ids}" = "t_found" ]; then
+  echo "OK: resolve-story-parent-ids identity.parents"
+else
+  echo "FAIL: resolve-story-parent-ids want t_found got ${ids-}" >&2
+  rc=1
+fi
+python3 - <<PY
+import sqlite3
+from pathlib import Path
+db = Path("${ser_tmp}/.hermes/home/kanban.db")
+con = sqlite3.connect(str(db))
+con.execute("create table tasks (id text, status text)")
+con.execute("create table task_links (parent_id text, child_id text)")
+con.execute("insert into tasks values ('t_us1','todo')")
+con.execute("insert into task_links values ('t_holder','t_us1')")
+con.execute("insert into task_links values ('t_gate','t_us1')")
+con.execute("insert into task_links values ('t_found','t_us1')")
+con.commit()
+PY
+if python3 "${SKILLS}/harness/dispatch-phase/scripts/assert-story-parked.py" \
+    "${ser_tmp}" --task-id t_us1 --ack-gate t_gate --expect-parent t_found \
+    | grep -q 'OK: parked t_us1'; then
+  echo "OK: assert-story-parked identity parent"
+else
+  echo "FAIL: assert-story-parked should require identity parent" >&2
+  rc=1
+fi
+rm -rf "${ser_tmp}"
+
+# V35-GEN-POST dest-only (legacy pom must not green dest) — case of V35-EXTENSIONS
+gp_tmp="$(mktemp -d)"
+mkdir -p "${gp_tmp}/src/main/resources" "${gp_tmp}/legacy"
+printf '%s\n' '{"identity":{"story_id":"setup"},"files_writable":["pom.xml","src/main/resources/api-docs.yml"]}' \
+  > "${gp_tmp}/body.json"
+printf '%s\n' '<project></project>' > "${gp_tmp}/pom.xml"
+printf '%s\n' 'openapi: 3.0.0' > "${gp_tmp}/src/main/resources/api-docs.yml"
+printf '%s\n' '<project><plugin><artifactId>openapi-generator-maven-plugin</artifactId><inputSpec>src/main/resources/api-docs.yml</inputSpec></plugin></project>' \
+  > "${gp_tmp}/legacy/pom.xml"
+if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/assert-dest-generator-configured.py" \
+    "${gp_tmp}" --body "${gp_tmp}/body.json" >/tmp/gp.out 2>/tmp/gp.err; then
+  echo "FAIL: dest pom without plugin should DEST_GENERATOR" >&2
+  cat /tmp/gp.out /tmp/gp.err >&2
+  rc=1
+elif grep -q DEST_GENERATOR /tmp/gp.err; then
+  echo "OK: GEN-POST dest pom without plugin refused (legacy ignored)"
+else
+  echo "FAIL: expected DEST_GENERATOR" >&2
+  cat /tmp/gp.out /tmp/gp.err >&2
+  rc=1
+fi
+printf '%s\n' '<project><build><plugins><plugin><artifactId>openapi-generator-maven-plugin</artifactId><inputSpec>src/main/resources/api-docs.yml</inputSpec></plugin></plugins></build></project>' \
+  > "${gp_tmp}/pom.xml"
+if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/assert-dest-generator-configured.py" \
+    "${gp_tmp}" --body "${gp_tmp}/body.json" | grep -q 'OK: dest-generator'; then
+  echo "OK: GEN-POST dest plugin + matching inputSpec"
+else
+  echo "FAIL: dest pom with plugin should pass" >&2
+  rc=1
+fi
+rm -rf "${gp_tmp}"
+
+# V35-EXTENSIONS dest pom must declare M1 required set (0 Java is irrelevant)
+ex_tmp="$(mktemp -d)"
+mkdir -p "${ex_tmp}/evidence"
+printf '%s\n' '{"identity":{"story_id":"setup","extensions_apply":["quarkus-rest","quarkus-rest-jackson"]},"files_writable":["pom.xml"]}' \
+  > "${ex_tmp}/body.json"
+printf '%s\n' '{"schema":"rhoai3.required-extensions/v1","extensions":["quarkus-hibernate-orm","quarkus-hibernate-validator","openapi-generator-maven-plugin"]}' \
+  > "${ex_tmp}/evidence/required-extensions.json"
+printf '%s\n' '<project><dependencies><dependency><artifactId>quarkus-rest</artifactId></dependency><dependency><artifactId>quarkus-rest-jackson</artifactId></dependency></dependencies></project>' \
+  > "${ex_tmp}/pom.xml"
+printf '%s\n' '<project><plugin><artifactId>openapi-generator-maven-plugin</artifactId></plugin></project>' \
+  > "${ex_tmp}/legacy-pom.xml"
+if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/assert-dest-pom-extensions.py" \
+    "${ex_tmp}" --body "${ex_tmp}/body.json" >/tmp/ex.out 2>/tmp/ex.err; then
+  echo "FAIL: REST-only dest pom should DEST_EXTENSIONS (hibernate missing)" >&2
+  cat /tmp/ex.out /tmp/ex.err >&2
+  rc=1
+elif grep -q DEST_EXTENSIONS /tmp/ex.err; then
+  echo "OK: EXTENSIONS dest REST-only pom refused (legacy plugin ignored)"
+else
+  echo "FAIL: expected DEST_EXTENSIONS" >&2
+  cat /tmp/ex.out /tmp/ex.err >&2
+  rc=1
+fi
+printf '%s\n' '<project><dependencies><dependency><artifactId>quarkus-rest</artifactId></dependency><dependency><artifactId>quarkus-rest-jackson</artifactId></dependency><dependency><artifactId>quarkus-hibernate-orm</artifactId></dependency><dependency><artifactId>quarkus-hibernate-validator</artifactId></dependency></dependencies><build><plugins><plugin><artifactId>openapi-generator-maven-plugin</artifactId><inputSpec>src/main/resources/api-docs.yml</inputSpec></plugin></plugins></build></project>' \
+  > "${ex_tmp}/pom.xml"
+if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/assert-dest-pom-extensions.py" \
+    "${ex_tmp}" --body "${ex_tmp}/body.json" | grep -q 'OK: dest pom declares'; then
+  echo "OK: EXTENSIONS dest pom with hibernate-orm + validator + generator"
+else
+  echo "FAIL: dest pom with required extensions should pass" >&2
+  rc=1
+fi
+# emit: quoted spring-data-jpa → native hibernate-orm, never quarkus-spring-*
+mkdir -p "${ex_tmp}/evidence"
+printf '%s\n' '{"schema":"rhoai3.findings-handoff/v1","rules":[{"rule_id":"springboot-jpa-to-quarkus-00000","disposition":"apply","description":"Replace the SpringBoot Data JPA artifact with Quarkus '\''spring-data-jpa'\'' extension"},{"rule_id":"springboot-di-to-quarkus-00000","disposition":"apply","description":"Replace Spring DI with Quarkus '\''spring-di'\'' extension"}],"totals":{"violations":2}}' \
+  > "${ex_tmp}/evidence/findings-handoff.json"
+printf '%s\n' '<project><dependency><artifactId>spring-boot-starter-validation</artifactId></dependency></project>' \
+  > "${ex_tmp}/legacy.xml"
+if python3 "${SKILLS}/analysis/scan-with-mta/scripts/emit-required-extensions.py" \
+    "${ex_tmp}" --handoff "${ex_tmp}/evidence/findings-handoff.json" \
+    --legacy-pom "${ex_tmp}/legacy.xml" --out "${ex_tmp}/evidence/required-extensions.json" \
+    | grep -q 'OK: required-extensions'; then
+  if grep -q quarkus-hibernate-orm "${ex_tmp}/evidence/required-extensions.json" \
+     && grep -q quarkus-hibernate-validator "${ex_tmp}/evidence/required-extensions.json" \
+     && ! grep -q quarkus-spring- "${ex_tmp}/evidence/required-extensions.json"; then
+    echo "OK: M1 emit rewrites spring-data-jpa to hibernate-orm (T-3)"
+  else
+    echo "FAIL: emit should native-rewrite JPA and not emit quarkus-spring-*" >&2
+    cat "${ex_tmp}/evidence/required-extensions.json" >&2
+    rc=1
+  fi
+else
+  echo "FAIL: emit-required-extensions should succeed" >&2
+  rc=1
+fi
+rm -rf "${ex_tmp}"
+
+# V35-M2-UPTAKE
+up_tmp="$(mktemp -d)"
+mkdir -p "${up_tmp}/evidence"
+printf '%s\n' '{"types":[{"generated":true,"name":"OwnerDto"}]}' > "${up_tmp}/evidence/type-inventory.json"
+printf '%s\n' '# no generator' > "${up_tmp}/tasks.md"
+if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/assert-tasks-generator-uptake.py" \
+    "${up_tmp}" --tasks "${up_tmp}/tasks.md" >/tmp/up.out 2>/tmp/up.err; then
+  echo "FAIL: generated types without plugin token should M2_UPTAKE" >&2
+  rc=1
+elif grep -q M2_UPTAKE /tmp/up.err; then
+  echo "OK: M2-UPTAKE refuses tasks.md without plugin token"
+else
+  echo "FAIL: expected M2_UPTAKE" >&2
+  cat /tmp/up.out /tmp/up.err >&2
+  rc=1
+fi
+printf '%s\n' 'configure openapi-generator-maven-plugin' > "${up_tmp}/tasks.md"
+if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/assert-tasks-generator-uptake.py" \
+    "${up_tmp}" --tasks "${up_tmp}/tasks.md" | grep -q 'OK: M2-UPTAKE'; then
+  echo "OK: M2-UPTAKE plugin token present"
+else
+  echo "FAIL: tasks.md with plugin token should pass" >&2
+  rc=1
+fi
+rm -rf "${up_tmp}"
 
 python3 - <<PY
 import json
@@ -4225,6 +4449,9 @@ elif ! grep -q 'CLASS-LEVEL ABSOLUTE' "${overlay}"; then
 elif ! grep -q 'evidence/type-inventory.json' "${overlay}"; then
   echo "FAIL: overlay missing M1 type-inventory path" >&2
   rc=1
+elif ! grep -q 'evidence/required-extensions.json' "${overlay}"; then
+  echo "FAIL: overlay missing M1 required-extensions path" >&2
+  rc=1
 else
   echo "OK: tip speckit overlay (clarify, no implement, no gates, M1 paths, ingress-only, class-level @Path)"
 fi
@@ -4848,6 +5075,45 @@ if (
     )
     raise SystemExit(1)
 print("OK: rest+test keeps http_semantics")
+try:
+    _us_rest = _hm.Phase(
+        heading="User Story 8",
+        kind=_hm.KIND_USER_STORY,
+        story_id="US8",
+        body="",
+        files=["src/main/java/x/RootResource.java"],
+        independent_test="Manual curl of GET /",
+    )
+    _hm.stamp_oracles([_us_rest])
+    print(
+        f"FAIL: rest without test must ORACLE_UNMAPPED {_us_rest.acceptance_criteria}",
+        file=sys.stderr,
+    )
+    raise SystemExit(1)
+except _hm.HandoverError as exc:
+    if exc.code != "ORACLE_UNMAPPED":
+        print(f"FAIL: rest-without-test code {exc.code}: {exc}", file=sys.stderr)
+        raise SystemExit(1)
+    print("OK: rest without test path is ORACLE_UNMAPPED")
+try:
+    _src = _hm.Phase(
+        heading="Foundational",
+        kind=_hm.KIND_FOUNDATIONAL,
+        story_id="foundational",
+        body="",
+        files=["src/main/java/x/Helper.java"],
+    )
+    _hm.stamp_oracles([_src])
+    print(
+        f"FAIL: src_code-only must ORACLE_UNMAPPED {_src.acceptance_criteria}",
+        file=sys.stderr,
+    )
+    raise SystemExit(1)
+except _hm.HandoverError as exc:
+    if exc.code != "ORACLE_UNMAPPED":
+        print(f"FAIL: unmapped combo code {exc.code}: {exc}", file=sys.stderr)
+        raise SystemExit(1)
+    print("OK: unmapped operand_class is ORACLE_UNMAPPED")
 PY
   rm -rf "${ho_tmp}"
 fi

@@ -49,7 +49,9 @@ documents hand-authoring as a dedicated path.
      — **never** `io.quarkus` / `io.quarkus.platform` plugin GAV (H-1)
    - Story extensions: the sole `pom.xml` writer applies
      `identity.extensions_apply` (sorted unique union of every story's
-     `identity.extensions_declared`, Architect E-20260814T205052Z DD3).
+     `identity.extensions_declared`, including M1
+     `evidence/required-extensions.json` on the pom writer, Architect
+     E-20260814T205052Z DD3 / V35-EXTENSIONS).
      Later stories do **not** write `pom.xml`. **Exception:** carry
      foundation Jacoco/Sonar wiring from
      `references/foundation-jacoco-wiring.md` (A-3 / H-3 — build

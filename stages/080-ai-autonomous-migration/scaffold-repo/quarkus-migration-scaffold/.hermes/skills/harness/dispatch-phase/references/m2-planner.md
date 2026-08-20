@@ -13,11 +13,13 @@ card instructs the worker to, in order:
    `python3 .hermes/skills/harness/enforce-authority-boundary/scripts/issue-m1-findings-ack.py`
    — auto-issue `m1-findings.ack.yaml` as a gate-record. Do **not**
    `needs_input` for a human yaml. **M3 brief-identity** stays Operator.
-3. Read `evidence/entry-point-inventory.json` and `evidence/type-inventory.json` **before** `/speckit-specify`.
+3. Read `evidence/entry-point-inventory.json`, `evidence/type-inventory.json`,
+   and `evidence/required-extensions.json` **before** `/speckit-specify`.
    Spec FR enumerates every inventory `http_path` (not a count). Cover every
    **source** type-inventory `dest_file` as a repository-relative `.java`
    Create. Generated types (`generated: true`) carry the spec + configure
-   the dest generator — do not Create their `.java`.
+   the dest generator — do not Create their `.java`. Setup T001 must name
+   every artifactId in `required-extensions.json` (T-3 native rewrite).
 4. Spec Kit resume ladder (`specify` → `plan` → `tasks`). Resource task
    lines emit literal `@Path("...")` with the inventory path.
 5. Stop — no dest `partition.json`, no M3 children. Before Done, run
@@ -33,7 +35,9 @@ card instructs the worker to, in order:
    plan-level HTTP gate (Architect `070430Z`).    Type-inventory **source** dest twins are covered when that file is present
    (`types_uncovered`; skip `generated: true`). Generated types stamp
    `provider: generated`; closure requires generator inputs (spec + build)
-   owned (`GENERATOR_INPUTS`). V34-8 stamp +
+   owned (`GENERATOR_INPUTS`). Scratch also refuses if generated types
+   exist and `tasks.md` has no generator plugin token (V35-M2-UPTAKE;
+   T013 already requires configure-in-pom). V34-8 stamp +
    assert-dependency-closure remains the backstop. Constitution VII is guidance, not
    a gate. `--dry-run` is not this gate. Do not grow `handover-mint.py`. Keep
    code-level `assert-compiled-route-fidelity.py` (compiled `.bak`). Holder follows

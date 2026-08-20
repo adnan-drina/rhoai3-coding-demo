@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Card ↔ live-sidecar digest cross-assert (Operator E-20260812T061639Z).
+"""Card ↔ sidecar ↔ file digest triple (Operator E-20260812T061639Z / V35-DIGEST).
 
-REFUSE when a kanban card's AR-4.3 body-digest line does not match the live
-typed-body sidecar sha256. Closes the stale-digest family at the ack-regen /
-create-ack choke point (third surface after v11 bodies + complete-cmd scan).
+REFUSE when the kanban card's AR-4.3 digest line, the sidecar body_sha256,
+or the live typed-body file disagree. Holder complete must not pass on
+card==sidecar!=file.
 
 Usage:
   assert-card-body-digest-match.py <root> --task-id t_xxx --body evidence/bodies/m3-s-003.json
@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import re
 import sqlite3
 import sys
@@ -42,6 +43,23 @@ def main() -> int:
         print(f"FAIL: missing body {body}", file=sys.stderr)
         return 1
     live = sha256_file(body)
+    sidecar = body.with_suffix(body.suffix + ".sha256.json")
+    if not sidecar.is_file():
+        print(f"FAIL: missing sidecar {sidecar}", file=sys.stderr)
+        return 1
+    try:
+        side_doc = json.loads(sidecar.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"FAIL: sidecar {sidecar}: {exc}", file=sys.stderr)
+        return 1
+    side = str(side_doc.get("body_sha256") or "").strip().lower()
+    if side != live:
+        print(
+            f"REFUSE: sidecar↔file digest mismatch task={args.task_id} "
+            f"sidecar={side} live={live} body={body}",
+            file=sys.stderr,
+        )
+        return 1
     db = root / ".hermes" / "home" / "kanban.db"
     if not db.is_file():
         print(f"FAIL: missing kanban.db {db}", file=sys.stderr)
@@ -67,9 +85,9 @@ def main() -> int:
     mismatched = sorted({h for h in found if h != live})
     if mismatched:
         print(
-            f"REFUSE: card↔sidecar digest mismatch task={args.task_id} "
-            f"card={mismatched[0]} live={live} body={body} "
-            f"(Operator E-20260812T061639Z / Architect E-20260812T061718Z)",
+            f"REFUSE: card↔sidecar↔file digest mismatch task={args.task_id} "
+            f"card={mismatched[0]} sidecar={side} live={live} body={body} "
+            f"(Operator E-20260812T061639Z / Architect E-20260812T061718Z / V35-DIGEST)",
             file=sys.stderr,
         )
         return 1
@@ -82,7 +100,7 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
-    print(f"OK: card↔sidecar digest match task={args.task_id} sha256={live}")
+    print(f"OK: card↔sidecar↔file digest match task={args.task_id} sha256={live}")
     return 0
 
 

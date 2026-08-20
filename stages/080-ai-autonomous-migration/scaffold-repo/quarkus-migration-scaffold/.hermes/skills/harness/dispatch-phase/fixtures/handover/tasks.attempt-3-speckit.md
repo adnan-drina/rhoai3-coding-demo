@@ -36,6 +36,7 @@
 
 - [ ] T006 Create `src/main/java/com/demo/config/SecurityConfig.java` — basic auth via Quarkus Elytron Security (maps legacy `BasicAuthenticationConfig`)
 - [ ] T007 [P] Create `src/main/java/com/demo/config/SecurityDisabledConfig.java` — profile-based security disable (maps legacy `DisableSecurityConfig`, active in `%test` profile)
+- [ ] T007b [P] Create `src/test/java/com/demo/config/SecurityConfigTest.java` — `@QuarkusTest` proving default profile auth and `%test` security disable
 - [ ] T008 Add security extensions to `pom.xml`: `quarkus-elytron-security-properties-file`, `quarkus-security`
 
 **Checkpoint**: Application boots with security enabled in default profile and disabled in `%test`
@@ -86,6 +87,7 @@
 - [ ] T028 Create `src/main/java/com/demo/service/ClinicServiceImpl.java` — `@ApplicationScoped` implementation with constructor-injected repositories
 - [ ] T029 [P] Create `src/main/java/com/demo/service/UserService.java` — CDI interface for user operations
 - [ ] T030 [P] Create `src/main/java/com/demo/service/UserServiceImpl.java` — `@ApplicationScoped` implementation
+- [ ] T030b [P] Create `src/test/java/com/demo/service/ClinicServiceTest.java` — `@QuarkusTest` covering ClinicService operations
 
 **Checkpoint**: Services compile and are injectable
 
@@ -199,6 +201,7 @@
 **Purpose**: Final integration, error handling, and quality gates
 
 - [ ] T064 Add `@Path("/petclinic/api/vets")` alias to `VetResource.java` — acceptance probe path from `migration.yaml`
+- [ ] T064b [P] Extend `src/test/java/com/demo/rest/VetResourceTest.java` for the alias path
 - [ ] T065 [P] Verify `mvn clean verify` passes with zero failures and ≥80% coverage
 - [ ] T066 [P] Run quickstart.md validation scenarios end-to-end
 - [ ] T067 Final integration test: verify all 34 endpoints respond correctly against seeded data

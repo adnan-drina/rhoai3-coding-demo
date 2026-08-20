@@ -66,6 +66,17 @@ including the **relationship** between them (T-8 / v17 wrong-class oracles).
 - **Dependency closure** bank id: `BANK-DEP-CLOSURE-1`. `provider: generated`
   is a third kind (build output); DEST_MISS is skipped; generator inputs
   (spec + dest build file) must be owned (`GENERATOR_INPUTS`).
+- **Dest pom extensions (V35-EXTENSIONS)** — setup wrote an under-specified
+  pom; missing hibernate-orm, hibernate-validator, and the OpenAPI generator
+  are the same defect. `assert-dest-pom-extensions.py` parses the **dest**
+  pom in this story's write-set. Required set =
+  `identity.extensions_apply` ∪ `evidence/required-extensions.json`.
+  Do **not** call `generator_input_paths()` / `iter_build_files()` (those
+  union legacy). Generator `inputSpec` matching is a **case** of this
+  predicate (`assert-dest-generator-configured.py`), not a sibling
+  complete-path gate. Wired on `assert-complete-exit-criteria.py`. T013
+  already requires configure-in-pom; `assert-tasks-generator-uptake.py`
+  enforces plan uptake.
 - **Story sizing / DD6** — foundation asserts resolve under story-sizing rules
   (`operand_class` taxonomy); DD6 stays named here so tip sync catches drift.
 - **Oracle-design failure classes** (must still refuse): wrong-class · vacuous

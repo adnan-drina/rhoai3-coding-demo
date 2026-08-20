@@ -144,6 +144,11 @@ REQUIRED_FILES = [
     ".hermes/skills/harness/record-run-evidence/scripts/assert-card-body-digest-match.py",
     ".hermes/skills/harness/record-run-evidence/scripts/restamp-card-and-sidecar.py",
     ".hermes/skills/harness/record-run-evidence/scripts/stamp-body-digest.py",
+    ".hermes/skills/harness/dispatch-phase/scripts/resolve-story-parent-ids.py",
+    ".hermes/skills/sdd/check-spec-readiness/scripts/assert-dest-generator-configured.py",
+    ".hermes/skills/sdd/check-spec-readiness/scripts/assert-dest-pom-extensions.py",
+    ".hermes/skills/analysis/scan-with-mta/scripts/emit-required-extensions.py",
+    ".hermes/skills/sdd/check-spec-readiness/scripts/assert-tasks-generator-uptake.py",
     ".hermes/skills/sdd/check-spec-readiness/references/body-integrity.md",
     # Architect E-20260812T064611Z / E-20260812T064637Z Class A — AD-012 lint + CS-7 bundle
     ".hermes/skills/harness/validate-contracts/scripts/check-skill-conformance.py",
@@ -604,8 +609,8 @@ REQUIRED_SUBSTRINGS = [
     ),
     (
         ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
-        "--initial-status blocked",
-        "M3 born parked (Deputy E-131900Z serial breach)",
+        "--initial-status todo",
+        "V35-CREATE-STATUS stories todo; sticky-block only ack_gate",
     ),
     (
         ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
@@ -952,8 +957,8 @@ REQUIRED_SUBSTRINGS = [
     ),
     (
         ".hermes/skills/harness/record-run-evidence/scripts/assert-card-body-digest-match.py",
-        "card↔sidecar digest mismatch",
-        "Class A card↔sidecar digest cross-assert script",
+        "card↔sidecar↔file digest mismatch",
+        "Class A card↔sidecar↔file digest triple",
     ),
     (
         ".hermes/skills/sdd/check-spec-readiness/references/body-integrity.md",
@@ -1142,6 +1147,11 @@ REQUIRED_SUBSTRINGS = [
     ),
     (
         ".hermes/skills/sdd/init-spec-workspace/assets/stop-before-implement.overlay.yml",
+        "evidence/required-extensions.json",
+        "V35-EXTENSIONS speckit overlay names required-extensions.json",
+    ),
+    (
+        ".hermes/skills/sdd/init-spec-workspace/assets/stop-before-implement.overlay.yml",
         "one user story per inventory HTTP shape",
         "speckit.tasks overlay restates HTTP-shape unique-owner (120010Z)",
     ),
@@ -1227,8 +1237,8 @@ REQUIRED_SUBSTRINGS = [
     ),
     (
         ".hermes/skills/harness/dispatch-phase/scripts/handover-mint.py",
-        'elif "rest" not in ph.operand_class and "test" in ph.operand_class:',
-        "test-only stamps test_suite_runs; rest+test keeps http_semantics (155354Z)",
+        "if not has_rest and has_test:",
+        "test-only stamps test_suite_runs; rest+test keeps http_semantics (155354Z / V35-ORACLE-REST)",
     ),
     (
         ".hermes/skills/harness/validate-contracts/scripts/validate.sh",
@@ -1810,6 +1820,66 @@ REQUIRED_SUBSTRINGS = [
         ".hermes/skills/harness/dispatch-phase/scripts/dispatch-phase.sh",
         "auto_decompose: false",
         "Architect V34-6 dest-home kanban pin",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/scripts/dispatch-phase.sh",
+        "python3 .hermes/skills/sdd/check-spec-readiness/scripts/stamp-body-dependencies.py",
+        "M2 body full-path cites stamp (R0 body-script)",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/scripts/dispatch-phase.sh",
+        "python3 .hermes/skills/sdd/check-spec-readiness/scripts/assert-dependency-closure.py",
+        "M2 body full-path cites assert (R0 body-script)",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/scripts/dispatch-phase.sh",
+        "evidence/required-extensions.json",
+        "V35-EXTENSIONS M1 Done / M2 input manifest names required-extensions.json",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/scripts/check-phase-input-manifest.py",
+        "evidence/required-extensions.json",
+        "V35-EXTENSIONS M2 required present is live-enforced dest evidence",
+    ),
+    (
+        ".hermes/skills/harness/validate-contracts/scripts/check-dangling-hermes-refs.py",
+        "evidence/required-extensions.json",
+        "V35-EXTENSIONS dangling-refs allowlist dest required-extensions.json",
+    ),
+    (
+        ".hermes/skills/harness/record-run-evidence/scripts/restamp-card-and-sidecar.py",
+        "task.body",
+        "V35-DIGEST restamp parses nested kanban show JSON",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/scripts/handover-mint.py",
+        "ORACLE_UNMAPPED",
+        "V35-ORACLE-REST total exit_for refuses unmapped operand combos",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
+        "identity.parents",
+        "V35-SERIAL kanban --parent includes resolved identity.parents",
+    ),
+    (
+        ".hermes/skills/sdd/check-spec-readiness/scripts/assert-dest-pom-extensions.py",
+        "DEST_EXTENSIONS",
+        "V35-EXTENSIONS dest-only pom declares required artifactIds (GEN-POST is a case)",
+    ),
+    (
+        ".hermes/skills/analysis/scan-with-mta/scripts/emit-required-extensions.py",
+        "rhoai3.required-extensions/v1",
+        "V35-EXTENSIONS M1 emits required-extensions.json (T-3 rewrite)",
+    ),
+    (
+        ".hermes/skills/sdd/check-spec-readiness/scripts/assert-dest-generator-configured.py",
+        "DEST_GENERATOR",
+        "V35-GEN-POST dest-only parse_generator_plugins (no legacy union; case of EXTENSIONS)",
+    ),
+    (
+        ".hermes/skills/sdd/check-spec-readiness/scripts/assert-tasks-generator-uptake.py",
+        "M2_UPTAKE",
+        "V35-M2-UPTAKE generated types require plugin token in tasks.md",
     ),
     (
         ".hermes/skills/harness/dispatch-phase/references/native-dispatch.md",

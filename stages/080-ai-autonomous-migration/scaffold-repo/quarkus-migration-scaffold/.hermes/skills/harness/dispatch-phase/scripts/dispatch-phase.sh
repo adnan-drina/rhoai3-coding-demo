@@ -429,6 +429,7 @@ orchestration: hermes_native (required)
 - `evidence/entry-point-inventory.json` present
 - `evidence/type-inventory.json` present
 - `evidence/findings-handoff.json` validates (`rhoai3.findings-handoff/v1`) — M2 planner input
+- `evidence/required-extensions.json` present (`rhoai3.required-extensions/v1`) — dest pom apply set
 - `evidence/acks/m1-findings.ack.yaml` exists as the 5.1 gate-record (issuer exit 0) — not an Operator GO
 EOF
     TITLE="M1 ANALYZE: derive + MTA/kantra + inventory"
@@ -452,6 +453,7 @@ substitution / path invention / specimen-body priming. Measure the harness.
 ### Required present
 - evidence/acks/m1-findings.ack.yaml
 - evidence/findings-handoff.json
+- evidence/required-extensions.json
 - evidence/entry-point-inventory.json
 - evidence/type-inventory.json
 - evidence/mta-findings.json
@@ -480,12 +482,15 @@ substitution / path invention / specimen-body priming. Measure the harness.
    Exit **0** = `m1-findings.ack.yaml` is a gate-record. Exit **1** = handoff not green → typed BLOCK.
    Do **not** `needs_input` for a missing **human** yaml. **M3 brief-identity** stays Operator.
 2. **Read inventory before specify** (Architect E-20260817T203500Z):
-   Open `evidence/entry-point-inventory.json` and `evidence/type-inventory.json` **before** invoking
+   Open `evidence/entry-point-inventory.json`, `evidence/type-inventory.json`,
+   and `evidence/required-extensions.json` **before** invoking
    `/speckit-specify`. Prove the read (tool evidence). Spec functional
    requirements MUST enumerate every inventory `http_path` (and `http_method`
    when present). Cover every **source** type-inventory `dest_file` in `tasks.md` (one
    creator phase per dest `.java` path). Generated types: carry the spec and
-   configure the dest generator — do not Create their `.java`. **Forbidden:** asserting a count ("all 34 endpoints") in
+   configure the dest generator — do not Create their `.java`. Setup T001 /
+   `extensions_apply` must name every artifactId in required-extensions.json
+   (T-3 native rewrite; do not invent quarkus-spring-*). **Forbidden:** asserting a count ("all 34 endpoints") in
    place of the list; inventing routes not in the inventory.
 3. **Spec Kit invoke-or-BLOCK** (Architect E-20260811T115316Z — not soft Prefer):
    - Hard-invoke attached skill `speckit-specify` via `skill_view` / `/speckit-specify`
@@ -505,8 +510,9 @@ substitution / path invention / specimen-body priming. Measure the harness.
    After `--write`, the oracle fail-closes invented receipt endpoints
    (`assert-partition-invented-routes.py` — the only plan-level HTTP gate)
    and, when scratch has `legacy-at-3`, runs existing
-   `stamp-body-dependencies.py` + `assert-dependency-closure.py` on minted
-   bodies (V34-8; no second gate).
+   `python3 .hermes/skills/sdd/check-spec-readiness/scripts/stamp-body-dependencies.py`
+   + `python3 .hermes/skills/sdd/check-spec-readiness/scripts/assert-dependency-closure.py`
+   on minted bodies (V34-8; no second gate).
    Constitution VII is guidance, not a gate. Keep
    `assert-compiled-route-fidelity.py` for compiled-tree drift.
    **Forbidden:** `--dry-run` as this gate; authoring dest `partition.json`; growing `handover-mint.py`.
@@ -532,7 +538,7 @@ substitution / path invention / specimen-body priming. Measure the harness.
 - Spec Kit invoke evidenced (seed + plan + tasks.md) **or** typed `needs_input` BLOCK recorded
 - `spec.md` enumerates every inventory `http_path` (not a count)
 - Resource task lines include literal `@Path("...")` for owned HTTP routes
-- Scratch `handover-mint.py --write` exit 0 (`scratch-assemble-mint.py`) — dest `partition.json` untouched; invented endpoints refuse; type-inventory source dest twins covered when that file is present (skip generated); type-closure (stamp + assert-dependency-closure) when scratch has legacy-at-3; `provider: generated` skips DEST_MISS and requires generator inputs owned
+- Scratch `handover-mint.py --write` exit 0 (`scratch-assemble-mint.py`) — dest `partition.json` untouched; invented endpoints refuse; type-inventory source dest twins covered when that file is present (skip generated); type-closure (stamp + assert-dependency-closure) when scratch has legacy-at-3; `provider: generated` skips DEST_MISS and requires generator inputs owned; generated types require a generator plugin token in `tasks.md` (`assert-tasks-generator-uptake.py`)
 - M2 `checkpoint.json` present (`holder-checkpoint.py check --kind m2`)
 - **No** `partition.json` authored on this card (handover-mint writes the receipt)
 - **No** M3 Kanban children created on this card

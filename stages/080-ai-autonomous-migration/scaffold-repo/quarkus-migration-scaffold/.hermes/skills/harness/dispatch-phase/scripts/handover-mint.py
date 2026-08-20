@@ -529,14 +529,65 @@ def _proves_for(ph: Phase) -> list[str]:
     return extended
 
 
+def exit_for(
+    story_id: str,
+    operand_class: list[str],
+    proves: list[str],
+    *,
+    polish_empty: bool = False,
+) -> list[dict[str, Any]]:
+    """Total operand→exit map. Unmapped combination → ORACLE_UNMAPPED.
+
+    Architect V35-ORACLE-REST / E-20260819T215902Z. No early continue that
+    stamps build_resolves before this map. rest without a test path is
+    unmapped (PHASE_AC), not a silent compile stamp.
+    """
+    classes = {c for c in operand_class if c != "user_story"}
+    has_rest = "rest" in classes
+    has_test = "test" in classes or bool(proves)
+    has_persist = "persistence" in classes
+    build_only = bool(classes) and classes <= {"build_config", "config", "pom"}
+    if polish_empty or build_only:
+        cmd = "mvn -q verify" if polish_empty else "mvn -q compile"
+        return [{"check": "build_resolves", "cmd": cmd}]
+    if has_rest and proves:
+        return [
+            {"check": "http_semantics", "cmd": "mvn -q test", "proves": list(proves)}
+        ]
+    if has_rest and not proves:
+        _die(
+            "ORACLE_UNMAPPED",
+            f"{story_id}: rest without a test path in the write-set "
+            "(PHASE_AC — plan must include a test file; do not stamp build_resolves)",
+        )
+    if not has_rest and has_test:
+        ac: dict[str, Any] = {"check": "test_suite_runs", "cmd": "mvn -q test"}
+        if proves:
+            ac["proves"] = list(proves)
+        return [ac]
+    if not has_rest and has_persist:
+        ac = {
+            "check": "mapping_valid",
+            "cmd": "mvn -q test" if proves else "mvn -q test-compile",
+        }
+        if proves:
+            ac["proves"] = list(proves)
+        return [ac]
+    _die(
+        "ORACLE_UNMAPPED",
+        f"{story_id}: unmapped operand_class={sorted(classes)} proves={proves!r}",
+    )
+    return []
+
+
 def stamp_oracles(phases: list[Phase]) -> None:
     for ph in phases:
         if not ph.files:
             if ph.kind == KIND_POLISH:
                 ph.operand_class = ["build_config"]
-                ph.acceptance_criteria = [
-                    {"check": "build_resolves", "cmd": "mvn -q verify"}
-                ]
+                ph.acceptance_criteria = exit_for(
+                    ph.story_id, ph.operand_class, [], polish_empty=True
+                )
                 continue
             _die("FILES_IN_SCOPE", f"{ph.story_id}: empty files_in_scope after ownership")
         ph.operand_class = _classes_for(ph)
@@ -565,47 +616,14 @@ def stamp_oracles(phases: list[Phase]) -> None:
                 "— split (R-V14.4)",
             )
         proves = _proves_for(ph)
-        if build_only and not proves:
-            ph.acceptance_criteria = [
-                {"check": "build_resolves", "cmd": "mvn -q compile"}
-            ]
-            continue
         if ph.kind == KIND_USER_STORY and not ph.independent_test:
             _die(
                 "PHASE_AC",
                 f"{ph.story_id}: user-story phase has no Independent Test",
             )
-        if not proves:
-            # Spec Kit Independent Test is verification prose; tests are
-            # OPTIONAL. Requiring a test path in the write-set is not a Spec
-            # Kit contract (Operator E-20260817T133449Z — same lens as
-            # FILE_OVERLAP). Keep PHASE_AC only for a missing Independent
-            # Test heading. Stamp a non-test exit so mint-oracles does not
-            # demand proves. Do not invent a test file.
-            ph.acceptance_criteria = [
-                {"check": "build_resolves", "cmd": "mvn -q compile"}
-            ]
-            continue
-        check = "http_semantics"
-        if "rest" not in ph.operand_class and "persistence" in ph.operand_class:
-            check = "mapping_valid"
-        elif "rest" not in ph.operand_class and "build_config" in ph.operand_class:
-            check = "build_resolves"
-            ph.acceptance_criteria = [
-                {"check": check, "cmd": "mvn -q compile"}
-            ]
-            continue
-        elif "rest" not in ph.operand_class and "test" in ph.operand_class:
-            # Test-only (polish). Mixed rest+test keeps http_semantics
-            # (Architect E-20260819T155354Z / Operator E-20260819T155515Z).
-            check = "test_suite_runs"
-        ph.acceptance_criteria = [
-            {
-                "check": check,
-                "cmd": "mvn -q test",
-                "proves": proves,
-            }
-        ]
+        ph.acceptance_criteria = exit_for(
+            ph.story_id, ph.operand_class, proves, polish_empty=False
+        )
 
 
 def stamp_workspaces(phases: list[Phase]) -> None:
