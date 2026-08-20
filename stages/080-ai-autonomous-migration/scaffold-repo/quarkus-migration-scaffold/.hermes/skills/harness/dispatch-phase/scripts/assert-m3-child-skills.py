@@ -76,7 +76,7 @@ def attach_stdout(root: Path, body: Path) -> list[str]:
         / "m3-attach-skills.py"
     )
     cp = subprocess.run(
-        [sys.executable, str(script), str(body)],
+        [sys.executable, str(script), str(body), "--root", str(root)],
         cwd=str(root),
         text=True,
         capture_output=True,

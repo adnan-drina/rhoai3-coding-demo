@@ -83,6 +83,10 @@ Do **not** pin `check-spec-readiness` on the holder until story bodies exist.
    - Run **one** command (do not batch remaining stories; do not dump the body):
      `python3 .hermes/skills/harness/dispatch-phase/scripts/run-pre-create-gates.py --root /projects/modernized --body evidence/bodies/m3-{story_id}.json`
      One `OK:` / `REFUSE:` line. On REFUSE: `kanban_block --kind needs_input`.
+     That wrapper runs `check-phase-attach-matrix.py` and `m3-attach-skills.py`
+     **before** `kanban_create`. Attach names not in yaml M3.skills, or yaml
+     missing OPERAND_CLASS_SKILLS names, is REFUSE — do not create. Detecting
+     after create, with no repair verb, is a dead card (`50c3e13c`).
      Then title then markdown (two commands, this story only):
      `python3 .hermes/skills/harness/dispatch-phase/scripts/compose-m3-card-markdown.py --root /projects/modernized --body evidence/bodies/m3-{story_id}.json --print-title`
      `python3 .hermes/skills/harness/dispatch-phase/scripts/compose-m3-card-markdown.py --root /projects/modernized --body evidence/bodies/m3-{story_id}.json`
@@ -194,6 +198,9 @@ Bare filenames resolve under the wrong skill tree and become typed BLOCK
 10. `python3 .hermes/skills/sdd/check-spec-readiness/scripts/assert-dependency-closure.py --body <body>`
 11. `python3 .hermes/skills/sdd/check-spec-readiness/scripts/check-kanban-body.py --body <body>`
 12. `python3 .hermes/skills/harness/dispatch-phase/scripts/check-phase-attach-matrix.py /projects/modernized`
+    (yaml M3.skills and the m3-implementer bundle must cover
+    OPERAND_CLASS_SKILLS plus check-spec-readiness — one source, not a
+    second five-name list.)
 13. `python3 .hermes/skills/harness/dispatch-phase/scripts/assert-bundle-skills-exist.py /projects/modernized --bundle m3-implementer`
 14. `python3 .hermes/skills/harness/record-run-evidence/scripts/stamp-body-digest.py` (AR-4.3 first stamp only). If the sidecar already exists, that script REFUSES unless `--allow-sidecar-only` (pre-create repair). After the card exists, body repair MUST use `restamp-card-and-sidecar.py --root . --body <body> --task-id <id>` — sidecar-only restamp is refuse.
 15. `python3 .hermes/skills/sdd/check-spec-readiness/scripts/check-surgical-scopes.py` + `python3 .hermes/skills/sdd/check-spec-readiness/scripts/check-semantic-exits.py` + `python3 .hermes/skills/sdd/check-spec-readiness/scripts/check-operand-count.py --wall-fit`
@@ -203,8 +210,14 @@ Bare filenames resolve under the wrong skill tree and become typed BLOCK
 Attach skills from `python3 .hermes/skills/harness/dispatch-phase/scripts/m3-attach-skills.py <body>` (B-16).
 skills = full m3-attach-skills.py stdout
 (`kanban_create` skills: every line of that stdout, order-stable).
+do not subset attach stdout to yaml
+(yaml M3.skills is the pool that must already contain every attach name;
+it is not a create filter). Pom skills attach only when pom.xml is in
+files_writable (A-5; foundational must not inherit setup's pom write-set).
 Dropping any name is refuse — v22 setup/foundational kept only
 `check-spec-readiness` while attach printed three/four (`035010Z`).
+REFUSE before kanban_create if attach names are not in yaml (attach.py
+fail-closed; do not create then assert).
 Max runtime **and** max retries from `python3 .hermes/skills/harness/dispatch-phase/scripts/read-phase-dispatch.py --yaml .hermes/phase-dispatch.yaml --phase M3` (`--print max_runtime_seconds` / `--print max_retries`) or body
 `runtime_budget_sec`. Refuse `kanban_create` unless both native flags are on the argv. Workspace `dir:/projects/modernized`. Profile
 `default` must exist (`hermes profile show default`).

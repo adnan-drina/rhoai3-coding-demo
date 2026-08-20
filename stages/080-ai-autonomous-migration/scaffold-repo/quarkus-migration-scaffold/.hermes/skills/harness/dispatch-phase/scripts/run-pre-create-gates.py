@@ -51,7 +51,7 @@ def run_step(root: Path, name: str, argv: list[str]) -> int:
 def attach_skills(root: Path, body: Path) -> list[str] | int:
     script = skill(root, "harness", "dispatch-phase", "scripts", "m3-attach-skills.py")
     cp = subprocess.run(
-        [sys.executable, str(script), str(body)],
+        [sys.executable, str(script), str(body), "--root", str(root)],
         cwd=str(root),
         text=True,
         capture_output=True,

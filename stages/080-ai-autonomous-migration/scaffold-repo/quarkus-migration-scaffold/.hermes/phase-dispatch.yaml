@@ -87,7 +87,9 @@ phases:
     # .hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md
     # (bare hermes kanban create omits these skills — grounding study 20260809).
     # AD-002F — useful = influence. M3 skills[] is the allow-list pool (B-16).
-    # mint Procedure attaches check-spec-readiness + identity.operand_skills.
+    # Pool MUST cover OPERAND_CLASS_SKILLS plus check-spec-readiness
+    # (check-phase-attach-matrix.py). mint Procedure attaches lint +
+    # identity.operand_skills; do not subset attach stdout to this list.
     # Drop zero-touch (check-domain-parity→M4, enforce-authority-boundary/
     # ground-in-harvest/record-run-evidence unread on S-001…S-006).
     # Workers consult via skill_view. Typed skills_unused is a measured
@@ -109,6 +111,9 @@ phases:
       - configure-quarkus-profiles
       - form-entity-persistence
       - spring-to-quarkus-patterns
+      - manage-quarkus-extensions
+      - reference-rh-quarkus-pom
+      - bootstrap-quarkus-project
     # AD-H §18 required_checks (validator/sensor matrix)
     required_checks:
       - compile

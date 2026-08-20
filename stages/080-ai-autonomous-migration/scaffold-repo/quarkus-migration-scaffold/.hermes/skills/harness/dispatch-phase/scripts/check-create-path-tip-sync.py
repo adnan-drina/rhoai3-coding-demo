@@ -95,6 +95,7 @@ REQUIRED_FILES = [
         ".hermes/skills/sdd/check-spec-readiness/scripts/generated_sources.py",
         ".hermes/skills/analysis/inventory-entry-points/SKILL.md",
     ".hermes/skills/harness/dispatch-phase/scripts/m3-attach-skills.py",
+    ".hermes/skills/harness/dispatch-phase/scripts/check-phase-attach-matrix.py",
     ".hermes/skills/harness/dispatch-phase/scripts/assert-skills-not-disabled.py",
     ".hermes/skills/harness/dispatch-phase/scripts/mint-remediation-card.py",
     ".hermes/skills/harness/record-run-evidence/scripts/snapshot-run-audit.py",
@@ -1472,6 +1473,21 @@ REQUIRED_SUBSTRINGS = [
         "B-16 attach from identity.operand_skills",
     ),
     (
+        ".hermes/skills/harness/dispatch-phase/scripts/m3-attach-skills.py",
+        "not in yaml M3.skills",
+        "attach fail-closed vs yaml pool (50c3e13c)",
+    ),
+    (
+        ".hermes/skills/sdd/check-spec-readiness/scripts/specimen_agnostic.py",
+        "filter_attach_skills_for_write_set",
+        "pom skills attach only on the pom.xml writer (113519Z)",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/scripts/check-phase-attach-matrix.py",
+        "OPERAND_CLASS_SKILLS",
+        "M3 yaml pool is recommender vocab not a second five-name list (50c3e13c)",
+    ),
+    (
         ".hermes/skills/harness/dispatch-phase/scripts/mint-remediation-card.py",
         "leave-triage",
         "C-3(a) remediation forbids leave-triage",
@@ -1500,6 +1516,21 @@ REQUIRED_SUBSTRINGS = [
         ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
         "skills = full m3-attach-skills.py stdout",
         "card body contract B-16 no-drop attach stdout (035010Z)",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
+        "do not subset attach stdout to yaml",
+        "yaml is pool superset not a create filter (50c3e13c)",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
+        "REFUSE before kanban_create",
+        "attach/pool mismatch is pre-create not a dead card (50c3e13c)",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
+        "Pom skills attach only when pom.xml is in",
+        "foundational must not inherit setup pom skills (113519Z)",
     ),
     (
         ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",

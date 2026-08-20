@@ -231,9 +231,9 @@ Job order (inventory before specify; `@Path` emit): `references/m2-planner.md`.
 - `scripts/check-link-graph.py` — BV19-3 lint: `--parent` required except M1
 - `scripts/resolve-seat-assignee.py` — C-2(a) phase → `default`
 - `scripts/check-seat-assignee-profiles.py` — C-2(a) catalog + GitOps skip lint
-- `scripts/m3-attach-skills.py` — B-16 attach from `identity.operand_skills`
+- `scripts/m3-attach-skills.py` — B-16 attach from `identity.operand_skills`; refuse names not in yaml M3.skills
 - `scripts/mint-remediation-card.py` — C-3(a) REFUSE → remediation receipt
-- `scripts/check-phase-attach-matrix.py` — skills[] vs attach-matrix law
+- `scripts/check-phase-attach-matrix.py` — skills[] vs attach-matrix law (M3 pool ⊇ OPERAND_CLASS_SKILLS)
 - `scripts/check-create-path-tip-sync.py` — BLOCKING R0/R3 create-path tip sync
 - `scripts/check-phase-input-manifest.py` — phase input manifest present
 - `scripts/check-phase-body-script-refs.py` — body refs to scripts resolve

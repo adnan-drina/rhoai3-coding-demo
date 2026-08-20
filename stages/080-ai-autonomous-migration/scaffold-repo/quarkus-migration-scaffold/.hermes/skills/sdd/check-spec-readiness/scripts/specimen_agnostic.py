@@ -735,6 +735,29 @@ def skills_for_operand_classes(classes: list[str] | tuple[str, ...] | str) -> li
     return out
 
 
+POM_ATTACH_SKILLS = frozenset(
+    {"manage-quarkus-extensions", "reference-rh-quarkus-pom"}
+)
+
+
+def owns_pom_write_set(paths: list[str] | tuple[str, ...] | None) -> bool:
+    """True when this story is the A-5 pom.xml writer."""
+    for raw in paths or []:
+        n = str(raw).strip().lstrip("./")
+        if n == "pom.xml" or n.endswith("/pom.xml"):
+            return True
+    return False
+
+
+def filter_attach_skills_for_write_set(
+    skills: list[str], files_writable: list[str] | tuple[str, ...] | None
+) -> list[str]:
+    """Drop pom skills unless pom.xml is in the story write-set (Architect 113519Z)."""
+    if owns_pom_write_set(files_writable):
+        return list(skills)
+    return [s for s in skills if s not in POM_ATTACH_SKILLS]
+
+
 def known_operand_classes(classes: list[str]) -> list[str]:
     return [c for c in classes if c in OPERAND_CLASS_SEMANTIC_EXITS]
 

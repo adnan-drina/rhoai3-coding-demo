@@ -5,11 +5,15 @@ skills:
 - configure-quarkus-profiles
 - form-entity-persistence
 - spring-to-quarkus-patterns
+- manage-quarkus-extensions
+- reference-rh-quarkus-pom
+- bootstrap-quarkus-project
 description: M3 IMPLEMENT phase bundle (AD-002G attach matrix)
 instruction: >-
   AD-002E/F/G: preloaded skills include check-spec-readiness,
   derive-story-oracles, configure-quarkus-profiles, form-entity-persistence,
-  spring-to-quarkus-patterns. Each → skill_view consult OR typed
+  spring-to-quarkus-patterns, manage-quarkus-extensions,
+  reference-rh-quarkus-pom, bootstrap-quarkus-project. Each → skill_view consult OR typed
   skills_unused:<skill>:<reason> before kanban_complete. Silence invalid.
   Derive exit_criteria via derive-story-oracles (class-legal only; no dual
   correct+wrong). Config stories: configure-quarkus-profiles. Entity/mapping

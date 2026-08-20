@@ -46,6 +46,7 @@ from specimen_agnostic import (  # noqa: E402
     PREFERRED_SEMANTIC_EXIT_CMD,
     ac_sourced_operand_classes,
     exit_cmd_discriminating_errors,
+    filter_attach_skills_for_write_set,
     is_test_source_rel,
     known_operand_classes,
     parse_operand_classes,
@@ -342,7 +343,9 @@ def assemble_one(story: dict, root: Path, *, measured_operands) -> dict:
         ident_src.get("g2_applicability") or story.get("g2_applicability") or DEFAULT_G2
     ).lower()
     locus_path, locus_sha = _stamp_legacy_locus(story, root)
-    operand_skills = skills_for_operand_classes(classes)
+    operand_skills = filter_attach_skills_for_write_set(
+        skills_for_operand_classes(classes), fis
+    )
 
     body = {
         "phase": "M3",

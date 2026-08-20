@@ -4038,6 +4038,7 @@ from pathlib import Path
 scripts = Path(sys.argv[1])
 sys.path.insert(0, str(scripts))
 from specimen_agnostic import (
+    filter_attach_skills_for_write_set,
     operand_classes_of,
     semantic_exit_cmd_ok,
     skills_for_operand_classes,
@@ -4085,6 +4086,22 @@ expect(
     skills_for_operand_classes(["rest", "persistence"])
     == ["spring-to-quarkus-patterns", "form-entity-persistence"],
     "B-16 skills attach by class",
+)
+expect(
+    filter_attach_skills_for_write_set(
+        ["manage-quarkus-extensions", "form-entity-persistence"],
+        ["src/Foo.java"],
+    )
+    == ["form-entity-persistence"],
+    "pom skills drop unless pom.xml write-set",
+)
+expect(
+    filter_attach_skills_for_write_set(
+        ["manage-quarkus-extensions", "reference-rh-quarkus-pom"],
+        ["pom.xml"],
+    )
+    == ["manage-quarkus-extensions", "reference-rh-quarkus-pom"],
+    "pom skills stay on the pom.xml writer",
 )
 
 td = Path(tempfile.mkdtemp())
@@ -5529,6 +5546,40 @@ else
   rc=1
 fi
 rm -f "${b16_body}"
+
+echo "== B-16 attach refuses names outside yaml pool =="
+b16_bad="$(mktemp "${TMPDIR:-/tmp}/b16-bad.XXXXXX.json")"
+printf '%s\n' '{"identity":{"operand_skills":["not-a-pool-skill"]}}' >"${b16_bad}"
+if python3 "${HARNESS}/dispatch-phase/scripts/m3-attach-skills.py" "${b16_bad}" >/dev/null 2>&1; then
+  echo "FAIL: B-16 attach must refuse names not in yaml M3.skills" >&2
+  rc=1
+else
+  echo "OK: B-16 attach refuses names outside yaml pool"
+fi
+rm -f "${b16_bad}"
+
+echo "== B-16 pom skills attach only on pom.xml writer =="
+b16_fnd="$(mktemp "${TMPDIR:-/tmp}/b16-fnd.XXXXXX.json")"
+printf '%s\n' '{"identity":{"operand_skills":["manage-quarkus-extensions","reference-rh-quarkus-pom","form-entity-persistence","spring-to-quarkus-patterns"]},"files_writable":["src/Foo.java"]}' >"${b16_fnd}"
+b16_fnd_out="$(python3 "${HARNESS}/dispatch-phase/scripts/m3-attach-skills.py" "${b16_fnd}")"
+if printf '%s\n' "${b16_fnd_out}" | grep -qx 'form-entity-persistence' \
+  && printf '%s\n' "${b16_fnd_out}" | grep -qx 'spring-to-quarkus-patterns' \
+  && ! printf '%s\n' "${b16_fnd_out}" | grep -qx 'manage-quarkus-extensions' \
+  && ! printf '%s\n' "${b16_fnd_out}" | grep -qx 'reference-rh-quarkus-pom'; then
+  echo "OK: B-16 attach drops pom skills when pom.xml is not writable"
+else
+  echo "FAIL: B-16 foundational-shaped attach was: ${b16_fnd_out}" >&2
+  rc=1
+fi
+rm -f "${b16_fnd}"
+
+echo "== B-16 yaml M3.skills covers recommender vocab =="
+if python3 "${HARNESS}/dispatch-phase/scripts/check-phase-attach-matrix.py" "${ROOT}"; then
+  echo "OK: phase attach matrix (M3 pool covers OPERAND_CLASS_SKILLS)"
+else
+  echo "FAIL: phase attach matrix (M3 pool must cover OPERAND_CLASS_SKILLS)" >&2
+  rc=1
+fi
 
 echo "== C-3(a) REFUSE mints a remediation receipt =="
 c3_tmp="$(mktemp -d "${TMPDIR:-/tmp}/c3-refuse.XXXXXX")"
