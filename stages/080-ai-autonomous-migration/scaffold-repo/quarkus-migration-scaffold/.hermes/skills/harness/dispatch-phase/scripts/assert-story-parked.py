@@ -31,6 +31,18 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--task-id", required=True)
     ap.add_argument("--ack-gate", required=True)
     ap.add_argument("--expect-parent", action="append", default=[], metavar="ID")
+    ap.add_argument(
+        "--expect-max-runtime",
+        type=int,
+        default=0,
+        help="Refuse unless tasks.max_runtime_seconds equals this (M3 yaml 2700)",
+    )
+    ap.add_argument(
+        "--expect-max-retries",
+        type=int,
+        default=0,
+        help="Refuse unless tasks.max_retries equals this",
+    )
     args = ap.parse_args(argv)
     root = Path(args.root).resolve()
     db = kanban_db(root)
@@ -41,16 +53,40 @@ def main(argv: list[str] | None = None) -> int:
     con.row_factory = sqlite3.Row
     try:
         row = con.execute(
-            "select id, status from tasks where id=?",
+            "select * from tasks where id=?",
             (args.task_id,),
         ).fetchone()
         if row is None:
             print(f"REFUSE: unknown task {args.task_id}")
             return 1
+        keys = set(row.keys()) if hasattr(row, "keys") else set()
         status = str(row["status"] or "").strip().lower()
         if status != "todo":
             print(f"REFUSE: {args.task_id} status={status} want=todo")
             return 1
+        if args.expect_max_runtime:
+            if "max_runtime_seconds" not in keys:
+                print("REFUSE: tasks table missing max_runtime_seconds")
+                return 1
+            got = row["max_runtime_seconds"]
+            if int(got or 0) != int(args.expect_max_runtime):
+                print(
+                    f"REFUSE: {args.task_id} max_runtime_seconds={got} "
+                    f"want={args.expect_max_runtime}"
+                )
+                return 1
+        if args.expect_max_retries:
+            col = "max_retries" if "max_retries" in keys else ""
+            if not col:
+                print("REFUSE: tasks table missing max_retries")
+                return 1
+            got = row[col]
+            if int(got or 0) != int(args.expect_max_retries):
+                print(
+                    f"REFUSE: {args.task_id} max_retries={got} "
+                    f"want={args.expect_max_retries}"
+                )
+                return 1
         parents = [
             str(r[0])
             for r in con.execute(

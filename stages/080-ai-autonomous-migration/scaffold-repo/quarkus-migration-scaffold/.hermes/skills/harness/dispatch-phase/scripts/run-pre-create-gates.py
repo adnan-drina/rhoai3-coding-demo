@@ -105,6 +105,15 @@ def main(argv: list[str] | None = None) -> int:
         ("check-create-path-tip-sync.py", [py, str(disp / "check-create-path-tip-sync.py"), str(root)]),
         ("check-phase-body-script-refs.py", [py, str(disp / "check-phase-body-script-refs.py"), str(root)]),
         (
+            "relocate-descendant-import-writesets.py",
+            [
+                py,
+                str(sdd / "relocate-descendant-import-writesets.py"),
+                str(root),
+                "--write",
+            ],
+        ),
+        (
             "stamp-body-dependencies.py",
             [py, str(sdd / "stamp-body-dependencies.py"), str(root), "--body", rel, "--write"],
         ),
@@ -125,6 +134,10 @@ def main(argv: list[str] | None = None) -> int:
                 "--write-receipt",
                 "evidence/receipts/partition-coverage/latest.json",
             ],
+        ),
+        (
+            "assert-partition-topological-order.py",
+            [py, str(sdd / "assert-partition-topological-order.py"), str(root)],
         ),
         ("assert-quarantine-tombstones.py", [py, str(sdd / "assert-quarantine-tombstones.py"), str(root)]),
         (

@@ -18,14 +18,17 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
 
 from generated_sources import ARTIFACT_RE
-from specimen_agnostic import load_required_extensions, writes_pom_xml
+from specimen_agnostic import load_required_extension_entries, writes_pom_xml
 
 GENERATOR_AID = "openapi-generator-maven-plugin"
+PLUGIN_BLOCK_RE = re.compile(r"<plugin>(.*?)</plugin>", re.S | re.I)
+DEP_BLOCK_RE = re.compile(r"<dependency>(.*?)</dependency>", re.S | re.I)
 
 
 def _rel(path: str) -> str:
@@ -64,6 +67,20 @@ def _apply(body: dict) -> list[str]:
 
 def dest_artifact_ids(text: str) -> set[str]:
     return {m.strip() for m in ARTIFACT_RE.findall(text or "") if m.strip()}
+
+
+def dest_dependency_ids(text: str) -> set[str]:
+    found: set[str] = set()
+    for block in DEP_BLOCK_RE.findall(text or ""):
+        found.update(m.strip() for m in ARTIFACT_RE.findall(block) if m.strip())
+    return found
+
+
+def dest_plugin_ids(text: str) -> set[str]:
+    found: set[str] = set()
+    for block in PLUGIN_BLOCK_RE.findall(text or ""):
+        found.update(m.strip() for m in ARTIFACT_RE.findall(block) if m.strip())
+    return found
 
 
 def _run_dest_generator(root: Path, body_path: Path, *, require_plugin: bool) -> int:
@@ -110,8 +127,10 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 1
-    m1 = load_required_extensions(root)
+    m1_entries = load_required_extension_entries(root)
+    m1 = [e["artifactId"] for e in m1_entries]
     wanted = sorted(set(_apply(body)) | set(m1))
+    kind_by_aid = {e["artifactId"]: e["kind"] for e in m1_entries}
     writes = _writable(body)
     poms = [p for p in writes if _is_pom(p)]
     owns_pom = bool(poms) or writes_pom_xml(body)
@@ -124,7 +143,8 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
             return 1
-        dest_ids = dest_artifact_ids(pom_path.read_text(encoding="utf-8", errors="ignore"))
+        pom_text = pom_path.read_text(encoding="utf-8", errors="ignore")
+        dest_ids = dest_artifact_ids(pom_text)
         missing = [aid for aid in wanted if aid not in dest_ids]
         if missing:
             print(
@@ -133,6 +153,27 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
             return 1
+        deps = dest_dependency_ids(pom_text)
+        plugins = dest_plugin_ids(pom_text)
+        for aid in wanted:
+            kind = kind_by_aid.get(
+                aid,
+                "plugin" if aid == GENERATOR_AID else "extension",
+            )
+            if kind == "plugin" and aid not in plugins:
+                print(
+                    "REFUSE: DEST_EXTENSIONS "
+                    f"{aid} kind=plugin must be a <plugin>, not a <dependency>",
+                    file=sys.stderr,
+                )
+                return 1
+            if kind == "extension" and aid not in deps:
+                print(
+                    "REFUSE: DEST_EXTENSIONS "
+                    f"{aid} kind=extension must be a <dependency>, not only a <plugin>",
+                    file=sys.stderr,
+                )
+                return 1
         print(f"OK: dest pom declares required extensions in {pom_rel}")
     elif wanted:
         print(

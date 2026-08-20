@@ -186,9 +186,13 @@ Both are required environment facts, not optional tuning.
   `opaque:` description not dispositioned as opaque/needs_review.
   Exit 1 = typed BLOCK (product/gate residue); exit 2 = harness path defect —
   do not paper over it.
-- `evidence/required-extensions.json` is present after emit (V35-EXTENSIONS).
-  ArtifactIds are T-3 native Quarkus targets (hibernate-orm, not
-  quarkus-spring-data-jpa). Empty list is valid; missing file is not.
+- `evidence/required-extensions.json` is present after emit (schema
+  `rhoai3.required-extensions/v2`, `entries: [{artifactId, kind}]`).
+  ArtifactIds are T-3 native Quarkus targets parsed from
+  `manage-quarkus-extensions/references/spring-dep-to-extension.md`
+  (hibernate-orm, not quarkus-spring-data-jpa). JDBC driver kind comes from
+  the **legacy** `jdbc:` URL through that table. Empty list is valid;
+  missing file is not.
 - Silent-failure catch: `violations` = `{}` (handoff gate reports
   `handoff.rules empty`) or an empty `rule_set` means targets never expanded or
   the analyzer produced nothing — treat as INCONCLUSIVE, not "clean".

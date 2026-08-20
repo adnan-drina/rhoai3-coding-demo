@@ -1,0 +1,77 @@
+{
+  "source": "reconstructed-from-143e7357",
+  "note": "v36 dest-cite: ClinicService on foundational imported entity types owned by US* children. Harvest dest-read only; do not dest-patch.",
+  "stories": [
+    {
+      "story_id": "setup",
+      "kind": "setup",
+      "parents": [],
+      "files_writable": ["pom.xml"]
+    },
+    {
+      "story_id": "foundational",
+      "kind": "foundational",
+      "parents": ["setup"],
+      "files_writable": [
+        "src/main/java/com/demo/service/ClinicService.java"
+      ]
+    },
+    {
+      "story_id": "US1",
+      "kind": "us",
+      "parents": ["foundational"],
+      "files_writable": ["src/main/java/com/demo/entity/Owner.java"]
+    },
+    {
+      "story_id": "US2",
+      "kind": "us",
+      "parents": ["foundational"],
+      "files_writable": [
+        "src/main/java/com/demo/entity/Pet.java",
+        "src/main/java/com/demo/entity/PetType.java"
+      ]
+    },
+    {
+      "story_id": "US3",
+      "kind": "us",
+      "parents": ["foundational"],
+      "files_writable": []
+    },
+    {
+      "story_id": "US4",
+      "kind": "us",
+      "parents": ["foundational"],
+      "files_writable": ["src/main/java/com/demo/entity/Specialty.java"]
+    },
+    {
+      "story_id": "US5",
+      "kind": "us",
+      "parents": ["foundational"],
+      "files_writable": ["src/main/java/com/demo/entity/Vet.java"]
+    },
+    {
+      "story_id": "US6",
+      "kind": "us",
+      "parents": ["foundational"],
+      "files_writable": ["src/main/java/com/demo/entity/Visit.java"]
+    },
+    {
+      "story_id": "US7",
+      "kind": "us",
+      "parents": ["foundational"],
+      "files_writable": []
+    },
+    {
+      "story_id": "US8",
+      "kind": "us",
+      "parents": ["foundational"],
+      "files_writable": []
+    },
+    {
+      "story_id": "polish",
+      "kind": "polish",
+      "parents": ["US1", "US2", "US3", "US4", "US5", "US6", "US7", "US8"],
+      "files_writable": []
+    }
+  ]
+}

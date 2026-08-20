@@ -331,6 +331,37 @@ def rewrite_across(
     return p
 
 
+def resolve_java_source(root: Path, dest_rel: str) -> Path | None:
+    """Dest Java if present, else the legacy twin (mint has no dest sources).
+
+    One resolver for relocate + topological order. Do not skip the gate when
+    dest files are still unwritten.
+    """
+    rel = dest_path_as_written(dest_rel)
+    if not rel.endswith(".java"):
+        return None
+    dest = root / rel
+    if dest.is_file():
+        return dest
+    pairs = path_rewrites(root)
+    leaves = intra_package_maps(root)
+    legacy_rel = rewrite_across(rel, pairs, to_dest=False, leaf_pairs=leaves)
+    bases = (
+        root / "evidence" / "derived" / "legacy-at-3",
+        root / ".." / ".derived" / "legacy-at-3",
+        Path("/projects/.derived/legacy-at-3"),
+        root.parent / ".derived" / "legacy-at-3",
+    )
+    for base in bases:
+        for candidate in (legacy_rel, rel):
+            if not candidate:
+                continue
+            path = base / candidate
+            if path.is_file():
+                return path
+    return None
+
+
 def legacy_java_prefixes(
     root: Path, *, allow_specimen_fixture: bool = False
 ) -> list[str]:
@@ -808,6 +839,91 @@ def preferred_semantic_exit_for(operand_class: str) -> str | None:
     return measurable[0] if measurable else None
 
 
+class OracleUnmappedError(ValueError):
+    """Mint/assembler: combination has no legal stamp in OPERAND_CLASS_SEMANTIC_EXITS."""
+
+    code = "ORACLE_UNMAPPED"
+
+
+def _exit_check_legal(story_id: str, operand_key: str, check: str | None) -> str:
+    """Refuse a stamp whose name is not in the one map."""
+    oc = canon_operand_class(operand_key)
+    allowed = OPERAND_CLASS_SEMANTIC_EXITS.get(oc)
+    if not check or not allowed or check not in allowed:
+        raise OracleUnmappedError(
+            f"{story_id}: check {check!r} not in OPERAND_CLASS_SEMANTIC_EXITS[{oc!r}]"
+        )
+    return check
+
+
+def exit_for(
+    story_id: str,
+    operand_class: list[str],
+    proves: list[str],
+    *,
+    polish_empty: bool = False,
+) -> list[dict[str, Any]]:
+    """Total operand→exit stamp. Check names come from OPERAND_CLASS_SEMANTIC_EXITS.
+
+    Unmapped combination → OracleUnmappedError (mint maps that to ORACLE_UNMAPPED).
+    rest without a test path is unmapped (PHASE_AC), not a silent compile stamp.
+    """
+    classes = {
+        c
+        for c in parse_operand_classes(operand_class)
+        if c not in {"user_story", "story"}
+    }
+    has_rest = bool({"rest", "api"} & classes)
+    has_test = "test" in classes or bool(proves)
+    has_persist = "persistence" in classes
+    build_only = bool(classes) and classes <= {
+        "build_config",
+        "build-config",
+        "config",
+        "pom",
+    }
+    if polish_empty or build_only:
+        check = _exit_check_legal(
+            story_id, "build_config", preferred_semantic_exit_for("build_config")
+        )
+        cmd = "mvn -q verify" if polish_empty else "mvn -q compile"
+        return [{"check": check, "cmd": cmd}]
+    if has_rest and proves:
+        check = _exit_check_legal(
+            story_id, "rest", preferred_semantic_exit_for("rest")
+        )
+        return [
+            {"check": check, "cmd": "mvn -q test", "proves": list(proves)}
+        ]
+    if has_rest and not proves:
+        raise OracleUnmappedError(
+            f"{story_id}: rest without a test path in the write-set "
+            "(PHASE_AC — plan must include a test file; do not stamp build_resolves)"
+        )
+    if not has_rest and has_test:
+        check = _exit_check_legal(
+            story_id, "test", preferred_semantic_exit_for("test")
+        )
+        ac: dict[str, Any] = {"check": check, "cmd": "mvn -q test"}
+        if proves:
+            ac["proves"] = list(proves)
+        return [ac]
+    if not has_rest and has_persist:
+        check = _exit_check_legal(
+            story_id, "persistence", preferred_semantic_exit_for("persistence")
+        )
+        ac = {
+            "check": check,
+            "cmd": "mvn -q test" if proves else "mvn -q test-compile",
+        }
+        if proves:
+            ac["proves"] = list(proves)
+        return [ac]
+    raise OracleUnmappedError(
+        f"{story_id}: unmapped operand_class={sorted(classes)} proves={proves!r}"
+    )
+
+
 def is_compile_only_check(name: str) -> bool:
     return str(name or "").strip() in COMPILE_ONLY
 
@@ -1061,8 +1177,8 @@ def declared_extensions_for_paths(paths: list[str]) -> list[str]:
     return sorted(found)
 
 
-def load_required_extensions(root: Path | None) -> list[str]:
-    """Read M1 evidence/required-extensions.json. Missing file → []."""
+def load_required_extension_entries(root: Path | None) -> list[dict[str, str]]:
+    """Read M1 entries[{artifactId, kind}]. Missing file → []."""
     if root is None:
         return []
     p = Path(root) / REQUIRED_EXTENSIONS_REL
@@ -1072,20 +1188,33 @@ def load_required_extensions(root: Path | None) -> list[str]:
         data = json.loads(p.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return []
-    raw = data.get("extensions") if isinstance(data, dict) else None
-    if not isinstance(raw, list):
+    if not isinstance(data, dict):
         return []
-    out: list[str] = []
-    for item in raw:
-        if not isinstance(item, str) or not item.strip():
-            continue
-        s = item.strip()
-        if ":" in s or "/" in s:
-            continue
-        if s.startswith("quarkus-spring-"):
-            continue
-        out.append(s)
-    return sorted(set(out))
+    raw = data.get("entries")
+    out: list[dict[str, str]] = []
+    if isinstance(raw, list):
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+            aid = str(item.get("artifactId") or "").strip()
+            kind = str(item.get("kind") or "").strip().lower()
+            if not aid or ":" in aid or "/" in aid:
+                continue
+            if aid.startswith("quarkus-spring-"):
+                continue
+            if kind not in {"extension", "plugin"}:
+                kind = (
+                    "plugin"
+                    if aid == "openapi-generator-maven-plugin"
+                    else "extension"
+                )
+            out.append({"artifactId": aid, "kind": kind})
+    return sorted(out, key=lambda r: r["artifactId"])
+
+
+def load_required_extensions(root: Path | None) -> list[str]:
+    """ArtifactIds from M1 required-extensions.json. Missing file → []."""
+    return [r["artifactId"] for r in load_required_extension_entries(root)]
 
 
 def parse_extensions_declared(identity: dict) -> tuple[list[str] | None, str | None]:

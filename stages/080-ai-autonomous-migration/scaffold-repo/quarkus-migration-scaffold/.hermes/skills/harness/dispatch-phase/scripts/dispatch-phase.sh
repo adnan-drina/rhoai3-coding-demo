@@ -431,7 +431,7 @@ orchestration: hermes_native (required)
 - `evidence/entry-point-inventory.json` present
 - `evidence/type-inventory.json` present
 - `evidence/findings-handoff.json` validates (`rhoai3.findings-handoff/v1`) — M2 planner input
-- `evidence/required-extensions.json` present (`rhoai3.required-extensions/v1`) — dest pom apply set
+- `evidence/required-extensions.json` present (`rhoai3.required-extensions/v2`) — dest pom apply set
 - `evidence/acks/m1-findings.ack.yaml` exists as the 5.1 gate-record (issuer exit 0) — not an Operator GO
 EOF
     TITLE="M1 ANALYZE: derive + MTA/kantra + inventory"

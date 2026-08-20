@@ -20,10 +20,32 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
 from generated_sources import parse_generator_plugins
+
+PLUGIN_BLOCK_RE = re.compile(r"<plugin>(.*?)</plugin>", re.S | re.I)
+ARTIFACT_RE = re.compile(r"<artifactId>\s*([^<]+?)\s*</artifactId>", re.I)
+
+
+def _jackson_jakarta_native_errors(pom_text: str) -> list[str]:
+    """Refuse Gson / non-Jakarta / non-native library on the generator plugin."""
+    errs: list[str] = []
+    for block in PLUGIN_BLOCK_RE.findall(pom_text or ""):
+        am = ARTIFACT_RE.search(block)
+        aid = (am.group(1).strip() if am else "").lower()
+        if "openapi-generator" not in aid:
+            continue
+        blob = block.lower()
+        if "gson" in blob and "jackson" not in blob:
+            errs.append("gson")
+        if not re.search(r"<library>\s*native\s*</library>", block, re.I):
+            errs.append("library!=native")
+        if not re.search(r"<useJakartaEe>\s*true\s*</useJakartaEe>", block, re.I):
+            errs.append("useJakartaEe!=true")
+    return errs
 
 SPEC_NAMES = ("api-docs.yml", "api-docs.yaml", "openapi.yml", "openapi.yaml", "openapi.json")
 
@@ -147,6 +169,16 @@ def main(argv: list[str] | None = None) -> int:
         print(
             f"REFUSE: DEST_GENERATOR dest {pom_rel} has no generator plugin "
             "(ownership is not configuration; do not union legacy poms)",
+            file=sys.stderr,
+        )
+        return 1
+    pom_text = pom_path.read_text(encoding="utf-8", errors="ignore")
+    recipe_errs = _jackson_jakarta_native_errors(pom_text)
+    if recipe_errs:
+        print(
+            "REFUSE: DEST_GENERATOR dest plugin recipe "
+            + ",".join(recipe_errs)
+            + " (Quarkus 3 / Jakarta / Jackson; library=native)",
             file=sys.stderr,
         )
         return 1

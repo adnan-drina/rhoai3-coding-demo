@@ -85,3 +85,6 @@ Annotated fragments: `references/pom-structure.md`. Repository resolution:
 - Story extension deps = foundation Jacoco plus `identity.extensions_apply`
   on the sole pom.xml writer (later stories do not write the POM).
 - `check-pom-platform-pins.py <root>` → OK once authored.
+- `scripts/verify-maven-settings.py <root>` → OK when `.mvn/maven.config`
+  has `-s` / `.mvn/settings.xml` and the RH GA profile is present. Maven 3
+  does not auto-read `.mvn/settings.xml`.

@@ -256,14 +256,88 @@ def main() -> int:
         print(f"FAIL: missing dest-pom-extensions script: {dest_pom}", file=sys.stderr)
         return 2
 
-    phase = ""
+    setup_jdbc = (
+        root
+        / ".hermes"
+        / "skills"
+        / "sdd"
+        / "check-spec-readiness"
+        / "scripts"
+        / "assert-setup-datasource-driver.py"
+    )
+    if not setup_jdbc.is_file():
+        setup_jdbc = (
+            Path(__file__).resolve().parent.parent.parent.parent
+            / "sdd"
+            / "check-spec-readiness"
+            / "scripts"
+            / "assert-setup-datasource-driver.py"
+        )
+    if not setup_jdbc.is_file():
+        print(f"FAIL: missing setup-datasource-driver script: {setup_jdbc}", file=sys.stderr)
+        return 2
+    sub = subprocess.run(
+        [sys.executable, str(setup_jdbc), str(root)],
+        text=True,
+        capture_output=True,
+    )
+    sys.stdout.write(sub.stdout or "")
+    sys.stderr.write(sub.stderr or "")
+    if sub.returncode != 0:
+        print(
+            f"FAIL: refuse kanban_complete — SETUP_JDBC rc={sub.returncode}",
+            file=sys.stderr,
+        )
+        return 1 if sub.returncode == 1 else sub.returncode
+
+    inner: dict = {}
     try:
         raw_body = json.loads(body.read_text(encoding="utf-8"))
-        inner = raw_body.get("body") if isinstance(raw_body.get("body"), dict) else raw_body
-        if isinstance(inner, dict):
-            phase = str(inner.get("phase") or "").upper()
+        maybe = raw_body.get("body") if isinstance(raw_body.get("body"), dict) else raw_body
+        if isinstance(maybe, dict):
+            inner = maybe
     except (OSError, json.JSONDecodeError, TypeError):
-        phase = ""
+        inner = {}
+    ident = inner.get("identity") if isinstance(inner.get("identity"), dict) else {}
+    writes = inner.get("files_writable") or ident.get("files_writable") or []
+    writes_l = [str(x).replace("\\", "/") for x in writes if isinstance(x, str)]
+    owns_pom = any(p == "pom.xml" or p.endswith("/pom.xml") for p in writes_l)
+    if owns_pom:
+        mvn_set = (
+            root
+            / ".hermes"
+            / "skills"
+            / "migration"
+            / "reference-rh-quarkus-pom"
+            / "scripts"
+            / "verify-maven-settings.py"
+        )
+        if not mvn_set.is_file():
+            mvn_set = (
+                Path(__file__).resolve().parent.parent.parent.parent
+                / "migration"
+                / "reference-rh-quarkus-pom"
+                / "scripts"
+                / "verify-maven-settings.py"
+            )
+        if not mvn_set.is_file():
+            print(f"FAIL: missing verify-maven-settings script: {mvn_set}", file=sys.stderr)
+            return 2
+        sub = subprocess.run(
+            [sys.executable, str(mvn_set), str(root), "--files-only"],
+            text=True,
+            capture_output=True,
+        )
+        sys.stdout.write(sub.stdout or "")
+        sys.stderr.write(sub.stderr or "")
+        if sub.returncode != 0:
+            print(
+                f"FAIL: refuse kanban_complete — MAVEN_REPOS rc={sub.returncode}",
+                file=sys.stderr,
+            )
+            return 1 if sub.returncode == 1 else sub.returncode
+
+    phase = str(inner.get("phase") or "").upper() if inner else ""
     if phase == "M5":
         rescan = (
             root

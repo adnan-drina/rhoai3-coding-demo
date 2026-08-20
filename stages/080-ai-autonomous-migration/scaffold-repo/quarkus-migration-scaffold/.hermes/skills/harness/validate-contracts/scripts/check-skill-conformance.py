@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import re
 import sys
+from datetime import date
 from pathlib import Path
 
 # Architect ratify E-20260812T104706Z — four guidance categories plus harness
@@ -176,6 +177,51 @@ def field(fm: str, key: str) -> str | None:
     return m.group(1).strip().strip("\"'") if m else None
 
 
+R_SK4_NOTICES: list[str] = []
+
+
+def load_r_sk4_exceptions(start: Path) -> dict[str, date]:
+    """Leaf → expiry. Missing or expired entries are not exceptions."""
+    found: Path | None = None
+    cur = start.resolve()
+    if cur.is_file():
+        cur = cur.parent
+    for parent in [cur, *cur.parents]:
+        cand = (
+            parent
+            / ".hermes"
+            / "skills"
+            / "harness"
+            / "validate-contracts"
+            / "references"
+            / "r-sk4-line-exceptions.txt"
+        )
+        if cand.is_file():
+            found = cand
+            break
+        cand = parent / "references" / "r-sk4-line-exceptions.txt"
+        if cand.is_file() and parent.name == "validate-contracts":
+            found = cand
+            break
+    if found is None:
+        return {}
+    out: dict[str, date] = {}
+    for ln in found.read_text(encoding="utf-8").splitlines():
+        s = ln.split("#", 1)[0].strip()
+        if not s:
+            continue
+        parts = s.split()
+        if len(parts) < 2:
+            continue
+        name, raw = parts[0], parts[1]
+        try:
+            y, m, d = (int(x) for x in raw.split("-", 2))
+            out[name] = date(y, m, d)
+        except ValueError:
+            continue
+    return out
+
+
 def check(skill_dir: Path, flat_ok: bool) -> list[str]:
     errs: list[str] = []
     name = skill_dir.name
@@ -244,11 +290,23 @@ def check(skill_dir: Path, flat_ok: bool) -> list[str]:
             errs.append(f"{name}:R-SK.3:'{s}' out of order")
         else:
             pos = p
-    if len(text.splitlines()) > 200:
-        errs.append(
-            f"{name}:R-SK.4:SKILL.md {len(text.splitlines())} lines "
-            "(>200 — move depth to references/)"
-        )
+    nlines = len(text.splitlines())
+    if nlines > 200:
+        exceptions = load_r_sk4_exceptions(skill_dir)
+        exp = exceptions.get(name)
+        if exp is not None and date.today() <= exp:
+            R_SK4_NOTICES.append(
+                f"OK: {name}:R-SK.4 accepted exception {nlines} lines "
+                f"(expires {exp.isoformat()})"
+            )
+        else:
+            extra = ""
+            if exp is not None:
+                extra = f" (exception expired {exp.isoformat()})"
+            errs.append(
+                f"{name}:R-SK.4:SKILL.md {nlines} lines "
+                f"(>200 — move depth to references/){extra}"
+            )
     return errs
 
 
@@ -600,6 +658,8 @@ def main() -> None:
         scaffold = scaffold_root_from_skills(skills_root)
         if scaffold is not None:
             all_errs += check_specimen_literals(scaffold)
+    for n in R_SK4_NOTICES:
+        print(n)
     for e in all_errs:
         print(e)
     print(f"CHECKED={len(dirs)} VIOLATIONS={len(all_errs)}")

@@ -1,0 +1,19 @@
+{
+  "phase": "M3",
+  "identity": {
+    "story_id": "foundational",
+    "kind": "foundational",
+    "parents": ["setup"]
+  },
+  "files_writable": [
+    "src/main/java/com/demo/service/ClinicService.java"
+  ],
+  "dependencies": [
+    {"type": "Owner", "file": "src/main/java/com/demo/entity/Owner.java", "provider": "US1"},
+    {"type": "Pet", "file": "src/main/java/com/demo/entity/Pet.java", "provider": "US2"},
+    {"type": "PetType", "file": "src/main/java/com/demo/entity/PetType.java", "provider": "US2"},
+    {"type": "Specialty", "file": "src/main/java/com/demo/entity/Specialty.java", "provider": "US4"},
+    {"type": "Vet", "file": "src/main/java/com/demo/entity/Vet.java", "provider": "US5"},
+    {"type": "Visit", "file": "src/main/java/com/demo/entity/Visit.java", "provider": "US6"}
+  ]
+}

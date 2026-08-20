@@ -22,8 +22,9 @@ does not matter. `WRITE_TOOLS` is a no-path fail-closed fast-path only.
 `evidence/runtime/write-sets/*.json` is a mint **cache** (forensics /
 spawn hydrate). This hook must not read dest JSON or typed bodies for
 allow/deny (Architect 35099226 / Operator 7e93fb41). M3 omits the yaml
-key — story write-sets are per-card. v24 does not claim a new trust
-boundary (hole 2 / `$HOME` stays open).
+key — story write-sets are per-card. Terminal redirects are fenced on the
+**resolved path** (including `$HOME`); extra-workspace writes are denied
+when a write-set is published.
 
 If no kanban task is published, deny-prefix only — validate/dev seats
 keep working without a write-set.
@@ -359,6 +360,24 @@ def extract_terminal_cmd(payload: dict) -> str:
     return ""
 
 
+_REDIRECT_RE = re.compile(
+    r"(?:(?:^|[\s;|&])(?:cat|tee)(?:\s+-a)?\s*>{1,2}\s*|>>?\s*)"
+    r"([^\s;|&<>]+)"
+)
+
+
+def extract_terminal_write_paths(cmd: str) -> list[str]:
+    """Resolved destinations of shell redirects / heredoc cat-to-file."""
+    if not cmd:
+        return []
+    found: list[str] = []
+    for m in _REDIRECT_RE.finditer(cmd.replace("\\", "/")):
+        raw = m.group(1).strip().strip("'\"")
+        if raw and raw not in found:
+            found.append(raw)
+    return found
+
+
 def main() -> int:
     if len(sys.argv) > 1 and sys.argv[1] in {"-h", "--help"}:
         print(
@@ -390,8 +409,8 @@ def main() -> int:
     safe_p = Path(safe).resolve()
     writable, source = load_write_set(safe_p)
     # Item 4: matcher may invoke this hook on `terminal`. In-workspace
-    # cache overwrite via argv is refused. Extra-workspace ($HOME) is not
-    # claimed (hole 2).
+    # cache overwrite via argv is refused. Extra-workspace ($HOME / ~)
+    # is fenced on the resolved path when a write-set is published.
     if writable is not None and str(tool).lower() in {"terminal", "bash", "shell"}:
         cmd = extract_terminal_cmd(payload).replace("\\", "/")
         if "evidence/runtime/write-sets" in cmd:
@@ -399,6 +418,29 @@ def main() -> int:
                 "write-set-hook: terminal argv targets write-set cache "
                 "(defense-in-depth, not a trust boundary)"
             )
+        for raw_path in extract_terminal_write_paths(cmd):
+            expanded = os.path.expandvars(os.path.expanduser(raw_path))
+            target = Path(expanded)
+            if not target.is_absolute():
+                target = Path.cwd() / target
+            target = Path(os.path.abspath(str(target)))
+            try:
+                rel = target.relative_to(safe_p)
+            except ValueError:
+                return _block(
+                    f"write-set-hook: path {target} outside "
+                    f"HERMES_WRITE_SAFE_ROOT={safe_p}"
+                )
+            rel_s = str(rel).replace("\\", "/")
+            if is_denied(rel_s):
+                return _block(
+                    f"write-set-hook: in-repo OOS path {rel_s} (B-S2 deny-prefix)"
+                )
+            if not in_write_set(rel_s, writable):
+                return _block(
+                    f"write-set-hook: {rel_s} outside files_writable "
+                    f"({source}; B-2 resolved-path allow-model)"
+                )
     if not raw:
         # Known write tool, no path, write-set in play → fail closed.
         # Unknown tools with no path stay allow (reads, terminal, etc.).

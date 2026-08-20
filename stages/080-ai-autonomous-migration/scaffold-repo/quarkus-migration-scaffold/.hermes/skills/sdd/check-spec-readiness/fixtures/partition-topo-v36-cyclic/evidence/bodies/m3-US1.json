@@ -1,0 +1,9 @@
+{
+  "phase": "M3",
+  "identity": {"story_id": "US1", "kind": "us", "parents": ["foundational"]},
+  "files_writable": [
+    "src/main/java/com/demo/entity/Owner.java",
+    "src/main/java/com/demo/service/ClinicService.java"
+  ],
+  "dependencies": []
+}

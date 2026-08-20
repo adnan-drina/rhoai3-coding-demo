@@ -60,6 +60,28 @@ orphan model/interface ⇒ typed BLOCK. Create path refuses `*Impl` without its
 interface in scope/deps/dest (`check-interface-closure.py`). Mid-run OOS-create
 of a missing interface = ABORT — typed `needs_input` only.
 
+**No legal move:** if `exit_criteria` cannot pass because `dependencies[]`
+name providers that are **descendants or siblings** of this card (this slice
+runs before those types exist), do **not** restated the same decision, stub
+types, or wait. `kanban_block --kind needs_input` with that reason, then
+stop. A cyclic partition is a mint defect, not an implementer puzzle.
+
+## Maven longer than 60s
+
+Hermes terminal default is 60s. Cold `mvn` routinely exceeds that. Do **not**
+invent a config key. If dest `hermes config` names an official terminal
+command timeout, use it. Otherwise run Maven **detached** in-workspace and
+poll with later calls each under 60s:
+
+```bash
+mkdir -p evidence/runs/${HERMES_KANBAN_TASK}
+nohup mvn -q dependency:resolve > evidence/runs/${HERMES_KANBAN_TASK}/mvn.log 2>&1 & echo $! > evidence/runs/${HERMES_KANBAN_TASK}/mvn.pid
+# later: kill -0 "$(cat evidence/runs/${HERMES_KANBAN_TASK}/mvn.pid)" ; tail log ; wait for exit
+```
+
+Do not wrap Maven in a custom timeout binary. Do not split one resolve into
+fake 60s chunks.
+
 ### Pre-v12 R5 hard-invoke traps
 
 When story touches REST/DTO/MapStruct — `skill_view` `references/di-config.md`.

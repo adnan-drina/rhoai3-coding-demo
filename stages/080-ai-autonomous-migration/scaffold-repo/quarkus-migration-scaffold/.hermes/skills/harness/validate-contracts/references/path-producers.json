@@ -16,7 +16,8 @@
         "Containerfile",
         "README.md",
         "devfile.yaml",
-        "migration.yaml"
+        "migration.yaml",
+        ".mvn"
       ],
       "producer": "golden scaffold",
       "declared_by": "SR-12 product root"

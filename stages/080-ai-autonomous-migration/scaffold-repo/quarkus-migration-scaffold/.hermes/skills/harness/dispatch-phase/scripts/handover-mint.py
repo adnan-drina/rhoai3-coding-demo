@@ -52,6 +52,9 @@ if str(_READY) not in sys.path:
     sys.path.insert(0, str(_READY))
 
 from specimen_agnostic import (  # noqa: E402
+    OPERAND_CLASS_SEMANTIC_EXITS,
+    OracleUnmappedError,
+    exit_for,
     is_test_source_rel,
     load_json,
     resolve_inventory_path,
@@ -529,55 +532,17 @@ def _proves_for(ph: Phase) -> list[str]:
     return extended
 
 
-def exit_for(
-    story_id: str,
-    operand_class: list[str],
-    proves: list[str],
-    *,
-    polish_empty: bool = False,
-) -> list[dict[str, Any]]:
-    """Total operand→exit map. Unmapped combination → ORACLE_UNMAPPED.
-
-    Architect V35-ORACLE-REST / E-20260819T215902Z. No early continue that
-    stamps build_resolves before this map. rest without a test path is
-    unmapped (PHASE_AC), not a silent compile stamp.
-    """
-    classes = {c for c in operand_class if c != "user_story"}
-    has_rest = "rest" in classes
-    has_test = "test" in classes or bool(proves)
-    has_persist = "persistence" in classes
-    build_only = bool(classes) and classes <= {"build_config", "config", "pom"}
-    if polish_empty or build_only:
-        cmd = "mvn -q verify" if polish_empty else "mvn -q compile"
-        return [{"check": "build_resolves", "cmd": cmd}]
-    if has_rest and proves:
-        return [
-            {"check": "http_semantics", "cmd": "mvn -q test", "proves": list(proves)}
-        ]
-    if has_rest and not proves:
-        _die(
-            "ORACLE_UNMAPPED",
-            f"{story_id}: rest without a test path in the write-set "
-            "(PHASE_AC — plan must include a test file; do not stamp build_resolves)",
+def _stamp_exit(
+    ph: Phase, proves: list[str], *, polish_empty: bool
+) -> None:
+    if not OPERAND_CLASS_SEMANTIC_EXITS:
+        _die("ORACLE_UNMAPPED", "OPERAND_CLASS_SEMANTIC_EXITS is empty")
+    try:
+        ph.acceptance_criteria = exit_for(
+            ph.story_id, ph.operand_class, proves, polish_empty=polish_empty
         )
-    if not has_rest and has_test:
-        ac: dict[str, Any] = {"check": "test_suite_runs", "cmd": "mvn -q test"}
-        if proves:
-            ac["proves"] = list(proves)
-        return [ac]
-    if not has_rest and has_persist:
-        ac = {
-            "check": "mapping_valid",
-            "cmd": "mvn -q test" if proves else "mvn -q test-compile",
-        }
-        if proves:
-            ac["proves"] = list(proves)
-        return [ac]
-    _die(
-        "ORACLE_UNMAPPED",
-        f"{story_id}: unmapped operand_class={sorted(classes)} proves={proves!r}",
-    )
-    return []
+    except OracleUnmappedError as e:
+        _die("ORACLE_UNMAPPED", str(e))
 
 
 def stamp_oracles(phases: list[Phase]) -> None:
@@ -585,9 +550,7 @@ def stamp_oracles(phases: list[Phase]) -> None:
         if not ph.files:
             if ph.kind == KIND_POLISH:
                 ph.operand_class = ["build_config"]
-                ph.acceptance_criteria = exit_for(
-                    ph.story_id, ph.operand_class, [], polish_empty=True
-                )
+                _stamp_exit(ph, [], polish_empty=True)
                 continue
             _die("FILES_IN_SCOPE", f"{ph.story_id}: empty files_in_scope after ownership")
         ph.operand_class = _classes_for(ph)
@@ -621,9 +584,7 @@ def stamp_oracles(phases: list[Phase]) -> None:
                 "PHASE_AC",
                 f"{ph.story_id}: user-story phase has no Independent Test",
             )
-        ph.acceptance_criteria = exit_for(
-            ph.story_id, ph.operand_class, proves, polish_empty=False
-        )
+        _stamp_exit(ph, proves, polish_empty=False)
 
 
 def stamp_workspaces(phases: list[Phase]) -> None:

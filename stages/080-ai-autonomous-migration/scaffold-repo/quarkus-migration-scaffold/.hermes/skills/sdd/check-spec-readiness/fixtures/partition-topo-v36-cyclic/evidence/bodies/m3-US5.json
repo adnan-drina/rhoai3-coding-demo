@@ -1,0 +1,6 @@
+{
+  "phase": "M3",
+  "identity": {"story_id": "US5", "kind": "us", "parents": ["foundational"]},
+  "files_writable": ["src/main/java/com/demo/entity/Vet.java"],
+  "dependencies": []
+}

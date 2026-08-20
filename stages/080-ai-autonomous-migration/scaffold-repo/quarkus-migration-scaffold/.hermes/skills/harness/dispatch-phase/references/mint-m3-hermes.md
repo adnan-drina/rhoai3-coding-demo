@@ -108,6 +108,9 @@ Do **not** pin `check-spec-readiness` on the holder until story bodies exist.
      Immediately:
      `python3 .hermes/skills/harness/dispatch-phase/scripts/assert-story-parked.py /projects/modernized --task-id <id> --ack-gate <ack_gate_id>`
      plus `--expect-parent <id>` once per resolved identity parent.
+     plus `--expect-max-runtime 2700 --expect-max-retries 2` (M3
+     `phase-dispatch.yaml`; generous backstop, well above 26m; never a
+     tight pacing kill).
      One `OK:` / `REFUSE:` line. Refuse unless `status=todo` (not
      `ready`/`running`) **and** `parents` include the unfinished `ack_gate`
      and those identity parents.
@@ -184,7 +187,10 @@ Bare filenames resolve under the wrong skill tree and become typed BLOCK
 
 1. `python3 .hermes/skills/harness/dispatch-phase/scripts/check-create-path-tip-sync.py /projects/modernized`
 2. `python3 .hermes/skills/harness/dispatch-phase/scripts/check-phase-body-script-refs.py /projects/modernized`
-   3. `python3 .hermes/skills/sdd/check-spec-readiness/scripts/stamp-body-dependencies.py --body <body> --write`
+   3. `python3 .hermes/skills/sdd/check-spec-readiness/scripts/relocate-descendant-import-writesets.py --write`
+      Dest Java whose imports need descendant-owned types moves onto polish
+      before dependencies are stamped.
+3b. `python3 .hermes/skills/sdd/check-spec-readiness/scripts/stamp-body-dependencies.py --body <body> --write`
       Unowned dest twins reachable by inheritance from this story's owned
       types are assigned onto the story's partition frame (V34-5), then
       closed onto the body. `DEPENDENCY_HOLE` still names true orphans.
@@ -198,6 +204,8 @@ Bare filenames resolve under the wrong skill tree and become typed BLOCK
    as written must be ⊆ partition.stories[id] declared frame. Do **not**
    treat endpoint coverage as write-set coverage. Repair the body, re-run
    stamps 3–6, **do not** stamp digest until green.)
+6b. `python3 .hermes/skills/sdd/check-spec-readiness/scripts/assert-partition-topological-order.py`
+    Coverage is not topological order. Descendant/sibling imports REFUSE.
 7. `python3 .hermes/skills/sdd/check-spec-readiness/scripts/assert-quarantine-tombstones.py`
 8. `python3 .hermes/skills/sdd/check-spec-readiness/scripts/assert-mint-constraints-complete.py --body <body> --inject` then without `--inject`
 9. `python3 .hermes/skills/sdd/check-spec-readiness/scripts/assert-constraints-preserved.py --body <body> --snapshot-before`

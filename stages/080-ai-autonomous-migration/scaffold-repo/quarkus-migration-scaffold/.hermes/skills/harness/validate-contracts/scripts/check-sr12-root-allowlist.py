@@ -37,6 +37,7 @@ ALLOWED = frozenset(
         "devfile.yaml",
         "evidence",
         "migration.yaml",
+        ".mvn",
     }
 )
 SKIP = frozenset({".DS_Store", ".git"})

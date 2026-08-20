@@ -104,3 +104,5 @@ Spring→extension decision aid: `references/spring-dep-to-extension.md`.
   typed wait with destination-inventory citation).
 - Removals: story notes cite inventory + wiring absence + runtime smoke; else
   REFUSE the remove.
+- `scripts/spring_dep_map.py --check` → `OK: spring-dep-to-extension.md n=…`
+  (the only Spring→Quarkus map; JDBC `jdbc:hsqldb` is a cited row).

@@ -6,6 +6,10 @@ pom artifactIds are the other source. Rewrite quoted quarkus-spring-* /
 Spring Boot starters through T-3 (spring-dep-to-extension.md). Never emit
 quarkus-spring-* compatibility extensions.
 
+JDBC driver kind comes from the LEGACY datasource URL (jdbc:<kind>: mapped
+through the same md table). Dest application.properties does not exist at
+M1 — do not read dest db-kind.
+
 Usage:
   python3 emit-required-extensions.py <root>
   python3 emit-required-extensions.py <root> --handoff PATH --legacy-pom PATH --out PATH
@@ -18,7 +22,25 @@ import re
 import sys
 from pathlib import Path
 
-SCHEMA = "rhoai3.required-extensions/v1"
+_SCRIPTS = Path(__file__).resolve().parent
+_MAP = (
+    _SCRIPTS.parent.parent.parent
+    / "migration"
+    / "manage-quarkus-extensions"
+    / "scripts"
+)
+if str(_MAP) not in sys.path:
+    sys.path.insert(0, str(_MAP))
+
+from spring_dep_map import (  # noqa: E402
+    JDBC_GLOB,
+    entries_for,
+    expand_jdbc_glob,
+    native_for_artifact,
+    scan_legacy_jdbc_keys,
+)
+
+SCHEMA = "rhoai3.required-extensions/v2"
 HANDOFF_REL = Path("evidence") / "findings-handoff.json"
 OUT_REL = Path("evidence") / "required-extensions.json"
 INVENTORY_REL = Path("evidence") / "type-inventory.json"
@@ -27,64 +49,15 @@ QUARKUS_AID_RE = re.compile(r"quarkus-[a-z0-9-]+", re.I)
 SPRING_QUOTE_RE = re.compile(r"['\"](spring-[a-z0-9-]+)['\"]", re.I)
 ARTIFACT_RE = re.compile(r"<artifactId>\s*([^<]+?)\s*</artifactId>", re.I)
 
-# T-3 native rewrite. Empty list = no extra extension (DI / AOP / JDBC-as-library).
-SPRING_TO_NATIVE: dict[str, tuple[str, ...]] = {
-    "spring-data-jpa": ("quarkus-hibernate-orm",),
-    "spring-boot-starter-data-jpa": ("quarkus-hibernate-orm",),
-    "hibernate-core": ("quarkus-hibernate-orm",),
-    "hibernate-orm": ("quarkus-hibernate-orm",),
-    "spring-cache": ("quarkus-cache",),
-    "spring-boot-starter-cache": ("quarkus-cache",),
-    "spring-web": ("quarkus-rest", "quarkus-rest-jackson"),
-    "spring-boot-starter-web": ("quarkus-rest", "quarkus-rest-jackson"),
-    "spring-boot-starter-validation": ("quarkus-hibernate-validator",),
-    "hibernate-validator": ("quarkus-hibernate-validator",),
-    "validation-api": ("quarkus-hibernate-validator",),
-    "jakarta.validation-api": ("quarkus-hibernate-validator",),
-    "spring-boot-starter-security": ("quarkus-security",),
-    "spring-security": ("quarkus-security",),
-    "spring-boot-starter-actuator": ("quarkus-smallrye-health",),
-    "springfox-swagger2": ("quarkus-smallrye-openapi", "openapi-generator-maven-plugin"),
-    "springfox-swagger-ui": ("quarkus-smallrye-openapi", "openapi-generator-maven-plugin"),
-    "springdoc-openapi-ui": ("quarkus-smallrye-openapi",),
-    "openapi-generator-maven-plugin": ("openapi-generator-maven-plugin",),
-    "spring-di": (),
-    "spring-boot-starter-aop": (),
-    "spring-aop": (),
-    "spring-boot-starter-jdbc": (),
-    "spring-jdbc": (),
-    "mapstruct": (),
-}
-
 LEGACY_POM_CANDIDATES = (
     Path("/projects/.derived/legacy-at-3/pom.xml"),
     Path("evidence/derived/legacy-at-3/pom.xml"),
 )
-
-
-def native_for_artifact(aid: str) -> list[str]:
-    a = (aid or "").strip().lower()
-    if not a:
-        return []
-    if a.startswith("quarkus-spring-"):
-        return list(native_for_artifact(a[len("quarkus-") :]))
-    if a.startswith("quarkus-") or a == "openapi-generator-maven-plugin":
-        return [a]
-    if a in SPRING_TO_NATIVE:
-        return list(SPRING_TO_NATIVE[a])
-    if "data-jpa" in a or a.endswith("-jpa"):
-        return ["quarkus-hibernate-orm"]
-    if "validat" in a:
-        return ["quarkus-hibernate-validator"]
-    if a.endswith("-cache") or a == "cache":
-        return ["quarkus-cache"]
-    if "starter-web" in a or a in {"spring-webmvc", "spring-boot-starter-webflux"}:
-        return ["quarkus-rest", "quarkus-rest-jackson"]
-    if "swagger" in a or "springfox" in a:
-        return ["quarkus-smallrye-openapi", "openapi-generator-maven-plugin"]
-    if "openapi-generator" in a:
-        return ["openapi-generator-maven-plugin"]
-    return []
+LEGACY_ROOT_CANDIDATES = (
+    Path("/projects/.derived/legacy-at-3"),
+    Path("evidence/derived/legacy-at-3"),
+    Path("/projects/legacy"),
+)
 
 
 def _apply_rule(rule: dict) -> set[str]:
@@ -103,6 +76,7 @@ def _apply_rule(rule: dict) -> set[str]:
         out.add("quarkus-hibernate-orm")
     if "persistence" in rid.lower() and "to-quarkus" in rid.lower():
         out.add("quarkus-hibernate-orm")
+        out.update(native_for_artifact("spring-boot-starter-jdbc"))
     if "validat" in rid.lower() or "validat" in desc.lower():
         out.add("quarkus-hibernate-validator")
     if "springboot-cache" in rid.lower() or "spring-cache" in text:
@@ -167,6 +141,18 @@ def resolve_legacy_pom(root: Path, explicit: Path | None) -> Path | None:
     return None
 
 
+def resolve_legacy_root(root: Path, pom: Path | None) -> Path | None:
+    if pom is not None and pom.is_file():
+        parent = pom.parent
+        if parent.is_dir():
+            return parent
+    for cand in LEGACY_ROOT_CANDIDATES:
+        p = cand if cand.is_absolute() else (root / cand)
+        if p.is_dir():
+            return p
+    return None
+
+
 def emit(
     root: Path,
     *,
@@ -197,16 +183,31 @@ def emit(
     found = set(from_rules) | set(from_pom)
     if generated_present(root):
         found.add("openapi-generator-maven-plugin")
-    extensions = sorted(found)
+    jdbc_from = ""
+    if JDBC_GLOB in found or any(
+        x.startswith("quarkus-jdbc-") for x in found
+    ) or "quarkus-agroal" in found:
+        keys = scan_legacy_jdbc_keys(resolve_legacy_root(root, legacy_pom))
+        expanded, jdbc_from = expand_jdbc_glob(found, keys)
+        if JDBC_GLOB in found and jdbc_from in {"", "MISSING"}:
+            print(
+                "REFUSE: JDBC_KIND legacy datasource URL missing "
+                "(cannot expand quarkus-jdbc-* from dest db-kind; M1 is too early)",
+                file=sys.stderr,
+            )
+            return 1
+        found = expanded
+    entries = entries_for(sorted(found))
     doc = {
         "schema": SCHEMA,
-        "extensions": extensions,
+        "entries": entries,
         "from_rules": rule_ids,
         "legacy_pom": pom_rel,
+        "jdbc_kind_from": jdbc_from,
     }
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
-    print(f"OK: required-extensions {len(extensions)} -> {out_path}")
+    print(f"OK: required-extensions {len(entries)} -> {out_path}")
     return 0
 
 

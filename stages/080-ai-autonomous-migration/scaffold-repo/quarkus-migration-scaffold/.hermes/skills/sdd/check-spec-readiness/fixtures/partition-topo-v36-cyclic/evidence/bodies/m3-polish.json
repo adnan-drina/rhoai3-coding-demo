@@ -1,0 +1,10 @@
+{
+  "phase": "M3",
+  "identity": {
+    "story_id": "polish",
+    "kind": "polish",
+    "parents": ["US1", "US2", "US3", "US4", "US5", "US6", "US7", "US8"]
+  },
+  "files_writable": [],
+  "dependencies": []
+}

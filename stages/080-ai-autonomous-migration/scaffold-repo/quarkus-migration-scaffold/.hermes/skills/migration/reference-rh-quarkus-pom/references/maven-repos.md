@@ -28,10 +28,23 @@ user or pipeline `settings.xml`, **not** inside every project POM.
 ```
 
 Activate with `<activeProfile>red-hat-enterprise-maven-repository</activeProfile>`.
-Verify: `mvn help:effective-settings`.
 
-Factory / UDI / CI should provision this profile so destination POMs stay
-free of infrastructure declarations.
+Maven 3 does **not** auto-read `.mvn/settings.xml`. This scaffold ships:
+
+- `.mvn/settings.xml` — the RH GA profile above
+- `.mvn/maven.config` — `-s` / `.mvn/settings.xml` (one argument per line for Maven 3.9)
+
+Do not write `~/.m2/settings.xml` from a story worker (write-fence, resolved path).
+Do not embed `<repositories>` in the dest POM.
+
+**Verify (refuse naming the gap):**
+
+```bash
+python3 .hermes/skills/migration/reference-rh-quarkus-pom/scripts/verify-maven-settings.py .
+```
+
+That script requires the two `.mvn/` files and, when `mvn` is on PATH,
+`mvn help:effective-settings` must show `red-hat-enterprise-maven-repository`.
 
 ## Fallback — in-POM repositories
 

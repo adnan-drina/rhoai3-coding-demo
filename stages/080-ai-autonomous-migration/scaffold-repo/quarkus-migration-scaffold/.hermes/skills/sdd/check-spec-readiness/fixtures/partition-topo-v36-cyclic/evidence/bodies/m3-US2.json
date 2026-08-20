@@ -1,0 +1,9 @@
+{
+  "phase": "M3",
+  "identity": {"story_id": "US2", "kind": "us", "parents": ["foundational"]},
+  "files_writable": [
+    "src/main/java/com/demo/entity/Pet.java",
+    "src/main/java/com/demo/entity/PetType.java"
+  ],
+  "dependencies": []
+}

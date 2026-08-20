@@ -93,6 +93,10 @@ python3 "${HERMES_SKILL_DIR}/scripts/check-partition-coverage.py" /projects/mode
 - `scripts/generated_sources.py` — library: classify generator output (path / `@Generated` / plugin); no name patterns
 - `scripts/stamp-destination-inventory.py` — mutate: `--write` dest inventory
 - `scripts/specimen_agnostic.py` — library helper (not an agent entry point)
+- `scripts/assert-partition-topological-order.py` — mint-time ancestor/descendant import order (coverage is not topology)
+- `scripts/relocate-descendant-import-writesets.py` — move dest types that import descendant-owned types onto polish
+- `scripts/assert-setup-datasource-driver.py` — dest datasource properties need a matching `quarkus-jdbc-*` on the dest pom
+- `scripts/assert-dest-pom-extensions.py` — dest pom declares required-extensions `kind` (plugin vs dependency)
 
 Do **not** invoke DD4-retired R-M3.5/7 stubs (`check-persistence-bom.py`,
 `check-compile-deps-preflight.py`) — they refuse; extensions are story-owned.

@@ -686,6 +686,8 @@ hook_tmp="$(mktemp -d)"
 mkdir -p "${hook_tmp}/src/main/java"
 (
   cd "${hook_tmp}"
+  unset HERMES_KANBAN_FILES_WRITABLE HERMES_KANBAN_TASK HERMES_KANBAN_CARD_BODY \
+    HERMES_KANBAN_CARD_JSON HERMES_KANBAN_PHASE HERMES_KANBAN_DB || true
   export HERMES_WRITE_SAFE_ROOT="${hook_tmp}"
   oos_rel=".hermes/${RANDOM}-tamper.py"
   if printf '%s\n' "{\"tool_name\":\"write_file\",\"tool_input\":{\"path\":\"${oos_rel}\"}}" \
@@ -848,6 +850,20 @@ PY
     exit 1
   else
     echo "OK: terminal argv targeting write-set cache is refused (defence-in-depth)"
+  fi
+  if printf '%s\n' '{"tool_name":"terminal","tool_input":{"command":"cat > ~/.m2/settings.xml <<EOF\n<settings/>\nEOF"}}' \
+    | python3 "${HOOK}" >/dev/null; then
+    echo "FAIL: terminal redirect to ~/.m2/settings.xml must block (resolved path)" >&2
+    exit 1
+  else
+    echo "OK: terminal redirect to ~/.m2/settings.xml is refused (G2 resolved path)"
+  fi
+  if printf '%s\n' '{"tool_name":"terminal","tool_input":{"command":"cat > $HOME/.m2/settings.xml <<EOF\n<settings/>\nEOF"}}' \
+    | python3 "${HOOK}" >/dev/null; then
+    echo "FAIL: terminal redirect to \$HOME/.m2/settings.xml must block" >&2
+    exit 1
+  else
+    echo "OK: terminal redirect to \$HOME/.m2/settings.xml is refused"
   fi
   unset HERMES_KANBAN_FILES_WRITABLE
   unset HERMES_KANBAN_CARD_BODY || true
@@ -1547,8 +1563,11 @@ req = kb / "evidence" / "required-extensions.json"
 req.parent.mkdir(parents=True, exist_ok=True)
 req.write_text(
     json.dumps({
-        "schema": "rhoai3.required-extensions/v1",
-        "extensions": ["quarkus-hibernate-orm", "quarkus-hibernate-validator"],
+        "schema": "rhoai3.required-extensions/v2",
+        "entries": [
+            {"artifactId": "quarkus-hibernate-orm", "kind": "extension"},
+            {"artifactId": "quarkus-hibernate-validator", "kind": "extension"},
+        ],
     })
     + "\n"
 )
@@ -2792,6 +2811,18 @@ else
   echo "FAIL: assert-story-parked should require identity parent" >&2
   rc=1
 fi
+if python3 "${SKILLS}/harness/dispatch-phase/scripts/assert-story-parked.py" \
+    "${ser_tmp}" --task-id t_us1 --ack-gate t_gate --expect-max-runtime 2700 \
+    >/tmp/parked-rt.out 2>/tmp/parked-rt.err; then
+  echo "FAIL: parked should refuse missing max_runtime_seconds column" >&2
+  rc=1
+elif grep -q max_runtime_seconds /tmp/parked-rt.err /tmp/parked-rt.out; then
+  echo "OK: assert-story-parked refuses missing max_runtime_seconds when flagged"
+else
+  echo "FAIL: expected missing max_runtime_seconds refuse" >&2
+  cat /tmp/parked-rt.out /tmp/parked-rt.err >&2
+  rc=1
+fi
 rm -rf "${ser_tmp}"
 
 # V35-GEN-POST dest-only (legacy pom must not green dest) — case of V35-EXTENSIONS
@@ -2815,7 +2846,7 @@ else
   cat /tmp/gp.out /tmp/gp.err >&2
   rc=1
 fi
-printf '%s\n' '<project><build><plugins><plugin><artifactId>openapi-generator-maven-plugin</artifactId><inputSpec>src/main/resources/api-docs.yml</inputSpec></plugin></plugins></build></project>' \
+printf '%s\n' '<project><build><plugins><plugin><artifactId>openapi-generator-maven-plugin</artifactId><inputSpec>src/main/resources/api-docs.yml</inputSpec><library>native</library><configOptions><useJakartaEe>true</useJakartaEe></configOptions></plugin></plugins></build></project>' \
   > "${gp_tmp}/pom.xml"
 if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/assert-dest-generator-configured.py" \
     "${gp_tmp}" --body "${gp_tmp}/body.json" | grep -q 'OK: dest-generator'; then
@@ -2831,7 +2862,7 @@ ex_tmp="$(mktemp -d)"
 mkdir -p "${ex_tmp}/evidence"
 printf '%s\n' '{"identity":{"story_id":"setup","extensions_apply":["quarkus-rest","quarkus-rest-jackson"]},"files_writable":["pom.xml"]}' \
   > "${ex_tmp}/body.json"
-printf '%s\n' '{"schema":"rhoai3.required-extensions/v1","extensions":["quarkus-hibernate-orm","quarkus-hibernate-validator","openapi-generator-maven-plugin"]}' \
+printf '%s\n' '{"schema":"rhoai3.required-extensions/v2","entries":[{"artifactId":"quarkus-hibernate-orm","kind":"extension"},{"artifactId":"quarkus-hibernate-validator","kind":"extension"},{"artifactId":"openapi-generator-maven-plugin","kind":"plugin"}]}' \
   > "${ex_tmp}/evidence/required-extensions.json"
 printf '%s\n' '<project><dependencies><dependency><artifactId>quarkus-rest</artifactId></dependency><dependency><artifactId>quarkus-rest-jackson</artifactId></dependency></dependencies></project>' \
   > "${ex_tmp}/pom.xml"
@@ -2849,7 +2880,7 @@ else
   cat /tmp/ex.out /tmp/ex.err >&2
   rc=1
 fi
-printf '%s\n' '<project><dependencies><dependency><artifactId>quarkus-rest</artifactId></dependency><dependency><artifactId>quarkus-rest-jackson</artifactId></dependency><dependency><artifactId>quarkus-hibernate-orm</artifactId></dependency><dependency><artifactId>quarkus-hibernate-validator</artifactId></dependency></dependencies><build><plugins><plugin><artifactId>openapi-generator-maven-plugin</artifactId><inputSpec>src/main/resources/api-docs.yml</inputSpec></plugin></plugins></build></project>' \
+printf '%s\n' '<project><dependencies><dependency><artifactId>quarkus-rest</artifactId></dependency><dependency><artifactId>quarkus-rest-jackson</artifactId></dependency><dependency><artifactId>quarkus-hibernate-orm</artifactId></dependency><dependency><artifactId>quarkus-hibernate-validator</artifactId></dependency></dependencies><build><plugins><plugin><artifactId>openapi-generator-maven-plugin</artifactId><inputSpec>src/main/resources/api-docs.yml</inputSpec><library>native</library><configOptions><useJakartaEe>true</useJakartaEe></configOptions></plugin></plugins></build></project>' \
   > "${ex_tmp}/pom.xml"
 if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/assert-dest-pom-extensions.py" \
     "${ex_tmp}" --body "${ex_tmp}/body.json" | grep -q 'OK: dest pom declares'; then
@@ -2882,6 +2913,237 @@ else
   rc=1
 fi
 rm -rf "${ex_tmp}"
+
+# v37 overlay wave: one-source JDBC, kind, setup driver, topo, maven -s
+if python3 "${SKILLS}/migration/manage-quarkus-extensions/scripts/spring_dep_map.py" --check \
+    | grep -q 'OK: spring-dep-to-extension.md'; then
+  echo "OK: spring_dep_map.py --check"
+else
+  echo "FAIL: spring_dep_map.py --check" >&2
+  rc=1
+fi
+
+jdbc_tmp="$(mktemp -d)"
+mkdir -p "${jdbc_tmp}/evidence" "${jdbc_tmp}/legacy"
+printf '%s\n' '{"schema":"rhoai3.findings-handoff/v1","rules":[{"rule_id":"persistence-to-quarkus-00010","disposition":"apply","description":"Replace Spring persistence with Quarkus"}],"totals":{"violations":1}}' \
+  > "${jdbc_tmp}/evidence/findings-handoff.json"
+printf '%s\n' '<project><dependency><artifactId>spring-boot-starter-jdbc</artifactId></dependency></project>' \
+  > "${jdbc_tmp}/legacy/pom.xml"
+printf '%s\n' 'spring.datasource.url=jdbc:hsqldb:mem:testdb' \
+  > "${jdbc_tmp}/legacy/application.properties"
+if python3 "${SKILLS}/analysis/scan-with-mta/scripts/emit-required-extensions.py" \
+    "${jdbc_tmp}" --handoff "${jdbc_tmp}/evidence/findings-handoff.json" \
+    --legacy-pom "${jdbc_tmp}/legacy/pom.xml" --out "${jdbc_tmp}/evidence/required-extensions.json" \
+    | grep -q 'OK: required-extensions'; then
+  if grep -q quarkus-jdbc-h2 "${jdbc_tmp}/evidence/required-extensions.json" \
+     && grep -q '"kind": "extension"' "${jdbc_tmp}/evidence/required-extensions.json" \
+     && ! grep -q quarkus-jdbc-hsqldb "${jdbc_tmp}/evidence/required-extensions.json" \
+     && ! grep -q '"extensions"' "${jdbc_tmp}/evidence/required-extensions.json"; then
+    echo "OK: M1 emit expands jdbc:hsqldb to quarkus-jdbc-h2 via md table"
+  else
+    echo "FAIL: emit should map jdbc:hsqldb through the table to quarkus-jdbc-h2" >&2
+    cat "${jdbc_tmp}/evidence/required-extensions.json" >&2
+    rc=1
+  fi
+else
+  echo "FAIL: emit with legacy jdbc:hsqldb URL should succeed" >&2
+  rc=1
+fi
+rm -f "${jdbc_tmp}/legacy/application.properties"
+if python3 "${SKILLS}/analysis/scan-with-mta/scripts/emit-required-extensions.py" \
+    "${jdbc_tmp}" --handoff "${jdbc_tmp}/evidence/findings-handoff.json" \
+    --legacy-pom "${jdbc_tmp}/legacy/pom.xml" --out "${jdbc_tmp}/evidence/required-extensions.json" \
+    >/tmp/jdbc-miss.out 2>/tmp/jdbc-miss.err; then
+  echo "FAIL: emit without legacy jdbc URL should JDBC_KIND" >&2
+  rc=1
+elif grep -q JDBC_KIND /tmp/jdbc-miss.err; then
+  echo "OK: emit REFUSE JDBC_KIND when legacy URL missing (no dest db-kind fallback)"
+else
+  echo "FAIL: expected JDBC_KIND" >&2
+  cat /tmp/jdbc-miss.out /tmp/jdbc-miss.err >&2
+  rc=1
+fi
+rm -rf "${jdbc_tmp}"
+
+plug_tmp="$(mktemp -d)"
+mkdir -p "${plug_tmp}/evidence"
+printf '%s\n' '{"identity":{"story_id":"setup","extensions_apply":[]},"files_writable":["pom.xml"]}' \
+  > "${plug_tmp}/body.json"
+printf '%s\n' '{"schema":"rhoai3.required-extensions/v2","entries":[{"artifactId":"openapi-generator-maven-plugin","kind":"plugin"}]}' \
+  > "${plug_tmp}/evidence/required-extensions.json"
+printf '%s\n' '<project><dependencies><dependency><artifactId>openapi-generator-maven-plugin</artifactId></dependency></dependencies></project>' \
+  > "${plug_tmp}/pom.xml"
+if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/assert-dest-pom-extensions.py" \
+    "${plug_tmp}" --body "${plug_tmp}/body.json" >/tmp/plug.out 2>/tmp/plug.err; then
+  echo "FAIL: plugin as <dependency> should DEST_EXTENSIONS" >&2
+  rc=1
+elif grep -q DEST_EXTENSIONS /tmp/plug.err; then
+  echo "OK: EXTENSIONS refuses plugin listed as a dependency"
+else
+  echo "FAIL: expected DEST_EXTENSIONS for plugin-as-dependency" >&2
+  cat /tmp/plug.out /tmp/plug.err >&2
+  rc=1
+fi
+rm -rf "${plug_tmp}"
+
+sj_tmp="$(mktemp -d)"
+mkdir -p "${sj_tmp}/src/main/resources"
+printf '%s\n' 'quarkus.datasource.db-kind=h2' > "${sj_tmp}/src/main/resources/application.properties"
+printf '%s\n' '<project><dependencies><dependency><artifactId>quarkus-rest</artifactId></dependency></dependencies></project>' \
+  > "${sj_tmp}/pom.xml"
+if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/assert-setup-datasource-driver.py" \
+    "${sj_tmp}" >/tmp/sj.out 2>/tmp/sj.err; then
+  echo "FAIL: dest db-kind=h2 without jdbc driver should SETUP_JDBC" >&2
+  rc=1
+elif grep -q SETUP_JDBC /tmp/sj.err; then
+  echo "OK: SETUP_JDBC refuses dest datasource without matching driver"
+else
+  echo "FAIL: expected SETUP_JDBC" >&2
+  cat /tmp/sj.out /tmp/sj.err >&2
+  rc=1
+fi
+printf '%s\n' '<project><dependencies><dependency><artifactId>quarkus-jdbc-h2</artifactId></dependency></dependencies></project>' \
+  > "${sj_tmp}/pom.xml"
+if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/assert-setup-datasource-driver.py" \
+    "${sj_tmp}" | grep -q 'OK: SETUP_JDBC'; then
+  echo "OK: SETUP_JDBC dest pom has matching jdbc driver"
+else
+  echo "FAIL: dest pom with quarkus-jdbc-h2 should pass SETUP_JDBC" >&2
+  rc=1
+fi
+rm -rf "${sj_tmp}"
+
+mvn_tmp="$(mktemp -d)"
+mkdir -p "${mvn_tmp}/.mvn"
+printf '%s\n' '<settings><profile><id>red-hat-enterprise-maven-repository</id></profile></settings>' \
+  > "${mvn_tmp}/.mvn/settings.xml"
+printf '%s\n' '# no -s' > "${mvn_tmp}/.mvn/maven.config"
+if python3 "${SKILLS}/migration/reference-rh-quarkus-pom/scripts/verify-maven-settings.py" \
+    "${mvn_tmp}" --files-only >/tmp/mvnset.out 2>/tmp/mvnset.err; then
+  echo "FAIL: maven.config without -s should MAVEN_REPOS" >&2
+  rc=1
+elif grep -q MAVEN_REPOS /tmp/mvnset.err; then
+  echo "OK: MAVEN_REPOS refuses .mvn/settings.xml without maven.config -s"
+else
+  echo "FAIL: expected MAVEN_REPOS" >&2
+  cat /tmp/mvnset.out /tmp/mvnset.err >&2
+  rc=1
+fi
+printf '%s\n' '-s' '.mvn/settings.xml' > "${mvn_tmp}/.mvn/maven.config"
+if python3 "${SKILLS}/migration/reference-rh-quarkus-pom/scripts/verify-maven-settings.py" \
+    "${mvn_tmp}" --files-only | grep -q 'OK: MAVEN_REPOS'; then
+  echo "OK: MAVEN_REPOS .mvn/maven.config -s + settings.xml"
+else
+  echo "FAIL: maven.config -s should pass files-only" >&2
+  rc=1
+fi
+rm -rf "${mvn_tmp}"
+
+topo_fix="${SKILLS}/sdd/check-spec-readiness/fixtures/partition-topo-v36-cyclic"
+if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/assert-partition-topological-order.py" \
+    "${topo_fix}" >/tmp/topo.out 2>/tmp/topo.err; then
+  echo "FAIL: v36 cyclic fixture must TOPOLOGICAL_ORDER" >&2
+  rc=1
+elif grep -q TOPOLOGICAL_ORDER /tmp/topo.err; then
+  echo "OK: TOPOLOGICAL_ORDER refuses v36 cyclic foundational facade (143e7357)"
+else
+  echo "FAIL: expected TOPOLOGICAL_ORDER" >&2
+  cat /tmp/topo.out /tmp/topo.err >&2
+  rc=1
+fi
+if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/assert-partition-topological-order.py" \
+    "${topo_fix}" --report-only | grep -q 'OK: topological report'; then
+  echo "OK: topological report-only sweep of reconstructed 11 v36 cards"
+else
+  echo "FAIL: --report-only should print topological report" >&2
+  rc=1
+fi
+topo_tmp="$(mktemp -d)"
+cp -R "${topo_fix}/." "${topo_tmp}/"
+if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/relocate-descendant-import-writesets.py" \
+    "${topo_tmp}" --write | grep -q FACADE_RELOCATE; then
+  if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/assert-partition-topological-order.py" \
+      "${topo_tmp}" | grep -q 'OK: partition topological order'; then
+    echo "OK: relocate moves facade onto polish; topology then passes"
+  else
+    echo "FAIL: topology should pass after relocate" >&2
+    rc=1
+  fi
+  if python3 - "${topo_tmp}" <<'PY'
+import json, sys
+from pathlib import Path
+root = Path(sys.argv[1])
+owners = {}
+dup = []
+for p in sorted((root / "evidence" / "bodies").glob("m3-*.json")):
+    if p.name.endswith(".sha256.json"):
+        continue
+    doc = json.loads(p.read_text(encoding="utf-8"))
+    body = doc.get("body") if isinstance(doc.get("body"), dict) else doc
+    ident = body.get("identity") if isinstance(body.get("identity"), dict) else {}
+    sid = str(ident.get("story_id") or "")
+    for rel in body.get("files_writable") or []:
+        if not isinstance(rel, str) or not rel:
+            continue
+        if rel in owners and owners[rel] != sid:
+            dup.append(f"{rel}:{owners[rel]}+{sid}")
+        else:
+            owners[rel] = sid
+if dup:
+    print("FAIL: " + " ".join(dup), file=sys.stderr)
+    raise SystemExit(1)
+print("OK")
+PY
+  then
+    echo "OK: relocate unique-owns dest paths after facade move"
+  else
+    echo "FAIL: same dest path still on two bodies after relocate" >&2
+    rc=1
+  fi
+else
+  echo "FAIL: relocate should move the facade onto polish" >&2
+  rc=1
+fi
+rm -rf "${topo_tmp}"
+
+legacy_topo="$(mktemp -d)"
+mkdir -p "${legacy_topo}/evidence/briefs" "${legacy_topo}/evidence/bodies" \
+  "${legacy_topo}/evidence/derived/legacy-at-3/src/main/java/com/demo/service" \
+  "${legacy_topo}/evidence/derived/legacy-at-3/src/main/java/com/demo/entity"
+cp "${topo_fix}/evidence/briefs/partition.json" "${legacy_topo}/evidence/briefs/"
+cp "${topo_fix}/evidence/bodies/"*.json "${legacy_topo}/evidence/bodies/"
+cp "${topo_fix}/src/main/java/com/demo/service/"*.java \
+  "${legacy_topo}/evidence/derived/legacy-at-3/src/main/java/com/demo/service/"
+cp "${topo_fix}/src/main/java/com/demo/entity/"*.java \
+  "${legacy_topo}/evidence/derived/legacy-at-3/src/main/java/com/demo/entity/"
+if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/relocate-descendant-import-writesets.py" \
+    "${legacy_topo}" --write | grep -q 'foundational->polish'; then
+  echo "OK: relocate parses legacy twins when dest Java is absent"
+else
+  echo "FAIL: relocate should use legacy twins at mint (dest Java absent)" >&2
+  rc=1
+fi
+rm -rf "${legacy_topo}"
+
+mo_tmp="$(mktemp -d)"
+mkdir -p "${mo_tmp}/evidence/briefs" "${mo_tmp}/evidence/bodies"
+printf '%s\n' '{"stories":[{"story_id":"US1","kind":"us","files_writable":["src/main/java/x/Shared.java"]},{"story_id":"US2","kind":"us","files_writable":["src/main/java/x/Shared.java"]},{"story_id":"polish","kind":"polish","files_writable":[]}]}' > "${mo_tmp}/evidence/briefs/partition.json"
+printf '%s\n' '{"identity":{"story_id":"US1","kind":"us"},"files_writable":["src/main/java/x/Shared.java"]}' > "${mo_tmp}/evidence/bodies/m3-US1.json"
+printf '%s\n' '{"identity":{"story_id":"US2","kind":"us"},"files_writable":["src/main/java/x/Shared.java"]}' > "${mo_tmp}/evidence/bodies/m3-US2.json"
+printf '%s\n' '{"identity":{"story_id":"polish","kind":"polish"},"files_writable":[]}' > "${mo_tmp}/evidence/bodies/m3-polish.json"
+if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/relocate-descendant-import-writesets.py" \
+    "${mo_tmp}" --write >/tmp/mo.out 2>/tmp/mo.err; then
+  echo "FAIL: two bodies claiming one dest Java should MULTI_OWNER" >&2
+  rc=1
+elif grep -q 'MULTI_OWNER' /tmp/mo.err; then
+  echo "OK: MULTI_OWNER refuses leftover dest-path claimants"
+else
+  echo "FAIL: expected MULTI_OWNER" >&2
+  cat /tmp/mo.out /tmp/mo.err >&2
+  rc=1
+fi
+rm -rf "${mo_tmp}"
+
 
 # V35-M2-UPTAKE
 up_tmp="$(mktemp -d)"
@@ -4783,7 +5045,8 @@ fi
 # Operator E-20260818T153010Z — parse gate lives in nested tools until this
 # call; dest seats without the nested repo skip it.
 platform_root="$(cd "${ROOT}/../../../.." && pwd)"
-preflight="${platform_root}/harness-refactoring/tools/preflight-publish.sh"
+_hr="harness-refactoring"
+preflight="${platform_root}/${_hr}/tools/preflight-publish.sh"
 if [ -x "${preflight}" ]; then
   if bash "${preflight}" "${platform_root}"; then
     echo "OK: preflight-publish parse gate"

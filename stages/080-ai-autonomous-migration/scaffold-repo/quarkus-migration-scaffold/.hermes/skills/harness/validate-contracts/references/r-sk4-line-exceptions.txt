@@ -1,0 +1,5 @@
+# R-SK.4 accepted exceptions with expiry (Operator 2026-08-20).
+# Format: <skill-leaf> <YYYY-MM-DD>
+# After the date the line is dead and CS-9 refuses again.
+# Do not use this list to grow skills; split or move depth to references/.
+dispatch-phase 2026-09-03
