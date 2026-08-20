@@ -10,7 +10,9 @@ Do not restore a human ack via autostart.
 1. Existing init + `stamp-harness-rev.py`
 2. `assert-autostart-gates.py harness-rev` — dest `.hermes/HARNESS_REV` must
    equal golden `main` (`git ls-remote`). Stale existing stamp **refuses**.
-3. `dispatch-phase.sh M1` with `DISPATCH_MAX=0` (create + park M2/M3 holder)
+3. `dispatch-phase.sh M1` with `DISPATCH_MAX=0` (create + park M2/M3 holder).
+   Seat pin probe is `hermes --version` (binary-local). `hermes version` is
+   argparse noise on this seat and must not be treated as the version string.
 4. `assert-autostart-gates.py holder` — one card titled `M3 WAVE HOLDER…`
    and `skills=[]`
 5. If both gates green: `hermes kanban dispatch --max 1`

@@ -2657,6 +2657,84 @@ else
 fi
 rm -rf "${as_tmp}"
 
+# v37 dest-cite: pin probe must be hermes --version (binary-local). A usage dump
+# from `hermes version` is argparse noise, not a version string. Probe-broken=2.
+PIN_ASSERT="${SKILLS}/harness/dispatch-phase/scripts/assert-seat-hermes-pin.py"
+if grep -q '\["hermes", "--version"\]' "${PIN_ASSERT}" \
+  && ! grep -q '\["hermes", "version"\]' "${PIN_ASSERT}"; then
+  echo "OK: seat Hermes pin probe is hermes --version not version subcommand"
+else
+  echo "FAIL: assert-seat-hermes-pin.py must probe hermes --version (v37 false-refusal)" >&2
+  rc=1
+fi
+pin_tmp="$(mktemp -d "${TMPDIR:-/tmp}/pinprobe.XXXXXX")"
+mkdir -p "${pin_tmp}/.hermes" "${pin_tmp}/bin"
+cp "${ROOT}/.hermes/pins.json" "${pin_tmp}/.hermes/pins.json"
+cat >"${pin_tmp}/bin/hermes" <<'FAKE'
+#!/usr/bin/env bash
+if [[ "${1:-}" == "--version" || "${1:-}" == "-V" ]]; then
+  echo "Hermes Agent v0.20.4 (2026.8.18)"
+  exit 0
+fi
+if [[ "${1:-}" == "version" ]]; then
+  echo "usage: hermes [-h] [--version]" >&2
+  echo "hermes: error: argument command: invalid choice: 'version'" >&2
+  exit 2
+fi
+echo "usage: hermes [-h] [--version]" >&2
+exit 2
+FAKE
+chmod +x "${pin_tmp}/bin/hermes"
+if PATH="${pin_tmp}/bin:${PATH}" python3 "${PIN_ASSERT}" "${pin_tmp}" \
+    >/tmp/pin-ok.out 2>/tmp/pin-ok.err; then
+  echo "OK: seat Hermes pin matches fake --version v0.20.4"
+else
+  echo "FAIL: seat Hermes pin should match fake --version v0.20.4" >&2
+  cat /tmp/pin-ok.out /tmp/pin-ok.err >&2
+  rc=1
+fi
+cat >"${pin_tmp}/bin/hermes" <<'FAKE'
+#!/usr/bin/env bash
+# Replicate the v37 dest binary: argparse rejects the version subcommand.
+echo "usage: hermes [-h] [--version]" >&2
+echo "hermes: error: argument command: invalid choice: 'version'" >&2
+exit 2
+FAKE
+chmod +x "${pin_tmp}/bin/hermes"
+pin_noise_rc=0
+PATH="${pin_tmp}/bin:${PATH}" python3 "${PIN_ASSERT}" "${pin_tmp}" \
+  >/tmp/pin-noise.out 2>/tmp/pin-noise.err || pin_noise_rc=$?
+if [[ "${pin_noise_rc}" -eq 2 ]] \
+  && grep -q 'hermes --version unreadable' /tmp/pin-noise.err; then
+  echo "OK: seat Hermes pin returns 2 on argparse usage dump"
+else
+  echo "FAIL: argparse usage dump must be unreadable (exit 2), not drift (exit 1)" >&2
+  echo "rc=${pin_noise_rc}" >&2
+  cat /tmp/pin-noise.out /tmp/pin-noise.err >&2
+  rc=1
+fi
+cat >"${pin_tmp}/bin/hermes" <<'FAKE'
+#!/usr/bin/env bash
+if [[ "${1:-}" == "--version" || "${1:-}" == "-V" ]]; then
+  echo "Hermes Agent v0.19.0 (stale)"
+  exit 0
+fi
+exit 2
+FAKE
+chmod +x "${pin_tmp}/bin/hermes"
+pin_drift_rc=0
+PATH="${pin_tmp}/bin:${PATH}" python3 "${PIN_ASSERT}" "${pin_tmp}" \
+  >/tmp/pin-drift.out 2>/tmp/pin-drift.err || pin_drift_rc=$?
+if [[ "${pin_drift_rc}" -eq 1 ]]; then
+  echo "OK: seat Hermes pin returns 1 on version drift"
+else
+  echo "FAIL: version drift must be exit 1" >&2
+  echo "rc=${pin_drift_rc}" >&2
+  cat /tmp/pin-drift.out /tmp/pin-drift.err >&2
+  rc=1
+fi
+rm -rf "${pin_tmp}"
+
 # Architect V34-6 — dest-home kanban pins in dispatch-phase write
 if grep -q 'auto_decompose: false' "${SKILLS}/harness/dispatch-phase/scripts/dispatch-phase.sh"; then
   echo "OK: dest-home kanban auto_decompose false"
@@ -5964,6 +6042,13 @@ if grep -q '"version": "v0.20.4"' "${PINS}" \
   echo "OK: pins.json seat Hermes v0.20.4 binary-local contract"
 else
   echo "FAIL: pins.json missing v0.20.4 / binary-local pin (132010Z)" >&2
+  rc=1
+fi
+if grep -q '\["hermes", "--version"\]' "${HARNESS}/dispatch-phase/scripts/assert-seat-hermes-pin.py" \
+  && ! grep -q '\["hermes", "version"\]' "${HARNESS}/dispatch-phase/scripts/assert-seat-hermes-pin.py"; then
+  echo "OK: live pin assert probes hermes --version (v37 dest-cite)"
+else
+  echo "FAIL: assert-seat-hermes-pin.py still probes hermes version subcommand" >&2
   rc=1
 fi
 if grep -q 'refuse-on-nonzero' "${M1VD}" \

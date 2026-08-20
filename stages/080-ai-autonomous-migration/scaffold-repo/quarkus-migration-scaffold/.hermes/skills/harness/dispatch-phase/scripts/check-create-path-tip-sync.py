@@ -1270,6 +1270,11 @@ REQUIRED_SUBSTRINGS = [
         "live dispatch asserts seat Hermes pin (111730Z)",
     ),
     (
+        ".hermes/skills/harness/dispatch-phase/scripts/assert-seat-hermes-pin.py",
+        '["hermes", "--version"]',
+        "seat Hermes pin probe is binary-local --version not version subcommand (v37)",
+    ),
+    (
         ".hermes/skills/harness/dispatch-phase/scripts/dispatch-phase.sh",
         "check-m1-verifier.py",
         "M1 body points verifier card at check-m1-verifier.py",
