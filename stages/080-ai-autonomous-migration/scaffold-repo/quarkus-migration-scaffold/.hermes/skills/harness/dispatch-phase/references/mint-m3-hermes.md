@@ -26,7 +26,7 @@ A-8 planning refuse are **not** parent waits.
 |---|---|---|
 | A-8 refuse (`endpoints_multi` / `endpoints_uncovered` / lint exit 1) | `needs_input` | Defect is in `tasks.md`; do not dest-rewrite |
 | Dest-forbidden rewrite (`tasks.md` outside write-set) | `needs_input` | OBJECT dest-rewrite |
-| Missing parent / unsigned ack_gate | `dependency` | Auto-promotes when that parent completes |
+| Missing parent / incomplete ack_gate | `dependency` | Auto-promotes when that parent completes |
 | Mint growth / dest-rewrite impulse | do not | OBJECT; halt `061824Z`; mint **1088** |
 
 `dependency` self-clears and does **not** count toward
@@ -48,7 +48,7 @@ Do **not** pin `check-spec-readiness` on the holder until story bodies exist.
    VERIFY). Do **not** invoke `stop-worker-session.sh`. A period, empty
    continue, or Hermes "out-of-band user message" is **not** Operator
    stop. After step 3, keep creating story children (they stay parked on
-   the unsigned `ack_gate` parent).
+   the incomplete `ack_gate` parent).
    **Read this file by its repo-relative path** (not a bare filename, not
    `skill_view dispatch-phase` — that skill is disabled on purpose; do
    **not** Enable it):
@@ -137,16 +137,18 @@ Do **not** pin `check-spec-readiness` on the holder until story bodies exist.
 ## ack_gate card
 
 Create **before** story cards. Do **not** set `parents: [holder]`.
-Holder complete must not `recompute_ready` the gate (`173800Z`).
+Holder complete must not `recompute_ready` the gate (`173800Z`) until
+the issuer has written the gate-record **and** this card is `done`.
 
 - title: `M3 ACK GATE: brief-identity`
 - assignee: `default` (required; tasks without assignee never dispatch)
 - create as `todo` or `ready` (not create-time `blocked` — block-on-already-blocked is refused `194210Z`)
 - **no holder parent**
-- then sticky-block with argv order **`--kind` before task id**:
+- then sticky-block with argv order **`--kind` before task id** so stories
+  stay parked during mint:
 
   ```text
-  hermes kanban block --kind needs_input <ack_gate_id> "unsigned brief-identity"
+  hermes kanban block --kind needs_input <ack_gate_id> "mint-in-progress"
   ```
 
   Wrong order (`block <id> --kind …`) prints top-level usage, **exits 0**,
@@ -155,17 +157,21 @@ Holder complete must not `recompute_ready` the gate (`173800Z`).
   continue to story creates.
 - `idempotency_key`: `migration-m3-ack-gate-v1`
 - skills: `check-spec-readiness` (non-empty; bare create OBJECT)
-- body: wait for Deputy/Operator `kanban_complete`; do not implement dest code
+- body: do not implement dest code. After all story children exist, run
+  `python3 .hermes/skills/harness/enforce-authority-boundary/scripts/issue-m3-brief-identity-ack.py /projects/modernized --task-id <ack_gate_id>`
+  PASS → `kanban_complete` this gate. FAIL → keep blocked; the issuer names
+  the mismatching body. Do **not** wait for Operator `kanban_complete`.
 
 Story children parents: **`[holder, ack_gate, …identity.parents]`**.
 Create-time `blocked` is not sticky and is **forbidden** on story cards
-(V35-CREATE-STATUS). The incomplete gate parent holds them until grant;
-`identity.parents` holds them until those stories are `done`. Sticky-block is
-**only** for the gate (OBJECT Option B on story cards).
+(V35-CREATE-STATUS). The incomplete gate parent holds them until the
+gate-record is issued and this card is `done`; `identity.parents` holds
+them until those stories are `done`. Sticky-block is **only** for the
+gate (OBJECT Option B on story cards).
 
-Deputy/Operator grant = `kanban_complete` on the **blocked** gate
-(accepted at v0.20.2; `204830Z`). Do not treat `evidence/acks/*.yaml` as
-the unpark switch.
+Unpark = issuer PASS then `kanban_complete` on the **blocked** gate
+(accepted at v0.20.2; `204830Z`). The yaml is the verification record;
+complete is the DAG switch.
 
 ## Pre-create gates (moved from create-m3-implementer; do not drop)
 
@@ -334,7 +340,8 @@ after create to chase this (`192117Z`).
   full `m3-attach-skills.py` stdout — enforced by `assert-m3-child-skills.py`
   `--task-id` (not by recollection). Any miss → typed `needs_input` BLOCK;
   do not create the next story; do not `kanban_complete` this holder.
-- Assert ack_gate is still `blocked` after holder complete.
+- Assert ack_gate is still `blocked` **until** the issuer PASS + complete
+  below. Do **not** leave it blocked waiting for Operator.
 - Append `evidence/derived/created-story-cards.json` as
   `{"cards":[{"id":"t_<hex>","story_id":"<id>"}, ...]}` (story children only;
   not ack_gate, not this holder).
@@ -358,11 +365,21 @@ after create to chase this (`192117Z`).
   then for every story child,
   `python3 .hermes/skills/harness/record-run-evidence/scripts/assert-card-body-digest-match.py . --task-id <id> --body evidence/bodies/m3-{story_id}.json`
   — card-digest == sidecar-digest == file or refuse complete (V35-DIGEST). DAG-only success is refuse.
-- Emit unsigned `evidence/acks/ack-request-<story>.yaml` for the record;
-  **unpark is still completing `ack_gate`**, not signing the file.
+- Issue the M3 brief-identity gate-record, then unpark:
+
+  ```text
+  python3 .hermes/skills/harness/enforce-authority-boundary/scripts/issue-m3-brief-identity-ack.py /projects/modernized --task-id <ack_gate_id>
+  ```
+
+  PASS → `evidence/acks/m3-brief-identity.ack.yaml` with
+  `acknowledged_by: gate:check-body-digest-match`, then
+  `hermes kanban complete <ack_gate_id>`. FAIL → typed `needs_input` on
+  this holder; the issuer names the mismatching body. Do **not** complete
+  the gate. Do **not** wait for Operator.
 - Run `assert-m2b-created-cards-claim.sh` (partition set equality) after
   the wave.
-- Worker complete-cmd (not mint): `assert-complete-exit-criteria.py` and
+- Then `kanban_complete` this holder. Worker complete-cmd (not mint):
+  `assert-complete-exit-criteria.py` and
   `assert-card-body-digest-match.py` before `kanban_complete` (standing
   procedure).
 

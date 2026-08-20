@@ -405,6 +405,118 @@ else
 fi
 chmod -R u+w "${iss51}" 2>/dev/null || true
 rm -rf "${iss51}"
+
+echo "== M3 brief-identity 5.1 issuer (Operator 122824Z) =="
+iss_m3="$(mktemp -d)"
+python3 - "${iss_m3}" "${ROOT}" "${HARNESS}" "${SKILLS}" <<'PY' || rc=1
+import hashlib, json, shutil, subprocess, sys
+from pathlib import Path
+
+td, root, harness, skills = map(Path, sys.argv[1:])
+acks = td / "evidence" / "acks"
+bodies = td / "evidence" / "bodies"
+derived = td / "evidence" / "derived"
+briefs = td / "evidence" / "briefs"
+digest_dir = td / ".hermes" / "skills" / "harness" / "record-run-evidence" / "scripts"
+issuer_dir = td / ".hermes" / "skills" / "harness" / "enforce-authority-boundary" / "scripts"
+for p in (acks, bodies, derived, briefs, digest_dir, issuer_dir):
+    p.mkdir(parents=True)
+shutil.copy(root / ".hermes" / "phase-dispatch.yaml", td / ".hermes" / "phase-dispatch.yaml")
+shutil.copy(
+    skills / "harness" / "record-run-evidence" / "scripts" / "check-body-digest-match.py",
+    digest_dir / "check-body-digest-match.py",
+)
+shutil.copy(
+    harness / "enforce-authority-boundary" / "scripts" / "issue-m3-brief-identity-ack.py",
+    issuer_dir / "issue-m3-brief-identity-ack.py",
+)
+shutil.copy(
+    harness / "enforce-authority-boundary" / "scripts" / "check-ack-authority.py",
+    issuer_dir / "check-ack-authority.py",
+)
+(briefs / "partition.json").write_text(
+    json.dumps({"stories": [{"story_id": "s1"}, {"story_id": "s2"}]}),
+    encoding="utf-8",
+)
+(derived / "created-story-cards.json").write_text(
+    json.dumps({"cards": [{"id": "t_aaa", "story_id": "s1"}, {"id": "t_bbb", "story_id": "s2"}]}),
+    encoding="utf-8",
+)
+
+def stamp(name: str, payload: str) -> str:
+    path = bodies / name
+    path.write_text(payload, encoding="utf-8")
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    (bodies / f"{name}.sha256.json").write_text(
+        json.dumps({"schema": "rhoai3.body-digest/v1", "body_sha256": digest}),
+        encoding="utf-8",
+    )
+    return digest
+
+d1 = stamp("m3-s1.json", '{"story":"s1"}')
+d2 = stamp("m3-s2.json", '{"story":"s2"}')
+issuer = issuer_dir / "issue-m3-brief-identity-ack.py"
+
+# mismatch: corrupt s2 sidecar
+(bodies / "m3-s2.json.sha256.json").write_text(
+    json.dumps({"schema": "rhoai3.body-digest/v1", "body_sha256": "0" * 64}),
+    encoding="utf-8",
+)
+r_bad = subprocess.run(
+    [sys.executable, str(issuer), str(td), "--task-id", "t_gate"],
+    capture_output=True,
+    text=True,
+)
+if r_bad.returncode == 0:
+    print("FAIL: M3 issuer must refuse digest mismatch", file=sys.stderr)
+    sys.exit(1)
+err = (r_bad.stdout + r_bad.stderr)
+if "evidence/bodies/m3-s2.json" not in err:
+    print(err, file=sys.stderr)
+    print("FAIL: M3 issuer must name the mismatching body", file=sys.stderr)
+    sys.exit(1)
+if (acks / "m3-brief-identity.ack.yaml").is_file():
+    print("FAIL: M3 issuer wrote yaml on mismatch", file=sys.stderr)
+    sys.exit(1)
+print("OK: M3 brief-identity issuer names mismatching body")
+
+# restore sidecar and issue
+stamp("m3-s2.json", '{"story":"s2"}')
+acks.chmod(0o555)
+r_ok = subprocess.run(
+    [sys.executable, str(issuer), str(td), "--task-id", "t_gate"],
+    capture_output=True,
+    text=True,
+)
+if r_ok.returncode != 0:
+    print(r_ok.stdout + r_ok.stderr, file=sys.stderr)
+    print("FAIL: M3 issuer on green bodies", file=sys.stderr)
+    sys.exit(1)
+ack = acks / "m3-brief-identity.ack.yaml"
+canon = acks / "brief-identity.ack.yaml"
+if not ack.is_file() or not canon.is_file():
+    print("FAIL: M3 issuer missing yaml after green", file=sys.stderr)
+    sys.exit(1)
+raw = ack.read_text(encoding="utf-8")
+if "gate:check-body-digest-match" not in raw or "gate_rc: 0" not in raw:
+    print("FAIL: M3 yaml missing gate signer / gate_rc", file=sys.stderr)
+    sys.exit(1)
+if d1 not in raw or d2 not in raw:
+    print("FAIL: M3 yaml missing body digests", file=sys.stderr)
+    sys.exit(1)
+auth = subprocess.run(
+    [sys.executable, str(issuer_dir / "check-ack-authority.py"), str(td)],
+    capture_output=True,
+    text=True,
+)
+if auth.returncode != 0:
+    print(auth.stdout + auth.stderr, file=sys.stderr)
+    print("FAIL: M3 gate-record failed AR-1.1", file=sys.stderr)
+    sys.exit(1)
+print("OK: M3 brief-identity gate-record issued when body digests match")
+PY
+chmod -R u+w "${iss_m3}" 2>/dev/null || true
+rm -rf "${iss_m3}"
 # check-role-writes.py retired (Architect E-20260813T144117Z) — scope refuse is
 # check-write-fence.py --body (files_in_scope); global deny via write fence.
 
@@ -493,6 +605,20 @@ if python3 "${HARNESS}/enforce-authority-boundary/scripts/check-ack-authority.py
 else
   echo "OK: AR-1.1 unknown gate: signer refused"
 fi
+cat > "${ar11_tmp}/evidence/acks/m1-findings.ack.yaml" <<'EOF'
+kind: migration-ack
+ack_type: brief-identity
+status: acknowledged
+acknowledged_by: gate:check-body-digest-match
+acknowledged_at: 2026-08-20T00:00:00Z
+task_id: t_demo
+gate_rc: 0
+artifact_digests:
+  evidence/bodies/m3-setup.json: cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+EOF
+python3 "${HARNESS}/enforce-authority-boundary/scripts/check-ack-authority.py" "${ar11_tmp}" \
+  && echo "OK: AR-1.1 5.1 gate:check-body-digest-match accepted" \
+  || { echo "FAIL: AR-1.1 M3 gate signer refused" >&2; rc=1; }
 rm -rf "${ar11_tmp}"
 
 echo "== write-fence proving-min (AD-H §16.4 / F2) =="

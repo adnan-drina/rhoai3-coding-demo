@@ -90,7 +90,8 @@ while IFS= read -r ack_type; do
   for f in \
     "${ACK_DIR}/${ack_type}.ack.yaml" \
     "${ACK_DIR}/${ack_type}.ack.yml" \
-    "${ACK_DIR}/${ack_type}.ack.json"; do
+    "${ACK_DIR}/${ack_type}.ack.json" \
+    "${ACK_DIR}/m3-${ack_type}.ack.yaml"; do
     if [ -f "${f}" ]; then
       if python3 - "${f}" "${ack_type}" <<'PY'
 import json, re, sys
@@ -118,9 +119,9 @@ PY
       fi
     fi
   done
-  # 5.1 — auto-issue m1-findings as a gate record when the envelope is green.
-  # Missing yaml is not a human GO. rc≠0 still typed-blocks. brief-identity
-  # is unchanged (Operator only).
+  # 5.1 — auto-issue m1-findings / brief-identity as gate records when the
+  # named verifier is green. Missing yaml is not a human GO. rc≠0 still
+  # typed-blocks.
   if [ "${found}" -eq 0 ] && [ "${ack_type}" = "m1-findings" ]; then
     ISSUER="${ROOT}/.hermes/skills/harness/enforce-authority-boundary/scripts/issue-m1-findings-ack.py"
     if [ -f "${ISSUER}" ]; then
@@ -128,6 +129,17 @@ PY
         if [ -f "${ACK_DIR}/m1-findings.ack.yaml" ]; then
           found=1
           echo "OK: ack ${ack_type} ← evidence/acks/m1-findings.ack.yaml (5.1 gate-record)"
+        fi
+      fi
+    fi
+  fi
+  if [ "${found}" -eq 0 ] && [ "${ack_type}" = "brief-identity" ]; then
+    ISSUER="${ROOT}/.hermes/skills/harness/enforce-authority-boundary/scripts/issue-m3-brief-identity-ack.py"
+    if [ -f "${ISSUER}" ]; then
+      if python3 "${ISSUER}" "${ROOT}"; then
+        if [ -f "${ACK_DIR}/m3-brief-identity.ack.yaml" ] || [ -f "${ACK_DIR}/brief-identity.ack.yaml" ]; then
+          found=1
+          echo "OK: ack ${ack_type} ← evidence/acks/m3-brief-identity.ack.yaml (gate-record)"
         fi
       fi
     fi

@@ -42,7 +42,7 @@ cycles this card. Do **not** restore park-on-block-loop.
 |---|---|---|
 | A-8 refuse (`endpoints_multi` / `endpoints_uncovered` / lint exit 1) | `needs_input` | Defect is in `tasks.md`; do not dest-rewrite |
 | Dest-forbidden rewrite (`tasks.md` outside write-set) | `needs_input` | OBJECT dest-rewrite |
-| Missing parent / unsigned ack_gate | `dependency` | Auto-promotes when that parent completes |
+| Missing parent / incomplete ack_gate | `dependency` | Auto-promotes when that parent completes |
 | Mint growth / dest-rewrite impulse | do not | OBJECT; halt `061824Z`; mint **1088** |
 | M4/M5 already children of this holder | `needs_input` | Holder complete would unpark VERIFY on empty dest |
 
@@ -75,9 +75,11 @@ Argv: **`--kind` before the task id**. Then `kanban show` must report
    (M4 `--parent` every story child, not this holder). Then
    `python3 .hermes/skills/harness/dispatch-phase/scripts/assert-m3-child-skills.py /projects/modernized --holder-id "$HERMES_KANBAN_TASK"`
    must exit 0 **before** `kanban_complete`. DAG-shaped is not enough.
-   Complete this holder **only if** that gate is green **and** no child
-   title starts with `M4` or `M5`. Otherwise block `--kind needs_input`.
-   The gate stays blocked.
+   Then issue the M3 brief-identity gate-record
+   (`issue-m3-brief-identity-ack.py --task-id <ack_gate_id>`) and
+   `kanban_complete` the ack_gate on PASS. Complete this holder **only if**
+   that issuer is green **and** no child title starts with `M4` or `M5`.
+   Otherwise block `--kind needs_input`.
 
 ## Constraints
 

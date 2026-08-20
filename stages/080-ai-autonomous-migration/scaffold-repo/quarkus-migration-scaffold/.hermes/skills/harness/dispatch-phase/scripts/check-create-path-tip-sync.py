@@ -68,6 +68,7 @@ REQUIRED_FILES = [
     ".hermes/skills/harness/dispatch-phase/references/m1-verifier.md",
     ".hermes/skills/harness/dispatch-phase/scripts/check-m1-verifier.py",
     ".hermes/skills/harness/enforce-authority-boundary/scripts/issue-m1-findings-ack.py",
+    ".hermes/skills/harness/enforce-authority-boundary/scripts/issue-m3-brief-identity-ack.py",
     ".hermes/skills/harness/dispatch-phase/scripts/assert-seat-hermes-pin.py",
     ".hermes/skills/harness/dispatch-phase/scripts/handover-mint.py",
     ".hermes/skills/harness/dispatch-phase/scripts/scratch-assemble-mint.py",
@@ -2007,9 +2008,49 @@ REQUIRED_SUBSTRINGS = [
         "OK: compose-m3-card-markdown prints title without JSON",
         "V34-O7 validate lock: composer starves JSON",
     ),
+    (
+        ".hermes/skills/harness/enforce-authority-boundary/scripts/issue-m3-brief-identity-ack.py",
+        "gate:check-body-digest-match",
+        "M3 brief-identity is a 5.1 gate-record (122824Z)",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
+        "issue-m3-brief-identity-ack.py",
+        "mint Procedure issues M3 ack as verification gate (122824Z)",
+    ),
+    (
+        ".hermes/skills/harness/enforce-authority-boundary/scripts/check-ack-authority.py",
+        "gate:check-body-digest-match",
+        "AR-1.1 allowlists M3 gate signer (122824Z)",
+    ),
+    (
+        ".hermes/skills/harness/enforce-authority-boundary/scripts/check-acks.sh",
+        "issue-m3-brief-identity-ack.py",
+        "check-acks auto-issues M3 brief-identity (122824Z)",
+    ),
+    (
+        ".hermes/skills/harness/validate-contracts/scripts/validate.sh",
+        "OK: M3 brief-identity issuer names mismatching body",
+        "M3 issuer refuse names the body (122824Z)",
+    ),
 ]
 
 FORBIDDEN_SUBSTRINGS = [
+    (
+        ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
+        "unsigned brief-identity",
+        "M3 ack_gate is not a human unsigned wait (122824Z)",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/references/mint-m3-hermes.md",
+        "Wait for Deputy",
+        "M3 ack_gate does not wait for Operator complete (122824Z)",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/references/holder-card-body.md",
+        "The gate stays blocked",
+        "holder completes ack_gate after issuer PASS (122824Z)",
+    ),
     (
         ".hermes/skills/harness/dispatch-phase/SKILL.md",
         "--skill dispatch-phase",

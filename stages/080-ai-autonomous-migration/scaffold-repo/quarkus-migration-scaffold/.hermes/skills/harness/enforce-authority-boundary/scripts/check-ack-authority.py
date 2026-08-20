@@ -46,9 +46,15 @@ WORKER_AUTHORS = frozenset(
     }
 )
 
-# 5.1 gate-record (Architect E-20260819T121859Z). Not a worker. Unknown
-# `gate:` prefixes are refuse — do not invent a second envelope checker.
-ALLOWED_GATE_SIGNERS = frozenset({"gate:check-findings-handoff"})
+# 5.1 gate-records (Architect E-20260819T121859Z / Operator E-20260820T122824Z).
+# Not a worker. Unknown `gate:` prefixes are refuse — do not invent a
+# second envelope checker.
+ALLOWED_GATE_SIGNERS = frozenset(
+    {
+        "gate:check-findings-handoff",
+        "gate:check-body-digest-match",
+    }
+)
 
 
 def _unquote(s: str) -> str:

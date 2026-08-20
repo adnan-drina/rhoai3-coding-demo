@@ -3,7 +3,8 @@
 
 Does **not** invent a second envelope checker. Runs check-findings-handoff.py
 and writes the yaml only on rc=0. Signer is gate:check-findings-handoff,
-never a worker name (AR-1.1). M3 brief-identity stays Operator.
+never a worker name (AR-1.1). M3 brief-identity is the same pattern
+(`issue-m3-brief-identity-ack.py` / `gate:check-body-digest-match`).
 
 Architect E-20260819T121808Z / AMEND 121859Z. v33 dest-cite 145002Z.
 

@@ -68,7 +68,7 @@ a planning defect cycles the holder. Do **not** restore `park-on-block-loop.py`.
 |---|---|---|
 | A-8 refuse (`endpoints_multi` / `endpoints_uncovered` / lint exit 1) | `needs_input` | Defect is in `tasks.md`; holder must not dest-rewrite |
 | Dest-forbidden rewrite (`tasks.md` outside write-set) | `needs_input` | Same — OBJECT dest-rewrite |
-| Missing parent / unsigned ack_gate | `dependency` | Auto-promotes when that parent completes |
+| Missing parent / incomplete ack_gate | `dependency` | Auto-promotes when that parent completes |
 | Mint growth / dest-rewrite impulse | do not | OBJECT; halt `061824Z`; mint **1088** |
 
 Argv order: **`--kind` before the task id** (`204830Z` silent no-op if reversed).
@@ -172,7 +172,8 @@ list in `references/mint-m3-hermes.md`). Card markdown is
 `compose-m3-card-markdown.py`. Story card
 markdown must carry typed-body path, AR-4.3 digest + `--expect` REFUSE,
 standing pointer, Constraints, and **full** attach-script skills
-(`035010Z`). Grant = complete the blocked gate card, not a YAML file.
+(`035010Z`). Unpark = issuer PASS then complete the blocked gate card.
+The yaml is the verification record; complete is the DAG switch.
 Do not parent the gate on the holder (`173800Z`).
 
 ### M1 body contract (evidence-analyst)
@@ -186,7 +187,8 @@ The created M1 task instructs the worker to, in order:
 4. Validate findings + handoff, then 5.1
    `python3 .hermes/skills/harness/enforce-authority-boundary/scripts/issue-m1-findings-ack.py`
    (`acknowledged_by: gate:check-findings-handoff`). Do **not** grant as
-   Operator. **M3 brief-identity** stays Operator. M1 ACK GATE complete is
+   Operator. **M3 brief-identity** is the same pattern
+   (`issue-m3-brief-identity-ack.py` / `gate:check-body-digest-match`). M1 ACK GATE complete is
    the **verifier card** in `references/m1-verifier.md`
    (`scripts/check-m1-verifier.py`, refuse-on-nonzero). This worker does not complete the gate.
 

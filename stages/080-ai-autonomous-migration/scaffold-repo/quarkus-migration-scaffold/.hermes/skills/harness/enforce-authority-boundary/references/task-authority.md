@@ -54,7 +54,7 @@ Record under `evidence/acks/` (or Kanban metadata):
 | Decision | Before | Human? |
 |----------|--------|--------|
 | Accept findings | M1 → M2 | **No** — `evidence/acks/m1-findings.ack.yaml` is a 5.1 **gate-record** when findings-handoff rc=0 (`gate:check-findings-handoff`). Human GO only on rc≠0. |
-| Approve brief/spec identity | → first IMPLEMENT for story | **Yes** — identity ACK; readiness lint necessary not sufficient |
+| Approve brief/spec identity | → first IMPLEMENT for story | **No** — `evidence/acks/m3-brief-identity.ack.yaml` is a 5.1 **gate-record** when `check-body-digest-match.py` all-PASS (`gate:check-body-digest-match`). Human GO only on rc≠0. |
 | Modify code in-scope | IMPLEMENT | **No** per edit (packet + sensors) |
 | Expand scope / edit skills/SOUL/AGENTS / amend identity | anytime | **Yes** |
 | Task commit / open change | — | **No** if packet rules met; no force-push |

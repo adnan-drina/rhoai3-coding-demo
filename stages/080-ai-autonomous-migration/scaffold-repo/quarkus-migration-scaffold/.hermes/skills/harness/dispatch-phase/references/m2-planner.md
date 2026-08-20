@@ -12,7 +12,9 @@ card instructs the worker to, in order:
 2. Findings-handoff gate. Then 5.1
    `python3 .hermes/skills/harness/enforce-authority-boundary/scripts/issue-m1-findings-ack.py`
    — auto-issue `m1-findings.ack.yaml` as a gate-record. Do **not**
-   `needs_input` for a human yaml. **M3 brief-identity** stays Operator.
+   `needs_input` for a human yaml. **M3 brief-identity** is the same
+   5.1 pattern (`issue-m3-brief-identity-ack.py` /
+   `gate:check-body-digest-match`).
 3. Read `evidence/entry-point-inventory.json`, `evidence/type-inventory.json`,
    and `evidence/required-extensions.json` **before** `/speckit-specify`.
    Spec FR enumerates every inventory `http_path` (not a count). Cover every
