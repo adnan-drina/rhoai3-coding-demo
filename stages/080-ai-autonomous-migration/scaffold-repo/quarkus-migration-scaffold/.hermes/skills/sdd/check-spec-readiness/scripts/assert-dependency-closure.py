@@ -29,6 +29,7 @@ if str(_SCRIPTS) not in sys.path:
 
 from generated_sources import (  # noqa: E402
     generator_input_paths,
+    generator_plugins,
     is_generated,
 )
 from specimen_agnostic import dest_path_as_written, legacy_java_prefixes  # noqa: E402
@@ -139,6 +140,46 @@ def plan_owned_files(root: Path) -> set[str]:
     return owned
 
 
+def type_inventory_generated_count(root: Path) -> int | None:
+    path = root / "evidence" / "type-inventory.json"
+    if not path.is_file():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    types = data.get("types") if isinstance(data, dict) else None
+    if not isinstance(types, list):
+        return None
+    n = 0
+    for row in types:
+        if isinstance(row, dict) and row.get("generated") is True:
+            n += 1
+    return n
+
+
+def _generator_surface(root: Path, dest_only: bool) -> str:
+    recs = generator_plugins(root, dest_only=dest_only)
+    gen_n = type_inventory_generated_count(root)
+    gen_s = "absent" if gen_n is None else str(gen_n)
+    if not recs:
+        return (
+            f"surface=dest build files (no generator plugin); "
+            f"type-inventory generated:true count={gen_s}"
+        )
+    bits = []
+    for rec in recs:
+        bits.append(
+            f"build_file={rec.get('build_file')} "
+            f"artifactId={rec.get('artifactId')} "
+            f"inputSpec={','.join(rec.get('input_specs') or []) or '(none)'}"
+        )
+    return (
+        "; ".join(bits)
+        + f"; type-inventory generated:true count={gen_s}"
+    )
+
+
 def check_generated_inputs(root: Path, body: dict) -> list[str]:
     """If this body depends on generated types, the plan must own spec + build."""
     has_generated = False
@@ -152,9 +193,19 @@ def check_generated_inputs(root: Path, body: dict) -> list[str]:
         if f and is_generated(root, str(f)):
             has_generated = True
             break
+    gen_n = type_inventory_generated_count(root)
+    dest_plugins = generator_plugins(root, dest_only=True)
+    # H-1: handwritten type-inventory + no dest plugin → do not inherit
+    # legacy-at-3 openapi inputSpec (v40 api-docs.yml false demand).
+    if gen_n == 0 and not dest_plugins:
+        return []
     if not has_generated:
         return []
-    wanted = generator_input_paths(root)
+    dest_only = True
+    if gen_n and gen_n > 0 and not dest_plugins:
+        dest_only = False
+    wanted = generator_input_paths(root, dest_only=dest_only)
+    surface = _generator_surface(root, dest_only)
     owned = plan_owned_files(root)
     # This body also counts.
     for key in ("files_writable", "files_in_scope"):
@@ -164,7 +215,9 @@ def check_generated_inputs(root: Path, body: dict) -> list[str]:
     for spec in wanted.get("specs") or []:
         s = dest_path_as_written(spec)
         if s not in owned and Path(s).name not in {Path(x).name for x in owned}:
-            bad.append(f"GENERATOR_INPUTS: spec not owned: {s}")
+            bad.append(
+                f"GENERATOR_INPUTS: spec not owned: {s} ({surface})"
+            )
     build_ok = False
     for b in wanted.get("builds") or ["pom.xml"]:
         bn = dest_path_as_written(b)
@@ -178,12 +231,12 @@ def check_generated_inputs(root: Path, body: dict) -> list[str]:
         bad.append(
             "GENERATOR_INPUTS: dest build file not owned ("
             + ",".join(wanted.get("builds") or ["pom.xml"])
-            + ")"
+            + f") ({surface})"
         )
-    if not (wanted.get("specs") or []):
+    if dest_plugins and not (wanted.get("specs") or []):
         bad.append(
             "GENERATOR_INPUTS: generator plugin declared but no spec path "
-            "parsed from the build file (inputSpec / equivalent)"
+            f"parsed from the dest build file (inputSpec / equivalent) ({surface})"
         )
     return bad
 

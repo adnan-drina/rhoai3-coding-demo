@@ -1471,6 +1471,36 @@ REQUIRED_SUBSTRINGS = [
     ),
     (
         ".hermes/skills/harness/dispatch-phase/scripts/handover-mint.py",
+        "CYCLE_IMPORT",
+        "H-5 cyclic import is a named refuse not a silent skip",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/scripts/handover-mint.py",
+        "def assert_foundational_no_service",
+        "H-6 T0 #3 *Service.java is not foundational write-set",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/scripts/holder-checkpoint.py",
+        "init does not take --next",
+        "H-2 init is not stamp --next",
+    ),
+    (
+        ".hermes/skills/harness/enforce-authority-boundary/scripts/write-set-hook.py",
+        "/dev/null",
+        "H-3 device redirects are not dest writes",
+    ),
+    (
+        ".hermes/skills/sdd/check-spec-readiness/scripts/generated_sources.py",
+        "def iter_dest_build_files",
+        "H-1 GENERATOR_INPUTS dest-only build files",
+    ),
+    (
+        ".hermes/skills/sdd/check-spec-readiness/scripts/assert-dependency-closure.py",
+        "dest_only=True",
+        "H-1 closure does not inherit legacy-at-3 generator specs",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/scripts/handover-mint.py",
         "PATH_TOKEN extracted 0 pom.xml owners",
         "F-1/F-5 zero pom writer names tasks.md PATH_TOKEN surface",
     ),
@@ -1894,6 +1924,36 @@ REQUIRED_SUBSTRINGS = [
         ".hermes/skills/harness/validate-contracts/scripts/validate.sh",
         "OK: GENERATOR_INPUTS when spec unowned",
         "assert requires generator spec owned",
+    ),
+    (
+        ".hermes/skills/harness/validate-contracts/scripts/validate.sh",
+        "OK: GENERATOR_INPUTS skipped when dest has no plugin",
+        "H-1 handwritten dest does not inherit legacy inputSpec",
+    ),
+    (
+        ".hermes/skills/harness/validate-contracts/scripts/validate.sh",
+        "OK: holder-checkpoint init refuses --next",
+        "H-2 init --next assemble is not a silent no-op",
+    ),
+    (
+        ".hermes/skills/harness/validate-contracts/scripts/validate.sh",
+        "OK: write-set hook allows /dev/null",
+        "H-3 /dev/null is not a dest write",
+    ),
+    (
+        ".hermes/skills/harness/validate-contracts/scripts/validate.sh",
+        "OK: F-6 sibling import parents the owning story",
+        "H-4 F-6 parent not relocate-to-foundational",
+    ),
+    (
+        ".hermes/skills/harness/validate-contracts/scripts/validate.sh",
+        "OK: CYCLE_IMPORT refuses cyclic import parent",
+        "H-5 Review test C CYCLE_IMPORT",
+    ),
+    (
+        ".hermes/skills/harness/validate-contracts/scripts/validate.sh",
+        "OK: T0_3_SERVICE refuses foundational *Service.java",
+        "H-6 T0 #3 foundational service refuse",
     ),
     (
         ".hermes/skills/harness/validate-contracts/scripts/validate.sh",

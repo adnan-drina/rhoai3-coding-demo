@@ -488,6 +488,29 @@ def _pom_mention_lines(phases: list[Phase]) -> list[str]:
     return out
 
 
+def _is_service_java(rel: str) -> bool:
+    name = Path(str(rel).replace("\\", "/")).name
+    return name.endswith("Service.java") or name.endswith("ServiceImpl.java")
+
+
+def assert_foundational_no_service(phases: list[Phase]) -> None:
+    """H-6 / T0 #3: whole-domain facade is not foundational write-set."""
+    for ph in phases:
+        if ph.kind != KIND_FOUNDATIONAL and ph.story_id != KIND_FOUNDATIONAL:
+            continue
+        hits = [f for f in ph.files if _is_service_java(f)]
+        if hits:
+            _die(
+                "T0_3_SERVICE",
+                "foundational files_writable includes "
+                f"{hits}. Surface=tasks.md PATH_TOKEN on the Foundational "
+                "phase. T0 #3: a whole-domain *Service.java is not "
+                "foundational (Architect 205707Z). Put the facade on polish "
+                "or a user story — do not relocate the domain into "
+                "foundational to green topo.",
+            )
+
+
 def _would_cycle(child: str, parent: str, by_id: dict[str, Phase]) -> bool:
     if child == parent:
         return True
@@ -510,7 +533,7 @@ def merge_import_parents(root: Path, phases: list[Phase]) -> None:
     """F-6: story A parents story B when A imports a type B owns.
 
     Prose parents from transcribe_parents stay. Import-graph edges that
-    would cycle the existing DAG are skipped (facades belong on polish).
+    would cycle are CYCLE_IMPORT (H-5) — do not silent-drop (Review test C).
     """
     by_id = {p.story_id: p for p in phases}
     owners: dict[str, str] = {}
@@ -542,7 +565,16 @@ def merge_import_parents(root: Path, phases: list[Phase]) -> None:
                 if not owner or owner == ph.story_id or owner not in by_id:
                     continue
                 if _would_cycle(ph.story_id, owner, by_id):
-                    continue
+                    _die(
+                        "CYCLE_IMPORT",
+                        f"{ph.story_id} imports {name} owned by {owner}, "
+                        f"but parenting {ph.story_id} on {owner} cycles "
+                        f"(parents {ph.story_id}={list(ph.parents)} "
+                        f"{owner}={list(by_id[owner].parents)}). "
+                        f"Surface=Java import in {rel}. Do not relocate "
+                        "Create lines into foundational to green topo "
+                        "(Architect 205707Z option a).",
+                    )
                 if owner not in ph.parents:
                     ph.parents.append(owner)
 
@@ -1096,6 +1128,7 @@ def run(root: Path, args: argparse.Namespace) -> dict[str, Any]:
     text = tasks_md.read_text(encoding="utf-8")
     phases = parse_phases(text)
     transcribe_parents(text, phases)
+    assert_foundational_no_service(phases)
     merge_import_parents(root, phases)
     assert_parents_resolved(phases)
     pom_owner = assign_ownership(phases)

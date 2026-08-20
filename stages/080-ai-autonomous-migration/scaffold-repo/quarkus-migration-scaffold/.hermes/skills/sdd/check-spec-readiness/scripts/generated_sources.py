@@ -136,13 +136,18 @@ def _read_build(path: Path) -> str:
         return ""
 
 
-def iter_build_files(root: Path) -> list[Path]:
+def iter_dest_build_files(root: Path) -> list[Path]:
+    """Dest pom/gradle only. Mint-time GENERATOR_INPUTS must not inherit legacy."""
     out: list[Path] = []
-    dest = root
     for name in BUILD_NAMES:
-        p = dest / name
+        p = root / name
         if p.is_file():
             out.append(p)
+    return out
+
+
+def iter_build_files(root: Path) -> list[Path]:
+    out: list[Path] = list(iter_dest_build_files(root))
     for base in (
         root / ".." / ".derived" / "legacy-at-3",
         Path("/projects/.derived/legacy-at-3"),
@@ -155,15 +160,19 @@ def iter_build_files(root: Path) -> list[Path]:
     return out
 
 
-def generator_plugins(root: Path) -> list[dict]:
+def generator_plugins(root: Path, *, dest_only: bool = False) -> list[dict]:
     plugins: list[dict] = []
     seen: set[str] = set()
-    for path in iter_build_files(root):
+    files = iter_dest_build_files(root) if dest_only else iter_build_files(root)
+    for path in files:
         for rec in parse_generator_plugins(_read_build(path)):
+            rec = dict(rec)
+            rec["build_file"] = str(path)
             key = (
                 rec.get("artifactId") or "",
                 tuple(rec.get("input_specs") or []),
                 tuple(rec.get("packages") or []),
+                rec.get("build_file") or "",
             )
             if key in seen:
                 continue
@@ -176,11 +185,11 @@ def build_declares_generator(root: Path) -> bool:
     return bool(generator_plugins(root))
 
 
-def generator_input_paths(root: Path) -> dict[str, list[str]]:
+def generator_input_paths(root: Path, *, dest_only: bool = False) -> dict[str, list[str]]:
     """Dest-relative spec paths + build file names the plan must own."""
     specs: list[str] = []
     seen: set[str] = set()
-    for rec in generator_plugins(root):
+    for rec in generator_plugins(root, dest_only=dest_only):
         for spec in rec.get("input_specs") or []:
             s = spec
             if not s:

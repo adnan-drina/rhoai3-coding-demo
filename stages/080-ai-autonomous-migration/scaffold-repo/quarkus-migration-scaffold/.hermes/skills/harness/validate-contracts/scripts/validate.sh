@@ -956,6 +956,16 @@ YAML
   fi
   unset HERMES_KANBAN_PHASE
   unset HERMES_KANBAN_CARD_BODY
+  # H-3: stdout/stderr redirects are not dest writes.
+  export HERMES_KANBAN_FILES_WRITABLE='["specs/"]'
+  if printf '%s\n' '{"tool_name":"terminal","tool_input":{"command":"ls specs/ >/dev/null"}}' \
+    | python3 "${HOOK}" >/dev/null; then
+    echo "OK: write-set hook allows /dev/null"
+  else
+    echo "FAIL: write-set hook refused ls >/dev/null (H-3)" >&2
+    exit 1
+  fi
+  unset HERMES_KANBAN_FILES_WRITABLE
 ) || rc=1
 rm -rf "${hook_tmp}"
 
@@ -2499,14 +2509,85 @@ if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/assert-dependency-closure
   echo "FAIL: missing generator spec must GENERATOR_INPUTS" >&2
   cat /tmp/gen-miss.out /tmp/gen-miss.err >&2
   rc=1
-elif grep -q 'GENERATOR_INPUTS' /tmp/gen-miss.err; then
+elif grep -q 'GENERATOR_INPUTS' /tmp/gen-miss.err \
+  && grep -q 'build_file=' /tmp/gen-miss.err; then
   echo "OK: GENERATOR_INPUTS when spec unowned"
 else
-  echo "FAIL: expected GENERATOR_INPUTS" >&2
+  echo "FAIL: expected GENERATOR_INPUTS with F-5 build_file" >&2
   cat /tmp/gen-miss.out /tmp/gen-miss.err >&2
   rc=1
 fi
 rm -rf "${gen_tmp}"
+
+# H-1: dest pom has no generator plugin; legacy-at-3 does. Handwritten
+# type-inventory must not inherit legacy inputSpec (v40 api-docs.yml).
+h1_tmp="$(mktemp -d)"
+mkdir -p "${h1_tmp}/modernized/evidence/bodies" \
+  "${h1_tmp}/modernized/evidence/briefs" \
+  "${h1_tmp}/.derived/legacy-at-3/src/main/resources"
+cat > "${h1_tmp}/modernized/pom.xml" <<'XML'
+<project>
+  <build><plugins>
+    <plugin><artifactId>quarkus-maven-plugin</artifactId></plugin>
+  </plugins></build>
+</project>
+XML
+cat > "${h1_tmp}/.derived/legacy-at-3/pom.xml" <<'XML'
+<project>
+  <build><plugins>
+    <plugin>
+      <artifactId>openapi-generator-maven-plugin</artifactId>
+      <configuration>
+        <inputSpec>src/main/resources/api-docs.yml</inputSpec>
+      </configuration>
+    </plugin>
+  </plugins></build>
+</project>
+XML
+printf '%s\n' 'openapi: 3.0.0' > "${h1_tmp}/.derived/legacy-at-3/src/main/resources/api-docs.yml"
+python3 - "${h1_tmp}" <<'PY'
+import json, sys
+from pathlib import Path
+root = Path(sys.argv[1]) / "modernized"
+leaf = "src/main/java/com/demo/mapper/LeafMapper.java"
+part = {
+  "schema": "rhoai3.handover-receipt/v1",
+  "source": "handover-mint",
+  "stories": [
+    {"story_id": "setup", "files_writable": ["pom.xml"], "files_in_scope": ["pom.xml"]},
+    {"story_id": "foundational", "files_writable": [leaf], "files_in_scope": [leaf]},
+  ],
+}
+(root / "evidence/briefs/partition.json").write_text(json.dumps(part) + "\n")
+(root / "evidence/type-inventory.json").parent.mkdir(parents=True, exist_ok=True)
+(root / "evidence/type-inventory.json").write_text(json.dumps({
+  "schema": "rhoai3.type-inventory/v1",
+  "types": [{
+    "dest_file": leaf,
+    "generated": False,
+    "layer": "mapper",
+  }],
+}) + "\n")
+body = {
+  "identity": {"story_id": "foundational", "operand_count": 1},
+  "files_in_scope": [leaf],
+  "files_writable": [leaf],
+  "dependencies": [
+    {"file": leaf, "provider": "source"},
+  ],
+}
+(root / "evidence/bodies/m3-foundational.json").write_text(json.dumps(body) + "\n")
+PY
+if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/assert-dependency-closure.py" \
+    "${h1_tmp}/modernized" --body evidence/bodies/m3-foundational.json \
+    >/tmp/h1-assert.out 2>/tmp/h1-assert.err; then
+  echo "OK: GENERATOR_INPUTS skipped when dest has no plugin"
+else
+  echo "FAIL: handwritten dest must not inherit legacy-at-3 GENERATOR_INPUTS" >&2
+  cat /tmp/h1-assert.out /tmp/h1-assert.err >&2
+  rc=1
+fi
+rm -rf "${h1_tmp}"
 
 # Generated type-inventory rows are not types_uncovered
 tgen_tmp="$(mktemp -d)"
@@ -2585,6 +2666,19 @@ if python3 "${SKILLS}/harness/dispatch-phase/scripts/holder-checkpoint.py" \
 else
   echo "FAIL: holder-checkpoint --kind m2" >&2
   cat /tmp/m2cp.out /tmp/m2cp.err /tmp/m2cp-check.out /tmp/m2cp-check.err >&2
+  rc=1
+fi
+if python3 "${SKILLS}/harness/dispatch-phase/scripts/holder-checkpoint.py" \
+    init --kind m2 --task-id t_m2fix --root "${cp_tmp}" --next assemble \
+    >/tmp/m2cp-initnext.out 2>/tmp/m2cp-initnext.err; then
+  echo "FAIL: holder-checkpoint init --next must refuse" >&2
+  cat /tmp/m2cp-initnext.out /tmp/m2cp-initnext.err >&2
+  rc=1
+elif grep -q 'init does not take --next' /tmp/m2cp-initnext.err; then
+  echo "OK: holder-checkpoint init refuses --next"
+else
+  echo "FAIL: expected init does not take --next" >&2
+  cat /tmp/m2cp-initnext.out /tmp/m2cp-initnext.err >&2
   rc=1
 fi
 rm -rf "${cp_tmp}"
@@ -5832,6 +5926,180 @@ if "foundational" not in phases[2].parents:
     print(f"FAIL: F-6 US1 parents {phases[2].parents} missing foundational", file=sys.stderr)
     raise SystemExit(1)
 print("OK: F-6 import graph parents foundational without the prose phrase")
+
+sib = Path(tempfile.mkdtemp(prefix="f6-sibling-"))
+spec_java = sib / "src/main/java/org/x/mapper/SpecialtyMapper.java"
+vet_java = sib / "src/main/java/org/x/mapper/VetMapper.java"
+spec_java.parent.mkdir(parents=True, exist_ok=True)
+vet_java.parent.mkdir(parents=True, exist_ok=True)
+spec_java.write_text(
+    "package org.x.mapper;\npublic class SpecialtyMapper {}\n", encoding="utf-8"
+)
+vet_java.write_text(
+    "package org.x.mapper;\nimport org.x.mapper.SpecialtyMapper;\n"
+    "public class VetMapper { SpecialtyMapper m; }\n",
+    encoding="utf-8",
+)
+sib_tasks = """# Tasks
+
+## Phase 1: Setup (Shared Infrastructure)
+- [ ] T001 Create pom.xml
+- [ ] T002 Create src/main/resources/application.properties
+
+## Phase 2: Foundational (Blocking Prerequisites)
+- [ ] T007 Create Owner in src/main/java/org/x/model/Owner.java
+
+## Phase 3: Specialties [US4]
+- [ ] T040 Create SpecialtyMapper in src/main/java/org/x/mapper/SpecialtyMapper.java
+
+## Phase 4: Vets [US5]
+- [ ] T041 Create VetMapper in src/main/java/org/x/mapper/VetMapper.java
+
+## Phase 5: Polish
+- [ ] T099 Create src/test/java/org/x/VetMapperTest.java
+
+## Dependencies
+**Setup**: No dependencies
+**Foundational**: depends on Setup
+**User Stories**: depend on Foundational
+**Polish**: depends on all desired user stories
+"""
+(sib / "src/main/java/org/x/model").mkdir(parents=True)
+(sib / "src/main/java/org/x/model/Owner.java").write_text(
+    "package org.x.model;\npublic class Owner {}\n", encoding="utf-8"
+)
+(sib / "src/test/java/org/x").mkdir(parents=True)
+(sib / "src/test/java/org/x/VetMapperTest.java").write_text(
+    "package org.x;\npublic class VetMapperTest {}\n", encoding="utf-8"
+)
+(sib / "src/main/resources").mkdir(parents=True)
+(sib / "src/main/resources/application.properties").write_text("", encoding="utf-8")
+sib_ph = hm.parse_phases(sib_tasks)
+hm.transcribe_parents(sib_tasks, sib_ph)
+us4 = next(p for p in sib_ph if p.story_id == "US4")
+us5 = next(p for p in sib_ph if p.story_id == "US5")
+if "foundational" not in us4.parents or "foundational" not in us5.parents:
+    print(f"FAIL: H-4 collective parents {us4.parents} {us5.parents}", file=sys.stderr)
+    raise SystemExit(1)
+hm.merge_import_parents(sib, sib_ph)
+if "US4" not in us5.parents:
+    print(f"FAIL: H-4 US5 parents {us5.parents} missing US4", file=sys.stderr)
+    raise SystemExit(1)
+if any("SpecialtyMapper.java" in f for f in us5.files):
+    print(f"FAIL: H-4 relocated mapper onto US5 {us5.files}", file=sys.stderr)
+    raise SystemExit(1)
+if not any("SpecialtyMapper.java" in f for f in us4.files):
+    print(f"FAIL: H-4 US4 lost SpecialtyMapper {us4.files}", file=sys.stderr)
+    raise SystemExit(1)
+print("OK: F-6 sibling import parents the owning story")
+
+cyc = Path(tempfile.mkdtemp(prefix="cycle-import-"))
+owner_us = cyc / "src/main/java/org/x/model/Owner.java"
+facade = cyc / "src/main/java/org/x/Facade.java"
+owner_us.parent.mkdir(parents=True, exist_ok=True)
+facade.parent.mkdir(parents=True, exist_ok=True)
+owner_us.write_text("package org.x.model;\npublic class Owner {}\n", encoding="utf-8")
+facade.write_text(
+    "package org.x;\nimport org.x.model.Owner;\n"
+    "public class Facade { Owner o; }\n",
+    encoding="utf-8",
+)
+cyc_tasks = """# Tasks
+
+## Phase 1: Setup (Shared Infrastructure)
+- [ ] T001 Create pom.xml
+- [ ] T002 Create src/main/resources/application.properties
+
+## Phase 2: Foundational (Blocking Prerequisites)
+- [ ] T007 Create Facade in src/main/java/org/x/Facade.java
+
+## Phase 3: Owner CRUD [US1]
+- [ ] T020 Create Owner in src/main/java/org/x/model/Owner.java
+
+## Phase 4: Polish
+- [ ] T099 Create src/test/java/org/x/OwnerTest.java
+
+## Dependencies
+**Setup**: No dependencies
+**Foundational**: depends on Setup
+**User Stories**: depend on Foundational
+**Polish**: depends on all desired user stories
+"""
+(cyc / "src/test/java/org/x").mkdir(parents=True)
+(cyc / "src/test/java/org/x/OwnerTest.java").write_text(
+    "package org.x;\npublic class OwnerTest {}\n", encoding="utf-8"
+)
+(cyc / "src/main/resources").mkdir(parents=True)
+(cyc / "src/main/resources/application.properties").write_text("", encoding="utf-8")
+cyc_ph = hm.parse_phases(cyc_tasks)
+hm.transcribe_parents(cyc_tasks, cyc_ph)
+hm.assert_foundational_no_service(cyc_ph)
+try:
+    hm.merge_import_parents(cyc, cyc_ph)
+    print("FAIL: cyclic Facade→Owner must CYCLE_IMPORT", file=sys.stderr)
+    raise SystemExit(1)
+except hm.HandoverError as exc:
+    if exc.code != "CYCLE_IMPORT":
+        print(f"FAIL: expected CYCLE_IMPORT got {exc.code}: {exc}", file=sys.stderr)
+        raise SystemExit(1)
+    print("OK: CYCLE_IMPORT refuses cyclic import parent")
+
+svc_tasks = """# Tasks
+
+## Phase 1: Setup (Shared Infrastructure)
+- [ ] T001 Create pom.xml
+- [ ] T002 Create src/main/resources/application.properties
+
+## Phase 2: Foundational (Blocking Prerequisites)
+- [ ] T007 Create AppService in src/main/java/org/x/service/AppService.java
+
+## Phase 3: Polish
+- [ ] T099 Create src/test/java/org/x/AppServiceTest.java
+
+## Dependencies
+**Setup**: No dependencies
+**Foundational**: depends on Setup
+**Polish**: depends on all desired user stories
+"""
+try:
+    svc_ph = hm.parse_phases(svc_tasks)
+    hm.assert_foundational_no_service(svc_ph)
+    print("FAIL: foundational AppService must T0_3_SERVICE", file=sys.stderr)
+    raise SystemExit(1)
+except hm.HandoverError as exc:
+    if exc.code != "T0_3_SERVICE":
+        print(f"FAIL: expected T0_3_SERVICE got {exc.code}: {exc}", file=sys.stderr)
+        raise SystemExit(1)
+    print("OK: T0_3_SERVICE refuses foundational *Service.java")
+
+p5_tasks = """# Tasks
+
+## Phase 1: Setup (Shared Infrastructure)
+- [ ] T001 Create pom.xml
+- [ ] T002 Create src/main/resources/application.properties
+
+## Phase 2: Foundational (Blocking Prerequisites)
+- [ ] T007 Create Owner in src/main/java/org/x/model/Owner.java
+
+## Phase 5: Service Layer (API Contracts)
+- [ ] T027 Create src/main/java/com/demo/service/AppService.java
+- [ ] T028 Create src/main/java/com/demo/service/AppServiceImpl.java
+
+## Phase 6: Polish
+- [ ] T099 Create src/test/java/org/x/OwnerTest.java
+
+## Dependencies
+**Setup**: No dependencies
+**Foundational**: depends on Setup
+**Polish**: depends on all desired user stories
+"""
+p5_ph = hm.parse_phases(p5_tasks)
+hm.assert_foundational_no_service(p5_ph)
+p5 = next(p for p in p5_ph if p.story_id == "P5")
+if p5.kind != hm.KIND_PHASE:
+    print(f"FAIL: Phase 5 kinded {p5.kind}", file=sys.stderr)
+    raise SystemExit(1)
+print("OK: T0_3_SERVICE allows AppService on Phase 5")
 PY
 echo "== I-16 M2 scratch --write oracle (Verify-only polish must refuse) =="
 SCRATCH_ORACLE="${SKILLS}/harness/dispatch-phase/scripts/scratch-assemble-mint.py"

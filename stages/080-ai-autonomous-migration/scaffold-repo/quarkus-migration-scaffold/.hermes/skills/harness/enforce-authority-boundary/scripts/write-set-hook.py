@@ -366,6 +366,27 @@ _REDIRECT_RE = re.compile(
 )
 
 
+_DEVICE_PATHS = frozenset(
+    {
+        "/dev/null",
+        "/dev/stdin",
+        "/dev/stdout",
+        "/dev/stderr",
+    }
+)
+
+
+def _is_device_path(raw: str) -> bool:
+    p = raw.strip().replace("\\", "/")
+    if p in _DEVICE_PATHS:
+        return True
+    try:
+        resolved = str(Path(p).resolve())
+    except OSError:
+        resolved = p
+    return resolved in _DEVICE_PATHS
+
+
 def extract_terminal_write_paths(cmd: str) -> list[str]:
     """Resolved destinations of shell redirects / heredoc cat-to-file."""
     if not cmd:
@@ -373,7 +394,9 @@ def extract_terminal_write_paths(cmd: str) -> list[str]:
     found: list[str] = []
     for m in _REDIRECT_RE.finditer(cmd.replace("\\", "/")):
         raw = m.group(1).strip().strip("'\"")
-        if raw and raw not in found:
+        if not raw or _is_device_path(raw):
+            continue
+        if raw not in found:
             found.append(raw)
     return found
 
@@ -427,6 +450,8 @@ def main() -> int:
             try:
                 rel = target.relative_to(safe_p)
             except ValueError:
+                if _is_device_path(str(target)):
+                    continue
                 return _block(
                     f"write-set-hook: path {target} outside "
                     f"HERMES_WRITE_SAFE_ROOT={safe_p}"
@@ -454,6 +479,8 @@ def main() -> int:
     if not target.is_absolute():
         target = Path.cwd() / target
     target = Path(os.path.abspath(str(target)))
+    if _is_device_path(str(target)):
+        return _allow()
     try:
         rel = target.relative_to(safe_p)
     except ValueError:

@@ -93,7 +93,15 @@ def cmd_stamp(
     kind: str,
 ) -> int:
     if not valid_next(nxt, kind):
-        print(f"FAIL: invalid --next {nxt!r}", file=sys.stderr)
+        allowed = (
+            "|".join(sorted(M2_NEXT))
+            if kind == "m2"
+            else "lint|ack_gate|mint-m4|mint-m5|pre-complete|done|create:<id>"
+        )
+        print(
+            f"FAIL: invalid --next {nxt!r}; allowed={allowed}",
+            file=sys.stderr,
+        )
         return 1
     path = cp_path(root, task_id)
     if not path.is_file():
@@ -157,6 +165,14 @@ def main() -> int:
         return 1
     root = Path(args.root).resolve()
     if args.action == "init":
+        if args.nxt:
+            allowed = "|".join(sorted(M2_NEXT)) if args.kind == "m2" else "stamp --next <step>"
+            print(
+                "FAIL: init does not take --next; use stamp --next "
+                f"({allowed})",
+                file=sys.stderr,
+            )
+            return 1
         return cmd_init(root, task_id, args.kind)
     if args.action == "stamp":
         if not args.nxt:
