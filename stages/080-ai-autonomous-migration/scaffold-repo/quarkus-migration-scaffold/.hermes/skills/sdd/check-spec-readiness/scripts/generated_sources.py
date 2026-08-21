@@ -333,3 +333,14 @@ def is_generated(
     if _in_generator_package(fqcn, plugins) or _in_generator_package(lq, plugins):
         return True
     return False
+
+
+def inventory_row_is_generated(root: Path, rec: dict) -> bool:
+    """Classify a type-inventory row from path / @Generated / plugin — not the stored boolean."""
+    dest = str(rec.get("dest_file") or rec.get("file") or "").strip()
+    if not dest:
+        return False
+    src = rec.get("source_file") or rec.get("legacy_file")
+    source = Path(str(src)) if src else None
+    legacy = str(rec.get("legacy_file") or rec.get("source_file") or "") or None
+    return is_generated(root, dest, source=source, legacy_rel=legacy)

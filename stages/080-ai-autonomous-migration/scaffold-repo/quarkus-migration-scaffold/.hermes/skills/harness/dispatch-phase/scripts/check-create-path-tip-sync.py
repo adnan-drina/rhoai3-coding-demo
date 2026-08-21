@@ -1986,6 +1986,36 @@ REQUIRED_SUBSTRINGS = [
         "coverage does not require Creating generator output",
     ),
     (
+        ".hermes/skills/harness/validate-contracts/scripts/validate.sh",
+        "OK: PARTITION_COVERAGE still demands handwritten type when generated:true is stored",
+        "LV-2 stored generated boolean is not coverage authority",
+    ),
+    (
+        ".hermes/skills/harness/validate-contracts/scripts/validate.sh",
+        "OK: write-set hook refuses execute_code open(w) type-inventory",
+        "LV-1 pathless execute_code write uses the resolved-path fence",
+    ),
+    (
+        ".hermes/skills/harness/enforce-authority-boundary/scripts/write-set-hook.py",
+        "extract_code_write_paths",
+        "LV-1 python open(w) destinations are fenced",
+    ),
+    (
+        ".hermes/skills/sdd/check-spec-readiness/scripts/generated_sources.py",
+        "def inventory_row_is_generated",
+        "LV-2 generated is classified at read time",
+    ),
+    (
+        ".hermes/SOUL.md",
+        "Blocked terminal",
+        "LV-3 Blocked terminal is kanban_block needs_input",
+    ),
+    (
+        ".hermes/SOUL.md",
+        "repeated_exact_failure_warning",
+        "LV-4 consume the warning Hermes emits before the terminal dies",
+    ),
+    (
         ".hermes/skills/harness/dispatch-phase/scripts/scratch-assemble-mint.py",
         "OK: type-closure stamp+assert",
         "V34-8 scratch-assemble reuses stamp+assert-dependency-closure",
@@ -2347,6 +2377,11 @@ FORBIDDEN_SUBSTRINGS = [
         ".hermes/skills/sdd/check-spec-readiness/scripts/assert-setup-datasource-driver.py",
         "also requires Flyway",
         "LD-1 setup-driver comment must not claim the runnable-db gate requires Flyway",
+    ),
+    (
+        ".hermes/skills/sdd/check-spec-readiness/scripts/specimen_agnostic.py",
+        "Rows with\n    ``generated: true`` are skipped",
+        "LV-2 coverage must not skip on the stored generated boolean",
     ),
 ]
 

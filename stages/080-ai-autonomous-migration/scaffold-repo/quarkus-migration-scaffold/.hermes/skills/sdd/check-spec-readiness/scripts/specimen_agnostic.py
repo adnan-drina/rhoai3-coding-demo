@@ -11,6 +11,7 @@ import hashlib
 import json
 import re
 import shlex
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -1334,13 +1335,22 @@ def dest_path_as_written(path: str) -> str:
     return p.lstrip("./")
 
 
+def _inventory_row_is_generated(root: Path, rec: dict) -> bool:
+    scripts = Path(__file__).resolve().parent
+    if str(scripts) not in sys.path:
+        sys.path.insert(0, str(scripts))
+    from generated_sources import inventory_row_is_generated  # noqa: PLC0415
+
+    return inventory_row_is_generated(root, rec)
+
+
 def type_inventory_uncovered(root: Path, owned: set[str]) -> list[str] | None:
     """Dest twins in evidence/type-inventory.json missing from ``owned``.
 
     ``None`` means the file is absent — skip (I-16 / dests whose M1 predated
-    the walk). Empty list means present and covered. Rows with
-    ``generated: true`` are skipped — those are build output (spec + plugin),
-    not dest twins a story Creates.
+    the walk). Empty list means present and covered. Rows that
+    ``generated_sources.inventory_row_is_generated`` classifies as generator
+    output are skipped — do not trust a stored ``generated`` boolean (v41).
     """
     path = root / "evidence" / "type-inventory.json"
     if not path.is_file():
@@ -1361,7 +1371,7 @@ def type_inventory_uncovered(root: Path, owned: set[str]) -> list[str] | None:
         if not dest or dest in seen:
             continue
         seen.add(dest)
-        if rec.get("generated") is True:
+        if _inventory_row_is_generated(root, rec):
             continue
         if dest not in owned_n:
             missing.append(dest)

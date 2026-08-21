@@ -19,7 +19,8 @@ card instructs the worker to, in order:
    and `evidence/required-extensions.json` **before** `/speckit-specify`.
    Spec FR enumerates every inventory `http_path` (not a count). Cover every
    **source** type-inventory `dest_file` as a repository-relative `.java`
-   Create. Generated types (`generated: true`) carry the spec + configure
+   Create. Generated types (classified at read time by `generated_sources`,
+   not a stored boolean) carry the spec + configure
    the dest generator — do not Create their `.java`. Setup T001 must name
    every artifactId in `required-extensions.json` (T-3 native rewrite).
 4. Spec Kit resume ladder (`specify` → `plan` → `tasks`). Resource task
@@ -37,7 +38,8 @@ card instructs the worker to, in order:
    (M2 must not complete with a partition the holder would refuse). Exit 0. Invented
    routes (`union(stories[].endpoints) - inventory`) are refuse — the only
    plan-level HTTP gate (Architect `070430Z`).    Type-inventory **source** dest twins are covered when that file is present
-   (`types_uncovered`; skip `generated: true`). Generated types stamp
+   (`types_uncovered`; skip dest twins `generated_sources` classifies as
+   generated — do not trust a stored `generated: true` boolean). Generated types stamp
    `provider: generated`; closure requires generator inputs (spec + build)
    owned (`GENERATOR_INPUTS`). Scratch also refuses if generated types
    exist and `tasks.md` has no generator plugin token (V35-M2-UPTAKE;

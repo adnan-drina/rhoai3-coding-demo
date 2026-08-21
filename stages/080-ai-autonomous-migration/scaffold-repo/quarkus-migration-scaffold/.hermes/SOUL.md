@@ -34,6 +34,11 @@ Scope. The plan says which units are in this task; you do not add, drop, or
 substitute. If the task cannot be done as specified, say so and stop — a
 reported blockage is a correct outcome, and improvising is not.
 
+When a tool result is `Blocked terminal` or
+`repeated_exact_failure_warning`, you have no legal next command.
+`kanban_block --kind needs_input` naming that command and its last
+refusal. Do not exit 0 with the card still running.
+
 If an input is wrong, report it and stop. Do not repair another task's output
 to make your own possible. The task that owns it will fix it.
 

@@ -865,6 +865,35 @@ PY
   else
     echo "OK: terminal redirect to \$HOME/.m2/settings.xml is refused"
   fi
+  export HERMES_KANBAN_FILES_WRITABLE='[".specify/","specs/"]'
+  if printf '%s\n' '{"tool_name":"write_file","tool_input":{"path":"evidence/type-inventory.json"}}' \
+    | python3 "${HOOK}" >/dev/null; then
+    echo "FAIL: M2 write_file type-inventory must refuse" >&2
+    exit 1
+  else
+    echo "OK: write-set hook refuses type-inventory write_file on M2 write-set"
+  fi
+  if python3 -c 'import json,sys; sys.stdout.write(json.dumps({"tool_name":"terminal","tool_input":{"command":"python3 -c \"open('\''evidence/type-inventory.json'\'','\''w'\'').write('\''x'\'')\""}}))' \
+    | python3 "${HOOK}" >/dev/null; then
+    echo "FAIL: python open(w) type-inventory via terminal must refuse" >&2
+    exit 1
+  else
+    echo "OK: write-set hook refuses python open(w) type-inventory via terminal"
+  fi
+  if python3 -c 'import json,sys; sys.stdout.write(json.dumps({"tool_name":"execute_code","tool_input":{"code":"open('\''evidence/type-inventory.json'\'','\''w'\'').write('\''x'\'')"}}))' \
+    | python3 "${HOOK}" >/dev/null; then
+    echo "FAIL: execute_code open(w) type-inventory must refuse" >&2
+    exit 1
+  else
+    echo "OK: write-set hook refuses execute_code open(w) type-inventory"
+  fi
+  if python3 -c 'import json,sys; sys.stdout.write(json.dumps({"tool_name":"execute_code","tool_input":{"code":"print(open('\''evidence/type-inventory.json'\'').read())"}}))' \
+    | python3 "${HOOK}" >/dev/null; then
+    echo "OK: write-set hook allows execute_code read of type-inventory"
+  else
+    echo "FAIL: execute_code read of type-inventory must allow" >&2
+    exit 1
+  fi
   unset HERMES_KANBAN_FILES_WRITABLE
   unset HERMES_KANBAN_CARD_BODY || true
   unset HERMES_KANBAN_CARD_JSON || true
@@ -2668,8 +2697,8 @@ root = Path(sys.argv[1])
 (root / "evidence/type-inventory.json").write_text(json.dumps({
   "schema": "rhoai3.type-inventory/v1",
   "types": [{
-    "dest_file": "src/main/java/com/demo/dto/OwnerDto.java",
-    "generated": True,
+    "dest_file": "target/generated-sources/openapi/com/demo/dto/OwnerDto.java",
+    "generated": False,
     "layer": "dto",
   }],
 }) + "\n")
@@ -2690,6 +2719,61 @@ else
   rc=1
 fi
 rm -rf "${tgen_tmp}"
+
+# v41 attack: stored generated:true on a handwritten src/ twin must still uncover
+tgen_lie_tmp="$(mktemp -d)"
+mkdir -p "${tgen_lie_tmp}/evidence/briefs"
+python3 - "${tgen_lie_tmp}" <<'PY'
+import json, sys
+from pathlib import Path
+root = Path(sys.argv[1])
+(root / "evidence/briefs/partition.json").write_text(json.dumps({
+  "stories": [{
+    "story_id": "US1",
+    "files_writable": ["src/main/java/com/demo/resource/OwnerResource.java"],
+    "files_in_scope": ["src/main/java/com/demo/resource/OwnerResource.java"],
+    "endpoints": ["GET /api/owners"],
+    "rules": ["springboot-to-quarkus-00000"],
+  }]
+}) + "\n")
+(root / "inventory.json").write_text(json.dumps({
+  "entry_points": [{
+    "kind": "http",
+    "file": "src/main/java/org/example/demo/rest/OwnerRest.java",
+    "symbol": "OwnerRest#get",
+    "http_method": "GET",
+    "http_path": "/api/owners",
+  }],
+  "totals": {"http_endpoints": 1},
+}) + "\n")
+(root / "evidence/mta-findings.json").write_text(json.dumps({
+  "schema": "rhoai3.mta-findings/v1-provisional",
+  "violations": {"springboot-to-quarkus-00000": {"ruleID": "springboot-to-quarkus-00000", "category": "mandatory", "incidents": []}},
+}) + "\n")
+(root / "evidence/type-inventory.json").write_text(json.dumps({
+  "schema": "rhoai3.type-inventory/v1",
+  "types": [{
+    "dest_file": "src/main/java/com/demo/service/AppService.java",
+    "generated": True,
+    "layer": "service",
+  }],
+}) + "\n")
+PY
+if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/check-partition-coverage.py" \
+    "${tgen_lie_tmp}" --partition evidence/briefs/partition.json --inventory inventory.json \
+    >/tmp/pc-tgen-lie.out 2>/tmp/pc-tgen-lie.err; then
+  echo "FAIL: handwritten dest twin with generated:true must still types_uncovered" >&2
+  cat /tmp/pc-tgen-lie.out /tmp/pc-tgen-lie.err >&2
+  rc=1
+elif grep -q 'types_uncovered' /tmp/pc-tgen-lie.out /tmp/pc-tgen-lie.err \
+  && grep -q 'AppService.java' /tmp/pc-tgen-lie.out /tmp/pc-tgen-lie.err; then
+  echo "OK: PARTITION_COVERAGE still demands handwritten type when generated:true is stored"
+else
+  echo "FAIL: expected types_uncovered AppService.java despite stored generated:true" >&2
+  cat /tmp/pc-tgen-lie.out /tmp/pc-tgen-lie.err >&2
+  rc=1
+fi
+rm -rf "${tgen_lie_tmp}"
 
 cp_tmp="$(mktemp -d)"
 if python3 "${SKILLS}/harness/dispatch-phase/scripts/holder-checkpoint.py" \

@@ -30,6 +30,7 @@ if str(_SCRIPTS) not in sys.path:
 from generated_sources import (  # noqa: E402
     generator_input_paths,
     generator_plugins,
+    inventory_row_is_generated,
     is_generated,
 )
 from specimen_agnostic import dest_path_as_written, legacy_java_prefixes  # noqa: E402
@@ -153,7 +154,7 @@ def type_inventory_generated_count(root: Path) -> int | None:
         return None
     n = 0
     for row in types:
-        if isinstance(row, dict) and row.get("generated") is True:
+        if isinstance(row, dict) and inventory_row_is_generated(root, row):
             n += 1
     return n
 

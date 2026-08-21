@@ -24,7 +24,9 @@ spawn hydrate). This hook must not read dest JSON or typed bodies for
 allow/deny (Architect 35099226 / Operator 7e93fb41). M3 omits the yaml
 key — story write-sets are per-card. Terminal redirects are fenced on the
 **resolved path** (including `$HOME`); extra-workspace writes are denied
-when a write-set is published.
+when a write-set is published. Python `open(..., 'w')` / `Path.write_text`
+in `terminal` argv or `execute_code` use the same resolved-path allow-model
+(v41: M2 rewrote type-inventory via a pathless tool).
 
 If no kanban task is published, deny-prefix only — validate/dev seats
 keep working without a write-set.
@@ -52,6 +54,7 @@ from pathlib import Path
 WRITE_TOOLS = frozenset(
     {"write_file", "patch", "edit_file", "apply_patch", "create_file"}
 )
+CODE_TOOLS = frozenset({"execute_code", "code_execution", "python"})
 
 DENY_PREFIXES = (
     "evidence/acks/",
@@ -398,7 +401,78 @@ def extract_terminal_write_paths(cmd: str) -> list[str]:
             continue
         if raw not in found:
             found.append(raw)
+    for raw in extract_code_write_paths(cmd):
+        if raw not in found:
+            found.append(raw)
     return found
+
+
+_OPEN_WRITE_RE = re.compile(
+    r"""open\(\s*(['"])([^'"]+)\1\s*,\s*(['"])(?:w|a|x|w\+|a\+|r\+|wb|ab|xb)\b""",
+)
+_PATH_WRITE_RE = re.compile(
+    r"""Path\(\s*(['"])([^'"]+)\1\s*\)\s*\.\s*(?:write_text|write_bytes|touch)\s*\(""",
+)
+_PATH_OPEN_WRITE_RE = re.compile(
+    r"""Path\(\s*(['"])([^'"]+)\1\s*\)\s*\.\s*open\(\s*(['"])(?:w|a|x|w\+|a\+|r\+|wb|ab|xb)\b""",
+)
+
+
+def extract_code_write_paths(code: str) -> list[str]:
+    """Destinations of Python open(..., 'w') / Path.write_text (v41 pathless write)."""
+    if not code:
+        return []
+    blob = code.replace("\\", "/")
+    found: list[str] = []
+    for rx in (_OPEN_WRITE_RE, _PATH_WRITE_RE, _PATH_OPEN_WRITE_RE):
+        for m in rx.finditer(blob):
+            raw = (m.group(2) or "").strip()
+            if not raw or _is_device_path(raw):
+                continue
+            if raw not in found:
+                found.append(raw)
+    return found
+
+
+def extract_execute_code(payload: dict) -> str:
+    ti = payload.get("tool_input") or {}
+    if not isinstance(ti, dict):
+        return ""
+    for k in ("code", "source", "script", "python"):
+        v = ti.get(k)
+        if isinstance(v, str) and v.strip():
+            return v
+    return ""
+
+
+def _block_if_oos_write(
+    raw_path: str, safe_p: Path, writable: list[str], source: str
+) -> int | None:
+    expanded = os.path.expandvars(os.path.expanduser(raw_path))
+    target = Path(expanded)
+    if not target.is_absolute():
+        target = Path.cwd() / target
+    target = Path(os.path.abspath(str(target)))
+    try:
+        rel = target.relative_to(safe_p)
+    except ValueError:
+        if _is_device_path(str(target)):
+            return None
+        return _block(
+            f"write-set-hook: path {target} outside "
+            f"HERMES_WRITE_SAFE_ROOT={safe_p}"
+        )
+    rel_s = str(rel).replace("\\", "/")
+    if is_denied(rel_s):
+        return _block(
+            f"write-set-hook: in-repo OOS path {rel_s} (B-S2 deny-prefix)"
+        )
+    if not in_write_set(rel_s, writable):
+        return _block(
+            f"write-set-hook: {rel_s} outside files_writable "
+            f"({source}; B-2 resolved-path allow-model)"
+        )
+    return None
 
 
 def main() -> int:
@@ -442,30 +516,14 @@ def main() -> int:
                 "(defense-in-depth, not a trust boundary)"
             )
         for raw_path in extract_terminal_write_paths(cmd):
-            expanded = os.path.expandvars(os.path.expanduser(raw_path))
-            target = Path(expanded)
-            if not target.is_absolute():
-                target = Path.cwd() / target
-            target = Path(os.path.abspath(str(target)))
-            try:
-                rel = target.relative_to(safe_p)
-            except ValueError:
-                if _is_device_path(str(target)):
-                    continue
-                return _block(
-                    f"write-set-hook: path {target} outside "
-                    f"HERMES_WRITE_SAFE_ROOT={safe_p}"
-                )
-            rel_s = str(rel).replace("\\", "/")
-            if is_denied(rel_s):
-                return _block(
-                    f"write-set-hook: in-repo OOS path {rel_s} (B-S2 deny-prefix)"
-                )
-            if not in_write_set(rel_s, writable):
-                return _block(
-                    f"write-set-hook: {rel_s} outside files_writable "
-                    f"({source}; B-2 resolved-path allow-model)"
-                )
+            blocked = _block_if_oos_write(raw_path, safe_p, writable, source)
+            if blocked is not None:
+                return blocked
+    if writable is not None and str(tool).lower() in CODE_TOOLS:
+        for raw_path in extract_code_write_paths(extract_execute_code(payload)):
+            blocked = _block_if_oos_write(raw_path, safe_p, writable, source)
+            if blocked is not None:
+                return blocked
     if not raw:
         # Known write tool, no path, write-set in play → fail closed.
         # Unknown tools with no path stay allow (reads, terminal, etc.).
