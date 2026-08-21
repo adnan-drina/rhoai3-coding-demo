@@ -22,23 +22,17 @@ See `.hermes/pins.json`. Re-verify at first provision. Official docs are
 product authority (Hermes live pages; Spec Kit repo at the pinned
 `specify-cli` version).
 
-## Suggested dest (not created)
-
-Do **not** reuse `petclinic-rest-v*` (v34–v42 harvest / v42 live) and do
-**not** use the RHDH `app-migration` template as it stands — that template
-bootstraps **v1** golden.
+## Suggested dest (Lead creates git only)
 
 | Field | Suggestion | Why |
 |---|---|---|
-| Project name | `greeting-v2` | Template pattern `^[a-z][a-z0-9-]{2,40}$`; no collision with `petclinic-rest-v42-refac` |
-| Dest git | New empty repo, unpublished until GO | Isolation from `adnan-drina/quarkus-migration-scaffold` |
-| Namespace / DevWorkspace | same as project name | Platform convention; keep off v42’s namespace |
-| Legacy | New ≤2-endpoint Spring Boot app, **not** PetClinic | AD-019 first success; disjoint from the v1 specimen |
-| First success | That dest reaches **M4** with zero dest-patches | Kernel must not grow before this |
+| Project / GitHub repo | `greeting-v2` (`adnan-drina/greeting-v2`) | No collision with `petclinic-rest-v42-refac` |
+| How | `gh repo create` from **this** tree (Lead commission) | Template still publishes **v1** golden |
+| Topics | none of `rhoai3-scaffolded` / `rhoai3-golden-path` | Those trigger Argo / v1 golden reset |
+| Legacy | New ≤2-endpoint Spring Boot app, **not** PetClinic | AD-019 first success |
+| First success | Dest reaches **M4** with zero dest-patches | Kernel must not grow before this |
 
-Provision path when Operator GOs dest (not now): clone **this** tree into
-the new dest repo, add a dest `devfile.yaml` in a later increment, open a
-Dev Spaces workspace from that dest — never from a recut of v1.
+Provision (Dev Spaces) is a **later** Operator GO. Git exists first.
 
 ## Custom kernel (not in this tree yet)
 
