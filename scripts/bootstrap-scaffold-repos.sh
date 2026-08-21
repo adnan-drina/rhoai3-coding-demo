@@ -7,6 +7,9 @@
 #   agentic-quarkus-scaffold   — pushed verbatim from stages/070-ai-agentic-development/scaffold-repo/
 #   quarkus-migration-scaffold — pushed verbatim from stages/080-ai-autonomous-migration/scaffold-repo/
 #
+# harness-v2: do not run this script for Stage 080. It force-pushes v1
+# quarkus-migration-scaffold. Use scripts/bootstrap-migration-scaffold-v2.sh.
+#
 # Requires: gh (authenticated with repo scope), git. No cluster access.
 set -euo pipefail
 
@@ -52,13 +55,19 @@ push_golden "$WORKDIR/agentic-quarkus-scaffold" "agentic-quarkus-scaffold" \
   "Golden state from rhoai3-coding-demo/stages/070-ai-agentic-development/scaffold-repo/agentic-quarkus-scaffold"
 
 # --- 2. quarkus-migration-scaffold (authored in this repo) ---
-log "Staging quarkus-migration-scaffold"
-cp -R "$REPO_ROOT/stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold" "$WORKDIR/quarkus-migration-scaffold"
-# Track B O-GOLDENFRESH stamping (scripts/track-b/v10-golden-fresh.sh) was
-# retired with the process-tooling layer (ce6a8ce). Bootstrap is push-only again.
-ensure_repo "quarkus-migration-scaffold" "Corporate Quarkus migration scaffold golden repo (stage 080: legacy + modernized dual-project workspace)"
-push_golden "$WORKDIR/quarkus-migration-scaffold" "quarkus-migration-scaffold" \
-  "Golden state from rhoai3-coding-demo/stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold"
+BRANCH="$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+if [[ "$BRANCH" == "harness-v2" ]]; then
+  warn "harness-v2: refusing to force-push v1 quarkus-migration-scaffold"
+  warn "Use scripts/bootstrap-migration-scaffold-v2.sh for quarkus-migration-scaffold-v2"
+else
+  log "Staging quarkus-migration-scaffold"
+  cp -R "$REPO_ROOT/stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold" "$WORKDIR/quarkus-migration-scaffold"
+  # Track B O-GOLDENFRESH stamping (scripts/track-b/v10-golden-fresh.sh) was
+  # retired with the process-tooling layer (ce6a8ce). Bootstrap is push-only again.
+  ensure_repo "quarkus-migration-scaffold" "Corporate Quarkus migration scaffold golden repo (stage 080: legacy + modernized dual-project workspace)"
+  push_golden "$WORKDIR/quarkus-migration-scaffold" "quarkus-migration-scaffold" \
+    "Golden state from rhoai3-coding-demo/stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold"
+fi
 
 log "Done. Reminders:"
 echo "  - The GitHub App (webhook -> EventListener route) must be installed on"

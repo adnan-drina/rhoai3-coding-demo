@@ -27,6 +27,24 @@ The repository follows a GitOps-first pattern:
 
 The deploy scripts do not imperatively install every component themselves. They hand ownership to Argo CD.
 
+## Harness v2 golden (branch `harness-v2` only)
+
+Live workshop GitOps on `overlay-a8-publish` still publishes dests from
+`adnan-drina/quarkus-migration-scaffold`. Do not recut Argo to `harness-v2`
+until a dest cutover GO. Do not GitHub-rename the v1 golden.
+
+| Surface | v1 (live) | v2 (this branch) |
+|---------|-----------|------------------|
+| Authoring | `stages/080-ai-autonomous-migration/scaffold-repo/` | Same path on `harness-v2` |
+| Golden GitHub | `quarkus-migration-scaffold` | `quarkus-migration-scaffold-v2` |
+| Publish | `scripts/bootstrap-scaffold-repos.sh` | `scripts/bootstrap-migration-scaffold-v2.sh` |
+| Template `fetch:plain` | v1 golden | v2 golden in this branch's `template.yaml` only |
+| Dest | existing `petclinic-rest-v*` | Developer Hub **Application migration** after GitOps GO |
+
+`bootstrap-scaffold-repos.sh` refuses the Stage 080 push when HEAD is
+`harness-v2`. Leftover `adnan-drina/greeting-v2` is not a dest — do not
+provision it. Isolation notes: `stages/080-ai-autonomous-migration/docs/harness-v2-isolation.md`.
+
 ## Prerequisites
 
 Before deploying the workshop, confirm:

@@ -87,7 +87,9 @@ spec:
       name: Fetch Quarkus migration scaffold golden repository
       action: fetch:plain
       input:
-        url: https://github.com/adnan-drina/quarkus-migration-scaffold/tree/main
+        # harness-v2: v2 golden. Live overlay-a8-publish still fetches
+        # quarkus-migration-scaffold. Do not recut Argo until dest GO.
+        url: https://github.com/adnan-drina/quarkus-migration-scaffold-v2/tree/main
 
     # The platform coolstore entity carries cluster-real link URLs (the
     # generate-rhdh-catalog hook substitutes route hostnames at sync time).

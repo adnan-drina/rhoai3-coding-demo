@@ -22,7 +22,7 @@ projects:
   - name: modernized
     git:
       remotes:
-        origin: https://github.com/adnan-drina/quarkus-migration-scaffold.git
+        origin: https://github.com/adnan-drina/quarkus-migration-scaffold-v2.git
       checkoutFrom:
         revision: main
 components:

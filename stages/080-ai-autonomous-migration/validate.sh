@@ -101,6 +101,14 @@ if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
         echo -e "${RED}[FAIL]${NC} quarkus-migration-scaffold golden repo missing (run scripts/bootstrap-scaffold-repos.sh)"
         VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
     fi
+    GOLDEN_V2_SHA=$(gh api repos/adnan-drina/quarkus-migration-scaffold-v2/git/refs/heads/main --jq '.object.sha' 2>/dev/null || echo "")
+    if [[ -n "$GOLDEN_V2_SHA" ]]; then
+        echo -e "${GREEN}[PASS]${NC} quarkus-migration-scaffold-v2 golden repo exists (${GOLDEN_V2_SHA:0:12})"
+        VALIDATE_PASS=$((VALIDATE_PASS + 1))
+    else
+        echo -e "${RED}[FAIL]${NC} quarkus-migration-scaffold-v2 golden repo missing (run scripts/bootstrap-migration-scaffold-v2.sh)"
+        VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
+    fi
 else
     echo -e "${YELLOW}[WARN]${NC} gh not available — skipping golden repo check"
     VALIDATE_WARN=$((VALIDATE_WARN + 1))
