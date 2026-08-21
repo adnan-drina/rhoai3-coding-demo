@@ -1559,6 +1559,11 @@ REQUIRED_SUBSTRINGS = [
         "test_suite_runs",
         "oracle-stamps polish test-only (155354Z)",
     ),
+    (
+        ".hermes/skills/harness/dispatch-phase/references/handover-mint.md",
+        "split the facade per aggregate",
+        "LV-7a handover-mint.md names split-per-aggregate for T0_3_SERVICE",
+    ),
 
     (
         ".hermes/skills/sdd/check-spec-readiness/references/story-scope-and-exit.md",
@@ -1954,6 +1959,56 @@ REQUIRED_SUBSTRINGS = [
         ".hermes/skills/harness/validate-contracts/scripts/validate.sh",
         "OK: T0_3_SERVICE refuses foundational *Service.java",
         "H-6 T0 #3 foundational service refuse",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/scripts/handover-mint.py",
+        "split per aggregate",
+        "LV-7a T0_3_SERVICE remedy is split per aggregate",
+    ),
+    (
+        ".hermes/skills/harness/validate-contracts/scripts/validate.sh",
+        "OK: T0_3_SERVICE remedy is split per aggregate",
+        "LV-7a T0_3_SERVICE validate names split per aggregate",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/scripts/handover-mint.py",
+        "Parent the owning story",
+        "LV-7b CYCLE_IMPORT remedy is parent-or-split",
+    ),
+    (
+        ".hermes/skills/harness/validate-contracts/scripts/validate.sh",
+        "OK: LV-7c T0_3_SERVICE names no placement another gate refuses",
+        "LV-7c unsatisfiable placement check",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/scripts/scratch-assemble-mint.py",
+        "relocate-descendant-import-writesets.py",
+        "LV-5 M2 assemble wires MULTI_OWNER relocate gate",
+    ),
+    (
+        ".hermes/skills/harness/validate-contracts/scripts/validate.sh",
+        "OK: scratch-assemble wires relocate-descendant MULTI_OWNER gate",
+        "LV-5 validate wiring needle",
+    ),
+    (
+        ".hermes/skills/harness/validate-contracts/scripts/validate.sh",
+        "OK: scratch-assemble _run_relocate fails MULTI_OWNER",
+        "LV-5 MULTI_OWNER fails M2 assemble not the holder",
+    ),
+    (
+        ".hermes/skills/sdd/check-spec-readiness/scripts/assert-dest-generator-configured.py",
+        "REQUIRED_PLUGIN_CONFIGURATION",
+        "LV-6 DEST_GENERATOR emits the validated plugin block",
+    ),
+    (
+        ".hermes/skills/harness/validate-contracts/scripts/validate.sh",
+        "OK: DEST_GENERATOR refusal emits required plugin configuration",
+        "LV-6 validate emits useJakartaEe / library native",
+    ),
+    (
+        ".hermes/skills/migration/manage-quarkus-extensions/SKILL.md",
+        "useJakartaEe",
+        "LV-6 manage-quarkus-extensions points at DEST_GENERATOR recipe",
     ),
     (
         ".hermes/skills/gates/check-release-readiness/scripts/check-runnable-db-config.py",
@@ -2382,6 +2437,11 @@ FORBIDDEN_SUBSTRINGS = [
         ".hermes/skills/sdd/check-spec-readiness/scripts/specimen_agnostic.py",
         "Rows with\n    ``generated: true`` are skipped",
         "LV-2 coverage must not skip on the stored generated boolean",
+    ),
+    (
+        ".hermes/skills/harness/dispatch-phase/scripts/handover-mint.py",
+        "Put the facade on polish",
+        "LV-7a T0_3_SERVICE must not name polish as the *Service.java home",
     ),
 ]
 

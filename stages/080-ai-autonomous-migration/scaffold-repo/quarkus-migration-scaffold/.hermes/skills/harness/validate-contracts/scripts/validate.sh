@@ -3240,10 +3240,11 @@ if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/assert-dest-generator-con
   echo "FAIL: dest pom without plugin should DEST_GENERATOR" >&2
   cat /tmp/gp.out /tmp/gp.err >&2
   rc=1
-elif grep -q DEST_GENERATOR /tmp/gp.err; then
+elif grep -q DEST_GENERATOR /tmp/gp.err && grep -q useJakartaEe /tmp/gp.err && grep -q '<library>native</library>' /tmp/gp.err; then
   echo "OK: GEN-POST dest pom without plugin refused (legacy ignored)"
+  echo "OK: DEST_GENERATOR refusal emits required plugin configuration"
 else
-  echo "FAIL: expected DEST_GENERATOR" >&2
+  echo "FAIL: expected DEST_GENERATOR with required plugin configuration" >&2
   cat /tmp/gp.out /tmp/gp.err >&2
   rc=1
 fi
@@ -3561,6 +3562,19 @@ if python3 "${SKILLS}/sdd/check-spec-readiness/scripts/relocate-descendant-impor
   rc=1
 elif grep -q 'MULTI_OWNER' /tmp/mo.err; then
   echo "OK: MULTI_OWNER refuses leftover dest-path claimants"
+  python3 - "${SKILLS}/harness/dispatch-phase/scripts/scratch-assemble-mint.py" "${mo_tmp}" <<'PY' || rc=1
+import importlib.util
+import sys
+from pathlib import Path
+script, root = Path(sys.argv[1]), Path(sys.argv[2])
+spec = importlib.util.spec_from_file_location("scratch_assemble_mint", script)
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+if mod._run_relocate(root) != 1:
+    print("FAIL: scratch-assemble _run_relocate must fail MULTI_OWNER", file=sys.stderr)
+    raise SystemExit(1)
+print("OK: scratch-assemble _run_relocate fails MULTI_OWNER")
+PY
 else
   echo "FAIL: expected MULTI_OWNER" >&2
   cat /tmp/mo.out /tmp/mo.err >&2
@@ -6172,6 +6186,10 @@ except hm.HandoverError as exc:
     if exc.code != "CYCLE_IMPORT":
         print(f"FAIL: expected CYCLE_IMPORT got {exc.code}: {exc}", file=sys.stderr)
         raise SystemExit(1)
+    detail = str(exc)
+    if "Parent the owning story" not in detail:
+        print("FAIL: CYCLE_IMPORT must name parent-or-split remedy", file=sys.stderr)
+        raise SystemExit(1)
     print("OK: CYCLE_IMPORT refuses cyclic import parent")
 
 svc_tasks = """# Tasks
@@ -6200,7 +6218,15 @@ except hm.HandoverError as exc:
     if exc.code != "T0_3_SERVICE":
         print(f"FAIL: expected T0_3_SERVICE got {exc.code}: {exc}", file=sys.stderr)
         raise SystemExit(1)
+    detail = str(exc)
+    if "split per aggregate" not in detail:
+        print("FAIL: T0_3_SERVICE must name split per aggregate", file=sys.stderr)
+        raise SystemExit(1)
+    if "polish or a user story" in detail.lower() or "put the facade on" in detail.lower():
+        print("FAIL: T0_3_SERVICE names an unsatisfiable placement", file=sys.stderr)
+        raise SystemExit(1)
     print("OK: T0_3_SERVICE refuses foundational *Service.java")
+    print("OK: T0_3_SERVICE remedy is split per aggregate")
 
 p5_tasks = """# Tasks
 
@@ -6230,7 +6256,28 @@ if p5.kind != hm.KIND_PHASE:
     print(f"FAIL: Phase 5 kinded {p5.kind}", file=sys.stderr)
     raise SystemExit(1)
 print("OK: T0_3_SERVICE allows AppService on Phase 5")
+mint_src = handover.read_text(encoding="utf-8")
+idx = mint_src.find('"T0_3_SERVICE"')
+if idx < 0:
+    print("FAIL: LV-7c missing T0_3_SERVICE _die", file=sys.stderr)
+    raise SystemExit(1)
+blob = mint_src[idx:idx + 900]
+if "split per aggregate" not in blob:
+    print("FAIL: LV-7c T0_3_SERVICE must name split per aggregate", file=sys.stderr)
+    raise SystemExit(1)
+for bad in ("polish or a user story", "Put the facade on polish", "Put the facade on"):
+    if bad in blob:
+        print(f"FAIL: LV-7c T0_3_SERVICE names unsatisfiable placement {bad!r}", file=sys.stderr)
+        raise SystemExit(1)
+print("OK: LV-7c T0_3_SERVICE names no placement another gate refuses")
 PY
+if grep -q relocate-descendant-import-writesets.py \
+    "${SKILLS}/harness/dispatch-phase/scripts/scratch-assemble-mint.py"; then
+  echo "OK: scratch-assemble wires relocate-descendant MULTI_OWNER gate"
+else
+  echo "FAIL: scratch-assemble-mint.py must call relocate-descendant-import-writesets.py" >&2
+  rc=1
+fi
 echo "== I-16 M2 scratch --write oracle (Verify-only polish must refuse) =="
 SCRATCH_ORACLE="${SKILLS}/harness/dispatch-phase/scripts/scratch-assemble-mint.py"
 SCRATCH_FIX="${SKILLS}/harness/dispatch-phase/fixtures/scratch-assemble/verify-only-polish"

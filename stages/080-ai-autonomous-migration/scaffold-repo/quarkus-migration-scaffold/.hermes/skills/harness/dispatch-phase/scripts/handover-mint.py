@@ -205,7 +205,8 @@ def parse_phases(text: str) -> list[Phase]:
     if deps_at is None:
         _die(
             "DEPENDENCIES_MISSING",
-            "tasks.md has no '## Dependencies' section — parents cannot be transcribed",
+            "tasks.md has no '## Dependencies' section — parents cannot be transcribed. "
+            "Add ## Dependencies; parents also come from the import graph (F-6), not prose alone.",
         )
     phases: list[Phase] = []
     for idx, (start, num, title) in enumerate(starts):
@@ -465,7 +466,13 @@ def assign_ownership(phases: list[Phase]) -> str:
         ph.story_id for ph in phases if any(_is_pom(f) for f in ph.files)
     ]
     if len(pom_writers) > 1:
-        _die("POM_OWNER", f"pom.xml still claimed by {pom_writers}")
+        _die(
+            "POM_OWNER",
+            f"pom.xml still claimed by {pom_writers}. "
+            "Ownership is earliest claimant (assign_ownership); keep one "
+            f"Create pom.xml on {pom_writers[0]} and drop later PATH_TOKEN "
+            "claims.",
+        )
     if pom_writers:
         pom_owner = pom_writers[0]
     if not pom_owner:
@@ -473,6 +480,7 @@ def assign_ownership(phases: list[Phase]) -> str:
         _die(
             "POM_OWNER",
             "tasks.md PATH_TOKEN extracted 0 pom.xml owners. "
+            "Ownership is earliest claimant — one phase must Create pom.xml. "
             "Surface=tasks.md checklists (PATH_TOKEN). "
             f"Lines mentioning pom.xml: {mentions or 'none'}",
         )
@@ -505,9 +513,10 @@ def assert_foundational_no_service(phases: list[Phase]) -> None:
                 "foundational files_writable includes "
                 f"{hits}. Surface=tasks.md PATH_TOKEN on the Foundational "
                 "phase. T0 #3: a whole-domain *Service.java is not "
-                "foundational (Architect 205707Z). Put the facade on polish "
-                "or a user story — do not relocate the domain into "
-                "foundational to green topo.",
+                "foundational (Architect 205707Z / 062422Z). "
+                "split per aggregate so each story owns the service "
+                "methods for its own entities. Do not relocate the domain "
+                "into foundational to green topo.",
             )
 
 
@@ -571,9 +580,10 @@ def merge_import_parents(root: Path, phases: list[Phase]) -> None:
                         f"but parenting {ph.story_id} on {owner} cycles "
                         f"(parents {ph.story_id}={list(ph.parents)} "
                         f"{owner}={list(by_id[owner].parents)}). "
-                        f"Surface=Java import in {rel}. Do not relocate "
-                        "Create lines into foundational to green topo "
-                        "(Architect 205707Z option a).",
+                        f"Surface=Java import in {rel}. "
+                        "Parent the owning story, or split if this is a "
+                        "whole-domain facade. Do not hoist the shared type "
+                        "to an earlier phase (Architect 064012Z).",
                     )
                 if owner not in ph.parents:
                     ph.parents.append(owner)
@@ -590,7 +600,8 @@ def assert_parents_resolved(phases: list[Phase]) -> None:
             "(Phase-N 'Depends on Phases …', per-story native speckit, or collective "
             "'User Stories (Phase 3+) depend on Foundational') "
             "and/or the import graph (a type this story imports that another "
-            "phase owns). Surface=tasks.md ## Dependencies plus dest/legacy "
+            "phase owns). Parents come from the import graph (F-6), not prose. "
+            "Surface=tasks.md ## Dependencies plus dest/legacy "
             f"Java imports. missing parents for {missing}",
         )
     if us_ids and KIND_FOUNDATIONAL in by_id:
@@ -663,13 +674,23 @@ def _stamp_exit(
     ph: Phase, proves: list[str], *, polish_empty: bool
 ) -> None:
     if not OPERAND_CLASS_SEMANTIC_EXITS:
-        _die("ORACLE_UNMAPPED", "OPERAND_CLASS_SEMANTIC_EXITS is empty")
+        _die(
+            "ORACLE_UNMAPPED",
+            "OPERAND_CLASS_SEMANTIC_EXITS is empty. Map lives in "
+            "specimen_agnostic.exit_for / OPERAND_CLASS_SEMANTIC_EXITS — "
+            "give this story a classifiable write-set (rest needs a test path).",
+        )
     try:
         ph.acceptance_criteria = exit_for(
             ph.story_id, ph.operand_class, proves, polish_empty=polish_empty
         )
     except OracleUnmappedError as e:
-        _die("ORACLE_UNMAPPED", str(e))
+        _die(
+            "ORACLE_UNMAPPED",
+            f"{e}. Map is specimen_agnostic.OPERAND_CLASS_SEMANTIC_EXITS "
+            "(exit_for). Rest without a test path is unmapped — add the test "
+            "file to the write-set; do not stamp build_resolves.",
+        )
 
 
 def stamp_oracles(phases: list[Phase]) -> None:
@@ -1037,13 +1058,20 @@ def build_receipt(
     }
 
 
-def assemble_bodies(root: Path) -> int:
+def assemble_bodies(root: Path) -> tuple[int, str]:
     spec_path = _READY / "assemble-m3-bodies-from-partition.py"
     proc = subprocess.run(
         [sys.executable, str(spec_path), str(root), "--write"],
         cwd=str(root),
+        capture_output=True,
+        text=True,
     )
-    return proc.returncode
+    blob = (proc.stdout or "") + (proc.stderr or "")
+    if proc.stdout:
+        sys.stdout.write(proc.stdout)
+    if proc.stderr:
+        sys.stderr.write(proc.stderr)
+    return proc.returncode, blob
 
 
 def mint_wave(root: Path, parent: str, dry_run: bool) -> int:
@@ -1155,9 +1183,14 @@ def run(root: Path, args: argparse.Namespace) -> dict[str, Any]:
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(json.dumps(receipt, indent=2) + "\n", encoding="utf-8")
         print(f"OK: wrote handover receipt {out} stories={len(phases)} pom_owner={pom_owner}")
-        rc = assemble_bodies(root)
+        rc, assemble_blob = assemble_bodies(root)
         if rc != 0:
-            _die("ASSEMBLE", f"assemble-m3-bodies-from-partition.py exited {rc}")
+            tail = (assemble_blob or "").strip().replace("\n", " ")[:400]
+            _die(
+                "ASSEMBLE",
+                f"assemble-m3-bodies-from-partition.py exited {rc}"
+                + (f": {tail}" if tail else " (no child output)"),
+            )
     else:
         print(
             f"OK: handover-mint dry-run stories={len(phases)} "

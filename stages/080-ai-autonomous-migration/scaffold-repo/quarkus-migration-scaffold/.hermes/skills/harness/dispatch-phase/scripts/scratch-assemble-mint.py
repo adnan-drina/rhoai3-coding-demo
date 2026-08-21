@@ -9,7 +9,9 @@ the minted partition (same coverage class as HTTP rows; skip if absent).
 When scratch has legacy-at-3, run existing stamp-body-dependencies.py +
 assert-dependency-closure.py on minted bodies (V34-8; no second gate),
 then existing assert-partition-topological-order.py (M2 must not exit
-done with a partition the holder would refuse).
+done with a partition the holder would refuse), then existing
+relocate-descendant-import-writesets.py (MULTI_OWNER must fail M2 assemble,
+not the holder).
 Never write dest partition.json. Dest workers do not grow handover-mint.py.
 
 Usage:
@@ -54,6 +56,12 @@ _UPTAKE = _find_under_skills(
 )
 _TOPO = _find_under_skills(
     "sdd", "check-spec-readiness", "scripts", "assert-partition-topological-order.py"
+)
+_RELOCATE = _find_under_skills(
+    "sdd",
+    "check-spec-readiness",
+    "scripts",
+    "relocate-descendant-import-writesets.py",
 )
 
 
@@ -239,6 +247,26 @@ def _run_topo(modern: Path) -> int:
     return 0
 
 
+def _run_relocate(modern: Path) -> int:
+    """Existing MULTI_OWNER / facade-relocate gate as M2 exit (LV-5 wiring)."""
+    if not _RELOCATE.is_file():
+        print(f"FAIL: missing {_RELOCATE}", file=sys.stderr)
+        return 1
+    part = modern / "evidence" / "briefs" / "partition.json"
+    if not part.is_file():
+        print("FAIL: scratch missing partition.json for MULTI_OWNER", file=sys.stderr)
+        return 1
+    proc = subprocess.run(
+        [sys.executable, str(_RELOCATE), str(modern)],
+        cwd=str(modern),
+        capture_output=True,
+        text=True,
+    )
+    sys.stdout.write(proc.stdout or "")
+    sys.stderr.write(proc.stderr or "")
+    return 0 if proc.returncode == 0 else 1
+
+
 def _run_type_inventory_coverage(modern: Path) -> int:
     """Plan coverage of type-inventory dest twins (skip if the file is absent)."""
     if str(_STAMP.parent) not in sys.path:
@@ -397,6 +425,9 @@ def main() -> int:
         topo = _run_topo(modern)
         if topo != 0:
             return topo
+        reloc = _run_relocate(modern)
+        if reloc != 0:
+            return reloc
         if args.assert_polish_excludes:
             want = args.assert_polish_excludes.replace("\\", "/")
             held = _polish_files(modern)

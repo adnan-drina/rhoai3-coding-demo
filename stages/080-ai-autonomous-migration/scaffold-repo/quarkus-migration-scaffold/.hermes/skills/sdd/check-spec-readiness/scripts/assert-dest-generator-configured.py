@@ -29,6 +29,21 @@ from generated_sources import parse_generator_plugins
 PLUGIN_BLOCK_RE = re.compile(r"<plugin>(.*?)</plugin>", re.S | re.I)
 ARTIFACT_RE = re.compile(r"<artifactId>\s*([^<]+?)\s*</artifactId>", re.I)
 
+REQUIRED_LIBRARY = "native"
+REQUIRED_USE_JAKARTA_EE = "true"
+REQUIRED_SERIALIZATION = "jackson"
+REQUIRED_PLUGIN_CONFIGURATION = (
+    "<configuration>\n"
+    "  <inputSpec>PATH_TO_SPEC</inputSpec>\n"
+    "  <modelPackage>DEST_MODEL_PACKAGE</modelPackage>\n"
+    f"  <library>{REQUIRED_LIBRARY}</library>\n"
+    "  <configOptions>\n"
+    f"    <useJakartaEe>{REQUIRED_USE_JAKARTA_EE}</useJakartaEe>\n"
+    f"    <serializationLibrary>{REQUIRED_SERIALIZATION}</serializationLibrary>\n"
+    "  </configOptions>\n"
+    "</configuration>"
+)
+
 
 def _jackson_jakarta_native_errors(pom_text: str) -> list[str]:
     """Refuse Gson / non-Jakarta / non-native library on the generator plugin."""
@@ -41,10 +56,18 @@ def _jackson_jakarta_native_errors(pom_text: str) -> list[str]:
         blob = block.lower()
         if "gson" in blob and "jackson" not in blob:
             errs.append("gson")
-        if not re.search(r"<library>\s*native\s*</library>", block, re.I):
-            errs.append("library!=native")
-        if not re.search(r"<useJakartaEe>\s*true\s*</useJakartaEe>", block, re.I):
-            errs.append("useJakartaEe!=true")
+        if not re.search(
+            rf"<library>\s*{re.escape(REQUIRED_LIBRARY)}\s*</library>",
+            block,
+            re.I,
+        ):
+            errs.append(f"library!={REQUIRED_LIBRARY}")
+        if not re.search(
+            rf"<useJakartaEe>\s*{re.escape(REQUIRED_USE_JAKARTA_EE)}\s*</useJakartaEe>",
+            block,
+            re.I,
+        ):
+            errs.append(f"useJakartaEe!={REQUIRED_USE_JAKARTA_EE}")
     return errs
 
 SPEC_NAMES = ("api-docs.yml", "api-docs.yaml", "openapi.yml", "openapi.yaml", "openapi.json")
@@ -168,7 +191,9 @@ def main(argv: list[str] | None = None) -> int:
     if not plugins:
         print(
             f"REFUSE: DEST_GENERATOR dest {pom_rel} has no generator plugin "
-            "(ownership is not configuration; do not union legacy poms)",
+            "(ownership is not configuration; do not union legacy poms). "
+            "Required block:\n"
+            + REQUIRED_PLUGIN_CONFIGURATION,
             file=sys.stderr,
         )
         return 1
@@ -178,7 +203,10 @@ def main(argv: list[str] | None = None) -> int:
         print(
             "REFUSE: DEST_GENERATOR dest plugin recipe "
             + ",".join(recipe_errs)
-            + " (Quarkus 3 / Jakarta / Jackson; library=native)",
+            + " (Quarkus 3 / Jakarta / Jackson; library="
+            + REQUIRED_LIBRARY
+            + "). Required block:\n"
+            + REQUIRED_PLUGIN_CONFIGURATION,
             file=sys.stderr,
         )
         return 1

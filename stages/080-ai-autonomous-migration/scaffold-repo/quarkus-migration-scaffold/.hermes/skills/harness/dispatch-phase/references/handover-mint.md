@@ -101,6 +101,8 @@ specimen types.
 | Symptom | Refuse |
 |---|---|
 | No `## Dependencies` section | `DEPENDENCIES_MISSING` |
+| Foundational whole-domain `*Service.java` | `T0_3_SERVICE` — split the facade per aggregate (not polish, not a user story, not foundational) |
+| Cyclic import parent | `CYCLE_IMPORT` — parent the owning story, or split if whole-domain facade |
 | File in two write-sets (not pom) | *not a mint refuse while serial* (`131858Z`); restore in-flight when C-1(a) is claimed |
 | HTTP entry point with no owner | `endpoints_uncovered` |
 | User-story phase with no Independent Test heading | `PHASE_AC` |

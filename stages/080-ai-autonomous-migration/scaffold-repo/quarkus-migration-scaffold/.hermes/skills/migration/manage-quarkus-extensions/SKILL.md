@@ -77,6 +77,10 @@ Spring→extension decision aid: `references/spring-dep-to-extension.md`.
    `quarkus.<ext>.*` properties — scrub or leave intentionally.
 8. Refuse `quarkus-spring-*` compatibility extensions (native Quarkus only —
    AGENTS + `spring-to-quarkus-patterns`).
+9. OpenAPI generator plugin: a DEST_GENERATOR refusal from
+   `assert-dest-generator-configured.py` emits the required
+   `<library>native</library>` / `<useJakartaEe>true</useJakartaEe>` block
+   (same constants the gate validates). Do not invent Gson or a second recipe.
 
 ## Pitfalls
 
