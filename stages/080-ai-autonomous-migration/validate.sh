@@ -114,11 +114,23 @@ log_step "Harness Tooling (Session 0 — init script contract)"
 check "init script installs the Hermes Agent CLI" \
   "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -c 'hermes-agent.nousresearch.com/install.sh' || echo 0" \
   "1"
-check "init script seats the M2 orchestrator default" \
-  "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -c 'custom:maas-m2' || echo 0" \
+check "init script pins Hermes main model to qwen3-6-27b" \
+  "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -c '\"default\": \"qwen3-6-27b\"' || echo 0" \
   "1"
-check "init script keeps the local 27B fallback orchestrator" \
-  "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -c 'custom:maas-qwen27b' || echo 0" \
+check "init script names the Hermes Qwen provider qwen27b" \
+  "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -c '\"provider\": \"qwen27b\"' || echo 0" \
+  "2"
+check "init script sets Hermes api_mode chat_completions" \
+  "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -c '\"api_mode\": \"chat_completions\"' || echo 0" \
+  "1"
+check "init script disables Hermes /models discovery on named providers" \
+  "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -c '\"discover_models\": False' || echo 0" \
+  "2"
+check "GitOps init script does not use legacy custom:maas-m2 default" \
+  "grep -c 'custom:maas-m2' \"$REPO_ROOT/gitops/stages/050-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml\" || echo NONE" \
+  "NONE"
+check "GitOps init script forbids Hermes fallback_providers" \
+  "grep -c 'forbids fallback_providers' \"$REPO_ROOT/gitops/stages/050-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml\" || echo 0" \
   "1"
 check "init script ships the kantra-ensure lazy sensor helper (pinned)" \
   "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -c 'KANTRA_VERSION=\"v0.10.0-beta.1\"' || echo 0" \

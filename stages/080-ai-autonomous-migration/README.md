@@ -294,13 +294,62 @@ Concepts need a runner. This stage uses **[Hermes Agent](https://hermes-agent.no
 
 - **CLI-native, headless-capable**: `hermes chat -q "..."`; Kanban via `dispatch`.
 - **Governed models:** Managed Scope (`$HERMES_MANAGED_DIR/config.yaml`) pins
-  platform `qwen3-6-27b` / MaaS — not a PVC checklist overlay.
+  platform Qwen as the Hermes **main** model. MiniMax is an exception
+  provider, never the default, never a silent fallback.
 - **Continuity with stage 070**: Spec Kit in-workspace (AD-S); stop before
   `/speckit.implement`.
 - **Kanban is the engine**: see **Acts C–E** above for the human walkthrough.
 
 > **Why Hermes?** CLI-native and headless-first, speaks AGENTS.md +
 > agentskills.io, points at our MaaS gateway, durable Kanban board.
+
+#### Applied Hermes model configuration
+
+Hermes has two slot kinds ([Configuring Models](https://hermes-agent.nousresearch.com/docs/user-guide/configuring-models)): the **main** model thinks on every user turn and tool loop; **auxiliary** models handle side jobs (compression, titles, vision). This demo pins both through Managed Scope so PVC drift cannot silently repoint the agent.
+
+| Slot | Binding | Why |
+|------|---------|-----|
+| **Main** | `provider: qwen27b` · `default: qwen3-6-27b` · `api_mode: chat_completions` | Private in-cluster KServe OpenAI endpoint; 131,072 context; output cap 8,192 so prompt+completion fit vLLM `--max-model-len` |
+| **Auxiliary** | compression `provider: auto` (same Qwen); `title_generation.enabled: false` | Official default is auto = main. Titles are disabled so a second call does not contend on the single GPU |
+| **MiniMax M2** | `providers.minimax` · model `minimax-m2` (196,608 context) | AD-008 exception only. Registered when `.rhoai3-model-escalation.json` is valid **and** `REDHAT_MODELS_*` secrets exist. Direct LiteMaaS URL (RHOAI 3.4 gateway buffers external-model streams) |
+
+The factory writes the official `providers:` dict (not legacy `custom_providers:`), sets `discover_models: false` so the picker uses the curated list instead of a live `/models` probe, and keeps API keys in managed `.env` as `${env:NAME}` SecretRefs. `fallback_providers` is **absent on purpose**: official docs use it for reliability failover, but that would silently send Kanban workers to MiniMax or OpenRouter, which this demo forbids.
+
+```yaml
+model:
+  provider: qwen27b
+  default: qwen3-6-27b
+  base_url: ''
+  api_mode: chat_completions
+  context_length: 131072
+  max_tokens: 8192
+providers:
+  qwen27b:
+    api: ${env:MAAS_API_BASE_URL}
+    api_key: ${env:MAAS_API_KEY}
+    discover_models: false
+    models:
+      qwen3-6-27b:
+        context_length: 131072
+        max_tokens: 8192
+        stale_timeout_seconds: 900
+```
+
+Writer: `gitops/stages/050-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml` (`ensure_hermes`). New sessions pick this up; an already-open chat keeps the model it started with.
+
+#### Adding a model later
+
+Treat a new model as a **named provider**, then decide whether it is the new main or an exception.
+
+1. **Serve it on the platform** (if it is private): Stage 030/040 `LLMInferenceService` + `MaaSModelRef` + subscription key. Hermes config cannot invent a served model.
+2. **Add `providers.<name>`** in the Managed Scope writer: `api`, `api_key: ${env:…}`, `discover_models: false`, and an explicit `models:` map with `context_length` (Hermes rejects windows under 64K) and `max_tokens`.
+3. **Put the secret in managed `.env`**, never in git and never under `HERMES_HOME`.
+4. **If it becomes the main model:** set `model.provider`, `model.default`, `model.api_mode: chat_completions`, keep `model.base_url` empty, and update the pin stamp + OpenCode `enabled_providers` in the same init script.
+5. **If it is exception-only (MiniMax pattern):** do **not** change `model.default`. Register the provider only behind a typed escalation file (same gate as OpenCode). Do **not** add `fallback_providers`.
+6. **Leave auxiliary on `auto`** unless there is a cost or latency reason. If you point compression at another model, its context window must be ≥ the main model's.
+7. **Confirm on a new session:** `hermes config get model --json` and `hermes status`. Mid-session `/model` resets the prompt cache.
+
+Native vendor OAuth (for example `minimax-oauth`) is a different provider family. This demo's MiniMax path is OpenAI-compatible LiteMaaS, so it stays a named custom entry.
 
 ---
 
@@ -386,6 +435,7 @@ actually shipped.
 | Maintainability sensors for coding agents     | [https://martinfowler.com/articles/sensors-for-coding-agents.html](https://martinfowler.com/articles/sensors-for-coding-agents.html)                                 |
 | Open blueprint for cloud-native AI agents     | [https://developers.redhat.com/articles/2026/07/20/architect-open-blueprint-cloud-native-ai-agents](https://developers.redhat.com/articles/2026/07/20/architect-open-blueprint-cloud-native-ai-agents) |
 | Hermes Agent documentation                    | [https://hermes-agent.nousresearch.com/docs](https://hermes-agent.nousresearch.com/docs)                                                                             |
+| Hermes Agent — configuring models             | [https://hermes-agent.nousresearch.com/docs/user-guide/configuring-models](https://hermes-agent.nousresearch.com/docs/user-guide/configuring-models)                 |
 | OpenClaw documentation (compared alternative) | [https://docs.openclaw.ai/](https://docs.openclaw.ai/)                                                                                                               |
 | MTA 8.2 documentation                         | [https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.2/](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.2/) |
 | OpenRewrite documentation                     | [https://docs.openrewrite.org/](https://docs.openrewrite.org/)                                                                                                       |

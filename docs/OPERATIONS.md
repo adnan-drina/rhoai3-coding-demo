@@ -1081,8 +1081,11 @@ The MoE's real advantage (3.4× aggregate throughput at 4-way concurrency,
 
 | Seat | Model | Why selected | Serving notes |
 |---|---|---|---|
-| Agent orchestrator | MiniMax M2 (`custom:maas-m2`, Red Hat MaaS portal) | Selected in the full-migration A/B (2026-07-25/26): lean sessions, packet-size tolerance, near-100% first-pass task rate driving the harness loop; 196K window | Direct portal endpoint until RHOAI 3.5 gateway streaming; falls back to the local 27B when portal keys are absent |
-| Coding worker | `qwen3-6-27b` (RedHatAI/Qwen3.6-27B-FP8) | Strongest evaluated coding seat (SWE-bench 77.2, AA Coding 53.7; outscores the 35B at single-stream parity) — every code edit stays on the governed local model | Served from `hf://RedHatAI/Qwen3.6-27B-FP8` (modelcar graduation in BACKLOG); text-only (`--language-model-only`); 131K window; precise-coding sampling per the model card |
+| Hermes main / Kanban workers | `qwen3-6-27b` via named provider `qwen27b` (`api_mode: chat_completions`) | AD-008 primary. Private in-cluster KServe; 131K window; output cap 8,192 so prompt+completion fit vLLM `--max-model-len` | Served from `hf://RedHatAI/Qwen3.6-27B-FP8` (text-only); in-cluster `qwen3-6-27b-kserve-workload-svc` + service-CA. Managed Scope `providers.qwen27b` with `discover_models: false`. Secrets in managed `.env` as `${env:MAAS_API_KEY}` |
+| OpenCode coding worker | `qwen27b/qwen3-6-27b` | Same Qwen primary; every code edit stays on the governed local model | Same MaaS/KServe path as Hermes main |
+| MiniMax M2 (exception) | Hermes `providers.minimax` / OpenCode `redhat/minimax-m2` | AD-008 exception only — typed escalation file required; **not** the default; **not** in `fallback_providers` | Direct Red Hat LiteMaaS until RHOAI 3.5 restores external-model streaming through the gateway. 196K window |
+
+**How to add another Hermes model:** named `providers.<name>` entry + managed `.env` secret + explicit `models:` map (`discover_models: false`). Change `model.default` only if it is the new main. Exception models follow the MiniMax gate. Full recipe: `stages/080-ai-autonomous-migration/README.md` (Applied Hermes model configuration) and AD-008 §11 in `harness-refactoring/architecture/SOLUTION-ARCHITECTURE.md`. Official schema: [Configuring Models](https://hermes-agent.nousresearch.com/docs/user-guide/configuring-models).
 
 **Workshop capacity overlay:** `qwen3-6-35b-a3b`
 (gitops `040/.../local-models/optional/qwen35b-workshop/`) — the MoE
@@ -1105,13 +1108,14 @@ overlay README). Its registry card stays active, marked
 - `granite-4-0-h-small` — served correctly but retired on benchmarks
   (τ²-Bench 17%, AA Intelligence 11): capability, not compatibility.
 
-**External-model routing option:** the harness runbook documents
-`custom:maas-m2` (MiniMax M2, 196K) on the Red Hat MaaS portal's direct
-endpoint as an operator-level override for orchestration experiments. It is
-direct-endpoint only because the RHOAI 3.4 gateway buffers streaming for
-external models (see TROUBLESHOOTING "External Model Streaming Resets");
-expected fixed in RHOAI 3.5, after which it can route through the gateway
-with platform telemetry like the local models.
+**External-model routing option:** MiniMax M2 (`providers.minimax` /
+`minimax-m2`, 196K) on the Red Hat MaaS portal's direct endpoint is an
+**AD-008 exception**, not a factory default. Hermes registers it only when
+`.rhoai3-model-escalation.json` is valid. It is direct-endpoint only because
+the RHOAI 3.4 gateway buffers streaming for external models (see
+TROUBLESHOOTING "External Model Streaming Resets"); expected fixed in
+RHOAI 3.5, after which it can route through the gateway with platform
+telemetry like the local models. Do not add it to `fallback_providers`.
 
 **Parked serving experiments (BACKLOG):** 35B NVFP4 variant (official
 modelcar exists; blocked on vLLM #34694 — NVFP4 Marlin emulation garbles

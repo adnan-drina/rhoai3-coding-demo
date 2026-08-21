@@ -16,6 +16,8 @@ from pathlib import Path
 REQUIRED_MAX_TOKENS = 8192
 REQUIRED_CONTEXT = 131072
 MODEL_ID = "qwen3-6-27b"
+# Official named provider (configuring-models). Older seats used providers.custom.
+PRIMARY_PROVIDER_KEYS = ("qwen27b", "custom")
 
 
 def _load_yaml(path: Path):
@@ -141,7 +143,8 @@ def ensure(path: Path, apply: bool) -> bool:
 
     model = doc.setdefault("model", {})
     providers = doc.setdefault("providers", {})
-    custom = providers.setdefault("custom", {})
+    prov_key = next((k for k in PRIMARY_PROVIDER_KEYS if k in providers), "qwen27b")
+    custom = providers.setdefault(prov_key, {})
     models = custom.setdefault("models", {})
     qwen = models.setdefault(MODEL_ID, {})
 

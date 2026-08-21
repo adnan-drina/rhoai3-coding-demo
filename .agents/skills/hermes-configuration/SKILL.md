@@ -2,7 +2,7 @@
 name: hermes-configuration
 metadata:
   author: rhoai3-coding-demo
-  version: 1.1.0
+  version: 1.2.0
   platform-family: "hermes"
   platform-baseline: "repo"
   ocp-baseline: "repo"
@@ -132,6 +132,28 @@ hermes config check              # missing options after an update
 hermes profile show <name>       # per-profile effective state
 hermes fallback                  # effective fallback chain (interactive)
 ```
+
+## Project default (stage 080 factory)
+
+Managed Scope (`$HERMES_MANAGED_DIR/config.yaml`) is the seat, not
+`~/.hermes/config.yaml`. Align with official configuring-models:
+
+- Named entries under `providers:` (not legacy `custom_providers:`).
+- Main slot is the 4-key `model:` mapping plus explicit `context_length` /
+  `max_tokens` for the self-hosted endpoint.
+- `model.provider: qwen27b`, `model.default: qwen3-6-27b`,
+  `model.api_mode: chat_completions`, `model.base_url: ''`.
+- `providers.qwen27b.discover_models: false` with an explicit `models:` map.
+- Secrets only in managed `.env`, referenced as `${env:MAAS_API_KEY}` (and
+  `${env:REDHAT_MODELS_*}` when MiniMax is escalated).
+- **Do not** author `fallback_providers:` — AD-008 forbids silent MiniMax
+  or OpenRouter failover. Official docs recommend fallback for reliability;
+  this demo opts out on purpose.
+- MiniMax is `providers.minimax` (OpenAI-compatible LiteMaaS), registered
+  only when `.rhoai3-model-escalation.json` is valid. It is never
+  `model.default`. Native `minimax-oauth` is not used.
+- Auxiliary: `title_generation.enabled: false` (single-GPU). Compression
+  stays `provider: auto` (same 131K window as main).
 
 ## Pitfalls
 

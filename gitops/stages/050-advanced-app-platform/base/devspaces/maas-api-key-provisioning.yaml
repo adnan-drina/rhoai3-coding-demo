@@ -614,7 +614,10 @@ data:
       # factory config via Managed Scope; runtime tree via HERMES_HOME in
       # the git-tracked project; scaffold skills via skills.external_dirs
       # (no symlink loop). Secrets stay in managed .env — never under
-      # HERMES_HOME. Verified model facts: qwen3-6-27b, context 131072.
+      # HERMES_HOME. Model wiring follows official configuring-models:
+      # named providers: dict (not legacy custom_providers), 4-key model:
+      # mapping with api_mode, discover_models: false. Primary: qwen3-6-27b
+      # (131072). MiniMax is AD-008 exception-only, never fallback_providers.
       # Installer may place the agent under HERMES_HOME (project-managed)
       # rather than ~/.hermes — prefer PROJECT_DIR runtime tree, then HOME.
       local venv_py="${PROJECT_DIR}/.hermes/home/hermes-agent/venv/bin/python"
@@ -659,6 +662,16 @@ data:
       done
 
       export MAAS_BASE_URL MAAS_API_KEY_QWEN27B
+      # MiniMax joins Hermes providers: only when the same AD-008 escalation
+      # file already enabled the OpenCode redhat provider. Secrets alone
+      # must not register MiniMax (picker temptation + silent fallback risk).
+      export REDHAT_MODELS_BASE_URL="${REDHAT_MODELS_BASE_URL:-}"
+      export REDHAT_MODELS_API_KEY="${REDHAT_MODELS_API_KEY:-}"
+      if [[ "${OPENCODE_ENABLED:-}" == *"redhat"* ]]; then
+        export HERMES_MINIMAX=1
+      else
+        export HERMES_MINIMAX=0
+      fi
       export HERMES_MANAGED_DIR="${managed_dir}"
       export HERMES_HOME="${hermes_home}"
       export HERMES_WRITE_SAFE_ROOT="${PROJECT_DIR}"
@@ -689,16 +702,26 @@ data:
     )
     service_ca = "/var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt"
     cfg = {
+        # Official 4-key model: mapping (configuring-models). Secrets are
+        # NOT on this block — they live in managed .env and providers.*.api_key
+        # via ${env:NAME} SecretRef. base_url stays empty; providers.qwen27b.api
+        # is the endpoint (dashboard clears model.base_url on named providers).
         "model": {
-            "provider": "custom",
+            "provider": "qwen27b",
             "default": "qwen3-6-27b",
-            "base_url": "${MAAS_API_BASE_URL}",
-            "api_key": "${MAAS_API_KEY}",
+            "base_url": "",
+            "api_mode": "chat_completions",
             # Total context ceiling (vLLM --max-model-len). Hermes unset
             # max_tokens defaults to half (=65536), which makes any prompt
             # ≥65537 arithmetically unservable (Deputy E-20260809T180800Z).
             "context_length": 131072,
             "max_tokens": 8192,
+        },
+        "model_aliases": {
+            "qwen27b": {
+                "model": "qwen3-6-27b",
+                "provider": "qwen27b",
+            },
         },
         "tool_loop_guardrails": {
             "hard_stop_enabled": True,
@@ -785,14 +808,21 @@ data:
         # first content token. Class A amplifier; not MiniMax.
         # max_tokens:8192 — Class A output cap so prompt+completion fit
         # context_length (server VLLMValidationError at 65536 out + ≥65537 in).
-        # providers.custom.api + ssl_ca_cert: service-CA for in-cluster TLS
+        # providers.qwen27b.api + ssl_ca_cert: service-CA for in-cluster TLS
         # (do NOT set SSL_CERT_FILE to service-ca alone).
+        # discover_models: false — official for gateways whose /models listing
+        # is slow, noisy, or not the curated agentic set (configuring-models).
+        # Do NOT author fallback_providers: AD-008 forbids silent MiniMax
+        # (and OpenRouter) failover. Auxiliary compression stays auto = main.
         "providers": {
-            "custom": {
-                "api": "${MAAS_API_BASE_URL}",
+            "qwen27b": {
+                "api": "${env:MAAS_API_BASE_URL}",
+                "api_key": "${env:MAAS_API_KEY}",
                 "ssl_ca_cert": service_ca,
+                "discover_models": False,
                 "models": {
                     "qwen3-6-27b": {
+                        "context_length": 131072,
                         "stale_timeout_seconds": 900,
                         "max_tokens": 8192,
                     },
@@ -800,9 +830,14 @@ data:
             },
         },
         # Single-GPU: disable session-title aux calls contending with main.
+        # Other aux slots stay official auto (use main / Qwen).
         "auxiliary": {
             "title_generation": {
                 "enabled": False,
+            },
+            "compression": {
+                "provider": "auto",
+                "model": "",
             },
         },
         # Streaming pin (Operator E-20260813T204927Z / E-210050Z): assert
@@ -833,6 +868,32 @@ data:
             ],
         },
     }
+    # AD-008: MiniMax is a named OpenAI-compatible provider (LiteMaaS), not
+    # native minimax-oauth. Register only when the escalation override already
+    # enabled OpenCode's redhat provider. Never set model.default to MiniMax;
+    # never add fallback_providers.
+    if os.environ.get("HERMES_MINIMAX") == "1":
+        rh_base = (os.environ.get("REDHAT_MODELS_BASE_URL") or "").rstrip("/")
+        rh_key = (os.environ.get("REDHAT_MODELS_API_KEY") or "").strip()
+        if not rh_base or not rh_key:
+            raise SystemExit(
+                "ERROR: HERMES_MINIMAX=1 but REDHAT_MODELS_BASE_URL/API_KEY missing"
+            )
+        cfg["providers"]["minimax"] = {
+            "api": "${env:REDHAT_MODELS_BASE_URL}",
+            "api_key": "${env:REDHAT_MODELS_API_KEY}",
+            "discover_models": False,
+            "models": {
+                "minimax-m2": {
+                    "context_length": 196608,
+                    "max_tokens": 16384,
+                },
+            },
+        }
+        cfg.setdefault("model_aliases", {})["minimax"] = {
+            "model": "minimax-m2",
+            "provider": "minimax",
+        }
     # A1 exists-assert — every skills.external_dirs path must resolve to a dir
     # (mkdir scaffold + global above; refuse silent missing roots).
     for _edir in (cfg.get("skills") or {}).get("external_dirs") or []:
@@ -888,6 +949,15 @@ data:
         # B-S2 stays the EX-3 hook (HKN-12).
         fh.write(f"HERMES_WRITE_SAFE_ROOT={safe_root}\n")
         fh.write(f"HERMES_REAL_BIN={os.path.expanduser('~/.local/bin/hermes')}\n")
+        if os.environ.get("HERMES_MINIMAX") == "1":
+            fh.write(
+                "REDHAT_MODELS_BASE_URL="
+                + os.environ["REDHAT_MODELS_BASE_URL"].rstrip("/")
+                + "\n"
+            )
+            fh.write(
+                f"REDHAT_MODELS_API_KEY={os.environ['REDHAT_MODELS_API_KEY']}\n"
+            )
     os.chmod(cfg_path, 0o644)
     os.chmod(env_path, 0o600)
     # Architect E-20260808T151907Z — pin demo model binding (qwen / platform MaaS).
@@ -899,9 +969,29 @@ data:
             f"ERROR: model pin failed after Managed Scope write "
             f"(default={m.get('default')!r})"
         )
-    prov = (pin.get("providers") or {}).get("custom") or {}
+    if m.get("provider") != "qwen27b":
+        raise SystemExit(
+            f"ERROR: model.provider pin failed (provider={m.get('provider')!r})"
+        )
+    if m.get("api_mode") != "chat_completions":
+        raise SystemExit(
+            f"ERROR: model.api_mode pin failed (api_mode={m.get('api_mode')!r})"
+        )
+    if pin.get("fallback_providers"):
+        raise SystemExit(
+            "ERROR: AD-008 forbids fallback_providers (silent MiniMax/OpenRouter)"
+        )
+    prov = (pin.get("providers") or {}).get("qwen27b") or {}
     if not prov.get("ssl_ca_cert"):
-        raise SystemExit("ERROR: W1 pin missing providers.custom.ssl_ca_cert")
+        raise SystemExit("ERROR: W1 pin missing providers.qwen27b.ssl_ca_cert")
+    if prov.get("discover_models") is not False:
+        raise SystemExit("ERROR: providers.qwen27b.discover_models must be false")
+    minimax_on = os.environ.get("HERMES_MINIMAX") == "1"
+    has_minimax = "minimax" in (pin.get("providers") or {})
+    if minimax_on and not has_minimax:
+        raise SystemExit("ERROR: HERMES_MINIMAX=1 but providers.minimax missing")
+    if not minimax_on and has_minimax:
+        raise SystemExit("ERROR: providers.minimax present without AD-008 escalation")
     aux = ((pin.get("auxiliary") or {}).get("title_generation") or {})
     if aux.get("enabled") is not False:
         raise SystemExit("ERROR: W1 pin auxiliary.title_generation.enabled must be false")
@@ -916,7 +1006,14 @@ data:
     if kb.get("max_in_progress") != 1:
         raise SystemExit("ERROR: kanban.max_in_progress must be 1")
     with open(os.path.join(managed, ".rhoai3-model-pin"), "w") as fh:
-        fh.write("default=qwen3-6-27b\nprovider=custom\nbase=in-cluster-kserve-qwen27b\nad=AD-008\n")
+        fh.write("default=qwen3-6-27b\n")
+        fh.write("provider=qwen27b\n")
+        fh.write("api_mode=chat_completions\n")
+        fh.write("base=in-cluster-kserve-qwen27b\n")
+        fh.write("ad=AD-008\n")
+        fh.write(
+            "minimax=escalation-override\n" if minimax_on else "minimax=disabled\n"
+        )
     with open(os.path.join(managed, ".rhoai3-w1-five-pins"), "w") as fh:
         fh.write(
             "stale_timeout_seconds=900\n"
@@ -925,7 +1022,11 @@ data:
             "auxiliary.title_generation.enabled=false\n"
             "display.streaming=true\n"
         )
-    print(f"Hermes Managed Scope: wrote {cfg_path} + .env (W1 five pins + AD-008 qwen3-6-27b).")
+    print(
+        "Hermes Managed Scope: wrote "
+        f"{cfg_path} + .env (W1 five pins + AD-008 qwen3-6-27b, "
+        f"minimax={'on' if minimax_on else 'off'})."
+    )
     HERMESEOF
 
       # v24 spawn hydrate: managed wrapper first on PATH so dispatcher
