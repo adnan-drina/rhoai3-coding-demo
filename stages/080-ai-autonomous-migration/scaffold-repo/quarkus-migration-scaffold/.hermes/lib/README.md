@@ -15,5 +15,12 @@ Importable modules only — no `__main__` CLIs. Dashboard pin guard lives
 in `.hermes/dashboard/assert-web-dist-pin.py`. Java type walk lives in
 `inventory-legacy-surface/scripts/type_graph.py` (relocate, not delete).
 
+Discovery identity is the zero-byte marker `.hermes/lib/.hermes-lib`,
+not a member module name. Scripts that need this path on `sys.path`
+test `(lib / ".hermes-lib").is_file()` and refuse with
+`FAIL: .hermes/lib marker missing`. Do not re-anchor on
+`specimen_agnostic.py` or any other module that later thinning may
+relocate.
+
 Do not add `.hermes/home/scripts/` or repo-root `scripts/` for new procedures.
 `.hermes/kernel/` is first K land after Gate P-kernel — not this directory.
