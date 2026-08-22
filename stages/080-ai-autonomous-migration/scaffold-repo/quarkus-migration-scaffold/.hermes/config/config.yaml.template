@@ -37,3 +37,8 @@ kanban:
 # hooks_auto_accept: true. Day-one registers nothing fail-closed until K2
 # (Gate P-kernel). Leave this false; do not add hooks.<event> entries.
 hooks_auto_accept: false
+
+# Dest worker profiles (Operator GO 231808Z): GitOps creates `orchestrator`
+# and `implementer` from `.hermes/config/profiles/*.yaml.template`.
+# This file remains the default-seat template, not a profile clone source.
+# OBJECT: hermes profile create --clone.

@@ -27,7 +27,7 @@ Same-PR rule: if implementation changes, update this file and the README archite
 
 **Scope.** Stage 080 implementation on this workshop: GitOps template, Dev Spaces workspace, dest golden, M1–M5 process, MaaS-pinned models, CI quality gate.
 
-**Non-goals.** A Kubernetes Hermes operator (OpenShift is not an official Hermes install surface). Silent model failover (`fallback_providers`). Named Hermes profiles until Operator trigger (c). Copying this document into the dest golden.
+**Non-goals.** A Kubernetes Hermes operator (OpenShift is not an official Hermes install surface). Silent model failover (`fallback_providers`). Copying this document into the dest golden. Closing Gate P-kernel on the profiles GO.
 
 ---
 
@@ -157,7 +157,7 @@ Red Hat's [open blueprint for cloud-native AI agents](https://developers.redhat.
 
 **Rollback.** Dest git + pipeline. Do not dest-complete Operator ack gates. Harvest a live dest before any wipe.
 
-**Named profiles.** HOLD (R-V14.10). Single `default` profile until Operator GO.
+**Named profiles.** Operator GO `231808Z` lifts R-V14.10 HOLD for **two dest worker profiles** (`orchestrator`, `implementer`). R-V14.10 stays as a rule id — do not delete it. Create with `hermes profile create --no-alias` (no `--clone`; EX-4). M2 / mint-verifier assign `orchestrator`; M3 assign `implementer`. Dest-armed (a) is unmeasured until Review verifies seated dest schemas. OBJECT EX-4 `analyzer`/`planner`/`validator` names, overlay v1 profiles, and copying this file into the golden.
 
 ---
 
@@ -202,7 +202,8 @@ flowchart TB
 | M4 full runtime ACCEPT / M5 factory ship | Planned / **not demonstrated** for Owner/Pet ship |
 | v1 dest harness (`dispatch-phase`, `handover-mint.py`, human `ack_gate`, `.hermes/home/scripts/`) | Overlay dest leftover until HV-1+wipe GO. **Deleted, not ported**, on `harness-v2` `a39b7d2d` |
 | v2 native tree (Phase N) | **Landed** `harness-v2` `a39b7d2d`: product skills + config template; no mint / `home/scripts` / `ack_gate`. Golden `-v2` **not published**. Dest provision **HOLD** |
-| Slim kernel K1–K4 | **HOLD**. Gate P-pack CLOSED; Gate P-kernel OPEN (K2 adversarial write-escape and K3 live PID reclaim still `[U]`) |
+| Slim kernel K1–K4 | **HOLD**. Gate P-pack CLOSED; Gate P-kernel OPEN (K2 adversarial write-escape and dest-armed role (a) still `[U]`; scratch container (a) is not dest role (a)) |
+| Dest named profiles (`orchestrator` / `implementer`) | **DEFINED** (Operator GO `231808Z`). GitOps creates both without `--clone`. Dest-armed (a) **unmeasured**. OBJECT EX-4 four-seat names / overlay v1 |
 | K2 write fence as a claimed control | Unproven until adversarial suite + tool subtraction or container backend |
 | K3 live PID reclaim / gateway tick | Unproven (`recompute_ready` stands in; no `kanban daemon --force`) |
 | 1:N supersede coverage | **Landed** in KEEP `check-partition-coverage` on `a39b7d2d`. Not dest-measured |

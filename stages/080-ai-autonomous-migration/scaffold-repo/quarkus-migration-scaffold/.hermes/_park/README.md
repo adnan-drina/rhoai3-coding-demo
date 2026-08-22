@@ -13,3 +13,6 @@ Do not mkdir `.hermes/kernel/` until Gate P-kernel.
 
 Dest clones **omit** this directory (`scripts/bootstrap-migration-scaffold-v2.sh`).
 Chaos matrix never dest. Platform git keeps the tree.
+
+When K4 lifts mint, cards assign `--assignee orchestrator` (M2 / mint-verifier)
+and `--assignee implementer` (M3). Do not revive EX-4 four-seat names.

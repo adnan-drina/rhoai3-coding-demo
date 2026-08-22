@@ -160,6 +160,7 @@ unless observed in *this* environment.
 | `hermes kanban list` / `show` / `runs` / `log` | **DEMONSTRATED** |
 | `hermes kanban watch` / `dispatch` | **DEMONSTRATED** (Owner/Pet) |
 | `hermes dashboard` public `:9119` (`hermes-dash`) | **DEFINED** (operator appendix / runbook only; postStart best-effort, pin-stamped `web_dist`) — **not** demo surface; not required for DEFINED→DEMONSTRATED |
+| Dest named profiles `orchestrator` + `implementer` | **DEFINED** (Operator GO 2026-08-22 `231808Z`; GitOps create without `--clone`). Dest-armed role (a) **not** measured. Not overlay v1. |
 | Owner/Pet → M4 `PROVISIONAL_ACCEPT` | **DEMONSTRATED** |
 | Owner/Pet → M5 full `ACCEPT` / factory | **Not** DEMONSTRATED |
 

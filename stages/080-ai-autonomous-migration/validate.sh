@@ -243,3 +243,27 @@ check "080 ships pin-stamped dashboard index.html" \
 check "080 dashboard PIN matches pins.json" \
   "python3 '${SCAFFOLD_DASH}/assert-web-dist-pin.py' --pins '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/pins.json' --stamp '${SCAFFOLD_DASH}/PIN' --bundle '${SCAFFOLD_DASH}/web_dist/index.html' >/dev/null && echo 1 || echo 0" \
   "1"
+
+SCAFFOLD_PROFILES="${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/config/profiles"
+GITOPS_INIT="${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml"
+check "080 golden orchestrator profile template present" \
+  "test -f '${SCAFFOLD_PROFILES}/orchestrator.yaml.template' && echo present || echo missing" \
+  "present"
+check "080 golden implementer profile template present" \
+  "test -f '${SCAFFOLD_PROFILES}/implementer.yaml.template' && echo present || echo missing" \
+  "present"
+check "080 GitOps seats dest worker profiles (C-2 skip retired)" \
+  "grep -c 'ensure_dest_worker_profiles' '${GITOPS_INIT}' || echo 0" \
+  "2"
+check "080 GitOps does not skip single-persona profile create" \
+  "grep -c 'skip hermes profile create (single-persona)' '${GITOPS_INIT}' || echo 0" \
+  "0"
+check "080 GitOps creates profiles with --no-alias" \
+  "grep -c 'profile create \"\${name}\" --no-alias' '${GITOPS_INIT}' || echo 0" \
+  "1"
+check "080 GitOps does not invoke profile create --clone" \
+  "grep -cE 'profile create [^\"]*--clone|profile create --clone' '${GITOPS_INIT}' || echo 0" \
+  "0"
+check "080 AGENTS.md assigns orchestrator/implementer not default" \
+  "grep -c 'M2 / mint-verifier' '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/AGENTS.md' || echo 0" \
+  "1"

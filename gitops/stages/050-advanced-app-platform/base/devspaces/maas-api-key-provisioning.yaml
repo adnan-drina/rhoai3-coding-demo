@@ -590,6 +590,122 @@ data:
       export PATH="${HOME}/.local/bin:${PATH}"
     }
 
+    ensure_dest_worker_profiles() {
+      # Operator GO 231808Z / AD-019 trigger (c). Two dest worker profiles.
+      # Official: hermes profile create <name> --no-alias --description "..."
+      # then hermes -p <name> config set (toolsets belong in config.yaml).
+      # OBJECT: --clone / --clone-from / --clone-all (EX-4 isolated $HOME,
+      # copied .env, missed kantra-ensure). OBJECT EX-4 analyzer/planner/
+      # validator Cursor-seat names. Overlay v1 stays single-persona.
+      local hermes_bin="$1"
+      local py="$2"
+      local hermes_home="$3"
+      local managed_dir="$4"
+      local project_dir="$5"
+      local tpl_dir="${project_dir}/.hermes/config/profiles"
+      local orch_tpl="${tpl_dir}/orchestrator.yaml.template"
+      local impl_tpl="${tpl_dir}/implementer.yaml.template"
+      if [ ! -f "${orch_tpl}" ] || [ ! -f "${impl_tpl}" ]; then
+        echo "ERROR: dest profile templates missing under ${tpl_dir} (231808Z)." >&2
+        return 1
+      fi
+      if [ ! -x "${hermes_bin}" ]; then
+        echo "ERROR: hermes CLI missing; cannot create dest worker profiles." >&2
+        return 1
+      fi
+      if [ ! -x "${py}" ]; then
+        echo "ERROR: python missing; cannot apply dest profile toolsets." >&2
+        return 1
+      fi
+      _ensure_one_dest_profile() {
+        local name="$1" desc="$2" tpl="$3"
+        case "${name}" in
+          orchestrator|implementer) ;;
+          *)
+            echo "ERROR: dest profile name ${name} is not orchestrator|implementer." >&2
+            return 1
+            ;;
+        esac
+        export HERMES_HOME="${hermes_home}"
+        export HERMES_MANAGED_DIR="${managed_dir}"
+        export HERMES_WRITE_SAFE_ROOT="${project_dir}"
+        if [ -d "${hermes_home}/profiles/${name}" ]; then
+          echo "C-2: dest profile ${name} exists — re-apply toolsets (no --clone)."
+        else
+          echo "C-2: create dest profile ${name} --no-alias (clone forbidden)."
+          if ! "${hermes_bin}" profile create "${name}" --no-alias --description "${desc}"; then
+            echo "ERROR: hermes profile create ${name} failed." >&2
+            return 1
+          fi
+        fi
+        if ! "${py}" - "${hermes_bin}" "${name}" "${tpl}" "${project_dir}" \
+          "${hermes_home}" "${managed_dir}" <<'PROFAPPEOF'
+    import json, os, subprocess, sys
+    import yaml
+
+    bin_path, name, tpl, project, home, managed = sys.argv[1:]
+    with open(tpl, encoding="utf-8") as fh:
+        spec = yaml.safe_load(fh) or {}
+    cli = ((spec.get("platform_toolsets") or {}).get("cli")) or []
+    if not isinstance(cli, list) or not cli:
+        raise SystemExit(f"ERROR: {tpl} missing platform_toolsets.cli")
+    if name == "orchestrator" and "hermes-gateway" in cli:
+        raise SystemExit("ERROR: do not seat hermes-gateway on orchestrator")
+    if name == "implementer" and "coding" in cli:
+        raise SystemExit("ERROR: seat coding subset, not the coding composite name")
+    disabled = ((spec.get("agent") or {}).get("disabled_toolsets")) or []
+    env = os.environ.copy()
+    env["HERMES_HOME"] = home
+    env["HERMES_MANAGED_DIR"] = managed
+    env["HERMES_WRITE_SAFE_ROOT"] = project
+
+    def cfgset(key, value):
+        proc = subprocess.run(
+            [bin_path, "-p", name, "config", "set", key, value],
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        if proc.returncode != 0:
+            sys.stderr.write(proc.stderr or proc.stdout or f"config set {key} failed\n")
+            raise SystemExit(proc.returncode or 1)
+
+    cfgset("platform_toolsets.cli", json.dumps(cli, separators=(",", ":")))
+    cfgset("terminal.cwd", project)
+    if disabled:
+        cfgset(
+            "agent.disabled_toolsets",
+            json.dumps(disabled, separators=(",", ":")),
+        )
+    print(
+        f"dest profile {name}: platform_toolsets.cli={cli} "
+        f"terminal.cwd={project} disabled_toolsets={disabled or []}"
+    )
+    PROFAPPEOF
+        then
+          echo "ERROR: dest profile ${name} toolset apply failed." >&2
+          return 1
+        fi
+        local envf="${hermes_home}/profiles/${name}/.env"
+        if [ -f "${envf}" ] && grep -E '^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*=' "${envf}" \
+          | grep -vq '^[[:space:]]*#'; then
+          echo "ERROR: ${envf} has assignments; secrets stay Managed Scope." >&2
+          return 1
+        fi
+        if [ -e "${hermes_home}/profiles/${name}/auth.json" ]; then
+          echo "ERROR: auth.json under dest profile ${name}; refuse Portal leftover." >&2
+          return 1
+        fi
+      }
+      _ensure_one_dest_profile orchestrator \
+        "Kanban orchestrator: board operations only. Cannot execute implementation." \
+        "${orch_tpl}" || return 1
+      _ensure_one_dest_profile implementer \
+        "Migration implementer: file, terminal, code_execution, delegation, skills." \
+        "${impl_tpl}" || return 1
+      echo "C-2: dest worker profiles orchestrator + implementer seated (no --clone)."
+    }
+
     ensure_hermes() {
       # Stage 080 harness orchestrator (Hermes Agent CLI). The installer is
       # self-contained (bundles Node 22 + Python 3.11 under ~/.hermes) and
@@ -682,10 +798,13 @@ data:
       # /speckit.* skills remain visible after HERMES_HOME relocation.
       export HERMES_GLOBAL_SKILLS_DIR="${HOME}/.hermes/skills"
       mkdir -p "${HERMES_GLOBAL_SKILLS_DIR}"
-      # AD-002 §6: harness launches from PROJECT_DIR (/projects/modernized) —
-      # CLI default cwd is correct; do not set terminal.cwd.
-      # EX-5 L3: pin terminal.backend=local (below). Nested docker is not
-      # provisioned; official container backends skip dangerous-command checks.
+      # AD-002 §6: harness launches from PROJECT_DIR (/projects/modernized).
+      # Named dest profiles (231808Z) set terminal.cwd to PROJECT_DIR explicitly
+      # (official: cwd "." is the launch directory, not the profile dir).
+      # Do not set terminal.cwd on Managed Scope default — CLI cwd is already
+      # PROJECT_DIR. EX-5 L3: pin terminal.backend=local (below). Nested docker
+      # is not provisioned; official container backends skip dangerous-command
+      # checks. Do not arm docker on dest golden.
       # W1 five pins (Operator E-171354Z / Review service-CA nit): in-cluster
       # .svc + ssl_ca_cert + 900s + aux-title off + display.streaming true
       # (asserted — Operator E-20260813T210050Z / hermes-configuration display.streaming).
@@ -1139,10 +1258,16 @@ data:
         return
       fi
 
-      # C-2(a) — single-persona. Do not create analyzer/planner/implementer/
-      # validator profiles (R-V14.10). hermes profile create --clone isolated
-      # $HOME and crashed v19 M1. Cards use the product default profile.
-      echo "C-2(a): skip hermes profile create (single-persona)"
+      # Operator GO 231808Z — dest orchestrator + implementer (trigger (c)).
+      # Stop C-2(a) skip. Create those two without --clone (EX-4). Secrets
+      # stay Managed Scope (check immediately below).
+      local hermes_bin
+      hermes_bin="$(command -v hermes 2>/dev/null || echo "${HOME}/.local/bin/hermes")"
+      if ! ensure_dest_worker_profiles \
+        "${hermes_bin}" "${venv_py}" "${hermes_home}" "${managed_dir}" "${PROJECT_DIR}"; then
+        echo "ERROR: dest worker profile seating failed (231808Z)." >&2
+        return
+      fi
 
       # Secrets must stay in Managed Scope — never under HERMES_HOME.
       if [ -e "${hermes_home}/.env" ] || [ -e "${hermes_home}/auth.json" ]; then

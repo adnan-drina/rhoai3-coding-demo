@@ -76,6 +76,7 @@ workspace state.
 | SDD stack | `.specify/` (workspace provision only — never commit in golden) |
 | Destination POM authoring | skill `author-destination-pom` |
 | Seat config template | `.hermes/config/config.yaml.template` (no secrets) |
+| Dest worker profiles | `.hermes/config/profiles/{orchestrator,implementer}.yaml.template` |
 
 ### Paths
 
@@ -84,7 +85,7 @@ workspace state.
 | `$HERMES_MANAGED_DIR` | Platform config + secrets — not in this repo |
 | `$HERMES_HOME` | Runtime (sessions/logs gitignored). Relocated dest-time. |
 | `.hermes/skills/` | Scaffold golden **guidance** skills on `skills.external_dirs` |
-| Seat Kanban assignees | Hermes profile `default` (single-persona) |
+| Seat Kanban assignees | `orchestrator` (M2 / mint-verifier) and `implementer` (M3). Official `--assignee` (hermes-kanban). Not `default`. OBJECT EX-4 `analyzer`/`planner`/`validator` |
 | Hermes live config | **Not yours to change.** Factory-owned Managed Scope. Raise typed `needs_input` |
 | Phase DAG | Kanban `--parent` / `link` graph (`hermes kanban show --json`) |
 | `~/.hermes/skills/` | Also on `external_dirs` (spec-kit `Path.home()` install) |
@@ -109,7 +110,8 @@ emit a typed block and **stop**. Do not OOS-write, do not edit the refuser.
 Workers never own lifecycle truth. End every turn with exactly one terminator:
 `kanban_complete`, `kanban_request_review`, or `kanban_block`. A clean exit
 without one is `protocol_violation`. Mint complete requires `created_cards`
-(empty list forbidden). Serialize `kanban_create`. Do not run
+(empty list forbidden). Serialize `kanban_create`. M2 and mint-verifier cards
+use `--assignee orchestrator`; M3 uses `--assignee implementer`. Do not run
 `hermes kanban daemon --force`.
 
 `hermes kanban block` marks the **card**, not the **process**. Seat ops

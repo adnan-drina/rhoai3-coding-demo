@@ -986,6 +986,27 @@ oc exec -n <ws-ns> <workspace-pod> -c development-tooling -- \
 
 **Related docs:** `gitops/stages/050-advanced-app-platform/base/rhdh/templates/*/skeleton/devfile.yaml`
 
+## Dest Hermes worker profiles missing (`harness-v2`)
+
+**Affected stage:** Stage 080 dest on branch `harness-v2` only. Overlay / v1 goldens stay single-persona.
+
+**Likely cause:** `ensure_hermes` could not seat `orchestrator` + `implementer` (`hermes` CLI absent, golden templates missing, or a profile `.env` gained assignments). Operator GO `231808Z` retired the C-2(a) skip. Do **not** recover with `hermes profile create --clone` (EX-4 isolated `$HOME` and copied installer `.env`).
+
+**Diagnose:**
+
+```bash
+oc logs -n <ws-ns> <workspace-pod> -c development-tooling --tail=120 \
+  | grep -E 'C-2:|dest worker profile|dest profile'
+oc exec -n <ws-ns> <workspace-pod> -c development-tooling -- \
+  hermes profile list
+ls /projects/modernized/.hermes/config/profiles/
+ls /projects/modernized/.hermes/home/profiles/
+```
+
+**Recover:** Fix the init error (CLI on PATH, templates present, secrets only in Managed Scope). Re-run `ensure_hermes` / restart only when the operator asks — do not clone from `default`.
+
+**Related docs:** `gitops/stages/050-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml` (`ensure_dest_worker_profiles`); golden `.hermes/config/profiles/`
+
 ## Factory Create Fails With Can't Parse Devfile Yaml
 
 **Affected stage:** Stage 050 RHDH app-migration skeleton (factory workspaces for 080)

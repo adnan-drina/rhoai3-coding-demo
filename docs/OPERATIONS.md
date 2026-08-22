@@ -36,6 +36,7 @@ until a dest cutover GO. Do not GitHub-rename the v1 golden.
 | Surface | v1 (live) | v2 (this branch) |
 |---------|-----------|------------------|
 | Authoring | `stages/080-ai-autonomous-migration/scaffold-repo/` | Same path on `harness-v2` |
+| Dest worker profiles | Overlay: single-persona `default` (C-2 skip) | `orchestrator` + `implementer` (Operator GO `231808Z`; `hermes profile create --no-alias`, never `--clone`). Dest-armed (a) unmeasured. |
 | Golden GitHub | `quarkus-migration-scaffold` | `quarkus-migration-scaffold-v2` |
 | Publish | `scripts/bootstrap-scaffold-repos.sh` | `scripts/bootstrap-migration-scaffold-v2.sh` |
 | Template `fetch:plain` | v1 golden | v2 golden in this branch's `template.yaml` only |
