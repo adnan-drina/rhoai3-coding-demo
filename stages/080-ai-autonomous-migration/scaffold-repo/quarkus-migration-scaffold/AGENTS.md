@@ -74,7 +74,7 @@ workspace state.
 | M4/M5 verdict routing | skill `check-release-readiness` |
 | Run / phase data | `evidence/` |
 | SDD stack | `.specify/` (workspace provision only — never commit in golden) |
-| Destination POM authoring | skill `bootstrap-quarkus-project` |
+| Destination POM authoring | skill `author-destination-pom` |
 | Seat config template | `.hermes/config/config.yaml.template` (no secrets) |
 
 ### Paths
@@ -152,12 +152,12 @@ One line each: what it governs → which skill. When a skill is loaded, prefer
 | Quarkus config / profiles | `configure-quarkus-profiles` |
 | Entity / persistence form | `form-entity-persistence` |
 | Spec Kit provision (postStart only) | `init-spec-workspace` |
-| Entry-point + type inventory | `inventory-entry-points` |
+| Entry-point + type inventory | `inventory-legacy-surface` |
 | MTA analyze + findings handoff | `scan-with-mta` |
 | Spring→Quarkus pattern cards | `spring-to-quarkus-patterns` |
 | Quarkus extension add/rm | `manage-quarkus-extensions` |
 | RH Quarkus POM structure | `reference-rh-quarkus-pom` |
-| Destination Quarkus POM authoring | `bootstrap-quarkus-project` |
+| Destination Quarkus POM authoring | `author-destination-pom` |
 
 ## Governance
 

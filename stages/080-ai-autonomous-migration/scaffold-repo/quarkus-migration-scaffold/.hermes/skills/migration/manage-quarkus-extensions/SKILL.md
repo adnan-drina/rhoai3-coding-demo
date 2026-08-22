@@ -35,7 +35,7 @@ Spring→extension decision aid: `references/spring-dep-to-extension.md`.
 - When `quarkus ext ls` / Maven `quarkus:list` disagrees with what the story
   thinks is on the classpath.
 - **Not** for project create / skeleton retirement — use
-  `bootstrap-quarkus-project` + `reference-rh-quarkus-pom`.
+  `author-destination-pom` + `reference-rh-quarkus-pom`.
 - **Not** for Spring→Quarkus form mapping (`spring-to-quarkus-patterns`).
 
 ## Procedure

@@ -20,6 +20,13 @@ DRY_RUN="${DRY_RUN:-0}"
 
 ROOT="$(cd "${1:-.}" && pwd)"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# Golden/source tree: `.specify/` must stay absent (TR-4 restored assert).
+case "${ROOT}" in
+  /projects/*) ;;
+  *)
+    python3 "${SCRIPT_DIR}/check-specify-absent.py" "${ROOT}"
+    ;;
+esac
 # Skill root = parent of scripts/ (self-contained asset home — Deputy E-172448Z).
 SKILL_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 ASSET_OVERRIDE="${SKILL_DIR}/assets/spec-template.md"

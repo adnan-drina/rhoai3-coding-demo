@@ -2,7 +2,7 @@
 """G-3 admission evaluator — MTA findings / asserted-resolved (W2 §10).
 
 Runs the three admission fixtures under
-`.hermes/skills/gates/check-release-readiness/fixtures/admission/g3-findings-delta/` (known-good / known-bad /
+`.hermes/skills/gates/check-domain-parity/fixtures/admission/g3-findings-delta/` (known-good / known-bad /
 known-vacuous) and writes each verdict under
 `evidence/fixtures/admission/out/g3-findings-delta/`.
 
@@ -76,7 +76,7 @@ def main() -> int:
         print(f"PRODUCT G-3: {got}")
         print(f"PRODUCT G-3: {got}", file=sys.stderr)
         return 0
-    base = root / ".hermes/skills/gates/check-release-readiness/fixtures/admission/g3-findings-delta"
+    base = root / ".hermes/skills/gates/check-domain-parity/fixtures/admission/g3-findings-delta"
     expected = {
         "known-good": "ACCEPT",
         "known-bad": "REFUSE",

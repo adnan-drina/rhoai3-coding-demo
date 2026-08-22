@@ -5,7 +5,7 @@ license: Apache-2.0
 compatibility: Linux seat; Maven and Java 21 for PIT and product tests
 metadata:
   author: rhoai3-harness-team
-  version: "1.3.0"
+  version: "1.4.0"
   hermes:
     tags:
     - gates
@@ -48,12 +48,12 @@ permitted equivalence, and zero unverified entry points.
 
 ## Admission fixtures (W2 §10)
 
-Specimen-free pairs under `.hermes/skills/gates/check-release-readiness/fixtures/admission/gN-<name>/`.
+Specimen-free pairs under `.hermes/skills/gates/check-domain-parity/fixtures/admission/gN-<name>/`.
 
 **Honesty bound:** green fixtures prove **parser + fixture shape**, not
 toolchain-faithful admission. Live sensors (PIT dry-run on a specimen, running
 apps for G-4) are a separate prove step — see
-`.hermes/skills/gates/check-release-readiness/fixtures/admission/README.md`. Do not treat 12/12 as admission.
+`.hermes/skills/gates/check-domain-parity/fixtures/admission/README.md`. Do not treat 12/12 as admission.
 
 ```bash
 bash "${HERMES_SKILL_DIR}/scripts/run-admission.sh"
@@ -157,7 +157,7 @@ Operand first, then live evidence, then pin. Scripts are under
    scoring uses the same scripts with `--product`: missing dest evidence or a
    path under `/fixtures/admission/` emits `INCONCLUSIVE_FIXTURE`, never
    ACCEPT (B-5). Admission walks
-   `<root>/.hermes/skills/gates/check-release-readiness/fixtures/admission/<gate>/`,
+   `<root>/.hermes/skills/gates/check-domain-parity/fixtures/admission/<gate>/`,
    compares the computed verdict to the fixture's expected verdict, and writes
    `…/admission/out/<gate>/<fixture>.json`. Disagreement ⇒ exit 1.
 5. **Pin the kill ratio** (after live `mutationCoverage`, never after a dry run)

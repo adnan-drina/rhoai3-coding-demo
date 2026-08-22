@@ -17,6 +17,18 @@ import re
 import sys
 from pathlib import Path
 
+def _ensure_hermes_lib() -> None:
+    p = Path(__file__).resolve()
+    for parent in p.parents:
+        lib = parent / "lib"
+        if (lib / "specimen_agnostic.py").is_file() or (lib / "type_graph.py").is_file():
+            s = str(lib)
+            if s not in sys.path:
+                sys.path.insert(0, s)
+            return
+    raise SystemExit("FAIL: .hermes/lib missing (TR-3)")
+_ensure_hermes_lib()
+
 try:
     from specimen_agnostic import (
         extensions_union,
@@ -25,13 +37,21 @@ try:
         writes_pom_xml,
     )
 except ImportError:  # invoked with a cwd that is not this scripts dir
-    _sa = Path(__file__).with_name("specimen_agnostic.py")
-    _spec = importlib.util.spec_from_file_location("specimen_agnostic", _sa)
     refs_path_sha_errors = None
     parse_extensions_declared = None
     extensions_union = None
     writes_pom_xml = None
-    if _spec is not None and _spec.loader is not None:
+    _lib = None
+    _spec = None
+    for parent in Path(__file__).resolve().parents:
+        cand = parent / "lib" / "specimen_agnostic.py"
+        if cand.is_file():
+            _lib = cand
+            break
+    if _lib is not None:
+        _spec = importlib.util.spec_from_file_location("specimen_agnostic", _lib)
+        refs_path_sha_errors = None
+    if _lib is not None and _spec is not None and _spec.loader is not None:
         _mod = importlib.util.module_from_spec(_spec)
         _spec.loader.exec_module(_mod)
         refs_path_sha_errors = _mod.refs_path_sha_errors

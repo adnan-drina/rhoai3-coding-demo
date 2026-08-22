@@ -33,7 +33,7 @@ including the **relationship** between them (T-8 / v17 wrong-class oracles).
    must name `proves` test source(s) that sit in **this** `files_writable`.
    Each `proves` path that exists must contain an executable `@Test`
    (B-1); at complete the named class must appear in
-   `target/surefire-reports`. **`evaluate-exit-criteria.py` must run
+   `target/surefire-reports`. **`.hermes/_park/requeue/evaluate-exit-criteria.py` must run
    `mvn … test|verify` as `-Dtest=<proves FQCNs>`** (`task_scoped_tests`).
    An unscoped `mvn -q test` that executes sibling-story tests is refuse —
    do not treat a green isolation run plus a red full suite as a body-mint

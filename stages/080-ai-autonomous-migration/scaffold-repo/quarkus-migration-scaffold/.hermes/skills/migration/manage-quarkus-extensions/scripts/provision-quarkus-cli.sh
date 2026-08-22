@@ -32,7 +32,7 @@ export PATH="${HOME}/.local/bin:${HOME}/.jbang/bin:${PATH}"
 mkdir -p "${HOME}/.local/bin" "${HOME}/.quarkus"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CHECK_RH="${SCRIPT_DIR}/../../bootstrap-quarkus-project/scripts/check-rh-registry-first.py"
+CHECK_RH="${SCRIPT_DIR}/../../author-destination-pom/scripts/check-rh-registry-first.py"
 
 write_rh_registry_config() {
   printf '%s\n' \

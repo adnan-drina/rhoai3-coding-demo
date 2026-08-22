@@ -38,7 +38,7 @@ References:
 - Before claiming `config_profile_load` (or related) as an exit check.
 - When migrating Spring Boot property keys to Quarkus.
 - **Not** for POM structure — `reference-rh-quarkus-pom` /
-  `bootstrap-quarkus-project`.
+  `author-destination-pom`.
 - **Not** for extension add/rm — `manage-quarkus-extensions` (then return
   here for config obligations).
 - **Not** for wrong-class HTTP exits on a config story — `derive-story-oracles`.

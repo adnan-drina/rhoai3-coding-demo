@@ -1,7 +1,7 @@
 # Red Hat BOM + mandatory extension wiring
 
 **Shared reference** for `manage-quarkus-extensions` and (at v14 mint)
-`bootstrap-quarkus-project`. Policy only — **version values** live in
+`author-destination-pom`. Policy only — **version values** live in
 `.hermes/pins.json` and destination `pom.xml`.
 
 ## Platform policy
@@ -53,7 +53,7 @@ Mandatory Jacoco wiring is **not** "add `quarkus-jacoco`":
 3. Surefire forwards `<argLine>${argLine}</argLine>` (or `@{argLine}`) so the
    coverage agent attaches.
 
-Fragments + gate: `bootstrap-quarkus-project/references/foundation-jacoco-wiring.md`
+Fragments + gate: `author-destination-pom/references/foundation-jacoco-wiring.md`
 and `scripts/check-pom-jacoco-wiring.py` (A-3 / H-3). Adding the dependency
 without both paths / argLine produces a clean compile and a silent coverage
 hole — the exact false-green class this reference exists to prevent.

@@ -21,9 +21,9 @@ and not a create-app path. Platform GAV values live only in
 `.hermes/pins.json` — never paste pin versions into this
 skill.
 
-Consumers: skill `bootstrap-quarkus-project` (authors the destination POM);
+Consumers: skill `author-destination-pom` (authors the destination POM);
 extensions via `manage-quarkus-extensions` (T-3). Coverage wiring is carried
-from `../bootstrap-quarkus-project/references/foundation-jacoco-wiring.md`
+from `../author-destination-pom/references/foundation-jacoco-wiring.md`
 (A-3 / H-3), not invented here.
 
 Annotated fragments: `references/pom-structure.md`. Repository resolution:
@@ -63,7 +63,7 @@ Annotated fragments: `references/pom-structure.md`. Repository resolution:
 3. Prefer factory/UDI `settings.xml` for Red Hat GA repos
    (`references/maven-repos.md`); in-POM `<repositories>` only as documented
    fallback when settings are absent.
-4. Hand off to `bootstrap-quarkus-project` verification
+4. Hand off to `author-destination-pom` verification
    (`check-pom-platform-pins.py`, `check-pom-jacoco-wiring.py`).
 
 ## Pitfalls

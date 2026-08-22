@@ -183,7 +183,7 @@ else
 fi
 
 # --- 3) G-4 hook ---
-PARITY_DIR="${M4_PARITY_DIR:-${PRODUCT_ROOT}/.hermes/skills/gates/check-release-readiness/fixtures/admission/g4-runtime-parity}"
+PARITY_DIR="${M4_PARITY_DIR:-${PRODUCT_ROOT}/.hermes/skills/gates/check-domain-parity/fixtures/admission/g4-runtime-parity}"
 G4_RESULT="INCONCLUSIVE"
 G4_NOTE="no product parity.json; SAMPLE fixture admission only"
 if [[ -f "${PRODUCT_ROOT}/migration/parity.json" ]]; then

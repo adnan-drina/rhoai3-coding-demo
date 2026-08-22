@@ -8,7 +8,7 @@ Story `<dependencies>` on the sole `pom.xml` writer carry foundation
 Jacoco / Sonar wiring **and** `identity.extensions_apply` (sorted unique
 union of every story's `identity.extensions_declared`, DD3
 Architect E-20260814T205052Z). Later stories do not write `pom.xml`.
-See `../bootstrap-quarkus-project/references/foundation-jacoco-wiring.md`.
+See `../author-destination-pom/references/foundation-jacoco-wiring.md`.
 
 ## Properties
 

@@ -29,9 +29,9 @@ Preconditions — all four, or the script dies before analyzing:
 `evidence/derived/legacy-at-3.json` (skill `derive-legacy-boot3`),
 `migration.yaml` with non-empty `analysis.targets`, Java 21 on `PATH`,
 `JVM_MAX_MEM` set. `evidence/entry-point-inventory.json` must also exist
-before the handoff step (AR-4.1) — skill `inventory-entry-points`.
+before the handoff step (AR-4.1) — skill `inventory-legacy-surface`.
 
-Not this skill: entry-point enumeration (`inventory-entry-points`), harvest
+Not this skill: legacy surface inventory (`inventory-legacy-surface`), harvest
 derivation (`derive-legacy-boot3`), gate scoring (`check-domain-parity`).
 
 **Orchestration:** start M1 as a native Kanban task

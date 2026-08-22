@@ -1,6 +1,0 @@
-{
-  "phase": "M3",
-  "identity": {"story_id": "US8", "kind": "us", "parents": ["foundational"]},
-  "files_writable": [],
-  "dependencies": []
-}

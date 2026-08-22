@@ -15,10 +15,10 @@ Specimen-agnostic. Prefer framework-exposed signals over greps.
 | Health ready | HTTP contract on `/q/health/ready` | `health_probe` |
 
 Closed check names: `SEMANTIC_EXIT_VOCAB` in
-`../check-spec-readiness/scripts/specimen_agnostic.py`.
+`.hermes/lib/specimen_agnostic.py`.
 Class allow-lists: `OPERAND_CLASS_SEMANTIC_EXITS` in the same module.
 
-Assembler `exit_criteria[].cmd` is executed by `evaluate-exit-criteria.py`
+Assembler `exit_criteria[].cmd` is executed by `.hermes/_park/requeue/evaluate-exit-criteria.py`
 (`subprocess.run(..., shell=True)`, or the scoped-compile intercept when the
 string ends with ` compile`, or `-Dtest=<proves FQCNs>` for `mvn test|verify`).
 Stamp the first real command (`mvn -q compile`

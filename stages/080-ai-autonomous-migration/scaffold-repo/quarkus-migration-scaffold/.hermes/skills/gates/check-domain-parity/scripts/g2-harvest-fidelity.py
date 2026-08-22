@@ -2,7 +2,7 @@
 """G-2 admission evaluator — field/obligation conservation (W2 §10).
 
 Runs the three admission fixtures under
-`.hermes/skills/gates/check-release-readiness/fixtures/admission/g2-harvest-fidelity/` (known-good / known-bad /
+`.hermes/skills/gates/check-domain-parity/fixtures/admission/g2-harvest-fidelity/` (known-good / known-bad /
 known-vacuous) and writes each verdict under
 `evidence/fixtures/admission/out/g2-harvest-fidelity/`.
 
@@ -84,7 +84,7 @@ def main() -> int:
         print(f"PRODUCT G-2: {got}")
         print(f"PRODUCT G-2: {got}", file=sys.stderr)
         return 0
-    base = root / ".hermes/skills/gates/check-release-readiness/fixtures/admission/g2-harvest-fidelity"
+    base = root / ".hermes/skills/gates/check-domain-parity/fixtures/admission/g2-harvest-fidelity"
     expected = {
         "known-good": "ACCEPT",
         "known-bad": "REFUSE",

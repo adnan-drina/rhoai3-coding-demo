@@ -1,6 +1,0 @@
-{
-  "phase": "M3",
-  "identity": {"story_id": "setup", "kind": "setup", "parents": []},
-  "files_writable": ["pom.xml"],
-  "dependencies": []
-}

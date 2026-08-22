@@ -7,10 +7,10 @@ When pom.xml exists, require:
   3. surefire <argLine>${argLine}</argLine> (or @{argLine}) so the agent attaches
 
 Idle (exit 0) when pom.xml is absent — golden scaffold is harness-only until
-foundation authors the POM (bootstrap-quarkus-project / DD1).
+foundation authors the POM (author-destination-pom / DD1).
 
 Contract reference: manage-quarkus-extensions/references/rh-bom-and-mandatory-deps.md
-Fragments: bootstrap-quarkus-project/references/foundation-jacoco-wiring.md
+Fragments: author-destination-pom/references/foundation-jacoco-wiring.md
 
 Usage:
   python3 check-pom-jacoco-wiring.py .

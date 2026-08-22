@@ -45,6 +45,19 @@ FAMILY_CHECKS: dict[str, frozenset[str]] = {
 # those write-sets onto create_fk / http_semantics (Architect E-20260814T181701Z).
 RESTISH = ("RestController",)
 
+
+def _ensure_hermes_lib() -> None:
+    p = Path(__file__).resolve()
+    for parent in p.parents:
+        lib = parent / "lib"
+        if (lib / "specimen_agnostic.py").is_file() or (lib / "type_graph.py").is_file():
+            s = str(lib)
+            if s not in sys.path:
+                sys.path.insert(0, s)
+            return
+    raise SystemExit("FAIL: .hermes/lib missing (TR-3)")
+_ensure_hermes_lib()
+
 from specimen_agnostic import (  # noqa: E402
     COMPILE_ONLY,
     FOUNDATION_OPERAND_CLASSES,

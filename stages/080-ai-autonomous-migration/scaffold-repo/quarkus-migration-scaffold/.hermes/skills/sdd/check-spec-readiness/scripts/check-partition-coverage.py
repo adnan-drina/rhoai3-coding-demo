@@ -68,6 +68,19 @@ _SCRIPTS = Path(__file__).resolve().parent
 if str(_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS))
 
+
+def _ensure_hermes_lib() -> None:
+    p = Path(__file__).resolve()
+    for parent in p.parents:
+        lib = parent / "lib"
+        if (lib / "specimen_agnostic.py").is_file() or (lib / "type_graph.py").is_file():
+            s = str(lib)
+            if s not in sys.path:
+                sys.path.insert(0, s)
+            return
+    raise SystemExit("FAIL: .hermes/lib missing (TR-3)")
+_ensure_hermes_lib()
+
 from specimen_agnostic import (  # noqa: E402
     collect_supersedes,
     dest_path_as_written,

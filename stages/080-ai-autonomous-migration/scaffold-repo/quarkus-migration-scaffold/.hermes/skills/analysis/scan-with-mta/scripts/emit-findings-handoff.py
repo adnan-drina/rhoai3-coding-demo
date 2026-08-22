@@ -99,7 +99,7 @@ def main() -> int:
     if not inventory.is_file():
         print(
             "emit-findings-handoff: AR-4.1 missing evidence/entry-point-inventory.json "
-            "— run inventory-entry-points before emit (refuse)",
+            "— run inventory-legacy-surface before emit (refuse)",
             file=sys.stderr,
         )
         return 2

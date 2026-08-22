@@ -98,7 +98,7 @@ def main() -> int:
         )
         print(f"PRODUCT G-1: {got}")
         return 0
-    base = root / ".hermes/skills/gates/check-release-readiness/fixtures/admission/g1-characterization"
+    base = root / ".hermes/skills/gates/check-domain-parity/fixtures/admission/g1-characterization"
     # known-vacuous SUPERSEDED by F9: zero mutants with ran=true → FAIL
     expected = {
         "known-good": "ACCEPT",

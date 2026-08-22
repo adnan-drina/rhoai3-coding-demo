@@ -63,7 +63,7 @@ Official technique table and failure classes: `references/concern-oracle-table.m
    Do not alias those onto `health_probe` / `hql_entity_path` / `create_fk`.
 4. Named checks must sit in the **union** of
    `OPERAND_CLASS_SEMANTIC_EXITS[c]` for each class `c` (see
-   `../check-spec-readiness/scripts/specimen_agnostic.py`). At least one
+   `.hermes/lib/specimen_agnostic.py`). At least one
    required for known classes; **zero** foreign semantic names.
 5. Attach skills with `skills_for_operand_classes` (B-16) — rest →
    `spring-to-quarkus-patterns`, persistence → `form-entity-persistence`.

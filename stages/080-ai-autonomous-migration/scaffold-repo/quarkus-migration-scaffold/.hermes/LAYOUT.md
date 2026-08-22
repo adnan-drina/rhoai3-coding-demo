@@ -15,6 +15,8 @@ parallel home is a defect.
 | Migration | `.hermes/skills/migration/` (Boot3 / Quarkus / persistence) |
 | SDD | `.hermes/skills/sdd/` (Spec Kit provision + story oracles) |
 | M4 oracles | `.hermes/skills/gates/` (`check-domain-parity`, `check-release-readiness`) |
+| Shared Python | `.hermes/lib/` — **not a skill** (type_graph, generated_sources, specimen splits) |
+| Parked mint/requeue | `.hermes/_park/` — **not a skill** (K4/K3 later; do not mkdir `kernel/` here) |
 | Run data | `evidence/` |
 | Spec Kit workspace | `.specify/` + `specs/` — gitignored in golden; never commit `.specify/` |
 | Task state | Hermes Kanban (native). No parallel CSV / `created-cards-*.json` |
@@ -42,11 +44,11 @@ complete requires `created_cards`. Do not wrap these in home scripts.
 | Leaf | Kind | Purpose |
 |------|------|---------|
 | `scan-with-mta` | analysis | `mta-cli` / kantra analyze + findings normalize |
-| `inventory-entry-points` | analysis | Entry-point + type-graph inventory |
+| `inventory-legacy-surface` | analysis | Entry-point + type-graph inventory |
 | `derive-legacy-boot3` | migration | Boot 2→3 derivation |
 | `spring-to-quarkus-patterns` | migration | IMPLEMENT mapping cards |
 | `manage-quarkus-extensions` | migration | Extension add/rm (RH BOM) |
-| `bootstrap-quarkus-project` | migration | Destination Quarkus POM |
+| `author-destination-pom` | migration | Destination Quarkus POM |
 | `reference-rh-quarkus-pom` | migration | RH Quarkus POM structure |
 | `form-entity-persistence` | migration | Entity / persistence form |
 | `configure-quarkus-profiles` | migration | Quarkus config / profiles |
@@ -65,8 +67,7 @@ complete requires `created_cards`. Do not wrap these in home scripts.
 | G-3 | `g3-findings-delta` | MTA findings closure |
 | G-4 | `g4-runtime-parity` | observed runtime parity |
 
-Admission fixture trees: `.hermes/skills/gates/check-domain-parity/`
-(and `check-release-readiness/fixtures/` where present).
+Admission fixture trees: `.hermes/skills/gates/check-domain-parity/fixtures/admission/` only.
 
 ## Hooks consent hatch (N3)
 

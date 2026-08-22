@@ -1,6 +1,0 @@
-{
-  "phase": "M3",
-  "identity": {"story_id": "US4", "kind": "us", "parents": ["foundational"]},
-  "files_writable": ["src/main/java/com/demo/entity/Specialty.java"],
-  "dependencies": []
-}
