@@ -16,7 +16,7 @@ parallel home is a defect.
 | SDD | `.hermes/skills/sdd/` (Spec Kit provision + story oracles) |
 | M4 oracles | `.hermes/skills/gates/` (`check-domain-parity`, `check-release-readiness`) |
 | Shared Python | `.hermes/lib/` — **not a skill** (type_graph, generated_sources, specimen splits) |
-| Parked mint/requeue | `.hermes/_park/` — **not a skill** (K4/K3 later; do not mkdir `kernel/` here) |
+| Parked mint/requeue | `.hermes/_park/` — **not a skill**; **authoring-only**. Dest clones via `scripts/bootstrap-migration-scaffold-v2.sh` omit it. Chaos never dest. Do not mkdir `kernel/` here. |
 | Run data | `evidence/` |
 | Spec Kit workspace | `.specify/` + `specs/` — gitignored in golden; never commit `.specify/` |
 | Task state | Hermes Kanban (native). No parallel CSV / `created-cards-*.json` |
