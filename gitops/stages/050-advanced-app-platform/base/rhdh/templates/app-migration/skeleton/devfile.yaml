@@ -30,9 +30,8 @@ components:
     container:
       # Standard workspace base: the same Red Hat UDI every coolstore
       # workspace uses, so the Java/Maven foundation is uniform across
-      # stages. The workspace is OpenCode-only by design (the modernized
-      # project's .opencode/ directory is the tool-selector signal) and
-      # carries the MTA VS Code extension pack for analyzing the legacy
+      # stages. Stage 080 dest is Hermes Kanban (OpenCode is Stage 070).
+      # Carries the MTA VS Code extension pack for analyzing the legacy
       # project against the platform MTA hub.
       image: registry.redhat.io/devspaces/udi-rhel9:3.27.1
       env:
@@ -89,11 +88,6 @@ components:
       volumeMounts:
         - name: m2
           path: /home/user/.m2
-        # CS-1: OpenCode managed config dir (/etc/opencode). Workspace
-        # user cannot write root-owned /etc; this volume makes the
-        # official managed path writable (Architect E-061618Z).
-        - name: opencode-managed
-          path: /etc/opencode
       endpoints:
         - name: quarkus-dev
           targetPort: 8080
@@ -119,16 +113,13 @@ components:
   - name: m2
     volume:
       size: 1G
-  - name: opencode-managed
-    volume:
-      size: 16Mi
 commands:
   - id: init-migration-tools
     exec:
       component: development-tooling
       commandLine: |
         # Two projects live in this workspace; all agent tooling roots in
-        # the modernized project (it carries .opencode/ -> OpenCode-only).
+        # the modernized project (Hermes Kanban dest).
         PROJECT_DIR="/projects/modernized"
         PROFILE="modernized"
         mkdir -p /projects/.platform
@@ -293,107 +284,16 @@ commands:
           bash "${AUTO_M1}" --root "${PROJECT_DIR}" \
             || echo "WARN: autostart-migration exited nonzero (see .hermes/AUTOSTART-STATUS)"
         fi
-        # Hermes dashboard: che-gateway routes to the pod IP, so bind
-        # 0.0.0.0:9119. Official kanban docs: plugin routes skip HTTP auth
-        # and --host 0.0.0.0 exposes them; Managed Scope seeds
-        # dashboard.basic_auth first (ensure_hermes). Same postStart as
-        # tools so this cannot run before hermes/UI/auth exist (Dev Spaces
-        # 3.28 §12.5.3: one postStart). Observability only — fail visible
-        # via /tmp/hermes-dashboard.status, never fail the IDE.
-        DASH_STATUS="/tmp/hermes-dashboard.status"
-        dash_fail() {
-          echo "ERROR: Hermes dashboard: $*"
-          printf 'state=failed\nreason=%s\n' "$*" >"${DASH_STATUS}"
-        }
-        : "${HERMES_HOME:=/projects/modernized/.hermes/home}"
-        : "${HERMES_MANAGED_DIR:=/projects/.platform/hermes}"
-        dash_listening() {
-          python3 -c 'import socket;s=socket.socket();s.settimeout(0.5);s.connect(("127.0.0.1",9119))' 2>/dev/null
-        }
-        dash_bind() {
-          # Column-0 python would end the YAML | block (same class as a
-          # bare heredoc — Dev Spaces: "Can't parse devfile yaml").
-          printf '%s\n' \
-            'import pathlib' \
-            'want="239F"' \
-            'addrs=[]' \
-            'for proc in ("/proc/net/tcp", "/proc/net/tcp6"):' \
-            '    p = pathlib.Path(proc)' \
-            '    if not p.exists():' \
-            '        continue' \
-            '    for line in p.read_text().splitlines()[1:]:' \
-            '        f = line.split()' \
-            '        lip, lp = f[1].split(":")' \
-            '        if lp.upper() == want and f[3] == "0A":' \
-            '            addrs.append(lip)' \
-            'print("0.0.0.0" if any(a in ("00000000", "00000000000000000000000000000000") for a in addrs) else ("127.0.0.1" if addrs else "none"))' \
-            >/tmp/dash-bind.py
-          python3 /tmp/dash-bind.py
-        }
-        if [ ! -f "${HERMES_MANAGED_DIR}/config.yaml" ] || ! grep -q "basic_auth" "${HERMES_MANAGED_DIR}/config.yaml"; then
-          dash_fail "Managed Scope dashboard.basic_auth missing; refusing unauthenticated 0.0.0.0 bind"
+        # DB-4: one launcher (writes /tmp/hermes-dashboard.status). Same
+        # postStart as tools (Dev Spaces 3.28: one postStart). Observability
+        # only — never fail the IDE.
+        DASH_START="${PROJECT_DIR}/.hermes/dashboard/start-dashboard.sh"
+        if [ -f "${DASH_START}" ]; then
+          bash "${DASH_START}" \
+            || echo "WARN: Hermes dashboard launcher exited nonzero (observability only)"
         else
-          UI=""
-          for candidate in \
-            "${HERMES_HOME}/hermes-agent/hermes_cli/web_dist/index.html" \
-            "${HOME}/.hermes/hermes-agent/hermes_cli/web_dist/index.html"; do
-            if [ -f "${candidate}" ]; then UI="${candidate}"; break; fi
-          done
-          if [ -z "${UI}" ]; then
-            dash_fail "web_dist missing under HERMES_HOME/HOME (pre-warm failed)"
-          elif dash_listening; then
-            b="$(dash_bind)"
-            if [ "${b}" = "0.0.0.0" ]; then
-              printf 'state=listening\nbind=0.0.0.0:9119\n' >"${DASH_STATUS}"
-              echo "Hermes dashboard already listening on 0.0.0.0:9119"
-            else
-              dash_fail "already bound ${b:-unknown}:9119, not 0.0.0.0 (che-gateway would 503)"
-            fi
-          else
-            cd "${PROJECT_DIR}" 2>/dev/null || cd /projects/modernized || true
-            start_dash() {
-              nohup hermes dashboard --skip-build --host 0.0.0.0 --port 9119 --no-open \
-                >/tmp/hermes-dashboard.log 2>&1 &
-              echo $!
-            }
-            pid="$(start_dash)"
-            echo "Hermes dashboard postStart: launched pid=${pid} bind 0.0.0.0:9119"
-            ok=0
-            for i in $(seq 1 10); do
-              sleep 1
-              dash_listening && ok=1 && break
-            done
-            if [ "${ok}" -ne 1 ]; then
-              echo "WARN: dashboard not listening after 10s — one restart"
-              kill "${pid}" 2>/dev/null || true
-              pid="$(start_dash)"
-              sleep 3
-              dash_listening && ok=1
-            fi
-            if [ "${ok}" -eq 1 ]; then
-              b="$(dash_bind)"
-              if [ "${b}" != "0.0.0.0" ]; then
-                dash_fail "listening but bind=${b:-unknown} (need 0.0.0.0 for che-gateway)"
-              else
-                printf 'state=listening\nbind=0.0.0.0:9119\npid=%s\n' "${pid}" >"${DASH_STATUS}"
-                nohup bash -c '
-                  for _ in $(seq 1 36); do
-                    sleep 5
-                    if python3 -c "import socket;s=socket.socket();s.settimeout(0.5);s.connect((\"127.0.0.1\",9119))" 2>/dev/null; then
-                      continue
-                    fi
-                    echo "dashboard-watchdog: port 9119 down — restart once" >>/tmp/hermes-dashboard.log
-                    nohup hermes dashboard --skip-build --host 0.0.0.0 --port 9119 --no-open \
-                      >>/tmp/hermes-dashboard.log 2>&1 &
-                    exit 0
-                  done
-                ' >/tmp/hermes-dashboard-watchdog.log 2>&1 &
-                echo "Hermes dashboard postStart: LISTENING on 0.0.0.0:9119 (watchdog armed)"
-              fi
-            else
-              dash_fail "not listening after start+restart; see /tmp/hermes-dashboard.log"
-            fi
-          fi
+          echo "WARN: missing ${DASH_START} — hermes-dash endpoint kept, no launcher"
+          printf 'state=failed\nreason=missing start-dashboard.sh\n' >/tmp/hermes-dashboard.status
         fi
   # The UDI base image documents JAVA_HOME_<version> variables as the
   # supported way to select a JDK (sdkman default is Java 17; the pom

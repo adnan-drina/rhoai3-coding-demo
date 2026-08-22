@@ -689,7 +689,8 @@ data:
       # W1 five pins (Operator E-171354Z / Review service-CA nit): in-cluster
       # .svc + ssl_ca_cert + 900s + aux-title off + display.streaming true
       # (asserted — Operator E-20260813T210050Z / hermes-configuration display.streaming).
-      # Dashboard: loopback bind + che-gateway secure endpoint (E-171806Z).
+      # Dashboard: public 0.0.0.0:9119 bind + che-gateway secure endpoint
+      # (Operator 2026-08-21). Auth is Managed Scope dashboard.basic_auth.
       "${venv_py}" - <<'HERMESEOF'
     import os, shutil, yaml
     managed = os.environ["HERMES_MANAGED_DIR"]
@@ -1185,38 +1186,10 @@ data:
       fi
       echo "Hermes AD-H: managed_mode=${managed_mode} dir=${managed_dir}; HERMES_HOME=${hermes_home}; WRITE_SAFE_ROOT=${PROJECT_DIR}; external_dirs=${hermes_skills_dir}; model pin=qwen3-6-27b; PVC overlays absent."
 
-      # Demo surface (Architect E-20260808T154612Z exposure A): pre-warm
-      # Hermes dashboard UI so the first `hermes dashboard` does not
-      # npm-install/build live in front of an audience. Hermes serves
-      # packaged UI from hermes_cli/web_dist (vite outDir) — NOT web/dist.
-      # --skip-build looks there. Build needs workspace/devDeps (tsc -b
-      # pulls vitest types); --omit=dev fails the pre-warm. Viewer path is
-      # loopback 127.0.0.1:9119 via Che/VS Code port-forward — not a public
-      # Dev Spaces route (Host-header rejects public bind).
-      local hermes_agent="${hermes_home}/hermes-agent"
-      if [ ! -d "${hermes_agent}" ]; then
-        hermes_agent="${HOME}/.hermes/hermes-agent"
-      fi
-      local hermes_web="${hermes_agent}/web"
-      local hermes_dist="${hermes_agent}/hermes_cli/web_dist/index.html"
-      if [ -f "${hermes_web}/package.json" ] && [ ! -f "${hermes_dist}" ]; then
-        if command -v npm >/dev/null 2>&1 || [ -x "${HOME}/.local/bin/npm" ]; then
-          echo "Hermes dashboard: building web UI (pre-warm)…"
-          (
-            cd "${hermes_agent}"
-            # Full install: monorepo web build needs devDeps (vitest types for tsc -b).
-            npm ci >/tmp/hermes-web-npm.log 2>&1 \
-              || npm install >/tmp/hermes-web-npm.log 2>&1
-            (cd "${hermes_web}" && npm run build >>/tmp/hermes-web-npm.log 2>&1)
-          ) && [ -f "${hermes_dist}" ] \
-            && echo "Hermes dashboard: web dist ready at hermes_cli/web_dist (use: hermes dashboard --skip-build --host 127.0.0.1 --port 9119 --no-open; IDE port-forward)." \
-            || echo "WARN: Hermes dashboard web build failed — see /tmp/hermes-web-npm.log (demo first-run download risk remains)."
-        else
-          echo "WARN: npm absent — cannot pre-warm Hermes dashboard UI."
-        fi
-      elif [ -f "${hermes_dist}" ]; then
-        echo "Hermes dashboard: web dist already present at hermes_cli/web_dist (skip build)."
-      fi
+      # Dashboard UI: do not npm-build here. This init runs in the
+      # provisioning pod; web_dist is needed on the workspace PVC. v2
+      # golden ships a pin-stamped bundle (DB-1); destfile copies it.
+      # hermes dashboard --skip-build serves a dist; it never creates one.
 
       # AD-H §13 / §15.2 — the ONLY cron job: observation watchdog for what
       # survives native max_runtime_seconds recovery (--deliver local).

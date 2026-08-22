@@ -221,10 +221,25 @@ done
 echo ""
 validation_summary
 
-# Shared worker skills must not drift between the 070 and 080 scaffolds —
-# they are one contract expressed in two repos.
-for f in spec-driven-workflow project-test-standards quarkus-rest-conventions llm-integration; do
-  check "shared skill in sync across scaffolds: ${f}" \
-    "diff -q '${SCRIPT_DIR}/../070-ai-agentic-development/scaffold-repo/agentic-quarkus-scaffold/.opencode/skills/${f}.md' '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.opencode/skills/${f}.md' >/dev/null 2>&1 && echo 1 || echo 0" \
-    "1" "warn"
-done
+# Stage 080 dest is Hermes Kanban. OpenCode skill diffs against stage 070
+# were the dual-tool destfile lie (ST-7). Static destfile contract:
+SCAFFOLD_DEVFILE="${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/devfile.yaml"
+SCAFFOLD_DASH="${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/dashboard"
+check "080 destfile is not OpenCode-only" \
+  "grep -c 'OpenCode-only by design' '${SCAFFOLD_DEVFILE}' || echo 0" \
+  "0"
+check "080 destfile has no opencode-managed volume" \
+  "grep -c 'opencode-managed' '${SCAFFOLD_DEVFILE}' || echo 0" \
+  "0"
+check "080 destfile keeps hermes-dash endpoint" \
+  "grep -c 'name: hermes-dash' '${SCAFFOLD_DEVFILE}' || echo 0" \
+  "1"
+check "080 destfile has no start-hermes-dashboard launcher" \
+  "grep -c 'start-hermes-dashboard' '${SCAFFOLD_DEVFILE}' || echo 0" \
+  "0"
+check "080 ships pin-stamped dashboard index.html" \
+  "test -f '${SCAFFOLD_DASH}/web_dist/index.html' && echo present || echo missing" \
+  "present"
+check "080 dashboard PIN matches pins.json" \
+  "python3 '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/lib/assert_web_dist_pin.py' --pins '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/pins.json' --stamp '${SCAFFOLD_DASH}/PIN' --bundle '${SCAFFOLD_DASH}/web_dist/index.html' >/dev/null && echo 1 || echo 0" \
+  "1"

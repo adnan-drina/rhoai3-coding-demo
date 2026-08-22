@@ -1012,7 +1012,7 @@ ruby -ryaml -e 'YAML.load_file(ARGV[0])' \
 
 **Affected stage:** Stage 050 RHDH app-migration skeleton (factory workspaces for 080)
 
-**Likely cause:** Three defects in the factory `postStart`: (1) launch logs claimed loopback while che-gateway routes to the pod IP, so a 127.0.0.1-only bind 503s the route; (2) `start-hermes-dashboard` was fail-soft (`WARN` + exit 0); (3) it was a second `postStart` that skipped when Hermes was missing, and it looked for the pre-warmed UI under `~/.hermes` while `ensure_hermes` writes `web_dist` under `$HERMES_HOME`. Current template starts the dashboard in the same `postStart` as tools, after Hermes and Managed Scope `dashboard.basic_auth`, binds `0.0.0.0:9119`, and writes `/tmp/hermes-dashboard.status` (`state=listening` or `state=failed`). Dashboard failure does not fail the workspace (observability, not capability).
+**Likely cause:** The dashboard bundle was **never built or shipped**. `hermes dashboard --skip-build` *serves* `hermes_cli/web_dist`; it never *creates* one. v37–v42 recorded `state=failed` because `web_dist` existed at neither `$HERMES_HOME` nor `~/.hermes` — not because of a path mismatch. A dead npm pre-warm lived in the provisioning pod (wrong PVC) and a stale comment claimed loopback `127.0.0.1:9119` while che-gateway routes to the pod IP (a localhost-only bind 503s the route). Current factory: v2 golden ships a pin-stamped `web_dist` under `.hermes/dashboard/`; postStart copies it after Hermes install, refuses a stamp that does not match `.hermes/pins.json`, binds `0.0.0.0:9119`, and writes `/tmp/hermes-dashboard.status` (`state=listening` or `state=failed`). Dashboard failure does not fail the workspace (observability, not capability).
 
 **Diagnose:**
 
@@ -1035,14 +1035,14 @@ for proc in ("/proc/net/tcp","/proc/net/tcp6"):
             print(proc, lip, lp)'
 ```
 
-`state=failed` with `basic_auth missing` means `ensure_hermes` did not write Managed Scope — do not bind `0.0.0.0` without it (kanban plugin routes skip HTTP auth). `web_dist missing` is a pre-warm miss, not a route bug. Bind hex `0100007F:239F` is localhost-only (route 503); `00000000:239F` is the pod-IP bind che-gateway needs.
+`state=failed` with `basic_auth missing` means `ensure_hermes` did not write Managed Scope — do not bind `0.0.0.0` without it (kanban plugin routes skip HTTP auth). `web_dist pin guard refused` or `bundle exists nowhere` means the shipped stamp does not match `pins.json`, or destfile never copied `.hermes/dashboard/web_dist` — not a route bug and not a `~/.hermes` vs `$HERMES_HOME` mix-up. Bind hex `0100007F:239F` is localhost-only (route 503); `00000000:239F` is the pod-IP bind che-gateway needs.
 
 **Recover:**
 
 - **Next provision:** after golden publish + catalog re-stamp, a new workspace should show `state=listening` / `bind=0.0.0.0:9119`. Login is Managed Scope basic-auth (`ai-developer` / demo password) behind the che-gateway OAuth on the `hermes-dash` endpoint.
 - **Already-running workspace:** do not restart a live migration seat. If Hermes is already installed, start by hand in the tooling container only when the operator asks: `hermes dashboard --skip-build --host 0.0.0.0 --port 9119 --no-open` after confirming `grep basic_auth /projects/.platform/hermes/config.yaml`.
 
-**Related docs:** `gitops/stages/050-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml`
+**Related docs:** `gitops/stages/050-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml`; v2 golden `stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/.hermes/dashboard/`
 
 ## Kilo Code Is Missing From A Dev Spaces Workspace
 

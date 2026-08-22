@@ -11,6 +11,7 @@ parallel home is a defect.
 | Seat pins | `.hermes/pins.json` |
 | Config templates | `.hermes/config/` — no secrets; dest Managed Scope owns the live pin |
 | Product guidance | `.hermes/skills/<category>/<name>/` |
+| Dashboard bundle | `.hermes/dashboard/` — pin-stamped `web_dist` + one launcher. Observability, not capability. |
 | Analysis | `.hermes/skills/analysis/` (MTA, inventory) |
 | Migration | `.hermes/skills/migration/` (Boot3 / Quarkus / persistence) |
 | SDD | `.hermes/skills/sdd/` (Spec Kit provision + story oracles) |
@@ -23,8 +24,10 @@ parallel home is a defect.
 
 **Out of day-one (deleted, do not port):** `.hermes/skills/harness/`,
 `.hermes/home/scripts/`, `.hermes/phase-dispatch.yaml`, human `ack_gate`,
-`handover-mint.py`, `dispatch-phase`, write-fence plugins, dashboard
-`web_dist` autostart. Slim kernel K1–K4 lands only after Gate P-kernel.
+`handover-mint.py`, `dispatch-phase`, write-fence plugins. Slim kernel
+K1–K4 lands only after Gate P-kernel. Dashboard `web_dist` ships here
+(pin-stamped); destfile copies it and launches `hermes dashboard --skip-build`
+fail-soft. Refresh the bundle when the Hermes pin moves.
 
 ## How to invoke
 

@@ -30,10 +30,9 @@ components:
     container:
       # Standard workspace base: the same Red Hat UDI used by every
       # workspace on this platform, so the Java/Maven foundation is
-      # uniform across stages. The workspace is OpenCode-only by design (the modernized
-      # project's .opencode/ directory is the tool-selector signal) and
-      # carries the MTA VS Code extension pack for analyzing the legacy
-      # project against the platform MTA hub.
+      # uniform across stages. Stage 080 v2 dest is Hermes Kanban
+      # (OpenCode is Stage 070). Carries the MTA VS Code extension pack
+      # for analyzing the legacy project against the platform MTA hub.
       image: registry.redhat.io/devspaces/udi-rhel9:3.27.1
       env:
         - name: QUARKUS_HTTP_HOST
@@ -68,8 +67,8 @@ components:
           value: "false"
         # AD-003: containerless mta-cli requires JVM_MAX_MEM or analysis can
         # hang. Derived from memoryLimit (12Gi) with headroom for the IDE /
-        # OpenCode / Hermes — not equal to the container ceiling. Official
-        # MTA guidance recommends ~8G host RAM for large Java analyses
+        # Hermes — not equal to the container ceiling. Official MTA
+        # guidance recommends ~8G host RAM for large Java analyses
         # (CLI optimize-performance); value format matches provider
         # jvmMaxMem examples ("2G").
         - name: JVM_MAX_MEM
@@ -87,10 +86,6 @@ components:
       volumeMounts:
         - name: m2
           path: /home/user/.m2
-        # CS-1: OpenCode managed config (/etc/opencode) — writable volume
-        # for workspace user (Architect E-061618Z).
-        - name: opencode-managed
-          path: /etc/opencode
       endpoints:
         - name: quarkus-dev
           targetPort: 8080
@@ -113,16 +108,13 @@ components:
   - name: m2
     volume:
       size: 1G
-  - name: opencode-managed
-    volume:
-      size: 16Mi
 commands:
   - id: init-migration-tools
     exec:
       component: development-tooling
       commandLine: |
         # Two projects live in this workspace; all agent tooling roots in
-        # the modernized project (it carries .opencode/ -> OpenCode-only).
+        # the modernized project (Hermes Kanban dest).
         PROJECT_DIR="/projects/modernized"
         PROFILE="modernized"
         mkdir -p /projects/.platform
@@ -211,9 +203,8 @@ commands:
           chmod 700 "${INIT_SH}" 2>/dev/null || true
           bash "${INIT_SH}" "${PROJECT_DIR}" "${PROFILE}"
         else
-          echo "devspace-ai-tools-init ConfigMap not reachable; OpenCode is"
-          echo "installed but not configured — governed MaaS credentials come"
-          echo "from the platform init script."
+          echo "devspace-ai-tools-init ConfigMap not reachable; Hermes/"
+          echo "MaaS credentials come from the platform init script."
         fi
         # AD-S / provision-owns-tools (Architect E-20260811T121308Z): Spec Kit
         # init is workspace setup — fail-closed; agents verify-or-BLOCK only.
@@ -261,13 +252,17 @@ commands:
         # Native gateway-embedded dispatcher is dest Managed Scope. Do not
         # kanban daemon --force. Do not start M1 from destfile.
         echo "Phase N: v1 destfile autostart skipped (no dispatch-phase / home scripts)"
-  - id: start-hermes-dashboard
-    exec:
-      component: development-tooling
-      # v2 Phase N: dashboard web_dist autostart is out of day-one (AD-019).
-      commandLine: |
-        echo "Phase N: Hermes dashboard autostart skipped (web_dist out of day-one)"
-        exit 0
+        # DB-4: one launcher (writes /tmp/hermes-dashboard.status). Same
+        # postStart as tools so dashboard cannot run before Hermes/auth
+        # (Dev Spaces 3.28: one postStart). Observability only.
+        DASH_START="${PROJECT_DIR}/.hermes/dashboard/start-dashboard.sh"
+        if [ -f "${DASH_START}" ]; then
+          bash "${DASH_START}" \
+            || echo "WARN: Hermes dashboard launcher exited nonzero (observability only)"
+        else
+          echo "WARN: missing ${DASH_START} — hermes-dash endpoint kept, no launcher"
+          printf 'state=failed\nreason=missing start-dashboard.sh\n' >/tmp/hermes-dashboard.status
+        fi
   # Prefer JAVA_HOME_21 (UDI contract). sdkman is not present on this
   # seat's image — do not assume it. Pom targets Java 21.
   - id: test
@@ -291,4 +286,3 @@ commands:
 events:
   postStart:
     - init-migration-tools
-    - start-hermes-dashboard
