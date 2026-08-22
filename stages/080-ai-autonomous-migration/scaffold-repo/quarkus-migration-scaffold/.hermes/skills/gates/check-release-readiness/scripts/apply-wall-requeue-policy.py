@@ -142,13 +142,13 @@ def main() -> int:
             print("FAIL: wall-exit-eval required before soft resume", file=sys.stderr)
             return 1
 
-    # Lag sync obligation (harness-driven stamp catch-up)
+    # Lag sync obligation (v1 harness script; skip when absent — K2 HOLD)
     ck = root / "evidence" / "runs" / args.task_id / "checkpoint.json"
-    if ck.is_file():
-        sync = (
-            root
-            / ".hermes/skills/harness/record-run-evidence/scripts/sync-checkpoint-from-test-writes.py"
-        )
+    sync = (
+        root
+        / ".hermes/skills/harness/record-run-evidence/scripts/sync-checkpoint-from-test-writes.py"
+    )
+    if ck.is_file() and sync.is_file():
         subprocess.run(
             [sys.executable, str(sync), str(ck), "--root", str(root)],
             text=True,

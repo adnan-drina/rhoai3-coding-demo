@@ -12,7 +12,7 @@ Application domain experts remain essential. Agents handle the volume (hundreds 
 
 **Demo spine (Acts A–E):** provision a governed migration workspace → establish MTA ground truth → plan with Spec Kit (never `/speckit.implement`) → **watch Hermes Kanban before dispatch** → audit with `list` / `show` / `runs` + verdict JSON. That is what you observe in the room.
 
-The longer M-process / harness-concept material is an **architecture appendix** — useful for teaching, not the live walkthrough. Full M5 factory ship is **not** claimed DEMONSTRATED for the Owner/Pet slice yet.
+Implementation architecture (design, M1–M5, governance, v1 dest vs v2 target) lives in [SOLUTION-ARCHITECTURE.md](SOLUTION-ARCHITECTURE.md). This README is the demo walkthrough. Do not copy either file into `scaffold-repo/`. Agents: consume and contribute using the SAD [§10](SOLUTION-ARCHITECTURE.md#10-how-agents-consume-and-contribute). Full M5 factory ship is **not** claimed DEMONSTRATED for the Owner/Pet slice yet.
 
 ---
 
@@ -115,15 +115,14 @@ hermes chat -q "Read migration/briefs/<brief>.md. Run /speckit.specify then /spe
 ```bash
 cd /projects/modernized
 export HERMES_HOME=/projects/modernized/.hermes/home
-# terminal A — start BEFORE any dispatch
+# terminal A — start BEFORE any create
 hermes kanban watch --interval 1
-# or: bash .hermes/home/scripts/kanban-track.sh watch
-# terminal B — seed M1 (derive + MTA + inventory) as a Hermes Kanban task, then tick
-bash .hermes/skills/phase-dispatch/scripts/dispatch-phase.sh M1
-# later phases: dispatch-phase.sh M2 --parent <m1_task_id>
-# (dispatch-phase already runs one hermes kanban dispatch tick)
-# single-pane alternative: bash .hermes/home/scripts/kanban-track.sh follow
-#   (starts daemon --force + watch; still create/dispatch cards separately)
+# terminal B — seed M1 as a native Kanban task (no dispatch-phase wrapper)
+hermes kanban create "M1 ANALYZE" \
+  --skill scan-with-mta --skill inventory-entry-points \
+  --workspace dir:/projects/modernized --json
+# later phases: hermes kanban create … --parent <task_id>
+# gateway-embedded dispatcher ticks; do not `kanban daemon --force`
 ```
 
 Do **not** start M1 with a detached `mta-analyze-legacy.sh` — Hermes must own
@@ -139,7 +138,6 @@ Drill-down:
 hermes kanban show <task_id>
 hermes kanban runs <task_id>   # task_id required
 hermes kanban log <task_id>
-# or: bash .hermes/home/scripts/kanban-track.sh {show|runs|log|tail} <task_id>
 ```
 
 **Honest exit of this act:** M4 **`PROVISIONAL_ACCEPT`** for Owner/Pet
@@ -213,10 +211,10 @@ and a deterministic gate guards each hand-off. Modernization is incremental by
 design: M2 cuts the work into dependency-ordered **stories**, and M3→M5 cycle
 per story. No big bang.
 
-> **R-HX.2 (2026-08-11):** live phase glossary is **only**
-> `scaffold …/.hermes/phase-dispatch.yaml` —
-> **M1 ANALYZE → M2 PLAN → M3 IMPLEMENT → M4 VERIFY → M5 CLOSE**.
-> Older SEQUENCE / SPECIFY / EVALUATE labels below are retired.
+> **R-HX.2 (2026-08-22 v2):** live phase glossary is **M1 ANALYZE → M2 PLAN →
+> M3 IMPLEMENT → M4 VERIFY → M5 CLOSE** (`AGENTS.md` / `.hermes/LAYOUT.md`).
+> There is no `.hermes/phase-dispatch.yaml`. Older SEQUENCE / SPECIFY /
+> EVALUATE labels below are retired.
 
 ```text
       ┌──── outer loop: Retro → remaining stories ──────────────────────────────┐
@@ -232,15 +230,15 @@ per story. No big bang.
                     typed bodies]    └───┘ soft-K     └───┘ ACCEPT)        │
                                                                           │
               next story / unblock  ◀─────────────────────────────────────┘
-              (failed card → blocked; resume via phase-dispatch)
+              (failed card → blocked; resume via native kanban promote/complete)
 ```
 
 | # | Stage | Enabling technology | Tasks it performs | Output artifacts |
 |---|---|---|---|---|
-| 1 | **M1 ANALYZE** | Hermes Kanban + `mta-analysis` / `inventory-entry-points` / `derive-legacy-boot3` | Derive findings-handoff + inventory; Operator ACK | `migration/findings-handoff.json`, inventory, ACK |
-| 2 | **M2 PLAN** | Hermes planner + Spec Kit (`speckit-specify` → `plan` → `tasks`); mint is the M3 wave-holder card | Read inventory before specify; enumerate every `http_path`; Resource tasks emit `@Path("...")`; M2 does not mint Kanban children | Spec Kit specs + `tasks.md` |
-| 3 | **M3 IMPLEMENT** | Wave-holder session (`mint-m3-hermes.md`) then per-story implementers + `spring-to-quarkus-patterns` | Holder lints + mints parked story children (ack_gate parent); each story writes only `files_writable`; standing pointer on the card | Modernized sources under `files_writable` |
-| 4 | **M4 VERIFY** | Domain / validation-release gates | Waits on story children (not the mint holder); `PROVISIONAL_ACCEPT` evidence package | Gate receipts |
+| 1 | **M1 ANALYZE** | Hermes Kanban + `scan-with-mta` / `inventory-entry-points` / `derive-legacy-boot3` | Derive findings-handoff + inventory | findings-handoff, inventory |
+| 2 | **M2 PLAN** | Hermes planner + Spec Kit (`speckit-specify` → `plan` → `tasks`); typed partition is the write-set authority | Read inventory before specify; enumerate every `http_path`; Resource tasks emit `@Path("...")`; M2 does not mint Kanban children from `tasks.md` | Spec Kit specs + typed partition |
+| 3 | **M3 IMPLEMENT** | Native `kanban_create` from the typed partition + `spring-to-quarkus-patterns` | Each story writes only `files_writable`; unfinished parents park children (no human `ack_gate`) | Modernized sources under `files_writable` |
+| 4 | **M4 VERIFY** | Domain / validation-release gates | Waits on story children; `PROVISIONAL_ACCEPT` evidence package | Gate receipts |
 | 5 | **M5 CLOSE** | Factory / full ACCEPT path | Story close when platform gates green | Pipeline + ACCEPT |
 
 The **inner loop** (gates → fix → re-dispatch) corrects the *work* within a

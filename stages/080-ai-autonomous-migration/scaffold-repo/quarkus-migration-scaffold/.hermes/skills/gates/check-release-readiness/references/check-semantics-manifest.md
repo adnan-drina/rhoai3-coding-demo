@@ -31,7 +31,7 @@
 
 ---
 
-## M4 `required_checks` (dispatch-phase / check-release-readiness)
+## M4 `required_checks` (check-release-readiness)
 
 | Check id | Operands | Coverage claim | Adequacy | Over-promise risk | Lint |
 |----------|----------|----------------|----------|-------------------|------|
@@ -86,6 +86,7 @@
 | Rename `endpoint_smoke` / path lists | **DONE** — floor runner emits `endpoint_smoke_health` when smoke paths exclude `/api/*` |
 | G-4 harvest vs admission | **OPEN** (lint forbids SAMPLE→product-closed; harvest still required for SEMANTIC close) |
 
-Callers: `check-m4-floor-receipts.py`, `run-m4-floor.sh` / `write-receipt.py`, `validate-contracts` (negative fixtures under `.hermes/skills/gates/check-release-readiness/fixtures/check-semantics-manifest/`).
+Callers: `check-m4-floor-receipts.py`, `run-m4-floor.sh` / `write-receipt.py`
+(negative fixtures under `.hermes/skills/gates/check-release-readiness/fixtures/check-semantics-manifest/`).
 
 — Review

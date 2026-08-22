@@ -149,11 +149,27 @@ check "kantra-ensure download message is on stderr (ensure_cli captures stdout a
 check "init ConfigMap is DWO-mounted (volume, not kube-API curl as the primary path)" \
   "grep -c 'controller.devfile.io/mount-to-devworkspace' \"$REPO_ROOT/gitops/stages/050-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml\" || echo 0" \
   "1"
-check "M1 park-at-birth chain is in dispatch-phase.sh" \
-  "grep -c 'DISPATCH_PARK_CHAIN:-1' \"$REPO_ROOT/stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/.hermes/skills/harness/dispatch-phase/scripts/dispatch-phase.sh\" || echo 0" \
+SCAFFOLD_080="$REPO_ROOT/stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold"
+check "v2 scaffold has no dispatch-phase package" \
+  "test ! -e \"$SCAFFOLD_080/.hermes/skills/harness/dispatch-phase\" && echo 1 || echo 0" \
   "1"
-check "gateway supervisor script is in the golden scaffold" \
-  "test -f \"$REPO_ROOT/stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/.hermes/home/scripts/supervise-gateway.sh\" && echo 1 || echo 0" \
+check "v2 scaffold has no .hermes/home/scripts" \
+  "test ! -e \"$SCAFFOLD_080/.hermes/home/scripts\" && echo 1 || echo 0" \
+  "1"
+check "v2 scaffold has no handover-mint.py" \
+  "test -z \"$(find \"$SCAFFOLD_080\" -name handover-mint.py -print -quit)\" && echo 1 || echo 0" \
+  "1"
+check "v2 Hermes config template is present" \
+  "test -f \"$SCAFFOLD_080/.hermes/config/config.yaml.template\" && echo 1 || echo 0" \
+  "1"
+check "v2 config template forbids fallback_providers" \
+  "grep -c 'OBJECT: fallback_providers' \"$SCAFFOLD_080/.hermes/config/config.yaml.template\" || echo 0" \
+  "1"
+check "inventory-type-graph imports type_graph as a module (no tree walk)" \
+  "grep -c '_find_type_graph' \"$SCAFFOLD_080/.hermes/skills/analysis/inventory-entry-points/scripts/inventory-type-graph.py\" || echo NONE" \
+  "NONE"
+check "check-phase-matrix.py is not in the golden scaffold" \
+  "test ! -f \"$SCAFFOLD_080/.hermes/skills/gates/check-release-readiness/scripts/check-phase-matrix.py\" && echo 1 || echo 0" \
   "1"
 check "harness tooling is gated on the modernized profile" \
   "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -c 'PROFILE}\" = \"modernized\"' || echo 0" \

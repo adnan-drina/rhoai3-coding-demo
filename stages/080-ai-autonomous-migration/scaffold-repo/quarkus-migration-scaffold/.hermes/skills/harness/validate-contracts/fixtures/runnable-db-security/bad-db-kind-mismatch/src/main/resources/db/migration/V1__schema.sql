@@ -1,1 +1,0 @@
-CREATE TABLE users (username VARCHAR(20) PRIMARY KEY);

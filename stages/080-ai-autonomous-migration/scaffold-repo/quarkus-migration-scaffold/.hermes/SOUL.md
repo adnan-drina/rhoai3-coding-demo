@@ -42,7 +42,7 @@ refusal. Do not exit 0 with the card still running.
 If an input is wrong, report it and stop. Do not repair another task's output
 to make your own possible. The task that owns it will fix it.
 
-**Refusal doctrine (DD5 — always on):** never patch `.hermes/skills/harness/**`
+**Refusal doctrine (DD5 — always on):** never patch `.hermes/skills/**`
 or any gate to clear a refusal. If a check fails and the fix is outside your
 write-set, typed-block and stop. If you cannot classify the failure, that
 itself is a legal typed outcome (ESCALATE) — not a licence to invent.

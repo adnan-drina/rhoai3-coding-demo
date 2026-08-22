@@ -101,10 +101,10 @@ This skill carries no scripts — it is a consult-then-write contract.
    `@Liveness` vs `@Readiness`. Each card names the failure that follows the
    wrong pick.
 5. **Write one operand at a time** from checkpoint `next`, stamping after each
-   successful destination write. Copy the golden fixtures rather than inventing:
-   `.hermes/skills/harness/dispatch-phase/fixtures/security/golden-basic-authz/`,
-   `.hermes/skills/harness/dispatch-phase/fixtures/testing/golden-rest-controller/`,
-   `.hermes/skills/harness/dispatch-phase/fixtures/testing/golden-test-application.properties`.
+  successful destination write. Copy the golden fixtures rather than inventing:
+  `.hermes/skills/migration/spring-to-quarkus-patterns/fixtures/security/golden-basic-authz/`,
+  `.hermes/skills/migration/spring-to-quarkus-patterns/fixtures/testing/golden-rest-controller/`,
+  `.hermes/skills/migration/spring-to-quarkus-patterns/fixtures/testing/golden-test-application.properties`.
 6. **Run `mvn -q test-compile` in-loop** after test writes. Once a pattern is
    green in this task, copy it — do not restate the map per file.
 
@@ -136,8 +136,7 @@ Verification here is the migrated code's provable parity, not a script exit.
 - **Security, when touched:** destination tests prove 401 anonymous / 403 wrong
   role / 200 allowed, and
   `python3 .hermes/skills/gates/check-release-readiness/scripts/check-empty-security.py <tree>`
-  does not flag the destination (it must still fail on
-  `.hermes/skills/harness/validate-contracts/fixtures/runnable-db-security/bad-placeholder-security/`).
+  does not flag the destination.
 - **Health, when touched:** the `/q/health` payload names **every** check
   migrated from a legacy indicator; `/q/health/live` and `/q/health/ready` both
   resolve; a dependency-backed check reports DOWN under readiness.

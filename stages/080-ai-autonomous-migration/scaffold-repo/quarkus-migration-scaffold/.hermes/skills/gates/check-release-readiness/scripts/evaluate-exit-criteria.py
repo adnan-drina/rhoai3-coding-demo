@@ -4,7 +4,7 @@
 R-OF.1 (066500Z): Maven `-Dtest=` is the official Surefire scope. Hermes
 has no native exit-eval. This wrapper rewrites unscoped `mvn test|verify`
 to proves FQCNs (task_scoped_tests) because minted cmds stay unscoped
-(handover-mint freeze 1088 / AR-4.3). Fail-closed when proves yield no
+until K4 copies the typed partition. Fail-closed when proves yield no
 FQCN — do not fall back to the whole suite.
 """
 from __future__ import annotations
@@ -23,7 +23,7 @@ SCHEMA = "rhoai3.exit-eval/v1"
 WALLISH = frozenset({"timed_out", "timeout_kill", "gave_up"})
 # Architect E-20260811T175305Z — whole-tree compile unsatisfiable mid-partition
 SCOPED_COMPILE_CHECKS = frozenset({"compile", "test_compile"})
-# phase-dispatch.yaml M3 required_checks: task_scoped_tests
+# M3 required_checks: task_scoped_tests
 SCOPED_TEST_GOALS = frozenset({"test", "verify"})
 
 

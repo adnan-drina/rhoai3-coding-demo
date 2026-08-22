@@ -257,92 +257,17 @@ commands:
         else
           echo "WARN: missing ${PROVISION_CLI} — Quarkus CLI not provisioned"
         fi
-        STAMP_REV="${PROJECT_DIR}/.hermes/skills/harness/dispatch-phase/scripts/stamp-harness-rev.py"
-        if [ -f "${STAMP_REV}" ]; then
-          python3 "${STAMP_REV}" --root "${PROJECT_DIR}" \
-            || echo "WARN: HARNESS_REV stamp failed"
-        fi
-        GW_SUP="${PROJECT_DIR}/.hermes/home/scripts/supervise-gateway.sh"
-        if [ -f "${GW_SUP}" ]; then
-          bash "${GW_SUP}" --ensure \
-            || echo "WARN: supervise-gateway --ensure failed"
-        else
-          echo "WARN: ${GW_SUP} missing — gateway will not persist"
-        fi
-        # Autostart M1: create→check→dispatch (075106Z / 140201Z). Refuse is a
-        # marker file, never Unhealthy. Do not kanban daemon --force.
-        AUTO_M1="${PROJECT_DIR}/.hermes/skills/harness/dispatch-phase/scripts/autostart-migration.sh"
-        if [ -f "${AUTO_M1}" ]; then
-          bash "${AUTO_M1}" --root "${PROJECT_DIR}" \
-            || echo "WARN: autostart-migration exited nonzero (see .hermes/AUTOSTART-STATUS)"
-        fi
+        # v2 Phase N: no stamp-harness-rev / supervise-gateway / autostart-migration.
+        # Native gateway-embedded dispatcher is dest Managed Scope. Do not
+        # kanban daemon --force. Do not start M1 from destfile.
+        echo "Phase N: v1 destfile autostart skipped (no dispatch-phase / home scripts)"
   - id: start-hermes-dashboard
     exec:
       component: development-tooling
-      # Operator E-20260812T171806Z — loopback bind + che-gateway secure endpoint.
+      # v2 Phase N: dashboard web_dist autostart is out of day-one (AD-019).
       commandLine: |
-        set +e
-        export PATH="${HOME}/.local/bin:${PATH}"
-        PROJECT_DIR="/projects/modernized"
-        if [ -f "${HOME}/.bashrc" ]; then
-          # shellcheck disable=SC1090
-          . "${HOME}/.bashrc" 2>/dev/null || true
-        fi
-        if ! command -v hermes >/dev/null 2>&1; then
-          echo "WARN: hermes absent — dashboard not started (recovery: hermes dashboard --skip-build --host 0.0.0.0 --port 9119 --no-open)"
-          exit 0
-        fi
-        UI="${HOME}/.hermes/hermes-agent/hermes_cli/web_dist/index.html"
-        if [ ! -f "${UI}" ]; then
-          echo "WARN: Hermes dashboard UI pre-warm missing at ${UI} — skip auto-start"
-          exit 0
-        fi
-        if python3 -c 'import socket;s=socket.socket();s.settimeout(0.5);s.connect(("127.0.0.1",9119))' 2>/dev/null; then
-          echo "Hermes dashboard already listening on 127.0.0.1:9119"
-          exit 0
-        fi
-        cd "${PROJECT_DIR}" 2>/dev/null || cd /projects/modernized || true
-        start_dash() {
-          nohup hermes dashboard --skip-build --host 0.0.0.0 --port 9119 --no-open \
-            >/tmp/hermes-dashboard.log 2>&1 &
-          echo $!
-        }
-        listening() {
-          python3 -c 'import socket;s=socket.socket();s.settimeout(0.5);s.connect(("127.0.0.1",9119))' 2>/dev/null
-        }
-        # Supervised start (Architect E-20260809T003929Z): READY log alone is not liveness.
-        pid="$(start_dash)"
-        echo "Hermes dashboard postStart: launched pid=${pid} loopback 127.0.0.1:9119"
-        ok=0
-        for i in 1 2 3 4 5 6 7 8 9 10; do
-          sleep 1
-          if listening; then ok=1; break; fi
-        done
-        if [ "${ok}" -ne 1 ]; then
-          echo "WARN: dashboard not listening after 10s — one restart"
-          kill "${pid}" 2>/dev/null || true
-          pid="$(start_dash)"
-          sleep 3
-          if listening; then ok=1; fi
-        fi
-        if [ "${ok}" -eq 1 ]; then
-          # Tiny watchdog: restart once if the process dies within ~3m of workspace start.
-          nohup bash -c '
-            for _ in $(seq 1 36); do
-              sleep 5
-              if python3 -c "import socket;s=socket.socket();s.settimeout(0.5);s.connect((\"127.0.0.1\",9119))" 2>/dev/null; then
-                continue
-              fi
-              echo "dashboard-watchdog: port 9119 down — restart once" >>/tmp/hermes-dashboard.log
-              nohup hermes dashboard --skip-build --host 0.0.0.0 --port 9119 --no-open \
-                >>/tmp/hermes-dashboard.log 2>&1 &
-              exit 0
-            done
-          ' >/tmp/hermes-dashboard-watchdog.log 2>&1 &
-          echo "Hermes dashboard postStart: LISTENING on 127.0.0.1:9119 (watchdog armed; open hermes-dashboard endpoint via che-gateway/OAuth)"
-        else
-          echo "WARN: dashboard still not listening — best-effort only; recovery: hermes dashboard --skip-build --host 0.0.0.0 --port 9119 --no-open"
-        fi
+        echo "Phase N: Hermes dashboard autostart skipped (web_dist out of day-one)"
+        exit 0
   # Prefer JAVA_HOME_21 (UDI contract). sdkman is not present on this
   # seat's image — do not assume it. Pom targets Java 21.
   - id: test

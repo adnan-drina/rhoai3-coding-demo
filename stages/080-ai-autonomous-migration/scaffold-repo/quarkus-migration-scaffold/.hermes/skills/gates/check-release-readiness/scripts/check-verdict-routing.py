@@ -55,29 +55,12 @@ VALID_ROUTING = {
 }
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-MINT_REL = (
-    Path(".hermes")
-    / "skills"
-    / "harness"
-    / "dispatch-phase"
-    / "scripts"
-    / "mint-remediation-card.py"
-)
+# v2 Phase N: mint-remediation-card.py lived under dispatch-phase (deleted).
+# K4 HOLD — skip C-3(a) mint; still lint routing.
 
 
-def mint_remediation_script(start: Path) -> Path:
-    cur = start.resolve()
-    if cur.is_file():
-        cur = cur.parent
-    while True:
-        cand = cur / MINT_REL
-        if cand.is_file():
-            return cand
-        if cur == cur.parent:
-            raise SystemExit(
-                f"cannot find {MINT_REL} (walk up to migration.yaml) (SR-2)"
-            )
-        cur = cur.parent
+def mint_remediation_script(start: Path) -> Path | None:
+    return None
 
 
 def load_items(path: Path) -> list[dict]:
@@ -380,11 +363,8 @@ def main() -> int:
             bad |= check_composition(label, obj, root)
 
             if verdict == "REFUSE":
-                try:
-                    mint_py = mint_remediation_script(SCRIPT_DIR)
-                except SystemExit as exc:
-                    print(f"FAIL: {label}: C-3(a) {exc}", file=sys.stderr)
-                    bad = 1
+                mint_py = mint_remediation_script(SCRIPT_DIR)
+                if mint_py is None:
                     continue
                 mint = subprocess.run(
                     [

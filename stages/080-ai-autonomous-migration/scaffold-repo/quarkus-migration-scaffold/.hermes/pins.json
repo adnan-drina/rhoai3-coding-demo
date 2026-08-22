@@ -6,7 +6,7 @@
       "build": "2026.8.18",
       "install_surface": "Platform Dev Spaces init (Managed Scope)",
       "initial_status_contract": "binary-local: hermes kanban create --help plus VALID_INITIAL_STATUSES. Public CLI page is not the contract. Omit --initial-status yields ready (fail-open).",
-      "note": "Seat pin (Architect E-20260818T111730Z / Operator E-20260818T132010Z). Dest measured v0.20.4. assert-seat-hermes-pin.py refuses drift. Installer still floats until catalog restamp; dispatch is the control."
+      "note": "Seat pin (Architect E-20260818T111730Z / Operator E-20260818T132010Z). Dest measured v0.20.4. Native Kanban gateway-embedded dispatcher is the control. HOLD pin-move without Operator GO."
     },
     "spec_kit": {
       "package": "specify-cli",

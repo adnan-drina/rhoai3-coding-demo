@@ -1,6 +1,6 @@
 ---
 name: check-release-readiness
-description: Before advancing, requeueing or shipping — lint verdict tokens, phase required_checks and floor receipts
+description: Before advancing, requeueing or shipping — lint verdict tokens and M4/M5 floor receipts. Do not use for domain parity (check-domain-parity) or phase-dispatch matrix (deleted in v2).
 license: Apache-2.0
 compatibility: Linux seat; Python 3.11+; reads migration/ receipts
 metadata:
@@ -17,8 +17,7 @@ metadata:
 ## When to Use
 
 - **A verdict is about to be written or consumed** at M4/M5/factory: confirm
-  `.hermes/phase-dispatch.yaml` `required_checks` still cover the §18 matrix and
-  that every JSON under `evidence/verdicts/` and `evidence/preflight/` carries
+  every JSON under `evidence/verdicts/` and `evidence/preflight/` carries
   a legal token + routing pair (M4 is literally `PROVISIONAL_ACCEPT`).
 - **A ship or `promoted_to_main` claim exists**: factory must not contradict a
   *full* M5 `ACCEPT`, the claim must name a candidate SHA, and standing entry-
@@ -39,7 +38,7 @@ metadata:
 
 - `AGENTS.md (doctrine; was validation-release-gates)`
 - This skill (verdict / gate-receipt schemas live here; no `governance/` folder)
-- Phase `required_checks` + `accept_kind`: `.hermes/phase-dispatch.yaml`
+- Native Kanban state is the phase DAG (`hermes kanban show --json`)
 
 **§18.0:** M4 verdict = literal `PROVISIONAL_ACCEPT` (never ship); M5 = `ACCEPT`
 (G-4); shared-substrate reopen = closure ∩ implicated; kill-ratio `PASS`
@@ -52,39 +51,31 @@ Ordered stages; each script takes the product root as its first positional arg
 and is idle (exit 0) when its trigger artifact is absent. Commands under
 **Checks**.
 
-1. **Matrix** — `check-phase-matrix.py <root>` asserts `required_checks` per
-   phase; `--print M4|M5|factory` emits the validator preflight checklist.
-2. **Completion floors** (refuse a phase that never ran anything real) —
+1. **Completion floors** (refuse a phase that never ran anything real) —
    `check-runnable-db-config.py`, `check-empty-security.py`,
    `check-test-toolchain.py`, and `../check-domain-parity/scripts/check-product-tests.py`.
-3. **Verdict composition** — `check-verdict-routing.py` over
+2. **Verdict composition** — `check-verdict-routing.py` over
    `evidence/verdicts/` + `evidence/preflight/`; `check-accept-scope.py` for
    descope ⇒ `SCOPED_ACCEPT`; `compute-substrate-reopen.py --check <verdict>`
    (or `--implicated a,b --print`) against `evidence/slices/closure-map.json`.
-4. **Semantics (B8)** — `check-semantics-manifest.py` (contract
+3. **Semantics (B8)** — `check-semantics-manifest.py` (contract
    `check-semantics-manifest.md`; also via `check-m4-floor-receipts.py`).
-5. **Terminals and requeue** — `evaluate-exit-criteria.py`, wall/crash apply
+4. **Terminals and requeue** — `evaluate-exit-criteria.py`, wall/crash apply
    scripts, `restore-or-refuse-requeue.py`, `check-workspace-clean.py`,
    `apply-dependency-wait-hold.py`, `check-side-effect-recovery.py`.
-6. **Completion** — `assert-complete-exit-criteria.py --body` →
+5. **Completion** — `assert-complete-exit-criteria.py --body` →
    `evidence/runs/<task>/complete-exit-ok.json` before `kanban_complete`.
    `--task-id` defaults to `HERMES_KANBAN_TASK`. `mvn test|verify` is
    scoped to `proves` FQCNs. `check-test-toolchain.py` (rest-assured +
    assertj) runs on this path.
-7. **Ship** — `check-factory-m5.py` (required oracle) and
+6. **Ship** — `check-factory-m5.py` (required oracle) and
    `check-candidate-promote.py` (candidate SHA before `promoted_to_main`).
-8. **Floor / chaos** — `run-m4-floor.sh` then `check-m4-floor-receipts.py`;
+7. **Floor / chaos** — `run-m4-floor.sh` then `check-m4-floor-receipts.py`;
    `run-chaos-matrix.py` under the Hermes venv.
 
 ## Checks
 
 ```bash
-# Assert dispatch-phase matrix matches §18 (M3/M4/M5)
-python3 "${HERMES_SKILL_DIR}/scripts/check-phase-matrix.py" /projects/modernized
-
-# Print checklist for a phase
-python3 "${HERMES_SKILL_DIR}/scripts/check-phase-matrix.py" /projects/modernized --print M4
-
 # Verdict routing + §18.0 composition
 python3 "${HERMES_SKILL_DIR}/scripts/check-verdict-routing.py" /projects/modernized
 
@@ -173,9 +164,6 @@ HERMES_AGENT_ROOT="${HOME}/.hermes/hermes-agent"
 
 ## Verification
 
-- `check-phase-matrix.py` prints `OK: AD-H §18 phase-matrix present in
-  phase-dispatch.yaml` after one `OK: <phase> required_checks cover §18 matrix`
-  line per phase; a missing check names the phase and the absent ids.
 - `check-verdict-routing.py` prints `OK: verdict-routing checks passed (N
   artifact(s))`. **Silent-failure assertion: N must be > 0.** `N = 0` — or the
   idle line `OK: no verdict/preflight artifacts — routing lint idle` — means

@@ -11,7 +11,7 @@ Checks:
      story via transcribed ``story.endpoints`` ∩ inventory ``http_method``+
      ``http_path`` / ``symbol`` (A-8). Do **not** join inventory ``file`` to
      dest write-set paths (Architect ``E-20260817T152824Z``; that RestController
-     vs Resource lookup is not A-8). A-8 itself stays in handover-mint.
+     vs Resource lookup is not A-8). HTTP coverage stays 1:1 (endpoints_multi).
   2) Unique ``pom.xml`` writer (DD3 / Architect E-20260814T205052Z). Non-pom
      ``file_overlap`` is dropped while serial (same invented gate as mint
      ``FILE_OVERLAP``, ``131858Z`` / ``152824Z``). Do **not** stamp
@@ -30,8 +30,13 @@ Checks:
      Partition dual-frame (same basename under both mapped leaves) is
      INVALID. Coverage still does not join inventory.file to dest write-set.
   6) Type-inventory dest twins (when ``evidence/type-inventory.json`` is
-     present): every ``types[].dest_file`` must appear in some story
-     write-set. Gap ``types_uncovered=N``. Missing file is skip, not INVALID.
+     present): every **non-generated, not-superseded** ``types[].dest_file``
+     must appear in ≥1 story write-set. A dest_file MAY be declared
+     superseded (partition or story ``supersedes``) by a named non-empty
+     successor set; covered iff every successor is owned. Incomplete
+     successor sets are gaps. Same dest_file on N stories is VALID (non-pom).
+     Report **all** uncovered rows. Gap ``types_uncovered=N``. Missing file
+     is skip, not INVALID.
 
 Specimen-agnostic (Operator E-20260811T150800Z): HTTP denominator and package
 rewrites are derived from inventory / migration.yaml — never hardcoded.
@@ -64,6 +69,7 @@ if str(_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS))
 
 from specimen_agnostic import (  # noqa: E402
+    collect_supersedes,
     dest_path_as_written,
     inventory_http_expected,
     intra_package_maps,
@@ -72,6 +78,7 @@ from specimen_agnostic import (  # noqa: E402
     resolve_inventory_path,
     rewrite_across,
     story_declared_writeset,
+    type_inventory_supersede_gaps,
     type_inventory_uncovered,
 )
 
@@ -374,13 +381,11 @@ def main() -> int:
 
     if uncovered:
         gaps.append(f"endpoints_uncovered={len(uncovered)}")
-        for u in uncovered[:12]:
+        for u in uncovered:
             gaps.append(f"uncovered:{u}")
-        if len(uncovered) > 12:
-            gaps.append(f"uncovered:…(+{len(uncovered)-12})")
     if multi:
         gaps.append(f"endpoints_multi={len(multi)}")
-        for m in multi[:8]:
+        for m in multi:
             gaps.append(f"multi:{m}")
 
     owned_dest: set[str] = set()
@@ -393,13 +398,14 @@ def main() -> int:
             for f in body_files_for_story(bodies_dir, sid):
                 if f:
                     owned_dest.add(dest_path_as_written(f))
-    missing_types = type_inventory_uncovered(root, owned_dest)
+    supersedes = collect_supersedes(partition, stories)
+    for g in type_inventory_supersede_gaps(owned_dest, supersedes):
+        gaps.append(g)
+    missing_types = type_inventory_uncovered(root, owned_dest, supersedes)
     if missing_types:
         gaps.append(f"types_uncovered={len(missing_types)}")
-        for u in missing_types[:12]:
+        for u in missing_types:
             gaps.append(f"uncovered-type:{u}")
-        if len(missing_types) > 12:
-            gaps.append(f"uncovered-type:…(+{len(missing_types)-12})")
 
     findings_path = root / args.findings
     findings = load_json(findings_path)

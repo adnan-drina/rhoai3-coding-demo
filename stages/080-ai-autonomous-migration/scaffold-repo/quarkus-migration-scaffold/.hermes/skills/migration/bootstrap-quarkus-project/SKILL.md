@@ -95,8 +95,7 @@ documents hand-authoring as a dedicated path.
 - `check-pom-jacoco-wiring.py <root>` prints
   `OK: pom Jacoco/Sonar dual-path + argLine wiring present`.
 - `quarkus.platform.group-id` is `com.redhat.quarkus.platform`.
-- Harness tree still present: `.hermes/skills/harness/validate-contracts/`,
-  `AGENTS.md`, `devfile.yaml`.
+- Chassis present: `AGENTS.md`, `devfile.yaml`, `.hermes/LAYOUT.md`.
 - `scripts/bootstrap.sh` exits non-zero with `CREATE_PATH_RETIRED` if invoked
   for create (DD1 fail-closed). Do **not** depend on `rsync` (W2 — seat has
   `tar`; create sync path is retired).

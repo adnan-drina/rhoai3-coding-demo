@@ -19,19 +19,20 @@ metadata:
   The phase-attach matrix pins this skill to every phase M1–M5.
 - After a `evidence/bodies/*.json` is assembled — validate that one body with
   `--body <path>` at create time, not only the whole corpus.
-- After `handover-mint.py` writes the partition **receipt** — prove coverage
-  (endpoint coverage, no write overlap) with `check-partition-coverage.py`.
+- After the typed partition is written — prove coverage (HTTP 1:1, dest_file
+  1:N with supersede) with `check-partition-coverage.py`.
   This skill does **not** author Path-A `partition.json`. `stamp-body-dependencies.py`
   may append inheritance-reachable dest twins onto an existing story frame
   (V34-5); it does not invent stories.
 - When a body's `exit_criteria`, `files_in_scope`, or `operand_count` changed —
   these are the fields the gates refuse on.
-- Before holder mint (`mint-m3-hermes.md`) or assemble — `assert-mint-oracles.py` (refs,
+- Before assembling an M3 body — `assert-mint-oracles.py` (refs,
   Hermes `task_id`, SR-13/L2a discriminating exit: the test proving this
   card's AC lives in this write-set; test-shaped cmds name `proves` tests
   in this write-set).
-- **Not** for creating `.specify/`, installing `specify-cli`, or authoring
-  Path-A partitions — `init-spec-workspace` / `handover-mint.py`.
+- **Not** for creating `.specify/` or installing `specify-cli` —
+  `init-spec-workspace`. **Not** for minting Kanban children from
+  `tasks.md` PATH_TOKEN (OBJECT). Authority is the typed partition.
 
 
 # SDD readiness (pattern-steals + §S.6)
@@ -51,7 +52,7 @@ python3 "${HERMES_SKILL_DIR}/scripts/check-operand-count.py" /projects/modernize
 # L2 / SR-13 — refs + Hermes task_id + discriminating exit
 python3 "${HERMES_SKILL_DIR}/scripts/assert-mint-oracles.py" /projects/modernized \
   --body evidence/bodies/m3-s-003.json
-# M2 exit — partition VALID as a whole (lint of the handover receipt)
+# M2 exit — partition VALID as a whole (1:N dest_file + HTTP 1:1)
 python3 "${HERMES_SKILL_DIR}/scripts/check-partition-coverage.py" /projects/modernized \
   --write-receipt evidence/receipts/partition-coverage/latest.json
 ```

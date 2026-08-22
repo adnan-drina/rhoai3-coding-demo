@@ -19,9 +19,10 @@ metadata:
 
 - M1 ANALYZE, **before** the M1→M2 handoff: `emit-findings-handoff.py` refuses
   (exit 2, AR-4.1) unless `evidence/entry-point-inventory.json` already exists.
-- Before M2 plan / Kanban populate: the inventory is a declared phase input
-  (`dispatch-phase/scripts/check-phase-input-manifest.py`) and an accept-scope
-  path (`check-release-readiness/scripts/check-accept-scope.py`).
+- Before M2 plan / Kanban populate: the inventory is a declared M1 output
+  and an accept-scope path
+  (`check-release-readiness/scripts/check-accept-scope.py`). Attach this
+  skill with native `hermes kanban create --skill inventory-entry-points`.
 - Before writing `migration/story-endpoint-partition.json`: the partition's
   endpoint union must equal this inventory exactly (conservation gate in
   `check-findings-handoff.py`).
@@ -69,7 +70,7 @@ are deliberately **not** counted — only independently callable handlers are.
 Those prefixes **are** joined onto method mappings as structured
 `http_method` and `http_path` (Architect `E-20260816T193813Z`). Mint A-8
 coverage joins on dest-file equality (same-stack shortcut), inventory
-`symbol` named in the phase body, or transcribed `http_path`+`http_method`
+`symbol` named in the story body, or transcribed `http_path`+`http_method`
 — never a RestController→Resource filename map, and never by guessing a
 route from a Java filename. `target/`, `build/`, `node_modules/`,
 `fixtures/`, `.git/`, `.derived/` are skipped relative to the scan root
@@ -99,7 +100,7 @@ only, so a referent living under `/projects/.derived/…` still scans.
   `counts.total` equals `len(entry_points)` and `counts.by_subtype` sums to it.
 - HTTP rows carry `http_method` (GET/POST/…) and `http_path` (class prefix
   joined to the method mapping). Empty fields mean the scanner could not
-  parse a route; mint then covers only by dest-file shortcut or `symbol`.
+  parse a route; coverage then joins on dest-file shortcut or `symbol`.
 - Script prints `OK: <n> entry points (<h> http, <n> non-http) → <path>` and
   exits 0. Exit 2 = scan root is not a directory (nothing was written).
 - Digest coupling: `check-findings-handoff.py` re-hashes this file and compares

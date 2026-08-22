@@ -10,8 +10,8 @@ An artefact says what it says; nobody edits it afterwards without a typed path.
 
 1. Body digest stamp / match — `stamp-body-digest.py` (first stamp),
    `restamp-card-and-sidecar.py` (repair), `check-body-digest-match.py`
-2. Own-story digest / card-sidecar cross-assert — dispatch-phase create path;
-   re-stamp updates card and sidecar as one operation or refuses
+2. Own-story digest / card-sidecar cross-assert — native `kanban_create`
+   (inline `--body`); re-stamp updates card and sidecar as one operation or refuses
 3. Constraints preserved on amend — `assert-constraints-preserved.py`
 4. Mint completeness — `assert-mint-constraints-complete.py`
 5. Injection receipts — `injection_receipt.py` (F2)

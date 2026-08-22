@@ -43,7 +43,7 @@
    values are `disabled` | `enabled` | `paused` only. Never write
    `false`/`true` — Quarkus rejects them (`SRCFG00049`) and `mvn test` fails
    before suites run. Prefer `disabled` for CI/`mvn test`. Golden snippet:
-   `.hermes/skills/harness/dispatch-phase/fixtures/testing/golden-test-application.properties`.
+   `.hermes/skills/migration/spring-to-quarkus-patterns/fixtures/testing/golden-test-application.properties`.
 
 ## Agent text
 
@@ -68,7 +68,7 @@ in pom). If `test-compile` fails, read the pom artifactId — **do not invent**
 **Isolation card `test-rest-isolation`:** legacy MockMvc + `@MockBean(service)` →
 Quarkus `@QuarkusTest` + `@InjectMock` **service** + REST Assured hitting the
 real JAX-RS stack. Copy once:
-`.hermes/skills/harness/dispatch-phase/fixtures/testing/golden-rest-controller/PetTypeRestControllerTests.java`
+`.hermes/skills/migration/spring-to-quarkus-patterns/fixtures/testing/golden-rest-controller/PetTypeRestControllerTests.java`
 
 **Failure triage (red tests — once per failure class):**
 1. Classify 400 vs 500 vs assertion.

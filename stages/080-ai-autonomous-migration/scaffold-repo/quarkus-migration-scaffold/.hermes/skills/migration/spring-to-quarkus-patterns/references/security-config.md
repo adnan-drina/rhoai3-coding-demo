@@ -46,7 +46,7 @@ Internal pack (secondary): `source-analysis/external-review/20260810-artifact-re
 
 ## Worked neutral example (not specimen-bound)
 
-Golden tree: `.hermes/skills/harness/dispatch-phase/fixtures/security/golden-basic-authz/`
+Golden tree: `.hermes/skills/migration/spring-to-quarkus-patterns/fixtures/security/golden-basic-authz/`
 
 | Piece | Role |
 |-------|------|
@@ -63,8 +63,7 @@ Copy the pattern; adapt package/paths to the specimen. Do **not** leave javadoc-
 - Specimen-prefixed toggles like `app.security.enable=true` (or JDBC enabled) without elytron JDBC + real props  
 - Claiming “Quarkus security” with only a mapping essay  
 
-Fixture: `.hermes/skills/harness/validate-contracts/fixtures/runnable-db-security/bad-placeholder-security/`  
-Gate: `python3 .hermes/skills/gates/check-release-readiness/scripts/check-empty-security.py <tree>` → **rc≠0**
+Gate: `python3 .hermes/skills/gates/check-release-readiness/scripts/check-empty-security.py <tree>` → **rc≠0** on empty/placeholder security.
 
 ## Runtime proof (must land in dest tests)
 
@@ -87,7 +86,7 @@ Passwords one-way encoded; absent from responses/logs.
 
 ```bash
 python3 .hermes/skills/gates/check-release-readiness/scripts/check-empty-security.py \
-  .hermes/skills/harness/validate-contracts/fixtures/runnable-db-security/bad-placeholder-security   # expect FAIL
+  /path/to/dest   # expect FAIL on empty/placeholder security
 # Golden IT (when module runnable / copied into product):
 # mvn -q -Dtest=SecurityAuthzIT test
 ```

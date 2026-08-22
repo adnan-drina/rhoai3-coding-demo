@@ -101,13 +101,9 @@ golden, publish, wipe, restart.
 EOF
 
   if [ -d "${ROOT}/.git/hooks" ]; then
-    cat > "${ROOT}/.git/hooks/pre-commit" <<'HOOK'
-#!/bin/sh
-ROOT=$(git rev-parse --show-toplevel)
-exec bash "${ROOT}/.hermes/skills/harness/validate-contracts/scripts/pre-commit-index-suite.sh"
-HOOK
-    chmod +x "${ROOT}/.git/hooks/pre-commit"
-    log "installed LG9a pre-commit hook → .git/hooks/pre-commit"
+    # K5 authoring CI lives on harness-v2, not a dest pre-commit suite.
+    rm -f "${ROOT}/.git/hooks/pre-commit"
+    log "Phase N: skipped dest pre-commit hook (validate-contracts out of day-one)"
   fi
 }
 
@@ -290,19 +286,7 @@ def resolve_one(d: str) -> str:
 
 existing = [resolve_one(d) for d in parse_external_dirs(text)]
 need = [project, home]
-disabled_need = [
-    "dispatch-phase",
-    "enforce-authority-boundary",
-    "ground-in-harvest",
-    "record-run-evidence",
-    "validate-contracts",
-]
-if (
-    cfg_path.is_file()
-    and all(n in existing for n in need)
-    and "disabled:" in text
-    and all(n in text for n in disabled_need)
-):
+if cfg_path.is_file() and all(n in existing for n in need):
     print(f"ensure_external_dirs: OK ({cfg_path})")
     raise SystemExit(0)
 
@@ -326,30 +310,14 @@ if yaml is not None:
             dirs.append(n)
             resolved.append(n)
     skills["external_dirs"] = dirs
-    disabled = [
-        "dispatch-phase",
-        "enforce-authority-boundary",
-        "ground-in-harvest",
-        "record-run-evidence",
-        "validate-contracts",
-    ]
-    cur_dis = [str(x) for x in (skills.get("disabled") or [])]
-    for n in disabled:
-        if n not in cur_dis:
-            cur_dis.append(n)
-    skills["disabled"] = cur_dis
+    # v2: do not disable deleted v1 harness skill names.
+    skills.pop("disabled", None)
     cfg_path.parent.mkdir(parents=True, exist_ok=True)
     cfg_path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
 else:
     block = (
         "# AD-S ensure_external_dirs (postStart provision)\n"
         "skills:\n"
-        "  disabled:\n"
-        "    - dispatch-phase\n"
-        "    - enforce-authority-boundary\n"
-        "    - ground-in-harvest\n"
-        "    - record-run-evidence\n"
-        "    - validate-contracts\n"
         "  external_dirs:\n"
         f"    - {project}\n"
         f"    - {home}\n"

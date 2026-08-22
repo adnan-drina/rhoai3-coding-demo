@@ -69,8 +69,9 @@ Idempotent via `.specify/.rhoai3-ads-provisioned`. Spec Kit is pinned
 
 ## Stop rule (non-negotiable)
 
-After `/speckit-tasks` (optional `/speckit-analyze`) → Kanban mint.
-**Never** `/speckit-implement`. Run `specify workflow run speckit`.
+After `/speckit-tasks` (optional `/speckit-analyze`) → native `kanban_create`
+from the typed partition. **Never** `/speckit-implement`. Run
+`specify workflow run speckit`.
 
 ## Pitfalls
 
@@ -78,8 +79,7 @@ After `/speckit-tasks` (optional `/speckit-analyze`) → Kanban mint.
   skills still land under `~/.hermes/skills/`.
 - When `HERMES_HOME` is relocated, **assert** (not merely remind) that
   `skills.external_dirs` lists both `<modernized>/.hermes/skills` and
-  `$HOME/.hermes/skills` — `scripts/check-external-dirs.py` (also in
-  `validate-contracts`).
+  `$HOME/.hermes/skills` — `scripts/check-external-dirs.py`.
 - Stamping a second Path-A workflow YAML that has to be kept in sync with
   upstream `speckit` — use the overlay (`extends: speckit`).
 

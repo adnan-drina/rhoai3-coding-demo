@@ -172,6 +172,12 @@ The upstream `maas-controller` coexistence path and `maas-api` image override we
 
 ## Stage 080 autonomous migration
 
+**Campaign (2026-08-22):** dest v42 and prior dest runs are **abandoned**. Work
+is the v2 rewrite on branch `harness-v2` (Phase N native alignment). Do not
+dest-complete leftover v42 cards. Do not dest-wipe until harvest (HV-1) plus
+an explicit wipe GO. Overlay `overlay-a8-publish` still serves live Argo until
+a GitOps recut GO. The V34 dest-overlay register below is historical.
+
 ### Next dest overlay (HARD before v34 — do not dest-edit v33)
 
 Working register: [`tmp/V34-BACKLOG.md`](tmp/V34-BACKLOG.md) (IDs **V34-1**…**V34-11**, keep/pre-cut/observe). **One ID:** **V34-6** = dest-home kanban pins. **V34-7** = JSON-starve. Overlay `2faa106e` / golden `80192fe4` **published** V34-10 (SOURCE vs GENERATED type-inventory) and **V34-11** (`provider: generated`). Prior bank **PUBLISHED** overlay `72e3c86e` / golden `faeb34a8`: V34-2, V34-3, AMEND V34-5, **V34-6**, **V34-8**, **V34-K2**. Overlay `913f8bd0` / golden `d96a8236` **published** V34-1/V34-4/V34-5 (inheritance) / **V34-7**. **V34-9** RETRACTED. v33 is I-14 frozen; observe-only. HOLD the v34 cut until **V34-P1** (RHDH pod file cites overlay HEAD). Do not dest-copy onto v33.

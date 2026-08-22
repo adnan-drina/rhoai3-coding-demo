@@ -21,25 +21,16 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 
-def _find_type_graph() -> Path:
-    cur = Path(__file__).resolve().parent
-    for _ in range(10):
-        cand = (
-            cur
-            / "sdd"
-            / "check-spec-readiness"
-            / "scripts"
-            / "type_graph.py"
-        )
-        if cand.is_file():
-            return cand.parent
-        if cur.name == "skills" and (cur / "sdd/check-spec-readiness/scripts/type_graph.py").is_file():
-            return cur / "sdd/check-spec-readiness/scripts"
-        cur = cur.parent
-    return Path("/nonexistent")
-
-
-_TG = _find_type_graph()
+# BIND N6: import type_graph as a module. OBJECT: runtime tree walk.
+# Canonical home stays check-spec-readiness/scripts (no parallel copy).
+_TG = (
+    Path(__file__).resolve().parents[3]
+    / "sdd"
+    / "check-spec-readiness"
+    / "scripts"
+)
+if not (_TG / "type_graph.py").is_file():
+    raise SystemExit(f"FAIL: type_graph module missing at {_TG / 'type_graph.py'}")
 if str(_TG) not in sys.path:
     sys.path.insert(0, str(_TG))
 

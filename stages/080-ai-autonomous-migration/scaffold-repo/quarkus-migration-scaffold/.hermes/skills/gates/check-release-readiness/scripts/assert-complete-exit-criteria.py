@@ -147,13 +147,12 @@ def main() -> int:
         )
         return 1
 
-    # Architect E-20260813T152211Z / Lead wire-or-retire: AD-H §17/§19 must not
-    # depend on skill_view. Invoke enforcement scripts on the complete path.
-    # Wave B tip layout: enforcement scripts live under .hermes/skills/harness/
-    # (skills/harness retained as legacy fallback).
+    # v2 Phase N: citation/digest/provenance lived under skills/harness (deleted).
+    # K2 HOLD — skip those scripts; keep product gates on the complete path.
     skills = root / ".hermes" / "skills" / "harness"
     enforcement = root / ".hermes" / "enforcement"
     gates = root / ".hermes" / "skills" / "gates" / "check-release-readiness" / "scripts"
+    optional_missing_ok = {"body-digest", "citation", "provenance"}
 
     def find_script(rel: str) -> Path:
         for base in (enforcement, skills):
@@ -217,6 +216,9 @@ def main() -> int:
         ),
     ):
         if not Path(cmd[1]).is_file():
+            if label in optional_missing_ok:
+                print(f"OK: {label} idle — v1 harness script out of day-one (K2 HOLD)")
+                continue
             print(f"FAIL: missing enforcement script for {label}: {cmd[1]}", file=sys.stderr)
             return 2
         sub = subprocess.run(cmd, text=True, capture_output=True)

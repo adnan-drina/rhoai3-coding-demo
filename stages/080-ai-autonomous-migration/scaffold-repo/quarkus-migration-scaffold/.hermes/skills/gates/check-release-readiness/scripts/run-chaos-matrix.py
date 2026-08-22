@@ -332,7 +332,7 @@ def scenario_digest_mismatch(kb, conn, board: str, root: Path, out: Path) -> dic
     kinds = {e["kind"] for e in events}
     terminal = "blocked:BODY_REF_DIGEST" if digest_hit and status == "blocked" else None
 
-    # Clean ephemeral body so validate-contracts is not permanently red.
+    # Clean ephemeral body so gate fixtures are not permanently red.
     body_path.unlink(missing_ok=True)
     (out / "digest-mismatch-stderr.txt").write_text(stderr + stdout, encoding="utf-8")
 

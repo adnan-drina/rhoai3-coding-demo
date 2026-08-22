@@ -5,7 +5,7 @@ Architect #34: a whole-domain facade cannot live on a slice that runs
 before the entity stories. Specimen-agnostic: any dest Java whose import
 closure needs types owned by a descendant story is reassigned to polish.
 
-Does not grow handover-mint.py. Does not hardcode a specimen facade type.
+Does not hardcode a specimen facade type.
 
 Usage:
   python3 relocate-descendant-import-writesets.py <root> --write
