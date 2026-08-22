@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """AD-H §G.1 / AR-3.6 — refuse probe-only trees as G-1 acceptance operand.
 
-Exit 0 when at least one *Test.java / *IT.java exists outside com.demo.harness.
+Exit 0 when at least one *Test.java / *IT.java exists outside com.example.tooling.smoke.
 Exit 1 (REFUSE) when tests are absent or only under the harness probe package.
 Tooling smoke may still target harness under G1_OPERAND=tooling_smoke (not
 acceptance).
@@ -16,7 +16,7 @@ import os
 import sys
 from pathlib import Path
 
-HARNESS_PREFIX = "com/demo/harness/"
+HARNESS_PREFIX = "com/example/tooling/smoke/"
 
 
 def test_paths(root: Path) -> list[Path]:
@@ -91,7 +91,7 @@ def main() -> int:
                 "reason": "probe_only",
                 "harness": len(harness),
             },
-            "FAIL: AR-3.6 probe-only tests (com.demo.harness.*) — "
+            "FAIL: AR-3.6 probe-only tests (com.example.tooling.smoke.*) — "
             "REFUSE as G-1 acceptance operand",
             ok=False,
         )

@@ -5,7 +5,7 @@ license: Apache-2.0
 compatibility: Linux seat; Maven and Java 21 for PIT and product tests
 metadata:
   author: rhoai3-harness-team
-  version: "1.4.0"
+  version: "1.4.1"
   hermes:
     tags:
     - gates
@@ -79,7 +79,7 @@ skip and `-DskipTests`. **No static-metric floor.**
 
 **AR-3.6:** default PIT targets are **product** packages. Tooling-smoke probe
 sources live under `examples/g1-volume-probe/` (relocated out of template `src/`;
-`com.demo.harness.*` when copied for smoke). `G1_OPERAND=tooling_smoke` only.
+`com.example.tooling.smoke.*` when copied for smoke). `G1_OPERAND=tooling_smoke` only.
 Probe-only trees **REFUSE**
 as acceptance (`check-g1-acceptance-operand.py`).
 
@@ -140,7 +140,7 @@ Operand first, then live evidence, then pin. Scripts are under
 
 1. **Qualify the operand** — `check-g1-acceptance-operand.py <root>`. Exit 1
    when `src/test/java` holds no `*Test.java`/`*IT.java` outside
-   `com.demo.harness.*`. `G1_OPERAND=tooling_smoke` permits harness-only, and
+   `com.example.tooling.smoke.*`. `G1_OPERAND=tooling_smoke` permits harness-only, and
    that result is never acceptance evidence.
 2. **Qualify the test families** — `check-product-tests.py <root>`. Exit 1
    unless boot, security, crud and db are each matched by a non-harness test

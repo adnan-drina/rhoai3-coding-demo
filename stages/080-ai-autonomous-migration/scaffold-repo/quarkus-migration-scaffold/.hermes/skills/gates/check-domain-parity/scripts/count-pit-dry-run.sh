@@ -39,15 +39,15 @@ fi
 # Harness probe is tooling smoke only: G1_OPERAND=tooling_smoke + override targets.
 G1_OPERAND="${G1_OPERAND:-acceptance}"
 if [ "${G1_OPERAND}" = "tooling_smoke" ]; then
-  PIT_TARGET_CLASSES="${PIT_TARGET_CLASSES:-com.demo.harness.*}"
-  PIT_TARGET_TESTS="${PIT_TARGET_TESTS:-com.demo.harness.*}"
+  PIT_TARGET_CLASSES="${PIT_TARGET_CLASSES:-com.example.tooling.smoke.*}"
+  PIT_TARGET_TESTS="${PIT_TARGET_TESTS:-com.example.tooling.smoke.*}"
   echo "WARN: G1_OPERAND=tooling_smoke — harness probe is NOT acceptance evidence" >&2
 else
   # Product packages commonly used by this scaffold's destination tree.
   PIT_TARGET_CLASSES="${PIT_TARGET_CLASSES:-com.demo.model.*,com.demo.service.*,com.demo.repository.*,com.demo.rest.*,com.demo.mapper.*,com.demo.dto.*,com.demo.security.*}"
   PIT_TARGET_TESTS="${PIT_TARGET_TESTS:-com.demo.model.*,com.demo.service.*,com.demo.repository.*,com.demo.rest.*,com.demo.mapper.*,com.demo.security.*}"
   # Refuse accidental harness-as-acceptance unless explicitly overridden.
-  if [ "${PIT_TARGET_CLASSES}" = "com.demo.harness.*" ] || [ "${PIT_TARGET_TESTS}" = "com.demo.harness.*" ]; then
+  if [ "${PIT_TARGET_CLASSES}" = "com.example.tooling.smoke.*" ] || [ "${PIT_TARGET_TESTS}" = "com.example.tooling.smoke.*" ]; then
     die "AR-3.6 refuse harness probe as G-1 acceptance target (set G1_OPERAND=tooling_smoke for smoke-only)"
   fi
   # Preflight: product tests must exist for acceptance dry-run
@@ -60,7 +60,7 @@ fi
 
 # PIT 1.25.x defaults HTML-only in some setups; parser needs mutations.xml.
 PIT_OUTPUT_FORMATS="${PIT_OUTPUT_FORMATS:-XML,HTML}"
-PIT_EXCLUDED_CLASSES="${PIT_EXCLUDED_CLASSES:-com.demo.harness.*}"
+PIT_EXCLUDED_CLASSES="${PIT_EXCLUDED_CLASSES:-com.example.tooling.smoke.*}"
 
 set +e
 mvn -q test-compile \

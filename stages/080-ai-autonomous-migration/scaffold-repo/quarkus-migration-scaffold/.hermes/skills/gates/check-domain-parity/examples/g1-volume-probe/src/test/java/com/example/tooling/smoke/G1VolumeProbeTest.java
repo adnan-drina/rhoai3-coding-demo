@@ -1,4 +1,4 @@
-package com.demo.harness;
+package com.example.tooling.smoke;
 
 import org.junit.jupiter.api.Test;
 

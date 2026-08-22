@@ -18,4 +18,4 @@ hermes kanban log <task_id>
 - Address gaps in that turn (poisoned CLI, missing official log, fence refusal, mis-identified child, false complete).
 - Do not dest-complete Operator ack gates, dest-read `.env` values, or run `kanban daemon --force`.
 
-Canonical: `.agents/rules/kanban-log-watch.md` and dest `references/native-dispatch.md`.
+Canonical: `.agents/rules/kanban-log-watch.md`, official skill `.agents/skills/hermes-kanban/`, and dest `.hermes/LAYOUT.md`.

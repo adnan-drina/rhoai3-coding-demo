@@ -73,9 +73,10 @@ Compiled-tree drift (`.bak`) is `assert-compiled-route-fidelity.py`.
 
 - `.hermes/pins.json` is the version authority; this constitution names
   the stack so every native spec-kit command sees it as context.
-- After `/speckit-tasks`, convert `tasks.md` into Hermes Kanban cards.
-  **Never run `/speckit-implement`.** Run `specify workflow run speckit`
-  so the project overlay removes `implement`.
+- After `/speckit-tasks`, mint Hermes Kanban cards from the **typed
+  partition** (`kanban_create` inline body). Do **not** grep `tasks.md`
+  for write-set paths. **Never run `/speckit-implement`.** Run
+  `specify workflow run speckit` so the project overlay removes `implement`.
 - Phase acceptance criteria name the proving test in **that story's**
   write-set (T-8). An HTTP assertion is a `@QuarkusTest` there, not
   `curl`. Live HTTP acceptance is M4/M5.
@@ -88,4 +89,4 @@ Compiled-tree drift (`.bak`) is `assert-compiled-route-fidelity.py`.
 - Deviations from these articles must appear in the plan's Complexity
   Tracking table — silent deviations are review findings.
 
-**Version**: 1.2.1 | **Ratified**: 2026-08-15 | **Last Amended**: 2026-08-22
+**Version**: 1.2.2 | **Ratified**: 2026-08-15 | **Last Amended**: 2026-08-22

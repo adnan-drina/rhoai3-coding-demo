@@ -10,7 +10,7 @@ Families (content or name heuristics; optional AR28:<family> markers):
   crud     — product API read/write (/api/ + HTTP verb, *Crud*IT, AR28:crud)
   db       — seeded/Flyway data (seed names, flyway, AR28:db)
 
-Harness package com.demo.harness.* never counts toward acceptance.
+Harness package com.example.tooling.smoke.* never counts toward acceptance.
 """
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ import re
 import sys
 from pathlib import Path
 
-HARNESS_PREFIX = "com/demo/harness/"
+HARNESS_PREFIX = "com/example/tooling/smoke/"
 FAMILIES = ("boot", "security", "crud", "db")
 
 BOOT_RE = re.compile(
@@ -94,7 +94,7 @@ def main() -> int:
 
     if not product:
         print(
-            "FAIL: AR-2.8 probe-only tests (com.demo.harness.*) — "
+            "FAIL: AR-2.8 probe-only tests (com.example.tooling.smoke.*) — "
             "REFUSE as product acceptance (pair AR-3.6)",
             file=sys.stderr,
         )

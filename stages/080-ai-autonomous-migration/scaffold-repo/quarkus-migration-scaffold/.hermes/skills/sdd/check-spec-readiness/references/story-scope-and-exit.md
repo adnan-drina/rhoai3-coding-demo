@@ -75,8 +75,9 @@ including the **relationship** between them (T-8 / v17 wrong-class oracles).
   union legacy). Generator `inputSpec` matching is a **case** of this
   predicate (`assert-dest-generator-configured.py`), not a sibling
   complete-path gate. Wired on `assert-complete-exit-criteria.py`. T013
-  already requires configure-in-pom; `assert-tasks-generator-uptake.py`
-  enforces plan uptake.
+  already requires configure-in-pom; dest POM plugin presence is
+  `assert-dest-generator-configured.py` (typed write-set / inventory),
+  never a `tasks.md` grep.
 - **Story sizing / DD6** — foundation asserts resolve under story-sizing rules
   (`operand_class` taxonomy); DD6 stays named here so tip sync catches drift.
 - **Oracle-design failure classes** (must still refuse): wrong-class · vacuous

@@ -19,4 +19,4 @@ Confirm the worker is executing the card job. If the log shows a gap, poison, fe
 
 Do **not** dest-complete Operator ack gates. Do **not** dest-read `.env` values. Do **not** `kanban daemon --force`.
 
-Procedure: `.hermes/skills/harness/dispatch-phase/references/native-dispatch.md` and `hermes-kanban`.
+Canonical: official skill `.agents/skills/hermes-kanban/` (`hermes kanban log`) and dest identity `.hermes/LAYOUT.md` (native Kanban is the task-state home; no parallel CSV / `created-cards-*.json`).

@@ -90,8 +90,9 @@ install_ads_overlays() {
   cat > "${ROOT}/.specify/AD-S-STOP-RULE.md" <<'EOF'
 # AD-S stop rule
 
-After `/speckit-tasks` (optional `/speckit-analyze`), convert `tasks.md`
-into Hermes Kanban cards.
+After `/speckit-tasks` (optional `/speckit-analyze`), mint Hermes Kanban
+cards from the typed partition (`kanban_create` inline body). Do not
+grep `tasks.md` for write-set paths.
 
 **Never run `/speckit-implement`.** Kanban is the only executor (AD-006 / AD-H).
 
@@ -354,4 +355,4 @@ date -u +%Y-%m-%dT%H:%M:%SZ > "${MARKER}"
 TS="$(cat "${MARKER}")"
 HUMAN="[${LOG_PREFIX}] OK — AD-S provision complete (marker ${MARKER})"
 emit_ok "${HUMAN}" "$(python3 -c 'import json,sys; print(json.dumps({"script":"init-workspace","ok":True,"skipped":False,"root":sys.argv[1],"marker":sys.argv[2],"provisioned_at":sys.argv[3]}))' "${ROOT}" "${MARKER}" "${TS}")"
-log "Stop rule: /speckit-tasks → kanban mint; NEVER /speckit-implement; specify workflow run speckit"
+log "Stop rule: /speckit-tasks → typed partition kanban_create; NEVER /speckit-implement; specify workflow run speckit"

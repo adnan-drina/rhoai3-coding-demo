@@ -5,5 +5,5 @@
   "mutations_killed": 12,
   "probe_only": true,
   "operand": "harness_probe",
-  "note": "AR-3.6: green PIT on com.demo.harness.G1VolumeProbe is not acceptance"
+  "note": "AR-3.6: green PIT on com.example.tooling.smoke.G1VolumeProbe is not acceptance"
 }
