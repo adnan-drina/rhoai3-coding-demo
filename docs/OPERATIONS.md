@@ -43,7 +43,10 @@ until a dest cutover GO. Do not GitHub-rename the v1 golden.
 
 `bootstrap-scaffold-repos.sh` refuses the Stage 080 push when HEAD is
 `harness-v2`. Leftover `adnan-drina/greeting-v2` is not a dest — do not
-provision it. Isolation notes: `stages/080-ai-autonomous-migration/docs/harness-v2-isolation.md`.
+provision it. Do not dest-apply this branch onto v42, dest-complete Operator
+ack gates, or `kanban daemon --force`. Factory isolation: Stage 080
+[SOLUTION-ARCHITECTURE.md](../stages/080-ai-autonomous-migration/SOLUTION-ARCHITECTURE.md)
+§8.
 
 ## Prerequisites
 

@@ -210,6 +210,8 @@ flowchart TB
 
 **Principal risks.** Mixing this SAD into the dest golden. Harvesting v1 mint prose into v2. Treating README wrap-up slogans as DEMONSTRATED. Dest-applying `harness-v2` onto a v1 dest. Calling this file an overlay remnant (it belongs in this stage folder).
 
+**v2 git isolation.** Same `scaffold-repo/` path as v1. Isolation is a **new GitHub golden** (`quarkus-migration-scaffold-v2`), not a sibling tree and not a rename of v1. Live Argo stays overlay until GitOps GO. OBJECT: `bootstrap-scaffold-repos.sh` from `harness-v2` (force-pushes v1); dest-apply onto v42; dest-complete Operator ack gates; `kanban daemon --force`; wipe v42 before HV-1 harvest; provision leftover `greeting-v2`; resume aborted `scaffold-repo-v2/`. Publish only with `scripts/bootstrap-migration-scaffold-v2.sh` on Operator GO. Ops table: [docs/OPERATIONS.md](../../docs/OPERATIONS.md) (branch isolation).
+
 ---
 
 ## 9. Detailed documentation map
