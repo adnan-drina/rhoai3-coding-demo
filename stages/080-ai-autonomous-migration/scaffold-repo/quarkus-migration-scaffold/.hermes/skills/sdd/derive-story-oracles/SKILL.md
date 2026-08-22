@@ -1,11 +1,11 @@
 ---
 name: derive-story-oracles
-description: Before minting or reminting an M3 body's exit_criteria — take phase acceptance criteria as the exit oracle, treat operand_class as a set for class-legal names and B-16 skill attachment, refuse wrong-class/dual-oracle and vacuous always-true cmds; use when assigning story-class verification
+description: Before minting or reminting an M3 body's exit_criteria — take phase acceptance criteria as the exit oracle, treat operand_class as a set for class-legal names and B-16 skill attachment, refuse wrong-class/dual-oracle and vacuous always-true cmds; use when assigning story-class verification. Use when type-inventory shows a whole-domain *Service.java — T0_3_SERVICE split one service class per aggregate, not methods in a shared ClinicService.
 license: Apache-2.0
 compatibility: Linux seat; M3 typed bodies; specimen-agnostic vocab
 metadata:
   author: rhoai3-harness-team
-  version: "1.1.1"
+  version: "1.1.2"
   hermes:
     tags:
     - sdd
@@ -40,6 +40,9 @@ Official technique table and failure classes: `references/concern-oracle-table.m
   entity-only + `hql_entity_path`, …).
 - When reviewing whether a grep-shaped check is strong enough for the claim
   (comment-satisfiable risk).
+- When type-inventory (or `tasks.md`) still has a whole-domain `*Service.java`
+  (`ClinicService` and the like) — `T0_3_SERVICE` in
+  `references/failure-classes.md`. Split **one service class per aggregate**.
 - **Not** for write-set overlap — `partition-coverage` / surgical write rules.
 - **Not** for domain G-1..G-4 measurement — `check-domain-parity`.
 
@@ -64,8 +67,8 @@ Official technique table and failure classes: `references/concern-oracle-table.m
    required for known classes; **zero** foreign semantic names.
 5. Attach skills with `skills_for_operand_classes` (B-16) — rest →
    `spring-to-quarkus-patterns`, persistence → `form-entity-persistence`.
-6. Refuse the three failure classes in `references/failure-classes.md`
-   (wrong-class, vacuous pass, comment-satisfiable).
+6. Refuse the four failure classes in `references/failure-classes.md`
+   (wrong-class, vacuous pass, comment-satisfiable, `T0_3_SERVICE`).
 7. Lint before mint:
 
 ```bash
@@ -87,6 +90,10 @@ python3 ../check-spec-readiness/scripts/check-surgical-scopes.py <root> <body.js
 - Reintroducing specimen literals into exit vocab (R-SK.5).
 - Stamping `curl` or a script as the card exit — live HTTP is M4/M5;
   the AC names a `@QuarkusTest` in this write-set.
+- `T0_3_SERVICE` wrong reading: "owns the service **methods**" as "add
+  methods to shared `ClinicService`". That keeps every aggregate import on
+  one file and fails `CYCLE_IMPORT`. Remedy is **one service class per
+  aggregate**, not methods in a shared class.
 
 ## Verification
 
