@@ -85,7 +85,7 @@ Stages 060–080 are developer workflow exercises that consume the platform buil
 |-------|--------|
 | [060 - AI-Assisted Development](stages/060-ai-assisted-development/README.md) | One-shot AI coding in the IDE — and its limits without project standards |
 | [070 - AI-Agentic Development](stages/070-ai-agentic-development/README.md) | Spec-driven development where agent-executable standards guide every change |
-| [080 - AI-Autonomous Migration](stages/080-ai-autonomous-migration/README.md) | Multi-agent legacy migration with human review gates |
+| [080 - AI-Autonomous Migration](stages/080-ai-autonomous-migration/README.md) | Multi-agent legacy migration with human review gates ([stage architecture](stages/080-ai-autonomous-migration/SOLUTION-ARCHITECTURE.md)) |
 
 ## How Red Hat And Open Source Make It Work
 

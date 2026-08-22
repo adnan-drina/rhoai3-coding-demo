@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stage 080 · End-to-end stack on OpenShift</title>
+  <link href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@400;700&amp;family=Red+Hat+Text:wght@400;500;600&amp;family=Red+Hat+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper:  #f2f2f2;
+      --color-ink:    #151515;
+      --color-muted:  #4d4d4d;
+      --color-accent: #ee0000;
+      --font-sans:    'Red Hat Text', system-ui, sans-serif;
+      --font-serif:   'Red Hat Display', system-ui, sans-serif;
+      --font-mono:    'Red Hat Mono', ui-monospace, monospace;
+    }
+    body {
+      font-family: var(--font-sans);
+      background: var(--color-paper);
+      color: var(--color-ink);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 2rem;
+    }
+    .frame { max-width: 1200px; width: 100%; }
+    .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 0.66rem;
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--color-muted);
+      margin-bottom: 0.5rem;
+    }
+    h1 {
+      font-family: var(--font-serif);
+      font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem);
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      margin-bottom: 1.5rem;
+    }
+    svg { width: 100%; min-width: 960px; display: block; }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">High-Level · Stage 080 · OpenShift cluster</p>
+    <h1>Autonomous migration · end-to-end stack</h1>
+
+    <!--
+      Parameter contract (type-high-level.md)
+      size: doc-wide · variant: minimal light · pattern: none (layout type direct)
+      chevrons: Intake | Workspace | Analyze | Harness | Factory
+                + Orchestration / Security / Observability (vertical)
+      sources: Developer → Developer Hub; Legacy Git → Dev Spaces
+      nodes: Developer Hub, Dev Spaces, MTA, Hermes (focal), MaaS, Factory
+      bar: GitOps (Argo CD) → Developer Hub, MTA, Factory
+      cross-cuts: Identity (Keycloak), Telemetry (MaaS usage)
+      cuts: OpenCode, Spec Kit, skills, Kanban → Hermes
+            SonarQube → Factory; vLLM / GPU / Kueue → MaaS + cluster label
+            Coolstore vs PetClinic → one Legacy Git; M1–M5 process → companion figure
+    -->
+    <svg viewBox="0 0 1000 600" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="stage-080-e2e-stack-title stage-080-e2e-stack-desc">
+      <title id="stage-080-e2e-stack-title">Stage 080 end-to-end stack on OpenShift</title>
+      <desc id="stage-080-e2e-stack-desc">Intake from a developer and legacy Git flows through Developer Hub and Dev Spaces, MTA analysis, the Hermes harness on governed MaaS, and the factory pipeline, with GitOps, Keycloak identity, and telemetry crossing the OpenShift cluster.</desc>
+      <defs>
+        <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+          <polygon points="0 0, 8 3, 0 6" fill="#4d4d4d"/>
+        </marker>
+        <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+          <polygon points="0 0, 8 3, 0 6" fill="#ee0000"/>
+        </marker>
+        <marker id="arrow-sm" markerWidth="6" markerHeight="5" refX="5" refY="2.5" orient="auto">
+          <polygon points="0 0, 6 2.5, 0 5" fill="#4d4d4d"/>
+        </marker>
+        <marker id="arrow-dim" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+          <polygon points="0 0, 8 3, 0 6" fill="rgba(21,21,21,0.45)"/>
+        </marker>
+      </defs>
+
+      <rect width="100%" height="100%" fill="#f2f2f2"/>
+
+      <!-- PHASE CHEVRON BANNER  effective_w=964  widths=[192,192,192,192,196]  cx=[96,288,480,672,866] -->
+      <polygon points="0,4 180,4 192,18 180,32 0,32" fill="#151515"/>
+      <polygon points="192,4 372,4 384,18 372,32 192,32 204,18" fill="#383838"/>
+      <polygon points="384,4 564,4 576,18 564,32 384,32 396,18" fill="#151515"/>
+      <polygon points="576,4 756,4 768,18 756,32 576,32 588,18" fill="#383838"/>
+      <polygon points="768,4 964,4 964,32 768,32 780,18" fill="#151515"/>
+
+      <text x="96"  y="21" fill="#f2f2f2" font-size="7" font-family="'Red Hat Mono', monospace" letter-spacing="0.14em" text-anchor="middle">INTAKE</text>
+      <text x="288" y="21" fill="#f2f2f2" font-size="7" font-family="'Red Hat Mono', monospace" letter-spacing="0.14em" text-anchor="middle">WORKSPACE</text>
+      <text x="480" y="21" fill="#f2f2f2" font-size="7" font-family="'Red Hat Mono', monospace" letter-spacing="0.14em" text-anchor="middle">ANALYZE</text>
+      <text x="672" y="21" fill="#f2f2f2" font-size="7" font-family="'Red Hat Mono', monospace" letter-spacing="0.14em" text-anchor="middle">HARNESS</text>
+      <text x="866" y="21" fill="#f2f2f2" font-size="7" font-family="'Red Hat Mono', monospace" letter-spacing="0.14em" text-anchor="middle">FACTORY</text>
+
+      <!-- RIGHT STRIP  strip_x=972  n_cross=2 → strip_y_bot=472  heights=[144,144,144] -->
+      <polygon points="972,40 1000,40 1000,172 986,184 972,172" fill="#151515"/>
+      <text x="986" y="112" fill="#f2f2f2" font-size="7" font-family="'Red Hat Mono', monospace" letter-spacing="0.14em" text-anchor="middle" transform="rotate(-90 986 112)">ORCHESTRATION</text>
+      <polygon points="972,184 986,196 1000,184 1000,316 986,328 972,316" fill="#b85450"/>
+      <text x="986" y="256" fill="#f2f2f2" font-size="7" font-family="'Red Hat Mono', monospace" letter-spacing="0.14em" text-anchor="middle" transform="rotate(-90 986 256)">SECURITY</text>
+      <polygon points="972,328 986,340 1000,328 1000,472 972,472" fill="#151515"/>
+      <text x="986" y="400" fill="#f2f2f2" font-size="7" font-family="'Red Hat Mono', monospace" letter-spacing="0.14em" text-anchor="middle" transform="rotate(-90 986 400)">OBSERVABILITY</text>
+
+      <!-- ZONES -->
+      <rect x="4" y="40" width="184" height="336" rx="6" fill="rgba(21,21,21,0.02)" stroke="rgba(21,21,21,0.20)" stroke-width="0.8" stroke-dasharray="6,3"/>
+      <text x="96" y="52" fill="#4d4d4d" font-size="7" font-family="'Red Hat Mono', monospace" letter-spacing="0.14em" text-anchor="middle">SOURCES</text>
+      <rect x="196" y="40" width="768" height="336" rx="8" fill="rgba(21,21,21,0.02)" stroke="rgba(21,21,21,0.18)" stroke-width="1.2"/>
+      <rect x="4" y="388" width="960" height="40" rx="6" fill="rgba(184,84,80,0.06)" stroke="rgba(184,84,80,0.35)" stroke-width="0.8"/>
+      <rect x="4" y="432" width="960" height="40" rx="6" fill="rgba(21,21,21,0.05)" stroke="rgba(21,21,21,0.20)" stroke-width="0.8"/>
+
+      <!-- ARROWS (before nodes) -->
+      <!-- Developer → Developer Hub -->
+      <path d="M 184,92 H 196 Q 200,92 200,96 V 152 Q 200,160 204,160 H 212" fill="none" stroke="#4d4d4d" stroke-width="1" marker-end="url(#arrow)"/>
+      <!-- Legacy Git → Dev Spaces -->
+      <path d="M 184,172 H 196 Q 200,172 200,180 V 248 Q 200,256 204,256 H 212" fill="none" stroke="#4d4d4d" stroke-width="1" marker-end="url(#arrow)"/>
+      <!-- GitOps bar drops -->
+      <line x1="288" y1="96" x2="288" y2="120" stroke="#4d4d4d" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrow-sm)"/>
+      <line x1="480" y1="96" x2="480" y2="120" stroke="#4d4d4d" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrow-sm)"/>
+      <line x1="866" y1="96" x2="866" y2="120" stroke="#4d4d4d" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrow-sm)"/>
+      <!-- Dev Spaces → MTA -->
+      <path d="M 364,256 H 384 Q 388,256 388,248 V 168 Q 388,160 396,160 H 404" fill="none" stroke="#4d4d4d" stroke-width="1" marker-end="url(#arrow)"/>
+      <rect x="368" y="264" width="40" height="12" rx="2" fill="#f2f2f2"/>
+      <text x="388" y="273" fill="#707070" font-size="8" font-family="'Red Hat Mono', monospace" text-anchor="middle" letter-spacing="0.06em">ANALYZE</text>
+      <!-- MTA → Hermes (primary) -->
+      <line x1="556" y1="160" x2="596" y2="160" stroke="#ee0000" stroke-width="1.2" marker-end="url(#arrow-accent)"/>
+      <rect x="558" y="140" width="36" height="12" rx="2" fill="#f2f2f2"/>
+      <text x="576" y="149" fill="#707070" font-size="8" font-family="'Red Hat Mono', monospace" text-anchor="middle" letter-spacing="0.06em">FINDINGS</text>
+      <!-- Hermes → Factory (primary) -->
+      <line x1="748" y1="160" x2="790" y2="160" stroke="#ee0000" stroke-width="1.2" marker-end="url(#arrow-accent)"/>
+      <rect x="750" y="140" width="36" height="12" rx="2" fill="#f2f2f2"/>
+      <text x="768" y="149" fill="#707070" font-size="8" font-family="'Red Hat Mono', monospace" text-anchor="middle" letter-spacing="0.06em">EXIT</text>
+      <!-- Hermes → MaaS (query / model path) -->
+      <line x1="672" y1="200" x2="672" y2="216" stroke="rgba(21,21,21,0.30)" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrow-dim)"/>
+
+      <!-- SOURCE NODES -->
+      <rect x="8" y="60" width="176" height="64" rx="6" fill="#ffffff" stroke="rgba(21,21,21,0.22)" stroke-width="1"/>
+      <rect x="16" y="66" width="22" height="12" rx="2" fill="transparent" stroke="rgba(21,21,21,0.28)" stroke-width="0.8"/>
+      <text x="27" y="75" fill="rgba(21,21,21,0.55)" font-size="7" font-family="'Red Hat Mono', monospace" text-anchor="middle" letter-spacing="0.08em">EXT</text>
+      <svg x="62" y="66" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#151515" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M8 7a4 4 0 1 0 8 0a4 4 0 0 0 -8 0"/>
+        <path d="M6 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2"/>
+      </svg>
+      <text x="96" y="102" fill="#151515" font-size="12" font-weight="600" font-family="'Red Hat Text', sans-serif" text-anchor="middle">Developer</text>
+      <text x="96" y="114" fill="#4d4d4d" font-size="8" font-family="'Red Hat Mono', monospace" text-anchor="middle">ai-developer</text>
+
+      <rect x="8" y="140" width="176" height="64" rx="6" fill="#ffffff" stroke="rgba(21,21,21,0.22)" stroke-width="1"/>
+      <rect x="16" y="146" width="22" height="12" rx="2" fill="transparent" stroke="rgba(21,21,21,0.28)" stroke-width="0.8"/>
+      <text x="27" y="155" fill="rgba(21,21,21,0.55)" font-size="7" font-family="'Red Hat Mono', monospace" text-anchor="middle" letter-spacing="0.08em">EXT</text>
+      <svg x="62" y="146" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#151515" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M9 19c-4.3 1.4 -4.3 -2.5 -6 -3m12 5v-3.5c0 -1 .1 -1.4 -.5 -2c2.8 -.3 5.5 -1.4 5.5 -6a4.6 4.6 0 0 0 -1.3 -3.2a4.2 4.2 0 0 0 -.1 -3.2s-1.1 -.3 -3.5 1.3a12.3 12.3 0 0 0 -6.2 0c-2.4 -1.6 -3.5 -1.3 -3.5 -1.3a4.2 4.2 0 0 0 -.1 3.2a4.6 4.6 0 0 0 -1.3 3.2c0 4.6 2.7 5.7 5.5 6c-.6 .6 -.6 1.2 -.5 2v3.5"/>
+      </svg>
+      <text x="96" y="182" fill="#151515" font-size="12" font-weight="600" font-family="'Red Hat Text', sans-serif" text-anchor="middle">Legacy Git</text>
+      <text x="96" y="194" fill="#4d4d4d" font-size="8" font-family="'Red Hat Mono', monospace" text-anchor="middle">PetClinic · cart</text>
+
+      <!-- GITOPS BAR -->
+      <rect x="208" y="52" width="744" height="44" rx="4" fill="rgba(21,21,21,0.05)" stroke="rgba(21,21,21,0.18)" stroke-width="0.8"/>
+      <svg x="914" y="58" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#4d4d4d" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M5 18a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/>
+        <path d="M5 6a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/>
+        <path d="M15 6a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/>
+        <path d="M7 8l0 8"/>
+        <path d="M9 18h6a2 2 0 0 0 2 -2v-5"/>
+        <path d="M14 14l3 -3l3 3"/>
+      </svg>
+      <text x="580" y="71" fill="#151515" font-size="12" font-weight="600" font-family="'Red Hat Text', sans-serif" text-anchor="middle">GitOps</text>
+      <text x="580" y="84" fill="#4d4d4d" font-size="8" font-family="'Red Hat Mono', monospace" text-anchor="middle">Argo CD · desired state</text>
+
+      <!-- CLUSTER NODES -->
+      <!-- Developer Hub  cx=288 y=120 -->
+      <rect x="212" y="120" width="152" height="80" rx="6" fill="#ffffff" stroke="rgba(21,21,21,0.25)" stroke-width="1"/>
+      <rect x="220" y="126" width="28" height="12" rx="2" fill="transparent" stroke="rgba(21,21,21,0.28)" stroke-width="0.8"/>
+      <text x="234" y="135" fill="rgba(21,21,21,0.55)" font-size="7" font-family="'Red Hat Mono', monospace" text-anchor="middle" letter-spacing="0.08em">HUB</text>
+      <svg x="332" y="126" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#151515" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M3 5a1 1 0 0 1 1 -1h16a1 1 0 0 1 1 1v10a1 1 0 0 1 -1 1h-16a1 1 0 0 1 -1 -1v-10"/>
+        <path d="M7 20h10"/>
+        <path d="M9 16v4"/>
+        <path d="M15 16v4"/>
+      </svg>
+      <text x="288" y="164" fill="#151515" font-size="12" font-weight="600" font-family="'Red Hat Text', sans-serif" text-anchor="middle">Developer Hub</text>
+      <text x="288" y="176" fill="#4d4d4d" font-size="8" font-family="'Red Hat Mono', monospace" text-anchor="middle">migration template</text>
+
+      <!-- Dev Spaces  cx=288 y=216 -->
+      <rect x="212" y="216" width="152" height="80" rx="6" fill="#ffffff" stroke="rgba(21,21,21,0.25)" stroke-width="1"/>
+      <rect x="220" y="222" width="22" height="12" rx="2" fill="transparent" stroke="rgba(21,21,21,0.28)" stroke-width="0.8"/>
+      <text x="231" y="231" fill="rgba(21,21,21,0.55)" font-size="7" font-family="'Red Hat Mono', monospace" text-anchor="middle" letter-spacing="0.08em">WS</text>
+      <svg x="332" y="222" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#151515" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M3 19l18 0"/>
+        <path d="M5 7a1 1 0 0 1 1 -1h12a1 1 0 0 1 1 1v8a1 1 0 0 1 -1 1h-12a1 1 0 0 1 -1 -1l0 -8"/>
+      </svg>
+      <text x="288" y="260" fill="#151515" font-size="12" font-weight="600" font-family="'Red Hat Text', sans-serif" text-anchor="middle">Dev Spaces</text>
+      <text x="288" y="272" fill="#4d4d4d" font-size="8" font-family="'Red Hat Mono', monospace" text-anchor="middle">legacy RO · modernized</text>
+
+      <!-- MTA  cx=480 y=120 -->
+      <rect x="404" y="120" width="152" height="80" rx="6" fill="#ffffff" stroke="rgba(21,21,21,0.25)" stroke-width="1"/>
+      <rect x="412" y="126" width="32" height="12" rx="2" fill="transparent" stroke="rgba(21,21,21,0.28)" stroke-width="0.8"/>
+      <text x="428" y="135" fill="rgba(21,21,21,0.55)" font-size="7" font-family="'Red Hat Mono', monospace" text-anchor="middle" letter-spacing="0.08em">SCAN</text>
+      <svg x="524" y="126" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#151515" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M3 10a7 7 0 1 0 14 0a7 7 0 1 0 -14 0"/>
+        <path d="M21 21l-6 -6"/>
+      </svg>
+      <text x="480" y="164" fill="#151515" font-size="12" font-weight="600" font-family="'Red Hat Text', sans-serif" text-anchor="middle">MTA</text>
+      <text x="480" y="176" fill="#4d4d4d" font-size="8" font-family="'Red Hat Mono', monospace" text-anchor="middle">kantra · quarkus-profile</text>
+
+      <!-- Hermes  FOCAL  cx=672 y=120 -->
+      <rect x="596" y="120" width="152" height="80" rx="6" fill="rgba(238,0,0,0.08)" stroke="#ee0000" stroke-width="1.2"/>
+      <rect x="604" y="126" width="36" height="12" rx="2" fill="transparent" stroke="rgba(238,0,0,0.50)" stroke-width="0.8"/>
+      <text x="622" y="135" fill="rgba(238,0,0,0.80)" font-size="7" font-family="'Red Hat Mono', monospace" text-anchor="middle" letter-spacing="0.08em">AGENT</text>
+      <svg x="716" y="126" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ee0000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M6 6a2 2 0 0 1 2 -2h8a2 2 0 0 1 2 2v4a2 2 0 0 1 -2 2h-8a2 2 0 0 1 -2 -2l0 -4"/>
+        <path d="M12 2v2"/>
+        <path d="M9 12v9"/>
+        <path d="M15 12v9"/>
+        <path d="M5 16l4 -2"/>
+        <path d="M15 14l4 2"/>
+        <path d="M9 18h6"/>
+        <path d="M10 8v.01"/>
+        <path d="M14 8v.01"/>
+      </svg>
+      <text x="672" y="164" fill="#ee0000" font-size="12" font-weight="600" font-family="'Red Hat Text', sans-serif" text-anchor="middle">Hermes</text>
+      <text x="672" y="176" fill="#ee0000" font-size="8" font-family="'Red Hat Mono', monospace" text-anchor="middle" opacity="0.75">Kanban · Spec Kit</text>
+
+      <!-- MaaS  cx=672 y=216 -->
+      <rect x="596" y="216" width="152" height="80" rx="6" fill="#ffffff" stroke="rgba(21,21,21,0.25)" stroke-width="1"/>
+      <rect x="604" y="222" width="36" height="12" rx="2" fill="transparent" stroke="rgba(21,21,21,0.28)" stroke-width="0.8"/>
+      <text x="622" y="231" fill="rgba(21,21,21,0.55)" font-size="7" font-family="'Red Hat Mono', monospace" text-anchor="middle" letter-spacing="0.08em">MODEL</text>
+      <svg x="716" y="222" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#151515" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M13 12v.01"/>
+        <path d="M3 21h18"/>
+        <path d="M5 21v-16a2 2 0 0 1 2 -2h6m4 10.5v7.5"/>
+        <path d="M21 7h-7m3 -3l-3 3l3 3"/>
+      </svg>
+      <text x="672" y="260" fill="#151515" font-size="12" font-weight="600" font-family="'Red Hat Text', sans-serif" text-anchor="middle">MaaS</text>
+      <text x="672" y="272" fill="#4d4d4d" font-size="8" font-family="'Red Hat Mono', monospace" text-anchor="middle">Qwen · governed gateway</text>
+
+      <!-- Factory  cx=866 y=120 -->
+      <rect x="790" y="120" width="152" height="80" rx="6" fill="#ffffff" stroke="rgba(21,21,21,0.25)" stroke-width="1"/>
+      <rect x="798" y="126" width="20" height="12" rx="2" fill="transparent" stroke="rgba(21,21,21,0.28)" stroke-width="0.8"/>
+      <text x="808" y="135" fill="rgba(21,21,21,0.55)" font-size="7" font-family="'Red Hat Mono', monospace" text-anchor="middle" letter-spacing="0.08em">CI</text>
+      <svg x="910" y="126" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#151515" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M5 18a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/>
+        <path d="M5 6a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/>
+        <path d="M15 12a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/>
+        <path d="M7 8l0 8"/>
+        <path d="M7 8a4 4 0 0 0 4 4h4"/>
+      </svg>
+      <text x="866" y="164" fill="#151515" font-size="12" font-weight="600" font-family="'Red Hat Text', sans-serif" text-anchor="middle">Factory</text>
+      <text x="866" y="176" fill="#4d4d4d" font-size="8" font-family="'Red Hat Mono', monospace" text-anchor="middle">Pipelines · quality gate</text>
+
+      <!-- OpenShift cluster label -->
+      <svg x="212" y="348" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#4d4d4d" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M19.875 6.27a2.225 2.225 0 0 1 1.125 1.948v7.284c0 .809-.443 1.555-1.158 1.948l-6.75 3.98a2.5 2.5 0 0 1-2.184 0l-6.75-3.98a2.225 2.225 0 0 1-1.158-1.948v-7.284c0-.809.443-1.555 1.158-1.948l6.75-3.98a2.5 2.5 0 0 1 2.184 0z"/>
+        <circle cx="12" cy="12" r="3"/>
+        <line x1="12" y1="3" x2="12" y2="9"/>
+        <line x1="12" y1="15" x2="12" y2="21"/>
+        <line x1="20.2" y1="7.5" x2="14.9" y2="10.5"/>
+        <line x1="9.1" y1="13.5" x2="3.8" y2="16.5"/>
+        <line x1="20.2" y1="16.5" x2="14.9" y2="13.5"/>
+        <line x1="9.1" y1="10.5" x2="3.8" y2="7.5"/>
+      </svg>
+      <text x="236" y="362" fill="#4d4d4d" font-size="8" font-weight="500" font-family="'Red Hat Text', sans-serif">OpenShift</text>
+
+      <!-- Identity / Security -->
+      <svg x="16" y="398" width="20" height="20" viewBox="0 0 24 24" fill="#b85450" aria-hidden="true">
+        <path d="m18.742 1.182-12.493.002C4.155 4.784 2.079 8.393 0 12.002c2.071 3.612 4.162 7.214 6.252 10.816l12.49-.004 3.089-5.404h2.158v-.002H24L23.996 6.59h-2.168zM8.327 4.792h2.081l1.04 1.8-3.12 5.413 3.117 5.403-1.035 1.81H8.327a2047.566 2047.566 0 0 0-4.168-7.204C5.547 9.606 6.937 7.2 8.327 4.792Zm6.241 0 2.086.003c1.393 2.405 2.78 4.813 4.166 7.222l-4.167 7.2h-2.08c-.382-.562-1.038-1.808-1.038-1.808l3.123-5.405-3.124-5.413z"/>
+      </svg>
+      <text x="484" y="410" fill="#b85450" font-size="12" font-weight="600" font-family="'Red Hat Text', sans-serif" text-anchor="middle">Identity</text>
+      <text x="484" y="422" fill="#4d4d4d" font-size="8" font-family="'Red Hat Mono', monospace" text-anchor="middle">Keycloak · OpenShift OIDC</text>
+
+      <!-- Telemetry / Observability -->
+      <svg x="16" y="442" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#4d4d4d" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M4 19l16 0"/>
+        <path d="M4 15l4 -6l4 2l4 -5l4 4"/>
+      </svg>
+      <text x="484" y="454" fill="#151515" font-size="12" font-weight="600" font-family="'Red Hat Text', sans-serif" text-anchor="middle">Telemetry</text>
+      <text x="484" y="466" fill="#4d4d4d" font-size="8" font-family="'Red Hat Mono', monospace" text-anchor="middle">MaaS usage · cluster metrics</text>
+
+      <!-- LEGEND -->
+      <line x1="40" y1="496" x2="952" y2="496" stroke="rgba(21,21,21,0.10)" stroke-width="0.8"/>
+      <text x="40" y="512" fill="#4d4d4d" font-size="8" font-family="'Red Hat Mono', monospace" letter-spacing="0.18em">LEGEND</text>
+
+      <rect x="40" y="520" width="20" height="12" rx="4" fill="transparent" stroke="rgba(21,21,21,0.30)" stroke-width="1" stroke-dasharray="4,3"/>
+      <text x="68" y="530" fill="#4d4d4d" font-size="8" font-family="'Red Hat Text', sans-serif">External</text>
+
+      <rect x="160" y="520" width="20" height="12" rx="4" fill="rgba(21,21,21,0.04)" stroke="rgba(21,21,21,0.25)" stroke-width="1"/>
+      <text x="188" y="530" fill="#4d4d4d" font-size="8" font-family="'Red Hat Text', sans-serif">OpenShift cluster</text>
+
+      <rect x="332" y="520" width="20" height="12" rx="4" fill="rgba(238,0,0,0.10)" stroke="#ee0000" stroke-width="1.2"/>
+      <text x="360" y="530" fill="#4d4d4d" font-size="8" font-family="'Red Hat Text', sans-serif">Focal (Hermes)</text>
+
+      <line x1="496" y1="526" x2="516" y2="526" stroke="#ee0000" stroke-width="1.2" marker-end="url(#arrow-accent)"/>
+      <text x="524" y="530" fill="#4d4d4d" font-size="8" font-family="'Red Hat Text', sans-serif">Primary path</text>
+
+      <line x1="640" y1="526" x2="660" y2="526" stroke="#4d4d4d" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrow-sm)"/>
+      <text x="668" y="530" fill="#4d4d4d" font-size="8" font-family="'Red Hat Text', sans-serif">GitOps trigger</text>
+
+      <line x1="800" y1="526" x2="820" y2="526" stroke="rgba(21,21,21,0.30)" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrow-dim)"/>
+      <text x="828" y="530" fill="#4d4d4d" font-size="8" font-family="'Red Hat Text', sans-serif">Model path</text>
+    </svg>
+  </div>
+</body>
+</html>

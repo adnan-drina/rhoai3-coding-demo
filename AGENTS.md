@@ -40,7 +40,7 @@ Important paths:
 - `gitops/argocd/app-of-apps/` — Argo CD application structure.
 - `flows/default.yaml` — ordered source of truth for the demo flow.
 - `gitops/stages/` — desired state for stage-specific OpenShift resources.
-- `stages/` — human-facing deployment walkthroughs and per-stage deploy/validate scripts.
+- `stages/` — human-facing deployment walkthroughs and per-stage deploy/validate scripts. Stage 080 keeps its own solution architecture in that stage directory (not workshop architecture; not dest execution).
 - `docs/` — operations, troubleshooting, architecture, and supporting documentation.
 - `.agents/` — shared tool-neutral agent guidance (rules, skills, hooks, references).
 
@@ -69,7 +69,7 @@ Developer workflow stages after 080 are deferred until each has a concrete imple
 When changing one stage, check whether related changes are also needed in:
 
 - `README.md`
-- the stage README
+- files in that stage directory (README, deploy/validate; Stage 080 keeps its solution architecture there)
 - `docs/OPERATIONS.md`
 - `docs/TROUBLESHOOTING.md`
 - `BACKLOG.md`

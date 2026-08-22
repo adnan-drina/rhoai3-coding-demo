@@ -21,6 +21,9 @@ not add `rhoai3-scaffolded` / `rhoai3-golden-path`).
 v1); dest-apply overlay onto v42; dest-complete Operator ack gates;
 `kanban daemon --force`; wipe v42 before HV-1 harvest.
 
-Architecture: `harness-refactoring/architecture/SOLUTION-ARCHITECTURE-v2.md`
-(AD-019; nested ledger, not in this git). Research prompt (rev 2):
+Architecture: Stage 080 factory SAD
+`stages/080-ai-autonomous-migration/SOLUTION-ARCHITECTURE.md` (this folder
+only; not dest; not the workshop SAD). Campaign law:
+`harness-refactoring/architecture/SOLUTION-ARCHITECTURE-v2.md` (AD-019;
+nested ledger, not in this git). Research prompt (rev 2):
 `docs/RESEARCH-PROMPT-V2-NATIVE-HARNESS.md` beside this file.
