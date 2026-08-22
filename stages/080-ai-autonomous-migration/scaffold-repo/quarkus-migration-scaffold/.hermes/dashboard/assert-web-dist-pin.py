@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Refuse a Hermes dashboard bundle stamped for a different agent pin.
 
-Sibling of v1 `assert-seat-hermes-pin.py` (agent binary). This one is the
-bundle stamp: `.hermes/dashboard/PIN` must match `.hermes/pins.json`
-`hermes_agent.version` + `hermes_agent.build`. A mismatch is fail-closed
-for *serving* the UI, not for the workspace (caller is fail-soft).
+PIN next to this file must match `.hermes/pins.json` `hermes_agent.version`
++ `hermes_agent.build`. A mismatch is fail-closed for *serving* the UI,
+not for the workspace (caller is fail-soft). Invoked from
+`install-web-dist.sh` before copy.
 
-Not a skill.
+Not a skill. Not a `.hermes/lib/` module (no `__main__` CLIs there).
 """
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ def _load_json(path: Path) -> dict:
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        raise SystemExit(f"assert_web_dist_pin: cannot read {path}: {exc}") from exc
+        raise SystemExit(f"assert-web-dist-pin: cannot read {path}: {exc}") from exc
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -36,7 +36,7 @@ def main(argv: list[str] | None = None) -> int:
     args = p.parse_args(argv)
 
     if not args.bundle.is_file():
-        print(f"assert_web_dist_pin: missing bundle {args.bundle}", file=sys.stderr)
+        print(f"assert-web-dist-pin: missing bundle {args.bundle}", file=sys.stderr)
         return 1
 
     pins = _load_json(args.pins)
@@ -44,7 +44,7 @@ def main(argv: list[str] | None = None) -> int:
     want_ver = str(agent.get("version") or "")
     want_build = str(agent.get("build") or "")
     if not want_ver or not want_build:
-        print("assert_web_dist_pin: pins.json missing hermes_agent.version/build", file=sys.stderr)
+        print("assert-web-dist-pin: pins.json missing hermes_agent.version/build", file=sys.stderr)
         return 1
 
     stamp = _load_json(args.stamp)
@@ -52,12 +52,12 @@ def main(argv: list[str] | None = None) -> int:
     got_build = str(stamp.get("hermes_agent_build") or "")
     if got_ver != want_ver or got_build != want_build:
         print(
-            "assert_web_dist_pin: refusing stale UI "
+            "assert-web-dist-pin: refusing stale UI "
             f"(bundle {got_ver}/{got_build} != pin {want_ver}/{want_build})",
             file=sys.stderr,
         )
         return 1
-    print(f"assert_web_dist_pin: MATCH {want_ver} / {want_build}")
+    print(f"assert-web-dist-pin: MATCH {want_ver} / {want_build}")
     return 0
 
 

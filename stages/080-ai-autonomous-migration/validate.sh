@@ -241,5 +241,5 @@ check "080 ships pin-stamped dashboard index.html" \
   "test -f '${SCAFFOLD_DASH}/web_dist/index.html' && echo present || echo missing" \
   "present"
 check "080 dashboard PIN matches pins.json" \
-  "python3 '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/lib/assert_web_dist_pin.py' --pins '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/pins.json' --stamp '${SCAFFOLD_DASH}/PIN' --bundle '${SCAFFOLD_DASH}/web_dist/index.html' >/dev/null && echo 1 || echo 0" \
+  "python3 '${SCAFFOLD_DASH}/assert-web-dist-pin.py' --pins '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/pins.json' --stamp '${SCAFFOLD_DASH}/PIN' --bundle '${SCAFFOLD_DASH}/web_dist/index.html' >/dev/null && echo 1 || echo 0" \
   "1"
