@@ -5,7 +5,7 @@ license: Apache-2.0
 compatibility: Linux seat; Python 3.11+; reads the legacy@3.x tree
 metadata:
   author: rhoai3-harness-team
-  version: "1.4.0"
+  version: "1.4.1"
   hermes:
     tags:
     - analysis
@@ -57,6 +57,7 @@ python3 "${HERMES_SKILL_DIR}/scripts/inventory-type-graph.py" \
   -o evidence/type-inventory.json
 ```
 
+The walk parser is `scripts/type_graph.py` in this skill (not `.hermes/lib/`).
 Layer is the last package segment of the dest path, not a name pattern.
 Each row may set `generated: true` (path under `target/generated-sources`,
 `@Generated`, or a declared generator plugin — no Dto/name pattern). M2

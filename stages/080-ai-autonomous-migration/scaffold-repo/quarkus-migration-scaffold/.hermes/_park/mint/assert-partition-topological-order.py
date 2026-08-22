@@ -29,13 +29,26 @@ def _ensure_hermes_lib() -> None:
     p = Path(__file__).resolve()
     for parent in p.parents:
         lib = parent / "lib"
-        if (lib / "specimen_agnostic.py").is_file() or (lib / "type_graph.py").is_file():
+        if (lib / "specimen_agnostic.py").is_file():
             s = str(lib)
             if s not in sys.path:
                 sys.path.insert(0, s)
             return
     raise SystemExit("FAIL: .hermes/lib missing (TR-3)")
 _ensure_hermes_lib()
+
+
+def _ensure_type_graph() -> None:
+    p = Path(__file__).resolve()
+    for parent in p.parents:
+        cand = parent / "skills" / "analysis" / "inventory-legacy-surface" / "scripts"
+        if (cand / "type_graph.py").is_file():
+            s = str(cand)
+            if s not in sys.path:
+                sys.path.insert(0, s)
+            return
+    raise SystemExit("FAIL: type_graph.py missing beside inventory-legacy-surface")
+_ensure_type_graph()
 
 from specimen_agnostic import (  # noqa: E402
     dest_path_as_written,

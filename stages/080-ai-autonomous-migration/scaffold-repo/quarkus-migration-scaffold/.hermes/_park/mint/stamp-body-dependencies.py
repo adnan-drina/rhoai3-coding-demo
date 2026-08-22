@@ -17,7 +17,8 @@ stamp `provider: "generated"` and are not assigned onto the partition.
 When partition.json names this story, source dest twins are assigned onto
 the story's declared frame first (V34-5). Do not stamp unowned collaborators as
 `pre-exists` (generated types are the third kind, not this fallthrough). The
-walk lives in `type_graph.py` so M1 can invoke it without a `--body`.
+walk lives in `inventory-legacy-surface/scripts/type_graph.py` so M1 can
+invoke it without a `--body`.
 
 Orphans that remain unowned dest domain-leaf/repo paths → DEPENDENCY_HOLE
 listing the full dest-path set. Body paths outside the expanded frame
@@ -43,13 +44,26 @@ def _ensure_hermes_lib() -> None:
     p = Path(__file__).resolve()
     for parent in p.parents:
         lib = parent / "lib"
-        if (lib / "specimen_agnostic.py").is_file() or (lib / "type_graph.py").is_file():
+        if (lib / "specimen_agnostic.py").is_file():
             s = str(lib)
             if s not in sys.path:
                 sys.path.insert(0, s)
             return
     raise SystemExit("FAIL: .hermes/lib missing (TR-3)")
 _ensure_hermes_lib()
+
+
+def _ensure_type_graph() -> None:
+    p = Path(__file__).resolve()
+    for parent in p.parents:
+        cand = parent / "skills" / "analysis" / "inventory-legacy-surface" / "scripts"
+        if (cand / "type_graph.py").is_file():
+            s = str(cand)
+            if s not in sys.path:
+                sys.path.insert(0, s)
+            return
+    raise SystemExit("FAIL: type_graph.py missing beside inventory-legacy-surface")
+_ensure_type_graph()
 
 from generated_sources import is_generated  # noqa: E402
 from specimen_agnostic import (  # noqa: E402

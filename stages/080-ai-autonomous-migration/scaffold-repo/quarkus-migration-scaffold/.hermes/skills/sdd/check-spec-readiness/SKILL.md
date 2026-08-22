@@ -78,9 +78,10 @@ KEEP (this skill):
 - `scripts/check-interface-closure.py` — interface closure Class-A gate
 - `scripts/assert-dependency-closure.py` — Class-A dependency closure
 
-Libraries: `.hermes/lib/` (`type_graph.py`, `generated_sources.py`,
+Libraries: `.hermes/lib/` (`generated_sources.py`,
 `inventory_io.py`, `path_maps.py`, `supersede.py`, `http_join.py`,
-`specimen_agnostic.py`). Not a skill.
+`specimen_agnostic.py`). Not a skill. Java type walk:
+`analysis/inventory-legacy-surface/scripts/type_graph.py`.
 
 Mint assemble/stamp/oracles: `.hermes/_park/mint/` until K4. Dest-POM honesty:
 `manage-quarkus-extensions/scripts/` (`assert-dest-pom-extensions.py`, JDBC /

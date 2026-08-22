@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """In-prefix Java type graph (no Kanban body).
 
-The same walk stamp-body-dependencies.py uses: transitive extends, in-prefix
-imports, same-package simple names, JDK/framework stop. Callable from M1
-with a file list (inventory row ``file``s) — there is no ``--body``.
+Lives beside inventory-type-graph.py (Architect 140351Z relocate from
+`.hermes/lib/` — not thinning). The same walk stamp-body-dependencies.py
+uses: transitive extends, in-prefix imports, same-package simple names,
+JDK/framework stop. Callable from M1 with a file list (inventory row
+``file``s) — there is no ``--body``.
 
 Simple names also resolve through ``import pkg.*;`` into that package
 directory, then a unique in-prefix basename match. That is still this

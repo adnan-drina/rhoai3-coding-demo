@@ -22,14 +22,18 @@ from pathlib import Path
 
 
 # BIND N6: import type_graph as a module. OBJECT: runtime tree walk.
-# Canonical home is .hermes/lib/ (TR-3).
+# Parser lives beside this file (Architect 140351Z relocate, not thinning).
+
+_SCRIPTS = Path(__file__).resolve().parent
+if str(_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS))
 
 
 def _ensure_hermes_lib() -> None:
     p = Path(__file__).resolve()
     for parent in p.parents:
         lib = parent / "lib"
-        if (lib / "specimen_agnostic.py").is_file() or (lib / "type_graph.py").is_file():
+        if (lib / "specimen_agnostic.py").is_file():
             s = str(lib)
             if s not in sys.path:
                 sys.path.insert(0, s)
