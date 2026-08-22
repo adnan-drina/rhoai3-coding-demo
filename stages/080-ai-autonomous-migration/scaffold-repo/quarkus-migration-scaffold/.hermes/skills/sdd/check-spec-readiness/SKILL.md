@@ -5,7 +5,7 @@ license: Apache-2.0
 compatibility: Linux seat; Python 3.11+; reads migration/ specs and bodies
 metadata:
   author: rhoai3-harness-team
-  version: "1.5.2"
+  version: "1.5.3"
   hermes:
     tags:
     - sdd
@@ -142,6 +142,10 @@ Do **not** invoke DD4-retired R-M3.5/7 stubs (`check-persistence-bom.py`,
   the old row is covered iff every successor is owned. Incomplete
   successor sets are gaps. Missing file
   is skip, not INVALID.
+  Behavioural 1:N fixtures: named-set PASS
+  `fixtures/partition-supersede-named-set/` (`check-partition-coverage.py` exit 0);
+  bare-string REFUSE `fixtures/partition-supersede-bare-string/` (exit != 0,
+  `supersede_incomplete`).
   Findings **presence** at create is enough (`mta_status=checked`);
   `story.rules` / `mta_oos` are not a create-path join
   (Architect `E-20260817T154012Z`). Addressed findings stay M1 handoff

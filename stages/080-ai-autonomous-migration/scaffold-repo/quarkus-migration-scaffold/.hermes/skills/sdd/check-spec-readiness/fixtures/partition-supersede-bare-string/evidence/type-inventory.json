@@ -1,0 +1,14 @@
+{
+  "schema": "rhoai3.type-inventory/v1",
+  "types": [
+    {
+      "dest_file": "src/main/java/com/demo/service/SharedService.java"
+    },
+    {
+      "dest_file": "src/main/java/com/demo/service/AlphaService.java"
+    },
+    {
+      "dest_file": "src/main/java/com/demo/service/BetaService.java"
+    }
+  ]
+}
