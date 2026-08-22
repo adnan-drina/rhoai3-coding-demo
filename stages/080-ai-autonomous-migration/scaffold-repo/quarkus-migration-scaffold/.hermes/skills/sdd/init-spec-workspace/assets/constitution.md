@@ -80,8 +80,12 @@ Compiled-tree drift (`.bak`) is `assert-compiled-route-fidelity.py`.
   write-set (T-8). An HTTP assertion is a `@QuarkusTest` there, not
   `curl`. Live HTTP acceptance is M4/M5.
 - File-granular write ownership is assigned **after** story grouping
-  exists: each destination file has exactly one owner story.
+  exists: each **live** destination file has exactly one owner story,
+  unless an inventory `dest_file` is declared superseded by a named
+  non-empty successor set (do not Author a vestigial facade of the
+  superseded path). HTTP entry-point rows stay exactly one owner
+  (`endpoints_multi`).
 - Deviations from these articles must appear in the plan's Complexity
   Tracking table — silent deviations are review findings.
 
-**Version**: 1.2.0 | **Ratified**: 2026-08-15 | **Last Amended**: 2026-08-19
+**Version**: 1.2.1 | **Ratified**: 2026-08-15 | **Last Amended**: 2026-08-22

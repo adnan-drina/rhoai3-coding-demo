@@ -41,19 +41,28 @@ Do not hardcode a leaf-package rename in the plan.
 
 ## Unique dest-path ownership (mandatory)
 
-**one creator phase per dest path.** Each destination file has exactly one
-creator phase. That is path-agnostic (not a `pom.xml`-only rule and not an
-`application.properties` special case).
+**one creator phase per live dest path.** Each destination file that is still
+in play has exactly one creator phase. That is path-agnostic (not a
+`pom.xml`-only rule and not an `application.properties` special case).
+`pom.xml` / `application.properties` still have one Author/Configure.
+
+**Supersede exception:** an inventory `dest_file` MAY be declared superseded
+by a **named, non-empty** successor set. Do **not** Author a vestigial facade
+of the superseded path to satisfy coverage. The old row is covered iff every
+named successor is owned. Example: `ClinicService` superseded by named
+`OwnerService` + `PetService` — Author those two classes; do not Author
+`ClinicService.java` as a second creator of the old path.
 
 - **Create / Author / Configure** a dest path in **one** phase only — the phase
-  that first brings the file into existence.
-- Later phases that touch the same path use **Add** or **Verify** only.
+  that first brings the file into existence — **unless that path is superseded**
+  as above.
+- Later phases that touch the same **live** path use **Add** or **Verify** only.
   Example: Setup **Author** `pom.xml`; a later story **Add** an extension to
   `pom.xml`. Setup **Configure** `src/main/resources/application.properties`;
   Foundational must **not** **Configure** that same file; a later story may
   **Add** profile keys or **Verify** profile switching.
-- Two **Configure** / **Author** / **Create** lines for the same dest path is a
-  planning defect. Do not emit it. Sequential **Add** of a creator-owned path
+- Two **Configure** / **Author** / **Create** lines for the same **live** dest
+  path is a planning defect. Do not emit it. Sequential **Add** of a creator-owned path
   is legitimate under serial (Architect `E-20260817T131858Z`); mint does not
   refuse that as `FILE_OVERLAP`.
 - **Verify** lines that name a dest path are not a second owner.
@@ -69,6 +78,10 @@ row in `evidence/entry-point-inventory.json` is implemented by **exactly one**
 user story. Two stories must not both own the same collection (v24: US2 and
 US5 both claimed `/api/pettypes*` → A-8 `endpoints_multi`).
 
+This HTTP 1:1 rule is **not** the type-split / dest-file supersede axis.
+Do not "fix" it to match the dest-path exception above. `endpoints_multi`
+stays refused.
+
 - Assign each inventory row to one story's implementation tasks.
 - If two FRs would share a JAX-RS resource, **one** story Creates that
   Resource; the other story does **not** also Create/Implement `@Path` for
@@ -81,18 +94,22 @@ US5 both claimed `/api/pettypes*` → A-8 `endpoints_multi`).
 Do **not** Create `.java` paths for types a dest generator produces
 (`type-inventory.json` `generated: true`, `target/generated-sources/**`,
 or `@Generated`). Carry the spec the plugin reads and configure the
-plugin in the dest build file. One creator phase per dest path. Stories
+plugin in the dest build file. One creator phase per **live** dest path
+(supersede exception above). Stories
 import those types as `provider: generated`. A Non-Goal may exclude a
 generator only if no story depends on its output.
 
 ## Type inventory (source dest twins)
 
 Cover every `dest_file` in `evidence/type-inventory.json` that is **not**
-generated, the same way HTTP rows are covered. One creator phase per dest
-`.java` path on the user story that owns the entry point that reached it
-(`reached_from`). Layer is the last package segment — not a name pattern.
-A missing source collaborator is a row this plan was given and did not
-cover.
+generated and **not superseded**, the same way HTTP rows are covered.
+A dest_file MAY be declared superseded (partition or story `supersedes`)
+by a named non-empty successor set; covered iff every successor is owned.
+Do not Author the superseded path to close a coverage gap. One creator
+phase per **live** dest `.java` path on the user story that owns the entry
+point that reached it (`reached_from`). Layer is the last package segment
+— not a name pattern. A missing source collaborator is a row this plan was
+given and did not cover.
 
 - Mint harvests `src/…/*.java` tokens only. A directory is not a dest twin.
 - Do **not** dump every reachable type into Foundational.

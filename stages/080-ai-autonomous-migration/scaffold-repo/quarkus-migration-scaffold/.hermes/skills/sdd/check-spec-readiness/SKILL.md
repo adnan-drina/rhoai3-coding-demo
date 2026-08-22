@@ -5,7 +5,7 @@ license: Apache-2.0
 compatibility: Linux seat; Python 3.11+; reads migration/ specs and bodies
 metadata:
   author: rhoai3-harness-team
-  version: "1.5.1"
+  version: "1.5.2"
   hermes:
     tags:
     - sdd
@@ -16,7 +16,8 @@ metadata:
 ## When to Use
 
 - Before `kanban_create()` and before dispatching any M3 body — **lint only**.
-  The phase-attach matrix pins this skill to every phase M1–M5.
+  Pin this skill from the card `skills=` list; there is no phase-attach
+  matrix (`E-20260822T120850Z`).
 - After a `evidence/bodies/*.json` is assembled — validate that one body with
   `--body <path>` at create time, not only the whole corpus.
 - After the typed partition is written — prove coverage (HTTP 1:1, dest_file
@@ -134,8 +135,12 @@ Do **not** invoke DD4-retired R-M3.5/7 stubs (`check-persistence-bom.py`,
   `http_endpoint_count`, `mta_status`. Only `VALID` exits 0.
   `INCONCLUSIVE` is not a pass: no story files, **or** findings file
   missing (`mta_status=skipped_missing` / gap `mta_skipped_missing`).
-  When `evidence/type-inventory.json` is present, every `dest_file` must
-  be in some story write-set (`types_uncovered` otherwise). Missing file
+  When `evidence/type-inventory.json` is present, every **non-generated,
+  not-superseded** `dest_file` must be in some story write-set
+  (`types_uncovered` otherwise). A dest_file MAY be declared superseded
+  (partition or story `supersedes`) by a named non-empty successor set;
+  the old row is covered iff every successor is owned. Incomplete
+  successor sets are gaps. Missing file
   is skip, not INVALID.
   Findings **presence** at create is enough (`mta_status=checked`);
   `story.rules` / `mta_oos` are not a create-path join

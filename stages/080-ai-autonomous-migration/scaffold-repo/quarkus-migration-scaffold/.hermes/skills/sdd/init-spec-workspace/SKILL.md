@@ -5,7 +5,7 @@ license: Apache-2.0
 compatibility: Linux seat; network to install pinned Spec Kit CLI
 metadata:
   author: rhoai3-harness-team
-  version: "1.4.1"
+  version: "1.4.2"
   hermes:
     tags:
     - sdd
@@ -51,9 +51,10 @@ Idempotent via `.specify/.rhoai3-ads-provisioned`. Spec Kit is pinned
 4. Copies unique-owner tasks override from
    `${HERMES_SKILL_DIR}/assets/tasks-template.md` →
    `.specify/templates/overrides/tasks-template.md` (one creator phase per
-   dest path; Add/Verify remain amend; polish tasks that name a dest file
-   Create it; source type-inventory dest twins; generated types carry spec
-   + configure the dest generator)
+   live dest path unless a named non-empty successor set supersedes that
+   path; HTTP entry-point rows stay exactly one owner; Add/Verify remain
+   amend; polish tasks that name a dest file Create it; source type-inventory
+   dest twins; generated types carry spec + configure the dest generator)
 5. Copies destination constitution from
    `${HERMES_SKILL_DIR}/assets/constitution.md` →
    `.specify/memory/constitution.md` when missing or still spec-kit
