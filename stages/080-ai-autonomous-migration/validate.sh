@@ -243,9 +243,18 @@ check "080 ships pin-stamped dashboard index.html" \
 check "080 dashboard PIN matches pins.json" \
   "python3 '${SCAFFOLD_DASH}/assert-web-dist-pin.py' --pins '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/pins.json' --stamp '${SCAFFOLD_DASH}/PIN' --bundle '${SCAFFOLD_DASH}/web_dist/index.html' >/dev/null && echo 1 || echo 0" \
   "1"
+check "080 agent-pin assert MATCH on pinned version-text" \
+  "python3 '${SCAFFOLD_DASH}/assert-agent-pin.py' --pins '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/pins.json' --version-text 'Hermes Agent v0.20.4 (2026.8.18)' >/dev/null && echo 1 || echo 0" \
+  "1"
+check "080 agent-pin assert refuses off-pin version-text" \
+  "python3 '${SCAFFOLD_DASH}/assert-agent-pin.py' --pins '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/pins.json' --version-text 'Hermes Agent v0.20.5 (2026.8.19)' >/dev/null && echo 0 || echo 1" \
+  "1"
 
 SCAFFOLD_PROFILES="${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/config/profiles"
 GITOPS_INIT="${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml"
+check "080 GitOps asserts installed hermes vs pins.json" \
+  "grep -c 'assert-agent-pin: refusing off-pin agent' '${GITOPS_INIT}' || echo 0" \
+  "1"
 check "080 golden orchestrator profile template present" \
   "test -f '${SCAFFOLD_PROFILES}/orchestrator.yaml.template' && echo present || echo missing" \
   "present"

@@ -977,6 +977,26 @@ oc get dw petclinic-rest-v45-refac -n wksp-ai-developer
 - Confirm live `devspace-ai-tools-init` no longer `raise SystemExit` on a missing EX-3 hook (WARN + empty `pre_tool_call` until K2 lands at `.hermes/kernel/pre_tool_call.sh`). Do not mkdir `.hermes/kernel/` to satisfy the check.
 - Restart the dest workspace from Dev Spaces after that ConfigMap has synced. Do not copy the v1 skill into the v2 golden. Do not treat a successful start as dest-armed (a).
 
+## Stage 080 dest postStart fails agent-vs-pin assert
+
+**Affected stage:** Stage 080 measurement dest on `harness-v2`
+
+**Symptom:** DevWorkspace Failed. postStart log contains `assert-agent-pin: refusing off-pin agent (installed v0.20.5/2026.8.19 != pin v0.20.4/2026.8.18)`.
+
+**Likely cause:** Dest `hermes` install floats to upstream latest. `assert-web-dist-pin` only compares the dashboard stamp to `.hermes/pins.json`. The agent-vs-pin check is fail-closed. Pin move remains Operator GO.
+
+**Diagnose:**
+
+```bash
+oc exec -n wksp-ai-developer "$POD" -c development-tooling -- hermes --version
+python3 -c 'import json; d=json.load(open("stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/.hermes/pins.json")); print(d["pins"]["hermes_agent"])'
+```
+
+**Recover:**
+
+- Do not silently accept the pin move. Operator either GO-ratifies a new pin (and restamps `pins.json` + dashboard) or pins dest install back to v0.20.4 / 2026.8.18.
+- Do not treat an off-pin dest as dest-armed (a). Do not mkdir `.hermes/kernel/` to work around this.
+
 ## Factory Workspace Starts Healthy With No Agent Tooling
 
 **Affected stage:** Stage 050 RHDH templates (factory workspaces for 070/080)

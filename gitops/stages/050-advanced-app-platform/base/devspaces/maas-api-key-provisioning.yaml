@@ -726,6 +726,69 @@ data:
         } >> "${HOME}/.bashrc"
       fi
 
+      # Review E-20260823T110757Z: assert-web-dist-pin only compares the
+      # dashboard stamp to pins.json. Fail-closed agent vs pin here.
+      # Installer still floats; Operator owns pin-move vs pin-back.
+      local hermes_bin="${HOME}/.local/bin/hermes"
+      local pins_json="${PROJECT_DIR}/.hermes/pins.json"
+      if [ ! -x "${hermes_bin}" ]; then
+        echo "ERROR: hermes CLI missing; cannot assert agent vs pins.json." >&2
+        return 1
+      fi
+      if [ ! -f "${pins_json}" ]; then
+        echo "ERROR: ${pins_json} missing; cannot assert agent vs pin." >&2
+        return 1
+      fi
+      if ! python3 - "${pins_json}" "${hermes_bin}" <<'AGENTPINEOF'
+    import json, re, subprocess, sys
+    from pathlib import Path
+
+    pins_path, hermes_bin = sys.argv[1], sys.argv[2]
+    ver_re = re.compile(r"(v\d+\.\d+\.\d+)\s*\(([^)]+)\)", re.IGNORECASE)
+    try:
+        pins = json.loads(Path(pins_path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"assert-agent-pin: cannot read {pins_path}: {exc}", file=sys.stderr)
+        sys.exit(1)
+    agent = (pins.get("pins") or {}).get("hermes_agent") or {}
+    want_ver = str(agent.get("version") or "")
+    want_build = str(agent.get("build") or "")
+    if not want_ver or not want_build:
+        print("assert-agent-pin: pins.json missing hermes_agent.version/build", file=sys.stderr)
+        sys.exit(1)
+    try:
+        proc = subprocess.run(
+            [hermes_bin, "--version"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=30,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        print(f"assert-agent-pin: hermes --version failed: {exc}", file=sys.stderr)
+        sys.exit(1)
+    text = (proc.stdout or "") + "\n" + (proc.stderr or "")
+    match = ver_re.search(text)
+    if not match:
+        print(f"assert-agent-pin: cannot parse hermes version from {text!r}", file=sys.stderr)
+        sys.exit(1)
+    got_ver, got_build = match.group(1), match.group(2).strip()
+    if got_ver != want_ver or got_build != want_build:
+        print(
+            "assert-agent-pin: refusing off-pin agent "
+            f"(installed {got_ver}/{got_build} != pin {want_ver}/{want_build})",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    print(f"assert-agent-pin: MATCH {want_ver} / {want_build}")
+    AGENTPINEOF
+      then
+        echo "ERROR: installed Hermes does not match .hermes/pins.json." >&2
+        return 1
+      fi
+
       # AD-H (2026-08-07) consolidates AD-001/002/004/006 Hermes setup:
       # factory config via Managed Scope; runtime tree via HERMES_HOME in
       # the git-tracked project; scaffold skills via skills.external_dirs
