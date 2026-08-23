@@ -23,9 +23,8 @@ created the FK / schema / route). Executable but not informative about **this**
 story.
 
 **Rule:** prefer before/after delta, or scope the claim to artifacts in **this**
-body's `files_writable`. Mint-time: `assert-mint-oracles.py` refuses a
-test-shaped cmd that does not name `proves` test source(s) in this write-set
-(SR-13 / L2a). An unrelated dest `src/test` file must not satisfy the oracle.
+**body's** `files_writable`. Vacuous-pass refuse lives in KEEP
+`check-semantic-exits.py`. An unrelated dest `src/test` file must not satisfy the oracle.
 
 ## 3. Comment-satisfiable oracle
 

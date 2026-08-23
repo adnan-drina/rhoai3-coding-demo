@@ -1,6 +1,6 @@
 ---
 name: check-spec-readiness
-description: Before kanban_create — lint SDD specs, story bodies (typed BODY_* codes), and partition coverage (HTTP 1:1, dest_file 1:N with supersede). Do not use to mint Kanban children or assemble M3 bodies (those scripts live in .hermes/_park/mint until K4).
+description: Before kanban_create — lint SDD specs, story bodies (typed BODY_* codes), and partition coverage (HTTP 1:1, dest_file 1:N with supersede). Do not use to mint Kanban children or assemble M3 bodies (K4 converter is .hermes/kernel/k4_convert.py).
 license: Apache-2.0
 compatibility: Linux seat; Python 3.11+; reads migration/ specs and bodies
 metadata:
@@ -21,13 +21,13 @@ metadata:
 - After the typed partition is written — prove coverage (HTTP 1:1, dest_file
   1:N with supersede) with `check-partition-coverage.py`.
   This skill does **not** author Path-A `partition.json` and does **not**
-  stamp bodies (`stamp-body-dependencies.py` lives in `.hermes/_park/mint/`).
+  stamp bodies. Typed M3 bodies come from `.hermes/kernel/k4_convert.py`.
 - When a body's `exit_criteria`, `files_in_scope`, or `operand_count` changed —
   these are the fields the gates refuse on.
 - **Not** for creating `.specify/` or installing `specify-cli` —
   `init-spec-workspace`. **Not** for minting Kanban children from
   `tasks.md` PATH_TOKEN (OBJECT). Authority is the typed partition.
-  Mint-oracles / assemble scripts are `.hermes/_park/mint/` until K4.
+  Assemble/stamp/oracles under `.hermes/_park/mint/` are deleted (K4).
 
 
 # SDD readiness (pattern-steals + §S.6)
@@ -47,7 +47,7 @@ python3 "${HERMES_SKILL_DIR}/scripts/check-operand-count.py" "$ROOT"
 # M2 exit — partition VALID as a whole (1:N dest_file + HTTP 1:1)
 python3 "${HERMES_SKILL_DIR}/scripts/check-partition-coverage.py" "$ROOT" \
   --write-receipt evidence/receipts/partition-coverage/latest.json
-# mint assemble / assert-mint-oracles: .hermes/_park/mint/ (not this skill)
+# mint assemble / assert-mint-oracles: deleted with _park/mint (K4 converter)
 ```
 
 `check-readiness.sh` already runs `check-ordering.py` (§S.6) and
@@ -83,7 +83,8 @@ Libraries: `.hermes/lib/` (`generated_sources.py`,
 `specimen_agnostic.py`). Not a skill. Java type walk:
 `analysis/inventory-legacy-surface/scripts/type_graph.py`.
 
-Mint assemble/stamp/oracles: `.hermes/_park/mint/` until K4. Dest-POM honesty:
+Mint assemble/stamp/oracles: deleted (`.hermes/_park/mint/`). K4 converter:
+`.hermes/kernel/k4_convert.py`. Dest-POM honesty:
 `manage-quarkus-extensions/scripts/` (`assert-dest-pom-extensions.py`, JDBC /
 datasource / generator uptake).
 
@@ -137,7 +138,7 @@ Do **not** invoke DD4-retired R-M3.5/7 stubs (`check-persistence-bom.py`,
   `story.rules` / `mta_oos` are not a create-path join
   (Architect `E-20260817T154012Z`). Addressed findings stay M1 handoff
   and M5 WC-5 rescan.
-- Mint-oracles (`assert-mint-oracles.py --body`) live under `.hermes/_park/mint/` until K4 — not an exit of this lint skill.
+- Mint-oracles (`assert-mint-oracles.py`) were `_park/mint/` residue and are deleted. Not an exit of this lint skill.
 - Exit condition for the KEEP gate: every KEEP command above exits 0 **and** reports a
   non-zero artifact/body count. All-idle output on a populated workspace is a
   path defect to fix before dispatch.

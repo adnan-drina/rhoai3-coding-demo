@@ -302,6 +302,13 @@ check "080 golden K4 converter present" \
 check "080 golden K4 selftest passes" \
   "python3 '${SCAFFOLD_KERNEL}/k4_selftest.py' >/dev/null && echo 1 || echo 0" \
   "1"
+SCAFFOLD_PARK="${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/_park"
+check "080 golden _park/mint deleted after K4" \
+  "test ! -e '${SCAFFOLD_PARK}/mint' && echo absent || echo present" \
+  "absent"
+check "080 golden _park/requeue kept" \
+  "test -d '${SCAFFOLD_PARK}/requeue' && echo present || echo missing" \
+  "present"
 check "080 GitOps copies kernel pre_tool_call when k2_present" \
   "grep -c 'elif k2_present' '${GITOPS_INIT}' || echo 0" \
   "1"

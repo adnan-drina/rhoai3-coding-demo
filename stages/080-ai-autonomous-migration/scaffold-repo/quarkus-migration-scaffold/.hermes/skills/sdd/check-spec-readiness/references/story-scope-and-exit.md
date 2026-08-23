@@ -27,7 +27,9 @@ including the **relationship** between them (T-8 / v17 wrong-class oracles).
 3. **Sizing / wall-fit** — `check-operand-count.py --wall-fit`.
 4. **Complete-cmd / product / DB security** — respective gates under
    check-spec-readiness / check-domain-parity / check-release-readiness.
-5. **SR-13 discriminating exit (L2a mint / L2a complete)** — `assert-mint-oracles.py`.
+5. **SR-13 discriminating exit (L2a complete)** — KEEP
+   `check-semantic-exits.py` / `check-surgical-scopes.py`. Park
+   `assert-mint-oracles.py` is deleted.
    The test proving **this card's AC** lives in **this** `files_writable`.
    A test-shaped `exit_criteria[].cmd` (`mvn … test` or `mvn … verify`)
    must name `proves` test source(s) that sit in **this** `files_writable`.

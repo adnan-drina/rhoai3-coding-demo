@@ -6,8 +6,8 @@
 # Golden:    github.com/${GITHUB_OWNER}/quarkus-migration-scaffold-v2
 #
 # Dest clones omit .hermes/_park/ (ST-10 / Architect E-20260822T135403Z).
-# Platform git keeps that tree (mint/requeue residue; K4 converter is
-# .hermes/kernel/k4_convert.py). Chaos matrix never dest. Do not mkdir
+# Platform git keeps that tree (requeue residue; mint drawer deleted after
+# K4). Chaos matrix never dest. Do not mkdir empty .hermes/kernel/ here;
 # empty .hermes/kernel/ here; golden ships K2 REHOST pre_tool_call.sh plus
 # K1/K3/K4 Python. GitOps copies only the hook into Managed Scope. Do not
 # dest-apply a REHOST or K4 as a new fence. Do not run this script this

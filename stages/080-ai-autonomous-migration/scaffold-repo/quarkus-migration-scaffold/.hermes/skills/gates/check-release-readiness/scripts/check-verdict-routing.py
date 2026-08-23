@@ -56,7 +56,7 @@ VALID_ROUTING = {
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 # v2 Phase N: mint-remediation-card.py lived under dispatch-phase (deleted).
-# K4 HOLD — skip C-3(a) mint; still lint routing.
+# K4 converter is `.hermes/kernel/k4_convert.py`; this script still lints routing.
 
 
 def mint_remediation_script(start: Path) -> Path | None:
