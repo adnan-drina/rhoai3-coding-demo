@@ -29,6 +29,22 @@ def _ensure_hermes_lib() -> None:
     raise SystemExit("FAIL: .hermes/lib marker missing")
 _ensure_hermes_lib()
 
+
+def _ensure_hermes_kernel() -> None:
+    p = Path(__file__).resolve()
+    for parent in p.parents:
+        kernel = parent / "kernel"
+        if (kernel / ".hermes-kernel").is_file():
+            s = str(kernel)
+            if s not in sys.path:
+                sys.path.insert(0, s)
+            return
+    raise SystemExit("FAIL: .hermes/kernel marker missing")
+
+
+_ensure_hermes_kernel()
+from k1_validate import validate_body as k1_validate_body  # noqa: E402
+
 try:
     from specimen_agnostic import (
         extensions_union,
@@ -85,7 +101,7 @@ REQUIRED_KEYS: dict[str, tuple[str, ...]] = {
 
 ALLOWED_EXTRA: dict[str, frozenset[str]] = {
     "M1": frozenset({"legacy_at_3_manifest"}),
-    "M2": frozenset({"entry_point_inventory", "brief_draft"}),
+    "M2": frozenset({"entry_point_inventory", "brief_draft", "type-inventory"}),
     "M3": frozenset(
         {
             "spec_path",
@@ -95,10 +111,11 @@ ALLOWED_EXTRA: dict[str, frozenset[str]] = {
             "legacy_locus",
             # Operator E-20260811T144200Z — dest paths+digests at create
             "destination_inventory",
+            "type-inventory",
         }
     ),
-    "M4": frozenset({"g1_fixture", "g2_fixture"}),
-    "M5": frozenset({"g3_baseline", "g4_inventory"}),
+    "M4": frozenset({"g1_fixture", "g2_fixture", "type-inventory"}),
+    "M5": frozenset({"g3_baseline", "g4_inventory", "type-inventory"}),
     "FACTORY": frozenset(),
 }
 
@@ -217,6 +234,9 @@ def bodies_from(path: Path) -> list[tuple[str, dict]]:
 
 def check_body(label: str, body: dict, root: Path, sibling_m3: list[dict] | None = None) -> int:
     bad = 0
+    for code, detail, remedy in k1_validate_body(body, root=None):
+        fail(code, "%s: %s" % (detail, remedy))
+        bad = 1
     if not isinstance(body, dict):
         fail("BODY_SCHEMA", "body must be typed object with task_id, role, phase, refs[]")
         return 1

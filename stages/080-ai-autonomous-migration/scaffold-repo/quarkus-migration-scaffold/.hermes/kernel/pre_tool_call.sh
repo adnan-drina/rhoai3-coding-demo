@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # K2 pre_tool_call — allow-root containment (Architect E-20260823T122407Z).
-# Not claimed control until write-escape MATCH. Gate P-kernel stays OPEN.
+# Not claimed control. Gate P-kernel CLOSED (Architect 142526Z); this
+# file remains K2 instrumentation (MEASURED), not a claimed write fence.
 # Hermes pipes hook JSON on stdin — do not steal it with a heredoc.
 # Allow root: K2_ALLOW_ROOT, else HERMES_WRITE_SAFE_ROOT.
 # Architect 124330Z: extract POSIX-looking path spans (/ -anchored, ~/,

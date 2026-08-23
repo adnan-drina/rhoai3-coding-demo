@@ -125,7 +125,7 @@ flowchart LR
 |---|---|---|---|
 | M1 | Hermes card + MTA skill + inventory | Findings, inventory, type graph. `generated` is **derived at read time from path**, not a trusted stored flag | Implemented on dest |
 | M2 | Hermes planner + Spec Kit | `spec.md` / `plan.md` / `tasks.md`. Overlay does not dest-rewrite `tasks.md` after mint | Live dest **blocked** on 1:N split vs 1:1 coverage (PetClinic v42). Target: typed partition + sanctioned supersede map |
-| Mint | Wave-holder + verifier card | One K1 body per story; `kanban_create` + **inline** body; exact `created_cards` on complete | Authoring tree on `harness-v2` `a39b7d2d` deleted `dispatch-phase` / `handover-mint.py`. Overlay dest leftover still has v1 until HV-1+wipe. **Target:** K4 converter after Gate P-kernel copies the **typed partition** into `files_writable`. OBJECT scraping paths from `tasks.md` prose |
+| Mint | Wave-holder + verifier card | One K1 body per story; `kanban_create` + **inline** body; exact `created_cards` on complete | Authoring tree on `harness-v2` `a39b7d2d` deleted `dispatch-phase` / `handover-mint.py`. Overlay dest leftover still has v1 until HV-1+wipe. **Target:** K4 converter after Review PASS of K1 and serial K2/K3 copies the **typed partition** into `files_writable`. OBJECT scraping paths from `tasks.md` prose |
 | M3 | One card per story | Writes only `files_writable`. One Kanban terminator | Live dest. Target write fence is one shell `pre_tool_call` (`fail_closed`), not a claimed OS boundary until adversarial tests |
 | M4 | Gate cards | Runtime product oracles (startup, parity, persistence). Compile and MTA rescan **support**, they do not replace | Owner/Pet **PROVISIONAL_ACCEPT** demonstrated historically; full slice M4 on current v42 **not** claimed |
 | M5 | Factory / ACCEPT | Pipeline green. Waiver cannot author ACCEPT | **Not demonstrated** for Owner/Pet ship |
@@ -202,7 +202,7 @@ flowchart TB
 | M4 full runtime ACCEPT / M5 factory ship | Planned / **not demonstrated** for Owner/Pet ship |
 | v1 dest harness (`dispatch-phase`, `handover-mint.py`, human `ack_gate`, `.hermes/home/scripts/`) | Overlay dest leftover until HV-1+wipe GO. **Deleted, not ported**, on `harness-v2` `a39b7d2d` |
 | v2 native tree (Phase N) | **Landed** `harness-v2` `a39b7d2d`: product skills + config template; no mint / `home/scripts` / `ack_gate`. Golden `-v2` **not published**. Dest provision **HOLD** |
-| Slim kernel K1–K4 | K2 one-file **instrumentation** at `.hermes/kernel/pre_tool_call.sh` (Architect `120100Z`). Not claimed control. K1/K3/K4 **HOLD**. Gate P-pack CLOSED; Gate P-kernel OPEN until write-escape MATCH **and** K3 live PID reclaim |
+| Slim kernel K1–K4 | Gate P-kernel **CLOSED** (Architect `142526Z`). **K1** schema+loader+validator in `.hermes/kernel/` (this sitting). K2 `pre_tool_call.sh` remains **instrumentation** / MEASURED, not claimed control. K3/K4 **HOLD** until Review PASS of K1 then serial REHOST. `claimed_control` stays false. Gate P-pack CLOSED |
 | Dest named profiles (`orchestrator` / `implementer`) | **DEFINED** (Operator GO `231808Z`). GitOps creates both without `--clone`. Dest-armed (a) **MATCH** on v45 (`114320Z` / `114710Z`); not a write-set fence. OBJECT EX-4 four-seat names / overlay v1 |
 | K2 write fence as a claimed control | Instrumentation landed; `claimed_control=false` until dest write-escape MATCH |
 | K3 live PID reclaim / gateway tick | Unproven (`recompute_ready` stands in; no `kanban daemon --force`) |

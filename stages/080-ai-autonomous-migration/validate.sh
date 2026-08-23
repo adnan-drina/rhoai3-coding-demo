@@ -286,8 +286,11 @@ check "080 golden K2 instrumentation pre_tool_call.sh present" \
 check "080 golden pre_tool_call.sh is executable" \
   "test -x '${SCAFFOLD_KERNEL}/pre_tool_call.sh' && echo 1 || echo 0" \
   "1"
-check "080 golden kernel holds only pre_tool_call.sh" \
-  "test \"\$(find '${SCAFFOLD_KERNEL}' -type f ! -name '.DS_Store' | wc -l | tr -d ' ')\" = 1 && echo 1 || echo 0" \
+check "080 golden K1 schema loader validator present" \
+  "test -f '${SCAFFOLD_KERNEL}/k1_schema.py' && test -f '${SCAFFOLD_KERNEL}/k1_load.py' && test -f '${SCAFFOLD_KERNEL}/k1_validate.py' && test -f '${SCAFFOLD_KERNEL}/.hermes-kernel' && echo present || echo missing" \
+  "present"
+check "080 golden kernel has no K3 or K4 modules" \
+  "test -z \"\$(find '${SCAFFOLD_KERNEL}' -type f \\( -name 'k3*' -o -name 'k4*' \\) )\" && echo 1 || echo 0" \
   "1"
 check "080 GitOps copies kernel pre_tool_call when k2_present" \
   "grep -c 'elif k2_present' '${GITOPS_INIT}' || echo 0" \

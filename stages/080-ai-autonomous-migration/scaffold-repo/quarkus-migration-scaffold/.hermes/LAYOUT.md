@@ -19,7 +19,8 @@ parallel home is a defect.
 | M4 oracles | `.hermes/skills/gates/` (`check-domain-parity`, `check-release-readiness`) |
 | Shared Python | `.hermes/lib/` — **not a skill** (generated_sources, specimen splits). Identity is `.hermes-lib` marker, not a member module. |
 | Parked mint/requeue | `.hermes/_park/` — **not a skill**; **authoring-only**. Dest clones via `scripts/bootstrap-migration-scaffold-v2.sh` omit it. Chaos never dest. Do not mkdir empty `kernel/` from here. |
-| K2 instrumentation | `.hermes/kernel/pre_tool_call.sh` — one shell `pre_tool_call` module. Allow-root containment: unproven `command` denies (Architect `122407Z`). Dest GitOps copies it fail-closed when present. **Not claimed control** until write-escape MATCH. Gate P-kernel stays OPEN. Do not add K1/K3/K4 here until that gate. Do not mkdir empty `kernel/`. |
+| K2 instrumentation | `.hermes/kernel/pre_tool_call.sh` — one shell `pre_tool_call` module. Allow-root containment: unproven `command` denies (Architect `122407Z`). Dest GitOps copies **this file only** fail-closed when present. **Not claimed control** (write-escape MEASURED). Gate P-kernel CLOSED (`142526Z`). |
+| K1 body schema | `.hermes/kernel/k1_schema.py` + `k1_load.py` + `k1_validate.py` — typed pre-execution body. Not a skill. KEEP `check-kanban-body.py` imports the validator for the AD-019 minimum. Digest proves consistency among copies, not authorization. `claimed_control` stays false. Do not add K3/K4 here until their own exits. Do not mkdir empty `kernel/`. |
 | Run data | `evidence/` |
 | Spec Kit workspace | `.specify/` + `specs/` — gitignored in golden; never commit `.specify/` |
 | Task state | Hermes Kanban (native). No parallel CSV / `created-cards-*.json` |
@@ -27,8 +28,9 @@ parallel home is a defect.
 **Out of day-one (deleted, do not port):** `.hermes/skills/harness/`,
 `.hermes/home/scripts/`, `.hermes/phase-dispatch.yaml`, human `ack_gate`,
 `handover-mint.py`, `dispatch-phase`, write-fence plugins. Slim kernel
-K1/K3/K4 land only after Gate P-kernel. K2 `pre_tool_call.sh` is
-instrumentation (Architect `120100Z`); not a gate close. Dashboard `web_dist` ships here
+K3/K4 land only after Review PASS of K1, then serial K2 REHOST / K3 / K4
+each against its own exit. K2 `pre_tool_call.sh` remains
+instrumentation (Architect `120100Z`); not a claimed control. Dashboard `web_dist` ships here
 (pin-stamped); destfile copies it and launches `hermes dashboard --skip-build`
 fail-soft. Refresh the bundle when the Hermes pin moves.
 

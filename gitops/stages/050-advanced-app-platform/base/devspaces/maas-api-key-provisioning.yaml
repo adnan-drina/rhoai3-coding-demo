@@ -1005,7 +1005,8 @@ data:
         # 120100Z). Fail-closed copy of a missing path killed v45 postStart
         # (exit 1, 2026-08-23). Hatch: empty pre_tool_call until v1 scripts
         # or that K2 file is present. Not a claimed control. Gate P-kernel
-        # stays OPEN.
+        # CLOSED (Architect 142526Z). K1 modules stay in the dest tree;
+        # this hatch still copies only pre_tool_call.sh.
         # Official: hooks_auto_accept is a top-level key, not under hooks:
         # (hermes-hooks / config_defaults). Nested under hooks: is ignored
         # as an unknown event name and never auto-approves.
@@ -1065,8 +1066,9 @@ data:
         ".hermes/skills/harness/enforce-authority-boundary/scripts/hermes-spawn-hydrate.py",
     )
     # Architect E-20260823T120100Z: restore fail_closed when K2
-    # instrumentation exists at .hermes/kernel/pre_tool_call.sh. mkdir
-    # kernel/ only as parent of that one file. Not claimed control.
+    # instrumentation exists at .hermes/kernel/pre_tool_call.sh. Copy that
+    # file only into Managed Scope (K1 python stays in the dest tree).
+    # Not claimed control.
     src_k2 = os.path.join(
         os.environ.get("HERMES_WRITE_SAFE_ROOT", "/projects/modernized"),
         ".hermes/kernel/pre_tool_call.sh",
@@ -1115,7 +1117,7 @@ data:
             "WARN: EX-3 write-set hook absent on dest tree; "
             "defer fail_closed pre_tool_call until "
             ".hermes/kernel/pre_tool_call.sh is present and registered "
-            "(K2 instrumentation; Gate P-kernel stays OPEN). "
+            "(K2 instrumentation; Gate P-kernel CLOSED; not claimed control). "
             f"missing v1_hook={not os.path.isfile(src_hook)} "
             f"missing v1_hydrate={not os.path.isfile(src_hydrate)} "
             f"missing k2={not k2_present}"
