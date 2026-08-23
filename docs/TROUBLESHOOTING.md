@@ -974,7 +974,7 @@ oc get dw petclinic-rest-v45-refac -n wksp-ai-developer
 
 **Recover:**
 
-- Confirm live `devspace-ai-tools-init` no longer `raise SystemExit` on a missing EX-3 hook (WARN + empty `pre_tool_call` until K2 lands at `.hermes/kernel/pre_tool_call.sh`). Do not mkdir `.hermes/kernel/` to satisfy the check.
+- Confirm live `devspace-ai-tools-init` no longer `raise SystemExit` on a missing EX-3 hook. Hatch is WARN + empty `pre_tool_call` only while `.hermes/kernel/pre_tool_call.sh` is absent. That file is K2 instrumentation (not claimed control; Gate P-kernel stays OPEN). Do not mkdir empty `.hermes/kernel/` to satisfy the check.
 - Restart the dest workspace from Dev Spaces after that ConfigMap has synced. Do not copy the v1 skill into the v2 golden. Do not treat a successful start as dest-armed (a).
 
 ## Stage 080 dest postStart fails agent-vs-pin assert
@@ -999,7 +999,7 @@ The pin oracle is `ast` of `hermes_cli/__init__.py` `__version__` / `__release_d
 **Recover:**
 
 - Operator GO `E-20260823T111522Z` ratified Hermes v0.20.5 / 2026.8.19 (Spec Kit stays 0.16.1). Dest init fail-closes unless the dest `hermes-agent` tree matches `.hermes/pins.json`. Installer uses `--branch v2026.8.19`.
-- Do not treat dest-armed (a) as MATCH until dest `pins.json` and the ast pin oracle agree. Do not mkdir `.hermes/kernel/` to work around this.
+- Do not treat dest-armed (a) as MATCH until dest `pins.json` and the ast pin oracle agree. Do not mkdir empty `.hermes/kernel/` to work around a pin miss.
 
 ## Factory Workspace Starts Healthy With No Agent Tooling
 

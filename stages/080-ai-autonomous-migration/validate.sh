@@ -279,6 +279,25 @@ check "080 GitOps creates profiles with --no-alias" \
 check "080 GitOps does not invoke profile create --clone" \
   "grep -cE 'profile create [^\"]*--clone|profile create --clone' '${GITOPS_INIT}' || echo 0" \
   "0"
+SCAFFOLD_KERNEL="${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/kernel"
+check "080 golden K2 instrumentation pre_tool_call.sh present" \
+  "test -f '${SCAFFOLD_KERNEL}/pre_tool_call.sh' && echo present || echo missing" \
+  "present"
+check "080 golden pre_tool_call.sh is executable" \
+  "test -x '${SCAFFOLD_KERNEL}/pre_tool_call.sh' && echo 1 || echo 0" \
+  "1"
+check "080 golden kernel holds only pre_tool_call.sh" \
+  "test \"\$(find '${SCAFFOLD_KERNEL}' -type f ! -name '.DS_Store' | wc -l | tr -d ' ')\" = 1 && echo 1 || echo 0" \
+  "1"
+check "080 GitOps copies kernel pre_tool_call when k2_present" \
+  "grep -c 'elif k2_present' '${GITOPS_INIT}' || echo 0" \
+  "1"
+check "080 GitOps K2 matcher includes execute_code" \
+  "grep -c 'execute_code|delegate_task' '${GITOPS_INIT}' || echo 0" \
+  "1"
+check "080 GitOps no longer forbids the K2 instrumentation land" \
+  "grep -c 'Do not mkdir kernel/. Do not land K2' '${GITOPS_INIT}' || echo 0" \
+  "0"
 check "080 AGENTS.md assigns orchestrator/implementer not default" \
   "grep -c 'M2 / mint-verifier' '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/AGENTS.md' || echo 0" \
   "1"

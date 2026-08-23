@@ -23,4 +23,4 @@ test `(lib / ".hermes-lib").is_file()` and refuse with
 relocate.
 
 Do not add `.hermes/home/scripts/` or repo-root `scripts/` for new procedures.
-`.hermes/kernel/` is first K land after Gate P-kernel — not this directory.
+`.hermes/kernel/pre_tool_call.sh` is K2 instrumentation (not this directory). Do not add K1/K3/K4 here.

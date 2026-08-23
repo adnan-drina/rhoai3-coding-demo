@@ -34,8 +34,10 @@ kanban:
 
 # Hooks consent hatch (hermes-hooks). Non-TTY registration of *declared*
 # shell hooks needs one of: --accept-hooks, HERMES_ACCEPT_HOOKS=1, or
-# hooks_auto_accept: true. Day-one registers nothing fail-closed until K2
-# (Gate P-kernel). Leave this false; do not add hooks.<event> entries.
+# hooks_auto_accept: true. Leave this false on the seat template; do not
+# add hooks.<event> entries here. Dest GitOps managed config sets
+# hooks_auto_accept: true and copies .hermes/kernel/pre_tool_call.sh
+# fail-closed when that file exists (instrumentation, not claimed control).
 hooks_auto_accept: false
 
 # Dest worker profiles (Operator GO 231808Z): GitOps creates `orchestrator`

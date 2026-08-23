@@ -18,7 +18,8 @@ parallel home is a defect.
 | SDD | `.hermes/skills/sdd/` (Spec Kit provision + story oracles) |
 | M4 oracles | `.hermes/skills/gates/` (`check-domain-parity`, `check-release-readiness`) |
 | Shared Python | `.hermes/lib/` — **not a skill** (generated_sources, specimen splits). Identity is `.hermes-lib` marker, not a member module. |
-| Parked mint/requeue | `.hermes/_park/` — **not a skill**; **authoring-only**. Dest clones via `scripts/bootstrap-migration-scaffold-v2.sh` omit it. Chaos never dest. Do not mkdir `kernel/` here. |
+| Parked mint/requeue | `.hermes/_park/` — **not a skill**; **authoring-only**. Dest clones via `scripts/bootstrap-migration-scaffold-v2.sh` omit it. Chaos never dest. Do not mkdir empty `kernel/` from here. |
+| K2 instrumentation | `.hermes/kernel/pre_tool_call.sh` — one shell `pre_tool_call` module. Dest GitOps copies it fail-closed when present. **Not claimed control.** Gate P-kernel stays OPEN. Do not add K1/K3/K4 here until that gate. Do not mkdir empty `kernel/`. |
 | Run data | `evidence/` |
 | Spec Kit workspace | `.specify/` + `specs/` — gitignored in golden; never commit `.specify/` |
 | Task state | Hermes Kanban (native). No parallel CSV / `created-cards-*.json` |
@@ -26,7 +27,8 @@ parallel home is a defect.
 **Out of day-one (deleted, do not port):** `.hermes/skills/harness/`,
 `.hermes/home/scripts/`, `.hermes/phase-dispatch.yaml`, human `ack_gate`,
 `handover-mint.py`, `dispatch-phase`, write-fence plugins. Slim kernel
-K1–K4 lands only after Gate P-kernel. Dashboard `web_dist` ships here
+K1/K3/K4 land only after Gate P-kernel. K2 `pre_tool_call.sh` is
+instrumentation (Architect `120100Z`); not a gate close. Dashboard `web_dist` ships here
 (pin-stamped); destfile copies it and launches `hermes dashboard --skip-build`
 fail-soft. Refresh the bundle when the Hermes pin moves.
 
@@ -77,5 +79,8 @@ Admission fixture trees: `.hermes/skills/gates/check-domain-parity/fixtures/admi
 
 Headless seats that *declare* shell hooks need one of `--accept-hooks`,
 `HERMES_ACCEPT_HOOKS=1`, or `hooks_auto_accept: true` (hermes-hooks).
-Day-one **registers nothing fail-closed**. Do not add `hooks.<event>`
-entries until K2 (Gate P-kernel). Template: `.hermes/config/config.yaml.template`.
+The dest GitOps managed config already sets `hooks_auto_accept: true` and
+registers fail-closed `pre_tool_call` when `.hermes/kernel/pre_tool_call.sh`
+exists. The seat template still has `hooks_auto_accept: false` and no
+`hooks.<event>` entries — dest Managed Scope owns the live hook. Template:
+`.hermes/config/config.yaml.template`.

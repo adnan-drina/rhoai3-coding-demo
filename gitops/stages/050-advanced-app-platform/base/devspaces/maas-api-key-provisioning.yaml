@@ -1000,10 +1000,12 @@ data:
             "streaming": True,
         },
         # EX-3: ONE pre_tool_call hook when v1 scripts still exist.
-        # Dest v2 golden (N1) does not ship enforce-authority-boundary;
-        # K2 replaces it after Gate P-kernel. Fail-closed copy of a missing
-        # path killed v45 postStart (exit 1, 2026-08-23). Hatch: empty
-        # pre_tool_call until both scripts are present. Not a claimed control.
+        # Dest v2 golden (N1) does not ship enforce-authority-boundary.
+        # K2 instrumentation is .hermes/kernel/pre_tool_call.sh (Architect
+        # 120100Z). Fail-closed copy of a missing path killed v45 postStart
+        # (exit 1, 2026-08-23). Hatch: empty pre_tool_call until v1 scripts
+        # or that K2 file is present. Not a claimed control. Gate P-kernel
+        # stays OPEN.
         "hooks": {
             "hooks_auto_accept": True,
             "pre_tool_call": [],
@@ -1059,8 +1061,9 @@ data:
         os.environ.get("HERMES_WRITE_SAFE_ROOT", "/projects/modernized"),
         ".hermes/skills/harness/enforce-authority-boundary/scripts/hermes-spawn-hydrate.py",
     )
-    # Architect E-20260823T102604Z: restore fail_closed when K2 ships at
-    # .hermes/kernel/pre_tool_call.sh. Do not mkdir kernel/. Do not land K2.
+    # Architect E-20260823T120100Z: restore fail_closed when K2
+    # instrumentation exists at .hermes/kernel/pre_tool_call.sh. mkdir
+    # kernel/ only as parent of that one file. Not claimed control.
     src_k2 = os.path.join(
         os.environ.get("HERMES_WRITE_SAFE_ROOT", "/projects/modernized"),
         ".hermes/kernel/pre_tool_call.sh",
@@ -1097,7 +1100,7 @@ data:
         os.chmod(write_fence_sh, 0o755)
         cfg["hooks"]["pre_tool_call"] = [
             {
-                "matcher": "write|write_file|patch|edit_file|apply_patch|create_file|terminal",
+                "matcher": "write|write_file|patch|edit_file|apply_patch|create_file|terminal|execute_code|delegate_task",
                 "command": write_fence_sh,
                 "timeout": 5,
                 "fail_closed": True,
@@ -1107,8 +1110,9 @@ data:
     else:
         print(
             "WARN: EX-3 write-set hook absent on dest tree; "
-            "defer fail_closed pre_tool_call until K2 "
-            "(.hermes/kernel/pre_tool_call.sh after Gate P-kernel). "
+            "defer fail_closed pre_tool_call until "
+            ".hermes/kernel/pre_tool_call.sh is present and registered "
+            "(K2 instrumentation; Gate P-kernel stays OPEN). "
             f"missing v1_hook={not os.path.isfile(src_hook)} "
             f"missing v1_hydrate={not os.path.isfile(src_hydrate)} "
             f"missing k2={not k2_present}"

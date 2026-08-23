@@ -7,7 +7,8 @@
 #
 # Dest clones omit .hermes/_park/ (ST-10 / Architect E-20260822T135403Z).
 # Platform git keeps that tree (mint/requeue residue until K4/K3). Chaos
-# matrix never dest. Do not mkdir .hermes/kernel/ here.
+# matrix never dest. Do not mkdir empty .hermes/kernel/ here; golden
+# already ships .hermes/kernel/pre_tool_call.sh (instrumentation).
 #
 # This script does not touch:
 #   - quarkus-migration-scaffold (v1 live golden)

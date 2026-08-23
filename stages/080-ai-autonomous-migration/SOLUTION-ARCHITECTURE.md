@@ -202,9 +202,9 @@ flowchart TB
 | M4 full runtime ACCEPT / M5 factory ship | Planned / **not demonstrated** for Owner/Pet ship |
 | v1 dest harness (`dispatch-phase`, `handover-mint.py`, human `ack_gate`, `.hermes/home/scripts/`) | Overlay dest leftover until HV-1+wipe GO. **Deleted, not ported**, on `harness-v2` `a39b7d2d` |
 | v2 native tree (Phase N) | **Landed** `harness-v2` `a39b7d2d`: product skills + config template; no mint / `home/scripts` / `ack_gate`. Golden `-v2` **not published**. Dest provision **HOLD** |
-| Slim kernel K1–K4 | **HOLD**. Gate P-pack CLOSED; Gate P-kernel OPEN (K2 adversarial write-escape and dest-armed role (a) still `[U]`; scratch container (a) is not dest role (a)) |
-| Dest named profiles (`orchestrator` / `implementer`) | **DEFINED** (Operator GO `231808Z`). GitOps creates both without `--clone`. Dest-armed (a) **unmeasured**. OBJECT EX-4 four-seat names / overlay v1 |
-| K2 write fence as a claimed control | Unproven until adversarial suite + tool subtraction or container backend |
+| Slim kernel K1–K4 | K2 one-file **instrumentation** at `.hermes/kernel/pre_tool_call.sh` (Architect `120100Z`). Not claimed control. K1/K3/K4 **HOLD**. Gate P-pack CLOSED; Gate P-kernel OPEN until write-escape MATCH **and** K3 live PID reclaim |
+| Dest named profiles (`orchestrator` / `implementer`) | **DEFINED** (Operator GO `231808Z`). GitOps creates both without `--clone`. Dest-armed (a) **MATCH** on v45 (`114320Z` / `114710Z`); not a write-set fence. OBJECT EX-4 four-seat names / overlay v1 |
+| K2 write fence as a claimed control | Instrumentation landed; `claimed_control=false` until dest write-escape MATCH |
 | K3 live PID reclaim / gateway tick | Unproven (`recompute_ready` stands in; no `kanban daemon --force`) |
 | 1:N supersede coverage | **Landed** in KEEP `check-partition-coverage` on `a39b7d2d`. Not dest-measured |
 | Hermes dashboard / `web_dist` | Never a demo surface (v37–v42 `state=failed`). Later GO |
