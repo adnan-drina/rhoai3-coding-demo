@@ -974,7 +974,7 @@ oc get dw petclinic-rest-v45-refac -n wksp-ai-developer
 
 **Recover:**
 
-- Confirm live `devspace-ai-tools-init` no longer `raise SystemExit` on a missing EX-3 hook (WARN + empty `pre_tool_call` until K2).
+- Confirm live `devspace-ai-tools-init` no longer `raise SystemExit` on a missing EX-3 hook (WARN + empty `pre_tool_call` until K2 lands at `.hermes/kernel/pre_tool_call.sh`). Do not mkdir `.hermes/kernel/` to satisfy the check.
 - Restart the dest workspace from Dev Spaces after that ConfigMap has synced. Do not copy the v1 skill into the v2 golden. Do not treat a successful start as dest-armed (a).
 
 ## Factory Workspace Starts Healthy With No Agent Tooling

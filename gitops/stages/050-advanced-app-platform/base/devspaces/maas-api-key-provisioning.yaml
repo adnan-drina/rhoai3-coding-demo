@@ -1029,7 +1029,15 @@ data:
         os.environ.get("HERMES_WRITE_SAFE_ROOT", "/projects/modernized"),
         ".hermes/skills/harness/enforce-authority-boundary/scripts/hermes-spawn-hydrate.py",
     )
-    if os.path.isfile(src_hook) and os.path.isfile(src_hydrate):
+    # Architect E-20260823T102604Z: restore fail_closed when K2 ships at
+    # .hermes/kernel/pre_tool_call.sh. Do not mkdir kernel/. Do not land K2.
+    src_k2 = os.path.join(
+        os.environ.get("HERMES_WRITE_SAFE_ROOT", "/projects/modernized"),
+        ".hermes/kernel/pre_tool_call.sh",
+    )
+    v1_present = os.path.isfile(src_hook) and os.path.isfile(src_hydrate)
+    k2_present = os.path.isfile(src_k2)
+    if v1_present:
         shutil.copy2(src_hook, write_fence_py)
         os.chmod(write_fence_py, 0o755)
         bin_dir = os.path.join(managed, "bin")
@@ -1053,12 +1061,27 @@ data:
                 "fail_closed": True,
             }
         ]
+    elif k2_present:
+        write_fence_sh = os.path.join(hooks_dir, "pre_tool_call.sh")
+        shutil.copy2(src_k2, write_fence_sh)
+        os.chmod(write_fence_sh, 0o755)
+        cfg["hooks"]["pre_tool_call"] = [
+            {
+                "matcher": "write|write_file|patch|edit_file|apply_patch|create_file|terminal",
+                "command": write_fence_sh,
+                "timeout": 5,
+                "fail_closed": True,
+            }
+        ]
+        print("EX-3: fail_closed pre_tool_call from .hermes/kernel/pre_tool_call.sh")
     else:
         print(
             "WARN: EX-3 write-set hook absent on dest tree; "
-            "defer fail_closed pre_tool_call until K2 (Gate P-kernel). "
-            f"missing hook={not os.path.isfile(src_hook)} "
-            f"missing hydrate={not os.path.isfile(src_hydrate)}"
+            "defer fail_closed pre_tool_call until K2 "
+            "(.hermes/kernel/pre_tool_call.sh after Gate P-kernel). "
+            f"missing v1_hook={not os.path.isfile(src_hook)} "
+            f"missing v1_hydrate={not os.path.isfile(src_hydrate)} "
+            f"missing k2={not k2_present}"
         )
         cfg["hooks"]["pre_tool_call"] = []
     cfg_path = os.path.join(managed, "config.yaml")
