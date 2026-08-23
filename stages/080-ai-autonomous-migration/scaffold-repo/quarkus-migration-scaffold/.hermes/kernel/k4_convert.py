@@ -28,6 +28,7 @@ from k4_schema import (  # noqa: E402
 
 Issue = tuple[str, str, str]
 PATH_IN_PROSE = re.compile(r"(?:`)?((?:src|pom\.xml)[/.\w-]*)(?:`)?")
+SERVICE_JAVA = re.compile(r"(?i)(?:^|/)([^/]*Service\.java)$")
 
 
 def _issue(code: str, detail: str) -> Issue:
@@ -46,6 +47,22 @@ def partition_write_union(stories: list[dict[str, Any]]) -> set[str]:
             if s:
                 out.add(s)
     return out
+
+
+def shared_service_java(stories: list[dict[str, Any]]) -> list[tuple[str, list[str]]]:
+    """Same *Service.java in two or more stories = methods-in-shared-class."""
+    owners: dict[str, list[str]] = {}
+    for story in stories:
+        sid = _story_id(story)
+        for raw in story.get("files_writable") or []:
+            match = SERVICE_JAVA.search(str(raw).replace("\\", "/"))
+            if match:
+                owners.setdefault(match.group(1), []).append(sid)
+    return [
+        (base, list(dict.fromkeys(sids)))
+        for base, sids in owners.items()
+        if len(set(sids)) >= 2
+    ]
 
 
 def prose_paths(text: str) -> list[str]:
@@ -95,6 +112,14 @@ def validate_inputs(
                 out.append(
                     _issue("K4_PARENT", "%s parent %s not a partition story" % (sid, par))
                 )
+    for base, sids in shared_service_java(objs):
+        out.append(
+            _issue(
+                "K4_T0_3_SERVICE",
+                "%s is writable on stories %s (methods in shared ClinicService)"
+                % (base, ",".join(sids)),
+            )
+        )
     if tasks_text:
         for marker in PATH_TOKEN_MARKERS:
             if marker in tasks_text:

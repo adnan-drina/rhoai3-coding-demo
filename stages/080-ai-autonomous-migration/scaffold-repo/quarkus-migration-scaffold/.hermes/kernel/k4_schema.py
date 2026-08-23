@@ -38,4 +38,12 @@ REMEDY = {
         "M3 parents come from the partition import-graph plus the mint-verifier "
         "as common parent. Not Dependencies English."
     ),
+    "K4_T0_3_SERVICE": (
+        "T0_3_SERVICE: split into one service class per aggregate, each owned "
+        "by the story that owns those entities. Wrong reading: methods in a "
+        "shared ClinicService (v42 Add-to-ClinicService on six stories). The "
+        "shared file still imports every aggregate and fails CYCLE_IMPORT. "
+        "Retire the inventory row with a named 1:N supersede set, not methods "
+        "in a shared class."
+    ),
 }

@@ -87,7 +87,22 @@ def main() -> int:
     if "K4_CREATED_CARDS" not in empty_codes:
         return _fail("empty created_cards missed K4_CREATED_CARDS: %s" % empty_codes)
 
-    print("OK: K4 selftest (PATH_TOKEN + created_cards + partition copy)")
+    t03 = KERNEL / "fixtures" / "k4-t0-3-shared-service.json"
+    _, t03_issues = convert_file(t03)
+    t03_codes = {c for c, _, _ in t03_issues}
+    if "K4_T0_3_SERVICE" not in t03_codes:
+        return _fail("shared ClinicService missed K4_T0_3_SERVICE: %s" % t03_codes)
+    t03_detail, t03_remedy = next(
+        (d, r) for c, d, r in t03_issues if c == "K4_T0_3_SERVICE"
+    )
+    if "methods in shared ClinicService" not in t03_detail:
+        return _fail("T0_3 detail missing wrong reading: %s" % t03_detail)
+    if "one service class per aggregate" not in t03_remedy:
+        return _fail("T0_3 remedy missing class-per-aggregate: %s" % t03_remedy)
+    if "methods in a shared ClinicService" not in t03_remedy:
+        return _fail("T0_3 remedy missing ClinicService wrong reading: %s" % t03_remedy)
+
+    print("OK: K4 selftest (PATH_TOKEN + created_cards + partition copy + T0_3_SERVICE)")
     return 0
 
 
