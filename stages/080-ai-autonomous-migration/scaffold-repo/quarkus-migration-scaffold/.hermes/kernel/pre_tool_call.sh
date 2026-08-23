@@ -3,7 +3,9 @@
 # Not claimed control until write-escape MATCH. Gate P-kernel stays OPEN.
 # Hermes pipes hook JSON on stdin — do not steal it with a heredoc.
 # Allow root: K2_ALLOW_ROOT, else HERMES_WRITE_SAFE_ROOT.
-# Command with no path proven inside allow-root is deny (quoted perl/ruby).
+# Command with no path proven inside allow-root is deny, unless hook cwd
+# realpath is inside allow-root (Review 123054Z: pathless mvn/git/ls).
+# Quoted perl/ruby then also allow when cwd is inside — FLAG, not hidden.
 # No interpreter substring denylist.
 set -euo pipefail
 exec python3 -c '
@@ -67,6 +69,15 @@ for p in paths:
         block("path %s resolves outside allow root" % p)
 
 if cmd and not proven:
+    hook_cwd = data.get("cwd") if isinstance(data.get("cwd"), str) else ""
+    if hook_cwd:
+        try:
+            cr = os.path.realpath(hook_cwd)
+        except OSError:
+            block("cwd unresolved")
+        if cr == allow_r or cr.startswith(allow_r + os.sep):
+            print("{}")
+            raise SystemExit(0)
     block("unproven command path")
 
 print("{}")
