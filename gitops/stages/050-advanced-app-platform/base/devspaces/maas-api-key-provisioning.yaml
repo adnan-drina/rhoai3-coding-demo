@@ -1005,9 +1005,9 @@ data:
         # fence). Fail-closed copy of a missing path killed v45 postStart
         # (exit 1, 2026-08-23). Hatch: empty pre_tool_call until v1 scripts
         # or that K2 file is present. Not a claimed control. Gate P-kernel
-        # CLOSED (Architect 142526Z). K1 modules stay in the dest tree;
-        # this hatch still copies only pre_tool_call.sh. Do not dest-apply
-        # a REHOST as if it were a new fence.
+        # CLOSED (Architect 142526Z). K1 and K3 modules stay in the dest
+        # tree; this hatch still copies only pre_tool_call.sh. Do not
+        # dest-apply a REHOST as if it were a new fence.
         # Official: hooks_auto_accept is a top-level key, not under hooks:
         # (hermes-hooks / config_defaults). Nested under hooks: is ignored
         # as an unknown event name and never auto-approves.

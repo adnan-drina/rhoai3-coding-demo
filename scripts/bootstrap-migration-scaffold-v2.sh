@@ -8,8 +8,9 @@
 # Dest clones omit .hermes/_park/ (ST-10 / Architect E-20260822T135403Z).
 # Platform git keeps that tree (mint/requeue residue until K4/K3). Chaos
 # matrix never dest. Do not mkdir empty .hermes/kernel/ here; golden
-# ships K2 REHOST pre_tool_call.sh plus K1 schema/loader/validator. GitOps copies
-# only the hook into Managed Scope. Do not dest-apply a REHOST as a new fence.
+# ships K2 REHOST pre_tool_call.sh plus K1 schema/loader/validator and K3
+# mint-verifier. GitOps copies only the hook into Managed Scope. Do not
+# dest-apply a REHOST as a new fence.
 #
 # This script does not touch:
 #   - quarkus-migration-scaffold (v1 live golden)

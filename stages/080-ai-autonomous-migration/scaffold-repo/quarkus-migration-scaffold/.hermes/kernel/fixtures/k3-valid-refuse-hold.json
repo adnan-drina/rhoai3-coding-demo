@@ -1,0 +1,34 @@
+{
+  "daemon_force": false,
+  "claimed_refuse_control": false,
+  "manifest": {
+    "created_cards": ["t_ver0cccc", "t_m3cccccc"]
+  },
+  "cards": [
+    {
+      "id": "t_writer22",
+      "role": "mint-writer",
+      "assignee": "orchestrator",
+      "status": "done",
+      "terminator": "kanban_complete",
+      "created_cards": ["t_ver0cccc", "t_m3cccccc"],
+      "parents": []
+    },
+    {
+      "id": "t_ver0cccc",
+      "role": "mint-verifier",
+      "assignee": "orchestrator",
+      "status": "blocked",
+      "terminator": "kanban_block",
+      "parents": ["t_writer22"]
+    },
+    {
+      "id": "t_m3cccccc",
+      "role": "implementer",
+      "phase": "M3",
+      "assignee": "implementer",
+      "status": "todo",
+      "parents": ["t_ver0cccc"]
+    }
+  ]
+}

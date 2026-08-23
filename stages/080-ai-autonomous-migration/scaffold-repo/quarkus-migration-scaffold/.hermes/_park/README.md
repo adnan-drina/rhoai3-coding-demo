@@ -9,7 +9,7 @@ No `SKILL.md`. Not agent-discovered.
 
 `assemble-m3-bodies-from-partition.py` lives **here**, not under a `check-*` name.
 
-Do not mkdir empty `.hermes/kernel/`. K2 is the REHOST of `.hermes/kernel/pre_tool_call.sh` (measured, not claimed control). K1 schema/loader/validator live beside it. K3/K4 stay out until their own exits.
+Do not mkdir empty `.hermes/kernel/`. K2 is the REHOST of `.hermes/kernel/pre_tool_call.sh` (measured, not claimed control). K1 schema/loader/validator and K3 mint-verifier live beside it. K4 stays out until its own exit.
 
 Dest clones **omit** this directory (`scripts/bootstrap-migration-scaffold-v2.sh`).
 Chaos matrix never dest. Platform git keeps the tree.

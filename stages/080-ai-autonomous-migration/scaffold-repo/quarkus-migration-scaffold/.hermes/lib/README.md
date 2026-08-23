@@ -23,4 +23,4 @@ test `(lib / ".hermes-lib").is_file()` and refuse with
 relocate.
 
 Do not add `.hermes/home/scripts/` or repo-root `scripts/` for new procedures.
-`.hermes/kernel/pre_tool_call.sh` is the K2 REHOST (not this directory; not claimed control). K1 lives in `.hermes/kernel/` (`k1_*.py`). Do not add K3/K4 here.
+`.hermes/kernel/pre_tool_call.sh` is the K2 REHOST (not this directory; not claimed control). K1 and K3 live in `.hermes/kernel/` (`k1_*.py`, `k3_*.py`). Do not add K4 here.

@@ -1,0 +1,40 @@
+{
+  "daemon_force": true,
+  "claimed_refuse_control": true,
+  "manifest": { "created_cards": ["t_ver0bbbb"] },
+  "cards": [
+    {
+      "id": "t_writer11",
+      "role": "mint-writer",
+      "assignee": "implementer",
+      "status": "done",
+      "terminator": "kanban_request_review",
+      "created_cards": [],
+      "parents": []
+    },
+    {
+      "id": "ack_gate",
+      "role": "ack_gate",
+      "assignee": "default",
+      "status": "done",
+      "terminator": "kanban_complete",
+      "parents": []
+    },
+    {
+      "id": "t_ver0bbbb",
+      "role": "mint-verifier",
+      "assignee": "implementer",
+      "status": "review",
+      "terminator": "kanban_request_review",
+      "parents": []
+    },
+    {
+      "id": "t_m3bbbbbb",
+      "role": "implementer",
+      "phase": "M3",
+      "assignee": "orchestrator",
+      "status": "ready",
+      "parents": []
+    }
+  ]
+}
