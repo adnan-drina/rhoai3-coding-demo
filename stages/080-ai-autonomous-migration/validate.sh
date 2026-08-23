@@ -298,6 +298,9 @@ check "080 GitOps K2 matcher includes execute_code" \
 check "080 GitOps no longer forbids the K2 instrumentation land" \
   "grep -c 'Do not mkdir kernel/. Do not land K2' '${GITOPS_INIT}' || echo 0" \
   "0"
+check "080 GitOps hooks_auto_accept is top-level official key" \
+  "grep -c 'unknown event name and never auto-approves' '${GITOPS_INIT}' || echo 0" \
+  "1"
 check "080 AGENTS.md assigns orchestrator/implementer not default" \
   "grep -c 'M2 / mint-verifier' '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/AGENTS.md' || echo 0" \
   "1"

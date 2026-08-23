@@ -1006,10 +1006,13 @@ data:
         # (exit 1, 2026-08-23). Hatch: empty pre_tool_call until v1 scripts
         # or that K2 file is present. Not a claimed control. Gate P-kernel
         # stays OPEN.
+        # Official: hooks_auto_accept is a top-level key, not under hooks:
+        # (hermes-hooks / config_defaults). Nested under hooks: is ignored
+        # as an unknown event name and never auto-approves.
         "hooks": {
-            "hooks_auto_accept": True,
             "pre_tool_call": [],
         },
+        "hooks_auto_accept": True,
     }
     # AD-008: MiniMax is a named OpenAI-compatible provider (LiteMaaS), not
     # native minimax-oauth. Register only when the escalation override already
@@ -1342,6 +1345,7 @@ data:
           printf 'export HERMES_MANAGED_DIR=%q\n' "${managed_dir}"
           printf 'export HERMES_HOME=%q\n' "${hermes_home}"
           printf 'export HERMES_WRITE_SAFE_ROOT=%q\n' "${PROJECT_DIR}"
+          printf 'export HERMES_ACCEPT_HOOKS=1\n'
         } >> "${HOME}/.bashrc"
       else
         # Refresh paths on every init (key/profile may change).
@@ -1356,6 +1360,9 @@ data:
         else
           printf 'export HERMES_HOME=%q\n' "${hermes_home}" >> "${HOME}/.bashrc"
         fi
+        if ! grep -q '^export HERMES_ACCEPT_HOOKS=' "${HOME}/.bashrc" 2>/dev/null; then
+          printf 'export HERMES_ACCEPT_HOOKS=1\n' >> "${HOME}/.bashrc"
+        fi
         rm -f "${HOME}/.bashrc.bak"
       fi
       if [ -e "${HOME}/.hermes/config.yaml" ] || [ -e "${hermes_home}/config.yaml" ]; then
@@ -1366,7 +1373,7 @@ data:
       # command string — doctor catches mtime/allowlist drift). Non-fatal if
       # hermes binary not yet on PATH at this init phase.
       if command -v hermes >/dev/null 2>&1; then
-        HERMES_HOME="${managed_dir}" HERMES_MANAGED_DIR="${managed_dir}" \
+        HERMES_HOME="${hermes_home}" HERMES_MANAGED_DIR="${managed_dir}" \
           HERMES_ACCEPT_HOOKS=1 hermes hooks doctor >/dev/null 2>&1 \
           || echo "WARN: hermes hooks doctor reported issues (W2 CS-5 #5) — re-run after allowlist."
       fi
