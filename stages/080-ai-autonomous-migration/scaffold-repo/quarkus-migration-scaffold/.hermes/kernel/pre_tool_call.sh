@@ -3,9 +3,10 @@
 # Not claimed control until write-escape MATCH. Gate P-kernel stays OPEN.
 # Hermes pipes hook JSON on stdin — do not steal it with a heredoc.
 # Allow root: K2_ALLOW_ROOT, else HERMES_WRITE_SAFE_ROOT.
-# Architect 123839Z: extract every / or ~ path span from command
-# (including quotes/q{}), prove each. Pathless ALLOW only when no such
-# span exists and cwd is inside allow-root. Not an interpreter denylist.
+# Architect 124330Z: extract POSIX-looking path spans (/ -anchored, ~/,
+# ./, ../) including quotes/q{}. Not every / (https://, 2026/08/23).
+# Pathless ALLOW only when no such span exists and cwd is inside
+# allow-root. Not an interpreter denylist.
 set -euo pipefail
 exec python3 -c '
 import json, os, re, sys
@@ -48,7 +49,8 @@ if cmd:
     for tok in cmd.split():
         if tok.startswith("/") or tok.startswith("./") or tok.startswith("../"):
             paths.append(tok)
-    for m in re.finditer(r"(?:~/|/)[^\s\"{}()]+", cmd):
+    cmd_scan = re.sub(r"https?://\S+", " ", cmd)
+    for m in re.finditer(r"(?:~/|\.\./|\./|(?<![\w:])/)(?!\d)[^\s\"{}()]+", cmd_scan):
         span = m.group(0)
         span = span.split(",")[0]
         while span and span[-1] in ".,;:" + chr(39) + chr(34):
