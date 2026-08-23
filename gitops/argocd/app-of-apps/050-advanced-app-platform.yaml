@@ -14,8 +14,9 @@ spec:
   project: rhoai-demo
   source:
     repoURL: https://github.com/adnan-drina/rhoai3-coding-demo.git
-    # Operator B (E-20260808T130500Z): live prove on harness-refactor; main frozen.
-    targetRevision: harness-refactor
+    # Measurement recut Operator E-20260823T093758Z / Architect E-20260823T090955Z.
+    # Live 050 tracks harness-v2. Phase E dest cutover stays HELD.
+    targetRevision: harness-v2
     path: gitops/stages/050-advanced-app-platform/base
   destination:
     server: https://kubernetes.default.svc

@@ -29,9 +29,11 @@ The deploy scripts do not imperatively install every component themselves. They 
 
 ## Harness v2 golden (branch `harness-v2` only)
 
-Live workshop GitOps on `overlay-a8-publish` still publishes dests from
-`adnan-drina/quarkus-migration-scaffold`. Do not recut Argo to `harness-v2`
-until a dest cutover GO. Do not GitHub-rename the v1 golden.
+Stage 050 Argo `targetRevision` is `harness-v2` (Operator measurement recut
+`E-20260823T093758Z`). Catalog `fetch:plain` is `quarkus-migration-scaffold-v2`.
+Phase E dest cutover / `Operator:gitops-recut` stays HELD. Leftover v1 dests
+(`petclinic-rest-v43-refac`, `v44`) cannot measure dest-armed (a). Do not
+GitHub-rename the v1 golden.
 
 | Surface | v1 (live) | v2 (this branch) |
 |---------|-----------|------------------|
@@ -39,8 +41,8 @@ until a dest cutover GO. Do not GitHub-rename the v1 golden.
 | Dest worker profiles | Overlay: single-persona `default` (C-2 skip) | `orchestrator` + `implementer` (Operator GO `231808Z`; `hermes profile create --no-alias`, never `--clone`). Dest-armed (a) unmeasured. |
 | Golden GitHub | `quarkus-migration-scaffold` | `quarkus-migration-scaffold-v2` |
 | Publish | `scripts/bootstrap-scaffold-repos.sh` | `scripts/bootstrap-migration-scaffold-v2.sh` |
-| Template `fetch:plain` | v1 golden | v2 golden in this branch's `template.yaml` only |
-| Dest | existing `petclinic-rest-v*` | Developer Hub **Application migration** after GitOps GO |
+| Template `fetch:plain` | v1 golden (HEAD `274cfdeb` untouched) | Live 050 catalog: `quarkus-migration-scaffold-v2` |
+| Dest | leftover `petclinic-rest-v43/v44` (v1; cannot measure dest-armed) | Operator cuts one measurement dest after recut; Phase E cutover HELD |
 
 `bootstrap-scaffold-repos.sh` refuses the Stage 080 push when HEAD is
 `harness-v2`. Leftover `adnan-drina/greeting-v2` is not a dest — do not
