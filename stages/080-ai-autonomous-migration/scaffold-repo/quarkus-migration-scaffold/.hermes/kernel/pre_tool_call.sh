@@ -7,19 +7,20 @@ set -euo pipefail
 exec python3 -c '
 import json, os, sys
 allow = os.environ.get("K2_ALLOW_ROOT") or ""
-raw = sys.stdin.read()
-try:
-    data = json.loads(raw)
-except json.JSONDecodeError:
-    sys.exit(0)
-tool = data.get("tool_name") or ""
-inp = data.get("tool_input") or {}
-if not isinstance(inp, dict):
-    inp = {}
 
 def block(reason: str) -> None:
     print(json.dumps({"action": "block", "message": reason}))
     raise SystemExit(0)
+
+raw = sys.stdin.read()
+try:
+    data = json.loads(raw)
+except json.JSONDecodeError:
+    block("unparseable hook payload")
+tool = data.get("tool_name") or ""
+inp = data.get("tool_input") or {}
+if not isinstance(inp, dict):
+    inp = {}
 
 if tool in {"execute_code", "delegate_task", "mcp", "skill_manage"}:
     block("%s is pathless-or-mutation; deny" % tool)
@@ -58,7 +59,7 @@ if allow:
         try:
             rp = os.path.realpath(p)
         except OSError:
-            continue
+            block("path %s unresolved" % p)
         if rp != allow_r and not rp.startswith(allow_r + os.sep):
             block("path %s resolves outside allow root" % p)
 
