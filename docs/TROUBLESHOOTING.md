@@ -956,6 +956,27 @@ oc logs -n wksp-ai-developer <workspace-pod> -c tooling-container --tail=100
 - Confirm resource requests/limits are sufficient.
 - Re-run Stage 060 validation.
 
+## Stage 080 dest postStart fails EX-3 write-set hook missing
+
+**Affected stage:** Stage 080 measurement dest on `harness-v2`
+
+**Symptom:** DevWorkspace Failed. `Error creating DevWorkspace deployment: Container development-tooling has state [postStart hook] Commands failed (Kubelet reported exit code 1)`. `/projects/.platform/poststart.log` ends with `ERROR: EX-3 write-set hook missing: .../enforce-authority-boundary/scripts/write-set-hook.py`.
+
+**Likely cause:** N1 stripped the v1 `enforce-authority-boundary` skill from the v2 golden. K2 is the replacement after Gate P-kernel. Live `init-ai-tools.sh` used to `SystemExit` when copying that hook into Managed Scope, so postStart never reached dest profile seating.
+
+**Diagnose:**
+
+```bash
+oc get dw petclinic-rest-v45-refac -n wksp-ai-developer
+# PVC still holds the log after the pod is scaled to 0:
+# /projects/.platform/poststart.log
+```
+
+**Recover:**
+
+- Confirm live `devspace-ai-tools-init` no longer `raise SystemExit` on a missing EX-3 hook (WARN + empty `pre_tool_call` until K2).
+- Restart the dest workspace from Dev Spaces after that ConfigMap has synced. Do not copy the v1 skill into the v2 golden. Do not treat a successful start as dest-armed (a).
+
 ## Factory Workspace Starts Healthy With No Agent Tooling
 
 **Affected stage:** Stage 050 RHDH templates (factory workspaces for 070/080)
