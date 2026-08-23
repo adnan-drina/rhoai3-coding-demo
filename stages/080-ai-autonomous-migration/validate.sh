@@ -309,6 +309,9 @@ check "080 golden _park/mint deleted after K4" \
 check "080 golden _park/requeue kept" \
   "test -d '${SCAFFOLD_PARK}/requeue' && echo present || echo missing" \
   "present"
+check "080 bootstrap refuses dest chaos matrix" \
+  "grep -c 'run-chaos-matrix.py present in staged dest golden' '${REPO_ROOT}/scripts/bootstrap-migration-scaffold-v2.sh' || echo 0" \
+  "1"
 check "080 GitOps copies kernel pre_tool_call when k2_present" \
   "grep -c 'elif k2_present' '${GITOPS_INIT}' || echo 0" \
   "1"

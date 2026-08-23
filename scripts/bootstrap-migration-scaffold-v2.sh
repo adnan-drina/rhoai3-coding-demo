@@ -8,7 +8,7 @@
 # Dest clones omit .hermes/_park/ (ST-10 / Architect E-20260822T135403Z).
 # Platform git keeps that tree (requeue residue; mint drawer deleted after
 # K4). Chaos matrix never dest. Do not mkdir empty .hermes/kernel/ here;
-# empty .hermes/kernel/ here; golden ships K2 REHOST pre_tool_call.sh plus
+# golden ships K2 REHOST pre_tool_call.sh plus
 # K1/K3/K4 Python. GitOps copies only the hook into Managed Scope. Do not
 # dest-apply a REHOST or K4 as a new fence. Do not run this script this
 # sitting unless Operator names it.
@@ -62,6 +62,9 @@ omit_park_from_staged() {
     echo "REFUSE: .hermes/_park still present after dest omit" >&2
     exit 1
   fi
+  # Re-add tripwire (Architect 154631Z / 154833Z): dest omits `_park`, but
+  # refuse if run-chaos-matrix.py still appears anywhere in the staged dest
+  # tree. Keep this even while authoring still holds `_park/requeue`.
   local chaos
   chaos="$(find "${staged}" -name 'run-chaos-matrix.py' -print -quit || true)"
   if [[ -n "${chaos}" ]]; then
