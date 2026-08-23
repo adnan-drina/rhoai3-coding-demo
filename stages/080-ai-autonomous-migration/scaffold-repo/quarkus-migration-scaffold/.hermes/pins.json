@@ -2,11 +2,11 @@
   "schema": "rhoai3.tooling-pins/v1",
   "pins": {
     "hermes_agent": {
-      "version": "v0.20.4",
-      "build": "2026.8.18",
+      "version": "v0.20.5",
+      "build": "2026.8.19",
       "install_surface": "Platform Dev Spaces init (Managed Scope)",
       "initial_status_contract": "binary-local: hermes kanban create --help plus VALID_INITIAL_STATUSES. Public CLI page is not the contract. Omit --initial-status yields ready (fail-open).",
-      "note": "Seat pin (Architect E-20260818T111730Z / Operator E-20260818T132010Z). Dest measured v0.20.4. Native Kanban gateway-embedded dispatcher is the control. HOLD pin-move without Operator GO."
+      "note": "Seat pin (Operator E-20260823T111522Z GO Hermes-only; Spec Kit stays 0.16.1). Dest measured v0.20.5 / 2026.8.19. Native Kanban gateway-embedded dispatcher is the control. HOLD further pin-move without Operator GO."
     },
     "spec_kit": {
       "package": "specify-cli",

@@ -9,6 +9,7 @@ parallel home is a defect.
 | Standing convention | `AGENTS.md` (this file is identity + taxonomy only) |
 | Identity | authored `.hermes/SOUL.md`; dest loads `$HERMES_HOME/SOUL.md` |
 | Seat pins | `.hermes/pins.json` |
+| Pin asserts | `.hermes/checks/` — agent-vs-pin and dashboard-stamp-vs-pin CLIs. Not a skill. Not `lib/`. |
 | Config templates | `.hermes/config/` — no secrets; dest Managed Scope owns the live pin. Worker profiles: `.hermes/config/profiles/{orchestrator,implementer}.yaml.template` (Operator GO `231808Z`; dest GitOps applies via `hermes profile create --no-alias`, never `--clone`) |
 | Product guidance | `.hermes/skills/<category>/<name>/` |
 | Dashboard bundle | `.hermes/dashboard/` — pin-stamped `web_dist` + one launcher. Observability, not capability. |

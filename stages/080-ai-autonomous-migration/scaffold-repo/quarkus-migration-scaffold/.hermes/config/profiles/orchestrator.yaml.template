@@ -3,13 +3,14 @@
 # `hermes -p orchestrator config set` (hermes-configuration / hermes-cli).
 # OBJECT: --clone / --clone-from / --clone-all (EX-4 isolated $HOME, copied .env).
 #
+# Pin v0.20.5 (`v2026.8.19`, Operator GO `111522Z`) is the dest contract.
 # Official orchestrator quote (hermes-kanban / hermes-tools):
 #   toolsets: [kanban, gateway, memory]
-# Pin v0.20.4 has no `gateway` leaf. `hermes-gateway` is the messaging-union
-# preset and would re-expand core tools — do not seat it. Dispatcher stays
-# Managed Scope `kanban.dispatch_in_gateway`. GitOps still sets the official
-# three names; unknown keys drop. Seat `agent.disabled_toolsets` for write
-# toolsets so a later pin cannot re-enable file/terminal on this profile.
+# `hermes-gateway` is the messaging-union preset and would re-expand core
+# tools — do not seat it. Dispatcher stays Managed Scope
+# `kanban.dispatch_in_gateway`. GitOps sets the official three names.
+# Seat `agent.disabled_toolsets` for write toolsets so a later pin cannot
+# re-enable file/terminal on this profile.
 #
 # Secrets stay Managed Scope. GitOps overwrites terminal.cwd with PROJECT_DIR
 # (official: cwd "." means launch directory, not this profile dir).

@@ -707,16 +707,15 @@ data:
     }
 
     ensure_hermes() {
-      # Stage 080 harness orchestrator (Hermes Agent CLI). The installer is
-      # self-contained (bundles Node 22 + Python 3.11 under ~/.hermes) and
-      # offers no version pinning yet — same floating pattern as the
-      # opencode installer above. --skip-browser keeps the install headless.
+      # Stage 080 harness orchestrator (Hermes Agent CLI). Operator
+      # E-20260823T111522Z pins Hermes to tag v2026.8.19 (v0.20.5).
+      # Spec Kit stays 0.16.1. --skip-browser keeps the install headless.
       ensure_hermes_xz_shim
       if [ ! -x "${HOME}/.local/bin/hermes" ]; then
         curl -fsSL --retry 3 --max-time 300 -o /tmp/hermes-install.sh \
           https://hermes-agent.nousresearch.com/install.sh \
-          && bash /tmp/hermes-install.sh --skip-browser >/tmp/hermes-install.log 2>&1 \
-          && echo "Installed Hermes Agent CLI." \
+          && bash /tmp/hermes-install.sh --skip-browser --branch v2026.8.19 >/tmp/hermes-install.log 2>&1 \
+          && echo "Installed Hermes Agent CLI (pin v2026.8.19)." \
           || { echo "Hermes installer failed (see /tmp/hermes-install.log); harness orchestrator unavailable."; return; }
       fi
       if ! grep -q "rhoai3-coding-demo: hermes path" "${HOME}/.bashrc" 2>/dev/null; then
@@ -726,11 +725,16 @@ data:
         } >> "${HOME}/.bashrc"
       fi
 
-      # Review E-20260823T110757Z: assert-web-dist-pin only compares the
-      # dashboard stamp to pins.json. Fail-closed agent vs pin here.
-      # Installer still floats; Operator owns pin-move vs pin-back.
+      # Agent-vs-pin: golden `.hermes/checks/assert-agent-pin.py` reads
+      # hermes_cli/__init__.py via ast (Operator 112353Z). No banner regex.
+      # No ConfigMap heredoc (Architect 112125Z / 112612Z).
       local hermes_bin="${HOME}/.local/bin/hermes"
       local pins_json="${PROJECT_DIR}/.hermes/pins.json"
+      local agent_assert="${PROJECT_DIR}/.hermes/checks/assert-agent-pin.py"
+      local agent_src="${PROJECT_DIR}/.hermes/home/hermes-agent"
+      if [ ! -f "${agent_src}/hermes_cli/__init__.py" ]; then
+        agent_src="${HOME}/.hermes/hermes-agent"
+      fi
       if [ ! -x "${hermes_bin}" ]; then
         echo "ERROR: hermes CLI missing; cannot assert agent vs pins.json." >&2
         return 1
@@ -739,52 +743,15 @@ data:
         echo "ERROR: ${pins_json} missing; cannot assert agent vs pin." >&2
         return 1
       fi
-      if ! python3 - "${pins_json}" "${hermes_bin}" <<'AGENTPINEOF'
-    import json, re, subprocess, sys
-    from pathlib import Path
-
-    pins_path, hermes_bin = sys.argv[1], sys.argv[2]
-    ver_re = re.compile(r"(v\d+\.\d+\.\d+)\s*\(([^)]+)\)", re.IGNORECASE)
-    try:
-        pins = json.loads(Path(pins_path).read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        print(f"assert-agent-pin: cannot read {pins_path}: {exc}", file=sys.stderr)
-        sys.exit(1)
-    agent = (pins.get("pins") or {}).get("hermes_agent") or {}
-    want_ver = str(agent.get("version") or "")
-    want_build = str(agent.get("build") or "")
-    if not want_ver or not want_build:
-        print("assert-agent-pin: pins.json missing hermes_agent.version/build", file=sys.stderr)
-        sys.exit(1)
-    try:
-        proc = subprocess.run(
-            [hermes_bin, "--version"],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=30,
-            check=False,
-        )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        print(f"assert-agent-pin: hermes --version failed: {exc}", file=sys.stderr)
-        sys.exit(1)
-    text = (proc.stdout or "") + "\n" + (proc.stderr or "")
-    match = ver_re.search(text)
-    if not match:
-        print(f"assert-agent-pin: cannot parse hermes version from {text!r}", file=sys.stderr)
-        sys.exit(1)
-    got_ver, got_build = match.group(1), match.group(2).strip()
-    if got_ver != want_ver or got_build != want_build:
-        print(
-            "assert-agent-pin: refusing off-pin agent "
-            f"(installed {got_ver}/{got_build} != pin {want_ver}/{want_build})",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-    print(f"assert-agent-pin: MATCH {want_ver} / {want_build}")
-    AGENTPINEOF
-      then
+      if [ ! -f "${agent_assert}" ]; then
+        echo "ERROR: ${agent_assert} missing; dest init refuses without the golden pin oracle." >&2
+        return 1
+      fi
+      if [ ! -f "${agent_src}/hermes_cli/__init__.py" ]; then
+        echo "ERROR: hermes_cli/__init__.py missing under ${agent_src}; cannot ast-read pin constants." >&2
+        return 1
+      fi
+      if ! python3 "${agent_assert}" --pins "${pins_json}" --agent-src "${agent_src}"; then
         echo "ERROR: installed Hermes does not match .hermes/pins.json." >&2
         return 1
       fi

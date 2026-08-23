@@ -1,7 +1,7 @@
 {
-  "hermes_agent_version": "v0.20.4",
-  "hermes_agent_build": "2026.8.18",
-  "source_tag": "v2026.8.18",
-  "source_commit": "e624e9fde561e1add9388384012b295fde669ade",
+  "hermes_agent_version": "v0.20.5",
+  "hermes_agent_build": "2026.8.19",
+  "source_tag": "v2026.8.19",
+  "source_commit": "fcbd1076a93841fa88855acce810e342a5b78101",
   "note": "Built offline from pin web/ with the pin lockfile. Refresh this stamp and web_dist/ when the Hermes pin moves. hermes dashboard --skip-build serves a dist; it never creates one."
 }

@@ -15,7 +15,7 @@ Same-PR rule: if implementation changes, update this file and the README archite
 
 **Agents:** consume and contribute using [§10](#10-how-agents-consume-and-contribute). Do not treat the README wrap-up as a factory ship. Do not copy this file into `scaffold-repo/` or dest.
 
-**Pins (live seat):** Hermes **v0.20.4** (`v2026.8.18`), Spec Kit **0.16.1**, Red Hat Quarkus BOM **3.27.3.SP1-redhat-00002**. Pin moves only on Operator GO. Official product behavior is captured under `.agents/skills/` (`hermes-*`, `mta-*`, `rhdh-*`, `ocp-devspaces-*`).
+**Pins (live seat):** Hermes **v0.20.5** (`v2026.8.19`), Spec Kit **0.16.1**, Red Hat Quarkus BOM **3.27.3.SP1-redhat-00002**. Pin moves only on Operator GO. Official product behavior is captured under `.agents/skills/` (`hermes-*`, `mta-*`, `rhdh-*`, `ocp-devspaces-*`).
 
 ---
 

@@ -981,21 +981,25 @@ oc get dw petclinic-rest-v45-refac -n wksp-ai-developer
 
 **Affected stage:** Stage 080 measurement dest on `harness-v2`
 
-**Symptom:** DevWorkspace Failed. postStart log contains `assert-agent-pin: refusing off-pin agent (installed v0.20.5/2026.8.19 != pin v0.20.4/2026.8.18)`.
+**Symptom:** DevWorkspace Failed. postStart log contains `assert-agent-pin: refusing off-pin agent` with installed version not equal to `.hermes/pins.json`.
 
-**Likely cause:** Dest `hermes` install floats to upstream latest. `assert-web-dist-pin` only compares the dashboard stamp to `.hermes/pins.json`. The agent-vs-pin check is fail-closed. Pin move remains Operator GO.
+**Likely cause:** Dest `hermes` install floated past the pin, or dest-tree `pins.json` lagged a GO-ratified pin. `assert-web-dist-pin` only compares the dashboard stamp to `.hermes/pins.json`. The agent-vs-pin check is fail-closed. Pin move remains Operator GO.
 
 **Diagnose:**
 
 ```bash
 oc exec -n wksp-ai-developer "$POD" -c development-tooling -- hermes --version
-python3 -c 'import json; d=json.load(open("stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/.hermes/pins.json")); print(d["pins"]["hermes_agent"])'
+python3 stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/.hermes/checks/assert-agent-pin.py \
+  --pins stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/.hermes/pins.json \
+  --agent-src /path/to/dest/.hermes/home/hermes-agent
 ```
+
+The pin oracle is `ast` of `hermes_cli/__init__.py` `__version__` / `__release_date__`, not the `--version` banner.
 
 **Recover:**
 
-- Do not silently accept the pin move. Operator either GO-ratifies a new pin (and restamps `pins.json` + dashboard) or pins dest install back to v0.20.4 / 2026.8.18.
-- Do not treat an off-pin dest as dest-armed (a). Do not mkdir `.hermes/kernel/` to work around this.
+- Operator GO `E-20260823T111522Z` ratified Hermes v0.20.5 / 2026.8.19 (Spec Kit stays 0.16.1). Dest init fail-closes unless the dest `hermes-agent` tree matches `.hermes/pins.json`. Installer uses `--branch v2026.8.19`.
+- Do not treat dest-armed (a) as MATCH until dest `pins.json` and the ast pin oracle agree. Do not mkdir `.hermes/kernel/` to work around this.
 
 ## Factory Workspace Starts Healthy With No Agent Tooling
 

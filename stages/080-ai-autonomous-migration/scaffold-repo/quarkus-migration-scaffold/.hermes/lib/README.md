@@ -12,7 +12,7 @@ No `SKILL.md`. Discovery does not list this directory.
 | `generated_sources.py` | generator classification at **read** (stamp is a hint) |
 
 Importable modules only — no `__main__` CLIs. Dashboard pin guard lives
-in `.hermes/dashboard/assert-web-dist-pin.py`. Java type walk lives in
+in `.hermes/checks/assert-web-dist-pin.py`. Java type walk lives in
 `inventory-legacy-surface/scripts/type_graph.py` (relocate, not delete).
 
 Discovery identity is the zero-byte marker `.hermes/lib/.hermes-lib`,

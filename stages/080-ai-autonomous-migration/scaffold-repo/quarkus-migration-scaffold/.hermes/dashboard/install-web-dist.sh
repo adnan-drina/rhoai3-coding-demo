@@ -10,7 +10,7 @@ PROJECT_DIR="${PROJECT_DIR:-/projects/modernized}"
 PINS="${PROJECT_DIR}/.hermes/pins.json"
 STAMP="${HERE}/PIN"
 BUNDLE="${HERE}/web_dist/index.html"
-ASSERT="${HERE}/assert-web-dist-pin.py"
+ASSERT="${HERE}/../checks/assert-web-dist-pin.py"
 
 python3 "${ASSERT}" --pins "${PINS}" --stamp "${STAMP}" --bundle "${BUNDLE}"
 

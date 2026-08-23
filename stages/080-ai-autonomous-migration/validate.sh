@@ -157,7 +157,7 @@ check "v2 scaffold has no .hermes/home/scripts" \
   "test ! -e \"$SCAFFOLD_080/.hermes/home/scripts\" && echo 1 || echo 0" \
   "1"
 check "v2 scaffold has no handover-mint.py" \
-  "test -z \"$(find \"$SCAFFOLD_080\" -name handover-mint.py -print -quit)\" && echo 1 || echo 0" \
+  "test -d \"$SCAFFOLD_080\" && test -z \"$(find \"$SCAFFOLD_080\" -name handover-mint.py -print -quit 2>/dev/null)\" && echo 1 || echo 0" \
   "1"
 check "v2 Hermes config template is present" \
   "test -f \"$SCAFFOLD_080/.hermes/config/config.yaml.template\" && echo 1 || echo 0" \
@@ -218,9 +218,6 @@ for ns in wksp-kubeadmin wksp-ai-admin wksp-ai-developer; do
         "1"
 done
 
-echo ""
-validation_summary
-
 # Stage 080 dest is Hermes Kanban. OpenCode skill diffs against stage 070
 # were the dual-tool destfile lie (ST-7). Static destfile contract:
 SCAFFOLD_DEVFILE="${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/devfile.yaml"
@@ -241,19 +238,28 @@ check "080 ships pin-stamped dashboard index.html" \
   "test -f '${SCAFFOLD_DASH}/web_dist/index.html' && echo present || echo missing" \
   "present"
 check "080 dashboard PIN matches pins.json" \
-  "python3 '${SCAFFOLD_DASH}/assert-web-dist-pin.py' --pins '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/pins.json' --stamp '${SCAFFOLD_DASH}/PIN' --bundle '${SCAFFOLD_DASH}/web_dist/index.html' >/dev/null && echo 1 || echo 0" \
+  "python3 '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/checks/assert-web-dist-pin.py' --pins '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/pins.json' --stamp '${SCAFFOLD_DASH}/PIN' --bundle '${SCAFFOLD_DASH}/web_dist/index.html' >/dev/null && echo 1 || echo 0" \
   "1"
-check "080 agent-pin assert MATCH on pinned version-text" \
-  "python3 '${SCAFFOLD_DASH}/assert-agent-pin.py' --pins '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/pins.json' --version-text 'Hermes Agent v0.20.4 (2026.8.18)' >/dev/null && echo 1 || echo 0" \
+check "080 agent-pin assert MATCH on on-pin hermes_cli constants" \
+  "python3 '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/checks/assert-agent-pin.py' --pins '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/pins.json' --agent-src '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/checks/fixtures/hermes-agent-on-pin' >/dev/null && echo 1 || echo 0" \
   "1"
-check "080 agent-pin assert refuses off-pin version-text" \
-  "python3 '${SCAFFOLD_DASH}/assert-agent-pin.py' --pins '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/pins.json' --version-text 'Hermes Agent v0.20.5 (2026.8.19)' >/dev/null && echo 0 || echo 1" \
+check "080 agent-pin assert refuses off-pin hermes_cli constants" \
+  "python3 '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/checks/assert-agent-pin.py' --pins '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/pins.json' --agent-src '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/checks/fixtures/hermes-agent-off-pin' >/dev/null && echo 0 || echo 1" \
   "1"
 
 SCAFFOLD_PROFILES="${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/config/profiles"
 GITOPS_INIT="${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml"
-check "080 GitOps asserts installed hermes vs pins.json" \
-  "grep -c 'assert-agent-pin: refusing off-pin agent' '${GITOPS_INIT}' || echo 0" \
+check "080 GitOps invokes golden assert-agent-pin.py" \
+  "grep -c '.hermes/checks/assert-agent-pin.py' '${GITOPS_INIT}' || echo 0" \
+  "1"
+check "080 GitOps pin oracle uses --agent-src" \
+  "grep -c -- '--agent-src' '${GITOPS_INIT}' || echo 0" \
+  "1"
+check "080 GitOps has no agent-pin heredoc" \
+  "grep -c 'AGENTPINEOF' '${GITOPS_INIT}' || echo 0" \
+  "0"
+check "080 GitOps pins Hermes installer to v2026.8.19" \
+  "grep -c 'hermes-install.sh --skip-browser --branch v2026.8.19' '${GITOPS_INIT}' || echo 0" \
   "1"
 check "080 golden orchestrator profile template present" \
   "test -f '${SCAFFOLD_PROFILES}/orchestrator.yaml.template' && echo present || echo missing" \
@@ -276,3 +282,6 @@ check "080 GitOps does not invoke profile create --clone" \
 check "080 AGENTS.md assigns orchestrator/implementer not default" \
   "grep -c 'M2 / mint-verifier' '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/AGENTS.md' || echo 0" \
   "1"
+
+echo ""
+validation_summary
