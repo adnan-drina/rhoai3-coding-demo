@@ -260,12 +260,7 @@ def semantic_exit_cmd_ok(check: str, cmd: str) -> bool:
     return mvn_parts[-1] in MAVEN_AC_GOALS
 
 
-def build_resolves_cmd_is_executable(cmd: str) -> bool:
-    """Compat wrapper — prefer semantic_exit_cmd_ok(check, cmd)."""
-    return semantic_exit_cmd_ok("build_resolves", cmd)
-
-
-def canon_operand_class(token: str) -> str:
+def _canon_operand_class(token: str) -> str:
     return str(token or "").strip().lower().replace("-", "_")
 
 
@@ -297,7 +292,7 @@ def parse_operand_classes(raw: Any) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
     for item in items:
-        c = canon_operand_class(item)
+        c = _canon_operand_class(item)
         if not c or c in seen:
             continue
         seen.add(c)
@@ -343,7 +338,7 @@ POM_ATTACH_SKILLS = frozenset(
 )
 
 
-def owns_pom_write_set(paths: list[str] | tuple[str, ...] | None) -> bool:
+def _owns_pom_write_set(paths: list[str] | tuple[str, ...] | None) -> bool:
     """True when this story is the A-5 pom.xml writer."""
     for raw in paths or []:
         n = str(raw).strip().lstrip("./")
@@ -356,7 +351,7 @@ def filter_attach_skills_for_write_set(
     skills: list[str], files_writable: list[str] | tuple[str, ...] | None
 ) -> list[str]:
     """Drop pom skills unless pom.xml is in the story write-set (Architect 113519Z)."""
-    if owns_pom_write_set(files_writable):
+    if _owns_pom_write_set(files_writable):
         return list(skills)
     return [s for s in skills if s not in POM_ATTACH_SKILLS]
 
@@ -378,7 +373,7 @@ def unknown_operand_classes(classes: list[str]) -> list[str]:
     ]
 
 
-def normalize_operand_class(body: dict) -> str:
+def _normalize_operand_class(body: dict) -> str:
     """Compat scalar: first class. Prefer operand_classes_of for T-8 AMEND."""
     classes = operand_classes_of(body)
     return classes[0] if classes else "src_code"
@@ -400,7 +395,7 @@ def required_semantic_exits_for(body: dict) -> frozenset[str]:
 
 def preferred_semantic_exit_for(operand_class: str) -> str | None:
     """One class-legal stamp for a *single* known class. None ⇒ unknown / AC."""
-    oc = canon_operand_class(operand_class)
+    oc = _canon_operand_class(operand_class)
     allowed = OPERAND_CLASS_SEMANTIC_EXITS.get(oc)
     if not allowed:
         return None
@@ -411,93 +406,12 @@ def preferred_semantic_exit_for(operand_class: str) -> str | None:
     return measurable[0] if measurable else None
 
 
-class OracleUnmappedError(ValueError):
-    """Mint/assembler: combination has no legal stamp in OPERAND_CLASS_SEMANTIC_EXITS."""
+class _OracleUnmappedError(ValueError):
+    """Mint/assembler leftover type. `exit_for` was superseded by
+    `preferred_semantic_exit_for` (KEEP check-semantic-exits / park assemble).
+    """
 
     code = "ORACLE_UNMAPPED"
-
-
-def _exit_check_legal(story_id: str, operand_key: str, check: str | None) -> str:
-    """Refuse a stamp whose name is not in the one map."""
-    oc = canon_operand_class(operand_key)
-    allowed = OPERAND_CLASS_SEMANTIC_EXITS.get(oc)
-    if not check or not allowed or check not in allowed:
-        raise OracleUnmappedError(
-            f"{story_id}: check {check!r} not in OPERAND_CLASS_SEMANTIC_EXITS[{oc!r}]"
-        )
-    return check
-
-
-def exit_for(
-    story_id: str,
-    operand_class: list[str],
-    proves: list[str],
-    *,
-    polish_empty: bool = False,
-) -> list[dict[str, Any]]:
-    """Total operand→exit stamp. Check names come from OPERAND_CLASS_SEMANTIC_EXITS.
-
-    Unmapped combination → OracleUnmappedError (mint maps that to ORACLE_UNMAPPED).
-    rest without a test path is unmapped (PHASE_AC), not a silent compile stamp.
-    """
-    classes = {
-        c
-        for c in parse_operand_classes(operand_class)
-        if c not in {"user_story", "story"}
-    }
-    has_rest = bool({"rest", "api"} & classes)
-    has_test = "test" in classes or bool(proves)
-    has_persist = "persistence" in classes
-    build_only = bool(classes) and classes <= {
-        "build_config",
-        "build-config",
-        "config",
-        "pom",
-    }
-    if polish_empty or build_only:
-        check = _exit_check_legal(
-            story_id, "build_config", preferred_semantic_exit_for("build_config")
-        )
-        cmd = "mvn -q verify" if polish_empty else "mvn -q compile"
-        return [{"check": check, "cmd": cmd}]
-    if has_rest and proves:
-        check = _exit_check_legal(
-            story_id, "rest", preferred_semantic_exit_for("rest")
-        )
-        return [
-            {"check": check, "cmd": "mvn -q test", "proves": list(proves)}
-        ]
-    if has_rest and not proves:
-        raise OracleUnmappedError(
-            f"{story_id}: rest without a test path in the write-set "
-            "(PHASE_AC — plan must include a test file; do not stamp build_resolves)"
-        )
-    if not has_rest and has_test:
-        check = _exit_check_legal(
-            story_id, "test", preferred_semantic_exit_for("test")
-        )
-        ac: dict[str, Any] = {"check": check, "cmd": "mvn -q test"}
-        if proves:
-            ac["proves"] = list(proves)
-        return [ac]
-    if not has_rest and has_persist:
-        check = _exit_check_legal(
-            story_id, "persistence", preferred_semantic_exit_for("persistence")
-        )
-        ac = {
-            "check": check,
-            "cmd": "mvn -q test" if proves else "mvn -q test-compile",
-        }
-        if proves:
-            ac["proves"] = list(proves)
-        return [ac]
-    raise OracleUnmappedError(
-        f"{story_id}: unmapped operand_class={sorted(classes)} proves={proves!r}"
-    )
-
-
-def is_compile_only_check(name: str) -> bool:
-    return str(name or "").strip() in COMPILE_ONLY
 
 
 def is_oracle_unavailable(exit_item: dict) -> bool:
@@ -510,16 +424,16 @@ def is_oracle_unavailable(exit_item: dict) -> bool:
     return isinstance(reason, str) and bool(reason.strip())
 
 
-def oracle_unavailable_allowed_for_class(operand_class: str) -> bool:
+def _oracle_unavailable_allowed_for_class(operand_class: str) -> bool:
     """F5a — escape forbidden for rest/api/src_code."""
-    oc = canon_operand_class(operand_class)
+    oc = _canon_operand_class(operand_class)
     return oc not in ORACLE_UNAVAILABLE_FORBIDDEN_CLASSES
 
 
 def oracle_unavailable_allowed_for_body(body: dict) -> bool:
     """Escape allowed only when *every* class in the set permits it."""
     return all(
-        oracle_unavailable_allowed_for_class(c) for c in operand_classes_of(body)
+        _oracle_unavailable_allowed_for_class(c) for c in operand_classes_of(body)
     )
 
 
@@ -532,7 +446,7 @@ def oracle_unavailable_routes_to_lead(
     """
     if not is_oracle_unavailable(exit_item):
         return False
-    if operand_class and not oracle_unavailable_allowed_for_class(operand_class):
+    if operand_class and not _oracle_unavailable_allowed_for_class(operand_class):
         return False
     return True
 
@@ -547,7 +461,7 @@ def collect_oracle_unavailable(
             continue
         ident = body.get("identity") if isinstance(body.get("identity"), dict) else {}
         sid = str(ident.get("story_id") or body.get("story_id") or "").strip()
-        oc = normalize_operand_class(body)
+        oc = _normalize_operand_class(body)
         exits = body.get("exit_criteria") or body.get("done_when") or []
         if not isinstance(exits, list):
             continue
@@ -606,7 +520,7 @@ REF_PENDING = "pending"
 REF_PENDING_ALLOWED_KEYS = frozenset({"brief_identity_ack", "m1_findings_ack"})
 
 
-def resolve_ref_file(root: Path, path_s: str) -> Path | None:
+def _resolve_ref_file(root: Path, path_s: str) -> Path | None:
     """Return the file `path_s` names, or None if unresolvable."""
     s = (path_s or "").strip()
     if not s:
@@ -664,7 +578,7 @@ def refs_path_sha_errors(
         if not path_s:
             errs.append(f"key={key} path missing (cannot verify sha256)")
             continue
-        got = resolve_ref_file(root, path_s)
+        got = _resolve_ref_file(root, path_s)
         if got is None:
             errs.append(
                 f"key={key} path={path_s} unresolvable "
@@ -692,7 +606,7 @@ REQUIRED_EXTENSIONS_REL = "evidence/required-extensions.json"
 _SPEC_NAMES = ("api-docs.yml", "api-docs.yaml", "openapi.yml", "openapi.yaml", "openapi.json")
 
 
-def body_scope_paths(body: dict) -> list[str]:
+def _body_scope_paths(body: dict) -> list[str]:
     """Dest-relative or absolute paths from writable/in-scope fields."""
     out: list[str] = []
     for key in ("files_writable", "write_set", "files_in_scope", "filesInScope"):
@@ -711,10 +625,10 @@ def body_scope_paths(body: dict) -> list[str]:
 
 def writes_pom_xml(body: dict) -> bool:
     """True when this body claims pom.xml on a write/scope path."""
-    return any(p.rstrip("/").endswith("pom.xml") for p in body_scope_paths(body))
+    return any(p.rstrip("/").endswith("pom.xml") for p in _body_scope_paths(body))
 
 
-def declared_extensions_for_paths(paths: list[str]) -> list[str]:
+def _declared_extensions_for_paths(paths: list[str]) -> list[str]:
     """T-3 path heuristic → sorted unique artifactIds. Empty = none.
 
     Dest layouts use entity/ and resource/ (not only repository/jpa and /rest/).
@@ -784,7 +698,7 @@ def load_required_extension_entries(root: Path | None) -> list[dict[str, str]]:
     return sorted(out, key=lambda r: r["artifactId"])
 
 
-def load_required_extensions(root: Path | None) -> list[str]:
+def _load_required_extensions(root: Path | None) -> list[str]:
     """ArtifactIds from M1 required-extensions.json. Missing file → []."""
     return [r["artifactId"] for r in load_required_extension_entries(root)]
 
@@ -827,13 +741,13 @@ def stamp_dd3_extensions(bodies: list[dict], *, root: Path | None = None) -> Non
     """
     if not bodies:
         raise ValueError("stamp_dd3_extensions: no bodies")
-    m1 = load_required_extensions(root)
+    m1 = _load_required_extensions(root)
     declared_lists: list[list[str]] = []
     for body in bodies:
         ident = body.setdefault("identity", {})
         if not isinstance(ident, dict):
             raise ValueError("stamp_dd3_extensions: identity must be an object")
-        declared = declared_extensions_for_paths(body_scope_paths(body))
+        declared = _declared_extensions_for_paths(_body_scope_paths(body))
         if writes_pom_xml(body) and m1:
             declared = extensions_union([declared, m1])
         ident["extensions_declared"] = declared
@@ -848,7 +762,7 @@ def stamp_dd3_extensions(bodies: list[dict], *, root: Path | None = None) -> Non
             sid = str(ident.get("story_id") or b.get("task_id") or "?")
             if writes_pom_xml(b):
                 sids.append(sid)
-            fw = body_scope_paths(b)
+            fw = _body_scope_paths(b)
             pom_hits = [
                 p
                 for p in fw
@@ -933,7 +847,7 @@ def partition_story_writeset(root: Path, story_id: str) -> tuple[str, set[str]]:
     return "missing_story", set()
 
 
-def files_writable_rels(body: dict) -> set[str]:
+def _files_writable_rels(body: dict) -> set[str]:
     """Dest-relative write-set only (not files_in_scope)."""
     out: set[str] = set()
     if not isinstance(body, dict):
@@ -1001,7 +915,7 @@ _TEST_ANNOTATION_RE = re.compile(
 )
 
 
-def java_has_executable_test(text: str) -> bool:
+def _java_has_executable_test(text: str) -> bool:
     """True when the source contains a JUnit/TestNG executable test annotation."""
     return bool(_TEST_ANNOTATION_RE.search(text or ""))
 
@@ -1014,7 +928,7 @@ def proves_to_fqcn(rel: str) -> str | None:
     return m.group(1).replace("/", ".")
 
 
-def surefire_has_class(root: Path, fqcn: str) -> bool:
+def _surefire_has_class(root: Path, fqcn: str) -> bool:
     reports = Path(root) / "target" / "surefire-reports"
     if not reports.is_dir():
         return False
@@ -1031,7 +945,7 @@ def surefire_has_class(root: Path, fqcn: str) -> bool:
     return False
 
 
-def body_has_test_shaped_cmd(body: dict) -> bool:
+def _body_has_test_shaped_cmd(body: dict) -> bool:
     for item in (body or {}).get("exit_criteria") or (body or {}).get("done_when") or []:
         if not isinstance(item, dict):
             continue
@@ -1059,7 +973,7 @@ def proves_executable_errors(
     exits = (body or {}).get("exit_criteria") or (body or {}).get("done_when") or []
     if not isinstance(exits, list):
         return errs
-    need_surefire = stage == "complete" and body_has_test_shaped_cmd(body)
+    need_surefire = stage == "complete" and _body_has_test_shaped_cmd(body)
     for item in exits:
         if not isinstance(item, dict):
             continue
@@ -1084,7 +998,7 @@ def proves_executable_errors(
                     "(B-1 executable test refuse)"
                 )
                 continue
-            if not java_has_executable_test(text):
+            if not _java_has_executable_test(text):
                 errs.append(
                     f"exit {check!r} proves {rel!r} has no @Test "
                     "(B-1: a file with methods but no executable test fails the card)"
@@ -1092,7 +1006,7 @@ def proves_executable_errors(
                 continue
             if need_surefire:
                 fqcn = proves_to_fqcn(rel)
-                if not fqcn or not surefire_has_class(root, fqcn):
+                if not fqcn or not _surefire_has_class(root, fqcn):
                     errs.append(
                         f"exit {check!r} proves {rel!r} did not appear in "
                         "target/surefire-reports (B-1 surefire refuse)"
@@ -1141,7 +1055,7 @@ def exit_cmd_discriminating_errors(root: Path, body: dict) -> list[str]:
     Provenance over mint-time Maven invocation.
     """
     errs: list[str] = []
-    writable = files_writable_rels(body)
+    writable = _files_writable_rels(body)
     exits = (body or {}).get("exit_criteria") or (body or {}).get("done_when") or []
     if not isinstance(exits, list):
         return ["exit_criteria must be a list"]
