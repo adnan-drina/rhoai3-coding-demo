@@ -45,5 +45,7 @@ structural gate is landed (`enforce-1b-before-fresh-run`).
 ## Wall-as-terminal
 
 `timed_out` **must** evaluate cmd-shaped exits (at least `test_compile` when
-present). See `.hermes/skills/gates/check-release-readiness/` (`apply-wall-requeue-policy.py`; no `governance/` folder). Advisory in-loop prose
-alone does not cover budget-wall death.
+present). KEEP skill `check-release-readiness` (no `governance/` folder).
+Authoring-only wall policy in `.hermes/_park/requeue/` is **not dest** and
+is not this KEEP skill (Architect `154631Z`: rebuild later, never dump).
+Advisory in-loop prose alone does not cover budget-wall death.

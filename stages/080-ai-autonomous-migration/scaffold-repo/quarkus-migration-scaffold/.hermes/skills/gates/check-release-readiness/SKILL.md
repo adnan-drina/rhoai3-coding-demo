@@ -1,6 +1,6 @@
 ---
 name: check-release-readiness
-description: Use before advancing or shipping — lint verdict tokens and M4/M5 floor receipts. Do not use for domain parity (check-domain-parity), wall/crash requeue (parked in .hermes/_park/requeue), or phase-dispatch matrix (deleted in v2).
+description: Use before advancing or shipping — lint verdict tokens and M4/M5 floor receipts. Do not use for domain parity (check-domain-parity), wall/crash requeue or chaos (authoring-only .hermes/_park/requeue, not dest), or phase-dispatch matrix (deleted in v2).
 license: Apache-2.0
 compatibility: Linux seat; Python 3.11+; reads migration/ receipts
 metadata:
@@ -27,7 +27,8 @@ metadata:
 - **Not this skill** when the question is whether migrated code still behaves
   like the referent — mutation volume, field conservation, findings delta and
   HTTP parity are `check-domain-parity`. Wall/crash requeue, chaos, and
-  workspace restore live in `.hermes/_park/requeue/` until K3.
+  workspace restore stay authoring-only under `.hermes/_park/requeue/` (not
+  dest; rebuild later on dest GO; never dump into kernel).
 
 # Validation and release gates (AD-H §18 / §18.0)
 
@@ -60,8 +61,8 @@ and is idle (exit 0) when its trigger artifact is absent. Commands under
 4. **Ship** — `check-factory-m5.py` (required oracle) and
    `check-candidate-promote.py` (candidate SHA before `promoted_to_main`).
 5. **Floor** — `run-m4-floor.sh` then `check-m4-floor-receipts.py`.
-   Wall/crash requeue, chaos, and complete-exit asserts:
-   `.hermes/_park/requeue/` (not this skill).
+   Wall/crash requeue, chaos, and complete-exit asserts are authoring-only
+   under `.hermes/_park/requeue/` (not this skill; not dest).
 
 ## Checks
 
@@ -91,7 +92,8 @@ python3 "${HERMES_SKILL_DIR}/../check-domain-parity/scripts/check-product-tests.
 # S-010 Class A — assertj-core + rest-assured in pom (harness-owned toolchain)
 python3 "${HERMES_SKILL_DIR}/scripts/check-test-toolchain.py" /projects/modernized
 
-# Wall/crash requeue, chaos, workspace restore: `.hermes/_park/requeue/` (K3)
+# Wall/crash requeue, chaos, workspace restore: authoring-only
+# `.hermes/_park/requeue/` (not dest; not this skill)
 ```
 
 Contracts: this skill (M4/M5 verdict routing; no `governance/` folder),
@@ -116,9 +118,11 @@ python3 "${HERMES_SKILL_DIR}/scripts/check-m4-floor-receipts.py" \
   /projects/modernized/.hermes/skills/gates/check-release-readiness/fixtures/m4-floor/known-good
 ```
 
-## Chaos matrix (parked)
+## Chaos matrix (authoring-only)
 
-Timeout / crash / dup-dispatch chaos lives in `.hermes/_park/requeue/run-chaos-matrix.py` until K3. Not this skill.
+Timeout / crash / dup-dispatch chaos lives in
+`.hermes/_park/requeue/run-chaos-matrix.py` (not dest; dest omit + bootstrap
+refuse if it reappears). Not this skill. Rebuild later only on dest GO.
 
 ## Pitfalls
 
@@ -146,5 +150,6 @@ Timeout / crash / dup-dispatch chaos lives in `.hermes/_park/requeue/run-chaos-m
   `g4_hook` `INCONCLUSIVE` is honest for the SAMPLE floor, `REFUSE` fails.
   Every receipt has `ad010_demo: false` —   floor green is not `release_qualified`. B8: health-only smoke →
   `endpoint_smoke_health`; `check-semantics-manifest.py` must pass.
-- Wall/crash requeue policy lives in `.hermes/_park/requeue/` until K3.
+- Wall/crash requeue policy is authoring-only under `.hermes/_park/requeue/`
+  (not dest; not this skill).
 - Conformance lint passes for this skill.

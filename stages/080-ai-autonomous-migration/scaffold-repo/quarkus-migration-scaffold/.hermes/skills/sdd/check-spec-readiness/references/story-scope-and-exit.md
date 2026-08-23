@@ -35,8 +35,10 @@ including the **relationship** between them (T-8 / v17 wrong-class oracles).
    must name `proves` test source(s) that sit in **this** `files_writable`.
    Each `proves` path that exists must contain an executable `@Test`
    (B-1); at complete the named class must appear in
-   `target/surefire-reports`. **`.hermes/_park/requeue/evaluate-exit-criteria.py` must run
-   `mvn … test|verify` as `-Dtest=<proves FQCNs>`** (`task_scoped_tests`).
+   `target/surefire-reports`. Authoring-only
+   `.hermes/_park/requeue/evaluate-exit-criteria.py` is **not dest** (rebuild
+   later on dest GO; never dump into kernel). KEEP L2a stays
+   `check-semantic-exits.py` / `check-surgical-scopes.py`.
    An unscoped `mvn -q test` that executes sibling-story tests is refuse —
    do not treat a green isolation run plus a red full suite as a body-mint
    defect. An unrelated dest `src/test` file must not
@@ -76,10 +78,10 @@ including the **relationship** between them (T-8 / v17 wrong-class oracles).
   Do **not** call `generator_input_paths()` / `iter_build_files()` (those
   union legacy). Generator `inputSpec` matching is a **case** of this
   predicate (`assert-dest-generator-configured.py`), not a sibling
-  complete-path gate. Wired on `assert-complete-exit-criteria.py`. T013
-  already requires configure-in-pom; dest POM plugin presence is
+  complete-path gate. Dest POM plugin presence is
   `assert-dest-generator-configured.py` (typed write-set / inventory),
-  never a `tasks.md` grep.
+  never a `tasks.md` grep. Park `assert-complete-exit-criteria.py` is
+  authoring-only, not dest.
 - **Story sizing / DD6** — foundation asserts resolve under story-sizing rules
   (`operand_class` taxonomy); DD6 stays named here so tip sync catches drift.
 - **Oracle-design failure classes** (must still refuse): wrong-class · vacuous
