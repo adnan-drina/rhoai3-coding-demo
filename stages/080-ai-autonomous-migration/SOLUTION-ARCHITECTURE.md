@@ -202,9 +202,9 @@ flowchart TB
 | M4 full runtime ACCEPT / M5 factory ship | Planned / **not demonstrated** for Owner/Pet ship |
 | v1 dest harness (`dispatch-phase`, `handover-mint.py`, human `ack_gate`, `.hermes/home/scripts/`) | Overlay dest leftover until HV-1+wipe GO. **Deleted, not ported**, on `harness-v2` `a39b7d2d` |
 | v2 native tree (Phase N) | **Landed** `harness-v2` `a39b7d2d`: product skills + config template; no mint / `home/scripts` / `ack_gate`. Golden `-v2` **not published**. Dest provision **HOLD** |
-| Slim kernel K1–K4 | Gate P-kernel **CLOSED** (Architect `142526Z`). **K1** schema+loader+validator in `.hermes/kernel/` (this sitting). K2 `pre_tool_call.sh` remains **instrumentation** / MEASURED, not claimed control. K3/K4 **HOLD** until Review PASS of K1 then serial REHOST. `claimed_control` stays false. Gate P-pack CLOSED |
+| Slim kernel K1–K4 | Gate P-kernel **CLOSED** (Architect `142526Z`). **K1** schema+loader+validator in `.hermes/kernel/` (`d26ce74a`). **K2 REHOST** of existing `.hermes/kernel/pre_tool_call.sh` (not a new fence; MEASURED, not claimed control). K3/K4 **HOLD** until Review PASS of K2. `claimed_control` stays false. Gate P-pack CLOSED |
 | Dest named profiles (`orchestrator` / `implementer`) | **DEFINED** (Operator GO `231808Z`). GitOps creates both without `--clone`. Dest-armed (a) **MATCH** on v45 (`114320Z` / `114710Z`); not a write-set fence. OBJECT EX-4 four-seat names / overlay v1 |
-| K2 write fence as a claimed control | Instrumentation landed; `claimed_control=false` until dest write-escape MATCH |
+| K2 write fence as a claimed control | K2 REHOST of measured `pre_tool_call.sh`; `claimed_control=false` (write-escape MEASURED; `[U]` OS/container limb waived, not satisfied) |
 | K3 live PID reclaim / gateway tick | Unproven (`recompute_ready` stands in; no `kanban daemon --force`) |
 | 1:N supersede coverage | **Landed** in KEEP `check-partition-coverage` on `a39b7d2d`. Not dest-measured |
 | Hermes dashboard / `web_dist` | Never a demo surface (v37–v42 `state=failed`). Later GO |

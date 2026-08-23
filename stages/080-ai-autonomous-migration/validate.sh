@@ -280,12 +280,16 @@ check "080 GitOps does not invoke profile create --clone" \
   "grep -cE 'profile create [^\"]*--clone|profile create --clone' '${GITOPS_INIT}' || echo 0" \
   "0"
 SCAFFOLD_KERNEL="${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/kernel"
-check "080 golden K2 instrumentation pre_tool_call.sh present" \
+SCAFFOLD_LAYOUT="${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/LAYOUT.md"
+check "080 golden K2 REHOST pre_tool_call.sh present" \
   "test -f '${SCAFFOLD_KERNEL}/pre_tool_call.sh' && echo present || echo missing" \
   "present"
 check "080 golden pre_tool_call.sh is executable" \
   "test -x '${SCAFFOLD_KERNEL}/pre_tool_call.sh' && echo 1 || echo 0" \
   "1"
+check "080 LAYOUT classifies K2 as REHOST" \
+  "grep -q 'K2 REHOST' '${SCAFFOLD_LAYOUT}' && echo present || echo missing" \
+  "present"
 check "080 golden K1 schema loader validator present" \
   "test -f '${SCAFFOLD_KERNEL}/k1_schema.py' && test -f '${SCAFFOLD_KERNEL}/k1_load.py' && test -f '${SCAFFOLD_KERNEL}/k1_validate.py' && test -f '${SCAFFOLD_KERNEL}/.hermes-kernel' && echo present || echo missing" \
   "present"

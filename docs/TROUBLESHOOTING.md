@@ -974,7 +974,7 @@ oc get dw petclinic-rest-v45-refac -n wksp-ai-developer
 
 **Recover:**
 
-- Confirm live `devspace-ai-tools-init` no longer `raise SystemExit` on a missing EX-3 hook. Hatch is WARN + empty `pre_tool_call` only while `.hermes/kernel/pre_tool_call.sh` is absent. That file is K2 instrumentation (not claimed control; Gate P-kernel is CLOSED — Architect `142526Z`). Do not mkdir empty `.hermes/kernel/` to satisfy the check. K1 schema/loader/validator live beside the hook; GitOps still copies only `pre_tool_call.sh` into Managed Scope.
+- Confirm live `devspace-ai-tools-init` no longer `raise SystemExit` on a missing EX-3 hook. Hatch is WARN + empty `pre_tool_call` only while `.hermes/kernel/pre_tool_call.sh` is absent. That file is the K2 kernel REHOST of the measured hook (not claimed control; Gate P-kernel is CLOSED — Architect `142526Z`). Do not mkdir empty `.hermes/kernel/` to satisfy the check. K1 schema/loader/validator live beside the hook; GitOps still copies only `pre_tool_call.sh` into Managed Scope. Do not dest-apply a K2 REHOST as if it were a new fence.
 - Restart the dest workspace from Dev Spaces after that ConfigMap has synced. Do not copy the v1 skill into the v2 golden. Do not treat a successful start as dest-armed (a).
 
 ## Stage 080 dest postStart fails agent-vs-pin assert
