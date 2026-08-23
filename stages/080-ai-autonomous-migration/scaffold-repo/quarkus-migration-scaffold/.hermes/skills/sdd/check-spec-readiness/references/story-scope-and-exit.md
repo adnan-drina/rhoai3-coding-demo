@@ -35,9 +35,9 @@ including the **relationship** between them (T-8 / v17 wrong-class oracles).
    must name `proves` test source(s) that sit in **this** `files_writable`.
    Each `proves` path that exists must contain an executable `@Test`
    (B-1); at complete the named class must appear in
-   `target/surefire-reports`. Authoring-only
-   `.hermes/_park/requeue/evaluate-exit-criteria.py` is **not dest** (rebuild
-   later on dest GO; never dump into kernel). KEEP L2a stays
+   `target/surefire-reports`.    Parked
+   `.hermes/_park/requeue/evaluate-exit-criteria.py` is **retired** (Operator
+   GO `155455Z`; rebuild later on dest GO; never dump into kernel). KEEP L2a stays
    `check-semantic-exits.py` / `check-surgical-scopes.py`.
    An unscoped `mvn -q test` that executes sibling-story tests is refuse —
    do not treat a green isolation run plus a red full suite as a body-mint

@@ -46,6 +46,6 @@ structural gate is landed (`enforce-1b-before-fresh-run`).
 
 `timed_out` **must** evaluate cmd-shaped exits (at least `test_compile` when
 present). KEEP skill `check-release-readiness` (no `governance/` folder).
-Authoring-only wall policy in `.hermes/_park/requeue/` is **not dest** and
-is not this KEEP skill (Architect `154631Z`: rebuild later, never dump).
+Parked wall policy in `.hermes/_park/requeue/` is **retired** (Operator
+GO `155455Z`) and is not this KEEP skill (rebuild later, never dump).
 Advisory in-loop prose alone does not cover budget-wall death.

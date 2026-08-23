@@ -303,12 +303,12 @@ check "080 golden K4 selftest passes" \
   "python3 '${SCAFFOLD_KERNEL}/k4_selftest.py' >/dev/null && echo 1 || echo 0" \
   "1"
 SCAFFOLD_PARK="${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/_park"
-check "080 golden _park/mint deleted after K4" \
-  "test ! -e '${SCAFFOLD_PARK}/mint' && echo absent || echo present" \
+check "080 golden _park retired" \
+  "test ! -e '${SCAFFOLD_PARK}' && echo absent || echo present" \
   "absent"
-check "080 golden _park/requeue kept" \
-  "test -d '${SCAFFOLD_PARK}/requeue' && echo present || echo missing" \
-  "present"
+check "080 bootstrap omit_park_from_staged kept" \
+  "grep -c 'omit_park_from_staged' '${REPO_ROOT}/scripts/bootstrap-migration-scaffold-v2.sh' || echo 0" \
+  "3"
 check "080 bootstrap refuses dest chaos matrix" \
   "grep -c 'run-chaos-matrix.py present in staged dest golden' '${REPO_ROOT}/scripts/bootstrap-migration-scaffold-v2.sh' || echo 0" \
   "1"

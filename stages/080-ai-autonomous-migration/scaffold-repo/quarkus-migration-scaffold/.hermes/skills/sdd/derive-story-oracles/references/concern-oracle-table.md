@@ -18,9 +18,10 @@ Closed check names: `SEMANTIC_EXIT_VOCAB` in
 `.hermes/lib/specimen_agnostic.py`.
 Class allow-lists: `OPERAND_CLASS_SEMANTIC_EXITS` in the same module.
 
-Assembler `exit_criteria[].cmd` is executed by `.hermes/_park/requeue/evaluate-exit-criteria.py`
-(`subprocess.run(..., shell=True)`, or the scoped-compile intercept when the
-string ends with ` compile`, or `-Dtest=<proves FQCNs>` for `mvn test|verify`).
+KEEP `check-semantic-exits.py` / `check-surgical-scopes.py` police
+`exit_criteria[].cmd` shape. The parked evaluator
+`.hermes/_park/requeue/evaluate-exit-criteria.py` is **retired** (Operator
+GO `155455Z`); rebuild later on dest GO, never dump into kernel.
 Stamp the first real command (`mvn -q compile`
 for Build resolves), not the slash-OR cell text — ` / ` is table prose, not
 shell. Do **not** dest-rewrite the cmd string after mint (AR-4.3); the

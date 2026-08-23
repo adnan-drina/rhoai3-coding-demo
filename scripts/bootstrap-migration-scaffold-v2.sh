@@ -5,9 +5,10 @@
 # Authoring: stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold
 # Golden:    github.com/${GITHUB_OWNER}/quarkus-migration-scaffold-v2
 #
-# Dest clones omit .hermes/_park/ (ST-10 / Architect E-20260822T135403Z).
-# Platform git keeps that tree (requeue residue; mint drawer deleted after
-# K4). Chaos matrix never dest. Do not mkdir empty .hermes/kernel/ here;
+# Dest clones omit .hermes/_park/ (ST-10). Authoring retired `_park/`
+# (Operator GO E-20260823T155455Z). Keep omit_park_from_staged + chaos
+# re-add tripwire so a future re-add still fail-closes. Chaos never dest.
+# Do not mkdir empty .hermes/kernel/ here;
 # golden ships K2 REHOST pre_tool_call.sh plus
 # K1/K3/K4 Python. GitOps copies only the hook into Managed Scope. Do not
 # dest-apply a REHOST or K4 as a new fence. Do not run this script this
@@ -20,8 +21,9 @@
 # Do not run scripts/bootstrap-scaffold-repos.sh from branch harness-v2
 # (that force-pushes v1). Do not GitHub-rename the v1 golden.
 #
-# DRY_RUN=1 stages a temp tree, omits _park, asserts chaos absent, and
-# exits without gh / force-push (Operator publish GO still required).
+# DRY_RUN=1 stages a temp tree, asserts authoring and staged `_park`
+# absent, asserts chaos absent, and exits without gh / force-push
+# (Operator publish GO still required).
 #
 # Topics: default is none. rhoai3-scaffolded would treat this golden as a
 # dest (Argo namespace + pipeline). rhoai3-golden-path is the v1 golden
@@ -50,10 +52,10 @@ fi
 
 command -v git >/dev/null || { echo "git is required"; exit 1; }
 test -f "$SRC/migration.yaml" || { echo "REFUSE: missing authoring tree at $SRC"; exit 1; }
-test -d "$SRC/.hermes/_park" || {
-  echo "REFUSE: authoring tree missing .hermes/_park (platform git must keep it)" >&2
+if [[ -e "$SRC/.hermes/_park" ]]; then
+  echo "REFUSE: authoring tree still has .hermes/_park (Operator 155455Z retired it)" >&2
   exit 1
-}
+fi
 
 omit_park_from_staged() {
   local staged="$1"
@@ -62,9 +64,9 @@ omit_park_from_staged() {
     echo "REFUSE: .hermes/_park still present after dest omit" >&2
     exit 1
   fi
-  # Re-add tripwire (Architect 154631Z / 154833Z): dest omits `_park`, but
-  # refuse if run-chaos-matrix.py still appears anywhere in the staged dest
-  # tree. Keep this even while authoring still holds `_park/requeue`.
+  # Re-add tripwire (Architect 154631Z / 154833Z / Operator 155455Z): dest
+  # omits `_park`; refuse if run-chaos-matrix.py still appears anywhere in
+  # the staged dest tree. Keep this after authoring retired `_park`.
   local chaos
   chaos="$(find "${staged}" -name 'run-chaos-matrix.py' -print -quit || true)"
   if [[ -n "${chaos}" ]]; then
@@ -76,13 +78,13 @@ omit_park_from_staged() {
 log "Staging ${GOLDEN_REPO} from scaffold-repo/quarkus-migration-scaffold"
 cp -R "$SRC" "$WORKDIR/${GOLDEN_REPO}"
 omit_park_from_staged "$WORKDIR/${GOLDEN_REPO}"
-log "Omitted .hermes/_park from dest golden (authoring-only; chaos never dest)"
+log "Omitted .hermes/_park from dest golden (authoring retired; chaos never dest)"
 log "Authoring _park tracked=$(git -C "$REPO_ROOT" ls-files -- "stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/.hermes/_park" | wc -l | tr -d ' '); dest staged _park=absent"
 
 if [[ "${DRY_RUN}" == "1" ]]; then
   log "DRY-RUN: no gh, no force-push. Staged ${WORKDIR}/${GOLDEN_REPO}"
   test ! -e "$WORKDIR/${GOLDEN_REPO}/.hermes/_park"
-  test -d "$SRC/.hermes/_park"
+  test ! -e "$SRC/.hermes/_park"
   exit 0
 fi
 
@@ -121,5 +123,5 @@ log "Done. Reminders:"
 echo "  - Live overlay GitOps still fetches v1 until this branch's template.yaml is the Argo source."
 echo "  - Dest comes from Developer Hub Application migration after that GitOps GO."
 echo "  - Re-running this script force-pushes ${GOLDEN_REPO} only."
-echo "  - Dest golden omits .hermes/_park (authoring-only; chaos never dest)."
+echo "  - Dest golden omits .hermes/_park (authoring retired; chaos never dest)."
 echo "  - Leftover adnan-drina/greeting-v2 is not a dest. Do not provision it."

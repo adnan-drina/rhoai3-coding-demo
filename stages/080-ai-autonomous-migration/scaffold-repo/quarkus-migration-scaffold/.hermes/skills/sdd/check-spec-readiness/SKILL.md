@@ -27,7 +27,8 @@ metadata:
 - **Not** for creating `.specify/` or installing `specify-cli` —
   `init-spec-workspace`. **Not** for minting Kanban children from
   `tasks.md` PATH_TOKEN (OBJECT). Authority is the typed partition.
-  Assemble/stamp/oracles under `.hermes/_park/mint/` are deleted (K4).
+  Assemble/stamp/oracles under `.hermes/_park/` are retired (K4 + Operator
+  GO `155455Z`).
 
 
 # SDD readiness (pattern-steals + §S.6)

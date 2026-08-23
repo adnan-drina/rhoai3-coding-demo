@@ -15,7 +15,8 @@ KEEP (this skill — M4/M5 product):
 - `scripts/check-test-toolchain.py` — test toolchain presence
 - `scripts/compute-substrate-reopen.py` — substrate reopen set
 
-PARK (`.hermes/_park/requeue/` until K3): wall/crash requeue, chaos,
-workspace-clean, side-effect recovery, evaluate-exit-criteria.
+PARK retired (Operator GO `155455Z`): `.hermes/_park/` is gone. Wall/crash
+requeue, chaos, workspace-clean, and evaluate-exit-criteria rebuild later
+only on dest GO. Do not dump those files into kernel.
 
 Admission G-1..G-4 fixtures: `../check-domain-parity/fixtures/admission/` only.
