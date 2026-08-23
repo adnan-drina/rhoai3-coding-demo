@@ -1,0 +1,338 @@
+#!/usr/bin/env python3
+"""K4 converter — typed partition → kanban_create payloads.
+
+Does not mint. Does not import create_task. Does not read tasks.md for
+write-sets. Optional --tasks only reports planning defects (all paths).
+"""
+from __future__ import annotations
+
+import json
+import re
+import sys
+from pathlib import Path
+from typing import Any
+
+_KERNEL = Path(__file__).resolve().parent
+if str(_KERNEL) not in sys.path:
+    sys.path.insert(0, str(_KERNEL))
+
+from k4_schema import (  # noqa: E402
+    IMPL,
+    ORCH,
+    PATH_TOKEN_MARKERS,
+    REMEDY,
+    SHA256_RE,
+    VERIFIER_ID,
+    WRITER_ID,
+)
+
+Issue = tuple[str, str, str]
+PATH_IN_PROSE = re.compile(r"(?:`)?((?:src|pom\.xml)[/.\w-]*)(?:`)?")
+
+
+def _issue(code: str, detail: str) -> Issue:
+    return (code, detail, REMEDY[code])
+
+
+def _story_id(story: dict[str, Any]) -> str:
+    return str(story.get("story_id") or story.get("id") or "").strip()
+
+
+def partition_write_union(stories: list[dict[str, Any]]) -> set[str]:
+    out: set[str] = set()
+    for story in stories:
+        for p in story.get("files_writable") or []:
+            s = str(p).strip()
+            if s:
+                out.add(s)
+    return out
+
+
+def prose_paths(text: str) -> list[str]:
+    found: list[str] = []
+    seen: set[str] = set()
+    for m in PATH_IN_PROSE.finditer(text or ""):
+        p = m.group(1).strip()
+        if p and p not in seen:
+            seen.add(p)
+            found.append(p)
+    return found
+
+
+def validate_inputs(
+    partition: Any, *, tasks_text: str | None = None
+) -> list[Issue]:
+    out: list[Issue] = []
+    if not isinstance(partition, dict):
+        return [_issue("K4_SCHEMA", "partition must be a JSON object")]
+    sha = str(partition.get("type_inventory_sha256") or "")
+    if not re.match(SHA256_RE, sha):
+        out.append(
+            _issue("K4_SCHEMA", "type_inventory_sha256 must be 64 lowercase hex")
+        )
+    stories = partition.get("stories")
+    if not isinstance(stories, list) or not stories:
+        out.append(_issue("K4_SCHEMA", "stories[] missing or empty"))
+        return out
+    objs = [s for s in stories if isinstance(s, dict)]
+    if len(objs) != len(stories):
+        out.append(_issue("K4_SCHEMA", "every stories[] entry must be an object"))
+    known = {_story_id(s) for s in objs}
+    for story in objs:
+        sid = _story_id(story)
+        if not sid:
+            out.append(_issue("K4_SCHEMA", "story missing story_id"))
+            continue
+        fw = story.get("files_writable")
+        if not isinstance(fw, list) or not [str(p).strip() for p in fw if str(p).strip()]:
+            out.append(_issue("K4_SCOPE", "%s files_writable empty" % sid))
+        parents = story.get("parents") or []
+        if not isinstance(parents, list):
+            out.append(_issue("K4_PARENT", "%s parents must be a list" % sid))
+            continue
+        for par in parents:
+            if str(par) not in known:
+                out.append(
+                    _issue("K4_PARENT", "%s parent %s not a partition story" % (sid, par))
+                )
+    if tasks_text:
+        for marker in PATH_TOKEN_MARKERS:
+            if marker in tasks_text:
+                out.append(
+                    _issue("K4_PATH_TOKEN", "tasks.md asks for PATH_TOKEN scrape")
+                )
+                break
+        union = partition_write_union(objs)
+        extras = [p for p in prose_paths(tasks_text) if p not in union]
+        if extras:
+            out.append(
+                _issue(
+                    "K4_PLANNING_DEFECT",
+                    "tasks.md paths absent from partition: %s" % ",".join(extras),
+                )
+            )
+    return out
+
+
+def validate_result(result: Any) -> list[Issue]:
+    out: list[Issue] = []
+    if not isinstance(result, dict):
+        return [_issue("K4_CREATED_CARDS", "result must be an object")]
+    payloads = result.get("payloads")
+    created = (result.get("manifest") or {}).get("created_cards")
+    if not isinstance(payloads, list) or not payloads:
+        out.append(_issue("K4_CREATED_CARDS", "payloads empty"))
+        return out
+    if not isinstance(created, list) or not created:
+        out.append(_issue("K4_CREATED_CARDS", "created_cards empty or missing"))
+        return out
+    ids: list[str] = []
+    for i, payload in enumerate(payloads):
+        if not isinstance(payload, dict):
+            out.append(_issue("K4_SCHEMA", "payloads[%d] must be an object" % i))
+            continue
+        lid = str(payload.get("logical_id") or "").strip()
+        if not lid:
+            out.append(_issue("K4_SCHEMA", "payloads[%d] missing logical_id" % i))
+            continue
+        ids.append(lid)
+        who = str(payload.get("assignee") or "")
+        if lid in {WRITER_ID, VERIFIER_ID} and who != ORCH:
+            out.append(_issue("K4_ASSIGNEE", "%s assignee=%s" % (lid, who)))
+        elif lid not in {WRITER_ID, VERIFIER_ID} and who != IMPL:
+            out.append(_issue("K4_ASSIGNEE", "%s assignee=%s" % (lid, who)))
+        if lid != WRITER_ID:
+            parents = payload.get("parents") or []
+            if lid == VERIFIER_ID and parents != [WRITER_ID]:
+                out.append(_issue("K4_PARENT", "mint-verifier parent must be mint-writer"))
+            if lid not in {WRITER_ID, VERIFIER_ID} and VERIFIER_ID not in [
+                str(p) for p in parents
+            ]:
+                out.append(_issue("K4_PARENT", "%s missing mint-verifier parent" % lid))
+    if created != ids:
+        out.append(
+            _issue(
+                "K4_CREATED_CARDS",
+                "created_cards must equal payload logical_id order",
+            )
+        )
+    return out
+
+
+def _m3_body(story: dict[str, Any], type_sha: str) -> dict[str, Any]:
+    sid = _story_id(story)
+    fw = [str(p) for p in (story.get("files_writable") or []) if str(p).strip()]
+    return {
+        "task_id": sid,
+        "role": IMPL,
+        "phase": "M3",
+        "refs": [
+            {
+                "key": "type-inventory",
+                "path": "evidence/type-inventory.json",
+                "sha256": type_sha,
+            },
+            {
+                "key": "brief_identity_ack",
+                "path": "evidence/acks/brief-identity.ack",
+                "sha256": "pending",
+            },
+            {
+                "key": "legacy_locus",
+                "path": str(story.get("legacy_locus_path") or "evidence/locus.json"),
+                "sha256": str(story.get("legacy_locus_sha256") or "pending"),
+            },
+        ],
+        "identity": {"story_id": sid},
+        "files_in_scope": list(fw),
+        "files_writable": list(fw),
+        "exit_criteria": [
+            {"check": "skills", "assert": "consult typed skills; silence invalid AD-002E"},
+            {"check": "compile", "cmd": "mvn -q test-compile"},
+        ],
+    }
+
+
+def _payload(
+    logical_id: str,
+    *,
+    title: str,
+    assignee: str,
+    parents: list[str],
+    body: dict[str, Any],
+    skills: list[str] | None = None,
+) -> dict[str, Any]:
+    return {
+        "logical_id": logical_id,
+        "title": title,
+        "assignee": assignee,
+        "skills": list(skills or []),
+        "parents": list(parents),
+        "body": json.dumps(body, sort_keys=True, separators=(",", ":")),
+        "idempotency_key": "k4:%s" % logical_id,
+    }
+
+
+def convert_partition(partition: dict[str, Any]) -> dict[str, Any]:
+    type_sha = str(partition.get("type_inventory_sha256") or "")
+    stories = [s for s in (partition.get("stories") or []) if isinstance(s, dict)]
+    writer_body = {
+        "task_id": WRITER_ID,
+        "role": "mint-writer",
+        "phase": "FACTORY",
+        "refs": [],
+        "identity": {"story_id": WRITER_ID},
+    }
+    verifier_body = {
+        "task_id": VERIFIER_ID,
+        "role": "mint-verifier",
+        "phase": "FACTORY",
+        "refs": [],
+        "identity": {"story_id": VERIFIER_ID},
+    }
+    payloads = [
+        _payload(
+            WRITER_ID,
+            title="Mint writer",
+            assignee=ORCH,
+            parents=[],
+            body=writer_body,
+        ),
+        _payload(
+            VERIFIER_ID,
+            title="Mint verifier",
+            assignee=ORCH,
+            parents=[WRITER_ID],
+            body=verifier_body,
+        ),
+    ]
+    for story in stories:
+        sid = _story_id(story)
+        part_parents = [str(p) for p in (story.get("parents") or [])]
+        payloads.append(
+            _payload(
+                sid,
+                title="M3 %s" % sid,
+                assignee=IMPL,
+                parents=[VERIFIER_ID] + part_parents,
+                body=_m3_body(story, type_sha),
+            )
+        )
+    result = {
+        "payloads": payloads,
+        "manifest": {"created_cards": [str(p["logical_id"]) for p in payloads]},
+        "claimed_control": False,
+    }
+    issues = validate_result(result)
+    if issues:
+        raise ValueError(format_issues(issues))
+    return result
+
+
+def convert_file(
+    partition_path: Path, *, tasks_path: Path | None = None
+) -> tuple[dict[str, Any] | None, list[Issue]]:
+    try:
+        partition = json.loads(partition_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return None, [_issue("K4_SCHEMA", str(exc))]
+    tasks_text = None
+    if tasks_path is not None:
+        try:
+            tasks_text = tasks_path.read_text(encoding="utf-8")
+        except OSError as exc:
+            return None, [_issue("K4_SCHEMA", str(exc))]
+    issues = validate_inputs(partition, tasks_text=tasks_text)
+    if issues:
+        return None, issues
+    return convert_partition(partition), []
+
+
+def format_issues(issues: list[Issue]) -> str:
+    lines = []
+    for code, detail, remedy in issues:
+        lines.append("%s: %s" % (code, detail))
+        lines.append("  remedy: %s" % remedy)
+    return "\n".join(lines)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = list(sys.argv[1:] if argv is None else argv)
+    partition: Path | None = None
+    tasks: Path | None = None
+    out: Path | None = None
+    i = 0
+    while i < len(args):
+        if args[i] == "--partition" and i + 1 < len(args):
+            partition = Path(args[i + 1])
+            i += 2
+            continue
+        if args[i] == "--tasks" and i + 1 < len(args):
+            tasks = Path(args[i + 1])
+            i += 2
+            continue
+        if args[i] == "--out" and i + 1 < len(args):
+            out = Path(args[i + 1])
+            i += 2
+            continue
+        print("FAIL: unknown arg %s" % args[i], file=sys.stderr)
+        return 1
+    if partition is None:
+        print("FAIL: pass --partition PATH", file=sys.stderr)
+        return 1
+    result, issues = convert_file(partition, tasks_path=tasks)
+    if issues or result is None:
+        print(format_issues(issues), file=sys.stderr)
+        print("K4 convert FAILED.", file=sys.stderr)
+        return 1
+    text = json.dumps(result, indent=2, sort_keys=True) + "\n"
+    if out is not None:
+        out.write_text(text, encoding="utf-8")
+    else:
+        sys.stdout.write(text)
+    print("OK: K4 convert (%d payload(s))." % len(result["payloads"]))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,0 +1,10 @@
+{
+  "type_inventory_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "stories": [
+    {
+      "story_id": "setup",
+      "parents": [],
+      "files_writable": []
+    }
+  ]
+}

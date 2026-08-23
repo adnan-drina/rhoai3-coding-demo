@@ -296,8 +296,11 @@ check "080 golden K1 schema loader validator present" \
 check "080 golden K3 mint-verifier procedure present" \
   "test -f '${SCAFFOLD_KERNEL}/k3_schema.py' && test -f '${SCAFFOLD_KERNEL}/k3_verify.py' && echo present || echo missing" \
   "present"
-check "080 golden kernel has no K4 modules" \
-  "test -z \"\$(find '${SCAFFOLD_KERNEL}' -type f -name 'k4*' )\" && echo 1 || echo 0" \
+check "080 golden K4 converter present" \
+  "test -f '${SCAFFOLD_KERNEL}/k4_schema.py' && test -f '${SCAFFOLD_KERNEL}/k4_convert.py' && echo present || echo missing" \
+  "present"
+check "080 golden K4 selftest passes" \
+  "python3 '${SCAFFOLD_KERNEL}/k4_selftest.py' >/dev/null && echo 1 || echo 0" \
   "1"
 check "080 GitOps copies kernel pre_tool_call when k2_present" \
   "grep -c 'elif k2_present' '${GITOPS_INIT}' || echo 0" \

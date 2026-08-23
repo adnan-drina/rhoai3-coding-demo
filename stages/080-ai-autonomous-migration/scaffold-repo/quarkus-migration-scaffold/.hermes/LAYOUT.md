@@ -19,9 +19,10 @@ parallel home is a defect.
 | M4 oracles | `.hermes/skills/gates/` (`check-domain-parity`, `check-release-readiness`) |
 | Shared Python | `.hermes/lib/` — **not a skill** (generated_sources, specimen splits). Identity is `.hermes-lib` marker, not a member module. |
 | Parked mint/requeue | `.hermes/_park/` — **not a skill**; **authoring-only**. Dest clones via `scripts/bootstrap-migration-scaffold-v2.sh` omit it. Chaos never dest. Do not mkdir empty `kernel/` from here. |
-| K2 REHOST | `.hermes/kernel/pre_tool_call.sh` — **one** shell `pre_tool_call` module (`fail_closed: true`). Same measured file as K2 instrumentation (`879fa292`); this sitting classifies it as the kernel home, not a new fence. Dest GitOps copies **this file only** when present. **Not claimed control** (write-escape MEASURED; container limb waived `131318Z`). Do not add K4 here until its own exit. Do not mkdir empty `kernel/`. |
+| K2 REHOST | `.hermes/kernel/pre_tool_call.sh` — **one** shell `pre_tool_call` module (`fail_closed: true`). Same measured file as K2 instrumentation (`879fa292`); this sitting classifies it as the kernel home, not a new fence. Dest GitOps copies **this file only** when present. **Not claimed control** (write-escape MEASURED; container limb waived `131318Z`). Do not mkdir empty `kernel/`. |
 | K1 body schema | `.hermes/kernel/k1_schema.py` + `k1_load.py` + `k1_validate.py` — typed pre-execution body. Not a skill. KEEP `check-kanban-body.py` imports the validator for the AD-019 minimum. Digest proves consistency among copies, not authorization. `claimed_control` stays false. |
-| K3 mint-verifier | `.hermes/kernel/k3_schema.py` + `k3_verify.py` — graph-snapshot procedure. Native unfinished parents hold M3; ACCEPT is `kanban_complete` on the verifier; REFUSE is sticky `kanban_block`. Not dest live-PID reclaim. Not claimed refuse-as-control. OBJECT `kanban daemon --force` / human `ack_gate` / `kanban_request_review` on the verifier. Do not add K4 here until its own exit. |
+| K3 mint-verifier | `.hermes/kernel/k3_schema.py` + `k3_verify.py` — graph-snapshot procedure. Native unfinished parents hold M3; ACCEPT is `kanban_complete` on the verifier; REFUSE is sticky `kanban_block`. Not dest live-PID reclaim. Not claimed refuse-as-control. OBJECT `kanban daemon --force` / human `ack_gate` / `kanban_request_review` on the verifier. |
+| K4 converter | `.hermes/kernel/k4_schema.py` + `k4_convert.py` — typed partition → `kanban_create` payloads (inline K1 body). Copies `files_writable` from the partition row. Does not mint. Does not import `create_task`. Does not scrape `tasks.md` (`PATH_TOKEN` OBJECT). Manifest `created_cards` is the exact logical-id list. Does not consume type-inventory `reached_from`. Dest GitOps still copies **only** `pre_tool_call.sh`. `claimed_control` stays false. |
 | Run data | `evidence/` |
 | Spec Kit workspace | `.specify/` + `specs/` — gitignored in golden; never commit `.specify/` |
 | Task state | Hermes Kanban (native). No parallel CSV / `created-cards-*.json` |
@@ -29,7 +30,8 @@ parallel home is a defect.
 **Out of day-one (deleted, do not port):** `.hermes/skills/harness/`,
 `.hermes/home/scripts/`, `.hermes/phase-dispatch.yaml`, human `ack_gate`,
 `handover-mint.py`, `dispatch-phase`, write-fence plugins. Slim kernel
-K4 lands only after Review PASS of K3, against its own exit.
+K1–K4 live in `.hermes/kernel/`. K4 emits payloads; the worker still calls
+`kanban_create` (pin CLI has no `--body-file`). Do not dest-apply K4.
 K3 `k3_verify.py` is a graph-snapshot procedure (Architect `145017Z`); not dest
 PID reclaim and not claimed refuse-as-control. Dashboard `web_dist` ships here
 (pin-stamped); destfile copies it and launches `hermes dashboard --skip-build`

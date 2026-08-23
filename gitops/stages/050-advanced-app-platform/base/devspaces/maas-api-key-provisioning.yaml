@@ -1005,9 +1005,9 @@ data:
         # fence). Fail-closed copy of a missing path killed v45 postStart
         # (exit 1, 2026-08-23). Hatch: empty pre_tool_call until v1 scripts
         # or that K2 file is present. Not a claimed control. Gate P-kernel
-        # CLOSED (Architect 142526Z). K1 and K3 modules stay in the dest
+        # CLOSED (Architect 142526Z). K1, K3, and K4 modules stay in the dest
         # tree; this hatch still copies only pre_tool_call.sh. Do not
-        # dest-apply a REHOST as if it were a new fence.
+        # dest-apply a REHOST or K4 converter as if it were a new fence.
         # Official: hooks_auto_accept is a top-level key, not under hooks:
         # (hermes-hooks / config_defaults). Nested under hooks: is ignored
         # as an unknown event name and never auto-approves.
@@ -1068,8 +1068,8 @@ data:
     )
     # Architect E-20260823T120100Z / K2 REHOST: restore fail_closed when
     # .hermes/kernel/pre_tool_call.sh exists. Copy that file only into
-    # Managed Scope (K1 python stays in the dest tree). Not a new fence.
-    # Not claimed control.
+    # Managed Scope (K1/K3/K4 python stay in the dest tree). Not a new
+    # fence. Not claimed control. Do not dest-apply K4.
     src_k2 = os.path.join(
         os.environ.get("HERMES_WRITE_SAFE_ROOT", "/projects/modernized"),
         ".hermes/kernel/pre_tool_call.sh",

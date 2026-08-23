@@ -4,15 +4,15 @@ No `SKILL.md`. Not agent-discovered.
 
 | Drawer | What |
 |--------|------|
-| `mint/` | assemble/stamp/quarantine/mint-oracles. K4 later lifts converter seed into `.hermes/kernel/` |
+| `mint/` | assemble/stamp/quarantine/mint-oracles. K4 converter seed is `.hermes/kernel/k4_convert.py`. Do not dump this assembler into kernel. |
 | `requeue/` | wall/crash requeue, chaos, workspace restore. K3 / dest GO — not day-one product |
 
 `assemble-m3-bodies-from-partition.py` lives **here**, not under a `check-*` name.
 
-Do not mkdir empty `.hermes/kernel/`. K2 is the REHOST of `.hermes/kernel/pre_tool_call.sh` (measured, not claimed control). K1 schema/loader/validator and K3 mint-verifier live beside it. K4 stays out until its own exit.
+Do not mkdir empty `.hermes/kernel/`. K2 is the REHOST of `.hermes/kernel/pre_tool_call.sh` (measured, not claimed control). K1, K3, and K4 live beside it. `assemble-m3-bodies-from-partition.py` stays here.
 
 Dest clones **omit** this directory (`scripts/bootstrap-migration-scaffold-v2.sh`).
 Chaos matrix never dest. Platform git keeps the tree.
 
-When K4 lifts mint, cards assign `--assignee orchestrator` (M2 / mint-verifier)
-and `--assignee implementer` (M3). Do not revive EX-4 four-seat names.
+K4 payloads assign `orchestrator` (mint-writer / mint-verifier) and
+`implementer` (M3). Do not revive EX-4 four-seat names. Do not dest-apply K4.
