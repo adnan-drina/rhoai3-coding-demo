@@ -19,7 +19,7 @@ parallel home is a defect.
 | M4 oracles | `.hermes/skills/gates/` (`check-domain-parity`, `check-release-readiness`) |
 | Shared Python | `.hermes/lib/` — **not a skill** (generated_sources, specimen splits). Identity is `.hermes-lib` marker, not a member module. |
 | Parked mint/requeue | `.hermes/_park/` — **not a skill**; **authoring-only**. Dest clones via `scripts/bootstrap-migration-scaffold-v2.sh` omit it. Chaos never dest. Do not mkdir empty `kernel/` from here. |
-| K2 instrumentation | `.hermes/kernel/pre_tool_call.sh` — one shell `pre_tool_call` module. Dest GitOps copies it fail-closed when present. **Not claimed control.** Gate P-kernel stays OPEN. Do not add K1/K3/K4 here until that gate. Do not mkdir empty `kernel/`. |
+| K2 instrumentation | `.hermes/kernel/pre_tool_call.sh` — one shell `pre_tool_call` module. Allow-root containment: unproven `command` denies (Architect `122407Z`). Dest GitOps copies it fail-closed when present. **Not claimed control** until write-escape MATCH. Gate P-kernel stays OPEN. Do not add K1/K3/K4 here until that gate. Do not mkdir empty `kernel/`. |
 | Run data | `evidence/` |
 | Spec Kit workspace | `.specify/` + `specs/` — gitignored in golden; never commit `.specify/` |
 | Task state | Hermes Kanban (native). No parallel CSV / `created-cards-*.json` |
