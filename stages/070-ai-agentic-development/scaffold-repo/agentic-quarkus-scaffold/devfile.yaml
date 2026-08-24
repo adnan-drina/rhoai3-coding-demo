@@ -8,7 +8,7 @@ components:
       # needs the Quay pull secret on the workspace ServiceAccount before
       # any dest cut. Shared fields copied from
       # workspace-images/devfile-fragments/common.yaml (destfile has no include).
-      image: quay.io/rhoai3-coding-demo/rhoai3-ws-070@sha256:5e31ca1c7ea73d14ee9853270bf44a842860fefb07749319b15451b714100ef7
+      image: quay.io/rhoai3-coding-demo/rhoai3-ws-070@sha256:60b96b3ded1f4bc60b71f294b5f25f6305f87c4847c7dd8483eb53985ec5546c
       mountSources: true
       memoryRequest: 2Gi
       memoryLimit: 6Gi
