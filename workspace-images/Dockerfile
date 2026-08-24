@@ -1,13 +1,16 @@
-# rhoai3 workspace overlays on Red Hat Dev Spaces UDI 3.28.2.
+# rhoai3 workspace overlays on Red Hat Dev Spaces UDI 3.29.1.
 #
-# Parent digest is the linux/amd64 udi-rhel9:3.28.2 image
-# (RHSA-2026:25123 lists the same digest for Dev Spaces 3.28).
-# There is no floating :3.28 tag in registry.redhat.io/devspaces/udi-rhel9.
+# Parent digest is the linux/amd64 udi-rhel9:3.29.1 image, measured
+# 2026-08-24 via `podman manifest inspect` (same amd64 digest as tags
+# 3.29 and 3.29-1784927049; older 3.29-1782991491 differs). Matching
+# live CheCluster cheVersion 3.29.1. Do not treat overlay 3.28.2 as
+# CheCluster-aligned.
 #
-# persistUserHome custom-image rules (Dev Spaces 3.28 Administration Guide
-# ch.10): stow >= 2.4.0, HOME=/home/user, user-home content in /home/tooling.
-# The UDI 3.28.2 image ships stow 2.3.2; foundation installs GNU Stow 2.4.1
-# from ftp.gnu.org (not EPEL/COPR).
+# persistUserHome custom-image rules (Dev Spaces Administration Guide
+# custom images / persistUserHome): stow >= 2.4.0, HOME=/home/user,
+# user-home content in /home/tooling. The UDI 3.29.1 image ships stow
+# 2.3.2; foundation installs GNU Stow 2.4.1 from ftp.gnu.org
+# (not EPEL/COPR).
 #
 # Pattern (shape only): che-incubator/cli-ai-tools Dockerfile — FROM UDI,
 # USER 0, pin CLIs into /usr/local, USER 10001, pre-create config dirs.
@@ -15,7 +18,7 @@
 #
 # Targets: rhoai3-udi-foundation, rhoai3-ws-060, rhoai3-ws-070, rhoai3-ws-080
 
-ARG UDI_IMAGE="registry.redhat.io/devspaces/udi-rhel9:3.28.2@sha256:80c9c0c3aa02ae7b447c33a8bb9aff07fc243b2b484db28975b79b9007612629"
+ARG UDI_IMAGE="registry.redhat.io/devspaces/udi-rhel9:3.29.1@sha256:420f18fc64f0d05ccdabafdde946eb1fdff0f1c7e14e1dc4a43fdfb917267bed"
 
 FROM ${UDI_IMAGE} AS udi
 
@@ -30,7 +33,8 @@ ENV HOME=/home/user \
     NODE_USE_SYSTEM_CA=1 \
     JAVA_HOME=/usr/lib/jvm/java-21-openjdk \
     JAVA_HOME_21=/usr/lib/jvm/java-21-openjdk
-# UDI 3.28.2 already ships perl, make, tar, gzip, git, unzip (inspected).
+# UDI 3.29.1 already ships perl, make, tar, gzip, git, unzip (inspected).
+# Stow is still 2.3.2; foundation installs 2.4.1.
 # Skip dnf: the image is not subscribed, and gcc is not required for GNU Stow.
 RUN curl -fsSL "https://ftp.gnu.org/gnu/stow/stow-${STOW_VERSION}.tar.gz" -o /tmp/stow.tar.gz \
     && mkdir -p /tmp/stow-src \
@@ -104,6 +108,10 @@ ARG REDHAT_JAVA_VERSION=1.47.0
 ARG KANTRA_VERSION=v0.10.0-beta.1
 COPY scripts/assert-hermes-source-pin.py /opt/rhoai3/assert-hermes-source-pin.py
 USER 0
+# /usr/bin/python3 is 3.9 on UDI 3.29.1; Hermes v2026.8.19 isolate-build
+# wants setuptools==83 (Requires-Python >=3.10). Use UDI-shipped
+# /usr/bin/python3.11. Do not use /home/tooling/.venv (persistUserHome
+# stows that tree; a symlink out of it dangles at runtime).
 ENV HERMES_HOME=/projects/modernized/.hermes/home \
     HERMES_MANAGED_DIR=/projects/.platform/hermes \
     HERMES_WEB_DIST=/usr/local/share/hermes/web_dist
@@ -115,7 +123,7 @@ RUN mkdir -p /opt/rhoai3/extensions /opt/hermes-agent /usr/local/share/hermes/we
          --agent-src /opt/hermes-agent \
          --version "${HERMES_VERSION}" \
          --date "${HERMES_DATE}" \
-    && /usr/bin/python3 -m venv /opt/hermes-venv \
+    && /usr/bin/python3.11 -m venv /opt/hermes-venv \
     && /opt/hermes-venv/bin/pip install --upgrade pip \
     && /opt/hermes-venv/bin/pip install -e "/opt/hermes-agent" \
     && ln -sf /opt/hermes-venv/bin/hermes /usr/local/bin/hermes \

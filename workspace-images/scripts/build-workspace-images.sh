@@ -2,7 +2,7 @@
 # Build rhoai3 workspace overlay targets. Does not push.
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CONTEXT="${ROOT}/workspace-images"
 DOCKERFILE="${CONTEXT}/Dockerfile"
 PREFIX="${IMAGE_PREFIX:-localhost/rhoai3}"
@@ -25,19 +25,19 @@ build_target() {
 
 inspect_ids() {
   local ref="$1"
-  python3 - <<PY
+  python3 -c '
 import json, subprocess, sys
-ref = ${ref@q}
+ref = sys.argv[1]
 out = subprocess.check_output(["podman", "inspect", ref], text=True)
 data = json.loads(out)[0]
 digest = data.get("Digest") or ""
 image_id = data.get("Id") or ""
 repodigests = data.get("RepoDigests") or []
-print(f"ref={ref}")
-print(f"Id={image_id}")
-print(f"Digest={digest or '(none — local build; no registry digest)'}")
-print(f"RepoDigests={','.join(repodigests) or '(none)'}")
-PY
+print("ref=" + ref)
+print("Id=" + image_id)
+print("Digest=" + (digest or "(none — local build; no registry digest)"))
+print("RepoDigests=" + (",".join(repodigests) or "(none)"))
+' "$ref"
 }
 
 build_target rhoai3-udi-foundation udi-foundation

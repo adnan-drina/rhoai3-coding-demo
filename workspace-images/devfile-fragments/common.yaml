@@ -13,7 +13,7 @@ metadata:
 components:
   - name: development-tooling
     container:
-      image: quay.io/rhoai3-coding-demo/rhoai3-ws-070@sha256:7f8973abb8b1955bc7afe8d1f3f4a27b38573c3b484599716c9df6a6ef24385a
+      image: quay.io/rhoai3-coding-demo/rhoai3-ws-070@sha256:5e31ca1c7ea73d14ee9853270bf44a842860fefb07749319b15451b714100ef7
       mountSources: true
       memoryRequest: 2Gi
       memoryLimit: 6Gi
