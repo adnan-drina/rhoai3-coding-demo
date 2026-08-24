@@ -150,7 +150,7 @@ check "kantra-ensure download message is on stderr (ensure_cli captures stdout a
   "grep -c 'Downloading kantra.*>&2' \"$REPO_ROOT/gitops/stages/050-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml\" || echo 0" \
   "1"
 check "init ConfigMap is DWO-mounted (volume, not kube-API curl as the primary path)" \
-  "grep -c 'controller.devfile.io/mount-to-devworkspace' \"$REPO_ROOT/gitops/stages/050-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml\" || echo 0" \
+  "awk '/^kind: ConfigMap\$/{c=1} c && /^  name: devspace-ai-tools-init\$/{n=1} n && /controller.devfile.io\\/mount-to-devworkspace: \"true\"/ {print 1; exit} n && /^data:/{exit} /^---\$/{c=0; n=0}' \"$REPO_ROOT/gitops/stages/050-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml\" || echo 0" \
   "1"
 SCAFFOLD_080="$REPO_ROOT/stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold"
 check "v2 scaffold has no dispatch-phase package" \
@@ -304,7 +304,7 @@ check "080 GitOps ConfigMap is the in-cluster MaaS worker base (not Gateway MAAS
   "grep -qF 'qwen3-6-27b-kserve-workload-svc.models-as-a-service.svc:8000/v1' '${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/devspaces/workspace-maas-model-endpoint.yaml' && grep -q 'name: workspace-maas-model-endpoint' '${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/devspaces/workspace-maas-model-endpoint.yaml' && echo 1 || echo 0" \
   "1"
 check "080 GitOps derives workspace-maas-credentials from QWEN27B key + ConfigMap URL" \
-  "grep -q 'name: workspace-maas-credentials' '${GITOPS_INIT}' && grep -q 'workspace-maas-model-endpoint' '${GITOPS_INIT}' && grep -q 'field-manager=devspace-maas-key-provisioner' '${GITOPS_INIT}' && echo 1 || echo 0" \
+  "grep -qF '\"name\": \"workspace-maas-credentials\"' '${GITOPS_INIT}' && grep -q 'workspace-maas-model-endpoint' '${GITOPS_INIT}' && grep -q 'field-manager=devspace-maas-key-provisioner' '${GITOPS_INIT}' && echo 1 || echo 0" \
   "1"
 check "080 GitOps MaaS env derive does not bounce Running dest pods" \
   "awk '/workspace-maas-credentials derived/,0' '${GITOPS_INIT}' | grep -c 'oc delete pod' || echo 0" \
