@@ -1,18 +1,19 @@
-schemaVersion: 2.2.0
+schemaVersion: 2.2.2
 metadata:
   name: agentic-quarkus-app
 components:
   - name: development-tooling
     container:
-      # Standard workspace base: the same Red Hat UDI every coolstore
-      # workspace uses (inventory, migration), so the Java/Maven foundation
-      # is uniform across stages — Maven 3.9.9 (Red Hat build), JDKs via the
-      # documented JAVA_HOME_<version> contract. The workspace is
-      # OpenCode-only by design: the platform init script installs the
-      # OpenCode CLI and quarkus-agent-mcp onto the persistent home; the
-      # project's .opencode/ directory is the tool-selector signal
-      # (present -> OpenCode, absent -> Kilo).
-      image: registry.redhat.io/devspaces/udi-rhel9:3.27.1
+      # Digest-pinned overlay (ws-070). Repos are private: cluster pull
+      # needs the Quay pull secret on the workspace ServiceAccount before
+      # any dest cut. Shared fields copied from
+      # workspace-images/devfile-fragments/common.yaml (destfile has no include).
+      image: quay.io/rhoai3-coding-demo/rhoai3-ws-070@sha256:7f8973abb8b1955bc7afe8d1f3f4a27b38573c3b484599716c9df6a6ef24385a
+      mountSources: true
+      memoryRequest: 2Gi
+      memoryLimit: 6Gi
+      cpuRequest: 500m
+      cpuLimit: 2500m
       env:
         - name: QUARKUS_HTTP_HOST
           value: 0.0.0.0
@@ -20,15 +21,12 @@ components:
           value: "-Dmaven.repo.local=/home/user/.m2/repository"
         - name: QUARKUS_ANALYTICS_DISABLED
           value: "true"
-        # OpenCode embeds Bun, and Bun 1.3+ no longer trusts the system CA
-        # store by default (oven-sh/bun#23735), so it rejects the MaaS
-        # gateway's ingress certificate. Setting this at the container level
-        # guarantees the trust is in place at process start regardless of
-        # shell timing (the init script also exports it into ~/.bashrc).
+        # OpenCode embeds Bun; Bun 1.3+ no longer trusts the system CA
+        # store by default (oven-sh/bun#23735).
         - name: NODE_USE_SYSTEM_CA
           value: "1"
-      memoryLimit: 6Gi
-      cpuLimit: 2500m
+        - name: SHELL
+          value: "/usr/bin/bash"
       volumeMounts:
         - name: m2
           path: /home/user/.m2
@@ -60,62 +58,37 @@ commands:
       commandLine: |
         PROJECT_DIR="${PROJECT_SOURCE:-$(ls -d /projects/* 2>/dev/null | head -1)}"
         PROFILE="$(basename "${PROJECT_DIR}")"
-        # The UDI base image documents JAVA_HOME_<version> variables as the
-        # supported way to select a JDK; its sdkman default (plain
-        # JAVA_HOME) is Java 17, while this project targets 21. Never
-        # trust the inherited JAVA_HOME — resolve 21 via the image
-        # contract, with a path probe as fallback for non-UDI images.
-        java21_home="${JAVA_HOME_21:-}"
-        if [ -z "${java21_home}" ] || [ ! -x "${java21_home}/bin/java" ]; then
-          for candidate in \
-            "${HOME}/.sdkman/candidates/java/21.0.5-tem" \
-            /home/tooling/.sdkman/candidates/java/21.0.5-tem \
-            /usr/lib/jvm/java-21-openjdk; do
-            if [ -x "${candidate}/bin/java" ]; then
-              java21_home="${candidate}"
-              break
-            fi
-          done
-        fi
-        if [ -n "${java21_home}" ] && [ -x "${java21_home}/bin/java" ]; then
-          export JAVA_HOME="${java21_home}"
-          export PATH="${JAVA_HOME}/bin:${PATH}"
-          for rc in "${HOME}/.bashrc" "${HOME}/.zshrc"; do
-            touch "${rc}"
-            if ! grep -q "rhoai3-coding-demo: java 21 default" "${rc}"; then
-              {
-                printf '\n'
-                printf '# rhoai3-coding-demo: java 21 default\n'
-                printf 'export JAVA_HOME="%s"\n' "${java21_home}"
-                printf 'export PATH="${JAVA_HOME}/bin:${PATH}"\n'
-              } >> "${rc}"
-            fi
-          done
-          echo "Configured Java 21 as the default shell runtime."
-        fi
         for i in $(seq 1 30); do [ -d "${PROJECT_DIR}/.git" ] && break; sleep 2; done
-        KUBE_API="https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}"
-        KUBE_CA="/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
-        KUBE_TOKEN="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"
-        if curl -fsS --cacert "${KUBE_CA}" \
-            -H "Authorization: Bearer ${KUBE_TOKEN}" \
-            "${KUBE_API}/api/v1/namespaces/wksp-ai-developer/configmaps/devspace-ai-tools-init" \
-            | jq -r '.data["init-ai-tools.sh"] // empty' >/tmp/init-ai-tools.sh \
-            && [ -s /tmp/init-ai-tools.sh ]; then
-          chmod 700 /tmp/init-ai-tools.sh
-          /tmp/init-ai-tools.sh "${PROJECT_DIR}" "${PROFILE}"
-        else
-          echo "devspace-ai-tools-init ConfigMap not reachable; OpenCode is"
-          echo "installed but not configured — governed MaaS credentials come"
-          echo "from the platform init script."
+        # Dev Spaces 3.28 User Guide: labeled ConfigMaps mount at
+        # /etc/config/<ConfigMap_name>/<key>. The platform ConfigMap is
+        # devspace-ai-tools-init / init-ai-tools.sh (fenced file).
+        INIT_VOL="/etc/config/devspace-ai-tools-init/init-ai-tools.sh"
+        if [ ! -s "${INIT_VOL}" ]; then
+          echo "ERROR: ${INIT_VOL} is not mounted."
+          echo "ConfigMap devspace-ai-tools-init must carry"
+          echo "controller.devfile.io/mount-to-devworkspace=true"
+          echo "(Dev Spaces 3.28 User Guide, Mount a ConfigMap)."
+          echo "Agent tooling is required; refusing a healthy workspace without it."
+          exit 1
         fi
-  # The UDI base image documents JAVA_HOME_<version> variables as the
-  # supported way to select a JDK (sdkman default is Java 17; the pom
-  # targets 21). Each Maven command selects Java 21 through that contract.
+        echo "init-ai-tools.sh from ConfigMap volume ${INIT_VOL}"
+        chmod 700 "${INIT_VOL}" 2>/dev/null || true
+        bash "${INIT_VOL}" "${PROJECT_DIR}" "${PROFILE}" \
+          || { echo "ERROR: init-ai-tools.sh failed"; exit 1; }
+  - id: package
+    exec:
+      label: "Package"
+      component: development-tooling
+      workingDir: ${PROJECT_SOURCE}
+      commandLine: 'export JAVA_HOME="${JAVA_HOME_21:-${JAVA_HOME}}" && export PATH="${JAVA_HOME}/bin:${PATH}" && mvn -q -DskipTests package'
+      group:
+        kind: build
+        isDefault: true
   - id: test
     exec:
       label: "1. Run tests"
       component: development-tooling
+      workingDir: ${PROJECT_SOURCE}
       commandLine: 'export JAVA_HOME="${JAVA_HOME_21:-${JAVA_HOME}}" && export PATH="${JAVA_HOME}/bin:${PATH}" && mvn -q test'
       group:
         kind: test
@@ -124,6 +97,7 @@ commands:
     exec:
       label: "2. Start Development mode (Hot reload + debug)"
       component: development-tooling
+      workingDir: ${PROJECT_SOURCE}
       commandLine: 'export JAVA_HOME="${JAVA_HOME_21:-${JAVA_HOME}}" && export PATH="${JAVA_HOME}/bin:${PATH}" && mvn compile quarkus:dev'
       group:
         kind: run

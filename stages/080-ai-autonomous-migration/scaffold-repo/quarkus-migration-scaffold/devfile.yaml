@@ -1,4 +1,4 @@
-schemaVersion: 2.2.0
+schemaVersion: 2.2.2
 metadata:
   name: quarkus-migration-scaffold
 attributes:
@@ -28,12 +28,15 @@ projects:
 components:
   - name: development-tooling
     container:
-      # Standard workspace base: the same Red Hat UDI used by every
-      # workspace on this platform, so the Java/Maven foundation is
-      # uniform across stages. Stage 080 v2 dest is Hermes Kanban
-      # (OpenCode is Stage 070). Carries the MTA VS Code extension pack
-      # for analyzing the legacy project against the platform MTA hub.
-      image: registry.redhat.io/devspaces/udi-rhel9:3.27.1
+      # Digest-pinned overlay (ws-080). Repos are private: cluster pull
+      # needs the Quay pull secret on the workspace ServiceAccount before
+      # any dest cut. Fat postStart (VSIX curls) is expected this round.
+      image: quay.io/rhoai3-coding-demo/rhoai3-ws-080@sha256:b87237c43a7c3d5fc59067724ddc77fafd3aa0414fb21db2a4ef88a3f3d4a950
+      mountSources: true
+      memoryRequest: 2Gi
+      memoryLimit: 6Gi
+      cpuRequest: 500m
+      cpuLimit: 2500m
       env:
         - name: QUARKUS_HTTP_HOST
           value: 0.0.0.0
@@ -269,7 +272,7 @@ commands:
     exec:
       label: "1. Run tests (modernized)"
       component: development-tooling
-      workingDir: /projects/modernized
+      workingDir: ${PROJECT_SOURCE}
       commandLine: 'export JAVA_HOME="${JAVA_HOME_21:-${JAVA_HOME}}" && export PATH="${JAVA_HOME}/bin:${HOME}/.local/bin:${HOME}/.jbang/bin:${PATH}" && mvn -q test'
       group:
         kind: test
@@ -278,7 +281,7 @@ commands:
     exec:
       label: "2. Start Development mode (modernized, hot reload + debug)"
       component: development-tooling
-      workingDir: /projects/modernized
+      workingDir: ${PROJECT_SOURCE}
       commandLine: 'export JAVA_HOME="${JAVA_HOME_21:-${JAVA_HOME}}" && export PATH="${JAVA_HOME}/bin:${HOME}/.local/bin:${HOME}/.jbang/bin:${PATH}" && mvn compile quarkus:dev'
       group:
         kind: run

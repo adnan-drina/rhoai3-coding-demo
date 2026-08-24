@@ -115,7 +115,7 @@ RUN mkdir -p /opt/rhoai3/extensions /opt/hermes-agent /usr/local/share/hermes/we
          --agent-src /opt/hermes-agent \
          --version "${HERMES_VERSION}" \
          --date "${HERMES_DATE}" \
-    && python3 -m venv /opt/hermes-venv \
+    && /usr/bin/python3 -m venv /opt/hermes-venv \
     && /opt/hermes-venv/bin/pip install --upgrade pip \
     && /opt/hermes-venv/bin/pip install -e "/opt/hermes-agent" \
     && ln -sf /opt/hermes-venv/bin/hermes /usr/local/bin/hermes \
