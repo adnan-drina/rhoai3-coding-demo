@@ -3,11 +3,15 @@
 # Not claimed control. Gate P-kernel CLOSED (Architect 142526Z); this
 # file remains K2 instrumentation (MEASURED), not a claimed write fence.
 # Hermes pipes hook JSON on stdin — do not steal it with a heredoc.
-# Allow root: K2_ALLOW_ROOT, else HERMES_WRITE_SAFE_ROOT.
+# Allow roots: K2_ALLOW_ROOT, else HERMES_WRITE_SAFE_ROOT. os.pathsep
+# split (Architect 214325ZA): dest terminal roots are dest tree +
+# /projects/legacy. Do not put / in the list. Write sandbox stays
+# HERMES_WRITE_SAFE_ROOT as the dest tree only (legacy is read-only).
 # Architect 124330Z: extract POSIX-looking path spans (/ -anchored, ~/,
 # ./, ../) including quotes/q{}. Not every / (https://, 2026/08/23).
-# Pathless ALLOW only when no such span exists and cwd is inside
-# allow-root. Not an interpreter denylist.
+# Pathless/unproven terminal commands deny (Architect 214743ZA). Not an
+# interpreter denylist. Dual-root allow-root still stands (214325ZA).
+# Do not add /opt/kantra. Do not allow /.
 set -euo pipefail
 exec python3 -c '
 import json, os, re, sys
@@ -61,34 +65,39 @@ if cmd:
         if span not in paths:
             paths.append(span)
 
-if not allow:
+roots = []
+for part in allow.split(os.pathsep):
+    part = part.strip()
+    if part:
+        try:
+            roots.append(os.path.realpath(part))
+        except OSError:
+            block("allow root %s unresolved" % part)
+
+if not roots:
     if cmd or paths:
         block("no allow root")
     print("{}")
     raise SystemExit(0)
 
-allow_r = os.path.realpath(allow)
+def inside(rp):
+    for allow_r in roots:
+        if rp == allow_r or rp.startswith(allow_r + os.sep):
+            return True
+    return False
+
 proven = False
 for p in paths:
     try:
         rp = os.path.realpath(p)
     except OSError:
         block("path %s unresolved" % p)
-    if rp == allow_r or rp.startswith(allow_r + os.sep):
+    if inside(rp):
         proven = True
     else:
         block("path %s resolves outside allow root" % p)
 
 if cmd and not proven:
-    hook_cwd = data.get("cwd") if isinstance(data.get("cwd"), str) else ""
-    if hook_cwd:
-        try:
-            cr = os.path.realpath(hook_cwd)
-        except OSError:
-            block("cwd unresolved")
-        if cr == allow_r or cr.startswith(allow_r + os.sep):
-            print("{}")
-            raise SystemExit(0)
     block("unproven command path")
 
 print("{}")

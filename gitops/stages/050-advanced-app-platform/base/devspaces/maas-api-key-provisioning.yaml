@@ -645,6 +645,7 @@ data:
         export HERMES_HOME="${hermes_home}"
         export HERMES_MANAGED_DIR="${managed_dir}"
         export HERMES_WRITE_SAFE_ROOT="${project_dir}"
+        export K2_ALLOW_ROOT="${project_dir}:/projects/legacy"
         if [ -d "${hermes_home}/profiles/${name}" ]; then
           echo "C-2: dest profile ${name} exists — re-apply toolsets (no --clone)."
         else
@@ -674,6 +675,7 @@ data:
     env["HERMES_HOME"] = home
     env["HERMES_MANAGED_DIR"] = managed
     env["HERMES_WRITE_SAFE_ROOT"] = project
+    env["K2_ALLOW_ROOT"] = project + ":/projects/legacy"
 
     def cfgset(key, value):
         proc = subprocess.run(
@@ -888,6 +890,10 @@ data:
       export HERMES_MANAGED_DIR="${managed_dir}"
       export HERMES_HOME="${hermes_home}"
       export HERMES_WRITE_SAFE_ROOT="${PROJECT_DIR}"
+      # Architect 214325ZA: dest terminal allow-root is dest tree + legacy
+      # mount. Do not fold legacy into HERMES_WRITE_SAFE_ROOT (write sandbox;
+      # /projects/legacy is read-only provenance). Do not allow /.
+      export K2_ALLOW_ROOT="${PROJECT_DIR}:/projects/legacy"
       export HERMES_SKILLS_DIR="${hermes_skills_dir}"
       # Spec-kit Hermes integration hardcodes Path.home()/.hermes/skills
       # (ignores $HERMES_HOME — Research E-20260807T174318Z / upstream
@@ -1214,6 +1220,8 @@ data:
         # Managed Scope). Native guards are write_file/patch only; in-repo
         # B-S2 stays the EX-3 hook (HKN-12).
         fh.write(f"HERMES_WRITE_SAFE_ROOT={safe_root}\n")
+        # Terminal allow-root (Architect 214325ZA). Not the write sandbox.
+        fh.write(f"K2_ALLOW_ROOT={safe_root}:/projects/legacy\n")
         fh.write("HERMES_REAL_BIN=/usr/local/bin/hermes\n")
         if os.environ.get("HERMES_MINIMAX") == "1":
             fh.write(
@@ -1432,6 +1440,7 @@ data:
           printf 'export HERMES_MANAGED_DIR=%q\n' "${managed_dir}"
           printf 'export HERMES_HOME=%q\n' "${hermes_home}"
           printf 'export HERMES_WRITE_SAFE_ROOT=%q\n' "${PROJECT_DIR}"
+          printf 'export K2_ALLOW_ROOT=%q\n' "${PROJECT_DIR}:/projects/legacy"
           printf 'export HERMES_ACCEPT_HOOKS=1\n'
         } >> "${HOME}/.bashrc"
       else
@@ -1439,6 +1448,7 @@ data:
         sed -i.bak \
           -e "s|^export HERMES_MANAGED_DIR=.*|export HERMES_MANAGED_DIR=$(printf %q "${managed_dir}")|" \
           -e "s|^export HERMES_WRITE_SAFE_ROOT=.*|export HERMES_WRITE_SAFE_ROOT=$(printf %q "${PROJECT_DIR}")|" \
+          -e "s|^export K2_ALLOW_ROOT=.*|export K2_ALLOW_ROOT=$(printf %q "${PROJECT_DIR}:/projects/legacy")|" \
           "${HOME}/.bashrc" 2>/dev/null || true
         if grep -q '^export HERMES_HOME=' "${HOME}/.bashrc" 2>/dev/null; then
           sed -i.bak \
@@ -1446,6 +1456,9 @@ data:
             "${HOME}/.bashrc" 2>/dev/null || true
         else
           printf 'export HERMES_HOME=%q\n' "${hermes_home}" >> "${HOME}/.bashrc"
+        fi
+        if ! grep -q '^export K2_ALLOW_ROOT=' "${HOME}/.bashrc" 2>/dev/null; then
+          printf 'export K2_ALLOW_ROOT=%q\n' "${PROJECT_DIR}:/projects/legacy" >> "${HOME}/.bashrc"
         fi
         if ! grep -q '^export HERMES_ACCEPT_HOOKS=' "${HOME}/.bashrc" 2>/dev/null; then
           printf 'export HERMES_ACCEPT_HOOKS=1\n' >> "${HOME}/.bashrc"

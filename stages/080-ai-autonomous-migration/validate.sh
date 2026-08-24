@@ -347,6 +347,18 @@ check "080 golden K2 REHOST pre_tool_call.sh present" \
 check "080 golden pre_tool_call.sh is executable" \
   "test -x '${SCAFFOLD_KERNEL}/pre_tool_call.sh' && echo 1 || echo 0" \
   "1"
+check "080 K2 hook splits allow-root on pathsep" \
+  "grep -q 'allow.split(os.pathsep)' '${SCAFFOLD_KERNEL}/pre_tool_call.sh' && echo 1 || echo 0" \
+  "1"
+check "080 K2 hook denies unproven terminal commands" \
+  "grep -c 'hook_cwd' '${SCAFFOLD_KERNEL}/pre_tool_call.sh' || echo 0" \
+  "0"
+check "080 GitOps dest-init K2_ALLOW_ROOT includes /projects/legacy" \
+  "awk '/K2_ALLOW_ROOT/ && /\\/projects\\/legacy/ {print 1; exit}' '${GITOPS_INIT}' || echo 0" \
+  "1"
+check "080 GitOps write sandbox stays PROJECT_DIR (legacy not in HERMES_WRITE_SAFE_ROOT)" \
+  "grep -E '^[[:space:]]*(export )?HERMES_WRITE_SAFE_ROOT=' '${GITOPS_INIT}' | grep -c '/projects/legacy' || echo 0" \
+  "0"
 check "080 LAYOUT classifies K2 as REHOST" \
   "grep -q 'K2 REHOST' '${SCAFFOLD_LAYOUT}' && echo present || echo missing" \
   "present"
