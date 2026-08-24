@@ -1,11 +1,11 @@
 ---
 name: init-spec-workspace
-description: When a workspace has no .specify/ — installs pinned Spec Kit, the Non-Goals override, the unique-owner tasks-template override, the destination constitution, the speckit overlay that removes implement, and the AD-S stop rule
+description: When a workspace has no .specify/ — installs pinned Spec Kit, the Non-Goals override, the unique-owner tasks-template override, the destination constitution, the speckit overlay that removes implement, the AD-S stop rule, and copies speckit-specify into the project skills tree so implementer skills list names it (does not add user-root external_dirs)
 license: Apache-2.0
 compatibility: Linux seat; network to install pinned Spec Kit CLI
 metadata:
   author: rhoai3-harness-team
-  version: "1.4.2"
+  version: "1.4.3"
   hermes:
     tags:
     - sdd
@@ -45,6 +45,10 @@ Idempotent via `.specify/.rhoai3-ads-provisioned`. Spec Kit is pinned
 
 1. Ensures `specify-cli` (`uv tool install specify-cli` if needed)
 2. `specify init --here --integration hermes --force --ignore-agent-tools`
+2b. Copies `speckit-specify` (and plan/tasks/analyze, never implement) from
+    specify-init's Hermes skill install into
+    `<modernized>/.hermes/skills/sdd/` so implementer `skills list` names
+    `speckit-specify`. Does **not** add user-root `external_dirs`.
 3. Copies Non-Goals override from
    `${HERMES_SKILL_DIR}/assets/spec-template.md` →
    `.specify/templates/overrides/spec-template.md`
@@ -77,7 +81,9 @@ from the typed partition. **Never** `/speckit-implement`. Run
 ## Pitfalls
 
 - Hermes binary may be absent at postStart — `--ignore-agent-tools` is required;
-  skills still land under `~/.hermes/skills/`.
+  skills still land under `~/.hermes/skills/`. `seed-speckit-skills.py` then
+  copies `speckit-specify` into the project `sdd/` tree (Architect `125450Z`).
+  Do **not** add `/home/user/.hermes/skills` to the implementer profile.
 - When `HERMES_HOME` is relocated, **assert** (not merely remind) that
   `skills.external_dirs` lists both `<modernized>/.hermes/skills` and
   `$HOME/.hermes/skills` — `scripts/check-external-dirs.py`.
@@ -108,6 +114,9 @@ from the typed partition. **Never** `/speckit-implement`. Run
   `OK: external_dirs lists project + home skills (<config>)`. `assert idle`
   means `HERMES_HOME` is unset or default — it is not evidence for a relocated
   seat.
+- After provision, `<modernized>/.hermes/skills/sdd/speckit-specify/SKILL.md`
+  exists. Implementer `skills list` names `speckit-specify` without a
+  user-root `external_dirs` grant.
 - Every failure path exits non-zero with `[init-spec-workspace] ERROR: …`
   before the marker is written (missing override asset, `specify` absent after
   install, `.specify/` not created, external_dirs assert failed).

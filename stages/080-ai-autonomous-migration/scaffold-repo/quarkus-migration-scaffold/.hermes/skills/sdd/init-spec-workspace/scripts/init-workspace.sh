@@ -11,6 +11,19 @@
 # Idempotent: skips when .specify/.rhoai3-ads-provisioned exists.
 set -euo pipefail
 
+# Hermes worker HOME is the profile home. specify/uv and speckit skills
+# land under the human account (UDI /home/user) or Path.home() at init.
+human_home() {
+  local h
+  h="$(getent passwd "$(id -u)" | cut -d: -f6 || true)"
+  if [ -n "${h}" ] && [ -d "${h}" ]; then
+    printf '%s\n' "${h}"
+    return 0
+  fi
+  printf '%s\n' "/home/user"
+}
+HUMAN_HOME="$(human_home)"
+
 # --dry-run as first arg or DRY_RUN=1: print plan and exit 0 before installs.
 if [[ "${1:-}" == "--dry-run" ]]; then
   shift
@@ -127,7 +140,7 @@ if [[ "${DRY_RUN}" == "1" ]]; then
   log "DRY-RUN: would copy unique-owner tasks override → .specify/templates/overrides/tasks-template.md"
   log "DRY-RUN: would copy constitution → .specify/memory/constitution.md"
   log "DRY-RUN: would copy overlay → .specify/workflows/overlays/speckit/stop-before-implement.yml"
-  log "DRY-RUN: would write marker ${MARKER}"
+    log "DRY-RUN: would seed speckit-specify into ${ROOT}/.hermes/skills/sdd (not user-root external_dirs)"
   emit_ok "[${LOG_PREFIX}] DRY-RUN complete" "$(python3 -c 'import json,sys; print(json.dumps({"script":"init-workspace","ok":True,"dry_run":True,"root":sys.argv[1]}))' "${ROOT}")"
   exit 0
 fi
@@ -149,6 +162,8 @@ if [ -f "${MARKER}" ]; then
     fi
   fi
   install_ads_overlays
+  python3 "${SCRIPT_DIR}/seed-speckit-skills.py" "${ROOT}" "${HUMAN_HOME}" \
+    || die "seed-speckit-skills failed (implementer must see speckit-specify)"
   HUMAN="[${LOG_PREFIX}] already provisioned (${TS}) — skip specify init; overlays refreshed"
   emit_ok "${HUMAN}" "$(python3 -c 'import json,sys; print(json.dumps({"script":"init-workspace","ok":True,"skipped":True,"overlays_refreshed":True,"root":sys.argv[1],"marker":sys.argv[2],"provisioned_at":sys.argv[3]}))' "${ROOT}" "${MARKER}" "${TS}")"
   exit 0
@@ -168,6 +183,7 @@ case "${ROOT}" in
 esac
 
 ensure_specify() {
+  export PATH="${HUMAN_HOME}/.local/bin:/usr/local/bin:${PATH}"
   if command -v specify >/dev/null 2>&1; then
     return 0
   fi
@@ -178,14 +194,14 @@ ensure_specify() {
   if ! command -v uv >/dev/null 2>&1; then
     log "installing uv…"
     curl -LsSf https://astral.sh/uv/install.sh | sh
-    export PATH="${HOME}/.local/bin:${PATH}"
+    export PATH="${HUMAN_HOME}/.local/bin:${HOME}/.local/bin:${PATH}"
   fi
   command -v uv >/dev/null 2>&1 || die "uv not available after install"
   # R-HX.1 — pin Spec Kit (see .hermes/pins.json)
   local SPECIFY_PIN="${SPECIFY_CLI_VERSION:-0.16.1}"
   log "installing specify-cli==${SPECIFY_PIN} via uv tool…"
   uv tool install "specify-cli==${SPECIFY_PIN}"
-  export PATH="${HOME}/.local/bin:${PATH}"
+  export PATH="${HUMAN_HOME}/.local/bin:${HOME}/.local/bin:${PATH}"
   command -v specify >/dev/null 2>&1 || die "specify not on PATH after uv tool install"
 }
 
@@ -200,6 +216,8 @@ specify init --here --integration hermes --force --ignore-agent-tools
 [ -d "${ROOT}/.specify" ] || die "specify init did not create .specify/"
 
 install_ads_overlays
+python3 "${SCRIPT_DIR}/seed-speckit-skills.py" "${ROOT}" "${HUMAN_HOME}" \
+  || die "seed-speckit-skills failed (implementer must see speckit-specify)"
 
 # external_dirs: when HERMES_HOME is relocated away from ~/.hermes, spec-kit
 # still writes skills to Path.home()/.hermes/skills — keep both on the list.
@@ -220,11 +238,14 @@ Project skills live under:
   <modernized>/.hermes/skills/
 
 If Managed Scope relocates HERMES_HOME to .hermes/home/ (or /etc/hermes),
-ensure the Hermes profile lists BOTH:
+ensure the Hermes *managed* config lists BOTH:
   - <modernized>/.hermes/skills
   - $HOME/.hermes/skills
 
-Do not remove the Path.home() entry or /speckit-* skills become invisible.
+Do **not** add `/home/user/.hermes/skills` to the implementer profile
+(Architect 125450Z / Operator 125618Z). `init-spec-workspace` copies
+`speckit-specify` (and plan/tasks/analyze, never implement) into
+`<modernized>/.hermes/skills/sdd/` so implementer `skills list` names it.
 EOF
   log "wrote ${note}"
 }
