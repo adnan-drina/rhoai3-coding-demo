@@ -1,0 +1,3 @@
+# Host-bake outputs (web_dist, Node tarball, hermes clone, digestfiles).
+# Architect 185531ZA / Review 185017ZR: do not git-add this tree.
+/out/

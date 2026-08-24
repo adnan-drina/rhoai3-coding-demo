@@ -117,11 +117,14 @@ fi
 log_step "Harness Tooling (Session 0 — init script contract)"
 # The migration golden path's workspaces (PROFILE=modernized) get the
 # harness orchestrator + sensor tooling from the shared init ConfigMap:
-# Hermes CLI (idempotent PVC install, MaaS-wired) and the lazy kantra
+# overlay-baked Hermes CLI (no curl install.sh) and the lazy kantra
 # sensor helper (~690MB zip — deliberately NOT downloaded at postStart).
-check "init script installs the Hermes Agent CLI" \
-  "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -c 'hermes-agent.nousresearch.com/install.sh' || echo 0" \
+check "live init ConfigMap uses overlay-baked Hermes CLI" \
+  "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -c 'hermes_bin=\"/usr/local/bin/hermes\"' || echo 0" \
   "1"
+check "live init ConfigMap does not curl-install Hermes" \
+  "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -c 'hermes-agent.nousresearch.com/install.sh' || echo 0" \
+  "0"
 check "init script pins Hermes main model to qwen3-6-27b" \
   "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -c '\"default\": \"qwen3-6-27b\"' || echo 0" \
   "1"
@@ -173,7 +176,7 @@ check "check-phase-matrix.py is not in the golden scaffold" \
   "1"
 check "harness tooling is gated on the modernized profile" \
   "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -c 'PROFILE}\" = \"modernized\"' || echo 0" \
-  "1"
+  "2"
 # AD-H §14 — SOUL.md is the sole judgement-doctrine carrier; init must
 # abort on missing/empty/hash mismatch and smoke-test Hermes load+scan.
 check "init script hash-verifies SOUL.md and aborts (AD-H §14)" \
@@ -258,8 +261,14 @@ check "080 GitOps pin oracle uses --agent-src" \
 check "080 GitOps has no agent-pin heredoc" \
   "grep -c 'AGENTPINEOF' '${GITOPS_INIT}' || echo 0" \
   "0"
-check "080 GitOps pins Hermes installer to v2026.8.19" \
-  "grep -c 'hermes-install.sh --skip-browser --branch v2026.8.19' '${GITOPS_INIT}' || echo 0" \
+check "080 GitOps does not curl-install Hermes" \
+  "grep -c 'hermes-install.sh' '${GITOPS_INIT}' || echo 0" \
+  "0"
+check "080 GitOps uses overlay-baked /usr/local/bin/hermes" \
+  "grep -v '^[[:space:]]*#' '${GITOPS_INIT}' | grep -qF 'hermes_bin=\"/usr/local/bin/hermes\"' && echo 1 || echo 0" \
+  "1"
+check "080 GitOps pin oracle ast-reads overlay /opt/hermes-agent" \
+  "grep -v '^[[:space:]]*#' '${GITOPS_INIT}' | grep -qF 'agent_src=\"/opt/hermes-agent\"' && echo 1 || echo 0" \
   "1"
 check "080 golden orchestrator profile template present" \
   "test -f '${SCAFFOLD_PROFILES}/orchestrator.yaml.template' && echo present || echo missing" \

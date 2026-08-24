@@ -733,36 +733,16 @@ data:
     }
 
     ensure_hermes() {
-      # Stage 080 harness orchestrator (Hermes Agent CLI). Operator
-      # E-20260823T111522Z pins Hermes to tag v2026.8.19 (v0.20.5).
-      # Spec Kit stays 0.16.1. --skip-browser keeps the install headless.
-      ensure_hermes_xz_shim
-      if [ ! -x "${HOME}/.local/bin/hermes" ]; then
-        curl -fsSL --retry 3 --max-time 300 -o /tmp/hermes-install.sh \
-          https://hermes-agent.nousresearch.com/install.sh \
-          && bash /tmp/hermes-install.sh --skip-browser --branch v2026.8.19 >/tmp/hermes-install.log 2>&1 \
-          && echo "Installed Hermes Agent CLI (pin v2026.8.19)." \
-          || { echo "Hermes installer failed (see /tmp/hermes-install.log); harness orchestrator unavailable."; return; }
-      fi
-      if ! grep -q "rhoai3-coding-demo: hermes path" "${HOME}/.bashrc" 2>/dev/null; then
-        {
-          printf '\n# rhoai3-coding-demo: hermes path\n'
-          printf 'export PATH="${HOME}/.local/bin:${PATH}"\n'
-        } >> "${HOME}/.bashrc"
-      fi
-
-      # Agent-vs-pin: golden `.hermes/checks/assert-agent-pin.py` reads
-      # hermes_cli/__init__.py via ast (Operator 112353Z). No banner regex.
-      # No ConfigMap heredoc (Architect 112125Z / 112612Z).
-      local hermes_bin="${HOME}/.local/bin/hermes"
+      # Architect 185531ZA: overlay bake is /usr/local/bin/hermes (v0.20.5 /
+      # 2026.8.19). Fail-closed if missing or off-pin. No curl install.sh
+      # (Operator 184955Zop / Review 185102ZR). Do not PATH-prepend
+      # ~/.local/bin ahead of the bake.
+      local hermes_bin="/usr/local/bin/hermes"
       local pins_json="${PROJECT_DIR}/.hermes/pins.json"
       local agent_assert="${PROJECT_DIR}/.hermes/checks/assert-agent-pin.py"
-      local agent_src="${PROJECT_DIR}/.hermes/home/hermes-agent"
-      if [ ! -f "${agent_src}/hermes_cli/__init__.py" ]; then
-        agent_src="${HOME}/.hermes/hermes-agent"
-      fi
+      local agent_src="/opt/hermes-agent"
       if [ ! -x "${hermes_bin}" ]; then
-        echo "ERROR: hermes CLI missing; cannot assert agent vs pins.json." >&2
+        echo "ERROR: overlay Hermes missing at ${hermes_bin}; dest-init fail-closed (no curl install.sh)." >&2
         return 1
       fi
       if [ ! -f "${pins_json}" ]; then
@@ -774,12 +754,46 @@ data:
         return 1
       fi
       if [ ! -f "${agent_src}/hermes_cli/__init__.py" ]; then
-        echo "ERROR: hermes_cli/__init__.py missing under ${agent_src}; cannot ast-read pin constants." >&2
+        echo "ERROR: hermes_cli/__init__.py missing under ${agent_src}; cannot ast-read the running bake." >&2
         return 1
       fi
       if ! python3 "${agent_assert}" --pins "${pins_json}" --agent-src "${agent_src}"; then
-        echo "ERROR: installed Hermes does not match .hermes/pins.json." >&2
+        echo "ERROR: overlay Hermes source does not match .hermes/pins.json." >&2
         return 1
+      fi
+      if ! python3 - "${pins_json}" "${hermes_bin}" <<'HERMESVEREOF'
+    import json, re, subprocess, sys
+    pins_path, hermes_bin = sys.argv[1], sys.argv[2]
+    agent = (json.load(open(pins_path, encoding="utf-8")).get("pins") or {}).get("hermes_agent") or {}
+    want_ver = str(agent.get("version") or "").strip()
+    want_build = str(agent.get("build") or "").strip()
+    if not want_ver or not want_build:
+        print("ERROR: pins.json missing hermes_agent.version/build", file=sys.stderr)
+        sys.exit(1)
+    want_ver_n = want_ver[1:] if want_ver[:1] in "vV" and want_ver[1:2].isdigit() else want_ver
+    try:
+        out = subprocess.check_output([hermes_bin, "--version"], text=True, stderr=subprocess.STDOUT)
+    except (OSError, subprocess.CalledProcessError) as exc:
+        print(f"ERROR: {hermes_bin} --version failed: {exc}", file=sys.stderr)
+        sys.exit(1)
+    m = re.search(r"v?(\d+\.\d+\.\d+)\s*\(([^)]+)\)", out)
+    if not m or m.group(1) != want_ver_n or m.group(2).strip() != want_build:
+        print(
+            f"ERROR: {hermes_bin} --version {out.strip()!r} != pin {want_ver}/{want_build}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    print(f"ensure_hermes: MATCH {hermes_bin} --version {want_ver} / {want_build}")
+    HERMESVEREOF
+      then
+        echo "ERROR: overlay Hermes --version does not match .hermes/pins.json." >&2
+        return 1
+      fi
+      if ! grep -q "rhoai3-coding-demo: hermes path" "${HOME}/.bashrc" 2>/dev/null; then
+        {
+          printf '\n# rhoai3-coding-demo: hermes path (overlay bake first)\n'
+          printf 'export PATH="/usr/local/bin:${HOME}/.local/bin:${PATH}"\n'
+        } >> "${HOME}/.bashrc"
       fi
 
       # Architect 183448ZA: overlay stamp must not be the literal
@@ -811,15 +825,12 @@ data:
       # named providers: dict (not legacy custom_providers), 4-key model:
       # mapping with api_mode, discover_models: false. Primary: qwen3-6-27b
       # (131072). MiniMax is AD-008 exception-only, never fallback_providers.
-      # Installer may place the agent under HERMES_HOME (project-managed)
-      # rather than ~/.hermes — prefer PROJECT_DIR runtime tree, then HOME.
-      local venv_py="${PROJECT_DIR}/.hermes/home/hermes-agent/venv/bin/python"
+      # Overlay venv writes Managed Scope YAML. Do not fall back to a
+      # curl-install tree (Architect 185531ZA).
+      local venv_py="/opt/hermes-venv/bin/python"
       if [ ! -x "${venv_py}" ]; then
-        venv_py="${HOME}/.hermes/hermes-agent/venv/bin/python"
-      fi
-      if [ ! -x "${venv_py}" ]; then
-        echo "Hermes venv python not found; skipping Hermes MaaS config."
-        return
+        echo "ERROR: overlay Hermes venv missing at ${venv_py}; dest-init fail-closed." >&2
+        return 1
       fi
 
       local managed_dir="/etc/hermes"
@@ -1132,7 +1143,7 @@ data:
         shutil.copy2(src_hydrate, hydrate_py)
         os.chmod(hydrate_py, 0o755)
         hermes_wrap = os.path.join(bin_dir, "hermes")
-        real_hermes = os.path.expanduser("~/.local/bin/hermes")
+        real_hermes = "/usr/local/bin/hermes"
         with open(hermes_wrap, "w") as fh:
             fh.write("#!/bin/bash\n")
             fh.write("# v24: snapshot write-set cache into spawn env; not a trust boundary.\n")
@@ -1182,7 +1193,7 @@ data:
         # Managed Scope). Native guards are write_file/patch only; in-repo
         # B-S2 stays the EX-3 hook (HKN-12).
         fh.write(f"HERMES_WRITE_SAFE_ROOT={safe_root}\n")
-        fh.write(f"HERMES_REAL_BIN={os.path.expanduser('~/.local/bin/hermes')}\n")
+        fh.write("HERMES_REAL_BIN=/usr/local/bin/hermes\n")
         if os.environ.get("HERMES_MINIMAX") == "1":
             fh.write(
                 "REDHAT_MODELS_BASE_URL="
@@ -1375,8 +1386,6 @@ data:
       # Operator GO 231808Z — dest orchestrator + implementer (trigger (c)).
       # Stop C-2(a) skip. Create those two without --clone (EX-4). Secrets
       # stay Managed Scope (check immediately below).
-      local hermes_bin
-      hermes_bin="$(command -v hermes 2>/dev/null || echo "${HOME}/.local/bin/hermes")"
       if ! ensure_dest_worker_profiles \
         "${hermes_bin}" "${venv_py}" "${hermes_home}" "${managed_dir}" "${PROJECT_DIR}"; then
         echo "ERROR: dest worker profile seating failed (231808Z)." >&2
@@ -1428,13 +1437,11 @@ data:
         return
       fi
       # W2: hermes hooks doctor after seed (official: script edits trusted by
-      # command string — doctor catches mtime/allowlist drift). Non-fatal if
-      # hermes binary not yet on PATH at this init phase.
-      if command -v hermes >/dev/null 2>&1; then
-        HERMES_HOME="${hermes_home}" HERMES_MANAGED_DIR="${managed_dir}" \
-          HERMES_ACCEPT_HOOKS=1 hermes hooks doctor >/dev/null 2>&1 \
-          || echo "WARN: hermes hooks doctor reported issues (W2 CS-5 #5) — re-run after allowlist."
-      fi
+      # command string — doctor catches mtime/allowlist drift). Overlay bake
+      # is already asserted above.
+      HERMES_HOME="${hermes_home}" HERMES_MANAGED_DIR="${managed_dir}" \
+        HERMES_ACCEPT_HOOKS=1 "${hermes_bin}" hooks doctor >/dev/null 2>&1 \
+        || echo "WARN: hermes hooks doctor reported issues (W2 CS-5 #5) — re-run after allowlist."
       echo "Hermes AD-H: managed_mode=${managed_mode} dir=${managed_dir}; HERMES_HOME=${hermes_home}; WRITE_SAFE_ROOT=${PROJECT_DIR}; external_dirs=${hermes_skills_dir}; model pin=qwen3-6-27b; PVC overlays absent."
 
       # Dashboard UI: do not npm-build here. This init runs in the
@@ -1454,9 +1461,7 @@ data:
           cp -f "${watchdog_src}" "${watchdog_dst}"
         fi
         chmod 755 "${watchdog_dst}" 2>/dev/null || true
-        if command -v hermes >/dev/null 2>&1 || [ -x "${HOME}/.local/bin/hermes" ]; then
-          local hermes_bin
-          hermes_bin="$(command -v hermes 2>/dev/null || echo "${HOME}/.local/bin/hermes")"
+        if [ -x "${hermes_bin}" ]; then
           # Idempotent: remove prior job by name if list/remove available, then create.
           if "${hermes_bin}" cron list 2>/dev/null | grep -q 'kanban-stuck-watchdog'; then
             job_id="$("${hermes_bin}" cron list 2>/dev/null | awk '/kanban-stuck-watchdog/{print $1; exit}')"
@@ -1674,15 +1679,15 @@ data:
       # Architect 145309ZA / 151813ZA: same postStart, after tools+auth.
       # Do not restore supervise-gateway.sh. Not a skippable extra command.
       export HERMES_ACCEPT_HOOKS=1
-      export PATH="${HOME}/.local/bin:${PATH}"
+      export PATH="/usr/local/bin:${HOME}/.local/bin:${PATH}"
       export HERMES_HOME="${PROJECT_DIR}/.hermes/home"
-      if ! command -v hermes >/dev/null 2>&1; then
-        echo "ERROR: hermes missing after ensure_hermes; cannot start gateway." >&2
+      if [ ! -x /usr/local/bin/hermes ]; then
+        echo "ERROR: overlay hermes missing after ensure_hermes; cannot start gateway." >&2
         exit 1
       fi
       mkdir -p "${HERMES_HOME}"
       gw_log="${HERMES_HOME}/gateway-run.log"
-      nohup hermes gateway run --external-supervisor >> "${gw_log}" 2>&1 &
+      nohup /usr/local/bin/hermes gateway run --external-supervisor >> "${gw_log}" 2>&1 &
       gw_pid=$!
       sleep 1
       if ! kill -0 "${gw_pid}" 2>/dev/null; then

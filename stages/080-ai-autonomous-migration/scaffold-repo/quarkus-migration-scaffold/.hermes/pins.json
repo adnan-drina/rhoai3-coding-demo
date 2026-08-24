@@ -26,8 +26,8 @@
     },
     "workspace_overlay": {
       "ws_080": {
-        "digest": "sha256:24c2d1e42441829600943d8ff13e16fd406dac96d8f6eaa5f0892958a932b521",
-        "note": "Quay registry digest from `podman push --digestfile` 2026-08-24 (Operator 182157Zop). Not hermes_agent. Not a local image Id, unsigned Digest, or `podman image inspect` RepoDigest. Republish destfile + this key + IMAGE_DIGEST bake together on each overlay rebuild."
+        "digest": "sha256:d36e32530f41ce0f2013a9bc5b06e24c80a09e99c8304532c8e2bec2accde120",
+        "note": "Quay registry digest from `podman push --digestfile` 2026-08-24 (web_dist COPY rebuild). Not hermes_agent. Not a local image Id, unsigned Digest, IMAGE_DIGEST stamp, or `podman image inspect` RepoDigest. Dest-init must not compare the in-image stamp to this key (Architect 183448ZA). Republish destfile + this key together on each overlay rebuild."
       }
     }
   }

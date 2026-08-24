@@ -1035,7 +1035,7 @@ oc exec -n <ws-ns> <workspace-pod> -c development-tooling -- \
 
 **Affected stage:** Stage 080 dest on branch `harness-v2` only. Overlay / v1 goldens stay single-persona.
 
-**Likely cause:** `ensure_hermes` could not seat `orchestrator` + `implementer` (`hermes` CLI absent, golden templates missing, or a profile `.env` gained assignments). Operator GO `231808Z` retired the C-2(a) skip. Do **not** recover with `hermes profile create --clone` (EX-4 isolated `$HOME` and copied installer `.env`).
+**Likely cause:** `ensure_hermes` could not seat `orchestrator` + `implementer` (overlay `/usr/local/bin/hermes` missing, golden templates missing, or a profile `.env` gained assignments). Dest-init must not curl-install Hermes (Architect `185531ZA`). Operator GO `231808Z` retired the C-2(a) skip. Do **not** recover with `hermes profile create --clone` (EX-4 isolated `$HOME` and copied installer `.env`).
 
 **Diagnose:**
 
@@ -1048,7 +1048,7 @@ ls /projects/modernized/.hermes/config/profiles/
 ls /projects/modernized/.hermes/home/profiles/
 ```
 
-**Recover:** Fix the init error (CLI on PATH, templates present, secrets only in Managed Scope). Re-run `ensure_hermes` / restart only when the operator asks — do not clone from `default`.
+**Recover:** Fix the init error (overlay `/usr/local/bin/hermes`, templates present, secrets only in Managed Scope). Re-run `ensure_hermes` / restart only when the operator asks — do not clone from `default`.
 
 **Related docs:** `gitops/stages/050-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml` (`ensure_dest_worker_profiles`); golden `.hermes/config/profiles/`
 
@@ -1078,7 +1078,7 @@ ruby -ryaml -e 'YAML.load_file(ARGV[0])' \
 
 **Affected stage:** Stage 050 RHDH app-migration skeleton (factory workspaces for 080)
 
-**Likely cause:** The dashboard bundle was **never built or shipped**. `hermes dashboard --skip-build` *serves* `hermes_cli/web_dist`; it never *creates* one. v37–v42 recorded `state=failed` because `web_dist` existed at neither `$HERMES_HOME` nor `~/.hermes` — not because of a path mismatch. A dead npm pre-warm lived in the provisioning pod (wrong PVC) and a stale comment claimed loopback `127.0.0.1:9119` while che-gateway routes to the pod IP (a localhost-only bind 503s the route). Current factory: v2 golden ships a pin-stamped `web_dist` under `.hermes/dashboard/`; postStart copies it after Hermes install, refuses a stamp that does not match `.hermes/pins.json`, binds `0.0.0.0:9119`, and writes `/tmp/hermes-dashboard.status` (`state=listening` or `state=failed`). Dashboard failure does not fail the workspace (observability, not capability).
+**Likely cause:** The dashboard bundle was **never built or shipped**. `hermes dashboard --skip-build` *serves* `hermes_cli/web_dist`; it never *creates* one. v37–v42 recorded `state=failed` because `web_dist` existed at neither `$HERMES_HOME` nor `~/.hermes` — not because of a path mismatch. A dead npm pre-warm lived in the provisioning pod (wrong PVC) and a stale comment claimed loopback `127.0.0.1:9119` while che-gateway routes to the pod IP (a localhost-only bind 503s the route). Current factory: the 080 overlay bakes `web_dist` at `/usr/local/share/hermes/web_dist` (`HERMES_WEB_DIST`); v2 golden still ships a pin-stamped copy under `.hermes/dashboard/` until Review dest-cites a served dashboard with no dest-side `install-web-dist`. postStart copies that golden copy, refuses a stamp that does not match `.hermes/pins.json`, binds `0.0.0.0:9119`, and writes `/tmp/hermes-dashboard.status` (`state=listening` or `state=failed`). Dashboard failure does not fail the workspace (observability, not capability).
 
 **Diagnose:**
 
