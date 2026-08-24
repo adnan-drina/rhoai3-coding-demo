@@ -112,6 +112,13 @@ USER 0
 # wants setuptools==83 (Requires-Python >=3.10). Use UDI-shipped
 # /usr/bin/python3.11. Do not use /home/tooling/.venv (persistUserHome
 # stows that tree; a symlink out of it dangles at runtime).
+# Dashboard: Research 181247ZS extra [web] (not [messaging], not skip
+# because core already declares fastapi). Bake web_dist from the pinned
+# clone (Operator 180704Zop / Architect 181222ZA). UDI 3.29.1 already
+# ships Node v22.23.1 / npm 10.9.8 at /usr/bin/node, which satisfies
+# pin package.json engines node>=22.22.0; do not NodeSource 20 (would
+# downgrade; dnf is unsubscribed on this UDI). Do not Playwright.
+# vite outDir is hermes_cli/web_dist; fail closed if index.html missing.
 ENV HERMES_HOME=/projects/modernized/.hermes/home \
     HERMES_MANAGED_DIR=/projects/.platform/hermes \
     HERMES_WEB_DIST=/usr/local/share/hermes/web_dist
@@ -125,16 +132,20 @@ RUN mkdir -p /opt/rhoai3/extensions /opt/hermes-agent /usr/local/share/hermes/we
          --date "${HERMES_DATE}" \
     && /usr/bin/python3.11 -m venv /opt/hermes-venv \
     && /opt/hermes-venv/bin/pip install --upgrade pip \
-    && /opt/hermes-venv/bin/pip install -e "/opt/hermes-agent" \
-    && ln -sf /opt/hermes-venv/bin/hermes /usr/local/bin/hermes \
-    && if [ -d /opt/hermes-agent/hermes_cli/web_dist ]; then \
-         cp -a /opt/hermes-agent/hermes_cli/web_dist/. /usr/local/share/hermes/web_dist/; \
-       elif [ -d /opt/hermes-agent/web_dist ]; then \
-         cp -a /opt/hermes-agent/web_dist/. /usr/local/share/hermes/web_dist/; \
-       else \
-         echo "WARN: no prebuilt web_dist in Hermes ${HERMES_GIT_REF}; HERMES_WEB_DIST dir is empty until dest install-web-dist"; \
-       fi \
-    && curl -fsSL --retry 3 --retry-delay 5 --retry-all-errors --max-time 300 \
+    && /opt/hermes-venv/bin/pip install -e "/opt/hermes-agent[web]" \
+    && ln -sf /opt/hermes-venv/bin/hermes /usr/local/bin/hermes
+# Separate layer so a SIGTERM during Vite does not redo pip. Fail closed
+# if index.html is missing (Architect 183448ZA / Operator 183157Zop).
+RUN npm_config_cache=/tmp/npm-cache npm_config_update_notifier=false HOME=/tmp \
+         npm install --prefix /opt/hermes-agent --workspace web --no-audit --no-fund \
+    && npm_config_cache=/tmp/npm-cache HOME=/tmp \
+         npm run build --prefix /opt/hermes-agent --workspace web \
+    && test -s /opt/hermes-agent/hermes_cli/web_dist/index.html \
+    && cp -a /opt/hermes-agent/hermes_cli/web_dist/. /usr/local/share/hermes/web_dist/ \
+    && test -s /usr/local/share/hermes/web_dist/index.html \
+    && rm -rf /opt/hermes-agent/node_modules /opt/hermes-agent/web/node_modules \
+         /opt/hermes-agent/apps/shared/node_modules /tmp/npm-cache
+RUN curl -fsSL --retry 3 --retry-delay 5 --retry-all-errors --max-time 300 \
          -o /opt/rhoai3/extensions/mta.vsix \
          "https://open-vsx.org/api/redhat/mta-vscode-extension/${MTA_VSIX_VERSION}/file/redhat.mta-vscode-extension-${MTA_VSIX_VERSION}.vsix" \
     && curl -fsSL --retry 3 --retry-delay 5 --retry-all-errors --max-time 300 \
@@ -171,9 +182,9 @@ RUN mkdir -p /opt/rhoai3/extensions /opt/hermes-agent /usr/local/share/hermes/we
 ENV DEFAULT_EXTENSIONS="/opt/rhoai3/extensions/mta.vsix;/opt/rhoai3/extensions/mta-core.vsix;/opt/rhoai3/extensions/redhat-java.vsix;/opt/rhoai3/extensions/mta-java.vsix"
 USER 10001
 
-# Stamp layer: CI rebuilds this target with --build-arg IMAGE_DIGEST=<oci digest
-# of rhoai3-ws-080-unsigned>. The file records the unsigned image digest; the
-# stamped image digest is different by construction (extra layer).
+# Stamp layer overwrites the unsigned target's literal `unreleased` so
+# dest-init presence fail-close can pass (Architect 183448ZA). Do not
+# compare this file to the destfile/registry manifest digest.
 FROM rhoai3-ws-080-unsigned AS rhoai3-ws-080
 ARG IMAGE_DIGEST=unreleased
 USER 0
