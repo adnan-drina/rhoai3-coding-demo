@@ -23,6 +23,12 @@
       "status": "unpinned",
       "doctrine": "pending R-SKILL-F",
       "note": "Do not invent a GAV. v19 measured componentModel=cdi as UnsatisfiedResolutionException. Lead MapperCdi wrappers are an incident fix, not doctrine (B-3)."
+    },
+    "workspace_overlay": {
+      "ws_080": {
+        "digest": "sha256:ee91fef307f2e8a615ac27b36260db9c77afbff8372c7a20a87e4599db2bfeb3",
+        "note": "Quay RepoDigest destfiles pin for rhoai3-ws-080 (Architect 175206ZA). Not hermes_agent. Not a local image Id or unsigned Digest. Republish destfile + this key + IMAGE_DIGEST bake together on each overlay rebuild."
+      }
     }
   }
 }

@@ -782,11 +782,10 @@ data:
         return 1
       fi
 
-      # Architect 154210ZA / 154431ZA: fifth dest-init authoring item.
-      # Overlay stamp must not be the literal unreleased. Agent identity
-      # vs pins.json is the ast check above — do not invent an
-      # image-digest key in pins.json. 060/070 images do not ship this
-      # file; only PROFILE=modernized (080) fail-closes on it.
+      # Architect 154210ZA / 175206ZA: overlay stamp must not be the
+      # literal unreleased; then mismatch vs pins.workspace_overlay.ws_080.digest.
+      # Agent identity vs pins.json is the ast check above.
+      # 060/070 images do not ship IMAGE_DIGEST; only PROFILE=modernized.
       if [ "${PROFILE}" = "modernized" ]; then
         local image_digest_file="/etc/hermes/IMAGE_DIGEST"
         if [ ! -f "${image_digest_file}" ]; then
@@ -797,6 +796,19 @@ data:
         image_digest="$(tr -d '[:space:]' < "${image_digest_file}")"
         if [ -z "${image_digest}" ] || [ "${image_digest}" = "unreleased" ]; then
           echo "ERROR: ${image_digest_file} is unreleased or empty; dest-init fail-closed." >&2
+          return 1
+        fi
+        # Architect 175206ZA: after presence, compare to destfile Quay
+        # RepoDigest in pins.json. Missing key fails closed. Local image
+        # Id / unsigned Digest is not the pin.
+        local want_digest
+        want_digest="$(python3 -c 'import json,sys; p=json.load(open(sys.argv[1],encoding="utf-8")); n=((p.get("pins") or {}).get("workspace_overlay") or {}).get("ws_080") or {}; print(str(n.get("digest") or "").strip())' "${pins_json}")" || return 1
+        if [ -z "${want_digest}" ]; then
+          echo "ERROR: pins.workspace_overlay.ws_080.digest missing; dest-init fail-closed." >&2
+          return 1
+        fi
+        if [ "${image_digest}" != "${want_digest}" ]; then
+          echo "ERROR: ${image_digest_file}=${image_digest} != pins.workspace_overlay.ws_080.digest=${want_digest}; dest-init fail-closed." >&2
           return 1
         fi
       fi
