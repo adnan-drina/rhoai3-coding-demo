@@ -506,10 +506,10 @@ data:
 
     if [ -z "${MAAS_BASE_URL}" ] \
       || [ -z "${MAAS_API_KEY_QWEN27B}" ]; then
-      echo "MaaS API key Secret is not ready; using repository templates."
-      fallback_from_repo
-      if [ "${AI_TOOL}" = "opencode" ]; then ensure_opencode_compat_path; fi
-      exit 0
+      # Operator 151500Z / Architect 151813ZA: missing MaaS is fail-closed.
+      # Do not report a credential-less workspace healthy via fallback_from_repo.
+      echo "ERROR: MaaS API key Secret is not ready; dest-init fail-closed." >&2
+      exit 1
     fi
 
     umask 077
@@ -680,6 +680,32 @@ data:
     print(
         f"dest profile {name}: platform_toolsets.cli={cli} "
         f"terminal.cwd={project} disabled_toolsets={disabled or []}"
+    )
+    # Operator 151500Z: walker reads profile get_config_path(), not managed
+    # config. hermes -p NAME config set skills.external_dirs is refused when
+    # Managed Scope already pins the key. Write both roots onto the profile
+    # file. Not dest-patch 115611Z. Not a user-root over-grant of the whole
+    # tree as a dest workaround (130125Z WITHDRAWN).
+    project_skills = os.path.join(project, ".hermes", "skills")
+    human_skills = "/home/user/.hermes/skills"
+    cfg_path = os.path.join(home, "profiles", name, "config.yaml")
+    doc = {}
+    if os.path.isfile(cfg_path):
+        with open(cfg_path, encoding="utf-8") as fh:
+            loaded = yaml.safe_load(fh)
+        if isinstance(loaded, dict):
+            doc = loaded
+    skills_cfg = doc.get("skills")
+    if not isinstance(skills_cfg, dict):
+        skills_cfg = {}
+        doc["skills"] = skills_cfg
+    skills_cfg["external_dirs"] = [project_skills, human_skills]
+    os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
+    with open(cfg_path, "w", encoding="utf-8") as fh:
+        yaml.safe_dump(doc, fh, sort_keys=False)
+    print(
+        f"dest profile {name}: skills.external_dirs={skills_cfg['external_dirs']} "
+        f"via {cfg_path}"
     )
     PROFAPPEOF
         then
@@ -1337,8 +1363,16 @@ data:
       fi
 
       # Secrets must stay in Managed Scope — never under HERMES_HOME.
-      if [ -e "${hermes_home}/.env" ] || [ -e "${hermes_home}/auth.json" ]; then
-        echo "ERROR: secret-bearing file under HERMES_HOME=${hermes_home}; refuse to continue." >&2
+      # Architect 141656ZA: do not fail-close on mere existence of
+      # HERMES_HOME/.env (Hermes installer template has no MAAS_*).
+      # Refuse MAAS_* assignments or auth.json. Do not dest-read values.
+      if [ -e "${hermes_home}/auth.json" ]; then
+        echo "ERROR: auth.json under HERMES_HOME=${hermes_home}; refuse to continue." >&2
+        return
+      fi
+      if [ -f "${hermes_home}/.env" ] \
+        && grep -E '^[[:space:]]*MAAS_[A-Za-z0-9_]*=' "${hermes_home}/.env" >/dev/null; then
+        echo "ERROR: MAAS_* assignment under HERMES_HOME=${hermes_home}/.env; refuse to continue." >&2
         return
       fi
 
@@ -1611,14 +1645,25 @@ data:
     if [ "${PROFILE}" = "modernized" ]; then
       ensure_hermes
       write_kantra_helper
-      # Item 2: persist `hermes gateway run` (no systemd; `start` is installer).
-      gw_sup="${PROJECT_DIR}/.hermes/home/scripts/supervise-gateway.sh"
-      if [ -f "${gw_sup}" ]; then
-        bash "${gw_sup}" --ensure \
-          || echo "WARN: supervise-gateway --ensure failed (see ${HERMES_HOME:-${PROJECT_DIR}/.hermes/home}/gateway-supervise.log)"
-      else
-        echo "WARN: ${gw_sup} missing — gateway will not persist across the creating session"
+      # Architect 145309ZA / 151813ZA: same postStart, after tools+auth.
+      # Do not restore supervise-gateway.sh. Not a skippable extra command.
+      export HERMES_ACCEPT_HOOKS=1
+      export PATH="${HOME}/.local/bin:${PATH}"
+      export HERMES_HOME="${PROJECT_DIR}/.hermes/home"
+      if ! command -v hermes >/dev/null 2>&1; then
+        echo "ERROR: hermes missing after ensure_hermes; cannot start gateway." >&2
+        exit 1
       fi
+      mkdir -p "${HERMES_HOME}"
+      gw_log="${HERMES_HOME}/gateway-run.log"
+      nohup hermes gateway run --external-supervisor >> "${gw_log}" 2>&1 &
+      gw_pid=$!
+      sleep 1
+      if ! kill -0 "${gw_pid}" 2>/dev/null; then
+        echo "ERROR: hermes gateway run --external-supervisor exited (see ${gw_log})." >&2
+        exit 1
+      fi
+      echo "Started hermes gateway run --external-supervisor pid=${gw_pid}"
     fi
     echo "Configured ${AI_TOOL} from the MaaS API key Secret for ${PROFILE}."
 ---
