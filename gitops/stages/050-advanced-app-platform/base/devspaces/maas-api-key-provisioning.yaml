@@ -1368,12 +1368,12 @@ data:
       # Refuse MAAS_* assignments or auth.json. Do not dest-read values.
       if [ -e "${hermes_home}/auth.json" ]; then
         echo "ERROR: auth.json under HERMES_HOME=${hermes_home}; refuse to continue." >&2
-        return
+        return 1
       fi
       if [ -f "${hermes_home}/.env" ] \
         && grep -E '^[[:space:]]*MAAS_[A-Za-z0-9_]*=' "${hermes_home}/.env" >/dev/null; then
         echo "ERROR: MAAS_* assignment under HERMES_HOME=${hermes_home}/.env; refuse to continue." >&2
-        return
+        return 1
       fi
 
       if ! grep -q "rhoai3-coding-demo: hermes managed scope" "${HOME}/.bashrc" 2>/dev/null; then
@@ -1643,7 +1643,12 @@ data:
     # and the lazy re-analysis sensor helper (kantra-ensure) ride on top of
     # the OpenCode worker tooling above.
     if [ "${PROFILE}" = "modernized" ]; then
-      ensure_hermes
+      # Review 152650ZR: ensure_hermes ERROR paths must fail-close this
+      # postStart; a status-0 return still started the gateway.
+      if ! ensure_hermes; then
+        echo "ERROR: ensure_hermes failed; dest-init fail-closed before gateway." >&2
+        exit 1
+      fi
       write_kantra_helper
       # Architect 145309ZA / 151813ZA: same postStart, after tools+auth.
       # Do not restore supervise-gateway.sh. Not a skippable extra command.
