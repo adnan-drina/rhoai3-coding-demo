@@ -250,7 +250,7 @@ check "080 agent-pin assert refuses off-pin hermes_cli constants" \
 SCAFFOLD_PROFILES="${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/config/profiles"
 GITOPS_INIT="${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml"
 check "080 GitOps invokes golden assert-agent-pin.py" \
-  "grep -c '.hermes/checks/assert-agent-pin.py' '${GITOPS_INIT}' || echo 0" \
+  "grep -v '^[[:space:]]*#' '${GITOPS_INIT}' | grep -c '.hermes/checks/assert-agent-pin.py' | grep -qx 1 && grep -qF 'python3 \"\${agent_assert}\" --pins' '${GITOPS_INIT}' && echo 1 || echo 0" \
   "1"
 check "080 GitOps pin oracle uses --agent-src" \
   "grep -c -- '--agent-src' '${GITOPS_INIT}' || echo 0" \
