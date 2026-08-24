@@ -113,12 +113,11 @@ USER 0
 # /usr/bin/python3.11. Do not use /home/tooling/.venv (persistUserHome
 # stows that tree; a symlink out of it dangles at runtime).
 # Dashboard: Research 181247ZS extra [web] (not [messaging], not skip
-# because core already declares fastapi). Bake web_dist from the pinned
-# clone (Operator 180704Zop / Architect 181222ZA). UDI 3.29.1 already
-# ships Node v22.23.1 / npm 10.9.8 at /usr/bin/node, which satisfies
-# pin package.json engines node>=22.22.0; do not NodeSource 20 (would
-# downgrade; dnf is unsubscribed on this UDI). Do not Playwright.
-# vite outDir is hermes_cli/web_dist; fail closed if index.html missing.
+# because core already declares fastapi). Do not NodeSource 20. Do not
+# Playwright. Do not run tsc/vite under `podman build --arch amd64` on
+# Apple Silicon: qemu segfaults (signal 11, exit 139; 2026-08-24). JS
+# assets are arch-independent — scripts/bake-web-dist-host.sh builds
+# pin v2026.8.19 with Node 22.23.1 (UDI version) and COPY below.
 ENV HERMES_HOME=/projects/modernized/.hermes/home \
     HERMES_MANAGED_DIR=/projects/.platform/hermes \
     HERMES_WEB_DIST=/usr/local/share/hermes/web_dist
@@ -134,17 +133,9 @@ RUN mkdir -p /opt/rhoai3/extensions /opt/hermes-agent /usr/local/share/hermes/we
     && /opt/hermes-venv/bin/pip install --upgrade pip \
     && /opt/hermes-venv/bin/pip install -e "/opt/hermes-agent[web]" \
     && ln -sf /opt/hermes-venv/bin/hermes /usr/local/bin/hermes
-# Separate layer so a SIGTERM during Vite does not redo pip. Fail closed
-# if index.html is missing (Architect 183448ZA / Operator 183157Zop).
-RUN npm_config_cache=/tmp/npm-cache npm_config_update_notifier=false HOME=/tmp \
-         npm install --prefix /opt/hermes-agent --workspace web --no-audit --no-fund \
-    && npm_config_cache=/tmp/npm-cache HOME=/tmp \
-         npm run build --prefix /opt/hermes-agent --workspace web \
-    && test -s /opt/hermes-agent/hermes_cli/web_dist/index.html \
-    && cp -a /opt/hermes-agent/hermes_cli/web_dist/. /usr/local/share/hermes/web_dist/ \
-    && test -s /usr/local/share/hermes/web_dist/index.html \
-    && rm -rf /opt/hermes-agent/node_modules /opt/hermes-agent/web/node_modules \
-         /opt/hermes-agent/apps/shared/node_modules /tmp/npm-cache
+# Host-baked web_dist (see bake-web-dist-host.sh). Fail closed if empty.
+COPY out/web_dist/ /usr/local/share/hermes/web_dist/
+RUN test -s /usr/local/share/hermes/web_dist/index.html
 RUN curl -fsSL --retry 3 --retry-delay 5 --retry-all-errors --max-time 300 \
          -o /opt/rhoai3/extensions/mta.vsix \
          "https://open-vsx.org/api/redhat/mta-vscode-extension/${MTA_VSIX_VERSION}/file/redhat.mta-vscode-extension-${MTA_VSIX_VERSION}.vsix" \

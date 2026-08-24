@@ -43,6 +43,8 @@ print("RepoDigests=" + (",".join(repodigests) or "(none)"))
 build_target rhoai3-udi-foundation udi-foundation
 build_target rhoai3-ws-060 ws-060
 build_target rhoai3-ws-070 ws-070
+# Vite cannot run under qemu-amd64 on Apple Silicon (segfault). Bake first.
+bash "${CONTEXT}/scripts/bake-web-dist-host.sh"
 build_target rhoai3-ws-080-unsigned ws-080-unsigned
 
 UNSIGNED_REF="${PREFIX}-ws-080-unsigned:${TAG}"
