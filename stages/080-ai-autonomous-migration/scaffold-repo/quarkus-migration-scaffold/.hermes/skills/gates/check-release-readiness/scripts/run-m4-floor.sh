@@ -14,6 +14,9 @@ fi
 PRODUCT_ROOT="$(cd "${PRODUCT_ROOT}" && pwd)"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Architect 151334ZA (a): runner-invoked assert-retrievable-tree then
+# assert-pinned-gates-ran. Fail closed before package/boot.
+bash "${SCRIPT_DIR}/run-m4-pre-verdict.sh" "${PRODUCT_ROOT}"
 WRITE_RECEIPT="${SCRIPT_DIR}/write-receipt.py"
 CHECK_RECEIPTS="${SCRIPT_DIR}/check-m4-floor-receipts.py"
 G4_EVAL="$(cd "${SCRIPT_DIR}/../../check-domain-parity/scripts" && pwd)/g4-runtime-parity.py"
