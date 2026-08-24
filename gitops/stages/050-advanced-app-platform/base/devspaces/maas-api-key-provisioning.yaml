@@ -24,6 +24,14 @@ rules:
       - get
       - patch
       - update
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+    resourceNames:
+      - workspace-maas-model-endpoint
+    verbs:
+      - get
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -86,6 +94,7 @@ rules:
       - secrets
     resourceNames:
       - maas-devspace-api-keys
+      - workspace-maas-credentials
     verbs:
       - get
   - apiGroups:
@@ -437,6 +446,13 @@ data:
 
     MAAS_BASE_URL="$(secret_value MAAS_BASE_URL)"
     MAAS_API_KEY_QWEN27B="$(secret_value MAAS_API_KEY_QWEN27B)"
+    # DWO mount-as env (workspace-maas-credentials) uses Hermes names.
+    # Do not copy MAAS_BASE_URL (external Gateway) into MAAS_API_BASE_URL.
+    if [ -z "${MAAS_API_KEY:-}" ]; then
+      MAAS_API_KEY="${MAAS_API_KEY_QWEN27B}"
+    fi
+    export MAAS_API_KEY
+    export MAAS_API_BASE_URL="${MAAS_API_BASE_URL:-}"
     # Optional: external Red Hat models via their direct endpoints. The
     # RHOAI 3.4 MaaS gateway breaks response streaming for these (BACKLOG),
     # so they bypass the gateway. Keys are operator-provisioned into the
@@ -905,9 +921,21 @@ data:
     global_skills = os.environ["HERMES_GLOBAL_SKILLS_DIR"]
     # Worker seats: in-cluster KServe OpenAI base (not external LB hairpin).
     # Cite scaffold hermes-configuration / Lead E-152000Z TLS class.
+    # Process env (DWO workspace-maas-credentials) is source of truth when
+    # set; fallback MUST match ConfigMap workspace-maas-model-endpoint.
     model_base = (
-        "https://qwen3-6-27b-kserve-workload-svc.models-as-a-service.svc:8000/v1"
+        (os.environ.get("MAAS_API_BASE_URL") or "").strip()
+        or "https://qwen3-6-27b-kserve-workload-svc.models-as-a-service.svc:8000/v1"
     )
+    maas_api_key = (
+        (os.environ.get("MAAS_API_KEY") or "").strip()
+        or (os.environ.get("MAAS_API_KEY_QWEN27B") or "").strip()
+    )
+    if not maas_api_key:
+        raise SystemExit(
+            "ERROR: MAAS_API_KEY unset (workspace-maas-credentials env or "
+            "MAAS_API_KEY_QWEN27B)"
+        )
     service_ca = "/var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt"
     cfg = {
         # Official 4-key model: mapping (configuring-models). Secrets are
@@ -1188,7 +1216,7 @@ data:
     env_path = os.path.join(managed, ".env")
     with open(env_path, "w") as fh:
         fh.write(f"MAAS_API_BASE_URL={model_base}\n")
-        fh.write(f"MAAS_API_KEY={os.environ['MAAS_API_KEY_QWEN27B']}\n")
+        fh.write(f"MAAS_API_KEY={maas_api_key}\n")
         # EX-5 L2: pin write sandbox in managed .env (beats shell per
         # Managed Scope). Native guards are write_file/patch only; in-repo
         # B-S2 stays the EX-3 hook (HKN-12).
@@ -1828,3 +1856,28 @@ spec:
                 --from-env-file="${SECRET_FILE}" \
                 --dry-run=client -o yaml | oc apply -f -
               echo "MaaS API key Secret ${SECRET_NAMESPACE}/${SECRET_NAME} is ready"
+
+              # Derived env-mount Secret for Hermes ${env:MAAS_API_*} names.
+              # URL from ConfigMap workspace-maas-model-endpoint (in-cluster
+              # KServe), never MAAS_BASE_URL (external LB). Server-side apply
+              # avoids last-applied-configuration embedding the key.
+              # Do not bounce Running DevWorkspace pods (dest-3 stays).
+              KSERVE_OPENAI_BASE="$(oc get configmap workspace-maas-model-endpoint -n "${SECRET_NAMESPACE}" -o jsonpath='{.data.MAAS_API_BASE_URL}' 2>/dev/null || true)"
+              if [ -z "${KSERVE_OPENAI_BASE}" ]; then
+                KSERVE_OPENAI_BASE="https://qwen3-6-27b-kserve-workload-svc.models-as-a-service.svc:8000/v1"
+              fi
+              python3 - "${SECRET_FILE}" "${KSERVE_OPENAI_BASE}" "${SECRET_NAMESPACE}" <<'DERIVEEOF' | oc apply --server-side --force-conflicts --field-manager=devspace-maas-key-provisioner -f -
+              import json
+              import sys
+              path, url, ns = sys.argv[1], sys.argv[2], sys.argv[3]
+              key = ""
+              with open(path, encoding="utf-8") as fh:
+                  for line in fh:
+                      if line.startswith("MAAS_API_KEY_QWEN27B="):
+                          key = line.split("=", 1)[1].rstrip("\n")
+                          break
+              if not key:
+                  raise SystemExit("ERROR: MAAS_API_KEY_QWEN27B missing; cannot derive workspace-maas-credentials")
+              json.dump({"apiVersion": "v1", "kind": "Secret", "metadata": {"name": "workspace-maas-credentials", "namespace": ns, "labels": {"controller.devfile.io/mount-to-devworkspace": "true", "controller.devfile.io/watch-secret": "true", "app.kubernetes.io/part-of": "maas", "app.kubernetes.io/name": "workspace-maas-credentials", "app.kubernetes.io/component": "credentials", "demo.rhoai.io/stage": "050"}, "annotations": {"controller.devfile.io/mount-as": "env"}}, "type": "Opaque", "stringData": {"MAAS_API_KEY": key, "MAAS_API_BASE_URL": url}}, sys.stdout)
+              DERIVEEOF
+              echo "workspace-maas-credentials derived (in-cluster KServe base; not MAAS_BASE_URL)"

@@ -1,0 +1,21 @@
+# In-cluster KServe OpenAI base for dest Hermes workers. Not the MaaS
+# Gateway hostname in maas-devspace-api-keys.MAAS_BASE_URL (external LB
+# hairpin; 60s idle timeout cut buffered tool-call streams).
+# dest-init prefers process env MAAS_API_BASE_URL (DWO mount-as env) and
+# falls back to this same URL. The provisioner copies it into
+# workspace-maas-credentials. Do not point terminals at MAAS_BASE_URL.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: workspace-maas-model-endpoint
+  namespace: wksp-ai-developer
+  labels:
+    app.kubernetes.io/part-of: maas
+    app.kubernetes.io/name: workspace-maas-model-endpoint
+    app.kubernetes.io/component: config
+    app.kubernetes.io/managed-by: argocd
+    demo.rhoai.io/stage: "050"
+  annotations:
+    argocd.argoproj.io/sync-wave: "17"
+data:
+  MAAS_API_BASE_URL: https://qwen3-6-27b-kserve-workload-svc.models-as-a-service.svc:8000/v1

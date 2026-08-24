@@ -1052,6 +1052,29 @@ ls /projects/modernized/.hermes/home/profiles/
 
 **Related docs:** `gitops/stages/050-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml` (`ensure_dest_worker_profiles`); golden `.hermes/config/profiles/`
 
+## Dest Hermes terminal keeps literal `${env:MAAS_*}` (`harness-v2`)
+
+**Affected stage:** Stage 080 dest. Gateway can look healthy while a later login shell is unconfigured.
+
+**Likely cause:** Hermes v0.20.5 resolves `${env:NAME}` from **process environment only**. dest-init writes the correct names into Managed Scope `.env`, but a fresh terminal does not source that file. `MAAS_BASE_URL` on `maas-devspace-api-keys` is the **external** Gateway host and must not be copied into `MAAS_API_BASE_URL` (in-cluster KServe `/v1`).
+
+**Diagnose:**
+
+```bash
+# Presence only — do not print values
+oc get secret workspace-maas-credentials -n wksp-ai-developer \
+  -o jsonpath='{.metadata.name}{"\n"}'
+oc get pod -n <ws-ns> <workspace-pod> -o jsonpath='{.spec.containers[?(@.name=="development-tooling")].envFrom}'
+oc exec -n <ws-ns> <workspace-pod> -c development-tooling -- \
+  /bin/bash -lc 'if [ -n "${MAAS_API_BASE_URL:-}" ] && [ -n "${MAAS_API_KEY:-}" ]; then echo MAAS_ENV=set; else echo MAAS_ENV=unset; fi'
+```
+
+A green terminal that sourced Managed Scope `.env` is **not** the verification bar. Use a fresh login shell. `hermes kanban ls` must not print `keeping the literal placeholder`.
+
+**Recover:** Durable path is `workspace-maas-credentials` (`mount-as: env`), derived by the MaaS key provisioner from `MAAS_API_KEY_QWEN27B` plus ConfigMap `workspace-maas-model-endpoint`. Env is injected at **pod creation** — already-running dest-3 needs an Operator GO restart. Stopgap for this session only: `set -a; . /projects/.platform/hermes/.env; set +a` (do not print the file).
+
+**Related docs:** `workspace-maas-model-endpoint.yaml`; Operator `205405Zop` / `205612Zop`
+
 ## Dest gateway persist WARN / dest `.hermes/home/scripts` (`harness-v2`)
 
 **Affected stage:** Stage 080 dest on `harness-v2`. Overlay owns runtime (`/usr/local/bin/hermes`, `/opt/hermes-agent`, `HERMES_WEB_DIST`). Golden must not ship `.hermes/home/scripts` (Architect `202501ZA`).
