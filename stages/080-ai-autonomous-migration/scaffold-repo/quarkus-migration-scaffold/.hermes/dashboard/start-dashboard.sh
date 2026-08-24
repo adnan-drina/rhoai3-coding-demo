@@ -6,7 +6,6 @@ DASH_STATUS="/tmp/hermes-dashboard.status"
 PROJECT_DIR="${PROJECT_DIR:-/projects/modernized}"
 : "${HERMES_HOME:=/projects/modernized/.hermes/home}"
 : "${HERMES_MANAGED_DIR:=/projects/.platform/hermes}"
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 dash_fail() {
   echo "ERROR: Hermes dashboard: $*"
@@ -40,17 +39,15 @@ if [ ! -f "${HERMES_MANAGED_DIR}/config.yaml" ] || ! grep -q "basic_auth" "${HER
   exit 0
 fi
 
-if ! bash "${HERE}/install-web-dist.sh"; then
-  dash_fail "shipped web_dist pin guard refused or copy failed (bundle exists nowhere until install-web-dist copies it; --skip-build never creates a dist)"
-  exit 0
-fi
+# Operator 191234Zop / Review 191423ZR: honour image ENV / caller, else overlay bake.
+# Do not override to dest hermes_cli/web_dist (that pointed away from the bake).
+: "${HERMES_WEB_DIST:=/usr/local/share/hermes/web_dist}"
+export HERMES_WEB_DIST
 
-UI="${HERMES_HOME}/hermes-agent/hermes_cli/web_dist/index.html"
-if [ ! -f "${UI}" ]; then
-  dash_fail "web_dist missing after pin-matched copy at ${UI}"
+if [ ! -s "${HERMES_WEB_DIST}/index.html" ]; then
+  dash_fail "overlay web_dist missing at ${HERMES_WEB_DIST}/index.html (no dest-side install-web-dist; --skip-build never creates a dist)"
   exit 0
 fi
-export HERMES_WEB_DIST="${HERMES_HOME}/hermes-agent/hermes_cli/web_dist"
 
 if dash_listening; then
   b="$(dash_bind)"

@@ -1078,7 +1078,7 @@ ruby -ryaml -e 'YAML.load_file(ARGV[0])' \
 
 **Affected stage:** Stage 050 RHDH app-migration skeleton (factory workspaces for 080)
 
-**Likely cause:** The dashboard bundle was **never built or shipped**. `hermes dashboard --skip-build` *serves* `hermes_cli/web_dist`; it never *creates* one. v37–v42 recorded `state=failed` because `web_dist` existed at neither `$HERMES_HOME` nor `~/.hermes` — not because of a path mismatch. A dead npm pre-warm lived in the provisioning pod (wrong PVC) and a stale comment claimed loopback `127.0.0.1:9119` while che-gateway routes to the pod IP (a localhost-only bind 503s the route). Current factory: the 080 overlay bakes `web_dist` at `/usr/local/share/hermes/web_dist` (`HERMES_WEB_DIST`); v2 golden still ships a pin-stamped copy under `.hermes/dashboard/` until Review dest-cites a served dashboard with no dest-side `install-web-dist`. postStart copies that golden copy, refuses a stamp that does not match `.hermes/pins.json`, binds `0.0.0.0:9119`, and writes `/tmp/hermes-dashboard.status` (`state=listening` or `state=failed`). Dashboard failure does not fail the workspace (observability, not capability).
+**Likely cause:** The dashboard bundle was **never built or shipped**. `hermes dashboard --skip-build` *serves* `HERMES_WEB_DIST`; it never *creates* one. v37–v42 recorded `state=failed` because `web_dist` existed at neither `$HERMES_HOME` nor `~/.hermes` — not because of a path mismatch. A dead npm pre-warm lived in the provisioning pod (wrong PVC) and a stale comment claimed loopback `127.0.0.1:9119` while che-gateway routes to the pod IP (a localhost-only bind 503s the route). Current factory: the 080 overlay bakes `web_dist` at `/usr/local/share/hermes/web_dist`. `start-dashboard.sh` defaults `HERMES_WEB_DIST` to that bake (Operator `191234Zop`) and keeps the Managed Scope `basic_auth` gate; it does not dest-copy into `hermes_cli/web_dist`. Unset `HERMES_WEB_DIST` still tries a runtime Vite build. Dashboard failure does not fail the workspace (observability, not capability).
 
 **Diagnose:**
 
@@ -1101,7 +1101,7 @@ for proc in ("/proc/net/tcp","/proc/net/tcp6"):
             print(proc, lip, lp)'
 ```
 
-`state=failed` with `basic_auth missing` means `ensure_hermes` did not write Managed Scope — do not bind `0.0.0.0` without it (kanban plugin routes skip HTTP auth). `web_dist pin guard refused` or `bundle exists nowhere` means the shipped stamp does not match `pins.json`, or destfile never copied `.hermes/dashboard/web_dist` — not a route bug and not a `~/.hermes` vs `$HERMES_HOME` mix-up. Bind hex `0100007F:239F` is localhost-only (route 503); `00000000:239F` is the pod-IP bind che-gateway needs.
+`state=failed` with `basic_auth missing` means `ensure_hermes` did not write Managed Scope — do not bind `0.0.0.0` without it (kanban plugin routes skip HTTP auth). `overlay web_dist missing` means the destfile pin did not pull an 080 image that ships `/usr/local/share/hermes/web_dist/index.html`, or `start-dashboard.sh` still overrides `HERMES_WEB_DIST` to dest `hermes_cli/web_dist` — not a route bug. Bind hex `0100007F:239F` is localhost-only (route 503); `00000000:239F` is the pod-IP bind che-gateway needs.
 
 **Recover:**
 

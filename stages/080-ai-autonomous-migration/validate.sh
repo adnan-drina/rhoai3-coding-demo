@@ -237,6 +237,15 @@ check "080 destfile keeps hermes-dash endpoint" \
 check "080 destfile has no start-hermes-dashboard launcher" \
   "grep -c 'start-hermes-dashboard' '${SCAFFOLD_DEVFILE}' || echo 0" \
   "0"
+check "080 dashboard launcher defaults HERMES_WEB_DIST to overlay bake" \
+  "grep -qF ': \"\${HERMES_WEB_DIST:=/usr/local/share/hermes/web_dist}\"' '${SCAFFOLD_DASH}/start-dashboard.sh' && echo 1 || echo 0" \
+  "1"
+check "080 dashboard launcher does not override HERMES_WEB_DIST to dest hermes_cli" \
+  "grep -c 'hermes-agent/hermes_cli/web_dist' '${SCAFFOLD_DASH}/start-dashboard.sh' || echo 0" \
+  "0"
+check "080 dashboard launcher does not call dest-side install-web-dist" \
+  "grep -c 'install-web-dist.sh' '${SCAFFOLD_DASH}/start-dashboard.sh' || echo 0" \
+  "0"
 check "080 ships pin-stamped dashboard index.html" \
   "test -f '${SCAFFOLD_DASH}/web_dist/index.html' && echo present || echo missing" \
   "present"
