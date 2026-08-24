@@ -9,6 +9,21 @@
 # not the RO 2.x mount working copy.
 set -euo pipefail
 
+# Hermes worker HOME is the profile home (implementer), not the human
+# account. kantra-ensure lives under the UDI user home (/home/user).
+# Operator 141853Z-op: never use ${HOME} for that binary.
+human_home() {
+  local h
+  h="$(getent passwd "$(id -u)" | cut -d: -f6 || true)"
+  if [ -n "${h}" ] && [ -d "${h}" ]; then
+    printf '%s\n' "${h}"
+    return 0
+  fi
+  printf '%s\n' "/home/user"
+}
+
+HUMAN_HOME="$(human_home)"
+
 # Resolve project root by walking up to migration.yaml (depth-safe after
 # categorized skill tree: .hermes/skills/<cat>/<skill>/scripts/).
 # Fixed-depth ../../../.. incorrectly landed on .hermes/ after analysis/ was inserted.
@@ -75,7 +90,7 @@ ensure_cli() {
   # Prefer absolute kantra path; keep mta-cli as atomic symlink alias (F-M1.3).
   local kantra_bin="/projects/.tools/kantra/kantra"
   local mta_alias="/projects/.tools/kantra/mta-cli"
-  export PATH="${HOME}/.local/bin:/projects/.tools/kantra:${PATH}"
+  export PATH="${HUMAN_HOME}/.local/bin:/projects/.tools/kantra:${PATH}"
 
   _link_mta_alias() {
     if [ -x "${kantra_bin}" ]; then
@@ -98,13 +113,13 @@ ensure_cli() {
     command -v mta-cli
     return 0
   fi
-  if [ -x "${HOME}/.local/bin/kantra-ensure" ]; then
+  if [ -x "${HUMAN_HOME}/.local/bin/kantra-ensure" ]; then
     echo "mta-analyze-legacy: running kantra-ensure (lazy ~690MB install)…" >&2
     # Helper status must not join CLI="$(ensure_cli)" (v30: stdout "Downloading
     # kantra…" became the analyze argv0). Discard helper stdout; path comes
     # from the probes below.
-    "${HOME}/.local/bin/kantra-ensure" >/dev/null
-    export PATH="/projects/.tools/kantra:${HOME}/.local/bin:${PATH}"
+    "${HUMAN_HOME}/.local/bin/kantra-ensure" >/dev/null
+    export PATH="/projects/.tools/kantra:${HUMAN_HOME}/.local/bin:${PATH}"
     _link_mta_alias || true
   fi
   if [ -x "${kantra_bin}" ]; then
