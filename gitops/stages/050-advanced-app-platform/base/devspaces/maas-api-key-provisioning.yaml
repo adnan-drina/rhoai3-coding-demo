@@ -1330,13 +1330,12 @@ data:
 
       # AD-H §14 — load-time smoke (not standing machinery): exercise Hermes
       # scan+load. Placement hashing cannot catch scanner alteration at load.
-      local hermes_agent_root="${hermes_home}/hermes-agent"
+      # Architect 202501ZA: overlay owns the agent tree. Fail-closed if the
+      # bake is missing. No dest .hermes/home/hermes-agent fallback.
+      local hermes_agent_root="/opt/hermes-agent"
       if [ ! -d "${hermes_agent_root}" ]; then
-        hermes_agent_root="${HOME}/.hermes/hermes-agent"
-      fi
-      if [ ! -d "${hermes_agent_root}" ]; then
-        echo "ERROR: Hermes agent tree missing at ${hermes_home}/hermes-agent; cannot smoke-test SOUL.md load (AD-H §14)." >&2
-        return
+        echo "ERROR: overlay Hermes agent tree missing at ${hermes_agent_root}; cannot smoke-test SOUL.md load (AD-H §14)." >&2
+        return 1
       fi
       if ! (
         cd "${hermes_agent_root}"
@@ -1380,7 +1379,7 @@ data:
     SOULSMOKE
       ); then
         echo "ERROR: SOUL.md load-time smoke failed (AD-H §14)." >&2
-        return
+        return 1
       fi
 
       # Operator GO 231808Z — dest orchestrator + implementer (trigger (c)).
@@ -1444,46 +1443,15 @@ data:
         || echo "WARN: hermes hooks doctor reported issues (W2 CS-5 #5) — re-run after allowlist."
       echo "Hermes AD-H: managed_mode=${managed_mode} dir=${managed_dir}; HERMES_HOME=${hermes_home}; WRITE_SAFE_ROOT=${PROJECT_DIR}; external_dirs=${hermes_skills_dir}; model pin=qwen3-6-27b; PVC overlays absent."
 
-      # Dashboard UI: do not npm-build here. This init runs in the
-      # provisioning pod; web_dist is needed on the workspace PVC. v2
-      # golden ships a pin-stamped bundle (DB-1); destfile copies it.
-      # hermes dashboard --skip-build serves a dist; it never creates one.
+      # Dashboard UI: dest-init does not npm-build. Overlay bake owns
+      # HERMES_WEB_DIST (/usr/local/share/hermes/web_dist). Launcher is
+      # default-not-override. Dest install-web-dist.sh is retirable.
 
-      # AD-H §13 / §15.2 — the ONLY cron job: observation watchdog for what
-      # survives native max_runtime_seconds recovery (--deliver local).
-      # A second job requires an Architect decision.
-      mkdir -p "${hermes_home}/scripts" "${hermes_home}/cron/output"
-      local watchdog_src="${PROJECT_DIR}/.hermes/home/scripts/kanban-stuck-watchdog.py"
-      local watchdog_dst="${hermes_home}/scripts/kanban-stuck-watchdog.py"
-      if [ -f "${watchdog_src}" ]; then
-        # Ensure the cron sandbox path has the script (scaffolds commit it here).
-        if [ "${watchdog_src}" != "${watchdog_dst}" ]; then
-          cp -f "${watchdog_src}" "${watchdog_dst}"
-        fi
-        chmod 755 "${watchdog_dst}" 2>/dev/null || true
-        if [ -x "${hermes_bin}" ]; then
-          # Idempotent: remove prior job by name if list/remove available, then create.
-          if "${hermes_bin}" cron list 2>/dev/null | grep -q 'kanban-stuck-watchdog'; then
-            job_id="$("${hermes_bin}" cron list 2>/dev/null | awk '/kanban-stuck-watchdog/{print $1; exit}')"
-            if [ -n "${job_id:-}" ]; then
-              "${hermes_bin}" cron remove "${job_id}" >/dev/null 2>&1 || true
-            fi
-          fi
-          if "${hermes_bin}" cron create "every 15m" \
-            --no-agent \
-            --script kanban-stuck-watchdog.py \
-            --deliver local \
-            --name "kanban-stuck-watchdog" >/tmp/hermes-cron-watchdog.log 2>&1; then
-            echo "Hermes AD-H §13: registered kanban-stuck-watchdog (every 15m, deliver=local)."
-          else
-            echo "WARN: hermes cron create failed for kanban-stuck-watchdog (see /tmp/hermes-cron-watchdog.log); script is in place for manual register."
-          fi
-        else
-          echo "WARN: hermes CLI absent; kanban-stuck-watchdog.py installed under ${hermes_home}/scripts (register with hermes cron create)."
-        fi
-      else
-        echo "WARN: ${watchdog_src} missing — AD-H §13 watchdog not installed."
-      fi
+      # Architect 202501ZA: golden must not ship .hermes/home/scripts;
+      # dest-init must not copy from that dest path. Overlay watchdog /
+      # persist helper is a later named GO. Honest skip until then.
+      mkdir -p "${hermes_home}/cron/output"
+      echo "WARN: kanban-stuck-watchdog not installed (no dest .hermes/home/scripts; overlay watchdog awaits named GO)."
     }
 
     write_kantra_helper() {

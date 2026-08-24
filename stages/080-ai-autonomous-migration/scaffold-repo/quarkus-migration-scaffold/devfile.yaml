@@ -251,9 +251,12 @@ commands:
         else
           echo "WARN: missing ${PROVISION_CLI} — Quarkus CLI not provisioned"
         fi
-        # v2 Phase N: no stamp-harness-rev / supervise-gateway / autostart-migration.
+        # v2 Phase N: no stamp-harness-rev / dest supervise-gateway /
+        # autostart-migration. Architect 202501ZA: overlay persist helper
+        # is a later named GO; destfile WARN is honest until that GO.
         # Native gateway-embedded dispatcher is dest Managed Scope. Do not
         # kanban daemon --force. Do not start M1 from destfile.
+        echo "WARN: overlay persist helper not in this cut — gateway will not persist"
         echo "Phase N: v1 destfile autostart skipped (no dispatch-phase / home scripts)"
         # DB-4: one launcher (writes /tmp/hermes-dashboard.status). Same
         # postStart as tools so dashboard cannot run before Hermes/auth

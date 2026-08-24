@@ -224,13 +224,9 @@ commands:
           echo "ERROR: hermes missing after init-ai-tools.sh"
           exit 1
         fi
-        GW_SUP="${PROJECT_DIR}/.hermes/home/scripts/supervise-gateway.sh"
-        if [ -f "${GW_SUP}" ]; then
-          bash "${GW_SUP}" --ensure \
-            || echo "WARN: supervise-gateway --ensure failed"
-        else
-          echo "WARN: ${GW_SUP} missing — gateway will not persist"
-        fi
+        # Architect 202501ZA / 145309ZA: do not restore dest
+        # supervise-gateway.sh. Overlay persist helper is a later named GO.
+        echo "WARN: overlay persist helper not in this cut — gateway will not persist"
         # AD-S / provision-owns-tools (Architect E-20260811T121308Z): Spec Kit
         # init is workspace setup — fail-closed; agents verify-or-BLOCK only.
         # Path must match golden skill tree (UPLIFT-6 + sdd/ category): Operator

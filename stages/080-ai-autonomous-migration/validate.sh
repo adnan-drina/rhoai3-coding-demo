@@ -185,6 +185,12 @@ check "init script hash-verifies SOUL.md and aborts (AD-H §14)" \
 check "init script load-time SOUL smoke via load_soul_md (AD-H §14)" \
   "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -c 'from agent.prompt_builder import load_soul_md' || echo 0" \
   "1"
+check "live dest-init SOUL smoke uses overlay /opt/hermes-agent" \
+  "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -c 'hermes_agent_root=\"/opt/hermes-agent\"' || echo 0" \
+  "1"
+check "live dest-init does not copy dest kanban-stuck-watchdog" \
+  "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -c 'home/scripts/kanban-stuck-watchdog' || echo 0" \
+  "0"
 
 log_step "Modernization Workspaces (mta component)"
 for ns in wksp-kubeadmin wksp-ai-admin wksp-ai-developer; do
@@ -279,6 +285,18 @@ check "080 GitOps uses overlay-baked /usr/local/bin/hermes" \
 check "080 GitOps pin oracle ast-reads overlay /opt/hermes-agent" \
   "grep -v '^[[:space:]]*#' '${GITOPS_INIT}' | grep -qF 'agent_src=\"/opt/hermes-agent\"' && echo 1 || echo 0" \
   "1"
+check "080 GitOps SOUL smoke uses overlay /opt/hermes-agent (no dest fallback)" \
+  "grep -v '^[[:space:]]*#' '${GITOPS_INIT}' | grep -qF 'hermes_agent_root=\"/opt/hermes-agent\"' && echo 1 || echo 0" \
+  "1"
+check "080 GitOps does not copy dest kanban-stuck-watchdog" \
+  "grep -c 'home/scripts/kanban-stuck-watchdog' '${GITOPS_INIT}' || echo 0" \
+  "0"
+check "080 RHDH skeleton destfile does not invoke dest supervise-gateway" \
+  "grep -c '.hermes/home/scripts/supervise-gateway.sh' '${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml' || echo 0" \
+  "0"
+check "080 golden destfile does not invoke dest supervise-gateway" \
+  "grep -c '.hermes/home/scripts/supervise-gateway.sh' '${SCAFFOLD_080}/devfile.yaml' || echo 0" \
+  "0"
 check "080 golden orchestrator profile template present" \
   "test -f '${SCAFFOLD_PROFILES}/orchestrator.yaml.template' && echo present || echo missing" \
   "present"

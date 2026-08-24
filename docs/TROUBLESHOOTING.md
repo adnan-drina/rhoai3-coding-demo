@@ -991,14 +991,14 @@ oc get dw petclinic-rest-v45-refac -n wksp-ai-developer
 oc exec -n wksp-ai-developer "$POD" -c development-tooling -- hermes --version
 python3 stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/.hermes/checks/assert-agent-pin.py \
   --pins stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/.hermes/pins.json \
-  --agent-src /path/to/dest/.hermes/home/hermes-agent
+  --agent-src /opt/hermes-agent
 ```
 
 The pin oracle is `ast` of `hermes_cli/__init__.py` `__version__` / `__release_date__`, not the `--version` banner.
 
 **Recover:**
 
-- Operator GO `E-20260823T111522Z` ratified Hermes v0.20.5 / 2026.8.19 (Spec Kit stays 0.16.1). Dest init fail-closes unless the dest `hermes-agent` tree matches `.hermes/pins.json`. Installer uses `--branch v2026.8.19`.
+- Operator GO `E-20260823T111522Z` ratified Hermes v0.20.5 / 2026.8.19 (Spec Kit stays 0.16.1). Dest-init fail-closes unless overlay `/opt/hermes-agent` matches `.hermes/pins.json` (`--agent-src /opt/hermes-agent`). Do not curl-install Hermes. Do not fall back to dest `.hermes/home/hermes-agent` (Architect `202501ZA` / `185531ZA`).
 - Do not treat dest-armed (a) as MATCH until dest `pins.json` and the ast pin oracle agree. Do not mkdir empty `.hermes/kernel/` to work around a pin miss.
 
 ## Factory Workspace Starts Healthy With No Agent Tooling
@@ -1051,6 +1051,25 @@ ls /projects/modernized/.hermes/home/profiles/
 **Recover:** Fix the init error (overlay `/usr/local/bin/hermes`, templates present, secrets only in Managed Scope). Re-run `ensure_hermes` / restart only when the operator asks — do not clone from `default`.
 
 **Related docs:** `gitops/stages/050-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml` (`ensure_dest_worker_profiles`); golden `.hermes/config/profiles/`
+
+## Dest gateway persist WARN / dest `.hermes/home/scripts` (`harness-v2`)
+
+**Affected stage:** Stage 080 dest on `harness-v2`. Overlay owns runtime (`/usr/local/bin/hermes`, `/opt/hermes-agent`, `HERMES_WEB_DIST`). Golden must not ship `.hermes/home/scripts` (Architect `202501ZA`).
+
+**Likely cause:** Destfile or dest-init still looked for dest `supervise-gateway.sh` or `kanban-stuck-watchdog.py` under `.hermes/home/scripts`. Those files are not in the golden (`validate.sh` forbids the directory). The honest signal until a named overlay persist/watchdog GO is a WARN, not a dest script restore.
+
+**Diagnose:**
+
+```bash
+oc logs -n <ws-ns> <workspace-pod> -c development-tooling --tail=200 \
+  | grep -E 'overlay persist helper|kanban-stuck-watchdog|SOUL.md load'
+oc exec -n <ws-ns> <workspace-pod> -c development-tooling -- \
+  test -d /opt/hermes-agent && echo overlay-agent-present || echo overlay-agent-ABSENT
+```
+
+**Recover:** Do not restore dest `supervise-gateway.sh`. Do not add `.hermes/home/scripts` to the golden. Overlay persist helper and overlay watchdog wait a named GO. SOUL.md smoke must use `/opt/hermes-agent` (fail-closed); do not fall back to dest `.hermes/home/hermes-agent`.
+
+**Related docs:** dest-init `ensure_hermes` in `maas-api-key-provisioning.yaml`; RHDH skeleton `devfile.yaml`; Architect `202501ZA` / `145309ZA`
 
 ## Factory Create Fails With Can't Parse Devfile Yaml
 
