@@ -2,12 +2,12 @@
 """Build-time pin oracle for a Hermes source tree.
 
 Reads ``__version__`` and ``__release_date__`` from ``hermes_cli/__init__.py``
-via ``ast`` — the same contract as dest ``.hermes/checks/assert-agent-pin.py``.
-Does not parse ``hermes --version``. Does not ``import hermes_cli``.
+via ``ast``. Dest `.hermes/checks/` is retired; dest-init runtime oracle is
+``hermes --version`` vs ``.hermes/pins.json``. Does not parse ``hermes --version``.
+Does not ``import hermes_cli``.
 
 This script lives in ``workspace-images/`` so the Docker build does not copy
-or modify the fenced ``.hermes/`` tree. Keep the two oracles in lockstep when
-the pin keys change.
+or modify the fenced ``.hermes/`` tree.
 """
 from __future__ import annotations
 

@@ -981,25 +981,24 @@ oc get dw petclinic-rest-v45-refac -n wksp-ai-developer
 
 **Affected stage:** Stage 080 measurement dest on `harness-v2`
 
-**Symptom:** DevWorkspace Failed. postStart log contains `assert-agent-pin: refusing off-pin agent` with installed version not equal to `.hermes/pins.json`.
+**Symptom:** DevWorkspace Failed. postStart log contains `ERROR: overlay Hermes --version does not match .hermes/pins.json` (or `ensure_hermes` mismatch). Older dest-init copies may still print `assert-agent-pin: refusing off-pin agent` until ConfigMap uptake.
 
-**Likely cause:** Dest `hermes` install floated past the pin, or dest-tree `pins.json` lagged a GO-ratified pin. `assert-web-dist-pin` only compares the dashboard stamp to `.hermes/pins.json`. The agent-vs-pin check is fail-closed. Pin move remains Operator GO.
+**Likely cause:** Overlay `/usr/local/bin/hermes` floated past the pin, or dest-tree `pins.json` lagged a GO-ratified pin. Runtime oracle is dest-init `hermes --version` vs `.hermes/pins.json`. Dest `.hermes/checks/` is retired. Pin move remains Operator GO.
 
 **Diagnose:**
 
 ```bash
 oc exec -n wksp-ai-developer "$POD" -c development-tooling -- hermes --version
-python3 stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/.hermes/checks/assert-agent-pin.py \
-  --pins stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/.hermes/pins.json \
-  --agent-src /opt/hermes-agent
+oc exec -n wksp-ai-developer "$POD" -c development-tooling -- \
+  python3 -c 'import json; p=json.load(open("/projects/modernized/.hermes/pins.json")); print(p["pins"]["hermes_agent"])'
 ```
 
-The pin oracle is `ast` of `hermes_cli/__init__.py` `__version__` / `__release_date__`, not the `--version` banner.
+Do not invoke dest `.hermes/checks/assert-agent-pin.py`; that tree is retired. Build-time ast pin remains `workspace-images/scripts/assert-hermes-source-pin.py`.
 
 **Recover:**
 
-- Operator GO `E-20260823T111522Z` ratified Hermes v0.20.5 / 2026.8.19 (Spec Kit stays 0.16.1). Dest-init fail-closes unless overlay `/opt/hermes-agent` matches `.hermes/pins.json` (`--agent-src /opt/hermes-agent`). Do not curl-install Hermes. Do not fall back to dest `.hermes/home/hermes-agent` (Architect `202501ZA` / `185531ZA`).
-- Do not treat dest-armed (a) as MATCH until dest `pins.json` and the ast pin oracle agree. Do not mkdir empty `.hermes/kernel/` to work around a pin miss.
+- Operator GO `E-20260823T111522Z` ratified Hermes v0.20.5 / 2026.8.19 (Spec Kit stays 0.16.1). Dest-init fail-closes unless overlay `hermes --version` matches `.hermes/pins.json`. Do not curl-install Hermes. Do not fall back to dest `.hermes/home/hermes-agent` (Architect `202501ZA` / `185531ZA` / `210214ZA`).
+- Do not treat dest-armed (a) as MATCH until dest `pins.json` and `hermes --version` agree. Do not mkdir empty `.hermes/kernel/` to work around a pin miss. Do not restore dest `.hermes/checks/`.
 
 ## Factory Workspace Starts Healthy With No Agent Tooling
 
@@ -1090,7 +1089,7 @@ oc exec -n <ws-ns> <workspace-pod> -c development-tooling -- \
   test -d /opt/hermes-agent && echo overlay-agent-present || echo overlay-agent-ABSENT
 ```
 
-**Recover:** Do not restore dest `supervise-gateway.sh`. Do not add `.hermes/home/scripts` to the golden. Overlay persist helper and overlay watchdog wait a named GO. SOUL.md smoke must use `/opt/hermes-agent` (fail-closed); do not fall back to dest `.hermes/home/hermes-agent`. Dest `web_dist/` / `install-web-dist.sh` / `PIN` are retired from the golden; leave `start-dashboard.sh` and `.hermes/checks/`.
+**Recover:** Do not restore dest `supervise-gateway.sh`. Do not add `.hermes/home/scripts` to the golden. Overlay persist helper and overlay watchdog wait a named GO. SOUL.md smoke must use `/opt/hermes-agent` (fail-closed); do not fall back to dest `.hermes/home/hermes-agent`. Dest `web_dist/` / `install-web-dist.sh` / `PIN` / `.hermes/checks/` are retired from the golden; leave `start-dashboard.sh` until overlay launcher bake + dest-cite.
 
 **Related docs:** dest-init `ensure_hermes` in `maas-api-key-provisioning.yaml`; RHDH skeleton `devfile.yaml`; Architect `202501ZA` / `145309ZA`
 

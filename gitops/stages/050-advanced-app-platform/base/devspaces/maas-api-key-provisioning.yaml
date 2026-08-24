@@ -749,13 +749,14 @@ data:
     }
 
     ensure_hermes() {
-      # Architect 185531ZA: overlay bake is /usr/local/bin/hermes (v0.20.5 /
-      # 2026.8.19). Fail-closed if missing or off-pin. No curl install.sh
+      # Architect 185531ZA / 210214ZA: overlay bake is /usr/local/bin/hermes
+      # (v0.20.5 / 2026.8.19). Fail-closed if missing or off-pin. Runtime
+      # oracle is hermes --version vs dest pins.json. Dest .hermes/checks/
+      # is retired; do not invoke assert-agent-pin.py. No curl install.sh
       # (Operator 184955Zop / Review 185102ZR). Do not PATH-prepend
       # ~/.local/bin ahead of the bake.
       local hermes_bin="/usr/local/bin/hermes"
       local pins_json="${PROJECT_DIR}/.hermes/pins.json"
-      local agent_assert="${PROJECT_DIR}/.hermes/checks/assert-agent-pin.py"
       local agent_src="/opt/hermes-agent"
       if [ ! -x "${hermes_bin}" ]; then
         echo "ERROR: overlay Hermes missing at ${hermes_bin}; dest-init fail-closed (no curl install.sh)." >&2
@@ -765,16 +766,8 @@ data:
         echo "ERROR: ${pins_json} missing; cannot assert agent vs pin." >&2
         return 1
       fi
-      if [ ! -f "${agent_assert}" ]; then
-        echo "ERROR: ${agent_assert} missing; dest init refuses without the golden pin oracle." >&2
-        return 1
-      fi
       if [ ! -f "${agent_src}/hermes_cli/__init__.py" ]; then
         echo "ERROR: hermes_cli/__init__.py missing under ${agent_src}; cannot ast-read the running bake." >&2
-        return 1
-      fi
-      if ! python3 "${agent_assert}" --pins "${pins_json}" --agent-src "${agent_src}"; then
-        echo "ERROR: overlay Hermes source does not match .hermes/pins.json." >&2
         return 1
       fi
       if ! python3 - "${pins_json}" "${hermes_bin}" <<'HERMESVEREOF'

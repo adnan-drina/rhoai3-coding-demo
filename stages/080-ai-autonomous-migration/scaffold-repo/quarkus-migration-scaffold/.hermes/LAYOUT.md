@@ -9,7 +9,7 @@ parallel home is a defect.
 | Standing convention | `AGENTS.md` (this file is identity + taxonomy only) |
 | Identity | authored `.hermes/SOUL.md`; dest loads `$HERMES_HOME/SOUL.md` |
 | Seat pins | `.hermes/pins.json` |
-| Pin asserts | `.hermes/checks/` — agent-vs-pin and dashboard-stamp-vs-pin CLIs. Not a skill. Not `lib/`. WILL-NOT-RETIRE. |
+| Seat pin oracle | Runtime: dest-init `hermes --version` vs `.hermes/pins.json`. Build: `workspace-images/scripts/assert-hermes-source-pin.py`. Dest `.hermes/checks/` retired. |
 | Config templates | `.hermes/config/` — no secrets; dest Managed Scope owns the live pin. Worker profiles: `.hermes/config/profiles/{orchestrator,implementer}.yaml.template` (Operator GO `231808Z`; dest GitOps applies via `hermes profile create --no-alias`, never `--clone`) |
 | Product guidance | `.hermes/skills/<category>/<name>/` |
 | Dashboard launcher | `.hermes/dashboard/start-dashboard.sh` — defaults `HERMES_WEB_DIST` to overlay bake. Observability, not capability. Dest `web_dist/` / `install-web-dist.sh` / `PIN` retired. |
@@ -36,7 +36,7 @@ K3 `k3_verify.py` is a graph-snapshot procedure (Architect `145017Z`); not dest
 PID reclaim and not claimed refuse-as-control. Dashboard UI is overlay
 `HERMES_WEB_DIST` (`/usr/local/share/hermes/web_dist`); destfile launches
 `start-dashboard.sh` fail-soft. Do not ship dest `web_dist/` / `PIN` /
-`install-web-dist.sh`. `.hermes/checks/` stays.
+`install-web-dist.sh`. Do not ship dest `.hermes/checks/`.
 
 ## How to invoke
 

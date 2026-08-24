@@ -11,8 +11,8 @@ No `SKILL.md`. Discovery does not list this directory.
 | `specimen_agnostic.py` | remainder (oracles / operand / refs) + re-exports |
 | `generated_sources.py` | generator classification at **read** (stamp is a hint) |
 
-Importable modules only — no `__main__` CLIs. Dashboard pin guard lives
-in `.hermes/checks/assert-web-dist-pin.py`. Java type walk lives in
+Importable modules only — no `__main__` CLIs. Dashboard pin is overlay bake
+`HERMES_WEB_DIST`; dest `.hermes/checks/` is retired. Java type walk lives in
 `inventory-legacy-surface/scripts/type_graph.py` (relocate, not delete).
 
 Discovery identity is the zero-byte marker `.hermes/lib/.hermes-lib`,

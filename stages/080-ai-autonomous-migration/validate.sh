@@ -191,6 +191,9 @@ check "live dest-init SOUL smoke uses overlay /opt/hermes-agent" \
 check "live dest-init does not copy dest kanban-stuck-watchdog" \
   "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -c 'home/scripts/kanban-stuck-watchdog' || echo 0" \
   "0"
+check "live dest-init does not invoke golden assert-agent-pin.py" \
+  "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -c 'assert-agent-pin.py' || echo 0" \
+  "0"
 check "live workspace-maas-model-endpoint is in-cluster KServe OpenAI base" \
   "oc get cm workspace-maas-model-endpoint -n wksp-ai-developer -o jsonpath='{.data.MAAS_API_BASE_URL}'" \
   "https://qwen3-6-27b-kserve-workload-svc.models-as-a-service.svc:8000/v1"
@@ -267,24 +270,18 @@ check "080 golden has no dest install-web-dist.sh" \
 check "080 golden has no dest dashboard PIN" \
   "test ! -e '${SCAFFOLD_DASH}/PIN' && echo 1 || echo 0" \
   "1"
-check "080 checks keep assert-web-dist-pin.py (WILL-NOT-RETIRE)" \
-  "test -f '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/checks/assert-web-dist-pin.py' && echo 1 || echo 0" \
-  "1"
-check "080 agent-pin assert MATCH on on-pin hermes_cli constants" \
-  "python3 '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/checks/assert-agent-pin.py' --pins '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/pins.json' --agent-src '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/checks/fixtures/hermes-agent-on-pin' >/dev/null && echo 1 || echo 0" \
-  "1"
-check "080 agent-pin assert refuses off-pin hermes_cli constants" \
-  "python3 '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/checks/assert-agent-pin.py' --pins '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/pins.json' --agent-src '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/checks/fixtures/hermes-agent-off-pin' >/dev/null && echo 0 || echo 1" \
+check "080 golden has no dest .hermes/checks tree" \
+  "test ! -e '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/checks' && echo 1 || echo 0" \
   "1"
 
 SCAFFOLD_PROFILES="${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/config/profiles"
 GITOPS_INIT="${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml"
-check "080 GitOps invokes golden assert-agent-pin.py" \
-  "grep -v '^[[:space:]]*#' '${GITOPS_INIT}' | grep -c '.hermes/checks/assert-agent-pin.py' | grep -qx 1 && grep -qF 'python3 \"\${agent_assert}\" --pins' '${GITOPS_INIT}' && echo 1 || echo 0" \
-  "1"
-check "080 GitOps pin oracle uses --agent-src" \
+check "080 GitOps does not invoke golden assert-agent-pin.py" \
+  "grep -v '^[[:space:]]*#' '${GITOPS_INIT}' | grep -c 'assert-agent-pin.py' || echo 0" \
+  "0"
+check "080 GitOps pin oracle does not use --agent-src" \
   "grep -c -- '--agent-src' '${GITOPS_INIT}' || echo 0" \
-  "1"
+  "0"
 check "080 GitOps has no agent-pin heredoc" \
   "grep -c 'AGENTPINEOF' '${GITOPS_INIT}' || echo 0" \
   "0"
