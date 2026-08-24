@@ -1,0 +1,23 @@
+# LANDING GATE — example only. Do not add this file to kustomization.yaml
+# until overlay images are published to a cluster-pullable registry.
+#
+# Product: Red Hat OpenShift Dev Spaces 3.28 Administration Guide, chapter 7
+# Image Puller: spec.components.imagePuller.enable plus
+# spec.components.imagePuller.spec.images as NAME-1=IMAGE-1;NAME-2=IMAGE-2
+# https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.28/html-single/administration_guide/index
+#
+# CheCluster already exists at
+# gitops/stages/050-advanced-app-platform/base/devspaces/checluster.yaml
+# and currently has no imagePuller stanza. Do not set
+# spec.devEnvironments.defaultComponents to an AI overlay image.
+apiVersion: org.eclipse.che/v2
+kind: CheCluster
+metadata:
+  name: devspaces
+  namespace: openshift-devspaces
+spec:
+  components:
+    imagePuller:
+      enable: true
+      spec:
+        images: rhoai3-ws-060=IMAGE_REGISTRY/rhoai3-ws-060:DIGEST_TAG;rhoai3-ws-070=IMAGE_REGISTRY/rhoai3-ws-070:DIGEST_TAG;rhoai3-ws-080=IMAGE_REGISTRY/rhoai3-ws-080:DIGEST_TAG
