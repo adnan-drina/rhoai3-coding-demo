@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """Refuse a Hermes dashboard bundle stamped for a different agent pin.
 
-PIN next to this file must match `.hermes/pins.json` `hermes_agent.version`
-+ `hermes_agent.build`. A mismatch is fail-closed for *serving* the UI,
-not for the workspace (caller is fail-soft). Invoked from
-`install-web-dist.sh` before copy.
+Used against an overlay bake stamp+bundle when those paths are supplied.
+Dest `install-web-dist.sh` / dest `web_dist/` / dest `PIN` are retired from
+the golden. Lives in `.hermes/checks/` (WILL-NOT-RETIRE).
 
 Not a skill. Not a `.hermes/lib/` module (no `__main__` CLIs there).
 """

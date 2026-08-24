@@ -252,11 +252,17 @@ check "080 dashboard launcher does not override HERMES_WEB_DIST to dest hermes_c
 check "080 dashboard launcher does not call dest-side install-web-dist" \
   "grep -c 'install-web-dist.sh' '${SCAFFOLD_DASH}/start-dashboard.sh' || echo 0" \
   "0"
-check "080 ships pin-stamped dashboard index.html" \
-  "test -f '${SCAFFOLD_DASH}/web_dist/index.html' && echo present || echo missing" \
-  "present"
-check "080 dashboard PIN matches pins.json" \
-  "python3 '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/checks/assert-web-dist-pin.py' --pins '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/pins.json' --stamp '${SCAFFOLD_DASH}/PIN' --bundle '${SCAFFOLD_DASH}/web_dist/index.html' >/dev/null && echo 1 || echo 0" \
+check "080 golden has no dest dashboard web_dist bundle" \
+  "test ! -e '${SCAFFOLD_DASH}/web_dist' && echo 1 || echo 0" \
+  "1"
+check "080 golden has no dest install-web-dist.sh" \
+  "test ! -e '${SCAFFOLD_DASH}/install-web-dist.sh' && echo 1 || echo 0" \
+  "1"
+check "080 golden has no dest dashboard PIN" \
+  "test ! -e '${SCAFFOLD_DASH}/PIN' && echo 1 || echo 0" \
+  "1"
+check "080 checks keep assert-web-dist-pin.py (WILL-NOT-RETIRE)" \
+  "test -f '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/checks/assert-web-dist-pin.py' && echo 1 || echo 0" \
   "1"
 check "080 agent-pin assert MATCH on on-pin hermes_cli constants" \
   "python3 '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/checks/assert-agent-pin.py' --pins '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/pins.json' --agent-src '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/checks/fixtures/hermes-agent-on-pin' >/dev/null && echo 1 || echo 0" \

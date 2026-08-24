@@ -9,10 +9,10 @@ parallel home is a defect.
 | Standing convention | `AGENTS.md` (this file is identity + taxonomy only) |
 | Identity | authored `.hermes/SOUL.md`; dest loads `$HERMES_HOME/SOUL.md` |
 | Seat pins | `.hermes/pins.json` |
-| Pin asserts | `.hermes/checks/` — agent-vs-pin and dashboard-stamp-vs-pin CLIs. Not a skill. Not `lib/`. |
+| Pin asserts | `.hermes/checks/` — agent-vs-pin and dashboard-stamp-vs-pin CLIs. Not a skill. Not `lib/`. WILL-NOT-RETIRE. |
 | Config templates | `.hermes/config/` — no secrets; dest Managed Scope owns the live pin. Worker profiles: `.hermes/config/profiles/{orchestrator,implementer}.yaml.template` (Operator GO `231808Z`; dest GitOps applies via `hermes profile create --no-alias`, never `--clone`) |
 | Product guidance | `.hermes/skills/<category>/<name>/` |
-| Dashboard bundle | `.hermes/dashboard/` — pin-stamped `web_dist` + one launcher. Observability, not capability. |
+| Dashboard launcher | `.hermes/dashboard/start-dashboard.sh` — defaults `HERMES_WEB_DIST` to overlay bake. Observability, not capability. Dest `web_dist/` / `install-web-dist.sh` / `PIN` retired. |
 | Analysis | `.hermes/skills/analysis/` (MTA, inventory) |
 | Migration | `.hermes/skills/migration/` (Boot3 / Quarkus / persistence) |
 | SDD | `.hermes/skills/sdd/` (Spec Kit provision + story oracles) |
@@ -33,9 +33,10 @@ parallel home is a defect.
 K1–K4 live in `.hermes/kernel/`. K4 emits payloads; the worker still calls
 `kanban_create` (pin CLI has no `--body-file`). Do not dest-apply K4.
 K3 `k3_verify.py` is a graph-snapshot procedure (Architect `145017Z`); not dest
-PID reclaim and not claimed refuse-as-control. Dashboard `web_dist` ships here
-(pin-stamped); destfile copies it and launches `hermes dashboard --skip-build`
-fail-soft. Refresh the bundle when the Hermes pin moves.
+PID reclaim and not claimed refuse-as-control. Dashboard UI is overlay
+`HERMES_WEB_DIST` (`/usr/local/share/hermes/web_dist`); destfile launches
+`start-dashboard.sh` fail-soft. Do not ship dest `web_dist/` / `PIN` /
+`install-web-dist.sh`. `.hermes/checks/` stays.
 
 ## How to invoke
 

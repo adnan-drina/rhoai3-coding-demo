@@ -1067,7 +1067,7 @@ oc exec -n <ws-ns> <workspace-pod> -c development-tooling -- \
   test -d /opt/hermes-agent && echo overlay-agent-present || echo overlay-agent-ABSENT
 ```
 
-**Recover:** Do not restore dest `supervise-gateway.sh`. Do not add `.hermes/home/scripts` to the golden. Overlay persist helper and overlay watchdog wait a named GO. SOUL.md smoke must use `/opt/hermes-agent` (fail-closed); do not fall back to dest `.hermes/home/hermes-agent`.
+**Recover:** Do not restore dest `supervise-gateway.sh`. Do not add `.hermes/home/scripts` to the golden. Overlay persist helper and overlay watchdog wait a named GO. SOUL.md smoke must use `/opt/hermes-agent` (fail-closed); do not fall back to dest `.hermes/home/hermes-agent`. Dest `web_dist/` / `install-web-dist.sh` / `PIN` are retired from the golden; leave `start-dashboard.sh` and `.hermes/checks/`.
 
 **Related docs:** dest-init `ensure_hermes` in `maas-api-key-provisioning.yaml`; RHDH skeleton `devfile.yaml`; Architect `202501ZA` / `145309ZA`
 

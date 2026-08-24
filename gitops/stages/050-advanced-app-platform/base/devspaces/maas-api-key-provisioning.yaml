@@ -1445,7 +1445,7 @@ data:
 
       # Dashboard UI: dest-init does not npm-build. Overlay bake owns
       # HERMES_WEB_DIST (/usr/local/share/hermes/web_dist). Launcher is
-      # default-not-override. Dest install-web-dist.sh is retirable.
+      # default-not-override. Dest install-web-dist.sh is retired from the golden.
 
       # Architect 202501ZA: golden must not ship .hermes/home/scripts;
       # dest-init must not copy from that dest path. Overlay watchdog /
