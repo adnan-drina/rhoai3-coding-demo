@@ -45,8 +45,7 @@ GitHub-rename the v1 golden.
 | Dest | leftover `petclinic-rest-v43/v44` (v1; cannot measure dest-armed) | Operator cuts one measurement dest after recut; Phase E cutover HELD |
 
 `bootstrap-scaffold-repos.sh` refuses the Stage 080 push when HEAD is
-`harness-v2`. Leftover `adnan-drina/greeting-v2` is not a dest — do not
-provision it. Do not dest-apply this branch onto v42, dest-complete Operator
+`harness-v2`. Do not dest-apply this branch onto v42, dest-complete Operator
 ack gates, or `kanban daemon --force`. Factory isolation: Stage 080
 [SOLUTION-ARCHITECTURE.md](../stages/080-ai-autonomous-migration/SOLUTION-ARCHITECTURE.md)
 §8.

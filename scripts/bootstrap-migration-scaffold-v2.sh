@@ -124,4 +124,3 @@ echo "  - Live overlay GitOps still fetches v1 until this branch's template.yaml
 echo "  - Dest comes from Developer Hub Application migration after that GitOps GO."
 echo "  - Re-running this script force-pushes ${GOLDEN_REPO} only."
 echo "  - Dest golden omits .hermes/_park (authoring retired; chaos never dest)."
-echo "  - Leftover adnan-drina/greeting-v2 is not a dest. Do not provision it."
