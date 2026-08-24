@@ -5,7 +5,7 @@ license: Apache-2.0
 compatibility: Linux seat; Python 3.11+; reads migration/ receipts
 metadata:
   author: rhoai3-harness-team
-  version: "1.4.0"
+  version: "1.4.1"
   hermes:
     tags:
     - gates
@@ -45,10 +45,14 @@ requires kill-ratio PASS+pin; a waiver cannot author ACCEPT (B-4/C-3(a)).
 
 ## Procedure
 
-Ordered stages; each script takes the product root as its first positional arg
-and is idle (exit 0) when its trigger artifact is absent. Commands under
-**Checks**.
+Ordered stages. Completion-floor scripts take the product root as their first
+positional arg and are idle (exit 0) when their trigger artifact is absent.
+**Not idle:** `assert-retrievable-tree` and `assert-pinned-gates-ran` — those
+fail closed on silence (Architect `142524ZA`). Commands under **Checks**.
 
+0. **Before `PROVISIONAL_ACCEPT`** — `assert-retrievable-tree` then
+   `assert-pinned-gates-ran` (pass the M4 card `skills` list; missing list
+   fails). These two do **not** idle-exit-0.
 1. **Completion floors** (refuse a phase that never ran anything real) —
    `check-runnable-db-config.py`, `check-empty-security.py`,
    `check-test-toolchain.py`, and `../check-domain-parity/scripts/check-product-tests.py`.
@@ -67,6 +71,12 @@ and is idle (exit 0) when its trigger artifact is absent. Commands under
 ## Checks
 
 ```bash
+# Before PROVISIONAL_ACCEPT (fail-closed; not idle)
+python3 "${HERMES_SKILL_DIR}/../assert-retrievable-tree/scripts/assert-retrievable-tree.py" \
+  /projects/modernized
+python3 "${HERMES_SKILL_DIR}/../assert-pinned-gates-ran/scripts/assert-pinned-gates-ran.py" \
+  /projects/modernized --skills "${M4_CARD_SKILLS:?missing M4 card skills}"
+
 # Verdict routing + §18.0 composition
 python3 "${HERMES_SKILL_DIR}/scripts/check-verdict-routing.py" /projects/modernized
 
@@ -133,6 +143,10 @@ Rebuild later only on dest GO.
 
 ## Verification
 
+- `assert-retrievable-tree.py` and `assert-pinned-gates-ran.py` **fail closed**
+  (missing `src/`/`pom.xml` commit, missing M4 skills list, or a pinned gate
+  with neither a named verdict nor `refusals/<gate>.json`). Idle is not a pass
+  for those two. `specimen-n/a: no DB` belongs in a refusal file.
 - `check-verdict-routing.py` prints `OK: verdict-routing checks passed (N
   artifact(s))`. **Silent-failure assertion: N must be > 0.** `N = 0` — or the
   idle line `OK: no verdict/preflight artifacts — routing lint idle` — means

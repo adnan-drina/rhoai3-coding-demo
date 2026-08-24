@@ -72,6 +72,8 @@ workspace state.
 | Guidance procedures | `.hermes/skills/<category>/<name>/` (card-attachable) |
 | Domain gates G-1..G-4 | skill `check-domain-parity` |
 | M4/M5 verdict routing | skill `check-release-readiness` |
+| M4 pinned-gate evidence | skill `assert-pinned-gates-ran` |
+| M4 retrievable `src/` + `pom.xml` | skill `assert-retrievable-tree` |
 | Run / phase data | `evidence/` |
 | SDD stack | `.specify/` (workspace provision only — never commit in golden) |
 | Destination POM authoring | skill `author-destination-pom` |
@@ -151,6 +153,8 @@ One line each: what it governs → which skill. When a skill is loaded, prefer
 | Story-class exit / oracle derivation | `derive-story-oracles` |
 | G-1..G-4 measurement oracles | `check-domain-parity` |
 | M4/M5 verdict routing | `check-release-readiness` |
+| M4 pinned-gate evidence (silence fails) | `assert-pinned-gates-ran` |
+| M4 retrievable `src/` + `pom.xml` | `assert-retrievable-tree` |
 | Quarkus config / profiles | `configure-quarkus-profiles` |
 | Entity / persistence form | `form-entity-persistence` |
 | Spec Kit provision (postStart only) | `init-spec-workspace` |

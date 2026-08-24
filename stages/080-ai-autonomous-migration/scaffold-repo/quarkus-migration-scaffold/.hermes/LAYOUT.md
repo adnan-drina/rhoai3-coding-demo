@@ -16,7 +16,7 @@ parallel home is a defect.
 | Analysis | `.hermes/skills/analysis/` (MTA, inventory) |
 | Migration | `.hermes/skills/migration/` (Boot3 / Quarkus / persistence) |
 | SDD | `.hermes/skills/sdd/` (Spec Kit provision + story oracles) |
-| M4 oracles | `.hermes/skills/gates/` (`check-domain-parity`, `check-release-readiness`) |
+| M4 oracles | `.hermes/skills/gates/` (`check-domain-parity`, `check-release-readiness`, `assert-pinned-gates-ran`, `assert-retrievable-tree`) |
 | Shared Python | `.hermes/lib/` — **not a skill** (generated_sources, specimen splits). Identity is `.hermes-lib` marker, not a member module. |
 | Retired `_park/` | Deleted (Operator GO `155455Z`). Dest omit + chaos re-add tripwire stay in `scripts/bootstrap-migration-scaffold-v2.sh`. Do not mkdir empty `_park/` or dump requeue into kernel. Rebuild wall/crash/chaos later only on dest GO. |
 | K2 REHOST | `.hermes/kernel/pre_tool_call.sh` — **one** shell `pre_tool_call` module (`fail_closed: true`). Same measured file as K2 instrumentation (`879fa292`); this sitting classifies it as the kernel home, not a new fence. Dest GitOps copies **this file only** when present. **Not claimed control** (write-escape MEASURED; container limb waived `131318Z`). Do not mkdir empty `kernel/`. |
@@ -68,6 +68,8 @@ complete requires `created_cards`. Do not wrap these in home scripts.
 | `derive-story-oracles` | sdd | Story-class exit derivation |
 | `check-domain-parity` | gates | G-1..G-4 measurement oracles |
 | `check-release-readiness` | gates | M4/M5 verdict routing (no phase-dispatch matrix) |
+| `assert-retrievable-tree` | gates | M4 refuse unless `src/` and `pom.xml` committed vs HEAD |
+| `assert-pinned-gates-ran` | gates | M4 refuse unless each pinned gate has a verdict or `ran: false` refusal |
 
 ## Domain gate vocabulary (binding)
 

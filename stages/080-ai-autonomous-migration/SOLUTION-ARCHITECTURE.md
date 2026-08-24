@@ -127,7 +127,7 @@ flowchart LR
 | M2 | Hermes planner + Spec Kit | `spec.md` / `plan.md` / `tasks.md`. Overlay does not dest-rewrite `tasks.md` after mint | Live dest **blocked** on 1:N split vs 1:1 coverage (PetClinic v42). Target: typed partition + sanctioned supersede map |
 | Mint | Wave-holder + verifier card | One K1 body per story; `kanban_create` + **inline** body; exact `created_cards` on complete | **K4 landed** in `.hermes/kernel/` (`k4_convert.py`): typed partition → payloads; `files_writable` copied from the partition row. `K4_T0_3_SERVICE` refuses methods-in-shared-`ClinicService`. Converter does not mint and does not import `create_task`. OBJECT scraping paths from `tasks.md` prose (`PATH_TOKEN`). Not dest-applied. `claimed_control` stays false |
 | M3 | One card per story | Writes only `files_writable`. One Kanban terminator | Live dest. Target write fence is one shell `pre_tool_call` (`fail_closed`), not a claimed OS boundary until adversarial tests |
-| M4 | Gate cards | Runtime product oracles (startup, parity, persistence). Compile and MTA rescan **support**, they do not replace | Owner/Pet **PROVISIONAL_ACCEPT** demonstrated historically; full slice M4 on current v42 **not** claimed |
+| M4 | Gate cards | Runtime product oracles (startup, parity, persistence). Compile and MTA rescan **support**, they do not replace. Before `PROVISIONAL_ACCEPT`: `assert-retrievable-tree` (`src/` + `pom.xml` committed vs HEAD) and `assert-pinned-gates-ran` (each pinned gate has a verdict or `ran: false` refusal; silence fails) | Owner/Pet **PROVISIONAL_ACCEPT** demonstrated historically; full slice M4 on current v42 **not** claimed |
 | M5 | Factory / ACCEPT | Pipeline green. Waiver cannot author ACCEPT | **Not demonstrated** for Owner/Pet ship |
 
 **Inner loop:** gates → fix → re-dispatch within retries. **Parents** sequence stories. **Steering loop:** humans improve skills in versioned PRs; agents do not silently rewrite `.hermes/skills/**` mid-run.
@@ -149,7 +149,7 @@ Red Hat's [open blueprint for cloud-native AI agents](https://developers.redhat.
 | Mint writer | Create the graph, complete with exact `created_cards` | Import `create_task`; mix CLI + tool + internal API |
 | Mint verifier | Check the whole graph, then complete **or** sticky `kanban_block` | Human `ack_gate`; `kanban_request_review` as the refuse path (a reviewer complete would release M3) |
 | M3 implementer | Write `files_writable` only | Complete without a terminator; invent identity/scope |
-| M4 verifier | Runtime oracles | Treat compile-only as ACCEPT |
+| M4 verifier | Runtime oracles. Refuse `PROVISIONAL_ACCEPT` when pinned gates are silent or `src/`/`pom.xml` are uncommitted | Treat compile-only as ACCEPT; idle-exit-0 on missing gate artifacts |
 
 **Isolation.** Writable dest clone only. Legacy is read-only. Secrets stay in managed `.env`, never under `HERMES_HOME` in git.
 
