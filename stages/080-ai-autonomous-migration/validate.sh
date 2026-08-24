@@ -192,7 +192,7 @@ check "live dest-init does not copy dest kanban-stuck-watchdog" \
   "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -c 'home/scripts/kanban-stuck-watchdog' || echo 0" \
   "0"
 check "live dest-init does not invoke golden assert-agent-pin.py" \
-  "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -c 'assert-agent-pin.py' || echo 0" \
+  "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -v '^[[:space:]]*#' | grep -c 'assert-agent-pin.py' || echo 0" \
   "0"
 check "live workspace-maas-model-endpoint is in-cluster KServe OpenAI base" \
   "oc get cm workspace-maas-model-endpoint -n wksp-ai-developer -o jsonpath='{.data.MAAS_API_BASE_URL}'" \
