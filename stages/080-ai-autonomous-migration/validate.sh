@@ -455,8 +455,8 @@ check "080 bootstrap refuses dest chaos matrix" \
 check "080 dest-init pins security.tirith_enabled false" \
   "grep -c 'tirith_enabled.: False' '${GITOPS_INIT}' || echo 0" \
   "1"
-check "080 dest-init does not prepend base HERMES_HOME/bin for tirith" \
-  "grep -c 'base hermes bin PATH' '${GITOPS_INIT}' || echo 0" \
+check "080 dest-init does not prepend HERMES_HOME/bin (braced; Operator 123436ZO)" \
+  "grep -c 'HERMES_HOME}/bin' '${GITOPS_INIT}' || echo 0" \
   "0"
 check "080 tirith-declared-absent rule retired" \
   "test ! -f '${REPO_ROOT}/.agents/rules/tirith-declared-absent.md' && echo absent || echo present" \

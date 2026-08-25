@@ -1773,8 +1773,6 @@ data:
       # Do not restore supervise-gateway.sh. Not a skippable extra command.
       export HERMES_ACCEPT_HOOKS=1
       export HERMES_HOME="${PROJECT_DIR}/.hermes/home"
-      mkdir -p "${HERMES_HOME}/bin"
-      export PATH="${HERMES_HOME}/bin:/usr/local/bin:${HOME}/.local/bin:${PATH}"
       if [ ! -x /usr/local/bin/hermes ]; then
         echo "ERROR: overlay hermes missing after ensure_hermes; cannot start gateway." >&2
         exit 1
