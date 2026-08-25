@@ -65,6 +65,23 @@ REMEDY = {
     ),
     "K4_MINT_ID": (
         "Parse create --json for task_id or id (t_*). Serialize creates; "
-        "do not mint in parallel."
+        "do not mint in parallel. --exec output created_cards is those t_* "
+        "ids (Architect 144916ZA: empty after a mint is OBJECT)."
+    ),
+    "K4_MINT_SKILLS": (
+        "M3 story creates pass --skill for every pinned leaf. An empty "
+        "skills list is REFUSE (dest-5 T001 loaded 11 by skill_view)."
+    ),
+    "K4_MINT_WORKSPACE": (
+        "M3 story creates pass --workspace dir:${MODERNIZED_ROOT} "
+        "(default /projects/modernized). Scratch is REFUSE."
+    ),
+    "K4_MINT_RUNTIME": (
+        "Every mint passes --max-runtime (default 2h) so the dispatcher "
+        "SIGTERM+requeues instead of a hand-polled stall."
+    ),
+    "K4_SKILLS": (
+        "Partition story.skills[] or kind (setup/us/polish) must yield a "
+        "non-empty skill list before mint."
     ),
 }

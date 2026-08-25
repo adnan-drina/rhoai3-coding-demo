@@ -55,13 +55,40 @@ def main() -> int:
     parents = [argv[i + 1] for i, a in enumerate(argv) if a == "--parent"]
     if parents != [by["mint-verifier"], by["setup"]]:
         return _fail("US1 parents %s vs %s" % (parents, [by["mint-verifier"], by["setup"]]))
+    if argv[argv.index("--workspace") + 1] != "dir:/projects/modernized":
+        return _fail("US1 workspace %s" % argv)
+    if argv[argv.index("--max-runtime") + 1] != "2h":
+        return _fail("US1 max-runtime")
+    skills = [argv[i + 1] for i, a in enumerate(argv) if a == "--skill"]
+    if "spring-to-quarkus-patterns" not in skills:
+        return _fail("US1 --skill %s" % skills)
+    if minted.get("created_cards") != [row["task_id"] for row in minted["created"]]:
+        return _fail("created_cards %s" % minted.get("created_cards"))
+    if minted["created_cards"] != ["t_mint0001", "t_mint0002", "t_mint0003", "t_mint0004", "t_mint0005"]:
+        return _fail("native created_cards %s" % minted["created_cards"])
+    if "empty created_cards" not in str(minted.get("attribution") or ""):
+        return _fail("mint attribution missing Architect 144916ZA note")
     if "swarm" in argv or "decompose" in argv or "daemon" in argv:
         return _fail("US1 argv used OBJECT verb")
     writer = next(c for c in minted["created"] if c["logical_id"] == "mint-writer")
     if "--max-retries" in writer["argv"]:
         return _fail("factory card pinned max-retries")
+    if "--workspace" in writer["argv"]:
+        return _fail("factory card must not pin dest dir workspace")
+    if "--max-runtime" not in writer["argv"]:
+        return _fail("factory card missing max-runtime")
     if writer["argv"][writer["argv"].index("--assignee") + 1] != ORCH:
         return _fail("writer assignee")
+    dest5 = dict(result["payloads"][3])
+    dest5["skills"] = []
+    try:
+        argv_for_payload(
+            dest5, {"mint-verifier": "t_mint0002", "setup": "t_mint0003"}
+        )
+        return _fail("dest-5 empty skills did not refuse")
+    except ValueError as exc:
+        if "K4_MINT_SKILLS" not in str(exc):
+            return _fail("empty skills: %s" % exc)
     if parse_created_id('{"id":"t_abc123"}') != "t_abc123":
         return _fail("parse id fallback")
 

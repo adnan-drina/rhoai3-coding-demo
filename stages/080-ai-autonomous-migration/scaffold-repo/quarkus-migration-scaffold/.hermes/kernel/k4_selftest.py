@@ -59,10 +59,26 @@ def main() -> int:
     for sid in ("setup", "US1", "US2"):
         if by_id[sid].get("max_retries") != 1:
             return _fail("%s max_retries %s" % (sid, by_id[sid].get("max_retries")))
+        skills = by_id[sid].get("skills") or []
+        if not skills:
+            return _fail("%s skills empty" % sid)
+        if "k4:%s:" % sid not in str(by_id[sid].get("idempotency_key") or ""):
+            return _fail("%s idempotency_key %s" % (sid, by_id[sid].get("idempotency_key")))
+    if "spring-to-quarkus-patterns" not in by_id["US1"]["skills"]:
+        return _fail("US1 skills %s" % by_id["US1"]["skills"])
+    if "author-destination-pom" not in by_id["setup"]["skills"]:
+        return _fail("setup skills %s" % by_id["setup"]["skills"])
     if "max_retries" in by_id["mint-writer"] or "max_retries" in by_id["mint-verifier"]:
         return _fail("factory cards must not pin story max_retries")
     if result.get("claimed_control") is not False:
         return _fail("claimed_control must stay false")
+    us1_assert = " ".join(
+        str(item.get("assert") or "") for item in us1.get("exit_criteria") or []
+    )
+    if "silence invalid AD-002E" in us1_assert and "false consult" not in us1_assert:
+        return _fail("US1 still stamps phantom AD-002E with no definition")
+    if "kanban_block" not in us1_assert:
+        return _fail("US1 body must name kanban_block as a legal outcome")
 
     extra = KERNEL / "fixtures" / "k4-tasks-extra.md"
     _, extra_issues = convert_file(valid, tasks_path=extra)
@@ -72,6 +88,18 @@ def main() -> int:
     detail = next(d for c, d, _ in extra_issues if c == "K4_PLANNING_DEFECT")
     if "Missing.java" not in detail:
         return _fail("planning defect did not list Missing.java: %s" % detail)
+
+    negated = KERNEL / "fixtures" / "k4-tasks-negated.md"
+    _, neg_issues = convert_file(valid, tasks_path=negated)
+    neg_codes = {c for c, _, _ in neg_issues}
+    if "K4_PLANNING_DEFECT" in neg_codes:
+        return _fail("negated src/test prose must not be a write claim: %s" % neg_issues)
+
+    noskill = KERNEL / "fixtures" / "k4-no-skills.json"
+    _, skill_issues = convert_file(noskill)
+    skill_codes = {c for c, _, _ in skill_issues}
+    if "K4_SKILLS" not in skill_codes:
+        return _fail("story with no kind/skills missed K4_SKILLS: %s" % skill_codes)
 
     token = KERNEL / "fixtures" / "k4-tasks-path-token.md"
     _, token_issues = convert_file(valid, tasks_path=token)

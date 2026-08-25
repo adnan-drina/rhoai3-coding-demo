@@ -26,6 +26,8 @@ from k4_schema import IMPL, ORCH, REMEDY, VERIFIER_ID, WRITER_ID  # noqa: E402
 Issue = tuple[str, str, str]
 TASK_ID_RE = re.compile(r"^t_[A-Za-z0-9]+$")
 FORBIDDEN = ("swarm", "decompose", "daemon", "create_task")
+DEFAULT_WORKSPACE_ROOT = "/projects/modernized"
+DEFAULT_MAX_RUNTIME = "2h"
 FACTORY_TITLES = {
     WRITER_ID: "Mint writer",
     VERIFIER_ID: "Mint verifier",
@@ -101,6 +103,19 @@ def resolve_parents(payload: dict[str, Any], mapping: dict[str, str]) -> list[st
     return out
 
 
+def workspace_flag() -> str:
+    root = (
+        os.environ.get("K4_WORKSPACE")
+        or os.environ.get("MODERNIZED_ROOT")
+        or DEFAULT_WORKSPACE_ROOT
+    ).rstrip("/")
+    return "dir:" + root
+
+
+def max_runtime_flag() -> str:
+    return (os.environ.get("K4_MAX_RUNTIME") or DEFAULT_MAX_RUNTIME).strip() or DEFAULT_MAX_RUNTIME
+
+
 def assert_native_create(argv: list[str]) -> None:
     if len(argv) < 4 or argv[1:3] != ["kanban", "create"]:
         _fail([_issue("K4_MINT_CREATE", "argv is not hermes kanban create")])
@@ -153,13 +168,17 @@ def argv_for_payload(
     for parent in parents:
         argv.extend(["--parent", parent])
     key = str(payload.get("idempotency_key") or "").strip()
-    if key:
-        argv.extend(["--idempotency-key", key])
+    if not key:
+        _fail([_issue("K4_SCHEMA", "%s missing idempotency_key" % lid)])
+    argv.extend(["--idempotency-key", key])
+    argv.extend(["--max-runtime", max_runtime_flag()])
     if lid not in FACTORY_TITLES:
         argv.extend(["--max-retries", "1"])
-    for skill in payload.get("skills") or []:
-        name = str(skill).strip()
-        if name:
+        argv.extend(["--workspace", workspace_flag()])
+        skills = [str(s).strip() for s in (payload.get("skills") or []) if str(s).strip()]
+        if not skills:
+            _fail([_issue("K4_MINT_SKILLS", "%s skills empty" % lid)])
+        for name in skills:
             argv.extend(["--skill", name])
     argv.append("--json")
     assert_native_create(argv)
@@ -198,9 +217,17 @@ def mint_payloads(
         lid = str(payload["logical_id"])
         mapping[lid] = tid
         created.append({"logical_id": lid, "task_id": tid, "argv": list(argv)})
+    native_ids = [row["task_id"] for row in created]
+    if not native_ids or any(not TASK_ID_RE.match(tid) for tid in native_ids):
+        _fail([_issue("K4_MINT_ID", "created_cards empty or not t_* after mint")])
     return {
         "created": created,
+        "created_cards": native_ids,
         "by_logical_id": mapping,
+        "attribution": (
+            "CLI k4_mint.py --exec; task ids are real "
+            "(Architect 144916ZA: empty created_cards after a mint is OBJECT)"
+        ),
         "claimed_control": False,
     }
 

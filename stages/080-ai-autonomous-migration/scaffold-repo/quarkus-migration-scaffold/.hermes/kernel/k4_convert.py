@@ -28,7 +28,20 @@ from k4_schema import (  # noqa: E402
 
 Issue = tuple[str, str, str]
 PATH_IN_PROSE = re.compile(r"(?:`)?((?:src|pom\.xml)[/.\w-]*)(?:`)?")
+NEGATED_PROSE = re.compile(
+    r"(?i)\b(?:do not|don't|dont|never|must not|not touch)\b"
+)
 SERVICE_JAVA = re.compile(r"(?i)(?:^|/)([^/]*Service\.java)$")
+SKILLS_BY_KIND = {
+    "setup": [
+        "author-destination-pom",
+        "reference-rh-quarkus-pom",
+        "manage-quarkus-extensions",
+        "configure-quarkus-profiles",
+    ],
+    "us": ["spring-to-quarkus-patterns"],
+    "polish": ["manage-quarkus-extensions"],
+}
 
 
 def _issue(code: str, detail: str) -> Issue:
@@ -66,14 +79,34 @@ def shared_service_java(stories: list[dict[str, Any]]) -> list[tuple[str, list[s
 
 
 def prose_paths(text: str) -> list[str]:
+    """Paths named as write claims. Negated prose is not a claim.
+
+    dest-5 / dest-4: ``Do not touch src/test/`` was parsed as a write and
+    the worker deleted the sentence to go green (Lead:k4-convert-path-in-prose-overmatches).
+    """
     found: list[str] = []
     seen: set[str] = set()
-    for m in PATH_IN_PROSE.finditer(text or ""):
+    blob = text or ""
+    for m in PATH_IN_PROSE.finditer(blob):
+        line_start = blob.rfind("\n", 0, m.start()) + 1
+        prefix = blob[line_start : m.start()]
+        if NEGATED_PROSE.search(prefix):
+            continue
         p = m.group(1).strip()
         if p and p not in seen:
             seen.add(p)
             found.append(p)
     return found
+
+
+def story_skills(story: dict[str, Any]) -> list[str]:
+    raw = story.get("skills")
+    if isinstance(raw, list):
+        named = [str(x).strip() for x in raw if str(x).strip()]
+        if named:
+            return named
+    kind = str(story.get("kind") or "").strip().lower()
+    return list(SKILLS_BY_KIND.get(kind) or [])
 
 
 def validate_inputs(
@@ -103,6 +136,10 @@ def validate_inputs(
         fw = story.get("files_writable")
         if not isinstance(fw, list) or not [str(p).strip() for p in fw if str(p).strip()]:
             out.append(_issue("K4_SCOPE", "%s files_writable empty" % sid))
+        if not story_skills(story):
+            out.append(
+                _issue("K4_SKILLS", "%s skills empty (set skills[] or kind setup/us/polish)" % sid)
+            )
         parents = story.get("parents") or []
         if not isinstance(parents, list):
             out.append(_issue("K4_PARENT", "%s parents must be a list" % sid))
@@ -174,6 +211,12 @@ def validate_result(result: Any) -> list[Issue]:
                 str(p) for p in parents
             ]:
                 out.append(_issue("K4_PARENT", "%s missing mint-verifier parent" % lid))
+        if lid not in {WRITER_ID, VERIFIER_ID}:
+            skills = payload.get("skills") or []
+            if not isinstance(skills, list) or not [
+                str(s).strip() for s in skills if str(s).strip()
+            ]:
+                out.append(_issue("K4_SKILLS", "%s skills empty" % lid))
     if created != ids:
         out.append(
             _issue(
@@ -212,7 +255,22 @@ def _m3_body(story: dict[str, Any], type_sha: str) -> dict[str, Any]:
         "files_in_scope": list(fw),
         "files_writable": list(fw),
         "exit_criteria": [
-            {"check": "skills", "assert": "consult typed skills; silence invalid AD-002E"},
+            {
+                "check": "skills",
+                "assert": (
+                    "consult each skill pinned on this card; unused pins are "
+                    "legal (skills_unused). AD-002E is a false consult — "
+                    "claiming a skill that was not loaded. Do not silence a "
+                    "missing pin."
+                ),
+            },
+            {
+                "check": "terminator",
+                "assert": (
+                    "kanban_block is a legal outcome when a bound gate exits "
+                    "non-zero; do not kanban_complete around a red gate"
+                ),
+            },
             {"check": "compile", "cmd": "mvn -q test-compile"},
         ],
     }
@@ -227,7 +285,9 @@ def _payload(
     body: dict[str, Any],
     skills: list[str] | None = None,
     max_retries: int | None = None,
+    type_sha: str = "",
 ) -> dict[str, Any]:
+    stem = (type_sha or "none")[:12]
     out = {
         "logical_id": logical_id,
         "title": title,
@@ -235,7 +295,7 @@ def _payload(
         "skills": list(skills or []),
         "parents": list(parents),
         "body": json.dumps(body, sort_keys=True, separators=(",", ":")),
-        "idempotency_key": "k4:%s" % logical_id,
+        "idempotency_key": "k4:%s:%s" % (logical_id, stem),
     }
     if max_retries is not None:
         # Operator 105355ZO: story cards inherit M2 `--max-retries 1`
@@ -268,6 +328,7 @@ def convert_partition(partition: dict[str, Any]) -> dict[str, Any]:
             assignee=ORCH,
             parents=[],
             body=writer_body,
+            type_sha=type_sha,
         ),
         _payload(
             VERIFIER_ID,
@@ -275,6 +336,7 @@ def convert_partition(partition: dict[str, Any]) -> dict[str, Any]:
             assignee=ORCH,
             parents=[WRITER_ID],
             body=verifier_body,
+            type_sha=type_sha,
         ),
     ]
     for story in stories:
@@ -287,7 +349,9 @@ def convert_partition(partition: dict[str, Any]) -> dict[str, Any]:
                 assignee=IMPL,
                 parents=[VERIFIER_ID] + part_parents,
                 body=_m3_body(story, type_sha),
+                skills=story_skills(story),
                 max_retries=1,
+                type_sha=type_sha,
             )
         )
     result = {

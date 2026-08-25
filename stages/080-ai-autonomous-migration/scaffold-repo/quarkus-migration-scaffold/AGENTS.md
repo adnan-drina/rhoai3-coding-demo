@@ -125,6 +125,10 @@ name `Token:` / `verdict:` `PROVISIONAL_ACCEPT`/`ACCEPT` or `ship:`.
 Story `kanban_create` passes `--max-retries 1` (null inherits `failure_limit` 2
 and masks a Gate K first failure). Mint those cards through
 `.hermes/kernel/k4_mint.py` from K4 payloads (CLI `hermes kanban create`).
+M3 argv also passes `--workspace dir:/projects/modernized`, `--skill` per
+story, `--max-runtime 2h`, and `--idempotency-key`. After `--exec`,
+`kanban_complete` `created_cards` is the native `t_*` list (empty after a
+mint is OBJECT). Scratch workspace on a story is REFUSE.
 M1 KEEP evidence also `python3 .hermes/kernel/kanban_attach.py --task "$HERMES_KANBAN_TASK"`
 (PVC paths stay; 25 MB/file). Do not `kanban decompose`. Do not `kanban swarm`
 for serial T0. Do not run `hermes kanban daemon --force`.
