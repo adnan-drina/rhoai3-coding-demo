@@ -1496,6 +1496,57 @@ data:
       # so pod restarts do not wipe the binary; /tmp remains a fallback.
       # Pinned; bump deliberately.
       mkdir -p "${HOME}/.local/bin"
+      # An executable `kantra` is not a usable kantra: analysis shells out to
+      # sibling binaries (java-external-provider, the jdtls launchers), and
+      # `python3 -m zipfile` extraction discards Unix modes so those land 644.
+      # Check the property, not a list of names — no ELF binary in the tree may
+      # be non-executable — so a renamed or added provider needs no edit here.
+      # The PVC tree is writable, so repair first and fail closed only if the
+      # repair does not take (which is what /opt/kantra does: chown'd to a
+      # different uid, so it can only be fixed in the image).
+      cat > "${HOME}/.local/bin/kantra-assert-exec" <<'KANTRAEXECEOF'
+    #!/usr/bin/env python3
+    """Every ELF binary under the kantra tree must be executable."""
+    import os
+    import sys
+
+    root = sys.argv[1] if len(sys.argv) > 1 else "/projects/.tools/kantra"
+    seen, repaired, unfixable = 0, [], []
+    for dirpath, _, filenames in os.walk(root):
+        for name in filenames:
+            path = os.path.join(dirpath, name)
+            if os.path.islink(path):
+                continue
+            try:
+                with open(path, "rb") as fh:
+                    if fh.read(4) != b"\x7fELF":
+                        continue
+                seen += 1
+                if os.access(path, os.X_OK):
+                    continue
+                os.chmod(path, os.stat(path).st_mode | 0o111)
+            except OSError:
+                unfixable.append(path)
+                continue
+            (repaired if os.access(path, os.X_OK) else unfixable).append(path)
+
+    if not seen:
+        sys.stderr.write(
+            "kantra-assert-exec: no ELF binaries found under %s; this is not a "
+            "usable kantra tree, so the exec-bit check would pass vacuously\n" % root)
+        sys.exit(1)
+    if unfixable:
+        sys.stderr.write(
+            "kantra-assert-exec: %d ELF binaries under %s are not executable and "
+            "could not be chmod'd (%s); kantra analysis fails when it shells out "
+            "to them\n" % (len(unfixable), root, ", ".join(sorted(unfixable)[:5])))
+        sys.exit(1)
+    if repaired:
+        sys.stderr.write(
+            "kantra-assert-exec: restored the exec bit on %d ELF binaries under "
+            "%s (the extractor discarded Unix modes)\n" % (len(repaired), root))
+    KANTRAEXECEOF
+      chmod 755 "${HOME}/.local/bin/kantra-assert-exec"
       cat > "${HOME}/.local/bin/kantra-ensure" <<'KANTRAEOF'
     #!/usr/bin/env bash
     set -euo pipefail
@@ -1504,17 +1555,28 @@ data:
     # becomes the executed command (v30 t_573591fd: "Downloading kantra…").
     KANTRA_VERSION="v0.10.0-beta.1"
     KANTRA_HOME="${KANTRA_HOME:-/projects/.tools/kantra}"
-    if [ -x "${KANTRA_HOME}/kantra" ]; then
-      echo "kantra ready: ${KANTRA_HOME}/kantra" >&2
+    # An executable `kantra` does not mean a usable kantra: analysis shells out
+    # to sibling binaries (java-external-provider, the jdtls launchers), and
+    # `python3 -m zipfile` extraction discards Unix modes, so those land 644.
+    # Check the property, not a list of names - no ELF binary in the tree may
+    # be non-executable - so a renamed or added provider is covered without
+    # editing this helper. The tree is on the workspace PVC and writable, so
+    # repair first and only fail closed if repair does not take.
+    ready() {
+      chmod +x "${KANTRA_HOME}/kantra" 2>/dev/null || true
+      "${HOME}/.local/bin/kantra-assert-exec" "${KANTRA_HOME}" || exit 1
+      echo "kantra ready: ${KANTRA_HOME}/kantra${1:-}" >&2
       exit 0
+    }
+    if [ -x "${KANTRA_HOME}/kantra" ]; then
+      ready
     fi
     # Migrate a prior /tmp install into the durable home when present.
     if [ -x /tmp/kantra/kantra ] && [ "${KANTRA_HOME}" != "/tmp/kantra" ]; then
       mkdir -p "${KANTRA_HOME}"
       cp -a /tmp/kantra/. "${KANTRA_HOME}/" 2>/dev/null || true
       if [ -x "${KANTRA_HOME}/kantra" ]; then
-        echo "kantra ready: ${KANTRA_HOME}/kantra (migrated from /tmp)" >&2
-        exit 0
+        ready " (migrated from /tmp)"
       fi
     fi
     echo "Downloading kantra ${KANTRA_VERSION} (~690MB, once per workspace)..." >&2
@@ -1527,8 +1589,7 @@ data:
       python3 -m zipfile -e /tmp/kantra.zip "${KANTRA_HOME}"
     fi
     rm -f /tmp/kantra.zip
-    chmod +x "${KANTRA_HOME}/kantra"
-    echo "kantra ready: ${KANTRA_HOME}/kantra" >&2
+    ready
     KANTRAEOF
       chmod 755 "${HOME}/.local/bin/kantra-ensure"
       echo "Installed kantra-ensure helper (lazy harness sensor install)."

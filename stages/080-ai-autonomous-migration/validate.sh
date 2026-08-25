@@ -149,6 +149,23 @@ check "init script ships the kantra-ensure lazy sensor helper (pinned)" \
 check "kantra-ensure download message is on stderr (ensure_cli captures stdout as the CLI path)" \
   "grep -c 'Downloading kantra.*>&2' \"$REPO_ROOT/gitops/stages/050-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml\" || echo 0" \
   "1"
+# `python3 -m zipfile` discards Unix modes, so a kantra tree extracted with it
+# lands 644 and analysis dies when kantra shells out to java-external-provider
+# (dest-3 t_5981bf7a). /opt/kantra is chown'd away from the workspace uid, so
+# the image is the only place it can be fixed. These gate the mechanism, not
+# the filename: the extractor must preserve modes and the invariant must be
+# asserted, so a future KANTRA_VERSION layout stays covered. Comments are
+# stripped before the absence count — the Dockerfile comment names the bad
+# extractor to explain why it is gone.
+check "overlay Dockerfile does not extract kantra with the mode-losing extractor" \
+  "grep -v '^[[:space:]]*#' \"$REPO_ROOT/workspace-images/Dockerfile\" | grep -qF 'python3 -m zipfile' && echo LOSSY_EXTRACTOR || echo MODE_PRESERVING" \
+  "MODE_PRESERVING"
+check "overlay Dockerfile asserts the kantra zip exec bits survived extraction" \
+  "grep -qF '/opt/rhoai3/assert-zip-exec-bits.py' \"$REPO_ROOT/workspace-images/Dockerfile\" && echo ASSERT_WIRED || echo ASSERT_MISSING" \
+  "ASSERT_WIRED"
+check "live kantra-ensure verifies every ELF in the kantra tree is executable" \
+  "test \"\$(oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -cF 'kantra-assert-exec')\" -ge 2 && echo CHECKER_WIRED || echo CHECKER_MISSING" \
+  "CHECKER_WIRED"
 check "init ConfigMap is DWO-mounted (volume, not kube-API curl as the primary path)" \
   "awk '/^kind: ConfigMap\$/{c=1} c && /^  name: devspace-ai-tools-init\$/{n=1} n && /controller.devfile.io\\/mount-to-devworkspace: \"true\"/ {print 1; exit} n && /^data:/{exit} /^---\$/{c=0; n=0}' \"$REPO_ROOT/gitops/stages/050-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml\" || echo 0" \
   "1"

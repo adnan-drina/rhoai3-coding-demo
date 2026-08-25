@@ -107,6 +107,7 @@ ARG MTA_VSIX_VERSION=8.2.0
 ARG REDHAT_JAVA_VERSION=1.47.0
 ARG KANTRA_VERSION=v0.10.0-beta.1
 COPY scripts/assert-hermes-source-pin.py /opt/rhoai3/assert-hermes-source-pin.py
+COPY scripts/assert-zip-exec-bits.py /opt/rhoai3/assert-zip-exec-bits.py
 USER 0
 # /usr/bin/python3 is 3.9 on UDI 3.29.1; Hermes v2026.8.19 isolate-build
 # wants setuptools==83 (Requires-Python >=3.10). Use UDI-shipped
@@ -136,6 +137,13 @@ RUN mkdir -p /opt/rhoai3/extensions /opt/hermes-agent /usr/local/share/hermes/we
 # Host-baked web_dist (see bake-web-dist-host.sh). Fail closed if empty.
 COPY out/web_dist/ /usr/local/share/hermes/web_dist/
 RUN test -s /usr/local/share/hermes/web_dist/index.html
+# kantra is extracted with unzip, not `python3 -m zipfile -e`: the latter
+# discards Unix modes, so the whole tree lands 644 and analysis dies at
+# java-external-provider. /opt/kantra is chown 10001 below and the workspace
+# runs as a different uid, so a lost exec bit cannot be repaired at workspace
+# start - it has to be right in the image. assert-zip-exec-bits.py checks the
+# invariant (every entry the archive marks executable is executable on disk)
+# rather than a list of names, so a future KANTRA_VERSION layout is covered.
 RUN curl -fsSL --retry 3 --retry-delay 5 --retry-all-errors --max-time 300 \
          -o /opt/rhoai3/extensions/mta.vsix \
          "https://open-vsx.org/api/redhat/mta-vscode-extension/${MTA_VSIX_VERSION}/file/redhat.mta-vscode-extension-${MTA_VSIX_VERSION}.vsix" \
@@ -155,7 +163,9 @@ RUN curl -fsSL --retry 3 --retry-delay 5 --retry-all-errors --max-time 300 \
     && curl -fsSL --retry 3 --max-time 1200 \
          -o /tmp/kantra.zip \
          "https://github.com/konveyor/kantra/releases/download/${KANTRA_VERSION}/kantra.linux.amd64.zip" \
-    && python3 -m zipfile -e /tmp/kantra.zip /opt/kantra \
+    && unzip -q /tmp/kantra.zip -d /opt/kantra \
+    && python3 /opt/rhoai3/assert-zip-exec-bits.py \
+         --zip /tmp/kantra.zip --dest /opt/kantra \
     && rm -f /tmp/kantra.zip \
     && chmod +x /opt/kantra/kantra \
     && ln -sf /opt/kantra/kantra /usr/local/bin/kantra \
