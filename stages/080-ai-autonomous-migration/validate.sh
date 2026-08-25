@@ -179,6 +179,15 @@ check "v2 scaffold has no .hermes/home/scripts" \
 check "v2 scaffold has no handover-mint.py" \
   "test -d \"$SCAFFOLD_080\" && test -z \"$(find \"$SCAFFOLD_080\" -name handover-mint.py -print -quit 2>/dev/null)\" && echo 1 || echo 0" \
   "1"
+check "ensure_cli invokes kantra-assert-exec (capability, not presence)" \
+  "grep -c 'kantra-assert-exec' \"$SCAFFOLD_080/.hermes/skills/analysis/scan-with-mta/scripts/mta-analyze-legacy.sh\" || echo 0" \
+  "3"
+check "ensure_cli does not add a kantra version handshake" \
+  "grep -E 'kantra[[:space:]]+version|--list-providers' \"$SCAFFOLD_080/.hermes/skills/analysis/scan-with-mta/scripts/mta-analyze-legacy.sh\" && echo HANDSHAKE || echo NONE" \
+  "NONE"
+check "assert-ensure-cli-path rejects a present-but-unusable sibling" \
+  "bash \"$SCAFFOLD_080/.hermes/skills/analysis/scan-with-mta/scripts/assert-ensure-cli-path.sh\" >/dev/null && echo PASS || echo FAIL" \
+  "PASS"
 check "v2 Hermes config template is present" \
   "test -f \"$SCAFFOLD_080/.hermes/config/config.yaml.template\" && echo 1 || echo 0" \
   "1"

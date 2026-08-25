@@ -5,7 +5,7 @@ license: Apache-2.0
 compatibility: Linux seat; kantra CLI and Java 21; network for rule bundles
 metadata:
   author: rhoai3-harness-team
-  version: "1.4.1"
+  version: "1.4.2"
   hermes:
     tags:
     - analysis
@@ -69,9 +69,14 @@ bash "${HERMES_SKILL_DIR}/scripts/mta-analyze-legacy.sh"
 
 What it does, in order (each step dies non-zero on failure):
 
-1. Resolve the CLI: `/projects/.tools/kantra/kantra`, else `kantra`/`mta-cli`
-   on `PATH`, else run `~/.local/bin/kantra-ensure` (lazy ~690MB PVC install)
-   and re-resolve. Keeps `mta-cli` as a symlink alias to `kantra`.
+1. Resolve the CLI as a **capability** probe, not presence. After each
+   candidate (`/projects/.tools/kantra/kantra`, then `kantra`/`mta-cli` on
+   `PATH`) run `~/.local/bin/kantra-assert-exec` on the **realpath install
+   prefix** (a `/usr/local/bin/kantra` symlink into `/opt/kantra` asserts
+   `/opt/kantra`). Present-but-unusable falls through; last resort is
+   `kantra-ensure` (lazy ~690MB PVC install) then re-resolve. Do not treat
+   `[ -x kantra ]` as success. Do not run `kantra version` or provider RPC
+   probes. Keeps `mta-cli` as a symlink alias to `kantra`.
 2. Assert `evidence/derived/legacy-at-3.json` + `migration.yaml`, export
    `JAVA_HOME_21`, assert `JVM_MAX_MEM`.
 3. Read `harvest_referent` from the manifest; write-probe it and, if frozen,

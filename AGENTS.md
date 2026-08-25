@@ -84,6 +84,8 @@ For live demo environment deployment, secrets, certs, and cluster safety, read `
 
 For dest Hermes Kanban observation, read `.agents/rules/kanban-log-watch.md`. After every dest card spawn, read `hermes kanban log <id>` (or `$HERMES_HOME/kanban/logs/<id>.log`) in the same turn.
 
+For Stage 080 golden `ensure_cli` / kantra resolution, read `.agents/rules/ensure-cli-capability.md`. Presence (`[ -x ]`) is not usability.
+
 For GitOps authoring, manifests, labels, and schema validation, read `.agents/rules/gitops.md`.
 
 For documentation standards, README structure, and operations docs, read `.agents/rules/docs.md`.

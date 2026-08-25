@@ -22,7 +22,110 @@ human_home() {
   printf '%s\n' "/home/user"
 }
 
-HUMAN_HOME="$(human_home)"
+HUMAN_HOME="${HUMAN_HOME:-$(human_home)}"
+
+# Capability probe (Architect E-20260825T072032ZA / rule ensure-cli-capability.md):
+# `[ -x kantra ]` is not usability. After each resolved path, dest-init
+# `kantra-assert-exec` runs on the realpath install prefix. Failure falls
+# through (overlay `/opt/kantra` is not chmod-able by the dest uid). Do not
+# add a version or provider-RPC handshake (Research E-20260825T073015ZS).
+_kantra_install_prefix() {
+  local bin="$1"
+  python3 -c 'import os, sys
+p = sys.argv[1]
+if not os.path.exists(p):
+    raise SystemExit(1)
+print(os.path.dirname(os.path.realpath(p)))' "${bin}"
+}
+
+_kantra_assert_prefix() {
+  local bin="$1"
+  local prefix checker
+  checker="${HUMAN_HOME}/.local/bin/kantra-assert-exec"
+  if [ ! -x "${checker}" ]; then
+    echo "mta-analyze-legacy: missing ${checker}; cannot prove kantra usability" >&2
+    return 1
+  fi
+  prefix="$(_kantra_install_prefix "${bin}")" || return 1
+  echo "mta-analyze-legacy: kantra-assert-exec ${prefix}" >&2
+  "${checker}" "${prefix}"
+}
+
+_accept_cli() {
+  local bin="$1"
+  [ -n "${bin}" ] || return 1
+  [ -x "${bin}" ] || return 1
+  _kantra_assert_prefix "${bin}" || return 1
+  printf '%s\n' "${bin}"
+  return 0
+}
+
+_probe_kantra_bin() {
+  local bin="$1"
+  if [ -x "${bin}" ]; then
+    if _accept_cli "${bin}"; then
+      return 0
+    fi
+    echo "mta-analyze-legacy: ${bin} present but unusable; falling through" >&2
+  fi
+  return 1
+}
+
+_probe_path_cmd() {
+  local name="$1"
+  local candidate
+  candidate="$(command -v "${name}" 2>/dev/null || true)"
+  if [ -n "${candidate}" ] && [ -x "${candidate}" ]; then
+    if _accept_cli "${candidate}"; then
+      return 0
+    fi
+    echo "mta-analyze-legacy: ${name} at ${candidate} present but unusable; falling through" >&2
+  fi
+  return 1
+}
+
+ensure_cli() {
+  # Prefer absolute kantra path; keep mta-cli as atomic symlink alias (F-M1.3).
+  local home_kantra="${KANTRA_HOME:-/projects/.tools/kantra}"
+  local kantra_bin="${home_kantra}/kantra"
+  local mta_alias="${home_kantra}/mta-cli"
+  export PATH="${HUMAN_HOME}/.local/bin:${home_kantra}:${PATH}"
+
+  _link_mta_alias() {
+    if [ -x "${kantra_bin}" ]; then
+      ln -sfn kantra "${mta_alias}"
+      [ -x "${mta_alias}" ] || [ -x "${kantra_bin}" ] || return 1
+    fi
+    return 0
+  }
+
+  _try_resolved_clis() {
+    _link_mta_alias || true
+    _probe_kantra_bin "${kantra_bin}" && return 0
+    _probe_path_cmd kantra && return 0
+    _probe_path_cmd mta-cli && return 0
+    return 1
+  }
+
+  if _try_resolved_clis; then
+    return 0
+  fi
+  if [ -x "${HUMAN_HOME}/.local/bin/kantra-ensure" ]; then
+    echo "mta-analyze-legacy: running kantra-ensure (lazy ~690MB install)…" >&2
+    # Helper status must not join CLI="$(ensure_cli)" (v30: stdout "Downloading
+    # kantra…" became the analyze argv0). Discard helper stdout; path comes
+    # from the probes below.
+    "${HUMAN_HOME}/.local/bin/kantra-ensure" >/dev/null
+    export PATH="${home_kantra}:${HUMAN_HOME}/.local/bin:${PATH}"
+    _link_mta_alias || true
+  fi
+  _try_resolved_clis
+}
+
+# assert-ensure-cli-path.sh sources this file as a library (no analyze).
+if [ "${ENSURE_CLI_LIB:-0}" = 1 ]; then
+  return 0 2>/dev/null || exit 0
+fi
 
 # Resolve project root by walking up to migration.yaml (depth-safe after
 # categorized skill tree: .hermes/skills/<cat>/<skill>/scripts/).
@@ -86,58 +189,7 @@ emit_ok() {
   printf '%s\n' "${human}" >&2
 }
 
-ensure_cli() {
-  # Prefer absolute kantra path; keep mta-cli as atomic symlink alias (F-M1.3).
-  local kantra_bin="/projects/.tools/kantra/kantra"
-  local mta_alias="/projects/.tools/kantra/mta-cli"
-  export PATH="${HUMAN_HOME}/.local/bin:/projects/.tools/kantra:${PATH}"
-
-  _link_mta_alias() {
-    if [ -x "${kantra_bin}" ]; then
-      ln -sfn kantra "${mta_alias}"
-      [ -x "${mta_alias}" ] || [ -x "${kantra_bin}" ] || return 1
-    fi
-    return 0
-  }
-
-  if [ -x "${kantra_bin}" ]; then
-    _link_mta_alias || true
-    printf '%s\n' "${kantra_bin}"
-    return 0
-  fi
-  if command -v kantra >/dev/null 2>&1; then
-    command -v kantra
-    return 0
-  fi
-  if command -v mta-cli >/dev/null 2>&1 && [ -x "$(command -v mta-cli)" ]; then
-    command -v mta-cli
-    return 0
-  fi
-  if [ -x "${HUMAN_HOME}/.local/bin/kantra-ensure" ]; then
-    echo "mta-analyze-legacy: running kantra-ensure (lazy ~690MB install)…" >&2
-    # Helper status must not join CLI="$(ensure_cli)" (v30: stdout "Downloading
-    # kantra…" became the analyze argv0). Discard helper stdout; path comes
-    # from the probes below.
-    "${HUMAN_HOME}/.local/bin/kantra-ensure" >/dev/null
-    export PATH="/projects/.tools/kantra:${HUMAN_HOME}/.local/bin:${PATH}"
-    _link_mta_alias || true
-  fi
-  if [ -x "${kantra_bin}" ]; then
-    printf '%s\n' "${kantra_bin}"
-    return 0
-  fi
-  if command -v kantra >/dev/null 2>&1; then
-    command -v kantra
-    return 0
-  fi
-  if command -v mta-cli >/dev/null 2>&1 && [ -x "$(command -v mta-cli)" ]; then
-    command -v mta-cli
-    return 0
-  fi
-  return 1
-}
-
-CLI="$(ensure_cli)" || die "mta-cli/kantra missing after kantra-ensure — re-run once; prefer /projects/.tools/kantra/kantra"
+CLI="$(ensure_cli)" || die "mta-cli/kantra missing or unusable after kantra-ensure — re-run once; prefer /projects/.tools/kantra/kantra"
 case "${CLI}" in
   *$'\n'*)
     die "ensure_cli captured a newline (kantra-ensure status leaked onto stdout): $(printf %q "${CLI}")"
