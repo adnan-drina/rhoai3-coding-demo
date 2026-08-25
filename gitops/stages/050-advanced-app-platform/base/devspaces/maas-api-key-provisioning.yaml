@@ -1511,8 +1511,12 @@ data:
     import sys
 
     root = sys.argv[1] if len(sys.argv) > 1 else "/projects/.tools/kantra"
-    seen, repaired, unfixable = 0, [], []
-    for dirpath, _, filenames in os.walk(root):
+    seen, repaired, unfixable, unwalkable = 0, [], [], []
+    # os.walk swallows listdir failures by default, so an unreadable directory
+    # would be skipped in silence and the check would pass without having seen
+    # what is inside it. Collect those and refuse.
+    for dirpath, _, filenames in os.walk(root, onerror=lambda e: unwalkable.append(
+            getattr(e, "filename", None) or str(e))):
         for name in filenames:
             path = os.path.join(dirpath, name)
             if os.path.islink(path):
@@ -1530,6 +1534,12 @@ data:
                 continue
             (repaired if os.access(path, os.X_OK) else unfixable).append(path)
 
+    if unwalkable:
+        sys.stderr.write(
+            "kantra-assert-exec: %d directories under %s could not be listed (%s); "
+            "the tree was not fully inspected, so a passing result would be "
+            "meaningless\n" % (len(unwalkable), root, ", ".join(sorted(unwalkable)[:5])))
+        sys.exit(1)
     if not seen:
         sys.stderr.write(
             "kantra-assert-exec: no ELF binaries found under %s; this is not a "
