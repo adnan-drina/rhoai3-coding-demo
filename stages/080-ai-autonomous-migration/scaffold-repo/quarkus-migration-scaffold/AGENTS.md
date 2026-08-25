@@ -143,8 +143,10 @@ contain workers from outside the worker.
 
 After `/speckit-tasks` (optional `/speckit-analyze`) → `.hermes/kernel/k4_convert.py`
 then `.hermes/kernel/k4_mint.py`, not by grepping `tasks.md` paths. **Never**
-`/speckit-implement`. Run `specify workflow run speckit` so the project overlay
-removes `implement` and inserts `clarify`.
+`/speckit-implement`. Run `HOME=/projects/modernized specify workflow run speckit`
+so the project overlay removes `implement` and inserts `clarify` (spec-kit
+0.16.1 resolves `speckit-specify` from `$HOME/.hermes/skills`; point HOME at
+the project, or use `specify-from-project.sh`).
 
 ### Task-id correlation
 

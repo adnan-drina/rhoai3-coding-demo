@@ -361,7 +361,11 @@ def _m3_body(story: dict[str, Any], type_sha: str) -> dict[str, Any]:
                 "kanban_block is a legal outcome when a bound gate exits "
                 "non-zero or when acceptance cannot be satisfied inside "
                 "files_writable; do not kanban_complete around a red gate "
-                "or an unsatisfiable acceptance"
+                "or an unsatisfiable acceptance. If the named owner of a "
+                "missing file is already done, kanban_block (terminal). "
+                "Native kanban edit cannot re-open for work. Do not "
+                "dependency_wait (kind=dependency) on a done parent — that "
+                "routes to todo and the dispatcher promotes a wasted retry"
             ),
         },
     ]

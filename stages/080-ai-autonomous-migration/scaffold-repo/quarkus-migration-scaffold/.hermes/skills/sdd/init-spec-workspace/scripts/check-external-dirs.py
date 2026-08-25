@@ -166,6 +166,24 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
+    dest_user = Path(dest_user_skills)
+    for raw, path in zip(dirs, expanded):
+        raw_s = os.path.expandvars(os.path.expanduser(raw)).rstrip("/")
+        posix = path.as_posix().rstrip("/")
+        if raw_s == dest_user_skills or posix == dest_user_skills:
+            continue
+        if posix.endswith(dest_user_skills):
+            continue
+        if not path.is_dir() or not os.access(path, os.R_OK):
+            print(
+                f"FAIL: {cfg}: skills.external_dirs path missing or unreadable: "
+                f"{raw} (resolved {path}). Hermes silently skips nonexistent "
+                "external_dirs; dest-init and this KEEP gate fail closed naming "
+                "the path. Do not kanban_complete around this FAIL — typed "
+                "kanban_block.",
+                file=sys.stderr,
+            )
+            return 1
     print(f"OK: external_dirs lists project + home skills ({cfg})")
     return 0
 

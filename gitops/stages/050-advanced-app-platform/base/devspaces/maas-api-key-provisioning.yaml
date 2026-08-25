@@ -718,6 +718,14 @@ data:
         skills_cfg = {}
         doc["skills"] = skills_cfg
     skills_cfg["external_dirs"] = [project_skills, human_skills]
+    os.makedirs(project_skills, exist_ok=True)
+    os.makedirs(human_skills, exist_ok=True)
+    for _edir in skills_cfg["external_dirs"]:
+        if not os.path.isdir(_edir) or not os.access(_edir, os.R_OK):
+            raise SystemExit(
+                f"ERROR: dest profile {name} skills.external_dirs "
+                f"missing or unreadable: {_edir}"
+            )
     os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
     with open(cfg_path, "w", encoding="utf-8") as fh:
         yaml.safe_dump(doc, fh, sort_keys=False)
@@ -1134,11 +1142,14 @@ data:
             "model": "minimax-m2",
             "provider": "minimax",
         }
-    # A1 exists-assert — every skills.external_dirs path must resolve to a dir
-    # (mkdir scaffold + global above; refuse silent missing roots).
+    # A1 exists-assert — every skills.external_dirs path must resolve to a
+    # readable dir (mkdir scaffold + global above; refuse silent missing
+    # roots — Hermes skips nonexistent external_dirs with no error).
     for _edir in (cfg.get("skills") or {}).get("external_dirs") or []:
-        if not os.path.isdir(_edir):
-            raise SystemExit(f"ERROR: A1 skills.external_dirs missing: {_edir}")
+        if not os.path.isdir(_edir) or not os.access(_edir, os.R_OK):
+            raise SystemExit(
+                f"ERROR: A1 skills.external_dirs missing or unreadable: {_edir}"
+            )
     deny = (cfg.get("approvals") or {}).get("deny") or []
     if len(deny) < 3:
         raise SystemExit("ERROR: EX-5 approvals.deny too short (need >=3 globs)")

@@ -503,9 +503,21 @@ check "080 GitOps hooks_auto_accept is top-level official key" \
 check "080 AGENTS.md assigns orchestrator/implementer not default" \
   "grep -c 'mint-verifier → \`orchestrator\`' '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/AGENTS.md' || echo 0" \
   "1"
+check "080 dest-init external_dirs fail-closed names unreadable path" \
+  "grep -c 'missing or unreadable' '${GITOPS_INIT}' || echo 0" \
+  "2"
 check "080 check-external-dirs requires dest-user home literal" \
   "grep -c '/home/user/.hermes/skills' '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/skills/sdd/init-spec-workspace/scripts/check-external-dirs.py' || echo 0" \
   "3"
+check "080 check-spec-readiness selftest passes" \
+  "python3 '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/skills/sdd/check-spec-readiness/scripts/check-spec-readiness-selftest.py' >/dev/null && echo 1 || echo 0" \
+  "1"
+check "080 check-external-dirs selftest passes" \
+  "python3 '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/skills/sdd/init-spec-workspace/scripts/check-external-dirs-selftest.py' >/dev/null && echo 1 || echo 0" \
+  "1"
+check "080 specify-skills-root selftest passes" \
+  "python3 '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/skills/sdd/init-spec-workspace/scripts/assert-specify-skills-root-selftest.py' >/dev/null && echo 1 || echo 0" \
+  "1"
 
 echo ""
 validation_summary

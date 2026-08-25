@@ -83,6 +83,7 @@ def _ensure_hermes_lib() -> None:
 _ensure_hermes_lib()
 
 from http_join import invented_route_gaps  # noqa: E402
+from partition_story_consistency import extra_story_gaps  # noqa: E402
 from specimen_agnostic import (  # noqa: E402
     acceptance_unsatisfiable_files,
     collect_supersedes,
@@ -423,6 +424,7 @@ def main() -> int:
             gaps.append(f"multi:{m}")
 
     gaps.extend(invented_route_gaps(root, stories, inventory))
+    gaps.extend(extra_story_gaps(stories))
 
     owned_dest: set[str] = set()
     for story in stories:
@@ -459,7 +461,12 @@ def main() -> int:
         else:
             mta_status = "empty_findings"
 
-    if any(g.startswith("acceptance_unsatisfiable:") for g in gaps):
+    if any(
+        g.startswith(
+            ("acceptance_unsatisfiable:", "stale_ac:", "implicit_pom")
+        )
+        for g in gaps
+    ):
         gaps.append(
             "unsatisfiable_acceptance_is_block_not_complete "
             "(kanban_block; do not kanban_complete)"

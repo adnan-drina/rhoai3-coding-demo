@@ -114,8 +114,9 @@ Project overlay (stock `speckit` minus `implement` and the `type: gate`
 steps `review-spec` / `review-plan`, plus `clarify`, M1 paths in specify
 args):
 
-  specify workflow run speckit
-  specify workflow resolve speckit   # no implement; no review-spec/review-plan
+  HOME=/projects/modernized specify workflow run speckit
+  HOME=/projects/modernized specify workflow resolve speckit
+  # or: bash .hermes/skills/sdd/init-spec-workspace/scripts/specify-from-project.sh --root /projects/modernized workflow run speckit
 
 Gates are removed from the graph (163200Z unattended). Do not wait on a
 human gate click. Do not restore those steps on a live dest — stop, fix
@@ -136,12 +137,12 @@ if [[ "${DRY_RUN}" == "1" ]]; then
   log "DRY-RUN: ASSET_TASKS=${ASSET_TASKS}"
   log "DRY-RUN: ASSET_CONSTITUTION=${ASSET_CONSTITUTION}"
   log "DRY-RUN: ASSET_OVERLAY=${ASSET_OVERLAY}"
-  log "DRY-RUN: would run: specify init --here --integration hermes --force --ignore-agent-tools"
+  log "DRY-RUN: would run: HOME=${ROOT} specify init --here --integration hermes --force --ignore-agent-tools"
   log "DRY-RUN: would copy override → .specify/templates/overrides/spec-template.md"
   log "DRY-RUN: would copy unique-owner tasks override → .specify/templates/overrides/tasks-template.md"
   log "DRY-RUN: would copy constitution → .specify/memory/constitution.md"
   log "DRY-RUN: would copy overlay → .specify/workflows/overlays/speckit/stop-before-implement.yml"
-    log "DRY-RUN: would seed speckit-specify into ${ROOT}/.hermes/skills/sdd (not user-root external_dirs)"
+    log "DRY-RUN: would seed speckit-specify into ${ROOT}/.hermes/skills and ${ROOT}/.hermes/skills/sdd (not user-root external_dirs)"
   emit_ok "[${LOG_PREFIX}] DRY-RUN complete" "$(python3 -c 'import json,sys; print(json.dumps({"script":"init-workspace","ok":True,"dry_run":True,"root":sys.argv[1]}))' "${ROOT}")"
   exit 0
 fi
@@ -165,6 +166,8 @@ if [ -f "${MARKER}" ]; then
   install_ads_overlays
   python3 "${SCRIPT_DIR}/seed-speckit-skills.py" "${ROOT}" "${HUMAN_HOME}" \
     || die "seed-speckit-skills failed (implementer must see speckit-specify)"
+  python3 "${SCRIPT_DIR}/assert-specify-skills-root.py" "${ROOT}" \
+    || die "specify CLI skills-root missing speckit-specify"
   HUMAN="[${LOG_PREFIX}] already provisioned (${TS}) — skip specify init; overlays refreshed"
   emit_ok "${HUMAN}" "$(python3 -c 'import json,sys; print(json.dumps({"script":"init-workspace","ok":True,"skipped":True,"overlays_refreshed":True,"root":sys.argv[1],"marker":sys.argv[2],"provisioned_at":sys.argv[3]}))' "${ROOT}" "${MARKER}" "${TS}")"
   exit 0
@@ -209,16 +212,20 @@ ensure_specify() {
 ensure_specify
 
 cd "${ROOT}"
-log "running: specify init --here --integration hermes --force --ignore-agent-tools"
-# --ignore-agent-tools: workspace may not expose a hermes binary on PATH at
-# postStart; Hermes skills still install under ~/.hermes/skills (AD-S / §9).
-specify init --here --integration hermes --force --ignore-agent-tools
+# spec-kit 0.16.1 Hermes integration writes to Path.home()/.hermes/skills
+# (spec-kit#3334 unmerged). Point that at the project skills root so M2
+# `specify workflow run speckit` resolves speckit-specify without a
+# user-root external_dirs grant.
+log "running: HOME=${ROOT} specify init --here --integration hermes --force --ignore-agent-tools"
+HOME="${ROOT}" specify init --here --integration hermes --force --ignore-agent-tools
 
 [ -d "${ROOT}/.specify" ] || die "specify init did not create .specify/"
 
 install_ads_overlays
 python3 "${SCRIPT_DIR}/seed-speckit-skills.py" "${ROOT}" "${HUMAN_HOME}" \
   || die "seed-speckit-skills failed (implementer must see speckit-specify)"
+python3 "${SCRIPT_DIR}/assert-specify-skills-root.py" "${ROOT}" \
+  || die "specify CLI skills-root missing speckit-specify"
 
 # external_dirs: when HERMES_HOME is relocated away from ~/.hermes, spec-kit
 # still writes skills to Path.home()/.hermes/skills — keep both on the list.
@@ -377,4 +384,4 @@ date -u +%Y-%m-%dT%H:%M:%SZ > "${MARKER}"
 TS="$(cat "${MARKER}")"
 HUMAN="[${LOG_PREFIX}] OK — AD-S provision complete (marker ${MARKER})"
 emit_ok "${HUMAN}" "$(python3 -c 'import json,sys; print(json.dumps({"script":"init-workspace","ok":True,"skipped":False,"root":sys.argv[1],"marker":sys.argv[2],"provisioned_at":sys.argv[3]}))' "${ROOT}" "${MARKER}" "${TS}")"
-log "Stop rule: /speckit-tasks → k4_mint.py hermes kanban create; NEVER /speckit-implement; specify workflow run speckit"
+log "Stop rule: /speckit-tasks → k4_mint.py hermes kanban create; NEVER /speckit-implement; HOME=${ROOT} specify workflow run speckit"

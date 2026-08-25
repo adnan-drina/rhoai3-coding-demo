@@ -57,20 +57,42 @@ def main() -> int:
     blob = proc.stdout + proc.stderr
     if proc.returncode == 0:
         return _fail("dest-5 T020 invented /q/health should REFUSE: %s" % blob)
-    if "invented_route:T020_POLISH:/q/health" not in blob:
-        return _fail("dest-5 invented-route gap missing: %s" % blob)
+    if "T020_POLISH" not in blob or "/q/health" not in blob:
+        return _fail("dest-5 invented-route /q/health missing: %s" % blob)
     proc = _run([sys.executable, str(COVERAGE), str(dest5)])
     blob = proc.stdout + proc.stderr
     if proc.returncode == 0:
         return _fail("dest-5 coverage should REFUSE invented routes: %s" % blob)
     if "invented_route:T020_POLISH:/q/health" not in blob:
         return _fail("dest-5 coverage missed invented_route: %s" % blob)
+    if "stale_ac:T010_US1:/api/greeting" not in blob:
+        return _fail("dest-5 T010 stale AC /api/greeting missed: %s" % blob)
 
     dest6 = FIXTURES / "partition-dest6-grounded"
     proc = _run([sys.executable, str(invented_bin), str(dest6)])
     blob = proc.stdout + proc.stderr
+    if proc.returncode == 0:
+        return _fail("dest-6 stale AC /api/greeting should REFUSE invented-routes: %s" % blob)
+    if "us1_greeting" not in blob or "/api/greeting" not in blob:
+        return _fail("dest-6 invented-routes missed /api/greeting: %s" % blob)
+    proc = _run([sys.executable, str(COVERAGE), str(dest6)])
+    blob = proc.stdout + proc.stderr
+    if proc.returncode == 0:
+        return _fail("dest-6 stale AC should REFUSE coverage: %s" % blob)
+    if "stale_ac:us1_greeting:/api/greeting" not in blob:
+        return _fail("dest-6 coverage missed stale_ac: %s" % blob)
+    if "implicit_pom_parent_vacuous:us1_greeting:setup" not in blob:
+        return _fail("dest-6 coverage missed implicit pom parent: %s" % blob)
+
+    dest6_ok = FIXTURES / "partition-dest6-aligned"
+    proc = _run([sys.executable, str(invented_bin), str(dest6_ok)])
+    blob = proc.stdout + proc.stderr
     if proc.returncode != 0:
-        return _fail("dest-6 two-story partition should PASS invented-routes: %s" % blob)
+        return _fail("dest-6 aligned partition should PASS invented-routes: %s" % blob)
+    proc = _run([sys.executable, str(COVERAGE), str(dest6_ok)])
+    blob = proc.stdout + proc.stderr
+    if proc.returncode != 0:
+        return _fail("dest-6 aligned partition should PASS coverage: %s" % blob)
 
     tmp = Path(tempfile.mkdtemp(prefix="b3-sdd-"))
     try:

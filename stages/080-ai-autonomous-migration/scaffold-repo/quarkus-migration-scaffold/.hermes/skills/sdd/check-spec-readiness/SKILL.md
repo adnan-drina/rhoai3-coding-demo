@@ -1,11 +1,11 @@
 ---
 name: check-spec-readiness
-description: Before kanban_create — lint SDD specs, story bodies (typed BODY_* codes), and partition coverage (HTTP 1:1 via story.endpoints as METHOD /path, dest_file 1:N with supersede; refuse invented HTTP paths vs inventory). Do not use to mint Kanban children or assemble M3 bodies (K4 converter is .hermes/kernel/k4_convert.py).
+description: Before kanban_create — lint SDD specs, story bodies (typed BODY_* codes), and partition coverage (HTTP 1:1 via story.endpoints as METHOD /path, dest_file 1:N with supersede; refuse invented HTTP paths vs inventory; refuse AC HTTP tokens that diverge from endpoints; refuse mvn test whose pom parent has no test-toolchain claim). Do not use to mint Kanban children or assemble M3 bodies (K4 converter is .hermes/kernel/k4_convert.py).
 license: Apache-2.0
 compatibility: Linux seat; Python 3.11+; reads migration/ specs and bodies
 metadata:
   author: rhoai3-harness-team
-  version: "1.7.2"
+  version: "1.7.3"
   hermes:
     tags:
     - sdd
@@ -80,7 +80,13 @@ python3 "${HERMES_SKILL_DIR}/scripts/check-partition-coverage.py" "$ROOT" \
   coverage refusal. See When to Use.
 - Acceptance that needs a file (health → `pom.xml`; `proves` paths) must
   appear in that story's `files_writable`. Unsatisfiable acceptance is
-  `kanban_block`, not complete.
+  `kanban_block`, not complete. `mvn -q test` that does not name a file
+  still needs a parent that owns `pom.xml` **and** claims
+  `check-test-toolchain` (`implicit_pom_parent_vacuous` otherwise).
+- AC HTTP tokens must match `story.endpoints` (`stale_ac:`). dest-6 left
+  `/api/greeting` in prose after correcting the field; coverage now
+  reads the text. Mapping `/api` + inventory is only legal when the dest
+  actually serves that prefix (Architect `205213ZA`).
 - `.hermes/skills/sdd/check-spec-readiness/references/sdd-ordering.md` (AD-S §S.6)
 - `.hermes/skills/sdd/check-spec-readiness/references/story-scope-and-exit.md` (AR-4.4; T-8 class-legal + dual-oracle)
 - skill `derive-story-oracles` (exit derivation; `semantic-exits.md` retired)
@@ -100,6 +106,7 @@ KEEP (this skill):
 - `scripts/check-operand-count.py` — measured operand_count / wall-fit
 - `scripts/check-partition-coverage.py` — M2 partition VALID receipt
 - `scripts/assert-partition-invented-routes.py` — constitution VII invented HTTP paths
+- `scripts/partition_story_consistency.py` — stale AC vs endpoints; implicit pom parent
 - `scripts/check-interface-closure.py` — interface closure Class-A gate
 - `scripts/assert-dependency-closure.py` — Class-A dependency closure
 - `scripts/check-spec-readiness-selftest.py` — batch-3 negative controls
@@ -165,8 +172,11 @@ Do **not** invoke DD4-retired R-M3.5/7 stubs (`check-persistence-bom.py`,
   health-unsatisfiable REFUSE `fixtures/partition-health-unsatisfiable/`
   (`acceptance_unsatisfiable:polish:pom.xml`).
   Invented-routes REFUSE `fixtures/partition-invented-health/`
-  (`invented_route:T020_POLISH:/q/health`); PASS
-  `fixtures/partition-dest6-grounded/` (two stories, inventory `/greeting`).
+  (`invented_route:T020_POLISH:/q/health`); dest-6 stale-AC REFUSE
+  `fixtures/partition-dest6-grounded/` (`stale_ac:us1_greeting:/api/greeting`,
+  `implicit_pom_parent_vacuous:us1_greeting:setup`); PASS
+  `fixtures/partition-dest6-aligned/` (AC matches `GET /greeting`,
+  setup claims `check-test-toolchain`).
   `/q/health` is not a grounding exception. Empty `endpoints` is legal
   scaffolding iff the story names no HTTP path.
   Default partition path is `evidence/partition.json` then

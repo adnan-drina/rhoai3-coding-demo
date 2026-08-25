@@ -16,16 +16,19 @@ WANT = ("speckit-specify", "speckit-plan", "speckit-tasks", "speckit-analyze")
 FORBID = frozenset({"speckit-implement"})
 
 
-def _search_roots(human_home: str) -> list[Path]:
+def _search_roots(human_home: str, project_root: Path) -> list[Path]:
     roots: list[Path] = []
     for raw in (
+        str(project_root / ".hermes" / "skills"),
         os.environ.get("HOME", ""),
         human_home,
         "/home/user",
     ):
         if not raw:
             continue
-        p = Path(raw) / ".hermes" / "skills"
+        p = Path(raw)
+        if p.name != "skills":
+            p = p / ".hermes" / "skills"
         if p not in roots:
             roots.append(p)
     return roots
@@ -52,13 +55,14 @@ def main() -> int:
         return 2
     root = Path(sys.argv[1]).resolve()
     human_home = sys.argv[2] if len(sys.argv) > 2 else "/home/user"
-    dest = root / ".hermes" / "skills" / "sdd"
+    skills_root = root / ".hermes" / "skills"
+    dest = skills_root / "sdd"
     dest.mkdir(parents=True, exist_ok=True)
-    found = _discover(_search_roots(human_home))
+    found = _discover(_search_roots(human_home, root))
     if "speckit-specify" not in found:
         print(
             "FAIL: speckit-specify SKILL.md not found under "
-            + ", ".join(str(p) for p in _search_roots(human_home))
+            + ", ".join(str(p) for p in _search_roots(human_home, root))
             + " — specify init --integration hermes did not install it",
             file=sys.stderr,
         )
@@ -68,16 +72,27 @@ def main() -> int:
         if src is None:
             print(f"WARN: {name} not found after specify init — skip", file=sys.stderr)
             continue
-        target = dest / name
-        if target.exists():
-            shutil.rmtree(target)
-        shutil.copytree(src, target, dirs_exist_ok=False)
-        print(f"seeded {name} → {target}", file=sys.stderr)
+        for target in (dest / name, skills_root / name):
+            if target.resolve() == src.resolve():
+                print(f"seeded {name} already at {target}", file=sys.stderr)
+                continue
+            if target.exists():
+                shutil.rmtree(target)
+            shutil.copytree(src, target, dirs_exist_ok=False)
+            print(f"seeded {name} → {target}", file=sys.stderr)
     specify = dest / "speckit-specify" / "SKILL.md"
+    flat = skills_root / "speckit-specify" / "SKILL.md"
     if not specify.is_file():
         print(f"FAIL: missing {specify} after copy", file=sys.stderr)
         return 1
-    print(f"OK: speckit-specify seeded at {specify}")
+    if not flat.is_file():
+        print(
+            f"FAIL: missing {flat} after copy "
+            "(specify CLI looks here when HOME=<project>)",
+            file=sys.stderr,
+        )
+        return 1
+    print(f"OK: speckit-specify seeded at {specify} and {flat}")
     return 0
 
 

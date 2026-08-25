@@ -95,6 +95,10 @@ def main() -> int:
         return _fail("US1 still stamps phantom AD-002E with no definition")
     if "kanban_block" not in us1_assert:
         return _fail("US1 body must name kanban_block as a legal outcome")
+    if "dependency_wait" not in us1_assert or "done parent" not in us1_assert:
+        return _fail(
+            "US1 body must forbid dependency_wait on a done parent: %s" % us1_assert
+        )
     us1_cmds = [str(item.get("cmd") or "") for item in us1.get("exit_criteria") or []]
     if "mvn -q compile" not in us1_cmds:
         return _fail("US1 src/main must stamp mvn -q compile: %s" % us1_cmds)
