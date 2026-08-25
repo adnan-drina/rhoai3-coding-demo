@@ -30,10 +30,11 @@ in gid 0). Do not dest-push dest-3’s worker-patched analyzer as golden.
    success. Overlay `/opt/kantra` is `chown 10001:0`; the dest user cannot
    chmod it — that is why fall-through exists.
 3. Reuse `~/.local/bin/kantra-assert-exec`. Do not reimplement ELF/shebang
-   lists or a name whitelist in the skill. Research `E-20260825T073015ZS`
-   (mta-cli skill + official MTA 8.2): there is **no** documented version,
-   RPC, or KAI handshake as a usability gate. Do **not** add `kantra version`
-   or provider RPC probes. The property check stays because we measured
+   lists or a name whitelist in the skill. Do **not** add `kantra version`
+   or provider RPC probes. Operator `E-20260825T083105ZO`: MTA/KAI
+   (`kai-analyzer-rpc`) checks existence + `X_OK` and the **Java provider
+   existence only** — there is **no upstream precedent to cite**. Our
+   sibling-tree capability probe **exceeds** that bar because we measured
    zipfile mode-loss, not because official requires it.
 4. `CLI="$(ensure_cli)"` still captures **one** path on stdout. Checker chatter
    stays on stderr. Extend `assert-ensure-cli-path.sh` so a tree with a

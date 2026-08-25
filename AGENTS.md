@@ -86,6 +86,8 @@ For dest Hermes Kanban observation, read `.agents/rules/kanban-log-watch.md`. Af
 
 For Stage 080 golden `ensure_cli` / kantra resolution, read `.agents/rules/ensure-cli-capability.md`. Presence (`[ -x ]`) is not usability.
 
+For Stage 080 dest Hermes security honesty, K2 env-assignment vs access, opaque vs pathless, and skill path classes, read `.agents/rules/tirith-declared-absent.md`, `.agents/rules/k2-env-assignment-not-access.md`, `.agents/rules/k2-opaque-not-pathless.md`, and `.agents/rules/skill-path-declaration.md`.
+
 For GitOps authoring, manifests, labels, and schema validation, read `.agents/rules/gitops.md`.
 
 For documentation standards, README structure, and operations docs, read `.agents/rules/docs.md`.

@@ -9,8 +9,10 @@ repository (`/projects/modernized`).
 - `/projects/legacy` — the application being migrated (**legacy@2.x**
   provenance). **READ-ONLY**: never modify, commit, or push it. It is not
   registered anywhere and has no write credentials.
-- `/projects/.derived/legacy-at-3` — **legacy@3.x**, a pure derivation of the
-  RO mount. Produced once, hashed, and frozen. Never edit.
+- `/projects/modernized/.derived/legacy-at-3` — **legacy@3.x**, a
+  pure derivation of the RO mount (inside the dest tree so the fence can
+  inspect it). Produced once, hashed, and frozen. Never edit. Do not add
+  `/projects/.derived` to `K2_ALLOW_ROOT`.
 - `/projects/modernized` — this repository. All new code, tests, and commits
   happen here, and only here.
 

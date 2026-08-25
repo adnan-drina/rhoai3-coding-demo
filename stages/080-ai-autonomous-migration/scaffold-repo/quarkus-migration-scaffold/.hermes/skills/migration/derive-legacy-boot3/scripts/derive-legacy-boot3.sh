@@ -23,7 +23,6 @@ fi
 DRY_RUN="${DRY_RUN:-0}"
 
 LEGACY_SRC="${LEGACY_SRC:-/projects/legacy}"
-DERIVED_ROOT="${DERIVED_ROOT:-/projects/.derived/legacy-at-3}"
 # SR-2: walk up to migration.yaml — never a parent-count (V18-F1: 4-up landed on .hermes).
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 resolve_migration_root() {
@@ -39,6 +38,10 @@ resolve_migration_root() {
   return 1
 }
 MODERNIZED_ROOT="$(resolve_migration_root "${SCRIPT_DIR}")" || exit 1
+# Operator 083840ZO GAP 3 / Architect 084356ZA: default under dest tree
+# `/projects/modernized/.derived/…`. Do not add `/projects/.derived` to
+# K2_ALLOW_ROOT (Architect 082958ZA).
+DERIVED_ROOT="${DERIVED_ROOT:-${MODERNIZED_ROOT}/.derived/legacy-at-3}"
 MANIFEST_DIR="${MODERNIZED_ROOT}/evidence/derived"
 MANIFEST="${MANIFEST_DIR}/legacy-at-3.json"
 COMPOSITE_SCRIPT="${SCRIPT_DIR}/free-primitives-boot3/run-composite.sh"

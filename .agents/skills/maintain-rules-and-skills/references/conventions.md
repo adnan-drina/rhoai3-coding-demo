@@ -26,7 +26,11 @@ Current rule taxonomy:
 | `project.md` | `project-` | Repo structure, GitOps authoring, docs, manifest review, Red Hat source alignment, and shared guidance |
 | `env.md` | (none) | Live demo environment deployment, validation, troubleshooting, shutdown, recovery, and redeploy |
 | `kanban-log-watch.md` | (none) | Dest Hermes Kanban: read the official worker log in the same turn as spawn |
-| `ensure-cli-capability.md` | (none) | Stage 080 `ensure_cli` must probe kantra **usability** (`kantra-assert-exec`), not mere presence |
+| `ensure-cli-capability.md` | (none) | Stage 080 `ensure_cli` must probe kantra **usability** (`kantra-assert-exec`), not mere presence. There is no MTA/KAI precedent to cite; the probe exceeds upstream existence/`X_OK`. |
+| `tirith-declared-absent.md` | (none) | Dest Hermes must not declare tirith enabled when the overlay does not ship it |
+| `k2-env-assignment-not-access.md` | (none) | K2 must not treat environment-assignment values as access targets |
+| `k2-opaque-not-pathless.md` | (none) | K2 denies opaque construction; transparent pathless + trusted cwd may allow |
+| `skill-path-declaration.md` | (none) | Skills declare paths they touch; dest-init fail-closes against `K2_ALLOW_ROOT` |
 | `gitops.md` | (none) | GitOps authoring, manifests, labels, schema validation |
 | `docs.md` | (none) | Documentation standards, README structure, operations docs |
 | `rhoai.md` | `rhoai-` | Official-doc-backed RHOAI component behavior and configuration |

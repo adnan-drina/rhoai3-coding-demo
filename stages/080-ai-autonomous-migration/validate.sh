@@ -379,9 +379,24 @@ check "080 golden pre_tool_call.sh is executable" \
 check "080 K2 hook splits allow-root on pathsep" \
   "grep -q 'allow.split(os.pathsep)' '${SCAFFOLD_KERNEL}/pre_tool_call.sh' && echo 1 || echo 0" \
   "1"
-check "080 K2 hook denies unproven terminal commands" \
-  "grep -c 'hook_cwd' '${SCAFFOLD_KERNEL}/pre_tool_call.sh' || echo 0" \
-  "0"
+check "080 K2 hook uses hook_cwd for transparent pathless" \
+  "grep -q 'hook_cwd' '${SCAFFOLD_KERNEL}/pre_tool_call.sh' && echo 1 || echo 0" \
+  "1"
+check "080 K2 hook denies opaque construction" \
+  "grep -q '_OPAQUE' '${SCAFFOLD_KERNEL}/pre_tool_call.sh' && echo 1 || echo 0" \
+  "1"
+check "080 K2 opacity is not gated on not-proven" \
+  "awk '/for _rx in _OPAQUE/{found=1; exit} /if cmd.strip()/{ok=1} END{print (found && ok)?1:0}' '${SCAFFOLD_KERNEL}/pre_tool_call.sh'" \
+  "1"
+check "080 K2 hook strips env assignments as values not access" \
+  "grep -q 'strip_env_assignments' '${SCAFFOLD_KERNEL}/pre_tool_call.sh' && echo 1 || echo 0" \
+  "1"
+check "080 K2 env-assignment selftest passes" \
+  "python3 '${SCAFFOLD_KERNEL}/k2_selftest.py' >/dev/null && echo 1 || echo 0" \
+  "1"
+check "080 derive default DERIVED_ROOT is inside dest tree" \
+  "grep -c '\${MODERNIZED_ROOT}/.derived/legacy-at-3' '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/skills/migration/derive-legacy-boot3/scripts/derive-legacy-boot3.sh' || echo 0" \
+  "1"
 check "080 GitOps dest-init K2_ALLOW_ROOT includes /projects/legacy" \
   "awk '/K2_ALLOW_ROOT/ && /\\/projects\\/legacy/ {print 1; exit}' '${GITOPS_INIT}' || echo 0" \
   "1"

@@ -20,7 +20,7 @@ metadata:
 - Before M1 ANALYZE, when `evidence/derived/legacy-at-3.json` is missing or
   `check-manifest.sh` fails (empty required field, schema ≠ `legacy-at-3/v2`,
   `harvest_referent` not a directory).
-- After a wipe of `/projects/.derived/legacy-at-3` — the manifest then names a
+- After a wipe of `/projects/modernized/.derived/legacy-at-3` — the manifest then names a
   tree that no longer exists; re-derive, never repoint at the 2.x mount.
 - When the legacy mount is swapped for a different specimen or revision: the
   recorded `sha256` no longer describes what M1 would harvest against.
@@ -49,7 +49,7 @@ bash "${HERMES_SKILL_DIR}/scripts/check-manifest.sh"
 - If `spring-boot.version >= 3` already: `mode=identity` — `harvest_referent`
   is `/projects/legacy`.
 - Otherwise: copy → Boot 2→3 upgrade → freeze under
-  `/projects/.derived/legacy-at-3`; write `evidence/derived/legacy-at-3.json`.
+  `/projects/modernized/.derived/legacy-at-3`; write `evidence/derived/legacy-at-3.json`.
 - Manifest schema `legacy-at-3/v2` records **JDK and Spring Boot versions
   before and after** (W2 §3.1) beside `sha256` / `harvest_referent`, so a later
   failure can attribute the bundled upgrades without splitting the frozen stage.
@@ -88,7 +88,7 @@ bash "${HERMES_SKILL_DIR}/scripts/check-manifest.sh"
   `harvest_referent` is not a directory.
 - `run-composite.sh` (free-primitives) emits `free-primitives-boot3: OK` on
   stderr and `{script:run-composite,ok,composite_root,rule_count,…}` on stdout.
-- `mode=derived`: `/projects/.derived/legacy-at-3` exists, its `pom.xml`
+- `mode=derived`: `/projects/modernized/.derived/legacy-at-3` exists, its `pom.xml`
   resolves to Boot ≥ 3, and the tree is write-protected (`chmod a-w`, dirs keep
   `+x`). A writable derived tree means the freeze never ran or something edited
   it afterwards — re-derive; do not `chmod` it back.
