@@ -68,17 +68,21 @@ def validate_graph(graph: Any) -> list[Issue]:
             out.append(_issue("K3_ACK_GATE", "ack_gate marker %s present" % marker))
             break
 
-    if len(writers) != 1:
-        out.append(
-            _issue("K3_SCHEMA", "need exactly one mint-writer, got %d" % len(writers))
-        )
-    if len(verifiers) != 1:
-        out.append(
-            _issue(
-                "K3_VERIFIER_MISSING",
-                "need exactly one mint-verifier, got %d" % len(verifiers),
+    if len(writers) == 0 and len(verifiers) == 0:
+        factory_present = False
+    else:
+        factory_present = True
+        if len(writers) != 1:
+            out.append(
+                _issue("K3_SCHEMA", "need exactly one mint-writer, got %d" % len(writers))
             )
-        )
+        if len(verifiers) != 1:
+            out.append(
+                _issue(
+                    "K3_VERIFIER_MISSING",
+                    "need exactly one mint-verifier, got %d" % len(verifiers),
+                )
+            )
 
     writer = writers[0] if writers else None
     verifier = verifiers[0] if verifiers else None
@@ -173,6 +177,18 @@ def validate_graph(graph: Any) -> list[Issue]:
             if str(card.get("assignee") or "") != IMPL:
                 out.append(
                     _issue("K3_ASSIGNEE", "M3 %s assignee must be %s" % (card.get("id"), IMPL))
+                )
+
+    if not factory_present:
+        for card in cards:
+            if str(card.get("phase") or "").upper() != "M3":
+                continue
+            if str(card.get("assignee") or "") != IMPL:
+                out.append(
+                    _issue(
+                        "K3_ASSIGNEE",
+                        "M3 %s assignee must be %s" % (card.get("id"), IMPL),
+                    )
                 )
 
     return out

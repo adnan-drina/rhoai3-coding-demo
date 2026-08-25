@@ -13,8 +13,9 @@ from k3_verify import validate_file  # noqa: E402
 def main() -> int:
     hold = KERNEL / "fixtures" / "k3-valid-hold.json"
     refuse = KERNEL / "fixtures" / "k3-valid-refuse-hold.json"
+    retired = KERNEL / "fixtures" / "k3-valid-no-factory.json"
     bad = KERNEL / "fixtures" / "k3-bad-gap.json"
-    for path in (hold, refuse):
+    for path in (hold, refuse, retired):
         issues = validate_file(path)
         if issues:
             print("FAIL: %s %s" % (path.name, issues), file=sys.stderr)

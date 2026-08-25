@@ -17,8 +17,9 @@ RELEASE_STATUSES = frozenset({"done", "archived"})
 
 REMEDY = {
     "K3_SCHEMA": (
-        "Graph snapshot needs cards[] with id/role/assignee/status/parents "
-        "and a mint-writer plus mint-verifier. Do not import create_task."
+        "Graph snapshot needs cards[] with id/role/assignee/status/parents. "
+        "Dest factory cards are retired (both absent) or leftover (both "
+        "present). Do not import create_task."
     ),
     "K3_CREATED_CARDS": (
         "Mint-writer complete must carry the exact manifest created_cards set. "
@@ -38,7 +39,7 @@ REMEDY = {
     ),
     "K3_ACK_GATE": "Delete the human-completed ack_gate. Native parents replace it.",
     "K3_DAEMON": "OBJECT hermes kanban daemon and kanban daemon --force.",
-    "K3_ASSIGNEE": "M2/mint-verifier assignee=orchestrator; M3 assignee=implementer.",
+    "K3_ASSIGNEE": "M2/M3/M4 assignee=implementer. Dest factory cards are not minted.",
     "K3_REFUSE_CLAIM": (
         "Do not stamp claimed_refuse_control. Dest live-PID reclaim is MEASURED, "
         "not a refuse-as-control GO."

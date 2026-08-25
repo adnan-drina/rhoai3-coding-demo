@@ -38,10 +38,16 @@ REMEDY = {
         "A path named in tasks.md but absent from the partition is a planning "
         "defect. Report every such path. Do not grow the write-set from prose."
     ),
-    "K4_ASSIGNEE": "mint-writer and mint-verifier assignee=orchestrator; M3 assignee=implementer.",
+    "K4_FACTORY": (
+        "Dest mint-writer and mint-verifier LLM cards are retired "
+        "(Architect 164714ZA; native-kanban-alignment 13–14). M2 runs "
+        "k4_mint.py as CLI translation. Do not emit those payloads."
+    ),
+    "K4_ASSIGNEE": "M3 assignee=implementer. Dest factory cards are not minted.",
     "K4_PARENT": (
-        "M3 parents come from the partition import-graph plus the mint-verifier "
-        "as common parent. Not Dependencies English."
+        "M3 parents come from the partition import-graph. The M2 card "
+        "(HERMES_KANBAN_TASK) is an extra parent at mint time. Dest "
+        "mint-verifier is not a parent."
     ),
     "K4_T0_3_SERVICE": (
         "T0_3_SERVICE: split into one service class per aggregate, each owned "
@@ -57,16 +63,16 @@ REMEDY = {
         "kanban daemon --force."
     ),
     "K4_MINT_TITLE": (
-        "Story titles are exactly 'M3 <logical_id>'. Factory cards keep "
-        "'Mint writer' / 'Mint verifier'."
+        "Story titles are exactly 'M3 <logical_id>'. Dest factory titles "
+        "are not minted."
     ),
     "K4_MINT_RETRIES": (
-        "M3 story creates pass --max-retries 1 (CLI). Factory cards omit it. "
+        "M3 story creates pass --max-retries 1 (CLI). "
         "The model kanban_create tool has no max_retries field."
     ),
     "K4_MINT_PARENT": (
         "Resolve payload parents from already-minted logical_id → t_* in "
-        "create order. Do not invent parents. Do not skip mint-verifier."
+        "create order. Do not invent parents. Do not mint dest factory cards."
     ),
     "K4_MINT_ID": (
         "Parse create --json for task_id or id (t_*). Serialize creates; "

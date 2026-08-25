@@ -109,7 +109,9 @@ What it does, in order (each step dies non-zero on failure):
    (T-3 rewrite of named Quarkus targets + legacy pom artifactIds; never
    `quarkus-spring-*`). When `$HERMES_KANBAN_TASK` is set, dual-write KEEP
    evidence with `.hermes/kernel/kanban_attach.py --exec` (25 MB/file; PVC
-   paths stay). Schema lives with this skill (`check-findings-handoff.py`;
+   paths stay). **M2 PLAN** (`check-spec-readiness`) is the named consumer of
+   those attachments — it reads them by parent M1 id, not from metadata path
+   lists. Schema lives with this skill (`check-findings-handoff.py`;
    no `governance/` folder).
 
 Defaults: `MTA_OUT_DIR=evidence/mta`,

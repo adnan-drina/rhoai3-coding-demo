@@ -5,7 +5,7 @@ license: Apache-2.0
 compatibility: Linux seat; M3 typed bodies; specimen-agnostic vocab
 metadata:
   author: rhoai3-harness-team
-  version: "1.1.2"
+  version: "1.1.3"
   hermes:
     tags:
     - sdd
@@ -35,6 +35,8 @@ Official technique table and failure classes: `references/concern-oracle-table.m
 
 ## When to Use
 
+- After reading parent M1 attachments by id (`kanban_attachments` on the M1
+  card) plus `evidence/findings-handoff.json` — not from metadata path lists.
 - Before M2/M3 mint or remint of `exit_criteria` / `done_when`.
 - When a worker typed-blocks on a wrong-class exit (CONFIG + `http_semantics`,
   entity-only + `hql_entity_path`, …).

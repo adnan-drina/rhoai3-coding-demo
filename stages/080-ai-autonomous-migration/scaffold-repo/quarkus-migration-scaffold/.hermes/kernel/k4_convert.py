@@ -18,7 +18,6 @@ if str(_KERNEL) not in sys.path:
 
 from k4_schema import (  # noqa: E402
     IMPL,
-    ORCH,
     PATH_TOKEN_MARKERS,
     REMEDY,
     SHA256_RE,
@@ -273,24 +272,26 @@ def validate_result(result: Any) -> list[Issue]:
             continue
         ids.append(lid)
         who = str(payload.get("assignee") or "")
-        if lid in {WRITER_ID, VERIFIER_ID} and who != ORCH:
+        if lid in {WRITER_ID, VERIFIER_ID}:
+            out.append(
+                _issue("K4_FACTORY", "%s dest factory card is retired" % lid)
+            )
+            continue
+        if who != IMPL:
             out.append(_issue("K4_ASSIGNEE", "%s assignee=%s" % (lid, who)))
-        elif lid not in {WRITER_ID, VERIFIER_ID} and who != IMPL:
-            out.append(_issue("K4_ASSIGNEE", "%s assignee=%s" % (lid, who)))
-        if lid != WRITER_ID:
-            parents = payload.get("parents") or []
-            if lid == VERIFIER_ID and parents != [WRITER_ID]:
-                out.append(_issue("K4_PARENT", "mint-verifier parent must be mint-writer"))
-            if lid not in {WRITER_ID, VERIFIER_ID} and VERIFIER_ID not in [
-                str(p) for p in parents
-            ]:
-                out.append(_issue("K4_PARENT", "%s missing mint-verifier parent" % lid))
-        if lid not in {WRITER_ID, VERIFIER_ID}:
-            skills = payload.get("skills") or []
-            if not isinstance(skills, list) or not [
-                str(s).strip() for s in skills if str(s).strip()
-            ]:
-                out.append(_issue("K4_SKILLS", "%s skills empty" % lid))
+        parents = [str(p) for p in (payload.get("parents") or [])]
+        if WRITER_ID in parents or VERIFIER_ID in parents:
+            out.append(
+                _issue(
+                    "K4_PARENT",
+                    "%s must not parent to dest factory cards" % lid,
+                )
+            )
+        skills = payload.get("skills") or []
+        if not isinstance(skills, list) or not [
+            str(s).strip() for s in skills if str(s).strip()
+        ]:
+            out.append(_issue("K4_SKILLS", "%s skills empty" % lid))
     if created != ids:
         out.append(
             _issue(
@@ -383,38 +384,7 @@ def _payload(
 def convert_partition(partition: dict[str, Any]) -> dict[str, Any]:
     type_sha = str(partition.get("type_inventory_sha256") or "")
     stories = [s for s in (partition.get("stories") or []) if isinstance(s, dict)]
-    writer_body = {
-        "task_id": WRITER_ID,
-        "role": "mint-writer",
-        "phase": "FACTORY",
-        "refs": [],
-        "identity": {"story_id": WRITER_ID},
-    }
-    verifier_body = {
-        "task_id": VERIFIER_ID,
-        "role": "mint-verifier",
-        "phase": "FACTORY",
-        "refs": [],
-        "identity": {"story_id": VERIFIER_ID},
-    }
-    payloads = [
-        _payload(
-            WRITER_ID,
-            title="Mint writer",
-            assignee=ORCH,
-            parents=[],
-            body=writer_body,
-            type_sha=type_sha,
-        ),
-        _payload(
-            VERIFIER_ID,
-            title="Mint verifier",
-            assignee=ORCH,
-            parents=[WRITER_ID],
-            body=verifier_body,
-            type_sha=type_sha,
-        ),
-    ]
+    payloads: list[dict[str, Any]] = []
     for story in stories:
         sid = _story_id(story)
         part_parents = [str(p) for p in (story.get("parents") or [])]
@@ -423,7 +393,7 @@ def convert_partition(partition: dict[str, Any]) -> dict[str, Any]:
                 sid,
                 title="M3 %s" % sid,
                 assignee=IMPL,
-                parents=[VERIFIER_ID] + part_parents,
+                parents=part_parents,
                 body=_m3_body(story, type_sha),
                 skills=story_skills(story),
                 max_retries=1,

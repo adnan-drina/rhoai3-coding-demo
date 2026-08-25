@@ -5,7 +5,7 @@ license: Apache-2.0
 compatibility: Linux seat; Python 3.11+; reads migration/ specs and bodies
 metadata:
   author: rhoai3-harness-team
-  version: "1.7.0"
+  version: "1.7.1"
   hermes:
     tags:
     - sdd
@@ -24,6 +24,11 @@ metadata:
   stamp bodies. Typed M3 bodies come from `.hermes/kernel/k4_convert.py`.
   The producer writes `evidence/partition.json`; coverage also accepts
   `evidence/briefs/partition.json`. A missing file names every path looked at.
+- **M2 PLAN is the named consumer of M1 attachments:** before partition,
+  `hermes kanban show` the parent M1 id, read `kanban_attachments` (paths under
+  `$HERMES_HOME/kanban/attachments/<m1-id>/`) **and**
+  `evidence/findings-handoff.json`. M1 metadata path lists are not the
+  findings. Do not plan from metadata alone.
 - **A-8 `story.endpoints` (read this before planning):** each HTTP story
   declares `endpoints: ["GET /api/foo", ...]` (METHOD + path, or path-only).
   Coverage is `story.endpoints` ∩ inventory `http_method`+`http_path`/`symbol`,
@@ -41,6 +46,11 @@ metadata:
 # SDD readiness (pattern-steals + §S.6)
 
 ## Procedure
+
+M2 PLAN starts by reading the parent M1 card's attachments by id (native
+`kanban_attachments` / `$HERMES_HOME/kanban/attachments/<m1-id>/`) together
+with `evidence/findings-handoff.json`. Do not plan from M1 metadata path
+lists. Then lint:
 
 ```bash
 bash "${HERMES_SKILL_DIR}/scripts/check-readiness.sh"

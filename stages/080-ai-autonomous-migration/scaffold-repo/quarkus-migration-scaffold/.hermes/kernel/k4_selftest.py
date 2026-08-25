@@ -10,6 +10,7 @@ KERNEL = Path(__file__).resolve().parent
 sys.path.insert(0, str(KERNEL))
 from k1_validate import validate_body  # noqa: E402
 from k4_convert import convert_file, validate_result  # noqa: E402
+from k4_schema import VERIFIER_ID, WRITER_ID  # noqa: E402
 
 
 def _fail(msg: str) -> int:
@@ -33,7 +34,7 @@ def main() -> int:
     if issues or result is None:
         return _fail("valid partition: %s" % issues)
     created = result["manifest"]["created_cards"]
-    expect = ["mint-writer", "mint-verifier", "setup", "US1", "US2"]
+    expect = ["setup", "US1", "US2"]
     if created != expect:
         return _fail("created_cards %s != %s" % (created, expect))
     by_id = {p["logical_id"]: p for p in result["payloads"]}
@@ -50,10 +51,10 @@ def main() -> int:
     k1_codes = {c for c, _, _ in k1_issues}
     if k1_codes & {"BODY_SCHEMA", "BODY_SCOPE", "BODY_REF_MISSING", "BODY_HERMES_ID"}:
         return _fail("US1 body failed K1: %s" % k1_issues)
-    if by_id["US1"]["parents"] != ["mint-verifier", "setup"]:
+    if by_id["US1"]["parents"] != ["setup"]:
         return _fail("US1 parents %s" % by_id["US1"]["parents"])
-    if by_id["mint-writer"]["assignee"] != "orchestrator":
-        return _fail("writer assignee")
+    if WRITER_ID in by_id or VERIFIER_ID in by_id:
+        return _fail("dest factory cards must not be minted")
     if by_id["setup"]["assignee"] != "implementer":
         return _fail("setup assignee")
     for sid in ("setup", "US1", "US2"):
@@ -68,8 +69,23 @@ def main() -> int:
         return _fail("US1 skills %s" % by_id["US1"]["skills"])
     if "author-destination-pom" not in by_id["setup"]["skills"]:
         return _fail("setup skills %s" % by_id["setup"]["skills"])
-    if "max_retries" in by_id["mint-writer"] or "max_retries" in by_id["mint-verifier"]:
-        return _fail("factory cards must not pin story max_retries")
+    factory = validate_result(
+        {
+            "payloads": [
+                {
+                    "logical_id": WRITER_ID,
+                    "title": "Mint writer",
+                    "assignee": "orchestrator",
+                    "parents": [],
+                    "body": "{}",
+                }
+            ],
+            "manifest": {"created_cards": [WRITER_ID]},
+        }
+    )
+    factory_codes = {c for c, _, _ in factory}
+    if "K4_FACTORY" not in factory_codes:
+        return _fail("retired factory payload missed K4_FACTORY: %s" % factory_codes)
     if result.get("claimed_control") is not False:
         return _fail("claimed_control must stay false")
     us1_assert = " ".join(

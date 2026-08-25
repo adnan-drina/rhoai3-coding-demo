@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""K4 mint-writer selftest. Not pytest. Not dest. Not live kanban."""
+"""K4 mint selftest. Not pytest. Not dest. Not live kanban."""
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -10,7 +11,7 @@ KERNEL = Path(__file__).resolve().parent
 sys.path.insert(0, str(KERNEL))
 from k4_convert import convert_file  # noqa: E402
 from k4_mint import argv_for_payload, mint_payloads, parse_created_id  # noqa: E402
-from k4_schema import IMPL, ORCH  # noqa: E402
+from k4_schema import IMPL, WRITER_ID  # noqa: E402
 
 
 def _fail(msg: str) -> int:
@@ -19,6 +20,7 @@ def _fail(msg: str) -> int:
 
 
 def main() -> int:
+    os.environ.pop("HERMES_KANBAN_TASK", None)
     for label in ("k4_mint.py", "k4_schema.py"):
         blob = (KERNEL / label).read_text(encoding="utf-8")
         for line in blob.splitlines():
@@ -37,7 +39,7 @@ def main() -> int:
         return 0, json.dumps({"task_id": tid}), ""
 
     minted = mint_payloads(result["payloads"], runner=runner, hermes="/bin/hermes")
-    expect = ["mint-writer", "mint-verifier", "setup", "US1", "US2"]
+    expect = ["setup", "US1", "US2"]
     got = [row["logical_id"] for row in minted["created"]]
     if got != expect:
         return _fail("create order %s != %s" % (got, expect))
@@ -53,8 +55,8 @@ def main() -> int:
     if argv[argv.index("--max-retries") + 1] != "1":
         return _fail("US1 max-retries")
     parents = [argv[i + 1] for i, a in enumerate(argv) if a == "--parent"]
-    if parents != [by["mint-verifier"], by["setup"]]:
-        return _fail("US1 parents %s vs %s" % (parents, [by["mint-verifier"], by["setup"]]))
+    if parents != [by["setup"]]:
+        return _fail("US1 parents %s vs %s" % (parents, [by["setup"]]))
     if argv[argv.index("--workspace") + 1] != "dir:/projects/modernized":
         return _fail("US1 workspace %s" % argv)
     if argv[argv.index("--max-runtime") + 1] != "2h":
@@ -64,27 +66,16 @@ def main() -> int:
         return _fail("US1 --skill %s" % skills)
     if minted.get("created_cards") != [row["task_id"] for row in minted["created"]]:
         return _fail("created_cards %s" % minted.get("created_cards"))
-    if minted["created_cards"] != ["t_mint0001", "t_mint0002", "t_mint0003", "t_mint0004", "t_mint0005"]:
+    if minted["created_cards"] != ["t_mint0001", "t_mint0002", "t_mint0003"]:
         return _fail("native created_cards %s" % minted["created_cards"])
     if "empty created_cards" not in str(minted.get("attribution") or ""):
         return _fail("mint attribution missing Architect 144916ZA note")
     if "swarm" in argv or "decompose" in argv or "daemon" in argv:
         return _fail("US1 argv used OBJECT verb")
-    writer = next(c for c in minted["created"] if c["logical_id"] == "mint-writer")
-    if "--max-retries" in writer["argv"]:
-        return _fail("factory card pinned max-retries")
-    if "--workspace" in writer["argv"]:
-        return _fail("factory card must not pin dest dir workspace")
-    if "--max-runtime" not in writer["argv"]:
-        return _fail("factory card missing max-runtime")
-    if writer["argv"][writer["argv"].index("--assignee") + 1] != ORCH:
-        return _fail("writer assignee")
-    dest5 = dict(result["payloads"][3])
+    dest5 = dict(result["payloads"][1])
     dest5["skills"] = []
     try:
-        argv_for_payload(
-            dest5, {"mint-verifier": "t_mint0002", "setup": "t_mint0003"}
-        )
+        argv_for_payload(dest5, {"setup": "t_mint0001"})
         return _fail("dest-5 empty skills did not refuse")
     except ValueError as exc:
         if "K4_MINT_SKILLS" not in str(exc):
@@ -92,14 +83,40 @@ def main() -> int:
     if parse_created_id('{"id":"t_abc123"}') != "t_abc123":
         return _fail("parse id fallback")
 
-    bad = dict(result["payloads"][3])
+    bad = dict(result["payloads"][1])
     bad["title"] = "hand-mint US1"
     try:
-        argv_for_payload(bad, {"mint-verifier": "t_mint0002", "setup": "t_mint0003"})
+        argv_for_payload(bad, {"setup": "t_mint0001"})
         return _fail("wrong title did not refuse")
     except ValueError as exc:
         if "K4_MINT_TITLE" not in str(exc):
             return _fail("wrong title: %s" % exc)
+
+    try:
+        argv_for_payload(
+            {
+                "logical_id": WRITER_ID,
+                "title": "Mint writer",
+                "assignee": "orchestrator",
+                "parents": [],
+                "body": "{}",
+                "idempotency_key": "k4:mint-writer:dead",
+            },
+            {},
+        )
+        return _fail("factory payload did not refuse")
+    except ValueError as exc:
+        if "K4_FACTORY" not in str(exc):
+            return _fail("factory: %s" % exc)
+
+    os.environ["HERMES_KANBAN_TASK"] = "t_m2plan01"
+    try:
+        argv_m2 = argv_for_payload(dict(result["payloads"][1]), {"setup": "t_mint0001"})
+    finally:
+        os.environ.pop("HERMES_KANBAN_TASK", None)
+    m2_parents = [argv_m2[i + 1] for i, a in enumerate(argv_m2) if a == "--parent"]
+    if m2_parents != ["t_m2plan01", "t_mint0001"]:
+        return _fail("M2 parent stamp %s" % m2_parents)
 
     swarm = ["/bin/hermes", "kanban", "swarm", "nope"]
     try:
@@ -111,7 +128,7 @@ def main() -> int:
         if "K4_MINT_CREATE" not in str(exc):
             return _fail("swarm: %s" % exc)
 
-    print("OK: K4 mint-writer (serial create, max-retries 1, OBJECT swarm/decompose)")
+    print("OK: K4 mint (serial create, max-retries 1, no dest factory cards)")
     return 0
 
 

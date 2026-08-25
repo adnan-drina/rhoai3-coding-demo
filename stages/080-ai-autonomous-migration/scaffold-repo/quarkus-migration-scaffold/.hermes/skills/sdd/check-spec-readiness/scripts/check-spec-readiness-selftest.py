@@ -118,6 +118,41 @@ def main() -> int:
             return _fail("src/test path must touch tests")
         if ckb.scope_touches_tests(["src/main/java/com/demo/App.java"]):
             return _fail("src/main must not touch tests")
+
+        import contextlib
+        import io
+
+        sha = "a" * 64
+        m4_pom = {
+            "task_id": "verdict",
+            "role": "implementer",
+            "phase": "M4",
+            "refs": [
+                {"key": "story_tip", "path": "evidence/tip.json", "sha256": sha}
+            ],
+            "identity": {
+                "transform_class": "NONE",
+                "g2_applicability": "not_applicable",
+            },
+            "files_writable": ["pom.xml"],
+            "exit_criteria": [{"check": "verdict", "assert": "oracles only"}],
+        }
+        buf = io.StringIO()
+        with contextlib.redirect_stderr(buf):
+            ckb.check_body("m4-pom", m4_pom, tmp)
+        if "must not implement" not in buf.getvalue():
+            return _fail(
+                "M4 pom.xml writeset missed BODY_SCOPE implement: %s" % buf.getvalue()
+            )
+        m4_ev = dict(m4_pom)
+        m4_ev["files_writable"] = ["evidence/verdicts/"]
+        buf2 = io.StringIO()
+        with contextlib.redirect_stderr(buf2):
+            ckb.check_body("m4-ev", m4_ev, tmp)
+        if "must not implement" in buf2.getvalue():
+            return _fail(
+                "M4 evidence writeset still treated as implement: %s" % buf2.getvalue()
+            )
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 

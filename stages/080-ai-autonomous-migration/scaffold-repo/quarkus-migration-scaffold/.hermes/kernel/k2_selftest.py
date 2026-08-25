@@ -198,6 +198,57 @@ def main() -> int:
             fails += 1
         else:
             print("ok writeset_file")
+        r = run(
+            "mvn -q quarkus:add-extension -Dextensions=quarkus-smallrye-health",
+            roots,
+            cwd=cwd,
+            extra_env={
+                "K2_CARD_PHASE": "M4",
+                "HERMES_WRITE_SAFE_ROOT": str(dest),
+                "K2_STORY_ID": "verdict",
+            },
+        )
+        msg = r.get("message") or ""
+        if r.get("action") != "block" or "must not implement" not in msg:
+            print("FAIL m4_add_extension", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok m4_add_extension")
+        r = run(
+            "",
+            roots,
+            cwd=cwd,
+            tool="write_file",
+            extra_input={"path": str(dest / "pom.xml")},
+            extra_env={
+                "K2_CARD_PHASE": "M4",
+                "HERMES_WRITE_SAFE_ROOT": str(dest),
+                "K2_STORY_ID": "verdict",
+            },
+        )
+        msg = r.get("message") or ""
+        if r.get("action") != "block" or "pom.xml" not in msg:
+            print("FAIL m4_write_pom", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok m4_write_pom")
+        r = run(
+            "",
+            roots,
+            cwd=cwd,
+            tool="write_file",
+            extra_input={"path": str(dest / "evidence" / "verdicts" / "x.json")},
+            extra_env={
+                "K2_CARD_PHASE": "M4",
+                "HERMES_WRITE_SAFE_ROOT": str(dest),
+                "K2_STORY_ID": "verdict",
+            },
+        )
+        if r.get("action") == "block":
+            print("FAIL m4_write_verdict", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok m4_write_verdict")
         expect_block(
             "cat /etc/passwd > /dev/null",
             "passwd_to_null",

@@ -90,7 +90,7 @@ workspace state.
 | `$HERMES_MANAGED_DIR` | Platform config + secrets — not in this repo |
 | `$HERMES_HOME` | Runtime (sessions/logs gitignored). Relocated dest-time. |
 | `.hermes/skills/` | Scaffold golden **guidance** skills on `skills.external_dirs` |
-| Seat Kanban assignees | M2 PLAN / M3 / M4 VERDICT → `implementer`; mint-verifier → `orchestrator`. Official `--assignee` (hermes-kanban). Not `default`. OBJECT EX-4 `analyzer`/`planner`/`validator`. dest orchestrator disables `file`/`terminal`/`code_execution`/`skills` — it cannot run M2 PLAN or M4. |
+| Seat Kanban assignees | M2 PLAN / M3 / M4 VERDICT → `implementer`. Dest mint-writer / mint-verifier cards are retired; M2 runs `.hermes/kernel/k4_mint.py` as CLI. Official `--assignee` (hermes-kanban). Not `default`. OBJECT EX-4 `analyzer`/`planner`/`validator`. dest orchestrator disables `file`/`terminal`/`code_execution`/`skills` — it cannot run M2 PLAN or M4. |
 | Hermes live config | **Not yours to change.** Factory-owned Managed Scope. Raise typed `needs_input` |
 | Phase DAG | Kanban `--parent` / `link` graph (`hermes kanban show --json`) |
 | `~/.hermes/skills/` | dest-user `/home/user/.hermes/skills` on `external_dirs` (dest-init literal; spec-kit install). Not worker `Path.home()`. |
@@ -116,17 +116,20 @@ Workers never own lifecycle truth. End every turn with exactly one terminator:
 `kanban_complete`, `kanban_request_review`, or `kanban_block`. A clean exit
 without one is `protocol_violation`. Mint complete requires `created_cards`
 (empty list forbidden). Serialize `kanban_create`. M2 PLAN and M4 VERDICT
-use `--assignee implementer`; mint-verifier uses `--assignee orchestrator`;
-M3 uses `--assignee implementer`. Do not seat M2 or M4 on orchestrator
+use `--assignee implementer`. Do not mint dest factory cards. M3
+uses `--assignee implementer`. Do not seat M2 or M4 on orchestrator
 (dest `orchestrator.yaml.template` disables `file`/`terminal`/`skills`).
 M4 `--body` is acceptance and oracles only (dest-4 `t_9acd47cb`). Do not
 name `Token:` / `verdict:` `PROVISIONAL_ACCEPT`/`ACCEPT` or `ship:`.
 `assert-m4-card-body.py` refuses a body that pre-specifies the verdict.
+M4 `files_writable` is `evidence/verdicts/` (and other `evidence/` receipts);
+the hook refuses `quarkus:add-extension` and product writes on phase M4.
 Story `kanban_create` passes `--max-retries 1` (null inherits `failure_limit` 2
 and masks a Gate K first failure). Mint those cards through
 `.hermes/kernel/k4_mint.py` from K4 payloads (CLI `hermes kanban create`).
 M3 argv also passes `--workspace dir:/projects/modernized`, `--skill` per
-story, `--max-runtime 2h`, and `--idempotency-key`. After `--exec`,
+story, `--max-runtime 2h`, `--idempotency-key`, and `--parent` for the
+M2 card (`HERMES_KANBAN_TASK`) plus the partition DAG. After `--exec`,
 `kanban_complete` `created_cards` is the native `t_*` list (empty after a
 mint is OBJECT). Scratch workspace on a story is REFUSE.
 M1 KEEP evidence also `python3 .hermes/kernel/kanban_attach.py --task "$HERMES_KANBAN_TASK"`

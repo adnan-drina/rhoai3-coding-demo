@@ -21,6 +21,7 @@
 # Batch 4: toolchain reads (/dev/null, /usr/lib/jvm) are not K2_ALLOW_ROOT
 # widening (AD-020). Write-set deny. Orchestrator disabled-toolset named
 # refusal. kanban_complete refused when a bound gate last exited non-zero.
+# Batch 6: M4/VERDICT writes default to evidence/; add-extension is implement.
 set -euo pipefail
 exec python3 -c '
 import json, os, re, sys
@@ -371,6 +372,24 @@ def load_writeset():
         blob = load_body_from_sqlite()
     return parse_writeset_blob(blob)
 
+def load_phase():
+    envp = (os.environ.get("K2_CARD_PHASE") or "").strip().upper()
+    if envp:
+        return envp
+    blob = ""
+    body_path = (os.environ.get("K2_CARD_BODY") or "").strip()
+    if body_path and os.path.isfile(body_path):
+        try:
+            blob = open(body_path, encoding="utf-8", errors="replace").read()
+        except OSError:
+            blob = ""
+    if not blob:
+        blob = load_body_from_sqlite()
+    if not blob:
+        return ""
+    m = re.search(chr(34) + r"phase" + r"\s*:\s*" + chr(34) + r"([A-Za-z0-9_]+)", blob)
+    return m.group(1).upper() if m else ""
+
 def writeset_ok(rel, writeset):
     if not rel:
         return True
@@ -430,6 +449,21 @@ if tool in WRITE_TOOLS or looks_like_write_cmd(cmd):
             block("write pom.xml is outside the dest write sandbox (legacy is read-only)")
 
 writeset = load_writeset()
+phase = load_phase()
+if phase in {"M4", "VERDICT"}:
+    if looks_like_write_cmd(cmd) and (
+        "quarkus:add-extension" in cmd or re.search(r"\badd-extension\b", cmd)
+    ):
+        block("M4 VERDICT must not implement; quarkus:add-extension writes pom.xml")
+    if writeset is None:
+        writeset = ["evidence/"]
+    else:
+        kept = []
+        for w in writeset:
+            ww = w.replace("\\", "/").lstrip("./")
+            if ww == "evidence" or ww.startswith("evidence/"):
+                kept.append(w)
+        writeset = kept or ["evidence/"]
 story = (os.environ.get("K2_STORY_ID") or "").strip() or "this card"
 if writeset is not None:
     rels = []

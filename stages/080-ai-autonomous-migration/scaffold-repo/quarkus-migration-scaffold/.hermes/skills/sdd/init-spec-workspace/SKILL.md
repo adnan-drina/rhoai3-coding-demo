@@ -5,7 +5,7 @@ license: Apache-2.0
 compatibility: Linux seat; network to install pinned Spec Kit CLI
 metadata:
   author: rhoai3-harness-team
-  version: "1.4.3"
+  version: "1.4.4"
   hermes:
     tags:
     - sdd
@@ -77,6 +77,8 @@ Idempotent via `.specify/.rhoai3-ads-provisioned`. Spec Kit is pinned
 After `/speckit-tasks` (optional `/speckit-analyze`) → K4 convert →
 `.hermes/kernel/k4_mint.py` (`hermes kanban create`). **Never**
 `/speckit-implement`. Run `specify workflow run speckit`.
+M2 PLAN consumes M1 KEEP evidence via parent `kanban_attachments` plus
+`evidence/findings-handoff.json` — not from metadata path lists.
 
 ## Pitfalls
 

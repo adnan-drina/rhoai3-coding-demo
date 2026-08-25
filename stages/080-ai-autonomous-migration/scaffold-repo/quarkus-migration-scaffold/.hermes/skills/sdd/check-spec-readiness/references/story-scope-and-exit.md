@@ -98,3 +98,6 @@ including the **relationship** between them (T-8 / v17 wrong-class oracles).
 - **Oracle-design failure classes** (must still refuse): wrong-class · vacuous
   pass · comment-satisfiable — see skill `derive-story-oracles`
   `references/failure-classes.md`.
+- **M1 attachments → M2 PLAN** — M2 reads parent M1 `kanban_attachments` by
+  id plus `evidence/findings-handoff.json`. Metadata path lists are not the
+  findings consumer.

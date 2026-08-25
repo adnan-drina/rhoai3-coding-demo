@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""K4 mint-writer — K4 payloads → serial hermes kanban create.
+"""K4 mint — K4 payloads → serial hermes kanban create.
 
 Does not import create_task. Does not kanban swarm. Does not kanban
 decompose. Does not kanban daemon --force. Default is dry-run argv.
@@ -21,17 +21,13 @@ if str(_KERNEL) not in sys.path:
     sys.path.insert(0, str(_KERNEL))
 
 from k4_convert import convert_file, format_issues, validate_result  # noqa: E402
-from k4_schema import IMPL, ORCH, REMEDY, VERIFIER_ID, WRITER_ID  # noqa: E402
+from k4_schema import IMPL, REMEDY, VERIFIER_ID, WRITER_ID  # noqa: E402
 
 Issue = tuple[str, str, str]
 TASK_ID_RE = re.compile(r"^t_[A-Za-z0-9]+$")
 FORBIDDEN = ("swarm", "decompose", "daemon", "create_task")
 DEFAULT_WORKSPACE_ROOT = "/projects/modernized"
 DEFAULT_MAX_RUNTIME = "2h"
-FACTORY_TITLES = {
-    WRITER_ID: "Mint writer",
-    VERIFIER_ID: "Mint verifier",
-}
 
 Runner = Callable[[list[str]], tuple[int, str, str]]
 
@@ -138,29 +134,26 @@ def argv_for_payload(
     lid = str(payload.get("logical_id") or "").strip()
     title = str(payload.get("title") or "")
     assignee = str(payload.get("assignee") or "")
-    if lid in FACTORY_TITLES:
-        if title != FACTORY_TITLES[lid]:
-            _fail([_issue("K4_MINT_TITLE", "%s title %r" % (lid, title))])
-        if assignee != ORCH:
-            _fail([_issue("K4_ASSIGNEE", "%s assignee=%s" % (lid, assignee))])
-        if payload.get("max_retries") is not None:
-            _fail([_issue("K4_MINT_RETRIES", "%s must omit max_retries" % lid)])
-    else:
-        expected = "M3 %s" % lid
-        if not lid or title != expected:
-            _fail([_issue("K4_MINT_TITLE", "%s title %r != %r" % (lid, title, expected))])
-        if assignee != IMPL:
-            _fail([_issue("K4_ASSIGNEE", "%s assignee=%s" % (lid, assignee))])
-        if payload.get("max_retries") != 1:
-            _fail(
-                [
-                    _issue(
-                        "K4_MINT_RETRIES",
-                        "%s max_retries %s" % (lid, payload.get("max_retries")),
-                    )
-                ]
-            )
+    if lid in {WRITER_ID, VERIFIER_ID}:
+        _fail([_issue("K4_FACTORY", "%s dest factory card is retired" % lid)])
+    expected = "M3 %s" % lid
+    if not lid or title != expected:
+        _fail([_issue("K4_MINT_TITLE", "%s title %r != %r" % (lid, title, expected))])
+    if assignee != IMPL:
+        _fail([_issue("K4_ASSIGNEE", "%s assignee=%s" % (lid, assignee))])
+    if payload.get("max_retries") != 1:
+        _fail(
+            [
+                _issue(
+                    "K4_MINT_RETRIES",
+                    "%s max_retries %s" % (lid, payload.get("max_retries")),
+                )
+            ]
+        )
     parents = resolve_parents(payload, mapping)
+    m2 = (os.environ.get("HERMES_KANBAN_TASK") or "").strip()
+    if m2 and TASK_ID_RE.match(m2) and m2 not in parents:
+        parents = [m2] + parents
     argv = [hermes, "kanban", "create", title]
     body = str(payload.get("body") or "")
     argv.extend(["--body", body])
@@ -172,14 +165,13 @@ def argv_for_payload(
         _fail([_issue("K4_SCHEMA", "%s missing idempotency_key" % lid)])
     argv.extend(["--idempotency-key", key])
     argv.extend(["--max-runtime", max_runtime_flag()])
-    if lid not in FACTORY_TITLES:
-        argv.extend(["--max-retries", "1"])
-        argv.extend(["--workspace", workspace_flag()])
-        skills = [str(s).strip() for s in (payload.get("skills") or []) if str(s).strip()]
-        if not skills:
-            _fail([_issue("K4_MINT_SKILLS", "%s skills empty" % lid)])
-        for name in skills:
-            argv.extend(["--skill", name])
+    argv.extend(["--max-retries", "1"])
+    argv.extend(["--workspace", workspace_flag()])
+    skills = [str(s).strip() for s in (payload.get("skills") or []) if str(s).strip()]
+    if not skills:
+        _fail([_issue("K4_MINT_SKILLS", "%s skills empty" % lid)])
+    for name in skills:
+        argv.extend(["--skill", name])
     argv.append("--json")
     assert_native_create(argv)
     return argv

@@ -405,6 +405,26 @@ def check_body(label: str, body: dict, root: Path, sibling_m3: list[dict] | None
                 )
                 bad = 1
 
+    if phase == "M4":
+        writable = body.get("files_writable") or body.get("write_set") or []
+        product = []
+        for item in writable if isinstance(writable, list) else []:
+            rel = str(item).replace("\\", "/").lstrip("./")
+            if (
+                rel == "pom.xml"
+                or rel.endswith("/pom.xml")
+                or rel.startswith("src/")
+            ):
+                product.append(rel)
+        if product:
+            fail(
+                "BODY_SCOPE",
+                "phase=M4 VERDICT must not implement; files_writable "
+                "named product path %s (evidence/verdicts/ only)"
+                % product[0],
+            )
+            bad = 1
+
     # ER#2 F6 / §G.2 — transform class + G-2 applicability stamped into identity.
     # Silence must not skip G-2; stamp is evidence-derived, not worker-optional.
     TRANSFORM_CLASSES = frozenset({"NONE", "HARVEST", "REWRITE", "CONFIG", "OTHER"})
