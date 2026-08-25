@@ -8,6 +8,11 @@
 Which assertion / HTTP test libraries ship is a **scaffold** decision, not
 something each specimen rediscovers. Tip `pom.xml` MUST include (test scope):
 
+- `io.quarkus:quarkus-junit5` — **the JUnit 5 runner `@QuarkusTest` resolves
+  against.** Without it `@QuarkusTest` and the JUnit 5 annotations do not
+  compile, and the failure lands on whichever story first writes a test rather
+  than on the story that authored the pom (dest-6 `us1_greeting` blocked on
+  exactly this; Operator `E-20260825T200914ZO`). BOM-managed version.
 - `io.rest-assured:rest-assured` (already)
 - `org.assertj:assertj-core` (BOM-managed version preferred)
 

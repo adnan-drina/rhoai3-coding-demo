@@ -12,6 +12,11 @@ import sys
 from pathlib import Path
 
 REQUIRED = (
+    # The JUnit 5 runner @QuarkusTest resolves against. Absent it, the
+    # annotations do not compile and the failure lands on whichever story first
+    # writes a test, not on the story that authored the pom (dest-6
+    # us1_greeting; Operator E-20260825T200914ZO).
+    ("io.quarkus", "quarkus-junit5"),
     ("io.rest-assured", "rest-assured"),
     ("org.assertj", "assertj-core"),
 )
@@ -80,7 +85,7 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
-    print("OK: test toolchain present (rest-assured + assertj-core@version)")
+    print("OK: test toolchain present (quarkus-junit5 + rest-assured + assertj-core@version)")
     return 0
 
 

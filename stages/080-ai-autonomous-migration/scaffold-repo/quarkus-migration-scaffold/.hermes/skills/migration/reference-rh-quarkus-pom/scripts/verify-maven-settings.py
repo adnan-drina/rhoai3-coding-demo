@@ -68,7 +68,11 @@ def main(argv: list[str] | None = None) -> int:
     mvn = shutil.which("mvn")
     if mvn:
         sub = subprocess.run(
-            [mvn, "-q", "help:effective-settings"],
+            # No -q: it suppresses help:effective-settings' output, which is the
+            # very text this check searches. dest-6 M3 setup refused a correctly
+            # configured tree because of it, and the worker overrode the refusal
+            # (Operator E-20260825T200529ZO).
+            [mvn, "help:effective-settings"],
             cwd=str(root),
             text=True,
             capture_output=True,

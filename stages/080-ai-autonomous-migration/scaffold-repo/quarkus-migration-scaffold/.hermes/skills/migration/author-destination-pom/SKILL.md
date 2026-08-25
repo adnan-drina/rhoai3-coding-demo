@@ -56,7 +56,8 @@ documents hand-authoring as a dedicated path.
      foundation Jacoco/Sonar wiring from
      `references/foundation-jacoco-wiring.md` (A-3 / H-3 — build
      infrastructure, not story-owned) **and** the S-010 test toolchain
-     (`io.rest-assured:rest-assured` + `org.assertj:assertj-core@version`,
+     (`io.quarkus:quarkus-junit5` + `io.rest-assured:rest-assured` +
+     `org.assertj:assertj-core@version`,
      `../manage-quarkus-extensions/references/test-toolchain.md`). These
      are harness-owned Maven test deps, not Quarkus extensions.
    - Java release and surefire from pins
