@@ -14,8 +14,11 @@ fi
 PRODUCT_ROOT="$(cd "${PRODUCT_ROOT}" && pwd)"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# Architect 151334ZA (a): runner-invoked assert-retrievable-tree then
-# assert-pinned-gates-ran. Fail closed before package/boot.
+# Architect 151334ZA (a): runner-invoked snapshot-m4-test-reports,
+# assert-surefire-results, assert-m4-card-body, then
+# assert-retrievable-tree / assert-pinned-gates-ran. Fail closed before
+# package/boot. Never `mvn clean` here — dest-5 destroyed unread surefire
+# that way (Lead:m4-must-not-destroy-evidence-before-reading-it).
 bash "${SCRIPT_DIR}/run-m4-pre-verdict.sh" "${PRODUCT_ROOT}"
 WRITE_RECEIPT="${SCRIPT_DIR}/write-receipt.py"
 CHECK_RECEIPTS="${SCRIPT_DIR}/check-m4-floor-receipts.py"
@@ -62,7 +65,7 @@ trap cleanup EXIT
 
 # --- 1) package (optional) ---
 if [[ "${M4_SKIP_PACKAGE:-0}" != "1" ]]; then
-  log "mvn -q -DskipTests package"
+  log "mvn -q -DskipTests package (no clean)"
   if (cd "${PRODUCT_ROOT}" && mvn -q -DskipTests package ${QUARKUS_PROFILE:+-Dquarkus.profile=${QUARKUS_PROFILE}}); then
     PACKAGE_RC="0"
   else

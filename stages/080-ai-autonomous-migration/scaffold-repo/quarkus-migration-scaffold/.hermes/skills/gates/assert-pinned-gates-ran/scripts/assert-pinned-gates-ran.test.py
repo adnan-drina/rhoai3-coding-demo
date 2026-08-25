@@ -79,14 +79,20 @@ class PinnedGatesTests(unittest.TestCase):
             path = root / "evidence" / "verdicts" / "m4.json"
             path.parent.mkdir(parents=True)
             path.write_text(
-                json.dumps({"gate": "check-domain-parity", "verdict": "INCONCLUSIVE"})
+                json.dumps(
+                    {
+                        "gate": "check-domain-parity",
+                        "ran": True,
+                        "verdict": "INCONCLUSIVE",
+                    }
+                )
                 + "\n",
                 encoding="utf-8",
             )
             proc = run_pinned(root, ["--skills", "check-domain-parity"])
             self.assertEqual(proc.returncode, 0, proc.stderr)
 
-    def test_refusal_specimen_na_passes(self) -> None:
+    def test_dest5_ran_false_is_not_a_run(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             path = (
@@ -102,9 +108,43 @@ class PinnedGatesTests(unittest.TestCase):
                 encoding="utf-8",
             )
             proc = run_pinned(root, ["--skills", "check-domain-parity"])
-            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertNotEqual(proc.returncode, 0, proc.stderr)
+            self.assertIn("no run evidence", proc.stderr)
 
-    def test_idle_refusal_without_reason_fails(self) -> None:
+    def test_missing_ran_is_not_a_run(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            path = root / "evidence" / "verdicts" / "m4.json"
+            path.parent.mkdir(parents=True)
+            path.write_text(
+                json.dumps({"gate": "check-domain-parity", "verdict": "INCONCLUSIVE"})
+                + "\n",
+                encoding="utf-8",
+            )
+            proc = run_pinned(root, ["--skills", "check-domain-parity"])
+            self.assertNotEqual(proc.returncode, 0)
+
+    def test_provisional_accept_artifact_is_not_a_run(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            path = root / "evidence" / "verdicts" / "check-release-readiness.json"
+            path.parent.mkdir(parents=True)
+            path.write_text(
+                json.dumps(
+                    {
+                        "gate": "check-release-readiness",
+                        "ran": True,
+                        "verdict": "PROVISIONAL_ACCEPT",
+                        "ship": False,
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            proc = run_pinned(root, ["--skills", "check-release-readiness"])
+            self.assertNotEqual(proc.returncode, 0)
+
+    def test_specimen_na_run_passes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             path = (
@@ -115,8 +155,42 @@ class PinnedGatesTests(unittest.TestCase):
                 / "check-domain-parity.json"
             )
             path.parent.mkdir(parents=True)
-            path.write_text(json.dumps({"ran": False}) + "\n", encoding="utf-8")
+            path.write_text(
+                json.dumps(
+                    {
+                        "gate": "check-domain-parity",
+                        "ran": True,
+                        "verdict": "N/A",
+                        "reason": "specimen-n/a: no DB",
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
             proc = run_pinned(root, ["--skills", "check-domain-parity"])
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    def test_minted_on_this_card_is_not_a_run(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            path = root / "evidence" / "verdicts" / "check-domain-parity.json"
+            path.parent.mkdir(parents=True)
+            path.write_text(
+                json.dumps(
+                    {
+                        "gate": "check-domain-parity",
+                        "ran": True,
+                        "verdict": "INCONCLUSIVE",
+                        "task_id": "t_ecdb4eb9",
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            proc = run_pinned(
+                root,
+                ["--skills", "check-domain-parity", "--card-id", "t_ecdb4eb9"],
+            )
             self.assertNotEqual(proc.returncode, 0)
 
     def test_self_pin_writes_verdict(self) -> None:

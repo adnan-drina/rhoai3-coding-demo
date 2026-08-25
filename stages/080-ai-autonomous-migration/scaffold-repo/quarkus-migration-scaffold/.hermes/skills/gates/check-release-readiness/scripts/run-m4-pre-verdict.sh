@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # Architect 151334ZA (a): runner-invoked M4 pre-verdict.
-# Calls assert-retrievable-tree then assert-pinned-gates-ran then
-# assert-no-fence-evasion (Operator E-20260825T074910ZO). Fail closed.
-# Not idle. Not K2. Not dest-push. Not a card pin.
+# Snapshot test reports, parse surefire, refuse a pre-specified verdict
+# token, then assert-retrievable-tree, assert-pinned-gates-ran,
+# assert-g4-claim-consistency, assert-no-fence-evasion.
+# Fail closed. Not idle. Not K2. Not dest-push. Not a card pin.
 #
 # Usage: run-m4-pre-verdict.sh <product-root>
 # Env: M4_CARD_SKILLS — comma list; default is the bound gate leaves so
 # missing env is not a skip.
+# Env: M4_CARD_BODY — M4 card body when kanban show is unavailable.
 # Env: FENCE_EVASION_LOGS — colon/newline list of work logs (complete set).
 # Env: FENCE_EVASION_LOG — single extra path; land-time only when no task id.
 # Env: HERMES_KANBAN_TASK — walk parent-chain logs. Never scan this card
@@ -21,6 +23,9 @@ fi
 PRODUCT_ROOT="$(cd "${PRODUCT_ROOT}" && pwd)"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SNAP="${SCRIPT_DIR}/snapshot-m4-test-reports.py"
+SURE="${SCRIPT_DIR}/assert-surefire-results.py"
+BODY="${SCRIPT_DIR}/assert-m4-card-body.py"
 TREE="${SCRIPT_DIR}/../../assert-retrievable-tree/scripts/assert-retrievable-tree.py"
 PINNED="${SCRIPT_DIR}/../../assert-pinned-gates-ran/scripts/assert-pinned-gates-ran.py"
 DETECTOR="${SCRIPT_DIR}/../../assert-no-fence-evasion/scripts/assert-no-fence-evasion.py"
@@ -29,6 +34,9 @@ RESOLVE="${SCRIPT_DIR}/resolve-m4-work-logs.py"
 DEFAULT_SKILLS="check-spec-readiness,check-domain-parity,check-release-readiness,assert-pinned-gates-ran,assert-retrievable-tree"
 SKILLS="${M4_CARD_SKILLS:-${DEFAULT_SKILLS}}"
 
+python3 "${SNAP}" "${PRODUCT_ROOT}"
+python3 "${SURE}" "${PRODUCT_ROOT}"
+python3 "${BODY}"
 python3 "${TREE}" "${PRODUCT_ROOT}"
 python3 "${PINNED}" "${PRODUCT_ROOT}" --skills "${SKILLS}"
 python3 "${G4}" "${PRODUCT_ROOT}"
@@ -49,4 +57,4 @@ if [[ "${scanned}" -lt 1 ]]; then
   echo "run-m4-pre-verdict: REFUSE silent skip of assert-no-fence-evasion — empty work-log set" >&2
   exit 2
 fi
-echo "OK: run-m4-pre-verdict (assert-retrievable-tree + assert-pinned-gates-ran + assert-g4-claim-consistency + assert-no-fence-evasion; scanned ${scanned} work log(s))"
+echo "OK: run-m4-pre-verdict (snapshot+surefire+card-body + assert-retrievable-tree + assert-pinned-gates-ran + assert-g4-claim-consistency + assert-no-fence-evasion; scanned ${scanned} work log(s))"

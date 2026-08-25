@@ -1,11 +1,11 @@
 ---
 name: check-release-readiness
-description: Use before advancing or shipping — lint verdict tokens and M4/M5 floor receipts. Do not use for domain parity (check-domain-parity), wall/crash requeue or chaos (retired with .hermes/_park; rebuild later on dest GO), or phase-dispatch matrix (deleted in v2).
+description: Use before advancing or shipping — lint M4/M5 verdict tokens and floor receipts, parse surefire XML, snapshot test reports before any rebuild, and refuse an M4 card body that already names a verdict token or ship flag. Do not use for domain parity (check-domain-parity), wall/crash requeue or chaos (retired with .hermes/_park; rebuild later on dest GO), or phase-dispatch matrix (deleted in v2).
 license: Apache-2.0
 compatibility: Linux seat; Python 3.11+; reads migration/ receipts
 metadata:
   author: rhoai3-harness-team
-  version: "1.4.4"
+  version: "1.5.0"
   hermes:
     tags:
     - gates
@@ -53,12 +53,18 @@ Operator `074910ZO`). Commands under **Checks**.
 
 0. **Before `PROVISIONAL_ACCEPT`** — `scripts/run-m4-pre-verdict.sh` (Architect
    `151334ZA` **(a)** runner-invoked). `run-m4-floor.sh` calls it first.
-   Pinning a leaf is availability, not enforcement. These three do **not**
+   Order: snapshot surefire/failsafe into `evidence/m4-pre-rebuild/` (first
+   XML snapshot wins; never overwrite with empty), parse the snapshot
+   (Failures>0 or missing XML is REFUSE), refuse an M4 body that names
+   `Token:`/`ship:`, then `assert-retrievable-tree`, `assert-pinned-gates-ran`
+   (`ran: true` only), `assert-g4-claim-consistency`, `assert-no-fence-evasion`.
+   Pinning a leaf is availability, not enforcement. These do **not**
    idle-exit-0. Residual skip of this parent skill is **(c)** until a later
    K2 GO (**(b)** PARK). Worker logs: `FENCE_EVASION_LOGS` (colon list), or
    parent-chain walk from `$HERMES_KANBAN_TASK` (M1/M2/M3 stories — **not**
    this M4 card's own log; Operator `105656ZO`). `FENCE_EVASION_LOG` is a
    single extra path for land-time tests, not a substitute under M4.
+   Do not `mvn clean` before the snapshot; the floor never runs `clean`.
 1. **Completion floors** (refuse a phase that never ran anything real) —
    `check-runnable-db-config.py`, `check-empty-security.py`,
    `check-test-toolchain.py`, and `../check-domain-parity/scripts/check-product-tests.py`.
@@ -79,6 +85,11 @@ Operator `074910ZO`). Commands under **Checks**.
 ```bash
 # Before PROVISIONAL_ACCEPT — runner-invoked (fail-closed; not idle)
 bash "${HERMES_SKILL_DIR}/scripts/run-m4-pre-verdict.sh" /projects/modernized
+
+# Snapshot + surefire + M4 body (also invoked by the runner above)
+python3 "${HERMES_SKILL_DIR}/scripts/snapshot-m4-test-reports.py" /projects/modernized
+python3 "${HERMES_SKILL_DIR}/scripts/assert-surefire-results.py" /projects/modernized
+python3 "${HERMES_SKILL_DIR}/scripts/assert-m4-card-body.py"
 
 # Verdict routing + §18.0 composition
 python3 "${HERMES_SKILL_DIR}/scripts/check-verdict-routing.py" /projects/modernized
@@ -147,17 +158,21 @@ Rebuild later only on dest GO.
 ## Verification
 
 - `scripts/run-m4-pre-verdict.sh` (called first by `run-m4-floor.sh`) invokes
-  `assert-retrievable-tree.py`, `assert-pinned-gates-ran.py`,
+  `snapshot-m4-test-reports.py`, `assert-surefire-results.py`,
+  `assert-m4-card-body.py`, `assert-retrievable-tree.py`,
+  `assert-pinned-gates-ran.py` (`ran: true` only; `ran: false` is not a run),
   `assert-g4-claim-consistency.py` (G-4 N/A vs `INCONCLUSIVE` is OBJECT),
   and `assert-no-fence-evasion.py` over **work** logs (`resolve-m4-work-logs.py`
   walks parents or `FENCE_EVASION_LOGS`; scanning `$HERMES_KANBAN_TASK.log`
   alone is REFUSE) and **fail closed**. KEEP the detector (Operator
   `115007ZO` / `122315ZO`: dest-3 encode-after-refusal is the class; tirith
   is retired and never covered it).
-  Idle is not a pass for those asserts. `specimen-n/a: no DB` belongs in a
-  refusal file. `check-release-readiness` `scripts/` must `grep` both leaf
-  names and `assert-no-fence-evasion` (Architect `151334ZA` (a); Operator
-  `074910ZO` / `105656ZO` / `115007ZO`).
+  Idle is not a pass for those asserts. `specimen-n/a: no DB` belongs on a
+  `"ran": true` N/A file. `check-release-readiness` `scripts/` must `grep`
+  both leaf names and `assert-no-fence-evasion` (Architect `151334ZA` (a);
+  Operator `074910ZO` / `105656ZO` / `115007ZO`). Negative controls: dest-5
+  `Failures: 1` surefire, dest-5 `Token: PROVISIONAL_ACCEPT` body, dest-5
+  `"ran": false` refusal — all REFUSE.
 - `check-verdict-routing.py` prints `OK: verdict-routing checks passed (N
   artifact(s))`. **Silent-failure assertion: N must be > 0.** `N = 0` — or the
   idle line `OK: no verdict/preflight artifacts — routing lint idle` — means

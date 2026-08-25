@@ -119,6 +119,9 @@ without one is `protocol_violation`. Mint complete requires `created_cards`
 use `--assignee implementer`; mint-verifier uses `--assignee orchestrator`;
 M3 uses `--assignee implementer`. Do not seat M2 or M4 on orchestrator
 (dest `orchestrator.yaml.template` disables `file`/`terminal`/`skills`).
+M4 `--body` is acceptance and oracles only (dest-4 `t_9acd47cb`). Do not
+name `Token:` / `verdict:` `PROVISIONAL_ACCEPT`/`ACCEPT` or `ship:`.
+`assert-m4-card-body.py` refuses a body that pre-specifies the verdict.
 Story `kanban_create` passes `--max-retries 1` (null inherits `failure_limit` 2
 and masks a Gate K first failure). Mint those cards through
 `.hermes/kernel/k4_mint.py` from K4 payloads (CLI `hermes kanban create`).

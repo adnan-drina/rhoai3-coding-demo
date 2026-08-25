@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
-"""Refuse M4 PROVISIONAL_ACCEPT when a pinned gate left no evidence.
+"""Refuse M4 PROVISIONAL_ACCEPT when a pinned gate left no *run* evidence.
 
-Architect ``142524ZA`` / Operator ``141853Z-op`` / ``145539Z-op``.
-Silence fails. ``specimen-n/a: no DB`` is a refusal reason, not a skip.
-Do not require G-1 kill-ratio, Owner/Pet, or a runnable DB as proof a
-gate ran. Do not idle-exit-0 on missing artifacts.
+Architect ``142524ZA`` / Operator ``141853Z-op`` / ``145539Z-op`` /
+``162349ZO``. Silence fails. ``ran: false`` is not a run — dest-5 M4
+minted ``refusals/check-domain-parity.json`` with ``ran: false`` and this
+gate accepted it. Presence of an artifact is not evidence the gate ran.
+``specimen-n/a: no DB`` is a refusal *reason* on a run (``ran: true``),
+not a skip. Do not require G-1 kill-ratio, Owner/Pet, or a runnable DB
+as proof a gate ran. Do not idle-exit-0 on missing artifacts. Do not
+accept artifacts authored on the M4 card under test.
 """
 from __future__ import annotations
 
@@ -26,7 +30,9 @@ PINNED_GATE_LEAVES = frozenset(
 )
 SELF = "assert-pinned-gates-ran"
 VERDICT_DIR = Path("evidence") / "verdicts"
-REFUSAL_DIR = VERDICT_DIR / "refusals"
+RELEASE_TOKENS = frozenset(
+    {"PROVISIONAL_ACCEPT", "ACCEPT", "SCOPED_ACCEPT"}
+)
 
 
 def _fail(msg: str) -> int:
@@ -83,41 +89,54 @@ def verdict_names_gate(path: Path, gate: str) -> bool:
     return gate in _json_names(doc)
 
 
-def iter_ran_verdicts(root: Path) -> Iterable[Path]:
+def iter_verdict_json(root: Path) -> Iterable[Path]:
     base = root / VERDICT_DIR
     if not base.is_dir():
         return []
-    out: list[Path] = []
-    for path in sorted(base.rglob("*.json")):
-        try:
-            path.relative_to(root / REFUSAL_DIR)
-            continue
-        except ValueError:
-            out.append(path)
-    return out
+    return sorted(path for path in base.rglob("*.json") if path.is_file())
 
 
-def has_ran_verdict(root: Path, gate: str) -> bool:
-    for path in iter_ran_verdicts(root):
-        if verdict_names_gate(path, gate):
-            return True
-    return False
-
-
-def refusal_ok(root: Path, gate: str) -> bool:
-    path = root / REFUSAL_DIR / (gate + ".json")
-    if not path.is_file():
-        return False
+def _load_obj(path: Path) -> dict | None:
     try:
         doc = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
+        return None
+    return doc if isinstance(doc, dict) else None
+
+
+def authored_by_card(doc: dict, card_id: str) -> bool:
+    if not card_id:
         return False
-    if not isinstance(doc, dict):
+    return card_id in json.dumps(doc, sort_keys=True)
+
+
+def is_run_evidence(doc: dict, card_id: str) -> bool:
+    """A cited artifact evidences a run only when it says the gate ran.
+
+    ``ran: false`` is a withdrawn claim (dest-5). Missing ``ran`` is
+    presence-only. Release tokens are M4/M5 outputs, not gate-ran proof.
+    Artifacts that name this M4 task id were minted on the card under test.
+    """
+    if doc.get("ran") is not True:
         return False
-    if doc.get("ran") is not False:
+    verdict = str(doc.get("verdict") or "").strip().upper().replace("-", "_")
+    if verdict in RELEASE_TOKENS:
         return False
-    reason = doc.get("reason")
-    return isinstance(reason, str) and bool(reason.strip())
+    if authored_by_card(doc, card_id):
+        return False
+    return True
+
+
+def has_ran_verdict(root: Path, gate: str, card_id: str = "") -> bool:
+    for path in iter_verdict_json(root):
+        if not verdict_names_gate(path, gate):
+            continue
+        doc = _load_obj(path)
+        if doc is None:
+            continue
+        if is_run_evidence(doc, card_id):
+            return True
+    return False
 
 
 def write_self_verdict(root: Path, evidenced: list[str]) -> None:
@@ -134,26 +153,27 @@ def write_self_verdict(root: Path, evidenced: list[str]) -> None:
     path.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
 
 
-def check_root(root: Path, skills: list[str]) -> int:
+def check_root(root: Path, skills: list[str], card_id: str = "") -> int:
     pinned = [s for s in skills if s in PINNED_GATE_LEAVES]
     missing: list[str] = []
     evidenced: list[str] = []
     for gate in pinned:
         if gate == SELF:
             continue
-        if has_ran_verdict(root, gate) or refusal_ok(root, gate):
+        if has_ran_verdict(root, gate, card_id):
             evidenced.append(gate)
             continue
         missing.append(gate)
     if missing:
         return _fail(
-            "pinned gate(s) left no verdict and no refusal: "
+            "pinned gate(s) left no run evidence: "
             + ", ".join(missing)
-            + " (silence fails; specimen-n/a: no DB is a refusal, not a skip)"
+            + " (ran:false / missing ran / release token / minted-on-this-card "
+            "are not a run; silence fails)"
         )
     if SELF in pinned:
         write_self_verdict(root, evidenced)
-        if not has_ran_verdict(root, SELF):
+        if not has_ran_verdict(root, SELF, card_id):
             return _fail("self-verdict was not written")
         evidenced.append(SELF)
     print(
@@ -173,6 +193,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--skills-file", type=Path, default=None)
     parser.add_argument("--card-json", type=Path, default=None)
+    parser.add_argument(
+        "--card-id",
+        default=None,
+        help="M4 task id; artifacts naming it are minted on this card",
+    )
     args = parser.parse_args(argv)
     root = args.root.resolve()
     if not root.is_dir():
@@ -186,7 +211,8 @@ def main(argv: list[str] | None = None) -> int:
             "pass --skills, --skills-file, --card-json, or M4_CARD_SKILLS "
             "(missing list is fail-closed, not idle)"
         )
-    return check_root(root, skills)
+    card_id = (args.card_id or os.environ.get("HERMES_KANBAN_TASK") or "").strip()
+    return check_root(root, skills, card_id)
 
 
 if __name__ == "__main__":

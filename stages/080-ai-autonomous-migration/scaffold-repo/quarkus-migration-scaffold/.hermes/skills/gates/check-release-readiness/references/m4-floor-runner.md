@@ -5,7 +5,8 @@
 
 ## Floor checks (ordered)
 
-1. **boot_health** — package (optional skip) + process up + `GET /q/health` → 200
+0. **pre-verdict** — snapshot surefire/failsafe; parse XML (fail closed if absent or Failures>0); refuse an M4 body that names `Token:`/`ship:`; retrievable tree; pinned gates with `"ran": true` only; G-4 claim consistency; fence detector on **work** logs
+1. **boot_health** — package (optional skip, **never clean**) + process up + `GET /q/health` → 200
 2. **endpoint_smoke** — curl inventoried or env `M4_SMOKE_PATHS` (default `/q/health`); 200/401/403 OK
 3. **g4_hook** — evaluate product `migration/parity.json` if present; else honest **INCONCLUSIVE** (`g4_mode=SAMPLE`)
 

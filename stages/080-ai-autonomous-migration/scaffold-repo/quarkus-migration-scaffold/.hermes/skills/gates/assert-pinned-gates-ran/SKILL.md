@@ -2,18 +2,17 @@
 name: assert-pinned-gates-ran
 description: >
   Use before writing M4 PROVISIONAL_ACCEPT — refuse unless every gate skill
-  pinned on the M4 card has a verdict under evidence/verdicts/ naming it, or
-  an explicit evidence/verdicts/refusals/<gate>.json with ran false and a
-  reason. Silence fails. specimen-n/a: no DB is a refusal reason, not a skip.
-  Do not require G-1 kill-ratio, Owner/Pet, or a runnable DB as proof a gate
-  ran. Do not idle-exit-0 on missing artifacts. Do not use for domain
-  measurement (check-domain-parity) or verdict-token lint
-  (check-release-readiness).
+  pinned on the M4 card has a verdict whose ran field is true. ran false,
+  a missing ran field, a PROVISIONAL_ACCEPT/ACCEPT artifact, or a file that
+  names this M4 task id is not a run. Silence fails. specimen-n/a: no DB is
+  a reason on a ran-true N/A, not a skip. Do not idle-exit-0 on missing
+  artifacts. Do not use for domain measurement (check-domain-parity) or
+  M4 body/surefire lint (check-release-readiness).
 license: Apache-2.0
 compatibility: Linux seat; Python 3.11+; git not required
 metadata:
   author: rhoai3-harness-team
-  version: "1.0.0"
+  version: "1.1.0"
   hermes:
     tags:
     - gates
@@ -21,9 +20,11 @@ metadata:
     category: gates
     kind: guidance
 ---
-# Pinned gates must have run (or refused)
+# Pinned gates must have run
 
-Architect `142524ZA`. Run **before** writing `PROVISIONAL_ACCEPT`.
+Architect `142524ZA`. Operator `162349ZO`: dest-5 M4 minted
+`refusals/check-domain-parity.json` with `"ran": false` and this gate
+accepted it. Run **before** writing `PROVISIONAL_ACCEPT`.
 
 ## When to Use
 
@@ -46,12 +47,14 @@ python3 "${HERMES_SKILL_DIR}/scripts/assert-pinned-gates-ran.py" /projects/moder
 ```
 
 `--skills-file` or `--card-json` (object with `skills`) are equivalents.
-Env `M4_CARD_SKILLS` is the same comma list.
+Env `M4_CARD_SKILLS` is the same comma list. `--card-id` /
+`HERMES_KANBAN_TASK` rejects artifacts that name this M4 task.
 
-For each pinned gate leaf: require either a JSON under `evidence/verdicts/`
-(not `refusals/`) that names it (`gate` / `skill` / `name` / filename stem),
-**or** `evidence/verdicts/refusals/<gate>.json` with `"ran": false` and a
-non-empty `reason`. Example reason: `specimen-n/a: no DB`.
+For each pinned gate leaf: require a JSON under `evidence/verdicts/`
+(including `refusals/`) that names it **and** `"ran": true`. A missing
+`ran` field, `"ran": false`, a `PROVISIONAL_ACCEPT`/`ACCEPT`/`SCOPED_ACCEPT`
+token, or a document that contains this card's id is **not** a run.
+`specimen-n/a: no DB` belongs on a `"ran": true` `"verdict": "N/A"` file.
 
 This script does not write `PROVISIONAL_ACCEPT`. On pass, if this leaf is
 pinned, it writes `evidence/verdicts/assert-pinned-gates-ran.json` so its
@@ -60,5 +63,6 @@ own pin is evidenced.
 ## Pitfalls
 
 - Reading a missing `evidence/verdicts/` tree as skip.
-- Treating `specimen-n/a: no DB` as a skip instead of a refusal file.
+- Treating `"ran": false` plus a reason as evidence the gate ran.
+- Minting PASS/refusal JSON on the verdict card to green this gate.
 - Running this before `assert-retrievable-tree` when that leaf is also pinned.
