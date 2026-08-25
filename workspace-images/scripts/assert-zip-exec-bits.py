@@ -57,14 +57,26 @@ def main() -> int:
         )
         return 1
 
+    # Group-exec, not os.access(X_OK). This runs as root during the build, and
+    # for root access(2) succeeds when *any* execute bit is set - so a 0700
+    # entry would pass here and still be unrunnable in the workspace. The tree
+    # is chown'd 10001:0 while the workspace runs as a different uid in gid 0,
+    # so group is the bit the runtime user actually reaches these files by.
     lost = []
+    owner_only = []
     missing = []
     for name in declared:
         path = os.path.join(args.dest, name)
         if not os.path.exists(path):
             missing.append(name)
-        elif not os.access(path, os.X_OK):
-            lost.append(name)
+            continue
+        mode = os.stat(path).st_mode
+        if mode & stat.S_IXGRP:
+            continue
+        # Two different defects with two different remedies. Owner-exec present
+        # means extraction worked and the archive itself declares a mode the
+        # runtime uid cannot use; no exec bit at all means the extractor ate it.
+        (owner_only if mode & stat.S_IXUSR else lost).append(name)
 
     if missing:
         print(
@@ -79,6 +91,17 @@ def main() -> int:
             f"their exec bit during extraction into {args.dest}: "
             f"{', '.join(sorted(lost))}. The extractor is discarding Unix "
             "modes - use unzip, not `python -m zipfile`.",
+            file=sys.stderr,
+        )
+        return 1
+    if owner_only:
+        print(
+            f"REFUSE: {len(owner_only)} of {len(declared)} executable entries "
+            f"are owner-executable only under {args.dest}: "
+            f"{', '.join(sorted(owner_only))}. Extraction was correct - the "
+            "archive itself declares these 0700. This tree is chown'd to a uid "
+            "the workspace does not run as, so it reaches them by group; add "
+            "g+x for these entries rather than changing the extractor.",
             file=sys.stderr,
         )
         return 1
