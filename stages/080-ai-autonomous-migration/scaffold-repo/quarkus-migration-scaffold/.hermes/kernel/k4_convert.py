@@ -135,7 +135,25 @@ def _compile_or_test_exit(fw: list[str], kind: str = "") -> dict[str, str] | Non
         return {"check": "test_suite_runs", "cmd": "mvn -q test"}
     k = (kind or "").strip().lower()
     if k in {"setup", "bootstrap"}:
-        return None
+        # Lead:setup-story-has-no-build-exit-criterion — a story that authors
+        # pom.xml previously exited on nothing, so it shipped a pom whose tests
+        # could not compile and the failure landed on the next story
+        # (dest-6 us1_greeting; Operator E-20260825T200914ZO).
+        #
+        # `mvn -q test` is NOT the fix here: setup writes no test sources, so it
+        # would pass vacuously — the same defect as the test-compile exit
+        # Architect OBJECTed to restoring (E-20260825T201128ZA). The
+        # non-vacuous claim a pom-authoring story CAN make is that the pom
+        # declares a working test toolchain, which check-test-toolchain.py
+        # verifies (quarkus-junit5 + rest-assured + assertj@version) and which
+        # fails on dest-6's real pom.
+        return {
+            "check": "test_toolchain",
+            "cmd": (
+                "python3 .hermes/skills/gates/check-release-readiness/"
+                "scripts/check-test-toolchain.py ."
+            ),
+        }
     if _touches_main(fw):
         return {"check": "compile", "cmd": "mvn -q compile"}
     return None
