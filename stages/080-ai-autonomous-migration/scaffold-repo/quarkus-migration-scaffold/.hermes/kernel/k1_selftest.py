@@ -24,6 +24,13 @@ def main() -> int:
     if "BODY_REF_MISSING" in codes:
         print("FAIL: valid fixture missing type-inventory", issues, file=sys.stderr)
         return 1
+    if "test-compile" in good.read_text(encoding="utf-8"):
+        print(
+            "FAIL: valid-m3.json carries refused test-compile exit "
+            "(Lead:valid-m3-fixture-carries-a-refused-exit)",
+            file=sys.stderr,
+        )
+        return 1
 
     bad_issues = validate_file(bad, root=None)
     bad_codes = {c for c, _, _ in bad_issues}

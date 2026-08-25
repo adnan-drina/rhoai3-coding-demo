@@ -28,6 +28,6 @@
   "files_writable": ["src/main/java/org/acme/OwnerResource.java"],
   "exit_criteria": [
     {"check": "skills", "assert": "consult each preload or typed skills_unused; silence invalid AD-002E"},
-    {"check": "compile", "cmd": "mvn -q test-compile"}
+    {"check": "compile", "cmd": "mvn -q compile"}
   ]
 }
