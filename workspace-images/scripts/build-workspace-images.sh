@@ -16,6 +16,7 @@ build_target() {
   local name="$2"
   echo "=== building ${name} (target ${target}) arch=${ARCH} ==="
   podman build \
+    --pull \
     --arch "${ARCH}" \
     -f "${DOCKERFILE}" \
     --target "${target}" \
@@ -53,6 +54,7 @@ UNSIGNED_ID="$(podman inspect -f '{{.Id}}' "${UNSIGNED_REF}")"
 STAMP="${UNSIGNED_DIGEST:-${UNSIGNED_ID}}"
 echo "=== stamping 080 IMAGE_DIGEST=${STAMP} ==="
 podman build \
+  --pull \
   --arch "${ARCH}" \
   -f "${DOCKERFILE}" \
   --target rhoai3-ws-080 \
