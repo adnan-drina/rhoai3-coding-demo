@@ -74,6 +74,7 @@ workspace state.
 | M4/M5 verdict routing | skill `check-release-readiness` |
 | M4 pinned-gate evidence | skill `assert-pinned-gates-ran` |
 | M4 retrievable `src/` + `pom.xml` | skill `assert-retrievable-tree` |
+| Fence-evasion detector (observation, not a boundary) | skill `assert-no-fence-evasion` |
 | Run / phase data | `evidence/` |
 | SDD stack | `.specify/` (workspace provision only — never commit in golden) |
 | Destination POM authoring | skill `author-destination-pom` |
@@ -155,6 +156,7 @@ One line each: what it governs → which skill. When a skill is loaded, prefer
 | M4/M5 verdict routing | `check-release-readiness` |
 | M4 pinned-gate evidence (silence fails) | `assert-pinned-gates-ran` |
 | M4 retrievable `src/` + `pom.xml` | `assert-retrievable-tree` |
+| Fence-evasion detector (not containment evidence) | `assert-no-fence-evasion` |
 | Quarkus config / profiles | `configure-quarkus-profiles` |
 | Entity / persistence form | `form-entity-persistence` |
 | Spec Kit provision (postStart only) | `init-spec-workspace` |

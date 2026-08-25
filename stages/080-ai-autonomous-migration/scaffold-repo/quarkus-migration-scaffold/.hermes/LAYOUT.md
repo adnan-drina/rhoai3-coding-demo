@@ -16,7 +16,7 @@ parallel home is a defect.
 | Analysis | `.hermes/skills/analysis/` (MTA, inventory) |
 | Migration | `.hermes/skills/migration/` (Boot3 / Quarkus / persistence) |
 | SDD | `.hermes/skills/sdd/` (Spec Kit provision + story oracles) |
-| M4 oracles | `.hermes/skills/gates/` (`check-domain-parity`, `check-release-readiness`, `assert-pinned-gates-ran`, `assert-retrievable-tree`) |
+| M4 oracles | `.hermes/skills/gates/` (`check-domain-parity`, `check-release-readiness`, `assert-pinned-gates-ran`, `assert-retrievable-tree`, `assert-no-fence-evasion`) |
 | Shared Python | `.hermes/lib/` — **not a skill** (generated_sources, specimen splits). Identity is `.hermes-lib` marker, not a member module. |
 | Retired `_park/` | Deleted (Operator GO `155455Z`). Dest omit + chaos re-add tripwire stay in `scripts/bootstrap-migration-scaffold-v2.sh`. Do not mkdir empty `_park/` or dump requeue into kernel. Rebuild wall/crash/chaos later only on dest GO. |
 | K2 REHOST | `.hermes/kernel/pre_tool_call.sh` — **one** shell `pre_tool_call` module (`fail_closed: true`). Dest terminal allow-root is dest tree **and** `/projects/legacy` (`K2_ALLOW_ROOT` pathsep; Architect `214325ZA`). Unproven/opaque terminal commands **deny** (`214743ZA`). Write sandbox stays `HERMES_WRITE_SAFE_ROOT` dest tree only. **Not claimed control**. Do not mkdir empty `kernel/`. |
@@ -71,6 +71,7 @@ complete requires `created_cards`. Do not wrap these in home scripts.
 | `check-release-readiness` | gates | M4/M5 verdict routing (no phase-dispatch matrix) |
 | `assert-retrievable-tree` | gates | M4 refuse unless `src/` and `pom.xml` committed vs HEAD |
 | `assert-pinned-gates-ran` | gates | M4 refuse unless each pinned gate has a verdict or `ran: false` refusal |
+| `assert-no-fence-evasion` | gates | Observe encode-then-execute after a refusal (AD-020 detector, not a boundary) |
 
 ## Domain gate vocabulary (binding)
 

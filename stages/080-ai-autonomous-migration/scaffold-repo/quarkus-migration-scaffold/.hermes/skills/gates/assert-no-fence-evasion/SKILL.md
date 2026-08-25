@@ -45,6 +45,11 @@ of "workaround" earlier in a long log cannot taint a later command.
 python3 scripts/assert-no-fence-evasion.py <worker-log> [--window N]
 ```
 
+Invoked by `check-release-readiness` `run-m4-pre-verdict.sh` (Operator
+`E-20260825T074910ZO`). That runner fail-closes if neither `FENCE_EVASION_LOG`
+nor `HERMES_KANBAN_TASK` is set. **Not** a card pin — pinning without a runner
+is the silent-skip that hid `check-domain-parity`.
+
 Exit `0` clean or advisory-only · `1` evasion found · `2` unreadable log.
 
 Findings name the line, the shape, the refusal it followed, the narrated intent

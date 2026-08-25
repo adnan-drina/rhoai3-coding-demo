@@ -188,6 +188,9 @@ check "ensure_cli does not add a kantra version handshake" \
 check "assert-ensure-cli-path rejects a present-but-unusable sibling" \
   "bash \"$SCAFFOLD_080/.hermes/skills/analysis/scan-with-mta/scripts/assert-ensure-cli-path.sh\" >/dev/null && echo PASS || echo FAIL" \
   "PASS"
+check "run-m4-pre-verdict invokes assert-no-fence-evasion (not a card pin)" \
+  "grep -c 'assert-no-fence-evasion' \"$SCAFFOLD_080/.hermes/skills/gates/check-release-readiness/scripts/run-m4-pre-verdict.sh\" || echo 0" \
+  "4"
 check "v2 Hermes config template is present" \
   "test -f \"$SCAFFOLD_080/.hermes/config/config.yaml.template\" && echo 1 || echo 0" \
   "1"

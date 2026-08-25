@@ -9,7 +9,7 @@ KEEP (this skill — M4/M5 product):
 - `scripts/check-accept-scope.py` — SCOPED_ACCEPT when descopes stand
 - `scripts/check-m4-floor-receipts.py` — M4 floor receipt trio complete
 - `scripts/write-receipt.py` — **writer** for M4-floor / gate receipts
-- `scripts/run-m4-pre-verdict.sh` — runner-invoked `assert-retrievable-tree` then `assert-pinned-gates-ran` (Architect `151334ZA` (a); fail closed)
+- `scripts/run-m4-pre-verdict.sh` — runner-invoked `assert-retrievable-tree` then `assert-pinned-gates-ran` then `assert-no-fence-evasion` (Architect `151334ZA` (a); Operator `074910ZO`; fail closed; not a card pin)
 - `scripts/run-m4-floor.sh` — run the M4 floor suite (calls `run-m4-pre-verdict.sh` first)
 - `scripts/check-empty-security.py` — empty security config refuse
 - `scripts/check-runnable-db-config.py` — runnable DB config gate

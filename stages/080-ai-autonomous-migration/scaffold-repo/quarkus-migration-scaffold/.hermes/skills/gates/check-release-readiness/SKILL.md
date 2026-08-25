@@ -5,7 +5,7 @@ license: Apache-2.0
 compatibility: Linux seat; Python 3.11+; reads migration/ receipts
 metadata:
   author: rhoai3-harness-team
-  version: "1.4.2"
+  version: "1.4.3"
   hermes:
     tags:
     - gates
@@ -47,14 +47,16 @@ requires kill-ratio PASS+pin; a waiver cannot author ACCEPT (B-4/C-3(a)).
 
 Ordered stages. Completion-floor scripts take the product root as their first
 positional arg and are idle (exit 0) when their trigger artifact is absent.
-**Not idle:** `assert-retrievable-tree` and `assert-pinned-gates-ran` — those
-fail closed on silence (Architect `142524ZA`). Commands under **Checks**.
+**Not idle:** `assert-retrievable-tree`, `assert-pinned-gates-ran`, and
+`assert-no-fence-evasion` — those fail closed on silence (Architect `142524ZA`;
+Operator `074910ZO`). Commands under **Checks**.
 
 0. **Before `PROVISIONAL_ACCEPT`** — `scripts/run-m4-pre-verdict.sh` (Architect
    `151334ZA` **(a)** runner-invoked). `run-m4-floor.sh` calls it first.
-   Pinning a leaf is availability, not enforcement. These two do **not**
+   Pinning a leaf is availability, not enforcement. These three do **not**
    idle-exit-0. Residual skip of this parent skill is **(c)** until a later
-   K2 GO (**(b)** PARK).
+   K2 GO (**(b)** PARK). Worker log: `FENCE_EVASION_LOG` or
+   `$HERMES_HOME/kanban/logs/$HERMES_KANBAN_TASK.log`.
 1. **Completion floors** (refuse a phase that never ran anything real) —
    `check-runnable-db-config.py`, `check-empty-security.py`,
    `check-test-toolchain.py`, and `../check-domain-parity/scripts/check-product-tests.py`.
@@ -143,11 +145,13 @@ Rebuild later only on dest GO.
 ## Verification
 
 - `scripts/run-m4-pre-verdict.sh` (called first by `run-m4-floor.sh`) invokes
-  `assert-retrievable-tree.py` and `assert-pinned-gates-ran.py` and **fail closed**
-  (missing `src/`/`pom.xml` commit, or a pinned gate with neither a named
-  verdict nor `refusals/<gate>.json`). Idle is not a pass for those two.
-  `specimen-n/a: no DB` belongs in a refusal file. `check-release-readiness`
-  `scripts/` must `grep` both leaf names (Architect `151334ZA` (a)).
+  `assert-retrievable-tree.py`, `assert-pinned-gates-ran.py`, and
+  `assert-no-fence-evasion.py` and **fail closed**
+  (missing `src/`/`pom.xml` commit, a pinned gate with neither a named
+  verdict nor `refusals/<gate>.json`, or a missing worker log). Idle is not a
+  pass for those three. `specimen-n/a: no DB` belongs in a refusal file.
+  `check-release-readiness` `scripts/` must `grep` both leaf names and
+  `assert-no-fence-evasion` (Architect `151334ZA` (a); Operator `074910ZO`).
 - `check-verdict-routing.py` prints `OK: verdict-routing checks passed (N
   artifact(s))`. **Silent-failure assertion: N must be > 0.** `N = 0` — or the
   idle line `OK: no verdict/preflight artifacts — routing lint idle` — means
