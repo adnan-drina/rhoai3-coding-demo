@@ -16,18 +16,30 @@ command scanning will use pattern matching only.” That is AD-020’s
 pathology **inside the runtime**: a control designs may cite that does
 not exist, and it fails open.
 
-Operator: `E-20260825T083840ZO`. Architect BIND on that Need.
+Operator: `E-20260825T083840ZO`, AMEND `E-20260825T111519ZO`,
+`E-20260825T113535ZO` (`Operator:GO-enable-tirith` GRANTED).
 
 ## Non-negotiable
 
-1. Dest `config.yaml` (dest-init and golden) MUST set
-   `security.tirith_enabled: false` until a named GO ships the binary
-   **and** turns the scanner on as a set.
-2. Do **not** set `security.tirith_fail_open: false` while the binary is
-   absent — official docs: that **blocks commands** when tirith is
-   unavailable. Honesty is disable, not fail-closed on a missing tool.
-3. Do **not** install tirith in the 080 overlay this sitting (new binary,
-   pin, rebuild). Later GO only.
-4. Do **not** edit dest-4 live profile YAML under a running worker.
-5. Do not cite tirith as a dest control. `claimed_control` stays false.
-   Official cite: `.agents/skills/hermes-managed-scope/` Security keys.
+1. **Enable on published golden dest-init for dest-5**, not dest-4.
+   dest-init PATH prepend (Lead `113418ZL`) plus
+   `security.tirith_enabled: true` as a set. dest-4 M4 receipts are
+   contaminated (`113417ZR`); do not dest-edit dest-4 YAML to flip
+   tirith.
+2. The GO’s **proof** is Review dest-cite that a **profile worker**
+   resolves tirith (`which tirith` = base `$HERMES_HOME/bin/tirith`),
+   not merely that dest-init exports PATH. Until that MATCH, do not cite
+   tirith as a dest control. `claimed_control` stays false.
+3. Do **not** set `security.tirith_fail_open: false` until that worker
+   MATCH. Official docs: fail-closed **blocks commands** when tirith is
+   unavailable.
+4. Do **not** install tirith in the 080 overlay this sitting (rebuild).
+   Path honesty + enable-as-set is the land.
+5. **KEEP** `assert-no-fence-evasion` in M4 fail-closed (AMEND
+   `114617ZA` / Operator `115007ZO`). Tirith **ALLOW**s dest-3
+   encode-then-exec (`base64 -d | xargs`); it blocks `curl | sh` and
+   homographs. Disjoint classes — neither subsumes the other. K2 opacity
+   stays. Do **not** publish `2dd339ac` (retire; native `pre_tool_call`
+   **block** at `kanban_create`).
+6. Official cite: `.agents/skills/hermes-managed-scope/` Security keys;
+   `.agents/rules/profile-home-contract.md`.

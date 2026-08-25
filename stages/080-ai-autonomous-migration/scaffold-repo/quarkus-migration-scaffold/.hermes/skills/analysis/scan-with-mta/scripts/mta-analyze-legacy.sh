@@ -324,6 +324,11 @@ python3 "$(cd "$(dirname "$0")" && pwd)/check-findings-handoff.py" "${ROOT}" \
   || die "findings-handoff gate failed after emit"
 python3 "$(cd "$(dirname "$0")" && pwd)/emit-required-extensions.py" "${ROOT}" \
   || die "emit required-extensions failed (V35-EXTENSIONS; M1 must emit the set)"
+if [[ -n "${HERMES_KANBAN_TASK:-}" ]]; then
+  python3 "$(cd "$(dirname "$0")" && pwd)/../../../../kernel/kanban_attach.py" \
+    --root "${ROOT}" --task "${HERMES_KANBAN_TASK}" --exec \
+    || die "kanban attach M1 evidence failed"
+fi
 
 HANDOFF="${ROOT}/evidence/findings-handoff.json"
 REQUIRED_EXT="${ROOT}/evidence/required-extensions.json"

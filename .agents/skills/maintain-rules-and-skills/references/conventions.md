@@ -31,6 +31,11 @@ Current rule taxonomy:
 | `k2-env-assignment-not-access.md` | (none) | K2 must not treat environment-assignment values as access targets |
 | `k2-opaque-not-pathless.md` | (none) | K2 denies opaque construction; transparent pathless + trusted cwd may allow |
 | `skill-path-declaration.md` | (none) | Skills declare paths they touch; dest-init fail-closes against `K2_ALLOW_ROOT` |
+| `external-dirs-home-contract.md` | (none) | dest-init dest-user skills path is the home slot; checker must not use profile `Path.home()` |
+| `profile-home-contract.md` | (none) | Named dest workers: profile `HERMES_HOME` ≠ dest-user `HOME`; pin tirith path; native `pre_tool_call` block not post-hoc board gates |
+| `native-kanban-alignment.md` | (none) | Native `request-review`/`attach`; K4 mint-writer; do not retire G1–G4 domain gates |
+| `m2-plan-assignee-implementer.md` | (none) | M2 PLAN is implementer; dest AGENTS.md must not assign M2 to orchestrator |
+| `m2-m3-native-dispatch.md` | (none) | M3 children of a granted M2 claim natively; do not invent an M2→M3 Operator GO |
 | `gitops.md` | (none) | GitOps authoring, manifests, labels, schema validation |
 | `docs.md` | (none) | Documentation standards, README structure, operations docs |
 | `rhoai.md` | `rhoai-` | Official-doc-backed RHOAI component behavior and configuration |

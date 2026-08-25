@@ -1,0 +1,93 @@
+---
+name: profile-home-contract
+skill-group: Demo Environment
+applies-to:
+  - gitops/stages/050-advanced-app-platform/base/devspaces/**
+  - stages/080-ai-autonomous-migration/scaffold-repo/**
+---
+
+# Profile workers have three homes; dest-init must name each
+
+Operator `111519ZO`: tirith missing in the implementer tree and
+`check-external-dirs.py` demanding `Path.home()` are **one** contract
+miss, not two bugs. dest is a container. Official
+`terminal.home_mode: auto` uses `{HERMES_HOME}/home` as `HOME`.
+
+Official (`hermes-configuration` profiles): **`HERMES_HOME` is the
+profile boundary**; **`HOME` is the OS/CLI home**. They are not
+interchangeable.
+
+## The three paths (dest-4 measured)
+
+| Layer | Dest path | Who sees it |
+|---|---|---|
+| Base `HERMES_HOME` | `/projects/modernized/.hermes/home` | dest-init, dest-user CLI |
+| Profile `HERMES_HOME` | `…/home/profiles/<name>` | `hermes -p <name>` / kanban spawn |
+| OS `HOME` | dest-user `/home/user` at postStart; `{HERMES_HOME}/home` in a profile worker | `Path.home()`, spec-kit, host CLIs |
+
+Tirith auto-installs to `$HERMES_HOME/bin` **at install time** (base).
+The worker looks in the **profile** `HERMES_HOME/bin` and finds nothing,
+then `tirith_fail_open: true` degrades to pattern matching
+(AD-020). Spec-kit still dumps under dest-user `/home/user/.hermes/skills`
+(spec-kit#3334 ignores `$HERMES_HOME`).
+
+## Three questions (Operator `112106ZO`)
+
+1. **Shared binaries (tirith):** dest-init prepends **base**
+   `/projects/modernized/.hermes/home/bin` to the worker **PATH**.
+   `security.tirith_path` stays default `"tirith"` (official PATH lookup).
+   One copy. No per-profile clone. Do not use dest-user `/home/user/bin`.
+   Enable remains a **later named GO** after `which tirith` inside
+   implementer MATCHES that base binary (`tirith-declared-absent.md`).
+2. **`skills.external_dirs`:** dest-init dest-user
+   `/home/user/.hermes/skills` plus project `.hermes/skills`
+   (`external-dirs-home-contract.md`). Not a required per-profile skills
+   dir. Checker uses that literal / `human_home()`, not `Path.home()`.
+3. **Python `human_home()`:** **yes.** Same contract as
+   `mta-analyze-legacy.sh` (`getent passwd` OS account, not `$HOME`).
+   Land in dest `.hermes/lib/` beside `path_maps.py`. KEEP gates that
+   mean dest-user home **must** call it (or take the path as an explicit
+   argument). `Path.home()` in a Python KEEP gate is the defect
+   signature unless the contract is literally “this process’s CLI HOME”
+   **and** `terminal.home_mode` is cited. `assert-extension-tooling.py`
+   is in that set.
+
+## Non-negotiable
+
+1. **Do not collapse the three paths.** dest-init dest-user
+   `/home/user/.hermes/skills` remains the listed skills **read** root
+   (`external-dirs-home-contract.md`). Checker still must not use worker
+   `Path.home()`. Tirith is **not** that path.
+2. **Tirith:** pin `security.tirith_path` on every seated profile to the
+   **absolute** base binary dest-init can see, **or** symlink
+   `profiles/<name>/bin/tirith` to that binary. Do not copy 22 MB per
+   profile as the design. Keep `security.tirith_enabled: false` until a
+   **named GO** flips it **after** a worker-visible MATCH (see
+   `tirith-declared-absent.md`). Do **not** set `tirith_fail_open: false`
+   while the worker cannot exec the binary.
+3. **Do not dest-edit dest-4 live profile YAML** under running
+   `t_9acd47cb`. Land golden dest-init; dest-5 / next dest absorbs it.
+4. **KEEP** `assert-no-fence-evasion` in M4 fail-closed (Operator
+   `115007ZO` measured tirith ALLOW on dest-3 encode-pipe). Tirith and
+   this detector cover **disjoint** classes. K2 opacity
+   `pre_tool_call.sh` stays (`k2-opaque-not-pathless.md`). AMEND
+   `114617ZA` demote.
+5. **Retire** `assert-m3-card-contract` / `2dd339ac` — do not publish,
+   do not keep as an M4 board audit (same post-hoc walkable shape).
+   Dest `pre_tool_call` **block**s illegal `kanban_create` (exit 2 /
+   `{"action":"block"}`, `fail_closed: true`). Official `hermes-hooks`
+   names `block` / `approve` only — OBJECT `modify` as Gate K contract.
+   `k4_mint.py` emits legal argv so rewrite is not the control. Kanban
+   lifecycle hooks fire **after** the DB write and cannot veto create.
+6. **`k4_convert.py` stays.** Native `kanban decompose` is LLM-driven.
+   K4 is deterministic over a typed partition. That is the stated reason
+   (Operator `111519ZO`).
+7. **M4 must not mint floor receipts.** Writing
+   `evidence/verdicts/` refusal JSON during M4 so
+   `assert-pinned-gates-ran` turns green is the walked-KEEP shape
+   (Review `112040ZR`). If a pinned gate never ran, M4 `kanban_block`.
+   Do not dest-complete `t_9acd47cb` around that.
+
+Official cite: `.agents/skills/hermes-configuration/` HERMES_HOME vs HOME
+and `terminal.home_mode`; `.agents/skills/hermes-managed-scope/`
+`security.tirith_*`; `.agents/skills/hermes-hooks/` `pre_tool_call`.

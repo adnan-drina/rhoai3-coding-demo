@@ -74,9 +74,9 @@ Idempotent via `.specify/.rhoai3-ads-provisioned`. Spec Kit is pinned
 
 ## Stop rule (non-negotiable)
 
-After `/speckit-tasks` (optional `/speckit-analyze`) → native `kanban_create`
-from the typed partition. **Never** `/speckit-implement`. Run
-`specify workflow run speckit`.
+After `/speckit-tasks` (optional `/speckit-analyze`) → K4 convert →
+`.hermes/kernel/k4_mint.py` (`hermes kanban create`). **Never**
+`/speckit-implement`. Run `specify workflow run speckit`.
 
 ## Pitfalls
 
@@ -86,7 +86,12 @@ from the typed partition. **Never** `/speckit-implement`. Run
   Do **not** add `/home/user/.hermes/skills` to the implementer profile.
 - When `HERMES_HOME` is relocated, **assert** (not merely remind) that
   `skills.external_dirs` lists both `<modernized>/.hermes/skills` and
-  `$HOME/.hermes/skills` — `scripts/check-external-dirs.py`.
+  dest-user `/home/user/.hermes/skills` — `scripts/check-external-dirs.py`.
+  dest-init (GitOps maas-api-key-provisioning.yaml) is the actor that lists
+  that path. Worker `$HOME` is profile-relative, not that slot. Architect
+  `105906ZA`: dest-init’s dest-user path is the contract, not worker
+  `Path.home()`. Do not `kanban_complete` around exit 1; typed
+  `kanban_block`.
 - Stamping a second Path-A workflow YAML that has to be kept in sync with
   upstream `speckit` — use the overlay (`extends: speckit`).
 

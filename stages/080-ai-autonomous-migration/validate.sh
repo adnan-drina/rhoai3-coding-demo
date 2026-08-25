@@ -190,7 +190,10 @@ check "assert-ensure-cli-path rejects a present-but-unusable sibling" \
   "PASS"
 check "run-m4-pre-verdict invokes assert-no-fence-evasion (not a card pin)" \
   "grep -c 'assert-no-fence-evasion' \"$SCAFFOLD_080/.hermes/skills/gates/check-release-readiness/scripts/run-m4-pre-verdict.sh\" || echo 0" \
-  "4"
+  "5"
+check "run-m4-pre-verdict resolves work logs not M4 self" \
+  "test -f \"$SCAFFOLD_080/.hermes/skills/gates/check-release-readiness/scripts/resolve-m4-work-logs.py\" && grep -c 'resolve-m4-work-logs' \"$SCAFFOLD_080/.hermes/skills/gates/check-release-readiness/scripts/run-m4-pre-verdict.sh\" || echo 0" \
+  "1"
 check "v2 Hermes config template is present" \
   "test -f \"$SCAFFOLD_080/.hermes/config/config.yaml.template\" && echo 1 || echo 0" \
   "1"
@@ -415,8 +418,29 @@ check "080 golden K3 mint-verifier procedure present" \
 check "080 golden K4 converter present" \
   "test -f '${SCAFFOLD_KERNEL}/k4_schema.py' && test -f '${SCAFFOLD_KERNEL}/k4_convert.py' && echo present || echo missing" \
   "present"
+check "080 K4 M3 payloads pin max_retries 1" \
+  "grep -c 'max_retries=1' '${SCAFFOLD_KERNEL}/k4_convert.py' || echo 0" \
+  "1"
+check "080 RHDH autoStartMigration parameter is removed" \
+  "grep -c 'autoStartMigration' '${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/rhdh/templates/app-migration/template.yaml' || echo 0" \
+  "0"
+check "080 destfile does not stamp AUTO_START_MIGRATION" \
+  "grep -c 'AUTO_START_MIGRATION' '${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml' || echo 0" \
+  "0"
 check "080 golden K4 selftest passes" \
   "python3 '${SCAFFOLD_KERNEL}/k4_selftest.py' >/dev/null && echo 1 || echo 0" \
+  "1"
+check "080 golden K4 mint-writer present" \
+  "test -f '${SCAFFOLD_KERNEL}/k4_mint.py' && echo present || echo missing" \
+  "present"
+check "080 K4 mint-writer selftest passes" \
+  "python3 '${SCAFFOLD_KERNEL}/k4_mint_selftest.py' >/dev/null && echo 1 || echo 0" \
+  "1"
+check "080 kanban attach selftest passes" \
+  "python3 '${SCAFFOLD_KERNEL}/kanban_attach_selftest.py' >/dev/null && echo 1 || echo 0" \
+  "1"
+check "080 G-4 claim consistency selftest passes" \
+  "python3 '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/skills/gates/check-release-readiness/scripts/assert-g4-claim-consistency.test.py' >/dev/null && echo 1 || echo 0" \
   "1"
 SCAFFOLD_PARK="${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/_park"
 check "080 golden _park retired" \
@@ -427,6 +451,15 @@ check "080 bootstrap omit_park_from_staged kept" \
   "3"
 check "080 bootstrap refuses dest chaos matrix" \
   "grep -c 'run-chaos-matrix.py present in staged dest golden' '${REPO_ROOT}/scripts/bootstrap-migration-scaffold-v2.sh' || echo 0" \
+  "1"
+check "080 dest-init prepends base HERMES_HOME/bin to PATH" \
+  "grep -c 'base hermes bin PATH' '${GITOPS_INIT}' || echo 0" \
+  "2"
+check "080 python human_home is in .hermes/lib" \
+  "test -f '${SCAFFOLD_080}/.hermes/lib/human_home.py' && grep -c 'Path.home() in a KEEP' '${SCAFFOLD_080}/.hermes/lib/human_home.py' || echo 0" \
+  "1"
+check "080 assert-extension-tooling uses human_home" \
+  "grep -c 'human_home()' '${SCAFFOLD_080}/.hermes/skills/migration/manage-quarkus-extensions/scripts/assert-extension-tooling.py' || echo 0" \
   "1"
 check "080 GitOps copies kernel pre_tool_call when k2_present" \
   "grep -c 'elif k2_present' '${GITOPS_INIT}' || echo 0" \
@@ -441,8 +474,11 @@ check "080 GitOps hooks_auto_accept is top-level official key" \
   "grep -c 'unknown event name and never auto-approves' '${GITOPS_INIT}' || echo 0" \
   "1"
 check "080 AGENTS.md assigns orchestrator/implementer not default" \
-  "grep -c 'M2 / mint-verifier' '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/AGENTS.md' || echo 0" \
+  "grep -c 'mint-verifier → \`orchestrator\`' '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/AGENTS.md' || echo 0" \
   "1"
+check "080 check-external-dirs requires dest-user home literal" \
+  "grep -c '/home/user/.hermes/skills' '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/skills/sdd/init-spec-workspace/scripts/check-external-dirs.py' || echo 0" \
+  "3"
 
 echo ""
 validation_summary

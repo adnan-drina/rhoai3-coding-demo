@@ -226,8 +226,9 @@ def _payload(
     parents: list[str],
     body: dict[str, Any],
     skills: list[str] | None = None,
+    max_retries: int | None = None,
 ) -> dict[str, Any]:
-    return {
+    out = {
         "logical_id": logical_id,
         "title": title,
         "assignee": assignee,
@@ -236,6 +237,11 @@ def _payload(
         "body": json.dumps(body, sort_keys=True, separators=(",", ":")),
         "idempotency_key": "k4:%s" % logical_id,
     }
+    if max_retries is not None:
+        # Operator 105355ZO: story cards inherit M2 `--max-retries 1`
+        # (null falls through to failure_limit 2 and masks Gate K).
+        out["max_retries"] = max_retries
+    return out
 
 
 def convert_partition(partition: dict[str, Any]) -> dict[str, Any]:
@@ -281,6 +287,7 @@ def convert_partition(partition: dict[str, Any]) -> dict[str, Any]:
                 assignee=IMPL,
                 parents=[VERIFIER_ID] + part_parents,
                 body=_m3_body(story, type_sha),
+                max_retries=1,
             )
         )
     result = {

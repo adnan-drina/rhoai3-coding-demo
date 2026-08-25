@@ -46,9 +46,12 @@ python3 scripts/assert-no-fence-evasion.py <worker-log> [--window N]
 ```
 
 Invoked by `check-release-readiness` `run-m4-pre-verdict.sh` (Operator
-`E-20260825T074910ZO`). That runner fail-closes if neither `FENCE_EVASION_LOG`
-nor `HERMES_KANBAN_TASK` is set. **Not** a card pin — pinning without a runner
-is the silent-skip that hid `check-domain-parity`.
+`E-20260825T074910ZO` / `E-20260825T105656ZO`). That runner fail-closes if
+work logs cannot be resolved. Under M4, `$HERMES_KANBAN_TASK.log` is the
+**verdict** card — scanning it alone is REFUSE. The runner walks parent
+cards (M1, M2, every M3 story) or reads `FENCE_EVASION_LOGS`. **Not** a
+card pin — pinning without a runner is the silent-skip that hid
+`check-domain-parity`.
 
 Exit `0` clean or advisory-only · `1` evasion found · `2` unreadable log.
 

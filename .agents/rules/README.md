@@ -14,6 +14,11 @@ Use these files for durable domain constraints that should apply across agent to
 | `k2-env-assignment-not-access.md` | K2 terminal fence must not treat `export NAME=value` spans as filesystem access; do not widen allow-root |
 | `k2-opaque-not-pathless.md` | AMEND `214743ZA`: deny opaque construction, not every pathless command; `strip_env` does not close GAP 2 |
 | `skill-path-declaration.md` | Golden skills declare path classes; dest-init fail-closes vs `K2_ALLOW_ROOT`; derived output stays inside a grant |
+| `external-dirs-home-contract.md` | Relocated `external_dirs` home slot is dest-user `/home/user/.hermes/skills`, not worker `Path.home()` |
+| `profile-home-contract.md` | Profile `HERMES_HOME` vs OS `HOME` vs tirith `tirith_path`; do not publish post-hoc `kanban_create` board gates |
+| `native-kanban-alignment.md` | Keep G1–G4; adopt `request-review`/`attach`; named K4 mint-writer; OBJECT swarm for serial T0 |
+| `m2-plan-assignee-implementer.md` | M2 PLAN `--assignee implementer`; retire dest AGENTS.md orchestrator-for-M2 |
+| `m2-m3-native-dispatch.md` | Minted M3 children claim via native dispatcher; M4 still needs a named GO |
 | `gitops.md` | GitOps authoring, manifests, labels, schema validation |
 | `docs.md` | Documentation standards, README structure, operations docs |
 | `rhoai.md` | RHOAI platform component guidance backed by official Red Hat documentation |

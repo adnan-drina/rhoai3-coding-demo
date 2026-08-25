@@ -10,6 +10,7 @@ No `SKILL.md`. Discovery does not list this directory.
 | `http_join.py` | HTTP denominator + story.endpoints ∩ inventory rows |
 | `specimen_agnostic.py` | remainder (oracles / operand / refs) + re-exports |
 | `generated_sources.py` | generator classification at **read** (stamp is a hint) |
+| `human_home.py` | OS-account home (`pwd`/`getent`), not `Path.home()` / `$HOME` |
 
 Importable modules only — no `__main__` CLIs. Dashboard pin is overlay bake
 `HERMES_WEB_DIST`; dest `.hermes/checks/` is retired. Java type walk lives in

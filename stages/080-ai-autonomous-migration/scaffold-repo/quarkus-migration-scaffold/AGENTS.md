@@ -90,10 +90,10 @@ workspace state.
 | `$HERMES_MANAGED_DIR` | Platform config + secrets — not in this repo |
 | `$HERMES_HOME` | Runtime (sessions/logs gitignored). Relocated dest-time. |
 | `.hermes/skills/` | Scaffold golden **guidance** skills on `skills.external_dirs` |
-| Seat Kanban assignees | `orchestrator` (M2 / mint-verifier) and `implementer` (M3). Official `--assignee` (hermes-kanban). Not `default`. OBJECT EX-4 `analyzer`/`planner`/`validator` |
+| Seat Kanban assignees | M2 PLAN / M3 / M4 VERDICT → `implementer`; mint-verifier → `orchestrator`. Official `--assignee` (hermes-kanban). Not `default`. OBJECT EX-4 `analyzer`/`planner`/`validator`. dest orchestrator disables `file`/`terminal`/`code_execution`/`skills` — it cannot run M2 PLAN or M4. |
 | Hermes live config | **Not yours to change.** Factory-owned Managed Scope. Raise typed `needs_input` |
 | Phase DAG | Kanban `--parent` / `link` graph (`hermes kanban show --json`) |
-| `~/.hermes/skills/` | Also on `external_dirs` (spec-kit `Path.home()` install) |
+| `~/.hermes/skills/` | dest-user `/home/user/.hermes/skills` on `external_dirs` (dest-init literal; spec-kit install). Not worker `Path.home()`. |
 
 Do **not** add `.hermes.md` / `HERMES.md` (shadows this file).
 `auth.json` under any Hermes home means Portal onboarding — remove; use Managed Scope.
@@ -115,17 +115,24 @@ emit a typed block and **stop**. Do not OOS-write, do not edit the refuser.
 Workers never own lifecycle truth. End every turn with exactly one terminator:
 `kanban_complete`, `kanban_request_review`, or `kanban_block`. A clean exit
 without one is `protocol_violation`. Mint complete requires `created_cards`
-(empty list forbidden). Serialize `kanban_create`. M2 and mint-verifier cards
-use `--assignee orchestrator`; M3 uses `--assignee implementer`. Do not run
-`hermes kanban daemon --force`.
+(empty list forbidden). Serialize `kanban_create`. M2 PLAN and M4 VERDICT
+use `--assignee implementer`; mint-verifier uses `--assignee orchestrator`;
+M3 uses `--assignee implementer`. Do not seat M2 or M4 on orchestrator
+(dest `orchestrator.yaml.template` disables `file`/`terminal`/`skills`).
+Story `kanban_create` passes `--max-retries 1` (null inherits `failure_limit` 2
+and masks a Gate K first failure). Mint those cards through
+`.hermes/kernel/k4_mint.py` from K4 payloads (CLI `hermes kanban create`).
+M1 KEEP evidence also `python3 .hermes/kernel/kanban_attach.py --task "$HERMES_KANBAN_TASK"`
+(PVC paths stay; 25 MB/file). Do not `kanban decompose`. Do not `kanban swarm`
+for serial T0. Do not run `hermes kanban daemon --force`.
 
 `hermes kanban block` marks the **card**, not the **process**. Seat ops
 contain workers from outside the worker.
 
 ### Spec Kit stop rule
 
-After `/speckit-tasks` (optional `/speckit-analyze`) → Kanban create from the
-**typed partition**, not by grepping `tasks.md` paths. **Never**
+After `/speckit-tasks` (optional `/speckit-analyze`) → `.hermes/kernel/k4_convert.py`
+then `.hermes/kernel/k4_mint.py`, not by grepping `tasks.md` paths. **Never**
 `/speckit-implement`. Run `specify workflow run speckit` so the project overlay
 removes `implement` and inserts `clarify`.
 

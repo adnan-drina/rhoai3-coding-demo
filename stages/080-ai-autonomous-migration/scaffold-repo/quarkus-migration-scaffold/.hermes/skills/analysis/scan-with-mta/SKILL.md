@@ -107,7 +107,9 @@ What it does, in order (each step dies non-zero on failure):
    `codeSnip`), then `check-findings-handoff.py <root>` as the gate.
    Then `emit-required-extensions.py <root>` → `evidence/required-extensions.json`
    (T-3 rewrite of named Quarkus targets + legacy pom artifactIds; never
-   `quarkus-spring-*`). Schema lives with this skill (`check-findings-handoff.py`;
+   `quarkus-spring-*`). When `$HERMES_KANBAN_TASK` is set, dual-write KEEP
+   evidence with `.hermes/kernel/kanban_attach.py --exec` (25 MB/file; PVC
+   paths stay). Schema lives with this skill (`check-findings-handoff.py`;
    no `governance/` folder).
 
 Defaults: `MTA_OUT_DIR=evidence/mta`,

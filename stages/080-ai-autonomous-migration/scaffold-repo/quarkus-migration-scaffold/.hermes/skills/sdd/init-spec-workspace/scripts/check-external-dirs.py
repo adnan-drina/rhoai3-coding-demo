@@ -18,12 +18,28 @@ import re
 import sys
 from pathlib import Path
 
+def _ensure_hermes_lib() -> None:
+    p = Path(__file__).resolve()
+    for parent in p.parents:
+        lib = parent / "lib"
+        if (lib / ".hermes-lib").is_file():
+            s = str(lib)
+            if s not in sys.path:
+                sys.path.insert(0, s)
+            return
+    raise SystemExit("FAIL: .hermes/lib marker missing")
+
+
+_ensure_hermes_lib()
+from human_home import human_home  # noqa: E402
+
 EXIT_CODES = """\
 Exit codes:
   0  pass — skills.external_dirs lists both the project and the home skills
      dir; also printed when HERMES_HOME is unset or equals ~/.hermes (idle)
   1  BLOCK — HERMES_HOME is relocated and either no config.yaml was found, or
-     external_dirs omits the project / home skills dir (FAIL: on stderr)
+     external_dirs omits the project skills dir or dest-user
+     /home/user/.hermes/skills (FAIL: on stderr)
   2  usage error (bad/unknown arguments; emitted by argparse)
 """
 
@@ -33,7 +49,7 @@ def is_relocated() -> bool:
     if not hh:
         return False
     try:
-        return Path(hh).resolve() != (Path.home() / ".hermes").resolve()
+        return Path(hh).resolve() != (human_home() / ".hermes").resolve()
     except Exception:
         return True
 
@@ -47,7 +63,7 @@ def config_paths(root: Path) -> list[Path]:
     if os.environ.get("HERMES_HOME"):
         out.append(Path(os.environ["HERMES_HOME"]) / "config.yaml")
     out.append(root / ".hermes/home/config.yaml")
-    out.append(Path.home() / ".hermes/config.yaml")
+    out.append(human_home() / ".hermes/config.yaml")
     return out
 
 
@@ -117,17 +133,36 @@ def main() -> int:
     dirs = parse_external_dirs(cfg.read_text(encoding="utf-8"))
     expanded = [expand(d, root) for d in dirs]
     need_project = (root / ".hermes/skills").resolve()
-    need_home = (Path.home() / ".hermes/skills").resolve()
+    dest_user_skills = "/home/user/.hermes/skills"
+
+    def lists_dest_user() -> bool:
+        for raw in dirs:
+            s = os.path.expandvars(os.path.expanduser(raw)).rstrip("/")
+            if s == dest_user_skills:
+                return True
+        for path in expanded:
+            if Path(str(path)).as_posix().rstrip("/") == dest_user_skills:
+                return True
+        return False
 
     missing = []
     if need_project not in expanded:
         missing.append(str(need_project))
-    if need_home not in expanded:
-        missing.append(str(need_home))
+    if not lists_dest_user():
+        missing.append(dest_user_skills)
     if missing:
+        hh = os.environ.get("HERMES_HOME") or "(unset)"
+        md = os.environ.get("HERMES_MANAGED_DIR") or "(unset)"
+        listed = ", ".join(str(p) for p in expanded) or "(none)"
         print(
-            f"FAIL: {cfg}: skills.external_dirs missing {missing} "
-            f"(need project + Path.home skills when HERMES_HOME relocated)",
+            f"FAIL: {cfg}: skills.external_dirs missing {missing}.\n"
+            "Actor: dest-init (GitOps maas-api-key-provisioning.yaml) must "
+            "list dest-user /home/user/.hermes/skills. Worker $HOME is "
+            "profile-relative (implementer/orchestrator home), not that slot. "
+            "Do not use Path.home() of this process "
+            f"(human_home()={human_home()} Path.home()={Path.home()}).\n"
+            "Do not kanban_complete around this FAIL — typed kanban_block.\n"
+            f"HERMES_HOME={hh} HERMES_MANAGED_DIR={md} listed=[{listed}]",
             file=sys.stderr,
         )
         return 1

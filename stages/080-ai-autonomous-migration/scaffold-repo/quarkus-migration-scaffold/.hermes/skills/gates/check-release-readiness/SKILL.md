@@ -5,7 +5,7 @@ license: Apache-2.0
 compatibility: Linux seat; Python 3.11+; reads migration/ receipts
 metadata:
   author: rhoai3-harness-team
-  version: "1.4.3"
+  version: "1.4.4"
   hermes:
     tags:
     - gates
@@ -55,8 +55,10 @@ Operator `074910ZO`). Commands under **Checks**.
    `151334ZA` **(a)** runner-invoked). `run-m4-floor.sh` calls it first.
    Pinning a leaf is availability, not enforcement. These three do **not**
    idle-exit-0. Residual skip of this parent skill is **(c)** until a later
-   K2 GO (**(b)** PARK). Worker log: `FENCE_EVASION_LOG` or
-   `$HERMES_HOME/kanban/logs/$HERMES_KANBAN_TASK.log`.
+   K2 GO (**(b)** PARK). Worker logs: `FENCE_EVASION_LOGS` (colon list), or
+   parent-chain walk from `$HERMES_KANBAN_TASK` (M1/M2/M3 stories — **not**
+   this M4 card's own log; Operator `105656ZO`). `FENCE_EVASION_LOG` is a
+   single extra path for land-time tests, not a substitute under M4.
 1. **Completion floors** (refuse a phase that never ran anything real) —
    `check-runnable-db-config.py`, `check-empty-security.py`,
    `check-test-toolchain.py`, and `../check-domain-parity/scripts/check-product-tests.py`.
@@ -145,13 +147,16 @@ Rebuild later only on dest GO.
 ## Verification
 
 - `scripts/run-m4-pre-verdict.sh` (called first by `run-m4-floor.sh`) invokes
-  `assert-retrievable-tree.py`, `assert-pinned-gates-ran.py`, and
-  `assert-no-fence-evasion.py` and **fail closed**
-  (missing `src/`/`pom.xml` commit, a pinned gate with neither a named
-  verdict nor `refusals/<gate>.json`, or a missing worker log). Idle is not a
-  pass for those three. `specimen-n/a: no DB` belongs in a refusal file.
-  `check-release-readiness` `scripts/` must `grep` both leaf names and
-  `assert-no-fence-evasion` (Architect `151334ZA` (a); Operator `074910ZO`).
+  `assert-retrievable-tree.py`, `assert-pinned-gates-ran.py`,
+  `assert-g4-claim-consistency.py` (G-4 N/A vs `INCONCLUSIVE` is OBJECT),
+  and `assert-no-fence-evasion.py` over **work** logs (`resolve-m4-work-logs.py`
+  walks parents or `FENCE_EVASION_LOGS`; scanning `$HERMES_KANBAN_TASK.log`
+  alone is REFUSE) and **fail closed**. KEEP the detector (Operator
+  `115007ZO`: tirith does not cover dest-3 encode-after-refusal).
+  Idle is not a pass for those asserts. `specimen-n/a: no DB` belongs in a
+  refusal file. `check-release-readiness` `scripts/` must `grep` both leaf
+  names and `assert-no-fence-evasion` (Architect `151334ZA` (a); Operator
+  `074910ZO` / `105656ZO` / `115007ZO`).
 - `check-verdict-routing.py` prints `OK: verdict-routing checks passed (N
   artifact(s))`. **Silent-failure assertion: N must be > 0.** `N = 0` — or the
   idle line `OK: no verdict/preflight artifacts — routing lint idle` — means

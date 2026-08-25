@@ -676,6 +676,11 @@ data:
     env["HERMES_MANAGED_DIR"] = managed
     env["HERMES_WRITE_SAFE_ROOT"] = project
     env["K2_ALLOW_ROOT"] = project + ":/projects/legacy"
+    # Architect 112249ZA: shared binaries (tirith) on base HERMES_HOME/bin PATH.
+    # Do not dest-edit dest-4 live profile YAML; dest-5 absorbs this dest-init.
+    base_bin = os.path.join(home, "bin")
+    os.makedirs(base_bin, exist_ok=True)
+    env["PATH"] = base_bin + ":" + env.get("PATH", "")
 
     def cfgset(key, value):
         proc = subprocess.run(
@@ -1465,6 +1470,12 @@ data:
         fi
         rm -f "${HOME}/.bashrc.bak"
       fi
+      if ! grep -q "rhoai3-coding-demo: base hermes bin PATH" "${HOME}/.bashrc" 2>/dev/null; then
+        {
+          printf '\n# rhoai3-coding-demo: base hermes bin PATH\n'
+          printf 'export PATH=%q:"${PATH}"\n' "${hermes_home}/bin"
+        } >> "${HOME}/.bashrc"
+      fi
       if [ -e "${HOME}/.hermes/config.yaml" ] || [ -e "${hermes_home}/config.yaml" ]; then
         echo "ERROR: PVC Hermes config overlay still present after pin wipe — refuse drift path." >&2
         return
@@ -1760,8 +1771,9 @@ data:
       # Architect 145309ZA / 151813ZA: same postStart, after tools+auth.
       # Do not restore supervise-gateway.sh. Not a skippable extra command.
       export HERMES_ACCEPT_HOOKS=1
-      export PATH="/usr/local/bin:${HOME}/.local/bin:${PATH}"
       export HERMES_HOME="${PROJECT_DIR}/.hermes/home"
+      mkdir -p "${HERMES_HOME}/bin"
+      export PATH="${HERMES_HOME}/bin:/usr/local/bin:${HOME}/.local/bin:${PATH}"
       if [ ! -x /usr/local/bin/hermes ]; then
         echo "ERROR: overlay hermes missing after ensure_hermes; cannot start gateway." >&2
         exit 1

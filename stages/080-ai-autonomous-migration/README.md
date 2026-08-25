@@ -91,7 +91,7 @@ Architect demo-surface decide; Deputy docs-only Stage-1 exception
 |-----|-----|------------------|
 | **A** Arrive | Self-service workspace | RHDH → Dev Spaces; `/projects/legacy` (RO) beside `/projects/modernized` |
 | **B** Ground truth | MTA checklist | Prefer `migration/mta-findings.json` (harness authority); IDE panel optional *human* exploration |
-| **C** Plan without implementing | Spec Kit → Kanban | `/speckit.specify` → plan → tasks → `kanban_create` — **never** `/speckit.implement` |
+| **C** Plan without implementing | Spec Kit → Kanban | `/speckit.specify` → plan → tasks → K4 convert → `k4_mint.py` (`hermes kanban create`) — **never** `/speckit.implement` |
 | **D** Watch the migration | Hermes Kanban | Pane A: `hermes kanban watch` **before** dispatch · Pane B: `dispatch` |
 | **E** Audit close | Snapshots + verdicts | `list` / `show` / `runs <task_id>` + `migration/verdicts/*.json` — not more watching |
 
@@ -242,7 +242,7 @@ actually shipped.
 - [Konveyor](https://www.konveyor.io/) is the upstream modernization community behind MTA.
 - [Kantra](https://github.com/konveyor/kantra) provides CLI-based application analysis.
 - [OpenRewrite](https://github.com/openrewrite/rewrite) provides deterministic, recipe-driven code transformation.
-- [spec-kit](https://github.com/github/spec-kit) is the spec-driven development toolkit. Stage 080 provisions it **in the migration workspace only** (AD-S) via Hermes skill `specify-workspace-init` (`specify init --integration hermes`), installs the Non-Goals override, and stops at `/speckit.tasks` → Hermes `kanban_create()` — never `/speckit.implement`. Scaffold taxonomy: `.hermes/LAYOUT.md`.
+- [spec-kit](https://github.com/github/spec-kit) is the spec-driven development toolkit. Stage 080 provisions it **in the migration workspace only** (AD-S) via Hermes skill `specify-workspace-init` (`specify init --integration hermes`), installs the Non-Goals override, and stops at `/speckit.tasks` → K4 convert → `.hermes/kernel/k4_mint.py` (`hermes kanban create`) — never `/speckit.implement`. Scaffold taxonomy: `.hermes/LAYOUT.md`.
 - [Hermes Agent](https://hermes-agent.nousresearch.com/docs) is the CLI-first agent harness that owns the autonomous migration loop.
 - [OpenCode](https://opencode.ai/) is the coding worker inside the harness, dispatched by Hermes one bounded task at a time, and remains available interactively, carried over from stage 070.
 - [Coolstore cart (legacy demo input)](https://github.com/adnan-drina/coolstore-cart-legacy) is the small, stateless Spring Boot migration target — the first specimen the harness shipped; [Spring PetClinic REST (legacy demo input)](https://github.com/adnan-drina/spring-petclinic-rest-legacy) is the database-backed validated showcase, pinned at v2.6.2 so every run migrates the same code; the [Coolstore monolith](https://github.com/rhpds/mca-coolstore) remains available for longer runs.

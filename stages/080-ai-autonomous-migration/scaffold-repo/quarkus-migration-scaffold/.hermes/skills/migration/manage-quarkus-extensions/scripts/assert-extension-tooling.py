@@ -16,6 +16,22 @@ import sys
 from pathlib import Path
 
 
+def _ensure_hermes_lib() -> None:
+    p = Path(__file__).resolve()
+    for parent in p.parents:
+        lib = parent / "lib"
+        if (lib / ".hermes-lib").is_file():
+            s = str(lib)
+            if s not in sys.path:
+                sys.path.insert(0, s)
+            return
+    raise SystemExit("FAIL: .hermes/lib marker missing")
+
+
+_ensure_hermes_lib()
+from human_home import human_home  # noqa: E402
+
+
 def main() -> int:
     if len(sys.argv) == 2 and sys.argv[1] in {"-h", "--help"}:
         print(
@@ -27,7 +43,7 @@ def main() -> int:
     cfg = Path(
         sys.argv[1]
         if len(sys.argv) > 1
-        else Path.home() / ".quarkus" / "config.yaml"
+        else human_home() / ".quarkus" / "config.yaml"
     )
 
     quarkus = shutil.which("quarkus")

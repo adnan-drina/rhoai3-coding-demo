@@ -83,9 +83,6 @@ components:
           value: "/projects/modernized/.hermes/home"
         - name: HERMES_MANAGED_DIR
           value: "/projects/.platform/hermes"
-        # Architect 075106Z: demo default on. Template can turn this off.
-        - name: AUTO_START_MIGRATION
-          value: "${{ values.autoStartMigration }}"
       memoryLimit: 12Gi
       cpuLimit: 2500m
       volumeMounts:

@@ -23,6 +23,8 @@ parallel home is a defect.
 | K1 body schema | `.hermes/kernel/k1_schema.py` + `k1_load.py` + `k1_validate.py` — typed pre-execution body. Not a skill. KEEP `check-kanban-body.py` imports the validator for the AD-019 minimum. Digest proves consistency among copies, not authorization. `claimed_control` stays false. |
 | K3 mint-verifier | `.hermes/kernel/k3_schema.py` + `k3_verify.py` — graph-snapshot procedure. Native unfinished parents hold M3; ACCEPT is `kanban_complete` on the verifier; REFUSE is sticky `kanban_block`. Not dest live-PID reclaim. Not claimed refuse-as-control. OBJECT `kanban daemon --force` / human `ack_gate` / `kanban_request_review` on the verifier. |
 | K4 converter | `.hermes/kernel/k4_schema.py` + `k4_convert.py` — typed partition → `kanban_create` payloads (inline K1 body). Copies `files_writable` from the partition row. `K4_T0_3_SERVICE` refuses the same `*Service.java` on two or more stories (class-per-aggregate; wrong reading is methods in shared `ClinicService`). Does not mint. Does not import `create_task`. Does not scrape `tasks.md` (`PATH_TOKEN` OBJECT). Manifest `created_cards` is the exact logical-id list. Does not consume type-inventory `reached_from`. Dest GitOps still copies **only** `pre_tool_call.sh`. `claimed_control` stays false. |
+| K4 mint-writer | `.hermes/kernel/k4_mint.py` — named, tested translation of those payloads into serial CLI `hermes kanban create` (inline `--body`, `--max-retries 1` on M3 stories, `--assignee implementer`, `--parent` t_*). OBJECT `create_task` import, `kanban swarm`, `kanban decompose`, `kanban daemon --force`. Default is dry-run argv; `--exec` needs a seat with terminal (dest orchestrator disables it). Model `kanban_create` cannot pass `max_retries`. `claimed_control` stays false. |
+| Kanban attach | `.hermes/kernel/kanban_attach.py` — dual-write M1 KEEP evidence onto the card (`hermes kanban attach`, 25 MB/file). PVC paths stay. Skip oversize rather than silent-drop the handoff. Idle when `HERMES_KANBAN_TASK` unset. Not dest-4 mid-run. |
 | Run data | `evidence/` |
 | Spec Kit workspace | `.specify/` + `specs/` — gitignored in golden; never commit `.specify/` |
 | Task state | Hermes Kanban (native). No parallel CSV / `created-cards-*.json` |
@@ -30,8 +32,9 @@ parallel home is a defect.
 **Out of day-one (deleted, do not port):** `.hermes/skills/harness/`,
 `.hermes/home/scripts/`, `.hermes/phase-dispatch.yaml`, human `ack_gate`,
 `handover-mint.py`, `dispatch-phase`, write-fence plugins. Slim kernel
-K1–K4 live in `.hermes/kernel/`. K4 emits payloads; the worker still calls
-`kanban_create` (pin CLI has no `--body-file`). Do not dest-apply K4.
+K1–K4 live in `.hermes/kernel/`. K4 emits payloads; `k4_mint.py` is the
+named mint-writer (`hermes kanban create`, pin CLI has no `--body-file`).
+Do not dest-apply K4.
 K3 `k3_verify.py` is a graph-snapshot procedure (Architect `145017Z`); not dest
 PID reclaim and not claimed refuse-as-control. Dashboard UI is overlay
 `HERMES_WEB_DIST` (`/usr/local/share/hermes/web_dist`); destfile launches

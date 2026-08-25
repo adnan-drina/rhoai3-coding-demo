@@ -56,6 +56,11 @@ def main() -> int:
         return _fail("writer assignee")
     if by_id["setup"]["assignee"] != "implementer":
         return _fail("setup assignee")
+    for sid in ("setup", "US1", "US2"):
+        if by_id[sid].get("max_retries") != 1:
+            return _fail("%s max_retries %s" % (sid, by_id[sid].get("max_retries")))
+    if "max_retries" in by_id["mint-writer"] or "max_retries" in by_id["mint-verifier"]:
+        return _fail("factory cards must not pin story max_retries")
     if result.get("claimed_control") is not False:
         return _fail("claimed_control must stay false")
 

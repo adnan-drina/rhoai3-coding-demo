@@ -46,4 +46,25 @@ REMEDY = {
         "Retire the inventory row with a named 1:N supersede set, not methods "
         "in a shared class."
     ),
+    "K4_MINT_CREATE": (
+        "Mint argv is hermes kanban create with inline --body. Do not import "
+        "create_task. Do not kanban swarm. Do not kanban decompose. Do not "
+        "kanban daemon --force."
+    ),
+    "K4_MINT_TITLE": (
+        "Story titles are exactly 'M3 <logical_id>'. Factory cards keep "
+        "'Mint writer' / 'Mint verifier'."
+    ),
+    "K4_MINT_RETRIES": (
+        "M3 story creates pass --max-retries 1 (CLI). Factory cards omit it. "
+        "The model kanban_create tool has no max_retries field."
+    ),
+    "K4_MINT_PARENT": (
+        "Resolve payload parents from already-minted logical_id → t_* in "
+        "create order. Do not invent parents. Do not skip mint-verifier."
+    ),
+    "K4_MINT_ID": (
+        "Parse create --json for task_id or id (t_*). Serialize creates; "
+        "do not mint in parallel."
+    ),
 }
