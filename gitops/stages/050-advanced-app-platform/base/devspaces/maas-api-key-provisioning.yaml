@@ -1506,7 +1506,13 @@ data:
       # different uid, so it can only be fixed in the image).
       cat > "${HOME}/.local/bin/kantra-assert-exec" <<'KANTRAEXECEOF'
     #!/usr/bin/env python3
-    """Every ELF binary under the kantra tree must be executable."""
+    """Every runnable file under the kantra tree must be executable.
+
+    Runnable means ELF or shebang. ELF alone would miss the jdtls launchers -
+    kantra's archive declares jdtls/bin/jdtls (shell) and jdtls.py 0755, and
+    neither is ELF, so an ELF-only check silently skips exactly the files the
+    Java provider needs after a mode-losing extraction.
+    """
     import os
     import sys
 
@@ -1523,8 +1529,9 @@ data:
                 continue
             try:
                 with open(path, "rb") as fh:
-                    if fh.read(4) != b"\x7fELF":
-                        continue
+                    head = fh.read(4)
+                if head != b"\x7fELF" and head[:2] != b"#!":
+                    continue
                 seen += 1
                 if os.access(path, os.X_OK):
                     continue
@@ -1542,18 +1549,19 @@ data:
         sys.exit(1)
     if not seen:
         sys.stderr.write(
-            "kantra-assert-exec: no ELF binaries found under %s; this is not a "
-            "usable kantra tree, so the exec-bit check would pass vacuously\n" % root)
+            "kantra-assert-exec: no runnable files (ELF or shebang) found under %s; "
+            "this is not a usable kantra tree, so the exec-bit check would pass "
+            "vacuously\n" % root)
         sys.exit(1)
     if unfixable:
         sys.stderr.write(
-            "kantra-assert-exec: %d ELF binaries under %s are not executable and "
+            "kantra-assert-exec: %d runnable files under %s are not executable and "
             "could not be chmod'd (%s); kantra analysis fails when it shells out "
             "to them\n" % (len(unfixable), root, ", ".join(sorted(unfixable)[:5])))
         sys.exit(1)
     if repaired:
         sys.stderr.write(
-            "kantra-assert-exec: restored the exec bit on %d ELF binaries under "
+            "kantra-assert-exec: restored the exec bit on %d runnable files under "
             "%s (the extractor discarded Unix modes)\n" % (len(repaired), root))
     KANTRAEXECEOF
       chmod 755 "${HOME}/.local/bin/kantra-assert-exec"
