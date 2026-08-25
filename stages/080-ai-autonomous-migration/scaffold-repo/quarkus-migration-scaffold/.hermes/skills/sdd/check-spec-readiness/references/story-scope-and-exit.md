@@ -43,10 +43,12 @@ including the **relationship** between them (T-8 / v17 wrong-class oracles).
    do not treat a green isolation run plus a red full suite as a body-mint
    defect. An unrelated dest `src/test` file must not
    satisfy the oracle. `true`, a script/`curl` card exit, and a test cmd
-   with no named proving test refuse. `mvn test-compile` is **not** an exit
-   when the story writes tests (Lead:test-compile-is-not-an-exit-criterion);
-   stamp `mvn -q test` (not `clean` — M4 snapshots surefire). Compile-only
-   remains legal only for stories that write no test. Shape (`shlex`
+   with no named proving test refuse.    `mvn test-compile` is **never** a card exit (Lead:test-compile-is-not-an-exit-criterion
+   plus Lead:setup-test-toolchain-claim-is-vacuous). An empty test tree always
+   passes `test-compile`. Bootstrap either lists a smoke test in
+   `files_writable` and stamps `mvn -q test`, or makes no Maven toolchain
+   claim. Compile-only (`mvn -q compile`) remains legal only for stories that
+   write `src/main` and no test. Shape (`shlex`
    + Maven vehicle) is necessary and not sufficient. Golden does not
    require `mvn` on PATH. Do not stamp `failIfNoTests=true` as a mint
    recipe (the story that needs a test is the story that adds it).

@@ -153,6 +153,18 @@ def main() -> int:
             return _fail(
                 "M4 evidence writeset still treated as implement: %s" % buf2.getvalue()
             )
+        m4_tc = dict(m4_ev)
+        m4_tc["exit_criteria"] = [
+            {"check": "verdict", "assert": "oracles only"},
+            {"check": "compile", "cmd": "mvn -q test-compile"},
+        ]
+        buf3 = io.StringIO()
+        with contextlib.redirect_stderr(buf3):
+            ckb.check_body("m4-tc", m4_tc, tmp)
+        if "test-compile is not a card exit" not in buf3.getvalue():
+            return _fail(
+                "test-compile exit missed BODY_EXIT: %s" % buf3.getvalue()
+            )
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 

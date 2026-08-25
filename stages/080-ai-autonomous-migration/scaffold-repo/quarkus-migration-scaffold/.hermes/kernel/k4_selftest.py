@@ -95,6 +95,17 @@ def main() -> int:
         return _fail("US1 still stamps phantom AD-002E with no definition")
     if "kanban_block" not in us1_assert:
         return _fail("US1 body must name kanban_block as a legal outcome")
+    us1_cmds = [str(item.get("cmd") or "") for item in us1.get("exit_criteria") or []]
+    if "mvn -q compile" not in us1_cmds:
+        return _fail("US1 src/main must stamp mvn -q compile: %s" % us1_cmds)
+    if any("test-compile" in c for c in us1_cmds):
+        return _fail("US1 must not stamp test-compile: %s" % us1_cmds)
+    setup_valid = json.loads(by_id["setup"]["body"])
+    setup_valid_cmds = [
+        str(item.get("cmd") or "") for item in setup_valid.get("exit_criteria") or []
+    ]
+    if any("test-compile" in c for c in setup_valid_cmds):
+        return _fail("pom-only setup must not stamp test-compile: %s" % setup_valid_cmds)
 
     extra = KERNEL / "fixtures" / "k4-tasks-extra.md"
     _, extra_issues = convert_file(valid, tasks_path=extra)
@@ -154,8 +165,23 @@ def main() -> int:
         next(p["body"] for p in test_result["payloads"] if p["logical_id"] == "setup")
     )
     setup_cmds = [str(item.get("cmd") or "") for item in setup_body.get("exit_criteria") or []]
-    if "mvn -q test-compile" not in setup_cmds:
-        return _fail("setup without tests may keep test-compile: %s" % setup_cmds)
+    if any("test-compile" in c for c in setup_cmds):
+        return _fail("setup without tests must not stamp test-compile: %s" % setup_cmds)
+    if any("mvn -q test" == c for c in setup_cmds):
+        return _fail("setup without tests must not stamp mvn test: %s" % setup_cmds)
+
+    smoke = KERNEL / "fixtures" / "k4-setup-smoke.json"
+    smoke_result, smoke_issues = convert_file(smoke)
+    if smoke_issues or smoke_result is None:
+        return _fail("k4-setup-smoke convert: %s" % smoke_issues)
+    smoke_body = json.loads(
+        next(p["body"] for p in smoke_result["payloads"] if p["logical_id"] == "setup")
+    )
+    smoke_cmds = [str(item.get("cmd") or "") for item in smoke_body.get("exit_criteria") or []]
+    if "mvn -q test" not in smoke_cmds:
+        return _fail("setup with smoke test must stamp mvn -q test: %s" % smoke_cmds)
+    if any("test-compile" in c for c in smoke_cmds):
+        return _fail("setup with smoke test must not stamp test-compile: %s" % smoke_cmds)
 
     empty_cards = validate_result(
         {"payloads": [], "manifest": {"created_cards": []}}

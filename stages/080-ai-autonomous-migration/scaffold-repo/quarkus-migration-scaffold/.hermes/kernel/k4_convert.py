@@ -114,12 +114,31 @@ def _touches_tests(paths: list[Any]) -> bool:
     return False
 
 
-def _compile_or_test_exit(fw: list[str]) -> dict[str, str]:
+def _touches_main(paths: list[Any]) -> bool:
+    for raw in paths:
+        n = str(raw).replace("\\", "/").strip()
+        if not n:
+            continue
+        padded = "/" + n.strip("/") + "/"
+        if "/src/main/" in padded or n.startswith("src/main/"):
+            return True
+    return False
+
+
+def _compile_or_test_exit(fw: list[str], kind: str = "") -> dict[str, str] | None:
     # Lead:test-compile-is-not-an-exit-criterion — compiling is not running.
-    # mvn clean is forbidden here: M4 snapshots surefire (batch 1).
+    # Lead:setup-test-toolchain-claim-is-vacuous — test-compile on a tree
+    # with no test sources always passes. Bootstrap either runs a real
+    # smoke test or makes no Maven toolchain claim. mvn clean is forbidden
+    # here: M4 snapshots surefire (batch 1).
     if _touches_tests(fw):
         return {"check": "test_suite_runs", "cmd": "mvn -q test"}
-    return {"check": "compile", "cmd": "mvn -q test-compile"}
+    k = (kind or "").strip().lower()
+    if k in {"setup", "bootstrap"}:
+        return None
+    if _touches_main(fw):
+        return {"check": "compile", "cmd": "mvn -q compile"}
+    return None
 
 
 def acceptance_unsatisfiable(story: dict[str, Any]) -> list[str]:
@@ -305,6 +324,32 @@ def validate_result(result: Any) -> list[Issue]:
 def _m3_body(story: dict[str, Any], type_sha: str) -> dict[str, Any]:
     sid = _story_id(story)
     fw = [str(p) for p in (story.get("files_writable") or []) if str(p).strip()]
+    kind = str(story.get("kind") or "").strip().lower()
+    if not kind and sid.lower() == "setup":
+        kind = "setup"
+    exits: list[dict[str, str]] = [
+        {
+            "check": "skills",
+            "assert": (
+                "consult each skill pinned on this card; unused pins are "
+                "legal (skills_unused). AD-002E is a false consult — "
+                "claiming a skill that was not loaded. Do not silence a "
+                "missing pin."
+            ),
+        },
+        {
+            "check": "terminator",
+            "assert": (
+                "kanban_block is a legal outcome when a bound gate exits "
+                "non-zero or when acceptance cannot be satisfied inside "
+                "files_writable; do not kanban_complete around a red gate "
+                "or an unsatisfiable acceptance"
+            ),
+        },
+    ]
+    maven = _compile_or_test_exit(fw, kind)
+    if maven:
+        exits.append(maven)
     return {
         "task_id": sid,
         "role": IMPL,
@@ -329,27 +374,7 @@ def _m3_body(story: dict[str, Any], type_sha: str) -> dict[str, Any]:
         "identity": {"story_id": sid},
         "files_in_scope": list(fw),
         "files_writable": list(fw),
-        "exit_criteria": [
-            {
-                "check": "skills",
-                "assert": (
-                    "consult each skill pinned on this card; unused pins are "
-                    "legal (skills_unused). AD-002E is a false consult — "
-                    "claiming a skill that was not loaded. Do not silence a "
-                    "missing pin."
-                ),
-            },
-            {
-                "check": "terminator",
-                "assert": (
-                    "kanban_block is a legal outcome when a bound gate exits "
-                    "non-zero or when acceptance cannot be satisfied inside "
-                    "files_writable; do not kanban_complete around a red gate "
-                    "or an unsatisfiable acceptance"
-                ),
-            },
-            _compile_or_test_exit(fw),
-        ],
+        "exit_criteria": exits,
     }
 
 

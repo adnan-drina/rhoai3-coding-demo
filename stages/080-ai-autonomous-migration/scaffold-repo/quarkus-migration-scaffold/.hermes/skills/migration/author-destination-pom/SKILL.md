@@ -5,7 +5,7 @@ license: Apache-2.0
 compatibility: Linux seat; Red Hat Quarkus platform; quarkus CLI optional (extensions only)
 metadata:
   author: rhoai3-harness-team
-  version: "2.2.0"
+  version: "2.2.1"
   hermes:
     tags:
     - migration
@@ -96,4 +96,6 @@ documents hand-authoring as a dedicated path.
   `OK: pom Jacoco/Sonar dual-path + argLine wiring present`.
 - `quarkus.platform.group-id` is `com.redhat.quarkus.platform`.
 - Chassis present: `AGENTS.md`, `devfile.yaml`, `.hermes/LAYOUT.md`.
+- Do **not** complete setup on `mvn test-compile`. Either run one smoke test
+  in this write-set (`mvn -q test`) or make no Maven toolchain claim.
 - Do **not** depend on `rsync` (W2 — seat has `tar`; create sync path is retired).

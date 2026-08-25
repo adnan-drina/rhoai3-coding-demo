@@ -27,7 +27,8 @@ REMEDY = {
         "M3 payloads need non-empty files_writable copied from the partition. "
         "Acceptance that needs pom.xml (health / add-extension) or a proves "
         "path must list those files in files_writable; otherwise the story "
-        "is unsatisfiable (kanban_block, do not mint)."
+        "is unsatisfiable (kanban_block, do not mint). Do not stamp "
+        "mvn test-compile as an exit (empty test tree always passes)."
     ),
     "K4_CREATED_CARDS": (
         "Manifest created_cards must be the exact non-empty payload logical_id "

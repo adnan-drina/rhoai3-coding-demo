@@ -480,6 +480,14 @@ def check_body(label: str, body: dict, root: Path, sibling_m3: list[dict] | None
                         f"phase={phase} exit_criteria[{i}] needs cmd or assert",
                     )
                     bad = 1
+                cmd = str(item.get("cmd") or "")
+                if "test-compile" in cmd:
+                    fail(
+                        "BODY_EXIT",
+                        "test-compile is not a card exit (empty test tree "
+                        "always passes; Lead:setup-test-toolchain-claim-is-vacuous)",
+                    )
+                    bad = 1
 
         # AD-002D — preload ≠ consultation; M3 must name a skills check.
         if phase == "M3":

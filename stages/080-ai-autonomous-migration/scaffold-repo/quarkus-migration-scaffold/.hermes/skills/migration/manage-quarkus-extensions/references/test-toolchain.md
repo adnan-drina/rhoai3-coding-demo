@@ -23,7 +23,9 @@ includes `src/test/**`:
 
 1. `exit_criteria` MUST include a Maven **test|verify** cmd (`mvn -q test`).
  `mvn test-compile` is in-loop compile, **not** an exit
- (Lead:test-compile-is-not-an-exit-criterion). Do not `mvn clean` — M4
+ (Lead:test-compile-is-not-an-exit-criterion;
+ Lead:setup-test-toolchain-claim-is-vacuous — an empty test tree always
+ passes). Do not `mvn clean` — M4
  snapshots surefire.
 2. **Structural:**
  `stamp-implementer-checkpoint.py --completed src/test/...` **REFUSE**s unless
