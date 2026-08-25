@@ -21,7 +21,7 @@ Copy or cite by stable ID — never paraphrase away:
 | Field | Why |
 |-------|-----|
 | Story / unit IDs and in-scope / out-of-scope boundaries | SOUL scope discipline |
-| `## Non-Goals` and forbid/preserve clauses | AD-S + no-invention |
+| `## Non-Goals` with non-empty content (omit the heading if there are none; an empty heading is not a non-goal) | AD-S + no-invention |
 | Acceptance criteria with stable IDs (`AC-*` / contract refs) and measurable outcomes | G-1/G-4 oracles |
 | M1 finding / unit refs the brief claims (ids, rule labels) | Evidence chain |
 | Anchored legacy excerpts / staging facts the brief asserts over | Facts travel |
@@ -51,7 +51,8 @@ reclaim.
 | `/speckit-tasks` | `plan.md` present | never skip ahead of plan | run tasks (always last) |
 
 Missing precondition → typed `needs_input` BLOCK. Never invent Spec Kit trees.
-Do **not** rewrite write-once `evidence/briefs/partition.json`.
+Do **not** rewrite write-once `evidence/partition.json` (or the fixture copy
+`evidence/briefs/partition.json`).
 Lint: `check-decision-complete-cards.py` on the M2 seed body.
 
 ## Implementation-graph ordering

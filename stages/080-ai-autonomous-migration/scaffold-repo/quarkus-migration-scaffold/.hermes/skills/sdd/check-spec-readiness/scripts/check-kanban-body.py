@@ -47,6 +47,7 @@ from k1_validate import validate_body as k1_validate_body  # noqa: E402
 
 try:
     from specimen_agnostic import (
+        acceptance_unsatisfiable_files,
         extensions_union,
         parse_extensions_declared,
         refs_path_sha_errors,
@@ -57,6 +58,7 @@ except ImportError:  # invoked with a cwd that is not this scripts dir
     parse_extensions_declared = None
     extensions_union = None
     writes_pom_xml = None
+    acceptance_unsatisfiable_files = None
     _lib = None
     _spec = None
     for parent in Path(__file__).resolve().parents:
@@ -74,6 +76,46 @@ except ImportError:  # invoked with a cwd that is not this scripts dir
         parse_extensions_declared = _mod.parse_extensions_declared
         extensions_union = _mod.extensions_union
         writes_pom_xml = _mod.writes_pom_xml
+        acceptance_unsatisfiable_files = _mod.acceptance_unsatisfiable_files
+
+
+def _posix_rel(path: str) -> str:
+    return str(path or "").replace("\\", "/").strip()
+
+
+def scope_touches_tests(paths) -> bool:
+    """True when a dest-relative path sits under src/test/."""
+    if not isinstance(paths, list):
+        return False
+    for item in paths:
+        if isinstance(item, str):
+            n = _posix_rel(item)
+        elif isinstance(item, dict):
+            n = _posix_rel(
+                str(
+                    item.get("dest")
+                    or item.get("path")
+                    or item.get("file")
+                    or item.get("src")
+                    or ""
+                )
+            )
+        else:
+            continue
+        if not n:
+            continue
+        padded = "/" + n.strip("/") + "/"
+        if "/src/test/" in padded or n.startswith("src/test/"):
+            return True
+    return False
+
+
+def cmd_runs_tests(cmd: str) -> bool:
+    """Maven test|verify, not test-compile. Compiling is not running."""
+    c = " ".join(str(cmd or "").split())
+    if not c or "test-compile" in c:
+        return False
+    return bool(re.search(r"(?:^|\s)(?:mvn|\./mvnw)(?:\s|$).*\b(?:test|verify)\b", c))
 
 
 def _operand_count_rc(label: str, body: dict) -> int:
@@ -459,25 +501,33 @@ def check_body(label: str, body: dict, root: Path, sibling_m3: list[dict] | None
                         )
                         bad = 1
 
-            # S-010 Class A / Deputy E-20260810T104752Z — test scope ⇒ in-loop
-            # testCompile exit (red compile must not reach Review silently).
-            scope_paths = body.get("files_in_scope") or body.get("filesInScope") or []
-            if isinstance(scope_paths, list):
-                touches_tests = any(
-                    isinstance(p, str) and "/src/test/" in p.replace("\\", "/")
-                    for p in scope_paths
-                )
-            else:
-                touches_tests = False
-            if touches_tests and "test_compile" not in checks:
-                fail(
-                    "BODY_EXIT",
-                    "phase=M3 with src/test in files_in_scope requires "
-                    "exit_criteria check=test_compile "
-                    "(cmd: mvn -q test-compile; in-loop invariant — "
-                    ".hermes/skills/migration/manage-quarkus-extensions/references/test-toolchain.md)",
-                )
-                bad = 1
+            # dest-5 T001/T020: test-compile shipped a broken artefact.
+            # Compile-only remains legal only when the story writes no test.
+            scope_paths = []
+            for key in (
+                "files_writable",
+                "write_set",
+                "files_in_scope",
+                "filesInScope",
+            ):
+                raw = body.get(key)
+                if isinstance(raw, list):
+                    scope_paths.extend(raw)
+            touches_tests = scope_touches_tests(scope_paths)
+            if touches_tests:
+                run_cmds = [
+                    str(item.get("cmd") or "")
+                    for item in exits
+                    if isinstance(item, dict) and cmd_runs_tests(str(item.get("cmd") or ""))
+                ]
+                if not run_cmds:
+                    fail(
+                        "BODY_EXIT",
+                        "phase=M3 with src/test in files_writable/files_in_scope "
+                        "requires a Maven test|verify cmd; test-compile is not "
+                        "an exit (Lead:test-compile-is-not-an-exit-criterion)",
+                    )
+                    bad = 1
 
             # Deputy E-20260810T025100Z — exit criteria must not require paths
             # outside files_in_scope (S-003: jpa_entities needed pom.xml OOS).
@@ -485,8 +535,9 @@ def check_body(label: str, body: dict, root: Path, sibling_m3: list[dict] | None
             # the authoring-time catch for known pom-implying checks + explicit
             # pom.xml mentions in cmd/assert text.
             scope = body.get("files_in_scope") or body.get("filesInScope") or []
+            writable = body.get("files_writable") or body.get("write_set") or []
             scope_paths: list[str] = []
-            for item in scope:
+            for item in list(scope) + list(writable if isinstance(writable, list) else []):
                 if isinstance(item, str):
                     scope_paths.append(item)
                 elif isinstance(item, dict):
@@ -507,6 +558,22 @@ def check_body(label: str, body: dict, root: Path, sibling_m3: list[dict] | None
                 )
                 if "pom.xml" in blob:
                     needs_pom = True
+            if callable(acceptance_unsatisfiable_files):
+                synth = {
+                    "files_writable": writable if isinstance(writable, list) else scope,
+                    "exit_criteria": exits if isinstance(exits, list) else [],
+                    "acceptance_criteria": body.get("acceptance_criteria"),
+                }
+                for missing in acceptance_unsatisfiable_files(synth):
+                    fail(
+                        "BODY_SCOPE_EXIT",
+                        f"acceptance needs {missing} outside files_writable; "
+                        "unsatisfiable acceptance is kanban_block, not complete "
+                        "(Lead:story-must-block-when-scope-cannot-satisfy-acceptance)",
+                    )
+                    bad = 1
+                    if missing == "pom.xml":
+                        needs_pom = True
             if needs_pom and not has_pom:
                 fail(
                     "BODY_SCOPE_EXIT",

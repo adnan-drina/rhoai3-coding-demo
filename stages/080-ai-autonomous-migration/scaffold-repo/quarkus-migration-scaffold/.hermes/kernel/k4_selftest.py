@@ -113,6 +113,34 @@ def main() -> int:
     if "K4_SCOPE" not in scope_codes:
         return _fail("empty files_writable missed K4_SCOPE: %s" % scope_codes)
 
+    health_np = KERNEL / "fixtures" / "k4-health-no-pom.json"
+    _, health_issues = convert_file(health_np)
+    health_codes = {c for c, _, _ in health_issues}
+    if "K4_SCOPE" not in health_codes:
+        return _fail("health AC without pom missed K4_SCOPE: %s" % health_codes)
+    health_detail = next(d for c, d, _ in health_issues if c == "K4_SCOPE")
+    if "pom.xml" not in health_detail:
+        return _fail("health K4_SCOPE did not name pom.xml: %s" % health_detail)
+
+    with_test = KERNEL / "fixtures" / "k4-with-test.json"
+    test_result, test_issues = convert_file(with_test)
+    if test_issues or test_result is None:
+        return _fail("k4-with-test convert: %s" % test_issues)
+    polish = json.loads(
+        next(p["body"] for p in test_result["payloads"] if p["logical_id"] == "polish")
+    )
+    cmds = [str(item.get("cmd") or "") for item in polish.get("exit_criteria") or []]
+    if "mvn -q test" not in cmds:
+        return _fail("polish with src/test must stamp mvn -q test: %s" % cmds)
+    if any("test-compile" in c for c in cmds):
+        return _fail("polish with src/test must not stamp test-compile: %s" % cmds)
+    setup_body = json.loads(
+        next(p["body"] for p in test_result["payloads"] if p["logical_id"] == "setup")
+    )
+    setup_cmds = [str(item.get("cmd") or "") for item in setup_body.get("exit_criteria") or []]
+    if "mvn -q test-compile" not in setup_cmds:
+        return _fail("setup without tests may keep test-compile: %s" % setup_cmds)
+
     empty_cards = validate_result(
         {"payloads": [], "manifest": {"created_cards": []}}
     )

@@ -31,6 +31,11 @@ PATH_IN_PROSE = re.compile(r"(?:`)?((?:src|pom\.xml)[/.\w-]*)(?:`)?")
 NEGATED_PROSE = re.compile(
     r"(?i)\b(?:do not|don't|dont|never|must not|not touch)\b"
 )
+HEALTH_AC = re.compile(
+    r"(?i)/q/health|healthtest|smallrye-health|quarkus-smallrye-health"
+    r"|\bhealth_probe\b"
+)
+POM_AC = re.compile(r"(?i)\bpom\.xml\b|quarkus:add-extension|\badd-extension\b")
 SERVICE_JAVA = re.compile(r"(?i)(?:^|/)([^/]*Service\.java)$")
 SKILLS_BY_KIND = {
     "setup": [
@@ -99,6 +104,67 @@ def prose_paths(text: str) -> list[str]:
     return found
 
 
+def _touches_tests(paths: list[Any]) -> bool:
+    for raw in paths:
+        n = str(raw).replace("\\", "/").strip()
+        if not n:
+            continue
+        padded = "/" + n.strip("/") + "/"
+        if "/src/test/" in padded or n.startswith("src/test/"):
+            return True
+    return False
+
+
+def _compile_or_test_exit(fw: list[str]) -> dict[str, str]:
+    # Lead:test-compile-is-not-an-exit-criterion — compiling is not running.
+    # mvn clean is forbidden here: M4 snapshots surefire (batch 1).
+    if _touches_tests(fw):
+        return {"check": "test_suite_runs", "cmd": "mvn -q test"}
+    return {"check": "compile", "cmd": "mvn -q test-compile"}
+
+
+def acceptance_unsatisfiable(story: dict[str, Any]) -> list[str]:
+    """Health / add-extension / proves paths not granted by files_writable."""
+    fw = [str(p).replace("\\", "/").strip() for p in (story.get("files_writable") or []) if str(p).strip()]
+    names = set(fw)
+    names.update(Path(p).name for p in fw)
+    blob_parts: list[str] = []
+    proves: list[str] = []
+    for key in ("acceptance_criteria", "acceptance", "ac"):
+        raw = story.get(key)
+        if raw is None:
+            continue
+        if isinstance(raw, str):
+            blob_parts.append(raw)
+            continue
+        blob_parts.append(json.dumps(raw, default=str))
+        if isinstance(raw, list):
+            for item in raw:
+                if not isinstance(item, dict):
+                    continue
+                for p in item.get("proves") or []:
+                    if str(p).strip():
+                        proves.append(str(p).replace("\\", "/").strip())
+                blob_parts.append(
+                    " ".join(str(item.get(k) or "") for k in ("cmd", "assert", "expect", "check"))
+                )
+    blob = "\n".join(blob_parts)
+    missing: list[str] = []
+    if HEALTH_AC.search(blob) or POM_AC.search(blob):
+        if "pom.xml" not in names:
+            missing.append("pom.xml")
+    for rel in proves:
+        if rel not in names and Path(rel).name not in names:
+            missing.append(rel)
+    seen: set[str] = set()
+    out: list[str] = []
+    for item in missing:
+        if item not in seen:
+            seen.add(item)
+            out.append(item)
+    return out
+
+
 def story_skills(story: dict[str, Any]) -> list[str]:
     raw = story.get("skills")
     if isinstance(raw, list):
@@ -136,6 +202,14 @@ def validate_inputs(
         fw = story.get("files_writable")
         if not isinstance(fw, list) or not [str(p).strip() for p in fw if str(p).strip()]:
             out.append(_issue("K4_SCOPE", "%s files_writable empty" % sid))
+        else:
+            for missing in acceptance_unsatisfiable(story):
+                out.append(
+                    _issue(
+                        "K4_SCOPE",
+                        "%s acceptance needs %s outside files_writable" % (sid, missing),
+                    )
+                )
         if not story_skills(story):
             out.append(
                 _issue("K4_SKILLS", "%s skills empty (set skills[] or kind setup/us/polish)" % sid)
@@ -268,10 +342,12 @@ def _m3_body(story: dict[str, Any], type_sha: str) -> dict[str, Any]:
                 "check": "terminator",
                 "assert": (
                     "kanban_block is a legal outcome when a bound gate exits "
-                    "non-zero; do not kanban_complete around a red gate"
+                    "non-zero or when acceptance cannot be satisfied inside "
+                    "files_writable; do not kanban_complete around a red gate "
+                    "or an unsatisfiable acceptance"
                 ),
             },
-            {"check": "compile", "cmd": "mvn -q test-compile"},
+            _compile_or_test_exit(fw),
         ],
     }
 

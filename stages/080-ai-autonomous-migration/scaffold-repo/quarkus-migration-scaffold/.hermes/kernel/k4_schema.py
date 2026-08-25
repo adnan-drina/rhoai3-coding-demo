@@ -23,7 +23,12 @@ REMEDY = {
         "Do not scrape write-sets from tasks.md. Copy files_writable from the "
         "typed partition row for that logical story_id."
     ),
-    "K4_SCOPE": "M3 payloads need non-empty files_writable copied from the partition.",
+    "K4_SCOPE": (
+        "M3 payloads need non-empty files_writable copied from the partition. "
+        "Acceptance that needs pom.xml (health / add-extension) or a proves "
+        "path must list those files in files_writable; otherwise the story "
+        "is unsatisfiable (kanban_block, do not mint)."
+    ),
     "K4_CREATED_CARDS": (
         "Manifest created_cards must be the exact non-empty payload logical_id "
         "list in create order ([] skips — forbid). Worker maps those to Hermes "

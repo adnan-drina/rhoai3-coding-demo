@@ -22,6 +22,7 @@ from inventory_io import (
     load_json,
     load_migration_yaml,
     resolve_inventory_path,
+    resolve_partition_path,
     inventory_http_expected,
 )
 from path_maps import (
@@ -822,6 +823,75 @@ def story_declared_writeset(story: dict) -> list[str]:
     return []
 
 
+_HEALTH_AC = re.compile(
+    r"(?i)/q/health|healthtest|smallrye-health|quarkus-smallrye-health"
+    r"|\bhealth_probe\b"
+)
+_POM_AC = re.compile(r"(?i)\bpom\.xml\b|quarkus:add-extension|\badd-extension\b")
+
+
+def acceptance_unsatisfiable_files(story: dict) -> list[str]:
+    """Files this story's acceptance needs that files_writable does not grant.
+
+    dest-5 T020: HealthTest + /q/health with pom.xml outside the write-set
+    (Lead:partition-must-grant-scope-its-acceptance-needs). Health and
+    add-extension imply pom.xml. ``proves`` paths must be in the write-set.
+    """
+    if not isinstance(story, dict):
+        return []
+    writable = {
+        dest_path_as_written(p) for p in story_declared_writeset(story) if p
+    }
+    writable_names = {Path(p).name for p in writable}
+    blob_parts: list[str] = []
+    proves: list[str] = []
+    for key in (
+        "acceptance_criteria",
+        "acceptance",
+        "ac",
+        "exit_criteria",
+        "done_when",
+    ):
+        raw = story.get(key)
+        if raw is None:
+            continue
+        if isinstance(raw, str):
+            blob_parts.append(raw)
+            continue
+        blob_parts.append(json.dumps(raw, default=str))
+        if isinstance(raw, list):
+            for item in raw:
+                if not isinstance(item, dict):
+                    continue
+                for p in item.get("proves") or []:
+                    if str(p).strip():
+                        proves.append(str(p).strip())
+                blob_parts.append(
+                    " ".join(
+                        str(item.get(k) or "")
+                        for k in ("cmd", "assert", "expect", "check")
+                    )
+                )
+    blob = "\n".join(blob_parts)
+    missing: list[str] = []
+    if _HEALTH_AC.search(blob) or _POM_AC.search(blob):
+        if "pom.xml" not in writable and "pom.xml" not in writable_names:
+            missing.append("pom.xml")
+    for p in proves:
+        rel = dest_path_as_written(p)
+        name = Path(rel).name
+        if rel not in writable and name not in writable_names:
+            missing.append(rel)
+    # Stable unique
+    seen: set[str] = set()
+    out: list[str] = []
+    for item in missing:
+        if item not in seen:
+            seen.add(item)
+            out.append(item)
+    return out
+
+
 def partition_story_writeset(root: Path, story_id: str) -> tuple[str, set[str]]:
     """Look up partition.stories[id] declared write-set.
 
@@ -830,7 +900,9 @@ def partition_story_writeset(root: Path, story_id: str) -> tuple[str, set[str]]:
       missing_story — partition present, story_id not in stories[]
       ok — story found (files may be empty)
     """
-    path = root / "evidence" / "briefs" / "partition.json"
+    path, _looked = resolve_partition_path(root)
+    if path is None:
+        return "absent", set()
     data = load_json(path)
     if not isinstance(data, dict) or not isinstance(data.get("stories"), list):
         return "absent", set()

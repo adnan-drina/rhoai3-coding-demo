@@ -1,0 +1,13 @@
+{
+  "schema": "rhoai3.entry-point-inventory/v1",
+  "entry_points": [
+    {
+      "kind": "http",
+      "subtype": "jaxrs",
+      "file": "src/main/java/com/demo/resource/AlphaResource.java",
+      "symbol": "AlphaResource#get",
+      "http_method": "GET",
+      "http_path": "/api/alpha"
+    }
+  ]
+}

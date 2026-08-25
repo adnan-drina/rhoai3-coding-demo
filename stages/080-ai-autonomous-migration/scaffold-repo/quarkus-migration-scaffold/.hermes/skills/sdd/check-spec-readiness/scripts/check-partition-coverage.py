@@ -45,6 +45,7 @@ Usage:
   python3 check-partition-coverage.py /projects/modernized
   python3 check-partition-coverage.py . --write-receipt evidence/receipts/partition-coverage.json
   python3 check-partition-coverage.py . --retro   # evidence-only: never exit 1
+  # Default partition: evidence/partition.json, else evidence/briefs/partition.json.
 """
 from __future__ import annotations
 
@@ -82,6 +83,7 @@ def _ensure_hermes_lib() -> None:
 _ensure_hermes_lib()
 
 from specimen_agnostic import (  # noqa: E402
+    acceptance_unsatisfiable_files,
     collect_supersedes,
     dest_path_as_written,
     inventory_http_expected,
@@ -89,6 +91,7 @@ from specimen_agnostic import (  # noqa: E402
     load_json,
     path_rewrites,
     resolve_inventory_path,
+    resolve_partition_path,
     rewrite_across,
     story_declared_writeset,
     type_inventory_supersede_gaps,
@@ -282,7 +285,12 @@ def body_sequence_map(bodies_dir: Path, story_ids: list[str]) -> dict[str, set[s
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("root", nargs="?", default=".")
-    ap.add_argument("--partition", default="evidence/briefs/partition.json")
+    ap.add_argument(
+        "--partition",
+        default="",
+        help="Override partition path. Default: evidence/partition.json, "
+        "then evidence/briefs/partition.json. Refusal names every path looked at.",
+    )
     ap.add_argument("--inventory", default="")
     ap.add_argument(
         "--allow-specimen-fixture",
@@ -297,10 +305,16 @@ def main() -> int:
     root = Path(args.root).resolve()
     norm_file = make_norm_file(root)
 
-    part_path = root / args.partition
-    partition = load_json(part_path)
+    part_path, looked = resolve_partition_path(root, args.partition)
+    partition = load_json(part_path) if part_path is not None else None
     if not isinstance(partition, dict) or not isinstance(partition.get("stories"), list):
-        print("PARTITION_COVERAGE: INCONCLUSIVE — missing/invalid partition.json", file=sys.stderr)
+        looked_s = "; ".join(looked) if looked else "(none)"
+        where = str(part_path) if part_path is not None else looked_s
+        print(
+            "PARTITION_COVERAGE: INCONCLUSIVE — missing/invalid partition.json "
+            f"(looked: {looked_s}; resolved: {where})",
+            file=sys.stderr,
+        )
         return 0 if args.retro else 1
 
     inv_path = resolve_inventory_path(
@@ -359,6 +373,8 @@ def main() -> int:
                     gaps.append(f"writeset_extra:{sid}:{extra}")
         if declared_writeset and leaf_pairs:
             gaps.extend(partition_dual_frame_gaps(declared_writeset, leaf_pairs))
+        for missing in acceptance_unsatisfiable_files(story):
+            gaps.append(f"acceptance_unsatisfiable:{sid}:{missing}")
 
     owner: dict[str, str] = {}
     for sid, files in story_file_map.items():
@@ -394,6 +410,10 @@ def main() -> int:
 
     if uncovered:
         gaps.append(f"endpoints_uncovered={len(uncovered)}")
+        gaps.append(
+            "endpoints_field=story.endpoints METHOD /path (A-8; "
+            "check-spec-readiness SKILL.md Contracts)"
+        )
         for u in uncovered:
             gaps.append(f"uncovered:{u}")
     if multi:
@@ -435,6 +455,12 @@ def main() -> int:
             mta_status = "checked"
         else:
             mta_status = "empty_findings"
+
+    if any(g.startswith("acceptance_unsatisfiable:") for g in gaps):
+        gaps.append(
+            "unsatisfiable_acceptance_is_block_not_complete "
+            "(kanban_block; do not kanban_complete)"
+        )
 
     coverage_gaps = [g for g in gaps if g != "mta_skipped_missing"]
     if not story_file_map or all(len(v) == 0 for v in story_file_map.values()):

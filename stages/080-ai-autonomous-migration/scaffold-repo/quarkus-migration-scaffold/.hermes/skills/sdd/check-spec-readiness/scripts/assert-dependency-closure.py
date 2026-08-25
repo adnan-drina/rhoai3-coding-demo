@@ -46,7 +46,11 @@ from generated_sources import (  # noqa: E402
     inventory_row_is_generated,
     is_generated,
 )
-from specimen_agnostic import dest_path_as_written, legacy_java_prefixes  # noqa: E402
+from specimen_agnostic import (  # noqa: E402
+    dest_path_as_written,
+    legacy_java_prefixes,
+    resolve_partition_path,
+)
 
 IMPORT_RE = re.compile(r"^\s*import\s+([\w.]+)\s*;", re.M)
 PKG_RE = re.compile(r"^\s*package\s+([\w.]+)\s*;", re.M)
@@ -123,8 +127,8 @@ def _field_paths(raw: object) -> list[str]:
 def plan_owned_files(root: Path) -> set[str]:
     """Union of partition + body write-sets (generator inputs may sit on setup)."""
     owned: set[str] = set()
-    part = root / "evidence" / "briefs" / "partition.json"
-    if part.is_file():
+    part, _looked = resolve_partition_path(root)
+    if part is not None and part.is_file():
         try:
             data = json.loads(part.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):

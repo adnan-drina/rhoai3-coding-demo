@@ -43,12 +43,18 @@ including the **relationship** between them (T-8 / v17 wrong-class oracles).
    do not treat a green isolation run plus a red full suite as a body-mint
    defect. An unrelated dest `src/test` file must not
    satisfy the oracle. `true`, a script/`curl` card exit, and a test cmd
-   with no named proving test refuse. `mvn test-compile` is not
-   test-shaped for L2a. Compile-shaped cmds are unchanged. Shape (`shlex`
+   with no named proving test refuse. `mvn test-compile` is **not** an exit
+   when the story writes tests (Lead:test-compile-is-not-an-exit-criterion);
+   stamp `mvn -q test` (not `clean` — M4 snapshots surefire). Compile-only
+   remains legal only for stories that write no test. Shape (`shlex`
    + Maven vehicle) is necessary and not sufficient. Golden does not
    require `mvn` on PATH. Do not stamp `failIfNoTests=true` as a mint
    recipe (the story that needs a test is the story that adds it).
    Live HTTP acceptance belongs to M4/M5 gate scripts, not card exits.
+   **Unsatisfiable acceptance** (health / add-extension needing `pom.xml`
+   outside `files_writable`) is a partition REFUSE at M2 and `kanban_block`
+   at M3 — never `kanban_complete`. Runtime refuse-complete on a red bound
+   gate is `pre_tool_call` (batch 4).
 6. **File-granular ownership (A-5)** — grouping and ownership are separate
    steps. After grouping, the handover assigns each destination file
    **exactly one owner**. **pom owner unique** — `pom.xml` has one writer;
@@ -66,7 +72,12 @@ including the **relationship** between them (T-8 / v17 wrong-class oracles).
 - **Write-set subset** — `body.files_writable` ⊆ partition story declared
   frame (`assert-body-writeset-subset-of-partition`). Inheritance-reachable
   unowned dest twins are assigned onto that frame (V34-5) before subset.
-  Endpoint coverage is not write-set coverage.
+  Endpoint coverage is not write-set coverage. **A-8 field:**
+  `story.endpoints` (`METHOD /path` or path-only) is declared on the
+  partition **before** planning; it is not discovered from the refusal.
+- **Acceptance ⊆ write-set** — each acceptance_criteria / proves path /
+  health-or-extension implication must be grantable from that story's
+  `files_writable`. A health test without `pom.xml` is INVALID.
 - **Dependency closure** bank id: `BANK-DEP-CLOSURE-1`. `provider: generated`
   is a third kind (build output); DEST_MISS is skipped; generator inputs
   (spec + dest build file) must be owned (`GENERATOR_INPUTS`).

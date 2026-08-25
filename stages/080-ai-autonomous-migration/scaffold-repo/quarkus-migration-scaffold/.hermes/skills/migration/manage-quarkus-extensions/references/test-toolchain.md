@@ -17,12 +17,14 @@ python3 .hermes/skills/gates/check-release-readiness/scripts/check-test-toolchai
 
 ## In-loop invariant
 
-A test-authoring story that never runs the build can only produce a valid
-corpus by accident. For M3 bodies whose `files_in_scope` includes
-`src/test/**`:
+A test-authoring story that never **runs** the tests can only produce a valid
+corpus by accident. For M3 bodies whose `files_writable` / `files_in_scope`
+includes `src/test/**`:
 
-1. `exit_criteria` MUST include `check: test_compile` (cmd may still say
- `mvn -q test-compile`; evaluator routes through the **scoped** gate).
+1. `exit_criteria` MUST include a Maven **test|verify** cmd (`mvn -q test`).
+ `mvn test-compile` is in-loop compile, **not** an exit
+ (Lead:test-compile-is-not-an-exit-criterion). Do not `mvn clean` — M4
+ snapshots surefire.
 2. **Structural:**
  `stamp-implementer-checkpoint.py --completed src/test/...` **REFUSE**s unless
  `run-scoped-compile-gate.py --goal test-compile` is green for own
@@ -32,12 +34,13 @@ corpus by accident. For M3 bodies whose `files_in_scope` includes
  On wall/requeue and before `kanban_complete`, run
  `sync-checkpoint-from-test-writes.py` / `check-test-write-checkpoint-lag.py`
  so on-disk `src/test/**` writes cannot outrun the checkpoint.
-4. Wall / soft-requeue / complete evaluate `test_compile` via scoped gate
+4. Wall / soft-requeue / complete evaluate the **test** cmd via scoped gate
  (`compile-scope-filtered.md`, `wall-exit-eval.md`,
- `complete-cmd-exit-criteria.md`).
+ `complete-cmd-exit-criteria.md`). Compile-only remains legal only for
+ stories that write no test.
 
 Authoring gate: `check-kanban-body.py` refuses M3 bodies with test scope but
-no `test_compile` exit.
+no `mvn test|verify` exit.
 
 **Fresh-run HOLD:** no `substrate=fresh_workspace` S-010 re-dispatch until this
 structural gate is landed (`enforce-1b-before-fresh-run`).

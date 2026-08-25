@@ -1,11 +1,11 @@
 ---
 name: check-spec-readiness
-description: Before kanban_create — lint SDD specs, story bodies (typed BODY_* codes), and partition coverage (HTTP 1:1, dest_file 1:N with supersede). Do not use to mint Kanban children or assemble M3 bodies (K4 converter is .hermes/kernel/k4_convert.py).
+description: Before kanban_create — lint SDD specs, story bodies (typed BODY_* codes), and partition coverage (HTTP 1:1 via story.endpoints as METHOD /path, dest_file 1:N with supersede). Do not use to mint Kanban children or assemble M3 bodies (K4 converter is .hermes/kernel/k4_convert.py).
 license: Apache-2.0
 compatibility: Linux seat; Python 3.11+; reads migration/ specs and bodies
 metadata:
   author: rhoai3-harness-team
-  version: "1.6.0"
+  version: "1.7.0"
   hermes:
     tags:
     - sdd
@@ -22,6 +22,13 @@ metadata:
   1:N with supersede) with `check-partition-coverage.py`.
   This skill does **not** author Path-A `partition.json` and does **not**
   stamp bodies. Typed M3 bodies come from `.hermes/kernel/k4_convert.py`.
+  The producer writes `evidence/partition.json`; coverage also accepts
+  `evidence/briefs/partition.json`. A missing file names every path looked at.
+- **A-8 `story.endpoints` (read this before planning):** each HTTP story
+  declares `endpoints: ["GET /api/foo", ...]` (METHOD + path, or path-only).
+  Coverage is `story.endpoints` ∩ inventory `http_method`+`http_path`/`symbol`,
+  1:1. Do not join inventory `file` to dest write-set. Missing field is
+  `endpoints_uncovered`, not a secret schema.
 - When a body's `exit_criteria`, `files_in_scope`, or `operand_count` changed —
   these are the fields the gates refuse on.
 - **Not** for creating `.specify/` or installing `specify-cli` —
@@ -58,6 +65,12 @@ python3 "${HERMES_SKILL_DIR}/scripts/check-partition-coverage.py" "$ROOT" \
 ## Contracts
 
 - This skill (pattern-steals + kanban-body live here; no `governance/` folder)
+- **A-8:** partition stories that own HTTP declare `story.endpoints` as
+  `METHOD /path` (or path-only) **before** planning — not only after the
+  coverage refusal. See When to Use.
+- Acceptance that needs a file (health → `pom.xml`; `proves` paths) must
+  appear in that story's `files_writable`. Unsatisfiable acceptance is
+  `kanban_block`, not complete.
 - `.hermes/skills/sdd/check-spec-readiness/references/sdd-ordering.md` (AD-S §S.6)
 - `.hermes/skills/sdd/check-spec-readiness/references/story-scope-and-exit.md` (AR-4.4; T-8 class-legal + dual-oracle)
 - skill `derive-story-oracles` (exit derivation; `semantic-exits.md` retired)
@@ -78,6 +91,7 @@ KEEP (this skill):
 - `scripts/check-partition-coverage.py` — M2 partition VALID receipt
 - `scripts/check-interface-closure.py` — interface closure Class-A gate
 - `scripts/assert-dependency-closure.py` — Class-A dependency closure
+- `scripts/check-spec-readiness-selftest.py` — batch-3 negative controls
 
 Libraries: `.hermes/lib/` (`generated_sources.py`,
 `inventory_io.py`, `path_maps.py`, `supersede.py`, `http_join.py`,
@@ -106,6 +120,8 @@ Do **not** invoke DD4-retired R-M3.5/7 stubs (`check-persistence-bom.py`,
   each violation prints `FAIL: <relpath>: …` first. **Silent-failure catch:**
   `readiness lint idle` (N=0) while specs/bodies exist means the artifacts are
   not under the scanned roots — unproven, not passed.
+  `## Non-Goals` is not required on every `.md`. An **empty** Non-Goals heading
+  is FAIL (state a non-goal or omit the heading).
 - `check-kanban-body.py` prints `OK: Kanban body §6.1 checks passed (N body(ies);
   corpus|single-body)`. Failures are typed and stable: `BODY_SCHEMA`,
   `BODY_REF_UNKNOWN`, `BODY_REF_SHA256`, `BODY_REF_DIGEST`, `BODY_REF_MISSING`,
@@ -134,7 +150,11 @@ Do **not** invoke DD4-retired R-M3.5/7 stubs (`check-persistence-bom.py`,
   Behavioural 1:N fixtures: named-set PASS
   `fixtures/partition-supersede-named-set/` (`check-partition-coverage.py` exit 0);
   bare-string REFUSE `fixtures/partition-supersede-bare-string/` (exit != 0,
-  `supersede_incomplete`).
+  `supersede_incomplete`);
+  health-unsatisfiable REFUSE `fixtures/partition-health-unsatisfiable/`
+  (`acceptance_unsatisfiable:polish:pom.xml`).
+  Default partition path is `evidence/partition.json` then
+  `evidence/briefs/partition.json`; missing names every path looked at.
   Findings **presence** at create is enough (`mta_status=checked`);
   `story.rules` / `mta_oos` are not a create-path join
   (Architect `E-20260817T154012Z`). Addressed findings stay M1 handoff

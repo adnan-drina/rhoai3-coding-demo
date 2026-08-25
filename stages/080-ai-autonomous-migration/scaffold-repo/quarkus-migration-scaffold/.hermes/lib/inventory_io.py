@@ -119,6 +119,44 @@ def load_migration_yaml(root: Path) -> dict[str, Any]:
         return {}
 
 
+# Producer (dest M2) writes evidence/partition.json; fixtures and older
+# harvests use evidence/briefs/partition.json. Prefer the producer.
+PARTITION_REL_CANDIDATES = (
+    "evidence/partition.json",
+    "evidence/briefs/partition.json",
+)
+
+
+def resolve_partition_path(
+    root: Path, explicit: str = ""
+) -> tuple[Path | None, list[str]]:
+    """Locate the typed partition. Refusal names every path looked at.
+
+    dest-5 / dest-4 wrote evidence/partition.json while the coverage default
+    was evidence/briefs/partition.json (Lead:partition-coverage-default-path-disagrees-with-producer).
+    """
+    looked: list[str] = []
+
+    def _note(p: Path) -> str:
+        try:
+            return str(p.relative_to(root)).replace("\\", "/")
+        except ValueError:
+            return str(p)
+
+    if explicit:
+        p = Path(explicit)
+        if not p.is_absolute():
+            p = root / p
+        looked.append(_note(p))
+        return (p if p.is_file() else None), looked
+    for rel in PARTITION_REL_CANDIDATES:
+        p = root / rel
+        looked.append(rel)
+        if p.is_file():
+            return p, looked
+    return None, looked
+
+
 def resolve_inventory_path(root: Path, explicit: str = "", *, allow_specimen_fixture: bool = False) -> Path | None:
     if explicit:
         p = Path(explicit)

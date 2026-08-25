@@ -1,30 +1,34 @@
 #!/usr/bin/env bash
 # check-spec-readiness skill — P0 pattern-steals + AD-S §S.6 (Architect E-20260808T061327Z): fail closed on
-# unresolved Q-*, missing Non-Goals, incomplete task packets, waivers
+# unresolved Q-*, empty Non-Goals headings, incomplete task packets, waivers
 # without re_open_trigger. Skips cleanly when no SDD artifacts exist yet.
 
 usage() {
   cat <<'USAGE'
 check-readiness.sh — check-spec-readiness gate (P0 pattern-steals + AD-S S.6).
 
-Fails closed on: specs/briefs missing "## Non-Goals" or carrying unresolved
+Fails closed on: specs/briefs with an empty "## Non-Goals" heading (omit the
+heading if there are none — an empty heading measures nothing); unresolved
 Q-* open questions; task packets missing ac_ids / files_in_scope / deps;
 waivers without a checkable re_open_trigger. Then delegates to
 check-ordering.py (AD-S S.6 identity / refuse worker re-plan / plan_revision)
 and check-kanban-body.py (W2 S6.1 Kanban body vocabulary).
 
 Arguments:
-  none. The scaffold root is found by walking up to migration.yaml (SR-2).
+  none required. The scaffold root is found by walking up to migration.yaml (SR-2)
+  unless --root is set.
   Scanned under that root:
     .specify/specs, specs, evidence/briefs, migration/specs (*.md)
     evidence/tasks, evidence/kanban (*.json)
     migration/waivers, migration/mta-exceptions (*.yaml|*.yml|*.json)
 
-  -h, --help   print this usage and exit 0
+  -h, --help     print this usage and exit 0
+  --root DIR     lint DIR instead of walking from this script (fixtures / NC)
 
 Examples:
   bash .hermes/skills/sdd/check-spec-readiness/scripts/check-readiness.sh
   bash .hermes/skills/sdd/check-spec-readiness/scripts/check-readiness.sh --help
+  bash .hermes/skills/sdd/check-spec-readiness/scripts/check-readiness.sh --root /tmp/sdd-nc
 
 Exit codes:
   0  pass — readiness passed, or lint idle (no SDD specs/tasks/waivers yet)
@@ -33,20 +37,29 @@ Exit codes:
 USAGE
 }
 
-case "${1:-}" in
-  -h|--help)
-    usage
-    exit 0
-    ;;
-  "")
-    ;;
-  *)
-    printf 'Error: this script takes no arguments. Received: "%s". Usage: %s [--help]\n' \
-      "$1" "$(basename "$0")" >&2
-    usage >&2
-    exit 2
-    ;;
-esac
+ROOT_OVERRIDE=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    --root)
+      if [ $# -lt 2 ]; then
+        echo 'Error: --root needs a directory' >&2
+        usage >&2
+        exit 2
+      fi
+      ROOT_OVERRIDE="$2"
+      shift 2
+      ;;
+    *)
+      printf 'Error: this script takes [--root DIR]. Received: "%s".\n' "$1" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+done
 
 set -euo pipefail
 
@@ -64,14 +77,18 @@ resolve_migration_root() {
   echo "cannot find project root (migration.yaml) walking up from $(dirname "$0") (SR-2)" >&2
   return 1
 }
-root="$(resolve_migration_root)" || exit 1
+if [ -n "${ROOT_OVERRIDE}" ]; then
+  root="$(cd "${ROOT_OVERRIDE}" && pwd)" || exit 1
+else
+  root="$(resolve_migration_root)" || exit 1
+fi
 bad=0
 checked=0
 
 note() { echo "$*"; }
 fail() { echo "FAIL: $*" >&2; bad=1; }
 
-# --- specs / briefs: Non-Goals + open questions ---
+# --- specs / briefs: Non-Goals content (heading not required) + open questions ---
 spec_roots=()
 for d in \
   "${root}/.specify/specs" \
@@ -92,8 +109,30 @@ done
 for f in "${spec_files[@]+"${spec_files[@]}"}"; do
   checked=$((checked + 1))
   rel="${f#"${root}"/}"
-  if ! grep -Eqi '^#{1,3}[[:space:]]*Non-Goals' "${f}"; then
-    fail "${rel}: missing ## Non-Goals (AD-S / P0)"
+  if ! python3 - "${f}" <<'PY'
+import re, sys
+from pathlib import Path
+text = Path(sys.argv[1]).read_text(encoding="utf-8", errors="replace")
+heading = re.search(r"(?im)^(#{1,3})[ \t]+Non-Goals[ \t]*$", text)
+if not heading:
+    raise SystemExit(0)
+level = len(heading.group(1))
+rest = text[heading.end():]
+nxt = re.search(r"(?m)^(#{1,%d})[ \t]+\S+" % level, rest)
+block = rest[: nxt.start()] if nxt else rest
+for ln in block.splitlines():
+    s = ln.strip()
+    if not s:
+        continue
+    if re.match(r"^#{1,6}\s+", s):
+        continue
+    if s in ("---", "***"):
+        continue
+    raise SystemExit(0)
+raise SystemExit(1)
+PY
+  then
+    fail "${rel}: ## Non-Goals is empty (state a non-goal or omit the heading)"
   fi
   # Unresolved checkbox questions: "- [ ] Q-123" or "- [ ] **Q-123**"
   if grep -Eqi '^[[:space:]]*-[[:space:]]*\[[[:space:]]\][[:space:]]*.*\bQ-[0-9]+' "${f}"; then
