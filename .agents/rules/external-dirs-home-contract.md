@@ -23,10 +23,9 @@ That is **not** the profile process home
 (`$HERMES_HOME/profiles/<name>/home/.hermes/skills`). AMEND any reading
 that treated worker `Path.home()` as the second required root.
 
-Tirith PATH vs profile `HERMES_HOME` is the **same family** of miss
-(Operator `111519ZO`) but a **different path**. See
-`profile-home-contract.md`. Do not retarget this skills literal at the
-profile home to “fix” tirith.
+Do not retarget this skills literal at the profile home to “fix” a
+binary PATH. Tirith is retired (`122315ZO`); this gate is still about
+the dest-user skills path dest-init listed.
 
 Operator retracted the blast radius (`105355ZO`): the gate fires where
 `init-spec-workspace` is pinned (M2), not on M3. The contract mismatch

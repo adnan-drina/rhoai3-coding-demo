@@ -452,9 +452,15 @@ check "080 bootstrap omit_park_from_staged kept" \
 check "080 bootstrap refuses dest chaos matrix" \
   "grep -c 'run-chaos-matrix.py present in staged dest golden' '${REPO_ROOT}/scripts/bootstrap-migration-scaffold-v2.sh' || echo 0" \
   "1"
-check "080 dest-init prepends base HERMES_HOME/bin to PATH" \
+check "080 dest-init pins security.tirith_enabled false" \
+  "grep -c 'tirith_enabled.: False' '${GITOPS_INIT}' || echo 0" \
+  "1"
+check "080 dest-init does not prepend base HERMES_HOME/bin for tirith" \
   "grep -c 'base hermes bin PATH' '${GITOPS_INIT}' || echo 0" \
-  "2"
+  "0"
+check "080 tirith-declared-absent rule retired" \
+  "test ! -f '${REPO_ROOT}/.agents/rules/tirith-declared-absent.md' && echo absent || echo present" \
+  "absent"
 check "080 python human_home is in .hermes/lib" \
   "test -f '${SCAFFOLD_080}/.hermes/lib/human_home.py' && grep -c 'Path.home() in a KEEP' '${SCAFFOLD_080}/.hermes/lib/human_home.py' || echo 0" \
   "1"

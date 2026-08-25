@@ -152,7 +152,8 @@ Rebuild later only on dest GO.
   and `assert-no-fence-evasion.py` over **work** logs (`resolve-m4-work-logs.py`
   walks parents or `FENCE_EVASION_LOGS`; scanning `$HERMES_KANBAN_TASK.log`
   alone is REFUSE) and **fail closed**. KEEP the detector (Operator
-  `115007ZO`: tirith does not cover dest-3 encode-after-refusal).
+  `115007ZO` / `122315ZO`: dest-3 encode-after-refusal is the class; tirith
+  is retired and never covered it).
   Idle is not a pass for those asserts. `specimen-n/a: no DB` belongs in a
   refusal file. `check-release-readiness` `scripts/` must `grep` both leaf
   names and `assert-no-fence-evasion` (Architect `151334ZA` (a); Operator

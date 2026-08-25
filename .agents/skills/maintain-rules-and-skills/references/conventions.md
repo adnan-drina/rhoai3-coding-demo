@@ -27,12 +27,12 @@ Current rule taxonomy:
 | `env.md` | (none) | Live demo environment deployment, validation, troubleshooting, shutdown, recovery, and redeploy |
 | `kanban-log-watch.md` | (none) | Dest Hermes Kanban: read the official worker log in the same turn as spawn |
 | `ensure-cli-capability.md` | (none) | Stage 080 `ensure_cli` must probe kantra **usability** (`kantra-assert-exec`), not mere presence. There is no MTA/KAI precedent to cite; the probe exceeds upstream existence/`X_OK`. |
-| `tirith-declared-absent.md` | (none) | Dest Hermes must not declare tirith enabled when the overlay does not ship it |
+| `managed-scope-enforcement.md` | (none) | PVC managed dir is precedence not enforcement; bake `/etc/hermes` later; dest-5 cuts first |
 | `k2-env-assignment-not-access.md` | (none) | K2 must not treat environment-assignment values as access targets |
 | `k2-opaque-not-pathless.md` | (none) | K2 denies opaque construction; transparent pathless + trusted cwd may allow |
 | `skill-path-declaration.md` | (none) | Skills declare paths they touch; dest-init fail-closes against `K2_ALLOW_ROOT` |
 | `external-dirs-home-contract.md` | (none) | dest-init dest-user skills path is the home slot; checker must not use profile `Path.home()` |
-| `profile-home-contract.md` | (none) | Named dest workers: profile `HERMES_HOME` ≠ dest-user `HOME`; pin tirith path; native `pre_tool_call` block not post-hoc board gates |
+| `profile-home-contract.md` | (none) | Named dest workers: profile `HERMES_HOME` ≠ dest-user `HOME`; native `pre_tool_call` block not post-hoc board gates |
 | `native-kanban-alignment.md` | (none) | Native `request-review`/`attach`; K4 mint-writer; do not retire G1–G4 domain gates |
 | `m2-plan-assignee-implementer.md` | (none) | M2 PLAN is implementer; dest AGENTS.md must not assign M2 to orchestrator |
 | `m2-m3-native-dispatch.md` | (none) | M3 children of a granted M2 claim natively; do not invent an M2→M3 Operator GO |

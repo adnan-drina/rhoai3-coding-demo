@@ -86,11 +86,13 @@ For dest Hermes Kanban observation, read `.agents/rules/kanban-log-watch.md`. Af
 
 For Stage 080 golden `ensure_cli` / kantra resolution, read `.agents/rules/ensure-cli-capability.md`. Presence (`[ -x ]`) is not usability.
 
-For Stage 080 dest Hermes security honesty, K2 env-assignment vs access, opaque vs pathless, and skill path classes, read `.agents/rules/tirith-declared-absent.md`, `.agents/rules/k2-env-assignment-not-access.md`, `.agents/rules/k2-opaque-not-pathless.md`, and `.agents/rules/skill-path-declaration.md`.
+For Stage 080 dest Hermes security honesty, K2 env-assignment vs access, opaque vs pathless, and skill path classes, read `.agents/rules/k2-env-assignment-not-access.md`, `.agents/rules/k2-opaque-not-pathless.md`, and `.agents/rules/skill-path-declaration.md`.
+
+For Stage 080 PVC Managed Scope vs `/etc/hermes` enforcement, read `.agents/rules/managed-scope-enforcement.md`.
 
 For Stage 080 dest `external_dirs` home vs profile, M2 PLAN assignee, and M2→M3 native dispatch, read `.agents/rules/external-dirs-home-contract.md`, `.agents/rules/m2-plan-assignee-implementer.md`, and `.agents/rules/m2-m3-native-dispatch.md`.
 
-For Stage 080 dest profile `HERMES_HOME` vs OS `HOME` vs tirith path honesty, read `.agents/rules/profile-home-contract.md`.
+For Stage 080 dest profile `HERMES_HOME` vs OS `HOME`, read `.agents/rules/profile-home-contract.md`.
 
 For Stage 080 native Kanban review/attach vs custom M4 receipts and K4 mint translation, read `.agents/rules/native-kanban-alignment.md`. Mechanical M4 facts stay code; LLM judgement needs a deterministic check (same file).
 

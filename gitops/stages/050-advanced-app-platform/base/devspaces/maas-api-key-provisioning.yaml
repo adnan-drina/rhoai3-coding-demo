@@ -676,11 +676,6 @@ data:
     env["HERMES_MANAGED_DIR"] = managed
     env["HERMES_WRITE_SAFE_ROOT"] = project
     env["K2_ALLOW_ROOT"] = project + ":/projects/legacy"
-    # Architect 112249ZA: shared binaries (tirith) on base HERMES_HOME/bin PATH.
-    # Do not dest-edit dest-4 live profile YAML; dest-5 absorbs this dest-init.
-    base_bin = os.path.join(home, "bin")
-    os.makedirs(base_bin, exist_ok=True)
-    env["PATH"] = base_bin + ":" + env.get("PATH", "")
 
     def cfgset(key, value):
         proc = subprocess.run(
@@ -1089,6 +1084,13 @@ data:
         "display": {
             "streaming": True,
         },
+        # Operator 122315ZO: retire tirith. Hermes default tirith_enabled is
+        # True; omitting this pin re-creates declared-but-absent fail-open.
+        # Config cannot stop the 22.7 MB auto-download (cli.py ensure_installed
+        # before the flag). Do not cite tirith as a dest control.
+        "security": {
+            "tirith_enabled": False,
+        },
         # EX-3: ONE pre_tool_call hook when v1 scripts still exist.
         # Dest v2 golden (N1) does not ship enforce-authority-boundary.
         # K2 REHOST of measured .hermes/kernel/pre_tool_call.sh (not a new
@@ -1284,6 +1286,11 @@ data:
         raise SystemExit("ERROR: kanban.dispatch_in_gateway must be true")
     if kb.get("max_in_progress") != 1:
         raise SystemExit("ERROR: kanban.max_in_progress must be 1")
+    sec = pin.get("security") or {}
+    if sec.get("tirith_enabled") is not False:
+        raise SystemExit(
+            "ERROR: security.tirith_enabled must be false (Operator 122315ZO)"
+        )
     with open(os.path.join(managed, ".rhoai3-model-pin"), "w") as fh:
         fh.write("default=qwen3-6-27b\n")
         fh.write("provider=qwen27b\n")
@@ -1469,12 +1476,6 @@ data:
           printf 'export HERMES_ACCEPT_HOOKS=1\n' >> "${HOME}/.bashrc"
         fi
         rm -f "${HOME}/.bashrc.bak"
-      fi
-      if ! grep -q "rhoai3-coding-demo: base hermes bin PATH" "${HOME}/.bashrc" 2>/dev/null; then
-        {
-          printf '\n# rhoai3-coding-demo: base hermes bin PATH\n'
-          printf 'export PATH=%q:"${PATH}"\n' "${hermes_home}/bin"
-        } >> "${HOME}/.bashrc"
       fi
       if [ -e "${HOME}/.hermes/config.yaml" ] || [ -e "${hermes_home}/config.yaml" ]; then
         echo "ERROR: PVC Hermes config overlay still present after pin wipe — refuse drift path." >&2
