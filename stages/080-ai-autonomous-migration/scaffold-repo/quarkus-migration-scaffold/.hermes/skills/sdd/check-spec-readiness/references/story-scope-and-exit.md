@@ -12,8 +12,8 @@ including the **relationship** between them (T-8 / v17 wrong-class oracles).
 ## Binding rules (precision lives in the lints)
 
 1. **Write-set legality** — `check-surgical-scopes.py`,
-   `check-partition-coverage.py`, `assert-dependency-closure.py`,
-   interface/compile-scope filters.
+   `check-partition-coverage.py`, `assert-partition-invented-routes.py`,
+   `assert-dependency-closure.py`, interface/compile-scope filters.
 2. **Class-legal exit names** — `operand_class` is a **set** (string or
    list) used for B-16 skill attachment and the union of
    `OPERAND_CLASS_SEMANTIC_EXITS` names. The exit **cmd** is the phase

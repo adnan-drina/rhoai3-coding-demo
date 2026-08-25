@@ -51,6 +51,27 @@ def main() -> int:
     if "unsatisfiable_acceptance_is_block_not_complete" not in blob:
         return _fail("health-unsatisfiable missed block hint: %s" % blob)
 
+    invented_bin = SCRIPTS / "assert-partition-invented-routes.py"
+    dest5 = FIXTURES / "partition-invented-health"
+    proc = _run([sys.executable, str(invented_bin), str(dest5)])
+    blob = proc.stdout + proc.stderr
+    if proc.returncode == 0:
+        return _fail("dest-5 T020 invented /q/health should REFUSE: %s" % blob)
+    if "invented_route:T020_POLISH:/q/health" not in blob:
+        return _fail("dest-5 invented-route gap missing: %s" % blob)
+    proc = _run([sys.executable, str(COVERAGE), str(dest5)])
+    blob = proc.stdout + proc.stderr
+    if proc.returncode == 0:
+        return _fail("dest-5 coverage should REFUSE invented routes: %s" % blob)
+    if "invented_route:T020_POLISH:/q/health" not in blob:
+        return _fail("dest-5 coverage missed invented_route: %s" % blob)
+
+    dest6 = FIXTURES / "partition-dest6-grounded"
+    proc = _run([sys.executable, str(invented_bin), str(dest6)])
+    blob = proc.stdout + proc.stderr
+    if proc.returncode != 0:
+        return _fail("dest-6 two-story partition should PASS invented-routes: %s" % blob)
+
     tmp = Path(tempfile.mkdtemp(prefix="b3-sdd-"))
     try:
         prod = tmp / "producer"

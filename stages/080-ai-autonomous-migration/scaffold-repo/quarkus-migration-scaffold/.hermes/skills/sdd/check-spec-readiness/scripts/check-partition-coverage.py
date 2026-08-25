@@ -82,6 +82,7 @@ def _ensure_hermes_lib() -> None:
     raise SystemExit("FAIL: .hermes/lib marker missing")
 _ensure_hermes_lib()
 
+from http_join import invented_route_gaps  # noqa: E402
 from specimen_agnostic import (  # noqa: E402
     acceptance_unsatisfiable_files,
     collect_supersedes,
@@ -420,6 +421,8 @@ def main() -> int:
         gaps.append(f"endpoints_multi={len(multi)}")
         for m in multi:
             gaps.append(f"multi:{m}")
+
+    gaps.extend(invented_route_gaps(root, stories, inventory))
 
     owned_dest: set[str] = set()
     for story in stories:

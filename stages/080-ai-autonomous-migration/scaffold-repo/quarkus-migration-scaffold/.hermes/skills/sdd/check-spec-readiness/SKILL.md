@@ -1,11 +1,11 @@
 ---
 name: check-spec-readiness
-description: Before kanban_create — lint SDD specs, story bodies (typed BODY_* codes), and partition coverage (HTTP 1:1 via story.endpoints as METHOD /path, dest_file 1:N with supersede). Do not use to mint Kanban children or assemble M3 bodies (K4 converter is .hermes/kernel/k4_convert.py).
+description: Before kanban_create — lint SDD specs, story bodies (typed BODY_* codes), and partition coverage (HTTP 1:1 via story.endpoints as METHOD /path, dest_file 1:N with supersede; refuse invented HTTP paths vs inventory). Do not use to mint Kanban children or assemble M3 bodies (K4 converter is .hermes/kernel/k4_convert.py).
 license: Apache-2.0
 compatibility: Linux seat; Python 3.11+; reads migration/ specs and bodies
 metadata:
   author: rhoai3-harness-team
-  version: "1.7.1"
+  version: "1.7.2"
   hermes:
     tags:
     - sdd
@@ -99,6 +99,7 @@ KEEP (this skill):
 - `scripts/check-semantic-exits.py` — optional `semantic_families` family lint
 - `scripts/check-operand-count.py` — measured operand_count / wall-fit
 - `scripts/check-partition-coverage.py` — M2 partition VALID receipt
+- `scripts/assert-partition-invented-routes.py` — constitution VII invented HTTP paths
 - `scripts/check-interface-closure.py` — interface closure Class-A gate
 - `scripts/assert-dependency-closure.py` — Class-A dependency closure
 - `scripts/check-spec-readiness-selftest.py` — batch-3 negative controls
@@ -163,6 +164,11 @@ Do **not** invoke DD4-retired R-M3.5/7 stubs (`check-persistence-bom.py`,
   `supersede_incomplete`);
   health-unsatisfiable REFUSE `fixtures/partition-health-unsatisfiable/`
   (`acceptance_unsatisfiable:polish:pom.xml`).
+  Invented-routes REFUSE `fixtures/partition-invented-health/`
+  (`invented_route:T020_POLISH:/q/health`); PASS
+  `fixtures/partition-dest6-grounded/` (two stories, inventory `/greeting`).
+  `/q/health` is not a grounding exception. Empty `endpoints` is legal
+  scaffolding iff the story names no HTTP path.
   Default partition path is `evidence/partition.json` then
   `evidence/briefs/partition.json`; missing names every path looked at.
   Findings **presence** at create is enough (`mta_status=checked`);

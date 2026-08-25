@@ -65,9 +65,11 @@ row in `evidence/entry-point-inventory.json` should be claimed by exactly
 one story. The plan should not introduce a route absent from that
 inventory. Additive endpoints (health, root `/`, documentation) are out
 of scope. Do not treat a green `speckit-analyze` as route fidelity.
-Plan-level enforcement is only
-`assert-partition-invented-routes.py` (receipt endpoints vs inventory).
-Compiled-tree drift (`.bak`) is `assert-compiled-route-fidelity.py`.
+Plan-level enforcement is
+`assert-partition-invented-routes.py` (named HTTP paths vs inventory),
+wired into `check-partition-coverage.py`. `/q/health` is not a grounding
+exception. Empty `endpoints` is legal scaffolding iff the story names no
+HTTP path. Compiled-tree drift (`.bak`) is `assert-compiled-route-fidelity.py`.
 
 ## Governance
 
@@ -89,4 +91,4 @@ Compiled-tree drift (`.bak`) is `assert-compiled-route-fidelity.py`.
 - Deviations from these articles must appear in the plan's Complexity
   Tracking table — silent deviations are review findings.
 
-**Version**: 1.2.2 | **Ratified**: 2026-08-15 | **Last Amended**: 2026-08-22
+**Version**: 1.2.3 | **Ratified**: 2026-08-15 | **Last Amended**: 2026-08-25
