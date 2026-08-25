@@ -183,7 +183,7 @@ Prevention: hook jobs must have bounded retries and fail fast; never let a wait-
 **Recover:**
 
 - Prefer the OpenShift GitOps UI **Sync** button (full sync, proper operation object) for hook re-runs.
-- For the RHDH catalog specifically, the hook's output can be converged by hand: fetch `catalog/all.yaml` at the synced revision, apply the same placeholder replacements as `generate-rhdh-catalog.yaml` (Dev Spaces route, empty RHDH URL, revision), and `oc patch` the `catalog-runtime-rhdh` ConfigMap in `rhdh`.
+- For the RHDH catalog specifically, the hook's output can be converged by hand: fetch `catalog/all.yaml` at the synced revision, apply the same placeholder replacements as `generate-rhdh-catalog.yaml` (Dev Spaces route, empty RHDH URL, commit SHA for TechDocs, Argo `targetRevision` for template Location targets), and `oc patch` the `catalog-runtime-rhdh` ConfigMap in `rhdh`. The generate job also prunes leftover SHA-pinned template Locations.
 - Related fix (committed 2026-07-13, refined 2026-07-14): the generate hook resolves the revision as `status.operationState.syncResult.revision` first (what the operation actually synced), then `status.operationState.operation.sync.revision` (the in-flight request, which merge-patched partial operations can inherit stale from a previous explicit-revision sync), then `status.sync.revision` (which still holds the previous revision while an operation runs).
 
 ## Argo CD Reports Synced But New Manifests Are Missing
@@ -911,6 +911,33 @@ is not allowed. You may need to configure an integration for the target host, or
 - Confirm the Stage 050 hook ServiceAccount can `get` `applications.argoproj.io` in `openshift-gitops`.
 - Restart the RHDH deployment.
 - Re-run Stage 050 validation after adding catalog checks.
+
+## RHDH Template Entity Returns 200 Then 404 After a Catalog Re-stamp
+
+**Affected stage:** Stage 050 / 080 (golden-path templates)
+
+**Symptom:** `template:default/app-migration` flaps 200/404 after a push. RHDH logs `conflicting entityRef`. More than one Location is registered for the same template.
+
+**Likely cause:** Location `spec.target` was a GitHub blob URL pinned at the catalog SHA. Each re-stamp minted a new Location while the previous SHA URL stayed in Backstage `locations`. A portal restart hid it; the next push brought it back.
+
+**Diagnose:**
+
+```bash
+oc get configmap catalog-runtime-rhdh -n rhdh -o jsonpath='{.data.all\.yaml}' \
+  | grep -E 'templates/(app-migration|agentic-quarkus-scaffold)/template.yaml'
+oc logs deployment/backstage-developer-hub -n rhdh --tail=200 | grep -i 'conflicting entityRef'
+oc exec -n rhdh backstage-psql-developer-hub-0 -- psql -d backstage_plugin_catalog -c \
+  "select id, target from locations where target like '%/templates/%/template.yaml';"
+```
+
+Runtime catalog Location targets must use the Argo Application `targetRevision` (branch), not a 40-character commit SHA. `generate-rhdh-catalog` also deletes leftover SHA-pinned rows for those two template paths.
+
+**Recover:**
+
+- Re-run `job-generate-rhdh-catalog` (full Argo sync or wait for `refresh-rhdh-catalog`). Do not restart RHDH as the fix.
+- Confirm Stage 050/080 validation: Location targets are not `/blob/<sha>/`.
+
+**Related:** `gitops/stages/050-advanced-app-platform/base/rhdh/catalog/all.yaml`, `jobs/rhdh-catalog-generator-script.yaml`
 
 ## Red Hat Developer Hub Is Healthy But Stage 050 Is OutOfSync
 

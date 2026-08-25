@@ -117,7 +117,7 @@ data:
     SONARQUBE_URL="https://${SONARQUBE_HOST:-sonarqube-pending.local}"
 
     echo "Generating runtime catalog..."
-    python3 - /tmp/catalog-template.yaml /tmp/catalog-runtime.yaml "${DEVSPACES_URL}" "${RHDH_URL}" "${APP_SYNC_REVISION}" "${COOLSTORE_URL}" "${SONARQUBE_URL}" <<'PY'
+    python3 - /tmp/catalog-template.yaml /tmp/catalog-runtime.yaml "${DEVSPACES_URL}" "${RHDH_URL}" "${APP_SYNC_REVISION}" "${COOLSTORE_URL}" "${SONARQUBE_URL}" "${APP_TARGET_REVISION}" <<'PY'
     import pathlib
     import sys
 
@@ -128,6 +128,7 @@ data:
     revision = sys.argv[5]
     coolstore_url = sys.argv[6].rstrip("/")
     sonarqube_url = sys.argv[7].rstrip("/")
+    location_ref = sys.argv[8]
 
     content = source.read_text()
     content = content.replace(
@@ -140,6 +141,7 @@ data:
         content = content.replace(placeholder, replacement)
     content = content.replace("https://rhdh.placeholder.example.com", rhdh_url)
     content = content.replace("https://sonarqube.placeholder.example.com", sonarqube_url)
+    content = content.replace("__RHOAI3_DEMO_LOCATION_REF__", location_ref)
     content = content.replace("__RHOAI3_DEMO_REVISION__", revision)
     if "devspaces" in content and "placeholder.example.com" in content:
         raise SystemExit("Dev Spaces placeholder was not replaced")
@@ -147,6 +149,8 @@ data:
         raise SystemExit("RHDH placeholder was not replaced")
     if "sonarqube.placeholder.example.com" in content:
         raise SystemExit("SonarQube placeholder was not replaced")
+    if "__RHOAI3_DEMO_LOCATION_REF__" in content:
+        raise SystemExit("Location ref placeholder was not replaced")
     if "__RHOAI3_DEMO_REVISION__" in content:
         raise SystemExit("Repository revision placeholder was not replaced")
     target.write_text(content)
@@ -171,4 +175,26 @@ data:
       oc annotate configmap catalog-runtime-rhdh -n rhdh "rhoai3.redhat.com/catalog-revision=${APP_SYNC_REVISION}" --overwrite
     fi
 
-    echo "Runtime catalog generated at revision ${APP_SYNC_REVISION}"
+    echo "Runtime catalog generated at revision ${APP_SYNC_REVISION} (Location ref ${APP_TARGET_REVISION})"
+
+    # SHA-pinned template blob URLs accumulate in Backstage `locations`
+    # (Lead:catalog-location-must-not-accumulate). No catalog API token is
+    # provisioned; same postgres path as scripts/delete-scaffolded-project.sh.
+    # Best-effort: a missing postgres pod must not fail catalog generate.
+    PSQL_POD=$(oc get pods -n rhdh --no-headers 2>/dev/null \
+      | awk '/psql|postgres/ {print $1; exit}' || true)
+    if [ -n "$PSQL_POD" ]; then
+      if oc exec -n rhdh "$PSQL_POD" -- psql -d backstage_plugin_catalog -v ON_ERROR_STOP=1 -c "
+        DELETE FROM locations
+        WHERE target ~ '/blob/[0-9a-f]{40}/gitops/stages/050-advanced-app-platform/base/rhdh/templates/[^/]+/template\\.yaml';
+        DELETE FROM refresh_state
+        WHERE entity_ref LIKE 'location:%'
+          AND unprocessed_entity ~ '/blob/[0-9a-f]{40}/gitops/stages/050-advanced-app-platform/base/rhdh/templates/';
+      "; then
+        echo "Pruned SHA-pinned golden-path template Locations"
+      else
+        echo "WARN: Location prune failed; catalog generate already wrote the ConfigMap"
+      fi
+    else
+      echo "No postgres pod in rhdh; skip SHA-pinned Location prune"
+    fi

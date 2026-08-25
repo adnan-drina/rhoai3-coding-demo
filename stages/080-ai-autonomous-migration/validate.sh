@@ -89,8 +89,11 @@ log_step "Migration Golden Path (app-migration template)"
 check "app-migration template Location in the runtime catalog" \
   "oc get configmap catalog-runtime-rhdh -n rhdh -o jsonpath='{.data.all\\.yaml}' | grep -c 'templates/app-migration/template.yaml' || echo 0" \
   "1"
-check "runtime catalog Location revision is not the placeholder" \
-  "oc get configmap catalog-runtime-rhdh -n rhdh -o jsonpath='{.data.all\\.yaml}' | grep -c '__RHOAI3_DEMO_REVISION__' || echo 0" \
+check "runtime catalog placeholders are resolved" \
+  "oc get configmap catalog-runtime-rhdh -n rhdh -o jsonpath='{.data.all\\.yaml}' | grep -cE '__RHOAI3_DEMO_(REVISION|LOCATION_REF)__' || echo 0" \
+  "0"
+check "runtime catalog app-migration Location is not SHA-pinned" \
+  "oc get configmap catalog-runtime-rhdh -n rhdh -o jsonpath='{.data.all\\.yaml}' | grep 'templates/app-migration/template.yaml' | grep -cE '/blob/[0-9a-f]{40}/' || echo 0" \
   "0"
 if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
     GOLDEN_SHA=$(gh api repos/adnan-drina/quarkus-migration-scaffold/git/refs/heads/main --jq '.object.sha' 2>/dev/null || echo "")
@@ -409,6 +412,9 @@ check "080 K2 refuses complete after a red bound gate" \
 check "080 inventory-legacy-surface scan root is fence-legal" \
   "awk '/inventory-entry-points.py/{getline; print}' '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/skills/analysis/inventory-legacy-surface/SKILL.md' | grep -c '/projects/.derived/legacy-at-3' || echo 0" \
   "0"
+check "080 catalog Locations use a stable Argo ref not a SHA blob" \
+  "python3 '${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/rhdh/jobs/catalog-location-selftest.py' >/dev/null && echo 1 || echo 0" \
+  "1"
 check "080 K2 env-assignment selftest passes" \
   "python3 '${SCAFFOLD_KERNEL}/k2_selftest.py' >/dev/null && echo 1 || echo 0" \
   "1"

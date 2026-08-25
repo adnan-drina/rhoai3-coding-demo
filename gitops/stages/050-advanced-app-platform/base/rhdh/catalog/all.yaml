@@ -196,8 +196,10 @@ spec:
   type: ai-model
   owner: ai-modernization-team
 ---
-# Golden-path templates: registered from this repository at the deployed
-# revision (placeholder resolved by the generate-rhdh-catalog job).
+# Golden-path templates: Location targets use the Argo Application
+# targetRevision (stable branch), not a commit SHA. SHA-pinned blob URLs
+# minted a new Location per push while the old one stayed registered
+# (entity 200/404 flap; Lead:catalog-location-must-not-accumulate).
 # Stage 060 enters through the coolstore-inventory-service component (no
 # template); stage 070 = agentic-quarkus-scaffold; stage 080 =
 # app-migration (destination repo cataloged, legacy app workspace-only).
@@ -208,7 +210,7 @@ metadata:
   description: Golden-path template for stage 070 AI-agentic development
 spec:
   type: url
-  target: https://github.com/adnan-drina/rhoai3-coding-demo/blob/__RHOAI3_DEMO_REVISION__/gitops/stages/050-advanced-app-platform/base/rhdh/templates/agentic-quarkus-scaffold/template.yaml
+  target: https://github.com/adnan-drina/rhoai3-coding-demo/blob/__RHOAI3_DEMO_LOCATION_REF__/gitops/stages/050-advanced-app-platform/base/rhdh/templates/agentic-quarkus-scaffold/template.yaml
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Location
@@ -217,4 +219,4 @@ metadata:
   description: Golden-path template for stage 080 AI-autonomous migration
 spec:
   type: url
-  target: https://github.com/adnan-drina/rhoai3-coding-demo/blob/__RHOAI3_DEMO_REVISION__/gitops/stages/050-advanced-app-platform/base/rhdh/templates/app-migration/template.yaml
+  target: https://github.com/adnan-drina/rhoai3-coding-demo/blob/__RHOAI3_DEMO_LOCATION_REF__/gitops/stages/050-advanced-app-platform/base/rhdh/templates/app-migration/template.yaml

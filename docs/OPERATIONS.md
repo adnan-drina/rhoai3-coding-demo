@@ -980,7 +980,7 @@ curl -s https://$(oc get route coolstore-inventory-service -n coolstore-dev -o j
 
 The stage 050 `rhdh` component installs Red Hat Developer Hub and configures OIDC through the platform RHBK (realm `platform`) from the `identity` component of the same stage; MTA 8.2's built-in Hub OIDC provider federates to the same realm (`platform-sso` IdentityProvider).
 
-The RHDH catalog location is runtime-derived from the Stage 050 Argo CD Application source. This avoids loading catalog entities from `main` when the demo is deployed from a validation branch or fork.
+The RHDH catalog location is runtime-derived from the Stage 050 Argo CD Application source. This avoids loading catalog entities from `main` when the demo is deployed from a validation branch or fork. Golden-path template Locations use that same `targetRevision` (stable branch). They must not be SHA-pinned blob URLs — those accumulate and flap `template:default/app-migration` 200/404.
 
 After a cluster suspend/resume, restart RHDH before demoing: the long-running backend can hold stale connections from before the suspend and fail OIDC sign-in with 504 errors even though Keycloak is healthy (`oc rollout restart deployment/backstage-developer-hub -n rhdh`; see TROUBLESHOOTING "Red Hat Developer Hub OIDC Sign-In Fails With 504 Gateway Timeout").
 

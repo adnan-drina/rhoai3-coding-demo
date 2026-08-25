@@ -205,7 +205,7 @@ else
     echo -e "${YELLOW}[WARN]${NC} Runtime catalog not found or missing the agentic-coolstore Dev Spaces link"
     VALIDATE_WARN=$((VALIDATE_WARN + 1))
 fi
-if [[ "$RUNTIME_CATALOG" == *"https://rhdh.placeholder.example.com"* || "$RUNTIME_CATALOG" == *"__RHOAI3_DEMO_REVISION__"* ]]; then
+if [[ "$RUNTIME_CATALOG" == *"https://rhdh.placeholder.example.com"* || "$RUNTIME_CATALOG" == *"__RHOAI3_DEMO_REVISION__"* || "$RUNTIME_CATALOG" == *"__RHOAI3_DEMO_LOCATION_REF__"* ]]; then
     echo -e "${RED}[FAIL]${NC} Runtime catalog still contains unresolved placeholders"
     VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
 # Entity links must be absolute: the catalog entity policy rejects relative
@@ -220,6 +220,13 @@ elif [[ "$RUNTIME_CATALOG" == *"backstage.io/techdocs-ref"* ]]; then
 else
     echo -e "${YELLOW}[WARN]${NC} Runtime catalog not found or missing TechDocs refs"
     VALIDATE_WARN=$((VALIDATE_WARN + 1))
+fi
+if echo "$RUNTIME_CATALOG" | grep -E 'templates/(app-migration|agentic-quarkus-scaffold)/template.yaml' | grep -qE '/blob/[0-9a-f]{40}/'; then
+    echo -e "${RED}[FAIL]${NC} Runtime catalog Location targets are SHA-pinned (they accumulate)"
+    VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
+elif echo "$RUNTIME_CATALOG" | grep -q 'templates/app-migration/template.yaml'; then
+    echo -e "${GREEN}[PASS]${NC} Runtime catalog template Locations are not SHA-pinned"
+    VALIDATE_PASS=$((VALIDATE_PASS + 1))
 fi
 
 log_step "RHDH Configuration"
