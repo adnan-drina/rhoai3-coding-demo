@@ -394,6 +394,21 @@ check "080 K2 opacity is not gated on not-proven" \
 check "080 K2 hook strips env assignments as values not access" \
   "grep -q 'strip_env_assignments' '${SCAFFOLD_KERNEL}/pre_tool_call.sh' && echo 1 || echo 0" \
   "1"
+check "080 K2 toolchain reads are not an allow-root widen" \
+  "grep -q 'def toolchain_read' '${SCAFFOLD_KERNEL}/pre_tool_call.sh' && echo 1 || echo 0" \
+  "1"
+check "080 K2 names orchestrator disabled toolset" \
+  "grep -q 'disabled for profile orchestrator' '${SCAFFOLD_KERNEL}/pre_tool_call.sh' && echo 1 || echo 0" \
+  "1"
+check "080 K2 enforces files_writable" \
+  "grep -q 'files_writable' '${SCAFFOLD_KERNEL}/pre_tool_call.sh' && echo 1 || echo 0" \
+  "1"
+check "080 K2 refuses complete after a red bound gate" \
+  "grep -q 'kanban_complete refused' '${SCAFFOLD_KERNEL}/pre_tool_call.sh' && echo 1 || echo 0" \
+  "1"
+check "080 inventory-legacy-surface scan root is fence-legal" \
+  "awk '/inventory-entry-points.py/{getline; print}' '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/skills/analysis/inventory-legacy-surface/SKILL.md' | grep -c '/projects/.derived/legacy-at-3' || echo 0" \
+  "0"
 check "080 K2 env-assignment selftest passes" \
   "python3 '${SCAFFOLD_KERNEL}/k2_selftest.py' >/dev/null && echo 1 || echo 0" \
   "1"

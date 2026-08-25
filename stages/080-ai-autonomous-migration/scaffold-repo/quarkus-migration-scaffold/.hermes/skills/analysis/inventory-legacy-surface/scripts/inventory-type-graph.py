@@ -9,7 +9,7 @@ package segment, not a Dto/mapper allow-list.
 Usage:
   python3 inventory-type-graph.py --dest-root /projects/modernized \\
     --inventory evidence/entry-point-inventory.json \\
-    --legacy /projects/.derived/legacy-at-3 \\
+    --legacy /projects/legacy \\
     -o evidence/type-inventory.json
 """
 from __future__ import annotations
@@ -75,8 +75,10 @@ def _legacy_root(dest_root: Path, explicit: str | None) -> Path | None:
         p = Path(explicit)
         return p if p.is_dir() else None
     for cand in (
+        Path("/projects/legacy"),
+        dest_root.parent / "legacy",
+        dest_root / "legacy",
         dest_root.parent / ".derived" / "legacy-at-3",
-        Path("/projects/.derived/legacy-at-3"),
         dest_root / ".derived" / "legacy-at-3",
         dest_root / "legacy-at-3",
     ):
@@ -103,7 +105,11 @@ def main() -> int:
         "--inventory",
         default="evidence/entry-point-inventory.json",
     )
-    ap.add_argument("--legacy", default="", help="legacy@3.x tree (default: derived)")
+    ap.add_argument(
+        "--legacy",
+        default="",
+        help="legacy@3.x tree (default: /projects/legacy, then dest-adjacent)",
+    )
     ap.add_argument(
         "--from-files",
         nargs="*",

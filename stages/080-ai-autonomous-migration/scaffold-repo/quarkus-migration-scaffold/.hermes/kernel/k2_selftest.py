@@ -33,10 +33,23 @@ DEST3_OPAQUE = (
 )
 
 
-def run(cmd: str, roots: list[str], *, cwd: str | None = None, extra_cwd: str | None = None) -> dict:
+def run(
+    cmd: str,
+    roots: list[str],
+    *,
+    cwd: str | None = None,
+    extra_cwd: str | None = None,
+    tool: str = "terminal",
+    extra_env: dict[str, str] | None = None,
+    extra_input: dict | None = None,
+) -> dict:
     env = os.environ.copy()
     env["K2_ALLOW_ROOT"] = os.pathsep.join(roots)
-    payload: dict = {"tool_name": "terminal", "tool_input": {"command": cmd}}
+    if extra_env:
+        env.update(extra_env)
+    payload: dict = {"tool_name": tool, "tool_input": {"command": cmd}}
+    if extra_input:
+        payload["tool_input"].update(extra_input)
     if cwd is not None:
         payload["cwd"] = cwd
     if extra_cwd is not None:
@@ -59,6 +72,7 @@ def main() -> int:
         dest = Path(td) / "mod"
         leg = Path(td) / "leg"
         dest.mkdir()
+        (dest / "src").mkdir()
         leg.mkdir()
         roots = [str(dest), str(leg)]
         cwd = str(dest)
@@ -122,6 +136,191 @@ def main() -> int:
             "opaque",
             cwd=cwd,
         )
+
+        expect_allow("cat /dev/null", "dev_null", cwd=cwd)
+        expect_allow("ls /usr/lib/jvm", "jdk_list", cwd=cwd)
+        r = run(
+            "ls",
+            roots,
+            cwd=cwd,
+            extra_env={"HERMES_PROFILE": "orchestrator"},
+        )
+        if r.get("action") != "block" or "terminal disabled for profile orchestrator" not in (
+            r.get("message") or ""
+        ):
+            print("FAIL orch_terminal", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok orch_terminal")
+        r = run(
+            "hermes kanban complete t_x",
+            roots,
+            cwd=cwd,
+            extra_env={"K2_BOUND_GATE_EXIT": "1", "K2_BOUND_GATE_NAME": "check-external-dirs"},
+        )
+        msg = r.get("message") or ""
+        if r.get("action") != "block" or "check-external-dirs" not in msg or "kanban_block" not in msg:
+            print("FAIL complete_red_gate", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok complete_red_gate")
+        r = run(
+            "mvn -q quarkus:add-extension -Dextensions=quarkus-smallrye-health",
+            roots,
+            cwd=cwd,
+            extra_env={
+                "K2_FILES_WRITABLE": "src/test/java/com/demo/HealthTest.java",
+                "HERMES_WRITE_SAFE_ROOT": str(dest),
+                "K2_STORY_ID": "polish",
+            },
+        )
+        msg = r.get("message") or ""
+        if r.get("action") != "block" or "pom.xml" not in msg or "files_writable" not in msg:
+            print("FAIL writeset_pom", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok writeset_pom")
+        r = run(
+            "",
+            roots,
+            cwd=cwd,
+            tool="write_file",
+            extra_input={"path": str(dest / "src" / "Out.java")},
+            extra_env={
+                "K2_FILES_WRITABLE": "src/In.java",
+                "HERMES_WRITE_SAFE_ROOT": str(dest),
+                "K2_STORY_ID": "US1",
+            },
+        )
+        msg = r.get("message") or ""
+        if r.get("action") != "block" or "Out.java" not in msg:
+            print("FAIL writeset_file", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok writeset_file")
+        expect_block(
+            "cat /etc/passwd > /dev/null",
+            "passwd_to_null",
+            "outside allow root",
+            cwd=cwd,
+        )
+        expect_allow(
+            "ls",
+            "impl_terminal",
+            cwd=cwd,
+            extra_env={"HERMES_PROFILE": "implementer"},
+        )
+        expect_allow(
+            "hermes kanban complete t_x",
+            "complete_green_gate",
+            cwd=cwd,
+            extra_env={"K2_BOUND_GATE_EXIT": "0"},
+        )
+        r = run(
+            "",
+            roots,
+            cwd=cwd,
+            tool="write_file",
+            extra_input={"path": str(dest / "src" / "In.java")},
+            extra_env={
+                "K2_FILES_WRITABLE": "src/In.java",
+                "HERMES_WRITE_SAFE_ROOT": str(dest),
+                "K2_STORY_ID": "US1",
+            },
+        )
+        if r.get("action") == "block":
+            print("FAIL writeset_inside", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok writeset_inside")
+        r = run(
+            "",
+            roots,
+            cwd=cwd,
+            tool="write_file",
+            extra_input={"path": "src/Out.java"},
+            extra_env={
+                "K2_FILES_WRITABLE": "src/In.java",
+                "HERMES_WRITE_SAFE_ROOT": str(dest),
+                "K2_STORY_ID": "US1",
+            },
+        )
+        msg = r.get("message") or ""
+        if r.get("action") != "block" or "Out.java" not in msg:
+            print("FAIL writeset_relative", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok writeset_relative")
+        r = run(
+            "",
+            roots,
+            cwd=cwd,
+            tool="write_file",
+            extra_input={"path": str(leg / "x.java")},
+            extra_env={"HERMES_WRITE_SAFE_ROOT": str(dest)},
+        )
+        msg = r.get("message") or ""
+        if r.get("action") != "block" or "write sandbox" not in msg:
+            print("FAIL legacy_write_sandbox", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok legacy_write_sandbox")
+        body = dest / "card.json"
+        body.write_text(
+            json.dumps({"files_writable": ["src/In.java"], "identity": {"story_id": "US1"}}),
+            encoding="utf-8",
+        )
+        r = run(
+            "",
+            roots,
+            cwd=cwd,
+            tool="write_file",
+            extra_input={"path": str(dest / "src" / "Out.java")},
+            extra_env={
+                "K2_CARD_BODY": str(body),
+                "HERMES_WRITE_SAFE_ROOT": str(dest),
+                "K2_STORY_ID": "US1",
+            },
+        )
+        msg = r.get("message") or ""
+        if r.get("action") != "block" or "Out.java" not in msg:
+            print("FAIL writeset_card_body", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok writeset_card_body")
+        import sqlite3
+
+        db = Path(td) / "kanban.db"
+        con = sqlite3.connect(db)
+        con.execute("CREATE TABLE tasks (id TEXT PRIMARY KEY, description TEXT)")
+        con.execute(
+            "INSERT INTO tasks VALUES (?, ?)",
+            (
+                "t_story",
+                json.dumps({"files_writable": ["src/In.java"]}),
+            ),
+        )
+        con.commit()
+        con.close()
+        r = run(
+            "",
+            roots,
+            cwd=cwd,
+            tool="write_file",
+            extra_input={"path": str(dest / "src" / "Out.java")},
+            extra_env={
+                "HERMES_KANBAN_TASK": "t_story",
+                "HERMES_KANBAN_DB": str(db),
+                "HERMES_WRITE_SAFE_ROOT": str(dest),
+                "K2_STORY_ID": "US1",
+            },
+        )
+        msg = r.get("message") or ""
+        if r.get("action") != "block" or "Out.java" not in msg:
+            print("FAIL writeset_sqlite", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok writeset_sqlite")
 
     return 1 if fails else 0
 

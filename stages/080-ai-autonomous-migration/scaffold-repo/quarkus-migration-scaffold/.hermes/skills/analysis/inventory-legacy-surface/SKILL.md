@@ -5,7 +5,7 @@ license: Apache-2.0
 compatibility: Linux seat; Python 3.11+; reads the legacy@3.x tree
 metadata:
   author: rhoai3-harness-team
-  version: "1.4.1"
+  version: "1.4.2"
   hermes:
     tags:
     - analysis
@@ -35,14 +35,17 @@ metadata:
 ## Procedure
 
 1. Resolve the referent — `harvest_referent` in
-   `evidence/derived/legacy-at-3.json` (legacy@3.x, typically
-   `/projects/.derived/legacy-at-3`). Never scan the read-only 2.x mount.
+   `evidence/derived/legacy-at-3.json` names the Boot-3 harvest. The
+   fence-legal scan root is **`/projects/legacy`** (in `K2_ALLOW_ROOT`).
+   Do **not** scan `/projects/.derived/legacy-at-3` — K2 refuses that
+   path (Architect `082958ZA`; dest-4 M1 recovered on `/projects/legacy`).
+   Never scan a read-only 2.x mount as if it were the harvest.
 2. Scan it. Positional arg is the scan root; `-o` defaults to
    `evidence/entry-point-inventory.json` (relative to cwd).
 
 ```bash
 python3 "${HERMES_SKILL_DIR}/scripts/inventory-entry-points.py" \
-  /projects/.derived/legacy-at-3 \
+  /projects/legacy \
   -o evidence/entry-point-inventory.json
 ```
 
@@ -53,7 +56,7 @@ python3 "${HERMES_SKILL_DIR}/scripts/inventory-entry-points.py" \
 python3 "${HERMES_SKILL_DIR}/scripts/inventory-type-graph.py" \
   --dest-root /projects/modernized \
   --inventory evidence/entry-point-inventory.json \
-  --legacy /projects/.derived/legacy-at-3 \
+  --legacy /projects/legacy \
   -o evidence/type-inventory.json
 ```
 
