@@ -1,7 +1,7 @@
 # A-1 overlay — native ingress (Architect E-20260817T061720Z / E-20260817T063500Z).
 # Install: copied to .specify/workflows/overlays/speckit/ at provision.
 # Inspect: specify workflow resolve speckit
-# Run:     specify workflow run speckit
+# Run:     specify workflow run speckit -i spec="<description derived from M1 evidence>"
 # Never run the stock speckit workflow without this overlay (it ends at implement).
 # 163200Z §S.7 / Research 174900Z: stock review-spec and review-plan are type: gate.
 # Unattended path must remove those gates as well as implement.

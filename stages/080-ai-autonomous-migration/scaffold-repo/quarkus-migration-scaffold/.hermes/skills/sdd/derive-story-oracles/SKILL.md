@@ -45,7 +45,8 @@ Official technique table and failure classes: `references/concern-oracle-table.m
 - When type-inventory (or `tasks.md`) still has a whole-domain `*Service.java`
   (`ClinicService` and the like) — `T0_3_SERVICE` in
   `references/failure-classes.md`. Split **one service class per aggregate**.
-- **Not** for write-set overlap — `partition-coverage` / surgical write rules.
+- **Not** for write-set overlap — `partition-coverage` / surgical write rules
+  / `assert-partition-invented-files.py` (Operator `3e3409d0`; F7).
 - **Not** for domain G-1..G-4 measurement — `check-domain-parity`.
 
 ## Procedure

@@ -5,7 +5,7 @@ license: Apache-2.0
 compatibility: Linux seat; network to install pinned Spec Kit CLI
 metadata:
   author: rhoai3-harness-team
-  version: "1.4.6"
+  version: "1.4.8"
   hermes:
     tags:
     - sdd
@@ -81,8 +81,10 @@ Idempotent via `.specify/.rhoai3-ads-provisioned`. Spec Kit is pinned
 
 After `/speckit-tasks` (optional `/speckit-analyze`) → K4 convert →
 `.hermes/kernel/k4_mint.py` (`hermes kanban create`). **Never**
-`/speckit-implement`. Bare `specify workflow run speckit` (PATH shim).
-Do not rely on workers prefixing `HOME=/projects/modernized`.
+`/speckit-implement`. Invoke `specify-from-project.sh --root` (do not
+PATH-lookup `specify`; dest-9 uv specify shadows the dest-init shim).
+Bare form exits 1 (`Required input 'spec'`). Do not rely on workers
+prefixing `HOME=/projects/modernized`.
 M2 PLAN consumes M1 KEEP evidence via parent `kanban_attachments` plus
 `evidence/findings-handoff.json` — not from metadata path lists.
 
@@ -135,6 +137,12 @@ M2 PLAN consumes M1 KEEP evidence via parent `kanban_attachments` plus
   dir with 0 speckit skills and bare `specify workflow run speckit` still
   finds `speckit-specify`. Implementer `skills list` names it without a
   user-root `external_dirs` grant.
+- dest-init (GitOps) must smoke helper-by-path
+  `specify workflow run speckit -i spec=dest-init-smoke` via `SPECIFY_REAL`
+  and assert **four** overlay skills (`speckit-specify`, `speckit-clarify`,
+  `speckit-plan`, `speckit-tasks`) plus `hermes kanban ls`
+  (`assert-dest-init-smokes-mandated-tools.py`). One-skill specify is not
+  the workflow. Shim-only dest-init REFUSE. Do not dest-apply onto dest-9.
 - Relocated `HERMES_HOME`: `check-external-dirs.py` must print
   `OK: external_dirs lists project + home skills (<config>)`. A listed
   extra path that does not exist fails closed **naming the path**.

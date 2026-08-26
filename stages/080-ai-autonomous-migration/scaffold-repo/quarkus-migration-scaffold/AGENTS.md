@@ -151,9 +151,12 @@ After `/speckit-tasks` (optional `/speckit-analyze`) → skill
 `plan-migration-partition` (author `evidence/partition.json`) →
 `.hermes/kernel/k4_convert.py` then `.hermes/kernel/k4_mint.py`, not by
 grepping `tasks.md` paths. **Never**
-`/speckit-implement`. Bare `specify workflow run speckit` (PATH shim;
-spec-kit 0.16.1 still uses `Path.home()/.hermes/skills` — dest-init and
-init-spec-workspace point that child HOME at the project). Do not rely
+`/speckit-implement`. Invoke
+`.hermes/skills/sdd/init-spec-workspace/scripts/specify-from-project.sh --root /projects/modernized workflow run speckit -i spec="<description derived from M1 evidence>"`
+(do not PATH-lookup `specify`: dest-9 `/home/user/.local/bin/specify` shadows
+the dest-init shim). Bare `specify workflow run speckit` exits 1
+(`Required input 'spec'`). `-i spec=` is necessary and not sufficient.
+Do not dest-edit dest-9 PATH or implementer `external_dirs`. Do not rely
 on workers prefixing `HOME=/projects/modernized`.
 
 ### Task-id correlation

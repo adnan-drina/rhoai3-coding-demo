@@ -934,7 +934,7 @@ data:
       # Dashboard: public 0.0.0.0:9119 bind + che-gateway secure endpoint
       # (Operator 2026-08-21). Auth is Managed Scope dashboard.basic_auth.
       "${venv_py}" - <<'HERMESEOF'
-    import os, shutil, yaml, json
+    import os, shutil, subprocess, yaml, json
     managed = os.environ["HERMES_MANAGED_DIR"]
     skills_dir = os.environ["HERMES_SKILLS_DIR"]
     global_skills = os.environ["HERMES_GLOBAL_SKILLS_DIR"]
@@ -1294,6 +1294,72 @@ data:
         )
     os.chmod(specify_wrap, 0o755)
     print("specify PATH shim: " + specify_wrap + " -> " + specify_helper)
+    # W1 (Architect 190736ZA / 192312ZA): dest-init file-presence of the
+    # helper is not capability. One skill is not the workflow. Probe every
+    # Hermes skill the overlay keeps (specify/clarify/plan/tasks). SPECIFY_REAL
+    # is not a full speckit LLM run. Parent HOME stays dest-user.
+    probe = os.path.join(bin_dir, "specify-dest-init-smoke")
+    with open(probe, "w") as fh:
+        fh.write("#!/usr/bin/env python3\n")
+        fh.write("import os, pathlib, sys\n")
+        fh.write("home = os.environ.get('HOME', '')\n")
+        fh.write(
+            "names = ('speckit-specify', 'speckit-clarify', "
+            "'speckit-plan', 'speckit-tasks')\n"
+        )
+        fh.write("root = pathlib.Path(home) / '.hermes' / 'skills'\n")
+        fh.write(
+            "missing = [n for n in names if not (root / n / 'SKILL.md').is_file()]\n"
+        )
+        fh.write("if missing:\n")
+        fh.write(
+            "    print('ERROR: dest-init specify smoke: workflow skills "
+            "missing under HOME=' + home + ': ' + ','.join(missing), "
+            "file=sys.stderr)\n"
+        )
+        fh.write("    sys.exit(1)\n")
+        fh.write(
+            "print('dest-init specify smoke: MATCH four-step speckit "
+            "skills HOME=' + home)\n"
+        )
+        fh.write("sys.exit(0)\n")
+    os.chmod(probe, 0o755)
+    smoke_env = os.environ.copy()
+    smoke_env["SPECIFY_REAL"] = probe
+    argv = [
+        "bash",
+        specify_helper,
+        "--root",
+        project,
+        "--",
+        "workflow",
+        "run",
+        "speckit",
+        "-i",
+        "spec=dest-init-smoke",
+    ]
+    try:
+        sm = subprocess.run(
+            argv,
+            env=smoke_env,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise SystemExit(
+            "ERROR: dest-init specify smoke did not run: " + str(exc)
+        )
+    blob = (sm.stdout or "") + (sm.stderr or "")
+    if sm.returncode != 0:
+        raise SystemExit(
+            "ERROR: dest-init specify smoke rc=%s: %s"
+            % (sm.returncode, blob[-800:])
+        )
+    print(
+        "dest-init specify smoke: MATCH helper-by-path "
+        "workflow run speckit -i spec="
+    )
     # Architect E-20260808T151907Z — pin demo model binding (qwen / platform MaaS).
     # Enforce-on-start: rewrite Managed Scope every init; refuse silent drift.
     pin = yaml.safe_load(open(cfg_path))
@@ -1840,6 +1906,14 @@ data:
         exit 1
       fi
       echo "Started hermes gateway run --external-supervisor pid=${gw_pid}"
+      # W1: hermes --version is the proxy class. Mandated invocation is
+      # kanban ls (show/create need a task id / would mint). Do not dest-create
+      # a card from dest-init.
+      if ! /usr/local/bin/hermes kanban ls >/dev/null; then
+        echo "ERROR: dest-init hermes kanban ls failed (capability, not --version)." >&2
+        exit 1
+      fi
+      echo "dest-init hermes kanban ls: MATCH"
     fi
     echo "Configured ${AI_TOOL} from the MaaS API key Secret for ${PROFILE}."
 ---

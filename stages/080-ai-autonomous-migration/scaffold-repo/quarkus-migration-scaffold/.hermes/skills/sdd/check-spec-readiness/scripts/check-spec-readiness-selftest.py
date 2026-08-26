@@ -69,6 +69,22 @@ def main() -> int:
         return _fail("dest-5 T010 stale AC /api/greeting missed: %s" % blob)
 
     dest6 = FIXTURES / "partition-dest6-grounded"
+    invented_files_bin = SCRIPTS / "assert-partition-invented-files.py"
+    dest9_files = FIXTURES / "partition-invented-dest-files"
+    proc = _run([sys.executable, str(invented_files_bin), str(dest9_files)])
+    blob = proc.stdout + proc.stderr
+    if proc.returncode != 1:
+        return _fail("dest-9 invented dest Java should REFUSE: %s" % blob)
+    if "Application.java" not in blob or "GreetingResource.java" not in blob:
+        return _fail("dest-9 invented dest Java names missing: %s" % blob)
+    proc = _run([sys.executable, str(invented_files_bin), str(dest6)])
+    blob = proc.stdout + proc.stderr
+    if proc.returncode != 0:
+        return _fail(
+            "dest-6-grounded has no type-inventory; invented-files skip PASS: %s"
+            % blob
+        )
+
     proc = _run([sys.executable, str(invented_bin), str(dest6)])
     blob = proc.stdout + proc.stderr
     if proc.returncode != 0:
@@ -221,6 +237,30 @@ def main() -> int:
     proc = _run([sys.executable, str(speckit)])
     if proc.returncode != 0:
         return _fail("assert-m2-speckit-conformance: %s %s" % (proc.stdout, proc.stderr))
+
+    performed = SCRIPTS / "assert-card-performed.py"
+    dest9_log = (
+        FIXTURES / "v9-m2-speckit-invoked-and-failed" / "t_af875a24.log"
+    )
+    proc = _run([sys.executable, str(performed), "--log", str(dest9_log)])
+    blob = proc.stdout + proc.stderr
+    if proc.returncode != 1:
+        return _fail("dest-9 t_af875a24 log must REFUSE CARD_PERFORMED: %s" % blob)
+    if "never succeeded" not in blob:
+        return _fail("dest-9 CARD_PERFORMED missed never-succeeded: %s" % blob)
+    tmp_ok = Path(tempfile.mkdtemp(prefix="card-performed-"))
+    try:
+        ok_log = tmp_ok / "ok.log"
+        ok_log.write_text(
+            "  ┊ 💻 $         specify workflow run speckit -i spec=x  1.0s [exit 0]\n",
+            encoding="utf-8",
+        )
+        proc = _run([sys.executable, str(performed), "--log", str(ok_log)])
+        blob = proc.stdout + proc.stderr
+        if proc.returncode != 0:
+            return _fail("synthetic speckit exit 0 must PASS CARD_PERFORMED: %s" % blob)
+    finally:
+        shutil.rmtree(tmp_ok, ignore_errors=True)
 
     print("OK: batch-3 sdd/partition selftest")
     return 0

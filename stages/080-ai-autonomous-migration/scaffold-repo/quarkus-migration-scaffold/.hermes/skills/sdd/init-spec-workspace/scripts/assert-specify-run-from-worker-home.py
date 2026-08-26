@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
-"""FAIL unless bare ``specify`` resolves speckit-specify when HOME is the profile.
+"""FAIL unless speckit-specify resolves for a worker whose PATH shadows the shim.
 
-Operator ``091320ZO``: ``init-workspace.sh`` set ``HOME=<project>`` for
-``specify init`` only. At run time worker HOME is the profile home, where
-``~/.hermes/skills`` has 0 speckit skills. Control: ``specify workflow run
-speckit`` from a worker shell (no HOME= prefix) must still find
-``speckit-specify``.
+Operator ``091320ZO`` / dest-9 ``t_af875a24``: ``init-workspace.sh`` set
+``HOME=<project>`` for ``specify init`` only. Worker HOME is the profile
+(or dest-user ``/home/user``), where ``~/.hermes/skills`` has 0 speckit
+skills. dest-init installs a PATH shim, but dest-9 ``PATH`` starts with
+``/home/user/.local/bin/specify`` (uv) which **shadows**
+``/projects/.platform/hermes/bin/specify``. Control: PATH ``specify``
+under that shadow must miss the skill; ``specify-from-project.sh --root``
+must still find it. Do not dest-edit dest-9 PATH or ``external_dirs``.
 """
 from __future__ import annotations
 
@@ -121,7 +124,75 @@ def run_control(tmp: Path) -> int:
             file=sys.stderr,
         )
         return 1
-    print("OK: worker-shell specify resolved speckit-specify (HOME=project child)")
+
+    # dest-9: uv specify in $HOME/.local/bin is first on PATH and shadows
+    # dest-init /projects/.platform/hermes/bin/specify (the shim).
+    userbin = tmp / "user-local-bin"
+    userbin.mkdir()
+    probe9 = tmp / "got-home-9"
+    user_specify = userbin / "specify"
+    _write_mock_specify(user_specify, probe9)
+    env9 = os.environ.copy()
+    env9["HOME"] = str(profile)
+    env9["PATH"] = (
+        str(userbin)
+        + os.pathsep
+        + str(shim.parent)
+        + os.pathsep
+        + env9.get("PATH", "/usr/bin:/bin")
+    )
+    env9.pop("SPECIFY_REAL", None)
+    env9.pop("SPECIFY_PROJECT_ROOT", None)
+    shadowed = subprocess.run(
+        ["specify", "workflow", "run", "speckit"],
+        text=True,
+        capture_output=True,
+        env=env9,
+        cwd=str(profile),
+    )
+    if shadowed.returncode == 0:
+        print(
+            "FAIL: dest-9 PATH shadow (user .local/bin first) must miss "
+            "speckit-specify: %s%s" % (shadowed.stdout, shadowed.stderr),
+            file=sys.stderr,
+        )
+        return 1
+    helper = SCRIPTS / "specify-from-project.sh"
+    via = subprocess.run(
+        [
+            "bash",
+            str(helper),
+            "--root",
+            str(project),
+            "workflow",
+            "run",
+            "speckit",
+        ],
+        text=True,
+        capture_output=True,
+        env=env9,
+        cwd=str(profile),
+    )
+    blob9 = (via.stdout or "") + (via.stderr or "")
+    if via.returncode != 0:
+        print(
+            "FAIL: specify-from-project.sh dest-9 shadow rc=%s: %s"
+            % (via.returncode, blob9),
+            file=sys.stderr,
+        )
+        return 1
+    got9 = probe9.read_text(encoding="utf-8") if probe9.is_file() else ""
+    if Path(got9).resolve() != project.resolve():
+        print(
+            "FAIL: helper HOME=%r (want project %s) under dest-9 PATH shadow"
+            % (got9, project),
+            file=sys.stderr,
+        )
+        return 1
+    print(
+        "OK: worker-shell specify resolved speckit-specify "
+        "(HOME=project child; dest-9 PATH shadow needs specify-from-project.sh)"
+    )
     return 0
 
 

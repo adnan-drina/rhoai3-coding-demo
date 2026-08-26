@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Install PATH name `specify` that points at specify-from-project.sh.
-# dest-init also installs a copy under HERMES_MANAGED_DIR/bin (already first
-# on dest PATH). Do not prepend HERMES_HOME/bin (Tirith retired).
+# dest-init also installs a copy under HERMES_MANAGED_DIR/bin / platform
+# hermes/bin. dest-9 measured `/home/user/.local/bin` **first** on PATH, so
+# that copy is shadowed. M2 must call specify-from-project.sh by path.
+# Do not prepend HERMES_HOME/bin (Tirith retired).
 set -euo pipefail
 ROOT="$(cd "${1:-.}" && pwd)"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"

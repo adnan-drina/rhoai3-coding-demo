@@ -36,6 +36,7 @@ from path_maps import (
 )
 from supersede import (
     collect_supersedes,
+    type_inventory_invented_writes,
     type_inventory_supersede_gaps,
     type_inventory_uncovered,
 )

@@ -1,17 +1,21 @@
 ---
 name: plan-migration-partition
 description: >
-  Use at M2 PLAN — before minting Kanban children — to run specify workflow
-  run speckit, read M1 attachments, author evidence/partition.json, convert
-  with k4_convert.py --partition --tasks, and mint with k4_mint.py. Use when
-  writing partition.json or creating the M2 card, even if the user does not
-  name Spec Kit. Do not scrape write-sets from tasks.md. Do not use only to
-  lint an already-written partition (check-spec-readiness).
+  Use at M2 PLAN — before minting Kanban children — to run
+  specify-from-project.sh --root /projects/modernized workflow run speckit
+  -i spec="<description derived from M1 evidence>", read M1 attachments,
+  author evidence/partition.json, convert with k4_convert.py --partition
+  --tasks, and mint with k4_mint.py. Use when writing partition.json or
+  creating the M2 card, even if the user does not name Spec Kit. Do not
+  PATH-lookup specify (dest-9 uv specify shadows the dest-init shim). Do
+  not run the bare form (Required input spec). Do not scrape write-sets
+  from tasks.md. Do not use only to lint an already-written partition
+  (check-spec-readiness).
 license: Apache-2.0
 compatibility: Linux seat; Python 3.11+; pinned specify-cli; Hermes Kanban
 metadata:
   author: rhoai3-harness-team
-  version: "1.1.0"
+  version: "1.3.0"
   hermes:
     tags:
     - sdd
@@ -69,11 +73,26 @@ hermes kanban show "$M1"
 # type-inventory.json, required-extensions.json
 ```
 
-3. Run Spec Kit. Stop. Never `/speckit.implement`.
+3. Run Spec Kit with the required `spec` input. Stop. Never
+   `/speckit.implement`. Never the bare form (Operator `165811ZO`:
+   `Required input 'spec' not provided`, exit 1). Derive the description
+   from M1 attachments (identity, HTTP paths, extensions) — do not invent
+   routes.
 
 ```bash
-specify workflow run speckit
+bash .hermes/skills/sdd/init-spec-workspace/scripts/specify-from-project.sh \
+  --root /projects/modernized \
+  workflow run speckit \
+  -i spec="<description derived from M1 evidence>"
 ```
+
+Do **not** PATH-lookup `specify`. dest-9 `command -v specify` was
+`/home/user/.local/bin/specify` (uv), which shadowed dest-init
+`/projects/.platform/hermes/bin/specify` (the shim). Project leaf
+`.hermes/skills/speckit-specify/SKILL.md` was PRESENT; user-home leaf was
+ABSENT. `-i spec=` is necessary and not sufficient without the helper.
+Unknown `speckit-specify` is `kanban_block`, not hand-author `tasks.md`.
+Do not dest-edit dest-9 PATH or implementer `external_dirs`.
 
 `tasks.md` must be non-empty under `.specify/specs/*/tasks.md`.
 
@@ -131,3 +150,8 @@ Do not `kanban daemon --force`. Do not `kanban swarm`. Do not dest-dispatch M5.
   `tasks.md` **binding**, not generative of cards).
 - Inventing `/q/health` as a story (constitution III: if health exists, at
   `/q/health`; VII stands).
+- Prescribing PATH `specify workflow run speckit` (Operator `165811ZO` bare
+  form; dest-9 uv specify shadows the dest-init shim). Call
+  `specify-from-project.sh --root`. dest-9 `-i spec=` still
+  `speckit-specify` unknown is `kanban_block`, not a hand-authored
+  `tasks.md`.

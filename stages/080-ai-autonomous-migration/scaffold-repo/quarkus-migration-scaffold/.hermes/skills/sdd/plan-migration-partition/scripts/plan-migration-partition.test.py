@@ -31,6 +31,32 @@ def main() -> int:
     if "specify workflow run speckit" not in skill_md:
         print("FAIL: SKILL.md must name specify workflow run speckit", file=sys.stderr)
         return 1
+    if '-i spec=' not in skill_md:
+        print(
+            "FAIL: SKILL.md must prescribe -i spec= (bare form exits 1; "
+            "Operator 165811ZO)",
+            file=sys.stderr,
+        )
+        return 1
+    if "specify-from-project.sh" not in skill_md:
+        print(
+            "FAIL: SKILL.md must invoke specify-from-project.sh "
+            "(dest-9 uv specify shadows the dest-init shim)",
+            file=sys.stderr,
+        )
+        return 1
+    if "```bash\nspecify workflow run speckit\n```" in skill_md:
+        print(
+            "FAIL: SKILL.md must not prescribe the bare specify form as the run",
+            file=sys.stderr,
+        )
+        return 1
+    if "```bash\nspecify workflow run speckit -i spec=" in skill_md:
+        print(
+            "FAIL: SKILL.md must not PATH-lookup specify (dest-9 shadow)",
+            file=sys.stderr,
+        )
+        return 1
     if "k4_convert.py" not in skill_md or "k4_mint.py" not in skill_md:
         print("FAIL: SKILL.md must name k4_convert.py and k4_mint.py", file=sys.stderr)
         return 1

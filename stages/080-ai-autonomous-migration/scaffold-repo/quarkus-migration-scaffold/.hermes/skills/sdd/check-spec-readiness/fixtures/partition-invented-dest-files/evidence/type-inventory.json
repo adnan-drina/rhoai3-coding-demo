@@ -1,0 +1,8 @@
+{
+  "schema": "rhoai3.type-inventory/v1",
+  "types": [
+    {
+      "dest_file": "src/main/java/com/demo/Greeting.java"
+    }
+  ]
+}

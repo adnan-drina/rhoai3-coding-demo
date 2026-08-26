@@ -548,6 +548,12 @@ check "080 specify worker-shell run-time selftest passes" \
 check "080 dest-init installs specify PATH shim (not HERMES_HOME/bin)" \
   "grep -c 'specify-from-project.sh' '${GITOPS_INIT}' || echo 0" \
   "2"
+check "080 dest-init smokes specify helper-by-path (W1)" \
+  "python3 '${SCAFFOLD_080}/.hermes/skills/sdd/init-spec-workspace/scripts/assert-dest-init-smokes-mandated-tools.py' '${GITOPS_INIT}' >/dev/null && echo 1 || echo 0" \
+  "1"
+check "080 dest-init specify-smoke selftest (shim-only REFUSE)" \
+  "python3 '${SCAFFOLD_080}/.hermes/skills/sdd/init-spec-workspace/scripts/assert-dest-init-smokes-mandated-tools-selftest.py' >/dev/null && echo 1 || echo 0" \
+  "1"
 check "080 K4 mints STAMP_DESTINATION_TREE harvest card" \
   "grep -c 'STAMP_DESTINATION_TREE' '${SCAFFOLD_KERNEL}/k4_schema.py' || echo 0" \
   "2"

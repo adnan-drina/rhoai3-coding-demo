@@ -394,6 +394,21 @@ def _m3_body(story: dict[str, Any], type_sha: str) -> dict[str, Any]:
     src = str(story.get("legacy_source") or "").strip()
     if src:
         identity["legacy_source"] = src
+    for key in (
+        "operand_class",
+        "endpoints",
+        "dest_file",
+        "kind",
+        "extensions_declared",
+        "extensions",
+        "acceptance_criteria",
+    ):
+        if key not in story:
+            continue
+        val = story[key]
+        if val in (None, "", []):
+            continue
+        identity[key] = val
     locus_path = str(
         story.get("legacy_locus_path") or "evidence/entry-point-inventory.json"
     )

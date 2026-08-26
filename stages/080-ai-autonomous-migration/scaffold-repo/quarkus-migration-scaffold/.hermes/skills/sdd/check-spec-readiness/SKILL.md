@@ -1,11 +1,11 @@
 ---
 name: check-spec-readiness
-description: Before kanban_create — lint SDD specs, story bodies (typed BODY_* codes), and partition coverage (HTTP 1:1 via story.endpoints as METHOD /path, dest_file 1:N with supersede; refuse invented HTTP paths vs inventory; refuse AC HTTP tokens that diverge from endpoints; refuse mvn test whose pom parent has no test-toolchain claim). Do not use to mint Kanban children or assemble M3 bodies (K4 converter is .hermes/kernel/k4_convert.py).
+description: Before kanban_create — lint SDD specs, story bodies (typed BODY_* codes), and partition coverage (HTTP 1:1 via story.endpoints as METHOD /path, dest_file 1:N with supersede; refuse invented HTTP paths vs inventory; K4 dest_file round-trip REFUSE dest-9 Application.java/GreetingResource.java; refuse AC HTTP tokens that diverge from endpoints; refuse mvn test whose pom parent has no test-toolchain claim). Do not use to mint Kanban children or assemble M3 bodies (K4 converter is .hermes/kernel/k4_convert.py).
 license: Apache-2.0
 compatibility: Linux seat; Python 3.11+; reads migration/ specs and bodies
 metadata:
   author: rhoai3-harness-team
-  version: "1.7.3"
+  version: "1.7.6"
   hermes:
     tags:
     - sdd
@@ -110,7 +110,10 @@ KEEP (this skill):
 - `scripts/check-operand-count.py` — measured operand_count / wall-fit
 - `scripts/check-partition-coverage.py` — M2 partition VALID receipt
 - `scripts/assert-m2-speckit-conformance.py` — M2 complete: non-empty `tasks.md` + `k4_convert --tasks` (Operator `123401ZO` §4; dest-8 bypass REFUSE)
+- `scripts/assert-card-performed.py` — A: official task log (dest-9 M2 `t_af875a24` must REFUSE; GATE-VALIDATION-DESIGN §6)
 - `scripts/assert-partition-invented-routes.py` — constitution VII invented HTTP paths
+- `scripts/assert-partition-invented-files.py` — dest-cite sibling (type-inventory dest_file); not the W3 close (`191845ZA`)
+- `.hermes/kernel/k4_roundtrip.py` — dest_file in the typed slice vs write-set dest Java; dest-9 `Application.java` / `GreetingResource.java` REFUSE (`194048ZA`)
 - `scripts/partition_story_consistency.py` — stale AC vs endpoints; implicit pom parent
 - `scripts/check-interface-closure.py` — interface closure Class-A gate
 - `scripts/assert-dependency-closure.py` — Class-A dependency closure
@@ -185,6 +188,10 @@ Do **not** invoke DD4-retired R-M3.5/7 stubs (`check-persistence-bom.py`,
   setup claims `check-test-toolchain`).
   dest-8 M2 bypass REFUSE `fixtures/m2-speckit-bypass-dest8/`
   (`assert-m2-speckit-conformance.py` exit 1, `M2_SPECKIT_BYPASS`, no `tasks.md`).
+  dest-9 dest_file invented REFUSE `.hermes/kernel/fixtures/k4-dest9-invented-files.json`
+  (`k4_roundtrip.py` exit 1, `Application.java` and `GreetingResource.java`;
+  `Greeting.java` dest twin does not REFUSE). Sibling
+  `assert-partition-invented-files.py` stays dest-cite, not this close.
   `/q/health` is not a grounding exception. Empty `endpoints` is legal
   scaffolding iff the story names no HTTP path.
   Default partition path is `evidence/partition.json` then

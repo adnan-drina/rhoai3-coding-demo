@@ -272,6 +272,59 @@ def main() -> int:
         if "entry-point-inventory.json" not in str(locus.get("path") or ""):
             return _fail("legacy_locus path %s" % locus)
 
+    from k4_roundtrip import roundtrip_result, roundtrip_story  # noqa: PLC0415
+
+    typed = KERNEL / "fixtures" / "k4-typed-operand.json"
+    typed_result, typed_issues = convert_file(typed)
+    if typed_issues or typed_result is None:
+        return _fail("typed operand partition must convert: %s" % typed_issues)
+    typed_part = json.loads(typed.read_text(encoding="utf-8"))
+    rt = roundtrip_result(typed_part, typed_result)
+    if rt:
+        return _fail("typed operand must round-trip: %s" % rt)
+    us1_typed = json.loads(
+        next(
+            p["body"]
+            for p in typed_result["payloads"]
+            if p["logical_id"] == "us1_greeting"
+        )
+    )
+    ident = us1_typed.get("identity") or {}
+    if ident.get("operand_class") != ["http"]:
+        return _fail("operand_class dropped at K4: %s" % ident)
+    dropped = roundtrip_story(
+        typed_part["stories"][1],
+        {"files_writable": typed_part["stories"][1]["files_writable"], "identity": {}},
+    )
+    if not dropped:
+        return _fail("body missing operand_class must REFUSE round-trip")
+
+    from k4_roundtrip import dest_file_invented  # noqa: PLC0415
+
+    dest9 = KERNEL / "fixtures" / "k4-dest9-invented-files.json"
+    dest9_result, dest9_issues = convert_file(dest9)
+    if dest9_issues or dest9_result is None:
+        return _fail("dest-9 dest_file partition must convert: %s" % dest9_issues)
+    dest9_part = json.loads(dest9.read_text(encoding="utf-8"))
+    dest9_rt = roundtrip_result(dest9_part, dest9_result)
+    blob = " ".join(dest9_rt)
+    if "Application.java" not in blob or "GreetingResource.java" not in blob:
+        return _fail(
+            "dest_file round-trip must REFUSE dest-9 Application.java and "
+            "GreetingResource.java: %s" % dest9_rt
+        )
+    if any(g.endswith("Greeting.java") and "invented" in g for g in dest9_rt):
+        return _fail("dest_file twin Greeting.java must not REFUSE: %s" % dest9_rt)
+    invented = dest_file_invented(dest9_part["stories"][1])
+    if set(invented) != {
+        "src/main/java/com/demo/Application.java",
+        "src/main/java/com/demo/GreetingResource.java",
+    }:
+        return _fail("dest_file_invented dest-9 %s" % invented)
+    setup_skip = dest_file_invented(dest9_part["stories"][0])
+    if setup_skip:
+        return _fail("setup without dest_file must skip invented check: %s" % setup_skip)
+
     print("OK: K4 selftest (PATH_TOKEN + created_cards + partition copy + T0_3_SERVICE)")
     return 0
 
