@@ -13,8 +13,11 @@ from pathlib import Path
 from typing import Any
 
 _KERNEL = Path(__file__).resolve().parent
+_LIB = _KERNEL.parent / "lib"
 if str(_KERNEL) not in sys.path:
     sys.path.insert(0, str(_KERNEL))
+if str(_LIB) not in sys.path:
+    sys.path.insert(0, str(_LIB))
 
 from k4_schema import (  # noqa: E402
     IMPL,
@@ -26,8 +29,14 @@ from k4_schema import (  # noqa: E402
     VERIFIER_ID,
     WRITER_ID,
 )
+from specimen_agnostic import stamp_dd3_extensions, writes_pom_xml  # noqa: E402
 
 Issue = tuple[str, str, str]
+DEST_POM_EXT_CMD = (
+    "python3 .hermes/skills/migration/manage-quarkus-extensions/"
+    "scripts/assert-dest-pom-extensions.py . --body "
+    "evidence/bodies/m3-%s.json"
+)
 PATH_IN_PROSE = re.compile(r"(?:`)?((?:src|pom\.xml)[/.\w-]*)(?:`)?")
 NEGATED_PROSE = re.compile(
     r"(?i)\b(?:do not|don't|dont|never|must not|not touch)\b"
@@ -407,6 +416,15 @@ def _m3_body(story: dict[str, Any], type_sha: str) -> dict[str, Any]:
     maven = _compile_or_test_exit(fw, kind)
     if maven:
         exits.append(maven)
+    if any(
+        str(p).replace("\\", "/").rstrip("/").endswith("pom.xml") for p in fw
+    ):
+        exits.append(
+            {
+                "check": "dest_pom_extensions",
+                "cmd": DEST_POM_EXT_CMD % sid,
+            }
+        )
     identity: dict[str, Any] = {"story_id": sid}
     src = str(story.get("legacy_source") or "").strip()
     if src:
@@ -561,11 +579,70 @@ def _payload(
     return out
 
 
-def convert_partition(partition: dict[str, Any]) -> dict[str, Any]:
+def dd3_union_gaps(result: dict[str, Any]) -> list[str]:
+    """REFUSE when the sole pom writer lacks identity.extensions_apply."""
+    gaps: list[str] = []
+    writers: list[tuple[str, dict[str, Any]]] = []
+    others: list[tuple[str, dict[str, Any]]] = []
+    for payload in result.get("payloads") or []:
+        if not isinstance(payload, dict):
+            continue
+        lid = str(payload.get("logical_id") or "").strip()
+        if not lid or lid == STAMP_ID:
+            continue
+        try:
+            body = json.loads(str(payload.get("body") or "{}"))
+        except json.JSONDecodeError:
+            gaps.append("K4_DD3 %s body unreadable" % (lid or "?"))
+            continue
+        if not isinstance(body, dict):
+            continue
+        if writes_pom_xml(body):
+            writers.append((lid, body))
+        else:
+            others.append((lid, body))
+    if len(writers) != 1:
+        gaps.append(
+            "K4_DD3 expected 1 pom.xml writer, got %d"
+            % len(writers)
+        )
+        return gaps
+    lid, body = writers[0]
+    ident = body.get("identity") if isinstance(body.get("identity"), dict) else {}
+    apply = ident.get("extensions_apply") if isinstance(ident, dict) else None
+    if not isinstance(apply, list) or not apply:
+        gaps.append(
+            "K4_DD3 %s missing identity.extensions_apply union" % lid
+        )
+    for other_id, other in others:
+        oident = other.get("identity") if isinstance(other.get("identity"), dict) else {}
+        if isinstance(oident, dict) and "extensions_apply" in oident:
+            gaps.append(
+                "K4_DD3 %s must not carry extensions_apply" % other_id
+            )
+    return gaps
+
+
+def _m1_root(start: Path | None) -> Path | None:
+    if start is None:
+        return None
+    cur = start if start.is_dir() else start.parent
+    for cand in [cur, *cur.parents]:
+        if (cand / "evidence" / "required-extensions.json").is_file():
+            return cand
+    return None
+
+
+def convert_partition(
+    partition: dict[str, Any], *, root: Path | None = None
+) -> dict[str, Any]:
     type_sha = str(partition.get("type_inventory_sha256") or "")
     stories = [s for s in (partition.get("stories") or []) if isinstance(s, dict)]
     payloads: list[dict[str, Any]] = []
-    for story in stories:
+    story_bodies = [_m3_body(story, type_sha) for story in stories]
+    if story_bodies:
+        stamp_dd3_extensions(story_bodies, root=root)
+    for story, body in zip(stories, story_bodies):
         sid = _story_id(story)
         part_parents = [str(p) for p in (story.get("parents") or [])]
         payloads.append(
@@ -574,7 +651,7 @@ def convert_partition(partition: dict[str, Any]) -> dict[str, Any]:
                 title="M3 %s" % sid,
                 assignee=IMPL,
                 parents=part_parents,
-                body=_m3_body(story, type_sha),
+                body=body,
                 skills=story_skills(story),
                 max_retries=1,
                 type_sha=type_sha,
@@ -632,7 +709,7 @@ def convert_file(
     issues = validate_inputs(partition, tasks_text=tasks_text)
     if issues:
         return None, issues
-    return convert_partition(partition), []
+    return convert_partition(partition, root=_m1_root(partition_path)), []
 
 
 def format_issues(issues: list[Issue]) -> str:

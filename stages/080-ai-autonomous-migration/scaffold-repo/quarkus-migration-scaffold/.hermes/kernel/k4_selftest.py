@@ -10,7 +10,14 @@ from pathlib import Path
 KERNEL = Path(__file__).resolve().parent
 sys.path.insert(0, str(KERNEL))
 from k1_validate import validate_body  # noqa: E402
-from k4_convert import convert_file, stamp_write_set, validate_inputs, validate_result  # noqa: E402
+from k4_convert import (  # noqa: E402
+    convert_file,
+    convert_partition,
+    dd3_union_gaps,
+    stamp_write_set,
+    validate_inputs,
+    validate_result,
+)
 from k4_schema import STAMP_ID, STAMP_SKILL, VERIFIER_ID, WRITER_ID  # noqa: E402
 
 
@@ -357,6 +364,45 @@ def main() -> int:
             "k4_roundtrip live dest-9 must rc 1 via convert K4_DEST_FILE: %s"
             % live_rc
         )
+
+    frozen = KERNEL / "fixtures" / "k4-dest9-live-convert-no-dd3.json"
+    frozen_doc = json.loads(frozen.read_text(encoding="utf-8"))
+    frozen_gaps = dd3_union_gaps(frozen_doc)
+    if not any("extensions_apply" in g for g in frozen_gaps):
+        return _fail(
+            "dest-9 live convert without DD3 must REFUSE missing union: %s"
+            % frozen_gaps
+        )
+    live_stamped = convert_partition(live_part)
+    live_gaps = dd3_union_gaps(live_stamped)
+    if live_gaps:
+        return _fail("dest-9 live convert after DD3 must stamp union: %s" % live_gaps)
+    setup_live = json.loads(
+        next(p["body"] for p in live_stamped["payloads"] if p["logical_id"] == "setup")
+    )
+    apply = (setup_live.get("identity") or {}).get("extensions_apply") or []
+    if "quarkus-rest" not in apply or "quarkus-rest-jackson" not in apply:
+        return _fail("setup extensions_apply %s" % apply)
+    us1_live = json.loads(
+        next(
+            p["body"]
+            for p in live_stamped["payloads"]
+            if p["logical_id"] == "us1_greeting"
+        )
+    )
+    if "extensions_apply" in (us1_live.get("identity") or {}):
+        return _fail("us1_greeting must not carry extensions_apply")
+    pom_cmds = [
+        str(e.get("cmd") or "")
+        for e in setup_live.get("exit_criteria") or []
+        if isinstance(e, dict)
+    ]
+    if not any("assert-dest-pom-extensions.py" in c for c in pom_cmds):
+        return _fail("setup missing dest_pom_extensions exit: %s" % pom_cmds)
+    if "stamp_dd3_extensions(" not in (KERNEL / "k4_convert.py").read_text(
+        encoding="utf-8"
+    ):
+        return _fail("k4_convert.py must call stamp_dd3_extensions")
 
     print("OK: K4 selftest (PATH_TOKEN + created_cards + partition copy + T0_3_SERVICE)")
     return 0
