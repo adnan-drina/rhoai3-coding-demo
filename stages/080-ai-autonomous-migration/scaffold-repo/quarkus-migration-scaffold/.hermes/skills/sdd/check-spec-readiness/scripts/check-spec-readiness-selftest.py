@@ -238,29 +238,12 @@ def main() -> int:
     if proc.returncode != 0:
         return _fail("assert-m2-speckit-conformance: %s %s" % (proc.stdout, proc.stderr))
 
-    performed = SCRIPTS / "assert-card-performed.py"
-    dest9_log = (
-        FIXTURES / "v9-m2-speckit-invoked-and-failed" / "t_af875a24.log"
-    )
-    proc = _run([sys.executable, str(performed), "--log", str(dest9_log)])
-    blob = proc.stdout + proc.stderr
-    if proc.returncode != 1:
-        return _fail("dest-9 t_af875a24 log must REFUSE CARD_PERFORMED: %s" % blob)
-    if "never succeeded" not in blob:
-        return _fail("dest-9 CARD_PERFORMED missed never-succeeded: %s" % blob)
-    tmp_ok = Path(tempfile.mkdtemp(prefix="card-performed-"))
-    try:
-        ok_log = tmp_ok / "ok.log"
-        ok_log.write_text(
-            "  ┊ 💻 $         specify workflow run speckit -i spec=x  1.0s [exit 0]\n",
-            encoding="utf-8",
+    performed_test = SCRIPTS / "assert-card-performed.test.py"
+    proc = _run([sys.executable, str(performed_test)])
+    if proc.returncode != 0:
+        return _fail(
+            "assert-card-performed.test.py: %s %s" % (proc.stdout, proc.stderr)
         )
-        proc = _run([sys.executable, str(performed), "--log", str(ok_log)])
-        blob = proc.stdout + proc.stderr
-        if proc.returncode != 0:
-            return _fail("synthetic speckit exit 0 must PASS CARD_PERFORMED: %s" % blob)
-    finally:
-        shutil.rmtree(tmp_ok, ignore_errors=True)
 
     lib = SKILL.parents[2] / "lib"
     if str(lib) not in sys.path:
