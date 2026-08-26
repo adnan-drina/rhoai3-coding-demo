@@ -146,6 +146,18 @@ data:
     PROJECT_DIR="${1:?project directory is required}"
     PROFILE="${2:-default}"
 
+    # dest-8: three concurrent copies during curl 28. Serialise. Do not
+    # oc-apply this ConfigMap onto a live mid-chain workspace.
+    if ! command -v flock >/dev/null 2>&1; then
+      echo "ERROR: flock missing; refuse dest-init without serialisation." >&2
+      exit 1
+    fi
+    mkdir -p "${HOME}/.cache"
+    exec 9>"${HOME}/.cache/rhoai3-init-ai-tools.lock"
+    echo "init-ai-tools.sh: waiting for flock pid=$$"
+    flock 9
+    echo "init-ai-tools.sh: flock held pid=$$"
+
     # The project's .opencode/ directory is the paradigm signal:
     # present  -> OpenCode-only workspace (stage 070 scaffolded repos carry .opencode/skills)
     # absent   -> Kilo-only workspace (stage 060 coolstore, stage 080 migration)

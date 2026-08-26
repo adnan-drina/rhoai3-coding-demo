@@ -190,6 +190,27 @@ if cmd_for_paths:
             span = os.path.expanduser(span)
         if span not in paths:
             paths.append(span)
+    if re.search(r"\bmkdir\b", cmd_for_paths):
+        parts = cmd_for_paths.split()
+        i = 0
+        while i < len(parts):
+            base = parts[i].rsplit("/", 1)[-1]
+            if base == "mkdir":
+                i += 1
+                while i < len(parts) and parts[i].startswith("-"):
+                    i += 1
+                while i < len(parts):
+                    arg = parts[i]
+                    if arg in ("&&", "||", ";", "|"):
+                        break
+                    if arg.startswith("-"):
+                        i += 1
+                        continue
+                    if arg not in paths:
+                        paths.append(arg)
+                    i += 1
+                continue
+            i += 1
 
 roots = []
 for part in allow.split(os.pathsep):
@@ -411,6 +432,18 @@ def writeset_ok(rel, writeset):
             return True
     return False
 
+def writeset_ok_mkdir(rel, writeset):
+    if writeset_ok(rel, writeset):
+        return True
+    if not rel:
+        return True
+    rel = rel.replace("\\", "/").lstrip("./")
+    for w in writeset:
+        ww = w.replace("\\", "/").lstrip("./").strip("/")
+        if ww.startswith(rel + "/"):
+            return True
+    return False
+
 WRITE_TOOLS = {
     "write_file", "write", "patch", "edit_file", "str_replace",
     "apply_patch", "create_file",
@@ -427,7 +460,7 @@ def looks_like_write_cmd(c):
                 return True
     if re.search(r"\btee\b", c) and "/dev/null" not in c:
         return True
-    if re.search(r"\b(?:mv|cp|rm|install|install_name_tool)\b", c):
+    if re.search(r"\b(?:mv|cp|rm|mkdir|install|install_name_tool)\b", c):
         return True
     if "quarkus:add-extension" in c or "add-extension" in c:
         return True
@@ -491,8 +524,10 @@ if writeset is not None:
                 rels.append(rel)
         if "quarkus:add-extension" in cmd or re.search(r"\badd-extension\b", cmd):
             rels.append("pom.xml")
+    mkdir_cmd = bool(cmd and re.search(r"\bmkdir\b", cmd))
     for rel in rels:
-        if not writeset_ok(rel, writeset):
+        ok = writeset_ok_mkdir(rel, writeset) if mkdir_cmd else writeset_ok(rel, writeset)
+        if not ok:
             block("write %s outside files_writable (story %s); "
                   "do not override the write-set" % (rel or "pom.xml", story))
 

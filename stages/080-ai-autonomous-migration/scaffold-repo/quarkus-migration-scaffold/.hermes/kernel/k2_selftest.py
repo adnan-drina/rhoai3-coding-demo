@@ -208,6 +208,53 @@ def main() -> int:
         else:
             print("ok writeset_pom")
         r = run(
+            "mkdir -p .mvn",
+            roots,
+            cwd=cwd,
+            extra_env={
+                "K2_FILES_WRITABLE": "pom.xml",
+                "HERMES_WRITE_SAFE_ROOT": str(dest),
+                "K2_STORY_ID": "T001",
+            },
+        )
+        msg = r.get("message") or ""
+        if r.get("action") != "block" or ".mvn" not in msg or "files_writable" not in msg:
+            print("FAIL mkdir_writeset_dot_mvn", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok mkdir_writeset_dot_mvn")
+        r = run(
+            "mkdir -p " + str(dest / ".mvn"),
+            roots,
+            cwd=cwd,
+            extra_env={
+                "K2_FILES_WRITABLE": "pom.xml",
+                "HERMES_WRITE_SAFE_ROOT": str(dest),
+                "K2_STORY_ID": "T001",
+            },
+        )
+        msg = r.get("message") or ""
+        if r.get("action") != "block" or ".mvn" not in msg:
+            print("FAIL mkdir_writeset_abs_mvn", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok mkdir_writeset_abs_mvn")
+        r = run(
+            "mkdir -p src",
+            roots,
+            cwd=cwd,
+            extra_env={
+                "K2_FILES_WRITABLE": "src/In.java",
+                "HERMES_WRITE_SAFE_ROOT": str(dest),
+                "K2_STORY_ID": "US1",
+            },
+        )
+        if r.get("action") == "block":
+            print("FAIL mkdir_parent_of_writable", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok mkdir_parent_of_writable")
+        r = run(
             "",
             roots,
             cwd=cwd,
