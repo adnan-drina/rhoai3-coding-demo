@@ -110,7 +110,7 @@ def bound_gate_red():
     except OSError:
         return None
     names = (
-        "assert-m2-speckit-conformance", "check-product-tests", "run-m4-pre-verdict", "assert-pinned-gates-ran",
+        "assert-m2-speckit-conformance", "assert-m2-story-headings", "check-product-tests", "run-m4-pre-verdict", "assert-pinned-gates-ran",
         "assert-retrievable-tree", "check-spec-readiness", "check-domain-parity",
         "check-release-readiness", "check-test-toolchain", "check-external-dirs",
         "check-readiness", "check-partition-coverage", "check-kanban-body",

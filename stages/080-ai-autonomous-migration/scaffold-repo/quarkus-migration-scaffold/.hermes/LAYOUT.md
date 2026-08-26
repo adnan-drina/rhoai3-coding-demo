@@ -69,6 +69,7 @@ complete requires `created_cards`. Do not wrap these in home scripts.
 | `form-entity-persistence` | migration | Entity / persistence form |
 | `configure-quarkus-profiles` | migration | Quarkus config / profiles |
 | `init-spec-workspace` | sdd | Spec Kit 0.16.1 provision wrapper |
+| `plan-migration-partition` | sdd | M2 PLAN producer: speckit → partition.json → K4 convert/mint |
 | `check-spec-readiness` | sdd | Domain lints + 1:N partition coverage |
 | `derive-story-oracles` | sdd | Story-class exit derivation |
 | `check-domain-parity` | gates | G-1..G-4 measurement oracles |

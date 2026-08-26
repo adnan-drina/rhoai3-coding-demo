@@ -22,7 +22,8 @@ metadata:
   1:N with supersede) with `check-partition-coverage.py`.
   This skill does **not** author Path-A `partition.json` and does **not**
   stamp bodies. Typed M3 bodies come from `.hermes/kernel/k4_convert.py`.
-  The producer writes `evidence/partition.json`; coverage also accepts
+  Skill **`plan-migration-partition`** is the producer that writes
+  `evidence/partition.json`; coverage also accepts
   `evidence/briefs/partition.json`. A missing file names every path looked at.
 - **M2 PLAN is the named consumer of M1 attachments:** before partition,
   `hermes kanban show` the parent M1 id, read `kanban_attachments` (paths under

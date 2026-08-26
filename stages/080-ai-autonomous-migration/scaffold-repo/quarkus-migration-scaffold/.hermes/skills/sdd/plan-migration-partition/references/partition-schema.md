@@ -1,0 +1,60 @@
+# Partition schema (M2 producer reference)
+
+**Authoritative refuse codes and remedies live in**
+`.hermes/kernel/k4_schema.py` (`REMEDY`). This page names the fields a
+worker must write. `scripts/assert-partition-schema-sync.py` fails if a
+code or field below disappears from either side.
+
+Do **not** copy remedy prose here. Do **not** read `k4_convert.py` to
+learn the shape — use this page plus a failing convert run's `K4_*` code.
+
+## File
+
+Write `evidence/partition.json` (coverage also accepts
+`evidence/briefs/partition.json`). One object.
+
+## Top-level keys
+
+| Key | Rule |
+|-----|------|
+| `type_inventory_sha256` | 64 lowercase hex of `evidence/type-inventory.json` |
+| `stories` | non-empty array of story objects |
+
+## Each `stories[]` object
+
+| Key | Rule |
+|-----|------|
+| `story_id` | stable id (`setup`, `us1_greeting`, …). `id` is accepted as alias |
+| `files_writable` | non-empty dest-relative paths; K4 copies this as the write-set |
+| `parents` | list of other `story_id`s (import graph). `[]` on roots |
+| `kind` | `setup` / `us` / `polish` when `skills[]` omitted |
+| `skills` | pinned leaves; else `kind` → default list |
+| `endpoints` | HTTP stories: `["GET /greeting", …]` (METHOD + path). Coverage 1:1 |
+| `title` | human title; not the write-set |
+| `acceptance_criteria` | strings; paths named here must sit in `files_writable` |
+| `supersedes` | optional named 1:N successor set for a dest_file |
+
+## Codes this authoring must not trip
+
+`K4_SCHEMA` `K4_SCOPE` `K4_SKILLS` `K4_PARENT` `K4_T0_3_SERVICE`
+`K4_PATH_TOKEN` `K4_PLANNING_DEFECT`
+
+`K4_T0_3_SERVICE`: the same `*Service.java` must not be writable on two
+stories (methods in a shared ClinicService). Split one service class per
+aggregate; retire the inventory row with a named supersede set.
+
+`K4_PATH_TOKEN`: `tasks.md` must not ask to scrape write-sets.
+`K4_PLANNING_DEFECT`: a path named in `tasks.md` must already be in some
+story `files_writable`. Do not grow the write-set from prose.
+
+## After authoring
+
+```bash
+python3 .hermes/kernel/k4_convert.py \
+  --partition evidence/partition.json \
+  --tasks .specify/specs/*/tasks.md \
+  --out evidence/partition-payloads.json
+```
+
+Cards come from that convert, minted by `k4_mint.py`. Speckit remains the
+plan (`tasks.md`), not the card factory.

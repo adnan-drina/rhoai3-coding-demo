@@ -146,8 +146,10 @@ contain workers from outside the worker.
 
 ### Spec Kit stop rule
 
-After `/speckit-tasks` (optional `/speckit-analyze`) → `.hermes/kernel/k4_convert.py`
-then `.hermes/kernel/k4_mint.py`, not by grepping `tasks.md` paths. **Never**
+After `/speckit-tasks` (optional `/speckit-analyze`) → skill
+`plan-migration-partition` (author `evidence/partition.json`) →
+`.hermes/kernel/k4_convert.py` then `.hermes/kernel/k4_mint.py`, not by
+grepping `tasks.md` paths. **Never**
 `/speckit-implement`. Bare `specify workflow run speckit` (PATH shim;
 spec-kit 0.16.1 still uses `Path.home()/.hermes/skills` — dest-init and
 init-spec-workspace point that child HOME at the project). Do not rely
@@ -177,6 +179,7 @@ One line each: what it governs → which skill. When a skill is loaded, prefer
 | Governs | Skill |
 |---------|-------|
 | Spec/story-body legality + 1:N partition coverage | `check-spec-readiness` |
+| M2 PLAN procedure + partition.json producer | `plan-migration-partition` |
 | Story-class exit / oracle derivation | `derive-story-oracles` |
 | G-1..G-4 measurement oracles | `check-domain-parity` |
 | M4/M5 verdict routing | `check-release-readiness` |
