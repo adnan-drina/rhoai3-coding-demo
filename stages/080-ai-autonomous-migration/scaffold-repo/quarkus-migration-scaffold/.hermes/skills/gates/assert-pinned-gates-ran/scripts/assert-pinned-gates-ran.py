@@ -43,11 +43,14 @@ def _fail(msg: str) -> int:
 def parse_skills(
     raw: str | None, skills_file: Path | None, card_json: Path | None
 ) -> list[str] | None:
-    if raw and raw.strip():
-        return [p.strip() for p in raw.split(",") if p.strip()]
     env = os.environ.get("M4_CARD_SKILLS", "").strip()
     if env:
-        return [p.strip() for p in env.split(",") if p.strip()]
+        raise ValueError(
+            "M4_CARD_SKILLS override is OBJECT (Architect 130758ZA); "
+            "pass --skills / --skills-file / --card-json from the card"
+        )
+    if raw and raw.strip():
+        return [p.strip() for p in raw.split(",") if p.strip()]
     if skills_file is not None:
         data = json.loads(skills_file.read_text(encoding="utf-8"))
         if isinstance(data, list):
@@ -208,8 +211,8 @@ def main(argv: list[str] | None = None) -> int:
         return _fail("could not read M4 skills list: " + str(exc))
     if skills is None:
         return _fail(
-            "pass --skills, --skills-file, --card-json, or M4_CARD_SKILLS "
-            "(missing list is fail-closed, not idle)"
+            "pass --skills, --skills-file, or --card-json "
+            "(missing list is fail-closed, not idle; M4_CARD_SKILLS override is OBJECT)"
         )
     card_id = (args.card_id or os.environ.get("HERMES_KANBAN_TASK") or "").strip()
     return check_root(root, skills, card_id)

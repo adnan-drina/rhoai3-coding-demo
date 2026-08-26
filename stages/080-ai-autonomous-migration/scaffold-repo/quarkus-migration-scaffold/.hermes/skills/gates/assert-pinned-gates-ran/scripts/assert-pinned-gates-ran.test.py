@@ -22,6 +22,7 @@ TREE = (
 
 def run_pinned(root: Path, extra: list[str], env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
     merged = os.environ.copy()
+    merged.pop("M4_CARD_SKILLS", None)
     if env:
         merged.update(env)
     return subprocess.run(
@@ -49,6 +50,17 @@ def git(root: Path, *args: str) -> None:
 
 
 class PinnedGatesTests(unittest.TestCase):
+    def test_m4_card_skills_env_is_object(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            proc = run_pinned(
+                root,
+                ["--skills", "check-domain-parity"],
+                env={"M4_CARD_SKILLS": "check-spec-readiness,assert-retrievable-tree"},
+            )
+            self.assertNotEqual(proc.returncode, 0, proc.stderr)
+            self.assertIn("M4_CARD_SKILLS override is OBJECT", proc.stderr)
+
     def test_missing_skills_list_fails(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

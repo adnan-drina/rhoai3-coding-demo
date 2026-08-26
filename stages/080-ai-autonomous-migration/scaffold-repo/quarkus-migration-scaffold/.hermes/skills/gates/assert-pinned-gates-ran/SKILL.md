@@ -43,11 +43,11 @@ Pass the M4 card's skills list. Missing list is fail-closed.
 python3 "${HERMES_SKILL_DIR}/../assert-retrievable-tree/scripts/assert-retrievable-tree.py" \
   /projects/modernized
 python3 "${HERMES_SKILL_DIR}/scripts/assert-pinned-gates-ran.py" /projects/modernized \
-  --skills "${M4_CARD_SKILLS:?missing M4 card skills}"
+  --skills "check-spec-readiness,check-domain-parity,check-release-readiness,assert-pinned-gates-ran,assert-retrievable-tree"
 ```
 
 `--skills-file` or `--card-json` (object with `skills`) are equivalents.
-Env `M4_CARD_SKILLS` is the same comma list. `--card-id` /
+Env `M4_CARD_SKILLS` is OBJECT (Architect `130758ZA` dest-8 override). `--card-id` /
 `HERMES_KANBAN_TASK` rejects artifacts that name this M4 task.
 
 For each pinned gate leaf: require a JSON under `evidence/verdicts/`

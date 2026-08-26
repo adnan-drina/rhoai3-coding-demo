@@ -9,7 +9,7 @@ python3 .hermes/skills/gates/check-domain-parity/scripts/check-product-tests.py 
 python3 .hermes/skills/gates/check-domain-parity/scripts/check-product-tests.py \
   .hermes/skills/gates/check-domain-parity/fixtures/product-tests/ar28-thin-security
 
-# OK — all four families marked
+# OK — greeting-only inventory: boot via @QuarkusTest GET /greeting; security/crud/db N/A
 python3 .hermes/skills/gates/check-domain-parity/scripts/check-product-tests.py \
-  .hermes/skills/gates/check-domain-parity/fixtures/product-tests/ar28-good
+  .hermes/skills/gates/check-domain-parity/fixtures/product-tests/ar28-greeting-inventory
 ```

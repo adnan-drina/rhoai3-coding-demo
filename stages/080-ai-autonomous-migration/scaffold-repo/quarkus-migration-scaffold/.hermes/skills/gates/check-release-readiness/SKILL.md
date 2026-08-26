@@ -113,6 +113,10 @@ python3 "${HERMES_SKILL_DIR}/scripts/check-empty-security.py" /projects/moderniz
 # AD-H §G.1 / AR-2.8 — product-test families (boot/CRUD/security/DB); not harness probe
 python3 "${HERMES_SKILL_DIR}/../check-domain-parity/scripts/check-product-tests.py" /projects/modernized
 
+# dest-8 complete-around lint (pass the measured floor rc; do not re-run AR-2.8 here)
+python3 "${HERMES_SKILL_DIR}/scripts/assert-m4-complete-around-red.py" \
+  --verdict /projects/modernized/evidence/verdicts/m4-verdict.json --floor-rc 1
+
 # S-010 Class A — assertj-core + rest-assured in pom (harness-owned toolchain)
 python3 "${HERMES_SKILL_DIR}/scripts/check-test-toolchain.py" /projects/modernized
 

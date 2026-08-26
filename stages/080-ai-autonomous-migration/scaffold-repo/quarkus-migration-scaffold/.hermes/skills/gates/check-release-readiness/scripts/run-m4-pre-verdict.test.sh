@@ -41,6 +41,14 @@ done
 
 export M4_CARD_BODY='M4 acceptance; verdict is O1/O2/O3 over the built artefact.'
 
+# dest-8 M4_CARD_SKILLS override is OBJECT (Architect 130758ZA).
+if M4_CARD_SKILLS='check-spec-readiness,assert-retrievable-tree' \
+  bash "${SCRIPT_DIR}/run-m4-pre-verdict.sh" "$TMP"; then
+  echo "FAIL: M4_CARD_SKILLS override should refuse" >&2
+  exit 1
+fi
+unset M4_CARD_SKILLS
+
 # dest-5 Token body must refuse before the rest of the runner.
 if M4_CARD_BODY='Token: PROVISIONAL_ACCEPT, ship: false' \
   bash "${SCRIPT_DIR}/run-m4-pre-verdict.sh" "$TMP"; then

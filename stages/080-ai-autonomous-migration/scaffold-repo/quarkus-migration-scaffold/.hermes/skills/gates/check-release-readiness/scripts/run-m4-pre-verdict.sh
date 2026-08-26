@@ -6,8 +6,8 @@
 # Fail closed. Not idle. Not K2. Not dest-push. Not a card pin.
 #
 # Usage: run-m4-pre-verdict.sh <product-root>
-# Env: M4_CARD_SKILLS — comma list; default is the bound gate leaves so
-# missing env is not a skip.
+# Env: M4_CARD_SKILLS — OBJECT when set (Architect 130758ZA dest-8
+# override). Default bound-gate list is used when unset.
 # Env: M4_CARD_BODY — M4 card body when kanban show is unavailable.
 # Env: FENCE_EVASION_LOGS — colon/newline list of work logs (complete set).
 # Env: FENCE_EVASION_LOG — single extra path; land-time only when no task id.
@@ -32,7 +32,11 @@ DETECTOR="${SCRIPT_DIR}/../../assert-no-fence-evasion/scripts/assert-no-fence-ev
 G4="${SCRIPT_DIR}/assert-g4-claim-consistency.py"
 RESOLVE="${SCRIPT_DIR}/resolve-m4-work-logs.py"
 DEFAULT_SKILLS="check-spec-readiness,check-domain-parity,check-release-readiness,assert-pinned-gates-ran,assert-retrievable-tree"
-SKILLS="${M4_CARD_SKILLS:-${DEFAULT_SKILLS}}"
+if [[ -n "${M4_CARD_SKILLS:-}" ]]; then
+  echo "FAIL: M4_CARD_SKILLS override is OBJECT (Architect 130758ZA); do not widen or replace card pins" >&2
+  exit 1
+fi
+SKILLS="${DEFAULT_SKILLS}"
 
 python3 "${SNAP}" "${PRODUCT_ROOT}"
 python3 "${SURE}" "${PRODUCT_ROOT}"

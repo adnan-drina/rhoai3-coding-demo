@@ -164,6 +164,33 @@ def main() -> int:
             fails += 1
         else:
             print("ok complete_red_gate")
+        home = Path(td) / "hermes-home"
+        (home / "kanban" / "logs").mkdir(parents=True)
+        (home / "kanban" / "logs" / "t_m4.log").write_text(
+            "python3 .hermes/skills/gates/check-domain-parity/scripts/"
+            "check-product-tests.py /projects/modernized  0.1s [exit 1]\n"
+            "OK: assert-retrievable-tree (src/ and pom.xml committed)\n",
+            encoding="utf-8",
+        )
+        r = run(
+            "hermes kanban complete t_m4",
+            roots,
+            cwd=cwd,
+            extra_env={
+                "HERMES_HOME": str(home),
+                "HERMES_KANBAN_TASK": "t_m4",
+            },
+        )
+        msg = r.get("message") or ""
+        if (
+            r.get("action") != "block"
+            or "check-product-tests" not in msg
+            or "kanban_block" not in msg
+        ):
+            print("FAIL complete_ar28_not_cleared_by_later_ok", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok complete_ar28_not_cleared_by_later_ok")
         r = run(
             "mvn -q quarkus:add-extension -Dextensions=quarkus-smallrye-health",
             roots,

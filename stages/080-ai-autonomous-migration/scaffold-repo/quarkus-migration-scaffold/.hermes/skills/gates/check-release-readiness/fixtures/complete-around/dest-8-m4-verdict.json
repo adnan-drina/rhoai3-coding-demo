@@ -1,0 +1,17 @@
+{
+  "gate": "M4_VERDICT",
+  "phase": "M4",
+  "ran": true,
+  "verdict": "PROVISIONAL_ACCEPT",
+  "ship": false,
+  "card_id": "t_132123d5",
+  "pinned_gates": 5,
+  "pre_verdict_checks": "PASS",
+  "surefire": {"tests": 2, "failures": 0, "errors": 0},
+  "oracles": {
+    "O1": "PASS",
+    "O2": "PASS",
+    "O3": "PASS"
+  },
+  "reason": "Pre-verdict checks all passed (retrievable-tree, pinned-gates, g4-claim, fence-evasion). AR-2.8 completion floor idle for boot/security/crud/db. O1/O2/O3 PASS on @QuarkusTest."
+}

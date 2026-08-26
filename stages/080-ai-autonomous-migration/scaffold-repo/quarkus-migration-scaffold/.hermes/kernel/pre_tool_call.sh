@@ -109,18 +109,27 @@ def bound_gate_red():
         text = open(log, encoding="utf-8", errors="replace").read()
     except OSError:
         return None
-    last_fail = None
+    names = (
+        "check-product-tests", "run-m4-pre-verdict", "assert-pinned-gates-ran",
+        "assert-retrievable-tree", "check-spec-readiness", "check-domain-parity",
+        "check-release-readiness", "check-test-toolchain", "check-external-dirs",
+        "check-readiness", "check-partition-coverage", "check-kanban-body",
+        "assert-surefire-results", "assert-m4-card-body",
+    )
+    last = {}
     for line in text.splitlines():
-        m = re.search(
-            r"(check-external-dirs|check-readiness|check-partition-coverage|"
-            r"check-kanban-body|assert-[\w-]+|check-[\w-]+).{0,80}(FAIL|exit 1|REFUSE)",
-            line, re.I,
-        )
-        if m:
-            last_fail = m.group(1)
-        if re.search(r"\b(OK:|exit 0|VALID)\b", line) and last_fail:
-            last_fail = None
-    return last_fail
+        hits = [n for n in names if n in line]
+        if not hits:
+            continue
+        name = max(hits, key=len)
+        if re.search(r"\[exit 1\]|FAIL:|REFUSE", line, re.I):
+            last[name] = name
+        elif re.search(r"\[exit 0\]|\bOK:", line, re.I):
+            last.pop(name, None)
+    for name in names:
+        if name in last:
+            return last[name]
+    return None
 
 if is_complete():
     gate = bound_gate_red()

@@ -83,8 +83,14 @@ sources live under `examples/g1-volume-probe/` (relocated out of template `src/`
 Probe-only trees **REFUSE**
 as acceptance (`check-g1-acceptance-operand.py`).
 
-**AR-2.8:** acceptance also requires product-test **families** boot + security +
-crud + db (`check-product-tests.py`; contract `.hermes/skills/sdd/check-spec-readiness/references/story-scope-and-exit.md`).
+**AR-2.8:** product-test **families** (`check-product-tests.py`). Missing
+`evidence/entry-point-inventory.json` keeps the four-family floor. With
+inventory, require only harvested surfaces: **boot** is start/smoke of those
+HTTP paths (`@QuarkusTest` `GET /greeting` is boot; `/q/health` is not a
+grounding exception). Security / crud / db are **N/A with inventory evidence**
+when M1 found no auth, mutating `/api/`, or datasource — not idle-in-ACCEPT,
+not invent `/q/health`. Contract
+`.hermes/skills/sdd/check-spec-readiness/references/story-scope-and-exit.md`.
 
 ```bash
 # Acceptance operand preflight (probe refuse)
@@ -143,8 +149,9 @@ Operand first, then live evidence, then pin. Scripts are under
    `com.example.tooling.smoke.*`. `G1_OPERAND=tooling_smoke` permits harness-only, and
    that result is never acceptance evidence.
 2. **Qualify the test families** — `check-product-tests.py <root>`. Exit 1
-   unless boot, security, crud and db are each matched by a non-harness test
-   (regex heuristics; explicit `AR28:<family>` markers accepted).
+   when a *required* family is missing. Required = four families if inventory
+   is absent; otherwise inventory-grounded (boot = harvested HTTP start/smoke).
+   Explicit `AR28:<family>` markers accepted. Do not invent `/q/health`.
 3. **Measure G-1 volume live** — `count-pit-dry-run.sh <module> [evidence.json]`
    re-runs steps 1–2 itself, then `mvn test-compile … pitest mutationCoverage
    -Dpit.dryRun=true`, refuses a missing JUnit-5 plugin or a zero-test skip, and
