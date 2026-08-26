@@ -217,6 +217,11 @@ def main() -> int:
     if proc.returncode != 0:
         return _fail("k4_selftest: %s %s" % (proc.stdout, proc.stderr))
 
+    speckit = SCRIPTS / "assert-m2-speckit-conformance.test.py"
+    proc = _run([sys.executable, str(speckit)])
+    if proc.returncode != 0:
+        return _fail("assert-m2-speckit-conformance: %s %s" % (proc.stdout, proc.stderr))
+
     print("OK: batch-3 sdd/partition selftest")
     return 0
 

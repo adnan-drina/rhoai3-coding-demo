@@ -65,6 +65,8 @@ python3 "${HERMES_SKILL_DIR}/scripts/check-operand-count.py" "$ROOT"
 # M2 exit — partition VALID as a whole (1:N dest_file + HTTP 1:1)
 python3 "${HERMES_SKILL_DIR}/scripts/check-partition-coverage.py" "$ROOT" \
   --write-receipt evidence/receipts/partition-coverage/latest.json
+# M2 complete — speckit actually ran (Operator 123401ZO §4; dest-8 missing tasks.md REFUSE)
+python3 "${HERMES_SKILL_DIR}/scripts/assert-m2-speckit-conformance.py" "$ROOT"
 # mint assemble / assert-mint-oracles: deleted with _park/mint (K4 converter)
 ```
 
@@ -106,6 +108,7 @@ KEEP (this skill):
 - `scripts/check-semantic-exits.py` — optional `semantic_families` family lint
 - `scripts/check-operand-count.py` — measured operand_count / wall-fit
 - `scripts/check-partition-coverage.py` — M2 partition VALID receipt
+- `scripts/assert-m2-speckit-conformance.py` — M2 complete: non-empty `tasks.md` + `k4_convert --tasks` (Operator `123401ZO` §4; dest-8 bypass REFUSE)
 - `scripts/assert-partition-invented-routes.py` — constitution VII invented HTTP paths
 - `scripts/partition_story_consistency.py` — stale AC vs endpoints; implicit pom parent
 - `scripts/check-interface-closure.py` — interface closure Class-A gate
@@ -179,6 +182,8 @@ Do **not** invoke DD4-retired R-M3.5/7 stubs (`check-persistence-bom.py`,
   `implicit_pom_parent_vacuous:us1_greeting:setup`); PASS
   `fixtures/partition-dest6-aligned/` (AC matches `GET /greeting`,
   setup claims `check-test-toolchain`).
+  dest-8 M2 bypass REFUSE `fixtures/m2-speckit-bypass-dest8/`
+  (`assert-m2-speckit-conformance.py` exit 1, `M2_SPECKIT_BYPASS`, no `tasks.md`).
   `/q/health` is not a grounding exception. Empty `endpoints` is legal
   scaffolding iff the story names no HTTP path.
   Default partition path is `evidence/partition.json` then
