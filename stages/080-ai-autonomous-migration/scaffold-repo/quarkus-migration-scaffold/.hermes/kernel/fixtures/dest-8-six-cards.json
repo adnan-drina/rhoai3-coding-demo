@@ -1,0 +1,55 @@
+[
+  {
+    "logical_id": "M1",
+    "phase": "M1",
+    "skills": [
+      "derive-legacy-boot3",
+      "scan-with-mta",
+      "inventory-legacy-surface"
+    ],
+    "files_writable": [
+      "evidence/derived/legacy-at-3.json",
+      "evidence/type-inventory.json"
+    ]
+  },
+  {
+    "logical_id": "M2",
+    "phase": "M2",
+    "skills": [
+      "init-spec-workspace",
+      "check-spec-readiness",
+      "derive-story-oracles"
+    ],
+    "files_writable": ["evidence/partition.json"]
+  },
+  {
+    "logical_id": "T001",
+    "phase": "M3",
+    "skills": [
+      "author-destination-pom",
+      "reference-rh-quarkus-pom",
+      "manage-quarkus-extensions"
+    ],
+    "files_writable": ["pom.xml"]
+  },
+  {
+    "logical_id": "T002",
+    "phase": "M3",
+    "skills": ["spring-to-quarkus-patterns"],
+    "files_writable": [
+      "src/main/java/org/acme/GreetingResource.java"
+    ]
+  },
+  {
+    "logical_id": "STAMP_DESTINATION_TREE",
+    "phase": "M3",
+    "skills": ["commit-destination-tree"],
+    "files_writable": ["pom.xml", "src/main/java/org/acme/GreetingResource.java"]
+  },
+  {
+    "logical_id": "M4",
+    "phase": "M4",
+    "skills": ["check-release-readiness", "check-domain-parity"],
+    "files_writable": ["evidence/verdicts/m4-verdict.json"]
+  }
+]

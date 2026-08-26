@@ -103,6 +103,15 @@ def main() -> int:
     except ValueError as exc:
         if "K4_MINT_SKILLS" not in str(exc):
             return _fail("empty skills: %s" % exc)
+
+    no_prod = dict(result["payloads"][1])
+    no_prod["skills"] = ["check-spec-readiness"]
+    try:
+        argv_for_payload(no_prod, {"setup": "t_mint0001"})
+        return _fail("checker-only skills did not refuse")
+    except ValueError as exc:
+        if "K4_NO_PRODUCER" not in str(exc):
+            return _fail("checker-only skills: %s" % exc)
     if parse_created_id('{"id":"t_abc123"}') != "t_abc123":
         return _fail("parse id fallback")
 

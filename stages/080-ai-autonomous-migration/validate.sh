@@ -521,6 +521,12 @@ check "080 emit-required-extensions harvest_referent selftest passes" \
 check "080 plan-migration-partition selftest passes" \
   "python3 '${SCAFFOLD_080}/.hermes/skills/sdd/plan-migration-partition/scripts/plan-migration-partition.test.py' >/dev/null && echo 1 || echo 0" \
   "1"
+check "080 K4 producer-skill bar selftest passes" \
+  "python3 '${SCAFFOLD_KERNEL}/k4_producers.test.py' >/dev/null && echo 1 || echo 0" \
+  "1"
+check "080 compose-m4-verdict selftest passes" \
+  "python3 '${SCAFFOLD_080}/.hermes/skills/gates/compose-m4-verdict/scripts/compose-m4-verdict.test.py' >/dev/null && echo 1 || echo 0" \
+  "1"
 check "080 check-spec-readiness selftest passes" \
   "python3 '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/skills/sdd/check-spec-readiness/scripts/check-spec-readiness-selftest.py' >/dev/null && echo 1 || echo 0" \
   "1"

@@ -1,6 +1,6 @@
 ---
 name: check-release-readiness
-description: Use before advancing or shipping — lint M4/M5 verdict tokens and floor receipts, parse surefire XML, snapshot test reports before any rebuild, and refuse an M4 card body that already names a verdict token or ship flag. Do not use for domain parity (check-domain-parity), wall/crash requeue or chaos (retired with .hermes/_park; rebuild later on dest GO), or phase-dispatch matrix (deleted in v2).
+description: Use before advancing or shipping — lint M4/M5 verdict tokens and floor receipts, parse surefire XML, snapshot test reports before any rebuild, and refuse an M4 card body that already names a verdict token or ship flag. Do not compose evidence/verdicts/m4-verdict.json (compose-m4-verdict). Do not use for domain parity (check-domain-parity), wall/crash requeue or chaos (retired with .hermes/_park; rebuild later on dest GO), or phase-dispatch matrix (deleted in v2).
 license: Apache-2.0
 compatibility: Linux seat; Python 3.11+; reads migration/ receipts
 metadata:
@@ -16,9 +16,12 @@ metadata:
 ---
 ## When to Use
 
-- **A verdict is about to be written or consumed** at M4/M5/factory: confirm
-  every JSON under `evidence/verdicts/` and `evidence/preflight/` carries
-  a legal token + routing pair (M4 is literally `PROVISIONAL_ACCEPT`).
+- **A verdict is about to be consumed** at M4/M5/factory: confirm every
+  JSON under `evidence/verdicts/` and `evidence/preflight/` carries a
+  legal token + routing pair (M4 is literally `PROVISIONAL_ACCEPT` only
+  when `failed_floors` is empty). Skill **`compose-m4-verdict`** is the
+  producer that writes `evidence/verdicts/m4-verdict.json`; this skill
+  lints routing and floors. Do not pin only this leaf on M4.
 - **A ship or `promoted_to_main` claim exists**: factory must not contradict a
   *full* M5 `ACCEPT`, the claim must name a candidate SHA, and standing entry-
   point descopes must force `SCOPED_ACCEPT`.
@@ -26,7 +29,8 @@ metadata:
   G-4 hook).
 - **Not this skill** when the question is whether migrated code still behaves
   like the referent — mutation volume, field conservation, findings delta and
-  HTTP parity are `check-domain-parity`. Wall/crash requeue, chaos, and
+  HTTP parity are `check-domain-parity`. **Not** composing the M4 JSON
+  (`compose-m4-verdict`). Wall/crash requeue, chaos, and
   workspace restore retired with `.hermes/_park/` (Operator GO `155455Z`;
   rebuild later on dest GO; never dump into kernel).
 
@@ -35,7 +39,8 @@ metadata:
 ## Contracts
 
 - `AGENTS.md (doctrine; was validation-release-gates)`
-- This skill (verdict / gate-receipt schemas live here; no `governance/` folder)
+- This skill (routing / gate-receipt schemas live here; `m4-verdict.json`
+  schema is `compose-m4-verdict`; no `governance/` folder)
 - Native Kanban state is the phase DAG (`hermes kanban show --json`)
 
 **§18.0:** M4 verdict = literal `PROVISIONAL_ACCEPT` (never ship); M5 = `ACCEPT`
@@ -68,10 +73,11 @@ Operator `074910ZO`). Commands under **Checks**.
 1. **Completion floors** (refuse a phase that never ran anything real) —
    `check-runnable-db-config.py`, `check-empty-security.py`,
    `check-test-toolchain.py`, and `../check-domain-parity/scripts/check-product-tests.py`.
-2. **Verdict composition** — `check-verdict-routing.py` over
-   `evidence/verdicts/` + `evidence/preflight/`; `check-accept-scope.py` for
-   descope ⇒ `SCOPED_ACCEPT`; `compute-substrate-reopen.py --check <verdict>`
-   (or `--implicated a,b --print`) against `evidence/slices/closure-map.json`.
+2. **Verdict lint** — composition is `compose-m4-verdict`. Then
+   `check-verdict-routing.py` over `evidence/verdicts/` + `evidence/preflight/`;
+   `check-accept-scope.py` for descope ⇒ `SCOPED_ACCEPT`;
+   `compute-substrate-reopen.py --check <verdict>` (or `--implicated a,b
+   --print`) against `evidence/slices/closure-map.json`.
 3. **Semantics (B8)** — `check-semantics-manifest.py` (contract
    `check-semantics-manifest.md`; also via `check-m4-floor-receipts.py`).
 4. **Ship** — `check-factory-m5.py` (required oracle) and

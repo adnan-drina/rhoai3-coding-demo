@@ -101,4 +101,12 @@ REMEDY = {
         "Partition story.skills[] or kind (setup/us/polish) must yield a "
         "non-empty skill list before mint."
     ),
+    "K4_NO_PRODUCER": (
+        "Every M-stage card must pin a skill that owns producing its primary "
+        "artifact (Architect 143941ZA). Checkers (check-*, assert-*) do not "
+        "count. M2 pins plan-migration-partition. M4 pins compose-m4-verdict. "
+        "M3 setup pins author-destination-pom; US pins "
+        "spring-to-quarkus-patterns; STAMP pins commit-destination-tree. "
+        "dest-8 M2 and M4 failed this bar."
+    ),
 }

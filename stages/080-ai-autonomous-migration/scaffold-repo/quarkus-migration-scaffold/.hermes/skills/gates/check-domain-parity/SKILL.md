@@ -26,7 +26,8 @@ metadata:
   report, or re-proving an edited evaluator against the admission fixtures.
 - **Not this skill** when the question is whether a verdict token, phase
   `required_checks`, requeue, or ship claim is *legal* — that is
-  `check-release-readiness`. This skill measures code against the referent and
+  `check-release-readiness`. Composing `evidence/verdicts/m4-verdict.json`
+  is `compose-m4-verdict`. This skill measures code against the referent and
   emits a gate verdict; it never decides what may advance, ship, or requeue.
 
 # Domain gates (ours — AD-H)

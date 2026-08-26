@@ -5,6 +5,8 @@ Does not import create_task. Does not kanban swarm. Does not kanban
 decompose. Does not kanban daemon --force. Default is dry-run argv.
 --exec shells the pin CLI (terminal seat). Model kanban_create has no
 max_retries field; M3 stories require CLI --max-retries 1.
+Refuses a card whose pinned skills contain no producer for its primary
+artifact (k4_producers.py; dest-8 M2+M4 are the negative fixture).
 """
 from __future__ import annotations
 
@@ -21,6 +23,7 @@ if str(_KERNEL) not in sys.path:
     sys.path.insert(0, str(_KERNEL))
 
 from k4_convert import convert_file, format_issues, validate_result  # noqa: E402
+from k4_producers import card_from_payload, producer_issues  # noqa: E402
 from k4_schema import IMPL, REMEDY, VERIFIER_ID, WRITER_ID  # noqa: E402
 
 Issue = tuple[str, str, str]
@@ -170,6 +173,9 @@ def argv_for_payload(
     skills = [str(s).strip() for s in (payload.get("skills") or []) if str(s).strip()]
     if not skills:
         _fail([_issue("K4_MINT_SKILLS", "%s skills empty" % lid)])
+    prod = producer_issues(card_from_payload(payload))
+    if prod:
+        _fail(prod)
     for name in skills:
         argv.extend(["--skill", name])
     argv.append("--json")

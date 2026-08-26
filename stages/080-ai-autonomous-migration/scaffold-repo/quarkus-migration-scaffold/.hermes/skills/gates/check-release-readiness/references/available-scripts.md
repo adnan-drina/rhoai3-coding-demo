@@ -14,7 +14,7 @@ KEEP (this skill — M4/M5 product):
 - `scripts/assert-surefire-results.py` — parse snapshot/live surefire XML; Failures>0 or missing XML is REFUSE
 - `scripts/assert-m4-card-body.py` — refuse `Token:` / `ship:` on the M4 body (dest-4 named none)
 - `scripts/assert-g4-claim-consistency.py` — refuse G-4 `N/A` vs verdict `INCONCLUSIVE` / M5-requires-G-4 (Operator `114101ZO`)
-- `scripts/assert-m4-complete-around-red.py` — refuse `PROVISIONAL_ACCEPT` (or idle-in-reason) when a bound floor `--floor-rc` is 1 (Architect `130758ZA`; dest-8 AR-2.8)
+- `scripts/assert-m4-complete-around-red.py` — refuse `PROVISIONAL_ACCEPT` (or idle-in-reason) when a bound floor `--floor-rc` is 1 (Architect `130758ZA`; dest-8 AR-2.8). Schema + `failed_floors` live on `compose-m4-verdict`.
 - `scripts/run-m4-floor.sh` — run the M4 floor suite (calls `run-m4-pre-verdict.sh` first)
 - `scripts/check-empty-security.py` — empty security config refuse
 - `scripts/check-runnable-db-config.py` — runnable DB config gate

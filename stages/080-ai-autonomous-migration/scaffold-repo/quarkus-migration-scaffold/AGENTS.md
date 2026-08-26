@@ -75,6 +75,7 @@ workspace state.
 | Identity | authored `.hermes/SOUL.md` → loaded `$HERMES_HOME/SOUL.md` |
 | Guidance procedures | `.hermes/skills/<category>/<name>/` (card-attachable) |
 | Domain gates G-1..G-4 | skill `check-domain-parity` |
+| M4 verdict JSON producer | skill `compose-m4-verdict` |
 | M4/M5 verdict routing | skill `check-release-readiness` |
 | M4 pinned-gate evidence | skill `assert-pinned-gates-ran` |
 | M4 retrievable `src/` + `pom.xml` | skill `assert-retrievable-tree` |
@@ -182,6 +183,7 @@ One line each: what it governs → which skill. When a skill is loaded, prefer
 | M2 PLAN procedure + partition.json producer | `plan-migration-partition` |
 | Story-class exit / oracle derivation | `derive-story-oracles` |
 | G-1..G-4 measurement oracles | `check-domain-parity` |
+| M4 VERIFY verdict JSON producer | `compose-m4-verdict` |
 | M4/M5 verdict routing | `check-release-readiness` |
 | M4 pinned-gate evidence (silence fails) | `assert-pinned-gates-ran` |
 | M4 retrievable `src/` + `pom.xml` | `assert-retrievable-tree` |
@@ -202,7 +204,8 @@ One line each: what it governs → which skill. When a skill is loaded, prefer
 - **No `governance/` folder** on the tip. Pins: `.hermes/pins.json`.
 - **Scope + exit are one concern** — `derive-story-oracles` +
   `check-spec-readiness/references/story-scope-and-exit.md`.
-- **Phase / verdict legality** is `check-release-readiness` plus native Kanban
-  state — not a second dispatcher YAML.
+- **Phase / verdict legality** is `compose-m4-verdict` (author
+  `m4-verdict.json`) plus `check-release-readiness` (lint) plus native
+  Kanban state — not a second dispatcher YAML.
 - **1:N dest_file split** is legal coverage (supersede + successor set). HTTP
   routes stay 1:1.
