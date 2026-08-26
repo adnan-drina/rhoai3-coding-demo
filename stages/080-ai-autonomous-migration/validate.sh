@@ -560,6 +560,9 @@ check "080 dest-init smokes specify helper-by-path (W1)" \
 check "080 dest-init specify-smoke selftest (shim-only REFUSE)" \
   "python3 '${SCAFFOLD_080}/.hermes/skills/sdd/init-spec-workspace/scripts/assert-dest-init-smokes-mandated-tools-selftest.py' >/dev/null && echo 1 || echo 0" \
   "1"
+check "080 speckit unknown-then-emit selftest (W1 paired control)" \
+  "python3 '${SCAFFOLD_080}/.hermes/skills/sdd/init-spec-workspace/scripts/assert-speckit-unknown-then-emit.py' >/dev/null && echo 1 || echo 0" \
+  "1"
 check "080 inventory SKILL uses harvest_referent --from-manifest (W4)" \
   "awk '/inventory-entry-points.py/{getline; print}' '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/skills/analysis/inventory-legacy-surface/SKILL.md' | grep -c -- '--from-manifest' || echo 0" \
   "1"

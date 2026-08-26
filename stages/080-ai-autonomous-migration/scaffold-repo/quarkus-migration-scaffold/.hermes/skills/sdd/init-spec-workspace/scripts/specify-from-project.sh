@@ -104,4 +104,10 @@ if [[ -z "${REAL}" || ! -x "${REAL}" ]]; then
 fi
 
 export HOME="${ROOT}"
-exec "${REAL}" "${SPECIFY_ARGS[@]}"
+set +e
+"${REAL}" "${SPECIFY_ARGS[@]}"
+_rc=$?
+set -e
+python3 "${_here}/stamp-speckit-workflow-receipt.py" "${ROOT}" "${_rc}" \
+  "${SPECIFY_ARGS[@]}"
+exit "${_rc}"

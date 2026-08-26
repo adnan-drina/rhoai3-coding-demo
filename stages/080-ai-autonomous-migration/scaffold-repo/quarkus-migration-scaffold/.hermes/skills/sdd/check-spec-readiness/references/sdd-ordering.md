@@ -50,10 +50,12 @@ reclaim.
 | `/speckit-plan` | `spec.md` present | `plan.md` exists | run plan |
 | `/speckit-tasks` | `plan.md` present | never skip ahead of plan | run tasks (always last) |
 
-M2 `kanban_complete` requires a non-empty `.specify/specs/*/tasks.md` and
-`k4_convert.py --tasks` (`assert-m2-speckit-conformance.py`). Missing
-`tasks.md` is dest-8 bypass — REFUSE, not idle. Do not scrape write-sets
-from `tasks.md`.
+M2 `kanban_complete` requires a non-empty `.specify/specs/*/tasks.md`, a
+`specify-from-project.sh` workflow-run receipt whose digest matches that
+file, and `k4_convert.py --tasks` (`assert-m2-speckit-conformance.py`).
+Missing `tasks.md` is dest-8 bypass — REFUSE, not idle. A hand-authored
+`tasks.md` with no receipt is dest-9 M2 — REFUSE (presence is not
+provenance). Do not scrape write-sets from `tasks.md`.
 
 Missing precondition → typed `needs_input` BLOCK. Never invent Spec Kit trees.
 Do **not** rewrite write-once `evidence/partition.json` (or the fixture copy

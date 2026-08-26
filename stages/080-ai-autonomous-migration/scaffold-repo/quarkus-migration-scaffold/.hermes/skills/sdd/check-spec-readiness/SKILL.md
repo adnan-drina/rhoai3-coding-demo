@@ -5,7 +5,7 @@ license: Apache-2.0
 compatibility: Linux seat; Python 3.11+; reads migration/ specs and bodies
 metadata:
   author: rhoai3-harness-team
-  version: "1.7.6"
+    version: "1.7.7"
   hermes:
     tags:
     - sdd
@@ -109,7 +109,7 @@ KEEP (this skill):
 - `scripts/check-semantic-exits.py` — optional `semantic_families` family lint
 - `scripts/check-operand-count.py` — measured operand_count / wall-fit
 - `scripts/check-partition-coverage.py` — M2 partition VALID receipt
-- `scripts/assert-m2-speckit-conformance.py` — M2 complete: non-empty `tasks.md` + `k4_convert --tasks` (Operator `123401ZO` §4; dest-8 bypass REFUSE)
+- `scripts/assert-m2-speckit-conformance.py` — M2 complete: non-empty `tasks.md` **and** a `specify-from-project.sh` workflow-run receipt (digest + rc 0); `k4_convert --tasks` (Operator `123401ZO` §4 / `201929ZO`; dest-8 missing tasks.md REFUSE; dest-9 hand-authored tasks.md REFUSE)
 - `scripts/assert-card-performed.py` — A: official task log (dest-9 M2 `t_af875a24` must REFUSE; GATE-VALIDATION-DESIGN §6)
 - `scripts/assert-partition-invented-routes.py` — constitution VII invented HTTP paths
 - `scripts/assert-partition-invented-files.py` — dest-cite sibling (type-inventory dest_file); not the W3 close (`191845ZA`)
