@@ -5,7 +5,7 @@ license: Apache-2.0
 compatibility: Linux seat; kantra CLI and Java 21; network for rule bundles
 metadata:
   author: rhoai3-harness-team
-  version: "1.4.2"
+  version: "1.4.3"
   hermes:
     tags:
     - analysis
@@ -106,8 +106,10 @@ What it does, in order (each step dies non-zero on failure):
    category, bounded `description`, `disposition`, loci, digests — **no**
    `codeSnip`), then `check-findings-handoff.py <root>` as the gate.
    Then `emit-required-extensions.py <root>` → `evidence/required-extensions.json`
-   (T-3 rewrite of named Quarkus targets + legacy pom artifactIds; never
-   `quarkus-spring-*`). When `$HERMES_KANBAN_TASK` is set, dual-write KEEP
+   (T-3 rewrite of named Quarkus targets + **`harvest_referent`/pom.xml**
+   artifactIds from `evidence/derived/legacy-at-3.json`; never
+   `quarkus-spring-*`; empty `legacy_pom` is REFUSE — do not guess
+   `/projects/legacy`). When `$HERMES_KANBAN_TASK` is set, dual-write KEEP
    evidence with `.hermes/kernel/kanban_attach.py --exec` (25 MB/file; PVC
    paths stay). **M2 PLAN** (`check-spec-readiness`) is the named consumer of
    those attachments — it reads them by parent M1 id, not from metadata path
@@ -199,11 +201,12 @@ Both are required environment facts, not optional tuning.
   do not paper over it.
 - `evidence/required-extensions.json` is present after emit (schema
   `rhoai3.required-extensions/v2`, `entries: [{artifactId, kind}]`).
+  `legacy_pom` is the resolved `harvest_referent` pom (non-empty).
   ArtifactIds are T-3 native Quarkus targets parsed from
   `manage-quarkus-extensions/references/spring-dep-to-extension.md`
   (hibernate-orm, not quarkus-spring-data-jpa). JDBC driver kind comes from
-  the **legacy** `jdbc:` URL through that table. Empty list is valid;
-  missing file is not.
+  the **legacy** `jdbc:` URL through that table. Empty `entries` is valid;
+  empty `legacy_pom` or a missing file is not.
 - Silent-failure catch: `violations` = `{}` (handoff gate reports
   `handoff.rules empty`) or an empty `rule_set` means targets never expanded or
   the analyzer produced nothing — treat as INCONCLUSIVE, not "clean".

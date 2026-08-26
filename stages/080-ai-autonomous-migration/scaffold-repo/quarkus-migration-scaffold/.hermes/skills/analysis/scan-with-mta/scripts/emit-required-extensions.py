@@ -13,6 +13,9 @@ M1 — do not read dest db-kind.
 Usage:
   python3 emit-required-extensions.py <root>
   python3 emit-required-extensions.py <root> --handoff PATH --legacy-pom PATH --out PATH
+
+Legacy pom is `harvest_referent/pom.xml` from evidence/derived/legacy-at-3.json.
+Empty legacy_pom is REFUSE. Do not guess /projects/legacy.
 """
 from __future__ import annotations
 
@@ -44,20 +47,15 @@ SCHEMA = "rhoai3.required-extensions/v2"
 HANDOFF_REL = Path("evidence") / "findings-handoff.json"
 OUT_REL = Path("evidence") / "required-extensions.json"
 INVENTORY_REL = Path("evidence") / "type-inventory.json"
+MANIFEST_REL = Path("evidence") / "derived" / "legacy-at-3.json"
 
 QUARKUS_AID_RE = re.compile(r"quarkus-[a-z0-9-]+", re.I)
 SPRING_QUOTE_RE = re.compile(r"['\"](spring-[a-z0-9-]+)['\"]", re.I)
 ARTIFACT_RE = re.compile(r"<artifactId>\s*([^<]+?)\s*</artifactId>", re.I)
 
-LEGACY_POM_CANDIDATES = (
-    Path("/projects/.derived/legacy-at-3/pom.xml"),
-    Path("evidence/derived/legacy-at-3/pom.xml"),
-)
-LEGACY_ROOT_CANDIDATES = (
-    Path("/projects/.derived/legacy-at-3"),
-    Path("evidence/derived/legacy-at-3"),
-    Path("/projects/legacy"),
-)
+# Do not add /projects/legacy to a pom candidate list (Architect 121231ZA).
+# Identity mode never materialises a legacy-at-3 directory; the pom lives at
+# harvest_referent/pom.xml from evidence/derived/legacy-at-3.json.
 
 
 def _apply_rule(rule: dict) -> set[str]:
@@ -131,25 +129,69 @@ def generated_present(root: Path) -> bool:
     return False
 
 
-def resolve_legacy_pom(root: Path, explicit: Path | None) -> Path | None:
+def load_derive_manifest(root: Path) -> dict | None:
+    path = root / MANIFEST_REL
+    if not path.is_file():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def harvest_referent_dir(root: Path, manifest: dict | None) -> Path | None:
+    if not isinstance(manifest, dict):
+        return None
+    raw = str(manifest.get("harvest_referent") or "").strip()
+    if not raw:
+        return None
+    p = Path(raw)
+    if not p.is_absolute():
+        p = (root / p).resolve()
+    return p
+
+
+def resolve_legacy_pom(
+    root: Path, explicit: Path | None, manifest: dict | None
+) -> tuple[Path | None, str]:
+    """Return (pom, refuse_reason). refuse_reason is empty on success.
+
+    Operator 114924ZO: empty legacy_pom on identity-mode dest-8 was silent
+    miss, not 'nothing found'. Control must REFUSE that shape.
+    """
     if explicit is not None:
-        return explicit if explicit.is_file() else None
-    for cand in LEGACY_POM_CANDIDATES:
-        p = cand if cand.is_absolute() else (root / cand)
-        if p.is_file():
-            return p
-    return None
+        if explicit.is_file():
+            return explicit, ""
+        return None, "LEGACY_POM_UNRESOLVED --legacy-pom is not a file"
+    referent = harvest_referent_dir(root, manifest)
+    if referent is None:
+        return (
+            None,
+            "LEGACY_POM_UNRESOLVED missing harvest_referent in "
+            "evidence/derived/legacy-at-3.json "
+            "(do not guess /projects/legacy)",
+        )
+    pom = referent / "pom.xml"
+    if pom.is_file():
+        return pom, ""
+    return (
+        None,
+        f"LEGACY_POM_UNRESOLVED harvest_referent={referent} has no pom.xml "
+        "(do not guess /projects/legacy)",
+    )
 
 
-def resolve_legacy_root(root: Path, pom: Path | None) -> Path | None:
+def resolve_legacy_root(
+    root: Path, pom: Path | None, manifest: dict | None = None
+) -> Path | None:
     if pom is not None and pom.is_file():
         parent = pom.parent
         if parent.is_dir():
             return parent
-    for cand in LEGACY_ROOT_CANDIDATES:
-        p = cand if cand.is_absolute() else (root / cand)
-        if p.is_dir():
-            return p
+    referent = harvest_referent_dir(root, manifest)
+    if referent is not None and referent.is_dir():
+        return referent
     return None
 
 
@@ -159,6 +201,7 @@ def emit(
     handoff_path: Path,
     legacy_pom: Path | None,
     out_path: Path,
+    manifest: dict | None = None,
 ) -> int:
     if not handoff_path.is_file():
         print(f"FAIL: missing findings-handoff {handoff_path}", file=sys.stderr)
@@ -180,6 +223,13 @@ def emit(
             pom_rel = str(legacy_pom.relative_to(root))
         except ValueError:
             pom_rel = str(legacy_pom)
+    if not pom_rel:
+        print(
+            "REFUSE: LEGACY_POM_UNRESOLVED empty legacy_pom "
+            "(do not guess /projects/legacy)",
+            file=sys.stderr,
+        )
+        return 1
     found = set(from_rules) | set(from_pom)
     if generated_present(root):
         found.add("openapi-generator-maven-plugin")
@@ -187,7 +237,9 @@ def emit(
     if JDBC_GLOB in found or any(
         x.startswith("quarkus-jdbc-") for x in found
     ) or "quarkus-agroal" in found:
-        keys = scan_legacy_jdbc_keys(resolve_legacy_root(root, legacy_pom))
+        keys = scan_legacy_jdbc_keys(
+            resolve_legacy_root(root, legacy_pom, manifest)
+        )
         expanded, jdbc_from = expand_jdbc_glob(found, keys)
         if JDBC_GLOB in found and jdbc_from in {"", "MISSING"}:
             print(
@@ -202,6 +254,7 @@ def emit(
         "schema": SCHEMA,
         "entries": entries,
         "from_rules": rule_ids,
+        "from_pom": from_pom,
         "legacy_pom": pom_rel,
         "jdbc_kind_from": jdbc_from,
     }
@@ -229,8 +282,18 @@ def main(argv: list[str] | None = None) -> int:
     if explicit is not None and not explicit.is_file():
         alt = root / args.legacy_pom
         explicit = alt if alt.is_file() else explicit
-    legacy = resolve_legacy_pom(root, explicit)
-    return emit(root, handoff_path=handoff, legacy_pom=legacy, out_path=out)
+    manifest = load_derive_manifest(root)
+    legacy, err = resolve_legacy_pom(root, explicit, manifest)
+    if err:
+        print(f"REFUSE: {err}", file=sys.stderr)
+        return 1
+    return emit(
+        root,
+        handoff_path=handoff,
+        legacy_pom=legacy,
+        out_path=out,
+        manifest=manifest,
+    )
 
 
 if __name__ == "__main__":

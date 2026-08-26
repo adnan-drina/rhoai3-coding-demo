@@ -14,7 +14,9 @@ something each specimen rediscovers. Tip `pom.xml` MUST include (test scope):
   than on the story that authored the pom (dest-6 `us1_greeting` blocked on
   exactly this; Operator `E-20260825T200914ZO`). BOM-managed version.
 - `io.rest-assured:rest-assured` (already)
-- `org.assertj:assertj-core` (BOM-managed version preferred)
+- `org.assertj:assertj-core` at `.hermes/pins.json` `assertj_core`
+  (RH `quarkus-bom` dest-cited 0 assertj hits — Architect 125110ZA B;
+  do not invent `@version`)
 
 ```bash
 python3 .hermes/skills/gates/check-release-readiness/scripts/check-test-toolchain.py .

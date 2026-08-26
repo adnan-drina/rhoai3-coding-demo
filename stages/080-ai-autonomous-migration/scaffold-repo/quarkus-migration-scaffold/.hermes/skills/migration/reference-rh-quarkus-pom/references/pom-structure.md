@@ -64,7 +64,7 @@ plugin config — not both).
   <dependency>
     <groupId>org.assertj</groupId>
     <artifactId>assertj-core</artifactId>
-    <version><!-- BOM may not manage this; pin a release --></version>
+    <version><!-- `.hermes/pins.json` assertj_core; RH BOM does not manage --></version>
     <scope>test</scope>
   </dependency>
 </dependencies>

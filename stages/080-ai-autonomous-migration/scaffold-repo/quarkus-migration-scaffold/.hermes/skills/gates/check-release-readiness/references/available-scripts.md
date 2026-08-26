@@ -18,7 +18,7 @@ KEEP (this skill — M4/M5 product):
 - `scripts/run-m4-floor.sh` — run the M4 floor suite (calls `run-m4-pre-verdict.sh` first)
 - `scripts/check-empty-security.py` — empty security config refuse
 - `scripts/check-runnable-db-config.py` — runnable DB config gate
-- `scripts/check-test-toolchain.py` — test toolchain presence
+- `scripts/check-test-toolchain.py` — test toolchain presence + assertj pin
 - `scripts/compute-substrate-reopen.py` — substrate reopen set
 
 PARK retired (Operator GO `155455Z`): `.hermes/_park/` is gone. Wall/crash

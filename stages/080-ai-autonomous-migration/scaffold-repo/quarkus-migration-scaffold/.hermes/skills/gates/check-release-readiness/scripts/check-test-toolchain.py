@@ -1,12 +1,22 @@
 #!/usr/bin/env python3
 """S-010 Class A — scaffold must declare test toolchain (assertj + rest-assured).
 
-Exit 0 when pom.xml includes both test-scoped deps (or BOM-imported GAVs).
-Exit 1 (REFUSE) when either is missing — harness decision, not specimen rediscovery.
+Exit 0 when pom.xml includes both test-scoped deps (or BOM-imported GAVs)
+and assertj-core@version matches .hermes/pins.json assertj_core.
+
+Exit 1 (REFUSE) when either is missing, assertj has no version, or the
+version does not match the pin. RH quarkus-bom dest-cited 0 assertj hits
+(Architect 125110ZA option B) — do not invent a version, and do not accept
+an unpinned @version.
+
+Usage:
+  python3 check-test-toolchain.py .
+  python3 check-test-toolchain.py /projects/modernized
 """
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import sys
 from pathlib import Path
@@ -31,28 +41,55 @@ def has_dep(pom: str, group: str, artifact: str) -> bool:
     return re.search(pattern, pom, re.S) is not None
 
 
-def assertj_has_version(pom: str) -> bool:
-    """RH Quarkus BOM may not manage assertj — require an explicit version."""
+def pom_prop(pom: str, key: str) -> str:
+    m = re.search(
+        rf"<{re.escape(key)}>\s*([^<]+)\s*</{re.escape(key)}>",
+        pom,
+    )
+    return m.group(1).strip() if m else ""
+
+
+def resolve_version_token(raw: str, pom: str) -> str:
+    token = (raw or "").strip()
+    m = re.fullmatch(r"\$\{([^}]+)\}", token)
+    if m:
+        return pom_prop(pom, m.group(1))
+    return token
+
+
+def assertj_version(pom: str) -> str | None:
+    """Return the resolved <version> or None if the dep block is absent.
+
+    Empty string means the dep is present but has no version element.
+    """
     m = re.search(
         r"<groupId>\s*org\.assertj\s*</groupId>\s*"
         r"<artifactId>\s*assertj-core\s*</artifactId>\s*"
-        r"(?:<version>\s*[^<]+\s*</version>\s*)?"
-        r"<scope>\s*test\s*</scope>",
+        r".*?</dependency>",
         pom,
         re.S,
     )
     if not m:
-        # allow version after scope too
-        m = re.search(
-            r"<groupId>\s*org\.assertj\s*</groupId>\s*"
-            r"<artifactId>\s*assertj-core\s*</artifactId>.*?</dependency>",
-            pom,
-            re.S,
-        )
-        if not m:
-            return False
-        return bool(re.search(r"<version>\s*[^<]+\s*</version>", m.group(0)))
-    return "<version>" in m.group(0)
+        return None
+    vm = re.search(r"<version>\s*([^<]+)\s*</version>", m.group(0))
+    if not vm:
+        return ""
+    return resolve_version_token(vm.group(1), pom)
+
+
+def assertj_pin(root: Path) -> str:
+    path = root / ".hermes" / "pins.json"
+    if not path.is_file():
+        raise FileNotFoundError(str(path))
+    data = json.loads(path.read_text(encoding="utf-8"))
+    pins = data.get("pins") if isinstance(data, dict) else None
+    if not isinstance(pins, dict):
+        raise ValueError("pins.json missing pins object")
+    row = pins.get("assertj_core") or {}
+    ver = str(row.get("version") or "").strip()
+    if not ver:
+        raise ValueError("assertj_core version missing in .hermes/pins.json")
+    return ver
 
 
 def main() -> int:
@@ -78,14 +115,34 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
-    if not assertj_has_version(pom):
+    try:
+        pin = assertj_pin(root)
+    except Exception as exc:  # noqa: BLE001
+        print(f"FAIL: cannot load assertj_core pin: {exc}", file=sys.stderr)
+        return 1
+    got = assertj_version(pom)
+    if got is None:
+        print("FAIL: org.assertj:assertj-core block unreadable", file=sys.stderr)
+        return 1
+    if not got:
         print(
             "FAIL: org.assertj:assertj-core present but missing <version> "
-            "(RH Quarkus BOM may not manage it)",
+            "(RH quarkus-bom dest-cited 0 assertj hits; pin from "
+            ".hermes/pins.json assertj_core)",
             file=sys.stderr,
         )
         return 1
-    print("OK: test toolchain present (quarkus-junit5 + rest-assured + assertj-core@version)")
+    if got != pin:
+        print(
+            f"FAIL: pom assertj-core version {got!r} != pins.json {pin!r} "
+            "(do not invent a GAV; Architect 125110ZA)",
+            file=sys.stderr,
+        )
+        return 1
+    print(
+        "OK: test toolchain present "
+        "(quarkus-junit5 + rest-assured + assertj-core pin)"
+    )
     return 0
 
 

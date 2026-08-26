@@ -5,7 +5,7 @@ license: Apache-2.0
 compatibility: Linux seat; Python 3.11+; reads migration/ receipts
 metadata:
   author: rhoai3-harness-team
-  version: "1.5.0"
+  version: "1.5.1"
   hermes:
     tags:
     - gates
@@ -117,7 +117,7 @@ python3 "${HERMES_SKILL_DIR}/../check-domain-parity/scripts/check-product-tests.
 python3 "${HERMES_SKILL_DIR}/scripts/assert-m4-complete-around-red.py" \
   --verdict /projects/modernized/evidence/verdicts/m4-verdict.json --floor-rc 1
 
-# S-010 Class A — assertj-core + rest-assured in pom (harness-owned toolchain)
+# S-010 Class A — assertj-core pin + rest-assured in pom (harness-owned toolchain)
 python3 "${HERMES_SKILL_DIR}/scripts/check-test-toolchain.py" /projects/modernized
 
 # Wall/crash requeue, chaos, workspace restore: retired with `_park/`

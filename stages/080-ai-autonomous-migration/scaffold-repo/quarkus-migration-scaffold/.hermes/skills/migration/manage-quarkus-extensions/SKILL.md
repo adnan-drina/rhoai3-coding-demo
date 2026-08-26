@@ -5,7 +5,7 @@ license: Apache-2.0
 compatibility: Linux seat; Red Hat Quarkus platform; quarkus CLI optional
 metadata:
   author: rhoai3-harness-team
-  version: "1.1.0"
+  version: "1.2.0"
   hermes:
     tags:
     - migration
@@ -97,7 +97,8 @@ Spring→extension decision aid: `references/spring-dep-to-extension.md`.
 ## Verification
 
 - `scripts/check-pom-platform-pins.py <root>` exits 0 with
-  `OK: pom platform pins match `.hermes/pins.json``.
+  `OK: pom platform pins match `.hermes/pins.json`` (platform GAV **and**
+  `compiler-plugin.version` / `surefire-plugin.version` from pins).
 - When pom exists: `scripts/check-pom-jacoco-wiring.py <root>` exits 0
   (foundation Jacoco / dual Sonar paths / surefire argLine).
 - `scripts/assert-extension-tooling.py` exits 0 (CLI+RH-first or Maven fallback).

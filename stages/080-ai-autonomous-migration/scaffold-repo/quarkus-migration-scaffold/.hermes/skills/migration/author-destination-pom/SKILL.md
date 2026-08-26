@@ -5,7 +5,7 @@ license: Apache-2.0
 compatibility: Linux seat; Red Hat Quarkus platform; quarkus CLI optional (extensions only)
 metadata:
   author: rhoai3-harness-team
-  version: "2.2.1"
+  version: "2.3.0"
   hermes:
     tags:
     - migration
@@ -57,7 +57,8 @@ documents hand-authoring as a dedicated path.
      `references/foundation-jacoco-wiring.md` (A-3 / H-3 — build
      infrastructure, not story-owned) **and** the S-010 test toolchain
      (`io.quarkus:quarkus-junit5` + `io.rest-assured:rest-assured` +
-     `org.assertj:assertj-core@version`,
+     `org.assertj:assertj-core` at `.hermes/pins.json` `assertj_core`
+     (RH BOM dest-cited 0 assertj hits — Architect 125110ZA B),
      `../manage-quarkus-extensions/references/test-toolchain.md`). These
      are harness-owned Maven test deps, not Quarkus extensions.
    - Java release and surefire from pins

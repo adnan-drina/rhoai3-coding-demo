@@ -509,6 +509,15 @@ check "080 dest-init external_dirs fail-closed names unreadable path" \
 check "080 check-external-dirs requires dest-user home literal" \
   "grep -c '/home/user/.hermes/skills' '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/skills/sdd/init-spec-workspace/scripts/check-external-dirs.py' || echo 0" \
   "3"
+check "080 pom platform-pins plugin coverage selftest passes" \
+  "python3 '${SCAFFOLD_080}/.hermes/skills/migration/manage-quarkus-extensions/scripts/check-pom-platform-pins.test.py' >/dev/null && echo 1 || echo 0" \
+  "1"
+check "080 test-toolchain assertj pin selftest passes" \
+  "python3 '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/skills/gates/check-release-readiness/scripts/check-test-toolchain.test.py' >/dev/null && echo 1 || echo 0" \
+  "1"
+check "080 emit-required-extensions harvest_referent selftest passes" \
+  "python3 '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/skills/analysis/scan-with-mta/scripts/emit-required-extensions.test.py' >/dev/null && echo 1 || echo 0" \
+  "1"
 check "080 check-spec-readiness selftest passes" \
   "python3 '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/skills/sdd/check-spec-readiness/scripts/check-spec-readiness-selftest.py' >/dev/null && echo 1 || echo 0" \
   "1"

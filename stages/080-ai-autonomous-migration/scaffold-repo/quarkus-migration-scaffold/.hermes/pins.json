@@ -19,6 +19,26 @@
       "version": "3.27.3.SP1-redhat-00002",
       "plugin_artifact_id": "quarkus-maven-plugin"
     },
+    "compiler_plugin": {
+      "group_id": "org.apache.maven.plugins",
+      "artifact_id": "maven-compiler-plugin",
+      "version": "3.11.0",
+      "pom_property": "compiler-plugin.version",
+      "note": "RHBQ 3.27 Developing and compiling your Red Hat build of Quarkus applications with Apache Maven — properties example compiler-plugin.version 3.11.0. Not dest-8 recall 3.13.0. https://docs.redhat.com/en/documentation/red_hat_build_of_quarkus/3.27/html-single/developing_and_compiling_your_red_hat_build_of_quarkus_applications_with_apache_maven/index"
+    },
+    "surefire_plugin": {
+      "group_id": "org.apache.maven.plugins",
+      "artifact_id": "maven-surefire-plugin",
+      "version": "3.1.2",
+      "pom_property": "surefire-plugin.version",
+      "note": "Same RHBQ 3.27 Maven chapter — properties example surefire-plugin.version 3.1.2. Not dest-8 recall 3.5.2."
+    },
+    "assertj_core": {
+      "group_id": "org.assertj",
+      "artifact_id": "assertj-core",
+      "version": "3.27.7",
+      "note": "Architect 125110ZA option B. RH quarkus-bom 3.27.3.SP1-redhat-00002 (maven.repository.redhat.com/ga, 417447 B) contains 0 assertj hits — BOM does not manage it. Version from Quarkus 3.27.3 build-parent assertj.version (https://github.com/quarkusio/quarkus/blob/3.27.3/build-parent/pom.xml). Not 3.27.3 (platform echo)."
+    },
     "mapstruct": {
       "status": "unpinned",
       "doctrine": "pending R-SKILL-F",
