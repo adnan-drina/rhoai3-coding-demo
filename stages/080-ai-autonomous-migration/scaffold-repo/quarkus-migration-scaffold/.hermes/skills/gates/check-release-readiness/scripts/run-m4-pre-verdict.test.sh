@@ -21,11 +21,17 @@ trap 'rm -rf "$TMP"' EXIT
 git -C "$TMP" init -q
 git -C "$TMP" config user.email test@example.com
 git -C "$TMP" config user.name test
-mkdir -p "$TMP/src/main/java" "$TMP/target/surefire-reports" "$TMP/evidence/verdicts"
+mkdir -p "$TMP/src/main/java" "$TMP/target/surefire-reports" "$TMP/evidence/receipts/gates"
 echo 'class App {}' > "$TMP/src/main/java/App.java"
 echo '<project/>' > "$TMP/pom.xml"
 git -C "$TMP" add src pom.xml
 git -C "$TMP" commit -q -m base
+
+RECEIPT="${SCRIPT_DIR}/../../assert-pinned-gates-ran/scripts/write-gate-receipt.py"
+for g in check-spec-readiness check-domain-parity check-release-readiness; do
+  python3 "${RECEIPT}" --root "$TMP" --gate "$g" --rc 0 --producer "${g}.py" -- \
+    python3 "${g}.py" "$TMP"
+done
 
 cat > "$TMP/target/surefire-reports/TEST-com.demo.GreetingResourceTest.xml" <<'XML'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -33,11 +39,6 @@ cat > "$TMP/target/surefire-reports/TEST-com.demo.GreetingResourceTest.xml" <<'X
   <testcase name="testHelloEndpoint" classname="com.demo.GreetingResourceTest" time="0.05"/>
 </testsuite>
 XML
-
-for g in check-spec-readiness check-domain-parity check-release-readiness; do
-  printf '%s\n' "{\"gate\":\"${g}\",\"ran\":true,\"verdict\":\"INCONCLUSIVE\"}" \
-    > "$TMP/evidence/verdicts/${g}.json"
-done
 
 export M4_CARD_BODY='M4 acceptance; verdict is O1/O2/O3 over the built artefact.'
 

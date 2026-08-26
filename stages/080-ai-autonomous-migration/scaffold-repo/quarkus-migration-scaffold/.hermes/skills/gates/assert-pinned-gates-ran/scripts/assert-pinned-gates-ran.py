@@ -7,17 +7,30 @@ minted ``refusals/check-domain-parity.json`` with ``ran: false`` and this
 gate accepted it. Presence of an artifact is not evidence the gate ran.
 ``specimen-n/a: no DB`` is a refusal *reason* on a run (``ran: true``),
 not a skip. Do not require G-1 kill-ratio, Owner/Pet, or a runnable DB
-as proof a gate ran. Do not idle-exit-0 on missing artifacts. Do not
-accept artifacts authored on the M4 card under test.
+as proof a gate ran. Do not idle-exit-0 on missing artifacts. ``ran: true`` under
+``evidence/verdicts/`` is self-attested. Require ``evidence/receipts/gates/``
+(argv, rc, producer). M4 ``write_file`` of that path is fenced.
 """
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
 import sys
 from pathlib import Path
 from typing import Any, Iterable
+
+_HERE = Path(__file__).resolve().parent
+_spec = importlib.util.spec_from_file_location(
+    "write_gate_receipt", _HERE / "write-gate-receipt.py"
+)
+_mod = importlib.util.module_from_spec(_spec)
+assert _spec.loader is not None
+_spec.loader.exec_module(_mod)
+RECEIPT_DIR = _mod.RECEIPT_DIR
+is_runner_receipt = _mod.is_runner_receipt
+write_receipt = _mod.write_receipt
 
 PINNED_GATE_LEAVES = frozenset(
     {
@@ -130,30 +143,45 @@ def is_run_evidence(doc: dict, card_id: str) -> bool:
     return True
 
 
+def iter_receipt_json(root: Path) -> Iterable[Path]:
+    base = root / RECEIPT_DIR
+    if not base.is_dir():
+        return []
+    return sorted(path for path in base.glob("*.json") if path.is_file())
+
+
+def receipt_names_gate(path: Path, gate: str) -> bool:
+    if path.stem == gate:
+        return True
+    doc = _load_obj(path)
+    if doc is None:
+        return False
+    return str(doc.get("gate") or "").strip() == gate
+
+
 def has_ran_verdict(root: Path, gate: str, card_id: str = "") -> bool:
-    for path in iter_verdict_json(root):
-        if not verdict_names_gate(path, gate):
+    del card_id  # M4 task id on a runner receipt is correlation, not mint
+    for path in iter_receipt_json(root):
+        if not receipt_names_gate(path, gate):
             continue
         doc = _load_obj(path)
         if doc is None:
             continue
-        if is_run_evidence(doc, card_id):
+        if is_runner_receipt(doc):
             return True
     return False
 
 
 def write_self_verdict(root: Path, evidenced: list[str]) -> None:
-    path = root / VERDICT_DIR / (SELF + ".json")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    doc = {
-        "gate": SELF,
-        "ran": True,
-        "verdict": "PASS",
-        "reason": "all pinned gates evidenced",
-        "evidenced": evidenced,
-        "ship": False,
-    }
-    path.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
+    argv = [sys.executable, str(Path(__file__).resolve()), str(root)]
+    write_receipt(
+        root,
+        SELF,
+        argv=argv,
+        rc=0,
+        producer=str(Path(__file__).resolve().name),
+        run_id="assert-pinned-gates-ran:" + ",".join(evidenced),
+    )
 
 
 def check_root(root: Path, skills: list[str], card_id: str = "") -> int:
@@ -171,8 +199,9 @@ def check_root(root: Path, skills: list[str], card_id: str = "") -> int:
         return _fail(
             "pinned gate(s) left no run evidence: "
             + ", ".join(missing)
-            + " (ran:false / missing ran / release token / minted-on-this-card "
-            "are not a run; silence fails)"
+            + " (ran:true under evidence/verdicts/ is self-attested; "
+            "require evidence/receipts/gates/ with argv, rc, producer; "
+            "silence fails)"
         )
     if SELF in pinned:
         write_self_verdict(root, evidenced)

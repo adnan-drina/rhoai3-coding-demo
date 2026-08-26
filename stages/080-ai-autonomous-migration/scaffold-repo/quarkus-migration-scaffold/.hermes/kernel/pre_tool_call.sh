@@ -22,6 +22,7 @@
 # widening (AD-020). Write-set deny. Orchestrator disabled-toolset named
 # refusal. kanban_complete refused when a bound gate last exited non-zero.
 # Batch 6: M4/VERDICT writes default to evidence/; add-extension is implement.
+# F4: M4 must not write_file evidence/receipts/gates/ (runners write receipts).
 set -euo pipefail
 exec python3 -c '
 import json, os, re, sys
@@ -467,6 +468,12 @@ def writeset_ok_mkdir(rel, writeset):
             return True
     return False
 
+def is_gate_receipt_rel(rel):
+    rel = (rel or "").replace("\\", "/").lstrip("./")
+    if rel == "evidence/receipts/gates" or rel.startswith("evidence/receipts/gates/"):
+        return True
+    return "/evidence/receipts/gates/" in ("/" + rel.strip("/") + "/")
+
 WRITE_TOOLS = {
     "write_file", "write", "patch", "edit_file", "str_replace",
     "apply_patch", "create_file",
@@ -520,6 +527,18 @@ if phase in {"M4", "VERDICT"}:
         "quarkus:add-extension" in cmd or re.search(r"\badd-extension\b", cmd)
     ):
         block("M4 VERDICT must not implement; quarkus:add-extension writes pom.xml")
+    receipt_check = []
+    if tool in WRITE_TOOLS:
+        receipt_check = list(paths)
+    elif looks_like_write_cmd(cmd):
+        receipt_check = list(paths)
+    for p in receipt_check:
+        rel = dest_rel(resolve_rp(p)) or str(p).replace("\\", "/").lstrip("./")
+        if is_gate_receipt_rel(rel):
+            block(
+                "M4 must not write_file gate receipts; runners write "
+                "evidence/receipts/gates/; compose-m4-verdict consumes"
+            )
     if writeset is None:
         writeset = ["evidence/"]
     else:

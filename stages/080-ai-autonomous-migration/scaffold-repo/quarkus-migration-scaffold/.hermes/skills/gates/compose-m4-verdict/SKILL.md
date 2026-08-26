@@ -11,7 +11,7 @@ license: Apache-2.0
 compatibility: Linux seat; Python 3.11+; Hermes Kanban
 metadata:
   author: rhoai3-harness-team
-  version: "1.0.0"
+  version: "1.1.0"
   hermes:
     tags:
     - gates
@@ -21,11 +21,12 @@ metadata:
 ---
 # Compose the M4 verdict (M4 producer)
 
-This skill **owns `evidence/verdicts/m4-verdict.json`**. It is the
-producer `check-release-readiness` defers to. Pin it on the M4 card
-(`--skill compose-m4-verdict`). Checkers lint the file; they do not
-author it. dest-8 invented a shape with no slot for a failed floor and
-called AR-2.8 `"idle"` (Operator `130951ZO` / `143706ZO`).
+This skill **owns `evidence/verdicts/m4-verdict.json`**. It **consumes**
+`evidence/receipts/gates/` (argv, rc, producer). It does **not** author
+those receipts. Pin it on the M4 card (`--skill compose-m4-verdict`).
+Checkers lint the verdict file; they do not author receipts. dest-8
+invented a shape with no slot for a failed floor and called AR-2.8
+`"idle"` (Operator `130951ZO` / `143706ZO`).
 
 Schema: `references/m4-verdict-schema.md`. Keep it in sync with
 `scripts/assert-m4-verdict-schema.py` via
@@ -118,5 +119,6 @@ Do not dest-dispatch M5.
 - Pinning only `check-release-readiness` + `check-domain-parity` (dest-8
   M4). Those skills consume a verdict; they do not own its fields.
 - Calling a failed floor `"idle"` because no schema named `failed_floors`.
+- Authoring `evidence/receipts/gates/` from M4 `write_file` (fence REFUSE).
 - Treating checker idle-exit-0 (artifact absent) as a pass for a floor
   that actually exited 1.

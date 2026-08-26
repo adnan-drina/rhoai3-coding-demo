@@ -41,6 +41,9 @@ def main() -> int:
     if "failed_floors" not in skill_md:
         print("FAIL: SKILL.md must name failed_floors", file=sys.stderr)
         return 1
+    if "evidence/receipts/gates/" not in skill_md:
+        print("FAIL: SKILL.md must consume evidence/receipts/gates/", file=sys.stderr)
+        return 1
     if "idle" not in skill_md.lower():
         print("FAIL: SKILL.md must fold failed-floor-as-idle", file=sys.stderr)
         return 1

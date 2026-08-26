@@ -2,17 +2,16 @@
 name: assert-pinned-gates-ran
 description: >
   Use before writing M4 PROVISIONAL_ACCEPT — refuse unless every gate skill
-  pinned on the M4 card has a verdict whose ran field is true. ran false,
-  a missing ran field, a PROVISIONAL_ACCEPT/ACCEPT artifact, or a file that
-  names this M4 task id is not a run. Silence fails. specimen-n/a: no DB is
-  a reason on a ran-true N/A, not a skip. Do not idle-exit-0 on missing
-  artifacts. Do not use for domain measurement (check-domain-parity) or
-  M4 body/surefire lint (check-release-readiness).
+  pinned on the M4 card has a runner receipt under evidence/receipts/gates/
+  with argv, rc, and producer. ran true under evidence/verdicts/, a missing
+  receipt, or M4 write_file of the receipt path is not a run. Silence fails.
+  Do not idle-exit-0 on missing artifacts. Do not use for domain measurement
+  (check-domain-parity) or M4 body/surefire lint (check-release-readiness).
 license: Apache-2.0
 compatibility: Linux seat; Python 3.11+; git not required
 metadata:
   author: rhoai3-harness-team
-  version: "1.1.0"
+  version: "1.2.0"
   hermes:
     tags:
     - gates
@@ -50,19 +49,20 @@ python3 "${HERMES_SKILL_DIR}/scripts/assert-pinned-gates-ran.py" /projects/moder
 Env `M4_CARD_SKILLS` is OBJECT (Architect `130758ZA` dest-8 override). `--card-id` /
 `HERMES_KANBAN_TASK` rejects artifacts that name this M4 task.
 
-For each pinned gate leaf: require a JSON under `evidence/verdicts/`
-(including `refusals/`) that names it **and** `"ran": true`. A missing
-`ran` field, `"ran": false`, a `PROVISIONAL_ACCEPT`/`ACCEPT`/`SCOPED_ACCEPT`
-token, or a document that contains this card's id is **not** a run.
-`specimen-n/a: no DB` belongs on a `"ran": true` `"verdict": "N/A"` file.
+For each pinned gate leaf: require a JSON under `evidence/receipts/gates/`
+that names it **and** carries `cmd`, `argv`, `rc`, `input_digest`,
+`producer` (not `compose-m4-verdict`). `ran: true` under
+`evidence/verdicts/` is self-attested and is **not** a run. M4
+`write_file` of `evidence/receipts/gates/` is fenced.
 
 This script does not write `PROVISIONAL_ACCEPT`. On pass, if this leaf is
-pinned, it writes `evidence/verdicts/assert-pinned-gates-ran.json` so its
-own pin is evidenced.
+pinned, it writes `evidence/receipts/gates/assert-pinned-gates-ran.json`
+so its own pin is evidenced.
 
 ## Pitfalls
 
 - Reading a missing `evidence/verdicts/` tree as skip.
 - Treating `"ran": false` plus a reason as evidence the gate ran.
-- Minting PASS/refusal JSON on the verdict card to green this gate.
+- Minting PASS JSON under `evidence/verdicts/` on the M4 card to green this gate.
+- M4 `write_file` of `evidence/receipts/gates/` (fence REFUSE; runners write).
 - Running this before `assert-retrievable-tree` when that leaf is also pinned.

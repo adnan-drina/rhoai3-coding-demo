@@ -527,6 +527,12 @@ check "080 K4 producer-skill bar selftest passes" \
 check "080 compose-m4-verdict selftest passes" \
   "python3 '${SCAFFOLD_080}/.hermes/skills/gates/compose-m4-verdict/scripts/compose-m4-verdict.test.py' >/dev/null && echo 1 || echo 0" \
   "1"
+check "080 assert-pinned-gates-ran receipts selftest passes" \
+  "python3 '${SCAFFOLD_080}/.hermes/skills/gates/assert-pinned-gates-ran/scripts/assert-pinned-gates-ran.test.py' >/dev/null && echo 1 || echo 0" \
+  "1"
+check "080 run-m4-pre-verdict selftest passes" \
+  "bash '${SCAFFOLD_080}/.hermes/skills/gates/check-release-readiness/scripts/run-m4-pre-verdict.test.sh' >/dev/null && echo 1 || echo 0" \
+  "1"
 check "080 cold-cache maven-settings skill text selftest passes" \
   "python3 '${SCAFFOLD_080}/.hermes/skills/migration/reference-rh-quarkus-pom/scripts/reference-rh-quarkus-pom.test.py' >/dev/null && echo 1 || echo 0" \
   "1"

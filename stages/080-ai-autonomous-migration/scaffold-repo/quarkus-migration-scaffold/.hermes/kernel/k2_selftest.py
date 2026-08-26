@@ -335,6 +335,26 @@ def main() -> int:
             fails += 1
         else:
             print("ok m4_write_verdict")
+        r = run(
+            "",
+            roots,
+            cwd=cwd,
+            tool="write_file",
+            extra_input={
+                "path": str(dest / "evidence" / "receipts" / "gates" / "check-domain-parity.json")
+            },
+            extra_env={
+                "K2_CARD_PHASE": "M4",
+                "HERMES_WRITE_SAFE_ROOT": str(dest),
+                "K2_STORY_ID": "verdict",
+            },
+        )
+        msg = r.get("message") or ""
+        if r.get("action") != "block" or "gate receipts" not in msg:
+            print("FAIL m4_write_gate_receipt", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok m4_write_gate_receipt")
         expect_block(
             "cat /etc/passwd > /dev/null",
             "passwd_to_null",

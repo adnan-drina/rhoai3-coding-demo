@@ -85,7 +85,7 @@ class PinnedGatesTests(unittest.TestCase):
             self.assertIn("check-domain-parity", proc.stderr)
             self.assertIn("silence fails", proc.stderr)
 
-    def test_named_verdict_passes(self) -> None:
+    def test_named_verdict_is_not_a_run(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             path = root / "evidence" / "verdicts" / "m4.json"
@@ -96,6 +96,42 @@ class PinnedGatesTests(unittest.TestCase):
                         "gate": "check-domain-parity",
                         "ran": True,
                         "verdict": "INCONCLUSIVE",
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            proc = run_pinned(root, ["--skills", "check-domain-parity"])
+            self.assertNotEqual(proc.returncode, 0, proc.stderr)
+            self.assertIn("self-attested", proc.stderr)
+
+    def test_runner_receipt_passes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            path = (
+                root
+                / "evidence"
+                / "receipts"
+                / "gates"
+                / "check-domain-parity.json"
+            )
+            path.parent.mkdir(parents=True)
+            argv = ["python3", "check-domain-parity.py", str(root)]
+            digest = __import__("hashlib").sha256(
+                __import__("json")
+                .dumps({"argv": argv, "extra": ""}, sort_keys=True, separators=(",", ":"))
+                .encode()
+            ).hexdigest()
+            path.write_text(
+                json.dumps(
+                    {
+                        "gate": "check-domain-parity",
+                        "cmd": " ".join(argv),
+                        "argv": argv,
+                        "rc": 0,
+                        "input_digest": digest,
+                        "producer": "check-domain-parity.py",
+                        "run_id": "test",
                     }
                 )
                 + "\n",
@@ -159,11 +195,17 @@ class PinnedGatesTests(unittest.TestCase):
     def test_specimen_na_run_passes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
+            argv = ["python3", "check-domain-parity.py", str(root)]
+            digest = __import__("hashlib").sha256(
+                __import__("json")
+                .dumps({"argv": argv, "extra": ""}, sort_keys=True, separators=(",", ":"))
+                .encode()
+            ).hexdigest()
             path = (
                 root
                 / "evidence"
-                / "verdicts"
-                / "refusals"
+                / "receipts"
+                / "gates"
                 / "check-domain-parity.json"
             )
             path.parent.mkdir(parents=True)
@@ -171,9 +213,12 @@ class PinnedGatesTests(unittest.TestCase):
                 json.dumps(
                     {
                         "gate": "check-domain-parity",
-                        "ran": True,
-                        "verdict": "N/A",
-                        "reason": "specimen-n/a: no DB",
+                        "cmd": " ".join(argv),
+                        "argv": argv,
+                        "rc": 0,
+                        "input_digest": digest,
+                        "producer": "check-domain-parity.py",
+                        "run_id": "specimen-n/a: no DB",
                     }
                 )
                 + "\n",
@@ -182,7 +227,7 @@ class PinnedGatesTests(unittest.TestCase):
             proc = run_pinned(root, ["--skills", "check-domain-parity"])
             self.assertEqual(proc.returncode, 0, proc.stderr)
 
-    def test_minted_on_this_card_is_not_a_run(self) -> None:
+    def test_minted_on_this_card_verdict_is_not_a_run(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             path = root / "evidence" / "verdicts" / "check-domain-parity.json"
@@ -205,16 +250,19 @@ class PinnedGatesTests(unittest.TestCase):
             )
             self.assertNotEqual(proc.returncode, 0)
 
-    def test_self_pin_writes_verdict(self) -> None:
+    def test_self_pin_writes_receipt(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             proc = run_pinned(root, ["--skills", "assert-pinned-gates-ran"])
             self.assertEqual(proc.returncode, 0, proc.stderr)
-            written = root / "evidence" / "verdicts" / "assert-pinned-gates-ran.json"
+            written = (
+                root / "evidence" / "receipts" / "gates" / "assert-pinned-gates-ran.json"
+            )
             self.assertTrue(written.is_file())
             doc = json.loads(written.read_text(encoding="utf-8"))
             self.assertEqual(doc.get("gate"), "assert-pinned-gates-ran")
-            self.assertNotEqual(doc.get("verdict"), "PROVISIONAL_ACCEPT")
+            self.assertIn("argv", doc)
+            self.assertEqual(doc.get("producer"), "assert-pinned-gates-ran.py")
 
 
 class RetrievableTreeTests(unittest.TestCase):

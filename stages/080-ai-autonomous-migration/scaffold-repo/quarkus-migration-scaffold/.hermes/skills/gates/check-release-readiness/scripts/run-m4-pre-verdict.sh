@@ -32,16 +32,32 @@ DETECTOR="${SCRIPT_DIR}/../../assert-no-fence-evasion/scripts/assert-no-fence-ev
 G4="${SCRIPT_DIR}/assert-g4-claim-consistency.py"
 RESOLVE="${SCRIPT_DIR}/resolve-m4-work-logs.py"
 DEFAULT_SKILLS="check-spec-readiness,check-domain-parity,check-release-readiness,assert-pinned-gates-ran,assert-retrievable-tree"
+RECEIPT="${SCRIPT_DIR}/../../assert-pinned-gates-ran/scripts/write-gate-receipt.py"
 if [[ -n "${M4_CARD_SKILLS:-}" ]]; then
   echo "FAIL: M4_CARD_SKILLS override is OBJECT (Architect 130758ZA); do not widen or replace card pins" >&2
   exit 1
 fi
 SKILLS="${DEFAULT_SKILLS}"
 
+run_gate() {
+  local gate="$1"
+  shift
+  local rc=0
+  "$@" || rc=$?
+  python3 "${RECEIPT}" \
+    --root "${PRODUCT_ROOT}" \
+    --gate "${gate}" \
+    --rc "${rc}" \
+    --producer "$1" \
+    --task-id "${HERMES_KANBAN_TASK:-}" \
+    -- "$@"
+  return "${rc}"
+}
+
 python3 "${SNAP}" "${PRODUCT_ROOT}"
 python3 "${SURE}" "${PRODUCT_ROOT}"
 python3 "${BODY}"
-python3 "${TREE}" "${PRODUCT_ROOT}"
+run_gate assert-retrievable-tree python3 "${TREE}" "${PRODUCT_ROOT}"
 python3 "${PINNED}" "${PRODUCT_ROOT}" --skills "${SKILLS}"
 python3 "${G4}" "${PRODUCT_ROOT}"
 
