@@ -9,7 +9,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 SKILL = HERE.parent
 BIN = HERE / "assert-no-trivial-quarkusmain.py"
-FIX = SKILL / "fixtures"
+FIX = SKILL / "fixtures" / "cases"
 
 
 def run(*args: str) -> subprocess.CompletedProcess[str]:
@@ -29,7 +29,7 @@ def main() -> int:
         print("FAIL: SKILL.md must name @QuarkusMain", file=sys.stderr)
         return 1
 
-    refuse = FIX / "w6-trivial-quarkusmain"
+    refuse = FIX / "trivial-boot-main-refuses-quarkusmain"
     proc = run(str(refuse / "dest"), "--legacy", str(refuse / "legacy"))
     blob = proc.stdout + proc.stderr
     if proc.returncode != 1:
@@ -39,7 +39,7 @@ def main() -> int:
         print("FAIL: refuse detail missing: %s" % blob, file=sys.stderr)
         return 1
 
-    ok = FIX / "w6-custom-startup-ok"
+    ok = FIX / "custom-startup-permits-quarkusmain"
     proc = run(str(ok / "dest"), "--legacy", str(ok / "legacy"))
     if proc.returncode != 0:
         print(
@@ -49,7 +49,7 @@ def main() -> int:
         )
         return 1
 
-    idle = FIX / "w6-no-quarkusmain-idle"
+    idle = FIX / "trivial-boot-main-plain-class-idles"
     proc = run(str(idle / "dest"), "--legacy", str(idle / "legacy"))
     blob = proc.stdout + proc.stderr
     if proc.returncode != 0 or "idle" not in blob:

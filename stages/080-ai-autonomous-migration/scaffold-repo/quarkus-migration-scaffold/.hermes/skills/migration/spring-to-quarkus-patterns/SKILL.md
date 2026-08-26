@@ -106,9 +106,9 @@ This skill's write contract is consult-then-write. W6 bootstrap is a
    wrong pick.
 5. **Write one operand at a time** from checkpoint `next`, stamping after each
   successful destination write. Copy the golden fixtures rather than inventing:
-  `.hermes/skills/migration/spring-to-quarkus-patterns/fixtures/security/golden-basic-authz/`,
-  `.hermes/skills/migration/spring-to-quarkus-patterns/fixtures/testing/golden-rest-controller/`,
-  `.hermes/skills/migration/spring-to-quarkus-patterns/fixtures/testing/golden-test-application.properties`.
+  `.hermes/skills/migration/spring-to-quarkus-patterns/fixtures/golden/security/golden-basic-authz/`,
+  `.hermes/skills/migration/spring-to-quarkus-patterns/fixtures/golden/testing/golden-rest-controller/`,
+  `.hermes/skills/migration/spring-to-quarkus-patterns/fixtures/golden/testing/golden-test-application.properties`.
 6. **Run `mvn -q test-compile` in-loop** after test writes. Once a pattern is
    green in this task, copy it — do not restate the map per file.
 7. **Bootstrap:** if the legacy `@SpringBootApplication` main only calls

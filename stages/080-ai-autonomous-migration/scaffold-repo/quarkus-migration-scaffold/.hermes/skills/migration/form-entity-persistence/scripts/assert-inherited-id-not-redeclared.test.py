@@ -31,7 +31,7 @@ def main() -> int:
         print("FAIL: entity-mapping.md must admit inherited @Id", file=sys.stderr)
         return 1
 
-    bad = FIX / "w6-inherited-id-redeclared"
+    bad = FIX / "subclass-redeclares-inherited-id-refuses"
     proc = run(bad)
     blob = proc.stdout + proc.stderr
     if proc.returncode != 1:
@@ -41,7 +41,7 @@ def main() -> int:
         print("FAIL: refuse detail missing Owner: %s" % blob, file=sys.stderr)
         return 1
 
-    good = FIX / "w6-inherited-id-ok"
+    good = FIX / "mapped-superclass-id-only-passes"
     proc = run(good)
     if proc.returncode != 0:
         print(

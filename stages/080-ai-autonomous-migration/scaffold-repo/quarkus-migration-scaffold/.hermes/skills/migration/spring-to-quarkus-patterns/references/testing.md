@@ -36,14 +36,14 @@
    After writing tests, run `mvn -q test-compile` in-loop
    (`.hermes/skills/migration/manage-quarkus-extensions/references/test-toolchain.md`).
    HTTP `@QuarkusTest` assertions copy
-   `fixtures/testing/golden-rest-controller/SampleTypeRestControllerTests.java`
+   `fixtures/golden/testing/golden-rest-controller/SampleTypeRestControllerTests.java`
    (`io.restassured.RestAssured.given`). Do **not** use `java.net.http.HttpClient`
    or `URI.resolve` — `URI.resolve` drops the servlet prefix and 404s.
 5. **`quarkus.test.continuous-testing` enum (R-M3.59 / S-008 Class B):** valid
    values are `disabled` | `enabled` | `paused` only. Never write
    `false`/`true` — Quarkus rejects them (`SRCFG00049`) and `mvn test` fails
    before suites run. Prefer `disabled` for CI/`mvn test`. Golden snippet:
-   `.hermes/skills/migration/spring-to-quarkus-patterns/fixtures/testing/golden-test-application.properties`.
+   `.hermes/skills/migration/spring-to-quarkus-patterns/fixtures/golden/testing/golden-test-application.properties`.
 
 ## Agent text
 
@@ -68,7 +68,7 @@ in pom). If `test-compile` fails, read the pom artifactId — **do not invent**
 **Isolation card `test-rest-isolation`:** legacy MockMvc + `@MockBean(service)` →
 Quarkus `@QuarkusTest` + `@InjectMock` **service** + REST Assured hitting the
 real JAX-RS stack. Copy once:
-`.hermes/skills/migration/spring-to-quarkus-patterns/fixtures/testing/golden-rest-controller/SampleTypeRestControllerTests.java`
+`.hermes/skills/migration/spring-to-quarkus-patterns/fixtures/golden/testing/golden-rest-controller/SampleTypeRestControllerTests.java`
 
 **Failure triage (red tests — once per failure class):**
 1. Classify 400 vs 500 vs assertion.

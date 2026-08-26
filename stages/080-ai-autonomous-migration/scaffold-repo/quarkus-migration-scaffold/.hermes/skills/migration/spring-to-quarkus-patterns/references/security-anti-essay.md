@@ -21,7 +21,7 @@ when migrating `security/**` / S-005-class cards.
    JDBC userstore props per `security-config.md` / AR-2.2. Do not redesign the
    auth product surface in Reasoning or in javadoc-only shells.
 4. **Worked example** — copy pattern from
-   `.hermes/skills/migration/spring-to-quarkus-patterns/fixtures/security/golden-basic-authz/` (Roles + resource + props +
+   `.hermes/skills/migration/spring-to-quarkus-patterns/fixtures/golden/security/golden-basic-authz/` (Roles + resource + props +
    `SecurityAuthzIT` 401/403/200). Official cites live in `security-config.md`.
 5. **Anti-essay / anti-placeholder (R-M3.39)** — forbid multi-kB architecture
    debates **and** javadoc-only `*AuthenticationConfig` that claim “declarative

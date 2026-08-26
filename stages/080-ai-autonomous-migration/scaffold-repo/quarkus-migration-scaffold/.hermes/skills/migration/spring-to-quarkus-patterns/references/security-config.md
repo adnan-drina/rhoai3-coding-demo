@@ -46,7 +46,7 @@ Internal pack (secondary): `source-analysis/external-review/20260810-artifact-re
 
 ## Worked neutral example (not specimen-bound)
 
-Golden tree: `.hermes/skills/migration/spring-to-quarkus-patterns/fixtures/security/golden-basic-authz/`
+Golden tree: `.hermes/skills/migration/spring-to-quarkus-patterns/fixtures/golden/security/golden-basic-authz/`
 
 | Piece | Role |
 |-------|------|
