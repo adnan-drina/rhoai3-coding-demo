@@ -36,8 +36,9 @@ Deep notes: `references/entity-mapping.md`, `references/panache-vs-em.md`,
 
 ## Procedure
 
-1. Every entity needs declared identity (`@Id` + generation when not
-   application-assigned) — see `references/entity-mapping.md`.
+1. Every entity hierarchy has exactly one effective identity (inherited
+   `@Id` / `@EmbeddedId` counts) — `references/entity-mapping.md`. Run
+   `scripts/assert-inherited-id-not-redeclared.py` on the destination.
 2. Shared attributes without polymorphic query/associate needs →
    `@MappedSuperclass`. Real is-a with polymorphic queries → `@Inheritance`
    (+ strategy trade-offs in the same reference).
@@ -64,7 +65,8 @@ Deep notes: `references/entity-mapping.md`, `references/panache-vs-em.md`,
 
 ## Verification
 
-- Identity present on every new entity.
+- Identity present once per hierarchy (inherited `@Id` counts).
+  `scripts/assert-inherited-id-not-redeclared.py` exit 0.
 - Owning-side fields set in write paths that create associations.
 - Exits class-legal per `derive-story-oracles` /
   `check-surgical-scopes.py`.

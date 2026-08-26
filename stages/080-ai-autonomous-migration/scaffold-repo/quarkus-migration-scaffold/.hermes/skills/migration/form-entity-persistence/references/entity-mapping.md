@@ -2,8 +2,12 @@
 
 ## Identity
 
-Every entity declares `@Id` (plus a generation strategy when the app does not
-assign ids). Not optional.
+Every entity hierarchy has **exactly one** effective identity. An inherited
+`@Id` / `@EmbeddedId` on a `@MappedSuperclass` (or parent `@Entity`) counts.
+Do not redeclare `@Id` on a subclass. Not optional.
+
+`scripts/assert-inherited-id-not-redeclared.py` REFUSE a dest type that
+declares `@Id`/`@EmbeddedId` when an ancestor already does.
 
 ## `@MappedSuperclass` vs `@Inheritance`
 

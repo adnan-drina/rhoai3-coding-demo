@@ -17,6 +17,8 @@ KEEP (this skill — M4/M5 product):
 - `scripts/assert-m4-complete-around-red.py` — refuse `PROVISIONAL_ACCEPT` (or idle-in-reason) when a bound floor `--floor-rc` is 1 (Architect `130758ZA`; dest-8 AR-2.8). Schema + `failed_floors` live on `compose-m4-verdict`.
 - `scripts/run-m4-floor.sh` — run the M4 floor suite (calls `run-m4-pre-verdict.sh` first)
 - `scripts/check-empty-security.py` — empty security config refuse
+- `../../migration/spring-to-quarkus-patterns/scripts/assert-no-trivial-quarkusmain.py` — dest `@QuarkusMain` on a trivial `SpringApplication.run` wrapper (W6)
+- `../../migration/form-entity-persistence/scripts/assert-inherited-id-not-redeclared.py` — inherited `@Id` redeclared on a subclass (W6)
 - `scripts/check-runnable-db-config.py` — runnable DB config gate
 - `scripts/check-test-toolchain.py` — test toolchain presence + assertj pin
 - `scripts/compute-substrate-reopen.py` — substrate reopen set

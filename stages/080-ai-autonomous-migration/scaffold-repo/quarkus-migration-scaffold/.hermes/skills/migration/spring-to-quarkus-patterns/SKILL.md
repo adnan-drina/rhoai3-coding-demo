@@ -2,7 +2,7 @@
 name: spring-to-quarkus-patterns
 description: Before an M3 destination write — the required Quarkus form per Spring construct, and the parity it must prove
 license: Apache-2.0
-compatibility: Linux seat; guidance only, no scripts
+compatibility: Linux seat; Python 3.11+
 metadata:
   author: rhoai3-harness-team
   version: "1.4.1"
@@ -79,7 +79,8 @@ new behaviour, weaken G-1…G-4, or replace free-primitives / MTA.
 
 ## Procedure
 
-This skill carries no scripts — it is a consult-then-write contract.
+This skill's write contract is consult-then-write. W6 bootstrap is a
+**check**, not an essay: `scripts/assert-no-trivial-quarkusmain.py`.
 
 1. **Consult order** before touching the destination: packet → brief → legacy RO
    → destination `AGENTS.md` → this skill. Conflicts resolve to AGENTS.
@@ -110,6 +111,13 @@ This skill carries no scripts — it is a consult-then-write contract.
   `.hermes/skills/migration/spring-to-quarkus-patterns/fixtures/testing/golden-test-application.properties`.
 6. **Run `mvn -q test-compile` in-loop** after test writes. Once a pattern is
    green in this task, copy it — do not restate the map per file.
+7. **Bootstrap:** if the legacy `@SpringBootApplication` main only calls
+   `SpringApplication.run`, do **not** add dest `@QuarkusMain` (Quarkus
+   generates main). Run
+   `python3 .hermes/skills/migration/spring-to-quarkus-patterns/scripts/assert-no-trivial-quarkusmain.py`
+   on the destination (idle when dest has no `@QuarkusMain`).
+   `StartupEvent` / `QuarkusApplication` only when the legacy main has
+   custom startup (`CommandLineRunner` / `@PostConstruct` / extra main body).
 
 
 ## Pitfalls
@@ -122,10 +130,17 @@ This skill carries no scripts — it is a consult-then-write contract.
 - Emitting `@QueryParam(defaultValue=…)` — Spring leftover. JAX-RS is
   `@QueryParam` plus a separate `@DefaultValue` (`references/rest-annotations.md`
   `rest-query-default`).
+- Wrapping a trivial `SpringApplication.run` main as dest `@QuarkusMain`
+  (`assert-no-trivial-quarkusmain.py` REFUSE).
 
 ## Verification
 
-Verification here is the migrated code's provable parity, not a script exit.
+Verification here is the migrated code's provable parity, not a script exit
+except the W6 bootstrap check:
+
+- **Bootstrap:** `scripts/assert-no-trivial-quarkusmain.py` exit 0 (idle or
+  custom legacy startup). dest `@QuarkusMain` on a trivial Boot wrapper is
+  REFUSE (`TRIVIAL_QUARKUSMAIN`).
 
 - **Route + error parity** for each touched resource: valid request → expected
   2xx; invalid request matches the legacy contract on status, headers and body

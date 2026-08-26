@@ -72,6 +72,7 @@ Operator `074910ZO`). Commands under **Checks**.
    Do not `mvn clean` before the snapshot; the floor never runs `clean`.
 1. **Completion floors** (refuse a phase that never ran anything real) —
    `check-runnable-db-config.py`, `check-empty-security.py`,
+   `assert-no-trivial-quarkusmain.py`, `assert-inherited-id-not-redeclared.py`,
    `check-test-toolchain.py`, and `../check-domain-parity/scripts/check-product-tests.py`.
 2. **Verdict lint** — composition is `compose-m4-verdict`. Then
    `check-verdict-routing.py` over `evidence/verdicts/` + `evidence/preflight/`;
@@ -115,6 +116,12 @@ python3 "${HERMES_SKILL_DIR}/scripts/check-runnable-db-config.py" /projects/mode
 
 # AD-H §16.6 / AR-2.2 — refuse empty/placeholder security (idle until security intent)
 python3 "${HERMES_SKILL_DIR}/scripts/check-empty-security.py" /projects/modernized
+
+# W6 — dest @QuarkusMain on a trivial SpringApplication.run wrapper (idle if none)
+python3 "${HERMES_SKILL_DIR}/../../migration/spring-to-quarkus-patterns/scripts/assert-no-trivial-quarkusmain.py" /projects/modernized
+
+# W6 — subclass @Id when a mapped superclass already declares identity
+python3 "${HERMES_SKILL_DIR}/../../migration/form-entity-persistence/scripts/assert-inherited-id-not-redeclared.py" /projects/modernized
 
 # AD-H §G.1 / AR-2.8 — product-test families (boot/CRUD/security/DB); not harness probe
 python3 "${HERMES_SKILL_DIR}/../check-domain-parity/scripts/check-product-tests.py" /projects/modernized
