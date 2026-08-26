@@ -31,8 +31,9 @@ has no wrapper — use `mvn`.
 - Prefer constructor injection; config via `@ConfigProperty` / `%profile`
   keys (or `QUARKUS_PROFILE`). Do not invent Spring-style
   `application-*.properties` trees on the destination.
-- REST resources under `/api/`; JSON via Jackson; health at `/q/health`
-  (`/q/*` sits outside the application root path).
+- REST resources under `/api/`; JSON via Jackson. If health exists, it
+  belongs at `/q/health` (`/q/*` sits outside the application root path).
+  That is a target convention, not a story to invent (VII).
 - One `pom.xml` writer (foundation story) owns BOM, plugin, and the
   sorted-unique extension union. Later stories do not rewrite the POM
   structure.
@@ -91,4 +92,4 @@ HTTP path. Compiled-tree drift (`.bak`) is `assert-compiled-route-fidelity.py`.
 - Deviations from these articles must appear in the plan's Complexity
   Tracking table — silent deviations are review findings.
 
-**Version**: 1.2.3 | **Ratified**: 2026-08-15 | **Last Amended**: 2026-08-25
+**Version**: 1.2.4 | **Ratified**: 2026-08-15 | **Last Amended**: 2026-08-26

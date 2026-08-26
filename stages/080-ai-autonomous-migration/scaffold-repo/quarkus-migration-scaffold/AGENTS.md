@@ -27,8 +27,10 @@ repository (`/projects/modernized`).
 - Prefer constructor injection; config via `@ConfigProperty` / `%profile` keys
   (or `QUARKUS_PROFILE`) — do not invent Spring-style `application-*.properties`
   trees on the destination.
-- REST resources under `/api/`; JSON via Jackson; health at `/q/health`
-  (`/q/*` deliberately sits outside the application root path).
+- REST resources under `/api/`; JSON via Jackson. If health exists, it
+  belongs at `/q/health` (`/q/*` deliberately sits outside the application
+  root path). That is a target convention, not a story to invent (constitution
+  VII).
 - Spec Kit reads `.specify/memory/constitution.md` (provision copy of
   `.hermes/skills/sdd/init-spec-workspace/assets/constitution.md`). That
   file is the spec-kit half of this identity and of **Delivery gate** —
