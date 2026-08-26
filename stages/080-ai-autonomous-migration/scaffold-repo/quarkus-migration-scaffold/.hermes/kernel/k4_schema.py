@@ -109,4 +109,10 @@ REMEDY = {
         "spring-to-quarkus-patterns; STAMP pins commit-destination-tree. "
         "dest-8 M2 and M4 failed this bar."
     ),
+    "K4_LEGACY_SOURCE": (
+        "HTTP stories must set legacy_source to the inventory file "
+        "(entry-point-inventory.json `file`) so the M3 body names the "
+        "legacy package. dest write-set is the dest package; do not make "
+        "the worker rediscover com/example/restservice from com/demo."
+    ),
 }

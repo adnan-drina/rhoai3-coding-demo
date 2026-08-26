@@ -25,6 +25,7 @@ PARTITION_CODES = (
     "K4_T0_3_SERVICE",
     "K4_PATH_TOKEN",
     "K4_PLANNING_DEFECT",
+    "K4_LEGACY_SOURCE",
 )
 
 REQUIRED_FIELDS = (
@@ -34,6 +35,7 @@ REQUIRED_FIELDS = (
     "files_writable",
     "parents",
     "endpoints",
+    "legacy_source",
     "kind",
     "skills",
 )

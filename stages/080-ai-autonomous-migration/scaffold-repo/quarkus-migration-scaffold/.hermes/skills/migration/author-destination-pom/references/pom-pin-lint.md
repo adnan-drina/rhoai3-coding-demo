@@ -6,6 +6,8 @@ After foundation authors `pom.xml` (DD1 — no create path):
 python3 ../manage-quarkus-extensions/scripts/check-pom-platform-pins.py <root>
 python3 ../manage-quarkus-extensions/scripts/check-pom-jacoco-wiring.py <root>
 python3 ../manage-quarkus-extensions/scripts/assert-extension-tooling.py
+python3 ../author-destination-pom/scripts/parse-platform-gav.py <root>
+python3 ../author-destination-pom/scripts/check-rh-registry-first.py ~/.quarkus/config.yaml
 ```
 
 Plugin GAV must be `com.redhat.quarkus.platform:quarkus-maven-plugin`

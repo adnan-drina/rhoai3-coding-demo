@@ -11,7 +11,10 @@
       ],
       "parents": [],
       "exit_criteria": [
-        {"check": "build_resolves", "cmd": "mvn -q compile"}
+        {
+          "check": "build_resolves",
+          "cmd": "mvn -q compile"
+        }
       ],
       "acceptance_criteria": [
         "pom.xml imports Red Hat Quarkus Platform BOM 3.27.3.SP1-redhat-00002",
@@ -19,14 +22,20 @@
         "Java 21 toolchain configured",
         "application.properties sets quarkus.http.root-path"
       ],
-      "skills": ["manage-quarkus-extensions", "reference-rh-quarkus-pom"],
+      "skills": [
+        "manage-quarkus-extensions",
+        "reference-rh-quarkus-pom"
+      ],
       "legacy_locus_path": "evidence/findings-handoff.json",
       "legacy_locus_sha256": "pending"
     },
     {
       "story_id": "T010_US1",
       "title": "Migrate Greeting endpoint (US1)",
-      "operand_class": ["rest", "user_story"],
+      "operand_class": [
+        "rest",
+        "user_story"
+      ],
       "files_writable": [
         "src/main/java/com/demo/Greeting.java",
         "src/main/java/com/demo/GreetingResource.java",
@@ -35,10 +44,18 @@
       "endpoints": [
         "GET /greeting"
       ],
-      "parents": ["T001_SETUP"],
+      "parents": [
+        "T001_SETUP"
+      ],
       "exit_criteria": [
-        {"check": "http_semantics", "cmd": "mvn -q test"},
-        {"check": "endpoint_contract", "cmd": "mvn -q test"}
+        {
+          "check": "http_semantics",
+          "cmd": "mvn -q test"
+        },
+        {
+          "check": "endpoint_contract",
+          "cmd": "mvn -q test"
+        }
       ],
       "acceptance_criteria": [
         "GET /api/greeting returns HTTP 200 with JSON {id, content}",
@@ -46,9 +63,12 @@
         "Custom name parameter returns 'Hello, {name}!'",
         "Counter increments on each request"
       ],
-      "skills": ["spring-to-quarkus-patterns"],
+      "skills": [
+        "spring-to-quarkus-patterns"
+      ],
       "legacy_locus_path": "evidence/entry-point-inventory.json",
-      "legacy_locus_sha256": "07f682b0c644130b8769fd11c2d04dcc904f1c330406cd685d67dcf0ee9ee8b1"
+      "legacy_locus_sha256": "07f682b0c644130b8769fd11c2d04dcc904f1c330406cd685d67dcf0ee9ee8b1",
+      "legacy_source": "src/main/java/com/example/restservice/GreetingController.java"
     },
     {
       "story_id": "T020_POLISH",
@@ -58,9 +78,14 @@
         "README.md",
         "src/test/java/com/demo/HealthTest.java"
       ],
-      "parents": ["T010_US1"],
+      "parents": [
+        "T010_US1"
+      ],
       "exit_criteria": [
-        {"check": "test_suite_runs", "cmd": "mvn -q test"}
+        {
+          "check": "test_suite_runs",
+          "cmd": "mvn -q test"
+        }
       ],
       "acceptance_criteria": [
         "README.md documents build and run instructions",

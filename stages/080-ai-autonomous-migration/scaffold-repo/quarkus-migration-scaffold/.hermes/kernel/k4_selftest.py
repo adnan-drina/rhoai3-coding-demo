@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
+import tempfile
 from pathlib import Path
 
 KERNEL = Path(__file__).resolve().parent
@@ -244,6 +245,32 @@ def main() -> int:
         return _fail("T0_3 remedy missing class-per-aggregate: %s" % t03_remedy)
     if "methods in a shared ClinicService" not in t03_remedy:
         return _fail("T0_3 remedy missing ClinicService wrong reading: %s" % t03_remedy)
+
+    http_part = json.loads(valid.read_text(encoding="utf-8"))
+    http_part["stories"][1]["endpoints"] = ["GET /greeting"]
+    miss = validate_inputs(http_part)
+    if not any(c == "K4_LEGACY_SOURCE" for c, _, _ in miss):
+        return _fail(
+            "HTTP story without legacy_source missed K4_LEGACY_SOURCE: %s" % miss
+        )
+    src = "src/main/java/com/example/restservice/GreetingController.java"
+    http_part["stories"][1]["legacy_source"] = src
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "http.json"
+        path.write_text(json.dumps(http_part), encoding="utf-8")
+        http_result, http_issues = convert_file(path)
+        if http_issues or http_result is None:
+            return _fail("HTTP story with legacy_source must convert: %s" % http_issues)
+        us1_http = json.loads(
+            next(p["body"] for p in http_result["payloads"] if p["logical_id"] == "US1")
+        )
+        if us1_http.get("identity", {}).get("legacy_source") != src:
+            return _fail("US1 identity.legacy_source %s" % us1_http.get("identity"))
+        locus = next(
+            r for r in us1_http.get("refs") or [] if r.get("key") == "legacy_locus"
+        )
+        if "entry-point-inventory.json" not in str(locus.get("path") or ""):
+            return _fail("legacy_locus path %s" % locus)
 
     print("OK: K4 selftest (PATH_TOKEN + created_cards + partition copy + T0_3_SERVICE)")
     return 0

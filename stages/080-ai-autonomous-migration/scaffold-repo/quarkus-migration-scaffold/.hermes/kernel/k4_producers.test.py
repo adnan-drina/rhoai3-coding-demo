@@ -112,6 +112,17 @@ def main() -> int:
     if "check-release-readiness" in PRODUCERS or "check-spec-readiness" in PRODUCERS:
         return _fail("checkers must not be catalog producers")
 
+    named = KERNEL / "assert-skill-scripts-named.py"
+    proc = subprocess.run(
+        [sys.executable, str(named)],
+        text=True,
+        capture_output=True,
+    )
+    if proc.returncode != 0:
+        return _fail(
+            "unreferenced-script bar: %s%s" % (proc.stdout, proc.stderr)
+        )
+
     print("OK: dest-8 producer bar REFUSE M2+M4; remint pins PASS")
     return 0
 

@@ -173,13 +173,34 @@ def toolchain_read(rp):
             return True
     return False
 
+_HTTP_FS_PREFIXES = (
+    "/projects", "/home", "/usr", "/opt", "/tmp", "/var", "/etc",
+    "/bin", "/src/", "/dev/", "/lib", "/proc", "/sys",
+)
+_HTTP_FILE_EXT = {
+    "java", "xml", "json", "md", "properties", "yaml", "yml", "sh", "py",
+}
+
+def looks_like_http_route(p):
+    n = str(p or "").replace("\\", "/")
+    if not n.startswith("/") or n.startswith("//"):
+        return False
+    for pref in _HTTP_FS_PREFIXES:
+        if n == pref.rstrip("/") or n.startswith(pref if pref.endswith("/") else pref + "/"):
+            return False
+    last = n.rsplit("/", 1)[-1]
+    if "." in last and last.rsplit(".", 1)[-1].lower() in _HTTP_FILE_EXT:
+        return False
+    return True
+
 paths = []
 collect(inp, paths)
 cmd_for_paths = strip_env_assignments(cmd) if cmd else ""
 if cmd_for_paths:
     for tok in cmd_for_paths.split():
         if tok.startswith("/") or tok.startswith("./") or tok.startswith("../"):
-            paths.append(tok)
+            if not looks_like_http_route(tok):
+                paths.append(tok)
     cmd_scan = re.sub(r"https?://\S+", " ", cmd_for_paths)
     for m in re.finditer(r"(?:~/|\.\./|\./|(?<![\w:])/)(?!\d)[^\s\"{}()]+", cmd_scan):
         span = m.group(0)
@@ -188,6 +209,8 @@ if cmd_for_paths:
             span = span[:-1]
         if span.startswith("~"):
             span = os.path.expanduser(span)
+        if looks_like_http_route(span):
+            continue
         if span not in paths:
             paths.append(span)
     if re.search(r"\bmkdir\b", cmd_for_paths):

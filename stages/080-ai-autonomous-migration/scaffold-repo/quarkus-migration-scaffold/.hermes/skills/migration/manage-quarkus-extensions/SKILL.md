@@ -5,7 +5,7 @@ license: Apache-2.0
 compatibility: Linux seat; Red Hat Quarkus platform; quarkus CLI optional
 metadata:
   author: rhoai3-harness-team
-  version: "1.2.0"
+  version: "1.3.0"
   hermes:
     tags:
     - migration
@@ -111,3 +111,16 @@ Spring→extension decision aid: `references/spring-dep-to-extension.md`.
   REFUSE the remove.
 - `scripts/spring_dep_map.py --check` → `OK: spring-dep-to-extension.md n=…`
   (the only Spring→Quarkus map; JDBC `jdbc:hsqldb` is a cited row).
+
+## Worker scripts (named entrypoints)
+
+Overlay bake supplies the Quarkus CLI on dest-8. These remain named so a
+non-overlay seat can find them; do not treat “unreferenced” as license
+to delete (Operator `144706Z`).
+
+- `scripts/provision-quarkus-cli.sh` — install CLI + RH-first registry
+  when `/usr/local/bin` has no bake
+- `scripts/assert-migration-yaml-stamp.py`
+- `scripts/assert-dest-pom-extensions.py`
+- `scripts/check-jdbc-deps-preflight.py`
+- `scripts/assert-setup-datasource-driver.py`

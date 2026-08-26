@@ -252,6 +252,15 @@ def validate_inputs(
             out.append(
                 _issue("K4_SKILLS", "%s skills empty (set skills[] or kind setup/us/polish)" % sid)
             )
+        eps = story.get("endpoints") or []
+        if isinstance(eps, list) and any(str(x).strip() for x in eps):
+            if not str(story.get("legacy_source") or "").strip():
+                out.append(
+                    _issue(
+                        "K4_LEGACY_SOURCE",
+                        "%s HTTP story missing legacy_source" % sid,
+                    )
+                )
         parents = story.get("parents") or []
         if not isinstance(parents, list):
             out.append(_issue("K4_PARENT", "%s parents must be a list" % sid))
@@ -381,6 +390,13 @@ def _m3_body(story: dict[str, Any], type_sha: str) -> dict[str, Any]:
     maven = _compile_or_test_exit(fw, kind)
     if maven:
         exits.append(maven)
+    identity: dict[str, Any] = {"story_id": sid}
+    src = str(story.get("legacy_source") or "").strip()
+    if src:
+        identity["legacy_source"] = src
+    locus_path = str(
+        story.get("legacy_locus_path") or "evidence/entry-point-inventory.json"
+    )
     return {
         "task_id": sid,
         "role": IMPL,
@@ -398,11 +414,11 @@ def _m3_body(story: dict[str, Any], type_sha: str) -> dict[str, Any]:
             },
             {
                 "key": "legacy_locus",
-                "path": str(story.get("legacy_locus_path") or "evidence/locus.json"),
+                "path": locus_path,
                 "sha256": str(story.get("legacy_locus_sha256") or "pending"),
             },
         ],
-        "identity": {"story_id": sid},
+        "identity": identity,
         "files_in_scope": list(fw),
         "files_writable": list(fw),
         "exit_criteria": exits,

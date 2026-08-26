@@ -31,7 +31,8 @@
       "files_writable": [
         "src/main/java/com/demo/service/AlphaService.java",
         "src/main/java/com/demo/resource/AlphaResource.java"
-      ]
+      ],
+      "legacy_source": "src/main/java/com/example/restservice/AlphaController.java"
     },
     {
       "story_id": "US2",

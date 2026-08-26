@@ -37,6 +37,9 @@ def main() -> int:
     if "k4_*.py" not in skill_md and "reverse-engineer" not in skill_md:
         print("FAIL: SKILL.md must tell workers not to read k4_*.py", file=sys.stderr)
         return 1
+    if "legacy_source" not in skill_md:
+        print("FAIL: SKILL.md must name legacy_source for HTTP stories", file=sys.stderr)
+        return 1
 
     ready = GOLDEN / ".hermes" / "skills" / "sdd" / "check-spec-readiness" / "SKILL.md"
     ready_txt = ready.read_text(encoding="utf-8")

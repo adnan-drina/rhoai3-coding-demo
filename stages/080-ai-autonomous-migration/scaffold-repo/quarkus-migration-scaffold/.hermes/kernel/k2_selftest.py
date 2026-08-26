@@ -255,6 +255,18 @@ def main() -> int:
         else:
             print("ok mkdir_parent_of_writable")
         r = run(
+            "ls /greeting",
+            roots,
+            cwd=cwd,
+            extra_env={"HERMES_WRITE_SAFE_ROOT": str(dest)},
+        )
+        msg = r.get("message") or ""
+        if r.get("action") == "block" and "outside allow root" in msg:
+            print("FAIL http_route_not_fs_path", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok http_route_not_fs_path")
+        r = run(
             "",
             roots,
             cwd=cwd,

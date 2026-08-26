@@ -5,7 +5,7 @@ license: Apache-2.0
 compatibility: Linux seat; Red Hat Quarkus platform; quarkus CLI optional (extensions only)
 metadata:
   author: rhoai3-harness-team
-  version: "2.3.0"
+  version: "2.4.0"
   hermes:
     tags:
     - migration
@@ -40,6 +40,8 @@ documents hand-authoring as a dedicated path.
 
 1. Read `.hermes/pins.json` (Red Hat Quarkus platform row)
    and `../manage-quarkus-extensions/references/rh-bom-and-mandatory-deps.md`.
+   Run `scripts/parse-platform-gav.py <root>` and use the printed
+   `group:artifact:version` — do not hand-copy pin fields.
 2. Open skill `reference-rh-quarkus-pom` (`../reference-rh-quarkus-pom/`) —
    assemble structure from `references/pom-structure.md` +
    `references/maven-repos.md`.
@@ -69,7 +71,10 @@ documents hand-authoring as a dedicated path.
 5. **Tooling preflight (W3):** run
    `../manage-quarkus-extensions/scripts/assert-extension-tooling.py`
    before the first `ext` / Maven extension mutation. CLI absent → typed
-   `MAVEN_FALLBACK` (not improvisation).
+   `MAVEN_FALLBACK` (not improvisation). Then run
+   `scripts/check-rh-registry-first.py <quarkus-config.yaml>` (exit 0 =
+   `registry.quarkus.redhat.com` before `registry.quarkus.io`). Typical
+   path: `~/.quarkus/config.yaml`.
 6. **Extensions (evidence-driven, DD3 declare/apply/own):** invoke
    `manage-quarkus-extensions` (`quarkus ext ls/search/add` when CLI
    present — W1; else Maven). The **pom.xml writer** applies

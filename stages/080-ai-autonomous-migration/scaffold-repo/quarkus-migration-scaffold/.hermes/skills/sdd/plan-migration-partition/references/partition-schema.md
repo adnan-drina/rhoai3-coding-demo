@@ -30,6 +30,7 @@ Write `evidence/partition.json` (coverage also accepts
 | `kind` | `setup` / `us` / `polish` when `skills[]` omitted |
 | `skills` | pinned leaves; else `kind` → default list |
 | `endpoints` | HTTP stories: `["GET /greeting", …]` (METHOD + path). Coverage 1:1 |
+| `legacy_source` | HTTP stories: inventory `file` from `entry-point-inventory.json` (legacy package/path). Copied onto the M3 body as `identity.legacy_source`. Dest `files_writable` is the dest package. |
 | `title` | human title; not the write-set |
 | `acceptance_criteria` | strings; paths named here must sit in `files_writable` |
 | `supersedes` | optional named 1:N successor set for a dest_file |
@@ -37,7 +38,7 @@ Write `evidence/partition.json` (coverage also accepts
 ## Codes this authoring must not trip
 
 `K4_SCHEMA` `K4_SCOPE` `K4_SKILLS` `K4_PARENT` `K4_T0_3_SERVICE`
-`K4_PATH_TOKEN` `K4_PLANNING_DEFECT`
+`K4_PATH_TOKEN` `K4_PLANNING_DEFECT` `K4_LEGACY_SOURCE`
 
 `K4_T0_3_SERVICE`: the same `*Service.java` must not be writable on two
 stories (methods in a shared ClinicService). Split one service class per

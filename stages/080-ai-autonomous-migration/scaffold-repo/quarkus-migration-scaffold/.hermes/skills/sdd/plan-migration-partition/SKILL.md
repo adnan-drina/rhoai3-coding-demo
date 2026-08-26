@@ -11,7 +11,7 @@ license: Apache-2.0
 compatibility: Linux seat; Python 3.11+; pinned specify-cli; Hermes Kanban
 metadata:
   author: rhoai3-harness-team
-  version: "1.0.0"
+  version: "1.1.0"
   hermes:
     tags:
     - sdd
@@ -86,6 +86,12 @@ specify workflow run speckit
    put the same `*Service.java` on two stories (methods in a shared
    `ClinicService` — `K4_T0_3_SERVICE`). Retire the inventory row with a
    named 1:N supersede set.
+
+   HTTP stories must set `legacy_source` to the matching
+   `entry-point-inventory.json` `file` (legacy package/path). Dest
+   `files_writable` is the dest package (`com/demo`); the worker must not
+   rediscover `com/example/restservice`. Missing `legacy_source` is
+   `K4_LEGACY_SOURCE`.
 
 5. Story headings in `tasks.md` must match partition `story_id`s
    (`scripts/assert-m2-story-headings.py`). Still not write-set scrape.
