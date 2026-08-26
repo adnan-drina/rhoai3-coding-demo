@@ -66,6 +66,9 @@ def main() -> int:
     if "legacy_source" not in skill_md:
         print("FAIL: SKILL.md must name legacy_source for HTTP stories", file=sys.stderr)
         return 1
+    if "dest_file" not in skill_md or "K4_DEST_FILE" not in skill_md:
+        print("FAIL: SKILL.md must name dest_file / K4_DEST_FILE for HTTP stories", file=sys.stderr)
+        return 1
 
     ready = GOLDEN / ".hermes" / "skills" / "sdd" / "check-spec-readiness" / "SKILL.md"
     ready_txt = ready.read_text(encoding="utf-8")

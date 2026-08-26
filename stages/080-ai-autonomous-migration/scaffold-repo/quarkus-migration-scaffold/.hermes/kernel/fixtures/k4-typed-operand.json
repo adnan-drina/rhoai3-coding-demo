@@ -14,6 +14,10 @@
       "parents": ["setup"],
       "operand_class": ["http"],
       "endpoints": ["GET /greeting"],
+      "dest_file": [
+        "src/main/java/com/demo/Greeting.java",
+        "src/main/java/com/demo/GreetingResource.java"
+      ],
       "acceptance_criteria": ["GET /greeting returns the greeting"],
       "legacy_source": "src/main/java/com/example/restservice/GreetingController.java",
       "files_writable": [

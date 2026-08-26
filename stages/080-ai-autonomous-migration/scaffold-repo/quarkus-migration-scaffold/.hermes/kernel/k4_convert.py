@@ -58,6 +58,16 @@ def _story_id(story: dict[str, Any]) -> str:
     return str(story.get("story_id") or story.get("id") or "").strip()
 
 
+def dest_file_named(story: dict[str, Any]) -> bool:
+    """True when dest_file names at least one dest twin (str or list)."""
+    raw = story.get("dest_file")
+    if isinstance(raw, str):
+        return bool(raw.strip())
+    if isinstance(raw, list):
+        return any(str(x).strip() for x in raw)
+    return False
+
+
 def partition_write_union(stories: list[dict[str, Any]]) -> set[str]:
     out: set[str] = set()
     for story in stories:
@@ -259,6 +269,13 @@ def validate_inputs(
                     _issue(
                         "K4_LEGACY_SOURCE",
                         "%s HTTP story missing legacy_source" % sid,
+                    )
+                )
+            if not dest_file_named(story):
+                out.append(
+                    _issue(
+                        "K4_DEST_FILE",
+                        "%s HTTP story missing dest_file" % sid,
                     )
                 )
         parents = story.get("parents") or []

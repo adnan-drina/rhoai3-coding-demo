@@ -1,0 +1,44 @@
+{
+  "type_inventory_sha256": "00652630f7dc6aff570c5bde90cc6eb8531efecc4c6ea9a86a433bed9df704e4",
+  "source": "dest-9-m2-t_af875a24-official-log-final",
+  "stories": [
+    {
+      "story_id": "setup",
+      "title": "Setup — Quarkus POM, extensions, and application.properties",
+      "kind": "setup",
+      "files_writable": [
+        "pom.xml",
+        "src/main/resources/application.properties"
+      ],
+      "parents": [],
+      "acceptance_criteria": [
+        "pom.xml imports com.redhat.quarkus.platform BOM 3.27.3.SP1-redhat-00002",
+        "pom.xml declares quarkus-rest and quarkus-rest-jackson extensions",
+        "pom.xml configures Maven compiler plugin (Java 21), Surefire, Failsafe, and Quarkus Maven plugin",
+        "src/main/resources/application.properties sets quarkus.http.root-path=/",
+        "check-test-toolchain: pom.xml provides a build that compiles and runs tests"
+      ],
+      "operand_count": 2
+    },
+    {
+      "story_id": "us1_greeting",
+      "title": "Migrate Greeting REST endpoint from Spring Boot to Quarkus JAX-RS",
+      "kind": "us",
+      "files_writable": [
+        "src/main/java/com/demo/Greeting.java",
+        "src/main/java/com/demo/Application.java",
+        "src/main/java/com/demo/GreetingResource.java",
+        "src/test/java/com/demo/GreetingResourceTest.java"
+      ],
+      "parents": ["setup"],
+      "endpoints": ["GET /greeting"],
+      "legacy_source": "src/main/java/com/example/restservice/GreetingController.java",
+      "acceptance_criteria": [
+        "GET /greeting returns HTTP 200 with JSON { id: long, content: 'Hello, World!' }",
+        "GET /greeting?name=Quarkus returns { id: long, content: 'Hello, Quarkus!' }",
+        "GreetingResourceTest.java @QuarkusTest asserts both response cases"
+      ],
+      "operand_count": 4
+    }
+  ]
+}

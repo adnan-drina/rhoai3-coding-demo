@@ -255,12 +255,22 @@ def main() -> int:
         )
     src = "src/main/java/com/example/restservice/GreetingController.java"
     http_part["stories"][1]["legacy_source"] = src
+    miss_dest = validate_inputs(http_part)
+    if not any(c == "K4_DEST_FILE" for c, _, _ in miss_dest):
+        return _fail(
+            "HTTP story without dest_file missed K4_DEST_FILE: %s" % miss_dest
+        )
+    dest_twin = "src/main/java/com/demo/resource/AlphaResource.java"
+    http_part["stories"][1]["dest_file"] = dest_twin
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / "http.json"
         path.write_text(json.dumps(http_part), encoding="utf-8")
         http_result, http_issues = convert_file(path)
         if http_issues or http_result is None:
-            return _fail("HTTP story with legacy_source must convert: %s" % http_issues)
+            return _fail(
+                "HTTP story with legacy_source and dest_file must convert: %s"
+                % http_issues
+            )
         us1_http = json.loads(
             next(p["body"] for p in http_result["payloads"] if p["logical_id"] == "US1")
         )
@@ -324,6 +334,29 @@ def main() -> int:
     setup_skip = dest_file_invented(dest9_part["stories"][0])
     if setup_skip:
         return _fail("setup without dest_file must skip invented check: %s" % setup_skip)
+
+    live = KERNEL / "fixtures" / "k4-dest9-live-partition.json"
+    _, live_issues = convert_file(live)
+    live_codes = {c for c, _, _ in live_issues}
+    if "K4_DEST_FILE" not in live_codes:
+        return _fail(
+            "live dest-9 partition missed K4_DEST_FILE: %s" % live_issues
+        )
+    live_part = json.loads(live.read_text(encoding="utf-8"))
+    live_invented = dest_file_invented(live_part["stories"][1])
+    if live_invented:
+        return _fail(
+            "live dest_file absent must skip dest_file_invented "
+            "(do not rewrite k4_roundtrip skip): %s" % live_invented
+        )
+    from k4_roundtrip import main as roundtrip_main  # noqa: PLC0415
+
+    live_rc = roundtrip_main([str(live)])
+    if live_rc != 1:
+        return _fail(
+            "k4_roundtrip live dest-9 must rc 1 via convert K4_DEST_FILE: %s"
+            % live_rc
+        )
 
     print("OK: K4 selftest (PATH_TOKEN + created_cards + partition copy + T0_3_SERVICE)")
     return 0

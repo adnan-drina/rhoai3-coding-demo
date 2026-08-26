@@ -115,4 +115,11 @@ REMEDY = {
         "legacy package. dest write-set is the dest package; do not make "
         "the worker rediscover com/example/restservice from com/demo."
     ),
+    "K4_DEST_FILE": (
+        "HTTP stories must set dest_file to the inventory dest twin. "
+        "Absence is skip in dest_file_invented, so dest-9 live us1_greeting "
+        "(Application.java / GreetingResource.java in files_writable, "
+        "dest_file missing) never REFUSEd invented dest Java. Convert "
+        "refuses missing dest_file on HTTP; do not rewrite that skip."
+    ),
 }

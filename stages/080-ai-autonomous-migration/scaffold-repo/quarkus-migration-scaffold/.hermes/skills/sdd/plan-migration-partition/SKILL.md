@@ -110,7 +110,9 @@ Do not dest-edit dest-9 PATH or implementer `external_dirs`.
    `entry-point-inventory.json` `file` (legacy package/path). Dest
    `files_writable` is the dest package (`com/demo`); the worker must not
    rediscover `com/example/restservice`. Missing `legacy_source` is
-   `K4_LEGACY_SOURCE`.
+   `K4_LEGACY_SOURCE`. HTTP stories must also set `dest_file` to the
+   inventory dest twin. Missing `dest_file` is `K4_DEST_FILE` (dest-9 live
+   partition skip is convert-refuse, not a second invented-files checker).
 
 5. Story headings in `tasks.md` must match partition `story_id`s
    (`scripts/assert-m2-story-headings.py`). Still not write-set scrape.

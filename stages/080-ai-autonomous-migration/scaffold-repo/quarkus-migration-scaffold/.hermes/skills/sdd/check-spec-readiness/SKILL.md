@@ -190,7 +190,10 @@ Do **not** invoke DD4-retired R-M3.5/7 stubs (`check-persistence-bom.py`,
   (`assert-m2-speckit-conformance.py` exit 1, `M2_SPECKIT_BYPASS`, no `tasks.md`).
   dest-9 dest_file invented REFUSE `.hermes/kernel/fixtures/k4-dest9-invented-files.json`
   (`k4_roundtrip.py` exit 1, `Application.java` and `GreetingResource.java`;
-  `Greeting.java` dest twin does not REFUSE). Sibling
+  `Greeting.java` dest twin does not REFUSE). dest-9 live partition (dest_file
+  absent, invented dest Java in `files_writable`) REFUSE convert `K4_DEST_FILE`
+  via `.hermes/kernel/fixtures/k4-dest9-live-partition.json` (`k4_roundtrip.py`
+  exit 1 at convert; `dest_file_invented` skip STANDS). Sibling
   `assert-partition-invented-files.py` stays dest-cite, not this close.
   `/q/health` is not a grounding exception. Empty `endpoints` is legal
   scaffolding iff the story names no HTTP path.

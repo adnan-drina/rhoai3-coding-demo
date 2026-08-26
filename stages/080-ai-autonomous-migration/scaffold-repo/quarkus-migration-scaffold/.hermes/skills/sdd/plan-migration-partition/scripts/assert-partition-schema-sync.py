@@ -26,6 +26,7 @@ PARTITION_CODES = (
     "K4_PATH_TOKEN",
     "K4_PLANNING_DEFECT",
     "K4_LEGACY_SOURCE",
+    "K4_DEST_FILE",
 )
 
 REQUIRED_FIELDS = (
@@ -36,6 +37,7 @@ REQUIRED_FIELDS = (
     "parents",
     "endpoints",
     "legacy_source",
+    "dest_file",
     "kind",
     "skills",
 )
