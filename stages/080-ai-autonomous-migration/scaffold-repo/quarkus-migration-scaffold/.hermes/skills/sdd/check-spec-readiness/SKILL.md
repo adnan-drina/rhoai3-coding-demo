@@ -85,8 +85,9 @@ python3 "${HERMES_SKILL_DIR}/scripts/check-partition-coverage.py" "$ROOT" \
   `check-test-toolchain` (`implicit_pom_parent_vacuous` otherwise).
 - AC HTTP tokens must match `story.endpoints` (`stale_ac:`). dest-6 left
   `/api/greeting` in prose after correcting the field; coverage now
-  reads the text. Mapping `/api` + inventory is only legal when the dest
-  actually serves that prefix (Architect `205213ZA`).
+  reads the text. Invented-routes shares `http_join` with coverage
+  (`/api` + inventory is dest layering). dest-actual-prefix is `stale_ac`,
+  not a second invented-routes join (Operator `062245ZO`).
 - `.hermes/skills/sdd/check-spec-readiness/references/sdd-ordering.md` (AD-S §S.6)
 - `.hermes/skills/sdd/check-spec-readiness/references/story-scope-and-exit.md` (AR-4.4; T-8 class-legal + dual-oracle)
 - skill `derive-story-oracles` (exit derivation; `semantic-exits.md` retired)
@@ -173,7 +174,8 @@ Do **not** invoke DD4-retired R-M3.5/7 stubs (`check-persistence-bom.py`,
   (`acceptance_unsatisfiable:polish:pom.xml`).
   Invented-routes REFUSE `fixtures/partition-invented-health/`
   (`invented_route:T020_POLISH:/q/health`); dest-6 stale-AC REFUSE
-  `fixtures/partition-dest6-grounded/` (`stale_ac:us1_greeting:/api/greeting`,
+  `fixtures/partition-dest6-grounded/` (invented-routes PASS via `http_join`;
+  coverage `stale_ac:us1_greeting:/api/greeting`,
   `implicit_pom_parent_vacuous:us1_greeting:setup`); PASS
   `fixtures/partition-dest6-aligned/` (AC matches `GET /greeting`,
   setup claims `check-test-toolchain`).

@@ -71,10 +71,11 @@ def main() -> int:
     dest6 = FIXTURES / "partition-dest6-grounded"
     proc = _run([sys.executable, str(invented_bin), str(dest6)])
     blob = proc.stdout + proc.stderr
-    if proc.returncode == 0:
-        return _fail("dest-6 stale AC /api/greeting should REFUSE invented-routes: %s" % blob)
-    if "us1_greeting" not in blob or "/api/greeting" not in blob:
-        return _fail("dest-6 invented-routes missed /api/greeting: %s" % blob)
+    if proc.returncode != 0:
+        return _fail(
+            "dest-6 /api/greeting is dest layering (http_join); invented-routes "
+            "must PASS: %s" % blob
+        )
     proc = _run([sys.executable, str(COVERAGE), str(dest6)])
     blob = proc.stdout + proc.stderr
     if proc.returncode == 0:

@@ -11,11 +11,14 @@ Coverage is one-directional: it reports inventory rows with no story
 (`endpoints_uncovered`). It has no concept of a story with no inventory. This is
 the other direction.
 
-Predicate (Architect E-20260825T202337ZA):
+Predicate (Architect E-20260825T202337ZA; join is ``http_join``,
+Operator E-20260826T062245ZO):
   every HTTP path named in a story's `endpoints`, acceptance criteria, or the
   tests it may write must be a row in entry-point-inventory.json. An empty
   `endpoints` list is legal for scaffolding **iff** the story names no HTTP path
-  anywhere. `/q/health` is not a grounding exception.
+  anywhere. `/q/health` is not a grounding exception. `/api` + inventory path
+  is dest layering (same helper as ``check-partition-coverage``). Do not keep a
+  second ``dest_root_path()`` join here.
 
 Exit codes:
   0  every named route is grounded, or the partition names no routes
@@ -36,6 +39,22 @@ ROUTE = re.compile(r"(?<![\w.])/(?!/)[A-Za-z0-9_][A-Za-z0-9_\-/{}]*")
 METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS")
 
 
+def _ensure_hermes_lib() -> None:
+    p = Path(__file__).resolve()
+    for parent in p.parents:
+        lib = parent / "lib"
+        if (lib / ".hermes-lib").is_file():
+            s = str(lib)
+            if s not in sys.path:
+                sys.path.insert(0, s)
+            return
+    raise SystemExit("FAIL: .hermes/lib marker missing")
+
+
+_ensure_hermes_lib()
+from http_join import inventory_http_paths, invented_route_gaps  # noqa: E402
+
+
 def _norm(path: str) -> str:
     p = "/" + path.strip().strip("/")
     return p.rstrip("/") or "/"
@@ -44,40 +63,6 @@ def _norm(path: str) -> str:
 def _looks_like_file(tok: str) -> bool:
     last = tok.rstrip("/").rsplit("/", 1)[-1]
     return "." in last
-
-
-def dest_root_path(root: Path) -> str:
-    """quarkus.http.root-path, if the dest declares one.
-
-    A dest that sets root-path=/api serves the legacy /greeting at /api/greeting.
-    Both spellings name the SAME entry point, so both must count as grounded --
-    dest-6's M2 wrote `/api/greeting` in its acceptance text and that is not an
-    invented route. Getting this wrong turns the checker into the false-refusing
-    kind we spent today removing.
-    """
-    props = root / "src/main/resources/application.properties"
-    if not props.is_file():
-        return ""
-    for line in props.read_text(encoding="utf-8", errors="replace").splitlines():
-        line = line.strip()
-        if line.startswith("quarkus.http.root-path"):
-            _, _, val = line.partition("=")
-            return _norm(val) if val.strip() else ""
-    return ""
-
-
-def grounded_paths(inv: dict, root_path: str = "") -> set[str]:
-    out: set[str] = set()
-    for e in inv.get("entry_points") or []:
-        if not isinstance(e, dict):
-            continue
-        hp = e.get("http_path")
-        if isinstance(hp, str) and hp.strip():
-            n = _norm(hp)
-            out.add(n)
-            if root_path and root_path != "/":
-                out.add(_norm(root_path + n))
-    return out
 
 
 def routes_in(text: str) -> set[str]:
@@ -140,30 +125,38 @@ def main() -> int:
         print(f"REFUSE: INVENTED_ROUTES unreadable input: {exc}", file=sys.stderr)
         return 1
 
-    ground = grounded_paths(inventory, dest_root_path(root))
-    invented: list[tuple[str, str]] = []
+    stories = [s for s in (partition.get("stories") or []) if isinstance(s, dict)]
     named = 0
-    for story in partition.get("stories") or []:
-        sid = str(story.get("story_id") or story.get("id") or "?")
-        for r in sorted(story_routes(story)):
-            named += 1
-            if r not in ground:
-                invented.append((sid, r))
+    for story in stories:
+        named += len(story_routes(story))
+
+    # Same join as check-partition-coverage (Operator 062245ZO). Do not reintroduce
+    # dest_root_path() here — http_join already proved /api + inventory is dest
+    # layering; dest-6 stale AC is stale_ac, not this gate.
+    gaps = invented_route_gaps(root, stories, inventory)
+    invented: list[tuple[str, str]] = []
+    for gap in gaps:
+        if not gap.startswith("invented_route:"):
+            continue
+        rest = gap[len("invented_route:") :]
+        sid, _, path = rest.partition(":")
+        invented.append((sid, path))
 
     if invented:
+        inv_paths = inventory_http_paths(inventory)
         print("REFUSE: INVENTED_ROUTES a story names a route the legacy app "
               "does not expose:", file=sys.stderr)
         for sid, r in invented:
             print(f"  - {sid}: {r}", file=sys.stderr)
         print(f"  grounded routes in entry-point-inventory.json: "
-              f"{sorted(ground) or '(none)'}", file=sys.stderr)
+              f"{sorted(inv_paths) or '(none)'}", file=sys.stderr)
         print("  Remedy: drop the story, or ground it in a real entry point. "
               "Migration covers what the source has; it does not add features.",
               file=sys.stderr)
         return 1
 
     print(f"OK: assert-partition-invented-routes ({named} route mention(s) "
-          f"across {len(partition.get('stories') or [])} story(ies), all grounded)")
+          f"across {len(stories)} story(ies), all grounded)")
     return 0
 
 
