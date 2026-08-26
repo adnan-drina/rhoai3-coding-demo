@@ -262,6 +262,45 @@ def main() -> int:
     finally:
         shutil.rmtree(tmp_ok, ignore_errors=True)
 
+    lib = SKILL.parents[2] / "lib"
+    if str(lib) not in sys.path:
+        sys.path.insert(0, str(lib))
+    from specimen_agnostic import stamp_dd3_extensions  # noqa: PLC0415
+
+    setup = {"files_writable": ["pom.xml"], "identity": {}}
+    us = {
+        "files_writable": ["src/main/java/com/demo/GreetingResource.java"],
+        "identity": {},
+    }
+    stamp_dd3_extensions([setup, us])
+    if "extensions_apply" in us["identity"]:
+        return _fail("W5: US story must not carry extensions_apply")
+    apply = setup["identity"].get("extensions_apply") or []
+    if "quarkus-rest" not in apply:
+        return _fail("W5: pom writer must apply REST union, got %s" % apply)
+    two_writers = [
+        {"files_writable": ["pom.xml"], "identity": {}},
+        {"files_writable": ["pom.xml", "src/main/java/X.java"], "identity": {}},
+    ]
+    try:
+        stamp_dd3_extensions(two_writers)
+        return _fail("W5: two pom writers must REFUSE")
+    except ValueError:
+        pass
+    patterns = (
+        SKILL.parents[1]
+        / "migration"
+        / "spring-to-quarkus-patterns"
+        / "SKILL.md"
+    ).read_text(encoding="utf-8")
+    if "this story's `pom.xml` write" in patterns:
+        return _fail("W5: spring-to-quarkus-patterns must not write pom on US stories")
+    manage = (
+        SKILL.parents[1] / "migration" / "manage-quarkus-extensions" / "SKILL.md"
+    ).read_text(encoding="utf-8")
+    if "adds it and owns" in manage:
+        return _fail("W5: manage-quarkus-extensions must not add pom on the needing story")
+
     print("OK: batch-3 sdd/partition selftest")
     return 0
 

@@ -1,11 +1,11 @@
 ---
 name: manage-quarkus-extensions
-description: Before adding or removing a Quarkus extension on an M3 destination pom — inventory installed deps, search the RH catalog, apply add/rm without rewriting the Red Hat BOM, and carry per-extension obligations (config/SQL/migrations) owned by the needing story
+description: Before the sole pom.xml writer applies identity.extensions_apply — inventory installed deps, search the RH catalog, apply the union without rewriting the Red Hat BOM; the needing story declares extensions_declared and owns config/SQL/migrations, not the pom write
 license: Apache-2.0
 compatibility: Linux seat; Red Hat Quarkus platform; quarkus CLI optional
 metadata:
   author: rhoai3-harness-team
-  version: "1.3.0"
+  version: "1.3.1"
   hermes:
     tags:
     - migration
@@ -20,16 +20,19 @@ preflight gates. Version **values** live in
 `.hermes/pins.json` and the destination `pom.xml` — never
 restate platform versions in this skill.
 
-**DD3:** the story that needs an extension **adds it and owns** its
-configuration/artifacts. Do not paste a fixed foundation menu.
+**DD3 / W5:** the story that needs an extension **declares**
+`identity.extensions_declared` and **owns** its configuration/artifacts.
+The sole `pom.xml` writer **applies** `identity.extensions_apply` (union)
+via this skill. Do not paste a fixed foundation menu. Do not write
+`pom.xml` on a non-writer story.
 
 Obligations once present: `references/extension-obligations.md`.
 Spring→extension decision aid: `references/spring-dep-to-extension.md`.
 
 ## When to Use
 
-- Before the first `pom.xml` dependency change that adds a Quarkus extension
-  for an M3 story (REST, JDBC, security, Flyway, Jacoco, …).
+- When the sole `pom.xml` writer applies `identity.extensions_apply`
+  (REST, JDBC, security, Flyway, Jacoco, …). Not on a needing US story.
 - When deciding whether a Spring dependency implies an extension at all.
 - When deciding whether an extension is **unused** and can be removed.
 - When `quarkus ext ls` / Maven `quarkus:list` disagrees with what the story

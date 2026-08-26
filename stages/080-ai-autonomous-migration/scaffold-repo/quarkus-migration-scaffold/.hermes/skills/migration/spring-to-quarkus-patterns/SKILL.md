@@ -5,7 +5,7 @@ license: Apache-2.0
 compatibility: Linux seat; guidance only, no scripts
 metadata:
   author: rhoai3-harness-team
-  version: "1.4.0"
+  version: "1.4.1"
   hermes:
     tags:
     - migration
@@ -90,8 +90,11 @@ This skill carries no scripts — it is a consult-then-write contract.
    `references/security-anti-essay.md` — both before the first edit of that
    class.
 3. **Preflight deps for that class** before sinking file writes: under DD3
-   (story-owns-extensions), add the needed Quarkus extensions in **this**
-   story's `pom.xml` write — do **not** call retired
+   (declare/apply/own / W5): **declare** needed Quarkus extensions on
+   `identity.extensions_declared` and own config/SQL in **this** write-set.
+   Do **not** write `pom.xml` unless this story is the sole pom writer.
+   The pom writer applies `identity.extensions_apply` via
+   `manage-quarkus-extensions`. Do **not** call retired
    `check-persistence-bom.py` / `check-compile-deps-preflight.py`.
    Still run `check-jdbc-deps-preflight.py` ahead of the first JDBC repository
    write when that path applies. Security deps land in the same story as the

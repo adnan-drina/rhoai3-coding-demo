@@ -123,6 +123,7 @@ FOUNDATION_OPERAND_CLASSES: frozenset[str] = frozenset(
     {"build_config", "config", "pom"}
 )
 # B-16 — attach by class, not a uniform M3 bundle. Union across the set.
+# W5: rest/us declare + own config/SQL; only pom/bootstrap apply the union.
 OPERAND_CLASS_SKILLS: dict[str, tuple[str, ...]] = {
     "rest": ("spring-to-quarkus-patterns",),
     "api": ("spring-to-quarkus-patterns",),

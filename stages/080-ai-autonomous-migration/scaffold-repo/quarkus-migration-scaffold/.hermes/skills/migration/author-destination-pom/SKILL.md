@@ -5,7 +5,7 @@ license: Apache-2.0
 compatibility: Linux seat; Red Hat Quarkus platform; quarkus CLI optional (extensions only)
 metadata:
   author: rhoai3-harness-team
-  version: "2.4.0"
+  version: "2.4.1"
   hermes:
     tags:
     - migration
@@ -31,7 +31,9 @@ documents hand-authoring as a dedicated path.
 - The golden scaffold has no hand-maintained destination `pom.xml` /
   `src/` and M3 needs a real Quarkus app tree.
 - Fresh seat / factory provision after harness-only tip checkout.
-- **Not** for mid-story extension add/rm — use `manage-quarkus-extensions`.
+- **Not** for mid-story extension apply — later stories declare
+  `identity.extensions_declared` only; the sole pom writer applies the union
+  (`manage-quarkus-extensions`).
 - **Not** for Spring→Quarkus form mapping (`spring-to-quarkus-patterns`).
   The create-app path (`quarkus create` / plugin:create) is retired; this
   skill authors `pom.xml` from `reference-rh-quarkus-pom`.
