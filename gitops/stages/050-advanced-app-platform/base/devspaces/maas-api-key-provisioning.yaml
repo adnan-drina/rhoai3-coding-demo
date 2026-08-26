@@ -922,7 +922,7 @@ data:
       # Dashboard: public 0.0.0.0:9119 bind + che-gateway secure endpoint
       # (Operator 2026-08-21). Auth is Managed Scope dashboard.basic_auth.
       "${venv_py}" - <<'HERMESEOF'
-    import os, shutil, yaml
+    import os, shutil, yaml, json
     managed = os.environ["HERMES_MANAGED_DIR"]
     skills_dir = os.environ["HERMES_SKILLS_DIR"]
     global_skills = os.environ["HERMES_GLOBAL_SKILLS_DIR"]
@@ -1252,6 +1252,36 @@ data:
             )
     os.chmod(cfg_path, 0o644)
     os.chmod(env_path, 0o600)
+    # Operator 091320ZO: specify at RUN time. Worker HOME is profile home;
+    # spec-kit Path.home()/.hermes/skills is empty. PATH shim in managed bin
+    # (already first on dest PATH) sets HOME=project for the specify child
+    # only. Do not prepend HERMES_HOME/bin (Tirith retired).
+    bin_dir = os.path.join(managed, "bin")
+    os.makedirs(bin_dir, exist_ok=True)
+    project = os.environ.get("HERMES_WRITE_SAFE_ROOT", "/projects/modernized")
+    specify_helper = os.path.join(
+        project,
+        ".hermes/skills/sdd/init-spec-workspace/scripts/specify-from-project.sh",
+    )
+    specify_wrap = os.path.join(bin_dir, "specify")
+    if not os.path.isfile(specify_helper):
+        raise SystemExit(
+            "ERROR: specify-from-project.sh missing — worker specify cannot "
+            "resolve speckit-specify at run time: " + specify_helper
+        )
+    with open(specify_wrap, "w") as fh:
+        fh.write("#!/bin/bash\n")
+        fh.write("set -euo pipefail\n")
+        fh.write(
+            "# specify run-time skills root: HOME=project for spec-kit#3334.\n"
+        )
+        fh.write("# Do not collapse the worker's profile HOME.\n")
+        fh.write(
+            "exec bash %s --root %s \"$@\"\n"
+            % (json.dumps(specify_helper), json.dumps(project))
+        )
+    os.chmod(specify_wrap, 0o755)
+    print("specify PATH shim: " + specify_wrap + " -> " + specify_helper)
     # Architect E-20260808T151907Z — pin demo model binding (qwen / platform MaaS).
     # Enforce-on-start: rewrite Managed Scope every init; refuse silent drift.
     pin = yaml.safe_load(open(cfg_path))

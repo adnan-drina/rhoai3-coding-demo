@@ -21,6 +21,8 @@ from k4_schema import (  # noqa: E402
     PATH_TOKEN_MARKERS,
     REMEDY,
     SHA256_RE,
+    STAMP_ID,
+    STAMP_SKILL,
     VERIFIER_ID,
     WRITER_ID,
 )
@@ -283,6 +285,13 @@ def validate_inputs(
                     "tasks.md paths absent from partition: %s" % ",".join(extras),
                 )
             )
+    if objs and not stamp_write_set(objs):
+        out.append(
+            _issue(
+                "K4_SCOPE",
+                "%s files_writable empty after OBJECT filter" % STAMP_ID,
+            )
+        )
     return out
 
 
@@ -400,6 +409,82 @@ def _m3_body(story: dict[str, Any], type_sha: str) -> dict[str, Any]:
     }
 
 
+STAMP_OBJECT_PREFIXES = ("evidence/", ".hermes/", ".specify/", "target/")
+STAMP_OBJECT_EXACT = frozenset({".env"})
+
+
+def _rel_path(raw: Any) -> str:
+    rel = str(raw).replace("\\", "/").strip()
+    while rel.startswith("./"):
+        rel = rel[2:]
+    return rel
+
+
+def stamp_write_set(stories: list[dict[str, Any]]) -> list[str]:
+    """Union of M3 product writes. OBJECT evidence/.hermes/.specify/target/.env."""
+    out: list[str] = []
+    seen: set[str] = set()
+    for story in stories:
+        for raw in story.get("files_writable") or []:
+            rel = _rel_path(raw)
+            if not rel or rel in seen:
+                continue
+            if rel in STAMP_OBJECT_EXACT or rel.endswith("/.env"):
+                continue
+            if any(rel == p[:-1] or rel.startswith(p) for p in STAMP_OBJECT_PREFIXES):
+                continue
+            seen.add(rel)
+            out.append(rel)
+    return out
+
+
+def _stamp_body(stories: list[dict[str, Any]], type_sha: str) -> dict[str, Any]:
+    fw = stamp_write_set(stories)
+    return {
+        "task_id": STAMP_ID,
+        "role": IMPL,
+        "phase": "M3",
+        "refs": [
+            {
+                "key": "type-inventory",
+                "path": "evidence/type-inventory.json",
+                "sha256": type_sha,
+            }
+        ],
+        "identity": {"story_id": STAMP_ID},
+        "files_in_scope": list(fw),
+        "files_writable": list(fw),
+        "exit_criteria": [
+            {
+                "check": "skills",
+                "assert": (
+                    "consult each skill pinned on this card; unused pins are "
+                    "legal (skills_unused). AD-002E is a false consult — "
+                    "claiming a skill that was not loaded. Do not silence a "
+                    "missing pin."
+                ),
+            },
+            {
+                "check": "terminator",
+                "assert": (
+                    "kanban_complete only after assert-retrievable-tree "
+                    "--check-only PASS. kanban_block if src/ or pom.xml stay "
+                    "untracked. Do not git config. Do not dest-push. Do not "
+                    "restore this commit to M4."
+                ),
+            },
+            {
+                "check": "retrievable_tree",
+                "cmd": (
+                    "python3 .hermes/skills/gates/assert-retrievable-tree/"
+                    "scripts/assert-retrievable-tree.py --check-only "
+                    "/projects/modernized"
+                ),
+            },
+        ],
+    }
+
+
 def _payload(
     logical_id: str,
     *,
@@ -447,6 +532,31 @@ def convert_partition(partition: dict[str, Any]) -> dict[str, Any]:
                 type_sha=type_sha,
             )
         )
+    story_ids = [_story_id(s) for s in stories if _story_id(s)]
+    fw = stamp_write_set(stories)
+    if not fw:
+        raise ValueError(
+            format_issues(
+                [
+                    _issue(
+                        "K4_SCOPE",
+                        "%s files_writable empty after OBJECT filter" % STAMP_ID,
+                    )
+                ]
+            )
+        )
+    payloads.append(
+        _payload(
+            STAMP_ID,
+            title="M3 %s" % STAMP_ID,
+            assignee=IMPL,
+            parents=story_ids,
+            body=_stamp_body(stories, type_sha),
+            skills=[STAMP_SKILL],
+            max_retries=1,
+            type_sha=type_sha,
+        )
+    )
     result = {
         "payloads": payloads,
         "manifest": {"created_cards": [str(p["logical_id"]) for p in payloads]},

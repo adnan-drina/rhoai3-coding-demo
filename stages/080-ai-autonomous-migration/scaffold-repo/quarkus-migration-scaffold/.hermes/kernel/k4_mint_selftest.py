@@ -11,7 +11,7 @@ KERNEL = Path(__file__).resolve().parent
 sys.path.insert(0, str(KERNEL))
 from k4_convert import convert_file  # noqa: E402
 from k4_mint import argv_for_payload, mint_payloads, parse_created_id  # noqa: E402
-from k4_schema import IMPL, WRITER_ID  # noqa: E402
+from k4_schema import IMPL, STAMP_ID, STAMP_SKILL, WRITER_ID  # noqa: E402
 
 
 def _fail(msg: str) -> int:
@@ -39,7 +39,7 @@ def main() -> int:
         return 0, json.dumps({"task_id": tid}), ""
 
     minted = mint_payloads(result["payloads"], runner=runner, hermes="/bin/hermes")
-    expect = ["setup", "US1", "US2"]
+    expect = ["setup", "US1", "US2", STAMP_ID]
     got = [row["logical_id"] for row in minted["created"]]
     if got != expect:
         return _fail("create order %s != %s" % (got, expect))
@@ -66,8 +66,31 @@ def main() -> int:
         return _fail("US1 --skill %s" % skills)
     if minted.get("created_cards") != [row["task_id"] for row in minted["created"]]:
         return _fail("created_cards %s" % minted.get("created_cards"))
-    if minted["created_cards"] != ["t_mint0001", "t_mint0002", "t_mint0003"]:
+    if minted["created_cards"] != [
+        "t_mint0001",
+        "t_mint0002",
+        "t_mint0003",
+        "t_mint0004",
+    ]:
         return _fail("native created_cards %s" % minted["created_cards"])
+    stamp_row = next(c for c in minted["created"] if c["logical_id"] == STAMP_ID)
+    stamp_argv = stamp_row["argv"]
+    if stamp_argv[0:4] != ["/bin/hermes", "kanban", "create", "M3 %s" % STAMP_ID]:
+        return _fail("stamp argv head %s" % stamp_argv[:4])
+    stamp_parents = [
+        stamp_argv[i + 1] for i, a in enumerate(stamp_argv) if a == "--parent"
+    ]
+    if stamp_parents != [by["setup"], by["US1"], by["US2"]]:
+        return _fail("stamp parents %s" % stamp_parents)
+    stamp_skills = [
+        stamp_argv[i + 1] for i, a in enumerate(stamp_argv) if a == "--skill"
+    ]
+    if stamp_skills != [STAMP_SKILL]:
+        return _fail("stamp --skill %s" % stamp_skills)
+    if stamp_argv[stamp_argv.index("--max-retries") + 1] != "1":
+        return _fail("stamp max-retries")
+    if stamp_row["task_id"] != "t_mint0004":
+        return _fail("stamp native id %s" % stamp_row["task_id"])
     if "empty created_cards" not in str(minted.get("attribution") or ""):
         return _fail("mint attribution missing Architect 144916ZA note")
     if "swarm" in argv or "decompose" in argv or "daemon" in argv:

@@ -1,11 +1,11 @@
 ---
 name: init-spec-workspace
-description: When a workspace has no .specify/ — installs pinned Spec Kit, the Non-Goals override, the unique-owner tasks-template override, the destination constitution, the speckit overlay that removes implement, the AD-S stop rule, and copies speckit-specify into the project skills root (HOME=project for specify CLI) plus sdd/ so implementer skills list names it (does not add user-root external_dirs)
+description: When a workspace has no .specify/ — installs pinned Spec Kit, the Non-Goals override, the unique-owner tasks-template override, the destination constitution, the speckit overlay that removes implement, the AD-S stop rule, copies speckit-specify into the project skills root plus sdd/, and installs a PATH shim so a worker-shell specify workflow run speckit finds speckit-specify when HOME is the profile (does not add user-root external_dirs)
 license: Apache-2.0
 compatibility: Linux seat; network to install pinned Spec Kit CLI
 metadata:
   author: rhoai3-harness-team
-  version: "1.4.5"
+  version: "1.4.6"
   hermes:
     tags:
     - sdd
@@ -48,9 +48,12 @@ Idempotent via `.specify/.rhoai3-ads-provisioned`. Spec Kit is pinned
 2b. Copies `speckit-specify` (and plan/tasks/analyze, never implement) from
     specify-init's Hermes skill install into
     `<modernized>/.hermes/skills/` **and** `<modernized>/.hermes/skills/sdd/`
-    so `specify workflow run speckit` (HOME=project) and implementer
-    `skills list` both name `speckit-specify`. Does **not** add user-root
-    `external_dirs`.
+    so implementer `skills list` names `speckit-specify`. Does **not** add
+    user-root `external_dirs`.
+2c. Installs PATH name `specify` (`<modernized>/.hermes/bin/specify`; dest-init
+    also writes `HERMES_MANAGED_DIR/bin/specify`) so a worker shell
+    `specify workflow run speckit` resolves `speckit-specify` when HOME is
+    the profile. Control: `assert-specify-run-from-worker-home.py`.
 3. Copies Non-Goals override from
    `${HERMES_SKILL_DIR}/assets/spec-template.md` →
    `.specify/templates/overrides/spec-template.md`
@@ -78,8 +81,8 @@ Idempotent via `.specify/.rhoai3-ads-provisioned`. Spec Kit is pinned
 
 After `/speckit-tasks` (optional `/speckit-analyze`) → K4 convert →
 `.hermes/kernel/k4_mint.py` (`hermes kanban create`). **Never**
-`/speckit-implement`. Run `HOME=/projects/modernized specify workflow run speckit`
-(or `specify-from-project.sh --root /projects/modernized workflow run speckit`).
+`/speckit-implement`. Bare `specify workflow run speckit` (PATH shim).
+Do not rely on workers prefixing `HOME=/projects/modernized`.
 M2 PLAN consumes M1 KEEP evidence via parent `kanban_attachments` plus
 `evidence/findings-handoff.json` — not from metadata path lists.
 
@@ -88,8 +91,9 @@ M2 PLAN consumes M1 KEEP evidence via parent `kanban_attachments` plus
 - Hermes binary may be absent at postStart — `--ignore-agent-tools` is required;
   skills still land under `~/.hermes/skills/`. `seed-speckit-skills.py` then
   copies `speckit-specify` into the project skills root and `sdd/` tree
-  (Architect `125450Z`). `specify-from-project.sh` sets HOME to the
-  project so the CLI looks there. Do **not** add `/home/user/.hermes/skills`
+  (Architect `125450Z`). dest-init + `install-specify-shim.sh` put `specify`
+  on PATH so a worker shell without `HOME=` still hits the project skills
+  root. Do **not** add `/home/user/.hermes/skills`
   to the implementer profile.
 - When `HERMES_HOME` is relocated, **assert** (not merely remind) that
   `skills.external_dirs` lists both `<modernized>/.hermes/skills` and
@@ -127,8 +131,9 @@ M2 PLAN consumes M1 KEEP evidence via parent `kanban_attachments` plus
 - After provision, `<modernized>/.hermes/skills/speckit-specify/SKILL.md`
   **and** `<modernized>/.hermes/skills/sdd/speckit-specify/SKILL.md`
   exist. `assert-specify-skills-root.py` refuses a nested-only copy.
-  `HOME=/projects/modernized specify workflow run speckit` resolves
-  `speckit-specify`. Implementer `skills list` names it without a
+  `assert-specify-run-from-worker-home.py` PASSes when `HOME` is a profile
+  dir with 0 speckit skills and bare `specify workflow run speckit` still
+  finds `speckit-specify`. Implementer `skills list` names it without a
   user-root `external_dirs` grant.
 - Relocated `HERMES_HOME`: `check-external-dirs.py` must print
   `OK: external_dirs lists project + home skills (<config>)`. A listed

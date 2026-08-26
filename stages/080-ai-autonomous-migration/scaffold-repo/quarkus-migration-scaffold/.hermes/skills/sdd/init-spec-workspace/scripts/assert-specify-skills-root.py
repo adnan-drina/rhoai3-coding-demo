@@ -4,9 +4,11 @@
 spec-kit 0.16.1 ``--integration hermes`` looks at
 ``Path.home()/.hermes/skills/speckit-specify`` (spec-kit#3334 unmerged).
 ``init-spec-workspace`` points that lookup at the project by running
-specify with ``HOME=<project>`` and seeding the same leaf here — not
-only under ``sdd/``. Nested ``sdd/speckit-specify`` is the implementer
-taxonomy copy; the CLI does not walk ``sdd/``.
+specify with ``HOME=<project>`` at **init**, seeding the flat leaf, and
+installing a PATH shim so a worker shell ``specify workflow run speckit``
+still resolves ``speckit-specify`` when HOME is the profile (Operator
+``091320ZO``). Nested ``sdd/speckit-specify`` is the implementer taxonomy
+copy; the CLI does not walk ``sdd/``.
 
 Usage:
   python3 assert-specify-skills-root.py /projects/modernized
@@ -29,7 +31,7 @@ def main() -> int:
         print(
             f"FAIL: specify CLI skills-root missing {want}. "
             "spec-kit 0.16.1 resolves speckit-specify from "
-            "$HOME/.hermes/skills/ (HOME=project via specify-from-project.sh). "
+            "$HOME/.hermes/skills/ (PATH shim / specify-from-project.sh at run). "
             "sdd/ copy is not sufficient"
             + (f" (nested copy exists at {nested})" if nested.is_file() else "")
             + ".",

@@ -39,6 +39,12 @@ Spec-kit still dumps under dest-user `/home/user/.hermes/skills`
    `/home/user/.hermes/skills` plus project `.hermes/skills`
    (`external-dirs-home-contract.md`). Not a required per-profile skills
    dir. Checker uses that literal / `human_home()`, not `Path.home()`.
+   **Specify at run:** worker `Path.home()` is the profile home (0 speckit
+   skills). dest-init installs a `specify` PATH shim that sets `HOME` to
+   the project **for that child only** so `specify workflow run speckit`
+   resolves `speckit-specify` without collapsing the three homes
+   (Operator `091320ZO`). Do not tell workers to prefix `HOME=` — dest-6
+   and dest-7 showed they will not.
 3. **Python `human_home()`:** **yes.** Same contract as
    `mta-analyze-legacy.sh` (`getent passwd` OS account, not `$HOME`).
    Land in dest `.hermes/lib/` beside `path_maps.py`. KEEP gates that

@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Refuse M4 PROVISIONAL_ACCEPT unless src/ and pom.xml are committed vs HEAD.
 
-Architect ``142524ZA`` / Operator ``141853Z-op`` / ``145539Z-op``.
-Exclusions: ``.env``, profile home, ``.hermes/home``, secrets — those paths
-are not in the refuse set. Not an M5 candidate SHA. Not a dest-push.
-M3 story-complete is hygiene, not a substitute for this M4 refuse.
+Architect ``142524ZA`` / Operator ``141853Z-op`` / ``145539Z-op`` /
+AMEND ``101242ZA``. M3 story-complete is not the harvest; the stamp card
+is. M4 still refuses a dirty tree. ``--check-only`` skips the verdict
+file (stamp must not write ``evidence/verdicts/``). Exclusions: ``.env``,
+profile home, ``.hermes/home``, secrets. Not an M5 candidate SHA. Not a
+dest-push.
 """
 from __future__ import annotations
 
@@ -67,7 +69,7 @@ def write_pass_verdict(root: Path) -> None:
     path.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
 
 
-def check_root(root: Path) -> int:
+def check_root(root: Path, *, write_verdict: bool = True) -> int:
     dirty = dirty_scoped_paths(root)
     if isinstance(dirty, str):
         return _fail(dirty)
@@ -77,19 +79,24 @@ def check_root(root: Path) -> int:
             + "; ".join(dirty)
             + " (not dest-push; not an M5 SHA)"
         )
-    write_pass_verdict(root)
+    if write_verdict:
+        write_pass_verdict(root)
     print("OK: assert-retrievable-tree (src/ and pom.xml committed)", file=sys.stderr)
     return 0
 
 
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
+    write_verdict = True
+    if "--check-only" in args:
+        write_verdict = False
+        args = [a for a in args if a != "--check-only"]
     if len(args) != 1:
-        return _fail("usage: assert-retrievable-tree.py ROOT")
+        return _fail("usage: assert-retrievable-tree.py [--check-only] ROOT")
     root = Path(args[0]).resolve()
     if not root.is_dir():
         return _fail("root is not a directory: " + str(root))
-    return check_root(root)
+    return check_root(root, write_verdict=write_verdict)
 
 
 if __name__ == "__main__":

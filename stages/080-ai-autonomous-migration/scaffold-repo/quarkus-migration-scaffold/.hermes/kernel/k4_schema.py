@@ -8,6 +8,8 @@ from __future__ import annotations
 
 WRITER_ID = "mint-writer"
 VERIFIER_ID = "mint-verifier"
+STAMP_ID = "STAMP_DESTINATION_TREE"
+STAMP_SKILL = "commit-destination-tree"
 ORCH = "orchestrator"
 IMPL = "implementer"
 PATH_TOKEN_MARKERS = ("PATH_TOKEN",)
@@ -27,8 +29,11 @@ REMEDY = {
         "M3 payloads need non-empty files_writable copied from the partition. "
         "Acceptance that needs pom.xml (health / add-extension) or a proves "
         "path must list those files in files_writable; otherwise the story "
-        "is unsatisfiable (kanban_block, do not mint). Do not stamp "
-        "mvn test-compile as an exit (empty test tree always passes)."
+        "is unsatisfiable (kanban_block, do not mint). The harvest card "
+        "STAMP_DESTINATION_TREE needs a non-empty union of those product "
+        "writes after OBJECT filter (evidence/, .hermes/, .specify/, "
+        "target/, .env). Do not stamp mvn test-compile as an exit "
+        "(empty test tree always passes)."
     ),
     "K4_CREATED_CARDS": (
         "Manifest created_cards must be the exact non-empty payload logical_id "
@@ -46,9 +51,9 @@ REMEDY = {
     ),
     "K4_ASSIGNEE": "M3 assignee=implementer. Dest factory cards are not minted.",
     "K4_PARENT": (
-        "M3 parents come from the partition import-graph. The M2 card "
-        "(HERMES_KANBAN_TASK) is an extra parent at mint time. Dest "
-        "mint-verifier is not a parent."
+        "M3 parents come from the partition import-graph. The stamp card "
+        "parents every M3 story. The M2 card (HERMES_KANBAN_TASK) is an "
+        "extra parent at mint time. Dest mint-verifier is not a parent."
     ),
     "K4_T0_3_SERVICE": (
         "T0_3_SERVICE: split into one service class per aggregate, each owned "

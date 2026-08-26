@@ -441,7 +441,7 @@ check "080 golden K4 converter present" \
   "present"
 check "080 K4 M3 payloads pin max_retries 1" \
   "grep -c 'max_retries=1' '${SCAFFOLD_KERNEL}/k4_convert.py' || echo 0" \
-  "1"
+  "2"
 check "080 RHDH autoStartMigration parameter is removed" \
   "grep -c 'autoStartMigration' '${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/rhdh/templates/app-migration/template.yaml' || echo 0" \
   "0"
@@ -517,6 +517,21 @@ check "080 check-external-dirs selftest passes" \
   "1"
 check "080 specify-skills-root selftest passes" \
   "python3 '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/skills/sdd/init-spec-workspace/scripts/assert-specify-skills-root-selftest.py' >/dev/null && echo 1 || echo 0" \
+  "1"
+check "080 specify worker-shell run-time selftest passes" \
+  "python3 '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/skills/sdd/init-spec-workspace/scripts/assert-specify-run-from-worker-home.py' >/dev/null && echo 1 || echo 0" \
+  "1"
+check "080 dest-init installs specify PATH shim (not HERMES_HOME/bin)" \
+  "grep -c 'specify-from-project.sh' '${GITOPS_INIT}' || echo 0" \
+  "2"
+check "080 K4 mints STAMP_DESTINATION_TREE harvest card" \
+  "grep -c 'STAMP_DESTINATION_TREE' '${SCAFFOLD_KERNEL}/k4_schema.py' || echo 0" \
+  "2"
+check "080 commit-destination-tree skill present" \
+  "test -f '${SCAFFOLD_080}/.hermes/skills/migration/commit-destination-tree/SKILL.md' && echo present || echo missing" \
+  "present"
+check "080 commit-destination-tree selftest passes" \
+  "python3 '${SCAFFOLD_080}/.hermes/skills/migration/commit-destination-tree/scripts/commit-destination-tree-selftest.py' >/dev/null && echo 1 || echo 0" \
   "1"
 
 echo ""

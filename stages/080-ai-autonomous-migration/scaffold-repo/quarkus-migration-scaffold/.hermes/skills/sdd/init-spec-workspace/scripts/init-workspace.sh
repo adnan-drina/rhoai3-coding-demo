@@ -114,9 +114,10 @@ Project overlay (stock `speckit` minus `implement` and the `type: gate`
 steps `review-spec` / `review-plan`, plus `clarify`, M1 paths in specify
 args):
 
-  HOME=/projects/modernized specify workflow run speckit
-  HOME=/projects/modernized specify workflow resolve speckit
-  # or: bash .hermes/skills/sdd/init-spec-workspace/scripts/specify-from-project.sh --root /projects/modernized workflow run speckit
+  specify workflow run speckit
+  specify workflow resolve speckit
+  # dest PATH shim sets HOME=project for the specify child (profile HOME stays).
+  # Do not rely on workers prefixing HOME= — that is the dest-6/dest-7 miss.
 
 Gates are removed from the graph (163200Z unattended). Do not wait on a
 human gate click. Do not restore those steps on a live dest — stop, fix
@@ -143,6 +144,7 @@ if [[ "${DRY_RUN}" == "1" ]]; then
   log "DRY-RUN: would copy constitution → .specify/memory/constitution.md"
   log "DRY-RUN: would copy overlay → .specify/workflows/overlays/speckit/stop-before-implement.yml"
     log "DRY-RUN: would seed speckit-specify into ${ROOT}/.hermes/skills and ${ROOT}/.hermes/skills/sdd (not user-root external_dirs)"
+  log "DRY-RUN: would install PATH shim ${ROOT}/.hermes/bin/specify (worker specify, not HOME= prefix)"
   emit_ok "[${LOG_PREFIX}] DRY-RUN complete" "$(python3 -c 'import json,sys; print(json.dumps({"script":"init-workspace","ok":True,"dry_run":True,"root":sys.argv[1]}))' "${ROOT}")"
   exit 0
 fi
@@ -168,6 +170,10 @@ if [ -f "${MARKER}" ]; then
     || die "seed-speckit-skills failed (implementer must see speckit-specify)"
   python3 "${SCRIPT_DIR}/assert-specify-skills-root.py" "${ROOT}" \
     || die "specify CLI skills-root missing speckit-specify"
+  bash "${SCRIPT_DIR}/install-specify-shim.sh" "${ROOT}" \
+    || die "install-specify-shim failed"
+  python3 "${SCRIPT_DIR}/assert-specify-run-from-worker-home.py" \
+    || die "specify worker-shell control failed (profile HOME still hides speckit-specify)"
   HUMAN="[${LOG_PREFIX}] already provisioned (${TS}) — skip specify init; overlays refreshed"
   emit_ok "${HUMAN}" "$(python3 -c 'import json,sys; print(json.dumps({"script":"init-workspace","ok":True,"skipped":True,"overlays_refreshed":True,"root":sys.argv[1],"marker":sys.argv[2],"provisioned_at":sys.argv[3]}))' "${ROOT}" "${MARKER}" "${TS}")"
   exit 0
@@ -186,13 +192,31 @@ case "${ROOT}" in
     ;;
 esac
 
+# dest PATH may already have the project/managed specify shim. That is not
+# specify-cli. Probe for a real binary or uv-install one.
+_real_specify() {
+  local p
+  p="$(command -v specify 2>/dev/null || true)"
+  [[ -n "${p}" && -x "${p}" ]] || return 1
+  case "${p}" in
+    */.hermes/bin/specify) return 1 ;;
+  esac
+  if [[ -n "${HERMES_MANAGED_DIR:-}" && "${p}" == "${HERMES_MANAGED_DIR}/bin/specify" ]]; then
+    return 1
+  fi
+  if [[ "${p}" == */.platform/hermes/bin/specify || "${p}" == /etc/hermes/bin/specify ]]; then
+    return 1
+  fi
+  return 0
+}
+
 ensure_specify() {
   export PATH="${HUMAN_HOME}/.local/bin:/usr/local/bin:${PATH}"
-  if command -v specify >/dev/null 2>&1; then
+  if _real_specify; then
     return 0
   fi
   export PATH="${HOME}/.local/bin:${PATH}"
-  if command -v specify >/dev/null 2>&1; then
+  if _real_specify; then
     return 0
   fi
   if ! command -v uv >/dev/null 2>&1; then
@@ -206,16 +230,17 @@ ensure_specify() {
   log "installing specify-cli==${SPECIFY_PIN} via uv tool…"
   uv tool install "specify-cli==${SPECIFY_PIN}"
   export PATH="${HUMAN_HOME}/.local/bin:${HOME}/.local/bin:${PATH}"
-  command -v specify >/dev/null 2>&1 || die "specify not on PATH after uv tool install"
+  _real_specify || die "specify-cli not on PATH after uv tool install"
 }
 
 ensure_specify
 
 cd "${ROOT}"
 # spec-kit 0.16.1 Hermes integration writes to Path.home()/.hermes/skills
-# (spec-kit#3334 unmerged). Point that at the project skills root so M2
-# `specify workflow run speckit` resolves speckit-specify without a
-# user-root external_dirs grant.
+# (spec-kit#3334 unmerged). Init still sets HOME=<project> for `specify init`.
+# Run-time `specify workflow run` uses the PATH shim (install-specify-shim.sh /
+# dest-init managed bin) so a worker shell without HOME= still resolves
+# speckit-specify. Do not add user-root external_dirs.
 log "running: HOME=${ROOT} specify init --here --integration hermes --force --ignore-agent-tools"
 HOME="${ROOT}" specify init --here --integration hermes --force --ignore-agent-tools
 
@@ -226,6 +251,10 @@ python3 "${SCRIPT_DIR}/seed-speckit-skills.py" "${ROOT}" "${HUMAN_HOME}" \
   || die "seed-speckit-skills failed (implementer must see speckit-specify)"
 python3 "${SCRIPT_DIR}/assert-specify-skills-root.py" "${ROOT}" \
   || die "specify CLI skills-root missing speckit-specify"
+bash "${SCRIPT_DIR}/install-specify-shim.sh" "${ROOT}" \
+  || die "install-specify-shim failed"
+python3 "${SCRIPT_DIR}/assert-specify-run-from-worker-home.py" \
+  || die "specify worker-shell control failed (profile HOME still hides speckit-specify)"
 
 # external_dirs: when HERMES_HOME is relocated away from ~/.hermes, spec-kit
 # still writes skills to Path.home()/.hermes/skills — keep both on the list.
@@ -384,4 +413,4 @@ date -u +%Y-%m-%dT%H:%M:%SZ > "${MARKER}"
 TS="$(cat "${MARKER}")"
 HUMAN="[${LOG_PREFIX}] OK — AD-S provision complete (marker ${MARKER})"
 emit_ok "${HUMAN}" "$(python3 -c 'import json,sys; print(json.dumps({"script":"init-workspace","ok":True,"skipped":False,"root":sys.argv[1],"marker":sys.argv[2],"provisioned_at":sys.argv[3]}))' "${ROOT}" "${MARKER}" "${TS}")"
-log "Stop rule: /speckit-tasks → k4_mint.py hermes kanban create; NEVER /speckit-implement; HOME=${ROOT} specify workflow run speckit"
+log "Stop rule: /speckit-tasks → k4_mint.py hermes kanban create; NEVER /speckit-implement; worker specify workflow run speckit (PATH shim, HOME=project child)"

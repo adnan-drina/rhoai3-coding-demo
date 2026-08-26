@@ -9,8 +9,8 @@ from pathlib import Path
 KERNEL = Path(__file__).resolve().parent
 sys.path.insert(0, str(KERNEL))
 from k1_validate import validate_body  # noqa: E402
-from k4_convert import convert_file, validate_result  # noqa: E402
-from k4_schema import VERIFIER_ID, WRITER_ID  # noqa: E402
+from k4_convert import convert_file, stamp_write_set, validate_inputs, validate_result  # noqa: E402
+from k4_schema import STAMP_ID, STAMP_SKILL, VERIFIER_ID, WRITER_ID  # noqa: E402
 
 
 def _fail(msg: str) -> int:
@@ -34,7 +34,7 @@ def main() -> int:
     if issues or result is None:
         return _fail("valid partition: %s" % issues)
     created = result["manifest"]["created_cards"]
-    expect = ["setup", "US1", "US2"]
+    expect = ["setup", "US1", "US2", STAMP_ID]
     if created != expect:
         return _fail("created_cards %s != %s" % (created, expect))
     by_id = {p["logical_id"]: p for p in result["payloads"]}
@@ -69,6 +69,42 @@ def main() -> int:
         return _fail("US1 skills %s" % by_id["US1"]["skills"])
     if "author-destination-pom" not in by_id["setup"]["skills"]:
         return _fail("setup skills %s" % by_id["setup"]["skills"])
+    stamp = by_id[STAMP_ID]
+    if stamp["parents"] != ["setup", "US1", "US2"]:
+        return _fail("stamp parents %s" % stamp["parents"])
+    if stamp.get("skills") != [STAMP_SKILL]:
+        return _fail("stamp skills %s" % stamp.get("skills"))
+    if stamp.get("max_retries") != 1:
+        return _fail("stamp max_retries %s" % stamp.get("max_retries"))
+    if stamp.get("assignee") != "implementer":
+        return _fail("stamp assignee %s" % stamp.get("assignee"))
+    if stamp.get("title") != "M3 %s" % STAMP_ID:
+        return _fail("stamp title %s" % stamp.get("title"))
+    stamp_body = json.loads(stamp["body"])
+    if stamp_body["files_writable"] != [
+        "pom.xml",
+        "src/main/java/com/demo/service/AlphaService.java",
+        "src/main/java/com/demo/resource/AlphaResource.java",
+        "src/main/java/com/demo/service/BetaService.java",
+    ]:
+        return _fail("stamp files_writable %s" % stamp_body["files_writable"])
+    if stamp_body["phase"] != "M3":
+        return _fail("stamp phase %s" % stamp_body["phase"])
+    stamp_k1 = validate_body(stamp_body, root=None)
+    stamp_k1_codes = {c for c, _, _ in stamp_k1}
+    if stamp_k1_codes & {"BODY_SCHEMA", "BODY_SCOPE", "BODY_REF_MISSING", "BODY_HERMES_ID"}:
+        return _fail("stamp body failed K1: %s" % stamp_k1)
+    filtered = stamp_write_set(
+        [{"files_writable": ["pom.xml", "evidence/x", ".env", "src/A.java"]}]
+    )
+    if filtered != ["pom.xml", "src/A.java"]:
+        return _fail("stamp OBJECT filter %s" % filtered)
+    evidence_only = json.loads(valid.read_text(encoding="utf-8"))
+    for story in evidence_only["stories"]:
+        story["files_writable"] = ["evidence/secret.txt"]
+    ev_issues = validate_inputs(evidence_only)
+    if not any(c == "K4_SCOPE" and STAMP_ID in d for c, d, _ in ev_issues):
+        return _fail("evidence-only write-set missed stamp K4_SCOPE: %s" % ev_issues)
     factory = validate_result(
         {
             "payloads": [

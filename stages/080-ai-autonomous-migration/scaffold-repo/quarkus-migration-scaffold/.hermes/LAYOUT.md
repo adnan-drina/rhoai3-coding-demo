@@ -22,7 +22,7 @@ parallel home is a defect.
 | K2 REHOST | `.hermes/kernel/pre_tool_call.sh` — **one** shell `pre_tool_call` module (`fail_closed: true`). Dest terminal allow-root is dest tree **and** `/projects/legacy` (`K2_ALLOW_ROOT` pathsep; Architect `214325ZA`). **Opaque** construction **deny**; transparent pathless + cwd inside a grant **allow** (Architect AMEND of `214743ZA`; Operator `085036ZO`). Write sandbox stays `HERMES_WRITE_SAFE_ROOT` dest tree only. **Not claimed control**. Do not mkdir empty `kernel/`. |
 | K1 body schema | `.hermes/kernel/k1_schema.py` + `k1_load.py` + `k1_validate.py` — typed pre-execution body. Not a skill. KEEP `check-kanban-body.py` imports the validator for the AD-019 minimum. Digest proves consistency among copies, not authorization. `claimed_control` stays false. |
 | K3 graph snapshot | `.hermes/kernel/k3_schema.py` + `k3_verify.py` — leftover dest-5 factory graphs still validate; new mints have **no** dest factory cards. Native unfinished parents hold M3. Not dest live-PID reclaim. Not claimed refuse-as-control. OBJECT `kanban daemon --force` / human `ack_gate`. |
-| K4 converter | `.hermes/kernel/k4_schema.py` + `k4_convert.py` — typed partition → `kanban_create` payloads (inline K1 body). Copies `files_writable` from the partition row. `K4_T0_3_SERVICE` refuses the same `*Service.java` on two or more stories (class-per-aggregate; wrong reading is methods in shared `ClinicService`). Does not mint. Does not import `create_task`. Does not scrape `tasks.md` (`PATH_TOKEN` OBJECT). Manifest `created_cards` is the exact logical-id list. Does not consume type-inventory `reached_from`. Dest GitOps still copies **only** `pre_tool_call.sh`. `claimed_control` stays false. |
+| K4 converter | `.hermes/kernel/k4_schema.py` + `k4_convert.py` — typed partition → `kanban_create` payloads (inline K1 body). Copies `files_writable` from the partition row. After the M3 stories, appends harvest card `STAMP_DESTINATION_TREE` (skill `commit-destination-tree`; parents = every M3 story; write-set = union of product paths minus OBJECT `evidence/` / `.hermes/` / `.specify/` / `target/` / `.env`). `K4_T0_3_SERVICE` refuses the same `*Service.java` on two or more stories (class-per-aggregate; wrong reading is methods in shared `ClinicService`). Does not mint. Does not import `create_task`. Does not scrape `tasks.md` (`PATH_TOKEN` OBJECT). Manifest `created_cards` is the exact logical-id list. Does not consume type-inventory `reached_from`. Dest GitOps still copies **only** `pre_tool_call.sh`. `claimed_control` stays false. |
 | K4 mint | `.hermes/kernel/k4_mint.py` — named, tested translation of those payloads into serial CLI `hermes kanban create` (inline `--body`, `--max-retries 1` on M3 stories, `--assignee implementer`, `--parent` t_* including `HERMES_KANBAN_TASK`). Dest mint-writer / mint-verifier cards are **not** emitted. OBJECT `create_task` import, `kanban swarm`, `kanban decompose`, `kanban daemon --force`. Default is dry-run argv; `--exec` needs a seat with terminal (dest orchestrator disables it). Model `kanban_create` cannot pass `max_retries`. `claimed_control` stays false. |
 | Kanban attach | `.hermes/kernel/kanban_attach.py` — dual-write M1 KEEP evidence onto the card (`hermes kanban attach`, 25 MB/file). PVC paths stay. Skip oversize rather than silent-drop the handoff. Idle when `HERMES_KANBAN_TASK` unset. Not dest-4 mid-run. |
 | Run data | `evidence/` |
@@ -64,6 +64,7 @@ complete requires `created_cards`. Do not wrap these in home scripts.
 | `spring-to-quarkus-patterns` | migration | IMPLEMENT mapping cards |
 | `manage-quarkus-extensions` | migration | Extension add/rm (RH BOM) |
 | `author-destination-pom` | migration | Destination Quarkus POM |
+| `commit-destination-tree` | migration | M3 harvest: one-shot `git -c` commit of dest product writes (not M4; not dest-push) |
 | `reference-rh-quarkus-pom` | migration | RH Quarkus POM structure |
 | `form-entity-persistence` | migration | Entity / persistence form |
 | `configure-quarkus-profiles` | migration | Quarkus config / profiles |
@@ -72,7 +73,7 @@ complete requires `created_cards`. Do not wrap these in home scripts.
 | `derive-story-oracles` | sdd | Story-class exit derivation |
 | `check-domain-parity` | gates | G-1..G-4 measurement oracles |
 | `check-release-readiness` | gates | M4/M5 verdict routing (no phase-dispatch matrix) |
-| `assert-retrievable-tree` | gates | M4 refuse unless `src/` and `pom.xml` committed vs HEAD |
+| `assert-retrievable-tree` | gates | Stamp `--check-only` + M4 refuse unless `src/` and `pom.xml` committed vs HEAD |
 | `assert-pinned-gates-ran` | gates | M4 refuse unless each pinned gate has a verdict or `ran: false` refusal |
 | `assert-no-fence-evasion` | gates | Observe encode-then-execute after a refusal (AD-020 detector, not a boundary) |
 

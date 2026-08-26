@@ -129,9 +129,12 @@ and masks a Gate K first failure). Mint those cards through
 `.hermes/kernel/k4_mint.py` from K4 payloads (CLI `hermes kanban create`).
 M3 argv also passes `--workspace dir:/projects/modernized`, `--skill` per
 story, `--max-runtime 2h`, `--idempotency-key`, and `--parent` for the
-M2 card (`HERMES_KANBAN_TASK`) plus the partition DAG. After `--exec`,
-`kanban_complete` `created_cards` is the native `t_*` list (empty after a
-mint is OBJECT). Scratch workspace on a story is REFUSE.
+M2 card (`HERMES_KANBAN_TASK`) plus the partition DAG. K4 appends harvest
+card `M3 STAMP_DESTINATION_TREE` (skill `commit-destination-tree`;
+parents = every M3 story). M4 `--parent` includes that stamp `t_*`. Do
+not dest-dispatch M4 without named Operator GO. Do not dest-commit dest-7.
+After `--exec`, `kanban_complete` `created_cards` is the native `t_*`
+list (empty after a mint is OBJECT). Scratch workspace on a story is REFUSE.
 M1 KEEP evidence also `python3 .hermes/kernel/kanban_attach.py --task "$HERMES_KANBAN_TASK"`
 (PVC paths stay; 25 MB/file). Do not `kanban decompose`. Do not `kanban swarm`
 for serial T0. Do not run `hermes kanban daemon --force`.
@@ -143,10 +146,10 @@ contain workers from outside the worker.
 
 After `/speckit-tasks` (optional `/speckit-analyze`) → `.hermes/kernel/k4_convert.py`
 then `.hermes/kernel/k4_mint.py`, not by grepping `tasks.md` paths. **Never**
-`/speckit-implement`. Run `HOME=/projects/modernized specify workflow run speckit`
-so the project overlay removes `implement` and inserts `clarify` (spec-kit
-0.16.1 resolves `speckit-specify` from `$HOME/.hermes/skills`; point HOME at
-the project, or use `specify-from-project.sh`).
+`/speckit-implement`. Bare `specify workflow run speckit` (PATH shim;
+spec-kit 0.16.1 still uses `Path.home()/.hermes/skills` — dest-init and
+init-spec-workspace point that child HOME at the project). Do not rely
+on workers prefixing `HOME=/projects/modernized`.
 
 ### Task-id correlation
 
@@ -177,6 +180,7 @@ One line each: what it governs → which skill. When a skill is loaded, prefer
 | M4/M5 verdict routing | `check-release-readiness` |
 | M4 pinned-gate evidence (silence fails) | `assert-pinned-gates-ran` |
 | M4 retrievable `src/` + `pom.xml` | `assert-retrievable-tree` |
+| M3 harvest commit (not M4) | `commit-destination-tree` |
 | Fence-evasion detector (not containment evidence) | `assert-no-fence-evasion` |
 | Quarkus config / profiles | `configure-quarkus-profiles` |
 | Entity / persistence form | `form-entity-persistence` |
