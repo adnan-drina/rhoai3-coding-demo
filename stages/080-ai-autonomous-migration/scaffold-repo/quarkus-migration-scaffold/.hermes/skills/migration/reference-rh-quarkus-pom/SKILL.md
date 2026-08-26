@@ -65,6 +65,15 @@ Annotated fragments: `references/pom-structure.md`. Repository resolution:
    fallback when settings are absent.
 4. Hand off to `author-destination-pom` verification
    (`check-pom-platform-pins.py`, `check-pom-jacoco-wiring.py`).
+5. **Maven settings check (T001):** run
+   `scripts/verify-maven-settings.py <root>` with a **≥120s** budget, **or**
+   take `--files-only` first (file-shape only; skips
+   `mvn help:effective-settings`). Do not wrap this script in a 15s shell
+   timeout. Shell **`124` is a timeout, not a REFUSE** — the script's own
+   Maven subprocess already budgets 120s. dest-8 T001 hit 124 on a cold
+   cache, diagnosed it, and recovered; a worker that reads 124 as REFUSE
+   blocks; one that treats it as "no claim" could complete around it.
+   A warm-cache re-run passes and proves nothing (Operator `123728ZO`).
 
 ## Pitfalls
 
@@ -77,6 +86,9 @@ Annotated fragments: `references/pom-structure.md`. Repository resolution:
   evidence-driven per story (DD3 / T-3).
 - Confusing Maven `-Dnative` profile with Quarkus `%profile.` config
   profiles (different mechanisms).
+- Reading `verify-maven-settings.py` exit **124** as REFUSE. 124 is the
+  **caller's** shell timeout (dest-8: 15s vs cold `help:effective-settings`).
+  Allow ≥120s, or pass `--files-only` first.
 
 ## Verification
 
@@ -87,4 +99,5 @@ Annotated fragments: `references/pom-structure.md`. Repository resolution:
 - `check-pom-platform-pins.py <root>` → OK once authored.
 - `scripts/verify-maven-settings.py <root>` → OK when `.mvn/maven.config`
   has `-s` / `.mvn/settings.xml` and the RH GA profile is present. Maven 3
-  does not auto-read `.mvn/settings.xml`.
+  does not auto-read `.mvn/settings.xml`. Allow **≥120s**, or run
+  `--files-only` first. Exit **124** is a timeout, not a refusal.

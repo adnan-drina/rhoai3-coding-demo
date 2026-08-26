@@ -23,6 +23,7 @@ Paraphrased public API names. Prefer living Full-path from
 | rest-delete | `@DeleteMapping` | `@DELETE` + `@Path` | ADOPT | |
 | rest-path-var | `@PathVariable` | `@PathParam` | ADOPT | Table 3.2 locus |
 | rest-query | `@RequestParam` | `@QueryParam` | ADOPT | |
+| rest-query-default | `@RequestParam(defaultValue=…)` | `@QueryParam` **plus** `@DefaultValue` (separate annotation) | ADOPT | JAX-RS has no `defaultValue=` on `@QueryParam`. dest-8 T002 emitted `@QueryParam(defaultValue=…)` (Spring leftover) and only the compiler caught it. |
 | rest-header | `@RequestHeader` | `@HeaderParam` | ADOPT | |
 | rest-body | `@RequestBody` | unannotated entity param / `@Consumes` | ADOPT | |
 | rest-valid | `@Valid` + `BindingResult` | Endpoint `@Valid` **or** manual validation — pick one strategy | ADOPT | AR-3.4 — `@Valid` runs before/with method; builtin violation mapper |
@@ -30,7 +31,8 @@ Paraphrased public API names. Prefer living Full-path from
 | rest-response-status | `@ResponseStatus` | `Response.status(...)` or exception mapper | ADOPT | |
 | rest-advice | `@RestControllerAdvice` / `@ExceptionHandler` | `@ServerExceptionMapper` / `ExceptionMapper` | ADOPT | Do not map all `Exception` → 400 (AR-2.6) |
 
-**REJECT:** Spring MVC stack on destination; `quarkus-spring-web` compat.
+**REJECT:** Spring MVC stack on destination; `quarkus-spring-web` compat;
+`@QueryParam(defaultValue=…)` (not a JAX-RS attribute — use `@DefaultValue`).
 
 ### Tip-bank B3 — discovery / CDI (v13 M5 JAX-RS 404)
 

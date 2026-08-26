@@ -116,6 +116,9 @@ This skill carries no scripts — it is a consult-then-write contract.
 - Translating Spring Boot properties by supplementation; Quarkus does not
   auto-map them — replace keys explicitly.
 - Inventing specimen-specific type names in skill prose (R-SK.5).
+- Emitting `@QueryParam(defaultValue=…)` — Spring leftover. JAX-RS is
+  `@QueryParam` plus a separate `@DefaultValue` (`references/rest-annotations.md`
+  `rest-query-default`).
 
 ## Verification
 

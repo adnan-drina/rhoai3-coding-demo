@@ -527,6 +527,12 @@ check "080 K4 producer-skill bar selftest passes" \
 check "080 compose-m4-verdict selftest passes" \
   "python3 '${SCAFFOLD_080}/.hermes/skills/gates/compose-m4-verdict/scripts/compose-m4-verdict.test.py' >/dev/null && echo 1 || echo 0" \
   "1"
+check "080 cold-cache maven-settings skill text selftest passes" \
+  "python3 '${SCAFFOLD_080}/.hermes/skills/migration/reference-rh-quarkus-pom/scripts/reference-rh-quarkus-pom.test.py' >/dev/null && echo 1 || echo 0" \
+  "1"
+check "080 JAX-RS DefaultValue mapping selftest passes" \
+  "python3 '${SCAFFOLD_080}/.hermes/skills/migration/spring-to-quarkus-patterns/scripts/rest-annotations-defaultvalue.test.py' >/dev/null && echo 1 || echo 0" \
+  "1"
 check "080 check-spec-readiness selftest passes" \
   "python3 '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/skills/sdd/check-spec-readiness/scripts/check-spec-readiness-selftest.py' >/dev/null && echo 1 || echo 0" \
   "1"

@@ -41,10 +41,15 @@ Do not embed `<repositories>` in the dest POM.
 
 ```bash
 python3 .hermes/skills/migration/reference-rh-quarkus-pom/scripts/verify-maven-settings.py .
+# cold cache / short shell: either allow ≥120s, or:
+python3 .hermes/skills/migration/reference-rh-quarkus-pom/scripts/verify-maven-settings.py . --files-only
 ```
 
 That script requires the two `.mvn/` files and, when `mvn` is on PATH,
-`mvn help:effective-settings` must show `red-hat-enterprise-maven-repository`.
+`mvn help:effective-settings` must show `red-hat-enterprise-maven-repository`
+(skipped with `--files-only`). The script budgets 120s internally; a
+caller 15s timeout returns **124**, which is a timeout, not REFUSE.
+Do not wrap this in a short shell timeout on a cold Maven cache.
 
 ## Fallback — in-POM repositories
 
