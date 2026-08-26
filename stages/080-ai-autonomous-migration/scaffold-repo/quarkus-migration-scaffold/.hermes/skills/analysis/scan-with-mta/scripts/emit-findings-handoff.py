@@ -5,12 +5,14 @@ Seam artifact: identity + rule/locus index + digests. NO codeSnip / raw blobs.
 Evidence store remains evidence/mta-findings.json.
 
 AD-H §16.7 / AR-4.1: inventory digest REQUIRED (refuse emit without inventory).
+W4: inventory `root` must equal `harvest_referent` (assert-harvest-referent-pair).
 AD-H §16.7 / AR-4.2: each rule carries bounded description + disposition.
 """
 from __future__ import annotations
 
 import hashlib
 import json
+import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -103,6 +105,25 @@ def main() -> int:
             file=sys.stderr,
         )
         return 2
+
+    pair = (
+        Path(__file__).resolve().parents[2]
+        / "inventory-legacy-surface"
+        / "scripts"
+        / "assert-harvest-referent-pair.py"
+    )
+    if not pair.is_file():
+        print(
+            "emit-findings-handoff: missing assert-harvest-referent-pair.py",
+            file=sys.stderr,
+        )
+        return 2
+    pair_run = subprocess.run(
+        [sys.executable, str(pair), str(root)],
+        text=True,
+    )
+    if pair_run.returncode != 0:
+        return pair_run.returncode
 
     doc = json.loads(evidence.read_text(encoding="utf-8"))
     violations = doc.get("violations") if isinstance(doc, dict) else None

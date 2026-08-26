@@ -9,7 +9,7 @@ package segment, not a Dto/mapper allow-list.
 Usage:
   python3 inventory-type-graph.py --dest-root /projects/modernized \\
     --inventory evidence/entry-point-inventory.json \\
-    --legacy /projects/legacy \\
+    --from-manifest evidence/derived/legacy-at-3.json \\
     -o evidence/type-inventory.json
 """
 from __future__ import annotations
@@ -70,21 +70,58 @@ def _strip_abs(path: str) -> str:
     return p
 
 
-def _legacy_root(dest_root: Path, explicit: str | None) -> Path | None:
+def _harvest_from_manifest(path: Path, dest_root: Path) -> Path | None:
+    if not path.is_absolute():
+        path = dest_root / path
+    if not path.is_file():
+        return None
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(doc, dict):
+        return None
+    raw = str(doc.get("harvest_referent") or "").strip()
+    if not raw:
+        return None
+    p = Path(raw)
+    if not p.is_absolute():
+        p = (dest_root / p).resolve()
+    else:
+        p = p.resolve()
+    return p if p.is_dir() else None
+
+
+def _legacy_root(
+    dest_root: Path, explicit: str | None, from_manifest: str | None
+) -> tuple[Path | None, str]:
+    harvest: Path | None = None
+    if from_manifest:
+        harvest = _harvest_from_manifest(Path(from_manifest), dest_root)
+        if harvest is None:
+            return None, (
+                "FAIL: --from-manifest missing harvest_referent "
+                "(do not guess /projects/legacy)"
+            )
     if explicit:
         p = Path(explicit)
-        return p if p.is_dir() else None
-    for cand in (
-        Path("/projects/legacy"),
-        dest_root.parent / "legacy",
-        dest_root / "legacy",
-        dest_root.parent / ".derived" / "legacy-at-3",
-        dest_root / ".derived" / "legacy-at-3",
-        dest_root / "legacy-at-3",
-    ):
-        if cand.is_dir():
-            return cand
-    return None
+        if not p.is_absolute():
+            p = (dest_root / p).resolve()
+        else:
+            p = p.resolve()
+        if not p.is_dir():
+            return None, "FAIL: --legacy is not a directory: %s" % p
+        if harvest is not None and p != harvest:
+            return None, (
+                "FAIL: --legacy %s != harvest_referent %s" % (p, harvest)
+            )
+        return p, ""
+    if harvest is not None:
+        return harvest, ""
+    return None, (
+        "FAIL: pass --from-manifest or --legacy "
+        "(do not guess /projects/legacy)"
+    )
 
 
 def _resolve_legacy_file(legacy_root: Path, rel: str) -> Path | None:
@@ -108,7 +145,12 @@ def main() -> int:
     ap.add_argument(
         "--legacy",
         default="",
-        help="legacy@3.x tree (default: /projects/legacy, then dest-adjacent)",
+        help="legacy@3.x tree (must match harvest_referent when --from-manifest)",
+    )
+    ap.add_argument(
+        "--from-manifest",
+        default="",
+        help="evidence/derived/legacy-at-3.json — walk harvest_referent (W4)",
     )
     ap.add_argument(
         "--from-files",
@@ -122,9 +164,11 @@ def main() -> int:
     inv_path = Path(args.inventory)
     if not inv_path.is_absolute():
         inv_path = dest_root / inv_path
-    legacy = _legacy_root(dest_root, args.legacy or None)
+    legacy, err = _legacy_root(
+        dest_root, args.legacy or None, args.from_manifest or None
+    )
     if legacy is None:
-        print("FAIL: no legacy-at-3 tree to walk", file=sys.stderr)
+        print(err, file=sys.stderr)
         return 2
 
     starts: list[tuple[str, Path]] = []

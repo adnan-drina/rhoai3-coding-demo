@@ -253,13 +253,38 @@ def sha256_file_list(paths: list[Path]) -> str:
     return h.hexdigest()
 
 
+def _harvest_from_manifest(path: Path) -> tuple[Path | None, str]:
+    if not path.is_file():
+        return None, "missing manifest %s" % path
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return None, "unreadable manifest %s: %s" % (path, exc)
+    if not isinstance(doc, dict):
+        return None, "manifest is not an object: %s" % path
+    raw = str(doc.get("harvest_referent") or "").strip()
+    if not raw:
+        return None, "missing harvest_referent in %s (do not guess /projects/legacy)" % path
+    p = Path(raw)
+    if not p.is_absolute():
+        p = (path.parent.parent.parent / p).resolve()
+    else:
+        p = p.resolve()
+    return p, ""
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument(
         "root",
         nargs="?",
-        default=".",
-        help="Source tree to scan (legacy@3.x or specimen root)",
+        default=None,
+        help="Source tree to scan (legacy@3.x). Prefer --from-manifest.",
+    )
+    ap.add_argument(
+        "--from-manifest",
+        default="",
+        help="evidence/derived/legacy-at-3.json — scan harvest_referent (W4)",
     )
     ap.add_argument(
         "-o",
@@ -268,7 +293,33 @@ def main() -> int:
         help="Output JSON path (relative to cwd unless absolute)",
     )
     args = ap.parse_args()
-    root = Path(args.root).resolve()
+    if args.from_manifest:
+        man = Path(args.from_manifest)
+        if not man.is_absolute():
+            man = Path.cwd() / man
+        harvest, err = _harvest_from_manifest(man)
+        if harvest is None:
+            print("inventory-entry-points: " + err, file=sys.stderr)
+            return 2
+        if args.root not in (None, ".", ""):
+            positional = Path(args.root).resolve()
+            if positional != harvest:
+                print(
+                    "inventory-entry-points: positional root %s != harvest_referent %s"
+                    % (positional, harvest),
+                    file=sys.stderr,
+                )
+                return 1
+        root = harvest
+    elif args.root in (None, ".", ""):
+        print(
+            "inventory-entry-points: pass --from-manifest "
+            "(do not guess /projects/legacy or cwd)",
+            file=sys.stderr,
+        )
+        return 2
+    else:
+        root = Path(args.root).resolve()
     if not root.is_dir():
         print(f"inventory-entry-points: not a directory: {root}", file=sys.stderr)
         return 2

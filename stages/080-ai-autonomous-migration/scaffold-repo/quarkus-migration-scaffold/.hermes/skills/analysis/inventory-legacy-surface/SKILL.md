@@ -1,11 +1,11 @@
 ---
 name: inventory-legacy-surface
-description: Use when M1 must inventory legacy@3.x entry points and the types reachable from those files. Writes evidence/entry-point-inventory.json then evidence/type-inventory.json. Use before the M1 to M2 handoff, when partition coverage must cover dest twins as well as HTTP rows, when a collaborator layer is missing from the plan, or when smoke sampling needs the inventory — even if the user does not name type inventory. Do not use as a substitute for scan-with-mta.
+description: Use when M1 must inventory legacy@3.x entry points and the types reachable from those files. Writes evidence/entry-point-inventory.json then evidence/type-inventory.json from harvest_referent in evidence/derived/legacy-at-3.json (do not hardcode /projects/legacy). Use before the M1 to M2 handoff, when partition coverage must cover dest twins as well as HTTP rows, when a collaborator layer is missing from the plan, or when smoke sampling needs the inventory — even if the user does not name type inventory. Do not use as a substitute for scan-with-mta.
 license: Apache-2.0
 compatibility: Linux seat; Python 3.11+; reads the legacy@3.x tree
 metadata:
   author: rhoai3-harness-team
-  version: "1.4.2"
+    version: "1.4.3"
   hermes:
     tags:
     - analysis
@@ -35,17 +35,19 @@ metadata:
 ## Procedure
 
 1. Resolve the referent — `harvest_referent` in
-   `evidence/derived/legacy-at-3.json` names the Boot-3 harvest. The
-   fence-legal scan root is **`/projects/legacy`** (in `K2_ALLOW_ROOT`).
-   Do **not** scan `/projects/.derived/legacy-at-3` — K2 refuses that
-   path (Architect `082958ZA`; dest-4 M1 recovered on `/projects/legacy`).
-   Never scan a read-only 2.x mount as if it were the harvest.
-2. Scan it. Positional arg is the scan root; `-o` defaults to
+   `evidence/derived/legacy-at-3.json` names the Boot-3 harvest. Pass
+   `--from-manifest` so inventory and MTA share that path. Do **not**
+   hardcode `/projects/legacy` when the mode is derived. Do **not** pass
+   `/projects/.derived/legacy-at-3` as a literal (K2 fence; Architect
+   `082958ZA`). Never scan a read-only 2.x mount as if it were the harvest.
+   `mode=identity` harvest is `/projects/legacy` (in `K2_ALLOW_ROOT`); that
+   does **not** close W4 (Boot-2 petclinic only).
+2. Scan `harvest_referent`. `-o` defaults to
    `evidence/entry-point-inventory.json` (relative to cwd).
 
 ```bash
 python3 "${HERMES_SKILL_DIR}/scripts/inventory-entry-points.py" \
-  /projects/legacy \
+  --from-manifest evidence/derived/legacy-at-3.json \
   -o evidence/entry-point-inventory.json
 ```
 
@@ -56,8 +58,15 @@ python3 "${HERMES_SKILL_DIR}/scripts/inventory-entry-points.py" \
 python3 "${HERMES_SKILL_DIR}/scripts/inventory-type-graph.py" \
   --dest-root /projects/modernized \
   --inventory evidence/entry-point-inventory.json \
-  --legacy /projects/legacy \
+  --from-manifest evidence/derived/legacy-at-3.json \
   -o evidence/type-inventory.json
+```
+
+5. Fail closed if the inventory `root` is not `harvest_referent`:
+
+```bash
+python3 "${HERMES_SKILL_DIR}/scripts/assert-harvest-referent-pair.py" \
+  /projects/modernized
 ```
 
 The walk parser is `scripts/type_graph.py` in this skill (not `.hermes/lib/`).
@@ -83,7 +92,10 @@ only, so a referent living under `/projects/.derived/…` still scans.
 ## Pitfalls
 
 - Inventorying the RO legacy mount without the Boot-3 derived harvest
-  referent when Boot source is still 2.x.
+  referent when Boot source is still 2.x (`assert-harvest-referent-pair`
+  REFUSE).
+- Closing W4 on `mode=identity` (gs-rest) — `--require-boot2-derivation`
+  is INCONCLUSIVE until a Boot-2 petclinic run.
 - Treating HTTP-only inventory as complete when non-HTTP entry points exist.
 - Treating HTTP inventory as complete for collaborator layers — those
   dest twins live in `evidence/type-inventory.json`, not on a route.
@@ -105,6 +117,9 @@ only, so a referent living under `/projects/.derived/…` still scans.
 - HTTP rows carry `http_method` (GET/POST/…) and `http_path` (class prefix
   joined to the method mapping). Empty fields mean the scanner could not
   parse a route; coverage then joins on dest-file shortcut or `symbol`.
+- `assert-harvest-referent-pair.py <dest>` exits 0: inventory `root` equals
+  `harvest_referent`. `--require-boot2-derivation` exits 2 on `mode=identity`
+  (W4 stays open; not gs-rest).
 - Script prints `OK: <n> entry points (<h> http, <n> non-http) → <path>` and
   exits 0. Exit 2 = scan root is not a directory (nothing was written).
 - Digest coupling: `check-findings-handoff.py` re-hashes this file and compares

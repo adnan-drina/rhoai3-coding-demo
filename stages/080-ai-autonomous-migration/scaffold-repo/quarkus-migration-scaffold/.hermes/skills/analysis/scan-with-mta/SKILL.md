@@ -104,7 +104,8 @@ What it does, in order (each step dies non-zero on failure):
 6. `emit-findings-handoff.py <root> <findings> <handoff>` → the M1→M2 seam
    `evidence/findings-handoff.json` (`rhoai3.findings-handoff/v1`: rule IDs,
    category, bounded `description`, `disposition`, loci, digests — **no**
-   `codeSnip`), then `check-findings-handoff.py <root>` as the gate.
+   `codeSnip`). Refuses unless inventory `root` equals `harvest_referent`
+   (`assert-harvest-referent-pair.py`; W4). Then `check-findings-handoff.py <root>` as the gate.
    Then `emit-required-extensions.py <root>` → `evidence/required-extensions.json`
    (T-3 rewrite of named Quarkus targets + **`harvest_referent`/pom.xml**
    artifactIds from `evidence/derived/legacy-at-3.json`; never

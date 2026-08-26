@@ -560,6 +560,12 @@ check "080 dest-init smokes specify helper-by-path (W1)" \
 check "080 dest-init specify-smoke selftest (shim-only REFUSE)" \
   "python3 '${SCAFFOLD_080}/.hermes/skills/sdd/init-spec-workspace/scripts/assert-dest-init-smokes-mandated-tools-selftest.py' >/dev/null && echo 1 || echo 0" \
   "1"
+check "080 inventory SKILL uses harvest_referent --from-manifest (W4)" \
+  "awk '/inventory-entry-points.py/{getline; print}' '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/skills/analysis/inventory-legacy-surface/SKILL.md' | grep -c -- '--from-manifest' || echo 0" \
+  "1"
+check "080 harvest-referent pair selftest (identity cannot close W4)" \
+  "python3 '${SCAFFOLD_080}/.hermes/skills/analysis/inventory-legacy-surface/scripts/assert-harvest-referent-pair-selftest.py' >/dev/null && echo 1 || echo 0" \
+  "1"
 check "080 K4 mints STAMP_DESTINATION_TREE harvest card" \
   "grep -c 'STAMP_DESTINATION_TREE' '${SCAFFOLD_KERNEL}/k4_schema.py' || echo 0" \
   "2"
