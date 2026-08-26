@@ -5,7 +5,7 @@ license: Apache-2.0
 compatibility: Linux seat; network to install pinned Spec Kit CLI
 metadata:
   author: rhoai3-harness-team
-  version: "1.4.8"
+  version: "1.4.9"
   hermes:
     tags:
     - sdd
@@ -140,7 +140,10 @@ M2 PLAN consumes M1 KEEP evidence via parent `kanban_attachments` plus
 - dest-init (GitOps) must smoke helper-by-path
   `specify workflow run speckit -i spec=dest-init-smoke` via `SPECIFY_REAL`
   and assert **four** overlay skills (`speckit-specify`, `speckit-clarify`,
-  `speckit-plan`, `speckit-tasks`) plus `hermes kanban ls`
+  `speckit-plan`, `speckit-tasks`) plus `hermes kanban ls`, and must **run**
+  `specify init --here --integration hermes --force --ignore-agent-tools`
+  plus `mvn test` on **fresh** trees (`dest-init-fresh-smoke` /
+  `dest-init-mvn-smoke`) — not dest-9 `/projects/modernized`
   (`assert-dest-init-smokes-mandated-tools.py`). One-skill specify is not
   the workflow. Shim-only dest-init REFUSE. Do not dest-apply onto dest-9.
 - Relocated `HERMES_HOME`: `check-external-dirs.py` must print

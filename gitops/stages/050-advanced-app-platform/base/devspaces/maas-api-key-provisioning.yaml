@@ -934,7 +934,7 @@ data:
       # Dashboard: public 0.0.0.0:9119 bind + che-gateway secure endpoint
       # (Operator 2026-08-21). Auth is Managed Scope dashboard.basic_auth.
       "${venv_py}" - <<'HERMESEOF'
-    import os, shutil, subprocess, yaml, json
+    import os, shutil, subprocess, tempfile, yaml, json
     managed = os.environ["HERMES_MANAGED_DIR"]
     skills_dir = os.environ["HERMES_SKILLS_DIR"]
     global_skills = os.environ["HERMES_GLOBAL_SKILLS_DIR"]
@@ -1294,6 +1294,131 @@ data:
         )
     os.chmod(specify_wrap, 0o755)
     print("specify PATH shim: " + specify_wrap + " -> " + specify_helper)
+    # W1 remaining (Operator P1 / Architect 193639ZA): specify init and
+    # mvn test on a FRESH tree. dest-9 /projects/modernized is mid-chain
+    # (--force / product tests are destructive or slow). Same argv the
+    # skills mandate; not a full speckit LLM run; not dest-apply dest-9.
+    skip_specify_dirs = {
+        os.path.abspath(bin_dir),
+        os.path.abspath(os.path.join(project, ".hermes", "bin")),
+        os.path.abspath("/projects/.platform/hermes/bin"),
+        os.path.abspath("/etc/hermes/bin"),
+    }
+    real_specify = ""
+    for d in os.environ.get("PATH", "").split(":"):
+        if not d:
+            continue
+        cand = os.path.join(d, "specify")
+        if not os.path.isfile(cand) or not os.access(cand, os.X_OK):
+            continue
+        if os.path.abspath(d) in skip_specify_dirs:
+            continue
+        real_specify = cand
+        break
+    if not real_specify:
+        raise SystemExit(
+            "ERROR: dest-init specify init: specify-cli not on PATH "
+            "after skipping dest shims"
+        )
+    fresh = tempfile.mkdtemp(prefix="dest-init-fresh-smoke-")
+    if os.path.abspath(fresh) == os.path.abspath(project):
+        raise SystemExit(
+            "ERROR: dest-init-fresh-smoke must not be dest-9 modernized"
+        )
+    try:
+        subprocess.run(
+            ["git", "init"],
+            cwd=fresh,
+            check=True,
+            capture_output=True,
+            timeout=30,
+        )
+        init_env = os.environ.copy()
+        init_env["HOME"] = fresh
+        init_argv = [
+            real_specify,
+            "init",
+            "--here",
+            "--integration",
+            "hermes",
+            "--force",
+            "--ignore-agent-tools",
+        ]
+        print("dest-init specify init argv: " + " ".join(init_argv))
+        init_run = subprocess.run(
+            init_argv,
+            cwd=fresh,
+            env=init_env,
+            capture_output=True,
+            text=True,
+            timeout=180,
+        )
+        print("dest-init specify init rc=%s" % init_run.returncode)
+        if init_run.returncode != 0:
+            blob = (init_run.stdout or "") + (init_run.stderr or "")
+            raise SystemExit(
+                "ERROR: dest-init specify init rc=%s: %s"
+                % (init_run.returncode, blob[-800:])
+            )
+        if not os.path.isdir(os.path.join(fresh, ".specify")):
+            raise SystemExit(
+                "ERROR: dest-init specify init did not create .specify"
+            )
+        print("dest-init specify init: MATCH fresh tree")
+    finally:
+        shutil.rmtree(fresh, ignore_errors=True)
+    mvn_root = tempfile.mkdtemp(prefix="dest-init-mvn-smoke-")
+    if os.path.abspath(mvn_root) == os.path.abspath(project):
+        raise SystemExit(
+            "ERROR: dest-init-mvn-smoke must not be dest-9 modernized"
+        )
+    try:
+        os.makedirs(os.path.join(mvn_root, "src/test/java"), exist_ok=True)
+        pom = os.path.join(mvn_root, "pom.xml")
+        with open(pom, "w") as fh:
+            fh.write(
+                "<project><modelVersion>4.0.0</modelVersion>"
+                "<groupId>dest.init</groupId><artifactId>smoke</artifactId>"
+                "<version>0</version>"
+                "<dependencies><dependency>"
+                "<groupId>org.junit.jupiter</groupId>"
+                "<artifactId>junit-jupiter</artifactId>"
+                "<version>5.10.2</version><scope>test</scope>"
+                "</dependency></dependencies><build><plugins>"
+                "<plugin><groupId>org.apache.maven.plugins</groupId>"
+                "<artifactId>maven-compiler-plugin</artifactId>"
+                "<version>3.13.0</version>"
+                "<configuration><release>17</release></configuration>"
+                "</plugin><plugin><groupId>org.apache.maven.plugins</groupId>"
+                "<artifactId>maven-surefire-plugin</artifactId>"
+                "<version>3.2.5</version></plugin>"
+                "</plugins></build></project>\n"
+            )
+        with open(os.path.join(mvn_root, "src/test/java/SmokeTest.java"), "w") as fh:
+            fh.write(
+                "import org.junit.jupiter.api.Test;\n"
+                "import static org.junit.jupiter.api.Assertions.assertTrue;\n"
+                "class SmokeTest { @Test void ok() { assertTrue(true); } }\n"
+            )
+        mvn_argv = ["mvn", "-q", "-f", pom, "test"]
+        print("dest-init mvn test argv: " + " ".join(mvn_argv))
+        mvn_run = subprocess.run(
+            mvn_argv,
+            cwd=mvn_root,
+            capture_output=True,
+            text=True,
+            timeout=180,
+        )
+        print("dest-init mvn test rc=%s" % mvn_run.returncode)
+        if mvn_run.returncode != 0:
+            blob = (mvn_run.stdout or "") + (mvn_run.stderr or "")
+            raise SystemExit(
+                "ERROR: dest-init mvn test rc=%s: %s"
+                % (mvn_run.returncode, blob[-800:])
+            )
+        print("dest-init mvn test: MATCH fresh tree")
+    finally:
+        shutil.rmtree(mvn_root, ignore_errors=True)
     # W1 (Architect 190736ZA / 192312ZA): dest-init file-presence of the
     # helper is not capability. One skill is not the workflow. Probe every
     # Hermes skill the overlay keeps (specify/clarify/plan/tasks). SPECIFY_REAL

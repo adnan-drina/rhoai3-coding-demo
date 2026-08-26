@@ -56,8 +56,8 @@ def main() -> int:
     blob = proc.stdout + proc.stderr
     if proc.returncode == 0:
         return _fail("shim-only dest-init must REFUSE: %s" % blob)
-    if "SPECIFY_REAL" not in blob:
-        return _fail("shim-only must name SPECIFY_REAL gap: %s" % blob)
+    if "SPECIFY_REAL" not in blob and "specify init" not in blob:
+        return _fail("shim-only must name SPECIFY_REAL or specify init gap: %s" % blob)
     gitops = _gitops()
     if gitops is None:
         return _fail("GitOps dest-init missing above %s" % HERE)

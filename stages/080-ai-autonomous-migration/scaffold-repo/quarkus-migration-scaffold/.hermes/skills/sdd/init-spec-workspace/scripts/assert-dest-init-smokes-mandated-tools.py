@@ -13,6 +13,9 @@ Required in dest-init (GitOps ``maas-api-key-provisioning.yaml``):
   gate before skill lookup)
 - ``SPECIFY_REAL`` probe for **four** overlay skills (specify/clarify/plan/tasks)
 - ``hermes kanban ls`` (``hermes --version`` is the proxy class)
+- ``specify init --here --integration hermes --force --ignore-agent-tools``
+  on a ``dest-init-fresh-smoke`` tree (not dest-9 ``/projects/modernized``)
+- ``mvn … test`` on a ``dest-init-mvn-smoke`` tree (not dest-9 product tests)
 
 Exit 0: dest-init contains the smoke.
 Exit 1: shim-only / missing mandated argv.
@@ -52,6 +55,18 @@ def check_text(text: str) -> list[str]:
         gaps.append("missing speckit-tasks")
     if "hermes kanban ls" not in text:
         gaps.append("missing hermes kanban ls (hermes --version is the proxy class)")
+    if "specify init" not in text:
+        gaps.append("missing specify init (presence of .specify is not capability)")
+    if "--here" not in text or "--integration" not in text:
+        gaps.append("missing specify init --here --integration hermes")
+    if "--force" not in text or "--ignore-agent-tools" not in text:
+        gaps.append("missing specify init --force --ignore-agent-tools")
+    if "dest-init-fresh-smoke" not in text:
+        gaps.append("missing dest-init-fresh-smoke (must not specify init dest-9)")
+    if "dest-init-mvn-smoke" not in text:
+        gaps.append("missing dest-init-mvn-smoke (must not mvn test dest-9)")
+    if '"test"' not in text and "'test'" not in text:
+        gaps.append("missing mvn test argv (mvn --version is the proxy class)")
     return gaps
 
 
@@ -74,7 +89,7 @@ def main(argv: list[str] | None = None) -> int:
         for g in gaps:
             print("  - " + g, file=sys.stderr)
         return _fail("today's dest-init cannot dispatch specify")
-    print("OK: dest-init specify smoke (four-step skills + helper-by-path + hermes kanban ls)")
+    print("OK: dest-init specify smoke (four-step + specify init + mvn test + hermes kanban ls)")
     return 0
 
 
