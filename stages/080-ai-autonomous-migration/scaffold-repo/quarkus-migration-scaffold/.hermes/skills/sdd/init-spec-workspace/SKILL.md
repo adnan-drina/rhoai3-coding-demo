@@ -5,7 +5,7 @@ license: Apache-2.0
 compatibility: Linux seat; network to install pinned Spec Kit CLI
 metadata:
   author: rhoai3-harness-team
-  version: "1.4.9"
+  version: "1.4.10"
   hermes:
     tags:
     - sdd
@@ -84,7 +84,11 @@ After `/speckit-tasks` (optional `/speckit-analyze`) → K4 convert →
 `/speckit-implement`. Invoke `specify-from-project.sh --root` (do not
 PATH-lookup `specify`; dest-9 uv specify shadows the dest-init shim).
 Bare form exits 1 (`Required input 'spec'`). Do not rely on workers
-prefixing `HOME=/projects/modernized`.
+prefixing `HOME=/projects/modernized`. The helper stamps
+`stamp-speckit-workflow-receipt.py`. Paired control:
+`assert-speckit-unknown-then-emit.py` (empty HOME `Unknown skill(s): speckit-specify`
+then helper emits `tasks.md` + receipt). Do not close on
+`specify workflow resolve`.
 M2 PLAN consumes M1 KEEP evidence via parent `kanban_attachments` plus
 `evidence/findings-handoff.json` — not from metadata path lists.
 
