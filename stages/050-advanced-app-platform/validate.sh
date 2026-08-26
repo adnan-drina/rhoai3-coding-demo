@@ -234,14 +234,16 @@ check "RHDH dynamic plugins config exists" \
   "dynamic-plugins.default.yaml"
 
 log_step "ConsoleLink"
-CL_HREF=$(oc get consolelink rhdh -o jsonpath='{.spec.href}' 2>/dev/null || echo "")
-if [[ -n "$CL_HREF" ]] && [[ "$CL_HREF" != *"placeholder"* ]]; then
-    echo -e "${GREEN}[PASS]${NC} ConsoleLink: ${CL_HREF}"
-    VALIDATE_PASS=$((VALIDATE_PASS + 1))
-else
-    echo -e "${YELLOW}[WARN]${NC} ConsoleLink href is placeholder or missing"
-    VALIDATE_WARN=$((VALIDATE_WARN + 1))
-fi
+for CL_NAME in rhdh mta; do
+    CL_HREF=$(oc get consolelink "$CL_NAME" -o jsonpath='{.spec.href}' 2>/dev/null || echo "")
+    if [[ -n "$CL_HREF" ]] && [[ "$CL_HREF" != *"placeholder"* ]]; then
+        echo -e "${GREEN}[PASS]${NC} ConsoleLink ${CL_NAME}: ${CL_HREF}"
+        VALIDATE_PASS=$((VALIDATE_PASS + 1))
+    else
+        echo -e "${YELLOW}[WARN]${NC} ConsoleLink ${CL_NAME} href is placeholder or missing"
+        VALIDATE_WARN=$((VALIDATE_WARN + 1))
+    fi
+done
 
 echo ""
 validation_summary
