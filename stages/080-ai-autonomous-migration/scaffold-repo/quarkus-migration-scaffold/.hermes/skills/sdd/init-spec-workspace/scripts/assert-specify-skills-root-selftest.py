@@ -38,6 +38,18 @@ def main() -> int:
         flat.mkdir(parents=True)
         (flat / "SKILL.md").write_text("---\nname: speckit-specify\n---\n", encoding="utf-8")
         proc = _run(tmp)
+        blob = proc.stdout + proc.stderr
+        if proc.returncode == 0:
+            print(
+                "FAIL: dest-13 dual seed (flat + sdd/) must REFUSE: %s" % blob,
+                file=sys.stderr,
+            )
+            return 1
+        if "Ambiguous" not in blob and "dual-seeded" not in blob:
+            print("FAIL: missing dual-seed Ambiguous message: %s" % blob, file=sys.stderr)
+            return 1
+        shutil.rmtree(nested)
+        proc = _run(tmp)
         if proc.returncode != 0:
             print(
                 "FAIL: flat project skills-root should PASS: %s %s"

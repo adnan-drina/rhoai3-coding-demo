@@ -548,6 +548,9 @@ check "080 check-external-dirs selftest passes" \
 check "080 specify-skills-root selftest passes" \
   "python3 '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/skills/sdd/init-spec-workspace/scripts/assert-specify-skills-root-selftest.py' >/dev/null && echo 1 || echo 0" \
   "1"
+check "080 seed-speckit-skills canonical-leaf selftest passes" \
+  "python3 '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/skills/sdd/init-spec-workspace/scripts/seed-speckit-skills.selftest.py' >/dev/null && echo 1 || echo 0" \
+  "1"
 check "080 specify worker-shell run-time selftest passes" \
   "python3 '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/skills/sdd/init-spec-workspace/scripts/assert-specify-run-from-worker-home.py' >/dev/null && echo 1 || echo 0" \
   "1"

@@ -1,11 +1,11 @@
 ---
 name: init-spec-workspace
-description: When a workspace has no .specify/ — installs pinned Spec Kit, the Non-Goals override, the unique-owner tasks-template override, the destination constitution, the speckit overlay that removes implement, the AD-S stop rule, copies speckit-specify into the project skills root plus sdd/, and installs a PATH shim. M2 follows Hermes speckit skills; do not specify workflow run speckit (hermes.manifest files:{}). Does not add user-root external_dirs.
+description: When a workspace has no .specify/ — installs pinned Spec Kit, the Non-Goals override, the unique-owner tasks-template override, the destination constitution, the speckit overlay that removes implement, the AD-S stop rule, copies speckit-specify into the project skills root only (not also sdd/; dest-13 Ambiguous bare names), and installs a PATH shim. M2 follows Hermes speckit skills; do not specify workflow run speckit (hermes.manifest files:{}). Does not add user-root external_dirs.
 license: Apache-2.0
 compatibility: Linux seat; network to install pinned Spec Kit CLI
 metadata:
   author: rhoai3-harness-team
-  version: "1.4.11"
+  version: "1.4.12"
   hermes:
     tags:
     - sdd
@@ -51,9 +51,10 @@ Idempotent via `.specify/.rhoai3-ads-provisioned`. Spec Kit is pinned
 2. `HOME=<project> specify init --here --integration hermes --force --ignore-agent-tools` (spec-kit 0.16.1 looks at Path.home()/.hermes/skills)
 2b. Copies `speckit-specify` (and plan/tasks/analyze, never implement) from
     specify-init's Hermes skill install into
-    `<modernized>/.hermes/skills/` **and** `<modernized>/.hermes/skills/sdd/`
-    so implementer `skills list` names `speckit-specify`. Does **not** add
-    user-root `external_dirs`.
+    `<modernized>/.hermes/skills/<name>/` only so implementer `skills list`
+    names `speckit-specify` once. Does **not** copy into `sdd/` (dest-13
+    `Ambiguous skill name 'speckit-specify': 2 skills`). Does **not** add
+    user-root `external_dirs`. Re-seed removes leftover `sdd/` duplicates.
 2c. Installs PATH name `specify` (`<modernized>/.hermes/bin/specify`; dest-init
     also writes `HERMES_MANAGED_DIR/bin/specify`) for `specify init` / resolve.
     M2 must **not** `specify workflow run speckit` (hermes.manifest `files: {}`).
@@ -100,8 +101,9 @@ M2 PLAN consumes M1 KEEP evidence via parent `kanban_attachments` plus
 
 - Hermes binary may be absent at postStart — `--ignore-agent-tools` is required;
   skills still land under `~/.hermes/skills/`. `seed-speckit-skills.py` then
-  copies `speckit-specify` into the project skills root and `sdd/` tree
-  (Architect `125450Z`). dest-init + `install-specify-shim.sh` put `specify`
+  copies `speckit-specify` into the project skills root only — not a
+  second copy under `sdd/` (Architect `125450Z`; dest-13 Ambiguous).
+  dest-init + `install-specify-shim.sh` put `specify`
   on PATH so a worker shell without `HOME=` still hits the project skills
   root. Do **not** add `/home/user/.hermes/skills`
   to the implementer profile.
@@ -139,8 +141,9 @@ M2 PLAN consumes M1 KEEP evidence via parent `kanban_attachments` plus
   one JSON object `{script,ok,skipped,root,marker,provisioned_at}` (UPLIFT-2).
   Progress/`log` lines are stderr-only.
 - After provision, `<modernized>/.hermes/skills/speckit-specify/SKILL.md`
-  **and** `<modernized>/.hermes/skills/sdd/speckit-specify/SKILL.md`
-  exist. `assert-specify-skills-root.py` refuses a nested-only copy.
+  exists and `<modernized>/.hermes/skills/sdd/speckit-specify/SKILL.md`
+  does **not**. `assert-specify-skills-root.py` refuses a nested-only copy
+  and refuses dest-13 dual seed.
   `assert-specify-run-from-worker-home.py` PASSes when `HOME` is a profile
   dir with 0 speckit skills and bare `specify workflow run speckit` still
   finds `speckit-specify`. Implementer `skills list` names it without a

@@ -7,8 +7,9 @@ spec-kit 0.16.1 ``--integration hermes`` looks at
 specify with ``HOME=<project>`` at **init**, seeding the flat leaf, and
 installing a PATH shim so a worker shell ``specify workflow run speckit``
 still resolves ``speckit-specify`` when HOME is the profile (Operator
-``091320ZO``). Nested ``sdd/speckit-specify`` is the implementer taxonomy
-copy; the CLI does not walk ``sdd/``.
+``091320ZO``). Nested ``sdd/speckit-specify`` is **not** seeded: dest-13
+Hermes ``Ambiguous skill name 'speckit-specify': 2 skills``. The CLI
+does not walk ``sdd/``.
 
 Usage:
   python3 assert-specify-skills-root.py /projects/modernized
@@ -35,6 +36,19 @@ def main() -> int:
             "sdd/ copy is not sufficient"
             + (f" (nested copy exists at {nested})" if nested.is_file() else "")
             + ".",
+            file=sys.stderr,
+        )
+        return 1
+    dual = []
+    sdd = root / ".hermes" / "skills" / "sdd"
+    for name in ("speckit-specify", "speckit-plan", "speckit-tasks", "speckit-analyze"):
+        leaf = sdd / name / "SKILL.md"
+        if leaf.is_file():
+            dual.append(str(leaf))
+    if dual:
+        print(
+            "FAIL: dual-seeded sdd/ speckit skills make Hermes bare names "
+            "Ambiguous (dest-13): " + "; ".join(dual),
             file=sys.stderr,
         )
         return 1

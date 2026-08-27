@@ -4,6 +4,11 @@
 Architect ``125450Z`` / Operator ``125618Z``: implementer must see
 ``speckit-specify`` on ``skills list`` after ``init-spec-workspace``.
 Do **not** add user-root ``external_dirs``. ``speckit-implement`` is never copied.
+
+Canonical leaf is ``<root>/.hermes/skills/<name>/`` (specify CLI
+``Path.home()/.hermes/skills`` when HOME is the project). Do **not** also
+copy into ``sdd/<name>/`` — dest-13 ``Ambiguous skill name 'speckit-specify':
+2 skills`` (and plan/tasks). Re-seed removes leftover ``sdd/`` duplicates.
 """
 from __future__ import annotations
 
@@ -56,8 +61,7 @@ def main() -> int:
     root = Path(sys.argv[1]).resolve()
     human_home = sys.argv[2] if len(sys.argv) > 2 else "/home/user"
     skills_root = root / ".hermes" / "skills"
-    dest = skills_root / "sdd"
-    dest.mkdir(parents=True, exist_ok=True)
+    dest_sdd = skills_root / "sdd"
     found = _discover(_search_roots(human_home, root))
     if "speckit-specify" not in found:
         print(
@@ -72,19 +76,22 @@ def main() -> int:
         if src is None:
             print(f"WARN: {name} not found after specify init — skip", file=sys.stderr)
             continue
-        for target in (dest / name, skills_root / name):
-            if target.resolve() == src.resolve():
-                print(f"seeded {name} already at {target}", file=sys.stderr)
-                continue
+        target = skills_root / name
+        nested = dest_sdd / name
+        if target.resolve() != src.resolve():
             if target.exists():
                 shutil.rmtree(target)
             shutil.copytree(src, target, dirs_exist_ok=False)
             print(f"seeded {name} → {target}", file=sys.stderr)
-    specify = dest / "speckit-specify" / "SKILL.md"
+        else:
+            print(f"seeded {name} already at {target}", file=sys.stderr)
+        if nested.exists():
+            shutil.rmtree(nested)
+            print(
+                f"removed dual-seed {nested} (bare names must be unique)",
+                file=sys.stderr,
+            )
     flat = skills_root / "speckit-specify" / "SKILL.md"
-    if not specify.is_file():
-        print(f"FAIL: missing {specify} after copy", file=sys.stderr)
-        return 1
     if not flat.is_file():
         print(
             f"FAIL: missing {flat} after copy "
@@ -92,7 +99,15 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
-    print(f"OK: speckit-specify seeded at {specify} and {flat}")
+    leftover = dest_sdd / "speckit-specify" / "SKILL.md"
+    if leftover.is_file():
+        print(
+            f"FAIL: leftover dual-seed {leftover} would make "
+            "Hermes skill name speckit-specify Ambiguous (dest-13)",
+            file=sys.stderr,
+        )
+        return 1
+    print(f"OK: speckit-specify seeded at {flat}")
     return 0
 
 

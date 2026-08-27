@@ -144,7 +144,7 @@ if [[ "${DRY_RUN}" == "1" ]]; then
   log "DRY-RUN: would copy unique-owner tasks override → .specify/templates/overrides/tasks-template.md"
   log "DRY-RUN: would copy constitution → .specify/memory/constitution.md"
   log "DRY-RUN: would copy overlay → .specify/workflows/overlays/speckit/stop-before-implement.yml"
-    log "DRY-RUN: would seed speckit-specify into ${ROOT}/.hermes/skills and ${ROOT}/.hermes/skills/sdd (not user-root external_dirs)"
+    log "DRY-RUN: would seed speckit-specify into ${ROOT}/.hermes/skills/<name> only (not sdd/; not user-root external_dirs)"
   log "DRY-RUN: would install PATH shim ${ROOT}/.hermes/bin/specify (worker specify, not HOME= prefix)"
   emit_ok "[${LOG_PREFIX}] DRY-RUN complete" "$(python3 -c 'import json,sys; print(json.dumps({"script":"init-workspace","ok":True,"dry_run":True,"root":sys.argv[1]}))' "${ROOT}")"
   exit 0
