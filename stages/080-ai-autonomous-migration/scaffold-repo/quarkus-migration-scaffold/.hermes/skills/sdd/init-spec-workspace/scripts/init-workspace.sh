@@ -114,7 +114,8 @@ Project overlay (stock `speckit` minus `implement` and the `type: gate`
 steps `review-spec` / `review-plan`, plus `clarify`, M1 paths in specify
 args):
 
-  specify workflow run speckit
+  specify workflow run speckit   # NOT installed: hermes.manifest files:{}
+  # M2 follows .hermes/skills/speckit-specify|plan|tasks SKILL.md instead.
   specify workflow resolve speckit
   # dest PATH shim sets HOME=project for the specify child (profile HOME stays).
   # Do not rely on workers prefixing HOME= — that is the dest-6/dest-7 miss.
@@ -416,4 +417,4 @@ date -u +%Y-%m-%dT%H:%M:%SZ > "${MARKER}"
 TS="$(cat "${MARKER}")"
 HUMAN="[${LOG_PREFIX}] OK — AD-S provision complete (marker ${MARKER})"
 emit_ok "${HUMAN}" "$(python3 -c 'import json,sys; print(json.dumps({"script":"init-workspace","ok":True,"skipped":False,"root":sys.argv[1],"marker":sys.argv[2],"provisioned_at":sys.argv[3]}))' "${ROOT}" "${MARKER}" "${TS}")"
-log "Stop rule: /speckit-tasks → k4_mint.py hermes kanban create; NEVER /speckit-implement; worker specify workflow run speckit (PATH shim, HOME=project child)"
+log "Stop rule: /speckit-tasks → k4_mint.py hermes kanban create; NEVER /speckit-implement; M2 follows Hermes speckit-specify/plan/tasks (hermes.manifest files:{})"

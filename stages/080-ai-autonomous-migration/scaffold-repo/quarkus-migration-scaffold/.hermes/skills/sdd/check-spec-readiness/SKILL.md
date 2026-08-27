@@ -109,9 +109,9 @@ KEEP (this skill):
 - `scripts/check-semantic-exits.py` — optional `semantic_families` family lint
 - `scripts/check-operand-count.py` — measured operand_count / wall-fit
 - `scripts/check-partition-coverage.py` — M2 partition VALID receipt
-- `scripts/assert-m2-speckit-conformance.py` — M2 complete: non-empty `tasks.md` **and** a `specify-from-project.sh` workflow-run receipt (digest + rc 0); `k4_convert --tasks` (Operator `123401ZO` §4 / `201929ZO`; dest-8 missing tasks.md REFUSE; dest-9 hand-authored tasks.md REFUSE)
-- `scripts/assert-card-performed.py` — A: official task log (dest-9 M2 `t_af875a24` must REFUSE; GATE-VALIDATION-DESIGN §6)
-- `scripts/assert-card-performed.test.py` — dest-9 fixture REFUSE; no mandated run REFUSE; synthetic `specify workflow run speckit` exit 0 PASS (not dest proof)
+- `scripts/assert-m2-speckit-conformance.py` — M2 complete: non-empty `tasks.md` **and** official-log A-gate (`assert-card-performed.py`); `k4_convert --tasks`. Workflow-run.json is **not** provenance (Architect `170112ZA` / `170540ZA`; dest-8 missing tasks.md REFUSE)
+- `scripts/assert-card-performed.py` — A: official task log followed `speckit-specify` Hermes skill; dest-9 M2 `t_af875a24` must REFUSE; `specify workflow run speckit` is not the dispatch
+- `scripts/assert-card-performed.test.py` — dest-9 fixture REFUSE; no skill follow REFUSE; synthetic workflow-run exit 0 REFUSE; skill follow PASS (not dest proof)
 - `scripts/assert-partition-invented-routes.py` — constitution VII invented HTTP paths
 - `scripts/assert-partition-invented-files.py` — dest-cite sibling (type-inventory dest_file); not the W3 close (`191845ZA`)
 - `.hermes/kernel/k4_roundtrip.py` — dest_file in the typed slice vs write-set dest Java; dest-9 `Application.java` / `GreetingResource.java` REFUSE (`194048ZA`)

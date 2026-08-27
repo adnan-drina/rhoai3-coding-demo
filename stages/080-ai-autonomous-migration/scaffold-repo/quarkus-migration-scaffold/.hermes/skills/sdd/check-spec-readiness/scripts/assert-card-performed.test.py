@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Selftest for A-gate: dest-9 fixture REFUSE; absent-run REFUSE; synthetic exit 0 PASS.
+"""Selftest for A-gate: dest-9 fixture REFUSE; absent-run REFUSE; skill follow PASS.
 
 Operator ``5e879430`` / ``Lead:assert-card-performed-ships-without-a-selftest``.
-Synthetic PASS is not dest proof — no dest log has ever carried
-``specify workflow run speckit`` exit 0. Not dest.
+Architect ``170540ZA``: synthetic ``specify workflow run speckit`` exit 0
+is not dest proof — that dispatch cannot run under hermes ``files: {}``.
+Not dest.
 """
 from __future__ import annotations
 
@@ -39,8 +40,8 @@ def main() -> int:
     blob = proc.stdout + proc.stderr
     if proc.returncode != 1:
         return _fail("v9 t_af875a24 must REFUSE: %s" % blob)
-    if "never succeeded" not in blob:
-        return _fail("v9 fixture must name never-succeeded: %s" % blob)
+    if "Unknown skill" not in blob and "never succeeded" not in blob:
+        return _fail("v9 fixture must name Unknown skill or never-succeeded: %s" % blob)
 
     with tempfile.TemporaryDirectory(prefix="card-performed-") as tmp:
         absent = Path(tmp) / "absent.log"
@@ -56,17 +57,34 @@ def main() -> int:
         if "mandated action absent" not in blob:
             return _fail("absent-run must name mandated action absent: %s" % blob)
 
+        fake_run = Path(tmp) / "workflow-ok.log"
+        fake_run.write_text(
+            "  ┊ 💻 $         specify workflow run speckit -i spec=x  1.0s [exit 0]\n",
+            encoding="utf-8",
+        )
+        proc = _run(fake_run)
+        blob = proc.stdout + proc.stderr
+        if proc.returncode != 1:
+            return _fail(
+                "synthetic workflow-run exit 0 must REFUSE under files:{}: %s"
+                % blob
+            )
+
         ok_log = Path(tmp) / "ok.log"
         ok_log.write_text(
-            "  ┊ 💻 $         specify workflow run speckit -i spec=x  1.0s [exit 0]\n",
+            "load .hermes/skills/speckit-specify/SKILL.md\n"
+            "author .specify/specs/001-migrate/spec.md\n",
             encoding="utf-8",
         )
         proc = _run(ok_log)
         blob = proc.stdout + proc.stderr
         if proc.returncode != 0:
-            return _fail("synthetic speckit exit 0 must PASS: %s" % blob)
+            return _fail("synthetic speckit-specify skill follow must PASS: %s" % blob)
 
-    print("OK: assert-card-performed selftest (v9 REFUSE; absent REFUSE; synthetic PASS)")
+    print(
+        "OK: assert-card-performed selftest "
+        "(v9 REFUSE; absent REFUSE; workflow-run REFUSE; skill follow PASS)"
+    )
     return 0
 
 

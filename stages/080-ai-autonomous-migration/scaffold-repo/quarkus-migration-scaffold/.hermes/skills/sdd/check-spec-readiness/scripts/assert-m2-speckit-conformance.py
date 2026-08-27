@@ -8,28 +8,29 @@ run speckit``: ``spec.md`` existed, ``tasks.md`` did not, and
 behind ``if tasks_text:``.
 
 This gate must REFUSE dest-8 as it stands (missing ``tasks.md``). It
-must also REFUSE a hand-authored ``tasks.md`` with no successful
-``specify workflow run speckit`` receipt (dest-9 M2: three red specify
-runs, then LLM-authored tasks.md; Operator ``201929ZO``). Presence of
-``tasks.md`` is not provenance.
+must also REFUSE a hand-authored ``tasks.md`` whose only provenance is a
+worker-writable ``workflow-run.json`` (Architect ``170112ZA``: that
+receipt is forgeable). Presence of ``tasks.md`` is not provenance.
+
+Architect ``170540ZA``: hermes integration ``files: {}``. Provenance is
+the official task log A-gate (``assert-card-performed.py``), not the
+receipt.
 
 This gate does not scrape write-sets from ``tasks.md`` (PATH_TOKEN
 OBJECT). When ``tasks.md`` exists it invokes K4 with ``--tasks`` so
 ``K4_PLANNING_DEFECT`` can fire.
 
-Exit 0: exactly one non-empty ``.specify/specs/*/tasks.md``, a matching
-``evidence/receipts/speckit/workflow-run.json`` (producer
-``specify-from-project.sh``, rc 0, digest of that tasks.md), and
-``k4_convert.py --partition … --tasks`` is clean.
-Exit 1: missing/empty tasks.md, missing/wrong receipt, missing partition,
-or planning defect.
+Exit 0: exactly one non-empty ``.specify/specs/*/tasks.md``, A-gate PASS
+on the official log, and ``k4_convert.py --partition … --tasks`` is clean.
+Exit 1: missing/empty tasks.md, A-gate REFUSE, missing partition, or
+planning defect.
 Exit 2: usage.
 """
 from __future__ import annotations
 
 import argparse
-import hashlib
-import json
+import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -43,9 +44,7 @@ PARTITION_CANDIDATES = (
     Path("evidence") / "partition.json",
     Path("evidence") / "briefs" / "partition.json",
 )
-RECEIPT_REL = Path("evidence") / "receipts" / "speckit" / "workflow-run.json"
-LEGAL_PRODUCERS = frozenset({"specify-from-project.sh"})
-RECEIPT_SCHEMA = "rhoai3.speckit-workflow-run/v1"
+PERFORMED = Path(__file__).resolve().parent / "assert-card-performed.py"
 
 
 def _fail(msg: str) -> int:
@@ -70,53 +69,22 @@ def find_tasks(root: Path) -> list[Path]:
     return out
 
 
-def sha256_file(path: Path) -> str:
-    h = hashlib.sha256()
-    h.update(path.read_bytes())
-    return h.hexdigest()
-
-
-def check_receipt(root: Path, tasks_path: Path) -> str:
+def check_a_gate(log: Path | None, task_id: str | None) -> str:
     """Empty string = ok. Otherwise refuse reason."""
-    path = root / RECEIPT_REL
-    if not path.is_file():
+    argv = [sys.executable, str(PERFORMED)]
+    if log is not None:
+        argv.extend(["--log", str(log)])
+    elif task_id:
+        argv.append(task_id)
+    else:
         return (
-            "M2_SPECKIT_BYPASS: missing %s "
-            "(hand-authored tasks.md is dest-9 M2; presence is not provenance)"
-            % RECEIPT_REL
+            "M2_SPECKIT_BYPASS: missing official-log A-gate "
+            "(--log or HERMES_KANBAN_TASK; workflow-run.json is forgeable)"
         )
-    try:
-        doc = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        return "M2_SPECKIT_BYPASS: unreadable speckit receipt: %s" % exc
-    if not isinstance(doc, dict):
-        return "M2_SPECKIT_BYPASS: speckit receipt is not an object"
-    if str(doc.get("schema") or "") != RECEIPT_SCHEMA:
-        return "M2_SPECKIT_BYPASS: speckit receipt schema %r" % doc.get("schema")
-    producer = str(doc.get("producer") or "")
-    if producer not in LEGAL_PRODUCERS:
-        return (
-            "M2_SPECKIT_BYPASS: speckit receipt producer %r is not %s"
-            % (producer, ",".join(sorted(LEGAL_PRODUCERS)))
-        )
-    try:
-        rc = int(doc.get("rc"))
-    except (TypeError, ValueError):
-        return "M2_SPECKIT_BYPASS: speckit receipt missing rc"
-    if rc != 0:
-        return "M2_SPECKIT_BYPASS: speckit receipt rc=%s (not a successful run)" % rc
-    cmd = doc.get("cmd")
-    cmd_s = " ".join(str(x) for x in cmd) if isinstance(cmd, list) else str(cmd or "")
-    if "workflow" not in cmd_s or "run" not in cmd_s or "speckit" not in cmd_s:
-        return "M2_SPECKIT_BYPASS: speckit receipt cmd is not workflow run speckit"
-    want = sha256_file(tasks_path)
-    got = str(doc.get("tasks_digest_sha256") or "")
-    if got != want:
-        return (
-            "M2_SPECKIT_BYPASS: tasks.md digest %s != receipt %s "
-            "(hand-edit after specify is dest-9)"
-            % (want, got)
-        )
+    proc = subprocess.run(argv, text=True, capture_output=True)
+    blob = (proc.stdout or "") + (proc.stderr or "")
+    if proc.returncode != 0:
+        return "M2_SPECKIT_BYPASS: A-gate REFUSE: %s" % blob.strip()
     return ""
 
 
@@ -131,6 +99,12 @@ def find_partition(root: Path) -> Path | None:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("root")
+    ap.add_argument("--log", type=Path, help="official task log (A-gate)")
+    ap.add_argument(
+        "--task-id",
+        default=os.environ.get("HERMES_KANBAN_TASK") or "",
+        help="t_… (default HERMES_KANBAN_TASK)",
+    )
     args = ap.parse_args(argv)
     root = Path(args.root)
     if not root.is_dir():
@@ -142,7 +116,7 @@ def main(argv: list[str] | None = None) -> int:
         looked = root / ".specify" / "specs" / "*" / "tasks.md"
         return _fail(
             "M2_SPECKIT_BYPASS: missing non-empty %s "
-            "(specify workflow run speckit did not produce tasks.md; "
+            "(speckit-specify/plan/tasks did not produce tasks.md; "
             "hand-written partition.json is not a conformant M2 complete; "
             "do not kanban_complete)"
             % looked
@@ -153,9 +127,9 @@ def main(argv: list[str] | None = None) -> int:
             % ",".join(str(p) for p in tasks)
         )
     tasks_path = tasks[0]
-    receipt_err = check_receipt(root, tasks_path)
-    if receipt_err:
-        return _fail(receipt_err)
+    a_err = check_a_gate(args.log, args.task_id or None)
+    if a_err:
+        return _fail(a_err)
 
     partition = find_partition(root)
     if partition is None:

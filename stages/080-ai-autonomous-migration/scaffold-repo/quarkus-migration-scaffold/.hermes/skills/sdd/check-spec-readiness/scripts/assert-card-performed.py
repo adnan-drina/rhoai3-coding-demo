@@ -5,15 +5,22 @@ GATE-VALIDATION-DESIGN.md §3 / Architect ``190526ZA``: compare claimed
 process to ``$HERMES_HOME/kanban/logs/<task_id>.log``. Provenance, not
 proof (same-uid). Dual-write KEEP — this does not replace PVC paths.
 
+Architect ``170540ZA`` / Operator ``170746ZA``: Spec Kit hermes
+integration installs ``files: {}``. ``specify workflow run speckit``
+cannot dispatch ``speckit-specify``. M2 mandated action is following the
+Hermes skill ``speckit-specify`` (then plan/tasks). A green
+``specify workflow run speckit`` line is the dest-init vacuous MATCH,
+not proof.
+
 Negative first (§6): dest-9 M2 ``t_af875a24`` must REFUSE —
-``specify workflow run speckit`` appears and never succeeds. A version
-that PASSes that log has not implemented the check.
+``Unknown skill(s): speckit-specify`` and workflow run never succeeds.
 
 ``--help`` is not the mandated run. ``kanban_complete`` around that red
 is the dest-9 terminator, not a pass.
 
-Exit 0: at least one non-help ``specify workflow run speckit`` with exit 0.
-Exit 1: mandated run absent, or present and never succeeding.
+Exit 0: official log shows the Hermes ``speckit-specify`` skill was
+followed, with no ``Unknown skill(s): speckit-specify``.
+Exit 1: mandated skill follow absent, or workflow-run unknown-skill.
 Exit 2: usage / missing log.
 """
 from __future__ import annotations
@@ -26,6 +33,11 @@ from pathlib import Path
 
 EXIT_RE = re.compile(r"\[exit (\d+)\]")
 SPECIFY_RUN = "specify workflow run speckit"
+UNKNOWN = "Unknown skill(s): speckit-specify"
+SKILL_FOLLOW = (
+    "speckit-specify/SKILL.md",
+    ".hermes/skills/speckit-specify",
+)
 
 
 def _fail(msg: str) -> int:
@@ -65,31 +77,44 @@ def specify_runs(text: str) -> list[tuple[str, int | None]]:
     return out
 
 
+def followed_speckit_skill(text: str) -> bool:
+    return any(marker in text for marker in SKILL_FOLLOW)
+
+
 def evaluate(text: str) -> int:
+    unknown = UNKNOWN in text
     runs = specify_runs(text)
-    unknown = "Unknown skill(s): speckit-specify" in text
-    if not runs:
-        return _fail(
-            "mandated action absent from official log: " + SPECIFY_RUN
-        )
-    succeeded = [r for r in runs if r[1] == 0]
-    if succeeded:
-        print(
-            "OK: CARD_PERFORMED specify workflow run speckit exit 0 "
-            "(%s non-help run(s))" % len(runs)
-        )
-        return 0
-    exits = [str(r[1]) if r[1] is not None else "omitted" for r in runs]
-    extra = ""
     if unknown:
-        extra = "; Unknown skill(s): speckit-specify"
-    if "preparing kanban_complete" in text or "kanban_complete call succeeded" in text:
-        extra += "; kanban_complete around speckit red"
-    return _fail(
-        "specify workflow run speckit never succeeded "
-        "(runs=%s exits=%s%s). tasks.md presence is B, not A."
-        % (len(runs), ",".join(exits), extra)
+        extra = ""
+        if "preparing kanban_complete" in text or "kanban_complete call succeeded" in text:
+            extra = "; kanban_complete around speckit red"
+        return _fail(
+            "Unknown skill(s): speckit-specify — hermes integration "
+            "files:{} cannot dispatch workflow run" + extra
+        )
+    if runs:
+        succeeded = [r for r in runs if r[1] == 0]
+        if not succeeded:
+            exits = [str(r[1]) if r[1] is not None else "omitted" for r in runs]
+            return _fail(
+                "specify workflow run speckit never succeeded "
+                "(runs=%s exits=%s). tasks.md presence is B, not A."
+                % (len(runs), ",".join(exits))
+            )
+        return _fail(
+            "specify workflow run speckit is not the M2 dispatch "
+            "(hermes.manifest files:{}); follow speckit-specify SKILL.md"
+        )
+    if not followed_speckit_skill(text):
+        return _fail(
+            "mandated action absent from official log: "
+            "follow speckit-specify Hermes skill"
+        )
+    print(
+        "OK: CARD_PERFORMED speckit-specify Hermes skill "
+        "(no Unknown skill(s): speckit-specify)"
     )
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:

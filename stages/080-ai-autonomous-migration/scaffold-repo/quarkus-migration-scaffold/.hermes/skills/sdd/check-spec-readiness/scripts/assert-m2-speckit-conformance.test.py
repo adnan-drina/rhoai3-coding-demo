@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
-"""dest-8 missing tasks.md REFUSE; hand-authored tasks.md REFUSE. Not dest."""
+"""dest-8 missing tasks.md REFUSE; receipt is not provenance. Not dest."""
 from __future__ import annotations
 
-import hashlib
 import json
 import subprocess
 import sys
@@ -16,16 +15,15 @@ DEST8 = SKILL / "fixtures" / "m2-speckit-bypass-dest8"
 ALIGNED = SKILL / "fixtures" / "partition-dest6-aligned"
 
 
-def run(root: Path) -> subprocess.CompletedProcess[str]:
+def run(root: Path, *extra: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        [sys.executable, str(SCRIPT), str(root)],
+        [sys.executable, str(SCRIPT), str(root), *extra],
         text=True,
         capture_output=True,
     )
 
 
-def write_receipt(root: Path, tasks: Path, producer: str = "specify-from-project.sh") -> None:
-    digest = hashlib.sha256(tasks.read_bytes()).hexdigest()
+def write_receipt(root: Path, tasks: Path) -> None:
     path = root / "evidence" / "receipts" / "speckit" / "workflow-run.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
@@ -34,9 +32,9 @@ def write_receipt(root: Path, tasks: Path, producer: str = "specify-from-project
                 "schema": "rhoai3.speckit-workflow-run/v1",
                 "cmd": ["specify", "workflow", "run", "speckit", "-i", "spec=x"],
                 "rc": 0,
-                "producer": producer,
+                "producer": "specify-from-project.sh",
                 "tasks_rel": str(tasks.relative_to(root)),
-                "tasks_digest_sha256": digest,
+                "tasks_digest_sha256": "deadbeef",
             }
         )
         + "\n",
@@ -82,27 +80,27 @@ def main() -> int:
         (root / "evidence" / "partition.json").write_text(
             json.dumps(partition) + "\n", encoding="utf-8"
         )
+        write_receipt(root, tasks)
         proc = run(root)
         blob = proc.stdout + proc.stderr
-        if proc.returncode != 1 or "presence is not provenance" not in blob:
+        if proc.returncode != 1 or "A-gate" not in blob:
             print(
-                "FAIL: hand-authored tasks.md must REFUSE provenance: %s" % blob,
+                "FAIL: covering tasks.md + forgeable receipt must REFUSE A-gate: %s"
+                % blob,
                 file=sys.stderr,
             )
             return 1
 
-        write_receipt(root, tasks, producer="compose-m4-verdict")
-        proc = run(root)
-        blob = proc.stdout + proc.stderr
-        if proc.returncode != 1 or "producer" not in blob:
-            print("FAIL: illegal producer must REFUSE: %s" % blob, file=sys.stderr)
-            return 1
-
-        write_receipt(root, tasks)
-        proc = run(root)
+        ok_log = root / "official.log"
+        ok_log.write_text(
+            "load .hermes/skills/speckit-specify/SKILL.md\n"
+            "author spec.md then plan.md then tasks.md\n",
+            encoding="utf-8",
+        )
+        proc = run(root, "--log", str(ok_log))
         if proc.returncode != 0:
             print(
-                "FAIL: covering tasks.md with helper receipt must exit 0: %s%s"
+                "FAIL: covering tasks.md with A-gate log must exit 0: %s%s"
                 % (proc.stdout, proc.stderr),
                 file=sys.stderr,
             )
@@ -112,20 +110,19 @@ def main() -> int:
             covering + "- [ ] `src/main/java/com/demo/Missing.java`\n",
             encoding="utf-8",
         )
-        proc = run(root)
+        proc = run(root, "--log", str(ok_log))
         blob = proc.stdout + proc.stderr
         if proc.returncode != 1:
-            print("FAIL: edited tasks.md must REFUSE: %s" % blob, file=sys.stderr)
+            print("FAIL: extra dest file in tasks.md must REFUSE: %s" % blob, file=sys.stderr)
             return 1
-        if "digest" not in blob and "K4_PLANNING_DEFECT" not in blob:
+        if "K4_PLANNING_DEFECT" not in blob and "M2_SPECKIT_BYPASS" not in blob:
             print(
-                "FAIL: edited tasks.md must name digest or planning defect: %s"
-                % blob,
+                "FAIL: extra dest file must name planning defect: %s" % blob,
                 file=sys.stderr,
             )
             return 1
 
-    print("OK: assert-m2-speckit-conformance dest-8 + hand-author refuse")
+    print("OK: assert-m2-speckit-conformance dest-8 + receipt-not-provenance")
     return 0
 
 

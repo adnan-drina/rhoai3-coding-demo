@@ -1,21 +1,21 @@
 ---
 name: plan-migration-partition
 description: >
-  Use at M2 PLAN — before minting Kanban children — to run
-  specify-from-project.sh --root /projects/modernized workflow run speckit
-  -i spec="<description derived from M1 evidence>", read M1 attachments,
-  author evidence/partition.json, convert with k4_convert.py --partition
-  --tasks, and mint with k4_mint.py. Use when writing partition.json or
-  creating the M2 card, even if the user does not name Spec Kit. Do not
-  PATH-lookup specify (dest-9 uv specify shadows the dest-init shim). Do
-  not run the bare form (Required input spec). Do not scrape write-sets
-  from tasks.md. Do not use only to lint an already-written partition
+  Use at M2 PLAN — before minting Kanban children — to follow the Hermes
+  skills speckit-specify, speckit-plan, and speckit-tasks (never implement),
+  read M1 attachments, author evidence/partition.json, convert with
+  k4_convert.py --partition --tasks, and mint with k4_mint.py. Use when
+  writing partition.json or creating the M2 card, even if the user does
+  not name Spec Kit. Do not run specify workflow run speckit: the Spec Kit
+  hermes integration installs files:{} and cannot dispatch speckit-specify
+  as a command. Do not PATH-lookup specify. Do not scrape write-sets from
+  tasks.md. Do not use only to lint an already-written partition
   (check-spec-readiness).
 license: Apache-2.0
 compatibility: Linux seat; Python 3.11+; pinned specify-cli; Hermes Kanban
 metadata:
   author: rhoai3-harness-team
-  version: "1.3.1"
+  version: "1.4.0"
   hermes:
     tags:
     - sdd
@@ -27,9 +27,11 @@ metadata:
 
 This skill **owns M2 end-to-end**. It is the producer
 `check-spec-readiness` defers to. Pin it on the M2 card (`--skill
-plan-migration-partition`). Speckit generates the **plan** (`tasks.md`);
-K4 generates **cards** from the typed partition (Architect `142518ZA`).
-Do not grep `tasks.md` for write-sets (`PATH_TOKEN` OBJECT).
+plan-migration-partition`). Speckit **skills** generate the **plan**
+(`tasks.md`); K4 generates **cards** from the typed partition
+(Architect `142518ZA`). Do not grep `tasks.md` for write-sets
+(`PATH_TOKEN` OBJECT). Do not `specify workflow run speckit`
+(Architect `170540ZA`: hermes.manifest `files: {}`).
 
 ## When to Use
 
@@ -73,33 +75,31 @@ hermes kanban show "$M1"
 # type-inventory.json, required-extensions.json
 ```
 
-3. Run Spec Kit with the required `spec` input. Stop. Never
-   `/speckit.implement`. Never the bare form (Operator `165811ZO`:
-   `Required input 'spec' not provided`, exit 1). Derive the description
-   from M1 attachments (identity, HTTP paths, extensions) — do not invent
-   routes.
+3. Follow the Hermes speckit skills **in process**. Stop. Never
+   `/speckit.implement`. Never `specify workflow run speckit` — Spec Kit
+   0.16.1 `--integration hermes` writes
+   `.specify/integrations/hermes.manifest.json` with `"files": {}`.
+   `invoke_separator: "-"` then dispatches `speckit.specify` as the
+   shell command `speckit-specify`, which does not exist
+   (`Unknown skill(s): speckit-specify` on dest-9/10/12). The
+   `SKILL.md` files `seed-speckit-skills.py` installs are for **this
+   agent to read**, not commands a workflow runner can exec
+   (Architect `170540ZA`). Derive the spec from M1 attachments
+   (identity, HTTP paths, extensions) — do not invent routes.
 
-```bash
-bash .hermes/skills/sdd/init-spec-workspace/scripts/specify-from-project.sh \
-  --root /projects/modernized \
-  workflow run speckit \
-  -i spec="<description derived from M1 evidence>"
-```
+   Load and follow, in order, the project leaves:
 
-Do **not** PATH-lookup `specify`. dest-9 `command -v specify` was
-`/home/user/.local/bin/specify` (uv), which shadowed dest-init
-`/projects/.platform/hermes/bin/specify` (the HOME-shim). Project leaf
-`.hermes/skills/speckit-specify/SKILL.md` was PRESENT; user-home leaf was
-ABSENT. `-i spec=` is necessary and not sufficient without the helper.
-Unknown `speckit-specify` is `kanban_block`, not hand-author `tasks.md`.
-Do not dest-edit dest-9 PATH or implementer `external_dirs`.
-Do **not** prefer dest-init `/projects/.platform/hermes/bin/specify`: dest-init
-writes the **same helper wrapper** there (Architect `131720ZA`: 1744
-concurrent helpers). dest-init must export `SPECIFY_REAL` to the uv
-specify-cli path (Architect `153721ZA`); the helper never PATH-searches
-and refuses a `SPECIFY_REAL` whose file contains `specify-from-project.sh`.
-dest-10 M2 `t_c705fc91` still saw `Unknown skill(s): speckit-specify` on
-uv without that export. Do not widen `K2_ALLOW_ROOT`.
+   - `.hermes/skills/speckit-specify/SKILL.md`
+   - `.hermes/skills/speckit-plan/SKILL.md`
+   - `.hermes/skills/speckit-tasks/SKILL.md`
+
+   Do not load speckit-implement. Do not PATH-lookup `specify`. Do not
+   widen `K2_ALLOW_ROOT`. Do not dest-edit dest-9 PATH or implementer
+   `external_dirs`. If a named skill is missing, a named command fails,
+   or a named path is absent: **stop**. Record exactly what failed.
+   `kanban_block`. Do not hand-author `tasks.md`. Do not stamp
+   `evidence/receipts/speckit/workflow-run.json` to satisfy a gate
+   (Architect `170112ZA`: that receipt is worker-writable).
 
 `tasks.md` must be non-empty under `.specify/specs/*/tasks.md`.
 
@@ -158,9 +158,8 @@ Do not `kanban daemon --force`. Do not `kanban swarm`. Do not dest-dispatch M5.
   `tasks.md` **binding**, not generative of cards).
 - Inventing `/q/health` as a story (constitution III: if health exists, at
   `/q/health`; VII stands).
-- Prescribing PATH `specify workflow run speckit` (Operator `165811ZO` bare
-  form; dest-9 uv specify shadows the dest-init shim). Call
-  `specify-from-project.sh --root`. dest-9 `-i spec=` still
-  `speckit-specify` unknown is `kanban_block`, not a hand-authored
-  `tasks.md`. dest-10: do not skip `.platform/hermes/bin` in the helper
-  skip-list (uv then cannot see Hermes skills).
+- Prescribing `specify workflow run speckit` (Operator `165811ZO` bare
+  form; Architect `170540ZA` hermes `files: {}`). Follow
+  `speckit-specify` / `speckit-plan` / `speckit-tasks` as Hermes skills.
+  dest-9/10/12 `Unknown skill(s): speckit-specify` is `kanban_block`,
+  not a hand-authored `tasks.md` and not a stamped workflow-run receipt.

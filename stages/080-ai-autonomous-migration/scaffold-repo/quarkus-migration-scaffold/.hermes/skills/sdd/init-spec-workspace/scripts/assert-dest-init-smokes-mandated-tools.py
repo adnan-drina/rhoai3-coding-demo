@@ -9,16 +9,18 @@ shim must REFUSE.
 Required in dest-init (GitOps ``maas-api-key-provisioning.yaml``):
 
 - helper ``specify-from-project.sh``
-- argv ``workflow run speckit`` with ``-i spec=`` (bare dies at the input
-  gate before skill lookup)
-- ``SPECIFY_REAL`` probe for **four** overlay skills (specify/clarify/plan/tasks)
-- ``hermes kanban ls`` (``hermes --version`` is the proxy class)
+- ``export SPECIFY_REAL`` in the dest-init shim
+- four overlay skills (specify/clarify/plan/tasks) on disk
+- inspect ``hermes.manifest.json`` ``files`` (Architect ``170540ZA``:
+  ``files: {}`` is not workflow dispatch)
+- must **not** print ``MATCH helper-by-path workflow run speckit``
+- ``hermes kanban ls``
 - ``specify init --here --integration hermes --force --ignore-agent-tools``
-  on a ``dest-init-fresh-smoke`` tree (not dest-9 ``/projects/modernized``)
-- ``mvn … test`` on a ``dest-init-mvn-smoke`` tree (not dest-9 product tests)
+  on a ``dest-init-fresh-smoke`` tree
+- ``mvn … test`` on a ``dest-init-mvn-smoke`` tree
 
-Exit 0: dest-init contains the smoke.
-Exit 1: shim-only / missing mandated argv.
+Exit 0: dest-init contains the honest smoke.
+Exit 1: shim-only / vacuous workflow-run MATCH.
 Exit 2: usage.
 """
 from __future__ import annotations
@@ -35,6 +37,11 @@ def _fail(msg: str) -> int:
 
 def check_text(text: str) -> list[str]:
     gaps: list[str] = []
+    if "MATCH helper-by-path workflow run speckit" in text:
+        gaps.append(
+            "vacuous MATCH helper-by-path workflow run speckit "
+            "(hermes.manifest files:{} cannot dispatch that argv)"
+        )
     if "specify-from-project.sh" not in text:
         gaps.append("missing specify-from-project.sh")
     if "SPECIFY_REAL" not in text:
@@ -44,12 +51,10 @@ def check_text(text: str) -> list[str]:
             "missing export SPECIFY_REAL in dest-init shim "
             "(PATH search rediscovers the wrapper)"
         )
-    if "specify-dest-init-smoke" not in text:
-        gaps.append("missing specify-dest-init-smoke probe binary")
-    if "spec=dest-init-smoke" not in text:
-        gaps.append("missing -i spec=dest-init-smoke (bare Required input is not skill lookup)")
-    if '"workflow"' not in text or '"speckit"' not in text:
-        gaps.append("missing mandated argv workflow run speckit")
+    if "hermes.manifest.json" not in text:
+        gaps.append("missing hermes.manifest.json inspect (files:{} is the seam)")
+    if "files empty" not in text and 'files: {}' not in text:
+        gaps.append("missing hermes.manifest files empty handling")
     if "speckit-specify" not in text:
         gaps.append("missing speckit-specify (workflow step specify)")
     if "speckit-clarify" not in text:
@@ -93,7 +98,7 @@ def main(argv: list[str] | None = None) -> int:
     if gaps:
         for g in gaps:
             print("  - " + g, file=sys.stderr)
-        return _fail("today's dest-init cannot dispatch specify")
+        return _fail("today's dest-init cannot smoke specify honestly")
     print("OK: dest-init specify smoke (four-step + specify init + mvn test + hermes kanban ls)")
     return 0
 

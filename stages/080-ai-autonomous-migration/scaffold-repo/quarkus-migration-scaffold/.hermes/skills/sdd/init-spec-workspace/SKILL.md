@@ -1,11 +1,11 @@
 ---
 name: init-spec-workspace
-description: When a workspace has no .specify/ — installs pinned Spec Kit, the Non-Goals override, the unique-owner tasks-template override, the destination constitution, the speckit overlay that removes implement, the AD-S stop rule, copies speckit-specify into the project skills root plus sdd/, and installs a PATH shim so a worker-shell specify workflow run speckit finds speckit-specify when HOME is the profile (does not add user-root external_dirs)
+description: When a workspace has no .specify/ — installs pinned Spec Kit, the Non-Goals override, the unique-owner tasks-template override, the destination constitution, the speckit overlay that removes implement, the AD-S stop rule, copies speckit-specify into the project skills root plus sdd/, and installs a PATH shim. M2 follows Hermes speckit skills; do not specify workflow run speckit (hermes.manifest files:{}). Does not add user-root external_dirs.
 license: Apache-2.0
 compatibility: Linux seat; network to install pinned Spec Kit CLI
 metadata:
   author: rhoai3-harness-team
-  version: "1.4.10"
+  version: "1.4.11"
   hermes:
     tags:
     - sdd
@@ -51,9 +51,9 @@ Idempotent via `.specify/.rhoai3-ads-provisioned`. Spec Kit is pinned
     so implementer `skills list` names `speckit-specify`. Does **not** add
     user-root `external_dirs`.
 2c. Installs PATH name `specify` (`<modernized>/.hermes/bin/specify`; dest-init
-    also writes `HERMES_MANAGED_DIR/bin/specify`) so a worker shell
-    `specify workflow run speckit` resolves `speckit-specify` when HOME is
-    the profile. Control: `assert-specify-run-from-worker-home.py`.
+    also writes `HERMES_MANAGED_DIR/bin/specify`) for `specify init` / resolve.
+    M2 must **not** `specify workflow run speckit` (hermes.manifest `files: {}`).
+    Control: `assert-specify-run-from-worker-home.py` still covers HOME=project.
 3. Copies Non-Goals override from
    `${HERMES_SKILL_DIR}/assets/spec-template.md` →
    `.specify/templates/overrides/spec-template.md`
@@ -74,7 +74,7 @@ Idempotent via `.specify/.rhoai3-ads-provisioned`. Spec Kit is pinned
    evidence paths on specify args; emit pin is the tasks override, not
    mint-transcribed HTTP). Removes leftover `sdd-to-tasks.yml`.
 7. Writes `external_dirs` reminder under `.specify/EXTERNAL_DIRS.note`; when `HERMES_HOME` is relocated, **ensures** `skills.external_dirs` on managed/`HERMES_HOME` `config.yaml` before assert (covers init-ai-tools skip when Hermes venv absent)
-8. Stamps `.specify/AD-S-STOP-RULE.md` (includes `specify workflow run speckit`)
+8. Stamps `.specify/AD-S-STOP-RULE.md` (hermes.manifest files:{} — M2 follows Hermes speckit skills)
 9. If `.git/hooks` exists, installs the LG9a pre-commit that runs the suite against `git checkout-index`
 
 ## Stop rule (non-negotiable)
@@ -141,15 +141,15 @@ M2 PLAN consumes M1 KEEP evidence via parent `kanban_attachments` plus
   dir with 0 speckit skills and bare `specify workflow run speckit` still
   finds `speckit-specify`. Implementer `skills list` names it without a
   user-root `external_dirs` grant.
-- dest-init (GitOps) must smoke helper-by-path
-  `specify workflow run speckit -i spec=dest-init-smoke` via `SPECIFY_REAL`
-  and assert **four** overlay skills (`speckit-specify`, `speckit-clarify`,
+- dest-init (GitOps) must inspect `hermes.manifest.json` `files` and must
+  **not** print `MATCH helper-by-path workflow run speckit`. Assert **four**
+  overlay skills on disk (`speckit-specify`, `speckit-clarify`,
   `speckit-plan`, `speckit-tasks`) plus `hermes kanban ls`, and must **run**
   `specify init --here --integration hermes --force --ignore-agent-tools`
   plus `mvn test` on **fresh** trees (`dest-init-fresh-smoke` /
   `dest-init-mvn-smoke`) — not dest-9 `/projects/modernized`
-  (`assert-dest-init-smokes-mandated-tools.py`). One-skill specify is not
-  the workflow. Shim-only dest-init REFUSE. Do not dest-apply onto dest-9.
+  (`assert-dest-init-smokes-mandated-tools.py`). Skills-on-disk is not
+  workflow dispatch. Shim-only dest-init REFUSE. Do not dest-apply onto dest-9.
 - Relocated `HERMES_HOME`: `check-external-dirs.py` must print
   `OK: external_dirs lists project + home skills (<config>)`. A listed
   extra path that does not exist fails closed **naming the path**.
