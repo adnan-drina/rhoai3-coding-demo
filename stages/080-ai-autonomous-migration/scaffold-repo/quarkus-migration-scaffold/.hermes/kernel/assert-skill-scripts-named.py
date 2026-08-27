@@ -17,8 +17,8 @@ import tempfile
 from pathlib import Path
 
 TEST_NAME = re.compile(
-    r"(?:^test_|_test\.py$|\.test\.py$|-selftest\.py$|_selftest\.py$"
-    r"|\.test\.sh$|-selftest\.sh$|_selftest\.sh$)"
+    r"(?:^test_|_test\.py$|\.test\.py$|\.selftest\.py$|-selftest\.py$|_selftest\.py$"
+    r"|\.test\.sh$|-selftest\.sh$|_selftest\.sh$|\.selftest\.sh$)"
 )
 RULE_NAME = re.compile(r"^r\d+_")
 SKILL_ROOT_DEFAULT = (

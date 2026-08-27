@@ -61,7 +61,10 @@ SKILLS_BY_KIND = {
     ],
     "us": ["spring-to-quarkus-patterns"],
     "polish": ["manage-quarkus-extensions"],
+    "database": ["form-entity-persistence"],
 }
+
+DB_STORY_ID = "PROVISION_DATABASE"
 
 
 def _issue(code: str, detail: str) -> Issue:
@@ -274,7 +277,7 @@ def validate_inputs(
                 )
         if not story_skills(story):
             out.append(
-                _issue("K4_SKILLS", "%s skills empty (set skills[] or kind setup/us/polish)" % sid)
+                _issue("K4_SKILLS", "%s skills empty (set skills[] or kind setup/us/polish/database)" % sid)
             )
         eps = story.get("endpoints") or []
         if isinstance(eps, list) and any(str(x).strip() for x in eps):
@@ -628,6 +631,51 @@ def dd3_union_gaps(result: dict[str, Any]) -> list[str]:
     return gaps
 
 
+def harvest_database_needed(root: Path | None) -> bool:
+    if root is None:
+        return False
+    path = root / "evidence" / "required-extensions.json"
+    if not path.is_file():
+        return False
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    if not isinstance(data, dict):
+        return False
+    db = data.get("database")
+    if not isinstance(db, dict) or "needed" not in db:
+        return False
+    needed = db.get("needed")
+    if isinstance(needed, bool):
+        return needed
+    if isinstance(needed, str):
+        return needed.strip().lower() in {"true", "1", "yes"}
+    return bool(needed)
+
+
+def ensure_database_story(
+    stories: list[dict[str, Any]], root: Path | None
+) -> list[dict[str, Any]]:
+    """Mint postgres provisioning only when the harvest says needed."""
+    if not harvest_database_needed(root):
+        return stories
+    if any(_story_id(s) == DB_STORY_ID for s in stories):
+        return stories
+    extra: dict[str, Any] = {
+        "story_id": DB_STORY_ID,
+        "kind": "database",
+        "parents": [],
+        "skills": ["form-entity-persistence"],
+        "files_writable": ["k8s/postgres.yaml", "k8s/app.yaml"],
+        "acceptance_criteria": [
+            "Copy k8s-templates/postgres.yaml to k8s/postgres.yaml",
+            "Merge k8s-templates/app-datasource-env.yaml into k8s/app.yaml",
+        ],
+    }
+    return list(stories) + [extra]
+
+
 def _m1_root(start: Path | None) -> Path | None:
     if start is None:
         return None
@@ -678,7 +726,10 @@ def convert_partition(
     partition: dict[str, Any], *, root: Path | None = None, write_root: Path | None = None
 ) -> dict[str, Any]:
     type_sha = str(partition.get("type_inventory_sha256") or "")
-    stories = [s for s in (partition.get("stories") or []) if isinstance(s, dict)]
+    stories = ensure_database_story(
+        [s for s in (partition.get("stories") or []) if isinstance(s, dict)],
+        root,
+    )
     payloads: list[dict[str, Any]] = []
     story_bodies = [_m3_body(story, type_sha) for story in stories]
     if story_bodies:

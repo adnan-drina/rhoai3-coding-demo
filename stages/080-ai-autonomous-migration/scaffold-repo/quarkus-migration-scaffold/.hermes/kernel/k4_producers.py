@@ -27,6 +27,7 @@ ARTIFACT_M2 = "m2-partition"
 ARTIFACT_M4 = "m4-verdict"
 ARTIFACT_POM = "dest-pom"
 ARTIFACT_JAVA = "dest-java"
+ARTIFACT_K8S = "dest-k8s"
 ARTIFACT_COMMIT = "dest-commit"
 
 # Explicit catalog. Verb prefixes are not the check (dest-8 M2 pinned
@@ -39,6 +40,7 @@ PRODUCERS: dict[str, str] = {
     "author-destination-pom": ARTIFACT_POM,
     "manage-quarkus-extensions": ARTIFACT_POM,
     "spring-to-quarkus-patterns": ARTIFACT_JAVA,
+    "form-entity-persistence": ARTIFACT_K8S,
     "commit-destination-tree": ARTIFACT_COMMIT,
     "compose-m4-verdict": ARTIFACT_M4,
 }
@@ -100,6 +102,13 @@ def primary_artifact(card: dict[str, Any]) -> str:
     names = {Path(p).name for p in writes}
     if "pom.xml" in names:
         return ARTIFACT_POM
+
+    def _k8s_rel(raw: str) -> bool:
+        rel = raw.replace("\\", "/").lstrip("./")
+        return rel == "k8s" or rel.startswith("k8s/")
+
+    if writes and all(_k8s_rel(p) for p in writes):
+        return ARTIFACT_K8S
     return ARTIFACT_JAVA
 
 

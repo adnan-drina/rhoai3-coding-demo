@@ -10,7 +10,6 @@ migration:
   legacyRepoUrl: ""
   target: quarkus
   provisionedBy: quarkus-migration-scaffold
-  needsDatabase: false
   legacyBasePackage: ""
   path_rewrites: []
   intra_package_maps: []

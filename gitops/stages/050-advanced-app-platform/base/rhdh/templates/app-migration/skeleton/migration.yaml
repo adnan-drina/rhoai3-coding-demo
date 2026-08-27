@@ -20,7 +20,6 @@ migration:
   legacyRepoUrl: ${{ values.legacyRepoUrl }}
   target: quarkus
   provisionedBy: app-migration golden-path template
-  needsDatabase: ${{ values.needsDatabase }}
 {%- if is_petclinic %}
   legacyBasePackage: org.springframework.samples.petclinic
   legacyPackage: org.springframework.samples.petclinic
@@ -72,7 +71,6 @@ acceptance:
   getter: getAllVets
   service: VetRestController
   itemType: VetDto
-  needsDatabase: ${{ values.needsDatabase }}
   idFields: [id]
 {%- elif is_cart %}
 acceptance:
@@ -81,15 +79,12 @@ acceptance:
   service: CatalogService
   endpointEnv: CATALOG_ENDPOINT
   itemType: Product
-  needsDatabase: ${{ values.needsDatabase }}
 {%- elif is_gs_rest %}
 acceptance:
   path: /greeting
-  needsDatabase: ${{ values.needsDatabase }}
 {%- else %}
 acceptance:
   path: ""
-  needsDatabase: ${{ values.needsDatabase }}
 {%- endif %}
 
 analysis:

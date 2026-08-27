@@ -105,6 +105,17 @@ def main() -> int:
     if producer_issues(card_from_payload(payload)):
         return _fail("K4 US payload with spring-to-quarkus-patterns must PASS")
 
+    db_card = {
+        "logical_id": "PROVISION_DATABASE",
+        "phase": "M3",
+        "skills": ["form-entity-persistence"],
+        "files_writable": ["k8s/postgres.yaml", "k8s/app.yaml"],
+    }
+    if producer_issues(db_card):
+        return _fail("k8s-only form-entity-persistence must PASS dest-k8s")
+    if "form-entity-persistence" not in PRODUCERS:
+        return _fail("catalog must name form-entity-persistence")
+
     if "compose-m4-verdict" not in PRODUCERS:
         return _fail("catalog must name compose-m4-verdict")
     if "plan-migration-partition" not in PRODUCERS:

@@ -463,6 +463,18 @@ check "080 RHDH autoStartMigration parameter defaults true" \
 check "080 destfile stamps AUTO_START_MIGRATION" \
   "grep -c 'AUTO_START_MIGRATION' '${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml' || echo 0" \
   "1"
+check "080 RHDH template has no needsDatabase parameter" \
+  "grep -c 'needsDatabase' '${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/rhdh/templates/app-migration/template.yaml' || echo 0" \
+  "0"
+check "080 skeleton ships postgres as k8s-templates not cut-time k8s/" \
+  "test -f '${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/k8s-templates/postgres.yaml' && test ! -f '${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/k8s/postgres.yaml' && echo 1 || echo 0" \
+  "1"
+check "080 skeleton app.yaml is not Jinja-gated on needsDatabase" \
+  "grep -c 'needsDatabase' '${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/k8s/app.yaml' || echo 0" \
+  "0"
+check "080 golden migration.yaml has no needsDatabase field" \
+  "grep -c 'needsDatabase' '${SCAFFOLD_080}/migration.yaml' || echo 0" \
+  "0"
 check "080 golden K4 selftest passes" \
   "python3 '${SCAFFOLD_KERNEL}/k4_selftest.py' >/dev/null && echo 1 || echo 0" \
   "1"

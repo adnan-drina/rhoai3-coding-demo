@@ -12,9 +12,11 @@ sys.path.insert(0, str(KERNEL))
 from k1_validate import validate_body  # noqa: E402
 from k4_convert import (  # noqa: E402
     DEST_POM_EXT_CMD,
+    DB_STORY_ID,
     convert_file,
     convert_partition,
     dd3_union_gaps,
+    harvest_database_needed,
     main as convert_main,
     stamp_write_set,
     validate_inputs,
@@ -448,6 +450,101 @@ def main() -> int:
             return _fail("DEST_POM_EXT_CMD must name the written path")
         if not (dest / "evidence" / "bodies" / "m3-setup.json").is_file():
             return _fail("dest_pom_extensions --body path missing after convert")
+
+    harvest_part = json.loads(valid.read_text(encoding="utf-8"))
+    if harvest_database_needed(None):
+        return _fail("missing root must not claim database.needed")
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        evid = root / "evidence"
+        evid.mkdir()
+        (evid / "required-extensions.json").write_text(
+            json.dumps(
+                {
+                    "database": {
+                        "needed": True,
+                        "kind": "postgresql",
+                        "from": "selftest",
+                    }
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        needed = convert_partition(harvest_part, root=root)
+        lids = needed["manifest"]["created_cards"]
+        if DB_STORY_ID not in lids:
+            return _fail("harvest needed true must inject %s: %s" % (DB_STORY_ID, lids))
+        if lids.count(DB_STORY_ID) != 1:
+            return _fail("duplicate %s in created_cards: %s" % (DB_STORY_ID, lids))
+        by_id = {p["logical_id"]: p for p in needed["payloads"]}
+        db_payload = by_id[DB_STORY_ID]
+        if "form-entity-persistence" not in (db_payload.get("skills") or []):
+            return _fail("database story skills %s" % db_payload.get("skills"))
+        db_body = json.loads(db_payload["body"])
+        if db_body["files_writable"] != ["k8s/postgres.yaml", "k8s/app.yaml"]:
+            return _fail("database files_writable %s" % db_body["files_writable"])
+        if DB_STORY_ID not in (by_id[STAMP_ID].get("parents") or []):
+            return _fail("stamp parents missing %s: %s" % (DB_STORY_ID, by_id[STAMP_ID].get("parents")))
+        stamp_fw = json.loads(by_id[STAMP_ID]["body"])["files_writable"]
+        if "k8s/postgres.yaml" not in stamp_fw or "k8s/app.yaml" not in stamp_fw:
+            return _fail("stamp write-set missing k8s paths: %s" % stamp_fw)
+        k1_db = validate_body(db_body, root=None)
+        k1_db_codes = {c for c, _, _ in k1_db}
+        if k1_db_codes & {"BODY_SCHEMA", "BODY_SCOPE", "BODY_REF_MISSING", "BODY_HERMES_ID"}:
+            return _fail("database body failed K1: %s" % k1_db)
+        already = list(harvest_part["stories"]) + [
+            {
+                "story_id": DB_STORY_ID,
+                "kind": "database",
+                "skills": ["form-entity-persistence"],
+                "files_writable": ["k8s/postgres.yaml", "k8s/app.yaml"],
+            }
+        ]
+        dup_part = dict(harvest_part)
+        dup_part["stories"] = already
+        dup = convert_partition(dup_part, root=root)
+        if dup["manifest"]["created_cards"].count(DB_STORY_ID) != 1:
+            return _fail(
+                "existing %s must not be reminted: %s"
+                % (DB_STORY_ID, dup["manifest"]["created_cards"])
+            )
+        (evid / "required-extensions.json").write_text(
+            json.dumps({"database": {"needed": False, "kind": "", "from": ""}})
+            + "\n",
+            encoding="utf-8",
+        )
+        off = convert_partition(harvest_part, root=root)
+        if DB_STORY_ID in off["manifest"]["created_cards"]:
+            return _fail(
+                "harvest needed false must not inject: %s"
+                % off["manifest"]["created_cards"]
+            )
+        (evid / "required-extensions.json").unlink()
+        missing = convert_partition(harvest_part, root=root)
+        if DB_STORY_ID in missing["manifest"]["created_cards"]:
+            return _fail(
+                "missing harvest must not inject: %s"
+                % missing["manifest"]["created_cards"]
+            )
+        part_dst = evid / "partition.json"
+        part_dst.write_text(valid.read_text(encoding="utf-8"), encoding="utf-8")
+        (evid / "required-extensions.json").write_text(
+            json.dumps({"database": {"needed": True, "kind": "postgresql"}})
+            + "\n",
+            encoding="utf-8",
+        )
+        written_db, wdb_issues = convert_file(part_dst)
+        if wdb_issues or written_db is None:
+            return _fail("harvest convert_file: %s" % wdb_issues)
+        if DB_STORY_ID not in written_db["manifest"]["created_cards"]:
+            return _fail(
+                "convert_file harvest must inject: %s"
+                % written_db["manifest"]["created_cards"]
+            )
+        db_on_disk = root / "evidence" / "bodies" / ("m3-%s.json" % DB_STORY_ID)
+        if not db_on_disk.is_file():
+            return _fail("convert must write evidence/bodies/m3-%s.json" % DB_STORY_ID)
 
     help_rc = convert_main(["--help"])
     if help_rc != 0:

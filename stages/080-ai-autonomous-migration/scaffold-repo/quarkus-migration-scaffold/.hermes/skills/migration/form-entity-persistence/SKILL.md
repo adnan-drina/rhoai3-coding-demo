@@ -1,6 +1,6 @@
 ---
 name: form-entity-persistence
-description: Before authoring or reminting JPA entity / persistence-form stories — choose MappedSuperclass vs Inheritance, Panache vs EntityManager, HQL attribute paths, owning-side associations, and schema-validate oracles for entity-only write-sets; use when mapping form is the story concern
+description: Before authoring JPA entity / persistence-form stories or M3 PROVISION_DATABASE — choose MappedSuperclass vs Inheritance, Panache vs EntityManager, and copy k8s-templates postgres into k8s/ only when harvest database.needed is true; use when mapping form or datasource provisioning is the story concern. Not for datasource profile properties (configure-quarkus-profiles) and not for a cut-time needsDatabase checkbox.
 license: Apache-2.0
 compatibility: Linux seat; Jakarta Persistence; Quarkus Hibernate ORM
 metadata:
@@ -27,12 +27,18 @@ Deep notes: `references/entity-mapping.md`, `references/panache-vs-em.md`,
 
 - M3 stories whose write-set is primarily `@Entity` / relationships /
   repositories (no REST surface of their own).
+- M3 `PROVISION_DATABASE` (kind `database`): copy
+  `k8s-templates/postgres.yaml` to `k8s/postgres.yaml` and merge
+  `k8s-templates/app-datasource-env.yaml` into `k8s/app.yaml` **iff**
+  `evidence/required-extensions.json` `database.needed` is true. K4
+  mints this story; do not invent postgres for a greeting harvest.
 - Choosing active-record Panache vs repository / `EntityManager`.
 - Before stamping query-shaped exits on an entity-only body —
   `derive-story-oracles` first.
 - **Not** for datasource/profile properties — `configure-quarkus-profiles`.
 - **Not** for Flyway extension add alone — `manage-quarkus-extensions`
   obligations, then this skill for mapping form.
+- **Not** a Developer Hub checkbox — harvest is the only provision signal.
 
 ## Procedure
 

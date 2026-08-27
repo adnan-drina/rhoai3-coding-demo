@@ -7,7 +7,7 @@
 # it exists only inside the workspace as read-only migration input;
 # migration.yaml in the destination repo records the provenance.
 #
-# Form fields are minimal (name, legacy URL, optional DB). The skeleton
+# Form fields are minimal (name, legacy URL, optional autostart). The skeleton
 # stamps only per-run files: devfile (workspace), catalog-info (entity),
 # migration.yaml (provenance + specimen harness contract), k8s runtime;
 # everything else comes from the golden repository. migration.yaml contracts
@@ -64,15 +64,6 @@ spec:
             Any other URL leaves contract.status: undecided (no cart defaults).
             Cloned into the workspace only — never published or cataloged.
           pattern: "^https://.+"
-        needsDatabase:
-          title: Provision a dev PostgreSQL with the runtime
-          type: boolean
-          default: false
-          description: |
-            Enable when the legacy app persists to a relational database
-            (the runtime then ships a dev PostgreSQL and datasource env).
-            Coolstore cart is stateless — leave off. PetClinic REST needs
-            this on.
         autoStartMigration:
           title: Auto-start migration (M1+M2)
           type: boolean
@@ -114,7 +105,6 @@ spec:
         values:
           name: ${{ parameters.name }}
           legacyRepoUrl: ${{ parameters.legacyRepoUrl }}
-          needsDatabase: ${{ parameters.needsDatabase }}
           autoStartMigration: ${{ parameters.autoStartMigration }}
           sonarqubeUrl: ${{ steps['platform-entity'].output.entity.metadata.links[3].url | replace('coolstore-inventory-service', parameters.name) }}
           devspacesUrl: ${{ steps['platform-entity'].output.entity.metadata.links[2].url | replace('/dashboard/#/ide/wksp-ai-developer/agentic-coolstore', '') }}/#https://github.com/adnan-drina/${{ parameters.name }}

@@ -100,16 +100,17 @@ REMEDY = {
         "SIGTERM+requeues instead of a hand-polled stall."
     ),
     "K4_SKILLS": (
-        "Partition story.skills[] or kind (setup/us/polish) must yield a "
-        "non-empty skill list before mint."
+        "Partition story.skills[] or kind (setup/us/polish/database) must "
+        "yield a non-empty skill list before mint."
     ),
     "K4_NO_PRODUCER": (
         "Every M-stage card must pin a skill that owns producing its primary "
         "artifact (Architect 143941ZA). Checkers (check-*, assert-*) do not "
         "count. M2 pins plan-migration-partition. M4 pins compose-m4-verdict. "
         "M3 setup pins author-destination-pom; US pins "
-        "spring-to-quarkus-patterns; STAMP pins commit-destination-tree. "
-        "dest-8 M2 and M4 failed this bar."
+        "spring-to-quarkus-patterns; database pins form-entity-persistence "
+        "(dest-k8s); STAMP pins commit-destination-tree. dest-8 M2 and M4 "
+        "failed this bar."
     ),
     "K4_LEGACY_SOURCE": (
         "HTTP stories must set legacy_source to the inventory file "

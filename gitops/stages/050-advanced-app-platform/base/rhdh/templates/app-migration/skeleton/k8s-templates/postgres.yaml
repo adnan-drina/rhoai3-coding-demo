@@ -1,7 +1,7 @@
-{% if values.needsDatabase %}
-# Dev-grade PostgreSQL for the migrated service. Migrations off Java EE
-# monoliths land on a real datasource (Flyway schema + seed data), so the
-# runtime environment ships one: ephemeral storage, rebuilt on every start.
+# Dev-grade PostgreSQL for the migrated service. M3 copies this file to
+# k8s/postgres.yaml only when evidence/required-extensions.json
+# database.needed is true. deploy-app applies k8s/ only — this directory
+# is not applied at scaffold time.
 apiVersion: v1
 kind: Secret
 metadata:
@@ -10,7 +10,7 @@ metadata:
     app.kubernetes.io/part-of: ${{ values.name }}
 type: Opaque
 stringData:
-  # Dev-grade demo credentials; DATABASE matches the app name.
+  # DEMO VALUES ONLY — dest-local postgres, not a production secret.
   POSTGRESQL_USER: appuser
   POSTGRESQL_PASSWORD: apppass
   POSTGRESQL_DATABASE: ${{ values.name }}
@@ -41,7 +41,7 @@ spec:
                 name: ${{ values.name }}-postgres
           readinessProbe:
             exec:
-              command: ["pg_isready", "-U", "coolstore", "-d", "${{ values.name }}"]
+              command: ["pg_isready", "-U", "appuser", "-d", "${{ values.name }}"]
             initialDelaySeconds: 5
             periodSeconds: 10
           resources:
@@ -66,5 +66,3 @@ spec:
   ports:
     - port: 5432
       targetPort: 5432
-
-{% endif %}
