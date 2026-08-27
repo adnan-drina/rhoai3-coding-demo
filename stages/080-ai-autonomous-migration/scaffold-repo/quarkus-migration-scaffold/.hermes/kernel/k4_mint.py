@@ -108,6 +108,16 @@ def workspace_flag() -> str:
         or os.environ.get("MODERNIZED_ROOT")
         or DEFAULT_WORKSPACE_ROOT
     ).rstrip("/")
+    if root != DEFAULT_WORKSPACE_ROOT:
+        _fail(
+            [
+                _issue(
+                    "K4_MINT_WORKSPACE",
+                    "workspace root %s is not %s (scratch OBJECT)"
+                    % (root, DEFAULT_WORKSPACE_ROOT),
+                )
+            ]
+        )
     return "dir:" + root
 
 

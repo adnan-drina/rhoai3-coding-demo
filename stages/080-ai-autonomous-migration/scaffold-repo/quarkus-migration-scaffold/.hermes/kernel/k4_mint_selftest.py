@@ -104,6 +104,27 @@ def main() -> int:
         if "K4_MINT_SKILLS" not in str(exc):
             return _fail("empty skills: %s" % exc)
 
+    scratch = dict(result["payloads"][1])
+    os.environ["K4_WORKSPACE"] = "/tmp/k4-scratch"
+    try:
+        argv_for_payload(scratch, {"setup": "t_mint0001"})
+        return _fail("scratch K4_WORKSPACE did not refuse")
+    except ValueError as exc:
+        if "K4_MINT_WORKSPACE" not in str(exc):
+            return _fail("scratch workspace: %s" % exc)
+    finally:
+        os.environ.pop("K4_WORKSPACE", None)
+
+    os.environ["MODERNIZED_ROOT"] = "/projects/legacy"
+    try:
+        argv_for_payload(scratch, {"setup": "t_mint0001"})
+        return _fail("legacy MODERNIZED_ROOT did not refuse")
+    except ValueError as exc:
+        if "K4_MINT_WORKSPACE" not in str(exc):
+            return _fail("legacy workspace: %s" % exc)
+    finally:
+        os.environ.pop("MODERNIZED_ROOT", None)
+
     no_prod = dict(result["payloads"][1])
     no_prod["skills"] = ["check-spec-readiness"]
     try:

@@ -89,8 +89,10 @@ REMEDY = {
         "skills list is REFUSE (dest-5 T001 loaded 11 by skill_view)."
     ),
     "K4_MINT_WORKSPACE": (
-        "M3 story creates pass --workspace dir:${MODERNIZED_ROOT} "
-        "(default /projects/modernized). Scratch is REFUSE."
+        "M3 story creates pass --workspace dir:/projects/modernized. "
+        "K4_WORKSPACE or MODERNIZED_ROOT that is not that root is REFUSE "
+        "(scratch OBJECT). Mint always emits the flag after this check; "
+        "omission is not a path."
     ),
     "K4_MINT_RUNTIME": (
         "Every mint passes --max-runtime (default 2h) so the dispatcher "
