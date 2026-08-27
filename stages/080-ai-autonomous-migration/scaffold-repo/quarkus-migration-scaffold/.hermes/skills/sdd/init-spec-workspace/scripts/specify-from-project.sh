@@ -44,12 +44,18 @@ if [[ -z "${ROOT}" ]]; then
   exit 1
 fi
 
-# Skip only this wrapper and the dest-init PATH name that execs it.
-# Do not skip Hermes runtime specify (.platform/hermes/bin, /etc/hermes/bin)
-# or HERMES_MANAGED_DIR: dest-10 M2 t_c705fc91 — those skips left uv specify,
-# which cannot resolve speckit-specify (Architect 094851ZA). Do not widen
-# K2_ALLOW_ROOT to paper over this (item 29).
+# Skip dest helper wrappers so exec does not recurse into this script.
+# dest-init writes the same wrapper to ${ROOT}/.hermes/bin AND
+# /projects/.platform/hermes/bin. Architect 131720ZA: preferring the
+# platform copy is a fork bomb (1744 helpers). Restore the skip of
+# `.platform/hermes/bin` and `/etc/hermes/bin` (revert 104855ZL
+# narrowing). v10 M2 uv Unknown skill stays OPEN; do not prefer a
+# wrapper to paper over it. Do not widen K2_ALLOW_ROOT.
 _skip_dirs="${_here}:${ROOT}/.hermes/bin"
+_skip_dirs="${_skip_dirs}:/projects/.platform/hermes/bin:/etc/hermes/bin"
+if [[ -n "${HERMES_MANAGED_DIR:-}" ]]; then
+  _skip_dirs="${_skip_dirs}:${HERMES_MANAGED_DIR}/bin"
+fi
 
 _abs_dir() {
   local p="$1"
@@ -60,11 +66,26 @@ _abs_dir() {
   fi
 }
 
+# dest-init PATH shim is `exec bash …/specify-from-project.sh` (Architect
+# 131720ZA: 1744 concurrent helpers). Prefer/exec of that file is a loop.
+_is_wrapper() {
+  local cand="$1"
+  [[ -f "${cand}" ]] || return 1
+  grep -qF "specify-from-project.sh" "${cand}" 2>/dev/null
+}
+
 _is_skip() {
   local abs="$1"
   local s sabs
   local IFS=':'
   local -a skips
+  # dest-init copies this helper to any */.platform/hermes/bin/specify
+  # (dest-11 postStart: preferring that copy recursed to shell-level 1000).
+  case "${abs}" in
+    */.platform/hermes/bin|/etc/hermes/bin)
+      return 0
+      ;;
+  esac
   read -r -a skips <<< "${_skip_dirs}"
   for s in "${skips[@]}"; do
     [[ -z "${s}" ]] && continue
@@ -84,6 +105,9 @@ for _p in "${_path_parts[@]}"; do
   if _is_skip "${_abs}"; then
     continue
   fi
+  if _is_wrapper "${_p}/specify"; then
+    continue
+  fi
   if [[ -z "${_filtered_path}" ]]; then
     _filtered_path="${_p}"
   else
@@ -91,46 +115,19 @@ for _p in "${_path_parts[@]}"; do
   fi
 done
 
-# Prefer Hermes runtime specify over uv when both are on PATH (dest-10:
-# /home/user/.local/bin/specify was first; the runtime shim is the bridge).
-_pick_runtime_specify() {
-  local p abs cand
-  local IFS=':'
-  local -a parts
-  read -r -a parts <<< "${PATH}"
-  for p in "${parts[@]}"; do
-    [[ -z "${p}" ]] && continue
-    cand="${p}/specify"
-    [[ -x "${cand}" ]] || continue
-    abs="$(_abs_dir "${p}")"
-    case "${abs}" in
-      */.platform/hermes/bin|/etc/hermes/bin)
-        printf '%s\n' "${cand}"
-        return 0
-        ;;
-    esac
-  done
-  for cand in /projects/.platform/hermes/bin/specify /etc/hermes/bin/specify; do
-    if [[ -x "${cand}" ]]; then
-      printf '%s\n' "${cand}"
-      return 0
-    fi
-  done
-  return 1
-}
-
 REAL=""
 if [[ -n "${SPECIFY_REAL:-}" ]]; then
   REAL="${SPECIFY_REAL}"
 else
-  REAL="$(_pick_runtime_specify || true)"
-fi
-if [[ -z "${REAL}" ]]; then
   REAL="$(PATH="${_filtered_path}" command -v specify || true)"
 fi
 
 if [[ -z "${REAL}" || ! -x "${REAL}" ]]; then
   echo "specify-from-project: specify not on PATH (after skipping shims)" >&2
+  exit 1
+fi
+if [[ -z "${SPECIFY_REAL:-}" ]] && _is_wrapper "${REAL}"; then
+  echo "specify-from-project: refusing wrapper ${REAL} (re-enters this script)" >&2
   exit 1
 fi
 

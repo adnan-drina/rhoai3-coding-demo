@@ -189,32 +189,30 @@ def run_control(tmp: Path) -> int:
             file=sys.stderr,
         )
         return 1
-    # dest-10: uv specify first on PATH; Hermes runtime specify is the
-    # bridge. Helper must pick */.platform/hermes/bin/specify, not uv.
+    # dest-11: dest-init copies this helper to .platform/hermes/bin/specify.
+    # Preferring that copy recurses (shell level 1000). Skip it; use uv.
+    probe9.unlink(missing_ok=True)
     platform_bin = tmp / "fake" / ".platform" / "hermes" / "bin"
     platform_bin.mkdir(parents=True)
-    uv_fail = tmp / "uv-unknown-skill"
-    uv_fail.mkdir()
-    (uv_fail / "specify").write_text(
-        "#!/bin/sh\n"
-        "echo 'Unknown skill(s): speckit-specify' >&2\n"
-        "exit 1\n",
+    (platform_bin / "specify").write_text(
+        "#!/usr/bin/env bash\n"
+        "exec bash %r --root %r \"$@\"\n"
+        % (str(helper), str(project)),
         encoding="utf-8",
     )
-    (uv_fail / "specify").chmod(0o755)
-    _write_mock_specify(platform_bin / "specify", tmp / "got-home-platform")
-    env10 = os.environ.copy()
-    env10["HOME"] = str(profile)
-    env10["PATH"] = (
-        str(uv_fail)
+    (platform_bin / "specify").chmod(0o755)
+    env11 = os.environ.copy()
+    env11["HOME"] = str(profile)
+    env11["PATH"] = (
+        str(platform_bin)
         + os.pathsep
-        + str(platform_bin)
+        + str(userbin)
         + os.pathsep
-        + env10.get("PATH", "/usr/bin:/bin")
+        + env11.get("PATH", "/usr/bin:/bin")
     )
-    env10.pop("SPECIFY_REAL", None)
-    env10.pop("SPECIFY_PROJECT_ROOT", None)
-    dest10 = subprocess.run(
+    env11.pop("SPECIFY_REAL", None)
+    env11.pop("SPECIFY_PROJECT_ROOT", None)
+    dest11 = subprocess.run(
         [
             "bash",
             str(helper),
@@ -226,33 +224,32 @@ def run_control(tmp: Path) -> int:
         ],
         text=True,
         capture_output=True,
-        env=env10,
+        env=env11,
         cwd=str(profile),
     )
-    blob10 = (dest10.stdout or "") + (dest10.stderr or "")
-    if dest10.returncode != 0:
+    blob11 = (dest11.stdout or "") + (dest11.stderr or "")
+    if dest11.returncode != 0:
         print(
-            "FAIL: helper must prefer .platform/hermes/bin specify over uv "
-            "rc=%s: %s" % (dest10.returncode, blob10),
+            "FAIL: helper must skip dest-init platform wrapper and use uv "
+            "rc=%s: %s" % (dest11.returncode, blob11),
             file=sys.stderr,
         )
         return 1
-    got10 = (
-        (tmp / "got-home-platform").read_text(encoding="utf-8")
-        if (tmp / "got-home-platform").is_file()
-        else ""
-    )
-    if Path(got10).resolve() != project.resolve():
+    if "shell level" in blob11:
+        print("FAIL: helper recursed through platform wrapper: %s" % blob11, file=sys.stderr)
+        return 1
+    got11 = probe9.read_text(encoding="utf-8") if probe9.is_file() else ""
+    if Path(got11).resolve() != project.resolve():
         print(
-            "FAIL: dest-10 prefer-runtime HOME=%r (want project %s)"
-            % (got10, project),
+            "FAIL: dest-11 skip-wrapper HOME=%r (want project %s)"
+            % (got11, project),
             file=sys.stderr,
         )
         return 1
     print(
         "OK: worker-shell specify resolved speckit-specify "
         "(HOME=project child; dest-9 PATH shadow needs specify-from-project.sh; "
-        "dest-10 uv-first PATH prefers .platform/hermes/bin)"
+        "dest-11 dest-init platform wrapper is skipped, not preferred)"
     )
     return 0
 
