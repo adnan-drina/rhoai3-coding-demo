@@ -16,7 +16,7 @@ Use these files for durable domain constraints that should apply across agent to
 | `skill-path-declaration.md` | Golden skills declare path classes; dest-init fail-closes vs `K2_ALLOW_ROOT`; derived output stays inside a grant |
 | `external-dirs-home-contract.md` | Relocated `external_dirs` home slot is dest-user `/home/user/.hermes/skills`, not worker `Path.home()` |
 | `profile-home-contract.md` | Profile `HERMES_HOME` vs OS `HOME`; do not publish post-hoc `kanban_create` board gates |
-| `native-kanban-alignment.md` | Keep G1–G4; adopt `request-review`/`attach`; named K4 mint-writer; OBJECT swarm for serial T0 |
+| `native-kanban-alignment.md` | Keep G1–G4; K4 not LLM-decompose; factory verifier card retired not reassigned; exit criteria are a floor; worker cards are not the operator ledger |
 | `m2-plan-assignee-implementer.md` | M2 PLAN `--assignee implementer`; retire dest AGENTS.md orchestrator-for-M2 |
 | `m2-m3-native-dispatch.md` | Minted M3 children claim via native dispatcher; M4 still needs a named GO |
 | `gitops.md` | GitOps authoring, manifests, labels, schema validation |

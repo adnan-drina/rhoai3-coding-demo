@@ -88,7 +88,7 @@ For Stage 080 golden `ensure_cli` / kantra resolution, read `.agents/rules/ensur
 
 For Stage 080 dest Hermes security honesty, K2 env-assignment vs access, opaque vs pathless, and skill path classes, read `.agents/rules/k2-env-assignment-not-access.md`, `.agents/rules/k2-opaque-not-pathless.md`, and `.agents/rules/skill-path-declaration.md`.
 
-For Stage 080 PVC Managed Scope vs `/etc/hermes` enforcement, read `.agents/rules/managed-scope-enforcement.md`.
+For Stage 080 PVC Managed Scope vs `/etc/hermes` enforcement, read `.agents/rules/managed-scope-enforcement.md`. Tirith is retired (Operator `122315ZO`; AMEND `112249ZA` item 1): pin `security.tirith_enabled: false` before dropping dest-init PATH prepend; do not cite `112249ZA`; KEEP `assert-no-fence-evasion`.
 
 For Stage 080 dest `external_dirs` home vs profile, M2 PLAN assignee, and M2→M3 native dispatch, read `.agents/rules/external-dirs-home-contract.md`, `.agents/rules/m2-plan-assignee-implementer.md`, and `.agents/rules/m2-m3-native-dispatch.md`.
 

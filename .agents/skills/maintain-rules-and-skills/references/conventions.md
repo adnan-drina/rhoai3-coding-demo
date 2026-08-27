@@ -33,7 +33,7 @@ Current rule taxonomy:
 | `skill-path-declaration.md` | (none) | Skills declare paths they touch; dest-init fail-closes against `K2_ALLOW_ROOT` |
 | `external-dirs-home-contract.md` | (none) | dest-init dest-user skills path is the home slot; checker must not use profile `Path.home()` |
 | `profile-home-contract.md` | (none) | Named dest workers: profile `HERMES_HOME` ≠ dest-user `HOME`; native `pre_tool_call` block not post-hoc board gates |
-| `native-kanban-alignment.md` | (none) | Native `request-review`/`attach`; K4 mint-writer; do not retire G1–G4 domain gates |
+| `native-kanban-alignment.md` | (none) | Native `attach`; `request-review` deferred (`kanban_block` is the red terminator); K4 mint-writer; do not retire G1–G4; exit criteria are a floor; worker cards are not the operator ledger |
 | `m2-plan-assignee-implementer.md` | (none) | M2 PLAN is implementer; dest AGENTS.md must not assign M2 to orchestrator |
 | `m2-m3-native-dispatch.md` | (none) | M3 children of a granted M2 claim natively; do not invent an M2→M3 Operator GO |
 | `gitops.md` | (none) | GitOps authoring, manifests, labels, schema validation |

@@ -45,3 +45,7 @@ not claimed control (AD-020).
    050 hard-refresh, dest-4 dest-init uptake, then seat `mvn -q verify`
    ALLOW **and** encoded proven-prefix BLOCK. Do not dest-apply. Do not
    auto-start M2. Do not widen `K2_ALLOW_ROOT`.
+7. **`/dev/null`, `/dev/stdout`, `/dev/stderr` are not access targets**
+   (Operator `143549ZO`). Refusing them manufactures toolchain friction
+   (AD-020). Do not widen allow-root to `/dev`. Land golden K2; do not
+   dest-edit dest-5 live hook mid-chain.
