@@ -3,6 +3,11 @@
 
 Does not mint. Does not import create_task. Does not read tasks.md for
 write-sets. Optional --tasks only reports planning defects (all paths).
+
+Writes each M3 story body to ``evidence/bodies/m3-<story_id>.json`` next
+to ``evidence/partition.json`` so exit criteria that name
+``--body evidence/bodies/m3-….json`` have a convert-authored file.
+Does not put those paths in ``files_writable`` (Architect ``193642ZA``).
 """
 from __future__ import annotations
 
@@ -633,8 +638,44 @@ def _m1_root(start: Path | None) -> Path | None:
     return None
 
 
+def _write_root(partition_path: Path | None) -> Path | None:
+    """Dest root only when the partition lives at evidence/partition.json.
+
+    Do not walk the repo looking for required-extensions.json — that would
+    write bodies into the workshop destfile from kernel fixtures.
+    """
+    if partition_path is None:
+        return None
+    parent = partition_path.resolve().parent
+    if parent.name == "evidence":
+        return parent.parent
+    return None
+
+
+def m3_body_relpath(story_id: str) -> str:
+    return "evidence/bodies/m3-%s.json" % story_id
+
+
+def write_m3_bodies(
+    root: Path,
+    stories: list[dict[str, Any]],
+    story_bodies: list[dict[str, Any]],
+) -> None:
+    dest = root / "evidence" / "bodies"
+    dest.mkdir(parents=True, exist_ok=True)
+    for story, body in zip(stories, story_bodies):
+        sid = _story_id(story)
+        if not sid:
+            continue
+        path = dest / ("m3-%s.json" % sid)
+        path.write_text(
+            json.dumps(body, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+
+
 def convert_partition(
-    partition: dict[str, Any], *, root: Path | None = None
+    partition: dict[str, Any], *, root: Path | None = None, write_root: Path | None = None
 ) -> dict[str, Any]:
     type_sha = str(partition.get("type_inventory_sha256") or "")
     stories = [s for s in (partition.get("stories") or []) if isinstance(s, dict)]
@@ -642,6 +683,9 @@ def convert_partition(
     story_bodies = [_m3_body(story, type_sha) for story in stories]
     if story_bodies:
         stamp_dd3_extensions(story_bodies, root=root)
+    dest = write_root if write_root is not None else None
+    if dest is not None:
+        write_m3_bodies(dest, stories, story_bodies)
     for story, body in zip(stories, story_bodies):
         sid = _story_id(story)
         part_parents = [str(p) for p in (story.get("parents") or [])]
@@ -709,7 +753,14 @@ def convert_file(
     issues = validate_inputs(partition, tasks_text=tasks_text)
     if issues:
         return None, issues
-    return convert_partition(partition, root=_m1_root(partition_path)), []
+    return (
+        convert_partition(
+            partition,
+            root=_m1_root(partition_path),
+            write_root=_write_root(partition_path),
+        ),
+        [],
+    )
 
 
 def format_issues(issues: list[Issue]) -> str:

@@ -11,6 +11,7 @@ KERNEL = Path(__file__).resolve().parent
 sys.path.insert(0, str(KERNEL))
 from k1_validate import validate_body  # noqa: E402
 from k4_convert import (  # noqa: E402
+    DEST_POM_EXT_CMD,
     convert_file,
     convert_partition,
     dd3_union_gaps,
@@ -407,6 +408,45 @@ def main() -> int:
         encoding="utf-8"
     ):
         return _fail("k4_convert.py must call stamp_dd3_extensions")
+    if "write_m3_bodies(" not in (KERNEL / "k4_convert.py").read_text(encoding="utf-8"):
+        return _fail("k4_convert.py must write M3 bodies at convert")
+
+    stray = KERNEL / "fixtures" / "bodies"
+    if stray.exists():
+        return _fail("convert_file on kernel fixtures must not write fixtures/bodies")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        dest = Path(tmp)
+        evid = dest / "evidence"
+        evid.mkdir()
+        part_dst = evid / "partition.json"
+        part_dst.write_text(
+            (KERNEL / "fixtures" / "k4-valid-partition.json").read_text(
+                encoding="utf-8"
+            ),
+            encoding="utf-8",
+        )
+        written, wissues = convert_file(part_dst)
+        if wissues or written is None:
+            return _fail("write-root convert: %s" % wissues)
+        setup_path = dest / "evidence" / "bodies" / "m3-setup.json"
+        if not setup_path.is_file():
+            return _fail("convert must write evidence/bodies/m3-setup.json")
+        on_disk = json.loads(setup_path.read_text(encoding="utf-8"))
+        in_payload = json.loads(
+            next(
+                p["body"]
+                for p in written["payloads"]
+                if p["logical_id"] == "setup"
+            )
+        )
+        if on_disk != in_payload:
+            return _fail("written setup body must match payload body")
+        cmd = DEST_POM_EXT_CMD % "setup"
+        if "evidence/bodies/m3-setup.json" not in cmd:
+            return _fail("DEST_POM_EXT_CMD must name the written path")
+        if not (dest / "evidence" / "bodies" / "m3-setup.json").is_file():
+            return _fail("dest_pom_extensions --body path missing after convert")
 
     print("OK: K4 selftest (PATH_TOKEN + created_cards + partition copy + T0_3_SERVICE)")
     return 0
