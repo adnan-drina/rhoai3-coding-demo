@@ -347,6 +347,9 @@ check "080 GitOps MaaS env derive does not bounce Running dest pods" \
 check "080 GitOps dest-init derives worker base from gateway MAAS_BASE_URL" \
   "grep -c 'MaaS gateway base from MAAS_BASE_URL' '${GITOPS_INIT}' || echo 0" \
   "1"
+check "080 GitOps dest-init pin files do not label the gateway as KServe" \
+  "grep -c 'in-cluster-kserve' '${GITOPS_INIT}' || echo 0" \
+  "0"
 check "080 GitOps does not copy dest kanban-stuck-watchdog" \
   "grep -c 'home/scripts/kanban-stuck-watchdog' '${GITOPS_INIT}' || echo 0" \
   "0"
