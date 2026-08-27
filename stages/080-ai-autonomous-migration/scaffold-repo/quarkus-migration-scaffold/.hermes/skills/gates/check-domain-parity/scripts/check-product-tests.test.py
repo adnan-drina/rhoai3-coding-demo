@@ -63,6 +63,19 @@ def main() -> int:
         print(noboot.stderr, file=sys.stderr)
         return 1
 
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("check_product_tests", SCRIPT)
+    if spec is None or spec.loader is None:
+        print("FAIL: cannot load check-product-tests.py", file=sys.stderr)
+        return 1
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    greet_root = FIX / "ar28-greeting-inventory"
+    if mod.db_intent(greet_root) is not False:
+        print("FAIL: greeting database.needed false must not require db", file=sys.stderr)
+        return 1
+
     print("OK: check-product-tests inventory-ground + four-family floor")
     return 0
 

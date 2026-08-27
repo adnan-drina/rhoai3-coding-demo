@@ -15,5 +15,10 @@
   ],
   "from_pom": [],
   "legacy_pom": "/projects/legacy/pom.xml",
-  "jdbc_kind_from": ""
+  "jdbc_kind_from": "",
+  "database": {
+    "needed": false,
+    "kind": "",
+    "from": ""
+  }
 }

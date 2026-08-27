@@ -11,12 +11,12 @@ When inventory is absent, keep the four-family floor (fail dest-8-as-stood
 without this file). Exit 1 when a *required* family is missing, probe-only,
 or there are no product tests. Exit 2 on unreadable inventory.
 
-``db_intent`` parses ``required-extensions.json`` and inspects **values**
-(``jdbc_kind_from``, ``entries``, ``from_pom``, ``from_rules``). It must
-not substring-match the serialized blob — the schema key
-``jdbc_kind_from`` contains ``jdbc`` even when the value is empty
-(Architect ``193642ZA`` / dest-13 false REFUSE). Do not rename the key
-to dodge that.
+``db_intent`` parses ``required-extensions.json`` and inspects **values**.
+Prefer ``database.needed`` (boolean). ``jdbc_kind_from`` remains a
+deprecated alias for one release. It must not substring-match the
+serialized blob — the schema key ``jdbc_kind_from`` contains ``jdbc``
+even when the value is empty (Architect ``193642ZA`` / dest-13 false
+REFUSE). Do not rename the key to dodge that.
 
 Families (content or name heuristics; optional AR28:<family> markers):
   boot     — start/smoke of harvested HTTP (@QuarkusTest, /q/health, *Boot*IT, AR28:boot)
@@ -162,6 +162,14 @@ def db_intent(root: Path) -> bool:
         return False
     if not isinstance(data, dict):
         return False
+    db = data.get("database")
+    if isinstance(db, dict) and "needed" in db:
+        needed = db.get("needed")
+        if isinstance(needed, bool):
+            return needed
+        if isinstance(needed, str):
+            return needed.strip().lower() in {"true", "1", "yes"}
+        return bool(needed)
     jdbc_from = data.get("jdbc_kind_from")
     if isinstance(jdbc_from, str) and jdbc_from.strip():
         return True

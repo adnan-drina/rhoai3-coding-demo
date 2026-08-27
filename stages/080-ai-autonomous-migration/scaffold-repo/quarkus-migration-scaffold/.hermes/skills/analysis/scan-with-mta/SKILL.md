@@ -202,7 +202,9 @@ Both are required environment facts, not optional tuning.
   Exit 1 = typed BLOCK (product/gate residue); exit 2 = harness path defect —
   do not paper over it.
 - `evidence/required-extensions.json` is present after emit (schema
-  `rhoai3.required-extensions/v2`, `entries: [{artifactId, kind}]`).
+  `rhoai3.required-extensions/v2`, `entries: [{artifactId, kind}]`,
+  `database: {needed, kind, from}` as a boolean value — dest-13 greeting
+  is `needed: false`). `jdbc_kind_from` stays as a deprecated alias.
   `legacy_pom` is the resolved `harvest_referent` pom (non-empty).
   ArtifactIds are T-3 native Quarkus targets parsed from
   `manage-quarkus-extensions/references/spring-dep-to-extension.md`

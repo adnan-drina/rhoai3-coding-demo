@@ -84,6 +84,25 @@ def main() -> int:
         )
         return 1
 
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("emit_req", SCRIPT)
+    if spec is None or spec.loader is None:
+        print("FAIL: cannot load emit-required-extensions.py", file=sys.stderr)
+        return 1
+    ere = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(ere)
+    none = ere.database_object("", [])
+    if none.get("needed") is not False:
+        print("FAIL: empty jdbc_kind_from database.needed must be false: %s" % none, file=sys.stderr)
+        return 1
+    pg = ere.database_object(
+        "jdbc:postgresql://localhost/x", ["spring-boot-starter-data-jpa"]
+    )
+    if pg.get("needed") is not True or pg.get("kind") != "postgresql":
+        print("FAIL: postgres harvest database object: %s" % pg, file=sys.stderr)
+        return 1
+
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         write_handoff(root)
@@ -134,6 +153,13 @@ def main() -> int:
             return 1
         if "quarkus-cache" not in (doc.get("from_pom") or []):
             print("FAIL: from_pom must name the pom-only target: %s" % doc, file=sys.stderr)
+            return 1
+        db = doc.get("database")
+        if not isinstance(db, dict) or db.get("needed") is not False:
+            print("FAIL: cache-only harvest database.needed must be false: %s" % doc, file=sys.stderr)
+            return 1
+        if db.get("kind"):
+            print("FAIL: no-database harvest must not name a kind: %s" % db, file=sys.stderr)
             return 1
 
         no_manifest = Path(tmp) / "no-manifest"

@@ -195,6 +195,23 @@ def resolve_legacy_root(
     return None
 
 
+def database_object(jdbc_from: str, from_pom: list[str]) -> dict[str, object]:
+    """Explicit harvest signal. needed is a boolean *value* (Architect design)."""
+    raw = (jdbc_from or "").strip()
+    if raw in {"", "MISSING"}:
+        return {"needed": False, "kind": "", "from": ""}
+    kind = raw
+    if raw.startswith("jdbc:") and raw.count(":") >= 2:
+        kind = raw.split(":")[1]
+    source = "legacy-datasource:" + raw
+    for aid in from_pom:
+        low = (aid or "").lower()
+        if any(tok in low for tok in ("jpa", "jdbc", "data-jpa", "hibernate", "flyway")):
+            source = "legacy-pom:" + aid
+            break
+    return {"needed": True, "kind": kind, "from": source}
+
+
 def emit(
     root: Path,
     *,
@@ -257,6 +274,7 @@ def emit(
         "from_pom": from_pom,
         "legacy_pom": pom_rel,
         "jdbc_kind_from": jdbc_from,
+        "database": database_object(jdbc_from, from_pom),
     }
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
