@@ -56,12 +56,11 @@ REMEDY = {
         "extra parent at mint time. Dest mint-verifier is not a parent."
     ),
     "K4_T0_3_SERVICE": (
-        "T0_3_SERVICE: split into one service class per aggregate, each owned "
-        "by the story that owns those entities. Wrong reading: methods in a "
-        "shared ClinicService (v42 Add-to-ClinicService on six stories). The "
-        "shared file still imports every aggregate and fails CYCLE_IMPORT. "
-        "Retire the inventory row with a named 1:N supersede set, not methods "
-        "in a shared class."
+        "T0_3_SERVICE is write-set legality only: the same *Service.java must "
+        "not appear in two stories' files_writable. One story MAY own a shared "
+        "facade. Wrong reading: methods in a shared ClinicService on six "
+        "stories (v42). Split-one-class-per-aggregate is architecture "
+        "(petclinic ADR), not this mint refuse."
     ),
     "K4_MINT_CREATE": (
         "Mint argv is hermes kanban create with inline --body. Do not import "

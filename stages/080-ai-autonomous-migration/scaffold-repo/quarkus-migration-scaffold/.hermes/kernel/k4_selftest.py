@@ -248,10 +248,14 @@ def main() -> int:
     )
     if "methods in shared ClinicService" not in t03_detail:
         return _fail("T0_3 detail missing wrong reading: %s" % t03_detail)
-    if "one service class per aggregate" not in t03_remedy:
-        return _fail("T0_3 remedy missing class-per-aggregate: %s" % t03_remedy)
+    if "files_writable" not in t03_remedy and "write-set" not in t03_remedy:
+        return _fail("T0_3 remedy missing write-set legality: %s" % t03_remedy)
+    if "MAY own a shared facade" not in t03_remedy:
+        return _fail("T0_3 remedy missing shared-facade grant: %s" % t03_remedy)
     if "methods in a shared ClinicService" not in t03_remedy:
         return _fail("T0_3 remedy missing ClinicService wrong reading: %s" % t03_remedy)
+    if "not this mint refuse" not in t03_remedy:
+        return _fail("T0_3 remedy still treats split-per-aggregate as mint: %s" % t03_remedy)
 
     http_part = json.loads(valid.read_text(encoding="utf-8"))
     http_part["stories"][1]["endpoints"] = ["GET /greeting"]

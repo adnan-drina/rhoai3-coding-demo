@@ -34,10 +34,18 @@ requirement without enforcing code.
 **Rule:** for security, use `@TestSecurity` behavioral HTTP asserts — never treat
 grep alone as sufficient proof of enforcement.
 
-## 4. T0_3_SERVICE — whole-domain service is not foundational
+## 4. T0_3_SERVICE — write-set overlap of `*Service.java`
 
-`T0_3_SERVICE`: a whole-domain `*Service.java` is not foundational. **Split into one service class per aggregate** (example names: `OwnerService`, `PetService`) — each owned by the story that owns those entities. Do **not** distribute methods within a shared class: the shared file still imports every aggregate and will fail the topological check (`CYCLE_IMPORT`).
+`T0_3_SERVICE` is **write-set legality only** (K4 `shared_service_java()`):
+the same `*Service.java` must not appear in two stories' `files_writable`.
+One story MAY own a shared facade. Split-one-class-per-aggregate is
+petclinic architecture, not this mint refuse.
 
-**Wrong reading (v42):** M2 read "owns the service **methods**" as "distribute methods inside one class" and authored `Add … to ClinicService` on six stories. Coverage still saw one `dest_file`; the shared class still imported every aggregate.
+**Wrong reading (v42):** M2 read "owns the service **methods**" as "distribute
+methods inside one class" and put `ClinicService` on six stories' write-sets.
+That is the overlap K4 refuses.
 
-**Rule:** one **service class** per aggregate, owned by the story that owns those entities. Do not keep a vestigial facade `ClinicService` so a 1:1 `dest_file` row stays green. The 1:N supersede exception (coverage script + `tasks.md` template) is how the inventory row is retired — not methods-in-shared-class.
+**Rule:** do not list the same `*Service.java` on two `files_writable` arrays.
+Do not treat a shared facade owned by **one** story as a mint refuse. Inventory
+1:N supersede (coverage + `tasks.md` template) is how a dest_file row is
+retired — not this code.

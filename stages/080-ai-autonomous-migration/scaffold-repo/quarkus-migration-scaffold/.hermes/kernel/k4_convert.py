@@ -88,7 +88,7 @@ def partition_write_union(stories: list[dict[str, Any]]) -> set[str]:
 
 
 def shared_service_java(stories: list[dict[str, Any]]) -> list[tuple[str, list[str]]]:
-    """Same *Service.java in two or more stories = methods-in-shared-class."""
+    """Same *Service.java in two or more stories' files_writable."""
     owners: dict[str, list[str]] = {}
     for story in stories:
         sid = _story_id(story)

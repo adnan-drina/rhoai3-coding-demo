@@ -15,7 +15,7 @@ license: Apache-2.0
 compatibility: Linux seat; Python 3.11+; pinned specify-cli; Hermes Kanban
 metadata:
   author: rhoai3-harness-team
-  version: "1.3.0"
+  version: "1.3.1"
   hermes:
     tags:
     - sdd
@@ -101,10 +101,9 @@ Do not dest-edit dest-9 PATH or implementer `external_dirs`.
    `.hermes/kernel/k4_schema.py` by `scripts/assert-partition-schema-sync.py`).
    Do not reverse-engineer `k4_*.py`.
 
-   **Split rule (M2, not M3):** one service class per aggregate. Do **not**
-   put the same `*Service.java` on two stories (methods in a shared
-   `ClinicService` — `K4_T0_3_SERVICE`). Retire the inventory row with a
-   named 1:N supersede set.
+   **Write-set (`K4_T0_3_SERVICE`):** the same `*Service.java` must not
+   appear on two stories. One story MAY own a shared facade. Split-one-class-per-aggregate
+   is petclinic architecture, not this mint refuse.
 
    HTTP stories must set `legacy_source` to the matching
    `entry-point-inventory.json` `file` (legacy package/path). Dest

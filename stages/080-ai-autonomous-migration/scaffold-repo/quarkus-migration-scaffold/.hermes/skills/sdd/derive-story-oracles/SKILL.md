@@ -1,11 +1,11 @@
 ---
 name: derive-story-oracles
-description: Before minting or reminting an M3 body's exit_criteria — take phase acceptance criteria as the exit oracle, treat operand_class as a set for class-legal names and B-16 skill attachment, refuse wrong-class/dual-oracle and vacuous always-true cmds; use when assigning story-class verification. Use when type-inventory shows a whole-domain *Service.java — T0_3_SERVICE split one service class per aggregate, not methods in a shared ClinicService.
+description: Before minting or reminting an M3 body's exit_criteria — take phase acceptance criteria as the exit oracle, treat operand_class as a set for class-legal names and B-16 skill attachment, refuse wrong-class/dual-oracle and vacuous always-true cmds. Use when two stories list the same *Service.java in files_writable — T0_3_SERVICE is that K4 write-set overlap (shared_service_java); one story may own a shared facade. Do not use to require one service class per aggregate (petclinic architecture, not mint).
 license: Apache-2.0
 compatibility: Linux seat; M3 typed bodies; specimen-agnostic vocab
 metadata:
   author: rhoai3-harness-team
-  version: "1.1.3"
+  version: "1.1.4"
   hermes:
     tags:
     - sdd
@@ -42,11 +42,11 @@ Official technique table and failure classes: `references/concern-oracle-table.m
   entity-only + `hql_entity_path`, …).
 - When reviewing whether a grep-shaped check is strong enough for the claim
   (comment-satisfiable risk).
-- When type-inventory (or `tasks.md`) still has a whole-domain `*Service.java`
-  (`ClinicService` and the like) — `T0_3_SERVICE` in
-  `references/failure-classes.md`. Split **one service class per aggregate**.
-- **Not** for write-set overlap — `partition-coverage` / surgical write rules
-  / `assert-partition-invented-files.py` (Operator `3e3409d0`; F7).
+- When two stories would list the same `*Service.java` in `files_writable`
+  (`ClinicService` on six cards is the v42 shape) — `T0_3_SERVICE` in
+  `references/failure-classes.md` and K4 `shared_service_java()`. One story
+  MAY own a shared facade. Split-one-class-per-aggregate is petclinic
+  architecture, not this mint refuse.
 - **Not** for domain G-1..G-4 measurement — `check-domain-parity`.
 
 ## Procedure
@@ -93,10 +93,11 @@ python3 ../check-spec-readiness/scripts/check-surgical-scopes.py <root> <body.js
 - Reintroducing specimen literals into exit vocab (R-SK.5).
 - Stamping `curl` or a script as the card exit — live HTTP is M4/M5;
   the AC names a `@QuarkusTest` in this write-set.
-- `T0_3_SERVICE` wrong reading: "owns the service **methods**" as "add
-  methods to shared `ClinicService`". That keeps every aggregate import on
-  one file and fails `CYCLE_IMPORT`. Remedy is **one service class per
-  aggregate**, not methods in a shared class.
+- `T0_3_SERVICE` is write-set legality: the same `*Service.java` on two
+  stories' `files_writable`. Wrong reading: "owns the service **methods**"
+  as "add methods to shared `ClinicService`" on every story. One story MAY
+  own a shared facade. Split-one-class-per-aggregate is petclinic ADR, not
+  this mint refuse.
 
 ## Verification
 

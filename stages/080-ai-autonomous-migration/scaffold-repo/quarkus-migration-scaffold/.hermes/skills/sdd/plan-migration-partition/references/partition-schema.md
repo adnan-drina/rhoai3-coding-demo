@@ -42,8 +42,8 @@ Write `evidence/partition.json` (coverage also accepts
 `K4_PATH_TOKEN` `K4_PLANNING_DEFECT` `K4_LEGACY_SOURCE` `K4_DEST_FILE`
 
 `K4_T0_3_SERVICE`: the same `*Service.java` must not be writable on two
-stories (methods in a shared ClinicService). Split one service class per
-aggregate; retire the inventory row with a named supersede set.
+stories. One story MAY own a shared facade. Split-one-class-per-aggregate
+is architecture (petclinic ADR), not this mint refuse.
 
 `K4_PATH_TOKEN`: `tasks.md` must not ask to scrape write-sets.
 `K4_PLANNING_DEFECT`: a path named in `tasks.md` must already be in some
