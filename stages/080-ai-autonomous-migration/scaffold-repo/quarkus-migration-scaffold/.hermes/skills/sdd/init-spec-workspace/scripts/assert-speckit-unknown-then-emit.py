@@ -50,8 +50,8 @@ def main() -> int:
         empty.mkdir()
         env = os.environ.copy()
         env["PATH"] = str(fake_dir) + ":" + env.get("PATH", "")
-        env.pop("SPECIFY_REAL", None)
         env.pop("HERMES_MANAGED_DIR", None)
+        env["SPECIFY_REAL"] = str(fake)
 
         bare = subprocess.run(
             [str(fake), "workflow", "run", "speckit", "-i", "spec=x"],

@@ -1309,29 +1309,9 @@ data:
             "ERROR: specify-from-project.sh missing — worker specify cannot "
             "resolve speckit-specify at run time: " + specify_helper
         )
-    with open(specify_wrap, "w") as fh:
-        fh.write("#!/bin/bash\n")
-        fh.write("set -euo pipefail\n")
-        fh.write(
-            "# specify run-time skills root: HOME=project for spec-kit#3334.\n"
-        )
-        fh.write("# Do not collapse the worker's profile HOME.\n")
-        fh.write(
-            "exec bash %s --root %s \"$@\"\n"
-            % (json.dumps(specify_helper), json.dumps(project))
-        )
-    os.chmod(specify_wrap, 0o755)
-    print("specify PATH shim: " + specify_wrap + " -> " + specify_helper)
-    # W1 remaining (Operator P1 / Architect 193639ZA): specify init and
-    # mvn test on a FRESH tree. dest-9 /projects/modernized is mid-chain
-    # (--force / product tests are destructive or slow). Same argv the
-    # skills mandate; not a full speckit LLM run; not dest-apply dest-9.
-    skip_specify_dirs = {
-        os.path.abspath(bin_dir),
-        os.path.abspath(os.path.join(project, ".hermes", "bin")),
-        os.path.abspath("/projects/.platform/hermes/bin"),
-        os.path.abspath("/etc/hermes/bin"),
-    }
+    # Resolve uv specify-cli by CONTENT, not PATH rank. dest-init writes
+    # this helper onto PATH as `specify`; a PATH search that picks the
+    # wrapper is the dest-11 fork bomb (Architect 153721ZA).
     real_specify = ""
     for d in os.environ.get("PATH", "").split(":"):
         if not d:
@@ -1339,7 +1319,12 @@ data:
         cand = os.path.join(d, "specify")
         if not os.path.isfile(cand) or not os.access(cand, os.X_OK):
             continue
-        if os.path.abspath(d) in skip_specify_dirs:
+        try:
+            with open(cand, encoding="utf-8", errors="replace") as rh:
+                body = rh.read()
+        except OSError:
+            continue
+        if "specify-from-project.sh" in body:
             continue
         real_specify = cand
         break
@@ -1348,6 +1333,35 @@ data:
             "ERROR: dest-init specify init: specify-cli not on PATH "
             "after skipping dest shims"
         )
+    with open(env_path, "a") as fh:
+        fh.write("SPECIFY_REAL=" + real_specify + "\n")
+    with open(specify_wrap, "w") as fh:
+        fh.write("#!/bin/bash\n")
+        fh.write("set -euo pipefail\n")
+        fh.write(
+            "# specify run-time skills root: HOME=project for spec-kit#3334.\n"
+        )
+        fh.write("# Do not collapse the worker's profile HOME.\n")
+        fh.write(
+            "export SPECIFY_REAL=%s\n" % json.dumps(real_specify)
+        )
+        fh.write(
+            "exec bash %s --root %s \"$@\"\n"
+            % (json.dumps(specify_helper), json.dumps(project))
+        )
+    os.chmod(specify_wrap, 0o755)
+    print(
+        "specify PATH shim: "
+        + specify_wrap
+        + " -> "
+        + specify_helper
+        + " SPECIFY_REAL="
+        + real_specify
+    )
+    # W1 remaining (Operator P1 / Architect 193639ZA): specify init and
+    # mvn test on a FRESH tree. dest-9 /projects/modernized is mid-chain
+    # (--force / product tests are destructive or slow). Same argv the
+    # skills mandate; not a full speckit LLM run; not dest-apply dest-9.
     fresh = tempfile.mkdtemp(prefix="dest-init-fresh-smoke-")
     if os.path.abspath(fresh) == os.path.abspath(project):
         raise SystemExit(

@@ -8,7 +8,12 @@ skills. dest-init installs a PATH shim, but dest-9 ``PATH`` starts with
 ``/home/user/.local/bin/specify`` (uv) which **shadows**
 ``/projects/.platform/hermes/bin/specify``. Control: PATH ``specify``
 under that shadow must miss the skill; ``specify-from-project.sh --root``
-must still find it. Do not dest-edit dest-9 PATH or ``external_dirs``.
+with ``SPECIFY_REAL`` must still find it. Do not dest-edit dest-9 PATH or
+``external_dirs``.
+
+Architect ``153721ZA``: dest-init bakes ``SPECIFY_REAL`` into the wrapper.
+The helper never PATH-searches. Regression: wrapper first on PATH +
+``SPECIFY_REAL`` set must resolve the real binary and must not recurse.
 """
 from __future__ import annotations
 
@@ -22,6 +27,7 @@ from pathlib import Path
 
 SCRIPTS = Path(__file__).resolve().parent
 INSTALL = SCRIPTS / "install-specify-shim.sh"
+HELPER = SCRIPTS / "specify-from-project.sh"
 
 
 def _write_mock_specify(path: Path, probe_out: Path) -> None:
@@ -41,6 +47,16 @@ def _write_mock_specify(path: Path, probe_out: Path) -> None:
     path.chmod(path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
 
+def _write_wrapper(path: Path, helper: Path, project: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        "#!/usr/bin/env bash\n"
+        "exec bash %r --root %r \"$@\"\n" % (str(helper), str(project)),
+        encoding="utf-8",
+    )
+    path.chmod(0o755)
+
+
 def run_control(tmp: Path) -> int:
     project = tmp / "project"
     profile = tmp / "profile"
@@ -57,7 +73,7 @@ def run_control(tmp: Path) -> int:
     _write_mock_specify(mock, probe)
 
     inst = subprocess.run(
-        ["bash", str(INSTALL), str(project)],
+        ["bash", str(INSTALL), str(project), str(mock)],
         text=True,
         capture_output=True,
     )
@@ -78,7 +94,7 @@ def run_control(tmp: Path) -> int:
         + os.pathsep
         + env.get("PATH", "/usr/bin:/bin")
     )
-    env["SPECIFY_REAL"] = str(mock)
+    env.pop("SPECIFY_REAL", None)
     env.pop("SPECIFY_PROJECT_ROOT", None)
 
     proc = subprocess.run(
@@ -94,6 +110,9 @@ def run_control(tmp: Path) -> int:
             "FAIL: worker-shell specify rc=%s: %s" % (proc.returncode, blob),
             file=sys.stderr,
         )
+        return 1
+    if "shell level" in blob:
+        print("FAIL: worker-shell specify recursed: %s" % blob, file=sys.stderr)
         return 1
     got = probe.read_text(encoding="utf-8") if probe.is_file() else ""
     if Path(got).resolve() != project.resolve():
@@ -157,11 +176,34 @@ def run_control(tmp: Path) -> int:
             file=sys.stderr,
         )
         return 1
-    helper = SCRIPTS / "specify-from-project.sh"
+    unset = subprocess.run(
+        [
+            "bash",
+            str(HELPER),
+            "--root",
+            str(project),
+            "workflow",
+            "run",
+            "speckit",
+        ],
+        text=True,
+        capture_output=True,
+        env=env9,
+        cwd=str(profile),
+    )
+    blob_unset = (unset.stdout or "") + (unset.stderr or "")
+    if unset.returncode == 0 or "SPECIFY_REAL unset" not in blob_unset:
+        print(
+            "FAIL: helper without SPECIFY_REAL must refuse PATH search: %s"
+            % blob_unset,
+            file=sys.stderr,
+        )
+        return 1
+    env9["SPECIFY_REAL"] = str(user_specify)
     via = subprocess.run(
         [
             "bash",
-            str(helper),
+            str(HELPER),
             "--root",
             str(project),
             "workflow",
@@ -176,7 +218,7 @@ def run_control(tmp: Path) -> int:
     blob9 = (via.stdout or "") + (via.stderr or "")
     if via.returncode != 0:
         print(
-            "FAIL: specify-from-project.sh dest-9 shadow rc=%s: %s"
+            "FAIL: specify-from-project.sh dest-9 SPECIFY_REAL rc=%s: %s"
             % (via.returncode, blob9),
             file=sys.stderr,
         )
@@ -189,98 +231,88 @@ def run_control(tmp: Path) -> int:
             file=sys.stderr,
         )
         return 1
+
     # dest-11: dest-init copies this helper to .platform/hermes/bin/specify.
-    # Preferring that copy recurses (shell level 1000). Skip it; use uv.
-    # Architect 153513ZA: HERMES_MANAGED_DIR is UNION with the two hardcoded
-    # paths. All three cases must still skip the dest-init platform wrapper.
-    helper = SCRIPTS / "specify-from-project.sh"
+    # Wrapper first on PATH + SPECIFY_REAL = uv must not recurse.
     platform_bin = tmp / "fake" / ".platform" / "hermes" / "bin"
-    platform_bin.mkdir(parents=True)
-    (platform_bin / "specify").write_text(
-        "#!/usr/bin/env bash\n"
-        "exec bash %r --root %r \"$@\"\n"
-        % (str(helper), str(project)),
-        encoding="utf-8",
+    _write_wrapper(platform_bin / "specify", HELPER, project)
+    probe9.unlink(missing_ok=True)
+    env11 = os.environ.copy()
+    env11["HOME"] = str(profile)
+    env11["PATH"] = (
+        str(platform_bin)
+        + os.pathsep
+        + str(userbin)
+        + os.pathsep
+        + env11.get("PATH", "/usr/bin:/bin")
     )
-    (platform_bin / "specify").chmod(0o755)
-    third = tmp / "third-managed"
-    third_bin = third / "bin"
-    third_bin.mkdir(parents=True)
-    (third_bin / "specify").write_text(
-        "#!/usr/bin/env bash\n"
-        "exec bash %r --root %r \"$@\"\n"
-        % (str(helper), str(project)),
-        encoding="utf-8",
+    env11["SPECIFY_REAL"] = str(user_specify)
+    env11.pop("SPECIFY_PROJECT_ROOT", None)
+    dest11 = subprocess.run(
+        [
+            "bash",
+            str(HELPER),
+            "--root",
+            str(project),
+            "workflow",
+            "run",
+            "speckit",
+        ],
+        text=True,
+        capture_output=True,
+        env=env11,
+        cwd=str(profile),
     )
-    (third_bin / "specify").chmod(0o755)
-    managed_cases = (
-        ("unset", None),
-        ("platform", str(tmp / "fake" / ".platform" / "hermes")),
-        ("third", str(third)),
-    )
-    for label, managed in managed_cases:
-        probe9.unlink(missing_ok=True)
-        env11 = os.environ.copy()
-        env11["HOME"] = str(profile)
-        env11["PATH"] = (
-            str(platform_bin)
-            + os.pathsep
-            + str(third_bin)
-            + os.pathsep
-            + str(userbin)
-            + os.pathsep
-            + env11.get("PATH", "/usr/bin:/bin")
+    blob11 = (dest11.stdout or "") + (dest11.stderr or "")
+    if dest11.returncode != 0:
+        print(
+            "FAIL: helper with SPECIFY_REAL must skip dest-init wrapper "
+            "rc=%s: %s" % (dest11.returncode, blob11),
+            file=sys.stderr,
         )
-        env11.pop("SPECIFY_REAL", None)
-        env11.pop("SPECIFY_PROJECT_ROOT", None)
-        if managed is None:
-            env11.pop("HERMES_MANAGED_DIR", None)
-        else:
-            env11["HERMES_MANAGED_DIR"] = managed
-        dest11 = subprocess.run(
-            [
-                "bash",
-                str(helper),
-                "--root",
-                str(project),
-                "workflow",
-                "run",
-                "speckit",
-            ],
-            text=True,
-            capture_output=True,
-            env=env11,
-            cwd=str(profile),
+        return 1
+    if "shell level" in blob11:
+        print("FAIL: helper recursed through platform wrapper: %s" % blob11, file=sys.stderr)
+        return 1
+    got11 = probe9.read_text(encoding="utf-8") if probe9.is_file() else ""
+    if Path(got11).resolve() != project.resolve():
+        print(
+            "FAIL: dest-11 SPECIFY_REAL HOME=%r (want project %s)"
+            % (got11, project),
+            file=sys.stderr,
         )
-        blob11 = (dest11.stdout or "") + (dest11.stderr or "")
-        if dest11.returncode != 0:
-            print(
-                "FAIL: helper must skip dest-init platform wrapper "
-                "(HERMES_MANAGED_DIR %s) rc=%s: %s"
-                % (label, dest11.returncode, blob11),
-                file=sys.stderr,
-            )
-            return 1
-        if "shell level" in blob11:
-            print(
-                "FAIL: helper recursed through platform wrapper "
-                "(HERMES_MANAGED_DIR %s): %s" % (label, blob11),
-                file=sys.stderr,
-            )
-            return 1
-        got11 = probe9.read_text(encoding="utf-8") if probe9.is_file() else ""
-        if Path(got11).resolve() != project.resolve():
-            print(
-                "FAIL: dest-11 skip-wrapper HOME=%r (want project %s) "
-                "HERMES_MANAGED_DIR %s" % (got11, project, label),
-                file=sys.stderr,
-            )
-            return 1
+        return 1
+
+    wrap_env = env11.copy()
+    wrap_env["SPECIFY_REAL"] = str(platform_bin / "specify")
+    refuse = subprocess.run(
+        [
+            "bash",
+            str(HELPER),
+            "--root",
+            str(project),
+            "workflow",
+            "run",
+            "speckit",
+        ],
+        text=True,
+        capture_output=True,
+        env=wrap_env,
+        cwd=str(profile),
+    )
+    blob_ref = (refuse.stdout or "") + (refuse.stderr or "")
+    if refuse.returncode == 0 or "refusing wrapper" not in blob_ref:
+        print(
+            "FAIL: SPECIFY_REAL pointing at the wrapper must refuse: %s"
+            % blob_ref,
+            file=sys.stderr,
+        )
+        return 1
+
     print(
         "OK: worker-shell specify resolved speckit-specify "
-        "(HOME=project child; dest-9 PATH shadow needs specify-from-project.sh; "
-        "dest-11 dest-init platform wrapper skipped for HERMES_MANAGED_DIR "
-        "unset, platform, and third-path UNION)"
+        "(HOME=project child; dest-9 PATH shadow needs SPECIFY_REAL; "
+        "dest-11 wrapper first on PATH does not recurse)"
     )
     return 0
 

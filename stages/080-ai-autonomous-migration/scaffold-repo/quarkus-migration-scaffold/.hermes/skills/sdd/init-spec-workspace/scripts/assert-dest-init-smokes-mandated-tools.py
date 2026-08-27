@@ -39,6 +39,11 @@ def check_text(text: str) -> list[str]:
         gaps.append("missing specify-from-project.sh")
     if "SPECIFY_REAL" not in text:
         gaps.append("missing SPECIFY_REAL probe (would LLM or skip capability)")
+    if "export SPECIFY_REAL" not in text:
+        gaps.append(
+            "missing export SPECIFY_REAL in dest-init shim "
+            "(PATH search rediscovers the wrapper)"
+        )
     if "specify-dest-init-smoke" not in text:
         gaps.append("missing specify-dest-init-smoke probe binary")
     if "spec=dest-init-smoke" not in text:

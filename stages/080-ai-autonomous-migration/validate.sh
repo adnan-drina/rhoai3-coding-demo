@@ -553,7 +553,7 @@ check "080 specify worker-shell run-time selftest passes" \
   "1"
 check "080 dest-init installs specify PATH shim (not HERMES_HOME/bin)" \
   "grep -c 'specify-from-project.sh' '${GITOPS_INIT}' || echo 0" \
-  "2"
+  "3"
 check "080 dest-init smokes specify helper-by-path (W1)" \
   "python3 '${SCAFFOLD_080}/.hermes/skills/sdd/init-spec-workspace/scripts/assert-dest-init-smokes-mandated-tools.py' '${GITOPS_INIT}' >/dev/null && echo 1 || echo 0" \
   "1"

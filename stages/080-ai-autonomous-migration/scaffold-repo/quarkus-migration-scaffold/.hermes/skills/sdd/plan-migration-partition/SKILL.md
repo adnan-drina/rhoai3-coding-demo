@@ -88,19 +88,18 @@ bash .hermes/skills/sdd/init-spec-workspace/scripts/specify-from-project.sh \
 
 Do **not** PATH-lookup `specify`. dest-9 `command -v specify` was
 `/home/user/.local/bin/specify` (uv), which shadowed dest-init
-`/projects/.platform/hermes/bin/specify` (the shim). Project leaf
+`/projects/.platform/hermes/bin/specify` (the HOME-shim). Project leaf
 `.hermes/skills/speckit-specify/SKILL.md` was PRESENT; user-home leaf was
 ABSENT. `-i spec=` is necessary and not sufficient without the helper.
 Unknown `speckit-specify` is `kanban_block`, not hand-author `tasks.md`.
 Do not dest-edit dest-9 PATH or implementer `external_dirs`.
 Do **not** prefer dest-init `/projects/.platform/hermes/bin/specify`: dest-init
 writes the **same helper wrapper** there (Architect `131720ZA`: 1744
-concurrent helpers). Skip dest helper wrappers (this script,
-`${ROOT}/.hermes/bin`, `*/.platform/hermes/bin`, `/etc/hermes/bin`) and refuse
-any candidate whose file contains `specify-from-project.sh`. dest-10 M2
-`t_c705fc91` still saw `Unknown skill(s): speckit-specify` on uv — that
-remaining miss is not a reason to prefer the wrapper. Do not widen
-`K2_ALLOW_ROOT`.
+concurrent helpers). dest-init must export `SPECIFY_REAL` to the uv
+specify-cli path (Architect `153721ZA`); the helper never PATH-searches
+and refuses a `SPECIFY_REAL` whose file contains `specify-from-project.sh`.
+dest-10 M2 `t_c705fc91` still saw `Unknown skill(s): speckit-specify` on
+uv without that export. Do not widen `K2_ALLOW_ROOT`.
 
 `tasks.md` must be non-empty under `.specify/specs/*/tasks.md`.
 

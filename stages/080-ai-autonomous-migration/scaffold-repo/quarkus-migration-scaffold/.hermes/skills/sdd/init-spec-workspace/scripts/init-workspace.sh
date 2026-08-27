@@ -149,55 +149,11 @@ if [[ "${DRY_RUN}" == "1" ]]; then
   exit 0
 fi
 
-if [ -f "${MARKER}" ]; then
-  TS="$(cat "${MARKER}")"
-  # CS-9: prior tips wrote EXTERNAL_DIRS.note into the skill tree (R-SK.1 stray).
-  # Relocate under .specify/ (gitignored) even on skip so tip-pull seats go green.
-  legacy_note="${ROOT}/.hermes/skills/sdd/init-spec-workspace/EXTERNAL_DIRS.note"
-  dest_note="${ROOT}/.specify/EXTERNAL_DIRS.note"
-  if [ -f "${legacy_note}" ]; then
-    mkdir -p "${ROOT}/.specify"
-    if [ ! -f "${dest_note}" ]; then
-      mv "${legacy_note}" "${dest_note}"
-      log "relocated legacy EXTERNAL_DIRS.note → ${dest_note}"
-    else
-      rm -f "${legacy_note}"
-      log "removed legacy skill-tree EXTERNAL_DIRS.note (dest already present)"
-    fi
-  fi
-  install_ads_overlays
-  python3 "${SCRIPT_DIR}/seed-speckit-skills.py" "${ROOT}" "${HUMAN_HOME}" \
-    || die "seed-speckit-skills failed (implementer must see speckit-specify)"
-  python3 "${SCRIPT_DIR}/assert-specify-skills-root.py" "${ROOT}" \
-    || die "specify CLI skills-root missing speckit-specify"
-  _real_specify || true
-  bash "${SCRIPT_DIR}/install-specify-shim.sh" "${ROOT}" "${REAL_SPECIFY_PATH}" \
-    || die "install-specify-shim failed"
-  python3 "${SCRIPT_DIR}/assert-specify-run-from-worker-home.py" \
-    || die "specify worker-shell control failed (profile HOME still hides speckit-specify)"
-  HUMAN="[${LOG_PREFIX}] already provisioned (${TS}) — skip specify init; overlays refreshed"
-  emit_ok "${HUMAN}" "$(python3 -c 'import json,sys; print(json.dumps({"script":"init-workspace","ok":True,"skipped":True,"overlays_refreshed":True,"root":sys.argv[1],"marker":sys.argv[2],"provisioned_at":sys.argv[3]}))' "${ROOT}" "${MARKER}" "${TS}")"
-  exit 0
-fi
-
-# Refuse runs that would create .specify/ outside a live workspace (AD-S S.4).
-# Mechanical assert (check-specify-absent.py) replaces the retired
-# DO_NOT_COMMIT_SPECIFY note. Workspaces live under /projects/*; intentional
-# dry-runs set FORCE_AD_S_PROVISION=1.
-case "${ROOT}" in
-  /projects/*) ;;
-  *)
-    if [ "${FORCE_AD_S_PROVISION:-}" != "1" ]; then
-      die "refusing AD-S init in scaffold/source tree (workspace: /projects/*; dry-run: FORCE_AD_S_PROVISION=1)"
-    fi
-    ;;
-esac
-
 # dest PATH may already have the project/managed specify shim. That is not
 # specify-cli. Probe for a real binary or uv-install one.
 # Sets REAL_SPECIFY_PATH to the absolute path of the genuine specify-cli.
 # That value is baked into the shim as SPECIFY_REAL so the run-time helper
-# never PATH-searches (Architect E-20260827T153721ZA). A wrapper is rejected
+# never PATH-searches (Architect 153721ZA). A wrapper is rejected
 # by CONTENT, not by location: every shim we write execs
 # specify-from-project.sh, so grepping for that name catches all of them
 # wherever they are installed, which path lists cannot.
@@ -236,6 +192,50 @@ ensure_specify() {
   _real_specify || die "specify-cli not on PATH after uv tool install"
 }
 
+if [ -f "${MARKER}" ]; then
+  TS="$(cat "${MARKER}")"
+  # CS-9: prior tips wrote EXTERNAL_DIRS.note into the skill tree (R-SK.1 stray).
+  # Relocate under .specify/ (gitignored) even on skip so tip-pull seats go green.
+  legacy_note="${ROOT}/.hermes/skills/sdd/init-spec-workspace/EXTERNAL_DIRS.note"
+  dest_note="${ROOT}/.specify/EXTERNAL_DIRS.note"
+  if [ -f "${legacy_note}" ]; then
+    mkdir -p "${ROOT}/.specify"
+    if [ ! -f "${dest_note}" ]; then
+      mv "${legacy_note}" "${dest_note}"
+      log "relocated legacy EXTERNAL_DIRS.note → ${dest_note}"
+    else
+      rm -f "${legacy_note}"
+      log "removed legacy skill-tree EXTERNAL_DIRS.note (dest already present)"
+    fi
+  fi
+  install_ads_overlays
+  python3 "${SCRIPT_DIR}/seed-speckit-skills.py" "${ROOT}" "${HUMAN_HOME}" \
+    || die "seed-speckit-skills failed (implementer must see speckit-specify)"
+  python3 "${SCRIPT_DIR}/assert-specify-skills-root.py" "${ROOT}" \
+    || die "specify CLI skills-root missing speckit-specify"
+  ensure_specify
+  bash "${SCRIPT_DIR}/install-specify-shim.sh" "${ROOT}" "${REAL_SPECIFY_PATH}" \
+    || die "install-specify-shim failed"
+  python3 "${SCRIPT_DIR}/assert-specify-run-from-worker-home.py" \
+    || die "specify worker-shell control failed (profile HOME still hides speckit-specify)"
+  HUMAN="[${LOG_PREFIX}] already provisioned (${TS}) — skip specify init; overlays refreshed"
+  emit_ok "${HUMAN}" "$(python3 -c 'import json,sys; print(json.dumps({"script":"init-workspace","ok":True,"skipped":True,"overlays_refreshed":True,"root":sys.argv[1],"marker":sys.argv[2],"provisioned_at":sys.argv[3]}))' "${ROOT}" "${MARKER}" "${TS}")"
+  exit 0
+fi
+
+# Refuse runs that would create .specify/ outside a live workspace (AD-S S.4).
+# Mechanical assert (check-specify-absent.py) replaces the retired
+# DO_NOT_COMMIT_SPECIFY note. Workspaces live under /projects/*; intentional
+# dry-runs set FORCE_AD_S_PROVISION=1.
+case "${ROOT}" in
+  /projects/*) ;;
+  *)
+    if [ "${FORCE_AD_S_PROVISION:-}" != "1" ]; then
+      die "refusing AD-S init in scaffold/source tree (workspace: /projects/*; dry-run: FORCE_AD_S_PROVISION=1)"
+    fi
+    ;;
+esac
+
 ensure_specify
 
 cd "${ROOT}"
@@ -254,7 +254,6 @@ python3 "${SCRIPT_DIR}/seed-speckit-skills.py" "${ROOT}" "${HUMAN_HOME}" \
   || die "seed-speckit-skills failed (implementer must see speckit-specify)"
 python3 "${SCRIPT_DIR}/assert-specify-skills-root.py" "${ROOT}" \
   || die "specify CLI skills-root missing speckit-specify"
-_real_specify || true
 bash "${SCRIPT_DIR}/install-specify-shim.sh" "${ROOT}" "${REAL_SPECIFY_PATH}" \
   || die "install-specify-shim failed"
 python3 "${SCRIPT_DIR}/assert-specify-run-from-worker-home.py" \

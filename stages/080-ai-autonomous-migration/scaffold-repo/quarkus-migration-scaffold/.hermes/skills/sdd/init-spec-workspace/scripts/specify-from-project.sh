@@ -43,50 +43,28 @@ if [[ -z "${ROOT}" ]]; then
   echo "specify-from-project: no project skills root (missing .hermes/skills/speckit-specify)" >&2
   exit 1
 fi
-
-
-
-
-
-# Sole wrapper guard. dest-init bakes SPECIFY_REAL into the shim
-# (E-20260827T153721ZA), so this PATH scan is the fallback path only.
-# Detection is by CONTENT, not location: every shim we write execs
-# specify-from-project.sh, so this catches them wherever they are installed
-# — which the deleted path list could not (Architect 131720ZA: preferring
-# the .platform copy produced 1744 concurrent helpers).
+# dest-init PATH shim is `exec bash …/specify-from-project.sh` (Architect
+# 131720ZA: 1744 concurrent helpers). A PATH search for `specify` can
+# rediscover that shim. SPECIFY_REAL is the intended seam
+# (Architect 153721ZA): dest-init / install-specify-shim bake the uv
+# specify-cli path into the wrapper. Do not PATH-search. Do not prefer a
+# wrapper. Do not widen K2_ALLOW_ROOT.
 _is_wrapper() {
   local cand="$1"
   [[ -f "${cand}" ]] || return 1
   grep -qF "specify-from-project.sh" "${cand}" 2>/dev/null
 }
 
-
-_filtered_path=""
-IFS=':' read -r -a _path_parts <<< "${PATH}"
-for _p in "${_path_parts[@]}"; do
-  [[ -z "${_p}" ]] && continue
-  if _is_wrapper "${_p}/specify"; then
-    continue
-  fi
-  if [[ -z "${_filtered_path}" ]]; then
-    _filtered_path="${_p}"
-  else
-    _filtered_path="${_filtered_path}:${_p}"
-  fi
-done
-
-REAL=""
-if [[ -n "${SPECIFY_REAL:-}" ]]; then
-  REAL="${SPECIFY_REAL}"
-else
-  REAL="$(PATH="${_filtered_path}" command -v specify || true)"
-fi
-
-if [[ -z "${REAL}" || ! -x "${REAL}" ]]; then
-  echo "specify-from-project: specify not on PATH (after skipping shims)" >&2
+if [[ -z "${SPECIFY_REAL:-}" ]]; then
+  echo "specify-from-project: SPECIFY_REAL unset (dest-init must export the uv specify path)" >&2
   exit 1
 fi
-if [[ -z "${SPECIFY_REAL:-}" ]] && _is_wrapper "${REAL}"; then
+REAL="${SPECIFY_REAL}"
+if [[ ! -x "${REAL}" ]]; then
+  echo "specify-from-project: SPECIFY_REAL not executable: ${REAL}" >&2
+  exit 1
+fi
+if _is_wrapper "${REAL}"; then
   echo "specify-from-project: refusing wrapper ${REAL} (re-enters this script)" >&2
   exit 1
 fi
