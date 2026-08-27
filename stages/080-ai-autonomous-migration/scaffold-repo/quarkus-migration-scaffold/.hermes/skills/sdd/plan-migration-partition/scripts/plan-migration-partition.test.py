@@ -75,6 +75,40 @@ def main() -> int:
     if "dest_file" not in skill_md or "K4_DEST_FILE" not in skill_md:
         print("FAIL: SKILL.md must name dest_file / K4_DEST_FILE for HTTP stories", file=sys.stderr)
         return 1
+    if "feature.json" not in skill_md or "feature_directory" not in skill_md:
+        print(
+            "FAIL: SKILL.md must resolve tasks.md via .specify/feature.json "
+            "feature_directory (Spec Kit 0.16.1)",
+            file=sys.stderr,
+        )
+        return 1
+    if "--tasks .specify/specs/*/tasks.md" in skill_md:
+        print(
+            "FAIL: SKILL.md must not glob .specify/specs as the M2 tasks tree",
+            file=sys.stderr,
+        )
+        return 1
+    if "When the instructions do not work" not in skill_md:
+        print(
+            "FAIL: SKILL.md must carry the stop-and-block clause (Architect 170746ZA)",
+            file=sys.stderr,
+        )
+        return 1
+    skills_root = GOLDEN / ".hermes" / "skills"
+    missing_clause = []
+    for group in ("sdd", "migration"):
+        for skill_md_path in sorted((skills_root / group).glob("*/SKILL.md")):
+            body = skill_md_path.read_text(encoding="utf-8")
+            if "When the instructions do not work" not in body:
+                missing_clause.append(str(skill_md_path.relative_to(GOLDEN)))
+            if "kanban_block" not in body:
+                missing_clause.append(str(skill_md_path.relative_to(GOLDEN)) + " (kanban_block)")
+    if missing_clause:
+        print(
+            "FAIL: stop-and-block clause missing: %s" % ", ".join(missing_clause),
+            file=sys.stderr,
+        )
+        return 1
 
     ready = GOLDEN / ".hermes" / "skills" / "sdd" / "check-spec-readiness" / "SKILL.md"
     ready_txt = ready.read_text(encoding="utf-8")
@@ -116,9 +150,14 @@ def main() -> int:
     )
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
-        spec = root / ".specify" / "specs" / "001-migrate"
-        spec.mkdir(parents=True)
-        (spec / "tasks.md").write_text(covering, encoding="utf-8")
+        feat = root / "specs" / "001-migrate"
+        feat.mkdir(parents=True)
+        (root / ".specify").mkdir()
+        (root / ".specify" / "feature.json").write_text(
+            json.dumps({"feature_directory": "specs/001-migrate"}) + "\n",
+            encoding="utf-8",
+        )
+        (feat / "tasks.md").write_text(covering, encoding="utf-8")
         (root / "evidence").mkdir()
         src = aligned / "evidence" / "partition.json"
         (root / "evidence" / "partition.json").write_text(
@@ -133,7 +172,7 @@ def main() -> int:
             )
             return 1
 
-        (spec / "tasks.md").write_text(
+        (feat / "tasks.md").write_text(
             covering + "\n## Phase 4: User Story 2 - Extra\n- [ ] T020 [US2] extra\n",
             encoding="utf-8",
         )
@@ -143,7 +182,7 @@ def main() -> int:
             print("FAIL: extra User Story 2 must REFUSE: %s" % blob, file=sys.stderr)
             return 1
 
-        (spec / "tasks.md").write_text(
+        (feat / "tasks.md").write_text(
             "# Tasks\n## Phase 3: User Story 1 - Greeting\n- [ ] T012 [US1] x\n",
             encoding="utf-8",
         )

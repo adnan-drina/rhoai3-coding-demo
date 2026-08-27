@@ -13,11 +13,13 @@ parallel home is a defect.
 | Config templates | `.hermes/config/` — no secrets; dest Managed Scope owns the live pin. Worker profiles: `.hermes/config/profiles/{orchestrator,implementer}.yaml.template` (Operator GO `231808Z`; dest GitOps applies via `hermes profile create --no-alias`, never `--clone`) |
 | Product guidance | `.hermes/skills/<category>/<name>/` |
 | Dashboard launcher | `.hermes/dashboard/start-dashboard.sh` — defaults `HERMES_WEB_DIST` to overlay bake. Observability, not capability. Dest `web_dist/` / `install-web-dist.sh` / `PIN` retired. |
+| Harness dest-init | `.hermes/skills/harness/` (`dispatch-phase` / `autostart-migration.sh` only) |
 | Analysis | `.hermes/skills/analysis/` (MTA, inventory) |
 | Migration | `.hermes/skills/migration/` (Boot3 / Quarkus / persistence) |
 | SDD | `.hermes/skills/sdd/` (Spec Kit provision + story oracles) |
 | M4 oracles | `.hermes/skills/gates/` (`compose-m4-verdict`, `check-domain-parity`, `check-release-readiness`, `assert-pinned-gates-ran`, `assert-retrievable-tree`, `assert-no-fence-evasion`) |
 | Shared Python | `.hermes/lib/` — **not a skill** (generated_sources, specimen splits). Identity is `.hermes-lib` marker, not a member module. |
+| Dest-init M1+M2 mint | `.hermes/skills/harness/dispatch-phase/scripts/autostart-migration.sh` — M1 ANALYZE + M2 PLAN only (`--idempotency-key`); writes `.hermes/AUTOSTART-STATUS`. Not T0 dispatch-phase. Not M3/M4. Do not restore the RHDH checkbox until this consumer exists (`m2-m3-native-dispatch` item 4). |
 | Retired `_park/` | Deleted (Operator GO `155455Z`). Dest omit + chaos re-add tripwire stay in `scripts/bootstrap-migration-scaffold-v2.sh`. Do not mkdir empty `_park/` or dump requeue into kernel. Rebuild wall/crash/chaos later only on dest GO. |
 | K2 REHOST | `.hermes/kernel/pre_tool_call.sh` — **one** shell `pre_tool_call` module (`fail_closed: true`). Dest terminal allow-root is dest tree **and** `/projects/legacy` (`K2_ALLOW_ROOT` pathsep; Architect `214325ZA`). **Opaque** construction **deny**; transparent pathless + cwd inside a grant **allow** (Architect AMEND of `214743ZA`; Operator `085036ZO`). Write sandbox stays `HERMES_WRITE_SAFE_ROOT` dest tree only. **Not claimed control**. Do not mkdir empty `kernel/`. |
 | K1 body schema | `.hermes/kernel/k1_schema.py` + `k1_load.py` + `k1_validate.py` — typed pre-execution body. Not a skill. KEEP `check-kanban-body.py` imports the validator for the AD-019 minimum. Digest proves consistency among copies, not authorization. `claimed_control` stays false. |
@@ -29,9 +31,10 @@ parallel home is a defect.
 | Spec Kit workspace | `.specify/` + `specs/` — gitignored in golden; never commit `.specify/` |
 | Task state | Hermes Kanban (native). No parallel CSV / `created-cards-*.json` |
 
-**Out of day-one (deleted, do not port):** `.hermes/skills/harness/`,
-`.hermes/home/scripts/`, `.hermes/phase-dispatch.yaml`, human `ack_gate`,
-`handover-mint.py`, `dispatch-phase`, write-fence plugins. Slim kernel
+**Out of day-one (deleted, do not port):** `.hermes/home/scripts/`, `.hermes/phase-dispatch.yaml`, human `ack_gate`,
+`handover-mint.py`, write-fence plugins. `stamp-harness-rev.py` stays retired.
+Exception: `autostart-migration.sh` at the GitOps-named path (Architect `195231ZA`)
+is the dest-init M1+M2 consumer — not a restored T0 dispatcher.
 K1–K4 live in `.hermes/kernel/`. K4 emits story payloads; `k4_mint.py` is the
 CLI translator (`hermes kanban create`, pin CLI has no `--body-file`).
 Do not dest-apply K4. Do not emit dest factory LLM cards.

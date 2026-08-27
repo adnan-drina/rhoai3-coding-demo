@@ -23,6 +23,11 @@
 # refusal. kanban_complete refused when a bound gate last exited non-zero.
 # Batch 6: M4/VERDICT writes default to evidence/; add-extension is implement.
 # F4: M4 must not write_file evidence/receipts/gates/ (runners write receipts).
+# Write-set: classify by write *effect* (open(..., \"w\"), Path.write_text),
+# not an interpreter denylist. Do not add python to looks_like_write_cmd
+# (Architect 193642ZA / 195231ZA / 200550ZA; dest-13 python3 -c open() bypass).
+# Residual: command-text only, not a syscall. Write-set stays advisory
+# (AD-020; not containment).
 set -euo pipefail
 exec python3 -c '
 import json, os, re, sys
@@ -235,6 +240,45 @@ if cmd_for_paths:
                     i += 1
                 continue
             i += 1
+
+def write_effect_paths(c):
+    """Destination paths a command would create/truncate.
+
+    Inspects write APIs in the command text (open mode, Path.write_*),
+    not the interpreter name. Adding python/perl/node to looks_like_write_cmd
+    is an argv list and misses the next bypass.
+
+    Command-text matching, not a syscall. Closes dest-13 python3 -c
+    open(..., w) and Path.write_text/bytes. Cannot see python3 script.py,
+    exec/eval, a heredoc on stdin, io.open/os.open/shutil.copy, or a
+    decoded payload. pre_tool_call never sees the write. The write-set
+    remains advisory for a terminal-capable seat (AD-020; not containment;
+    do not cite this hook as a write fence in a verdict).
+    """
+    found = []
+    if not c:
+        return found
+    q = chr(34) + chr(39)
+    open_re = (
+        r"open\(\s*[" + q + r"]([^" + q + r"]+)[" + q
+        + r"]\s*,\s*[" + q + r"]([^" + q + r"]*)[" + q + r"]"
+    )
+    path_re = (
+        r"Path\(\s*[" + q + r"]([^" + q + r"]+)[" + q
+        + r"]\s*\)\s*\.write_(?:text|bytes)"
+    )
+    for m in re.finditer(open_re, c):
+        path, mode = m.group(1), m.group(2)
+        if any(ch in mode for ch in "wax+"):
+            found.append(path)
+    for m in re.finditer(path_re, c):
+        found.append(m.group(1))
+    return found
+
+effect = write_effect_paths(cmd)
+for p in effect:
+    if p not in paths:
+        paths.append(p)
 
 roots = []
 for part in allow.split(os.pathsep):
@@ -502,7 +546,7 @@ def in_dest_write_sandbox(rp):
         return False
     return rp == root or rp.startswith(root + os.sep)
 
-if tool in WRITE_TOOLS or looks_like_write_cmd(cmd):
+if tool in WRITE_TOOLS or looks_like_write_cmd(cmd) or effect:
     for p in paths:
         rp = resolve_rp(p)
         if toolchain_read(rp) or toolchain_read(str(p).replace("\\", "/")):
@@ -530,8 +574,8 @@ if phase in {"M4", "VERDICT"}:
     receipt_check = []
     if tool in WRITE_TOOLS:
         receipt_check = list(paths)
-    elif looks_like_write_cmd(cmd):
-        receipt_check = list(paths)
+    elif looks_like_write_cmd(cmd) or effect:
+        receipt_check = list(effect) if effect else list(paths)
     for p in receipt_check:
         rel = dest_rel(resolve_rp(p)) or str(p).replace("\\", "/").lstrip("./")
         if is_gate_receipt_rel(rel):
@@ -556,15 +600,18 @@ if writeset is not None:
             rel = dest_rel(resolve_rp(p))
             if rel:
                 rels.append(rel)
-    elif looks_like_write_cmd(cmd):
-        for p in paths:
+    elif looks_like_write_cmd(cmd) or effect:
+        targets = list(effect) if effect else list(paths)
+        for p in targets:
             rp = resolve_rp(p)
             if toolchain_read(rp) or toolchain_read(str(p).replace("\\", "/")):
                 continue
             rel = dest_rel(rp)
             if rel:
                 rels.append(rel)
-        if "quarkus:add-extension" in cmd or re.search(r"\badd-extension\b", cmd):
+        if looks_like_write_cmd(cmd) and (
+            "quarkus:add-extension" in cmd or re.search(r"\badd-extension\b", cmd)
+        ):
             rels.append("pom.xml")
     mkdir_cmd = bool(cmd and re.search(r"\bmkdir\b", cmd))
     for rel in rels:

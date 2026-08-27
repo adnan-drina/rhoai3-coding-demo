@@ -15,6 +15,12 @@ import json
 import sys
 from pathlib import Path
 
+KERNEL = Path(__file__).resolve().parents[4] / "kernel"
+if str(KERNEL) not in sys.path:
+    sys.path.insert(0, str(KERNEL))
+
+from speckit_feature import find_tasks  # noqa: E402
+
 SCHEMA = "rhoai3.speckit-workflow-run/v1"
 PRODUCER = "specify-from-project.sh"
 RECEIPT_REL = Path("evidence") / "receipts" / "speckit" / "workflow-run.json"
@@ -26,24 +32,13 @@ def sha256_file(path: Path) -> str:
     return h.hexdigest()
 
 
-def find_tasks(root: Path) -> list[Path]:
-    specs = root / ".specify" / "specs"
-    if not specs.is_dir():
-        return []
-    out: list[Path] = []
-    for path in sorted(specs.glob("*/tasks.md")):
-        if path.is_file() and path.read_text(encoding="utf-8").strip():
-            out.append(path)
-    return out
-
-
 def stamp(root: Path, rc: int, argv: list[str]) -> None:
     if rc != 0:
         return
     if "workflow" not in argv or "run" not in argv or "speckit" not in argv:
         return
-    tasks = find_tasks(root)
-    if len(tasks) != 1:
+    tasks, tasks_err = find_tasks(root)
+    if tasks_err or len(tasks) != 1:
         return
     tasks_path = tasks[0]
     receipt = {

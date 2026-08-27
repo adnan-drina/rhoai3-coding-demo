@@ -15,7 +15,7 @@ license: Apache-2.0
 compatibility: Linux seat; Python 3.11+; pinned specify-cli; Hermes Kanban
 metadata:
   author: rhoai3-harness-team
-  version: "1.4.0"
+  version: "1.5.0"
   hermes:
     tags:
     - sdd
@@ -23,6 +23,10 @@ metadata:
     category: sdd
     kind: guidance
 ---
+## When the instructions do not work
+
+If a command this skill names fails, a path it names is absent, or a tool cannot resolve something it names: **stop**. Do not substitute an equivalent command. Do not hand-author the artifact the command would have produced. Do not construct evidence that a step ran. (1) Record the defect: exactly what you ran, the exact error, and what this skill said to expect. (2) End with `kanban_block`, that report as the reason. **Blocking is a legal, successful outcome of a task.** A blocked task carrying an accurate defect report is worth more than a completed task built on a workaround — the skill then gets fixed, which is the point. Do not treat a gate as the thing to satisfy; gates catch mistakes, they do not define the job.
+
 # Plan the migration partition (M2 producer)
 
 This skill **owns M2 end-to-end**. It is the producer
@@ -101,7 +105,11 @@ hermes kanban show "$M1"
    `evidence/receipts/speckit/workflow-run.json` to satisfy a gate
    (Architect `170112ZA`: that receipt is worker-writable).
 
-`tasks.md` must be non-empty under `.specify/specs/*/tasks.md`.
+`tasks.md` must be non-empty at the Spec Kit 0.16.1 feature directory
+named in `.specify/feature.json` `feature_directory` (example:
+`specs/001-spring-to-quarkus/tasks.md`). Do **not** copy that file onto
+`.specify/specs/` to satisfy a glob. Do **not** glob
+`.specify/specs/*/tasks.md` as the M2 authority.
 
 4. Author `evidence/partition.json` from those attachments **and** the
    plan. Schema: `references/partition-schema.md` (kept in sync with
@@ -128,7 +136,7 @@ hermes kanban show "$M1"
 ```bash
 python3 .hermes/kernel/k4_convert.py \
   --partition evidence/partition.json \
-  --tasks .specify/specs/*/tasks.md \
+  --tasks specs/*/tasks.md \
   --out evidence/partition-payloads.json
 python3 .hermes/kernel/k4_mint.py \
   --payloads evidence/partition-payloads.json \

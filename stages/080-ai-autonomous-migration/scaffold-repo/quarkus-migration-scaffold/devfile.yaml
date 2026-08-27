@@ -254,13 +254,18 @@ commands:
         else
           echo "WARN: missing ${PROVISION_CLI} — Quarkus CLI not provisioned"
         fi
-        # v2 Phase N: no stamp-harness-rev / dest supervise-gateway /
-        # autostart-migration. Architect 202501ZA: overlay persist helper
-        # is a later named GO; destfile WARN is honest until that GO.
-        # Native gateway-embedded dispatcher is dest Managed Scope. Do not
-        # kanban daemon --force. Do not start M1 from destfile.
+        # dest-init consumer (Architect 195231ZA): mint M1+M2 only.
+        # Do not restore stamp-harness-rev. Do not kanban daemon --force.
+        # Failure must not fail the workspace; AUTOSTART-STATUS is the trail.
+        AUTO_M1="${PROJECT_DIR}/.hermes/skills/harness/dispatch-phase/scripts/autostart-migration.sh"
+        if [ -f "${AUTO_M1}" ]; then
+          bash "${AUTO_M1}" --root "${PROJECT_DIR}" \
+            || echo "WARN: autostart-migration exited nonzero (see .hermes/AUTOSTART-STATUS)"
+        else
+          echo "WARN: missing ${AUTO_M1} — M1 not minted at dest-init"
+        fi
+        # Architect 202501ZA: overlay persist helper is a later named GO.
         echo "WARN: overlay persist helper not in this cut — gateway will not persist"
-        echo "Phase N: v1 destfile autostart skipped (no dispatch-phase / home scripts)"
         # DB-4: one launcher (writes /tmp/hermes-dashboard.status). Same
         # postStart as tools so dashboard cannot run before Hermes/auth
         # (Dev Spaces 3.28: one postStart). Observability only.

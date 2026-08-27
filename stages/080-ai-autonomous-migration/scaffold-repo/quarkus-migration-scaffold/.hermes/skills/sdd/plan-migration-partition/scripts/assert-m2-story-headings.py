@@ -11,6 +11,12 @@ import re
 import sys
 from pathlib import Path
 
+KERNEL = Path(__file__).resolve().parents[4] / "kernel"
+if str(KERNEL) not in sys.path:
+    sys.path.insert(0, str(KERNEL))
+
+from speckit_feature import find_tasks  # noqa: E402
+
 PARTITION_CANDIDATES = (
     Path("evidence") / "partition.json",
     Path("evidence") / "briefs" / "partition.json",
@@ -35,17 +41,6 @@ POLISH_HEADING = re.compile(
 def _fail(msg: str) -> int:
     print("FAIL: STORY_HEADING_MISMATCH: " + msg, file=sys.stderr)
     return 1
-
-
-def find_tasks(root: Path) -> list[Path]:
-    specs = root / ".specify" / "specs"
-    if not specs.is_dir():
-        return []
-    out: list[Path] = []
-    for path in sorted(specs.glob("*/tasks.md")):
-        if path.is_file() and path.read_text(encoding="utf-8").strip():
-            out.append(path)
-    return out
 
 
 def find_partition(root: Path) -> Path | None:
@@ -95,9 +90,11 @@ def main(argv: list[str] | None = None) -> int:
     if not root.is_dir():
         print("FAIL: not a directory %s" % root, file=sys.stderr)
         return 2
-    tasks = find_tasks(root)
+    tasks, tasks_err = find_tasks(root)
+    if tasks_err:
+        return _fail(tasks_err)
     if not tasks:
-        return _fail("missing non-empty .specify/specs/*/tasks.md")
+        return _fail("missing non-empty specs/*/tasks.md")
     if len(tasks) != 1:
         return _fail("need exactly one tasks.md, found %s" % ",".join(str(p) for p in tasks))
     text = tasks[0].read_text(encoding="utf-8")

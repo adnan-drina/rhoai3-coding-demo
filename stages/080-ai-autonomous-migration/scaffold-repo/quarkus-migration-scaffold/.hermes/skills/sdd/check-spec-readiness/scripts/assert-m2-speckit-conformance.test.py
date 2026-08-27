@@ -23,6 +23,21 @@ def run(root: Path, *extra: str) -> subprocess.CompletedProcess[str]:
     )
 
 
+def write_speckit_plan(root: Path, covering: str, feature: str = "001-migrate-rest-service") -> Path:
+    feat = root / "specs" / feature
+    feat.mkdir(parents=True)
+    specify = root / ".specify"
+    specify.mkdir(exist_ok=True)
+    (specify / "feature.json").write_text(
+        json.dumps({"feature_directory": "specs/%s" % feature}) + "\n",
+        encoding="utf-8",
+    )
+    tasks = feat / "tasks.md"
+    tasks.write_text(covering, encoding="utf-8")
+    (feat / "spec.md").write_text("# migrate rest service\n", encoding="utf-8")
+    return tasks
+
+
 def write_receipt(root: Path, tasks: Path) -> None:
     path = root / "evidence" / "receipts" / "speckit" / "workflow-run.json"
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -71,11 +86,7 @@ def main() -> int:
     )
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
-        spec = root / ".specify" / "specs" / "001-migrate-rest-service"
-        spec.mkdir(parents=True)
-        (spec / "spec.md").write_text("# migrate rest service\n", encoding="utf-8")
-        tasks = spec / "tasks.md"
-        tasks.write_text(covering, encoding="utf-8")
+        tasks = write_speckit_plan(root, covering)
         (root / "evidence").mkdir()
         (root / "evidence" / "partition.json").write_text(
             json.dumps(partition) + "\n", encoding="utf-8"
@@ -118,6 +129,37 @@ def main() -> int:
         if "K4_PLANNING_DEFECT" not in blob and "M2_SPECKIT_BYPASS" not in blob:
             print(
                 "FAIL: extra dest file must name planning defect: %s" % blob,
+                file=sys.stderr,
+            )
+            return 1
+
+        tasks.write_text(covering, encoding="utf-8")
+        stale = root / ".specify" / "specs" / "001-migrate-rest-service"
+        stale.mkdir(parents=True)
+        (stale / "tasks.md").write_text(covering, encoding="utf-8")
+        proc = run(root, "--log", str(ok_log))
+        if proc.returncode != 0:
+            print(
+                "FAIL: feature.json specs/ must win over a stale .specify/specs copy: %s%s"
+                % (proc.stdout, proc.stderr),
+                file=sys.stderr,
+            )
+            return 1
+
+    with tempfile.TemporaryDirectory() as tmp:
+        split = Path(tmp)
+        (split / "specs" / "001-a").mkdir(parents=True)
+        (split / ".specify" / "specs" / "001-a").mkdir(parents=True)
+        (split / "specs" / "001-a" / "tasks.md").write_text("# Tasks\n- [ ] `pom.xml`\n")
+        (split / ".specify" / "specs" / "001-a" / "tasks.md").write_text(
+            "# Tasks\n- [ ] `pom.xml`\n"
+        )
+        proc = run(split)
+        blob = proc.stdout + proc.stderr
+        if proc.returncode != 1 or "TWO_SPECKIT_TREES" not in blob:
+            print(
+                "FAIL: dual trees without feature.json must REFUSE TWO_SPECKIT_TREES: %s"
+                % blob,
                 file=sys.stderr,
             )
             return 1

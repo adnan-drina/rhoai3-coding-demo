@@ -54,7 +54,7 @@ story `files_writable`. Do not grow the write-set from prose.
 ```bash
 python3 .hermes/kernel/k4_convert.py \
   --partition evidence/partition.json \
-  --tasks .specify/specs/*/tasks.md \
+  --tasks specs/*/tasks.md \
   --out evidence/partition-payloads.json
 ```
 

@@ -20,10 +20,12 @@ This gate does not scrape write-sets from ``tasks.md`` (PATH_TOKEN
 OBJECT). When ``tasks.md`` exists it invokes K4 with ``--tasks`` so
 ``K4_PLANNING_DEFECT`` can fire.
 
-Exit 0: exactly one non-empty ``.specify/specs/*/tasks.md``, A-gate PASS
-on the official log, and ``k4_convert.py --partition … --tasks`` is clean.
-Exit 1: missing/empty tasks.md, A-gate REFUSE, missing partition, or
-planning defect.
+Exit 0: exactly one non-empty Spec Kit 0.16.1 ``tasks.md`` (via
+``.specify/feature.json`` ``feature_directory``, else ``specs/*/tasks.md``),
+A-gate PASS on the official log, and ``k4_convert.py --partition … --tasks``
+is clean.
+Exit 1: missing/empty tasks.md, two Spec Kit trees, A-gate REFUSE, missing
+partition, or planning defect.
 Exit 2: usage.
 """
 from __future__ import annotations
@@ -39,6 +41,7 @@ if str(KERNEL) not in sys.path:
     sys.path.insert(0, str(KERNEL))
 
 from k4_convert import convert_file, format_issues  # noqa: E402
+from speckit_feature import find_tasks  # noqa: E402
 
 PARTITION_CANDIDATES = (
     Path("evidence") / "partition.json",
@@ -50,23 +53,6 @@ PERFORMED = Path(__file__).resolve().parent / "assert-card-performed.py"
 def _fail(msg: str) -> int:
     print("FAIL: " + msg, file=sys.stderr)
     return 1
-
-
-def find_tasks(root: Path) -> list[Path]:
-    specs = root / ".specify" / "specs"
-    if not specs.is_dir():
-        return []
-    out: list[Path] = []
-    for path in sorted(specs.glob("*/tasks.md")):
-        if not path.is_file():
-            continue
-        try:
-            text = path.read_text(encoding="utf-8")
-        except OSError:
-            continue
-        if text.strip():
-            out.append(path)
-    return out
 
 
 def check_a_gate(log: Path | None, task_id: str | None) -> str:
@@ -111,15 +97,20 @@ def main(argv: list[str] | None = None) -> int:
         print("FAIL: not a directory %s" % root, file=sys.stderr)
         return 2
 
-    tasks = find_tasks(root)
-    if not tasks:
-        looked = root / ".specify" / "specs" / "*" / "tasks.md"
+    tasks, tasks_err = find_tasks(root)
+    if tasks_err:
         return _fail(
-            "M2_SPECKIT_BYPASS: missing non-empty %s "
+            tasks_err
+            + "; speckit-specify/plan/tasks did not produce the Spec Kit "
+            "0.16.1 tasks.md; hand-written partition.json is not a "
+            "conformant M2 complete; do not kanban_complete"
+        )
+    if not tasks:
+        return _fail(
+            "M2_SPECKIT_BYPASS: missing non-empty specs/*/tasks.md "
             "(speckit-specify/plan/tasks did not produce tasks.md; "
             "hand-written partition.json is not a conformant M2 complete; "
             "do not kanban_complete)"
-            % looked
         )
     if len(tasks) != 1:
         return _fail(

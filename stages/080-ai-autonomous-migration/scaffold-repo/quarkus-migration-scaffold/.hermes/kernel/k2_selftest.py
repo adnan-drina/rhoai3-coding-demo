@@ -284,6 +284,95 @@ def main() -> int:
             fails += 1
         else:
             print("ok writeset_file")
+        hook_src = HOOK.read_text(encoding="utf-8")
+        fn_start = hook_src.find("def looks_like_write_cmd")
+        fn_end = hook_src.find("def in_dest_write_sandbox")
+        write_fn = hook_src[fn_start:fn_end] if fn_start >= 0 and fn_end > fn_start else ""
+        if "python" in write_fn.lower():
+            print(
+                "FAIL looks_like_write_cmd_lists_python",
+                file=sys.stderr,
+            )
+            fails += 1
+        else:
+            print("ok looks_like_write_cmd_not_interpreter_list")
+        if "def write_effect_paths" not in hook_src:
+            print("FAIL missing write_effect_paths", file=sys.stderr)
+            fails += 1
+        else:
+            print("ok write_effect_paths_present")
+        if "advisory" not in hook_src.lower() or "not containment" not in hook_src.lower():
+            print("FAIL write_effect_residual_limit_undocumented", file=sys.stderr)
+            fails += 1
+        else:
+            print("ok write_effect_residual_limit_documented")
+        py_open_out = (
+            "python3 -c "
+            "\"open('evidence/bodies/m3-setup.json', 'w').write('{}')\""
+        )
+        r = run(
+            py_open_out,
+            roots,
+            cwd=cwd,
+            extra_env={
+                "K2_FILES_WRITABLE": "pom.xml",
+                "HERMES_WRITE_SAFE_ROOT": str(dest),
+                "K2_STORY_ID": "setup",
+            },
+        )
+        msg = r.get("message") or ""
+        if r.get("action") != "block" or "m3-setup.json" not in msg:
+            print("FAIL writeset_python_open_w", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok writeset_python_open_w")
+        r = run(
+            "python3 -c \"open('src/In.java', 'w').write('class In {}')\"",
+            roots,
+            cwd=cwd,
+            extra_env={
+                "K2_FILES_WRITABLE": "src/In.java",
+                "HERMES_WRITE_SAFE_ROOT": str(dest),
+                "K2_STORY_ID": "US1",
+            },
+        )
+        if r.get("action") == "block":
+            print("FAIL writeset_python_open_w_allowed", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok writeset_python_open_w_allowed")
+        r = run(
+            "python3 -c \"open('src/Out.java', 'r')\"",
+            roots,
+            cwd=cwd,
+            extra_env={
+                "K2_FILES_WRITABLE": "src/In.java",
+                "HERMES_WRITE_SAFE_ROOT": str(dest),
+                "K2_STORY_ID": "US1",
+            },
+        )
+        if r.get("action") == "block":
+            print("FAIL writeset_python_open_r_not_a_write", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok writeset_python_open_r_not_a_write")
+        r = run(
+            "python3 -c \"from pathlib import Path; "
+            "Path('evidence/bodies/m3-setup.json').write_text('{}')\"",
+            roots,
+            cwd=cwd,
+            extra_env={
+                "K2_FILES_WRITABLE": "pom.xml",
+                "HERMES_WRITE_SAFE_ROOT": str(dest),
+                "K2_STORY_ID": "setup",
+            },
+        )
+        msg = r.get("message") or ""
+        if r.get("action") != "block" or "m3-setup.json" not in msg:
+            print("FAIL writeset_path_write_text", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok writeset_path_write_text")
         r = run(
             "mvn -q quarkus:add-extension -Dextensions=quarkus-smallrye-health",
             roots,
