@@ -38,20 +38,40 @@ def token_of(doc: dict) -> str:
     return ""
 
 
-def blob_of(doc: dict) -> str:
-    return json.dumps(doc, sort_keys=True)
+def failed_floor_recorded_as_idle(doc: dict, floor_name: str) -> bool:
+    """True when a *value* claims the failed floor is idle.
+
+    Architect ``193642ZA``: do not ``\"idle\" in json.dumps(doc).lower()`` —
+    that matches the key name when every value is ``false``.
+    """
+    floors = doc.get("floors")
+    if isinstance(floors, list):
+        for row in floors:
+            if not isinstance(row, dict):
+                continue
+            name = str(row.get("name") or row.get("floor") or "")
+            if name and name != floor_name:
+                continue
+            if row.get("idle") is True:
+                return True
+    if doc.get("idle") is True:
+        return True
+    for key in ("reason", "notes", "summary"):
+        val = doc.get(key)
+        if isinstance(val, str) and "idle" in val.lower():
+            return True
+    return False
 
 
 def check(doc: dict, floor_rc: int, floor_name: str) -> list[str]:
     issues: list[str] = []
     token = token_of(doc)
-    blob = blob_of(doc)
     if floor_rc != 0 and token in ACCEPT_TOKENS:
         issues.append(
             "complete-around-red: %s is %s while %s floor-rc=%s"
             % (floor_name, token, floor_name, floor_rc)
         )
-    if floor_rc != 0 and "idle" in blob.lower():
+    if floor_rc != 0 and failed_floor_recorded_as_idle(doc, floor_name):
         issues.append(
             "failed floor recorded as idle: %s floor-rc=%s (idle is reserved "
             "for genuine idles)" % (floor_name, floor_rc)

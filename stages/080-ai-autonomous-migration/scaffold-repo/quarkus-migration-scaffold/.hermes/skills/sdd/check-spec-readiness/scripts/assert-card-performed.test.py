@@ -81,6 +81,21 @@ def main() -> int:
         if proc.returncode != 0:
             return _fail("synthetic speckit-specify skill follow must PASS: %s" % blob)
 
+        grep_only = Path(tmp) / "grep-skill-path.log"
+        grep_only.write_text(
+            "  ┊ 💻 $         grep speckit-specify/SKILL.md .hermes/skills -n  0.1s\n"
+            "reasoning: found the path, skill followed\n",
+            encoding="utf-8",
+        )
+        proc = _run(grep_only)
+        blob = proc.stdout + proc.stderr
+        if proc.returncode != 1:
+            return _fail(
+                "grep of speckit-specify/SKILL.md must not PASS A-gate: %s" % blob
+            )
+        if "mandated action absent" not in blob:
+            return _fail("grep-only log must name mandated action absent: %s" % blob)
+
     print(
         "OK: assert-card-performed selftest "
         "(v9 REFUSE; absent REFUSE; workflow-run REFUSE; skill follow PASS)"

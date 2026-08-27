@@ -65,6 +65,39 @@ def main() -> int:
             print(proc.stderr, file=sys.stderr)
             return 1
 
+        idle_key_false = Path(tmp) / "idle-key-false.json"
+        idle_key_false.write_text(
+            json.dumps(
+                {
+                    "verdict": "REFUSE",
+                    "ship": False,
+                    "failed_floors": ["check-product-tests"],
+                    "floors": [
+                        {
+                            "name": "check-runnable-db-config",
+                            "idle": False,
+                            "rc": 0,
+                        },
+                        {
+                            "name": "check-product-tests",
+                            "idle": False,
+                            "rc": 1,
+                        },
+                    ],
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        proc = run("--verdict", str(idle_key_false), "--floor-rc", "1")
+        if proc.returncode != 0:
+            print(
+                "FAIL: idle:false values must not trip on the key name",
+                file=sys.stderr,
+            )
+            print(proc.stderr, file=sys.stderr)
+            return 1
+
         idle_ok = Path(tmp) / "idle-ok.json"
         idle_ok.write_text(
             json.dumps(
@@ -90,7 +123,7 @@ def main() -> int:
             print(proc.stderr, file=sys.stderr)
             return 1
 
-    print("OK: assert-m4-complete-around-red dest-8 fixture")
+    print("OK: assert-m4-complete-around-red dest-8 fixture + idle-key false")
     return 0
 
 

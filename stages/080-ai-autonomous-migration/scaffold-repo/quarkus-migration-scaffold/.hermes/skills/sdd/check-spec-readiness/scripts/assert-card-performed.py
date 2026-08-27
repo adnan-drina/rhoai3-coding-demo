@@ -78,7 +78,18 @@ def specify_runs(text: str) -> list[tuple[str, int | None]]:
 
 
 def followed_speckit_skill(text: str) -> bool:
-    return any(marker in text for marker in SKILL_FOLLOW)
+    """Skill follow is a load/skill_view line, not a grep of the path.
+
+    Architect ``193642ZA``: ``marker in text`` PASSes when the worker
+    greps ``speckit-specify/SKILL.md`` into the official log.
+    """
+    for raw in text.splitlines():
+        low = raw.lower()
+        if any(tok in low for tok in ("grep ", "grep\t", " rg ", "\trg ", "ripgrep")):
+            continue
+        if any(marker in raw for marker in SKILL_FOLLOW):
+            return True
+    return False
 
 
 def evaluate(text: str) -> int:

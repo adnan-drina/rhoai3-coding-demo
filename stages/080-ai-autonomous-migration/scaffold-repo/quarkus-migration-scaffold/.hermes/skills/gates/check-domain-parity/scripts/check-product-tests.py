@@ -11,6 +11,13 @@ When inventory is absent, keep the four-family floor (fail dest-8-as-stood
 without this file). Exit 1 when a *required* family is missing, probe-only,
 or there are no product tests. Exit 2 on unreadable inventory.
 
+``db_intent`` parses ``required-extensions.json`` and inspects **values**
+(``jdbc_kind_from``, ``entries``, ``from_pom``, ``from_rules``). It must
+not substring-match the serialized blob — the schema key
+``jdbc_kind_from`` contains ``jdbc`` even when the value is empty
+(Architect ``193642ZA`` / dest-13 false REFUSE). Do not rename the key
+to dodge that.
+
 Families (content or name heuristics; optional AR28:<family> markers):
   boot     — start/smoke of harvested HTTP (@QuarkusTest, /q/health, *Boot*IT, AR28:boot)
   security — authz (401/403, Security*IT, AR28:security)
@@ -121,21 +128,46 @@ def load_inventory(root: Path) -> dict | None:
     return data
 
 
+_DB_TOKENS = (
+    "jdbc",
+    "jpa",
+    "agroal",
+    "hibernate",
+    "datasource",
+    "quarkus-jdbc",
+)
+
+
+def _value_has_db_token(value: object) -> bool:
+    """Inspect JSON *values*, never key names (Architect 193642ZA)."""
+    if isinstance(value, str):
+        low = value.lower()
+        return any(token in low for token in _DB_TOKENS)
+    if isinstance(value, (int, float, bool)) or value is None:
+        return False
+    if isinstance(value, list):
+        return any(_value_has_db_token(item) for item in value)
+    if isinstance(value, dict):
+        return any(_value_has_db_token(item) for item in value.values())
+    return False
+
+
 def db_intent(root: Path) -> bool:
     path = root / "evidence" / "required-extensions.json"
     if not path.is_file():
         return False
-    text = path.read_text(encoding="utf-8", errors="replace").lower()
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    if not isinstance(data, dict):
+        return False
+    jdbc_from = data.get("jdbc_kind_from")
+    if isinstance(jdbc_from, str) and jdbc_from.strip():
+        return True
     return any(
-        token in text
-        for token in (
-            "jdbc",
-            "jpa",
-            "agroal",
-            "hibernate",
-            "datasource",
-            "quarkus-jdbc",
-        )
+        _value_has_db_token(data.get(key))
+        for key in ("entries", "from_pom", "from_rules")
     )
 
 
