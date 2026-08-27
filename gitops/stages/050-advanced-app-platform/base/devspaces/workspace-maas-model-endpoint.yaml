@@ -1,9 +1,8 @@
-# In-cluster KServe OpenAI base for dest Hermes workers. Not the MaaS
-# Gateway hostname in maas-devspace-api-keys.MAAS_BASE_URL (external LB
-# hairpin; 60s idle timeout cut buffered tool-call streams).
-# dest-init prefers process env MAAS_API_BASE_URL (DWO mount-as env) and
-# falls back to this same URL. The provisioner copies it into
-# workspace-maas-credentials. Do not point terminals at MAAS_BASE_URL.
+# Worker OpenAI path on the MaaS gateway. The provisioner concatenates
+# maas-devspace-api-keys.MAAS_BASE_URL with this path. Do not hardcode a
+# cluster hostname here (Architect 161809ZA). qwen is unaffected by the
+# RHOAI 3.4 IPP external-model buffering defect; going through the gateway
+# is the demo being honest (Kuadrant auth + rate limits + token accounting).
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -18,4 +17,4 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "17"
 data:
-  MAAS_API_BASE_URL: https://qwen3-6-27b-kserve-workload-svc.models-as-a-service.svc:8000/v1
+  MAAS_API_PATH: /models-as-a-service/qwen3-6-27b/v1

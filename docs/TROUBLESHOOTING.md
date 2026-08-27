@@ -1082,7 +1082,7 @@ ls /projects/modernized/.hermes/home/profiles/
 
 **Affected stage:** Stage 080 dest. Gateway can look healthy while a later login shell is unconfigured.
 
-**Likely cause:** Hermes v0.20.5 resolves `${env:NAME}` from **process environment only**. dest-init writes the correct names into Managed Scope `.env`, but a fresh terminal does not source that file. `MAAS_BASE_URL` on `maas-devspace-api-keys` is the **external** Gateway host and must not be copied into `MAAS_API_BASE_URL` (in-cluster KServe `/v1`).
+**Likely cause:** Hermes v0.20.5 resolves `${env:NAME}` from **process environment only**. dest-init writes the correct names into Managed Scope `.env`, but a fresh terminal does not source that file. Worker `MAAS_API_BASE_URL` is the **MaaS gateway** (`MAAS_BASE_URL` + `/models-as-a-service/qwen3-6-27b/v1`), not the in-cluster KServe Service.
 
 **Diagnose:**
 
@@ -1520,7 +1520,7 @@ curl -s http://localhost:18080/metrics | grep minimax
 
 **Symptom:** streaming chat completions through the gateway stall (client sees nothing for ~60s, then "Connection reset") or die mid-stream around 310KB; the identical request sent directly to the upstream provider completes cleanly. Short non-streaming requests work.
 
-**Root cause (RHOAI 3.4 known issue):** Ingress Payload Processing (IPP) — the operator-owned `payload-processing` ext_proc (gateway-api-inference- extension BBR) — buffers response bodies (`response_body_mode: FULL_DUPLEX_STREAMED`) for ALL gateway traffic, to translate non-OpenAI-native external APIs into OpenAI-compatible SSE. In 3.4 that response processing is applied even to already-OpenAI-compatible traffic, so streamed SSE is held and arrives as one end-of-response burst; the client (OpenCode's Bun `fetch`) times out at ~60s. Internal vLLM models and the external endpoints hit directly both stream fine — the buffer is purely this stage. Red Hat KB: "MaaS streaming responses buffered through gateway (RHOAI 3.4)"; product fix planned for 3.5.
+**Root cause (RHOAI 3.4 known issue):** Ingress Payload Processing (IPP) — the operator-owned `payload-processing` ext_proc (gateway-api-inference-extension BBR) — buffers response bodies (`response_body_mode: FULL_DUPLEX_STREAMED`) for **external models that have no native OpenAI specification**, to translate those APIs into OpenAI-compatible SSE. In 3.4 that response processing is applied to those external routes even when the upstream is already OpenAI-compatible, so streamed SSE is held and arrives as one end-of-response burst; the client (OpenCode's Bun `fetch`) times out at ~60s. **Internal vLLM models (`qwen3-6-27b`) stream through the gateway.** `gpt-4o-mini` is unaffected. MiniMax was the affected external model and is not deployed (`OPERATIONS.md` §269). Do not read this paragraph as "IPP buffers ALL gateway traffic" — that overstatement is what made a KServe bypass look load-bearing. Red Hat KB: "MaaS streaming responses buffered through gateway (RHOAI 3.4)"; product fix planned for 3.5.
 
 **Diagnose:**
 

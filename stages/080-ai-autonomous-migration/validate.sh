@@ -229,9 +229,9 @@ check "live dest-init does not copy dest kanban-stuck-watchdog" \
 check "live dest-init does not invoke golden assert-agent-pin.py" \
   "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -v '^[[:space:]]*#' | grep -c 'assert-agent-pin.py' || echo 0" \
   "0"
-check "live workspace-maas-model-endpoint is in-cluster KServe OpenAI base" \
-  "oc get cm workspace-maas-model-endpoint -n wksp-ai-developer -o jsonpath='{.data.MAAS_API_BASE_URL}'" \
-  "https://qwen3-6-27b-kserve-workload-svc.models-as-a-service.svc:8000/v1"
+check "live workspace-maas-model-endpoint is the MaaS gateway path (not KServe)" \
+  "oc get cm workspace-maas-model-endpoint -n wksp-ai-developer -o jsonpath='{.data.MAAS_API_PATH}'" \
+  "/models-as-a-service/qwen3-6-27b/v1"
 check "live workspace-maas-credentials Secret exists" \
   "oc get secret workspace-maas-credentials -n wksp-ai-developer -o jsonpath='{.metadata.name}'" \
   "workspace-maas-credentials"
@@ -332,11 +332,11 @@ check "080 GitOps pin oracle ast-reads overlay /opt/hermes-agent" \
 check "080 GitOps SOUL smoke uses overlay /opt/hermes-agent (no dest fallback)" \
   "grep -v '^[[:space:]]*#' '${GITOPS_INIT}' | grep -qF 'hermes_agent_root=\"/opt/hermes-agent\"' && echo 1 || echo 0" \
   "1"
-check "080 GitOps dest-init prefers env MAAS_API_BASE_URL (in-cluster KServe fallback)" \
-  "grep -v '^[[:space:]]*#' '${GITOPS_INIT}' | grep -qF 'os.environ.get(\"MAAS_API_BASE_URL\")' && grep -qF 'qwen3-6-27b-kserve-workload-svc.models-as-a-service.svc:8000/v1' '${GITOPS_INIT}' && echo 1 || echo 0" \
+check "080 GitOps dest-init prefers env MAAS_API_BASE_URL then gateway MAAS_BASE_URL" \
+  "grep -v '^[[:space:]]*#' '${GITOPS_INIT}' | grep -qF 'os.environ.get(\"MAAS_API_BASE_URL\")' && grep -qF 'os.environ.get(\"MAAS_BASE_URL\")' '${GITOPS_INIT}' && grep -qF '/models-as-a-service/qwen3-6-27b/v1' '${GITOPS_INIT}' && echo 1 || echo 0" \
   "1"
-check "080 GitOps ConfigMap is the in-cluster MaaS worker base (not Gateway MAAS_BASE_URL)" \
-  "grep -qF 'qwen3-6-27b-kserve-workload-svc.models-as-a-service.svc:8000/v1' '${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/devspaces/workspace-maas-model-endpoint.yaml' && grep -q 'name: workspace-maas-model-endpoint' '${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/devspaces/workspace-maas-model-endpoint.yaml' && echo 1 || echo 0" \
+check "080 GitOps ConfigMap is the MaaS gateway path (not KServe host)" \
+  "grep -qF 'MAAS_API_PATH: /models-as-a-service/qwen3-6-27b/v1' '${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/devspaces/workspace-maas-model-endpoint.yaml' && grep -q 'name: workspace-maas-model-endpoint' '${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/devspaces/workspace-maas-model-endpoint.yaml' && ! grep -q 'kserve-workload-svc' '${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/devspaces/workspace-maas-model-endpoint.yaml' && echo 1 || echo 0" \
   "1"
 check "080 GitOps derives workspace-maas-credentials from QWEN27B key + ConfigMap URL" \
   "grep -qF '\"name\": \"workspace-maas-credentials\"' '${GITOPS_INIT}' && grep -q 'workspace-maas-model-endpoint' '${GITOPS_INIT}' && grep -q 'field-manager=devspace-maas-key-provisioner' '${GITOPS_INIT}' && echo 1 || echo 0" \
@@ -344,8 +344,8 @@ check "080 GitOps derives workspace-maas-credentials from QWEN27B key + ConfigMa
 check "080 GitOps MaaS env derive does not bounce Running dest pods" \
   "awk '/workspace-maas-credentials derived/,0' '${GITOPS_INIT}' | grep -c 'oc delete pod' || echo 0" \
   "0"
-check "080 GitOps dest-init does not copy Gateway MAAS_BASE_URL into MAAS_API_BASE_URL" \
-  "grep -c 'Do not copy MAAS_BASE_URL' '${GITOPS_INIT}' || echo 0" \
+check "080 GitOps dest-init derives worker base from gateway MAAS_BASE_URL" \
+  "grep -c 'MaaS gateway base from MAAS_BASE_URL' '${GITOPS_INIT}' || echo 0" \
   "1"
 check "080 GitOps does not copy dest kanban-stuck-watchdog" \
   "grep -c 'home/scripts/kanban-stuck-watchdog' '${GITOPS_INIT}' || echo 0" \

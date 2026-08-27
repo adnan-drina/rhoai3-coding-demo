@@ -1104,7 +1104,7 @@ The MoE's real advantage (3.4× aggregate throughput at 4-way concurrency,
 
 | Seat | Model | Why selected | Serving notes |
 |---|---|---|---|
-| Hermes main / Kanban workers | `qwen3-6-27b` via named provider `qwen27b` (`api_mode: chat_completions`) | AD-008 primary. Private in-cluster KServe; 131K window; output cap 8,192 so prompt+completion fit vLLM `--max-model-len` | Served from `hf://RedHatAI/Qwen3.6-27B-FP8` (text-only); in-cluster `qwen3-6-27b-kserve-workload-svc` + service-CA. Managed Scope `providers.qwen27b` with `discover_models: false`. Secrets in managed `.env` as `${env:MAAS_API_KEY}` |
+| Hermes main / Kanban workers | `qwen3-6-27b` via named provider `qwen27b` (`api_mode: chat_completions`) | AD-008 primary. MaaS gateway; 131K window; output cap 8,192 so prompt+completion fit vLLM `--max-model-len` | Served from `hf://RedHatAI/Qwen3.6-27B-FP8` (text-only); gateway path `/models-as-a-service/qwen3-6-27b/v1` derived from `maas-devspace-api-keys.MAAS_BASE_URL`. Managed Scope `providers.qwen27b` with `discover_models: false`. Secrets in managed `.env` as `${env:MAAS_API_KEY}` |
 | OpenCode coding worker | `qwen27b/qwen3-6-27b` | Same Qwen primary; every code edit stays on the governed local model | Same MaaS/KServe path as Hermes main |
 | MiniMax M2 (exception) | Hermes `providers.minimax` / OpenCode `redhat/minimax-m2` | AD-008 exception only — typed escalation file required; **not** the default; **not** in `fallback_providers` | Direct Red Hat LiteMaaS until RHOAI 3.5 restores external-model streaming through the gateway. 196K window |
 

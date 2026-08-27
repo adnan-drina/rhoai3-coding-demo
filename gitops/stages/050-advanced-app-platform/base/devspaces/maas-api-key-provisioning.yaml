@@ -469,7 +469,7 @@ data:
     MAAS_BASE_URL="$(secret_value MAAS_BASE_URL)"
     MAAS_API_KEY_QWEN27B="$(secret_value MAAS_API_KEY_QWEN27B)"
     # DWO mount-as env (workspace-maas-credentials) uses Hermes names.
-    # Do not copy MAAS_BASE_URL (external Gateway) into MAAS_API_BASE_URL.
+    # Worker base is the MaaS gateway (MAAS_BASE_URL + ConfigMap path).
     if [ -z "${MAAS_API_KEY:-}" ]; then
       MAAS_API_KEY="${MAAS_API_KEY_QWEN27B}"
     fi
@@ -948,14 +948,19 @@ data:
     managed = os.environ["HERMES_MANAGED_DIR"]
     skills_dir = os.environ["HERMES_SKILLS_DIR"]
     global_skills = os.environ["HERMES_GLOBAL_SKILLS_DIR"]
-    # Worker seats: in-cluster KServe OpenAI base (not external LB hairpin).
-    # Cite scaffold hermes-configuration / Lead E-152000Z TLS class.
-    # Process env (DWO workspace-maas-credentials) is source of truth when
-    # set; fallback MUST match ConfigMap workspace-maas-model-endpoint.
+    # Worker seats: MaaS gateway OpenAI base. Process env
+    # (DWO workspace-maas-credentials) is source of truth when set;
+    # otherwise MAAS_BASE_URL + the ConfigMap path (Architect 161809ZA).
+    _gw = (os.environ.get("MAAS_BASE_URL") or "").strip().rstrip("/")
+    _path = "/models-as-a-service/qwen3-6-27b/v1"
     model_base = (
         (os.environ.get("MAAS_API_BASE_URL") or "").strip()
-        or "https://qwen3-6-27b-kserve-workload-svc.models-as-a-service.svc:8000/v1"
+        or ((_gw + _path) if _gw else "")
     )
+    if not model_base:
+        raise SystemExit(
+            "ERROR: MAAS_API_BASE_URL unset and MAAS_BASE_URL unset"
+        )
     maas_api_key = (
         (os.environ.get("MAAS_API_KEY") or "").strip()
         or (os.environ.get("MAAS_API_KEY_QWEN27B") or "").strip()
@@ -2252,18 +2257,17 @@ spec:
               echo "MaaS API key Secret ${SECRET_NAMESPACE}/${SECRET_NAME} is ready"
 
               # Derived env-mount Secret for Hermes ${env:MAAS_API_*} names.
-              # URL from ConfigMap workspace-maas-model-endpoint (in-cluster
-              # KServe), never MAAS_BASE_URL (external LB). Server-side apply
-              # avoids last-applied-configuration embedding the key.
-              # Do not bounce Running DevWorkspace pods (dest-3 stays).
-              KSERVE_OPENAI_BASE="$(oc get configmap workspace-maas-model-endpoint -n "${SECRET_NAMESPACE}" -o jsonpath='{.data.MAAS_API_BASE_URL}' 2>/dev/null || true)"
-              if [ -z "${KSERVE_OPENAI_BASE}" ]; then
-                KSERVE_OPENAI_BASE="https://qwen3-6-27b-kserve-workload-svc.models-as-a-service.svc:8000/v1"
+              # URL = Secret MAAS_BASE_URL + ConfigMap MAAS_API_PATH.
+              # Server-side apply avoids last-applied-configuration embedding
+              # the key. Do not bounce Running DevWorkspace pods.
+              MAAS_API_PATH="$(oc get configmap workspace-maas-model-endpoint -n "${SECRET_NAMESPACE}" -o jsonpath='{.data.MAAS_API_PATH}' 2>/dev/null || true)"
+              if [ -z "${MAAS_API_PATH}" ]; then
+                MAAS_API_PATH="/models-as-a-service/qwen3-6-27b/v1"
               fi
-              python3 - "${SECRET_FILE}" "${KSERVE_OPENAI_BASE}" "${SECRET_NAMESPACE}" <<'DERIVEEOF' | oc apply --server-side --force-conflicts --field-manager=devspace-maas-key-provisioner -f -
+              python3 - "${SECRET_FILE}" "${MAAS_BASE_URL}" "${MAAS_API_PATH}" "${SECRET_NAMESPACE}" <<'DERIVEEOF' | oc apply --server-side --force-conflicts --field-manager=devspace-maas-key-provisioner -f -
               import json
               import sys
-              path, url, ns = sys.argv[1], sys.argv[2], sys.argv[3]
+              path, base, api_path, ns = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
               key = ""
               with open(path, encoding="utf-8") as fh:
                   for line in fh:
@@ -2272,6 +2276,10 @@ spec:
                           break
               if not key:
                   raise SystemExit("ERROR: MAAS_API_KEY_QWEN27B missing; cannot derive workspace-maas-credentials")
+              if not (base or "").strip():
+                  raise SystemExit("ERROR: MAAS_BASE_URL missing; cannot derive workspace-maas-credentials")
+              rel = api_path if api_path.startswith("/") else "/" + api_path
+              url = base.rstrip("/") + rel
               json.dump({"apiVersion": "v1", "kind": "Secret", "metadata": {"name": "workspace-maas-credentials", "namespace": ns, "labels": {"controller.devfile.io/mount-to-devworkspace": "true", "controller.devfile.io/watch-secret": "true", "app.kubernetes.io/part-of": "maas", "app.kubernetes.io/name": "workspace-maas-credentials", "app.kubernetes.io/component": "credentials", "demo.rhoai.io/stage": "050"}, "annotations": {"controller.devfile.io/mount-as": "env"}}, "type": "Opaque", "stringData": {"MAAS_API_KEY": key, "MAAS_API_BASE_URL": url}}, sys.stdout)
               DERIVEEOF
-              echo "workspace-maas-credentials derived (in-cluster KServe base; not MAAS_BASE_URL)"
+              echo "workspace-maas-credentials derived (MaaS gateway base from MAAS_BASE_URL)"
