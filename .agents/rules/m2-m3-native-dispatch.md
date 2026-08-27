@@ -36,9 +36,9 @@ Official: the dispatcher promotes `todo → ready` when all parents are
    onto minted T0/M3 children. `max_retries: None` →
    `kanban.failure_limit` 2 is not the dest-4 intent (Operator
    `105355ZO` item 5).
-4. `autoStartMigration` is **removed** from the RHDH template and
-   destfile stamp (Operator `115007ZO`). Do not restore a UI toggle
-   without a dest-init consumer. Native M3 claim is not that flag.
+4. `autoStartMigration` is restored on the RHDH template **with** the
+   dest-init consumer (`autostart-migration.sh`). Default `true`. Off
+   skips mint (`AUTO_START_MIGRATION`). Do not mint M3/M4 at dest-init.
 
 Official cite: `.agents/skills/hermes-kanban/` dispatcher and worker
 lanes. Do not run `hermes kanban daemon --force`.

@@ -55,6 +55,16 @@ fail_status() {
   exit 1
 }
 
+case "${AUTO_START_MIGRATION:-true}" in
+  false|False|FALSE|0|off|OFF|no|NO)
+    export AUTOSTART_JSON
+    AUTOSTART_JSON="$(python3 -c 'import json; print(json.dumps({"state":"skipped","reason":"AUTO_START_MIGRATION off"}))')"
+    write_status
+    echo "OK: autostart skipped (AUTO_START_MIGRATION off)"
+    exit 0
+    ;;
+esac
+
 if [[ -z "${HERMES}" ]]; then
   fail_status "hermes not on PATH"
 fi

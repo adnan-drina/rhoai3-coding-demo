@@ -3,8 +3,9 @@ name: dispatch-phase
 description: >
   Use at dest-init to mint M1 ANALYZE and M2 PLAN together with
   --idempotency-key so a repeated postStart is a no-op. Do not mint M3
-  or M4. Do not kanban daemon --force. Do not restore a GitOps checkbox
-  without this consumer. Do not use for story implementation.
+  or M4. Do not kanban daemon --force. The RHDH autoStartMigration
+  checkbox defaults true now that this consumer exists; off skips mint.
+  Do not use for story implementation.
 license: Apache-2.0
 compatibility: Linux seat; Hermes Kanban; dest-init postStart
 metadata:

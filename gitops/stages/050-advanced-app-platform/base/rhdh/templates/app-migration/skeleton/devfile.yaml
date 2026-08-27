@@ -87,6 +87,9 @@ components:
           value: "/projects/modernized/.hermes/home"
         - name: HERMES_MANAGED_DIR
           value: "/projects/.platform/hermes"
+        # Architect 195231ZA: default on. Off is inspect-before-agents.
+        - name: AUTO_START_MIGRATION
+          value: "${{ values.autoStartMigration }}"
       memoryLimit: 12Gi
       cpuLimit: 2500m
       volumeMounts:

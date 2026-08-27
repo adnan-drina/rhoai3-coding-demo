@@ -457,12 +457,12 @@ check "080 golden K4 converter present" \
 check "080 K4 M3 payloads pin max_retries 1" \
   "grep -c 'max_retries=1' '${SCAFFOLD_KERNEL}/k4_convert.py' || echo 0" \
   "2"
-check "080 RHDH autoStartMigration parameter is removed" \
-  "grep -c 'autoStartMigration' '${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/rhdh/templates/app-migration/template.yaml' || echo 0" \
-  "0"
-check "080 destfile does not stamp AUTO_START_MIGRATION" \
+check "080 RHDH autoStartMigration parameter defaults true" \
+  "grep -A6 'autoStartMigration:' '${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/rhdh/templates/app-migration/template.yaml' | grep -c 'default: true' || echo 0" \
+  "1"
+check "080 destfile stamps AUTO_START_MIGRATION" \
   "grep -c 'AUTO_START_MIGRATION' '${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml' || echo 0" \
-  "0"
+  "1"
 check "080 golden K4 selftest passes" \
   "python3 '${SCAFFOLD_KERNEL}/k4_selftest.py' >/dev/null && echo 1 || echo 0" \
   "1"

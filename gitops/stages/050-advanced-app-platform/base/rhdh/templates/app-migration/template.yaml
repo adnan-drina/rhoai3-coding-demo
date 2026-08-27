@@ -73,6 +73,13 @@ spec:
             (the runtime then ships a dev PostgreSQL and datasource env).
             Coolstore cart is stateless — leave off. PetClinic REST needs
             this on.
+        autoStartMigration:
+          title: Auto-start migration (M1+M2)
+          type: boolean
+          default: true
+          description: |
+            When on (demo default), dest-init mints M1 ANALYZE and M2 PLAN.
+            Turn off to inspect the workspace before agents touch it.
 
   steps:
     - id: fetch-golden
@@ -108,6 +115,7 @@ spec:
           name: ${{ parameters.name }}
           legacyRepoUrl: ${{ parameters.legacyRepoUrl }}
           needsDatabase: ${{ parameters.needsDatabase }}
+          autoStartMigration: ${{ parameters.autoStartMigration }}
           sonarqubeUrl: ${{ steps['platform-entity'].output.entity.metadata.links[3].url | replace('coolstore-inventory-service', parameters.name) }}
           devspacesUrl: ${{ steps['platform-entity'].output.entity.metadata.links[2].url | replace('/dashboard/#/ide/wksp-ai-developer/agentic-coolstore', '') }}/#https://github.com/adnan-drina/${{ parameters.name }}
 

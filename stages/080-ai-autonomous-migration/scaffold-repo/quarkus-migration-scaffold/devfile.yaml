@@ -88,6 +88,9 @@ components:
           value: "/projects/modernized/.hermes/home"
         - name: HERMES_MANAGED_DIR
           value: "/projects/.platform/hermes"
+        # Golden default on. RHDH stamps AUTO_START_MIGRATION from the form.
+        - name: AUTO_START_MIGRATION
+          value: "true"
       memoryLimit: 12Gi
       cpuLimit: 2500m
       volumeMounts:

@@ -101,10 +101,14 @@ print(json.dumps({"id": tid}))
     path.chmod(path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
 
-def run_autostart(root: Path, fake_bin: Path) -> subprocess.CompletedProcess[str]:
+def run_autostart(
+    root: Path, fake_bin: Path, extra_env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     env["PATH"] = str(fake_bin) + os.pathsep + env.get("PATH", "")
     env.pop("HERMES_HOME", None)
+    if extra_env:
+        env.update(extra_env)
     return subprocess.run(
         ["bash", str(SCRIPT), "--root", str(root)],
         text=True,
@@ -178,6 +182,23 @@ def main() -> int:
         keys = json.loads((store / "keys.json").read_text())
         if set(keys) != {"m1-analyze", "m2-plan"}:
             return _fail("keys: %s" % keys)
+
+        off_root = tmp_p / "off"
+        off_root.mkdir()
+        off_store = tmp_p / "off-store"
+        off_bin = tmp_p / "off-bin"
+        off_bin.mkdir()
+        write_fake_hermes(off_bin / "hermes", off_store)
+        off = run_autostart(
+            off_root, off_bin, extra_env={"AUTO_START_MIGRATION": "false"}
+        )
+        if off.returncode != 0:
+            return _fail("off run: %s%s" % (off.stdout, off.stderr))
+        off_status = json.loads((off_root / ".hermes" / "AUTOSTART-STATUS").read_text())
+        if off_status.get("state") != "skipped":
+            return _fail("off status: %s" % off_status)
+        if (off_store / "argv.jsonl").exists():
+            return _fail("off must not mint")
 
     print("OK: autostart-migration M1+M2 idempotent")
     return 0
