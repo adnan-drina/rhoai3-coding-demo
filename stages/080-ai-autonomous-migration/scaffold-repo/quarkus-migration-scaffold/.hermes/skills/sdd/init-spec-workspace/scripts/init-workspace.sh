@@ -170,7 +170,8 @@ if [ -f "${MARKER}" ]; then
     || die "seed-speckit-skills failed (implementer must see speckit-specify)"
   python3 "${SCRIPT_DIR}/assert-specify-skills-root.py" "${ROOT}" \
     || die "specify CLI skills-root missing speckit-specify"
-  bash "${SCRIPT_DIR}/install-specify-shim.sh" "${ROOT}" \
+  _real_specify || true
+  bash "${SCRIPT_DIR}/install-specify-shim.sh" "${ROOT}" "${REAL_SPECIFY_PATH}" \
     || die "install-specify-shim failed"
   python3 "${SCRIPT_DIR}/assert-specify-run-from-worker-home.py" \
     || die "specify worker-shell control failed (profile HOME still hides speckit-specify)"
@@ -194,19 +195,21 @@ esac
 
 # dest PATH may already have the project/managed specify shim. That is not
 # specify-cli. Probe for a real binary or uv-install one.
+# Sets REAL_SPECIFY_PATH to the absolute path of the genuine specify-cli.
+# That value is baked into the shim as SPECIFY_REAL so the run-time helper
+# never PATH-searches (Architect E-20260827T153721ZA). A wrapper is rejected
+# by CONTENT, not by location: every shim we write execs
+# specify-from-project.sh, so grepping for that name catches all of them
+# wherever they are installed, which path lists cannot.
+REAL_SPECIFY_PATH=""
 _real_specify() {
   local p
   p="$(command -v specify 2>/dev/null || true)"
   [[ -n "${p}" && -x "${p}" ]] || return 1
-  case "${p}" in
-    */.hermes/bin/specify) return 1 ;;
-  esac
-  if [[ -n "${HERMES_MANAGED_DIR:-}" && "${p}" == "${HERMES_MANAGED_DIR}/bin/specify" ]]; then
+  if grep -qF "specify-from-project.sh" "${p}" 2>/dev/null; then
     return 1
   fi
-  if [[ "${p}" == */.platform/hermes/bin/specify || "${p}" == /etc/hermes/bin/specify ]]; then
-    return 1
-  fi
+  REAL_SPECIFY_PATH="${p}"
   return 0
 }
 
@@ -251,7 +254,8 @@ python3 "${SCRIPT_DIR}/seed-speckit-skills.py" "${ROOT}" "${HUMAN_HOME}" \
   || die "seed-speckit-skills failed (implementer must see speckit-specify)"
 python3 "${SCRIPT_DIR}/assert-specify-skills-root.py" "${ROOT}" \
   || die "specify CLI skills-root missing speckit-specify"
-bash "${SCRIPT_DIR}/install-specify-shim.sh" "${ROOT}" \
+_real_specify || true
+bash "${SCRIPT_DIR}/install-specify-shim.sh" "${ROOT}" "${REAL_SPECIFY_PATH}" \
   || die "install-specify-shim failed"
 python3 "${SCRIPT_DIR}/assert-specify-run-from-worker-home.py" \
   || die "specify worker-shell control failed (profile HOME still hides speckit-specify)"
