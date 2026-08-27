@@ -6,6 +6,10 @@ attributes:
   # when a second workspace starts while another is running (observed
   # live on round3's first start; run #2's workspace was patched by hand).
   controller.devfile.io/storage-type: per-workspace
+  # DWO debug-start keeps a failed postStart container sleeping
+  # progressTimeout so /tmp/poststart-{stdout,stderr}.txt stay readable.
+  # Do not tee the hook to PVC (Architect 125103ZA).
+  controller.devfile.io/debug-start: "true"
 # Migration workspace layout — two projects, fixed order:
 #   /projects/legacy      the application being migrated (workspace-only
 #                         clone of the legacy repository; never registered
@@ -123,12 +127,6 @@ commands:
         PROJECT_DIR="/projects/modernized"
         PROFILE="modernized"
         mkdir -p /projects/.platform
-        if [ -w /projects/.platform ] && command -v tee >/dev/null 2>&1; then
-          # Architect 123129ZA: keep stdout/stderr on the PVC. Do not wrap
-          # this hook in `} >/tmp/poststart-*.txt` (dies with the container).
-          exec > >(tee -a /projects/.platform/poststart.log /projects/.platform/poststart-stdout.txt)
-          exec 2> >(tee -a /projects/.platform/poststart.log /projects/.platform/poststart-stderr.txt >&2)
-        fi
         # The UDI base image documents JAVA_HOME_<version> variables as the
         # supported way to select a JDK; its sdkman default (plain
         # JAVA_HOME) is Java 17, while this project targets 21.

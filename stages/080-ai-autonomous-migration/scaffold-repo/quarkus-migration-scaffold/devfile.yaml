@@ -6,6 +6,10 @@ attributes:
   # when a second workspace starts while another is running (observed
   # live on round3's first start; run #2's workspace was patched by hand).
   controller.devfile.io/storage-type: per-workspace
+  # DWO debug-start keeps a failed postStart container sleeping
+  # progressTimeout so /tmp/poststart-{stdout,stderr}.txt stay readable
+  # (docs/additional-configuration.adoc). Do not tee the hook to PVC.
+  controller.devfile.io/debug-start: "true"
 # This golden copy defines a SINGLE-project workspace (itself). The real
 # migration workspace layout — two projects, fixed order — exists only in
 # per-run repositories, stamped by the app-migration template's skeleton
@@ -121,12 +125,6 @@ commands:
         PROJECT_DIR="/projects/modernized"
         PROFILE="modernized"
         mkdir -p /projects/.platform
-        if [ -w /projects/.platform ] && command -v tee >/dev/null 2>&1; then
-          # Architect 123129ZA: keep stdout/stderr on the PVC. Do not wrap
-          # this hook in `} >/tmp/poststart-*.txt` (dies with the container).
-          exec > >(tee -a /projects/.platform/poststart.log /projects/.platform/poststart-stdout.txt)
-          exec 2> >(tee -a /projects/.platform/poststart.log /projects/.platform/poststart-stderr.txt >&2)
-        fi
         # Prefer JAVA_HOME_21 from the UDI image contract. This seat's
         # udi-rhel9 image does not ship sdkman (Deputy E-20260814T064712Z);
         # the ~/.sdkman candidates below are defensive fallbacks only.

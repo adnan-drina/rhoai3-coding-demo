@@ -1242,7 +1242,7 @@ data:
         os.chmod(hermes_wrap, 0o755)
         cfg["hooks"]["pre_tool_call"] = [
             {
-                "matcher": "write|write_file|patch|edit_file|apply_patch|create_file|terminal",
+                "matcher": "write|write_file|patch|edit_file|apply_patch|create_file|terminal|skill_manage",
                 "command": write_fence_py,
                 "timeout": 5,
                 "fail_closed": True,
@@ -1254,7 +1254,7 @@ data:
         os.chmod(write_fence_sh, 0o755)
         cfg["hooks"]["pre_tool_call"] = [
             {
-                "matcher": "write|write_file|patch|edit_file|apply_patch|create_file|terminal|execute_code|delegate_task",
+                "matcher": "write|write_file|patch|edit_file|apply_patch|create_file|terminal|execute_code|delegate_task|skill_manage",
                 "command": write_fence_sh,
                 "timeout": 5,
                 "fail_closed": True,

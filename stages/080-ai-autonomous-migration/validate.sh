@@ -356,6 +356,18 @@ check "080 RHDH skeleton destfile does not invoke dest supervise-gateway" \
 check "080 golden destfile does not invoke dest supervise-gateway" \
   "grep -c '.hermes/home/scripts/supervise-gateway.sh' '${SCAFFOLD_080}/devfile.yaml' || echo 0" \
   "0"
+check "080 golden destfile enables DWO debug-start" \
+  "grep -c 'controller.devfile.io/debug-start' '${SCAFFOLD_080}/devfile.yaml' || echo 0" \
+  "1"
+check "080 golden destfile does not tee postStart to PVC" \
+  "grep -c 'poststart.log' '${SCAFFOLD_080}/devfile.yaml' || echo 0" \
+  "0"
+check "080 RHDH skeleton destfile enables DWO debug-start" \
+  "grep -c 'controller.devfile.io/debug-start' '${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml' || echo 0" \
+  "1"
+check "080 RHDH skeleton destfile does not tee postStart to PVC" \
+  "grep -c 'poststart.log' '${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml' || echo 0" \
+  "0"
 check "080 golden orchestrator profile template present" \
   "test -f '${SCAFFOLD_PROFILES}/orchestrator.yaml.template' && echo present || echo missing" \
   "present"
@@ -496,6 +508,9 @@ check "080 GitOps copies kernel pre_tool_call when k2_present" \
   "1"
 check "080 GitOps K2 matcher includes execute_code" \
   "grep -c 'execute_code|delegate_task' '${GITOPS_INIT}' || echo 0" \
+  "1"
+check "080 GitOps K2 matcher includes skill_manage" \
+  "grep -c 'delegate_task|skill_manage' '${GITOPS_INIT}' || echo 0" \
   "1"
 check "080 GitOps no longer forbids the K2 instrumentation land" \
   "grep -c 'Do not mkdir kernel/. Do not land K2' '${GITOPS_INIT}' || echo 0" \
