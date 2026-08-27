@@ -24,7 +24,14 @@ Official: the dispatcher promotes `todo → ready` when all parents are
    Operator GO to mint children `blocked` / not `ready` — a **new** GO,
    not Architect rewriting dispatch.
 2. Do **not** auto-create M2 without a named Operator GO (unchanged).
-   Do not dest-dispatch M4 without a named Operator GO (`104843ZA`).
+   **M4 no longer needs a named GO** (Operator, 2026-08-27; supersedes
+   `104843ZA` and lifts the `172724ZA` HOLD). Mint M4 with the rest of
+   the chain, parented to the M3 stories, so the dispatcher promotes it
+   when they are `done`. This restores `no-manual-approval-gates`: the
+   campaign is autonomous by design and verifies with gates and an
+   artifact trail, never human sign-off. The M1→M2 gate cost 62 idle
+   minutes on dest-10 for nothing; the M4 gate is the same shape.
+   Holding M4 again needs a **new** named GO, not a restored default.
 3. Gate K story cards inherit Gate K retry intent: mint `--max-retries 1`
    onto minted T0/M3 children. `max_retries: None` →
    `kanban.failure_limit` 2 is not the dest-4 intent (Operator
