@@ -158,6 +158,16 @@ data:
     flock 9
     echo "init-ai-tools.sh: flock held pid=$$"
 
+    # Architect 123129ZA: FailedPostStartHook destroys container /tmp.
+    # GitOps tee onto the workspace PVC (not dest persist-postStart; persist
+    # HARD off). dest-11 destfile already tees poststart.log; this covers
+    # dest-init ConfigMap after Argo-sync without dest-applying destfile.
+    mkdir -p /projects/.platform
+    if [ -w /projects/.platform ] && command -v tee >/dev/null 2>&1; then
+      exec > >(tee -a /projects/.platform/poststart.log /projects/.platform/poststart-stdout.txt)
+      exec 2> >(tee -a /projects/.platform/poststart.log /projects/.platform/poststart-stderr.txt >&2)
+    fi
+
     # The project's .opencode/ directory is the paradigm signal:
     # present  -> OpenCode-only workspace (stage 070 scaffolded repos carry .opencode/skills)
     # absent   -> Kilo-only workspace (stage 060 coolstore, stage 080 migration)

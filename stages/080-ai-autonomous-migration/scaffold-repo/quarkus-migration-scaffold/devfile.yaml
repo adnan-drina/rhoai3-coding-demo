@@ -122,7 +122,10 @@ commands:
         PROFILE="modernized"
         mkdir -p /projects/.platform
         if [ -w /projects/.platform ] && command -v tee >/dev/null 2>&1; then
-          exec > >(tee -a /projects/.platform/poststart.log) 2>&1
+          # Architect 123129ZA: keep stdout/stderr on the PVC. Do not wrap
+          # this hook in `} >/tmp/poststart-*.txt` (dies with the container).
+          exec > >(tee -a /projects/.platform/poststart.log /projects/.platform/poststart-stdout.txt)
+          exec 2> >(tee -a /projects/.platform/poststart.log /projects/.platform/poststart-stderr.txt >&2)
         fi
         # Prefer JAVA_HOME_21 from the UDI image contract. This seat's
         # udi-rhel9 image does not ship sdkman (Deputy E-20260814T064712Z);
