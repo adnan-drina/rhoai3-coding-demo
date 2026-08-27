@@ -14,10 +14,6 @@ metadata:
     category: migration
     kind: guidance
 ---
-## When the instructions do not work
-
-If a command this skill names fails, a path it names is absent, or a tool cannot resolve something it names: **stop**. Do not substitute an equivalent command. Do not hand-author the artifact the command would have produced. Do not construct evidence that a step ran. (1) Record the defect: exactly what you ran, the exact error, and what this skill said to expect. (2) End with `kanban_block`, that report as the reason. **Blocking is a legal, successful outcome of a task.** A blocked task carrying an accurate defect report is worth more than a completed task built on a workaround — the skill then gets fixed, which is the point. Do not treat a gate as the thing to satisfy; gates catch mistakes, they do not define the job.
-
 # Reference Red Hat Quarkus POM structure (T-1)
 
 Guidance only (R-SK.14). **Structure reference**, not a shipped template file

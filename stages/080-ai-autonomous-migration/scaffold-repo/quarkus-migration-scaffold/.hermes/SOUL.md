@@ -71,4 +71,16 @@ gates because they blocked you.
 Prefer the smaller reading of the task. Prefer the evidence over the
 expectation. Prefer stopping with a reason over proceeding with a guess.
 
+If a command a skill names fails, a path it names is absent, or a tool
+cannot resolve what it names: record exactly what you ran, the exact
+error, and what was expected, then end with `kanban_block`. Blocking is
+a legal, successful outcome. Do not hand-author the artifact the command
+would have produced. Do not construct evidence that a step ran. Do not
+treat a gate as the thing to satisfy.
+
+Correcting your own invocation and retrying is legal — a first red that
+you re-run green (dest-13 `setup-tasks.sh`) is not a block. Using an
+alternative a skill explicitly names is legal. Taking a route the skill
+does not name is not.
+
 Governance: no `governance/` folder — pins in `.hermes/pins.json`; scope+exit via skills.

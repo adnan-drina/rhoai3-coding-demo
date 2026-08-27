@@ -88,24 +88,37 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
-    if "When the instructions do not work" not in skill_md:
+    if "When the instructions do not work" in skill_md:
         print(
-            "FAIL: SKILL.md must carry the stop-and-block clause (Architect 170746ZA)",
+            "FAIL: stop-and-block lives in SOUL.md, not this SKILL.md (Architect 202921ZA)",
             file=sys.stderr,
         )
         return 1
+    soul = GOLDEN / ".hermes" / "SOUL.md"
+    soul_txt = soul.read_text(encoding="utf-8")
+    if "kanban_block" not in soul_txt:
+        print("FAIL: SOUL.md must name kanban_block as the operational stop", file=sys.stderr)
+        return 1
+    if "Correcting your own invocation and retrying is legal" not in soul_txt:
+        print("FAIL: SOUL.md must permit correcting an invocation and retrying", file=sys.stderr)
+        return 1
+    if "Do not substitute an equivalent command" in soul_txt:
+        print("FAIL: SOUL.md must not forbid retry with the absolute equivalent-command ban", file=sys.stderr)
+        return 1
+    if "Do not hand-author the artifact" not in soul_txt:
+        print("FAIL: SOUL.md must keep the three observed-failure prohibitions", file=sys.stderr)
+        return 1
     skills_root = GOLDEN / ".hermes" / "skills"
-    missing_clause = []
-    for group in ("sdd", "migration"):
-        for skill_md_path in sorted((skills_root / group).glob("*/SKILL.md")):
-            body = skill_md_path.read_text(encoding="utf-8")
-            if "When the instructions do not work" not in body:
-                missing_clause.append(str(skill_md_path.relative_to(GOLDEN)))
-            if "kanban_block" not in body:
-                missing_clause.append(str(skill_md_path.relative_to(GOLDEN)) + " (kanban_block)")
-    if missing_clause:
+    leftover = []
+    for skill_md_path in sorted(skills_root.rglob("SKILL.md")):
+        body = skill_md_path.read_text(encoding="utf-8")
+        if "When the instructions do not work" in body:
+            leftover.append(str(skill_md_path.relative_to(GOLDEN)))
+        if "Do not substitute an equivalent command" in body:
+            leftover.append(str(skill_md_path.relative_to(GOLDEN)) + " (absolute ban)")
+    if leftover:
         print(
-            "FAIL: stop-and-block clause missing: %s" % ", ".join(missing_clause),
+            "FAIL: stop-and-block copies remain in skills: %s" % ", ".join(leftover),
             file=sys.stderr,
         )
         return 1

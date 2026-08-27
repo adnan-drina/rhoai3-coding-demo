@@ -7,7 +7,7 @@ parallel home is a defect.
 | Kind | Home |
 |------|------|
 | Standing convention | `AGENTS.md` (this file is identity + taxonomy only) |
-| Identity | authored `.hermes/SOUL.md`; dest loads `$HERMES_HOME/SOUL.md` |
+| Identity | authored `.hermes/SOUL.md`; dest loads `$HERMES_HOME/SOUL.md` (sha256 at dest-init; standing stop-and-block lives here, not as SKILL.md copies) |
 | Seat pins | `.hermes/pins.json` |
 | Seat pin oracle | Runtime: dest-init `hermes --version` vs `.hermes/pins.json`. Build: `workspace-images/scripts/assert-hermes-source-pin.py`. Dest `.hermes/checks/` retired. |
 | Config templates | `.hermes/config/` — no secrets; dest Managed Scope owns the live pin. Worker profiles: `.hermes/config/profiles/{orchestrator,implementer}.yaml.template` (Operator GO `231808Z`; dest GitOps applies via `hermes profile create --no-alias`, never `--clone`) |

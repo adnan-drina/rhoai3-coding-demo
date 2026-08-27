@@ -132,8 +132,12 @@ def main() -> int:
     if "legacy-at-3.json" in src:
         return _fail("M1/M2 bodies must not name leftover dest-13 legacy-at-3.json")
     skill = SKILL.read_text(encoding="utf-8")
-    if "When the instructions do not work" not in skill:
-        return _fail("dispatch-phase SKILL.md needs stop-and-block")
+    if "When the instructions do not work" in skill:
+        return _fail("dispatch-phase SKILL.md must not copy the SOUL stop-and-block clause")
+    soul = HERE.parents[4] / ".hermes" / "SOUL.md"
+    soul_txt = soul.read_text(encoding="utf-8")
+    if "kanban_block" not in soul_txt or "Correcting your own invocation" not in soul_txt:
+        return _fail("SOUL.md needs bounded stop-and-block (Architect 202921ZA)")
 
     with tempfile.TemporaryDirectory() as tmp:
         tmp_p = Path(tmp)
