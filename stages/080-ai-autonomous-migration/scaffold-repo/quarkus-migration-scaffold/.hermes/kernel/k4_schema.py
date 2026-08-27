@@ -89,8 +89,9 @@ REMEDY = {
         "skills list is REFUSE (dest-5 T001 loaded 11 by skill_view)."
     ),
     "K4_MINT_WORKSPACE": (
-        "M3 story creates pass --workspace dir:/projects/modernized. "
-        "K4_WORKSPACE or MODERNIZED_ROOT that is not that root is REFUSE "
+        "M3 story creates pass --workspace dir:/projects/modernized or a "
+        "path under that tree. K4_WORKSPACE or MODERNIZED_ROOT that is "
+        "empty, relative, or outside the modernized tree is REFUSE "
         "(scratch OBJECT). Mint always emits the flag after this check; "
         "omission is not a path."
     ),

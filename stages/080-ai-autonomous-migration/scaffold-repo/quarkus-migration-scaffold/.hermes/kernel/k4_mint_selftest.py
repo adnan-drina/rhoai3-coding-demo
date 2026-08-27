@@ -125,6 +125,34 @@ def main() -> int:
     finally:
         os.environ.pop("MODERNIZED_ROOT", None)
 
+    os.environ["K4_WORKSPACE"] = ""
+    try:
+        argv_for_payload(scratch, {"setup": "t_mint0001"})
+        return _fail("empty K4_WORKSPACE did not refuse")
+    except ValueError as exc:
+        if "K4_MINT_WORKSPACE" not in str(exc):
+            return _fail("empty workspace: %s" % exc)
+    finally:
+        os.environ.pop("K4_WORKSPACE", None)
+
+    os.environ["K4_WORKSPACE"] = "relative/ws"
+    try:
+        argv_for_payload(scratch, {"setup": "t_mint0001"})
+        return _fail("relative K4_WORKSPACE did not refuse")
+    except ValueError as exc:
+        if "K4_MINT_WORKSPACE" not in str(exc):
+            return _fail("relative workspace: %s" % exc)
+    finally:
+        os.environ.pop("K4_WORKSPACE", None)
+
+    os.environ["K4_WORKSPACE"] = "/projects/modernized/ws"
+    try:
+        under = argv_for_payload(scratch, {"setup": "t_mint0001"})
+    finally:
+        os.environ.pop("K4_WORKSPACE", None)
+    if under[under.index("--workspace") + 1] != "dir:/projects/modernized/ws":
+        return _fail("under-tree workspace %s" % under)
+
     no_prod = dict(result["payloads"][1])
     no_prod["skills"] = ["check-spec-readiness"]
     try:

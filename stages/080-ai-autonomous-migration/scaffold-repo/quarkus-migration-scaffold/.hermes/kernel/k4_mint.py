@@ -103,18 +103,31 @@ def resolve_parents(payload: dict[str, Any], mapping: dict[str, str]) -> list[st
 
 
 def workspace_flag() -> str:
-    root = (
-        os.environ.get("K4_WORKSPACE")
-        or os.environ.get("MODERNIZED_ROOT")
-        or DEFAULT_WORKSPACE_ROOT
-    ).rstrip("/")
-    if root != DEFAULT_WORKSPACE_ROOT:
+    if "K4_WORKSPACE" in os.environ:
+        raw = os.environ.get("K4_WORKSPACE")
+    elif "MODERNIZED_ROOT" in os.environ:
+        raw = os.environ.get("MODERNIZED_ROOT")
+    else:
+        raw = DEFAULT_WORKSPACE_ROOT
+    root = (raw or "").strip().rstrip("/")
+    if not root or not root.startswith("/"):
         _fail(
             [
                 _issue(
                     "K4_MINT_WORKSPACE",
-                    "workspace root %s is not %s (scratch OBJECT)"
-                    % (root, DEFAULT_WORKSPACE_ROOT),
+                    "workspace root %r is empty or not absolute (scratch OBJECT)"
+                    % root,
+                )
+            ]
+        )
+    referent = DEFAULT_WORKSPACE_ROOT.rstrip("/")
+    if root != referent and not root.startswith(referent + "/"):
+        _fail(
+            [
+                _issue(
+                    "K4_MINT_WORKSPACE",
+                    "workspace root %s is outside %s (scratch OBJECT)"
+                    % (root, referent),
                 )
             ]
         )
