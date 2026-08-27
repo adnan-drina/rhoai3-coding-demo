@@ -93,6 +93,9 @@ Do **not** PATH-lookup `specify`. dest-9 `command -v specify` was
 ABSENT. `-i spec=` is necessary and not sufficient without the helper.
 Unknown `speckit-specify` is `kanban_block`, not hand-author `tasks.md`.
 Do not dest-edit dest-9 PATH or implementer `external_dirs`.
+The helper must prefer Hermes runtime `specify` (`*/.platform/hermes/bin`,
+`/etc/hermes/bin`) over uv; skipping those dirs left dest-10 M2 on uv
+(`Unknown skill(s): speckit-specify`). Do not widen `K2_ALLOW_ROOT`.
 
 `tasks.md` must be non-empty under `.specify/specs/*/tasks.md`.
 
@@ -155,4 +158,5 @@ Do not `kanban daemon --force`. Do not `kanban swarm`. Do not dest-dispatch M5.
   form; dest-9 uv specify shadows the dest-init shim). Call
   `specify-from-project.sh --root`. dest-9 `-i spec=` still
   `speckit-specify` unknown is `kanban_block`, not a hand-authored
-  `tasks.md`.
+  `tasks.md`. dest-10: do not skip `.platform/hermes/bin` in the helper
+  skip-list (uv then cannot see Hermes skills).

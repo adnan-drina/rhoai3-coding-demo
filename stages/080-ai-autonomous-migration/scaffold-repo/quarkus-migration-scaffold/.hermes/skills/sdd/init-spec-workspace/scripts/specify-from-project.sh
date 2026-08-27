@@ -44,12 +44,12 @@ if [[ -z "${ROOT}" ]]; then
   exit 1
 fi
 
-# Skip shim directories so exec does not recurse into this wrapper.
+# Skip only this wrapper and the dest-init PATH name that execs it.
+# Do not skip Hermes runtime specify (.platform/hermes/bin, /etc/hermes/bin)
+# or HERMES_MANAGED_DIR: dest-10 M2 t_c705fc91 — those skips left uv specify,
+# which cannot resolve speckit-specify (Architect 094851ZA). Do not widen
+# K2_ALLOW_ROOT to paper over this (item 29).
 _skip_dirs="${_here}:${ROOT}/.hermes/bin"
-if [[ -n "${HERMES_MANAGED_DIR:-}" ]]; then
-  _skip_dirs="${_skip_dirs}:${HERMES_MANAGED_DIR}/bin"
-fi
-_skip_dirs="${_skip_dirs}:/projects/.platform/hermes/bin:/etc/hermes/bin"
 
 _abs_dir() {
   local p="$1"
@@ -91,10 +91,41 @@ for _p in "${_path_parts[@]}"; do
   fi
 done
 
+# Prefer Hermes runtime specify over uv when both are on PATH (dest-10:
+# /home/user/.local/bin/specify was first; the runtime shim is the bridge).
+_pick_runtime_specify() {
+  local p abs cand
+  local IFS=':'
+  local -a parts
+  read -r -a parts <<< "${PATH}"
+  for p in "${parts[@]}"; do
+    [[ -z "${p}" ]] && continue
+    cand="${p}/specify"
+    [[ -x "${cand}" ]] || continue
+    abs="$(_abs_dir "${p}")"
+    case "${abs}" in
+      */.platform/hermes/bin|/etc/hermes/bin)
+        printf '%s\n' "${cand}"
+        return 0
+        ;;
+    esac
+  done
+  for cand in /projects/.platform/hermes/bin/specify /etc/hermes/bin/specify; do
+    if [[ -x "${cand}" ]]; then
+      printf '%s\n' "${cand}"
+      return 0
+    fi
+  done
+  return 1
+}
+
 REAL=""
 if [[ -n "${SPECIFY_REAL:-}" ]]; then
   REAL="${SPECIFY_REAL}"
 else
+  REAL="$(_pick_runtime_specify || true)"
+fi
+if [[ -z "${REAL}" ]]; then
   REAL="$(PATH="${_filtered_path}" command -v specify || true)"
 fi
 
