@@ -45,17 +45,13 @@ if [[ -z "${ROOT}" ]]; then
 fi
 
 # Skip dest helper wrappers so exec does not recurse into this script.
-# dest-init writes the same wrapper to ${ROOT}/.hermes/bin AND
-# /projects/.platform/hermes/bin. Architect 131720ZA: preferring the
-# platform copy is a fork bomb (1744 helpers). Restore the skip of
-# `.platform/hermes/bin` and `/etc/hermes/bin` (revert 104855ZL
-# narrowing). v10 M2 uv Unknown skill stays OPEN; do not prefer a
-# wrapper to paper over it. Do not widen K2_ALLOW_ROOT.
-_skip_dirs="${_here}:${ROOT}/.hermes/bin"
-_skip_dirs="${_skip_dirs}:/projects/.platform/hermes/bin:/etc/hermes/bin"
-if [[ -n "${HERMES_MANAGED_DIR:-}" ]]; then
-  _skip_dirs="${_skip_dirs}:${HERMES_MANAGED_DIR}/bin"
-fi
+# Architect 153513ZA: UNION, not else-branch. Order: this script,
+# ${ROOT}/.hermes/bin, ${HERMES_MANAGED_DIR}/bin when set (canonical),
+# then /projects/.platform/hermes/bin and /etc/hermes/bin (safety net).
+# Dedupe via _abs_dir. Never append bare /bin from an unset/wrong
+# HERMES_MANAGED_DIR. dest-init writes the wrapper at .platform/hermes/bin
+# (Architect 131720ZA fork bomb). v10 M2 uv Unknown skill stays OPEN.
+# Do not prefer a wrapper. Do not widen K2_ALLOW_ROOT.
 
 _abs_dir() {
   local p="$1"
@@ -65,6 +61,39 @@ _abs_dir() {
     printf '%s\n' "${p}"
   fi
 }
+
+_add_skip() {
+  local p="$1"
+  [[ -z "${p}" ]] && return 0
+  local abs
+  abs="$(_abs_dir "${p}")"
+  [[ "${abs}" == "/bin" || "${p}" == "/bin" || "${p}" == "/bin/" ]] && return 0
+  if [[ -z "${_skip_dirs:-}" ]]; then
+    _skip_dirs="${p}"
+    return 0
+  fi
+  local IFS=':'
+  local -a existing
+  local e eabs
+  read -r -a existing <<< "${_skip_dirs}"
+  for e in "${existing[@]}"; do
+    [[ -z "${e}" ]] && continue
+    eabs="$(_abs_dir "${e}")"
+    if [[ "${abs}" == "${eabs}" ]]; then
+      return 0
+    fi
+  done
+  _skip_dirs="${_skip_dirs}:${p}"
+}
+
+_skip_dirs=""
+_add_skip "${_here}"
+_add_skip "${ROOT}/.hermes/bin"
+if [[ -n "${HERMES_MANAGED_DIR:-}" ]]; then
+  _add_skip "${HERMES_MANAGED_DIR}/bin"
+fi
+_add_skip "/projects/.platform/hermes/bin"
+_add_skip "/etc/hermes/bin"
 
 # dest-init PATH shim is `exec bash …/specify-from-project.sh` (Architect
 # 131720ZA: 1744 concurrent helpers). Prefer/exec of that file is a loop.

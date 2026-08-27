@@ -191,7 +191,9 @@ def run_control(tmp: Path) -> int:
         return 1
     # dest-11: dest-init copies this helper to .platform/hermes/bin/specify.
     # Preferring that copy recurses (shell level 1000). Skip it; use uv.
-    probe9.unlink(missing_ok=True)
+    # Architect 153513ZA: HERMES_MANAGED_DIR is UNION with the two hardcoded
+    # paths. All three cases must still skip the dest-init platform wrapper.
+    helper = SCRIPTS / "specify-from-project.sh"
     platform_bin = tmp / "fake" / ".platform" / "hermes" / "bin"
     platform_bin.mkdir(parents=True)
     (platform_bin / "specify").write_text(
@@ -201,55 +203,84 @@ def run_control(tmp: Path) -> int:
         encoding="utf-8",
     )
     (platform_bin / "specify").chmod(0o755)
-    env11 = os.environ.copy()
-    env11["HOME"] = str(profile)
-    env11["PATH"] = (
-        str(platform_bin)
-        + os.pathsep
-        + str(userbin)
-        + os.pathsep
-        + env11.get("PATH", "/usr/bin:/bin")
+    third = tmp / "third-managed"
+    third_bin = third / "bin"
+    third_bin.mkdir(parents=True)
+    (third_bin / "specify").write_text(
+        "#!/usr/bin/env bash\n"
+        "exec bash %r --root %r \"$@\"\n"
+        % (str(helper), str(project)),
+        encoding="utf-8",
     )
-    env11.pop("SPECIFY_REAL", None)
-    env11.pop("SPECIFY_PROJECT_ROOT", None)
-    dest11 = subprocess.run(
-        [
-            "bash",
-            str(helper),
-            "--root",
-            str(project),
-            "workflow",
-            "run",
-            "speckit",
-        ],
-        text=True,
-        capture_output=True,
-        env=env11,
-        cwd=str(profile),
+    (third_bin / "specify").chmod(0o755)
+    managed_cases = (
+        ("unset", None),
+        ("platform", str(tmp / "fake" / ".platform" / "hermes")),
+        ("third", str(third)),
     )
-    blob11 = (dest11.stdout or "") + (dest11.stderr or "")
-    if dest11.returncode != 0:
-        print(
-            "FAIL: helper must skip dest-init platform wrapper and use uv "
-            "rc=%s: %s" % (dest11.returncode, blob11),
-            file=sys.stderr,
+    for label, managed in managed_cases:
+        probe9.unlink(missing_ok=True)
+        env11 = os.environ.copy()
+        env11["HOME"] = str(profile)
+        env11["PATH"] = (
+            str(platform_bin)
+            + os.pathsep
+            + str(third_bin)
+            + os.pathsep
+            + str(userbin)
+            + os.pathsep
+            + env11.get("PATH", "/usr/bin:/bin")
         )
-        return 1
-    if "shell level" in blob11:
-        print("FAIL: helper recursed through platform wrapper: %s" % blob11, file=sys.stderr)
-        return 1
-    got11 = probe9.read_text(encoding="utf-8") if probe9.is_file() else ""
-    if Path(got11).resolve() != project.resolve():
-        print(
-            "FAIL: dest-11 skip-wrapper HOME=%r (want project %s)"
-            % (got11, project),
-            file=sys.stderr,
+        env11.pop("SPECIFY_REAL", None)
+        env11.pop("SPECIFY_PROJECT_ROOT", None)
+        if managed is None:
+            env11.pop("HERMES_MANAGED_DIR", None)
+        else:
+            env11["HERMES_MANAGED_DIR"] = managed
+        dest11 = subprocess.run(
+            [
+                "bash",
+                str(helper),
+                "--root",
+                str(project),
+                "workflow",
+                "run",
+                "speckit",
+            ],
+            text=True,
+            capture_output=True,
+            env=env11,
+            cwd=str(profile),
         )
-        return 1
+        blob11 = (dest11.stdout or "") + (dest11.stderr or "")
+        if dest11.returncode != 0:
+            print(
+                "FAIL: helper must skip dest-init platform wrapper "
+                "(HERMES_MANAGED_DIR %s) rc=%s: %s"
+                % (label, dest11.returncode, blob11),
+                file=sys.stderr,
+            )
+            return 1
+        if "shell level" in blob11:
+            print(
+                "FAIL: helper recursed through platform wrapper "
+                "(HERMES_MANAGED_DIR %s): %s" % (label, blob11),
+                file=sys.stderr,
+            )
+            return 1
+        got11 = probe9.read_text(encoding="utf-8") if probe9.is_file() else ""
+        if Path(got11).resolve() != project.resolve():
+            print(
+                "FAIL: dest-11 skip-wrapper HOME=%r (want project %s) "
+                "HERMES_MANAGED_DIR %s" % (got11, project, label),
+                file=sys.stderr,
+            )
+            return 1
     print(
         "OK: worker-shell specify resolved speckit-specify "
         "(HOME=project child; dest-9 PATH shadow needs specify-from-project.sh; "
-        "dest-11 dest-init platform wrapper is skipped, not preferred)"
+        "dest-11 dest-init platform wrapper skipped for HERMES_MANAGED_DIR "
+        "unset, platform, and third-path UNION)"
     )
     return 0
 
