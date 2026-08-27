@@ -350,6 +350,15 @@ check "080 GitOps dest-init derives worker base from gateway MAAS_BASE_URL" \
 check "080 GitOps dest-init pin files do not label the gateway as KServe" \
   "grep -c 'in-cluster-kserve' '${GITOPS_INIT}' || echo 0" \
   "0"
+check "080 GitOps dest-init does not pin ssl_ca_cert on the qwen provider" \
+  "grep -c '\"ssl_ca_cert\": service_ca,' '${GITOPS_INIT}' || echo 0" \
+  "0"
+check "080 GitOps dest-init pairs ssl_ca_cert with resolved .svc vs route" \
+  "grep -c 'route endpoint must NOT pin ssl_ca_cert' '${GITOPS_INIT}' || echo 0" \
+  "1"
+check "080 GitOps dest-init ssl_ca_cert gate uses resolved model_base" \
+  "grep -c 'Use the RESOLVED url (model_base)' '${GITOPS_INIT}' || echo 0" \
+  "1"
 check "080 GitOps does not copy dest kanban-stuck-watchdog" \
   "grep -c 'home/scripts/kanban-stuck-watchdog' '${GITOPS_INIT}' || echo 0" \
   "0"

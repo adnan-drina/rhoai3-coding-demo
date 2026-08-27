@@ -1101,6 +1101,28 @@ A green terminal that sourced Managed Scope `.env` is **not** the verification b
 
 **Related docs:** `workspace-maas-model-endpoint.yaml`; Operator `205405Zop` / `205612Zop`
 
+## Dest Hermes `APIConnectionError` against the MaaS route (`harness-v2`)
+
+**Affected stage:** Stage 080 dest. Worker exits with `APIConnectionError` / "Connection error" in under a second; official kanban log has no `kanban_complete` / `kanban_block`.
+
+**Likely cause:** `providers.qwen27b.ssl_ca_cert` is pinned to the workspace ServiceAccount `service-ca.crt` while `MAAS_API_BASE_URL` is the **MaaS ingress route** (`.apps`). OpenShift service serving certificates are valid only for `<service>.<namespace>.svc` and internal communications, so that pin cannot verify the route. Dev Spaces already mounts the platform-merged bundle at `/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem`. dest-init must pair them: `.svc` host requires the service-CA pin; a route host must omit `ssl_ca_cert`. Do **not** set `ssl_verify: false`. Do **not** dest-unblock the card.
+
+**Diagnose:**
+
+```bash
+# Presence / comment flag only — do not print keys or URLs
+oc exec -n <ws-ns> <workspace-pod> -c development-tooling -- \
+  grep -c 'ssl_ca_cert' /projects/.platform/hermes/config.yaml
+oc exec -n <ws-ns> <workspace-pod> -c development-tooling -- \
+  test -f /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem && echo bundle-present
+```
+
+A live comment of the pin on an already-running dest is not dest-init. Next dest-init must emit the pairing.
+
+**Recover:** Durable path is dest-init in `maas-api-key-provisioning.yaml` (providers dict, pairing gate on the **resolved** `model_base`, `.rhoai3-w1-five-pins` receipt). Do not dest-edit Managed Scope on a live seat unless the operator names it. Do not dest-read dest `.env` values.
+
+**Related docs:** dest-init `ensure_hermes` in `maas-api-key-provisioning.yaml`; Architect `221730ZA`
+
 ## Dest gateway persist WARN / dest `.hermes/home/scripts` (`harness-v2`)
 
 **Affected stage:** Stage 080 dest on `harness-v2`. Overlay owns runtime (`/usr/local/bin/hermes`, `/opt/hermes-agent`, `HERMES_WEB_DIST`). Golden must not ship `.hermes/home/scripts` (Architect `202501ZA`).

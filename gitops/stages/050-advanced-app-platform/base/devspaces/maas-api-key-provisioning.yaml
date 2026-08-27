@@ -1089,8 +1089,12 @@ data:
         # first content token. Class A amplifier; not MiniMax.
         # max_tokens:8192 — Class A output cap so prompt+completion fit
         # context_length (server VLLMValidationError at 65536 out + ≥65537 in).
-        # providers.qwen27b.api + ssl_ca_cert: service-CA for in-cluster TLS
-        # (do NOT set SSL_CERT_FILE to service-ca alone).
+        # providers.qwen27b.api: no ssl_ca_cert pin. OCP service serving certs
+        # are valid only for <service>.<ns>.svc, so the service CA cannot verify
+        # the .apps route; default trust reads the platform-merged bundle Dev
+        # Spaces mounts at /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem.
+        # Pin the service CA only if api returns to a .svc endpoint (gate below).
+        # (do NOT set SSL_CERT_FILE to service-ca alone; never ssl_verify:false.)
         # discover_models: false — official for gateways whose /models listing
         # is slow, noisy, or not the curated agentic set (configuring-models).
         # Do NOT author fallback_providers: AD-008 forbids silent MiniMax
@@ -1099,7 +1103,6 @@ data:
             "qwen27b": {
                 "api": "${env:MAAS_API_BASE_URL}",
                 "api_key": "${env:MAAS_API_KEY}",
-                "ssl_ca_cert": service_ca,
                 "discover_models": False,
                 "models": {
                     "qwen3-6-27b": {
@@ -1541,8 +1544,29 @@ data:
             "ERROR: AD-008 forbids fallback_providers (silent MiniMax/OpenRouter)"
         )
     prov = (pin.get("providers") or {}).get("qwen27b") or {}
-    if not prov.get("ssl_ca_cert"):
-        raise SystemExit("ERROR: W1 pin missing providers.qwen27b.ssl_ca_cert")
+    # URL and CA are a matched pair. OCP service serving certs are valid only
+    # for <service>.<ns>.svc and internal communications, so the service CA can
+    # only verify a .svc endpoint; the .apps ingress route is signed by a public
+    # CA and is verified by the platform-merged bundle that Dev Spaces already
+    # mounts at /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem. Pinning one
+    # without the other is what broke dest-14 (TLS verify -> APIConnectionError).
+    # Use the RESOLVED url (model_base), not prov["api"] -- that field holds the
+    # literal "${env:MAAS_API_BASE_URL}" placeholder, so testing it would make
+    # this gate pass vacuously for every endpoint.
+    _host = model_base.split("/")[2] if "//" in model_base else ""
+    if not _host:
+        raise SystemExit(f"ERROR: cannot parse host from MAAS base url {model_base!r}")
+    _svc_endpoint = _host.split(":")[0].endswith(".svc")
+    if _svc_endpoint and prov.get("ssl_ca_cert") != service_ca:
+        raise SystemExit(
+            "ERROR: .svc endpoint requires providers.qwen27b.ssl_ca_cert=service-CA"
+        )
+    if not _svc_endpoint and prov.get("ssl_ca_cert"):
+        raise SystemExit(
+            "ERROR: route endpoint must NOT pin ssl_ca_cert "
+            f"(got {prov.get('ssl_ca_cert')!r}); default trust reads the "
+            "platform-merged CA bundle. Never ssl_verify: false."
+        )
     if prov.get("discover_models") is not False:
         raise SystemExit("ERROR: providers.qwen27b.discover_models must be false")
     minimax_on = os.environ.get("HERMES_MINIMAX") == "1"
@@ -1591,11 +1615,14 @@ data:
         fh.write(
             "minimax=escalation-override\n" if minimax_on else "minimax=disabled\n"
         )
+    pin_ca = ((pin.get("providers") or {}).get("qwen27b") or {}).get(
+        "ssl_ca_cert"
+    ) or "<unset: platform-merged bundle>"
     with open(os.path.join(managed, ".rhoai3-w1-five-pins"), "w") as fh:
         fh.write(
             "stale_timeout_seconds=900\n"
             "maas_api_base_url=maas-gateway\n"
-            f"ssl_ca_cert={service_ca}\n"
+            f"ssl_ca_cert={pin_ca}\n"
             "auxiliary.title_generation.enabled=false\n"
             "auxiliary.background_review.enabled=false\n"
             "memory.memory_enabled=false\n"
