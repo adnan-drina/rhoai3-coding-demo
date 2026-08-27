@@ -1461,72 +1461,59 @@ data:
         print("dest-init mvn test: MATCH fresh tree")
     finally:
         shutil.rmtree(mvn_root, ignore_errors=True)
-    # W1 (Architect 190736ZA / 192312ZA): dest-init file-presence of the
-    # helper is not capability. One skill is not the workflow. Probe every
-    # Hermes skill the overlay keeps (specify/clarify/plan/tasks). SPECIFY_REAL
-    # is not a full speckit LLM run. Parent HOME stays dest-user.
-    probe = os.path.join(bin_dir, "specify-dest-init-smoke")
-    with open(probe, "w") as fh:
-        fh.write("#!/usr/bin/env python3\n")
-        fh.write("import os, pathlib, sys\n")
-        fh.write("home = os.environ.get('HOME', '')\n")
-        fh.write(
-            "names = ('speckit-specify', 'speckit-clarify', "
-            "'speckit-plan', 'speckit-tasks')\n"
-        )
-        fh.write("root = pathlib.Path(home) / '.hermes' / 'skills'\n")
-        fh.write(
-            "missing = [n for n in names if not (root / n / 'SKILL.md').is_file()]\n"
-        )
-        fh.write("if missing:\n")
-        fh.write(
-            "    print('ERROR: dest-init specify smoke: workflow skills "
-            "missing under HOME=' + home + ': ' + ','.join(missing), "
-            "file=sys.stderr)\n"
-        )
-        fh.write("    sys.exit(1)\n")
-        fh.write(
-            "print('dest-init specify smoke: MATCH four-step speckit "
-            "skills HOME=' + home)\n"
-        )
-        fh.write("sys.exit(0)\n")
-    os.chmod(probe, 0o755)
-    smoke_env = os.environ.copy()
-    smoke_env["SPECIFY_REAL"] = probe
-    argv = [
-        "bash",
-        specify_helper,
-        "--root",
-        project,
-        "--",
-        "workflow",
-        "run",
-        "speckit",
-        "-i",
-        "spec=dest-init-smoke",
+    # Architect 170540ZA: hermes.manifest files:{} — helper-by-path
+    # ``specify workflow run speckit`` is not dispatch. Probe the four
+    # SKILL.md leaves on disk; inspect the manifest; do not MATCH a
+    # workflow run that cannot execute. Parent HOME stays dest-user.
+    names = (
+        "speckit-specify",
+        "speckit-clarify",
+        "speckit-plan",
+        "speckit-tasks",
+    )
+    skills_root = os.path.join(project, ".hermes", "skills")
+    missing = [
+        n
+        for n in names
+        if not os.path.isfile(os.path.join(skills_root, n, "SKILL.md"))
     ]
-    try:
-        sm = subprocess.run(
-            argv,
-            env=smoke_env,
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-    except (OSError, subprocess.TimeoutExpired) as exc:
+    if missing:
         raise SystemExit(
-            "ERROR: dest-init specify smoke did not run: " + str(exc)
-        )
-    blob = (sm.stdout or "") + (sm.stderr or "")
-    if sm.returncode != 0:
-        raise SystemExit(
-            "ERROR: dest-init specify smoke rc=%s: %s"
-            % (sm.returncode, blob[-800:])
+            "ERROR: dest-init specify smoke: workflow skills missing "
+            "under %s: %s" % (skills_root, ",".join(missing))
         )
     print(
-        "dest-init specify smoke: MATCH helper-by-path "
-        "workflow run speckit -i spec="
+        "dest-init specify smoke: MATCH four-step speckit skills on disk"
     )
+    manifest_path = os.path.join(
+        project, ".specify", "integrations", "hermes.manifest.json"
+    )
+    if not os.path.isfile(manifest_path):
+        raise SystemExit(
+            "ERROR: dest-init specify smoke: missing hermes.manifest.json"
+        )
+    import json as _json
+
+    try:
+        manifest = _json.loads(open(manifest_path).read())
+    except (OSError, ValueError) as exc:
+        raise SystemExit(
+            "ERROR: dest-init specify smoke: unreadable hermes.manifest.json: "
+            + str(exc)
+        )
+    files = manifest.get("files")
+    nfiles = len(files) if isinstance(files, dict) else -1
+    print("dest-init hermes.manifest files=%s" % nfiles)
+    if nfiles == 0:
+        print(
+            "dest-init specify smoke: hermes.manifest files empty — "
+            "specify workflow run is not installed "
+            "(M2 follows Hermes speckit skills, not workflow run)"
+        )
+    elif nfiles < 0:
+        raise SystemExit(
+            "ERROR: dest-init specify smoke: hermes.manifest files is not an object"
+        )
     # Architect E-20260808T151907Z — pin demo model binding (qwen / platform MaaS).
     # Enforce-on-start: rewrite Managed Scope every init; refuse silent drift.
     pin = yaml.safe_load(open(cfg_path))
