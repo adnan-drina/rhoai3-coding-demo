@@ -25,7 +25,6 @@ IDENTITY = {
     "schema": "legacy-at-3/v2",
     "mode": "identity",
     "legacy_src": "/projects/legacy",
-    "derived_root": "/projects/modernized/.derived",
 }
 
 

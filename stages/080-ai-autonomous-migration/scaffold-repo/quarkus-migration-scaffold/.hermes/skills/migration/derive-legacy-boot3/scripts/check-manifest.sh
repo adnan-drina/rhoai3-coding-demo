@@ -6,19 +6,31 @@ set -euo pipefail
 
 usage() {
   cat <<'USAGE'
-Usage: check-manifest.sh [--help]
+Usage: check-manifest.sh [--root DIR] [--help]
 
 Fail closed if evidence/derived/legacy-at-3.json is missing or incomplete.
+mode=identity must not declare derived_root (dest-10 phantom .derived).
 Interface probe only for --help (R-SK.12); does not emit gate OK/FAIL verdicts.
 USAGE
 }
 
-case "${1:-}" in
-  -h|--help)
-    usage
-    exit 0
-    ;;
-esac
+root=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    --root)
+      root="$(cd "${2:?--root needs a directory}" && pwd)"
+      shift 2
+      ;;
+    *)
+      echo "FAIL: unknown arg $1" >&2
+      exit 2
+      ;;
+  esac
+done
 # SR-2: walk up to migration.yaml — never a parent-count.
 resolve_migration_root() {
   local d
@@ -33,7 +45,9 @@ resolve_migration_root() {
   echo "cannot find project root (migration.yaml) walking up from $(dirname "$0") (SR-2)" >&2
   return 1
 }
-root="$(resolve_migration_root)" || exit 1
+if [ -z "${root}" ]; then
+  root="$(resolve_migration_root)" || exit 1
+fi
 manifest="${root}/evidence/derived/legacy-at-3.json"
 if [ ! -f "${manifest}" ]; then
   echo "FAIL: ${manifest} missing — run the derive-legacy-boot3 skill (bash \"\${HERMES_SKILL_DIR}/scripts/derive-legacy-boot3.sh\")" >&2
@@ -63,6 +77,22 @@ if doc["schema"] != "legacy-at-3/v2":
         f"FAIL: unexpected schema {doc['schema']} (want legacy-at-3/v2) — "
         "re-run: derive-legacy-boot3 skill (bash \"${HERMES_SKILL_DIR}/scripts/derive-legacy-boot3.sh\")"
     )
+mode = doc["mode"]
+derived = doc.get("derived_root")
+if mode == "identity":
+    if derived:
+        sys.exit(
+            "FAIL: mode=identity must not declare derived_root=%s "
+            "(harvest_referent is the mount; dest-10 phantom .derived)"
+            % derived
+        )
+elif mode == "derived":
+    if not derived:
+        sys.exit("FAIL: mode=derived missing derived_root")
+    if not os.path.isdir(derived):
+        sys.exit("FAIL: derived_root not a directory: %s" % derived)
+else:
+    sys.exit("FAIL: unexpected mode %s (want identity|derived)" % mode)
 print(
     f"OK: legacy-at-3 mode={doc['mode']} harvest_referent={ref} "
     f"jdk {doc['jdk_version_source']}→{doc['jdk_version_derived']} "

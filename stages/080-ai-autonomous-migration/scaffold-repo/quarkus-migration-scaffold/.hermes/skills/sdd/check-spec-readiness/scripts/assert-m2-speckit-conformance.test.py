@@ -104,7 +104,7 @@ def main() -> int:
 
         ok_log = root / "official.log"
         ok_log.write_text(
-            "load .hermes/skills/speckit-specify/SKILL.md\n"
+            "  ┊ 📚 skill  speckit-specify\n"
             "author spec.md then plan.md then tasks.md\n",
             encoding="utf-8",
         )

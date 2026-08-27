@@ -72,14 +72,37 @@ def main() -> int:
 
         ok_log = Path(tmp) / "ok.log"
         ok_log.write_text(
-            "load .hermes/skills/speckit-specify/SKILL.md\n"
-            "author .specify/specs/001-migrate/spec.md\n",
+            "  ┊ 📚 skill  speckit-specify\n"
+            "author specs/001-migrate/spec.md\n",
             encoding="utf-8",
         )
         proc = _run(ok_log)
         blob = proc.stdout + proc.stderr
         if proc.returncode != 0:
-            return _fail("synthetic speckit-specify skill follow must PASS: %s" % blob)
+            return _fail("skill-load event must PASS A-gate: %s" % blob)
+
+        sdd_log = Path(tmp) / "sdd-load.log"
+        sdd_log.write_text(
+            "  ┊ 📚 skill  sdd/speckit-specify\n",
+            encoding="utf-8",
+        )
+        proc = _run(sdd_log)
+        if proc.returncode != 0:
+            return _fail(
+                "dest-13 sdd/ skill-load must PASS: %s%s"
+                % (proc.stdout, proc.stderr)
+            )
+
+        path_only = Path(tmp) / "path-mention.log"
+        path_only.write_text(
+            "load .hermes/skills/speckit-specify/SKILL.md\n"
+            "author .specify/specs/001-migrate/spec.md\n",
+            encoding="utf-8",
+        )
+        proc = _run(path_only)
+        blob = proc.stdout + proc.stderr
+        if proc.returncode != 1:
+            return _fail("path mention without skill-load must REFUSE: %s" % blob)
 
         grep_only = Path(tmp) / "grep-skill-path.log"
         grep_only.write_text(
@@ -95,6 +118,18 @@ def main() -> int:
             )
         if "mandated action absent" not in blob:
             return _fail("grep-only log must name mandated action absent: %s" % blob)
+
+        cat_only = Path(tmp) / "cat-skill-path.log"
+        cat_only.write_text(
+            "  ┊ 💻 $         cat .hermes/skills/speckit-specify/SKILL.md  0.1s\n",
+            encoding="utf-8",
+        )
+        proc = _run(cat_only)
+        if proc.returncode != 1:
+            return _fail(
+                "cat of SKILL.md path must not PASS A-gate: %s%s"
+                % (proc.stdout, proc.stderr)
+            )
 
     print(
         "OK: assert-card-performed selftest "

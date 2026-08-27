@@ -34,9 +34,10 @@ from pathlib import Path
 EXIT_RE = re.compile(r"\[exit (\d+)\]")
 SPECIFY_RUN = "specify workflow run speckit"
 UNKNOWN = "Unknown skill(s): speckit-specify"
-SKILL_FOLLOW = (
-    "speckit-specify/SKILL.md",
-    ".hermes/skills/speckit-specify",
+# Hermes skill_view / load event (dest-13 dual-seed used sdd/; v14 seeds
+# the unique project leaf). Not a path mention, grep, cat, or echo.
+SKILL_LOAD_RE = re.compile(
+    r"┊\s+\S+\s+skill\s+(?:sdd/)?speckit-specify(?:\s|$|/)"
 )
 
 
@@ -78,16 +79,13 @@ def specify_runs(text: str) -> list[tuple[str, int | None]]:
 
 
 def followed_speckit_skill(text: str) -> bool:
-    """Skill follow is a load/skill_view line, not a grep of the path.
+    """Skill follow is a load/skill_view line, not a path mention.
 
-    Architect ``193642ZA``: ``marker in text`` PASSes when the worker
-    greps ``speckit-specify/SKILL.md`` into the official log.
+    Official log shape: ``┊ 📚 skill  speckit-specify`` (unique leaf) or
+    ``┊ 📚 skill  sdd/speckit-specify`` (dest-13 dual-seed recovery).
     """
     for raw in text.splitlines():
-        low = raw.lower()
-        if any(tok in low for tok in ("grep ", "grep\t", " rg ", "\trg ", "ripgrep")):
-            continue
-        if any(marker in raw for marker in SKILL_FOLLOW):
+        if SKILL_LOAD_RE.search(raw):
             return True
     return False
 

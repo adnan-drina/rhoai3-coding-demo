@@ -13,6 +13,8 @@
 # Optional:
 #   DERIVE_UPGRADE_CMD='…'   override upgrade command inside the copy
 #                            (default: free-primitives-boot3 composite, W2 §12)
+#   MODERNIZED_ROOT=…        workshop selftest / dest override (default: walk
+#                            to migration.yaml from this script)
 set -euo pipefail
 
 # --dry-run as first arg or DRY_RUN=1: print plan and exit 0 (no mkdir/rm/mutate).
@@ -37,7 +39,13 @@ resolve_migration_root() {
   echo "cannot find project root (migration.yaml) walking up from $1 (SR-2)" >&2
   return 1
 }
-MODERNIZED_ROOT="$(resolve_migration_root "${SCRIPT_DIR}")" || exit 1
+MODERNIZED_ROOT="$(
+  if [ -n "${MODERNIZED_ROOT:-}" ]; then
+    cd "${MODERNIZED_ROOT}" && pwd
+  else
+    resolve_migration_root "${SCRIPT_DIR}"
+  fi
+)" || exit 1
 # Operator 083840ZO GAP 3 / Architect 084356ZA: default under dest tree
 # `/projects/modernized/.derived/…`. Do not add `/projects/.derived` to
 # K2_ALLOW_ROOT (Architect 082958ZA).
@@ -69,31 +77,53 @@ if [[ "${DRY_RUN}" == "1" ]]; then
 fi
 
 [ -d "${LEGACY_SRC}" ] || die "missing LEGACY_SRC=${LEGACY_SRC}"
-[ -f "${LEGACY_SRC}/pom.xml" ] || die "no pom.xml under ${LEGACY_SRC}"
+if [ -f "${LEGACY_SRC}/pom.xml" ]; then
+  :
+elif [ -f "${LEGACY_SRC}/build.gradle" ] || [ -f "${LEGACY_SRC}/build.gradle.kts" ]; then
+  :
+else
+  die "no pom.xml or build.gradle under ${LEGACY_SRC}"
+fi
 
 mkdir -p "${MANIFEST_DIR}"
 
-# Extract spring-boot.version (property) or parent version heuristic.
+# Extract spring-boot.version from pom.xml or Gradle (gs-rest identity).
 detect_boot_version() {
-  local pom="$1"
+  local tree="$1"
   local ver
-  ver="$(python3 - "$pom" <<'PY'
+  ver=$(python3 - "$tree" <<'PY'
 import re, sys
-text = open(sys.argv[1], encoding="utf-8", errors="replace").read()
-m = re.search(r"<spring-boot\.version>\s*([^<]+)\s*</spring-boot\.version>", text)
-if m:
-    print(m.group(1).strip()); raise SystemExit
-m = re.search(
-    r"<parent>.*?<artifactId>\s*spring-boot-starter-parent\s*</artifactId>.*?"
-    r"<version>\s*([^<]+)\s*</version>",
-    text,
-    re.S,
-)
-if m:
-    print(m.group(1).strip()); raise SystemExit
+from pathlib import Path
+root = Path(sys.argv[1])
+pom = root / "pom.xml"
+if pom.is_file():
+    text = pom.read_text(encoding="utf-8", errors="replace")
+    m = re.search(r"<spring-boot\.version>\s*([^<]+)\s*</spring-boot\.version>", text)
+    if m:
+        print(m.group(1).strip()); raise SystemExit
+    m = re.search(
+        r"<parent>.*?<artifactId>\s*spring-boot-starter-parent\s*</artifactId>.*?"
+        r"<version>\s*([^<]+)\s*</version>",
+        text,
+        re.S,
+    )
+    if m:
+        print(m.group(1).strip()); raise SystemExit
+for name in ("build.gradle", "build.gradle.kts"):
+    p = root / name
+    if not p.is_file():
+        continue
+    text = p.read_text(encoding="utf-8", errors="replace")
+    for pat in (
+        r"id\s*\(\s*['\"]org\.springframework\.boot['\"]\s*\)\s*version\s+['\"]([^'\"]+)['\"]",
+        r"id\s+['\"]org\.springframework\.boot['\"]\s+version\s+['\"]([^'\"]+)['\"]",
+    ):
+        m = re.search(pat, text)
+        if m:
+            print(m.group(1).strip()); raise SystemExit
 print("")
 PY
-)"
+)
   printf '%s' "${ver}"
 }
 
@@ -102,6 +132,7 @@ detect_jdk_version() {
   local pom_dir="$1"
   local pom="${pom_dir}/pom.xml"
   local ver
+  if [ -f "${pom}" ]; then
   ver="$(python3 - "$pom" <<'PY'
 import re, sys
 text = open(sys.argv[1], encoding="utf-8", errors="replace").read()
@@ -135,7 +166,29 @@ PY
       return 0
     fi
   fi
-  printf ''
+  fi
+  ver=$(python3 - "${pom_dir}" <<'PY'
+import re, sys
+from pathlib import Path
+root = Path(sys.argv[1])
+for name in ("build.gradle", "build.gradle.kts"):
+    p = root / name
+    if not p.is_file():
+        continue
+    text = p.read_text(encoding="utf-8", errors="replace")
+    for pat in (
+        r"JavaLanguageVersion\.of\s*\(\s*(\d+)\s*\)",
+        r"sourceCompatibility\s*=\s*['\"]?(\d+)",
+        r"targetCompatibility\s*=\s*['\"]?(\d+)",
+        r"JavaVersion\.VERSION_(\d+)",
+    ):
+        m = re.search(pat, text)
+        if m:
+            print(m.group(1).strip()); raise SystemExit
+print("")
+PY
+)
+  printf '%s' "${ver}"
 }
 
 version_ge_3() {
@@ -179,22 +232,30 @@ write_manifest() {
 import json, sys, datetime
 (path, mode, src_boot, der_boot, src_jdk, der_jdk, sha, referent,
  legacy, derived) = sys.argv[1:11]
+note_identity = (
+    "mode=identity: harvest_referent is the legacy mount (Spring Boot already "
+    ">= 3). There is no derived_root. Do not resolve .derived/legacy-at-3."
+)
+note_derived = (
+    "Harvest faithfulness compares destination to harvest_referent "
+    "(the frozen Boot-3 derivation), never to legacy@2.x alone. JDK + Boot "
+    "versions are recorded for diagnosability; derivation is still one frozen stage."
+)
 doc = {
     "schema": "legacy-at-3/v2",
     "mode": mode,
     "legacy_src": legacy,
-    "derived_root": derived,
     "harvest_referent": referent,
-    # W2 §3.1 — record both bundled upgrades so a later parity/derivation
-    # failure can attribute JDK vs Spring Boot (or the chained 2.7 step).
     "jdk_version_source": src_jdk,
     "jdk_version_derived": der_jdk,
     "spring_boot_version_source": src_boot,
     "spring_boot_version_derived": der_boot,
     "sha256": sha,
     "frozen_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-    "note": "Harvest faithfulness compares destination to harvest_referent (legacy@3.x), never to legacy@2.x alone. JDK + Boot versions are recorded for diagnosability; derivation is still one frozen stage.",
+    "note": note_identity if mode == "identity" else note_derived,
 }
+if mode == "derived":
+    doc["derived_root"] = derived
 with open(path, "w", encoding="utf-8") as fh:
     json.dump(doc, fh, indent=2)
     fh.write("\n")
@@ -202,11 +263,11 @@ print(f"Wrote manifest {path}", file=__import__("sys").stderr)
 PY
 }
 
-SRC_VER="$(detect_boot_version "${LEGACY_SRC}/pom.xml")"
+SRC_VER="$(detect_boot_version "${LEGACY_SRC}")"
 [ -n "${SRC_VER}" ] || die "could not detect spring-boot version in ${LEGACY_SRC}/pom.xml"
 SRC_JDK="$(detect_jdk_version "${LEGACY_SRC}")"
 [ -n "${SRC_JDK}" ] || die "could not detect JDK/language level in ${LEGACY_SRC}/pom.xml (java.version / compiler.* / mvn evaluate)"
-echo "legacy@2.x mount: ${LEGACY_SRC} (spring-boot ${SRC_VER}, jdk ${SRC_JDK})" >&2
+echo "legacy mount: ${LEGACY_SRC} (spring-boot ${SRC_VER}, jdk ${SRC_JDK})" >&2
 
 if version_ge_3 "${SRC_VER}"; then
   echo "mode=identity — already Boot 3.x; derivation is the RO mount" >&2
@@ -275,7 +336,7 @@ if ! run_upgrade; then
   die "upgrade failed — free-primitives composite or DERIVE_UPGRADE_CMD. RO mount left untouched."
 fi
 
-DER_VER="$(detect_boot_version "${DERIVED_ROOT}/pom.xml")"
+DER_VER="$(detect_boot_version "${DERIVED_ROOT}")"
 version_ge_3 "${DER_VER}" || die "after upgrade spring-boot.version is '${DER_VER}' (want >= 3)"
 DER_JDK="$(detect_jdk_version "${DERIVED_ROOT}")"
 [ -n "${DER_JDK}" ] || die "could not detect JDK/language level after upgrade in ${DERIVED_ROOT}"

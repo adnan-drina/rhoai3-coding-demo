@@ -421,6 +421,9 @@ check "080 K2 env-assignment selftest passes" \
 check "080 derive default DERIVED_ROOT is inside dest tree" \
   "grep -c '\${MODERNIZED_ROOT}/.derived/legacy-at-3' '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/skills/migration/derive-legacy-boot3/scripts/derive-legacy-boot3.sh' || echo 0" \
   "1"
+check "080 derive-legacy-boot3 identity omits derived_root" \
+  "python3 '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/skills/migration/derive-legacy-boot3/scripts/derive-legacy-boot3.selftest.py' >/dev/null && echo 1 || echo 0" \
+  "1"
 check "080 GitOps dest-init K2_ALLOW_ROOT includes /projects/legacy" \
   "awk '/K2_ALLOW_ROOT/ && /\\/projects\\/legacy/ {print 1; exit}' '${GITOPS_INIT}' || echo 0" \
   "1"

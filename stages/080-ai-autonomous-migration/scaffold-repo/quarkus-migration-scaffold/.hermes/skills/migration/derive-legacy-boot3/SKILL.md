@@ -5,7 +5,7 @@ license: Apache-2.0
 compatibility: Linux seat; Java 21 and Maven; writable derived tree
 metadata:
   author: rhoai3-harness-team
-  version: "1.2.1"
+  version: "1.2.2"
   hermes:
     tags:
     - migration
@@ -50,10 +50,13 @@ bash "${HERMES_SKILL_DIR}/scripts/derive-legacy-boot3.sh"
 bash "${HERMES_SKILL_DIR}/scripts/check-manifest.sh"
 ```
 
-- If `spring-boot.version >= 3` already: `mode=identity` — `harvest_referent`
-  is `/projects/legacy`.
+- If `spring-boot.version >= 3` already (pom or Gradle): `mode=identity` —
+  `harvest_referent` is the legacy mount. The manifest **does not** declare
+  `derived_root` (dest-10 froze `/projects/modernized/.derived/legacy-at-3`
+  which did not exist).
 - Otherwise: copy → Boot 2→3 upgrade → freeze under
-  `/projects/modernized/.derived/legacy-at-3`; write `evidence/derived/legacy-at-3.json`.
+  `/projects/modernized/.derived/legacy-at-3`; write `evidence/derived/legacy-at-3.json`
+  with `derived_root` equal to that tree.
 - Manifest schema `legacy-at-3/v2` records **JDK and Spring Boot versions
   before and after** (W2 §3.1) beside `sha256` / `harvest_referent`, so a later
   failure can attribute the bundled upgrades without splitting the frozen stage.
@@ -88,14 +91,18 @@ bash "${HERMES_SKILL_DIR}/scripts/check-manifest.sh"
   Progress and DRY-RUN lines are on stderr only.
 - `check-manifest.sh` exits 0 printing `OK: legacy-at-3 mode=<identity|derived>
   harvest_referent=<path> jdk A→B boot X→Y`. It fails closed when any of the
-  eight required fields is empty, the schema is not `legacy-at-3/v2`, or
-  `harvest_referent` is not a directory.
+  eight required fields is empty, the schema is not `legacy-at-3/v2`,
+  `harvest_referent` is not a directory, `mode=identity` declares
+  `derived_root`, or `mode=derived` names a `derived_root` that is not a
+  directory. `--root DIR` selects the workspace (workshop selftest).
 - `run-composite.sh` (free-primitives) emits `free-primitives-boot3: OK` on
   stderr and `{script:run-composite,ok,composite_root,rule_count,…}` on stdout.
 - `mode=derived`: `/projects/modernized/.derived/legacy-at-3` exists, its `pom.xml`
   resolves to Boot ≥ 3, and the tree is write-protected (`chmod a-w`, dirs keep
   `+x`). A writable derived tree means the freeze never ran or something edited
   it afterwards — re-derive; do not `chmod` it back.
+- `mode=identity`: no `.derived/legacy-at-3` tree is created. A consumer that
+  resolves `derived_root` must fail closed; identity does not emit that key.
 - **Silent-failure catch:** `harvest_referent=/projects/legacy` while
   `spring_boot_version_source` is < 3. That combination means harvest is being
   compared to the 2.x mount, which reads every Boot-3 API change as infidelity.
