@@ -112,7 +112,7 @@ What it does, in order (each step dies non-zero on failure):
    `quarkus-spring-*`; empty `legacy_pom` is REFUSE — do not guess
    `/projects/legacy`). When `$HERMES_KANBAN_TASK` is set, dual-write KEEP
    evidence with `.hermes/kernel/kanban_attach.py --exec` (25 MB/file; PVC
-   paths stay). **M2 PLAN** (`plan-migration-partition`, lint
+   paths stay; set is type-inventory.json not derived/legacy-at-3.json). **M2 PLAN** (`plan-migration-partition`, lint
    `check-spec-readiness`) is the named consumer of
    those attachments — it reads them by parent M1 id, not from metadata path
    lists. Schema lives with this skill (`check-findings-handoff.py`;

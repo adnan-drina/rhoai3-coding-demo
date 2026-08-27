@@ -10,6 +10,7 @@ from pathlib import Path
 KERNEL = Path(__file__).resolve().parent
 sys.path.insert(0, str(KERNEL))
 from kanban_attach import (  # noqa: E402
+    DEFAULT_REL,
     MAX_BYTES,
     argv_for_attach,
     attach_files,
@@ -34,12 +35,28 @@ def main() -> int:
         keep.mkdir()
         handoff = keep / "findings-handoff.json"
         handoff.write_text('{"schema":"rhoai3.findings-handoff/v1"}', encoding="utf-8")
+        (keep / "type-inventory.json").write_text(
+            '{"schema":"rhoai3.type-inventory/v1"}', encoding="utf-8"
+        )
+        derived = keep / "derived"
+        derived.mkdir()
+        (derived / "legacy-at-3.json").write_text(
+            '{"schema":"legacy-at-3/v2"}', encoding="utf-8"
+        )
         huge = keep / "mta-findings.json"
         huge.write_bytes(b"x" * (MAX_BYTES + 1))
         plan = plan_attachments(root)
         paths = {Path(f["path"]).name for f in plan["files"]}
         if "findings-handoff.json" not in paths:
             return _fail("handoff not planned: %s" % plan)
+        if "type-inventory.json" not in paths:
+            return _fail("type-inventory not planned (dest-13): %s" % plan)
+        if "legacy-at-3.json" in paths:
+            return _fail("derivation manifest must not attach: %s" % plan)
+        if any("legacy-at-3" in rel for rel in DEFAULT_REL):
+            return _fail("DEFAULT_REL still names derived/legacy-at-3.json")
+        if "evidence/type-inventory.json" not in DEFAULT_REL:
+            return _fail("DEFAULT_REL must name type-inventory.json")
         if any(Path(f["path"]).name == "mta-findings.json" for f in plan["files"]):
             return _fail("oversize findings must not attach")
         if not any(s["reason"] == "exceeds 25 MiB cap" for s in plan["skipped"]):

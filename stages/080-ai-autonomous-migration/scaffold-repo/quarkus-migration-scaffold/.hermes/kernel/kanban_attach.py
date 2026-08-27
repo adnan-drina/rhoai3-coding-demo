@@ -4,6 +4,11 @@
 Official: kanban_attach / complete(artifacts=), 25 MB/file
 (`.agents/skills/hermes-kanban/`). PVC paths stay. A dest wipe must not
 be the only copy. Not dest-4 mid-run.
+
+The type graph (``evidence/type-inventory.json``) is on the card. The
+derivation manifest (``evidence/derived/legacy-at-3.json``) is not —
+dest-13 attached that basename instead of the type graph, so M2 reading
+``kanban_attachments`` had no T0_3 input (PVC fallback hid it).
 """
 from __future__ import annotations
 
@@ -19,7 +24,7 @@ MAX_BYTES = 25 * 1024 * 1024
 DEFAULT_REL = (
     "evidence/findings-handoff.json",
     "evidence/entry-point-inventory.json",
-    "evidence/derived/legacy-at-3.json",
+    "evidence/type-inventory.json",
     "evidence/required-extensions.json",
     "evidence/mta-findings.json",
 )
