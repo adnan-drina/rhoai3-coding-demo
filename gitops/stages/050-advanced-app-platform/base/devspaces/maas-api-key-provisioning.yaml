@@ -1586,7 +1586,7 @@ data:
         fh.write("default=qwen3-6-27b\n")
         fh.write("provider=qwen27b\n")
         fh.write("api_mode=chat_completions\n")
-        fh.write("base=in-cluster-kserve-qwen27b\n")
+        fh.write("base=maas-gateway-qwen27b\n")
         fh.write("ad=AD-008\n")
         fh.write(
             "minimax=escalation-override\n" if minimax_on else "minimax=disabled\n"
@@ -1594,7 +1594,7 @@ data:
     with open(os.path.join(managed, ".rhoai3-w1-five-pins"), "w") as fh:
         fh.write(
             "stale_timeout_seconds=900\n"
-            "maas_api_base_url=in-cluster-kserve-.svc\n"
+            "maas_api_base_url=maas-gateway\n"
             f"ssl_ca_cert={service_ca}\n"
             "auxiliary.title_generation.enabled=false\n"
             "auxiliary.background_review.enabled=false\n"
