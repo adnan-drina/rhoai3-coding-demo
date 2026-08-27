@@ -2,18 +2,20 @@
 name: hermes-self-improvement
 metadata:
   author: rhoai3-coding-demo
-  version: 1.0.0
+  version: 1.1.0
   platform-family: "hermes"
   platform-baseline: "repo"
   ocp-baseline: "repo"
   skill-group: "Hermes Agent"
 description: >
   Use when designing or governing Hermes' self-improvement loop for stage
-  080: the post-turn background review that writes memory and skills, the
-  consent gates (memory.write_approval, skills.write_approval), the
-  curator's lifecycle role, /journey auditability, and routing the review
-  to a cheaper model. Do NOT use for skill authoring mechanics (use
-  hermes-skills) or curator command depth (also hermes-skills).
+  080: dest-init honest-off vs the official governed-on fleet recipe, the
+  post-turn background review that writes memory and skills, the product
+  off-switch (auxiliary.background_review.enabled), the consent gates
+  (memory.write_approval, skills.write_approval), the curator, /journey,
+  and routing the review to a cheaper model. Do NOT use for skill
+  authoring mechanics (use hermes-skills) or curator command depth (also
+  hermes-skills).
 ---
 
 # Hermes Self-Improvement Loop
@@ -24,8 +26,9 @@ stage 080 governs it.
 
 ## Source Grounding
 
-Official pages (captured 2026-08-12, see `references/source-capture.md`):
-Persistent Memory (background review, write approval, journey), Skills
+Official pages (Memory re-fetched 2026-08-27; Skills/Curator captured
+2026-08-12; see `references/source-capture.md`): Persistent Memory
+(background review, write approval, journey, `enabled: false`), Skills
 System (agent-managed skills, background writes), Curator (lifecycle).
 There is no single "self-improvement" page — this skill is the
 cross-cutting synthesis, every fact quoted from its owning page.
@@ -56,12 +59,42 @@ procedural memory); every agent-created skill lands in
   scanner) is a third, independent mechanism. Memory writes are also
   injection/exfiltration-scanned before acceptance regardless of gates.
 
+### The product off-switch (live Memory page, 2026-08-27)
+
+`auxiliary.background_review.enabled: false` skips automatic post-turn
+forks. Manual `/refine` still works. `display.memory_notifications: off`
+only hides the chat line — the review still runs and still writes.
+
+Setting both `memory.memory_enabled` and `memory.user_profile_enabled`
+false drops the built-in memory tool and its prompt block. Only the first
+false leaves USER.md on and the tool in schema.
+
 ### Cost and routing
 
 By default the review "runs on your main chat model" with full warm-cache
 replay (cheap cache reads). Route it to a cheaper model via
 `auxiliary.background_review` — which switches it to replaying "a compact
-digest" instead of the full transcript to avoid cold cache writes.
+digest" instead of the full transcript to avoid cold cache writes. Dest
+does not author `fallback_providers` (AD-008); do not silently point this
+slot at MiniMax.
+
+### Dest campaign postures
+
+Live pins are Managed Scope dest-init
+(`maas-api-key-provisioning.yaml`), not the seat
+`config.yaml.template`. Seat templates stay silent.
+
+- **A — Honest off (dest default, AD-H):** both memory stores false,
+  `auxiliary.background_review.enabled: false`, `curator.enabled: false`,
+  skill gates stay true. Typed Kanban cards are the durable lesson
+  channel. Assert the review pin next to W1 `title_generation.enabled:
+  false`.
+- **B — Governed on (official fleet recipe):** both stores on with
+  `memory.write_approval: true`, keep skill gates, give implementer the
+  memory toolset (or accept a split loop), put learned skills in a
+  gitignored writable dir — not golden `.hermes/skills/` — Operator
+  drains `/skills pending` on dest dashboard :9119. Needs an Operator GO.
+  Do not dest-apply unpublished dest-init onto a running dest.
 
 ### Downstream lifecycle
 
@@ -74,20 +107,21 @@ saved skill and memory entry, with list/delete/edit.
 
 ## Workflow
 
-1. Decide the fleet posture explicitly: for stage 080 governed workers,
-   enabling both write-approval gates is the deliberate choice — the
-   defaults are write-freely (this is the escalated posture decision from
-   the family's maintainer handoff; it covers BOTH gates, not just
-   skills).
-2. Route `auxiliary.background_review` to an inexpensive model for
-   high-volume worker fleets.
-3. Audit periodically via `/journey` and `hermes curator status`; pin
-   agent-created skills that became load-bearing.
-4. Treat agent-authored skills as code: the official tip is to say yes to
-   the agent saving skills ("these agent-authored skills capture the
-   exact workflow including pitfalls"), but gate + review them like any
-   contribution in a governed fleet.
+1. Dest default is posture A unless Operator GO for posture B. Do not treat
+   `memory_enabled: false` alone as off — pin `user_profile_enabled:
+   false` and `auxiliary.background_review.enabled: false`.
+2. Official fleet recipe (posture B) is both write-approval gates on —
+   product defaults are write-freely. That is a dest GO, not the campaign
+   default.
+3. Do not route `auxiliary.background_review` at MiniMax without a named
+   AD-008 GO. Leave the slot at auto / main, or keep the fork disabled.
+4. If posture B is granted: audit via `/journey` and `hermes curator
+   status`; pin load-bearing learned skills; drain pending on dest
+   dashboard, not a TTY. Learned skills must not land on writable golden
+   `.hermes/skills/` `external_dirs`.
 5. Cite the official section in the PR (stage 080 official-first rule).
+   Campaign "persist HARD off" is the overlay gateway persist helper —
+   not this loop.
 
 ## Validation
 
@@ -103,12 +137,16 @@ hermes config get auxiliary.background_review --json   # review routing
 
 - Assuming the loop is off by default — it isn't; only the GATES default
   off. An ungoverned worker quietly accumulates memory and skills.
+- Pinning `memory_enabled: false` without `user_profile_enabled: false`
+  — USER.md stays on and the memory tool is not dropped.
+- Using `display.memory_notifications: off` as a disable — it is not.
 - Gating skills but not memory (or vice versa) — two separate keys, one
-  loop.
-- Background-review writes bypassing scrutiny on messaging platforms —
-  there's no inline prompt there; only `/memory pending` review.
-- Forgetting the curator will archive unused learned skills after 90
-  days — pin what matters.
+  loop. Dest implementer has skills not memory; orchestrator has memory
+  not skills. Official loop needs both on one seat.
+- Headless `approvals.mode: off` is terminal consent, not the skill gate.
+  Nobody on dest is seated to drain `/skills pending`.
+- K2 script denies `skill_manage` but dest-init matcher omits it —
+  product `skills.write_approval` is the live gate.
 - Routing the review to a cheap model and expecting full-transcript
   fidelity — digest replay is the documented trade-off.
 

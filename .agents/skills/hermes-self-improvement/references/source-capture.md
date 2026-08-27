@@ -11,8 +11,8 @@
 | Source URL | https://hermes-agent.nousresearch.com/docs/user-guide/features/skills (Agent-Managed Skills, Gating sections — full capture in hermes-skills) |
 | Source URL | https://hermes-agent.nousresearch.com/docs/user-guide/features/curator (full capture in hermes-skills) |
 | Documentation category | Features |
-| Capture date | 2026-08-12 |
-| Capture method | Reviewer-direct cross-cutting capture (maintainer-requested; the requested URL was a duplicate of the delegation-patterns guide — corrected to the actual sources): memory-page self-improvement sections fetched verbatim; skills/curator facts reused from the already-verified hermes-skills capture |
+| Capture date | 2026-08-12 (Skills/Curator); Memory page re-fetched 2026-08-27 |
+| Capture method | Reviewer-direct cross-cutting capture (maintainer-requested; the requested URL was a duplicate of the delegation-patterns guide — corrected to the actual sources): memory-page self-improvement sections fetched verbatim; skills/curator facts reused from the already-verified hermes-skills capture. 2026-08-27 re-fetch closed the off-switch gap (`auxiliary.background_review.enabled`). |
 
 ## Captured Content
 
@@ -28,7 +28,13 @@
   injection/exfiltration-scanned regardless.
 - Cost: review runs on the main chat model by default (warm-cache
   replay); auxiliary.background_review reroutes to a cheaper model with
-  compact-digest replay.
+  compact-digest replay. `auxiliary.background_review.enabled: false`
+  skips automatic post-turn forks; `/refine` still works
+  (Memory page "Disabling automatic reviews", fetched 2026-08-27).
+  `display.memory_notifications: off` hides the chat line only.
+- Full off for built-in stores: both `memory_enabled` and
+  `user_profile_enabled` false — drops the memory tool. Either store
+  alone true keeps the tool for that target.
 - Audit/lifecycle: /journey timeline (list/delete/edit); curator
   jurisdiction over agent-created skills (stale 30d / archive 90d /
   never auto-deletes / pinning; captured in depth by hermes-skills).
@@ -46,6 +52,6 @@ only memory's self-improvement-loop slice; `auxiliary.*` wiring →
 - Full Persistent Memory page depth (capacity management, MEMORY.md/
   USER.md targets, external providers) remains uncaptured — the memory
   taxonomy gap is narrowed, not closed, by this skill.
-- Whether the background review can be disabled outright (vs gated) is
-  not stated in the sections captured — check the memory page's
-  configuration section on a future pass.
+- CLOSED 2026-08-27: the background review can be disabled outright via
+  `auxiliary.background_review.enabled: false` (Memory page, "Disabling
+  automatic reviews"). Not a gate; `/refine` remains.

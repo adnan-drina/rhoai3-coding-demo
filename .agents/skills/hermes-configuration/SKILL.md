@@ -2,7 +2,7 @@
 name: hermes-configuration
 metadata:
   author: rhoai3-coding-demo
-  version: 1.2.0
+  version: 1.2.1
   platform-family: "hermes"
   platform-baseline: "repo"
   ocp-baseline: "repo"
@@ -152,8 +152,10 @@ Managed Scope (`$HERMES_MANAGED_DIR/config.yaml`) is the seat, not
 - MiniMax is `providers.minimax` (OpenAI-compatible LiteMaaS), registered
   only when `.rhoai3-model-escalation.json` is valid. It is never
   `model.default`. Native `minimax-oauth` is not used.
-- Auxiliary: `title_generation.enabled: false` (single-GPU). Compression
-  stays `provider: auto` (same 131K window as main).
+- Auxiliary: `title_generation.enabled: false` (single-GPU).
+  `background_review.enabled: false` (dest posture A; Memory page
+  2026-08-27). Compression stays `provider: auto` (same 131K window as
+  main). Do not route the review at MiniMax (AD-008).
 
 ## Pitfalls
 

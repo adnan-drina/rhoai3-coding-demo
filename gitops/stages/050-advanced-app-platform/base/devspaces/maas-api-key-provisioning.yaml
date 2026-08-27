@@ -982,8 +982,19 @@ data:
             "hard_stop_enabled": True,
         },
         # AD-H §2.2 / §4 — typed Kanban metadata is the handoff channel.
+        # Official Memory page (fetched 2026-08-27): both stores false
+        # drops the memory tool and its prompt block. memory_enabled
+        # false alone leaves USER.md on. This is dest posture A (honest
+        # off), not the governed-on fleet recipe (posture B).
         "memory": {
             "memory_enabled": False,
+            "user_profile_enabled": False,
+        },
+        # Official Curator: idle pass over agent-created skills, not the
+        # post-turn review. Pin off with the review so dest does not
+        # archive bundled profile skills on the default 7d cadence.
+        "curator": {
+            "enabled": False,
         },
         # AD-H §1 / §7.3 — no inline shell; scaffold + global (spec-kit)
         # via external_dirs. W3/A5 (E-150714Z / E-204256Z): pin BOTH
@@ -1086,8 +1097,15 @@ data:
         },
         # Single-GPU: disable session-title aux calls contending with main.
         # Other aux slots stay official auto (use main / Qwen).
+        # Official Memory page (2026-08-27): background_review.enabled
+        # false skips automatic post-turn self-improvement forks; /refine
+        # still works. display.memory_notifications off is not this
+        # switch. Do not route this slot at MiniMax (AD-008).
         "auxiliary": {
             "title_generation": {
+                "enabled": False,
+            },
+            "background_review": {
                 "enabled": False,
             },
             "compression": {
@@ -1517,9 +1535,22 @@ data:
         raise SystemExit("ERROR: HERMES_MINIMAX=1 but providers.minimax missing")
     if not minimax_on and has_minimax:
         raise SystemExit("ERROR: providers.minimax present without AD-008 escalation")
+    mem = pin.get("memory") or {}
+    if mem.get("memory_enabled") is not False:
+        raise SystemExit("ERROR: memory.memory_enabled must be false")
+    if mem.get("user_profile_enabled") is not False:
+        raise SystemExit("ERROR: memory.user_profile_enabled must be false")
     aux = ((pin.get("auxiliary") or {}).get("title_generation") or {})
     if aux.get("enabled") is not False:
         raise SystemExit("ERROR: W1 pin auxiliary.title_generation.enabled must be false")
+    br = ((pin.get("auxiliary") or {}).get("background_review") or {})
+    if br.get("enabled") is not False:
+        raise SystemExit(
+            "ERROR: auxiliary.background_review.enabled must be false"
+        )
+    cur = pin.get("curator") or {}
+    if cur.get("enabled") is not False:
+        raise SystemExit("ERROR: curator.enabled must be false")
     disp = pin.get("display") or {}
     if disp.get("streaming") is not True:
         raise SystemExit("ERROR: W1 pin display.streaming must be true")
@@ -1550,6 +1581,10 @@ data:
             "maas_api_base_url=in-cluster-kserve-.svc\n"
             f"ssl_ca_cert={service_ca}\n"
             "auxiliary.title_generation.enabled=false\n"
+            "auxiliary.background_review.enabled=false\n"
+            "memory.memory_enabled=false\n"
+            "memory.user_profile_enabled=false\n"
+            "curator.enabled=false\n"
             "display.streaming=true\n"
         )
     print(
