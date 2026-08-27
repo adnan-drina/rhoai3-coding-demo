@@ -15,6 +15,7 @@ from k4_convert import (  # noqa: E402
     convert_file,
     convert_partition,
     dd3_union_gaps,
+    main as convert_main,
     stamp_write_set,
     validate_inputs,
     validate_result,
@@ -447,6 +448,10 @@ def main() -> int:
             return _fail("DEST_POM_EXT_CMD must name the written path")
         if not (dest / "evidence" / "bodies" / "m3-setup.json").is_file():
             return _fail("dest_pom_extensions --body path missing after convert")
+
+    help_rc = convert_main(["--help"])
+    if help_rc != 0:
+        return _fail("k4_convert --help must exit 0, got %s" % help_rc)
 
     print("OK: K4 selftest (PATH_TOKEN + created_cards + partition copy + T0_3_SERVICE)")
     return 0

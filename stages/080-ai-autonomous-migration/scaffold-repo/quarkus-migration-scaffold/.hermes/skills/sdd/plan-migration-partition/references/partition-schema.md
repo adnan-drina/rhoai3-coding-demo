@@ -31,7 +31,7 @@ Write `evidence/partition.json` (coverage also accepts
 | `skills` | pinned leaves; else `kind` → default list |
 | `endpoints` | HTTP stories: `["GET /greeting", …]` (METHOD + path). Coverage 1:1 |
 | `legacy_source` | HTTP stories: inventory `file` from `entry-point-inventory.json` (legacy package/path). Copied onto the M3 body as `identity.legacy_source`. Dest `files_writable` is the dest package. |
-| `dest_file` | HTTP stories: inventory dest twin (path or list). Missing dest_file is `K4_DEST_FILE` at convert. Round-trip invented dest Java still skip when dest_file is absent. |
+| `dest_file` | HTTP stories: the **type-inventory dest twin of an inventoried legacy type** (path or list). It is **not** the new file this story creates. Naming a created file that is not that twin is invented dest_file and REFUSEs at convert (`K4_DEST_FILE`). |
 | `title` | human title; not the write-set |
 | `acceptance_criteria` | strings; paths named here must sit in `files_writable` |
 | `supersedes` | optional named 1:N successor set for a dest_file |

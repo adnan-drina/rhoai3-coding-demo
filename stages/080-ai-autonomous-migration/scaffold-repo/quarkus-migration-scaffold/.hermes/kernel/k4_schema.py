@@ -118,7 +118,8 @@ REMEDY = {
         "the worker rediscover com/example/restservice from com/demo."
     ),
     "K4_DEST_FILE": (
-        "HTTP stories must set dest_file to the inventory dest twin. "
+        "HTTP stories must set dest_file to the type-inventory dest twin of an "
+        "inventoried legacy type, not the new file this story creates. "
         "Absence is skip in dest_file_invented, so dest-9 live us1_greeting "
         "(Application.java / GreetingResource.java in files_writable, "
         "dest_file missing) never REFUSEd invented dest Java. Convert "

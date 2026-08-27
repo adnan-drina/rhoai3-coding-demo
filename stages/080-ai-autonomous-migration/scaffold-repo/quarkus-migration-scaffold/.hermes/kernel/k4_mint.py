@@ -260,6 +260,13 @@ def subprocess_runner(argv: list[str]) -> tuple[int, str, str]:
 
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
+    if not args or args[0] in {"-h", "--help"}:
+        sys.stdout.write(
+            "k4_mint.py (--payloads PATH | --partition PATH) [--out PATH] [--exec] [--hermes BIN]\n"
+            "Translate K4 payloads into serial hermes kanban create. Default is dry-run argv.\n"
+            "Does not import create_task. Does not kanban daemon --force.\n"
+        )
+        return 0 if args else 2
     payloads_path: Path | None = None
     partition_path: Path | None = None
     out_path: Path | None = None
@@ -287,6 +294,11 @@ def main(argv: list[str] | None = None) -> int:
             execute = True
             i += 1
             continue
+        if args[i] in {"-h", "--help"}:
+            sys.stdout.write(
+                "k4_mint.py (--payloads PATH | --partition PATH) [--out PATH] [--exec]\n"
+            )
+            return 0
         print("FAIL: unknown arg %s" % args[i], file=sys.stderr)
         return 1
     if (payloads_path is None) == (partition_path is None):

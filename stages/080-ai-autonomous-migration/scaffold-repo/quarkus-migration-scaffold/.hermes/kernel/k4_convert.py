@@ -773,6 +773,15 @@ def format_issues(issues: list[Issue]) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
+    if not args or args[0] in {"-h", "--help"}:
+        sys.stdout.write(
+            "k4_convert.py --partition PATH [--tasks PATH] [--out PATH]\n"
+            "Convert typed partition.json to kanban_create payloads. Does not mint.\n"
+            "--partition PATH  evidence/partition.json\n"
+            "--tasks PATH      optional tasks.md (planning defects only; not write-sets)\n"
+            "--out PATH        write payloads JSON (stdout if omitted)\n"
+        )
+        return 0 if args else 2
     partition: Path | None = None
     tasks: Path | None = None
     out: Path | None = None
@@ -790,6 +799,12 @@ def main(argv: list[str] | None = None) -> int:
             out = Path(args[i + 1])
             i += 2
             continue
+        if args[i] in {"-h", "--help"}:
+            sys.stdout.write(
+                "k4_convert.py --partition PATH [--tasks PATH] [--out PATH]\n"
+                "Convert typed partition.json to kanban_create payloads. Does not mint.\n"
+            )
+            return 0
         print("FAIL: unknown arg %s" % args[i], file=sys.stderr)
         return 1
     if partition is None:

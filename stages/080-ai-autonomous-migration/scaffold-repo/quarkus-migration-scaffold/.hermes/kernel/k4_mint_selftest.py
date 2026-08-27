@@ -209,6 +209,11 @@ def main() -> int:
         if "K4_MINT_CREATE" not in str(exc):
             return _fail("swarm: %s" % exc)
 
+    from k4_mint import main as mint_main  # noqa: PLC0415
+
+    if mint_main(["--help"]) != 0:
+        return _fail("k4_mint --help must exit 0")
+
     print("OK: K4 mint (serial create, max-retries 1, no dest factory cards)")
     return 0
 
