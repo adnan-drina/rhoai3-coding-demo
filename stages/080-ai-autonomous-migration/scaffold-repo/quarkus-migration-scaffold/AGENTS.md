@@ -72,7 +72,7 @@ workspace state.
 | Kind | Home |
 |------|------|
 | Standing conventions | this `AGENTS.md` only |
-| Identity | authored `.hermes/SOUL.md` → loaded `$HERMES_HOME/SOUL.md` |
+| Identity | dest-user: authored `.hermes/SOUL.md` → base `$HERMES_HOME/SOUL.md`. Workers: `.hermes/config/profiles/{orchestrator,implementer,reviewer}.SOUL.md` → that profile's `$HERMES_HOME/SOUL.md`. Official: one SOUL.md per profile home. |
 | Guidance procedures | `.hermes/skills/<category>/<name>/` (card-attachable) |
 | Domain gates G-1..G-4 | skill `check-domain-parity` |
 | M4 verdict JSON producer | skill `compose-m4-verdict` |
@@ -84,7 +84,7 @@ workspace state.
 | SDD stack | `.specify/` (workspace provision only — never commit in golden) |
 | Destination POM authoring | skill `author-destination-pom` |
 | Seat config template | `.hermes/config/config.yaml.template` (no secrets) |
-| Dest worker profiles | `.hermes/config/profiles/{orchestrator,implementer}.yaml.template` |
+| Dest worker profiles | `.hermes/config/profiles/{orchestrator,implementer,reviewer}.yaml.template` plus sibling `{name}.SOUL.md` |
 
 ### Paths
 
@@ -149,6 +149,10 @@ story is REFUSE.
 M1 KEEP evidence also `python3 .hermes/kernel/kanban_attach.py --task "$HERMES_KANBAN_TASK"`
 (PVC paths stay; 25 MB/file). Do not `kanban decompose`. Do not `kanban swarm`
 for serial T0. Do not run `hermes kanban daemon --force`.
+
+When a tool result is `Blocked terminal` or `repeated_exact_failure_warning`,
+there is no legal next command: `kanban_block --kind needs_input` naming that
+command and its last refusal. Do not exit 0 with the card still running.
 
 `hermes kanban block` marks the **card**, not the **process**. Seat ops
 contain workers from outside the worker.

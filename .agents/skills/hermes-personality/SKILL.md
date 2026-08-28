@@ -18,9 +18,11 @@ description: >
 
 # Hermes Personality & SOUL.md
 
-Use this skill when touching agent identity: the scaffold's
-`.hermes/SOUL.md` is stage 080's designated identity home, and its
-content rules come from these official pages.
+Use this skill when touching agent identity. Stage 080 authors four
+SOUL.md files: dest-user `.hermes/SOUL.md` (base `HERMES_HOME`) and
+`.hermes/config/profiles/{orchestrator,implementer,reviewer}.SOUL.md`
+(placed into each profile home). Official: one SOUL.md per profile.
+Content rules come from these official pages.
 
 ## Source Grounding
 
@@ -112,6 +114,9 @@ hermes config get display.personality   # active overlay, if any
   the overlay resets cleanly, the file edit doesn't.
 - Forgetting the scaffold rule: `workshop-extensions/` overlays never
   touch SOUL (stage 080 convention on top of the official model).
+- Sharing one SOUL.md across dest worker profiles — official load is
+  `$HERMES_HOME/SOUL.md` for that profile; dest-init must place a
+  distinct file after `profile create --no-alias`, not `--clone`.
 - An empty SOUL.md doesn't mean "no identity" — the built-in fallback
   takes over silently.
 

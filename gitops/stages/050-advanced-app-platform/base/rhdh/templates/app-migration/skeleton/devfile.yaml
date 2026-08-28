@@ -253,9 +253,11 @@ commands:
           'This path is NOT the migration workspace identity.' \
           '' \
           'Set HERMES_HOME=/projects/modernized/.hermes/home (container env / login' \
-          'profile) and load $HERMES_HOME/SOUL.md. The authored copy lives at' \
-          '/projects/modernized/.hermes/SOUL.md and is factory-placed under HERMES_HOME' \
-          'with sha256 verification (AD-H section 14).' \
+          'profile) for dest-user identity, or HERMES_HOME=.../home/profiles/<name>' \
+          'when hermes -p <name>. Load that home'\''s SOUL.md. Dest-user authored' \
+          'copy: /projects/modernized/.hermes/SOUL.md. Worker copies:' \
+          '/projects/modernized/.hermes/config/profiles/<name>.SOUL.md. dest-init' \
+          'places each under the matching HERMES_HOME with sha256 (AD-H section 14).' \
           '' \
           'Do not use the auto-seeded Hermes starter identity in this seat.' \
           > "${DECOY_SOUL}"

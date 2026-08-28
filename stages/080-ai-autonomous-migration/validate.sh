@@ -212,10 +212,13 @@ check "check-phase-matrix.py is not in the golden scaffold" \
 check "harness tooling is gated on the modernized profile" \
   "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -c 'PROFILE}\" = \"modernized\"' || echo 0" \
   "2"
-# AD-H §14 — SOUL.md is the sole judgement-doctrine carrier; init must
-# abort on missing/empty/hash mismatch and smoke-test Hermes load+scan.
+# AD-H §14 — dest-user + per-profile SOUL.md; init must abort on
+# missing/empty/hash mismatch and smoke-test Hermes load+scan.
 check "init script hash-verifies SOUL.md and aborts (AD-H §14)" \
   "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -c 'SOUL.md hash mismatch after placement' || echo 0" \
+  "1"
+check "init script places per-profile SOUL.md (AD-H §14)" \
+  "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -c 'profiles/\${name}/SOUL.md' || echo 0" \
   "1"
 check "init script load-time SOUL smoke via load_soul_md (AD-H §14)" \
   "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -c 'from agent.prompt_builder import load_soul_md' || echo 0" \
@@ -389,6 +392,50 @@ check "080 golden implementer profile template present" \
 check "080 golden reviewer profile template present" \
   "test -f '${SCAFFOLD_PROFILES}/reviewer.yaml.template' && echo present || echo missing" \
   "present"
+check "080 golden orchestrator SOUL.md present" \
+  "test -f '${SCAFFOLD_PROFILES}/orchestrator.SOUL.md' && echo present || echo missing" \
+  "present"
+check "080 golden implementer SOUL.md present" \
+  "test -f '${SCAFFOLD_PROFILES}/implementer.SOUL.md' && echo present || echo missing" \
+  "present"
+check "080 golden reviewer SOUL.md present" \
+  "test -f '${SCAFFOLD_PROFILES}/reviewer.SOUL.md' && echo present || echo missing" \
+  "present"
+check "080 golden worker SOUL.md files are git-tracked" \
+  "git -C '${REPO_ROOT}' ls-files --error-unmatch '${SCAFFOLD_PROFILES}/orchestrator.SOUL.md' '${SCAFFOLD_PROFILES}/implementer.SOUL.md' '${SCAFFOLD_PROFILES}/reviewer.SOUL.md' >/dev/null && echo tracked || echo missing" \
+  "tracked"
+check "080 four SOUL.md files have distinct sha256" \
+  "sha256sum '${SCAFFOLD_080}/.hermes/SOUL.md' '${SCAFFOLD_PROFILES}/orchestrator.SOUL.md' '${SCAFFOLD_PROFILES}/implementer.SOUL.md' '${SCAFFOLD_PROFILES}/reviewer.SOUL.md' | awk '{print \$1}' | sort -u | wc -l | tr -d ' '" \
+  "4"
+check "080 dest-user SOUL.md names dest-user identity" \
+  "grep -c 'You are the dest-user' '${SCAFFOLD_080}/.hermes/SOUL.md' || echo 0" \
+  "1"
+# kanban_block is a phrasing lint, not the identity gate. Distinct sha256
+# (above) is what proves dest-user is not a copy of a worker SOUL.
+check "080 dest-user SOUL.md is not the implementer identity" \
+  "grep -c 'kanban_block' '${SCAFFOLD_080}/.hermes/SOUL.md' || echo 0" \
+  "0"
+check "080 implementer SOUL.md names kanban_block" \
+  "grep -c 'kanban_block' '${SCAFFOLD_PROFILES}/implementer.SOUL.md' || echo 0" \
+  "1"
+check "080 orchestrator SOUL.md refuses to implement" \
+  "grep -c 'You do not implement' '${SCAFFOLD_PROFILES}/orchestrator.SOUL.md' || echo 0" \
+  "1"
+check "080 reviewer SOUL.md refuses to write the product tree" \
+  "grep -c 'You do not write the product tree' '${SCAFFOLD_PROFILES}/reviewer.SOUL.md' || echo 0" \
+  "1"
+check "080 GitOps places per-profile SOUL.md" \
+  "grep -c 'profiles/\${name}/SOUL.md' '${GITOPS_INIT}' || echo 0" \
+  "1"
+check "080 GitOps asserts four SOUL.md sha256 are distinct" \
+  "grep -c 'four SOUL.md files have distinct sha256' '${GITOPS_INIT}' || echo 0" \
+  "1"
+check "080 GitOps resolves worker home via hermes -p profile show" \
+  "grep -c -- '-p \"\${_soul_profile}\" profile show' '${GITOPS_INIT}' || echo 0" \
+  "1"
+check "080 GitOps SOUL smoke does not couple identity phrasing" \
+  "grep -c 'doctrine marker missing after load' '${GITOPS_INIT}' || echo 0" \
+  "0"
 check "080 GitOps seats dest worker profiles (C-2 skip retired)" \
   "grep -c 'ensure_dest_worker_profiles' '${GITOPS_INIT}' || echo 0" \
   "2"

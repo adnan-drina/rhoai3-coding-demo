@@ -21,6 +21,7 @@ from paved_road import (
     load_steps,
     matching_terminal_lines,
     sync_audit,
+    validate_steps_doc,
 )
 
 M1 = HERMES_DIR / "skills" / "paved-road" / "paved-road-m1"
@@ -74,13 +75,40 @@ class TestStepsContract(unittest.TestCase):
             names,
             [
                 "derive-legacy-boot3",
-                "scan-with-mta",
                 "inventory-legacy-surface",
+                "scan-with-mta",
             ],
         )
         native = [s for s in doc["steps"] if s["backing"] == "native"]
         self.assertEqual(len(native), 1)
         self.assertEqual(native[0]["native"], "kanban_attach.py")
+
+    def test_m1_scan_before_inventory_is_refused(self):
+        swapped = load_steps(M1 / "steps.json")
+        steps = list(swapped["steps"])
+        inv = next(i for i, s in enumerate(steps) if s.get("skill") == "inventory-legacy-surface")
+        scan = next(i for i, s in enumerate(steps) if s.get("skill") == "scan-with-mta")
+        steps[inv], steps[scan] = steps[scan], steps[inv]
+        swapped["steps"] = steps
+        errors = validate_steps_doc(swapped)
+        self.assertTrue(
+            any("inventory-legacy-surface must precede scan-with-mta" in e for e in errors),
+            errors,
+        )
+
+    def test_m1_split_handoff_step_is_refused(self):
+        doc = load_steps(M1 / "steps.json")
+        extra = {
+            "id": "emit-findings-handoff",
+            "backing": "native",
+            "native": "emit-findings-handoff.py",
+        }
+        doc["steps"] = list(doc["steps"]) + [extra]
+        errors = validate_steps_doc(doc)
+        self.assertTrue(
+            any("emit-findings-handoff.py runs inside mta-analyze-legacy.sh" in e for e in errors),
+            errors,
+        )
 
     def test_m2_one_producer_plan_migration_partition(self):
         doc = load_steps(M2 / "steps.json")

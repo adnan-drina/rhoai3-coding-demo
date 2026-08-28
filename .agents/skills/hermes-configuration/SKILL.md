@@ -96,10 +96,13 @@ per the docs).
 
 A profile is a complete separate Hermes home (`config.yaml`, `.env`,
 `SOUL.md`, memories, sessions, skills, cron, state db) selected via
-`HERMES_HOME`. A profile is NOT a sandbox: on the local backend the agent
-keeps your user account's filesystem access, and `SOUL.md` does not enforce
-boundaries. Host profiles share OS-user CLI credentials by default; set
-`terminal.home_mode: profile` for strict per-profile CLI identity.
+`HERMES_HOME`. Dest seating copies a distinct authored SOUL.md into each
+worker profile home after `profile create --no-alias`; do not `--clone`
+to share dest-user identity. A profile is NOT a sandbox: on the local
+backend the agent keeps your user account's filesystem access, and
+`SOUL.md` does not enforce boundaries. Host profiles share OS-user CLI
+credentials by default; set `terminal.home_mode: profile` for strict
+per-profile CLI identity.
 
 ## Workflow
 

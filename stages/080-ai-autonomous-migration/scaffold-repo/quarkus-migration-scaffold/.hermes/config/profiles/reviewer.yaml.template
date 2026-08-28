@@ -1,6 +1,7 @@
 # Dest worker profile — reviewer (paved-road mechanical audit).
 # Applied dest-time: `hermes profile create reviewer --no-alias` then
-# `hermes -p reviewer config set`. OBJECT: --clone (EX-4).
+# `hermes -p reviewer config set`. Identity: sibling reviewer.SOUL.md
+# → profiles/reviewer/SOUL.md. OBJECT: --clone (EX-4).
 #
 # Structural, not instruction: kanban + terminal + skills so the worker
 # can run assert-paved-road-audit.py against the official log. Write

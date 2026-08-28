@@ -120,8 +120,38 @@ def validate_steps_doc(doc: Any, *, path: Path | None = None) -> list[str]:
         if keep is not None:
             if not isinstance(keep, list) or not all(isinstance(x, str) for x in keep):
                 errors.append("%s: keep must be a string array" % prefix)
+        if "emit-findings-handoff" in sid or (
+            backing == "skill"
+            and "emit-findings-handoff" in str(step.get("skill") or "")
+        ):
+            errors.append(
+                "%s: emit-findings-handoff.py runs inside mta-analyze-legacy.sh; "
+                "do not list it as a paved-road step (order inventory-legacy-surface "
+                "then scan-with-mta)" % prefix
+            )
     if producers != 1:
         errors.append("%s: exactly one producer: true (got %d)" % (loc, producers))
+    if str(doc.get("kind") or "") == "m1-analyze":
+        skill_idx: dict[str, int] = {}
+        for i, step in enumerate(steps):
+            if not isinstance(step, dict) or step.get("backing") != "skill":
+                continue
+            name = str(step.get("skill") or "").strip()
+            if name and name not in skill_idx:
+                skill_idx[name] = i
+        inv = skill_idx.get("inventory-legacy-surface")
+        scan = skill_idx.get("scan-with-mta")
+        if inv is None or scan is None:
+            errors.append(
+                "%s: m1-analyze must include inventory-legacy-surface and "
+                "scan-with-mta" % loc
+            )
+        elif inv >= scan:
+            errors.append(
+                "%s: inventory-legacy-surface must precede scan-with-mta "
+                "(AR-4.1: emit-findings-handoff.py runs inside "
+                "mta-analyze-legacy.sh)" % loc
+            )
     return errors
 
 

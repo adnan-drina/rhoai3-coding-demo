@@ -1,6 +1,7 @@
 # Dest worker profile — orchestrator (Operator GO 231808Z / AD-019 trigger (c)).
 # Applied dest-time: `hermes profile create orchestrator --no-alias` then
 # `hermes -p orchestrator config set` (hermes-configuration / hermes-cli).
+# Identity: sibling orchestrator.SOUL.md → profiles/orchestrator/SOUL.md.
 # OBJECT: --clone / --clone-from / --clone-all (EX-4 isolated $HOME, copied .env).
 #
 # Pin v0.20.5 (`v2026.8.19`, Operator GO `111522Z`) is the dest contract.

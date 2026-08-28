@@ -7,10 +7,10 @@ parallel home is a defect.
 | Kind | Home |
 |------|------|
 | Standing convention | `AGENTS.md` (this file is identity + taxonomy only) |
-| Identity | authored `.hermes/SOUL.md`; dest loads `$HERMES_HOME/SOUL.md` (sha256 at dest-init; standing stop-and-block lives here, not as SKILL.md copies) |
+| Identity | dest-user: authored `.hermes/SOUL.md`; dest loads base `$HERMES_HOME/SOUL.md`. Workers: `.hermes/config/profiles/{orchestrator,implementer,reviewer}.SOUL.md` → `profiles/<name>/SOUL.md` (sha256 at dest-init; standing stop-and-block for implementer lives in implementer.SOUL.md, not as SKILL.md copies). Official: one SOUL.md per profile home. |
 | Seat pins | `.hermes/pins.json` |
 | Seat pin oracle | Runtime: dest-init `hermes --version` vs `.hermes/pins.json`. Build: `workspace-images/scripts/assert-hermes-source-pin.py`. Dest `.hermes/checks/` retired. |
-| Config templates | `.hermes/config/` — no secrets; dest Managed Scope owns the live pin. Worker profiles: `.hermes/config/profiles/{orchestrator,implementer,reviewer}.yaml.template` (Operator GO `231808Z`; dest GitOps applies via `hermes profile create --no-alias`, never `--clone`). Reviewer: kanban + terminal + skills; write toolsets disabled. |
+| Config templates | `.hermes/config/` — no secrets; dest Managed Scope owns the live pin. Worker profiles: `.hermes/config/profiles/{orchestrator,implementer,reviewer}.yaml.template` plus sibling `{name}.SOUL.md` (Operator GO `231808Z`; dest GitOps applies via `hermes profile create --no-alias`, never `--clone`). Reviewer: kanban + terminal + skills; write toolsets disabled. |
 | Product guidance | `.hermes/skills/<category>/<name>/` |
 | Dashboard launcher | `.hermes/dashboard/start-dashboard.sh` — defaults `HERMES_WEB_DIST` to overlay bake. Observability, not capability. Dest `web_dist/` / `install-web-dist.sh` / `PIN` retired. |
 | Harness dest-init | `.hermes/skills/harness/` (`dispatch-phase` / `autostart-migration.sh` only) |

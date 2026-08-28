@@ -119,19 +119,19 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
-    soul = GOLDEN / ".hermes" / "SOUL.md"
+    soul = GOLDEN / ".hermes" / "config" / "profiles" / "implementer.SOUL.md"
     soul_txt = soul.read_text(encoding="utf-8")
     if "kanban_block" not in soul_txt:
-        print("FAIL: SOUL.md must name kanban_block as the operational stop", file=sys.stderr)
+        print("FAIL: implementer.SOUL.md must name kanban_block as the operational stop", file=sys.stderr)
         return 1
     if "Correcting your own invocation and retrying is legal" not in soul_txt:
-        print("FAIL: SOUL.md must permit correcting an invocation and retrying", file=sys.stderr)
+        print("FAIL: implementer.SOUL.md must permit correcting an invocation and retrying", file=sys.stderr)
         return 1
     if "Do not substitute an equivalent command" in soul_txt:
-        print("FAIL: SOUL.md must not forbid retry with the absolute equivalent-command ban", file=sys.stderr)
+        print("FAIL: implementer.SOUL.md must not forbid retry with the absolute equivalent-command ban", file=sys.stderr)
         return 1
     if "Do not hand-author the artifact" not in soul_txt:
-        print("FAIL: SOUL.md must keep the three observed-failure prohibitions", file=sys.stderr)
+        print("FAIL: implementer.SOUL.md must keep the three observed-failure prohibitions", file=sys.stderr)
         return 1
     skills_root = GOLDEN / ".hermes" / "skills"
     leftover = []

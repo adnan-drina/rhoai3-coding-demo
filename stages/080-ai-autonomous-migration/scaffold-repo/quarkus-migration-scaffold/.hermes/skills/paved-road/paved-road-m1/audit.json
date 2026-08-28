@@ -17,16 +17,16 @@
     },
     {
       "backing": "skill",
+      "id": "inventory-legacy-surface",
+      "keep": [],
+      "needle": "inventory-legacy-surface"
+    },
+    {
+      "backing": "skill",
       "id": "scan-with-mta",
       "keep": [],
       "needle": "scan-with-mta",
       "producer": true
-    },
-    {
-      "backing": "skill",
-      "id": "inventory-legacy-surface",
-      "keep": [],
-      "needle": "inventory-legacy-surface"
     },
     {
       "backing": "native",

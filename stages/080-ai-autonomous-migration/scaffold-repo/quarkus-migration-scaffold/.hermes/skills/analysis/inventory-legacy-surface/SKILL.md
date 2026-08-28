@@ -1,6 +1,6 @@
 ---
 name: inventory-legacy-surface
-description: Use when M1 must inventory legacy@3.x entry points and the types reachable from those files. Writes evidence/entry-point-inventory.json then evidence/type-inventory.json from harvest_referent in evidence/derived/legacy-at-3.json (do not hardcode /projects/legacy). Use before the M1 to M2 handoff, when partition coverage must cover dest twins as well as HTTP rows, when a collaborator layer is missing from the plan, or when smoke sampling needs the inventory — even if the user does not name type inventory. Do not use as a substitute for scan-with-mta.
+description: Use when M1 must inventory legacy@3.x entry points and the types reachable from those files. Writes evidence/entry-point-inventory.json then evidence/type-inventory.json from harvest_referent in evidence/derived/legacy-at-3.json (do not hardcode /projects/legacy). Use before scan-with-mta (mta-analyze-legacy.sh emits the M1→M2 handoff internally and AR-4.1-refuses without the inventory), when partition coverage must cover dest twins as well as HTTP rows, when a collaborator layer is missing from the plan, or when smoke sampling needs the inventory — even if the user does not name type inventory. Do not use as a substitute for scan-with-mta.
 license: Apache-2.0
 compatibility: Linux seat; Python 3.11+; reads the legacy@3.x tree
 metadata:
@@ -17,8 +17,11 @@ metadata:
 
 ## When to Use
 
-- M1 ANALYZE, **before** the M1→M2 handoff: `emit-findings-handoff.py` refuses
-  (exit 2, AR-4.1) unless `evidence/entry-point-inventory.json` already exists.
+- M1 ANALYZE, **before** `scan-with-mta`: `mta-analyze-legacy.sh` calls
+  `emit-findings-handoff.py` internally, which refuses (exit 2, AR-4.1)
+  unless `evidence/entry-point-inventory.json` already exists. Inventory
+  after the handoff invalidates its digest. Do not split emit into a
+  separate paved-road step.
 - Before M2 plan / Kanban populate: the inventory is a declared M1 output
   and an accept-scope path
   (`check-release-readiness/scripts/check-accept-scope.py`). Do not pin

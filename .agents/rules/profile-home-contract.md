@@ -80,6 +80,10 @@ Spec-kit still dumps under dest-user `/home/user/.hermes/skills`
    `assert-pinned-gates-ran` turns green is the walked-KEEP shape
    (Review `112040ZR`). If a pinned gate never ran, M4 `kanban_block`.
    Do not dest-complete leftover dest-4 cards around that.
+7. **SOUL.md is per profile home.** dest-init places dest-user identity
+   at base `HERMES_HOME/SOUL.md` and each worker's authored
+   `{name}.SOUL.md` at `profiles/<name>/SOUL.md`. OBJECT `--clone` as
+   the copy (EX-4). Workers must not share dest-user identity.
 
 Official cite: `.agents/skills/hermes-configuration/` HERMES_HOME vs HOME
 and `terminal.home_mode`; `.agents/skills/hermes-hooks/` `pre_tool_call`.

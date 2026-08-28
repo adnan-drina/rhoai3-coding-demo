@@ -1,6 +1,7 @@
 # Dest worker profile — implementer (Operator GO 231808Z / AD-019 trigger (c)).
 # Applied dest-time: `hermes profile create implementer --no-alias` then
-# `hermes -p implementer config set`. OBJECT: --clone (EX-4).
+# `hermes -p implementer config set`. Identity: sibling implementer.SOUL.md
+# → profiles/implementer/SOUL.md. OBJECT: --clone (EX-4).
 #
 # BIND named a subset of the official `coding` composite (hermes-tools):
 #   file + terminal + code_execution + delegation + skills

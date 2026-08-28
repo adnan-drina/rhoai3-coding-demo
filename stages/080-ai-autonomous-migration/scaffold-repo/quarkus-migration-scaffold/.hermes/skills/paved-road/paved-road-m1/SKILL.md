@@ -36,7 +36,9 @@ Pin **only** this leaf (`--skill paved-road-m1`). Subskills load via
 
 ## Procedure
 
-1. Read `steps.json`. For each step in order:
+1. Read `steps.json`. Follow that listed order (derive → inventory →
+   scan → attach). `mta-analyze-legacy.sh` already emits the handoff;
+   do not insert emit as its own step.
    - `skill` — `skill_view` that leaf and follow its SKILL.md.
    - `kernel` — run the named argv under `.hermes/kernel/`.
    - `native` — run the named verb (`kanban_attach.py` KEEP listed on the step).
@@ -53,5 +55,9 @@ attach). Paved-road itself is the index, not a second producer.
 
 - Silence fails. Any `[exit 1]` on a mandated needle fails. Do not last-wins
   across different needles (dest-14 `bound_gate_red` hole).
+- `inventory-legacy-surface` precedes `scan-with-mta`: the latter's one
+  entry point runs `emit-findings-handoff.py` internally, which refuses
+  (AR-4.1) without `evidence/entry-point-inventory.json`. Re-running the
+  inventory after the handoff invalidates its digest.
 - Path mention / grep / cat of a SKILL.md is not `skill_view`.
 - Do not `kanban daemon --force`. Do not dest-apply dest-14.

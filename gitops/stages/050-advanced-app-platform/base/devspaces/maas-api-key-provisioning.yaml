@@ -628,6 +628,72 @@ data:
       export PATH="${HOME}/.local/bin:${PATH}"
     }
 
+    _place_soul() {
+      # Official: a profile is its own Hermes home, including SOUL.md
+      # (https://hermes-agent.nousresearch.com/docs/user-guide/profiles#what-are-profiles).
+      # dest-user identity → base HERMES_HOME/SOUL.md.
+      # Worker identity → profiles/<name>/SOUL.md after profile create --no-alias.
+      # OBJECT --clone as the copy mechanism (EX-4). Fail-closed: missing,
+      # empty, or hash-mismatch must not fall back to the generic starter.
+      local soul_src="$1"
+      local soul_dst="$2"
+      if [ ! -f "${soul_src}" ]; then
+        echo "ERROR: ${soul_src} absent — identity slot required (AD-H §14)." >&2
+        return 1
+      fi
+      if [ ! -s "${soul_src}" ]; then
+        echo "ERROR: ${soul_src} empty — Hermes would silently fall back (AD-H §14)." >&2
+        return 1
+      fi
+      if ! grep -q '[^[:space:]]' "${soul_src}"; then
+        echo "ERROR: ${soul_src} whitespace-only — Hermes would silently fall back (AD-H §14)." >&2
+        return 1
+      fi
+      mkdir -p "$(dirname "${soul_dst}")"
+      cp -f "${soul_src}" "${soul_dst}"
+      local soul_src_hash soul_dst_hash
+      soul_src_hash="$(sha256sum "${soul_src}" | awk '{print $1}')"
+      soul_dst_hash="$(sha256sum "${soul_dst}" | awk '{print $1}')"
+      if [ -z "${soul_src_hash}" ] || [ "${soul_src_hash}" != "${soul_dst_hash}" ]; then
+        echo "ERROR: SOUL.md hash mismatch after placement (src=${soul_src_hash:-none} dst=${soul_dst_hash:-none})." >&2
+        return 1
+      fi
+      echo "Hermes AD-H §14: placed SOUL.md at ${soul_dst} (sha256=${soul_src_hash:0:12})."
+    }
+
+    _assert_souls_distinct() {
+      # Placement hash-verify proves copy fidelity, not four identities.
+      # Fail-closed if any two SOUL.md files share sha256.
+      local py="$1"
+      shift
+      "${py}" - "$@" <<'SOULHASH'
+    import hashlib
+    import sys
+
+    paths = sys.argv[1:]
+    if len(paths) != 4:
+        raise SystemExit(f"ERROR: expected 4 SOUL.md paths, got {len(paths)}")
+    seen = {}
+    for path in paths:
+        try:
+            data = open(path, "rb").read()
+        except OSError as exc:
+            raise SystemExit(f"ERROR: cannot read {path}: {exc}") from exc
+        if not data.strip():
+            raise SystemExit(
+                f"ERROR: {path} empty — Hermes would silently fall back"
+            )
+        digest = hashlib.sha256(data).hexdigest()
+        if digest in seen:
+            raise SystemExit(
+                f"ERROR: SOUL.md collision {path} == {seen[digest]} "
+                f"sha256={digest}"
+            )
+        seen[digest] = path
+    print("AD-H §14: four SOUL.md files have distinct sha256.")
+    SOULHASH
+    }
+
     ensure_dest_worker_profiles() {
       # Operator GO 231808Z / AD-019 trigger (c). Three dest worker profiles
       # (orchestrator, implementer, reviewer). Official: hermes profile create
@@ -645,8 +711,15 @@ data:
       local orch_tpl="${tpl_dir}/orchestrator.yaml.template"
       local impl_tpl="${tpl_dir}/implementer.yaml.template"
       local rev_tpl="${tpl_dir}/reviewer.yaml.template"
+      local orch_soul="${tpl_dir}/orchestrator.SOUL.md"
+      local impl_soul="${tpl_dir}/implementer.SOUL.md"
+      local rev_soul="${tpl_dir}/reviewer.SOUL.md"
       if [ ! -f "${orch_tpl}" ] || [ ! -f "${impl_tpl}" ] || [ ! -f "${rev_tpl}" ]; then
         echo "ERROR: dest profile templates missing under ${tpl_dir} (231808Z)." >&2
+        return 1
+      fi
+      if [ ! -f "${orch_soul}" ] || [ ! -f "${impl_soul}" ] || [ ! -f "${rev_soul}" ]; then
+        echo "ERROR: dest profile SOUL.md templates missing under ${tpl_dir} (AD-H §14)." >&2
         return 1
       fi
       if [ ! -x "${hermes_bin}" ]; then
@@ -781,6 +854,11 @@ data:
           echo "ERROR: auth.json under dest profile ${name}; refuse Portal leftover." >&2
           return 1
         fi
+        # A profile is its own Hermes home —
+        # <base>/profiles/<name>/SOUL.md is that home's SOUL.md.
+        # --clone is forbidden; copy the authored file.
+        _place_soul "${tpl_dir}/${name}.SOUL.md" \
+          "${hermes_home}/profiles/${name}/SOUL.md" || return 1
       }
       _ensure_one_dest_profile orchestrator \
         "Kanban orchestrator: board operations only. Cannot execute implementation." \
@@ -855,6 +933,14 @@ data:
     REVMDLPIN
       then
         echo "ERROR: reviewer model pin (AD-008) failed." >&2
+        return 1
+      fi
+      if ! _assert_souls_distinct "${py}" \
+        "${hermes_home}/SOUL.md" \
+        "${hermes_home}/profiles/orchestrator/SOUL.md" \
+        "${hermes_home}/profiles/implementer/SOUL.md" \
+        "${hermes_home}/profiles/reviewer/SOUL.md"; then
+        echo "ERROR: dest SOUL.md files are not four distinct identities." >&2
         return 1
       fi
       echo "C-2: dest worker profiles orchestrator + implementer + reviewer seated (no --clone)."
@@ -1747,34 +1833,16 @@ data:
       rm -f "${hermes_home}/config.yaml"
       # Platform must not own the developer-writable user config path.
 
-      # AD-H §14 — SOUL.md authored in scaffold, placed under HERMES_HOME.
-      # Hash-verify + abort (parity with auth.json): missing/empty/corrupt
-      # placement must not silently fall back to a generic identity — the
-      # entire judgement doctrine lives only here (AGENTS.md is convention).
-      local soul_src="${PROJECT_DIR}/.hermes/SOUL.md"
-      local soul_dst="${hermes_home}/SOUL.md"
-      if [ ! -f "${soul_src}" ]; then
-        echo "ERROR: ${soul_src} absent — identity slot required (AD-H §14)." >&2
-        return
+      # AD-H §14 — dest-user identity authored in scaffold, placed at base
+      # HERMES_HOME. Worker identities are distinct files under
+      # .hermes/config/profiles/<name>.SOUL.md, placed after profile create.
+      # Official: each profile home has its own SOUL.md. Fail-closed on
+      # missing/empty/hash-mismatch — Hermes would otherwise fall back to
+      # the generic starter (AGENTS.md is convention, not identity).
+      if ! _place_soul "${PROJECT_DIR}/.hermes/SOUL.md" "${hermes_home}/SOUL.md"; then
+        echo "ERROR: dest-user SOUL.md placement failed (AD-H §14)." >&2
+        return 1
       fi
-      if [ ! -s "${soul_src}" ]; then
-        echo "ERROR: ${soul_src} empty — Hermes would silently fall back (AD-H §14)." >&2
-        return
-      fi
-      # Reject whitespace-only (Hermes strip() → empty → silent fallback).
-      if ! grep -q '[^[:space:]]' "${soul_src}"; then
-        echo "ERROR: ${soul_src} whitespace-only — Hermes would silently fall back (AD-H §14)." >&2
-        return
-      fi
-      cp -f "${soul_src}" "${soul_dst}"
-      local soul_src_hash soul_dst_hash
-      soul_src_hash="$(sha256sum "${soul_src}" | awk '{print $1}')"
-      soul_dst_hash="$(sha256sum "${soul_dst}" | awk '{print $1}')"
-      if [ -z "${soul_src_hash}" ] || [ "${soul_src_hash}" != "${soul_dst_hash}" ]; then
-        echo "ERROR: SOUL.md hash mismatch after placement (src=${soul_src_hash:-none} dst=${soul_dst_hash:-none})." >&2
-        return
-      fi
-      echo "Hermes AD-H §14: placed SOUL.md at ${soul_dst} (sha256=${soul_src_hash:0:12})."
 
       # V34-2 — dest cannot keep golden .git; stamp resolved main SHA.
       local stamp_rev="${PROJECT_DIR}/.hermes/skills/harness/dispatch-phase/scripts/stamp-harness-rev.py"
@@ -1787,14 +1855,17 @@ data:
       # scan+load. Placement hashing cannot catch scanner alteration at load.
       # Architect 202501ZA: overlay owns the agent tree. Fail-closed if the
       # bake is missing. No dest .hermes/home/hermes-agent fallback.
+      # Smoke dest-user first, then each worker profile after seating.
       local hermes_agent_root="/opt/hermes-agent"
-      if [ ! -d "${hermes_agent_root}" ]; then
-        echo "ERROR: overlay Hermes agent tree missing at ${hermes_agent_root}; cannot smoke-test SOUL.md load (AD-H §14)." >&2
-        return 1
-      fi
-      if ! (
-        cd "${hermes_agent_root}"
-        HERMES_HOME="${hermes_home}" "${venv_py}" - <<'SOULSMOKE'
+      _smoke_soul_at() {
+        local soul_home="$1"
+        if [ ! -d "${hermes_agent_root}" ]; then
+          echo "ERROR: overlay Hermes agent tree missing at ${hermes_agent_root}; cannot smoke-test SOUL.md load (AD-H §14)." >&2
+          return 1
+        fi
+        if ! (
+          cd "${hermes_agent_root}"
+          HERMES_HOME="${soul_home}" "${venv_py}" - <<'SOULSMOKE'
     import os
     import sys
 
@@ -1818,22 +1889,21 @@ data:
     if loaded.lstrip().startswith("[BLOCKED:"):
         print(f"ERROR: SOUL.md blocked by injection scanner: {loaded[:240]}", file=sys.stderr)
         sys.exit(1)
-    for marker in (
-        "faithful",
-        "read-only and they are the truth",
-        "they are right",
-        "blockage is a correct outcome",
-    ):
-        if marker not in loaded:
-            print(f"ERROR: doctrine marker missing after load: {marker!r}", file=sys.stderr)
-            sys.exit(1)
     if loaded.strip() != expected:
         print("ERROR: loaded SOUL.md differs from on-disk content after scan/truncate", file=sys.stderr)
         sys.exit(1)
-    print("Hermes AD-H §14: SOUL.md load-time smoke OK (identity intact).")
+    print(
+        "Hermes AD-H §14: SOUL.md load-time smoke OK at "
+        + os.environ["HERMES_HOME"]
+        + " (identity intact)."
+    )
     SOULSMOKE
-      ); then
-        echo "ERROR: SOUL.md load-time smoke failed (AD-H §14)." >&2
+        ); then
+          echo "ERROR: SOUL.md load-time smoke failed at ${soul_home} (AD-H §14)." >&2
+          return 1
+        fi
+      }
+      if ! _smoke_soul_at "${hermes_home}"; then
         return 1
       fi
 
@@ -1845,6 +1915,42 @@ data:
         echo "ERROR: dest worker profile seating failed (231808Z)." >&2
         return
       fi
+      # Runtime workers are hermes -p <name> with HERMES_HOME at the base.
+      # profile show Path: is the mechanism; load_soul_md at that path is
+      # the scanner consequence. Do not set HERMES_HOME to the profile dir
+      # and call that the same as -p.
+      local _soul_profile _soul_show _soul_resolved _soul_expected
+      for _soul_profile in orchestrator implementer reviewer; do
+        _soul_expected="${hermes_home}/profiles/${_soul_profile}"
+        if ! _soul_show="$(
+          HERMES_HOME="${hermes_home}" \
+          HERMES_MANAGED_DIR="${managed_dir}" \
+          HERMES_WRITE_SAFE_ROOT="${PROJECT_DIR}" \
+          K2_ALLOW_ROOT="${PROJECT_DIR}:/projects/legacy" \
+          "${hermes_bin}" -p "${_soul_profile}" profile show
+        )"; then
+          echo "ERROR: hermes -p ${_soul_profile} profile show failed." >&2
+          return 1
+        fi
+        _soul_resolved="$(
+          printf '%s\n' "${_soul_show}" \
+            | sed -n 's/^[[:space:]]*Path:[[:space:]]*//p' \
+            | head -n1
+        )"
+        if [ -z "${_soul_resolved}" ]; then
+          echo "ERROR: hermes -p ${_soul_profile} profile show omitted Path:." >&2
+          printf '%s\n' "${_soul_show}" >&2
+          return 1
+        fi
+        if [ "${_soul_resolved%/}" != "${_soul_expected%/}" ]; then
+          echo "ERROR: hermes -p ${_soul_profile} resolved home ${_soul_resolved} != ${_soul_expected}." >&2
+          return 1
+        fi
+        echo "AD-H §14: hermes -p ${_soul_profile} resolved home ${_soul_resolved}."
+        if ! _smoke_soul_at "${_soul_resolved}"; then
+          return 1
+        fi
+      done
 
       # Secrets must stay in Managed Scope — never under HERMES_HOME.
       # Architect 141656ZA: do not fail-close on mere existence of

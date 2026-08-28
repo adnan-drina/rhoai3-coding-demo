@@ -25,11 +25,14 @@ metadata:
 - `evidence/mta-findings.json` exists but fails
   `validate-findings-schema.py` (wrong schema, missing `codeSnip`/`category`)
 
-Preconditions — all four, or the script dies before analyzing:
+Preconditions — the one script dies unless these exist **before it runs**:
 `evidence/derived/legacy-at-3.json` (skill `derive-legacy-boot3`),
 `migration.yaml` with non-empty `analysis.targets`, Java 21 on `PATH`,
-`JVM_MAX_MEM` set. `evidence/entry-point-inventory.json` must also exist
-before the handoff step (AR-4.1) — skill `inventory-legacy-surface`.
+`JVM_MAX_MEM` set, and `evidence/entry-point-inventory.json` (skill
+`inventory-legacy-surface`). AR-4.1 is not a later sub-step you can
+reorder around: `mta-analyze-legacy.sh` calls `emit-findings-handoff.py`
+internally. Paved-road-m1 order is derive → inventory → scan → attach.
+Do not list emit as its own paved-road step.
 
 Not this skill: legacy surface inventory (`inventory-legacy-surface`), harvest
 derivation (`derive-legacy-boot3`), gate scoring (`check-domain-parity`).

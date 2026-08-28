@@ -142,10 +142,10 @@ def main() -> int:
     skill = SKILL.read_text(encoding="utf-8")
     if "When the instructions do not work" in skill:
         return _fail("dispatch-phase SKILL.md must not copy the SOUL stop-and-block clause")
-    soul = HERE.parents[4] / ".hermes" / "SOUL.md"
+    soul = HERE.parents[4] / ".hermes" / "config" / "profiles" / "implementer.SOUL.md"
     soul_txt = soul.read_text(encoding="utf-8")
     if "kanban_block" not in soul_txt or "Correcting your own invocation" not in soul_txt:
-        return _fail("SOUL.md needs bounded stop-and-block (Architect 202921ZA)")
+        return _fail("implementer.SOUL.md needs bounded stop-and-block (Architect 202921ZA)")
 
     with tempfile.TemporaryDirectory() as tmp:
         tmp_p = Path(tmp)

@@ -8,15 +8,16 @@
       "skill": "derive-legacy-boot3"
     },
     {
+      "id": "inventory-legacy-surface",
+      "backing": "skill",
+      "skill": "inventory-legacy-surface",
+      "note": "AR-4.1: emit-findings-handoff.py (inside mta-analyze-legacy.sh) refuses without evidence/entry-point-inventory.json, so this precedes scan-with-mta."
+    },
+    {
       "id": "scan-with-mta",
       "backing": "skill",
       "skill": "scan-with-mta",
       "producer": true
-    },
-    {
-      "id": "inventory-legacy-surface",
-      "backing": "skill",
-      "skill": "inventory-legacy-surface"
     },
     {
       "id": "kanban-attach",
