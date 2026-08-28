@@ -1020,6 +1020,17 @@ else
 fi
 check "MaaS Gateway generated policy filters are healthy" "$R"
 
+NP_MAAS_GITOPS="${ROOT_DIR}/gitops/stages/040-governed-models-as-a-service/base/gateway/base/networkpolicy-payload-processing-maas-gateway.yaml"
+NP_MAAS_KUSTOMIZATION="${ROOT_DIR}/gitops/stages/040-governed-models-as-a-service/base/gateway/base/kustomization.yaml"
+if [[ -f "$NP_MAAS_GITOPS" ]] &&
+  grep -qF 'gateway.istio.io/managed: istio.io-gateway-controller' "$NP_MAAS_GITOPS" &&
+  grep -qF 'networkpolicy-payload-processing-maas-gateway.yaml' "$NP_MAAS_KUSTOMIZATION"; then
+  R="pass"
+else
+  R="missing additive payload-processing NetworkPolicy for maas-default-gateway"
+fi
+check "040 GitOps additive NetworkPolicy admits Istio-managed gateways to payload-processing:9004" "$R"
+
 if resource_exists "configmap/${MCP_DISCOVERY_CONFIGMAP}" "redhat-ods-applications"; then
   MCP_DISCOVERY_DATA=$(oc get configmap "$MCP_DISCOVERY_CONFIGMAP" -n redhat-ods-applications \
     -o json --insecure-skip-tls-verify=true 2>/dev/null \

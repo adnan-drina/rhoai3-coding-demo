@@ -1,0 +1,57 @@
+# Additive ingress allow so the MaaS Gateway can reach the body-based router.
+#
+# The operator generates `networkpolicy/payload-processing` in openshift-ingress
+# (no ownerReferences, not Argo-tracked; first seen 2026-08-27T22:23:30Z). It admits
+# TCP 9004 only from pods labelled
+#   gateway.networking.k8s.io/gateway-name: data-science-gateway
+# i.e. the dashboard/CAS Gateway. Our dedicated MaaS Gateway is `maas-default-gateway`
+# (same GatewayClass, different Gateway), which the RHOAI 3.4 MaaS docs name as the
+# Gateway MaaS creates in openshift-ingress. Once the operator policy exists, every
+# other gateway is denied: Envoy's ext_proc connect to payload-processing:9004 sits
+# ~10s, then ext_proc_error_gRPC_error_14 -> HTTP 500. IPP/BBR sits in front of the
+# endpoint picker, so the EPP logs stay empty and a healthy :9002 is a false all-clear.
+#
+# Kubernetes NetworkPolicy is additive-allow: policies selecting the same pods union
+# their permitted sources. So this grants the missing ingress WITHOUT touching the
+# operator object -- no `oc edit`/`oc delete` on an operator-managed resource, and no
+# revert trap (cf. the KServe maxSurge patch, reconciled away within seconds).
+#
+# Selector matches upstream MaaS e2e (`test_networkpolicy.py`), which requires ingress
+# from `gateway.istio.io/managed: istio.io-gateway-controller` and forbids pinning
+# `gateway-name`. Verified live: BOTH gateway pods carry that label, so one selector
+# admits the dashboard and MaaS gateways alike.
+#
+# Red Hat case remains warranted: 3.4.4 generates the selector upstream tests against.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: payload-processing-maas-gateway
+  namespace: openshift-ingress
+  labels:
+    app.kubernetes.io/name: payload-processing-maas-gateway
+    app.kubernetes.io/component: maas-gateway
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    demo.rhoai.io/stage: "040"
+    opendatahub.io/managed: "false"
+  annotations:
+    # After the Gateway (wave 10) so the pods it selects exist, and before the
+    # LLMInferenceService (wave 16) that serves traffic through it.
+    argocd.argoproj.io/sync-wave: "11"
+spec:
+  # Same pods the operator policy selects.
+  podSelector:
+    matchLabels:
+      app: payload-processing
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: openshift-ingress
+          podSelector:
+            matchLabels:
+              gateway.istio.io/managed: istio.io-gateway-controller
+      ports:
+        - port: 9004
+          protocol: TCP

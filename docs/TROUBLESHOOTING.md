@@ -56,6 +56,26 @@ Check pods:
 oc get pods -A | egrep 'CrashLoopBackOff|ImagePullBackOff|Error|Pending'
 ```
 
+## MaaS route HTTP 500 / Envoy `ext_proc_error_gRPC_error_14` (`harness-v2`)
+
+**Affected stage:** Stage 040 gateway, Stage 080 dest workers on the MaaS route.
+
+**Likely cause:** Operator `networkpolicy/payload-processing` in `openshift-ingress` admits TCP 9004 only from `gateway.networking.k8s.io/gateway-name: data-science-gateway`. Dest Qwen is served by `maas-default-gateway` (the RHOAI 3.4 documented MaaS Gateway). Packets drop; Envoy ext_proc connect times out; the client sees HTTP 500. IPP/BBR sits in front of the endpoint picker, so a healthy EPP `:9002` is a false all-clear. Do **not** `oc edit` / `oc delete` the operator NetworkPolicy (it reverts). Do **not** repoint `router.gateway.refs` to `data-science-gateway`. Do **not** dest-unblock a gave_up M2 until the route returns 200 with a MaaS key.
+
+**Diagnose:**
+
+```bash
+oc get networkpolicy payload-processing payload-processing-maas-gateway \
+  -n openshift-ingress -o name
+oc get pods -n openshift-ingress \
+  -l gateway.istio.io/managed=istio.io-gateway-controller \
+  --no-headers | awk '{print $1}'
+```
+
+**Recover:** Additive GitOps NetworkPolicy `payload-processing-maas-gateway` (ingress-only, Istio-managed from-selector). Operator syncs stage 040 and confirms `operationState.syncResult.revision`, then smokes `GET /models-as-a-service/qwen3-6-27b/v1/models` until 200. Do not dest-read dest `.env` values.
+
+**Related docs:** `gitops/stages/040-governed-models-as-a-service/base/gateway/base/networkpolicy-payload-processing-maas-gateway.yaml`; Architect `073314ZA`
+
 ## Argo CD App Is OutOfSync
 
 **Affected stage:** Any
