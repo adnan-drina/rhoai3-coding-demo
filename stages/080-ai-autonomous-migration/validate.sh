@@ -401,6 +401,9 @@ check "080 golden implementer SOUL.md present" \
 check "080 golden reviewer SOUL.md present" \
   "test -f '${SCAFFOLD_PROFILES}/reviewer.SOUL.md' && echo present || echo missing" \
   "present"
+check "080 every SOUL.md survives the Hermes injection scanner" \
+  "python3 '${SCRIPT_DIR}/assert-soul-scanner-clean.py' >/dev/null 2>&1 && echo 1 || echo 0" \
+  "1"
 check "080 golden worker SOUL.md files are git-tracked" \
   "git -C '${REPO_ROOT}' ls-files --error-unmatch '${SCAFFOLD_PROFILES}/orchestrator.SOUL.md' '${SCAFFOLD_PROFILES}/implementer.SOUL.md' '${SCAFFOLD_PROFILES}/reviewer.SOUL.md' >/dev/null && echo tracked || echo missing" \
   "tracked"

@@ -117,6 +117,15 @@ hermes config get display.personality   # active overlay, if any
 - Sharing one SOUL.md across dest worker profiles — official load is
   `$HERMES_HOME/SOUL.md` for that profile; dest-init must place a
   distinct file after `profile create --no-alias`, not `--clone`.
+- `pretend to be` / `pretend you are` trips Hermes `role_pretend`
+  (`tools.threat_patterns`, context scope): `load_soul_md` returns
+  `[BLOCKED: …]` and the dest-init smoke fail-closes the workspace.
+  dest-16 `poststart.log`: `SOUL.md blocked: role_pretend`. Say it
+  without the trigger — “you do not speak or act as one of them”.
+  `You are the <role>` is **clean**: measured against all 17
+  context-scope patterns. Do not avoid phrasings that were never a
+  hazard — run `assert-soul-scanner-clean.py`, which asserts the
+  installed table rather than a literal blacklist.
 - An empty SOUL.md doesn't mean "no identity" — the built-in fallback
   takes over silently.
 
