@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import pathlib
 import os
 import stat
 import subprocess
@@ -117,6 +118,51 @@ def run_autostart(
     )
 
 
+
+def assert_bodies_name_native_backings() -> int:
+    """A card body must name every ``native`` script its paved road mandates.
+
+    v17 M1: steps.json declared ``native: kanban_attach.py`` and the body said
+    only "Attach <five filenames>". The worker read the backing, then used the
+    ``kanban_attach`` tool because the body's imperative pointed at the outcome
+    rather than the mechanism. The audit refused, the reviewer bounced it, and
+    two runs were spent on a card whose artifacts were already correct.
+
+    The mechanism is not ceremony: ``kanban_attach.py`` fixes the file set and
+    the 25 MiB cap, so the set is not a worker decision. dest-13 attached the
+    derivation manifest instead of the type graph and M2 had no T0_3 input --
+    five attach events, wrong set, silent downstream break.
+    """
+    here = pathlib.Path(__file__).resolve()
+    scaffold = here.parents[5]
+    script = here.parent / "autostart-migration.sh"
+    text = script.read_text(encoding="utf-8")
+    bad = []
+    for kind in ("m1", "m2"):
+        steps = (
+            scaffold / ".hermes" / "skills" / "paved-road"
+            / ("paved-road-" + kind) / "steps.json"
+        )
+        if not steps.is_file():
+            bad.append("%s steps.json absent at %s" % (kind, steps))
+            continue
+        doc = json.loads(steps.read_text(encoding="utf-8"))
+        for step in doc.get("steps", []):
+            if step.get("backing") != "native":
+                continue
+            name = str(step.get("native") or "")
+            if name and name not in text:
+                bad.append(
+                    "%s body does not name native backing %r (step %s); a worker "
+                    "told only the outcome will reach for the tool API"
+                    % (kind.upper(), name, step.get("id"))
+                )
+    if bad:
+        for line in bad:
+            sys.stderr.write("FAIL: " + line + "\n")
+        return 1
+    return 0
+
 def main() -> int:
     src = SCRIPT.read_text(encoding="utf-8")
     if "M3" in src and "k4_mint" not in src.split("M3", 1)[1][:200]:
@@ -204,7 +250,11 @@ def main() -> int:
         if (off_store / "argv.jsonl").exists():
             return _fail("off must not mint")
 
-    print("OK: autostart-migration M1+M2 idempotent")
+    rc = assert_bodies_name_native_backings()
+    if rc:
+        return rc
+
+    print("OK: autostart-migration M1+M2 idempotent; bodies name their native backings")
     return 0
 
 
