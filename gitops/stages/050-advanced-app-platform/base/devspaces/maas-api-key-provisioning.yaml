@@ -1927,9 +1927,9 @@ data:
           HERMES_MANAGED_DIR="${managed_dir}" \
           HERMES_WRITE_SAFE_ROOT="${PROJECT_DIR}" \
           K2_ALLOW_ROOT="${PROJECT_DIR}:/projects/legacy" \
-          "${hermes_bin}" -p "${_soul_profile}" profile show
+          "${hermes_bin}" profile show "${_soul_profile}"
         )"; then
-          echo "ERROR: hermes -p ${_soul_profile} profile show failed." >&2
+          echo "ERROR: hermes profile show ${_soul_profile} failed." >&2
           return 1
         fi
         _soul_resolved="$(
@@ -1938,15 +1938,15 @@ data:
             | head -n1
         )"
         if [ -z "${_soul_resolved}" ]; then
-          echo "ERROR: hermes -p ${_soul_profile} profile show omitted Path:." >&2
+          echo "ERROR: hermes profile show ${_soul_profile} omitted Path:." >&2
           printf '%s\n' "${_soul_show}" >&2
           return 1
         fi
         if [ "${_soul_resolved%/}" != "${_soul_expected%/}" ]; then
-          echo "ERROR: hermes -p ${_soul_profile} resolved home ${_soul_resolved} != ${_soul_expected}." >&2
+          echo "ERROR: profile ${_soul_profile} resolved home ${_soul_resolved} != ${_soul_expected}." >&2
           return 1
         fi
-        echo "AD-H §14: hermes -p ${_soul_profile} resolved home ${_soul_resolved}."
+        echo "AD-H §14: profile ${_soul_profile} resolved home ${_soul_resolved}."
         if ! _smoke_soul_at "${_soul_resolved}"; then
           return 1
         fi
