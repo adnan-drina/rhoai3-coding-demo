@@ -16,6 +16,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import re
 import sys
@@ -92,11 +93,24 @@ def assertj_pin(root: Path) -> str:
     return ver
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("root", nargs="?", default=".")
-    args = ap.parse_args()
-    root = Path(args.root).resolve()
+def _emit_gate_receipt(root: Path, rc: int) -> None:
+    hit = (
+        Path(__file__).resolve().parents[2]
+        / "assert-pinned-gates-ran"
+        / "scripts"
+        / "script_gate_receipt.py"
+    )
+    spec = importlib.util.spec_from_file_location("script_gate_receipt", hit)
+    if spec is None or spec.loader is None:
+        print("FAIL: script_gate_receipt.py missing", file=sys.stderr)
+        return
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    argv = [sys.executable, str(Path(__file__).resolve()), *sys.argv[1:]]
+    mod.emit_script_receipt(root, "check-release-readiness", rc, __file__, argv)
+
+
+def _toolchain(root: Path) -> int:
     pom_path = root / "pom.xml"
     if not pom_path.is_file():
         print(f"FAIL: no pom.xml under {root}", file=sys.stderr)
@@ -144,6 +158,24 @@ def main() -> int:
         "(quarkus-junit5 + rest-assured + assertj-core pin)"
     )
     return 0
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("root", nargs="?", default=".")
+    ap.add_argument(
+        "--write-receipt",
+        nargs="?",
+        const="gates",
+        default=None,
+        help="Write evidence/receipts/gates/check-release-readiness.json (runner schema)",
+    )
+    args = ap.parse_args()
+    root = Path(args.root).resolve()
+    rc = _toolchain(root)
+    if args.write_receipt is not None:
+        _emit_gate_receipt(root, rc)
+    return rc
 
 
 if __name__ == "__main__":

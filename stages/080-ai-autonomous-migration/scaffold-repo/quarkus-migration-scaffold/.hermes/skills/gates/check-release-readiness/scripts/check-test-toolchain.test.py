@@ -127,6 +127,20 @@ def main() -> int:
             )
             return 1
 
+        wrote = subprocess.run(
+            [sys.executable, str(SCRIPT), str(root), "--write-receipt"],
+            text=True,
+            capture_output=True,
+        )
+        rec = root / "evidence" / "receipts" / "gates" / "check-release-readiness.json"
+        if wrote.returncode != 0 or not rec.is_file():
+            print(
+                "FAIL: --write-receipt rc=%s rec=%s %s%s"
+                % (wrote.returncode, rec.is_file(), wrote.stdout, wrote.stderr),
+                file=sys.stderr,
+            )
+            return 1
+
     print("OK: check-test-toolchain assertj pin")
     return 0
 

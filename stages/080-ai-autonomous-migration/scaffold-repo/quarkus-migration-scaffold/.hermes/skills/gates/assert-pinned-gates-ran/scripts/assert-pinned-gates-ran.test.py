@@ -265,6 +265,55 @@ class PinnedGatesTests(unittest.TestCase):
             self.assertEqual(doc.get("producer"), "assert-pinned-gates-ran.py")
 
 
+class PinnedGateWritersTests(unittest.TestCase):
+    """Architect 091125ZA: every pinned leaf has a receipt-writing entrypoint."""
+
+    GATES = Path(__file__).resolve().parents[2]
+    PRE = (
+        GATES
+        / "check-release-readiness"
+        / "scripts"
+        / "run-m4-pre-verdict.sh"
+    )
+
+    def test_pinned_leaves_have_writers(self) -> None:
+        spec = Path(__file__).resolve().parent / "assert-pinned-gates-ran.py"
+        text = spec.read_text(encoding="utf-8")
+        self.assertIn("PINNED_GATE_LEAVES", text)
+        domain = (
+            self.GATES / "check-domain-parity" / "scripts" / "check-product-tests.py"
+        ).read_text(encoding="utf-8")
+        release = (
+            self.GATES
+            / "check-release-readiness"
+            / "scripts"
+            / "check-test-toolchain.py"
+        ).read_text(encoding="utf-8")
+        spec_cov = (
+            self.GATES.parent
+            / "sdd"
+            / "check-spec-readiness"
+            / "scripts"
+            / "check-partition-coverage.py"
+        ).read_text(encoding="utf-8")
+        pre = self.PRE.read_text(encoding="utf-8")
+        self.assertIn("--write-receipt", domain)
+        self.assertIn("check-domain-parity", domain)
+        self.assertIn("--write-receipt", release)
+        self.assertIn("check-release-readiness", release)
+        self.assertIn("--write-receipt", spec_cov)
+        self.assertIn("check-spec-readiness", spec_cov)
+        self.assertIn("run_gate assert-retrievable-tree", pre)
+        self.assertIn("write_self_verdict", spec.read_text(encoding="utf-8"))
+
+    def test_pre_verdict_feeds_before_assert(self) -> None:
+        pre = self.PRE.read_text(encoding="utf-8")
+        feed = pre.find("run_feed_gate check-domain-parity")
+        pin = pre.find('python3 "${PINNED}"')
+        self.assertGreater(feed, 0)
+        self.assertGreater(pin, feed)
+
+
 class RetrievableTreeTests(unittest.TestCase):
     def _repo(self, tmp: str) -> Path:
         root = Path(tmp)

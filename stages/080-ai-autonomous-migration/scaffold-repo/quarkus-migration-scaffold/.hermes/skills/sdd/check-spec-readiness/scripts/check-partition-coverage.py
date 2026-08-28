@@ -43,13 +43,16 @@ rewrites are derived from inventory / migration.yaml — never hardcoded.
 
 Usage:
   python3 check-partition-coverage.py /projects/modernized
-  python3 check-partition-coverage.py . --write-receipt evidence/receipts/partition-coverage.json
+    python3 check-partition-coverage.py . --write-receipt evidence/receipts/partition-coverage.json
   python3 check-partition-coverage.py . --retro   # evidence-only: never exit 1
+  # --write-receipt also writes evidence/receipts/gates/check-spec-readiness.json
+  # (runner schema for assert-pinned-gates-ran).
   # Default partition: evidence/partition.json, else evidence/briefs/partition.json.
 """
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import sys
 from datetime import datetime, timezone
@@ -284,6 +287,30 @@ def body_sequence_map(bodies_dir: Path, story_ids: list[str]) -> dict[str, set[s
     return out
 
 
+def _emit_gate_receipt(root: Path, rc: int) -> None:
+    hit = (
+        Path(__file__).resolve().parents[3]
+        / "gates"
+        / "assert-pinned-gates-ran"
+        / "scripts"
+        / "script_gate_receipt.py"
+    )
+    spec = importlib.util.spec_from_file_location("script_gate_receipt", hit)
+    if spec is None or spec.loader is None:
+        print("FAIL: script_gate_receipt.py missing", file=sys.stderr)
+        return
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    argv = [sys.executable, str(Path(__file__).resolve()), *sys.argv[1:]]
+    mod.emit_script_receipt(root, "check-spec-readiness", rc, __file__, argv)
+
+
+def _finish(args: argparse.Namespace, root: Path, rc: int) -> int:
+    if args.write_receipt:
+        _emit_gate_receipt(root, rc)
+    return rc
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("root", nargs="?", default=".")
@@ -317,7 +344,7 @@ def main() -> int:
             f"(looked: {looked_s}; resolved: {where})",
             file=sys.stderr,
         )
-        return 0 if args.retro else 1
+        return _finish(args, root, 0 if args.retro else 1)
 
     inv_path = resolve_inventory_path(
         root,
@@ -327,12 +354,12 @@ def main() -> int:
     inventory = load_json(inv_path) if inv_path else None
     if not isinstance(inventory, dict):
         print("PARTITION_COVERAGE: INCONCLUSIVE — missing inventory", file=sys.stderr)
-        return 0 if args.retro else 1
+        return _finish(args, root, 0 if args.retro else 1)
 
     entry_points = inventory.get("entry_points") or []
     if not isinstance(entry_points, list) or not entry_points:
         print("PARTITION_COVERAGE: INCONCLUSIVE — inventory has no entry_points", file=sys.stderr)
-        return 0 if args.retro else 1
+        return _finish(args, root, 0 if args.retro else 1)
 
     http_eps = [e for e in entry_points if isinstance(e, dict) and e.get("kind") == "http"]
     ep_count = len(http_eps)
@@ -511,8 +538,8 @@ def main() -> int:
         print(f"  - {g}", file=sys.stderr if verdict != "VALID" else sys.stdout)
 
     if args.retro:
-        return 0
-    return 0 if verdict == "VALID" else 1
+        return _finish(args, root, 0)
+    return _finish(args, root, 0 if verdict == "VALID" else 1)
 
 
 if __name__ == "__main__":

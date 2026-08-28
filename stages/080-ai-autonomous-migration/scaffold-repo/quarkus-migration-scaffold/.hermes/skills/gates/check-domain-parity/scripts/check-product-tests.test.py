@@ -77,6 +77,32 @@ def main() -> int:
         return 1
 
     print("OK: check-product-tests inventory-ground + four-family floor")
+
+    import json
+    import shutil
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        dest = Path(tmp) / "tree"
+        shutil.copytree(FIX / "ar28-good", dest)
+        wrote = subprocess.run(
+            [sys.executable, str(SCRIPT), str(dest), "--write-receipt"],
+            text=True,
+            capture_output=True,
+        )
+        rec = dest / "evidence" / "receipts" / "gates" / "check-domain-parity.json"
+        if wrote.returncode != 0:
+            print("FAIL: ar28-good --write-receipt rc=%s" % wrote.returncode, file=sys.stderr)
+            print(wrote.stderr, file=sys.stderr)
+            return 1
+        if not rec.is_file():
+            print("FAIL: --write-receipt did not write %s" % rec, file=sys.stderr)
+            return 1
+        doc = json.loads(rec.read_text(encoding="utf-8"))
+        if doc.get("gate") != "check-domain-parity" or "argv" not in doc:
+            print("FAIL: domain receipt schema %s" % doc, file=sys.stderr)
+            return 1
+
     return 0
 
 

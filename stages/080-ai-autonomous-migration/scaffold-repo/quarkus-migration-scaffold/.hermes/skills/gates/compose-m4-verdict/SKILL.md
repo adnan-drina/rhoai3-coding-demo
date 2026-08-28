@@ -68,7 +68,12 @@ Do not pin only the two `check-*` leaves.
 Root is `/projects/modernized`. Record each floor's **measured** exit
 code. Do not re-run a floor to invent `idle`.
 
-1. Pre-verdict (fail-closed; not idle):
+1. Pre-verdict (fail-closed; not idle). The runner **runs the pinned
+   feeding gates first** (`check-partition-coverage`, `check-product-tests`,
+   `check-test-toolchain` with `--write-receipt` into
+   `evidence/receipts/gates/`) and only then `assert-pinned-gates-ran`.
+   Do not invoke pre-verdict before those gates — dest-14 REFUSEd an empty
+   receipts dir even after the floors had run later in the card.
 
 ```bash
 bash .hermes/skills/gates/check-release-readiness/scripts/run-m4-pre-verdict.sh \

@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -98,6 +99,25 @@ def write_receipt(
     tmp.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
     tmp.replace(path)
     return path
+
+
+def emit_script_receipt(
+    root: Path,
+    gate: str,
+    rc: int,
+    script_file: str,
+    argv: list[str] | None = None,
+) -> Path:
+    """Runner receipt for a gate script that took ``--write-receipt``."""
+    argv_s = [str(a) for a in (argv if argv is not None else sys.argv)]
+    return write_receipt(
+        Path(root),
+        gate,
+        argv=argv_s,
+        rc=int(rc),
+        producer=Path(script_file).name,
+        task_id=os.environ.get("HERMES_KANBAN_TASK", ""),
+    )
 
 
 def main(argv: list[str] | None = None) -> int:

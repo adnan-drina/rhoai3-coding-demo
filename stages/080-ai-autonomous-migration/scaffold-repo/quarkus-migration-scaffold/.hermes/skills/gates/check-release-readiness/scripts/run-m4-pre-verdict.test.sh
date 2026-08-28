@@ -12,6 +12,16 @@ grep -q 'assert-g4-claim-consistency' "${SCRIPT_DIR}/run-m4-pre-verdict.sh"
 grep -q 'snapshot-m4-test-reports' "${SCRIPT_DIR}/run-m4-pre-verdict.sh"
 grep -q 'assert-surefire-results' "${SCRIPT_DIR}/run-m4-pre-verdict.sh"
 grep -q 'assert-m4-card-body' "${SCRIPT_DIR}/run-m4-pre-verdict.sh"
+grep -q 'check-product-tests' "${SCRIPT_DIR}/run-m4-pre-verdict.sh"
+grep -q 'check-test-toolchain' "${SCRIPT_DIR}/run-m4-pre-verdict.sh"
+grep -q 'check-partition-coverage' "${SCRIPT_DIR}/run-m4-pre-verdict.sh"
+grep -q 'run_feed_gate' "${SCRIPT_DIR}/run-m4-pre-verdict.sh"
+feed_line="$(grep -n 'run_feed_gate check-domain-parity' "${SCRIPT_DIR}/run-m4-pre-verdict.sh" | head -1 | cut -d: -f1)"
+pin_line="$(grep -n 'python3 "${PINNED}"' "${SCRIPT_DIR}/run-m4-pre-verdict.sh" | head -1 | cut -d: -f1)"
+if [[ -z "${feed_line}" || -z "${pin_line}" || "${feed_line}" -ge "${pin_line}" ]]; then
+  echo "FAIL: feeding gates must appear before assert-pinned-gates-ran (${feed_line} vs ${pin_line})" >&2
+  exit 1
+fi
 grep -q 'assert-pinned-gates-ran' "${SCRIPT_DIR}/run-m4-floor.sh"
 grep -q 'assert-retrievable-tree' "${SCRIPT_DIR}/run-m4-floor.sh"
 grep -q 'snapshot-m4-test-reports' "${SCRIPT_DIR}/run-m4-floor.sh"
@@ -27,11 +37,8 @@ echo '<project/>' > "$TMP/pom.xml"
 git -C "$TMP" add src pom.xml
 git -C "$TMP" commit -q -m base
 
-RECEIPT="${SCRIPT_DIR}/../../assert-pinned-gates-ran/scripts/write-gate-receipt.py"
-for g in check-spec-readiness check-domain-parity check-release-readiness; do
-  python3 "${RECEIPT}" --root "$TMP" --gate "$g" --rc 0 --producer "${g}.py" -- \
-    python3 "${g}.py" "$TMP"
-done
+# Architect 091125ZA: do not pre-seed gate receipts. Feeding gates must
+# write evidence/receipts/gates/ themselves (or run_feed_gate records rc).
 
 cat > "$TMP/target/surefire-reports/TEST-com.demo.GreetingResourceTest.xml" <<'XML'
 <?xml version="1.0" encoding="UTF-8"?>

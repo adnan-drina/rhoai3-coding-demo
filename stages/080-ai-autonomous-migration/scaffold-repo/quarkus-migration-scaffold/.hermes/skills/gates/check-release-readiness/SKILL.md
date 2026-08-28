@@ -61,7 +61,10 @@ Operator `074910ZO`). Commands under **Checks**.
    Order: snapshot surefire/failsafe into `evidence/m4-pre-rebuild/` (first
    XML snapshot wins; never overwrite with empty), parse the snapshot
    (Failures>0 or missing XML is REFUSE), refuse an M4 body that names
-   `Token:`/`ship:`, then `assert-retrievable-tree`, `assert-pinned-gates-ran`
+   `Token:`/`ship:`, then `assert-retrievable-tree`, **run the pinned
+   feeding gates** (`check-partition-coverage`, `check-product-tests`,
+   `check-test-toolchain`) with `--write-receipt` into
+   `evidence/receipts/gates/`, then `assert-pinned-gates-ran`
    (`ran: true` only), `assert-g4-claim-consistency`, `assert-no-fence-evasion`.
    Pinning a leaf is availability, not enforcement. These do **not**
    idle-exit-0. Residual skip of this parent skill is **(c)** until a later

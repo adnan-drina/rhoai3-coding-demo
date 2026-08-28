@@ -29,6 +29,7 @@ Harness package com.example.tooling.smoke.* never counts toward acceptance.
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import re
 import sys
@@ -203,11 +204,24 @@ def required_families(root: Path, inventory: dict) -> set[str]:
     return required
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("root", nargs="?", default=".")
-    args = ap.parse_args()
-    root = Path(args.root).resolve()
+def _emit_gate_receipt(root: Path, rc: int) -> None:
+    hit = (
+        Path(__file__).resolve().parents[2]
+        / "assert-pinned-gates-ran"
+        / "scripts"
+        / "script_gate_receipt.py"
+    )
+    spec = importlib.util.spec_from_file_location("script_gate_receipt", hit)
+    if spec is None or spec.loader is None:
+        print("FAIL: script_gate_receipt.py missing", file=sys.stderr)
+        return
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    argv = [sys.executable, str(Path(__file__).resolve()), *sys.argv[1:]]
+    mod.emit_script_receipt(root, "check-domain-parity", rc, __file__, argv)
+
+
+def _ar28(root: Path) -> int:
     try:
         inventory = load_inventory(root)
     except ValueError as exc:
@@ -289,6 +303,24 @@ def main() -> int:
     if grounded and na:
         print("N/A: AR-2.8 %s (no inventory surface; not idle)" % ", ".join(na))
     return 0
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("root", nargs="?", default=".")
+    ap.add_argument(
+        "--write-receipt",
+        nargs="?",
+        const="gates",
+        default=None,
+        help="Write evidence/receipts/gates/check-domain-parity.json (runner schema)",
+    )
+    args = ap.parse_args()
+    root = Path(args.root).resolve()
+    rc = _ar28(root)
+    if args.write_receipt is not None:
+        _emit_gate_receipt(root, rc)
+    return rc
 
 
 if __name__ == "__main__":
