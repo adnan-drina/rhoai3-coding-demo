@@ -24,6 +24,14 @@ rules:
       - get
       - patch
       - update
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+    resourceNames:
+      - workspace-maas-model-endpoint
+    verbs:
+      - get
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -86,6 +94,7 @@ rules:
       - secrets
     resourceNames:
       - maas-devspace-api-keys
+      - workspace-maas-credentials
     verbs:
       - get
   - apiGroups:
@@ -124,6 +133,9 @@ kind: ConfigMap
 metadata:
   name: devspace-ai-tools-init
   namespace: wksp-ai-developer
+  labels:
+    controller.devfile.io/mount-to-devworkspace: "true"
+    controller.devfile.io/watch-configmap: "true"
   annotations:
     argocd.argoproj.io/sync-wave: "17"
 data:
@@ -133,6 +145,28 @@ data:
 
     PROJECT_DIR="${1:?project directory is required}"
     PROFILE="${2:-default}"
+
+    # dest-8: three concurrent copies during curl 28. Serialise. Do not
+    # oc-apply this ConfigMap onto a live mid-chain workspace.
+    if ! command -v flock >/dev/null 2>&1; then
+      echo "ERROR: flock missing; refuse dest-init without serialisation." >&2
+      exit 1
+    fi
+    mkdir -p "${HOME}/.cache"
+    exec 9>"${HOME}/.cache/rhoai3-init-ai-tools.lock"
+    echo "init-ai-tools.sh: waiting for flock pid=$$"
+    flock 9
+    echo "init-ai-tools.sh: flock held pid=$$"
+
+    # Architect 123129ZA: FailedPostStartHook destroys container /tmp.
+    # GitOps tee onto the workspace PVC (not dest persist-postStart; persist
+    # HARD off). dest-11 destfile already tees poststart.log; this covers
+    # dest-init ConfigMap after Argo-sync without dest-applying destfile.
+    mkdir -p /projects/.platform
+    if [ -w /projects/.platform ] && command -v tee >/dev/null 2>&1; then
+      exec > >(tee -a /projects/.platform/poststart.log /projects/.platform/poststart-stdout.txt)
+      exec 2> >(tee -a /projects/.platform/poststart.log /projects/.platform/poststart-stderr.txt >&2)
+    fi
 
     # The project's .opencode/ directory is the paradigm signal:
     # present  -> OpenCode-only workspace (stage 070 scaffolded repos carry .opencode/skills)
@@ -434,17 +468,49 @@ data:
 
     MAAS_BASE_URL="$(secret_value MAAS_BASE_URL)"
     MAAS_API_KEY_QWEN27B="$(secret_value MAAS_API_KEY_QWEN27B)"
+    # DWO mount-as env (workspace-maas-credentials) uses Hermes names.
+    # Worker base is the MaaS gateway (MAAS_BASE_URL + ConfigMap path).
+    if [ -z "${MAAS_API_KEY:-}" ]; then
+      MAAS_API_KEY="${MAAS_API_KEY_QWEN27B}"
+    fi
+    export MAAS_API_KEY
+    export MAAS_API_BASE_URL="${MAAS_API_BASE_URL:-}"
     # Optional: external Red Hat models via their direct endpoints. The
     # RHOAI 3.4 MaaS gateway breaks response streaming for these (BACKLOG),
     # so they bypass the gateway. Keys are operator-provisioned into the
     # Secret out of band (not in git); the provider is skipped when absent.
     REDHAT_MODELS_BASE_URL="$(secret_value REDHAT_MODELS_BASE_URL)"
     REDHAT_MODELS_API_KEY="$(secret_value REDHAT_MODELS_API_KEY)"
+    # AD-008 — Qwen primary; MiniMax (redhat) only via explicit escalation
+    # override. Secrets alone must NOT ambiently enable MiniMax (quota control).
     OPENCODE_ENABLED='["qwen27b"]'
     OPENCODE_REDHAT_PROVIDER=""
-    if [ -n "${REDHAT_MODELS_BASE_URL}" ] && [ -n "${REDHAT_MODELS_API_KEY}" ]; then
-      OPENCODE_ENABLED='["qwen27b", "redhat"]'
-      OPENCODE_REDHAT_PROVIDER="$(cat <<REDHATEOF
+    OPENCODE_ESCALATION_FILE="${PROJECT_DIR}/.rhoai3-model-escalation.json"
+    if [ -n "${REDHAT_MODELS_BASE_URL}" ] && [ -n "${REDHAT_MODELS_API_KEY}" ] \
+      && [ -f "${OPENCODE_ESCALATION_FILE}" ]; then
+      if cat <<'ESCV' | sed -e 's/^      //' | python3 - "${OPENCODE_ESCALATION_FILE}"
+          import json, sys
+          path = sys.argv[1]
+          try:
+              d = json.load(open(path))
+          except Exception as e:
+              print(f"AD-008: escalation file unreadable ({e}); MiniMax stays disabled.", file=sys.stderr)
+              sys.exit(1)
+          need = ("model_id", "model_id_primary", "escalation_reason", "prior_failure_run_id")
+          missing = [k for k in need if not str(d.get(k) or "").strip()]
+          mid = str(d.get("model_id") or "")
+          if missing:
+              print(f"AD-008: escalation missing fields {missing}; MiniMax stays disabled.", file=sys.stderr)
+              sys.exit(1)
+          if "minimax" not in mid.lower():
+              print(f"AD-008: model_id={mid!r} is not MiniMax; MiniMax stays disabled.", file=sys.stderr)
+              sys.exit(1)
+          print(f"AD-008: escalation OK prior_failure_run_id={d.get('prior_failure_run_id')}")
+          sys.exit(0)
+    ESCV
+      then
+        OPENCODE_ENABLED='["qwen27b", "redhat"]'
+        OPENCODE_REDHAT_PROVIDER="$(cat <<REDHATEOF
     ,
         "redhat": {
           "npm": "@ai-sdk/openai-compatible",
@@ -468,14 +534,20 @@ data:
         }
     REDHATEOF
     )"
+        echo "AD-008: OpenCode MiniMax enabled for this init (escalation override present)."
+      else
+        echo "AD-008: OpenCode MiniMax NOT enabled (escalation override invalid)."
+      fi
+    elif [ -n "${REDHAT_MODELS_BASE_URL}" ] && [ -n "${REDHAT_MODELS_API_KEY}" ]; then
+      echo "AD-008: Red Hat model secrets present but no ${OPENCODE_ESCALATION_FILE} — MiniMax stays disabled (Qwen primary)."
     fi
 
     if [ -z "${MAAS_BASE_URL}" ] \
       || [ -z "${MAAS_API_KEY_QWEN27B}" ]; then
-      echo "MaaS API key Secret is not ready; using repository templates."
-      fallback_from_repo
-      if [ "${AI_TOOL}" = "opencode" ]; then ensure_opencode_compat_path; fi
-      exit 0
+      # Operator 151500Z / Architect 151813ZA: missing MaaS is fail-closed.
+      # Do not report a credential-less workspace healthy via fallback_from_repo.
+      echo "ERROR: MaaS API key Secret is not ready; dest-init fail-closed." >&2
+      exit 1
     fi
 
     umask 077
@@ -556,152 +628,1198 @@ data:
       export PATH="${HOME}/.local/bin:${PATH}"
     }
 
+    ensure_dest_worker_profiles() {
+      # Operator GO 231808Z / AD-019 trigger (c). Two dest worker profiles.
+      # Official: hermes profile create <name> --no-alias --description "..."
+      # then hermes -p <name> config set (toolsets belong in config.yaml).
+      # OBJECT: --clone / --clone-from / --clone-all (EX-4 isolated $HOME,
+      # copied .env, missed kantra-ensure). OBJECT EX-4 analyzer/planner/
+      # validator Cursor-seat names. Overlay v1 stays single-persona.
+      local hermes_bin="$1"
+      local py="$2"
+      local hermes_home="$3"
+      local managed_dir="$4"
+      local project_dir="$5"
+      local tpl_dir="${project_dir}/.hermes/config/profiles"
+      local orch_tpl="${tpl_dir}/orchestrator.yaml.template"
+      local impl_tpl="${tpl_dir}/implementer.yaml.template"
+      if [ ! -f "${orch_tpl}" ] || [ ! -f "${impl_tpl}" ]; then
+        echo "ERROR: dest profile templates missing under ${tpl_dir} (231808Z)." >&2
+        return 1
+      fi
+      if [ ! -x "${hermes_bin}" ]; then
+        echo "ERROR: hermes CLI missing; cannot create dest worker profiles." >&2
+        return 1
+      fi
+      if [ ! -x "${py}" ]; then
+        echo "ERROR: python missing; cannot apply dest profile toolsets." >&2
+        return 1
+      fi
+      _ensure_one_dest_profile() {
+        local name="$1" desc="$2" tpl="$3"
+        case "${name}" in
+          orchestrator|implementer) ;;
+          *)
+            echo "ERROR: dest profile name ${name} is not orchestrator|implementer." >&2
+            return 1
+            ;;
+        esac
+        export HERMES_HOME="${hermes_home}"
+        export HERMES_MANAGED_DIR="${managed_dir}"
+        export HERMES_WRITE_SAFE_ROOT="${project_dir}"
+        export K2_ALLOW_ROOT="${project_dir}:/projects/legacy"
+        if [ -d "${hermes_home}/profiles/${name}" ]; then
+          echo "C-2: dest profile ${name} exists — re-apply toolsets (no --clone)."
+        else
+          echo "C-2: create dest profile ${name} --no-alias (clone forbidden)."
+          if ! "${hermes_bin}" profile create "${name}" --no-alias --description "${desc}"; then
+            echo "ERROR: hermes profile create ${name} failed." >&2
+            return 1
+          fi
+        fi
+        if ! "${py}" - "${hermes_bin}" "${name}" "${tpl}" "${project_dir}" \
+          "${hermes_home}" "${managed_dir}" <<'PROFAPPEOF'
+    import json, os, subprocess, sys
+    import yaml
+
+    bin_path, name, tpl, project, home, managed = sys.argv[1:]
+    with open(tpl, encoding="utf-8") as fh:
+        spec = yaml.safe_load(fh) or {}
+    cli = ((spec.get("platform_toolsets") or {}).get("cli")) or []
+    if not isinstance(cli, list) or not cli:
+        raise SystemExit(f"ERROR: {tpl} missing platform_toolsets.cli")
+    if name == "orchestrator" and "hermes-gateway" in cli:
+        raise SystemExit("ERROR: do not seat hermes-gateway on orchestrator")
+    if name == "implementer" and "coding" in cli:
+        raise SystemExit("ERROR: seat coding subset, not the coding composite name")
+    disabled = ((spec.get("agent") or {}).get("disabled_toolsets")) or []
+    env = os.environ.copy()
+    env["HERMES_HOME"] = home
+    env["HERMES_MANAGED_DIR"] = managed
+    env["HERMES_WRITE_SAFE_ROOT"] = project
+    env["K2_ALLOW_ROOT"] = project + ":/projects/legacy"
+
+    def cfgset(key, value):
+        proc = subprocess.run(
+            [bin_path, "-p", name, "config", "set", key, value],
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        if proc.returncode != 0:
+            sys.stderr.write(proc.stderr or proc.stdout or f"config set {key} failed\n")
+            raise SystemExit(proc.returncode or 1)
+
+    cfgset("platform_toolsets.cli", json.dumps(cli, separators=(",", ":")))
+    cfgset("terminal.cwd", project)
+    if disabled:
+        cfgset(
+            "agent.disabled_toolsets",
+            json.dumps(disabled, separators=(",", ":")),
+        )
+    print(
+        f"dest profile {name}: platform_toolsets.cli={cli} "
+        f"terminal.cwd={project} disabled_toolsets={disabled or []}"
+    )
+    # Operator 151500Z: walker reads profile get_config_path(), not managed
+    # config. hermes -p NAME config set skills.external_dirs is refused when
+    # Managed Scope already pins the key. Write both roots onto the profile
+    # file. Not dest-patch 115611Z. Not a user-root over-grant of the whole
+    # tree as a dest workaround (130125Z WITHDRAWN).
+    project_skills = os.path.join(project, ".hermes", "skills")
+    human_skills = "/home/user/.hermes/skills"
+    cfg_path = os.path.join(home, "profiles", name, "config.yaml")
+    doc = {}
+    if os.path.isfile(cfg_path):
+        with open(cfg_path, encoding="utf-8") as fh:
+            loaded = yaml.safe_load(fh)
+        if isinstance(loaded, dict):
+            doc = loaded
+    skills_cfg = doc.get("skills")
+    if not isinstance(skills_cfg, dict):
+        skills_cfg = {}
+        doc["skills"] = skills_cfg
+    skills_cfg["external_dirs"] = [project_skills, human_skills]
+    os.makedirs(project_skills, exist_ok=True)
+    os.makedirs(human_skills, exist_ok=True)
+    for _edir in skills_cfg["external_dirs"]:
+        if not os.path.isdir(_edir) or not os.access(_edir, os.R_OK):
+            raise SystemExit(
+                f"ERROR: dest profile {name} skills.external_dirs "
+                f"missing or unreadable: {_edir}"
+            )
+    os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
+    with open(cfg_path, "w", encoding="utf-8") as fh:
+        yaml.safe_dump(doc, fh, sort_keys=False)
+    print(
+        f"dest profile {name}: skills.external_dirs={skills_cfg['external_dirs']} "
+        f"via {cfg_path}"
+    )
+    PROFAPPEOF
+        then
+          echo "ERROR: dest profile ${name} toolset apply failed." >&2
+          return 1
+        fi
+        local envf="${hermes_home}/profiles/${name}/.env"
+        if [ -f "${envf}" ] && grep -E '^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*=' "${envf}" \
+          | grep -vq '^[[:space:]]*#'; then
+          echo "ERROR: ${envf} has assignments; secrets stay Managed Scope." >&2
+          return 1
+        fi
+        if [ -e "${hermes_home}/profiles/${name}/auth.json" ]; then
+          echo "ERROR: auth.json under dest profile ${name}; refuse Portal leftover." >&2
+          return 1
+        fi
+      }
+      _ensure_one_dest_profile orchestrator \
+        "Kanban orchestrator: board operations only. Cannot execute implementation." \
+        "${orch_tpl}" || return 1
+      _ensure_one_dest_profile implementer \
+        "Migration implementer: file, terminal, code_execution, delegation, skills." \
+        "${impl_tpl}" || return 1
+      echo "C-2: dest worker profiles orchestrator + implementer seated (no --clone)."
+    }
+
     ensure_hermes() {
-      # Stage 080 harness orchestrator (Hermes Agent CLI). The installer is
-      # self-contained (bundles Node 22 + Python 3.11 under ~/.hermes) and
-      # offers no version pinning yet — same floating pattern as the
-      # opencode installer above. --skip-browser keeps the install headless.
-      ensure_hermes_xz_shim
-      if [ ! -x "${HOME}/.local/bin/hermes" ]; then
-        curl -fsSL --retry 3 --max-time 300 -o /tmp/hermes-install.sh \
-          https://hermes-agent.nousresearch.com/install.sh \
-          && bash /tmp/hermes-install.sh --skip-browser >/tmp/hermes-install.log 2>&1 \
-          && echo "Installed Hermes Agent CLI." \
-          || { echo "Hermes installer failed (see /tmp/hermes-install.log); harness orchestrator unavailable."; return; }
+      # Architect 185531ZA / 210214ZA: overlay bake is /usr/local/bin/hermes
+      # (v0.20.5 / 2026.8.19). Fail-closed if missing or off-pin. Runtime
+      # oracle is hermes --version vs dest pins.json. Dest .hermes/checks/
+      # is retired; do not invoke assert-agent-pin.py. No curl install.sh
+      # (Operator 184955Zop / Review 185102ZR). Do not PATH-prepend
+      # ~/.local/bin ahead of the bake.
+      local hermes_bin="/usr/local/bin/hermes"
+      local pins_json="${PROJECT_DIR}/.hermes/pins.json"
+      local agent_src="/opt/hermes-agent"
+      if [ ! -x "${hermes_bin}" ]; then
+        echo "ERROR: overlay Hermes missing at ${hermes_bin}; dest-init fail-closed (no curl install.sh)." >&2
+        return 1
+      fi
+      if [ ! -f "${pins_json}" ]; then
+        echo "ERROR: ${pins_json} missing; cannot assert agent vs pin." >&2
+        return 1
+      fi
+      if [ ! -f "${agent_src}/hermes_cli/__init__.py" ]; then
+        echo "ERROR: hermes_cli/__init__.py missing under ${agent_src}; cannot ast-read the running bake." >&2
+        return 1
+      fi
+      if ! python3 - "${pins_json}" "${hermes_bin}" <<'HERMESVEREOF'
+    import json, re, subprocess, sys
+    pins_path, hermes_bin = sys.argv[1], sys.argv[2]
+    agent = (json.load(open(pins_path, encoding="utf-8")).get("pins") or {}).get("hermes_agent") or {}
+    want_ver = str(agent.get("version") or "").strip()
+    want_build = str(agent.get("build") or "").strip()
+    if not want_ver or not want_build:
+        print("ERROR: pins.json missing hermes_agent.version/build", file=sys.stderr)
+        sys.exit(1)
+    want_ver_n = want_ver[1:] if want_ver[:1] in "vV" and want_ver[1:2].isdigit() else want_ver
+    try:
+        out = subprocess.check_output([hermes_bin, "--version"], text=True, stderr=subprocess.STDOUT)
+    except (OSError, subprocess.CalledProcessError) as exc:
+        print(f"ERROR: {hermes_bin} --version failed: {exc}", file=sys.stderr)
+        sys.exit(1)
+    m = re.search(r"v?(\d+\.\d+\.\d+)\s*\(([^)]+)\)", out)
+    if not m or m.group(1) != want_ver_n or m.group(2).strip() != want_build:
+        print(
+            f"ERROR: {hermes_bin} --version {out.strip()!r} != pin {want_ver}/{want_build}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    print(f"ensure_hermes: MATCH {hermes_bin} --version {want_ver} / {want_build}")
+    HERMESVEREOF
+      then
+        echo "ERROR: overlay Hermes --version does not match .hermes/pins.json." >&2
+        return 1
       fi
       if ! grep -q "rhoai3-coding-demo: hermes path" "${HOME}/.bashrc" 2>/dev/null; then
         {
-          printf '\n# rhoai3-coding-demo: hermes path\n'
-          printf 'export PATH="${HOME}/.local/bin:${PATH}"\n'
+          printf '\n# rhoai3-coding-demo: hermes path (overlay bake first)\n'
+          printf 'export PATH="/usr/local/bin:${HOME}/.local/bin:${PATH}"\n'
         } >> "${HOME}/.bashrc"
       fi
 
-      # Point Hermes at the same governed MaaS endpoints as OpenCode:
-      # single local model qwen3-6-27b serves both harness seats (measured
-      # single-stream parity with the 35B MoE). Rewritten on every init so key
-      # rotation propagates. PyYAML comes from Hermes' own venv.
-      local venv_py="${HOME}/.hermes/hermes-agent/venv/bin/python"
+      # Architect 183448ZA: overlay stamp must not be the literal
+      # unreleased (presence fail-close, 160349ZL). Do not compare
+      # IMAGE_DIGEST to pins.workspace_overlay.ws_080.digest — baking
+      # digest D into the stamp layer yields a different manifest than D
+      # (Operator 183157Zop / Review 183326ZR). Kubelet already admits
+      # only the destfile digest-pin. 060/070 images do not ship the
+      # file; only PROFILE=modernized.
+      if [ "${PROFILE}" = "modernized" ]; then
+        local image_digest_file="/etc/hermes/IMAGE_DIGEST"
+        if [ ! -f "${image_digest_file}" ]; then
+          echo "ERROR: ${image_digest_file} missing; dest-init fail-closed." >&2
+          return 1
+        fi
+        local image_digest
+        image_digest="$(tr -d '[:space:]' < "${image_digest_file}")"
+        if [ -z "${image_digest}" ] || [ "${image_digest}" = "unreleased" ]; then
+          echo "ERROR: ${image_digest_file} is unreleased or empty; dest-init fail-closed." >&2
+          return 1
+        fi
+      fi
+
+      # AD-H (2026-08-07) consolidates AD-001/002/004/006 Hermes setup:
+      # factory config via Managed Scope; runtime tree via HERMES_HOME in
+      # the git-tracked project; scaffold skills via skills.external_dirs
+      # (no symlink loop). Secrets stay in managed .env — never under
+      # HERMES_HOME. Model wiring follows official configuring-models:
+      # named providers: dict (not legacy custom_providers), 4-key model:
+      # mapping with api_mode, discover_models: false. Primary: qwen3-6-27b
+      # (131072). MiniMax is AD-008 exception-only, never fallback_providers.
+      # Overlay venv writes Managed Scope YAML. Do not fall back to a
+      # curl-install tree (Architect 185531ZA).
+      local venv_py="/opt/hermes-venv/bin/python"
       if [ ! -x "${venv_py}" ]; then
-        echo "Hermes venv python not found; skipping Hermes MaaS config."
+        echo "ERROR: overlay Hermes venv missing at ${venv_py}; dest-init fail-closed." >&2
+        return 1
+      fi
+
+      local managed_dir="/etc/hermes"
+      local managed_mode="etc"
+      if ! mkdir -p "${managed_dir}" 2>/dev/null \
+        || ! touch "${managed_dir}/.rhoai3-write-test" 2>/dev/null; then
+        # postStart runs as the workspace user — /etc is often not writable.
+        # Relocate via HERMES_MANAGED_DIR (official) until the image bakes
+        # root-owned /etc/hermes. Permission guarantee is weaker than AD-002
+        # ideal; NetworkPolicy still required for egress.
+        managed_dir="/projects/.platform/hermes"
+        managed_mode="relocated"
+        mkdir -p "${managed_dir}"
+      fi
+      rm -f "${managed_dir}/.rhoai3-write-test" 2>/dev/null || true
+
+      # AD-H §1c / Lead:relocate-hermes-home — profile runtime tree lives in
+      # the repo so skill_manage creates are versioned. sessions/ + logs/
+      # are gitignored in the scaffold (.gitignore). Distinct from
+      # scaffold skills at $PROJECT_DIR/.hermes/skills (external_dirs).
+      local hermes_home="${PROJECT_DIR}/.hermes/home"
+      local hermes_skills_dir="${PROJECT_DIR}/.hermes/skills"
+      mkdir -p "${hermes_home}" "${hermes_skills_dir}"
+
+      # auth.json = Portal onboarding path; incompatible with Managed Scope.
+      # Lead:pin-model-binding-managed-scope — wipe residue so Managed Scope
+      # can enforce; hard-refuse left workspaces stuck on Portal leftover.
+      for _auth in "${hermes_home}/auth.json" "${HOME}/.hermes/auth.json"; do
+        if [ -e "${_auth}" ]; then
+          echo "WARN: removing ${_auth} — Portal onboarding incompatible with Managed Scope (AD-H §7)."
+          rm -f "${_auth}"
+        fi
+      done
+
+      export MAAS_BASE_URL MAAS_API_KEY_QWEN27B
+      # MiniMax joins Hermes providers: only when the same AD-008 escalation
+      # file already enabled the OpenCode redhat provider. Secrets alone
+      # must not register MiniMax (picker temptation + silent fallback risk).
+      export REDHAT_MODELS_BASE_URL="${REDHAT_MODELS_BASE_URL:-}"
+      export REDHAT_MODELS_API_KEY="${REDHAT_MODELS_API_KEY:-}"
+      if [[ "${OPENCODE_ENABLED:-}" == *"redhat"* ]]; then
+        export HERMES_MINIMAX=1
+      else
+        export HERMES_MINIMAX=0
+      fi
+      export HERMES_MANAGED_DIR="${managed_dir}"
+      export HERMES_HOME="${hermes_home}"
+      export HERMES_WRITE_SAFE_ROOT="${PROJECT_DIR}"
+      # Architect 214325ZA: dest terminal allow-root is dest tree + legacy
+      # mount. Do not fold legacy into HERMES_WRITE_SAFE_ROOT (write sandbox;
+      # /projects/legacy is read-only provenance). Do not allow /.
+      export K2_ALLOW_ROOT="${PROJECT_DIR}:/projects/legacy"
+      export HERMES_SKILLS_DIR="${hermes_skills_dir}"
+      # Spec-kit Hermes integration hardcodes Path.home()/.hermes/skills
+      # (ignores $HERMES_HOME — Research E-20260807T174318Z / upstream
+      # spec-kit#3334 closed unmerged). Keep that path on external_dirs so
+      # /speckit.* skills remain visible after HERMES_HOME relocation.
+      export HERMES_GLOBAL_SKILLS_DIR="${HOME}/.hermes/skills"
+      mkdir -p "${HERMES_GLOBAL_SKILLS_DIR}"
+      # AD-002 §6: harness launches from PROJECT_DIR (/projects/modernized).
+      # Named dest profiles (231808Z) set terminal.cwd to PROJECT_DIR explicitly
+      # (official: cwd "." is the launch directory, not the profile dir).
+      # Do not set terminal.cwd on Managed Scope default — CLI cwd is already
+      # PROJECT_DIR. EX-5 L3: pin terminal.backend=local (below). Nested docker
+      # is not provisioned; official container backends skip dangerous-command
+      # checks. Do not arm docker on dest golden.
+      # W1 five pins (Operator E-171354Z / Review service-CA nit): in-cluster
+      # .svc + ssl_ca_cert + 900s + aux-title off + display.streaming true
+      # (asserted — Operator E-20260813T210050Z / hermes-configuration display.streaming).
+      # Dashboard: public 0.0.0.0:9119 bind + che-gateway secure endpoint
+      # (Operator 2026-08-21). Auth is Managed Scope dashboard.basic_auth.
+      "${venv_py}" - <<'HERMESEOF'
+    import os, shutil, subprocess, tempfile, yaml, json
+    managed = os.environ["HERMES_MANAGED_DIR"]
+    skills_dir = os.environ["HERMES_SKILLS_DIR"]
+    global_skills = os.environ["HERMES_GLOBAL_SKILLS_DIR"]
+    # Worker seats: MaaS gateway OpenAI base. Process env
+    # (DWO workspace-maas-credentials) is source of truth when set;
+    # otherwise MAAS_BASE_URL + the ConfigMap path (Architect 161809ZA).
+    _gw = (os.environ.get("MAAS_BASE_URL") or "").strip().rstrip("/")
+    _path = "/models-as-a-service/qwen3-6-27b/v1"
+    model_base = (
+        (os.environ.get("MAAS_API_BASE_URL") or "").strip()
+        or ((_gw + _path) if _gw else "")
+    )
+    if not model_base:
+        raise SystemExit(
+            "ERROR: MAAS_API_BASE_URL unset and MAAS_BASE_URL unset"
+        )
+    maas_api_key = (
+        (os.environ.get("MAAS_API_KEY") or "").strip()
+        or (os.environ.get("MAAS_API_KEY_QWEN27B") or "").strip()
+    )
+    if not maas_api_key:
+        raise SystemExit(
+            "ERROR: MAAS_API_KEY unset (workspace-maas-credentials env or "
+            "MAAS_API_KEY_QWEN27B)"
+        )
+    service_ca = "/var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt"
+    cfg = {
+        # Official 4-key model: mapping (configuring-models). Secrets are
+        # NOT on this block — they live in managed .env and providers.*.api_key
+        # via ${env:NAME} SecretRef. base_url stays empty; providers.qwen27b.api
+        # is the endpoint (dashboard clears model.base_url on named providers).
+        "model": {
+            "provider": "qwen27b",
+            "default": "qwen3-6-27b",
+            "base_url": "",
+            "api_mode": "chat_completions",
+            # Total context ceiling (vLLM --max-model-len). Hermes unset
+            # max_tokens defaults to half (=65536), which makes any prompt
+            # ≥65537 arithmetically unservable (Deputy E-20260809T180800Z).
+            "context_length": 131072,
+            "max_tokens": 8192,
+        },
+        "model_aliases": {
+            "qwen27b": {
+                "model": "qwen3-6-27b",
+                "provider": "qwen27b",
+            },
+        },
+        "tool_loop_guardrails": {
+            "hard_stop_enabled": True,
+        },
+        # AD-H §2.2 / §4 — typed Kanban metadata is the handoff channel.
+        # Official Memory page (fetched 2026-08-27): both stores false
+        # drops the memory tool and its prompt block. memory_enabled
+        # false alone leaves USER.md on. This is dest posture A (honest
+        # off), not the governed-on fleet recipe (posture B).
+        "memory": {
+            "memory_enabled": False,
+            "user_profile_enabled": False,
+        },
+        # Official Curator: idle pass over agent-created skills, not the
+        # post-turn review. Pin off with the review so dest does not
+        # archive bundled profile skills on the default 7d cadence.
+        "curator": {
+            "enabled": False,
+        },
+        # AD-H §1 / §7.3 — no inline shell; scaffold + global (spec-kit)
+        # via external_dirs. W3/A5 (E-150714Z / E-204256Z): pin BOTH
+        # write_approval + guard_agent_created true on rebuild base so
+        # skill deltas stage pending→diff→approve (R-SK.8 / CS-6 #1).
+        # ACK/golden still protected via AR-1.1 + write-fence hooks.
+        "skills": {
+            "write_approval": True,
+            "guard_agent_created": True,
+            "inline_shell": False,
+            "external_dirs": [skills_dir, global_skills],
+        },
+        # Tip-bank B1 (Operator E-20260813T111910Z / v13 M1 evidence):
+        # Headless Dev Spaces kanban workers have no human for interactive
+        # terminal consent. Official approvals.mode=smart waits for a user
+        # (or aux model) and burned ~7m on a compound `ls` during M1
+        # (monitoring/20260812-v13-m1-dispatch.md). Factory default for this
+        # Managed Scope seat is therefore mode=off. skills.write_approval
+        # (above) still gates skill writes; cron_mode=deny unchanged.
+        # EX-5 L1: approvals.deny is checked BEFORE mode off / --yolo
+        # (hermes-managed-scope Security / User-Defined Deny Rules). Hardline
+        # Blocklist stays product always-on. Do not glob-deny mvn/oc/hermes.
+        # Cite: hermes-agent tools/approval.py + hermes-configuration /
+        # hermes-managed-scope seat pins.
+        "approvals": {
+            "mode": "off",
+            "timeout": 300,
+            "cron_mode": "deny",
+            "deny": [
+                "git push --force*",
+                "*curl*|*sh*",
+                "dd if=* of=/dev/*",
+                "rm -rf /",
+                "rm -rf /*",
+            ],
+        },
+        # EX-5 L3: explicit local pin so PVC drift cannot switch backends.
+        # Workspace pod isolates from the node. Nested docker/singularity/
+        # modal/daytona/vercel_sandbox are not provisioned (no docker.sock)
+        # and would skip dangerous-command checks (weaken L1).
+        "terminal": {
+            "backend": "local",
+        },
+        # W2 §4.5 / E-20260807T154519Z — engine must not invent untyped
+        # subtasks outside our per-phase schema (AD-H §3).
+        # W1 session-end: official orphaned-running reconcile (default true;
+        # pin so PVC drift cannot disable it) — E-150437Z / hermes-kanban.
+        # W2 CS-5 #1 fire-live pins (Operator E-201707Z): official dispatcher
+        # suite — do NOT port tip wrappers. Values = product defaults made
+        # explicit for rebuild-base reproducibility.
+        "kanban": {
+            "auto_decompose": False,
+            "reconcile_orphans": True,
+            "failure_limit": 2,
+            "dispatch_stale_timeout_seconds": 14400,
+            "review_dispatch": False,
+            # Official default is true; pin so PVC drift cannot disable the
+            # gateway-embedded dispatcher (v30: gateway gone => board stall).
+            "dispatch_in_gateway": True,
+            "max_in_progress": 1,
+        },
+        # Dashboard bank (Operator ruling: ai-developer/redhat123 demo auth;
+        # product refuses unauthenticated non-localhost bind). Seeded here so
+        # the devfile autostart (--host 0.0.0.0 --port 9119) is auth-gated on
+        # every fresh seat; hash = scrypt via plugins.dashboard_auth.basic.
+        "dashboard": {
+            "basic_auth": {
+                "username": "ai-developer",
+                "password_hash": (
+                    "scrypt$16384$8$1$uVJKZcdCp3vPd1IQniG+vg==$"
+                    "Dob/0Rk0eZnUmcBXrJu0q5YmCvHmrcrotg/i8pDaUGY="
+                ),
+            },
+        },
+        # AD-009 §3.2 / E-20260809T164127Z — Qwen thinking can exceed the
+        # default proxy idle / Hermes stale window (~minutes) before the
+        # first content token. Class A amplifier; not MiniMax.
+        # max_tokens:8192 — Class A output cap so prompt+completion fit
+        # context_length (server VLLMValidationError at 65536 out + ≥65537 in).
+        # providers.qwen27b.api: no ssl_ca_cert pin. OCP service serving certs
+        # are valid only for <service>.<ns>.svc, so the service CA cannot verify
+        # the .apps route; default trust reads the platform-merged bundle Dev
+        # Spaces mounts at /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem.
+        # Pin the service CA only if api returns to a .svc endpoint (gate below).
+        # (do NOT set SSL_CERT_FILE to service-ca alone; never ssl_verify:false.)
+        # discover_models: false — official for gateways whose /models listing
+        # is slow, noisy, or not the curated agentic set (configuring-models).
+        # Do NOT author fallback_providers: AD-008 forbids silent MiniMax
+        # (and OpenRouter) failover. Auxiliary compression stays auto = main.
+        "providers": {
+            "qwen27b": {
+                "api": "${env:MAAS_API_BASE_URL}",
+                "api_key": "${env:MAAS_API_KEY}",
+                "discover_models": False,
+                "models": {
+                    "qwen3-6-27b": {
+                        "context_length": 131072,
+                        "stale_timeout_seconds": 900,
+                        "max_tokens": 8192,
+                    },
+                },
+            },
+        },
+        # Single-GPU: disable session-title aux calls contending with main.
+        # Other aux slots stay official auto (use main / Qwen).
+        # Official Memory page (2026-08-27): background_review.enabled
+        # false skips automatic post-turn self-improvement forks; /refine
+        # still works. display.memory_notifications off is not this
+        # switch. Do not route this slot at MiniMax (AD-008).
+        "auxiliary": {
+            "title_generation": {
+                "enabled": False,
+            },
+            "background_review": {
+                "enabled": False,
+            },
+            "compression": {
+                "provider": "auto",
+                "model": "",
+            },
+        },
+        # Streaming pin (Operator E-20260813T204927Z / E-210050Z): assert
+        # display.streaming=true — official key (hermes_cli/config_defaults.py
+        # display.streaming; tips.py). API path already prefers stream=True;
+        # this asserts CLI/worker token display rather than relying on default
+        # False. Stage3 kill-test: client disconnect → engine Running:0
+        # (monitoring/20260812-stage3-disconnect-abort.md).
+        "display": {
+            "streaming": True,
+        },
+        # Operator 122315ZO: retire tirith. Hermes default tirith_enabled is
+        # True; omitting this pin re-creates declared-but-absent fail-open.
+        # Config cannot stop the 22.7 MB auto-download (cli.py ensure_installed
+        # before the flag). Do not cite tirith as a dest control.
+        "security": {
+            "tirith_enabled": False,
+        },
+        # EX-3: ONE pre_tool_call hook when v1 scripts still exist.
+        # Dest v2 golden (N1) does not ship enforce-authority-boundary.
+        # K2 REHOST of measured .hermes/kernel/pre_tool_call.sh (not a new
+        # fence). Fail-closed copy of a missing path killed v45 postStart
+        # (exit 1, 2026-08-23). Hatch: empty pre_tool_call until v1 scripts
+        # or that K2 file is present. Not a claimed control. Gate P-kernel
+        # CLOSED (Architect 142526Z). K1, K3, and K4 modules stay in the dest
+        # tree; this hatch still copies only pre_tool_call.sh. Do not
+        # dest-apply a REHOST or K4 converter as if it were a new fence.
+        # Official: hooks_auto_accept is a top-level key, not under hooks:
+        # (hermes-hooks / config_defaults). Nested under hooks: is ignored
+        # as an unknown event name and never auto-approves.
+        "hooks": {
+            "pre_tool_call": [],
+        },
+        "hooks_auto_accept": True,
+    }
+    # AD-008: MiniMax is a named OpenAI-compatible provider (LiteMaaS), not
+    # native minimax-oauth. Register only when the escalation override already
+    # enabled OpenCode's redhat provider. Never set model.default to MiniMax;
+    # never add fallback_providers.
+    if os.environ.get("HERMES_MINIMAX") == "1":
+        rh_base = (os.environ.get("REDHAT_MODELS_BASE_URL") or "").rstrip("/")
+        rh_key = (os.environ.get("REDHAT_MODELS_API_KEY") or "").strip()
+        if not rh_base or not rh_key:
+            raise SystemExit(
+                "ERROR: HERMES_MINIMAX=1 but REDHAT_MODELS_BASE_URL/API_KEY missing"
+            )
+        cfg["providers"]["minimax"] = {
+            "api": "${env:REDHAT_MODELS_BASE_URL}",
+            "api_key": "${env:REDHAT_MODELS_API_KEY}",
+            "discover_models": False,
+            "models": {
+                "minimax-m2": {
+                    "context_length": 196608,
+                    "max_tokens": 16384,
+                },
+            },
+        }
+        cfg.setdefault("model_aliases", {})["minimax"] = {
+            "model": "minimax-m2",
+            "provider": "minimax",
+        }
+    # A1 exists-assert — every skills.external_dirs path must resolve to a
+    # readable dir (mkdir scaffold + global above; refuse silent missing
+    # roots — Hermes skips nonexistent external_dirs with no error).
+    for _edir in (cfg.get("skills") or {}).get("external_dirs") or []:
+        if not os.path.isdir(_edir) or not os.access(_edir, os.R_OK):
+            raise SystemExit(
+                f"ERROR: A1 skills.external_dirs missing or unreadable: {_edir}"
+            )
+    deny = (cfg.get("approvals") or {}).get("deny") or []
+    if len(deny) < 3:
+        raise SystemExit("ERROR: EX-5 approvals.deny too short (need >=3 globs)")
+    if (cfg.get("terminal") or {}).get("backend") != "local":
+        raise SystemExit("ERROR: EX-5 terminal.backend must be local")
+    safe_root = (os.environ.get("HERMES_WRITE_SAFE_ROOT") or "").strip()
+    if not safe_root:
+        raise SystemExit("ERROR: EX-5 HERMES_WRITE_SAFE_ROOT unset")
+    hooks_dir = os.path.join(managed, "agent-hooks")
+    os.makedirs(hooks_dir, exist_ok=True)
+    write_fence_py = os.path.join(hooks_dir, "write-fence.py")
+    src_hook = os.path.join(
+        os.environ.get("HERMES_WRITE_SAFE_ROOT", "/projects/modernized"),
+        ".hermes/skills/harness/enforce-authority-boundary/scripts/write-set-hook.py",
+    )
+    src_hydrate = os.path.join(
+        os.environ.get("HERMES_WRITE_SAFE_ROOT", "/projects/modernized"),
+        ".hermes/skills/harness/enforce-authority-boundary/scripts/hermes-spawn-hydrate.py",
+    )
+    # Architect E-20260823T120100Z / K2 REHOST: restore fail_closed when
+    # .hermes/kernel/pre_tool_call.sh exists. Copy that file only into
+    # Managed Scope (K1/K3/K4 python stay in the dest tree). Not a new
+    # fence. Not claimed control. Do not dest-apply K4.
+    src_k2 = os.path.join(
+        os.environ.get("HERMES_WRITE_SAFE_ROOT", "/projects/modernized"),
+        ".hermes/kernel/pre_tool_call.sh",
+    )
+    v1_present = os.path.isfile(src_hook) and os.path.isfile(src_hydrate)
+    k2_present = os.path.isfile(src_k2)
+    if v1_present:
+        shutil.copy2(src_hook, write_fence_py)
+        os.chmod(write_fence_py, 0o755)
+        bin_dir = os.path.join(managed, "bin")
+        os.makedirs(bin_dir, exist_ok=True)
+        hydrate_py = os.path.join(bin_dir, "hermes-spawn-hydrate.py")
+        shutil.copy2(src_hydrate, hydrate_py)
+        os.chmod(hydrate_py, 0o755)
+        hermes_wrap = os.path.join(bin_dir, "hermes")
+        real_hermes = "/usr/local/bin/hermes"
+        with open(hermes_wrap, "w") as fh:
+            fh.write("#!/bin/bash\n")
+            fh.write("# v24: snapshot write-set cache into spawn env; not a trust boundary.\n")
+            fh.write(f'export HERMES_REAL_BIN="${{HERMES_REAL_BIN:-{real_hermes}}}"\n')
+            fh.write(f'exec python3 "{hydrate_py}" "$@"\n')
+        os.chmod(hermes_wrap, 0o755)
+        cfg["hooks"]["pre_tool_call"] = [
+            {
+                "matcher": "write|write_file|patch|edit_file|apply_patch|create_file|terminal|skill_manage",
+                "command": write_fence_py,
+                "timeout": 5,
+                "fail_closed": True,
+            }
+        ]
+    elif k2_present:
+        write_fence_sh = os.path.join(hooks_dir, "pre_tool_call.sh")
+        shutil.copy2(src_k2, write_fence_sh)
+        os.chmod(write_fence_sh, 0o755)
+        cfg["hooks"]["pre_tool_call"] = [
+            {
+                "matcher": "write|write_file|patch|edit_file|apply_patch|create_file|terminal|execute_code|delegate_task|skill_manage",
+                "command": write_fence_sh,
+                "timeout": 5,
+                "fail_closed": True,
+            }
+        ]
+        print("EX-3: fail_closed pre_tool_call from .hermes/kernel/pre_tool_call.sh")
+    else:
+        print(
+            "WARN: EX-3 write-set hook absent on dest tree; "
+            "defer fail_closed pre_tool_call until "
+            ".hermes/kernel/pre_tool_call.sh is present and registered "
+            "(K2 REHOST of measured pre_tool_call; not claimed control). "
+            f"missing v1_hook={not os.path.isfile(src_hook)} "
+            f"missing v1_hydrate={not os.path.isfile(src_hydrate)} "
+            f"missing k2={not k2_present}"
+        )
+        cfg["hooks"]["pre_tool_call"] = []
+    cfg_path = os.path.join(managed, "config.yaml")
+    with open(cfg_path, "w") as fh:
+        yaml.safe_dump(cfg, fh, default_flow_style=False, sort_keys=False)
+    env_path = os.path.join(managed, ".env")
+    with open(env_path, "w") as fh:
+        fh.write(f"MAAS_API_BASE_URL={model_base}\n")
+        fh.write(f"MAAS_API_KEY={maas_api_key}\n")
+        # EX-5 L2: pin write sandbox in managed .env (beats shell per
+        # Managed Scope). Native guards are write_file/patch only; in-repo
+        # B-S2 stays the EX-3 hook (HKN-12).
+        fh.write(f"HERMES_WRITE_SAFE_ROOT={safe_root}\n")
+        # Terminal allow-root (Architect 214325ZA). Not the write sandbox.
+        fh.write(f"K2_ALLOW_ROOT={safe_root}:/projects/legacy\n")
+        fh.write("HERMES_REAL_BIN=/usr/local/bin/hermes\n")
+        if os.environ.get("HERMES_MINIMAX") == "1":
+            fh.write(
+                "REDHAT_MODELS_BASE_URL="
+                + os.environ["REDHAT_MODELS_BASE_URL"].rstrip("/")
+                + "\n"
+            )
+            fh.write(
+                f"REDHAT_MODELS_API_KEY={os.environ['REDHAT_MODELS_API_KEY']}\n"
+            )
+    os.chmod(cfg_path, 0o644)
+    os.chmod(env_path, 0o600)
+    # Operator 091320ZO: specify at RUN time. Worker HOME is profile home;
+    # spec-kit Path.home()/.hermes/skills is empty. PATH shim in managed bin
+    # (already first on dest PATH) sets HOME=project for the specify child
+    # only. Do not prepend HERMES_HOME/bin (Tirith retired).
+    bin_dir = os.path.join(managed, "bin")
+    os.makedirs(bin_dir, exist_ok=True)
+    project = os.environ.get("HERMES_WRITE_SAFE_ROOT", "/projects/modernized")
+    specify_helper = os.path.join(
+        project,
+        ".hermes/skills/sdd/init-spec-workspace/scripts/specify-from-project.sh",
+    )
+    specify_wrap = os.path.join(bin_dir, "specify")
+    if not os.path.isfile(specify_helper):
+        raise SystemExit(
+            "ERROR: specify-from-project.sh missing — worker specify cannot "
+            "resolve speckit-specify at run time: " + specify_helper
+        )
+    # Resolve uv specify-cli by CONTENT, not PATH rank. dest-init writes
+    # this helper onto PATH as `specify`; a PATH search that picks the
+    # wrapper is the dest-11 fork bomb (Architect 153721ZA).
+    real_specify = ""
+    for d in os.environ.get("PATH", "").split(":"):
+        if not d:
+            continue
+        cand = os.path.join(d, "specify")
+        if not os.path.isfile(cand) or not os.access(cand, os.X_OK):
+            continue
+        try:
+            with open(cand, encoding="utf-8", errors="replace") as rh:
+                body = rh.read()
+        except OSError:
+            continue
+        if "specify-from-project.sh" in body:
+            continue
+        real_specify = cand
+        break
+    if not real_specify:
+        raise SystemExit(
+            "ERROR: dest-init specify init: specify-cli not on PATH "
+            "after skipping dest shims"
+        )
+    with open(env_path, "a") as fh:
+        fh.write("SPECIFY_REAL=" + real_specify + "\n")
+    with open(specify_wrap, "w") as fh:
+        fh.write("#!/bin/bash\n")
+        fh.write("set -euo pipefail\n")
+        fh.write(
+            "# specify run-time skills root: HOME=project for spec-kit#3334.\n"
+        )
+        fh.write("# Do not collapse the worker's profile HOME.\n")
+        fh.write(
+            "export SPECIFY_REAL=%s\n" % json.dumps(real_specify)
+        )
+        fh.write(
+            "exec bash %s --root %s \"$@\"\n"
+            % (json.dumps(specify_helper), json.dumps(project))
+        )
+    os.chmod(specify_wrap, 0o755)
+    print(
+        "specify PATH shim: "
+        + specify_wrap
+        + " -> "
+        + specify_helper
+        + " SPECIFY_REAL="
+        + real_specify
+    )
+    # W1 remaining (Operator P1 / Architect 193639ZA): specify init and
+    # mvn test on a FRESH tree. dest-9 /projects/modernized is mid-chain
+    # (--force / product tests are destructive or slow). Same argv the
+    # skills mandate; not a full speckit LLM run; not dest-apply dest-9.
+    fresh = tempfile.mkdtemp(prefix="dest-init-fresh-smoke-")
+    if os.path.abspath(fresh) == os.path.abspath(project):
+        raise SystemExit(
+            "ERROR: dest-init-fresh-smoke must not be dest-9 modernized"
+        )
+    try:
+        subprocess.run(
+            ["git", "init"],
+            cwd=fresh,
+            check=True,
+            capture_output=True,
+            timeout=30,
+        )
+        init_env = os.environ.copy()
+        init_env["HOME"] = fresh
+        init_argv = [
+            real_specify,
+            "init",
+            "--here",
+            "--integration",
+            "hermes",
+            "--force",
+            "--ignore-agent-tools",
+        ]
+        print("dest-init specify init argv: " + " ".join(init_argv))
+        init_run = subprocess.run(
+            init_argv,
+            cwd=fresh,
+            env=init_env,
+            capture_output=True,
+            text=True,
+            timeout=180,
+        )
+        print("dest-init specify init rc=%s" % init_run.returncode)
+        if init_run.returncode != 0:
+            blob = (init_run.stdout or "") + (init_run.stderr or "")
+            raise SystemExit(
+                "ERROR: dest-init specify init rc=%s: %s"
+                % (init_run.returncode, blob[-800:])
+            )
+        if not os.path.isdir(os.path.join(fresh, ".specify")):
+            raise SystemExit(
+                "ERROR: dest-init specify init did not create .specify"
+            )
+        print("dest-init specify init: MATCH fresh tree")
+    finally:
+        shutil.rmtree(fresh, ignore_errors=True)
+    mvn_root = tempfile.mkdtemp(prefix="dest-init-mvn-smoke-")
+    if os.path.abspath(mvn_root) == os.path.abspath(project):
+        raise SystemExit(
+            "ERROR: dest-init-mvn-smoke must not be dest-9 modernized"
+        )
+    try:
+        os.makedirs(os.path.join(mvn_root, "src/test/java"), exist_ok=True)
+        pom = os.path.join(mvn_root, "pom.xml")
+        with open(pom, "w") as fh:
+            fh.write(
+                "<project><modelVersion>4.0.0</modelVersion>"
+                "<groupId>dest.init</groupId><artifactId>smoke</artifactId>"
+                "<version>0</version>"
+                "<dependencies><dependency>"
+                "<groupId>org.junit.jupiter</groupId>"
+                "<artifactId>junit-jupiter</artifactId>"
+                "<version>5.10.2</version><scope>test</scope>"
+                "</dependency></dependencies><build><plugins>"
+                "<plugin><groupId>org.apache.maven.plugins</groupId>"
+                "<artifactId>maven-compiler-plugin</artifactId>"
+                "<version>3.13.0</version>"
+                "<configuration><release>17</release></configuration>"
+                "</plugin><plugin><groupId>org.apache.maven.plugins</groupId>"
+                "<artifactId>maven-surefire-plugin</artifactId>"
+                "<version>3.2.5</version></plugin>"
+                "</plugins></build></project>\n"
+            )
+        with open(os.path.join(mvn_root, "src/test/java/SmokeTest.java"), "w") as fh:
+            fh.write(
+                "import org.junit.jupiter.api.Test;\n"
+                "import static org.junit.jupiter.api.Assertions.assertTrue;\n"
+                "class SmokeTest { @Test void ok() { assertTrue(true); } }\n"
+            )
+        mvn_argv = ["mvn", "-q", "-f", pom, "test"]
+        print("dest-init mvn test argv: " + " ".join(mvn_argv))
+        mvn_run = subprocess.run(
+            mvn_argv,
+            cwd=mvn_root,
+            capture_output=True,
+            text=True,
+            timeout=180,
+        )
+        print("dest-init mvn test rc=%s" % mvn_run.returncode)
+        if mvn_run.returncode != 0:
+            blob = (mvn_run.stdout or "") + (mvn_run.stderr or "")
+            raise SystemExit(
+                "ERROR: dest-init mvn test rc=%s: %s"
+                % (mvn_run.returncode, blob[-800:])
+            )
+        print("dest-init mvn test: MATCH fresh tree")
+    finally:
+        shutil.rmtree(mvn_root, ignore_errors=True)
+    # Architect 170540ZA: hermes.manifest files:{} — helper-by-path
+    # ``specify workflow run speckit`` is not dispatch. Probe the four
+    # SKILL.md leaves on disk; inspect the manifest; do not MATCH a
+    # workflow run that cannot execute. Parent HOME stays dest-user.
+    names = (
+        "speckit-specify",
+        "speckit-clarify",
+        "speckit-plan",
+        "speckit-tasks",
+    )
+    skills_root = os.path.join(project, ".hermes", "skills")
+    missing = [
+        n
+        for n in names
+        if not os.path.isfile(os.path.join(skills_root, n, "SKILL.md"))
+    ]
+    if missing:
+        raise SystemExit(
+            "ERROR: dest-init specify smoke: workflow skills missing "
+            "under %s: %s" % (skills_root, ",".join(missing))
+        )
+    print(
+        "dest-init specify smoke: MATCH four-step speckit skills on disk"
+    )
+    manifest_path = os.path.join(
+        project, ".specify", "integrations", "hermes.manifest.json"
+    )
+    if not os.path.isfile(manifest_path):
+        raise SystemExit(
+            "ERROR: dest-init specify smoke: missing hermes.manifest.json"
+        )
+    import json as _json
+
+    try:
+        manifest = _json.loads(open(manifest_path).read())
+    except (OSError, ValueError) as exc:
+        raise SystemExit(
+            "ERROR: dest-init specify smoke: unreadable hermes.manifest.json: "
+            + str(exc)
+        )
+    files = manifest.get("files")
+    nfiles = len(files) if isinstance(files, dict) else -1
+    print("dest-init hermes.manifest files=%s" % nfiles)
+    if nfiles == 0:
+        print(
+            "dest-init specify smoke: hermes.manifest files empty — "
+            "specify workflow run is not installed "
+            "(M2 follows Hermes speckit skills, not workflow run)"
+        )
+    elif nfiles < 0:
+        raise SystemExit(
+            "ERROR: dest-init specify smoke: hermes.manifest files is not an object"
+        )
+    # Architect E-20260808T151907Z — pin demo model binding (qwen / platform MaaS).
+    # Enforce-on-start: rewrite Managed Scope every init; refuse silent drift.
+    pin = yaml.safe_load(open(cfg_path))
+    m = pin.get("model") or {}
+    if m.get("default") != "qwen3-6-27b":
+        raise SystemExit(
+            f"ERROR: model pin failed after Managed Scope write "
+            f"(default={m.get('default')!r})"
+        )
+    if m.get("provider") != "qwen27b":
+        raise SystemExit(
+            f"ERROR: model.provider pin failed (provider={m.get('provider')!r})"
+        )
+    if m.get("api_mode") != "chat_completions":
+        raise SystemExit(
+            f"ERROR: model.api_mode pin failed (api_mode={m.get('api_mode')!r})"
+        )
+    if pin.get("fallback_providers"):
+        raise SystemExit(
+            "ERROR: AD-008 forbids fallback_providers (silent MiniMax/OpenRouter)"
+        )
+    prov = (pin.get("providers") or {}).get("qwen27b") or {}
+    # URL and CA are a matched pair. OCP service serving certs are valid only
+    # for <service>.<ns>.svc and internal communications, so the service CA can
+    # only verify a .svc endpoint; the .apps ingress route is signed by a public
+    # CA and is verified by the platform-merged bundle that Dev Spaces already
+    # mounts at /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem. Pinning one
+    # without the other is what broke dest-14 (TLS verify -> APIConnectionError).
+    # Use the RESOLVED url (model_base), not prov["api"] -- that field holds the
+    # literal "${env:MAAS_API_BASE_URL}" placeholder, so testing it would make
+    # this gate pass vacuously for every endpoint.
+    _host = model_base.split("/")[2] if "//" in model_base else ""
+    if not _host:
+        raise SystemExit(f"ERROR: cannot parse host from MAAS base url {model_base!r}")
+    _svc_endpoint = _host.split(":")[0].endswith(".svc")
+    if _svc_endpoint and prov.get("ssl_ca_cert") != service_ca:
+        raise SystemExit(
+            "ERROR: .svc endpoint requires providers.qwen27b.ssl_ca_cert=service-CA"
+        )
+    if not _svc_endpoint and prov.get("ssl_ca_cert"):
+        raise SystemExit(
+            "ERROR: route endpoint must NOT pin ssl_ca_cert "
+            f"(got {prov.get('ssl_ca_cert')!r}); default trust reads the "
+            "platform-merged CA bundle. Never ssl_verify: false."
+        )
+    if prov.get("discover_models") is not False:
+        raise SystemExit("ERROR: providers.qwen27b.discover_models must be false")
+    minimax_on = os.environ.get("HERMES_MINIMAX") == "1"
+    has_minimax = "minimax" in (pin.get("providers") or {})
+    if minimax_on and not has_minimax:
+        raise SystemExit("ERROR: HERMES_MINIMAX=1 but providers.minimax missing")
+    if not minimax_on and has_minimax:
+        raise SystemExit("ERROR: providers.minimax present without AD-008 escalation")
+    mem = pin.get("memory") or {}
+    if mem.get("memory_enabled") is not False:
+        raise SystemExit("ERROR: memory.memory_enabled must be false")
+    if mem.get("user_profile_enabled") is not False:
+        raise SystemExit("ERROR: memory.user_profile_enabled must be false")
+    aux = ((pin.get("auxiliary") or {}).get("title_generation") or {})
+    if aux.get("enabled") is not False:
+        raise SystemExit("ERROR: W1 pin auxiliary.title_generation.enabled must be false")
+    br = ((pin.get("auxiliary") or {}).get("background_review") or {})
+    if br.get("enabled") is not False:
+        raise SystemExit(
+            "ERROR: auxiliary.background_review.enabled must be false"
+        )
+    cur = pin.get("curator") or {}
+    if cur.get("enabled") is not False:
+        raise SystemExit("ERROR: curator.enabled must be false")
+    disp = pin.get("display") or {}
+    if disp.get("streaming") is not True:
+        raise SystemExit("ERROR: W1 pin display.streaming must be true")
+    kb = pin.get("kanban") or {}
+    if kb.get("auto_decompose") is not False:
+        raise SystemExit("ERROR: kanban.auto_decompose must be false")
+    if kb.get("dispatch_in_gateway") is not True:
+        raise SystemExit("ERROR: kanban.dispatch_in_gateway must be true")
+    if kb.get("max_in_progress") != 1:
+        raise SystemExit("ERROR: kanban.max_in_progress must be 1")
+    sec = pin.get("security") or {}
+    if sec.get("tirith_enabled") is not False:
+        raise SystemExit(
+            "ERROR: security.tirith_enabled must be false (Operator 122315ZO)"
+        )
+    with open(os.path.join(managed, ".rhoai3-model-pin"), "w") as fh:
+        fh.write("default=qwen3-6-27b\n")
+        fh.write("provider=qwen27b\n")
+        fh.write("api_mode=chat_completions\n")
+        fh.write("base=maas-gateway-qwen27b\n")
+        fh.write("ad=AD-008\n")
+        fh.write(
+            "minimax=escalation-override\n" if minimax_on else "minimax=disabled\n"
+        )
+    pin_ca = ((pin.get("providers") or {}).get("qwen27b") or {}).get(
+        "ssl_ca_cert"
+    ) or "<unset: platform-merged bundle>"
+    with open(os.path.join(managed, ".rhoai3-w1-five-pins"), "w") as fh:
+        fh.write(
+            "stale_timeout_seconds=900\n"
+            "maas_api_base_url=maas-gateway\n"
+            f"ssl_ca_cert={pin_ca}\n"
+            "auxiliary.title_generation.enabled=false\n"
+            "auxiliary.background_review.enabled=false\n"
+            "memory.memory_enabled=false\n"
+            "memory.user_profile_enabled=false\n"
+            "curator.enabled=false\n"
+            "display.streaming=true\n"
+        )
+    print(
+        "Hermes Managed Scope: wrote "
+        f"{cfg_path} + .env (W1 five pins + AD-008 qwen3-6-27b, "
+        f"minimax={'on' if minimax_on else 'off'})."
+    )
+    HERMESEOF
+
+      # v24 spawn hydrate: managed wrapper first on PATH so dispatcher
+      # `hermes` snapshots write-set cache into env. Not a trust boundary.
+      if ! grep -q "rhoai3-coding-demo: hermes spawn hydrate" "${HOME}/.bashrc" 2>/dev/null; then
+        {
+          printf '\n# rhoai3-coding-demo: hermes spawn hydrate\n'
+          printf 'export PATH="%s/bin:${PATH}"\n' "${managed_dir}"
+        } >> "${HOME}/.bashrc"
+      fi
+      export PATH="${managed_dir}/bin:${PATH}"
+
+      # Architect E-20260808T151907Z / Deputy E-20260808T153444Z —
+      # Model binding belongs in Managed Scope, not a human checklist.
+      # Wipe every PVC-writable overlay that can silently repoint
+      # default/provider/base_url after interactive Hermes setup.
+      rm -f "${HOME}/.hermes/config.yaml"
+      rm -f "${hermes_home}/config.yaml"
+      # Platform must not own the developer-writable user config path.
+
+      # AD-H §14 — SOUL.md authored in scaffold, placed under HERMES_HOME.
+      # Hash-verify + abort (parity with auth.json): missing/empty/corrupt
+      # placement must not silently fall back to a generic identity — the
+      # entire judgement doctrine lives only here (AGENTS.md is convention).
+      local soul_src="${PROJECT_DIR}/.hermes/SOUL.md"
+      local soul_dst="${hermes_home}/SOUL.md"
+      if [ ! -f "${soul_src}" ]; then
+        echo "ERROR: ${soul_src} absent — identity slot required (AD-H §14)." >&2
         return
       fi
-      export MAAS_BASE_URL MAAS_API_KEY_QWEN27B
-      export REDHAT_MODELS_BASE_URL REDHAT_MODELS_API_KEY
-      "${venv_py}" - <<'HERMESEOF'
-    import os, yaml
-    path = os.path.expanduser("~/.hermes/config.yaml")
-    cfg = {}
-    if os.path.exists(path):
-        with open(path) as fh:
-            cfg = yaml.safe_load(fh) or {}
-    base = os.environ["MAAS_BASE_URL"].rstrip("/")
-    # Output-cap reality (verified live 2026-07-25): this Hermes build
-    # IGNORES max_tokens both top-level and per-provider ("unknown config
-    # keys ignored"), and requests HALF the provider context_length as
-    # output. Its input estimator also undercounts vs the server
-    # tokenizer, so once a session's input passes ~context/2 every call
-    # dies in vLLM 400 input+output>context loops surfaced as stream
-    # stalls. Two working levers only: (1) context_length set BELOW the
-    # real window (98304 on a 131072 model keeps worst-case input+output
-    # inside the window and compacts sessions earlier), (2) extra_body is
-    # a supported pass-through — an explicit max_tokens there caps the
-    # request on the server side regardless of Hermes arithmetic.
-    cfg["custom_providers"] = [
-        {"name": "maas-qwen27b",
-         "base_url": base + "/models-as-a-service/qwen3-6-27b/v1",
-         "api_key": os.environ["MAAS_API_KEY_QWEN27B"],
-         "api_mode": "chat_completions",
-         "context_length": 98304,
-         # Thinking-mode generations stream long reasoning bursts with no
-         # visible content deltas; Hermes' stale-stream detector (240s
-         # default) aborts mid-thought. A 16K generation at ~18 tok/s is
-         # ~15 minutes — give the stream room to finish.
-         "request_timeout_seconds": 2400,
-         "stale_timeout_seconds": 1800,
-         "extra_body": {"max_tokens": 16384}},
-    ]
-    # Optional third provider: Red Hat MaaS portal (LiteMaaS) direct —
-    # MiniMax M2 (196K) as the documented ORCHESTRATOR-reliability routing
-    # option. Direct endpoint because the cluster gateway breaks streaming
-    # for external models on RHOAI 3.4 (expected fixed in 3.5, at which
-    # point this should route through the gateway like everything else).
-    # Skipped when the operator has not provisioned the out-of-band keys.
-    rh_base = (os.environ.get("REDHAT_MODELS_BASE_URL") or "").rstrip("/")
-    rh_key = os.environ.get("REDHAT_MODELS_API_KEY") or ""
-    if rh_base and rh_key:
-        cfg["custom_providers"].append(
-            {"name": "maas-m2",
-             "base_url": rh_base,
-             "api_key": rh_key,
-             "api_mode": "chat_completions",
-             "context_length": 163840,
-             "extra_body": {"max_tokens": 16384}})
-    # Seat assignment (full-migration A/B, 2026-07-25/26): M2 is the
-    # orchestrator default — lean sessions, packet-size tolerance,
-    # long-horizon loop reliability; the local 27B stays the worker seat
-    # and is the fallback orchestrator when the portal keys are absent.
-    model = cfg.get("model") or {}
-    if rh_base and rh_key:
-        model["default"] = "minimax-m2"
-        model["provider"] = "custom:maas-m2"
-    else:
-        model["default"] = "qwen3-6-27b"
-        model["provider"] = "custom:maas-qwen27b"
-    cfg["model"] = model
-    # Top-level max_tokens: ignored by this Hermes build (see provider
-    # comment above) — kept only as documentation of intent for builds
-    # that do honor it; the effective caps live in the provider entries.
-    cfg["max_tokens"] = 16384
-    # Autonomous-run circuit breaker: without hard stops a broken tool
-    # (e.g. the model emitting empty execute_code calls) burns the whole
-    # 60-iteration budget on instant failures. Hermes documents hard stops
-    # as the right mode for autonomous sessions; warnings stay on too.
-    glr = cfg.get("tool_loop_guardrails") or {}
-    glr["warnings_enabled"] = True
-    glr["hard_stop_enabled"] = True
-    cfg["tool_loop_guardrails"] = glr
-    # Migration-trimmed toolset (design decision: no messaging, cron,
-    # browser, image or tts surfaces in the workspace harness).
-    pts = cfg.get("platform_toolsets") or {}
-    pts["cli"] = ["web", "terminal", "file", "skills", "todo"]
-    cfg["platform_toolsets"] = pts
-    # V6 P2.2 / E.4: autonomous sessions have no human at the approval
-    # prompt. Default timeout is ~300s (V5 deny-tax). Fail closed in
-    # seconds, and unconditionally deny known waste shapes even under
-    # yolo (see scaffold .hermes/harness/denied-shapes.md).
-    approvals = cfg.get("approvals") or {}
-    approvals["mode"] = approvals.get("mode") or "smart"
-    approvals["timeout"] = 5
-    approvals["cron_mode"] = "deny"
-    approvals["deny"] = [
-        "*python3*<<*",
-        "*python *<<*",
-        "*python3 - <<*",
-        "*bash*<<*",
-        "*sh *<<*",
-        "*python3 -c*",
-        "*python -c*",
-        "*rewrite-staging*",
-        "*rewrite-maven-plugin*",
-    ]
-    cfg["approvals"] = approvals
-    with open(path, "w") as fh:
-        yaml.safe_dump(cfg, fh, default_flow_style=False, sort_keys=False)
-    print("Hermes config: MaaS providers written (single-model posture: qwen3-6-27b serves planner AND worker; 35B = workshop overlay); approvals.timeout=5s + deny shapes (V6 E.4).")
-    HERMESEOF
-      chmod 600 "${HOME}/.hermes/config.yaml"
-
-      # Repo-versioned Hermes skills (e.g. the migration-harness runbook):
-      # platform-seeded and versioned with the repo, not agent-invented.
-      # Symlinked so a repo pull updates the skill without re-running init.
-      if [ -d "${PROJECT_DIR}/.hermes/skills" ]; then
-        mkdir -p "${HOME}/.hermes/skills"
-        for d in "${PROJECT_DIR}"/.hermes/skills/*/; do
-          [ -d "${d}" ] || continue
-          ln -sfn "${d%/}" "${HOME}/.hermes/skills/$(basename "${d}")"
-        done
-        echo "Linked repo Hermes skills into ~/.hermes/skills."
+      if [ ! -s "${soul_src}" ]; then
+        echo "ERROR: ${soul_src} empty — Hermes would silently fall back (AD-H §14)." >&2
+        return
       fi
+      # Reject whitespace-only (Hermes strip() → empty → silent fallback).
+      if ! grep -q '[^[:space:]]' "${soul_src}"; then
+        echo "ERROR: ${soul_src} whitespace-only — Hermes would silently fall back (AD-H §14)." >&2
+        return
+      fi
+      cp -f "${soul_src}" "${soul_dst}"
+      local soul_src_hash soul_dst_hash
+      soul_src_hash="$(sha256sum "${soul_src}" | awk '{print $1}')"
+      soul_dst_hash="$(sha256sum "${soul_dst}" | awk '{print $1}')"
+      if [ -z "${soul_src_hash}" ] || [ "${soul_src_hash}" != "${soul_dst_hash}" ]; then
+        echo "ERROR: SOUL.md hash mismatch after placement (src=${soul_src_hash:-none} dst=${soul_dst_hash:-none})." >&2
+        return
+      fi
+      echo "Hermes AD-H §14: placed SOUL.md at ${soul_dst} (sha256=${soul_src_hash:0:12})."
+
+      # V34-2 — dest cannot keep golden .git; stamp resolved main SHA.
+      local stamp_rev="${PROJECT_DIR}/.hermes/skills/harness/dispatch-phase/scripts/stamp-harness-rev.py"
+      if [ -f "${stamp_rev}" ]; then
+        python3 "${stamp_rev}" --root "${PROJECT_DIR}" \
+          || echo "WARN: HARNESS_REV stamp failed"
+      fi
+
+      # AD-H §14 — load-time smoke (not standing machinery): exercise Hermes
+      # scan+load. Placement hashing cannot catch scanner alteration at load.
+      # Architect 202501ZA: overlay owns the agent tree. Fail-closed if the
+      # bake is missing. No dest .hermes/home/hermes-agent fallback.
+      local hermes_agent_root="/opt/hermes-agent"
+      if [ ! -d "${hermes_agent_root}" ]; then
+        echo "ERROR: overlay Hermes agent tree missing at ${hermes_agent_root}; cannot smoke-test SOUL.md load (AD-H §14)." >&2
+        return 1
+      fi
+      if ! (
+        cd "${hermes_agent_root}"
+        HERMES_HOME="${hermes_home}" "${venv_py}" - <<'SOULSMOKE'
+    import os
+    import sys
+
+    expected_path = os.path.join(os.environ["HERMES_HOME"], "SOUL.md")
+    with open(expected_path, encoding="utf-8") as fh:
+        expected = fh.read().strip()
+    if not expected:
+        print("ERROR: SOUL.md empty at load-time smoke", file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        from agent.prompt_builder import load_soul_md
+    except Exception as exc:
+        print(f"ERROR: cannot import load_soul_md: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    loaded = load_soul_md()
+    if not loaded:
+        print("ERROR: load_soul_md returned None/empty — silent identity fallback", file=sys.stderr)
+        sys.exit(1)
+    if loaded.lstrip().startswith("[BLOCKED:"):
+        print(f"ERROR: SOUL.md blocked by injection scanner: {loaded[:240]}", file=sys.stderr)
+        sys.exit(1)
+    for marker in (
+        "faithful",
+        "read-only and they are the truth",
+        "they are right",
+        "blockage is a correct outcome",
+    ):
+        if marker not in loaded:
+            print(f"ERROR: doctrine marker missing after load: {marker!r}", file=sys.stderr)
+            sys.exit(1)
+    if loaded.strip() != expected:
+        print("ERROR: loaded SOUL.md differs from on-disk content after scan/truncate", file=sys.stderr)
+        sys.exit(1)
+    print("Hermes AD-H §14: SOUL.md load-time smoke OK (identity intact).")
+    SOULSMOKE
+      ); then
+        echo "ERROR: SOUL.md load-time smoke failed (AD-H §14)." >&2
+        return 1
+      fi
+
+      # Operator GO 231808Z — dest orchestrator + implementer (trigger (c)).
+      # Stop C-2(a) skip. Create those two without --clone (EX-4). Secrets
+      # stay Managed Scope (check immediately below).
+      if ! ensure_dest_worker_profiles \
+        "${hermes_bin}" "${venv_py}" "${hermes_home}" "${managed_dir}" "${PROJECT_DIR}"; then
+        echo "ERROR: dest worker profile seating failed (231808Z)." >&2
+        return
+      fi
+
+      # Secrets must stay in Managed Scope — never under HERMES_HOME.
+      # Architect 141656ZA: do not fail-close on mere existence of
+      # HERMES_HOME/.env (Hermes installer template has no MAAS_*).
+      # Refuse MAAS_* assignments or auth.json. Do not dest-read values.
+      if [ -e "${hermes_home}/auth.json" ]; then
+        echo "ERROR: auth.json under HERMES_HOME=${hermes_home}; refuse to continue." >&2
+        return 1
+      fi
+      if [ -f "${hermes_home}/.env" ] \
+        && grep -E '^[[:space:]]*MAAS_[A-Za-z0-9_]*=' "${hermes_home}/.env" >/dev/null; then
+        echo "ERROR: MAAS_* assignment under HERMES_HOME=${hermes_home}/.env; refuse to continue." >&2
+        return 1
+      fi
+
+      if ! grep -q "rhoai3-coding-demo: hermes managed scope" "${HOME}/.bashrc" 2>/dev/null; then
+        {
+          printf '\n# rhoai3-coding-demo: hermes managed scope (AD-H)\n'
+          printf 'export HERMES_MANAGED_DIR=%q\n' "${managed_dir}"
+          printf 'export HERMES_HOME=%q\n' "${hermes_home}"
+          printf 'export HERMES_WRITE_SAFE_ROOT=%q\n' "${PROJECT_DIR}"
+          printf 'export K2_ALLOW_ROOT=%q\n' "${PROJECT_DIR}:/projects/legacy"
+          printf 'export HERMES_ACCEPT_HOOKS=1\n'
+        } >> "${HOME}/.bashrc"
+      else
+        # Refresh paths on every init (key/profile may change).
+        sed -i.bak \
+          -e "s|^export HERMES_MANAGED_DIR=.*|export HERMES_MANAGED_DIR=$(printf %q "${managed_dir}")|" \
+          -e "s|^export HERMES_WRITE_SAFE_ROOT=.*|export HERMES_WRITE_SAFE_ROOT=$(printf %q "${PROJECT_DIR}")|" \
+          -e "s|^export K2_ALLOW_ROOT=.*|export K2_ALLOW_ROOT=$(printf %q "${PROJECT_DIR}:/projects/legacy")|" \
+          "${HOME}/.bashrc" 2>/dev/null || true
+        if grep -q '^export HERMES_HOME=' "${HOME}/.bashrc" 2>/dev/null; then
+          sed -i.bak \
+            -e "s|^export HERMES_HOME=.*|export HERMES_HOME=$(printf %q "${hermes_home}")|" \
+            "${HOME}/.bashrc" 2>/dev/null || true
+        else
+          printf 'export HERMES_HOME=%q\n' "${hermes_home}" >> "${HOME}/.bashrc"
+        fi
+        if ! grep -q '^export K2_ALLOW_ROOT=' "${HOME}/.bashrc" 2>/dev/null; then
+          printf 'export K2_ALLOW_ROOT=%q\n' "${PROJECT_DIR}:/projects/legacy" >> "${HOME}/.bashrc"
+        fi
+        if ! grep -q '^export HERMES_ACCEPT_HOOKS=' "${HOME}/.bashrc" 2>/dev/null; then
+          printf 'export HERMES_ACCEPT_HOOKS=1\n' >> "${HOME}/.bashrc"
+        fi
+        rm -f "${HOME}/.bashrc.bak"
+      fi
+      if [ -e "${HOME}/.hermes/config.yaml" ] || [ -e "${hermes_home}/config.yaml" ]; then
+        echo "ERROR: PVC Hermes config overlay still present after pin wipe — refuse drift path." >&2
+        return
+      fi
+      # W2: hermes hooks doctor after seed (official: script edits trusted by
+      # command string — doctor catches mtime/allowlist drift). Overlay bake
+      # is already asserted above.
+      HERMES_HOME="${hermes_home}" HERMES_MANAGED_DIR="${managed_dir}" \
+        HERMES_ACCEPT_HOOKS=1 "${hermes_bin}" hooks doctor >/dev/null 2>&1 \
+        || echo "WARN: hermes hooks doctor reported issues (W2 CS-5 #5) — re-run after allowlist."
+      echo "Hermes AD-H: managed_mode=${managed_mode} dir=${managed_dir}; HERMES_HOME=${hermes_home}; WRITE_SAFE_ROOT=${PROJECT_DIR}; external_dirs=${hermes_skills_dir}; model pin=qwen3-6-27b; PVC overlays absent."
+
+      # Dashboard UI: dest-init does not npm-build. Overlay bake owns
+      # HERMES_WEB_DIST (/usr/local/share/hermes/web_dist). Launcher is
+      # default-not-override. Dest install-web-dist.sh is retired from the golden.
+
+      # Architect 202501ZA: golden must not ship .hermes/home/scripts;
+      # dest-init must not copy from that dest path. Overlay watchdog /
+      # persist helper is a later named GO. Honest skip until then.
+      mkdir -p "${hermes_home}/cron/output"
+      echo "WARN: kanban-stuck-watchdog not installed (no dest .hermes/home/scripts; overlay watchdog awaits named GO)."
     }
 
     write_kantra_helper() {
@@ -712,25 +1830,108 @@ data:
       # so pod restarts do not wipe the binary; /tmp remains a fallback.
       # Pinned; bump deliberately.
       mkdir -p "${HOME}/.local/bin"
+      # An executable `kantra` is not a usable kantra: analysis shells out to
+      # sibling binaries (java-external-provider, the jdtls launchers), and
+      # `python3 -m zipfile` extraction discards Unix modes so those land 644.
+      # Check the property, not a list of names — no ELF binary in the tree may
+      # be non-executable — so a renamed or added provider needs no edit here.
+      # The PVC tree is writable, so repair first and fail closed only if the
+      # repair does not take (which is what /opt/kantra does: chown'd to a
+      # different uid, so it can only be fixed in the image).
+      cat > "${HOME}/.local/bin/kantra-assert-exec" <<'KANTRAEXECEOF'
+    #!/usr/bin/env python3
+    """Every runnable file under the kantra tree must be executable.
+
+    Runnable means ELF or shebang. ELF alone would miss the jdtls launchers -
+    kantra's archive declares jdtls/bin/jdtls (shell) and jdtls.py 0755, and
+    neither is ELF, so an ELF-only check silently skips exactly the files the
+    Java provider needs after a mode-losing extraction.
+    """
+    import os
+    import sys
+
+    root = sys.argv[1] if len(sys.argv) > 1 else "/projects/.tools/kantra"
+    seen, repaired, unfixable, unwalkable = 0, [], [], []
+    # os.walk swallows listdir failures by default, so an unreadable directory
+    # would be skipped in silence and the check would pass without having seen
+    # what is inside it. Collect those and refuse.
+    for dirpath, _, filenames in os.walk(root, onerror=lambda e: unwalkable.append(
+            getattr(e, "filename", None) or str(e))):
+        for name in filenames:
+            path = os.path.join(dirpath, name)
+            if os.path.islink(path):
+                continue
+            try:
+                with open(path, "rb") as fh:
+                    head = fh.read(4)
+                if head != b"\x7fELF" and head[:2] != b"#!":
+                    continue
+                seen += 1
+                if os.access(path, os.X_OK):
+                    continue
+                os.chmod(path, os.stat(path).st_mode | 0o111)
+            except OSError:
+                unfixable.append(path)
+                continue
+            (repaired if os.access(path, os.X_OK) else unfixable).append(path)
+
+    if unwalkable:
+        sys.stderr.write(
+            "kantra-assert-exec: %d directories under %s could not be listed (%s); "
+            "the tree was not fully inspected, so a passing result would be "
+            "meaningless\n" % (len(unwalkable), root, ", ".join(sorted(unwalkable)[:5])))
+        sys.exit(1)
+    if not seen:
+        sys.stderr.write(
+            "kantra-assert-exec: no runnable files (ELF or shebang) found under %s; "
+            "this is not a usable kantra tree, so the exec-bit check would pass "
+            "vacuously\n" % root)
+        sys.exit(1)
+    if unfixable:
+        sys.stderr.write(
+            "kantra-assert-exec: %d runnable files under %s are not executable and "
+            "could not be chmod'd (%s); kantra analysis fails when it shells out "
+            "to them\n" % (len(unfixable), root, ", ".join(sorted(unfixable)[:5])))
+        sys.exit(1)
+    if repaired:
+        sys.stderr.write(
+            "kantra-assert-exec: restored the exec bit on %d runnable files under "
+            "%s (the extractor discarded Unix modes)\n" % (len(repaired), root))
+    KANTRAEXECEOF
+      chmod 755 "${HOME}/.local/bin/kantra-assert-exec"
       cat > "${HOME}/.local/bin/kantra-ensure" <<'KANTRAEOF'
     #!/usr/bin/env bash
     set -euo pipefail
+    # Human status on stderr only. mta-analyze-legacy.sh ensure_cli() captures
+    # stdout as the CLI path (`CLI="$(ensure_cli)"`); a progress line on stdout
+    # becomes the executed command (v30 t_573591fd: "Downloading kantra…").
     KANTRA_VERSION="v0.10.0-beta.1"
     KANTRA_HOME="${KANTRA_HOME:-/projects/.tools/kantra}"
-    if [ -x "${KANTRA_HOME}/kantra" ]; then
-      echo "kantra ready: ${KANTRA_HOME}/kantra"
+    # An executable `kantra` does not mean a usable kantra: analysis shells out
+    # to sibling binaries (java-external-provider, the jdtls launchers), and
+    # `python3 -m zipfile` extraction discards Unix modes, so those land 644.
+    # Check the property, not a list of names - no ELF binary in the tree may
+    # be non-executable - so a renamed or added provider is covered without
+    # editing this helper. The tree is on the workspace PVC and writable, so
+    # repair first and only fail closed if repair does not take.
+    ready() {
+      chmod +x "${KANTRA_HOME}/kantra" 2>/dev/null || true
+      "${HOME}/.local/bin/kantra-assert-exec" "${KANTRA_HOME}" || exit 1
+      echo "kantra ready: ${KANTRA_HOME}/kantra${1:-}" >&2
       exit 0
+    }
+    if [ -x "${KANTRA_HOME}/kantra" ]; then
+      ready
     fi
     # Migrate a prior /tmp install into the durable home when present.
     if [ -x /tmp/kantra/kantra ] && [ "${KANTRA_HOME}" != "/tmp/kantra" ]; then
       mkdir -p "${KANTRA_HOME}"
       cp -a /tmp/kantra/. "${KANTRA_HOME}/" 2>/dev/null || true
       if [ -x "${KANTRA_HOME}/kantra" ]; then
-        echo "kantra ready: ${KANTRA_HOME}/kantra (migrated from /tmp)"
-        exit 0
+        ready " (migrated from /tmp)"
       fi
     fi
-    echo "Downloading kantra ${KANTRA_VERSION} (~690MB, once per workspace)..."
+    echo "Downloading kantra ${KANTRA_VERSION} (~690MB, once per workspace)..." >&2
     curl -fsSL --retry 3 --max-time 1200 -o /tmp/kantra.zip \
       "https://github.com/konveyor/kantra/releases/download/${KANTRA_VERSION}/kantra.linux.amd64.zip"
     mkdir -p "${KANTRA_HOME}"
@@ -740,8 +1941,7 @@ data:
       python3 -m zipfile -e /tmp/kantra.zip "${KANTRA_HOME}"
     fi
     rm -f /tmp/kantra.zip
-    chmod +x "${KANTRA_HOME}/kantra"
-    echo "kantra ready: ${KANTRA_HOME}/kantra"
+    ready
     KANTRAEOF
       chmod 755 "${HOME}/.local/bin/kantra-ensure"
       echo "Installed kantra-ensure helper (lazy harness sensor install)."
@@ -750,7 +1950,30 @@ data:
     if [ "${AI_TOOL}" = "opencode" ]; then
       ensure_opencode_latest
       ensure_quarkus_agent_mcp
-      cat > "${HOME}/.config/opencode/opencode.json" <<EOF
+      # CS-1 (Architect E-20260812T061618Z): pin lives in official managed
+      # config /etc/opencode/opencode.json (above user/project in OpenCode
+      # precedence). Devfile mounts volume `opencode-managed` at that path
+      # so the workspace user can write it. Precedence proven on OpenCode
+      # 1.18.16 (OPENCODE_TEST_MANAGED_CONFIG_DIR sentinel model wins over
+      # ~/.config). If /etc/opencode is not writable (old seats without the
+      # mount), KEEP legacy AD-008 ~/.config + .platform stamp.
+      OPENCODE_MANAGED_DIR="/etc/opencode"
+      OPENCODE_MANAGED_CFG="${OPENCODE_MANAGED_DIR}/opencode.json"
+      OPENCODE_USER_CFG="${HOME}/.config/opencode/opencode.json"
+      OPENCODE_PIN_MODE="managed"
+      if ! mkdir -p "${OPENCODE_MANAGED_DIR}" 2>/dev/null \
+        || ! touch "${OPENCODE_MANAGED_DIR}/.rhoai3-write-test" 2>/dev/null; then
+        OPENCODE_PIN_MODE="legacy"
+        echo "WARN: CS-1 /etc/opencode not writable — keeping AD-008 legacy pin (add opencode-managed volume mount)."
+      else
+        rm -f "${OPENCODE_MANAGED_DIR}/.rhoai3-write-test" 2>/dev/null || true
+      fi
+      OPENCODE_CFG_TARGET="${OPENCODE_USER_CFG}"
+      if [ "${OPENCODE_PIN_MODE}" = "managed" ]; then
+        OPENCODE_CFG_TARGET="${OPENCODE_MANAGED_CFG}"
+      fi
+      mkdir -p "$(dirname "${OPENCODE_CFG_TARGET}")" "${HOME}/.config/opencode"
+      cat > "${OPENCODE_CFG_TARGET}" <<EOF
     {
       "\$schema": "https://opencode.ai/config.json",
       "autoupdate": true,
@@ -801,7 +2024,54 @@ data:
     }
     EOF
 
+      if [ "${OPENCODE_PIN_MODE}" = "managed" ]; then
+        # Mirror into XDG for tools/UI that only look at ~/.config; managed
+        # path still wins for model/provider enforcement.
+        cp -f "${OPENCODE_MANAGED_CFG}" "${OPENCODE_USER_CFG}"
+      fi
       ensure_opencode_compat_path
+      # AD-008 / CS-1 — fail-closed if default model is not platform Qwen.
+      export PROJECT_DIR OPENCODE_CFG_TARGET OPENCODE_PIN_MODE OPENCODE_MANAGED_CFG
+      cat <<'PINOC' | sed -e 's/^      //' | python3 -
+          import json, os, sys
+          mode = os.environ.get("OPENCODE_PIN_MODE", "legacy")
+          cfg = os.environ.get("OPENCODE_CFG_TARGET") or os.path.expanduser("~/.config/opencode/opencode.json")
+          try:
+              d = json.load(open(cfg))
+          except Exception as e:
+              print(f"ERROR: AD-008/CS-1 OpenCode pin: cannot read {cfg}: {e}", file=sys.stderr)
+              sys.exit(1)
+          model = str(d.get("model") or "")
+          enabled = d.get("enabled_providers") or []
+          if model != "qwen27b/qwen3-6-27b":
+              print(f"ERROR: AD-008/CS-1 OpenCode pin failed (model={model!r})", file=sys.stderr)
+              sys.exit(1)
+          if "qwen27b" not in enabled:
+              print(f"ERROR: AD-008/CS-1 OpenCode pin failed (enabled_providers={enabled!r})", file=sys.stderr)
+              sys.exit(1)
+          stamp_dir = os.environ["PROJECT_DIR"]
+          legacy_stamp = os.path.join(stamp_dir, ".platform", "opencode", ".rhoai3-model-pin")
+          if mode == "managed":
+              # Retire .platform/opencode/ on new base (CS-1).
+              import shutil
+              legacy_root = os.path.join(stamp_dir, ".platform", "opencode")
+              if os.path.isdir(legacy_root):
+                  shutil.rmtree(legacy_root)
+              managed = os.environ.get("OPENCODE_MANAGED_CFG", "/etc/opencode/opencode.json")
+              print(f"CS-1 OpenCode managed pin OK: {managed} (minimax={'on' if 'redhat' in enabled else 'off'})")
+          else:
+              os.makedirs(os.path.dirname(legacy_stamp), exist_ok=True)
+              with open(legacy_stamp, "w") as fh:
+                  fh.write("model=qwen27b/qwen3-6-27b\n")
+                  fh.write(f"enabled_providers={json.dumps(enabled)}\n")
+                  fh.write("ad=AD-008\n")
+                  fh.write("cs1=legacy-fallback-no-etc-mount\n")
+                  if "redhat" in enabled:
+                      fh.write("minimax=escalation-override\n")
+                  else:
+                      fh.write("minimax=disabled\n")
+              print(f"AD-008 OpenCode legacy pin OK: {legacy_stamp} (minimax={'on' if 'redhat' in enabled else 'off'})")
+    PINOC
       rm -rf "${HOME}/.config/kilo"
       echo "Kilo config removed — this is an OpenCode workspace."
     else
@@ -814,8 +2084,39 @@ data:
     # and the lazy re-analysis sensor helper (kantra-ensure) ride on top of
     # the OpenCode worker tooling above.
     if [ "${PROFILE}" = "modernized" ]; then
-      ensure_hermes
+      # Review 152650ZR: ensure_hermes ERROR paths must fail-close this
+      # postStart; a status-0 return still started the gateway.
+      if ! ensure_hermes; then
+        echo "ERROR: ensure_hermes failed; dest-init fail-closed before gateway." >&2
+        exit 1
+      fi
       write_kantra_helper
+      # Architect 145309ZA / 151813ZA: same postStart, after tools+auth.
+      # Do not restore supervise-gateway.sh. Not a skippable extra command.
+      export HERMES_ACCEPT_HOOKS=1
+      export HERMES_HOME="${PROJECT_DIR}/.hermes/home"
+      if [ ! -x /usr/local/bin/hermes ]; then
+        echo "ERROR: overlay hermes missing after ensure_hermes; cannot start gateway." >&2
+        exit 1
+      fi
+      mkdir -p "${HERMES_HOME}"
+      gw_log="${HERMES_HOME}/gateway-run.log"
+      nohup /usr/local/bin/hermes gateway run --external-supervisor >> "${gw_log}" 2>&1 &
+      gw_pid=$!
+      sleep 1
+      if ! kill -0 "${gw_pid}" 2>/dev/null; then
+        echo "ERROR: hermes gateway run --external-supervisor exited (see ${gw_log})." >&2
+        exit 1
+      fi
+      echo "Started hermes gateway run --external-supervisor pid=${gw_pid}"
+      # W1: hermes --version is the proxy class. Mandated invocation is
+      # kanban ls (show/create need a task id / would mint). Do not dest-create
+      # a card from dest-init.
+      if ! /usr/local/bin/hermes kanban ls >/dev/null; then
+        echo "ERROR: dest-init hermes kanban ls failed (capability, not --version)." >&2
+        exit 1
+      fi
+      echo "dest-init hermes kanban ls: MATCH"
     fi
     echo "Configured ${AI_TOOL} from the MaaS API key Secret for ${PROFILE}."
 ---
@@ -981,3 +2282,31 @@ spec:
                 --from-env-file="${SECRET_FILE}" \
                 --dry-run=client -o yaml | oc apply -f -
               echo "MaaS API key Secret ${SECRET_NAMESPACE}/${SECRET_NAME} is ready"
+
+              # Derived env-mount Secret for Hermes ${env:MAAS_API_*} names.
+              # URL = Secret MAAS_BASE_URL + ConfigMap MAAS_API_PATH.
+              # Server-side apply avoids last-applied-configuration embedding
+              # the key. Do not bounce Running DevWorkspace pods.
+              MAAS_API_PATH="$(oc get configmap workspace-maas-model-endpoint -n "${SECRET_NAMESPACE}" -o jsonpath='{.data.MAAS_API_PATH}' 2>/dev/null || true)"
+              if [ -z "${MAAS_API_PATH}" ]; then
+                MAAS_API_PATH="/models-as-a-service/qwen3-6-27b/v1"
+              fi
+              python3 - "${SECRET_FILE}" "${MAAS_BASE_URL}" "${MAAS_API_PATH}" "${SECRET_NAMESPACE}" <<'DERIVEEOF' | oc apply --server-side --force-conflicts --field-manager=devspace-maas-key-provisioner -f -
+              import json
+              import sys
+              path, base, api_path, ns = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+              key = ""
+              with open(path, encoding="utf-8") as fh:
+                  for line in fh:
+                      if line.startswith("MAAS_API_KEY_QWEN27B="):
+                          key = line.split("=", 1)[1].rstrip("\n")
+                          break
+              if not key:
+                  raise SystemExit("ERROR: MAAS_API_KEY_QWEN27B missing; cannot derive workspace-maas-credentials")
+              if not (base or "").strip():
+                  raise SystemExit("ERROR: MAAS_BASE_URL missing; cannot derive workspace-maas-credentials")
+              rel = api_path if api_path.startswith("/") else "/" + api_path
+              url = base.rstrip("/") + rel
+              json.dump({"apiVersion": "v1", "kind": "Secret", "metadata": {"name": "workspace-maas-credentials", "namespace": ns, "labels": {"controller.devfile.io/mount-to-devworkspace": "true", "controller.devfile.io/watch-secret": "true", "app.kubernetes.io/part-of": "maas", "app.kubernetes.io/name": "workspace-maas-credentials", "app.kubernetes.io/component": "credentials", "demo.rhoai.io/stage": "050"}, "annotations": {"controller.devfile.io/mount-as": "env"}}, "type": "Opaque", "stringData": {"MAAS_API_KEY": key, "MAAS_API_BASE_URL": url}}, sys.stdout)
+              DERIVEEOF
+              echo "workspace-maas-credentials derived (MaaS gateway base from MAAS_BASE_URL)"

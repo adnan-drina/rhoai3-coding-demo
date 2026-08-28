@@ -1,0 +1,96 @@
+# MaaS egress NetworkPolicy for Dev Spaces workspaces (AD-H / W2).
+#
+# Managed Scope cannot restrict egress. This policy is the platform control:
+# DevWorkspace pods in wksp-ai-developer may reach in-cluster DNS, the API,
+# MTA, the MaaS / gateway namespaces, and OpenShift ingress (MaaS routes),
+# plus TCP 80/443 for build/git tooling.
+#
+# L4 cannot fully block every public LLM hostname without an egress proxy;
+# keys + Managed Scope remain the identity control. This policy is the GitOps
+# home for tightening (remove world 80/443 when an egress gateway lands).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: migration-workspace-maas-egress
+  namespace: wksp-ai-developer
+  annotations:
+    argocd.argoproj.io/sync-wave: "20"
+  labels:
+    app.kubernetes.io/name: migration-workspace-maas-egress
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    demo.rhoai.io/stage: "050"
+spec:
+  podSelector:
+    matchExpressions:
+      - key: controller.devfile.io/devworkspace_name
+        operator: Exists
+  policyTypes:
+    - Egress
+  egress:
+    # DNS — allow all ports to openshift-dns. Service dns-default maps 53→5353
+    # on CoreDNS pods; pinning only 53 silently blackholes resolution under OVN
+    # (che-gateway 504 / git push DNS failures observed 2026-08-08).
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: openshift-dns
+    # Kubernetes API — `to: default` 443/6443 DISPROVED for R3 ACCEPT
+    # (Research E-20260808T150809Z): ClusterIP is in default, but
+    # kube-apiserver is hostNetwork on control-plane nodes. Real allow is
+    # AdminNetworkPolicy workspace-allow-kapi-egress (nodes :6443). Keep this
+    # rule only as a no-harm legacy peer; do not treat it as R3 ACCEPT.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: default
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 6443
+    # Dev Spaces control plane. Required egress row R2 (class PRIMARY), derived
+    # from Red Hat Dev Spaces ingress documentation — see
+    # harness-refactoring/source-analysis/control-admission/20260808-required-egress.md
+    # The per-workspace che-gateway sidecar reaches
+    # che-gateway.openshift-devspaces for workspace-plane traffic.
+    #
+    # NOTE: the commit that introduced this rule (ba5b3c6) claimed it fixed a
+    # workspace 504. That claim was wrong — the 504 was a browser-side issue, and
+    # this rule did not change the observed behaviour. The rule is kept because
+    # R2 requires it on documented grounds, not because it resolved an incident.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: openshift-devspaces
+    # MaaS API + model routes (in-cluster)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: models-as-a-service
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: openshift-ingress
+    # Private model serving / RHOAI data-science stacks commonly used by MaaS
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: redhat-ods-applications
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: redhat-ods-monitoring
+    # MTA hub (extension + analysis)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: openshift-mta
+    # Same namespace (workspace sidecars / projects)
+    - to:
+        - podSelector: {}
+    # Build / git / VSIX / kantra download — tighten when egress gateway exists
+    - ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 80

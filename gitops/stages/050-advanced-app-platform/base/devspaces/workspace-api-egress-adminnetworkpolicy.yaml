@@ -1,0 +1,40 @@
+# R3 Kubernetes API egress for Dev Spaces workspaces (cited land).
+#
+# Research E-20260808T150809Z / source-analysis/control-admission/
+# 20260808-r3-api-egress-cite.md DISPROVED namespaced NP
+# `to: default` 443/6443 (ClusterIP lives in default; kube-apiserver is
+# hostNetwork on control-plane nodes — OVN matches post-DNAT).
+#
+# PRIMARY (OpenShift Admin network policy docs): AdminNetworkPolicy Allow
+# egress to nodes with node-role.kubernetes.io/control-plane, TCP 6443.
+# ANP Allow outranks namespaced NetworkPolicy deny for the matched path.
+#
+# Subject: Che workspace namespaces (label used by Dev Spaces).
+apiVersion: policy.networking.k8s.io/v1alpha1
+kind: AdminNetworkPolicy
+metadata:
+  name: workspace-allow-kapi-egress
+  annotations:
+    argocd.argoproj.io/sync-wave: "19"
+  labels:
+    app.kubernetes.io/name: workspace-allow-kapi-egress
+    app.kubernetes.io/part-of: rhoai3-coding-demo
+    demo.rhoai.io/stage: "050"
+spec:
+  priority: 50
+  subject:
+    namespaces:
+      matchLabels:
+        app.kubernetes.io/component: workspaces-namespace
+  egress:
+    - name: allow-to-kapi-server
+      action: Allow
+      to:
+        - nodes:
+            matchExpressions:
+              - key: node-role.kubernetes.io/control-plane
+                operator: Exists
+      ports:
+        - portNumber:
+            protocol: TCP
+            port: 6443

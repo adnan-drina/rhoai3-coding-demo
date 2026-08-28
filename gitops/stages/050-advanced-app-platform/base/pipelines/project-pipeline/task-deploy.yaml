@@ -11,6 +11,9 @@ apiVersion: tekton.dev/v1
 kind: Task
 metadata:
   name: deploy-app
+  annotations:
+    argocd.argoproj.io/sync-wave: "20"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 spec:
   params:
     - name: REPO_NAME

@@ -26,6 +26,15 @@ rules:
 - apiGroups: [""]
   resources: ["configmaps"]
   verbs: ["get", "create", "patch", "update"]
+# Prune SHA-pinned template Locations in Backstage postgres (no catalog
+# API token). Namespace-scoped; not cluster-admin. Same path as
+# scripts/delete-scaffolded-project.sh.
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list"]
+- apiGroups: [""]
+  resources: ["pods/exec"]
+  verbs: ["create"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
