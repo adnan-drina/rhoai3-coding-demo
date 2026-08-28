@@ -16,8 +16,9 @@ metadata:
 ## When to Use
 
 - Before `kanban_create()` — **lint only**.
-  Pin this skill from the card `skills=` list; there is no phase-attach
-  matrix (`E-20260822T120850Z`).
+  Do not pin this leaf on the card. Pin `--skill paved-road-m2`; this
+  checker loads via `skill_view` from `steps.json`. There is no
+  phase-attach matrix (`E-20260822T120850Z`).
 - After the typed partition is written — prove coverage (HTTP 1:1, dest_file
   1:N with supersede) with `check-partition-coverage.py`.
   This skill does **not** author Path-A `partition.json` and does **not**

@@ -386,9 +386,18 @@ check "080 golden orchestrator profile template present" \
 check "080 golden implementer profile template present" \
   "test -f '${SCAFFOLD_PROFILES}/implementer.yaml.template' && echo present || echo missing" \
   "present"
+check "080 golden reviewer profile template present" \
+  "test -f '${SCAFFOLD_PROFILES}/reviewer.yaml.template' && echo present || echo missing" \
+  "present"
 check "080 GitOps seats dest worker profiles (C-2 skip retired)" \
   "grep -c 'ensure_dest_worker_profiles' '${GITOPS_INIT}' || echo 0" \
   "2"
+check "080 GitOps seats reviewer profile" \
+  "grep -c '_ensure_one_dest_profile reviewer' '${GITOPS_INIT}' || echo 0" \
+  "1"
+check "080 GitOps pins kanban.review_dispatch true" \
+  "grep -c '\"review_dispatch\": True' '${GITOPS_INIT}' || echo 0" \
+  "1"
 check "080 GitOps does not skip single-persona profile create" \
   "grep -c 'skip hermes profile create (single-persona)' '${GITOPS_INIT}' || echo 0" \
   "0"
@@ -441,6 +450,36 @@ check "080 catalog Locations use a stable Argo ref not a SHA blob" \
   "1"
 check "080 K2 env-assignment selftest passes" \
   "python3 '${SCAFFOLD_KERNEL}/k2_selftest.py' >/dev/null && echo 1 || echo 0" \
+  "1"
+check "080 K2 implementer complete is request_review" \
+  "grep -c 'implementer terminator is kanban_request_review' '${SCAFFOLD_KERNEL}/pre_tool_call.sh' || echo 0" \
+  "1"
+check "080 K2 complete hook writes breadcrumb" \
+  "grep -c 'complete-invocations.jsonl' '${SCAFFOLD_KERNEL}/pre_tool_call.sh' || echo 0" \
+  "1"
+SCAFFOLD_LIB="${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/lib"
+SCAFFOLD_PAVED="${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/skills/paved-road"
+SCAFFOLD_AUTOSTART="${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/skills/harness/dispatch-phase/scripts"
+check "080 paved-road lib selftest passes" \
+  "python3 '${SCAFFOLD_LIB}/paved_road.test.py' >/dev/null && echo 1 || echo 0" \
+  "1"
+check "080 paved-road-m1 selftest passes" \
+  "python3 '${SCAFFOLD_PAVED}/paved-road-m1/scripts/selftest.py' >/dev/null && echo 1 || echo 0" \
+  "1"
+check "080 paved-road-m2 selftest passes (dest-14 fixture REFUSE)" \
+  "python3 '${SCAFFOLD_PAVED}/paved-road-m2/scripts/selftest.py' >/dev/null && echo 1 || echo 0" \
+  "1"
+check "080 paved-road coverage lint passes" \
+  "python3 '${SCAFFOLD_LIB}/paved_road.py' coverage >/dev/null && echo 1 || echo 0" \
+  "1"
+check "080 autostart pins paved-road-m1 only on M1" \
+  "grep -c -- '--skill paved-road-m1' '${SCAFFOLD_AUTOSTART}/autostart-migration.sh' || echo 0" \
+  "1"
+check "080 autostart does not pin scan-with-mta on the card" \
+  "grep -c -- '--skill scan-with-mta' '${SCAFFOLD_AUTOSTART}/autostart-migration.sh' || echo 0" \
+  "0"
+check "080 autostart-migration selftest passes" \
+  "python3 '${SCAFFOLD_AUTOSTART}/autostart-migration.selftest.py' >/dev/null && echo 1 || echo 0" \
   "1"
 check "080 derive default DERIVED_ROOT is inside dest tree" \
   "grep -c '\${MODERNIZED_ROOT}/.derived/legacy-at-3' '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/skills/migration/derive-legacy-boot3/scripts/derive-legacy-boot3.sh' || echo 0" \
@@ -536,6 +575,14 @@ check "080 GitOps K2 matcher includes execute_code" \
 check "080 GitOps K2 matcher includes skill_manage" \
   "grep -c 'delegate_task|skill_manage' '${GITOPS_INIT}' || echo 0" \
   "1"
+check "080 GitOps pre_tool_call matcher includes native complete" \
+  "python3 -c \"
+import pathlib, re
+t = pathlib.Path('${GITOPS_INIT}').read_text(encoding='utf-8')
+ms = re.findall(r'\\\"matcher\\\": \\\"([^\\\"]+)\\\"', t)
+print(sum(1 for m in ms if 'kanban_complete' in m and 'complete_task' in m))
+\"" \
+  "2"
 check "080 GitOps no longer forbids the K2 instrumentation land" \
   "grep -c 'Do not mkdir kernel/. Do not land K2' '${GITOPS_INIT}' || echo 0" \
   "0"

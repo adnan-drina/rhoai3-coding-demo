@@ -10,7 +10,7 @@ parallel home is a defect.
 | Identity | authored `.hermes/SOUL.md`; dest loads `$HERMES_HOME/SOUL.md` (sha256 at dest-init; standing stop-and-block lives here, not as SKILL.md copies) |
 | Seat pins | `.hermes/pins.json` |
 | Seat pin oracle | Runtime: dest-init `hermes --version` vs `.hermes/pins.json`. Build: `workspace-images/scripts/assert-hermes-source-pin.py`. Dest `.hermes/checks/` retired. |
-| Config templates | `.hermes/config/` — no secrets; dest Managed Scope owns the live pin. Worker profiles: `.hermes/config/profiles/{orchestrator,implementer}.yaml.template` (Operator GO `231808Z`; dest GitOps applies via `hermes profile create --no-alias`, never `--clone`) |
+| Config templates | `.hermes/config/` — no secrets; dest Managed Scope owns the live pin. Worker profiles: `.hermes/config/profiles/{orchestrator,implementer,reviewer}.yaml.template` (Operator GO `231808Z`; dest GitOps applies via `hermes profile create --no-alias`, never `--clone`). Reviewer: kanban + terminal + skills; write toolsets disabled. |
 | Product guidance | `.hermes/skills/<category>/<name>/` |
 | Dashboard launcher | `.hermes/dashboard/start-dashboard.sh` — defaults `HERMES_WEB_DIST` to overlay bake. Observability, not capability. Dest `web_dist/` / `install-web-dist.sh` / `PIN` retired. |
 | Harness dest-init | `.hermes/skills/harness/` (`dispatch-phase` / `autostart-migration.sh` only) |
@@ -18,8 +18,9 @@ parallel home is a defect.
 | Migration | `.hermes/skills/migration/` (Boot3 / Quarkus / persistence) |
 | SDD | `.hermes/skills/sdd/` (Spec Kit provision + story oracles) |
 | M4 oracles | `.hermes/skills/gates/` (`compose-m4-verdict`, `check-domain-parity`, `check-release-readiness`, `assert-pinned-gates-ran`, `assert-retrievable-tree`, `assert-no-fence-evasion`) |
-| Shared Python | `.hermes/lib/` — **not a skill** (generated_sources, specimen splits). Identity is `.hermes-lib` marker, not a member module. |
-| Dest-init M1+M2 mint | `.hermes/skills/harness/dispatch-phase/scripts/autostart-migration.sh` — M1 ANALYZE + M2 PLAN only (`--idempotency-key`); writes `.hermes/AUTOSTART-STATUS`. Not T0 dispatch-phase. Not M3/M4. RHDH `autoStartMigration` defaults true; off is inspect-before-agents. |
+| Shared Python | `.hermes/lib/` — **not a skill** (generated_sources, specimen splits, paved_road). Identity is `.hermes-lib` marker, not a member module. |
+| Paved-road | `.hermes/skills/paved-road/` — kind index (`paved-road-m1`, `paved-road-m2`); `steps.json` generates `audit.json`. Capability folder has no M-code. Not M3/M4 this land. |
+| Dest-init M1+M2 mint | `.hermes/skills/harness/dispatch-phase/scripts/autostart-migration.sh` — M1 ANALYZE + M2 PLAN only (`--idempotency-key`); one `--skill` per card (`paved-road-m1` / `paved-road-m2`); writes `.hermes/AUTOSTART-STATUS`. Not T0 dispatch-phase. Not M3/M4. RHDH `autoStartMigration` defaults true; off is inspect-before-agents. |
 | Retired `_park/` | Deleted (Operator GO `155455Z`). Dest omit + chaos re-add tripwire stay in `scripts/bootstrap-migration-scaffold-v2.sh`. Do not mkdir empty `_park/` or dump requeue into kernel. Rebuild wall/crash/chaos later only on dest GO. |
 | K2 REHOST | `.hermes/kernel/pre_tool_call.sh` — **one** shell `pre_tool_call` module (`fail_closed: true`). Dest terminal allow-root is dest tree **and** `/projects/legacy` (`K2_ALLOW_ROOT` pathsep; Architect `214325ZA`). **Opaque** construction **deny**; transparent pathless + cwd inside a grant **allow** (Architect AMEND of `214743ZA`; Operator `085036ZO`). Write sandbox stays `HERMES_WRITE_SAFE_ROOT` dest tree only. **Not claimed control**. Do not mkdir empty `kernel/`. |
 | K1 body schema | `.hermes/kernel/k1_schema.py` + `k1_load.py` + `k1_validate.py` — typed pre-execution body. Not a skill. KEEP `check-kanban-body.py` imports the validator for the AD-019 minimum. Digest proves consistency among copies, not authorization. `claimed_control` stays false. |
@@ -54,13 +55,18 @@ python3 "${HERMES_SKILL_DIR}/scripts/<script>.py"
 ```
 
 Kanban workers use the official CLI / tools — one terminator
-(`kanban_complete` / `kanban_request_review` / `kanban_block`). Mint
-complete requires `created_cards`. Do not wrap these in home scripts.
+(`kanban_complete` / `kanban_request_review` / `kanban_block`).
+Implementer happy path is `kanban_request_review`. Mint proof is
+`created_cards` on that terminator's metadata (or KEEP + official log).
+Mint-writer `kanban_complete` still requires `created_cards` (K3). Do
+not wrap these in home scripts.
 
 ## Product skill index
 
 | Leaf | Kind | Purpose |
 |------|------|---------|
+| `paved-road-m1` | paved-road | M1 ANALYZE index; pin only this; `skill_view` subskills |
+| `paved-road-m2` | paved-road | M2 PLAN index; pin only this; `skill_view` subskills |
 | `scan-with-mta` | analysis | `mta-cli` / kantra analyze + findings normalize |
 | `inventory-legacy-surface` | analysis | Entry-point + type-graph inventory |
 | `derive-legacy-boot3` | migration | Boot 2→3 derivation |

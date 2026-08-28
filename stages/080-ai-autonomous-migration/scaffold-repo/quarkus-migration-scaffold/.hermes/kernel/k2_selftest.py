@@ -42,6 +42,7 @@ def run(
     tool: str = "terminal",
     extra_env: dict[str, str] | None = None,
     extra_input: dict | None = None,
+    extra_payload: dict | None = None,
 ) -> dict:
     env = os.environ.copy()
     env["K2_ALLOW_ROOT"] = os.pathsep.join(roots)
@@ -50,6 +51,8 @@ def run(
     payload: dict = {"tool_name": tool, "tool_input": {"command": cmd}}
     if extra_input:
         payload["tool_input"].update(extra_input)
+    if extra_payload:
+        payload.update(extra_payload)
     if cwd is not None:
         payload["cwd"] = cwd
     if extra_cwd is not None:
@@ -456,12 +459,174 @@ def main() -> int:
             cwd=cwd,
             extra_env={"HERMES_PROFILE": "implementer"},
         )
+        r = run(
+            "hermes kanban complete t_x",
+            roots,
+            cwd=cwd,
+            extra_env={
+                "HERMES_PROFILE": "implementer",
+                "K2_BOUND_GATE_EXIT": "0",
+            },
+        )
+        msg = r.get("message") or ""
+        if (
+            r.get("action") != "block"
+            or "kanban_request_review" not in msg
+        ):
+            print("FAIL impl_complete_uses_request_review", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok impl_complete_uses_request_review")
+        r = run(
+            "",
+            roots,
+            cwd=cwd,
+            tool="kanban_complete",
+            extra_env={
+                "HERMES_PROFILE": "implementer",
+                "K2_BOUND_GATE_EXIT": "0",
+            },
+        )
+        msg = r.get("message") or ""
+        if (
+            r.get("action") != "block"
+            or "kanban_request_review" not in msg
+        ):
+            print("FAIL impl_native_complete_uses_request_review", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok impl_native_complete_uses_request_review")
+        crumb = dest / "evidence" / "receipts" / "hook" / "complete-invocations.jsonl"
+        if not crumb.is_file():
+            print("FAIL complete_breadcrumb_written missing", file=sys.stderr)
+            fails += 1
+        else:
+            rows = []
+            for line in crumb.read_text(encoding="utf-8").splitlines():
+                if line.strip():
+                    rows.append(json.loads(line))
+            if not any(
+                r.get("decision") == "refuse_implementer"
+                and r.get("tool") == "kanban_complete"
+                for r in rows
+            ):
+                print("FAIL complete_breadcrumb_refuse_implementer", rows, file=sys.stderr)
+                fails += 1
+            else:
+                print("ok complete_breadcrumb_written")
+        r = run(
+            "ls",
+            roots,
+            cwd=cwd,
+            extra_env={"HERMES_PROFILE": "reviewer"},
+        )
+        if r.get("action") == "block":
+            print("FAIL reviewer_terminal", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok reviewer_terminal")
+        r = run(
+            "",
+            roots,
+            cwd=cwd,
+            tool="write_file",
+            extra_input={"path": str(dest / "src" / "x.java")},
+            extra_env={"HERMES_PROFILE": "reviewer"},
+        )
+        msg = r.get("message") or ""
+        if r.get("action") != "block" or "reviewer" not in msg:
+            print("FAIL reviewer_file", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok reviewer_file")
+        r = run(
+            "hermes kanban complete t_x",
+            roots,
+            cwd=cwd,
+            extra_env={"HERMES_PROFILE": "reviewer"},
+        )
+        msg = r.get("message") or ""
+        if (
+            r.get("action") != "block"
+            or "paved-road audit" not in msg
+        ):
+            print("FAIL reviewer_complete_without_audit", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok reviewer_complete_without_audit")
+        r = run(
+            "hermes kanban complete t_x",
+            roots,
+            cwd=cwd,
+            extra_env={
+                "HERMES_PROFILE": "reviewer",
+                "K2_PAVED_ROAD_AUDIT_EXIT": "0",
+            },
+        )
+        if r.get("action") == "block":
+            print("FAIL reviewer_complete_after_audit", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok reviewer_complete_after_audit")
+        rows = []
+        if crumb.is_file():
+            for line in crumb.read_text(encoding="utf-8").splitlines():
+                if line.strip():
+                    rows.append(json.loads(line))
+        if not any(r.get("decision") == "allow" for r in rows):
+            print("FAIL complete_breadcrumb_allow", rows, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok complete_breadcrumb_allow")
+        r = run(
+            "",
+            roots,
+            cwd=cwd,
+            tool="kanban_complete",
+            extra_env={"HERMES_PROFILE": "reviewer"},
+        )
+        msg = r.get("message") or ""
+        if (
+            r.get("action") != "block"
+            or "paved-road audit" not in msg
+        ):
+            print("FAIL reviewer_native_complete_without_audit", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok reviewer_native_complete_without_audit")
         expect_allow(
             "hermes kanban complete t_x",
             "complete_green_gate",
             cwd=cwd,
             extra_env={"K2_BOUND_GATE_EXIT": "0"},
         )
+        home = dest / "hermes-home"
+        (home / "kanban" / "logs").mkdir(parents=True)
+        (home / "kanban" / "logs" / "t_live.log").write_text(
+            "python3 assert-m2-speckit-conformance.py . [exit 1]\n",
+            encoding="utf-8",
+        )
+        r = run(
+            "",
+            roots,
+            cwd=cwd,
+            tool="kanban_complete",
+            extra_payload={"task_id": "t_live"},
+            extra_env={
+                "HERMES_HOME": str(home),
+                "HERMES_KANBAN_TASK": "",
+                "HERMES_PROFILE": "",
+            },
+        )
+        msg = r.get("message") or ""
+        if (
+            r.get("action") != "block"
+            or "assert-m2-speckit-conformance" not in msg
+        ):
+            print("FAIL native_complete_payload_task_id_bound_gate", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok native_complete_payload_task_id_bound_gate")
         r = run(
             "",
             roots,

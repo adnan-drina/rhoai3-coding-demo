@@ -93,7 +93,7 @@ workspace state.
 | `$HERMES_MANAGED_DIR` | Platform config + secrets — not in this repo |
 | `$HERMES_HOME` | Runtime (sessions/logs gitignored). Relocated dest-time. |
 | `.hermes/skills/` | Scaffold golden **guidance** skills on `skills.external_dirs` |
-| Seat Kanban assignees | M2 PLAN / M3 / M4 VERDICT → `implementer`. Dest mint-writer / mint-verifier cards are retired; M2 runs `.hermes/kernel/k4_mint.py` as CLI. Official `--assignee` (hermes-kanban). Not `default`. OBJECT EX-4 `analyzer`/`planner`/`validator`. dest orchestrator disables `file`/`terminal`/`code_execution`/`skills` — it cannot run M2 PLAN or M4. |
+| Seat Kanban assignees | M1/M2/M3 implementer; same-card review → `reviewer`. Dest mint-writer / mint-verifier cards are retired; M2 runs `.hermes/kernel/k4_mint.py` as CLI. Official `--assignee` (hermes-kanban). Not `default`. OBJECT EX-4 `analyzer`/`planner`/`validator`. dest orchestrator disables `file`/`terminal`/`code_execution`/`skills` — it cannot run M2 PLAN, M4, or paved-road audit. `reviewer` has `kanban`+`terminal` only. |
 | Hermes live config | **Not yours to change.** Factory-owned Managed Scope. Raise typed `needs_input` |
 | Phase DAG | Kanban `--parent` / `link` graph (`hermes kanban show --json`) |
 | `~/.hermes/skills/` | dest-user `/home/user/.hermes/skills` on `external_dirs` (dest-init literal; spec-kit install). Not worker `Path.home()`. |
@@ -102,7 +102,9 @@ Do **not** add `.hermes.md` / `HERMES.md` (shadows this file).
 `auth.json` under any Hermes home means Portal onboarding — remove; use Managed Scope.
 
 Worker **provider/auth** is Managed Scope only. Seat pins live in factory
-Managed Scope — do not MiniMax either class. Do not add `fallback_providers`.
+Managed Scope — implementer/orchestrator stay Qwen. Reviewer may pin MiniMax
+only when dest-init saw a valid AD-008 escalation file (`HERMES_MINIMAX=1`).
+Do not add `fallback_providers`. Never factory `model.default` MiniMax.
 
 ### Scope-stop
 
@@ -117,8 +119,13 @@ emit a typed block and **stop**. Do not OOS-write, do not edit the refuser.
 
 Workers never own lifecycle truth. End every turn with exactly one terminator:
 `kanban_complete`, `kanban_request_review`, or `kanban_block`. A clean exit
-without one is `protocol_violation`. Mint complete requires `created_cards`
-(empty list forbidden). Serialize `kanban_create`. M2 PLAN and M4 VERDICT
+without one is `protocol_violation`. **Implementer** happy path is
+`kanban_request_review` (reviewer=`reviewer`). **Reviewer** `kanban_complete`
+only after `assert-paved-road-audit.py` exits 0. `kanban_block` is external
+escalation (MaaS 500, missing key, GPU), not a red paved-road step.
+Mint proof is `kanban_request_review --metadata` `created_cards`
+(empty list forbidden; KEEP + official log also prove mint). Implementer
+does not `kanban_complete`. Serialize `kanban_create`. M2 PLAN and M4 VERDICT
 use `--assignee implementer`. Do not mint dest factory cards. M3
 uses `--assignee implementer`. Do not seat M2 or M4 on orchestrator
 (dest `orchestrator.yaml.template` disables `file`/`terminal`/`skills`).
@@ -136,8 +143,9 @@ M2 card (`HERMES_KANBAN_TASK`) plus the partition DAG. K4 appends harvest
 card `M3 STAMP_DESTINATION_TREE` (skill `commit-destination-tree`;
 parents = every M3 story). M4 `--parent` includes that stamp `t_*`. Do
 not dest-dispatch M4 without named Operator GO. Do not dest-commit dest-7.
-After `--exec`, `kanban_complete` `created_cards` is the native `t_*`
-list (empty after a mint is OBJECT). Scratch workspace on a story is REFUSE.
+After `--exec`, `kanban_request_review --metadata` `created_cards` is the
+native `t_*` list (empty after a mint is OBJECT). Scratch workspace on a
+story is REFUSE.
 M1 KEEP evidence also `python3 .hermes/kernel/kanban_attach.py --task "$HERMES_KANBAN_TASK"`
 (PVC paths stay; 25 MB/file). Do not `kanban decompose`. Do not `kanban swarm`
 for serial T0. Do not run `hermes kanban daemon --force`.
@@ -179,6 +187,8 @@ One line each: what it governs → which skill. When a skill is loaded, prefer
 
 | Governs | Skill |
 |---------|-------|
+| M1 ANALYZE paved-road (primary pin) | `paved-road-m1` |
+| M2 PLAN paved-road (primary pin) | `paved-road-m2` |
 | Spec/story-body legality + 1:N partition coverage | `check-spec-readiness` |
 | M2 PLAN procedure + partition.json producer | `plan-migration-partition` |
 | Story-class exit / oracle derivation | `derive-story-oracles` |

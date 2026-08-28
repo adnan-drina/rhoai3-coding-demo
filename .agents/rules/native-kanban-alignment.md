@@ -22,17 +22,26 @@ parallel workers + verifier + synthesizer.
 
 1. **Keep G1–G4.** Domain receipts (`write-receipt.py`,
    `check-verdict-routing.py`, O1–O3 HTTP) stay. Native `review` does
-   **not** replace runtime oracles.
-2. **Board lifecycle (Architect `151211ZA` BIND
-   `rule-m4-terminator-block-vs-request-review`):** refuse-complete-on-red
-   **STANDS**. Under dest `review_dispatch: false`, a red bound-gate
-   terminator is `kanban_block` (escalation / human dest-cite), not
-   `kanban_complete`. `kanban_request_review` is **deferred** until a
-   dest reviewer profile exists that cannot `kanban_complete` an
-   M3-releasing card and cannot score HTTP by vibe. OBJECT parking M4
-   in `review` with nobody to dispatch. Do not `kanban_complete` dest-4
-   `t_9acd47cb` on PASS JSON minted during the verdict card
-   (`112249ZA` item 7; Review `112352ZR`).
+   **not** replace runtime oracles. When an M4 paved-road exists, its
+   audit **executes** those oracles (scripts). That replaces LLM verdict
+   prose, not the oracles.
+2. **Board lifecycle:** refuse-complete-on-red **STANDS**. Dest seats a
+   `reviewer` profile (kanban + terminal; file/code_execution/delegation
+   disabled) and pins `kanban.review_dispatch: true` on the **next golden**
+   only. Implementer terminator is `kanban_request_review`. Reviewer
+   `kanban_complete` is hook-refused unless `assert-paved-road-audit.py`
+   last exited 0 on the official log. Dest-init `pre_tool_call` **matcher**
+   must include `kanban_complete` (official: tool-name regex). dest-14 M2
+   native complete never invoked the hook — `k2_selftest` piping a
+   `terminal` CLI command is not dispatcher evidence. The hook appends
+   `evidence/receipts/hook/complete-invocations.jsonl` on every complete
+   invocation it sees (absence means the matcher never fired). Canary
+   card is next golden dest-init, not dest-14. OBJECT dest-apply
+   onto dest-14.
+   OBJECT parking cards in `review` before that profile exists. Do not
+   `kanban_complete` dest-4 `t_9acd47cb` on PASS JSON minted during the
+   verdict card (`112249ZA` item 7; Review `112352ZR`). Same-card reviewer
+   complete after a green audit **is** Done for that card.
 3. **Attachments:** M1/M2 KEEP evidence listed in run metadata MUST also
    `kanban attach` (≤25 MB). PVC paths stay (dual-write). Not dest-4
    mid-run. A dest wipe must not be the only copy of harvest.
@@ -57,13 +66,10 @@ parallel workers + verifier + synthesizer.
    judgement may move to a skill+LLM **only** if a deterministic check
    validates the output. Do not convert the ≥12 pure-logic M4 gates
    this sitting; dest-5 first.
-6. **Reviewer-side native (AMEND `135224ZO` / BIND `151211ZA`):**
-   `kanban_request_review` is in `k3_schema.TERMINATORS` but is **not**
-   the live dest-8 M4 pattern while `review_dispatch: false`. Live
-   refusal is `LEGAL_REFUSE=kanban_block`. Unadopted: `request-changes`,
-   `reopen-review`, review column as M4 routing. Do not swap
-   `check-verdict-routing.py` this sitting. ACCEPT / PROVISIONAL_ACCEPT
-   / kill-ratio stay ours.
+6. **Reviewer-side native:** GitOps golden now seats `reviewer` and
+   `review_dispatch: true`. dest-8/dest-14 live boards that predate the
+   recut still ran `review_dispatch: false` (`LEGAL_REFUSE=kanban_block`).
+   Do not dest-apply this onto dest-14. M4 HTTP oracles stay scripts.
 7. **M1→M2 payload (Operator `141045ZO` AMEND `134635ZO` §3.1):**
    dest-5 M1 already attaches bulky artefacts and puts endpoint+symbol
    plus extension **names** in completion metadata. Residue: name the
@@ -202,11 +208,11 @@ parallel workers + verifier + synthesizer.
     the skill at `/projects/legacy` (identity referent). Bad
     `external_dirs` entries must refuse by name, not skip silently
     (item 22).
-30. **M4 terminator split (Architect `151211ZA`):** refuse-complete-on-red
-    STANDS. `LEGAL_REFUSE=kanban_block` is escalation under
-    `review_dispatch: false`, not a substitute for `request_changes`.
-    Research pack §5.1 (`kanban_request_review`) does **not** supersede
-    before a dest reviewer profile exists. OBJECT parking M4 in
-    `review` with nobody to dispatch. Research owns reconciling §5.1
-    with §5.4.
+30. **M4 terminator split (Architect `151211ZA`, recut 2026-08-28):**
+    refuse-complete-on-red STANDS. Implementer terminator is
+    `kanban_request_review` (item 2). `kanban_block` is
+    external/platform escalation (MaaS 500, missing key, GPU), not a
+    substitute for `request_changes`. GitOps golden seats `reviewer` and
+    `review_dispatch: true`. OBJECT parking M4 in `review` on dest-14
+    (predates the recut). Do not dest-apply dest-14.
 

@@ -34,11 +34,11 @@ before the handoff step (AR-4.1) — skill `inventory-legacy-surface`.
 Not this skill: legacy surface inventory (`inventory-legacy-surface`), harvest
 derivation (`derive-legacy-boot3`), gate scoring (`check-domain-parity`).
 
-**Orchestration:** start M1 as a native Kanban task
-(`hermes kanban create` with `--skill scan-with-mta`, `--parent` for the
-phase DAG). Kanban owns the task, role, budget, and recovery. Do **not**
-invoke this script from a Lead/operator detached shell as the migration
-control plane — that yields `tasks=0` and cannot stamp
+**Orchestration:** dest-init mints M1 with `--skill paved-road-m1`. This
+leaf loads via `skill_view` from that index `steps.json`. Do **not** pin
+this leaf on the card. Kanban owns the task, role, budget, and recovery.
+Do **not** invoke this script from a Lead/operator detached shell as the
+migration control plane — that yields `tasks=0` and cannot stamp
 `orchestration=hermes_native`. Do not wrap create in a home script. Do not
 `kanban daemon --force`.
 

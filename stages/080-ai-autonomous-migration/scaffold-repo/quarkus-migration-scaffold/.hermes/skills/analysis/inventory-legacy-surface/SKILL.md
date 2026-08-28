@@ -21,8 +21,9 @@ metadata:
   (exit 2, AR-4.1) unless `evidence/entry-point-inventory.json` already exists.
 - Before M2 plan / Kanban populate: the inventory is a declared M1 output
   and an accept-scope path
-  (`check-release-readiness/scripts/check-accept-scope.py`). Attach this
-  skill with native `hermes kanban create --skill inventory-legacy-surface`.
+  (`check-release-readiness/scripts/check-accept-scope.py`). Do not pin
+  this leaf on the card. Pin `--skill paved-road-m1`; this inventory
+  loads via `skill_view` from `steps.json`.
 - Before writing `migration/story-endpoint-partition.json`: the partition's
   endpoint union must equal this inventory exactly (conservation gate in
   `check-findings-handoff.py`).

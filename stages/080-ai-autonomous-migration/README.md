@@ -119,7 +119,7 @@ export HERMES_HOME=/projects/modernized/.hermes/home
 hermes kanban watch --interval 1
 # terminal B — seed M1 as a native Kanban task (no dispatch-phase wrapper)
 hermes kanban create "M1 ANALYZE" \
-  --skill scan-with-mta --skill inventory-entry-points \
+  --skill paved-road-m1 \
   --workspace dir:/projects/modernized --json
 # later phases: hermes kanban create … --parent <task_id>
 # gateway-embedded dispatcher ticks; do not `kanban daemon --force`
@@ -160,7 +160,7 @@ unless observed in *this* environment.
 | `hermes kanban list` / `show` / `runs` / `log` | **DEMONSTRATED** |
 | `hermes kanban watch` / `dispatch` | **DEMONSTRATED** (Owner/Pet) |
 | `hermes dashboard` public `:9119` (`hermes-dash`) | **DEFINED** (operator appendix / runbook only; postStart best-effort, overlay `HERMES_WEB_DIST`) — **not** demo surface; not required for DEFINED→DEMONSTRATED |
-| Dest named profiles `orchestrator` + `implementer` | **DEFINED** (Operator GO 2026-08-22 `231808Z`; GitOps create without `--clone`). Dest-armed role (a) **not** measured. Not overlay v1. |
+| Dest named profiles `orchestrator` + `implementer` + `reviewer` | **DEFINED** in GitOps (create without `--clone`; `review_dispatch` true with reviewer). Dest-armed measurement **not** this sitting. OBJECT dest-apply dest-14. |
 | Owner/Pet → M4 `PROVISIONAL_ACCEPT` | **DEMONSTRATED** |
 | Owner/Pet → M5 full `ACCEPT` / factory | **Not** DEMONSTRATED |
 

@@ -1,0 +1,55 @@
+{
+  "kind": "m2-plan",
+  "artifact": "m2-partition",
+  "steps": [
+    {
+      "id": "speckit-specify",
+      "backing": "skill",
+      "skill": "speckit-specify"
+    },
+    {
+      "id": "speckit-plan",
+      "backing": "skill",
+      "skill": "speckit-plan"
+    },
+    {
+      "id": "speckit-tasks",
+      "backing": "skill",
+      "skill": "speckit-tasks"
+    },
+    {
+      "id": "plan-migration-partition",
+      "backing": "skill",
+      "skill": "plan-migration-partition",
+      "producer": true,
+      "keep": [
+        "evidence/partition.json"
+      ]
+    },
+    {
+      "id": "check-spec-readiness",
+      "backing": "skill",
+      "skill": "check-spec-readiness"
+    },
+    {
+      "id": "check-partition-coverage",
+      "backing": "native",
+      "native": "check-partition-coverage.py"
+    },
+    {
+      "id": "assert-m2-speckit-conformance",
+      "backing": "native",
+      "native": "assert-m2-speckit-conformance.py"
+    },
+    {
+      "id": "k4-convert",
+      "backing": "kernel",
+      "kernel": "k4_convert.py"
+    },
+    {
+      "id": "k4-mint",
+      "backing": "kernel",
+      "kernel": "k4_mint.py"
+    }
+  ]
+}

@@ -20,7 +20,13 @@
 # concatenation, not a later access.
 # Batch 4: toolchain reads (/dev/null, /usr/lib/jvm) are not K2_ALLOW_ROOT
 # widening (AD-020). Write-set deny. Orchestrator disabled-toolset named
-# refusal. kanban_complete refused when a bound gate last exited non-zero.
+# refusal. Implementer kanban_complete refused (request_review). Reviewer
+# complete refused unless assert-paved-road-audit last exited 0 this log.
+# Bound-gate last-nonzero still refuses complete when profile is unset.
+# Dest-init matcher must include the native complete tool — it is not
+# terminal (dest-14: hook never ran). Task id: env then payload.
+# Complete breadcrumb: evidence/receipts/hook/complete-invocations.jsonl
+# (hook-written; absence means the dispatcher never invoked this hook).
 # Batch 6: M4/VERDICT writes default to evidence/; add-extension is implement.
 # F4: M4 must not write_file evidence/receipts/gates/ (runners write receipts).
 # Write-set: classify by write *effect* (open(..., \"w\"), Path.write_text),
@@ -30,7 +36,7 @@
 # (AD-020; not containment).
 set -euo pipefail
 exec python3 -c '
-import json, os, re, sys
+import json, os, re, sys, time
 
 def block(reason):
     print(json.dumps({"action": "block", "message": reason}))
@@ -87,6 +93,14 @@ if profile == "orchestrator":
     if ts in ORCH_DISABLED:
         block("%s disabled for profile orchestrator" % ts)
 
+REVIEWER_DISABLED = {
+    "file", "code_execution", "delegation", "web", "browser",
+}
+if profile == "reviewer":
+    ts = TOOL_TO_SET.get(tool)
+    if ts in REVIEWER_DISABLED:
+        block("%s disabled for profile reviewer" % ts)
+
 if tool in {"execute_code", "delegate_task", "mcp", "skill_manage"}:
     block("%s is pathless-or-mutation; deny" % tool)
 
@@ -100,13 +114,96 @@ def is_complete():
         return True
     return False
 
+def hook_task_id():
+    env_task = (os.environ.get("HERMES_KANBAN_TASK") or "").strip()
+    if env_task:
+        return env_task
+    for src in (data, extra, args, inp):
+        if not isinstance(src, dict):
+            continue
+        v = src.get("task_id")
+        if isinstance(v, str) and v.strip():
+            return v.strip()
+    return ""
+
+def record_complete_invocation(decision):
+    """Append one hook-authored line. Absence of the file means the
+    dispatcher never invoked this hook (canary part a). Do not print.
+    """
+    wr = (os.environ.get("HERMES_WRITE_SAFE_ROOT") or "").strip()
+    root = ""
+    if wr:
+        try:
+            root = os.path.realpath(wr)
+        except OSError:
+            root = wr
+    else:
+        raw_allow = os.environ.get("K2_ALLOW_ROOT") or ""
+        first = ""
+        for part in raw_allow.split(os.pathsep):
+            part = part.strip()
+            if part:
+                first = part
+                break
+        if first:
+            try:
+                root = os.path.realpath(first)
+            except OSError:
+                root = first
+    if not root or root == "/":
+        return
+    rec = {
+        "decision": decision,
+        "profile": profile,
+        "task_id": hook_task_id(),
+        "tool": tool,
+        "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    }
+    path = os.path.join(
+        root, "evidence", "receipts", "hook", "complete-invocations.jsonl"
+    )
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(rec, sort_keys=True) + "\n")
+    except OSError:
+        return
+
+def paved_road_audit_green():
+    env_exit = (os.environ.get("K2_PAVED_ROAD_AUDIT_EXIT") or "").strip().lower()
+    if env_exit in {"1", "fail", "true", "nonzero"}:
+        return False
+    if env_exit in {"0", "pass", "ok"}:
+        return True
+    task = hook_task_id()
+    home = (os.environ.get("HERMES_HOME") or "").strip()
+    if not task or not home:
+        return False
+    log = os.path.join(home, "kanban", "logs", "%s.log" % task)
+    try:
+        text = open(log, encoding="utf-8", errors="replace").read()
+    except OSError:
+        return False
+    last_rc = None
+    for line in text.splitlines():
+        if "assert-paved-road-audit" not in line:
+            continue
+        m = re.search(r"\[exit (\d+)\]", line)
+        if m:
+            last_rc = int(m.group(1))
+        elif re.search(r"FAIL:|REFUSE", line, re.I):
+            last_rc = 1
+        elif re.search(r"\bOK:", line):
+            last_rc = 0
+    return last_rc == 0
+
 def bound_gate_red():
     env_exit = (os.environ.get("K2_BOUND_GATE_EXIT") or "").strip().lower()
     if env_exit in {"1", "fail", "true", "nonzero"}:
         return os.environ.get("K2_BOUND_GATE_NAME") or "bound-gate"
     if env_exit in {"0", "pass", "ok"}:
         return None
-    task = (os.environ.get("HERMES_KANBAN_TASK") or "").strip()
+    task = hook_task_id()
     home = (os.environ.get("HERMES_HOME") or "").strip()
     if not task or not home:
         return None
@@ -138,10 +235,20 @@ def bound_gate_red():
     return None
 
 if is_complete():
+    if profile == "implementer":
+        record_complete_invocation("refuse_implementer")
+        block("kanban_complete refused: implementer terminator is "
+              "kanban_request_review")
+    if profile == "reviewer" and not paved_road_audit_green():
+        record_complete_invocation("refuse_reviewer_audit")
+        block("kanban_complete refused: paved-road audit last exit not 0; "
+              "kanban_request_changes is the terminator")
     gate = bound_gate_red()
     if gate:
+        record_complete_invocation("refuse_bound_gate")
         block("kanban_complete refused: bound gate %s last exited non-zero; "
               "kanban_block is the terminator" % gate)
+    record_complete_invocation("allow")
 
 def collect(obj, acc):
     if isinstance(obj, dict):

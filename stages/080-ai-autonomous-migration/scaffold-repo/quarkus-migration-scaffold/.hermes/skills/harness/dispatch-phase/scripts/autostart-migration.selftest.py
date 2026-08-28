@@ -131,8 +131,12 @@ def main() -> int:
         return _fail("script must not pass --goal")
     if "--idempotency-key m1-analyze" not in src or "--idempotency-key m2-plan" not in src:
         return _fail("script must pass dest-13-shaped idempotency keys")
-    if "type-inventory.json" not in src:
-        return _fail("M1/M2 bodies must name type-inventory.json")
+    if "--skill paved-road-m1" not in src or "--skill paved-road-m2" not in src:
+        return _fail("script must pin paved-road-m1 / paved-road-m2")
+    if "--skill scan-with-mta" in src or "--skill plan-migration-partition" in src:
+        return _fail("script must not pin subskills on the card")
+    if "kanban_request_review" not in src:
+        return _fail("bodies must name kanban_request_review")
     if "legacy-at-3.json" in src:
         return _fail("M1/M2 bodies must not name leftover dest-13 legacy-at-3.json")
     skill = SKILL.read_text(encoding="utf-8")

@@ -69,9 +69,9 @@ if [[ -z "${HERMES}" ]]; then
   fail_status "hermes not on PATH"
 fi
 
-M1_BODY='Identify the legacy harvest. Attach findings-handoff.json, entry-point-inventory.json, type-inventory.json, required-extensions.json, and mta-findings.json. Do not invent HTTP routes.'
+M1_BODY='Follow paved-road-m1. skill_view subskills from steps.json. Attach findings-handoff.json, entry-point-inventory.json, type-inventory.json, required-extensions.json, and mta-findings.json. Happy-path terminator is kanban_request_review, not kanban_complete. kanban_block for external/platform (MaaS 500, missing key, GPU). Do not invent HTTP routes.'
 
-M2_BODY='Follow Hermes skills speckit-specify, speckit-plan, and speckit-tasks in process. Load .hermes/skills/speckit-specify/SKILL.md then speckit-plan then speckit-tasks. Stop. Never speckit-implement. If a named skill is missing, a named command fails, or a named path is absent: stop and kanban_block. Do not hand-author tasks.md. Consume parent M1 kanban_attachments and evidence findings-handoff.json, entry-point-inventory.json, type-inventory.json, required-extensions.json, mta-findings.json. Author evidence/partition.json. HTTP stories require dest_file and legacy_source. Convert with k4_convert.py --partition --tasks then mint with k4_mint.py --exec. No factory cards. No verdict token. tasks.md lives at the Spec Kit 0.16.1 feature_directory in .specify/feature.json (specs/<feature>/), not a copy under .specify/specs.'
+M2_BODY='Follow paved-road-m2. skill_view subskills from steps.json (speckit-specify, then speckit-plan, then speckit-tasks). Stop. Never speckit-implement. If a named skill is missing, a named command fails, or a named path is absent: stop and kanban_block. Happy-path terminator is kanban_request_review, not kanban_complete. kanban_block for external/platform (MaaS 500, missing key, GPU). Do not hand-author tasks.md. Consume parent M1 kanban_attachments and evidence findings-handoff.json, entry-point-inventory.json, type-inventory.json, required-extensions.json, mta-findings.json. Author evidence/partition.json. HTTP stories require dest_file and legacy_source. Convert with k4_convert.py --partition --tasks then mint with k4_mint.py --exec. No factory cards. No verdict token. tasks.md lives at the Spec Kit 0.16.1 feature_directory in .specify/feature.json (specs/<feature>/), not a copy under .specify/specs.'
 
 create_card() {
   local title="$1"
@@ -85,9 +85,7 @@ M1_JSON="$(
     --workspace "dir:${ROOT}" \
     --max-retries 1 \
     --max-runtime 2h \
-    --skill derive-legacy-boot3 \
-    --skill scan-with-mta \
-    --skill inventory-legacy-surface \
+    --skill paved-road-m1 \
     --idempotency-key m1-analyze \
     --body "${M1_BODY}"
 )" || fail_status "M1 create failed"
@@ -108,8 +106,7 @@ M2_JSON="$(
     --max-retries 1 \
     --max-runtime 2h \
     --parent "${M1_ID}" \
-    --skill plan-migration-partition \
-    --skill check-spec-readiness \
+    --skill paved-road-m2 \
     --idempotency-key m2-plan \
     --body "${M2_BODY}"
 )" || fail_status "M2 create failed"

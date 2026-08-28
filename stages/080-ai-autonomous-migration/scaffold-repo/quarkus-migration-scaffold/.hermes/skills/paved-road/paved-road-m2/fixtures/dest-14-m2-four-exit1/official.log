@@ -1,0 +1,13 @@
+  ┊ 📚 skill  speckit-specify
+  ┊ 📚 skill  speckit-plan
+  ┊ 📚 skill  speckit-tasks
+  ┊ 📚 skill  plan-migration-partition
+  ┊ 📚 skill  check-spec-readiness
+  ┊ 💻 $         python3 .hermes/kernel/k4_convert.py --partition evidence/partition.json --tasks specs/001-migrate/tasks.md --out evidence/partition-payloads.json  0.2s
+  ┊ 💻 $         python3 .hermes/skills/sdd/check-spec-readiness/scripts/check-partition-coverage.py . --write-receipt evidence/receipts/partition-coverage/latest.json  0.2s [exit 1]
+  ┊ 💻 $         python3 .hermes/skills/sdd/check-spec-readiness/scripts/assert-m2-speckit-conformance.py .  0.2s [exit 1]
+  ┊ 💻 $         python3 .hermes/kernel/k4_mint.py --payloads evidence/partition-payloads.json --exec  2.6s [exit 1]
+  ┊ 💻 $         python3 -c " import json with open('evidence/partition-payloads.json') as f: payloads = json.load(f) for p in payloads: story = p.get('story_id', p.get('title', 'unknown')) skills = p.get('skills', []) phase = p.get('phase', 'unknown') artifact = p.get('artifact', 'unknown') print(f'Story: {story}, Phase: {phase}, Artifact: {artifact}, Skills: {skills}') "  0.1s [exit 1]
+  ┊ 💻 $         python3 .hermes/skills/sdd/plan-migration-partition/scripts/assert-m2-story-headings.py .  0.1s [exit 1]
+  ┊ 📋 preparing kanban_complete…
+  ┊ ⚡ kanban_complete call succeeded

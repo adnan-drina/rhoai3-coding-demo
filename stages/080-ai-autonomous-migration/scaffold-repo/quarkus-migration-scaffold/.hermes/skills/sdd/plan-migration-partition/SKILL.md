@@ -5,8 +5,9 @@ description: >
   skills speckit-specify, speckit-plan, and speckit-tasks (never implement),
   read M1 attachments, author evidence/partition.json, convert with
   k4_convert.py --partition --tasks, and mint with k4_mint.py. Use when
-  writing partition.json or creating the M2 card, even if the user does
-  not name Spec Kit. Do not run specify workflow run speckit: the Spec Kit
+  writing partition.json, even if the user does not name Spec Kit. Do not
+  pin this leaf on the card (pin paved-road-m2). Do not run specify
+  workflow run speckit: the Spec Kit
   hermes integration installs files:{} and cannot dispatch speckit-specify
   as a command. Do not PATH-lookup specify. Do not scrape write-sets from
   tasks.md. Do not use only to lint an already-written partition
@@ -25,10 +26,11 @@ metadata:
 ---
 # Plan the migration partition (M2 producer)
 
-This skill **owns M2 end-to-end**. It is the producer
-`check-spec-readiness` defers to. Pin it on the M2 card (`--skill
-plan-migration-partition`). Speckit **skills** generate the **plan**
-(`tasks.md`); K4 generates **cards** from the typed partition
+This skill is the **M2 producer** of `evidence/partition.json`.
+`check-spec-readiness` defers to it. **Do not pin this leaf on the card.**
+Pin `--skill paved-road-m2`; this producer loads via `skill_view` from
+`steps.json`. Speckit **skills** generate the **plan** (`tasks.md`); K4
+generates **cards** from the typed partition
 (Architect `142518ZA`). Do not grep `tasks.md` for write-sets
 (`PATH_TOKEN` OBJECT). Do not `specify workflow run speckit`
 (Architect `170540ZA`: hermes.manifest `files: {}`).
@@ -41,24 +43,12 @@ plan-migration-partition`). Speckit **skills** generate the **plan**
 - **Not** coverage/body lint alone (`check-spec-readiness`).
 - **Not** M3 exit derivation (`derive-story-oracles`).
 
-## Pin the M2 card
+## Card pin
 
-Create (or remint) M2 with this leaf first:
-
-```bash
-hermes kanban create \
-  --title "M2 PLAN" \
-  --assignee implementer \
-  --parent "$M1_TASK_ID" \
-  --skill plan-migration-partition \
-  --skill check-spec-readiness \
-  --workspace dir:/projects/modernized \
-  --max-retries 1 \
-  --max-runtime 2h
-```
-
-`init-spec-workspace` and `derive-story-oracles` are not the procedure.
-Do not pin only those three.
+Do not pin this leaf on the M2 card. Dest-init `autostart-migration.sh`
+pins `--skill paved-road-m2` only. Follow this SKILL.md when `skill_view`
+loads it from `steps.json`. `init-spec-workspace` and
+`derive-story-oracles` are not the procedure.
 
 ## Procedure
 
@@ -158,8 +148,11 @@ bash .hermes/skills/sdd/check-spec-readiness/scripts/check-readiness.sh --root .
 python3 "${HERMES_SKILL_DIR}/scripts/assert-m2-story-headings.py" .
 ```
 
-`kanban_complete` `created_cards` is the native `t_*` list from mint.
-Do not `kanban daemon --force`. Do not `kanban swarm`. Do not dest-dispatch M5.
+Happy-path terminator is `kanban_request_review` (not `kanban_complete`).
+`--metadata` `created_cards` is the native `t_*` list from mint. KEEP
+`evidence/partition-payloads.json` and the official log also prove mint.
+Empty after a mint is OBJECT. Do not `kanban daemon --force`. Do not
+`kanban swarm`. Do not dest-dispatch M5.
 
 ## Pitfalls
 

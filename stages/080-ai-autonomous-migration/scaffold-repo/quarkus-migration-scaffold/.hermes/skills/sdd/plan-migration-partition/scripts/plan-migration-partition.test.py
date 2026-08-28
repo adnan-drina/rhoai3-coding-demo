@@ -25,9 +25,28 @@ def run(script: Path, *args: str) -> subprocess.CompletedProcess[str]:
 
 def main() -> int:
     skill_md = (SKILL / "SKILL.md").read_text(encoding="utf-8")
-    if "--skill plan-migration-partition" not in skill_md:
-        print("FAIL: SKILL.md must pin --skill plan-migration-partition", file=sys.stderr)
+    if "--skill paved-road-m2" not in skill_md:
+        print("FAIL: SKILL.md must pin the M2 card as --skill paved-road-m2", file=sys.stderr)
         return 1
+    if "--skill plan-migration-partition" in skill_md:
+        print("FAIL: SKILL.md must not pin this leaf on the card", file=sys.stderr)
+        return 1
+    if "--skill check-spec-readiness" in skill_md:
+        print("FAIL: SKILL.md must not pin check-spec-readiness on the card", file=sys.stderr)
+        return 1
+    if "kanban_request_review" not in skill_md:
+        print(
+            "FAIL: SKILL.md must name kanban_request_review as implementer terminator",
+            file=sys.stderr,
+        )
+        return 1
+    if "kanban_complete" in skill_md and "created_cards" in skill_md:
+        if "`kanban_complete` `created_cards`" in skill_md or "kanban_complete `created_cards`" in skill_md:
+            print(
+                "FAIL: SKILL.md must not put created_cards on implementer kanban_complete",
+                file=sys.stderr,
+            )
+            return 1
     if "speckit-specify" not in skill_md:
         print("FAIL: SKILL.md must name speckit-specify as a Hermes skill", file=sys.stderr)
         return 1

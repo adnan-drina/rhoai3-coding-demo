@@ -4,6 +4,7 @@ No `SKILL.md`. Discovery does not list this directory.
 
 | Module | Concern |
 |--------|---------|
+| `paved_road.py` | M1/M2 paved-road audit + coverage CLI (`python3 .hermes/lib/paved_road.py coverage`). Generated `audit.json` from `steps.json`. |
 | `inventory_io.py` | load JSON / migration.yaml, resolve inventory path |
 | `path_maps.py` | `path_rewrites`, `intra_package_maps`, dest-as-written |
 | `supersede.py` | 1:N dest_file successor sets |
@@ -12,9 +13,11 @@ No `SKILL.md`. Discovery does not list this directory.
 | `generated_sources.py` | generator classification at **read** (stamp is a hint) |
 | `human_home.py` | OS-account home (`pwd`/`getent`), not `Path.home()` / `$HOME` |
 
-Importable modules only — no `__main__` CLIs. Dashboard pin is overlay bake
-`HERMES_WEB_DIST`; dest `.hermes/checks/` is retired. Java type walk lives in
-`inventory-legacy-surface/scripts/type_graph.py` (relocate, not delete).
+Importable modules only — no `__main__` CLIs — except `paved_road.py`, which
+is the coverage/audit/generate/sync CLI for the paved-road index. Dashboard
+pin is overlay bake `HERMES_WEB_DIST`; dest `.hermes/checks/` is retired.
+Java type walk lives in `inventory-legacy-surface/scripts/type_graph.py`
+(relocate, not delete).
 
 Discovery identity is the zero-byte marker `.hermes/lib/.hermes-lib`,
 not a member module name. Scripts that need this path on `sys.path`

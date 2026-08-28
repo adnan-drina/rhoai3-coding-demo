@@ -629,12 +629,13 @@ data:
     }
 
     ensure_dest_worker_profiles() {
-      # Operator GO 231808Z / AD-019 trigger (c). Two dest worker profiles.
-      # Official: hermes profile create <name> --no-alias --description "..."
-      # then hermes -p <name> config set (toolsets belong in config.yaml).
+      # Operator GO 231808Z / AD-019 trigger (c). Three dest worker profiles
+      # (orchestrator, implementer, reviewer). Official: hermes profile create
+      # <name> --no-alias --description "..." then hermes -p <name> config set.
       # OBJECT: --clone / --clone-from / --clone-all (EX-4 isolated $HOME,
       # copied .env, missed kantra-ensure). OBJECT EX-4 analyzer/planner/
       # validator Cursor-seat names. Overlay v1 stays single-persona.
+      # OBJECT dest-apply onto dest-14.
       local hermes_bin="$1"
       local py="$2"
       local hermes_home="$3"
@@ -643,7 +644,8 @@ data:
       local tpl_dir="${project_dir}/.hermes/config/profiles"
       local orch_tpl="${tpl_dir}/orchestrator.yaml.template"
       local impl_tpl="${tpl_dir}/implementer.yaml.template"
-      if [ ! -f "${orch_tpl}" ] || [ ! -f "${impl_tpl}" ]; then
+      local rev_tpl="${tpl_dir}/reviewer.yaml.template"
+      if [ ! -f "${orch_tpl}" ] || [ ! -f "${impl_tpl}" ] || [ ! -f "${rev_tpl}" ]; then
         echo "ERROR: dest profile templates missing under ${tpl_dir} (231808Z)." >&2
         return 1
       fi
@@ -657,10 +659,10 @@ data:
       fi
       _ensure_one_dest_profile() {
         local name="$1" desc="$2" tpl="$3"
-        case "${name}" in
-          orchestrator|implementer) ;;
+          case "${name}" in
+          orchestrator|implementer|reviewer) ;;
           *)
-            echo "ERROR: dest profile name ${name} is not orchestrator|implementer." >&2
+            echo "ERROR: dest profile name ${name} is not orchestrator|implementer|reviewer." >&2
             return 1
             ;;
         esac
@@ -692,6 +694,15 @@ data:
         raise SystemExit("ERROR: do not seat hermes-gateway on orchestrator")
     if name == "implementer" and "coding" in cli:
         raise SystemExit("ERROR: seat coding subset, not the coding composite name")
+    if name == "reviewer":
+        if "file" in cli or "code_execution" in cli or "delegation" in cli:
+            raise SystemExit(
+                "ERROR: reviewer must not seat file/code_execution/delegation"
+            )
+        if "terminal" not in cli or "kanban" not in cli:
+            raise SystemExit("ERROR: reviewer needs kanban + terminal")
+        if "coding" in cli:
+            raise SystemExit("ERROR: reviewer must not seat the coding composite")
     disabled = ((spec.get("agent") or {}).get("disabled_toolsets")) or []
     env = os.environ.copy()
     env["HERMES_HOME"] = home
@@ -777,7 +788,76 @@ data:
       _ensure_one_dest_profile implementer \
         "Migration implementer: file, terminal, code_execution, delegation, skills." \
         "${impl_tpl}" || return 1
-      echo "C-2: dest worker profiles orchestrator + implementer seated (no --clone)."
+      _ensure_one_dest_profile reviewer \
+        "Paved-road reviewer: kanban + terminal audit only. Cannot write product tree." \
+        "${rev_tpl}" || return 1
+      if ! "${py}" - "${hermes_bin}" "${hermes_home}" "${managed_dir}" "${project_dir}" \
+        <<'REVMDLPIN'
+import json, os, subprocess, sys
+import yaml
+
+bin_path, home, managed, project = sys.argv[1:]
+env = os.environ.copy()
+env["HERMES_HOME"] = home
+env["HERMES_MANAGED_DIR"] = managed
+env["HERMES_WRITE_SAFE_ROOT"] = project
+env["K2_ALLOW_ROOT"] = project + ":/projects/legacy"
+minimax_on = os.environ.get("HERMES_MINIMAX") == "1"
+rev_cfg = os.path.join(home, "profiles", "reviewer", "config.yaml")
+
+
+def cfgset(name, key, value):
+    proc = subprocess.run(
+        [bin_path, "-p", name, "config", "set", key, value],
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode != 0:
+        sys.stderr.write(proc.stderr or proc.stdout or f"config set {key} failed\n")
+        raise SystemExit(proc.returncode or 1)
+
+
+def profile_model_default(name):
+    path = os.path.join(home, "profiles", name, "config.yaml")
+    if not os.path.isfile(path):
+        return None
+    with open(path, encoding="utf-8") as fh:
+        doc = yaml.safe_load(fh) or {}
+    if not isinstance(doc, dict):
+        return None
+    model = doc.get("model") or {}
+    if not isinstance(model, dict):
+        return None
+    return str(model.get("default") or "")
+
+
+if minimax_on:
+    cfgset("reviewer", "model.provider", "minimax")
+    cfgset("reviewer", "model.default", "minimax-m2")
+    print("AD-008: reviewer profile model.default=minimax-m2 (escalation override)")
+else:
+    mid = (profile_model_default("reviewer") or "").lower()
+    if "minimax" in mid:
+        raise SystemExit(
+            "ERROR: reviewer model.default is MiniMax without AD-008 escalation"
+        )
+    print("AD-008: reviewer stays Qwen (no escalation file)")
+
+for other in ("implementer", "orchestrator"):
+    mid = (profile_model_default(other) or "").lower()
+    if "minimax" in mid:
+        raise SystemExit(
+            f"ERROR: {other} model.default must not be MiniMax (AD-008 factory Qwen)"
+        )
+if not os.path.isfile(rev_cfg):
+    raise SystemExit("ERROR: reviewer profile config.yaml missing after seat")
+REVMDLPIN
+      then
+        echo "ERROR: reviewer model pin (AD-008) failed." >&2
+        return 1
+      fi
+      echo "C-2: dest worker profiles orchestrator + implementer + reviewer seated (no --clone)."
     }
 
     ensure_hermes() {
@@ -1065,7 +1145,10 @@ data:
             "reconcile_orphans": True,
             "failure_limit": 2,
             "dispatch_stale_timeout_seconds": 14400,
-            "review_dispatch": False,
+              # Native same-card review. Must stay true only while dest seats
+            # the reviewer profile (kanban + terminal; write toolsets off).
+            # Stock sdlc-review is not the audit — paved-road assert is.
+            "review_dispatch": True,
             # Official default is true; pin so PVC drift cannot disable the
             # gateway-embedded dispatcher (v30: gateway gone => board stall).
             "dispatch_in_gateway": True,
@@ -1245,7 +1328,10 @@ data:
         os.chmod(hermes_wrap, 0o755)
         cfg["hooks"]["pre_tool_call"] = [
             {
-                "matcher": "write|write_file|patch|edit_file|apply_patch|create_file|terminal|skill_manage",
+                # Official matcher is a tool-name regex. Native
+                # kanban_complete is not terminal — dest-14 M2 completed
+                # with the hook never invoked (bound_gate_red unreached).
+                "matcher": "write|write_file|patch|edit_file|apply_patch|create_file|terminal|skill_manage|kanban_complete|complete_task",
                 "command": write_fence_py,
                 "timeout": 5,
                 "fail_closed": True,
@@ -1257,7 +1343,13 @@ data:
         os.chmod(write_fence_sh, 0o755)
         cfg["hooks"]["pre_tool_call"] = [
             {
-                "matcher": "write|write_file|patch|edit_file|apply_patch|create_file|terminal|execute_code|delegate_task|skill_manage",
+                # Official matcher is a tool-name regex (hooks page).
+                # Complete-gate (implementer request_review, reviewer
+                # paved-road audit, bound_gate_red) only runs when this
+                # includes the native complete tool. dest-14 M2:
+                # preparing/succeeded kanban_complete; matcher was
+                # write|terminal|… only.
+                "matcher": "write|write_file|patch|edit_file|apply_patch|create_file|terminal|execute_code|delegate_task|skill_manage|kanban_complete|complete_task",
                 "command": write_fence_sh,
                 "timeout": 5,
                 "fail_closed": True,
@@ -1745,9 +1837,9 @@ data:
         return 1
       fi
 
-      # Operator GO 231808Z — dest orchestrator + implementer (trigger (c)).
-      # Stop C-2(a) skip. Create those two without --clone (EX-4). Secrets
-      # stay Managed Scope (check immediately below).
+      # Operator GO 231808Z — dest orchestrator + implementer + reviewer.
+      # Stop C-2(a) skip. Create those three without --clone (EX-4). Secrets
+      # stay Managed Scope (check immediately below). OBJECT dest-14 apply.
       if ! ensure_dest_worker_profiles \
         "${hermes_bin}" "${venv_py}" "${hermes_home}" "${managed_dir}" "${PROJECT_DIR}"; then
         echo "ERROR: dest worker profile seating failed (231808Z)." >&2

@@ -73,10 +73,20 @@ expectation. Prefer stopping with a reason over proceeding with a guess.
 
 If a command a skill names fails, a path it names is absent, or a tool
 cannot resolve what it names: record exactly what you ran, the exact
-error, and what was expected, then end with `kanban_block`. Blocking is
-a legal, successful outcome. Do not hand-author the artifact the command
-would have produced. Do not construct evidence that a step ran. Do not
-treat a gate as the thing to satisfy.
+error, and what was expected. Then pick the terminator by class:
+
+- **Procedure gap Hermes can fix** (wrong skill follow, missing KEEP,
+  named script `[exit 1]`): `kanban_request_review` with reviewer
+  `reviewer`. Do not `kanban_complete`. The reviewer runs
+  `assert-paved-road-audit.py` against the official log.
+- **External / platform** (MaaS HTTP 500, missing key, GPU, named CLI
+  absent from the seat): `kanban_block`. Blocking is a legal, successful
+  outcome.
+
+Do not hand-author the artifact the command would have produced. Do not
+construct evidence that a step ran. Do not treat a gate as the thing to
+satisfy. Follow the kind's paved-road skill (`paved-road-m1` /
+`paved-road-m2`) as the primary procedure.
 
 Correcting your own invocation and retrying is legal — a first red that
 you re-run green (dest-13 `setup-tasks.sh`) is not a block. Using an

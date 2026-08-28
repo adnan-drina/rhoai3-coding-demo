@@ -107,7 +107,8 @@ REMEDY = {
     "K4_NO_PRODUCER": (
         "Every M-stage card must pin a skill that owns producing its primary "
         "artifact (Architect 143941ZA). Checkers (check-*, assert-*) do not "
-        "count. M2 pins plan-migration-partition. M4 pins compose-m4-verdict. "
+        "count. M2 card pins paved-road-m2; producer of partition.json is "
+        "plan-migration-partition (skill_view). M4 pins compose-m4-verdict. "
         "M3 setup pins author-destination-pom; US pins "
         "spring-to-quarkus-patterns; database pins form-entity-persistence "
         "(dest-k8s); STAMP pins commit-destination-tree. dest-8 M2 and M4 "

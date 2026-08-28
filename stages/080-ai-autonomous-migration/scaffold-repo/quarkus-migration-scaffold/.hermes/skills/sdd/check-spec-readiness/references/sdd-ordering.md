@@ -50,7 +50,7 @@ reclaim.
 | `/speckit-plan` | `spec.md` present | `plan.md` exists | run plan |
 | `/speckit-tasks` | `plan.md` present | never skip ahead of plan | run tasks (always last) |
 
-M2 `kanban_complete` requires a non-empty Spec Kit 0.16.1 `tasks.md`
+M2 `kanban_request_review` requires a non-empty Spec Kit 0.16.1 `tasks.md`
 (`.specify/feature.json` `feature_directory`, else `specs/*/tasks.md`), an
 official-log A-gate (`assert-card-performed.py`), and `k4_convert.py --tasks`
 (`assert-m2-speckit-conformance.py`).
