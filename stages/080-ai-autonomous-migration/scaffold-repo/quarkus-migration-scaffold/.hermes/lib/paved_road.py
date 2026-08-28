@@ -53,12 +53,29 @@ def skill_load_re(name: str) -> re.Pattern[str]:
     )
 
 
+def kanban_root_home() -> str:
+    """Official logs live under the base HERMES_HOME, not profile homes.
+
+    ``hermes -p <name>`` sets HERMES_HOME to ``<root>/profiles/<name>``.
+    Kanban logs stay at ``<root>/kanban/logs/``. A missing log after this
+    resolve is still a refusal (Architect 192903ZA).
+    """
+    home = (os.environ.get("HERMES_HOME") or "").strip()
+    if not home:
+        return ""
+    parent, name = os.path.split(home.rstrip("/"))
+    root, profiles = os.path.split(parent)
+    if profiles == "profiles" and name and root:
+        return root
+    return home
+
+
 def resolve_log(task_id: str | None, log: Path | None) -> Path | None:
     if log is not None:
         return log
     if not task_id:
         return None
-    home = os.environ.get("HERMES_HOME", "")
+    home = kanban_root_home()
     if not home:
         return None
     return Path(home) / "kanban" / "logs" / (task_id + ".log")

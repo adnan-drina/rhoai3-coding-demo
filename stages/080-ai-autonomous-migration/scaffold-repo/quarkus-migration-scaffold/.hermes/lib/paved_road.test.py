@@ -313,6 +313,76 @@ class TestAutostartAndCoverage(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
 
 
+class TestResolveLogProfileHome(unittest.TestCase):
+    def test_profile_home_resolves_to_root_log(self):
+        import os
+
+        from paved_road import resolve_log
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "kanban" / "logs").mkdir(parents=True)
+            log = root / "kanban" / "logs" / "t_ok.log"
+            log.write_text("ok\n", encoding="utf-8")
+            profile = root / "profiles" / "reviewer"
+            profile.mkdir(parents=True)
+            prev = os.environ.get("HERMES_HOME")
+            os.environ["HERMES_HOME"] = str(profile)
+            try:
+                got = resolve_log("t_ok", None)
+            finally:
+                if prev is None:
+                    os.environ.pop("HERMES_HOME", None)
+                else:
+                    os.environ["HERMES_HOME"] = prev
+            self.assertEqual(got, log)
+
+    def test_base_home_unchanged(self):
+        import os
+
+        from paved_road import resolve_log
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "kanban" / "logs").mkdir(parents=True)
+            log = root / "kanban" / "logs" / "t_def.log"
+            log.write_text("ok\n", encoding="utf-8")
+            prev = os.environ.get("HERMES_HOME")
+            os.environ["HERMES_HOME"] = str(root)
+            try:
+                got = resolve_log("t_def", None)
+            finally:
+                if prev is None:
+                    os.environ.pop("HERMES_HOME", None)
+                else:
+                    os.environ["HERMES_HOME"] = prev
+            self.assertEqual(got, log)
+
+    def test_absent_log_path_still_points_at_root(self):
+        import os
+
+        from paved_road import resolve_log
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "kanban" / "logs").mkdir(parents=True)
+            profile = root / "profiles" / "implementer"
+            profile.mkdir(parents=True)
+            prev = os.environ.get("HERMES_HOME")
+            os.environ["HERMES_HOME"] = str(profile)
+            try:
+                got = resolve_log("t_missing", None)
+            finally:
+                if prev is None:
+                    os.environ.pop("HERMES_HOME", None)
+                else:
+                    os.environ["HERMES_HOME"] = prev
+            self.assertEqual(
+                got, root / "kanban" / "logs" / "t_missing.log"
+            )
+            self.assertFalse(got.is_file())
+
+
 class TestM1Green(unittest.TestCase):
     def test_m1_green_passes(self):
         from paved_road import evaluate_audit as ev

@@ -26,10 +26,25 @@ Exit 2: usage / missing log.
 from __future__ import annotations
 
 import argparse
-import os
 import re
 import sys
 from pathlib import Path
+
+
+def _ensure_hermes_lib() -> None:
+    p = Path(__file__).resolve()
+    for parent in p.parents:
+        lib = parent / "lib"
+        if (lib / ".hermes-lib").is_file():
+            s = str(lib)
+            if s not in sys.path:
+                sys.path.insert(0, s)
+            return
+    raise SystemExit("FAIL: .hermes/lib marker missing")
+
+
+_ensure_hermes_lib()
+from paved_road import resolve_log  # noqa: E402
 
 EXIT_RE = re.compile(r"\[exit (\d+)\]")
 SPECIFY_RUN = "specify workflow run speckit"
@@ -44,17 +59,6 @@ SKILL_LOAD_RE = re.compile(
 def _fail(msg: str) -> int:
     print("REFUSE: CARD_PERFORMED " + msg, file=sys.stderr)
     return 1
-
-
-def resolve_log(task_id: str | None, log: Path | None) -> Path | None:
-    if log is not None:
-        return log
-    if not task_id:
-        return None
-    home = os.environ.get("HERMES_HOME", "")
-    if not home:
-        return None
-    return Path(home) / "kanban" / "logs" / (task_id + ".log")
 
 
 def specify_runs(text: str) -> list[tuple[str, int | None]]:

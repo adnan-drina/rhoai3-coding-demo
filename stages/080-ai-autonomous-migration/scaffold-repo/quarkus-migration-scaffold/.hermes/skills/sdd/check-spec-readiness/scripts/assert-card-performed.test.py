@@ -131,6 +131,40 @@ def main() -> int:
                 % (proc.stdout, proc.stderr)
             )
 
+    import os
+
+    with tempfile.TemporaryDirectory(prefix="card-performed-profile-") as tmp:
+        root = Path(tmp)
+        (root / "kanban" / "logs").mkdir(parents=True)
+        profile = root / "profiles" / "implementer"
+        profile.mkdir(parents=True)
+        ok = root / "kanban" / "logs" / "t_ok.log"
+        ok.write_text("  ┊ 📚 skill  speckit-specify\n", encoding="utf-8")
+        env = os.environ.copy()
+        env["HERMES_HOME"] = str(profile)
+        proc = subprocess.run(
+            [sys.executable, str(SCRIPT), "t_ok"],
+            text=True,
+            capture_output=True,
+            env=env,
+        )
+        blob = proc.stdout + proc.stderr
+        if proc.returncode != 0:
+            return _fail("profile HERMES_HOME must resolve root log: %s" % blob)
+        proc = subprocess.run(
+            [sys.executable, str(SCRIPT), "t_missing"],
+            text=True,
+            capture_output=True,
+            env=env,
+        )
+        blob = proc.stdout + proc.stderr
+        if proc.returncode != 1:
+            return _fail("absent root log must still REFUSE: %s" % blob)
+        if "profiles/implementer/kanban" in blob:
+            return _fail("refuse path must not be the profile home: %s" % blob)
+        if str(root / "kanban" / "logs" / "t_missing.log") not in blob:
+            return _fail("refuse path must be the resolved root log: %s" % blob)
+
     print(
         "OK: assert-card-performed selftest "
         "(v9 REFUSE; absent REFUSE; workflow-run REFUSE; skill follow PASS)"
