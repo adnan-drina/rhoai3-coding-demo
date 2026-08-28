@@ -34,6 +34,9 @@ Stage 080 authoring and `workspace-images/` are on `main`. Live Argo 050
 on the live 050 app is `quarkus-migration-scaffold-v2`.
 Do not GitHub-rename the v1 golden. Do not run
 `scripts/bootstrap-migration-scaffold-v2.sh` unless Operator names it.
+The `harness-v2` branch is retired; recover the tip with
+`git fetch origin tag archive/harness-v2` (`76d8897c`). Do not recreate
+that branch.
 
 | Surface | v1 | v2 |
 |---------|----|----|
