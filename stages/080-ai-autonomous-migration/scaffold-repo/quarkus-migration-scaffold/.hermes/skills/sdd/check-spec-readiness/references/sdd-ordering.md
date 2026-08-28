@@ -56,8 +56,10 @@ official-log A-gate (`assert-card-performed.py`), and `k4_convert.py --tasks`
 (`assert-m2-speckit-conformance.py`).
 Missing `tasks.md` is dest-8 bypass — REFUSE, not idle. A hand-authored
 `tasks.md` with no A-gate is dest-9 M2 — REFUSE (presence is not
-provenance). Two trees (`.specify/specs` copy plus `specs/`) without
-`feature.json` is `TWO_SPECKIT_TREES`. Do not scrape write-sets from `tasks.md`.
+provenance). Any file under the copy tree (`.specify/specs`) is
+`SPECIFY_SPECS_COPY_TREE`, `feature.json` present or not. Two
+`tasks.md` trees without `feature.json` is also `TWO_SPECKIT_TREES`.
+Do not scrape write-sets from `tasks.md`.
 
 Missing precondition → typed `needs_input` BLOCK. Never invent Spec Kit trees.
 Do **not** rewrite write-once `evidence/partition.json` (or the fixture copy

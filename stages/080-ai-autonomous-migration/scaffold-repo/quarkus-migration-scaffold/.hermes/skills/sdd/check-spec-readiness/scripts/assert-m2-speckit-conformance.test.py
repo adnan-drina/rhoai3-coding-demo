@@ -138,10 +138,11 @@ def main() -> int:
         stale.mkdir(parents=True)
         (stale / "tasks.md").write_text(covering, encoding="utf-8")
         proc = run(root, "--log", str(ok_log))
-        if proc.returncode != 0:
+        blob = proc.stdout + proc.stderr
+        if proc.returncode != 1 or "SPECIFY_SPECS_COPY_TREE" not in blob:
             print(
-                "FAIL: feature.json specs/ must win over a stale .specify/specs copy: %s%s"
-                % (proc.stdout, proc.stderr),
+                "FAIL: feature.json present must still REFUSE copy-tree tasks.md: %s"
+                % blob,
                 file=sys.stderr,
             )
             return 1
@@ -156,9 +157,9 @@ def main() -> int:
         )
         proc = run(split)
         blob = proc.stdout + proc.stderr
-        if proc.returncode != 1 or "TWO_SPECKIT_TREES" not in blob:
+        if proc.returncode != 1 or "SPECIFY_SPECS_COPY_TREE" not in blob:
             print(
-                "FAIL: dual trees without feature.json must REFUSE TWO_SPECKIT_TREES: %s"
+                "FAIL: dual trees without feature.json must REFUSE copy tree: %s"
                 % blob,
                 file=sys.stderr,
             )

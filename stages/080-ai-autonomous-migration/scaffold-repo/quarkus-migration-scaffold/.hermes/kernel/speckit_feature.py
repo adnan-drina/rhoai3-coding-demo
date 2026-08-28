@@ -4,7 +4,8 @@
 Architect ``183115ZA`` / ``193642ZA``: ``.specify/feature.json``
 ``feature_directory`` is ``specs/…`` while M2 gates globbed
 ``.specify/specs/*/tasks.md``. dest-13 wrote both trees (same bytes).
-Do not copy ``tasks.md`` onto ``.specify/specs``. Do not glob both.
+Architect ``202952ZA``: any file under that copy tree is refuse even
+when feature.json is present (dest-20/dest-21 split).
 """
 from __future__ import annotations
 
@@ -49,15 +50,58 @@ def glob_nonempty_tasks(specs_root: Path) -> list[Path]:
     return out
 
 
+def list_specify_specs_artifacts(root: Path) -> list[Path]:
+    """Files under the dest-13/dest-20/dest-21 copy tree.
+
+    Architect ``202952ZA``: ``find_tasks`` took the ``feature.json``
+    branch and never inspected this tree. dest-20/dest-21 left
+    ``spec.md`` here while ``setup-plan.sh`` wrote ``plan.md`` under
+    ``specs/``. Any file here is refuse, feature.json present or not.
+    """
+    tree = Path(root) / ".specify" / "specs"
+    if not tree.is_dir():
+        return []
+    out: list[Path] = []
+    try:
+        for path in sorted(tree.rglob("*")):
+            if path.is_file():
+                out.append(path)
+    except OSError:
+        return []
+    return out
+
+
+def copy_tree_refuse(root: Path) -> str:
+    copied = list_specify_specs_artifacts(root)
+    if not copied:
+        return ""
+    rels = []
+    for path in copied[:8]:
+        try:
+            rels.append(str(path.relative_to(root)))
+        except ValueError:
+            rels.append(str(path))
+    more = "" if len(copied) <= 8 else " (+%d)" % (len(copied) - 8)
+    return (
+        "M2_SPECKIT_BYPASS: SPECIFY_SPECS_COPY_TREE: %s%s; "
+        "Spec Kit 0.16.1 writes feature_directory from feature.json "
+        "(specs/<feature>/); move those files there"
+        % (", ".join(rels), more)
+    )
+
+
 def find_tasks(root: Path) -> tuple[list[Path], str]:
     """Return (tasks.md paths, refuse reason).
 
     Prefer ``.specify/feature.json`` ``feature_directory``. Else the
-    Spec Kit 0.16.1 tree ``specs/*/tasks.md``. Never glob
-    ``.specify/specs`` as the M2 authority — that is the dest-13 copy.
-    Two trees without feature.json is TWO_SPECKIT_TREES.
+    Spec Kit 0.16.1 tree ``specs/*/tasks.md``. Any file under the
+    copy tree is SPECIFY_SPECS_COPY_TREE (feature.json present or
+    not). Two trees without feature.json is also TWO_SPECKIT_TREES.
     """
     root = Path(root)
+    copied_err = copy_tree_refuse(root)
+    if copied_err:
+        return [], copied_err
     rel = read_feature_directory(root)
     if rel:
         feat = root / rel

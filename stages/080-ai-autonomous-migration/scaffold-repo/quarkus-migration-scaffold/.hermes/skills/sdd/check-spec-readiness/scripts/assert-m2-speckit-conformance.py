@@ -22,10 +22,10 @@ OBJECT). When ``tasks.md`` exists it invokes K4 with ``--tasks`` so
 
 Exit 0: exactly one non-empty Spec Kit 0.16.1 ``tasks.md`` (via
 ``.specify/feature.json`` ``feature_directory``, else ``specs/*/tasks.md``),
-A-gate PASS on the official log, and ``k4_convert.py --partition … --tasks``
-is clean.
-Exit 1: missing/empty tasks.md, two Spec Kit trees, A-gate REFUSE, missing
-partition, or planning defect.
+no files under the copy tree, A-gate PASS on the official log, and
+``k4_convert.py --partition … --tasks`` is clean.
+Exit 1: missing/empty tasks.md, SPECIFY_SPECS_COPY_TREE, two Spec Kit
+trees, A-gate REFUSE, missing partition, or planning defect.
 Exit 2: usage.
 """
 from __future__ import annotations
