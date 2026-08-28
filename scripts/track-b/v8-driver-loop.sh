@@ -49,6 +49,7 @@ ADV_PENDING="${ROOT}/tmp/V9-ADVANCE-PENDING.md"
 AUTO_RESTART="${V8_AUTO_RESTART:-1}"
 # shellcheck disable=SC1091
 source "${ROOT}/scripts/track-b/lib-quality-gates.sh"
+qg_refuse_retired_wave5_harness
 # shellcheck disable=SC1091
 source "${ROOT}/scripts/lib.sh"
 # lib.sh enables `set -e`; the wake loop must survive a failed tick

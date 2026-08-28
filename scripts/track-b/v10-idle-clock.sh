@@ -286,6 +286,9 @@ fi
 STATE="${V10_IDLE_STATE:-${ROOT}/tmp/V10-IDLE-CLOCK.state}"
 POLL="${V10_IDLE_POLL:-${ROOT}/tmp/KAI-POLL-STATE.txt}"
 HARNESS="${ROOT}/stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/.hermes/harness"
+if [ "${FIXTURE:-0}" != "1" ]; then
+  qg_refuse_retired_wave5_harness
+fi
 CTR="$(qg_ws_ctr)"
 NS="${V10_NS:-$(qg_ws_ns)}"
 

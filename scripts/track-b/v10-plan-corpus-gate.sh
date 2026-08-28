@@ -3,6 +3,9 @@
 # Intended for preflight before outer restart (see v9-preflight-outer-start.sh).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+# shellcheck source=/dev/null
+source "${ROOT}/scripts/track-b/lib-quality-gates.sh"
+qg_refuse_retired_wave5_harness
 HARNESS="${ROOT}/stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/.hermes/harness"
 SCRIPT="${HARNESS}/plan-corpus-lint.sh"
 [ -x "$SCRIPT" ] || chmod +x "$SCRIPT"

@@ -30,6 +30,7 @@ _info() { printf 'INFO  %s\n' "$1"; }
 echo "=== restart-readiness (R2 LRR) ==="
 echo "ROOT=$ROOT"
 echo "time=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+qg_refuse_retired_wave5_harness
 
 # --- SC-0 supply chain ---
 if [ -f "$PRED_DOC" ] && git -C "$ROOT" ls-files --error-unmatch "$PRED_DOC" >/dev/null 2>&1; then
