@@ -9,7 +9,7 @@ This directory holds operational and governance documentation for the Red Hat Op
 | [PLATFORM_BASELINE.md](PLATFORM_BASELINE.md) | Fresh-environment platform baseline |
 | [../BACKLOG.md](../BACKLOG.md) | Workarounds, known limitations, validation notes, and planned cleanup |
 
-_Run-specific logs (V5–V10), polish banks (V7–V10), quality gates (V9–V10), the V10 change manifest and frozen predictions, Wave 1–4 review docs, Spring→Quarkus source analyses, and the KAI analysis live under [`../tmp/docs-archive/`](../tmp/docs-archive/) so `docs/` stays operational-only. Track B (waves 1–5) is frozen on `main` (`scripts/track-b/`, fail-closed). Stage 080 v2 authoring is on `main`; live Argo 050 still tracks `harness-v2` until retarget._
+_Run-specific logs (V5–V10), polish banks (V7–V10), quality gates (V9–V10), the V10 change manifest and frozen predictions, Wave 1–4 review docs, Spring→Quarkus source analyses, and the KAI analysis live under [`../tmp/docs-archive/`](../tmp/docs-archive/) so `docs/` stays operational-only. Track B (waves 1–5) is frozen on `main` (`scripts/track-b/`, fail-closed). Stage 080 v2 authoring is on `main`; live Argo 050 tracks `main`._
 
 ## Learning Path
 

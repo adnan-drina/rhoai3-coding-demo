@@ -27,11 +27,11 @@ The repository follows a GitOps-first pattern:
 
 The deploy scripts do not imperatively install every component themselves. They hand ownership to Argo CD.
 
-## Harness v2 golden (authoring on `main`; live 050 still `harness-v2` until retarget)
+## Harness v2 golden (authoring on `main`; live 050 tracks `main`)
 
 Stage 080 authoring and `workspace-images/` are on `main`. Live Argo 050
-still has `targetRevision: harness-v2` until Operator names the retarget.
-Catalog `fetch:plain` on the live 050 app is `quarkus-migration-scaffold-v2`.
+`targetRevision` is `main` (Operator GO 2026-08-28). Catalog `fetch:plain`
+on the live 050 app is `quarkus-migration-scaffold-v2`.
 Do not GitHub-rename the v1 golden. Do not run
 `scripts/bootstrap-migration-scaffold-v2.sh` unless Operator names it.
 
@@ -41,7 +41,7 @@ Do not GitHub-rename the v1 golden. Do not run
 | Dest worker profiles | Overlay: single-persona `default` (C-2 skip) | `orchestrator` + `implementer` (`hermes profile create --no-alias`, never `--clone`) |
 | Golden GitHub | `quarkus-migration-scaffold` | `quarkus-migration-scaffold-v2` |
 | Publish | `scripts/bootstrap-scaffold-repos.sh` | `scripts/bootstrap-migration-scaffold-v2.sh` (Operator-named only) |
-| Template `fetch:plain` | v1 golden | Live 050 catalog: `quarkus-migration-scaffold-v2` until 050 retargets to `main` |
+| Template `fetch:plain` | v1 golden | Live 050 catalog: `quarkus-migration-scaffold-v2` |
 
 `bootstrap-scaffold-repos.sh` refuses the Stage 080 push when HEAD is
 `harness-v2`. Do not dest-complete Operator ack gates or `kanban daemon --force`.
