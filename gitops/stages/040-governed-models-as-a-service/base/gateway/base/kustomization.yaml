@@ -3,3 +3,4 @@ kind: Kustomization
 
 resources:
   - gateway.yaml
+  - networkpolicy-payload-processing-maas-gateway.yaml
