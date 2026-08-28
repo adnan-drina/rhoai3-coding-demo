@@ -15,6 +15,7 @@ KERNEL = Path(__file__).resolve().parent
 sys.path.insert(0, str(KERNEL))
 from k4_producers import (  # noqa: E402
     DEST8_FIXTURE,
+    KIND_DEFAULTS,
     PRODUCERS,
     card_from_payload,
     check_cards,
@@ -122,6 +123,20 @@ def main() -> int:
         return _fail("catalog must name plan-migration-partition")
     if "check-release-readiness" in PRODUCERS or "check-spec-readiness" in PRODUCERS:
         return _fail("checkers must not be catalog producers")
+    if "spring-to-quarkus-patterns" not in KIND_DEFAULTS.get("polish", []):
+        return _fail("polish KIND_DEFAULTS must include spring-to-quarkus-patterns")
+    for kind, skills in KIND_DEFAULTS.items():
+        for skill in skills:
+            if skill not in PRODUCERS:
+                return _fail("KIND_DEFAULTS %s/%s missing from PRODUCERS" % (kind, skill))
+    polish_java = {
+        "logical_id": "polish",
+        "phase": "M3",
+        "skills": list(KIND_DEFAULTS["polish"]),
+        "files_writable": ["src/test/java/com/demo/HealthTest.java"],
+    }
+    if producer_issues(polish_java):
+        return _fail("polish KIND_DEFAULTS must produce dest-java HealthTest")
 
     named = KERNEL / "assert-skill-scripts-named.py"
     proc = subprocess.run(

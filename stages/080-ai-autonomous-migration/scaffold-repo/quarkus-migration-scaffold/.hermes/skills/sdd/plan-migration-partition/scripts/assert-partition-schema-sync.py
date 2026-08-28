@@ -15,6 +15,7 @@ KERNEL = SKILL.parents[2] / "kernel"
 if str(KERNEL) not in sys.path:
     sys.path.insert(0, str(KERNEL))
 
+from k4_producers import KIND_DEFAULTS, PRODUCERS  # noqa: E402
 from k4_schema import REMEDY  # noqa: E402
 
 PARTITION_CODES = (
@@ -69,6 +70,45 @@ def main() -> int:
             bad = 1
     if "k4_schema.py" not in text:
         print("FAIL: reference must name k4_schema.py as authority", file=sys.stderr)
+        bad = 1
+    if "k4_producers.py" not in text or "KIND_DEFAULTS" not in text:
+        print(
+            "FAIL: partition-schema.md must name k4_producers.py KIND_DEFAULTS",
+            file=sys.stderr,
+        )
+        bad = 1
+    for name in PRODUCERS:
+        if name not in text:
+            print(
+                "FAIL: partition-schema.md missing producer %s" % name,
+                file=sys.stderr,
+            )
+            bad = 1
+    for kind, skills in KIND_DEFAULTS.items():
+        if kind not in text:
+            print(
+                "FAIL: partition-schema.md missing kind %s" % kind,
+                file=sys.stderr,
+            )
+            bad = 1
+        for skill in skills:
+            if skill not in PRODUCERS:
+                print(
+                    "FAIL: KIND_DEFAULTS %s/%s not in PRODUCERS" % (kind, skill),
+                    file=sys.stderr,
+                )
+                bad = 1
+            if skill not in text:
+                print(
+                    "FAIL: partition-schema.md missing default skill %s" % skill,
+                    file=sys.stderr,
+                )
+                bad = 1
+    if "spring-to-quarkus-patterns" not in KIND_DEFAULTS.get("polish", []):
+        print(
+            "FAIL: polish KIND_DEFAULTS must include spring-to-quarkus-patterns",
+            file=sys.stderr,
+        )
         bad = 1
     if bad:
         return 1

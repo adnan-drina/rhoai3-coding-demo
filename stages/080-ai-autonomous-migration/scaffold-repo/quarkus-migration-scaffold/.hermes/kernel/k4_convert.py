@@ -24,6 +24,7 @@ if str(_KERNEL) not in sys.path:
 if str(_LIB) not in sys.path:
     sys.path.insert(0, str(_LIB))
 
+from k4_producers import KIND_DEFAULTS  # noqa: E402
 from k4_schema import (  # noqa: E402
     IMPL,
     PATH_TOKEN_MARKERS,
@@ -52,17 +53,7 @@ HEALTH_AC = re.compile(
 )
 POM_AC = re.compile(r"(?i)\bpom\.xml\b|quarkus:add-extension|\badd-extension\b")
 SERVICE_JAVA = re.compile(r"(?i)(?:^|/)([^/]*Service\.java)$")
-SKILLS_BY_KIND = {
-    "setup": [
-        "author-destination-pom",
-        "reference-rh-quarkus-pom",
-        "manage-quarkus-extensions",
-        "configure-quarkus-profiles",
-    ],
-    "us": ["spring-to-quarkus-patterns"],
-    "polish": ["manage-quarkus-extensions"],
-    "database": ["form-entity-persistence"],
-}
+SKILLS_BY_KIND = KIND_DEFAULTS
 
 DB_STORY_ID = "PROVISION_DATABASE"
 

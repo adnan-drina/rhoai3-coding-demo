@@ -60,7 +60,9 @@ Idempotent via `.specify/.rhoai3-ads-provisioned`. Spec Kit is pinned
    `.specify/templates/overrides/spec-template.md`
 4. Copies unique-owner tasks override from
    `${HERMES_SKILL_DIR}/assets/tasks-template.md` →
-   `.specify/templates/overrides/tasks-template.md` (one creator phase per
+   `.specify/templates/overrides/tasks-template.md` **and**
+   `.specify/templates/tasks-template.md` (overwrite stock Spec Kit; no
+   directory-only tasks; one creator phase per
    live dest path unless a named non-empty successor set supersedes that
    path; HTTP entry-point rows stay exactly one owner; Add/Verify remain
    amend; polish tasks that name a dest file Create it; source type-inventory
@@ -121,7 +123,10 @@ M2 PLAN consumes M1 KEEP evidence via parent `kanban_attachments` plus
 
 - These artifacts must exist **together** under the workspace root: `.specify/`
   (from `specify init`), `.specify/templates/overrides/spec-template.md`,
-  `.specify/templates/overrides/tasks-template.md` (unique dest-path owner),
+  `.specify/templates/overrides/tasks-template.md` and
+  `.specify/templates/tasks-template.md` (unique dest-path owner; stock Spec Kit overwritten;
+  `scripts/assert-tasks-template-migration-shaped.py` refuses stock placeholders
+  and directory-only checklist lines),
   `.specify/memory/constitution.md` (Quarkus 3.27.3.SP1 / Java 21 — not
   placeholders), `.specify/workflows/overlays/speckit/stop-before-implement.yml`,
   `.specify/AD-S-STOP-RULE.md`, and

@@ -86,6 +86,9 @@ install_ads_overlays() {
   log "installed Non-Goals override → .specify/templates/overrides/spec-template.md"
   cp "${ASSET_TASKS}" "${ROOT}/.specify/templates/overrides/tasks-template.md"
   log "installed unique-owner tasks override → .specify/templates/overrides/tasks-template.md"
+  mkdir -p "${ROOT}/.specify/templates"
+  cp "${ASSET_TASKS}" "${ROOT}/.specify/templates/tasks-template.md"
+  log "replaced stock Spec Kit tasks-template.md (directory tasks are K4_PLANNING_DEFECT)"
 
   local const_dest="${ROOT}/.specify/memory/constitution.md"
   if [ ! -f "${const_dest}" ] || grep -q '\[PROJECT_NAME\]\|\[PRINCIPLE_1' "${const_dest}" 2>/dev/null; then
@@ -142,6 +145,7 @@ if [[ "${DRY_RUN}" == "1" ]]; then
   log "DRY-RUN: would run: HOME=${ROOT} specify init --here --integration hermes --force --ignore-agent-tools"
   log "DRY-RUN: would copy override → .specify/templates/overrides/spec-template.md"
   log "DRY-RUN: would copy unique-owner tasks override → .specify/templates/overrides/tasks-template.md"
+  log "DRY-RUN: would replace stock .specify/templates/tasks-template.md"
   log "DRY-RUN: would copy constitution → .specify/memory/constitution.md"
   log "DRY-RUN: would copy overlay → .specify/workflows/overlays/speckit/stop-before-implement.yml"
     log "DRY-RUN: would seed speckit-specify into ${ROOT}/.hermes/skills/<name> only (not sdd/; not user-root external_dirs)"

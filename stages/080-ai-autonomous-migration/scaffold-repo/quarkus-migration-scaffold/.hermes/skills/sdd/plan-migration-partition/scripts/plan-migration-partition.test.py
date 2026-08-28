@@ -63,6 +63,12 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
+    if "Valid producers" not in skill_md and "k4_producers.py" not in skill_md:
+        print(
+            "FAIL: SKILL.md must point at Valid producers / k4_producers.py",
+            file=sys.stderr,
+        )
+        return 1
     if "k4_convert.py" not in skill_md or "k4_mint.py" not in skill_md:
         print("FAIL: SKILL.md must name k4_convert.py and k4_mint.py", file=sys.stderr)
         return 1
@@ -140,6 +146,22 @@ def main() -> int:
     proc = run(SYNC)
     if proc.returncode != 0:
         print("FAIL: schema sync: %s%s" % (proc.stdout, proc.stderr), file=sys.stderr)
+        return 1
+    tpl = (
+        GOLDEN
+        / ".hermes"
+        / "skills"
+        / "sdd"
+        / "init-spec-workspace"
+        / "scripts"
+        / "assert-tasks-template-migration-shaped.py"
+    )
+    proc = run(tpl)
+    if proc.returncode != 0:
+        print(
+            "FAIL: tasks-template: %s%s" % (proc.stdout, proc.stderr),
+            file=sys.stderr,
+        )
         return 1
 
     aligned = (

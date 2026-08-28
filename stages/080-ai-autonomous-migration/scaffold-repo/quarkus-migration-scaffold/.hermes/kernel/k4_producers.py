@@ -38,11 +38,29 @@ PRODUCERS: dict[str, str] = {
     "inventory-legacy-surface": ARTIFACT_M1,
     "plan-migration-partition": ARTIFACT_M2,
     "author-destination-pom": ARTIFACT_POM,
+    "reference-rh-quarkus-pom": ARTIFACT_POM,
     "manage-quarkus-extensions": ARTIFACT_POM,
+    "configure-quarkus-profiles": ARTIFACT_POM,
     "spring-to-quarkus-patterns": ARTIFACT_JAVA,
     "form-entity-persistence": ARTIFACT_K8S,
     "commit-destination-tree": ARTIFACT_COMMIT,
     "compose-m4-verdict": ARTIFACT_M4,
+}
+
+# Convert uses this when partition story.skills[] is omitted.
+# Planner-facing copy: plan-migration-partition/references/partition-schema.md
+# (assert-partition-schema-sync.py). Not a second validity rule — mint still
+# checks PRODUCERS against the card's primary artifact (Architect 102851ZA).
+KIND_DEFAULTS: dict[str, list[str]] = {
+    "setup": [
+        "author-destination-pom",
+        "reference-rh-quarkus-pom",
+        "manage-quarkus-extensions",
+        "configure-quarkus-profiles",
+    ],
+    "us": ["spring-to-quarkus-patterns"],
+    "polish": ["spring-to-quarkus-patterns", "manage-quarkus-extensions"],
+    "database": ["form-entity-persistence"],
 }
 
 DEST8_FIXTURE = _KERNEL / "fixtures" / "dest-8-six-cards.json"

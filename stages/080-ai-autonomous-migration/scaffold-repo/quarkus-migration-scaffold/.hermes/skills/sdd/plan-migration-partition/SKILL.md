@@ -109,8 +109,10 @@ named in `.specify/feature.json` `feature_directory` (example:
 
 4. Author `evidence/partition.json` from those attachments **and** the
    plan. Schema: `references/partition-schema.md` (kept in sync with
-   `.hermes/kernel/k4_schema.py` by `scripts/assert-partition-schema-sync.py`).
-   Do not reverse-engineer `k4_*.py`.
+   `.hermes/kernel/k4_schema.py` and `.hermes/kernel/k4_producers.py` by
+   `scripts/assert-partition-schema-sync.py`). Pin `skills[]` from that
+   page's **Valid producers** table (or omit and use `kind` → defaults).
+   Do not reverse-engineer `k4_*.py`. Do not invent skill names.
 
    **Write-set (`K4_T0_3_SERVICE`):** the same `*Service.java` must not
    appear on two stories. One story MAY own a shared facade. Split-one-class-per-aggregate
@@ -120,7 +122,7 @@ named in `.specify/feature.json` `feature_directory` (example:
    `entry-point-inventory.json` `file` (legacy package/path). Dest
    `files_writable` is the dest package (`com/demo`); the worker must not
    rediscover `com/example/restservice`. Missing `legacy_source` is
-   `K4_LEGACY_SOURCE`.    HTTP stories must also set `dest_file` to the type-inventory dest twin
+   `K4_LEGACY_SOURCE`. HTTP stories must also set `dest_file` to the type-inventory dest twin
    of an inventoried legacy type — **not** the new file this story creates.
    Missing `dest_file` is `K4_DEST_FILE` (dest-9 live
    partition skip is convert-refuse, not a second invented-files checker).

@@ -57,7 +57,8 @@ that names it **and** carries `cmd`, `argv`, `rc`, `input_digest`,
 
 This script does not write `PROVISIONAL_ACCEPT`. On pass, if this leaf is
 pinned, it writes `evidence/receipts/gates/assert-pinned-gates-ran.json`
-so its own pin is evidenced.
+so its own pin is evidenced. Pinned-gate runners import
+`scripts/script_gate_receipt.py` for that write.
 
 ## Pitfalls
 

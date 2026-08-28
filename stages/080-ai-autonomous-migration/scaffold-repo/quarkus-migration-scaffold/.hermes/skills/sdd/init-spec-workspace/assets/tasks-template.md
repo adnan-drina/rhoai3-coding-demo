@@ -162,10 +162,11 @@ Example: Implement OwnerResource with @Path("/api/owners") in `src/main/java/com
 
 ## Phase 1: Setup (Shared Infrastructure)
 
-**Purpose**: Project initialization — POM, directories, first config file
+**Purpose**: Project initialization — POM and first config file. Directories
+are implicit when those files are written. Do **not** emit a task whose
+path is a directory (`src/main/java/…/`) — that is `K4_PLANNING_DEFECT`.
 
 - [ ] T001 Author pom.xml with Red Hat Quarkus Platform BOM and Java 21 toolchain in pom.xml
-- [ ] T002 Create source directory structure in src/main/java/com/demo/ and src/test/java/com/demo/
 - [ ] T003 [P] Configure src/main/resources/application.properties with datasource, Hibernate, and HTTP port
 
 ---
