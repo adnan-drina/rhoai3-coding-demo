@@ -184,17 +184,26 @@ def paved_road_audit_green():
         text = open(log, encoding="utf-8", errors="replace").read()
     except OSError:
         return False
+    # Same convention as .hermes/lib/paved_road.py: the dispatcher stamps
+    # "[exit N]" on failure only, so an omitted marker on a terminal line is
+    # a PASS, not "no information". Reading it as no-information latched this
+    # gate closed on v18 t_6320c956: the first invocation used a wrong --log
+    # path and stamped [exit 1]; every later green run emitted no marker,
+    # matched no branch, and left last_rc at 1 forever. Neither seat could
+    # then terminate -- the implementer is refused kanban_complete and the
+    # reviewer was refused here. SOUL says correcting your own invocation and
+    # re-running green is legal; the old reading made it permanently fatal.
+    #
+    # Only a real invocation counts. Prose that names the script, and other
+    # commands that merely reference the path (find -newer .../audit.py,
+    # head -80 .../audit.py), are not runs of it.
     last_rc = None
+    invoke = re.compile(r"python3\s+\S*assert-paved-road-audit\.py")
     for line in text.splitlines():
-        if "assert-paved-road-audit" not in line:
+        if "$" not in line or not invoke.search(line):
             continue
         m = re.search(r"\[exit (\d+)\]", line)
-        if m:
-            last_rc = int(m.group(1))
-        elif re.search(r"FAIL:|REFUSE", line, re.I):
-            last_rc = 1
-        elif re.search(r"\bOK:", line):
-            last_rc = 0
+        last_rc = int(m.group(1)) if m else 0
     return last_rc == 0
 
 def bound_gate_red():
