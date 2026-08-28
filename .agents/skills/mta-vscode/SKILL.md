@@ -16,7 +16,7 @@ description: >
 
 # MTA VS Code Extension
 
-Use this skill to ground Migration Toolkit for Applications (MTA) 8.1
+Use this skill to ground Migration Toolkit for Applications (MTA) 8.2
 VS Code extension guidance in the official Configuring and Using the
 Visual Studio Code Extension for MTA guide. The extension enables
 in-IDE application analysis, issue identification, and guided code
@@ -112,7 +112,7 @@ Resolution workflow:
 
 ## Workflow
 
-1. Confirm the target MTA version (8.1).
+1. Confirm the target MTA version (8.2).
 2. Read `references/official-doc-extraction.md` for extension procedures.
 3. Identify the task: installation, configuration, analysis, issue
    resolution, or Hub connection.

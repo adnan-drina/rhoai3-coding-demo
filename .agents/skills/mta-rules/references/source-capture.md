@@ -5,11 +5,11 @@
 | Field | Value |
 |-------|-------|
 | Product | Migration Toolkit for Applications |
-| Version | 8.1 |
+| Version | 8.2 |
 | Documentation category | Rules Development |
 | Official guide | Configuring and Using Rules for an MTA Analysis |
-| Source URL | https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1/html-single/configuring_and_using_rules_for_an_mta_analysis/index |
-| Multi-page URL | https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1/html/configuring_and_using_rules_for_an_mta_analysis/index |
+| Source URL | https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.2/html-single/configuring_and_using_rules_for_an_mta_analysis/index |
+| Multi-page URL | https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.2/html/configuring_and_using_rules_for_an_mta_analysis/index |
 | Capture date | 2026-07-06 |
 
 ## Captured Sections

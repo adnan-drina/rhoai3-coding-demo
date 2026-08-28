@@ -380,6 +380,13 @@ mta-cli analyze --input=<app> --output=<dir> --rules=<ruleset_dir> \
 
 Use `--target` or `--source` options with reserved labels to filter rules.
 
+**Caveat (MTA 7.1 documented; silent in 8.1/8.2 Rule metadata docs; confirmed
+on 8.2 runs):** when `--source` or `--target` is set, the engine selects only
+rules that match that label — rules **without** source/target labels are
+excluded. Label custom rules accordingly, or omit `--source` (and carefully
+choose `--target`) when unlabeled rules must participate. See `mta-cli`
+extraction and nested `mta-8.2-recapture.md`.
+
 ## Testing Custom Rules
 
 ```bash

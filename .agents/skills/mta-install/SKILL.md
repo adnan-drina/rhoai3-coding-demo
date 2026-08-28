@@ -8,7 +8,7 @@ metadata:
   ocp-baseline: "repo"
   skill-group: "Application Modernization"
 description: >
-  Use when installing MTA 8.1 operator, UI, and CLI on OpenShift, including
+  Use when installing MTA 8.2 operator, UI, and CLI on OpenShift, including
   prerequisites, namespace setup, and verification. Do NOT use for using tools
   (use mta-cli/mta-ui) or AI features (use mta-lightspeed).
 ---
@@ -16,7 +16,7 @@ description: >
 # MTA Install
 
 Use this skill to ground Migration Toolkit for Applications installation
-procedures in the official Red Hat MTA 8.1 installation guide.
+procedures in the official Red Hat MTA 8.2 installation guide.
 
 ## Source Grounding
 
@@ -25,7 +25,7 @@ Hat documentation is product authority.
 
 ## Installation Overview
 
-MTA 8.1 provides three installation paths:
+MTA 8.2 provides three installation paths:
 
 1. **MTA Operator on OpenShift** — installs the UI, backend, database,
    Keycloak, and all required components
@@ -104,7 +104,7 @@ Default login: `admin` / `Passw0rd!` (change immediately after install).
 
 ## Related Skills
 
-- Use `mta-release-notes` for MTA 8.1 release notes and known issues.
+- Use `mta-release-notes` for MTA 8.2 release notes and known issues.
 - Use `mta-cli` for CLI usage and analysis workflows (planned).
 - Use `mta-ui` for UI usage and assessment workflows (planned).
 - Use `mta-lightspeed` for Developer Lightspeed AI features (planned).

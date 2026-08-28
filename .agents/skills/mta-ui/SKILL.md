@@ -16,7 +16,7 @@ description: >
 
 # MTA User Interface
 
-Use this skill to ground Migration Toolkit for Applications (MTA) 8.1
+Use this skill to ground Migration Toolkit for Applications (MTA) 8.2
 web UI guidance in the official Configuring and Managing the MTA User
 Interface guide. The MTA UI enables portfolio-level and application-level
 assessment, analysis, tagging, migration wave management, and deployment
@@ -120,7 +120,7 @@ target profiles, archetypes, and discovery manifests.
 
 ## Workflow
 
-1. Confirm the target MTA version (8.1) and deployment type.
+1. Confirm the target MTA version (8.2) and deployment type.
 2. Read `references/official-doc-extraction.md` for UI procedures.
 3. Identify the task: configuration, assessment, analysis, migration
    wave, platform awareness, or asset generation.
