@@ -1,0 +1,42 @@
+{
+  "source": "tr-2b-bare-string-refuse",
+  "note": "string-only supersedes entry \u2192 empty successor set \u2192 supersede_incomplete. Generic com.demo; not petclinic.",
+  "supersedes": [
+    "src/main/java/com/demo/service/SharedService.java"
+  ],
+  "stories": [
+    {
+      "story_id": "setup",
+      "kind": "setup",
+      "parents": [],
+      "files_writable": [
+        "pom.xml"
+      ]
+    },
+    {
+      "story_id": "US1",
+      "kind": "us",
+      "parents": [
+        "setup"
+      ],
+      "endpoints": [
+        "GET /api/alpha"
+      ],
+      "files_writable": [
+        "src/main/java/com/demo/service/AlphaService.java",
+        "src/main/java/com/demo/resource/AlphaResource.java"
+      ],
+      "legacy_source": "src/main/java/com/example/restservice/AlphaController.java"
+    },
+    {
+      "story_id": "US2",
+      "kind": "us",
+      "parents": [
+        "setup"
+      ],
+      "files_writable": [
+        "src/main/java/com/demo/service/BetaService.java"
+      ]
+    }
+  ]
+}

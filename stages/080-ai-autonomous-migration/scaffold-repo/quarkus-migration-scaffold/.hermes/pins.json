@@ -1,0 +1,54 @@
+{
+  "schema": "rhoai3.tooling-pins/v1",
+  "pins": {
+    "hermes_agent": {
+      "version": "v0.20.5",
+      "build": "2026.8.19",
+      "install_surface": "Platform Dev Spaces init (Managed Scope)",
+      "initial_status_contract": "binary-local: hermes kanban create --help plus VALID_INITIAL_STATUSES. Public CLI page is not the contract. Omit --initial-status yields ready (fail-open).",
+      "note": "Seat pin (Operator E-20260823T111522Z GO Hermes-only; Spec Kit stays 0.16.1). Dest measured v0.20.5 / 2026.8.19. Native Kanban gateway-embedded dispatcher is the control. HOLD further pin-move without Operator GO."
+    },
+    "spec_kit": {
+      "package": "specify-cli",
+      "version": "0.16.1",
+      "install": "uv tool install 'specify-cli==0.16.1'"
+    },
+    "quarkus_platform": {
+      "group_id": "com.redhat.quarkus.platform",
+      "bom_artifact_id": "quarkus-bom",
+      "version": "3.27.3.SP1-redhat-00002",
+      "plugin_artifact_id": "quarkus-maven-plugin"
+    },
+    "compiler_plugin": {
+      "group_id": "org.apache.maven.plugins",
+      "artifact_id": "maven-compiler-plugin",
+      "version": "3.11.0",
+      "pom_property": "compiler-plugin.version",
+      "note": "RHBQ 3.27 Developing and compiling your Red Hat build of Quarkus applications with Apache Maven — properties example compiler-plugin.version 3.11.0. Not dest-8 recall 3.13.0. https://docs.redhat.com/en/documentation/red_hat_build_of_quarkus/3.27/html-single/developing_and_compiling_your_red_hat_build_of_quarkus_applications_with_apache_maven/index"
+    },
+    "surefire_plugin": {
+      "group_id": "org.apache.maven.plugins",
+      "artifact_id": "maven-surefire-plugin",
+      "version": "3.1.2",
+      "pom_property": "surefire-plugin.version",
+      "note": "Same RHBQ 3.27 Maven chapter — properties example surefire-plugin.version 3.1.2. Not dest-8 recall 3.5.2."
+    },
+    "assertj_core": {
+      "group_id": "org.assertj",
+      "artifact_id": "assertj-core",
+      "version": "3.27.7",
+      "note": "Architect 125110ZA option B. RH quarkus-bom 3.27.3.SP1-redhat-00002 (maven.repository.redhat.com/ga, 417447 B) contains 0 assertj hits — BOM does not manage it. Version from Quarkus 3.27.3 build-parent assertj.version (https://github.com/quarkusio/quarkus/blob/3.27.3/build-parent/pom.xml). Not 3.27.3 (platform echo)."
+    },
+    "mapstruct": {
+      "status": "unpinned",
+      "doctrine": "pending R-SKILL-F",
+      "note": "Do not invent a GAV. v19 measured componentModel=cdi as UnsatisfiedResolutionException. Lead MapperCdi wrappers are an incident fix, not doctrine (B-3)."
+    },
+    "workspace_overlay": {
+      "ws_080": {
+        "digest": "sha256:52fd342d1c236ddff4a4bc85a5e8939291a874468cabc0103444908fe3dda985",
+        "note": "Quay registry digest from `podman push --digestfile` 2026-08-25 (kantra unzip exec-bits + Dockerfile F1-F8). Not hermes_agent. Not a local image Id, unsigned Digest, IMAGE_DIGEST stamp, or `podman image inspect` RepoDigest. Dest-init must not compare the in-image stamp to this key (Architect 183448ZA). Republish destfile + this key together on each overlay rebuild."
+      }
+    }
+  }
+}

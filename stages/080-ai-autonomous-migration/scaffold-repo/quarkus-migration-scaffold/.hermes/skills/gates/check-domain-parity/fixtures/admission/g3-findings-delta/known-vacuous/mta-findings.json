@@ -1,0 +1,5 @@
+{
+  "schema": "rhoai3.mta-findings/v1-provisional",
+  "execution_evidence": {"analyzer_ran": false, "cli": null, "rule_set": []},
+  "violations": {}
+}

@@ -1,0 +1,46 @@
+# Seat template for $HERMES_HOME/config.yaml (Phase N / AD-019).
+# Dest Managed Scope still owns the live model pin and secrets.
+# Copy keys into the seat at dest-time. Do not commit a live config.yaml
+# or .env here.
+#
+# Official precedence (hermes-configuration): CLI > config.yaml > .env >
+# built-in defaults. Managed Scope pins beat the user seat
+# (hermes-managed-scope). Secrets belong in .env, not this file.
+#
+# OBJECT: fallback_providers (AD-008). Omit the key entirely.
+
+# model: is dest Managed Scope. Shape (do not uncomment with real URLs):
+# model:
+#   provider: custom
+#   default: REPLACE_AT_DEST
+#   base_url: REPLACE_AT_DEST
+#   api_mode: chat_completions
+
+skills:
+  # Project skills + spec-kit Path.home() install (hermes-skills).
+  # Nonexistent paths are silently skipped — keep both.
+  external_dirs:
+    - /projects/modernized/.hermes/skills
+    - ~/.hermes/skills
+
+kanban:
+  # Official gateway-embedded dispatcher (hermes-kanban).
+  dispatch_in_gateway: true
+  dispatch_interval_seconds: 60
+  review_dispatch: false
+  auto_decompose: false
+  max_in_progress: 1
+  failure_limit: 2
+
+# Hooks consent hatch (hermes-hooks). Non-TTY registration of *declared*
+# shell hooks needs one of: --accept-hooks, HERMES_ACCEPT_HOOKS=1, or
+# hooks_auto_accept: true. Leave this false on the seat template; do not
+# add hooks.<event> entries here. Dest GitOps managed config sets
+# hooks_auto_accept: true and copies .hermes/kernel/pre_tool_call.sh
+# fail-closed when that file exists (instrumentation, not claimed control).
+hooks_auto_accept: false
+
+# Dest worker profiles (Operator GO 231808Z): GitOps creates `orchestrator`
+# and `implementer` from `.hermes/config/profiles/*.yaml.template`.
+# This file remains the default-seat template, not a profile clone source.
+# OBJECT: hermes profile create --clone.

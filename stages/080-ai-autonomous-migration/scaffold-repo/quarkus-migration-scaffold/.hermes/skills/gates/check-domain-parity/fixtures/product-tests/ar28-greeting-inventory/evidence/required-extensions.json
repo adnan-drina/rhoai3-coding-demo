@@ -1,0 +1,24 @@
+{
+  "schema": "rhoai3.required-extensions/v2",
+  "entries": [
+    {
+      "artifactId": "quarkus-rest",
+      "kind": "extension"
+    },
+    {
+      "artifactId": "quarkus-rest-jackson",
+      "kind": "extension"
+    }
+  ],
+  "from_rules": [
+    "springboot-web-to-quarkus-00000"
+  ],
+  "from_pom": [],
+  "legacy_pom": "/projects/legacy/pom.xml",
+  "jdbc_kind_from": "",
+  "database": {
+    "needed": false,
+    "kind": "",
+    "from": ""
+  }
+}

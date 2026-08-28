@@ -1,0 +1,10 @@
+{
+  "execution_evidence": {"scenarios_ran": 1, "mode": "security-off"},
+  "scenarios": [
+    {
+      "id": "GET /api/things",
+      "referent": {"status": 500, "body": "error"},
+      "destination": {"status": 500, "body": "error"}
+    }
+  ]
+}

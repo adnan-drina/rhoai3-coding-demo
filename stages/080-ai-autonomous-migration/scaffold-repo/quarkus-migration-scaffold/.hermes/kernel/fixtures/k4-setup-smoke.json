@@ -1,0 +1,15 @@
+{
+  "type_inventory_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "source": "k4-selftest-setup-smoke",
+  "stories": [
+    {
+      "story_id": "setup",
+      "kind": "setup",
+      "parents": [],
+      "files_writable": [
+        "pom.xml",
+        "src/test/java/com/demo/SmokeTest.java"
+      ]
+    }
+  ]
+}

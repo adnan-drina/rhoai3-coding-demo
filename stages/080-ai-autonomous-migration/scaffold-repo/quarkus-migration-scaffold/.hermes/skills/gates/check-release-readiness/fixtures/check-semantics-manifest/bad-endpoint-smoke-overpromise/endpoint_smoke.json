@@ -1,0 +1,12 @@
+{
+  "schema": "rhoai3.gate-receipt/v1",
+  "check": "endpoint_smoke",
+  "result": "PASS",
+  "cmd": "curl smoke /q/health",
+  "rc": 0,
+  "smoke_paths": ["/q/health"],
+  "note": "hits=/q/health:200",
+  "floor": "m4-minimum",
+  "ad010_demo": false,
+  "contract": "governance/contracts/check-semantics-manifest.md"
+}

@@ -1,0 +1,32 @@
+{
+  "schema": "rhoai3.entry-point-inventory/v1",
+  "scanned_at": "2026-08-25T19:29:38Z",
+  "root": "/projects/legacy",
+  "execution_evidence": {
+    "scanner": "inventory-entry-points.py",
+    "java_files_seen": 4,
+    "inputs_digest_sha256": "376355cd9d3193006bc594104ef5b62f14488929645adacd7e729813d07209c3",
+    "ran": true,
+    "vacuous": false
+  },
+  "counts": {
+    "total": 1,
+    "http": 1,
+    "non_http": 0,
+    "by_subtype": {
+      "spring-mvc-or-jaxrs": 1
+    }
+  },
+  "entry_points": [
+    {
+      "kind": "http",
+      "subtype": "spring-mvc-or-jaxrs",
+      "file": "src/main/java/com/example/restservice/GreetingController.java",
+      "line": 15,
+      "symbol": "GreetingController#greeting",
+      "evidence": "@GetMapping(\"/greeting\")",
+      "http_method": "GET",
+      "http_path": "/greeting"
+    }
+  ]
+}

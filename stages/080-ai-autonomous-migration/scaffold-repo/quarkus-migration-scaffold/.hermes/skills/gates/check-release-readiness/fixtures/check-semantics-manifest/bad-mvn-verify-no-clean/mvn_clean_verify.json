@@ -1,0 +1,7 @@
+{
+  "schema": "rhoai3.gate-receipt/v1",
+  "check": "mvn_clean_verify",
+  "result": "PASS",
+  "cmd": "mvn -q verify",
+  "rc": 0
+}

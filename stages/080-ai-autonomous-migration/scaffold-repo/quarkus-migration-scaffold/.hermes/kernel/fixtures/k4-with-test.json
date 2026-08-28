@@ -1,0 +1,18 @@
+{
+  "type_inventory_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "source": "k4-selftest-test-exit",
+  "stories": [
+    {
+      "story_id": "setup",
+      "kind": "setup",
+      "parents": [],
+      "files_writable": ["pom.xml"]
+    },
+    {
+      "story_id": "polish",
+      "kind": "polish",
+      "parents": ["setup"],
+      "files_writable": ["src/test/java/com/demo/HealthTest.java"]
+    }
+  ]
+}

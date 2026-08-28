@@ -1,0 +1,22 @@
+{
+  "schema": "rhoai3.mta-findings/v1-provisional",
+  "execution_evidence": {"analyzer_ran": true, "cli": "fixture", "rule_set": ["quarkus"]},
+  "violations": {
+    "fixture-rule-001": {
+      "ruleID": "fixture-rule-001",
+      "category": "mandatory",
+      "effort": 1,
+      "description": "still present",
+      "labels": ["konveyor.io/target=quarkus"],
+      "incidents": [
+        {
+          "uri": "file:///Thing.java",
+          "lineNumber": 1,
+          "message": "must migrate",
+          "codeSnip": "public class Thing"
+        }
+      ],
+      "asserted_resolved": true
+    }
+  }
+}

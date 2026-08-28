@@ -1,0 +1,12 @@
+{
+  "ran": true,
+  "scope": "dest",
+  "tool": "pitest-summary",
+  "mutants_generated": 4,
+  "mutations_total": 4,
+  "mutations_killed": 4,
+  "floor_status": "ambiguous",
+  "floor_ambiguous": true,
+  "char_surface_stub": false,
+  "note": "F9/F7: substance OK but no frozen bar (ratchet-only) → INCONCLUSIVE until freeze"
+}

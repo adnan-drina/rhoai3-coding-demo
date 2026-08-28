@@ -1,0 +1,110 @@
+---
+name: author-destination-pom
+description: Before the first destination app sources exist — author a Red Hat Quarkus pom.xml from skill reference-rh-quarkus-pom and tooling-pins, lint with check-pom-platform-pins, then add evidence-driven extensions via manage-quarkus-extensions; use when provisioning /projects/modernized app code (create-app path retired)
+license: Apache-2.0
+compatibility: Linux seat; Red Hat Quarkus platform; quarkus CLI optional (extensions only)
+metadata:
+  author: rhoai3-harness-team
+  version: "2.4.1"
+  hermes:
+    tags:
+    - migration
+    - quarkus
+    - pom
+    category: migration
+    kind: guidance
+---
+# Author destination Quarkus POM
+
+Guidance only (R-SK.14). Authors the **destination application POM** under the
+scaffold root (or `/projects/modernized`). Does **not** replace the harness
+tree (`.hermes/`, `AGENTS.md`, `.hermes/SOUL.md`, `devfile.yaml` — write-fenced).
+Platform GAV values live only in `.hermes/pins.json`.
+
+**DD1 (Operator E-20260814T065925Z):** `quarkus create app` /
+`quarkus-maven-plugin:create` into the destination is **retired**. Foundation
+stories author `pom.xml` from skill `reference-rh-quarkus-pom`. Official RHBQ
+documents hand-authoring as a dedicated path.
+
+## When to Use
+
+- The golden scaffold has no hand-maintained destination `pom.xml` /
+  `src/` and M3 needs a real Quarkus app tree.
+- Fresh seat / factory provision after harness-only tip checkout.
+- **Not** for mid-story extension apply — later stories declare
+  `identity.extensions_declared` only; the sole pom writer applies the union
+  (`manage-quarkus-extensions`).
+- **Not** for Spring→Quarkus form mapping (`spring-to-quarkus-patterns`).
+  The create-app path (`quarkus create` / plugin:create) is retired; this
+  skill authors `pom.xml` from `reference-rh-quarkus-pom`.
+
+## Procedure
+
+1. Read `.hermes/pins.json` (Red Hat Quarkus platform row)
+   and `../manage-quarkus-extensions/references/rh-bom-and-mandatory-deps.md`.
+   Run `scripts/parse-platform-gav.py <root>` and use the printed
+   `group:artifact:version` — do not hand-copy pin fields.
+2. Open skill `reference-rh-quarkus-pom` (`../reference-rh-quarkus-pom/`) —
+   assemble structure from `references/pom-structure.md` +
+   `references/maven-repos.md`.
+3. **Author** `pom.xml` at the destination root:
+   - properties / BOM import / plugin executions per that reference
+   - `<build>` uses `com.redhat.quarkus.platform:quarkus-maven-plugin`
+     — **never** `io.quarkus` / `io.quarkus.platform` plugin GAV (H-1)
+   - Story extensions: the sole `pom.xml` writer applies
+     `identity.extensions_apply` (sorted unique union of every story's
+     `identity.extensions_declared`, including M1
+     `evidence/required-extensions.json` on the pom writer, Architect
+     E-20260814T205052Z DD3 / V35-EXTENSIONS).
+     Later stories do **not** write `pom.xml`. **Exception:** carry
+     foundation Jacoco/Sonar wiring from
+     `references/foundation-jacoco-wiring.md` (A-3 / H-3 — build
+     infrastructure, not story-owned) **and** the S-010 test toolchain
+     (`io.quarkus:quarkus-junit5` + `io.rest-assured:rest-assured` +
+     `org.assertj:assertj-core` at `.hermes/pins.json` `assertj_core`
+     (RH BOM dest-cited 0 assertj hits — Architect 125110ZA B),
+     `../manage-quarkus-extensions/references/test-toolchain.md`). These
+     are harness-owned Maven test deps, not Quarkus extensions.
+   - Java release and surefire from pins
+4. Run
+   `../manage-quarkus-extensions/scripts/check-pom-platform-pins.py <root>`
+   and
+   `../manage-quarkus-extensions/scripts/check-pom-jacoco-wiring.py <root>`.
+5. **Tooling preflight (W3):** run
+   `../manage-quarkus-extensions/scripts/assert-extension-tooling.py`
+   before the first `ext` / Maven extension mutation. CLI absent → typed
+   `MAVEN_FALLBACK` (not improvisation). Then run
+   `scripts/check-rh-registry-first.py <quarkus-config.yaml>` (exit 0 =
+   `registry.quarkus.redhat.com` before `registry.quarkus.io`). Typical
+   path: `~/.quarkus/config.yaml`.
+6. **Extensions (evidence-driven, DD3 declare/apply/own):** invoke
+   `manage-quarkus-extensions` (`quarkus ext ls/search/add` when CLI
+   present — W1; else Maven). The **pom.xml writer** applies
+   `identity.extensions_apply` (union). Other stories declare
+   `identity.extensions_declared` only — they do not write `pom.xml`
+   and must not paste a fixed menu. T-3 path heuristic stamps declared
+   at mint; do not invent artifactIds/GAVs.
+7. Refuse `quarkus-spring-*` compatibility extensions (native Quarkus only).
+
+## Pitfalls
+
+- Invoking `quarkus create app` / `quarkus-maven-plugin:create` — retired (DD1).
+- Leaving Jacoco dual Sonar paths / surefire `argLine` off the foundation POM
+  (A-3 gate fails once `pom.xml` exists).
+- Using community `io.quarkus.platform` plugin GAV instead of
+  `com.redhat.quarkus.platform` from `.hermes/pins.json`.
+- Citing out-of-scaffold ledger paths for structure — use
+  `reference-rh-quarkus-pom` in-tree (R-SK.13).
+
+## Verification
+
+- Destination `pom.xml` exists and
+  `check-pom-platform-pins.py <root>` prints
+  `OK: pom platform pins match `.hermes/pins.json``.
+- `check-pom-jacoco-wiring.py <root>` prints
+  `OK: pom Jacoco/Sonar dual-path + argLine wiring present`.
+- `quarkus.platform.group-id` is `com.redhat.quarkus.platform`.
+- Chassis present: `AGENTS.md`, `devfile.yaml`, `.hermes/LAYOUT.md`.
+- Do **not** complete setup on `mvn test-compile`. Either run one smoke test
+  in this write-set (`mvn -q test`) or make no Maven toolchain claim.
+- Do **not** depend on `rsync` (W2 — seat has `tar`; create sync path is retired).

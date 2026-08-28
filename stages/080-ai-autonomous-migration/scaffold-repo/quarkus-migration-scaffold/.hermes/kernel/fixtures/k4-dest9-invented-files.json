@@ -1,0 +1,31 @@
+{
+  "type_inventory_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "source": "dest-9-m2-dest-file",
+  "stories": [
+    {
+      "story_id": "setup",
+      "kind": "setup",
+      "parents": [],
+      "files_writable": [
+        "pom.xml",
+        "src/main/resources/application.properties"
+      ]
+    },
+    {
+      "story_id": "us1_greeting",
+      "kind": "us",
+      "parents": ["setup"],
+      "operand_class": ["http"],
+      "endpoints": ["GET /greeting"],
+      "dest_file": "src/main/java/com/demo/Greeting.java",
+      "acceptance_criteria": ["GET /greeting returns 200"],
+      "legacy_source": "src/main/java/com/example/restservice/GreetingController.java",
+      "files_writable": [
+        "src/main/java/com/demo/Greeting.java",
+        "src/main/java/com/demo/Application.java",
+        "src/main/java/com/demo/GreetingResource.java",
+        "src/test/java/com/demo/GreetingResourceTest.java"
+      ]
+    }
+  ]
+}

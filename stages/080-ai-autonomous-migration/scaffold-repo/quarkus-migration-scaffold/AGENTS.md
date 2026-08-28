@@ -1,145 +1,211 @@
 # Agent Guide
 
-This is a corporate Quarkus **migration** scaffold. You (the coding agent)
-migrate the legacy application in `/projects/legacy` into this repository
-(`/projects/modernized`), following the standards in `.opencode/skills/`.
-The standards steer the work — do not ask the user to restate them in
-prompts.
+This is a corporate Quarkus **migration** scaffold. The workspace holds two
+projects: you migrate the legacy application in `/projects/legacy` into this
+repository (`/projects/modernized`).
 
-## Skills index — what to consult when
+## Workspace rules
 
-| Skill (`.opencode/skills/`) | Consult when |
-|---|---|
-| `legacy-migration-workflow` | Any migration work — the overall analysis-grounded workflow |
-| `spec-driven-workflow` | Before any `/speckit.*` command or reading spec artifacts |
-| `quarkus-rest-conventions` | Creating or changing any REST endpoint |
-| `quarkus-persistence-conventions` | Any entity, Flyway migration, or datasource change |
-| `project-test-standards` | Every change — tests ship with code; coverage rules live here |
-| `llm-integration` | Only if a task adds LLM features to the app |
+- `/projects/legacy` — the application being migrated (**legacy@2.x**
+  provenance). **READ-ONLY**: never modify, commit, or push it. It is not
+  registered anywhere and has no write credentials.
+- `/projects/modernized/.derived/legacy-at-3` — **legacy@3.x**, a
+  pure derivation of the RO mount (inside the dest tree so the fence can
+  inspect it). Produced once, hashed, and frozen. Never edit. Do not add
+  `/projects/.derived` to `K2_ALLOW_ROOT`.
+- `/projects/modernized` — this repository. All new code, tests, and commits
+  happen here, and only here.
 
-The orchestrator's runbook is `.hermes/skills/migration-harness/` (its own
-phase files); worker task packets arrive already aligned with it.
+## Project identity
 
-## Tool discipline (worker runs)
-
-- **NEVER use the `task` (subagent) tool.** Explore and implement
-  directly. Forensics across runs: every session that spawned a subagent
-  died immediately after (parent emits empty text and exits with no
-  changes); every session that worked directly succeeded.
-- Dot-directories are invisible to `glob` — find skills and configs with
-  `ls`/`read` at their exact paths (see the skills index above).
-- Quote every file path in shell commands; a broken glob writes literal
-  `*.java` files that poison the quality gate.
-
-## Workspace layout — two projects, two rules
-
-- `/projects/legacy` — the application being migrated. **READ-ONLY**: read
-  it for behavior, structure, and business rules; never modify, commit, or
-  push it. It is not registered anywhere and has no write credentials.
-- `/projects/modernized` — this repository. All new code, specs, tests, and
-  commits happen here, and only here. Its provenance record is
-  `migration.yaml` (source repository of the migration).
-
-## Harness roles (autonomous runs)
-
-When the migration runs under the Hermes harness
-(`.hermes/skills/migration-harness/`), the division of labor is fixed:
-
-- **Hermes** orchestrates: plan, task queue, sensors, budgets. It writes
-  only `specs/` and `migration/` — never application source directly.
-- **OpenCode** (you, in worker runs) implements exactly the task packet it
-  was handed — nothing more. You never declare the migration complete;
-  the findings baseline in `migration/mta-findings.json` and the sensors
-  decide.
-- **OpenRewrite** ran in M1 (`recipe-transform.sh`) and wrote its output to
-  `migration/staging`; `Class: rewrite` tasks HARVEST the transformed file
-  from there. Never stand up a `/tmp/rewrite-staging` scratch dir or re-run
-  OpenRewrite — the headless command policy denies it and the work is done.
-- Merge authority is the factory pipeline (build + SonarQube gate), not
-  any agent's summary.
-
-## Project identity (modernized)
-
-- Quarkus 3.27 application (Red Hat build, `com.redhat.quarkus.platform` BOM
+- Quarkus application on the Red Hat build (`com.redhat.quarkus.platform` BOM
   **3.27.3.SP1**), Java 21, Maven (no wrapper — use `mvn`).
 - Package root: `com.demo`.
 - **Native Quarkus only** — never add `quarkus-spring-*` compatibility
   extensions to the destination (MTA may suggest them; reject).
-- Default CDI scope for services and repositories: `@ApplicationScoped`
-  (not `@Singleton` — not mockable).
-- REST resources under `/api/`; JSON via Jackson (`quarkus-rest-jackson`).
-- Health endpoints come from `quarkus-smallrye-health` (`/q/health`).
+- Default CDI scope for services and repositories: `@ApplicationScoped`.
+- Prefer constructor injection; config via `@ConfigProperty` / `%profile` keys
+  (or `QUARKUS_PROFILE`) — do not invent Spring-style `application-*.properties`
+  trees on the destination.
+- REST resources under `/api/`; JSON via Jackson. If health exists, it
+  belongs at `/q/health` (`/q/*` deliberately sits outside the application
+  root path). That is a target convention, not a story to invent (constitution
+  VII).
+- Spec Kit reads `.specify/memory/constitution.md` (provision copy of
+  `.hermes/skills/sdd/init-spec-workspace/assets/constitution.md`). That
+  file is the spec-kit half of this identity and of **Delivery gate** —
+  zero `[PLACEHOLDER]` / `[PROJECT_NAME]` tokens. Do not dump `pins.json`.
+- Pattern cards (on demand): skill `spring-to-quarkus-patterns`.
+- Extension add/rm (on demand): skill `manage-quarkus-extensions` (RH BOM policy;
+  versions in `.hermes/pins.json` only).
 
-## Migration workflow
+## Build and test
 
-Migration work is analysis-grounded and spec-driven. Before running any
-`/speckit.*` command, consult the `spec-driven-workflow` and
-`legacy-migration-workflow` skills.
-
-1. **Analysis first**: the MTA analysis of `/projects/legacy` is the
-   migration's ground truth — its findings are the checklist the migrated
-   result must satisfy. Do not start writing code from a raw read of the
-   legacy tree.
-2. Specs in `specs/` capture the legacy service's observed behavior and API
-   contract; plans map MTA findings to Quarkus-native equivalents.
-3. Consult every skill in `.opencode/skills/` before **every** workflow
-   phase — planning and task breakdown included. The constitution
-   (`.specify/memory/constitution.md`) binds all `/speckit` phases.
-4. Implement in small, verifiable increments; prefer deterministic
-   OpenRewrite recipes for mechanical transforms and inference for
-   judgment calls. Run `mvn -q clean test` after each increment (`clean`
-   is non-negotiable — incremental builds pass on stale classes the
-   factory will catch); escalate to `mvn -q clean verify` whenever
-   `pom.xml` or runtime configuration changed.
-5. Migration is done when the MTA findings are resolved and the tests
-   pass — not when the code "looks migrated".
-
-## Build and test commands
-
-The container's default Java is 17 but this project targets 21. The base
-image provides `JAVA_HOME_21` (the documented way to select a JDK) — set
-it once per shell before any Maven command:
+The container's default Java is 17; this project targets 21. Set once per
+shell:
 
 ```bash
 export JAVA_HOME="${JAVA_HOME_21}" && export PATH="${JAVA_HOME}/bin:${PATH}"
 
-mvn quarkus:dev          # dev mode with hot reload (run in /projects/modernized)
-mvn -q clean test        # unit + component tests (always clean)
-mvn -q clean verify      # full build incl. packaging — mirrors the pipeline
+mvn quarkus:dev          # dev mode with hot reload
+mvn -q clean test        # always clean — incremental builds pass on stale classes
+mvn -q clean verify      # full build, mirrors the pipeline
 ```
 
-## Platform integration
+## Delivery gate
 
-- If (and only if) a task adds LLM features to the migrated app: LLM
-  access is only through the MaaS gateway — the workspace injects
-  `MAAS_API_BASE_URL`, `MAAS_API_KEY`, and `MAAS_MODEL_NAME`, and the
-  `llm-integration` skill defines the wiring. The migration itself does
-  not require this.
-- Every push to `main` runs this project's own pipeline: Maven build →
-  SonarQube quality gate → image build → deploy with a rollout gate. The
-  gate bars are exact — write code that meets them the first time:
-  **zero new violations** (constructor injection over field injection,
-  comments INSIDE intentionally-empty method bodies, no unused imports,
-  dedicated exceptions), **≥ 80% new-code line coverage** (tests ship in
-  the same change as the code), **≤ 3% duplicated new lines** (consolidate
-  near-identical classes — records, static factories — never copy
-  through). Never weaken tests or suppress rules to get past the gate.
-- **The repository must build self-contained.** The pipeline resolves
-  dependencies from Maven Central and in-repo sources only — it cannot
-  see your workspace. Never depend on locally-installed artifacts
-  (`mvn install` output); vendor required legacy jars in-repo with a
-  file-based repository declaration, or replace them. Your local green
-  is not the factory's green until the build passes without workspace
-  state.
-- The legacy project never enters the pipeline or the catalog — the only
-  path out of this workspace is a gated push of `/projects/modernized`.
+Every push to `main` runs this project's pipeline: Maven build → SonarQube
+quality gate → image build → deploy. The bars are exact: **zero new
+violations**, **≥ 80% new-code line coverage** (tests ship with the code),
+**≤ 3% duplicated new lines**. Never weaken tests or suppress rules to pass.
 
-## Task packets — ambiguity stop
+The repository must **build self-contained**: the pipeline resolves from
+Maven Central and in-repo sources only — it cannot see your workspace. Your
+local green is not the factory's green until the build passes without
+workspace state.
 
-Task packets you receive must carry the decided target design (file
-mappings, signatures, annotations). If a packet asks you to make an
-architecture decision — "modernize X", "integrate Y" without the target
-shape — do NOT attempt it. Stop immediately and reply with exactly what
-decision is missing (one short list), so the orchestrator can re-packet.
-A fast, specific refusal is a success; a long exploratory attempt at
-someone else's design decision is a failure.
+## Hermes — classify, then place
+
+**Kind determines home.** Map: `.hermes/LAYOUT.md`. Do not add top-level
+`scripts/` or `.hermes/home/scripts/` for new procedures.
+
+| Kind | Home |
+|------|------|
+| Standing conventions | this `AGENTS.md` only |
+| Identity | authored `.hermes/SOUL.md` → loaded `$HERMES_HOME/SOUL.md` |
+| Guidance procedures | `.hermes/skills/<category>/<name>/` (card-attachable) |
+| Domain gates G-1..G-4 | skill `check-domain-parity` |
+| M4 verdict JSON producer | skill `compose-m4-verdict` |
+| M4/M5 verdict routing | skill `check-release-readiness` |
+| M4 pinned-gate evidence | skill `assert-pinned-gates-ran` |
+| M4 retrievable `src/` + `pom.xml` | skill `assert-retrievable-tree` |
+| Fence-evasion detector (observation, not a boundary) | skill `assert-no-fence-evasion` |
+| Run / phase data | `evidence/` |
+| SDD stack | `.specify/` (workspace provision only — never commit in golden) |
+| Destination POM authoring | skill `author-destination-pom` |
+| Seat config template | `.hermes/config/config.yaml.template` (no secrets) |
+| Dest worker profiles | `.hermes/config/profiles/{orchestrator,implementer}.yaml.template` |
+
+### Paths
+
+| Path | Role |
+|------|------|
+| `$HERMES_MANAGED_DIR` | Platform config + secrets — not in this repo |
+| `$HERMES_HOME` | Runtime (sessions/logs gitignored). Relocated dest-time. |
+| `.hermes/skills/` | Scaffold golden **guidance** skills on `skills.external_dirs` |
+| Seat Kanban assignees | M2 PLAN / M3 / M4 VERDICT → `implementer`. Dest mint-writer / mint-verifier cards are retired; M2 runs `.hermes/kernel/k4_mint.py` as CLI. Official `--assignee` (hermes-kanban). Not `default`. OBJECT EX-4 `analyzer`/`planner`/`validator`. dest orchestrator disables `file`/`terminal`/`code_execution`/`skills` — it cannot run M2 PLAN or M4. |
+| Hermes live config | **Not yours to change.** Factory-owned Managed Scope. Raise typed `needs_input` |
+| Phase DAG | Kanban `--parent` / `link` graph (`hermes kanban show --json`) |
+| `~/.hermes/skills/` | dest-user `/home/user/.hermes/skills` on `external_dirs` (dest-init literal; spec-kit install). Not worker `Path.home()`. |
+
+Do **not** add `.hermes.md` / `HERMES.md` (shadows this file).
+`auth.json` under any Hermes home means Portal onboarding — remove; use Managed Scope.
+
+Worker **provider/auth** is Managed Scope only. Seat pins live in factory
+Managed Scope — do not MiniMax either class. Do not add `fallback_providers`.
+
+### Scope-stop
+
+When evidence and intent diverge: stop the current scope, emit a typed block /
+`needs_input`, and do not invent around the gap (pairs with `SOUL.md`).
+
+On any gate refusal you **cannot** resolve within your `files_writable`,
+emit a typed block and **stop**. Do not OOS-write, do not edit the refuser.
+**Unclassifiable** is a legal outcome — typed `needs_input` + ESCALATE.
+
+### Native worker protocol (hermes-kanban)
+
+Workers never own lifecycle truth. End every turn with exactly one terminator:
+`kanban_complete`, `kanban_request_review`, or `kanban_block`. A clean exit
+without one is `protocol_violation`. Mint complete requires `created_cards`
+(empty list forbidden). Serialize `kanban_create`. M2 PLAN and M4 VERDICT
+use `--assignee implementer`. Do not mint dest factory cards. M3
+uses `--assignee implementer`. Do not seat M2 or M4 on orchestrator
+(dest `orchestrator.yaml.template` disables `file`/`terminal`/`skills`).
+M4 `--body` is acceptance and oracles only (dest-4 `t_9acd47cb`). Do not
+name `Token:` / `verdict:` `PROVISIONAL_ACCEPT`/`ACCEPT` or `ship:`.
+`assert-m4-card-body.py` refuses a body that pre-specifies the verdict.
+M4 `files_writable` is `evidence/verdicts/` (and other `evidence/` receipts);
+the hook refuses `quarkus:add-extension` and product writes on phase M4.
+Story `kanban_create` passes `--max-retries 1` (null inherits `failure_limit` 2
+and masks a Gate K first failure). Mint those cards through
+`.hermes/kernel/k4_mint.py` from K4 payloads (CLI `hermes kanban create`).
+M3 argv also passes `--workspace dir:/projects/modernized`, `--skill` per
+story, `--max-runtime 2h`, `--idempotency-key`, and `--parent` for the
+M2 card (`HERMES_KANBAN_TASK`) plus the partition DAG. K4 appends harvest
+card `M3 STAMP_DESTINATION_TREE` (skill `commit-destination-tree`;
+parents = every M3 story). M4 `--parent` includes that stamp `t_*`. Do
+not dest-dispatch M4 without named Operator GO. Do not dest-commit dest-7.
+After `--exec`, `kanban_complete` `created_cards` is the native `t_*`
+list (empty after a mint is OBJECT). Scratch workspace on a story is REFUSE.
+M1 KEEP evidence also `python3 .hermes/kernel/kanban_attach.py --task "$HERMES_KANBAN_TASK"`
+(PVC paths stay; 25 MB/file). Do not `kanban decompose`. Do not `kanban swarm`
+for serial T0. Do not run `hermes kanban daemon --force`.
+
+`hermes kanban block` marks the **card**, not the **process**. Seat ops
+contain workers from outside the worker.
+
+### Spec Kit stop rule
+
+After `/speckit-tasks` (optional `/speckit-analyze`) → skill
+`plan-migration-partition` (follow Hermes `speckit-specify` /
+`speckit-plan` / `speckit-tasks`, author `evidence/partition.json`) →
+`.hermes/kernel/k4_convert.py` then `.hermes/kernel/k4_mint.py`, not by
+grepping `tasks.md` paths. **Never**
+`/speckit-implement`. **Never** `specify workflow run speckit` (Spec Kit
+hermes integration `files: {}`; dest-9/10/12 `Unknown skill(s): speckit-specify`).
+Do not dest-edit dest-9 PATH or implementer `external_dirs`.
+
+### Task-id correlation
+
+Every Kanban task, commit prefix, session/log ref, domain-gate result, and
+run-report line must carry the **same task id**.
+
+### SDD ordering
+
+Brief identity carries unchanged; graph order build → security → schema →
+API → test infra → feature → surfaces; IMPLEMENT workers must not re-plan.
+Authoritative: `.hermes/skills/sdd/check-spec-readiness/references/sdd-ordering.md`.
+
+### Standing conventions home
+
+`AGENTS.md` (plus Spec Kit constitution sync) is the **sole**
+standing-convention surface. Leave `agent.coding_instructions` empty.
+
+## Skill routers
+
+One line each: what it governs → which skill. When a skill is loaded, prefer
+`"${HERMES_SKILL_DIR}/scripts/…"`.
+
+| Governs | Skill |
+|---------|-------|
+| Spec/story-body legality + 1:N partition coverage | `check-spec-readiness` |
+| M2 PLAN procedure + partition.json producer | `plan-migration-partition` |
+| Story-class exit / oracle derivation | `derive-story-oracles` |
+| G-1..G-4 measurement oracles | `check-domain-parity` |
+| M4 VERIFY verdict JSON producer | `compose-m4-verdict` |
+| M4/M5 verdict routing | `check-release-readiness` |
+| M4 pinned-gate evidence (silence fails) | `assert-pinned-gates-ran` |
+| M4 retrievable `src/` + `pom.xml` | `assert-retrievable-tree` |
+| M3 harvest commit (not M4) | `commit-destination-tree` |
+| Fence-evasion detector (not containment evidence) | `assert-no-fence-evasion` |
+| Quarkus config / profiles | `configure-quarkus-profiles` |
+| Entity / persistence form | `form-entity-persistence` |
+| Spec Kit provision (postStart only) | `init-spec-workspace` |
+| Entry-point + type inventory | `inventory-legacy-surface` |
+| MTA analyze + findings handoff | `scan-with-mta` |
+| Spring→Quarkus pattern cards | `spring-to-quarkus-patterns` |
+| Quarkus extension add/rm | `manage-quarkus-extensions` |
+| RH Quarkus POM structure | `reference-rh-quarkus-pom` |
+| Destination Quarkus POM authoring | `author-destination-pom` |
+
+## Governance
+
+- **No `governance/` folder** on the tip. Pins: `.hermes/pins.json`.
+- **Scope + exit are one concern** — `derive-story-oracles` +
+  `check-spec-readiness/references/story-scope-and-exit.md`.
+- **Phase / verdict legality** is `compose-m4-verdict` (author
+  `m4-verdict.json`) plus `check-release-readiness` (lint) plus native
+  Kanban state — not a second dispatcher YAML.
+- **1:N dest_file split** is legal coverage (supersede + successor set). HTTP
+  routes stay 1:1.

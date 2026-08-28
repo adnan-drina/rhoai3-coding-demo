@@ -1,0 +1,12 @@
+{
+  "ran": false,
+  "scope": "referent",
+  "tool": "pitest-dry-run",
+  "tool_error": true,
+  "skip": true,
+  "mutants_generated": null,
+  "mutations_total": null,
+  "mutations_killed": null,
+  "char_surface_stub": false,
+  "note": "F9: referent PIT dry-run could not run → INCONCLUSIVE (do not invent floor)"
+}
