@@ -142,6 +142,10 @@ python3 .hermes/kernel/k4_mint.py \
 
 `--tasks` is required for a conformant M2 complete (Operator `123401ZO`).
 A hand-written partition remains a legal K4 input; it is not a complete.
+`k4_mint.py --exec` mints the M3 stories, then one `M4 VERIFY` parented
+to those M3 `t_*` (`--idempotency-key m4-verify`). Do not extend
+`autostart-migration.sh` to mint M4. Do not put a verdict token in the
+M4 body.
 
 7. Lint (this skill does not replace these checkers):
 

@@ -10,7 +10,16 @@ from pathlib import Path
 KERNEL = Path(__file__).resolve().parent
 sys.path.insert(0, str(KERNEL))
 from k4_convert import convert_file  # noqa: E402
-from k4_mint import argv_for_payload, mint_payloads, parse_created_id  # noqa: E402
+from k4_mint import (  # noqa: E402
+    M4_ID,
+    M4_IDEMPOTENCY_KEY,
+    M4_SKILLS,
+    M4_TITLE,
+    argv_for_m4_terminator,
+    argv_for_payload,
+    mint_payloads,
+    parse_created_id,
+)
 from k4_schema import IMPL, STAMP_ID, STAMP_SKILL, WRITER_ID  # noqa: E402
 
 
@@ -39,7 +48,7 @@ def main() -> int:
         return 0, json.dumps({"task_id": tid}), ""
 
     minted = mint_payloads(result["payloads"], runner=runner, hermes="/bin/hermes")
-    expect = ["setup", "US1", "US2", STAMP_ID]
+    expect = ["setup", "US1", "US2", STAMP_ID, M4_ID]
     got = [row["logical_id"] for row in minted["created"]]
     if got != expect:
         return _fail("create order %s != %s" % (got, expect))
@@ -71,6 +80,7 @@ def main() -> int:
         "t_mint0002",
         "t_mint0003",
         "t_mint0004",
+        "t_mint0005",
     ]:
         return _fail("native created_cards %s" % minted["created_cards"])
     stamp_row = next(c for c in minted["created"] if c["logical_id"] == STAMP_ID)
@@ -91,6 +101,29 @@ def main() -> int:
         return _fail("stamp max-retries")
     if stamp_row["task_id"] != "t_mint0004":
         return _fail("stamp native id %s" % stamp_row["task_id"])
+    m4_row = next(c for c in minted["created"] if c["logical_id"] == M4_ID)
+    m4_argv = m4_row["argv"]
+    if m4_argv[0:4] != ["/bin/hermes", "kanban", "create", M4_TITLE]:
+        return _fail("M4 argv head %s" % m4_argv[:4])
+    m4_parents = [m4_argv[i + 1] for i, a in enumerate(m4_argv) if a == "--parent"]
+    m3_ids = [by["setup"], by["US1"], by["US2"], by[STAMP_ID]]
+    if m4_parents != m3_ids:
+        return _fail("M4 parents %s vs %s" % (m4_parents, m3_ids))
+    if by["US1"] not in m4_parents or by["US2"] not in m4_parents:
+        return _fail("M4 not parented to both stories")
+    m4_skills = [m4_argv[i + 1] for i, a in enumerate(m4_argv) if a == "--skill"]
+    if m4_skills != list(M4_SKILLS):
+        return _fail("M4 --skill %s" % m4_skills)
+    if m4_argv[m4_argv.index("--idempotency-key") + 1] != M4_IDEMPOTENCY_KEY:
+        return _fail("M4 idempotency")
+    if m4_argv[m4_argv.index("--max-retries") + 1] != "1":
+        return _fail("M4 max-retries")
+    if m4_argv[m4_argv.index("--assignee") + 1] != IMPL:
+        return _fail("M4 assignee")
+    if m4_row["task_id"] != "t_mint0005":
+        return _fail("M4 native id %s" % m4_row["task_id"])
+    if any(tok in m4_argv for tok in ("PASS", "REFUSE", "PROVISIONAL_ACCEPT")):
+        return _fail("M4 argv carries a verdict token")
     if "empty created_cards" not in str(minted.get("attribution") or ""):
         return _fail("mint attribution missing Architect 144916ZA note")
     if "swarm" in argv or "decompose" in argv or "daemon" in argv:
@@ -214,7 +247,14 @@ def main() -> int:
     if mint_main(["--help"]) != 0:
         return _fail("k4_mint --help must exit 0")
 
-    print("OK: K4 mint (serial create, max-retries 1, no dest factory cards)")
+    try:
+        argv_for_m4_terminator([])
+        return _fail("empty M4 parents did not refuse")
+    except ValueError as exc:
+        if "K4_MINT_PARENT" not in str(exc):
+            return _fail("empty M4 parents: %s" % exc)
+
+    print("OK: K4 mint (serial create, M4 terminator, max-retries 1, no dest factory cards)")
     return 0
 
 

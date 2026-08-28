@@ -77,7 +77,8 @@ REMEDY = {
     ),
     "K4_MINT_PARENT": (
         "Resolve payload parents from already-minted logical_id → t_* in "
-        "create order. Do not invent parents. Do not mint dest factory cards."
+        "create order. M4 VERIFY parents are those minted M3 t_*. Do not "
+        "invent parents. Do not mint dest factory cards."
     ),
     "K4_MINT_ID": (
         "Parse create --json for task_id or id (t_*). Serialize creates; "

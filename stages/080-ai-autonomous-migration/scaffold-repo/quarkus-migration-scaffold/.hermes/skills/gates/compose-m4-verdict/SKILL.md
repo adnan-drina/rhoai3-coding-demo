@@ -45,8 +45,7 @@ Schema: `references/m4-verdict-schema.md`. Keep it in sync with
 Create (or remint) M4 with this leaf first:
 
 ```bash
-hermes kanban create \
-  --title "M4 VERIFY" \
+hermes kanban create "M4 VERIFY" \
   --assignee implementer \
   --parent "$STAMP_TASK_ID" \
   --skill compose-m4-verdict \
@@ -54,8 +53,13 @@ hermes kanban create \
   --skill check-domain-parity \
   --workspace dir:/projects/modernized \
   --max-retries 1 \
-  --max-runtime 2h
+  --max-runtime 2h \
+  --idempotency-key m4-verify
 ```
+
+`k4_mint.py --exec` repeats `--parent` for every M3 story it just created
+(not only STAMP). Title is positional (`hermes kanban create "M4 VERIFY"`);
+`--title` is not a flag. Do not put a verdict token in the create body.
 
 Do not pin only the two `check-*` leaves.
 

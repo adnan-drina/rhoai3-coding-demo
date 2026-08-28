@@ -7,6 +7,8 @@ decompose. Does not kanban daemon --force. Default is dry-run argv.
 max_retries field; M3 stories require CLI --max-retries 1.
 Refuses a card whose pinned skills contain no producer for its primary
 artifact (k4_producers.py; dest-8 M2+M4 are the negative fixture).
+After M3 creates succeed, the same --exec pass emits one M4 VERIFY
+terminator parented to those M3 task ids (--idempotency-key m4-verify).
 """
 from __future__ import annotations
 
@@ -31,6 +33,21 @@ TASK_ID_RE = re.compile(r"^t_[A-Za-z0-9]+$")
 FORBIDDEN = ("swarm", "decompose", "daemon", "create_task")
 DEFAULT_WORKSPACE_ROOT = "/projects/modernized"
 DEFAULT_MAX_RUNTIME = "2h"
+M4_ID = "M4"
+M4_TITLE = "M4 VERIFY"
+M4_IDEMPOTENCY_KEY = "m4-verify"
+M4_SKILLS = (
+    "compose-m4-verdict",
+    "check-release-readiness",
+    "check-domain-parity",
+)
+M4_BODY = (
+    "M4 VERIFY. Compose evidence/verdicts/m4-verdict.json from measured "
+    "floor exit codes including failed_floors. Pin compose-m4-verdict "
+    "first. Checkers do not author the verdict. "
+    "assert-m4-complete-around-red owns the verdict token. "
+    "Do not dest-dispatch M5. Do not kanban daemon --force."
+)
 
 Runner = Callable[[list[str]], tuple[int, str, str]]
 
@@ -206,6 +223,43 @@ def argv_for_payload(
     return argv
 
 
+def argv_for_m4_terminator(
+    m3_task_ids: list[str],
+    *,
+    hermes: str = "hermes",
+) -> list[str]:
+    parents = [tid for tid in m3_task_ids if TASK_ID_RE.match(tid)]
+    if not parents:
+        _fail([_issue("K4_MINT_PARENT", "M4 has no minted M3 t_* parents")])
+    payload = {
+        "logical_id": M4_ID,
+        "phase": "M4",
+        "title": M4_TITLE,
+        "assignee": IMPL,
+        "max_retries": 1,
+        "body": M4_BODY,
+        "idempotency_key": M4_IDEMPOTENCY_KEY,
+        "skills": list(M4_SKILLS),
+    }
+    prod = producer_issues(card_from_payload(payload))
+    if prod:
+        _fail(prod)
+    argv = [hermes, "kanban", "create", M4_TITLE]
+    argv.extend(["--body", M4_BODY])
+    argv.extend(["--assignee", IMPL])
+    for parent in parents:
+        argv.extend(["--parent", parent])
+    argv.extend(["--idempotency-key", M4_IDEMPOTENCY_KEY])
+    argv.extend(["--max-runtime", max_runtime_flag()])
+    argv.extend(["--max-retries", "1"])
+    argv.extend(["--workspace", workspace_flag()])
+    for name in M4_SKILLS:
+        argv.extend(["--skill", name])
+    argv.append("--json")
+    assert_native_create(argv)
+    return argv
+
+
 def mint_payloads(
     payloads: list[dict[str, Any]],
     *,
@@ -238,6 +292,25 @@ def mint_payloads(
         lid = str(payload["logical_id"])
         mapping[lid] = tid
         created.append({"logical_id": lid, "task_id": tid, "argv": list(argv)})
+    if created and M4_ID not in mapping:
+        m4_argv = argv_for_m4_terminator(
+            [row["task_id"] for row in created],
+            hermes=hermes,
+        )
+        code, out, err = runner(m4_argv)
+        if code != 0:
+            _fail(
+                [
+                    _issue(
+                        "K4_MINT_ID",
+                        "M4 create exit %s stderr=%s"
+                        % (code, (err or "").strip()[:200]),
+                    )
+                ]
+            )
+        m4_tid = parse_created_id(out)
+        mapping[M4_ID] = m4_tid
+        created.append({"logical_id": M4_ID, "task_id": m4_tid, "argv": list(m4_argv)})
     native_ids = [row["task_id"] for row in created]
     if not native_ids or any(not TASK_ID_RE.match(tid) for tid in native_ids):
         _fail([_issue("K4_MINT_ID", "created_cards empty or not t_* after mint")])
@@ -357,6 +430,10 @@ def main(argv: list[str] | None = None) -> int:
             fake = "t_dry%04d" % (i + 1)
             mapping[lid] = fake
             dry.append({"logical_id": lid, "argv": argv_list})
+        if dry:
+            m3_fakes = [mapping[row["logical_id"]] for row in dry]
+            m4_argv = argv_for_m4_terminator(m3_fakes, hermes=hermes)
+            dry.append({"logical_id": M4_ID, "argv": m4_argv})
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
         print("K4 mint FAILED.", file=sys.stderr)
