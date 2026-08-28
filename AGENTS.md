@@ -40,7 +40,7 @@ Important paths:
 - `gitops/argocd/app-of-apps/` — Argo CD application structure.
 - `flows/default.yaml` — ordered source of truth for the demo flow.
 - `gitops/stages/` — desired state for stage-specific OpenShift resources.
-- `stages/` — human-facing deployment walkthroughs and per-stage deploy/validate scripts.
+- `stages/` — human-facing deployment walkthroughs and per-stage deploy/validate scripts. Stage 080 keeps its own solution architecture in that stage directory (not workshop architecture; not dest execution).
 - `docs/` — operations, troubleshooting, architecture, and supporting documentation.
 - `.agents/` — shared tool-neutral agent guidance (rules, skills, hooks, references).
 
@@ -69,7 +69,7 @@ Developer workflow stages after 080 are deferred until each has a concrete imple
 When changing one stage, check whether related changes are also needed in:
 
 - `README.md`
-- the stage README
+- files in that stage directory (README, deploy/validate; Stage 080 keeps its solution architecture there)
 - `docs/OPERATIONS.md`
 - `docs/TROUBLESHOOTING.md`
 - `BACKLOG.md`
@@ -81,6 +81,20 @@ When changing one stage, check whether related changes are also needed in:
 For project structure, coding discipline, change conventions, and shared agent guidance, read `.agents/rules/project.md`.
 
 For live demo environment deployment, secrets, certs, and cluster safety, read `.agents/rules/env.md`.
+
+For dest Hermes Kanban observation, read `.agents/rules/kanban-log-watch.md`. After every dest card spawn, read `hermes kanban log <id>` (or `$HERMES_HOME/kanban/logs/<id>.log`) in the same turn.
+
+For Stage 080 golden `ensure_cli` / kantra resolution, read `.agents/rules/ensure-cli-capability.md`. Presence (`[ -x ]`) is not usability.
+
+For Stage 080 dest Hermes security honesty, K2 env-assignment vs access, opaque vs pathless, and skill path classes, read `.agents/rules/k2-env-assignment-not-access.md`, `.agents/rules/k2-opaque-not-pathless.md`, and `.agents/rules/skill-path-declaration.md`.
+
+For Stage 080 PVC Managed Scope vs `/etc/hermes` enforcement, read `.agents/rules/managed-scope-enforcement.md`. Tirith is retired (Operator `122315ZO`; AMEND `112249ZA` item 1): pin `security.tirith_enabled: false` before dropping dest-init PATH prepend; do not cite `112249ZA`; KEEP `assert-no-fence-evasion`.
+
+For Stage 080 dest `external_dirs` home vs profile, M2 PLAN assignee, and M2→M3 native dispatch, read `.agents/rules/external-dirs-home-contract.md`, `.agents/rules/m2-plan-assignee-implementer.md`, and `.agents/rules/m2-m3-native-dispatch.md`.
+
+For Stage 080 dest profile `HERMES_HOME` vs OS `HOME`, read `.agents/rules/profile-home-contract.md`.
+
+For Stage 080 native Kanban review/attach vs custom M4 receipts and K4 mint translation, read `.agents/rules/native-kanban-alignment.md`. Mechanical M4 facts stay code; LLM judgement needs a deterministic check (same file).
 
 For GitOps authoring, manifests, labels, and schema validation, read `.agents/rules/gitops.md`.
 
@@ -145,6 +159,7 @@ For non-trivial tasks, follow this workflow:
 6. Run the narrowest validation command available.
 7. If cluster validation is required but unavailable, state exactly what could not be validated.
 8. Produce a PR summary with risks, rollback notes, and validation evidence.
+9. After starting a dest Hermes Kanban task, read its official log in the same turn (`.agents/rules/kanban-log-watch.md`).
 
 ### Stage 080 Track B — non-negotiable mandate
 
