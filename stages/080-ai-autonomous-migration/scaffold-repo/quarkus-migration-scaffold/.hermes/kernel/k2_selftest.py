@@ -568,6 +568,123 @@ def main() -> int:
             fails += 1
         else:
             print("ok reviewer_complete_after_audit")
+        # Architect 183220ZA: hermes -p reviewer sets HERMES_HOME to
+        # <root>/profiles/reviewer; the official log stays under
+        # <root>/kanban/logs/. A missing log after that resolve is still
+        # a refusal (do not treat absence as pass).
+        profile_root = Path(td) / "hermes-root-profile"
+        (profile_root / "kanban" / "logs").mkdir(parents=True)
+        profile_home = profile_root / "profiles" / "reviewer"
+        profile_home.mkdir(parents=True)
+        audit_ok = (
+            "  ┊ 💻 $         python3 /projects/modernized/.hermes/skills/"
+            "paved-road/paved-road-m1/scripts/assert-paved-road-audit.py "
+            "--log /projects/modernized/.hermes/home/kanban/logs/t_ok.log "
+            "--root /projects/modernized  0.2s\n"
+        )
+        (profile_root / "kanban" / "logs" / "t_ok.log").write_text(
+            audit_ok, encoding="utf-8"
+        )
+        r = run(
+            "hermes kanban complete t_ok",
+            roots,
+            cwd=cwd,
+            extra_env={
+                "HERMES_PROFILE": "reviewer",
+                "HERMES_HOME": str(profile_home),
+                "HERMES_KANBAN_TASK": "t_ok",
+            },
+        )
+        if r.get("action") == "block":
+            print("FAIL reviewer_complete_profile_home_audit_ok", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok reviewer_complete_profile_home_audit_ok")
+        audit_red = (
+            "  ┊ 💻 $         python3 /projects/modernized/.hermes/skills/"
+            "paved-road/paved-road-m1/scripts/assert-paved-road-audit.py "
+            "--log /projects/modernized/.hermes/home/kanban/logs/t_red.log "
+            "--root /projects/modernized  0.2s [exit 1]\n"
+        )
+        (profile_root / "kanban" / "logs" / "t_red.log").write_text(
+            audit_red, encoding="utf-8"
+        )
+        r = run(
+            "hermes kanban complete t_red",
+            roots,
+            cwd=cwd,
+            extra_env={
+                "HERMES_PROFILE": "reviewer",
+                "HERMES_HOME": str(profile_home),
+                "HERMES_KANBAN_TASK": "t_red",
+            },
+        )
+        msg = r.get("message") or ""
+        if r.get("action") != "block" or "paved-road audit" not in msg:
+            print("FAIL reviewer_complete_profile_home_audit_red", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok reviewer_complete_profile_home_audit_red")
+        default_home = Path(td) / "hermes-root-default"
+        (default_home / "kanban" / "logs").mkdir(parents=True)
+        (default_home / "kanban" / "logs" / "t_def.log").write_text(
+            audit_ok.replace("t_ok.log", "t_def.log"), encoding="utf-8"
+        )
+        r = run(
+            "hermes kanban complete t_def",
+            roots,
+            cwd=cwd,
+            extra_env={
+                "HERMES_PROFILE": "reviewer",
+                "HERMES_HOME": str(default_home),
+                "HERMES_KANBAN_TASK": "t_def",
+            },
+        )
+        if r.get("action") == "block":
+            print("FAIL reviewer_complete_base_home_audit_ok", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok reviewer_complete_base_home_audit_ok")
+        r = run(
+            "hermes kanban complete t_missing",
+            roots,
+            cwd=cwd,
+            extra_env={
+                "HERMES_PROFILE": "reviewer",
+                "HERMES_HOME": str(profile_home),
+                "HERMES_KANBAN_TASK": "t_missing",
+            },
+        )
+        msg = r.get("message") or ""
+        if r.get("action") != "block" or "paved-road audit" not in msg:
+            print("FAIL reviewer_complete_profile_home_log_absent", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok reviewer_complete_profile_home_log_absent")
+        (profile_root / "kanban" / "logs" / "t_bg.log").write_text(
+            "python3 .hermes/skills/gates/check-domain-parity/scripts/"
+            "check-product-tests.py /projects/modernized  0.1s [exit 1]\n",
+            encoding="utf-8",
+        )
+        r = run(
+            "hermes kanban complete t_bg",
+            roots,
+            cwd=cwd,
+            extra_env={
+                "HERMES_HOME": str(profile_home),
+                "HERMES_KANBAN_TASK": "t_bg",
+            },
+        )
+        msg = r.get("message") or ""
+        if (
+            r.get("action") != "block"
+            or "check-product-tests" not in msg
+            or "kanban_block" not in msg
+        ):
+            print("FAIL complete_bound_gate_profile_home", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok complete_bound_gate_profile_home")
         rows = []
         if crumb.is_file():
             for line in crumb.read_text(encoding="utf-8").splitlines():

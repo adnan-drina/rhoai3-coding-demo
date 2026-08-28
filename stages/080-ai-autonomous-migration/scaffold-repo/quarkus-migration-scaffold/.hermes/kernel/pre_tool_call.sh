@@ -27,6 +27,9 @@
 # terminal (dest-14: hook never ran). Task id: env then payload.
 # Complete breadcrumb: evidence/receipts/hook/complete-invocations.jsonl
 # (hook-written; absence means the dispatcher never invoked this hook).
+# Named-profile HERMES_HOME is <root>/profiles/<name>; kanban logs stay
+# under <root>/kanban/logs/. Resolve the root before open() (Architect
+# 183220ZA). Log still missing after that resolve is a refusal, not a pass.
 # Batch 6: M4/VERDICT writes default to evidence/; add-extension is implement.
 # F4: M4 must not write_file evidence/receipts/gates/ (runners write receipts).
 # Write-set: classify by write *effect* (open(..., \"w\"), Path.write_text),
@@ -126,6 +129,16 @@ def hook_task_id():
             return v.strip()
     return ""
 
+def kanban_root_home():
+    home = (os.environ.get("HERMES_HOME") or "").strip()
+    if not home:
+        return ""
+    parent, name = os.path.split(home.rstrip("/"))
+    root, profiles = os.path.split(parent)
+    if profiles == "profiles" and name and root:
+        return root
+    return home
+
 def record_complete_invocation(decision):
     """Append one hook-authored line. Absence of the file means the
     dispatcher never invoked this hook (canary part a). Do not print.
@@ -176,7 +189,7 @@ def paved_road_audit_green():
     if env_exit in {"0", "pass", "ok"}:
         return True
     task = hook_task_id()
-    home = (os.environ.get("HERMES_HOME") or "").strip()
+    home = kanban_root_home()
     if not task or not home:
         return False
     log = os.path.join(home, "kanban", "logs", "%s.log" % task)
@@ -213,7 +226,7 @@ def bound_gate_red():
     if env_exit in {"0", "pass", "ok"}:
         return None
     task = hook_task_id()
-    home = (os.environ.get("HERMES_HOME") or "").strip()
+    home = kanban_root_home()
     if not task or not home:
         return None
     log = os.path.join(home, "kanban", "logs", "%s.log" % task)
