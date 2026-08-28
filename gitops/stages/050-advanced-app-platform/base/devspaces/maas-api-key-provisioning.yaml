@@ -793,66 +793,66 @@ data:
         "${rev_tpl}" || return 1
       if ! "${py}" - "${hermes_bin}" "${hermes_home}" "${managed_dir}" "${project_dir}" \
         <<'REVMDLPIN'
-import json, os, subprocess, sys
-import yaml
+    import json, os, subprocess, sys
+    import yaml
 
-bin_path, home, managed, project = sys.argv[1:]
-env = os.environ.copy()
-env["HERMES_HOME"] = home
-env["HERMES_MANAGED_DIR"] = managed
-env["HERMES_WRITE_SAFE_ROOT"] = project
-env["K2_ALLOW_ROOT"] = project + ":/projects/legacy"
-minimax_on = os.environ.get("HERMES_MINIMAX") == "1"
-rev_cfg = os.path.join(home, "profiles", "reviewer", "config.yaml")
-
-
-def cfgset(name, key, value):
-    proc = subprocess.run(
-        [bin_path, "-p", name, "config", "set", key, value],
-        env=env,
-        capture_output=True,
-        text=True,
-    )
-    if proc.returncode != 0:
-        sys.stderr.write(proc.stderr or proc.stdout or f"config set {key} failed\n")
-        raise SystemExit(proc.returncode or 1)
+    bin_path, home, managed, project = sys.argv[1:]
+    env = os.environ.copy()
+    env["HERMES_HOME"] = home
+    env["HERMES_MANAGED_DIR"] = managed
+    env["HERMES_WRITE_SAFE_ROOT"] = project
+    env["K2_ALLOW_ROOT"] = project + ":/projects/legacy"
+    minimax_on = os.environ.get("HERMES_MINIMAX") == "1"
+    rev_cfg = os.path.join(home, "profiles", "reviewer", "config.yaml")
 
 
-def profile_model_default(name):
-    path = os.path.join(home, "profiles", name, "config.yaml")
-    if not os.path.isfile(path):
-        return None
-    with open(path, encoding="utf-8") as fh:
-        doc = yaml.safe_load(fh) or {}
-    if not isinstance(doc, dict):
-        return None
-    model = doc.get("model") or {}
-    if not isinstance(model, dict):
-        return None
-    return str(model.get("default") or "")
-
-
-if minimax_on:
-    cfgset("reviewer", "model.provider", "minimax")
-    cfgset("reviewer", "model.default", "minimax-m2")
-    print("AD-008: reviewer profile model.default=minimax-m2 (escalation override)")
-else:
-    mid = (profile_model_default("reviewer") or "").lower()
-    if "minimax" in mid:
-        raise SystemExit(
-            "ERROR: reviewer model.default is MiniMax without AD-008 escalation"
+    def cfgset(name, key, value):
+        proc = subprocess.run(
+            [bin_path, "-p", name, "config", "set", key, value],
+            env=env,
+            capture_output=True,
+            text=True,
         )
-    print("AD-008: reviewer stays Qwen (no escalation file)")
+        if proc.returncode != 0:
+            sys.stderr.write(proc.stderr or proc.stdout or f"config set {key} failed\n")
+            raise SystemExit(proc.returncode or 1)
 
-for other in ("implementer", "orchestrator"):
-    mid = (profile_model_default(other) or "").lower()
-    if "minimax" in mid:
-        raise SystemExit(
-            f"ERROR: {other} model.default must not be MiniMax (AD-008 factory Qwen)"
-        )
-if not os.path.isfile(rev_cfg):
-    raise SystemExit("ERROR: reviewer profile config.yaml missing after seat")
-REVMDLPIN
+
+    def profile_model_default(name):
+        path = os.path.join(home, "profiles", name, "config.yaml")
+        if not os.path.isfile(path):
+            return None
+        with open(path, encoding="utf-8") as fh:
+            doc = yaml.safe_load(fh) or {}
+        if not isinstance(doc, dict):
+            return None
+        model = doc.get("model") or {}
+        if not isinstance(model, dict):
+            return None
+        return str(model.get("default") or "")
+
+
+    if minimax_on:
+        cfgset("reviewer", "model.provider", "minimax")
+        cfgset("reviewer", "model.default", "minimax-m2")
+        print("AD-008: reviewer profile model.default=minimax-m2 (escalation override)")
+    else:
+        mid = (profile_model_default("reviewer") or "").lower()
+        if "minimax" in mid:
+            raise SystemExit(
+                "ERROR: reviewer model.default is MiniMax without AD-008 escalation"
+            )
+        print("AD-008: reviewer stays Qwen (no escalation file)")
+
+    for other in ("implementer", "orchestrator"):
+        mid = (profile_model_default(other) or "").lower()
+        if "minimax" in mid:
+            raise SystemExit(
+                f"ERROR: {other} model.default must not be MiniMax (AD-008 factory Qwen)"
+            )
+    if not os.path.isfile(rev_cfg):
+        raise SystemExit("ERROR: reviewer profile config.yaml missing after seat")
+    REVMDLPIN
       then
         echo "ERROR: reviewer model pin (AD-008) failed." >&2
         return 1
