@@ -5,6 +5,7 @@
   ],
   "kind": "m1-analyze",
   "last_wins_across_needles": false,
+  "last_wins_within_needle": true,
   "producer": "scan-with-mta",
   "silence_fails": true,
   "source": "steps.json",

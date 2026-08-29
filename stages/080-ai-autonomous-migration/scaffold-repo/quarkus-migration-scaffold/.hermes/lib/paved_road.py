@@ -5,8 +5,13 @@
 assert-partition-schema-sync.py). Official log grep follows
 assert-card-performed.py (skill_view / ``$`` terminal / ``[exit N]``).
 
-Silence fails. Any ``[exit 1]`` on a mandated needle fails (no last-wins
-across needles; dest-14 hole in ``bound_gate_red``). ``workflow-run.json``
+Silence fails. An unmatched ``[exit 1]`` on a mandated needle fails:
+a later clean invocation of the *same* needle clears an earlier red
+(dest-22 cumulative log; SOUL self-correction). Last-wins across
+different needles stays refused (dest-14 hole in ``bound_gate_red``).
+Do not scope the audit to the last ``Query: work kanban task`` marker —
+that marker is the reviewer session, which does not re-run implementer
+steps, and would silence-fail a correct later green. ``workflow-run.json``
 is not proof. Skill steps match ``skill_view`` / skill-load only — never
 ``$`` terminal lines. Kernel/native needles are a script basename with a
 path boundary, not a parent directory (dest-14
@@ -204,6 +209,7 @@ def generate_audit(doc: dict[str, Any]) -> dict[str, Any]:
         "forgeable_receipts": [FORGEABLE_RECEIPT],
         "kind": doc["kind"],
         "last_wins_across_needles": False,
+        "last_wins_within_needle": True,
         "producer": producer,
         "silence_fails": True,
         "source": "steps.json",
@@ -283,6 +289,26 @@ def terminal_runs(lines: list[str]) -> list[tuple[str, int | None]]:
     return out
 
 
+def unmatched_exit1(
+    runs: list[tuple[str, int | None]],
+) -> list[tuple[str, int | None]]:
+    """Reds with no later success of this same needle.
+
+    Hermes omits ``[exit 0]`` on success, so ``rc is None`` is a clean
+    invocation. A later clean run of *this* needle matches an earlier
+    red. A later clean run of a *different* needle does not (dest-14).
+    A red that was never re-run stays unmatched.
+    """
+    unmatched: list[tuple[str, int | None]] = []
+    for i, run in enumerate(runs):
+        if run[1] != 1:
+            continue
+        if any(later[1] in (0, None) for later in runs[i + 1 :]):
+            continue
+        unmatched.append(run)
+    return unmatched
+
+
 def keep_missing(root: Path, keep: list[str]) -> list[str]:
     missing: list[str] = []
     for rel in keep:
@@ -356,7 +382,7 @@ def evaluate_audit(text: str, doc: dict[str, Any], root: Path) -> int:
                 % (sid, needle)
             )
             continue
-        reds = [r for r in runs if r[1] == 1]
+        reds = unmatched_exit1(runs)
         if reds:
             failures.append(
                 "unmatched [exit 1] on mandated needle %r (step %s, count=%d)"

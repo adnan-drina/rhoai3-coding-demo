@@ -146,6 +146,7 @@ class TestStepsContract(unittest.TestCase):
             )
             generated = generate_audit(doc)
             self.assertFalse(generated["last_wins_across_needles"])
+            self.assertTrue(generated["last_wins_within_needle"])
             self.assertTrue(generated["unmatched_exit_1_fails"])
             self.assertTrue(generated["silence_fails"])
             self.assertIn("workflow-run.json", generated["forgeable_receipts"])
@@ -239,16 +240,45 @@ class TestAuditSemantics(unittest.TestCase):
         rc = evaluate_audit(text, self.doc, self.keep)
         self.assertEqual(rc, 1)
 
-    def test_any_exit1_on_same_needle_refuses_even_if_later_zero(self):
+    def test_same_needle_later_success_clears_exit1(self):
         text = (
             M2_SKILLS
             + M2_NATIVES_OK
             + "  ┊ 💻 $         python3 .hermes/kernel/k4_convert.py --partition p  0.1s [exit 1]\n"
-            "  ┊ 💻 $         python3 .hermes/kernel/k4_convert.py --partition p  0.1s [exit 0]\n"
-            "  ┊ 💻 $         python3 .hermes/kernel/k4_mint.py --exec  0.1s [exit 0]\n"
+            "  ┊ 💻 $         python3 .hermes/kernel/k4_convert.py --partition p  0.1s\n"
+            "  ┊ 💻 $         python3 .hermes/kernel/k4_mint.py --exec  0.1s\n"
         )
-        rc = evaluate_audit(text, self.doc, self.keep)
+        rc, blob = _eval_msg(text, self.doc, self.keep)
+        self.assertEqual(rc, 0, blob)
+
+    def test_same_needle_exit1_without_later_clean_refuses(self):
+        text = (
+            M2_SKILLS
+            + M2_NATIVES_OK
+            + "  ┊ 💻 $         python3 .hermes/kernel/k4_convert.py --partition p  0.1s [exit 1]\n"
+            "  ┊ 💻 $         python3 .hermes/kernel/k4_mint.py --exec  0.1s\n"
+        )
+        rc, blob = _eval_msg(text, self.doc, self.keep)
         self.assertEqual(rc, 1)
+        self.assertIn("unmatched [exit 1]", blob)
+        self.assertIn("k4_convert.py", blob)
+
+    def test_two_run_prior_red_then_clean_passes(self):
+        fx = M2 / "fixtures" / "two-run-prior-red-then-clean"
+        text = (fx / "official.log").read_text(encoding="utf-8")
+        self.assertGreaterEqual(text.count("Query: work kanban task"), 2)
+        self.assertIn("[exit 1]", text)
+        rc, blob = _eval_msg(text, self.doc, fx)
+        self.assertEqual(rc, 0, blob)
+
+    def test_two_run_prior_red_no_rerun_refuses(self):
+        fx = M2 / "fixtures" / "two-run-prior-red-no-rerun"
+        text = (fx / "official.log").read_text(encoding="utf-8")
+        self.assertGreaterEqual(text.count("Query: work kanban task"), 2)
+        rc, blob = _eval_msg(text, self.doc, fx)
+        self.assertEqual(rc, 1)
+        self.assertIn("unmatched [exit 1]", blob)
+        self.assertIn("check-partition-coverage.py", blob)
 
     def test_workflow_run_json_is_not_proof(self):
         with tempfile.TemporaryDirectory(prefix="paved-forge-") as tmp:

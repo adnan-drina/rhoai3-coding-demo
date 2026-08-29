@@ -5,6 +5,7 @@
   ],
   "kind": "m2-plan",
   "last_wins_across_needles": false,
+  "last_wins_within_needle": true,
   "producer": "plan-migration-partition",
   "silence_fails": true,
   "source": "steps.json",

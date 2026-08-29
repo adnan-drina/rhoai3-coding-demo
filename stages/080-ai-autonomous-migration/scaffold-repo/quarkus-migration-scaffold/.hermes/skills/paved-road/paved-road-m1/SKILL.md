@@ -53,8 +53,9 @@ attach). Paved-road itself is the index, not a second producer.
 
 ## Gotchas
 
-- Silence fails. Any `[exit 1]` on a mandated needle fails. Do not last-wins
-  across different needles (dest-14 `bound_gate_red` hole).
+- Silence fails. An unmatched `[exit 1]` on a mandated needle fails.
+  A later clean invocation of the *same* needle clears an earlier red.
+  Do not last-wins across different needles (dest-14 `bound_gate_red` hole).
 - `inventory-legacy-surface` precedes `scan-with-mta`: the latter's one
   entry point runs `emit-findings-handoff.py` internally, which refuses
   (AR-4.1) without `evidence/entry-point-inventory.json`. Re-running the

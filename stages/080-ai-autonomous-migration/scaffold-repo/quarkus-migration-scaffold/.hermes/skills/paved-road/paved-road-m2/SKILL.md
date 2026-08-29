@@ -57,8 +57,11 @@ Paved-road itself is the index, not a second producer.
 
 ## Gotchas
 
-- Silence fails. Any `[exit 1]` on a mandated needle fails. Do not last-wins
-  across different needles (dest-14 `bound_gate_red` hole).
+- Silence fails. An unmatched `[exit 1]` on a mandated needle fails.
+  A later clean invocation of the *same* needle clears an earlier red.
+  Do not last-wins across different needles (dest-14 `bound_gate_red` hole).
+  Do not slice the audit to the last `Query: work kanban task` marker
+  (that is the reviewer session).
 - Skill needles match `skill_view` only. Kernel/native needles are a
   script basename with a path boundary, not a parent directory.
 - `workflow-run.json` is forgeable and is not proof.

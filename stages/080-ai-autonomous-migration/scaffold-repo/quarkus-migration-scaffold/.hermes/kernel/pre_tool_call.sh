@@ -23,6 +23,11 @@
 # refusal. Implementer kanban_complete refused (request_review). Reviewer
 # complete refused unless assert-paved-road-audit last exited 0 this log.
 # Bound-gate last-nonzero still refuses complete when profile is unset.
+# dest-22 P0-B: implementer product-tree write / continue-after-red after
+# a mandated needle whose last invocation is [exit 1]. Re-run that
+# needle or kanban_block. Last-wins within the same needle (omitted
+# success marker is green). Do not latch FAIL:/REFUSE prose. Not a
+# write fence (AD-020 residual: python3 script.py, exec).
 # Dest-init matcher must include the native complete tool — it is not
 # terminal (dest-14: hook never ran). Task id: env then payload.
 # Complete breadcrumb: evidence/receipts/hook/complete-invocations.jsonl
@@ -114,6 +119,26 @@ def is_complete():
     if "kanban_complete" in blob:
         return True
     if re.search(r"\bkanban\s+complete\b", blob):
+        return True
+    return False
+
+def is_block():
+    if tool in {"kanban_block", "block_task"}:
+        return True
+    blob = " ".join([tool, cmd, str(inp.get("action") or "")])
+    if "kanban_block" in blob:
+        return True
+    if re.search(r"\bkanban\s+block\b", blob):
+        return True
+    return False
+
+def is_request_review():
+    if tool in {"kanban_request_review", "request_review"}:
+        return True
+    blob = " ".join([tool, cmd, str(inp.get("action") or "")])
+    if "kanban_request_review" in blob:
+        return True
+    if re.search(r"\bkanban\s+request[-_ ]review\b", blob):
         return True
     return False
 
@@ -219,21 +244,27 @@ def paved_road_audit_green():
         last_rc = int(m.group(1)) if m else 0
     return last_rc == 0
 
-def bound_gate_red():
+def bound_gates_red():
+    """Needles whose last invocation is still [exit 1].
+
+    Same last-wins-within-needle rule as paved_road.unmatched_exit1:
+    omitted success marker is green. Skip FAIL:/REFUSE prose (reviewer
+    audit lines re-latched dest-22 after a later clean run).
+    """
     env_exit = (os.environ.get("K2_BOUND_GATE_EXIT") or "").strip().lower()
     if env_exit in {"1", "fail", "true", "nonzero"}:
-        return os.environ.get("K2_BOUND_GATE_NAME") or "bound-gate"
+        return [os.environ.get("K2_BOUND_GATE_NAME") or "bound-gate"]
     if env_exit in {"0", "pass", "ok"}:
-        return None
+        return []
     task = hook_task_id()
     home = kanban_root_home()
     if not task or not home:
-        return None
+        return []
     log = os.path.join(home, "kanban", "logs", "%s.log" % task)
     try:
         text = open(log, encoding="utf-8", errors="replace").read()
     except OSError:
-        return None
+        return []
     names = (
         "assert-m2-speckit-conformance", "assert-m2-story-headings", "assert-m4-verdict-schema", "check-product-tests", "run-m4-pre-verdict", "assert-pinned-gates-ran",
         "assert-retrievable-tree", "check-spec-readiness", "check-domain-parity",
@@ -246,15 +277,16 @@ def bound_gate_red():
         hits = [n for n in names if n in line]
         if not hits:
             continue
+        if "$" not in line and "python3" not in line:
+            continue
         name = max(hits, key=len)
-        if re.search(r"\[exit 1\]|FAIL:|REFUSE", line, re.I):
-            last[name] = name
-        elif re.search(r"\[exit 0\]|\bOK:", line, re.I):
-            last.pop(name, None)
-    for name in names:
-        if name in last:
-            return last[name]
-    return None
+        m = re.search(r"\[exit (\d+)\]", line)
+        last[name] = int(m.group(1)) if m else 0
+    return [n for n in names if last.get(n) == 1]
+
+def bound_gate_red():
+    reds = bound_gates_red()
+    return reds[0] if reds else None
 
 if is_complete():
     if profile == "implementer":
@@ -674,6 +706,36 @@ def in_dest_write_sandbox(rp):
     if not root:
         return False
     return rp == root or rp.startswith(root + os.sep)
+
+# dest-22 P0-B: after a mandated needle last-exited 1, the implementer
+# may re-run that needle or kanban_block. Product-tree writes, k4_mint
+# / k4_convert continue, and request_review are refused. Text in the
+# M2 body did not stop dest-20/21/22. Residual: interpreter script.py
+# that is not a bound-gate name (AD-020). Reviewer is not this gate.
+if profile == "implementer" and not is_block() and not is_complete():
+    unmatched = bound_gates_red()
+    if unmatched:
+        blob = cmd or ""
+        if any(g in blob for g in unmatched):
+            pass
+        elif is_request_review():
+            block(
+                "kanban_request_review refused: mandated needle %s last "
+                "exited non-zero; re-run that needle or kanban_block"
+                % unmatched[0]
+            )
+        elif tool in WRITE_TOOLS or looks_like_write_cmd(cmd) or effect:
+            block(
+                "product-tree write refused: mandated needle %s last "
+                "exited non-zero; re-run that needle or kanban_block"
+                % unmatched[0]
+            )
+        elif tool in {"terminal", "bash", "shell"} and blob.strip():
+            block(
+                "continue after mandated [exit 1] refused: needle %s last "
+                "exited non-zero; re-run that needle or kanban_block"
+                % unmatched[0]
+            )
 
 if tool in WRITE_TOOLS or looks_like_write_cmd(cmd) or effect:
     for p in paths:

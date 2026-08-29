@@ -12,6 +12,8 @@ SCRIPT = HERE / "assert-paved-road-audit.py"
 DEST14 = SKILL / "fixtures" / "dest-14-m2-four-exit1"
 GREEN = SKILL / "fixtures" / "green-m2"
 SKILL_DIR_RED = SKILL / "fixtures" / "skill-dir-red-skill-view-green"
+TWO_RUN_CLEAN = SKILL / "fixtures" / "two-run-prior-red-then-clean"
+TWO_RUN_NO_RERUN = SKILL / "fixtures" / "two-run-prior-red-no-rerun"
 
 
 def _fail(msg: str) -> int:
@@ -96,6 +98,31 @@ def main() -> int:
     if proc.returncode != 0:
         return _fail("skill-dir-red-skill-view-green must PASS: %s" % blob)
 
+    if not (TWO_RUN_CLEAN / "official.log").is_file():
+        return _fail("missing two-run-clean fixture %s" % TWO_RUN_CLEAN)
+    two_txt = (TWO_RUN_CLEAN / "official.log").read_text(encoding="utf-8")
+    if two_txt.count("Query: work kanban task") < 2:
+        return _fail("two-run-clean fixture must contain two run markers")
+    if "[exit 1]" not in two_txt:
+        return _fail("two-run-clean fixture must retain the prior-run red")
+    proc = _run(TWO_RUN_CLEAN / "official.log", TWO_RUN_CLEAN)
+    blob = proc.stdout + proc.stderr
+    if proc.returncode != 0:
+        return _fail("two-run-prior-red-then-clean must PASS: %s" % blob)
+
+    if not (TWO_RUN_NO_RERUN / "official.log").is_file():
+        return _fail("missing two-run-no-rerun fixture %s" % TWO_RUN_NO_RERUN)
+    proc = _run(TWO_RUN_NO_RERUN / "official.log", TWO_RUN_NO_RERUN)
+    blob = proc.stdout + proc.stderr
+    if proc.returncode != 1:
+        return _fail("two-run-prior-red-no-rerun must REFUSE: %s" % blob)
+    if "unmatched [exit 1]" not in blob:
+        return _fail("two-run-no-rerun must name unmatched [exit 1]: %s" % blob)
+    if "check-partition-coverage.py" not in blob:
+        return _fail(
+            "two-run-no-rerun must name check-partition-coverage.py: %s" % blob
+        )
+
     cov = coverage(GOLDEN_ROOT)
     if cov != 0:
         return _fail("coverage lint failed")
@@ -103,7 +130,8 @@ def main() -> int:
     print(
         "OK: paved-road-m2 selftest "
         "(dest-14 REFUSE naming coverage/conformance; "
-        "green PASS; skill-dir-red PASS; sync; coverage)"
+        "green PASS; skill-dir-red PASS; two-run last-wins PASS/REFUSE; "
+        "sync; coverage)"
     )
     return 0
 

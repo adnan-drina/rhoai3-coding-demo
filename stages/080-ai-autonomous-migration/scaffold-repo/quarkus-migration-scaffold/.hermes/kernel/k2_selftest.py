@@ -849,6 +849,104 @@ def main() -> int:
             fails += 1
         else:
             print("ok writeset_sqlite")
+        red_home = Path(td) / "p0b-home"
+        (red_home / "kanban" / "logs").mkdir(parents=True)
+        (red_home / "kanban" / "logs" / "t_p0b.log").write_text(
+            "  ┊ 💻 $         python3 .hermes/skills/sdd/check-spec-readiness/"
+            "scripts/check-partition-coverage.py . --write-receipt "
+            "evidence/receipts/partition-coverage/latest.json  0.2s [exit 1]\n",
+            encoding="utf-8",
+        )
+        p0b = {
+            "HERMES_PROFILE": "implementer",
+            "HERMES_HOME": str(red_home),
+            "HERMES_KANBAN_TASK": "t_p0b",
+            "HERMES_WRITE_SAFE_ROOT": str(dest),
+            "K2_FILES_WRITABLE": "evidence/",
+        }
+        r = run(
+            "",
+            roots,
+            cwd=cwd,
+            tool="write_file",
+            extra_input={"path": str(dest / "evidence" / "partition.json")},
+            extra_env=p0b,
+        )
+        msg = r.get("message") or ""
+        if r.get("action") != "block" or "product-tree write refused" not in msg:
+            print("FAIL p0b_write_after_exit1", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok p0b_write_after_exit1")
+        r = run(
+            "python3 .hermes/kernel/k4_mint.py --payloads evidence/partition-payloads.json --exec",
+            roots,
+            cwd=cwd,
+            extra_env=p0b,
+        )
+        msg = r.get("message") or ""
+        if r.get("action") != "block" or "continue after mandated" not in msg:
+            print("FAIL p0b_k4_mint_after_exit1", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok p0b_k4_mint_after_exit1")
+        r = run(
+            "python3 .hermes/skills/sdd/check-spec-readiness/scripts/"
+            "check-partition-coverage.py . --write-receipt "
+            "evidence/receipts/partition-coverage/latest.json",
+            roots,
+            cwd=cwd,
+            extra_env=p0b,
+        )
+        if r.get("action") == "block":
+            print("FAIL p0b_rerun_same_needle", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok p0b_rerun_same_needle")
+        r = run(
+            "hermes kanban block t_p0b",
+            roots,
+            cwd=cwd,
+            extra_env=p0b,
+        )
+        if r.get("action") == "block":
+            print("FAIL p0b_kanban_block_allowed", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok p0b_kanban_block_allowed")
+        r = run(
+            "hermes kanban request_review t_p0b",
+            roots,
+            cwd=cwd,
+            extra_env=p0b,
+        )
+        msg = r.get("message") or ""
+        if r.get("action") != "block" or "kanban_request_review refused" not in msg:
+            print("FAIL p0b_request_review_while_red", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok p0b_request_review_while_red")
+        with (red_home / "kanban" / "logs" / "t_p0b.log").open(
+            "a", encoding="utf-8"
+        ) as fh:
+            fh.write(
+                "  ┊ 💻 $         python3 .hermes/skills/sdd/check-spec-readiness/"
+                "scripts/check-partition-coverage.py . --write-receipt "
+                "evidence/receipts/partition-coverage/latest.json  0.2s\n"
+            )
+        r = run(
+            "",
+            roots,
+            cwd=cwd,
+            tool="write_file",
+            extra_input={"path": str(dest / "evidence" / "partition.json")},
+            extra_env=p0b,
+        )
+        if r.get("action") == "block":
+            print("FAIL p0b_write_after_same_needle_green", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok p0b_write_after_same_needle_green")
 
     return 1 if fails else 0
 
