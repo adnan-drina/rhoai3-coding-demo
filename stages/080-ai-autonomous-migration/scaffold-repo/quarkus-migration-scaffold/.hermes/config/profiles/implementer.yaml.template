@@ -1,0 +1,25 @@
+# Dest worker profile — implementer (Operator GO 231808Z / AD-019 trigger (c)).
+# Applied dest-time: `hermes profile create implementer --no-alias` then
+# `hermes -p implementer config set`. Identity: sibling implementer.SOUL.md
+# → profiles/implementer/SOUL.md. OBJECT: --clone (EX-4).
+#
+# BIND named a subset of the official `coding` composite (hermes-tools):
+#   file + terminal + code_execution + delegation + skills
+# Do not seat the `coding` posture name (adds web/browser/search/…).
+# Dispatcher-spawned workers still receive `kanban_*` via HERMES_KANBAN_TASK
+# even when `kanban` is not in this list (hermes-tools / model_tools).
+#
+# Secrets stay Managed Scope. GitOps overwrites terminal.cwd with PROJECT_DIR.
+#
+# OBJECT: EX-4 four-seat names; overlay v1 profiles; arm docker on dest.
+
+platform_toolsets:
+  cli:
+    - file
+    - terminal
+    - code_execution
+    - delegation
+    - skills
+
+terminal:
+  cwd: /projects/modernized

@@ -1,0 +1,33 @@
+{
+  "task_id": "US-owner-list",
+  "role": "implementer",
+  "phase": "M3",
+  "refs": [
+    {
+      "key": "type-inventory",
+      "path": "evidence/type-inventory.json",
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "key": "brief_identity_ack",
+      "path": "evidence/brief.md",
+      "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    {
+      "key": "legacy_locus",
+      "path": "evidence/locus.json",
+      "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    }
+  ],
+  "identity": {
+    "story_id": "US-owner-list",
+    "transform_class": "REWRITE",
+    "g2_applicability": "required"
+  },
+  "files_in_scope": ["src/main/java/org/acme/OwnerResource.java"],
+  "files_writable": ["src/main/java/org/acme/OwnerResource.java"],
+  "exit_criteria": [
+    {"check": "skills", "assert": "consult each preload or typed skills_unused; silence invalid AD-002E"},
+    {"check": "compile", "cmd": "mvn -q compile"}
+  ]
+}

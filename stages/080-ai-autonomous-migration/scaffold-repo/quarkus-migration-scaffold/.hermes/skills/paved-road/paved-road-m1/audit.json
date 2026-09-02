@@ -1,0 +1,46 @@
+{
+  "artifact": "m1-analyze",
+  "forgeable_receipts": [
+    "workflow-run.json"
+  ],
+  "kind": "m1-analyze",
+  "last_wins_across_needles": false,
+  "last_wins_within_needle": true,
+  "producer": "scan-with-mta",
+  "silence_fails": true,
+  "source": "steps.json",
+  "steps": [
+    {
+      "backing": "skill",
+      "id": "derive-legacy-boot3",
+      "keep": [],
+      "needle": "derive-legacy-boot3"
+    },
+    {
+      "backing": "skill",
+      "id": "inventory-legacy-surface",
+      "keep": [],
+      "needle": "inventory-legacy-surface"
+    },
+    {
+      "backing": "skill",
+      "id": "scan-with-mta",
+      "keep": [],
+      "needle": "scan-with-mta",
+      "producer": true
+    },
+    {
+      "backing": "native",
+      "id": "kanban-attach",
+      "keep": [
+        "evidence/findings-handoff.json",
+        "evidence/entry-point-inventory.json",
+        "evidence/type-inventory.json",
+        "evidence/required-extensions.json",
+        "evidence/mta-findings.json"
+      ],
+      "needle": "kanban_attach.py"
+    }
+  ],
+  "unmatched_exit_1_fails": true
+}

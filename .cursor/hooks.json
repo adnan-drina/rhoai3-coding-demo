@@ -1,6 +1,11 @@
 {
   "version": 1,
   "hooks": {
+    "sessionStart": [
+      {
+        "command": ".agents/hooks/session-init.sh"
+      }
+    ],
     "afterFileEdit": [
       {
         "command": ".agents/hooks/validate-yaml.sh",

@@ -18,7 +18,7 @@ description: >
 # MTA Developer Lightspeed
 
 Use this skill for configuring and using Red Hat Developer Lightspeed for
-Migration Toolkit for Applications (MTA) 8.1 — the AI-assisted code migration
+Migration Toolkit for Applications (MTA) 8.2 — the AI-assisted code migration
 component that integrates LLMs with MTA static analysis.
 
 ## Source Grounding

@@ -1,0 +1,18 @@
+{
+  "type_inventory_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "stories": [
+    {
+      "story_id": "polish",
+      "kind": "polish",
+      "parents": [],
+      "files_writable": ["src/test/java/com/demo/HealthTest.java"],
+      "acceptance_criteria": [
+        {
+          "check": "health_probe",
+          "cmd": "mvn -q test",
+          "proves": ["src/test/java/com/demo/HealthTest.java"]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "ran": true,
+  "tool": "pitest-summary",
+  "mutation_score": 1.0,
+  "mutations_total": 2,
+  "mutations_killed": 2,
+  "char_surface_stub": true,
+  "note": "stub unit with a test that only invokes it — char_surface exploit"
+}

@@ -183,7 +183,7 @@ Prevention: hook jobs must have bounded retries and fail fast; never let a wait-
 **Recover:**
 
 - Prefer the OpenShift GitOps UI **Sync** button (full sync, proper operation object) for hook re-runs.
-- For the RHDH catalog specifically, the hook's output can be converged by hand: fetch `catalog/all.yaml` at the synced revision, apply the same placeholder replacements as `generate-rhdh-catalog.yaml` (Dev Spaces route, empty RHDH URL, revision), and `oc patch` the `catalog-runtime-rhdh` ConfigMap in `rhdh`.
+- For the RHDH catalog specifically, the hook's output can be converged by hand: fetch `catalog/all.yaml` at the synced revision, apply the same placeholder replacements as `generate-rhdh-catalog.yaml` (Dev Spaces route, empty RHDH URL, commit SHA for TechDocs, Argo `targetRevision` for template Location targets), and `oc patch` the `catalog-runtime-rhdh` ConfigMap in `rhdh`. The generate job also prunes leftover SHA-pinned template Locations.
 - Related fix (committed 2026-07-13, refined 2026-07-14): the generate hook resolves the revision as `status.operationState.syncResult.revision` first (what the operation actually synced), then `status.operationState.operation.sync.revision` (the in-flight request, which merge-patched partial operations can inherit stale from a previous explicit-revision sync), then `status.sync.revision` (which still holds the previous revision while an operation runs).
 
 ## Argo CD Reports Synced But New Manifests Are Missing
@@ -912,6 +912,33 @@ is not allowed. You may need to configure an integration for the target host, or
 - Restart the RHDH deployment.
 - Re-run Stage 050 validation after adding catalog checks.
 
+## RHDH Template Entity Returns 200 Then 404 After a Catalog Re-stamp
+
+**Affected stage:** Stage 050 / 080 (golden-path templates)
+
+**Symptom:** `template:default/app-migration` flaps 200/404 after a push. RHDH logs `conflicting entityRef`. More than one Location is registered for the same template.
+
+**Likely cause:** Location `spec.target` was a GitHub blob URL pinned at the catalog SHA. Each re-stamp minted a new Location while the previous SHA URL stayed in Backstage `locations`. A portal restart hid it; the next push brought it back.
+
+**Diagnose:**
+
+```bash
+oc get configmap catalog-runtime-rhdh -n rhdh -o jsonpath='{.data.all\.yaml}' \
+  | grep -E 'templates/(app-migration|agentic-quarkus-scaffold)/template.yaml'
+oc logs deployment/backstage-developer-hub -n rhdh --tail=200 | grep -i 'conflicting entityRef'
+oc exec -n rhdh backstage-psql-developer-hub-0 -- psql -d backstage_plugin_catalog -c \
+  "select id, target from locations where target like '%/templates/%/template.yaml';"
+```
+
+Runtime catalog Location targets must use the Argo Application `targetRevision` (branch), not a 40-character commit SHA. `generate-rhdh-catalog` also deletes leftover SHA-pinned rows for those two template paths.
+
+**Recover:**
+
+- Re-run `job-generate-rhdh-catalog` (full Argo sync or wait for `refresh-rhdh-catalog`). Do not restart RHDH as the fix.
+- Confirm Stage 050/080 validation: Location targets are not `/blob/<sha>/`.
+
+**Related:** `gitops/stages/050-advanced-app-platform/base/rhdh/catalog/all.yaml`, `jobs/rhdh-catalog-generator-script.yaml`
+
 ## Red Hat Developer Hub Is Healthy But Stage 050 Is OutOfSync
 
 **Affected stage:** Stage 050
@@ -955,6 +982,243 @@ oc logs -n wksp-ai-developer <workspace-pod> -c tooling-container --tail=100
 - Restart the workspace from the Red Hat OpenShift Dev Spaces dashboard.
 - Confirm resource requests/limits are sufficient.
 - Re-run Stage 060 validation.
+
+## Stage 080 dest postStart fails EX-3 write-set hook missing
+
+**Affected stage:** Stage 080 measurement dest on `harness-v2`
+
+**Symptom:** DevWorkspace Failed. `Error creating DevWorkspace deployment: Container development-tooling has state [postStart hook] Commands failed (Kubelet reported exit code 1)`. `/projects/.platform/poststart.log` ends with `ERROR: EX-3 write-set hook missing: .../enforce-authority-boundary/scripts/write-set-hook.py`.
+
+**Likely cause:** N1 stripped the v1 `enforce-authority-boundary` skill from the v2 golden. K2 is the replacement after Gate P-kernel. Live `init-ai-tools.sh` used to `SystemExit` when copying that hook into Managed Scope, so postStart never reached dest profile seating.
+
+**Diagnose:**
+
+```bash
+oc get dw petclinic-rest-v45-refac -n wksp-ai-developer
+# PVC still holds the log after the pod is scaled to 0:
+# /projects/.platform/poststart.log
+```
+
+**Recover:**
+
+- Confirm live `devspace-ai-tools-init` no longer `raise SystemExit` on a missing EX-3 hook. Hatch is WARN + empty `pre_tool_call` only while `.hermes/kernel/pre_tool_call.sh` is absent. That file is the K2 kernel REHOST of the measured hook (not claimed control; Gate P-kernel is CLOSED — Architect `142526Z`). Do not mkdir empty `.hermes/kernel/` to satisfy the check. K1/K3/K4 Python live beside the hook; GitOps still copies only `pre_tool_call.sh` into Managed Scope. Do not dest-apply a K2 REHOST or K4 converter as if it were a new fence.
+- Restart the dest workspace from Dev Spaces after that ConfigMap has synced. Do not copy the v1 skill into the v2 golden. Do not treat a successful start as dest-armed (a).
+
+## Stage 080 dest postStart fails agent-vs-pin assert
+
+**Affected stage:** Stage 080 measurement dest on `harness-v2`
+
+**Symptom:** DevWorkspace Failed. postStart log contains `ERROR: overlay Hermes --version does not match .hermes/pins.json` (or `ensure_hermes` mismatch). Older dest-init copies may still print `assert-agent-pin: refusing off-pin agent` until ConfigMap uptake.
+
+**Likely cause:** Overlay `/usr/local/bin/hermes` floated past the pin, or dest-tree `pins.json` lagged a GO-ratified pin. Runtime oracle is dest-init `hermes --version` vs `.hermes/pins.json`. Dest `.hermes/checks/` is retired. Pin move remains Operator GO.
+
+**Diagnose:**
+
+```bash
+oc exec -n wksp-ai-developer "$POD" -c development-tooling -- hermes --version
+oc exec -n wksp-ai-developer "$POD" -c development-tooling -- \
+  python3 -c 'import json; p=json.load(open("/projects/modernized/.hermes/pins.json")); print(p["pins"]["hermes_agent"])'
+```
+
+Do not invoke dest `.hermes/checks/assert-agent-pin.py`; that tree is retired. Build-time ast pin remains `workspace-images/scripts/assert-hermes-source-pin.py`.
+
+**Recover:**
+
+- Operator GO `E-20260823T111522Z` ratified Hermes v0.20.5 / 2026.8.19 (Spec Kit stays 0.16.1). Dest-init fail-closes unless overlay `hermes --version` matches `.hermes/pins.json`. Do not curl-install Hermes. Do not fall back to dest `.hermes/home/hermes-agent` (Architect `202501ZA` / `185531ZA` / `210214ZA`).
+- Do not treat dest-armed (a) as MATCH until dest `pins.json` and `hermes --version` agree. Do not mkdir empty `.hermes/kernel/` to work around a pin miss. Do not restore dest `.hermes/checks/`.
+
+## Factory Workspace Starts Healthy With No Agent Tooling
+
+**Affected stage:** Stage 050 RHDH templates (factory workspaces for 070/080)
+
+**Likely cause:** `postStart` fetched `devspace-ai-tools-init` with a single `curl` against the Kubernetes API (`172.30.0.1:443`). When the pod's CNI was not ready yet, curl timed out (`curl: (28) Failed to connect ... Connection timed out`), wrote `/tmp/init-ai-tools.sh` at 0 bytes, printed a warning, and still exited 0. The workspace reported Running/Healthy with no `hermes` binary. The SA token and CA are projected volumes and are present at container start; the race is network, not credentials. Observed on 4 of 5 provisions (v21, v23, v24; v22 succeeded).
+
+Current templates retry the fetch with the same `seq 1 30` / `sleep 2` budget as the git-clone wait, cap each attempt with `--connect-timeout 5`, and `exit 1` if the script is still empty so the DevWorkspace cannot present as healthy.
+
+**Diagnose:**
+
+```bash
+# After this fix: workspace phase should be Failed, not Running.
+oc get devworkspace -n wksp-ai-developer
+oc logs -n wksp-ai-developer <workspace-pod> -c development-tooling --tail=80 \
+  | grep -E 'init-ai-tools|devspace-ai-tools-init|ERROR:'
+
+# On a workspace that already started under the old silent path:
+oc exec -n <ws-ns> <workspace-pod> -c development-tooling -- \
+  wc -c /tmp/init-ai-tools.sh
+oc exec -n <ws-ns> <workspace-pod> -c development-tooling -- \
+  command -v hermes || echo "hermes absent"
+```
+
+**Recover:**
+
+- **Next provision:** restart the workspace so `postStart` re-runs (the fetch is idempotent). Do not re-stamp the RHDH catalog solely for this; the template is SHA-pinned, so only a published artifact that includes the retry is live.
+- **Already-running workspace:** do not treat Running as success. Extract the live ConfigMap and run it in the tooling container (`PROJECT_DIR` / `PROFILE` as that workspace expects). Do not restart a live migration seat to pick this up.
+
+**Related docs:** `gitops/stages/050-advanced-app-platform/base/rhdh/templates/*/skeleton/devfile.yaml`
+
+## Dest Hermes worker profiles missing (`harness-v2`)
+
+**Affected stage:** Stage 080 dest on branch `harness-v2` only. Overlay / v1 goldens stay single-persona.
+
+**Likely cause:** `ensure_hermes` could not seat `orchestrator` + `implementer` (overlay `/usr/local/bin/hermes` missing, golden templates missing, or a profile `.env` gained assignments). Dest-init must not curl-install Hermes (Architect `185531ZA`). Operator GO `231808Z` retired the C-2(a) skip. Do **not** recover with `hermes profile create --clone` (EX-4 isolated `$HOME` and copied installer `.env`).
+
+**Diagnose:**
+
+```bash
+oc logs -n <ws-ns> <workspace-pod> -c development-tooling --tail=120 \
+  | grep -E 'C-2:|dest worker profile|dest profile'
+oc exec -n <ws-ns> <workspace-pod> -c development-tooling -- \
+  hermes profile list
+ls /projects/modernized/.hermes/config/profiles/
+ls /projects/modernized/.hermes/home/profiles/
+```
+
+**Recover:** Fix the init error (overlay `/usr/local/bin/hermes`, templates present, secrets only in Managed Scope). Re-run `ensure_hermes` / restart only when the operator asks — do not clone from `default`.
+
+**Related docs:** `gitops/stages/050-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml` (`ensure_dest_worker_profiles`); golden `.hermes/config/profiles/`
+
+## Dest Hermes terminal keeps literal `${env:MAAS_*}` (`harness-v2`)
+
+**Affected stage:** Stage 080 dest. Gateway can look healthy while a later login shell is unconfigured.
+
+**Likely cause:** Hermes v0.20.5 resolves `${env:NAME}` from **process environment only**. dest-init writes the correct names into Managed Scope `.env`, but a fresh terminal does not source that file. Worker `MAAS_API_BASE_URL` is the **MaaS gateway** (`MAAS_BASE_URL` + `/models-as-a-service/qwen3-6-27b/v1`), not the in-cluster KServe Service.
+
+**Diagnose:**
+
+```bash
+# Presence only — do not print values
+oc get secret workspace-maas-credentials -n wksp-ai-developer \
+  -o jsonpath='{.metadata.name}{"\n"}'
+oc get pod -n <ws-ns> <workspace-pod> -o jsonpath='{.spec.containers[?(@.name=="development-tooling")].envFrom}'
+oc exec -n <ws-ns> <workspace-pod> -c development-tooling -- \
+  /bin/bash -lc 'if [ -n "${MAAS_API_BASE_URL:-}" ] && [ -n "${MAAS_API_KEY:-}" ]; then echo MAAS_ENV=set; else echo MAAS_ENV=unset; fi'
+```
+
+A green terminal that sourced Managed Scope `.env` is **not** the verification bar. Use a fresh login shell. `hermes kanban ls` must not print `keeping the literal placeholder`.
+
+**Recover:** Durable path is `workspace-maas-credentials` (`mount-as: env`), derived by the MaaS key provisioner from `MAAS_API_KEY_QWEN27B` plus ConfigMap `workspace-maas-model-endpoint`. Env is injected at **pod creation** — already-running dest-3 needs an Operator GO restart. Stopgap for this session only: `set -a; . /projects/.platform/hermes/.env; set +a` (do not print the file).
+
+**Related docs:** `workspace-maas-model-endpoint.yaml`; Operator `205405Zop` / `205612Zop`
+
+## Dest Hermes `APIConnectionError` against the MaaS route (`harness-v2`)
+
+**Affected stage:** Stage 080 dest. Worker exits with `APIConnectionError` / "Connection error" in under a second; official kanban log has no `kanban_complete` / `kanban_block`.
+
+**Likely cause:** `providers.qwen27b.ssl_ca_cert` is pinned to the workspace ServiceAccount `service-ca.crt` while `MAAS_API_BASE_URL` is the **MaaS ingress route** (`.apps`). OpenShift service serving certificates are valid only for `<service>.<namespace>.svc` and internal communications, so that pin cannot verify the route. Dev Spaces already mounts the platform-merged bundle at `/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem`. dest-init must pair them: `.svc` host requires the service-CA pin; a route host must omit `ssl_ca_cert`. Do **not** set `ssl_verify: false`. Do **not** dest-unblock the card.
+
+**Diagnose:**
+
+```bash
+# Presence / comment flag only — do not print keys or URLs
+oc exec -n <ws-ns> <workspace-pod> -c development-tooling -- \
+  grep -c 'ssl_ca_cert' /projects/.platform/hermes/config.yaml
+oc exec -n <ws-ns> <workspace-pod> -c development-tooling -- \
+  test -f /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem && echo bundle-present
+```
+
+A live comment of the pin on an already-running dest is not dest-init. Next dest-init must emit the pairing.
+
+**Recover:** Durable path is dest-init in `maas-api-key-provisioning.yaml` (providers dict, pairing gate on the **resolved** `model_base`, `.rhoai3-w1-five-pins` receipt). Do not dest-edit Managed Scope on a live seat unless the operator names it. Do not dest-read dest `.env` values.
+
+**Related docs:** dest-init `ensure_hermes` in `maas-api-key-provisioning.yaml`; Architect `221730ZA`
+
+## MaaS route HTTP 500 / Envoy `ext_proc_error_gRPC_error_14` (`harness-v2`)
+
+**Affected stage:** Stage 040 gateway, Stage 080 dest workers on the MaaS route.
+
+**Likely cause:** Operator `networkpolicy/payload-processing` in `openshift-ingress` admits TCP 9004 only from `gateway.networking.k8s.io/gateway-name: data-science-gateway`. Dest Qwen is served by `maas-default-gateway` (the RHOAI 3.4 documented MaaS Gateway). Packets drop; Envoy ext_proc connect times out; the client sees HTTP 500. IPP/BBR sits in front of the endpoint picker, so a healthy EPP `:9002` is a false all-clear. Do **not** `oc edit` / `oc delete` the operator NetworkPolicy (it reverts). Do **not** repoint `router.gateway.refs` to `data-science-gateway`. Do **not** dest-unblock a gave_up M2 until the route returns 200 with a MaaS key.
+
+**Diagnose:**
+
+```bash
+oc get networkpolicy payload-processing payload-processing-maas-gateway \
+  -n openshift-ingress -o name
+oc get pods -n openshift-ingress \
+  -l gateway.istio.io/managed=istio.io-gateway-controller \
+  --no-headers | awk '{print $1}'
+```
+
+**Recover:** Additive GitOps NetworkPolicy `payload-processing-maas-gateway` (ingress-only, Istio-managed from-selector). Operator syncs stage 040 and confirms `operationState.syncResult.revision`, then smokes `GET /models-as-a-service/qwen3-6-27b/v1/models` until 200. Do not dest-read dest `.env` values.
+
+**Related docs:** `gitops/stages/040-governed-models-as-a-service/base/gateway/base/networkpolicy-payload-processing-maas-gateway.yaml`; Architect `073314ZA`
+
+## Dest gateway persist WARN / dest `.hermes/home/scripts` (`harness-v2`)
+
+**Affected stage:** Stage 080 dest on `harness-v2`. Overlay owns runtime (`/usr/local/bin/hermes`, `/opt/hermes-agent`, `HERMES_WEB_DIST`). Golden must not ship `.hermes/home/scripts` (Architect `202501ZA`).
+
+**Likely cause:** Destfile or dest-init still looked for dest `supervise-gateway.sh` or `kanban-stuck-watchdog.py` under `.hermes/home/scripts`. Those files are not in the golden (`validate.sh` forbids the directory). The honest signal until a named overlay persist/watchdog GO is a WARN, not a dest script restore.
+
+**Diagnose:**
+
+```bash
+oc logs -n <ws-ns> <workspace-pod> -c development-tooling --tail=200 \
+  | grep -E 'overlay persist helper|kanban-stuck-watchdog|SOUL.md load'
+oc exec -n <ws-ns> <workspace-pod> -c development-tooling -- \
+  test -d /opt/hermes-agent && echo overlay-agent-present || echo overlay-agent-ABSENT
+```
+
+**Recover:** Do not restore dest `supervise-gateway.sh`. Do not add `.hermes/home/scripts` to the golden. Overlay persist helper and overlay watchdog wait a named GO. SOUL.md smoke must use `/opt/hermes-agent` (fail-closed); do not fall back to dest `.hermes/home/hermes-agent`. Dest `web_dist/` / `install-web-dist.sh` / `PIN` / `.hermes/checks/` are retired from the golden; leave `start-dashboard.sh` until overlay launcher bake + dest-cite.
+
+**Related docs:** dest-init `ensure_hermes` in `maas-api-key-provisioning.yaml`; RHDH skeleton `devfile.yaml`; Architect `202501ZA` / `145309ZA`
+
+## Factory Create Fails With Can't Parse Devfile Yaml
+
+**Affected stage:** Stage 050 RHDH app-migration skeleton (factory workspaces for 080)
+
+**Likely cause:** A line at column 0 inside `commandLine: |` ended the YAML block scalar. Dev Spaces reports `Can't parse devfile yaml` (example: a multi-line `python3 -c` whose body was not indented). Indenting Python to satisfy YAML breaks Python; keep every line of the scalar indented and write helper scripts with indented `printf` lines.
+
+**Diagnose:**
+
+```bash
+# Local skeleton (before publish / dest mint):
+ruby -ryaml -e 'YAML.load_file(ARGV[0])' \
+  gitops/stages/050-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml
+```
+
+**Recover:**
+
+- Do not click **Continue with default devfile**. That is not the migration seat.
+- Do not retry the factory URL pinned to the broken commit. Push a parseable `devfile.yaml` to dest `main`, then start a new workspace from current `main`.
+- Catalog re-stamp does not rewrite an existing dest repo.
+
+**Related docs:** `gitops/stages/050-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml`
+
+## Factory Workspace hermes-dash Route Returns 503 Or Nothing Listens On 9119
+
+**Affected stage:** Stage 050 RHDH app-migration skeleton (factory workspaces for 080)
+
+**Likely cause:** The dashboard bundle was **never built or shipped**. `hermes dashboard --skip-build` *serves* `HERMES_WEB_DIST`; it never *creates* one. v37–v42 recorded `state=failed` because `web_dist` existed at neither `$HERMES_HOME` nor `~/.hermes` — not because of a path mismatch. A dead npm pre-warm lived in the provisioning pod (wrong PVC) and a stale comment claimed loopback `127.0.0.1:9119` while che-gateway routes to the pod IP (a localhost-only bind 503s the route). Current factory: the 080 overlay bakes `web_dist` at `/usr/local/share/hermes/web_dist`. `start-dashboard.sh` defaults `HERMES_WEB_DIST` to that bake (Operator `191234Zop`) and keeps the Managed Scope `basic_auth` gate; it does not dest-copy into `hermes_cli/web_dist`. Unset `HERMES_WEB_DIST` still tries a runtime Vite build. Dashboard failure does not fail the workspace (observability, not capability).
+
+**Diagnose:**
+
+```bash
+# Workspace stays Running; dashboard health is the sentinel, not phase.
+oc exec -n <ws-ns> <workspace-pod> -c development-tooling -- \
+  cat /tmp/hermes-dashboard.status
+oc exec -n <ws-ns> <workspace-pod> -c development-tooling -- \
+  grep -E 'Hermes dashboard|ERROR: Hermes dashboard' /tmp/hermes-dashboard.log /tmp/poststart-stdout.txt 2>/dev/null
+oc exec -n <ws-ns> <workspace-pod> -c development-tooling -- \
+  python3 -c 'import pathlib
+want="239F"
+for proc in ("/proc/net/tcp","/proc/net/tcp6"):
+    p=pathlib.Path(proc)
+    if not p.exists():
+        continue
+    for line in p.read_text().splitlines()[1:]:
+        f=line.split(); lip,lp=f[1].split(":")
+        if lp.upper()==want and f[3]=="0A":
+            print(proc, lip, lp)'
+```
+
+`state=failed` with `basic_auth missing` means `ensure_hermes` did not write Managed Scope — do not bind `0.0.0.0` without it (kanban plugin routes skip HTTP auth). `overlay web_dist missing` means the destfile pin did not pull an 080 image that ships `/usr/local/share/hermes/web_dist/index.html`, or `start-dashboard.sh` still overrides `HERMES_WEB_DIST` to dest `hermes_cli/web_dist` — not a route bug. Bind hex `0100007F:239F` is localhost-only (route 503); `00000000:239F` is the pod-IP bind che-gateway needs.
+
+**Recover:**
+
+- **Next provision:** after golden publish + catalog re-stamp, a new workspace should show `state=listening` / `bind=0.0.0.0:9119`. Login is Managed Scope basic-auth (`ai-developer` / demo password) behind the che-gateway OAuth on the `hermes-dash` endpoint.
+- **Already-running workspace:** do not restart a live migration seat. If Hermes is already installed, start by hand in the tooling container only when the operator asks: `hermes dashboard --skip-build --host 0.0.0.0 --port 9119 --no-open` after confirming `grep basic_auth /projects/.platform/hermes/config.yaml`.
+
+**Related docs:** `gitops/stages/050-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml`; v2 golden `stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/.hermes/dashboard/`
 
 ## Kilo Code Is Missing From A Dev Spaces Workspace
 
@@ -1298,7 +1562,7 @@ curl -s http://localhost:18080/metrics | grep minimax
 
 **Symptom:** streaming chat completions through the gateway stall (client sees nothing for ~60s, then "Connection reset") or die mid-stream around 310KB; the identical request sent directly to the upstream provider completes cleanly. Short non-streaming requests work.
 
-**Root cause (RHOAI 3.4 known issue):** Ingress Payload Processing (IPP) — the operator-owned `payload-processing` ext_proc (gateway-api-inference- extension BBR) — buffers response bodies (`response_body_mode: FULL_DUPLEX_STREAMED`) for ALL gateway traffic, to translate non-OpenAI-native external APIs into OpenAI-compatible SSE. In 3.4 that response processing is applied even to already-OpenAI-compatible traffic, so streamed SSE is held and arrives as one end-of-response burst; the client (OpenCode's Bun `fetch`) times out at ~60s. Internal vLLM models and the external endpoints hit directly both stream fine — the buffer is purely this stage. Red Hat KB: "MaaS streaming responses buffered through gateway (RHOAI 3.4)"; product fix planned for 3.5.
+**Root cause (RHOAI 3.4 known issue):** Ingress Payload Processing (IPP) — the operator-owned `payload-processing` ext_proc (gateway-api-inference-extension BBR) — buffers response bodies (`response_body_mode: FULL_DUPLEX_STREAMED`) for **external models that have no native OpenAI specification**, to translate those APIs into OpenAI-compatible SSE. In 3.4 that response processing is applied to those external routes even when the upstream is already OpenAI-compatible, so streamed SSE is held and arrives as one end-of-response burst; the client (OpenCode's Bun `fetch`) times out at ~60s. **Internal vLLM models (`qwen3-6-27b`) stream through the gateway.** `gpt-4o-mini` is unaffected. MiniMax was the affected external model and is not deployed (`OPERATIONS.md` §269). Do not read this paragraph as "IPP buffers ALL gateway traffic" — that overstatement is what made a KServe bypass look load-bearing. Red Hat KB: "MaaS streaming responses buffered through gateway (RHOAI 3.4)"; product fix planned for 3.5.
 
 **Diagnose:**
 

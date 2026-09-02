@@ -1,0 +1,52 @@
+{
+  "type_inventory_sha256": "3f8fb6dfdfaff48dfc1a4cdfc6cd183be1817da5f941174ccb9aeed044bc5a48",
+  "stories": [
+    {
+      "story_id": "setup",
+      "kind": "setup",
+      "title": "Author pom.xml with Red Hat Quarkus BOM, extensions, and directory structure",
+      "endpoints": [],
+      "files_writable": [
+        "pom.xml",
+        "src/main/resources/application.properties"
+      ],
+      "acceptance_criteria": [
+        "pom.xml imports com.redhat.quarkus.platform BOM 3.27.3.SP1 and declares quarkus-rest, quarkus-rest-jackson extensions",
+        "mvn -q compile succeeds with Java 21 toolchain"
+      ],
+      "skills": [
+        "author-destination-pom",
+        "reference-rh-quarkus-pom",
+        "manage-quarkus-extensions",
+        "configure-quarkus-profiles"
+      ],
+      "parents": []
+    },
+    {
+      "story_id": "us1_greeting",
+      "kind": "us",
+      "title": "Migrate GET /greeting to Quarkus REST with Jackson",
+      "endpoints": [
+        "GET /greeting"
+      ],
+      "files_writable": [
+        "src/main/java/com/demo/Greeting.java",
+        "src/main/java/com/demo/GreetingResource.java",
+        "src/test/java/com/demo/GreetingResourceTest.java"
+      ],
+      "acceptance_criteria": [
+        "GET /api/greeting returns 200 with JSON {\"id\": long, \"content\": \"Hello, World!\"}",
+        "GET /api/greeting?name=Alice returns 200 with JSON {\"id\": long, \"content\": \"Hello, Alice!\"}",
+        "Sequential requests increment the id field",
+        "mvn -q test passes with GreetingResourceTest verifying all scenarios"
+      ],
+      "skills": [
+        "spring-to-quarkus-patterns"
+      ],
+      "parents": [
+        "setup"
+      ],
+      "legacy_source": "src/main/java/com/example/restservice/GreetingController.java"
+    }
+  ]
+}

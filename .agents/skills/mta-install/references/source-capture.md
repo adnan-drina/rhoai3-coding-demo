@@ -5,12 +5,12 @@
 | Field | Value |
 |-------|-------|
 | Product family | Migration Toolkit for Applications |
-| Product version | 8.1 |
+| Product version | 8.2 |
 | Baseline source | `docs/PLATFORM_BASELINE.md` |
 | Documentation category | Install |
 | Official guide | Installing the migration toolkit for applications |
-| Source URL | https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1/html-single/installing_the_migration_toolkit_for_applications/index |
-| Multi-page URL | https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1/html/installing_the_migration_toolkit_for_applications/index |
+| Source URL | https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.2/html-single/installing_the_migration_toolkit_for_applications/index |
+| Multi-page URL | https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.2/html/installing_the_migration_toolkit_for_applications/index |
 | Capture date | 2026-07-06 |
 
 ## Captured Sections
@@ -38,7 +38,7 @@
 
 ## Source Boundaries
 
-This skill covers only MTA 8.1 installation procedures. It documents how to
+This skill covers only MTA 8.2 installation procedures. It documents how to
 install the MTA Operator, create MTA instances, install the CLI, and configure
 persistent storage and authentication.
 
@@ -53,7 +53,7 @@ This skill does NOT cover:
 
 ## Related Official Sources
 
-- MTA 8.1 documentation: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1
-- MTA release notes: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1/html-single/release_notes/index
-- MTA CLI guide: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1/html-single/using_the_mta_cli/index
-- MTA UI guide: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1/html-single/user_interface_guide/index
+- MTA 8.2 documentation: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.2
+- MTA release notes: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.2/html-single/release_notes/index
+- MTA CLI guide: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.2/html-single/using_the_mta_cli/index
+- MTA UI guide: https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.2/html-single/user_interface_guide/index

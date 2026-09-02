@@ -1,0 +1,39 @@
+# Dest worker profile — orchestrator (Operator GO 231808Z / AD-019 trigger (c)).
+# Applied dest-time: `hermes profile create orchestrator --no-alias` then
+# `hermes -p orchestrator config set` (hermes-configuration / hermes-cli).
+# Identity: sibling orchestrator.SOUL.md → profiles/orchestrator/SOUL.md.
+# OBJECT: --clone / --clone-from / --clone-all (EX-4 isolated $HOME, copied .env).
+#
+# Pin v0.20.5 (`v2026.8.19`, Operator GO `111522Z`) is the dest contract.
+# Official orchestrator quote (hermes-kanban / hermes-tools):
+#   toolsets: [kanban, gateway, memory]
+# `hermes-gateway` is the messaging-union preset and would re-expand core
+# tools — do not seat it. Dispatcher stays Managed Scope
+# `kanban.dispatch_in_gateway`. GitOps sets the official three names.
+# Seat `agent.disabled_toolsets` for write toolsets so a later pin cannot
+# re-enable file/terminal on this profile.
+#
+# Secrets stay Managed Scope. GitOps overwrites terminal.cwd with PROJECT_DIR
+# (official: cwd "." means launch directory, not this profile dir).
+#
+# OBJECT: analyzer/planner/validator Cursor-seat names; overlay v1 profiles;
+# arm docker on dest; copy Stage 080 SAD into this tree.
+
+platform_toolsets:
+  cli:
+    - kanban
+    - gateway
+    - memory
+
+terminal:
+  cwd: /projects/modernized
+
+agent:
+  disabled_toolsets:
+    - file
+    - terminal
+    - code_execution
+    - delegation
+    - web
+    - browser
+    - skills

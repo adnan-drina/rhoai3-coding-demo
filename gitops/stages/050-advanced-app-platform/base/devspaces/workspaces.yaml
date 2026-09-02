@@ -129,7 +129,7 @@ spec:
     components:
       - name: tooling-container
         container:
-          image: registry.redhat.io/devspaces/udi-rhel9:3.27.1
+          image: registry.redhat.io/devspaces/udi-rhel9:3.29.1@sha256:420f18fc64f0d05ccdabafdde946eb1fdff0f1c7e14e1dc4a43fdfb917267bed
           sourceMapping: /projects
           memoryLimit: 4Gi
           memoryRequest: 1Gi
@@ -238,7 +238,7 @@ spec:
     components:
       - name: tooling-container
         container:
-          image: registry.redhat.io/devspaces/udi-rhel9:3.27.1
+          image: registry.redhat.io/devspaces/udi-rhel9:3.29.1@sha256:420f18fc64f0d05ccdabafdde946eb1fdff0f1c7e14e1dc4a43fdfb917267bed
           sourceMapping: /projects
           memoryLimit: 4Gi
           memoryRequest: 1Gi
@@ -375,7 +375,7 @@ spec:
     components:
       - name: tooling-container
         container:
-          image: registry.redhat.io/devspaces/udi-rhel9:3.27.1
+          image: registry.redhat.io/devspaces/udi-rhel9:3.29.1@sha256:420f18fc64f0d05ccdabafdde946eb1fdff0f1c7e14e1dc4a43fdfb917267bed
           sourceMapping: /projects
           memoryLimit: 4Gi
           memoryRequest: 1Gi
@@ -484,7 +484,7 @@ spec:
     components:
       - name: tooling-container
         container:
-          image: registry.redhat.io/devspaces/udi-rhel9:3.27.1
+          image: registry.redhat.io/devspaces/udi-rhel9:3.29.1@sha256:420f18fc64f0d05ccdabafdde946eb1fdff0f1c7e14e1dc4a43fdfb917267bed
           sourceMapping: /projects
           memoryLimit: 4Gi
           memoryRequest: 1Gi
@@ -614,7 +614,7 @@ spec:
     components:
       - name: tooling-container
         container:
-          image: registry.redhat.io/devspaces/udi-rhel9:3.27.1
+          image: registry.redhat.io/devspaces/udi-rhel9:3.29.1@sha256:420f18fc64f0d05ccdabafdde946eb1fdff0f1c7e14e1dc4a43fdfb917267bed
           sourceMapping: /projects
           memoryLimit: 4Gi
           memoryRequest: 1Gi
@@ -716,7 +716,7 @@ spec:
     components:
       - name: tooling-container
         container:
-          image: registry.redhat.io/devspaces/udi-rhel9:3.27.1
+          image: registry.redhat.io/devspaces/udi-rhel9:3.29.1@sha256:420f18fc64f0d05ccdabafdde946eb1fdff0f1c7e14e1dc4a43fdfb917267bed
           sourceMapping: /projects
           memoryLimit: 4Gi
           memoryRequest: 1Gi

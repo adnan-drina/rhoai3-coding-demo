@@ -1,0 +1,68 @@
+# Dev-grade PostgreSQL for the migrated service. M3 copies this file to
+# k8s/postgres.yaml only when evidence/required-extensions.json
+# database.needed is true. deploy-app applies k8s/ only — this directory
+# is not applied at scaffold time.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ${{ values.name }}-postgres
+  labels:
+    app.kubernetes.io/part-of: ${{ values.name }}
+type: Opaque
+stringData:
+  # DEMO VALUES ONLY — dest-local postgres, not a production secret.
+  POSTGRESQL_USER: appuser
+  POSTGRESQL_PASSWORD: apppass
+  POSTGRESQL_DATABASE: ${{ values.name }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ${{ values.name }}-postgres
+  labels:
+    app.kubernetes.io/part-of: ${{ values.name }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ${{ values.name }}-postgres
+  template:
+    metadata:
+      labels:
+        app: ${{ values.name }}-postgres
+    spec:
+      containers:
+        - name: postgresql
+          image: registry.redhat.io/rhel9/postgresql-15:latest
+          ports:
+            - containerPort: 5432
+          envFrom:
+            - secretRef:
+                name: ${{ values.name }}-postgres
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "appuser", "-d", "${{ values.name }}"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests: {cpu: 100m, memory: 256Mi}
+            limits: {memory: 512Mi}
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/pgsql/data
+      volumes:
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ${{ values.name }}-postgres
+  labels:
+    app.kubernetes.io/part-of: ${{ values.name }}
+spec:
+  selector:
+    app: ${{ values.name }}-postgres
+  ports:
+    - port: 5432
+      targetPort: 5432

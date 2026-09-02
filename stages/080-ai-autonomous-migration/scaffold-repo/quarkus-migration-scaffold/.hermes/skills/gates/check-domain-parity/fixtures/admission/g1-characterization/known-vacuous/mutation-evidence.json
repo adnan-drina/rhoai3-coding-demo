@@ -1,0 +1,9 @@
+{
+  "ran": true,
+  "tool": "pitest-summary",
+  "mutation_score": null,
+  "mutations_total": 0,
+  "mutations_killed": 0,
+  "char_surface_stub": false,
+  "note": "PIT executed; zero mutants generated"
+}

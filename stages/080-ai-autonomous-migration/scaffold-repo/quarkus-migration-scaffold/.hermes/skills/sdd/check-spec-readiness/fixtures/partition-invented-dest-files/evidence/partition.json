@@ -1,0 +1,38 @@
+{
+  "type_inventory_sha256": "dest9-invented-files",
+  "stories": [
+    {
+      "story_id": "setup",
+      "kind": "setup",
+      "title": "Author pom.xml",
+      "endpoints": [],
+      "files_writable": [
+        "pom.xml",
+        "src/main/resources/application.properties"
+      ],
+      "acceptance_criteria": [
+        "pom.xml imports the Red Hat Quarkus BOM"
+      ],
+      "skills": ["author-destination-pom"],
+      "parents": []
+    },
+    {
+      "story_id": "us1_greeting",
+      "kind": "us",
+      "title": "Migrate GET /greeting",
+      "endpoints": ["GET /greeting"],
+      "files_writable": [
+        "src/main/java/com/demo/Greeting.java",
+        "src/main/java/com/demo/Application.java",
+        "src/main/java/com/demo/GreetingResource.java",
+        "src/test/java/com/demo/GreetingResourceTest.java"
+      ],
+      "acceptance_criteria": [
+        "GET /greeting returns 200"
+      ],
+      "skills": ["spring-to-quarkus-patterns"],
+      "parents": ["setup"],
+      "legacy_source": "src/main/java/com/example/restservice/GreetingController.java"
+    }
+  ]
+}

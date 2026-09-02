@@ -1,4 +1,4 @@
-schemaVersion: 2.2.0
+schemaVersion: 2.2.2
 metadata:
   name: quarkus-migration-scaffold
 attributes:
@@ -6,39 +6,41 @@ attributes:
   # when a second workspace starts while another is running (observed
   # live on round3's first start; run #2's workspace was patched by hand).
   controller.devfile.io/storage-type: per-workspace
-# Migration workspace layout — two projects, fixed order:
+  # DWO debug-start keeps a failed postStart container sleeping
+  # progressTimeout so /tmp/poststart-{stdout,stderr}.txt stay readable
+  # (docs/additional-configuration.adoc). Do not tee the hook to PVC.
+  controller.devfile.io/debug-start: "true"
+# This golden copy defines a SINGLE-project workspace (itself). The real
+# migration workspace layout — two projects, fixed order — exists only in
+# per-run repositories, stamped by the app-migration template's skeleton
+# devfile (the authoritative workspace shape):
 #   /projects/legacy      the application being migrated (workspace-only
-#                         clone of the legacy repository; never registered
-#                         in the catalog, no write credentials)
-#   /projects/modernized  this repository — the Quarkus destination that is
-#                         catalog-registered and CI/CD-wired
-# `legacy` is FIRST on purpose: the MTA VS Code extension analyzes the
-# first workspace folder in multi-root mode.
-# In per-run repositories both URLs below are stamped by the app-migration
-# template (this golden copy carries demo defaults).
+#                         clone of ${{ values.legacyRepoUrl }}; never
+#                         registered in the catalog, no write credentials;
+#                         FIRST because the MTA VS Code extension analyzes
+#                         the first workspace folder in multi-root mode)
+#   /projects/modernized  the per-run Quarkus destination repository
+# No specimen/legacy URL belongs in this golden copy — specimen data enters
+# only via the template form at provisioning time.
 projects:
-  - name: legacy
-    git:
-      remotes:
-        origin: https://github.com/rhpds/mca-coolstore.git
-      checkoutFrom:
-        revision: main
   - name: modernized
     git:
       remotes:
-        origin: https://github.com/adnan-drina/quarkus-migration-scaffold.git
+        origin: https://github.com/adnan-drina/quarkus-migration-scaffold-v2.git
       checkoutFrom:
         revision: main
 components:
   - name: development-tooling
     container:
-      # Standard workspace base: the same Red Hat UDI every coolstore
-      # workspace uses, so the Java/Maven foundation is uniform across
-      # stages. The workspace is OpenCode-only by design (the modernized
-      # project's .opencode/ directory is the tool-selector signal) and
-      # carries the MTA VS Code extension pack for analyzing the legacy
-      # project against the platform MTA hub.
-      image: registry.redhat.io/devspaces/udi-rhel9:3.27.1
+      # Digest-pinned overlay (ws-080). Repos are private: cluster pull
+      # needs the Quay pull secret on the workspace ServiceAccount before
+      # any dest cut. Fat postStart (VSIX curls) is expected this round.
+      image: quay.io/rhoai3-coding-demo/rhoai3-ws-080@sha256:52fd342d1c236ddff4a4bc85a5e8939291a874468cabc0103444908fe3dda985
+      mountSources: true
+      memoryRequest: 2Gi
+      memoryLimit: 6Gi
+      cpuRequest: 500m
+      cpuLimit: 2500m
       env:
         - name: QUARKUS_HTTP_HOST
           value: 0.0.0.0
@@ -53,7 +55,7 @@ components:
           value: "1"
         # MTA extension pack, downloaded by init-migration-tools below.
         - name: DEFAULT_EXTENSIONS
-          value: "/tmp/mta.vsix;/tmp/mta-core.vsix;/tmp/mta-java.vsix"
+          value: "/tmp/mta.vsix;/tmp/mta-core.vsix;/tmp/redhat-java.vsix;/tmp/mta-java.vsix"
         # MTA hub connection — stable internal cluster service URL.
         - name: HUB_URL
           value: "http://mta-ui.openshift-mta.svc.cluster.local:8080"
@@ -70,6 +72,25 @@ components:
           value: "false"
         - name: HUB_PROFILE_SYNC_ENABLED
           value: "false"
+        # AD-003: containerless mta-cli requires JVM_MAX_MEM or analysis can
+        # hang. Derived from memoryLimit (12Gi) with headroom for the IDE /
+        # Hermes — not equal to the container ceiling. Official MTA
+        # guidance recommends ~8G host RAM for large Java analyses
+        # (CLI optimize-performance); value format matches provider
+        # jvmMaxMem examples ("2G").
+        - name: JVM_MAX_MEM
+          value: "8G"
+        # AD-H §14 / Deputy E-20260813T152939Z — container-wide Hermes paths.
+        # Must NOT depend on login-shell .bashrc export: non-login processes
+        # (cron, bare sh -c, daemons) otherwise fall back to ~/.hermes and
+        # load the generic auto-seeded SOUL decoy.
+        - name: HERMES_HOME
+          value: "/projects/modernized/.hermes/home"
+        - name: HERMES_MANAGED_DIR
+          value: "/projects/.platform/hermes"
+        # Golden default on. RHDH stamps AUTO_START_MIGRATION from the form.
+        - name: AUTO_START_MIGRATION
+          value: "true"
       memoryLimit: 12Gi
       cpuLimit: 2500m
       volumeMounts:
@@ -80,6 +101,14 @@ components:
           targetPort: 8080
           exposure: public
           secure: false
+          protocol: https
+        # Hermes dashboard — Operator E-20260812T171806Z W1 rider:
+        # bind is 0.0.0.0:9119 (auth-gated via seeded basic_auth); che-gateway
+        # endpoint (public + secure) for OAuth-wrapped viewer path.
+        - name: hermes-dash
+          targetPort: 9119
+          exposure: public
+          secure: true
           protocol: https
         - name: debug
           targetPort: 5005
@@ -95,12 +124,13 @@ commands:
       component: development-tooling
       commandLine: |
         # Two projects live in this workspace; all agent tooling roots in
-        # the modernized project (it carries .opencode/ -> OpenCode-only).
+        # the modernized project (Hermes Kanban dest).
         PROJECT_DIR="/projects/modernized"
         PROFILE="modernized"
-        # The UDI base image documents JAVA_HOME_<version> variables as the
-        # supported way to select a JDK; its sdkman default (plain
-        # JAVA_HOME) is Java 17, while this project targets 21.
+        mkdir -p /projects/.platform
+        # Prefer JAVA_HOME_21 from the UDI image contract. This seat's
+        # udi-rhel9 image does not ship sdkman (Deputy E-20260814T064712Z);
+        # the ~/.sdkman candidates below are defensive fallbacks only.
         java21_home="${JAVA_HOME_21:-}"
         if [ -z "${java21_home}" ] || [ ! -x "${java21_home}/bin/java" ]; then
           for candidate in \
@@ -118,10 +148,10 @@ commands:
           export PATH="${JAVA_HOME}/bin:${PATH}"
           for rc in "${HOME}/.bashrc" "${HOME}/.zshrc"; do
             touch "${rc}"
-            if ! grep -q "rhoai3-coding-demo: java 21 default" "${rc}"; then
+            if ! grep -q "quarkus-migration-scaffold: java 21 default" "${rc}"; then
               {
                 printf '\n'
-                printf '# rhoai3-coding-demo: java 21 default\n'
+                printf '# quarkus-migration-scaffold: java 21 default\n'
                 printf 'export JAVA_HOME="%s"\n' "${java21_home}"
                 printf 'export PATH="${JAVA_HOME}/bin:${PATH}"\n'
               } >> "${rc}"
@@ -131,11 +161,13 @@ commands:
         fi
         # MTA VS Code extension pack (analysis of /projects/legacy against
         # the platform MTA hub). The pack does not reliably resolve its
-        # dependencies from a local VSIX — pin and download all three.
+        # dependencies from a local VSIX — pin and download MTA + redhat.java
+        # (vendor-required for mta-java; Operator E-20260817T104424Z).
         curl -fsSL --retry 3 --retry-delay 5 --retry-all-errors --max-time 300 -o /tmp/mta.vsix "https://open-vsx.org/api/redhat/mta-vscode-extension/8.2.0/file/redhat.mta-vscode-extension-8.2.0.vsix"
         curl -fsSL --retry 3 --retry-delay 5 --retry-all-errors --max-time 300 -o /tmp/mta-core.vsix "https://open-vsx.org/api/redhat/mta-core/8.2.0/file/redhat.mta-core-8.2.0.vsix"
+        curl -fsSL --retry 3 --retry-delay 5 --retry-all-errors --max-time 300 -o /tmp/redhat-java.vsix "https://open-vsx.org/api/redhat/java/1.47.0/file/redhat.java-1.47.0.vsix"
         curl -fsSL --retry 3 --retry-delay 5 --retry-all-errors --max-time 300 -o /tmp/mta-java.vsix "https://open-vsx.org/api/redhat/mta-java/8.2.0/file/redhat.mta-java-8.2.0.vsix"
-        test -s /tmp/mta.vsix && test -s /tmp/mta-core.vsix && test -s /tmp/mta-java.vsix
+        test -s /tmp/mta.vsix && test -s /tmp/mta-core.vsix && test -s /tmp/redhat-java.vsix && test -s /tmp/mta-java.vsix
         # kubeconfig from the workspace SA so the MTA extension can reach
         # the cluster; hub sign-in itself is interactive (OIDC device auth
         # through the platform realm).
@@ -155,30 +187,107 @@ commands:
           python3 -c "import json,sys; f='/projects/.code-workspace'; ws=json.load(open(f)); s=ws.setdefault('settings',{}); s['java.server.launchMode']='Standard'; s['mta-core.genai.enabled']=False; open(f,'w').write(json.dumps(ws,indent=2)); print('Workspace settings: JDT Standard mode, MTA GenAI disabled')" 2>&1 || true
         fi
         for i in $(seq 1 30); do [ -d "${PROJECT_DIR}/.git" ] && break; sleep 2; done
-        KUBE_API="https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}"
-        KUBE_CA="/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
-        KUBE_TOKEN="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"
-        if curl -fsS --cacert "${KUBE_CA}" \
-            -H "Authorization: Bearer ${KUBE_TOKEN}" \
-            "${KUBE_API}/api/v1/namespaces/wksp-ai-developer/configmaps/devspace-ai-tools-init" \
-            | jq -r '.data["init-ai-tools.sh"] // empty' >/tmp/init-ai-tools.sh \
-            && [ -s /tmp/init-ai-tools.sh ]; then
-          chmod 700 /tmp/init-ai-tools.sh
-          /tmp/init-ai-tools.sh "${PROJECT_DIR}" "${PROFILE}"
+        INIT_VOL="/etc/config/devspace-ai-tools-init/init-ai-tools.sh"
+        INIT_TMP="/tmp/init-ai-tools.sh"
+        INIT_SH=""
+        if [ -s "${INIT_VOL}" ]; then
+          INIT_SH="${INIT_VOL}"
+          echo "init-ai-tools.sh from ConfigMap volume ${INIT_VOL}"
         else
-          echo "devspace-ai-tools-init ConfigMap not reachable; OpenCode is"
-          echo "installed but not configured — governed MaaS credentials come"
-          echo "from the platform init script."
+          KUBE_API="https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}"
+          KUBE_CA="/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+          KUBE_TOKEN="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"
+          echo "WARN: ConfigMap volume empty at ${INIT_VOL}; falling back to kube-API fetch"
+          if curl -fsS --cacert "${KUBE_CA}" \
+              -H "Authorization: Bearer ${KUBE_TOKEN}" \
+              "${KUBE_API}/api/v1/namespaces/wksp-ai-developer/configmaps/devspace-ai-tools-init" \
+              | jq -r '.data["init-ai-tools.sh"] // empty' >"${INIT_TMP}" \
+              && [ -s "${INIT_TMP}" ]; then
+            INIT_SH="${INIT_TMP}"
+          fi
         fi
-  # The UDI base image documents JAVA_HOME_<version> variables as the
-  # supported way to select a JDK (sdkman default is Java 17; the pom
-  # targets 21). Each Maven command selects Java 21 through that contract.
+        if [ -n "${INIT_SH}" ] && [ -s "${INIT_SH}" ]; then
+          chmod 700 "${INIT_SH}" 2>/dev/null || true
+          bash "${INIT_SH}" "${PROJECT_DIR}" "${PROFILE}"
+        else
+          echo "devspace-ai-tools-init ConfigMap not reachable; Hermes/"
+          echo "MaaS credentials come from the platform init script."
+        fi
+        # AD-S / provision-owns-tools (Architect E-20260811T121308Z): Spec Kit
+        # init is workspace setup — fail-closed; agents verify-or-BLOCK only.
+        SPECIFY_INIT="${PROJECT_DIR}/.hermes/skills/sdd/init-spec-workspace/scripts/init-workspace.sh"
+        if [ -f "${SPECIFY_INIT}" ]; then
+          bash "${SPECIFY_INIT}" "${PROJECT_DIR}" \
+            || { echo "ERROR: init-spec-workspace failed (AD-S provision-owns-tools)"; exit 1; }
+        else
+          echo "ERROR: missing ${SPECIFY_INIT} — cannot provision Spec Kit"
+          exit 1
+        fi
+        # Deputy E-20260813T152939Z — neutralize ~/.hermes/SOUL.md decoy so a
+        # mis-launched process (HERMES_HOME unset) fails loudly instead of
+        # loading the generic Nous starter identity.
+        DECOY_SOUL="${HOME}/.hermes/SOUL.md"
+        mkdir -p "${HOME}/.hermes"
+        # Use printf (not a column-0 heredoc): a bare heredoc body ends the
+        # YAML | block and Dev Spaces fails with "Can't parse devfile yaml".
+        printf '%s\n' \
+          '# REFUSE - wrong SOUL.md' \
+          '' \
+          'This path is NOT the migration workspace identity.' \
+          '' \
+          'Set HERMES_HOME=/projects/modernized/.hermes/home (container env / login' \
+          'profile) for dest-user identity, or HERMES_HOME=.../home/profiles/<name>' \
+          'when hermes -p <name>. Load that home'\''s SOUL.md. Dest-user authored' \
+          'copy: /projects/modernized/.hermes/SOUL.md. Worker copies:' \
+          '/projects/modernized/.hermes/config/profiles/<name>.SOUL.md. dest-init' \
+          'places each under the matching HERMES_HOME with sha256 (AD-H section 14).' \
+          '' \
+          'Do not use the auto-seeded Hermes starter identity in this seat.' \
+          > "${DECOY_SOUL}"
+        echo "Neutralized decoy SOUL at ${DECOY_SOUL} (Deputy E-20260813T152939Z)."
+        # W1 — Quarkus CLI (ext ls/add/search only; create path retired DD1) +
+        # RH registry-first ~/.quarkus/config.yaml. User-space via JBang into
+        # ~/.local|~/.jbang (no root / no rsync / no custom image). Idempotent.
+        # Failure is WARN — Maven quarkus:* remains (W3 typed fallback).
+        PROVISION_CLI="${PROJECT_DIR}/.hermes/skills/migration/manage-quarkus-extensions/scripts/provision-quarkus-cli.sh"
+        if [ -f "${PROVISION_CLI}" ]; then
+          export PATH="${HOME}/.local/bin:${HOME}/.jbang/bin:${PATH}"
+          bash "${PROVISION_CLI}" \
+            || echo "WARN: Quarkus CLI provision failed — Maven quarkus:* fallback (W3)"
+        else
+          echo "WARN: missing ${PROVISION_CLI} — Quarkus CLI not provisioned"
+        fi
+        # dest-init consumer (Architect 195231ZA): mint M1+M2 only.
+        # Do not restore stamp-harness-rev. Do not kanban daemon --force.
+        # Failure must not fail the workspace; AUTOSTART-STATUS is the trail.
+        AUTO_M1="${PROJECT_DIR}/.hermes/skills/harness/dispatch-phase/scripts/autostart-migration.sh"
+        if [ -f "${AUTO_M1}" ]; then
+          bash "${AUTO_M1}" --root "${PROJECT_DIR}" \
+            || echo "WARN: autostart-migration exited nonzero (see .hermes/AUTOSTART-STATUS)"
+        else
+          echo "WARN: missing ${AUTO_M1} — M1 not minted at dest-init"
+        fi
+        # Architect 202501ZA: overlay persist helper is a later named GO.
+        echo "WARN: overlay persist helper not in this cut — gateway will not persist"
+        # DB-4: one launcher (writes /tmp/hermes-dashboard.status). Same
+        # postStart as tools so dashboard cannot run before Hermes/auth
+        # (Dev Spaces 3.28: one postStart). Observability only.
+        DASH_START="${PROJECT_DIR}/.hermes/dashboard/start-dashboard.sh"
+        if [ -f "${DASH_START}" ]; then
+          bash "${DASH_START}" \
+            || echo "WARN: Hermes dashboard launcher exited nonzero (observability only)"
+        else
+          echo "WARN: missing ${DASH_START} — hermes-dash endpoint kept, no launcher"
+          printf 'state=failed\nreason=missing start-dashboard.sh\n' >/tmp/hermes-dashboard.status
+        fi
+  # Prefer JAVA_HOME_21 (UDI contract). sdkman is not present on this
+  # seat's image — do not assume it. Pom targets Java 21.
   - id: test
     exec:
       label: "1. Run tests (modernized)"
       component: development-tooling
-      workingDir: /projects/modernized
-      commandLine: 'export JAVA_HOME="${JAVA_HOME_21:-${JAVA_HOME}}" && export PATH="${JAVA_HOME}/bin:${PATH}" && mvn -q test'
+      workingDir: ${PROJECT_SOURCE}
+      commandLine: 'export JAVA_HOME="${JAVA_HOME_21:-${JAVA_HOME}}" && export PATH="${JAVA_HOME}/bin:${HOME}/.local/bin:${HOME}/.jbang/bin:${PATH}" && mvn -q test'
       group:
         kind: test
         isDefault: true
@@ -186,8 +295,8 @@ commands:
     exec:
       label: "2. Start Development mode (modernized, hot reload + debug)"
       component: development-tooling
-      workingDir: /projects/modernized
-      commandLine: 'export JAVA_HOME="${JAVA_HOME_21:-${JAVA_HOME}}" && export PATH="${JAVA_HOME}/bin:${PATH}" && mvn compile quarkus:dev'
+      workingDir: ${PROJECT_SOURCE}
+      commandLine: 'export JAVA_HOME="${JAVA_HOME_21:-${JAVA_HOME}}" && export PATH="${JAVA_HOME}/bin:${HOME}/.local/bin:${HOME}/.jbang/bin:${PATH}" && mvn compile quarkus:dev'
       group:
         kind: run
         isDefault: true

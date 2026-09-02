@@ -1,0 +1,27 @@
+{
+  "daemon_force": false,
+  "claimed_refuse_control": false,
+  "manifest": {
+    "created_cards": ["t_m3aaaaaa"]
+  },
+  "cards": [
+    {
+      "id": "t_m2plan00",
+      "role": "implementer",
+      "phase": "M2",
+      "assignee": "implementer",
+      "status": "done",
+      "terminator": "kanban_complete",
+      "created_cards": ["t_m3aaaaaa"],
+      "parents": []
+    },
+    {
+      "id": "t_m3aaaaaa",
+      "role": "implementer",
+      "phase": "M3",
+      "assignee": "implementer",
+      "status": "todo",
+      "parents": ["t_m2plan00"]
+    }
+  ]
+}

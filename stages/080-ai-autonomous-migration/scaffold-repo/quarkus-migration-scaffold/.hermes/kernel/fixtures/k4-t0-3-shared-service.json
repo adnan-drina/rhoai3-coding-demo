@@ -1,0 +1,24 @@
+{
+  "type_inventory_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "source": "k4-selftest-t0-3-shared-service",
+  "stories": [
+    {
+      "story_id": "US1",
+      "kind": "us",
+      "parents": [],
+      "files_writable": [
+        "src/main/java/com/demo/service/ClinicService.java",
+        "src/main/java/com/demo/resource/OwnerResource.java"
+      ]
+    },
+    {
+      "story_id": "US2",
+      "kind": "us",
+      "parents": [],
+      "files_writable": [
+        "src/main/java/com/demo/service/ClinicService.java",
+        "src/main/java/com/demo/resource/PetResource.java"
+      ]
+    }
+  ]
+}

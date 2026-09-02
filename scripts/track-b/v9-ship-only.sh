@@ -11,6 +11,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 # shellcheck source=/dev/null
 source "${ROOT}/scripts/track-b/lib-quality-gates.sh"
+qg_refuse_retired_wave5_harness
 # shellcheck source=/dev/null
 source "${ROOT}/scripts/lib.sh"
 load_env >/dev/null

@@ -30,6 +30,12 @@ QG_STORY_COMPLETE_RE='^S0[0-9] story complete: (success .+|story-gate-passed)$'
 
 qg_die() { echo "quality-gate: $*" >&2; exit 1; }
 
+# Reunify 080 wholesale dropped Wave5 `.hermes/harness`. Track B host gates
+# that required that tree fail closed. Do not restore it from main history.
+qg_refuse_retired_wave5_harness() {
+  qg_die "Track B Wave5 .hermes/harness is retired; v2 kernel is under .hermes/kernel. Do not restore Wave5."
+}
+
 # Resolve target DevWorkspace name (O-HERMESWSRESOLVE).
 # Order: explicit V10_WS_NAME (if Running) → single Running DevWorkspace → REFUSE.
 # Wave cutover hazard: a stale exported V10_WS_NAME (Stopped) must not win over

@@ -1,0 +1,10 @@
+{
+  "task_id": "t_deadbeef",
+  "role": "implementer",
+  "phase": "M3",
+  "refs": [],
+  "identity": {"generated": true},
+  "files_in_scope": [],
+  "files_writable": [],
+  "exit_criteria": []
+}

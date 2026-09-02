@@ -5,10 +5,10 @@
 | Field | Value |
 |-------|-------|
 | Product | Migration Toolkit for Applications |
-| Product version | 8.1 |
+| Product version | 8.2 |
 | Baseline source | `docs/PLATFORM_BASELINE.md` |
 | Chapter or page title | Configuring and Using Red Hat Developer Lightspeed for MTA |
-| Source URL | https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.1/html-single/configuring_and_using_red_hat_developer_lightspeed_for_mta/index |
+| Source URL | https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.2/html-single/configuring_and_using_red_hat_developer_lightspeed_for_mta/index |
 | Documentation category | AI |
 | Capture date | 2026-07-06 |
 
@@ -81,8 +81,8 @@ This skill does not capture:
 
 ## Related Official Sources To Add Later
 
-- Migration Toolkit for Applications 8.1 Installation Guide
-- Migration Toolkit for Applications 8.1 Using the CLI
-- Migration Toolkit for Applications 8.1 Using the Web Console
-- Migration Toolkit for Applications 8.1 VS Code Extension Guide
-- Migration Toolkit for Applications 8.1 IntelliJ Plugin Guide
+- Migration Toolkit for Applications 8.2 Installation Guide
+- Migration Toolkit for Applications 8.2 Using the CLI
+- Migration Toolkit for Applications 8.2 Using the Web Console
+- Migration Toolkit for Applications 8.2 VS Code Extension Guide
+- Migration Toolkit for Applications 8.2 IntelliJ Plugin Guide

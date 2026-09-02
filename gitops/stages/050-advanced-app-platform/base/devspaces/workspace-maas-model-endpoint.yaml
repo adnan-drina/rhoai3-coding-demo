@@ -1,0 +1,20 @@
+# Worker OpenAI path on the MaaS gateway. The provisioner concatenates
+# maas-devspace-api-keys.MAAS_BASE_URL with this path. Do not hardcode a
+# cluster hostname here (Architect 161809ZA). qwen is unaffected by the
+# RHOAI 3.4 IPP external-model buffering defect; going through the gateway
+# is the demo being honest (Kuadrant auth + rate limits + token accounting).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: workspace-maas-model-endpoint
+  namespace: wksp-ai-developer
+  labels:
+    app.kubernetes.io/part-of: maas
+    app.kubernetes.io/name: workspace-maas-model-endpoint
+    app.kubernetes.io/component: config
+    app.kubernetes.io/managed-by: argocd
+    demo.rhoai.io/stage: "050"
+  annotations:
+    argocd.argoproj.io/sync-wave: "17"
+data:
+  MAAS_API_PATH: /models-as-a-service/qwen3-6-27b/v1

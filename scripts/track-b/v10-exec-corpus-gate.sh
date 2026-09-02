@@ -3,6 +3,9 @@
 # Pair with v10-plan-corpus-gate.sh (planning half). Safe for preflight.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+# shellcheck source=/dev/null
+source "${ROOT}/scripts/track-b/lib-quality-gates.sh"
+qg_refuse_retired_wave5_harness
 HARNESS="${ROOT}/stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/.hermes/harness"
 SCRIPT="${HARNESS}/exec-corpus-lint.sh"
 [ -f "$SCRIPT" ] || { echo "O-EXECCORPUS: missing $SCRIPT" >&2; exit 2; }

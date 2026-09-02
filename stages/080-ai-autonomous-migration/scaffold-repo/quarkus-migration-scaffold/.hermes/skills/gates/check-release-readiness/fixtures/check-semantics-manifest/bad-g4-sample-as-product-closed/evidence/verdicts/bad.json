@@ -1,0 +1,11 @@
+{
+  "phase": "M5",
+  "verdict": "ACCEPT",
+  "g4_mode": "SAMPLE",
+  "g4_status": "CLOSED",
+  "ship": false,
+  "checks": {
+    "g4_hook": {"result": "PASS", "g4_mode": "SAMPLE"}
+  },
+  "required_checks": ["g4_runtime_parity"]
+}

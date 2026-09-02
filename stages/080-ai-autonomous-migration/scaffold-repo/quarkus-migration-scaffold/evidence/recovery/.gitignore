@@ -1,0 +1,3 @@
+# Runtime restore-or-refuse decisions (AD-H §5.1) — do not dirty the tree
+last-restore-or-refuse.json
+*.runtime.json

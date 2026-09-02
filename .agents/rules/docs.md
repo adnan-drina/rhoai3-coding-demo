@@ -40,7 +40,9 @@ Before implementing a change, consult the relevant stage README, GitOps manifest
 | Content type | Put it here |
 |--------------|-------------|
 | Why the stage matters, what it teaches, Red Hat product value | Stage README |
-| Architecture and trust boundaries | Root README or stage README |
+| Workshop / project architecture and trust boundaries | Root README or stage README |
+| Stage-local implementation architecture | That stage's directory. Stage 080: `stages/080-ai-autonomous-migration/SOLUTION-ARCHITECTURE.md`. Do not lift it into `docs/` or repo root; it is not the workshop SAD. |
+| Stage 080 demo walkthrough | `stages/080-ai-autonomous-migration/README.md` |
 | Deployment order, script behavior, validation commands | `docs/OPERATIONS.md` |
 | Failure symptoms, root causes, diagnostic commands, recovery | `docs/TROUBLESHOOTING.md` |
 | Cluster-specific commands for repeated use | Script, then reference from ops docs |

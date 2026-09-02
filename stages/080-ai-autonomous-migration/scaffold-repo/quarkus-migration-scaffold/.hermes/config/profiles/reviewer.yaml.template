@@ -1,0 +1,34 @@
+# Dest worker profile — reviewer (paved-road mechanical audit).
+# Applied dest-time: `hermes profile create reviewer --no-alias` then
+# `hermes -p reviewer config set`. Identity: sibling reviewer.SOUL.md
+# → profiles/reviewer/SOUL.md. OBJECT: --clone (EX-4).
+#
+# Structural, not instruction: kanban + terminal + skills so the worker
+# can run assert-paved-road-audit.py against the official log. Write
+# toolsets stay disabled so the reviewer cannot author the evidence it
+# audits. Orchestrator cannot be reviewer (terminal disabled).
+#
+# AD-008: factory model.default stays Qwen. Dest-init pins this profile
+# to MiniMax only when HERMES_MINIMAX=1 (escalation file present).
+# Never fallback_providers. Never implementer/orchestrator default MiniMax.
+#
+# Secrets stay Managed Scope. GitOps overwrites terminal.cwd with PROJECT_DIR.
+#
+# OBJECT: dest-apply onto dest-14; sdlc-review vibe grading as Done.
+
+platform_toolsets:
+  cli:
+    - kanban
+    - terminal
+    - skills
+
+terminal:
+  cwd: /projects/modernized
+
+agent:
+  disabled_toolsets:
+    - file
+    - code_execution
+    - delegation
+    - web
+    - browser

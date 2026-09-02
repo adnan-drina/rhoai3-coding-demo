@@ -22,6 +22,11 @@ applies-to:
 
 # Stage 080 Track B — no compromises
 
+Wave5 `.hermes/harness` was dropped when Stage 080 was adopted from
+`harness-v2` onto `main`. Host Track B gates that required that tree fail
+closed (`qg_refuse_retired_wave5_harness`). Do not restore Wave5. The v2
+kernel lives under the golden scaffold `.hermes/kernel`.
+
 **End state:** an **autonomous, swift, hardened, durable, fully functional**
 migration process.
 

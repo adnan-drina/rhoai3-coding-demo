@@ -1,0 +1,68 @@
+{
+  "source": "tr-health-unsatisfiable",
+  "note": "T020-shaped: polish HealthTest + /q/health, pom.xml not writable.",
+  "supersedes": [
+    {
+      "dest_file": "src/main/java/com/demo/service/SharedService.java",
+      "successors": [
+        "src/main/java/com/demo/service/AlphaService.java",
+        "src/main/java/com/demo/service/BetaService.java"
+      ]
+    }
+  ],
+  "stories": [
+    {
+      "story_id": "setup",
+      "kind": "setup",
+      "parents": [],
+      "files_writable": [
+        "pom.xml"
+      ]
+    },
+    {
+      "story_id": "US1",
+      "kind": "us",
+      "parents": [
+        "setup"
+      ],
+      "endpoints": [
+        "GET /api/alpha"
+      ],
+      "files_writable": [
+        "src/main/java/com/demo/service/AlphaService.java",
+        "src/main/java/com/demo/resource/AlphaResource.java"
+      ],
+      "legacy_source": "src/main/java/com/example/restservice/AlphaController.java"
+    },
+    {
+      "story_id": "US2",
+      "kind": "us",
+      "parents": [
+        "setup"
+      ],
+      "files_writable": [
+        "src/main/java/com/demo/service/BetaService.java"
+      ]
+    },
+    {
+      "story_id": "polish",
+      "kind": "polish",
+      "parents": [
+        "US1",
+        "US2"
+      ],
+      "files_writable": [
+        "src/test/java/com/demo/HealthTest.java"
+      ],
+      "acceptance_criteria": [
+        {
+          "check": "health_probe",
+          "cmd": "mvn -q test",
+          "proves": [
+            "src/test/java/com/demo/HealthTest.java"
+          ]
+        }
+      ]
+    }
+  ]
+}

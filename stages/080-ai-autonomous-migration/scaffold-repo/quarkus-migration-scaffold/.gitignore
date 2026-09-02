@@ -1,38 +1,76 @@
+# Spec Kit workspace tree (AD-S) — created at provision by skill
+# init-spec-workspace; never commit into the golden scaffold.
+.specify/
+
+# Admission fixture run output (UPLIFT-7 — never tip-commit)
+evidence/fixtures/admission/out/
+
+# Derive / dispatch run-state under evidence/derived/ (UPLIFT-7).
+# Intentional in-seat manifests (legacy-at-3.json) may exist; these globs
+# are regenerating exhaust that previously contaminated the golden tip.
+evidence/derived/free-primitives-apply-log.json
+evidence/derived/phase-*-task-id.txt
+evidence/derived/review-adhere-observe-needed.yaml
+evidence/derived/created-cards-*.json
+
+# Live analysis / inventory outputs (regenerated in workspace)
+evidence/entry-point-inventory.json
+evidence/mta-findings.json
+evidence/mta/
+# Do not gitignore migration/ — GRT retired it; SR-8 flags resurrection
+# (SR-8a). Ignoring the path would greenwash the MTA writer.
+
 # Maven / Quarkus build output
 target/
 
-# O-PYCGITIGNORE — harness Python bytecode must never enter tips
-# (repo root already ignores these; scaffold lacked them → a7f5c83 swept
-# seat-budget.cpython-39.pyc + 18× cpython-314 .pyc into the worktree).
+# Python bytecode
 __pycache__/
 *.pyc
 *.pyo
 
 # OpenCode plugin-API scaffolding — generated at runtime whenever a project
-# has a .opencode/ directory (OpenCode installs @opencode-ai/plugin to expose
-# its plugin API). This project uses only markdown skills and speckit
-# commands, so none of it is used here, and it must never be committed.
+# has a .opencode/ directory; never committed.
 .opencode/node_modules/
 .opencode/package.json
 .opencode/package-lock.json
 .opencode/bun.lock
 .opencode/.gitignore
 
-# JDTLS/kantra workspace droppings
+# IDE / language-server droppings
 .project
 .settings/
 .classpath
+# Kantra/analyzer-lsp Equinox state if analyze is ever mis-cwd'd into the
+# destination root (containment fix is cwd outside git root — belt only).
+.metadata/
+org.eclipse.core.runtime/
+org.eclipse.equinox.app/
+org.eclipse.equinox.launcher/
+org.eclipse.osgi/
 
-# O-TMPARCHIVE forensic copies (PVC; do not git-add)
-migration/run-archives/
+# Derived legacy@3.x trees must never be committed (workspace path is
+# /projects/.derived/; guard against accidental copies under modernized).
+evidence/derived/tree/
+evidence/derived/legacy-at-3/
 
-# O-M3PROMPTPATH — typed M3 seat prompts (workspace-local; OpenCode rejects /tmp)
-migration/.m3-prompts/
+# Hermes runtime under relocated HERMES_HOME (AD-H §1c). Product skills live
+# under `.hermes/skills/` (golden). Session/log/cron output under
+# `$HERMES_HOME` is not versioned. Secrets must never land here — Managed
+# Scope owns .env.
+.hermes/home/sessions/
+.hermes/home/logs/
+.hermes/home/cron/output/
+.hermes/home/auth.json
+.hermes/home/.env
 
-# O-STAMPGITIGN — runtime bookkeeping must not enter T-NNN tips
-migration/.m3-all-stamps/
-migration/run-log.md
-migration/evidence-liveness.md
-migration/discovered.md
-migration/mta-findings-after.json
-migration/findings-delta.STALE
+# EX-2/EX-3 retirement attic must never ship in the golden scaffold
+# (E-20260815T094500Z LG4). Backup lives in the authoring repo-root tmp/.
+tmp/
+
+# Authoring-board leak (E-20260815T000600Z / LG3). Not a product file.
+REFACTORING_V1.md
+
+# Free-primitives apply log (UPLIFT-7) — under derived tree or mis-cwd scaffold root
+.rhoai3-free-primitives-apply-log.json
+**/.rhoai3-free-primitives-apply-log.json
+

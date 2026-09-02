@@ -1,0 +1,77 @@
+# Copied fragment — destfile 2.2.2 has no include/compose (Devfile spec;
+# Dev Spaces 3.28 User Guide destfile example is a single document).
+# Shared tooling foundation is the overlay image, not a parent destfile.
+# Copy these fields into each stage destfile; do not parent a community stack.
+#
+# Product: Red Hat OpenShift Dev Spaces 3.28 User Guide, Customize workspace
+# components (schemaVersion 2.2.2, mountSources, memoryRequest/cpuRequest,
+# workingDir ${PROJECT_SOURCE}):
+# https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.28/html-single/user_guide/index
+schemaVersion: 2.2.2
+metadata:
+  name: rhoai3-quarkus-workspace
+components:
+  - name: development-tooling
+    container:
+      image: quay.io/rhoai3-coding-demo/rhoai3-ws-070@sha256:2398590df8bcc71b34e8fbf1701c9388d6cec0652e591af80b8de5725706ce25
+      mountSources: true
+      memoryRequest: 2Gi
+      memoryLimit: 6Gi
+      cpuRequest: 500m
+      cpuLimit: 2500m
+      env:
+        - name: QUARKUS_HTTP_HOST
+          value: "0.0.0.0"
+        - name: MAVEN_OPTS
+          value: "-Dmaven.repo.local=/home/user/.m2/repository"
+        - name: QUARKUS_ANALYTICS_DISABLED
+          value: "true"
+        - name: NODE_USE_SYSTEM_CA
+          value: "1"
+        - name: SHELL
+          value: "/usr/bin/bash"
+      volumeMounts:
+        - name: m2
+          path: /home/user/.m2
+      endpoints:
+        - name: quarkus-dev
+          targetPort: 8080
+          exposure: public
+          secure: false
+          protocol: https
+        - name: debug
+          targetPort: 5005
+          exposure: none
+          secure: false
+          protocol: tcp
+  - name: m2
+    volume:
+      size: 1G
+commands:
+  - id: package
+    exec:
+      label: "Package"
+      component: development-tooling
+      workingDir: ${PROJECT_SOURCE}
+      commandLine: 'export JAVA_HOME="${JAVA_HOME_21:-${JAVA_HOME}}" && export PATH="${JAVA_HOME}/bin:${PATH}" && mvn -q -DskipTests package'
+      group:
+        kind: build
+        isDefault: true
+  - id: test
+    exec:
+      label: "Run tests"
+      component: development-tooling
+      workingDir: ${PROJECT_SOURCE}
+      commandLine: 'export JAVA_HOME="${JAVA_HOME_21:-${JAVA_HOME}}" && export PATH="${JAVA_HOME}/bin:${PATH}" && mvn -q test'
+      group:
+        kind: test
+        isDefault: true
+  - id: start-dev
+    exec:
+      label: "Start Development mode"
+      component: development-tooling
+      workingDir: ${PROJECT_SOURCE}
+      commandLine: 'export JAVA_HOME="${JAVA_HOME_21:-${JAVA_HOME}}" && export PATH="${JAVA_HOME}/bin:${PATH}" && mvn compile quarkus:dev'
+      group:
+        kind: run
+        isDefault: true

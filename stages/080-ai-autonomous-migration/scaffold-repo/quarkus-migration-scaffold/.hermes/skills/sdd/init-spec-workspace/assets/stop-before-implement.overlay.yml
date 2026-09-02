@@ -1,0 +1,38 @@
+# A-1 overlay — native ingress (Architect E-20260817T061720Z / E-20260817T063500Z).
+# Install: copied to .specify/workflows/overlays/speckit/ at provision.
+# Inspect: specify workflow resolve speckit
+# Run:     specify workflow run speckit -i spec="<description derived from M1 evidence>"
+# Never run the stock speckit workflow without this overlay (it ends at implement).
+# 163200Z §S.7 / Research 174900Z: stock review-spec and review-plan are type: gate.
+# Unattended path must remove those gates as well as implement.
+# OBJECT: do not put mint-transcribed HTTP endpoints or "no backticks" in args.
+# 192444Z OBJECT: do not lock Dependencies to the US_ALL_DEPS fixture regex.
+# Emit pin lives in .specify/templates/overrides/tasks-template.md (full-file override).
+id: "stop-before-implement"
+extends: "speckit"
+priority: 10
+edits:
+  - remove: implement
+  - remove: review-spec
+  - remove: review-plan
+  - insert_before: plan
+    step:
+      id: clarify
+      command: speckit.clarify
+      integration: "{{ inputs.integration }}"
+      input:
+        args: "{{ inputs.spec }}"
+  - replace: specify
+    step:
+      id: specify
+      command: speckit.specify
+      integration: "{{ inputs.integration }}"
+      input:
+        args: "{{ inputs.spec }}\n\nM1 evidence (read these files **before** writing spec.md; do not invent endpoints or rule IDs):\nevidence/findings-handoff.json\nevidence/entry-point-inventory.json\nevidence/type-inventory.json\nevidence/required-extensions.json\n\nFunctional Requirements MUST enumerate every inventory http_path (not a count). Setup T001 must name every artifactId in required-extensions.json (T-3 native Quarkus targets; do not invent quarkus-spring-*)."
+  - replace: tasks
+    step:
+      id: tasks
+      command: speckit.tasks
+      integration: "{{ inputs.integration }}"
+      input:
+        args: "{{ inputs.spec }}\n\nM1 evidence (same files as specify; cover every HTTP row in evidence/entry-point-inventory.json, including http_path: /; source dest_file rows in evidence/type-inventory.json; generated types: carry spec + configure generator, do not Create their .java; name every required-extensions.json artifactId on the pom-writer story):\nevidence/findings-handoff.json\nevidence/entry-point-inventory.json\nevidence/type-inventory.json\nevidence/required-extensions.json\n\nFollow .specify/templates/overrides/tasks-template.md: task paths are repository-relative (never prefix /projects/modernized). one creator phase per dest path; Add/Verify remain amend. a polish task that NAMES a dest file must CREATE it (do not Verify pom.xml in polish). one user story per inventory HTTP shape (do not assign the same collection to two stories). Destination REST is JAX-RS (constitution III). Only class-creating Resource tasks MUST include literal @Path(\"...\") with CLASS-LEVEL ABSOLUTE paths, and only inside the story phase that owns that resource; name method-level sub-resources and foreign class paths in prose. Do not invent a RestController-to-Resource filename mapper. Cover source type-inventory dest_file as repository-relative .java Creates; generated types are carry the spec + configure the dest generator (not a name-pattern rule)."

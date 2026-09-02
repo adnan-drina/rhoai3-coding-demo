@@ -1,0 +1,99 @@
+{
+  "type_inventory_sha256": "c362081b289af3404507fde56eb6ef19ab4fdee00115057e9fd00af0a0e20584",
+  "stories": [
+    {
+      "story_id": "T001_SETUP",
+      "title": "Setup - Author pom.xml and project structure",
+      "operand_class": "build_config",
+      "files_writable": [
+        "pom.xml",
+        "src/main/resources/application.properties"
+      ],
+      "parents": [],
+      "exit_criteria": [
+        {
+          "check": "build_resolves",
+          "cmd": "mvn -q compile"
+        }
+      ],
+      "acceptance_criteria": [
+        "pom.xml imports Red Hat Quarkus Platform BOM 3.27.3.SP1-redhat-00002",
+        "Extensions quarkus-rest and quarkus-rest-jackson are declared",
+        "Java 21 toolchain configured",
+        "application.properties sets quarkus.http.root-path"
+      ],
+      "skills": [
+        "manage-quarkus-extensions",
+        "reference-rh-quarkus-pom"
+      ],
+      "legacy_locus_path": "evidence/findings-handoff.json",
+      "legacy_locus_sha256": "pending"
+    },
+    {
+      "story_id": "T010_US1",
+      "title": "Migrate Greeting endpoint (US1)",
+      "operand_class": [
+        "rest",
+        "user_story"
+      ],
+      "files_writable": [
+        "src/main/java/com/demo/Greeting.java",
+        "src/main/java/com/demo/GreetingResource.java",
+        "src/test/java/com/demo/GreetingResourceTest.java"
+      ],
+      "endpoints": [
+        "GET /greeting"
+      ],
+      "parents": [
+        "T001_SETUP"
+      ],
+      "exit_criteria": [
+        {
+          "check": "http_semantics",
+          "cmd": "mvn -q test"
+        },
+        {
+          "check": "endpoint_contract",
+          "cmd": "mvn -q test"
+        }
+      ],
+      "acceptance_criteria": [
+        "GET /api/greeting returns HTTP 200 with JSON {id, content}",
+        "Default name parameter returns 'Hello, World!'",
+        "Custom name parameter returns 'Hello, {name}!'",
+        "Counter increments on each request"
+      ],
+      "skills": [
+        "spring-to-quarkus-patterns"
+      ],
+      "legacy_locus_path": "evidence/entry-point-inventory.json",
+      "legacy_locus_sha256": "07f682b0c644130b8769fd11c2d04dcc904f1c330406cd685d67dcf0ee9ee8b1",
+      "legacy_source": "src/main/java/com/example/restservice/GreetingController.java"
+    },
+    {
+      "story_id": "T020_POLISH",
+      "title": "Polish - README and health test",
+      "operand_class": "test",
+      "files_writable": [
+        "README.md",
+        "src/test/java/com/demo/HealthTest.java"
+      ],
+      "parents": [
+        "T010_US1"
+      ],
+      "exit_criteria": [
+        {
+          "check": "test_suite_runs",
+          "cmd": "mvn -q test"
+        }
+      ],
+      "acceptance_criteria": [
+        "README.md documents build and run instructions",
+        "HealthTest verifies GET /q/health returns UP"
+      ],
+      "skills": [],
+      "legacy_locus_path": "evidence/findings-handoff.json",
+      "legacy_locus_sha256": "pending"
+    }
+  ]
+}

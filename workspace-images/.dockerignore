@@ -1,0 +1,9 @@
+# Architect 062606ZA F1: keep scripts/ and out/web_dist; exclude the rest of out/.
+# Do not git-add workspace-images/out/. `out/*` (not `out/**`) so `!out/web_dist/`
+# can re-include the host-baked dashboard assets.
+out/*
+!out/web_dist/
+!out/web_dist/**
+**/.DS_Store
+**/__pycache__/
+**/*.pyc

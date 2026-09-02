@@ -1,42 +1,124 @@
-# Migration provenance record — stamped by the app-migration template.
-# The legacy application is intentionally NOT registered in the catalog;
-# this file is the durable record of where the migration started.
+# Migration provenance + harness contract — stamped by the app-migration
+# template. Specimen-layering: the golden scaffold stays specimen-free; this
+# skeleton is the only place demo-specimen contracts are written.
 #
-# Harness contract defaults below are the Coolstore cart demo values.
-# For a non-cart legacy app, edit this file in the destination repo after
-# create (acceptance.path, preserve, forbidden, targetContract).
+# Profile selection is by legacyRepoUrl (known demo freeze-forks). Unknown
+# URLs get provenance + analysis only and contract.status: undecided — never
+# Coolstore cart literals. Do not "edit after create" for the known demo
+# specimens; recreate from the template if the stamp is wrong. dest-3
+# gs-rest-service-legacy was stamped on the already-materialised dest file
+# (Operator GO); this branch is for the next cut.
+# Plain set tags below, NOT the whitespace-stripping dash form: stripping eats
+# the newline before migration: and glues it onto this comment block.
+# Do not write template tag syntax in these comments — the scaffolder renders
+# this file before YAML parsing, so a tag inside a "#" comment is still parsed.
+{% set url = (values.legacyRepoUrl | default('', true) | lower) %}
+{% set is_petclinic = ('spring-petclinic-rest-legacy' in url) or ('petclinic-rest-legacy' in url) %}
+{% set is_cart = ('coolstore-cart-legacy' in url) %}
+{% set is_gs_rest = ('gs-rest-service-legacy' in url) %}
 migration:
   legacyRepoUrl: ${{ values.legacyRepoUrl }}
   target: quarkus
   provisionedBy: app-migration golden-path template
-  # Package identity (single source of the rename). A non-cart app sets its own.
+{%- if is_petclinic %}
+  legacyBasePackage: org.springframework.samples.petclinic
+  legacyPackage: org.springframework.samples.petclinic
+  targetPackage: com.demo
+  path_rewrites:
+    - from: src/main/java/com/demo/
+      to: src/main/java/org/springframework/samples/petclinic/
+    - from: src/test/java/com/demo/
+      to: src/test/java/org/springframework/samples/petclinic/
+  # Dest↔legacy leaves under the rewritten package root (from=dest, to=legacy).
+  # The deriver applies these; the plan may rename a leaf.
+  intra_package_maps:
+    - from: entity/
+      to: model/
+{%- elif is_cart %}
+  legacyBasePackage: com.redhat.coolstore
   legacyPackage: com.redhat.coolstore
   targetPackage: com.demo
+  path_rewrites:
+    - from: src/main/java/com/demo/
+      to: src/main/java/com/redhat/coolstore/
+    - from: src/test/java/com/demo/
+      to: src/test/java/com/redhat/coolstore/
+  intra_package_maps: []
+{%- elif is_gs_rest %}
+  legacyBasePackage: com.example.restservice
+  legacyPackage: com.example.restservice
+  targetPackage: com.demo
+  path_rewrites:
+    - from: src/main/java/com/demo/
+      to: src/main/java/com/example/restservice/
+    - from: src/test/java/com/demo/
+      to: src/test/java/com/example/restservice/
+  intra_package_maps: []
+{%- else %}
+  # Unknown specimen — set legacyBasePackage/targetPackage before M1.
+  legacyBasePackage: ""
+  legacyPackage: ""
+  targetPackage: com.demo
+  path_rewrites: []
+  intra_package_maps: []
+{%- endif %}
+
+{%- if is_petclinic %}
 acceptance:
-  # The harness supervisor asserts this after deploy (M5 ship success).
+  # Validated showcase stamp (petclinic-rest-v5 / O-ACCEPTREAL).
+  path: /petclinic/api/vets
+  collection: _array
+  getter: getAllVets
+  service: VetRestController
+  itemType: VetDto
+  idFields: [id]
+{%- elif is_cart %}
+acceptance:
   path: /api/cart/acceptance-check
-  needsDatabase: ${{ values.needsDatabase }}
-  # R-83 P2 / O-DEVDBURL: sensors/boot DEV_DB_URL uses dbService/dbName when
-  # set; omit → ${PROJECT_KEY}-postgres / ${PROJECT_KEY}. Skeleton k8s
-  # postgres Secret DATABASE + JDBC path use values.name (same identity).
-  # dbService:   # omit → ${PROJECT_KEY}-postgres
-  # dbName:      # omit → ${PROJECT_KEY}; set if DB name differs from app name
+  collection: products
+  service: CatalogService
+  endpointEnv: CATALOG_ENDPOINT
+  itemType: Product
+{%- elif is_gs_rest %}
+acceptance:
+  path: /greeting
+{%- else %}
+acceptance:
+  path: ""
+{%- endif %}
+
 analysis:
-  # MTA rule selection is LABEL FILTERING (targets pick only matching
-  # rules; everything else is silently excluded). Decided set (validated
-  # 2026-07-27 A/B on the cart legacy): the migration path, the jakarta
-  # namespace jump, cloud-readiness (OpenShift deploy), the JDK jump.
-  # NO source filter — it only narrows (excludes source-labelless rules
-  # incl. custom ones). Applies to IDE analysis AND the harness run.
-  targets: [quarkus, jakarta-ee9, cloud-readiness, openjdk17]
+  # AD-003A: --target only, never --source. openjdk21 kept (O-OPENJDK21TARGET).
+  mode: source-only
+  targets:
+    - quarkus
+    - jakarta-ee9
+    - cloud-readiness
+    - openjdk17
+    - openjdk21
+
+{%- if is_petclinic %}
 targetContract:
-  # Decided modern contract for REDESIGN classes (M1 §7 reads this as
-  # authoritative). EVERY shape is gated by its flag — the rubric enforces
-  # only the true ones; MAPPINGS is the catalog. Behavior-changing items
-  # (getIdempotent/validateInput/mapErrors) are this demo's decision to
-  # modernize the cart API; an app with external consumers would set them
-  # false. Behavior-preserving items (thread-safety, cache) are safe to
-  # enable but still gated — a stateless service leaves them false.
+  validateInput: true
+  mapErrors: true
+  getIdempotent: true
+  threadSafeState: false
+  cacheRefreshGuard: true
+  normalizeBeforeDerive: false
+configTransforms:
+  - from: server.port
+    to: quarkus.http.port
+    valueMap:
+      "9966": "8080"
+preserve:
+  - petclinic.security.enable
+  - server.servlet.context-path
+forbidden: []
+contract:
+  status: decided
+  profile: spring-petclinic-rest-legacy
+{%- elif is_cart %}
+targetContract:
   getIdempotent: true
   validateInput: true
   mapErrors: true
@@ -48,3 +130,21 @@ preserve:
 forbidden:
   - getMockProducts
   - "Fallback to mock"
+contract:
+  status: decided
+  profile: coolstore-cart-legacy
+{%- elif is_gs_rest %}
+targetContract: {}
+preserve: []
+forbidden: []
+contract:
+  status: decided
+  profile: gs-rest-service-legacy
+{%- else %}
+targetContract: {}
+preserve: []
+forbidden: []
+contract:
+  status: undecided
+  profile: unknown
+{%- endif %}

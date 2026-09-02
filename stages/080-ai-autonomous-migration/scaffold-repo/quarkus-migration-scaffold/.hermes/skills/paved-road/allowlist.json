@@ -1,0 +1,24 @@
+{
+  "domain": [
+    "spring-to-quarkus-patterns",
+    "form-entity-persistence"
+  ],
+  "dest-init": [
+    "dispatch-phase",
+    "init-spec-workspace"
+  ],
+  "kind-not-yet": [
+    "manage-quarkus-extensions",
+    "author-destination-pom",
+    "commit-destination-tree",
+    "reference-rh-quarkus-pom",
+    "configure-quarkus-profiles",
+    "compose-m4-verdict",
+    "check-release-readiness",
+    "check-domain-parity",
+    "assert-retrievable-tree",
+    "assert-pinned-gates-ran",
+    "assert-no-fence-evasion",
+    "derive-story-oracles"
+  ]
+}

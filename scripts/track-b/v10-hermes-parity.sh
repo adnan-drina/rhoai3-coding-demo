@@ -20,6 +20,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 # shellcheck source=/dev/null
 source "${ROOT}/scripts/track-b/lib-quality-gates.sh"
+qg_refuse_retired_wave5_harness
 
 SCAFFOLD_DEFAULT="${ROOT}/stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold"
 SCAFFOLD="${HERMES_PARITY_ROOT:-$SCAFFOLD_DEFAULT}"

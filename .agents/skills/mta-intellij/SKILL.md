@@ -17,7 +17,7 @@ description: >
 
 # MTA IntelliJ IDEA Plugin
 
-Use this skill to ground Migration Toolkit for Applications (MTA) 8.1 IntelliJ
+Use this skill to ground Migration Toolkit for Applications (MTA) 8.2 IntelliJ
 IDEA plugin guidance in the official IntelliJ IDEA Plugin Guide. The MTA plugin
 analyzes projects using customizable rulesets, marks issues in source code,
 provides guidance to fix issues, and offers automatic code replacement where

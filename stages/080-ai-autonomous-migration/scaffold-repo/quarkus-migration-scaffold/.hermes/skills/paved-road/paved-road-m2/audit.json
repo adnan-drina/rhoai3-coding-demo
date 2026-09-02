@@ -1,0 +1,72 @@
+{
+  "artifact": "m2-partition",
+  "forgeable_receipts": [
+    "workflow-run.json"
+  ],
+  "kind": "m2-plan",
+  "last_wins_across_needles": false,
+  "last_wins_within_needle": true,
+  "producer": "plan-migration-partition",
+  "silence_fails": true,
+  "source": "steps.json",
+  "steps": [
+    {
+      "backing": "skill",
+      "id": "speckit-specify",
+      "keep": [],
+      "needle": "speckit-specify"
+    },
+    {
+      "backing": "skill",
+      "id": "speckit-plan",
+      "keep": [],
+      "needle": "speckit-plan"
+    },
+    {
+      "backing": "skill",
+      "id": "speckit-tasks",
+      "keep": [],
+      "needle": "speckit-tasks"
+    },
+    {
+      "backing": "skill",
+      "id": "plan-migration-partition",
+      "keep": [
+        "evidence/partition.json"
+      ],
+      "needle": "plan-migration-partition",
+      "producer": true
+    },
+    {
+      "backing": "skill",
+      "id": "check-spec-readiness",
+      "keep": [],
+      "needle": "check-spec-readiness"
+    },
+    {
+      "backing": "native",
+      "id": "check-partition-coverage",
+      "keep": [],
+      "needle": "check-partition-coverage.py"
+    },
+    {
+      "backing": "native",
+      "id": "assert-m2-speckit-conformance",
+      "keep": [],
+      "needle": "assert-m2-speckit-conformance.py"
+    },
+    {
+      "backing": "kernel",
+      "id": "k4-convert",
+      "keep": [],
+      "needle": "k4_convert.py"
+    },
+    {
+      "backing": "kernel",
+      "id": "k4-mint",
+      "keep": [],
+      "needle": "k4_mint.py"
+    }
+  ],
+  "unmatched_exit_1_fails": true
+}

@@ -48,7 +48,8 @@ metadata:
     app.kubernetes.io/part-of: rhoai3-coding-demo
   annotations:
     argocd.argoproj.io/hook: Sync
-    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+    argocd.argoproj.io/sync-wave: "12"
 spec:
   backoffLimit: 2
   template:
@@ -63,6 +64,10 @@ spec:
             - -c
             - |
               set -euo pipefail
+              for i in $(seq 1 30); do
+                if oc get tektonconfig config >/dev/null 2>&1; then break; fi
+                echo "waiting for TektonConfig ($i/30)"; sleep 10
+              done
               oc patch tektonconfig config --type=merge -p '{
                 "spec": {"pruner": {
                   "disabled": false,
