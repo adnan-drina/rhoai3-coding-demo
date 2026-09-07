@@ -15,9 +15,11 @@ from paved_road import (
     HERMES_DIR,
     SPECIFY_RUN,
     audit_bytes,
+    audit_paths,
     coverage,
     evaluate_audit,
     generate_audit,
+    is_allowed_audit_log,
     load_steps,
     matching_terminal_lines,
     sync_audit,
@@ -411,6 +413,39 @@ class TestResolveLogProfileHome(unittest.TestCase):
                 got, root / "kanban" / "logs" / "t_missing.log"
             )
             self.assertFalse(got.is_file())
+
+
+class TestAuditLogMustBeOfficial(unittest.TestCase):
+    def test_fixture_official_log_allowed(self):
+        path = M2 / "fixtures" / "green-m2" / "official.log"
+        self.assertTrue(is_allowed_audit_log(path))
+        self.assertEqual(audit_paths(path, M2 / "fixtures" / "green-m2", M2 / "steps.json"), 0)
+
+    def test_kanban_logs_task_file_allowed(self):
+        self.assertTrue(
+            is_allowed_audit_log(Path("/projects/modernized/.hermes/home/kanban/logs/t_28a9dee4.log"))
+        )
+
+    def test_implementer_cache_terminal_output_refused(self):
+        cache = Path(
+            "/projects/modernized/.hermes/home/profiles/implementer/"
+            "cache/terminal-output/out-1787951005-4583-5850.log"
+        )
+        self.assertFalse(is_allowed_audit_log(cache))
+        rc, blob = _eval_audit_paths(cache)
+        self.assertEqual(rc, 1)
+        self.assertIn("cache/terminal-output", blob)
+        self.assertIn("not an official kanban log", blob)
+
+    def test_random_tmp_log_refused(self):
+        self.assertFalse(is_allowed_audit_log(Path("/tmp/worker.log")))
+
+
+def _eval_audit_paths(log: Path) -> tuple[int, str]:
+    buf = io.StringIO()
+    with redirect_stderr(buf):
+        rc = audit_paths(log, M2 / "fixtures" / "green-m2", M2 / "steps.json")
+    return rc, buf.getvalue()
 
 
 class TestM1Green(unittest.TestCase):

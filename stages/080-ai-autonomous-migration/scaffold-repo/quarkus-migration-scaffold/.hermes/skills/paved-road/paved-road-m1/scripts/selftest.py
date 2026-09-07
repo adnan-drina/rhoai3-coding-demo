@@ -58,20 +58,42 @@ def main() -> int:
         return _fail("green-m1 must PASS: %s" % blob)
 
     with tempfile.TemporaryDirectory(prefix="paved-m1-") as tmp:
-        empty = Path(tmp) / "empty.log"
-        empty.write_text("reasoning: skip MTA\n", encoding="utf-8")
-        proc = _run(empty, GREEN)
+        official = Path(tmp) / "kanban" / "logs" / "t_silence.log"
+        official.parent.mkdir(parents=True)
+        official.write_text("reasoning: skip MTA\n", encoding="utf-8")
+        proc = _run(official, GREEN)
         blob = proc.stdout + proc.stderr
         if proc.returncode != 1:
             return _fail("silence must REFUSE: %s" % blob)
         if "silence" not in blob and "absent" not in blob:
             return _fail("silence must name absence: %s" % blob)
 
+        cache = (
+            Path(tmp)
+            / "profiles"
+            / "implementer"
+            / "cache"
+            / "terminal-output"
+            / "out-1.log"
+        )
+        cache.parent.mkdir(parents=True)
+        cache.write_text("  ┊ 📚 skill  derive-legacy-boot3\n", encoding="utf-8")
+        proc = _run(cache, GREEN)
+        blob = proc.stdout + proc.stderr
+        if proc.returncode != 1:
+            return _fail("implementer cache --log must REFUSE: %s" % blob)
+        if "not an official kanban log" not in blob:
+            return _fail("cache --log must name official-log refuse: %s" % blob)
+
     cov = coverage(GOLDEN_ROOT)
     if cov != 0:
         return _fail("coverage lint failed")
 
-    print("OK: paved-road-m1 selftest (sync; green PASS dispatcher-format; silence REFUSE; coverage)")
+    print(
+        "OK: paved-road-m1 selftest "
+        "(sync; green PASS dispatcher-format; silence REFUSE; "
+        "cache --log REFUSE; coverage)"
+    )
     return 0
 
 

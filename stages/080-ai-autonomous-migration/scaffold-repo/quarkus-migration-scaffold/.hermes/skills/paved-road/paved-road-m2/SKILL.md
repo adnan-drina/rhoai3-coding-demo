@@ -50,6 +50,8 @@ Pin **only** this leaf (`--skill paved-road-m2`). Subskills load via
 3. Happy-path terminator: `kanban_request_review` (not `kanban_complete`).
 4. `kanban_block` for external/platform (MaaS 500, missing key, GPU).
 5. Reviewer runs `scripts/assert-paved-road-audit.py --log <official> --root <ws>`.
+   `--log` must be `kanban/logs/t_*.log` (or a land-time `fixtures/**/official.log`).
+   Implementer `cache/terminal-output` is worker-authored and is refused.
    Land-time `scripts/selftest.py` is not dest.
 
 Producer of artifact `m2-partition` is the `plan-migration-partition` step.

@@ -86,6 +86,30 @@ def resolve_log(task_id: str | None, log: Path | None) -> Path | None:
     return Path(home) / "kanban" / "logs" / (task_id + ".log")
 
 
+_CACHE_TERMINAL = "cache/terminal-output"
+_OFFICIAL_KANBAN_LOG = re.compile(r"(?:^|/)kanban/logs/t_[A-Za-z0-9]+\.log$")
+_FIXTURE_OFFICIAL_LOG = re.compile(r"(?:^|/)fixtures/.+/official\.log$")
+
+
+def is_allowed_audit_log(path: Path) -> bool:
+    """True for the official kanban log or a land-time fixture.
+
+    dest-22 M1 reviewer passed ``--log`` at implementer
+    ``cache/terminal-output`` (worker-authored). That is not the A-gate
+    surface. Workshop selftests use ``fixtures/**/official.log``.
+    """
+    n = str(path).replace("\\", "/")
+    if _CACHE_TERMINAL in n:
+        return False
+    if "/profiles/" in n and "/cache/" in n:
+        return False
+    if _OFFICIAL_KANBAN_LOG.search(n):
+        return True
+    if _FIXTURE_OFFICIAL_LOG.search(n):
+        return True
+    return False
+
+
 def load_json(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
 
@@ -415,6 +439,12 @@ def evaluate_audit(text: str, doc: dict[str, Any], root: Path) -> int:
 
 
 def audit_paths(log: Path, root: Path, steps_path: Path) -> int:
+    if not is_allowed_audit_log(log):
+        return _fail(
+            "--log is not an official kanban log (%s); "
+            "refuse implementer cache/terminal-output"
+            % log
+        )
     if not log.is_file():
         return _fail("missing official log %s" % log)
     try:
