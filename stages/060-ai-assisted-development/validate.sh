@@ -54,7 +54,13 @@ for ns in wksp-kubeadmin wksp-ai-admin wksp-ai-developer; do
         "oc get configmap vscode-editor-configurations -n $ns -o jsonpath='{.data.settings\\.json}' | grep -q 'terminal.integrated.defaultProfile.linux' && echo present || echo missing" \
         "present"
     check "Che Code editor configuration sets Kilo Code default model: $ns" \
-        "oc get configmap vscode-editor-configurations -n $ns -o jsonpath='{.data.settings\\.json}' | grep -q 'kilo-code.new.model.providerID.: .qwen' && echo present || echo missing" \
+        "oc get configmap vscode-editor-configurations -n $ns -o jsonpath='{.data.settings\\.json}' | grep -q 'kilo-code.new.model.providerID.: .qwen27b' && echo present || echo missing" \
+        "present"
+    check "Che Code editor configuration defaults Kilo to qwen3-6-27b: $ns" \
+        "oc get configmap vscode-editor-configurations -n $ns -o jsonpath='{.data.settings\\.json}' | grep -q 'kilo-code.new.model.modelID.: .qwen3-6-27b' && echo present || echo missing" \
+        "present"
+    check "Che Code editor configuration disables Workspace Trust so Kilo activates: $ns" \
+        "oc get configmap vscode-editor-configurations -n $ns -o jsonpath='{.data.settings\\.json}' | grep -q 'security.workspace.trust.enabled.: false' && echo present || echo missing" \
         "present"
     for workspace in "${WORKSPACES[@]}"; do
         check "Workspace DevWorkspace exists: $ns/$workspace" \
@@ -133,6 +139,12 @@ check "DevWorkspace AI tools init ConfigMap exists" \
     "devspace-ai-tools-init"
 check "Init script defaults Kilo to qwen3-6-27b" \
     "oc get configmap devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\\.sh}' | grep -q 'qwen27b/qwen3-6-27b' && echo present || echo missing" \
+    "present"
+check "Init script allow-lists only the MaaS Qwen provider for Kilo" \
+    "oc get configmap devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\\.sh}' | grep -q 'enabled_providers.: \\[\"qwen27b\"\\]' && echo present || echo missing" \
+    "present"
+check "Init script writes kilo.jsonc (Kilo 7.4 primary config)" \
+    "oc get configmap devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\\.sh}' | grep -q 'kilo.jsonc' && echo present || echo missing" \
     "present"
 check "Init script disables ungoverned Kilo providers (kilo gateway, z.ai)" \
     "oc get configmap devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\\.sh}' | grep -q 'disabled_providers' && echo present || echo missing" \

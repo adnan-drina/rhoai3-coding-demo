@@ -1249,15 +1249,15 @@ for proc in ("/proc/net/tcp","/proc/net/tcp6"):
 **Diagnose:**
 
 ```bash
-oc get devworkspace getting-started-ai-coding -n wksp-ai-developer -o yaml \
+oc get devworkspace agentic-coolstore -n wksp-ai-developer -o yaml \
   | grep -E 'DEFAULT_EXTENSIONS|kilo-code'
 
 POD=$(oc get pod -n wksp-ai-developer \
-  -l controller.devfile.io/devworkspace_name=getting-started-ai-coding \
+  -l controller.devfile.io/devworkspace_name=agentic-coolstore \
   -o jsonpath='{.items[0].metadata.name}')
 
 oc exec -n wksp-ai-developer "$POD" -c tooling-container -- \
-  ls ~/.kilo-code/ 2>/dev/null && echo "Kilo Code config present"
+  ls ~/.config/kilo/ 2>/dev/null && echo "Kilo Code config present"
 ```
 
 **Recover:**
@@ -1265,6 +1265,23 @@ oc exec -n wksp-ai-developer "$POD" -c tooling-container -- \
 - Sync Stage 050 so each DevWorkspace sets the current `DEFAULT_EXTENSIONS` policy with the Kilo Code extension.
 - Stop and restart the affected workspace from the Dev Spaces dashboard, or patch `spec.started` to `false` and then back to `true`.
 - Confirm the Kilo Code sidebar appears in Che Code and that the MaaS configuration has been rendered by the init script.
+
+## Kilo Code Shows The Default Catalog Instead Of MaaS Qwen3.6
+
+**Affected stage:** Stage 060 (`agentic-coolstore`)
+
+**Likely cause:** Two stacked defaults. Che Code Restricted Mode (Workspace Trust) leaves a VSIX installed but disabled until the user clicks Enable. After enable, Kilo 7.4 reads `kilo-code.new.model.*` from `vscode-editor-configurations` and its built-in Gateway catalog unless `~/.config/kilo/kilo.jsonc` allow-lists only `qwen27b`.
+
+**Diagnose:**
+
+```bash
+oc get configmap vscode-editor-configurations -n wksp-ai-developer \
+  -o jsonpath='{.data.settings\.json}' | jq .
+oc get configmap devspace-ai-tools-init -n wksp-ai-developer \
+  -o jsonpath='{.data.init-ai-tools\.sh}' | grep -E 'enabled_providers|kilo.jsonc|qwen27b'
+```
+
+**Recover:** Sync Stage 050, then **stop and start** `agentic-coolstore` so Che Code reloads editor settings and postStart rewrites `~/.config/kilo/kilo.jsonc`. Do not click Enable on a Restricted Mode workspace as the configuration path — trust is disabled in these namespaces. The picker should show only `qwen3-6-27b`.
 
 ## Kilo Code Cannot Reach MaaS Endpoint
 

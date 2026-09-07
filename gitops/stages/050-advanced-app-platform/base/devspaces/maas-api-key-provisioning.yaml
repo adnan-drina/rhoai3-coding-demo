@@ -429,10 +429,19 @@ data:
     }
 
     write_kilo_config() {
-      cat > "${HOME}/.config/kilo/kilo.json" <<KILOEOF
+      # Kilo 7.4 reads kilo.jsonc first and still merges kilo.json. Write both
+      # so a first enable does not fall through to the Kilo Gateway catalog.
+      # enabled_providers is the allow-list (hides every built-in provider);
+      # disabled_providers keeps kilo/zai off even if a later merge widens the
+      # list. Expand MAAS_* at call time (unquoted heredoc).
+      mkdir -p "${HOME}/.config/kilo"
+      cat > "${HOME}/.config/kilo/kilo.jsonc" <<KILOEOF
     {
+      "\$schema": "https://app.kilo.ai/config.json",
       "model": "qwen27b/qwen3-6-27b",
-      "disabled_providers": ["kilo", "zai"],
+      "enabled_providers": ["qwen27b"],
+      "disabled_providers": ["kilo", "zai", "openai", "anthropic", "google", "openrouter", "groq"],
+      "hide_prompt_training_models": true,
       "provider": {
         "qwen27b": {
           "npm": "@ai-sdk/openai-compatible",
@@ -460,7 +469,8 @@ data:
       }
     }
     KILOEOF
-      echo "Wrote Kilo Code config (default: qwen3-6-27b)."
+      cp "${HOME}/.config/kilo/kilo.jsonc" "${HOME}/.config/kilo/kilo.json"
+      echo "Wrote Kilo Code config (qwen3-6-27b via MaaS only; built-in providers disabled)."
     }
 
     cleanup_stale_assistants

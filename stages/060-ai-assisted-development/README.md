@@ -54,13 +54,12 @@ This is the brownfield service you will extend. It is already deployed, already 
 
 1. On the component page, click the **Dev Spaces** link. This opens the `agentic-coolstore` workspace directly (no factory URL needed).
 2. The workspace starts. First-start notes:
-   - The Kilo Code VSIX (111 MB) downloads from Open VSX. This takes 1–3 minutes on a fresh workspace; subsequent restarts are instant.
-   - VS Code may show a **workspace trust** dialog; accept it.
-3. Wait for the IDE to finish loading extensions.
+   - The Kilo Code VSIX (111 MB) downloads from Open VSX (1–3 minutes). Later restarts reuse the PVC.
+   - Kilo Code is enabled automatically (Workspace Trust is off in these platform namespaces). Do not click Enable in the Extensions view — that path loads Kilo's default catalog instead of MaaS.
 
 ![Dev Spaces workspace starting](images/devspaces-workspace-start.png)
 
-4. While it loads (or once the IDE is up), explore the project structure:
+3. While it loads (or once the IDE is up), explore the project structure:
    - `src/main/java/com/redhat/coolstore/inventory/`: the Quarkus application code. `InventoryResource` is the existing REST endpoint. `InventoryRepository` seeds 3 items across 2 locations, with 1 item out-of-stock.
    - `pom.xml`: uses the Red Hat build of Quarkus BOM.
    - `Containerfile`: the container build definition.
@@ -93,22 +92,20 @@ This is the brownfield service you will extend. It is already deployed, already 
 ## Step 5: Meet Kilo Code
 
 1. Click the **Kilo Code** icon in the sidebar to open the assistant panel.
-2. Notice the model picker at the top. Four governed models are available:
+2. Notice the model picker at the top. The workspace is locked to the platform's private MaaS model — Kilo Gateway, z.ai, and other built-in catalogs are disabled:
 
 | Model | Context | When to use |
 |-------|---------|-------------|
-| `qwen3-6-27b` | 131K | Default: the platform's local model — best-in-class tool calling and agentic coding, large context |
-| `qwen3-235b` | 16K | External (Red Hat internal): larger model, shorter context |
-| `minimax-m2` | 196K | External (Red Hat internal): large context for complex fixes; emits visible `<think>` reasoning blocks (normal, not an error) |
+| `qwen3-6-27b` | 131K | Default and only picker entry: local Qwen3.6 27B through MaaS |
 
-3. Configuration comes from `~/.config/kilo/kilo.json` (platform-provisioned, no personal API keys). Governance rules live in `~/.config/kilo/AGENTS.md`.
+3. Configuration comes from `~/.config/kilo/kilo.jsonc` (and `kilo.json`) — platform-provisioned, no personal API keys. Governance rules live in `~/.config/kilo/AGENTS.md`.
 4. Send a first prompt to see the model respond. This is your "hello world"; ask whatever you like. For example:
 
 ```
 Explore our project code and report what REST endpoints this service exposes.
 ```
 
-**What you should see:** the Kilo Code panel with the model picker showing all four providers, and a streamed answer to your first prompt.
+**What you should see:** the Kilo Code panel with the model picker on `qwen3-6-27b` only, and a streamed answer to your first prompt.
 
 ![Kilo Code panel with model picker](images/kilo-panel-models.png) ![Kilo first prompt response](images/kilo-first-prompt-response.png)
 
@@ -188,8 +185,7 @@ Create a new REST endpoint /api/inventory/stats in this Quarkus service that ret
 > **If Kilo stalls mid-task** (reasoning trails off with no diff and no
 > answer), that is small-model drift on multi-step work, not a platform
 > error. Send `continue` or resend the prompt; a drifted turn usually
-> recovers on retry. If it keeps happening, switch to a stronger model;
-> that tradeoff is exactly what the model picker is for.
+> recovers on retry.
 
 **What you should see:** `/api/inventory/stats` returns a JSON object with `totalItems`, `byLocation`, `inStock`, and `outOfStock` counts.
 
@@ -259,11 +255,10 @@ In SonarQube (anonymous browsing is enabled):
 
 ---
 
-## Step 11: Fix with a stronger model
+## Step 11: Fix the Sonar issues
 
-1. Back in the workspace, open Kilo Code.
-2. Switch the model to **minimax-m2** (196K context). Note: this model emits visible `<think>` reasoning blocks (this is normal behavior, not an error).
-3. Build the fix prompt from the report: the gate judges **every file you touched**, so include *all* new issues SonarQube listed, not just the ones you expected. With the flawed spec the report typically shows:
+1. Back in the workspace, open Kilo Code. Stay on **Qwen3.6 27B** — it is the only model in the picker.
+2. Build the fix prompt from the report: the gate judges **every file you touched**, so include *all* new issues SonarQube listed, not just the ones you expected. With the flawed spec the report typically shows:
 
 ```
 The pipeline's SonarQube quality gate failed. The report lists these new
@@ -283,12 +278,12 @@ pass.
 
 ![Kilo fix prompt](images/kilo-fix-prompt.png)
 
-4. Review the proposed diff:
+3. Review the proposed diff:
    - `System.out.println` → `Logger.info()` (using `org.jboss.logging.Logger`)
    - `@Inject` field injection → constructor injection
    - The repeated URL literal → a single constant in `InventoryRepository`
-5. Approve the changes.
-6. Hot-reload verify:
+4. Approve the changes.
+5. Hot-reload verify:
     ```bash
     curl localhost:8080/api/inventory/stats
     ```
