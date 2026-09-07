@@ -186,19 +186,14 @@ spec:
             kind: ClusterInterceptor
           params:
             - name: filter
-              # This project's repo only: main-branch pushes, no deletions.
-              # V6 P3.4: skip docs/migration-prose-only pushes (no src/pom/k8s).
+              # Platform Coolstore: every main-branch push. GitHub App push
+              # payloads often omit commits[].added/modified/removed, so a
+              # file-path filter silently drops Stage 060 demo pushes
+              # (HMAC OK, CEL Continue:false, no PipelineRun).
               value: >-
                 body.ref == 'refs/heads/main'
                 && body.after != '0000000000000000000000000000000000000000'
                 && body.repository.name == 'coolstore-inventory-service'
-                && (size(body.commits) == 0 || body.commits.exists(c,
-                     c.added.exists(f, f.startsWith('src/') || f == 'pom.xml' || f.startsWith('k8s/')
-                       || f == 'Containerfile' || f.endsWith('application.properties') || f == 'migration.yaml')
-                     || c.modified.exists(f, f.startsWith('src/') || f == 'pom.xml' || f.startsWith('k8s/')
-                       || f == 'Containerfile' || f.endsWith('application.properties') || f == 'migration.yaml')
-                     || c.removed.exists(f, f.startsWith('src/') || f == 'pom.xml' || f.startsWith('k8s/')
-                       || f == 'Containerfile' || f.endsWith('application.properties') || f == 'migration.yaml')))
       template:
         ref: app-platform-push-template
     - name: scaffolded-project-bootstrap

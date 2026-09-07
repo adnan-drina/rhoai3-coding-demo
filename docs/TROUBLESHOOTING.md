@@ -1676,6 +1676,8 @@ Keep the secret equal to `.env` `GITHUB_WEBHOOK_SECRET` (verify: `oc get secret 
 
 Validate one live scaffold end-to-end afterwards: the dispatcher CEL filter matches on `body.repository.topics`; if topics turn out to be absent from the push payload on your GitHub, switch the trigger to a per-repo webhook created by the scaffolder template instead.
 
+**Coolstore push arrives but no `app-push` run (CEL file-path filter).** GitHub App `push` payloads often omit `commits[].added` / `modified` / `removed` even when the commit changed `src/`. HMAC succeeds (`Continue: true`); the Coolstore CEL then returns `Continue: false` (`expression ... did not return true`) and no PipelineRun is created. Stage 060's Coolstore trigger now matches every `main` push; do not re-add a file-path filter unless it also treats missing file lists as "run". Diagnose: `oc logs -n openshift-pipelines -l app.kubernetes.io/name=tekton-triggers-core-interceptors --since=10m | grep Continue`. Recover a missed SHA: create an `app-push` PipelineRun in `coolstore-dev` with `revision` set to the commit (same shape as `stages/050-advanced-app-platform/deploy.sh` seed).
+
 **Recover an already-created project without waiting for the App fix** (what to run for a repo that was scaffolded while the App was still on Selected repos):
 
 ```bash
