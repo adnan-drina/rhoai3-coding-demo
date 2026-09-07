@@ -924,9 +924,9 @@ oc get configmap gen-ai-aa-mcp-servers -n redhat-ods-applications -o yaml
 
 ### Stage 050 — Dev Spaces (devspaces component)
 
-The stage 050 `devspaces` component installs Red Hat OpenShift Dev Spaces and pre-provisions workspaces (consumed by the workflow-only stages 060/070).
+The stage 050 `devspaces` component installs Red Hat OpenShift Dev Spaces and persona namespaces (consumed by the workflow-only stages 060/070/080).
 
-Validation now checks both service readiness and persona workspace readiness. The stage is not considered fully validated unless `wksp-kubeadmin`, `wksp-ai-admin`, and `wksp-ai-developer` exist, each contains the `getting-started-ai-coding` and `coolstore-inventory-service` DevWorkspaces, and the `ai-admin` / `ai-developer` workspace edit RoleBindings point at the expected OpenShift users. The `mca-coolstore` modernization workspaces in the same namespaces belong to the `mta` component and are validated by stage 080's `validate.sh`.
+Validation now checks both service readiness and persona namespace readiness. The stage is not considered fully validated unless `wksp-kubeadmin`, `wksp-ai-admin`, and `wksp-ai-developer` exist, the `ai-admin` / `ai-developer` workspace edit RoleBindings point at the expected OpenShift users, and the Stage 060 catalog seat `agentic-coolstore` exists in `wksp-ai-developer` and `wksp-ai-admin`. Stages 070 and 080 create additional workspaces from RHDH factory templates at demo time. Standing `getting-started-ai-coding`, `coolstore-inventory-service`, and `mca-coolstore` DevWorkspaces were retired.
 
 Useful checks:
 
@@ -951,7 +951,7 @@ oc get oauthclient platform-keycloak -o jsonpath='{.redirectURIs[0]}'
 
 ### Stage 050 — MTA (mta component)
 
-The stage 050 `mta` component installs Migration Toolkit for Applications 8.2 (consumed by the workflow-only stage 080). Developer Lightspeed/Kai is disabled until the demo needs it (`kai_llm_proxy_enabled`/`kai_solution_server_enabled: false`; no MaaS wiring — see BACKLOG "Developer Lightspeed re-enable"). Hub auth uses the 8.2 built-in OIDC provider federated to the platform realm: the `configure-mta-platform-sso` PostSync job maintains the realm roles (`role.admin`/`role.architect`/`role.migrator`), the `mta-hub` client (realm roles delivered as `+role.<name>` entries in the access token's `scope` claim), the `mta-idp-client-secret` Secret, and the `platform-sso` IdentityProvider CR, restarting the hub on changes. It also owns the `mca-coolstore` modernization workspaces (MTA VS Code extension pack + hub wiring) in the three persona namespaces and the `mta-hub-workspace-config` PostSync job; stage 080's `validate.sh` covers them.
+The stage 050 `mta` component installs Migration Toolkit for Applications 8.2 (consumed by the workflow-only stage 080). Developer Lightspeed/Kai is disabled until the demo needs it (`kai_llm_proxy_enabled`/`kai_solution_server_enabled: false`; no MaaS wiring — see BACKLOG "Developer Lightspeed re-enable"). Hub auth uses the 8.2 built-in OIDC provider federated to the platform realm: the `configure-mta-platform-sso` PostSync job maintains the realm roles (`role.admin`/`role.architect`/`role.migrator`), the `mta-hub` client (realm roles delivered as `+role.<name>` entries in the access token's `scope` claim), the `mta-idp-client-secret` Secret, and the `platform-sso` IdentityProvider CR, restarting the hub on changes. It also owns the `mta-hub-workspace-config` PostSync job (`mta-hub-config` ConfigMaps in the persona namespaces). Stage 080 analysis workspaces come from the `app-migration` factory destfile; stage 080's `validate.sh` covers that contract.
 
 Useful checks:
 

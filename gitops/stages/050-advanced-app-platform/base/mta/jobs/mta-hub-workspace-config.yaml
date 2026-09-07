@@ -1,6 +1,6 @@
 # Post-deploy Job: writes the MTA hub URL into a ConfigMap in each workspace namespace.
 #
-# The mca-coolstore DevWorkspace sets HUB_URL directly to the internal cluster
+# Factory migration destfiles set HUB_URL directly to the internal cluster
 # service URL (http://mta-ui.openshift-mta.svc.cluster.local:8080) which is stable
 # and never requires patching. No placeholder, no per-sync patching needed.
 #
@@ -19,7 +19,7 @@
 #   - ClusterRole   job-mta-hub-workspace-config-reader : read routes (openshift-mta)
 #   - ClusterRoleBinding                                : bind SA to ClusterRole
 #   - SA + Role + RoleBinding in openshift-mta          : wave anchor for the Job SA
-#   - Role + RoleBinding in each wksp-* namespace       : ConfigMap + DevWorkspace write
+#   - Role + RoleBinding in each wksp-* namespace       : ConfigMap write
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -61,7 +61,7 @@ roleRef:
   name: job-mta-hub-workspace-config-reader
   apiGroup: rbac.authorization.k8s.io
 ---
-# Role: write mta-hub-config ConfigMap + patch mca-coolstore DevWorkspace in wksp-kubeadmin
+# Role: write mta-hub-config ConfigMap in wksp-kubeadmin
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:

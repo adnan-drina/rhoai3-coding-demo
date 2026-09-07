@@ -32,11 +32,7 @@ else
     VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
 fi
 
-log_step "Pre-Provisioned Workspace Namespaces"
-WORKSPACES=(
-    getting-started-ai-coding
-    coolstore-inventory-service
-)
+log_step "Persona Workspace Namespaces"
 for ns in wksp-kubeadmin wksp-ai-admin wksp-ai-developer; do
     check "Workspace namespace exists: $ns" \
         "oc get namespace $ns -o jsonpath='{.metadata.name}'" \
@@ -62,37 +58,42 @@ for ns in wksp-kubeadmin wksp-ai-admin wksp-ai-developer; do
     check "Che Code editor configuration disables Workspace Trust so Kilo activates: $ns" \
         "oc get configmap vscode-editor-configurations -n $ns -o jsonpath='{.data.settings\\.json}' | grep -q 'security.workspace.trust.enabled.: false' && echo present || echo missing" \
         "present"
-    for workspace in "${WORKSPACES[@]}"; do
-        check "Workspace DevWorkspace exists: $ns/$workspace" \
-            "oc get devworkspace $workspace -n $ns -o jsonpath='{.metadata.name}'" \
-            "$workspace"
-        check "Workspace tooling image is digest-pinned: $ns/$workspace" \
-            "case \"\$(oc get devworkspace $workspace -n $ns -o jsonpath='{.spec.template.components[0].container.image}')\" in *@sha256:*) echo pinned ;; *) echo unpinned ;; esac" \
-            "pinned"
-        check "Workspace declares Java 21 JAVA_HOME: $ns/$workspace" \
-            "oc get devworkspace $workspace -n $ns -o yaml | grep -q '/home/tooling/.sdkman/candidates/java/21.0.5-tem' && echo present || echo missing" \
-            "present"
-        check "Workspace startup configures Java 21 shell default: $ns/$workspace" \
-            "oc get devworkspace $workspace -n $ns -o yaml | grep -q 'rhoai3-coding-demo: java 21 default' && echo present || echo missing" \
-            "present"
-        check "Workspace declares Kilo Code default extension: $ns/$workspace" \
-            "oc get devworkspace $workspace -n $ns -o yaml | grep -q '/tmp/kilo.vsix' && echo present || echo missing" \
-            "present"
-        check "Workspace downloads Kilo Code extension 7.4.8: $ns/$workspace" \
-            "oc get devworkspace $workspace -n $ns -o yaml | grep -q 'kilo-code-7.4.8' && echo present || echo missing" \
-            "present"
-        phase=$(oc get devworkspace "$workspace" -n "$ns" -o jsonpath='{.status.phase}' 2>/dev/null || echo "ERROR")
-        if [[ "$phase" == "Failed" || "$phase" == "Failing" || "$phase" == "ERROR" ]]; then
-            echo -e "${RED}[FAIL]${NC} Workspace DevWorkspace is not failed: $ns/$workspace (got: $phase)"
-            VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
-        else
-            echo -e "${GREEN}[PASS]${NC} Workspace DevWorkspace is not failed: $ns/$workspace (phase: ${phase:-NotStarted})"
-            VALIDATE_PASS=$((VALIDATE_PASS + 1))
-        fi
+    for retired in getting-started-ai-coding coolstore-inventory-service mca-coolstore; do
+        check "Retired standing DevWorkspace is absent: $ns/$retired" \
+            "oc get devworkspace $retired -n $ns >/dev/null 2>&1 && echo present || echo absent" \
+            "absent"
     done
 done
 
 log_step "Agentic Coolstore Workspace (stage 060 golden path)"
+for ns in wksp-ai-developer wksp-ai-admin; do
+    check "agentic-coolstore DevWorkspace exists: $ns" \
+        "oc get devworkspace agentic-coolstore -n $ns -o jsonpath='{.metadata.name}'" \
+        "agentic-coolstore"
+    check "agentic-coolstore tooling image is digest-pinned: $ns" \
+        "case \"\$(oc get devworkspace agentic-coolstore -n $ns -o jsonpath='{.spec.template.components[0].container.image}')\" in *@sha256:*) echo pinned ;; *) echo unpinned ;; esac" \
+        "pinned"
+    check "agentic-coolstore declares Java 21 JAVA_HOME: $ns" \
+        "oc get devworkspace agentic-coolstore -n $ns -o yaml | grep -q '/home/tooling/.sdkman/candidates/java/21.0.5-tem' && echo present || echo missing" \
+        "present"
+    check "agentic-coolstore startup configures Java 21 shell default: $ns" \
+        "oc get devworkspace agentic-coolstore -n $ns -o yaml | grep -q 'rhoai3-coding-demo: java 21 default' && echo present || echo missing" \
+        "present"
+    check "agentic-coolstore declares Kilo Code default extension: $ns" \
+        "oc get devworkspace agentic-coolstore -n $ns -o yaml | grep -q '/tmp/kilo.vsix' && echo present || echo missing" \
+        "present"
+    check "agentic-coolstore downloads Kilo Code extension 7.4.8: $ns" \
+        "oc get devworkspace agentic-coolstore -n $ns -o yaml | grep -q 'kilo-code-7.4.8' && echo present || echo missing" \
+        "present"
+    phase=$(oc get devworkspace agentic-coolstore -n "$ns" -o jsonpath='{.status.phase}' 2>/dev/null || echo "ERROR")
+    if [[ "$phase" == "Failed" || "$phase" == "Failing" || "$phase" == "ERROR" ]]; then
+        echo -e "${RED}[FAIL]${NC} agentic-coolstore is not failed: $ns (got: $phase)"
+        VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
+    else
+        echo -e "${GREEN}[PASS]${NC} agentic-coolstore is not failed: $ns (phase: ${phase:-NotStarted})"
+        VALIDATE_PASS=$((VALIDATE_PASS + 1))
+    fi
+done
 check "agentic-coolstore tracks main branch" \
     "oc get devworkspace agentic-coolstore -n wksp-ai-developer -o yaml | grep -A2 'checkoutFrom' | grep -q 'revision: main' && echo main || echo other" \
     "main"

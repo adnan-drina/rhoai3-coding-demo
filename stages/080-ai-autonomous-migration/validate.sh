@@ -217,36 +217,46 @@ check "live workspace-maas-credentials Secret exists" \
   "oc get secret workspace-maas-credentials -n wksp-ai-developer -o jsonpath='{.metadata.name}'" \
   "workspace-maas-credentials"
 
-log_step "Modernization Workspaces (mta component)"
+log_step "Factory Migration Workspace (app-migration destfile)"
+# Stage 080 seats are created at demo time from the RHDH template. Do not
+# require a standing mca-coolstore DevWorkspace. Assert the factory contract
+# and that the retired GitOps seats are gone.
+SKELETON_080="$REPO_ROOT/gitops/stages/050-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml"
+GOLDEN_DEVFILE="${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/devfile.yaml"
+check_factory_mta_destfile() {
+    local label="$1"
+    local destfile="$2"
+    check "factory destfile declares MTA default extensions: $label" \
+        "grep -q '/tmp/mta.vsix;/tmp/mta-core.vsix;/tmp/redhat-java.vsix;/tmp/mta-java.vsix' '$destfile' && echo present || echo missing" \
+        "present"
+    check "factory destfile downloads MTA VS Code extension 8.2.0: $label" \
+        "grep -q 'redhat.mta-vscode-extension-8.2.0.vsix' '$destfile' && echo present || echo missing" \
+        "present"
+    check "factory destfile downloads MTA core extension 8.2.0: $label" \
+        "grep -q 'redhat.mta-core-8.2.0.vsix' '$destfile' && echo present || echo missing" \
+        "present"
+    check "factory destfile downloads MTA Java extension 8.2.0: $label" \
+        "grep -q 'redhat.mta-java-8.2.0.vsix' '$destfile' && echo present || echo missing" \
+        "present"
+    check "factory destfile downloads redhat.java 1.47.0 (mta-java dependency): $label" \
+        "grep -q 'redhat.java-1.47.0.vsix' '$destfile' && echo present || echo missing" \
+        "present"
+    check "factory destfile sets HUB_URL to the internal hub service: $label" \
+        "grep -q 'mta-ui.openshift-mta.svc.cluster.local:8080' '$destfile' && echo present || echo missing" \
+        "present"
+    check "factory destfile sets FORCE_HUB_ENABLED: $label" \
+        "grep -q 'FORCE_HUB_ENABLED' '$destfile' && echo present || echo missing" \
+        "present"
+    check "factory destfile sets HUB_INSECURE: $label" \
+        "grep -q 'HUB_INSECURE' '$destfile' && echo present || echo missing" \
+        "present"
+}
+check_factory_mta_destfile "RHDH app-migration skeleton" "$SKELETON_080"
+check_factory_mta_destfile "080 golden destfile" "$GOLDEN_DEVFILE"
 for ns in wksp-kubeadmin wksp-ai-admin wksp-ai-developer; do
-    check "mca-coolstore workspace exists: $ns" \
-        "oc get devworkspace mca-coolstore -n $ns -o jsonpath='{.metadata.name}'" \
-        "mca-coolstore"
-    # Manifest presence only — does not assert Che-Code activation (Operator E-20260817T104424Z).
-    check "mca-coolstore workspace declares Kilo Code and MTA default extensions: $ns" \
-        "oc get devworkspace mca-coolstore -n $ns -o yaml | grep -q '/tmp/kilo.vsix;/tmp/mta.vsix;/tmp/mta-core.vsix;/tmp/redhat-java.vsix;/tmp/mta-java.vsix' && echo present || echo missing" \
-        "present"
-    check "mca-coolstore workspace downloads MTA VS Code extension 8.2.0: $ns" \
-        "oc get devworkspace mca-coolstore -n $ns -o yaml | grep -q 'redhat.mta-vscode-extension-8.2.0.vsix' && echo present || echo missing" \
-        "present"
-    check "mca-coolstore workspace downloads MTA core extension 8.2.0: $ns" \
-        "oc get devworkspace mca-coolstore -n $ns -o yaml | grep -q 'redhat.mta-core-8.2.0.vsix' && echo present || echo missing" \
-        "present"
-    check "mca-coolstore workspace downloads MTA Java extension 8.2.0: $ns" \
-        "oc get devworkspace mca-coolstore -n $ns -o yaml | grep -q 'redhat.mta-java-8.2.0.vsix' && echo present || echo missing" \
-        "present"
-    check "mca-coolstore workspace downloads redhat.java 1.47.0 (mta-java dependency): $ns" \
-        "oc get devworkspace mca-coolstore -n $ns -o yaml | grep -q 'redhat.java-1.47.0.vsix' && echo present || echo missing" \
-        "present"
-    check "mca-coolstore workspace sets HUB_URL to the internal hub service: $ns" \
-        "oc get devworkspace mca-coolstore -n $ns -o yaml | grep -q 'mta-ui.openshift-mta.svc.cluster.local:8080' && echo present || echo missing" \
-        "present"
-    check "mca-coolstore workspace sets FORCE_HUB_ENABLED: $ns" \
-        "oc get devworkspace mca-coolstore -n $ns -o yaml | grep -q 'FORCE_HUB_ENABLED' && echo present || echo missing" \
-        "present"
-    check "mca-coolstore workspace sets HUB_INSECURE: $ns" \
-        "oc get devworkspace mca-coolstore -n $ns -o yaml | grep -q 'HUB_INSECURE' && echo present || echo missing" \
-        "present"
+    check "retired mca-coolstore standing workspace is absent: $ns" \
+        "oc get devworkspace mca-coolstore -n $ns >/dev/null 2>&1 && echo present || echo absent" \
+        "absent"
     check "mta-hub-config ConfigMap exists with MTA hub URL: $ns" \
         "oc get configmap mta-hub-config -n $ns -o jsonpath='{.data.MTA_HUB_URL}' 2>/dev/null | grep -c 'https://' || echo 0" \
         "1"

@@ -991,9 +991,7 @@ oc get backstage developer-hub -n rhdh -o yaml
 ```bash
 oc get devworkspace -A
 oc get pods -n wksp-ai-developer
-oc describe devworkspace getting-started-ai-coding -n wksp-ai-developer
-oc describe devworkspace coolstore-inventory-service -n wksp-ai-developer
-oc describe devworkspace mca-coolstore -n wksp-ai-developer
+oc describe devworkspace agentic-coolstore -n wksp-ai-developer
 oc logs -n wksp-ai-developer <workspace-pod> -c tooling-container --tail=100
 ```
 
@@ -1293,7 +1291,7 @@ oc get configmap devspace-ai-tools-init -n wksp-ai-developer \
 
 ```bash
 POD=$(oc get pod -n wksp-ai-developer \
-  -l controller.devfile.io/devworkspace_name=getting-started-ai-coding \
+  -l controller.devfile.io/devworkspace_name=agentic-coolstore \
   -o jsonpath='{.items[0].metadata.name}')
 
 oc logs -n wksp-ai-developer "$POD" -c tooling-container --tail=200 \

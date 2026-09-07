@@ -25,5 +25,3 @@ resources:
   - jobs/configure-mta-platform-sso.yaml
   # PostSync: mta-hub-config ConfigMaps (external hub URL) per workspace namespace
   - jobs/mta-hub-workspace-config.yaml
-  # Wave 20: stage 080 modernization workspaces (MTA extension + hub wiring)
-  - workspaces/mca-coolstore-workspaces.yaml
