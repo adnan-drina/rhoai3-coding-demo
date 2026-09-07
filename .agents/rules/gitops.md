@@ -19,7 +19,7 @@ Use the GitOps-related skills for work that changes manifests, Kustomize structu
 
 ## Golden Rule
 
-Every implemented demo stage must be reproducible from `gitops/` and operated through `deploy.sh` / `validate.sh` scripts. The README explains the demo value; `docs/OPERATIONS.md` explains operational usage.
+Every GitOps stage must be reproducible from `gitops/` and operated through `deploy.sh` / `validate.sh`. Workflow-only stages are operated through `validate.sh` only. The README explains the demo value; `docs/OPERATIONS.md` explains operational usage.
 
 ## Mandatory: ArgoCD Application in Every deploy.sh
 
@@ -28,12 +28,14 @@ Every stage's `deploy.sh` MUST apply its ArgoCD Application as its first cluster
 oc apply -f "$REPO_ROOT/gitops/argocd/app-of-apps/$STAGE_NAME.yaml"
 ```
 
-Every stage MUST have:
+Every GitOps stage (`stages/NNN-name/deploy.sh` present) MUST have:
 1. `gitops/stages/NNN-name/base/` - Kustomize manifests
-2. `gitops/argocd/app-of-apps/NNN-name.yaml` - ArgoCD Application
+2. `gitops/argocd/app-of-apps/NNN-name.yaml` - ArgoCD Application whose `metadata.name` matches the directory
 3. `stages/NNN-name/deploy.sh` - applies the ArgoCD Application
 4. `stages/NNN-name/validate.sh` - verifies deployment
 5. `stages/NNN-name/README.md` - educational narrative
+
+Workflow-only stages omit `deploy.sh` and have no Argo CD Application. `./scripts/validate-stage-flow.sh` walks `stages/*/`, requires `validate.sh`, and matches Applications by directory name.
 
 **Never** apply manifests directly with `oc apply -k` for ArgoCD-managed resources.
 
@@ -49,7 +51,7 @@ rhoai3-coding-demo/
 |           `-- base/
 |-- stages/
 |   `-- NNN-descriptive-name/
-|       |-- deploy.sh
+|       |-- deploy.sh          # GitOps stages only; omit for workflow-only
 |       |-- validate.sh
 |       `-- README.md
 |-- scripts/

@@ -57,6 +57,8 @@ gitops/
 
 Stages that patch shared platform resources (e.g., RHOAI DataScienceCluster, OpenShift GitOps bootstrap) record the shared owner path and avoid duplicate full-resource ownership.
 
+`./scripts/validate-stage-flow.sh` discovers stages from `stages/*/`. There is no flow catalog. A directory is a GitOps stage when `deploy.sh` exists (Argo CD Application name equals the directory name). Missing `deploy.sh` is the workflow-only pattern.
+
 ### Workflow-Only Stage Pattern
 
 Stages 060, 070, and 080 are workflow-only stages. They have only `validate.sh` and `README.md` — no `deploy.sh` and no Argo CD Application. Their platform infrastructure (Dev Spaces workspaces, RHDH templates, MTA operator) is owned by Stage 050 (`050-advanced-app-platform`). These stages validate that the platform capabilities they depend on are healthy, and their READMEs describe developer workflows that consume those capabilities.

@@ -126,7 +126,7 @@ Run the narrowest useful checks before live deployment:
 
 - `kustomize build` for GitOps paths
 - `bash -n` for shell scripts
-- `./scripts/validate-stage-flow.sh` for overall flow integrity
+- `./scripts/validate-stage-flow.sh` for `stages/*/` layout, Argo CD name matching, and Kustomize render
 - Manifest review checklists
 
 Live validation should prove the user-visible stage outcome, not just resource existence.

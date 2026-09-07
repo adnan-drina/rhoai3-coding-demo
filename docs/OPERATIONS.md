@@ -123,7 +123,7 @@ Deploy stages in order:
 
 Stages 060–080 are workflow-only (no deploy scripts, no Argo CD Applications of their own): stage 050 owns their infrastructure as components (identity, devspaces, pipelines, sonarqube, rhdh, mta). Validate their demo prerequisites with each stage's read-only `validate.sh`. Stage 050's deploy script provisions `app-platform-build` secrets from `.env` (`GITHUB_WEBHOOK_SECRET`, `GITHUB_TOKEN`) before applying the Application.
 
-Each script applies one file from `gitops/argocd/app-of-apps/`. The ordered source of truth is `flows/default.yaml`.
+Each script applies one file from `gitops/argocd/app-of-apps/`. GitOps stages are the `stages/*/` directories that have `deploy.sh`; the matching Application is `gitops/argocd/app-of-apps/<directory-name>.yaml`. Workflow-only stages omit `deploy.sh` and have no Application.
 
 | Stage | Argo CD app | Purpose |
 |------|-------------|---------|
@@ -138,13 +138,13 @@ Each script applies one file from `gitops/argocd/app-of-apps/`. The ordered sour
 
 ## Validation Strategy
 
-Run static flow validation before cluster work:
+Run static stage-layout validation before cluster work:
 
 ```bash
 ./scripts/validate-stage-flow.sh
 ```
 
-After stages are deployed, run every stage `validate.sh` in flow order:
+After stages are deployed, run every stage `validate.sh` in directory order:
 
 ```bash
 ./scripts/validate-stage-flow.sh --live
@@ -198,27 +198,23 @@ If the `argocd` CLI is unavailable, use the OpenShift GitOps UI or wait for auto
 
 ## Developer Workflow Branch Validation
 
-Stages `100-170` are not part of [`../flows/default.yaml`](../flows/default.yaml) yet. When validating developer-workflow changes on a sandbox cluster, patch only the existing platform applications that own the affected live resources.
+Deferred developer-workflow topics `100-170` are not `stages/` directories yet. When validating developer-workflow changes on a sandbox cluster, patch only the existing platform applications that own the affected live resources.
 
-For Stage 060 vibe-coding changes, patch only Stage 060 and Stage 050 to the feature branch being validated:
+For Stage 060 vibe-coding changes, patch Stage 050 (it owns Dev Spaces and the developer portal) to the feature branch being validated:
 
 ```bash
-oc patch application 060-ai-assisted-development -n openshift-gitops --type=merge -p '{"spec":{"source":{"targetRevision":"<feature-branch>"}}}'
 oc patch application 050-advanced-app-platform -n openshift-gitops --type=merge -p '{"spec":{"source":{"targetRevision":"<feature-branch>"}}}'
-oc annotate application 060-ai-assisted-development -n openshift-gitops argocd.argoproj.io/refresh=hard --overwrite
 oc annotate application 050-advanced-app-platform -n openshift-gitops argocd.argoproj.io/refresh=hard --overwrite
 ```
 
 Rollback to the stable platform branch:
 
 ```bash
-oc patch application 060-ai-assisted-development -n openshift-gitops --type=merge -p '{"spec":{"source":{"targetRevision":"main"}}}'
 oc patch application 050-advanced-app-platform -n openshift-gitops --type=merge -p '{"spec":{"source":{"targetRevision":"main"}}}'
-oc annotate application 060-ai-assisted-development -n openshift-gitops argocd.argoproj.io/refresh=hard --overwrite
 oc annotate application 050-advanced-app-platform -n openshift-gitops argocd.argoproj.io/refresh=hard --overwrite
 ```
 
-Do not merge a feature branch to `main` only to validate developer workflow catalog or workspace changes. Do not create Stage `100-170` Argo CD applications until a workflow owns executable artifacts or dedicated cluster resources.
+Do not merge a feature branch to `main` only to validate developer workflow catalog or workspace changes. Do not create Stage `100-170` directories or Argo CD applications until a workflow owns executable artifacts or dedicated cluster resources.
 
 ## Stage-Specific Operational Notes
 
@@ -240,7 +236,7 @@ oc get odhdashboardconfig odh-dashboard-config -n redhat-ods-applications -o yam
 > the stage numbering that was in effect when they were written (before the
 > 2026-07-06 developer-arc restructure and the 2026-07-10 advanced-app-platform
 > restructure). Do not renumber them. Current numbering lives in
-> `flows/default.yaml`. Stage 090 (AI Self-Service Portal) was absorbed into
+> `stages/` and the root README. Stage 090 (AI Self-Service Portal) was absorbed into
 > Stage 050 during the 2026-07-10 renumbering; validation paths referencing
 > `090-ai-self-service-portal` in entries before that date are historical.
 

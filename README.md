@@ -149,12 +149,11 @@ rhoai3-coding-demo/
 |-- BACKLOG.md                       # Workarounds, limitations, and deferred work
 |-- CONTRIBUTING.md
 |-- env.example
-|-- flows/default.yaml               # Ordered source of truth for the demo flow
 |-- scripts/                         # Shared helpers, validation, recovery
 |-- .agents/                         # Tool-neutral shared agent guidance: rules, skills, hooks, references
 |-- gitops/
 |   |-- bootstrap/                   # Declarative OpenShift GitOps bootstrap (stage 010)
-|   |-- argocd/app-of-apps/          # Argo CD Applications for stages 010-090
+|   |-- argocd/app-of-apps/          # Argo CD Applications for GitOps stages 010-050
 |   `-- stages/                      # GitOps source for stage manifests
 |-- stages/                          # Stage READMEs and per-stage deploy/validate scripts
 `-- docs/                            # Operations, troubleshooting, TechDocs, and governance docs

@@ -38,9 +38,8 @@ Important paths:
 - `scripts/` — bootstrap, shared helper scripts, validation utilities.
 - `gitops/` — desired state for Argo CD and OpenShift resources.
 - `gitops/argocd/app-of-apps/` — Argo CD application structure.
-- `flows/default.yaml` — ordered source of truth for the demo flow.
 - `gitops/stages/` — desired state for stage-specific OpenShift resources.
-- `stages/` — human-facing deployment walkthroughs and per-stage deploy/validate scripts. Stage 080 keeps its own solution architecture in that stage directory (not workshop architecture; not dest execution).
+- `stages/` — ordered workshop path: stage READMEs and per-stage deploy/validate scripts. `validate.sh` is required; missing `deploy.sh` means workflow-only (no Argo CD app). Stage 080 keeps its own solution architecture in that stage directory (not workshop architecture; not dest execution).
 - `docs/` — operations, troubleshooting, architecture, and supporting documentation.
 - `.agents/` — shared tool-neutral agent guidance (rules, skills, hooks, references).
 

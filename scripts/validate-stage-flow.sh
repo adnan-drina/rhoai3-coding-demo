@@ -1,27 +1,26 @@
 #!/usr/bin/env bash
-# Validate the canonical staged demo flow.
+# Validate the demo stage layout from the repository tree.
 #
-#   ./scripts/validate-stage-flow.sh [flow.yaml]
-#       Static: flow metadata + kustomize build. No cluster.
-#   ./scripts/validate-stage-flow.sh --live [flow.yaml]
-#       Static, then each stage validate.sh in flow order (needs oc + .env).
+#   ./scripts/validate-stage-flow.sh
+#       Static: stages/*/ + matching Argo CD apps + kustomize build. No cluster.
+#   ./scripts/validate-stage-flow.sh --live
+#       Static, then each stage validate.sh in directory order (needs oc + .env).
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$REPO_ROOT/scripts/lib.sh"
 
 LIVE=0
-FLOW_FILE="$REPO_ROOT/flows/default.yaml"
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --live) LIVE=1; shift ;;
         -h|--help)
             cat <<'EOF'
 Usage:
-  ./scripts/validate-stage-flow.sh [flow.yaml]
-      Static: flow metadata + kustomize build. No cluster.
-  ./scripts/validate-stage-flow.sh --live [flow.yaml]
-      Static, then each stage validate.sh in flow order (needs oc + .env).
+  ./scripts/validate-stage-flow.sh
+      Static: stages/*/ + matching Argo CD apps + kustomize build. No cluster.
+  ./scripts/validate-stage-flow.sh --live
+      Static, then each stage validate.sh in directory order (needs oc + .env).
 EOF
             exit 0
             ;;
@@ -29,7 +28,10 @@ EOF
             log_error "Unknown flag: $1 (try --live)"
             exit 1
             ;;
-        *) FLOW_FILE="$1"; shift ;;
+        *)
+            log_error "Unexpected argument: $1"
+            exit 1
+            ;;
     esac
 done
 
@@ -39,161 +41,178 @@ trap 'rm -f "$TMP_PATHS"' EXIT
 command -v python3 >/dev/null || { log_error "python3 is required"; exit 1; }
 command -v kustomize >/dev/null || { log_error "kustomize is required"; exit 1; }
 
-log_step "Validating demo flow metadata"
+log_step "Validating stage layout"
 
-python3 - "$REPO_ROOT" "$FLOW_FILE" >"$TMP_PATHS" <<'PY'
+python3 - "$REPO_ROOT" >"$TMP_PATHS" <<'PY'
 from pathlib import Path
 import re
 import sys
 
-try:
-    import yaml
-except ImportError:
-    print("PyYAML is required to parse flow and Argo CD YAML files", file=sys.stderr)
-    sys.exit(1)
-
 repo = Path(sys.argv[1])
-flow_file = Path(sys.argv[2])
+stages_root = repo / "stages"
+app_root = repo / "gitops" / "argocd" / "app-of-apps"
+gitops_stages_root = repo / "gitops" / "stages"
 
 errors = []
 
 def fail(message):
     errors.append(message)
 
-def load_yaml(path):
+def unquote(value):
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
+        return value[1:-1]
+    return value
+
+def load_mapping(path):
+    """Parse nested mappings from simple Kubernetes YAML. Lists are skipped."""
     try:
-        with path.open() as handle:
-            return yaml.safe_load(handle)
+        lines = path.read_text().splitlines()
     except Exception as exc:
-        fail(f"{path.relative_to(repo)} could not be parsed: {exc}")
+        fail(f"{path.relative_to(repo)} could not be read: {exc}")
         return {}
 
-if not flow_file.exists():
-    print(f"Flow file does not exist: {flow_file}", file=sys.stderr)
+    root = {}
+    stack = [root]
+    indents = [-1]
+    for raw in lines:
+        stripped = raw.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        indent = len(raw) - len(raw.lstrip(" "))
+        if stripped.startswith("- "):
+            continue
+        while indent <= indents[-1]:
+            stack.pop()
+            indents.pop()
+        if ":" not in stripped:
+            continue
+        key, _, rest = stripped.partition(":")
+        key = key.strip()
+        rest = rest.strip()
+        if rest.startswith("#"):
+            rest = ""
+        elif " #" in rest:
+            rest = rest.split(" #", 1)[0].rstrip()
+        if rest:
+            stack[-1][key] = unquote(rest)
+            continue
+        child = {}
+        stack[-1][key] = child
+        stack.append(child)
+        indents.append(indent)
+    return root
+
+if not stages_root.is_dir():
+    print("stages/ does not exist", file=sys.stderr)
     sys.exit(1)
 
-flow = load_yaml(flow_file)
-stages = flow.get("stages") or []
+stage_dirs = sorted(
+    (path for path in stages_root.iterdir() if path.is_dir()),
+    key=lambda path: path.name,
+)
 
-if flow.get("apiVersion") != "rhoai.demo/v1alpha1":
-    fail("apiVersion must be rhoai.demo/v1alpha1")
-if flow.get("kind") != "DemoFlow":
-    fail("kind must be DemoFlow")
-if not stages:
-    fail("stages must be a non-empty list")
+if not stage_dirs:
+    fail("stages/ has no stage directories")
 
-# Workflow-only stages (README + validate script, no cluster resources of
-# their own) may omit deployScript, gitopsApplication, and gitopsPath.
-required = {
-    "id",
-    "name",
-    "productFocus",
-    "validateScript",
-    "dependsOn",
-}
-
-seen_ids = set()
-ordered_ids = []
-stage_ids_by_index = {}
+stage_name_re = re.compile(r"^(\d{3})-.+")
+seen_ids = []
+gitops_stage_names = set()
 gitops_paths = []
 
-for index, stage in enumerate(stages):
-    stage_id = str(stage.get("id", ""))
-    stage_label = stage_id or f"index {index}"
-    ordered_ids.append(stage_id)
-    stage_ids_by_index[stage_id] = index
-
-    missing = sorted(required - set(stage))
-    if missing:
-        fail(f"stage {stage_label} missing keys: {', '.join(missing)}")
+for stage_dir in stage_dirs:
+    name = stage_dir.name
+    match = stage_name_re.fullmatch(name)
+    if not match:
+        fail(f"stage directory must be NNN-slug: stages/{name}")
         continue
 
-    if not re.fullmatch(r"\d{3}", stage_id):
-        fail(f"stage id must be three digits: {stage_id}")
+    stage_id = match.group(1)
     if stage_id in seen_ids:
         fail(f"duplicate stage id: {stage_id}")
-    seen_ids.add(stage_id)
+    seen_ids.append(stage_id)
 
-    for key in ("productFocus", "dependsOn"):
-        if not isinstance(stage.get(key), list):
-            fail(f"stage {stage_id} {key} must be a list")
-
-    validate_path = repo / stage["validateScript"]
-    stage_dir = validate_path.parent
     readme_path = stage_dir / "README.md"
-    deploy_path = repo / stage["deployScript"] if "deployScript" in stage else None
-    gitops_path = repo / stage["gitopsPath"] if "gitopsPath" in stage else None
-    app_path = (
-        repo / "gitops" / "argocd" / "app-of-apps" / f"{stage['gitopsApplication']}.yaml"
-        if "gitopsApplication" in stage
-        else None
-    )
+    validate_path = stage_dir / "validate.sh"
+    deploy_path = stage_dir / "deploy.sh"
 
-    if ("gitopsApplication" in stage) != ("gitopsPath" in stage):
-        fail(f"stage {stage_id} must set gitopsApplication and gitopsPath together")
+    if not readme_path.exists():
+        fail(f"stage {stage_id} README does not exist: {readme_path.relative_to(repo)}")
+    if not validate_path.exists():
+        fail(f"stage {stage_id} validate.sh does not exist: {validate_path.relative_to(repo)}")
+    elif not validate_path.stat().st_mode & 0o111:
+        fail(f"stage {stage_id} validate.sh is not executable: {validate_path.relative_to(repo)}")
 
-    if not stage_dir.name.startswith(f"{stage_id}-"):
-        fail(f"stage {stage_id} validateScript directory should start with {stage_id}-")
-    if deploy_path is not None and deploy_path.parent != stage_dir:
-        fail(f"stage {stage_id} deployScript and validateScript should be in the same directory")
+    app_path = app_root / f"{name}.yaml"
+    gitops_path = gitops_stages_root / name / "base"
 
-    checks = [
-        ("validateScript", validate_path),
-        ("README", readme_path),
-    ]
-    if deploy_path is not None:
-        checks.append(("deployScript", deploy_path))
-    if gitops_path is not None:
-        checks.append(("gitopsPath", gitops_path))
-    if app_path is not None:
-        checks.append(("Argo CD app", app_path))
-    for label, path in checks:
-        if not path.exists():
-            fail(f"stage {stage_id} {label} does not exist: {path.relative_to(repo)}")
+    if not deploy_path.exists():
+        continue
 
-    exec_checks = [("validateScript", validate_path)]
-    if deploy_path is not None:
-        exec_checks.append(("deployScript", deploy_path))
-    for label, path in exec_checks:
-        if path.exists() and not path.stat().st_mode & 0o111:
-            fail(f"stage {stage_id} {label} is not executable: {path.relative_to(repo)}")
+    gitops_stage_names.add(name)
 
-    if gitops_path is not None and gitops_path.exists():
-        if not (gitops_path / "kustomization.yaml").exists():
-            fail(f"stage {stage_id} gitopsPath has no kustomization.yaml: {gitops_path.relative_to(repo)}")
-        else:
-            gitops_paths.append(stage["gitopsPath"])
+    if not deploy_path.stat().st_mode & 0o111:
+        fail(f"stage {stage_id} deploy.sh is not executable: {deploy_path.relative_to(repo)}")
 
-    if app_path is not None and app_path.exists():
-        app = load_yaml(app_path)
-        metadata = app.get("metadata") or {}
-        spec = app.get("spec") or {}
-        source = spec.get("source") or {}
-        labels = metadata.get("labels") or {}
-        annotations = metadata.get("annotations") or {}
+    if not app_path.exists():
+        fail(f"stage {stage_id} Argo CD app does not exist: {app_path.relative_to(repo)}")
+    if not (gitops_path / "kustomization.yaml").exists():
+        fail(
+            f"stage {stage_id} gitops path has no kustomization.yaml: "
+            f"{gitops_path.relative_to(repo)}"
+        )
+    else:
+        gitops_paths.append(str(gitops_path.relative_to(repo)))
 
-        if metadata.get("name") != stage["gitopsApplication"]:
-            fail(f"stage {stage_id} Argo CD app metadata.name does not match gitopsApplication")
-        if spec.get("project") != "rhoai-demo":
-            fail(f"stage {stage_id} Argo CD app project must be rhoai-demo")
-        if source.get("path") != stage["gitopsPath"]:
-            fail(f"stage {stage_id} Argo CD app source.path must match gitopsPath")
-        if labels.get("demo.rhoai.io/stage") != stage_id:
-            fail(f"stage {stage_id} Argo CD app missing demo.rhoai.io/stage label")
-        if not annotations.get("argocd.argoproj.io/manifest-generate-paths", "").startswith("gitops/stages/"):
-            fail(f"stage {stage_id} Argo CD app manifest-generate-paths should point at gitops/stages")
+    if not app_path.exists():
+        continue
 
-for index, stage in enumerate(stages):
-    stage_id = str(stage.get("id", ""))
-    for dependency in stage.get("dependsOn") or []:
-        dep = str(dependency)
-        if dep not in stage_ids_by_index:
-            fail(f"stage {stage_id} dependsOn unknown stage {dep}")
-        elif stage_ids_by_index[dep] >= index:
-            fail(f"stage {stage_id} dependsOn {dep}, which is not earlier in the flow")
+    app = load_mapping(app_path)
+    metadata = app.get("metadata") or {}
+    spec = app.get("spec") or {}
+    source = spec.get("source") or {}
+    labels = metadata.get("labels") or {}
+    annotations = metadata.get("annotations") or {}
+    expected_path = f"gitops/stages/{name}/base"
 
-if ordered_ids != sorted(ordered_ids):
-    fail(f"stage ids must be listed in ascending order: {ordered_ids}")
+    if metadata.get("name") != name:
+        fail(f"stage {stage_id} Argo CD app metadata.name must match {name}")
+    if spec.get("project") != "rhoai-demo":
+        fail(f"stage {stage_id} Argo CD app project must be rhoai-demo")
+    if source.get("path") != expected_path:
+        fail(f"stage {stage_id} Argo CD app source.path must be {expected_path}")
+    if labels.get("demo.rhoai.io/stage") != stage_id:
+        fail(f"stage {stage_id} Argo CD app missing demo.rhoai.io/stage label")
+    if not annotations.get("argocd.argoproj.io/manifest-generate-paths", "").startswith(
+        "gitops/stages/"
+    ):
+        fail(f"stage {stage_id} Argo CD app manifest-generate-paths should point at gitops/stages")
+
+if seen_ids != sorted(seen_ids):
+    fail(f"stage ids must be in ascending directory order: {seen_ids}")
+
+if stage_dirs and not gitops_stage_names:
+    fail("no GitOps stages found: every workshop needs at least one stages/*/deploy.sh")
+
+if app_root.is_dir():
+    for app_path in sorted(app_root.glob("*.yaml")):
+        name = app_path.stem
+        if not stage_name_re.fullmatch(name):
+            fail(f"Argo CD app filename should be NNN-slug.yaml: {app_path.relative_to(repo)}")
+            continue
+        if name not in gitops_stage_names:
+            fail(
+                f"Argo CD app {app_path.relative_to(repo)} has no matching "
+                f"stages/{name}/deploy.sh"
+            )
+
+if gitops_stages_root.is_dir():
+    for gitops_dir in sorted(path for path in gitops_stages_root.iterdir() if path.is_dir()):
+        name = gitops_dir.name
+        if name not in gitops_stage_names:
+            fail(
+                f"gitops/stages/{name} has no matching stages/{name}/deploy.sh "
+                "(workflow-only stages omit GitOps)"
+            )
 
 if errors:
     for error in errors:
@@ -204,7 +223,7 @@ for path in gitops_paths:
     print(path)
 PY
 
-log_success "Flow metadata is consistent"
+log_success "Stage layout is consistent"
 
 log_step "Rendering stage Kustomize bases"
 while IFS= read -r gitops_path; do
@@ -213,7 +232,7 @@ while IFS= read -r gitops_path; do
     kustomize build "$REPO_ROOT/$gitops_path" >/dev/null
 done <"$TMP_PATHS"
 
-log_success "Stage flow static validation passed"
+log_success "Stage layout static validation passed"
 
 if [[ "$LIVE" -eq 0 ]]; then
     exit 0
@@ -229,14 +248,13 @@ stages=()
 while IFS= read -r stage; do
     stages+=("$stage")
 done < <(
-    python3 - "$FLOW_FILE" <<'PY'
+    python3 - "$REPO_ROOT" <<'PY'
 from pathlib import Path
 import sys
-import yaml
 
-flow = yaml.safe_load(Path(sys.argv[1]).read_text())
-for stage in flow["stages"]:
-    print(Path(stage["validateScript"]).parent.name)
+root = Path(sys.argv[1]) / "stages"
+for path in sorted((item for item in root.iterdir() if item.is_dir()), key=lambda item: item.name):
+    print(path.name)
 PY
 )
 

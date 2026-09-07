@@ -13,7 +13,7 @@ _This directory stays operational-only. Stage 080 v2 authoring is on `main`; liv
 
 ## Learning Path
 
-The implemented flow is defined in [`../flows/default.yaml`](../flows/default.yaml):
+The implemented flow is the ordered directories under [`../stages/`](../stages/):
 
 1. [Project README](../README.md)
 2. [Stage 010: OpenShift AI Platform Foundation](../stages/010-openshift-ai-platform-foundation/README.md)

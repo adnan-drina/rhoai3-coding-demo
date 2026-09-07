@@ -85,7 +85,7 @@ The upstream `maas-controller` coexistence path and `maas-api` image override we
   - **Stage 160: Modernization At Scale With MTA And Developer Lightspeed** — Use `rhpds/mca-coolstore` as the likely brownfield source, review MTA findings, treat Developer Lightspeed output as suggested diffs, and decide whether custom-rule generation uses Scribe MCP, RAG-backed standards lookup, or a local reviewed skill.
   - **Stage 170: Agent Mesh Modernization Pattern** — Keep this as an architecture horizon until there is implementation evidence. Revisit after local stages can exchange evidence between modernization, testing, documentation, security, delivery, AgentOps, and supply-chain harnesses.
 
-  Recreate the detailed supporting material from git history only when the exact implementation slice is selected. Do not add these topics back to `flows/default.yaml` until they have executable artifacts and a validation path.
+  Recreate the detailed supporting material from git history only when the exact implementation slice is selected. Do not add these topics back as `stages/` directories until they have executable artifacts and a validation path.
 
 ## Known Limitations
 

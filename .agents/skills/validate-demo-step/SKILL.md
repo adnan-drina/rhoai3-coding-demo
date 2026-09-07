@@ -67,7 +67,7 @@ kustomize build gitops/stages/NNN-name/base/ | oc apply --dry-run=server -f -
 
 - Does this change affect downstream stages?
 - Are Argo CD sync waves still ordered correctly?
-- Does the stage table in `README.md` still match?
+- Does the stage table in `README.md` still match `stages/*/`?
 
 ## Completeness checklist
 
