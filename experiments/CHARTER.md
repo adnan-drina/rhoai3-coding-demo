@@ -3,7 +3,7 @@
 **Branch:** `harness-refactor` (worktree `/Users/adrina/Sandbox/rhoai3-harness-refactor`, base `0d53a27`)
 **Operator directive (2026-08-07):** clean-slate rethink of the stage 080 approach end-to-end — harness, agents, skills, and the MTA / kantra / spec-kit / OpenRewrite configuration and integration. Test the spec-kit configuration as described in the reference blog to see what difference it makes, empirically rather than by argument.
 **Reference guide:** https://loiane.com/2026/05/specs-driven-development-end-to-end-with-spring-boot-angular/
-**Prior analysis:** `tmp/sdd-setup/analysis/SDD-E2E-ANALYSIS.md` (main tree) — findings F1–F5, reconfiguration package R1–R6. This branch is where its claims get *tested*, including the ones the operator wants to challenge.
+**Prior analysis:** SDD E2E analysis (findings F1–F5, reconfiguration package R1–R6). This branch is where its claims get *tested*, including the ones the operator wants to challenge.
 
 ## Ground rules
 

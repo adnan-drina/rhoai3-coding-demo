@@ -41,7 +41,7 @@ not claimed control (AD-020).
    and toolchain ALLOW. `validate.sh` must require `if cmd.strip():`
    before `for _rx in _OPAQUE`.
 6. dest-4 live MATCH is **not** working-tree green. Operator `090943ZO`:
-   commit+push `harness-v2`, `bootstrap-migration-scaffold-v2.sh`, Argo
+   commit+push, `scripts/bootstrap-scaffold-repos.sh`, Argo
    050 hard-refresh, dest-4 dest-init uptake, then seat `mvn -q verify`
    ALLOW **and** encoded proven-prefix BLOCK. Do not dest-apply. Do not
    auto-start M2. Do not widen `K2_ALLOW_ROOT`.

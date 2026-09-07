@@ -36,5 +36,5 @@ Use the active ODF version image from official docs. For ODF 4.20:
 ```bash
 oc adm must-gather \
   --image=registry.redhat.io/odf4/odf-must-gather-rhel9:v4.20 \
-  --dest-dir=tmp/must-gather-odf
+  --dest-dir=./must-gather-odf
 ```

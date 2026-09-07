@@ -40,7 +40,7 @@ in gid 0). Do not dest-push dest-3’s worker-patched analyzer as golden.
    stays on stderr. Extend `assert-ensure-cli-path.sh` so a tree with a
    non-executable sibling is **not** accepted.
 5. Land in golden `mta-analyze-legacy.sh` + `scan-with-mta/SKILL.md` procedure
-   step 1, then `bootstrap-migration-scaffold-v2.sh`. Not a dest-4 cut
+   step 1, then `scripts/bootstrap-scaffold-repos.sh`. Not a dest-4 cut
    blocker. Do not dest-exec `kantra-assert-exec` on dest-3 `/opt/kantra` as
    MATCH.
 

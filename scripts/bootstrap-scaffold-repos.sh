@@ -4,23 +4,35 @@
 # golden state, which is also the demo reset mechanism for the sources.
 #
 # Repositories managed (under github.com/${GITHUB_OWNER}):
-#   agentic-quarkus-scaffold   — pushed verbatim from stages/070-ai-agentic-development/scaffold-repo/
-#   quarkus-migration-scaffold — pushed verbatim from stages/080-ai-autonomous-migration/scaffold-repo/
+#   agentic-quarkus-scaffold         — Stage 070, pushed verbatim from
+#                                      stages/070-ai-agentic-development/scaffold-repo/
+#   quarkus-migration-scaffold-v2    — live Stage 080 golden from
+#                                      stages/080-ai-autonomous-migration/scaffold-repo/
+#                                      Dest omit of .hermes/_park; refuse if
+#                                      run-chaos-matrix.py is in the staged tree.
 #
-# harness-v2: do not run this script for Stage 080. It force-pushes v1
-# quarkus-migration-scaffold. Use scripts/bootstrap-migration-scaffold-v2.sh.
+# Does not force-push historical quarkus-migration-scaffold (v1). Do not
+# GitHub-rename v1. Do not add topic rhoai3-scaffolded (that marks dest
+# per-run repos).
 #
 # Requires: gh (authenticated with repo scope), git. No cluster access.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 GITHUB_OWNER="${GITHUB_OWNER:-adnan-drina}"
+MIGRATION_GOLDEN_REPO="${MIGRATION_GOLDEN_REPO:-quarkus-migration-scaffold-v2}"
+MIGRATION_SRC="$REPO_ROOT/stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold"
 WORKDIR="$(mktemp -d)"
 trap 'rm -rf "$WORKDIR"' EXIT
 
 log() { echo -e "\033[0;34m[scaffold-repo]\033[0m $*"; }
-warn() { echo -e "\033[1;33m[scaffold-repo][WARN]\033[0m $*"; }
 
+if [[ "$MIGRATION_GOLDEN_REPO" == "quarkus-migration-scaffold" ]]; then
+  echo "REFUSE: this script must not force-push the historical v1 golden '${MIGRATION_GOLDEN_REPO}'." >&2
+  exit 1
+fi
+
+command -v git >/dev/null || { echo "git is required"; exit 1; }
 command -v gh >/dev/null || { echo "gh CLI is required"; exit 1; }
 gh auth status >/dev/null || { echo "gh is not authenticated"; exit 1; }
 
@@ -47,6 +59,21 @@ push_golden() {
   log "Pushed golden state to ${GITHUB_OWNER}/${repo}"
 }
 
+omit_park_from_staged() {
+  local staged="$1"
+  rm -rf "${staged}/.hermes/_park"
+  if [[ -e "${staged}/.hermes/_park" ]]; then
+    echo "REFUSE: .hermes/_park still present after dest omit" >&2
+    exit 1
+  fi
+  local chaos
+  chaos="$(find "${staged}" -name 'run-chaos-matrix.py' -print -quit || true)"
+  if [[ -n "${chaos}" ]]; then
+    echo "REFUSE: run-chaos-matrix.py present in staged dest golden (${chaos})" >&2
+    exit 1
+  fi
+}
+
 # --- 1. agentic-quarkus-scaffold (authored in this repo) ---
 log "Staging agentic-quarkus-scaffold"
 cp -R "$REPO_ROOT/stages/070-ai-agentic-development/scaffold-repo/agentic-quarkus-scaffold" "$WORKDIR/agentic-quarkus-scaffold"
@@ -54,22 +81,24 @@ ensure_repo "agentic-quarkus-scaffold" "Corporate Quarkus scaffold golden repo (
 push_golden "$WORKDIR/agentic-quarkus-scaffold" "agentic-quarkus-scaffold" \
   "Golden state from rhoai3-coding-demo/stages/070-ai-agentic-development/scaffold-repo/agentic-quarkus-scaffold"
 
-# --- 2. quarkus-migration-scaffold (authored in this repo) ---
-BRANCH="$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
-if [[ "$BRANCH" == "harness-v2" ]]; then
-  warn "harness-v2: refusing to force-push v1 quarkus-migration-scaffold"
-  warn "Use scripts/bootstrap-migration-scaffold-v2.sh for quarkus-migration-scaffold-v2"
-else
-  log "Staging quarkus-migration-scaffold"
-  cp -R "$REPO_ROOT/stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold" "$WORKDIR/quarkus-migration-scaffold"
-  # Track B O-GOLDENFRESH stamping (scripts/track-b/v10-golden-fresh.sh) was
-  # retired with the process-tooling layer (ce6a8ce). Bootstrap is push-only again.
-  ensure_repo "quarkus-migration-scaffold" "Corporate Quarkus migration scaffold golden repo (stage 080: legacy + modernized dual-project workspace)"
-  push_golden "$WORKDIR/quarkus-migration-scaffold" "quarkus-migration-scaffold" \
-    "Golden state from rhoai3-coding-demo/stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold"
+# --- 2. live Stage 080 golden ---
+test -f "$MIGRATION_SRC/migration.yaml" || { echo "REFUSE: missing authoring tree at $MIGRATION_SRC"; exit 1; }
+if [[ -e "$MIGRATION_SRC/.hermes/_park" ]]; then
+  echo "REFUSE: authoring tree still has .hermes/_park" >&2
+  exit 1
 fi
+
+log "Staging ${MIGRATION_GOLDEN_REPO}"
+cp -R "$MIGRATION_SRC" "$WORKDIR/${MIGRATION_GOLDEN_REPO}"
+omit_park_from_staged "$WORKDIR/${MIGRATION_GOLDEN_REPO}"
+ensure_repo "${MIGRATION_GOLDEN_REPO}" \
+  "Quarkus migration scaffold golden (stage 080). Separate from historical quarkus-migration-scaffold. Do not rename v1."
+push_golden "$WORKDIR/${MIGRATION_GOLDEN_REPO}" "${MIGRATION_GOLDEN_REPO}" \
+  "Golden state from rhoai3-coding-demo/stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold"
 
 log "Done. Reminders:"
 echo "  - The GitHub App (webhook -> EventListener route) must be installed on"
 echo "    'All repositories' so template-created repos trigger the pipeline."
 echo "  - Re-running this script force-pushes golden state (demo reset)."
+echo "  - Stage 080 dest golden omits .hermes/_park; chaos never dest."
+echo "  - Historical quarkus-migration-scaffold is not updated."

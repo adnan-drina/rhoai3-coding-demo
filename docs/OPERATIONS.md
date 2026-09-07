@@ -9,9 +9,9 @@ This document explains how to deploy, validate, and operate the workshop environ
 
 The executable source of truth remains the scripts:
 
-- `scripts/bootstrap.sh`
 - `stages/NNN-*/deploy.sh`
 - `stages/NNN-*/validate.sh`
+- `scripts/bootstrap-scaffold-repos.sh` (golden GitHub reset for stages 070/080)
 
 Use this guide to understand when to run those scripts, what they do, and how to interpret the results.
 
@@ -19,7 +19,7 @@ Use this guide to understand when to run those scripts, what they do, and how to
 
 The repository follows a GitOps-first pattern:
 
-1. `scripts/bootstrap.sh` installs and configures OpenShift GitOps.
+1. Stage 010 `deploy.sh` installs OpenShift GitOps and the demo Argo CD project.
 2. Each stage `deploy.sh` applies one Argo CD `Application`.
 3. Argo CD reconciles manifests from `gitops/stages/NNN-*/base`.
 4. Sync waves and in-cluster Jobs perform cluster-specific setup.
@@ -27,30 +27,24 @@ The repository follows a GitOps-first pattern:
 
 The deploy scripts do not imperatively install every component themselves. They hand ownership to Argo CD.
 
-## Harness v2 golden (authoring on `main`; live 050 tracks `main`)
+## Stage 080 golden
 
-Stage 080 authoring and `workspace-images/` are on `main`. Live Argo 050
-`targetRevision` is `main` (Operator GO 2026-08-28). Catalog `fetch:plain`
-on the live 050 app is `quarkus-migration-scaffold-v2`.
-Do not GitHub-rename the v1 golden. Do not run
-`scripts/bootstrap-migration-scaffold-v2.sh` unless Operator names it.
-The `harness-v2` branch is retired; recover the tip with
-`git fetch origin tag archive/harness-v2` (`76d8897c`). Do not recreate
-that branch.
-
-| Surface | v1 | v2 |
-|---------|----|----|
-| Authoring | historical overlay | `stages/080-ai-autonomous-migration/scaffold-repo/` on `main` |
-| Dest worker profiles | Overlay: single-persona `default` (C-2 skip) | `orchestrator` + `implementer` (`hermes profile create --no-alias`, never `--clone`) |
-| Golden GitHub | `quarkus-migration-scaffold` | `quarkus-migration-scaffold-v2` |
-| Publish | `scripts/bootstrap-scaffold-repos.sh` | `scripts/bootstrap-migration-scaffold-v2.sh` (Operator-named only) |
-| Template `fetch:plain` | v1 golden | Live 050 catalog: `quarkus-migration-scaffold-v2` |
-
-`bootstrap-scaffold-repos.sh` refuses the Stage 080 push when HEAD is
-`harness-v2`. Do not dest-complete Operator ack gates or `kanban daemon --force`.
-Factory isolation: Stage 080
+Stage 080 authoring lives in
+`stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/`
+on `main`. The Stage 050 `app-migration` template fetches GitHub
+`quarkus-migration-scaffold-v2`. Publish both workshop goldens with
+`scripts/bootstrap-scaffold-repos.sh` (force-push reset). Do not
+GitHub-rename historical `quarkus-migration-scaffold`. Do not dest-complete
+Operator ack gates or run `kanban daemon --force`. Factory isolation: Stage 080
 [SOLUTION-ARCHITECTURE.md](../stages/080-ai-autonomous-migration/SOLUTION-ARCHITECTURE.md)
 §8.
+
+## Workspace overlay images
+
+Stages 070 and 080 destfiles pull digest-pinned images from
+`quay.io/rhoai3-coding-demo/rhoai3-ws-070` and
+`quay.io/rhoai3-coding-demo/rhoai3-ws-080`. Image bake and push are not
+part of this repository. Demo users do not build those images.
 
 ## Prerequisites
 
@@ -94,17 +88,15 @@ Run bootstrap once per cluster:
 ```bash
 cp env.example .env
 oc login --token=<token> --server=<api>
-./scripts/bootstrap.sh
+./stages/010-openshift-ai-platform-foundation/deploy.sh
 ```
 
-`bootstrap.sh` performs these actions:
+Stage 010 `deploy.sh` performs these actions:
 
-- Auto-detects the Git remote and updates Argo CD Applications for forks.
-- Installs the OpenShift GitOps operator.
-- Grants the Argo CD application controller cluster-admin permissions for the demo.
-- Sets Argo CD resource tracking to `annotation`.
-- Configures custom health checks for resources such as PVCs and InferenceServices.
-- Creates the `rhoai-demo` Argo CD project.
+- Applies `gitops/bootstrap/overlays/operator` (OpenShift GitOps operator Subscription).
+- Waits for the GitOps CSV and the default Argo CD instance.
+- Applies `gitops/bootstrap/overlays/demo` (annotation resource tracking, AppProject `rhoai-demo`, demo cluster-admin binding for the Argo CD application controller, custom health checks for PVCs and related resources).
+- Applies the Stage 010 Argo CD Application from `gitops/argocd/app-of-apps/`, substituting `GIT_REPO_URL` and `GIT_REPO_BRANCH` from `.env`.
 
 This broad GitOps control is intentional for disposable demo clusters because the stages create cluster-scoped operators, CRDs, RBAC, Gateway API resources, and OpenShift platform configuration. Do not treat the bootstrap RBAC and wildcard AppProject as a production recommendation. For a shared or long-lived environment, scope Argo CD permissions, destinations, source repositories, and cluster resource allow-lists to the smallest workable set.
 
@@ -150,6 +142,12 @@ Run static flow validation before cluster work:
 
 ```bash
 ./scripts/validate-stage-flow.sh
+```
+
+After stages are deployed, run every stage `validate.sh` in flow order:
+
+```bash
+./scripts/validate-stage-flow.sh --live
 ```
 
 Run the matching validation script after each stage:
@@ -298,7 +296,7 @@ Registry-outage resilience (registry.redhat.io / access 502/503 wave):
 - The 2-minute provisioner starved on ose-cli:latest (implicit Always) despite node caches → `imagePullPolicy: IfNotPresent` (`631c8be`).
 - A seed run died fetching the UBI base image; deleting the failed run let the next tick re-seed to green — the self-healing path working as designed on its first real incident.
 
-Stage 070 exercise (`85ec059`..`b94114f`): 11-step coding-exercise.md around **coolstore-catalog** — spec-driven Quarkus rebuild of the original coolstore catalog-spring-boot behavior (reference clone in tmp/). Three spec-kit-shaped briefs in demo-assets: 001 product listing (original seed data; itemIds shared with the 060 inventory service), 002 availability from the deployed inventory service (spec-anchored evolution, cross-service integration), 003 optional AI search via MaaS (double-governance beat). Education step framed by Fowler's memory-bank/specs model with a seven-source go-deeper table; concepts precede the workspace tour. Framing per review: the gate STAYS — specs and skills improve the input, not replace inspection. Dry-run validated through step 3 live (template links, per-run naming, seed run green after the outage). quarkus-skills repo earmarked for stage 080 (migrate-spring-to-quarkus).
+Stage 070 exercise (`85ec059`..`b94114f`): 11-step coding-exercise.md around **coolstore-catalog** — spec-driven Quarkus rebuild of the original coolstore catalog-spring-boot behavior (a local reference clone used during authoring). Three spec-kit-shaped briefs in demo-assets: 001 product listing (original seed data; itemIds shared with the 060 inventory service), 002 availability from the deployed inventory service (spec-anchored evolution, cross-service integration), 003 optional AI search via MaaS (double-governance beat). Education step framed by Fowler's memory-bank/specs model with a seven-source go-deeper table; concepts precede the workspace tour. Framing per review: the gate STAYS — specs and skills improve the input, not replace inspection. Dry-run validated through step 3 live (template links, per-run naming, seed run green after the outage). quarkus-skills repo earmarked for stage 080 (migrate-spring-to-quarkus).
 
 ### 2026-07-15 Stage 060 validated end-to-end; model quality arc; governed embeddings; reset hardened
 
@@ -435,7 +433,7 @@ Preflight:
 
 Bootstrap:
 
-- `./scripts/bootstrap.sh` completed.
+- `./scripts/bootstrap.sh` completed (historical command; GitOps install is now Stage 010 `deploy.sh`).
 - OpenShift GitOps operator Subscription was created.
 - Demo `openshift-gitops-cluster-admin` ClusterRoleBinding was created.
 - Argo CD resource tracking was set to `annotation`.
@@ -1175,7 +1173,7 @@ unreviewed) — each blind gate round fixed one violation class and
 introduced another. Verdict recorded honestly: autonomy converges on
 build/deploy failures but CHURNS on style-gate rounds without local
 sonar feedback; the improvement plan's factory-parity sensors (C1/D1)
-target exactly this. Full retro was docs/HARNESS-IMPROVEMENT-PLAN.md (executed and removed 2026-07-27; the process it produced is docs/MIGRATION-PROCESS-REDESIGN.md). Platform fixes hardened by this run: token budget
+target exactly this. Full retro was executed and removed 2026-07-27; it produced the M1–M5 staged process. Platform fixes hardened by this run: token budget
 20M/1h for the coding subscription, hermes output caps via provider
 `context_length` + `extra_body`, raised stream timeouts for
 thinking-mode generations.
@@ -1205,11 +1203,10 @@ roadmap) → per story M3 spec + one supervisor child with computed env;
 progress in `/tmp/outer-loop.log` plus the usual `/tmp/supervisor.log`;
 completion marker `/tmp/outer-loop-done`; story resume state in
 `migration/story-state.csv` (committed). Pause between sessions with
-`touch /tmp/supervisor-pause`. Run log: docs/V4-RUN-LOG.md.
+`touch /tmp/supervisor-pause`.
 
 **V3 / round3 (2026-07-27, redesigned M-process, story mode) — SHIPPED
-AND ACCEPTED.** The M1–M5 staged process (docs/MIGRATION-PROCESS-
-REDESIGN.md) ran the cart migration as two dependency-ordered stories:
+AND ACCEPTED.** The M1–M5 staged process ran the cart migration as two dependency-ordered stories:
 S01 (models + contracts) passed its factory gate as a non-deploy story;
 S02 (services + endpoint + ship surface) deployed with full acceptance
 — route 200, acceptance endpoint 200, preserve contract enforced at

@@ -84,7 +84,7 @@ check_golden_drift() {
     rm -rf "$tmp"
 }
 check_golden_drift "stages/070-ai-agentic-development/scaffold-repo/agentic-quarkus-scaffold" "agentic-quarkus-scaffold"
-check_golden_drift "stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold" "quarkus-migration-scaffold"
+check_golden_drift "stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold" "quarkus-migration-scaffold-v2"
 
 echo ""
 validation_summary

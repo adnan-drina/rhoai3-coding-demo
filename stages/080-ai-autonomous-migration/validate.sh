@@ -96,20 +96,12 @@ check "runtime catalog app-migration Location is not SHA-pinned" \
   "oc get configmap catalog-runtime-rhdh -n rhdh -o jsonpath='{.data.all\\.yaml}' | grep 'templates/app-migration/template.yaml' | grep -cE '/blob/[0-9a-f]{40}/' || echo 0" \
   "0"
 if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
-    GOLDEN_SHA=$(gh api repos/adnan-drina/quarkus-migration-scaffold/git/refs/heads/main --jq '.object.sha' 2>/dev/null || echo "")
+    GOLDEN_SHA=$(gh api repos/adnan-drina/quarkus-migration-scaffold-v2/git/refs/heads/main --jq '.object.sha' 2>/dev/null || echo "")
     if [[ -n "$GOLDEN_SHA" ]]; then
-        echo -e "${GREEN}[PASS]${NC} quarkus-migration-scaffold golden repo exists (${GOLDEN_SHA:0:12})"
+        echo -e "${GREEN}[PASS]${NC} quarkus-migration-scaffold-v2 golden repo exists (${GOLDEN_SHA:0:12})"
         VALIDATE_PASS=$((VALIDATE_PASS + 1))
     else
-        echo -e "${RED}[FAIL]${NC} quarkus-migration-scaffold golden repo missing (run scripts/bootstrap-scaffold-repos.sh)"
-        VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
-    fi
-    GOLDEN_V2_SHA=$(gh api repos/adnan-drina/quarkus-migration-scaffold-v2/git/refs/heads/main --jq '.object.sha' 2>/dev/null || echo "")
-    if [[ -n "$GOLDEN_V2_SHA" ]]; then
-        echo -e "${GREEN}[PASS]${NC} quarkus-migration-scaffold-v2 golden repo exists (${GOLDEN_V2_SHA:0:12})"
-        VALIDATE_PASS=$((VALIDATE_PASS + 1))
-    else
-        echo -e "${RED}[FAIL]${NC} quarkus-migration-scaffold-v2 golden repo missing (run scripts/bootstrap-migration-scaffold-v2.sh)"
+        echo -e "${RED}[FAIL]${NC} quarkus-migration-scaffold-v2 golden repo missing (run scripts/bootstrap-scaffold-repos.sh)"
         VALIDATE_FAIL=$((VALIDATE_FAIL + 1))
     fi
 else
@@ -152,20 +144,6 @@ check "init script ships the kantra-ensure lazy sensor helper (pinned)" \
 check "kantra-ensure download message is on stderr (ensure_cli captures stdout as the CLI path)" \
   "grep -c 'Downloading kantra.*>&2' \"$REPO_ROOT/gitops/stages/050-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml\" || echo 0" \
   "1"
-# `python3 -m zipfile` discards Unix modes, so a kantra tree extracted with it
-# lands 644 and analysis dies when kantra shells out to java-external-provider
-# (dest-3 t_5981bf7a). /opt/kantra is chown'd away from the workspace uid, so
-# the image is the only place it can be fixed. These gate the mechanism, not
-# the filename: the extractor must preserve modes and the invariant must be
-# asserted, so a future KANTRA_VERSION layout stays covered. Comments are
-# stripped before the absence count — the Dockerfile comment names the bad
-# extractor to explain why it is gone.
-check "overlay Dockerfile does not extract kantra with the mode-losing extractor" \
-  "grep -v '^[[:space:]]*#' \"$REPO_ROOT/workspace-images/Dockerfile\" | grep -qF 'python3 -m zipfile' && echo LOSSY_EXTRACTOR || echo MODE_PRESERVING" \
-  "MODE_PRESERVING"
-check "overlay Dockerfile asserts the kantra zip exec bits survived extraction" \
-  "grep -qF '/opt/rhoai3/assert-zip-exec-bits.py' \"$REPO_ROOT/workspace-images/Dockerfile\" && echo ASSERT_WIRED || echo ASSERT_MISSING" \
-  "ASSERT_WIRED"
 check "live kantra-ensure verifies every ELF in the kantra tree is executable" \
   "test \"\$(oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -cF 'kantra-assert-exec')\" -ge 2 && echo CHECKER_WIRED || echo CHECKER_MISSING" \
   "CHECKER_WIRED"
@@ -595,12 +573,6 @@ SCAFFOLD_PARK="${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/_p
 check "080 golden _park retired" \
   "test ! -e '${SCAFFOLD_PARK}' && echo absent || echo present" \
   "absent"
-check "080 bootstrap omit_park_from_staged kept" \
-  "grep -c 'omit_park_from_staged' '${REPO_ROOT}/scripts/bootstrap-migration-scaffold-v2.sh' || echo 0" \
-  "3"
-check "080 bootstrap refuses dest chaos matrix" \
-  "grep -c 'run-chaos-matrix.py present in staged dest golden' '${REPO_ROOT}/scripts/bootstrap-migration-scaffold-v2.sh' || echo 0" \
-  "1"
 check "080 dest-init pins security.tirith_enabled false" \
   "grep -c 'tirith_enabled.: False' '${GITOPS_INIT}' || echo 0" \
   "1"

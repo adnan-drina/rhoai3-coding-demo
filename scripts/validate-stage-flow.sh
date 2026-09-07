@@ -1,11 +1,38 @@
 #!/usr/bin/env bash
-# Static validation for the canonical staged demo flow.
+# Validate the canonical staged demo flow.
+#
+#   ./scripts/validate-stage-flow.sh [flow.yaml]
+#       Static: flow metadata + kustomize build. No cluster.
+#   ./scripts/validate-stage-flow.sh --live [flow.yaml]
+#       Static, then each stage validate.sh in flow order (needs oc + .env).
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$REPO_ROOT/scripts/lib.sh"
 
-FLOW_FILE="${1:-$REPO_ROOT/flows/default.yaml}"
+LIVE=0
+FLOW_FILE="$REPO_ROOT/flows/default.yaml"
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --live) LIVE=1; shift ;;
+        -h|--help)
+            cat <<'EOF'
+Usage:
+  ./scripts/validate-stage-flow.sh [flow.yaml]
+      Static: flow metadata + kustomize build. No cluster.
+  ./scripts/validate-stage-flow.sh --live [flow.yaml]
+      Static, then each stage validate.sh in flow order (needs oc + .env).
+EOF
+            exit 0
+            ;;
+        -*)
+            log_error "Unknown flag: $1 (try --live)"
+            exit 1
+            ;;
+        *) FLOW_FILE="$1"; shift ;;
+    esac
+done
+
 TMP_PATHS="$(mktemp)"
 trap 'rm -f "$TMP_PATHS"' EXIT
 
@@ -187,3 +214,43 @@ while IFS= read -r gitops_path; do
 done <"$TMP_PATHS"
 
 log_success "Stage flow static validation passed"
+
+if [[ "$LIVE" -eq 0 ]]; then
+    exit 0
+fi
+
+load_env
+check_oc_logged_in
+
+log_step "Live stage validation"
+
+# while-read instead of mapfile: macOS ships bash 3.2
+stages=()
+while IFS= read -r stage; do
+    stages+=("$stage")
+done < <(
+    python3 - "$FLOW_FILE" <<'PY'
+from pathlib import Path
+import sys
+import yaml
+
+flow = yaml.safe_load(Path(sys.argv[1]).read_text())
+for stage in flow["stages"]:
+    print(Path(stage["validateScript"]).parent.name)
+PY
+)
+
+set +e
+max_rc=0
+for stage in "${stages[@]}"; do
+    log_step "Validating ${stage}"
+    "$REPO_ROOT/stages/${stage}/validate.sh"
+    rc=$?
+    if [[ $rc -eq 1 ]]; then
+        max_rc=1
+    elif [[ $rc -eq 2 && $max_rc -eq 0 ]]; then
+        max_rc=2
+    fi
+done
+
+exit "$max_rc"

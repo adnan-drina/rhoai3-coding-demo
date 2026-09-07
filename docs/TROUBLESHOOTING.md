@@ -852,7 +852,7 @@ Then retry sign-in; `/api/auth/oidc/start` should answer 302 (redirect to Keyclo
 
 **Symptom:** The Kubernetes-backed entity tabs show a warning banner; expanding it reveals `FETCH_ERROR ... reason: self-signed certificate in certificate chain` for every object query, while cluster discovery (the cluster dropdown) works and the Argo CD card is fine.
 
-**Likely cause:** RHDH bootstraps `global-agent` (proxy support), which by default (`GLOBAL_AGENT_FORCE_GLOBAL_AGENT=true`) routes every https request through its own agent and **discards the kubernetes plugin's per-request agent** — so neither `skipTLSVerify: true` nor `caFile`/`caData` in the cluster config ever reach the TLS handshake. Reproduced both ways in-pod 2026-07-13: the identical fetch succeeds without global-agent, fails with it, and succeeds again once the cluster CA is in Node's trust store. This is why the upstream reference config in `tmp/ocp-app-platform-demo-developer-hub-config` resorted to pod-wide `NODE_TLS_REJECT_UNAUTHORIZED=0` — avoid that; it disables TLS validation for ALL RHDH egress.
+**Likely cause:** RHDH bootstraps `global-agent` (proxy support), which by default (`GLOBAL_AGENT_FORCE_GLOBAL_AGENT=true`) routes every https request through its own agent and **discards the kubernetes plugin's per-request agent** — so neither `skipTLSVerify: true` nor `caFile`/`caData` in the cluster config ever reach the TLS handshake. Reproduced both ways in-pod 2026-07-13: the identical fetch succeeds without global-agent, fails with it, and succeeds again once the cluster CA is in Node's trust store. This is why an upstream ocp-app-platform-demo developer-hub config sample resorted to pod-wide `NODE_TLS_REJECT_UNAUTHORIZED=0` — avoid that; it disables TLS validation for ALL RHDH egress.
 
 **Recover:** add the cluster CA to Node's trust store. Two pieces are needed because the RHDH operator sets `automountServiceAccountToken: false` (the usual `/var/run/secrets/.../ca.crt` path does not exist in the pod):
 
@@ -1020,7 +1020,7 @@ oc exec -n wksp-ai-developer "$POD" -c development-tooling -- \
   python3 -c 'import json; p=json.load(open("/projects/modernized/.hermes/pins.json")); print(p["pins"]["hermes_agent"])'
 ```
 
-Do not invoke dest `.hermes/checks/assert-agent-pin.py`; that tree is retired. Build-time ast pin remains `workspace-images/scripts/assert-hermes-source-pin.py`.
+Do not invoke dest `.hermes/checks/assert-agent-pin.py`; that tree is retired. Overlay pin checks run at image bake time, not from this repository.
 
 **Recover:**
 

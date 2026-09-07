@@ -3,7 +3,7 @@
 **This is the solution architecture of Stage 080**, not of the `rhoai3-coding-demo` workshop. Workshop architecture stays in the [root README](../../README.md) and this stage's [README.md](README.md). Keep this file — and any later engineering companions — inside `stages/080-ai-autonomous-migration/`. Do not lift it into `docs/`, repo root, or `scaffold-repo/`.
 
 **Audience:** platform engineers and implementing agents building the Stage 080 migration factory.  
-**Not dest execution.** The golden scaffold (`scaffold-repo/quarkus-migration-scaffold/`, published as `quarkus-migration-scaffold` today and `-v2` on branch `harness-v2`) is what runs inside the OpenShift Dev Spaces workspace. This file does not belong in that tree.
+**Not dest execution.** The golden scaffold (`scaffold-repo/quarkus-migration-scaffold/`, published as `quarkus-migration-scaffold-v2`) is what runs inside the OpenShift Dev Spaces workspace. This file does not belong in that tree.
 
 | Document | Job |
 |---|---|
@@ -212,7 +212,7 @@ flowchart TB
 
 **Principal risks.** Mixing this SAD into the dest golden. Harvesting v1 mint prose into v2. Treating README wrap-up slogans as DEMONSTRATED. Dest-applying `harness-v2` onto a v1 dest. Calling this file an overlay remnant (it belongs in this stage folder). Inventing OpenShell-shaped dest/GitOps clones of Layer-3 controls Red Hat AI / OpenShift will provide.
 
-**v2 git isolation.** Same `scaffold-repo/` path as v1. Isolation is a **new GitHub golden** (`quarkus-migration-scaffold-v2`), not a sibling tree and not a rename of v1. Live Argo stays overlay until GitOps GO. OBJECT: `bootstrap-scaffold-repos.sh` from `harness-v2` (force-pushes v1); dest-apply onto v42; dest-complete Operator ack gates; `kanban daemon --force`; wipe v42 before HV-1 harvest; resume aborted `scaffold-repo-v2/`. Publish only with `scripts/bootstrap-migration-scaffold-v2.sh` on Operator GO. Ops table: [docs/OPERATIONS.md](../../docs/OPERATIONS.md) (branch isolation).
+**v2 git isolation.** Same `scaffold-repo/` path as v1. Isolation is a **new GitHub golden** (`quarkus-migration-scaffold-v2`), not a sibling tree and not a rename of v1. Publish with `scripts/bootstrap-scaffold-repos.sh`. Do not dest-complete Operator ack gates or `kanban daemon --force`. Ops table: [docs/OPERATIONS.md](../../docs/OPERATIONS.md).
 
 ---
 
@@ -228,7 +228,7 @@ flowchart TB
 | `.agents/skills/hermes-*`, `mta-*`, `rhdh-*`, `ocp-devspaces-*` | Official captures (product, version, URL, date, support status) |
 | `gitops/stages/050-advanced-app-platform/` | Template, Dev Spaces init, MTA, RHDH |
 | `stages/080-ai-autonomous-migration/validate.sh` | Stage readiness |
-| `scripts/bootstrap-migration-scaffold-v2.sh` | v2 golden publish only. Never `bootstrap-scaffold-repos.sh` from `harness-v2` |
+| `scripts/bootstrap-scaffold-repos.sh` | Publish Stage 070 and live Stage 080 goldens. Does not force-push historical v1. |
 
 Engineering companions (workflow, orchestration, contracts, acceptance) are **not opened in this change**. Do not invent empty stubs. When they land, they stay in this stage directory and **point at** scaffold paths; they are not dest execution and they are not workshop architecture.
 
@@ -268,7 +268,7 @@ Read the document that owns the question. Do not flatten them.
 |---|---|---|
 | What does the room show / click? | [README.md](README.md) | Treat wrap-up as M5 `DEMONSTRATED` |
 | How do we build the factory? Design, products, M1–M5, governance, status | **This file** | Invent a second SAD in dest or `docs/architecture/` stubs |
-| What runs inside the workspace? | `scaffold-repo/` (golden `-v2` on branch `harness-v2`) | Put this SAD on the dest PVC |
+| What runs inside the workspace? | `scaffold-repo/` (published as `quarkus-migration-scaffold-v2`) | Put this SAD on the dest PVC |
 | v2 campaign GO / HOLD / isolation / Gate P | Nested `architecture/SOLUTION-ARCHITECTURE-v2.md` (AD-019) | Treat this Stage 080 SAD as dest-provision GO or as the workshop SAD |
 | Fence vs claimed control / native sandbox future | Nested AD-020 + this file §8 | Copy AD-020 into the dest golden; invent dest Landlock/seccomp/CONNECT/"OpenShell-shaped" runtimes; grant privileged SCC for experimental Helm |
 | Is this kantra usable, not merely present? | `.agents/rules/ensure-cli-capability.md` + dest-init `kantra-assert-exec` | Accept `[ -x kantra ]` as MATCH; dest-push dest-3 PVC `/projects/.tools/kantra` or dest-3 worker-patched `mta-analyze-legacy.sh` as golden |

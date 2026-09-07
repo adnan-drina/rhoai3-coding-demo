@@ -8,10 +8,10 @@ applies-to:
   - env.example
   - docs/OPERATIONS.md
   - docs/TROUBLESHOOTING.md
-  - scripts/bootstrap.sh
+  - stages/010-openshift-ai-platform-foundation/deploy.sh
   - scripts/lib.sh
   - scripts/validate-lib.sh
-  - scripts/validate-demo-flow.sh
+  - scripts/validate-stage-flow.sh
   - stages/*/deploy.sh
   - stages/*/validate.sh
   - "**/deploy.sh"
@@ -39,7 +39,7 @@ Before live cluster work, load the repo-local environment, verify the expected A
 - Do not bypass the guard with `RHOAI_ALLOW_UNGUARDED_CLUSTER=true` unless the
   user explicitly confirms the current cluster and the command is low risk.
 
-## Bootstrap Configuration (set by `scripts/bootstrap.sh`)
+## Bootstrap Configuration (set by Stage 010 `deploy.sh`)
 
 - ArgoCD `resourceTrackingMethod` MUST be `annotation` (not `label` or `annotation+label`)
 - The `rhoai-demo` AppProject MUST exist; all Applications use `project: rhoai-demo`

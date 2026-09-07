@@ -18,10 +18,9 @@ log_step()    { echo -e "\n${BLUE}▶ $*${NC}"; }
 load_env() {
     local env_file="${REPO_ROOT:-.}/.env"
     if [[ -f "$env_file" ]]; then
-        # W4-121a / O-ENVNOCLOBBER: do not clobber already-exported vars.
-        # `set -a; source .env` used to overwrite caller-explicit V10_WS_NAME
-        # (and any other override) with stale pins — parity/idle then targeted
-        # a Stopped workspace (W4-120a). Snapshot pre-set keys, source, restore.
+        # Do not clobber already-exported vars.
+        # `set -a; source .env` used to overwrite caller-explicit overrides
+        # with stale pins. Snapshot pre-set keys, source, restore.
         local _preserves=()
         local _line _key
         while IFS= read -r _line || [[ -n "$_line" ]]; do

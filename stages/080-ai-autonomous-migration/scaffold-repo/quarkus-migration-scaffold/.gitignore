@@ -64,7 +64,7 @@ evidence/derived/legacy-at-3/
 .hermes/home/.env
 
 # EX-2/EX-3 retirement attic must never ship in the golden scaffold
-# (E-20260815T094500Z LG4). Backup lives in the authoring repo-root tmp/.
+# (E-20260815T094500Z LG4).
 tmp/
 
 # Authoring-board leak (E-20260815T000600Z / LG3). Not a product file.

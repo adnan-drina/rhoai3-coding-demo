@@ -40,10 +40,12 @@ Thumbs.db
 # Scaffold sources live under stages/*/scaffold-repo/; a root /src/ is never legitimate.
 /src/
 
-# Repo-root tmp/: local runtime only. Version the Stage 080 docs archive.
-/tmp/*
-!/tmp/docs-archive/
-!/tmp/docs-archive/**
+# Repo-root tmp/: local runtime only. Nothing here is a project resource.
+/tmp/
+
+# Workspace overlay bake/push (UDI images to Quay). Demo destfiles pull
+# quay.io/rhoai3-coding-demo/rhoai3-ws-*. Not a workshop resource.
+/workspace-images/
 
 # Kubeconfig
 kubeconfig
