@@ -127,7 +127,7 @@ Two honest counterweights, so this stays engineering and not ideology: Fowler's 
 
 ## Step 5: Open the workspace and tour the project
 
-1. Click the **Dev Spaces** link on the component page and let the workspace start (first start pulls the tooling image and installs the latest OpenCode CLI, 1–2 minutes).
+1. Click the **Dev Spaces** link on the component page and let the workspace start (first start pulls the tooling image and installs the latest OpenCode CLI, 1–2 minutes). You can leave the Stage 060 `agentic-coolstore` seat running: CheCluster allows two concurrent workspaces, and the factory destfile uses per-workspace storage so it does not share the per-user RWO claim.
 2. Tour the project, the two context kinds from Step 4, now as real files:
    - `AGENTS.md`: the project's standing rules for any AI agent.
    - `.opencode/skills/`: corporate standards as executable assets (REST conventions, LLM integration, test standards).

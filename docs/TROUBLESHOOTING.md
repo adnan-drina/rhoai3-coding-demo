@@ -980,6 +980,30 @@ oc get backstage developer-hub -n rhdh -o yaml
 - Add narrow `ignoreDifferences` only for dynamic cluster-specific values.
 - Avoid ignoring the full Backstage spec.
 
+## Factory workspace FailedMount while agentic-coolstore is Running
+
+**Affected stage:** Stages 070 and 080 (RHDH factory DevWorkspaces)
+
+**Symptom:** The factory workspace stays `Failed` / `Starting`. Events show `FailedMount` or a multi-attach error on `claim-devworkspace`. The Stage 060 `agentic-coolstore` seat is `Running` in the same persona namespace.
+
+**Likely cause:** CheCluster `pvcStrategy: per-user` uses a single RWO PVC per namespace. A second workspace that inherits that default cannot attach the claim while the first is running. Factory destfiles must set `controller.devfile.io/storage-type: per-workspace`.
+
+**Diagnose:**
+
+```bash
+oc get checluster devspaces -n openshift-devspaces \
+  -o jsonpath='{.spec.devEnvironments.storage.pvcStrategy}{"\n"}'
+oc get pvc -n wksp-ai-developer
+oc get devworkspace -n wksp-ai-developer
+oc describe devworkspace <factory-workspace> -n wksp-ai-developer | tail -40
+```
+
+**Recover:**
+
+- Confirm the stamped repo `devfile.yaml` (GitOps skeleton, applied with `replace: true` at scaffold time) includes `controller.devfile.io/storage-type: per-workspace`. A destfile already published without that attribute needs a new scaffold or a destfile push plus a new factory start.
+- Do not delete `claim-devworkspace` while `agentic-coolstore` still needs it.
+- CheCluster `maxNumberOfRunningWorkspacesPerUser: 2` only allows the second seat; it does not change PVC access mode.
+
 ## Red Hat OpenShift Dev Spaces Workspace Does Not Start
 
 **Affected stage:** Stage 060

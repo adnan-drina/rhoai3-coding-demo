@@ -1,6 +1,12 @@
 schemaVersion: 2.2.2
 metadata:
   name: agentic-quarkus-app
+attributes:
+  # Per-workspace PVC: CheCluster pvcStrategy is per-user (RWO
+  # claim-devworkspace). Starting a 070 factory workspace while
+  # agentic-coolstore is Running multi-attaches that claim (FailedMount).
+  # Same attribute as the Stage 080 factory destfile.
+  controller.devfile.io/storage-type: per-workspace
 components:
   - name: development-tooling
     container:

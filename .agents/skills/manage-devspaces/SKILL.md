@@ -23,7 +23,7 @@ description: >-
 
 - **CheCluster**: `devspaces` in `openshift-devspaces` (open-vsx.org, 1200s timeout, no-idle, `pvcStrategy: per-user`)
 - **GitOps DevWorkspaces**: `agentic-coolstore` in `wksp-ai-developer` and `wksp-ai-admin` only (Stage 060 catalog seat). Persona namespaces `wksp-kubeadmin`, `wksp-ai-admin`, and `wksp-ai-developer` stay GitOps-owned.
-- **Factory workspaces**: Stages 070 and 080 create per-run DevWorkspaces from RHDH templates (`agentic-quarkus-scaffold`, `app-migration`). Those destfiles live in the cloned repo; GitOps does not pre-create the CRs.
+- **Factory workspaces**: Stages 070 and 080 create per-run DevWorkspaces from RHDH templates (`agentic-quarkus-scaffold`, `app-migration`). Those destfiles live in the cloned repo; GitOps does not pre-create the CRs. Both destfiles set `controller.devfile.io/storage-type: per-workspace` so they can run beside `agentic-coolstore` without multi-attaching the per-user RWO `claim-devworkspace`.
 - **Retired standing seats** (do not recreate): `getting-started-ai-coding`, `coolstore-inventory-service`, `mca-coolstore`.
 - **Cloned repos**:
   - `https://github.com/adnan-drina/coolstore-inventory-service.git` — Stage 060 `agentic-coolstore` project
@@ -152,7 +152,10 @@ oc get devworkspace agentic-coolstore -n $NS -o jsonpath='{.status.message}'
 oc get events -n $NS --sort-by='.lastTimestamp' | tail -15
 
 # Common failures:
-# - "FailedMount" → stale routing reference, delete and recreate
+# - "FailedMount" on claim-devworkspace → second workspace inherited
+#   CheCluster per-user RWO storage; factory destfiles must set
+#   controller.devfile.io/storage-type: per-workspace. Do not delete
+#   the shared claim while agentic-coolstore still needs it.
 # - OOMKilled → increase memoryLimit in CR
 # - postStart failed → git clone race, add wait loop
 ```

@@ -926,7 +926,7 @@ oc get configmap gen-ai-aa-mcp-servers -n redhat-ods-applications -o yaml
 
 The stage 050 `devspaces` component installs Red Hat OpenShift Dev Spaces and persona namespaces (consumed by the workflow-only stages 060/070/080).
 
-Validation now checks both service readiness and persona namespace readiness. The stage is not considered fully validated unless `wksp-kubeadmin`, `wksp-ai-admin`, and `wksp-ai-developer` exist, the `ai-admin` / `ai-developer` workspace edit RoleBindings point at the expected OpenShift users, and the Stage 060 catalog seat `agentic-coolstore` exists in `wksp-ai-developer` and `wksp-ai-admin`. Stages 070 and 080 create additional workspaces from RHDH factory templates at demo time. Standing `getting-started-ai-coding`, `coolstore-inventory-service`, and `mca-coolstore` DevWorkspaces were retired.
+Validation now checks both service readiness and persona namespace readiness. The stage is not considered fully validated unless `wksp-kubeadmin`, `wksp-ai-admin`, and `wksp-ai-developer` exist, the `ai-admin` / `ai-developer` workspace edit RoleBindings point at the expected OpenShift users, and the Stage 060 catalog seat `agentic-coolstore` exists in `wksp-ai-developer` and `wksp-ai-admin`. Stages 070 and 080 create additional workspaces from RHDH factory templates at demo time. Those factory destfiles set `controller.devfile.io/storage-type: per-workspace` so they can run beside `agentic-coolstore` without multi-attaching the CheCluster per-user RWO claim. Standing `getting-started-ai-coding`, `coolstore-inventory-service`, and `mca-coolstore` DevWorkspaces were retired.
 
 Useful checks:
 

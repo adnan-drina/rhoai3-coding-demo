@@ -39,6 +39,17 @@ check "scaffold devfile runs the platform init script on postStart" \
 check "scaffold carries the OpenCode selector signal (.opencode/skills)" \
   "curl -fsSL 'https://api.github.com/repos/adnan-drina/agentic-quarkus-scaffold/contents/.opencode/skills?ref=main' | grep -cq 'quarkus-rest-conventions' && echo present || echo missing" \
   "present"
+# Factory destfile is the GitOps skeleton (template replace:true), not the
+# GitHub golden destfile. per-workspace avoids RWO FailedMount when the
+# Stage 060 agentic-coolstore seat is still Running.
+SKELETON_070="$REPO_ROOT/gitops/stages/050-advanced-app-platform/base/rhdh/templates/agentic-quarkus-scaffold/skeleton/devfile.yaml"
+STAGING_070="$SCRIPT_DIR/scaffold-repo/agentic-quarkus-scaffold/devfile.yaml"
+check "GitOps 070 factory destfile uses per-workspace storage" \
+  "grep -q 'controller.devfile.io/storage-type: per-workspace' '$SKELETON_070' && echo present || echo missing" \
+  "present"
+check "staging 070 destfile uses per-workspace storage" \
+  "grep -q 'controller.devfile.io/storage-type: per-workspace' '$STAGING_070' && echo present || echo missing" \
+  "present"
 
 log_step "OpenCode gateway trust (Bun system-CA fix)"
 # OpenCode embeds Bun, and Bun 1.3+ dropped default system-CA trust
