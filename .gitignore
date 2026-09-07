@@ -47,6 +47,9 @@ Thumbs.db
 # quay.io/rhoai3-coding-demo/rhoai3-ws-*. Not a workshop resource.
 /workspace-images/
 
+# Local experiment trees. Not a workshop resource.
+/experiments/
+
 # Kubeconfig
 kubeconfig
 *.kubeconfig
