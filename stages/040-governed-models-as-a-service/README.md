@@ -41,7 +41,7 @@ flowchart LR
 This stage turns model endpoints into governed platform services with subscription-based access control, token quotas, API key lifecycle, and observability.
 
 - MaaS prerequisites: cert-manager (hard prerequisite), Leader Worker Set Operator, Red Hat Connectivity Link v1.3.5, PostgreSQL database, Kuadrant configure Job, `kuadrant-console-plugin` enablement (sync-wave 14) for Connectivity Link gateway and policy visibility in the OpenShift web console.
-- Local model migration: the `LLMInferenceService` for Qwen3.6 27B in `models-as-a-service` (a second-model workshop overlay exists under `local-models/optional/`), replacing the Stage 030 baseline `InferenceService`.
+- Local model migration: the `LLMInferenceService` for Qwen3.6 27B in `models-as-a-service` (a second-model workshop overlay exists under `local-models/optional/`), replacing the Stage 030 baseline `InferenceService`. Serving flags follow the official vLLM Qwen3.6-27B recipe with Tool Calling and Text Only enabled (`--reasoning-parser qwen3`, `--enable-auto-tool-choice`, `--tool-call-parser qwen3_xml`, `--language-model-only`).
 - External model publication: OpenAI `gpt-4o-mini` as a governed MaaS model with credential-gated provider key.
 - Subscription and authorization policies with per-model token rate limits for developer and burst workloads.
 - Gateway hostname patched to `maas.<ingress-domain>` via hook Job at deploy time with TLS from the cluster ingress certificate.
@@ -59,7 +59,7 @@ Stage 040 is the governance control point for all model consumption that follows
 
 | Name | Owners | Models (limit/1h) | Priority | Purpose |
 |------|--------|-------------------|----------|---------|
-| `devspaces-coding-models` | SA `devspace-maas-key-provisioner` | qwen3-6-27b @5M/1h | 100 | Dev Spaces workspaces (Kilo Code / OpenCode) |
+| `devspaces-coding-models` | SA `devspace-maas-key-provisioner` | qwen3-6-27b @20M/1h | 100 | Dev Spaces workspaces (Kilo Code / OpenCode) |
 | `personal-kube-admin` / `personal-ai-developer` / `personal-ai-admin` | one user each | qwen3-6-27b @1M, gpt-4o-mini @100K | **150** | Interactive/Playground — wins user-token selection |
 | `developer-hub-models` | rhods-admins, kube:admin | qwen3-6-27b @5M/1h | 100 | Reserved for RHDH integration |
 | `model-evaluation` | unchanged | qwen3-6-27b @2M/1h, gpt-4o-mini @1M/1h | 100 | Eval workloads |

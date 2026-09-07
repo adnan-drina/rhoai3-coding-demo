@@ -955,12 +955,12 @@ DS_MODELS=$(jsonpath "maassubscriptions.maas.opendatahub.io/${DS_SUB}" "$MAAS_NS
 DS_QWEN27B_LIMIT=$(jsonpath "maassubscriptions.maas.opendatahub.io/${DS_SUB}" "$MAAS_NS" "{.spec.modelRefs[?(@.name==\"qwen3-6-27b\")].tokenRateLimits[0].limit}")
 if contains_word "$DS_MODELS" "qwen3-6-27b" &&
   ! contains_word "$DS_MODELS" "gpt-4o-mini" &&
-  [[ "$DS_QWEN27B_LIMIT" == "5000000" ]]; then
+  [[ "$DS_QWEN27B_LIMIT" == "20000000" ]]; then
   R="pass"
 else
   R="models=${DS_MODELS:-missing},qwen27b=${DS_QWEN27B_LIMIT:-missing}"
 fi
-check "devspaces-coding-models subscription has the local coding model @5M/1h (qwen3-6-27b, no gpt-4o-mini)" "$R"
+check "devspaces-coding-models subscription has the local coding model @20M/1h (qwen3-6-27b, no gpt-4o-mini)" "$R"
 
 PK_SUB="personal-kube-admin"
 PK_PRIORITY=$(jsonpath "maassubscriptions.maas.opendatahub.io/${PK_SUB}" "$MAAS_NS" "{.spec.priority}")
@@ -1279,13 +1279,8 @@ if command -v python3 >/dev/null 2>&1; then
       }
     }
   ],
-  "tool_choice": {
-    "type": "function",
-    "function": {
-      "name": "get_weather"
-    }
-  },
-  "max_tokens": 128,
+  "tool_choice": "auto",
+  "max_tokens": 512,
   "temperature": 0
 }
 JSON

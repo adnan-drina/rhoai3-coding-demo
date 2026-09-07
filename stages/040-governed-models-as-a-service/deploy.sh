@@ -514,8 +514,8 @@ wait_for_jsonpath "DataScienceCluster readiness" \
   "datasciencecluster/default-dsc" "" "{.status.phase}" "Ready" 90
 
 wait_for_jsonpath "Red Hat Connectivity Link pinned CSV" \
-  "subscription/rhcl-operator" "openshift-operators" \
-  "{.status.installedCSV}" "$PINNED_RHCL_CSV" 90
+  "csv/${PINNED_RHCL_CSV}" "openshift-operators" \
+  "{.status.phase}" "Succeeded" 90
 
 wait_for_jsonpath "DataScienceCluster MaaS management" \
   "datasciencecluster/default-dsc" "" \

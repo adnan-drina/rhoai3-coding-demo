@@ -81,15 +81,22 @@ spec:
           - python
           - -m
           - vllm.entrypoints.openai.api_server
-        # Orchestrator profile per the RedHatAI/Qwen3.6-27B-FP8 model card
-        # (vLLM section): reasoning + tool-call parsers as the 35B coder
-        # runs today, --language-model-only to skip the vision encoder
-        # entirely (the card's documented KV-headroom mode for this
-        # multimodal checkpoint), 131072 window (native 262K does not fit
-        # 48GB; 131K matches every client's context arithmetic). Hybrid
-        # GDN/mamba family like the 35B: mamba-aligned 4096 batched tokens,
-        # low seq cap (orchestrator = few long sessions; per-slot state is
-        # the cost driver). Weights ~28GB FP8 on the 44.4GiB card.
+        # Orchestrator profile for RedHatAI/Qwen3.6-27B-FP8 on one L40S.
+        # Reasoning + Tool Calling follow the official vLLM Qwen3.6-27B
+        # recipe (https://recipes.vllm.ai/Qwen/Qwen3.6-27B) with those
+        # features enabled:
+        #   --reasoning-parser qwen3
+        #   --enable-auto-tool-choice
+        #   --tool-call-parser qwen3_xml
+        # The Hugging Face / RedHatAI model-card vLLM example still says
+        # qwen3_coder; the recipe (and RHOAI vLLM 0.18's registered
+        # parsers) use qwen3_xml for this family. --language-model-only
+        # is the recipe Text Only / card KV-headroom mode (skip vision).
+        # 131072 window (native 262K does not fit 48GB; 131K matches
+        # every client's context arithmetic). Hybrid GDN/mamba family:
+        # mamba-aligned 4096 batched tokens, low seq cap (orchestrator
+        # = few long sessions; per-slot state is the cost driver).
+        # Weights ~28GB FP8 on the 44.4GiB card.
         # NOTE: served from Hugging Face (hf://) — no official modelcar
         # exists for this model yet (verified 2026-07-25); graduate to a
         # modelcar (own build or official when published) per BACKLOG.
@@ -118,7 +125,7 @@ spec:
           - --override-generation-config={"temperature":0.6,"top_p":0.95,"top_k":20,"min_p":0.0,"presence_penalty":0.0,"repetition_penalty":1.0}
           - --reasoning-parser=qwen3
           - --enable-auto-tool-choice
-          - --tool-call-parser=qwen3_coder
+          - --tool-call-parser=qwen3_xml
         ports:
           - containerPort: 8000
             name: http

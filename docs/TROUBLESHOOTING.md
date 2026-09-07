@@ -109,6 +109,26 @@ oc get llminferenceservice -n maas <model> \
 
 Rolling updates of single-replica GPU models deadlock when the new pod is SchedulingGated behind the old pod's Kueue quota: delete the old pod to hand over the card; the replacement the old ReplicaSet creates stays gated and is removed when the new pod reports Ready.
 
+## Qwen3.6 tool-call probe returns HTTP 500 / vLLM `assert content is not None`
+
+**Affected stage:** Stage 040 (`qwen3-6-27b` through MaaS)
+
+**Likely cause:** The Hugging Face / RedHatAI Qwen3.6 card's vLLM example still uses `--tool-call-parser qwen3_coder` with `--reasoning-parser qwen3`. Combined with a **named** `tool_choice` (`{"type":"function","function":{"name":"..."}}`), the reasoning parser can consume the entire completion into thinking so `content` is `None`, and vLLM 0.18 asserts in `vllm/entrypoints/openai/engine/serving.py` (see [vLLM #40528](https://github.com/vllm-project/vllm/issues/40528)). MaaS, the gateway, and GPU placement are unrelated: unauthenticated calls still 401, and `gpt-4o-mini` tools still work. Kilo Code / OpenCode send `tool_choice: auto`.
+
+The official vLLM recipe for Qwen3.6-27B with Tool Calling enabled is `--reasoning-parser qwen3 --enable-auto-tool-choice --tool-call-parser qwen3_xml` ([recipes.vllm.ai/Qwen/Qwen3.6-27B](https://recipes.vllm.ai/Qwen/Qwen3.6-27B)). The optional 35B coder overlay keeps `qwen3_coder`.
+
+**Diagnose:**
+
+```bash
+oc logs -n models-as-a-service -l app.kubernetes.io/name=qwen3-6-27b --tail=80 \
+  | grep -E 'AssertionError|content is not None'
+oc get llminferenceservice qwen3-6-27b -n models-as-a-service \
+  -o jsonpath='{range .spec.template.containers[0].args[*]}{@}{"\n"}{end}' \
+  | grep -E 'parser|tool'
+```
+
+**Recover:** GitOps `qwen27b-llminferenceservice.yaml` must list `qwen3_xml`. Stage 040 validate probes Qwen with `"tool_choice": "auto"` (not a forced function name). After changing args, a 1-GPU RollingUpdate cannot surge — delete the old `qwen3-6-27b-kserve-*` pod so the new replica can bind the L40S. Wait until `LLMInferenceService` is `Ready` before re-running `./stages/040-governed-models-as-a-service/validate.sh`.
+
 ## Model Image Pull Stalls On A GPU Node
 
 **Affected stage:** Stage 040 (first pull of a large modelcar)
