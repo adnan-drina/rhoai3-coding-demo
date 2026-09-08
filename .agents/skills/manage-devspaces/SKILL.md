@@ -2,7 +2,7 @@
 name: manage-devspaces
 metadata:
   author: rhoai3-coding-demo
-  version: 1.2.0
+  version: 1.2.1
   platform-family: "rhoai"
   platform-baseline: "repo"
   ocp-baseline: "repo"
@@ -40,6 +40,15 @@ description: >-
 GitOps-created DevWorkspaces use the **inline CR spec only**. The `devfile.yaml` in the cloned repo is ignored. All commands, events, components, and resource limits must be defined inline in the DevWorkspace CR.
 
 Factory (RHDH) workspaces use the **repo destfile** stamped at create time.
+
+### Workspace Trust (Che Code)
+
+`vscode-editor-configurations` in each `wksp-*` namespace must set both:
+
+- `settings.json` → `security.workspace.trust.enabled: false` (Machine settings)
+- `product.json` → `configurationDefaults` for the same key (and `startupPrompt: never`)
+
+Machine settings alone still show **Trust Workspace & Install** on a first factory start: Che Code writes recommended extensions into `/projects/.code-workspace` before the web workbench consults Machine settings. `product.json` is merged before `server-main.js` starts (Dev Spaces 3.28 Admin Guide ch. 17). ConfigMap changes take effect only after a workspace stop/start.
 
 ### postStart Initialization
 

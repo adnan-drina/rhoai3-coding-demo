@@ -7,9 +7,14 @@
 # DEFAULT_EXTENSIONS — do not recommend kilocode.kilo-code here or factory
 # (OpenCode) workspaces will also install it.
 #
-# security.workspace.trust.enabled=false: Restricted Mode otherwise leaves
-# DEFAULT_EXTENSIONS VSIXes installed-but-disabled until the user clicks
-# Enable. These namespaces only run platform-provisioned repos.
+# Workspace Trust: these namespaces only run platform-provisioned repos.
+# settings.json is copied to Machine/settings.json. That is not enough on a
+# first factory start: Che Code writes recommended extensions into
+# /projects/.code-workspace, then the web workbench prompts
+# "Enabling this extension requires a trusted workspace" before Machine
+# settings are consulted. product.json configurationDefaults are merged
+# into the editor product before server-main.js starts (Dev Spaces 3.28
+# Administration Guide, Configure Visual Studio Code - Open Source).
 # kilo-code.new.model.* must match init-ai-tools.sh (qwen27b / qwen3-6-27b),
 # not Kilo Gateway defaults.
 ---
@@ -49,6 +54,13 @@ data:
       "kilo-code.new.model.providerID": "qwen27b",
       "kilo-code.new.model.modelID": "qwen3-6-27b"
     }
+  product.json: |
+    {
+      "configurationDefaults": {
+        "security.workspace.trust.enabled": false,
+        "security.workspace.trust.startupPrompt": "never"
+      }
+    }
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -85,6 +97,13 @@ data:
       "kilo-code.new.model.providerID": "qwen27b",
       "kilo-code.new.model.modelID": "qwen3-6-27b"
     }
+  product.json: |
+    {
+      "configurationDefaults": {
+        "security.workspace.trust.enabled": false,
+        "security.workspace.trust.startupPrompt": "never"
+      }
+    }
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -120,4 +139,11 @@ data:
       "security.workspace.trust.enabled": false,
       "kilo-code.new.model.providerID": "qwen27b",
       "kilo-code.new.model.modelID": "qwen3-6-27b"
+    }
+  product.json: |
+    {
+      "configurationDefaults": {
+        "security.workspace.trust.enabled": false,
+        "security.workspace.trust.startupPrompt": "never"
+      }
     }

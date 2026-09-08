@@ -1292,18 +1292,35 @@ oc exec -n wksp-ai-developer "$POD" -c tooling-container -- \
 
 **Affected stage:** Stage 060 (`agentic-coolstore`)
 
-**Likely cause:** Two stacked defaults. Che Code Restricted Mode (Workspace Trust) leaves a VSIX installed but disabled until the user clicks Enable. After enable, Kilo 7.4 reads `kilo-code.new.model.*` from `vscode-editor-configurations` and its built-in Gateway catalog unless `~/.config/kilo/kilo.jsonc` allow-lists only `qwen27b`.
+**Likely cause:** Two stacked defaults. Che Code Restricted Mode (Workspace Trust) leaves a VSIX installed but disabled until the user clicks Enable. After enable, Kilo 7.4 reads `kilo-code.new.model.*` from `vscode-editor-configurations` and its built-in Gateway catalog unless `~/.config/kilo/kilo.jsonc` allow-lists only `qwen27b`. Machine `settings.json` alone does not suppress the first-start trust dialog; Che Code must also merge `product.json` `configurationDefaults`.
 
 **Diagnose:**
 
 ```bash
 oc get configmap vscode-editor-configurations -n wksp-ai-developer \
   -o jsonpath='{.data.settings\.json}' | jq .
+oc get configmap vscode-editor-configurations -n wksp-ai-developer \
+  -o jsonpath='{.data.product\.json}' | jq .
 oc get configmap devspace-ai-tools-init -n wksp-ai-developer \
   -o jsonpath='{.data.init-ai-tools\.sh}' | grep -E 'enabled_providers|kilo.jsonc|qwen27b'
 ```
 
 **Recover:** Sync Stage 050, then **stop and start** `agentic-coolstore` so Che Code reloads editor settings and postStart rewrites `~/.config/kilo/kilo.jsonc`. Do not click Enable on a Restricted Mode workspace as the configuration path — trust is disabled in these namespaces. The picker should show only `qwen3-6-27b`.
+
+## First Factory Workspace Asks To Trust Authors
+
+**Affected stage:** Stage 070 (and any RHDH factory workspace in `wksp-*`)
+
+**Likely cause:** Che Code copies `vscode-editor-configurations` `extensions.json` into `/projects/.code-workspace`. Installing `redhat.vscode-openshift-connector` then shows **Trust Workspace & Install** because Machine `settings.json` is applied after that prompt. The startup hook is `product.json` `configurationDefaults` in the same ConfigMap.
+
+**Diagnose:**
+
+```bash
+oc get configmap vscode-editor-configurations -n wksp-ai-developer \
+  -o jsonpath='{.data.product\.json}' | jq .
+```
+
+**Recover:** Sync Stage 050 so the ConfigMap includes `product.json`, then **stop and start** the factory workspace (Che Code reads the ConfigMap only at launcher start). The current session can click **Trust Workspace & Install** — these namespaces only run platform-provisioned repos. Do not restart a workspace that is mid-OpenCode session unless the presenter is ready.
 
 ## Kilo Code Cannot Reach MaaS Endpoint
 
