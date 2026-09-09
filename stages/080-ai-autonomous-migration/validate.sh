@@ -151,8 +151,8 @@ check "init ConfigMap is DWO-mounted (volume, not kube-API curl as the primary p
   "awk '/^kind: ConfigMap\$/{c=1} c && /^  name: devspace-ai-tools-init\$/{n=1} n && /controller.devfile.io\\/mount-to-devworkspace: \"true\"/ {print 1; exit} n && /^data:/{exit} /^---\$/{c=0; n=0}' \"$REPO_ROOT/gitops/stages/050-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml\" || echo 0" \
   "1"
 SCAFFOLD_080="$REPO_ROOT/stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold"
-check "v2 scaffold has no dispatch-phase package" \
-  "test ! -e \"$SCAFFOLD_080/.hermes/skills/harness/dispatch-phase\" && echo 1 || echo 0" \
+check "v2 scaffold ships dispatch-phase/autostart-migration.sh (the dest-init consumer the devfile postStart calls)" \
+  "test -f \"$SCAFFOLD_080/.hermes/skills/harness/dispatch-phase/scripts/autostart-migration.sh\" && grep -c 'dispatch-phase/scripts/autostart-migration.sh' '$REPO_ROOT/gitops/stages/050-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml' | awk '{print (\$1>=1)?1:0}'" \
   "1"
 check "v2 scaffold has no .hermes/home/scripts" \
   "test ! -e \"$SCAFFOLD_080/.hermes/home/scripts\" && echo 1 || echo 0" \
