@@ -1,0 +1,249 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "rhoai3.evidence-bundle/v1",
+  "title": "evidence-bundle.json \u2014 frozen facts, no decisions",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "source",
+    "migration",
+    "catalogs",
+    "producers",
+    "build",
+    "structure",
+    "entry_points",
+    "obligations",
+    "mta"
+  ],
+  "properties": {
+    "schema": {
+      "const": "rhoai3.evidence-bundle/v1"
+    },
+    "source": {
+      "type": "object",
+      "required": [
+        "digest",
+        "root_kind",
+        "file_count",
+        "files"
+      ],
+      "properties": {
+        "digest": {
+          "type": "string"
+        },
+        "root_kind": {
+          "type": "string"
+        },
+        "file_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "path",
+              "sha256",
+              "class"
+            ],
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "sha256": {
+                "type": "string"
+              },
+              "class": {
+                "type": "string",
+                "enum": [
+                  "production",
+                  "test",
+                  "resource",
+                  "build",
+                  "generated",
+                  "integration",
+                  "other"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "migration": {
+      "type": "object"
+    },
+    "catalogs": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{64}$"
+      }
+    },
+    "producers": {
+      "type": "object"
+    },
+    "build": {
+      "type": "object",
+      "required": [
+        "attempted",
+        "outcome",
+        "classpath_available",
+        "source_roots",
+        "generated_source_roots",
+        "toolchain",
+        "warmup"
+      ],
+      "properties": {
+        "attempted": {
+          "type": "boolean"
+        },
+        "outcome": {
+          "type": "string"
+        },
+        "classpath_available": {
+          "type": "boolean"
+        }
+      }
+    },
+    "structure": {
+      "type": "object",
+      "required": [
+        "available",
+        "mode",
+        "source_digest",
+        "type_count",
+        "types"
+      ],
+      "properties": {
+        "available": {
+          "type": "boolean"
+        },
+        "mode": {
+          "type": "string"
+        },
+        "type_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "types": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "fqn",
+              "path",
+              "kind",
+              "resolution"
+            ]
+          }
+        }
+      }
+    },
+    "entry_points": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "type",
+          "member",
+          "path",
+          "evidence",
+          "resolution",
+          "http_method",
+          "http_path",
+          "channel"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "http",
+              "messaging",
+              "scheduled",
+              "batch",
+              "event",
+              "lifecycle"
+            ]
+          },
+          "resolution": {
+            "type": "string",
+            "enum": [
+              "full",
+              "partial"
+            ]
+          }
+        }
+      }
+    },
+    "obligations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "rule_id",
+          "category",
+          "effort",
+          "locus"
+        ],
+        "properties": {
+          "category": {
+            "type": "string",
+            "enum": [
+              "mandatory",
+              "optional",
+              "potential"
+            ]
+          },
+          "locus": {
+            "type": "object",
+            "required": [
+              "path",
+              "line"
+            ]
+          }
+        }
+      }
+    },
+    "mta": {
+      "type": "object",
+      "required": [
+        "status",
+        "admissible",
+        "product_pin",
+        "provenance",
+        "targets",
+        "canary"
+      ],
+      "properties": {
+        "admissible": {
+          "type": "boolean"
+        },
+        "canary": {
+          "type": "object",
+          "required": [
+            "rule_id",
+            "fired"
+          ],
+          "properties": {
+            "fired": {
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    },
+    "observations": {
+      "type": "object"
+    }
+  }
+}

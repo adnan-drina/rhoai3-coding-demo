@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Producer-skill invariant (Architect 143941ZA / Operator 143706ZO).
 
-Every M-stage card must pin at least one skill that owns producing its
-primary artifact. Checkers (check-*, assert-*) do not count.
+Every card must pin at least one skill that owns producing its primary
+artifact. Checkers (check-*, assert-*, verify-*) and the common loop
+procedure (fix-until-green) do not count.
 
 Not dest-apply. Does not import create_task. Does not kanban.
 """
@@ -15,53 +16,49 @@ from pathlib import Path
 from typing import Any
 
 _KERNEL = Path(__file__).resolve().parent
-if str(_KERNEL) not in sys.path:
-    sys.path.insert(0, str(_KERNEL))
+_LIB = _KERNEL.parent / "lib"
+for p in (_KERNEL, _LIB):
+    if str(p) not in sys.path:
+        sys.path.insert(0, str(p))
 
-from k4_schema import REMEDY, STAMP_ID  # noqa: E402
+from k4_schema import CLOSE_ID, REMEDY  # noqa: E402
+from planner.cards import CARD_SKILLS  # noqa: E402
+
+STAMP_ID = "STAMP_DESTINATION_TREE"  # historical dest-8 fixture card
 
 Issue = tuple[str, str, str]
 
 ARTIFACT_M1 = "m1-analyze"
-ARTIFACT_M2 = "m2-partition"
+ARTIFACT_M2 = "m2-admission"
 ARTIFACT_M4 = "m4-verdict"
 ARTIFACT_POM = "dest-pom"
+ARTIFACT_CONFIG = "dest-config"
 ARTIFACT_JAVA = "dest-java"
 ARTIFACT_K8S = "dest-k8s"
 ARTIFACT_COMMIT = "dest-commit"
 
-# Explicit catalog. Verb prefixes are not the check (dest-8 M2 pinned
-# derive-story-oracles and still had no producer for partition.json).
-PRODUCERS: dict[str, str] = {
-    "derive-legacy-boot3": ARTIFACT_M1,
-    "scan-with-mta": ARTIFACT_M1,
-    "inventory-legacy-surface": ARTIFACT_M1,
-    "plan-migration-partition": ARTIFACT_M2,
-    "author-destination-pom": ARTIFACT_POM,
-    "reference-rh-quarkus-pom": ARTIFACT_POM,
-    "manage-quarkus-extensions": ARTIFACT_POM,
-    "configure-quarkus-profiles": ARTIFACT_POM,
-    "spring-to-quarkus-patterns": ARTIFACT_JAVA,
-    "form-entity-persistence": ARTIFACT_K8S,
-    "commit-destination-tree": ARTIFACT_COMMIT,
-    "compose-m4-verdict": ARTIFACT_M4,
+# Explicit catalog. Verb prefixes are not the check.
+PRODUCERS: dict[str, frozenset[str]] = {
+    "freeze-migration-input": frozenset({ARTIFACT_M1}),
+    "capture-build-evidence": frozenset({ARTIFACT_M1}),
+    "inventory-legacy-surface": frozenset({ARTIFACT_M1}),
+    "scan-with-mta": frozenset({ARTIFACT_M1}),
+    "assemble-evidence-bundle": frozenset({ARTIFACT_M1}),
+    "bootstrap-destination": frozenset({ARTIFACT_M2, ARTIFACT_POM}),
+    "build-worklist": frozenset({ARTIFACT_M2}),
+    "admit-migration-plan": frozenset({ARTIFACT_M2}),
+    "author-destination-pom": frozenset({ARTIFACT_POM}),
+    "reference-rh-quarkus-pom": frozenset({ARTIFACT_POM}),
+    "manage-quarkus-extensions": frozenset({ARTIFACT_POM}),
+    "configure-quarkus-profiles": frozenset({ARTIFACT_POM, ARTIFACT_CONFIG}),
+    "spring-to-quarkus-patterns": frozenset({ARTIFACT_JAVA}),
+    "form-entity-persistence": frozenset({ARTIFACT_K8S, ARTIFACT_JAVA}),
+    "commit-destination-tree": frozenset({ARTIFACT_COMMIT}),
+    "compose-m4-verdict": frozenset({ARTIFACT_M4}),
 }
 
-# Convert uses this when partition story.skills[] is omitted.
-# Planner-facing copy: plan-migration-partition/references/partition-schema.md
-# (assert-partition-schema-sync.py). Not a second validity rule — mint still
-# checks PRODUCERS against the card's primary artifact (Architect 102851ZA).
-KIND_DEFAULTS: dict[str, list[str]] = {
-    "setup": [
-        "author-destination-pom",
-        "reference-rh-quarkus-pom",
-        "manage-quarkus-extensions",
-        "configure-quarkus-profiles",
-    ],
-    "us": ["spring-to-quarkus-patterns"],
-    "polish": ["spring-to-quarkus-patterns", "manage-quarkus-extensions"],
-    "database": ["form-entity-persistence"],
-}
+# One home for kind → pins: planner.cards.CARD_SKILLS (K4 stamps them).
+KIND_DEFAULTS: dict[str, list[str]] = {k: list(v) for k, v in CARD_SKILLS.items()}
 
 DEST8_FIXTURE = _KERNEL / "fixtures" / "dest-8-six-cards.json"
 
@@ -100,6 +97,7 @@ def card_from_payload(payload: dict[str, Any]) -> dict[str, Any]:
     return {
         "logical_id": lid,
         "phase": phase,
+        "kind": str(payload.get("kind") or body.get("increment_kind") or ""),
         "skills": skills,
         "files_writable": writes,
     }
@@ -108,14 +106,19 @@ def card_from_payload(payload: dict[str, Any]) -> dict[str, Any]:
 def primary_artifact(card: dict[str, Any]) -> str:
     phase = str(card.get("phase") or "").upper()
     lid = str(card.get("logical_id") or "").strip()
+    kind = str(card.get("kind") or "")
     if phase == "M1":
         return ARTIFACT_M1
     if phase == "M2":
         return ARTIFACT_M2
-    if phase == "M4":
+    if phase == "M4" or kind == "close" or lid == CLOSE_ID:
         return ARTIFACT_M4
     if lid == STAMP_ID or lid.startswith("STAMP_"):
         return ARTIFACT_COMMIT
+    if kind == "build":
+        return ARTIFACT_POM
+    if kind == "config":
+        return ARTIFACT_CONFIG
     writes = _writes(card)
     names = {Path(p).name for p in writes}
     if "pom.xml" in names:
@@ -127,6 +130,8 @@ def primary_artifact(card: dict[str, Any]) -> str:
 
     if writes and all(_k8s_rel(p) for p in writes):
         return ARTIFACT_K8S
+    if writes and all(p.startswith("src/main/resources/") for p in writes):
+        return ARTIFACT_CONFIG
     return ARTIFACT_JAVA
 
 
@@ -135,25 +140,16 @@ def producer_issues(card: dict[str, Any]) -> list[Issue]:
     if not skills:
         return []
     artifact = primary_artifact(card)
-    hits = [s for s in skills if PRODUCERS.get(s) == artifact]
+    hits = [s for s in skills if artifact in PRODUCERS.get(s, frozenset())]
     if hits:
         return []
     lid = str(card.get("logical_id") or "?")
     phase = str(card.get("phase") or "?")
-    return [
-        _issue(
-            "K4_NO_PRODUCER",
-            "%s phase=%s artifact=%s skills=%s" % (lid, phase, artifact, skills),
-        )
-    ]
+    return [_issue("K4_NO_PRODUCER", "%s phase=%s artifact=%s skills=%s" % (lid, phase, artifact, skills))]
 
 
 def check_cards(cards: list[dict[str, Any]]) -> list[tuple[str, list[Issue]]]:
-    out: list[tuple[str, list[Issue]]] = []
-    for card in cards:
-        lid = str(card.get("logical_id") or "?")
-        out.append((lid, producer_issues(card)))
-    return out
+    return [(str(card.get("logical_id") or "?"), producer_issues(card)) for card in cards]
 
 
 def load_cards(path: Path) -> list[dict[str, Any]]:

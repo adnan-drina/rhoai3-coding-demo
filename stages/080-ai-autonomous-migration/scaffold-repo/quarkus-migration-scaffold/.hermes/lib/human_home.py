@@ -18,8 +18,8 @@ def human_home() -> Path:
     """Return the OS-account home directory for this uid.
 
     Does not consult $HOME or Path.home(). Dest profile workers have a
-    Hermes HOME under the profile tree; dest-init and spec-kit still
-    mean the dest-user account (/home/user).
+    Hermes HOME under the profile tree; dest-init still means the
+    dest-user account (/home/user).
     """
     try:
         home = pwd.getpwuid(os.getuid()).pw_dir

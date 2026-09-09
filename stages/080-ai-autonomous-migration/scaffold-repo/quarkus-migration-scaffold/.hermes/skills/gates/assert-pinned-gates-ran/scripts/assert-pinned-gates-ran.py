@@ -34,7 +34,7 @@ write_receipt = _mod.write_receipt
 
 PINNED_GATE_LEAVES = frozenset(
     {
-        "check-spec-readiness",
+        "admit-migration-plan",
         "check-domain-parity",
         "check-release-readiness",
         "assert-pinned-gates-ran",

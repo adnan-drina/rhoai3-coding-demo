@@ -21,10 +21,10 @@ HANDOFF = {
     ]
 }
 
-IDENTITY = {
-    "schema": "legacy-at-3/v2",
-    "mode": "identity",
-    "legacy_src": "/projects/legacy",
+FREEZE = {
+    "schema": "rhoai3.producer-receipt/v1",
+    "producer": "freeze",
+    "status": "ok",
 }
 
 
@@ -45,11 +45,11 @@ def write_handoff(root: Path) -> None:
 
 
 def write_manifest(root: Path, harvest: str) -> None:
-    derived = root / "evidence" / "derived"
-    derived.mkdir(parents=True, exist_ok=True)
-    doc = dict(IDENTITY)
-    doc["harvest_referent"] = harvest
-    (derived / "legacy-at-3.json").write_text(
+    prod = root / "evidence" / "producers"
+    prod.mkdir(parents=True, exist_ok=True)
+    doc = dict(FREEZE)
+    doc["analysis_copy"] = harvest
+    (prod / "freeze.json").write_text(
         json.dumps(doc, indent=2) + "\n", encoding="utf-8"
     )
 
@@ -113,7 +113,7 @@ def main() -> int:
         blob = miss.stdout + miss.stderr
         if miss.returncode != 1 or "LEGACY_POM_UNRESOLVED" not in blob:
             print(
-                "FAIL: identity harvest_referent without pom must REFUSE: %s"
+                "FAIL: analysis_copy without pom must REFUSE: %s"
                 % blob,
                 file=sys.stderr,
             )
@@ -121,13 +121,13 @@ def main() -> int:
 
         trap = root / "evidence" / "derived" / "legacy-at-3" / "pom.xml"
         write_pom(trap, "spring-boot-starter-validation")
-        harvest = root / "legacy-at-3-harvest"
+        harvest = root / "frozen-input"
         write_pom(harvest / "pom.xml", "spring-boot-starter-cache")
         write_manifest(root, str(harvest))
         ok = run(root)
         blob = ok.stdout + ok.stderr
         if ok.returncode != 0:
-            print("FAIL: harvest_referent pom must emit: %s" % blob, file=sys.stderr)
+            print("FAIL: analysis_copy pom must emit: %s" % blob, file=sys.stderr)
             return 1
         doc = json.loads(
             (root / "evidence" / "required-extensions.json").read_text(
@@ -146,7 +146,7 @@ def main() -> int:
             return 1
         if "quarkus-hibernate-validator" in aids:
             print(
-                "FAIL: trap derived-dir pom must not win over harvest_referent: %s"
+                "FAIL: trap derived-dir pom must not win over the frozen analysis copy: %s"
                 % doc,
                 file=sys.stderr,
             )
@@ -169,12 +169,12 @@ def main() -> int:
         blob = miss2.stdout + miss2.stderr
         if miss2.returncode != 1 or "LEGACY_POM_UNRESOLVED" not in blob:
             print(
-                "FAIL: missing harvest_referent manifest must REFUSE: %s" % blob,
+                "FAIL: missing freeze receipt must REFUSE: %s" % blob,
                 file=sys.stderr,
             )
             return 1
 
-    print("OK: emit-required-extensions harvest_referent")
+    print("OK: emit-required-extensions frozen analysis copy")
     return 0
 
 

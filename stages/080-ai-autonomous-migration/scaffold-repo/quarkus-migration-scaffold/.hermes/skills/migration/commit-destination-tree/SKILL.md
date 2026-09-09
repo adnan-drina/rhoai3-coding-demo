@@ -5,7 +5,7 @@ description: >
   src/, and README from this card's files_writable with a one-shot git -c
   identity so assert-retrievable-tree can PASS. Do not git config. Do not
   dest-push. Do not Signed-off-by. Do not commit evidence/, .hermes/,
-  .specify/, target/, or .env. Do not use on M4 VERDICT (the judge must not
+  verification/, target/, or .env. Do not use on M4 VERDICT (the judge must not
   edit the defendant). Do not dest-commit dest-7's blocked tree.
 license: Apache-2.0
 compatibility: Linux seat; git
@@ -30,7 +30,7 @@ This card is the named harvest between last M3 and M4.
   card's `files_writable`.
 - **Invoke, do not mutate:** `git` with one-shot `-c user.name` /
   `-c user.email`. Do not `git config`. Do not dest-push.
-- **OBJECT:** `evidence/`, `.hermes/`, `.specify/`, `target/`, `.env`.
+- **OBJECT:** `evidence/`, `.hermes/`, `verification/`, `target/`, `.env`.
   Derived output stays inside the dest tree grant. Do not widen
   `K2_ALLOW_ROOT`.
 

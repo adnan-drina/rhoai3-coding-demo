@@ -112,6 +112,25 @@ if profile == "reviewer":
 if tool in {"execute_code", "delegate_task", "mcp", "skill_manage"}:
     block("%s is pathless-or-mutation; deny" % tool)
 
+# Graph mutation veto (SAD §9 K2): a worker never creates or links cards.
+# Cards come from K4 (python3 .hermes/kernel/k4_mint.py --root . --exec)
+# under an ADMITTED receipt; the paved road runs that CLI, not the model.
+# Guardrail only — claimed_control stays false.
+GRAPH_MUTATION_TOOLS = {
+    "kanban_create", "kanban_link", "kanban_unlink", "kanban_swarm",
+    "kanban_decompose", "create_task", "link_task", "kanban_daemon",
+}
+if profile in {"implementer", "reviewer", "orchestrator"}:
+    if tool in GRAPH_MUTATION_TOOLS:
+        block("%s refused: board graph mutation is K4 only "
+              "(python3 .hermes/kernel/k4_mint.py --root . --exec under an ADMITTED receipt)" % tool)
+    _blob = " ".join([cmd or "", str(inp.get("action") or "")])
+    if re.search(r"\bhermes\s+kanban\s+(create|link|unlink|swarm|decompose)\b", _blob):
+        block("direct hermes kanban graph mutation refused: run "
+              "python3 .hermes/kernel/k4_mint.py --root . --exec (K4) instead")
+    if re.search(r"\bkanban\s+daemon\b", _blob) and "--force" in _blob:
+        block("hermes kanban daemon --force refused (OBJECT)")
+
 def is_complete():
     if tool in {"kanban_complete", "complete_task"}:
         return True
@@ -266,10 +285,15 @@ def bound_gates_red():
     except OSError:
         return []
     names = (
-        "assert-m2-speckit-conformance", "assert-m2-story-headings", "assert-m4-verdict-schema", "check-product-tests", "run-m4-pre-verdict", "assert-pinned-gates-ran",
-        "assert-retrievable-tree", "check-spec-readiness", "check-domain-parity",
+        "assert-planner-activated", "bootstrap-destination", "build-worklist", "admit-migration-plan",
+        "verify-admission-receipt", "verify-live-kanban-loop", "k3_live",
+        "assemble-evidence-bundle", "freeze-migration-input", "normalize-structure",
+        "assert-frozen-root-pair", "assert-frozen-input-intact", "assert-mta-canary",
+        "run-verify", "fix-until-green/scripts/verify", "fix-until-green/scripts/advance",
+        "compare-runtime-parity", "compose-parity-receipt",
+        "assert-m4-verdict-schema", "check-product-tests", "run-m4-pre-verdict", "assert-pinned-gates-ran",
+        "assert-retrievable-tree", "check-domain-parity",
         "check-release-readiness", "check-test-toolchain", "check-external-dirs",
-        "check-readiness", "check-partition-coverage", "check-kanban-body",
         "assert-surefire-results", "assert-m4-card-body",
     )
     last = {}

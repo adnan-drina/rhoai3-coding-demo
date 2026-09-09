@@ -1,5 +1,8 @@
 # Red Hat BOM + mandatory extension wiring
 
+> **Superseded 2026-09-09 (ADR-001, `decisions.yaml`): the destination follows the Spring-compatibility path.** The `quarkus-spring-*` extensions listed in `.hermes/planning/catalogs/compat-mapping.json` are the baseline, not a rejection. Read the mechanism notes below as the list of Spring features the compatibility layer does **not** provide (no Spring `ApplicationContext`; those go native). Any "native only" instruction below is historical.
+
+
 **Shared reference** for `manage-quarkus-extensions` and (at v14 mint)
 `author-destination-pom`. Policy only — **version values** live in
 `.hermes/pins.json` and destination `pom.xml`.

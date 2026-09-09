@@ -6,12 +6,7 @@
       "build": "2026.8.19",
       "install_surface": "Platform Dev Spaces init (Managed Scope)",
       "initial_status_contract": "binary-local: hermes kanban create --help plus VALID_INITIAL_STATUSES. Public CLI page is not the contract. Omit --initial-status yields ready (fail-open).",
-      "note": "Seat pin (Operator E-20260823T111522Z GO Hermes-only; Spec Kit stays 0.16.1). Dest measured v0.20.5 / 2026.8.19. Native Kanban gateway-embedded dispatcher is the control. HOLD further pin-move without Operator GO."
-    },
-    "spec_kit": {
-      "package": "specify-cli",
-      "version": "0.16.1",
-      "install": "uv tool install 'specify-cli==0.16.1'"
+      "note": "Seat pin (Operator E-20260823T111522Z GO Hermes-only). Dest measured v0.20.5 / 2026.8.19. Native Kanban gateway-embedded dispatcher is the control. Spec Kit is removed from Stage 080 (no compatibility path); planning is the deterministic planner under .hermes/lib/planner. HOLD further pin-move without Operator GO."
     },
     "quarkus_platform": {
       "group_id": "com.redhat.quarkus.platform",
@@ -49,6 +44,23 @@
         "digest": "sha256:52fd342d1c236ddff4a4bc85a5e8939291a874468cabc0103444908fe3dda985",
         "note": "Quay registry digest from `podman push --digestfile` 2026-08-25 (kantra unzip exec-bits + Dockerfile F1-F8). Not hermes_agent. Not a local image Id, unsigned Digest, IMAGE_DIGEST stamp, or `podman image inspect` RepoDigest. Dest-init must not compare the in-image stamp to this key (Architect 183448ZA). Republish destfile + this key together on each overlay rebuild."
       }
+    },
+    "mta_cli": {
+      "version": "8.2",
+      "product_version": "8.2",
+      "artifact_sha256": null,
+      "note": "Pinned 2026-09-08 (user decision) to the MTA CLI 8.2 product line. Admissible iff the executed binary identifies as mta-cli 8.2.x (measured --version), is not a kantra alias, and, once an Operator freezes artifact_sha256 here from a measured receipt, its sha256 equals it. Until frozen, the receipt records the measured binary sha256 as provenance. kantra remains provisional and non-admissible."
+    },
+    "planner": {
+      "activation": "not-activated",
+      "pilot": null,
+      "note": "SOLUTION-ARCHITECTURE §12. activation ∈ {not-activated, pilot, activated}. not-activated: dest-init mints M1 only, admission never ADMITS, K4 emits nothing. pilot: one Operator-authorized run — set pilot to {run_id, authorized_by, evidence_bundle_sha256} naming the exact evidence bundle the seal covers; admission ADMITS only that bundle and K4 re-derives the check from this file, never from the receipt text or step order. activated: named Operator GO after the gate (residue scan clean; mandatory producers pinned; deterministic selftests green; live K3 board equality; one capability through M3 review and M4 parity). A worker never edits this block."
+    },
+    "structure_extractor": {
+      "version": "jdk-21",
+      "source_release": 17,
+      "implementation": "javax.lang.model + com.sun.source through JavacTask (JdkModelExtract.java, compiled at run time by the toolchain javac)",
+      "note": "The pinned toolchain JDK (java_release 21) is the M1 structural extractor; no third-party library. run-jdk-model-extract.sh refuses when the running JDK feature release differs from this pin. The receipt records the extractor source sha256 and the exact runtime string. source_release is the --release level javac attributes the legacy source at (Boot 2.x legacy is Java 8–17 source)."
     }
   }
 }

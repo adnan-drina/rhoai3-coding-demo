@@ -1066,7 +1066,7 @@ Do not invoke dest `.hermes/checks/assert-agent-pin.py`; that tree is retired. O
 
 **Recover:**
 
-- Operator GO `E-20260823T111522Z` ratified Hermes v0.20.5 / 2026.8.19 (Spec Kit stays 0.16.1). Dest-init fail-closes unless overlay `hermes --version` matches `.hermes/pins.json`. Do not curl-install Hermes. Do not fall back to dest `.hermes/home/hermes-agent` (Architect `202501ZA` / `185531ZA` / `210214ZA`).
+- Operator GO `E-20260823T111522Z` ratified Hermes v0.20.5 / 2026.8.19. Dest-init fail-closes unless overlay `hermes --version` matches `.hermes/pins.json`. Do not curl-install Hermes. Do not fall back to dest `.hermes/home/hermes-agent` (Architect `202501ZA` / `185531ZA` / `210214ZA`). Spec Kit is removed from Stage 080; planning is the deterministic planner under `.hermes/lib/planner/` (activation-gated via `pins.planner.activation`).
 - Do not treat dest-armed (a) as MATCH until dest `pins.json` and `hermes --version` agree. Do not mkdir empty `.hermes/kernel/` to work around a pin miss. Do not restore dest `.hermes/checks/`.
 
 ## Factory Workspace Starts Healthy With No Agent Tooling

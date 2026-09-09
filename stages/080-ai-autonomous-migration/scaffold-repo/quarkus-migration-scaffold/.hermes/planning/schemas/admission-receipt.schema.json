@@ -1,0 +1,94 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "rhoai3.admission-receipt/v1",
+  "title": "Admission receipt v2 (evidence/planning/admission-receipt.json)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "status",
+    "planning_only",
+    "reasons",
+    "blocks",
+    "seals",
+    "activation",
+    "measure",
+    "head",
+    "counts",
+    "loop_complete",
+    "receipt_digest"
+  ],
+  "properties": {
+    "schema": {
+      "type": "string",
+      "enum": [
+        "rhoai3.admission-receipt/v2"
+      ]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "ADMITTED",
+        "INCONCLUSIVE",
+        "COMPAT_FAIL"
+      ]
+    },
+    "planning_only": {
+      "type": "boolean"
+    },
+    "reasons": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "seals": {
+      "type": "object",
+      "required": [
+        "evidence_bundle",
+        "worklist",
+        "bootstrap",
+        "decisions_yaml",
+        "contracts",
+        "pins"
+      ]
+    },
+    "counts": {
+      "type": "object"
+    },
+    "receipt_digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "activation": {
+      "type": "object",
+      "required": [
+        "mode",
+        "pilot_run_id",
+        "authorized_by"
+      ],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "not-activated",
+            "pilot",
+            "activated"
+          ]
+        }
+      }
+    },
+    "blocks": {
+      "type": "array"
+    },
+    "measure": {
+      "type": "object"
+    },
+    "head": {
+      "type": "string"
+    },
+    "loop_complete": {
+      "type": "boolean"
+    }
+  }
+}

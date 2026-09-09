@@ -22,7 +22,6 @@ from inventory_io import (
     load_json,
     load_migration_yaml,
     resolve_inventory_path,
-    resolve_partition_path,
     inventory_http_expected,
 )
 from path_maps import (
@@ -893,32 +892,6 @@ def acceptance_unsatisfiable_files(story: dict) -> list[str]:
             out.append(item)
     return out
 
-
-def partition_story_writeset(root: Path, story_id: str) -> tuple[str, set[str]]:
-    """Look up partition.stories[id] declared write-set.
-
-    Returns (status, files) where status is:
-      absent — no partition.json / invalid
-      missing_story — partition present, story_id not in stories[]
-      ok — story found (files may be empty)
-    """
-    path, _looked = resolve_partition_path(root)
-    if path is None:
-        return "absent", set()
-    data = load_json(path)
-    if not isinstance(data, dict) or not isinstance(data.get("stories"), list):
-        return "absent", set()
-    sid = str(story_id or "").strip()
-    if not sid:
-        return "missing_story", set()
-    for story in data["stories"]:
-        if not isinstance(story, dict):
-            continue
-        if str(story.get("story_id") or "").strip() != sid:
-            continue
-        files = {dest_path_as_written(p) for p in story_declared_writeset(story) if p}
-        return "ok", files
-    return "missing_story", set()
 
 
 def _files_writable_rels(body: dict) -> set[str]:

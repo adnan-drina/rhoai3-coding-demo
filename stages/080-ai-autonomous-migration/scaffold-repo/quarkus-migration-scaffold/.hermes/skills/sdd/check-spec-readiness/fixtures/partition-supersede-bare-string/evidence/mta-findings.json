@@ -1,8 +1,0 @@
-{
-  "findings": [
-    {
-      "id": "tr-2b-presence-only",
-      "description": "Create-path MTA presence; not a rule-id join."
-    }
-  ]
-}

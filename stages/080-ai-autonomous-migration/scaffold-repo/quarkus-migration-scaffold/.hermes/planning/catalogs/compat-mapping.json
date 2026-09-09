@@ -1,0 +1,127 @@
+{
+  "schema": "rhoai3.catalog.compat-mapping/v1",
+  "note": "Deterministic bootstrap for the Spring-compatibility path (SAD v3 §6). Every row is a documented Quarkus mapping, never an inference: starters map to the Quarkus Spring compatibility extensions and their runtime prerequisites; property keys map per the quarkus-spring-boot-properties and hibernate-orm guides. Versions are never here: the BOM and plugin come from .hermes/pins.json (quarkus_platform, compiler_plugin, surefire_plugin). A starter or driver without a row stays in the pom and is surfaced by the compiler and the MTA rescan as work-list items; nothing is guessed.",
+  "sources": [
+    "https://quarkus.io/guides/spring-di",
+    "https://quarkus.io/guides/spring-web",
+    "https://quarkus.io/guides/spring-data-jpa",
+    "https://quarkus.io/guides/spring-security",
+    "https://quarkus.io/guides/spring-cache",
+    "https://quarkus.io/guides/spring-scheduled",
+    "https://quarkus.io/guides/spring-boot-properties",
+    "https://quarkus.io/guides/hibernate-orm",
+    "https://quarkus.io/guides/datasource",
+    "https://quarkus.io/guides/getting-started-testing"
+  ],
+  "parent_to_remove": {
+    "group_id": "org.springframework.boot",
+    "artifact_id": "spring-boot-starter-parent"
+  },
+  "plugin_to_remove": {
+    "group_id": "org.springframework.boot",
+    "artifact_id": "spring-boot-maven-plugin"
+  },
+  "plugin_to_add": {
+    "pin_key": "quarkus_platform",
+    "artifact_id_key": "plugin_artifact_id",
+    "goals": [
+      "build",
+      "generate-code",
+      "generate-code-tests"
+    ],
+    "extensions": true
+  },
+  "bom": {
+    "pin_key": "quarkus_platform"
+  },
+  "always_add": [
+    "quarkus-arc",
+    "quarkus-spring-di"
+  ],
+  "starters": {
+    "org.springframework.boot:spring-boot-starter": [
+      "quarkus-spring-di"
+    ],
+    "org.springframework.boot:spring-boot-starter-web": [
+      "quarkus-spring-web",
+      "quarkus-rest-jackson"
+    ],
+    "org.springframework.boot:spring-boot-starter-data-jpa": [
+      "quarkus-spring-data-jpa",
+      "quarkus-hibernate-orm"
+    ],
+    "org.springframework.boot:spring-boot-starter-validation": [
+      "quarkus-hibernate-validator"
+    ],
+    "org.springframework.boot:spring-boot-starter-security": [
+      "quarkus-spring-security"
+    ],
+    "org.springframework.boot:spring-boot-starter-cache": [
+      "quarkus-spring-cache"
+    ],
+    "org.springframework.boot:spring-boot-starter-actuator": [
+      "quarkus-smallrye-health"
+    ],
+    "org.springframework.boot:spring-boot-starter-test": [
+      "quarkus-junit5",
+      "rest-assured"
+    ],
+    "org.springframework.boot:spring-boot-starter-json": [
+      "quarkus-rest-jackson"
+    ],
+    "org.springframework.boot:spring-boot-starter-jdbc": [
+      "quarkus-agroal"
+    ],
+    "org.springframework.boot:spring-boot-devtools": [],
+    "org.springframework.boot:spring-boot-starter-aop": []
+  },
+  "starter_group_ids": {
+    "rest-assured": "io.rest-assured"
+  },
+  "jdbc_drivers": {
+    "org.postgresql:postgresql": "quarkus-jdbc-postgresql",
+    "com.h2database:h2": "quarkus-jdbc-h2",
+    "com.mysql:mysql-connector-j": "quarkus-jdbc-mysql",
+    "mysql:mysql-connector-java": "quarkus-jdbc-mysql",
+    "org.mariadb.jdbc:mariadb-java-client": "quarkus-jdbc-mariadb"
+  },
+  "remove_dependencies_matching_group": [
+    "org.springframework.boot"
+  ],
+  "properties": {
+    "spring.datasource.url": "quarkus.datasource.jdbc.url",
+    "spring.datasource.username": "quarkus.datasource.username",
+    "spring.datasource.password": "quarkus.datasource.password",
+    "spring.datasource.driver-class-name": null,
+    "spring.jpa.show-sql": "quarkus.hibernate-orm.log.sql",
+    "spring.jpa.hibernate.ddl-auto": "quarkus.hibernate-orm.database.generation",
+    "spring.jpa.properties.hibernate.dialect": null,
+    "server.port": "quarkus.http.port",
+    "server.servlet.context-path": "quarkus.http.root-path",
+    "spring.application.name": "quarkus.application.name",
+    "spring.sql.init.mode": null,
+    "spring.jpa.open-in-view": null
+  },
+  "property_values": {
+    "quarkus.hibernate-orm.database.generation": {
+      "create-drop": "drop-and-create",
+      "create": "drop-and-create",
+      "update": "update",
+      "validate": "validate",
+      "none": "none"
+    }
+  },
+  "main_class": {
+    "annotation": "org.springframework.boot.autoconfigure.SpringBootApplication",
+    "action": "delete-file",
+    "note": "Quarkus has no application main class on the compat path; the file is deleted and recorded in the bootstrap receipt."
+  },
+  "maven_settings": {
+    "profile": "red-hat-enterprise-maven-repository",
+    "reason": "Red Hat build of Quarkus artifacts (com.redhat.quarkus.platform:*-redhat-*) are published on the Red Hat GA repository, not Maven Central",
+    "source": "https://docs.redhat.com/en/documentation/red_hat_build_of_quarkus/3.27/html/getting_started_with_red_hat_build_of_quarkus/proc_configuring-maven-settings_quarkus-getting-started (Configuring the Maven settings.xml file for the online repository)"
+  },
+  "starter_notes": {
+    "org.springframework.boot:spring-boot-starter-aop": "No Quarkus Spring-compatibility extension covers Spring AOP (the quarkus.io Spring guides list DI, Web, Data JPA, Security, Cache, Scheduled, Boot properties only). The starter is dropped; every @Aspect / org.aspectj use is either retired by an ADR (decisions.yaml retired_sources) or surfaced by the compiler as a work-list item for a CDI-interceptor rewrite. Nothing is guessed."
+  }
+}

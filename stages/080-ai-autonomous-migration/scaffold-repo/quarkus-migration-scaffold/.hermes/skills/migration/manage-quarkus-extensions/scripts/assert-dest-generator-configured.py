@@ -7,7 +7,7 @@ generator_input_paths() or iter_build_files() (those union legacy).
 
 Trigger:
   - this body owns a generator spec path, or
-  - this body owns pom.xml and the partition/type-inventory has generated types.
+  - this body owns pom.xml and evidence/type-inventory.json has generated types.
 
 Require a generator plugin whose inputSpec matches the owned spec when a
 spec is in the write-set; otherwise require a generator plugin with a
@@ -132,19 +132,6 @@ def _generated_present(root: Path) -> bool:
                     or str(rec.get("provider") or "") == "generated"
                 ):
                     return True
-    part = root / "evidence" / "briefs" / "partition.json"
-    if not part.is_file():
-        return False
-    try:
-        pdata = json.loads(part.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return False
-    for story in pdata.get("stories") or []:
-        if not isinstance(story, dict):
-            continue
-        for rec in story.get("types") or []:
-            if isinstance(rec, dict) and str(rec.get("provider") or "") == "generated":
-                return True
     return False
 
 

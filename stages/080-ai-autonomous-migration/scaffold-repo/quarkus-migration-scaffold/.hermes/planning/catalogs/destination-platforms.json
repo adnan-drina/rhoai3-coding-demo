@@ -1,0 +1,19 @@
+{
+  "schema": "rhoai3.catalog.destination-platforms/v1",
+  "note": "decisions.yaml destination_platform.id must be a key here; the BOM pin is read from .hermes/pins.json pin_key so one fact has one home. An unknown id is admission BLOCK PLATFORM_UNKNOWN. The compat path keeps the legacy packages; bootstrap uses compat_mapping.",
+  "platforms": {
+    "quarkus-rhbq-3.27": {
+      "name": "Red Hat build of Quarkus 3.27",
+      "bom": {
+        "group_id": "com.redhat.quarkus.platform",
+        "artifact_id": "quarkus-bom",
+        "pin_key": "quarkus_platform"
+      },
+      "java_release": 21,
+      "resource_root": "src/main/resources",
+      "config_file": "src/main/resources/application.properties",
+      "path": "spring-compat",
+      "compat_mapping": "compat-mapping.json"
+    }
+  }
+}

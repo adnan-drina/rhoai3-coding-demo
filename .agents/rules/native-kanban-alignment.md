@@ -173,8 +173,9 @@ parallel workers + verifier + synthesizer.
     largest instance (`162349ZO`): minted floor artifacts authorized
     `PROVISIONAL_ACCEPT` while surefire was unread. **AMEND `164230ZO`:**
     naming `kanban_block` is necessary and **not sufficient**. dest-4
-    M2: `init-spec-workspace` SKILL.md names `kanban_block` on
-    external-dirs exit 1; the worker re-read ~7 times and completed.
+    M2: former provision skill `init-spec-workspace` SKILL.md named
+    `kanban_block` on external-dirs exit 1; the worker re-read ~7 times
+    and completed.
     Lead: refuse `kanban_complete` when a bound gate last exited
     non-zero — enforcement, not another paragraph.
 25. **Channel split (Operator `161806ZO`):** Operator/Lead `Needs:`

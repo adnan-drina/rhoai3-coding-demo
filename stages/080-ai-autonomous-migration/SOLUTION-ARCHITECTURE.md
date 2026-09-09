@@ -1,310 +1,258 @@
-# Stage 080 — Solution Architecture
+# Stage 080 — Solution Architecture (v3: fix-until-green)
 
-**This is the solution architecture of Stage 080**, not of the `rhoai3-coding-demo` workshop. Workshop architecture stays in the [root README](../../README.md) and this stage's [README.md](README.md). Keep this file — and any later engineering companions — inside `stages/080-ai-autonomous-migration/`. Do not lift it into `docs/`, repo root, or `scaffold-repo/`.
+**Architecture status:** accepted design; implemented and locally fixture-tested (2026-09-09 review round applied: transactional acceptance, measurement contract, native continuation, conservative bootstrap); real toolchain execution, autonomous migration, and runtime parity are unproven. Supersedes v2 (capability planner) on 2026-09-08.
 
-**Audience:** platform engineers and implementing agents building the Stage 080 migration factory.  
-**Not dest execution.** The golden scaffold (`scaffold-repo/quarkus-migration-scaffold/`, published as `quarkus-migration-scaffold-v2`) is what runs inside the OpenShift Dev Spaces workspace. This file does not belong in that tree.
+This is the solution architecture for Stage 080, not for the whole workshop and not an execution file for a destination workspace. The [stage README](README.md) owns the demo journey. This document owns the migration design, authority boundaries, invariants, and proof gates. Runtime procedures remain in [operations](../../docs/OPERATIONS.md); destination code and skills remain in `scaffold-repo/`.
 
-| Document | Job |
+| Evidence label | Meaning |
 |---|---|
-| [README.md](README.md) | Demo walkthrough. What the room shows. |
-| **This file** | Implementation architecture. Design decisions, product split, flow, governance, status. |
-| `scaffold-repo/` | Dest execution only: identity, pins, skills, native Hermes config, slim kernel when it lands. |
+| **Implemented** | Present in the repository, executable, with a selftest that includes the negative case |
+| **Demonstrated** | Exercised in a retained live run |
+| **Accepted design** | Architecture decision to implement; not runtime proof |
+| **Unknown** | Not established; must not be inferred |
 
-Same-PR rule: if implementation changes, update this file and the README architecture delta / maturity line together.
-
-**Agents:** consume and contribute using [§10](#10-how-agents-consume-and-contribute). Do not treat the README wrap-up as a factory ship. Do not copy this file into `scaffold-repo/` or dest.
-
-**Pins (live seat):** Hermes **v0.20.5** (`v2026.8.19`), Spec Kit **0.16.1**, Red Hat Quarkus BOM **3.27.3.SP1-redhat-00002**. Pin moves only on Operator GO. Official product behavior is captured under `.agents/skills/` (`hermes-*`, `mta-*`, `rhdh-*`, `ocp-devspaces-*`).
+Same-PR rule: a change to Stage 080 behavior must update this document and the README maturity projection together.
 
 ---
 
-## 1. Purpose and outcomes
+## 1. Executive decision
 
-**Problem.** Legacy Spring Boot services are an expanding attack surface and a compliance deadline (EU Cyber Resilience Act). Manual migration does not scale. Unharnessed agents invent facts, write outside the destination, and claim done without MTA or runtime proof.
+Migration is **one mechanical loop**. There is no planner in the sense of an ownership map, a capability graph, or a step table authored by anyone:
 
-**Target outcome.** A governed **migration factory**: self-service onboard from Developer Hub, MTA as ground truth, Spec Kit for plan (never `/speckit.implement`), Hermes Kanban for work that must survive restarts, product skills for Spring→Quarkus, pipeline as merge authority.
+> **Frozen evidence → deterministic bootstrap → work list computed by tools → fail-closed admission → one Hermes card per step → tools accept or revert → repeat until the list is empty → runtime parity**
 
-**Scope.** Stage 080 implementation on this workshop: GitOps template, Dev Spaces workspace, dest golden, M1–M5 process, MaaS-pinned models, CI quality gate.
+The governing decisions:
 
-**Non-goals.** A Kubernetes Hermes operator (OpenShift is not an official Hermes install surface). Silent model failover (`fallback_providers`). Copying this document into the dest golden. Closing Gate P-kernel on the profiles GO.
+1. **The work list is the plan.** MTA mandatory incidents, JDK compiler diagnostics, failing tests, and runtime-parity mismatches, each with a file locus, clustered by file, in a fixed order. It is recomputed by tools after every change and never written by a model or a human.
+2. **A strict progress measure decides.** The tuple *(mandatory incidents, compile errors, failing tests, parity mismatches)* must strictly decrease lexicographically with no new mandatory incident, or the step is reverted. Strict decrease is the termination argument.
+3. **AI proposes; tools decide.** A worker edits only the head cluster's write set. It never authors the list, the measure, the acceptance, or a decision. A cluster that fails the attempt threshold becomes a human's card and the loop stops until the human clears it (pilot rule: a deferral is never routed around).
+4. **Product tooling only, permissively licensed.** MTA CLI 8.2 (analysis), the pinned toolchain JDK's compiler API (structure and diagnostics), Maven and surefire (build and tests), Hermes v0.20.5 (cards), git (state). No third-party analysis library, no source-available recipe bundle, no regex extraction.
+5. **The Spring-compatibility path first.** The deterministic bootstrap targets the Quarkus Spring compatibility extensions; the native path is the same loop with a second mapping catalog and one more work-list source (`org.springframework` imports), applied class by class as the Quarkus guidance recommends.
+
+Spec Kit, the typed partition, the ownership map, the capability DAG, the context probe, and bytecode reconciliation are removed. None of them has a compatibility path.
 
 ---
 
-## 2. Demo user journey
+## 2. Scope and product pins
 
-The click-by-click script is the [README](README.md). One-page journey:
+| Component | Stage responsibility | Pin or posture |
+|---|---|---|
+| Red Hat Developer Hub | Self-service migration project creation | Platform-managed |
+| Red Hat OpenShift Dev Spaces | Per-run workspace with legacy read-only and destination writable | Platform-managed |
+| MTA CLI | Mandatory incidents on the frozen source and on the destination after every step; the canary rule proves the effective ruleset | `pins.mta_cli` **8.2** product line; measured binary version and sha256 recorded in every receipt; an Operator freezes `artifact_sha256` from a measured receipt; kantra is provisional and non-admissible |
+| JDK compiler API (`javax.lang.model`, `com.sun.source`, `javax.tools`) | Structural inventory of the frozen source (`JdkModelExtract.java`) and compiler diagnostics of the destination (`JdkDiagnostics.java`) | `pins.structure_extractor` **jdk-21** = the toolchain JDK; the launcher refuses on a feature-release mismatch; no third-party library, no separate license |
+| Maven + surefire | Offline build and tests of the destination | Compiler and surefire plugin pins; offline (`-o`) after the warm-up |
+| Hermes Agent Kanban | One card per loop step; native dispatch and review | **v0.20.5**, build **2026.8.19** |
+| Red Hat build of Quarkus | Destination platform, compat path first | BOM **3.27.3.SP1-redhat-00002** (`pins.quarkus_platform`) |
+| git | Loop state: every accepted step is a commit; every rejected step is a revert | Workspace repository |
 
-1. **Onboard** — Developer Hub **Application migration** template. Destination repo + namespace + pipeline. Workspace clones `/projects/legacy` (read-only) beside `/projects/modernized` (writable dest).
-2. **Analyze** — MTA (in-workspace panel and/or harness `mta-cli` / kantra). Findings are the checklist. The agent does not define done.
-3. **Plan** — Spec Kit specify → plan → tasks. Stop. Create Kanban cards. Never `/speckit.implement`.
-4. **Watch** — `hermes kanban watch` before dispatch. Audit with `list` / `show` / `runs` and verdict JSON.
-5. **Close** — Honest exit today is M4 provisional evidence, not a claimed M5 factory ship.
+Non-goals: a Kubernetes Hermes operator, LLM-generated task decomposition, silent model failover, automatic architecture decisions, OpenRewrite as a planning authority, and claiming filesystem containment from Hermes profiles or hooks alone.
+
+---
+
+## 3. System context and trust boundaries
 
 ```mermaid
 flowchart LR
-  rhdh["Developer Hub template"] --> ws["Dev Spaces workspace"]
-  ws --> legacy["legacy/ read-only"]
-  ws --> dest["modernized/ writable"]
-  dest --> mta["MTA findings"]
-  mta --> spec["Spec Kit spec/plan/tasks"]
-  spec --> kanban["Hermes Kanban"]
-  kanban --> evid["verdicts + receipts"]
-  evid --> ci["Pipeline quality gate"]
+  RHDH["Developer Hub template"] --> WS["Dev Spaces workspace"]
+  WS --> LEG["Frozen legacy source (read-only)"]
+  WS --> DST["Destination repository (writable, git)"]
+  LEG --> M1["M1 evidence: freeze, build, JDK model, MTA, bundle"]
+  M1 --> BOOT["Bootstrap: compat mapping + pins (deterministic)"]
+  BOOT --> VERIFY["Verify: JDK diagnostics, surefire, MTA rescan"]
+  VERIFY --> WL["Work list (tools only)"]
+  WL --> SEAL{"Admission"}
+  SEAL -->|ADMITTED| K4["K4: one card (head cluster)"]
+  SEAL -->|INCONCLUSIVE| HUMAN["decisions.yaml / pins / manual card"]
+  K4 --> CARD["Hermes M3 card: edit the write set"]
+  CARD --> VERIFY
+  VERIFY --> ADV{"measure strictly decreased?"}
+  ADV -->|yes| COMMIT["commit → next card"] --> K4
+  ADV -->|no| REVERT["revert → same cluster, next attempt"] --> K4
+  WL -->|empty| M4["M4 VERIFY: oracles, parity, rescan"]
+  MAAS["OpenShift AI MaaS"] --> CARD
 ```
 
----
+Trust boundaries:
 
-## 3. Solution at a glance
-
-The factory **consumes** stages 010–070. It does not re-own GPU, MaaS, or RHDH.
-
-```mermaid
-flowchart TB
-  subgraph platform["OpenShift + OpenShift AI"]
-    maas["MaaS gateway"]
-    gpu["Private vLLM Qwen"]
-  end
-  subgraph portal["Developer experience"]
-    rhdh["Developer Hub"]
-    ds["Dev Spaces"]
-    mta["MTA 8.2"]
-  end
-  subgraph destws["Dest workspace — scaffold execution"]
-    hermes["Hermes + Kanban"]
-    speckit["Spec Kit 0.16.1"]
-    skills["Product skills"]
-  end
-  rhdh --> ds
-  ds --> destws
-  mta --> destws
-  maas --> hermes
-  gpu --> maas
-  destws --> pipe["OpenShift Pipelines + SonarQube"]
-```
-
-**Factory boundary.** Everything the agent may write is the isolated destination clone. Legacy is read-only. Models are reached only through MaaS. Merge is the pipeline, not a person and not the agent.
-
-**External dependencies.** Git hosting for dest publish, MaaS subscription keys, optional MiniMax exception (typed escalation, never default, never silent fallback).
-
-Interactive diagram: [images/architecture-e2e-stack.html](images/architecture-e2e-stack.html).
+- The legacy tree is immutable evidence. Agents read it but never repair it in place.
+- Destination writes are limited to the head cluster's write set. Tests are never writable. The K2 hook is an accident guardrail, not an OS security boundary.
+- Models receive work only through governed Hermes profiles and MaaS. External-provider use is explicit and never a silent fallback.
+- `evidence/planning/` and `verification/` are tool outputs. The only human-authored planning input is `decisions.yaml`, and every entry cites an ADR.
+- Merge authority remains the software supply-chain pipeline; neither a worker nor a human comment creates `ACCEPT`.
 
 ---
 
-## 4. Products and responsibilities
+## 4. Authority model
 
-| Product | Responsibility in this stage |
-|---|---|
-| Developer Hub | Self-service **Application migration** template; catalog component for the **destination** only |
-| Dev Spaces | Per-run workspace; Managed Scope Hermes pin; MTA extension pack |
-| MTA 8.2 / kantra | Ground-truth analysis. Human panel and harness M1 share rulesets from `migration.yaml` |
-| Spec Kit | `spec.md` → `plan.md` → `tasks.md`. Advisory analyze. Not the Kanban converter |
-| Hermes Agent | Orchestrator workers, Kanban lifecycle, one terminator per card |
-| OpenShift AI / MaaS | Identity, API keys, quotas, telemetry for every model call |
-| OpenShift Pipelines + SonarQube | Merge authority after push |
-| Keycloak (platform SSO) | Attributed identity across RHDH, MTA, cluster |
-| OpenRewrite | Deterministic transforms where a recipe exists — product skill, not a second orchestrator |
+| Decision or action | Deterministic tool | AI-assisted, mechanically checked | Human ADR required |
+|---|:---:|:---:|:---:|
+| Freeze source, classify files, record tool receipts | ✓ | | |
+| Inventory types, entry points, dependency order | ✓ | | Catalog changes only |
+| Bootstrap the destination (pom, properties, main class) | ✓ | | Mapping-catalog changes only |
+| Compute the work list, cluster, order, measure | ✓ | | Never |
+| Admit the next step | ✓ | | Never |
+| Mint the next Hermes card | ✓ | | Never |
+| Edit code inside the head cluster's write set | | ✓ | |
+| Accept or revert a step | ✓ | AI may explain a rejection | Never |
+| Retire a work-list item as not applicable | | | ✓ (`decisions.not_applicable`, one item, one ADR) |
+| Retire a source file (e.g. a Spring AOP aspect Quarkus cannot host) | bootstrap deletes exactly the listed paths | | ✓ (`decisions.retired_sources`, one file, one ADR, one reason) |
+| Own a cluster after the attempt threshold | | | ✓ (manual card; the run cannot close while it is open) |
+| Define the runtime oracles and accepted business behavior | ✓ (source-recorded) | | Oracle definition |
 
----
-
-## 5. How the migration factory works
-
-Live glossary: **M1 ANALYZE → M2 PLAN → M3 IMPLEMENT → M4 VERIFY → M5 CLOSE**. Older SEQUENCE / SPECIFY / EVALUATE labels are retired.
-
-```mermaid
-flowchart LR
-  m1["M1 ANALYZE"] --> m2["M2 PLAN"]
-  m2 --> mint["Mint graph"]
-  mint --> m3["M3 IMPLEMENT per story"]
-  m3 --> m4["M4 VERIFY"]
-  m4 --> m5["M5 CLOSE"]
-  m4 -.->|next story| m3
-```
-
-| Phase | Enabling surface | Artifacts | Live dest vs target |
-|---|---|---|---|
-| M1 | Hermes card + MTA skill + inventory | Findings, inventory, type graph. `generated` is **derived at read time from path**, not a trusted stored flag | Implemented on dest |
-| M2 | Hermes planner + Spec Kit | `spec.md` / `plan.md` / `tasks.md`. Overlay does not dest-rewrite `tasks.md` after mint | Live dest **blocked** on 1:N split vs 1:1 coverage (PetClinic v42). Target: typed partition + sanctioned supersede map |
-| Mint | Wave-holder + verifier card | One K1 body per story; `kanban_create` + **inline** body; exact `created_cards` on complete | **K4 landed** in `.hermes/kernel/` (`k4_convert.py`): typed partition → payloads; `files_writable` copied from the partition row. `K4_T0_3_SERVICE` refuses methods-in-shared-`ClinicService`. Converter does not mint and does not import `create_task`. OBJECT scraping paths from `tasks.md` prose (`PATH_TOKEN`). Not dest-applied. `claimed_control` stays false |
-| M3 | One card per story | Writes only `files_writable`. One Kanban terminator | Live dest. Target write fence is one shell `pre_tool_call` (`fail_closed`), not a claimed OS boundary until adversarial tests |
-| M4 | Gate cards | Runtime product oracles (startup, parity, persistence). Compile and MTA rescan **support**, they do not replace. Before `PROVISIONAL_ACCEPT`: `check-release-readiness` **scripts/** `run-m4-pre-verdict.sh` invokes `assert-retrievable-tree` then `assert-pinned-gates-ran` (Architect `151334ZA` (a) runner-invoked; pinning is not enforcement) | Owner/Pet **PROVISIONAL_ACCEPT** demonstrated historically; full slice M4 on current v42 **not** claimed |
-| M5 | Factory / ACCEPT | Pipeline green. Waiver cannot author ACCEPT | **Not demonstrated** for Owner/Pet ship |
-
-**Inner loop:** gates → fix → re-dispatch within retries. **Parents** sequence stories. **Steering loop:** humans improve skills in versioned PRs; agents do not silently rewrite `.hermes/skills/**` mid-run.
-
-**Grounding.** Every hand-off must be derived from the previous artifact, not recalled. Live dest still runs G1–G9-style checks; `NOT-LANDED` must stay visible. Target authoring: refusals name the **remedy** (including the wrong reading); oracles report the **full gap set**, not the first failure; coverage is **1:N with a named supersede set** (a whole-domain `ClinicService` splits into per-aggregate classes; the old `dest_file` is not kept as a dummy). HTTP shapes stay 1:1 (`endpoints_multi` is a routing conflict).
+An ADR may retire an item or choose the platform and the threshold. It may not waive a compile error, a failing test, or a parity mismatch.
 
 ---
 
-## 6. Agent automation and governance
+## 5. The work list
 
-**Agent = Model + Harness** ([Harness Engineering for Coding Agents](https://martinfowler.com/articles/harness-engineering.html)). Guides steer before action; sensors catch after. Computational sensors (build, tests, MTA) run early; inferential sensors guard expensive exits. A red sensor must **teach** ([Maintainability sensors](https://martinfowler.com/articles/sensors-for-coding-agents.html)).
+`evidence/planning/worklist.json` (`planner.worklist`, schema `worklist.schema.json`).
 
-Red Hat's [open blueprint for cloud-native AI agents](https://developers.redhat.com/articles/2026/07/20/architect-open-blueprint-cloud-native-ai-agents) maps here as Agent-as-a-Workload: the loop runs in Dev Spaces, models only through MaaS, tools through governed endpoints.
-
-| Role | Authority | Must not |
+| Source | Items | Kind |
 |---|---|---|
-| M1 analyzer | Read legacy, emit inventory/findings | Write dest application sources |
-| M2 planner | Spec Kit artifacts + typed partition | Implement; dest-rewrite `tasks.md` after mint |
-| Mint writer | Create the graph, complete with exact `created_cards` | Import `create_task`; mix CLI + tool + internal API |
-| Mint verifier | Check the whole graph, then complete **or** sticky `kanban_block` | Human `ack_gate`; `kanban_request_review` as the refuse path (a reviewer complete would release M3) |
-| M3 implementer | Write `files_writable` only | Complete without a terminator; invent identity/scope |
-| M4 verifier | Runtime oracles. Refuse `PROVISIONAL_ACCEPT` when pinned gates are silent or `src/`/`pom.xml` are uncommitted | Treat compile-only as ACCEPT; idle-exit-0 on missing gate artifacts |
+| MTA rescan of the destination (`verification/mta-rescan/findings.json`); before the first rescan, the frozen-source obligations from the evidence bundle | one item per mandatory incident, content-addressed over rule, locus, variables and message; nothing dropped, `GLOBAL` locus kept | `build` / `config` / `incident` by path |
+| JDK compiler diagnostics (`JdkDiagnostics.java` over the destination with the offline classpath) | every `ERROR`; an unresolvable build is one `pom.xml` item | `compile` (or `build`) |
+| surefire reports (ElementTree) | every failing test | `test` |
+| parity verdicts (`verification/parity/*.json`) | every `FAIL` | `parity` |
 
-**Isolation.** Writable dest clone only. Legacy is read-only. Secrets stay in managed `.env`, never under `HERMES_HOME` in git.
+Items cluster by file. Order key: kind rank (build → config → compile → incident → test → parity), then dependency depth for compile clusters (leaf types first, from the JDK model's type references), then path. The head cluster is the next card. A cluster's write set is its file (plus `pom.xml` for build items).
 
-**Refusal and escalation.** There is no native `refused` status. The legal non-complete terminator is sticky `kanban_block`. Clean exit while `running` is `protocol_violation`. `kanban daemon --force` is not a recovery design.
+The measure is `(mandatory_incidents, compile_errors, failing_tests)`; parity is reported beside it and judged by M4. Every component is known only when its tool ran in this verification and produced a report (`verification/build/run.json`): tests that did not run, an empty surefire directory, a `mvn test` failure with no recorded failing test, or a skipped rescan make the measure unknown and the loop does not advance. A step is accepted iff the tuple strictly decreases lexicographically **and** no mandatory obligation appears that was absent before. Obligation identity is line-free (rule, file, variables, message): moving code is not a new obligation. Removing a Spring annotation may add compile errors while removing an incident: that is progress.
 
-**Rollback.** Dest git + pipeline. Do not dest-complete Operator ack gates. Harvest a live dest before any wipe.
+Tests are never in a write set. A failing test scopes its production twin; when no twin can be derived the cluster is a typed blocker (`SCOPE_UNDERIVED`) for a human or ADR.
 
-**Named profiles.** Operator GO `231808Z` lifts R-V14.10 HOLD for **two dest worker profiles** (`orchestrator`, `implementer`). R-V14.10 stays as a rule id — do not delete it. Create with `hermes profile create --no-alias` (no `--clone`; EX-4). M2 / mint-verifier assign `orchestrator`; M3 assign `implementer`. Dest-armed (a) is unmeasured until Review verifies seated dest schemas. OBJECT EX-4 `analyzer`/`planner`/`validator` names, overlay v1 profiles, and copying this file into the golden.
+The bundle is environment-independent (machine paths are stripped from receipts), so two workspaces that froze the same source seal the same bundle.
 
 ---
 
-## 7. Deployment overview
+## 6. Bootstrap (step 0)
 
-```mermaid
-flowchart TB
-  subgraph cluster["OpenShift cluster"]
-    rhdh["RHDH"]
-    ds["Dev Spaces / DevWorkspace"]
-    maas["MaaS"]
-    mta["MTA hub"]
-    pipe["Pipelines"]
-  end
-  subgraph dest["Dest workspace trust"]
-    L["/projects/legacy RO"]
-    M["/projects/modernized RW"]
-    H["Hermes Managed Scope"]
-  end
-  rhdh -->|"template fetch:plain"| golden["Golden GitHub scaffold"]
-  golden --> M
-  ds --> dest
-  maas --> H
-```
+`bootstrap-destination` (stdlib only: ElementTree, line-based properties) produces the deterministic baseline from `.hermes/planning/catalogs/compat-mapping.json` and `pins.json`:
 
-**Trust boundaries.** Prompts and dest source for the primary model stay on-cluster (private Qwen). MiniMax is an explicit exception: prompts leave the cluster; never silent failover. MTA Developer Lightspeed stays off; the dest harness is the remediation engine.
+1. import `pom.xml` and `src/` from the frozen analysis copy (packages kept);
+2. pom: drop `spring-boot-starter-parent`, import the pinned `quarkus-bom`, map every listed starter and JDBC driver to its Quarkus Spring-compatibility or runtime extension, drop the Spring Boot plugin, add the pinned Quarkus plugin, pin compiler and surefire; an unmapped `org.springframework.boot` dependency is removed and surfaces again as a compiler or rescan item, never guessed;
+3. configuration: rename mapped property keys and documented values; drop keys the catalog marks as having no Quarkus equivalent (recorded);
+4. delete the `@SpringBootApplication` class only when it is a trivial launcher (no fields, no other annotation, no method but `main`); a launcher that declares beans or configuration is kept and recorded as `MAIN_CLASS_NOT_TRIVIAL`.
 
-**Model pin (invariants).** Main = `qwen27b` / `qwen3-6-27b`. No `fallback_providers`. Auxiliary compression `auto`. Recipe, YAML, and “add a model later” live in [docs/OPERATIONS.md](../../docs/OPERATIONS.md) (Model selection record). Writer: `gitops/stages/050-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml` (`ensure_hermes`).
-
-**Workspace kind.** Live dest uses `dir:/projects/modernized`. Native `scratch` / `dir:` / `worktree:` is a measured choice, not v1 law. Do not freeze serial-via-parents until dest PVC / worktree is measured.
+A Spring Boot dependency with no catalog row stays in the pom and is recorded as `UNMAPPED_DEPENDENCY`; a block exits 1 and keeps admission `INCONCLUSIVE` (`BOOTSTRAP_BLOCKED`) until a catalog row or an ADR resolves it. Nothing is removed on a block. The import never overwrites a file the destination already has, so a repeated bootstrap changes nothing after the baseline. Every mapping row is a documented Quarkus guide mapping; versions come only from pins. The receipt is sealed by admission and bound to the bundle digest. After the bootstrap the compiler produces the real plan.
 
 ---
 
-## 8. Implementation status and known gaps
+## 7. Admission
 
-| Item | Status |
+`evidence/planning/admission-receipt.json` v2 seals the bundle, the work list, the bootstrap receipt, `decisions.yaml`, every contract file, and the tool pins, and records `activation`, `measure`, `head`, `loop_complete`.
+
+Fail-closed boundaries, each with a permanent negative test:
+
+| Block | Meaning |
 |---|---|
-| Platform 010–070 consumed by 080 | Implemented |
-| RHDH Application migration template + dest publish | Implemented (live Argo still overlay / v1 golden) |
-| M1 MTA + inventory on dest | Implemented on prior dest cuts; v42 campaign **abandoned** (not wiped) |
-| Kanban watch / list / show / runs | Demonstrated on earlier dest cuts |
-| M4 full runtime ACCEPT / M5 factory ship | Planned / **not demonstrated** for Owner/Pet ship |
-| v1 dest harness (`dispatch-phase`, `handover-mint.py`, human `ack_gate`, `.hermes/home/scripts/`) | Overlay dest leftover until HV-1+wipe GO. **Deleted, not ported**, on `harness-v2` `a39b7d2d` |
-| v2 native tree (Phase N) | **Landed** `harness-v2` `a39b7d2d`: product skills + config template; no mint / `home/scripts` / `ack_gate`. Golden `-v2` **published** (deny-unproven; dest bundle retired). Overlay rebuild+Quay digest `52fd342d` MATCH (Review `071229ZR` / five-of-five `071427ZR`). dest-4 **HELD** on Operator `cut-dest-4`. dest-3 is forensics, not the next cut |
-| Slim kernel K1–K4 | Gate P-kernel **CLOSED** (Architect `142526Z`). **K1** schema+loader+validator (`d26ce74a`). **K2 REHOST** of existing `pre_tool_call.sh` (`a0616380`; MEASURED, not claimed control). **K3** mint-verifier graph procedure (`e22a6f08`; not dest live-PID; not refuse-as-control). **K4** converter in `.hermes/kernel/` (this sitting; not dest-apply; `PATH_TOKEN` OBJECT; exact `created_cards`). `claimed_control` stays false. Gate P-pack CLOSED |
-| Dest named profiles (`orchestrator` / `implementer`) | **DEFINED** (Operator GO `231808Z`). GitOps creates both without `--clone`. Dest-armed (a) **MATCH** on v45 (`114320Z` / `114710Z`); not a write-set fence. OBJECT EX-4 four-seat names / overlay v1 |
-| K2 write fence as a claimed control | K2 REHOST of measured `pre_tool_call.sh`; `claimed_control=false` (write-escape MEASURED; `[U]` OS/container limb waived, not satisfied). Campaign **AD-020**: the hook is an **accident guardrail**, not a control against intent; no gate may accept "the fence would have stopped it" as evidence |
-| Native sandbox (OpenShell / Kata / egress DNS) | **Future** named GOs only (Research `061930ZS` / `062901ZS`). dest stays **restricted-v2**. OBJECT privileged SCC, experimental OpenShell Helm on dest, dest Landlock/seccomp supervisor, dest CONNECT/L7 per-binary proxy, dest `inference.local` injector, nested Docker/Podman in Dev Spaces to fake Hermes iron-proxy. Dual-root + deny-unproven stay the accident guardrail. Kantra zip exec-bits are an **image** defect, not a sandbox. Allowed later with Architect GO: `automountServiceAccountToken: false`, NetworkPolicy tighten. AD-020 Option B as devfile RO bind of `/projects/legacy` is **not expressible** on devfile 2.2.2 (`volumeMounts` has no `readOnly`; `runAsUser: 10001` invalid under `restricted-v2` — Operator `083105ZO`) |
-| K3 live PID reclaim / gateway tick | Dest live-PID **MEASURED** not refuse-as-control. K3 kernel is a graph-snapshot mint-verifier procedure; `claimed_refuse_control=false`. No `kanban daemon --force` |
-| 1:N supersede coverage | **Landed** in KEEP `check-partition-coverage` on `a39b7d2d`. Not dest-measured |
-| Hermes dashboard / `web_dist` | Never a demo surface (v37–v42 `state=failed`). Later GO |
+| `TOOL_UNPINNED` / `TOOL_PIN_MISMATCH` | a mandatory producer (JDK model, MTA CLI) is not pinned, or its receipt disagrees with the pin on status, version, or digest |
+| `MTA_MISSING` / `MTA_PROVENANCE` / `CANARY_MISSING` / `INCIDENTS_NOT_CONSERVED` | analysis absent, not the pinned 8.2 artifact, canary silent, or an incident lost between the tool and the list |
+| `STRUCTURE_MISSING` / `ZERO_ENTRY_POINTS` | no admitted structural evidence, or nothing to verify parity against |
+| `PLANNER_NOT_ACTIVATED` / `PLANNER_PILOT_SEAL` | the activation gate (§9) |
+| `MISSING_DECISION` / `ADR_NOT_ACCEPTED` / `PLATFORM_UNKNOWN` | `decisions.yaml` incomplete or citing an unaccepted ADR |
+| `BOOTSTRAP_MISSING` / `BOOTSTRAP_STALE` | no deterministic baseline, or one bound to another bundle |
+| `MEASURE_UNKNOWN` / `WORKLIST_STALE` | a tool did not run in this verification, or the list belongs to another bundle |
+| `BOOTSTRAP_BLOCKED` | the bootstrap recorded a non-trivial launcher or an unmapped dependency |
+| `MANUAL_CLUSTER` / `SCOPE_UNDERIVED` | a deferred (human-owned) cluster, or a cluster with no derivable production scope; the loop stops |
 
-**Principal risks.** Mixing this SAD into the dest golden. Harvesting v1 mint prose into v2. Treating README wrap-up slogans as DEMONSTRATED. Dest-applying `harness-v2` onto a v1 dest. Calling this file an overlay remnant (it belongs in this stage folder). Inventing OpenShell-shaped dest/GitOps clones of Layer-3 controls Red Hat AI / OpenShift will provide.
-
-**v2 git isolation.** Same `scaffold-repo/` path as v1. Isolation is a **new GitHub golden** (`quarkus-migration-scaffold-v2`), not a sibling tree and not a rename of v1. Publish with `scripts/bootstrap-scaffold-repos.sh`. Do not dest-complete Operator ack gates or `kanban daemon --force`. Ops table: [docs/OPERATIONS.md](../../docs/OPERATIONS.md).
+`ADMITTED` means "the loop may run its next step from this exact state". `COMPAT_FAIL` means the bundle or the work list fails its schema: a planner defect. The receipt digest binds every idempotency key and every K1 body.
 
 ---
 
-## 9. Detailed documentation map
+## 8. Hermes execution model (K1–K4)
 
-| Home | Content |
-|---|---|
-| [README.md](README.md) | Demo walkthrough |
-| This file | Implementation architecture |
-| [docs/OPERATIONS.md](../../docs/OPERATIONS.md) | Deploy order, Hermes model recipe, GitOps |
-| [docs/TROUBLESHOOTING.md](../../docs/TROUBLESHOOTING.md) | Dest/workspace failure recovery |
-| [BACKLOG.md](../../BACKLOG.md) | Deferred work |
-| `.agents/skills/hermes-*`, `mta-*`, `rhdh-*`, `ocp-devspaces-*` | Official captures (product, version, URL, date, support status) |
-| `gitops/stages/050-advanced-app-platform/` | Template, Dev Spaces init, MTA, RHDH |
-| `stages/080-ai-autonomous-migration/validate.sh` | Stage readiness |
-| `scripts/bootstrap-scaffold-repos.sh` | Publish Stage 070 and live Stage 080 goldens. Does not force-push historical v1. |
+- **K4** converts the sealed work list into **exactly one** `kanban_create` payload per step: `M3 c:<cluster>` for the head cluster, or `M4 VERIFY` when the list is empty and nothing is deferred. Key `k4:<cluster>:<attempt>:<receipt16>`; parent = the previous accepted step's card plus the M2 card. K4 re-derives the activation verdict and the tool pins from `pins.json` itself; a receipt text never overrides them. Zero commands unless ADMITTED. `k4_mint.py` appends the captured task id to `evidence/receipts/k4/mints.json`.
+- **K1** bodies carry `receipt_sha256`, `worklist_sha256`, cluster id/kind/attempt, the write set, the item ids, and the artifact digests. No graph, no MTA prose, no acceptance text.
+- **K3** proves the live board equals the loop's expected cards: every accepted step's card and the one open card, matched only by native idempotency key or by K4's mint receipts (never title or body), chained by parent. Only registered control cards (`verification/loop/cards.json`: the M2 card, registered once from its own environment, and its M1 ancestor) are exempt; an execution card is never exempt, so the previous accepted card stays in the expected set. Continuation is proven through `advance.py` → `k4_mint.py --exec` against a file-backed fake board; not yet on the pinned Hermes.
+- **K2** vetoes worker graph mutation (`kanban_create`, `kanban_link`, swarm, decompose, direct `hermes kanban create|link`, `daemon --force`) and product writes outside the sandbox. Guardrail, not containment.
+- **The card procedure** (`fix-until-green`): `brief.py` → edit the write set → `run-verify.sh` (JDK diagnostics, fresh surefire reports with the `mvn test` exit status, MTA rescan; every outcome recorded) → `advance.py`, the acceptance transaction. It promotes only when the card is the issued one (`verification/loop/issued.json`, written by K4 and bound to the minted `t_*`), the product tree is exactly the tree verify.py measured (`candidate_sha256`), every changed path is inside the write set, and the measure strictly decreased with no new obligation; then it commits exactly those paths, snapshots the reports, rebuilds the list, re-admits, and mints the next card with this card as parent. Otherwise it discards the candidate in index and working tree, restores the accepted reports, counts the attempt, and re-issues the cluster; at `decisions.thresholds.max_attempts` it defers and the loop **stops** (pilot rule). `verification/loop/` is the protected journal; the sealed list is rebuilt, never edited.
+- **M4 VERIFY** runs the source-recorded oracles (`capture-source-oracles`), runtime parity for every entry point, the pre-verdict runner, and the MTA rescan assertion, and composes the verdict from measured exits.
 
-Engineering companions (workflow, orchestration, contracts, acceptance) are **not opened in this change**. Do not invent empty stubs. When they land, they stay in this stage directory and **point at** scaffold paths; they are not dest execution and they are not workshop architecture.
-
-### Glossary
-
-| Term | Meaning |
-|---|---|
-| Dest | Per-run destination repository and Dev Spaces workspace |
-| Golden | GitHub scaffold the template fetches |
-| Sticky block | `kanban_block` event that holds children until complete, not until unblock |
-| Typed partition | Structured per-story `files_writable` + optional supersede set. Write-set authority |
-| PROVISIONAL_ACCEPT | M4 evidence with `ship=false` |
-
-### Official references
-
-| Product | Docs |
-|---|---|
-| MTA 8.2 | https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.2/ |
-| Hermes Agent | https://hermes-agent.nousresearch.com/docs |
-| Hermes models | https://hermes-agent.nousresearch.com/docs/user-guide/configuring-models |
-| Spec Kit | https://github.com/github/spec-kit/blob/main/spec-driven.md |
-| Developer Hub | https://developers.redhat.com/rhdh |
-| OpenShift AI | https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/ |
-| MaaS coding quickstart | https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant |
+dest-init mints M1 ANALYZE always and M2 PLAN (child of M1) only under an activated or pilot-sealed planner. Never M3 or M4 from dest-init.
 
 ---
 
-## 10. How agents consume and contribute
+## 9. Activation gate and pilot seal
 
-This section is the contract for every implementing agent (platform repo, nested campaign, and dest workers). This file is **Stage 080** solution architecture, contained in this directory. Workshop architecture is the root README. Campaign-local GO/HOLD still lives in nested AD-019; dest execution still lives in `scaffold-repo/`.
+`pins.planner.activation ∈ {not-activated, pilot, activated}`, read independently by `assert-planner-activated.py` (first M2 step), admission, and K4.
 
-### Consume
+- `not-activated` (golden): dest-init mints M1 only; admission never ADMITS; K4 emits nothing; M3 and M4 do not exist.
+- `pilot`: `pins.planner.pilot = {run_id, authorized_by, evidence_bundle_sha256}` admits exactly one bundle. A different bundle, a missing `authorized_by`, or a re-freeze is refused. A pilot never flips to `activated`.
+- `activated`: named Operator GO after one live campaign demonstrates all of the following (fixture-green evidence does not count):
 
-Read the document that owns the question. Do not flatten them.
+1. Repeated M1 on the same frozen source yields byte-identical bundle, work list and receipt.
+2. Every MTA mandatory incident, every compiler error, and every failing test is a work-list item; none is lost between the tool and the list.
+3. A step that introduces a mandatory incident is reverted; a step that does not decrease the measure is reverted.
+4. K4 emits zero commands for a non-ADMITTED receipt and for a forged one.
+5. The bootstrap on PetClinic REST compiles far enough to produce a real, non-empty work list.
+6. A real board equals the expected cards after every mint; the foreign-card audit is clean.
+7. One cluster completes accept → next card; one is reverted; one is deferred and cleared by a human.
+8. The list reaches empty and M4 records runtime parity, not merely compile and rescan.
+9. Every retired item cites a `decisions.yaml` entry and ADR; no planning artifact was hand-edited.
 
-| Question | Read this | Do not |
-|---|---|---|
-| What does the room show / click? | [README.md](README.md) | Treat wrap-up as M5 `DEMONSTRATED` |
-| How do we build the factory? Design, products, M1–M5, governance, status | **This file** | Invent a second SAD in dest or `docs/architecture/` stubs |
-| What runs inside the workspace? | `scaffold-repo/` (published as `quarkus-migration-scaffold-v2`) | Put this SAD on the dest PVC |
-| v2 campaign GO / HOLD / isolation / Gate P | Nested `architecture/SOLUTION-ARCHITECTURE-v2.md` (AD-019) | Treat this Stage 080 SAD as dest-provision GO or as the workshop SAD |
-| Fence vs claimed control / native sandbox future | Nested AD-020 + this file §8 | Copy AD-020 into the dest golden; invent dest Landlock/seccomp/CONNECT/"OpenShell-shaped" runtimes; grant privileged SCC for experimental Helm |
-| Is this kantra usable, not merely present? | `.agents/rules/ensure-cli-capability.md` + dest-init `kantra-assert-exec` | Accept `[ -x kantra ]` as MATCH; dest-push dest-3 PVC `/projects/.tools/kantra` or dest-3 worker-patched `mta-analyze-legacy.sh` as golden |
-| Is tirith a dest control? | Operator `122315ZO` — **retired**. Managed pin `security.tirith_enabled: false` (Hermes default is `true`). KEEP `assert-no-fence-evasion`. (b) MATCH uses braced `HERMES_HOME}/bin` count 0 (`123436ZO`); unbraced `base hermes bin PATH` is not absence. | Cite tirith as a dest scanner; enable it; set `tirith_fail_open: false`; re-add dest-init PATH prepend (`112249ZA` superseded); treat unbraced grep 0 as (b) MATCH |
-| May the K2 fence block `export JAVA_HOME=…`? | `.agents/rules/k2-env-assignment-not-access.md` | Add `/usr/lib/jvm` or `/bin` to `K2_ALLOW_ROOT` |
-| May `mvn` / `java` run pathless on dest? | `.agents/rules/k2-opaque-not-pathless.md` (`214743ZA` amended) | Close GAP 2 on `strip_env_assignments`; restore pre-`214743ZA` any-pathless cwd ALLOW; argv[0] allowlist |
-| Where may derived output live? | `.agents/rules/skill-path-declaration.md` | Add `/projects/.derived` to allow-root; leave `DERIVED_ROOT` default outside every grant |
-| Live v1 dest / overlay / v42 | Nested `architecture/SOLUTION-ARCHITECTURE.md` | Apply `harness-v2` onto v42 |
-| Official product behavior | `.agents/skills/` (`hermes-*`, `mta-*`, `rhdh-*`, `ocp-devspaces-*`) | Blog-only claims |
-| Hermes model YAML / add a model | `docs/OPERATIONS.md` | Paste YAML back into the README |
+---
 
-**Conflict rule.** If README walkthrough and this file disagree: **this file wins for design**; **README wins for what you click**. File a same-PR fix; do not paper over it in dest.
+## 10. Current implementation impact
 
-**Cite before you change.** A factory change that cannot name a section here (or an Architect BIND updating it) is presumed a patch and held.
+| Asset | Disposition |
+|---|---|
+| Freeze, build receipt, JDK-model inventory, MTA 8.2 receipts, evidence bundle | **Kept**; bundle trimmed to source, structure, entry points, obligations, receipts |
+| Ownership map, four partition policies, capability DAG, transformation projection, resolution ledger | **Deleted** (`planner.ownership`, `planner.dag`, `planner.ledger`) |
+| Context probe, jQAssistant reconciliation | **Deleted** (`probe-spring-bindings`, `enrich-legacy-bytecode`) |
+| Platform API index | **Deleted** (no symbol projection on the compat path) |
+| `execute-admitted-increment`, `plan-migration-increments`, `verify-live-kanban-dag` | **Replaced** by `fix-until-green`, `build-worklist`, `verify-live-kanban-loop` |
+| K1 / K4 / K3 | **Adapted** to the work list (one card per step, attempt in the key, mint receipts as provenance) |
+| K2, pins, activation and pilot seal, MTA provenance and canary, source oracles, M4 gates | **Kept** |
+| Spec Kit | **Removed**; no compatibility path (residue scan in `validate.sh`) |
 
-### Contribute
+New: `planner.worklist`, `planner.cards`, `bootstrap-destination`, `compat-mapping.json`, `JdkDiagnostics.java`, the loop scripts, admission v2.
 
-Architect owns this file. Lead lands code. Review and Research produce evidence, not silent edits.
+---
 
-| Role | Contribute by | Do not |
-|---|---|---|
-| **Architect** | BIND design here. File a nested V2 hop when campaign-relevant, then land the SAD in platform git. | Dest-implement. Open ten companion stubs. LLM-rewrite the nested v1 spine in place of this file. |
-| **Lead** | Implement against the cited section. Draft SAD/README diffs in the **same PR** as the behavior. Wait for Architect CONCUR on design edits. | Land SAD-only drive-bys. Copy this file into the golden. Dest-apply `harness-v2`. Inflate §8 status without a measurement. |
-| **Review** | Always-read this file when checking factory, maturity, or dest-vs-target claims. Dest-cite vs §8. OBJECT copy-into-golden and wrap-up-as-ship. | Dest-complete Operator ack gates. Treat sqlite `done` as validation. |
-| **Research** | Ground proposed SAD amendments in official skills / primary docs. File a source-analysis pack, then Architect BIND. | Silent SAD edits. Treat a blog as pin law. |
-| **Operator / Deputy** | GO on pin moves, dest provision, companion files, merging `harness-v2` into overlay. | — |
-| **Dest workers** | Execute skills in the golden. | Edit this file. Fetch it into `/projects/modernized`. |
+## 11. Maturity
 
-**Same-PR rule (repeat).** Behavior change → update this file **and** the README architecture delta / maturity line together. Nested AD-019 stays campaign law; do not duplicate GO/HOLD tables here.
+| Area | Maturity |
+|---|---|
+| Freeze, build receipt, evidence bundle (environment-independent) | IMPLEMENTED; freeze run locally on a Spring fixture |
+| JDK-model extractor | IMPLEMENTED on the JDK compiler API; run inside the selftest on a Spring fixture without a classpath (annotation values from the syntax tree) |
+| MTA CLI 8.2 provenance, canary, incident conservation | IMPLEMENTED with negatives; `mta_cli` pinned to the 8.2 line, digest to be frozen from a measured receipt; not executed live |
+| Deterministic bootstrap (compat mapping) | IMPLEMENTED with an idempotence test on a fake legacy pom; not run on PetClinic |
+| Work list, order, measure, progress rule | IMPLEMENTED with unit and end-to-end tests |
+| JDK diagnostics tool | IMPLEMENTED; run locally on the Spring fixture (18 errors, no classpath) |
+| Loop (verify, accept, revert, defer, human clear, M4 on empty) | IMPLEMENTED end to end on the http specimen with simulated tool outputs and a real git repository; the 2026-09-09 review counterexamples (invented cluster, post-verification edit, out-of-scope test edit, staged revert, rejected reports, unrun/failed tools, line movement, unresolved test scope, stop on deferral, second-card continuation) are permanent tests |
+| Admission v2 with every boundary | IMPLEMENTED with per-boundary negatives, forged-receipt and pilot-seal counterexamples |
+| K1 / K4 / K3 (one card per step, provenance-only matching) | IMPLEMENTED against a fake board |
+| K2 graph-mutation veto | IMPLEMENTED for the documented tool names; the real v0.20.5 worker tool surface is not captured |
+| M4 source oracles and parity receipt | IMPLEMENTED with a local HTTP stub |
+| Native lifecycle on the pinned Hermes (accept, reject, review, deferral) | NOT DEMONSTRATED; continuation proven only against a file-backed fake board |
+| The producer → bootstrap → verify chain on real code (spring-petclinic-rest, local JDK 21 + Maven, Red Hat GA repository) | DEMONSTRATED 2026-09-09 by `build-worklist/scripts/rehearse-legacy.sh`: bootstrap `ok` (BOM probe, legacy-version carry-over, ADR-003 retirement), 675 compiler errors in 81 files → 62 clusters, head `model/BaseEntity.java`; incidents UNKNOWN (no MTA CLI on that host) |
+| Anything on a live workspace, board, or the MTA CLI | NOT DEMONSTRATED |
 
-**Edit procedure.**
+Principal risks: the compat mapping's coverage on a real starter set (unmapped dependencies become loop work, which is correct but may be long); local minima where a step reduces the measure without being semantically right (tests and parity are in the measure, and tests are never writable); sequential-only execution; the surefire runner on a partially migrated tree.
 
-1. Read this file, the README architecture delta, and (for v2 campaign work) AD-019.
-2. Name the section you are changing. If the architecture is silent, ask Architect — do not improvise a script.
-3. For campaign seats: file `REFACTORING_V2.md` (`git show HEAD:` + `hash-object` / `update-index`). Do not dest-complete, dest-wipe, or `kanban daemon --force` as documentation work.
-4. Land in platform git on the branch that owns the change. Stage 080 SAD lives on **`harness-v2`** in this stage folder (Architect `085800Z` / `092500Z`). Overlay still owns live Argo until a recut GO. `scaffold-repo/` is dest execution; do not copy this SAD there.
-5. Do not commit secrets. Do not add `Signed-off-by` for a human.
+Decisions still required: the MTA CLI 8.2 binary in the overlay with its checksum frozen before admission; the pilot seal (bound to source, baseline, receipt, board and expiry) after the acceptance and continuation defects are proven on the pinned Hermes; capture of the worker tool names and schemas per profile for K2. `decisions.yaml` (platform ADR-001, attempt threshold ADR-002 = 3) is in place.
 
-**Forbidden in this file.** Runbooks (those go to `docs/OPERATIONS.md`). Dest scripts. Empty companions outside this stage directory. v1 mint prose (`dispatch-phase`, `handover-mint.py`, `ack_gate`, `PATH_TOKEN` over `tasks.md`). Claiming M5 / factory ship. 1:1 dest_file KEEP without a sanctioned supersede map. Treating this file as the workshop's solution architecture.
+---
+
+## 12. Documentation and contribution boundaries
+
+| Question | Authoritative home |
+|---|---|
+| What does a participant click and observe? | [Stage README](README.md) |
+| What is the target design and what is proven? | This document |
+| What runs in the destination workspace? | `scaffold-repo/quarkus-migration-scaffold/` |
+| How is the stage deployed and operated? | [Operations](../../docs/OPERATIONS.md) |
+| How are failures diagnosed and recovered? | [Troubleshooting](../../docs/TROUBLESHOOTING.md) |
+| What is deferred? | [Backlog](../../BACKLOG.md) |
+
+Architects bind design here. Implementers change the kernel and skills against a cited section. Reviewers provide evidence and challenge maturity labels. Destination workers never edit this file or any sealed planning artifact.
+
+### Primary references
+
+- [MTA 8.2 CLI documentation](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.2/html-single/using_the_migration_toolkit_for_applications_command-line_interface/index)
+- [Hermes Kanban documentation](https://hermes-agent.nousresearch.com/docs/user-guide/features/kanban)
+- [Hermes Kanban worker lanes](https://hermes-agent.nousresearch.com/docs/user-guide/features/kanban-worker-lanes)
+- [JDK compiler API (`jdk.compiler` module)](https://docs.oracle.com/en/java/javase/21/docs/api/jdk.compiler/module-summary.html)
+- [Quarkus: migrating from Spring](https://quarkus.io/spring/migrate/), [Spring DI](https://quarkus.io/guides/spring-di), [Spring Web](https://quarkus.io/guides/spring-web), [Spring Data JPA](https://quarkus.io/guides/spring-data-jpa), [Spring Boot properties](https://quarkus.io/guides/spring-boot-properties)
+- [Migrating Code At Scale With LLMs At Google (FSE 2025)](https://arxiv.org/abs/2504.09691) — the change-location + LLM + verification loop this design follows

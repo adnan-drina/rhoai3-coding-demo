@@ -1,0 +1,32 @@
+# decisions.yaml — the only human input to the migration (SAD v3 §4).
+# Copy to the project root. Every null below is a decision the loop
+# refuses to run without (admission BLOCK MISSING_DECISION). Nothing here
+# is ever written or inferred by a worker.
+schema: rhoai3.decisions/v2
+
+adrs:
+  - id: ADR-001
+    status: proposed
+    title: Destination platform (Red Hat build of Quarkus 3.27, Spring compatibility path first)
+  - id: ADR-002
+    status: proposed
+    title: Rejected-attempt threshold before a cluster becomes a manual card
+
+destination_platform:
+  id: null            # a key of .hermes/planning/catalogs/destination-platforms.json, e.g. quarkus-rhbq-3.27
+  adr: null           # ADR-001 once accepted
+
+thresholds:
+  max_attempts: null  # e.g. 3 — rejected (reverted) attempts on one cluster before it is deferred to a human
+  adr: null           # ADR-002 once accepted
+
+# Work-list items an accepted ADR retires (exact item ids from
+# evidence/planning/worklist.json). Never a rule id, never a file: one
+# incident, one ADR, one reason.
+not_applicable: []
+
+# Source files an accepted ADR retires (paths relative to the project root).
+# The bootstrap deletes exactly these and never imports them; a path the
+# frozen legacy never had is a stale decision and blocks. One file, one ADR,
+# one reason.
+retired_sources: []

@@ -47,49 +47,6 @@ def ep_key(ep: dict) -> str:
     return f"{f}:{line}" if line is not None else f
 
 
-def check_partition_conservation(root: Path, inv: dict) -> int:
-    """AR-4.1 — if story partition present, union must equal inventory endpoints."""
-    part_p = root / "evidence" / "story-endpoint-partition.json"
-    if not part_p.is_file():
-        return 0
-    part = json.loads(part_p.read_text(encoding="utf-8"))
-    stories = part.get("stories") if isinstance(part, dict) else None
-    if not isinstance(stories, dict):
-        print("FAIL: AR-4.1 story-endpoint-partition.stories missing", file=sys.stderr)
-        return 1
-    inv_eps = {ep_key(e) for e in (inv.get("entry_points") or []) if isinstance(e, dict)}
-    union: set[str] = set()
-    dup = 0
-    for sid, eps in stories.items():
-        if not isinstance(eps, list):
-            print(f"FAIL: AR-4.1 stories[{sid}] not a list", file=sys.stderr)
-            return 1
-        for ep in eps:
-            if isinstance(ep, str):
-                k = ep
-            elif isinstance(ep, dict):
-                k = ep_key(ep)
-            else:
-                continue
-            if k in union:
-                dup += 1
-            union.add(k)
-    if union != inv_eps:
-        missing = sorted(inv_eps - union)[:8]
-        extra = sorted(union - inv_eps)[:8]
-        print(
-            f"FAIL: AR-4.1 partition conservation "
-            f"(union={len(union)} inventory={len(inv_eps)} "
-            f"missing_sample={missing} extra_sample={extra})",
-            file=sys.stderr,
-        )
-        return 1
-    if dup:
-        print(f"FAIL: AR-4.1 partition has {dup} duplicate endpoint assignment(s)", file=sys.stderr)
-        return 1
-    print(f"OK: AR-4.1 partition conservation ({len(union)} endpoints)")
-    return 0
-
 
 def main() -> int:
     root = Path(sys.argv[1] if len(sys.argv) > 1 else ".")
@@ -203,8 +160,6 @@ def main() -> int:
         print("FAIL: ack_obligation missing", file=sys.stderr)
         return 1
 
-    if check_partition_conservation(root, inv):
-        return 1
 
     print(
         f"OK: findings-handoff gate ({len(raw)}B, {len(rules)} rules, "

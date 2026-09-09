@@ -1,0 +1,9 @@
+name: rhoai3-stage080-admission
+description: >
+  Stage 080 admission ruleset. Carries the canary rule that proves the
+  custom ruleset was loaded by the pinned MTA CLI run. Passed with
+  `--rules <this dir>`. Never pass `--source` (AD-003 amendment A):
+  source/target selectors exclude rules that lack a matching label, so
+  every rule here carries a target label for each `migration.yaml`
+  `analysis.targets` entry. Adding a target there requires adding the
+  label here, or the canary stops firing and admission is INCONCLUSIVE.

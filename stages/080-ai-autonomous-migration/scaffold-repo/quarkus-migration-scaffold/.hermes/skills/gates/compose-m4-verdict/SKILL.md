@@ -42,24 +42,17 @@ Schema: `references/m4-verdict-schema.md`. Keep it in sync with
 
 ## Pin the M4 card
 
-Create (or remint) M4 with this leaf first:
-
-```bash
-hermes kanban create "M4 VERIFY" \
-  --assignee implementer \
-  --parent "$STAMP_TASK_ID" \
-  --skill compose-m4-verdict \
-  --skill check-release-readiness \
-  --skill check-domain-parity \
-  --workspace dir:/projects/modernized \
-  --max-retries 1 \
-  --max-runtime 2h \
-  --idempotency-key m4-verify
-```
-
-`k4_mint.py --exec` repeats `--parent` for every M3 story it just created
-(not only STAMP). Title is positional (`hermes kanban create "M4 VERIFY"`);
-`--title` is not a flag. Do not put a verdict token in the create body.
+M4 VERIFY is minted by `python3 .hermes/kernel/k4_mint.py --root . --exec`
+(called by `fix-until-green/scripts/advance.py` after the accepted step
+that emptied the work list) from the ADMITTED admission receipt: card
+`M4_VERIFY` (kind `close`), parent = the last accepted loop card, skills
+from `planner.cards.CARD_SKILLS["close"]` (this leaf first), idempotency
+key `k4:M4_VERIFY:<attempt>:<receipt_digest[:16]>`. There is no fixed
+`m4-verify` key and no hand `hermes kanban create` for M4: a receipt
+re-admitted with a new digest mints a new M4, and K4 mints nothing while
+a deferred (manual) cluster is open.
+Title is positional; `--title` is not a flag. Do not put a verdict token in
+the body.
 
 Do not pin only the two `check-*` leaves.
 

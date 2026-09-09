@@ -31,13 +31,13 @@ SURE="${SCRIPT_DIR}/assert-surefire-results.py"
 BODY="${SCRIPT_DIR}/assert-m4-card-body.py"
 TREE="${SCRIPT_DIR}/../../assert-retrievable-tree/scripts/assert-retrievable-tree.py"
 PINNED="${SCRIPT_DIR}/../../assert-pinned-gates-ran/scripts/assert-pinned-gates-ran.py"
-SPEC_COV="${SCRIPT_DIR}/../../../sdd/check-spec-readiness/scripts/check-partition-coverage.py"
+ADMIT="${SCRIPT_DIR}/../../../planning/admit-migration-plan/scripts/verify-admission-receipt.py"
 DOMAIN="${SCRIPT_DIR}/../../check-domain-parity/scripts/check-product-tests.py"
 TOOLCHAIN="${SCRIPT_DIR}/check-test-toolchain.py"
 DETECTOR="${SCRIPT_DIR}/../../assert-no-fence-evasion/scripts/assert-no-fence-evasion.py"
 G4="${SCRIPT_DIR}/assert-g4-claim-consistency.py"
 RESOLVE="${SCRIPT_DIR}/resolve-m4-work-logs.py"
-DEFAULT_SKILLS="check-spec-readiness,check-domain-parity,check-release-readiness,assert-pinned-gates-ran,assert-retrievable-tree"
+DEFAULT_SKILLS="admit-migration-plan,check-domain-parity,check-release-readiness,assert-pinned-gates-ran,assert-retrievable-tree"
 RECEIPT="${SCRIPT_DIR}/../../assert-pinned-gates-ran/scripts/write-gate-receipt.py"
 if [[ -n "${M4_CARD_SKILLS:-}" ]]; then
   echo "FAIL: M4_CARD_SKILLS override is OBJECT (Architect 130758ZA); do not widen or replace card pins" >&2
@@ -82,8 +82,7 @@ python3 "${SURE}" "${PRODUCT_ROOT}"
 python3 "${BODY}"
 run_gate assert-retrievable-tree python3 "${TREE}" "${PRODUCT_ROOT}"
 # Feeding gates before assert-pinned-gates-ran (Architect 091125ZA).
-run_feed_gate check-spec-readiness python3 "${SPEC_COV}" "${PRODUCT_ROOT}" \
-  --write-receipt evidence/receipts/partition-coverage/latest.json
+run_feed_gate admit-migration-plan python3 "${ADMIT}" --root "${PRODUCT_ROOT}"
 run_feed_gate check-domain-parity python3 "${DOMAIN}" "${PRODUCT_ROOT}" --write-receipt
 run_feed_gate check-release-readiness python3 "${TOOLCHAIN}" "${PRODUCT_ROOT}" --write-receipt
 python3 "${PINNED}" "${PRODUCT_ROOT}" --skills "${SKILLS}"

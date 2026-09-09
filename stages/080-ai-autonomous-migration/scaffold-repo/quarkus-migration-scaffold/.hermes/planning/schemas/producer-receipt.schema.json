@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "rhoai3.producer-receipt/v1",
+  "title": "M1 producer receipt (evidence/producers/<name>.json)",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["schema", "producer", "status", "tool", "inputs", "outputs", "reasons"],
+  "properties": {
+    "schema": {"const": "rhoai3.producer-receipt/v1"},
+    "producer": {"type": "string", "enum": ["freeze", "build", "jdk-model", "mta", "bootstrap"]},
+    "status": {"type": "string", "enum": ["ok", "partial", "failed", "skipped", "unpinned", "unprobed"]},
+    "tool": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["name", "pin_status"],
+      "properties": {
+        "name": {"type": "string"},
+        "version": {"type": ["string", "null"]},
+        "pin_status": {"type": "string", "enum": ["pinned", "unpinned", "not-applicable"]},
+        "artifact_sha256": {"type": ["string", "null"]}
+      }
+    },
+    "inputs": {"type": "object"},
+    "outputs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "sha256"],
+        "properties": {"path": {"type": "string"}, "sha256": {"type": "string"}}
+      }
+    },
+    "reasons": {"type": "array", "items": {"type": "string"}},
+    "observations": {"type": "object"}
+  }
+}

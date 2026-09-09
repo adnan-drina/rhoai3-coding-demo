@@ -17,7 +17,7 @@
 #   api_mode: chat_completions
 
 skills:
-  # Project skills + spec-kit Path.home() install (hermes-skills).
+  # Project skills Path.home() install (hermes-skills). No Spec Kit.
   # Nonexistent paths are silently skipped — keep both.
   external_dirs:
     - /projects/modernized/.hermes/skills

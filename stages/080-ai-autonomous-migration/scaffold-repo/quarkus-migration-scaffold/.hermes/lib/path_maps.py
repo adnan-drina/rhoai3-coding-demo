@@ -64,7 +64,6 @@ def path_rewrites(root: Path) -> list[tuple[str, str]]:
     inv = None
     for cand in (
         root / "evidence/entry-point-inventory.json",
-        root / ".hermes/skills/sdd/check-spec-readiness/fixtures/inventory/entry-point-inventory-petclinic-f11.json",
     ):
         inv = load_json(cand)
         if isinstance(inv, dict):

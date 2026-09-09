@@ -720,7 +720,7 @@ def main() -> int:
         home = dest / "hermes-home"
         (home / "kanban" / "logs").mkdir(parents=True)
         (home / "kanban" / "logs" / "t_live.log").write_text(
-            "python3 assert-m2-speckit-conformance.py . [exit 1]\n",
+            "python3 admit-migration-plan.py --root . [exit 1]\n",
             encoding="utf-8",
         )
         r = run(
@@ -738,7 +738,7 @@ def main() -> int:
         msg = r.get("message") or ""
         if (
             r.get("action") != "block"
-            or "assert-m2-speckit-conformance" not in msg
+            or "admit-migration-plan" not in msg
         ):
             print("FAIL native_complete_payload_task_id_bound_gate", r, file=sys.stderr)
             fails += 1
@@ -852,9 +852,9 @@ def main() -> int:
         red_home = Path(td) / "p0b-home"
         (red_home / "kanban" / "logs").mkdir(parents=True)
         (red_home / "kanban" / "logs" / "t_p0b.log").write_text(
-            "  ┊ 💻 $         python3 .hermes/skills/sdd/check-spec-readiness/"
-            "scripts/check-partition-coverage.py . --write-receipt "
-            "evidence/receipts/partition-coverage/latest.json  0.2s [exit 1]\n",
+            "  ┊ 💻 $         python3 .hermes/skills/planning/admit-migration-plan/"
+            "scripts/verify-admission-receipt.py --root . "
+            "--any-status  0.2s [exit 1]\n",
             encoding="utf-8",
         )
         p0b = {
@@ -869,7 +869,7 @@ def main() -> int:
             roots,
             cwd=cwd,
             tool="write_file",
-            extra_input={"path": str(dest / "evidence" / "partition.json")},
+            extra_input={"path": str(dest / "evidence" / "planning" / "ownership-map.json")},
             extra_env=p0b,
         )
         msg = r.get("message") or ""
@@ -879,7 +879,7 @@ def main() -> int:
         else:
             print("ok p0b_write_after_exit1")
         r = run(
-            "python3 .hermes/kernel/k4_mint.py --payloads evidence/partition-payloads.json --exec",
+            "python3 .hermes/kernel/k4_mint.py --root . --exec",
             roots,
             cwd=cwd,
             extra_env=p0b,
@@ -891,9 +891,9 @@ def main() -> int:
         else:
             print("ok p0b_k4_mint_after_exit1")
         r = run(
-            "python3 .hermes/skills/sdd/check-spec-readiness/scripts/"
-            "check-partition-coverage.py . --write-receipt "
-            "evidence/receipts/partition-coverage/latest.json",
+            "python3 .hermes/skills/planning/admit-migration-plan/scripts/"
+            "verify-admission-receipt.py --root . "
+            "--any-status",
             roots,
             cwd=cwd,
             extra_env=p0b,
@@ -930,16 +930,16 @@ def main() -> int:
             "a", encoding="utf-8"
         ) as fh:
             fh.write(
-                "  ┊ 💻 $         python3 .hermes/skills/sdd/check-spec-readiness/"
-                "scripts/check-partition-coverage.py . --write-receipt "
-                "evidence/receipts/partition-coverage/latest.json  0.2s\n"
+                "  ┊ 💻 $         python3 .hermes/skills/planning/admit-migration-plan/"
+                "scripts/verify-admission-receipt.py --root . "
+                "--any-status  0.2s\n"
             )
         r = run(
             "",
             roots,
             cwd=cwd,
             tool="write_file",
-            extra_input={"path": str(dest / "evidence" / "partition.json")},
+            extra_input={"path": str(dest / "evidence" / "planning" / "ownership-map.json")},
             extra_env=p0b,
         )
         if r.get("action") == "block":
@@ -948,6 +948,38 @@ def main() -> int:
         else:
             print("ok p0b_write_after_same_needle_green")
 
+    # graph-mutation veto (SAD §9): a worker never creates/links cards; K4 does
+    with tempfile.TemporaryDirectory() as td2:
+        dest2 = Path(td2) / "dest"
+        dest2.mkdir()
+        roots2 = [str(dest2)]
+        impl = {"HERMES_PROFILE": "implementer", "HERMES_WRITE_SAFE_ROOT": str(dest2)}
+        for tool_name in ("kanban_create", "kanban_link", "kanban_swarm", "kanban_decompose", "create_task"):
+            r = run("", roots2, cwd=str(dest2), tool=tool_name, extra_env=impl)
+            if r.get("action") != "block" or "K4 only" not in (r.get("message") or ""):
+                print("FAIL veto_tool_%s" % tool_name, r, file=sys.stderr)
+                fails += 1
+            else:
+                print("ok veto_tool_%s" % tool_name)
+        for cmdline in ("hermes kanban create 'M3 hand-made' --assignee implementer", "hermes kanban link t_a t_b", "hermes kanban swarm t_x", "hermes kanban daemon --force"):
+            r = run(cmdline, roots2, cwd=str(dest2), extra_env=impl)
+            if r.get("action") != "block":
+                print("FAIL veto_cmd %r" % cmdline, r, file=sys.stderr)
+                fails += 1
+            else:
+                print("ok veto_cmd %r" % cmdline)
+        r = run("python3 .hermes/kernel/k4_mint.py --root . --exec --verify-board", roots2, cwd=str(dest2), extra_env=impl)
+        if r.get("action") == "block":
+            print("FAIL veto_allows_k4_mint", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok veto_allows_k4_mint")
+        r = run("hermes kanban list --json", roots2, cwd=str(dest2), extra_env=impl)
+        if r.get("action") == "block":
+            print("FAIL veto_allows_list", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok veto_allows_list")
     return 1 if fails else 0
 
 

@@ -74,9 +74,9 @@ Official technique table and failure classes: `references/concern-oracle-table.m
    (wrong-class, vacuous pass, comment-satisfiable, `T0_3_SERVICE`).
 7. Lint before mint:
 
-```bash
-python3 ../check-spec-readiness/scripts/check-surgical-scopes.py <root> <body.json>
-```
+   The former `check-surgical-scopes.py` linter was retired with Spec Kit.
+   Card bodies are now produced by `k4_convert.py` from the admitted DAG and
+   validated by `k1_validate.py`; hand-authored story bodies are refused.
 
 8. Family stamps (`identity.semantic_families`) remain optional REST detail —
    still linted by `check-semantic-exits.py` when present; they do not replace
@@ -101,7 +101,7 @@ python3 ../check-spec-readiness/scripts/check-surgical-scopes.py <root> <body.js
 
 ## Verification
 
-- `check-surgical-scopes.py` exits 0 on the body.
+- `python3 .hermes/kernel/k1_validate.py` exits 0 on the K4-written body.
 - Wrong-only **and** correct+wrong foreign exits both FAIL.
 - Legal-only body for the class PASSES.
 - Retired `semantic-exits` contract is not in golden (no `governance/` folder).

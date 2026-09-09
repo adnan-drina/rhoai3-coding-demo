@@ -29,7 +29,7 @@ metadata:
 - Before `kanban_complete`, when the summary is about to name a technology
   (Panache, Quarkus security, "tests roll back") — the cards state what must
   appear in the diff to earn each claim.
-- **Not** for authoring or validating story bodies (`check-spec-readiness`), and not
+- **Not** for authoring or validating increment bodies (K1 `k1_validate.py`), and not
   for the Boot 2→3 precondition (`derive-legacy-boot3`).
 
 
@@ -40,7 +40,7 @@ new behaviour, weaken G-1…G-4, or replace free-primitives / MTA.
 
 ## Invariants (conflict with AGENTS → AGENTS wins)
 
-- **Native Quarkus only** — reject `quarkus-spring-*` compatibility extensions.
+- **Spring-compatibility path first** (ADR-001): the `quarkus-spring-*` extensions are the baseline; keep Spring annotations the compat guides support, and go native only where a guide documents no support (no Spring `ApplicationContext`: `@Conditional`, `@Profile`, `BeanPostProcessor`, `@Import`, `@Autowired(required=false)`, `Set`/`Map` injection; Spring Boot test features → `@QuarkusTest` + RestAssured).
 - Prefer **constructor injection**; default services/repos `@ApplicationScoped`.
   Prefer `@ApplicationScoped` over `@Singleton` when the type must be mockable
   in tests (`@Singleton` is not client-proxyable).
@@ -63,7 +63,7 @@ new behaviour, weaken G-1…G-4, or replace free-primitives / MTA.
 | `references/security-anti-essay.md` | Write-first / anti-placeholder (synced from extensions) |
 | `references/cache-adopt-defer.md` | `@Cacheable` → `@CacheResult` adopt/defer (R-SKILL-C) |
 | `references/cdi-service-facade.md` | `@Service` → CDI ctor inject / `@Transactional` / `readOnly` (R-SKILL-D) |
-| `references/spring-compat-reject.md` | REJECT `quarkus-spring-*` — metadata shim ≠ Spring runtime (mechanism only) |
+| `references/spring-compat-reject.md` | Historical (native-only era): what the compat shim does **not** provide — read it as the list of features that must go native |
 | `references/observability.md` | Actuator `HealthIndicator` → SmallRye `HealthCheck`; probe-type choice; fixed `/q/health*` paths |
 
 ## Source policy
@@ -122,8 +122,9 @@ This skill's write contract is consult-then-write. W6 bootstrap is a
 
 ## Pitfalls
 
-- Accepting MTA `quarkus-spring-*` compatibility suggestions (native Quarkus
-  only — refuse).
+- Adding a `quarkus-spring-*` extension that `compat-mapping.json` does not
+  list, or expecting Spring runtime infrastructure (context, conditions,
+  post-processors) to exist under the shim.
 - Translating Spring Boot properties by supplementation; Quarkus does not
   auto-map them — replace keys explicitly.
 - Inventing specimen-specific type names in skill prose (R-SK.5).
@@ -161,7 +162,7 @@ except the W6 bootstrap check:
 - **Health, when touched:** the `/q/health` payload names **every** check
   migrated from a legacy indicator; `/q/health/live` and `/q/health/ready` both
   resolve; a dependency-backed check reports DOWN under readiness.
-- **Claim accuracy:** no `quarkus-spring-*` extension in `pom.xml`, and every
+- **Claim accuracy:** only catalog-mapped `quarkus-spring-*` extensions in `pom.xml`, and every
   technology named in the completion summary is visible in the diff — "Panache",
   "Quarkus security" and "tests roll back" each require their types or
   annotations to be present.

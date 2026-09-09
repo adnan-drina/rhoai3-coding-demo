@@ -28,7 +28,7 @@ accepted it. Run **before** writing `PROVISIONAL_ACCEPT`.
 ## When to Use
 
 - M4 is about to write `evidence/verdicts/` with `PROVISIONAL_ACCEPT`.
-- A gate is on the M4 card `skills` list (`check-spec-readiness`,
+- A gate is on the M4 card `skills` list (`admit-migration-plan`,
   `check-domain-parity`, `check-release-readiness`, this skill,
   `assert-retrievable-tree`).
 - **Not** to invent Owner/Pet, kill-ratio, or DB floors. **Not** idle-pass
@@ -42,7 +42,7 @@ Pass the M4 card's skills list. Missing list is fail-closed.
 python3 "${HERMES_SKILL_DIR}/../assert-retrievable-tree/scripts/assert-retrievable-tree.py" \
   /projects/modernized
 python3 "${HERMES_SKILL_DIR}/scripts/assert-pinned-gates-ran.py" /projects/modernized \
-  --skills "check-spec-readiness,check-domain-parity,check-release-readiness,assert-pinned-gates-ran,assert-retrievable-tree"
+  --skills "admit-migration-plan,check-domain-parity,check-release-readiness,assert-pinned-gates-ran,assert-retrievable-tree"
 ```
 
 `--skills-file` or `--card-json` (object with `skills`) are equivalents.

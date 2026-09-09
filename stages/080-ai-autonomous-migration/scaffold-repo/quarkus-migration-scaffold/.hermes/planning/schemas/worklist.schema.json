@@ -1,0 +1,126 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Work list (evidence/planning/worklist.json) \u2014 the only plan",
+  "type": "object",
+  "required": [
+    "schema",
+    "evidence_bundle_sha256",
+    "candidate_sha256",
+    "sources",
+    "items",
+    "clusters",
+    "deferred",
+    "blocked_clusters",
+    "head",
+    "measure",
+    "order_policy"
+  ],
+  "properties": {
+    "schema": {
+      "type": "string",
+      "enum": [
+        "rhoai3.worklist/v1"
+      ]
+    },
+    "evidence_bundle_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "source",
+          "kind",
+          "category",
+          "path",
+          "line",
+          "rule_id"
+        ],
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": [
+              "mta",
+              "javac",
+              "surefire",
+              "parity"
+            ]
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "build",
+              "config",
+              "compile",
+              "incident",
+              "test",
+              "parity"
+            ]
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "mandatory",
+              "optional",
+              "potential"
+            ]
+          }
+        }
+      }
+    },
+    "clusters": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "path",
+          "kind",
+          "items",
+          "order_key",
+          "status",
+          "write_set"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "deferred",
+              "blocked"
+            ]
+          }
+        }
+      }
+    },
+    "deferred": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "head": {
+      "type": "string"
+    },
+    "measure": {
+      "type": "object",
+      "required": [
+        "mandatory_incidents",
+        "compile_errors",
+        "failing_tests",
+        "parity_mismatches",
+        "tuple",
+        "known",
+        "blocked"
+      ],
+      "properties": {
+        "known": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

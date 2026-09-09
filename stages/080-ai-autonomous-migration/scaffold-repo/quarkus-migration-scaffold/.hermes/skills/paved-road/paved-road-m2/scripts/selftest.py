@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""paved-road-m2 selftest: dest-14 REFUSE; green PASS; audit.json sync."""
+"""paved-road-m2 selftest: sync; green PASS; red-no-rerun REFUSE; red-then-clean PASS; skill-dir red PASS; not-activated REFUSE."""
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -9,11 +10,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 SKILL = HERE.parent
 SCRIPT = HERE / "assert-paved-road-audit.py"
-DEST14 = SKILL / "fixtures" / "dest-14-m2-four-exit1"
-GREEN = SKILL / "fixtures" / "green-m2"
-SKILL_DIR_RED = SKILL / "fixtures" / "skill-dir-red-skill-view-green"
-TWO_RUN_CLEAN = SKILL / "fixtures" / "two-run-prior-red-then-clean"
-TWO_RUN_NO_RERUN = SKILL / "fixtures" / "two-run-prior-red-no-rerun"
+FX = SKILL / "fixtures"
 
 
 def _fail(msg: str) -> int:
@@ -34,105 +31,57 @@ def _ensure_hermes_lib() -> None:
 
 
 _ensure_hermes_lib()
-from paved_road import GOLDEN_ROOT, coverage, sync_audit  # noqa: E402
+from paved_road import GOLDEN_ROOT, coverage, load_steps, sync_audit, validate_steps_doc  # noqa: E402
 
 
-def _run(log: Path, root: Path) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        [sys.executable, str(SCRIPT), "--log", str(log), "--root", str(root)],
-        text=True,
-        capture_output=True,
-    )
+def _run(name: str) -> tuple[int, str]:
+    fx = FX / name
+    proc = subprocess.run([sys.executable, str(SCRIPT), "--log", str(fx / "official.log"), "--root", str(fx)], text=True, capture_output=True)
+    return proc.returncode, proc.stdout + proc.stderr
 
 
 def main() -> int:
     rc, msg = sync_audit(SKILL)
     if rc != 0:
         return _fail(msg)
+    doc = load_steps(SKILL / "steps.json")
+    first = doc["steps"][0]
+    if first["backing"] != "native" or first["native"] != "assert-planner-activated.py":
+        return _fail("M2 must start with the activation gate")
+    if [s.get("skill") for s in doc["steps"] if s["backing"] == "skill"] != ["bootstrap-destination", "build-worklist", "admit-migration-plan", "verify-live-kanban-loop"]:
+        return _fail("M2 skill steps")
+    if [s.get("kernel") for s in doc["steps"] if s["backing"] == "kernel"] != ["k4_mint.py"]:
+        return _fail("M2 kernel steps")
+    if any("speckit" in json.dumps(s) or "partition" in json.dumps(s) for s in doc["steps"]):
+        return _fail("M2 steps must carry no Spec Kit or partition residue")
+    bad = json.loads(json.dumps(doc))
+    bad["steps"].insert(0, {"id": "speckit-specify", "backing": "skill", "skill": "speckit-specify"})
+    errs = validate_steps_doc(bad)
+    if not any("activation" in e or "retired" in e for e in errs):
+        return _fail("a Spec Kit step ahead of the gate must be refused: %s" % errs)
 
-    log = DEST14 / "official.log"
-    if not log.is_file():
-        return _fail("missing dest-14 fixture %s" % log)
-    text = log.read_text(encoding="utf-8")
-    if text.count("[exit 1]") < 4:
-        return _fail("dest-14 fixture must contain four [exit 1]")
-    if (
-        "preparing kanban_complete" not in text
-        and "kanban_complete call succeeded" not in text
-    ):
-        return _fail("dest-14 fixture must contain kanban_complete")
-    if "preparing kanban_block" in text:
-        return _fail("dest-14 fixture must have zero preparing kanban_block")
-
-    proc = _run(log, DEST14)
-    blob = proc.stdout + proc.stderr
-    if proc.returncode != 1:
-        return _fail("dest-14 fixture must REFUSE: %s" % blob)
-    if "unmatched [exit 1]" not in blob:
-        return _fail("dest-14 refuse must name unmatched [exit 1]: %s" % blob)
-    if "check-partition-coverage.py" not in blob:
-        return _fail("dest-14 refuse must name check-partition-coverage.py: %s" % blob)
-    if "assert-m2-speckit-conformance.py" not in blob:
-        return _fail(
-            "dest-14 refuse must name assert-m2-speckit-conformance.py: %s" % blob
-        )
-    if "mandated needle 'plan-migration-partition'" in blob:
-        return _fail(
-            "dest-14 must not refuse on skill-name path substring: %s" % blob
-        )
-
-    if not (GREEN / "official.log").is_file():
-        return _fail("missing green fixture %s" % GREEN)
-    green_txt = (GREEN / "official.log").read_text(encoding="utf-8")
-    if "[exit 0]" in green_txt:
-        return _fail("green fixture must omit [exit 0] (dispatcher success format)")
-    proc = _run(GREEN / "official.log", GREEN)
-    blob = proc.stdout + proc.stderr
-    if proc.returncode != 0:
+    rc, blob = _run("green-m2")
+    if rc != 0:
         return _fail("green-m2 must PASS: %s" % blob)
-
-    if not (SKILL_DIR_RED / "official.log").is_file():
-        return _fail("missing skill-dir-red fixture %s" % SKILL_DIR_RED)
-    proc = _run(SKILL_DIR_RED / "official.log", SKILL_DIR_RED)
-    blob = proc.stdout + proc.stderr
-    if proc.returncode != 0:
+    if "[exit 0]" in (FX / "green-m2" / "official.log").read_text(encoding="utf-8"):
+        return _fail("green fixture must omit [exit 0]")
+    rc, blob = _run("red-no-rerun")
+    if rc != 1 or "unmatched [exit 1]" not in blob or "k4_mint.py" not in blob:
+        return _fail("red-no-rerun must REFUSE naming k4_mint.py: %s" % blob)
+    rc, blob = _run("red-then-clean")
+    if rc != 0:
+        return _fail("red-then-clean must PASS: %s" % blob)
+    rc, blob = _run("skill-dir-red-skill-view-green")
+    if rc != 0:
         return _fail("skill-dir-red-skill-view-green must PASS: %s" % blob)
-
-    if not (TWO_RUN_CLEAN / "official.log").is_file():
-        return _fail("missing two-run-clean fixture %s" % TWO_RUN_CLEAN)
-    two_txt = (TWO_RUN_CLEAN / "official.log").read_text(encoding="utf-8")
-    if two_txt.count("Query: work kanban task") < 2:
-        return _fail("two-run-clean fixture must contain two run markers")
-    if "[exit 1]" not in two_txt:
-        return _fail("two-run-clean fixture must retain the prior-run red")
-    proc = _run(TWO_RUN_CLEAN / "official.log", TWO_RUN_CLEAN)
-    blob = proc.stdout + proc.stderr
-    if proc.returncode != 0:
-        return _fail("two-run-prior-red-then-clean must PASS: %s" % blob)
-
-    if not (TWO_RUN_NO_RERUN / "official.log").is_file():
-        return _fail("missing two-run-no-rerun fixture %s" % TWO_RUN_NO_RERUN)
-    proc = _run(TWO_RUN_NO_RERUN / "official.log", TWO_RUN_NO_RERUN)
-    blob = proc.stdout + proc.stderr
-    if proc.returncode != 1:
-        return _fail("two-run-prior-red-no-rerun must REFUSE: %s" % blob)
-    if "unmatched [exit 1]" not in blob:
-        return _fail("two-run-no-rerun must name unmatched [exit 1]: %s" % blob)
-    if "check-partition-coverage.py" not in blob:
-        return _fail(
-            "two-run-no-rerun must name check-partition-coverage.py: %s" % blob
-        )
-
-    cov = coverage(GOLDEN_ROOT)
-    if cov != 0:
+    rc, blob = _run("not-activated")
+    if rc != 1 or "assert-planner-activated.py" not in blob:
+        return _fail("not-activated must REFUSE naming the gate: %s" % blob)
+    if "kanban_block" not in (FX / "not-activated" / "official.log").read_text(encoding="utf-8"):
+        return _fail("not-activated fixture must show kanban_block (the legal transitional stop)")
+    if coverage(GOLDEN_ROOT) != 0:
         return _fail("coverage lint failed")
-
-    print(
-        "OK: paved-road-m2 selftest "
-        "(dest-14 REFUSE naming coverage/conformance; "
-        "green PASS; skill-dir-red PASS; two-run last-wins PASS/REFUSE; "
-        "sync; coverage)"
-    )
+    print("OK: paved-road-m2 selftest (sync; gate first; green PASS; red-no-rerun REFUSE; red-then-clean PASS; skill-dir red PASS; not-activated REFUSE; coverage)")
     return 0
 
 

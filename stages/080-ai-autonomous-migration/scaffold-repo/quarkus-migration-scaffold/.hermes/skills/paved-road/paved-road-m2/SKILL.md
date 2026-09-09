@@ -1,19 +1,19 @@
 ---
 name: paved-road-m2
 description: >
-  Use at M2 PLAN as the kind index. Pin only --skill paved-road-m2.
-  Follow steps.json in order (skill_view speckit-specify then plan/tasks,
-  plan-migration-partition producer, check-spec-readiness, native
-  check-partition-coverage.py and assert-m2-speckit-conformance.py,
-  k4_convert.py, k4_mint.py). Happy-path terminator is kanban_request_review,
-  not kanban_complete. kanban_block for external/platform (MaaS 500, missing
-  key, GPU). Do not pin plan-migration-partition and check-spec-readiness
-  on the card. Do not use for M1, M3, or M4.
+  Pin only this on the M2 PLAN card. Index for the fix-until-green loop's
+  planning step: the activation gate (native), the deterministic
+  bootstrap (bootstrap-destination), the plan = tool-computed work list
+  plus baseline (build-worklist), admission (admit-migration-plan, the
+  producer), one K4 mint (kernel k4_mint.py: the head cluster's card),
+  and the live-board comparison (verify-live-kanban-loop). No LLM plans;
+  no partition; no capability graph. INCONCLUSIVE admission is a legal
+  stop (kanban_block). Never for story implementation.
 license: Apache-2.0
-compatibility: Linux seat; Python 3.11+; Hermes Kanban; pinned specify-cli
+compatibility: Linux seat; Hermes v0.20.5 Kanban; Python 3.11+
 metadata:
   author: rhoai3-harness-team
-  version: "1.0.0"
+  version: "3.0.0"
   hermes:
     tags:
     - paved-road
@@ -21,53 +21,39 @@ metadata:
     category: paved-road
     kind: guidance
 ---
-# M2 PLAN paved-road (index)
+# Paved road: M2 PLAN (activation gate → bootstrap → work list → admission → one mint → K3)
 
-This skill is the **M2 procedure index**. Ordered mandated steps live in
-`steps.json`. `audit.json` is generated from that file — do not edit it
-by hand. Do not copy subskill SKILL.md bodies into this file.
+`steps.json` is the contract; `audit.json` is generated from it
+(`python3 .hermes/lib/paved_road.py generate --steps steps.json --out audit.json`).
+The reviewer runs `scripts/assert-paved-road-audit.py` over the official
+Kanban log; silence, a missing KEEP file, or an unmatched `[exit 1]` refuses.
 
-Pin **only** this leaf (`--skill paved-road-m2`). Subskills load via
-`skill_view` from the step list. Spec Kit hermes integration installs
-`files: {}` — follow Hermes `speckit-specify` then plan/tasks; do not
-`specify workflow run speckit`.
+## Procedure (in order)
 
-## When to Use
+1. `python3 .hermes/skills/planning/admit-migration-plan/scripts/assert-planner-activated.py --root /projects/modernized`
+   — refuses while `pins.planner.activation` is `not-activated` (or a
+   pilot seal does not cover this bundle): `kanban_block` naming the gate.
+2. `skill_view bootstrap-destination` → run its script (deterministic
+   pom / properties / main-class baseline; KEEP `evidence/producers/bootstrap.json`).
+3. `skill_view build-worklist` → run its script (JDK diagnostics, tests,
+   MTA rescan → `evidence/planning/worklist.json`; baseline step in
+   `verification/loop/steps.json`).
+4. `skill_view admit-migration-plan` → run its script (KEEP
+   `evidence/planning/admission-receipt.json`). INCONCLUSIVE → `kanban_block`
+   (kind `needs_input`) naming the BLOCK classes; a human resolves them via
+   `decisions.yaml` + ADR or by pinning a tool. Never hand-edit an artifact.
+5. `python3 .hermes/kernel/k4_mint.py --root /projects/modernized --exec --verify-board`
+   — mints exactly one card (the head cluster) and refuses with zero
+   commands unless the receipt is ADMITTED.
+6. `skill_view verify-live-kanban-loop` → run its script (KEEP
+   `evidence/receipts/k3/live-board.json`) proves the board equals the
+   loop's expected cards.
+7. `kanban_request_review` with `reviewer=reviewer` and `created_cards`
+   equal to the native `t_*` list from mint.
 
-- This card is **M2 PLAN**.
-- **Not** M1 ANALYZE (`paved-road-m1`).
-- **Not** dest-init mint (`dispatch-phase`).
+From here the loop propagates itself: each M3 card's `advance.py` mints
+the next card after the tools accept its step.
 
-## Procedure
+## Self-test
 
-1. Read `steps.json`. For each step in order:
-   - `skill` — `skill_view` that leaf and follow its SKILL.md. Do not
-     treat a `$` line under that skill's `scripts/` as the skill step.
-   - `kernel` — run the named basename under `.hermes/kernel/`.
-   - `native` — run the named script basename (M2:
-     `check-partition-coverage.py`, `assert-m2-speckit-conformance.py`).
-2. KEEP paths on the step must exist (`evidence/partition.json` on the producer).
-3. Happy-path terminator: `kanban_request_review` (not `kanban_complete`).
-4. `kanban_block` for external/platform (MaaS 500, missing key, GPU).
-5. Reviewer runs `scripts/assert-paved-road-audit.py --log <official> --root <ws>`.
-   `--log` must be `kanban/logs/t_*.log` (or a land-time `fixtures/**/official.log`).
-   Implementer `cache/terminal-output` is worker-authored and is refused.
-   Land-time `scripts/selftest.py` is not dest.
-
-Producer of artifact `m2-partition` is the `plan-migration-partition` step.
-Paved-road itself is the index, not a second producer.
-
-## Gotchas
-
-- Silence fails. An unmatched `[exit 1]` on a mandated needle fails.
-  A later clean invocation of the *same* needle clears an earlier red.
-  Do not last-wins across different needles (dest-14 `bound_gate_red` hole).
-  Do not slice the audit to the last `Query: work kanban task` marker
-  (that is the reviewer session).
-- Skill needles match `skill_view` only. Kernel/native needles are a
-  script basename with a path boundary, not a parent directory.
-- `workflow-run.json` is forgeable and is not proof.
-- Path mention / grep / cat of a SKILL.md is not `skill_view`.
-- If a named speckit skill is missing: `kanban_block`. Do not hand-author
-  `tasks.md`.
-- Do not `kanban daemon --force`. Do not dest-apply dest-14.
+`python3 scripts/selftest.py` (golden only, never on a card): steps.json ↔ audit.json sync, gate first, fixture PASS/REFUSE set, and the paved-road coverage lint.

@@ -5,7 +5,7 @@ Seam artifact: identity + rule/locus index + digests. NO codeSnip / raw blobs.
 Evidence store remains evidence/mta-findings.json.
 
 AD-H §16.7 / AR-4.1: inventory digest REQUIRED (refuse emit without inventory).
-W4: inventory `root` must equal `harvest_referent` (assert-harvest-referent-pair).
+Inventory `root` must equal the frozen analysis copy (assert-frozen-root-pair).
 AD-H §16.7 / AR-4.2: each rule carries bounded description + disposition.
 """
 from __future__ import annotations
@@ -110,11 +110,11 @@ def main() -> int:
         Path(__file__).resolve().parents[2]
         / "inventory-legacy-surface"
         / "scripts"
-        / "assert-harvest-referent-pair.py"
+        / "assert-frozen-root-pair.py"
     )
     if not pair.is_file():
         print(
-            "emit-findings-handoff: missing assert-harvest-referent-pair.py",
+            "emit-findings-handoff: missing assert-frozen-root-pair.py",
             file=sys.stderr,
         )
         return 2
@@ -184,11 +184,10 @@ def main() -> int:
             "inventory_endpoints": inv_count,
         },
         "ack_obligation": (
-            "M2 PLAN must partition from findings-handoff.json rules/loci + inventory digests; "
-            "must not load mta-findings.json codeSnip/raw exhaust into the planner context. "
-            "Selective evidence reads allowed only by locus path after digest check. "
-            "Opaque rule IDs require disposition=opaque_exception or consistent re-classify — "
-            "never invent semantics (AR-4.2)."
+            "M2 PLAN is deterministic (plan-migration-increments): obligations are overlaid by "
+            "source locus onto mechanically owned increments; no worker reads mta-findings.json "
+            "codeSnip/raw exhaust into an LLM context. Opaque rule IDs keep "
+            "disposition=opaque_exception — never invented semantics (AR-4.2)."
         ),
     }
 

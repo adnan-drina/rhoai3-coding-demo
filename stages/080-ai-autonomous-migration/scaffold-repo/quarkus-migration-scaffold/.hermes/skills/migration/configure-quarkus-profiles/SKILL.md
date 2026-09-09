@@ -62,7 +62,7 @@ References:
    `references/config-profile-load-oracles.md` (validation failure + source
    proof, or `@TestProfile` boots) — not greps of profile name prose.
 6. Cross-check class-legal names via `derive-story-oracles` /
-   `check-surgical-scopes.py`.
+   `k1_validate.py` (K1 body schema).
 
 ## Pitfalls
 
@@ -81,4 +81,4 @@ References:
   `ConfigValidationException` for required keys.
 - DEBUG/`quarkus.config.log.values` (when used) shows expected source origin
   for profile-scoped keys.
-- `check-surgical-scopes.py` accepts the body's exits (no foreign HTTP/etc.).
+- `k1_validate.py` accepts the K4-written body (assertions come from the admitted DAG, never hand-added).

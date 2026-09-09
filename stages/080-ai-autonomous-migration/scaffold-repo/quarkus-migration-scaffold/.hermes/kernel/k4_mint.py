@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
-"""K4 mint — K4 payloads → serial hermes kanban create.
+"""K4 mint — the loop's next card → one hermes kanban create.
 
-Does not import create_task. Does not kanban swarm. Does not kanban
-decompose. Does not kanban daemon --force. Default is dry-run argv.
---exec shells the pin CLI (terminal seat). Model kanban_create has no
-max_retries field; M3 stories require CLI --max-retries 1.
-Refuses a card whose pinned skills contain no producer for its primary
-artifact (k4_producers.py; dest-8 M2+M4 are the negative fixture).
-After M3 creates succeed, the same --exec pass emits one M4 VERIFY
-terminator parented to those M3 task ids (--idempotency-key m4-verify).
+Refuses before emitting any command unless admission-receipt.json is
+ADMITTED and sealed (k4_convert.convert_admitted). Every card, including
+M4 VERIFY, carries a receipt-bound idempotency key
+(k4:<cluster>:<attempt>:<receipt16>), so a repeated mint is a no-op and a
+card from another receipt or attempt is foreign.
+
+Does not import create_task. Does not kanban swarm / decompose / link /
+daemon --force. Default is dry-run argv. --exec shells the pin CLI
+(terminal seat). --verify-board compares the live board to the DAG after
+--exec (K3 live comparator) and refuses on any mismatch.
 """
 from __future__ import annotations
 
@@ -21,33 +23,23 @@ from pathlib import Path
 from typing import Any, Callable
 
 _KERNEL = Path(__file__).resolve().parent
-if str(_KERNEL) not in sys.path:
-    sys.path.insert(0, str(_KERNEL))
+_LIB = _KERNEL.parent / "lib"
+for p in (_KERNEL, _LIB):
+    if str(p) not in sys.path:
+        sys.path.insert(0, str(p))
 
-from k4_convert import convert_file, format_issues, validate_result  # noqa: E402
+from k4_convert import convert_admitted, format_issues, validate_result  # noqa: E402
 from k4_producers import card_from_payload, producer_issues  # noqa: E402
-from k4_schema import IMPL, REMEDY, VERIFIER_ID, WRITER_ID  # noqa: E402
+from k4_schema import IMPL, KEY_PREFIX, REMEDY, VERIFIER_ID, WRITER_ID  # noqa: E402
+from planner.canonical import load_json, write_canonical  # noqa: E402
+from planner.live_board import compare_board, expected_from_loop, mint_map_from_receipts, parse_snapshot  # noqa: E402
+from planner.paths import LOOP_CARDS, LOOP_ISSUED, LOOP_STEPS  # noqa: E402
 
 Issue = tuple[str, str, str]
 TASK_ID_RE = re.compile(r"^t_[A-Za-z0-9]+$")
-FORBIDDEN = ("swarm", "decompose", "daemon", "create_task")
+FORBIDDEN = ("swarm", "decompose", "daemon", "create_task", "link")
 DEFAULT_WORKSPACE_ROOT = "/projects/modernized"
 DEFAULT_MAX_RUNTIME = "2h"
-M4_ID = "M4"
-M4_TITLE = "M4 VERIFY"
-M4_IDEMPOTENCY_KEY = "m4-verify"
-M4_SKILLS = (
-    "compose-m4-verdict",
-    "check-release-readiness",
-    "check-domain-parity",
-)
-M4_BODY = (
-    "M4 VERIFY. Compose evidence/verdicts/m4-verdict.json from measured "
-    "floor exit codes including failed_floors. Pin compose-m4-verdict "
-    "first. Checkers do not author the verdict. "
-    "assert-m4-complete-around-red owns the verdict token. "
-    "Do not dest-dispatch M5. Do not kanban daemon --force."
-)
 
 Runner = Callable[[list[str]], tuple[int, str, str]]
 
@@ -79,18 +71,14 @@ def parse_created_id(stdout: str) -> str:
         _fail([_issue("K4_MINT_ID", "create --json is not an object")])
     for key in ("task_id", "id"):
         raw = blob.get(key)
-        if raw:
-            tid = str(raw).strip()
-            if TASK_ID_RE.match(tid):
-                return tid
+        if raw and TASK_ID_RE.match(str(raw).strip()):
+            return str(raw).strip()
     nested = blob.get("task")
     if isinstance(nested, dict):
         for key in ("task_id", "id"):
             raw = nested.get(key)
-            if raw:
-                tid = str(raw).strip()
-                if TASK_ID_RE.match(tid):
-                    return tid
+            if raw and TASK_ID_RE.match(str(raw).strip()):
+                return str(raw).strip()
     _fail([_issue("K4_MINT_ID", "create --json missing t_* task_id")])
     raise AssertionError("unreachable")
 
@@ -107,15 +95,7 @@ def resolve_parents(payload: dict[str, Any], mapping: dict[str, str]) -> list[st
         if TASK_ID_RE.match(parent):
             out.append(parent)
             continue
-        _fail(
-            [
-                _issue(
-                    "K4_MINT_PARENT",
-                    "%s parent %s is not minted and is not t_*"
-                    % (payload.get("logical_id"), parent),
-                )
-            ]
-        )
+        _fail([_issue("K4_MINT_PARENT", "%s parent %s is not minted and is not t_*" % (payload.get("logical_id"), parent))])
     return out
 
 
@@ -128,26 +108,10 @@ def workspace_flag() -> str:
         raw = DEFAULT_WORKSPACE_ROOT
     root = (raw or "").strip().rstrip("/")
     if not root or not root.startswith("/"):
-        _fail(
-            [
-                _issue(
-                    "K4_MINT_WORKSPACE",
-                    "workspace root %r is empty or not absolute (scratch OBJECT)"
-                    % root,
-                )
-            ]
-        )
+        _fail([_issue("K4_MINT_WORKSPACE", "workspace root %r is empty or not absolute (scratch OBJECT)" % root)])
     referent = DEFAULT_WORKSPACE_ROOT.rstrip("/")
     if root != referent and not root.startswith(referent + "/"):
-        _fail(
-            [
-                _issue(
-                    "K4_MINT_WORKSPACE",
-                    "workspace root %s is outside %s (scratch OBJECT)"
-                    % (root, referent),
-                )
-            ]
-        )
+        _fail([_issue("K4_MINT_WORKSPACE", "workspace root %s is outside %s (scratch OBJECT)" % (root, referent))])
     return "dir:" + root
 
 
@@ -158,7 +122,7 @@ def max_runtime_flag() -> str:
 def assert_native_create(argv: list[str]) -> None:
     if len(argv) < 4 or argv[1:3] != ["kanban", "create"]:
         _fail([_issue("K4_MINT_CREATE", "argv is not hermes kanban create")])
-    lowered = [a.lower() for a in argv]
+    lowered = [a.lower() for a in argv[3:]]
     for token in FORBIDDEN:
         if token in lowered:
             _fail([_issue("K4_MINT_CREATE", "argv contains %s" % token)])
@@ -166,46 +130,35 @@ def assert_native_create(argv: list[str]) -> None:
         _fail([_issue("K4_MINT_CREATE", "argv contains --force")])
 
 
-def argv_for_payload(
-    payload: dict[str, Any],
-    mapping: dict[str, str],
-    *,
-    hermes: str = "hermes",
-) -> list[str]:
+def argv_for_payload(payload: dict[str, Any], mapping: dict[str, str], *, hermes: str = "hermes", receipt_digest: str = "") -> list[str]:
     if not isinstance(payload, dict):
         _fail([_issue("K4_SCHEMA", "payload must be an object")])
     lid = str(payload.get("logical_id") or "").strip()
     title = str(payload.get("title") or "")
     assignee = str(payload.get("assignee") or "")
+    kind = str(payload.get("kind") or "")
     if lid in {WRITER_ID, VERIFIER_ID}:
         _fail([_issue("K4_FACTORY", "%s dest factory card is retired" % lid)])
-    expected = "M3 %s" % lid
+    expected = "M4 VERIFY" if kind == "close" else "M3 %s" % lid
     if not lid or title != expected:
         _fail([_issue("K4_MINT_TITLE", "%s title %r != %r" % (lid, title, expected))])
     if assignee != IMPL:
         _fail([_issue("K4_ASSIGNEE", "%s assignee=%s" % (lid, assignee))])
     if payload.get("max_retries") != 1:
-        _fail(
-            [
-                _issue(
-                    "K4_MINT_RETRIES",
-                    "%s max_retries %s" % (lid, payload.get("max_retries")),
-                )
-            ]
-        )
+        _fail([_issue("K4_MINT_RETRIES", "%s max_retries %s" % (lid, payload.get("max_retries")))])
+    key = str(payload.get("idempotency_key") or "").strip()
+    attempt = payload.get("attempt")
+    if not key.startswith(KEY_PREFIX + lid + ":") or key == "m4-verify" or not isinstance(attempt, int) or attempt < 1 or (receipt_digest and key != "%s%s:%d:%s" % (KEY_PREFIX, lid, attempt, receipt_digest[:16])):
+        _fail([_issue("K4_MINT_KEY", "%s idempotency_key %r attempt %r" % (lid, key, attempt))])
     parents = resolve_parents(payload, mapping)
-    m2 = (os.environ.get("HERMES_KANBAN_TASK") or "").strip()
+    m2 = control_card("m2")
     if m2 and TASK_ID_RE.match(m2) and m2 not in parents:
         parents = [m2] + parents
     argv = [hermes, "kanban", "create", title]
-    body = str(payload.get("body") or "")
-    argv.extend(["--body", body])
+    argv.extend(["--body", str(payload.get("body") or "")])
     argv.extend(["--assignee", assignee])
     for parent in parents:
         argv.extend(["--parent", parent])
-    key = str(payload.get("idempotency_key") or "").strip()
-    if not key:
-        _fail([_issue("K4_SCHEMA", "%s missing idempotency_key" % lid)])
     argv.extend(["--idempotency-key", key])
     argv.extend(["--max-runtime", max_runtime_flag()])
     argv.extend(["--max-retries", "1"])
@@ -223,94 +176,31 @@ def argv_for_payload(
     return argv
 
 
-def argv_for_m4_terminator(
-    m3_task_ids: list[str],
-    *,
-    hermes: str = "hermes",
-) -> list[str]:
-    parents = [tid for tid in m3_task_ids if TASK_ID_RE.match(tid)]
-    if not parents:
-        _fail([_issue("K4_MINT_PARENT", "M4 has no minted M3 t_* parents")])
-    payload = {
-        "logical_id": M4_ID,
-        "phase": "M4",
-        "title": M4_TITLE,
-        "assignee": IMPL,
-        "max_retries": 1,
-        "body": M4_BODY,
-        "idempotency_key": M4_IDEMPOTENCY_KEY,
-        "skills": list(M4_SKILLS),
-    }
-    prod = producer_issues(card_from_payload(payload))
-    if prod:
-        _fail(prod)
-    argv = [hermes, "kanban", "create", M4_TITLE]
-    argv.extend(["--body", M4_BODY])
-    argv.extend(["--assignee", IMPL])
-    for parent in parents:
-        argv.extend(["--parent", parent])
-    argv.extend(["--idempotency-key", M4_IDEMPOTENCY_KEY])
-    argv.extend(["--max-runtime", max_runtime_flag()])
-    argv.extend(["--max-retries", "1"])
-    argv.extend(["--workspace", workspace_flag()])
-    for name in M4_SKILLS:
-        argv.extend(["--skill", name])
-    argv.append("--json")
-    assert_native_create(argv)
-    return argv
-
-
-def mint_payloads(
-    payloads: list[dict[str, Any]],
-    *,
-    runner: Runner,
-    hermes: str = "hermes",
-) -> dict[str, Any]:
-    wrapped = {
-        "payloads": payloads,
-        "manifest": {"created_cards": [str(p.get("logical_id") or "") for p in payloads]},
-        "claimed_control": False,
-    }
-    issues = validate_result(wrapped)
+def mint_payloads(result: dict[str, Any], *, runner: Runner, hermes: str = "hermes") -> dict[str, Any]:
+    payloads = result["payloads"]
+    issues = validate_result(result)
     if issues:
         _fail(issues)
+    receipt_digest = str(result.get("receipt_sha256") or "")
+    # Translate every argv BEFORE running any: a refusal emits zero commands.
+    plan: list[tuple[dict[str, Any], list[str]]] = []
     mapping: dict[str, str] = {}
+    for i, payload in enumerate(payloads):
+        fake = "t_pending%04d" % (i + 1)
+        argv = argv_for_payload(payload, mapping, hermes=hermes, receipt_digest=receipt_digest)
+        mapping[str(payload["logical_id"])] = fake
+        plan.append((payload, argv))
+    mapping = {}
     created: list[dict[str, Any]] = []
-    for payload in payloads:
-        argv = argv_for_payload(payload, mapping, hermes=hermes)
+    for payload, _ in plan:
+        argv = argv_for_payload(payload, mapping, hermes=hermes, receipt_digest=receipt_digest)
         code, out, err = runner(argv)
         if code != 0:
-            _fail(
-                [
-                    _issue(
-                        "K4_MINT_ID",
-                        "create exit %s stderr=%s" % (code, (err or "").strip()[:200]),
-                    )
-                ]
-            )
+            _fail([_issue("K4_MINT_ID", "create exit %s stderr=%s" % (code, (err or "").strip()[:200]))])
         tid = parse_created_id(out)
         lid = str(payload["logical_id"])
         mapping[lid] = tid
-        created.append({"logical_id": lid, "task_id": tid, "argv": list(argv)})
-    if created and M4_ID not in mapping:
-        m4_argv = argv_for_m4_terminator(
-            [row["task_id"] for row in created],
-            hermes=hermes,
-        )
-        code, out, err = runner(m4_argv)
-        if code != 0:
-            _fail(
-                [
-                    _issue(
-                        "K4_MINT_ID",
-                        "M4 create exit %s stderr=%s"
-                        % (code, (err or "").strip()[:200]),
-                    )
-                ]
-            )
-        m4_tid = parse_created_id(out)
-        mapping[M4_ID] = m4_tid
-        created.append({"logical_id": M4_ID, "task_id": m4_tid, "argv": list(m4_argv)})
+        created.append({"logical_id": lid, "task_id": tid, "idempotency_key": payload["idempotency_key"], "argv": list(argv)})
     native_ids = [row["task_id"] for row in created]
     if not native_ids or any(not TASK_ID_RE.match(tid) for tid in native_ids):
         _fail([_issue("K4_MINT_ID", "created_cards empty or not t_* after mint")])
@@ -318,12 +208,104 @@ def mint_payloads(
         "created": created,
         "created_cards": native_ids,
         "by_logical_id": mapping,
-        "attribution": (
-            "CLI k4_mint.py --exec; task ids are real "
-            "(Architect 144916ZA: empty created_cards after a mint is OBJECT)"
-        ),
+        "receipt_sha256": receipt_digest,
+        "attribution": "CLI k4_mint.py --exec; task ids are real (empty created_cards after a mint is OBJECT)",
         "claimed_control": False,
     }
+
+
+MINT_RECEIPTS = Path("evidence") / "receipts" / "k4" / "mints.json"
+_CARDS_ROOT: Path | None = None
+
+
+def register_control_cards(root: Path) -> dict[str, str]:
+    """verification/loop/cards.json: the M2 (and M1) control cards, registered
+    once from HERMES_KANBAN_TASK on the M2 card. Execution cards never enter
+    this registry; K3 exempts only what is registered here."""
+    global _CARDS_ROOT
+    _CARDS_ROOT = Path(root)
+    path = Path(root) / LOOP_CARDS
+    doc = load_json(path) if path.is_file() else {"schema": "rhoai3.loop-cards/v1", "control": {}}
+    env = (os.environ.get("HERMES_KANBAN_TASK") or "").strip()
+    if env and TASK_ID_RE.match(env) and not doc["control"].get("m2"):
+        doc["control"]["m2"] = env
+        write_canonical(path, doc)
+    return dict(doc.get("control") or {})
+
+
+def control_card(name: str) -> str:
+    if _CARDS_ROOT is None:
+        return ""
+    path = _CARDS_ROOT / LOOP_CARDS
+    doc = load_json(path) if path.is_file() else {}
+    return str((doc.get("control") or {}).get(name) or "")
+
+
+def load_mint_receipts(root: Path) -> list[dict[str, Any]]:
+    p = Path(root) / MINT_RECEIPTS
+    if not p.is_file():
+        return []
+    doc = load_json(p)
+    return list(doc.get("mints") or []) if isinstance(doc, dict) else []
+
+
+def write_mint_receipt(root: Path, minted: dict[str, Any]) -> Path:
+    """Append the task-id → key mapping captured from the real create
+    responses. K3 matches cards on a board that does not expose
+    idempotency keys only through these; anything else is foreign."""
+    path = Path(root) / MINT_RECEIPTS
+    mints = load_mint_receipts(root)
+    mints.append({
+        "schema": "rhoai3.k4-mint-receipt/v1",
+        "receipt_sha256": minted.get("receipt_sha256"),
+        "created": [{"logical_id": r["logical_id"], "task_id": r["task_id"], "idempotency_key": r["idempotency_key"]} for r in minted.get("created") or []],
+    })
+    write_canonical(path, {"schema": "rhoai3.k4-mint-receipts/v1", "mints": mints, "claimed_control": False})
+    return path
+
+
+def record_issued_task(root: Path, minted: dict[str, Any]) -> None:
+    """Bind the minted t_* to the issued card so advance.py can require it."""
+    path = Path(root) / LOOP_ISSUED
+    if not path.is_file():
+        return
+    doc = load_json(path)
+    for row in minted.get("created") or []:
+        if row.get("idempotency_key") == doc.get("idempotency_key"):
+            doc["task_id"] = row["task_id"]
+            write_canonical(path, doc)
+
+
+def verify_board(root: Path, result: dict[str, Any], *, runner: Runner, hermes: str = "hermes", exempt: list[str]) -> dict[str, Any]:
+    """Post-mint K3 live comparison; raises K4_BOARD on mismatch."""
+    code, out, err = runner([hermes, "kanban", "list", "--json"])
+    if code != 0:
+        _fail([_issue("K4_BOARD", "hermes kanban list --json exit %s: %s" % (code, (err or "").strip()[:200]))])
+    cards = parse_snapshot(json.loads(out))
+    enriched = []
+    for card in cards:
+        cid = str(card.get("id") or card.get("task_id") or "")
+        c2, o2, _ = runner([hermes, "kanban", "show", cid, "--json"]) if cid else (1, "", "")
+        if c2 == 0:
+            try:
+                detail = json.loads(o2)
+            except json.JSONDecodeError:
+                detail = {}
+            if isinstance(detail, dict):
+                merged = dict(card)
+                merged.update(detail.get("task") if isinstance(detail.get("task"), dict) else detail)
+                card = merged
+        enriched.append(card)
+    mint_map = mint_map_from_receipts(load_mint_receipts(root))
+    steps = load_json(root / LOOP_STEPS) if (root / LOOP_STEPS).is_file() else None
+    open_card = result["payloads"][0] if result.get("payloads") else None
+    expected = expected_from_loop(steps, open_card, mint_map)
+    verdict = compare_board(expected, enriched, exempt_ids=exempt, mint_map=mint_map)
+    verdict["receipt_sha256"] = str(result.get("receipt_sha256") or "")
+    write_canonical(root / "evidence" / "receipts" / "k3" / "live-board.json", verdict)
+    if verdict["verdict"] != "EQUAL":
+        _fail([_issue("K4_BOARD", "missing=%s foreign=%s edges=%s" % (verdict["missing_keys"], verdict["foreign_cards"], verdict["edge_gaps"]))])
+    return verdict
 
 
 def subprocess_runner(argv: list[str]) -> tuple[int, str, str]:
@@ -335,24 +317,21 @@ def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
     if not args or args[0] in {"-h", "--help"}:
         sys.stdout.write(
-            "k4_mint.py (--payloads PATH | --partition PATH) [--out PATH] [--exec] [--hermes BIN]\n"
-            "Translate K4 payloads into serial hermes kanban create. Default is dry-run argv.\n"
-            "Does not import create_task. Does not kanban daemon --force.\n"
+            "k4_mint.py --root PATH [--out PATH] [--exec] [--verify-board] [--exempt t_x]... [--hermes BIN]\n"
+            "Translate the ADMITTED DAG into serial hermes kanban create. Default is dry-run argv.\n"
+            "Zero commands unless admission-receipt.json is ADMITTED and sealed.\n"
         )
         return 0 if args else 2
-    payloads_path: Path | None = None
-    partition_path: Path | None = None
+    root: Path | None = None
     out_path: Path | None = None
     hermes = os.environ.get("HERMES_BIN", "hermes")
     execute = False
+    verify = False
+    exempt: list[str] = []
     i = 0
     while i < len(args):
-        if args[i] == "--payloads" and i + 1 < len(args):
-            payloads_path = Path(args[i + 1])
-            i += 2
-            continue
-        if args[i] == "--partition" and i + 1 < len(args):
-            partition_path = Path(args[i + 1])
+        if args[i] == "--root" and i + 1 < len(args):
+            root = Path(args[i + 1])
             i += 2
             continue
         if args[i] == "--out" and i + 1 < len(args):
@@ -363,43 +342,38 @@ def main(argv: list[str] | None = None) -> int:
             hermes = args[i + 1]
             i += 2
             continue
+        if args[i] == "--exempt" and i + 1 < len(args):
+            exempt.append(args[i + 1])
+            i += 2
+            continue
         if args[i] == "--exec":
             execute = True
             i += 1
             continue
-        if args[i] in {"-h", "--help"}:
-            sys.stdout.write(
-                "k4_mint.py (--payloads PATH | --partition PATH) [--out PATH] [--exec]\n"
-            )
-            return 0
+        if args[i] == "--verify-board":
+            verify = True
+            i += 1
+            continue
         print("FAIL: unknown arg %s" % args[i], file=sys.stderr)
         return 1
-    if (payloads_path is None) == (partition_path is None):
-        print("FAIL: pass exactly one of --payloads PATH or --partition PATH", file=sys.stderr)
+    if root is None:
+        print("FAIL: pass --root PATH", file=sys.stderr)
         return 1
-    if partition_path is not None:
-        result, issues = convert_file(partition_path)
-        if issues or result is None:
-            print(format_issues(issues), file=sys.stderr)
-            print("K4 convert FAILED.", file=sys.stderr)
-            return 1
-        payloads = result["payloads"]
-    else:
-        try:
-            blob = json.loads(payloads_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
-            print("FAIL: %s" % exc, file=sys.stderr)
-            return 1
-        if isinstance(blob, dict) and isinstance(blob.get("payloads"), list):
-            payloads = blob["payloads"]
-        elif isinstance(blob, list):
-            payloads = blob
-        else:
-            print("FAIL: --payloads must be convert JSON or a payload list", file=sys.stderr)
-            return 1
+    root = root.resolve()
+    control = register_control_cards(root)
+    result, issues = convert_admitted(root)
+    if issues or result is None:
+        print(format_issues(issues), file=sys.stderr)
+        print("K4 mint REFUSED before emitting any command (0 creates).", file=sys.stderr)
+        return 1
+    exempt.extend(v for v in control.values() if v)
     if execute:
         try:
-            minted = mint_payloads(payloads, runner=subprocess_runner, hermes=hermes)
+            minted = mint_payloads(result, runner=subprocess_runner, hermes=hermes)
+            write_mint_receipt(root, minted)
+            record_issued_task(root, minted)
+            if verify:
+                minted["board"] = verify_board(root, result, runner=subprocess_runner, hermes=hermes, exempt=exempt)
         except ValueError as exc:
             print(str(exc), file=sys.stderr)
             print("K4 mint FAILED.", file=sys.stderr)
@@ -409,41 +383,26 @@ def main(argv: list[str] | None = None) -> int:
             out_path.write_text(text, encoding="utf-8")
         else:
             sys.stdout.write(text)
-        print("OK: K4 mint (%d card(s))." % len(minted["created"]), file=sys.stderr)
+        print("OK: K4 mint (%d card(s), receipt %s)." % (len(minted["created"]), result["receipt_sha256"][:16]), file=sys.stderr)
         return 0
     try:
         mapping: dict[str, str] = {}
         dry: list[dict[str, Any]] = []
-        wrapped = {
-            "payloads": payloads,
-            "manifest": {
-                "created_cards": [str(p.get("logical_id") or "") for p in payloads]
-            },
-            "claimed_control": False,
-        }
-        issues = validate_result(wrapped)
-        if issues:
-            _fail(issues)
-        for i, payload in enumerate(payloads):
-            argv_list = argv_for_payload(payload, mapping, hermes=hermes)
+        for i, payload in enumerate(result["payloads"]):
+            argv_list = argv_for_payload(payload, mapping, hermes=hermes, receipt_digest=result["receipt_sha256"])
             lid = str(payload["logical_id"])
-            fake = "t_dry%04d" % (i + 1)
-            mapping[lid] = fake
+            mapping[lid] = "t_dry%04d" % (i + 1)
             dry.append({"logical_id": lid, "argv": argv_list})
-        if dry:
-            m3_fakes = [mapping[row["logical_id"]] for row in dry]
-            m4_argv = argv_for_m4_terminator(m3_fakes, hermes=hermes)
-            dry.append({"logical_id": M4_ID, "argv": m4_argv})
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
         print("K4 mint FAILED.", file=sys.stderr)
         return 1
-    text = json.dumps({"argv": dry, "claimed_control": False}, indent=2, sort_keys=True) + "\n"
+    text = json.dumps({"argv": dry, "receipt_sha256": result["receipt_sha256"], "claimed_control": False}, indent=2, sort_keys=True) + "\n"
     if out_path is not None:
         out_path.write_text(text, encoding="utf-8")
     else:
         sys.stdout.write(text)
-    print("OK: K4 mint dry-run (%d argv)." % len(dry), file=sys.stderr)
+    print("OK: K4 mint dry-run (%d argv, receipt %s)." % (len(dry), result["receipt_sha256"][:16]), file=sys.stderr)
     return 0
 
 

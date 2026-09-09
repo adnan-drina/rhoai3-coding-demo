@@ -1,5 +1,8 @@
 # REJECT — Quarkus Spring compatibility layers (mechanism)
 
+> **Superseded 2026-09-09 (ADR-001, `decisions.yaml`): the destination follows the Spring-compatibility path.** The `quarkus-spring-*` extensions listed in `.hermes/planning/catalogs/compat-mapping.json` are the baseline, not a rejection. Read the mechanism notes below as the list of Spring features the compatibility layer does **not** provide (no Spring `ApplicationContext`; those go native). Any "native only" instruction below is historical.
+
+
 **Skill:** `spring-to-quarkus-patterns`
 **Sources:** Operator E-20260813T162429Z · Architect E-20260813T164142Z · AGENTS "Native Quarkus only"
 **Input (cite only):** Red Hat Developer Quarkus–Spring compatibility cheat sheet (PDF; copyrighted) — paraphrase + locus, never paste.

@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
-# dest-init consumer: mint M1 ANALYZE + M2 PLAN. Not M3. Not M4.
-# Architect AUTOSTART-MIGRATION-DESIGN.md (195231ZA). Do not kanban daemon --force.
+# dest-init consumer: mint M1 ANALYZE (always) and, only when the planner
+# activation gate has been passed (.hermes/pins.json pins.planner.activation
+# == "activated"), M2 PLAN as a child of M1 with the fixed key m2-plan.
+# Never M3. Never M4 (K4 mints those from an ADMITTED receipt). Never
+# triage, specify, decompose, swarm, or kanban daemon --force.
 set -euo pipefail
 
 ROOT=""
@@ -38,8 +41,7 @@ write_status() {
 import json, os, sys
 path = sys.argv[1]
 payload = json.loads(os.environ.get("AUTOSTART_JSON") or "{}")
-path_parent = os.path.dirname(path)
-os.makedirs(path_parent, exist_ok=True)
+os.makedirs(os.path.dirname(path), exist_ok=True)
 with open(path, "w", encoding="utf-8") as fh:
     json.dump(payload, fh, indent=2)
     fh.write("\n")
@@ -69,14 +71,37 @@ if [[ -z "${HERMES}" ]]; then
   fail_status "hermes not on PATH"
 fi
 
-M1_BODY='Follow paved-road-m1. skill_view subskills from steps.json. Attach the KEEP artifacts by running .hermes/kernel/kanban_attach.py via terminal (python3 .hermes/kernel/kanban_attach.py --task "$HERMES_KANBAN_TASK" --exec). That script fixes the file set and the 25 MiB cap, so the set is not your decision -- dest-13 attached the derivation manifest instead of the type graph and M2 had no input. The kanban_attach tool does not satisfy the paved-road audit. Happy-path terminator is kanban_request_review with reviewer set to reviewer (pass the reviewer parameter; without it the task is dispatched back to you and the paved-road audit never runs), not kanban_complete. kanban_block for external/platform (MaaS 500, missing key, GPU). Do not invent HTTP routes.'
+# Planner activation (SAD §12). Read, never decided here.
+PLANNER_ACTIVATION="$(python3 - "${ROOT}/.hermes/pins.json" <<'PY'
+import json, sys
+try:
+    pins = json.load(open(sys.argv[1], encoding="utf-8")).get("pins") or {}
+except Exception:
+    pins = {}
+p = pins.get("planner") or {}
+print("activated" if str(p.get("activation") or "").strip().lower() == "activated" else "not-activated")
+PY
+)"
 
-M2_BODY='Follow paved-road-m2. skill_view subskills from steps.json (speckit-specify, then speckit-plan, then speckit-tasks). Stop. Never speckit-implement. If a named skill is missing, a named command fails, or a named path is absent: stop and kanban_block. Happy-path terminator is kanban_request_review with reviewer set to reviewer (pass the reviewer parameter; without it the task is dispatched back to you and the paved-road audit never runs), not kanban_complete. kanban_block for external/platform (MaaS 500, missing key, GPU). Do not hand-author tasks.md. Consume parent M1 kanban_attachments and evidence findings-handoff.json, entry-point-inventory.json, type-inventory.json, required-extensions.json, mta-findings.json. Author evidence/partition.json. HTTP stories require dest_file and legacy_source. Run check-partition-coverage.py and assert-m2-speckit-conformance.py via terminal -- both are mandated paved-road steps and the audit refuses without them. Convert with k4_convert.py --partition --tasks then mint with k4_mint.py --exec. No factory cards. No verdict token. Every Spec Kit artifact -- spec.md, plan.md, tasks.md, checklists, contracts -- lives under the Spec Kit 0.16.1 feature_directory named in .specify/feature.json (specs/<feature>/). Do not create or write anything under .specify/specs: setup-plan.sh and setup-tasks.sh resolve paths from feature.json, so a spec.md left under .specify/specs makes setup-tasks.sh exit 1. If they disagree, move the file to feature_directory -- do not repoint feature.json at .specify/specs, which would satisfy the readiness check while placing the plan in the tree the harness rejects.'
+M1_BODY='Follow paved-road-m1. skill_view subskills from steps.json in order: freeze-migration-input, capture-build-evidence, inventory-legacy-surface, scan-with-mta, assemble-evidence-bundle. Attach the KEEP artifacts by running .hermes/kernel/kanban_attach.py via terminal (python3 .hermes/kernel/kanban_attach.py --task "$HERMES_KANBAN_TASK" --exec). That script fixes the file set and the 25 MiB cap, so the set is not your decision. The kanban_attach tool does not satisfy the paved-road audit. The original frozen legacy source is the only baseline; do not derive or upgrade it first. A producer that records status unpinned is evidence, not a defect to repair: kanban_block kind=needs_input naming the pin. Happy-path terminator is kanban_request_review with reviewer set to reviewer (pass the reviewer parameter; without it the task is dispatched back to you and the paved-road audit never runs), not kanban_complete. kanban_block for external/platform (MaaS 500, missing key, GPU). Do not invent HTTP routes.'
+
+M2_BODY='Follow paved-road-m2. First step is the activation gate (python3 .hermes/skills/planning/admit-migration-plan/scripts/assert-planner-activated.py --root /projects/modernized); then skill_view bootstrap-destination, build-worklist and admit-migration-plan in that order, then python3 .hermes/kernel/k4_mint.py --root /projects/modernized --exec --verify-board, then skill_view verify-live-kanban-loop. The plan is the work list the tools compute; you never author it. An INCONCLUSIVE admission is a legal stop: kanban_block kind=needs_input naming the BLOCK classes; do not hand-author anything under evidence/planning or verification/, and never edit decisions.yaml. K4 mints exactly one card (the head cluster) and zero unless the receipt is ADMITTED. Happy-path terminator is kanban_request_review with reviewer set to reviewer and created_cards equal to the native t_* list from mint. Never kanban swarm, decompose, link, triage, or daemon --force.'
 
 create_card() {
   local title="$1"
   shift
   "${HERMES}" kanban create --json "${title}" "$@"
+}
+
+parse_id() {
+  python3 -c 'import json,sys
+raw=sys.stdin.read()
+blob=json.loads(raw[raw.find("{"):raw.rfind("}")+1] if "{" in raw else raw)
+tid=blob.get("task_id") or blob.get("id") or (blob.get("task") or {}).get("id")
+if not tid:
+    raise SystemExit("missing id")
+print(tid)
+'
 }
 
 M1_JSON="$(
@@ -89,45 +114,37 @@ M1_JSON="$(
     --idempotency-key m1-analyze \
     --body "${M1_BODY}"
 )" || fail_status "M1 create failed"
+M1_ID="$(parse_id <<<"${M1_JSON}")" || fail_status "M1 create JSON missing t_* id"
 
-M1_ID="$(python3 -c 'import json,sys
-raw=sys.stdin.read()
-blob=json.loads(raw[raw.find("{"):raw.rfind("}")+1] if "{" in raw else raw)
-tid=blob.get("task_id") or blob.get("id") or (blob.get("task") or {}).get("id")
-if not tid:
-    raise SystemExit("missing id")
-print(tid)
-' <<<"${M1_JSON}")" || fail_status "M1 create JSON missing t_* id"
-
-M2_JSON="$(
-  create_card "M2 PLAN" \
-    --assignee implementer \
-    --workspace "dir:${ROOT}" \
-    --max-retries 1 \
-    --max-runtime 2h \
-    --parent "${M1_ID}" \
-    --skill paved-road-m2 \
-    --idempotency-key m2-plan \
-    --body "${M2_BODY}"
-)" || fail_status "M2 create failed"
-
-M2_ID="$(python3 -c 'import json,sys
-raw=sys.stdin.read()
-blob=json.loads(raw[raw.find("{"):raw.rfind("}")+1] if "{" in raw else raw)
-tid=blob.get("task_id") or blob.get("id") or (blob.get("task") or {}).get("id")
-if not tid:
-    raise SystemExit("missing id")
-print(tid)
-' <<<"${M2_JSON}")" || fail_status "M2 create JSON missing t_* id"
+M2_ID=""
+if [[ "${PLANNER_ACTIVATION}" == "activated" ]]; then
+  M2_JSON="$(
+    create_card "M2 PLAN" \
+      --assignee implementer \
+      --workspace "dir:${ROOT}" \
+      --parent "${M1_ID}" \
+      --max-retries 1 \
+      --max-runtime 2h \
+      --skill paved-road-m2 \
+      --idempotency-key m2-plan \
+      --body "${M2_BODY}"
+  )" || fail_status "M2 create failed"
+  M2_ID="$(parse_id <<<"${M2_JSON}")" || fail_status "M2 create JSON missing t_* id"
+fi
 
 export AUTOSTART_JSON
 AUTOSTART_JSON="$(python3 -c 'import json,sys; print(json.dumps({
   "state": "minted",
-  "reason": "M1+M2 minted",
+  "reason": ("M1 minted; M2 minted as child (planner activated)" if sys.argv[2] else "M1 minted; M2 not minted (planner activation gate not passed; SOLUTION-ARCHITECTURE section 12)"),
+  "planner_activation": sys.argv[3],
   "m1_id": sys.argv[1],
   "m2_id": sys.argv[2],
   "argv_m1": ["hermes","kanban","create","--json","M1 ANALYZE","--idempotency-key","m1-analyze"],
-  "argv_m2": ["hermes","kanban","create","--json","M2 PLAN","--idempotency-key","m2-plan","--parent",sys.argv[1]],
-}))' "${M1_ID}" "${M2_ID}")"
+  "argv_m2": (["hermes","kanban","create","--json","M2 PLAN","--parent",sys.argv[1],"--idempotency-key","m2-plan"] if sys.argv[2] else []),
+}))' "${M1_ID}" "${M2_ID}" "${PLANNER_ACTIVATION}")"
 write_status
-echo "OK: autostart minted M1=${M1_ID} M2=${M2_ID}"
+if [[ -n "${M2_ID}" ]]; then
+  echo "OK: autostart minted M1=${M1_ID} M2=${M2_ID} (planner activated)"
+else
+  echo "OK: autostart minted M1=${M1_ID} (M2 not minted: planner ${PLANNER_ACTIVATION})"
+fi

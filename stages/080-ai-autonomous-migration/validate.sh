@@ -504,7 +504,7 @@ check "080 paved-road lib selftest passes" \
 check "080 paved-road-m1 selftest passes" \
   "python3 '${SCAFFOLD_PAVED}/paved-road-m1/scripts/selftest.py' >/dev/null && echo 1 || echo 0" \
   "1"
-check "080 paved-road-m2 selftest passes (dest-14 fixture REFUSE)" \
+check "080 paved-road-m2 selftest passes (activation gate first; not-activated REFUSE)" \
   "python3 '${SCAFFOLD_PAVED}/paved-road-m2/scripts/selftest.py' >/dev/null && echo 1 || echo 0" \
   "1"
 check "080 paved-road coverage lint passes" \
@@ -513,6 +513,15 @@ check "080 paved-road coverage lint passes" \
 check "080 autostart pins paved-road-m1 only on M1" \
   "grep -c -- '--skill paved-road-m1' '${SCAFFOLD_AUTOSTART}/autostart-migration.sh' || echo 0" \
   "1"
+check "080 autostart mints M2 only behind pins.planner.activation" \
+  "grep -c 'PLANNER_ACTIVATION}\" == \"activated\"' '${SCAFFOLD_AUTOSTART}/autostart-migration.sh' || echo 0" \
+  "1"
+check "080 autostart M2 card pins paved-road-m2 (child of M1, key m2-plan)" \
+  "grep -c -- '--idempotency-key m2-plan' '${SCAFFOLD_AUTOSTART}/autostart-migration.sh' || echo 0" \
+  "1"
+check "080 autostart never mints M3/M4" \
+  "grep -c -E '\"M3 |\"M4 ' '${SCAFFOLD_AUTOSTART}/autostart-migration.sh' || echo 0" \
+  "0"
 check "080 autostart does not pin scan-with-mta on the card" \
   "grep -c -- '--skill scan-with-mta' '${SCAFFOLD_AUTOSTART}/autostart-migration.sh' || echo 0" \
   "0"
@@ -537,15 +546,24 @@ check "080 LAYOUT classifies K2 as REHOST" \
 check "080 golden K1 schema loader validator present" \
   "test -f '${SCAFFOLD_KERNEL}/k1_schema.py' && test -f '${SCAFFOLD_KERNEL}/k1_load.py' && test -f '${SCAFFOLD_KERNEL}/k1_validate.py' && test -f '${SCAFFOLD_KERNEL}/.hermes-kernel' && echo present || echo missing" \
   "present"
-check "080 golden K3 mint-verifier procedure present" \
-  "test -f '${SCAFFOLD_KERNEL}/k3_schema.py' && test -f '${SCAFFOLD_KERNEL}/k3_verify.py' && echo present || echo missing" \
+check "080 golden K3 snapshot + live comparator present" \
+  "test -f '${SCAFFOLD_KERNEL}/k3_schema.py' && test -f '${SCAFFOLD_KERNEL}/k3_verify.py' && test -f '${SCAFFOLD_KERNEL}/k3_live.py' && echo present || echo missing" \
   "present"
+check "080 K1 selftest passes (receipt/write-set/artifact body codes)" \
+  "python3 '${SCAFFOLD_KERNEL}/k1_selftest.py' >/dev/null && echo 1 || echo 0" \
+  "1"
 check "080 golden K4 converter present" \
   "test -f '${SCAFFOLD_KERNEL}/k4_schema.py' && test -f '${SCAFFOLD_KERNEL}/k4_convert.py' && echo present || echo missing" \
   "present"
-check "080 K4 M3 payloads pin max_retries 1" \
-  "grep -c 'max_retries=1' '${SCAFFOLD_KERNEL}/k4_convert.py' || echo 0" \
-  "2"
+check "080 K4 payloads pin max_retries 1" \
+  "grep -c '\"max_retries\": 1' '${SCAFFOLD_KERNEL}/k4_convert.py' || echo 0" \
+  "1"
+check "080 K4 converter emits no fixed m4-verify idempotency key (receipt-bound for M4 too)" \
+  "grep -c 'm4-verify' '${SCAFFOLD_KERNEL}/k4_convert.py' || echo 0" \
+  "0"
+check "080 K4 mint refuses a fixed m4-verify key" \
+  "grep -c 'key == \"m4-verify\"' '${SCAFFOLD_KERNEL}/k4_mint.py' || echo 0" \
+  "1"
 check "080 RHDH autoStartMigration parameter defaults true" \
   "grep -A6 'autoStartMigration:' '${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/rhdh/templates/app-migration/template.yaml' | grep -c 'default: true' || echo 0" \
   "1"
@@ -621,14 +639,14 @@ check "080 GitOps no longer forbids the K2 instrumentation land" \
 check "080 GitOps hooks_auto_accept is top-level official key" \
   "grep -c 'unknown event name and never auto-approves' '${GITOPS_INIT}' || echo 0" \
   "1"
-check "080 AGENTS.md assigns orchestrator/implementer not default" \
-  "grep -c 'mint-verifier → \`orchestrator\`' '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/AGENTS.md' || echo 0" \
+check "080 AGENTS.md states the AI is not the planner of record" \
+  "grep -c 'the AI is not the planner of record' '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/AGENTS.md' || echo 0" \
   "1"
 check "080 dest-init external_dirs fail-closed names unreadable path" \
   "grep -c 'missing or unreadable' '${GITOPS_INIT}' || echo 0" \
   "2"
 check "080 check-external-dirs requires dest-user home literal" \
-  "grep -c '/home/user/.hermes/skills' '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/skills/sdd/init-spec-workspace/scripts/check-external-dirs.py' || echo 0" \
+  "grep -c '/home/user/.hermes/skills' '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/lib/check-external-dirs.py' || echo 0" \
   "3"
 check "080 pom platform-pins plugin coverage selftest passes" \
   "python3 '${SCAFFOLD_080}/.hermes/skills/migration/manage-quarkus-extensions/scripts/check-pom-platform-pins.test.py' >/dev/null && echo 1 || echo 0" \
@@ -636,11 +654,111 @@ check "080 pom platform-pins plugin coverage selftest passes" \
 check "080 test-toolchain assertj pin selftest passes" \
   "python3 '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/skills/gates/check-release-readiness/scripts/check-test-toolchain.test.py' >/dev/null && echo 1 || echo 0" \
   "1"
-check "080 emit-required-extensions harvest_referent selftest passes" \
+check "080 emit-required-extensions (freeze analysis copy) selftest passes" \
   "python3 '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/skills/analysis/scan-with-mta/scripts/emit-required-extensions.test.py' >/dev/null && echo 1 || echo 0" \
   "1"
-check "080 plan-migration-partition selftest passes" \
-  "python3 '${SCAFFOLD_080}/.hermes/skills/sdd/plan-migration-partition/scripts/plan-migration-partition.test.py' >/dev/null && echo 1 || echo 0" \
+SCAFFOLD_SKILLS="${SCAFFOLD_080}/.hermes/skills"
+check "080 Spec Kit skills are removed (no compatibility path)" \
+  "test ! -d '${SCAFFOLD_SKILLS}/sdd/plan-migration-partition' && test ! -d '${SCAFFOLD_SKILLS}/sdd/check-spec-readiness' && test ! -f '${SCAFFOLD_KERNEL}/speckit_feature.py' && echo absent || echo present" \
+  "absent"
+check "080 Spec Kit residue scan is clean (skills, kernel, lib, planning)" \
+  "{ grep -rIl -E 'speckit|/speckit\\.|specify init|\\.specify/|spec\\.md|tasks\\.md|check-spec-readiness|plan-migration-partition|partition\\.json' '${SCAFFOLD_SKILLS}' '${SCAFFOLD_KERNEL}' '${SCAFFOLD_LIB}' '${SCAFFOLD_080}/.hermes/planning' --exclude-dir=__pycache__ || true; } | { grep -v -E 'paved_road(\\.test)?\\.py$|k4_(convert|schema|selftest|mint|mint_selftest)\\.py$|paved-road-m2/(SKILL\\.md|scripts/selftest\\.py)$|derive-story-oracles/|k2_selftest\\.py$|dispatch-phase/scripts/autostart-migration\\.(sh|selftest\\.py)$' || true; } | wc -l | tr -d ' '" \
+  "0"
+check "080 pins.json planner activation is not-activated on golden" \
+  "python3 -c \"import json,pathlib; p=json.loads(pathlib.Path('${SCAFFOLD_080}/.hermes/pins.json').read_text())['pins']; print(p.get('planner',{}).get('activation'))\"" \
+  "not-activated"
+check "080 pins.json: structure_extractor pinned to the toolchain JDK, mta_cli pinned 8.2, no retired optional producers" \
+  "python3 -c \"import json,pathlib; p=json.loads(pathlib.Path('${SCAFFOLD_080}/.hermes/pins.json').read_text())['pins']; print('ok' if p.get('structure_extractor',{}).get('version')=='jdk-21' and p.get('mta_cli',{}).get('version')=='8.2' and not p['mta_cli'].get('artifact_sha256') and 'spoon' not in p and 'jqassistant' not in p and 'context_probe' not in p else 'bad')\"" \
+  "ok"
+check "080 K2 hook vetoes worker graph mutation (kanban_create/link/swarm/decompose)" \
+  "grep -c 'GRAPH_MUTATION_TOOLS' '${SCAFFOLD_KERNEL}/pre_tool_call.sh' || echo 0" \
+  "2"
+check "080 K4 mint records task-id provenance for K3 (mint receipt)" \
+  "grep -c 'def write_mint_receipt' '${SCAFFOLD_KERNEL}/k4_mint.py' || echo 0" \
+  "1"
+check "080 K3 never infers card provenance from title or body" \
+  "grep -c -E 'title\\[len\\(prefix\\)|startswith\\(prefix\\)' '${SCAFFOLD_LIB}/planner/live_board.py' || echo 0" \
+  "0"
+check "080 K4 re-derives the activation/pilot verdict from pins.json" \
+  "grep -c 'activation_gaps(' '${SCAFFOLD_KERNEL}/k4_convert.py' || echo 0" \
+  "1"
+check "080 golden pins.json carries no pilot seal" \
+  "python3 -c \"import json,pathlib; p=json.loads(pathlib.Path('${SCAFFOLD_080}/.hermes/pins.json').read_text())['pins']['planner']; print('none' if not p.get('pilot') else 'present')\"" \
+  "none"
+check "080 planning contracts present (schemas, catalogs, canary, decisions example)" \
+  "test -f '${SCAFFOLD_080}/.hermes/planning/schemas/admission-receipt.schema.json' && test -f '${SCAFFOLD_080}/.hermes/planning/catalogs/destination-platforms.json' && test -f '${SCAFFOLD_080}/.hermes/planning/mta-rules/rhoai3-canary.yaml' && test -f '${SCAFFOLD_080}/.hermes/planning/decisions.example.yaml' && echo present || echo missing" \
+  "present"
+check "080 freeze-migration-input selftest passes" \
+  "python3 '${SCAFFOLD_SKILLS}/analysis/freeze-migration-input/scripts/freeze-migration-input.test.py' >/dev/null && echo 1 || echo 0" \
+  "1"
+check "080 capture-build-evidence selftest passes" \
+  "python3 '${SCAFFOLD_SKILLS}/analysis/capture-build-evidence/scripts/emit-build-receipt.test.py' >/dev/null && echo 1 || echo 0" \
+  "1"
+check "080 inventory-legacy-surface (JDK-model extractor) selftest passes" \
+  "python3 '${SCAFFOLD_SKILLS}/analysis/inventory-legacy-surface/scripts/inventory-legacy-surface.test.py' >/dev/null && echo 1 || echo 0" \
+  "1"
+check "080 assemble-evidence-bundle selftest passes" \
+  "python3 '${SCAFFOLD_SKILLS}/analysis/assemble-evidence-bundle/scripts/assemble-evidence-bundle.test.py' >/dev/null && echo 1 || echo 0" \
+  "1"
+check "080 scan-with-mta selftest passes (provenance, canary, never --source)" \
+  "python3 '${SCAFFOLD_SKILLS}/analysis/scan-with-mta/scripts/scan-with-mta.test.py' >/dev/null && echo 1 || echo 0" \
+  "1"
+check "080 worklist selftest passes (order, measure, progress rule)" \
+  "python3 '${SCAFFOLD_LIB}/planner/worklist.test.py' >/dev/null && echo 1 || echo 0" \
+  "1"
+check "080 fix-until-green loop selftest passes (bootstrap → baseline → accept/revert/defer → M4)" \
+  "python3 '${SCAFFOLD_SKILLS}/migration/fix-until-green/scripts/fix-until-green.test.py' >/dev/null && echo 1 || echo 0" \
+  "1"
+check "080 K4 mint + K3 live selftest passes" \
+  "python3 '${SCAFFOLD_KERNEL}/k4_mint_selftest.py' >/dev/null && echo 1 || echo 0" \
+  "1"
+check "080 golden decisions.yaml is schema-valid with no missing decision (platform quarkus-rhbq-3.27, max_attempts 3)" \
+  "cd '${SCAFFOLD_080}' && python3 -c \"import sys; sys.path.insert(0,'.hermes/lib'); from pathlib import Path; from planner.decisions import load_decisions, missing_decisions, max_attempts; d=load_decisions(Path('.')); print('ok' if d['destination_platform']['id']=='quarkus-rhbq-3.27' and max_attempts(d)==3 and not missing_decisions(d, Path('.')) else 'bad')\"" \
+  "ok"
+check "080 bootstrap-destination selftest passes (launcher with behavior kept; unmapped starter blocks; Maven settings wiring required; second run preserves the tree)" \
+  "python3 '${SCAFFOLD_SKILLS}/migration/bootstrap-destination/scripts/bootstrap-destination.test.py' >/dev/null && echo 1 || echo 0" \
+  "1"
+check "080 advance.py binds acceptance to the issued card and the verified candidate tree" \
+  "grep -c -E 'LOOP_NOT_ISSUED|LOOP_CANDIDATE_CHANGED|LOOP_WRONG_CARD' '${SCAFFOLD_SKILLS}/migration/fix-until-green/scripts/advance.py' | awk '{print (\$1>=3)?1:0}'" \
+  "1"
+check "080 revert restores the index as well as the working tree" \
+  "grep -c 'git(root, \"reset\", \"-q\", \"HEAD\"' '${SCAFFOLD_SKILLS}/migration/fix-until-green/scripts/_loop_common.py' || echo 0" \
+  "1"
+check "080 run-verify.sh records the mvn test exit status and deletes stale surefire reports" \
+  "grep -c -E 'surefire-reports\"\$|--test-rc' '${SCAFFOLD_SKILLS}/migration/fix-until-green/scripts/run-verify.sh' | awk '{print (\$1>=2)?1:0}'" \
+  "1"
+check "080 bootstrap retires only ADR-listed sources (decisions.yaml retired_sources) and blocks on a stale path" \
+  "grep -c -E 'RETIRED_SOURCE_MISSING|retired_sources' '${SCAFFOLD_SKILLS}/migration/bootstrap-destination/scripts/bootstrap-destination.py' | awk '{print (\$1>=2)?1:0}'" \
+  "1"
+check "080 bootstrap carries legacy-resolved versions for dependencies the pinned BOM does not manage (measured, never guessed)" \
+  "grep -c -E 'VERSION_UNMANAGED|BOM_PROBE_MISSING|pom.pin-legacy-version' '${SCAFFOLD_SKILLS}/migration/bootstrap-destination/scripts/bootstrap-destination.py' | awk '{print (\$1>=3)?1:0}'" \
+  "1"
+check "080 run-verify.sh warms the destination up online once, then measures offline, and records the warm-up outcome" \
+  "grep -c -E 'dependency:go-offline|\"warmup\": \{\"ran\"' '${SCAFFOLD_SKILLS}/migration/fix-until-green/scripts/run-verify.sh' | awk '{print (\$1>=2)?1:0}'" \
+  "1"
+check "080 work list marks source obligations unknown unless the MTA producer status is ok (an absent scan is not zero incidents)" \
+  "grep -c 'incidents_known = mta_status == \"ok\"' '${SCAFFOLD_LIB}/planner/worklist.py' || echo 0" \
+  "1"
+check "080 obligation identity is line-free (rule, file, variables, message)" \
+  "grep -c 'line-free identity' '${SCAFFOLD_LIB}/planner/worklist.py' || echo 0" \
+  "1"
+check "080 K4 mint registers control cards instead of treating every HERMES_KANBAN_TASK as M2" \
+  "grep -c 'def register_control_cards' '${SCAFFOLD_KERNEL}/k4_mint.py' || echo 0" \
+  "1"
+check "080 AGENTS.md follows the Spring-compatibility path (no native-only rule)" \
+  "grep -c 'Native Quarkus only' '${SCAFFOLD_080}/AGENTS.md' || echo 0" \
+  "0"
+check "080 compat mapping catalog present (bootstrap contract)" \
+  "test -f '${SCAFFOLD_080}/.hermes/planning/catalogs/compat-mapping.json' && echo present || echo missing" \
+  "present"
+check "080 no ownership map / DAG / probe / bytecode machinery remains" \
+  "{ grep -rIl -E 'planner\\.dag|planner\\.ownership|planner\\.ledger|increment-dag\\.json|probe-spring-bindings|enrich-legacy-bytecode' '${SCAFFOLD_080}/.hermes/lib' '${SCAFFOLD_080}/.hermes/kernel' '${SCAFFOLD_080}/.hermes/skills' --exclude-dir=__pycache__ --exclude-dir=fixtures || true; } | wc -l | tr -d ' '" \
+  "0"
+check "080 admit-migration-plan selftest passes" \
+  "python3 '${SCAFFOLD_SKILLS}/planning/admit-migration-plan/scripts/admit-migration-plan.test.py' >/dev/null && echo 1 || echo 0" \
+  "1"
+check "080 capture-source-oracles selftest passes" \
+  "python3 '${SCAFFOLD_SKILLS}/gates/capture-source-oracles/scripts/capture-source-oracles.test.py' >/dev/null && echo 1 || echo 0" \
   "1"
 check "080 K4 producer-skill bar selftest passes" \
   "python3 '${SCAFFOLD_KERNEL}/k4_producers.test.py' >/dev/null && echo 1 || echo 0" \
@@ -660,42 +778,36 @@ check "080 cold-cache maven-settings skill text selftest passes" \
 check "080 JAX-RS DefaultValue mapping selftest passes" \
   "python3 '${SCAFFOLD_080}/.hermes/skills/migration/spring-to-quarkus-patterns/scripts/rest-annotations-defaultvalue.test.py' >/dev/null && echo 1 || echo 0" \
   "1"
-check "080 check-spec-readiness selftest passes" \
-  "python3 '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/skills/sdd/check-spec-readiness/scripts/check-spec-readiness-selftest.py' >/dev/null && echo 1 || echo 0" \
-  "1"
 check "080 check-external-dirs selftest passes" \
-  "python3 '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/skills/sdd/init-spec-workspace/scripts/check-external-dirs-selftest.py' >/dev/null && echo 1 || echo 0" \
+  "python3 '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/lib/check-external-dirs.test.py' >/dev/null && echo 1 || echo 0" \
   "1"
-check "080 specify-skills-root selftest passes" \
-  "python3 '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/skills/sdd/init-spec-workspace/scripts/assert-specify-skills-root-selftest.py' >/dev/null && echo 1 || echo 0" \
-  "1"
-check "080 seed-speckit-skills canonical-leaf selftest passes" \
-  "python3 '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/skills/sdd/init-spec-workspace/scripts/seed-speckit-skills.selftest.py' >/dev/null && echo 1 || echo 0" \
-  "1"
-check "080 specify worker-shell run-time selftest passes" \
-  "python3 '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/skills/sdd/init-spec-workspace/scripts/assert-specify-run-from-worker-home.py' >/dev/null && echo 1 || echo 0" \
-  "1"
-check "080 dest-init installs specify PATH shim (not HERMES_HOME/bin)" \
+check "080 init-spec-workspace skill is removed" \
+  "test ! -d '${SCAFFOLD_080}/.hermes/skills/sdd/init-spec-workspace' && echo absent || echo present" \
+  "absent"
+check "080 destfile does not call Spec Kit init-workspace.sh" \
+  "grep -E 'init-workspace.sh|init-spec-workspace' '${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml' '${SCAFFOLD_080}/devfile.yaml' >/dev/null && echo present || echo absent" \
+  "absent"
+check "080 dest-init does not install specify PATH shim" \
   "grep -c 'specify-from-project.sh' '${GITOPS_INIT}' || echo 0" \
-  "3"
-check "080 dest-init smokes specify helper-by-path (W1)" \
-  "python3 '${SCAFFOLD_080}/.hermes/skills/sdd/init-spec-workspace/scripts/assert-dest-init-smokes-mandated-tools.py' '${GITOPS_INIT}' >/dev/null && echo 1 || echo 0" \
-  "1"
-check "080 dest-init specify-smoke selftest (shim-only REFUSE)" \
-  "python3 '${SCAFFOLD_080}/.hermes/skills/sdd/init-spec-workspace/scripts/assert-dest-init-smokes-mandated-tools-selftest.py' >/dev/null && echo 1 || echo 0" \
-  "1"
-check "080 speckit unknown-then-emit selftest (W1 paired control)" \
-  "python3 '${SCAFFOLD_080}/.hermes/skills/sdd/init-spec-workspace/scripts/assert-speckit-unknown-then-emit.py' >/dev/null && echo 1 || echo 0" \
-  "1"
-check "080 inventory SKILL uses harvest_referent --from-manifest (W4)" \
-  "awk '/inventory-entry-points.py/{getline; print}' '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/skills/analysis/inventory-legacy-surface/SKILL.md' | grep -c -- '--from-manifest' || echo 0" \
-  "1"
-check "080 harvest-referent pair selftest (identity cannot close W4)" \
-  "python3 '${SCAFFOLD_080}/.hermes/skills/analysis/inventory-legacy-surface/scripts/assert-harvest-referent-pair-selftest.py' >/dev/null && echo 1 || echo 0" \
-  "1"
-check "080 K4 mints STAMP_DESTINATION_TREE harvest card" \
-  "grep -c 'STAMP_DESTINATION_TREE' '${SCAFFOLD_KERNEL}/k4_schema.py' || echo 0" \
+  "0"
+check "080 dest-init does not run specify init" \
+  "grep -c 'dest-init specify init' '${GITOPS_INIT}' || echo 0" \
+  "0"
+check "080 pins.json has no spec_kit pin" \
+  "python3 -c \"import json,pathlib; p=json.loads(pathlib.Path('${SCAFFOLD_080}/.hermes/pins.json').read_text()); print('present' if 'spec_kit' in (p.get('pins') or {}) else 'absent')\"" \
+  "absent"
+check "080 inventory SKILL runs the JDK compiler-API extractor (no third-party dependency, no regex)" \
+  "grep -c 'run-jdk-model-extract.sh' '${SCAFFOLD_SKILLS}/analysis/inventory-legacy-surface/SKILL.md' || echo 0" \
   "2"
+check "080 no Spoon, JavaParser, JDT, or regex extractor in the scaffold" \
+  "{ grep -rIl -E 'import spoon|spoon-core|com.github.javaparser|org.eclipse.jdt|oracle-regex' '${SCAFFOLD_080}/.hermes' --exclude-dir=__pycache__ || true; } | wc -l | tr -d ' '" \
+  "0"
+check "080 M1 paved road freezes the original source first (derive-legacy-boot3 never first)" \
+  "python3 -c \"import json,pathlib; d=json.load(open('${SCAFFOLD_SKILLS}/paved-road/paved-road-m1/steps.json')); s=d['steps'][0]; print(s.get('skill') or s.get('native') or s.get('kernel'))\"" \
+  "freeze-migration-input"
+check "080 K4 mints one card per step and M4 VERIFY only on an empty list" \
+  "grep -c 'CLOSE_ID = \"M4_VERIFY\"' '${SCAFFOLD_LIB}/planner/cards.py' || echo 0" \
+  "1"
 check "080 commit-destination-tree skill present" \
   "test -f '${SCAFFOLD_080}/.hermes/skills/migration/commit-destination-tree/SKILL.md' && echo present || echo missing" \
   "present"

@@ -1,72 +1,59 @@
 {
-  "artifact": "m2-partition",
-  "forgeable_receipts": [
-    "workflow-run.json"
-  ],
+  "artifact": "m2-admission",
   "kind": "m2-plan",
   "last_wins_across_needles": false,
   "last_wins_within_needle": true,
-  "producer": "plan-migration-partition",
+  "producer": "admit-migration-plan",
   "silence_fails": true,
   "source": "steps.json",
   "steps": [
     {
-      "backing": "skill",
-      "id": "speckit-specify",
+      "backing": "native",
+      "id": "assert-planner-activated",
       "keep": [],
-      "needle": "speckit-specify"
+      "needle": "assert-planner-activated.py"
     },
     {
       "backing": "skill",
-      "id": "speckit-plan",
-      "keep": [],
-      "needle": "speckit-plan"
-    },
-    {
-      "backing": "skill",
-      "id": "speckit-tasks",
-      "keep": [],
-      "needle": "speckit-tasks"
-    },
-    {
-      "backing": "skill",
-      "id": "plan-migration-partition",
+      "id": "bootstrap-destination",
       "keep": [
-        "evidence/partition.json"
+        "evidence/producers/bootstrap.json"
       ],
-      "needle": "plan-migration-partition",
-      "producer": true
+      "needle": "bootstrap-destination"
     },
     {
       "backing": "skill",
-      "id": "check-spec-readiness",
-      "keep": [],
-      "needle": "check-spec-readiness"
+      "id": "build-worklist",
+      "keep": [
+        "evidence/planning/worklist.json",
+        "verification/loop/steps.json"
+      ],
+      "needle": "build-worklist"
     },
     {
-      "backing": "native",
-      "id": "check-partition-coverage",
-      "keep": [],
-      "needle": "check-partition-coverage.py"
-    },
-    {
-      "backing": "native",
-      "id": "assert-m2-speckit-conformance",
-      "keep": [],
-      "needle": "assert-m2-speckit-conformance.py"
-    },
-    {
-      "backing": "kernel",
-      "id": "k4-convert",
-      "keep": [],
-      "needle": "k4_convert.py"
+      "backing": "skill",
+      "id": "admit-migration-plan",
+      "keep": [
+        "evidence/planning/admission-receipt.json"
+      ],
+      "needle": "admit-migration-plan",
+      "producer": true
     },
     {
       "backing": "kernel",
       "id": "k4-mint",
       "keep": [],
       "needle": "k4_mint.py"
+    },
+    {
+      "backing": "skill",
+      "id": "verify-live-kanban-loop",
+      "keep": [
+        "evidence/receipts/k3/live-board.json"
+      ],
+      "needle": "verify-live-kanban-loop"
     }
   ],
-  "unmatched_exit_1_fails": true
+  "unmatched_exit_1_fails": true,
+  "worker_receipts_are_not_proof": true
 }

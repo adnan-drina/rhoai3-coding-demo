@@ -13,7 +13,7 @@ from pathlib import Path
 
 STAMP_NAME = "Hermes Kanban"
 STAMP_EMAIL = "kanban@hermes.local"
-OBJECT_PREFIXES = ("evidence/", ".hermes/", ".specify/", "target/")
+OBJECT_PREFIXES = ("evidence/", ".hermes/", "verification/", "target/")
 OBJECT_EXACT = frozenset({".env"})
 
 

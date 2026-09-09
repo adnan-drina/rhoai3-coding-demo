@@ -1,0 +1,34 @@
+# decisions.yaml — the only human input to the migration (SOLUTION-ARCHITECTURE v3 §4).
+# Decided by the stage owner on 2026-09-08. Nothing here is written or inferred by a worker.
+schema: rhoai3.decisions/v2
+
+adrs:
+  - id: ADR-001
+    status: accepted
+    title: Destination platform is Red Hat build of Quarkus 3.27 on the Spring-compatibility path (BOM from .hermes/pins.json quarkus_platform)
+  - id: ADR-002
+    status: accepted
+    title: A cluster is deferred to a human after 3 rejected (reverted) attempts; the loop stops (admission MANUAL_CLUSTER, nothing mints) until the human clears it, and the run cannot close while it is open
+  - id: ADR-003
+    status: accepted
+    title: Retire the Spring AOP JMX call monitor (CallMonitoringAspect) — Quarkus documents no AOP compatibility, the aspect carries no business behavior and no parity observation; repository timing is a metrics-extension concern, not a migration obligation (pilot specimen spring-petclinic-rest, 2026-09-09)
+
+destination_platform:
+  id: quarkus-rhbq-3.27   # key of .hermes/planning/catalogs/destination-platforms.json
+  adr: ADR-001
+
+thresholds:
+  max_attempts: 3         # rejected attempts on one cluster before it becomes a manual card
+  adr: ADR-002
+
+# Work-list items an accepted ADR retires (exact item ids from
+# evidence/planning/worklist.json): one incident, one ADR, one reason.
+not_applicable: []
+
+# Source files an accepted ADR retires. The bootstrap deletes exactly these
+# and never imports them; a path the frozen legacy never had blocks
+# (RETIRED_SOURCE_MISSING). Pilot specimen: spring-petclinic-rest.
+retired_sources:
+  - path: src/main/java/org/springframework/samples/petclinic/util/CallMonitoringAspect.java
+    adr: ADR-003
+    reason: Spring AOP @Aspect + JMX @ManagedResource call timer over repositories; no Quarkus AOP compatibility; not observed by parity

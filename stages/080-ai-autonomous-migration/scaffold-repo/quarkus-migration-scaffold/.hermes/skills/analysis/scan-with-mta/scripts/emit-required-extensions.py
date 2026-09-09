@@ -14,8 +14,9 @@ Usage:
   python3 emit-required-extensions.py <root>
   python3 emit-required-extensions.py <root> --handoff PATH --legacy-pom PATH --out PATH
 
-Legacy pom is `harvest_referent/pom.xml` from evidence/derived/legacy-at-3.json.
-Empty legacy_pom is REFUSE. Do not guess /projects/legacy.
+Legacy pom is `<analysis_copy>/pom.xml` from evidence/producers/freeze.json
+(the frozen original source). Empty legacy_pom is REFUSE. Do not guess
+/projects/legacy and never read a derived Boot 3 tree.
 """
 from __future__ import annotations
 
@@ -47,15 +48,14 @@ SCHEMA = "rhoai3.required-extensions/v2"
 HANDOFF_REL = Path("evidence") / "findings-handoff.json"
 OUT_REL = Path("evidence") / "required-extensions.json"
 INVENTORY_REL = Path("evidence") / "type-inventory.json"
-MANIFEST_REL = Path("evidence") / "derived" / "legacy-at-3.json"
+FREEZE_REL = Path("evidence") / "producers" / "freeze.json"
 
 QUARKUS_AID_RE = re.compile(r"quarkus-[a-z0-9-]+", re.I)
 SPRING_QUOTE_RE = re.compile(r"['\"](spring-[a-z0-9-]+)['\"]", re.I)
 ARTIFACT_RE = re.compile(r"<artifactId>\s*([^<]+?)\s*</artifactId>", re.I)
 
 # Do not add /projects/legacy to a pom candidate list (Architect 121231ZA).
-# Identity mode never materialises a legacy-at-3 directory; the pom lives at
-# harvest_referent/pom.xml from evidence/derived/legacy-at-3.json.
+# The pom lives at <analysis_copy>/pom.xml from the freeze receipt.
 
 
 def _apply_rule(rule: dict) -> set[str]:
@@ -130,7 +130,8 @@ def generated_present(root: Path) -> bool:
 
 
 def load_derive_manifest(root: Path) -> dict | None:
-    path = root / MANIFEST_REL
+    """Freeze receipt (name kept for callers): analysis_copy is the referent."""
+    path = root / FREEZE_REL
     if not path.is_file():
         return None
     try:
@@ -143,7 +144,7 @@ def load_derive_manifest(root: Path) -> dict | None:
 def harvest_referent_dir(root: Path, manifest: dict | None) -> Path | None:
     if not isinstance(manifest, dict):
         return None
-    raw = str(manifest.get("harvest_referent") or "").strip()
+    raw = str(manifest.get("analysis_copy") or "").strip()
     if not raw:
         return None
     p = Path(raw)
@@ -168,8 +169,8 @@ def resolve_legacy_pom(
     if referent is None:
         return (
             None,
-            "LEGACY_POM_UNRESOLVED missing harvest_referent in "
-            "evidence/derived/legacy-at-3.json "
+            "LEGACY_POM_UNRESOLVED missing analysis_copy in "
+            "evidence/producers/freeze.json "
             "(do not guess /projects/legacy)",
         )
     pom = referent / "pom.xml"
@@ -177,7 +178,7 @@ def resolve_legacy_pom(
         return pom, ""
     return (
         None,
-        f"LEGACY_POM_UNRESOLVED harvest_referent={referent} has no pom.xml "
+        f"LEGACY_POM_UNRESOLVED analysis_copy={referent} has no pom.xml "
         "(do not guess /projects/legacy)",
     )
 

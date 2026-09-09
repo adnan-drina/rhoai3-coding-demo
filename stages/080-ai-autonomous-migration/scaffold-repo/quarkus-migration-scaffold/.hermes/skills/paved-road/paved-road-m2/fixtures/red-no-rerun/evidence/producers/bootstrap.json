@@ -1,0 +1,15 @@
+{
+  "changes": [],
+  "inputs": {},
+  "outputs": [],
+  "path": "spring-compat",
+  "producer": "bootstrap",
+  "reasons": [],
+  "schema": "rhoai3.producer-receipt/v1",
+  "status": "ok",
+  "tool": {
+    "name": "bootstrap-destination",
+    "pin_status": "not-applicable",
+    "version": "1.0.0"
+  }
+}

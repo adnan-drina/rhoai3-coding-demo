@@ -84,7 +84,7 @@ documents hand-authoring as a dedicated path.
    `identity.extensions_declared` only — they do not write `pom.xml`
    and must not paste a fixed menu. T-3 path heuristic stamps declared
    at mint; do not invent artifactIds/GAVs.
-7. Refuse `quarkus-spring-*` compatibility extensions (native Quarkus only).
+7. On the compat path (ADR-001) the `quarkus-spring-*` extensions from `compat-mapping.json` are the baseline; never add an extension outside the catalog.
 
 ## Pitfalls
 

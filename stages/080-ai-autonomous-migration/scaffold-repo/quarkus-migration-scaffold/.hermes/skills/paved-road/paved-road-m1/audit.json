@@ -1,38 +1,65 @@
 {
   "artifact": "m1-analyze",
-  "forgeable_receipts": [
-    "workflow-run.json"
-  ],
   "kind": "m1-analyze",
   "last_wins_across_needles": false,
   "last_wins_within_needle": true,
-  "producer": "scan-with-mta",
+  "producer": "assemble-evidence-bundle",
   "silence_fails": true,
   "source": "steps.json",
   "steps": [
     {
       "backing": "skill",
-      "id": "derive-legacy-boot3",
-      "keep": [],
-      "needle": "derive-legacy-boot3"
+      "id": "freeze-migration-input",
+      "keep": [
+        "evidence/frozen/source-manifest.json",
+        "evidence/producers/freeze.json"
+      ],
+      "needle": "freeze-migration-input"
+    },
+    {
+      "backing": "skill",
+      "id": "capture-build-evidence",
+      "keep": [
+        "evidence/producers/build.json"
+      ],
+      "needle": "capture-build-evidence"
     },
     {
       "backing": "skill",
       "id": "inventory-legacy-surface",
-      "keep": [],
+      "keep": [
+        "evidence/structure/structure.json",
+        "evidence/entry-point-inventory.json",
+        "evidence/type-inventory.json",
+        "evidence/producers/jdk-model.json"
+      ],
       "needle": "inventory-legacy-surface"
     },
     {
       "backing": "skill",
       "id": "scan-with-mta",
-      "keep": [],
-      "needle": "scan-with-mta",
+      "keep": [
+        "evidence/mta-findings.json",
+        "evidence/findings-handoff.json",
+        "evidence/required-extensions.json",
+        "evidence/producers/mta.json"
+      ],
+      "needle": "scan-with-mta"
+    },
+    {
+      "backing": "skill",
+      "id": "assemble-evidence-bundle",
+      "keep": [
+        "evidence/planning/evidence-bundle.json"
+      ],
+      "needle": "assemble-evidence-bundle",
       "producer": true
     },
     {
       "backing": "native",
       "id": "kanban-attach",
       "keep": [
+        "evidence/planning/evidence-bundle.json",
         "evidence/findings-handoff.json",
         "evidence/entry-point-inventory.json",
         "evidence/type-inventory.json",
@@ -42,5 +69,6 @@
       "needle": "kanban_attach.py"
     }
   ],
-  "unmatched_exit_1_fails": true
+  "unmatched_exit_1_fails": true,
+  "worker_receipts_are_not_proof": true
 }

@@ -1,55 +1,54 @@
 {
   "kind": "m2-plan",
-  "artifact": "m2-partition",
+  "artifact": "m2-admission",
   "steps": [
     {
-      "id": "speckit-specify",
-      "backing": "skill",
-      "skill": "speckit-specify"
+      "id": "assert-planner-activated",
+      "backing": "native",
+      "native": "assert-planner-activated.py",
+      "note": "Activation gate (SAD v3 §9). Refuses while .hermes/pins.json planner.activation is not-activated (or a pilot seal does not cover this bundle): kanban_block naming the gate; do not improvise a plan."
     },
     {
-      "id": "speckit-plan",
+      "id": "bootstrap-destination",
       "backing": "skill",
-      "skill": "speckit-plan"
+      "skill": "bootstrap-destination",
+      "keep": [
+        "evidence/producers/bootstrap.json"
+      ],
+      "note": "Deterministic baseline from the compat-mapping catalog + pins (import, pom, properties, main class). No model."
     },
     {
-      "id": "speckit-tasks",
+      "id": "build-worklist",
       "backing": "skill",
-      "skill": "speckit-tasks"
+      "skill": "build-worklist",
+      "keep": [
+        "evidence/planning/worklist.json",
+        "verification/loop/steps.json"
+      ],
+      "note": "The only plan: JDK diagnostics + surefire + MTA rescan → clustered, ordered work list; records the baseline step."
     },
     {
-      "id": "plan-migration-partition",
+      "id": "admit-migration-plan",
       "backing": "skill",
-      "skill": "plan-migration-partition",
+      "skill": "admit-migration-plan",
       "producer": true,
       "keep": [
-        "evidence/partition.json"
+        "evidence/planning/admission-receipt.json"
       ]
-    },
-    {
-      "id": "check-spec-readiness",
-      "backing": "skill",
-      "skill": "check-spec-readiness"
-    },
-    {
-      "id": "check-partition-coverage",
-      "backing": "native",
-      "native": "check-partition-coverage.py"
-    },
-    {
-      "id": "assert-m2-speckit-conformance",
-      "backing": "native",
-      "native": "assert-m2-speckit-conformance.py"
-    },
-    {
-      "id": "k4-convert",
-      "backing": "kernel",
-      "kernel": "k4_convert.py"
     },
     {
       "id": "k4-mint",
       "backing": "kernel",
-      "kernel": "k4_mint.py"
+      "kernel": "k4_mint.py",
+      "note": "Mints exactly one card (the head cluster, or M4 VERIFY when the list is empty) from an ADMITTED receipt; zero commands otherwise. INCONCLUSIVE is a legal stop: kanban_block kind=needs_input naming the BLOCK classes."
+    },
+    {
+      "id": "verify-live-kanban-loop",
+      "backing": "skill",
+      "skill": "verify-live-kanban-loop",
+      "keep": [
+        "evidence/receipts/k3/live-board.json"
+      ]
     }
   ]
 }

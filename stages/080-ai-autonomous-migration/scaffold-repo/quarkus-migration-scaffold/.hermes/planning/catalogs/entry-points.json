@@ -1,0 +1,77 @@
+{
+  "schema": "rhoai3.catalog.entry-points/v1",
+  "note": "Annotation and supertype FQNs that make a member an execution entry point. Outbound clients are dependencies, not seeds (SAD §5.2). A type-level container marker alone is not an entry point; independently callable members are.",
+  "kinds": ["http", "messaging", "scheduled", "batch", "event", "lifecycle"],
+  "method_annotations": {
+    "org.springframework.web.bind.annotation.RequestMapping": {"kind": "http", "http_method": "", "path_attributes": ["value", "path"], "method_attribute": "method"},
+    "org.springframework.web.bind.annotation.GetMapping": {"kind": "http", "http_method": "GET", "path_attributes": ["value", "path"]},
+    "org.springframework.web.bind.annotation.PostMapping": {"kind": "http", "http_method": "POST", "path_attributes": ["value", "path"]},
+    "org.springframework.web.bind.annotation.PutMapping": {"kind": "http", "http_method": "PUT", "path_attributes": ["value", "path"]},
+    "org.springframework.web.bind.annotation.DeleteMapping": {"kind": "http", "http_method": "DELETE", "path_attributes": ["value", "path"]},
+    "org.springframework.web.bind.annotation.PatchMapping": {"kind": "http", "http_method": "PATCH", "path_attributes": ["value", "path"]},
+    "jakarta.ws.rs.GET": {"kind": "http", "http_method": "GET"},
+    "jakarta.ws.rs.POST": {"kind": "http", "http_method": "POST"},
+    "jakarta.ws.rs.PUT": {"kind": "http", "http_method": "PUT"},
+    "jakarta.ws.rs.DELETE": {"kind": "http", "http_method": "DELETE"},
+    "jakarta.ws.rs.PATCH": {"kind": "http", "http_method": "PATCH"},
+    "jakarta.ws.rs.HEAD": {"kind": "http", "http_method": "HEAD"},
+    "jakarta.ws.rs.OPTIONS": {"kind": "http", "http_method": "OPTIONS"},
+    "javax.ws.rs.GET": {"kind": "http", "http_method": "GET"},
+    "javax.ws.rs.POST": {"kind": "http", "http_method": "POST"},
+    "javax.ws.rs.PUT": {"kind": "http", "http_method": "PUT"},
+    "javax.ws.rs.DELETE": {"kind": "http", "http_method": "DELETE"},
+    "javax.ws.rs.PATCH": {"kind": "http", "http_method": "PATCH"},
+    "javax.ws.rs.HEAD": {"kind": "http", "http_method": "HEAD"},
+    "javax.ws.rs.OPTIONS": {"kind": "http", "http_method": "OPTIONS"},
+    "org.springframework.scheduling.annotation.Scheduled": {"kind": "scheduled"},
+    "org.springframework.scheduling.annotation.Schedules": {"kind": "scheduled"},
+    "org.springframework.kafka.annotation.KafkaListener": {"kind": "messaging", "channel_attributes": ["topics", "topicPattern"]},
+    "org.springframework.jms.annotation.JmsListener": {"kind": "messaging", "channel_attributes": ["destination"]},
+    "org.springframework.amqp.rabbit.annotation.RabbitListener": {"kind": "messaging", "channel_attributes": ["queues"]},
+    "org.springframework.cloud.stream.annotation.StreamListener": {"kind": "messaging", "channel_attributes": ["value", "target"]},
+    "org.springframework.context.event.EventListener": {"kind": "event"},
+    "org.springframework.transaction.event.TransactionalEventListener": {"kind": "event"},
+    "jakarta.annotation.PostConstruct": {"kind": "lifecycle"},
+    "jakarta.annotation.PreDestroy": {"kind": "lifecycle"},
+    "javax.annotation.PostConstruct": {"kind": "lifecycle"},
+    "javax.annotation.PreDestroy": {"kind": "lifecycle"},
+    "jakarta.ejb.Schedule": {"kind": "scheduled"},
+    "javax.ejb.Schedule": {"kind": "scheduled"}
+  },
+  "type_path_annotations": {
+    "org.springframework.web.bind.annotation.RequestMapping": {"path_attributes": ["value", "path"]},
+    "jakarta.ws.rs.Path": {"path_attributes": ["value"]},
+    "javax.ws.rs.Path": {"path_attributes": ["value"]}
+  },
+  "method_path_annotations": {
+    "jakarta.ws.rs.Path": {"path_attributes": ["value"]},
+    "javax.ws.rs.Path": {"path_attributes": ["value"]}
+  },
+  "supertypes": {
+    "org.springframework.boot.CommandLineRunner": {"kind": "lifecycle", "member": "run"},
+    "org.springframework.boot.ApplicationRunner": {"kind": "lifecycle", "member": "run"},
+    "org.springframework.beans.factory.InitializingBean": {"kind": "lifecycle", "member": "afterPropertiesSet"},
+    "org.springframework.beans.factory.DisposableBean": {"kind": "lifecycle", "member": "destroy"},
+    "org.springframework.context.SmartLifecycle": {"kind": "lifecycle", "member": "start"},
+    "org.springframework.context.Lifecycle": {"kind": "lifecycle", "member": "start"},
+    "org.springframework.context.ApplicationListener": {"kind": "event", "member": "onApplicationEvent"},
+    "org.springframework.batch.core.step.tasklet.Tasklet": {"kind": "batch", "member": "execute"},
+    "org.springframework.batch.item.ItemReader": {"kind": "batch", "member": "read"},
+    "org.springframework.batch.item.ItemProcessor": {"kind": "batch", "member": "process"},
+    "org.springframework.batch.item.ItemWriter": {"kind": "batch", "member": "write"},
+    "jakarta.jms.MessageListener": {"kind": "messaging", "member": "onMessage"},
+    "javax.jms.MessageListener": {"kind": "messaging", "member": "onMessage"},
+    "org.springframework.kafka.listener.MessageListener": {"kind": "messaging", "member": "onMessage"}
+  },
+  "type_markers": {
+    "jakarta.ejb.MessageDriven": {"kind": "messaging"},
+    "javax.ejb.MessageDriven": {"kind": "messaging"},
+    "org.springframework.batch.core.configuration.annotation.EnableBatchProcessing": {"kind": "batch"}
+  },
+  "container_markers": [
+    "org.springframework.web.bind.annotation.RestController",
+    "org.springframework.stereotype.Controller",
+    "jakarta.ws.rs.Path",
+    "javax.ws.rs.Path"
+  ]
+}

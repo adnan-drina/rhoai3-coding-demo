@@ -17,10 +17,15 @@ if str(_KERNEL) not in sys.path:
 
 from k1_load import digest_file, load_body, read_sidecar
 from k1_schema import (
+    ARTIFACT_KEYS,
     HERMES_ID_RE,
+    INCREMENT_KINDS,
+    INCREMENT_PHASES,
+    INCREMENT_REQUIRED,
     INLINE_MARKERS,
     PENDING_SHA,
     PHASES,
+    PROSE_KEYS,
     REACHABILITY_PHASES,
     REF_KEYS,
     REMEDY,
@@ -30,10 +35,77 @@ from k1_schema import (
 )
 
 Issue = tuple[str, str, str]
+SLIM_EXCLUDE = ("files_in_scope", "filesInScope", "files_writable", "exit_criteria", "write_set", "item_ids", "artifacts")
 
 
 def _issue(code: str, detail: str) -> Issue:
     return (code, detail, REMEDY[code])
+
+
+def _validate_increment(body: dict[str, Any], out: list[Issue], *, root: Path | None) -> None:
+    missing = [k for k in INCREMENT_REQUIRED if k not in body]
+    if missing:
+        out.append(_issue("BODY_INCREMENT", "missing increment keys: %s" % ",".join(missing)))
+    rs = str(body.get("receipt_sha256") or "")
+    if not re.match(SHA256_RE, rs):
+        out.append(_issue("BODY_RECEIPT", "receipt_sha256 %r is not 64 hex" % rs))
+    kind = str(body.get("increment_kind") or "")
+    if "increment_kind" in body and kind not in INCREMENT_KINDS:
+        out.append(_issue("BODY_INCREMENT", "increment_kind %r not in %s" % (kind, sorted(INCREMENT_KINDS))))
+    iid = str(body.get("increment_id") or "")
+    if "increment_id" in body and (not iid or iid != str(body.get("task_id") or "")):
+        out.append(_issue("BODY_INCREMENT", "increment_id %r must equal task_id %r" % (iid, body.get("task_id"))))
+    if "item_ids" in body and not isinstance(body.get("item_ids"), list):
+        out.append(_issue("BODY_INCREMENT", "item_ids must be a list"))
+    if "attempt" in body and (not isinstance(body.get("attempt"), int) or body.get("attempt") < 1):
+        out.append(_issue("BODY_INCREMENT", "attempt must be a positive integer"))
+    ws_sha = str(body.get("worklist_sha256") or "")
+    if "worklist_sha256" in body and not re.match(SHA256_RE, ws_sha):
+        out.append(_issue("BODY_INCREMENT", "worklist_sha256 %r is not 64 hex" % ws_sha))
+    ws = body.get("write_set")
+    if "write_set" in body:
+        if not isinstance(ws, list):
+            out.append(_issue("BODY_WRITE_SET", "write_set must be a list"))
+            ws = []
+        paths: list[str] = []
+        for i, w in enumerate(ws):
+            if not isinstance(w, dict) or not str(w.get("path") or "").strip():
+                out.append(_issue("BODY_WRITE_SET", "write_set[%d] needs path" % i))
+                continue
+            paths.append(str(w["path"]))
+            sha = str(w.get("source_sha256") or "")
+            if sha and not re.match(SHA256_RE, sha):
+                out.append(_issue("BODY_WRITE_SET", "write_set[%d] source_sha256 not 64 hex" % i))
+        fw = body.get("files_writable")
+        if isinstance(fw, list) and [str(p) for p in fw] != paths:
+            out.append(_issue("BODY_WRITE_SET", "files_writable differs from write_set paths"))
+    arts = body.get("artifacts")
+    if "artifacts" in body:
+        if not isinstance(arts, list):
+            out.append(_issue("BODY_ARTIFACTS", "artifacts must be a list"))
+            arts = []
+        keys: dict[str, dict[str, Any]] = {}
+        for a in arts:
+            if isinstance(a, dict) and a.get("key"):
+                keys[str(a["key"])] = a
+        missing_keys = [k for k in ARTIFACT_KEYS if k not in keys]
+        if missing_keys:
+            out.append(_issue("BODY_ARTIFACTS", "missing artifacts: %s" % ",".join(missing_keys)))
+        for k, a in keys.items():
+            sha = str(a.get("sha256") or "")
+            if not str(a.get("path") or "").strip() or not re.match(SHA256_RE, sha):
+                out.append(_issue("BODY_ARTIFACTS", "artifact %s needs path and 64-hex sha256" % k))
+            elif root is not None:
+                fp = Path(str(a["path"]))
+                fp = fp if fp.is_absolute() else root / fp
+                if not fp.is_file():
+                    out.append(_issue("BODY_ARTIFACTS", "artifact %s path %s is not a file" % (k, a["path"])))
+    for pk in sorted(PROSE_KEYS & set(body.keys())):
+        out.append(_issue("BODY_PROSE", "inlined key %r" % pk))
+    ident = body.get("identity")
+    if isinstance(ident, dict):
+        for pk in sorted(PROSE_KEYS & set(ident.keys())):
+            out.append(_issue("BODY_PROSE", "identity inlines %r" % pk))
 
 
 def validate_body(body: Any, *, root: Path | None = None) -> list[Issue]:
@@ -45,12 +117,7 @@ def validate_body(body: Any, *, root: Path | None = None) -> list[Issue]:
     if "generated" in body or (
         isinstance(body.get("identity"), dict) and "generated" in body["identity"]
     ):
-        out.append(
-            _issue(
-                "BODY_GENERATED",
-                "stored generated flag present",
-            )
-        )
+        out.append(_issue("BODY_GENERATED", "stored generated flag present"))
 
     missing = [k for k in REQUIRED_TOP if k not in body]
     if missing:
@@ -60,7 +127,7 @@ def validate_body(body: Any, *, root: Path | None = None) -> list[Issue]:
     if isinstance(tid, str) and re.match(HERMES_ID_RE, tid):
         out.append(_issue("BODY_HERMES_ID", "task_id looks like a Hermes card id: %s" % tid))
     elif tid is not None and (not isinstance(tid, str) or not tid.strip()):
-        out.append(_issue("BODY_SCHEMA", "task_id must be a non-empty logical story_id"))
+        out.append(_issue("BODY_SCHEMA", "task_id must be a non-empty logical id"))
 
     role = body.get("role")
     if "role" in body and (not isinstance(role, str) or not role.strip()):
@@ -90,45 +157,22 @@ def validate_body(body: Any, *, root: Path | None = None) -> list[Issue]:
                 seen_keys.add(key)
             exp = sha.lower()
             if sha and exp != PENDING_SHA and not re.match(SHA256_RE, exp):
-                out.append(
-                    _issue("BODY_REF_SHA256", "refs[%d] key=%s sha256 %r" % (i, key, sha))
-                )
+                out.append(_issue("BODY_REF_SHA256", "refs[%d] key=%s sha256 %r" % (i, key, sha)))
             if exp == PENDING_SHA and key == TYPE_INVENTORY_KEY:
-                out.append(
-                    _issue(
-                        "BODY_REF_SHA256",
-                        "type-inventory may not be pending; stamp a real digest",
-                    )
-                )
+                out.append(_issue("BODY_REF_SHA256", "type-inventory may not be pending; stamp a real digest"))
             if root is not None and path_s and exp and re.match(SHA256_RE, exp):
                 fp = Path(path_s) if Path(path_s).is_absolute() else (root / path_s)
                 if not fp.is_file():
-                    out.append(
-                        _issue("BODY_REF_DIGEST", "refs[%d] path %s is not a file" % (i, path_s))
-                    )
+                    out.append(_issue("BODY_REF_DIGEST", "refs[%d] path %s is not a file" % (i, path_s)))
                 else:
                     got = digest_file(fp)
                     if got != exp:
-                        out.append(
-                            _issue(
-                                "BODY_REF_DIGEST",
-                                "refs[%d] key=%s digest mismatch" % (i, key),
-                            )
-                        )
+                        out.append(_issue("BODY_REF_DIGEST", "refs[%d] key=%s digest mismatch" % (i, key)))
 
     if phase in REACHABILITY_PHASES and TYPE_INVENTORY_KEY not in seen_keys:
-        out.append(
-            _issue(
-                "BODY_REF_MISSING",
-                "phase=%s consumes reachability but refs[] has no key=%s" % (phase, TYPE_INVENTORY_KEY),
-            )
-        )
+        out.append(_issue("BODY_REF_MISSING", "phase=%s consumes reachability but refs[] has no key=%s" % (phase, TYPE_INVENTORY_KEY)))
 
-    slim = {
-        k: v
-        for k, v in body.items()
-        if k not in ("files_in_scope", "filesInScope", "files_writable", "exit_criteria")
-    }
+    slim = {k: v for k, v in body.items() if k not in SLIM_EXCLUDE}
     raw = json.dumps(slim, sort_keys=True)
     if len(raw) > 12000 or re.search(INLINE_MARKERS, raw):
         out.append(_issue("BODY_INLINE", "body looks like it inlines derived content"))
@@ -148,14 +192,13 @@ def validate_body(body: Any, *, root: Path | None = None) -> list[Issue]:
         else:
             for i, item in enumerate(exits):
                 if not isinstance(item, dict) or not item.get("check"):
-                    out.append(
-                        _issue("BODY_EXIT", "exit_criteria[%d] needs check" % i)
-                    )
+                    out.append(_issue("BODY_EXIT", "exit_criteria[%d] needs check" % i))
                     continue
                 if not (item.get("cmd") or item.get("assert")):
-                    out.append(
-                        _issue("BODY_EXIT", "exit_criteria[%d] needs cmd or assert" % i)
-                    )
+                    out.append(_issue("BODY_EXIT", "exit_criteria[%d] needs cmd or assert" % i))
+
+    if phase in INCREMENT_PHASES:
+        _validate_increment(body, out, root=root)
 
     return out
 
@@ -171,9 +214,7 @@ def validate_file(path: Path, *, root: Path | None = None) -> list[Issue]:
     if side is not None:
         got = digest_file(path)
         if side != got:
-            issues.append(
-                _issue("BODY_REF_DIGEST", "sidecar sha256 does not match body file")
-            )
+            issues.append(_issue("BODY_REF_DIGEST", "sidecar sha256 does not match body file"))
     return issues
 
 

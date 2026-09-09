@@ -1,23 +1,18 @@
 #!/usr/bin/env python3
 """Paved-road M1/M2 index: generated audit over the official log + KEEP.
 
-``steps.json`` is the source. ``audit.json`` is generated (same discipline as
-assert-partition-schema-sync.py). Official log grep follows
-assert-card-performed.py (skill_view / ``$`` terminal / ``[exit N]``).
+``steps.json`` is the source. ``audit.json`` is generated. Official log
+grep: skill steps match ``skill_view`` / skill-load lines only; kernel and
+native steps match a script basename on a ``$`` terminal line with a path
+boundary (never a parent directory).
 
-Silence fails. An unmatched ``[exit 1]`` on a mandated needle fails:
-a later clean invocation of the *same* needle clears an earlier red
-(dest-22 cumulative log; SOUL self-correction). Last-wins across
-different needles stays refused (dest-14 hole in ``bound_gate_red``).
+Silence fails. An unmatched ``[exit 1]`` on a mandated needle fails: a
+later clean invocation of the *same* needle clears an earlier red
+(SOUL self-correction). Last-wins across different needles stays refused.
 Do not scope the audit to the last ``Query: work kanban task`` marker —
-that marker is the reviewer session, which does not re-run implementer
-steps, and would silence-fail a correct later green. ``workflow-run.json``
-is not proof. Skill steps match ``skill_view`` / skill-load only — never
-``$`` terminal lines. Kernel/native needles are a script basename with a
-path boundary, not a parent directory (dest-14
-``plan-migration-partition/scripts/assert-m2-story-headings.py`` is not
-the ``plan-migration-partition`` skill step). CLI: ``coverage``,
-``audit``, ``generate``, ``sync``.
+that marker is the reviewer session. Worker-authored receipts are not
+proof; only the official kanban log and KEEP files are.
+CLI: ``coverage``, ``audit``, ``generate``, ``sync``.
 """
 from __future__ import annotations
 
@@ -31,8 +26,6 @@ from typing import Any
 
 BACKINGS = frozenset({"skill", "kernel", "native"})
 PAYLOAD_KEYS = ("skill", "kernel", "native")
-FORGEABLE_RECEIPT = "workflow-run.json"
-SPECIFY_RUN = "specify workflow run speckit"
 EXIT_RE = re.compile(r"\[exit (\d+)\]")
 ALLOWLIST_KEYS = ("domain", "dest-init", "kind-not-yet")
 
@@ -41,6 +34,10 @@ HERMES_DIR = _HERE.parent
 GOLDEN_ROOT = HERMES_DIR.parent
 PAVED_ROAD_DIR = HERMES_DIR / "skills" / "paved-road"
 ALLOWLIST_PATH = PAVED_ROAD_DIR / "allowlist.json"
+
+M1_ORDER = ("freeze-migration-input", "inventory-legacy-surface", "scan-with-mta", "assemble-evidence-bundle")
+M2_FIRST_NATIVE = "assert-planner-activated.py"
+M2_PRODUCER = "admit-migration-plan"
 
 
 def _fail(msg: str) -> int:
@@ -53,18 +50,11 @@ def dumps(obj: Any) -> str:
 
 
 def skill_load_re(name: str) -> re.Pattern[str]:
-    return re.compile(
-        r"┊\s+\S+\s+skill\s+(?:[\w.-]+/)?" + re.escape(name) + r"(?:\s|$|/)"
-    )
+    return re.compile(r"┊\s+\S+\s+skill\s+(?:[\w.-]+/)?" + re.escape(name) + r"(?:\s|$|/)")
 
 
 def kanban_root_home() -> str:
-    """Official logs live under the base HERMES_HOME, not profile homes.
-
-    ``hermes -p <name>`` sets HERMES_HOME to ``<root>/profiles/<name>``.
-    Kanban logs stay at ``<root>/kanban/logs/``. A missing log after this
-    resolve is still a refusal (Architect 192903ZA).
-    """
+    """Official logs live under the base HERMES_HOME, not profile homes."""
     home = (os.environ.get("HERMES_HOME") or "").strip()
     if not home:
         return ""
@@ -92,12 +82,7 @@ _FIXTURE_OFFICIAL_LOG = re.compile(r"(?:^|/)fixtures/.+/official\.log$")
 
 
 def is_allowed_audit_log(path: Path) -> bool:
-    """True for the official kanban log or a land-time fixture.
-
-    dest-22 M1 reviewer passed ``--log`` at implementer
-    ``cache/terminal-output`` (worker-authored). That is not the A-gate
-    surface. Workshop selftests use ``fixtures/**/official.log``.
-    """
+    """True for the official kanban log or a land-time fixture."""
     n = str(path).replace("\\", "/")
     if _CACHE_TERMINAL in n:
         return False
@@ -143,61 +128,65 @@ def validate_steps_doc(doc: Any, *, path: Path | None = None) -> list[str]:
             seen_ids.add(sid)
         backing = step.get("backing")
         if backing not in BACKINGS:
-            errors.append(
-                "%s: backing must be skill|kernel|native (got %r)" % (prefix, backing)
-            )
+            errors.append("%s: backing must be skill|kernel|native (got %r)" % (prefix, backing))
             continue
         present = [k for k in PAYLOAD_KEYS if k in step and step[k] not in (None, "")]
         if present != [backing]:
-            errors.append(
-                "%s: exactly one backing payload matching backing=%s (got %s)"
-                % (prefix, backing, present)
-            )
+            errors.append("%s: exactly one backing payload matching backing=%s (got %s)" % (prefix, backing, present))
         elif backing in {"kernel", "native"}:
             payload = str(step.get(backing) or "")
             if "/" in payload or "\\" in payload or payload in {".", ".."}:
-                errors.append(
-                    "%s: %s must be a script basename (got %r)"
-                    % (prefix, backing, payload)
-                )
+                errors.append("%s: %s must be a script basename (got %r)" % (prefix, backing, payload))
         if step.get("producer") is True:
             producers += 1
         keep = step.get("keep")
         if keep is not None:
             if not isinstance(keep, list) or not all(isinstance(x, str) for x in keep):
                 errors.append("%s: keep must be a string array" % prefix)
-        if "emit-findings-handoff" in sid or (
-            backing == "skill"
-            and "emit-findings-handoff" in str(step.get("skill") or "")
-        ):
-            errors.append(
-                "%s: emit-findings-handoff.py runs inside mta-analyze-legacy.sh; "
-                "do not list it as a paved-road step (order inventory-legacy-surface "
-                "then scan-with-mta)" % prefix
-            )
+        if "emit-findings-handoff" in sid or (backing == "skill" and "emit-findings-handoff" in str(step.get("skill") or "")):
+            errors.append("%s: emit-findings-handoff.py runs inside mta-analyze-legacy.sh; do not list it as a paved-road step" % prefix)
     if producers != 1:
         errors.append("%s: exactly one producer: true (got %d)" % (loc, producers))
-    if str(doc.get("kind") or "") == "m1-analyze":
-        skill_idx: dict[str, int] = {}
-        for i, step in enumerate(steps):
-            if not isinstance(step, dict) or step.get("backing") != "skill":
-                continue
+    kind = str(doc.get("kind") or "")
+    skill_idx: dict[str, int] = {}
+    for i, step in enumerate(steps):
+        if isinstance(step, dict) and step.get("backing") == "skill":
             name = str(step.get("skill") or "").strip()
             if name and name not in skill_idx:
                 skill_idx[name] = i
-        inv = skill_idx.get("inventory-legacy-surface")
-        scan = skill_idx.get("scan-with-mta")
-        if inv is None or scan is None:
-            errors.append(
-                "%s: m1-analyze must include inventory-legacy-surface and "
-                "scan-with-mta" % loc
-            )
-        elif inv >= scan:
-            errors.append(
-                "%s: inventory-legacy-surface must precede scan-with-mta "
-                "(AR-4.1: emit-findings-handoff.py runs inside "
-                "mta-analyze-legacy.sh)" % loc
-            )
+    if kind == "m1-analyze":
+        missing = [n for n in M1_ORDER if n not in skill_idx]
+        if missing:
+            errors.append("%s: m1-analyze must include %s" % (loc, ", ".join(missing)))
+        else:
+            idx = [skill_idx[n] for n in M1_ORDER]
+            if idx != sorted(idx):
+                errors.append("%s: m1-analyze order must be freeze-migration-input → inventory-legacy-surface → scan-with-mta → assemble-evidence-bundle (the frozen original source is the baseline; the MTA handoff refuses without the inventory)" % loc)
+            if idx[0] != 0:
+                errors.append("%s: freeze-migration-input must be the first step" % loc)
+        if "derive-legacy-boot3" in skill_idx:
+            errors.append("%s: derive-legacy-boot3 is an execution-side transformation, not an M1 evidence step" % loc)
+        prod = next((s for s in steps if isinstance(s, dict) and s.get("producer") is True), None)
+        if prod is not None and prod.get("skill") != "assemble-evidence-bundle":
+            errors.append("%s: m1-analyze producer must be assemble-evidence-bundle" % loc)
+    if kind == "m2-plan":
+        first = steps[0] if isinstance(steps[0], dict) else {}
+        if first.get("backing") != "native" or first.get("native") != M2_FIRST_NATIVE:
+            errors.append("%s: m2-plan must start with native %s (activation gate, SAD §12)" % (loc, M2_FIRST_NATIVE))
+        prod = next((s for s in steps if isinstance(s, dict) and s.get("producer") is True), None)
+        if prod is not None and prod.get("skill") != M2_PRODUCER:
+            errors.append("%s: m2-plan producer must be %s" % (loc, M2_PRODUCER))
+        for name in ("bootstrap-destination", "build-worklist"):
+            if name not in skill_idx or skill_idx[name] > skill_idx.get(M2_PRODUCER, 99):
+                errors.append("%s: %s must precede admit-migration-plan" % (loc, name))
+        if skill_idx.get("bootstrap-destination", 99) > skill_idx.get("build-worklist", 0):
+            errors.append("%s: bootstrap-destination must precede build-worklist (the baseline is verified after the deterministic bootstrap)" % loc)
+        kernels = [str(s.get("kernel")) for s in steps if isinstance(s, dict) and s.get("backing") == "kernel"]
+        if "k4_mint.py" not in kernels:
+            errors.append("%s: m2-plan must mint through kernel k4_mint.py" % loc)
+        for s in steps:
+            if isinstance(s, dict) and str(s.get("skill") or s.get("native") or s.get("kernel") or "").startswith("speckit"):
+                errors.append("%s: Spec Kit steps are retired" % loc)
     return errors
 
 
@@ -230,7 +219,6 @@ def generate_audit(doc: dict[str, Any]) -> dict[str, Any]:
         steps_out.append(item)
     return {
         "artifact": doc["artifact"],
-        "forgeable_receipts": [FORGEABLE_RECEIPT],
         "kind": doc["kind"],
         "last_wins_across_needles": False,
         "last_wins_within_needle": True,
@@ -239,6 +227,7 @@ def generate_audit(doc: dict[str, Any]) -> dict[str, Any]:
         "source": "steps.json",
         "steps": steps_out,
         "unmatched_exit_1_fails": True,
+        "worker_receipts_are_not_proof": True,
     }
 
 
@@ -270,28 +259,15 @@ def matching_lines(text: str, needle: str) -> list[str]:
 
 
 def script_basename_boundary_re(name: str) -> re.Pattern[str]:
-    """Match a script basename on a ``$`` line, not a parent directory.
-
-    Leading ``/`` lets ``.hermes/kernel/k4_convert.py`` match. Trailing
-    must not include ``/``, or ``<skill>/scripts/<other>.py`` would match
-    a skill-directory needle.
-    """
+    """Match a script basename on a ``$`` line, not a parent directory."""
     if not name or "/" in name or "\\" in name or name in {".", ".."}:
         raise ValueError("kernel/native needle must be a script basename: %r" % name)
-    return re.compile(
-        r"(?:^|[\s/\"'`])" + re.escape(name) + r"(?:[\s\"'`;|&<>]|$)"
-    )
+    return re.compile(r"(?:^|[\s/\"'`])" + re.escape(name) + r"(?:[\s\"'`;|&<>]|$)")
 
 
 def matching_terminal_lines(text: str, basename: str) -> list[str]:
     pat = script_basename_boundary_re(basename)
-    out: list[str] = []
-    for ln in text.splitlines():
-        if "$" not in ln:
-            continue
-        if pat.search(ln):
-            out.append(ln)
-    return out
+    return [ln for ln in text.splitlines() if "$" in ln and pat.search(ln)]
 
 
 def followed_skill(text: str, name: str) -> bool:
@@ -313,16 +289,8 @@ def terminal_runs(lines: list[str]) -> list[tuple[str, int | None]]:
     return out
 
 
-def unmatched_exit1(
-    runs: list[tuple[str, int | None]],
-) -> list[tuple[str, int | None]]:
-    """Reds with no later success of this same needle.
-
-    Hermes omits ``[exit 0]`` on success, so ``rc is None`` is a clean
-    invocation. A later clean run of *this* needle matches an earlier
-    red. A later clean run of a *different* needle does not (dest-14).
-    A red that was never re-run stays unmatched.
-    """
+def unmatched_exit1(runs: list[tuple[str, int | None]]) -> list[tuple[str, int | None]]:
+    """Reds with no later success of this same needle (omitted marker = clean)."""
     unmatched: list[tuple[str, int | None]] = []
     for i, run in enumerate(runs):
         if run[1] != 1:
@@ -342,22 +310,7 @@ def keep_missing(root: Path, keep: list[str]) -> list[str]:
     return missing
 
 
-def forgeable_workflow_run(root: Path, text: str) -> bool:
-    if FORGEABLE_RECEIPT in text:
-        return True
-    receipt = root / "evidence" / "receipts" / "speckit" / FORGEABLE_RECEIPT
-    return receipt.is_file()
-
-
 def evaluate_audit(text: str, doc: dict[str, Any], root: Path) -> int:
-    if SPECIFY_RUN in text:
-        runs = terminal_runs([ln for ln in text.splitlines() if SPECIFY_RUN in ln])
-        if runs:
-            return _fail(
-                "specify workflow run speckit is not the dispatch "
-                "(hermes.manifest files:{}); follow speckit-specify"
-            )
-
     failures: list[str] = []
     for step in doc["steps"]:
         sid = str(step["id"])
@@ -367,25 +320,14 @@ def evaluate_audit(text: str, doc: dict[str, Any], root: Path) -> int:
 
         if backing == "skill":
             if not followed_skill(text, needle):
-                extra = ""
-                if needle.startswith("speckit-") and forgeable_workflow_run(root, text):
-                    extra = "; workflow-run.json is forgeable"
                 if matching_lines(text, needle):
-                    failures.append(
-                        "mandated skill_view absent for %s "
-                        "(path mention is not follow)%s" % (needle, extra)
-                    )
+                    failures.append("mandated skill_view absent for %s (path mention is not follow)" % needle)
                 else:
-                    failures.append(
-                        "silence: step %s needle %r absent from official log%s"
-                        % (sid, needle, extra)
-                    )
+                    failures.append("silence: step %s needle %r absent from official log" % (sid, needle))
                 continue
             missing = keep_missing(root, keep)
             if missing:
-                failures.append(
-                    "missing KEEP %s (step %s)" % (",".join(missing), sid)
-                )
+                failures.append("missing KEEP %s (step %s)" % (",".join(missing), sid))
             continue
 
         try:
@@ -393,36 +335,18 @@ def evaluate_audit(text: str, doc: dict[str, Any], root: Path) -> int:
         except ValueError as exc:
             failures.append(str(exc))
             continue
-        if not lines:
-            failures.append(
-                "silence: step %s needle %r has no terminal argv in official log"
-                % (sid, needle)
-            )
-            continue
-        runs = terminal_runs(lines)
+        runs = terminal_runs(lines) if lines else []
         if not runs:
-            failures.append(
-                "silence: step %s needle %r has no terminal argv in official log"
-                % (sid, needle)
-            )
+            failures.append("silence: step %s needle %r has no terminal argv in official log" % (sid, needle))
             continue
         reds = unmatched_exit1(runs)
         if reds:
-            failures.append(
-                "unmatched [exit 1] on mandated needle %r (step %s, count=%d)"
-                % (needle, sid, len(reds))
-            )
+            failures.append("unmatched [exit 1] on mandated needle %r (step %s, count=%d)" % (needle, sid, len(reds)))
             continue
         last_rc = runs[-1][1]
-        # Hermes terminal lines stamp ``[exit 1]`` on failure and omit the
-        # marker on success (dest-9 ``t_af875a24``: ``  0.1s`` with no
-        # ``[exit 0]``). ``rc is None`` is therefore pass, not refuse.
-        # Explicit non-zero other than 1 (already refused above) still fails.
+        # Hermes stamps ``[exit N]`` on failure and omits the marker on success.
         if last_rc not in (0, None):
-            failures.append(
-                "last matching line for needle %r is not success "
-                "(step %s rc=%s)" % (needle, sid, last_rc)
-            )
+            failures.append("last matching line for needle %r is not success (step %s rc=%s)" % (needle, sid, last_rc))
             continue
         missing = keep_missing(root, keep)
         if missing:
@@ -431,20 +355,13 @@ def evaluate_audit(text: str, doc: dict[str, Any], root: Path) -> int:
     if failures:
         return _fail("; ".join(failures))
 
-    print(
-        "OK: PAVED_ROAD kind=%s artifact=%s steps=%d"
-        % (doc.get("kind"), doc.get("artifact"), len(doc["steps"]))
-    )
+    print("OK: PAVED_ROAD kind=%s artifact=%s steps=%d" % (doc.get("kind"), doc.get("artifact"), len(doc["steps"])))
     return 0
 
 
 def audit_paths(log: Path, root: Path, steps_path: Path) -> int:
     if not is_allowed_audit_log(log):
-        return _fail(
-            "--log is not an official kanban log (%s); "
-            "refuse implementer cache/terminal-output"
-            % log
-        )
+        return _fail("--log is not an official kanban log (%s); refuse implementer cache/terminal-output" % log)
     if not log.is_file():
         return _fail("missing official log %s" % log)
     try:
@@ -530,8 +447,7 @@ def coverage(root: Path | None = None) -> int:
             print("FAIL: %s" % exc, file=sys.stderr)
             bad = 1
             continue
-        skill_dir = path.parent
-        rc, msg = sync_audit(skill_dir)
+        rc, msg = sync_audit(path.parent)
         if rc != 0:
             print("FAIL: %s" % msg, file=sys.stderr)
             bad = 1
@@ -550,40 +466,24 @@ def coverage(root: Path | None = None) -> int:
             continue
         dest_names.add(name)
 
-    for name in dest_names:
-        if name in cited:
+    for name in sorted(dest_names):
+        if name in cited or name in allowlisted:
             continue
-        if name in allowlisted:
-            continue
-        print(
-            "FAIL: dest skill %s is neither a steps.json skill backing nor allowlisted"
-            % name,
-            file=sys.stderr,
-        )
+        print("FAIL: dest skill %s is neither a steps.json skill backing nor allowlisted" % name, file=sys.stderr)
         bad = 1
 
-    for name in allowlisted:
+    for name in sorted(allowlisted):
         if name in dest_names:
             if name in cited:
-                print(
-                    "FAIL: allowlisted dest skill %s is cited by steps.json; drop it"
-                    % name,
-                    file=sys.stderr,
-                )
+                print("FAIL: allowlisted dest skill %s is cited by steps.json; drop it" % name, file=sys.stderr)
                 bad = 1
             continue
-        print(
-            "FAIL: allowlist names missing dest skill %s" % name,
-            file=sys.stderr,
-        )
+        print("FAIL: allowlist names missing dest skill %s" % name, file=sys.stderr)
         bad = 1
 
     if bad:
         return 1
-    print(
-        "OK: PAVED_ROAD coverage dest=%d cited=%d allowlisted=%d index=%d"
-        % (len(dest_names), len(cited), len(allowlisted), len(index_names))
-    )
+    print("OK: PAVED_ROAD coverage dest=%d cited=%d allowlisted=%d index=%d" % (len(dest_names), len(cited), len(allowlisted), len(index_names)))
     return 0
 
 
@@ -636,10 +536,7 @@ def _cmd_coverage(argv: list[str]) -> int:
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     if not argv or argv[0] in {"-h", "--help"}:
-        print(
-            "usage: paved_road.py coverage|audit|generate|sync [args]",
-            file=sys.stderr,
-        )
+        print("usage: paved_road.py coverage|audit|generate|sync [args]", file=sys.stderr)
         return 2
     cmd, rest = argv[0], argv[1:]
     if cmd == "coverage":

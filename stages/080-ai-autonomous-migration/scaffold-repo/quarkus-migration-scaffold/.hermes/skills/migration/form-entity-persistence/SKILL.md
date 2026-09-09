@@ -75,6 +75,6 @@ Deep notes: `references/entity-mapping.md`, `references/panache-vs-em.md`,
   `scripts/assert-inherited-id-not-redeclared.py` exit 0.
 - Owning-side fields set in write paths that create associations.
 - Exits class-legal per `derive-story-oracles` /
-  `check-surgical-scopes.py`.
+  `k1_validate.py` (K1 body schema).
 - Entity-only: validate-mapped-objects / `database.generation=validate`
   style oracle preferred.

@@ -1,5 +1,7 @@
-  ┊ 📚 skill  derive-legacy-boot3
+  ┊ 📚 skill  freeze-migration-input
+  ┊ 📚 skill  capture-build-evidence
   ┊ 📚 skill  inventory-legacy-surface
   ┊ 📚 skill  scan-with-mta
+  ┊ 📚 skill  assemble-evidence-bundle
   ┊ 💻 $         python3 .hermes/kernel/kanban_attach.py --task t_m1 --exec  0.3s
   ┊ 📋 preparing kanban_request_review…

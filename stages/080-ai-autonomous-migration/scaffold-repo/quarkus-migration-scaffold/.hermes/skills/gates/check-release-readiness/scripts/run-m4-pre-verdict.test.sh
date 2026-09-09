@@ -14,7 +14,7 @@ grep -q 'assert-surefire-results' "${SCRIPT_DIR}/run-m4-pre-verdict.sh"
 grep -q 'assert-m4-card-body' "${SCRIPT_DIR}/run-m4-pre-verdict.sh"
 grep -q 'check-product-tests' "${SCRIPT_DIR}/run-m4-pre-verdict.sh"
 grep -q 'check-test-toolchain' "${SCRIPT_DIR}/run-m4-pre-verdict.sh"
-grep -q 'check-partition-coverage' "${SCRIPT_DIR}/run-m4-pre-verdict.sh"
+grep -q 'verify-admission-receipt' "${SCRIPT_DIR}/run-m4-pre-verdict.sh"
 grep -q 'run_feed_gate' "${SCRIPT_DIR}/run-m4-pre-verdict.sh"
 feed_line="$(grep -n 'run_feed_gate check-domain-parity' "${SCRIPT_DIR}/run-m4-pre-verdict.sh" | head -1 | cut -d: -f1)"
 pin_line="$(grep -n 'python3 "${PINNED}"' "${SCRIPT_DIR}/run-m4-pre-verdict.sh" | head -1 | cut -d: -f1)"
@@ -50,7 +50,7 @@ XML
 export M4_CARD_BODY='M4 acceptance; verdict is O1/O2/O3 over the built artefact.'
 
 # dest-8 M4_CARD_SKILLS override is OBJECT (Architect 130758ZA).
-if M4_CARD_SKILLS='check-spec-readiness,assert-retrievable-tree' \
+if M4_CARD_SKILLS='admit-migration-plan,assert-retrievable-tree' \
   bash "${SCRIPT_DIR}/run-m4-pre-verdict.sh" "$TMP"; then
   echo "FAIL: M4_CARD_SKILLS override should refuse" >&2
   exit 1

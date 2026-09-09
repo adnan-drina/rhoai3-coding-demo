@@ -91,7 +91,7 @@ HTTP paths (`@QuarkusTest` `GET /greeting` is boot; `/q/health` is not a
 grounding exception). Security / crud / db are **N/A with inventory evidence**
 when M1 found no auth, mutating `/api/`, or datasource — not idle-in-ACCEPT,
 not invent `/q/health`. Contract
-`.hermes/skills/sdd/check-spec-readiness/references/story-scope-and-exit.md`.
+`.hermes/planning/README.md` (write-set discipline: one writer per path).
 
 ```bash
 # Acceptance operand preflight (probe refuse)

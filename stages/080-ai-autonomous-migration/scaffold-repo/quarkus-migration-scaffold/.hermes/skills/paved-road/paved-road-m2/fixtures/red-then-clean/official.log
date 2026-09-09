@@ -1,0 +1,12 @@
+  ┊ 💻 $         python3 .hermes/skills/planning/admit-migration-plan/scripts/assert-planner-activated.py --root /projects/modernized  0.1s
+  ┊ 📚 skill  bootstrap-destination
+  ┊ 💻 $         python3 .hermes/skills/migration/bootstrap-destination/scripts/bootstrap-destination.py --root /projects/modernized  0.4s
+  ┊ 📚 skill  build-worklist
+  ┊ 💻 $         bash .hermes/skills/planning/build-worklist/scripts/build-worklist.sh --root /projects/modernized  41.0s
+  ┊ 📚 skill  admit-migration-plan
+  ┊ 💻 $         python3 .hermes/skills/planning/admit-migration-plan/scripts/admit-migration-plan.py --root /projects/modernized  0.2s
+  ┊ 💻 $         python3 .hermes/kernel/k4_mint.py --root /projects/modernized --exec  1.2s [exit 1]
+  ┊ 💻 $         python3 .hermes/kernel/k4_mint.py --root /projects/modernized --exec --verify-board  1.2s
+  ┊ 📚 skill  verify-live-kanban-loop
+  ┊ 💻 $         python3 .hermes/skills/planning/verify-live-kanban-loop/scripts/verify-live-kanban-loop.py --root /projects/modernized --live  0.4s
+  ┊ 📋 preparing kanban_request_review…

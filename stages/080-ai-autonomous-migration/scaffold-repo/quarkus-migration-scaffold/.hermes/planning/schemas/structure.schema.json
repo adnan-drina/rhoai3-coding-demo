@@ -1,0 +1,86 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "rhoai3.structure/v1",
+  "title": "JDK-model source-level structural claims (evidence/structure/structure.json)",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["schema", "producer", "source_digest", "mode", "types"],
+  "properties": {
+    "schema": {"const": "rhoai3.structure/v1"},
+    "producer": {
+      "type": "object",
+      "required": ["tool", "version", "mode"],
+      "properties": {
+        "tool": {"type": "string"},
+        "version": {"type": ["string", "null"]},
+        "mode": {"type": "string", "enum": ["full", "partial"]}
+      }
+    },
+    "source_digest": {"type": "string"},
+    "mode": {"type": "string", "enum": ["full", "partial"]},
+    "types": {
+      "type": "array",
+      "items": {"$ref": "#/definitions/type"}
+    }
+  },
+  "definitions": {
+    "annotation": {
+      "type": "object",
+      "required": ["fqn"],
+      "properties": {"fqn": {"type": "string"}, "values": {"type": "object"}}
+    },
+    "member_annotations": {"type": "array", "items": {"$ref": "#/definitions/annotation"}},
+    "param": {
+      "type": "object",
+      "required": ["name", "type"],
+      "properties": {"name": {"type": "string"}, "type": {"type": "string"}, "annotations": {"$ref": "#/definitions/member_annotations"}}
+    },
+    "type": {
+      "type": "object",
+      "required": ["fqn", "path", "kind", "resolution", "annotations", "supertypes", "fields", "constructors", "methods", "type_refs"],
+      "properties": {
+        "fqn": {"type": "string", "minLength": 1},
+        "path": {"type": "string"},
+        "kind": {"type": "string", "enum": ["class", "interface", "enum", "record", "annotation"]},
+        "modifiers": {"type": "array", "items": {"type": "string"}},
+        "resolution": {"type": "string", "enum": ["full", "partial"]},
+        "annotations": {"$ref": "#/definitions/member_annotations"},
+        "supertypes": {"type": "array", "items": {"type": "string"}},
+        "fields": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "type"],
+            "properties": {"name": {"type": "string"}, "type": {"type": "string"}, "annotations": {"$ref": "#/definitions/member_annotations"}}
+          }
+        },
+        "constructors": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["params"],
+            "properties": {"params": {"type": "array", "items": {"$ref": "#/definitions/param"}}, "annotations": {"$ref": "#/definitions/member_annotations"}}
+          }
+        },
+        "methods": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "signature"],
+            "properties": {
+              "name": {"type": "string"},
+              "signature": {"type": "string"},
+              "annotations": {"$ref": "#/definitions/member_annotations"},
+              "params": {"type": "array", "items": {"$ref": "#/definitions/param"}},
+              "returns": {"type": "string"},
+              "type_refs": {"type": "array", "items": {"type": "string"}},
+              "calls": {"type": "array", "items": {"type": "object"}},
+              "resolution": {"type": "string", "enum": ["full", "partial"]}
+            }
+          }
+        },
+        "type_refs": {"type": "array", "items": {"type": "string"}}
+      }
+    }
+  }
+}

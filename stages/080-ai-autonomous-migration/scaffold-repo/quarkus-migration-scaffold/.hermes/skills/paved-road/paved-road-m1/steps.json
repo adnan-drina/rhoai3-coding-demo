@@ -3,27 +3,61 @@
   "artifact": "m1-analyze",
   "steps": [
     {
-      "id": "derive-legacy-boot3",
+      "id": "freeze-migration-input",
       "backing": "skill",
-      "skill": "derive-legacy-boot3"
+      "skill": "freeze-migration-input",
+      "keep": [
+        "evidence/frozen/source-manifest.json",
+        "evidence/producers/freeze.json"
+      ],
+      "note": "The original frozen legacy source is the only baseline. derive-legacy-boot3 is not an M1 step."
+    },
+    {
+      "id": "capture-build-evidence",
+      "backing": "skill",
+      "skill": "capture-build-evidence",
+      "keep": [
+        "evidence/producers/build.json"
+      ]
     },
     {
       "id": "inventory-legacy-surface",
       "backing": "skill",
       "skill": "inventory-legacy-surface",
-      "note": "AR-4.1: emit-findings-handoff.py (inside mta-analyze-legacy.sh) refuses without evidence/entry-point-inventory.json, so this precedes scan-with-mta."
+      "keep": [
+        "evidence/structure/structure.json",
+        "evidence/entry-point-inventory.json",
+        "evidence/type-inventory.json",
+        "evidence/producers/jdk-model.json"
+      ],
+      "note": "JDK-model extractor (javax.lang.model through JavacTask on the pinned toolchain JDK; unpinned or JDK mismatch refuses). Precedes scan-with-mta: the MTA handoff refuses without the inventory (AR-4.1)."
     },
     {
       "id": "scan-with-mta",
       "backing": "skill",
       "skill": "scan-with-mta",
-      "producer": true
+      "keep": [
+        "evidence/mta-findings.json",
+        "evidence/findings-handoff.json",
+        "evidence/required-extensions.json",
+        "evidence/producers/mta.json"
+      ]
+    },
+    {
+      "id": "assemble-evidence-bundle",
+      "backing": "skill",
+      "skill": "assemble-evidence-bundle",
+      "producer": true,
+      "keep": [
+        "evidence/planning/evidence-bundle.json"
+      ]
     },
     {
       "id": "kanban-attach",
       "backing": "native",
       "native": "kanban_attach.py",
       "keep": [
+        "evidence/planning/evidence-bundle.json",
         "evidence/findings-handoff.json",
         "evidence/entry-point-inventory.json",
         "evidence/type-inventory.json",

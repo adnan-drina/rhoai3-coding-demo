@@ -1,0 +1,142 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "decisions.yaml (rhoai3.decisions/v2) \u2014 the only human input to the fix-until-green loop",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "adrs",
+    "destination_platform",
+    "thresholds",
+    "not_applicable"
+  ],
+  "properties": {
+    "schema": {
+      "type": "string",
+      "enum": [
+        "rhoai3.decisions/v2"
+      ]
+    },
+    "adrs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "status"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "proposed",
+              "accepted",
+              "rejected",
+              "superseded"
+            ]
+          },
+          "title": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "destination_platform": {
+      "type": "object",
+      "required": [
+        "id",
+        "adr"
+      ],
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "adr": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "thresholds": {
+      "type": "object",
+      "required": [
+        "max_attempts",
+        "adr"
+      ],
+      "properties": {
+        "max_attempts": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "adr": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "not_applicable": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "item_id",
+          "adr",
+          "reason"
+        ],
+        "properties": {
+          "item_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "adr": {
+            "type": "string",
+            "minLength": 1
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "retired_sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "path",
+          "adr",
+          "reason"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "adr": {
+            "type": "string",
+            "minLength": 1
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  }
+}

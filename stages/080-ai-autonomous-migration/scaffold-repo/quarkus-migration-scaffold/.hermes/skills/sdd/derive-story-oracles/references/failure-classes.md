@@ -47,5 +47,5 @@ That is the overlap K4 refuses.
 
 **Rule:** do not list the same `*Service.java` on two `files_writable` arrays.
 Do not treat a shared facade owned by **one** story as a mint refuse. Inventory
-1:N supersede (coverage + `tasks.md` template) is how a dest_file row is
+1:N supersede (compat-path identity projection) is how a dest_file row is
 retired — not this code.

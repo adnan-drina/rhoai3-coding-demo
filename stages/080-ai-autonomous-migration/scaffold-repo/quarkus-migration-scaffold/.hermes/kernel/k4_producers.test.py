@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-"""Operator 143706ZO: dest-8 six cards are the producer-bar fixture.
-
-REFUSE M2 and M4. Pass M1, T001, T002, STAMP. A check that PASSes all
-six has not implemented the invariant. Not dest.
-"""
+"""Producer bar: dest-8 six cards REFUSE M2 and M4; increment kinds pass with their defaults."""
 from __future__ import annotations
 
 import json
@@ -13,15 +9,7 @@ from pathlib import Path
 
 KERNEL = Path(__file__).resolve().parent
 sys.path.insert(0, str(KERNEL))
-from k4_producers import (  # noqa: E402
-    DEST8_FIXTURE,
-    KIND_DEFAULTS,
-    PRODUCERS,
-    card_from_payload,
-    check_cards,
-    load_cards,
-    producer_issues,
-)
+from k4_producers import DEST8_FIXTURE, KIND_DEFAULTS, PRODUCERS, card_from_payload, check_cards, load_cards, producer_issues  # noqa: E402
 
 SCRIPT = KERNEL / "k4_producers.py"
 
@@ -34,122 +22,39 @@ def _fail(msg: str) -> int:
 def main() -> int:
     cards = load_cards(DEST8_FIXTURE)
     lids = [c["logical_id"] for c in cards]
-    expect = ["M1", "M2", "T001", "T002", "STAMP_DESTINATION_TREE", "M4"]
-    if lids != expect:
-        return _fail("dest-8 fixture order %s != %s" % (lids, expect))
-
+    if lids != ["M1", "M2", "T001", "T002", "STAMP_DESTINATION_TREE", "M4"]:
+        return _fail("dest-8 fixture order %s" % lids)
     rows = check_cards(cards)
     refused = {lid for lid, issues in rows if issues}
-    passed = {lid for lid, issues in rows if not issues}
     if refused != {"M2", "M4"}:
         return _fail("dest-8 must REFUSE only M2+M4, got %s" % refused)
-    if passed != {"M1", "T001", "T002", "STAMP_DESTINATION_TREE"}:
-        return _fail("dest-8 must PASS M1/T001/T002/STAMP, got %s" % passed)
-    if not refused:
-        return _fail("a check that PASSes all six has not implemented the bar")
-
-    proc = subprocess.run(
-        [sys.executable, str(SCRIPT), "--cards", str(DEST8_FIXTURE)],
-        text=True,
-        capture_output=True,
-    )
-    blob = proc.stdout + proc.stderr
-    if proc.returncode != 1:
-        return _fail("dest-8 CLI must exit 1, got %s: %s" % (proc.returncode, blob))
-    if "REFUSE M2" not in blob or "REFUSE M4" not in blob:
-        return _fail("dest-8 CLI must name REFUSE M2 and M4: %s" % blob)
-    if "K4_NO_PRODUCER" not in blob:
-        return _fail("dest-8 CLI must name K4_NO_PRODUCER: %s" % blob)
-
-    reminted_m2 = {
-        "logical_id": "M2",
-        "phase": "M2",
-        "skills": ["plan-migration-partition", "check-spec-readiness"],
-        "files_writable": ["evidence/partition.json"],
-    }
-    if producer_issues(reminted_m2):
-        return _fail("M2 pinning plan-migration-partition must PASS")
-
-    reminted_m4 = {
-        "logical_id": "M4",
-        "phase": "M4",
-        "skills": [
-            "compose-m4-verdict",
-            "check-release-readiness",
-            "check-domain-parity",
-        ],
-        "files_writable": ["evidence/verdicts/m4-verdict.json"],
-    }
-    if producer_issues(reminted_m4):
+    proc = subprocess.run([sys.executable, str(SCRIPT), "--cards", str(DEST8_FIXTURE)], text=True, capture_output=True)
+    if proc.returncode != 1 or "REFUSE M2" not in proc.stderr or "REFUSE M4" not in proc.stderr or "K4_NO_PRODUCER" not in proc.stderr:
+        return _fail("dest-8 CLI: %s" % proc.stderr)
+    if producer_issues({"logical_id": "M2", "phase": "M2", "skills": ["bootstrap-destination", "build-worklist", "admit-migration-plan"], "files_writable": ["evidence/planning/admission-receipt.json"]}):
+        return _fail("M2 pinning the planner producers must PASS")
+    if producer_issues({"logical_id": "M4_VERIFY", "phase": "M4", "kind": "close", "skills": ["compose-m4-verdict", "capture-source-oracles"], "files_writable": ["evidence/verdicts/"]}):
         return _fail("M4 pinning compose-m4-verdict must PASS")
-
-    checkers_only = {
-        "logical_id": "US1",
-        "phase": "M3",
-        "skills": ["check-spec-readiness"],
-        "files_writable": ["src/main/java/com/demo/A.java"],
-    }
-    issues = producer_issues(checkers_only)
-    if not issues or issues[0][0] != "K4_NO_PRODUCER":
-        return _fail("checker-only M3 must K4_NO_PRODUCER: %s" % issues)
-
-    payload = {
-        "logical_id": "US1",
-        "skills": ["spring-to-quarkus-patterns"],
-        "body": json.dumps(
-            {
-                "phase": "M3",
-                "files_writable": ["src/main/java/com/demo/A.java"],
-            }
-        ),
-    }
-    if producer_issues(card_from_payload(payload)):
-        return _fail("K4 US payload with spring-to-quarkus-patterns must PASS")
-
-    db_card = {
-        "logical_id": "PROVISION_DATABASE",
-        "phase": "M3",
-        "skills": ["form-entity-persistence"],
-        "files_writable": ["k8s/postgres.yaml", "k8s/app.yaml"],
-    }
-    if producer_issues(db_card):
-        return _fail("k8s-only form-entity-persistence must PASS dest-k8s")
-    if "form-entity-persistence" not in PRODUCERS:
-        return _fail("catalog must name form-entity-persistence")
-
-    if "compose-m4-verdict" not in PRODUCERS:
-        return _fail("catalog must name compose-m4-verdict")
-    if "plan-migration-partition" not in PRODUCERS:
-        return _fail("catalog must name plan-migration-partition")
-    if "check-release-readiness" in PRODUCERS or "check-spec-readiness" in PRODUCERS:
-        return _fail("checkers must not be catalog producers")
-    if "spring-to-quarkus-patterns" not in KIND_DEFAULTS.get("polish", []):
-        return _fail("polish KIND_DEFAULTS must include spring-to-quarkus-patterns")
+    if not producer_issues({"logical_id": "c:x", "phase": "M3", "kind": "compile", "skills": ["fix-until-green"], "files_writable": ["src/main/java/com/demo/A.java"]}):
+        return _fail("the common procedure alone is not a producer")
     for kind, skills in KIND_DEFAULTS.items():
-        for skill in skills:
-            if skill not in PRODUCERS:
-                return _fail("KIND_DEFAULTS %s/%s missing from PRODUCERS" % (kind, skill))
-    polish_java = {
-        "logical_id": "polish",
-        "phase": "M3",
-        "skills": list(KIND_DEFAULTS["polish"]),
-        "files_writable": ["src/test/java/com/demo/HealthTest.java"],
-    }
-    if producer_issues(polish_java):
-        return _fail("polish KIND_DEFAULTS must produce dest-java HealthTest")
-
-    named = KERNEL / "assert-skill-scripts-named.py"
-    proc = subprocess.run(
-        [sys.executable, str(named)],
-        text=True,
-        capture_output=True,
-    )
-    if proc.returncode != 0:
-        return _fail(
-            "unreferenced-script bar: %s%s" % (proc.stdout, proc.stderr)
-        )
-
-    print("OK: dest-8 producer bar REFUSE M2+M4; remint pins PASS")
+        fw = {"build": ["pom.xml"], "config": ["src/main/resources/application.properties"], "compile": ["src/main/java/com/demo/A.java"], "incident": ["src/main/java/com/demo/A.java"], "test": ["src/main/java/com/demo/A.java"], "parity": ["src/main/java/com/demo/A.java"], "close": ["evidence/verdicts/"]}[kind]
+        card = {"logical_id": "n", "phase": "M4" if kind == "close" else "M3", "kind": kind, "skills": list(skills), "files_writable": fw}
+        if producer_issues(card):
+            return _fail("KIND_DEFAULTS %s must satisfy the producer bar: %s" % (kind, producer_issues(card)))
+        for s in skills:
+            if s != "fix-until-green" and s != "capture-source-oracles" and s not in PRODUCERS and s not in ("check-release-readiness", "check-domain-parity"):
+                return _fail("KIND_DEFAULTS %s/%s not in PRODUCERS" % (kind, s))
+    payload = {"logical_id": "c:y", "kind": "compile", "skills": ["spring-to-quarkus-patterns", "fix-until-green"], "body": json.dumps({"phase": "M3", "files_writable": ["src/main/java/com/demo/A.java"]})}
+    if producer_issues(card_from_payload(payload)):
+        return _fail("cluster payload must PASS")
+    for checker in ("check-release-readiness", "verify-live-kanban-loop", "fix-until-green", "admit-migration-plan-checker"):
+        if checker in PRODUCERS and checker != "admit-migration-plan":
+            return _fail("checker %s must not be a producer" % checker)
+    named = subprocess.run([sys.executable, str(KERNEL / "assert-skill-scripts-named.py")], text=True, capture_output=True)
+    if named.returncode != 0:
+        return _fail("unreferenced-script bar: %s%s" % (named.stdout, named.stderr))
+    print("OK: producer bar (dest-8 REFUSE M2+M4; kind defaults PASS; common procedure is not a producer)")
     return 0
 
 

@@ -141,7 +141,7 @@ python3 "${HERMES_SKILL_DIR}/scripts/check-test-toolchain.py" /projects/moderniz
 ```
 
 Contracts: this skill (M4/M5 verdict routing; no `governance/` folder),
-`.hermes/skills/sdd/check-spec-readiness/references/story-scope-and-exit.md`,
+`.hermes/planning/README.md` (write-set discipline),
 `.hermes/skills/migration/manage-quarkus-extensions/references/test-toolchain.md`.
 
 Domain-gate oracles (G-1…G-4) remain authoritative; this skill does not replace them.

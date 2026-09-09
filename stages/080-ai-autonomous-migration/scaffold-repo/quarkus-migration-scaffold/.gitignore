@@ -1,6 +1,16 @@
-# Spec Kit workspace tree (AD-S) — created at provision by skill
-# init-spec-workspace; never commit into the golden scaffold.
+# Spec Kit is removed from Stage 080. Keep the ignore as defense in depth
+# so a stray local `specify init` can never land in the golden.
 .specify/
+
+# Planner producer output (M1/M2 regenerate in the workspace; the admission
+# receipt seals the digests, the files themselves are workspace evidence).
+.derived/
+evidence/frozen/
+evidence/producers/
+evidence/build/
+evidence/structure/
+evidence/planning/
+verification/
 
 # Admission fixture run output (UPLIFT-7 — never tip-commit)
 evidence/fixtures/admission/out/

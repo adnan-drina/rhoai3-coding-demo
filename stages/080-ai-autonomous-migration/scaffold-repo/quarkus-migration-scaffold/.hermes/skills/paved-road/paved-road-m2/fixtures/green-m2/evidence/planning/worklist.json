@@ -1,0 +1,14 @@
+{
+  "fixture": true,
+  "head": "c:fixture",
+  "measure": {
+    "known": true,
+    "tuple": [
+      3,
+      2,
+      0,
+      0
+    ]
+  },
+  "schema": "rhoai3.worklist/v1"
+}

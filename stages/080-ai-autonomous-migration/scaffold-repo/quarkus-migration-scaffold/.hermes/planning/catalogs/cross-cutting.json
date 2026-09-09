@@ -1,0 +1,48 @@
+{
+  "schema": "rhoai3.catalog.cross-cutting/v1",
+  "note": "Cross-cutting types are classified by reach and scope (SAD §5.2). reach=application-wide → platform foundation unless a scope attribute or the type's own references bind it to exactly one capability. reach=by-references → owning capability when all referenced application types belong to one capability, otherwise platform foundation.",
+  "annotations": {
+    "org.springframework.boot.autoconfigure.SpringBootApplication": {"reach": "application-wide", "scope_attributes": []},
+    "org.springframework.context.annotation.Configuration": {"reach": "by-references", "scope_attributes": []},
+    "org.springframework.web.bind.annotation.ControllerAdvice": {"reach": "application-wide", "scope_attributes": ["basePackages", "basePackageClasses", "assignableTypes", "annotations"]},
+    "org.springframework.web.bind.annotation.RestControllerAdvice": {"reach": "application-wide", "scope_attributes": ["basePackages", "basePackageClasses", "assignableTypes", "annotations"]},
+    "org.aspectj.lang.annotation.Aspect": {"reach": "by-references", "scope_attributes": []},
+    "org.springframework.security.config.annotation.web.configuration.EnableWebSecurity": {"reach": "application-wide", "scope_attributes": []},
+    "org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity": {"reach": "application-wide", "scope_attributes": []},
+    "org.springframework.scheduling.annotation.EnableScheduling": {"reach": "application-wide", "scope_attributes": []},
+    "org.springframework.context.annotation.ComponentScan": {"reach": "application-wide", "scope_attributes": ["basePackages", "basePackageClasses"]},
+    "jakarta.ws.rs.ext.Provider": {"reach": "application-wide", "scope_attributes": []},
+    "javax.ws.rs.ext.Provider": {"reach": "application-wide", "scope_attributes": []},
+    "jakarta.ws.rs.ApplicationPath": {"reach": "application-wide", "scope_attributes": []},
+    "javax.ws.rs.ApplicationPath": {"reach": "application-wide", "scope_attributes": []},
+    "jakarta.servlet.annotation.WebFilter": {"reach": "application-wide", "scope_attributes": ["urlPatterns", "value"]},
+    "javax.servlet.annotation.WebFilter": {"reach": "application-wide", "scope_attributes": ["urlPatterns", "value"]}
+  },
+  "supertypes": {
+    "org.springframework.web.servlet.config.annotation.WebMvcConfigurer": {"reach": "application-wide"},
+    "org.springframework.web.servlet.HandlerInterceptor": {"reach": "by-references"},
+    "jakarta.servlet.Filter": {"reach": "application-wide"},
+    "javax.servlet.Filter": {"reach": "application-wide"},
+    "org.springframework.web.filter.OncePerRequestFilter": {"reach": "application-wide"},
+    "org.springframework.core.convert.converter.Converter": {"reach": "by-references"},
+    "jakarta.ws.rs.core.Application": {"reach": "application-wide"},
+    "javax.ws.rs.core.Application": {"reach": "application-wide"},
+    "jakarta.ws.rs.ext.ExceptionMapper": {"reach": "by-references"},
+    "javax.ws.rs.ext.ExceptionMapper": {"reach": "by-references"},
+    "org.springframework.security.core.userdetails.UserDetailsService": {"reach": "application-wide"}
+  },
+  "global_resources": [
+    "src/main/resources/application.properties",
+    "src/main/resources/application.yml",
+    "src/main/resources/application.yaml",
+    "src/main/resources/bootstrap.properties",
+    "src/main/resources/bootstrap.yml",
+    "src/main/resources/logback.xml",
+    "src/main/resources/logback-spring.xml",
+    "src/main/resources/log4j2.xml",
+    "src/main/resources/META-INF/",
+    "src/main/resources/application-"
+  ],
+  "build_files": ["pom.xml", "build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts", "gradle.properties", ".mvn/", "mvnw", "mvnw.cmd", "gradlew"],
+  "integration_paths": ["k8s/", "src/main/docker/", "Dockerfile", "Containerfile", "src/main/resources/db/", "src/main/resources/import.sql", "src/main/resources/schema.sql", "src/main/resources/data.sql"]
+}

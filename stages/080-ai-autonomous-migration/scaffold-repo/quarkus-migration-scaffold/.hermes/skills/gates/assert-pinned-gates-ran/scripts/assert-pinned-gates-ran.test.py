@@ -56,7 +56,7 @@ class PinnedGatesTests(unittest.TestCase):
             proc = run_pinned(
                 root,
                 ["--skills", "check-domain-parity"],
-                env={"M4_CARD_SKILLS": "check-spec-readiness,assert-retrievable-tree"},
+                env={"M4_CARD_SKILLS": "admit-migration-plan,assert-retrievable-tree"},
             )
             self.assertNotEqual(proc.returncode, 0, proc.stderr)
             self.assertIn("M4_CARD_SKILLS override is OBJECT", proc.stderr)
@@ -289,20 +289,20 @@ class PinnedGateWritersTests(unittest.TestCase):
             / "scripts"
             / "check-test-toolchain.py"
         ).read_text(encoding="utf-8")
-        spec_cov = (
+        admit = (
             self.GATES.parent
-            / "sdd"
-            / "check-spec-readiness"
+            / "planning"
+            / "admit-migration-plan"
             / "scripts"
-            / "check-partition-coverage.py"
+            / "verify-admission-receipt.py"
         ).read_text(encoding="utf-8")
         pre = self.PRE.read_text(encoding="utf-8")
         self.assertIn("--write-receipt", domain)
         self.assertIn("check-domain-parity", domain)
         self.assertIn("--write-receipt", release)
         self.assertIn("check-release-readiness", release)
-        self.assertIn("--write-receipt", spec_cov)
-        self.assertIn("check-spec-readiness", spec_cov)
+        self.assertIn("--root", admit)
+        self.assertIn("verify_receipt", admit)
         self.assertIn("run_gate assert-retrievable-tree", pre)
         self.assertIn("write_self_verdict", spec.read_text(encoding="utf-8"))
 

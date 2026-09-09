@@ -22,10 +22,11 @@ interchangeable.
 |---|---|---|
 | Base `HERMES_HOME` | `/projects/modernized/.hermes/home` | dest-init, dest-user CLI |
 | Profile `HERMES_HOME` | `…/home/profiles/<name>` | `hermes -p <name>` / kanban spawn |
-| OS `HOME` | dest-user `/home/user` at postStart; `{HERMES_HOME}/home` in a profile worker | `Path.home()`, spec-kit, host CLIs |
+| OS `HOME` | dest-user `/home/user` at postStart; `{HERMES_HOME}/home` in a profile worker | `Path.home()`, host CLIs |
 
-Spec-kit still dumps under dest-user `/home/user/.hermes/skills`
-(spec-kit#3334 ignores `$HERMES_HOME`).
+Spec Kit is removed from Stage 080 (no compatibility path). Do not restore a
+`specify` PATH shim. dest-user `/home/user/.hermes/skills` remains a
+skills **read** root after `HERMES_HOME` relocation.
 
 ## Three questions (Operator `112106ZO`, AMEND `122315ZO`)
 
@@ -39,12 +40,8 @@ Spec-kit still dumps under dest-user `/home/user/.hermes/skills`
    `/home/user/.hermes/skills` plus project `.hermes/skills`
    (`external-dirs-home-contract.md`). Not a required per-profile skills
    dir. Checker uses that literal / `human_home()`, not `Path.home()`.
-   **Specify at run:** worker `Path.home()` is the profile home (0 speckit
-   skills). dest-init installs a `specify` PATH shim that sets `HOME` to
-   the project **for that child only** so `specify workflow run speckit`
-   resolves `speckit-specify` without collapsing the three homes
-   (Operator `091320ZO`). Do not tell workers to prefix `HOME=` — dest-6
-   and dest-7 showed they will not.
+   Do not tell workers to prefix `HOME=` — dest-6 and dest-7 showed they
+   will not.
 3. **Python `human_home()`:** **yes.** Same contract as
    `mta-analyze-legacy.sh` (`getent passwd` OS account, not `$HOME`).
    Land in dest `.hermes/lib/` beside `path_maps.py`. KEEP gates that

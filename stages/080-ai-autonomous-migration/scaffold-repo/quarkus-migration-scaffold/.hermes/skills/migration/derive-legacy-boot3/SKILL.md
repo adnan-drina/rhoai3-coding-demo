@@ -1,11 +1,11 @@
 ---
 name: derive-legacy-boot3
-description: Before M1 on a Boot 2.x legacy mount — freezes a derived legacy@3.x tree and stamps the harvest_referent manifest
+description: Optional execution-side Boot 2.x→3.x derivation of a legacy mount into a derived tree with a stamped manifest. Not an M1 input — M1 plans from the original frozen legacy source (freeze-migration-input); never run this before or during M1
 license: Apache-2.0
 compatibility: Linux seat; Java 21 and Maven; writable derived tree
 metadata:
   author: rhoai3-harness-team
-  version: "1.2.2"
+  version: "2.0.0"
   hermes:
     tags:
     - migration
@@ -13,12 +13,20 @@ metadata:
     category: migration
     kind: guidance
 ---
-# Boot 2→3 derivation (before M1)
+# Boot 2→3 derivation (execution-side, optional)
+
+**Not an M1 step.** M1 freezes and analyses the original legacy source
+(`freeze-migration-input`); the planner, MTA and the evidence bundle never
+read a derived tree. Loading this skill inside M1 or M2 is a paved-road
+audit failure (`kind-not-yet`). It is reserved for an admitted increment
+whose ADR-backed transformation in `decisions.yaml` names a Boot 3
+intermediate as an execution aid.
 
 ## When to Use
 
-- Before M1 ANALYZE, when `evidence/derived/legacy-at-3.json` is missing or
-  `check-manifest.sh` fails (empty required field, schema ≠ `legacy-at-3/v2`,
+- Inside an admitted M3 increment that names this transformation, when
+  `evidence/derived/legacy-at-3.json` is missing or `check-manifest.sh`
+  fails (empty required field, schema ≠ `legacy-at-3/v2`,
   `harvest_referent` not a directory).
 - After a wipe of `/projects/modernized/.derived/legacy-at-3` — the manifest then names a
   tree that no longer exists; re-derive, never repoint at the 2.x mount.

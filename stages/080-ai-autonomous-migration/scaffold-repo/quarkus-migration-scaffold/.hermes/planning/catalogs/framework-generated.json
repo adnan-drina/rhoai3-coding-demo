@@ -1,0 +1,26 @@
+{
+  "schema": "rhoai3.catalog.framework-generated/v1",
+  "note": "Sources of compiler-visible members that source extraction (JDK model) cannot see. jQAssistant facts explained by one of these are enrichment, never a STRUCTURAL_DIVERGENCE (SAD §5.1).",
+  "annotations": {
+    "lombok.Data": ["getter", "setter", "equals", "hashCode", "toString", "constructor"],
+    "lombok.Value": ["getter", "equals", "hashCode", "toString", "constructor"],
+    "lombok.Getter": ["getter"],
+    "lombok.Setter": ["setter"],
+    "lombok.Builder": ["builder", "constructor"],
+    "lombok.NoArgsConstructor": ["constructor"],
+    "lombok.AllArgsConstructor": ["constructor"],
+    "lombok.RequiredArgsConstructor": ["constructor"],
+    "lombok.ToString": ["toString"],
+    "lombok.EqualsAndHashCode": ["equals", "hashCode"],
+    "lombok.extern.slf4j.Slf4j": ["field:log"],
+    "lombok.extern.log4j.Log4j2": ["field:log"],
+    "lombok.Slf4j": ["field:log"],
+    "org.mapstruct.Mapper": ["implementation-class"],
+    "jakarta.annotation.Generated": ["whole-type"],
+    "javax.annotation.Generated": ["whole-type"],
+    "javax.annotation.processing.Generated": ["whole-type"]
+  },
+  "generated_source_roots": ["target/generated-sources/", "build/generated/"],
+  "generator_plugins": ["openapi-generator-maven-plugin", "swagger-codegen-maven-plugin", "jaxb2-maven-plugin", "protobuf-maven-plugin", "querydsl-apt", "hibernate-jpamodelgen"],
+  "synthetic_members": ["values", "valueOf", "<init>", "<clinit>", "lambda$", "$deserializeLambda$", "access$"]
+}

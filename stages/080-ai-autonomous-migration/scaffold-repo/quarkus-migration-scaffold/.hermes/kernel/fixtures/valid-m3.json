@@ -1,5 +1,5 @@
 {
-  "task_id": "US-owner-list",
+  "task_id": "c:3f2a9c1d0b7e",
   "role": "implementer",
   "phase": "M3",
   "refs": [
@@ -9,25 +9,68 @@
       "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     },
     {
-      "key": "brief_identity_ack",
-      "path": "evidence/brief.md",
-      "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-    },
-    {
-      "key": "legacy_locus",
-      "path": "evidence/locus.json",
-      "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      "key": "worklist",
+      "path": "evidence/planning/worklist.json",
+      "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
     }
   ],
   "identity": {
-    "story_id": "US-owner-list",
-    "transform_class": "REWRITE",
-    "g2_applicability": "required"
+    "increment_id": "c:3f2a9c1d0b7e",
+    "increment_kind": "compile",
+    "path": "src/main/java/org/acme/clinic/owner/OwnerController.java",
+    "attempt": 1
   },
-  "files_in_scope": ["src/main/java/org/acme/OwnerResource.java"],
-  "files_writable": ["src/main/java/org/acme/OwnerResource.java"],
+  "receipt_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+  "worklist_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+  "increment_id": "c:3f2a9c1d0b7e",
+  "increment_kind": "compile",
+  "attempt": 1,
+  "write_set": [
+    {
+      "path": "src/main/java/org/acme/clinic/owner/OwnerController.java",
+      "source_path": "src/main/java/org/acme/clinic/owner/OwnerController.java",
+      "source_sha256": ""
+    }
+  ],
+  "item_ids": [
+    "err:0123456789abcdef",
+    "inc:springboot-web-to-quarkus-00001:0123456789abcdef"
+  ],
+  "artifacts": [
+    {
+      "key": "evidence-bundle",
+      "path": "evidence/planning/evidence-bundle.json",
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "key": "worklist",
+      "path": "evidence/planning/worklist.json",
+      "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+    },
+    {
+      "key": "admission-receipt",
+      "path": "evidence/planning/admission-receipt.json",
+      "sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    }
+  ],
+  "files_in_scope": [
+    "src/main/java/org/acme/clinic/owner/OwnerController.java"
+  ],
+  "files_writable": [
+    "src/main/java/org/acme/clinic/owner/OwnerController.java"
+  ],
   "exit_criteria": [
-    {"check": "skills", "assert": "consult each preload or typed skills_unused; silence invalid AD-002E"},
-    {"check": "compile", "cmd": "mvn -q compile"}
+    {
+      "check": "skills",
+      "assert": "consult each pinned skill; unused pins are legal (skills_unused); a false consult is a defect"
+    },
+    {
+      "check": "verify",
+      "cmd": "bash .hermes/skills/migration/fix-until-green/scripts/run-verify.sh --root ."
+    },
+    {
+      "check": "advance",
+      "cmd": "python3 .hermes/skills/migration/fix-until-green/scripts/advance.py --root . --cluster c:3f2a9c1d0b7e --card $HERMES_KANBAN_TASK"
+    }
   ]
 }

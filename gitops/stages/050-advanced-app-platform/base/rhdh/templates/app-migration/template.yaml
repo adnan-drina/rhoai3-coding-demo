@@ -65,11 +65,14 @@ spec:
             Cloned into the workspace only — never published or cataloged.
           pattern: "^https://.+"
         autoStartMigration:
-          title: Auto-start migration (M1+M2)
+          title: Auto-start migration (M1 ANALYZE)
           type: boolean
           default: true
           description: |
-            When on (demo default), dest-init mints M1 ANALYZE and M2 PLAN.
+            When on (demo default), dest-init mints M1 ANALYZE, and M2 PLAN
+            (child of M1) only when the scaffold's .hermes/pins.json
+            pins.planner.activation is "activated" (Operator GO after the
+            planner activation gate). Never M3/M4 at dest-init.
             Turn off to inspect the workspace before agents touch it.
 
   steps:

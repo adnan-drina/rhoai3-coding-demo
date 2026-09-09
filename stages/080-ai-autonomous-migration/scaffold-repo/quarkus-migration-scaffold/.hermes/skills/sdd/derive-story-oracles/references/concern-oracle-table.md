@@ -18,7 +18,7 @@ Closed check names: `SEMANTIC_EXIT_VOCAB` in
 `.hermes/lib/specimen_agnostic.py`.
 Class allow-lists: `OPERAND_CLASS_SEMANTIC_EXITS` in the same module.
 
-KEEP `check-semantic-exits.py` / `check-surgical-scopes.py` police
+KEEP `check-semantic-exits.py` (surgical-scope linter retired with Spec Kit) police
 `exit_criteria[].cmd` shape. The parked evaluator
 `.hermes/_park/requeue/evaluate-exit-criteria.py` is **retired** (Operator
 GO `155455Z`); rebuild later on dest GO, never dump into kernel.

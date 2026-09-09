@@ -4,15 +4,15 @@ The previous stages built the AI maturity ladder one rung at a time, and both st
 
 Legacy applications are not just expensive to maintain. They are an expanding attack surface. AI-powered exploit tools lower the cost of finding and weaponizing vulnerabilities in outdated frameworks, and regulations are catching up: the EU Cyber Resilience Act makes vendors accountable for the security posture of every product they ship, including the libraries and runtimes underneath it. The migration backlog is no longer a cost problem alone; it is a compliance and security deadline that most teams cannot meet with manual effort.
 
-This demo stage answers with two complementary paths on the same governed platform: assisted modernization through Migration Toolkit for Applications turning a legacy codebase into an inventory of concrete, prioritized migration issues, and autonomous migration where an agent harness takes a legacy service end-to-end to Quarkus with analysis-grounded planning, spec generation, self-evaluation loops, and a trusted software supply chain pipeline that enforces quality and security before anything merges.
+This demo stage answers with two complementary paths on the same governed platform: assisted modernization through Migration Toolkit for Applications turning a legacy codebase into an inventory of concrete, prioritized migration issues, and autonomous migration where an agent harness takes a legacy service end-to-end to Quarkus with evidence-grounded mechanical decomposition, bounded implementation loops, and a trusted software supply chain pipeline that enforces quality and security before anything merges.
 
 Application domain experts remain essential. Agents handle the volume (hundreds of files, thousands of import rewrites, test scaffolding), but domain experts define what correct migration means: which business behaviors must be preserved, which integration contracts matter, where the analysis findings are real issues versus acceptable deviations. The harness encodes their judgment as guides and sensors; they improve those assets after each run rather than reviewing every line the agent writes.
 
 ## What You'll Do
 
-**Demo spine (Acts A–E):** provision a governed migration workspace → establish MTA ground truth → plan with Spec Kit (never `/speckit.implement`) → **watch Hermes Kanban before dispatch** → audit with `list` / `show` / `runs` + verdict JSON. That is what you observe in the room.
+**Historically demonstrated demo spine (Acts A–E):** provision a governed migration workspace → establish MTA migration evidence → **watch Hermes Kanban before dispatch** → audit with `list` / `show` / `runs` + verdict JSON. Spec Kit is **removed**. Migration is one mechanical loop (SAD v3, fix-until-green): tools compute a work list (MTA incidents, compiler diagnostics, failing tests, parity), the model fixes one file cluster per card, and a strict progress measure accepts or reverts each step. It is implemented and locally fixture-tested (acceptance is a transaction over a verified candidate; every measurement records whether its tool ran) but gated: until `pins.planner.activation` is flipped by an Operator GO, dest-init mints **M1 ANALYZE only** and M2 refuses. Real toolchain execution, autonomous migration, and runtime parity are unproven; M2 is not demonstrated.
 
-Implementation architecture (design, M1–M5, governance, v1 dest vs v2 target) lives in [SOLUTION-ARCHITECTURE.md](SOLUTION-ARCHITECTURE.md). This README is the demo walkthrough. Do not copy either file into `scaffold-repo/`. Agents: consume and contribute using the SAD [§10](SOLUTION-ARCHITECTURE.md#10-how-agents-consume-and-contribute). Full M5 factory ship is **not** claimed DEMONSTRATED for the Owner/Pet slice yet.
+Implementation architecture (design, M1–M5, governance, current implementation vs target) lives in [SOLUTION-ARCHITECTURE.md](SOLUTION-ARCHITECTURE.md). This README is the demo walkthrough. Do not copy either file into `scaffold-repo/`. Agents: consume and contribute using the SAD [§14](SOLUTION-ARCHITECTURE.md#14-documentation-and-contribution-boundaries). Full M5 factory ship is **not** claimed DEMONSTRATED for the Owner/Pet slice yet.
 
 ---
 
@@ -51,7 +51,7 @@ Before any agent writes a line, the supported product establishes the facts.
 4. Click **Manage Profiles**. The legacy repository ships its own analysis profiles in `.konveyor/profiles/`; select `quarkus-profile` (Quarkus migration targets).
 5. Back in the Analysis View, click **Run Analysis**. The first run downloads rulesets and scans the whole legacy tree (several minutes for a monolith; later runs are much faster as everything caches in the workspace).
 6. Review the findings: the issue tree in the MTA panel, plus inline diagnostics directly in `legacy/` source files. Every finding is anchored to a rule, file, and line, with mandatory issues and effort estimates. Each run is also saved as machine-readable JSON at `legacy/.vscode/mta-core/analysis_<timestamp>.json` (the IDE path; the harness uses `migration/mta-findings.json` instead).
-7. Keep the findings open. From this point on, the analysis is the **checklist the agentic result must satisfy**: the migration is done when the findings are resolved, not when the agent says so.
+7. Keep the findings open. From this point on, the analysis is the **obligation checklist the agentic result must satisfy**. Completion additionally requires source-recorded runtime parity; neither a lower finding count nor the agent's claim is sufficient.
 
 > **Expected panel state:** two informational cards are normal: *"GenAI
 > functionality is disabled"* and *"Hub Configuration: No features
@@ -75,7 +75,7 @@ Before any agent writes a line, the supported product establishes the facts.
 > **Harness analysis path:** M1 uses the `mta-analysis` skill / `mta-cli`
 > (kantra) and writes `migration/mta-findings.json` (plus session artifacts
 > under `migration/`). The IDE panel above is for *human* exploration; the
-> harness reads `migration/mta-findings.json` as ground truth. Both paths
+> harness reads `migration/mta-findings.json` as migration-obligation evidence. Both paths
 > use the same rulesets and targets from `migration.yaml`.
 
 ---
@@ -90,23 +90,32 @@ Architect demo-surface decide; Deputy docs-only Stage-1 exception
 | Act | Job | What you look at |
 |-----|-----|------------------|
 | **A** Arrive | Self-service workspace | RHDH → Dev Spaces; `/projects/legacy` (RO) beside `/projects/modernized` |
-| **B** Ground truth | MTA checklist | Prefer `migration/mta-findings.json` (harness authority); IDE panel optional *human* exploration |
-| **C** Plan without implementing | Spec Kit → Kanban | `/speckit.specify` → plan → tasks → K4 convert → `k4_mint.py` (`hermes kanban create`) — **never** `/speckit.implement` |
+| **B** Grounded obligations | MTA checklist | Prefer `migration/mta-findings.json` (harness authority); IDE panel optional *human* exploration |
+| **C** Plan without implementing | The work list (gated) | The plan is the tool-computed work list after a deterministic bootstrap; `decisions.yaml` is the only human input. On golden the activation pin is `not-activated`, so dest-init mints M1 ANALYZE only and M2 refuses at its first step. |
 | **D** Watch the migration | Hermes Kanban | Pane A: `hermes kanban watch` **before** dispatch · Pane B: `dispatch` |
 | **E** Audit close | Snapshots + verdicts | `list` / `show` / `runs <task_id>` + `migration/verdicts/*.json` — not more watching |
 
 **Forbidden:** `outer-loop.sh`, `supervisor.sh`, `tail -f outer-loop.log`, starting
 `watch` only after the run, inventing a sixth log surface.
 
-### Act C — Plan (brief → Spec Kit → Kanban)
+### Act C — Plan (deterministic planner, activation-gated)
 
-```bash
-cd /projects/modernized
-hermes chat -q "Read migration/briefs/<brief>.md. Run /speckit.specify then /speckit.plan then /speckit.tasks. Stop. Never /speckit.implement. Create Kanban cards from tasks.md with workspace dir:/projects/modernized."
-```
+Planning is not an AI activity. M2 runs `bootstrap-destination` (a
+deterministic Spring-compatibility baseline from a versioned mapping
+catalog), `build-worklist` (JDK compiler diagnostics, tests, and the MTA
+rescan clustered by file in a fixed order) and `admit-migration-plan`.
+There is no ownership map and no capability graph: the work list is the
+plan, and it is recomputed by tools after every accepted step. A missing
+decision is an admission BLOCK, never an inference.
 
-**What you should see:** `specs/.../{spec,plan,tasks}.md` and ready/todo cards on
-`hermes kanban list`.
+On this revision the activation pin is `not-activated`: dest-init mints
+**M1 ANALYZE** only and a hand-minted M2 refuses at
+`assert-planner-activated.py`. Stop after M1 and label M2 **not
+demonstrated**; do not improvise cards from prose.
+
+**Target result:** frozen evidence → deterministic bootstrap → work list →
+admission → one loop card at a time → M4 runtime parity. See the
+[solution architecture](SOLUTION-ARCHITECTURE.md#1-executive-decision).
 
 ### Act D — Watch (Track B replacement)
 
@@ -221,15 +230,15 @@ actually shipped.
 
 ### What you proved
 
-- **Analysis grounds autonomy:** MTA's findings, not the agent's self-assessment, defined done.
+- **Analysis grounds autonomy:** MTA findings define known migration obligations; source-recorded runtime behavior defines semantic completion.
 - **The harness regulates quality:** guides steered generation, sensors caught and fed back failures, and the agent iterated to green before a human ever looked.
-- **Determinism where possible, inference where needed:** mechanical transforms ride skills and typed bodies; judgement-heavy work stays on Spec Kit + implementer cards under Hermes Kanban.
+- **Determinism where possible, explicit decisions where evidence ends:** the target planner derives ownership and the Kanban DAG mechanically; unresolved boundaries stay in a ledger until a human ADR resolves them. Agents implement admitted increments under Hermes.
 - **The factory, not a person, was the merge authority:** the agent could push, but only the pipeline and its quality gate could turn that push into a trusted artifact. Humans moved up a level, from reviewing diffs to improving the harness.
 - **Governance held at full autonomy:** same identity, token limits, and telemetry as every previous stage, just more visible, because agents consume more.
 
 ## Red Hat Products Used
 
-- **[Migration Toolkit for Applications](https://developers.redhat.com/products/mta)** turns legacy code into a concrete, prioritized inventory of what must change. The agent cannot define "done" on its own; MTA's findings are the ground truth.
+- **[Migration Toolkit for Applications](https://developers.redhat.com/products/mta)** turns legacy code into a concrete, prioritized inventory of known migration obligations. The agent cannot define completion on its own; MTA closure is combined with source-grounded runtime parity.
 - **[Red Hat Developer Hub](https://developers.redhat.com/rhdh)** makes "start migrating this repo" a ten-second self-service operation. No tickets, no hand-wiring of tooling per application.
 - **[Red Hat OpenShift Dev Spaces](https://www.redhat.com/en/technologies/cloud-computing/openshift/dev-spaces)** gives each migration a preconfigured workspace with analysis tools, agent runtime, and governed model access ready from first start.
 - **[Red Hat OpenShift AI](https://www.redhat.com/en/technologies/cloud-computing/openshift/openshift-ai)** governs every model request through MaaS: identity, API keys, rate limits, token budgets, and usage telemetry, so autonomous workloads stay within organizational boundaries.
@@ -242,7 +251,7 @@ actually shipped.
 - [Konveyor](https://www.konveyor.io/) is the upstream modernization community behind MTA.
 - [Kantra](https://github.com/konveyor/kantra) provides CLI-based application analysis.
 - [OpenRewrite](https://github.com/openrewrite/rewrite) provides deterministic, recipe-driven code transformation.
-- [spec-kit](https://github.com/github/spec-kit) is the spec-driven development toolkit. Stage 080 provisions it **in the migration workspace only** (AD-S) via Hermes skill `specify-workspace-init` (`specify init --integration hermes`), installs the Non-Goals override, and stops at `/speckit.tasks` → K4 convert → `.hermes/kernel/k4_mint.py` (`hermes kanban create`) — never `/speckit.implement`. Scaffold taxonomy: `.hermes/LAYOUT.md`.
+- The M1 structural inventory uses the JDK's own compiler API (`javax.lang.model` through `JavacTask`), so the pinned toolchain JDK is the extractor and no third-party analysis library is introduced; [jQAssistant](https://jqassistant.org/) optionally enriches it from bytecode. Spec Kit, the historical walkthrough's compatibility planner, is removed.
 - [Hermes Agent](https://hermes-agent.nousresearch.com/docs) is the CLI-first agent harness that owns the autonomous migration loop.
 - [OpenCode](https://opencode.ai/) is the coding worker inside the harness, dispatched by Hermes one bounded task at a time, and remains available interactively, carried over from stage 070.
 - [Coolstore cart (legacy demo input)](https://github.com/adnan-drina/coolstore-cart-legacy) is the small, stateless Spring Boot migration target — the first specimen the harness shipped; [Spring PetClinic REST (legacy demo input)](https://github.com/adnan-drina/spring-petclinic-rest-legacy) is the database-backed validated showcase, pinned at v2.6.2 so every run migrates the same code; the [Coolstore monolith](https://github.com/rhpds/mca-coolstore) remains available for longer runs.
@@ -259,7 +268,4 @@ actually shipped.
 | OpenClaw documentation (compared alternative) | [https://docs.openclaw.ai/](https://docs.openclaw.ai/)                                                                                                               |
 | MTA 8.2 documentation                         | [https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.2/](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.2/) |
 | OpenRewrite documentation                     | [https://docs.openrewrite.org/](https://docs.openrewrite.org/)                                                                                                       |
-| spec-kit: spec-driven.md                      | [https://github.com/github/spec-kit/blob/main/spec-driven.md](https://github.com/github/spec-kit/blob/main/spec-driven.md)                                           |
 | MaaS code assistant quickstart                | [https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant](https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant)                     |
-
-

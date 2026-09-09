@@ -78,8 +78,10 @@ Spring→extension decision aid: `references/spring-dep-to-extension.md`.
    `references/rh-bom-and-mandatory-deps.md` is met. Prefer **do not remove**
    when uncertain. Removal does **not** auto-clean orphaned
    `quarkus.<ext>.*` properties — scrub or leave intentionally.
-8. Refuse `quarkus-spring-*` compatibility extensions (native Quarkus only —
-   AGENTS + `spring-to-quarkus-patterns`).
+8. The `quarkus-spring-*` compatibility extensions are the baseline on the
+   compat path (ADR-001; `bootstrap-destination` adds them from
+   `compat-mapping.json`). Add only catalog-mapped extensions; an unmapped
+   need is a work-list item, never an invented GAV.
 9. OpenAPI generator plugin: a DEST_GENERATOR refusal from
    `assert-dest-generator-configured.py` emits the required
    `<library>native</library>` / `<useJakartaEe>true</useJakartaEe>` block
