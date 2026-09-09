@@ -313,9 +313,11 @@ def progress(prev: dict[str, Any], cur: dict[str, Any], prev_ids: set[str], cur_
     if not prev.get("known") or not cur.get("known"):
         return False, "measure not fully known (%s)" % "; ".join((cur.get("blocked") or prev.get("blocked") or ["compile/tests/incidents unverified"]))
     a, b = list(prev["tuple"]), list(cur["tuple"])
+    # ids are obligation_keys() (rule|file#n); a content-hash id (old steps) is
+    # compared as-is, so an old baseline still vetoes on a brand-new id.
     new_mandatory = sorted(i for i in cur_ids - prev_ids if i.startswith("inc:"))
     if new_mandatory:
-        return False, "new mandatory incident(s): %s" % ",".join(new_mandatory[:5])
+        return False, "new mandatory obligation(s): %s" % ",".join(new_mandatory[:5])
     if b < a:
         return True, "measure %s < %s" % (b, a)
     return False, "measure %s did not decrease from %s" % (b, a)
@@ -432,3 +434,24 @@ def items_of(doc: dict[str, Any], cluster: dict[str, Any]) -> list[dict[str, Any
 
 def item_ids(doc: dict[str, Any]) -> set[str]:
     return {i["id"] for i in doc.get("items") or []}
+
+
+def obligation_keys(doc: dict[str, Any]) -> set[str]:
+    """The keys the 'no new mandatory obligation' veto compares: one per
+    mandatory MTA incident, keyed by rule and file with an occurrence index
+    ("inc:<rule>|<path>#<n>"). Content-hash ids (item_ids) distinguish two
+    incidents of one rule in one file, but the hash also moves when a fix
+    changes the rule's variables/message on the same locus — pilot v6 (card
+    t_ac60cdd2) reverted a [23,675,0] → [10,1,0] candidate because the
+    compiler-plugin rule's incident re-hashed after the plugin was patched.
+    A new (rule, file) pair, or one more occurrence of an existing pair, is
+    a new obligation; a re-hash is not."""
+    counts: dict[str, int] = {}
+    out: set[str] = set()
+    for i in doc.get("items") or []:
+        if i.get("source") != "mta" or i.get("category") != "mandatory":
+            continue
+        base = "inc:%s|%s" % (i.get("rule_id"), i.get("path"))
+        counts[base] = counts.get(base, 0) + 1
+        out.add("%s#%d" % (base, counts[base]))
+    return out

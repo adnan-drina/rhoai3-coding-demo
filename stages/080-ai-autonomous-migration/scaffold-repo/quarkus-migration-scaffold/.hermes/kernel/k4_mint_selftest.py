@@ -261,6 +261,20 @@ def continuation_through_advance(t: Path) -> int:
     verdict = load_json(root / "evidence" / "receipts" / "k3" / "live-board.json")
     if verdict["verdict"] != "EQUAL" or verdict["expected_cards"] != 2 or verdict["matched_cards"] != 2 or "t_m2" not in verdict["exempt_closure"] or first[0] in verdict["exempt_closure"]:
         return _fail("K3 after continuation must expect both execution cards and exempt only M2: %s" % {k: verdict[k] for k in ("verdict", "expected_cards", "matched_cards", "exempt_closure", "missing_keys")})
+    # a no-progress candidate on card 2 is REVERTED and the reject path re-issues the cluster: attempt 2 is minted
+    issued2 = load_json(root / "verification" / "loop" / "issued.json")
+    (root / "pom.xml").write_text((root / "pom.xml").read_text(encoding="utf-8") + "<!-- no progress -->\n", encoding="utf-8")
+    specimens.verify(root, errors=[], failures=[], findings=f2)
+    env_card2 = dict(env, HERMES_KANBAN_TASK=second[0])
+    p = subprocess.run([sys.executable, str(ADVANCE), "--root", str(root), "--cluster", issued2["cluster"], "--card", second[0]], text=True, capture_output=True, env=env_card2)
+    if p.returncode != 1 or "REVERTED" not in p.stderr:
+        return _fail("no progress must revert: %s%s" % (p.stdout, p.stderr[-300:]))
+    db = json.loads(store.read_text())
+    third = [tid for tid, c in db["cards"].items() if c["title"].startswith("M3 ") and tid not in (first[0], second[0])]
+    if len(third) != 1 or not db["cards"][third[0]]["idempotency_key"].startswith("k4:%s:2:" % issued2["cluster"]):
+        return _fail("a revert must re-issue the same cluster at attempt 2: %s" % {t: c.get("idempotency_key") for t, c in db["cards"].items()})
+    if load_json(root / "verification" / "loop" / "issued.json").get("task_id") != third[0]:
+        return _fail("issued.json must carry the attempt-2 card")
     # a wrong --card is refused (the issued card carries the minted id)
     issued2 = load_json(root / "verification" / "loop" / "issued.json")
     specimens.verify(root, errors=[], failures=[], findings=f2)

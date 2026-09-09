@@ -37,8 +37,8 @@ ensure_hermes_lib()
 from planner import pipeline  # noqa: E402
 from planner.canonical import digest, load_json  # noqa: E402
 from planner.decisions import load_decisions, max_attempts  # noqa: E402
-from planner.paths import LOOP_ISSUED, WORKLIST  # noqa: E402
-from planner.worklist import build_worklist, item_ids, progress  # noqa: E402
+from planner.paths import LOOP_ACCEPTED, LOOP_ISSUED, WORKLIST  # noqa: E402
+from planner.worklist import build_worklist, item_ids, obligation_keys, progress  # noqa: E402
 
 
 def _commit(root: Path, paths: list[str], message: str) -> str:
@@ -51,8 +51,9 @@ def _commit(root: Path, paths: list[str], message: str) -> str:
     return git(root, "rev-parse", "HEAD").stdout.strip()
 
 
-def _reject(root: Path, steps: dict, cluster: str, card: str, cur: dict, reason: str, changed: list[str]) -> int:
-    """Discard the candidate, count the attempt, re-seal; defer + stop at the threshold."""
+def _reject(root: Path, steps: dict, cluster: str, card: str, cur: dict, reason: str, changed: list[str], *, mint: bool = False, hermes: str = "hermes") -> int:
+    """Discard the candidate, count the attempt, re-seal and re-issue the
+    cluster (K4 mints the next attempt); defer + stop at the threshold."""
     revert_paths(root, changed)
     restore_reports(root)
     attempts = dict(steps.get("attempts") or {})
@@ -74,8 +75,12 @@ def _reject(root: Path, steps: dict, cluster: str, card: str, cur: dict, reason:
         pipeline.admit(root)
         print("DEFERRED %s after %d attempt(s): %s → manual card; the loop STOPS here (kanban_block kind=needs_input naming the cluster)" % (cluster, attempts[cluster], reason), file=sys.stderr)
         return 1
-    pipeline.admit(root)
+    rec = pipeline.admit(root)
     print("REVERTED %s attempt %d/%d: %s" % (cluster, attempts[cluster], limit, reason), file=sys.stderr)
+    if mint and rec.get("status") == "ADMITTED":
+        # the same cluster, next attempt key: the retry is its own card (pilot v6
+        # measured the gap — the skill promised the re-issue, nothing minted it)
+        _mint(root, hermes)
     return 1
 
 
@@ -122,7 +127,7 @@ def main(argv: list[str] | None = None) -> int:
         changed = product_paths_changed(root)
         sha = _commit(root, changed, "fix-until-green: baseline %s" % cur["measure"]["tuple"])
         snapshot_reports(root)
-        steps["steps"].append({"cluster": "bootstrap", "card": args.card, "commit": sha, "candidate_sha256": on_disk, "measure": cur["measure"], "item_ids": sorted(item_ids(cur)), "worklist_sha256": digest(cur), "changed": changed, "verdict": "baseline", "reason": "bootstrap-destination baseline"})
+        steps["steps"].append({"cluster": "bootstrap", "card": args.card, "commit": sha, "candidate_sha256": on_disk, "measure": cur["measure"], "item_ids": sorted(item_ids(cur)), "obligation_keys": sorted(obligation_keys(cur)), "worklist_sha256": digest(cur), "changed": changed, "verdict": "baseline", "reason": "bootstrap-destination baseline"})
         save_steps(root, steps)
         rec = pipeline.admit(root)
         print("OK: BASELINE recorded commit %s measure=%s admission=%s" % (sha[:12], cur["measure"]["tuple"], rec["status"]))
@@ -152,14 +157,19 @@ def main(argv: list[str] | None = None) -> int:
     allowed = set(issued.get("write_set") or [])
     outside = [p for p in changed if p not in allowed]
     if outside:
-        return _reject(root, steps, args.cluster, args.card, cur, "changed path(s) outside the write set: %s" % ",".join(outside[:5]), changed)
+        return _reject(root, steps, args.cluster, args.card, cur, "changed path(s) outside the write set: %s" % ",".join(outside[:5]), changed, mint=not args.no_mint, hermes=args.hermes)
     prev = steps["steps"][-1]
-    ok, reason = progress(prev["measure"], cur["measure"], set(prev.get("item_ids") or []), item_ids(cur))
+    prev_keys = set(prev.get("obligation_keys") or [])
+    if not prev_keys and prev.get("item_ids"):
+        # a step recorded before obligation_keys existed: derive from the accepted work list snapshot
+        snap = root / LOOP_ACCEPTED / "worklist.json"
+        prev_keys = obligation_keys(load_json(snap)) if snap.is_file() else set(prev.get("item_ids") or [])
+    ok, reason = progress(prev["measure"], cur["measure"], prev_keys, obligation_keys(cur))
     if not ok:
-        return _reject(root, steps, args.cluster, args.card, cur, reason, changed)
+        return _reject(root, steps, args.cluster, args.card, cur, reason, changed, mint=not args.no_mint, hermes=args.hermes)
     sha = _commit(root, changed, "fix-until-green: %s attempt %s %s" % (args.cluster, issued.get("attempt"), cur["measure"]["tuple"]))
     snapshot_reports(root)
-    steps["steps"].append({"cluster": args.cluster, "card": args.card, "attempt": issued.get("attempt"), "idempotency_key": issued.get("idempotency_key"), "commit": sha, "candidate_sha256": on_disk, "measure": cur["measure"], "item_ids": sorted(item_ids(cur)), "worklist_sha256": digest(cur), "changed": changed, "verdict": "accepted", "reason": reason})
+    steps["steps"].append({"cluster": args.cluster, "card": args.card, "attempt": issued.get("attempt"), "idempotency_key": issued.get("idempotency_key"), "commit": sha, "candidate_sha256": on_disk, "measure": cur["measure"], "item_ids": sorted(item_ids(cur)), "obligation_keys": sorted(obligation_keys(cur)), "worklist_sha256": digest(cur), "changed": changed, "verdict": "accepted", "reason": reason})
     save_steps(root, steps)
     (root / LOOP_ISSUED).unlink()
     print("OK: ACCEPTED %s (%s) commit %s" % (args.cluster, reason, sha[:12]))

@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from planner.worklist import KIND_RANK, cluster_items, compile_items, file_depths, incidents_from_findings, measure_of, path_class, progress, surefire_from_reports, test_items  # noqa: E402
+from planner.worklist import KIND_RANK, cluster_items, compile_items, file_depths, incidents_from_findings, measure_of, obligation_keys, path_class, progress, surefire_from_reports, test_items  # noqa: E402
 
 
 def surefire_from_reports_ran_flag():
@@ -118,6 +118,20 @@ def main() -> int:
     ok, why = progress(m0, m2, {"inc:a"}, {"inc:a", "inc:new"})
     if ok or "new mandatory" not in why:
         return _fail("a new mandatory incident is never progress")
+    # veto identity: rule + file + occurrence; a re-hash of the same obligation (variables/message
+    # changed by the fix) is NOT new, one more occurrence or a new (rule, file) pair IS
+    def _doc(rows):
+        return {"items": [{"source": "mta", "category": "mandatory", "rule_id": r, "path": pth, "id": "inc:%s:%s" % (r, h)} for r, pth, h in rows]}
+    before = obligation_keys(_doc([("r1", "pom.xml", "aaaa"), ("r2", "pom.xml", "bbbb"), ("r2", "pom.xml", "cccc")]))
+    rehashed = obligation_keys(_doc([("r1", "pom.xml", "ffff"), ("r2", "pom.xml", "bbbb"), ("r2", "pom.xml", "cccc")]))
+    if rehashed != before or not progress(m0, m2, before, rehashed)[0]:
+        return _fail("a re-hashed obligation on the same rule and file must not be new: %s" % (rehashed - before))
+    more = obligation_keys(_doc([("r1", "pom.xml", "aaaa"), ("r2", "pom.xml", "bbbb"), ("r2", "pom.xml", "cccc"), ("r2", "pom.xml", "dddd")]))
+    if progress(m0, m2, before, more)[0]:
+        return _fail("one more occurrence of a rule on a file is a new obligation")
+    other = obligation_keys(_doc([("r1", "pom.xml", "aaaa"), ("r2", "pom.xml", "bbbb"), ("r2", "src/main/java/A.java", "cccc")]))
+    if progress(m0, m2, before, other)[0]:
+        return _fail("the same rule on a new file is a new obligation")
     unknown = measure_of(all_items, incidents_known=True, compile_known=False, tests_known=True, parity_known=False)
     if unknown["known"] or progress(m0, unknown, set(), set())[0]:
         return _fail("unknown measure never advances")
