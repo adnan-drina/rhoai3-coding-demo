@@ -150,6 +150,12 @@ def main() -> int:
             return _fail("element kinds: %s" % [i["element"] for i in pom_items])
         pom_before = (root / "pom.xml").read_text(encoding="utf-8")
 
+        # legacy baseline: strip the recorded obligation_keys; every later accept/revert below must re-key the
+        # baseline from the accepted rescan findings instead of comparing content-hash ids against rule|file keys
+        st = load_json(root / "verification/loop/steps.json")
+        if st["steps"][0].pop("obligation_keys", None) is None:
+            return _fail("the baseline step must record obligation_keys")
+        write_canonical(root / "verification/loop/steps.json", st)
         # --- review counterexample 1: invented cluster + post-verification edit ---
         f2 = json.loads(json.dumps(findings))
         f2["violations"].pop("javaee-pom-to-quarkus-00003")

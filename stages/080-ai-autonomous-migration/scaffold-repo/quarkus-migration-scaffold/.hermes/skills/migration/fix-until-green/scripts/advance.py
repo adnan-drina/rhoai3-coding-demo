@@ -37,8 +37,8 @@ ensure_hermes_lib()
 from planner import pipeline  # noqa: E402
 from planner.canonical import digest, load_json  # noqa: E402
 from planner.decisions import load_decisions, max_attempts  # noqa: E402
-from planner.paths import LOOP_ACCEPTED, LOOP_ISSUED, WORKLIST  # noqa: E402
-from planner.worklist import build_worklist, item_ids, obligation_keys, progress  # noqa: E402
+from planner.paths import EVIDENCE_BUNDLE, LOOP_ACCEPTED, LOOP_ISSUED, MTA_RESCAN_FINDINGS, WORKLIST  # noqa: E402
+from planner.worklist import build_worklist, incidents_from_findings, item_ids, obligation_keys, progress  # noqa: E402
 
 
 def _commit(root: Path, paths: list[str], message: str) -> str:
@@ -160,11 +160,23 @@ def main(argv: list[str] | None = None) -> int:
         return _reject(root, steps, args.cluster, args.card, cur, "changed path(s) outside the write set: %s" % ",".join(outside[:5]), changed, mint=not args.no_mint, hermes=args.hermes)
     prev = steps["steps"][-1]
     prev_keys = set(prev.get("obligation_keys") or [])
-    if not prev_keys and prev.get("item_ids"):
-        # a step recorded before obligation_keys existed: derive from the accepted work list snapshot
-        snap = root / LOOP_ACCEPTED / "worklist.json"
-        prev_keys = obligation_keys(load_json(snap)) if snap.is_file() else set(prev.get("item_ids") or [])
-    ok, reason = progress(prev["measure"], cur["measure"], prev_keys, obligation_keys(cur))
+    cur_keys = obligation_keys(cur)
+    if not prev_keys:
+        # a step recorded before obligation_keys existed: rebuild the accepted
+        # state's keys from its snapshotted rescan findings (the same tool
+        # output the work list was built from); only if even that is absent
+        # fall back to comparing the old content-hash ids on both sides.
+        # (pilot v6 attempt 2 was vetoed on 23 "new" obligations because the
+        # baseline's hash ids were compared against rule|file keys)
+        snap = root / LOOP_ACCEPTED / MTA_RESCAN_FINDINGS.name
+        if snap.is_file():
+            bundle = load_json(root / EVIDENCE_BUNDLE)
+            canary = str((bundle.get("migration") or {}).get("canary_rule_id") or "")
+            prev_keys = obligation_keys({"items": incidents_from_findings(load_json(snap), [str(root), "/projects/modernized"], canary)})
+        else:
+            prev_keys = set(prev.get("item_ids") or [])
+            cur_keys = item_ids(cur)
+    ok, reason = progress(prev["measure"], cur["measure"], prev_keys, cur_keys)
     if not ok:
         return _reject(root, steps, args.cluster, args.card, cur, reason, changed, mint=not args.no_mint, hermes=args.hermes)
     sha = _commit(root, changed, "fix-until-green: %s attempt %s %s" % (args.cluster, issued.get("attempt"), cur["measure"]["tuple"]))
