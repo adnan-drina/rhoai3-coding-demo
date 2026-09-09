@@ -48,8 +48,9 @@
     "mta_cli": {
       "version": "8.2",
       "product_version": "8.2",
-      "artifact_sha256": null,
-      "note": "Pinned 2026-09-08 (user decision) to the MTA CLI 8.2 product line. Admissible iff the executed binary identifies as mta-cli 8.2.x (measured --version), is not a kantra alias, and, once an Operator freezes artifact_sha256 here from a measured receipt, its sha256 equals it. Until frozen, the receipt records the measured binary sha256 as provenance. kantra remains provisional and non-admissible."
+      "artifact_sha256": "5e3b2171e3a30d87ca576f8be14de01e7e6422108abc58f7c0ce23f40d959612",
+      "note": "Pinned 2026-09-08 (user decision) to the MTA CLI 8.2 product line; artifact_sha256 frozen 2026-09-09 by the stage owner from the binary measured in the ws-080 image build (/opt/rhoai3/080.pins; `mta-cli version` → 8.2.1, SHA cbcc9778). Admissible iff the executed binary identifies as mta-cli 8.2.x (measured `version`), is not a kantra alias, and its sha256 equals artifact_sha256. A new overlay with a different binary must re-freeze this key together with workspace_overlay.ws_080. kantra remains provisional and non-admissible.",
+      "artifact": "mta-8.2.1.1-cli-linux-amd64.zip (Red Hat MTA download page, zip sha256 988db13d51a2fb34dbc9f50ac37d43c7e65fb7f0ed502f14ad140dbf681e6ecc) → /opt/mta-cli/mta-cli in ws-080@sha256:f58a9e44090a8d0c89f7981026d16bb36445fab395f70b5287f8dae81c2c29b0"
     },
     "planner": {
       "activation": "not-activated",
