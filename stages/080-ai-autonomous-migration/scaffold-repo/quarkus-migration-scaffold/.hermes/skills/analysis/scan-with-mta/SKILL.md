@@ -59,8 +59,10 @@ In order (each step dies non-zero on failure):
    MTA CLI 8.2 (`MTA_CLI_HOME`, default `/opt/mta-cli`), then kantra
    (`/projects/.tools/kantra`, PATH, `kantra-ensure`). After each
    candidate, `~/.local/bin/kantra-assert-exec` runs on the realpath
-   install prefix; present-but-unusable falls through. No version or
-   provider-RPC handshake.
+   install prefix; present-but-unusable falls through. The checker
+   requires ELF analysis binaries and jdtls shebang launchers; it skips
+   shebang files under `rulesets/` (product test fixtures, not helpers).
+   No version or provider-RPC handshake.
 2. `assert-frozen-input-intact.py` — the analysis copy still matches the
    frozen manifest.
 3. `analyze --input <copy> --output … --target … --rules

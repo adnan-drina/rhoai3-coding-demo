@@ -1069,6 +1069,55 @@ Do not invoke dest `.hermes/checks/assert-agent-pin.py`; that tree is retired. O
 - Operator GO `E-20260823T111522Z` ratified Hermes v0.20.5 / 2026.8.19. Dest-init fail-closes unless overlay `hermes --version` matches `.hermes/pins.json`. Do not curl-install Hermes. Do not fall back to dest `.hermes/home/hermes-agent` (Architect `202501ZA` / `185531ZA` / `210214ZA`). Spec Kit is removed from Stage 080; planning is the deterministic planner under `.hermes/lib/planner/` (activation-gated via `pins.planner.activation`).
 - Do not treat dest-armed (a) as MATCH until dest `pins.json` and `hermes --version` agree. Do not mkdir empty `.hermes/kernel/` to work around a pin miss. Do not restore dest `.hermes/checks/`.
 
+## Stage 080 MTA receipt is kantra-fallback though overlay mta-cli is 8.2.1
+
+**Affected stage:** Stage 080 factory workspace (`app-migration` destfile, `development-tooling`)
+
+**Symptom:** `mta-cli version` in the overlay prints `version: 8.2.1` and `readlink -f $(command -v mta-cli)` is `/opt/mta-cli/mta-cli`, but `evidence/producers/mta.json` has `provenance: kantra-fallback`, `admissible: false`, `binary_realpath: /opt/kantra/kantra`, and harness admission blocks `MTA_PROVENANCE`. Analyzer stderr contains `mta-analyze-legacy: /opt/mta-cli/mta-cli present but unusable; falling through` and `kantra-assert-exec: 1 runnable files under /opt/mta-cli are not executable and could not be chmod'd (/opt/mta-cli/rulesets/go/fips/tests/data/build/build.sh)`.
+
+**Likely cause:** dest-init `kantra-assert-exec` treated every ELF/shebang under the install prefix as an analysis helper. MTA CLI 8.2.1 ships a non-executable `#!` test fixture under `rulesets/`. Overlay trees are `chown 10001:0`, so the dest uid cannot chmod that file. `ensure_cli` then accepted community kantra. This is a checker defect, not a missing overlay binary. Do not rebake the image for this. Do not hand-edit dest `evidence/` or `.hermes/pins.json`.
+
+**Diagnose:**
+
+```bash
+NS=wksp-ai-developer
+POD=$(oc get pods -n "$NS" -l controller.devfile.io/devworkspace_name=<workspace> -o name | head -1)
+oc exec -n "$NS" "$POD" -c development-tooling -- mta-cli version
+oc exec -n "$NS" "$POD" -c development-tooling -- \
+  /home/user/.local/bin/kantra-assert-exec /opt/mta-cli; echo ec=$?
+oc exec -n "$NS" "$POD" -c development-tooling -- \
+  python3 -c 'import json; d=json.load(open("/projects/modernized/evidence/producers/mta.json")); print(d["tool"]["provenance"], d["tool"]["admissible"], d["tool"]["binary_realpath"])'
+```
+
+**Recover:**
+
+- Confirm GitOps `kantra-assert-exec` contains `RULESET_FIXTURE_SHEBANG` and Argo `050-advanced-app-platform` has synced the `devspace-ai-tools-init` ConfigMap.
+- Re-run dest-init (or replace `~/.local/bin/kantra-assert-exec` from that ConfigMap) so the live helper skips `rulesets/` shebangs. Then `kantra-assert-exec /opt/mta-cli` exits 0.
+- Re-run isolated `rehearse-legacy.sh` (or a new M1 on a fresh destination). Do not rewrite the failed M1 `mta.json`. Do not `hermes kanban create|link` by hand.
+
+**Related docs:** `.agents/rules/ensure-cli-capability.md`, `gitops/stages/050-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml`
+
+## Stage 080 rehearsal dies on yamlite `[id]` under UDI python3.9
+
+**Affected stage:** Stage 080 factory workspace / `rehearse-legacy.sh`
+
+**Symptom:** `rehearse-legacy.sh` freeze and build succeed (`outcome=success warmup=success`), then step 3 prints `planner.yamlite.YamlLiteError: line 43: unsupported YAML construct '[id]' (use block form)` from `normalize-structure.py`. Dest M1 may still complete if a worker installs PyYAML for python3.11; the harness scripts call `python3` (UDI 3.9, no PyYAML).
+
+**Likely cause:** the app-migration skeleton stamped `acceptance.idFields: [id]`. yamlite allows empty `[]` but refused flow sequences with members. PyYAML on python3.11 is the preferred loader when importable.
+
+**Diagnose:**
+
+```bash
+python3 -c 'from pathlib import Path; import sys; sys.path.insert(0,"/projects/modernized/.hermes/lib"); from planner.yamlite import load_yaml; print(load_yaml(Path("/projects/modernized/migration.yaml")))'
+```
+
+**Recover:**
+
+- Confirm golden yamlite parses `idFields: [id]` (`yamlite.test.py`) and the template skeleton uses block form.
+- Do not `pip install pyyaml` into the dest as the golden path. Do not hand-edit dest `migration.yaml` mid-run unless recreating from the template.
+
+**Related docs:** `stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/.hermes/lib/planner/yamlite.py`
+
 ## Factory Workspace Starts Healthy With No Agent Tooling
 
 **Affected stage:** Stage 050 RHDH templates (factory workspaces for 070/080)

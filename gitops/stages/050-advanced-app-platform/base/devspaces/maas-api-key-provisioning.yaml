@@ -1872,22 +1872,31 @@ data:
       # so pod restarts do not wipe the binary; /tmp remains a fallback.
       # Pinned; bump deliberately.
       mkdir -p "${HOME}/.local/bin"
-      # An executable `kantra` is not a usable kantra: analysis shells out to
-      # sibling binaries (java-external-provider, the jdtls launchers), and
-      # `python3 -m zipfile` extraction discards Unix modes so those land 644.
-      # Check the property, not a list of names — no ELF binary in the tree may
-      # be non-executable — so a renamed or added provider needs no edit here.
+      # An executable `kantra`/`mta-cli` is not a usable analyzer: analysis
+      # shells out to sibling binaries (java-external-provider, the jdtls
+      # launchers), and `python3 -m zipfile` extraction discards Unix modes
+      # so those land 644. Check that property, not a list of provider names
+      # — no ELF analysis binary in the tree may be non-executable — so a
+      # renamed or added provider needs no edit here. Shebang coverage is
+      # for those jdtls launchers, not product ruleset test fixtures.
       # The PVC tree is writable, so repair first and fail closed only if the
-      # repair does not take (which is what /opt/kantra does: chown'd to a
-      # different uid, so it can only be fixed in the image).
+      # repair does not take (which is what /opt/kantra and /opt/mta-cli do:
+      # chown'd to a different uid, so they can only be fixed in the image).
       cat > "${HOME}/.local/bin/kantra-assert-exec" <<'KANTRAEXECEOF'
     #!/usr/bin/env python3
-    """Every runnable file under the kantra tree must be executable.
+    """Analysis helpers under the kantra/mta-cli prefix must be executable.
 
     Runnable means ELF or shebang. ELF alone would miss the jdtls launchers -
     kantra's archive declares jdtls/bin/jdtls (shell) and jdtls.py 0755, and
     neither is ELF, so an ELF-only check silently skips exactly the files the
     Java provider needs after a mode-losing extraction.
+
+    Shebang files under rulesets/ are product test fixtures, not helpers the
+    analyzer shells out to. MTA CLI 8.2.1 ships
+    rulesets/go/fips/tests/data/build/build.sh without +x; overlay uid 10001
+    cannot chmod it. Treating that fixture as an analysis sibling made the
+    pinned MTA CLI "unusable" and fell through to community kantra
+    (PetClinic dest M1 2026-09-09).
     """
     import os
     import sys
@@ -1907,6 +1916,10 @@ data:
                 with open(path, "rb") as fh:
                     head = fh.read(4)
                 if head != b"\x7fELF" and head[:2] != b"#!":
+                    continue
+                # RULESET_FIXTURE_SHEBANG: skip product test fixtures.
+                rel_parts = os.path.relpath(path, root).split(os.sep)
+                if head[:2] == b"#!" and "rulesets" in rel_parts:
                     continue
                 seen += 1
                 if os.access(path, os.X_OK):

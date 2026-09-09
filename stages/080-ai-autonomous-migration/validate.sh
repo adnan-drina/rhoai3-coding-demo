@@ -147,6 +147,9 @@ check "kantra-ensure download message is on stderr (ensure_cli captures stdout a
 check "live kantra-ensure verifies every ELF in the kantra tree is executable" \
   "test \"\$(oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -cF 'kantra-assert-exec')\" -ge 2 && echo CHECKER_WIRED || echo CHECKER_MISSING" \
   "CHECKER_WIRED"
+check "dest-init kantra-assert-exec skips ruleset fixture shebangs" \
+  "grep -cF 'RULESET_FIXTURE_SHEBANG' \"$REPO_ROOT/gitops/stages/050-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml\" || echo 0" \
+  "1"
 check "init ConfigMap is DWO-mounted (volume, not kube-API curl as the primary path)" \
   "awk '/^kind: ConfigMap\$/{c=1} c && /^  name: devspace-ai-tools-init\$/{n=1} n && /controller.devfile.io\\/mount-to-devworkspace: \"true\"/ {print 1; exit} n && /^data:/{exit} /^---\$/{c=0; n=0}' \"$REPO_ROOT/gitops/stages/050-advanced-app-platform/base/devspaces/maas-api-key-provisioning.yaml\" || echo 0" \
   "1"
@@ -706,6 +709,12 @@ check "080 scan-with-mta selftest passes (provenance, canary, never --source)" \
 check "080 worklist selftest passes (order, measure, progress rule)" \
   "python3 '${SCAFFOLD_LIB}/planner/worklist.test.py' >/dev/null && echo 1 || echo 0" \
   "1"
+check "080 yamlite parses idFields: [id] without PyYAML" \
+  "python3 '${SCAFFOLD_LIB}/planner/yamlite.test.py' >/dev/null && echo 1 || echo 0" \
+  "1"
+check "app-migration stamp idFields is yamlite block form" \
+  "if grep -qF 'idFields: [id]' '$REPO_ROOT/gitops/stages/050-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/migration.yaml'; then echo FLOW; else echo BLOCK; fi" \
+  "BLOCK"
 check "080 fix-until-green loop selftest passes (bootstrap → baseline → accept/revert/defer → M4)" \
   "python3 '${SCAFFOLD_SKILLS}/migration/fix-until-green/scripts/fix-until-green.test.py' >/dev/null && echo 1 || echo 0" \
   "1"

@@ -9,7 +9,7 @@ Use these files for durable domain constraints that should apply across agent to
 | `project.md` | Project structure, coding discipline, change conventions, governance |
 | `env.md` | Live demo environment, secrets, certs, cluster safety |
 | `kanban-log-watch.md` | After every dest Hermes Kanban spawn, read the official worker log in the same turn |
-| `ensure-cli-capability.md` | Stage 080 golden `ensure_cli`: probe kantra usability (`kantra-assert-exec`), not mere presence. No MTA/KAI precedent; probe exceeds existence/`X_OK`. |
+| `ensure-cli-capability.md` | Stage 080 golden `ensure_cli`: probe analyzer usability (`kantra-assert-exec`), not mere presence. dest-init checker skips `rulesets/` shebang fixtures. No MTA/KAI precedent; probe exceeds existence/`X_OK`. |
 | `managed-scope-enforcement.md` | PVC `HERMES_MANAGED_DIR` is advisory; `/etc/hermes` image bake is the native enforcement; dest-5 cuts first |
 | `k2-env-assignment-not-access.md` | K2 terminal fence must not treat `export NAME=value` spans as filesystem access; do not widen allow-root |
 | `k2-opaque-not-pathless.md` | AMEND `214743ZA`: deny opaque construction, not every pathless command; `strip_env` does not close GAP 2 |

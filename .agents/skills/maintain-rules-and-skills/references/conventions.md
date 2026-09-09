@@ -26,7 +26,7 @@ Current rule taxonomy:
 | `project.md` | `project-` | Repo structure, GitOps authoring, docs, manifest review, Red Hat source alignment, and shared guidance |
 | `env.md` | (none) | Live demo environment deployment, validation, troubleshooting, shutdown, recovery, and redeploy |
 | `kanban-log-watch.md` | (none) | Dest Hermes Kanban: read the official worker log in the same turn as spawn |
-| `ensure-cli-capability.md` | (none) | Stage 080 `ensure_cli` must probe kantra **usability** (`kantra-assert-exec`), not mere presence. There is no MTA/KAI precedent to cite; the probe exceeds upstream existence/`X_OK`. |
+| `ensure-cli-capability.md` | (none) | Stage 080 `ensure_cli` must probe analyzer **usability** (`kantra-assert-exec`), not mere presence. dest-init checker skips `rulesets/` shebang fixtures. There is no MTA/KAI precedent to cite; the probe exceeds upstream existence/`X_OK`. |
 | `managed-scope-enforcement.md` | (none) | PVC managed dir is precedence not enforcement; bake `/etc/hermes` later; dest-5 cuts first |
 | `k2-env-assignment-not-access.md` | (none) | K2 must not treat environment-assignment values as access targets |
 | `k2-opaque-not-pathless.md` | (none) | K2 denies opaque construction; transparent pathless + trusted cwd may allow |

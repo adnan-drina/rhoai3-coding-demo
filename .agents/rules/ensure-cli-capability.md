@@ -35,10 +35,18 @@ in gid 0). Do not dest-push dest-3’s worker-patched analyzer as golden.
    (`kai-analyzer-rpc`) checks existence + `X_OK` and the **Java provider
    existence only** — there is **no upstream precedent to cite**. Our
    sibling-tree capability probe **exceeds** that bar because we measured
-   zipfile mode-loss, not because official requires it.
+   zipfile mode-loss, not because official requires it. dest-init's checker
+   **skips shebang files under `rulesets/`**: those are product test
+   fixtures (MTA CLI 8.2.1 `rulesets/go/fips/tests/data/build/build.sh`),
+   not analysis helpers. Overlay uid 10001 cannot chmod them; treating
+   them as siblings made the pinned MTA CLI fall through to kantra
+   (`MTA_PROVENANCE`) on PetClinic dest M1 2026-09-09. Still require ELF
+   (`mta-cli`/`kantra`, `java-external-provider`) and non-ruleset shebangs
+   (`jdtls` launchers).
 4. `CLI="$(ensure_cli)"` still captures **one** path on stdout. Checker chatter
    stays on stderr. Extend `assert-ensure-cli-path.sh` so a tree with a
-   non-executable sibling is **not** accepted.
+   non-executable sibling is **not** accepted, and a pinned MTA CLI tree
+   with a non-executable ruleset fixture shebang **is** accepted.
 5. Land in golden `mta-analyze-legacy.sh` + `scan-with-mta/SKILL.md` procedure
    step 1, then `scripts/bootstrap-scaffold-repos.sh`. Not a dest-4 cut
    blocker. Do not dest-exec `kantra-assert-exec` on dest-3 `/opt/kantra` as

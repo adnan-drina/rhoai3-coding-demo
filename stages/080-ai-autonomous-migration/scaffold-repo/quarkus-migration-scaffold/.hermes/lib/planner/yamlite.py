@@ -8,11 +8,14 @@ else rather than guessing:
 - block sequences (``- item`` / ``- key: value`` object items)
 - scalars: quoted strings, ints, floats, ``true``/``false``/``null``/``~``
 - empty flow ``[]`` / ``{}``
-- ``#`` comments and blank lines
+- simple flow sequences of unquoted/quoted scalars (``[id]``, ``[a, b]``);
+  the app-migration PetClinic stamp historically wrote ``idFields: [id]``
+  and UDI ``python3`` is 3.9 without PyYAML
 
-No anchors, tags, multi-line scalars, flow collections with members, or
-multi-document streams. Those raise ``YamlLiteError`` so a human writes
-the decision in the supported shape instead of the planner inferring it.
+No anchors, tags, multi-line scalars, nested flow collections, flow maps
+with members, or multi-document streams. Those raise ``YamlLiteError`` so a
+human writes the decision in the supported shape instead of the planner
+inferring it.
 """
 from __future__ import annotations
 
@@ -42,6 +45,20 @@ def _scalar(raw: str, line_no: int) -> Any:
         return []
     if s == "{}":
         return {}
+    if s.startswith("[") and s.endswith("]"):
+        inner = s[1:-1].strip()
+        if not inner:
+            return []
+        if "{" in inner or "[" in inner:
+            raise YamlLiteError(
+                "line %d: unsupported YAML construct %r (use block form)" % (line_no, s)
+            )
+        parts = [p.strip() for p in inner.split(",")]
+        if any(not p for p in parts):
+            raise YamlLiteError(
+                "line %d: unsupported YAML construct %r (use block form)" % (line_no, s)
+            )
+        return [_scalar(p, line_no) for p in parts]
     if s[0] in "[{" or s[0] in "&*!|>":
         raise YamlLiteError(
             "line %d: unsupported YAML construct %r (use block form)" % (line_no, s)

@@ -71,7 +71,8 @@ acceptance:
   getter: getAllVets
   service: VetRestController
   itemType: VetDto
-  idFields: [id]
+  idFields:
+    - id
 {%- elif is_cart %}
 acceptance:
   path: /api/cart/acceptance-check

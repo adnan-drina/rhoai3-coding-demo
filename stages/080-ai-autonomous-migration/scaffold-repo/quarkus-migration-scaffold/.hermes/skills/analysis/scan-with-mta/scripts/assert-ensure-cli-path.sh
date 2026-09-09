@@ -8,7 +8,9 @@ case "${1:-}" in
   -h|--help)
     cat <<'USAGE'
 assert-ensure-cli-path.sh — cached kantra ensure_cli must print one path,
-and a tree with a non-executable runnable sibling must be rejected.
+a tree with a non-executable runnable sibling must be rejected, and a
+pinned MTA CLI tree with a non-executable ruleset fixture shebang must
+still be accepted.
 
 Runs a temp-tree probe (no cluster). Exit 0 only after the gate assertions.
 Do not treat --help as a PASS.
@@ -48,6 +50,9 @@ for dirpath, _, filenames in os.walk(root, onerror=lambda e: unwalkable.append(
             continue
         if head != b"\x7fELF" and head[:2] != b"#!":
             continue
+        rel_parts = os.path.relpath(path, root).split(os.sep)
+        if head[:2] == b"#!" and "rulesets" in rel_parts:
+            continue
         seen += 1
         if not os.access(path, os.X_OK):
             bad.append(path)
@@ -77,7 +82,9 @@ mkdir -p "${HUMAN_HOME}/.local/bin" "${KANTRA_HOME}" "${WORKDIR}/bin"
 install_observe_checker "${HUMAN_HOME}/.local/bin/kantra-assert-exec"
 
 # Isolate PATH so a host kantra cannot satisfy the probe.
+# Isolate MTA_CLI_HOME so a host /opt/mta-cli cannot satisfy the probe.
 export HUMAN_HOME KANTRA_HOME ENSURE_CLI_LIB=1
+export MTA_CLI_HOME="${WORKDIR}/absent-mta"
 export PATH="${HUMAN_HOME}/.local/bin:${WORKDIR}/bin:${PYDIR}:/usr/bin:/bin"
 
 # shellcheck source=mta-analyze-legacy.sh
@@ -133,5 +140,17 @@ esac
   exit 1
 }
 
-echo "OK: ensure_cli stdout is a single executable path; unusable sibling rejected"
+# --- (4) pinned MTA CLI 8.2 tree: ruleset fixture shebang must NOT reject ---
+export MTA_CLI_HOME="${WORKDIR}/mta-cli"
+mkdir -p "${MTA_CLI_HOME}/rulesets/go/fips/tests/data/build"
+write_shebang "${MTA_CLI_HOME}/mta-cli" 755
+write_shebang "${MTA_CLI_HOME}/java-external-provider" 755
+write_shebang "${MTA_CLI_HOME}/rulesets/go/fips/tests/data/build/build.sh" 644
+CLI_MTA="$(ensure_cli)"
+[ "${CLI_MTA}" = "${MTA_CLI_HOME}/mta-cli" ] || {
+  echo "FAIL: MTA 8.2 tree with ruleset fixture was not accepted: $(printf %q "${CLI_MTA}")" >&2
+  exit 1
+}
+
+echo "OK: ensure_cli stdout is a single executable path; unusable sibling rejected; ruleset fixture shebang ignored"
 : "${ROOT}"
