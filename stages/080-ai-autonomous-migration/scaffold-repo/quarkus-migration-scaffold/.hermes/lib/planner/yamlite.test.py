@@ -27,6 +27,20 @@ def main() -> int:
         pass
     else:
         return _fail("nested flow map must still refuse")
+    stamp = (
+        "configTransforms:\n"
+        "  - from: server.port\n"
+        "    to: quarkus.http.port\n"
+        "    valueMap:\n"
+        '      "9966": "8080"\n'
+    )
+    got = loads(stamp)
+    if got != {
+        "configTransforms": [
+            {"from": "server.port", "to": "quarkus.http.port", "valueMap": {"9966": "8080"}}
+        ]
+    }:
+        return _fail("quoted valueMap keys must parse without PyYAML: %r" % got)
     return 0
 
 

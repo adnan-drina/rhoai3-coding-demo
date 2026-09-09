@@ -11,6 +11,7 @@ else rather than guessing:
 - simple flow sequences of unquoted/quoted scalars (``[id]``, ``[a, b]``);
   the app-migration PetClinic stamp historically wrote ``idFields: [id]``
   and UDI ``python3`` is 3.9 without PyYAML
+- quoted mapping keys (``"9966": "8080"`` in PetClinic ``valueMap``)
 
 No anchors, tags, multi-line scalars, nested flow collections, flow maps
 with members, or multi-document streams. Those raise ``YamlLiteError`` so a
@@ -28,7 +29,9 @@ class YamlLiteError(ValueError):
     pass
 
 
-_KEY_RE = re.compile(r"^([A-Za-z0-9_.\-/]+)\s*:(?:\s+(.*))?$")
+_KEY_RE = re.compile(
+    r"""^(?:["']([A-Za-z0-9_.\-/]+)["']|([A-Za-z0-9_.\-/]+))\s*:(?:\s+(.*))?$"""
+)
 _INT_RE = re.compile(r"^-?\d+$")
 _FLOAT_RE = re.compile(r"^-?\d+\.\d+$")
 
@@ -135,7 +138,7 @@ def _parse_map(rows, pos, indent) -> tuple[dict, int]:
         m = _KEY_RE.match(text)
         if not m:
             raise YamlLiteError("line %d: expected 'key: value'" % line_no)
-        key, rest = m.group(1), m.group(2)
+        key, rest = (m.group(1) or m.group(2)), m.group(3)
         if key in out:
             raise YamlLiteError("line %d: duplicate key %r" % (line_no, key))
         pos += 1

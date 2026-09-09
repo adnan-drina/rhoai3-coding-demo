@@ -1113,8 +1113,8 @@ python3 -c 'from pathlib import Path; import sys; sys.path.insert(0,"/projects/m
 
 **Recover:**
 
-- Confirm golden yamlite parses `idFields: [id]` (`yamlite.test.py`) and the template skeleton uses block form.
-- Do not `pip install pyyaml` into the dest as the golden path. Do not hand-edit dest `migration.yaml` mid-run unless recreating from the template.
+- Confirm golden yamlite parses `idFields: [id]` and quoted `valueMap` keys (`"9966": "8080"`) via `yamlite.test.py`, and the template skeleton uses block-form `idFields`.
+- Do not `pip install pyyaml` into the dest as the golden path. Do not hand-edit dest `migration.yaml` mid-run unless recreating from the template. Republish golden yamlite (`bootstrap-scaffold-repos.sh`); dest clones still carry the old parser until that lands.
 
 **Related docs:** `stages/080-ai-autonomous-migration/scaffold-repo/quarkus-migration-scaffold/.hermes/lib/planner/yamlite.py`
 
