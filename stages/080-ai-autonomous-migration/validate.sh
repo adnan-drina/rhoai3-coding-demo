@@ -667,8 +667,8 @@ check "080 Spec Kit residue scan is clean (skills, kernel, lib, planning)" \
 check "080 pins.json planner activation is not-activated on golden" \
   "python3 -c \"import json,pathlib; p=json.loads(pathlib.Path('${SCAFFOLD_080}/.hermes/pins.json').read_text())['pins']; print(p.get('planner',{}).get('activation'))\"" \
   "not-activated"
-check "080 pins.json: structure_extractor pinned to the toolchain JDK, mta_cli pinned 8.2, no retired optional producers" \
-  "python3 -c \"import json,pathlib; p=json.loads(pathlib.Path('${SCAFFOLD_080}/.hermes/pins.json').read_text())['pins']; print('ok' if p.get('structure_extractor',{}).get('version')=='jdk-21' and p.get('mta_cli',{}).get('version')=='8.2' and not p['mta_cli'].get('artifact_sha256') and 'spoon' not in p and 'jqassistant' not in p and 'context_probe' not in p else 'bad')\"" \
+check "080 pins.json: structure_extractor pinned to the toolchain JDK, mta_cli pinned 8.2 with a measured 64-hex artifact digest and named artifact, no retired optional producers" \
+  "python3 -c \"import json,pathlib,re; p=json.loads(pathlib.Path('${SCAFFOLD_080}/.hermes/pins.json').read_text())['pins']; m=p.get('mta_cli',{}); print('ok' if p.get('structure_extractor',{}).get('version')=='jdk-21' and m.get('version')=='8.2' and re.fullmatch(r'[0-9a-f]{64}', str(m.get('artifact_sha256') or '')) and str(m.get('artifact') or '').strip() and 'spoon' not in p and 'jqassistant' not in p and 'context_probe' not in p else 'bad')\"" \
   "ok"
 check "080 K2 hook vetoes worker graph mutation (kanban_create/link/swarm/decompose)" \
   "grep -c 'GRAPH_MUTATION_TOOLS' '${SCAFFOLD_KERNEL}/pre_tool_call.sh' || echo 0" \
