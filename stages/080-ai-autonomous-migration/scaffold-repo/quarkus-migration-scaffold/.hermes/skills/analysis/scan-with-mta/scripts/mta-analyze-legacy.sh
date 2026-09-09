@@ -205,7 +205,11 @@ emit_ok() {
 
 CLI="$(ensure_cli)" || die "mta-cli/kantra missing or unusable after kantra-ensure — re-run once; prefer the pinned MTA CLI 8.2 (MTA_CLI_HOME)"
 # Measured product version (provenance; the receipt compares it with pins.mta_cli.version).
-CLI_VERSION="$("${CLI}" --version 2>/dev/null | head -1 || true)"
+# MTA CLI 8.2 answers the `version` subcommand ("version: 8.2.1"); its `--version`
+# prints usage (measured on the ws-080 image 2026-09-09). Keep the first line that
+# carries a dotted number; an unmeasurable version is non-admissible by design.
+CLI_VERSION="$("${CLI}" version 2>/dev/null | grep -m1 -E '[0-9]+\.[0-9]+' || true)"
+[ -n "${CLI_VERSION}" ] || CLI_VERSION="$("${CLI}" --version 2>/dev/null | grep -m1 -E '[0-9]+\.[0-9]+' || true)"
 case "${CLI}" in
   *$'\n'*)
     die "ensure_cli captured a newline (kantra-ensure status leaked onto stdout): $(printf %q "${CLI}")"
