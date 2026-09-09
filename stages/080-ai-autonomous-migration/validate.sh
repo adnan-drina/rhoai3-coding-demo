@@ -421,8 +421,8 @@ check "080 GitOps places per-profile SOUL.md" \
 check "080 GitOps asserts four SOUL.md sha256 are distinct" \
   "grep -c 'four SOUL.md files have distinct sha256' '${GITOPS_INIT}' || echo 0" \
   "1"
-check "080 GitOps resolves worker home via hermes -p profile show" \
-  "grep -c -- '-p \"\${_soul_profile}\" profile show' '${GITOPS_INIT}' || echo 0" \
+check "080 GitOps resolves worker home via hermes profile show <name> (documented syntax)" \
+  "grep -c -- 'profile show \"\${_soul_profile}\"' '${GITOPS_INIT}' || echo 0" \
   "1"
 check "080 GitOps SOUL smoke does not couple identity phrasing" \
   "grep -c 'doctrine marker missing after load' '${GITOPS_INIT}' || echo 0" \
@@ -490,10 +490,10 @@ check "080 K2 env-assignment selftest passes" \
   "python3 '${SCAFFOLD_KERNEL}/k2_selftest.py' >/dev/null && echo 1 || echo 0" \
   "1"
 check "080 K2 implementer complete is request_review" \
-  "grep -c 'implementer terminator is kanban_request_review' '${SCAFFOLD_KERNEL}/pre_tool_call.sh' || echo 0" \
+  "tr -d '\n' < '${SCAFFOLD_KERNEL}/pre_tool_call.sh' | sed 's/\"[[:space:]]*\"//g' | grep -c 'implementer terminator is kanban_request_review' || echo 0" \
   "1"
 check "080 K2 complete hook writes breadcrumb" \
-  "grep -c 'complete-invocations.jsonl' '${SCAFFOLD_KERNEL}/pre_tool_call.sh' || echo 0" \
+  "grep -v '^[[:space:]]*#' '${SCAFFOLD_KERNEL}/pre_tool_call.sh' | grep -c 'complete-invocations.jsonl' || echo 0" \
   "1"
 SCAFFOLD_LIB="${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/lib"
 SCAFFOLD_PAVED="${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/skills/paved-road"
