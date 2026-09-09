@@ -1278,6 +1278,12 @@ data:
         # Do NOT author fallback_providers: AD-008 forbids silent MiniMax
         # (and OpenRouter) failover. Auxiliary compression stays auto = main.
         "providers": {
+            # "custom" is the runtime provider id Hermes gives a base_url
+            # provider; hermes_cli.timeouts looks the request timeout up under
+            # that id, so the per-model key under qwen27b is not consulted for
+            # it (measured 2026-09-09, pilot v5: two workers died on the 120s
+            # stream-read default while writing a pom through a tool call).
+            "custom": {"request_timeout_seconds": 900},
             "qwen27b": {
                 "api": "${env:MAAS_API_BASE_URL}",
                 "api_key": "${env:MAAS_API_KEY}",
@@ -1484,6 +1490,11 @@ data:
         # Terminal allow-root (Architect 214325ZA). Not the write sandbox.
         fh.write(f"K2_ALLOW_ROOT={safe_root}:/projects/legacy\n")
         fh.write("HERMES_REAL_BIN=/usr/local/bin/hermes\n")
+        # Worker request budgets (belt and braces with providers.custom above):
+        # vLLM buffers a tool call's arguments until complete, so a large
+        # write is minutes of silence on the wire at ~18 tok/s.
+        fh.write("HERMES_STREAM_READ_TIMEOUT=900\n")
+        fh.write("HERMES_API_TIMEOUT=1800\n")
         if os.environ.get("HERMES_MINIMAX") == "1":
             fh.write(
                 "REDHAT_MODELS_BASE_URL="

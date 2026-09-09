@@ -139,9 +139,11 @@ def argv_for_payload(payload: dict[str, Any], mapping: dict[str, str], *, hermes
     kind = str(payload.get("kind") or "")
     if lid in {WRITER_ID, VERIFIER_ID}:
         _fail([_issue("K4_FACTORY", "%s dest factory card is retired" % lid)])
-    expected = "M4 VERIFY" if kind == "close" else "M3 %s" % lid
-    if not lid or title != expected:
-        _fail([_issue("K4_MINT_TITLE", "%s title %r != %r" % (lid, title, expected))])
+    # Titles are readable ("M3 build pom.xml (14 items, attempt 1)"); the
+    # cluster id lives in the body and the idempotency key, never in the title.
+    ok_title = (title == "M4 VERIFY") if kind == "close" else (title.startswith("M3 ") and ", attempt " in title)
+    if not lid or not ok_title:
+        _fail([_issue("K4_MINT_TITLE", "%s title %r is not a loop-card title" % (lid, title))])
     if assignee != IMPL:
         _fail([_issue("K4_ASSIGNEE", "%s assignee=%s" % (lid, assignee))])
     if payload.get("max_retries") != 1:
@@ -226,9 +228,26 @@ def register_control_cards(root: Path) -> dict[str, str]:
     _CARDS_ROOT = Path(root)
     path = Path(root) / LOOP_CARDS
     doc = load_json(path) if path.is_file() else {"schema": "rhoai3.loop-cards/v1", "control": {}}
+    changed = False
     env = (os.environ.get("HERMES_KANBAN_TASK") or "").strip()
     if env and TASK_ID_RE.match(env) and not doc["control"].get("m2"):
         doc["control"]["m2"] = env
+        changed = True
+    # dest-init's own record of the cards it minted (M1 always, M2 under an
+    # activated/pilot planner): registered here so K3 never reports them as
+    # foreign and no worker needs --exempt (pilot v5 measured that workaround).
+    status_p = Path(root) / ".hermes" / "AUTOSTART-STATUS"
+    if status_p.is_file():
+        try:
+            status = load_json(status_p)
+        except Exception:
+            status = {}
+        for name, key in (("m1", "m1_id"), ("m2", "m2_id")):
+            tid = str((status or {}).get(key) or "").strip()
+            if tid and TASK_ID_RE.match(tid) and not doc["control"].get(name):
+                doc["control"][name] = tid
+                changed = True
+    if changed:
         write_canonical(path, doc)
     return dict(doc.get("control") or {})
 

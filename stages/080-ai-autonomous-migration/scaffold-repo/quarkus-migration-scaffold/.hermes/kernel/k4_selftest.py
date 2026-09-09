@@ -54,13 +54,20 @@ def main() -> int:
             return _fail("exactly one card per step")
         p = result["payloads"][0]
         wl = load_json(root / WORKLIST)
-        if p["logical_id"] != wl["head"] or p["title"] != "M3 %s" % wl["head"] or p["kind"] != "build" or p["phase"] != "M3":
+        head_cluster = next(c for c in wl["clusters"] if c["id"] == wl["head"])
+        from planner.cards import card_title  # noqa: E402
+        if p["logical_id"] != wl["head"] or p["title"] != card_title(head_cluster, 1) or not p["title"].startswith("M3 build pom.xml (") or p["kind"] != "build" or p["phase"] != "M3":
             return _fail("head payload %s" % {k: p[k] for k in ("logical_id", "title", "kind", "phase")})
         if p["idempotency_key"] != "k4:%s:1:%s" % (wl["head"], rec["receipt_digest"][:16]) or p["max_retries"] != 1 or p["assignee"] != "implementer":
             return _fail("key/retries/assignee %s" % p["idempotency_key"])
-        if "fix-until-green" not in p["skills"] or "manage-quarkus-extensions" not in p["skills"]:
-            return _fail("build card skills %s" % p["skills"])
-        body = json.loads(p["body"])
+        if p["skills"] != ["fix-until-green"]:
+            return _fail("a loop card carries exactly one skill: %s" % p["skills"])
+        from planner.cards import parse_body  # noqa: E402
+        if not p["body"].startswith("## M3 ") or "```json" not in p["body"]:
+            return _fail("card body must be readable Markdown with the machine body fenced: %r" % p["body"][:80])
+        body = parse_body(p["body"])
+        if parse_body(json.dumps(body)) != body:
+            return _fail("parse_body must accept the pure-JSON form too")
         if validate_body(body, root=root):
             return _fail("body K1: %s" % validate_body(body, root=root))
         if body["receipt_sha256"] != rec["receipt_digest"] or body["worklist_sha256"] != rec["seals"]["worklist"] or body["files_writable"] != ["pom.xml"] or body["attempt"] != 1:
@@ -98,7 +105,7 @@ def main() -> int:
         sch = specimens.build_dest(t / "sched", specimens.specimen("scheduled"), decisions=specimens.admitted_decisions())
         prepare(sch, errors=[("src/main/java/org/acme/clinic/inventory/InventorySyncJob.java", 4, "cannot find symbol Scheduled")])
         res, iss = convert_admitted(sch)
-        if iss or res["payloads"][0]["kind"] not in ("compile", "incident") or "spring-to-quarkus-patterns" not in res["payloads"][0]["skills"]:
+        if iss or res["payloads"][0]["kind"] not in ("compile", "incident") or res["payloads"][0]["skills"] != ["fix-until-green"]:
             return _fail("scheduled head: %s %s" % (iss, res and res["payloads"][0]["kind"]))
     print("OK: K4 selftest (one receipt-bound card per step; K1 body; idempotent; tampered/inadmissible → 0 payloads; scheduled specimen)")
     return 0

@@ -37,7 +37,7 @@ REMEDY = {
     "K4_ASSIGNEE": "M3/M4 assignee=implementer.",
     "K4_PARENT": "The parent is the previous accepted step's card (from verification/loop/steps.json) plus the M2 card; never invented.",
     "K4_MINT_CREATE": "Mint argv is hermes kanban create with inline --body. No create_task, swarm, decompose, link, daemon --force.",
-    "K4_MINT_TITLE": "Titles are exactly 'M3 <cluster id>' for cluster cards and 'M4 VERIFY' for the close card.",
+    "K4_MINT_TITLE": "Titles are 'M3 <kind> <file> (<n> items, attempt <k>)' for cluster cards (planner.cards.card_title) and 'M4 VERIFY' for the close card.",
     "K4_MINT_RETRIES": "Every create passes --max-retries 1 (CLI).",
     "K4_MINT_PARENT": "Resolve parents from minted t_* ids; do not invent parents.",
     "K4_MINT_ID": "Parse create --json for task_id or id (t_*). Serialize creates; created_cards is the real t_* list.",
@@ -45,6 +45,6 @@ REMEDY = {
     "K4_MINT_WORKSPACE": "--workspace dir:/projects/modernized (or a subdirectory); scratch workspaces are OBJECT.",
     "K4_MINT_SKILLS": "Every card pins its kind skills (planner.cards.CARD_SKILLS); at least one producer.",
     "K4_PRODUCER": "A card must pin at least one skill that produces its primary artifact (k4_producers.py).",
-    "K4_NO_PRODUCER": "A card must pin at least one skill that produces its primary artifact; checkers and fix-until-green do not count (k4_producers.py).",
+    "K4_NO_PRODUCER": "A card must pin at least one skill that produces its primary artifact; checkers do not count; on a loop card fix-until-green is the producer (k4_producers.py).",
     "K4_BOARD": "After --exec the live board must equal the expected loop cards (K3 live comparator); foreign or missing cards refuse.",
 }

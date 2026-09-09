@@ -49,7 +49,14 @@ Kanban log; silence, a missing KEEP file, or an unmatched `[exit 1]` refuses.
    `evidence/receipts/k3/live-board.json`) proves the board equals the
    loop's expected cards.
 7. `kanban_request_review` with `reviewer=reviewer` and `created_cards`
-   equal to the native `t_*` list from mint.
+   equal to the native `t_*` list from mint, then end the turn (a later
+   nudge to finish is already satisfied; never answer it with `kanban_complete`).
+
+After an Operator unblock, re-run the road from step 1. The terminal gate
+that says "needle admit-migration-plan last exited non-zero" clears when
+that step runs again in order; it is not asking you to run step 4 first.
+Step 5 needs no `--exempt` flags: the dest-init cards (M1, this M2) are
+registered from `.hermes/AUTOSTART-STATUS` and K3 exempts them itself.
 
 From here the loop propagates itself: each M3 card's `advance.py` mints
 the next card after the tools accept its step.

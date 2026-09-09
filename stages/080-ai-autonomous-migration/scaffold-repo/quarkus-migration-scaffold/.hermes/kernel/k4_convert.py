@@ -30,7 +30,7 @@ from k4_producers import card_from_payload, producer_issues  # noqa: E402
 from k4_schema import CLOSE_ID, IMPL, REMEDY  # noqa: E402
 from planner.admission import artifact_digests_on_disk, verify_receipt  # noqa: E402
 from planner.canonical import load_json, sha256_file  # noqa: E402
-from planner.cards import idempotency_key, next_card  # noqa: E402
+from planner.cards import idempotency_key, next_card, parse_body, render_body  # noqa: E402
 from planner.canonical import write_canonical  # noqa: E402
 from planner.paths import ADMISSION_RECEIPT, EVIDENCE_BUNDLE, LOOP_ISSUED, LOOP_STEPS, TYPE_INVENTORY, WORKLIST  # noqa: E402
 from planner.pins import activation_gaps, load_pins, pin_gaps  # noqa: E402
@@ -41,12 +41,14 @@ SKILLS_ASSERT = (
     "A false consult — claiming a skill that was not loaded — is a defect. Do not silence a missing pin."
 )
 TERMINATOR_M3 = (
-    "Read the brief (fix-until-green/scripts/brief.py). Edit only paths in write_set; never tests, never "
-    "evidence/, never decisions.yaml. Then bash fix-until-green/scripts/run-verify.sh --root . and python3 "
-    "fix-until-green/scripts/advance.py --root . --cluster <id> --card $HERMES_KANBAN_TASK. The measure "
-    "decides: accepted commits and mints the next card; reverted re-mints this cluster; deferred hands it "
-    "to a human. Happy path is kanban_request_review (reviewer=reviewer). kanban_block only for an "
-    "external/platform failure or a stale receipt. Never kanban_complete; never widen the write set."
+    "Read the brief (fix-until-green/scripts/brief.py): every item carries the rule's advice and, for pom "
+    "items, the exact element. Patch the write set one item at a time; never rewrite a whole file, never "
+    "tests, never evidence/, never decisions.yaml. Then bash fix-until-green/scripts/run-verify.sh --root . "
+    "and python3 fix-until-green/scripts/advance.py --root . --cluster <id> --card $HERMES_KANBAN_TASK. "
+    "The measure decides: accepted commits and mints the next card; reverted re-mints this cluster; "
+    "deferred hands it to a human. Terminator: kanban_request_review (reviewer=reviewer), then END THE TURN; "
+    "a nudge to finish after that is already satisfied, do not answer it with kanban_complete or kanban_block. "
+    "kanban_block only for an external/platform failure or a stale receipt. Never kanban_complete; never widen the write set."
 )
 TERMINATOR_M4 = (
     "Run capture-source-oracles parity for every entry point, run-m4-pre-verdict.sh, and the MTA rescan "
@@ -106,7 +108,7 @@ def _payload(card: dict[str, Any], body: dict[str, Any], receipt_digest: str, pa
         "assignee": IMPL,
         "skills": list(card["skills"]),
         "parents": list(parents),
-        "body": json.dumps(body, sort_keys=True, separators=(",", ":")),
+        "body": render_body(body),
         "idempotency_key": idempotency_key(card["id"], card["attempt"], receipt_digest),
         "attempt": card["attempt"],
         "max_retries": 1,
@@ -128,7 +130,7 @@ def validate_result(result: Any) -> list[Issue]:
             out.append(_issue("K4_ASSIGNEE", "%s assignee=%s" % (p.get("logical_id"), p.get("assignee"))))
         if p.get("max_retries") != 1:
             out.append(_issue("K4_MINT_RETRIES", "%s max_retries %s" % (p.get("logical_id"), p.get("max_retries"))))
-        if p.get("kind") != "close" and not (json.loads(p["body"]).get("files_writable") or []):
+        if p.get("kind") != "close" and not (parse_body(p["body"]).get("files_writable") or []):
             out.append(_issue("K4_SCOPE", "%s has an empty write set" % p.get("logical_id")))
     created = (result.get("manifest") or {}).get("created_cards")
     if created != [p.get("logical_id") for p in payloads if isinstance(p, dict)]:
@@ -141,7 +143,7 @@ def write_bodies(root: Path, payloads: list[dict[str, Any]]) -> None:
     dest.mkdir(parents=True, exist_ok=True)
     for p in payloads:
         prefix = "m4" if p["kind"] == "close" else "m3"
-        (dest / ("%s-%s.json" % (prefix, p["logical_id"].replace(":", "-")))).write_text(json.dumps(json.loads(p["body"]), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        (dest / ("%s-%s.json" % (prefix, p["logical_id"].replace(":", "-")))).write_text(json.dumps(parse_body(p["body"]), indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def convert_admitted(root: Path, *, write_root: bool = True) -> tuple[dict[str, Any] | None, list[Issue]]:

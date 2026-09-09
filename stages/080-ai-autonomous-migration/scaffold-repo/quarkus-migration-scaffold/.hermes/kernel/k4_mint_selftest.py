@@ -214,6 +214,8 @@ def continuation_through_advance(t: Path) -> int:
     import stat
 
     root = specimens.build_dest(t / "cont", specimens.specimen("http"), decisions=specimens.admitted_decisions())
+    # dest-init's own record: its M1 card is a control card K3 exempts without any --exempt flag
+    (root / ".hermes" / "AUTOSTART-STATUS").write_text(json.dumps({"state": "minted", "m1_id": "t_m1init", "m2_id": ""}), encoding="utf-8")
     prepare(root)
     store = t / "fake-board.json"
     bin_dir = t / "fake-bin"
@@ -236,6 +238,8 @@ def continuation_through_advance(t: Path) -> int:
     cards_reg = load_json(root / "verification" / "loop" / "cards.json")
     if cards_reg["control"].get("m2") != "t_m2":
         return _fail("M2 must be registered as the control card: %s" % cards_reg)
+    if cards_reg["control"].get("m1") != "t_m1init":
+        return _fail("dest-init M1 must be registered from AUTOSTART-STATUS (no --exempt): %s" % cards_reg)
     issued = load_json(root / "verification" / "loop" / "issued.json")
     if issued.get("task_id") != first[0]:
         return _fail("issued card must carry the minted task id: %s" % issued)

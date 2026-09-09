@@ -18,8 +18,87 @@ from _loop_common import ensure_hermes_lib  # noqa: E402
 
 ensure_hermes_lib()
 from planner.canonical import load_json, write_canonical  # noqa: E402
-from planner.paths import LOOP_DIR, WORKLIST  # noqa: E402
+from planner.paths import LOOP_DIR, MTA_FINDINGS, MTA_RESCAN_FINDINGS, WORKLIST  # noqa: E402
 from planner.worklist import head_cluster, items_of  # noqa: E402
+
+PROCEDURE = (
+    "Patch the write set one item at a time (targeted edits; never rewrite a whole file, never touch a "
+    "path outside the write set, never tests). Each item names its rule, its advice (the rule's own guidance), "
+    "and for pom.xml the exact element at the reported line. An item whose advice names an artifact that is "
+    "already in the pom is marked advice_present: verify and move on, do not add it twice. Then run "
+    "run-verify.sh and advance.py; the measure decides, not you."
+)
+
+
+def pom_elements(pom_path: Path) -> list[dict]:
+    """Every <dependency>/<plugin>/<extension> element of a pom with its line
+    span and GAV, from the XML parser's own line numbers (no text matching)."""
+    import xml.parsers.expat
+
+    els: list[dict] = []
+    stack: list[dict] = []
+    parser = xml.parsers.expat.ParserCreate()
+
+    def start(name: str, _attrs: dict) -> None:
+        stack.append({"name": name, "line": parser.CurrentLineNumber, "children": {}, "text": ""})
+
+    def end(name: str) -> None:
+        el = stack.pop()
+        if stack and name in ("groupId", "artifactId", "version", "scope"):
+            stack[-1]["children"][name] = el["text"].strip()
+        if name in ("dependency", "plugin", "extension"):
+            c = el["children"]
+            els.append({"kind": name, "gav": "%s:%s" % (c.get("groupId", ""), c.get("artifactId", "")), "version": c.get("version", ""), "scope": c.get("scope", ""), "line_start": el["line"], "line_end": parser.CurrentLineNumber})
+
+    def chars(data: str) -> None:
+        if stack:
+            stack[-1]["text"] += data
+
+    parser.StartElementHandler = start
+    parser.EndElementHandler = end
+    parser.CharacterDataHandler = chars
+    try:
+        parser.Parse(pom_path.read_bytes(), True)
+    except xml.parsers.expat.ExpatError:
+        return []
+    return els
+
+
+def element_at(els: list[dict], line: int) -> dict | None:
+    hits = [e for e in els if e["line_start"] <= line <= e["line_end"]]
+    return min(hits, key=lambda e: e["line_end"] - e["line_start"]) if hits else None
+
+
+def _backticked(text: str) -> list[str]:
+    parts = text.split("`")
+    return [parts[i].strip() for i in range(1, len(parts), 2) if parts[i].strip()]
+
+
+def enrich(items: list[dict], root: Path, cluster: dict) -> list[dict]:
+    """Attach the rule's advice/links (from the findings the work list was
+    built on) and, for pom.xml loci, the element at the reported line plus
+    which advised artifacts the pom already carries."""
+    findings_p = next((root / rel for rel in (MTA_RESCAN_FINDINGS, MTA_FINDINGS) if (root / rel).is_file()), None)
+    rules = (load_json(findings_p).get("violations") or {}) if findings_p else {}
+    pom_p = root / "pom.xml"
+    els = pom_elements(pom_p) if cluster.get("path") == "pom.xml" and pom_p.is_file() else []
+    artifacts = {e["gav"].split(":")[-1] for e in els} | {e["gav"] for e in els}
+    out: list[dict] = []
+    for it in items:
+        row = dict(it)
+        rule = rules.get(str(it.get("rule_id")))
+        if isinstance(rule, dict) and it.get("source") == "mta":
+            incs = rule.get("incidents") if isinstance(rule.get("incidents"), list) else []
+            msg = next((str(i.get("message")) for i in incs if isinstance(i, dict) and i.get("message")), "")
+            row["advice"] = {"description": str(rule.get("description") or ""), "message": msg, "links": [l.get("url") for l in (rule.get("links") or []) if isinstance(l, dict) and l.get("url")]}
+            present = sorted(t for t in _backticked(msg) if t in artifacts or t.split(":")[-1] in artifacts)
+            if present:
+                row["advice_present"] = present
+        if els:
+            el = element_at(els, int(it.get("line") or 0))
+            row["element"] = el or {"kind": "project", "gav": "", "line_start": 1, "line_end": 0}
+        out.append(row)
+    return out
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -36,8 +115,10 @@ def main(argv: list[str] | None = None) -> int:
     brief = {
         "schema": "rhoai3.loop-brief/v1",
         "cluster": cluster,
-        "items": items_of(doc, cluster),
+        "write_set": list(cluster.get("write_set") or []),
+        "items": enrich(items_of(doc, cluster), root, cluster),
         "measure": doc["measure"],
+        "procedure": PROCEDURE,
         "rule": "Edit only the write set. Do not edit tests. Do not touch pom.xml unless it is in the write set. Then run run-verify.sh and advance.py; the measure decides, not you.",
     }
     write_canonical(root / LOOP_DIR / ("brief-%s.json" % cluster["id"].replace(":", "-")), brief)

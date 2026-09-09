@@ -140,6 +140,14 @@ def main() -> int:
         p = _run([sys.executable, str(BRIEF), "--root", str(root)])
         if p.returncode != 0 or "pom.xml" not in p.stdout:
             return _fail("brief: %s" % p.stderr)
+        brief = json.loads(p.stdout)
+        if brief.get("write_set") != ["pom.xml"] or "one item at a time" not in brief.get("procedure", ""):
+            return _fail("brief must name the write set and the patch-per-item procedure: %s" % {k: brief.get(k) for k in ("write_set", "procedure")})
+        pom_items = [i for i in brief["items"] if i.get("source") == "mta" and i.get("path") == "pom.xml"]
+        if not pom_items or any("advice" not in i or "element" not in i for i in pom_items):
+            return _fail("every pom incident in the brief carries the rule advice and the element at its line: %s" % pom_items[:1])
+        if any(i["element"].get("kind") not in ("dependency", "plugin", "extension", "project") for i in pom_items):
+            return _fail("element kinds: %s" % [i["element"] for i in pom_items])
         pom_before = (root / "pom.xml").read_text(encoding="utf-8")
 
         # --- review counterexample 1: invented cluster + post-verification edit ---

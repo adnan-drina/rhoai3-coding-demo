@@ -316,7 +316,9 @@ if is_complete():
     if profile == "implementer":
         record_complete_invocation("refuse_implementer")
         block("kanban_complete refused: implementer terminator is "
-              "kanban_request_review")
+              "kanban_request_review. If you already called kanban_request_review, "
+              "the review handoff IS your terminator: end the turn now and do not "
+              "answer a nudge to finish with kanban_complete or kanban_block.")
     if profile == "reviewer" and not paved_road_audit_green():
         record_complete_invocation("refuse_reviewer_audit")
         block("kanban_complete refused: paved-road audit last exit not 0; "

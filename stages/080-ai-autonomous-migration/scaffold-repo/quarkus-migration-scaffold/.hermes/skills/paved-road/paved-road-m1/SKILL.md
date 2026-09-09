@@ -52,7 +52,7 @@ the root of the planner digest chain (SAD §6).
    records `outcome: failure` is **evidence**, not a defect to repair.
    extractor unpinned / JDK mismatch → `kanban_block` (kind `needs_input`, the pin is an
    ADR). Build failure → continue; the ledger makes it planning-only.
-4. Happy-path terminator: `kanban_request_review` (reviewer `reviewer`).
+4. Happy-path terminator: `kanban_request_review` (reviewer `reviewer`), then end the turn. A later nudge to finish is already satisfied by the review handoff; do not answer it with `kanban_complete` (K2 refuses it for the implementer) or `kanban_block`.
 5. `kanban_block` for external/platform (MaaS 500, missing key, GPU).
 6. Reviewer runs `scripts/assert-paved-road-audit.py --log <official> --root <ws>`.
    `--log` must be `kanban/logs/t_*.log` (or a land-time `fixtures/**/official.log`).

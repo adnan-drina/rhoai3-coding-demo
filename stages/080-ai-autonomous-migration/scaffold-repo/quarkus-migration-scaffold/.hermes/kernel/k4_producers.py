@@ -2,8 +2,12 @@
 """Producer-skill invariant (Architect 143941ZA / Operator 143706ZO).
 
 Every card must pin at least one skill that owns producing its primary
-artifact. Checkers (check-*, assert-*, verify-*) and the common loop
-procedure (fix-until-green) do not count.
+artifact. Checkers (check-*, assert-*, verify-*) do not count. Under the
+v3 loop (SAD v3 §6) the edit that produces a pom, config or Java artifact
+IS the fix-until-green step: brief → patch inside the write set →
+run-verify → advance; so fix-until-green is the producer of every loop
+artifact and the only skill a loop card pins (pilot v5 measured what the
+story-era pom skills do on a loop card: scope creep and a whole-file rewrite).
 
 Not dest-apply. Does not import create_task. Does not kanban.
 """
@@ -55,6 +59,7 @@ PRODUCERS: dict[str, frozenset[str]] = {
     "form-entity-persistence": frozenset({ARTIFACT_K8S, ARTIFACT_JAVA}),
     "commit-destination-tree": frozenset({ARTIFACT_COMMIT}),
     "compose-m4-verdict": frozenset({ARTIFACT_M4}),
+    "fix-until-green": frozenset({ARTIFACT_POM, ARTIFACT_CONFIG, ARTIFACT_JAVA, ARTIFACT_COMMIT}),
 }
 
 # One home for kind → pins: planner.cards.CARD_SKILLS (K4 stamps them).
@@ -75,17 +80,8 @@ def _writes(card: dict[str, Any]) -> list[str]:
 
 
 def _body_dict(payload: dict[str, Any]) -> dict[str, Any]:
-    raw = payload.get("body")
-    if isinstance(raw, dict):
-        return raw
-    if isinstance(raw, str) and raw.strip():
-        try:
-            parsed = json.loads(raw)
-        except json.JSONDecodeError:
-            return {}
-        if isinstance(parsed, dict):
-            return parsed
-    return {}
+    from planner.cards import parse_body  # readable Markdown body with a fenced machine block, or pure JSON
+    return parse_body(payload.get("body"))
 
 
 def card_from_payload(payload: dict[str, Any]) -> dict[str, Any]:

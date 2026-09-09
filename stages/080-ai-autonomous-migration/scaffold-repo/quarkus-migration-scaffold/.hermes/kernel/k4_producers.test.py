@@ -35,8 +35,10 @@ def main() -> int:
         return _fail("M2 pinning the planner producers must PASS")
     if producer_issues({"logical_id": "M4_VERIFY", "phase": "M4", "kind": "close", "skills": ["compose-m4-verdict", "capture-source-oracles"], "files_writable": ["evidence/verdicts/"]}):
         return _fail("M4 pinning compose-m4-verdict must PASS")
-    if not producer_issues({"logical_id": "c:x", "phase": "M3", "kind": "compile", "skills": ["fix-until-green"], "files_writable": ["src/main/java/com/demo/A.java"]}):
-        return _fail("the common procedure alone is not a producer")
+    if producer_issues({"logical_id": "c:x", "phase": "M3", "kind": "compile", "skills": ["fix-until-green"], "files_writable": ["src/main/java/com/demo/A.java"]}):
+        return _fail("under the v3 loop fix-until-green IS the producer of a loop artifact (the edit under the transaction)")
+    if not producer_issues({"logical_id": "M1", "phase": "M1", "skills": ["fix-until-green"], "files_writable": ["evidence/planning/evidence-bundle.json"]}):
+        return _fail("fix-until-green does not produce the M1 bundle")
     for kind, skills in KIND_DEFAULTS.items():
         fw = {"build": ["pom.xml"], "config": ["src/main/resources/application.properties"], "compile": ["src/main/java/com/demo/A.java"], "incident": ["src/main/java/com/demo/A.java"], "test": ["src/main/java/com/demo/A.java"], "parity": ["src/main/java/com/demo/A.java"], "close": ["evidence/verdicts/"]}[kind]
         card = {"logical_id": "n", "phase": "M4" if kind == "close" else "M3", "kind": kind, "skills": list(skills), "files_writable": fw}
@@ -48,7 +50,7 @@ def main() -> int:
     payload = {"logical_id": "c:y", "kind": "compile", "skills": ["spring-to-quarkus-patterns", "fix-until-green"], "body": json.dumps({"phase": "M3", "files_writable": ["src/main/java/com/demo/A.java"]})}
     if producer_issues(card_from_payload(payload)):
         return _fail("cluster payload must PASS")
-    for checker in ("check-release-readiness", "verify-live-kanban-loop", "fix-until-green", "admit-migration-plan-checker"):
+    for checker in ("check-release-readiness", "verify-live-kanban-loop", "admit-migration-plan-checker"):
         if checker in PRODUCERS and checker != "admit-migration-plan":
             return _fail("checker %s must not be a producer" % checker)
     named = subprocess.run([sys.executable, str(KERNEL / "assert-skill-scripts-named.py")], text=True, capture_output=True)
