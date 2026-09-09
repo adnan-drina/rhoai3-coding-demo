@@ -155,7 +155,23 @@ resolve_project_root() {
   done
   return 1
 }
-ROOT="$(resolve_project_root)" || { echo "mta-analyze-legacy: cannot find migration.yaml walking up from $(dirname "$0")" >&2; exit 1; }
+# Isolated rehearsal (and any caller) must name the destination. Walking up
+# from this script otherwise lands on the dest clone that ships the skill
+# (PetClinic v2 2026-09-09: /tmp/rehearsal wrote MTA artefacts onto
+# /projects/modernized and skipped /tmp/rehearsal/evidence/producers/mta.json).
+ROOT=""
+if [ "${1:-}" = "--root" ]; then
+  ROOT="${2:-}"
+  shift 2
+elif [ -n "${1:-}" ] && [ -f "${1}/migration.yaml" ]; then
+  ROOT="${1}"
+  shift
+fi
+if [ -z "${ROOT}" ]; then
+  ROOT="$(resolve_project_root)" || { echo "mta-analyze-legacy: cannot find migration.yaml walking up from $(dirname "$0")" >&2; exit 1; }
+fi
+[ -f "${ROOT}/migration.yaml" ] || { echo "mta-analyze-legacy: no migration.yaml under ${ROOT}" >&2; exit 1; }
+ROOT="$(cd "${ROOT}" && pwd)"
 SCRIPTS="$(cd "$(dirname "$0")" && pwd)"
 FREEZE="${ROOT}/evidence/producers/freeze.json"
 MIGRATION_YAML="${ROOT}/migration.yaml"

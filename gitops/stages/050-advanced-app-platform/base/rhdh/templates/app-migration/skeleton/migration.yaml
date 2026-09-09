@@ -91,6 +91,8 @@ acceptance:
 analysis:
   # AD-003A: --target only, never --source. openjdk21 kept (O-OPENJDK21TARGET).
   mode: source-only
+  custom_rules: .hermes/planning/mta-rules
+  canary_rule_id: rhoai3-canary-00001
   targets:
     - quarkus
     - jakarta-ee9

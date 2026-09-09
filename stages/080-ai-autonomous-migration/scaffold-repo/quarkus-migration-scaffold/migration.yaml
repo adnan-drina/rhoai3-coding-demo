@@ -15,6 +15,8 @@ migration:
   intra_package_maps: []
 
 analysis:
+  custom_rules: .hermes/planning/mta-rules
+  canary_rule_id: rhoai3-canary-00001
   targets:
     - quarkus
     - jakarta-ee9

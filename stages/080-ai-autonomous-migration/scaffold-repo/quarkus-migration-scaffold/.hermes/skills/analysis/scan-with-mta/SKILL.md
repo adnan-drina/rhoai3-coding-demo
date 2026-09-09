@@ -50,8 +50,10 @@ transformation and is not an M1 input (SAD §5.1).
 ## Procedure
 
 ```bash
-bash "${HERMES_SKILL_DIR}/scripts/mta-analyze-legacy.sh"
+bash "${HERMES_SKILL_DIR}/scripts/mta-analyze-legacy.sh" --root /projects/modernized
 ```
+
+`--root` is required for isolated rehearsal (`rehearse-legacy.sh --root /tmp/rehearsal`). Without it the script walks up from its own path and can write findings into the dest clone that ships the skill.
 
 In order (each step dies non-zero on failure):
 

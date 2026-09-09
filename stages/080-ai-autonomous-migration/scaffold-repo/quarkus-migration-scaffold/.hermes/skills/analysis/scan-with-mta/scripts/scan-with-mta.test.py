@@ -45,6 +45,8 @@ def main() -> int:
             return _fail("mta-analyze-legacy.sh must not pass --source: %r" % s)
     if "mta-cli" not in sh.split("ensure_cli()")[1].split("_try_resolved_clis")[0]:
         return _fail("ensure_cli must probe the pinned MTA CLI first")
+    if "--root" not in sh:
+        return _fail("mta-analyze-legacy.sh must honor --root so isolated rehearsal does not write dest evidence")
     if not RESCAN.is_file():
         return _fail("missing mta-rescan-destination.sh")
 

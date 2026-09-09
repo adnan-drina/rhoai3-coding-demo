@@ -41,7 +41,7 @@ step "3 inventory-legacy-surface (JDK model)"
 bash "${S}/analysis/inventory-legacy-surface/scripts/run-jdk-model-extract.sh" --root "${ROOT}"
 step "4 scan-with-mta"
 if command -v mta-cli >/dev/null 2>&1 || command -v kantra >/dev/null 2>&1; then
-  bash "${S}/analysis/scan-with-mta/scripts/mta-analyze-legacy.sh" "${ROOT}" || echo "WARN: MTA analysis failed"
+  bash "${S}/analysis/scan-with-mta/scripts/mta-analyze-legacy.sh" --root "${ROOT}" || echo "WARN: MTA analysis failed"
 else
   echo "SKIP: no MTA CLI on PATH — the bundle will carry no MTA obligations and admission will block MTA_MISSING (expected in a toolchain rehearsal)"
 fi
