@@ -79,8 +79,13 @@ def main() -> int:
         argv_file.write_text("\n".join([str(mta), "analyze", "--input", "/analysis", "--target", "quarkus", "--rules", "x"]), encoding="utf-8")
         common = [sys.executable, str(RECEIPT), str(root), "--cli", str(mta), "--input", "/analysis", "--targets", "quarkus", "--rules-dir", str(root / ".hermes" / "planning" / "mta-rules"), "--canary-id", "rhoai3-canary-00001", "--findings", str(findings), "--argv-file", str(argv_file)]
         golden_pin = load_json(GOLDEN / ".hermes" / "pins.json")["pins"]["mta_cli"]
-        if golden_pin.get("version") != "8.2" or golden_pin.get("artifact_sha256"):
-            return _fail("golden pins.mta_cli must pin the 8.2 line without a fabricated digest: %s" % golden_pin)
+        if golden_pin.get("version") != "8.2":
+            return _fail("golden pins.mta_cli must pin the 8.2 line: %s" % golden_pin)
+        frozen = golden_pin.get("artifact_sha256")
+        if frozen is not None and not (isinstance(frozen, str) and len(frozen) == 64 and all(c in "0123456789abcdef" for c in frozen) and str(golden_pin.get("artifact") or "").strip()):
+            return _fail("a frozen golden artifact_sha256 must be a real sha256 with its artifact provenance named (never fabricated): %s" % golden_pin)
+        # the fake 8.2 binary below cannot match a frozen digest: test the line rule on an unfrozen copy
+        golden_pin = dict(golden_pin, artifact_sha256=None)
         pins = load_json(root / ".hermes" / "pins.json")
         pins["pins"]["mta_cli"] = dict(golden_pin)
         (root / ".hermes" / "pins.json").write_text(json.dumps(pins, indent=2), encoding="utf-8")
