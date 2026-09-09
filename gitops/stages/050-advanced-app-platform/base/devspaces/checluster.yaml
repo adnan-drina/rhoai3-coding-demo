@@ -31,6 +31,15 @@ spec:
     # Two lets the scaffolded project workspace coexist with one stage
     # workspace.
     maxNumberOfRunningWorkspacesPerUser: 2
+    # Trusted sources: the dashboard shows an "untrusted source" dialog for
+    # every factory URL until this allowlist exists server-side; with it
+    # configured the dialog is skipped and sources outside the list are
+    # refused. Every golden and per-run repo the app-migration template
+    # creates lives under this owner (Dev Spaces 3.29 Administration Guide,
+    # "Restrict which URLs can create workspaces"; wildcards supported).
+    allowedSources:
+      urls:
+        - "https://github.com/adnan-drina/*"
     storage:
       pvcStrategy: per-user
     defaultNamespace:
