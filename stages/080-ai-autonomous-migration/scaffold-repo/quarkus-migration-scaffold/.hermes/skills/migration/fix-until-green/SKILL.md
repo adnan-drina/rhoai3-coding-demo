@@ -84,7 +84,7 @@ write set).
 ## Scripts
 
 - `scripts/brief.py` — the head cluster's brief
-- `scripts/run-verify.sh` — the real tools (one online `dependency:go-offline` warm-up so a changed pom can be measured, then offline: JDK diagnostics, surefire, MTA rescan) → `verify.py`; every tool's exit status lands in `verification/build/run.json`
+- `scripts/run-verify.sh` — the real tools (one online warm-up: `dependency:go-offline` plus the measured goals with results discarded, so a changed pom can be measured; then offline: JDK diagnostics, surefire, MTA rescan) → `verify.py`; every tool's exit status lands in `verification/build/run.json`
 - `scripts/verify.py` — tool outputs + recorded outcomes → work list + state + candidate identity
 - `scripts/advance.py` — the acceptance transaction (`--baseline` records step 0)
 - `scripts/jdk-diagnostics/JdkDiagnostics.java` — compiler diagnostics as JSON (JDK compiler API)

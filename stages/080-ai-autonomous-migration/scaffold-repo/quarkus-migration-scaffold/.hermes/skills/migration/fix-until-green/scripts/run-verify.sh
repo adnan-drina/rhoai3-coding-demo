@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # run-verify: the real tools behind verify.py on a destination tree.
-#   0. warm-up (network, once per verification: mvn dependency:go-offline)
-#      so a pom the loop just changed can be measured offline; recorded
+#   0. warm-up (network, once per verification: dependency:go-offline, then
+#      the measured goals online with results discarded) so a pom the loop
+#      just changed can be measured offline; recorded
 #   1. offline classpath (mvn -o dependency:build-classpath)
 #   2. JdkDiagnostics over src/main with that classpath
 #   3. mvn -o test only when compilation is clean; FRESH surefire reports

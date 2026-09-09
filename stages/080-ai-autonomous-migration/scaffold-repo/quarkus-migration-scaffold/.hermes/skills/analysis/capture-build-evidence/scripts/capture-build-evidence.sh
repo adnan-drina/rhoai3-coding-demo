@@ -31,9 +31,13 @@ export JAVA_HOME="${JAVA_HOME_21:-${JAVA_HOME:-}}"
 java -version >"${RAW}/java-version.txt" 2>&1 || true
 mvn -v >"${RAW}/mvn-version.txt" 2>&1 || true
 
-# 1. warm-up (network) — recorded separately
+# 1. warm-up (network) — recorded separately. dependency:go-offline alone is
+#    not enough: measured live 2026-09-09, it returned 0 and the offline
+#    compile still lacked spring-orm / spring-retry / byte-buddy. The warm-up
+#    therefore also runs the measured goal itself online once; only the
+#    offline pass below is the measurement.
 set +e
-( cd "${COPY}" && mvn -q -B dependency:go-offline ) >"${RAW}/warmup.log" 2>&1
+( cd "${COPY}" && mvn -q -B dependency:go-offline && mvn -q -B compile ) >"${RAW}/warmup.log" 2>&1
 echo $? >"${RAW}/warmup.rc"
 # 1b. effective pom (network: the help plugin) — the legacy build's resolved
 #     dependency versions as XML; the bootstrap carries them over for

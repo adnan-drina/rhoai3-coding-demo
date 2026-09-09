@@ -733,6 +733,10 @@ check "080 bootstrap retires only ADR-listed sources (decisions.yaml retired_sou
 check "080 bootstrap carries legacy-resolved versions for dependencies the pinned BOM does not manage (measured, never guessed)" \
   "grep -c -E 'VERSION_UNMANAGED|BOM_PROBE_MISSING|pom.pin-legacy-version' '${SCAFFOLD_SKILLS}/migration/bootstrap-destination/scripts/bootstrap-destination.py' | awk '{print (\$1>=3)?1:0}'" \
   "1"
+check "080 warm-ups run the measured Maven goals online once (go-offline alone leaves compile/test artifacts unfetched)" \
+  "grep -c -F -- '-Dmaven.test.failure.ignore=true test' '${SCAFFOLD_SKILLS}/migration/fix-until-green/scripts/run-verify.sh'; grep -c -F 'dependency:go-offline && mvn -q -B compile' '${SCAFFOLD_SKILLS}/analysis/capture-build-evidence/scripts/capture-build-evidence.sh'" \
+  "1
+1"
 check "080 run-verify.sh warms the destination up online once, then measures offline, and records the warm-up outcome" \
   "grep -c -E 'dependency:go-offline|\"warmup\": \{\"ran\"' '${SCAFFOLD_SKILLS}/migration/fix-until-green/scripts/run-verify.sh' | awk '{print (\$1>=2)?1:0}'" \
   "1"
