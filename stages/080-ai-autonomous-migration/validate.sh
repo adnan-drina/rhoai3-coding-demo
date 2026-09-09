@@ -793,6 +793,12 @@ check "080 dest-init does not install specify PATH shim" \
 check "080 dest-init does not run specify init" \
   "grep -c 'dest-init specify init' '${GITOPS_INIT}' || echo 0" \
   "0"
+check "080 live dest-init does not ship init-spec-workspace" \
+  "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -c 'init-spec-workspace' || true" \
+  "0"
+check "080 live dest-init does not run specify init" \
+  "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -c 'dest-init specify init' || true" \
+  "0"
 check "080 pins.json has no spec_kit pin" \
   "python3 -c \"import json,pathlib; p=json.loads(pathlib.Path('${SCAFFOLD_080}/.hermes/pins.json').read_text()); print('present' if 'spec_kit' in (p.get('pins') or {}) else 'absent')\"" \
   "absent"
