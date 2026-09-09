@@ -1214,6 +1214,31 @@ A live comment of the pin on an already-running dest is not dest-init. Next dest
 
 **Related docs:** dest-init `ensure_hermes` in `maas-api-key-provisioning.yaml`; Architect `221730ZA`
 
+## Dest worker "Transient APIConnectionError … one last primary attempt" after minutes of silence (`harness-v3`)
+
+**Affected stage:** Stage 080 dest M3 workers on the MaaS route while the model writes a large tool call (a whole `pom.xml` patch). The kanban task log shows the worker reading the brief and the pom, then nothing for ~9–12 minutes, then `🔁 Transient APIConnectionError on custom — rebuilt client, waiting 6s before one last primary attempt.` The gateway access log shows one `200 DC downstream_remote_disconnect` line per abort, each with a duration of exactly 180 s and 0 response bytes.
+
+**Likely cause:** Hermes's client-side stream stale detector, not the gateway. It aborts a stream after 180 s without a chunk (`HERMES_STREAM_STALE_TIMEOUT` default; the `qwen3` reasoning floor is also 180) and retries up to `HERMES_STREAM_STALE_GIVEUP` (5) times. vLLM's `qwen3_xml` tool-call parser emits nothing while a tool call's arguments are generated, so at ~18 tok/s a pom patch is minutes of silence. The per-model `stale_timeout_seconds: 900` under `providers.qwen27b` is not consulted because the runtime provider id of a base_url provider is `custom`. A 343 s fully silent non-streaming request through the same gateway completed, which rules the gateway out (Envoy HCM `stream_idle_timeout` and the qwen route timeout are both `0s`).
+
+**Diagnose:**
+
+```bash
+# exactly-180s aborts with the DC flag = client stale detector
+oc logs -n openshift-ingress <maas-default-gateway-pod> -c istio-proxy --since=1h \
+  | grep 'chat/completions' | grep 'DC downstream_remote_disconnect'
+# what the worker actually resolved (runtime provider id is "custom")
+oc exec -n <ws-ns> <workspace-pod> -c development-tooling -- bash -c \
+  'cd /projects/modernized && HERMES_HOME=$PWD/.hermes/home/profiles/implementer \
+   /opt/hermes-venv/bin/python -c "import sys; sys.path.insert(0, \"/opt/hermes-agent\"); \
+   from hermes_cli.timeouts import get_provider_stale_timeout as g; print(g(\"custom\", \"qwen3-6-27b\"))"'
+```
+
+`None` means the 180 s default applies.
+
+**Recover:** Durable path is dest-init in `maas-api-key-provisioning.yaml`: `providers.custom.stale_timeout_seconds: 900` next to `request_timeout_seconds`, and `HERMES_STREAM_STALE_TIMEOUT=900` in the managed `.env` (belt and braces). A running worker keeps the value it started with; the next spawned worker picks the new one up.
+
+**Related docs:** dest-init `ensure_hermes` in `maas-api-key-provisioning.yaml`; `docs/OPERATIONS.md` (Hermes request budgets).
+
 ## MaaS route HTTP 500 / Envoy `ext_proc_error_gRPC_error_14` (`harness-v2`)
 
 **Affected stage:** Stage 040 gateway, Stage 080 dest workers on the MaaS route.

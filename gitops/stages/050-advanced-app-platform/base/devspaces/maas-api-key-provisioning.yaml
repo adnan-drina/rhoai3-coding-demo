@@ -1283,7 +1283,15 @@ data:
             # that id, so the per-model key under qwen27b is not consulted for
             # it (measured 2026-09-09, pilot v5: two workers died on the 120s
             # stream-read default while writing a pom through a tool call).
-            "custom": {"request_timeout_seconds": 900},
+            # stale_timeout_seconds: Hermes's stream stale detector aborts a
+            # stream after 180s without a chunk (HERMES_STREAM_STALE_TIMEOUT
+            # default, qwen3 reasoning floor also 180) and retries up to 5
+            # times. vLLM's qwen3_xml parser emits nothing while a tool call's
+            # arguments are being generated, so a pom patch is >180s of silence
+            # (measured 2026-09-09, pilot v6: four aborts of exactly 180s,
+            # Envoy flag DC downstream_remote_disconnect; a 343s silent
+            # non-streaming request through the same gateway completed).
+            "custom": {"request_timeout_seconds": 900, "stale_timeout_seconds": 900},
             "qwen27b": {
                 "api": "${env:MAAS_API_BASE_URL}",
                 "api_key": "${env:MAAS_API_KEY}",
@@ -1495,6 +1503,8 @@ data:
         # write is minutes of silence on the wire at ~18 tok/s.
         fh.write("HERMES_STREAM_READ_TIMEOUT=900\n")
         fh.write("HERMES_API_TIMEOUT=1800\n")
+        # Stream stale detector (see providers.custom.stale_timeout_seconds).
+        fh.write("HERMES_STREAM_STALE_TIMEOUT=900\n")
         if os.environ.get("HERMES_MINIMAX") == "1":
             fh.write(
                 "REDHAT_MODELS_BASE_URL="
