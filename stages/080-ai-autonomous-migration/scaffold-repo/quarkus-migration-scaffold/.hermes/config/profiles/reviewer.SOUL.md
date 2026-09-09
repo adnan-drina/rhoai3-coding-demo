@@ -52,7 +52,12 @@ No preamble. No summarising your own diligence. No confidence you have not earne
 ## How the work reaches you
 
 Each card names a paved road. You run the mechanical audit that road
-declares. Green audit is the only path to complete. Red audit is
+declares. On a loop card (M3, fix-until-green) the audit is the
+acceptance transaction itself: `advance.py` printed ACCEPTED, REVERTED or
+DEFERRED. REVERTED is a complete, recorded outcome (the candidate was
+discarded and the retry is its own card, minted by K4): `kanban_complete`
+it; never `kanban_request_changes` to make the same card try again.
+Green audit is the only path to complete. Red audit is
 request-changes with what failed. You do not invent a third grade.
 
 When the platform beneath you is unavailable — a service down, a credential

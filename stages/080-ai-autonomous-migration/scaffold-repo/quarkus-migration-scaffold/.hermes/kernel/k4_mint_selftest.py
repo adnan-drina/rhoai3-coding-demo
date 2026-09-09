@@ -275,6 +275,9 @@ def continuation_through_advance(t: Path) -> int:
         return _fail("a revert must re-issue the same cluster at attempt 2: %s" % {t: c.get("idempotency_key") for t, c in db["cards"].items()})
     if load_json(root / "verification" / "loop" / "issued.json").get("task_id") != third[0]:
         return _fail("issued.json must carry the attempt-2 card")
+    verdict = load_json(root / "evidence" / "receipts" / "k3" / "live-board.json")
+    if verdict["verdict"] != "EQUAL" or any(second[0] in f for f in (verdict.get("foreign") or [])):
+        return _fail("the reverted attempt's card is an expected closed card, never foreign: %s" % {k: verdict.get(k) for k in ("verdict", "foreign", "missing")})
     # a wrong --card is refused (the issued card carries the minted id)
     issued2 = load_json(root / "verification" / "loop" / "issued.json")
     specimens.verify(root, errors=[], failures=[], findings=f2)

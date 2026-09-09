@@ -568,6 +568,19 @@ def main() -> int:
             fails += 1
         else:
             print("ok reviewer_complete_after_audit")
+        # loop card: the transaction verdict is the audit; REVERTED is a complete, recorded outcome
+        for verdict in ("ACCEPTED", "REVERTED", "DEFERRED"):
+            r = run(
+                "hermes kanban complete t_x",
+                roots,
+                cwd=cwd,
+                extra_env={"HERMES_PROFILE": "reviewer", "K2_LOOP_VERDICT": verdict, "K2_BOUND_GATE_EXIT": "1", "K2_BOUND_GATE_NAME": "fix-until-green/scripts/advance"},
+            )
+            if r.get("action") == "block":
+                print("FAIL reviewer_complete_loop_%s" % verdict.lower(), r, file=sys.stderr)
+                fails += 1
+            else:
+                print("ok reviewer_complete_loop_%s" % verdict.lower())
         # Architect 183220ZA: hermes -p reviewer sets HERMES_HOME to
         # <root>/profiles/reviewer; the official log stays under
         # <root>/kanban/logs/. A missing log after that resolve is still

@@ -91,6 +91,14 @@ def expected_from_loop(steps: dict[str, Any] | None, open_card: dict[str, Any] |
             continue  # the bootstrap baseline has no card
         out[key] = {"key": key, "parents": [prev_key] if prev_key else [], "status": "done", "task_id": tid, "cluster": st.get("cluster")}
         prev_key = key
+    for st in (steps or {}).get("rejected") or []:
+        # a reverted attempt's card stays on the board (review/done/archived);
+        # it is an expected, closed card, never foreign (pilot v6 measured
+        # --verify-board calling the reverted attempt-1 card foreign)
+        tid = str(st.get("card") or "")
+        key = mint_keys.get(tid, "")
+        if tid and key and key not in out:
+            out[key] = {"key": key, "parents": [], "status": "closed", "task_id": tid, "cluster": st.get("cluster")}
     if open_card:
         key = str(open_card["idempotency_key"])
         out[key] = {"key": key, "parents": [prev_key] if prev_key else [], "status": "open", "task_id": "", "cluster": open_card.get("logical_id")}
@@ -123,12 +131,12 @@ def compare_board(expected: dict[str, dict[str, Any]], cards: list[dict[str, Any
             foreign.append("%s (key %s is not in the expected set)" % (cid, key))
         else:
             foreign.append("%s (no idempotency key and not in the K4 mint receipts)" % cid)
-    missing = sorted(k for k in expected if k not in by_key)
+    missing = sorted(k for k in expected if k not in by_key and expected[k].get("status") != "closed")  # a closed attempt may be archived
     id_of_key = {k: _card_id(c) for k, c in by_key.items()}
     edge_gaps: list[str] = []
     for key, exp in expected.items():
-        if key not in by_key:
-            continue
+        if key not in by_key or exp.get("status") == "closed":
+            continue  # a closed (rejected) attempt keeps whatever parents it was minted with
         want = sorted(id_of_key[p] for p in exp["parents"] if p in id_of_key)
         got = sorted(p for p in _card_parents(by_key[key]) if p not in exempt)
         if got != want:

@@ -263,6 +263,38 @@ def paved_road_audit_green():
         last_rc = int(m.group(1)) if m else 0
     return last_rc == 0
 
+LOOP_VERDICTS = ("OK: ACCEPTED", "REVERTED ", "DEFERRED ")
+
+def loop_verdict_recorded():
+    """A loop (M3) card is audited by its acceptance transaction: after a real
+    invocation of fix-until-green/scripts/advance.py the log carries the
+    verdict ACCEPTED, REVERTED or DEFERRED. REVERTED and DEFERRED exit 1 by
+    design (candidate discarded / loop stopped) and are complete, recorded
+    outcomes -- not a red audit. Pilot v6 (2026-09-10, t_ac60cdd2): the
+    reviewer was refused kanban_complete and forced into request_changes on a
+    REVERTED card, sending the same card back for a third run while K4 had
+    already minted attempt 2."""
+    env_verdict = (os.environ.get("K2_LOOP_VERDICT") or "").strip().upper()
+    if env_verdict in {"ACCEPTED", "REVERTED", "DEFERRED"}:
+        return True
+    task = hook_task_id()
+    home = kanban_root_home()
+    if not task or not home:
+        return False
+    log = os.path.join(home, "kanban", "logs", "%s.log" % task)
+    try:
+        text = open(log, encoding="utf-8", errors="replace").read()
+    except OSError:
+        return False
+    invoked = False
+    for line in text.splitlines():
+        if "$" in line and "fix-until-green/scripts/advance.py" in line and "python3" in line:
+            invoked = True
+            continue
+        if invoked and any(v in line for v in LOOP_VERDICTS):
+            return True
+    return False
+
 def bound_gates_red():
     """Needles whose last invocation is still [exit 1].
 
@@ -310,6 +342,9 @@ def bound_gates_red():
 
 def bound_gate_red():
     reds = bound_gates_red()
+    if reds and loop_verdict_recorded():
+        # advance.py exit 1 is REVERTED/DEFERRED: a verdict, not a red gate
+        reds = [r for r in reds if "fix-until-green/scripts/advance" not in r]
     return reds[0] if reds else None
 
 if is_complete():
@@ -319,9 +354,10 @@ if is_complete():
               "kanban_request_review. If you already called kanban_request_review, "
               "the review handoff IS your terminator: end the turn now and do not "
               "answer a nudge to finish with kanban_complete or kanban_block.")
-    if profile == "reviewer" and not paved_road_audit_green():
+    if profile == "reviewer" and not paved_road_audit_green() and not loop_verdict_recorded():
         record_complete_invocation("refuse_reviewer_audit")
-        block("kanban_complete refused: paved-road audit last exit not 0; "
+        block("kanban_complete refused: paved-road audit last exit not 0 and no loop "
+              "verdict (ACCEPTED/REVERTED/DEFERRED from advance.py) is recorded; "
               "kanban_request_changes is the terminator")
     gate = bound_gate_red()
     if gate:

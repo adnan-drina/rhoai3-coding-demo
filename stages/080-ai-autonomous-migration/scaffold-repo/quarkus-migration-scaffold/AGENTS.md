@@ -120,7 +120,9 @@ emit a typed block and **stop**. Do not OOS-write, do not edit the refuser.
 Workers never own lifecycle truth. End every turn with exactly one terminator:
 `kanban_complete`, `kanban_request_review`, or `kanban_block`. A clean exit
 without one is `protocol_violation`. **Implementer** happy path is
-`kanban_request_review` (reviewer=`reviewer`); after it, end the turn — a
+`kanban_request_review` (reviewer=`reviewer`); on a loop card the reviewer
+completes when `advance.py` recorded ACCEPTED, REVERTED or DEFERRED — a
+reverted attempt is done, its retry is the next K4 card; after it, end the turn — a
 "nudge to finish" that arrives afterwards is already satisfied by the
 review handoff, and answering it with `kanban_complete` is refused by K2. **Reviewer** `kanban_complete`
 only after `assert-paved-road-audit.py` exits 0. `kanban_block` is external
