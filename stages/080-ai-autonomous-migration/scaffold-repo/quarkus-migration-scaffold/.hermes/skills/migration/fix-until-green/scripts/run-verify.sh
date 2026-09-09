@@ -32,7 +32,11 @@ javac -d "${WORK}/classes" "${SCRIPT_DIR}/jdk-diagnostics/JdkDiagnostics.java" >
 
 RUN="${WORK}/run.json"
 set +e
-( cd "${ROOT}" && mvn -q -B dependency:go-offline ) >"${WORK}/warmup.log" 2>&1
+# dependency:go-offline alone leaves compile-time artifacts and the surefire
+# provider unfetched (measured live 2026-09-09); run the measured goals online
+# once, results discarded, so the offline pass below never fails for want of
+# an artifact the network could have supplied.
+( cd "${ROOT}" && mvn -q -B dependency:go-offline && mvn -q -B -Dmaven.test.failure.ignore=true test ) >"${WORK}/warmup.log" 2>&1
 WARM_RC=$?
 ( cd "${ROOT}" && mvn -q -B -o dependency:build-classpath "-Dmdep.outputFile=${WORK}/classpath.txt" ) >"${WORK}/classpath.log" 2>&1
 CP_RC=$?
