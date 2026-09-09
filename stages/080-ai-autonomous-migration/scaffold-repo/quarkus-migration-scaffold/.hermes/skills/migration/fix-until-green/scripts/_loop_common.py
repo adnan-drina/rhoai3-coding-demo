@@ -21,9 +21,8 @@ def ensure_hermes_lib() -> None:
 
 ensure_hermes_lib()
 from planner.canonical import load_json, write_canonical  # noqa: E402
-from planner.paths import LOOP_ACCEPTED, LOOP_CARDS, LOOP_DEFERRED, LOOP_ISSUED, LOOP_STATE, LOOP_STEPS, MTA_RESCAN_FINDINGS, VERIFY_DIAGNOSTICS, VERIFY_RUN, VERIFY_SUREFIRE  # noqa: E402
+from planner.paths import PRODUCT_EXEMPT, is_product_path as _is_product_path, LOOP_ACCEPTED, LOOP_CARDS, LOOP_DEFERRED, LOOP_ISSUED, LOOP_STATE, LOOP_STEPS, MTA_RESCAN_FINDINGS, VERIFY_DIAGNOSTICS, VERIFY_RUN, VERIFY_SUREFIRE  # noqa: E402
 
-PRODUCT_EXEMPT = ("evidence/", "verification/", ".hermes/", ".derived/", "target/", ".git/")
 REPORTS = (VERIFY_DIAGNOSTICS, VERIFY_SUREFIRE, VERIFY_RUN, MTA_RESCAN_FINDINGS)
 
 
@@ -75,8 +74,8 @@ def git(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
 
 
 def is_product_path(path: str) -> bool:
-    p = path.replace("\\", "/")
-    return not (p.startswith(PRODUCT_EXEMPT) or "/__pycache__/" in "/" + p or p.endswith(".pyc"))
+    """The one product-tree definition (planner.paths) — shared with the work list."""
+    return _is_product_path(path)
 
 
 def product_paths_changed(root: Path) -> list[str]:

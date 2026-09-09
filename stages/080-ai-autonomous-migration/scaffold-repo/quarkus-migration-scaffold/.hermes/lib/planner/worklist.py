@@ -33,7 +33,7 @@ from pathlib import Path
 from typing import Any
 
 from planner.canonical import canonical_bytes, digest, load_json, sha256_bytes, sha256_file, sort_unique
-from planner.paths import EVIDENCE_BUNDLE, LOOP_DEFERRED, LOOP_STEPS, MTA_RESCAN_FINDINGS, PARITY_DIR, VERIFY_DIAGNOSTICS, VERIFY_RUN, VERIFY_SUREFIRE, WORKLIST
+from planner.paths import is_product_path, EVIDENCE_BUNDLE, LOOP_DEFERRED, LOOP_STEPS, MTA_RESCAN_FINDINGS, PARITY_DIR, VERIFY_DIAGNOSTICS, VERIFY_RUN, VERIFY_SUREFIRE, WORKLIST
 
 SCHEMA = "rhoai3.worklist/v1"
 KIND_RANK = {"build": 0, "config": 1, "compile": 2, "incident": 3, "test": 4, "parity": 5}
@@ -106,6 +106,8 @@ def incidents_from_findings(findings: dict[str, Any], roots: list[str], canary_i
             if not isinstance(inc, dict):
                 inc = {"message": str(inc)}
             path = _locus_path(str(inc.get("uri") or ""), roots) or GLOBAL
+            if path != GLOBAL and not is_product_path(path):
+                continue  # harness state or the frozen legacy copy under .derived/: never a card
             try:
                 line = int(inc.get("lineNumber") or 0)
             except (TypeError, ValueError):

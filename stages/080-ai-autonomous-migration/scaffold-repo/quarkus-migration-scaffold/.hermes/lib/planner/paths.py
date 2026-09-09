@@ -54,6 +54,17 @@ LOOP_STATE = LOOP_DIR / "state.json"
 
 PRODUCER_NAMES = ("freeze", "build", "jdk-model", "mta", "bootstrap")
 
+# The product tree: what the loop measures, edits, commits and hashes. Everything
+# else under the destination root is harness state or a copy of the legacy input
+# (measured live 2026-09-09: 54 of 79 destination-rescan incidents pointed into
+# .derived/frozen-input and .derived/bom-probe until this filter existed).
+PRODUCT_EXEMPT = ("evidence/", "verification/", ".hermes/", ".derived/", "target/", ".git/")
+
+
+def is_product_path(rel: str) -> bool:
+    p = str(rel).replace("\\", "/").lstrip("/")
+    return bool(p) and not (p.startswith(PRODUCT_EXEMPT) or "/__pycache__/" in "/" + p or p.endswith(".pyc"))
+
 
 def producer_receipt(root: Path, name: str) -> Path:
     if name not in PRODUCER_NAMES:

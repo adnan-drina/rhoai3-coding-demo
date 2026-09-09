@@ -48,6 +48,15 @@ def main() -> int:
         return _fail("a global incident is kept as a build item")
     if any(i["rule_id"] == "rhoai3-canary-00001" for i in items):
         return _fail("canary is not work")
+    # the destination rescan sees the frozen legacy copy and the BOM probe under .derived/: never work
+    derived = incidents_from_findings({"violations": {"r-web": {"category": "mandatory", "incidents": [
+        {"uri": "file:///x/.derived/frozen-input/src/main/java/a/B.java", "lineNumber": 3, "message": "m1"},
+        {"uri": "file:///x/.derived/bom-probe/pom.xml", "lineNumber": 1, "message": "p"},
+        {"uri": "file:///x/evidence/mta/report/index.html", "lineNumber": 1, "message": "h"},
+        {"uri": "file:///x/src/main/java/a/B.java", "lineNumber": 3, "message": "m1"},
+    ]}}}, ["/x"], "")
+    if [i["path"] for i in derived] != ["src/main/java/a/B.java"]:
+        return _fail("incidents outside the product tree must not become items: %s" % [i["path"] for i in derived])
     # compile items + tests
     comp = compile_items({"diagnostics": [{"kind": "ERROR", "path": "src/main/java/a/A.java", "line": 2, "code": "x", "message": "e"}, {"kind": "WARNING", "path": "src/main/java/a/A.java", "line": 2, "code": "w", "message": "w"}]})
     if len(comp) != 1 or comp[0]["kind"] != "compile":

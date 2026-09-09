@@ -36,7 +36,10 @@ set +e
 # provider unfetched (measured live 2026-09-09); run the measured goals online
 # once, results discarded, so the offline pass below never fails for want of
 # an artifact the network could have supplied.
-( cd "${ROOT}" && mvn -q -B dependency:go-offline && mvn -q -B -Dmaven.test.failure.ignore=true test ) >"${WORK}/warmup.log" 2>&1
+# Every goal the offline pass runs is run online first: build-classpath pulls
+# test-scope transitives (quarkus-bootstrap-gradle-resolver, httpmime) that
+# neither go-offline nor `mvn test` fetch (measured live 2026-09-09).
+( cd "${ROOT}" && mvn -q -B dependency:go-offline && mvn -q -B dependency:build-classpath "-Dmdep.outputFile=${WORK}/classpath.warmup.txt" && mvn -q -B -Dmaven.test.failure.ignore=true test ) >"${WORK}/warmup.log" 2>&1
 WARM_RC=$?
 ( cd "${ROOT}" && mvn -q -B -o dependency:build-classpath "-Dmdep.outputFile=${WORK}/classpath.txt" ) >"${WORK}/classpath.log" 2>&1
 CP_RC=$?
