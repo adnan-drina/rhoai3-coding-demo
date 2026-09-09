@@ -93,6 +93,14 @@ write set).
 
 ## Pitfalls
 
+- Rewriting a whole file through one tool call. The model server buffers a
+  tool call's arguments until they are complete, so a 12 KB `pom.xml`
+  rewrite is several thousand tokens of silence on the wire and trips the
+  stream-read timeout (measured live 2026-09-09: two `APITimeoutError`
+  retries on the first pom card). Edit with targeted patches, one incident
+  or one dependency block at a time; the verifier measures the result, not
+  the size of the edit.
+
 - Touching a file outside the write set: the diff is reverted with the
   step, and K2 refuses the write in the first place.
 - "Fixing" by deleting the offending code: incidents drop, but tests or

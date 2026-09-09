@@ -1286,6 +1286,14 @@ data:
                     "qwen3-6-27b": {
                         "context_length": 131072,
                         "stale_timeout_seconds": 900,
+                        # Request + stream-read timeout for this model. Hermes
+                        # defaults the stream read timeout to 120s for non-local
+                        # endpoints; vLLM buffers a tool call's arguments until
+                        # complete, so a worker writing a ~12 KB file through a
+                        # tool call sends no bytes for ~4K tokens at ~18 tok/s
+                        # (> 120s) and Hermes raises APITimeoutError and retries
+                        # (measured live 2026-09-09, pilot v5 M3 t_3efca989).
+                        "timeout_seconds": 900,
                         "max_tokens": 8192,
                     },
                 },
@@ -1643,6 +1651,7 @@ data:
     with open(os.path.join(managed, ".rhoai3-w1-five-pins"), "w") as fh:
         fh.write(
             "stale_timeout_seconds=900\n"
+            "timeout_seconds=900\n"
             "maas_api_base_url=maas-gateway\n"
             f"ssl_ca_cert={pin_ca}\n"
             "auxiliary.title_generation.enabled=false\n"
