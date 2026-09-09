@@ -2159,6 +2159,13 @@ data:
         exit 1
       fi
       echo "dest-init hermes kanban ls: MATCH"
+      # Mint M1 ANALYZE (M2 only when pins.planner.activation is activated).
+      # destfile postStart calls the same script; autostart is idempotent.
+      AUTO_M1="${PROJECT_DIR}/.hermes/skills/harness/dispatch-phase/scripts/autostart-migration.sh"
+      if [ -f "${AUTO_M1}" ]; then
+        bash "${AUTO_M1}" --root "${PROJECT_DIR}" \
+          || echo "WARN: autostart-migration exited nonzero (see .hermes/AUTOSTART-STATUS)"
+      fi
     fi
     echo "Configured ${AI_TOOL} from the MaaS API key Secret for ${PROFILE}."
 ---

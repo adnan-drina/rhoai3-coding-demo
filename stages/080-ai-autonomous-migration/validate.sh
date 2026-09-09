@@ -793,6 +793,12 @@ check "080 dest-init does not install specify PATH shim" \
 check "080 dest-init does not run specify init" \
   "grep -c 'dest-init specify init' '${GITOPS_INIT}' || echo 0" \
   "0"
+check "080 GitOps dest-init calls dispatch-phase autostart-migration.sh" \
+  "grep -c 'dispatch-phase/scripts/autostart-migration.sh' '${GITOPS_INIT}' || true" \
+  "1"
+check "080 live dest-init calls dispatch-phase autostart-migration.sh" \
+  "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -c 'dispatch-phase/scripts/autostart-migration.sh' || true" \
+  "1"
 check "080 live dest-init does not ship init-spec-workspace" \
   "oc get cm devspace-ai-tools-init -n wksp-ai-developer -o jsonpath='{.data.init-ai-tools\.sh}' | grep -c 'init-spec-workspace' || true" \
   "0"
