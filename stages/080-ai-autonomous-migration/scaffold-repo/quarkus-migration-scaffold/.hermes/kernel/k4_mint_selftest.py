@@ -49,7 +49,9 @@ class FakeBoard:
             d = dict(c, id=argv[3])
             if not self.expose_keys:
                 d.pop("idempotency_key", None)
-            return 0, json.dumps({"task": d}), ""
+            # real `hermes kanban show --json` keeps the edges beside the task
+            parents = d.pop("parents", [])
+            return 0, json.dumps({"task": d, "parents": parents, "children": []}), ""
         if argv[1:3] != ["kanban", "create"]:
             return 2, "", "unexpected %s" % argv
         key = argv[argv.index("--idempotency-key") + 1]
@@ -191,7 +193,8 @@ if args[:2] == ["kanban", "list"]:
 if args[:2] == ["kanban", "show"]:
     c = db["cards"].get(args[2])
     if not c: sys.exit(1)
-    print(json.dumps({"task": dict(c, id=args[2])})); sys.exit(0)
+    d = dict(c, id=args[2]); parents = d.pop("parents", [])
+    print(json.dumps({"task": d, "parents": parents, "children": []})); sys.exit(0)
 if args[:2] == ["kanban", "create"]:
     key = args[args.index("--idempotency-key") + 1]
     if key in db["by_key"]:

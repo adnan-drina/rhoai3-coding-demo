@@ -312,7 +312,15 @@ def verify_board(root: Path, result: dict[str, Any], *, runner: Runner, hermes: 
                 detail = {}
             if isinstance(detail, dict):
                 merged = dict(card)
-                merged.update(detail.get("task") if isinstance(detail.get("task"), dict) else detail)
+                task = detail.get("task")
+                merged.update(task if isinstance(task, dict) else detail)
+                # `hermes kanban show --json` keeps the edges beside the task
+                # ({"task": {...}, "parents": [...], "children": [...]}), so a
+                # task-only merge sees no parents (pilot v6: the first mint
+                # after an accepted step failed K4_BOARD with parents [])
+                for k in ("parents", "children"):
+                    if k not in merged and isinstance(detail.get(k), list):
+                        merged[k] = detail[k]
                 card = merged
         enriched.append(card)
     mint_map = mint_map_from_receipts(load_mint_receipts(root))
