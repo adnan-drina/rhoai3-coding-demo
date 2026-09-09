@@ -73,6 +73,21 @@ def main() -> int:
         # canary check passes on this receipt
         if _run([sys.executable, str(CANARY), str(root)]).returncode != 0:
             return _fail("canary must pass when fired")
+        # MTA 8.x files the zero-effort canary under insights (measured live 2026-09-09: 176 incidents, no violation)
+        doc = load_json(findings)
+        canary_rule = doc["violations"].pop("rhoai3-canary-00001")
+        doc["insights"] = {"rhoai3-canary-00001": canary_rule}
+        findings.write_text(json.dumps(doc), encoding="utf-8")
+        _run([sys.executable, str(RECEIPT), str(root), "--cli", str(kantra), "--input", "/analysis", "--targets", "quarkus", "--rules-dir", str(root / ".hermes" / "planning" / "mta-rules"), "--canary-id", "rhoai3-canary-00001", "--findings", str(findings), "--argv-file", str(argv_file)])
+        if load_json(root / "evidence" / "producers" / "mta.json")["canary"]["fired"] is not True or _run([sys.executable, str(CANARY), str(root)]).returncode != 0:
+            return _fail("a canary filed under insights must count as fired")
+        sys.path.insert(0, str(root / ".hermes" / "lib"))
+        from planner.evidence import derive_obligations  # noqa: E402
+        obligations, fired, _raw = derive_obligations(doc, {}, "rhoai3-canary-00001")
+        if not fired or any(o.get("rule_id") == "rhoai3-canary-00001" for o in obligations):
+            return _fail("insight canary: fired=%s, must never be an obligation" % fired)
+        doc["violations"]["rhoai3-canary-00001"] = doc["insights"].pop("rhoai3-canary-00001")
+        findings.write_text(json.dumps(doc), encoding="utf-8")
         # a real mta-cli binary on the pinned 8.2 line → admissible; measured sha recorded
         mta = t / "mta" / "mta-cli"
         mta.parent.mkdir()

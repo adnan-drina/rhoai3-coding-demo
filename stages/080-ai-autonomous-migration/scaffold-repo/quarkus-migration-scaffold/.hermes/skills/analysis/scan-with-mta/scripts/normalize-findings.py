@@ -152,6 +152,32 @@ def _merge_violations(raw) -> dict:
     return violations
 
 
+def _merge_insights(raw) -> dict:
+    """MTA 8.x RuleSet output files rules with no effort (the Stage 080 canary
+    among them) under `insights`, not `violations` (measured live 2026-09-09:
+    rhoai3-canary-00001 returned 176 incidents as an insight). Insights are
+    never obligations; they are carried so the canary can be proven."""
+    insights: dict = {}
+    if isinstance(raw, dict) and isinstance(raw.get("insights"), dict):
+        return dict(raw["insights"])
+    if isinstance(raw, list):
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+            nested = item.get("insights")
+            if isinstance(nested, dict):
+                for rid, v in nested.items():
+                    if not isinstance(v, dict):
+                        continue
+                    if rid in insights and isinstance(insights[rid].get("incidents"), list):
+                        extras = v.get("incidents") or []
+                        if isinstance(extras, list):
+                            insights[rid]["incidents"].extend(extras)
+                    else:
+                        insights[rid] = v
+    return insights
+
+
 def _preserve_incidents(violations: dict) -> None:
     for rid, v in list(violations.items()):
         if not isinstance(v, dict):
@@ -192,6 +218,8 @@ def main() -> int:
 
     violations = _merge_violations(raw)
     _preserve_incidents(violations)
+    insights = _merge_insights(raw)
+    _preserve_incidents(insights)
 
     rulesets = _coverage_from_raw(raw)
     totals = _totals(rulesets)
@@ -220,6 +248,7 @@ def main() -> int:
             "input_digest": input_digest,
         },
         "violations": violations,
+        "insights": insights,
         "raw_tool_keys": _raw_tool_keys(raw),
         "rules_coverage": {
             "path": str(coverage_path),
@@ -230,7 +259,7 @@ def main() -> int:
     }
     path.write_text(json.dumps(out, indent=2) + "\n", encoding="utf-8")
     print(
-        f"OK: normalized {path} ({len(violations)} violation rules); "
+        f"OK: normalized {path} ({len(violations)} violation rules, {len(insights)} insight rules); "
         f"coverage {coverage_path} "
         f"fired={totals['fired']} unmatched={totals['unmatched']} "
         f"skipped={totals['skipped']} errors={totals['errors']} "

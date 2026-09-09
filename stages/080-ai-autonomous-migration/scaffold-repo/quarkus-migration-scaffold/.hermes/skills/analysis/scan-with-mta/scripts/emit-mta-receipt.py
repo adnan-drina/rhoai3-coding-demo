@@ -81,13 +81,15 @@ def _canary_fired(findings_path: Path, canary_id: str) -> bool | None:
     if not canary_id or not findings_path.is_file():
         return None
     doc = load_json(findings_path)
-    viol = doc.get("violations") if isinstance(doc, dict) else None
-    if not isinstance(viol, dict):
+    if not isinstance(doc, dict):
         return False
-    v = viol.get(canary_id)
-    if not isinstance(v, dict):
-        return False
-    return bool(v.get("incidents"))
+    # MTA 8.x files a zero-effort rule under insights; older exports under violations
+    for key in ("violations", "insights"):
+        section = doc.get(key)
+        v = section.get(canary_id) if isinstance(section, dict) else None
+        if isinstance(v, dict) and v.get("incidents"):
+            return True
+    return False
 
 
 def main(argv: list[str] | None = None) -> int:

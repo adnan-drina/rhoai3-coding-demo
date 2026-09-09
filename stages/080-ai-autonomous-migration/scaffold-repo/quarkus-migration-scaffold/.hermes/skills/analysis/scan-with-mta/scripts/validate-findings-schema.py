@@ -26,6 +26,8 @@ def main() -> int:
         return fail("execution_evidence.analyzer_ran required")
     if "violations" not in data or not isinstance(data["violations"], dict):
         return fail("violations map required")
+    if "insights" in data and not isinstance(data["insights"], dict):
+        return fail("insights must be a map when present (zero-effort rules such as the canary)")
     for rule, v in data["violations"].items():
         if not isinstance(v, dict):
             return fail(f"{rule}: not an object")

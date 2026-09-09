@@ -309,9 +309,12 @@ def derive_obligations(findings: dict[str, Any] | None, mta_receipt: dict[str, A
     if not findings:
         return [], False, 0
     violations = findings.get("violations") if isinstance(findings.get("violations"), dict) else {}
+    insights = findings.get("insights") if isinstance(findings.get("insights"), dict) else {}
     analysis_root = str(((mta_receipt or {}).get("input") or {}).get("analysis_root") or "")
     by_id: dict[str, dict[str, Any]] = {}
-    canary_fired = False
+    # MTA 8.x files zero-effort rules (the canary) under insights: proof of the
+    # effective ruleset, never an obligation
+    canary_fired = bool(canary_id) and isinstance(insights.get(canary_id), dict) and bool(insights[canary_id].get("incidents"))
     raw_count = 0
     for rid in sorted(violations):
         v = violations[rid]
@@ -320,7 +323,7 @@ def derive_obligations(findings: dict[str, Any] | None, mta_receipt: dict[str, A
         rule_id = str(v.get("ruleID") or rid)
         incidents = v.get("incidents") if isinstance(v.get("incidents"), list) else []
         if canary_id and rule_id == canary_id:
-            canary_fired = len(incidents) > 0
+            canary_fired = canary_fired or len(incidents) > 0
             continue
         category = str(v.get("category") or "potential").lower()
         if category not in ("mandatory", "optional", "potential"):
