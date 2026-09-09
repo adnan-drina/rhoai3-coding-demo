@@ -24,6 +24,11 @@ def _fail(msg: str) -> int:
 def main() -> int:
     if path_class("pom.xml") != "build" or path_class("src/main/resources/application.properties") != "config" or path_class("src/test/java/A.java") != "test" or path_class("src/main/java/A.java") != "source":
         return _fail("path classes")
+    if path_class("src/test/resources/application.properties") != "config" or path_class("src/test/resources/data.sql") != "test":
+        return _fail("test configuration files are config (migration work); other test files are not writable")
+    cfg = cluster_items([{"id": "x", "source": "mta", "kind": "incident", "category": "mandatory", "path": "src/test/resources/application.properties", "line": 1, "rule_id": "r", "message_sha256": "", "detail": ""}], {}, set())
+    if cfg[0]["status"] != "open" or cfg[0]["write_set"] != ["src/test/resources/application.properties"]:
+        return _fail("a test properties file must be its own write set: %s" % cfg[0])
     findings = {"violations": {
         "r-web": {"category": "mandatory", "incidents": [
             {"uri": "file:///x/src/main/java/a/B.java", "lineNumber": 3, "message": "m1", "variables": {"k": "1"}},

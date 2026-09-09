@@ -11,7 +11,8 @@
     "https://quarkus.io/guides/spring-boot-properties",
     "https://quarkus.io/guides/hibernate-orm",
     "https://quarkus.io/guides/datasource",
-    "https://quarkus.io/guides/getting-started-testing"
+    "https://quarkus.io/guides/getting-started-testing",
+    "https://quarkus.io/guides/logging"
   ],
   "parent_to_remove": {
     "group_id": "org.springframework.boot",
@@ -123,5 +124,11 @@
   },
   "starter_notes": {
     "org.springframework.boot:spring-boot-starter-aop": "No Quarkus Spring-compatibility extension covers Spring AOP (the quarkus.io Spring guides list DI, Web, Data JPA, Security, Cache, Scheduled, Boot properties only). The starter is dropped; every @Aspect / org.aspectj use is either retired by an ADR (decisions.yaml retired_sources) or surfaced by the compiler as a work-list item for a CDI-interceptor rewrite. Nothing is guessed."
+  },
+  "property_prefixes": {
+    "logging.level.": {
+      "to": "quarkus.log.category.\"{rest}\".level",
+      "source": "https://quarkus.io/guides/logging#logging-categories (MTA rule springboot-properties-to-quarkus-00003 links the same guide)"
+    }
   }
 }

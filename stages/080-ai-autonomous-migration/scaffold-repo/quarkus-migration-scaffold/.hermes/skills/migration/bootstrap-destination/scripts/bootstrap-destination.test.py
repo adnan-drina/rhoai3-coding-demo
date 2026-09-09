@@ -95,6 +95,19 @@ def main() -> int:
         p = subprocess.run([sys.executable, str(SCRIPT), "--root", str(m)], text=True, capture_output=True)
         if p.returncode != 1 or "red-hat-enterprise-maven-repository" not in p.stderr:
             return _fail("settings without the RH GA profile must block: rc=%s %s" % (p.returncode, p.stderr[-300:]))
+        # 4b. properties under src/test/resources are migrated like src/main, and logging.level.<cat> maps to the Quarkus category key
+        tr = specimens.build_dest(t / "testres", specimens.specimen("http"), decisions=specimens.admitted_decisions())
+        tres = tr / ".derived/frozen-input/src/test/resources"
+        tres.mkdir(parents=True, exist_ok=True)
+        (tres / "application.properties").write_text("server.port=9966\nlogging.level.org.springframework=INFO\n#logging.level.org.hibernate.SQL=DEBUG\n", encoding="utf-8")
+        pipeline.assemble_bundle(tr)
+        p = subprocess.run([sys.executable, str(SCRIPT), "--root", str(tr)], text=True, capture_output=True)
+        got = (tr / "src/test/resources/application.properties").read_text(encoding="utf-8")
+        if p.returncode != 0 or "quarkus.http.port=9966" not in got or 'quarkus.log.category."org.springframework".level=INFO' not in got or "#logging.level.org.hibernate.SQL=DEBUG" not in got:
+            return _fail("test resources must be migrated (exact keys and the logging.level family; comments untouched): rc=%s %r" % (p.returncode, got))
+        ren = [c for c in load_json(tr / "evidence/producers/bootstrap.json")["changes"] if c["op"] == "properties.rename" and c["file"].startswith("src/test/")]
+        if len(ren) != 2:
+            return _fail("test-resource renames must be recorded: %s" % ren)
         # 5. a version-less dependency the BOM does not manage: pinned to the legacy-resolved version (measured), else VERSION_UNMANAGED; no probe → BOM_PROBE_MISSING
         spec_v = specimens.specimen("http")
         spec_v["managed_versions"] = {"org.hsqldb:hsqldb": "2.7.2"}

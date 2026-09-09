@@ -229,10 +229,13 @@ def bootstrap_pom(root: Path, catalog: dict, pins: dict, changes: list[dict], bl
 def bootstrap_properties(root: Path, catalog: dict, changes: list[dict]) -> None:
     mapping = catalog.get("properties") or {}
     values = catalog.get("property_values") or {}
-    res = root / "src" / "main" / "resources"
-    if not res.is_dir():
-        return
-    for p in sorted(res.glob("application*.properties")):
+    prefixes = catalog.get("property_prefixes") or {}
+    files: list[Path] = []
+    for sub in (("src", "main", "resources"), ("src", "test", "resources")):
+        res = root.joinpath(*sub)
+        if res.is_dir():
+            files.extend(sorted(res.glob("application*.properties")))
+    for p in files:
         out_lines: list[str] = []
         changed = False
         for raw in p.read_text(encoding="utf-8", errors="replace").splitlines():
@@ -241,7 +244,14 @@ def bootstrap_properties(root: Path, catalog: dict, changes: list[dict]) -> None
             if stripped and not stripped.startswith(("#", "!")) and "=" in stripped:
                 key, _, val = stripped.partition("=")
                 key = key.strip()
-                if key in mapping:
+                prefix = next((pre for pre in prefixes if key.startswith(pre) and len(key) > len(pre)), None)
+                if key not in mapping and prefix is not None:
+                    # documented key-family mapping (e.g. logging.level.<category>)
+                    new_key = str(prefixes[prefix]["to"]).replace("{rest}", key[len(prefix):])
+                    line = "%s=%s" % (new_key, val.strip())
+                    changes.append({"op": "properties.rename", "file": str(p.relative_to(root)), "from": key, "to": new_key})
+                    changed = True
+                elif key in mapping:
                     new_key = mapping[key]
                     if new_key is None:
                         line = "# bootstrap: no Quarkus equivalent for %s (dropped)" % key

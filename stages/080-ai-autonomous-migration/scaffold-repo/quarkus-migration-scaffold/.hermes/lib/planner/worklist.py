@@ -53,7 +53,12 @@ def path_class(path: str) -> str:
     name = p.rsplit("/", 1)[-1]
     if name in BUILD_FILES or p.startswith(".mvn/"):
         return "build"
-    if p.startswith("src/main/resources/") and (name.endswith((".properties", ".yml", ".yaml"))):
+    if p.startswith(("src/main/resources/", "src/test/resources/")) and (name.endswith((".properties", ".yml", ".yaml"))):
+        # configuration under src/test/resources is migration work like its
+        # src/main twin (the Quarkus property names change for tests too);
+        # only test *code* judges the migration and stays unwritable.
+        # Measured live 2026-09-09 (pilot v5): admission blocked SCOPE_UNDERIVED on
+        # src/test/resources/application.properties (Spring log-level keys).
         return "config"
     if p.startswith("src/test/"):
         return "test"
