@@ -188,6 +188,44 @@ def main() -> int:
         run_autostart(root_a, bin_a)
         if set(json.loads((store_a / "keys.json").read_text())) != {"m1-analyze", "m2-plan"}:
             return _fail("activated rerun must reuse keys")
+        # pilot: at dest-init (no bundle yet) M1 only; after the Operator seals the bundle on disk, a re-run mints M2; a seal for another bundle never mints M2
+        sys.path.insert(0, str(GOLDEN / ".hermes" / "lib"))
+        from planner.canonical import digest  # noqa: E402
+
+        def _pilot_root(name: str, seal_digest: str | None, with_bundle: bool) -> tuple[Path, Path, Path]:
+            r = tmp_p / name
+            (r / ".hermes").mkdir(parents=True)
+            os.symlink(GOLDEN / ".hermes" / "lib", r / ".hermes" / "lib")
+            bundle = {"schema": "rhoai3.evidence-bundle/v1", "producers": {"mta": {"status": "ok"}}, "obligations": []}
+            if with_bundle:
+                (r / "evidence" / "planning").mkdir(parents=True)
+                (r / "evidence" / "planning" / "evidence-bundle.json").write_text(json.dumps(bundle), encoding="utf-8")
+            seal = {"run_id": "pilot-1", "authorized_by": "stage owner", "evidence_bundle_sha256": seal_digest if seal_digest is not None else digest(bundle)}
+            (r / ".hermes" / "pins.json").write_text(json.dumps({"schema": "rhoai3.tooling-pins/v1", "pins": {"planner": {"activation": "pilot", "pilot": seal}}}), encoding="utf-8")
+            st = tmp_p / (name + "-store")
+            b = tmp_p / (name + "-bin")
+            b.mkdir()
+            write_fake_hermes(b / "hermes", st)
+            return r, b, st
+
+        r_init, b_init, _ = _pilot_root("pilot-init", None, with_bundle=False)
+        proc = run_autostart(r_init, b_init)
+        st_init = json.loads((r_init / ".hermes" / "AUTOSTART-STATUS").read_text())
+        if proc.returncode != 0 or st_init.get("m2_id") or st_init.get("planner_activation") != "not-activated":
+            return _fail("pilot before M1 (no bundle) must mint M1 only: %s %s" % (st_init, proc.stderr[-200:]))
+        r_seal, b_seal, st_seal = _pilot_root("pilot-sealed", None, with_bundle=True)
+        proc = run_autostart(r_seal, b_seal)
+        st_s = json.loads((r_seal / ".hermes" / "AUTOSTART-STATUS").read_text())
+        if proc.returncode != 0 or st_s.get("m2_id") != "t_m2" or st_s.get("planner_activation") != "pilot":
+            return _fail("pilot seal bound to the bundle on disk must mint M2: %s %s" % (st_s, proc.stderr[-300:]))
+        argv = _argv_log(st_seal)
+        if argv[1][argv[1].index("--parent") + 1] != "t_m1":
+            return _fail("pilot M2 must parent M1: %s" % argv[1])
+        r_bad, b_bad, _ = _pilot_root("pilot-mismatch", "0" * 64, with_bundle=True)
+        proc = run_autostart(r_bad, b_bad)
+        st_b = json.loads((r_bad / ".hermes" / "AUTOSTART-STATUS").read_text())
+        if proc.returncode != 0 or st_b.get("m2_id") or st_b.get("planner_activation") != "not-activated":
+            return _fail("pilot seal for another bundle must not mint M2: %s" % st_b)
         # off
         off_root = tmp_p / "off"
         off_root.mkdir()
@@ -206,7 +244,7 @@ def main() -> int:
     rc = assert_bodies_name_native_backings()
     if rc:
         return rc
-    print("OK: autostart-migration (M1 only when not activated; M2 child of M1 when activated; idempotent; off; golden not activated)")
+    print("OK: autostart-migration (M1 only when not activated; M2 child of M1 when activated; pilot mints M2 only for the sealed bundle on disk; idempotent; off; golden not activated)")
     return 0
 
 

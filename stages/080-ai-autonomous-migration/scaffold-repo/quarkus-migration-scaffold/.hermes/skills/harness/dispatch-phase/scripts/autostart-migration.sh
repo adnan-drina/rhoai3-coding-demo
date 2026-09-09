@@ -71,15 +71,34 @@ if [[ -z "${HERMES}" ]]; then
   fail_status "hermes not on PATH"
 fi
 
-# Planner activation (SAD §12). Read, never decided here.
-PLANNER_ACTIVATION="$(python3 - "${ROOT}/.hermes/pins.json" <<'PY'
+# Planner activation (SAD §9/§12). Read, never decided here. "activated" mints
+# M2 at dest-init. "pilot" mints M2 only once the Operator's seal names the
+# evidence bundle that is on disk (so at dest-init, before M1, a pilot mints
+# M1 only; the Operator re-runs this script after sealing — M1 is idempotent).
+# The same check (planner.pins.activation_gaps) gates the first M2 step, admission and K4.
+PLANNER_ACTIVATION="$(python3 - "${ROOT}" <<'PY'
 import json, sys
+from pathlib import Path
+root = Path(sys.argv[1])
+sys.path.insert(0, str(root / ".hermes" / "lib"))
 try:
-    pins = json.load(open(sys.argv[1], encoding="utf-8")).get("pins") or {}
+    pins = json.load(open(root / ".hermes" / "pins.json", encoding="utf-8"))
 except Exception:
     pins = {}
-p = pins.get("planner") or {}
-print("activated" if str(p.get("activation") or "").strip().lower() == "activated" else "not-activated")
+mode = str(((pins.get("pins") or {}).get("planner") or {}).get("activation") or "").strip().lower()
+if mode == "activated":
+    print("activated")
+elif mode == "pilot":
+    try:
+        from planner.canonical import digest, load_json
+        from planner.pins import activation_gaps
+        bundle = root / "evidence" / "planning" / "evidence-bundle.json"
+        gaps = activation_gaps(pins.get("pins") or {}, digest(load_json(bundle)) if bundle.is_file() else "")
+    except Exception as exc:  # no lib, unreadable bundle: fail closed
+        gaps = ["PLANNER_PILOT_SEAL: %s" % exc]
+    print("pilot" if not gaps else "not-activated")
+else:
+    print("not-activated")
 PY
 )"
 
@@ -117,7 +136,7 @@ M1_JSON="$(
 M1_ID="$(parse_id <<<"${M1_JSON}")" || fail_status "M1 create JSON missing t_* id"
 
 M2_ID=""
-if [[ "${PLANNER_ACTIVATION}" == "activated" ]]; then
+if [[ "${PLANNER_ACTIVATION}" == "activated" || "${PLANNER_ACTIVATION}" == "pilot" ]]; then
   M2_JSON="$(
     create_card "M2 PLAN" \
       --assignee implementer \
@@ -135,7 +154,7 @@ fi
 export AUTOSTART_JSON
 AUTOSTART_JSON="$(python3 -c 'import json,sys; print(json.dumps({
   "state": "minted",
-  "reason": ("M1 minted; M2 minted as child (planner activated)" if sys.argv[2] else "M1 minted; M2 not minted (planner activation gate not passed; SOLUTION-ARCHITECTURE section 12)"),
+  "reason": ("M1 minted; M2 minted as child (planner %s)" % sys.argv[3] if sys.argv[2] else "M1 minted; M2 not minted (planner activation gate not passed; SOLUTION-ARCHITECTURE section 12)"),
   "planner_activation": sys.argv[3],
   "m1_id": sys.argv[1],
   "m2_id": sys.argv[2],
@@ -144,7 +163,7 @@ AUTOSTART_JSON="$(python3 -c 'import json,sys; print(json.dumps({
 }))' "${M1_ID}" "${M2_ID}" "${PLANNER_ACTIVATION}")"
 write_status
 if [[ -n "${M2_ID}" ]]; then
-  echo "OK: autostart minted M1=${M1_ID} M2=${M2_ID} (planner activated)"
+  echo "OK: autostart minted M1=${M1_ID} M2=${M2_ID} (planner ${PLANNER_ACTIVATION})"
 else
   echo "OK: autostart minted M1=${M1_ID} (M2 not minted: planner ${PLANNER_ACTIVATION})"
 fi
