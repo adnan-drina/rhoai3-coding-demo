@@ -53,7 +53,7 @@ datasource:
   jdbc_url_env: PETCLINIC_DB_URL
   username_env: PETCLINIC_DB_USER
   password_env: PETCLINIC_DB_PASSWORD
-  reset_procedure: scripts/reset-parity-db.sh drops and recreates the public schema on the isolated instance, then applies schema_sql and seed_sql; every scenario run starts from exactly that state and the corpus records it as the initial state
+  reset_procedure: .hermes/skills/gates/capture-source-oracles/scripts/reset-parity-db.sh --root . drops and recreates the public schema on the isolated instance, then applies schema_sql and seed_sql; every scenario run starts from exactly that state and the corpus records it as the initial state
   schema_owner: source-assets
   schema_sql: src/main/resources/db/postgresql/initDB.sql
   seed_sql: src/main/resources/db/postgresql/populateDB.sql

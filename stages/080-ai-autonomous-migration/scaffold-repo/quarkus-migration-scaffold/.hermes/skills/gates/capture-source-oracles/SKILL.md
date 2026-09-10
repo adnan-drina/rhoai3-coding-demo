@@ -128,5 +128,8 @@ What refuses, and why:
 - `scripts/compare-scenario-parity.py` — recorded-request replay plus effects
 - `scripts/compose-parity-receipt.py` — receipt-bound parity receipt; an entry
   point covered by scenarios passes only when every one of them passes
+- `scripts/reset-parity-db.sh` — restore the decided instance to the initial
+  state the corpus names (drop and recreate the schema, apply the schema and
+  seed assets `decisions.yaml` points at)
 - `scripts/_scenarios.py` — the corpus model and the request digest
 - `scripts/capture-source-oracles.test.py`, `scripts/scenario-parity.test.py` — selftests
