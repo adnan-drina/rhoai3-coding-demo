@@ -19,6 +19,7 @@ HERE = Path(__file__).resolve().parent
 GOLDEN = HERE.parents[4]
 VERIFY = HERE / "verify.py"
 ADVANCE = HERE / "advance.py"
+REWIND = HERE / "rewind.py"
 BRIEF = HERE / "brief.py"
 BOOTSTRAP = GOLDEN / ".hermes" / "skills" / "migration" / "bootstrap-destination" / "scripts" / "bootstrap-destination.py"
 sys.path.insert(0, str(GOLDEN / ".hermes" / "lib"))
@@ -214,7 +215,7 @@ def main() -> int:
         original = target.read_text(encoding="utf-8")
 
         # --- review counterexample 2: a STAGED no-progress edit is reverted from index and tree ---
-        specimens.issue(root)
+        key_c2 = specimens.issue(root)["idempotency_key"]
         target.write_text(original + "// staged, no progress\n", encoding="utf-8")
         _git(root, "add", "--", cl2["path"])
         specimens.verify(root, errors=errors, failures=[], findings=f2)
@@ -248,10 +249,13 @@ def main() -> int:
         for attempt in (1, 2):
             specimens.issue(root)
             t3.write_text(orig3 + "// attempt %d\n" % attempt, encoding="utf-8")
-            specimens.verify(root, errors=one_less, failures=[], findings=f3)  # no progress
+            # attempt 1: a candidate Maven cannot resolve is an UNKNOWN compile count, never a smaller one
+            specimens.verify(root, errors=one_less, failures=[], findings=f3, unresolvable="'dependencies.dependency.version' for io.quarkus:x is missing" if attempt == 1 else None)
             p = _advance(root, cl3["id"], "t_c%d" % (3 + attempt))
             if p.returncode != 1:
                 return _fail("no-progress attempt %d must fail: %s" % (attempt, p.stdout))
+            if attempt == 1 and ("REVERTED" not in p.stderr or "build unresolvable" not in p.stderr):
+                return _fail("an unresolvable candidate must revert as unknown: %s" % p.stderr[-300:])
         if "DEFERRED" not in p.stderr or "STOPS" not in p.stderr:
             return _fail("threshold must defer and stop: %s" % p.stderr[-300:])
         if t3.read_text(encoding="utf-8") != orig3 or _git(root, "rev-parse", "HEAD").strip() != accepted_head:
@@ -261,10 +265,39 @@ def main() -> int:
             return _fail("a deferred cluster must stop admission: %s" % rec["reasons"][:3])
         if convert_admitted(root)[0] is not None:
             return _fail("K4 must mint nothing while a cluster is deferred")
-        # a human clears it (decision recorded out of band) and lands the fix
-        write_canonical(root / LOOP_DEFERRED, {"schema": "rhoai3.loop-deferred/v1", "clusters": [], "reasons": {}})
+        # --- the Operator rewinds to the step before t_c3: the tree, the budget and the deferral go back; the record grows ---
+        steps_before = load_json(root / LOOP_STEPS)
+        n = len(steps_before["steps"])
+        sim = root / "verification" / "loop" / "rewind-sim.py"
+        sim.write_text("import sys, json\nsys.path.insert(0, %r)\nfrom planner import specimens\nr = specimens.verify(%r, errors=json.loads(%r), failures=[], findings=json.loads(%r))\nsys.exit(r.returncode)\n"
+                       % (str(GOLDEN / ".hermes" / "lib"), str(root), json.dumps(errors), json.dumps(f2)), encoding="utf-8")
+        rew = [sys.executable, str(REWIND), "--root", str(root), "--operator", "adnan.drina", "--reason", "measure defect", "--no-mint", "--verify-cmd", "%s %s" % (sys.executable, sim)]
+        p = _run(rew + ["--to-step", "99"])
+        if p.returncode != 1 or "LOOP_REWIND" not in p.stderr:
+            return _fail("rewind to an unrecorded step must refuse: %s" % p.stderr[-200:])
+        p = _run(rew + ["--to-step", str(n - 2)])
+        if p.returncode != 0 or "REWOUND" not in p.stdout:
+            return _fail("rewind: %s%s" % (p.stdout[-400:], p.stderr[-400:]))
+        if target.read_text(encoding="utf-8") != original or _git(root, "status", "--porcelain").strip():
+            return _fail("rewind must restore the product tree at the step and commit it")
+        steps = load_json(root / LOOP_STEPS)
+        if len(steps["steps"]) != n - 1 or steps["attempts"] or len(steps["rewinds"]) != 1 or steps["rewinds"][0]["moved_steps"] != ["t_c3"]:
+            return _fail("rewind record: %s" % {k: steps[k] for k in ("attempts", "rewinds")})
+        if not all(r.get("rewound") for r in steps["rejected"]) or "t_c3" not in [r["card"] for r in steps["rejected"]]:
+            return _fail("rewound steps and old rejections stay on the record as closed cards: %s" % [(r["card"], r.get("rewound")) for r in steps["rejected"]])
+        if load_json(root / LOOP_DEFERRED)["clusters"] or load_json(root / ADMISSION_RECEIPT)["status"] != "ADMITTED":
+            return _fail("rewind must clear the deferral and re-seal admission")
+        if _head(root)["id"] != cl2["id"]:
+            return _fail("after the rewind the earlier cluster is the head again: %s" % _head(root)["id"])
+        again = specimens.issue(root)
+        if again["attempt"] != 1 or again["idempotency_key"] == key_c2:
+            return _fail("a new epoch must not hand back the old attempt-1 card: %s vs %s" % (again["idempotency_key"], key_c2))
+        target.write_text("// one more line at the top\n" + original, encoding="utf-8")
         specimens.verify(root, errors=one_less, failures=[], findings=f3)
-        pipeline.admit(root)
+        p = _advance(root, cl2["id"], "t_c3b")
+        if p.returncode != 0 or "ACCEPTED" not in p.stdout:
+            return _fail("re-landing the rewound step: %s%s" % (p.stdout, p.stderr))
+        # the deferred cluster is open again with a fresh budget; the fix lands
         specimens.issue(root)
         t3.write_text(orig3 + "// human fix\n", encoding="utf-8")
         f4 = json.loads(json.dumps(f3))
@@ -311,7 +344,7 @@ def main() -> int:
         p = _advance(root, "c:tampered", "t_z")
         if p.returncode != 2 or "LOOP_STALE_STATE" not in p.stderr:
             return _fail("tampered work list must refuse advance: %s" % p.stderr)
-    print("OK: fix-until-green (measurement contract: unrun tests / empty reports / failed runner / skipped rescan are unknown; baseline; issued card; post-verify edit + unissued cluster refused with baseline intact; out-of-scope test edit rejected + reverted + reports discarded; accept commits; staged no-progress reverted from index; line shift is not a new obligation; deferral stops the loop; human clears; green → M4; unresolved test = typed blocker; tampered list refused)")
+    print("OK: fix-until-green (measurement contract: unrun tests / empty reports / failed runner / skipped rescan are unknown; baseline; issued card; post-verify edit + unissued cluster refused with baseline intact; out-of-scope test edit rejected + reverted + reports discarded; accept commits; staged no-progress reverted from index; line shift is not a new obligation; unresolvable candidate is unknown; deferral stops the loop; Operator rewind restores tree+budget in a new epoch; green → M4; unresolved test = typed blocker; tampered list refused)")
     return 0
 
 

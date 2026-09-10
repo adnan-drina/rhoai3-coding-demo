@@ -29,7 +29,7 @@ from k1_validate import validate_body  # noqa: E402
 from k4_producers import card_from_payload, producer_issues  # noqa: E402
 from k4_schema import CLOSE_ID, IMPL, REMEDY  # noqa: E402
 from planner.admission import artifact_digests_on_disk, verify_receipt  # noqa: E402
-from planner.canonical import load_json, sha256_file  # noqa: E402
+from planner.canonical import digest, load_json, sha256_file  # noqa: E402
 from planner.cards import idempotency_key, next_card, parse_body, render_body  # noqa: E402
 from planner.canonical import write_canonical  # noqa: E402
 from planner.paths import ADMISSION_RECEIPT, EVIDENCE_BUNDLE, LOOP_ISSUED, LOOP_STEPS, TYPE_INVENTORY, WORKLIST  # noqa: E402
@@ -185,7 +185,9 @@ def convert_admitted(root: Path, *, write_root: bool = True) -> tuple[dict[str, 
     k1 = [(c, d) for c, d, _ in validate_body(body, root=root)]
     if k1:
         issues.append(_issue("K4_SCHEMA", "%s body failed K1: %s" % (card["id"], "; ".join("%s:%s" % x for x in k1))))
-    payload = _payload(card, body, receipt["receipt_digest"], parents)
+    epoch = len((steps or {}).get("rewinds") or [])
+    key_digest = receipt["receipt_digest"] if not epoch else digest({"receipt": receipt["receipt_digest"], "epoch": epoch})
+    payload = _payload(card, body, key_digest, parents)
     issues.extend(producer_issues(card_from_payload(payload)))
     result = {"payloads": [payload], "manifest": {"created_cards": [payload["logical_id"]]}, "receipt_sha256": receipt["receipt_digest"], "claimed_control": False}
     issues.extend(validate_result(result))

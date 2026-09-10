@@ -135,6 +135,13 @@ def main() -> int:
     unknown = measure_of(all_items, incidents_known=True, compile_known=False, tests_known=True, parity_known=False)
     if unknown["known"] or progress(m0, unknown, set(), set())[0]:
         return _fail("unknown measure never advances")
+    ok, why = progress(unknown, m0, set(), set())
+    if not ok or "became known" not in why:
+        return _fail("a known measure must beat an unknown baseline: %s" % why)
+    if progress(unknown, m0, {"inc:a"}, {"inc:a", "inc:new"})[0]:
+        return _fail("becoming known never excuses a new obligation")
+    if compile_items({"diagnostics": [], "build_unresolvable": True, "reason": "missing version"})[0].get("message") != "missing version":
+        return _fail("the unresolvable item must carry the resolver's reason for the brief")
     if measure_of(all_items, incidents_known=False, compile_known=True, tests_known=True, parity_known=False)["known"]:
         return _fail("unknown incidents never advance")
     print("OK: worklist (lossless line-free incidents; canary excluded; only ERROR diagnostics; build→config→compile(leaf-first)→incident→test order; tests never writable; lexicographic 3-tuple progress; new-incident veto; unknown never advances)")

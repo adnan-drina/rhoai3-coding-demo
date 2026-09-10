@@ -18,7 +18,7 @@ from _loop_common import ensure_hermes_lib  # noqa: E402
 
 ensure_hermes_lib()
 from planner.canonical import load_json, write_canonical  # noqa: E402
-from planner.paths import LOOP_DIR, MTA_FINDINGS, MTA_RESCAN_FINDINGS, WORKLIST  # noqa: E402
+from planner.paths import LOOP_DIR, MTA_FINDINGS, MTA_RESCAN_FINDINGS, WORKLIST, BOM_MANAGED  # noqa: E402
 from planner.worklist import head_cluster, items_of  # noqa: E402
 
 PROCEDURE = (
@@ -74,6 +74,23 @@ def _backticked(text: str) -> list[str]:
     return [parts[i].strip() for i in range(1, len(parts), 2) if parts[i].strip()]
 
 
+def bom_managed(root: Path) -> set[str]:
+    """group:artifact ids the pinned BOM manages (probe-bom-managed.py), or empty when unprobed."""
+    p = root / BOM_MANAGED
+    if not p.is_file():
+        return set()
+    return {str(x) for x in (load_json(p).get("managed") or [])}
+
+
+def artifact_aliases(root: Path) -> dict[str, str]:
+    """Documented renames from the bootstrap catalog (old group:artifact → managed group:artifact)."""
+    p = root / ".hermes" / "planning" / "catalogs" / "compat-mapping.json"
+    if not p.is_file():
+        return {}
+    rows = (load_json(p).get("artifact_aliases") or {})
+    return {k: str(v) for k, v in rows.items() if k != "note" and isinstance(v, str)}
+
+
 def enrich(items: list[dict], root: Path, cluster: dict) -> list[dict]:
     """Attach the rule's advice/links (from the findings the work list was
     built on) and, for pom.xml loci, the element at the reported line plus
@@ -83,10 +100,14 @@ def enrich(items: list[dict], root: Path, cluster: dict) -> list[dict]:
     pom_p = root / "pom.xml"
     els = pom_elements(pom_p) if cluster.get("path") == "pom.xml" and pom_p.is_file() else []
     artifacts = {e["gav"].split(":")[-1] for e in els} | {e["gav"] for e in els}
+    managed, aliases = bom_managed(root), artifact_aliases(root)
     out: list[dict] = []
     for it in items:
         row = dict(it)
         rule = rules.get(str(it.get("rule_id")))
+        if it.get("rule_id") == "BUILD_UNRESOLVABLE":
+            # the resolver's own words; nothing else is measurable until Maven resolves the pom
+            row["advice"] = {"description": "Maven cannot resolve the pom: fix the named coordinate (a BOM-managed artifact needs no version; an artifact the BOM does not manage must not be added under an old name)", "message": str(it.get("message") or it.get("detail") or ""), "links": ["https://quarkus.io/guides/maven-tooling"]}
         if isinstance(rule, dict) and it.get("source") == "mta":
             incs = rule.get("incidents") if isinstance(rule.get("incidents"), list) else []
             msg = next((str(i.get("message")) for i in incs if isinstance(i, dict) and i.get("message")), "")
@@ -94,6 +115,16 @@ def enrich(items: list[dict], root: Path, cluster: dict) -> list[dict]:
             present = sorted(t for t in _backticked(msg) if t in artifacts or t.split(":")[-1] in artifacts)
             if present:
                 row["advice_present"] = present
+            if managed:
+                # advice written for Quarkus 2 names artifacts the pinned BOM does not manage;
+                # say so, and name the managed artifact the catalog documents for it
+                unmanaged = sorted(t for t in _backticked(msg) if ":" in t and t.startswith("io.quarkus:") and t not in managed)
+                if unmanaged:
+                    row["advice_unmanaged"] = unmanaged
+                    eq = {t: aliases[t] for t in unmanaged if t in aliases}
+                    if eq:
+                        row["advice_managed_equivalent"] = eq
+                        row["advice_managed_present"] = sorted(v for v in eq.values() if v in artifacts or v.split(":")[-1] in artifacts)
         if els:
             el = element_at(els, int(it.get("line") or 0))
             row["element"] = el or {"kind": "project", "gav": "", "line_start": 1, "line_end": 0}

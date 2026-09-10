@@ -1,6 +1,6 @@
 {
   "schema": "rhoai3.catalog.compat-mapping/v1",
-  "note": "Deterministic bootstrap for the Spring-compatibility path (SAD v3 §6). Every row is a documented Quarkus mapping, never an inference: starters map to the Quarkus Spring compatibility extensions and their runtime prerequisites; property keys map per the quarkus-spring-boot-properties and hibernate-orm guides. Versions are never here: the BOM and plugin come from .hermes/pins.json (quarkus_platform, compiler_plugin, surefire_plugin). A starter or driver without a row stays in the pom and is surfaced by the compiler and the MTA rescan as work-list items; nothing is guessed.",
+  "note": "Deterministic bootstrap for the Spring-compatibility path (SAD v3 \u00a76). Every row is a documented Quarkus mapping, never an inference: starters map to the Quarkus Spring compatibility extensions and their runtime prerequisites; property keys map per the quarkus-spring-boot-properties and hibernate-orm guides. Versions are never here: the BOM and plugin come from .hermes/pins.json (quarkus_platform, compiler_plugin, surefire_plugin). A starter or driver without a row stays in the pom and is surfaced by the compiler and the MTA rescan as work-list items; nothing is guessed.",
   "sources": [
     "https://quarkus.io/guides/spring-di",
     "https://quarkus.io/guides/spring-web",
@@ -130,5 +130,15 @@
       "to": "quarkus.log.category.\"{rest}\".level",
       "source": "https://quarkus.io/guides/logging#logging-categories (MTA rule springboot-properties-to-quarkus-00003 links the same guide)"
     }
+  },
+  "artifact_aliases": {
+    "note": "Artifacts that MTA's Quarkus 2-era advice names by their pre-3.9 id. The pinned BOM manages only the renamed id (Quarkus 3.9 migration guide, 'RESTEasy Reactive renamed to Quarkus REST'); the brief points the worker at the managed name so it never adds an unversioned, unmanaged dependency.",
+    "io.quarkus:quarkus-resteasy-reactive": "io.quarkus:quarkus-rest",
+    "io.quarkus:quarkus-resteasy-reactive-jackson": "io.quarkus:quarkus-rest-jackson",
+    "io.quarkus:quarkus-resteasy-reactive-jsonb": "io.quarkus:quarkus-rest-jsonb",
+    "io.quarkus:quarkus-resteasy-reactive-qute": "io.quarkus:quarkus-rest-qute",
+    "io.quarkus:quarkus-rest-client-reactive": "io.quarkus:quarkus-rest-client",
+    "io.quarkus:quarkus-rest-client-reactive-jackson": "io.quarkus:quarkus-rest-client-jackson",
+    "io.quarkus:quarkus-rest-client-reactive-jsonb": "io.quarkus:quarkus-rest-client-jsonb"
   }
 }

@@ -395,7 +395,9 @@ def decisions_yaml(doc: dict[str, Any]) -> str:
 # ---------------------------------------------------------------------------
 
 
-def diagnostics_doc(errors: list[tuple[str, int, str]]) -> dict[str, Any]:
+def diagnostics_doc(errors: list[tuple[str, int, str]], unresolvable: str | None = None) -> dict[str, Any]:
+    if unresolvable:
+        return {"schema": "rhoai3.diagnostics/v1", "files": 0, "classpath_entries": 0, "success": False, "errors": 0, "diagnostics": [], "build_unresolvable": True, "reason": unresolvable}
     return {"schema": "rhoai3.diagnostics/v1", "files": 1, "classpath_entries": 1, "success": not errors, "errors": len(errors), "diagnostics": [{"kind": "ERROR", "path": p, "line": ln, "code": "compiler.err.cant.resolve", "message": msg} for p, ln, msg in errors]}
 
 
@@ -406,14 +408,14 @@ def surefire_doc(failures: list[tuple[str, str]]) -> dict[str, Any]:
 SIM = Path("verification") / "loop" / "sim"
 
 
-def write_verified_state(root: Path, *, errors: list[tuple[str, int, str]] | None = None, failures: list[tuple[str, str]] | None = None, findings: dict[str, Any] | None = None, test_rc: int | None = None) -> dict[str, str]:
+def write_verified_state(root: Path, *, errors: list[tuple[str, int, str]] | None = None, failures: list[tuple[str, str]] | None = None, findings: dict[str, Any] | None = None, unresolvable: str | None = None, test_rc: int | None = None) -> dict[str, str]:
     """Simulate the tools' raw outputs under verification/loop/sim/ and return
     the verify.py arguments that consume them (never written into the
     verification/build/ reports directly — verify.py owns those)."""
     root = Path(root)
     sim = root / SIM
     sim.mkdir(parents=True, exist_ok=True)
-    write_canonical(sim / "diagnostics.json", diagnostics_doc(errors or []))
+    write_canonical(sim / "diagnostics.json", diagnostics_doc(errors or [], unresolvable))
     write_canonical(sim / "surefire.json", surefire_doc(failures or []))
     args = ["--diagnostics", str(sim / "diagnostics.json"), "--surefire-json", str(sim / "surefire.json"), "--test-rc", str(test_rc if test_rc is not None else (1 if failures else 0))]
     if findings is not None:

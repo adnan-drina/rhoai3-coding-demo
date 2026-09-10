@@ -166,7 +166,7 @@ def compile_items(diags: dict[str, Any]) -> list[dict[str, Any]]:
         ident = sha256_bytes(canonical_bytes({"path": path, "line": line, "code": d.get("code"), "message": message}))[:16]
         out.append({"id": "err:%s" % ident, "source": "javac", "kind": "build" if path == GLOBAL or path_class(path) == "build" else "compile", "category": "mandatory", "path": path, "line": line, "rule_id": str(d.get("code") or ""), "message_sha256": sha256_bytes(message.encode("utf-8")), "detail": message[:200]})
     if diags.get("build_unresolvable"):
-        out.append({"id": "err:build-unresolvable", "source": "javac", "kind": "build", "category": "mandatory", "path": "pom.xml", "line": 0, "rule_id": "BUILD_UNRESOLVABLE", "message_sha256": sha256_bytes(str(diags.get("reason") or "").encode("utf-8")), "detail": str(diags.get("reason") or "")[:200]})
+        out.append({"id": "err:build-unresolvable", "source": "javac", "kind": "build", "category": "mandatory", "path": "pom.xml", "line": 0, "rule_id": "BUILD_UNRESOLVABLE", "message_sha256": sha256_bytes(str(diags.get("reason") or "").encode("utf-8")), "detail": str(diags.get("reason") or "")[:200], "message": str(diags.get("reason") or "")[:600]})
     return out
 
 
@@ -310,8 +310,17 @@ def measure_of(items: list[dict[str, Any]], *, incidents_known: bool, compile_kn
 
 def progress(prev: dict[str, Any], cur: dict[str, Any], prev_ids: set[str], cur_ids: set[str]) -> tuple[bool, str]:
     """Accept iff strictly smaller lexicographically and no new mandatory obligation."""
-    if not prev.get("known") or not cur.get("known"):
-        return False, "measure not fully known (%s)" % "; ".join((cur.get("blocked") or prev.get("blocked") or ["compile/tests/incidents unverified"]))
+    if not cur.get("known"):
+        return False, "measure not fully known (%s)" % "; ".join(cur.get("blocked") or ["compile/tests/incidents unverified"])
+    if not prev.get("known"):
+        # unknown ranks above every known measure (+inf): a candidate whose
+        # every component the tools measured beats a baseline they could not
+        # measure (an unresolvable bootstrap pom, a skipped rescan), provided
+        # it adds no mandatory obligation
+        new_mandatory = sorted(i for i in cur_ids - prev_ids if i.startswith("inc:"))
+        if new_mandatory:
+            return False, "new mandatory obligation(s): %s" % ",".join(new_mandatory[:5])
+        return True, "measure %s became known (was: %s)" % (cur["tuple"], "; ".join(prev.get("blocked") or ["unknown"]))
     a, b = list(prev["tuple"]), list(cur["tuple"])
     # ids are obligation_keys() (rule|file#n); a content-hash id (old steps) is
     # compared as-is, so an old baseline still vetoes on a brand-new id.
@@ -369,9 +378,16 @@ def build_worklist(root: Path, *, write: bool = True) -> dict[str, Any]:
     mandatory = [i for i in incidents if i["category"] == "mandatory"]
     diag_run = run.get("diagnostics") or {}
     diags = load_json(diag_path) if diag_path.is_file() else None
-    compile_known = isinstance(diags, dict) and bool(diag_run.get("ran"))
+    compile_known = isinstance(diags, dict) and bool(diag_run.get("ran")) and not diags.get("build_unresolvable")
     if not compile_known:
-        blocked.append("compiler diagnostics did not run in this verification")
+        # an unresolvable build never ran the compiler over the sources: its
+        # compile count is unknown, not "1" (pilot v6 attempt 3 was accepted
+        # at [11, 1, 0] for a pom Maven could not resolve; the successor that
+        # fixed resolution measured the real 829 errors and was reverted)
+        if isinstance(diags, dict) and diags.get("build_unresolvable"):
+            blocked.append("build unresolvable: %s" % str(diags.get("reason") or "no classpath")[:300])
+        else:
+            blocked.append("compiler diagnostics did not run in this verification")
     comp = compile_items(diags) if isinstance(diags, dict) else []
     tests_run = run.get("tests") or {}
     sure = load_json(sure_path) if sure_path.is_file() else None

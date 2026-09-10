@@ -60,14 +60,18 @@ python3 "${HERMES_SKILL_DIR}/scripts/advance.py" --root /projects/modernized \
 | `ACCEPTED` | exactly the changed paths committed, tool reports snapshotted, work list rebuilt, admission re-sealed, next card minted (K4) with this card as parent and K3-verified | `kanban_request_review` (reviewer=reviewer) |
 | `REVERTED` (exit 1) | same cluster re-issued with the next attempt key | `kanban_request_review` — the retry is its own card; never loop inside this card |
 | `DEFERRED` (exit 1) | attempt threshold reached → cluster in `verification/loop/deferred.json`; **the loop stops**, nothing mints | `kanban_block` kind=needs_input naming the cluster |
+| (Operator) `scripts/rewind.py` | the Operator puts the loop back at an accepted step: product tree restored and re-measured, later steps and the spent budget moved to the record as `rewound`, deferral cleared, next card minted in a new epoch | not a card action; `--operator` and `--reason` are recorded in `steps.json.rewinds` |
 | `REFUSE: LOOP_*` | stale state / no baseline / receipt not authoritative | `kanban_block` kind=needs_input |
 
 Measurement contract: a component is known only when its tool ran in this
 verification (`verification/build/run.json`). Tests that did not run, an
 empty surefire directory, a `mvn test` failure with no recorded failing
-test, or a skipped MTA rescan make the measure unknown and the loop does
-not advance. Obligation identity is line-free: moving code is not a new
-obligation.
+test, a skipped MTA rescan, or a pom Maven cannot resolve (the compiler
+never saw the sources) make the measure unknown and the loop does not
+advance on it. Unknown ranks above every known measure: a candidate the
+tools could measure beats a baseline they could not, provided it adds no
+mandatory obligation. Obligation identity is line-free: moving code is
+not a new obligation.
 
 The measure is `(mandatory incidents, compile errors, failing tests,
 parity mismatches)`. Removing a Spring annotation may add compile errors
@@ -78,7 +82,9 @@ write set).
 ## Verification
 
 - `scripts/fix-until-green.test.py` — bootstrap → baseline → accept →
-  revert (attempt 2) → defer (loop stops) → human clears → green → M4.
+  revert (attempt 2) → unresolvable candidate reverted as unknown → defer
+  (loop stops) → Operator rewind (tree, budget, deferral, new epoch) →
+  re-land → green → M4.
 - Every accepted step is a commit; `verification/loop/steps.json` is the
   append-only record; the sealed work list is rebuilt, never edited.
 
@@ -88,6 +94,7 @@ write set).
 - `scripts/run-verify.sh` — the real tools (one online warm-up: `dependency:go-offline` plus the measured goals with results discarded, so a changed pom can be measured; then offline: JDK diagnostics, surefire, MTA rescan) → `verify.py`; every tool's exit status lands in `verification/build/run.json`
 - `scripts/verify.py` — tool outputs + recorded outcomes → work list + state + candidate identity
 - `scripts/advance.py` — the acceptance transaction (`--baseline` records step 0)
+- `scripts/rewind.py` — Operator rewind to an accepted step (`--to-step N --operator WHO --reason WHY`; re-measures with run-verify.sh, refuses on a measure mismatch, starts a new card-key epoch)
 - `scripts/jdk-diagnostics/JdkDiagnostics.java` — compiler diagnostics as JSON (JDK compiler API)
 - `scripts/_loop_common.py` — shared helpers
 - `scripts/fix-until-green.test.py` — selftest
