@@ -334,13 +334,33 @@ def build_dest(
     return root
 
 
-def full_decisions(*, platform: str = "quarkus-rhbq-3.27", max_attempts: int | None = 2, not_applicable: list[dict[str, Any]] | None = None, adrs: list[dict[str, Any]] | None = None, retired_sources: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+FIXTURE_DATASOURCE = {
+    "adr": "ADR-001",
+    "db_kind": "postgresql",
+    "db_version": "16-el9",   # a version, not a number: the fixture yaml writer quotes nothing numeric
+    "jdbc_extension": "io.quarkus:quarkus-jdbc-postgresql",
+    "profile": "prod",
+    "instance": "fixture-isolated-postgres",
+    "jdbc_url_env": "FIXTURE_DB_URL",
+    "username_env": "FIXTURE_DB_USER",
+    "password_env": "FIXTURE_DB_PASSWORD",
+    "reset_procedure": "drop and recreate the schema, then apply schema_sql and seed_sql",
+    "schema_owner": "source-assets",
+    "schema_sql": "src/main/resources/db/postgresql/initDB.sql",
+    "seed_sql": "src/main/resources/db/postgresql/populateDB.sql",
+    "hibernate_generation": "none",
+    "source_baseline_db_kind": "hsqldb",
+}
+
+
+def full_decisions(*, platform: str = "quarkus-rhbq-3.27", max_attempts: int | None = 2, not_applicable: list[dict[str, Any]] | None = None, adrs: list[dict[str, Any]] | None = None, retired_sources: list[dict[str, Any]] | None = None, datasource: dict[str, Any] | None = None) -> dict[str, Any]:
     doc = {
         "schema": "rhoai3.decisions/v2",
         "adrs": adrs if adrs is not None else list(ACCEPTED_ADRS),
         "destination_platform": {"id": platform, "adr": "ADR-001"},
         "thresholds": {"max_attempts": max_attempts, "adr": "ADR-002"},
         "not_applicable": not_applicable or [],
+        "datasource": dict(FIXTURE_DATASOURCE) if datasource is None else datasource,
     }
     if retired_sources:
         doc["retired_sources"] = retired_sources

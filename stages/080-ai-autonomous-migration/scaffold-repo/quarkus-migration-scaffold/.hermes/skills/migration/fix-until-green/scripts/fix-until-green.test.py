@@ -74,7 +74,30 @@ def _profile_keys_cases() -> int:
     return 0
 
 
+def _attempt_budget_case() -> int:
+    """A cleared deferral raises the budget; it never deletes the attempts."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from _loop_common import attempt_budget  # noqa: E402
+
+    steps = {"attempts": {"c:x": 3}, "rejected": [{"cluster": "c:x", "card": "t_1"}], "deferral_clearances": []}
+    if attempt_budget(steps, "c:x", 3) != 3:
+        return _fail("with no clearance the budget is the decided limit")
+    steps["deferral_clearances"].append({"cluster": "c:x", "attempts": 3, "cards": ["t_1"]})
+    if attempt_budget(steps, "c:x", 3) != 6:
+        return _fail("a clearance at 3 spent attempts must allow 3 more, not reset the counter")
+    steps["deferral_clearances"].append({"cluster": "c:x", "attempts": 6, "cards": ["t_1"]})
+    if attempt_budget(steps, "c:x", 3) != 9:
+        return _fail("a second clearance moves the budget again: %d" % attempt_budget(steps, "c:x", 3))
+    if attempt_budget(steps, "c:other", 3) != 3:
+        return _fail("a clearance belongs to its own cluster")
+    if steps["attempts"]["c:x"] != 3 or steps["rejected"][0]["card"] != "t_1":
+        return _fail("the history must be untouched by the budget question")
+    return 0
+
+
 def main() -> int:
+    if _attempt_budget_case():
+        return 1
     if _profile_keys_cases():
         return 1
     with tempfile.TemporaryDirectory(prefix="fug-") as tmp:

@@ -37,6 +37,23 @@ thresholds:
 
 not_applicable: []
 
+datasource:
+  adr: ADR-001
+  db_kind: postgresql
+  db_version: "16"
+  jdbc_extension: io.quarkus:quarkus-jdbc-postgresql
+  profile: prod
+  instance: fixture-isolated-postgres
+  jdbc_url_env: FIXTURE_DB_URL
+  username_env: FIXTURE_DB_USER
+  password_env: FIXTURE_DB_PASSWORD
+  reset_procedure: drop and recreate, then apply schema and seed
+  schema_owner: destination-orm
+  schema_sql: ""
+  seed_sql: ""
+  hibernate_generation: none
+  source_baseline_db_kind: hsqldb
+
 retired_sources:
   - path: src/main/java/a/Replaced.java
     adr: ADR-009

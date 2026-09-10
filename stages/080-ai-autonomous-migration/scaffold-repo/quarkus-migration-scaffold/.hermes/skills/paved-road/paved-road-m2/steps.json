@@ -6,7 +6,7 @@
       "id": "assert-planner-activated",
       "backing": "native",
       "native": "assert-planner-activated.py",
-      "note": "Activation gate (SAD v3 §9). Refuses while .hermes/pins.json planner.activation is not-activated (or a pilot seal does not cover this bundle): kanban_block naming the gate; do not improvise a plan."
+      "note": "Activation gate (SAD v3 \u00a79). Refuses while .hermes/pins.json planner.activation is not-activated (or a pilot seal does not cover this bundle): kanban_block naming the gate; do not improvise a plan."
     },
     {
       "id": "bootstrap-destination",
@@ -15,7 +15,7 @@
       "keep": [
         "evidence/producers/bootstrap.json"
       ],
-      "note": "Deterministic baseline from the compat-mapping catalog + pins (import, pom, properties, main class). No model."
+      "note": "Deterministic baseline from the compat-mapping catalog + pins (import, pom, properties, main class) and the decided effective datasource (decisions.yaml datasource, under an accepted ADR). No model. Then run scripts/check-datasource-decision.py: the destination's unprefixed datasource keys, its JDBC extension and its schema/seed assets must be the decided ones, because the platform resolves the datasource at BUILD time and a %profile-prefixed key alone is not a configured datasource."
     },
     {
       "id": "build-worklist",
@@ -25,7 +25,7 @@
         "evidence/planning/worklist.json",
         "verification/loop/steps.json"
       ],
-      "note": "The only plan: JDK diagnostics + surefire + MTA rescan → clustered, ordered work list; records the baseline step."
+      "note": "The only plan: JDK diagnostics + surefire + MTA rescan \u2192 clustered, ordered work list; records the baseline step."
     },
     {
       "id": "admit-migration-plan",

@@ -46,7 +46,7 @@ def _ensure_hermes_lib() -> None:
 _ensure_hermes_lib()
 from planner.canonical import digest, load_json, sha256_file, write_canonical  # noqa: E402
 from planner.paths import BOM_MANAGED, BOOTSTRAP_RECEIPT, CATALOGS_DIR, DECISIONS, EVIDENCE_BUNDLE, producer_receipt  # noqa: E402
-from planner.decisions import DecisionsError, load_decisions, retired_sources  # noqa: E402
+from planner.decisions import DecisionsError, datasource, load_decisions, retired_sources  # noqa: E402
 from planner.pins import load_pins, pin  # noqa: E402
 
 NS = "http://maven.apache.org/POM/4.0.0"
@@ -409,6 +409,77 @@ def rename_jakarta_imports(root: Path, catalog: dict, changes: list[dict], block
         changes.append({"op": "source.rename-imports", "path": path, "imports": n, "source": "compat-mapping.json package_renames (Jakarta EE 10 namespace)"})
 
 
+def apply_datasource_decision(root: Path, catalog: dict, decisions_doc: dict, changes: list[dict], blocks: list[dict]) -> None:
+    """Render the decided effective datasource (decisions.yaml datasource, ADR).
+
+    Quarkus resolves the datasource at BUILD time, so a profile-prefixed key is
+    not a configured datasource: pilot v7 reached an empty work list with only
+    %hsqldb.* keys and failed augmentation with "Datasource <default> is not
+    configured". The decision therefore lands as unprefixed keys in
+    src/main/resources/application.properties, with credentials referenced by
+    environment variable name, and the matching JDBC extension is added to the
+    pom. The profile-prefixed families the legacy carried are left exactly where
+    they are: they are the source's own record, not this destination's config."""
+    ds = datasource(decisions_doc)
+    if not ds:
+        return  # missing_decisions already keeps admission INCONCLUSIVE
+    kinds = (catalog.get("datasources") or {}).get("db_kinds") or {}
+    kind = str(ds.get("db_kind"))
+    row = kinds.get(kind)
+    if not row:
+        blocks.append({"class": "DATASOURCE_UNSUPPORTED", "subject": kind, "detail": "compat-mapping.json datasources.db_kinds has no row for db_kind %r; the destination platform documents no JDBC extension for it" % kind})
+        return
+    ext = str(row.get("extension") or "")
+    if str(ds.get("jdbc_extension") or "") != ext:
+        blocks.append({"class": "DATASOURCE_EXTENSION_MISMATCH", "subject": kind, "detail": "%s is documented for db_kind %s; decisions.yaml names %r" % (ext, kind, ds.get("jdbc_extension"))})
+        return
+    # 1. the extension
+    pom = root / "pom.xml"
+    ET.register_namespace("", NS)
+    tree = ET.parse(pom)
+    project = tree.getroot()
+    deps = find_or_add(project, "dependencies")
+    gid, aid = ext.split(":", 1)
+    if not any(text(d, "groupId") == gid and text(d, "artifactId") == aid for d in deps.findall(q("dependency"))):
+        d = sub(deps, "dependency")
+        sub(d, "groupId", gid)
+        sub(d, "artifactId", aid)
+        ET.indent(tree, space="  ")
+        tree.write(pom, encoding="utf-8", xml_declaration=True)
+        changes.append({"op": "pom.add-datasource-extension", "gav": ext, "provenance": "decisions.yaml datasource (%s)" % ds.get("adr")})
+    # 2. the effective keys
+    wanted = {
+        "quarkus.datasource.db-kind": kind,
+        "quarkus.datasource.jdbc.url": "${%s}" % ds.get("jdbc_url_env"),
+        "quarkus.datasource.username": "${%s}" % ds.get("username_env"),
+        "quarkus.datasource.password": "${%s}" % ds.get("password_env"),
+        "quarkus.hibernate-orm.database.generation": str(ds.get("hibernate_generation")),
+    }
+    prop = root / "src" / "main" / "resources" / "application.properties"
+    prop.parent.mkdir(parents=True, exist_ok=True)
+    lines = prop.read_text(encoding="utf-8", errors="replace").splitlines() if prop.is_file() else []
+    seen: dict[str, int] = {}
+    for i, raw in enumerate(lines):
+        stripped = raw.strip()
+        if stripped and not stripped.startswith(("#", "!")) and "=" in stripped:
+            seen.setdefault(stripped.partition("=")[0].strip(), i)
+    added: list[str] = []
+    for key, value in wanted.items():
+        line = "%s=%s" % (key, value)
+        i = seen.get(key)
+        if i is None:
+            added.append(line)
+            changes.append({"op": "properties.datasource-set", "key": key, "provenance": "decisions.yaml datasource (%s)" % ds.get("adr")})
+        elif lines[i].strip() != line:
+            lines[i] = line
+            changes.append({"op": "properties.datasource-set", "key": key, "provenance": "decisions.yaml datasource (%s)" % ds.get("adr")})
+    if added:
+        lines += ["", "# bootstrap: effective datasource decided in decisions.yaml (%s); credentials are" % ds.get("adr"),
+                  "# environment references, and the engine change from %s is recorded in that ADR." % ds.get("source_baseline_db_kind"),
+                  *added]
+    prop.write_text("\n".join(lines).rstrip("\n") + "\n", encoding="utf-8")
+
+
 def bootstrap_properties(root: Path, catalog: dict, changes: list[dict]) -> None:
     mapping = catalog.get("properties") or {}
     values = catalog.get("property_values") or {}
@@ -759,12 +830,17 @@ def reapply_catalog(root: Path) -> int:
     apply_plugin_config(project, plugins, catalog, changes)
     ET.indent(tree, space="  ")
     tree.write(pom, encoding="utf-8", xml_declaration=True)
+    if (root / DECISIONS).is_file():
+        try:
+            apply_datasource_decision(root, catalog, load_decisions(root), changes, blocks)
+        except DecisionsError as exc:
+            blocks.append({"class": "DECISIONS_INVALID", "subject": str(DECISIONS), "detail": str(exc)})
     rename_jakarta_imports(root, catalog, changes, blocks)
     receipt["changes"] = list(receipt.get("changes") or []) + changes
     receipt["inputs"] = dict(receipt.get("inputs") or {})
     receipt["inputs"]["catalog_sha256"] = sha256_file(cat_p)
     receipt["outputs"] = [{"path": "pom.xml", "sha256": sha256_file(pom)}]
-    rewrite_blocks(receipt, ("VERSION_UNMANAGED", "BOM_PROBE_MISSING", "TOOL_MISSING"), blocks)
+    rewrite_blocks(receipt, ("VERSION_UNMANAGED", "BOM_PROBE_MISSING", "TOOL_MISSING", "DATASOURCE_UNSUPPORTED", "DATASOURCE_EXTENSION_MISMATCH", "DECISIONS_INVALID"), blocks)
     write_canonical(receipt_p, receipt)
     for c in changes:
         print("  - %s %s" % (c["op"], c.get("gav") or c.get("artifact") or c.get("path") or c.get("key") or ""))
@@ -828,6 +904,11 @@ def main(argv: list[str] | None = None) -> int:
         print("FAIL: BOOTSTRAP_POM_PARSE %s" % exc, file=sys.stderr)
         return 1
     bootstrap_properties(root, catalog, changes)
+    if (root / DECISIONS).is_file():
+        try:
+            apply_datasource_decision(root, catalog, load_decisions(root), changes, blocks)
+        except DecisionsError as exc:
+            blocks.append({"class": "DECISIONS_INVALID", "subject": str(DECISIONS), "detail": str(exc)})
     bootstrap_main_class(root, catalog, bundle, changes, blocks)
     rename_jakarta_imports(root, catalog, changes, blocks)
     receipt = {

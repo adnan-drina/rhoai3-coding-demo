@@ -39,6 +39,20 @@ def save_steps(root: Path, doc: dict[str, Any]) -> None:
     write_canonical(root / LOOP_STEPS, doc)
 
 
+def attempt_budget(steps: dict[str, Any], cluster: str, limit: int) -> int:
+    """How many rejected attempts this cluster may spend before it defers.
+
+    The attempt history is append-only: clearing a deferral changes that
+    deferral's disposition, it never deletes the attempts or the identities of
+    the cards they minted (the live-board comparator expects every one of them,
+    and the record is the audit). So a clearance raises the budget instead of
+    resetting the counter -- the cluster gets ``limit`` fresh attempts from
+    where it stood when the Operator cleared it."""
+    spent_at_clearance = [int(c.get("attempts") or 0) for c in (steps.get("deferral_clearances") or [])
+                          if str(c.get("cluster") or "") == cluster]
+    return limit + (max(spent_at_clearance) if spent_at_clearance else 0)
+
+
 def load_deferred(root: Path) -> dict[str, Any]:
     return _json_doc(root, LOOP_DEFERRED, {"schema": "rhoai3.loop-deferred/v1", "clusters": [], "reasons": {}})
 

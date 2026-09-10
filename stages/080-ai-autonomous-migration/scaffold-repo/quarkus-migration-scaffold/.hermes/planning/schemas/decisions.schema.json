@@ -8,7 +8,8 @@
     "adrs",
     "destination_platform",
     "thresholds",
-    "not_applicable"
+    "not_applicable",
+    "datasource"
   ],
   "properties": {
     "schema": {
@@ -153,7 +154,140 @@
           "reason": {
             "type": "string",
             "minLength": 1
+          },
+          "replaced_by": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": "Entry-point ids whose recorded scenarios cover what this file did. The coverage account counts a row as replaced only when the parity receipt measured every one of them as PASS."
           }
+        }
+      }
+    },
+    "datasource": {
+      "type": "object",
+      "description": "The effective database of the destination. An architectural input, resolved before any worker reaches runtime verification: a missing or incomplete block makes admission INCONCLUSIVE, so no card is minted against an undecided datasource.",
+      "required": [
+        "adr",
+        "db_kind",
+        "db_version",
+        "jdbc_extension",
+        "profile",
+        "instance",
+        "jdbc_url_env",
+        "username_env",
+        "password_env",
+        "reset_procedure",
+        "schema_owner",
+        "schema_sql",
+        "seed_sql",
+        "hibernate_generation",
+        "source_baseline_db_kind"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "adr": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "the accepted ADR that decided the engine"
+        },
+        "db_kind": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "quarkus.datasource.db-kind"
+        },
+        "db_version": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "the approved database version"
+        },
+        "jdbc_extension": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "groupId:artifactId of the matching Quarkus JDBC extension"
+        },
+        "profile": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "the build and run profile this configuration is selected under"
+        },
+        "instance": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "the isolated test instance this run uses (a name an Operator can point at)"
+        },
+        "jdbc_url_env": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "environment variable holding the JDBC URL; never a literal URL with credentials"
+        },
+        "username_env": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "password_env": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reset_procedure": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "how the instance is returned to its initial state between scenario runs"
+        },
+        "schema_owner": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "who owns schema and seed: the source assets, the destination ORM, or a named migration tool"
+        },
+        "schema_sql": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "seed_sql": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "hibernate_generation": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "quarkus.hibernate-orm.database.generation"
+        },
+        "source_baseline_db_kind": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "the engine the frozen source ran on; kept so the source baseline and its provenance are not rewritten by the destination's choice"
         }
       }
     }

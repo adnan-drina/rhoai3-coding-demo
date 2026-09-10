@@ -86,7 +86,61 @@ def missing_decisions(doc: dict[str, Any], root: Path) -> list[dict[str, str]]:
     for i, row in enumerate(doc.get("retired_sources") or []):
         if not _adr_ok(doc, row.get("adr")):
             gap("ADR_NOT_ACCEPTED", "retired_sources[%d]" % i, "entry cites %r which is not an accepted ADR" % row.get("adr"))
+    # The datasource is an architectural input, not something a worker discovers
+    # at runtime: an undecided or half-decided one keeps admission INCONCLUSIVE,
+    # so no card is minted against it (pilot v7 reached an empty work list with
+    # no default datasource configured and could not be built at all).
+    ds = doc.get("datasource")
+    if not isinstance(ds, dict) or not ds.get("db_kind"):
+        gap("MISSING_DECISION", "datasource", "name the destination's effective database: db_kind, version, matching JDBC extension, profile, isolated instance, credential references, reset procedure, schema and seed ownership")
+    else:
+        if not _adr_ok(doc, ds.get("adr")):
+            gap("ADR_NOT_ACCEPTED", "datasource", "datasource cites %r which is not an accepted ADR" % ds.get("adr"))
+        for field, why in DATASOURCE_FIELDS:
+            if not str(ds.get(field) or "").strip():
+                gap("MISSING_DECISION", "datasource.%s" % field, why)
+        kinds = known_db_kinds(root)
+        kind = str(ds.get("db_kind") or "")
+        if kind and kind not in kinds:
+            gap("DATASOURCE_UNSUPPORTED", "datasource.db_kind", "%r has no row in compat-mapping.json datasources.db_kinds; the destination platform documents no JDBC extension for it (the frozen source engine may have none, which is why source_baseline_db_kind is recorded separately)" % kind)
+        elif kind and str(ds.get("jdbc_extension") or "") != str(kinds[kind].get("extension") or ""):
+            gap("DATASOURCE_EXTENSION_MISMATCH", "datasource.jdbc_extension", "%s is documented for db_kind %s, the decision names %r" % (kinds[kind].get("extension"), kind, ds.get("jdbc_extension")))
+        for field in ("jdbc_url_env", "username_env", "password_env"):
+            value = str(ds.get(field) or "")
+            if value and (":" in value or "/" in value or value != value.strip()):
+                gap("DATASOURCE_LITERAL_SECRET", "datasource.%s" % field, "%r looks like a value, not the NAME of an environment variable; credentials are referenced, never recorded here" % value)
+        if str(ds.get("schema_owner") or "") == "source-assets" and not (str(ds.get("schema_sql") or "").strip() and str(ds.get("seed_sql") or "").strip()):
+            gap("MISSING_DECISION", "datasource.schema_sql", "schema_owner source-assets must name the schema and seed files the source provides")
     return gaps
+
+
+DATASOURCE_FIELDS = (
+    ("db_kind", "quarkus.datasource.db-kind for the destination"),
+    ("db_version", "the approved database version"),
+    ("jdbc_extension", "groupId:artifactId of the matching Quarkus JDBC extension"),
+    ("profile", "the build and run profile this configuration is selected under"),
+    ("instance", "the isolated test instance this run uses"),
+    ("jdbc_url_env", "the environment variable holding the JDBC URL (never a literal URL)"),
+    ("username_env", "the environment variable holding the user"),
+    ("password_env", "the environment variable holding the password"),
+    ("reset_procedure", "how the instance returns to its initial state between scenario runs"),
+    ("schema_owner", "who owns schema and seed (source assets, destination ORM, or a named migration tool)"),
+    ("hibernate_generation", "quarkus.hibernate-orm.database.generation"),
+    ("source_baseline_db_kind", "the engine the frozen source ran on, kept so its baseline is not rewritten"),
+)
+
+
+def datasource(doc: dict[str, Any]) -> dict[str, Any]:
+    """The decided effective datasource, or {} when it is not decided."""
+    ds = doc.get("datasource")
+    if not isinstance(ds, dict) or not ds.get("db_kind") or not _adr_ok(doc, ds.get("adr")):
+        return {}
+    return dict(ds)
+
+
+def known_db_kinds(root: Path) -> dict[str, Any]:
+    doc = load_json(Path(root) / CATALOGS_DIR / "compat-mapping.json")
+    return (doc.get("datasources") or {}).get("db_kinds") or {}
 
 
 def retired_sources(doc: dict[str, Any]) -> dict[str, str]:

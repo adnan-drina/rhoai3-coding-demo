@@ -299,8 +299,118 @@ def _reapply_catalog_case() -> int:
     return 0
 
 
+def _datasource_case() -> int:
+    """The decided datasource lands as unprefixed keys plus the documented
+    extension; an undecided or mismatched one blocks instead of guessing."""
+    import json
+    def _with_db_assets(root: Path) -> Path:
+        """The decision says the SOURCE assets own schema and seed, so the
+        frozen source carries them and the bootstrap imports them."""
+        d = root / ".derived" / "frozen-input" / "src" / "main" / "resources" / "db" / "postgresql"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "initDB.sql").write_text("CREATE TABLE owners (id INT PRIMARY KEY);\n", encoding="utf-8")
+        (d / "populateDB.sql").write_text("INSERT INTO owners VALUES (1);\n", encoding="utf-8")
+        return root
+
+    with tempfile.TemporaryDirectory(prefix="ds-") as td:
+        root = _with_db_assets(specimens.build_dest(Path(td) / "d", specimens.specimen("http"), decisions=specimens.admitted_decisions()))
+        pipeline.assemble_bundle(root)
+        p0 = subprocess.run([sys.executable, str(SCRIPT), "--root", str(root)], text=True, capture_output=True)
+        if p0.returncode != 0:
+            return _fail("bootstrap with a decided datasource must pass: %s%s" % (p0.stdout, p0.stderr[-400:]))
+        props = (root / "src/main/resources/application.properties").read_text(encoding="utf-8")
+        want = {
+            "quarkus.datasource.db-kind=postgresql",
+            "quarkus.datasource.jdbc.url=${FIXTURE_DB_URL}",
+            "quarkus.datasource.username=${FIXTURE_DB_USER}",
+            "quarkus.datasource.password=${FIXTURE_DB_PASSWORD}",
+            "quarkus.hibernate-orm.database.generation=none",
+        }
+        lines = {l.strip() for l in props.splitlines()}
+        if not want <= lines:
+            return _fail("the effective datasource must be unprefixed in application.properties, missing %s" % sorted(want - lines))
+        if "quarkus-jdbc-postgresql" not in (root / "pom.xml").read_text(encoding="utf-8"):
+            return _fail("the documented JDBC extension for the decided db_kind must be in the pom")
+        rec = load_json(root / "evidence/producers/bootstrap.json")
+        ops = {c["op"] for c in rec["changes"]}
+        if "properties.datasource-set" not in ops:
+            return _fail("the receipt must record the datasource rendering: %s" % sorted(ops))
+        # a second run changes nothing
+        before = tree_hash(root)
+        subprocess.run([sys.executable, str(SCRIPT), "--root", str(root), "--reapply-catalog"], text=True, capture_output=True)
+        if tree_hash(root) != before:
+            return _fail("rendering the same decision twice must change nothing")
+        # and the extension comes back when it is missing entirely
+        import re as _re
+        pom_p = root / "pom.xml"
+        pom_txt = pom_p.read_text(encoding="utf-8")
+        stripped = _re.sub(r"\s*<dependency>\s*<groupId>io\.quarkus</groupId>\s*<artifactId>quarkus-jdbc-postgresql</artifactId>\s*</dependency>", "", pom_txt, flags=_re.S)
+        if stripped == pom_txt:
+            return _fail("test setup: the JDBC extension element was not found to remove")
+        pom_p.write_text(stripped, encoding="utf-8")
+        pr = subprocess.run([sys.executable, str(SCRIPT), "--root", str(root), "--reapply-catalog"], text=True, capture_output=True)
+        rec = load_json(root / "evidence/producers/bootstrap.json")
+        added = [c for c in rec["changes"] if str(c.get("gav") or "") == "io.quarkus:quarkus-jdbc-postgresql"]
+        if pr.returncode != 0 or "quarkus-jdbc-postgresql" not in pom_p.read_text(encoding="utf-8") or not added:
+            return _fail("the JDBC extension for the decided engine must be restored and recorded: rc=%s %s" % (pr.returncode, pr.stderr[-200:]))
+        pom_p.write_text(pom_txt, encoding="utf-8")
+
+        # the M2 checker agrees with the rendered tree, and refuses each way it
+        # can drift: a key removed, a literal credential, a second driver
+        CHECK = HERE / "check-datasource-decision.py"
+        pc = subprocess.run([sys.executable, str(CHECK), str(root)], text=True, capture_output=True)
+        if pc.returncode != 0:
+            return _fail("the M2 datasource checker must agree with the bootstrap it checks: %s%s" % (pc.stdout, pc.stderr[-300:]))
+        prop_p = root / "src/main/resources/application.properties"
+        prop_txt = prop_p.read_text(encoding="utf-8")
+        prop_p.write_text(prop_txt.replace("quarkus.datasource.db-kind=postgresql", "%prod.quarkus.datasource.db-kind=postgresql"), encoding="utf-8")
+        pc = subprocess.run([sys.executable, str(CHECK), str(root)], text=True, capture_output=True)
+        if pc.returncode != 1 or "profile-prefixed key is not a configured datasource" not in pc.stderr:
+            return _fail("a profile-prefixed db-kind must refuse: rc=%s %s" % (pc.returncode, pc.stderr[-300:]))
+        prop_p.write_text(prop_txt.replace("${FIXTURE_DB_PASSWORD}", "hunter2"), encoding="utf-8")
+        pc = subprocess.run([sys.executable, str(CHECK), str(root)], text=True, capture_output=True)
+        if pc.returncode != 1 or "environment reference" not in pc.stderr:
+            return _fail("a literal credential must refuse: rc=%s %s" % (pc.returncode, pc.stderr[-300:]))
+        prop_p.write_text(prop_txt, encoding="utf-8")
+        pom_p2 = root / "pom.xml"
+        pom_keep = pom_p2.read_text(encoding="utf-8")
+        pom_p2.write_text(pom_keep.replace("</dependencies>", "  <dependency>\n      <groupId>io.quarkus</groupId>\n      <artifactId>quarkus-jdbc-mysql</artifactId>\n    </dependency>\n  </dependencies>", 1), encoding="utf-8")
+        pc = subprocess.run([sys.executable, str(CHECK), str(root)], text=True, capture_output=True)
+        if pc.returncode != 1 or "more than one JDBC extension" not in pc.stderr:
+            return _fail("a second JDBC extension must refuse: rc=%s %s" % (pc.returncode, pc.stderr[-300:]))
+        pom_p2.write_text(pom_keep, encoding="utf-8")
+
+        # an engine the platform documents no extension for blocks, and says so
+        bad = specimens.admitted_decisions()
+        bad["datasource"] = dict(specimens.FIXTURE_DATASOURCE, db_kind="hsqldb", jdbc_extension="org.hsqldb:hsqldb")
+        b = _with_db_assets(specimens.build_dest(Path(td) / "bad", specimens.specimen("http"), decisions=bad))
+        pipeline.assemble_bundle(b)
+        pb = subprocess.run([sys.executable, str(SCRIPT), "--root", str(b)], text=True, capture_output=True)
+        if pb.returncode != 1 or "DATASOURCE_UNSUPPORTED" not in pb.stderr:
+            return _fail("an undocumented db_kind must block: rc=%s %s" % (pb.returncode, pb.stderr[-300:]))
+
+        # a decision naming the wrong extension for its engine blocks too
+        wrong = specimens.admitted_decisions()
+        wrong["datasource"] = dict(specimens.FIXTURE_DATASOURCE, jdbc_extension="io.quarkus:quarkus-jdbc-mysql")
+        w = _with_db_assets(specimens.build_dest(Path(td) / "wrong", specimens.specimen("http"), decisions=wrong))
+        pipeline.assemble_bundle(w)
+        pw = subprocess.run([sys.executable, str(SCRIPT), "--root", str(w)], text=True, capture_output=True)
+        if pw.returncode != 1 or "DATASOURCE_EXTENSION_MISMATCH" not in pw.stderr:
+            return _fail("an extension that does not match the engine must block: rc=%s %s" % (pw.returncode, pw.stderr[-300:]))
+
+        # an undecided datasource never reaches a worker: admission stays INCONCLUSIVE
+        none = specimens.admitted_decisions()
+        none.pop("datasource")
+        n = _with_db_assets(specimens.build_dest(Path(td) / "none", specimens.specimen("http"), decisions=none))
+        pipeline.assemble_bundle(n)
+        pn = subprocess.run([sys.executable, str(SCRIPT), "--root", str(n)], text=True, capture_output=True)
+        if pn.returncode != 1 or "DECISIONS_INVALID" not in pn.stderr:
+            return _fail("a decisions.yaml with no datasource block must block: rc=%s %s" % (pn.returncode, pn.stderr[-300:]))
+    return 0
+
+
 def main() -> int:
-    if _plugin_config_case() or _profile_merge_case() or _jakarta_imports_case() or _version_precedence_case() or _reapply_catalog_case():
+    if _plugin_config_case() or _profile_merge_case() or _jakarta_imports_case() or _version_precedence_case() or _reapply_catalog_case() or _datasource_case():
         return 1
     with tempfile.TemporaryDirectory(prefix="boot-") as tmp:
         t = Path(tmp).resolve()
@@ -419,7 +529,7 @@ def main() -> int:
         p = subprocess.run([sys.executable, str(SCRIPT), "--root", str(r)], text=True, capture_output=True)
         if [c for c in load_json(r / "evidence/producers/bootstrap.json")["changes"] if c["op"] in ("source.delete", "source.retire") and c["path"] == vet_path]:
             return _fail("an ADR that is not accepted retires nothing")
-    print("OK: bootstrap-destination (trivial launcher deleted; second run preserves the tree; @Bean launcher kept + BOOTSTRAP_BLOCKED; unmapped starter kept + block; Maven settings wiring required; pinned version beats the legacy carry / VERSION_UNMANAGED / BOM_PROBE_MISSING; ADR-retired sources deleted with provenance / stale path blocks; reapply-catalog carries a late row and refuses without a receipt)")
+    print("OK: bootstrap-destination (trivial launcher deleted; second run preserves the tree; @Bean launcher kept + BOOTSTRAP_BLOCKED; unmapped starter kept + block; Maven settings wiring required; pinned version beats the legacy carry / VERSION_UNMANAGED / BOM_PROBE_MISSING; ADR-retired sources deleted with provenance / stale path blocks; reapply-catalog carries a late row and refuses without a receipt; the decided datasource lands unprefixed with its extension, and an undocumented / mismatched / absent one blocks)")
     return 0
 
 

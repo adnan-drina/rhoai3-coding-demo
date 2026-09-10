@@ -37,6 +37,7 @@ and the MTA rescan produce the real plan: the work list.
 ```bash
 python3 "${HERMES_SKILL_DIR}/scripts/probe-bom-managed.py" --root /projects/modernized
 python3 "${HERMES_SKILL_DIR}/scripts/bootstrap-destination.py" --root /projects/modernized
+python3 "${HERMES_SKILL_DIR}/scripts/check-datasource-decision.py" /projects/modernized
 ```
 
 The probe measures, with Maven's own `help:effective-pom`, which artifacts
@@ -54,6 +55,19 @@ the pinned BOM manages (`evidence/build/bom-managed.json`); network once.
    one path, one reason) is never imported and, if present, deleted and
    recorded as `source.delete` with the ADR; a retired path the frozen
    legacy never had blocks `RETIRED_SOURCE_MISSING`.
+1b. **datasource** — the effective database is a decision, not a discovery:
+   `decisions.yaml` `datasource` (under an accepted ADR) names the engine,
+   its approved version, the matching JDBC extension, the build/run profile,
+   the isolated instance, credential *references*, the reset procedure, and
+   who owns schema and seed. The bootstrap renders it as **unprefixed**
+   `quarkus.datasource.*` keys and adds the documented extension; the
+   profile-prefixed families the legacy carried are left where they are, as
+   the source's own record. An engine the platform documents no extension for
+   (`DATASOURCE_UNSUPPORTED`) or an extension that does not match the engine
+   (`DATASOURCE_EXTENSION_MISMATCH`) blocks. `check-datasource-decision.py`
+   then measures the rendered tree against the decision. It does not prove the
+   configuration works: packaging and boot verification do that, and neither
+   replaces the other.
 2. **pom** — from `.hermes/planning/catalogs/compat-mapping.json` and
    `.hermes/pins.json`: removes `spring-boot-starter-parent`, imports the
    pinned `quarkus-bom`, maps every listed starter and JDBC driver to its

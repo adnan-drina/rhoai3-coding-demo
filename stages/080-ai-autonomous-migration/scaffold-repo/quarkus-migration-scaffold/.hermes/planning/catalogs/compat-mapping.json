@@ -270,5 +270,50 @@
       "quarkus-test-security",
       "assertj-core"
     ]
+  },
+  "datasources": {
+    "note": "The destination platform's documented JDBC extensions, one row per quarkus.datasource.db-kind (RHBQ 3.27 Configure data sources: https://docs.redhat.com/en/documentation/red_hat_build_of_quarkus/3.27/html/configure_data_sources/datasources). A db-kind with no row here is not configurable on this platform: hsqldb and derby-in-memory legacies therefore need an explicit engine decision (decisions.yaml datasource), never a silent driver swap.",
+    "db_kinds": {
+      "postgresql": {
+        "extension": "io.quarkus:quarkus-jdbc-postgresql",
+        "note": "RHBQ 3.27 Configure data sources, PostgreSQL: quarkus-jdbc-postgresql."
+      },
+      "mysql": {
+        "extension": "io.quarkus:quarkus-jdbc-mysql",
+        "note": "RHBQ 3.27 Configure data sources, MySQL: quarkus-jdbc-mysql."
+      },
+      "mariadb": {
+        "extension": "io.quarkus:quarkus-jdbc-mariadb",
+        "note": "RHBQ 3.27 Configure data sources, MariaDB: quarkus-jdbc-mariadb."
+      },
+      "mssql": {
+        "extension": "io.quarkus:quarkus-jdbc-mssql",
+        "note": "RHBQ 3.27 Configure data sources, Microsoft SQL Server: quarkus-jdbc-mssql."
+      },
+      "db2": {
+        "extension": "io.quarkus:quarkus-jdbc-db2",
+        "note": "RHBQ 3.27 Configure data sources, IBM Db2: quarkus-jdbc-db2."
+      },
+      "h2": {
+        "extension": "io.quarkus:quarkus-jdbc-h2",
+        "note": "RHBQ 3.27 Configure data sources, H2: quarkus-jdbc-h2. In-memory H2 is a development database, not a parity referent for a run that must prove persistence effects."
+      },
+      "derby": {
+        "extension": "io.quarkus:quarkus-jdbc-derby",
+        "note": "RHBQ 3.27 Configure data sources, Apache Derby: quarkus-jdbc-derby."
+      },
+      "oracle": {
+        "extension": "io.quarkus:quarkus-jdbc-oracle",
+        "note": "RHBQ 3.27 Configure data sources, Oracle: quarkus-jdbc-oracle."
+      }
+    },
+    "effective_keys": {
+      "note": "The unprefixed keys the destination must carry for the decided engine. A profile-prefixed key alone is not a configured datasource: Quarkus resolves db-kind at build time, and pilot v7 failed augmentation with 'Datasource <default> is not configured' while %hsqldb.* keys sat in application.properties.",
+      "quarkus.datasource.db-kind": "datasource.db_kind",
+      "quarkus.datasource.jdbc.url": "datasource.jdbc_url_env",
+      "quarkus.datasource.username": "datasource.username_env",
+      "quarkus.datasource.password": "datasource.password_env",
+      "quarkus.hibernate-orm.database.generation": "datasource.hibernate_generation"
+    }
   }
 }

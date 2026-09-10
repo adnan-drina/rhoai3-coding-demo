@@ -31,7 +31,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _loop_common import candidate_sha256, catalog_property_mappings, ensure_hermes_lib, git, load_cards, load_deferred, load_issued, load_state, load_steps, product_paths_changed, profile_keys_lost_in_tree, restore_reports, revert_paths, save_deferred, save_steps, snapshot_reports  # noqa: E402
+from _loop_common import attempt_budget, candidate_sha256, catalog_property_mappings, ensure_hermes_lib, git, load_cards, load_deferred, load_issued, load_state, load_steps, product_paths_changed, profile_keys_lost_in_tree, restore_reports, revert_paths, save_deferred, save_steps, snapshot_reports  # noqa: E402
 
 ensure_hermes_lib()
 from planner import pipeline  # noqa: E402
@@ -63,7 +63,7 @@ def _reject(root: Path, steps: dict, cluster: str, card: str, cur: dict, reason:
     save_steps(root, steps)
     if (root / LOOP_ISSUED).is_file():
         (root / LOOP_ISSUED).unlink()
-    limit = max_attempts(load_decisions(root))
+    limit = attempt_budget(steps, cluster, max_attempts(load_decisions(root)))
     build_worklist(root)
     if attempts[cluster] >= limit:
         deferred = load_deferred(root)

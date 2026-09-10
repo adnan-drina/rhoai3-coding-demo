@@ -27,6 +27,9 @@ adrs:
   - id: ADR-008
     status: accepted
     title: An Operator-owned and independently reviewed patch ports ValidatorTests to Jakarta Validation, preserving its English locale and real provider execution and restoring its pinned assertion dependency (operator-patches/spring-petclinic-rest); assertions, test inputs, selected subject, discovery and the validation call are unchanged, workers receive no test-source write authority, the intervention is recorded as an operator step with a named independent reviewer, and fresh successful Surefire execution of the ported test remains mandatory (spring-petclinic-rest, decided 2026-09-10)
+  - id: ADR-009
+    status: accepted
+    title: The destination runs on PostgreSQL 16 (registry.redhat.io/rhel9/postgresql-16, the supported image this environment already runs); the frozen source keeps its HSQLDB baseline and provenance, which is an engine CHANGE and is recorded as one - HSQLDB has no Quarkus JDBC extension on RHBQ 3.27, the source already ships PostgreSQL schema and seed assets and the destination already carries the PostgreSQL driver, and schema and seed stay owned by those source assets so the parity referent is the source's own dataset (spring-petclinic-rest, decided 2026-09-10)
 
 destination_platform:
   id: quarkus-rhbq-3.27   # key of .hermes/planning/catalogs/destination-platforms.json
@@ -35,6 +38,27 @@ destination_platform:
 thresholds:
   max_attempts: 3         # rejected attempts on one cluster before it becomes a manual card
   adr: ADR-002
+
+# The effective database of the destination (ADR-009). Resolved here, before a
+# worker reaches runtime verification: an absent or half-filled block keeps
+# admission INCONCLUSIVE, so nothing is minted against an undecided datasource.
+# Credentials are referenced by environment variable name and never recorded.
+datasource:
+  adr: ADR-009
+  db_kind: postgresql
+  db_version: "16"
+  jdbc_extension: io.quarkus:quarkus-jdbc-postgresql
+  profile: prod
+  instance: petclinic-parity-postgres.wksp-ai-developer
+  jdbc_url_env: PETCLINIC_DB_URL
+  username_env: PETCLINIC_DB_USER
+  password_env: PETCLINIC_DB_PASSWORD
+  reset_procedure: scripts/reset-parity-db.sh drops and recreates the public schema on the isolated instance, then applies schema_sql and seed_sql; every scenario run starts from exactly that state and the corpus records it as the initial state
+  schema_owner: source-assets
+  schema_sql: src/main/resources/db/postgresql/initDB.sql
+  seed_sql: src/main/resources/db/postgresql/populateDB.sql
+  hibernate_generation: none
+  source_baseline_db_kind: hsqldb
 
 # Work-list items an accepted ADR retires (exact item ids from
 # evidence/planning/worklist.json): one incident, one ADR, one reason.

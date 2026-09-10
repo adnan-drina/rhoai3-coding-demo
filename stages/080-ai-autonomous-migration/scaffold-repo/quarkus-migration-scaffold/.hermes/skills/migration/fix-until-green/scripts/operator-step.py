@@ -15,6 +15,8 @@ What it does (every check refuses before it changes anything):
   * refuses --clear-deferred for a cluster that is not deferred, and lifts a
     deferral only after the re-measure of the committed tree succeeded (a
     deferral is lifted by a measured tree, never by the intent to fix it);
+    the clearance is appended as a disposition and raises the attempt budget --
+    neither the attempts nor the cards they minted are ever removed;
   * commits exactly the changed product paths with the operator and reason;
   * RE-MEASURES the tree (run-verify.sh; --verify-cmd overrides for tests);
   * appends a step {verdict: operator, adr, operator, reason, commit,
@@ -111,15 +113,21 @@ def main(argv: list[str] | None = None) -> int:
         deferred["clusters"] = [c for c in open_clusters if c not in set(cleared)]
         deferred["reasons"] = {k: v for k, v in (deferred.get("reasons") or {}).items() if k not in set(cleared)}
         save_deferred(root, deferred)
+        # The history is append-only. The rejected rows are the record of which
+        # cards this cluster minted -- the live-board comparator expects every
+        # one of them as a closed card, and dropping a row made three real
+        # cards foreign on pilot v7 -- and the attempt count is what the record
+        # says the cluster spent. So clearing a deferral appends a disposition
+        # and RAISES the budget (attempt_budget) instead of deleting either.
         attempts = dict(steps.get("attempts") or {})
         for c in cleared:
-            attempts.pop(c, None)
-        steps["attempts"] = attempts
-        # The rejected rows stay. They are the record of which cards this
-        # cluster minted, and the live-board comparator expects every one of
-        # them as a closed card; dropping a row makes a card that is really on
-        # the board foreign and the next mint refuses (measured on pilot v7).
-        # Only the attempt count resets, exactly as a rewind resets it.
+            steps.setdefault("deferral_clearances", []).append({
+                "cluster": c, "operator": args.operator, "reason": args.reason,
+                "at": _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "attempts": int(attempts.get(c, 0)),
+                "cards": [str(r.get("card") or "") for r in (steps.get("rejected") or []) if str(r.get("cluster") or "") == c and r.get("card")],
+                "was_deferred_because": str((deferred.get("reasons") or {}).get(c) or ""),
+            })
         for r in steps.get("rejected") or []:
             if str((r or {}).get("cluster") or "") in set(cleared):
                 r["deferral_cleared_by"] = args.operator
