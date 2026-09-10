@@ -330,7 +330,15 @@ def enrich(items: list[dict], root: Path, cluster: dict) -> list[dict]:
     for it in items:
         row = dict(it)
         rule = rules.get(str(it.get("rule_id")))
-        if it.get("source") == "javac" and it.get("rule_id") != "BUILD_UNRESOLVABLE":
+        if it.get("source") == "javac" and it.get("rule_id") == "GENERATED_SOURCE_ERROR":
+            # the generator's configuration owns this error; the catalog documents the platform's generator settings
+            pc = {k: v for k, v in (cat.get("plugin_config") or {}).items() if k != "note" and isinstance(v, dict)}
+            gen = str(it.get("generated_path") or "")
+            owner = next((k for k in pc if ("openapi" in k and "/openapi/" in gen)), "")
+            row["advice"] = {"description": "an error in generated source: fix the generator's configuration in the pom, never the generated file",
+                             "message": str(it.get("message") or ""), "generated_path": gen,
+                             "plugin": owner, "plugin_config": pc.get(owner) or {}, "links": [str((pc.get(owner) or {}).get("docs") or "")] if owner else []}
+        elif it.get("source") == "javac" and it.get("rule_id") != "BUILD_UNRESOLVABLE":
             row["advice"] = compile_advice(it, root, inventory, renames, refs)
         if it.get("source") == "mta" and it.get("kind") == "config":
             cfg = config_advice(it, root, rules, cat)

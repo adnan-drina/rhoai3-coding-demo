@@ -73,6 +73,11 @@ def main() -> int:
             return _fail("pom advice must flag the unmanaged Quarkus 2 name with the managed equivalent: %s" % r)
         if r.get("advice_managed_present") != ["io.quarkus:quarkus-rest-jackson"]:
             return _fail("the managed equivalent already in the pom must be reported present: %s" % r.get("advice_managed_present"))
+        g = enrich([{"id": "err:g", "source": "javac", "kind": "build", "category": "mandatory", "path": "pom.xml", "line": 0, "rule_id": "GENERATED_SOURCE_ERROR",
+                     "message": "target/generated-sources/openapi/src/main/java/a/PetDto.java:9: package javax.validation does not exist", "generated_path": "target/generated-sources/openapi/src/main/java/a/PetDto.java"}], root, pom_cluster)[0]
+        ga = g.get("advice") or {}
+        if ga.get("plugin") != "org.openapitools:openapi-generator-maven-plugin" or (ga.get("plugin_config") or {}).get("configuration", {}).get("generatorName") != "jaxrs-spec" or "generated file" not in ga.get("description", ""):
+            return _fail("a generated-source error must point at the generator plugin and the catalog's documented configuration: %s" % ga)
         cond = r.get("rule_condition") or ""
         if not cond.startswith("when:") or "quarkus-resteasy-reactive-jackson" not in cond or "not: true" not in cond or "message: m" in cond or "ruleID: other" in cond:
             return _fail("the brief must carry the rule's when-block verbatim and nothing else: %r" % cond)

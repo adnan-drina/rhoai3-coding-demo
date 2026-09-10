@@ -67,6 +67,9 @@ def main() -> int:
     comp = compile_items({"diagnostics": [{"kind": "ERROR", "path": "src/main/java/a/A.java", "line": 2, "code": "x", "message": "e"}, {"kind": "WARNING", "path": "src/main/java/a/A.java", "line": 2, "code": "w", "message": "w"}]})
     if len(comp) != 1 or comp[0]["kind"] != "compile":
         return _fail("only ERROR diagnostics are items")
+    gen = compile_items({"diagnostics": [{"kind": "ERROR", "path": "target/generated-sources/openapi/src/main/java/a/PetDto.java", "line": 9, "code": "compiler.err.doesnt.exist", "message": "package javax.validation does not exist"}]})
+    if gen[0]["kind"] != "build" or gen[0]["path"] != "pom.xml" or gen[0]["rule_id"] != "GENERATED_SOURCE_ERROR" or "PetDto.java:9" not in gen[0]["message"] or gen[0]["generated_path"] != "target/generated-sources/openapi/src/main/java/a/PetDto.java":
+        return _fail("an error in generated source is a build item on the pom carrying the generated path: %s" % gen[0])
     unres = compile_items({"diagnostics": [], "build_unresolvable": True, "reason": "no classpath"})
     if unres[0]["kind"] != "build" or unres[0]["path"] != "pom.xml":
         return _fail("unresolvable build is a pom item")

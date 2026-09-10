@@ -42,6 +42,17 @@ public final class JdkDiagnostics {
         List<String> roots = new ArrayList<>();
         roots.add("src/main/java");
         if (tests) roots.add("src/test/java");
+        // Generated sources are part of the build (build-helper add-source,
+        // annotation processors): a diagnostic there is a real error of the
+        // build, owned by the generator's configuration in the pom. Without
+        // them every reference to a generated type is a phantom error
+        // (pilot v6: 132 of 829 named the OpenAPI DTOs that existed on disk).
+        Path gen = root.resolve("target/generated-sources");
+        if (Files.isDirectory(gen)) {
+            try (Stream<Path> s = Files.list(gen)) {
+                s.filter(Files::isDirectory).sorted().forEach(d -> roots.add(root.relativize(d).toString()));
+            }
+        }
         for (String r : roots) {
             Path p = root.resolve(r);
             if (!Files.isDirectory(p)) continue;

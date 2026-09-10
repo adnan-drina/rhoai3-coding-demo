@@ -153,5 +153,28 @@
     "javax.servlet": "jakarta.servlet",
     "javax.json": "jakarta.json",
     "javax.xml.bind": "jakarta.xml.bind"
+  },
+  "plugin_config": {
+    "note": "Documented configuration of build plugins that generate sources, applied by the bootstrap when the plugin is present. Each row: the version (a measured Maven Central release), configuration leaves set wherever they appear under the plugin, and configOptions entries. openapi-generator: the `spring` generator (library spring-boot) emits javax.validation and springfox annotations; the documented Quarkus target is generator `jaxrs-spec` with library `quarkus` and useJakartaEe (openapi-generator generator reference for jaxrs-spec).",
+    "org.openapitools:openapi-generator-maven-plugin": {
+      "version": "7.25.0",
+      "version_source": "https://repo1.maven.org/maven2/org/openapitools/openapi-generator-maven-plugin/maven-metadata.xml (2026-09-10)",
+      "configuration": {
+        "generatorName": "jaxrs-spec",
+        "library": "quarkus"
+      },
+      "configOptions": {
+        "useJakartaEe": "true",
+        "dateLibrary": "java8",
+        "useBeanValidation": "true",
+        "openApiNullable": "false",
+        "useMicroProfileOpenAPIAnnotations": "false"
+      },
+      "remove_configOptions": [
+        "java8",
+        "performBeanValidation"
+      ],
+      "docs": "https://openapi-generator.tech/docs/generators/jaxrs-spec"
+    }
   }
 }

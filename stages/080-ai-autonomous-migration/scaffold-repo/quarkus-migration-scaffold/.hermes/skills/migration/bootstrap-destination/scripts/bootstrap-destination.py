@@ -222,8 +222,65 @@ def bootstrap_pom(root: Path, catalog: dict, pins: dict, changes: list[dict], bl
             sub(p, "artifactId", art)
             sub(p, "version", "${%s}" % key)
             changes.append({"op": "pom.pin-plugin", "artifact": art})
+    apply_plugin_config(project, plugins, catalog, changes)
     ET.indent(tree, space="  ")
     tree.write(pom, encoding="utf-8", xml_declaration=True)
+
+
+def apply_plugin_config(project: ET.Element, plugins: ET.Element, catalog: dict, changes: list[dict]) -> None:
+    """Catalog plugin_config: for a present source-generating plugin, pin the
+    documented version (through its version property when it has one), set
+    the configuration leaves wherever they appear under the plugin, and set /
+    remove configOptions entries. Documented facts, never inference."""
+    rows = {k: v for k, v in (catalog.get("plugin_config") or {}).items() if k != "note" and isinstance(v, dict)}
+    if not rows:
+        return
+    props = find_or_add(project, "properties")
+    for p in plugins.findall(q("plugin")):
+        key = "%s:%s" % (text(p, "groupId") or "org.apache.maven.plugins", text(p, "artifactId"))
+        row = rows.get(key)
+        if not row:
+            continue
+        ver = str(row.get("version") or "")
+        if ver:
+            v = find_or_add(p, "version")
+            cur = (v.text or "").strip()
+            if cur.startswith("${") and cur.endswith("}"):
+                pe = find_or_add(props, cur[2:-1])
+                if (pe.text or "").strip() != ver:
+                    pe.text = ver
+                    changes.append({"op": "pom.plugin-version", "artifact": key, "property": cur[2:-1], "version": ver})
+            elif cur != ver:
+                v.text = ver
+                changes.append({"op": "pom.plugin-version", "artifact": key, "version": ver})
+        for leaf, value in (row.get("configuration") or {}).items():
+            hits = [e for e in p.iter(q(leaf))]
+            if not hits:
+                conf = p.find(q("configuration"))
+                if conf is None:
+                    ex = p.find("%s/%s" % (q("executions"), q("execution")))
+                    conf = find_or_add(ex if ex is not None else p, "configuration")
+                hits = [sub(conf, leaf)]
+            for e in hits:
+                if (e.text or "").strip() != value:
+                    e.text = value
+                    changes.append({"op": "pom.plugin-config", "artifact": key, "leaf": leaf, "value": value})
+        opts_all = [e for e in p.iter(q("configOptions"))]
+        if (row.get("configOptions") or row.get("remove_configOptions")) and not opts_all:
+            conf = next(iter(p.iter(q("configuration"))), None) or find_or_add(p, "configuration")
+            opts_all = [sub(conf, "configOptions")]
+        for opts in opts_all:
+            for name in row.get("remove_configOptions") or []:
+                for e in list(opts.findall(q(name))):
+                    opts.remove(e)
+                    changes.append({"op": "pom.plugin-configOption-remove", "artifact": key, "option": name})
+            for name, value in (row.get("configOptions") or {}).items():
+                e = opts.find(q(name))
+                if e is None:
+                    e = sub(opts, name)
+                if (e.text or "").strip() != value:
+                    e.text = value
+                    changes.append({"op": "pom.plugin-configOption", "artifact": key, "option": name, "value": value})
 
 
 def bootstrap_properties(root: Path, catalog: dict, changes: list[dict]) -> None:

@@ -32,7 +32,45 @@ def tree_hash(root: Path) -> str:
     return h.hexdigest()
 
 
+def _plugin_config_case() -> int:
+    import importlib.util
+    import json
+    import xml.etree.ElementTree as ET
+
+    spec = importlib.util.spec_from_file_location("bootstrap_destination", SCRIPT)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)  # type: ignore[union-attr]
+    catalog = json.loads((GOLDEN / ".hermes" / "planning" / "catalogs" / "compat-mapping.json").read_text(encoding="utf-8"))
+    pom = """<project xmlns="http://maven.apache.org/POM/4.0.0"><properties><openapi-generator-maven-plugin.version>5.2.1</openapi-generator-maven-plugin.version></properties>
+<build><plugins><plugin><groupId>org.openapitools</groupId><artifactId>openapi-generator-maven-plugin</artifactId><version>${openapi-generator-maven-plugin.version}</version>
+<executions><execution><goals><goal>generate</goal></goals><configuration><inputSpec>x.yml</inputSpec><generatorName>spring</generatorName><library>spring-boot</library>
+<configOptions><performBeanValidation>true</performBeanValidation><dateLibrary>java8</dateLibrary><java8>true</java8></configOptions></configuration></execution></executions></plugin>
+<plugin><artifactId>maven-compiler-plugin</artifactId></plugin></plugins></build></project>"""
+    project = ET.fromstring(pom)
+    plugins = project.find(mod.q("build")).find(mod.q("plugins"))
+    changes: list = []
+    mod.apply_plugin_config(project, plugins, catalog, changes)
+    ns = {"m": "http://maven.apache.org/POM/4.0.0"}
+    ver = project.findtext("m:properties/m:openapi-generator-maven-plugin.version", "", ns)
+    gen = project.findtext(".//m:generatorName", "", ns); lib = project.findtext(".//m:library", "", ns)
+    opts = project.find(".//m:configOptions", ns)
+    names = {e.tag.rsplit("}", 1)[-1]: (e.text or "") for e in opts}
+    if ver != "7.25.0" or gen != "jaxrs-spec" or lib != "quarkus":
+        return _fail("plugin_config must pin the version through its property and set the generator leaves: %s %s %s" % (ver, gen, lib))
+    if names.get("useJakartaEe") != "true" or "performBeanValidation" in names or "java8" in names or names.get("dateLibrary") != "java8":
+        return _fail("plugin_config must set/remove configOptions: %s" % names)
+    if not any(c["op"] == "pom.plugin-version" for c in changes) or not any(c["op"] == "pom.plugin-config" for c in changes):
+        return _fail("changes must record the plugin rewrite: %s" % changes)
+    changes2: list = []
+    mod.apply_plugin_config(project, plugins, catalog, changes2)
+    if changes2:
+        return _fail("a second application must change nothing: %s" % changes2)
+    return 0
+
+
 def main() -> int:
+    if _plugin_config_case():
+        return 1
     with tempfile.TemporaryDirectory(prefix="boot-") as tmp:
         t = Path(tmp).resolve()
         # 1. trivial launcher → deleted; full tree identical on a second run
