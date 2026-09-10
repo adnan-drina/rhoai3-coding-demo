@@ -39,6 +39,26 @@ def run_py(script: Path, root: Path) -> subprocess.CompletedProcess[str]:
     )
 
 
+SKIPPED = """\
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.demo.GreetingResourceTest" tests="1" failures="0" errors="0" skipped="1" time="0.0">
+  <testcase name="testHelloEndpoint" classname="com.demo.GreetingResourceTest" time="0.0">
+    <skipped message="disabled while migrating"/>
+  </testcase>
+</testsuite>
+"""
+NO_CASES = """\
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.demo.GreetingResourceTest" tests="0" failures="0" errors="0" skipped="0" time="0.0"/>
+"""
+
+
+def write_source(root: Path, dotted: str) -> None:
+    path = root / "src" / "test" / "java" / (dotted.replace(".", "/") + ".java")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("class X {}\n", encoding="utf-8")
+
+
 def write_xml(root: Path, name: str, body: str) -> None:
     path = root / "target" / "surefire-reports" / name
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -69,6 +89,42 @@ class SnapshotAndSurefireTests(unittest.TestCase):
             self.assertEqual(run_py(SNAP, root).returncode, 0)
             proc = run_py(SURE, root)
             self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    def test_skipped_case_refuses(self) -> None:
+        """A skipped case is not a passed case; @Disabled must not read green."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_xml(root, "TEST-com.demo.GreetingResourceTest.xml", SKIPPED)
+            proc = run_py(SURE, root)
+            self.assertNotEqual(proc.returncode, 0, proc.stderr)
+            self.assertIn("skipped case", proc.stderr)
+            self.assertIn("GreetingResourceTest.testHelloEndpoint", proc.stderr)
+
+    def test_no_executed_case_refuses(self) -> None:
+        """Zero failures over zero executions is the same silence as no report."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_xml(root, "TEST-com.demo.GreetingResourceTest.xml", NO_CASES)
+            proc = run_py(SURE, root)
+            self.assertNotEqual(proc.returncode, 0, proc.stderr)
+            self.assertIn("no executed case", proc.stderr)
+
+    def test_reports_must_belong_to_this_tree(self) -> None:
+        """Green reports about classes this destination does not have prove nothing."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_source(root, "com.demo.model.ValidatorTests")
+            write_xml(root, "TEST-com.demo.GreetingResourceTest.xml", PASSING)
+            proc = run_py(SURE, root)
+            self.assertNotEqual(proc.returncode, 0, proc.stderr)
+            self.assertIn("no executed case belongs to a test source in this tree", proc.stderr)
+            # the control: the same reports pass once the tree owns the class
+            write_source(root, "com.demo.GreetingResourceTest")
+            proc = run_py(SURE, root)
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertIn("executed from this tree: com.demo.GreetingResourceTest", proc.stderr)
+            # a source the reports never name is stated, not assumed
+            self.assertIn("no case named for com.demo.model.ValidatorTests", proc.stderr)
 
     def test_snapshot_survives_live_clean(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

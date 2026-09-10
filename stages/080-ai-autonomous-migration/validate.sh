@@ -816,6 +816,9 @@ check "080 a deferral is lifted only by a measured tree and only where one is op
 check "080 an operator step that changes a test source refuses without an ADR and an independent reviewer" \
   "python3 '${SCAFFOLD_SKILLS}/migration/fix-until-green/scripts/operator-step.test.py' >/dev/null && echo 1 || echo 0" \
   "1"
+check "080 M4 test evidence refuses skipped, empty and foreign reports (surefire selftest)" \
+  "python3 '${SCAFFOLD_SKILLS}/gates/check-release-readiness/scripts/assert-surefire-results.test.py' >/dev/null 2>&1 && echo 1 || echo 0" \
+  "1"
 check "080 M4 accounts for every ADR-retired source, and a hidden coverage gap refuses (coverage-account selftest)" \
   "python3 '${SCAFFOLD_SKILLS}/gates/compose-m4-verdict/scripts/coverage-account.test.py' >/dev/null && echo 1 || echo 0" \
   "1"
