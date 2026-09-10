@@ -39,6 +39,17 @@ Operator ack gates or run `kanban daemon --force`. Factory isolation: Stage 080
 [SOLUTION-ARCHITECTURE.md](../stages/080-ai-autonomous-migration/SOLUTION-ARCHITECTURE.md)
 §8.
 
+### Stage 080: after creating a migration workspace
+
+Run `scripts/patch-workspace-maas-route.sh <workspace-name>` once. It points the
+workspace's MaaS hostname at the gateway's in-cluster Service (stage 040
+`service-maas-gateway-internal.yaml`) with a hostAlias, reading the host and IP
+from the cluster and validating both. Without it the workspace talks to the
+gateway through the AWS load balancer, which drops a model response that stays
+silent for ~8 minutes (a large tool call) and costs the worker its full stale
+timeout. The pod restarts once and dest-init re-runs; verify with
+`getent hosts <maas host>` inside the pod.
+
 ### Stage 080 loop: Operator actions (no human sign-off)
 
 The M3 loop is autonomous by design: every card ends on a mechanical

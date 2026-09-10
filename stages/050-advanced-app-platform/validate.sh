@@ -225,11 +225,18 @@ fi
 # Workspace devfile aliases the public MaaS hostname to the in-cluster gateway
 # Service (stage 040, fixed ClusterIP): the public ELB path drops silent
 # response streams (measured 2026-09-10, pilot v6).
-check "050 app-migration skeleton devfile aliases the MaaS hostname to the in-cluster gateway (pod-overrides hostAliases 172.30.250.250)" \
-  "grep -c 'ip: 172.30.250.250' '${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml' || echo 0" \
-  "1"
-check "050 skeleton hostAlias derives the MaaS hostname from the platform Dev Spaces URL" \
-  "grep -c \"values.devspacesUrl | replace('https://devspaces.', 'maas.')\" '${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml' || echo 0" \
+# The MaaS hostAlias is applied by the Operator after workspace creation, never
+# templated: a hostAlias hostname must be a bare RFC 1123 host, and a scaffolder
+# URL value rendered "maas.<domain>/#https://github.com/<owner>/<repo>", which
+# made the workspace deployment invalid (v7 first start, 2026-09-10).
+check "050 app-migration skeleton devfile does not template the MaaS hostAlias hostname" \
+  "grep -c 'values.devspacesUrl | replace' '${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml' || echo 0" \
+  "0"
+check "050 Operator script routes a workspace to the in-cluster gateway with a validated host and IP" \
+  "test -x '${REPO_ROOT}/scripts/patch-workspace-maas-route.sh' && grep -c 'RFC 1123 subdomain' '${REPO_ROOT}/scripts/patch-workspace-maas-route.sh' | head -1 || echo 0" \
+  "2"
+check "050 skeleton devfile points at that script for the in-cluster route" \
+  "grep -c 'patch-workspace-maas-route.sh' '${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml' || echo 0" \
   "1"
 
 if echo "$RUNTIME_CATALOG" | grep -E 'templates/(app-migration|agentic-quarkus-scaffold)/template.yaml' | grep -qE '/blob/[0-9a-f]{40}/'; then
