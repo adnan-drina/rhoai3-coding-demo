@@ -445,6 +445,32 @@ if profile == "implementer" and ((tool in {"terminal", "bash", "shell"} and cmd 
           "and previous_attempts. Read it with cat, patch the write set, then run "
           "run-verify.sh and advance.py.")
 
+# A green paved-road audit IS the review: the road declares that audit as the
+# whole check (it reads the official log and every KEEP artifact). the v6 M1
+# reviewer spent nine minutes re-parsing attachments after a green audit and
+# the v7 one went looking for the log file it had just audited; both had nothing left
+# to learn. After green, the only moves are the terminators.
+REVIEW_DONE_TOOLS = {"kanban_complete", "complete_task", "kanban_request_changes", "request_changes", "kanban_block", "block_task", "kanban_comment", "comment"}
+
+def reviewer_after_green():
+    if profile != "reviewer" or not paved_road_audit_green():
+        return False
+    if tool in REVIEW_DONE_TOOLS or is_complete() or is_block():
+        return False
+    blob = " ".join([tool, cmd, str(inp.get("action") or "")])
+    if "kanban_request_changes" in blob or "kanban_comment" in blob:
+        return False
+    # re-running the audit itself stays allowed (SOUL self-correction)
+    if "assert-paved-road-audit" in (cmd or ""):
+        return False
+    return True
+
+if reviewer_after_green():
+    block("refused: the paved-road audit for this card already exited 0, and that audit "
+          "IS the review (it read the official log and every KEEP artifact). Call "
+          "kanban_complete now with a one-line summary. Nothing else is left to check; "
+          "use kanban_request_changes only if you make the audit red.")
+
 if is_request_review() and profile == "implementer" and loop_verdict_recorded():
     block("kanban_request_review refused on a loop card: the loop record already names this "
           "card with its verdict (ACCEPTED/REVERTED). kanban_complete is the terminator here; "

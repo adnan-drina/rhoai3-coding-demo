@@ -613,6 +613,28 @@ def main() -> int:
             fails += 1
         else:
             print("ok reviewer_complete_profile_home_audit_ok")
+        # after a green audit the reviewer may only terminate: exploration is refused
+        green_env = {"HERMES_PROFILE": "reviewer", "HERMES_HOME": str(profile_home), "HERMES_KANBAN_TASK": "t_ok", "K2_BOUND_GATE_EXIT": "0"}
+        for cmdline, tl in (("find /projects/modernized -name t_ok.log", "terminal"), ("python3 -c \"import json; print(1)\"", "terminal"), ("", "kanban_attach")):
+            r = run(cmdline, roots, cwd=cwd, tool=tl, extra_env=green_env)
+            if r.get("action") != "block" or "already exited 0" not in (r.get("message") or ""):
+                print("FAIL reviewer_after_green_refuses %r" % (cmdline or tl), r, file=sys.stderr)
+                fails += 1
+            else:
+                print("ok reviewer_after_green_refuses")
+        for cmdline, tl in (("python3 /projects/modernized/.hermes/skills/paved-road/paved-road-m1/scripts/assert-paved-road-audit.py --root .", "terminal"), ("", "kanban_request_changes"), ("", "kanban_complete")):
+            r = run(cmdline, roots, cwd=cwd, tool=tl, extra_env=green_env)
+            if r.get("action") == "block" and "already exited 0" in (r.get("message") or ""):
+                print("FAIL reviewer_after_green_allows %r" % (cmdline or tl), r, file=sys.stderr)
+                fails += 1
+            else:
+                print("ok reviewer_after_green_allows")
+        r = run("find . -name x", roots, cwd=cwd, tool="terminal", extra_env={"HERMES_PROFILE": "reviewer", "HERMES_HOME": str(profile_home), "HERMES_KANBAN_TASK": "t_red", "K2_BOUND_GATE_EXIT": "0"})
+        if r.get("action") == "block" and "already exited 0" in (r.get("message") or ""):
+            print("FAIL reviewer_before_green_allows", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok reviewer_before_green_allows")
         audit_red = (
             "  ┊ 💻 $         python3 /projects/modernized/.hermes/skills/"
             "paved-road/paved-road-m1/scripts/assert-paved-road-audit.py "

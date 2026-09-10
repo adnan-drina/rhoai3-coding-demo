@@ -495,6 +495,15 @@ check "080 K2 env-assignment selftest passes" \
 check "080 K2 implementer complete is request_review" \
   "tr -d '\n' < '${SCAFFOLD_KERNEL}/pre_tool_call.sh' | sed 's/\"[[:space:]]*\"//g' | grep -c 'implementer terminator is kanban_request_review' || echo 0" \
   "1"
+# The hook is `exec python3 -c '<body>'`: one apostrophe anywhere in the body,
+# including a comment, ends the shell string and the hook silently fails OPEN
+# (measured 2026-09-10: "v6's" in a comment made every call allow).
+check "080 K2 hook python body carries no apostrophe (single-quoted shell string)" \
+  "python3 -c \"import pathlib; s=pathlib.Path('${SCAFFOLD_KERNEL}/pre_tool_call.sh').read_text(); i=s.index(chr(39)+chr(10), s.index('exec python3 -c '))+1; j=s.rindex(chr(10)+chr(39)); print(s[i:j].count(chr(39)))\"" \
+  "0"
+check "080 K2 hook refuses reviewer exploration after a green paved-road audit" \
+  "grep -v '^[[:space:]]*#' '${SCAFFOLD_KERNEL}/pre_tool_call.sh' | grep -c 'already exited 0' || echo 0" \
+  "1"
 check "080 K2 complete hook writes breadcrumb" \
   "grep -v '^[[:space:]]*#' '${SCAFFOLD_KERNEL}/pre_tool_call.sh' | grep -c 'complete-invocations.jsonl' || echo 0" \
   "1"
