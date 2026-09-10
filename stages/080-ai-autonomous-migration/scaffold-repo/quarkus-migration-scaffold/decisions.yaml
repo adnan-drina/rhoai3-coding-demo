@@ -12,6 +12,15 @@ adrs:
   - id: ADR-003
     status: accepted
     title: Retire the Spring AOP JMX call monitor (CallMonitoringAspect) — Quarkus documents no AOP compatibility, the aspect carries no business behavior and no parity observation; repository timing is a metrics-extension concern, not a migration obligation (pilot specimen spring-petclinic-rest, 2026-09-09)
+  - id: ADR-004
+    status: accepted
+    title: Persistence on Quarkus is the Spring Data JPA implementation (quarkus-spring-data-jpa, the legacy "spring-data-jpa" profile); the profile-selected JDBC ("jdbc") and plain-JPA ("jpa") repository implementations are retired — JdbcTemplate has no Quarkus compatibility, the plain-JPA set duplicates the Spring Data one, and no class outside those two packages references them (spring-petclinic-rest, decided 2026-09-10)
+  - id: ADR-005
+    status: accepted
+    title: The Spring Security configurer classes (WebSecurityConfigurerAdapter subclasses BasicAuthenticationConfig, DisableSecurityConfig) are retired; HTTP basic auth and the JDBC user store are re-established declaratively on Quarkus (quarkus-spring-security keeps the annotations; quarkus.http.auth.* and quarkus-security-jpa carry the store) as a later obligation; Roles stays (decided 2026-09-10)
+  - id: ADR-006
+    status: accepted
+    title: The springfox Swagger configuration (ApplicationSwaggerConfig) is retired; OpenAPI comes from quarkus-smallrye-openapi (compat-mapping remove_dependencies maps the springfox starter to it) (decided 2026-09-10)
 
 destination_platform:
   id: quarkus-rhbq-3.27   # key of .hermes/planning/catalogs/destination-platforms.json
@@ -32,3 +41,72 @@ retired_sources:
   - path: src/main/java/org/springframework/samples/petclinic/util/CallMonitoringAspect.java
     adr: ADR-003
     reason: Spring AOP @Aspect + JMX @ManagedResource call timer over repositories; no Quarkus AOP compatibility; not observed by parity
+  - path: src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcOwnerRepositoryImpl.java
+    adr: ADR-004
+    reason: profile "jdbc" repository implementation (JdbcTemplate / NamedParameterJdbcTemplate); no Quarkus compatibility; superseded by the Spring Data JPA implementation
+  - path: src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcPet.java
+    adr: ADR-004
+    reason: profile "jdbc" repository implementation (JdbcTemplate / NamedParameterJdbcTemplate); no Quarkus compatibility; superseded by the Spring Data JPA implementation
+  - path: src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcPetRepositoryImpl.java
+    adr: ADR-004
+    reason: profile "jdbc" repository implementation (JdbcTemplate / NamedParameterJdbcTemplate); no Quarkus compatibility; superseded by the Spring Data JPA implementation
+  - path: src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcPetRowMapper.java
+    adr: ADR-004
+    reason: profile "jdbc" repository implementation (JdbcTemplate / NamedParameterJdbcTemplate); no Quarkus compatibility; superseded by the Spring Data JPA implementation
+  - path: src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcPetTypeRepositoryImpl.java
+    adr: ADR-004
+    reason: profile "jdbc" repository implementation (JdbcTemplate / NamedParameterJdbcTemplate); no Quarkus compatibility; superseded by the Spring Data JPA implementation
+  - path: src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcPetVisitExtractor.java
+    adr: ADR-004
+    reason: profile "jdbc" repository implementation (JdbcTemplate / NamedParameterJdbcTemplate); no Quarkus compatibility; superseded by the Spring Data JPA implementation
+  - path: src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcSpecialtyRepositoryImpl.java
+    adr: ADR-004
+    reason: profile "jdbc" repository implementation (JdbcTemplate / NamedParameterJdbcTemplate); no Quarkus compatibility; superseded by the Spring Data JPA implementation
+  - path: src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcUserRepositoryImpl.java
+    adr: ADR-004
+    reason: profile "jdbc" repository implementation (JdbcTemplate / NamedParameterJdbcTemplate); no Quarkus compatibility; superseded by the Spring Data JPA implementation
+  - path: src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcVetRepositoryImpl.java
+    adr: ADR-004
+    reason: profile "jdbc" repository implementation (JdbcTemplate / NamedParameterJdbcTemplate); no Quarkus compatibility; superseded by the Spring Data JPA implementation
+  - path: src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcVisitRepositoryImpl.java
+    adr: ADR-004
+    reason: profile "jdbc" repository implementation (JdbcTemplate / NamedParameterJdbcTemplate); no Quarkus compatibility; superseded by the Spring Data JPA implementation
+  - path: src/main/java/org/springframework/samples/petclinic/repository/jdbc/JdbcVisitRowMapper.java
+    adr: ADR-004
+    reason: profile "jdbc" repository implementation (JdbcTemplate / NamedParameterJdbcTemplate); no Quarkus compatibility; superseded by the Spring Data JPA implementation
+  - path: src/main/java/org/springframework/samples/petclinic/repository/jdbc/package-info.java
+    adr: ADR-004
+    reason: profile "jdbc" repository implementation (JdbcTemplate / NamedParameterJdbcTemplate); no Quarkus compatibility; superseded by the Spring Data JPA implementation
+  - path: src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaOwnerRepositoryImpl.java
+    adr: ADR-004
+    reason: profile "jpa" repository implementation (EntityManager); duplicates the Spring Data JPA implementation the destination keeps
+  - path: src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaPetRepositoryImpl.java
+    adr: ADR-004
+    reason: profile "jpa" repository implementation (EntityManager); duplicates the Spring Data JPA implementation the destination keeps
+  - path: src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaPetTypeRepositoryImpl.java
+    adr: ADR-004
+    reason: profile "jpa" repository implementation (EntityManager); duplicates the Spring Data JPA implementation the destination keeps
+  - path: src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaSpecialtyRepositoryImpl.java
+    adr: ADR-004
+    reason: profile "jpa" repository implementation (EntityManager); duplicates the Spring Data JPA implementation the destination keeps
+  - path: src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaUserRepositoryImpl.java
+    adr: ADR-004
+    reason: profile "jpa" repository implementation (EntityManager); duplicates the Spring Data JPA implementation the destination keeps
+  - path: src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaVetRepositoryImpl.java
+    adr: ADR-004
+    reason: profile "jpa" repository implementation (EntityManager); duplicates the Spring Data JPA implementation the destination keeps
+  - path: src/main/java/org/springframework/samples/petclinic/repository/jpa/JpaVisitRepositoryImpl.java
+    adr: ADR-004
+    reason: profile "jpa" repository implementation (EntityManager); duplicates the Spring Data JPA implementation the destination keeps
+  - path: src/main/java/org/springframework/samples/petclinic/repository/jpa/package-info.java
+    adr: ADR-004
+    reason: profile "jpa" repository implementation (EntityManager); duplicates the Spring Data JPA implementation the destination keeps
+  - path: src/main/java/org/springframework/samples/petclinic/security/BasicAuthenticationConfig.java
+    adr: ADR-005
+    reason: extends WebSecurityConfigurerAdapter (@EnableWebSecurity, JDBC user store, BCrypt); Spring Security configurer classes have no Quarkus compatibility; re-established declaratively
+  - path: src/main/java/org/springframework/samples/petclinic/security/DisableSecurityConfig.java
+    adr: ADR-005
+    reason: extends WebSecurityConfigurerAdapter (permit-all when petclinic.security.enable=false); same
+  - path: src/main/java/org/springframework/samples/petclinic/util/ApplicationSwaggerConfig.java
+    adr: ADR-006
+    reason: springfox BeanPostProcessor / Docket configuration; springfox is Spring MVC only; quarkus-smallrye-openapi replaces it

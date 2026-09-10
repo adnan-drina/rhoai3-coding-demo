@@ -570,11 +570,51 @@ def check_maven_settings(root: Path, catalog: dict, blocks: list[dict]) -> None:
         blocks.append({"class": "MAVEN_SETTINGS_MISSING", "subject": ".mvn/settings.xml", "detail": ".mvn/settings.xml must declare the %s profile (%s)" % (profile, req.get("source") or "")})
 
 
+def retire_only(root: Path) -> int:
+    """Apply retired_sources decided after the bootstrap ran: delete exactly
+    those files from the destination tree (the frozen legacy copy is the
+    existence oracle, as in the bootstrap) and append the changes to the
+    bootstrap receipt so the retirement has the same provenance."""
+    receipt_p = root / BOOTSTRAP_RECEIPT
+    if not receipt_p.is_file():
+        print("FAIL: BOOTSTRAP_NO_RECEIPT (the tree was never bootstrapped)", file=sys.stderr)
+        return 1
+    freeze_p = producer_receipt(root, "freeze")
+    copy = Path(str(load_json(freeze_p).get("analysis_copy") or "")) if freeze_p.is_file() else Path("/nonexistent")
+    try:
+        retired = retired_sources(load_decisions(root))
+    except DecisionsError as exc:
+        print("FAIL: DECISIONS_INVALID %s" % exc, file=sys.stderr)
+        return 1
+    receipt = load_json(receipt_p)
+    done = {str(c.get("path")) for c in (receipt.get("changes") or []) if str(c.get("op") or "").startswith("source.")}
+    pending = {k: v for k, v in retired.items() if k not in done}
+    changes: list[dict] = []
+    blocks: list[dict] = []
+    retire_sources(root, copy, pending, changes, blocks)
+    receipt["changes"] = list(receipt.get("changes") or []) + changes
+    receipt["retired_sources"] = retired
+    if blocks:
+        receipt["blocks"] = list(receipt.get("blocks") or []) + blocks
+        receipt["status"] = "blocked"
+    write_canonical(receipt_p, receipt)
+    if blocks:
+        for b in blocks:
+            print("  - %s %s: %s" % (b["class"], b["subject"], b["detail"]), file=sys.stderr)
+        print("REFUSE: BOOTSTRAP_BLOCKED (%d block(s))" % len(blocks), file=sys.stderr)
+        return 1
+    print("OK: retire-only (%d file(s) retired, %d already recorded) → %s" % (len(changes), len(retired) - len(pending), BOOTSTRAP_RECEIPT))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--root", required=True)
+    ap.add_argument("--retire-only", action="store_true", help="Operator: apply decisions.yaml retired_sources to an already bootstrapped tree (an ADR accepted after M2); appends to the bootstrap receipt; the loop is then re-measured (fix-until-green/scripts/rewind.py --remeasure)")
     args = ap.parse_args(argv)
     root = Path(args.root).resolve()
+    if args.retire_only:
+        return retire_only(root)
     freeze_p = producer_receipt(root, "freeze")
     if not freeze_p.is_file():
         print("FAIL: BOOTSTRAP_NO_FREEZE", file=sys.stderr)

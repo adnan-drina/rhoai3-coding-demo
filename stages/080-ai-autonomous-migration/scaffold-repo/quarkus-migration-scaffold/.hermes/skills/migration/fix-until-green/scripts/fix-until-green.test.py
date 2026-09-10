@@ -20,6 +20,7 @@ GOLDEN = HERE.parents[4]
 VERIFY = HERE / "verify.py"
 ADVANCE = HERE / "advance.py"
 REWIND = HERE / "rewind.py"
+OPERATOR_STEP = HERE / "operator-step.py"
 BRIEF = HERE / "brief.py"
 BOOTSTRAP = GOLDEN / ".hermes" / "skills" / "migration" / "bootstrap-destination" / "scripts" / "bootstrap-destination.py"
 sys.path.insert(0, str(GOLDEN / ".hermes" / "lib"))
@@ -331,6 +332,28 @@ def main() -> int:
         p = _advance(root, cl2["id"], "t_c3b")
         if p.returncode != 0 or "ACCEPTED" not in p.stdout:
             return _fail("re-landing the rewound step: %s%s" % (p.stdout, p.stderr))
+        # --- an Operator step: a decided change (ADR retirement) recorded as a loop step, not card work ---
+        victim = next(p for p in sorted((root / "src" / "main" / "java").rglob("*.java")) if p.name != target.name)
+        vrel = str(victim.relative_to(root))
+        op_sim = root / "verification" / "loop" / "op-sim.py"
+        op_sim.write_text("import sys, json\nsys.path.insert(0, %r)\nfrom planner import specimens\nr = specimens.verify(%r, errors=json.loads(%r), failures=[], findings=json.loads(%r))\nsys.exit(r.returncode)\n"
+                          % (str(GOLDEN / ".hermes" / "lib"), str(root), json.dumps([e for e in one_less if e[0] != vrel]), json.dumps(f3)), encoding="utf-8")
+        opcmd = [sys.executable, str(OPERATOR_STEP), "--root", str(root), "--operator", "adnan.drina", "--reason", "retired by test", "--adr", "ADR-009", "--no-mint", "--verify-cmd", "%s %s" % (sys.executable, op_sim)]
+        p = _run(opcmd)
+        if p.returncode != 1 or "nothing changed" not in p.stderr:
+            return _fail("an operator step with a clean tree must refuse: %s" % p.stderr[-200:])
+        victim.unlink()
+        n_before = len(load_json(root / LOOP_STEPS)["steps"])
+        p = _run(opcmd)
+        if p.returncode != 0 or "OPERATOR STEP" not in p.stdout:
+            return _fail("operator step: %s%s" % (p.stdout[-300:], p.stderr[-300:]))
+        st = load_json(root / LOOP_STEPS)["steps"][-1]
+        if len(load_json(root / LOOP_STEPS)["steps"]) != n_before + 1 or st.get("verdict") != "operator" or st.get("adr") != "ADR-009" or st.get("changed") != [vrel] or not st.get("obligation_keys") or not st["measure"]["known"]:
+            return _fail("the operator step must be recorded with verdict, adr, changed paths, keys and a known measure: %s" % {k: st.get(k) for k in ("verdict", "adr", "changed")})
+        if _git(root, "status", "--porcelain").strip() or _git(root, "log", "-1", "--format=%s").strip().find("operator step by adnan.drina (ADR-009)") < 0:
+            return _fail("the operator step must commit exactly the change with provenance: %s" % _git(root, "log", "-1", "--format=%s"))
+        if load_json(root / ADMISSION_RECEIPT)["status"] != "ADMITTED":
+            return _fail("admission must be re-sealed after an operator step")
         # --- the measure definition changed under an issued card (harness fix): rewind to the LAST step with --remeasure, closing the orphaned card ---
         specimens.issue(root)
         n = len(load_json(root / LOOP_STEPS)["steps"])

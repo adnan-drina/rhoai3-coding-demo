@@ -99,6 +99,7 @@ record naming the card.
 - `scripts/run-verify.sh` — the real tools (one online warm-up: `dependency:go-offline` plus the measured goals with results discarded, so a changed pom can be measured; then offline: JDK diagnostics, surefire, MTA rescan) → `verify.py`; every tool's exit status lands in `verification/build/run.json`
 - `scripts/verify.py` — tool outputs + recorded outcomes → work list + state + candidate identity
 - `scripts/advance.py` — the acceptance transaction (`--baseline` records step 0)
+- `scripts/operator-step.py` — Operator step: a decided change to the product tree (an ADR retirement applied by `bootstrap-destination.py --retire-only`) committed, re-measured and recorded as a loop step (`verdict: operator`) so the next card's baseline is true
 - `scripts/rewind.py` — Operator rewind to an accepted step (`--to-step N --operator WHO --reason WHY`; re-measures with run-verify.sh, refuses on a measure mismatch, starts a new card-key epoch)
 - `scripts/jdk-diagnostics/JdkDiagnostics.java` — compiler diagnostics as JSON (JDK compiler API)
 - `scripts/_loop_common.py` — shared helpers
