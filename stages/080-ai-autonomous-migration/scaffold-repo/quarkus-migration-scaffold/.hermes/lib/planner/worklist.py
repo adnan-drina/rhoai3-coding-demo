@@ -305,6 +305,14 @@ def file_depths(bundle: dict[str, Any]) -> dict[str, int]:
     return out
 
 
+def _profile_of(path: str) -> str:
+    """'hsqldb' for src/main/resources/application-hsqldb.properties, '' otherwise."""
+    name = path.replace("\\", "/").rsplit("/", 1)[-1]
+    if name.startswith("application-") and name.rsplit(".", 1)[-1] in ("properties", "yml", "yaml"):
+        return name[len("application-"):].rsplit(".", 1)[0]
+    return ""
+
+
 def cluster_items(items: list[dict[str, Any]], depths: dict[str, int], deferred: set[str]) -> list[dict[str, Any]]:
     by_path: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for it in items:
@@ -327,6 +335,14 @@ def cluster_items(items: list[dict[str, Any]], depths: dict[str, int], deferred:
                     twin = twin[: -len(suffix)] + ".java"
                     break
             write_set = [twin] if twin in depths else []
+        elif path_class(path) == "config" and _profile_of(path):
+            # a Spring profile file (application-<profile>.properties): the
+            # documented fix (springboot-properties-to-quarkus-00001, Quarkus
+            # config guide) moves its keys into the single application.properties
+            # under a %<profile>. prefix and removes the file, so the sibling
+            # main file is in scope too (pilot v6 t_e6fa0117: the worker could
+            # only edit the profile file itself and the incident stayed)
+            write_set = sort_unique([path, path.rsplit("/", 1)[0] + "/application." + path.rsplit(".", 1)[-1]])
         else:
             write_set = sort_unique([path] + (["pom.xml"] if kind == "build" and path != "pom.xml" else []))
         clusters.append({

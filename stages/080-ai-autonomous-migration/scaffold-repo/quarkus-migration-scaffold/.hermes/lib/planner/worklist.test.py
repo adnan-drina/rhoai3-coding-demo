@@ -143,6 +143,13 @@ def main() -> int:
         return _fail("becoming known never excuses a new obligation")
     if compile_items({"diagnostics": [], "build_unresolvable": True, "reason": "missing version"})[0].get("message") != "missing version":
         return _fail("the unresolvable item must carry the resolver's reason for the brief")
+    # a profile file's cluster writes the profile file AND the sibling application.properties (the documented merge)
+    prof = cluster_items([{"id": "inc:p", "source": "mta", "kind": "config", "category": "mandatory", "path": "src/main/resources/application-hsqldb.properties", "line": 0, "rule_id": "springboot-properties-to-quarkus-00001"}], {}, set())
+    if prof[0]["write_set"] != ["src/main/resources/application-hsqldb.properties", "src/main/resources/application.properties"]:
+        return _fail("profile-file config cluster must scope the main properties file too: %s" % prof[0]["write_set"])
+    plain = cluster_items([{"id": "inc:q", "source": "mta", "kind": "config", "category": "mandatory", "path": "src/main/resources/application.properties", "line": 3, "rule_id": "r"}], {}, set())
+    if plain[0]["write_set"] != ["src/main/resources/application.properties"]:
+        return _fail("the main properties file scopes only itself: %s" % plain[0]["write_set"])
     # supersession (catalog, guarded by a present artifact) and waiver (ADR) reclassify, never drop
     rows = [
         {"id": "inc:a", "source": "mta", "category": "mandatory", "rule_id": "springboot-web-to-quarkus-00010", "path": "pom.xml"},
