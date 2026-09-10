@@ -24,7 +24,7 @@ from typing import Any
 
 from planner.canonical import digest, is_sha256, load_json, sha256_file
 from planner.decisions import missing_decisions
-from planner.paths import ADMISSION_RECEIPT, BOOTSTRAP_RECEIPT, DECISIONS, EVIDENCE_BUNDLE, SCHEMAS_DIR, WORKLIST, contract_files
+from planner.paths import ADMISSION_RECEIPT, BOOTSTRAP_RECEIPT, DECISIONS, EVIDENCE_BUNDLE, LOOP_STEPS, SCHEMAS_DIR, WORKLIST, contract_files
 from planner.pins import activation_gaps, activation_record, digestable_pins, load_pins, pin_gaps
 from planner.schema_lite import load_schema, validate
 
@@ -156,6 +156,14 @@ def compose_receipt(root: Path) -> dict[str, Any]:
         },
         "loop_complete": bool(m.get("known")) and not worklist.get("head") and not worklist.get("deferred") and not worklist.get("blocked_clusters") and all(v == 0 for v in (m.get("tuple") or [1])),
     }
+    steps_p = root / LOOP_STEPS
+    epoch = len((load_json(steps_p) or {}).get("rewinds") or []) if steps_p.is_file() else 0
+    if epoch:
+        # an Operator rewind (fix-until-green/scripts/rewind.py) re-seals the
+        # same plan for a new epoch; the digest — and with it every K4 card
+        # key — must differ from the rewound epoch's, or K4 hands back a card
+        # that epoch already closed (pilot v6, 2026-09-10)
+        receipt["loop_epoch"] = epoch
     receipt["receipt_digest"] = receipt_digest(receipt)
     return receipt
 
