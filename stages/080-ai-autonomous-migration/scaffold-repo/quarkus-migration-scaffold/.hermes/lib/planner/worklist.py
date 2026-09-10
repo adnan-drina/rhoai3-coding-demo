@@ -34,7 +34,7 @@ from pathlib import Path
 from typing import Any
 
 from planner.canonical import canonical_bytes, digest, load_json, sha256_bytes, sha256_file, sort_unique
-from planner.paths import is_product_path, EVIDENCE_BUNDLE, LOOP_DEFERRED, LOOP_STEPS, MTA_RESCAN_FINDINGS, PARITY_DIR, VERIFY_DIAGNOSTICS, VERIFY_RUN, VERIFY_SUREFIRE, WORKLIST
+from planner.paths import is_product_path, EVIDENCE_BUNDLE, LOOP_DEFERRED, LOOP_STEPS, MTA_RESCAN_FINDINGS, PARITY_DIR, VERIFY_BOOT, VERIFY_DIAGNOSTICS, VERIFY_PACKAGE, VERIFY_RUN, VERIFY_SUREFIRE, WORKLIST
 
 SCHEMA = "rhoai3.worklist/v1"
 KIND_RANK = {"build": 0, "config": 1, "compile": 2, "incident": 3, "test": 4, "parity": 5}
@@ -225,6 +225,104 @@ def compile_items(diags: dict[str, Any]) -> list[dict[str, Any]]:
     if diags.get("build_unresolvable"):
         out.append({"id": "err:build-unresolvable", "source": "javac", "kind": "build", "category": "mandatory", "path": "pom.xml", "line": 0, "rule_id": "BUILD_UNRESOLVABLE", "message_sha256": sha256_bytes(str(diags.get("reason") or "").encode("utf-8")), "detail": str(diags.get("reason") or "")[:200], "message": str(diags.get("reason") or "")[:600]})
     return out
+
+
+# What a failed packaging or startup means, in the order the evidence is read.
+# Each row is (signature, obligation kind, cluster kind, locus). The signatures
+# come from the tools themselves, so the classification is deterministic and a
+# controller gets the same obligation for the same failure every time.
+RUNTIME_SIGNATURES = (
+    ("is not configured", "application-configuration", "config", "src/main/resources/application.properties"),
+    ("ConfigurationException", "application-configuration", "config", "src/main/resources/application.properties"),
+    ("Unable to find datasource", "application-configuration", "config", "src/main/resources/application.properties"),
+    ("relation \"", "schema-initialization", "config", "src/main/resources/application.properties"),
+    ("does not exist", "schema-initialization", "config", "src/main/resources/application.properties"),
+    ("Table not found", "schema-initialization", "config", "src/main/resources/application.properties"),
+    ("SQLGrammarException", "schema-initialization", "config", "src/main/resources/application.properties"),
+    ("Unsupported class file major version", "build-configuration", "build", "pom.xml"),
+    ("Failed to execute goal", "build-configuration", "build", "pom.xml"),
+)
+# A failure the destination cannot repair by editing its own tree. It is a
+# blocker, never a card: no amount of patching pom.xml makes an unreachable
+# database reachable.
+RUNTIME_ENVIRONMENT_SIGNATURES = (
+    "Connection refused", "UnknownHostException", "password authentication failed",
+    "Connection to localhost", "could not connect", "No such host is known",
+)
+
+
+def classify_runtime_failure(text: str) -> tuple[str, str, str]:
+    """(obligation kind, cluster kind, locus) for a packaging/startup failure."""
+    for needle, kind, cluster_kind, locus in RUNTIME_SIGNATURES:
+        if needle in text:
+            return kind, cluster_kind, locus
+    return "build-configuration", "build", "pom.xml"
+
+
+def runtime_environment_blocker(text: str) -> str:
+    for needle in RUNTIME_ENVIRONMENT_SIGNATURES:
+        if needle in text:
+            return needle
+    return ""
+
+
+def runtime_items(package: dict[str, Any] | None, boot: dict[str, Any] | None) -> list[dict[str, Any]]:
+    """Obligations from the packaging and startup gates.
+
+    They carry ``gate`` so acceptance can be phase-aware: repairing one of
+    these can leave the compile/test tuple untouched, and the step is then
+    accepted because its own gate went from failing to passing."""
+    out: list[dict[str, Any]] = []
+    for gate, doc in (("package", package), ("boot", boot)):
+        if not isinstance(doc, dict) or not doc.get("ran"):
+            continue
+        if doc.get("blocker"):
+            continue  # an environment blocker is not a repair obligation
+        failed = bool(doc.get("rc")) or (gate == "boot" and not doc.get("ready"))
+        if not failed:
+            continue
+        detail = str(doc.get("detail") or doc.get("failed_goal") or "")
+        log = str(doc.get("log_tail") or "")
+        kind, cluster_kind, locus = classify_runtime_failure(detail + "\n" + log)
+        ident = sha256_bytes(canonical_bytes({"gate": gate, "kind": kind, "detail": detail[:400]}))[:16]
+        out.append({
+            "id": "rt:%s:%s" % (gate, ident), "source": "runtime", "gate": gate,
+            "kind": cluster_kind, "obligation": kind, "category": "mandatory",
+            "path": locus, "line": 0, "rule_id": "RUNTIME_%s" % kind.replace("-", "_").upper(),
+            "message_sha256": sha256_bytes((detail + log).encode("utf-8")),
+            "detail": detail[:200],
+            "message": ("%s gate failed (%s): %s\n%s" % (gate, kind, detail, log))[:1200],
+        })
+    return out
+
+
+def runtime_state(package: dict[str, Any] | None, boot: dict[str, Any] | None) -> dict[str, Any]:
+    """Whether the packaged artifact was verified and started.
+
+    Never initialised to a pass: a gate that did not run is unknown, and
+    unknown keeps the closing card unminted."""
+    reasons: list[str] = []
+    pkg_ok = isinstance(package, dict) and bool(package.get("ran")) and package.get("rc") == 0
+    boot_ok = isinstance(boot, dict) and bool(boot.get("ran")) and boot.get("rc") == 0 and bool(boot.get("ready"))
+    if not isinstance(package, dict) or not package.get("ran"):
+        reasons.append("the full Maven verification has not run on this tree; packaging is unknown, not clean")
+    elif package.get("rc") != 0:
+        reasons.append("the full Maven verification failed (%s)" % (package.get("failed_goal") or package.get("detail") or "see verification/build/package.json"))
+    if not isinstance(boot, dict) or not boot.get("ran"):
+        reasons.append("the packaged application has not been started against the decided database; startup is unknown, not clean")
+    elif not boot_ok:
+        reasons.append("the packaged application did not become ready (%s)" % (boot.get("detail") or boot.get("blocker") or "see verification/build/boot.json"))
+    same_artifact = bool(pkg_ok and boot_ok and str(package.get("artifact_sha256") or "") and str(package.get("artifact_sha256")) == str(boot.get("artifact_sha256") or ""))
+    if pkg_ok and boot_ok and not same_artifact:
+        reasons.append("startup evidence is for a different artifact than the one packaging verified (%s vs %s)" % (str(boot.get("artifact_sha256"))[:12], str(package.get("artifact_sha256"))[:12]))
+    blockers = [str(d.get("blocker")) for d in (package, boot) if isinstance(d, dict) and d.get("blocker")]
+    return {
+        "package": {"ran": bool(isinstance(package, dict) and package.get("ran")), "rc": (package or {}).get("rc"), "artifact_sha256": str((package or {}).get("artifact_sha256") or "")},
+        "boot": {"ran": bool(isinstance(boot, dict) and boot.get("ran")), "rc": (boot or {}).get("rc"), "ready": bool((boot or {}).get("ready")), "artifact_sha256": str((boot or {}).get("artifact_sha256") or "")},
+        "blockers": blockers,
+        "ready": bool(pkg_ok and boot_ok and same_artifact),
+        "reasons": reasons,
+    }
 
 
 def test_items(surefire: dict[str, Any]) -> list[dict[str, Any]]:
@@ -434,8 +532,16 @@ def measure_of(items: list[dict[str, Any]], *, incidents_known: bool, compile_kn
     return m
 
 
-def progress(prev: dict[str, Any], cur: dict[str, Any], prev_ids: set[str], cur_ids: set[str]) -> tuple[bool, str]:
-    """Accept iff strictly smaller lexicographically and no new mandatory obligation."""
+def progress(prev: dict[str, Any], cur: dict[str, Any], prev_ids: set[str], cur_ids: set[str],
+             *, gate: str = "", prev_runtime: dict[str, Any] | None = None, cur_runtime: dict[str, Any] | None = None) -> tuple[bool, str]:
+    """Accept iff strictly smaller lexicographically and no new mandatory obligation.
+
+    Phase-aware: a card issued for the ``package`` or ``boot`` gate is repairing
+    something the compile/test tuple cannot see, so fixing it can leave the
+    tuple unchanged. Such a step is accepted when its OWN gate goes from
+    failing to passing and the tuple does not regress. The tuple still may not
+    get worse, no new mandatory obligation may appear, and the other gate may
+    not go backwards -- a repair is not a licence to break the phase before it."""
     if not cur.get("known"):
         return False, "measure not fully known (%s)" % "; ".join(cur.get("blocked") or ["compile/tests/incidents unverified"])
     if not prev.get("known"):
@@ -471,6 +577,23 @@ def progress(prev: dict[str, Any], cur: dict[str, Any], prev_ids: set[str], cur_
         return False, "new mandatory obligation(s): %s" % ",".join(new_mandatory[:5])
     if b < a:
         return True, "measure %s < %s" % (b, a)
+    if gate in ("package", "boot"):
+        prev_rt = prev_runtime or {}
+        cur_rt = cur_runtime or {}
+
+        def _passing(rt: dict[str, Any], name: str) -> bool:
+            row = (rt.get(name) or {}) if isinstance(rt, dict) else {}
+            return bool(row.get("ran")) and row.get("rc") == 0 and (row.get("ready", True) is not False)
+
+        if b > a:
+            return False, "measure %s regressed from %s; a %s repair may not make compilation or tests worse" % (b, a, gate)
+        other = "package" if gate == "boot" else "boot"
+        if _passing(prev_rt, other) and not _passing(cur_rt, other):
+            return False, "the %s gate was passing and is not any more; a %s repair may not break the phase before it" % (other, gate)
+        if _passing(cur_rt, gate) and not _passing(prev_rt, gate):
+            return True, "the %s gate went from failing to passing with the measure unchanged at %s" % (gate, b)
+        if not _passing(cur_rt, gate):
+            return False, "the %s gate is still not passing (%s)" % (gate, "; ".join((cur_rt.get("reasons") or [])[:2]) or "see its receipt")
     return False, "measure %s did not decrease from %s" % (b, a)
 
 
@@ -567,8 +690,26 @@ def build_worklist(root: Path, *, write: bool = True) -> dict[str, Any]:
         blocked.append("tests did not run in this verification" if not tests_run.get("ran") else "no surefire report was produced; tests unknown")
     par = parity_items(root, bundle)
     parity_known = (root / PARITY_DIR).is_dir() and any((root / PARITY_DIR).glob("*.json"))
-    items = sorted(mandatory + comp + tst + par, key=lambda i: i["id"])
+    # Packaging and startup are transitions out of the compile/test loop, not
+    # part of its tuple: their failures arrive as obligations with a gate, and
+    # a gate that never ran stays unknown (pilot v7 reached [0,0,0] with a
+    # destination that could not be built at all).
+    package_doc = load_json(root / VERIFY_PACKAGE) if (root / VERIFY_PACKAGE).is_file() else None
+    boot_doc = load_json(root / VERIFY_BOOT) if (root / VERIFY_BOOT).is_file() else None
+    rt = runtime_items(package_doc, boot_doc)
+    runtime = runtime_state(package_doc, boot_doc)
+    for b in runtime["blockers"]:
+        blocked.append("runtime gate blocked by the environment: %s" % b)
+    items = sorted(mandatory + comp + tst + par + rt, key=lambda i: i["id"])
     clusters = cluster_items(items, file_depths(bundle), deferred)
+    # A cluster made only of one gate's obligations carries that gate, so the
+    # card, the issued record and acceptance all know which phase is being
+    # repaired (a packaging repair can leave the compile/test tuple unchanged).
+    by_id = {i["id"]: i for i in items}
+    for c in clusters:
+        gates = {str(by_id[i].get("gate") or "") for i in c.get("items") or [] if i in by_id}
+        if len(gates) == 1 and gates != {""}:
+            c["gate"] = gates.pop()
     open_clusters = [c for c in clusters if c["status"] == "open"]
     head = open_clusters[0]["id"] if open_clusters else ""
     doc = {
@@ -581,16 +722,19 @@ def build_worklist(root: Path, *, write: bool = True) -> dict[str, Any]:
             "diagnostics": {"path": str(VERIFY_DIAGNOSTICS), "sha256": sha256_file(diag_path), "rc": diag_run.get("rc")} if isinstance(diags, dict) else None,
             "surefire": {"path": str(VERIFY_SUREFIRE), "sha256": sha256_file(sure_path), "rc": tests_run.get("rc"), "reports": sure.get("reports")} if isinstance(sure, dict) else None,
             "parity": {"path": str(PARITY_DIR), "count": len(par), "known": parity_known},
+            "package": {"path": str(VERIFY_PACKAGE), "sha256": sha256_file(root / VERIFY_PACKAGE)} if package_doc is not None else None,
+            "boot": {"path": str(VERIFY_BOOT), "sha256": sha256_file(root / VERIFY_BOOT)} if boot_doc is not None else None,
             "run": {"path": str(VERIFY_RUN), "sha256": sha256_file(root / VERIFY_RUN)} if (root / VERIFY_RUN).is_file() else None,
         },
         "optional_incidents": sum(1 for i in incidents if i["category"] != "mandatory"),
+        "runtime": runtime,
         "items": items,
         "clusters": clusters,
         "deferred": sorted(deferred),
         "blocked_clusters": [c["id"] for c in clusters if c["status"] == "blocked"],
         "head": head,
         "measure": measure_of(items, incidents_known=incidents_known, compile_known=compile_known, tests_known=tests_known, parity_known=parity_known, blocked=blocked),
-        "order_policy": "build → config → compile (leaf types first) → incident → test → parity; within a rank by dependency depth then path; tests are never in a write set",
+        "order_policy": "build → config → compile (leaf types first) → incident → test → parity; within a rank by dependency depth then path; tests are never in a write set. Packaging and startup obligations enter as build/config items carrying their gate; the closing card needs an empty list AND both gates passing on the same packaged artifact.",
     }
     if write:
         from planner.canonical import write_canonical

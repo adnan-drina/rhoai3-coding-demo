@@ -29,6 +29,7 @@ from k4_convert import convert_admitted  # noqa: E402
 sys.path.insert(0, str(HERE))
 from _loop_common import profile_keys_lost  # noqa: E402
 from planner import pipeline, specimens  # noqa: E402
+from planner.worklist import build_worklist  # noqa: E402
 from planner.canonical import load_json, write_canonical  # noqa: E402
 from planner.paths import ADMISSION_RECEIPT, LOOP_DEFERRED, LOOP_ISSUED, LOOP_STEPS, VERIFY_DIAGNOSTICS, VERIFY_RUN, WORKLIST  # noqa: E402
 
@@ -416,9 +417,73 @@ def main() -> int:
         rec = load_json(root / ADMISSION_RECEIPT)
         if rec["status"] != "ADMITTED" or not rec["loop_complete"] or rec["measure"]["tuple"] != [0, 0, 0]:
             return _fail("green state must be ADMITTED + loop_complete: %s %s" % (rec["status"], rec["reasons"][:3]))
+
+        # --- the transition out of the repair loop: packaging, then startup ---
+        # An empty list means the tree compiles and its tests pass. Until the
+        # packaged application has been built and started against the decided
+        # database, both gates are UNKNOWN and the closing card is not minted.
+        wl = load_json(root / WORKLIST)
+        if (wl.get("runtime") or {}).get("ready") or not any("packaging is unknown" in r for r in wl["runtime"]["reasons"]):
+            return _fail("with no packaging receipt the runtime must be unknown: %s" % wl.get("runtime"))
+        try:
+            specimens.issue(root)
+            return _fail("M4 must not mint while packaging and startup are unknown")
+        except RuntimeError:
+            pass
+
+        # packaging fails on a plugin: one build obligation, at pom.xml, with its gate
+        specimens.runtime(root, package_rc=1, boot_ready=None, detail="Failed to execute goal org.jacoco:jacoco-maven-plugin:0.8.7:report", log="Unsupported class file major version 65")
+        specimens.verify(root, errors=[], failures=[], findings=f4)
+        pipeline.admit(root)
+        wl = load_json(root / WORKLIST)
+        rt_items = [i for i in wl["items"] if i["source"] == "runtime"]
+        if len(rt_items) != 1 or rt_items[0]["gate"] != "package" or rt_items[0]["obligation"] != "build-configuration" or rt_items[0]["path"] != "pom.xml":
+            return _fail("a packaging failure must be one build obligation carrying its gate: %s" % rt_items)
+        cl = [c for c in wl["clusters"] if c["status"] == "open"][0]
+        if cl.get("gate") != "package":
+            return _fail("the cluster must carry the gate it repairs: %s" % cl)
+        rec_pkg = load_json(root / ADMISSION_RECEIPT)
+        if rec_pkg["status"] != "ADMITTED":
+            return _fail("a packaging obligation must still admit: %s %s" % (rec_pkg["status"], rec_pkg.get("reasons")))
+        issued = specimens.issue(root)
+        if issued["logical_id"] != cl["id"]:
+            return _fail("the packaging obligation must be the card: %s" % issued["logical_id"])
+
+        # the repair leaves the compile/test tuple untouched. Acceptance is
+        # phase-aware: the step is accepted because its own gate now passes.
+        pom_p = root / "pom.xml"
+        pom_p.write_text(pom_p.read_text(encoding="utf-8").replace("</project>", "  <!-- coverage plugin pinned for the toolchain -->\n</project>"), encoding="utf-8")
+        specimens.runtime(root, package_rc=0, boot_ready=None)
+        specimens.verify(root, errors=[], failures=[], findings=f4)
+        p = _advance(root, cl["id"], "t_pkg")
+        if p.returncode != 0 or "ACCEPTED" not in p.stdout or "went from failing to passing" not in p.stdout:
+            return _fail("a packaging repair with an unchanged measure must be accepted on its gate: %s%s" % (p.stdout, p.stderr))
+
+        # startup still unknown: the closing card stays unminted
+        try:
+            specimens.issue(root)
+            return _fail("M4 must not mint while startup is unknown")
+        except RuntimeError:
+            pass
+        # an environment blocker is not a repair card
+        specimens.runtime(root, package_rc=0, boot_ready=False, blocker="environment: Connection refused", detail="database unreachable")
+        specimens.verify(root, errors=[], failures=[], findings=f4)
+        pipeline.admit(root)
+        wl = load_json(root / WORKLIST)
+        if [i for i in wl["items"] if i["source"] == "runtime"]:
+            return _fail("an environment blocker must not become a repair obligation: %s" % wl["items"])
+        if not any("blocked by the environment" in r for r in wl["measure"]["blocked"]):
+            return _fail("an environment blocker must be recorded as blocked: %s" % wl["measure"])
+        # both gates passing on the SAME artifact: now M4 mints
+        specimens.runtime(root, package_rc=0, boot_ready=True)
+        specimens.verify(root, errors=[], failures=[], findings=f4)
+        pipeline.admit(root)
+        wl = load_json(root / WORKLIST)
+        if not wl["runtime"]["ready"]:
+            return _fail("packaging + startup on one artifact must be ready: %s" % wl["runtime"])
         m4 = specimens.issue(root)
         if m4["logical_id"] != "M4_VERIFY" or m4["title"] != "M4 VERIFY":
-            return _fail("empty list must mint M4 VERIFY: %s" % m4["logical_id"])
+            return _fail("an empty list with both gates passing must mint M4 VERIFY: %s" % m4["logical_id"])
 
         # --- review counterexample 4: an unresolved failing test never yields a test write set ---
         specimens.verify(root, errors=[], failures=[("x.NoSuchTest", "t")], findings=f4)
@@ -451,7 +516,7 @@ def main() -> int:
         p = _advance(root, "c:tampered", "t_z")
         if p.returncode != 2 or "LOOP_STALE_STATE" not in p.stderr:
             return _fail("tampered work list must refuse advance: %s" % p.stderr)
-    print("OK: fix-until-green (measurement contract: unrun tests / empty reports / failed runner / skipped rescan are unknown; baseline; issued card; post-verify edit + unissued cluster refused with baseline intact; out-of-scope test edit rejected + reverted + reports discarded; accept commits; staged no-progress reverted from index; line shift is not a new obligation; unresolvable candidate is unknown; deferral stops the loop; Operator rewind restores tree+budget in a new epoch; green → M4; unresolved test = typed blocker; tampered list refused)")
+    print("OK: fix-until-green (measurement contract: unrun tests / empty reports / failed runner / skipped rescan are unknown; baseline; issued card; post-verify edit + unissued cluster refused with baseline intact; out-of-scope test edit rejected + reverted + reports discarded; accept commits; staged no-progress reverted from index; line shift is not a new obligation; unresolvable candidate is unknown; deferral stops the loop; Operator rewind restores tree+budget in a new epoch; green → packaging → startup → M4 (unknown gates never mint; an environment blocker is not a card; a gate repair is accepted phase-aware); unresolved test = typed blocker; tampered list refused)")
     return 0
 
 

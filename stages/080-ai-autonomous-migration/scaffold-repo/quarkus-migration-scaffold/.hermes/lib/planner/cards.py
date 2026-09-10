@@ -132,7 +132,7 @@ def next_card(worklist: dict[str, Any], steps: dict[str, Any] | None) -> dict[st
     attempts = dict((steps or {}).get("attempts") or {})
     head = head_cluster(worklist)
     if head is not None:
-        return {
+        card = {
             "id": head["id"],
             "kind": head["kind"],
             "title": card_title(head, int(attempts.get(head["id"], 0)) + 1),
@@ -143,10 +143,19 @@ def next_card(worklist: dict[str, Any], steps: dict[str, Any] | None) -> dict[st
             "attempt": int(attempts.get(head["id"], 0)) + 1,
             "skills": list(CARD_SKILLS[head["kind"]]),
         }
+        if head.get("gate"):
+            card["gate"] = str(head["gate"])
+        return card
     if worklist.get("deferred") or worklist.get("blocked_clusters"):
         return None
     m = worklist.get("measure") or {}
     if not m.get("known") or not all(v == 0 for v in (m.get("tuple") or [1])):
+        return None
+    # An empty work list means the tree compiles and its tests pass. It does
+    # not mean the application was built or started: those are the transitions
+    # out of the repair loop, and a gate that never ran is unknown, never
+    # clean (pilot v7 minted M4 on a destination that could not be packaged).
+    if not (worklist.get("runtime") or {}).get("ready"):
         return None
     return {
         "id": CLOSE_ID,

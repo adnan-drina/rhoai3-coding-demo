@@ -208,6 +208,7 @@ def convert_admitted(root: Path, *, write_root: bool = True) -> tuple[dict[str, 
             "idempotency_key": payload["idempotency_key"],
             "receipt_sha256": receipt["receipt_digest"],
             "write_set": list(card["write_set"]),
+            "gate": str(card.get("gate") or ""),
             "task_id": str(prev.get("task_id") or "") if prev.get("idempotency_key") == payload["idempotency_key"] else "",
         })
     return result, []

@@ -46,8 +46,10 @@
               "mta",
               "javac",
               "surefire",
-              "parity"
-            ]
+              "parity",
+              "runtime"
+            ],
+            "description": "Which tool measured the obligation. 'runtime' is the packaging or startup gate: those obligations carry a 'gate' and are repaired phase-aware, because fixing one can leave the compile/test tuple unchanged."
           },
           "kind": {
             "type": "string",

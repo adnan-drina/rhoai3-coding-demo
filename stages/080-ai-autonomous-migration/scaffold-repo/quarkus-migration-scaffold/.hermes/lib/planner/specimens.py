@@ -367,6 +367,33 @@ def full_decisions(*, platform: str = "quarkus-rhbq-3.27", max_attempts: int | N
     return doc
 
 
+def runtime(root: Path, *, package_rc: int | None = 0, boot_ready: bool | None = True, blocker: str = "", detail: str = "", log: str = "") -> None:
+    """Simulate the packaging and startup gates. ``None`` means the gate did not
+    run, which the work list must treat as unknown -- never as a pass."""
+    from planner.canonical import write_canonical as _w
+    from planner.paths import VERIFY_BOOT, VERIFY_PACKAGE
+
+    digest = "a" * 64
+    if package_rc is None:
+        (root / VERIFY_PACKAGE).unlink(missing_ok=True)
+    else:
+        doc = {"schema": "rhoai3.verify-package/v1", "gate": "package", "ran": True, "rc": int(package_rc),
+               "artifact": "target/quarkus-app/quarkus-run.jar", "artifact_sha256": digest if package_rc == 0 else "",
+               "failed_goal": detail if package_rc else "", "detail": detail if package_rc else "", "log_tail": log}
+        if blocker and package_rc:
+            doc["blocker"] = blocker
+        _w(root / VERIFY_PACKAGE, doc)
+    if boot_ready is None:
+        (root / VERIFY_BOOT).unlink(missing_ok=True)
+    else:
+        doc = {"schema": "rhoai3.verify-boot/v1", "gate": "boot", "ran": True, "rc": 0 if boot_ready else 1,
+               "ready": bool(boot_ready), "artifact_sha256": digest if boot_ready else "",
+               "detail": "" if boot_ready else detail, "log_tail": "" if boot_ready else log}
+        if blocker and not boot_ready:
+            doc["blocker"] = blocker
+        _w(root / VERIFY_BOOT, doc)
+
+
 def admitted_decisions(name: str = "http", **kw: Any) -> dict[str, Any]:
     return full_decisions(**kw)
 

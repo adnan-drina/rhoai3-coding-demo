@@ -8,16 +8,22 @@
 #   3. mvn -o test only when compilation is clean; FRESH surefire reports
 #      (the old ones are deleted first) and the mvn exit status recorded
 #   4. destination MTA rescan (mta-rescan-destination.sh) when the CLI is present
+#   5. when the measure is green and known: the packaging gate (full mvn verify)
+#      and the startup gate (that artifact, the decided datasource, bounded) via
+#      verify-runtime.py, then a re-measure so their obligations reach the list
+#      (--no-runtime skips step 5; a simulator passes it)
 # Maven reads the tree's own .mvn/maven.config (-s .mvn/settings.xml: the
 # Red Hat GA repository); the bootstrap refuses when that wiring is absent.
 # Every tool's outcome is recorded in run.json; verify.py marks a component
 # unknown when its tool did not run. Never repairs anything.
 set -euo pipefail
 ROOT=""
+RUNTIME=1
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --root) ROOT="${2:-}"; shift 2 ;;
-    *) echo "usage: run-verify.sh --root <dest>" >&2; exit 2 ;;
+    --no-runtime) RUNTIME=0; shift ;;
+    *) echo "usage: run-verify.sh --root <dest> [--no-runtime]" >&2; exit 2 ;;
   esac
 done
 [[ -n "${ROOT}" && -d "${ROOT}" ]] || { echo "FAIL: --root must be an existing directory" >&2; exit 2; }
@@ -146,3 +152,29 @@ json.dump({"schema": "rhoai3.verify-run/v1",
            "maven_compile": {"failed": sys.argv[10] == "true", "goal": sys.argv[11]}}, open(sys.argv[1], "w"))
 PYEOF
 python3 "${SCRIPT_DIR}/verify.py" --root "${ROOT}" --run "${RUN}" --diagnostics "${DIAG}" ${TEST_ARGS[@]+"${TEST_ARGS[@]}"} ${FIND_ARGS[@]+"${FIND_ARGS[@]}"}
+VERIFY_RC=$?
+
+# 5. the transition out of the repair loop. An empty compile/test measure means
+# the tree compiles and its tests pass; it does not mean the application can be
+# built or started. When (and only when) the measure is green and known, run
+# the full configured Maven lifecycle and then start that same artifact against
+# the decided database, and re-measure so their obligations reach the work
+# list. A gate that does not run stays unknown -- never initialised to zero.
+if [[ "${RUNTIME}" -eq 1 && "${VERIFY_RC}" -eq 0 ]]; then
+  GREEN="$(python3 - "${ROOT}" <<'PYEOF'
+import json, sys
+from pathlib import Path
+p = Path(sys.argv[1]) / "verification" / "loop" / "state.json"
+m = (json.loads(p.read_text())).get("measure") or {} if p.is_file() else {}
+print("yes" if m.get("known") and all(v == 0 for v in (m.get("tuple") or [1])) else "no")
+PYEOF
+)"
+  if [[ "${GREEN}" == "yes" ]]; then
+    set +e
+    python3 "${SCRIPT_DIR}/verify-runtime.py" --root "${ROOT}"
+    set -e
+    python3 "${SCRIPT_DIR}/verify.py" --root "${ROOT}" --run "${RUN}" --diagnostics "${DIAG}" ${TEST_ARGS[@]+"${TEST_ARGS[@]}"} ${FIND_ARGS[@]+"${FIND_ARGS[@]}"}
+    VERIFY_RC=$?
+  fi
+fi
+exit "${VERIFY_RC}"
