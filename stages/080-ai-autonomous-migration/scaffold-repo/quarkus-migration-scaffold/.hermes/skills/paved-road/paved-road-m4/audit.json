@@ -33,7 +33,8 @@
       "backing": "skill",
       "id": "compose-m4-verdict",
       "keep": [
-        "evidence/verdicts/m4-verdict.json"
+        "evidence/verdicts/m4-verdict.json",
+        "evidence/verdicts/coverage-account.json"
       ],
       "needle": "compose-m4-verdict",
       "producer": true

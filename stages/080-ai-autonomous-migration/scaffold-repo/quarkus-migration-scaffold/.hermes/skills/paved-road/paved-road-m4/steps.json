@@ -32,15 +32,16 @@
       "skill": "compose-m4-verdict",
       "producer": true,
       "keep": [
-        "evidence/verdicts/m4-verdict.json"
+        "evidence/verdicts/m4-verdict.json",
+        "evidence/verdicts/coverage-account.json"
       ],
-      "note": "Author the verdict from the measured exit codes only, with an explicit failed_floors. A non-empty failed_floors makes the verdict REFUSE; checkers never author it and the card body never pre-specifies it."
+      "note": "Author the verdict from the measured exit codes only, with an explicit failed_floors, and compose the coverage account (compose-coverage-account.py) from decisions.yaml and the parity receipt so every ADR-retired source is accounted for. A non-empty failed_floors makes the verdict REFUSE; a remaining coverage gap is legal but must be visible in coverage_account. Checkers never author the verdict and the card body never pre-specifies it."
     },
     {
       "id": "check-release-readiness",
       "backing": "skill",
       "skill": "check-release-readiness",
-      "note": "Lint what was just written: the verdict against its schema, the floor receipts, and the claim tokens. This step can only agree or refuse; it cannot change the verdict."
+      "note": "Lint what was just written: the verdict against its schema, the floor receipts, the claim tokens, and the coverage account against decisions.yaml and the parity receipt (assert-coverage-account.py). This step can only agree or refuse; it cannot change the verdict or the account."
     }
   ]
 }

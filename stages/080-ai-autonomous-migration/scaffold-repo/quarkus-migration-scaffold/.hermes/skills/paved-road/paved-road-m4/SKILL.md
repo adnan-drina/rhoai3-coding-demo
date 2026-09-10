@@ -56,10 +56,15 @@ source did. Everything here is measurement. Nothing here decides.
    `evidence/verdicts/m4-verdict.json` from the measured exit codes and
    nothing else, with an explicit `failed_floors`. A non-empty
    `failed_floors` makes the verdict `REFUSE`. `idle: true` is a legal
-   floor result; a floor you did not run is not.
+   floor result; a floor you did not run is not. Then compose
+   `evidence/verdicts/coverage-account.json` (`compose-coverage-account.py`)
+   and carry its counts in the verdict's `coverage_account`: every source an
+   accepted ADR retired gets a row naming its replacement scenario and its
+   remaining gap.
 5. `skill_view check-release-readiness` → lint what you just wrote: the
-   verdict against its schema, the floor receipts, the claim tokens. This
-   step can agree or refuse. It cannot change the verdict.
+   verdict against its schema, the floor receipts, the claim tokens, and the
+   coverage account against `decisions.yaml` and the parity receipt. This
+   step can agree or refuse. It cannot change the verdict or the account.
 6. Terminator: `kanban_request_review` with `reviewer=reviewer`, then end
    the turn. `kanban_block` kind=needs_input for an external or platform
    failure (no destination to call, no database, MaaS down). Never
@@ -68,6 +73,9 @@ source did. Everything here is measurement. Nothing here decides.
 ## What refuses, and why that is the point
 
 - A verdict that names a floor you did not run.
+- A retirement with no row in the coverage account, a claimed replacement
+  whose scenario did not pass, or a verdict reporting fewer gaps than the
+  account holds. A disclosed gap does not refuse; a hidden one does.
 - A verdict written before the pre-verdict runner (the runner is what
   makes the receipts the verdict cites exist).
 - An expected runtime value that is not in an oracle.

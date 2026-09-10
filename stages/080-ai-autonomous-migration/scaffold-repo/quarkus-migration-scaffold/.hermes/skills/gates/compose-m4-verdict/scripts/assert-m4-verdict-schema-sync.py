@@ -18,6 +18,7 @@ REQUIRED_FIELDS = (
     "ship",
     "failed_floors",
     "floors",
+    "coverage_account",
 )
 FLOOR_FIELDS = ("name", "rc", "idle")
 CODES = (

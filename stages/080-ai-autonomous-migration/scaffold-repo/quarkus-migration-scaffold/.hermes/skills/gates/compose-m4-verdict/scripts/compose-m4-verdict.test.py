@@ -95,6 +95,7 @@ def main() -> int:
                     "verdict": "REFUSE",
                     "ship": False,
                     "failed_floors": ["check-product-tests"],
+                    "coverage_account": {"retired": 0, "remaining_gaps": 0},
                     "floors": [
                         {
                             "name": "check-product-tests",
@@ -127,6 +128,7 @@ def main() -> int:
                     "verdict": "PROVISIONAL_ACCEPT",
                     "ship": False,
                     "failed_floors": [],
+                    "coverage_account": {"retired": 0, "remaining_gaps": 0},
                     "floors": [
                         {
                             "name": "check-product-tests",
@@ -156,6 +158,7 @@ def main() -> int:
                     "verdict": "PROVISIONAL_ACCEPT",
                     "ship": False,
                     "failed_floors": ["check-product-tests"],
+                    "coverage_account": {"retired": 0, "remaining_gaps": 0},
                     "floors": [
                         {
                             "name": "check-product-tests",
@@ -184,6 +187,7 @@ def main() -> int:
                     "verdict": "PROVISIONAL_ACCEPT",
                     "ship": False,
                     "failed_floors": [],
+                    "coverage_account": {"retired": 0, "remaining_gaps": 0},
                     "floors": [
                         {
                             "name": "check-runnable-db-config",
@@ -211,7 +215,24 @@ def main() -> int:
             )
             return 1
 
-    print("OK: compose-m4-verdict producer + failed_floors schema")
+    # a verdict with no coverage account refuses: what an ADR retired must be
+    # accounted for in M4 evidence, not left to a reader to notice
+    with tempfile.TemporaryDirectory() as tmp:
+        doc = {"gate": "M4_VERDICT", "phase": "M4", "ran": True, "verdict": "REFUSE", "ship": False,
+               "failed_floors": [], "floors": [{"name": "check-product-tests", "rc": 0, "idle": False}]}
+        vp = Path(tmp) / "v.json"
+        vp.write_text(json.dumps(doc) + "\n", encoding="utf-8")
+        proc = run(SCHEMA, str(vp))
+        if proc.returncode != 1 or "coverage_account" not in (proc.stdout + proc.stderr):
+            print("FAIL: a verdict with no coverage_account must REFUSE: %s%s" % (proc.stdout, proc.stderr), file=sys.stderr)
+            return 1
+        doc["coverage_account"] = {"retired": "5", "remaining_gaps": 0}
+        vp.write_text(json.dumps(doc) + "\n", encoding="utf-8")
+        proc = run(SCHEMA, str(vp))
+        if proc.returncode != 1 or "must be int" not in (proc.stdout + proc.stderr):
+            print("FAIL: coverage_account counts must be ints: %s%s" % (proc.stdout, proc.stderr), file=sys.stderr)
+            return 1
+    print("OK: compose-m4-verdict producer + failed_floors + coverage_account schema")
     return 0
 
 

@@ -96,6 +96,25 @@ python3 .hermes/skills/gates/check-domain-parity/scripts/check-product-tests.py 
    If `failed_floors` is non-empty, `verdict` is `REFUSE` (not
    `PROVISIONAL_ACCEPT`). `ship` stays `false`. M4 never ships.
 
+3b. Compose the coverage account. What the accepted ADRs retired must be
+   accounted for here, per file, or M4 reports on a destination whose missing
+   behaviour nobody named.
+
+```bash
+python3 "${HERMES_SKILL_DIR}/scripts/compose-coverage-account.py" \
+  /projects/modernized
+```
+
+   It reads `decisions.yaml` and `verification/parity/receipt.json`: each
+   retired source becomes a row with its ADR, why it was retired, the
+   replacement scenarios the decision names (`replaced_by`), the verdict each
+   of those scenarios measured, and the remaining gap when there is one. A
+   retired **test** source is replaced only beside fresh executed-test
+   evidence. Copy `summary.retired` and `summary.remaining_gaps` into the
+   verdict's required `coverage_account`. Do not hand-write the account: the
+   lint recomputes it and refuses a copy that disagrees. A remaining gap is
+   legal (an accepted ADR may knowingly drop coverage) and hiding one is not.
+
 4. Lint (this skill does not replace these checkers):
 
 ```bash
@@ -105,6 +124,8 @@ python3 .hermes/skills/gates/check-release-readiness/scripts/assert-m4-complete-
   --verdict /projects/modernized/evidence/verdicts/m4-verdict.json \
   --floor-rc "$PRODUCT_TESTS_RC"
 python3 .hermes/skills/gates/check-release-readiness/scripts/check-verdict-routing.py \
+  /projects/modernized
+python3 .hermes/skills/gates/check-release-readiness/scripts/assert-coverage-account.py \
   /projects/modernized
 ```
 
@@ -124,3 +145,8 @@ Do not dest-dispatch M5.
 - Authoring `evidence/receipts/gates/` from M4 `write_file` (fence REFUSE).
 - Treating checker idle-exit-0 (artifact absent) as a pass for a floor
   that actually exited 1.
+- Writing `coverage_account` counts by hand, or reporting fewer gaps than
+  the account holds. Both refuse.
+- Reading a retired test's coverage as replaced because an endpoint answers:
+  a replacement is a scenario the decision **names** and the parity receipt
+  measured as PASS.

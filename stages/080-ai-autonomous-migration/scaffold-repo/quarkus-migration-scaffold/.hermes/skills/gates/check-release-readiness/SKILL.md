@@ -79,6 +79,11 @@ Operator `074910ZO`). Commands under **Checks**.
    `check-test-toolchain.py`, and `../check-domain-parity/scripts/check-product-tests.py`.
 2. **Verdict lint** — composition is `compose-m4-verdict`. Then
    `check-verdict-routing.py` over `evidence/verdicts/` + `evidence/preflight/`;
+   `assert-coverage-account.py`, which refuses a retirement with no row in
+   `evidence/verdicts/coverage-account.json`, a claimed replacement whose
+   scenario did not pass, an account that disagrees with `decisions.yaml` and
+   the parity receipt, or a verdict reporting fewer gaps than the account
+   holds (a disclosed gap is legal; a hidden one is not);
    `check-accept-scope.py` for descope ⇒ `SCOPED_ACCEPT`;
    `compute-substrate-reopen.py --check <verdict>` (or `--implicated a,b
    --print`) against `evidence/slices/closure-map.json`.
@@ -103,6 +108,9 @@ python3 "${HERMES_SKILL_DIR}/scripts/assert-m4-card-body.py"
 
 # Verdict routing + §18.0 composition
 python3 "${HERMES_SKILL_DIR}/scripts/check-verdict-routing.py" /projects/modernized
+
+# What the ADRs retired, and what covers it (account written by compose-m4-verdict)
+python3 "${HERMES_SKILL_DIR}/scripts/assert-coverage-account.py" /projects/modernized
 
 # B8 check-semantics (see references/available-scripts.md + fixtures README)
 python3 "${HERMES_SKILL_DIR}/scripts/check-semantics-manifest.py" /projects/modernized

@@ -24,6 +24,7 @@ Write `evidence/verdicts/m4-verdict.json`. One object.
 | `ship` | `false` at M4 |
 | `failed_floors` | **required.** List of floor `name`s whose measured `rc != 0`. `[]` if none failed. This is the failed-floor field dest-8 lacked. |
 | `floors` | non-empty array of floor objects (see below) |
+| `coverage_account` | **required.** `{retired: int, remaining_gaps: int}`, equal to the summary of `evidence/verdicts/coverage-account.json`. What the accepted ADRs retired, and how much of it nothing yet covers. A gap is legal and must be visible; a verdict that under-reports one refuses (`assert-coverage-account.py`). |
 
 Optional: `card_id` (`t_*`), `reason` (must not call a failed floor idle).
 
@@ -49,11 +50,26 @@ contains `idle` for a failed floor.
 `M4_VERDICT_SCHEMA`: missing required key, `failed_floors` not a list,
 `floors` empty, `ship` true, `phase` not `M4`, `gate` not `M4_VERDICT`.
 
+## The coverage account
+
+`evidence/verdicts/coverage-account.json` is written by
+`scripts/compose-coverage-account.py` from `decisions.yaml` and the parity
+receipt: one row per retired source with its ADR, the reason it was retired,
+the replacement scenarios the decision names (`replaced_by`), the verdict each
+of those scenarios actually measured, and the remaining gap when there is one.
+A retired **test** source counts as replaced only beside fresh executed-test
+evidence. Do not hand-write this file; the lint recomputes it from the same
+inputs and refuses a copy that disagrees.
+
 ## After authoring
 
 ```bash
+python3 .hermes/skills/gates/compose-m4-verdict/scripts/compose-coverage-account.py \
+  /projects/modernized
 python3 .hermes/skills/gates/compose-m4-verdict/scripts/assert-m4-verdict-schema.py \
   evidence/verdicts/m4-verdict.json
+python3 .hermes/skills/gates/check-release-readiness/scripts/assert-coverage-account.py \
+  /projects/modernized
 ```
 
 Routing lint remains `check-verdict-routing.py`. Complete-around-red

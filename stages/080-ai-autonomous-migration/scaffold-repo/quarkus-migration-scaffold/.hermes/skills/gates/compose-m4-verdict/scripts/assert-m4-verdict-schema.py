@@ -20,6 +20,7 @@ REQUIRED_FIELDS = (
     "ship",
     "failed_floors",
     "floors",
+    "coverage_account",
 )
 FLOOR_FIELDS = ("name", "rc", "idle")
 ACCEPT_TOKENS = frozenset({"PROVISIONAL_ACCEPT", "ACCEPT", "SCOPED_ACCEPT"})
@@ -51,6 +52,14 @@ def check(doc: dict[str, Any]) -> list[str]:
         issues.append("M4_VERDICT_SCHEMA phase %r" % doc.get("phase"))
     if doc.get("ship") is True:
         issues.append("M4_VERDICT_SCHEMA ship must be false at M4")
+
+    account = doc.get("coverage_account")
+    if not isinstance(account, dict):
+        issues.append("M4_VERDICT_SCHEMA coverage_account must be an object {retired, remaining_gaps}")
+    else:
+        for key in ("retired", "remaining_gaps"):
+            if not isinstance(account.get(key), int) or isinstance(account.get(key), bool):
+                issues.append("M4_VERDICT_SCHEMA coverage_account %s must be int" % key)
 
     failed = doc.get("failed_floors")
     if not isinstance(failed, list):

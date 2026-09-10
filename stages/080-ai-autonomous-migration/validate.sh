@@ -816,6 +816,15 @@ check "080 a deferral is lifted only by a measured tree and only where one is op
 check "080 an operator step that changes a test source refuses without an ADR and an independent reviewer" \
   "python3 '${SCAFFOLD_SKILLS}/migration/fix-until-green/scripts/operator-step.test.py' >/dev/null && echo 1 || echo 0" \
   "1"
+check "080 M4 accounts for every ADR-retired source, and a hidden coverage gap refuses (coverage-account selftest)" \
+  "python3 '${SCAFFOLD_SKILLS}/gates/compose-m4-verdict/scripts/coverage-account.test.py' >/dev/null && echo 1 || echo 0" \
+  "1"
+check "080 the M4 verdict must carry the coverage account (schema + reference in sync)" \
+  "python3 '${SCAFFOLD_SKILLS}/gates/compose-m4-verdict/scripts/assert-m4-verdict-schema-sync.py' >/dev/null && grep -q -F 'coverage_account' '${SCAFFOLD_SKILLS}/gates/compose-m4-verdict/scripts/assert-m4-verdict-schema.py' && echo 1 || echo 0" \
+  "1"
+check "080 paved-road-m4 KEEPs the coverage account beside the verdict" \
+  "python3 -c \"import json; d=json.load(open('${SCAFFOLD_SKILLS}/paved-road/paved-road-m4/steps.json')); k=[s for s in d['steps'] if s.get('producer')][0]['keep']; print('ok' if 'evidence/verdicts/coverage-account.json' in k else 'bad')\"" \
+  "ok"
 check "080 golden decisions.yaml has no proposed ADR left open (a proposal is not a decision)" \
   "python3 -c \"import sys; sys.path.insert(0,'${SCAFFOLD_080}/.hermes/lib'); from pathlib import Path; from planner.decisions import load_decisions; d=load_decisions(Path('${SCAFFOLD_080}')); print(len([a for a in d['adrs'] if a.get('status')!='accepted']))\"" \
   "0"
