@@ -116,12 +116,17 @@ def enrich(items: list[dict], root: Path, cluster: dict) -> list[dict]:
             if present:
                 row["advice_present"] = present
             if managed:
-                # advice written for Quarkus 2 names artifacts the pinned BOM does not manage;
+                # advice written for Quarkus 2 names artifacts the pinned BOM does not manage
+                # (as `io.quarkus:quarkus-resteasy-reactive` or bare `quarkus-resteasy-reactive-jackson`);
                 # say so, and name the managed artifact the catalog documents for it
-                unmanaged = sorted(t for t in _backticked(msg) if ":" in t and t.startswith("io.quarkus:") and t not in managed)
+                managed_ids = {m.split(":")[-1] for m in managed}
+                alias_ids = {k.split(":")[-1]: v for k, v in aliases.items()}
+                unmanaged = sorted(t for t in _backticked(msg)
+                                   if (t.startswith("io.quarkus:") and t not in managed) or (":" not in t and t.startswith("quarkus-") and t not in managed_ids))
                 if unmanaged:
                     row["advice_unmanaged"] = unmanaged
-                    eq = {t: aliases[t] for t in unmanaged if t in aliases}
+                    eq = {t: (aliases.get(t) or alias_ids.get(t.split(":")[-1])) for t in unmanaged}
+                    eq = {t: v for t, v in eq.items() if v}
                     if eq:
                         row["advice_managed_equivalent"] = eq
                         row["advice_managed_present"] = sorted(v for v in eq.values() if v in artifacts or v.split(":")[-1] in artifacts)
