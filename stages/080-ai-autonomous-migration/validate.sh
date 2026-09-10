@@ -528,6 +528,20 @@ check "080 loop cards pin paved-road-m3 only (no story-era pom skills, no bare f
 check "080 K2 lets the implementer complete a loop card on the recorded verdict (paved-road-m3)" \
   "grep -v '^[[:space:]]*#' '${SCAFFOLD_KERNEL}/pre_tool_call.sh' | grep -c 'allow_implementer_loop' || echo 0" \
   "1"
+# The measure may never be greener than the build. A generator whose output
+# folder is not the registered compile source root makes the offline checker
+# resolve types Maven cannot (pilot v7, 2026-09-10: DTOs in src/gen/java,
+# pom registering src/main/java, Maven failing at default-compile while the
+# checker reported zero errors).
+check "080 the OpenAPI generator writes to the registered compile source root" \
+  "python3 -c \"import json; c=json.load(open('${SCAFFOLD_080}/.hermes/planning/catalogs/compat-mapping.json')); print(c['plugin_config']['org.openapitools:openapi-generator-maven-plugin']['configOptions']['sourceFolder'])\"" \
+  "src/main/java"
+check "080 run-verify records whether Maven itself could compile" \
+  "grep -c 'MVN_COMPILE_FAILED' '${SCAFFOLD_080}/.hermes/skills/migration/fix-until-green/scripts/run-verify.sh' || echo 0" \
+  "3"
+check "080 the measure is unknown when the checker disagrees with Maven" \
+  "grep -v '^[[:space:]]*#' '${SCAFFOLD_LIB}/planner/worklist.py' | grep -c 'javac diagnostics disagree with Maven' || echo 0" \
+  "1"
 check "080 brief enrichment selftest passes (unmanaged→managed artifact; inventory; Jakarta rename; property mapping)" \
   "python3 '${SCAFFOLD_080}/.hermes/skills/migration/fix-until-green/scripts/brief.test.py' >/dev/null && echo 1 || echo 0" \
   "1"

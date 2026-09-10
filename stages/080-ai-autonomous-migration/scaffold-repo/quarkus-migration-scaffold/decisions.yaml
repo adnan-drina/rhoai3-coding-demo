@@ -21,6 +21,12 @@ adrs:
   - id: ADR-006
     status: accepted
     title: The springfox Swagger configuration (ApplicationSwaggerConfig) is retired; OpenAPI comes from quarkus-smallrye-openapi (compat-mapping remove_dependencies maps the springfox starter to it) (decided 2026-09-10)
+  - id: ADR-007
+    status: accepted
+    title: Retire the thirteen named Spring test-infrastructure sources in addition to the four implementation-test sources retired under ADR-004; retain ValidatorTests; record lost behavioural coverage and its source-recorded runtime replacements explicitly in M4 evidence; G-2 compares private field-name sets and G-3 compares remaining MTA findings, so neither measures test coverage, missing replacement evidence remains unverified, and restoring the suite with QuarkusTest and REST Assured remains a follow-up (spring-petclinic-rest, decided 2026-09-10)
+  - id: ADR-008
+    status: proposed
+    title: An Operator-owned and independently reviewed patch may port ValidatorTests to Jakarta Validation, preserve its English locale and real provider execution, and restore its pinned assertion dependency; assertions, test inputs and discovery remain unchanged, workers receive no test-source write authority, the intervention is recorded separately from autonomous steps, and fresh successful Surefire execution remains mandatory (spring-petclinic-rest, proposed 2026-09-10)
 
 destination_platform:
   id: quarkus-rhbq-3.27   # key of .hermes/planning/catalogs/destination-platforms.json
@@ -110,3 +116,54 @@ retired_sources:
   - path: src/main/java/org/springframework/samples/petclinic/util/ApplicationSwaggerConfig.java
     adr: ADR-006
     reason: springfox BeanPostProcessor / Docket configuration; springfox is Spring MVC only; quarkus-smallrye-openapi replaces it
+  - path: src/test/java/org/springframework/samples/petclinic/service/ClinicServiceJdbcTests.java
+    adr: ADR-004
+    reason: exercises a repository implementation ADR-004 retired; a test of retired code is retired with it
+  - path: src/test/java/org/springframework/samples/petclinic/service/UserServiceJdbcTests.java
+    adr: ADR-004
+    reason: exercises a repository implementation ADR-004 retired; a test of retired code is retired with it
+  - path: src/test/java/org/springframework/samples/petclinic/service/ClinicServiceJpaTests.java
+    adr: ADR-004
+    reason: exercises a repository implementation ADR-004 retired; a test of retired code is retired with it
+  - path: src/test/java/org/springframework/samples/petclinic/service/UserServiceJpaTests.java
+    adr: ADR-004
+    reason: exercises a repository implementation ADR-004 retired; a test of retired code is retired with it
+  - path: src/test/java/org/springframework/samples/petclinic/service/ClinicServiceSpringDataJpaTests.java
+    adr: ADR-007
+    reason: @SpringBootTest + @ActiveProfiles: boots a Spring application context, which the compat path does not provide
+  - path: src/test/java/org/springframework/samples/petclinic/service/UserServiceSpringDataJpaTests.java
+    adr: ADR-007
+    reason: @SpringBootTest + @ActiveProfiles: same
+  - path: src/test/java/org/springframework/samples/petclinic/service/AbstractClinicServiceTests.java
+    adr: ADR-007
+    reason: @ContextConfiguration + @Autowired + Spring @Transactional in a test; every subclass is retired
+  - path: src/test/java/org/springframework/samples/petclinic/service/AbstractUserServiceTests.java
+    adr: ADR-007
+    reason: @Autowired injection into a test; every subclass is retired
+  - path: src/test/java/org/springframework/samples/petclinic/SpringConfigTests.java
+    adr: ADR-007
+    reason: asserts the Spring application context wiring, which no longer exists
+  - path: src/test/java/org/springframework/samples/petclinic/ApplicationTestConfig.java
+    adr: ADR-007
+    reason: @TestConfiguration from spring-boot-test; its only consumers are the retired controller tests
+  - path: src/test/java/org/springframework/samples/petclinic/rest/OwnerRestControllerTests.java
+    adr: ADR-007
+    reason: MockMvc standalone setup + @SpringBootTest + Spring Security test support; the documented Quarkus form is @QuarkusTest with REST Assured
+  - path: src/test/java/org/springframework/samples/petclinic/rest/PetRestControllerTests.java
+    adr: ADR-007
+    reason: MockMvc standalone setup + @SpringBootTest + Spring Security test support; the documented Quarkus form is @QuarkusTest with REST Assured
+  - path: src/test/java/org/springframework/samples/petclinic/rest/PetTypeRestControllerTests.java
+    adr: ADR-007
+    reason: MockMvc standalone setup + @SpringBootTest + Spring Security test support; the documented Quarkus form is @QuarkusTest with REST Assured
+  - path: src/test/java/org/springframework/samples/petclinic/rest/SpecialtyRestControllerTests.java
+    adr: ADR-007
+    reason: MockMvc standalone setup + @SpringBootTest + Spring Security test support; the documented Quarkus form is @QuarkusTest with REST Assured
+  - path: src/test/java/org/springframework/samples/petclinic/rest/UserRestControllerTests.java
+    adr: ADR-007
+    reason: MockMvc standalone setup + @SpringBootTest + Spring Security test support; the documented Quarkus form is @QuarkusTest with REST Assured
+  - path: src/test/java/org/springframework/samples/petclinic/rest/VetRestControllerTests.java
+    adr: ADR-007
+    reason: MockMvc standalone setup + @SpringBootTest + Spring Security test support; the documented Quarkus form is @QuarkusTest with REST Assured
+  - path: src/test/java/org/springframework/samples/petclinic/rest/VisitRestControllerTests.java
+    adr: ADR-007
+    reason: MockMvc standalone setup + @SpringBootTest + Spring Security test support; the documented Quarkus form is @QuarkusTest with REST Assured

@@ -115,7 +115,25 @@ else
   echo "WARN: no MTA CLI on PATH; incidents are UNKNOWN for this verification (the loop cannot advance)" >&2
 fi
 
-python3 - "${RUN}" "${CP_RC}" "${DIAG_RC}" "${TEST_RAN}" "${TEST_RC}" "${RESCAN_RAN}" "${RESCAN_RC}" "${WARM_RC}" "${WARM_SKIPPED}" <<'PYEOF'
+# Did Maven itself fail to COMPILE? The JDK checker is an offline oracle over a
+# source set we choose; Maven compiles the source roots the pom registers. When
+# the two disagree the checker can be greener than the build (measured live
+# 2026-09-10 on pilot v7: the generator wrote DTOs to src/gen/java, the pom
+# registered src/main/java, Maven failed at default-compile on missing DTOs and
+# the checker -- which walked the generated tree directly -- reported zero
+# errors). The measure treats that disagreement as unknown, never as clean.
+MVN_COMPILE_FAILED=false
+MVN_COMPILE_DETAIL=""
+for L in "${WORK}/test.log" "${WORK}/warmup.log"; do
+  [[ -s "${L}" ]] || continue
+  if grep -qE "maven-compiler-plugin:[^ ]*:(compile|testCompile) \(default-(compile|testCompile)\).*Compilation failure" "${L}"; then
+    MVN_COMPILE_FAILED=true
+    MVN_COMPILE_DETAIL="$(grep -oE "maven-compiler-plugin:[^ ]*:(compile|testCompile) \(default-(compile|testCompile)\)" "${L}" | head -1)"
+    break
+  fi
+done
+
+python3 - "${RUN}" "${CP_RC}" "${DIAG_RC}" "${TEST_RAN}" "${TEST_RC}" "${RESCAN_RAN}" "${RESCAN_RC}" "${WARM_RC}" "${WARM_SKIPPED}" "${MVN_COMPILE_FAILED}" "${MVN_COMPILE_DETAIL}" <<'PYEOF'
 import json, sys
 def rc(v):
     return int(v) if v not in ("", None) else None
@@ -124,6 +142,7 @@ json.dump({"schema": "rhoai3.verify-run/v1",
            "classpath": {"ran": True, "rc": rc(sys.argv[2])},
            "diagnostics": {"ran": True, "rc": rc(sys.argv[3])},
            "tests": {"ran": sys.argv[4] == "true", "rc": rc(sys.argv[5])},
-           "rescan": {"ran": sys.argv[6] == "true", "rc": rc(sys.argv[7])}}, open(sys.argv[1], "w"))
+           "rescan": {"ran": sys.argv[6] == "true", "rc": rc(sys.argv[7])},
+           "maven_compile": {"failed": sys.argv[10] == "true", "goal": sys.argv[11]}}, open(sys.argv[1], "w"))
 PYEOF
 python3 "${SCRIPT_DIR}/verify.py" --root "${ROOT}" --run "${RUN}" --diagnostics "${DIAG}" ${TEST_ARGS[@]+"${TEST_ARGS[@]}"} ${FIND_ARGS[@]+"${FIND_ARGS[@]}"}

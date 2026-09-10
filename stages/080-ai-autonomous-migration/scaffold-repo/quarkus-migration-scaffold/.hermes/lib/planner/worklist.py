@@ -530,7 +530,18 @@ def build_worklist(root: Path, *, write: bool = True) -> dict[str, Any]:
     diag_run = run.get("diagnostics") or {}
     diags = load_json(diag_path) if diag_path.is_file() else None
     compile_known = isinstance(diags, dict) and bool(diag_run.get("ran")) and not diags.get("build_unresolvable")
-    if not compile_known:
+    comp_probe = compile_items(diags) if isinstance(diags, dict) else []
+    disagreed = False
+    maven_compile = run.get("maven_compile") or {}
+    if compile_known and maven_compile.get("failed") and not comp_probe:
+        # the measure may never be greener than the build: Maven could not
+        # compile and the checker found nothing, so the checker is reading a
+        # source set the build does not compile (pilot v7, 2026-09-10: the
+        # generator wrote its DTOs outside the registered source root)
+        compile_known = False
+        disagreed = True
+        blocked.append("javac diagnostics disagree with Maven: %s reported a compilation failure and the checker found no error; the checker is not reading the source roots the build compiles" % (maven_compile.get("goal") or "maven-compiler-plugin"))
+    if not compile_known and not disagreed:
         # an unresolvable build never ran the compiler over the sources: its
         # compile count is unknown, not "1" (pilot v6 attempt 3 was accepted
         # at [11, 1, 0] for a pom Maven could not resolve; the successor that

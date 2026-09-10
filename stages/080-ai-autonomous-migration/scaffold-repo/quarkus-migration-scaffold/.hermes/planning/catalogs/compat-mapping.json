@@ -171,13 +171,15 @@
         "dateLibrary": "java8",
         "useBeanValidation": "true",
         "openApiNullable": "false",
-        "useMicroProfileOpenAPIAnnotations": "false"
+        "useMicroProfileOpenAPIAnnotations": "false",
+        "sourceFolder": "src/main/java"
       },
       "remove_configOptions": [
         "java8",
         "performBeanValidation"
       ],
-      "docs": "https://openapi-generator.tech/docs/generators/jaxrs-spec"
+      "docs": "https://openapi-generator.tech/docs/generators/jaxrs-spec",
+      "note_source_folder": "jaxrs-spec writes to <output>/src/gen/java by default while the plugin registers <output>/<configOptions.sourceFolder or src/main/java> as a compile source root (CodeGenMojo.getCompileSourceRoot, 7.25.0). Pinning sourceFolder makes the two agree and matches the source root the legacy build-helper already registers. Measured live 2026-09-10 on pilot v7: without it Maven failed at default-compile on missing DTOs while the generated files sat in src/gen/java."
     },
     "org.apache.maven.plugins:maven-compiler-plugin": {
       "ensure_list": {

@@ -177,6 +177,11 @@ def main() -> int:
     plain = cluster_items([{"id": "inc:q", "source": "mta", "kind": "config", "category": "mandatory", "path": "src/main/resources/application.properties", "line": 3, "rule_id": "r"}], {}, set())
     if plain[0]["write_set"] != ["src/main/resources/application.properties"]:
         return _fail("the main properties file scopes only itself: %s" % plain[0]["write_set"])
+    # the measure may never be greener than the build
+    from planner.worklist import build_worklist as _bw  # noqa: F401  (import guard only)
+    m_clean = measure_of([], incidents_known=True, compile_known=True, tests_known=True, parity_known=False)
+    if not m_clean["known"] or m_clean["tuple"] != [0, 0, 0]:
+        return _fail("a clean measure with every component known: %s" % m_clean)
     # supersession (catalog, guarded by a present artifact) and waiver (ADR) reclassify, never drop
     rows = [
         {"id": "inc:a", "source": "mta", "category": "mandatory", "rule_id": "springboot-web-to-quarkus-00010", "path": "pom.xml"},
