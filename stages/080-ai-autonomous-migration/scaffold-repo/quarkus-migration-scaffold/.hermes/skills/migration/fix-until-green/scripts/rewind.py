@@ -85,7 +85,9 @@ def _restore(root: Path, commit: str, changes: list[tuple[str, str]]) -> list[st
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--root", required=True)
-    ap.add_argument("--to-step", type=int, required=True, help="index into verification/loop/steps.json steps (0 = the bootstrap baseline)")
+    ap.add_argument("--to-step", type=int, default=None, help="index into verification/loop/steps.json steps (0 = the bootstrap baseline)")
+    ap.add_argument("--to-card", default="", help="rewind to the step that card accepted (its commit stays; later steps go); the readable form of --to-step")
+    ap.add_argument("--before-card", default="", help="rewind to the step BEFORE the one that card accepted (undo that card's step)")
     ap.add_argument("--operator", required=True, help="who decided (recorded in the rewind entry)")
     ap.add_argument("--reason", required=True)
     ap.add_argument("--verify-cmd", default="", help="command that re-measures the restored tree (default: run-verify.sh --root ROOT; tests pass a simulator)")
@@ -99,8 +101,18 @@ def main(argv: list[str] | None = None) -> int:
     recorded = list(steps.get("steps") or [])
     if not recorded:
         return _refuse("no baseline step recorded")
+    table = "; ".join("%d=%s%s" % (i, st.get("card") or "baseline", (" %s" % ((st.get("measure") or {}).get("tuple"))) if st.get("measure") else "") for i, st in enumerate(recorded))
+    if sum(1 for x in (args.to_step is not None, bool(args.to_card), bool(args.before_card)) if x) != 1:
+        return _refuse("give exactly one of --to-step / --to-card / --before-card; steps: %s" % table)
+    if args.to_card or args.before_card:
+        cid = args.to_card or args.before_card
+        idx = next((i for i, st in enumerate(recorded) if str(st.get("card") or "") == cid), -1)
+        if idx < 0:
+            return _refuse("card %s accepted no recorded step; steps: %s" % (cid, table))
+        args.to_step = idx if args.to_card else idx - 1
     if not 0 <= args.to_step < len(recorded):
-        return _refuse("--to-step %d is not a recorded step (0..%d)" % (args.to_step, len(recorded) - 1))
+        return _refuse("--to-step %d is not a recorded step (0..%d); steps: %s" % (args.to_step, len(recorded) - 1, table))
+    print("rewind target: step %d = %s; steps: %s" % (args.to_step, recorded[args.to_step].get("card") or "baseline", table))
     issued = load_issued(root)
     iid = str((issued or {}).get("task_id") or (issued or {}).get("card") or "")
     if issued is not None and not (args.close_card and (not iid or iid in args.close_card)):

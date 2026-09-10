@@ -300,9 +300,16 @@ def main() -> int:
                        % (str(GOLDEN / ".hermes" / "lib"), str(root), json.dumps(errors), json.dumps(f2)), encoding="utf-8")
         rew = [sys.executable, str(REWIND), "--root", str(root), "--operator", "adnan.drina", "--reason", "measure defect", "--no-mint", "--verify-cmd", "%s %s" % (sys.executable, sim)]
         p = _run(rew + ["--to-step", "99"])
-        if p.returncode != 1 or "LOOP_REWIND" not in p.stderr:
-            return _fail("rewind to an unrecorded step must refuse: %s" % p.stderr[-200:])
-        p = _run(rew + ["--to-step", str(n - 2)])
+        if p.returncode != 1 or "LOOP_REWIND" not in p.stderr or "steps:" not in p.stderr:
+            return _fail("rewind to an unrecorded step must refuse and print the step table: %s" % p.stderr[-200:])
+        p = _run(rew + ["--to-step", "0", "--to-card", "t_c1"])
+        if p.returncode != 1 or "exactly one" not in p.stderr:
+            return _fail("two targets must refuse: %s" % p.stderr[-200:])
+        p = _run(rew + ["--before-card", "t_nobody"])
+        if p.returncode != 1 or "accepted no recorded step" not in p.stderr:
+            return _fail("an unknown card must refuse: %s" % p.stderr[-200:])
+        # --before-card t_c3 == --to-step n-2 (undo the step t_c3 accepted)
+        p = _run(rew + ["--before-card", "t_c3"])
         if p.returncode != 0 or "REWOUND" not in p.stdout:
             return _fail("rewind: %s%s" % (p.stdout[-400:], p.stderr[-400:]))
         if target.read_text(encoding="utf-8") != original or _git(root, "status", "--porcelain").strip():
