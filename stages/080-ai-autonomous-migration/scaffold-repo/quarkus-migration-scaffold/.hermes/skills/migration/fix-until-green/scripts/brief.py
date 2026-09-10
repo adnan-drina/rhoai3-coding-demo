@@ -371,6 +371,15 @@ def enrich(items: list[dict], root: Path, cluster: dict) -> list[dict]:
     return out
 
 
+def _max_attempts(root: Path) -> int:
+    try:
+        from planner.decisions import load_decisions, max_attempts
+
+        return int(max_attempts(load_decisions(root)))
+    except Exception:
+        return 3
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--root", required=True)
@@ -383,15 +392,24 @@ def main(argv: list[str] | None = None) -> int:
         print("REFUSE: LOOP_NO_OPEN_CLUSTER (work list head is empty)", file=sys.stderr)
         return 1
     write_set = list(cluster.get("write_set") or [])
+    steps_p = root / LOOP_DIR / "steps.json"
+    steps = load_json(steps_p) if steps_p.is_file() else {}
+    # what this cluster's earlier attempts did and why the transaction refused
+    # them: the retry card must not repeat them (v6 t_fc2b54c5 copied the
+    # previous card's deletion and was vetoed for the same reason)
+    previous = [{"card": r.get("card"), "reason": r.get("reason"), "changed": r.get("changed"), "measure": (r.get("measure") or {}).get("tuple")}
+                for r in (steps.get("rejected") or []) if isinstance(r, dict) and r.get("cluster") == cluster["id"] and not r.get("rewound")]
     brief = {
         "schema": "rhoai3.loop-brief/v1",
         "cluster": cluster,
         "write_set": write_set,
         "items": enrich(items_of(doc, cluster), root, cluster),
         "not_counted": [n for n in (doc.get("not_counted") or []) if str(n.get("path") or "") in write_set],
+        "previous_attempts": previous,
+        "attempts_left": max(0, int(_max_attempts(root)) - len(previous)),
         "measure": doc["measure"],
         "procedure": PROCEDURE,
-        "rule": "Edit only the write set. Do not edit tests. Do not touch pom.xml unless it is in the write set. Then run run-verify.sh and advance.py; the measure decides, not you.",
+        "rule": "Edit only the write set. Do not edit tests. Do not touch pom.xml unless it is in the write set. Do not repeat a previous attempt (previous_attempts says what was refused and why). Then run run-verify.sh and advance.py; the measure decides, not you.",
     }
     write_canonical(root / LOOP_DIR / ("brief-%s.json" % cluster["id"].replace(":", "-")), brief)
     print(json.dumps(brief, indent=2, sort_keys=True))

@@ -163,6 +163,8 @@ def main() -> int:
         if p.returncode != 0 or "pom.xml" not in p.stdout:
             return _fail("brief: %s" % p.stderr)
         brief = json.loads(p.stdout)
+        if brief.get("previous_attempts") != [] or brief.get("attempts_left") != 2:
+            return _fail("a first attempt has no previous attempts and the full budget: %s / %s" % (brief.get("previous_attempts"), brief.get("attempts_left")))
         if brief.get("write_set") != ["pom.xml"] or "one item at a time" not in brief.get("procedure", ""):
             return _fail("brief must name the write set and the patch-per-item procedure: %s" % {k: brief.get(k) for k in ("write_set", "procedure")})
         pom_items = [i for i in brief["items"] if i.get("source") == "mta" and i.get("path") == "pom.xml"]
@@ -247,6 +249,10 @@ def main() -> int:
             return _fail("revert must restore the file in the working tree AND the index")
         if load_json(root / LOOP_STEPS)["attempts"].get(cl2["id"]) != 1:
             return _fail("rejection must count an attempt")
+        p = _run([sys.executable, str(BRIEF), "--root", str(root), "--cluster", cl2["id"]])
+        b2 = json.loads(p.stdout)
+        if len(b2.get("previous_attempts") or []) != 1 or "did not decrease" not in b2["previous_attempts"][0]["reason"] or b2.get("attempts_left") != 1:
+            return _fail("the retry's brief must carry the refused attempt and the remaining budget: %s" % {k: b2.get(k) for k in ("previous_attempts", "attempts_left")})
 
         # --- review counterexample 7: line movement is not a new obligation ---
         specimens.issue(root)
