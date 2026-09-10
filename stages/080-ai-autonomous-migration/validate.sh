@@ -819,6 +819,18 @@ check "080 a cleared deferral raises the attempt budget and never deletes the at
 check "080 the coverage plugin is pinned to a version that can read the pinned toolchain's class files (JaCoCo >= 0.8.11 for Java 21)" \
   "python3 -c \"import json; c=json.load(open('${SCAFFOLD_080}/.hermes/planning/catalogs/compat-mapping.json')); v=c['plugin_config']['org.jacoco:jacoco-maven-plugin']['version']; print('ok' if tuple(int(x) for x in v.split('.')) >= (0,8,11) else v)\"" \
   "ok"
+check "080 a recorded write is replayed with its body, headers and effects; a 204 that deleted nothing FAILs (scenario-parity selftest)" \
+  "python3 '${SCAFFOLD_SKILLS}/gates/capture-source-oracles/scripts/scenario-parity.test.py' >/dev/null && echo 1 || echo 0" \
+  "1"
+check "080 the body-less write comparison is gone: a non-idempotent oracle is routed to the scenario corpus" \
+  "grep -q -F 'not a replay' '${SCAFFOLD_SKILLS}/gates/capture-source-oracles/scripts/compare-runtime-parity.py' && ! grep -q -F -- '--request-file' '${SCAFFOLD_SKILLS}/gates/capture-source-oracles/scripts/capture-source-oracles.py' && echo 1 || echo 0" \
+  "1"
+check "080 starting the source and capturing scenarios is an M1 producer step, not an Operator rescue" \
+  "python3 -c \"import json; d=json.load(open('${SCAFFOLD_SKILLS}/paved-road/paved-road-m1/steps.json')); ids=[s['id'] for s in d['steps']]; print('ok' if ids.index('capture-source-scenarios') > ids.index('assemble-evidence-bundle') else 'bad')\"" \
+  "ok"
+check "080 a scenario carries a concrete request: a route pattern, a missing body statement, or a write with no effect refuses" \
+  "grep -q -F 'never a route pattern' '${SCAFFOLD_SKILLS}/gates/capture-source-oracles/scripts/_scenarios.py' && grep -q -F 'body_absent: true' '${SCAFFOLD_SKILLS}/gates/capture-source-oracles/scripts/_scenarios.py' && grep -q -F 'at least one effect' '${SCAFFOLD_SKILLS}/gates/capture-source-oracles/scripts/compare-scenario-parity.py' && echo 1 || echo 0" \
+  "1"
 check "080 a templated entry-point path is not captured as an oracle without a real value (capture-source-oracles selftest)" \
   "python3 '${SCAFFOLD_SKILLS}/gates/capture-source-oracles/scripts/capture-source-oracles.test.py' >/dev/null && echo 1 || echo 0" \
   "1"

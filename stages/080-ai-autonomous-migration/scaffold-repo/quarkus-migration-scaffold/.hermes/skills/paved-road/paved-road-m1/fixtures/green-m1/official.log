@@ -3,6 +3,8 @@
   ┊ 📚 skill  inventory-legacy-surface
   ┊ 📚 skill  scan-with-mta
   ┊ 📚 skill  assemble-evidence-bundle
+  ┊ 📚 skill  capture-source-oracles
+  ┊ 💻 $         python3 .hermes/skills/gates/capture-source-oracles/scripts/capture-source-scenarios.py --root /projects/modernized  8.4s
   ┊ 💻 $         python3 .hermes/kernel/kanban_attach.py --task t_m1 --exec  0.3s
   ┊ 📋 preparing kanban_request_review…
   ┊ 💻 $         bash /projects/modernized/.hermes/skills/harness/dispatch-phase/scripts/autostart-migration.sh --root /projects/modernized  1.2s

@@ -56,6 +56,14 @@
       "producer": true
     },
     {
+      "backing": "skill",
+      "id": "capture-source-scenarios",
+      "keep": [
+        "verification/source-oracles/scenarios"
+      ],
+      "needle": "capture-source-oracles"
+    },
+    {
       "backing": "native",
       "id": "kanban-attach",
       "keep": [

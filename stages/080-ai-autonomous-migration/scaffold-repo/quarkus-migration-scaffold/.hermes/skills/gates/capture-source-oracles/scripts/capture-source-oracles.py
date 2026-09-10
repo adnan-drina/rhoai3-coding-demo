@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
-"""Capture expected runtime behaviour from the running SOURCE system.
+"""Capture expected READ behaviour from the running SOURCE system.
 
 Writes verification/source-oracles/<slug>.json per admitted entry point.
-HTTP GET/HEAD are requested mechanically; other HTTP methods need
---request-file <id>=<file>; non-HTTP kinds need --observation <id>=<file>.
-Anything not captured is recorded UNCAPTURED (never invented).
+HTTP GET/HEAD are requested mechanically, with --path-var supplying any
+templated segment from the source's own seeded data. Non-HTTP kinds need
+--observation <id>=<file>.
+
+Writes are NOT captured here. A write is a complete request against a known
+initial state whose effects have to be read back, so it belongs to the
+scenario corpus (capture-source-scenarios.py). Anything not captured is
+recorded UNCAPTURED or INCONCLUSIVE, never invented.
 """
 from __future__ import annotations
 
@@ -48,7 +53,6 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--base-url", default="")
     ap.add_argument("--entry-point", action="append", default=[])
     ap.add_argument("--observation", action="append", default=[], help="<entry point id>=<captured file>")
-    ap.add_argument("--request-file", action="append", default=[], help="<entry point id>=<recorded request body file>")
     ap.add_argument("--path-var", action="append", default=[], help="<name>=<value> for a templated path segment, e.g. ownerId=1; the value must exist in the source system's own seeded data. The concrete path is recorded in the oracle, so the destination is compared at the same URL.")
     ap.add_argument("--any-status", action="store_true", help="allow a non-ADMITTED receipt (capture may precede admission)")
     args = ap.parse_args(argv)
@@ -61,7 +65,6 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     path_vars = _pairs(args.path_var)
     obs = _pairs(args.observation)
-    reqs = _pairs(args.request_file)
     eps = entry_points(root)
     if args.entry_point:
         eps = [e for e in eps if e["id"] in set(args.entry_point)]
@@ -95,14 +98,16 @@ def main(argv: list[str] | None = None) -> int:
                 rec["oracle"] = {"method": method, "path": path, **extra, **o}
                 rec["status"] = "CAPTURED" if o.get("status") else "UNCAPTURED"
                 rec["reason"] = o.get("error", "")
-            elif ep["id"] in reqs and Path(reqs[ep["id"]]).is_file():
-                body = Path(reqs[ep["id"]]).read_bytes()
-                o = http_observe(args.base_url, method, path, body=body)
-                rec["oracle"] = {"method": method, "path": path, "request_sha256": sha256_file(Path(reqs[ep["id"]])), **extra, **o}
-                rec["status"] = "CAPTURED" if o.get("status") else "UNCAPTURED"
             else:
+                # A write is not a method and a path. It is a complete request
+                # against a known initial state, with effects that prove what
+                # it did -- and the retired body-only option recorded a body
+                # the destination comparator never sent. Writes belong to
+                # the scenario corpus (capture-source-scenarios.py).
                 rec["status"] = "INCONCLUSIVE"
-                rec["reason"] = "non-idempotent %s needs --request-file with a recorded request body" % method
+                rec["reason"] = ("non-idempotent %s belongs in the scenario corpus (verification/scenarios/corpus.json): "
+                                 "a complete recorded request, its initial state, and the effects that prove the write happened"
+                                 % method)
         else:
             f = obs.get(ep["id"])
             if f and Path(f).is_file():

@@ -41,6 +41,16 @@ def main(argv: list[str] | None = None) -> int:
             verdict["reason"] = "source oracle %s: %s" % (oracle.get("status"), oracle.get("reason"))
         elif oracle.get("receipt_sha256") != receipt["receipt_digest"]:
             verdict["reason"] = "source oracle belongs to receipt %s, not %s" % (str(oracle.get("receipt_sha256"))[:12], receipt["receipt_digest"][:12])
+        elif oracle.get("kind") == "http" and str((oracle.get("oracle") or {}).get("method") or "GET").upper() not in ("GET", "HEAD"):
+            # This script replays a method and a path. That is enough for a
+            # read and provably not enough for a write: it sent no body, so a
+            # recorded POST the source answered 201 for was replayed as an
+            # empty POST and compared FAIL against an identical destination.
+            # Writes go through the scenario corpus, which carries the complete
+            # request and the effects that prove what it did.
+            verdict["reason"] = ("a %s entry point is compared through the scenario corpus (compare-scenario-parity.py), "
+                                 "not here: a replay without the recorded body and headers is not a replay"
+                                 % str(oracle["oracle"].get("method")))
         elif oracle.get("kind") == "http":
             exp = oracle["oracle"]
             verdict["expected"] = {"status": exp.get("status"), "body_sha256": exp.get("body_sha256"), "body_kind": exp.get("body_kind")}

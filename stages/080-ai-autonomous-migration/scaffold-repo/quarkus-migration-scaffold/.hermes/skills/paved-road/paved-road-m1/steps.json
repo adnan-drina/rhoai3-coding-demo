@@ -53,6 +53,15 @@
       ]
     },
     {
+      "id": "capture-source-scenarios",
+      "backing": "skill",
+      "skill": "capture-source-oracles",
+      "keep": [
+        "verification/source-oracles/scenarios"
+      ],
+      "note": "Record what the SOURCE does, while the source is still the only thing that can say. scripts/capture-source-scenarios.py packages the frozen source, starts its isolated runtime, restores the initial state before each scenario that asks for it, replays the Operator-approved corpus (verification/scenarios/corpus.json) and stops what it started; scripts/capture-source-oracles.py captures the idempotent reads. Idle when the corpus is absent: an empty corpus is a recorded gap, never an invented expectation. Nothing here reads the destination, and no worker ever sets an expected value."
+    },
+    {
       "id": "kanban-attach",
       "backing": "native",
       "native": "kanban_attach.py",

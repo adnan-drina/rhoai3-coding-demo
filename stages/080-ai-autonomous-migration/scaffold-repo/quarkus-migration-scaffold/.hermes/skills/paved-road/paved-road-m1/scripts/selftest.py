@@ -47,8 +47,12 @@ def main() -> int:
     skills = [s["skill"] for s in doc["steps"] if s["backing"] == "skill"]
     if skills[0] != "freeze-migration-input" or "derive-legacy-boot3" in skills:
         return _fail("M1 must start with the freeze and never list derive-legacy-boot3: %s" % skills)
-    if skills.index("inventory-legacy-surface") > skills.index("scan-with-mta") or skills[-1] != "assemble-evidence-bundle":
+    if skills.index("inventory-legacy-surface") > skills.index("scan-with-mta"):
         return _fail("M1 order %s" % skills)
+    # the bundle is assembled, and only then is the source recorded: the
+    # capture reads the bundle's entry points and binds to its digest
+    if skills[-1] != "capture-source-oracles" or skills.index("assemble-evidence-bundle") != len(skills) - 2:
+        return _fail("M1 must end with the bundle and then the source capture: %s" % skills)
     producer = [s for s in doc["steps"] if s.get("producer")][0]
     if producer["skill"] != "assemble-evidence-bundle" or "evidence/planning/evidence-bundle.json" not in producer["keep"]:
         return _fail("M1 producer must be assemble-evidence-bundle owning evidence-bundle.json")

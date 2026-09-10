@@ -45,22 +45,64 @@ composer (`compose-m4-verdict`) are unchanged consumers.
 
 ## Procedure
 
+Reads are captured by request. Writes go through the **scenario corpus**: a
+complete recorded request against a known initial state, with the effects that
+prove what it did.
+
 ```bash
-# capture (source system up)
+# 1. reads (source system up). A templated path needs a real value from the
+#    source's own seeded data; without one the oracle is INCONCLUSIVE.
 python3 "${HERMES_SKILL_DIR}/scripts/capture-source-oracles.py" --root /projects/modernized \
-  --base-url http://legacy:8080 \
+  --base-url http://legacy:9966/petclinic --path-var ownerId=1 \
   --observation 'ep:org.acme.jobs.SyncJob#sync():scheduled=/tmp/legacy-sync.log'
-# compare (destination up)
+
+# 2. scenarios (M1 producer: it packages the frozen source, starts it,
+#    restores the initial state per scenario, captures, and stops)
+python3 "${HERMES_SKILL_DIR}/scripts/capture-source-scenarios.py" --root /projects/modernized
+
+# 3. compare, with the destination up
 python3 "${HERMES_SKILL_DIR}/scripts/compare-runtime-parity.py" --root /projects/modernized \
-  --dest-url http://localhost:8080 --entry-point 'ep:…'
+  --dest-url http://localhost:8080/petclinic --entry-point 'ep:…'
+python3 "${HERMES_SKILL_DIR}/scripts/compare-scenario-parity.py" --root /projects/modernized \
+  --scenario 'sc:create-owner' --dest-url http://localhost:8080/petclinic
 python3 "${HERMES_SKILL_DIR}/scripts/compose-parity-receipt.py" --root /projects/modernized
 ```
 
 | Entry-point kind | Oracle | Mechanism |
 |---|---|---|
-| HTTP `GET`/`HEAD` | status + canonical JSON body (or text SHA-256) | requested mechanically |
-| HTTP `POST`/`PUT`/`PATCH`/`DELETE` | `INCONCLUSIVE` unless `--request-file` supplies a recorded request body | non-idempotent; never invented |
+| HTTP `GET`/`HEAD` | status + canonical JSON body (or text SHA-256) | requested mechanically; a templated path needs `--path-var` |
+| HTTP `POST`/`PUT`/`PATCH`/`DELETE` | a scenario: complete request + initial state + declared effects | the corpus; a write with no effect declared refuses |
 | scheduled, messaging, batch, event, lifecycle | operator-captured observation file (log excerpt, queue dump, table export); normalized line set with timestamps stripped | `--observation <id>=<file>` |
+
+## The scenario corpus
+
+`verification/scenarios/corpus.json` (`rhoai3.scenario-corpus/v1`) is
+**Operator-approved intent** and names its approver. Each scenario carries the
+method, a **concrete** URL (never a route pattern — the route stays in the
+inventory and is associated with scenario URLs), the headers, how it
+authenticates (**by environment-variable reference**), the body bytes or an
+explicit `body_absent: true`, whether the initial state is restored first, the
+effects that prove the write, and the permitted normalization.
+
+Ownership: the Operator owns intent and environment authorization; the M1
+producer owns execution; implementation workers own neither and never see an
+expected value.
+
+What refuses, and why:
+
+- A path with `{...}` or `*` in a scenario. A scenario is a request.
+- A scenario that neither names a body nor states it has none. An absent body
+  (a `DELETE`) is a fact to record, not an omission to infer.
+- A write scenario with no declared effect. An identical response does not
+  prove the write happened.
+- A replay whose reconstructed request digest differs from the one the source
+  answered. **This is the defect the corpus exists for**: the comparator used
+  to send the recorded method and path with no body, so a `POST` the source
+  answered `201` for was replayed empty, answered `400`, and compared `FAIL`
+  against a destination that behaved identically.
+- A source capture taken against a different corpus digest. Re-capture the
+  source rather than comparing across corpora.
+- A `204` that deleted nothing. The response matches and the effect does not.
 
 ## Verification
 
@@ -79,7 +121,12 @@ python3 "${HERMES_SKILL_DIR}/scripts/compose-parity-receipt.py" --root /projects
 
 ## Scripts
 
-- `scripts/capture-source-oracles.py` — capture from the source system
-- `scripts/compare-runtime-parity.py` — destination comparison, one entry point
-- `scripts/compose-parity-receipt.py` — receipt-bound parity receipt
-- `scripts/capture-source-oracles.test.py` — selftest
+- `scripts/capture-source-oracles.py` — read capture from the source system
+- `scripts/capture-source-scenarios.py` — M1 producer: package and start the
+  frozen source, restore state, capture the approved scenarios, clean up
+- `scripts/compare-runtime-parity.py` — destination comparison for reads
+- `scripts/compare-scenario-parity.py` — recorded-request replay plus effects
+- `scripts/compose-parity-receipt.py` — receipt-bound parity receipt; an entry
+  point covered by scenarios passes only when every one of them passes
+- `scripts/_scenarios.py` — the corpus model and the request digest
+- `scripts/capture-source-oracles.test.py`, `scripts/scenario-parity.test.py` — selftests

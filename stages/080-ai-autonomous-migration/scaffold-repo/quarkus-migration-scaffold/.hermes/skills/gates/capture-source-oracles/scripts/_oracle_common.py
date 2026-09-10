@@ -42,10 +42,16 @@ def entry_points(root: Path) -> list[dict[str, Any]]:
     return list(load_json(p).get("entry_points") or [])
 
 
-def http_observe(base_url: str, method: str, path: str, body: bytes | None = None, timeout: float = 20.0) -> dict[str, Any]:
+def http_observe(base_url: str, method: str, path: str, body: bytes | None = None, timeout: float = 20.0,
+                 headers: dict[str, str] | None = None) -> dict[str, Any]:
+    """One request, recorded. The body and the headers are sent as given: a
+    replay that drops them is not a replay (the destination comparator used to
+    send no body at all, so every recorded write compared FAIL)."""
     url = base_url.rstrip("/") + (path if path.startswith("/") else "/" + path)
     req = urllib.request.Request(url, data=body, method=method)
-    if body is not None:
+    for key, value in (headers or {}).items():
+        req.add_header(key, value)
+    if body is not None and not any(k.lower() == "content-type" for k in (headers or {})):
         req.add_header("Content-Type", "application/json")
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
