@@ -221,6 +221,17 @@ else
     echo -e "${YELLOW}[WARN]${NC} Runtime catalog not found or missing TechDocs refs"
     VALIDATE_WARN=$((VALIDATE_WARN + 1))
 fi
+
+# Workspace devfile aliases the public MaaS hostname to the in-cluster gateway
+# Service (stage 040, fixed ClusterIP): the public ELB path drops silent
+# response streams (measured 2026-09-10, pilot v6).
+check "050 app-migration skeleton devfile aliases the MaaS hostname to the in-cluster gateway (pod-overrides hostAliases 172.30.250.250)" \
+  "grep -c 'ip: 172.30.250.250' '${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml' || echo 0" \
+  "1"
+check "050 skeleton hostAlias derives the MaaS hostname from the platform Dev Spaces URL" \
+  "grep -c \"values.devspacesUrl | replace('https://devspaces.', 'maas.')\" '${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/rhdh/templates/app-migration/skeleton/devfile.yaml' || echo 0" \
+  "1"
+
 if echo "$RUNTIME_CATALOG" | grep -E 'templates/(app-migration|agentic-quarkus-scaffold)/template.yaml' | grep -qE '/blob/[0-9a-f]{40}/'; then
     echo -e "${RED}[FAIL]${NC} Runtime catalog Location targets are SHA-pinned (they accumulate)"
     VALIDATE_FAIL=$((VALIDATE_FAIL + 1))

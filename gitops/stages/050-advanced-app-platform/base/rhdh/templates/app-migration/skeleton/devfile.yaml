@@ -10,6 +10,19 @@ attributes:
   # progressTimeout so /tmp/poststart-{stdout,stderr}.txt stay readable.
   # Do not tee the hook to PVC (Architect 125103ZA).
   controller.devfile.io/debug-start: "true"
+  # In-cluster path to the MaaS gateway. The public hostname resolves to the
+  # AWS load balancer, and that path drops a response stream that stays
+  # silent for ~8 min (vLLM buffers a whole tool call; measured 2026-09-10,
+  # pilot v6). The alias sends the same hostname to the gateway's fixed
+  # ClusterIP (stage 040 service-maas-gateway-internal.yaml): TLS and the
+  # HTTPRoute host match are unchanged, only NAT and the ELB are gone. The
+  # hostname is derived from the platform's Dev Spaces URL (same apps domain).
+  pod-overrides:
+    spec:
+      hostAliases:
+        - ip: 172.30.250.250
+          hostnames:
+            - ${{ values.devspacesUrl | replace('https://devspaces.', 'maas.') }}
 # Migration workspace layout — two projects, fixed order:
 #   /projects/legacy      the application being migrated (workspace-only
 #                         clone of the legacy repository; never registered

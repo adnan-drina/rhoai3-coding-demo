@@ -1031,6 +1031,26 @@ else
 fi
 check "040 GitOps additive NetworkPolicy admits Istio-managed gateways to payload-processing:9004" "$R"
 
+# In-cluster gateway address: a fixed ClusterIP the workspace devfile aliases the
+# public MaaS hostname to (the public ELB path drops silent response streams).
+SVC_INTERNAL_GITOPS="${ROOT_DIR}/gitops/stages/040-governed-models-as-a-service/base/gateway/base/service-maas-gateway-internal.yaml"
+if [[ -f "$SVC_INTERNAL_GITOPS" ]] &&
+  grep -qF 'clusterIP: 172.30.250.250' "$SVC_INTERNAL_GITOPS" &&
+  grep -qF 'gateway.networking.k8s.io/gateway-name: maas-default-gateway' "$SVC_INTERNAL_GITOPS" &&
+  grep -qF 'service-maas-gateway-internal.yaml' "$NP_MAAS_KUSTOMIZATION"; then
+  R="pass"
+else
+  R="missing fixed-ClusterIP in-cluster Service for maas-default-gateway"
+fi
+check "040 GitOps in-cluster gateway Service (fixed ClusterIP 172.30.250.250 for the workspace hostAlias)" "$R"
+if resource_exists "service/maas-gateway-internal" "openshift-ingress"; then
+  LIVE_IP=$(oc get service maas-gateway-internal -n openshift-ingress -o jsonpath='{.spec.clusterIP}' --insecure-skip-tls-verify=true 2>/dev/null)
+  if [[ "$LIVE_IP" == "172.30.250.250" ]]; then R="pass"; else R="service exists with clusterIP ${LIVE_IP:-unset}"; fi
+else
+  R="service/maas-gateway-internal not found in openshift-ingress (Argo CD sync pending?)"
+fi
+check "040 live in-cluster gateway Service has the fixed ClusterIP" "$R"
+
 if resource_exists "configmap/${MCP_DISCOVERY_CONFIGMAP}" "redhat-ods-applications"; then
   MCP_DISCOVERY_DATA=$(oc get configmap "$MCP_DISCOVERY_CONFIGMAP" -n redhat-ods-applications \
     -o json --insecure-skip-tls-verify=true 2>/dev/null \

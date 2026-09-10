@@ -1,0 +1,40 @@
+# In-cluster address for the MaaS gateway with a FIXED ClusterIP.
+#
+# Workspaces reach the gateway by its public hostname (maas.apps.<domain>),
+# which resolves to the AWS load balancer: pod → NAT → ELB → Envoy. That path
+# drops a response stream that stays silent for roughly eight minutes (vLLM
+# buffers a whole tool call before emitting; measured 2026-09-10 on pilot v6:
+# the gateway logged `DC downstream_remote_disconnect` at 415/462/485 s while
+# the pod kept an established socket and the client waited out its 900 s
+# stale timer). The same stream through the Service ClusterIP completed
+# after 727 s of silence.
+#
+# The workspace devfile maps the public hostname to this IP with a pod
+# hostAlias, so TLS (SNI, certificate) and the HTTPRoute host match are
+# unchanged; only the network path is in-cluster. The IP is fixed here so the
+# devfile can name it; it lies inside the cluster's service CIDR
+# (172.30.0.0/16) and outside any range the platform allocates by default.
+apiVersion: v1
+kind: Service
+metadata:
+  name: maas-gateway-internal
+  namespace: openshift-ingress
+  labels:
+    app.kubernetes.io/name: maas-default-gateway
+    app.kubernetes.io/component: maas-gateway-internal
+  annotations:
+    argocd.argoproj.io/sync-wave: "11"
+spec:
+  type: ClusterIP
+  clusterIP: 172.30.250.250
+  selector:
+    gateway.networking.k8s.io/gateway-name: maas-default-gateway
+  ports:
+    - name: https
+      port: 443
+      targetPort: 443
+      protocol: TCP
+    - name: http
+      port: 80
+      targetPort: 80
+      protocol: TCP

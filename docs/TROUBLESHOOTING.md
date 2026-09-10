@@ -1237,6 +1237,8 @@ oc exec -n <ws-ns> <workspace-pod> -c development-tooling -- bash -c \
 
 **Recover:** Durable path is dest-init in `maas-api-key-provisioning.yaml`: `providers.custom.stale_timeout_seconds: 900` next to `request_timeout_seconds`, and `HERMES_STREAM_STALE_TIMEOUT=900` in the managed `.env` (belt and braces). A running worker keeps the value it started with; the next spawned worker picks the new one up.
 
+**Second cause, same symptom (measured 2026-09-10, pilot v6):** with the 900 s stale timer in place the gateway still logged `DC downstream_remote_disconnect` at 415, 462 and 485 s on streaming responses, the pod kept an established socket, and the worker waited out the full 900 s twice (39 minutes lost). The cut is on the public path (pod → NAT → AWS ELB → Envoy): a streaming tool call with 485 s of silence through `maas.apps.<domain>` never delivered a byte, while the same request through the gateway's Service ClusterIP completed after 727 s of silence. Non-streaming requests survive either path. Fix: stage 040 `service-maas-gateway-internal.yaml` (fixed ClusterIP 172.30.250.250) plus the workspace devfile's `pod-overrides` hostAlias mapping the public hostname to it; TLS and the HTTPRoute host match are unchanged. Diagnose on a suspect workspace: `getent hosts maas.apps.<domain>` must print `172.30.250.250`; a public IP means the alias is missing (a workspace created before the change, or an RHDH template not yet refreshed).
+
 **Related docs:** dest-init `ensure_hermes` in `maas-api-key-provisioning.yaml`; `docs/OPERATIONS.md` (Hermes request budgets).
 
 ## MaaS route HTTP 500 / Envoy `ext_proc_error_gRPC_error_14` (`harness-v2`)

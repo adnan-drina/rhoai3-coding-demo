@@ -53,7 +53,7 @@ does is repair mechanisms, never edit product code or evidence by hand:
 | An accepted step turns out to be a false green | Same rewind, to the step before it. Nothing is deleted; the rewound steps and rejections stay on the record as `rewound`. |
 | A card ended `blocked` although the loop record names its verdict | `hermes kanban complete <id> --summary "…"` from the workspace CLI (the daemon promotes the child only when every parent is done). |
 | A card sits in `triage` | Dashboard "→ ready" (the CLI has no triage verb). |
-| The worker stalls for minutes then reconnects | Check `providers.custom.stale_timeout_seconds` and `HERMES_STREAM_STALE_TIMEOUT` (900) in the managed config; exact-180 s `DC` lines in the gateway access log mean the default is back. |
+| The worker stalls for minutes then reconnects | Check `providers.custom.stale_timeout_seconds` and `HERMES_STREAM_STALE_TIMEOUT` (900) in the managed config; exact-180 s `DC` lines in the gateway access log mean the default is back. `DC` lines at 400–500 s with the pod socket still established mean the workspace is on the public path: `getent hosts maas.apps.<domain>` must print the internal ClusterIP 172.30.250.250 (devfile `pod-overrides` hostAlias; recreate the workspace after the template refresh). |
 
 ## Workspace overlay images
 
