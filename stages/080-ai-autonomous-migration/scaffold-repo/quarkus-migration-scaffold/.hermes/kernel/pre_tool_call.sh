@@ -439,7 +439,7 @@ if is_request_review() and profile == "implementer" and review_reviewer() != "re
 # python that re-derives them from JSON was whole cards of exploration in v6
 # (t_57aef986: 1255 lines, 7 terminal probes, no patch). The road is patch →
 # run-verify → advance; a script file the road names is still allowed.
-if profile == "implementer" and tool in {"terminal", "bash", "shell"} and cmd and INLINE_PY.search(cmd) and is_loop_card():
+if profile == "implementer" and ((tool in {"terminal", "bash", "shell"} and cmd and INLINE_PY.search(cmd)) or tool in {"execute_code", "code_execution", "python"}) and is_loop_card():
     block("inline python refused on a loop card: the brief (verification/loop/brief-*.json) "
           "already carries the measure, every item with its advice and rule condition, "
           "and previous_attempts. Read it with cat, patch the write set, then run "

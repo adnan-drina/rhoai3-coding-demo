@@ -1078,6 +1078,12 @@ def main() -> int:
                 fails += 1
             else:
                 print("ok loop_card_road_allowed")
+        r = run("", roots, cwd=cwd, tool="execute_code", extra_input={"code": "print(1)"}, extra_env=loop_card_env)
+        if r.get("action") != "block":  # refused by the mutation rule or the loop-card rule; either way it does not run
+            print("FAIL loop_card_execute_code_refused", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok loop_card_execute_code_refused")
         r = run("python3 -c \"print(1)\"", roots, cwd=cwd, extra_env={"HERMES_PROFILE": "implementer", "HERMES_KANBAN_TASK": "t_notloop", "K2_BOUND_GATE_EXIT": "0"})
         if r.get("action") == "block" and "inline python" in (r.get("message") or ""):
             print("FAIL non_loop_card_inline_python_allowed", r, file=sys.stderr)
