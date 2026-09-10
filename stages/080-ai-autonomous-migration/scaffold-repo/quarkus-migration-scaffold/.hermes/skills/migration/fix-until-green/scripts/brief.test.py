@@ -78,6 +78,12 @@ def main() -> int:
         ga = g.get("advice") or {}
         if ga.get("plugin") != "org.openapitools:openapi-generator-maven-plugin" or (ga.get("plugin_config") or {}).get("configuration", {}).get("generatorName") != "jaxrs-spec" or "generated file" not in ga.get("description", ""):
             return _fail("a generated-source error must point at the generator plugin and the catalog's documented configuration: %s" % ga)
+        from brief import collapse_generated
+        gens = [{"id": "err:%d" % i, "source": "javac", "kind": "build", "category": "mandatory", "path": "pom.xml", "line": 0, "rule_id": "GENERATED_SOURCE_ERROR",
+                 "message": "target/generated-sources/openapi/src/main/java/a/D%d.java:9: package javax.validation does not exist" % i, "generated_path": "target/generated-sources/openapi/src/main/java/a/D%d.java" % (i % 3)} for i in range(7)]
+        col = collapse_generated(gens + [{"id": "inc:x", "source": "mta", "kind": "build", "category": "mandatory", "path": "pom.xml", "line": 1, "rule_id": "r"}])
+        if len(col) != 2 or col[0].get("count") != 7 or len(col[0].get("item_ids") or []) != 7 or len(col[0].get("generated_files") or []) != 3 or col[0]["generated_root"] != "target/generated-sources/openapi" or col[1]["id"] != "inc:x":
+            return _fail("generated-source errors must collapse to one item per generated root with count, files and ids: %s" % [(c.get("id"), c.get("count")) for c in col])
         cond = r.get("rule_condition") or ""
         if not cond.startswith("when:") or "quarkus-resteasy-reactive-jackson" not in cond or "not: true" not in cond or "message: m" in cond or "ruleID: other" in cond:
             return _fail("the brief must carry the rule's when-block verbatim and nothing else: %r" % cond)

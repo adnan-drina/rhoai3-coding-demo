@@ -315,6 +315,36 @@ def config_advice(item: dict, root: Path, rules: dict, cat: dict) -> dict:
     return out
 
 
+def collapse_generated(items: list[dict]) -> list[dict]:
+    """Errors in generated sources are one obligation per generator, not one
+    per line: a card that changes the plugin configuration clears them all.
+    The brief shows one item per generated root with the count, the files
+    and a sample of the compiler's words (pilot v6: 240 such items on one
+    pom card)."""
+    groups: dict[str, list[dict]] = {}
+    rest: list[dict] = []
+    for it in items:
+        if it.get("rule_id") == "GENERATED_SOURCE_ERROR":
+            gen = str(it.get("generated_path") or "")
+            key = "/".join(gen.split("/")[:3]) if gen.startswith("target/generated-sources/") else "target/generated-sources"
+            groups.setdefault(key, []).append(it)
+        else:
+            rest.append(it)
+    out: list[dict] = []
+    for key, rows in sorted(groups.items()):
+        first = dict(rows[0])
+        files = sorted({str(r.get("generated_path") or "") for r in rows})
+        first["id"] = "err:generated:%s" % key.rsplit("/", 1)[-1]
+        first["item_ids"] = [r["id"] for r in rows]
+        first["count"] = len(rows)
+        first["generated_root"] = key
+        first["generated_files"] = files[:12] + (["… %d more" % (len(files) - 12)] if len(files) > 12 else [])
+        first["sample"] = [str(r.get("message") or "")[:160] for r in rows[:5]]
+        first["message"] = "%d compiler errors in %d generated files under %s (one obligation: the generator's configuration)" % (len(rows), len(files), key)
+        out.append(first)
+    return out + rest
+
+
 def enrich(items: list[dict], root: Path, cluster: dict) -> list[dict]:
     """Attach the rule's advice/links (from the findings the work list was
     built on) and, for pom.xml loci, the element at the reported line plus
@@ -400,6 +430,7 @@ def main(argv: list[str] | None = None) -> int:
         print("REFUSE: LOOP_NO_OPEN_CLUSTER (work list head is empty)", file=sys.stderr)
         return 1
     write_set = list(cluster.get("write_set") or [])
+    items = collapse_generated(enrich(items_of(doc, cluster), root, cluster))
     steps_p = root / LOOP_DIR / "steps.json"
     steps = load_json(steps_p) if steps_p.is_file() else {}
     # what this cluster's earlier attempts did and why the transaction refused
@@ -411,7 +442,7 @@ def main(argv: list[str] | None = None) -> int:
         "schema": "rhoai3.loop-brief/v1",
         "cluster": cluster,
         "write_set": write_set,
-        "items": enrich(items_of(doc, cluster), root, cluster),
+        "items": items,
         "not_counted": [n for n in (doc.get("not_counted") or []) if str(n.get("path") or "") in write_set],
         "previous_attempts": previous,
         "attempts_left": max(0, int(_max_attempts(root)) - len(previous)),
