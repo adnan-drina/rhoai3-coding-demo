@@ -945,6 +945,47 @@ if profile == "implementer" and not is_block() and not is_complete():
                 % unmatched[0]
             )
 
+# Mirrors planner.paths.PRODUCT_EXEMPT: harness state, the frozen legacy copy
+# and build output are not product paths, so a loop card may write them.
+LOOP_EXEMPT_DIRS = ("evidence", "verification", ".hermes", ".derived", "target", ".git")
+
+def loop_write_set():
+    """The write set of the loop card K4 issued for this task, or None."""
+    task = hook_task_id()
+    if not task:
+        return None
+    roots = [x for x in allow.split(os.pathsep) if x] + [os.environ.get("HERMES_WRITE_SAFE_ROOT") or ""]
+    for r in roots:
+        if not r:
+            continue
+        try:
+            doc = json.load(open(os.path.join(r, "verification", "loop", "issued.json"), encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(doc, dict) and str(doc.get("task_id") or "") == task:
+            ws = doc.get("write_set")
+            return [str(x) for x in ws] if isinstance(ws, list) else []
+    return None
+
+def loop_product_write_refusals(candidates):
+    """Product paths a loop card may not write: advance.py reverts the whole
+    candidate over one of them, so a card that scratches a file outside its
+    write set loses all of its work. v7 t_f6357940 removed 16 compile errors
+    correctly and was reverted for a tmp-deps/ directory it had unpacked jars
+    into. Refusing the write costs one tool call instead of one card."""
+    ws = loop_write_set()
+    if ws is None:
+        return []
+    out = []
+    for p in candidates:
+        rel = dest_rel(resolve_rp(p)) or ""
+        if not rel or rel in ws:
+            continue
+        if any(rel == e or rel.startswith(e + "/") for e in LOOP_EXEMPT_DIRS):
+            continue
+        out.append(rel)
+    return sorted(set(out))
+
 if tool in WRITE_TOOLS or looks_like_write_cmd(cmd) or effect:
     for p in paths:
         rp = resolve_rp(p)
@@ -952,6 +993,13 @@ if tool in WRITE_TOOLS or looks_like_write_cmd(cmd) or effect:
             continue
         if not in_dest_write_sandbox(rp):
             block("write %s is outside the dest write sandbox (legacy is read-only)" % p)
+    outside = loop_product_write_refusals(list(effect) if effect else list(paths))
+    if outside:
+        block("write refused: %s is a product path outside this card write set (%s). "
+              "advance.py reverts the entire candidate over one such path, so the whole "
+              "card would be lost. Keep scratch work under verification/ or /tmp, and "
+              "kanban_block kind=needs_input if the fix truly needs another path."
+              % (outside[0], ", ".join(loop_write_set() or []) or "none"))
     if looks_like_write_cmd(cmd) and (
         "quarkus:add-extension" in cmd or re.search(r"\badd-extension\b", cmd)
     ):

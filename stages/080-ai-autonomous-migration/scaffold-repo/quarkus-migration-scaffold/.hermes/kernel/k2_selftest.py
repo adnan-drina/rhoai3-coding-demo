@@ -1112,6 +1112,28 @@ def main() -> int:
             fails += 1
         else:
             print("ok non_loop_card_inline_python_allowed")
+        # a loop card may not write a product path outside its write set: advance reverts the whole candidate over one
+        (dest / "verification" / "loop" / "issued.json").write_text(json.dumps({"schema": "rhoai3.loop-issued/v1", "task_id": "t_loopcard", "cluster": "c:1", "write_set": ["pom.xml"]}), encoding="utf-8")
+        for target in ("tmp-deps/x.jar", "src/main/java/A.java"):
+            r = run("", roots, cwd=cwd, tool="write_file", extra_input={"path": str(dest / target), "content": "x"}, extra_env=loop_card_env)
+            if r.get("action") != "block" or "outside this card write set" not in (r.get("message") or ""):
+                print("FAIL loop_write_outside_write_set %s" % target, r, file=sys.stderr)
+                fails += 1
+            else:
+                print("ok loop_write_outside_write_set")
+        for target in ("pom.xml", "verification/build/scratch.txt", "evidence/notes.json"):
+            r = run("", roots, cwd=cwd, tool="write_file", extra_input={"path": str(dest / target), "content": "x"}, extra_env=loop_card_env)
+            if r.get("action") == "block" and "outside this card write set" in (r.get("message") or ""):
+                print("FAIL loop_write_allowed %s" % target, r, file=sys.stderr)
+                fails += 1
+            else:
+                print("ok loop_write_allowed")
+        r = run("", roots, cwd=cwd, tool="write_file", extra_input={"path": str(dest / "tmp-deps/x.jar"), "content": "x"}, extra_env={"HERMES_PROFILE": "implementer", "HERMES_KANBAN_TASK": "t_notloop", "K2_BOUND_GATE_EXIT": "0"})
+        if r.get("action") == "block" and "outside this card write set" in (r.get("message") or ""):
+            print("FAIL non_loop_write_unrestricted", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok non_loop_write_unrestricted")
         (dest / "verification" / "loop" / "issued.json").unlink()
         r = run("", roots, cwd=cwd, tool="kanban_request_review", extra_input={"reviewer": "reviewer", "summary": "x"}, extra_env={"HERMES_PROFILE": "implementer", "K2_BOUND_GATE_EXIT": "0"})
         if r.get("action") == "block":
