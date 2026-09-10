@@ -104,6 +104,48 @@ def import_source(copy: Path, root: Path, changes: list[dict], retired: dict[str
                 changes.append({"op": "import", "path": str(rel).replace("\\", "/")})
 
 
+def map_dependencies(deps: ET.Element, catalog: dict, changes: list[dict], blocks: list[dict]) -> tuple[list[str], dict[str, str]]:
+    """Legacy dependencies → catalog rows: starters, JDBC drivers, documented
+    removals (with replacements), javax→jakarta replacements; a Spring Boot
+    dependency with no row blocks. Returns (artifacts to add, scopes)."""
+    present = {(text(d, "groupId"), text(d, "artifactId")) for d in deps.findall(q("dependency"))}
+    to_add: list[str] = list(catalog.get("always_add") or [])
+    scoped: dict[str, str] = {}
+    for d in list(deps.findall(q("dependency"))):
+        ga = "%s:%s" % (text(d, "groupId"), text(d, "artifactId"))
+        if ga in catalog["starters"]:
+            to_add.extend(catalog["starters"][ga])
+            deps.remove(d)
+            changes.append({"op": "pom.map-starter", "from": ga, "to": list(catalog["starters"][ga])})
+        elif ga in catalog["jdbc_drivers"]:
+            to_add.append(catalog["jdbc_drivers"][ga])
+            deps.remove(d)
+            changes.append({"op": "pom.map-driver", "from": ga, "to": catalog["jdbc_drivers"][ga]})
+        elif ga in (catalog.get("remove_dependencies") or {}) and ga != "note":
+            row = catalog["remove_dependencies"][ga]
+            to_add.extend(row.get("to") or [])
+            for art in row.get("to") or []:
+                if row.get("scope"):
+                    scoped[art] = str(row["scope"])
+            deps.remove(d)
+            changes.append({"op": "pom.remove-dependency", "from": ga, "to": list(row.get("to") or []), "source": str(row.get("source") or "")})
+        elif ga in (catalog.get("replace_dependencies") or {}) and ga != "note":
+            new = str(catalog["replace_dependencies"][ga])
+            g2, a2 = new.split(":", 1)
+            find_or_add(d, "groupId").text = g2
+            find_or_add(d, "artifactId").text = a2
+            v = d.find(q("version"))
+            if v is not None:
+                d.remove(v)  # the BOM manages the jakarta artifact
+            present.add((g2, a2))
+            changes.append({"op": "pom.replace-dependency", "from": ga, "to": new})
+        elif text(d, "groupId") in (catalog.get("remove_dependencies_matching_group") or []):
+            # No catalog row: the dependency stays and the run blocks. Removing
+            # it could silently drop runtime auto-configuration that still compiles.
+            blocks.append({"class": "UNMAPPED_DEPENDENCY", "subject": ga, "detail": "no compat-mapping row for %s; add a documented row to compat-mapping.json (catalog change) or retire it by ADR before bootstrap can complete" % ga})
+    return to_add, scoped
+
+
 def bootstrap_pom(root: Path, catalog: dict, pins: dict, changes: list[dict], blocks: list[dict]) -> None:
     pom = root / "pom.xml"
     ET.register_namespace("", NS)
@@ -152,22 +194,8 @@ def bootstrap_pom(root: Path, catalog: dict, pins: dict, changes: list[dict], bl
         changes.append({"op": "pom.bom", "gav": "%s:%s:%s" % (platform["group_id"], platform["bom_artifact_id"], platform["version"])})
     # 4. dependencies: starters → extensions, drivers → jdbc extensions, remove org.springframework.boot
     deps = find_or_add(project, "dependencies")
+    to_add, scoped = map_dependencies(deps, catalog, changes, blocks)
     present = {(text(d, "groupId"), text(d, "artifactId")) for d in deps.findall(q("dependency"))}
-    to_add: list[str] = list(catalog.get("always_add") or [])
-    for d in list(deps.findall(q("dependency"))):
-        ga = "%s:%s" % (text(d, "groupId"), text(d, "artifactId"))
-        if ga in catalog["starters"]:
-            to_add.extend(catalog["starters"][ga])
-            deps.remove(d)
-            changes.append({"op": "pom.map-starter", "from": ga, "to": list(catalog["starters"][ga])})
-        elif ga in catalog["jdbc_drivers"]:
-            to_add.append(catalog["jdbc_drivers"][ga])
-            deps.remove(d)
-            changes.append({"op": "pom.map-driver", "from": ga, "to": catalog["jdbc_drivers"][ga]})
-        elif text(d, "groupId") in (catalog.get("remove_dependencies_matching_group") or []):
-            # No catalog row: the dependency stays and the run blocks. Removing
-            # it could silently drop runtime auto-configuration that still compiles.
-            blocks.append({"class": "UNMAPPED_DEPENDENCY", "subject": ga, "detail": "no compat-mapping row for %s; add a documented row to compat-mapping.json (catalog change) or retire it by ADR before bootstrap can complete" % ga})
     groups = catalog.get("starter_group_ids") or {}
     for art in sorted(set(to_add)):
         gid = groups.get(art, "io.quarkus")
@@ -176,8 +204,8 @@ def bootstrap_pom(root: Path, catalog: dict, pins: dict, changes: list[dict], bl
         d = sub(deps, "dependency")
         sub(d, "groupId", gid)
         sub(d, "artifactId", art)
-        if art in ("quarkus-junit5", "rest-assured"):
-            sub(d, "scope", "test")
+        if art in ("quarkus-junit5", "rest-assured") or scoped.get(art):
+            sub(d, "scope", scoped.get(art) or "test")
         present.add((gid, art))
         changes.append({"op": "pom.add-extension", "gav": "%s:%s" % (gid, art)})
     # 4b. versions: the removed Spring Boot parent managed versions; the
@@ -222,9 +250,38 @@ def bootstrap_pom(root: Path, catalog: dict, pins: dict, changes: list[dict], bl
             sub(p, "artifactId", art)
             sub(p, "version", "${%s}" % key)
             changes.append({"op": "pom.pin-plugin", "artifact": art})
+    add_plugins(plugins, catalog, changes)
     apply_plugin_config(project, plugins, catalog, changes)
     ET.indent(tree, space="  ")
     tree.write(pom, encoding="utf-8", xml_declaration=True)
+
+
+def _build_xml(parent: ET.Element, spec: dict) -> None:
+    """Nested dict → child elements (a list value repeats the element)."""
+    for tag, value in spec.items():
+        if isinstance(value, dict):
+            _build_xml(sub(parent, tag), value)
+        elif isinstance(value, list):
+            for v in value:
+                if isinstance(v, dict):
+                    _build_xml(sub(parent, tag), v)
+                else:
+                    sub(parent, tag, str(v))
+        else:
+            sub(parent, tag, str(value))
+
+
+def add_plugins(plugins: ET.Element, catalog: dict, changes: list[dict]) -> None:
+    """Catalog plugins_to_add: documented plugins the platform guide expects, added when absent."""
+    rows = {k: v for k, v in (catalog.get("plugins_to_add") or {}).items() if k != "note" and isinstance(v, dict)}
+    present = {text(p, "artifactId") for p in plugins.findall(q("plugin"))}
+    for name, spec in rows.items():
+        art = str(spec.get("artifactId") or name)
+        if art in present:
+            continue
+        p = sub(plugins, "plugin")
+        _build_xml(p, spec)
+        changes.append({"op": "pom.add-plugin", "artifact": art, "source": "catalog plugins_to_add"})
 
 
 def apply_plugin_config(project: ET.Element, plugins: ET.Element, catalog: dict, changes: list[dict]) -> None:
@@ -265,6 +322,20 @@ def apply_plugin_config(project: ET.Element, plugins: ET.Element, catalog: dict,
                 if (e.text or "").strip() != value:
                     e.text = value
                     changes.append({"op": "pom.plugin-config", "artifact": key, "leaf": leaf, "value": value})
+        for container, wanted_children in (row.get("ensure_list") or {}).items():
+            # e.g. compilerArgs: {arg: ["-parameters"]}: the container exists (or is
+            # created under the plugin's configuration) and carries each listed child
+            conts = [e for e in p.iter(q(container))]
+            if not conts:
+                conf = p.find(q("configuration")) or find_or_add(p, "configuration")
+                conts = [sub(conf, container)]
+            for cont in conts:
+                for child, values in (wanted_children or {}).items():
+                    have = {(e.text or "").strip() for e in cont.findall(q(child))}
+                    for val in values:
+                        if str(val) not in have:
+                            sub(cont, child, str(val))
+                            changes.append({"op": "pom.plugin-ensure", "artifact": key, "element": "%s/%s" % (container, child), "value": str(val)})
         opts_all = [e for e in p.iter(q("configOptions"))]
         if (row.get("configOptions") or row.get("remove_configOptions")) and not opts_all:
             conf = next(iter(p.iter(q("configuration"))), None) or find_or_add(p, "configuration")
@@ -281,6 +352,42 @@ def apply_plugin_config(project: ET.Element, plugins: ET.Element, catalog: dict,
                 if (e.text or "").strip() != value:
                     e.text = value
                     changes.append({"op": "pom.plugin-configOption", "artifact": key, "option": name, "value": value})
+
+
+def rename_jakarta_imports(root: Path, catalog: dict, changes: list[dict], blocks: list[dict]) -> None:
+    """Catalog package_renames (javax.* → jakarta.*) applied to import
+    declarations through the JDK compiler's parse tree (scripts/jakarta-imports/
+    JakartaImports.java, compiled here). Production sources only; tests judge
+    the migration and are not rewritten. Documented facts, applied by a tool."""
+    import shutil
+    import subprocess
+    import tempfile
+
+    renames = {k: str(v) for k, v in (catalog.get("package_renames") or {}).items() if k != "note" and isinstance(v, str)}
+    if not renames:
+        return
+    tool = Path(__file__).resolve().parent / "jakarta-imports" / "JakartaImports.java"
+    javac, java = shutil.which("javac"), shutil.which("java")
+    if not javac or not java or not tool.is_file():
+        blocks.append({"class": "TOOL_MISSING", "subject": "jakarta-imports", "detail": "javac/java or %s not available; the Jakarta import rename could not run" % tool})
+        return
+    with tempfile.TemporaryDirectory(prefix="jakarta-") as td:
+        cp = subprocess.run([javac, "-d", td, str(tool)], capture_output=True, text=True)
+        if cp.returncode != 0:
+            blocks.append({"class": "TOOL_MISSING", "subject": "jakarta-imports", "detail": "JakartaImports.java did not compile: %s" % cp.stderr.strip()[:300]})
+            return
+        argv = [java, "-cp", td, "JakartaImports", "--root", str(root)] + ["%s=%s" % (k, v) for k, v in sorted(renames.items())]
+        run = subprocess.run(argv, capture_output=True, text=True)
+        if run.returncode != 0:
+            blocks.append({"class": "TOOL_MISSING", "subject": "jakarta-imports", "detail": "JakartaImports failed: %s" % run.stderr.strip()[:300]})
+            return
+    per_file: dict[str, int] = {}
+    for line in run.stdout.splitlines():
+        parts = line.split("\t")
+        if len(parts) == 3:
+            per_file[parts[0]] = per_file.get(parts[0], 0) + 1
+    for path, n in sorted(per_file.items()):
+        changes.append({"op": "source.rename-imports", "path": path, "imports": n, "source": "compat-mapping.json package_renames (Jakarta EE 10 namespace)"})
 
 
 def bootstrap_properties(root: Path, catalog: dict, changes: list[dict]) -> None:
@@ -322,6 +429,46 @@ def bootstrap_properties(root: Path, catalog: dict, changes: list[dict]) -> None
             out_lines.append(line)
         if changed:
             p.write_text("\n".join(out_lines) + "\n", encoding="utf-8")
+    if catalog.get("profile_files"):
+        merge_profile_files(root, changes)
+
+
+def merge_profile_files(root: Path, changes: list[dict]) -> None:
+    """Spring profile files → %<profile>.<key> lines in the sibling
+    application.properties, then the file is removed (Quarkus config guide,
+    profiles). Keys were mapped already. A key already present under the
+    profile prefix is not duplicated; comments do not travel."""
+    for sub_dir in (("src", "main", "resources"), ("src", "test", "resources")):
+        res = root.joinpath(*sub_dir)
+        if not res.is_dir():
+            continue
+        main = res / "application.properties"
+        for p in sorted(res.glob("application-*.properties")):
+            profile = p.name[len("application-"):-len(".properties")]
+            if not profile:
+                continue
+            existing = main.read_text(encoding="utf-8", errors="replace") if main.is_file() else ""
+            have = {ln.split("=", 1)[0].strip() for ln in existing.splitlines() if "=" in ln and not ln.strip().startswith(("#", "!"))}
+            moved: list[str] = []
+            for raw in p.read_text(encoding="utf-8", errors="replace").splitlines():
+                ln = raw.strip()
+                if not ln or ln.startswith(("#", "!")) or "=" not in ln:
+                    continue
+                key, _, val = ln.partition("=")
+                key = key.strip()
+                if key.startswith("%"):
+                    new_key = key
+                else:
+                    new_key = "%%%s.%s" % (profile, key)
+                if new_key in have:
+                    continue
+                moved.append("%s=%s" % (new_key, val.strip()))
+                have.add(new_key)
+            block = ("\n# bootstrap: merged from %s (Quarkus profile %s)\n" % (p.name, profile)) + "\n".join(moved) + "\n" if moved else ""
+            if block:
+                main.write_text((existing.rstrip("\n") + "\n" if existing else "") + block, encoding="utf-8")
+            p.unlink()
+            changes.append({"op": "properties.merge-profile", "file": str(p.relative_to(root)), "into": str(main.relative_to(root)), "profile": profile, "keys": len(moved)})
 
 
 def trivial_launcher(t: dict) -> tuple[bool, str]:
@@ -466,6 +613,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     bootstrap_properties(root, catalog, changes)
     bootstrap_main_class(root, catalog, bundle, changes, blocks)
+    rename_jakarta_imports(root, catalog, changes, blocks)
     receipt = {
         "schema": "rhoai3.producer-receipt/v1",
         "producer": "bootstrap",

@@ -65,11 +65,107 @@ def _plugin_config_case() -> int:
     mod.apply_plugin_config(project, plugins, catalog, changes2)
     if changes2:
         return _fail("a second application must change nothing: %s" % changes2)
+    # compiler args are ensured, never duplicated; documented plugins are added once
+    pom2 = """<project xmlns="http://maven.apache.org/POM/4.0.0"><build><plugins><plugin><artifactId>maven-compiler-plugin</artifactId><configuration><compilerArgs><arg>-Amapstruct.x=1</arg></compilerArgs></configuration></plugin></plugins></build></project>"""
+    project = ET.fromstring(pom2); plugins = project.find(mod.q("build")).find(mod.q("plugins"))
+    ch: list = []
+    mod.add_plugins(plugins, catalog, ch); mod.apply_plugin_config(project, plugins, catalog, ch)
+    args = [e.text for e in project.iter(mod.q("arg"))]
+    arts = [mod.text(p, "artifactId") for p in plugins.findall(mod.q("plugin"))]
+    if args.count("-parameters") != 1 or "-Amapstruct.x=1" not in args or "maven-failsafe-plugin" not in arts or "maven-surefire-plugin" not in arts:
+        return _fail("compiler -parameters must be ensured beside existing args and failsafe/surefire added: %s %s" % (args, arts))
+    fs = next(p for p in plugins.findall(mod.q("plugin")) if mod.text(p, "artifactId") == "maven-failsafe-plugin")
+    if [g.text for g in fs.iter(mod.q("goal"))] != ["integration-test", "verify"] or fs.find(".//" + mod.q("java.util.logging.manager")) is None:
+        return _fail("failsafe must carry its documented executions and system properties")
+    ch2: list = []
+    mod.add_plugins(plugins, catalog, ch2); mod.apply_plugin_config(project, plugins, catalog, ch2)
+    if ch2 or [e.text for e in project.iter(mod.q("arg"))].count("-parameters") != 1:
+        return _fail("plugin additions must be idempotent: %s" % ch2)
+    # dependencies: documented removals/replacements (v6's accepted pom edits) beside the starter mapping
+    pom3 = """<project xmlns="http://maven.apache.org/POM/4.0.0"><dependencies>
+<dependency><groupId>io.springfox</groupId><artifactId>springfox-boot-starter</artifactId><version>3.0.0</version></dependency>
+<dependency><groupId>javax.xml.bind</groupId><artifactId>jaxb-api</artifactId><version>2.3.0</version></dependency>
+<dependency><groupId>org.springframework.security</groupId><artifactId>spring-security-test</artifactId><scope>test</scope></dependency>
+<dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-web</artifactId></dependency>
+<dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-nowhere</artifactId></dependency>
+</dependencies></project>"""
+    project = ET.fromstring(pom3); deps = project.find(mod.q("dependencies"))
+    ch3: list = []; blocks: list = []
+    to_add, scoped = mod.map_dependencies(deps, catalog, ch3, blocks)
+    left = ["%s:%s" % (mod.text(d, "groupId"), mod.text(d, "artifactId")) for d in deps.findall(mod.q("dependency"))]
+    if left != ["jakarta.xml.bind:jakarta.xml.bind-api", "org.springframework.boot:spring-boot-starter-nowhere"]:
+        return _fail("removals leave nothing, replacements rename in place, an unmapped Spring Boot dependency stays and blocks: %s" % left)
+    if next(d for d in deps.findall(mod.q("dependency")) if mod.text(d, "artifactId") == "jakarta.xml.bind-api").find(mod.q("version")) is not None:
+        return _fail("a replaced artifact is BOM-managed: its version must go")
+    if "quarkus-smallrye-openapi" not in to_add or "quarkus-test-security" not in to_add or scoped.get("quarkus-test-security") != "test" or "quarkus-rest" not in to_add:
+        return _fail("documented replacements must be added (openapi, test-security in test scope, always_add quarkus-rest): %s %s" % (to_add, scoped))
+    if not any(b["class"] == "UNMAPPED_DEPENDENCY" for b in blocks):
+        return _fail("an unmapped Spring Boot dependency must block")
+    return 0
+
+
+def _profile_merge_case() -> int:
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("bootstrap_destination", SCRIPT)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)  # type: ignore[union-attr]
+    with tempfile.TemporaryDirectory(prefix="prof-") as td:
+        root = Path(td); res = root / "src" / "main" / "resources"; res.mkdir(parents=True)
+        (res / "application.properties").write_text("quarkus.http.port=9966\n%mysql.quarkus.datasource.username=old\n", encoding="utf-8")
+        (res / "application-mysql.properties").write_text("# db\nquarkus.datasource.jdbc.url=jdbc:mysql://h/db\nquarkus.datasource.username=pc\nspring.jpa.database=MYSQL\n", encoding="utf-8")
+        (res / "application-hsqldb.properties").write_text("quarkus.datasource.jdbc.url=jdbc:hsqldb:mem:x\n", encoding="utf-8")
+        ch: list = []
+        mod.merge_profile_files(root, ch)
+        text = (res / "application.properties").read_text(encoding="utf-8")
+        lines = [ln for ln in text.splitlines() if ln and not ln.startswith("#")]
+        want = ["quarkus.http.port=9966", "%mysql.quarkus.datasource.username=old", "%hsqldb.quarkus.datasource.jdbc.url=jdbc:hsqldb:mem:x", "%mysql.quarkus.datasource.jdbc.url=jdbc:mysql://h/db", "%mysql.spring.jpa.database=MYSQL"]
+        if lines != want:
+            return _fail("profile merge must prefix every key, keep an existing %%profile key, skip comments, and process files in name order: %s" % lines)
+        if (res / "application-mysql.properties").exists() or (res / "application-hsqldb.properties").exists():
+            return _fail("merged profile files must be removed")
+        if [c["op"] for c in ch] != ["properties.merge-profile", "properties.merge-profile"] or ch[1]["keys"] != 2:
+            return _fail("changes must record each merge with its key count: %s" % ch)
+    return 0
+
+
+def _jakarta_imports_case() -> int:
+    import importlib.util
+    import json
+
+    spec = importlib.util.spec_from_file_location("bootstrap_destination", SCRIPT)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)  # type: ignore[union-attr]
+    catalog = json.loads((GOLDEN / ".hermes" / "planning" / "catalogs" / "compat-mapping.json").read_text(encoding="utf-8"))
+    with tempfile.TemporaryDirectory(prefix="jak-") as td:
+        root = Path(td); d = root / "src" / "main" / "java" / "a"; d.mkdir(parents=True)
+        src = ("package a;\n\nimport java.util.List;\nimport javax.persistence.Id;\nimport javax.validation.constraints.*;\nimport javax.xml.parsers.DocumentBuilder;\n"
+               "import static javax.persistence.GenerationType.IDENTITY;\n\n/** javax.persistence in a comment stays */\npublic class A { String s = \"javax.persistence\"; }\n")
+        (d / "A.java").write_text(src, encoding="utf-8")
+        t = root / "src" / "test" / "java" / "a"; t.mkdir(parents=True)
+        (t / "ATest.java").write_text("package a;\nimport javax.persistence.Id;\nclass ATest {}\n", encoding="utf-8")
+        ch: list = []; blocks: list = []
+        mod.rename_jakarta_imports(root, catalog, ch, blocks)
+        if blocks:
+            return _fail("jakarta rename blocked: %s" % blocks)
+        out = (d / "A.java").read_text(encoding="utf-8")
+        if "import jakarta.persistence.Id;" not in out or "import jakarta.validation.constraints.*;" not in out or "import static jakarta.persistence.GenerationType.IDENTITY;" not in out:
+            return _fail("javax imports (member, wildcard, static) must become jakarta: %s" % out)
+        if "import javax.xml.parsers.DocumentBuilder;" not in out or "javax.persistence in a comment stays" not in out or 'String s = "javax.persistence"' not in out:
+            return _fail("a package with no rename, comments and string literals must be untouched: %s" % out)
+        if (t / "ATest.java").read_text(encoding="utf-8") != "package a;\nimport javax.persistence.Id;\nclass ATest {}\n":
+            return _fail("test sources are never rewritten")
+        if ch != [{"op": "source.rename-imports", "path": "src/main/java/a/A.java", "imports": 3, "source": "compat-mapping.json package_renames (Jakarta EE 10 namespace)"}]:
+            return _fail("the receipt records the file and import count: %s" % ch)
+        ch2: list = []
+        mod.rename_jakarta_imports(root, catalog, ch2, blocks)
+        if ch2 or blocks:
+            return _fail("a second run changes nothing: %s %s" % (ch2, blocks))
     return 0
 
 
 def main() -> int:
-    if _plugin_config_case():
+    if _plugin_config_case() or _profile_merge_case() or _jakarta_imports_case():
         return 1
     with tempfile.TemporaryDirectory(prefix="boot-") as tmp:
         t = Path(tmp).resolve()
