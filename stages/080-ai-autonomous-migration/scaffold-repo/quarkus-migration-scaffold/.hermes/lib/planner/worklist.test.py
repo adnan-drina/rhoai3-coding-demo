@@ -130,9 +130,15 @@ def main() -> int:
     more = obligation_keys(_doc([("r1", "pom.xml", "aaaa"), ("r2", "pom.xml", "bbbb"), ("r2", "pom.xml", "cccc"), ("r2", "pom.xml", "dddd")]))
     if progress(m0, m2, before, more)[0]:
         return _fail("one more occurrence of a rule on a file is a new obligation")
+    # relocation: one fewer occurrence on the old file, one more on a new file (the rule's total did not grow) is NOT new
     other = obligation_keys(_doc([("r1", "pom.xml", "aaaa"), ("r2", "pom.xml", "bbbb"), ("r2", "src/main/java/A.java", "cccc")]))
-    if progress(m0, m2, before, other)[0]:
-        return _fail("the same rule on a new file is a new obligation")
+    if not progress(m0, m2, before, other)[0]:
+        return _fail("a relocated occurrence of a rule must not veto (the documented profile merge moves incidents with the keys)")
+    # the same rule on a new file while every old occurrence stays IS new (the total grew)
+    grown = obligation_keys(_doc([("r1", "pom.xml", "aaaa"), ("r2", "pom.xml", "bbbb"), ("r2", "pom.xml", "cccc"), ("r2", "src/main/java/A.java", "dddd")]))
+    ok, why = progress(m0, m2, before, grown)
+    if ok or "new mandatory" not in why or "A.java" not in why:
+        return _fail("a rule spreading to a new file with its old occurrences intact is a new obligation: %s" % why)
     unknown = measure_of(all_items, incidents_known=True, compile_known=False, tests_known=True, parity_known=False)
     if unknown["known"] or progress(m0, unknown, set(), set())[0]:
         return _fail("unknown measure never advances")

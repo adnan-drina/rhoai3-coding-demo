@@ -388,7 +388,23 @@ def progress(prev: dict[str, Any], cur: dict[str, Any], prev_ids: set[str], cur_
     a, b = list(prev["tuple"]), list(cur["tuple"])
     # ids are obligation_keys() (rule|file#n); a content-hash id (old steps) is
     # compared as-is, so an old baseline still vetoes on a brand-new id.
-    new_mandatory = sorted(i for i in cur_ids - prev_ids if i.startswith("inc:"))
+    # A key on a new file is a RELOCATION, not a new obligation, when the
+    # rule's total occurrence count did not grow: the documented merge of a
+    # Spring profile file moves its keys (and the incidents on them) into
+    # application.properties (pilot v6 t_2fdf0985 was vetoed for
+    # localhost-jdbc-00002 following the datasource URL it had moved).
+    def _rule(key: str) -> str:
+        body = key[4:] if key.startswith("inc:") else key
+        return body.split("|", 1)[0] if "|" in body else body
+    prev_by_rule: dict[str, int] = {}
+    cur_by_rule: dict[str, int] = {}
+    for k in prev_ids:
+        if k.startswith("inc:"):
+            prev_by_rule[_rule(k)] = prev_by_rule.get(_rule(k), 0) + 1
+    for k in cur_ids:
+        if k.startswith("inc:"):
+            cur_by_rule[_rule(k)] = cur_by_rule.get(_rule(k), 0) + 1
+    new_mandatory = sorted(i for i in cur_ids - prev_ids if i.startswith("inc:") and cur_by_rule.get(_rule(i), 0) > prev_by_rule.get(_rule(i), 0))
     if new_mandatory:
         return False, "new mandatory obligation(s): %s" % ",".join(new_mandatory[:5])
     if b < a:
