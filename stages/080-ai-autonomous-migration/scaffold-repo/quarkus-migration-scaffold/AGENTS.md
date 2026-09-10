@@ -230,7 +230,8 @@ One line each: what it governs → which skill. When a skill is loaded, prefer
 | M2 the plan: tool-computed work list + baseline step | `build-worklist` |
 | M2 admission receipt + activation gate | `admit-migration-plan` |
 | M2 live board equals the loop's expected cards (K3) | `verify-live-kanban-loop` |
-| M3 loop procedure (brief → edit → verify → accept/revert/defer) | `fix-until-green` |
+| M3 loop procedure (brief → edit → verify → accept/revert/defer) | `fix-until-green` (pinned via `paved-road-m3`) |
+| M4 VERIFY road (oracles → parity → pre-verdict → verdict → lint) | `paved-road-m4` |
 | M4 source oracles + runtime parity receipt | `capture-source-oracles` |
 | Story-class exit / oracle derivation | `derive-story-oracles` |
 | G-1..G-4 measurement oracles | `check-domain-parity` |

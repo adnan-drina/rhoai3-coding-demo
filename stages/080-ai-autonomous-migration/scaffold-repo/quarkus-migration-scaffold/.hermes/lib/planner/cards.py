@@ -29,7 +29,11 @@ CARD_SKILLS: dict[str, list[str]] = {
     "incident": ["paved-road-m3"],
     "test": ["paved-road-m3"],
     "parity": ["paved-road-m3"],
-    "close": ["compose-m4-verdict", "check-release-readiness", "check-domain-parity", "capture-source-oracles"],
+    # M4 pins the index only (paved-road-m4: oracles → parity → pre-verdict
+    # runner → compose the verdict from measured exits → lint). The gate
+    # skills are its steps; pinning them on the card made the phase a
+    # checklist of tools instead of a road.
+    "close": ["paved-road-m4"],
 }
 
 BODY_FENCE = "```json"

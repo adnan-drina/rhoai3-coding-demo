@@ -531,6 +531,15 @@ check "080 K2 lets the implementer complete a loop card on the recorded verdict 
 check "080 brief enrichment selftest passes (unmanaged→managed artifact; inventory; Jakarta rename; property mapping)" \
   "python3 '${SCAFFOLD_080}/.hermes/skills/migration/fix-until-green/scripts/brief.test.py' >/dev/null && echo 1 || echo 0" \
   "1"
+check "080 paved-road-m4 selftest passes (oracles first; runner before the producer; verdict composed, not chosen)" \
+  "python3 '${SCAFFOLD_PAVED}/paved-road-m4/scripts/selftest.py' >/dev/null && echo 1 || echo 0" \
+  "1"
+check "080 the M4 card pins the paved-road index only (not a checklist of gate skills)" \
+  "python3 -c \"import sys; sys.path.insert(0, '${SCAFFOLD_LIB}'); from planner.cards import CARD_SKILLS; print(','.join(CARD_SKILLS['close']))\"" \
+  "paved-road-m4"
+check "080 every phase has a paved road (m1, m2, m3, m4)" \
+  "ls -d '${SCAFFOLD_PAVED}'/paved-road-m*/steps.json | wc -l | tr -d ' '" \
+  "4"
 check "080 paved-road coverage lint passes" \
   "python3 '${SCAFFOLD_LIB}/paved_road.py' coverage >/dev/null && echo 1 || echo 0" \
   "1"

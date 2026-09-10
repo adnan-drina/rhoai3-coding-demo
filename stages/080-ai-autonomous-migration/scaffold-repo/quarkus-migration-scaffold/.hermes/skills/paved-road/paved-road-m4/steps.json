@@ -1,0 +1,46 @@
+{
+  "kind": "m4-verify",
+  "artifact": "m4-verdict",
+  "steps": [
+    {
+      "id": "capture-source-oracles",
+      "backing": "skill",
+      "skill": "capture-source-oracles",
+      "keep": [
+        "verification/parity/receipt.json"
+      ],
+      "note": "Record what the legacy system does, per admitted entry point (verification/source-oracles/<slug>.json), compare the destination against it (compare-runtime-parity.py per entry point) and compose the receipt-bound summary (compose-parity-receipt.py). Expected values come only from the oracles; never from the card body, never from what the destination happens to return."
+    },
+    {
+      "id": "check-domain-parity",
+      "backing": "skill",
+      "skill": "check-domain-parity",
+      "note": "G-1..G-4 measured against the referent. Each evaluator writes its own verdict; a REFUSE here is a real outcome, not something to argue with."
+    },
+    {
+      "id": "pre-verdict",
+      "backing": "native",
+      "native": "run-m4-pre-verdict.sh",
+      "keep": [
+        "evidence/receipts/gates"
+      ],
+      "note": "The runner, fail-closed: snapshot the test reports before any rebuild, parse surefire, refuse a card body that pre-specifies a verdict, assert the tree is retrievable, run the pinned feeding gates so their receipts exist, then assert-pinned-gates-ran, assert-g4-claim-consistency and assert-no-fence-evasion. Feeding gates must run before the receipts are asserted or the floor refuses on an empty directory."
+    },
+    {
+      "id": "compose-m4-verdict",
+      "backing": "skill",
+      "skill": "compose-m4-verdict",
+      "producer": true,
+      "keep": [
+        "evidence/verdicts/m4-verdict.json"
+      ],
+      "note": "Author the verdict from the measured exit codes only, with an explicit failed_floors. A non-empty failed_floors makes the verdict REFUSE; checkers never author it and the card body never pre-specifies it."
+    },
+    {
+      "id": "check-release-readiness",
+      "backing": "skill",
+      "skill": "check-release-readiness",
+      "note": "Lint what was just written: the verdict against its schema, the floor receipts, and the claim tokens. This step can only agree or refuse; it cannot change the verdict."
+    }
+  ]
+}

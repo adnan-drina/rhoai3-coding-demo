@@ -54,6 +54,7 @@ TERMINATOR_M3 = (
     "kanban_request_review on a loop card; never retry inside this card; never widen the write set."
 )
 TERMINATOR_M4 = (
+    "skill_view paved-road-m4 first (the pinned index; its steps.json is the contract). "
     "Run capture-source-oracles parity for every entry point, run-m4-pre-verdict.sh, and the MTA rescan "
     "assertion; record results under verification/. Compose evidence/verdicts/m4-verdict.json from "
     "measured exits (compose-m4-verdict). Expected runtime values come only from verification/source-oracles. "

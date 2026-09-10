@@ -59,6 +59,8 @@ PRODUCERS: dict[str, frozenset[str]] = {
     "form-entity-persistence": frozenset({ARTIFACT_K8S, ARTIFACT_JAVA}),
     "commit-destination-tree": frozenset({ARTIFACT_COMMIT}),
     "compose-m4-verdict": frozenset({ARTIFACT_M4}),
+    # the M4 index: its steps.json names compose-m4-verdict as the producer
+    "paved-road-m4": frozenset({ARTIFACT_M4}),
     "fix-until-green": frozenset({ARTIFACT_POM, ARTIFACT_CONFIG, ARTIFACT_JAVA, ARTIFACT_COMMIT}),
     # the M3 index: its steps.json names fix-until-green as the road and advance.py as the producer
     "paved-road-m3": frozenset({ARTIFACT_POM, ARTIFACT_CONFIG, ARTIFACT_JAVA, ARTIFACT_COMMIT}),

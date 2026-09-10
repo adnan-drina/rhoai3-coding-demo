@@ -1,0 +1,15 @@
+Query: work kanban task t_m4
+Initializing agent...
+  ┊ 📚 skill  capture-source-oracles
+  ┊ 💻 $         python3 .hermes/skills/gates/capture-source-oracles/scripts/capture-source-oracles.py --root /projects/modernized  2.1s
+  ┊ 💻 $         python3 .hermes/skills/gates/capture-source-oracles/scripts/compare-runtime-parity.py --root /projects/modernized --entry-point GET_/owners  0.6s
+  ┊ 💻 $         python3 .hermes/skills/gates/capture-source-oracles/scripts/compose-parity-receipt.py --root /projects/modernized  0.3s
+  ┊ 📚 skill  check-domain-parity
+  ┊ 💻 $         bash .hermes/skills/gates/check-domain-parity/scripts/run-admission.sh /projects/modernized  12.4s
+  ┊ 💻 $         bash .hermes/skills/gates/check-release-readiness/scripts/run-m4-pre-verdict.sh /projects/modernized  44.8s
+OK: run-m4-pre-verdict (snapshot+surefire+card-body + assert-retrievable-tree + pinned feeding gates + assert-pinned-gates-ran)
+  ┊ 📚 skill  compose-m4-verdict
+  ┊ 💻 $         python3 .hermes/skills/gates/compose-m4-verdict/scripts/assert-m4-verdict-schema.py /projects/modernized/evidence/verdicts/m4-verdict.json  0.2s
+  ┊ 📚 skill  check-release-readiness
+  ┊ 💻 $         python3 .hermes/skills/gates/check-release-readiness/scripts/check-m4-floor-receipts.py /projects/modernized  0.4s
+  ┊ 📋 preparing kanban_request_review…

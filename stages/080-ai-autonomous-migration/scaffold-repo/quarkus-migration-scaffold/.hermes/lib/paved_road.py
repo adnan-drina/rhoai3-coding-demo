@@ -43,6 +43,14 @@ M2_PRODUCER = "admit-migration-plan"
 # grade (REVERTED / DEFERRED exit 1 by design); the grade is the loop record
 # (verification/loop/steps.json) naming this card with a verdict.
 M3_SKILL = "fix-until-green"
+# m4-verify: the source oracles come first (they are the only source of an
+# expected runtime value), the pre-verdict runner runs the pinned feeding
+# gates and writes their receipts, compose-m4-verdict is the only producer,
+# and the readiness lint follows it (a checker may agree or refuse, never author).
+M4_ORACLES = "capture-source-oracles"
+M4_RUNNER = "run-m4-pre-verdict.sh"
+M4_PRODUCER = "compose-m4-verdict"
+M4_LINT = "check-release-readiness"
 M3_ORDER = ("brief.py", "run-verify.sh", "advance.py")
 M3_PRODUCER_NATIVE = "advance.py"
 LOOP_STEPS_REL = "verification/loop/steps.json"
@@ -198,6 +206,25 @@ def validate_steps_doc(doc: Any, *, path: Path | None = None) -> list[str]:
         for s in steps:
             if isinstance(s, dict) and str(s.get("skill") or s.get("native") or s.get("kernel") or "").startswith("speckit"):
                 errors.append("%s: Spec Kit steps are retired" % loc)
+    if kind == "m4-verify":
+        prod = next((s for s in steps if isinstance(s, dict) and s.get("producer") is True), None)
+        if prod is not None and prod.get("skill") != M4_PRODUCER:
+            errors.append("%s: m4-verify producer must be %s (checkers never author the verdict)" % (loc, M4_PRODUCER))
+        natives = [str(s.get("native")) for s in steps if isinstance(s, dict) and s.get("backing") == "native"]
+        if M4_RUNNER not in natives:
+            errors.append("%s: m4-verify must run the pre-verdict runner %s" % (loc, M4_RUNNER))
+        idx = {}
+        for i, s in enumerate(steps):
+            if not isinstance(s, dict):
+                continue
+            name = str(s.get("skill") or s.get("native") or "")
+            idx.setdefault(name, i)
+        if idx.get(M4_ORACLES, 99) != 0:
+            errors.append("%s: m4-verify must start with %s (the expected values come from the source oracles, nothing else)" % (loc, M4_ORACLES))
+        if idx.get(M4_RUNNER, 99) > idx.get(M4_PRODUCER, 0):
+            errors.append("%s: the pre-verdict runner must precede %s (the verdict is composed from measured exits)" % (loc, M4_PRODUCER))
+        if idx.get(M4_LINT, 0) < idx.get(M4_PRODUCER, 99):
+            errors.append("%s: %s lints the verdict and must follow %s" % (loc, M4_LINT, M4_PRODUCER))
     if kind == "m3-loop":
         first = steps[0] if isinstance(steps[0], dict) else {}
         if first.get("backing") != "skill" or first.get("skill") != M3_SKILL:
@@ -330,9 +357,17 @@ def unmatched_exit1(runs: list[tuple[str, int | None]]) -> list[tuple[str, int |
 
 
 def keep_missing(root: Path, keep: list[str]) -> list[str]:
+    """KEEP entries that are absent or empty. A KEEP may name a directory
+    whose contents are produced one file per subject (the M4 pre-verdict
+    runner writes one gate receipt per pinned gate): the directory must
+    exist and hold at least one non-empty file."""
     missing: list[str] = []
     for rel in keep:
         path = root / rel
+        if path.is_dir():
+            if not any(f.is_file() and f.stat().st_size > 0 for f in path.rglob("*")):
+                missing.append(rel)
+            continue
         if not path.is_file() or path.stat().st_size < 1:
             missing.append(rel)
     return missing
