@@ -864,6 +864,12 @@ if profile == "implementer" and not is_block() and not is_complete():
         blob = cmd or ""
         if any(g in blob for g in unmatched):
             pass
+        elif "fix-until-green/scripts/run-verify.sh" in blob and any("fix-until-green/scripts/advance" in g for g in unmatched):
+            # a refused advance (LOOP_CANDIDATE_CHANGED, LOOP_STALE_STATE) is
+            # cleared by re-measuring and advancing again: run-verify.sh is the
+            # step before advance on the loop road (v6 t_57aef986 was refused
+            # run-verify here and could only block)
+            pass
         elif is_request_review():
             block(
                 "kanban_request_review refused: mandated needle %s last "

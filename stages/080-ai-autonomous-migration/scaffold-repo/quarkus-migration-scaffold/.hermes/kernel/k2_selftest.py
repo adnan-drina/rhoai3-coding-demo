@@ -939,6 +939,14 @@ def main() -> int:
             fails += 1
         else:
             print("ok p0b_request_review_while_red")
+        # loop road: after a red advance the implementer may re-run run-verify.sh (then advance), not only advance
+        r = run("bash .hermes/skills/migration/fix-until-green/scripts/run-verify.sh --root .", roots, cwd=cwd,
+                extra_env={"HERMES_PROFILE": "implementer", "HERMES_KANBAN_TASK": "t_p0b", "K2_BOUND_GATE_EXIT": "1", "K2_BOUND_GATE_NAME": "fix-until-green/scripts/advance"})
+        if r.get("action") == "block":
+            print("FAIL loop_run_verify_after_red_advance", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok loop_run_verify_after_red_advance")
         with (red_home / "kanban" / "logs" / "t_p0b.log").open(
             "a", encoding="utf-8"
         ) as fh:

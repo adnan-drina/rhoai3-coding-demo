@@ -42,6 +42,7 @@ from _loop_common import ensure_hermes_lib, git, is_product_path, load_deferred,
 
 ensure_hermes_lib()
 from planner import pipeline  # noqa: E402
+from planner.paths import LOOP_ISSUED  # noqa: E402
 from planner.worklist import build_worklist  # noqa: E402
 
 RUN_VERIFY = Path(__file__).resolve().parent / "run-verify.sh"
@@ -89,6 +90,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--reason", required=True)
     ap.add_argument("--verify-cmd", default="", help="command that re-measures the restored tree (default: run-verify.sh --root ROOT; tests pass a simulator)")
     ap.add_argument("--no-mint", action="store_true")
+    ap.add_argument("--remeasure", action="store_true", help="the measure definition changed (harness fix): accept the fresh measurement of the target step instead of refusing on a mismatch; before/after are recorded")
+    ap.add_argument("--close-card", action="append", default=[], help="a minted card with no verdict (blocked/refused): record it as rewound so the board expects it closed; repeatable")
     ap.add_argument("--hermes", default="hermes")
     args = ap.parse_args(argv)
     root = Path(args.root).resolve()
@@ -98,8 +101,10 @@ def main(argv: list[str] | None = None) -> int:
         return _refuse("no baseline step recorded")
     if not 0 <= args.to_step < len(recorded):
         return _refuse("--to-step %d is not a recorded step (0..%d)" % (args.to_step, len(recorded) - 1))
-    if load_issued(root) is not None:
-        return _refuse("an issued card is open (verification/loop/issued.json); close or block it before rewinding")
+    issued = load_issued(root)
+    iid = str((issued or {}).get("task_id") or (issued or {}).get("card") or "")
+    if issued is not None and not (args.close_card and (not iid or iid in args.close_card)):
+        return _refuse("an issued card is open (verification/loop/issued.json%s); pass --close-card <id> for it, or let it finish" % ((": " + iid) if iid else ""))
     dirty = product_paths_changed(root)
     if dirty:
         return _refuse("product tree is not clean: %s" % ",".join(dirty[:5]))
@@ -120,9 +125,12 @@ def main(argv: list[str] | None = None) -> int:
     state = load_state(root)
     measured = list(((state or {}).get("measure") or {}).get("tuple") or [])
     expected = list(((target.get("measure") or {}).get("tuple")) or [])
+    remeasured = None
     if not state or measured != expected:
-        revert_paths(root, touched)
-        return _refuse("restored tree measures %s, step %d recorded %s; nothing changed" % (measured, args.to_step, expected))
+        if not (args.remeasure and state):
+            revert_paths(root, touched)
+            return _refuse("restored tree measures %s, step %d recorded %s; nothing changed (--remeasure if the measure definition changed)" % (measured, args.to_step, expected))
+        remeasured = {"before": expected, "after": measured}
 
     if touched:
         git(root, "add", "-A", "--", *touched)
@@ -136,6 +144,18 @@ def main(argv: list[str] | None = None) -> int:
     rejected = list(steps.get("rejected") or [])
     for r in rejected:
         r["rewound"] = True
+    known_cards = {str(s.get("card") or "") for s in recorded} | {str(r.get("card") or "") for r in rejected}
+    for cid in args.close_card:
+        if cid and cid not in known_cards:
+            rejected.append({"cluster": str(state.get("head") or ""), "card": cid, "measure": None, "changed": [], "rewound": True,
+                             "reason": "closed by operator %s without a verdict: %s" % (args.operator, args.reason)})
+    if issued is not None:
+        (root / LOOP_ISSUED).unlink()
+    if remeasured:
+        target = dict(target)
+        target["measure"] = dict(state.get("measure") or {})
+        target["remeasured"] = remeasured
+        recorded[args.to_step] = target
     for st in moved:
         rejected.append({"cluster": st.get("cluster"), "card": st.get("card"), "measure": st.get("measure"), "changed": [], "rewound": True,
                          "reason": "rewound by operator %s: %s" % (args.operator, args.reason)})
@@ -151,6 +171,8 @@ def main(argv: list[str] | None = None) -> int:
         "moved_steps": [str(st.get("card") or "") for st in moved],
         "cleared_attempts": dict(steps.get("attempts") or {}),
         "cleared_deferred": list(deferred_before.get("clusters") or []),
+        "closed_cards": list(args.close_card),
+        "remeasured": remeasured,
     }
     steps["steps"] = recorded[: args.to_step + 1]
     steps["rejected"] = rejected

@@ -297,6 +297,33 @@ def main() -> int:
         p = _advance(root, cl2["id"], "t_c3b")
         if p.returncode != 0 or "ACCEPTED" not in p.stdout:
             return _fail("re-landing the rewound step: %s%s" % (p.stdout, p.stderr))
+        # --- the measure definition changed under an issued card (harness fix): rewind to the LAST step with --remeasure, closing the orphaned card ---
+        specimens.issue(root)
+        n = len(load_json(root / LOOP_STEPS)["steps"])
+        sim2 = root / "verification" / "loop" / "rewind-sim2.py"
+        f5 = json.loads(json.dumps(f3))
+        drop = next(k for k, v in f5["violations"].items() if v.get("category") == "mandatory")
+        f5["violations"].pop(drop)  # one fewer obligation: as if a rule were superseded
+        sim2.write_text("import sys, json\nsys.path.insert(0, %r)\nfrom planner import specimens\nr = specimens.verify(%r, errors=json.loads(%r), failures=[], findings=json.loads(%r))\nsys.exit(r.returncode)\n"
+                        % (str(GOLDEN / ".hermes" / "lib"), str(root), json.dumps(one_less), json.dumps(f5)), encoding="utf-8")
+        rew2 = [sys.executable, str(REWIND), "--root", str(root), "--operator", "adnan.drina", "--reason", "rule superseded", "--no-mint", "--verify-cmd", "%s %s" % (sys.executable, sim2), "--to-step", str(n - 1)]
+        p = _run(rew2)
+        if p.returncode != 1 or "issued card is open" not in p.stderr:
+            return _fail("an open issued card must refuse without --close-card: %s" % p.stderr[-200:])
+        p = _run(rew2 + ["--close-card", "t_orphan"])
+        if p.returncode != 1 or "--remeasure" not in p.stderr:
+            return _fail("a changed measure must refuse without --remeasure: %s" % p.stderr[-300:])
+        p = _run(rew2 + ["--close-card", "t_orphan", "--remeasure"])
+        if p.returncode != 0 or "REWOUND" not in p.stdout:
+            return _fail("remeasure rewind: %s%s" % (p.stdout[-300:], p.stderr[-300:]))
+        steps = load_json(root / LOOP_STEPS)
+        last = steps["steps"][-1]
+        if len(steps["steps"]) != n or not last.get("remeasured") or last["remeasured"]["after"] != last["measure"]["tuple"] or (root / LOOP_ISSUED).exists():
+            return _fail("remeasure must keep the step, record before/after and drop the issued card: %s" % {k: last.get(k) for k in ("remeasured",)})
+        if not any(r["card"] == "t_orphan" and r.get("rewound") for r in steps["rejected"]) or steps["rewinds"][-1]["closed_cards"] != ["t_orphan"]:
+            return _fail("the orphaned card must be on the record as closed: %s" % steps["rewinds"][-1])
+        if load_json(root / ADMISSION_RECEIPT)["status"] != "ADMITTED":
+            return _fail("after a remeasure rewind admission must be re-sealed")
         # the deferred cluster is open again with a fresh budget; the fix lands
         specimens.issue(root)
         t3.write_text(orig3 + "// human fix\n", encoding="utf-8")
