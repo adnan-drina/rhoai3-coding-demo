@@ -318,16 +318,16 @@ check "080 GitOps does not curl-install Hermes" \
   "grep -c 'hermes-install.sh' '${GITOPS_INIT}' || echo 0" \
   "0"
 check "080 GitOps uses overlay-baked /usr/local/bin/hermes" \
-  "grep -v '^[[:space:]]*#' '${GITOPS_INIT}' | grep -qF 'hermes_bin=\"/usr/local/bin/hermes\"' && echo 1 || echo 0" \
+  "grep -v '^[[:space:]]*#' '${GITOPS_INIT}' | grep -F 'hermes_bin=\"/usr/local/bin/hermes\"' >/dev/null && echo 1 || echo 0" \
   "1"
 check "080 GitOps pin oracle ast-reads overlay /opt/hermes-agent" \
-  "grep -v '^[[:space:]]*#' '${GITOPS_INIT}' | grep -qF 'agent_src=\"/opt/hermes-agent\"' && echo 1 || echo 0" \
+  "grep -v '^[[:space:]]*#' '${GITOPS_INIT}' | grep -F 'agent_src=\"/opt/hermes-agent\"' >/dev/null && echo 1 || echo 0" \
   "1"
 check "080 GitOps SOUL smoke uses overlay /opt/hermes-agent (no dest fallback)" \
-  "grep -v '^[[:space:]]*#' '${GITOPS_INIT}' | grep -qF 'hermes_agent_root=\"/opt/hermes-agent\"' && echo 1 || echo 0" \
+  "grep -v '^[[:space:]]*#' '${GITOPS_INIT}' | grep -F 'hermes_agent_root=\"/opt/hermes-agent\"' >/dev/null && echo 1 || echo 0" \
   "1"
 check "080 GitOps dest-init prefers env MAAS_API_BASE_URL then gateway MAAS_BASE_URL" \
-  "grep -v '^[[:space:]]*#' '${GITOPS_INIT}' | grep -qF 'os.environ.get(\"MAAS_API_BASE_URL\")' && grep -qF 'os.environ.get(\"MAAS_BASE_URL\")' '${GITOPS_INIT}' && grep -qF '/models-as-a-service/qwen3-6-27b/v1' '${GITOPS_INIT}' && echo 1 || echo 0" \
+  "grep -v '^[[:space:]]*#' '${GITOPS_INIT}' | grep -F 'os.environ.get(\"MAAS_API_BASE_URL\")' >/dev/null && grep -qF 'os.environ.get(\"MAAS_BASE_URL\")' '${GITOPS_INIT}' && grep -qF '/models-as-a-service/qwen3-6-27b/v1' '${GITOPS_INIT}' && echo 1 || echo 0" \
   "1"
 check "080 GitOps ConfigMap is the MaaS gateway path (not KServe host)" \
   "grep -qF 'MAAS_API_PATH: /models-as-a-service/qwen3-6-27b/v1' '${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/devspaces/workspace-maas-model-endpoint.yaml' && grep -q 'name: workspace-maas-model-endpoint' '${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/devspaces/workspace-maas-model-endpoint.yaml' && ! grep -q 'kserve-workload-svc' '${REPO_ROOT}/gitops/stages/050-advanced-app-platform/base/devspaces/workspace-maas-model-endpoint.yaml' && echo 1 || echo 0" \
