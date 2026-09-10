@@ -157,12 +157,27 @@ def compile_advice(item: dict, root: Path, inventory: list[dict], renames: dict[
         members = [r["fqn"] for r in inventory if str(r["fqn"]).startswith(token + ".")]
         if members:
             out["inventory_package"] = {"types": len(members), "present_in_destination": sorted(m for m in members if any((root / str(r.get("dest_file") or "x")).is_file() for r in inventory if r["fqn"] == m))[:5]}
-    probe = token if pkg else ""
-    if not probe and sym:
-        loc = _LOCATION_RE.search(msg)
-        probe = ""
+    # a bare symbol ("class Id") names its package only through the file's imports:
+    # `import javax.persistence.Id;` or `import javax.persistence.*;` binds the rename
+    imported = ""
+    if sym:
+        src = root / str(item.get("path") or "")
+        if src.is_file():
+            for ln in src.read_text(encoding="utf-8", errors="replace").splitlines():
+                ln = ln.strip()
+                if not ln.startswith("import "):
+                    continue
+                spec = ln[len("import "):].rstrip(";").strip()
+                if spec.endswith("." + token) or spec.endswith(".*"):
+                    head = spec.rsplit(".", 1)[0]
+                    if spec.endswith("." + token) or any(head == old or head.startswith(old + ".") for old in renames):
+                        imported = spec
+                        break
+        if imported:
+            out["imported_as"] = imported
     for old, new in renames.items():
-        if (pkg and token.startswith(old)) or (sym and re.search(r"\b" + re.escape(old) + r"\.[\w.]*" + re.escape(token) + r"\b", msg)):
+        if (pkg and token.startswith(old)) or (imported and (imported == old + "." + token or imported.startswith(old + "."))) \
+                or (sym and re.search(r"\b" + re.escape(old) + r"\.[\w.]*" + re.escape(token) + r"\b", msg)):
             out["rename"] = {"from": old, "to": new}
             break
     hits = reference_hits(refs, token, root)
@@ -178,11 +193,38 @@ def config_advice(item: dict, root: Path, rules: dict, cat: dict) -> dict:
     path, line = str(item.get("path") or ""), int(item.get("line") or 0)
     p = root / path
     text = ""
+    name = path.rsplit("/", 1)[-1]
+    if name.startswith("application-") and "." in name:
+        out["profile"] = name[len("application-"):].split(".", 1)[0]
     if p.is_file() and line > 0:
         rows = p.read_text(encoding="utf-8", errors="replace").splitlines()
         if line <= len(rows):
             text = rows[line - 1].strip()
             out["line_text"] = text
+    elif p.is_file() and line == 0:
+        # a file-level incident (profile file, missing single-file layout): every
+        # Spring key still in the file, each with the catalog mapping it has
+        keys = []
+        props = cat.get("properties") or {}
+        prefixes = cat.get("property_prefixes") or {}
+        for n, raw in enumerate(p.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+            ln = raw.strip()
+            if not ln or ln.startswith("#") or "=" not in ln:
+                continue
+            k = ln.split("=", 1)[0].strip()
+            if k.startswith("quarkus.") or k.startswith("%"):
+                continue
+            to = props.get(k) or ""
+            if not to:
+                for prefix, row in prefixes.items():
+                    if k.startswith(prefix) and isinstance(row, dict):
+                        to = str(row.get("to") or "").replace("{rest}", k[len(prefix):])
+                        break
+            keys.append({"line": n, "key": k, "to": to})
+            if len(keys) >= 20:
+                break
+        if keys:
+            out["spring_keys"] = keys
     rule = rules.get(str(item.get("rule_id")))
     if isinstance(rule, dict):
         for inc in rule.get("incidents") or []:

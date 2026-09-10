@@ -42,6 +42,9 @@ def main() -> int:
         ]})
         (root / "src" / "main" / "java" / "org" / "acme" / "model").mkdir(parents=True)
         (root / "src" / "main" / "java" / "org" / "acme" / "model" / "Owner.java").write_text("class Owner {}\n", encoding="utf-8")
+        (root / "src" / "main" / "java" / "org" / "acme" / "rest").mkdir(parents=True)
+        (root / "src" / "main" / "java" / "org" / "acme" / "rest" / "PetResource.java").write_text(
+            "package org.acme.rest;\nimport javax.persistence.Id;\nimport javax.validation.*;\nimport org.acme.dto.PetDto;\nclass PetResource {}\n", encoding="utf-8")
         (root / "src" / "main" / "resources").mkdir(parents=True)
         (root / "src" / "main" / "resources" / "application.properties").write_text(
             "# db\nspring.datasource.url=jdbc:h2:mem:x\nspring.jpa.hibernate.ddl-auto=create-drop\nlogging.level.org.acme=DEBUG\n", encoding="utf-8")
@@ -74,6 +77,10 @@ def main() -> int:
              "message": "cannot find symbol\n  symbol:   class NamedParameterJdbcTemplate\n  location: class org.acme.rest.PetResource"},
             {"id": "err:4", "source": "javac", "kind": "compile", "category": "mandatory", "path": java_cluster["path"], "line": 12, "rule_id": "compiler.err.cant.resolve.location",
              "message": "cannot find symbol\n  symbol:   class Owner\n  location: class org.acme.rest.PetResource"},
+            {"id": "err:5", "source": "javac", "kind": "compile", "category": "mandatory", "path": java_cluster["path"], "line": 2, "rule_id": "compiler.err.cant.resolve.location",
+             "message": "cannot find symbol\n  symbol:   class Id\n  location: class org.acme.rest.PetResource"},
+            {"id": "err:6", "source": "javac", "kind": "compile", "category": "mandatory", "path": java_cluster["path"], "line": 3, "rule_id": "compiler.err.cant.resolve.location",
+             "message": "cannot find symbol\n  symbol:   class NotNull\n  location: class org.acme.rest.PetResource"},
         ]
         rows = enrich(items, root, java_cluster)
         a = rows[0]["advice"]
@@ -89,6 +96,12 @@ def main() -> int:
             return _fail("a Spring symbol must cite the reference file that covers it: %s" % c)
         if "message" not in a or "cannot find symbol" not in a["message"]:
             return _fail("the compiler's own words must be in the advice")
+        d = rows[4]["advice"]
+        if d.get("imported_as") != "javax.persistence.Id" or d.get("rename") != {"from": "javax.persistence", "to": "jakarta.persistence"}:
+            return _fail("a bare symbol bound by an explicit javax import must carry the rename: %s" % d)
+        e = rows[5]["advice"]
+        if e.get("imported_as") != "javax.validation.*" or (e.get("rename") or {}).get("to") != "jakarta.validation":
+            return _fail("a bare symbol bound by a javax wildcard import must carry the rename: %s" % e)
 
         cfg_cluster = {"id": "c:cfg", "kind": "config", "path": "src/main/resources/application.properties", "write_set": ["src/main/resources/application.properties"]}
         items = [
@@ -106,6 +119,14 @@ def main() -> int:
         c3 = rows[2].get("config") or {}
         if (c3.get("mapping") or {}).get("to") != 'quarkus.log.category."org.acme".level':
             return _fail("a prefix mapping must expand the rest of the key: %s" % c3)
+        # a file-level incident on a profile file lists every Spring key with its mapping
+        (root / "src" / "main" / "resources" / "application-hsqldb.properties").write_text(
+            "# db\nquarkus.datasource.jdbc.url=jdbc:hsqldb:mem:x\nspring.jpa.database=HSQL\nspring.datasource.username=sa\n", encoding="utf-8")
+        prof = {"id": "c:prof", "kind": "config", "path": "src/main/resources/application-hsqldb.properties", "write_set": ["src/main/resources/application-hsqldb.properties"]}
+        rows = enrich([{"id": "inc:p1", "source": "mta", "kind": "config", "category": "mandatory", "path": prof["path"], "line": 0, "rule_id": "springboot-properties-to-quarkus-00001"}], root, prof)
+        c4 = rows[0].get("config") or {}
+        if c4.get("profile") != "hsqldb" or [k["key"] for k in c4.get("spring_keys") or []] != ["spring.jpa.database", "spring.datasource.username"] or c4["spring_keys"][1]["to"] != "quarkus.datasource.username":
+            return _fail("a file-level profile incident must name the profile and the remaining Spring keys with their mappings: %s" % c4)
     print("OK: brief enrichment (pom unmanaged→managed; compile: inventory hit / present flag / Jakarta rename / reference file; config: line, key, variables, key+value mapping, prefix expansion)")
     return 0
 
