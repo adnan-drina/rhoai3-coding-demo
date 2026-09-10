@@ -75,7 +75,7 @@ def render_body(body: dict[str, Any]) -> str:
         "- **Road**: `skill_view paved-road-m3` first (the pinned index); it views `fix-until-green`.",
         ("- **Reference** (only if the brief's advice is not enough): `skill_view %s`" % ref) if ref else "- **Reference**: none; the brief carries the pom element, the BOM-managed set and the alias catalog.",
         "",
-        "**Do**: `python3 .hermes/skills/migration/fix-until-green/scripts/brief.py --root .` to read the brief; patch the write set one item at a time (never a whole-file rewrite, never tests, never a dependency or plugin the brief did not ask for, never an artifact the brief marks unmanaged); then:",
+        "**Do**: `python3 .hermes/skills/migration/fix-until-green/scripts/brief.py --root .` to read the brief; patch the write set one item at a time (never a whole-file rewrite, never tests, never a dependency or plugin the brief did not ask for, never an artifact the brief marks unmanaged, never satisfy an item by deleting the code or config it is about: a profile file's keys move to `application.properties` as `%<profile>.<key>`); then:",
         "",
     ]
     lines += ["    %s" % c for c in steps]

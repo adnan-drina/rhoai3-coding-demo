@@ -31,7 +31,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _loop_common import candidate_sha256, ensure_hermes_lib, git, load_cards, load_deferred, load_issued, load_state, load_steps, product_paths_changed, restore_reports, revert_paths, save_deferred, save_steps, snapshot_reports  # noqa: E402
+from _loop_common import candidate_sha256, catalog_property_mappings, ensure_hermes_lib, git, load_cards, load_deferred, load_issued, load_state, load_steps, product_paths_changed, profile_keys_lost_in_tree, restore_reports, revert_paths, save_deferred, save_steps, snapshot_reports  # noqa: E402
 
 ensure_hermes_lib()
 from planner import pipeline  # noqa: E402
@@ -158,6 +158,10 @@ def main(argv: list[str] | None = None) -> int:
     outside = [p for p in changed if p not in allowed]
     if outside:
         return _reject(root, steps, args.cluster, args.card, cur, "changed path(s) outside the write set: %s" % ",".join(outside[:5]), changed, mint=not args.no_mint, hermes=args.hermes)
+    lost = profile_keys_lost_in_tree(root, changed, catalog_property_mappings(root))
+    if lost:
+        detail = "; ".join("%s: %s" % (p, ",".join(k[:4])) for p, k in sorted(lost.items()))
+        return _reject(root, steps, args.cluster, args.card, cur, "profile config lost (the obligation was satisfied by withdrawing behavior): %s did not land in application.properties as %%<profile>.<key>" % detail, changed, mint=not args.no_mint, hermes=args.hermes)
     prev = steps["steps"][-1]
     prev_keys = set(prev.get("obligation_keys") or [])
     cur_keys = obligation_keys(cur)

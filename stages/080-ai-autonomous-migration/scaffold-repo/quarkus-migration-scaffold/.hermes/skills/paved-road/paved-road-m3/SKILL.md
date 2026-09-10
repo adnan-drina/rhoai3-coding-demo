@@ -45,7 +45,13 @@ rule to `kanban_complete`.
    diagnostic, the inventory hit for a missing type, the Jakarta rename for
    a `javax.*` package, and the reference file that covers a Spring symbol.
    Config items carry the property line and the catalog mapping.
-3. Patch the write set **one item at a time**. Never a whole-file rewrite
+3. Patch the write set **one item at a time**. Never satisfy an item by
+   deleting the code or configuration it is about: an obligation on a
+   Spring profile file is met by moving its keys into
+   `application.properties` as `%<profile>.<key>` (advance.py vetoes a
+   deletion whose `quarkus.*` or catalog-mapped keys did not land). If the
+   documented fix needs a path outside the write set, `kanban_block`
+   kind=needs_input naming that path. Never a whole-file rewrite
    (the model server buffers a tool call's arguments; a 12 KB rewrite is
    minutes of silence). Never tests, never `evidence/`, never
    `decisions.yaml`, never a plugin or dependency the brief did not ask

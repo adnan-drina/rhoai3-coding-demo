@@ -25,6 +25,8 @@ BOOTSTRAP = GOLDEN / ".hermes" / "skills" / "migration" / "bootstrap-destination
 sys.path.insert(0, str(GOLDEN / ".hermes" / "lib"))
 sys.path.insert(0, str(GOLDEN / ".hermes" / "kernel"))
 from k4_convert import convert_admitted  # noqa: E402
+sys.path.insert(0, str(HERE))
+from _loop_common import profile_keys_lost  # noqa: E402
 from planner import pipeline, specimens  # noqa: E402
 from planner.canonical import load_json, write_canonical  # noqa: E402
 from planner.paths import ADMISSION_RECEIPT, LOOP_DEFERRED, LOOP_ISSUED, LOOP_STEPS, VERIFY_DIAGNOSTICS, VERIFY_RUN, WORKLIST  # noqa: E402
@@ -54,7 +56,26 @@ def _head(root: Path) -> dict:
     return next(c for c in wl["clusters"] if c["id"] == wl["head"])
 
 
+def _profile_keys_cases() -> int:
+    old = "# db\nquarkus.datasource.jdbc.url=jdbc:hsqldb:mem:x\nquarkus.datasource.username=sa\nspring.jpa.database=HSQL\nspring.datasource.password=pw\n"
+    m = {"spring.datasource.password": "quarkus.datasource.password"}
+    # deletion with nothing landed: every behavior-carrying key is lost; the unmapped Spring key is not
+    lost = profile_keys_lost("hsqldb", old, "", "spring.profiles.active=hsqldb\n", m)
+    if lost != ["quarkus.datasource.jdbc.url", "quarkus.datasource.username", "spring.datasource.password"]:
+        return _fail("deleting a profile file must report its behavior-carrying keys as lost: %s" % lost)
+    # the documented merge: %profile.key in application.properties (mapped name accepted)
+    main = "%hsqldb.quarkus.datasource.jdbc.url=jdbc:hsqldb:mem:x\n%hsqldb.quarkus.datasource.username=sa\n%hsqldb.quarkus.datasource.password=pw\n"
+    if profile_keys_lost("hsqldb", old, "", main, m):
+        return _fail("keys landed as %profile.key (mapped) must not count as lost")
+    # a bare key in application.properties also counts; keys kept in the file are not lost
+    if profile_keys_lost("hsqldb", old, "quarkus.datasource.username=sa\n", "quarkus.datasource.jdbc.url=x\nquarkus.datasource.password=pw\n", m):
+        return _fail("bare landing and kept keys must not count as lost")
+    return 0
+
+
 def main() -> int:
+    if _profile_keys_cases():
+        return 1
     with tempfile.TemporaryDirectory(prefix="fug-") as tmp:
         t = Path(tmp).resolve()
         spec = specimens.specimen("http")

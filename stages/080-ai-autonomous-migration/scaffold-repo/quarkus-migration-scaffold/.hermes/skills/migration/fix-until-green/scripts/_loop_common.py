@@ -109,6 +109,77 @@ def candidate_sha256(root: Path) -> str:
     return h.hexdigest()
 
 
+def _props(text: str) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for raw in (text or "").splitlines():
+        ln = raw.strip()
+        if not ln or ln.startswith(("#", "!")) or "=" not in ln:
+            continue
+        k, v = ln.split("=", 1)
+        out[k.strip()] = v.strip()
+    return out
+
+
+def profile_of(path: str) -> str:
+    name = path.replace("\\", "/").rsplit("/", 1)[-1]
+    if name.startswith("application-") and name.rsplit(".", 1)[-1] in ("properties", "yml", "yaml"):
+        return name[len("application-"):].rsplit(".", 1)[0]
+    return ""
+
+
+def profile_keys_lost(profile: str, old_text: str, new_text: str, main_text: str, mappings: dict[str, str] | None = None) -> list[str]:
+    """Keys a Spring profile file carried that a candidate drops without landing
+    them in application.properties. The documented fix for
+    springboot-properties-to-quarkus-00001 (Quarkus config guide, profiles) moves
+    each key into the single file as %<profile>.<key>; a candidate that only
+    deletes the file satisfies the rule by withdrawing the behavior (pilot v6
+    t_0e1d4698: the hsqldb datasource went with the file). Only keys that carry
+    behavior on the destination must land: quarkus.* keys, and keys the catalog
+    maps to a Quarkus key. Spring keys with no mapping are the obligations being
+    retired and may go."""
+    mappings = mappings or {}
+    old, new, main = _props(old_text), _props(new_text), _props(main_text)
+    lost: list[str] = []
+    for k in old:
+        if k in new:
+            continue
+        target = k if k.startswith("quarkus.") else mappings.get(k, "")
+        if not target:
+            continue
+        landed = any(cand in main for cand in ("%%%s.%s" % (profile, target), target, "%%%s.%s" % (profile, k), k))
+        if not landed:
+            lost.append(k)
+    return lost
+
+
+def profile_keys_lost_in_tree(root: Path, changed: list[str], mappings: dict[str, str] | None = None) -> dict[str, list[str]]:
+    """{profile path: lost keys} across the changed product paths (HEAD vs disk)."""
+    out: dict[str, list[str]] = {}
+    for path in changed:
+        prof = profile_of(path)
+        if not prof or not path.startswith(("src/main/resources/", "src/test/resources/")):
+            continue
+        old = git(root, "show", "HEAD:%s" % path)
+        if old.returncode != 0:
+            continue  # a new profile file cannot lose keys
+        p = root / path
+        new_text = p.read_text(encoding="utf-8", errors="replace") if p.is_file() else ""
+        main_p = root / (path.rsplit("/", 1)[0] + "/application." + path.rsplit(".", 1)[-1])
+        main_text = main_p.read_text(encoding="utf-8", errors="replace") if main_p.is_file() else ""
+        lost = profile_keys_lost(prof, old.stdout, new_text, main_text, mappings)
+        if lost:
+            out[path] = lost
+    return out
+
+
+def catalog_property_mappings(root: Path) -> dict[str, str]:
+    p = root / ".hermes" / "planning" / "catalogs" / "compat-mapping.json"
+    if not p.is_file():
+        return {}
+    doc = load_json(p)
+    return {str(k): str(v) for k, v in (doc.get("properties") or {}).items() if isinstance(v, str)}
+
+
 def revert_paths(root: Path, paths: list[str]) -> None:
     """Restore HEAD for tracked paths in BOTH index and working tree; delete untracked."""
     tracked = [p for p in paths if git(root, "ls-files", "--error-unmatch", "--", p).returncode == 0]
