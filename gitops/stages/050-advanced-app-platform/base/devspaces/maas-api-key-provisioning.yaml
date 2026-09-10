@@ -1297,6 +1297,15 @@ data:
             # non-streaming request through the same gateway completed).
             "custom": {"request_timeout_seconds": 900, "stale_timeout_seconds": 900},
             "qwen27b": {
+                # v7 item 7 (measured 2026-09-10 on pilot v6): the served Qwen3
+                # honours the chat template's enable_thinking switch. With
+                # thinking on, a one-line question cost 600 reasoning tokens /
+                # 32 s and loop cards ran 160-400 log lines with 10+ reasoning
+                # blocks; with it off, an 8-item compile card ran 84 lines, 0
+                # reasoning blocks, 167 s, same correct patch. The brief carries
+                # what the reasoning re-derived. Hermes passes extra_body for a
+                # named provider (config.providers_dict_to_custom_providers).
+                "extra_body": {"chat_template_kwargs": {"enable_thinking": False}},
                 "api": "${env:MAAS_API_BASE_URL}",
                 "api_key": "${env:MAAS_API_KEY}",
                 "discover_models": False,
