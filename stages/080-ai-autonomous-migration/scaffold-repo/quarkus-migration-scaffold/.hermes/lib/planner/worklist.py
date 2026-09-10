@@ -240,8 +240,30 @@ RUNTIME_SIGNATURES = (
     ("Table not found", "schema-initialization", "config", "src/main/resources/application.properties"),
     ("SQLGrammarException", "schema-initialization", "config", "src/main/resources/application.properties"),
     ("Unsupported class file major version", "build-configuration", "build", "pom.xml"),
+    # An augmentation build step that throws is the platform telling the
+    # destination its code and its extensions disagree. It names the type it
+    # could not satisfy, so the obligation belongs at that type, not at pom.xml
+    # (pilot v7: SpringDataJPAProcessor found no implementation of
+    # VetRepository, which no compile error and no test could see).
+    ("threw an exception", "application-configuration", "config", "src/main/resources/application.properties"),
     ("Failed to execute goal", "build-configuration", "build", "pom.xml"),
 )
+FQN_RE = re.compile(r"\b(?:[a-z][A-Za-z0-9_]*\.){2,}[A-Z][A-Za-z0-9_]*\b")
+
+
+def runtime_locus(text: str, root: Path | None) -> str:
+    """The source file a runtime failure names, when the tree has it.
+
+    A message that names a type is pointing at that type. Guessing is not
+    involved: the path is derived from the fully-qualified name and only used
+    when the file is really there."""
+    if root is None:
+        return ""
+    for fqn in FQN_RE.findall(text or ""):
+        rel = "src/main/java/%s.java" % fqn.replace(".", "/")
+        if (Path(root) / rel).is_file():
+            return rel
+    return ""
 # A failure the destination cannot repair by editing its own tree. It is a
 # blocker, never a card: no amount of patching pom.xml makes an unreachable
 # database reachable.
@@ -266,7 +288,7 @@ def runtime_environment_blocker(text: str) -> str:
     return ""
 
 
-def runtime_items(package: dict[str, Any] | None, boot: dict[str, Any] | None) -> list[dict[str, Any]]:
+def runtime_items(package: dict[str, Any] | None, boot: dict[str, Any] | None, root: Path | None = None) -> list[dict[str, Any]]:
     """Obligations from the packaging and startup gates.
 
     They carry ``gate`` so acceptance can be phase-aware: repairing one of
@@ -284,6 +306,9 @@ def runtime_items(package: dict[str, Any] | None, boot: dict[str, Any] | None) -
         detail = str(doc.get("detail") or doc.get("failed_goal") or "")
         log = str(doc.get("log_tail") or "")
         kind, cluster_kind, locus = classify_runtime_failure(detail + "\n" + log)
+        named = runtime_locus(detail + "\n" + log, root)
+        if named:
+            locus, cluster_kind = named, "compile"
         ident = sha256_bytes(canonical_bytes({"gate": gate, "kind": kind, "detail": detail[:400]}))[:16]
         out.append({
             "id": "rt:%s:%s" % (gate, ident), "source": "runtime", "gate": gate,
@@ -696,7 +721,7 @@ def build_worklist(root: Path, *, write: bool = True) -> dict[str, Any]:
     # destination that could not be built at all).
     package_doc = load_json(root / VERIFY_PACKAGE) if (root / VERIFY_PACKAGE).is_file() else None
     boot_doc = load_json(root / VERIFY_BOOT) if (root / VERIFY_BOOT).is_file() else None
-    rt = runtime_items(package_doc, boot_doc)
+    rt = runtime_items(package_doc, boot_doc, root)
     runtime = runtime_state(package_doc, boot_doc)
     for b in runtime["blockers"]:
         blocked.append("runtime gate blocked by the environment: %s" % b)

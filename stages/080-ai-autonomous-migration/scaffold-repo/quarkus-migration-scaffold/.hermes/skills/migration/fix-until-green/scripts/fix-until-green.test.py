@@ -442,6 +442,24 @@ def main() -> int:
         cl = [c for c in wl["clusters"] if c["status"] == "open"][0]
         if cl.get("gate") != "package":
             return _fail("the cluster must carry the gate it repairs: %s" % cl)
+        # a failure that NAMES a type in this tree lands on that type, not on
+        # pom.xml (measured live: SpringDataJPAProcessor named VetRepository)
+        named = sorted(root.glob("src/main/java/**/*.java"))[0].relative_to(root).as_posix()
+        fqn = named[len("src/main/java/"):-len(".java")].replace("/", ".")
+        specimens.runtime(root, package_rc=1, boot_ready=None,
+                          detail="Failed to execute goal quarkus-maven-plugin:build",
+                          log="Build step io.quarkus.spring.data.deployment.SpringDataJPAProcessor#build threw an exception: No implementation of interface %s was found" % fqn)
+        specimens.verify(root, errors=[], failures=[], findings=f4)
+        pipeline.admit(root)
+        named_items = [i for i in load_json(root / WORKLIST)["items"] if i["source"] == "runtime"]
+        if len(named_items) != 1 or named_items[0]["path"] != named or named_items[0]["kind"] != "compile":
+            return _fail("an augmentation failure must land on the type it names: %s (wanted %s)" % (named_items, named))
+        # back to the plugin failure for the acceptance case below
+        specimens.runtime(root, package_rc=1, boot_ready=None, detail="Failed to execute goal org.jacoco:jacoco-maven-plugin:0.8.7:report", log="Unsupported class file major version 65")
+        specimens.verify(root, errors=[], failures=[], findings=f4)
+        pipeline.admit(root)
+        wl = load_json(root / WORKLIST)
+        cl = [c for c in wl["clusters"] if c["status"] == "open"][0]
         rec_pkg = load_json(root / ADMISSION_RECEIPT)
         if rec_pkg["status"] != "ADMITTED":
             return _fail("a packaging obligation must still admit: %s %s" % (rec_pkg["status"], rec_pkg.get("reasons")))
