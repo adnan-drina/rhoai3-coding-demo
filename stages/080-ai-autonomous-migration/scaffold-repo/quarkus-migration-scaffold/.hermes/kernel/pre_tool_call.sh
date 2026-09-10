@@ -347,6 +347,24 @@ def bound_gate_red():
         reds = [r for r in reds if "fix-until-green/scripts/advance" not in r]
     return reds[0] if reds else None
 
+def review_reviewer():
+    """The reviewer a request_review names: native arg, or --reviewer on the CLI form."""
+    rv = str(inp.get("reviewer") or "").strip()
+    if not rv and cmd:
+        m = re.search(r"--reviewer[= ]+(\S+)", cmd)
+        rv = m.group(1).strip(chr(34)) if m else ""
+    return rv
+
+# A review handed to nobody is dispatched back to the implementer: pilot v6
+# t_b2fe5a8d (2026-09-10) sent reviewer=None, the implementer re-ran advance.py
+# on its own accepted card (LOOP_WRONG_CARD), blocked it, and the successor
+# card was never promoted (parents_not_done). The card body says
+# reviewer=reviewer; the hook makes it so.
+if is_request_review() and profile == "implementer" and review_reviewer() != "reviewer":
+    block("kanban_request_review refused: name the reviewer (reviewer=reviewer). "
+          "Without it Hermes dispatches the review back to the implementer, which "
+          "re-runs the acceptance on a card that is already closed.")
+
 if is_complete():
     if profile == "implementer":
         record_complete_invocation("refuse_implementer")

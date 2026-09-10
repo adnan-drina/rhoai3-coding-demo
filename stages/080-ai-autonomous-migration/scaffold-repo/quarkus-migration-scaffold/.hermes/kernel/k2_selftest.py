@@ -993,6 +993,25 @@ def main() -> int:
             fails += 1
         else:
             print("ok veto_allows_list")
+        # request_review must name the reviewer (v6 t_b2fe5a8d: reviewer=None re-dispatched the review to the implementer)
+        r = run("", roots, cwd=cwd, tool="kanban_request_review", extra_env={"HERMES_PROFILE": "implementer", "K2_BOUND_GATE_EXIT": "0"})
+        if r.get("action") != "block" or "reviewer=reviewer" not in (r.get("message") or ""):
+            print("FAIL impl_request_review_needs_reviewer", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok impl_request_review_needs_reviewer")
+        r = run("", roots, cwd=cwd, tool="kanban_request_review", extra_input={"reviewer": "reviewer", "summary": "x"}, extra_env={"HERMES_PROFILE": "implementer", "K2_BOUND_GATE_EXIT": "0"})
+        if r.get("action") == "block":
+            print("FAIL impl_request_review_with_reviewer_allowed", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok impl_request_review_with_reviewer_allowed")
+        r = run("hermes kanban request-review t_x --reviewer reviewer", roots, cwd=cwd, extra_env={"HERMES_PROFILE": "implementer", "K2_BOUND_GATE_EXIT": "0"})
+        if r.get("action") == "block":
+            print("FAIL impl_request_review_cli_reviewer_allowed", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok impl_request_review_cli_reviewer_allowed")
     return 1 if fails else 0
 
 
