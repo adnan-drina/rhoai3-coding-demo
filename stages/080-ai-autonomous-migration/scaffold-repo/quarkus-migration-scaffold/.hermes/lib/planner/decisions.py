@@ -113,3 +113,30 @@ def not_applicable_ids(doc: dict[str, Any]) -> dict[str, str]:
         if isinstance(row, dict) and row.get("item_id") and _adr_ok(doc, row.get("adr")):
             out[str(row["item_id"])] = str(row["adr"])
     return out
+
+
+def waivers(doc: dict[str, Any]) -> list[dict[str, str]]:
+    """not_applicable rows an accepted ADR backs, by obligation (rule_id [+ path])
+    or by item id. A content-hash item id changes when the fix re-words the
+    incident; the obligation form (rule on a file) is the stable one."""
+    out: list[dict[str, str]] = []
+    for row in doc.get("not_applicable") or []:
+        if not isinstance(row, dict) or not _adr_ok(doc, row.get("adr")):
+            continue
+        if not (row.get("item_id") or row.get("rule_id")):
+            continue
+        out.append({"item_id": str(row.get("item_id") or ""), "rule_id": str(row.get("rule_id") or ""),
+                    "path": str(row.get("path") or "").replace("\\", "/").lstrip("/"), "adr": str(row["adr"]), "reason": str(row.get("reason") or "")})
+    return out
+
+
+def superseded_rules(doc: dict[str, Any], root: Path) -> dict[str, dict[str, str]]:
+    """rule id → {requires_present, reason} the decided platform supersedes (catalog fact, never inferred)."""
+    plat = (doc.get("destination_platform") or {}).get("id")
+    if not plat:
+        return {}
+    try:
+        rows = (known_platforms(root).get(str(plat)) or {}).get("superseded_rules") or {}
+    except (OSError, ValueError):
+        return {}
+    return {k: {"requires_present": str(v.get("requires_present") or ""), "reason": str(v.get("reason") or "")} for k, v in rows.items() if k != "note" and isinstance(v, dict)}

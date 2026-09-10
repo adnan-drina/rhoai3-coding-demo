@@ -135,6 +135,54 @@ def incidents_from_findings(findings: dict[str, Any], roots: list[str], canary_i
     return out
 
 
+def pom_dependency_ids(root: Path) -> set[str]:
+    """group:artifact of every declared dependency in the destination pom (no plugins, no management)."""
+    p = Path(root) / "pom.xml"
+    if not p.is_file():
+        return set()
+    try:
+        tree = ET.parse(p)
+    except ET.ParseError:
+        return set()
+    out: set[str] = set()
+    for dep in tree.getroot().iter():
+        tag = dep.tag.rsplit("}", 1)[-1]
+        if tag != "dependency":
+            continue
+        g = a = ""
+        for ch in dep:
+            t = ch.tag.rsplit("}", 1)[-1]
+            if t == "groupId":
+                g = (ch.text or "").strip()
+            elif t == "artifactId":
+                a = (ch.text or "").strip()
+        if g and a:
+            out.add("%s:%s" % (g, a))
+    return out
+
+
+def apply_supersessions(items: list[dict[str, Any]], superseded: dict[str, dict[str, str]], waivers: list[dict[str, str]], present: set[str], *, platform: str = "") -> list[dict[str, Any]]:
+    """Reclassify mandatory MTA incidents the platform supersedes (catalog, guarded
+    by a present artifact) or an accepted ADR waives (decisions.not_applicable).
+    Nothing is dropped: the item stays, with category superseded / waived and
+    the authority that says so, and never counts as an obligation again."""
+    for it in items:
+        if it.get("source") != "mta" or it.get("category") != "mandatory":
+            continue
+        rid, path = str(it.get("rule_id") or ""), str(it.get("path") or "")
+        sup = superseded.get(rid)
+        if sup is not None and (not sup.get("requires_present") or sup["requires_present"] in present):
+            it["category"] = "superseded"
+            it["superseded_by"] = {"platform": platform, "requires_present": sup.get("requires_present", ""), "reason": sup.get("reason", "")}
+            continue
+        for w in waivers:
+            if (w.get("item_id") and w["item_id"] == it.get("id")) or (w.get("rule_id") and w["rule_id"] == rid and (not w.get("path") or w["path"] == path)):
+                it["category"] = "waived"
+                it["waived_by"] = {"adr": w.get("adr", ""), "reason": w.get("reason", "")}
+                break
+    return items
+
+
 def incidents_from_bundle(bundle: dict[str, Any]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for ob in bundle.get("obligations") or []:
@@ -375,7 +423,16 @@ def build_worklist(root: Path, *, write: bool = True) -> dict[str, Any]:
         incidents_known = False
         blocked.append("MTA rescan did not run in this verification (rc %s); incidents unknown" % rescan.get("rc"))
         incident_source = {"kind": "stale", "path": str(MTA_RESCAN_FINDINGS), "sha256": sha256_file(findings_path) if findings_path.is_file() else ""}
+    try:
+        from planner.decisions import load_decisions, superseded_rules, waivers as _waivers
+
+        decisions_doc = load_decisions(root)
+    except (OSError, ValueError):
+        decisions_doc = {}
+    platform_id = str((decisions_doc.get("destination_platform") or {}).get("id") or "")
+    apply_supersessions(incidents, superseded_rules(decisions_doc, root) if decisions_doc else {}, _waivers(decisions_doc) if decisions_doc else [], pom_dependency_ids(root), platform=platform_id)
     mandatory = [i for i in incidents if i["category"] == "mandatory"]
+    not_counted = [{"id": i["id"], "rule_id": i.get("rule_id"), "path": i.get("path"), "category": i["category"], "by": i.get("superseded_by") or i.get("waived_by")} for i in incidents if i["category"] in ("superseded", "waived")]
     diag_run = run.get("diagnostics") or {}
     diags = load_json(diag_path) if diag_path.is_file() else None
     compile_known = isinstance(diags, dict) and bool(diag_run.get("ran")) and not diags.get("build_unresolvable")
@@ -412,6 +469,7 @@ def build_worklist(root: Path, *, write: bool = True) -> dict[str, Any]:
     doc = {
         "schema": SCHEMA,
         "evidence_bundle_sha256": digest(bundle),
+        "not_counted": not_counted,
         "candidate_sha256": str(run.get("candidate_sha256") or ""),
         "sources": {
             "incidents": incident_source,

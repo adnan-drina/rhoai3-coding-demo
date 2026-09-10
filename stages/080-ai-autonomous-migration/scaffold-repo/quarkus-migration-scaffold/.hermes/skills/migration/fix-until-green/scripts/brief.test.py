@@ -9,6 +9,7 @@ config items: the property line, the incident variables, the catalog mapping (ke
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import sys
 import tempfile
@@ -59,6 +60,12 @@ def main() -> int:
         }}
         write_canonical(root / "evidence" / "mta-findings.json", findings)
 
+        # the rule's own condition, verbatim from the pinned rulesets (MTA_CLI_HOME)
+        rs = root / "mta" / "rulesets" / "java" / "quarkus"; rs.mkdir(parents=True)
+        (rs / "236-springboot-web-to-quarkus.windup.yaml").write_text(
+            "- category: mandatory\n  ruleID: springboot-web-to-quarkus-00000\n  when:\n    java.dependency:\n      name: x\n"
+            "- category: mandatory\n  description: Add jackson\n  ruleID: springboot-web-to-quarkus-00010\n  when:\n    or:\n    - and:\n      - java.dependency:\n          name: io.quarkus.quarkus-spring-web\n      - java.dependency:\n          name: io.quarkus.quarkus-resteasy-reactive-jackson\n        not: true\n  message: m\n- category: optional\n  ruleID: other\n", encoding="utf-8")
+        os.environ["MTA_CLI_HOME"] = str(root / "mta")
         pom_cluster = {"id": "c:pom", "kind": "build", "path": "pom.xml", "write_set": ["pom.xml"]}
         rows = enrich([{"id": "inc:1", "source": "mta", "kind": "build", "category": "mandatory", "path": "pom.xml", "line": 1, "rule_id": "springboot-web-to-quarkus-00010"}], root, pom_cluster)
         r = rows[0]
@@ -66,6 +73,9 @@ def main() -> int:
             return _fail("pom advice must flag the unmanaged Quarkus 2 name with the managed equivalent: %s" % r)
         if r.get("advice_managed_present") != ["io.quarkus:quarkus-rest-jackson"]:
             return _fail("the managed equivalent already in the pom must be reported present: %s" % r.get("advice_managed_present"))
+        cond = r.get("rule_condition") or ""
+        if not cond.startswith("when:") or "quarkus-resteasy-reactive-jackson" not in cond or "not: true" not in cond or "message: m" in cond or "ruleID: other" in cond:
+            return _fail("the brief must carry the rule's when-block verbatim and nothing else: %r" % cond)
 
         java_cluster = {"id": "c:java", "kind": "compile", "path": "src/main/java/org/acme/rest/PetResource.java", "write_set": ["src/main/java/org/acme/rest/PetResource.java"]}
         items = [

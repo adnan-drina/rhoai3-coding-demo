@@ -13,7 +13,18 @@
       "resource_root": "src/main/resources",
       "config_file": "src/main/resources/application.properties",
       "path": "spring-compat",
-      "compat_mapping": "compat-mapping.json"
+      "compat_mapping": "compat-mapping.json",
+      "superseded_rules": {
+        "note": "MTA 8.2 rules whose condition or advice encodes a pre-Quarkus-3.9 artifact name. On this platform the same extension exists under its renamed id (Quarkus 3.9 migration guide: RESTEasy Reactive \u2192 Quarkus REST). Each row applies only while `requires_present` is a declared dependency of the destination pom; the work list reports the incident as superseded, never as mandatory (pilot v6, 2026-09-10: two of three remaining pom obligations were unsatisfiable by any pom edit).",
+        "springboot-web-to-quarkus-00010": {
+          "requires_present": "io.quarkus:quarkus-rest-jackson",
+          "reason": "fires while io.quarkus:quarkus-spring-web is present and io.quarkus:quarkus-resteasy-reactive-jackson is absent; quarkus-rest-jackson is that extension under its Quarkus 3.9 name and the BOM manages only the new id"
+        },
+        "jakarta-jaxrs-to-quarkus-00010": {
+          "requires_present": "io.quarkus:quarkus-rest",
+          "reason": "advises replacing jakarta.ws.rs:jakarta.ws.rs-api with io.quarkus:quarkus-resteasy-reactive; on this platform the API arrives transitively from quarkus-rest, the renamed extension, and the rule matches the resolved dependency, not a pom line"
+        }
+      }
     }
   }
 }

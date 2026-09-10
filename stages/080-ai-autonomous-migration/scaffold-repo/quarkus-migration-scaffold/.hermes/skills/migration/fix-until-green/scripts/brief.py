@@ -9,9 +9,11 @@ open cluster (the loop is done or fully deferred).
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import json
 import sys
+import textwrap
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -107,6 +109,61 @@ _SYMBOL_RE = re.compile(r"symbol:\s+(class|variable|method|interface|enum)\s+([A
 _PACKAGE_RE = re.compile(r"package ([\w.]+) does not exist")
 _LOCATION_RE = re.compile(r"location:\s+(?:class|interface|package)\s+([\w.$]+)")
 REFERENCES_DIR = Path(".hermes") / "skills" / "migration" / "spring-to-quarkus-patterns" / "references"
+
+
+def rulesets_dir() -> Path | None:
+    home = os.environ.get("MTA_CLI_HOME") or "/opt/mta-cli"
+    d = Path(home) / "rulesets"
+    return d if d.is_dir() else None
+
+
+_RULE_CACHE: dict[str, str] = {}
+
+
+def rule_condition(rule_id: str) -> str:
+    """The `when:` block of an MTA rule, verbatim from the pinned rulesets: what
+    makes the incident appear, hence exactly what makes it disappear (an xpath
+    on the pom, a dependency name). Empty when the rulesets are not on this seat."""
+    if not rule_id:
+        return ""
+    if rule_id in _RULE_CACHE:
+        return _RULE_CACHE[rule_id]
+    d = rulesets_dir()
+    text = ""
+    if d is not None:
+        needle = "ruleID: " + rule_id
+        for f in sorted(d.rglob("*.yaml")):
+            try:
+                raw = f.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            if needle not in raw:
+                continue
+            lines = raw.splitlines()
+            start = next((i for i, ln in enumerate(lines) if ln.strip() == needle), -1)
+            if start < 0:
+                continue
+            # the rule item spans from its first key to the next list item at the same indent
+            item_indent = len(lines[start]) - len(lines[start].lstrip())
+            j = start
+            while j > 0 and not lines[j].lstrip().startswith("- ") and (len(lines[j]) - len(lines[j].lstrip())) >= item_indent - 2:
+                j -= 1
+            k = start + 1
+            while k < len(lines) and not (lines[k].lstrip().startswith("- ") and (len(lines[k]) - len(lines[k].lstrip())) <= item_indent - 2):
+                k += 1
+            block = lines[j:k]
+            w = next((i for i, ln in enumerate(block) if ln.strip() == "when:"), -1)
+            if w >= 0:
+                wi = len(block[w]) - len(block[w].lstrip())
+                out = [block[w]]
+                for ln in block[w + 1:]:
+                    if ln.strip() and (len(ln) - len(ln.lstrip())) <= wi:
+                        break
+                    out.append(ln)
+                text = textwrap.dedent("\n".join(out[:40]))
+            break
+    _RULE_CACHE[rule_id] = text
+    return text
 
 
 def load_inventory(root: Path) -> list[dict]:
@@ -286,6 +343,9 @@ def enrich(items: list[dict], root: Path, cluster: dict) -> list[dict]:
             incs = rule.get("incidents") if isinstance(rule.get("incidents"), list) else []
             msg = next((str(i.get("message")) for i in incs if isinstance(i, dict) and i.get("message")), "")
             row["advice"] = {"description": str(rule.get("description") or ""), "message": msg, "links": [l.get("url") for l in (rule.get("links") or []) if isinstance(l, dict) and l.get("url")]}
+            cond = rule_condition(str(it.get("rule_id") or ""))
+            if cond:
+                row["rule_condition"] = cond
             present = sorted(t for t in _backticked(msg) if t in artifacts or t.split(":")[-1] in artifacts)
             if present:
                 row["advice_present"] = present
@@ -322,11 +382,13 @@ def main(argv: list[str] | None = None) -> int:
     if cluster is None:
         print("REFUSE: LOOP_NO_OPEN_CLUSTER (work list head is empty)", file=sys.stderr)
         return 1
+    write_set = list(cluster.get("write_set") or [])
     brief = {
         "schema": "rhoai3.loop-brief/v1",
         "cluster": cluster,
-        "write_set": list(cluster.get("write_set") or []),
+        "write_set": write_set,
         "items": enrich(items_of(doc, cluster), root, cluster),
+        "not_counted": [n for n in (doc.get("not_counted") or []) if str(n.get("path") or "") in write_set],
         "measure": doc["measure"],
         "procedure": PROCEDURE,
         "rule": "Edit only the write set. Do not edit tests. Do not touch pom.xml unless it is in the write set. Then run run-verify.sh and advance.py; the measure decides, not you.",
