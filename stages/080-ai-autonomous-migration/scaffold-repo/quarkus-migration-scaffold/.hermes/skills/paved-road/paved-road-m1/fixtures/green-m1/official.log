@@ -5,3 +5,4 @@
   ┊ 📚 skill  assemble-evidence-bundle
   ┊ 💻 $         python3 .hermes/kernel/kanban_attach.py --task t_m1 --exec  0.3s
   ┊ 📋 preparing kanban_request_review…
+  ┊ 💻 $         bash /projects/modernized/.hermes/skills/harness/dispatch-phase/scripts/autostart-migration.sh --root /projects/modernized  1.2s

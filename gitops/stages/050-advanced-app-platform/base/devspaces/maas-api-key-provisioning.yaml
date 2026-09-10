@@ -2215,6 +2215,54 @@ data:
         exit 1
       fi
       echo "dest-init hermes kanban ls: MATCH"
+      # Record the run authorization before minting anything (SAD section 12).
+      #
+      # Creating this workspace IS the named human act that authorizes the run:
+      # OpenShift records the creator on the DevWorkspace and injects it as
+      # DEVWORKSPACE_CREATOR. dest-init writes that into the dest pins as a
+      # pilot seal with NO bundle digest, so the planner stays fail-closed
+      # (admission refuses an unbound seal) until M1 has produced an evidence
+      # bundle; the last M1 step re-runs autostart-migration.sh, which binds
+      # the seal to that bundle and mints M2. No keystroke, same named
+      # authorizer, same one-bundle binding. An operator who wants the old
+      # behaviour sets RHOAI3_PILOT_AUTOSTART=0 and seals by hand.
+      #
+      # A pins.json that is already activated or already carries a seal is left
+      # alone: this only ever fills in a not-activated golden.
+      if [ "${RHOAI3_PILOT_AUTOSTART:-1}" = "1" ] && [ -n "${DEVWORKSPACE_NAME:-}" ] && [ -n "${DEVWORKSPACE_CREATOR:-}" ]; then
+        python3 - "${PROJECT_DIR}" "${DEVWORKSPACE_NAME}" "${DEVWORKSPACE_CREATOR}" "${DEVWORKSPACE_NAMESPACE:-}" <<'PYSEAL' || echo "WARN: pilot authorization not recorded"
+    import datetime, json, sys
+    from pathlib import Path
+    root, name, creator, ns = Path(sys.argv[1]), sys.argv[2], sys.argv[3], sys.argv[4]
+    pins_path = root / ".hermes" / "pins.json"
+    doc = json.loads(pins_path.read_text(encoding="utf-8"))
+    planner = (doc.get("pins") or {}).setdefault("planner", {})
+    mode = str(planner.get("activation") or "").strip().lower()
+    if mode == "activated":
+        print("dest-init: planner is activated; no seal needed")
+        raise SystemExit(0)
+    seal = planner.get("pilot")
+    if isinstance(seal, dict) and str(seal.get("run_id") or "").strip():
+        print("dest-init: pilot seal already present for run %s; left alone" % seal.get("run_id"))
+        raise SystemExit(0)
+    planner["activation"] = "pilot"
+    planner["pilot"] = {
+        "run_id": name,
+        "authorized_by": "devworkspace-creator:%s" % creator,
+        "evidence_bundle_sha256": "",
+        "authorization": {
+            "source": "devworkspace",
+            "devworkspace": name,
+            "namespace": ns,
+            "creator": creator,
+            "at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "note": "creating the workspace is the authorization; the harness binds it to the M1 bundle and never invents run_id or authorized_by",
+        },
+    }
+    pins_path.write_text(json.dumps(doc, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    print("dest-init: pilot authorization recorded for run %s by %s (bundle unbound)" % (name, creator))
+    PYSEAL
+      fi
       # Mint M1 ANALYZE (M2 only when pins.planner.activation is activated).
       # destfile postStart calls the same script; autostart is idempotent.
       AUTO_M1="${PROJECT_DIR}/.hermes/skills/harness/dispatch-phase/scripts/autostart-migration.sh"

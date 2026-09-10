@@ -71,10 +71,63 @@ if [[ -z "${HERMES}" ]]; then
   fail_status "hermes not on PATH"
 fi
 
+# Bind a platform-authorized pilot seal to the bundle on disk (SAD section 12).
+#
+# The decision "this run may plan" is the named human act of creating the
+# workspace: dest-init records it in pins.planner.pilot as
+# {run_id: <DevWorkspace>, authorized_by: <creator>, authorization: {source:
+# devworkspace, ...}} with no digest. Binding that authorization to the
+# evidence bundle is a derivation, not a decision -- the only value written is
+# the canonical digest of the bundle that exists -- so the harness may do it
+# once M1 has produced one. planner.pins.pilot_bind_gaps refuses a seal that is
+# already bound, has no named authorizer, or was not recorded by the platform;
+# bundle_fitness_gaps refuses to bind an unfit bundle (a producer that did not
+# run, no canary, no entry point, no obligation), which is what a human was
+# nominally checking before signing. Admission re-checks all of it and is
+# still the gate on the plan.
+python3 - "${ROOT}" <<'PYBIND' || true
+import datetime, sys
+from pathlib import Path
+root = Path(sys.argv[1])
+sys.path.insert(0, str(root / ".hermes" / "lib"))
+try:
+    from planner.canonical import digest, load_json, write_canonical
+    from planner.pins import bundle_fitness_gaps, pilot_bind_gaps
+except Exception as exc:
+    print("bind: planner lib unavailable (%s); nothing bound" % exc)
+    raise SystemExit(0)
+pins_path = root / ".hermes" / "pins.json"
+bundle_path = root / "evidence" / "planning" / "evidence-bundle.json"
+try:
+    doc = load_json(pins_path)
+except Exception as exc:
+    print("bind: pins unreadable (%s); nothing bound" % exc)
+    raise SystemExit(0)
+gaps = pilot_bind_gaps(doc.get("pins") or {})
+if gaps:
+    print("bind: not bindable (%s)" % gaps[0])
+    raise SystemExit(0)
+if not bundle_path.is_file():
+    print("bind: no evidence bundle yet; M1 has not produced one")
+    raise SystemExit(0)
+bundle = load_json(bundle_path)
+unfit = bundle_fitness_gaps(bundle)
+if unfit:
+    print("REFUSE: BIND_UNFIT_BUNDLE %s" % "; ".join(unfit[:3]))
+    raise SystemExit(0)
+d = digest(bundle)
+seal = doc["pins"]["planner"]["pilot"]
+seal["evidence_bundle_sha256"] = d
+seal["bound_at"] = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+write_canonical(pins_path, doc)
+print("bind: pilot seal for run %s (authorized by %s) bound to bundle %s" % (seal.get("run_id"), seal.get("authorized_by"), d[:16]))
+PYBIND
+
 # Planner activation (SAD §9/§12). Read, never decided here. "activated" mints
 # M2 at dest-init. "pilot" mints M2 only once the Operator's seal names the
 # evidence bundle that is on disk (so at dest-init, before M1, a pilot mints
-# M1 only; the Operator re-runs this script after sealing — M1 is idempotent).
+# M1 only; the last M1 step re-runs this script, which binds the platform
+# authorization and mints M2 - M1 is idempotent).
 # The same check (planner.pins.activation_gaps) gates the first M2 step, admission and K4.
 PLANNER_ACTIVATION="$(python3 - "${ROOT}" <<'PY'
 import json, sys

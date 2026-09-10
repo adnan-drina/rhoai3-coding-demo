@@ -534,6 +534,24 @@ check "080 brief enrichment selftest passes (unmanaged→managed artifact; inven
 check "080 paved-road coverage lint passes" \
   "python3 '${SCAFFOLD_LIB}/paved_road.py' coverage >/dev/null && echo 1 || echo 0" \
   "1"
+# v8+: creating the workspace is the authorization. dest-init records it as an
+# unbound pilot seal (fail-closed until M1 produces a bundle) and the last M1
+# road step binds it, so a run needs no human keystroke between M1 and M2.
+check "080 dest-init records the workspace-creator authorization as an unbound pilot seal" \
+  "grep -v '^[[:space:]]*#' '${GITOPS_INIT}' | grep -c 'devworkspace-creator:' || echo 0" \
+  "1"
+check "080 dest-init leaves an activated planner or an existing seal alone" \
+  "grep -c 'pilot seal already present for run' '${GITOPS_INIT}' || echo 0" \
+  "1"
+check "080 the dispatcher binds a platform-authorized seal and refuses an unfit bundle" \
+  "grep -c 'BIND_UNFIT_BUNDLE' '${SCAFFOLD_AUTOSTART}/autostart-migration.sh' || echo 0" \
+  "1"
+check "080 only a platform-recorded authorization may be bound (never a worker-authored one)" \
+  "python3 -c \"import sys; sys.path.insert(0, '${SCAFFOLD_LIB}'); from planner.pins import pilot_bind_gaps as g; ok={'planner':{'activation':'pilot','pilot':{'run_id':'r','authorized_by':'u','evidence_bundle_sha256':'','authorization':{'source':'devworkspace','creator':'c'}}}}; bad={'planner':{'activation':'pilot','pilot':{'run_id':'r','authorized_by':'u','evidence_bundle_sha256':'','authorization':{'source':'worker','creator':'c'}}}}; print(1 if not g(ok) and g(bad) else 0)\"" \
+  "1"
+check "080 paved-road-m1 ends by dispatching the next phase" \
+  "python3 -c \"import json; d=json.load(open('${SCAFFOLD_PAVED}/paved-road-m1/steps.json')); print(d['steps'][-1]['native'])\"" \
+  "autostart-migration.sh"
 check "080 autostart pins paved-road-m1 only on M1" \
   "grep -c -- '--skill paved-road-m1' '${SCAFFOLD_AUTOSTART}/autostart-migration.sh' || echo 0" \
   "1"

@@ -67,6 +67,12 @@
         "evidence/mta-findings.json"
       ],
       "needle": "kanban_attach.py"
+    },
+    {
+      "backing": "native",
+      "id": "dispatch-next-phase",
+      "keep": [],
+      "needle": "autostart-migration.sh"
     }
   ],
   "unmatched_exit_1_fails": true,

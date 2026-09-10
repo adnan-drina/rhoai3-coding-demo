@@ -52,9 +52,16 @@ the root of the planner digest chain (SAD §6).
    records `outcome: failure` is **evidence**, not a defect to repair.
    extractor unpinned / JDK mismatch → `kanban_block` (kind `needs_input`, the pin is an
    ADR). Build failure → continue; the ledger makes it planning-only.
-4. Happy-path terminator: `kanban_request_review` (reviewer `reviewer`), then end the turn. A later nudge to finish is already satisfied by the review handoff; do not answer it with `kanban_complete` (K2 refuses it for the implementer) or `kanban_block`.
-5. `kanban_block` for external/platform (MaaS 500, missing key, GPU).
-6. Reviewer runs `scripts/assert-paved-road-audit.py --log <official> --root <ws>`.
+4. `bash .hermes/skills/harness/dispatch-phase/scripts/autostart-migration.sh --root /projects/modernized`
+   — binds the platform-recorded pilot authorization (dest-init wrote who
+   authorized this run from the DevWorkspace its creator started) to the
+   bundle you just produced, and mints M2. It decides nothing: an unbound
+   seal with no named authorizer, one already bound, one not recorded by the
+   platform, or an unfit bundle are all refused, and admission still gates
+   the plan. Mints nothing under a not-activated planner; idempotent.
+5. Happy-path terminator: `kanban_request_review` (reviewer `reviewer`), then end the turn. A later nudge to finish is already satisfied by the review handoff; do not answer it with `kanban_complete` (K2 refuses it for the implementer) or `kanban_block`.
+6. `kanban_block` for external/platform (MaaS 500, missing key, GPU).
+7. Reviewer runs `scripts/assert-paved-road-audit.py --log <official> --root <ws>`.
    `--log` must be `kanban/logs/t_*.log` (or a land-time `fixtures/**/official.log`).
 
 ## Gotchas

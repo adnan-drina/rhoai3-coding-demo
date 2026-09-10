@@ -82,6 +82,69 @@ def pilot_seal(pins: dict[str, Any]) -> dict[str, Any]:
     return seal if isinstance(seal, dict) else {}
 
 
+def pilot_authorization(pins: dict[str, Any]) -> dict[str, Any]:
+    """Who authorized this pilot run and how it was recorded."""
+    auth = pilot_seal(pins).get("authorization")
+    return auth if isinstance(auth, dict) else {}
+
+
+def pilot_bind_gaps(pins: dict[str, Any]) -> list[str]:
+    """Why the pilot seal may NOT be bound to the bundle on disk mechanically.
+
+    Empty list = the platform recorded a named authorization for this run
+    (dest-init, from the DevWorkspace its named creator started) and the seal
+    is not bound yet, so the binding is a derivation, not a decision: the only
+    value written is the canonical digest of the bundle that exists.
+
+    A seal that is already bound, one with no named authorizer, and one whose
+    authorization did not come from the platform are all refused here; so is
+    an `activated` or `not-activated` planner, which needs no binding.
+    """
+    if planner_activation(pins) != PILOT:
+        return ["planner activation is %r, not pilot" % planner_activation(pins)]
+    seal = pilot_seal(pins)
+    gaps: list[str] = []
+    if not str(seal.get("run_id") or "").strip():
+        gaps.append("pins.planner.pilot.run_id missing")
+    if not str(seal.get("authorized_by") or "").strip():
+        gaps.append("pins.planner.pilot.authorized_by missing")
+    auth = pilot_authorization(pins)
+    if str(auth.get("source") or "") != "devworkspace":
+        gaps.append("pins.planner.pilot.authorization.source is %r, not 'devworkspace' (only the platform may record an authorization the harness binds)" % auth.get("source"))
+    if not str(auth.get("creator") or "").strip():
+        gaps.append("pins.planner.pilot.authorization.creator missing (the workspace creator)")
+    if str(seal.get("evidence_bundle_sha256") or "").strip():
+        gaps.append("pins.planner.pilot.evidence_bundle_sha256 is already bound; a bound seal is never rewritten")
+    return gaps
+
+
+def bundle_fitness_gaps(bundle: dict[str, Any]) -> list[str]:
+    """Why this evidence bundle is not fit to be authorized.
+
+    The facts a human was nominally checking before signing a pilot seal, made
+    mechanical so they are re-checked on every run: every producer the bundle
+    names ran ok, the MTA canary fired, entry points exist, obligations exist.
+    Admission re-checks all of this independently; binding an unfit bundle is
+    refused here so an authorization never covers one.
+    """
+    gaps: list[str] = []
+    producers = bundle.get("producers") if isinstance(bundle.get("producers"), dict) else {}
+    if not producers:
+        gaps.append("bundle names no producers")
+    for name, rec in sorted(producers.items()):
+        status = str((rec or {}).get("status") or "missing") if isinstance(rec, dict) else str(rec)
+        if status not in USED_STATUSES:
+            gaps.append("producer %s status is %r" % (name, status))
+    mta = producers.get("mta") if isinstance(producers.get("mta"), dict) else {}
+    if not (mta.get("canary") or {}).get("fired"):
+        gaps.append("the MTA canary did not fire; the effective ruleset is unproven")
+    if not (bundle.get("entry_points") or []):
+        gaps.append("bundle has no entry point")
+    if not (bundle.get("obligations") or []):
+        gaps.append("bundle has no obligation; an empty plan is not a silent success")
+    return gaps
+
+
 def activation_gaps(pins: dict[str, Any], bundle_digest: str) -> list[str]:
     """Why this bundle may not be admitted under the current activation.
 

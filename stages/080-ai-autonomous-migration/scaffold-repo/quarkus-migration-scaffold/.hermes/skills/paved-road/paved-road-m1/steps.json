@@ -64,6 +64,12 @@
         "evidence/required-extensions.json",
         "evidence/mta-findings.json"
       ]
+    },
+    {
+      "id": "dispatch-next-phase",
+      "backing": "native",
+      "native": "autostart-migration.sh",
+      "note": "Binds the platform-recorded pilot authorization to the bundle just produced and mints M2 (idempotent; mints nothing under a not-activated planner or an unfit bundle). The decision was the named human act of creating the workspace; this step only derives the binding, and admission still gates the plan."
     }
   ]
 }

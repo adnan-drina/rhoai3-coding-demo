@@ -56,7 +56,9 @@ class TestStepsContract(unittest.TestCase):
         self.assertNotIn("derive-legacy-boot3", names)
         self.assertLess(names.index("inventory-legacy-surface"), names.index("scan-with-mta"))
         native = [s for s in doc["steps"] if s["backing"] == "native"]
-        self.assertEqual([n["native"] for n in native], ["kanban_attach.py"])
+        # M1 ends by dispatching the next phase: it binds the platform-recorded
+        # pilot authorization to the bundle it just produced and mints M2.
+        self.assertEqual([n["native"] for n in native], ["kanban_attach.py", "autostart-migration.sh"])
 
     def test_m1_scan_before_inventory_is_refused(self):
         swapped = load_steps(M1 / "steps.json")
