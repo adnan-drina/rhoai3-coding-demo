@@ -170,9 +170,67 @@ def _jakarta_imports_case() -> int:
     return 0
 
 
+def _version_precedence_case() -> int:
+    """A tooling pin that names an artifact decides its version; the legacy
+    build's resolved version is the fallback for artifacts nobody decided
+    about; an artifact with neither blocks."""
+    import importlib.util
+    import json
+    import xml.etree.ElementTree as ET
+
+    spec = importlib.util.spec_from_file_location("bootstrap_destination", SCRIPT)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)  # type: ignore[union-attr]
+    with tempfile.TemporaryDirectory(prefix="vers-") as td:
+        root = Path(td)
+        (root / "evidence" / "producers").mkdir(parents=True)
+        (root / ".derived").mkdir(parents=True, exist_ok=True)
+        platform = {"group_id": "com.redhat.quarkus.platform", "bom_artifact_id": "quarkus-bom", "version": "9.9.9"}
+        probe = root / mod.BOM_MANAGED
+        probe.parent.mkdir(parents=True, exist_ok=True)
+        probe.write_text(json.dumps({"bom": {"group_id": platform["group_id"], "artifact_id": platform["bom_artifact_id"], "version": platform["version"]}, "managed": ["io.quarkus:quarkus-rest"]}), encoding="utf-8")
+        (root / "evidence" / "producers" / "build.json").write_text(json.dumps({"managed_versions": {"org.assertj:assertj-core": "3.21.0", "org.acme:only-legacy": "1.0.0"}}), encoding="utf-8")
+        # the shape load_pins returns: the inner mapping, key -> pin
+        pins = {"assertj_core": {"group_id": "org.assertj", "artifact_id": "assertj-core", "version": "3.27.7"},
+                "mapstruct": {"status": "unpinned"}}
+        pom = """<project xmlns="http://maven.apache.org/POM/4.0.0"><dependencies>
+<dependency><groupId>org.assertj</groupId><artifactId>assertj-core</artifactId><scope>test</scope></dependency>
+<dependency><groupId>org.acme</groupId><artifactId>only-legacy</artifactId></dependency>
+<dependency><groupId>io.quarkus</groupId><artifactId>quarkus-rest</artifactId></dependency>
+<dependency><groupId>org.acme</groupId><artifactId>nobody-decided</artifactId></dependency>
+<dependency><groupId>org.assertj</groupId><artifactId>assertj-core</artifactId><version>3.21.0</version><classifier>disagrees</classifier></dependency>
+<dependency><groupId>org.acme</groupId><artifactId>by-property</artifactId><version>${acme.version}</version></dependency>
+</dependencies></project>"""
+        project = ET.fromstring(pom)
+        deps = project.find(mod.q("dependencies"))
+        ch: list = []; blocks: list = []
+        mod.carry_versions(root, platform, deps, blocks, ch, pins)
+        got = {mod.text(d, "artifactId"): mod.text(d, "version") for d in deps.findall(mod.q("dependency"))}
+        if got.get("assertj-core") != "3.27.7":
+            return _fail("a pin that names the artifact must decide its version: %s" % got)
+        if got.get("only-legacy") != "1.0.0":
+            return _fail("an artifact no pin names falls back to the legacy resolved version: %s" % got)
+        if got.get("quarkus-rest"):
+            return _fail("a BOM-managed artifact must stay version-less: %s" % got)
+        if [b["class"] for b in blocks] != ["VERSION_UNMANAGED"] or blocks[0]["subject"] != "org.acme:nobody-decided":
+            return _fail("an artifact with no pin, no BOM entry and no legacy version must block: %s" % blocks)
+        vers = [mod.text(d, "version") for d in deps.findall(mod.q("dependency")) if mod.text(d, "artifactId") == "assertj-core"]
+        if vers != ["3.27.7", "3.27.7"]:
+            return _fail("a literal version that disagrees with the pin must be corrected: %s" % vers)
+        if [mod.text(d, "version") for d in deps.findall(mod.q("dependency")) if mod.text(d, "artifactId") == "by-property"] != ["${acme.version}"]:
+            return _fail("a version carried by a property must be left to its property")
+        if not any(c["op"] == "pom.repin-version" and c.get("was") == "3.21.0" for c in ch):
+            return _fail("the correction must record what it replaced: %s" % ch)
+        provs = {c["gav"]: c["provenance"] for c in ch}
+        if provs.get("org.assertj:assertj-core:3.27.7") != "pins.json assertj_core":
+            return _fail("the change must record which pin decided: %s" % provs)
+    return 0
+
+
 def _reapply_catalog_case() -> int:
     """--reapply-catalog: a catalog row that arrived after the bootstrap ran
     reaches an already bootstrapped tree, and accepted work survives it."""
+    import json
     import re
     with tempfile.TemporaryDirectory(prefix="reapply-") as td:
         root = specimens.build_dest(Path(td) / "d", specimens.specimen("http"), decisions=specimens.admitted_decisions())
@@ -209,6 +267,24 @@ def _reapply_catalog_case() -> int:
             return _fail("reapply-catalog must apply the namespace rename to test sources")
         rec = load_json(root / "evidence/producers/bootstrap.json")
         ops = [c["op"] for c in rec["changes"]]
+        # a stale refusal of the class this mode measures must clear when the
+        # cause is gone, or a corrected decision leaves the receipt blocked
+        # (and admission INCONCLUSIVE) for the rest of the run
+        rec["blocks"] = [{"class": "VERSION_UNMANAGED", "subject": "old:gone", "detail": "stale"},
+                         {"class": "MAIN_CLASS_NOT_TRIVIAL", "subject": "org.acme.App", "detail": "not this mode's question"}]
+        rec["status"] = "blocked"
+        (root / "evidence/producers/bootstrap.json").write_text(json.dumps(rec), encoding="utf-8")
+        p1b = subprocess.run([sys.executable, str(SCRIPT), "--root", str(root), "--reapply-catalog"], text=True, capture_output=True)
+        rec_b = load_json(root / "evidence/producers/bootstrap.json")
+        classes = [b["class"] for b in rec_b.get("blocks") or []]
+        if p1b.returncode != 0 or classes != ["MAIN_CLASS_NOT_TRIVIAL"] or rec_b["status"] != "blocked":
+            return _fail("reapply must recompute its own block classes and leave the others: rc=%s %s %s" % (p1b.returncode, classes, rec_b["status"]))
+        rec_b["blocks"] = []; rec_b["status"] = "blocked"
+        (root / "evidence/producers/bootstrap.json").write_text(json.dumps(rec_b), encoding="utf-8")
+        subprocess.run([sys.executable, str(SCRIPT), "--root", str(root), "--reapply-catalog"], text=True, capture_output=True)
+        if load_json(root / "evidence/producers/bootstrap.json")["status"] != "ok":
+            return _fail("a receipt with no blocks left must go back to ok")
+        rec = load_json(root / "evidence/producers/bootstrap.json")
         if rec["status"] != "ok" or "pom.add-extension" not in ops:
             return _fail("the reapplied changes must be appended to the bootstrap receipt: %s %s" % (rec["status"], sorted(set(ops))))
         before = tree_hash(root)
@@ -224,7 +300,7 @@ def _reapply_catalog_case() -> int:
 
 
 def main() -> int:
-    if _plugin_config_case() or _profile_merge_case() or _jakarta_imports_case() or _reapply_catalog_case():
+    if _plugin_config_case() or _profile_merge_case() or _jakarta_imports_case() or _version_precedence_case() or _reapply_catalog_case():
         return 1
     with tempfile.TemporaryDirectory(prefix="boot-") as tmp:
         t = Path(tmp).resolve()
@@ -343,7 +419,7 @@ def main() -> int:
         p = subprocess.run([sys.executable, str(SCRIPT), "--root", str(r)], text=True, capture_output=True)
         if [c for c in load_json(r / "evidence/producers/bootstrap.json")["changes"] if c["op"] in ("source.delete", "source.retire") and c["path"] == vet_path]:
             return _fail("an ADR that is not accepted retires nothing")
-    print("OK: bootstrap-destination (trivial launcher deleted; second run preserves the tree; @Bean launcher kept + BOOTSTRAP_BLOCKED; unmapped starter kept + block; Maven settings wiring required; legacy versions carried over / VERSION_UNMANAGED / BOM_PROBE_MISSING; ADR-retired sources deleted with provenance / stale path blocks; reapply-catalog carries a late row and refuses without a receipt)")
+    print("OK: bootstrap-destination (trivial launcher deleted; second run preserves the tree; @Bean launcher kept + BOOTSTRAP_BLOCKED; unmapped starter kept + block; Maven settings wiring required; pinned version beats the legacy carry / VERSION_UNMANAGED / BOM_PROBE_MISSING; ADR-retired sources deleted with provenance / stale path blocks; reapply-catalog carries a late row and refuses without a receipt)")
     return 0
 
 

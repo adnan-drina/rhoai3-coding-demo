@@ -224,10 +224,11 @@ def bootstrap_pom(root: Path, catalog: dict, pins: dict, changes: list[dict], bl
     add_mapped_artifacts(deps, catalog, to_add, scoped, changes)
     # 4b. versions: the removed Spring Boot parent managed versions; the
     # Quarkus BOM manages its own set (measured by probe-bom-managed.py).
-    # A version-less dependency the BOM does not manage gets the version the
-    # legacy build resolved (build receipt managed_versions) — a measured
-    # fact, never a guess — or blocks.
-    carry_versions(root, platform, deps, blocks, changes)
+    # A version-less dependency the BOM does not manage gets the version a
+    # tooling pin decided for it, else the version the legacy build resolved
+    # (build receipt managed_versions) — a decision or a measured fact, never
+    # a guess — or blocks.
+    carry_versions(root, platform, deps, blocks, changes, pins)
     # 5. plugins
     build = find_or_add(project, "build")
     plugins = find_or_add(build, "plugins")
@@ -527,7 +528,27 @@ def bootstrap_main_class(root: Path, catalog: dict, bundle: dict, changes: list[
             blocks.append({"class": "MAIN_CLASS_NOT_TRIVIAL", "subject": str(t.get("fqn")), "detail": "%s is not a trivial launcher (%s); kept in place — its @SpringBootApplication / SpringApplication.run become work-list items for a bounded human or ADR decision, never a silent delete" % (t.get("fqn"), why)})
 
 
-def carry_versions(root: Path, platform: dict, deps: ET.Element, blocks: list[dict], changes: list[dict]) -> None:
+def pinned_versions(pins: dict) -> dict[str, tuple[str, str]]:
+    """Every tooling pin that names a coordinate and a version, as ga → (version, pin key).
+
+    A pin is a decision about which version of an artifact this destination
+    uses, recorded with its provenance. It therefore outranks the version the
+    legacy build happened to resolve, which is only the fallback for artifacts
+    nobody decided about."""
+    out: dict[str, tuple[str, str]] = {}
+    # load_pins returns the inner mapping (key → pin); a whole pins document is
+    # accepted too, so a caller that read the file itself is not silently ignored
+    table = pins.get("pins") if isinstance(pins, dict) and isinstance(pins.get("pins"), dict) else pins
+    for key, spec in (table if isinstance(table, dict) else {}).items():
+        if not isinstance(spec, dict):
+            continue
+        g, a, v = spec.get("group_id"), spec.get("artifact_id"), spec.get("version")
+        if g and a and v:
+            out["%s:%s" % (g, a)] = (str(v), str(key))
+    return out
+
+
+def carry_versions(root: Path, platform: dict, deps: ET.Element, blocks: list[dict], changes: list[dict], pins: dict | None = None) -> None:
     probe_p = root / BOM_MANAGED
     bom_gav = "%s:%s:%s" % (platform.get("group_id"), platform.get("bom_artifact_id"), platform.get("version"))
     probe = load_json(probe_p) if probe_p.is_file() else None
@@ -539,15 +560,28 @@ def carry_versions(root: Path, platform: dict, deps: ET.Element, blocks: list[di
     managed = set(probe.get("managed") or [])
     build_p = producer_receipt(root, "build")
     legacy = (load_json(build_p).get("managed_versions") or {}) if build_p.is_file() else {}
+    decided = pinned_versions(pins or {})
     for d in deps.findall(q("dependency")):
-        if text(d, "version"):
-            continue
         ga = "%s:%s" % (text(d, "groupId"), text(d, "artifactId"))
+        have = text(d, "version")
+        if have:
+            # A pin is a decision about which version this destination uses. A
+            # literal version that disagrees with one is corrected, and both
+            # values are recorded; a property reference is left to its property.
+            if ga in decided and not have.startswith("${") and have != decided[ga][0]:
+                version, key = decided[ga]
+                find_or_add(d, "version").text = version
+                changes.append({"op": "pom.repin-version", "gav": "%s:%s" % (ga, version), "was": have, "provenance": "pins.json %s" % key})
+            continue
         if ga in managed:
             continue
         if any(b["subject"] == ga for b in blocks):
             continue  # already an UNMAPPED_DEPENDENCY block
-        if ga in legacy:
+        if ga in decided:
+            version, key = decided[ga]
+            sub(d, "version", version)
+            changes.append({"op": "pom.pin-decided-version", "gav": "%s:%s" % (ga, version), "provenance": "pins.json %s" % key})
+        elif ga in legacy:
             sub(d, "version", legacy[ga])
             changes.append({"op": "pom.pin-legacy-version", "gav": "%s:%s" % (ga, legacy[ga]), "provenance": "legacy effective pom (capture-build-evidence managed_versions)"})
         else:
@@ -588,6 +622,19 @@ def check_maven_settings(root: Path, catalog: dict, blocks: list[dict]) -> None:
         blocks.append({"class": "MAVEN_SETTINGS_MISSING", "subject": ".mvn/settings.xml", "detail": ".mvn/settings.xml must declare the %s profile (%s)" % (profile, req.get("source") or "")})
 
 
+def rewrite_blocks(receipt: dict, recomputed: tuple[str, ...], blocks: list[dict]) -> None:
+    """An Operator mode re-answers exactly the questions it asks. The blocks of
+    those classes are replaced by what it just measured; every other block on
+    the receipt stands, because nothing here re-measured it. Status follows the
+    blocks that remain, so a corrected decision clears its own refusal instead
+    of leaving the receipt blocked forever."""
+    kept = [b for b in (receipt.get("blocks") or []) if str(b.get("class")) not in recomputed]
+    remaining = kept + list(blocks)
+    receipt["blocks"] = remaining
+    receipt["status"] = "blocked" if remaining else "ok"
+    receipt["reasons"] = [str(b.get("detail") or "") for b in remaining]
+
+
 def retire_only(root: Path) -> int:
     """Apply retired_sources decided after the bootstrap ran: delete exactly
     those files from the destination tree (the frozen legacy copy is the
@@ -612,9 +659,7 @@ def retire_only(root: Path) -> int:
     retire_sources(root, copy, pending, changes, blocks)
     receipt["changes"] = list(receipt.get("changes") or []) + changes
     receipt["retired_sources"] = retired
-    if blocks:
-        receipt["blocks"] = list(receipt.get("blocks") or []) + blocks
-        receipt["status"] = "blocked"
+    rewrite_blocks(receipt, ("RETIRED_SOURCE_MISSING",), blocks)
     write_canonical(receipt_p, receipt)
     if blocks:
         for b in blocks:
@@ -707,7 +752,7 @@ def reapply_catalog(root: Path) -> int:
     deps = find_or_add(project, "dependencies")
     to_add, scoped = late_row_artifacts(receipt, catalog)
     add_mapped_artifacts(deps, catalog, to_add, scoped, changes)
-    carry_versions(root, platform, deps, blocks, changes)
+    carry_versions(root, platform, deps, blocks, changes, pins)
     build = find_or_add(project, "build")
     plugins = find_or_add(build, "plugins")
     add_plugins(plugins, catalog, changes)
@@ -719,9 +764,7 @@ def reapply_catalog(root: Path) -> int:
     receipt["inputs"] = dict(receipt.get("inputs") or {})
     receipt["inputs"]["catalog_sha256"] = sha256_file(cat_p)
     receipt["outputs"] = [{"path": "pom.xml", "sha256": sha256_file(pom)}]
-    if blocks:
-        receipt["blocks"] = list(receipt.get("blocks") or []) + blocks
-        receipt["status"] = "blocked"
+    rewrite_blocks(receipt, ("VERSION_UNMANAGED", "BOM_PROBE_MISSING", "TOOL_MISSING"), blocks)
     write_canonical(receipt_p, receipt)
     for c in changes:
         print("  - %s %s" % (c["op"], c.get("gav") or c.get("artifact") or c.get("path") or c.get("key") or ""))

@@ -115,7 +115,14 @@ def main(argv: list[str] | None = None) -> int:
         for c in cleared:
             attempts.pop(c, None)
         steps["attempts"] = attempts
-        steps["rejected"] = [r for r in (steps.get("rejected") or []) if str((r or {}).get("cluster") or r) not in set(cleared)]
+        # The rejected rows stay. They are the record of which cards this
+        # cluster minted, and the live-board comparator expects every one of
+        # them as a closed card; dropping a row makes a card that is really on
+        # the board foreign and the next mint refuses (measured on pilot v7).
+        # Only the attempt count resets, exactly as a rewind resets it.
+        for r in steps.get("rejected") or []:
+            if str((r or {}).get("cluster") or "") in set(cleared):
+                r["deferral_cleared_by"] = args.operator
     steps["steps"].append({
         "cluster": "operator", "card": "", "attempt": 0, "verdict": "operator",
         "operator": args.operator, "author": args.author or args.operator, "reviewer": args.reviewer, "adr": args.adr, "reason": args.reason,

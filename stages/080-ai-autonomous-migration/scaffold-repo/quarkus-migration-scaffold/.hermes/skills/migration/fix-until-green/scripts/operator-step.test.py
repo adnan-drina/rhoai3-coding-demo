@@ -46,7 +46,8 @@ def _tree(root: Path, changed: str) -> None:
     (loop / "steps.json").write_text(json.dumps({
         "schema": "rhoai3.loop-steps/v1",
         "steps": [{"cluster": "baseline", "verdict": "baseline", "measure": {"known": True, "tuple": [1, 0, 0]}}],
-        "attempts": {}, "rejected": [],
+        "attempts": {"c:deferred": 3},
+        "rejected": [{"cluster": "c:deferred", "card": "t_rejected", "reason": "attempt 3"}],
     }), encoding="utf-8")
     _git(root, "init", "-q", "-b", "main")
     _git(root, "-c", "user.email=t@local", "-c", "user.name=t", "add", "-A")
@@ -91,6 +92,9 @@ def main() -> int:
     still = json.loads((tmp / "verification" / "loop" / "deferred.json").read_text())
     if still.get("clusters") != ["c:deferred"]:
         return _fail("a deferral must survive a step whose re-measure failed: %s" % still)
+    kept = json.loads((tmp / "verification" / "loop" / "steps.json").read_text())
+    if [r["card"] for r in kept.get("rejected") or []] != ["t_rejected"]:
+        return _fail("the rejected rows are the record of what the cluster minted and must never be dropped: %s" % kept.get("rejected"))
 
     # Control: the same change on a main source is not this guard's business. It
     # gets past it (and stops later, on the missing measure) — so a red above is

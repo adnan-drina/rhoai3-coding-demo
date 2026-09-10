@@ -116,34 +116,34 @@ retired_sources:
   - path: src/main/java/org/springframework/samples/petclinic/util/ApplicationSwaggerConfig.java
     adr: ADR-006
     reason: springfox BeanPostProcessor / Docket configuration; springfox is Spring MVC only; quarkus-smallrye-openapi replaces it
-  - path: src/test/java/org/springframework/samples/petclinic/service/ClinicServiceJdbcTests.java
+  - path: src/test/java/org/springframework/samples/petclinic/service/clinicService/ClinicServiceJdbcTests.java
     adr: ADR-004
     reason: exercises a repository implementation ADR-004 retired; a test of retired code is retired with it
-  - path: src/test/java/org/springframework/samples/petclinic/service/UserServiceJdbcTests.java
+  - path: src/test/java/org/springframework/samples/petclinic/service/userService/UserServiceJdbcTests.java
     adr: ADR-004
     reason: exercises a repository implementation ADR-004 retired; a test of retired code is retired with it
-  - path: src/test/java/org/springframework/samples/petclinic/service/ClinicServiceJpaTests.java
+  - path: src/test/java/org/springframework/samples/petclinic/service/clinicService/ClinicServiceJpaTests.java
     adr: ADR-004
     reason: exercises a repository implementation ADR-004 retired; a test of retired code is retired with it
-  - path: src/test/java/org/springframework/samples/petclinic/service/UserServiceJpaTests.java
+  - path: src/test/java/org/springframework/samples/petclinic/service/userService/UserServiceJpaTests.java
     adr: ADR-004
     reason: exercises a repository implementation ADR-004 retired; a test of retired code is retired with it
-  - path: src/test/java/org/springframework/samples/petclinic/service/ClinicServiceSpringDataJpaTests.java
+  - path: src/test/java/org/springframework/samples/petclinic/service/clinicService/ClinicServiceSpringDataJpaTests.java
     adr: ADR-007
     reason: @SpringBootTest + @ActiveProfiles: boots a Spring application context, which the compat path does not provide
-  - path: src/test/java/org/springframework/samples/petclinic/service/UserServiceSpringDataJpaTests.java
+  - path: src/test/java/org/springframework/samples/petclinic/service/userService/UserServiceSpringDataJpaTests.java
     adr: ADR-007
     reason: @SpringBootTest + @ActiveProfiles: same
-  - path: src/test/java/org/springframework/samples/petclinic/service/AbstractClinicServiceTests.java
+  - path: src/test/java/org/springframework/samples/petclinic/service/clinicService/AbstractClinicServiceTests.java
     adr: ADR-007
     reason: @ContextConfiguration + @Autowired + Spring @Transactional in a test; every subclass is retired
-  - path: src/test/java/org/springframework/samples/petclinic/service/AbstractUserServiceTests.java
+  - path: src/test/java/org/springframework/samples/petclinic/service/userService/AbstractUserServiceTests.java
     adr: ADR-007
     reason: @Autowired injection into a test; every subclass is retired
   - path: src/test/java/org/springframework/samples/petclinic/SpringConfigTests.java
     adr: ADR-007
     reason: asserts the Spring application context wiring, which no longer exists
-  - path: src/test/java/org/springframework/samples/petclinic/ApplicationTestConfig.java
+  - path: src/test/java/org/springframework/samples/petclinic/service/clinicService/ApplicationTestConfig.java
     adr: ADR-007
     reason: @TestConfiguration from spring-boot-test; its only consumers are the retired controller tests
   - path: src/test/java/org/springframework/samples/petclinic/rest/OwnerRestControllerTests.java
