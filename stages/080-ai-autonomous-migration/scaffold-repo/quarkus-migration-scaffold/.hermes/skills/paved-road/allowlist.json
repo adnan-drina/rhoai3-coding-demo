@@ -13,7 +13,6 @@
     "commit-destination-tree",
     "reference-rh-quarkus-pom",
     "configure-quarkus-profiles",
-    "fix-until-green",
     "capture-source-oracles",
     "compose-m4-verdict",
     "check-release-readiness",

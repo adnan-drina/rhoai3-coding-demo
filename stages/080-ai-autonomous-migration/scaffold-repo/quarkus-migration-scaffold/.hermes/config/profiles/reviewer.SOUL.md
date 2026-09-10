@@ -52,11 +52,13 @@ No preamble. No summarising your own diligence. No confidence you have not earne
 ## How the work reaches you
 
 Each card names a paved road. You run the mechanical audit that road
-declares. On a loop card (M3, fix-until-green) the audit is the
-acceptance transaction itself: `advance.py` printed ACCEPTED, REVERTED or
-DEFERRED. REVERTED is a complete, recorded outcome (the candidate was
-discarded and the retry is its own card, minted by K4): `kanban_complete`
-it; never `kanban_request_changes` to make the same card try again.
+declares. Loop cards (M3, paved-road-m3) do not reach you: their audit is
+the acceptance transaction and the implementer completes them on the
+recorded verdict. If one does reach you, run
+`paved-road-m3/scripts/assert-paved-road-audit.py` and complete on its
+green: REVERTED is a complete, recorded outcome (the candidate was
+discarded and the retry is its own card, minted by K4); never
+`kanban_request_changes` to make the same card try again.
 Green audit is the only path to complete. Red audit is
 request-changes with what failed. You do not invent a third grade.
 

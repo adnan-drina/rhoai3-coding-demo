@@ -140,5 +140,18 @@
     "io.quarkus:quarkus-rest-client-reactive": "io.quarkus:quarkus-rest-client",
     "io.quarkus:quarkus-rest-client-reactive-jackson": "io.quarkus:quarkus-rest-client-jackson",
     "io.quarkus:quarkus-rest-client-reactive-jsonb": "io.quarkus:quarkus-rest-client-jsonb"
+  },
+  "package_renames": {
+    "note": "Jakarta EE 10 namespace (Quarkus 3 migration guide, 'Jakarta EE 10' section): javax.* \u2192 jakarta.* for these packages. The brief attaches the rename to a compiler diagnostic that names one of them; the worker changes the import, never the dependency.",
+    "javax.persistence": "jakarta.persistence",
+    "javax.validation": "jakarta.validation",
+    "javax.transaction": "jakarta.transaction",
+    "javax.inject": "jakarta.inject",
+    "javax.enterprise": "jakarta.enterprise",
+    "javax.annotation": "jakarta.annotation",
+    "javax.ws.rs": "jakarta.ws.rs",
+    "javax.servlet": "jakarta.servlet",
+    "javax.json": "jakarta.json",
+    "javax.xml.bind": "jakarta.xml.bind"
   }
 }

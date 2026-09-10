@@ -9,6 +9,7 @@ open cluster (the loop is done or fully deferred).
 from __future__ import annotations
 
 import argparse
+import re
 import json
 import sys
 from pathlib import Path
@@ -18,7 +19,7 @@ from _loop_common import ensure_hermes_lib  # noqa: E402
 
 ensure_hermes_lib()
 from planner.canonical import load_json, write_canonical  # noqa: E402
-from planner.paths import LOOP_DIR, MTA_FINDINGS, MTA_RESCAN_FINDINGS, WORKLIST, BOM_MANAGED  # noqa: E402
+from planner.paths import LOOP_DIR, MTA_FINDINGS, MTA_RESCAN_FINDINGS, WORKLIST, BOM_MANAGED, TYPE_INVENTORY  # noqa: E402
 from planner.worklist import head_cluster, items_of  # noqa: E402
 
 PROCEDURE = (
@@ -82,13 +83,137 @@ def bom_managed(root: Path) -> set[str]:
     return {str(x) for x in (load_json(p).get("managed") or [])}
 
 
+def catalog(root: Path) -> dict:
+    p = root / ".hermes" / "planning" / "catalogs" / "compat-mapping.json"
+    return load_json(p) if p.is_file() else {}
+
+
+def _catalog_map(root: Path, key: str) -> dict[str, str]:
+    rows = catalog(root).get(key) or {}
+    return {k: str(v) for k, v in rows.items() if k != "note" and isinstance(v, str)}
+
+
 def artifact_aliases(root: Path) -> dict[str, str]:
     """Documented renames from the bootstrap catalog (old group:artifact → managed group:artifact)."""
-    p = root / ".hermes" / "planning" / "catalogs" / "compat-mapping.json"
+    return _catalog_map(root, "artifact_aliases")
+
+
+def package_renames(root: Path) -> dict[str, str]:
+    """Documented Jakarta namespace renames (javax.* → jakarta.*)."""
+    return _catalog_map(root, "package_renames")
+
+
+_SYMBOL_RE = re.compile(r"symbol:\s+(class|variable|method|interface|enum)\s+([A-Za-z_$][\w$]*)")
+_PACKAGE_RE = re.compile(r"package ([\w.]+) does not exist")
+_LOCATION_RE = re.compile(r"location:\s+(?:class|interface|package)\s+([\w.$]+)")
+REFERENCES_DIR = Path(".hermes") / "skills" / "migration" / "spring-to-quarkus-patterns" / "references"
+
+
+def load_inventory(root: Path) -> list[dict]:
+    p = root / TYPE_INVENTORY
     if not p.is_file():
-        return {}
-    rows = (load_json(p).get("artifact_aliases") or {})
-    return {k: str(v) for k, v in rows.items() if k != "note" and isinstance(v, str)}
+        return []
+    rows = load_json(p).get("types") or []
+    return [r for r in rows if isinstance(r, dict) and r.get("fqn")]
+
+
+def _references(root: Path) -> list[tuple[Path, str]]:
+    d = root / REFERENCES_DIR
+    if not d.is_dir():
+        return []
+    return [(p, p.read_text(encoding="utf-8", errors="replace")) for p in sorted(d.glob("*.md"))]
+
+
+def reference_hits(refs: list[tuple[Path, str]], token: str, root: Path) -> list[str]:
+    """The reference files that mention the symbol or package by name, most mentions first."""
+    if not token:
+        return []
+    pat = re.compile(r"(?<![\w.])" + re.escape(token) + r"(?![\w])")
+    scored = [(len(pat.findall(text)), str(p.relative_to(root))) for p, text in refs]
+    return [path for n, path in sorted(scored, key=lambda x: (-x[0], x[1])) if n > 0][:3]
+
+
+def compile_advice(item: dict, root: Path, inventory: list[dict], renames: dict[str, str], refs: list[tuple[Path, str]]) -> dict:
+    """What the compiler said, and the facts the tools hold about the name it could not resolve:
+    the inventory row (a legacy type not yet in the destination tree), the documented Jakarta
+    rename for a javax.* package, and the spring-to-quarkus-patterns reference that covers the symbol."""
+    msg = str(item.get("message") or item.get("detail") or "")
+    out: dict = {"description": "compiler diagnostic", "message": msg}
+    sym = _SYMBOL_RE.search(msg)
+    pkg = _PACKAGE_RE.search(msg)
+    token = ""
+    if sym:
+        out["symbol"] = {"kind": sym.group(1), "name": sym.group(2)}
+        token = sym.group(2)
+        hits = [r for r in inventory if str(r["fqn"]).rsplit(".", 1)[-1] == token]
+        if hits:
+            r = hits[0]
+            dest = str(r.get("dest_file") or "")
+            out["inventory"] = {"fqn": r["fqn"], "layer": r.get("layer"), "legacy_file": r.get("legacy_file"), "dest_file": dest,
+                                "present_in_destination": bool(dest) and (root / dest).is_file()}
+    elif pkg:
+        token = pkg.group(1)
+        out["package"] = token
+        members = [r["fqn"] for r in inventory if str(r["fqn"]).startswith(token + ".")]
+        if members:
+            out["inventory_package"] = {"types": len(members), "present_in_destination": sorted(m for m in members if any((root / str(r.get("dest_file") or "x")).is_file() for r in inventory if r["fqn"] == m))[:5]}
+    probe = token if pkg else ""
+    if not probe and sym:
+        loc = _LOCATION_RE.search(msg)
+        probe = ""
+    for old, new in renames.items():
+        if (pkg and token.startswith(old)) or (sym and re.search(r"\b" + re.escape(old) + r"\.[\w.]*" + re.escape(token) + r"\b", msg)):
+            out["rename"] = {"from": old, "to": new}
+            break
+    hits = reference_hits(refs, token, root)
+    if hits:
+        out["references"] = hits
+    return out
+
+
+def config_advice(item: dict, root: Path, rules: dict, cat: dict) -> dict:
+    """The property line the incident points at, the incident variables, and the
+    catalog's documented mapping for that key (properties / property_prefixes)."""
+    out: dict = {}
+    path, line = str(item.get("path") or ""), int(item.get("line") or 0)
+    p = root / path
+    text = ""
+    if p.is_file() and line > 0:
+        rows = p.read_text(encoding="utf-8", errors="replace").splitlines()
+        if line <= len(rows):
+            text = rows[line - 1].strip()
+            out["line_text"] = text
+    rule = rules.get(str(item.get("rule_id")))
+    if isinstance(rule, dict):
+        for inc in rule.get("incidents") or []:
+            if not isinstance(inc, dict):
+                continue
+            uri = str(inc.get("uri") or "")
+            if uri.endswith(path) and int(inc.get("lineNumber") or 0) == line and isinstance(inc.get("variables"), dict):
+                out["variables"] = inc["variables"]
+                break
+    key = ""
+    if text and not text.startswith("#") and "=" in text:
+        key = text.split("=", 1)[0].strip()
+    elif isinstance(out.get("variables"), dict):
+        key = str(out["variables"].get("property") or out["variables"].get("key") or "")
+    if key:
+        out["property"] = key
+        props = cat.get("properties") or {}
+        if key in props:
+            out["mapping"] = {"to": props[key], "source": "compat-mapping.json properties"}
+        else:
+            for prefix, row in (cat.get("property_prefixes") or {}).items():
+                if key.startswith(prefix) and isinstance(row, dict):
+                    rest = key[len(prefix):]
+                    out["mapping"] = {"to": str(row.get("to") or "").replace("{rest}", rest), "source": str(row.get("source") or "")}
+                    break
+        vals = (cat.get("property_values") or {}).get(out.get("mapping", {}).get("to") or key)
+        if isinstance(vals, dict) and "=" in text:
+            v = text.split("=", 1)[1].strip()
+            if v in vals:
+                out["value_mapping"] = {"from": v, "to": vals[v]}
+    return out
 
 
 def enrich(items: list[dict], root: Path, cluster: dict) -> list[dict]:
@@ -101,10 +226,17 @@ def enrich(items: list[dict], root: Path, cluster: dict) -> list[dict]:
     els = pom_elements(pom_p) if cluster.get("path") == "pom.xml" and pom_p.is_file() else []
     artifacts = {e["gav"].split(":")[-1] for e in els} | {e["gav"] for e in els}
     managed, aliases = bom_managed(root), artifact_aliases(root)
+    inventory, renames, refs, cat = load_inventory(root), package_renames(root), _references(root), catalog(root)
     out: list[dict] = []
     for it in items:
         row = dict(it)
         rule = rules.get(str(it.get("rule_id")))
+        if it.get("source") == "javac" and it.get("rule_id") != "BUILD_UNRESOLVABLE":
+            row["advice"] = compile_advice(it, root, inventory, renames, refs)
+        if it.get("source") == "mta" and it.get("kind") == "config":
+            cfg = config_advice(it, root, rules, cat)
+            if cfg:
+                row["config"] = cfg
         if it.get("rule_id") == "BUILD_UNRESOLVABLE":
             # the resolver's own words; nothing else is measurable until Maven resolves the pom
             row["advice"] = {"description": "Maven cannot resolve the pom: fix the named coordinate (a BOM-managed artifact needs no version; an artifact the BOM does not manage must not be added under an old name)", "message": str(it.get("message") or it.get("detail") or ""), "links": ["https://quarkus.io/guides/maven-tooling"]}

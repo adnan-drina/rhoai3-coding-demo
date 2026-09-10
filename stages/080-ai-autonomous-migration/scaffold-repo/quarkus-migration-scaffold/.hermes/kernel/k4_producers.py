@@ -60,6 +60,8 @@ PRODUCERS: dict[str, frozenset[str]] = {
     "commit-destination-tree": frozenset({ARTIFACT_COMMIT}),
     "compose-m4-verdict": frozenset({ARTIFACT_M4}),
     "fix-until-green": frozenset({ARTIFACT_POM, ARTIFACT_CONFIG, ARTIFACT_JAVA, ARTIFACT_COMMIT}),
+    # the M3 index: its steps.json names fix-until-green as the road and advance.py as the producer
+    "paved-road-m3": frozenset({ARTIFACT_POM, ARTIFACT_CONFIG, ARTIFACT_JAVA, ARTIFACT_COMMIT}),
 }
 
 # One home for kind → pins: planner.cards.CARD_SKILLS (K4 stamps them).

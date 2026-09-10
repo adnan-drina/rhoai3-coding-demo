@@ -60,7 +60,7 @@ def main() -> int:
             return _fail("head payload %s" % {k: p[k] for k in ("logical_id", "title", "kind", "phase")})
         if p["idempotency_key"] != "k4:%s:1:%s" % (wl["head"], rec["receipt_digest"][:16]) or p["max_retries"] != 1 or p["assignee"] != "implementer":
             return _fail("key/retries/assignee %s" % p["idempotency_key"])
-        if p["skills"] != ["fix-until-green"]:
+        if p["skills"] != ["paved-road-m3"]:
             return _fail("a loop card carries exactly one skill: %s" % p["skills"])
         from planner.cards import parse_body  # noqa: E402
         if not p["body"].startswith("## M3 ") or "```json" not in p["body"]:
@@ -105,7 +105,7 @@ def main() -> int:
         sch = specimens.build_dest(t / "sched", specimens.specimen("scheduled"), decisions=specimens.admitted_decisions())
         prepare(sch, errors=[("src/main/java/org/acme/clinic/inventory/InventorySyncJob.java", 4, "cannot find symbol Scheduled")])
         res, iss = convert_admitted(sch)
-        if iss or res["payloads"][0]["kind"] not in ("compile", "incident") or res["payloads"][0]["skills"] != ["fix-until-green"]:
+        if iss or res["payloads"][0]["kind"] not in ("compile", "incident") or res["payloads"][0]["skills"] != ["paved-road-m3"]:
             return _fail("scheduled head: %s %s" % (iss, res and res["payloads"][0]["kind"]))
     print("OK: K4 selftest (one receipt-bound card per step; K1 body; idempotent; tampered/inadmissible → 0 payloads; scheduled specimen)")
     return 0

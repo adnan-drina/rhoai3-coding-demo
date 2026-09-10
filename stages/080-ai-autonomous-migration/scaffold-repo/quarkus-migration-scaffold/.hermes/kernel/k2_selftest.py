@@ -1000,6 +1000,59 @@ def main() -> int:
             fails += 1
         else:
             print("ok impl_request_review_needs_reviewer")
+        # paved-road-m3: the implementer completes a loop card on the recorded verdict once the road ran
+        loop_env = {"HERMES_PROFILE": "implementer", "K2_BOUND_GATE_EXIT": "1", "K2_BOUND_GATE_NAME": "fix-until-green/scripts/advance"}
+        for verdict in ("ACCEPTED", "REVERTED"):
+            r = run("", roots, cwd=cwd, tool="kanban_complete", extra_env=dict(loop_env, K2_LOOP_VERDICT=verdict, K2_LOOP_ROAD="1"))
+            if r.get("action") == "block":
+                print("FAIL impl_complete_loop_%s" % verdict.lower(), r, file=sys.stderr)
+                fails += 1
+            else:
+                print("ok impl_complete_loop_%s" % verdict.lower())
+        r = run("", roots, cwd=cwd, tool="kanban_complete", extra_env=dict(loop_env, K2_LOOP_VERDICT="ACCEPTED", K2_LOOP_ROAD="0"))
+        if r.get("action") != "block" or "brief.py" not in (r.get("message") or ""):
+            print("FAIL impl_complete_loop_without_road", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok impl_complete_loop_without_road")
+        r = run("", roots, cwd=cwd, tool="kanban_request_review", extra_input={"reviewer": "reviewer"}, extra_env=dict(loop_env, K2_LOOP_VERDICT="ACCEPTED", K2_LOOP_ROAD="1"))
+        if r.get("action") != "block" or "loop card" not in (r.get("message") or ""):
+            print("FAIL impl_request_review_on_loop_card", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok impl_request_review_on_loop_card")
+        # the durable form: the loop record under the allow root names the card, the official log shows the road
+        loop_root = Path(td) / "hermes-root-loop"
+        (loop_root / "kanban" / "logs").mkdir(parents=True)
+        loop_home = loop_root / "profiles" / "implementer"
+        loop_home.mkdir(parents=True)
+        (loop_root / "kanban" / "logs" / "t_loop.log").write_text(
+            "Query: work kanban task t_loop\n"
+            "  ┊ 📚 skill  fix-until-green\n"
+            "  ┊ 💻 $         python3 .hermes/skills/migration/fix-until-green/scripts/brief.py --root .  0.3s\n"
+            "  ┊ 🔧 patch     /projects/modernized/pom.xml  0.2s\n"
+            "  ┊ 💻 $         bash .hermes/skills/migration/fix-until-green/scripts/run-verify.sh --root .  70.4s\n"
+            "  ┊ 💻 $         python3 .hermes/skills/migration/fix-until-green/scripts/advance.py --root . --cluster c:1 --card t_loop  7.4s [exit 1]\n"
+            "REVERTED c:1 attempt 1/3: measure [1, 1, 0] did not decrease from [1, 1, 0]\n",
+            encoding="utf-8",
+        )
+        (dest / "verification" / "loop").mkdir(parents=True, exist_ok=True)
+        (dest / "verification" / "loop" / "steps.json").write_text(
+            json.dumps({"schema": "rhoai3.loop-steps/v1", "steps": [{"card": "", "cluster": "bootstrap"}], "rejected": [{"card": "t_loop", "cluster": "c:1", "reason": "no progress"}], "attempts": {"c:1": 1}}),
+            encoding="utf-8",
+        )
+        r = run("", roots, cwd=cwd, tool="kanban_complete", extra_env={"HERMES_PROFILE": "implementer", "HERMES_HOME": str(loop_home), "HERMES_KANBAN_TASK": "t_loop", "K2_BOUND_GATE_EXIT": "0"})
+        if r.get("action") == "block":
+            print("FAIL impl_complete_loop_record_and_log", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok impl_complete_loop_record_and_log")
+        r = run("", roots, cwd=cwd, tool="kanban_complete", extra_env={"HERMES_PROFILE": "implementer", "HERMES_HOME": str(loop_home), "HERMES_KANBAN_TASK": "t_other", "K2_BOUND_GATE_EXIT": "0"})
+        if r.get("action") != "block":
+            print("FAIL impl_complete_loop_unrecorded_card", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok impl_complete_loop_unrecorded_card")
         r = run("", roots, cwd=cwd, tool="kanban_request_review", extra_input={"reviewer": "reviewer", "summary": "x"}, extra_env={"HERMES_PROFILE": "implementer", "K2_BOUND_GATE_EXIT": "0"})
         if r.get("action") == "block":
             print("FAIL impl_request_review_with_reviewer_allowed", r, file=sys.stderr)

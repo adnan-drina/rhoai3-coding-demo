@@ -41,14 +41,17 @@ SKILLS_ASSERT = (
     "A false consult — claiming a skill that was not loaded — is a defect. Do not silence a missing pin."
 )
 TERMINATOR_M3 = (
-    "Read the brief (fix-until-green/scripts/brief.py): every item carries the rule's advice and, for pom "
-    "items, the exact element. Patch the write set one item at a time; never rewrite a whole file, never "
-    "tests, never evidence/, never decisions.yaml. Then bash fix-until-green/scripts/run-verify.sh --root . "
-    "and python3 fix-until-green/scripts/advance.py --root . --cluster <id> --card $HERMES_KANBAN_TASK. "
-    "The measure decides: accepted commits and mints the next card; reverted re-mints this cluster; "
-    "deferred hands it to a human. Terminator: kanban_request_review (reviewer=reviewer), then END THE TURN; "
-    "a nudge to finish after that is already satisfied, do not answer it with kanban_complete or kanban_block. "
-    "kanban_block only for an external/platform failure or a stale receipt. Never kanban_complete; never widen the write set."
+    "skill_view paved-road-m3 first (the pinned index; it views fix-until-green). Read the brief "
+    "(fix-until-green/scripts/brief.py): every item carries the rule's advice and, for pom items, the exact "
+    "element, the advised artifacts already present and the BOM-unmanaged ones with their managed equivalent. "
+    "Patch the write set one item at a time; never rewrite a whole file, never tests, never evidence/, never "
+    "decisions.yaml, never a dependency or plugin the brief did not ask for. Then bash "
+    "fix-until-green/scripts/run-verify.sh --root . and python3 fix-until-green/scripts/advance.py --root . "
+    "--cluster <id> --card $HERMES_KANBAN_TASK. The measure decides: ACCEPTED commits and mints the next card; "
+    "REVERTED re-mints this cluster; DEFERRED stops the loop for the Operator. Terminator: kanban_complete after "
+    "ACCEPTED or REVERTED (the loop record is the audit; K2 allows it once brief, run-verify and advance ran in "
+    "this log); kanban_block kind=needs_input naming the cluster after DEFERRED or REFUSE: LOOP_*. Never "
+    "kanban_request_review on a loop card; never retry inside this card; never widen the write set."
 )
 TERMINATOR_M4 = (
     "Run capture-source-oracles parity for every entry point, run-m4-pre-verdict.sh, and the MTA rescan "

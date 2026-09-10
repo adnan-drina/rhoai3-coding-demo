@@ -1,0 +1,8 @@
+Query: work kanban task t_noskill
+Initializing agent...
+  ┊ 💻 $         python3 .hermes/skills/migration/fix-until-green/scripts/brief.py --root .  0.3s
+  ┊ 🔧 patch     /projects/modernized/pom.xml  0.2s
+  ┊ 💻 $         bash .hermes/skills/migration/fix-until-green/scripts/run-verify.sh --root .  70.4s
+  ┊ 💻 $         python3 .hermes/skills/migration/fix-until-green/scripts/advance.py --root . --cluster c:9c5fb3d1b7e3 --card t_noskill  7.4s
+OK: ACCEPTED c:9c5fb3d1b7e3 (measure [12, 829, 0] < [14, 829, 0]) commit 2b80ddc0
+  ┊ ⚡ kanban_complete   0.0s

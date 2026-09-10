@@ -38,6 +38,15 @@ ALLOWLIST_PATH = PAVED_ROAD_DIR / "allowlist.json"
 M1_ORDER = ("freeze-migration-input", "inventory-legacy-surface", "scan-with-mta", "assemble-evidence-bundle")
 M2_FIRST_NATIVE = "assert-planner-activated.py"
 M2_PRODUCER = "admit-migration-plan"
+# m3-loop: the index views fix-until-green, then brief → run-verify → advance.
+# advance.py is the producer and a VERDICT step: its exit code is not the
+# grade (REVERTED / DEFERRED exit 1 by design); the grade is the loop record
+# (verification/loop/steps.json) naming this card with a verdict.
+M3_SKILL = "fix-until-green"
+M3_ORDER = ("brief.py", "run-verify.sh", "advance.py")
+M3_PRODUCER_NATIVE = "advance.py"
+LOOP_STEPS_REL = "verification/loop/steps.json"
+_TASK_RE = re.compile(r"Query: work kanban task (t_[A-Za-z0-9]+)")
 
 
 def _fail(msg: str) -> int:
@@ -139,6 +148,8 @@ def validate_steps_doc(doc: Any, *, path: Path | None = None) -> list[str]:
                 errors.append("%s: %s must be a script basename (got %r)" % (prefix, backing, payload))
         if step.get("producer") is True:
             producers += 1
+        if "verdict" in step and (step.get("verdict") is not True or backing == "skill"):
+            errors.append("%s: verdict must be true and only on a kernel/native step" % prefix)
         keep = step.get("keep")
         if keep is not None:
             if not isinstance(keep, list) or not all(isinstance(x, str) for x in keep):
@@ -187,6 +198,21 @@ def validate_steps_doc(doc: Any, *, path: Path | None = None) -> list[str]:
         for s in steps:
             if isinstance(s, dict) and str(s.get("skill") or s.get("native") or s.get("kernel") or "").startswith("speckit"):
                 errors.append("%s: Spec Kit steps are retired" % loc)
+    if kind == "m3-loop":
+        first = steps[0] if isinstance(steps[0], dict) else {}
+        if first.get("backing") != "skill" or first.get("skill") != M3_SKILL:
+            errors.append("%s: m3-loop must start with skill_view %s (the loop procedure is the road)" % (loc, M3_SKILL))
+        natives = [str(s.get("native")) for s in steps if isinstance(s, dict) and s.get("backing") == "native"]
+        if natives != list(M3_ORDER):
+            errors.append("%s: m3-loop native steps must be exactly %s in order (got %s)" % (loc, " → ".join(M3_ORDER), natives))
+        prod = next((s for s in steps if isinstance(s, dict) and s.get("producer") is True), None)
+        if prod is not None and (prod.get("native") != M3_PRODUCER_NATIVE or prod.get("verdict") is not True):
+            errors.append("%s: m3-loop producer must be native %s with verdict: true" % (loc, M3_PRODUCER_NATIVE))
+        if prod is not None and LOOP_STEPS_REL not in (prod.get("keep") or []):
+            errors.append("%s: the verdict step must KEEP %s (the loop record is the grade)" % (loc, LOOP_STEPS_REL))
+        for s in steps:
+            if isinstance(s, dict) and s.get("backing") == "skill" and s.get("skill") in {"author-destination-pom", "manage-quarkus-extensions", "reference-rh-quarkus-pom"}:
+                errors.append("%s: story-era pom skills are not loop steps (pilot v5: whole-pom rewrite); the brief carries the pom data" % loc)
     return errors
 
 
@@ -216,6 +242,8 @@ def generate_audit(doc: dict[str, Any]) -> dict[str, Any]:
         if step.get("producer") is True:
             item["producer"] = True
             producer = step["id"]
+        if step.get("verdict") is True:
+            item["verdict"] = True
         steps_out.append(item)
     return {
         "artifact": doc["artifact"],
@@ -310,8 +338,35 @@ def keep_missing(root: Path, keep: list[str]) -> list[str]:
     return missing
 
 
+def log_task_id(text: str) -> str:
+    """The card the official log belongs to (its first `Query: work kanban task t_…`)."""
+    m = _TASK_RE.search(text)
+    return m.group(1) if m else ""
+
+
+def loop_verdict_for(root: Path, task_id: str) -> str:
+    """'accepted' / 'rejected' when verification/loop/steps.json names the card, else ''."""
+    if not task_id:
+        return ""
+    p = root / LOOP_STEPS_REL
+    if not p.is_file():
+        return ""
+    try:
+        doc = load_json(p)
+    except (OSError, json.JSONDecodeError):
+        return ""
+    if not isinstance(doc, dict):
+        return ""
+    if any(isinstance(s, dict) and str(s.get("card") or "") == task_id for s in doc.get("steps") or []):
+        return "accepted"
+    if any(isinstance(r, dict) and str(r.get("card") or "") == task_id for r in doc.get("rejected") or []):
+        return "rejected"
+    return ""
+
+
 def evaluate_audit(text: str, doc: dict[str, Any], root: Path) -> int:
     failures: list[str] = []
+    task_id = log_task_id(text)
     for step in doc["steps"]:
         sid = str(step["id"])
         backing = str(step["backing"])
@@ -339,6 +394,17 @@ def evaluate_audit(text: str, doc: dict[str, Any], root: Path) -> int:
         if not runs:
             failures.append("silence: step %s needle %r has no terminal argv in official log" % (sid, needle))
             continue
+        if step.get("verdict") is True:
+            # the grade is the loop record, not the exit code: REVERTED and
+            # DEFERRED exit 1 by design and are complete, recorded outcomes
+            verdict = loop_verdict_for(root, task_id)
+            if not verdict:
+                failures.append("no loop verdict recorded for card %s after %r (a refused advance is not a verdict)" % (task_id or "?", needle))
+                continue
+            missing = keep_missing(root, keep)
+            if missing:
+                failures.append("missing KEEP %s (step %s)" % (",".join(missing), sid))
+            continue
         reds = unmatched_exit1(runs)
         if reds:
             failures.append("unmatched [exit 1] on mandated needle %r (step %s, count=%d)" % (needle, sid, len(reds)))
@@ -355,7 +421,8 @@ def evaluate_audit(text: str, doc: dict[str, Any], root: Path) -> int:
     if failures:
         return _fail("; ".join(failures))
 
-    print("OK: PAVED_ROAD kind=%s artifact=%s steps=%d" % (doc.get("kind"), doc.get("artifact"), len(doc["steps"])))
+    verdict = loop_verdict_for(root, task_id) if any(s.get("verdict") is True for s in doc["steps"]) else ""
+    print("OK: PAVED_ROAD kind=%s artifact=%s steps=%d%s" % (doc.get("kind"), doc.get("artifact"), len(doc["steps"]), (" verdict=%s card=%s" % (verdict, task_id)) if verdict else ""))
     return 0
 
 
@@ -435,8 +502,8 @@ def coverage(root: Path | None = None) -> int:
         return 1
 
     step_files = kind_step_files(paved)
-    if len(step_files) < 2:
-        print("FAIL: need paved-road-m1 and paved-road-m2 steps.json", file=sys.stderr)
+    if len(step_files) < 3:
+        print("FAIL: need paved-road-m1, paved-road-m2 and paved-road-m3 steps.json", file=sys.stderr)
         return 1
 
     bad = 0

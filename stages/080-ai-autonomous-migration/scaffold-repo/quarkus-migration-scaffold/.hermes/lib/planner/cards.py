@@ -19,17 +19,33 @@ KINDS = CLUSTER_KINDS + ("close",)
 # toward Jacoco/Sonar/assertj/mapstruct/package-root changes no incident asked
 # for and a whole-pom rewrite that timed out. The brief carries the incidents
 # and their advice; fix-until-green carries the procedure; nothing else.
+# Every loop card pins the M3 index only (paved-road-m3: view fix-until-green,
+# brief, patch per item, run-verify, advance, complete). The producer of a
+# loop artifact is the transaction the index walks (k4_producers).
 CARD_SKILLS: dict[str, list[str]] = {
-    "build": ["fix-until-green"],
-    "config": ["fix-until-green"],
-    "compile": ["fix-until-green"],
-    "incident": ["fix-until-green"],
-    "test": ["fix-until-green"],
-    "parity": ["fix-until-green"],
+    "build": ["paved-road-m3"],
+    "config": ["paved-road-m3"],
+    "compile": ["paved-road-m3"],
+    "incident": ["paved-road-m3"],
+    "test": ["paved-road-m3"],
+    "parity": ["paved-road-m3"],
     "close": ["compose-m4-verdict", "check-release-readiness", "check-domain-parity", "capture-source-oracles"],
 }
 
 BODY_FENCE = "```json"
+
+# One reference skill per cluster kind, named in the body and viewed only when
+# the brief's advice is not enough (never pinned: pins on v5 loop cards became
+# checklists and a whole-pom rewrite). build items need none: the brief carries
+# the pom element, the BOM-managed set and the alias catalog.
+REFERENCE_SKILLS: dict[str, str] = {
+    "build": "",
+    "config": "configure-quarkus-profiles",
+    "compile": "spring-to-quarkus-patterns",
+    "incident": "spring-to-quarkus-patterns",
+    "test": "spring-to-quarkus-patterns",
+    "parity": "spring-to-quarkus-patterns",
+}
 
 
 def card_title(head: dict[str, Any], attempt: int) -> str:
@@ -47,22 +63,26 @@ def render_body(body: dict[str, Any]) -> str:
     ident = body.get("identity") or {}
     writes = [str(w.get("path") if isinstance(w, dict) else w) for w in body.get("write_set") or []]
     steps = [e.get("cmd") for e in body.get("exit_criteria") or [] if isinstance(e, dict) and e.get("cmd")]
+    kind = str(ident.get("increment_kind") or "")
+    ref = REFERENCE_SKILLS.get(kind, "")
     lines = [
         "## %s %s" % (body.get("phase") or "M3", ident.get("path") or ident.get("increment_id") or ""),
         "",
-        "- **Cluster** `%s` (%s), attempt %s" % (ident.get("increment_id"), ident.get("increment_kind"), ident.get("attempt")),
+        "- **Cluster** `%s` (%s), attempt %s" % (ident.get("increment_id"), kind, ident.get("attempt")),
         "- **Write set**: %s" % (", ".join("`%s`" % w for w in writes) or "(none)"),
         "- **Items**: %d (the brief lists each one with its advice)" % len(body.get("item_ids") or []),
         "- **Receipt** `%s`, work list `%s`" % (str(body.get("receipt_sha256") or "")[:16], str(body.get("worklist_sha256") or "")[:16]),
+        "- **Road**: `skill_view paved-road-m3` first (the pinned index); it views `fix-until-green`.",
+        ("- **Reference** (only if the brief's advice is not enough): `skill_view %s`" % ref) if ref else "- **Reference**: none; the brief carries the pom element, the BOM-managed set and the alias catalog.",
         "",
-        "**Do**: `python3 .hermes/skills/migration/fix-until-green/scripts/brief.py --root .` to read the brief; patch the write set one item at a time (never a whole-file rewrite, never tests); then:",
+        "**Do**: `python3 .hermes/skills/migration/fix-until-green/scripts/brief.py --root .` to read the brief; patch the write set one item at a time (never a whole-file rewrite, never tests, never a dependency or plugin the brief did not ask for, never an artifact the brief marks unmanaged); then:",
         "",
     ]
     lines += ["    %s" % c for c in steps]
     lines += [
         "",
         "The tools decide: ACCEPTED commits and mints the next card; REVERTED re-mints this cluster; DEFERRED stops the loop.",
-        "Terminator: `kanban_request_review` (reviewer=reviewer), then end the turn. Never `kanban_complete`.",
+        "Terminator: `kanban_complete` after ACCEPTED or REVERTED (the loop record is the audit; K2 allows it). `kanban_block` kind=needs_input naming the cluster after DEFERRED or a `REFUSE: LOOP_*`. Never `kanban_request_review` on a loop card; never retry inside this card.",
         "",
         "<details><summary>machine body (K1)</summary>",
         "",

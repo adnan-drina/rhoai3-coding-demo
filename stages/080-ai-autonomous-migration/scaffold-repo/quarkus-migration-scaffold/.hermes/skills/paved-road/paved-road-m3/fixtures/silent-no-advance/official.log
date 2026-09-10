@@ -1,0 +1,8 @@
+Query: work kanban task t_silent
+Initializing agent...
+  ┊ 📚 skill  fix-until-green
+  ┊ 💻 $         python3 .hermes/skills/migration/fix-until-green/scripts/brief.py --root .  0.3s
+  ┊ 🔧 patch     /projects/modernized/pom.xml  0.2s
+  ┊ 💻 $         bash .hermes/skills/migration/fix-until-green/scripts/run-verify.sh --root .  70.4s
+The measure dropped, done.
+  ┊ ⚡ kanban_complete   0.0s

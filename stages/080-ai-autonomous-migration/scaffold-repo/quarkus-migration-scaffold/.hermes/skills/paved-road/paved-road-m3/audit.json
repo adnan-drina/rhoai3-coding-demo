@@ -1,0 +1,41 @@
+{
+  "artifact": "m3-loop-step",
+  "kind": "m3-loop",
+  "last_wins_across_needles": false,
+  "last_wins_within_needle": true,
+  "producer": "advance",
+  "silence_fails": true,
+  "source": "steps.json",
+  "steps": [
+    {
+      "backing": "skill",
+      "id": "fix-until-green",
+      "keep": [],
+      "needle": "fix-until-green"
+    },
+    {
+      "backing": "native",
+      "id": "brief",
+      "keep": [],
+      "needle": "brief.py"
+    },
+    {
+      "backing": "native",
+      "id": "run-verify",
+      "keep": [],
+      "needle": "run-verify.sh"
+    },
+    {
+      "backing": "native",
+      "id": "advance",
+      "keep": [
+        "verification/loop/steps.json"
+      ],
+      "needle": "advance.py",
+      "producer": true,
+      "verdict": true
+    }
+  ],
+  "unmatched_exit_1_fails": true,
+  "worker_receipts_are_not_proof": true
+}

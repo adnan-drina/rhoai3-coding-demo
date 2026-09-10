@@ -265,6 +265,54 @@ def paved_road_audit_green():
 
 LOOP_VERDICTS = ("OK: ACCEPTED", "REVERTED ", "DEFERRED ")
 
+def loop_record_names_task(task):
+    """verification/loop/steps.json (under an allow root) names the card as an
+    accepted step or a rejected attempt: the durable form of the verdict."""
+    if not task:
+        return False
+    roots = [x for x in allow.split(os.pathsep) if x] + [os.environ.get("HERMES_WRITE_SAFE_ROOT") or ""]
+    for r in roots:
+        if not r:
+            continue
+        p = os.path.join(r, "verification", "loop", "steps.json")
+        try:
+            doc = json.load(open(p, encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if not isinstance(doc, dict):
+            continue
+        for key in ("steps", "rejected"):
+            for row in doc.get(key) or []:
+                if isinstance(row, dict) and str(row.get("card") or "") == task:
+                    return True
+    return False
+
+LOOP_ROAD = ("brief.py", "run-verify.sh", "advance.py")
+
+def loop_road_ran():
+    """paved-road-m3 on the official log: brief.py, run-verify.sh and
+    advance.py each ran as a terminal command (basename on a $ line)."""
+    env_road = (os.environ.get("K2_LOOP_ROAD") or "").strip()
+    if env_road in {"0", "1"}:
+        return env_road == "1"
+    task = hook_task_id()
+    home = kanban_root_home()
+    if not task or not home:
+        return False
+    log = os.path.join(home, "kanban", "logs", "%s.log" % task)
+    try:
+        text = open(log, encoding="utf-8", errors="replace").read()
+    except OSError:
+        return False
+    seen = set()
+    for line in text.splitlines():
+        if "$" not in line:
+            continue
+        for name in LOOP_ROAD:
+            if re.search(r"(?:^|[\s/\"`])" + re.escape(name) + r"(?:[\s\"`;|&<>]|$)", line):
+                seen.add(name)
+    return all(n in seen for n in LOOP_ROAD)
+
 def loop_verdict_recorded():
     """A loop (M3) card is audited by its acceptance transaction: after a real
     invocation of fix-until-green/scripts/advance.py the log carries the
@@ -278,6 +326,8 @@ def loop_verdict_recorded():
     if env_verdict in {"ACCEPTED", "REVERTED", "DEFERRED"}:
         return True
     task = hook_task_id()
+    if loop_record_names_task(task):
+        return True
     home = kanban_root_home()
     if not task or not home:
         return False
@@ -365,13 +415,29 @@ if is_request_review() and profile == "implementer" and review_reviewer() != "re
           "Without it Hermes dispatches the review back to the implementer, which "
           "re-runs the acceptance on a card that is already closed.")
 
+if is_request_review() and profile == "implementer" and loop_verdict_recorded():
+    block("kanban_request_review refused on a loop card: the loop record already names this "
+          "card with its verdict (ACCEPTED/REVERTED). kanban_complete is the terminator here; "
+          "no reviewer seat runs for a loop step.")
+
 if is_complete():
     if profile == "implementer":
-        record_complete_invocation("refuse_implementer")
-        block("kanban_complete refused: implementer terminator is "
-              "kanban_request_review. If you already called kanban_request_review, "
-              "the review handoff IS your terminator: end the turn now and do not "
-              "answer a nudge to finish with kanban_complete or kanban_block.")
+        if loop_verdict_recorded() and loop_road_ran():
+            # paved-road-m3: the transaction is the audit; brief, run-verify and
+            # advance ran in this log and the loop record names this card
+            record_complete_invocation("allow_implementer_loop")
+        elif loop_verdict_recorded():
+            record_complete_invocation("refuse_implementer_road")
+            block("kanban_complete refused: the loop record names this card, but this log "
+                  "does not show brief.py, run-verify.sh and advance.py each run as a "
+                  "terminal command (paved-road-m3). Run the road, then complete.")
+        else:
+            record_complete_invocation("refuse_implementer")
+            block("kanban_complete refused: implementer terminator is "
+                  "kanban_request_review on M1/M2 cards; on a loop card kanban_complete is "
+                  "allowed only after advance.py recorded a verdict for this card. If you "
+                  "already called kanban_request_review, the review handoff IS your terminator: "
+                  "end the turn now and do not answer a nudge to finish with kanban_complete or kanban_block.")
     if profile == "reviewer" and not paved_road_audit_green() and not loop_verdict_recorded():
         record_complete_invocation("refuse_reviewer_audit")
         block("kanban_complete refused: paved-road audit last exit not 0 and no loop "

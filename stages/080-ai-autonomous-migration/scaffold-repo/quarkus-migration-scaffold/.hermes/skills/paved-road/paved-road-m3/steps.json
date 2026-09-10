@@ -1,0 +1,35 @@
+{
+  "kind": "m3-loop",
+  "artifact": "m3-loop-step",
+  "steps": [
+    {
+      "id": "fix-until-green",
+      "backing": "skill",
+      "skill": "fix-until-green",
+      "note": "The loop procedure: brief \u2192 patch one item at a time inside the write set \u2192 run-verify \u2192 advance. View it; do not view story-era pom skills (pilot v5: whole-pom rewrite). Per-kind reference skills are named in the card body and viewed only when the brief's advice is not enough."
+    },
+    {
+      "id": "brief",
+      "backing": "native",
+      "native": "brief.py",
+      "note": "The head cluster's brief: every item with its advice, the pom element at the line, advised artifacts already present / unmanaged by the BOM with the managed equivalent, compiler diagnostics with inventory hits, property mappings. The brief is the plan; nothing else is."
+    },
+    {
+      "id": "run-verify",
+      "backing": "native",
+      "native": "run-verify.sh",
+      "note": "The real tools on the candidate (online warm-up, then offline JDK diagnostics, surefire, MTA rescan) \u2192 the measure. exit 1 is a tool failure (re-run or kanban_block), never a verdict."
+    },
+    {
+      "id": "advance",
+      "backing": "native",
+      "native": "advance.py",
+      "producer": true,
+      "verdict": true,
+      "keep": [
+        "verification/loop/steps.json"
+      ],
+      "note": "The acceptance transaction. ACCEPTED commits and mints the next card; REVERTED discards the candidate and re-mints this cluster; DEFERRED stops the loop. REVERTED/DEFERRED exit 1 by design: the grade is the loop record naming this card, not the exit code."
+    }
+  ]
+}

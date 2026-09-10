@@ -93,7 +93,7 @@ workspace state.
 | `$HERMES_MANAGED_DIR` | Platform config + secrets — not in this repo |
 | `$HERMES_HOME` | Runtime (sessions/logs gitignored). Relocated dest-time. |
 | `.hermes/skills/` | Scaffold golden **guidance** skills on `skills.external_dirs` |
-| Seat Kanban assignees | M1/M2/M3 implementer; same-card review → `reviewer`. Dest mint-writer / mint-verifier cards are retired; M2 runs `.hermes/kernel/k4_mint.py` as CLI. Official `--assignee` (hermes-kanban). Not `default`. OBJECT EX-4 `analyzer`/`planner`/`validator`. dest orchestrator disables `file`/`terminal`/`code_execution`/`skills` — it cannot run M2 PLAN, M4, or paved-road audit. `reviewer` has `kanban`+`terminal` only. |
+| Seat Kanban assignees | M1/M2/M3 implementer; same-card review → `reviewer` on M1/M2 only (loop cards complete on the recorded verdict). Dest mint-writer / mint-verifier cards are retired; M2 runs `.hermes/kernel/k4_mint.py` as CLI. Official `--assignee` (hermes-kanban). Not `default`. OBJECT EX-4 `analyzer`/`planner`/`validator`. dest orchestrator disables `file`/`terminal`/`code_execution`/`skills` — it cannot run M2 PLAN, M4, or paved-road audit. `reviewer` has `kanban`+`terminal` only. |
 | Hermes live config | **Not yours to change.** Factory-owned Managed Scope. Raise typed `needs_input` |
 | Phase DAG | Kanban `--parent` / `link` graph (`hermes kanban show --json`) |
 | `~/.hermes/skills/` | dest-user `/home/user/.hermes/skills` on `external_dirs` (dest-init literal). Not worker `Path.home()`. |
@@ -119,12 +119,15 @@ emit a typed block and **stop**. Do not OOS-write, do not edit the refuser.
 
 Workers never own lifecycle truth. End every turn with exactly one terminator:
 `kanban_complete`, `kanban_request_review`, or `kanban_block`. A clean exit
-without one is `protocol_violation`. **Implementer** happy path is
-`kanban_request_review` (reviewer=`reviewer`); on a loop card the reviewer
-completes when `advance.py` recorded ACCEPTED, REVERTED or DEFERRED — a
-reverted attempt is done, its retry is the next K4 card; after it, end the turn — a
+without one is `protocol_violation`. **Implementer** happy path on M1/M2 is
+`kanban_request_review` (reviewer=`reviewer`; K2 refuses the call without it); after it, end the turn — a
 "nudge to finish" that arrives afterwards is already satisfied by the
-review handoff, and answering it with `kanban_complete` is refused by K2. **Reviewer** `kanban_complete`
+review handoff, and answering it with `kanban_complete` is refused by K2.
+On a loop card (M3, pinned `paved-road-m3`) there is no reviewer seat: the
+implementer `kanban_complete`s once `advance.py` recorded ACCEPTED or
+REVERTED for the card (K2 checks the loop record and that brief, run-verify
+and advance ran in this log); a reverted attempt is done, its retry is the
+next K4 card; DEFERRED is `kanban_block`. **Reviewer** `kanban_complete`
 only after `assert-paved-road-audit.py` exits 0. `kanban_block` is external
 escalation (MaaS 500, missing key, GPU), not a red paved-road step.
 Mint proof is `kanban_request_review --metadata` `created_cards`

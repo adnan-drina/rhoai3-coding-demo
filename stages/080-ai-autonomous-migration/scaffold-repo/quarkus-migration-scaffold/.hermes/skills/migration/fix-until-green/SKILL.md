@@ -57,9 +57,9 @@ python3 "${HERMES_SKILL_DIR}/scripts/advance.py" --root /projects/modernized \
 
 | Outcome | What happened | Your terminator |
 |---|---|---|
-| `ACCEPTED` | exactly the changed paths committed, tool reports snapshotted, work list rebuilt, admission re-sealed, next card minted (K4) with this card as parent and K3-verified | `kanban_request_review` (reviewer=reviewer) |
-| `REVERTED` (exit 1) | same cluster re-issued with the next attempt key | `kanban_request_review` — the retry is its own card; never loop inside this card |
-| `DEFERRED` (exit 1) | attempt threshold reached → cluster in `verification/loop/deferred.json`; **the loop stops**, nothing mints | `kanban_block` kind=needs_input naming the cluster |
+| `ACCEPTED` | exactly the changed paths committed, tool reports snapshotted, work list rebuilt, admission re-sealed, next card minted (K4) with this card as parent and K3-verified | `kanban_complete` (the loop record is the audit; K2 allows it once brief, run-verify and advance ran in this log) |
+| `REVERTED` (exit 1) | same cluster re-issued with the next attempt key | `kanban_complete` — the retry is its own card; never loop inside this card |
+| `DEFERRED` (exit 1) | attempt threshold reached → cluster in `verification/loop/deferred.json`; **the loop stops**, nothing mints | `kanban_block` kind=needs_input naming the cluster (Operator: `scripts/rewind.py` after the cause is fixed) |
 | (Operator) `scripts/rewind.py` | the Operator puts the loop back at an accepted step: product tree restored and re-measured, later steps and the spent budget moved to the record as `rewound`, deferral cleared, next card minted in a new epoch | not a card action; `--operator` and `--reason` are recorded in `steps.json.rewinds` |
 | `REFUSE: LOOP_*` | stale state / no baseline / receipt not authoritative | `kanban_block` kind=needs_input |
 
@@ -78,6 +78,11 @@ parity mismatches)`. Removing a Spring annotation may add compile errors
 while removing an incident — that is progress (lexicographic). Making a
 test pass by editing the test is not possible (tests are never in a
 write set).
+
+No reviewer seat runs for a loop step: `kanban_request_review` on a loop
+card is refused by K2. The card pins `paved-road-m3` (the index that views
+this skill); the audit it declares grades the official log plus the loop
+record naming the card.
 
 ## Verification
 

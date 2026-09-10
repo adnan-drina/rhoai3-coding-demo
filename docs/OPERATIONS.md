@@ -39,6 +39,22 @@ Operator ack gates or run `kanban daemon --force`. Factory isolation: Stage 080
 [SOLUTION-ARCHITECTURE.md](../stages/080-ai-autonomous-migration/SOLUTION-ARCHITECTURE.md)
 §8.
 
+### Stage 080 loop: Operator actions (no human sign-off)
+
+The M3 loop is autonomous by design: every card ends on a mechanical
+verdict (`advance.py` ACCEPTED / REVERTED / DEFERRED) and the implementer
+completes the card on that verdict (K2 checks the loop record). There is
+no approval gate and no reviewer seat on loop cards. What the Operator
+does is repair mechanisms, never edit product code or evidence by hand:
+
+| Situation | Operator action |
+|---|---|
+| A cluster is `DEFERRED` (attempt budget spent) | Find the cause in `verification/loop/steps.json` `rejected[].reason`. A catalog gap or measurement defect is a harness fix (golden + dest install); a design decision is an ADR in `decisions.yaml`. Then `fix-until-green/scripts/rewind.py --root . --to-step N --operator WHO --reason WHY` restores the accepted step, re-measures it, clears the budget and mints in a new epoch. |
+| An accepted step turns out to be a false green | Same rewind, to the step before it. Nothing is deleted; the rewound steps and rejections stay on the record as `rewound`. |
+| A card ended `blocked` although the loop record names its verdict | `hermes kanban complete <id> --summary "…"` from the workspace CLI (the daemon promotes the child only when every parent is done). |
+| A card sits in `triage` | Dashboard "→ ready" (the CLI has no triage verb). |
+| The worker stalls for minutes then reconnects | Check `providers.custom.stale_timeout_seconds` and `HERMES_STREAM_STALE_TIMEOUT` (900) in the managed config; exact-180 s `DC` lines in the gateway access log mean the default is back. |
+
 ## Workspace overlay images
 
 Stages 070 and 080 destfiles pull digest-pinned images from

@@ -73,7 +73,7 @@ def _reject(root: Path, steps: dict, cluster: str, card: str, cur: dict, reason:
             save_deferred(root, deferred)
         build_worklist(root)
         pipeline.admit(root)
-        print("DEFERRED %s after %d attempt(s): %s → manual card; the loop STOPS here (kanban_block kind=needs_input naming the cluster)" % (cluster, attempts[cluster], reason), file=sys.stderr)
+        print("DEFERRED %s after %d attempt(s): %s → the loop STOPS here (kanban_block kind=needs_input naming the cluster). Operator: fix the cause, then scripts/rewind.py --to-step N --operator WHO --reason WHY restores an accepted step with a fresh budget" % (cluster, attempts[cluster], reason), file=sys.stderr)
         return 1
     rec = pipeline.admit(root)
     print("REVERTED %s attempt %d/%d: %s" % (cluster, attempts[cluster], limit, reason), file=sys.stderr)

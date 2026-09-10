@@ -510,6 +510,18 @@ check "080 paved-road-m1 selftest passes" \
 check "080 paved-road-m2 selftest passes (activation gate first; not-activated REFUSE)" \
   "python3 '${SCAFFOLD_PAVED}/paved-road-m2/scripts/selftest.py' >/dev/null && echo 1 || echo 0" \
   "1"
+check "080 paved-road-m3 selftest passes (view-first; advance is the verdict step; reverted PASS; refused-advance REFUSE)" \
+  "python3 '${SCAFFOLD_PAVED}/paved-road-m3/scripts/selftest.py' >/dev/null && echo 1 || echo 0" \
+  "1"
+check "080 loop cards pin paved-road-m3 only (no story-era pom skills, no bare fix-until-green pin)" \
+  "python3 -c \"import sys; sys.path.insert(0, '${SCAFFOLD_LIB}'); from planner.cards import CARD_SKILLS; print(1 if all(v == ['paved-road-m3'] for k, v in CARD_SKILLS.items() if k != 'close') else 0)\"" \
+  "1"
+check "080 K2 lets the implementer complete a loop card on the recorded verdict (paved-road-m3)" \
+  "grep -v '^[[:space:]]*#' '${SCAFFOLD_KERNEL}/pre_tool_call.sh' | grep -c 'allow_implementer_loop' || echo 0" \
+  "1"
+check "080 brief enrichment selftest passes (unmanaged→managed artifact; inventory; Jakarta rename; property mapping)" \
+  "python3 '${SCAFFOLD_080}/.hermes/skills/migration/fix-until-green/scripts/brief.test.py' >/dev/null && echo 1 || echo 0" \
+  "1"
 check "080 paved-road coverage lint passes" \
   "python3 '${SCAFFOLD_LIB}/paved_road.py' coverage >/dev/null && echo 1 || echo 0" \
   "1"
