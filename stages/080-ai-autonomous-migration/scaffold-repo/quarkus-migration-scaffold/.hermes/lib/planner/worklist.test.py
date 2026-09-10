@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from planner.cards import card_title
 from planner.worklist import apply_supersessions
 from planner.worklist import KIND_RANK, cluster_items, compile_items, file_depths, incidents_from_findings, measure_of, obligation_keys, path_class, progress, surefire_from_reports, test_items  # noqa: E402
 
@@ -152,6 +153,23 @@ def main() -> int:
         return _fail("becoming known never excuses a new obligation")
     if compile_items({"diagnostics": [], "build_unresolvable": True, "reason": "missing version"})[0].get("message") != "missing version":
         return _fail("the unresolvable item must carry the resolver's reason for the brief")
+    # the same unresolved symbol across files is one cluster with a multi-file write set (capped); a lone item stays per file
+    def _c(path, sym, n):
+        return {"id": "err:%s%d" % (sym, n), "source": "javac", "kind": "compile", "category": "mandatory", "path": path, "line": n, "rule_id": "compiler.err.cant.resolve.location", "message": "cannot find symbol\n  symbol:   class %s\n  location: class X" % sym}
+    rows = [_c("src/main/java/a/A.java", "DataAccessException", 1), _c("src/main/java/b/B.java", "DataAccessException", 2), _c("src/main/java/b/B.java", "DataAccessException", 3), _c("src/main/java/c/C.java", "Lonely", 4)]
+    cl = cluster_items(rows, {"src/main/java/a/A.java": 3, "src/main/java/b/B.java": 1, "src/main/java/c/C.java": 2}, set())
+    sym = [c for c in cl if c.get("label") == "DataAccessException"]
+    if len(sym) != 1 or sym[0]["write_set"] != ["src/main/java/a/A.java", "src/main/java/b/B.java"] or len(sym[0]["items"]) != 3 or sym[0]["order_key"][1] != 1:
+        return _fail("a symbol seen in two files must be one cluster writing both, ordered by the shallowest file: %s" % sym)
+    lone = [c for c in cl if c["path"] == "src/main/java/c/C.java"]
+    if len(lone) != 1 or lone[0].get("label") or lone[0]["write_set"] != ["src/main/java/c/C.java"]:
+        return _fail("a symbol seen in one file stays a per-file cluster: %s" % lone)
+    many = [_c("src/main/java/p/F%02d.java" % i, "Profile", i) for i in range(10)]
+    caps = [c for c in cluster_items(many, {}, set()) if c.get("label")]
+    if [c["label"] for c in caps] != ["Profile#1", "Profile#2"] or len(caps[0]["write_set"]) != 8 or len(caps[1]["write_set"]) != 2:
+        return _fail("a symbol across more than 8 files splits into capped clusters: %s" % [(c["label"], len(c["write_set"])) for c in caps])
+    if card_title(sym[0], 1) != "M3 compile DataAccessException (3 items, 2 files, attempt 1)":
+        return _fail("symbol clusters get a readable title: %s" % card_title(sym[0], 1))
     # a profile file's cluster writes the profile file AND the sibling application.properties (the documented merge)
     prof = cluster_items([{"id": "inc:p", "source": "mta", "kind": "config", "category": "mandatory", "path": "src/main/resources/application-hsqldb.properties", "line": 0, "rule_id": "springboot-properties-to-quarkus-00001"}], {}, set())
     if prof[0]["write_set"] != ["src/main/resources/application-hsqldb.properties", "src/main/resources/application.properties"]:

@@ -1248,6 +1248,10 @@ data:
             # gateway-embedded dispatcher (v30: gateway gone => board stall).
             "dispatch_in_gateway": True,
             "max_in_progress": 1,
+            # Seconds between dispatcher ticks (Hermes default 60): a minted
+            # card waited up to a minute before its worker started; at ~30
+            # loop cards per run that is half an hour (v7 item 9).
+            "dispatch_interval_seconds": 15,
         },
         # Dashboard bank (Operator ruling: ai-developer/redhat123 demo auth;
         # product refuses unauthenticated non-localhost bind). Seeded here so

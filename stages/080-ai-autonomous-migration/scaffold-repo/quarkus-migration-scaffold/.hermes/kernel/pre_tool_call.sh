@@ -289,6 +289,25 @@ def loop_record_names_task(task):
 
 LOOP_ROAD = ("brief.py", "run-verify.sh", "advance.py")
 
+def is_loop_card():
+    """This task is the loop card K4 issued (verification/loop/issued.json under an allow root names it)."""
+    task = hook_task_id()
+    if not task:
+        return False
+    roots = [x for x in allow.split(os.pathsep) if x] + [os.environ.get("HERMES_WRITE_SAFE_ROOT") or ""]
+    for r in roots:
+        if not r:
+            continue
+        try:
+            doc = json.load(open(os.path.join(r, "verification", "loop", "issued.json"), encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(doc, dict) and str(doc.get("task_id") or "") == task:
+            return True
+    return False
+
+INLINE_PY = re.compile(r"(?:^|[\s;&|(])python3?\s+-(?:c\b|\s|$)")
+
 def loop_road_ran():
     """paved-road-m3 on the official log: brief.py, run-verify.sh and
     advance.py each ran as a terminal command (basename on a $ line)."""
@@ -414,6 +433,17 @@ if is_request_review() and profile == "implementer" and review_reviewer() != "re
     block("kanban_request_review refused: name the reviewer (reviewer=reviewer). "
           "Without it Hermes dispatches the review back to the implementer, which "
           "re-runs the acceptance on a card that is already closed.")
+
+# v7 item 8: on a loop card the brief already carries the measure, the items
+# with their advice, the rule conditions and the previous attempts. Inline
+# python that re-derives them from JSON was whole cards of exploration in v6
+# (t_57aef986: 1255 lines, 7 terminal probes, no patch). The road is patch →
+# run-verify → advance; a script file the road names is still allowed.
+if profile == "implementer" and tool in {"terminal", "bash", "shell"} and cmd and INLINE_PY.search(cmd) and is_loop_card():
+    block("inline python refused on a loop card: the brief (verification/loop/brief-*.json) "
+          "already carries the measure, every item with its advice and rule condition, "
+          "and previous_attempts. Read it with cat, patch the write set, then run "
+          "run-verify.sh and advance.py.")
 
 if is_request_review() and profile == "implementer" and loop_verdict_recorded():
     block("kanban_request_review refused on a loop card: the loop record already names this "

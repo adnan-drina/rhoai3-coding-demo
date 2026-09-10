@@ -52,6 +52,9 @@ def card_title(head: dict[str, Any], attempt: int) -> str:
     """Readable card name: kind, file, item count, attempt. The cluster id
     stays in the body and the idempotency key."""
     n = len(head.get("items") or [])
+    if head.get("label"):
+        files = len(head.get("write_set") or [])
+        return "M3 %s %s (%d item%s, %d file%s, attempt %d)" % (head.get("kind"), head["label"], n, "" if n == 1 else "s", files, "" if files == 1 else "s", attempt)
     name = str(head.get("path") or "").rsplit("/", 1)[-1] or str(head.get("path") or head.get("id"))
     return "M3 %s %s (%d item%s, attempt %d)" % (head.get("kind"), name, n, "" if n == 1 else "s", attempt)
 

@@ -1061,6 +1061,30 @@ def main() -> int:
             fails += 1
         else:
             print("ok impl_complete_loop_unrecorded_card")
+        # v7 item 8: inline python is refused on the issued loop card only; scripts the road names stay allowed
+        (dest / "verification" / "loop" / "issued.json").write_text(json.dumps({"schema": "rhoai3.loop-issued/v1", "task_id": "t_loopcard", "cluster": "c:1"}), encoding="utf-8")
+        loop_card_env = {"HERMES_PROFILE": "implementer", "HERMES_KANBAN_TASK": "t_loopcard", "K2_BOUND_GATE_EXIT": "0"}
+        for cmdline in ("python3 -c \"import json; print(json.load(open('verification/loop/state.json')))\"", "cd /projects/modernized && python3 - <<'PY'\nprint(1)\nPY"):
+            r = run(cmdline, roots, cwd=cwd, extra_env=loop_card_env)
+            if r.get("action") != "block" or "brief" not in (r.get("message") or ""):
+                print("FAIL loop_card_inline_python_refused %r" % cmdline, r, file=sys.stderr)
+                fails += 1
+            else:
+                print("ok loop_card_inline_python_refused")
+        for cmdline in ("python3 .hermes/skills/migration/fix-until-green/scripts/brief.py --root .", "cat verification/loop/brief-c-1.json", "bash .hermes/skills/migration/fix-until-green/scripts/run-verify.sh --root ."):
+            r = run(cmdline, roots, cwd=cwd, extra_env=loop_card_env)
+            if r.get("action") == "block" and "inline python" in (r.get("message") or ""):
+                print("FAIL loop_card_road_allowed %r" % cmdline, r, file=sys.stderr)
+                fails += 1
+            else:
+                print("ok loop_card_road_allowed")
+        r = run("python3 -c \"print(1)\"", roots, cwd=cwd, extra_env={"HERMES_PROFILE": "implementer", "HERMES_KANBAN_TASK": "t_notloop", "K2_BOUND_GATE_EXIT": "0"})
+        if r.get("action") == "block" and "inline python" in (r.get("message") or ""):
+            print("FAIL non_loop_card_inline_python_allowed", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok non_loop_card_inline_python_allowed")
+        (dest / "verification" / "loop" / "issued.json").unlink()
         r = run("", roots, cwd=cwd, tool="kanban_request_review", extra_input={"reviewer": "reviewer", "summary": "x"}, extra_env={"HERMES_PROFILE": "implementer", "K2_BOUND_GATE_EXIT": "0"})
         if r.get("action") == "block":
             print("FAIL impl_request_review_with_reviewer_allowed", r, file=sys.stderr)

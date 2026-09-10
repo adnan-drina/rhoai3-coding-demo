@@ -56,6 +56,8 @@ rule to `kanban_complete`.
    minutes of silence). Never tests, never `evidence/`, never
    `decisions.yaml`, never a plugin or dependency the brief did not ask
    for, never a path outside the write set (advance.py reverts it).
+   No inline python (`python3 -c`, `python3 -`) on a loop card: K2 refuses
+   it. Everything it would compute is already in the brief.
 4. `bash .hermes/skills/migration/fix-until-green/scripts/run-verify.sh --root .`
    — the real tools. exit 1 here is a tool failure: re-run it; if it stays
    red, `kanban_block` kind=needs_input naming the tool.

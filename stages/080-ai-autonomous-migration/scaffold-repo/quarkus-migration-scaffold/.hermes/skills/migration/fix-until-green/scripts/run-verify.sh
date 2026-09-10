@@ -39,8 +39,21 @@ set +e
 # Every goal the offline pass runs is run online first: build-classpath pulls
 # test-scope transitives (quarkus-bootstrap-gradle-resolver, httpmime) that
 # neither go-offline nor `mvn test` fetch (measured live 2026-09-09).
-( cd "${ROOT}" && mvn -q -B dependency:go-offline && mvn -q -B dependency:build-classpath "-Dmdep.outputFile=${WORK}/classpath.warmup.txt" && mvn -q -B -Dmaven.test.failure.ignore=true test ) >"${WORK}/warmup.log" 2>&1
-WARM_RC=$?
+# The warm-up depends only on the build inputs (pom.xml, .mvn/); when they
+# are the ones the last successful warm-up saw, the local repository already
+# holds everything and the online pass is skipped (v7 item 9: ~60 s per card).
+WARM_STAMP="${ROOT}/verification/build/warmup.stamp"
+WARM_KEY="$(cat "${ROOT}/pom.xml" "${ROOT}"/.mvn/* 2>/dev/null | sha256sum | cut -c1-64)"
+if [[ -f "${WARM_STAMP}" && "$(cat "${WARM_STAMP}")" == "${WARM_KEY}" ]]; then
+  echo "warm-up skipped: build inputs unchanged since the last successful warm-up (${WARM_KEY:0:12})" >"${WORK}/warmup.log"
+  WARM_RC=0
+  WARM_SKIPPED=true
+else
+  ( cd "${ROOT}" && mvn -q -B dependency:go-offline && mvn -q -B dependency:build-classpath "-Dmdep.outputFile=${WORK}/classpath.warmup.txt" && mvn -q -B -Dmaven.test.failure.ignore=true test ) >"${WORK}/warmup.log" 2>&1
+  WARM_RC=$?
+  WARM_SKIPPED=false
+  [[ "${WARM_RC}" -eq 0 ]] && printf "%s" "${WARM_KEY}" >"${WARM_STAMP}"
+fi
 ( cd "${ROOT}" && mvn -q -B -o dependency:build-classpath "-Dmdep.outputFile=${WORK}/classpath.txt" ) >"${WORK}/classpath.log" 2>&1
 CP_RC=$?
 set -e
@@ -102,12 +115,12 @@ else
   echo "WARN: no MTA CLI on PATH; incidents are UNKNOWN for this verification (the loop cannot advance)" >&2
 fi
 
-python3 - "${RUN}" "${CP_RC}" "${DIAG_RC}" "${TEST_RAN}" "${TEST_RC}" "${RESCAN_RAN}" "${RESCAN_RC}" "${WARM_RC}" <<'PYEOF'
+python3 - "${RUN}" "${CP_RC}" "${DIAG_RC}" "${TEST_RAN}" "${TEST_RC}" "${RESCAN_RAN}" "${RESCAN_RC}" "${WARM_RC}" "${WARM_SKIPPED}" <<'PYEOF'
 import json, sys
 def rc(v):
     return int(v) if v not in ("", None) else None
 json.dump({"schema": "rhoai3.verify-run/v1",
-           "warmup": {"ran": True, "rc": rc(sys.argv[8])},
+           "warmup": {"ran": True, "rc": rc(sys.argv[8]), "skipped": sys.argv[9] == "true"},
            "classpath": {"ran": True, "rc": rc(sys.argv[2])},
            "diagnostics": {"ran": True, "rc": rc(sys.argv[3])},
            "tests": {"ran": sys.argv[4] == "true", "rc": rc(sys.argv[5])},

@@ -27,6 +27,7 @@ obligation; the line stays on the item for the brief.
 """
 from __future__ import annotations
 
+import re
 import xml.etree.ElementTree as ET
 from collections import defaultdict
 from pathlib import Path
@@ -321,11 +322,64 @@ def _profile_of(path: str) -> str:
     return ""
 
 
+SYMBOL_CLUSTER_MAX_FILES = 8
+_SYM_RE = re.compile(r"symbol:\s+(?:class|variable|method|interface|enum)\s+([A-Za-z_$][\w$]*)")
+_PKG_RE = re.compile(r"package ([\w.]+) does not exist")
+
+
+def compile_token(item: dict[str, Any]) -> str:
+    """The unresolved name a compile item is about (symbol or package), or ''."""
+    if item.get("source") != "javac" or item.get("kind") != "compile":
+        return ""
+    msg = str(item.get("message") or item.get("detail") or "")
+    m = _SYM_RE.search(msg) or _PKG_RE.search(msg)
+    return m.group(1) if m else ""
+
+
 def cluster_items(items: list[dict[str, Any]], depths: dict[str, int], deferred: set[str]) -> list[dict[str, Any]]:
+    # Compile items that are the same unresolved name in several files are one
+    # obligation, not one per file: they get one card whose write set lists the
+    # files (capped, so a card stays one model turn). Pilot v6: 829 errors were
+    # 73 per-file cards; the same Spring symbol (DataAccessException ×124,
+    # @Profile ×58, @Transactional ×36) recurs across most of them.
+    by_token: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for it in items:
+        tok = compile_token(it)
+        if tok:
+            by_token[tok].append(it)
+    symbol_groups: list[tuple[str, list[dict[str, Any]]]] = []
+    taken: set[str] = set()
+    for tok in sorted(by_token):
+        rows = by_token[tok]
+        files = sorted({r["path"] for r in rows})
+        if len(files) < 2:
+            continue
+        for i in range(0, len(files), SYMBOL_CLUSTER_MAX_FILES):
+            chunk = set(files[i:i + SYMBOL_CLUSTER_MAX_FILES])
+            part = [r for r in rows if r["path"] in chunk]
+            label = tok if len(files) <= SYMBOL_CLUSTER_MAX_FILES else "%s#%d" % (tok, i // SYMBOL_CLUSTER_MAX_FILES + 1)
+            symbol_groups.append((label, part))
+            taken.update(r["id"] for r in part)
     by_path: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for it in items:
-        by_path[it["path"]].append(it)
+        if it["id"] not in taken:
+            by_path[it["path"]].append(it)
     clusters: list[dict[str, Any]] = []
+    for label, its in symbol_groups:
+        its = sorted(its, key=lambda i: i["id"])
+        files = sort_unique([i["path"] for i in its])
+        cid = "c:%s" % sha256_bytes(("symbol:" + label).encode("utf-8"))[:12]
+        clusters.append({
+            "id": cid,
+            "path": files[0],
+            "label": label,
+            "kind": "compile",
+            "items": [i["id"] for i in its],
+            "order_key": [KIND_RANK["compile"], min(depths.get(f, UNKNOWN_DEPTH) for f in files), files[0]],
+            "status": "deferred" if cid in deferred else "open",
+            "write_set": files,
+            "block": "",
+        })
     for path in sorted(by_path):
         its = sorted(by_path[path], key=lambda i: i["id"])
         kind = min((i["kind"] for i in its), key=lambda k: KIND_RANK[k])
