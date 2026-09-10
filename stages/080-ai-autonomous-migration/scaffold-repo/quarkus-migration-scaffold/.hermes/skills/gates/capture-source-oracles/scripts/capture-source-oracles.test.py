@@ -19,7 +19,10 @@ HERE = Path(__file__).resolve().parent
 GOLDEN = HERE.parents[4]
 sys.path.insert(0, str(GOLDEN / ".hermes" / "lib"))
 from planner import pipeline, specimens  # noqa: E402
-from planner.canonical import load_json  # noqa: E402
+from planner.canonical import load_json, write_canonical  # noqa: E402
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _oracle_common import slug  # noqa: E402
 
 CAPTURE = HERE / "capture-source-oracles.py"
 COMPARE = HERE / "compare-runtime-parity.py"
@@ -80,6 +83,33 @@ def main() -> int:
             post_owner = next(k for k in statuses if "OwnerController#create" in k)
             if statuses[get_owner] != "CAPTURED" or statuses[post_owner] != "INCONCLUSIVE":
                 return _fail("capture statuses %s" % statuses)
+            # a templated path is not a request: without a value it is
+            # INCONCLUSIVE, and with one both sides are compared at the same
+            # concrete URL (the substitution is recorded in the oracle)
+            tspec = json.loads(json.dumps(specimens.specimen("http")))
+            for ty in tspec["types"]:
+                for m in ty.get("methods") or []:
+                    if m.get("name") == "list":
+                        for a in m.get("annotations") or []:
+                            if a["fqn"].endswith("GetMapping"):
+                                a.setdefault("values", {})["value"] = ["/{ownerId}"]
+            troot = specimens.build_dest(t / "templated", tspec, decisions=specimens.admitted_decisions("http"))
+            specimens.prepare_loop(troot)
+            rec_a = pipeline.admit(troot)
+            if rec_a["status"] != "ADMITTED":
+                return _fail("templated fixture must admit: %s %s" % (rec_a["status"], (rec_a.get("reasons") or [])[:3]))
+            tep = next(e["id"] for e in load_json(troot / "evidence" / "planning" / "evidence-bundle.json")["entry_points"]
+                       if e.get("http_path", "").endswith("/{ownerId}"))
+            oracle_p = troot / "verification" / "source-oracles" / (slug(tep) + ".json")
+            _run([sys.executable, str(CAPTURE), "--root", str(troot), "--base-url", src_url, "--entry-point", tep])
+            rec = load_json(oracle_p)
+            if rec["status"] != "INCONCLUSIVE" or "--path-var ownerId=" not in rec["reason"]:
+                return _fail("a templated path with no value must be INCONCLUSIVE and name the variable: %s" % rec)
+            _run([sys.executable, str(CAPTURE), "--root", str(troot), "--base-url", src_url, "--entry-point", tep, "--path-var", "ownerId=1"])
+            rec = load_json(oracle_p)
+            if rec["status"] != "CAPTURED" or rec["oracle"]["path"] != "/api/owners/1" or rec["oracle"]["path_vars"] != {"ownerId": "1"}:
+                return _fail("a substituted path must be captured concretely and record what it substituted: %s" % rec)
+
             # parity PASS (key order differs but canonical JSON matches)
             if _run([sys.executable, str(COMPARE), "--root", str(hroot), "--entry-point", get_owner, "--dest-url", same_url]).returncode != 0:
                 return _fail("identical destination must PASS")

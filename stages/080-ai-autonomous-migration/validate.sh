@@ -798,6 +798,12 @@ check "080 revert restores the index as well as the working tree" \
 check "080 run-verify.sh records the mvn test exit status and deletes stale surefire reports" \
   "grep -c -E 'surefire-reports\"\$|--test-rc' '${SCAFFOLD_SKILLS}/migration/fix-until-green/scripts/run-verify.sh' | awk '{print (\$1>=2)?1:0}'" \
   "1"
+check "080 the coverage plugin is pinned to a version that can read the pinned toolchain's class files (JaCoCo >= 0.8.11 for Java 21)" \
+  "python3 -c \"import json; c=json.load(open('${SCAFFOLD_080}/.hermes/planning/catalogs/compat-mapping.json')); v=c['plugin_config']['org.jacoco:jacoco-maven-plugin']['version']; print('ok' if tuple(int(x) for x in v.split('.')) >= (0,8,11) else v)\"" \
+  "ok"
+check "080 a templated entry-point path is not captured as an oracle without a real value (capture-source-oracles selftest)" \
+  "python3 '${SCAFFOLD_SKILLS}/gates/capture-source-oracles/scripts/capture-source-oracles.test.py' >/dev/null && echo 1 || echo 0" \
+  "1"
 check "080 the generator writes where the mojo registers a compile source root (openapi-generator configOptions.sourceFolder)" \
   "python3 -c \"import json,sys; c=json.load(open('${SCAFFOLD_080}/.hermes/planning/catalogs/compat-mapping.json')); print(c['plugin_config']['org.openapitools:openapi-generator-maven-plugin']['configOptions']['sourceFolder'])\"" \
   "src/main/java"

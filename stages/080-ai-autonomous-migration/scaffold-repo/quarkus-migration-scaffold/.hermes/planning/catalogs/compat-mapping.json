@@ -192,6 +192,10 @@
         }
       },
       "source": "https://quarkus.io/guides/maven-tooling (MTA javaee-pom-to-quarkus-00030 matches compilerArgs/arg = -parameters)"
+    },
+    "org.jacoco:jacoco-maven-plugin": {
+      "version": "0.8.11",
+      "note": "JaCoCo before 0.8.11 cannot read Java 21 class files (major version 65) and fails the report goal with UnsupportedClassVersionError; 0.8.11 is the release that officially supports Java 21 (https://github.com/jacoco/jacoco/releases/tag/v0.8.11). The pinned structure_extractor toolchain is jdk-21, so a legacy pom carrying 0.8.7 breaks mvn package on the destination. Measured live 2026-09-10 on pilot v7: the loop never saw it because the measure stops at the test phase."
     }
   },
   "remove_dependencies": {
