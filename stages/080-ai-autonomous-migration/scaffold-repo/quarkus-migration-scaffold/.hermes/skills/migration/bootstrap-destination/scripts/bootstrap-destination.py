@@ -146,6 +146,32 @@ def map_dependencies(deps: ET.Element, catalog: dict, changes: list[dict], block
     return to_add, scoped
 
 
+def test_scoped_artifacts(catalog: dict) -> set[str]:
+    """The artifacts the catalog declares test-scoped (the mapping's own list)."""
+    return set(((catalog.get("test_scoped") or {}).get("artifacts")) or ("quarkus-junit5", "rest-assured"))
+
+
+def add_mapped_artifacts(deps: ET.Element, catalog: dict, to_add: list[str], scoped: dict[str, str], changes: list[dict]) -> None:
+    """Catalog artifacts added to <dependencies> when absent, with the group id
+    the catalog gives them and the scope the catalog declares. Versions are not
+    set here: the BOM manages what it manages and carry_versions measures the
+    rest."""
+    present = {(text(d, "groupId"), text(d, "artifactId")) for d in deps.findall(q("dependency"))}
+    groups = catalog.get("starter_group_ids") or {}
+    scoped_arts = test_scoped_artifacts(catalog)
+    for art in sorted(set(to_add)):
+        gid = groups.get(art, "io.quarkus")
+        if (gid, art) in present:
+            continue
+        d = sub(deps, "dependency")
+        sub(d, "groupId", gid)
+        sub(d, "artifactId", art)
+        if art in scoped_arts or scoped.get(art):
+            sub(d, "scope", scoped.get(art) or "test")
+        present.add((gid, art))
+        changes.append({"op": "pom.add-extension", "gav": "%s:%s" % (gid, art)})
+
+
 def bootstrap_pom(root: Path, catalog: dict, pins: dict, changes: list[dict], blocks: list[dict]) -> None:
     pom = root / "pom.xml"
     ET.register_namespace("", NS)
@@ -195,19 +221,7 @@ def bootstrap_pom(root: Path, catalog: dict, pins: dict, changes: list[dict], bl
     # 4. dependencies: starters → extensions, drivers → jdbc extensions, remove org.springframework.boot
     deps = find_or_add(project, "dependencies")
     to_add, scoped = map_dependencies(deps, catalog, changes, blocks)
-    present = {(text(d, "groupId"), text(d, "artifactId")) for d in deps.findall(q("dependency"))}
-    groups = catalog.get("starter_group_ids") or {}
-    for art in sorted(set(to_add)):
-        gid = groups.get(art, "io.quarkus")
-        if (gid, art) in present:
-            continue
-        d = sub(deps, "dependency")
-        sub(d, "groupId", gid)
-        sub(d, "artifactId", art)
-        if art in ("quarkus-junit5", "rest-assured") or scoped.get(art):
-            sub(d, "scope", scoped.get(art) or "test")
-        present.add((gid, art))
-        changes.append({"op": "pom.add-extension", "gav": "%s:%s" % (gid, art)})
+    add_mapped_artifacts(deps, catalog, to_add, scoped, changes)
     # 4b. versions: the removed Spring Boot parent managed versions; the
     # Quarkus BOM manages its own set (measured by probe-bom-managed.py).
     # A version-less dependency the BOM does not manage gets the version the
@@ -357,8 +371,12 @@ def apply_plugin_config(project: ET.Element, plugins: ET.Element, catalog: dict,
 def rename_jakarta_imports(root: Path, catalog: dict, changes: list[dict], blocks: list[dict]) -> None:
     """Catalog package_renames (javax.* → jakarta.*) applied to import
     declarations through the JDK compiler's parse tree (scripts/jakarta-imports/
-    JakartaImports.java, compiled here). Production sources only; tests judge
-    the migration and are not rewritten. Documented facts, applied by a tool."""
+    JakartaImports.java, compiled here).
+
+    Main AND test sources: renaming an import is a namespace migration, not a
+    change to what a test asserts, and a test source that cannot compile makes
+    the whole measure unknown (pilot v7, 2026-09-10). What a test asserts is
+    still never rewritten -- by this tool or by a worker."""
     import shutil
     import subprocess
     import tempfile
@@ -376,7 +394,7 @@ def rename_jakarta_imports(root: Path, catalog: dict, changes: list[dict], block
         if cp.returncode != 0:
             blocks.append({"class": "TOOL_MISSING", "subject": "jakarta-imports", "detail": "JakartaImports.java did not compile: %s" % cp.stderr.strip()[:300]})
             return
-        argv = [java, "-cp", td, "JakartaImports", "--root", str(root)] + ["%s=%s" % (k, v) for k, v in sorted(renames.items())]
+        argv = [java, "-cp", td, "JakartaImports", "--root", str(root), "--roots", "src/main/java,src/test/java"] + ["%s=%s" % (k, v) for k, v in sorted(renames.items())]
         run = subprocess.run(argv, capture_output=True, text=True)
         if run.returncode != 0:
             blocks.append({"class": "TOOL_MISSING", "subject": "jakarta-imports", "detail": "JakartaImports failed: %s" % run.stderr.strip()[:300]})
@@ -607,14 +625,129 @@ def retire_only(root: Path) -> int:
     return 0
 
 
+def late_row_artifacts(receipt: dict, catalog: dict) -> tuple[list[str], dict[str, str]]:
+    """What the catalog rows THIS destination consumed produce today.
+
+    A mapping row is consumed once, at bootstrap, against a legacy dependency
+    that is no longer in the destination pom. When such a row later gains an
+    artifact, no amount of re-running the bootstrap will deliver it. So the
+    receipt is the record of which rows applied here, and the catalog says what
+    those rows produce now; the difference is what is missing.
+
+    Adding every artifact the catalog mentions would be the wrong answer: a
+    test-scoped artifact belongs to the row that asks for it, not to every
+    destination (a specimen whose legacy never had the Spring security test
+    starter must not acquire its replacement)."""
+    to_add: list[str] = list(catalog.get("always_add") or [])
+    scoped: dict[str, str] = {}
+    rows = {
+        "pom.map-starter": catalog.get("starters") or {},
+        "pom.map-driver": catalog.get("jdbc_drivers") or {},
+        "pom.remove-dependency": catalog.get("remove_dependencies") or {},
+    }
+    for c in receipt.get("changes") or []:
+        row = rows.get(str(c.get("op") or "")) or {}
+        entry = row.get(str(c.get("from") or ""))
+        if entry is None:
+            continue
+        if isinstance(entry, str):
+            to_add.append(entry)
+            continue
+        if isinstance(entry, dict):
+            to_add.extend(entry.get("to") or [])
+            for art in entry.get("to") or []:
+                if entry.get("scope"):
+                    scoped[art] = str(entry["scope"])
+            continue
+        to_add.extend(entry)
+    return to_add, scoped
+
+
+def reapply_catalog(root: Path) -> int:
+    """Operator: apply catalog rows that changed after the bootstrap ran to an
+    already bootstrapped tree — the documented plugins and their configuration,
+    the artifacts the catalog declares test-scoped, versions carried from the
+    legacy build, and the Jakarta namespace rename.
+
+    Every step is idempotent by construction: set to the documented value, or
+    add when absent. Accepted card work in the pom and in the sources is left
+    alone. What is deliberately NOT re-run is anything that consumes the legacy
+    pom or the frozen copy: source import, starter mapping, dependency removal,
+    retirement. Those rows were consumed once, their inputs are gone from this
+    pom, and re-running them would rewrite a tree the loop has already measured
+    (retirement decided later has its own mode, --retire-only).
+
+    Appends to the bootstrap receipt, so a catalog fact that arrived mid-run has
+    the same provenance as one that was there at bootstrap."""
+    receipt_p = root / BOOTSTRAP_RECEIPT
+    if not receipt_p.is_file():
+        print("FAIL: BOOTSTRAP_NO_RECEIPT (the tree was never bootstrapped)", file=sys.stderr)
+        return 1
+    cat_p = root / CATALOGS_DIR / "compat-mapping.json"
+    if not cat_p.is_file():
+        print("FAIL: BOOTSTRAP_NO_CATALOG %s" % cat_p, file=sys.stderr)
+        return 1
+    catalog = load_json(cat_p)
+    pins = load_pins(root)
+    platform = pin(pins, "quarkus_platform")
+    pom = root / "pom.xml"
+    if not pom.is_file():
+        print("FAIL: BOOTSTRAP_NO_POM %s" % pom, file=sys.stderr)
+        return 1
+    receipt = load_json(receipt_p)
+    changes: list[dict] = []
+    blocks: list[dict] = []
+    ET.register_namespace("", NS)
+    try:
+        tree = ET.parse(pom)
+    except ET.ParseError as exc:
+        print("FAIL: BOOTSTRAP_POM_PARSE %s" % exc, file=sys.stderr)
+        return 1
+    project = tree.getroot()
+    deps = find_or_add(project, "dependencies")
+    to_add, scoped = late_row_artifacts(receipt, catalog)
+    add_mapped_artifacts(deps, catalog, to_add, scoped, changes)
+    carry_versions(root, platform, deps, blocks, changes)
+    build = find_or_add(project, "build")
+    plugins = find_or_add(build, "plugins")
+    add_plugins(plugins, catalog, changes)
+    apply_plugin_config(project, plugins, catalog, changes)
+    ET.indent(tree, space="  ")
+    tree.write(pom, encoding="utf-8", xml_declaration=True)
+    rename_jakarta_imports(root, catalog, changes, blocks)
+    receipt["changes"] = list(receipt.get("changes") or []) + changes
+    receipt["inputs"] = dict(receipt.get("inputs") or {})
+    receipt["inputs"]["catalog_sha256"] = sha256_file(cat_p)
+    receipt["outputs"] = [{"path": "pom.xml", "sha256": sha256_file(pom)}]
+    if blocks:
+        receipt["blocks"] = list(receipt.get("blocks") or []) + blocks
+        receipt["status"] = "blocked"
+    write_canonical(receipt_p, receipt)
+    for c in changes:
+        print("  - %s %s" % (c["op"], c.get("gav") or c.get("artifact") or c.get("path") or c.get("key") or ""))
+    if blocks:
+        for b in blocks:
+            print("  - %s %s: %s" % (b["class"], b["subject"], b["detail"]), file=sys.stderr)
+        print("REFUSE: BOOTSTRAP_BLOCKED (%d block(s))" % len(blocks), file=sys.stderr)
+        return 1
+    print("OK: reapply-catalog (%d change(s), catalog %s) → %s" % (len(changes), sha256_file(cat_p)[:12], BOOTSTRAP_RECEIPT))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--root", required=True)
     ap.add_argument("--retire-only", action="store_true", help="Operator: apply decisions.yaml retired_sources to an already bootstrapped tree (an ADR accepted after M2); appends to the bootstrap receipt; the loop is then re-measured (fix-until-green/scripts/rewind.py --remeasure)")
+    ap.add_argument("--reapply-catalog", action="store_true", help="Operator: apply catalog rows that changed after the bootstrap ran (plugins and their configuration, test-scoped artifacts, carried versions, the Jakarta rename) to an already bootstrapped tree; idempotent, appends to the receipt, re-measure afterwards")
     args = ap.parse_args(argv)
     root = Path(args.root).resolve()
+    if args.retire_only and args.reapply_catalog:
+        print("FAIL: BOOTSTRAP_USAGE --retire-only and --reapply-catalog are separate interventions; run one, re-measure, then the other", file=sys.stderr)
+        return 2
     if args.retire_only:
         return retire_only(root)
+    if args.reapply_catalog:
+        return reapply_catalog(root)
     freeze_p = producer_receipt(root, "freeze")
     if not freeze_p.is_file():
         print("FAIL: BOOTSTRAP_NO_FREEZE", file=sys.stderr)

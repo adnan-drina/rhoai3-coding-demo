@@ -798,6 +798,27 @@ check "080 revert restores the index as well as the working tree" \
 check "080 run-verify.sh records the mvn test exit status and deletes stale surefire reports" \
   "grep -c -E 'surefire-reports\"\$|--test-rc' '${SCAFFOLD_SKILLS}/migration/fix-until-green/scripts/run-verify.sh' | awk '{print (\$1>=2)?1:0}'" \
   "1"
+check "080 the generator writes where the mojo registers a compile source root (openapi-generator configOptions.sourceFolder)" \
+  "python3 -c \"import json,sys; c=json.load(open('${SCAFFOLD_080}/.hermes/planning/catalogs/compat-mapping.json')); print(c['plugin_config']['org.openapitools:openapi-generator-maven-plugin']['configOptions']['sourceFolder'])\"" \
+  "src/main/java"
+check "080 the mapping restores the assertion library the Spring test starter provided, in test scope, with its group id" \
+  "python3 -c \"import json; c=json.load(open('${SCAFFOLD_080}/.hermes/planning/catalogs/compat-mapping.json')); st=c['starters']['org.springframework.boot:spring-boot-starter-test']; ok='assertj-core' in st and c['starter_group_ids'].get('assertj-core')=='org.assertj' and 'assertj-core' in c['test_scoped']['artifacts']; print('ok' if ok else 'bad')\"" \
+  "ok"
+check "080 the Jakarta namespace rename covers test sources (a test that cannot compile makes the measure unknown)" \
+  "grep -q -F 'src/main/java,src/test/java' '${SCAFFOLD_SKILLS}/migration/bootstrap-destination/scripts/bootstrap-destination.py' && echo 1 || echo 0" \
+  "1"
+check "080 a late catalog row reaches an already bootstrapped tree from the rows that tree consumed (--reapply-catalog), never from the whole catalog" \
+  "grep -c -E 'def reapply_catalog|def late_row_artifacts' '${SCAFFOLD_SKILLS}/migration/bootstrap-destination/scripts/bootstrap-destination.py' | awk '{print (\$1>=2)?1:0}'" \
+  "1"
+check "080 a deferral is lifted only by a measured tree and only where one is open (operator-step --clear-deferred)" \
+  "grep -c -E 'clear-deferred|is not\" if len\\(unknown\\)' '${SCAFFOLD_SKILLS}/migration/fix-until-green/scripts/operator-step.py' | awk '{print (\$1>=2)?1:0}'" \
+  "1"
+check "080 an operator step that changes a test source refuses without an ADR and an independent reviewer" \
+  "python3 '${SCAFFOLD_SKILLS}/migration/fix-until-green/scripts/operator-step.test.py' >/dev/null && echo 1 || echo 0" \
+  "1"
+check "080 golden decisions.yaml has no proposed ADR left open (a proposal is not a decision)" \
+  "python3 -c \"import sys; sys.path.insert(0,'${SCAFFOLD_080}/.hermes/lib'); from pathlib import Path; from planner.decisions import load_decisions; d=load_decisions(Path('${SCAFFOLD_080}')); print(len([a for a in d['adrs'] if a.get('status')!='accepted']))\"" \
+  "0"
 check "080 bootstrap retires only ADR-listed sources (decisions.yaml retired_sources) and blocks on a stale path" \
   "grep -c -E 'RETIRED_SOURCE_MISSING|retired_sources' '${SCAFFOLD_SKILLS}/migration/bootstrap-destination/scripts/bootstrap-destination.py' | awk '{print (\$1>=2)?1:0}'" \
   "1"

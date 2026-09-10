@@ -25,8 +25,8 @@ adrs:
     status: accepted
     title: Retire the thirteen named Spring test-infrastructure sources in addition to the four implementation-test sources retired under ADR-004; retain ValidatorTests; record lost behavioural coverage and its source-recorded runtime replacements explicitly in M4 evidence; G-2 compares private field-name sets and G-3 compares remaining MTA findings, so neither measures test coverage, missing replacement evidence remains unverified, and restoring the suite with QuarkusTest and REST Assured remains a follow-up (spring-petclinic-rest, decided 2026-09-10)
   - id: ADR-008
-    status: proposed
-    title: An Operator-owned and independently reviewed patch may port ValidatorTests to Jakarta Validation, preserve its English locale and real provider execution, and restore its pinned assertion dependency; assertions, test inputs and discovery remain unchanged, workers receive no test-source write authority, the intervention is recorded separately from autonomous steps, and fresh successful Surefire execution remains mandatory (spring-petclinic-rest, proposed 2026-09-10)
+    status: accepted
+    title: An Operator-owned and independently reviewed patch ports ValidatorTests to Jakarta Validation, preserving its English locale and real provider execution and restoring its pinned assertion dependency (operator-patches/spring-petclinic-rest); assertions, test inputs, selected subject, discovery and the validation call are unchanged, workers receive no test-source write authority, the intervention is recorded as an operator step with a named independent reviewer, and fresh successful Surefire execution of the ported test remains mandatory (spring-petclinic-rest, decided 2026-09-10)
 
 destination_platform:
   id: quarkus-rhbq-3.27   # key of .hermes/planning/catalogs/destination-platforms.json

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """bootstrap-destination selftest: trivial launcher deleted; launcher with behavior kept + block;
-unmapped starter kept + block; second run preserves the whole tree; blocked receipt → admission INCONCLUSIVE."""
+unmapped starter kept + block; second run preserves the whole tree; blocked receipt → admission INCONCLUSIVE;
+--reapply-catalog carries a late catalog row into a bootstrapped tree without touching accepted work."""
 from __future__ import annotations
 
 import hashlib
@@ -59,6 +60,10 @@ def _plugin_config_case() -> int:
         return _fail("plugin_config must pin the version through its property and set the generator leaves: %s %s %s" % (ver, gen, lib))
     if names.get("useJakartaEe") != "true" or "performBeanValidation" in names or "java8" in names or names.get("dateLibrary") != "java8":
         return _fail("plugin_config must set/remove configOptions: %s" % names)
+    # the generated-source folder must be the one the mojo registers as a compile
+    # source root, or Maven never compiles what the generator writes
+    if names.get("sourceFolder") != "src/main/java":
+        return _fail("plugin_config must pin the generated-source folder the mojo registers: %s" % names)
     if not any(c["op"] == "pom.plugin-version" for c in changes) or not any(c["op"] == "pom.plugin-config" for c in changes):
         return _fail("changes must record the plugin rewrite: %s" % changes)
     changes2: list = []
@@ -153,10 +158,11 @@ def _jakarta_imports_case() -> int:
             return _fail("javax imports (member, wildcard, static) must become jakarta: %s" % out)
         if "import javax.xml.parsers.DocumentBuilder;" not in out or "javax.persistence in a comment stays" not in out or 'String s = "javax.persistence"' not in out:
             return _fail("a package with no rename, comments and string literals must be untouched: %s" % out)
-        if (t / "ATest.java").read_text(encoding="utf-8") != "package a;\nimport javax.persistence.Id;\nclass ATest {}\n":
-            return _fail("test sources are never rewritten")
-        if ch != [{"op": "source.rename-imports", "path": "src/main/java/a/A.java", "imports": 3, "source": "compat-mapping.json package_renames (Jakarta EE 10 namespace)"}]:
-            return _fail("the receipt records the file and import count: %s" % ch)
+        if (t / "ATest.java").read_text(encoding="utf-8") != "package a;\nimport jakarta.persistence.Id;\nclass ATest {}\n":
+            return _fail("test sources get the namespace rename too (a test that cannot compile makes the measure unknown)")
+        paths = {c["path"]: c["imports"] for c in ch}
+        if paths != {"src/main/java/a/A.java": 3, "src/test/java/a/ATest.java": 1}:
+            return _fail("the receipt records every renamed file and its import count: %s" % paths)
         ch2: list = []
         mod.rename_jakarta_imports(root, catalog, ch2, blocks)
         if ch2 or blocks:
@@ -164,8 +170,61 @@ def _jakarta_imports_case() -> int:
     return 0
 
 
+def _reapply_catalog_case() -> int:
+    """--reapply-catalog: a catalog row that arrived after the bootstrap ran
+    reaches an already bootstrapped tree, and accepted work survives it."""
+    import re
+    with tempfile.TemporaryDirectory(prefix="reapply-") as td:
+        root = specimens.build_dest(Path(td) / "d", specimens.specimen("http"), decisions=specimens.admitted_decisions())
+        pipeline.assemble_bundle(root)
+        p0 = subprocess.run([sys.executable, str(SCRIPT), "--root", str(root)], text=True, capture_output=True)
+        if p0.returncode != 0:
+            return _fail("reapply: the bootstrap must pass first: %s%s" % (p0.stdout, p0.stderr))
+        pom = root / "pom.xml"
+        bootstrapped = pom.read_text(encoding="utf-8")
+        if "assertj-core" not in bootstrapped:
+            return _fail("test setup: the mapping must put the test-scoped assertion library in the pom")
+        # wind the pom back to what a run bootstrapped BEFORE the catalog gained
+        # these rows: no test-scoped assertion library, no generated-source
+        # folder pinned. Then add an accepted card edit that must survive.
+        wound = re.sub(r"\s*<dependency>\s*<groupId>org\.assertj</groupId>.*?</dependency>", "", bootstrapped, flags=re.S)
+        wound = re.sub(r"\s*<sourceFolder>[^<]*</sourceFolder>", "", wound)
+        wound = wound.replace("</dependencies>", "  <dependency>\n      <groupId>org.acme</groupId>\n      <artifactId>accepted-by-a-card</artifactId>\n      <version>1.2.3</version>\n    </dependency>\n  </dependencies>", 1)
+        # the destination also carries the generator this specimen's pom did not:
+        # its configuration is a catalog row too, and reapply must reach it
+        wound = wound.replace("<plugins>", "<plugins>\n      <plugin>\n        <groupId>org.openapitools</groupId>\n        <artifactId>openapi-generator-maven-plugin</artifactId>\n        <version>5.2.1</version>\n        <executions><execution><goals><goal>generate</goal></goals><configuration><generatorName>spring</generatorName><configOptions><java8>true</java8></configOptions></configuration></execution></executions>\n      </plugin>", 1)
+        pom.write_text(wound, encoding="utf-8")
+        t = root / "src" / "test" / "java" / "org" / "acme"
+        t.mkdir(parents=True, exist_ok=True)
+        (t / "LegacyNamespaceTest.java").write_text("package org.acme;\nimport javax.validation.Validator;\nclass LegacyNamespaceTest { Validator v; }\n", encoding="utf-8")
+        p1 = subprocess.run([sys.executable, str(SCRIPT), "--root", str(root), "--reapply-catalog"], text=True, capture_output=True)
+        if p1.returncode != 0:
+            return _fail("reapply-catalog: %s%s" % (p1.stdout, p1.stderr[-400:]))
+        got = pom.read_text(encoding="utf-8")
+        if "assertj-core" not in got or "<sourceFolder>src/main/java</sourceFolder>" not in got:
+            return _fail("reapply-catalog must add the test-scoped artifact and pin the generated-source folder: %s" % got[-600:])
+        if "accepted-by-a-card" not in got:
+            return _fail("reapply-catalog must leave accepted card work in the pom alone")
+        if "jakarta.validation.Validator" not in (t / "LegacyNamespaceTest.java").read_text(encoding="utf-8"):
+            return _fail("reapply-catalog must apply the namespace rename to test sources")
+        rec = load_json(root / "evidence/producers/bootstrap.json")
+        ops = [c["op"] for c in rec["changes"]]
+        if rec["status"] != "ok" or "pom.add-extension" not in ops:
+            return _fail("the reapplied changes must be appended to the bootstrap receipt: %s %s" % (rec["status"], sorted(set(ops))))
+        before = tree_hash(root)
+        p2 = subprocess.run([sys.executable, str(SCRIPT), "--root", str(root), "--reapply-catalog"], text=True, capture_output=True)
+        if p2.returncode != 0 or tree_hash(root) != before:
+            return _fail("a second reapply-catalog must change nothing: rc=%s" % p2.returncode)
+        # control: the mode is refused where there is nothing to reapply to
+        (root / "evidence/producers/bootstrap.json").unlink()
+        p3 = subprocess.run([sys.executable, str(SCRIPT), "--root", str(root), "--reapply-catalog"], text=True, capture_output=True)
+        if p3.returncode != 1 or "BOOTSTRAP_NO_RECEIPT" not in p3.stderr:
+            return _fail("reapply-catalog on a tree that was never bootstrapped must refuse: rc=%s %s" % (p3.returncode, p3.stderr[-200:]))
+    return 0
+
+
 def main() -> int:
-    if _plugin_config_case() or _profile_merge_case() or _jakarta_imports_case():
+    if _plugin_config_case() or _profile_merge_case() or _jakarta_imports_case() or _reapply_catalog_case():
         return 1
     with tempfile.TemporaryDirectory(prefix="boot-") as tmp:
         t = Path(tmp).resolve()
@@ -284,7 +343,7 @@ def main() -> int:
         p = subprocess.run([sys.executable, str(SCRIPT), "--root", str(r)], text=True, capture_output=True)
         if [c for c in load_json(r / "evidence/producers/bootstrap.json")["changes"] if c["op"] in ("source.delete", "source.retire") and c["path"] == vet_path]:
             return _fail("an ADR that is not accepted retires nothing")
-    print("OK: bootstrap-destination (trivial launcher deleted; second run preserves the tree; @Bean launcher kept + BOOTSTRAP_BLOCKED; unmapped starter kept + block; Maven settings wiring required; legacy versions carried over / VERSION_UNMANAGED / BOM_PROBE_MISSING; ADR-retired sources deleted with provenance / stale path blocks)")
+    print("OK: bootstrap-destination (trivial launcher deleted; second run preserves the tree; @Bean launcher kept + BOOTSTRAP_BLOCKED; unmapped starter kept + block; Maven settings wiring required; legacy versions carried over / VERSION_UNMANAGED / BOM_PROBE_MISSING; ADR-retired sources deleted with provenance / stale path blocks; reapply-catalog carries a late row and refuses without a receipt)")
     return 0
 
 

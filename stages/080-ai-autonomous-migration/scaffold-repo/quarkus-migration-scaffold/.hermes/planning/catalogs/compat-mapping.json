@@ -65,6 +65,7 @@
       "quarkus-smallrye-health"
     ],
     "org.springframework.boot:spring-boot-starter-test": [
+      "assertj-core",
       "quarkus-junit5",
       "rest-assured"
     ],
@@ -79,7 +80,8 @@
   },
   "starter_group_ids": {
     "rest-assured": "io.rest-assured",
-    "quarkus-test-security": "io.quarkus"
+    "quarkus-test-security": "io.quarkus",
+    "assertj-core": "org.assertj"
   },
   "jdbc_drivers": {
     "org.postgresql:postgresql": "quarkus-jdbc-postgresql",
@@ -255,5 +257,14 @@
   },
   "profile_files": {
     "note": "Spring profile files application-<profile>.properties are merged into application.properties as %<profile>.<key> and removed (https://quarkus.io/guides/config-reference#profiles; MTA springboot-properties-to-quarkus-00001). Keys are mapped first (properties / property_prefixes)."
+  },
+  "test_scoped": {
+    "note": "Artifacts the mapping adds in test scope.",
+    "artifacts": [
+      "quarkus-junit5",
+      "rest-assured",
+      "quarkus-test-security",
+      "assertj-core"
+    ]
   }
 }
