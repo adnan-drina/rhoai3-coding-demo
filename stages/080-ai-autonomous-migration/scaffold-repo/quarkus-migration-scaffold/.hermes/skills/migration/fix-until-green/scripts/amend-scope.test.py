@@ -18,11 +18,13 @@ ensure_hermes_lib()
 from planner.worklist import batch_scope_digest  # noqa: E402
 
 SCOPE = {
-    "schema": "rhoai3.batch-scope/v2",
+    "schema": "rhoai3.batch-scope/v3",
     "rule": "spring-data-repository-contract/v1",
     "cluster": "c:abc",
     "repository": "src/main/java/p/VetRepository.java",
     "members": [{"member": "findByLastName", "signature": "findByLastName(java.lang.String)"}],
+    # what the repository reached WHEN THE CARD WAS SEALED
+    "reaches": ["java.util.List<p.Vet>", "java.lang.String"],
     "measured": ["rt:package:1"],
 }
 
@@ -134,6 +136,37 @@ def main() -> int:
         if rc != 0 or "already writable" not in out:
             return _fail("re-amending the same path is a no-op, not a second amendment")
 
+        # a relationship the CANDIDATE introduced grants nothing: the worker
+        # adds a reference to SecurityConfig inside the writable repository and
+        # asks again
+        (root / "src/main/java/p/VetRepository.java").write_text(
+            "package p;\nimport java.util.List;\npublic interface VetRepository {\n"
+            "    List<Vet> findByLastName(String lastName);\n"
+            "    SecurityConfig config();\n}\n")
+        rc, out = _run(root, "--path", "src/main/java/p/SecurityConfig.java",
+                       "--reason", "the repository now mentions SecurityConfig directly")
+        if rc == 0 or "did not reach" not in out:
+            return _fail("a reference the repair itself wrote must not authorize anything: %s" % out)
+        _git(root, "checkout", "--", "src/main/java/p/VetRepository.java")
+
+        # an inventory with no sealed reachability cannot show anything is in
+        # scope, and says so rather than falling back to the current tree
+        no_reach = {k: v for k, v in scope.items() if k not in ("reaches", "digest")}
+        no_reach["schema"] = "rhoai3.batch-scope/v2"
+        no_reach["digest"] = batch_scope_digest(no_reach)
+        old_sp = sp
+        sp2 = root / "evidence/planning/batch-scope/c-abc" / ("%s.json" % no_reach["digest"][:32])
+        sp2.write_text(json.dumps(no_reach))
+        issued.write_text(json.dumps({
+            "schema": "rhoai3.loop-issued/v1", "cluster": "c:abc", "attempt": 1,
+            "write_set": ["src/main/java/p/VetRepository.java"],
+            "batch_scope": {"path": sp2.relative_to(root).as_posix(), "digest": no_reach["digest"]},
+        }))
+        rc, out = _run(root, "--path", "src/main/java/p/Vet.java", "--reason", "findByLastName needs Vet.lastName")
+        if rc == 0 or "sealed reachability" not in out:
+            return _fail("an inventory without sealed reachability must refuse, not fall back: %s" % out)
+        sp = old_sp
+
         # a broken seal refuses before anything else is considered
         reset(digest="deadbeef" * 8)
         rc, out = _run(root, "--path", "src/main/java/p/Vet.java", "--reason", "findByLastName needs Vet.lastName")
@@ -141,7 +174,7 @@ def main() -> int:
             return _fail("a broken seal must refuse the amendment: %s" % out)
 
     print("OK: amend-scope (tests, the build file, unknown paths, unreasoned asks and files the failure does not reach "
-          "all refuse; a file that is already edited cannot be authorized after the fact; a justified amendment widens "
+          "all refuse; a reference the repair itself introduced authorizes nothing and an inventory with no sealed reachability refuses outright; a file that is already edited cannot be authorized after the fact; a justified amendment widens "
           "the issued write set on the record, naming what it authorized, without rewriting the seal; a broken seal refuses)")
     return 0
 

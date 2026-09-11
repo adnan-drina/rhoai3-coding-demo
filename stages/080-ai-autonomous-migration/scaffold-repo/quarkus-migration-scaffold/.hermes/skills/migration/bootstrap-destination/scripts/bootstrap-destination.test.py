@@ -542,10 +542,71 @@ def _build_profile_case() -> int:
     return 0
 
 
+def _retire_offsets_case() -> int:
+    """The compiler counts UTF-16 code units; Python counts code points. One
+    emoji in a comment moved every offset by one and the cut landed inside
+    `public`, producing `@public class Config` with a receipt saying it had
+    worked."""
+    import hashlib
+    import json as _json
+    import shutil as _shutil
+
+    if not _shutil.which("javac"):
+        return 0
+    sys.path.insert(0, str(GOLDEN / ".hermes" / "lib"))
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("_bd_case", SCRIPT)
+    bd = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(bd)
+
+    stub = ("package org.springframework.context.annotation;\nimport java.lang.annotation.*;\n"
+            "@Retention(RetentionPolicy.RUNTIME) @Target({ElementType.TYPE, ElementType.METHOD})\n"
+            "public @interface Profile { String[] value(); }\n")
+    for comment, label in (("// ordinary", "ascii"), ("// \U0001f642", "astral")):
+        with tempfile.TemporaryDirectory(prefix="retire-%s-" % label) as td:
+            root = Path(td)
+            (root / ".hermes").mkdir(parents=True)
+            (root / ".hermes/pins.json").write_text('{"pins":{"quarkus_platform":{"java_release":21}}}')
+            src = root / "src/main/java/p/Config.java"
+            src.parent.mkdir(parents=True)
+            src.write_text('package p;\nimport org.springframework.context.annotation.Profile;\n'
+                           '%s\n@Profile("x")\npublic class Config {}\n' % comment, encoding="utf-8")
+            st = root / ".stub/org/springframework/context/annotation/Profile.java"
+            st.parent.mkdir(parents=True)
+            st.write_text(stub)
+            cls = root / ".cls"
+            cls.mkdir()
+            subprocess.run(["javac", "-d", str(cls), str(st)], check=True, capture_output=True)
+            cp = root / "verification/build/.work/classpath.txt"
+            cp.parent.mkdir(parents=True)
+            cp.write_text(str(cls))
+            (root / "evidence").mkdir(exist_ok=True)
+            (root / "evidence/type-inventory.json").write_text("{}")
+            rows, why = bd.all_profile_conditions(root)
+            if why or len(rows) != 1:
+                return _fail("%s: one condition, read from the model: %s %s" % (label, rows, why))
+            inv = hashlib.sha256((root / "evidence/type-inventory.json").read_bytes()).hexdigest()
+            dec = {"adrs": [{"id": "ADR-X", "status": "accepted"}],
+                   "build_profiles": {"adr": "ADR-X", "active": ["prod"], "inventory_sha256": inv,
+                                      "retire": [{k: rows[0][k] for k in ("path", "type", "member", "annotation", "profile")}]}}
+            changes, blocks = [], []
+            bd.apply_profile_retirement(root, dec, changes, blocks)
+            if blocks:
+                return _fail("%s: a resolved condition must retire cleanly: %s" % (label, blocks))
+            out = subprocess.run(["javac", "-d", str(root / ".out"), "-classpath", str(cls), str(src)],
+                                 capture_output=True, text=True)
+            if out.returncode != 0:
+                return _fail("%s: retirement must leave valid Java: %s\n%s" % (label, src.read_text(), out.stderr[:200]))
+            if "@Profile" in src.read_text(encoding="utf-8"):
+                return _fail("%s: the condition must be gone: %s" % (label, src.read_text()))
+    return 0
+
+
 def main() -> int:
     if _build_profile_case():
         return 1
-    if _plugin_config_case() or _profile_merge_case() or _jakarta_imports_case() or _version_precedence_case() or _reapply_catalog_case() or _datasource_case():
+    if _retire_offsets_case() or _plugin_config_case() or _profile_merge_case() or _jakarta_imports_case() or _version_precedence_case() or _reapply_catalog_case() or _datasource_case():
         return 1
     with tempfile.TemporaryDirectory(prefix="boot-") as tmp:
         t = Path(tmp).resolve()
@@ -664,7 +725,7 @@ def main() -> int:
         p = subprocess.run([sys.executable, str(SCRIPT), "--root", str(r)], text=True, capture_output=True)
         if [c for c in load_json(r / "evidence/producers/bootstrap.json")["changes"] if c["op"] in ("source.delete", "source.retire") and c["path"] == vet_path]:
             return _fail("an ADR that is not accepted retires nothing")
-    print("OK: bootstrap-destination (trivial launcher deleted; second run preserves the tree; @Bean launcher kept + BOOTSTRAP_BLOCKED; unmapped starter kept + block; Maven settings wiring required; pinned version beats the legacy carry / VERSION_UNMANAGED / BOM_PROBE_MISSING; ADR-retired sources deleted with provenance / stale path blocks; reapply-catalog carries a late row and refuses without a receipt; the decided datasource lands unprefixed with its extension, and an undocumented / mismatched / absent one blocks; an undecided build profile blocks and a decided one reaches the destination; a profile condition nobody activates or enumerates is unaccounted; an enumerated retirement must be bound to this tree's inventory and describe conditions it actually has, and the proposer writes nothing)")
+    print("OK: bootstrap-destination (trivial launcher deleted; second run preserves the tree; @Bean launcher kept + BOOTSTRAP_BLOCKED; unmapped starter kept + block; Maven settings wiring required; pinned version beats the legacy carry / VERSION_UNMANAGED / BOM_PROBE_MISSING; ADR-retired sources deleted with provenance / stale path blocks; reapply-catalog carries a late row and refuses without a receipt; the decided datasource lands unprefixed with its extension, and an undocumented / mismatched / absent one blocks; an undecided build profile blocks and a decided one reaches the destination; a profile condition nobody activates or enumerates is unaccounted; an enumerated retirement must be bound to this tree's inventory and describe conditions it actually has, and the proposer writes nothing; a retirement is cut in UTF-16 offsets and leaves valid Java even when an astral character precedes the annotation)")
     return 0
 
 

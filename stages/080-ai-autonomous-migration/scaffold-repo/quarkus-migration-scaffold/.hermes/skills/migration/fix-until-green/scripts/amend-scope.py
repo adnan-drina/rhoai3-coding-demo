@@ -46,31 +46,34 @@ def _refuse(msg: str) -> int:
 def _locus(root: Path, scope: dict, rel: str) -> tuple[str, str]:
     """Why this file is part of the failure the card carries, or why not.
 
-    A repository's queries reach the types they select and the types its
-    members mention. The compiler says which those are; a file outside them
-    is a different problem."""
+    Eligibility comes from the SEALED inventory -- what the repository reached
+    when the card was issued -- never from the tree as the candidate has left
+    it. A reference the worker just wrote is not evidence that the file was
+    always in scope; it is evidence that the worker wants it to be."""
     repo = str(scope.get("repository") or "")
     if not repo:
         return "", "the card carries no repository"
+    if "reaches" not in scope:
+        return "", ("this card's inventory predates sealed reachability (%s), so nothing in it can show a file is in "
+                    "scope. Let the card be refused and re-planned." % scope.get("schema"))
+    reachable = {str(x) for x in (scope.get("reaches") or [])}
     try:
         model = dest_model(root)
     except DestModelUnavailable as exc:
-        return "", "the destination model is unavailable, so nothing can be shown to be in scope (%s)" % exc
-    rows = types_of(model, repo)
-    if not rows:
-        return "", "the model has no type for %s" % repo
-    reachable: set[str] = set()
-    for t in rows:
-        reachable.update(str(x) for x in (t.get("supertypes") or []))
-        for m in t.get("declared") or []:
-            reachable.update(str(r) for r in (m.get("type_refs") or []))
+        return "", "the destination model is unavailable, so the file's types cannot be named (%s)" % exc
     wanted = types_of(model, rel)
+    if not wanted:
+        return "", "the model has no type for %s" % rel
     for t in wanted:
         fqn = str(t.get("fqn") or "")
-        if any(fqn and (fqn == r or r.startswith(fqn + "<") or ("<" in r and fqn in r)) for r in reachable):
-            return "referenced by %s" % repo, ""
-    return "", "%s declares %s, which %s neither extends nor mentions" % (
-        rel, ", ".join(sorted(str(t.get("fqn")) for t in wanted)) or "no type", repo)
+        if not fqn:
+            continue
+        for r in reachable:
+            if fqn == r or r.startswith(fqn + "<") or ("<" in r and fqn in r):
+                return "sealed: %s reached %s when the card was issued" % (repo, fqn), ""
+    return "", ("%s declares %s, which %s did not reach when this card was sealed. A relationship the repair itself "
+                "introduced does not authorize anything; a card that needs this file is a card the planner has not "
+                "minted yet." % (rel, ", ".join(sorted(str(t.get("fqn")) for t in wanted)) or "no type", repo))
 
 
 def main(argv: list[str] | None = None) -> int:

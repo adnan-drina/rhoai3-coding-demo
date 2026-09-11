@@ -36,8 +36,15 @@ class DestModelUnavailable(RuntimeError):
     """The model could not be produced. Never downgrade this to an assumption."""
 
 
-def _sources_digest(root: Path) -> str:
+def _sources_digest(root: Path, source_root: str) -> str:
     h = hashlib.sha256()
+    # WHICH root was asked for is part of the answer's identity. Without it
+    # the first caller's model was handed to the second, so a request for the
+    # test sources returned the main ones and the bootstrap invented a
+    # test-path copy of a main condition (measured 2026-09-11).
+    h.update(b"source_root\0")
+    h.update(source_root.encode("utf-8"))
+    h.update(b"\0")
     # The classpath is an INPUT to resolution: the same sources with and
     # without it are two different answers, and a cache that ignored it
     # handed back a resolved model for a tree that no longer builds.
@@ -74,13 +81,15 @@ def dest_model(root: Path, *, source_root: str = "src/main/java", refresh: bool 
     src = root / source_root
     if not src.is_dir():
         raise DestModelUnavailable("%s is not a directory of this tree" % source_root)
-    key = _sources_digest(root)
+    key = _sources_digest(root, source_root)
     work = root / "verification" / "build" / ".dest-model"
-    cache = work / ("%s.json" % key[:16])
+    cache = work / ("%s-%s.json" % (source_root.replace("/", "-"), key[:16]))
     if cache.is_file() and not refresh:
         try:
             doc = json.loads(cache.read_text(encoding="utf-8"))
-            if str(doc.get("sources_digest") or "") == key:
+            # and it is checked again on the way out: a cache entry that does
+            # not say it is about this root is not about this root
+            if str(doc.get("sources_digest") or "") == key and str(doc.get("source_root") or "") == source_root:
                 return doc
         except (OSError, ValueError):
             pass
@@ -114,6 +123,15 @@ def dest_model(root: Path, *, source_root: str = "src/main/java", refresh: bool 
     cache.parent.mkdir(parents=True, exist_ok=True)
     cache.write_text(json.dumps(doc), encoding="utf-8")
     return doc
+
+
+def above_members(typ: dict[str, Any]) -> list[dict[str, Any]]:
+    """Every method reachable from a supertype, as SEEN FROM this type.
+
+    `save(T)` on `JpaRepository<Vet,Integer>` is `save(p.Vet)` here, which is
+    how an override is written; comparing the declared form would miss every
+    generic override and comparing names would match every overload."""
+    return list(typ.get("supertype_methods") or []) + list(typ.get("inherited") or [])
 
 
 def types_of(model: dict[str, Any], rel_from_root: str, source_root: str = "src/main/java") -> list[dict[str, Any]]:

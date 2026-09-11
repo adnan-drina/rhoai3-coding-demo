@@ -34,7 +34,7 @@ from pathlib import Path
 from typing import Any
 
 from planner.canonical import canonical_bytes, digest, load_json, sha256_bytes, sha256_file, sort_unique
-from planner.dest_model import DestModelUnavailable, dest_model, source_write_members as _model_writes, types_of
+from planner.dest_model import DestModelUnavailable, above_members, dest_model, source_write_members as _model_writes, types_of
 from planner.paths import is_product_path, EVIDENCE_BUNDLE, TYPE_INVENTORY, LOOP_DEFERRED, LOOP_STEPS, MTA_RESCAN_FINDINGS, PARITY_DIR, VERIFY_BOOT, VERIFY_DIAGNOSTICS, VERIFY_PACKAGE, VERIFY_RUN, VERIFY_SUREFIRE, WORKLIST
 
 SCHEMA = "rhoai3.worklist/v1"
@@ -777,8 +777,15 @@ def build_batch_scope(root: Path, cluster: dict[str, Any], items: list[dict[str,
                 "resolution": str(m.get("resolution") or ""),
                 "source_refs": _frozen_refs(root, name),
             })
+    # What the repository reached AT SEAL TIME. A worker cannot widen its own
+    # authority by adding a reference: this list is fixed when the card is
+    # issued (measured: an unrelated SecurityConfig became amendable the moment
+    # the candidate mentioned it).
+    reaches = sorted({str(x) for x in ((typ or {}).get("supertypes") or [])} |
+                     {str(r) for m in ((typ or {}).get("declared") or []) for r in (m.get("type_refs") or [])})
     doc = {
-        "schema": "rhoai3.batch-scope/v2",
+        "schema": "rhoai3.batch-scope/v3",
+        "reaches": reaches,
         "producer": "worklist.build_batch_scope",
         "tool": {"model": "jdk-dest-model", "version": "1.0.0"},
         "rule": BATCH_RULE,
@@ -850,35 +857,36 @@ def assess_batch_scope(root: Path, scope: dict[str, Any]) -> list[dict[str, Any]
         return [{"member": "*", "signature": "", "verdict": "inconclusive",
                  "detail": "the compiler could not fully resolve %s, so its members cannot be assessed" % path}]
     declared = {str(m.get("signature")): m for m in typ.get("declared") or []}
-    by_name: dict[str, list[dict[str, Any]]] = {}
-    for m in typ.get("declared") or []:
-        by_name.setdefault(str(m.get("name")), []).append(m)
-    # What the supertypes declare, whether or not this type redeclares it. A
-    # redeclared method is still answered from above; getAllMembers hides
-    # exactly that case behind the override, which is how a valid findAll()
-    # came to read as an underivable query.
-    above = list(typ.get("supertype_methods") or []) + list(typ.get("inherited") or [])
-    inherited_names = {row.split("(", 1)[0] for row in above}
-    inherited_sigs = {row.split(" from ", 1)[0] for row in above}
+    # What the supertypes declare, AS SEEN FROM this type, whether or not this
+    # type redeclares it. Matched on the substituted signature and never on the
+    # name: customLookup(int) and customLookup(String) are two members, and a
+    # deleted findAll(String) is not answered by an inherited findAll().
+    above = above_members(typ)
+    inherited_sigs = {str(r.get("as_member") or r.get("signature") or "") for r in above}
+    inherited_owner = {str(r.get("as_member") or r.get("signature") or ""): str(r.get("from") or "a supertype") for r in above}
     writes, why_writes = _model_writes(root)
     out: list[dict[str, Any]] = []
     for row in scope.get("members") or []:
         member = str(row.get("member"))
         sig = str(row.get("signature") or "")
-        m = declared.get(sig) or (by_name.get(member) or [None])[0]
+        if not sig:
+            out.append({"member": member, "signature": "", "verdict": "inconclusive",
+                        "detail": "the inventory carries no resolved signature for this member, so there is nothing exact to assess"})
+            continue
+        m = declared.get(sig)
         if m is None:
             # The member is not declared. Only the compiler may say it is
-            # inherited, and only when the type actually inherits it.
+            # inherited, and only for THIS signature: a member is not answered
+            # by a different overload of the same name.
             if not typ.get("inherited_known"):
                 out.append({"member": member, "signature": sig, "verdict": "inconclusive",
                             "detail": "not declared, and what this type inherits could not be resolved"})
-            elif member in inherited_names:
+            elif sig in inherited_sigs:
                 out.append({"member": member, "signature": sig, "verdict": "ok",
-                            "detail": "not declared here; inherited from %s" % next(
-                                (r.split(" from ", 1)[1] for r in above if r.startswith(member + "(")), "a supertype")})
+                            "detail": "not declared here; inherited from %s" % inherited_owner.get(sig, "a supertype")})
             else:
                 out.append({"member": member, "signature": sig, "verdict": "violates", "rule": scope.get("rule"),
-                            "detail": "the member is gone from this type and nothing it extends declares it"})
+                            "detail": "the member is gone from this type and nothing it extends declares %s" % sig})
             continue
         if str(m.get("resolution") or "") != "full":
             out.append({"member": member, "signature": str(m.get("signature") or sig), "verdict": "inconclusive",
@@ -893,9 +901,10 @@ def assess_batch_scope(root: Path, scope: dict[str, Any]) -> list[dict[str, Any]
                         "detail": "implemented in place; no query is owed"})
             continue
         # Determinations that need nothing but this declaration come first.
-        if msig in inherited_sigs or member in inherited_names:
+        if msig in inherited_sigs:
             out.append({"member": member, "signature": msig, "verdict": "ok",
-                        "detail": "redeclares a method the type inherits; the platform answers it from the supertype"})
+                        "detail": "redeclares %s, which the type inherits from %s; the platform answers it from there"
+                                  % (msig, inherited_owner.get(msig, "a supertype"))})
             continue
         derivable = bool(_DERIVABLE.match(member))
         if member in writes:

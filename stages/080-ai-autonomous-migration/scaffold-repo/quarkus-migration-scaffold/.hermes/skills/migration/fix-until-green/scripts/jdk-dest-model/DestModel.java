@@ -167,7 +167,7 @@ public final class DestModel {
 
                     // What this type ACTUALLY inherits, asked of the compiler.
                     // Absence from the declaration is not evidence of it.
-                    List<String> inherited = new ArrayList<>();
+                    List<Map<String, Object>> inherited = new ArrayList<>();
                     if (ok) {
                         for (Element m : elements.getAllMembers(type)) {
                             if (m.getKind() != ElementKind.METHOD) { continue; }
@@ -175,7 +175,7 @@ public final class DestModel {
                             String owner = m.getEnclosingElement() instanceof TypeElement
                                     ? ((TypeElement) m.getEnclosingElement()).getQualifiedName().toString() : "";
                             if (owner.equals("java.lang.Object")) { continue; }
-                            inherited.add(signature((ExecutableElement) m) + " from " + owner);
+                            inherited.add(memberRow(task, type, (ExecutableElement) m, owner));
                         }
                     }
                     row.put("inherited", inherited);
@@ -183,7 +183,7 @@ public final class DestModel {
                     // member the type redeclares is still a member the platform
                     // can answer from above, and getAllMembers hides exactly
                     // that case behind the override.
-                    List<String> supertypeMethods = new ArrayList<>();
+                    List<Map<String, Object>> supertypeMethods = new ArrayList<>();
                     if (ok) {
                         TreeSet<String> seen = new TreeSet<>();
                         collectSupertypeMethods(task, type.asType(), type, supertypeMethods, seen);
@@ -257,7 +257,7 @@ public final class DestModel {
     }
 
     private static void collectSupertypeMethods(JavacTask task, TypeMirror start, TypeElement self,
-                                               List<String> into, java.util.Set<String> seen) {
+                                               List<Map<String, Object>> into, java.util.Set<String> seen) {
         for (TypeMirror sup : task.getTypes().directSupertypes(start)) {
             Element e = task.getTypes().asElement(sup);
             if (!(e instanceof TypeElement)) { continue; }
@@ -266,10 +266,42 @@ public final class DestModel {
             if (fqn.equals("java.lang.Object") || !seen.add(fqn)) { continue; }
             for (Element m : t.getEnclosedElements()) {
                 if (m.getKind() != ElementKind.METHOD) { continue; }
-                into.add(signature((ExecutableElement) m) + " from " + fqn);
+                into.add(memberRow(task, self, (ExecutableElement) m, fqn));
             }
             collectSupertypeMethods(task, sup, self, into, seen);
         }
+    }
+
+    /** A supertype method as DECLARED and as SEEN FROM the subtype.
+     *
+     * `JpaRepository<Vet,Integer>.save(T)` is `save(p.Vet)` for the type that
+     * extends it, and an override is written with the substituted type. A
+     * checker comparing the declared form would never match the override, and
+     * one comparing only names would match every overload. */
+    private static Map<String, Object> memberRow(JavacTask task, TypeElement owner, ExecutableElement m, String from) {
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("signature", signature(m));
+        String asMember = signature(m);
+        try {
+            TypeMirror t = task.getTypes().asMemberOf((javax.lang.model.type.DeclaredType) owner.asType(), m);
+            if (t instanceof javax.lang.model.type.ExecutableType) {
+                javax.lang.model.type.ExecutableType et = (javax.lang.model.type.ExecutableType) t;
+                StringBuilder sb = new StringBuilder(m.getSimpleName().toString()).append('(');
+                boolean first = true;
+                for (TypeMirror pt : et.getParameterTypes()) {
+                    if (!first) { sb.append(','); }
+                    sb.append(pt.toString());
+                    first = false;
+                }
+                asMember = sb.append(')').toString();
+            }
+        } catch (IllegalArgumentException ignored) {
+            // not a member of that type after all; the declared form stands
+        }
+        row.put("as_member", asMember);
+        row.put("from", from);
+        row.put("name", m.getSimpleName().toString());
+        return row;
     }
 
     private static String rel(Path root, Path file) {

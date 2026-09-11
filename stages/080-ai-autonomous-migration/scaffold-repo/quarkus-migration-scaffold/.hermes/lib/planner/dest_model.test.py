@@ -195,15 +195,61 @@ def _assess_case() -> int:
     return 0
 
 
+def _source_root_case() -> int:
+    """Two roots are two models, in either order."""
+    with tempfile.TemporaryDirectory(prefix="dm-root-") as d:
+        root = Path(d)
+        _tree(root, {"p/Main.java": "package p;\npublic class Main {}\n"})
+        (root / "src/test/java/p").mkdir(parents=True, exist_ok=True)
+        (root / "src/test/java/p/OnlyTest.java").write_text(
+            "package p;\n@io.quarkus.arc.profile.IfBuildProfile(\"secret\")\npublic class OnlyTest {}\n")
+        for first, second in (("src/main/java", "src/test/java"), ("src/test/java", "src/main/java")):
+            a = dest_model(root, source_root=first)
+            b = dest_model(root, source_root=second)
+            if a.get("source_root") != first or b.get("source_root") != second:
+                return _fail("asking for %s must not return %s: %s / %s" % (second, first, a.get("source_root"), b.get("source_root")))
+            names = {str(t.get("fqn")) for t in b.get("types") or []}
+            want = {"p.OnlyTest"} if second == "src/test/java" else {"p.Main"}
+            if names != want:
+                return _fail("the model for %s carries %s, not %s" % (second, names, want))
+    return 0
+
+
+def _overload_case() -> int:
+    """A member is a SIGNATURE. A different overload is a different member."""
+    repo = ("package p;\nimport java.util.List;\n"
+            "import org.springframework.data.jpa.repository.JpaRepository;\n"
+            "public interface VetRepository extends JpaRepository<Vet, Integer> {\n"
+            "    List<Vet> customLookup(String name);\n}\n")
+    with tempfile.TemporaryDirectory(prefix="dm-over-") as d:
+        root = Path(d)
+        _tree(root, {"p/Vet.java": "package p;\npublic class Vet {}\n", "p/VetRepository.java": repo})
+        rel = "src/main/java/p/VetRepository.java"
+        scope = {"repository": rel, "rule": "r", "members": [
+            {"member": "customLookup", "signature": "customLookup(int)"},
+            {"member": "findAll", "signature": "findAll(java.lang.String)"},
+            {"member": "save", "signature": "save(p.Vet)"},
+        ]}
+        got = {r["signature"]: r["verdict"] for r in assess_batch_scope(root, scope)}
+        if got.get("customLookup(int)") != "violates":
+            return _fail("customLookup(int) is not answered by customLookup(String): %s" % got)
+        if got.get("findAll(java.lang.String)") != "violates":
+            return _fail("a deleted findAll(String) is not answered by an inherited findAll(): %s" % got)
+        # and the generic inherited member IS matched, substituted for this type
+        if got.get("save(p.Vet)") != "ok":
+            return _fail("save(T) on JpaRepository<Vet,Integer> is save(p.Vet) here and must match: %s" % got)
+    return 0
+
+
 def main() -> int:
     if not shutil.which("javac"):
         print("SKIP: dest-model selftest needs a JDK on PATH")
         return 0
-    if _conditions_case() or _assess_case():
+    if _conditions_case() or _assess_case() or _source_root_case() or _overload_case():
         return 1
     print("OK: dest-model (a fully qualified condition is visible; two identical annotations are two decisions with "
           "their own ranges; an import binds a condition with no classpath while a wildcard import does not, and a non-literal argument is never a profile name; a redeclared inherited findAll "
-          "is answered by its supertype; a deleted member is not inherited; the source write set comes from resolved calls; an unreadable source model or type is inconclusive)")
+          "is answered by its supertype; a deleted member is not inherited; a member is a signature, so an overload never answers for another and a generic save(T) matches as save(Vet); two source roots are two models in either order; the source write set comes from resolved calls; an unreadable source model or type is inconclusive)")
     return 0
 
 

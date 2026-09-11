@@ -456,6 +456,22 @@ def _conditions(model, source_root: str) -> list[dict[str, str]]:
     return _pc(model, source_root=source_root)
 
 
+def _unresolved_files(root: Path) -> list[str]:
+    """Files the compiler could not parse or resolve, over both source roots."""
+    from planner.dest_model import dest_model
+
+    out: list[str] = []
+    for rel in ("src/main/java", "src/test/java"):
+        if not (root / rel).is_dir():
+            continue
+        try:
+            doc = dest_model(root, source_root=rel, refresh=True)
+        except Exception:
+            continue
+        out.extend("%s/%s" % (rel, f) for f in (doc.get("unresolved_files") or []))
+    return out
+
+
 def all_profile_conditions(root: Path) -> tuple[list[dict[str, str]], str]:
     """Conditions over every destination source root, or ([], why-not)."""
     out: list[dict[str, str]] = []
@@ -530,36 +546,71 @@ def apply_profile_retirement(root: Path, decisions_doc: dict, changes: list[dict
     by_path: dict[str, list[dict]] = {}
     for c in targets:
         by_path.setdefault(c["path"], []).append(c)
+    unresolved_before = set(_unresolved_files(root))
+    written: dict[str, str] = {}
     for rel, group in sorted(by_path.items()):
         f = root / rel
         text = f.read_text(encoding="utf-8", errors="replace")
-        # highest offset first, so earlier ranges stay valid
+        # javac counts UTF-16 code units and Python counts code points, so a
+        # single astral character before an annotation shifted every offset by
+        # one and the cut landed inside `public` (measured: one emoji in a
+        # comment produced `@public class Config`).
+        units = text.encode("utf-16-le")
+
+        def cut(u: bytes, start: int, end: int) -> tuple[bytes, str]:
+            return u[:start * 2], u[end * 2:].decode("utf-16-le")
+
         cuts = sorted({(int(c["start"]), int(c["end"])) for c in group if int(c.get("start", -1)) >= 0}, reverse=True)
         if len(cuts) != len({condition_key(c) for c in group}):
             blocks.append({"class": "PROFILE_RETIREMENT_INCONCLUSIVE", "subject": rel,
                            "detail": "the model gave no character range for one of the approved conditions in %s" % rel})
             return
-        out = text
+        bad_span = ""
         for start, end in cuts:
-            tail = out[end:]
-            lead = out[:start]
-            # take the blank line the annotation occupied with it
+            span = units[start * 2:end * 2].decode("utf-16-le")
+            if not span.lstrip().startswith("@"):
+                bad_span = span[:60]
+                break
+        if bad_span:
+            blocks.append({"class": "PROFILE_RETIREMENT_INCONCLUSIVE", "subject": rel,
+                           "detail": ("the range the model gave for a condition in %s does not begin at an annotation "
+                                      "(%r); nothing was removed" % (rel, bad_span))})
+            return
+        out_units = units
+        for start, end in cuts:
+            lead, tail = cut(out_units, start, end)
             while tail[:1] in (" ", "\t"):
                 tail = tail[1:]
             if tail[:1] == "\n":
                 tail = tail[1:]
-            i = len(lead)
-            while i > 0 and lead[i - 1] in " \t":
+            lead_s = lead.decode("utf-16-le")
+            i = len(lead_s)
+            while i > 0 and lead_s[i - 1] in " \t":
                 i -= 1
-            out = lead[:i] + tail
+            out_units = (lead_s[:i] + tail).encode("utf-16-le")
+        out = out_units.decode("utf-16-le")
         if out.count("{") != text.count("{") or out.count("}") != text.count("}"):
             blocks.append({"class": "PROFILE_RETIREMENT_INCONCLUSIVE", "subject": rel,
                            "detail": "removing the enumerated condition(s) would leave %s unbalanced; refusing to write it" % rel})
             return
+        written[rel] = text
         f.write_text(out, encoding="utf-8")
         changes.append({"op": "source.retire-profile-condition", "path": rel, "count": len(cuts),
                         "value": ", ".join(sorted("%s @%s(\"%s\")" % (c["member"] or c["type"], c["annotation"], c["profile"]) for c in group)),
                         "provenance": "decisions.yaml build_profiles.retire (%s)" % (rows[0].get("adr") or "")})
+    # The edit is proposed until the compiler has seen it. A file that parsed
+    # before and does not parse now is a file this tool broke, and a receipt
+    # saying "retired" would be a false green.
+    broke = sorted(set(_unresolved_files(root)) - unresolved_before)
+    if broke:
+        for rel, original in written.items():
+            (root / rel).write_text(original, encoding="utf-8")
+        changes[:] = [c for c in changes if c.get("op") != "source.retire-profile-condition"]
+        blocks.append({"class": "PROFILE_RETIREMENT_INCONCLUSIVE", "subject": broke[0],
+                       "detail": ("removing the enumerated condition(s) left %s unparseable, so every edit was reverted. "
+                                  "The model's ranges and this tree disagree; nothing was retired."
+                                  % ", ".join(broke[:3]))})
+        return
     # the import is dead once the last condition it named is gone from the file
     left, _ = all_profile_conditions(root)
     still = {(c["path"], c["annotation"]) for c in left}
