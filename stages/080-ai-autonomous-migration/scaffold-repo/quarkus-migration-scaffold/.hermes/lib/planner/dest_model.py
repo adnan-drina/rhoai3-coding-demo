@@ -101,13 +101,20 @@ def dest_model(root: Path, *, source_root: str = "src/main/java", refresh: bool 
     java = str(bindir / "java") if bindir and (bindir / "java").is_file() else shutil.which("java")
     if not javac or not java:
         raise DestModelUnavailable("javac/java are not on PATH (a JDK, not a JRE, is the model)")
+    # The tool is compiled once per tree, not once per question: a refresh of
+    # both source roots used to rebuild it four times over.
     classes = work / "classes"
-    if classes.is_dir():
-        shutil.rmtree(classes)
-    classes.mkdir(parents=True, exist_ok=True)
-    proc = subprocess.run([javac, "-d", str(classes), str(_TOOL)], capture_output=True, text=True)
-    if proc.returncode != 0:
-        raise DestModelUnavailable("DestModel.java did not compile: %s" % (proc.stderr or proc.stdout)[-300:])
+    stamp = classes / ".tool-sha256"
+    tool_sha = hashlib.sha256(_TOOL.read_bytes()).hexdigest()
+    if not (stamp.is_file() and stamp.read_text(encoding="utf-8").strip() == tool_sha
+            and (classes / "DestModel.class").is_file()):
+        if classes.is_dir():
+            shutil.rmtree(classes)
+        classes.mkdir(parents=True, exist_ok=True)
+        proc = subprocess.run([javac, "-d", str(classes), str(_TOOL)], capture_output=True, text=True)
+        if proc.returncode != 0:
+            raise DestModelUnavailable("DestModel.java did not compile: %s" % (proc.stderr or proc.stdout)[-300:])
+        stamp.write_text(tool_sha, encoding="utf-8")
     out = work / "raw.json"
     argv = [java, "-cp", str(classes), "DestModel", "--source", str(src), "--out", str(out), "--release", _release(root)]
     cp = root / "verification" / "build" / ".work" / "classpath.txt"
