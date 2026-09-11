@@ -297,8 +297,15 @@ data:
         local kube_token_file="/var/run/secrets/kubernetes.io/serviceaccount/token"
 
         if [ -r "${kube_ca}" ] && [ -r "${kube_token_file}" ]; then
+          # BOUNDED. Without these flags curl waits out the kernel's TCP
+          # connect timeout (~127 s), and this runs inside a 30-iteration
+          # loop: measured 2026-09-11 on the v8 start, a workspace that
+          # cannot reach the API server spent over an hour here before
+          # reaching M1. Workspace pods cannot reach it today (see BACKLOG:
+          # the AdminNetworkPolicy meant to allow it is not effective), so
+          # this path must fail fast, not hang.
           value="$(
-            curl -fsS --cacert "${kube_ca}" \
+            curl -fsS --connect-timeout 3 --max-time 8 --cacert "${kube_ca}" \
               -H "Authorization: Bearer $(cat "${kube_token_file}")" \
               "${kube_api}/api/v1/namespaces/wksp-ai-developer/secrets/maas-devspace-api-keys" \
               | jq -r --arg key "${key}" '.data[$key] // empty' \
@@ -308,8 +315,10 @@ data:
       fi
 
       if [ -z "${value}" ] && command -v oc >/dev/null 2>&1; then
+        # same wall, same bound
         value="$(
           oc get secret maas-devspace-api-keys -n wksp-ai-developer \
+            --request-timeout=8s \
             -o "jsonpath={.data.${key}}" 2>/dev/null | base64 -d 2>/dev/null
         )" || true
       fi
@@ -317,10 +326,19 @@ data:
       printf '%s' "${value}"
     }
 
-    for _ in $(seq 1 30); do
-      [ -n "$(secret_value MAAS_API_KEY_QWEN27B)" ] && break
-      sleep 2
-    done
+    # The key this loop waits for is only ever used when MAAS_API_KEY is not
+    # already in the environment (see below). DWO injects it from
+    # workspace-maas-credentials, so on a normal workspace the wait buys
+    # nothing at all -- and on one that cannot reach the API it is the single
+    # largest cost in dest-init. Skip it when the answer is already here.
+    if [ -n "${MAAS_API_KEY:-}" ]; then
+      echo "MAAS key already in the environment; not polling the API for it."
+    else
+      for _ in $(seq 1 30); do
+        [ -n "$(secret_value MAAS_API_KEY_QWEN27B)" ] && break
+        sleep 2
+      done
+    fi
 
     ensure_in_cluster_kubeconfig() {
       if [ -z "${KUBERNETES_SERVICE_HOST:-}" ] || [ -z "${KUBERNETES_SERVICE_PORT:-}" ]; then
