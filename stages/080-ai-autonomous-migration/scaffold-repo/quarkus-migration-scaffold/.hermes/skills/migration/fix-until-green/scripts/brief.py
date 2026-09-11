@@ -291,6 +291,7 @@ def runtime_advice(item: dict, root: Path) -> dict:
         "member": str(item.get("member") or ""),
         "links": ["https://quarkus.io/version/3.27/guides/spring-data-jpa", "https://quarkus.io/version/3.27/guides/maven-tooling"],
     }
+    WRITE_PREFIXES = ("save", "delete", "remove", "update", "insert", "persist", "merge")
     path = str(item.get("path") or "")
     member = str(item.get("member") or "")
     if not member:
@@ -301,6 +302,17 @@ def runtime_advice(item: dict, root: Path) -> dict:
                 member = m.group(1)
                 out["member"] = member
                 break
+    if member and str(item.get("cause") or "") == "underivable-query-method" and member.lower().startswith(WRITE_PREFIXES):
+        # Documented Spring Data naming: these are writes, and the platform's
+        # own suggestion ("did you forget @Query?") is wrong for them. A bare
+        # @Query with no query and no @Modifying silences the derivation check
+        # and proves nothing; pilot v7 annotated ten methods that way and the
+        # build kept moving while the repositories stopped meaning anything.
+        out["caution"] = ("%s is a write. A bare @Query is not a repair for it: the platform stops complaining and the method stops working. "
+                          "Make the interface extend CrudRepository<T, ID>, which PROVIDES save and delete, and drop the local declaration; "
+                          "annotate only a real query, and a modifying one with @Modifying." % member)
+        out["links"] = ["https://quarkus.io/version/3.27/guides/spring-data-jpa#repository-fragments",
+                        "https://docs.spring.io/spring-data/jpa/reference/jpa/query-methods.html"]
     if member:
         # The same member declared elsewhere in the destination: for a query
         # method the platform cannot derive, the annotation that makes it
