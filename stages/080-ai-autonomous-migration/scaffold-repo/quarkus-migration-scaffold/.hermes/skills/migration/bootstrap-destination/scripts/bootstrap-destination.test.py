@@ -465,6 +465,15 @@ def _build_profile_case() -> int:
         rec = load_json(d2 / "evidence/producers/bootstrap.json")
         if not any(c["op"] == "properties.build-profile" for c in rec["changes"]):
             return _fail("the receipt must record which profiles were set")
+        # the BUILD reads -Dquarkus.profile, not application.properties (v8 A/B):
+        # every mvn reads .mvn/maven.config, and its settings wiring is kept
+        cfg = (d2 / ".mvn" / "maven.config").read_text(encoding="utf-8").splitlines() if (d2 / ".mvn" / "maven.config").is_file() else []
+        if "-Dquarkus.profile=prod,spring-data-jpa" not in cfg:
+            return _fail("the decided build profiles must reach the build through .mvn/maven.config: %s" % cfg)
+        if sum(1 for ln in cfg if "-Dquarkus.profile=" in ln) != 1:
+            return _fail("one build-profile argument, not a stack of them: %s" % cfg)
+        if not any(c["op"] == "maven-config.build-profile" for c in rec["changes"]):
+            return _fail("the receipt must record the build-profile wiring")
         before = tree_hash(d2)
         subprocess.run([sys.executable, str(SCRIPT), "--root", str(d2)], text=True, capture_output=True)
         if tree_hash(d2) != before:
@@ -525,6 +534,8 @@ def _build_profile_case() -> int:
             return _fail("retirement must not disturb the rest of the file: %s" % text)
         if "quarkus.profile=" in (d7 / "src/main/resources/application.properties").read_text(encoding="utf-8"):
             return _fail("retiring the gates activates no profile")
+        if (d7 / ".mvn" / "maven.config").is_file() and "-Dquarkus.profile=" in (d7 / ".mvn" / "maven.config").read_text(encoding="utf-8"):
+            return _fail("retiring the gates wires no build profile either")
         rec = load_json(d7 / "evidence/producers/bootstrap.json")
         row = next((c for c in rec["changes"] if c["op"] == "source.retire-profile-condition"), None)
         if not row or row["path"] != REL or "spring-data-jpa" not in row["value"]:

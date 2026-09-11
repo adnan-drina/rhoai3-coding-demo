@@ -13,7 +13,7 @@
 // reported INCONCLUSIVE and never as a pass: the caller must refuse rather
 // than guess.
 //
-//   java DestModel --source <dir> --out <json> --release <n> [--classpath <file>]
+//   java DestModel --source <dir> --out <json> --release <n> [--classpath <file>] [--also-source <dir>]...
 import java.io.IOException;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
@@ -34,6 +34,7 @@ import javax.lang.model.element.Element;
 import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.TypeElement;
+import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
 import javax.lang.model.util.Elements;
 import javax.tools.Diagnostic;
@@ -59,12 +60,26 @@ import com.sun.source.util.Trees;
 
 public final class DestModel {
 
+    private static final java.util.Set<String> FLOW_CODES = new java.util.HashSet<>(Arrays.asList(
+            "compiler.err.unreported.exception.need.to.catch.or.throw",
+            "compiler.err.unreported.exception.default.constructor",
+            "compiler.err.unreported.exception.implicit.close",
+            "compiler.err.var.might.not.have.been.initialized",
+            "compiler.err.var.might.already.be.assigned",
+            "compiler.err.missing.ret.stmt",
+            "compiler.err.unreachable.stmt"));
+
     public static void main(String[] args) throws Exception {
         Path source = null, out = null, classpath = null;
         String release = "21";
+        List<Path> alsoSources = new ArrayList<>();
         for (int i = 0; i < args.length; i++) {
             switch (args[i]) {
                 case "--source": source = Paths.get(args[++i]); break;
+                // compiled together with --source so references resolve (the
+                // collector compiles target/generated-sources too; without them
+                // every generated DTO is a phantom error), never emitted
+                case "--also-source": alsoSources.add(Paths.get(args[++i])); break;
                 case "--out": out = Paths.get(args[++i]); break;
                 case "--release": release = args[++i]; break;
                 case "--classpath": classpath = Paths.get(args[++i]); break;
@@ -72,12 +87,19 @@ public final class DestModel {
             }
         }
         if (source == null || out == null) {
-            System.err.println("usage: DestModel --source <dir> --out <json> [--release <n>] [--classpath <file>]");
+            System.err.println("usage: DestModel --source <dir> --out <json> [--release <n>] [--classpath <file>] [--also-source <dir>]...");
             System.exit(2);
         }
         List<Path> files;
         try (Stream<Path> walk = Files.walk(source)) {
             files = walk.filter(p -> p.toString().endsWith(".java")).sorted().collect(Collectors.toList());
+        }
+        final Path sourceRoot = source.toAbsolutePath().normalize();
+        for (Path extra : alsoSources) {
+            if (!Files.isDirectory(extra)) { continue; }
+            try (Stream<Path> walk = Files.walk(extra)) {
+                walk.filter(p -> p.toString().endsWith(".java")).sorted().forEach(files::add);
+            }
         }
         JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
         if (compiler == null) { System.err.println("no system java compiler (a JDK, not a JRE)"); System.exit(1); }
@@ -98,9 +120,15 @@ public final class DestModel {
 
         // A file javac reported an error in is not a file this model may be
         // trusted about, and saying so is the whole point.
+        // Only ATTRIBUTION errors make a file untrustworthy. A flow-analysis
+        // error -- an unreported checked exception, an uninitialized variable --
+        // is raised after every name and type in the file has been resolved, and
+        // it is precisely what unhandled_throws exists to enumerate. Counting it
+        // as "broken" made the one file javac names the one file the model would
+        // not speak about.
         TreeSet<String> broken = new TreeSet<>();
         for (Diagnostic<? extends JavaFileObject> d : diags.getDiagnostics()) {
-            if (d.getKind() == Diagnostic.Kind.ERROR && d.getSource() != null) {
+            if (d.getKind() == Diagnostic.Kind.ERROR && d.getSource() != null && !FLOW_CODES.contains(String.valueOf(d.getCode()))) {
                 broken.add(rel(source, Paths.get(d.getSource().toUri())));
             }
         }
@@ -109,6 +137,7 @@ public final class DestModel {
         Path root = source;
         for (CompilationUnitTree unit : units) {
             Path file = Paths.get(unit.getSourceFile().toUri());
+            if (!file.toAbsolutePath().normalize().startsWith(sourceRoot)) { continue; }  // an --also-source unit
             String relPath = rel(root, file);
             boolean ok = !broken.contains(relPath);
             // The import list, so a caller can bind a simple annotation name
@@ -139,7 +168,25 @@ public final class DestModel {
                     row.put("annotations", annotationsOf(node.getModifiers(), path, unit, relPath));
 
                     List<Map<String, Object>> declared = new ArrayList<>();
+                    List<Map<String, Object>> unhandled = new ArrayList<>();
                     for (Tree member : node.getMembers()) {
+                        // field initializers and initializer blocks can call a
+                        // throwing method too; their sites are enumerated, and a
+                        // checked exception there is never claimed as handled
+                        if (member instanceof com.sun.source.tree.VariableTree) {
+                            com.sun.source.tree.VariableTree v = (com.sun.source.tree.VariableTree) member;
+                            if (v.getInitializer() != null) {
+                                scanBody(task, trees, elements, positions, unit,
+                                        new TreePath(new TreePath(path, member), v.getInitializer()),
+                                        "<field:" + v.getName() + ">", ok, new ArrayList<>(), unhandled);
+                            }
+                            continue;
+                        }
+                        if (member instanceof com.sun.source.tree.BlockTree) {
+                            scanBody(task, trees, elements, positions, unit, new TreePath(path, member),
+                                    "<initializer>", ok, new ArrayList<>(), unhandled);
+                            continue;
+                        }
                         if (!(member instanceof MethodTree)) { continue; }
                         MethodTree m = (MethodTree) member;
                         TreePath mp = new TreePath(path, m);
@@ -160,10 +207,68 @@ public final class DestModel {
                             for (TypeMirror th : ee.getThrownTypes()) { refs.add(th.toString()); }
                         }
                         mrow.put("type_refs", refs);
+                        // the CHECKED exceptions this member declares. Adding one to an
+                        // existing member introduces a checked exception even though no
+                        // call site inside it is unhandled any more.
+                        List<String> throwsChecked = new ArrayList<>();
+                        if (me instanceof ExecutableElement) {
+                            TypeElement rte = elements.getTypeElement("java.lang.RuntimeException");
+                            TypeElement err = elements.getTypeElement("java.lang.Error");
+                            for (TypeMirror th : ((ExecutableElement) me).getThrownTypes()) {
+                                boolean unchecked = (rte != null && task.getTypes().isSubtype(th, rte.asType()))
+                                        || (err != null && task.getTypes().isSubtype(th, err.asType()));
+                                if (!unchecked) { throwsChecked.add(th.toString()); }
+                            }
+                        }
+                        mrow.put("throws_checked", throwsChecked);
                         mrow.put("annotations", annotationsOf(m.getModifiers(), mp, unit, relPath));
+                        com.sun.source.tree.LineMap lines = unit.getLineMap();
+                        long ms = positions.getStartPosition(unit, m), mend = positions.getEndPosition(unit, m);
+                        mrow.put("start_line", ms >= 0 ? lines.getLineNumber(ms) : -1);
+                        mrow.put("end_line", mend >= 0 ? lines.getLineNumber(mend) : -1);
+                        List<String> calls = new ArrayList<>();
+                        if (m.getBody() != null) {
+                            scanBody(task, trees, elements, positions, unit, new TreePath(mp, m.getBody()),
+                                    String.valueOf(mrow.get("signature")), ok, calls, unhandled);
+                        }
+                        mrow.put("calls", calls);
+                        // what the body CALLS BY NAME, from the parse tree alone. Attribution
+                        // can fail (an unresolved type) and leave a call unnamed in `calls`;
+                        // the parse tree cannot, so a baseline member that made no call named
+                        // URI cannot have held an unhandled URI(String) site.
+                        final List<String> callNames = new ArrayList<>();
+                        if (m.getBody() != null) {
+                            new com.sun.source.util.TreeScanner<Void, Void>() {
+                                @Override public Void visitClass(ClassTree n, Void v) { return null; }
+                                @Override public Void visitMethodInvocation(com.sun.source.tree.MethodInvocationTree n, Void v) {
+                                    ExpressionTree sel = n.getMethodSelect();
+                                    callNames.add(sel instanceof com.sun.source.tree.MemberSelectTree
+                                            ? ((com.sun.source.tree.MemberSelectTree) sel).getIdentifier().toString()
+                                            : sel.toString());
+                                    return super.visitMethodInvocation(n, v);
+                                }
+                                @Override public Void visitNewClass(com.sun.source.tree.NewClassTree n, Void v) {
+                                    Tree id = n.getIdentifier();
+                                    if (id instanceof com.sun.source.tree.ParameterizedTypeTree) {
+                                        id = ((com.sun.source.tree.ParameterizedTypeTree) id).getType();
+                                    }
+                                    callNames.add(id instanceof com.sun.source.tree.MemberSelectTree
+                                            ? ((com.sun.source.tree.MemberSelectTree) id).getIdentifier().toString()
+                                            : id.toString());
+                                    return super.visitNewClass(n, v);
+                                }
+                            }.scan(m.getBody(), null);
+                        }
+                        mrow.put("call_names", callNames);
                         declared.add(mrow);
                     }
                     row.put("declared", declared);
+                    // Every call site whose resolved callee declares a checked
+                    // exception that nothing encloses: no enclosing try catches it
+                    // and the member does not declare it. javac reports these one
+                    // at a time (flow analysis), so a diagnostic count can never
+                    // stand in for this list. Handled sites are not listed.
+                    row.put("unhandled_throws", unhandled);
 
                     // What this type ACTUALLY inherits, asked of the compiler.
                     // Absence from the declaration is not evidence of it.
@@ -254,6 +359,130 @@ public final class DestModel {
         doc.put("types", types);
         Files.createDirectories(out.toAbsolutePath().getParent());
         try (Writer w = Files.newBufferedWriter(out, StandardCharsets.UTF_8)) { writeJson(w, doc); }
+    }
+
+    /** Resolved calls and unhandled checked-exception sites in one member body. */
+    private static void scanBody(JavacTask task, Trees trees, Elements elements, SourcePositions positions,
+                                 CompilationUnitTree unit, TreePath start, String member, boolean ok,
+                                 List<String> calls, List<Map<String, Object>> sites) {
+        javax.lang.model.util.Types types = task.getTypes();
+        TypeElement thr = elements.getTypeElement("java.lang.Throwable");
+        TypeElement rte = elements.getTypeElement("java.lang.RuntimeException");
+        TypeElement err = elements.getTypeElement("java.lang.Error");
+        if (thr == null || rte == null || err == null) { return; }
+        final TypeMirror throwable = thr.asType(), runtime = rte.asType(), error = err.asType();
+        final Map<String, Integer> seen = new java.util.HashMap<>();
+        final com.sun.source.tree.LineMap lines = unit.getLineMap();
+        new TreePathScanner<Void, Void>() {
+            // a nested or anonymous class is its own row
+            @Override public Void visitClass(ClassTree node, Void p) { return null; }
+
+            @Override public Void visitMethodInvocation(com.sun.source.tree.MethodInvocationTree node, Void p) {
+                site(node);
+                return super.visitMethodInvocation(node, p);
+            }
+
+            @Override public Void visitNewClass(com.sun.source.tree.NewClassTree node, Void p) {
+                site(node);
+                return super.visitNewClass(node, p);
+            }
+
+            private String nameOf(ExecutableElement callee) {
+                String owner = callee.getEnclosingElement() instanceof TypeElement
+                        ? ((TypeElement) callee.getEnclosingElement()).getQualifiedName().toString() : "";
+                return owner + "." + signature(callee);
+            }
+
+            private void site(Tree node) {
+                Element e = trees.getElement(getCurrentPath());
+                if (!(e instanceof ExecutableElement)) { return; }
+                ExecutableElement callee = (ExecutableElement) e;
+                String name = nameOf(callee);
+                calls.add(name);
+                // occurrence counts every call of this callee in the member, so
+                // wrapping one of them in a try does not renumber the others
+                int occurrence = seen.merge(name, 1, Integer::sum) - 1;
+                for (TypeMirror t : callee.getThrownTypes()) {
+                    if (t.getKind() != TypeKind.DECLARED) {
+                        record(node, name, t.toString(), "inconclusive", occurrence);
+                        continue;
+                    }
+                    if (!types.isSubtype(t, throwable) || types.isSubtype(t, runtime) || types.isSubtype(t, error)) {
+                        continue;  // unchecked
+                    }
+                    String state = handled(t);
+                    if (!"handled".equals(state)) { record(node, name, t.toString(), state, occurrence); }
+                }
+            }
+
+            private String handled(TypeMirror t) {
+                Tree child = getCurrentPath().getLeaf();
+                for (TreePath p = getCurrentPath().getParentPath(); p != null; p = p.getParentPath()) {
+                    Tree leaf = p.getLeaf();
+                    if (leaf instanceof com.sun.source.tree.TryTree) {
+                        com.sun.source.tree.TryTree tt = (com.sun.source.tree.TryTree) leaf;
+                        boolean covered = child == tt.getBlock() || tt.getResources().contains(child);
+                        if (covered) {
+                            for (com.sun.source.tree.CatchTree c : tt.getCatches()) {
+                                TypeMirror ct = trees.getTypeMirror(new TreePath(new TreePath(p, c), c.getParameter()));
+                                // a catch type the compiler could not resolve might be the one
+                                // that handles this: undecided, never "unhandled"
+                                if (ct == null || ct.getKind() == TypeKind.ERROR) { return "inconclusive"; }
+                                if (ct.getKind() == TypeKind.UNION) {
+                                    for (TypeMirror alt : ((javax.lang.model.type.UnionType) ct).getAlternatives()) {
+                                        if (alt.getKind() == TypeKind.ERROR) { return "inconclusive"; }
+                                        if (types.isSubtype(t, alt)) { return "handled"; }
+                                    }
+                                } else if (types.isSubtype(t, ct)) {
+                                    return "handled";
+                                }
+                            }
+                        }
+                    } else if (leaf instanceof com.sun.source.tree.LambdaExpressionTree) {
+                        return "inconclusive";  // the functional interface decides; not claimed either way
+                    } else if (leaf instanceof MethodTree) {
+                        Element me = trees.getElement(p);
+                        if (!(me instanceof ExecutableElement)) { return "inconclusive"; }
+                        boolean undecided = false;
+                        for (TypeMirror d : ((ExecutableElement) me).getThrownTypes()) {
+                            if (d.getKind() == TypeKind.ERROR) { undecided = true; continue; }
+                            if (types.isSubtype(t, d)) { return "handled"; }
+                        }
+                        return undecided ? "inconclusive" : "unhandled";
+                    } else if (leaf instanceof ClassTree) {
+                        return "inconclusive";  // a field initializer or initializer block
+                    }
+                    child = leaf;
+                }
+                return "inconclusive";
+            }
+
+            private void record(Tree node, String callee, String exception, String state, int occurrence) {
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("member", member);
+                row.put("callee", callee);
+                row.put("exception", exception);
+                row.put("occurrence", occurrence);
+                row.put("state", state);
+                row.put("file_resolution", ok ? "full" : "partial");
+                long s = positions.getStartPosition(unit, node), en = positions.getEndPosition(unit, node);
+                row.put("start", s);
+                row.put("end", en);
+                row.put("line", s >= 0 ? lines.getLineNumber(s) : -1);
+                row.put("end_line", en >= 0 ? lines.getLineNumber(en) : -1);
+                // the operation that consumes this value, when it is a call argument:
+                // what a repair must preserve (e.g. HttpHeaders.setLocation(URI))
+                String consumer = "";
+                TreePath parent = getCurrentPath().getParentPath();
+                if (parent != null && parent.getLeaf() instanceof com.sun.source.tree.MethodInvocationTree
+                        && ((com.sun.source.tree.MethodInvocationTree) parent.getLeaf()).getArguments().contains(node)) {
+                    Element ce = trees.getElement(parent);
+                    if (ce instanceof ExecutableElement) { consumer = nameOf((ExecutableElement) ce); }
+                }
+                row.put("consumer", consumer);
+                sites.add(row);
+            }
+        }.scan(start, null);
     }
 
     private static void collectSupertypeMethods(JavacTask task, TypeMirror start, TypeElement self,

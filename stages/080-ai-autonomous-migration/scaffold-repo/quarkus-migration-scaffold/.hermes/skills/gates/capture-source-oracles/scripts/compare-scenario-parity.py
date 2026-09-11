@@ -24,7 +24,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _oracle_common import ensure_hermes_lib, http_observe  # noqa: E402
+from _oracle_common import ensure_hermes_lib, header_diffs, http_observe, is_preflight, origin_of, required_headers  # noqa: E402
 from _scenarios import (CorpusError, SCENARIO_ORACLES, SCENARIO_PARITY, auth_headers, corpus_digest,  # noqa: E402
                         load_corpus, request_of, scenario, scenario_slug)
 
@@ -139,19 +139,36 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     exp = oracle.get("response") or {}
-    verdict["expected"] = {"status": exp.get("status"), "body_kind": exp.get("body_kind"), "body_sha256": exp.get("body_sha256")}
+    verdict["expected"] = {"status": exp.get("status"), "body_kind": exp.get("body_kind"), "body_sha256": exp.get("body_sha256"),
+                           "headers": exp.get("headers")}
     got = http_observe(args.dest_url, req["method"], req["path"], body=req["body"], headers={**req["headers"], **headers})
-    verdict["observed"] = {"status": got.get("status"), "body_kind": got.get("body_kind"), "body_sha256": got.get("body_sha256"), "body_sample": got.get("body_sample", "")}
+    verdict["observed"] = {"status": got.get("status"), "body_kind": got.get("body_kind"), "body_sha256": got.get("body_sha256"),
+                           "body_sample": got.get("body_sample", ""), "headers": got.get("headers")}
     if not got.get("status"):
         verdict["reason"] = "destination unreachable: %s" % got.get("error")
         write_canonical(out, verdict)
         print("REFUSE: SCENARIO_PARITY %s INCONCLUSIVE (%s)" % (args.scenario, verdict["reason"]), file=sys.stderr)
         return 1
+    # A header this exchange REQUIRES (a Location on a 201 or a redirect, the
+    # CORS permission headers on a cross-origin exchange) cannot be compared
+    # against a capture that recorded no header map: that is INCONCLUSIVE,
+    # never a quiet skip. Re-capture the source.
+    needed = required_headers(req["method"], exp.get("status"), req["headers"])
+    if needed and not isinstance(exp.get("headers"), dict):
+        verdict["reason"] = ("the source capture recorded no header map and this exchange requires %s; re-capture the source "
+                             "(redirects not followed) before comparing" % ", ".join(needed))
+        write_canonical(out, verdict)
+        print("REFUSE: SCENARIO_PARITY %s INCONCLUSIVE (%s)" % (args.scenario, verdict["reason"]), file=sys.stderr)
+        return 1
+    source_origin = origin_of(str((oracle.get("source") or {}).get("base_url") or ""))
+    dest_origin = origin_of(args.dest_url)
+    verdict["origins"] = {"source": source_origin, "destination": dest_origin}
     diffs: list[str] = []
     if got.get("status") != exp.get("status"):
         diffs.append("status %s vs %s" % (got.get("status"), exp.get("status")))
     if got.get("body_sha256") != exp.get("body_sha256"):
         diffs.append("body %s vs %s" % (str(got.get("body_sha256"))[:12], str(exp.get("body_sha256"))[:12]))
+    diffs.extend(header_diffs(exp.get("headers"), got.get("headers"), source_origin=source_origin, dest_origin=dest_origin))
     # the resulting state: what the write actually did
     for eff in oracle.get("effects") or []:
         probe = http_observe(args.dest_url, str(eff.get("method") or "GET"), str(eff.get("path") or "/"), headers=headers)
@@ -170,7 +187,7 @@ def main(argv: list[str] | None = None) -> int:
         write_canonical(out, verdict)
         print("REFUSE: SCENARIO_PARITY %s INCONCLUSIVE (%s)" % (args.scenario, verdict["reason"]), file=sys.stderr)
         return 1
-    if str(req["method"]) not in ("GET", "HEAD") and not recorded_effects:
+    if str(req["method"]) not in ("GET", "HEAD") and not is_preflight(req["method"], req["headers"]) and not recorded_effects:
         verdict["reason"] = "a %s scenario must declare at least one effect: an identical response does not prove the write happened" % req["method"]
         write_canonical(out, verdict)
         print("REFUSE: SCENARIO_PARITY %s INCONCLUSIVE (%s)" % (args.scenario, verdict["reason"]), file=sys.stderr)

@@ -60,14 +60,20 @@ bash "${HERMES_SKILL_DIR}/scripts/run-verify.sh" --root /projects/modernized --m
 | the product tree is exactly the tree verify.py measured (`candidate_sha256`) | `LOOP_CANDIDATE_CHANGED` | nothing promoted; candidate discarded; attempt counted |
 | every changed path is inside the write set (tests are never in one) | rejected: `outside the write set` | candidate discarded; attempt counted |
 | the measure is not fully known (harness / environment / unresolved) | `VERIFICATION_PENDING` | candidate files retained; accepted tree restored; attempt **not** counted |
-| measure strictly decreased, no new mandatory obligation | `REVERTED` | candidate discarded (index and working tree); accepted reports restored; attempt counted |
+| a changed Java file introduces an unhandled checked exception, or adds one to a member's `throws` — compiler-derived: the last accepted commit and the candidate are modelled under the same compiler configuration, catches and declared throws accounted for | `REVERTED` (`introduced … unhandled checked exception`) | candidate discarded; attempt counted — **even when the measure fell** (javac reports one such site per compilation, so a count can fall while six are introduced) |
+| whether a changed file introduces one cannot be decided (a site the compiler could not decide, or incomplete baseline coverage the parse tree cannot settle) | `VERIFICATION_PENDING` (`unassessable-exceptions`) | candidate retained; attempt **not** counted |
+| the issued compile diagnostic's identity — file, member, call site, exception, never the line — is gone, the count did not fall, and the compiler now names another member of this card's sealed family | `CONTINUE` (exit 3) | the candidate **stays on the tree**; no attempt; recorded on the issued card; at most one continuation per family member; a continuation that did not move is `REVERTED` |
+| … and what the compiler names now is outside every sealed scope of the card | `VERIFICATION_PENDING` (`exposed-outside-scope`) | candidate retained; accepted tree restored; attempt **not** counted |
+| a failing package/boot gate no longer names the issued obligation | `VERIFICATION_PENDING` (`unproven-repair`) | candidate retained; attempt **not** counted |
+| the issued compile diagnostic is still reported, or the measure did not otherwise decrease | `REVERTED` | candidate discarded (index and working tree); accepted reports restored; attempt counted |
 
 | Outcome | What happened | Your terminator |
 |---|---|---|
 | `ACCEPTED` | exactly the changed paths committed, tool reports snapshotted, work list rebuilt, admission re-sealed, next card minted (K4) with this card as parent and K3-verified | `kanban_complete` (the loop record is the audit; K2 allows it once brief, run-verify and advance ran in this log) |
 | `REVERTED` (exit 1) | same cluster re-issued with the next attempt key | `kanban_complete` — the retry is its own card; never loop inside this card |
+| `CONTINUE` (exit 3) | repair-family card only: the candidate stays on the tree, the continuation is recorded in `issued.json`, no attempt is spent | none — it is not a verdict. Repair the members the brief lists, `run-verify.sh --mode acceptance`, then `advance.py` again on this card |
 | `VERIFICATION_PENDING` (exit 1) | candidate retained under `verification/loop/pending-files/`; issued card kept; K4 will not mint | `kanban_block` kind=needs_input naming the cluster. When the prerequisite changes: `restore-pending.py` then `run-verify.sh --mode acceptance` then `advance.py` |
-| `DEFERRED` (exit 1) | attempt threshold reached → cluster in `verification/loop/deferred.json`; **the loop stops**, nothing mints | `kanban_block` kind=needs_input naming the cluster (Operator: `scripts/rewind.py` after the cause is fixed) |
+| `DEFERRED` (exit 1) | attempt threshold reached → cluster in `verification/loop/deferred.json`; **the loop stops**, nothing mints | `kanban_block` kind=needs_input naming the cluster (Operator: remove the cause, then `operator-step.py --clear-deferred <cluster>` with the product change, or `--clear-deferred <cluster> --disposition-only` when the cause was a harness defect; `rewind.py` only to abandon later steps) |
 | (Operator) `scripts/rewind.py` | the Operator puts the loop back at an accepted step: product tree restored and re-measured, later steps and the spent budget moved to the record as `rewound`, deferral cleared, next card minted in a new epoch | not a card action; `--operator` and `--reason` are recorded in `steps.json.rewinds` |
 | `REFUSE: LOOP_*` | stale state / no baseline / receipt not authoritative | `kanban_block` kind=needs_input |
 
@@ -100,7 +106,12 @@ record naming the card.
 - `scripts/fix-until-green.test.py` — bootstrap → baseline → accept →
   revert (attempt 2) → unresolvable candidate retained as VERIFICATION_PENDING
   (attempts stay 0) → known no-progress defer (loop stops) → Operator rewind
-  (tree, budget, deferral, new epoch) → re-land → green → M4.
+  (tree, budget, deferral, new epoch) → re-land → green → M4. URI Location
+  family: a transformation that makes the count fall while introducing an
+  unhandled checked exception is REVERTED; the family is the sites ONE step
+  introduced (a legacy site stays out); Owner→Pet CONTINUEs in the same card
+  without an attempt; a stalled continuation rejects; an exposure outside the
+  family is a typed VERIFICATION_PENDING.
 - Every accepted step is a commit; `verification/loop/steps.json` is the
   append-only record; the sealed work list is rebuilt, never edited.
 
@@ -111,7 +122,7 @@ record naming the card.
 - `scripts/verify.py` — tool outputs + recorded outcomes → work list + state + candidate identity
 - `scripts/advance.py` — the acceptance transaction (`--baseline` records step 0; unknown measure → `VERIFICATION_PENDING`)
 - `scripts/restore-pending.py` — put a retained candidate back on the product tree (then acceptance verify + advance)
-- `scripts/operator-step.py` — Operator step: a decided change to the product tree (an ADR retirement applied by `bootstrap-destination.py --retire-only`) committed, re-measured and recorded as a loop step (`verdict: operator`) so the next card's baseline is true
+- `scripts/operator-step.py` — Operator step: a decided change to the product tree (an ADR retirement applied by `bootstrap-destination.py --retire-only`) committed, re-measured and recorded as a loop step (`verdict: operator`) so the next card's baseline is true. `--clear-deferred` appends a disposition naming the cluster, its retry key and what it spent, and the budget rises by that (`planner/budget.py` is the one budget answer); `--disposition-only` records that disposition with no product change, for a cause that was a harness defect
 - `scripts/rewind.py` — Operator rewind to an accepted step (`--to-step N --operator WHO --reason WHY`; re-measures with run-verify.sh, refuses on a measure mismatch, starts a new card-key epoch)
 - `scripts/amend-scope.py` — widen a sealed batch card's write set by ONE file, on the record (`--path` + `--reason`), BEFORE touching it; the inventory itself is never rewritten and two amendments per card is the limit
 - `scripts/diagnose.py` — (Operator) investigate a failure no card can carry: `--list` names them, `--open` starts one of two ten-minute attempts, `--close --conclusion LOCATED|ENVIRONMENT|DECISION_REQUIRED|INCONCLUSIVE` records the finding under `evidence/diagnosis/`. It grants no write authority — a product change during an investigation refuses the close — and closing discharges nothing

@@ -17,12 +17,12 @@ import textwrap
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _loop_common import ensure_hermes_lib, pending_for  # noqa: E402
+from _loop_common import budget as _budget, ensure_hermes_lib, pending_for  # noqa: E402
 
 ensure_hermes_lib()
 from planner.canonical import load_json, write_canonical  # noqa: E402
 from planner.paths import LOOP_DIR, LOOP_ISSUED, MTA_FINDINGS, MTA_RESCAN_FINDINGS, WORKLIST, BOM_MANAGED, TYPE_INVENTORY  # noqa: E402
-from planner.worklist import assess_batch_scope, head_cluster, items_of  # noqa: E402
+from planner.worklist import CHECKED_FAMILY_RULE, assess_batch_scope, head_cluster, items_of  # noqa: E402
 
 PROCEDURE = (
     "Patch the write set one item at a time (targeted edits; never rewrite a whole file, never touch a "
@@ -32,7 +32,9 @@ PROCEDURE = (
     "*Repository.java, inventory every method and repair the applicable ones together (one transformation); "
     "compile-only is not an exit. Do not run extra mvn compile/test/verify beside run-verify.sh. "
     "Optional --mode diagnostic is classpath + compiler only and cannot feed advance.py. Then run "
-    "run-verify.sh --mode acceptance and advance.py; the measure decides, not you."
+    "run-verify.sh --mode acceptance and advance.py; the measure decides, not you. advance.py may answer "
+    "CONTINUE (exit 3) on a repair-family card: the candidate stays on the tree, no attempt is spent, and "
+    "you keep working THIS card on the members it names, then verify and advance again."
 )
 
 
@@ -623,8 +625,27 @@ def main(argv: list[str] | None = None) -> int:
     # what this cluster's earlier attempts did and why the transaction refused
     # them: the retry card must not repeat them (v6 t_fc2b54c5 copied the
     # previous card's deletion and was vetoed for the same reason)
-    previous = [{"card": r.get("card"), "reason": r.get("reason"), "changed": r.get("changed"), "measure": (r.get("measure") or {}).get("tuple")}
-                for r in (steps.get("rejected") or []) if isinstance(r, dict) and r.get("cluster") == cluster["id"] and not r.get("rewound")]
+    previous = []
+    rk = str(cluster.get("retry_key") or cluster["id"])
+    retry_map = steps.get("retry_keys") or {}
+    for r in (steps.get("rejected") or []):
+        if not isinstance(r, dict) or r.get("rewound"):
+            continue
+        cid = str(r.get("cluster") or "")
+        rkey = str(r.get("retry_key") or retry_map.get(cid) or "")
+        if cid != cluster["id"] and rkey != rk:
+            continue
+        previous.append({
+            "card": r.get("card"),
+            "reason": r.get("reason"),
+            "changed": r.get("changed"),
+            "measure": (r.get("measure") or {}).get("tuple"),
+            "loci_before": list(r.get("loci_before") or []),
+            "loci_after": list(r.get("loci_after") or []),
+            "patch_summary": list(r.get("patch_summary") or r.get("changed") or []),
+            "legal_next": str(r.get("legal_next") or ""),
+            "write_set": list(r.get("write_set") or []),
+        })
     pending = pending_for(steps, cluster["id"])
     repo = repository_inventory(root, str(cluster.get("path") or ""))
     brief = {
@@ -634,10 +655,13 @@ def main(argv: list[str] | None = None) -> int:
         "items": items,
         "not_counted": [n for n in (doc.get("not_counted") or []) if str(n.get("path") or "") in write_set],
         "previous_attempts": previous,
-        "attempts_left": max(0, int(_max_attempts(root)) - len(previous)),
+        # the one budget answer (planner.budget): the same numbers the issued
+        # card, a rejection and a deferral carry
+        "budget": _budget(steps, cluster["id"], rk, int(_max_attempts(root))),
+        "attempts_left": _budget(steps, cluster["id"], rk, int(_max_attempts(root)))["left"],
         "measure": doc["measure"],
         "procedure": PROCEDURE,
-        "rule": "Edit only the write set. Do not edit tests. Do not touch pom.xml unless it is in the write set. Do not repeat a previous attempt (previous_attempts says what was refused and why). Do not run extra mvn beside run-verify.sh. Then run run-verify.sh --mode acceptance and advance.py; the measure decides, not you.",
+        "rule": "Edit only the write set. Do not edit tests. Do not touch pom.xml unless it is in the write set. Do not repeat a previous attempt (previous_attempts names the refused patch, before/after diagnostic loci, and the legal next action). Do not run extra mvn beside run-verify.sh. Then run run-verify.sh --mode acceptance and advance.py; the measure decides, not you.",
     }
     if pending:
         brief["verification_pending"] = {
@@ -658,6 +682,8 @@ def main(argv: list[str] | None = None) -> int:
     scope_p = root / str(ref.get("path") or "") if ref.get("path") else None
     if scope_p is not None and scope_p.is_file():
         scope = load_json(scope_p)
+        family = str(scope.get("rule") or "") == CHECKED_FAMILY_RULE
+        issued_now = load_json(root / LOOP_ISSUED) if (root / LOOP_ISSUED).is_file() else {}
         verdicts = {r["member"]: r for r in assess_batch_scope(root, scope)}
         brief["batch_scope"] = {
             "rule": scope.get("rule"),
@@ -666,13 +692,18 @@ def main(argv: list[str] | None = None) -> int:
             "members": [dict(m, **{"verdict": verdicts.get(m["member"], {}).get("verdict", "inconclusive"),
                                    "detail": verdicts.get(m["member"], {}).get("detail", "")})
                         for m in scope.get("members") or []],
-            "rule_note": ("Every member listed here is assessed against the rule when the candidate is judged, "
+            "rule_note": ((str(scope.get("rule_note") or "") + " ") if family else "") + (
+                          "Every member listed here is assessed against the rule when the candidate is judged, "
                           "and any that still violates it refuses the card. A member whose verdict is already ok "
                           "needs no edit and earns nothing if you change it. Written explanations do not count: "
                           "the assessment is made from the tree."),
-            "amend": ("If a member cannot be finished without editing a file outside the write set, record the "
-                      "amendment BEFORE touching it: amend-scope.py --root . --cluster %s --card $HERMES_KANBAN_TASK "
-                      "--path <file> --reason <what this card cannot finish without it>. Bounded: two per card." % cluster["id"]),
+            "introduced_by": scope.get("introduced_by") if family else None,
+            "continuations": list((issued_now or {}).get("continuations") or []),
+            "amend": (("Family members are already in the write set; amend-scope.py does not widen a family.")
+                      if family else
+                      ("If a member cannot be finished without editing a file outside the write set, record the "
+                       "amendment BEFORE touching it: amend-scope.py --root . --cluster %s --card $HERMES_KANBAN_TASK "
+                       "--path <file> --reason <what this card cannot finish without it>. Bounded: two per card." % cluster["id"])),
             "amendments": list(((load_json(root / LOOP_ISSUED) if (root / LOOP_ISSUED).is_file() else {}) or {}).get("amendments") or []),
         }
     write_canonical(root / LOOP_DIR / ("brief-%s.json" % cluster["id"].replace(":", "-")), brief)

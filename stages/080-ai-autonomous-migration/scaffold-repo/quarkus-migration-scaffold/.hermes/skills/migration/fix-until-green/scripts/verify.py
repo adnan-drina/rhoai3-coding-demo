@@ -25,10 +25,10 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _loop_common import candidate_sha256, ensure_hermes_lib, save_state  # noqa: E402
+from _loop_common import candidate_sha256, ensure_hermes_lib, publish_loop_state  # noqa: E402
 
 ensure_hermes_lib()
-from planner.canonical import digest, load_json, write_canonical  # noqa: E402
+from planner.canonical import load_json, write_canonical  # noqa: E402
 from planner.paths import MTA_RESCAN_FINDINGS, VERIFY_DIAGNOSTICS, VERIFY_RUN, VERIFY_SUREFIRE, WORKLIST  # noqa: E402
 from planner.worklist import build_worklist, surefire_from_reports  # noqa: E402
 
@@ -97,7 +97,7 @@ def main(argv: list[str] | None = None) -> int:
     write_canonical(root / VERIFY_RUN, run)
     doc = build_worklist(root)
     m = doc["measure"]
-    save_state(root, {"schema": "rhoai3.loop-state/v1", "worklist_sha256": digest(doc), "candidate_sha256": run["candidate_sha256"], "measure": m, "head": doc["head"], "open_clusters": sum(1 for c in doc["clusters"] if c["status"] == "open"), "deferred": doc["deferred"], "blocked_clusters": doc["blocked_clusters"]})
+    publish_loop_state(root, doc)
     print("OK: verify measure=%s known=%s%s head=%s clusters=%d candidate=%s → %s" % (m["tuple"], m["known"], "" if m["known"] else " (%s)" % "; ".join(m["blocked"]), doc["head"] or "-", len(doc["clusters"]), run["candidate_sha256"][:12], WORKLIST))
     return 0
 

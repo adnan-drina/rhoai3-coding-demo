@@ -38,6 +38,7 @@ from _oracle_common import ensure_hermes_lib  # noqa: E402
 
 ensure_hermes_lib()
 from planner.canonical import canonical_bytes, load_json, sha256_bytes  # noqa: E402
+from planner.paths import STRUCTURE  # noqa: E402
 
 CORPUS = Path("verification") / "scenarios" / "corpus.json"
 SCENARIO_ORACLES = Path("verification") / "source-oracles" / "scenarios"
@@ -80,7 +81,84 @@ def load_corpus(root: Path) -> dict[str, Any]:
             raise CorpusError("scenario %s must either name a body_file or state body_absent: true (an absent body is a fact, not an omission)" % sc["id"])
         if sc.get("body_file") and sc.get("body_absent"):
             raise CorpusError("scenario %s both names a body and says it has none" % sc["id"])
+        hdrs = {str(k).lower(): str(v) for k, v in (sc.get("headers") or {}).items()}
+        if str(sc["method"]).upper() == "OPTIONS":
+            # a preflight asks permission; it must ask the way a browser does
+            if "origin" not in hdrs or "access-control-request-method" not in hdrs:
+                raise CorpusError("scenario %s is an OPTIONS preflight and must carry Origin and Access-Control-Request-Method "
+                                  "(and Access-Control-Request-Headers when the actual request sends any)" % sc["id"])
+            if str((sc.get("identity") or {}).get("kind") or "none") != "none":
+                raise CorpusError("scenario %s is a preflight: browsers send it without credentials, so it carries no identity" % sc["id"])
+        if "origin" in hdrs and not sc.get("cors_policy"):
+            raise CorpusError("scenario %s sends a cross-origin Origin and names no cors_policy; coverage is counted per policy" % sc["id"])
+        if sc.get("cors_policy") and str(sc["cors_policy"]) not in {str(p.get("id")) for p in (doc.get("cors_policies") or [])}:
+            raise CorpusError("scenario %s names cors_policy %r, which cors_policies does not declare" % (sc["id"], sc["cors_policy"]))
     return doc
+
+
+def cors_coverage(doc: dict[str, Any], source_policies: list[str] | None = None) -> list[str]:
+    """What the corpus does NOT cover of the source's CORS behaviour; [] = covered.
+
+    Per declared policy: an actual request carrying a cross-origin Origin, and
+    an OPTIONS preflight with Origin, Access-Control-Request-Method and every
+    request header the policy needs. A policy the SOURCE declares that the
+    corpus does not name is a gap too. Missing coverage makes parity
+    INCONCLUSIVE; it is never a pass on CORS."""
+    gaps: list[str] = []
+    scenarios = list(doc.get("scenarios") or [])
+    declared = {str(p.get("id")): p for p in (doc.get("cors_policies") or []) if p.get("id")}
+    for pid, pol in sorted(declared.items()):
+        mine = [sc for sc in scenarios if str(sc.get("cors_policy") or "") == pid]
+        lower = [(sc, {str(k).lower(): str(v) for k, v in (sc.get("headers") or {}).items()}) for sc in mine]
+        actual = [sc for sc, h in lower if str(sc.get("method")).upper() != "OPTIONS" and "origin" in h]
+        need = {str(x).strip().lower() for x in (pol.get("request_headers") or []) if str(x).strip()}
+        pre = [sc for sc, h in lower if str(sc.get("method")).upper() == "OPTIONS" and "origin" in h
+               and "access-control-request-method" in h
+               and need <= {t.strip().lower() for t in h.get("access-control-request-headers", "").split(",") if t.strip()}]
+        if not actual:
+            gaps.append("cors policy %s has no actual cross-origin exchange" % pid)
+        if not pre:
+            gaps.append("cors policy %s has no preflight carrying Origin, Access-Control-Request-Method%s"
+                        % (pid, (" and " + ", ".join(sorted(need))) if need else ""))
+    for sp in sorted(set(source_policies or []) - set(declared)):
+        gaps.append("the source declares cors policy %s and the corpus does not cover it" % sp)
+    return gaps
+
+
+_CORS_API = ("org.springframework.web.cors.", "org.springframework.web.servlet.config.annotation.CorsRegistry",
+             "org.springframework.web.servlet.config.annotation.CorsRegistration")
+
+
+def source_cors_policies(root: Path) -> tuple[list[str], str]:
+    """(the CORS policies the FROZEN source declares, why-unknown).
+
+    Read from M1's structural model of the source, never from text: every
+    distinct @CrossOrigin configuration is one policy (the same annotation on
+    six controllers is one policy, a different exposedHeaders is another), and
+    a type wired to Spring's CORS configuration API is a global policy. An
+    unreadable model is a reason, not an empty list: "no policies" and "not
+    read" must not look the same."""
+    p = Path(root) / STRUCTURE
+    if not p.is_file():
+        return [], "M1's structural model %s is not in this tree, so the source's CORS policies are unknown" % STRUCTURE
+    try:
+        doc = load_json(p)
+    except (OSError, ValueError) as exc:
+        return [], "%s could not be read: %s" % (STRUCTURE, exc)
+    out: set[str] = set()
+    for t in doc.get("types") or []:
+        anns = list(t.get("annotations") or [])
+        for m in t.get("methods") or []:
+            anns.extend(m.get("annotations") or [])
+        for a in anns:
+            fqn = str(a.get("fqn") or a.get("name") or "")
+            if fqn == "org.springframework.web.bind.annotation.CrossOrigin" or fqn.rsplit(".", 1)[-1] == "CrossOrigin":
+                values = a.get("values") if a.get("values") is not None else a.get("attributes") or {}
+                out.add("crossorigin:%s" % sha256_bytes(canonical_bytes(values))[:12])
+        refs = [str(x) for x in (t.get("type_refs") or t.get("refs") or [])] + [str(x) for x in (t.get("supertypes") or [])]
+        if any(r.startswith(_CORS_API) for r in refs):
+            out.add("global:%s" % t.get("fqn"))
+    return sorted(out), ""
 
 
 def corpus_digest(doc: dict[str, Any]) -> str:

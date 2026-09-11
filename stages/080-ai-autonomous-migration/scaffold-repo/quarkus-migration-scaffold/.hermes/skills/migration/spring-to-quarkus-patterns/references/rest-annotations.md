@@ -36,11 +36,12 @@ Paraphrased public API names. Prefer living Full-path from
 
 ### Tip-bank B3 — discovery / CDI (v13 M5 JAX-RS 404)
 
-| id | Spring habit | Quarkus rule | status |
-|----|--------------|--------------|--------|
-| rest-cdi-scope | implicit Spring component scan | `@ApplicationScoped` (or `@Singleton`) on every `@Path` resource + exception mappers | ADOPT |
-| rest-package | keep `org.springframework.samples…` | **Move** JAX-RS resources out of `org.springframework.*` — Quarkus build-time discovery skips that prefix | ADOPT |
-| rest-cors | `@CrossOrigin` / filters in story | **OUT OF SCOPE** for REST stories (tip-bank B2) — platform/infra | REJECT in-story |
+| id | Spring habit | Quarkus rule | status | note |
+|----|--------------|--------------|--------|------|
+| rest-cdi-scope | implicit Spring component scan | `@ApplicationScoped` (or `@Singleton`) on every `@Path` resource + exception mappers | ADOPT | |
+| rest-package | keep `org.springframework.samples…` | **Move** JAX-RS resources out of `org.springframework.*` — Quarkus build-time discovery skips that prefix | ADOPT | |
+| rest-cors | `@CrossOrigin` / filters in story | **OUT OF SCOPE** for REST stories (tip-bank B2) — platform/infra | REJECT in-story | Prove CORS with header assertions against a frozen source capture; adding scenarios without comparing `Access-Control-*` will not catch a drop. |
+| rest-location-uri | a `UriComponentsBuilder` parameter: `ucBuilder.path("/api/…/{id}").buildAndExpand(id).toUri()` | a JAX-RS `@Context UriInfo` parameter: `uriInfo.getBaseUriBuilder().path("/api/…/{id}").build(id)` — the source's own path template | ADOPT | The source's Location is ABSOLUTE and request-derived: scheme, host, port and the context path. [`UriInfo#getBaseUriBuilder`](https://jakarta.ee/specifications/restful-ws/3.1/apidocs/jakarta.ws.rs/jakarta/ws/rs/core/uriinfo#getBaseUriBuilder()) carries the same base. `@Context UriInfo` as a method parameter of a Spring `@RestController` is not in the Quarkus Spring Web guide; it was verified by probe on RHBQ 3.27.3 (the context path appears once; a forwarded Host is honoured), so keep the Location scenario in the parity corpus. `new URI(String)` throws the checked `URISyntaxException`: do not introduce it (no `throws`, no catch — acceptance vetoes an introduced unhandled checked exception). `URI.create` of a relative path compiles, but drops the base and the context path, which parity compares. |
 
 ## Binding (AR-3.4 / AR-2.4)
 

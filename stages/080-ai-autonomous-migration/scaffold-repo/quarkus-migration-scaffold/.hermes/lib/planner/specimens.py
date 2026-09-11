@@ -442,10 +442,15 @@ def decisions_yaml(doc: dict[str, Any]) -> str:
 # ---------------------------------------------------------------------------
 
 
-def diagnostics_doc(errors: list[tuple[str, int, str]], unresolvable: str | None = None) -> dict[str, Any]:
+def diagnostics_doc(errors: list[tuple], unresolvable: str | None = None) -> dict[str, Any]:
     if unresolvable:
         return {"schema": "rhoai3.diagnostics/v1", "files": 0, "classpath_entries": 0, "success": False, "errors": 0, "diagnostics": [], "build_unresolvable": True, "reason": unresolvable}
-    return {"schema": "rhoai3.diagnostics/v1", "files": 1, "classpath_entries": 1, "success": not errors, "errors": len(errors), "diagnostics": [{"kind": "ERROR", "path": p, "line": ln, "code": "compiler.err.cant.resolve", "message": msg} for p, ln, msg in errors]}
+    rows = []
+    for err in errors:
+        path, line, message = err[0], err[1], err[2]
+        code = err[3] if len(err) > 3 else "compiler.err.cant.resolve"
+        rows.append({"kind": "ERROR", "path": path, "line": line, "code": code, "message": message})
+    return {"schema": "rhoai3.diagnostics/v1", "files": 1, "classpath_entries": 1, "success": not errors, "errors": len(errors), "diagnostics": rows}
 
 
 def surefire_doc(failures: list[tuple[str, str]]) -> dict[str, Any]:

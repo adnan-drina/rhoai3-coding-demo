@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from planner.budget import attempts_spent  # noqa: E402
 from planner.worklist import head_cluster
 
 CLOSE_ID = "M4_VERIFY"
@@ -88,8 +89,8 @@ def render_body(body: dict[str, Any]) -> str:
     lines += ["    %s" % c for c in steps]
     lines += [
         "",
-        "The tools decide: ACCEPTED commits and mints the next card; REVERTED re-mints this cluster; VERIFICATION_PENDING retains the candidate without counting an attempt; DEFERRED stops the loop.",
-        "Terminator: `kanban_complete` after ACCEPTED or REVERTED (the loop record is the audit; K2 allows it). `kanban_block` kind=needs_input naming the cluster after VERIFICATION_PENDING, DEFERRED or a `REFUSE: LOOP_*`. Never `kanban_request_review` on a loop card; never retry inside this card.",
+        "The tools decide: ACCEPTED commits and mints the next card; REVERTED re-mints this cluster; CONTINUE (exit 3, repair-family cards) keeps the candidate on the tree -- keep working THIS card on the members it names, then verify and advance again; VERIFICATION_PENDING retains the candidate without counting an attempt; DEFERRED stops the loop.",
+        "Terminator: `kanban_complete` after ACCEPTED or REVERTED (the loop record is the audit; K2 allows it). `kanban_block` kind=needs_input naming the cluster after VERIFICATION_PENDING, DEFERRED or a `REFUSE: LOOP_*`. CONTINUE is not a verdict: neither complete nor block. Never `kanban_request_review` on a loop card; never retry inside this card after REVERTED (the retry is the next K4 card).",
         "",
         "<details><summary>machine body (K1)</summary>",
         "",
@@ -145,21 +146,25 @@ def next_card(worklist: dict[str, Any], steps: dict[str, Any] | None) -> dict[st
         return None
     head = head_cluster(worklist)
     if head is not None:
+        rk = str(head.get("retry_key") or head["id"])
+        spent = attempts_spent(steps or {}, head["id"], rk)  # planner.budget: the one definition
         card = {
             "id": head["id"],
             "kind": head["kind"],
-            "title": card_title(head, int(attempts.get(head["id"], 0)) + 1),
+            "title": card_title(head, spent + 1),
             "phase": "M3",
             "path": head["path"],
             "write_set": list(head["write_set"]),
             "items": list(head["items"]),
-            "attempt": int(attempts.get(head["id"], 0)) + 1,
+            "attempt": spent + 1,
             "skills": list(CARD_SKILLS[head["kind"]]),
         }
         if head.get("gate"):
             card["gate"] = str(head["gate"])
         if head.get("batch_scope"):
             card["batch_scope"] = dict(head["batch_scope"])
+        if head.get("retry_key"):
+            card["retry_key"] = rk
         return card
     if worklist.get("deferred") or worklist.get("blocked_clusters"):
         return None

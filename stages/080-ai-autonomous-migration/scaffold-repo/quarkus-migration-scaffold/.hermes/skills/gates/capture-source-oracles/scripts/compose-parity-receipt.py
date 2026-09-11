@@ -15,7 +15,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _oracle_common import PARITY, slug  # noqa: E402
-from _scenarios import CorpusError, SCENARIO_PARITY, corpus_digest, load_corpus  # noqa: E402
+from _scenarios import CorpusError, SCENARIO_PARITY, corpus_digest, cors_coverage, load_corpus, source_cors_policies  # noqa: E402
 from planner.admission import verify_receipt  # noqa: E402
 from planner.canonical import load_json, write_canonical  # noqa: E402
 from planner.paths import EVIDENCE_BUNDLE  # noqa: E402
@@ -103,8 +103,19 @@ def main(argv: list[str] | None = None) -> int:
             ok = False
             rows.append({"entry_point": ep, "verdict": "INCONCLUSIVE", "reason": "no parity record", "scenarios": []})
         failed += 0 if ok else 1
+    # CORS is judged per policy, not per entry point: every policy the corpus
+    # declares, and every one the frozen source declares, needs an actual
+    # cross-origin exchange and a preflight. Missing coverage is INCONCLUSIVE.
+    source_policies, policy_gap = source_cors_policies(root)
+    cors_gaps = cors_coverage(corpus, source_policies) if corpus else []
+    if policy_gap:
+        cors_gaps.append(policy_gap)
+    verdict = "PASS" if rows and failed == 0 else ("INCONCLUSIVE" if not rows or all(r["verdict"] == "INCONCLUSIVE" for r in rows if r["verdict"] != "PASS") else "FAIL")
+    if verdict == "PASS" and cors_gaps:
+        verdict = "INCONCLUSIVE"
     doc = {"schema": "rhoai3.parity-receipt/v1", "receipt_sha256": receipt["receipt_digest"], "producer": "compose-parity-receipt.py",
-           "corpus_sha256": corpus_sha, "corpus_error": corpus_error, "entry_points": rows, "total": len(rows), "not_passed": failed, "verdict": "PASS" if rows and failed == 0 else ("INCONCLUSIVE" if not rows or all(r["verdict"] == "INCONCLUSIVE" for r in rows if r["verdict"] != "PASS") else "FAIL")}
+           "corpus_sha256": corpus_sha, "corpus_error": corpus_error, "entry_points": rows, "total": len(rows), "not_passed": failed,
+           "cors": {"source_policies": source_policies, "gaps": cors_gaps}, "verdict": verdict}
     out = root / PARITY / "receipt.json"
     write_canonical(out, doc)
     if doc["verdict"] == "PASS":
@@ -113,6 +124,8 @@ def main(argv: list[str] | None = None) -> int:
     for r in rows:
         if r["verdict"] != "PASS":
             print("  - %s %s: %s" % (r["entry_point"], r["verdict"], r["reason"]), file=sys.stderr)
+    for g in cors_gaps:
+        print("  - CORS INCONCLUSIVE: %s" % g, file=sys.stderr)
     print("REFUSE: parity receipt %s (%d of %d not passed) → %s" % (doc["verdict"], failed, len(rows), out), file=sys.stderr)
     return 1
 

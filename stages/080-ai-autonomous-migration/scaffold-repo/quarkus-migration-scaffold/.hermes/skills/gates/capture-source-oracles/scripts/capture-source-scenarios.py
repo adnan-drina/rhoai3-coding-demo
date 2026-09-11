@@ -40,6 +40,20 @@ from planner.canonical import digest  # noqa: E402
 from planner.paths import EVIDENCE_BUNDLE, producer_receipt  # noqa: E402
 
 
+def _archive_prior(receipt_p: Path) -> None:
+    """Keep the receipt this run is about to replace. An idle receipt ("no
+    corpus") is evidence of what the run did before a corpus existed; the
+    producer used to overwrite it."""
+    if receipt_p.is_file():
+        try:
+            at = str(load_json(receipt_p).get("at") or "").replace(":", "").replace("-", "") or "undated"
+        except Exception:
+            at = "unreadable"
+        dest = receipt_p.with_name("%s.%s%s" % (receipt_p.stem, at, receipt_p.suffix))
+        if not dest.exists():
+            receipt_p.replace(dest)
+
+
 def _now() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
@@ -173,6 +187,7 @@ def main(argv: list[str] | None = None) -> int:
         # never happen is silence -- the receipt says plainly that nothing was
         # captured and why, so the absence is visible at M4.
         if "missing" in str(exc):
+            _archive_prior(receipt_p)
             write_canonical(receipt_p, {
                 "schema": "rhoai3.source-capture/v1", "producer": "capture-source-scenarios.py",
                 "at": _now(), "status": "idle", "reason": str(exc),
@@ -283,6 +298,7 @@ def main(argv: list[str] | None = None) -> int:
                     failures.append("reads: %s" % reads[0])
     finally:
         runtime.stop()
+    _archive_prior(receipt_p)
     write_canonical(receipt_p, {
         "schema": "rhoai3.source-capture/v1", "producer": "capture-source-scenarios.py", "at": _now(),
         "status": "ok" if not failures else "blocked",

@@ -862,7 +862,7 @@ check "080 bootstrap and its own datasource checker agree on the tree bootstrap 
   "grep -c 'THE CONTRADICTION' '${SCAFFOLD_SKILLS}/migration/bootstrap-destination/scripts/bootstrap-destination.test.py' | awk '{print (\$1>=1)?1:0}'" \
   "1"
 check "080 a cleared deferral raises the attempt budget and never deletes the attempts or their cards" \
-  "grep -q -F 'def attempt_budget' '${SCAFFOLD_SKILLS}/migration/fix-until-green/scripts/_loop_common.py' && grep -q -F 'deferral_clearances' '${SCAFFOLD_SKILLS}/migration/fix-until-green/scripts/operator-step.py' && echo 1 || echo 0" \
+  "grep -q -F 'def attempt_budget' '${SCAFFOLD_LIB}/planner/budget.py' && grep -q -F 'from planner.budget import attempt_budget' '${SCAFFOLD_SKILLS}/migration/fix-until-green/scripts/_loop_common.py' && grep -q -F 'deferral_clearances' '${SCAFFOLD_SKILLS}/migration/fix-until-green/scripts/operator-step.py' && echo 1 || echo 0" \
   "1"
 check "080 the coverage plugin is pinned to a version that can read the pinned toolchain's class files (JaCoCo >= 0.8.11 for Java 21)" \
   "python3 -c \"import json; c=json.load(open('${SCAFFOLD_080}/.hermes/planning/catalogs/compat-mapping.json')); v=c['plugin_config']['org.jacoco:jacoco-maven-plugin']['version']; print('ok' if tuple(int(x) for x in v.split('.')) >= (0,8,11) else v)\"" \

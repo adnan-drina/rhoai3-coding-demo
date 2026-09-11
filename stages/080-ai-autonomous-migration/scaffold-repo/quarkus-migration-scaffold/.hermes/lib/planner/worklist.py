@@ -14,10 +14,19 @@ dependency order (leaf types first, from the JDK model), then remaining
 incidents, then tests, then parity. The head cluster is the next card.
 
 The progress measure is the tuple (mandatory incidents, compile errors,
-failing tests). A change is accepted only if the tuple strictly decreases
-lexicographically and introduces no new mandatory obligation; strict
-decrease is the termination argument. Parity is measured by M4 and
-reported beside the tuple, never inside it.
+failing tests). The compile slot is an *observed* diagnostic count: the
+JDK collector already requests 10,000 errors and still reports one
+diagnostic when several sibling files share the same checked-exception
+defect. That count cannot establish that only one defect remains.
+Acceptance requires a strictly smaller tuple and no new mandatory
+obligation, *or* a typed gate outcome (package/boot passing). Disappearance
+alone is never ACCEPTED: whether an issued compile failure is still reported
+is asked of its identity without the line (file, member, call site, exception), and
+when it is gone without the count falling the compiler's next report decides
+-- another member of the card's sealed family CONTINUES the card (RETAIN),
+anything else is a typed diagnosis (EXPOSED). The family itself is the sites
+of one signature that ONE accepted step introduced (build_checked_family_scope).
+Parity is measured by M4 and reported beside the tuple, never inside it.
 
 Measurement contract: every component is known only when its tool ran in
 this verification and produced a report (verification/build/run.json);
@@ -34,7 +43,8 @@ from pathlib import Path
 from typing import Any
 
 from planner.canonical import canonical_bytes, digest, load_json, sha256_bytes, sha256_file, sort_unique
-from planner.dest_model import DestModelUnavailable, above_members, dest_model, source_write_members as _model_writes, types_of
+from planner.dest_model import (DestModelUnavailable, above_members, dest_model, diagnostic_identity, member_ids, model_at_commit,  # noqa: E501
+                                 site_for_diagnostic, site_signature, source_write_members as _model_writes, types_of, unhandled_sites)
 from planner.paths import is_product_path, EVIDENCE_BUNDLE, TYPE_INVENTORY, LOOP_DEFERRED, LOOP_STEPS, MTA_RESCAN_FINDINGS, PARITY_DIR, VERIFY_BOOT, VERIFY_DIAGNOSTICS, VERIFY_PACKAGE, VERIFY_RUN, VERIFY_SUREFIRE, WORKLIST
 
 SCHEMA = "rhoai3.worklist/v1"
@@ -712,7 +722,11 @@ class _Retain(str):
         return False
 
 
-RETAIN = _Retain("retain")
+# Three ways of "not accepted, not rejected, no attempt spent". They are
+# distinct because what happens next is distinct:
+RETAIN = _Retain("retain")        # the compiler now names another member of THIS card's sealed family: continue in the same card
+UNPROVEN = _Retain("unproven")    # a failing gate no longer names the issued obligation: retain and verify again
+EXPOSED = _Retain("exposed")      # the compiler now names something no sealed scope of this card covers: a typed diagnosis
 
 
 BATCH_SCOPE_DIR = Path("evidence") / "planning" / "batch-scope"
@@ -727,7 +741,9 @@ def batch_scope_path(scope: dict[str, Any]) -> Path:
     acceptance then refused its own card for a seal mismatch)."""
     return BATCH_SCOPE_DIR / str(scope.get("cluster") or "").replace(":", "-") / ("%s.json" % str(scope.get("digest") or "")[:32])
 BATCH_RULE = "spring-data-repository-contract/v1"
+CHECKED_FAMILY_RULE = "checked-exception-family/v1"
 _DERIVABLE = re.compile(r"^(find|read|get|query|count|exists|stream)\w*By\w+$|^(count|exists)$")
+_UNREPORTED = "compiler.err.unreported.exception"
 
 
 def _repo_type(root: Path, rel: str) -> tuple[dict[str, Any] | None, str]:
@@ -742,6 +758,179 @@ def _repo_type(root: Path, rel: str) -> tuple[dict[str, Any] | None, str]:
     return rows[0], ""
 
 
+def unreported_item(item: dict[str, Any]) -> bool:
+    """A measured javac diagnostic for an unhandled checked exception."""
+    if str(item.get("source") or "") != "javac":
+        return False
+    code = str(item.get("rule_id") or item.get("code") or "")
+    msg = str(item.get("message") or item.get("detail") or "")
+    return code.startswith(_UNREPORTED) or "unreported exception" in msg
+
+
+def introducing_step(root: Path, signature: str, *, limit: int = 12) -> dict[str, Any] | None:
+    """The accepted step whose commit first carried unhandled `signature` sites.
+
+    Walked newest first over the recorded step commits, each modelled by the
+    compiler under this tree's configuration. The keys are the sites that
+    step introduced: the family is bound to THAT transformation, never to
+    every constructor of the same class the tree happens to contain (the
+    regex inventory swept in sites no step had touched). Raises
+    DestModelUnavailable when a commit cannot be modelled."""
+    p = Path(root) / LOOP_STEPS
+    steps = load_json(p) if p.is_file() else {}
+    rows = [r for r in (steps.get("steps") or []) if str(r.get("commit") or "") and not r.get("rewound")][-limit:]
+    for i in range(len(rows) - 1, 0, -1):
+        after = model_at_commit(root, str(rows[i]["commit"]))
+        before = model_at_commit(root, str(rows[i - 1]["commit"]))
+        now = {x["key"] for x in unhandled_sites(after) if site_signature(x) == signature and x.get("state") == "unhandled"}
+        was = {x["key"] for x in unhandled_sites(before) if site_signature(x) == signature}
+        new = sorted(now - was)
+        if new:
+            return {"commit": str(rows[i]["commit"]), "parent": str(rows[i - 1]["commit"]),
+                    "card": str(rows[i].get("card") or ""), "cluster": str(rows[i].get("cluster") or ""), "keys": new}
+    return None
+
+
+def _family_note(members: list[dict[str, Any]], intro: dict[str, Any]) -> str:
+    callee = str(members[0].get("callee") or "") if members else ""
+    exc = str(members[0].get("exception") or "") if members else ""
+    consumers = sorted({str(m.get("consumer") or "") for m in members if m.get("consumer")})
+    base = ("Every member listed calls %s, which throws the checked %s, since step %s (card %s). Repair each one so it no "
+            "longer calls it -- no throws clause and no catch around it: the repair must not introduce a checked exception. "
+            "Keep the operation the value fed (%s)." % (callee, exc, intro["commit"][:12], intro.get("card") or intro.get("cluster") or "?",
+                                                         ", ".join(consumers) or "none recorded"))
+    if any(c.endswith(".setLocation(java.net.URI)") for c in consumers):
+        return ("Source-compatible Location construction without introduced checked exceptions. " + base +
+                " The source built an ABSOLUTE Location from the request, under its context path; parity compares that form. "
+                "Use a request-aware URI builder that keeps the application base and the source's own path template -- "
+                "for example a JAX-RS @Context UriInfo parameter and uriInfo.getBaseUriBuilder().path(<the source's template>)"
+                ".build(<id>). URI.create of a relative path compiles and is not the source's form.")
+    return base
+
+
+def build_checked_family_scope(root: Path, cluster: dict[str, Any], items: list[dict[str, Any]], bundle: dict[str, Any]) -> dict[str, Any] | None:
+    """A SEALED repair family: the unhandled checked-exception sites ONE
+    transformation introduced, as the compiler enumerates them.
+
+    javac reports one such site per compilation, so the cluster it forms names
+    one file while the defect may span several. The family is: the measured
+    site's signature (callee + exception), the step that introduced it, and
+    every site of that signature the step introduced and the tree still has.
+    Measured failures stay in item_ids; the other members are inventory, not
+    obligations. None when any of that cannot be established -- the cluster
+    then stays what javac said it is."""
+    measured = [i for i in items if str(i.get("id")) in set(cluster.get("items") or []) and unreported_item(i)]
+    if not measured:
+        return None
+    try:
+        model = dest_model(root)
+    except DestModelUnavailable:
+        return None
+    anchors = [a for a in (site_for_diagnostic(model, i) for i in measured) if a is not None]
+    if not anchors:
+        return None
+    signature = site_signature(anchors[0])
+    try:
+        intro = introducing_step(root, signature)
+    except DestModelUnavailable:
+        return None
+    if intro is None:
+        return None
+    now = {x["key"]: x for x in unhandled_sites(model) if site_signature(x) == signature and x.get("state") == "unhandled"}
+    keys = sorted(set(intro["keys"]) & set(now))
+    if not any(a["key"] in keys for a in anchors):
+        return None
+    members = [{"member": k, "path": now[k]["path"], "type": now[k]["type"], "member_id": now[k]["member_id"],
+                "callee": now[k].get("callee"), "exception": now[k].get("exception"),
+                "occurrence": int(now[k].get("occurrence") or 0), "consumer": str(now[k].get("consumer") or "")} for k in keys]
+    paths = sort_unique([m["path"] for m in members] + [str(i.get("path") or "") for i in measured if i.get("path")])
+    doc = {
+        "schema": "rhoai3.batch-scope/v3",
+        "kind": "repair-family",
+        "family": "checked-exception",
+        "producer": "worklist.build_checked_family_scope",
+        "tool": {"model": "jdk-dest-model", "version": "1.1.0"},
+        "rule": CHECKED_FAMILY_RULE,
+        "cluster": str(cluster.get("id") or ""),
+        "repository": "",
+        "signature": signature,
+        "family_id": sha256_bytes(("%s@%s" % (signature, intro["commit"])).encode("utf-8"))[:12],
+        "introduced_by": {k: intro[k] for k in ("commit", "parent", "card", "cluster")},
+        "writable_paths": paths,
+        "inputs": {"candidate_sha256": str((bundle or {}).get("candidate_sha256") or "")},
+        "members": members,
+        "measured": sorted(str(i.get("id")) for i in measured),
+        "rule_note": _family_note(members, intro),
+    }
+    doc["digest"] = batch_scope_digest(doc)
+    return doc
+
+
+def assess_checked_family(root: Path, scope: dict[str, Any]) -> list[dict[str, Any]]:
+    """Each family member, from the compiled tree:
+
+    ok            the member no longer calls the checked callee at all, declares
+                  no such exception, and still performs the operation the value
+                  fed. Whether the replacement reproduces the source's VALUE (an
+                  absolute Location under the context path) is parity's question.
+    violates      the site is still unhandled; or the callee is still called with
+                  its exception caught or declared (that introduces or hides a
+                  checked exception instead of removing it); or the consumer is
+                  gone (a Location is not repaired by deleting the header); or the
+                  member or file is gone.
+    inconclusive  the compiler could not resolve the file or decide the site."""
+    try:
+        model = dest_model(root)
+    except DestModelUnavailable as exc:
+        return [{"member": "*", "verdict": "inconclusive", "detail": "the destination model is unavailable: %s" % exc}]
+    prefix = "src/main/java/"
+    types = {(prefix + str(t.get("path") or ""), str(t.get("fqn") or "")): t for t in model.get("types") or []}
+    sites = unhandled_sites(model)
+    signature = str(scope.get("signature") or "")
+    out: list[dict[str, Any]] = []
+    for row in scope.get("members") or []:
+        member, path, fqn, mid = str(row.get("member")), str(row.get("path") or ""), str(row.get("type") or ""), str(row.get("member_id") or "")
+        base = {"member": member, "path": path, "rule": scope.get("rule")}
+        if not path or not (Path(root) / path).is_file():
+            out.append(dict(base, verdict="violates", detail="the file is gone; a family member is not discharged by deleting its file"))
+            continue
+        t = types.get((path, fqn))
+        if t is None:
+            out.append(dict(base, verdict="violates", detail="the type %s is gone from %s" % (fqn, path)))
+            continue
+        if str(t.get("resolution") or "") != "full":
+            out.append(dict(base, verdict="inconclusive", detail="the compiler could not fully resolve %s" % path))
+            continue
+        here = [x for x in sites if x["path"] == path and x["type"] == fqn and x["member_id"] == mid and site_signature(x) == signature]
+        if any(x.get("state") == "unhandled" for x in here):
+            out.append(dict(base, verdict="violates", detail="%s still calls %s with %s unhandled" % (mid, row.get("callee"), row.get("exception"))))
+            continue
+        if here:
+            out.append(dict(base, verdict="inconclusive", detail="the compiler could not decide whether the site in %s is handled" % mid))
+            continue
+        if mid.startswith("<"):
+            out.append(dict(base, verdict="ok", detail="no unhandled site remains in %s" % mid))
+            continue
+        ids = member_ids(t)
+        m = next((x for x in t.get("declared") or [] if ids.get(str(x.get("signature") or "")) == mid), None)
+        if m is None:
+            out.append(dict(base, verdict="violates", detail="the member %s is gone; its operation is not repaired by deleting it" % mid))
+            continue
+        if str(row.get("callee") or "") in (m.get("calls") or []):
+            out.append(dict(base, verdict="violates", detail="%s still calls %s; catching or declaring %s is not the repair -- use a construction that cannot throw it" % (mid, row.get("callee"), row.get("exception"))))
+            continue
+        if str(row.get("exception") or "") in (m.get("throws_checked") or []):
+            out.append(dict(base, verdict="violates", detail="%s now declares %s; the repair must not introduce a checked exception" % (mid, row.get("exception"))))
+            continue
+        consumer = str(row.get("consumer") or "")
+        if consumer and consumer not in (m.get("calls") or []):
+            out.append(dict(base, verdict="violates", detail="%s no longer calls %s; the operation the value fed must be preserved" % (mid, consumer)))
+            continue
+        out.append(dict(base, verdict="ok", detail=("%s no longer calls %s%s; the value it builds is compared by parity" %
+                                                   (mid, row.get("callee"), (" and still calls " + consumer) if consumer else ""))))
+    return out
+
+
 def build_batch_scope(root: Path, cluster: dict[str, Any], items: list[dict[str, Any]], bundle: dict[str, Any]) -> dict[str, Any] | None:
     """A SEALED SCOPE INVENTORY for a repository repair: what the card may
     touch, and every member the declared rule applies to.
@@ -751,13 +940,17 @@ def build_batch_scope(root: Path, cluster: dict[str, Any], items: list[dict[str,
     enters the measure: the measured failure stays in item_ids. What the
     inventory does is make the card's completion checkable — every member is
     assessed against the declared rule, and an already-correct one may stay
-    exactly as it is (architect direction C, 2026-09-11)."""
+    exactly as it is (architect direction C, 2026-09-11).
+
+    A compile card for an unhandled checked exception gets a repair-family
+    inventory instead (build_checked_family_scope). Those extra sites are not
+    invented diagnostics."""
     rows = [i for i in items if str(i.get("id")) in set(cluster.get("items") or []) and str(i.get("source")) == "runtime"]
     if not rows:
-        return None
+        return build_checked_family_scope(root, cluster, items, bundle)
     path = str(rows[0].get("path") or "")
     if not path.endswith("Repository.java"):
-        return None
+        return build_checked_family_scope(root, cluster, items, bundle)
     src = Path(root) / path
     if not src.is_file():
         return None
@@ -848,6 +1041,8 @@ def assess_batch_scope(root: Path, scope: dict[str, Any]) -> list[dict[str, Any]
     Inspecting a member earns nothing and changing one earns nothing; only the
     assessment counts, and a worker's prose cannot supply it. An inconclusive
     verdict is not a pass: the caller must refuse."""
+    if str(scope.get("rule") or "") == CHECKED_FAMILY_RULE:
+        return assess_checked_family(root, scope)
     path = str(scope.get("repository") or "")
     typ, why = _repo_type(Path(root), path)
     if typ is None:
@@ -943,9 +1138,16 @@ def retry_key(cluster: dict[str, Any], items: list[dict[str, Any]] | None = None
 
     Two different causes at one file are two problems and get their own
     budgets; the same cause reported about a different member does not
-    replenish anything. Anything that is not a runtime obligation keeps
-    counting against its cluster id, which for a file cluster is already the
-    path (worklist.cluster_items)."""
+    replenish anything. Anything else that is not a
+    runtime obligation keeps counting against its cluster id, which for a
+    file cluster is already the path (worklist.cluster_items).
+
+    A checked-exception family counts against the family: its signature and
+    the step that introduced it. Exposing Pet after fixing Owner is the same
+    family, the same key and the same budget."""
+    ref = cluster.get("batch_scope") or {}
+    if str(ref.get("rule") or "") == CHECKED_FAMILY_RULE and ref.get("family_id"):
+        return "rk:compile:checked-family:%s" % ref["family_id"]
     rows = [i for i in (items or []) if str(i.get("id")) in set(cluster.get("items") or [])]
     runtime = [i for i in rows if str(i.get("source")) == "runtime"]
     if not runtime:
@@ -966,7 +1168,9 @@ def gate_items(worklist: dict[str, Any], gate: str) -> set[str]:
 def progress(prev: dict[str, Any], cur: dict[str, Any], prev_ids: set[str], cur_ids: set[str],
              *, gate: str = "", prev_runtime: dict[str, Any] | None = None, cur_runtime: dict[str, Any] | None = None,
              issued_items: list[str] | None = None, prev_gate_items: set[str] | None = None,
-             cur_gate_items: set[str] | None = None) -> tuple[bool, str]:
+             cur_gate_items: set[str] | None = None, cur_item_ids: set[str] | None = None,
+             issued_identities: set[str] | None = None, cur_identities: set[str] | None = None,
+             family_scope: set[str] | None = None) -> tuple[bool, str]:
     """Accept iff strictly smaller lexicographically and no new mandatory obligation.
 
     Phase-aware: a card issued for the ``package`` or ``boot`` gate is repairing
@@ -974,7 +1178,17 @@ def progress(prev: dict[str, Any], cur: dict[str, Any], prev_ids: set[str], cur_
     tuple unchanged. Such a step is accepted when its OWN gate goes from
     failing to passing and the tuple does not regress. The tuple still may not
     get worse, no new mandatory obligation may appear, and the other gate may
-    not go backwards -- a repair is not a licence to break the phase before it."""
+    not go backwards -- a repair is not a licence to break the phase before it.
+
+    Compile-aware: javac reports one diagnostic at a time. When the issued
+    compile failure disappears and the observed compile count does not
+    decrease, that is incomplete coverage, not progress, and never ACCEPTED.
+    "Still reported" is asked of the diagnostic's IDENTITY -- file, resolved
+    member and call site, exception -- never of its line, so an edit that
+    moves the site is not a repair (issued_identities / cur_identities). What
+    the compiler reports instead decides the rest: inside this card's sealed
+    family (family_scope) the card CONTINUES (RETAIN); anywhere else it is a
+    typed diagnosis that preserves the candidate (EXPOSED)."""
     if not cur.get("known"):
         return False, "measure not fully known (%s)" % "; ".join(cur.get("blocked") or ["compile/tests/incidents unverified"])
     if not prev.get("known"):
@@ -1047,11 +1261,32 @@ def progress(prev: dict[str, Any], cur: dict[str, Any], prev_ids: set[str], cur_
             if issued and (issued & after):
                 return False, "the %s obligation %s is still reported (its identity is the gate, the cause, the file and the member; a different message at the same place is the same obligation)" % (gate, ",".join(sorted(issued & after)[:2]))
             if issued:
-                return RETAIN, ("the %s gate still fails and %s is no longer reported, which is not proof it was repaired: this tool "
+                return UNPROVEN, ("the %s gate still fails and %s is no longer reported, which is not proof it was repaired: this tool "
                                 "reports one failure at a time. The candidate is retained unaccepted; repair the members it now names "
                                 "in the same candidate, and the gate passing discharges them together"
                                 % (gate, ",".join(sorted(issued)[:2])))
             return False, "the %s gate is still not passing (%s)" % (gate, "; ".join((cur_rt.get("reasons") or [])[:2]) or "see its receipt")
+    issued_err = {str(i) for i in (issued_items or []) if str(i).startswith("err:")}
+    if issued_err and b == a:
+        by_identity = issued_identities is not None and cur_identities is not None
+        if by_identity:
+            still = sorted(set(issued_identities or ()) & set(cur_identities or ()))
+            if still:
+                return False, ("the compile obligation %s is still reported (identity: file, member, call site and exception; "
+                               "a moved line is the same site)" % ",".join(still[:2]))
+            now = sorted(set(cur_identities or ()) - set(issued_identities or ()))
+        else:
+            still = sorted(issued_err & set(cur_item_ids or []))
+            if still:
+                return False, "the compile obligation %s is still reported" % ",".join(still[:2])
+            now = []
+        if family_scope is not None and now and set(now) <= set(family_scope):
+            return RETAIN, ("the issued compile diagnostic is no longer reported and the compiler now reports %s, another "
+                            "member of this card's sealed family. Not ACCEPTED: the count did not fall. The candidate stays; "
+                            "repair the members it names in this card" % ",".join(now[:2]))
+        return EXPOSED, ("the issued compile diagnostic is no longer reported, which is not proof it was repaired (the compiler "
+                         "reports one error at a time), and what it reports now (%s) is outside every sealed scope of this card. "
+                         "Not ACCEPTED; the candidate is preserved as a typed diagnosis" % (",".join(now[:2]) or "an unplaced diagnostic"))
     return False, "measure %s did not decrease from %s" % (b, a)
 
 
@@ -1173,6 +1408,20 @@ def build_worklist(root: Path, *, write: bool = True) -> dict[str, Any]:
         unlocatable.append({"id": "fx:environment:%s" % sha256_bytes(str(b).encode("utf-8"))[:12],
                             "kind": "environment", "gate": "", "cause": "environment", "detail": str(b)[:400]})
     items = sorted(mandatory + comp + tst + par + rt, key=lambda i: i["id"])
+    # A compile diagnostic's identity without its line: acceptance asks whether
+    # the issued failure is "still reported" of this, never of the err: id
+    # (which hashes the line). Only unhandled-checked-exception diagnostics
+    # need the model to be placed; the rest are line-free without it.
+    if any(unreported_item(i) for i in items):
+        try:
+            _model = dest_model(root)
+        except DestModelUnavailable:
+            _model = None
+    else:
+        _model = None
+    for i in items:
+        if str(i.get("source") or "") == "javac":
+            i["identity"] = diagnostic_identity(_model if unreported_item(i) else None, i)
     clusters = cluster_items(items, file_depths(bundle), deferred)
     # A cluster made only of one gate's obligations carries that gate, so the
     # card, the issued record and acceptance all know which phase is being
@@ -1183,13 +1432,18 @@ def build_worklist(root: Path, *, write: bool = True) -> dict[str, Any]:
         gates = {str(by_id[i].get("gate") or "") for i in c.get("items") or [] if i in by_id}
         if len(gates) == 1 and gates != {""}:
             c["gate"] = gates.pop()
-        c["retry_key"] = retry_key(c, items)
         scope = build_batch_scope(root, c, items, {"candidate_sha256": str(run.get("candidate_sha256") or "")})
         if scope:
             scopes.append(scope)
+            if str(scope.get("kind") or "") == "repair-family":
+                c["write_set"] = list(scope.get("writable_paths") or c.get("write_set") or [])
+                c["label"] = "%s family (%d site(s))" % (str(scope.get("signature") or scope.get("family") or "checked-exception"), len(scope.get("members") or []))
             c["batch_scope"] = {"path": batch_scope_path(scope).as_posix(),
                                 "digest": scope["digest"], "rule": scope["rule"],
+                                "kind": str(scope.get("kind") or "repository"),
+                                "family_id": str(scope.get("family_id") or ""),
                                 "members": len(scope["members"])}
+        c["retry_key"] = retry_key(c, items)
     open_clusters = [c for c in clusters if c["status"] == "open"]
     head = open_clusters[0]["id"] if open_clusters else ""
     doc = {

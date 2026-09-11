@@ -24,7 +24,7 @@ COMPARE = HERE / "compare-scenario-parity.py"
 RECEIPT = HERE / "compose-parity-receipt.py"
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parents[3] / "lib"))
-from _scenarios import SCENARIO_ORACLES, SCENARIO_PARITY, corpus_digest, request_of, scenario_slug  # noqa: E402
+from _scenarios import load_corpus, SCENARIO_ORACLES, SCENARIO_PARITY, corpus_digest, request_of, scenario_slug  # noqa: E402
 from planner import pipeline, specimens  # noqa: E402
 from planner.canonical import load_json, write_canonical  # noqa: E402
 
@@ -40,15 +40,18 @@ class Service(BaseHTTPRequestHandler):
 
     owners: dict[str, dict] = {}
     lie_on_delete = False
+    omit_location = False
 
     def log_message(self, *a):  # noqa: D102 - quiet
         return
 
-    def _send(self, code: int, payload=None):
+    def _send(self, code: int, payload=None, location: str | None = None):
         body = json.dumps(payload).encode() if payload is not None else b""
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
+        if location and not type(self).omit_location:
+            self.send_header("Location", location)
         self.end_headers()
         if body:
             self.wfile.write(body)
@@ -67,7 +70,7 @@ class Service(BaseHTTPRequestHandler):
             return self._send(400, {"error": "a body is required"})
         payload = json.loads(raw)
         self.owners[str(payload["id"])] = payload
-        return self._send(201, payload)
+        return self._send(201, payload, location="/api/owners/%s" % payload["id"])
 
     def do_DELETE(self):
         key = self.path.rsplit("/", 1)[-1]
@@ -126,8 +129,207 @@ def _no_corpus_case() -> int:
     return 0
 
 
+def _header_contract_case() -> int:
+    """Response headers are compared only when the source capture recorded them."""
+    from _oracle_common import header_diffs
+
+    if header_diffs(None, {"Location": "/api/owners/7"}):
+        return _fail("a legacy capture with no headers map must not invent expected headers")
+    diffs = header_diffs({"Location": "/api/owners/7", "Access-Control-Allow-Origin": "*"},
+                         {"Location": None, "Access-Control-Allow-Origin": None})
+    if not any("Location" in d for d in diffs) or not any("Access-Control-Allow-Origin" in d for d in diffs):
+        return _fail("an asserted Location or CORS header that is absent must FAIL: %s" % diffs)
+    if header_diffs({"Location": "/api/owners/7"}, {"Location": "/api/owners/7"}):
+        return _fail("matching asserted headers are not a diff")
+
+    class Located(Service):
+        def _send(self, code: int, payload=None, location: str | None = None):
+            body = json.dumps(payload).encode() if payload is not None else b""
+            self.send_response(code)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            if location:
+                self.send_header("Location", location)
+            self.end_headers()
+            if body:
+                self.wfile.write(body)
+
+        def do_POST(self):
+            length = int(self.headers.get("Content-Length") or 0)
+            raw = self.rfile.read(length) if length else b""
+            if not raw:
+                return self._send(400, {"error": "a body is required"})
+            payload = json.loads(raw)
+            self.owners[str(payload["id"])] = payload
+            return self._send(201, payload, location="/api/owners/%s" % payload["id"])
+
+    with tempfile.TemporaryDirectory(prefix="hdr-") as td:
+        t = Path(td)
+        root = specimens.build_dest(t / "dest", specimens.specimen("http"), decisions=specimens.admitted_decisions())
+        specimens.prepare_loop(root)
+        rec = pipeline.admit(root)
+        if rec["status"] != "ADMITTED":
+            return _fail("header fixture not admitted: %s" % rec["reasons"][:3])
+        digest = load_json(root / "evidence/planning/admission-receipt.json")["receipt_digest"]
+        ep = sorted(str(e["id"]) for e in load_json(root / "evidence/planning/evidence-bundle.json")["entry_points"])[0]
+        corpus = json.loads(json.dumps(CORPUS))
+        corpus["scenarios"] = [s for s in corpus["scenarios"] if s["id"] == "sc:create-owner"]
+        corpus["scenarios"][0]["entry_point"] = ep
+        (root / "verification" / "scenarios" / "bodies").mkdir(parents=True, exist_ok=True)
+        (root / "verification" / "scenarios" / "bodies" / "create-owner.json").write_text(json.dumps({"id": 7, "lastName": "Franklin"}), encoding="utf-8")
+        write_canonical(root / "verification" / "scenarios" / "corpus.json", corpus)
+        corpus_sha = corpus_digest(load_json(root / "verification" / "scenarios" / "corpus.json"))
+        req = request_of(root, corpus["scenarios"][0])
+        Located.owners = {}
+        src = HTTPServer(("127.0.0.1", 0), Located)
+        threading.Thread(target=src.serve_forever, daemon=True).start()
+        src_url = "http://127.0.0.1:%d" % src.server_address[1]
+        from _oracle_common import http_observe
+        before = http_observe(src_url, "GET", "/api/owners/7")
+        create = http_observe(src_url, "POST", "/api/owners", body=req["body"], headers=req["headers"])
+        after = http_observe(src_url, "GET", "/api/owners/7")
+        src.shutdown()
+        if (create.get("headers") or {}).get("Location") != "/api/owners/7":
+            return _fail("new captures must record Location: %s" % create.get("headers"))
+        _capture(root, src_url, "sc:create-owner", req["request_sha256"],
+                 {"status": 201, "body_kind": create["body_kind"], "body_sha256": create["body_sha256"], "headers": create["headers"]},
+                 [{"id": "eff:owner-7", "method": "GET", "path": "/api/owners/7", "status": after["status"], "body_sha256": after["body_sha256"]}],
+                 digest, corpus_sha,
+                 before=[{"id": "eff:owner-7", "method": "GET", "path": "/api/owners/7", "status": before["status"], "body_sha256": before["body_sha256"]}])
+        Service.owners = {}
+        Service.omit_location = True
+        dest, dest_url = serve()
+        p = subprocess.run([sys.executable, str(COMPARE), "--no-reset", "--root", str(root), "--scenario", "sc:create-owner", "--dest-url", dest_url],
+                           text=True, capture_output=True)
+        dest.shutdown()
+        Service.omit_location = False
+        if p.returncode != 1 or "header Location" not in (p.stdout + p.stderr):
+            return _fail("a destination that omits the recorded Location must FAIL: rc=%s %s" % (p.returncode, (p.stdout + p.stderr)[-400:]))
+        _capture(root, src_url, "sc:create-owner", req["request_sha256"],
+                 {"status": 201, "body_kind": create["body_kind"], "body_sha256": create["body_sha256"]},
+                 [{"id": "eff:owner-7", "method": "GET", "path": "/api/owners/7", "status": after["status"], "body_sha256": after["body_sha256"]}],
+                 digest, corpus_sha,
+                 before=[{"id": "eff:owner-7", "method": "GET", "path": "/api/owners/7", "status": before["status"], "body_sha256": before["body_sha256"]}])
+        Service.owners = {}
+        dest, dest_url = serve()
+        p = subprocess.run([sys.executable, str(COMPARE), "--no-reset", "--root", str(root), "--scenario", "sc:create-owner", "--dest-url", dest_url],
+                           text=True, capture_output=True)
+        dest.shutdown()
+        if p.returncode != 1 or "INCONCLUSIVE" not in p.stderr or "no header map" not in p.stderr:
+            return _fail("a 201 compared against a capture with no header map is INCONCLUSIVE: rc=%s %s" % (p.returncode, (p.stdout + p.stderr)[-400:]))
+    return 0
+
+
+def _capture_contract_case() -> int:
+    """The first response, redirects not followed; only the declared origins
+    are mapped in Location; list headers are token sets; a required header map
+    that is missing is INCONCLUSIVE; a preflight is not a write; CORS coverage
+    is counted per policy."""
+    from _oracle_common import header_diffs, http_observe, is_preflight, map_origin, required_headers
+    from _scenarios import CorpusError, cors_coverage, source_cors_policies
+
+    class Redirecting(BaseHTTPRequestHandler):
+        def log_message(self, *a):  # noqa: D102
+            pass
+
+        def do_GET(self):  # noqa: N802
+            if self.path == "/petclinic/":
+                self.send_response(302)
+                self.send_header("Location", "http://127.0.0.1:%d/petclinic/swagger-ui.html" % self.server.server_address[1])
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+            body = b"<html>target</html>"
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+    srv = HTTPServer(("127.0.0.1", 0), Redirecting)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    base = "http://127.0.0.1:%d" % srv.server_address[1]
+    obs = http_observe(base, "GET", "/petclinic/")
+    srv.shutdown()
+    if obs.get("status") != 302 or obs.get("redirects_followed") is not False:
+        return _fail("the capture is the FIRST response, not the redirect's target: %s" % obs)
+    if (obs.get("headers") or {}).get("Location") != base + "/petclinic/swagger-ui.html":
+        return _fail("the raw Location is recorded: %s" % obs.get("headers"))
+
+    src, dst = "http://localhost:9966", "http://10.0.0.5:8080"
+    want = {"Location": src + "/petclinic/api/owners/7"}
+    if header_diffs(want, {"Location": dst + "/petclinic/api/owners/7"}, source_origin=src, dest_origin=dst):
+        return _fail("the same absolute Location on the destination's own origin is equal")
+    if not header_diffs(want, {"Location": dst + "/api/owners/7"}, source_origin=src, dest_origin=dst):
+        return _fail("a Location that dropped the context path differs")
+    if not header_diffs(want, {"Location": "/petclinic/api/owners/7"}, source_origin=src, dest_origin=dst):
+        return _fail("a relative Location is not the source's absolute form")
+    if not header_diffs(want, {"Location": "http://elsewhere:8080/petclinic/api/owners/7"}, source_origin=src, dest_origin=dst):
+        return _fail("only the declared origins are mapped")
+    if map_origin(src + "/a%20b?x=1#f", src, dst) != dst + "/a%20b?x=1#f" or map_origin(src + "evil.com/x", src, dst) != src + "evil.com/x":
+        return _fail("the mapping keeps path, escaping, query and fragment, and matches the origin exactly")
+    if header_diffs({"Access-Control-Allow-Methods": "GET,POST"}, {"Access-Control-Allow-Methods": "post, get"}):
+        return _fail("a list-valued CORS header is a token set")
+    if required_headers("POST", 201, {}) != ["Location"] or "Access-Control-Allow-Origin" not in required_headers("GET", 200, {"Origin": "http://a"}):
+        return _fail("a 201 requires Location; a cross-origin exchange requires the permission headers")
+    pre = {"Origin": "http://a", "Access-Control-Request-Method": "POST"}
+    if not is_preflight("OPTIONS", pre) or "Access-Control-Allow-Methods" not in required_headers("OPTIONS", 200, pre):
+        return _fail("an OPTIONS with Origin and Access-Control-Request-Method is a preflight")
+
+    with tempfile.TemporaryDirectory(prefix="cors-") as td:
+        root = Path(td)
+        base_doc = {"schema": "rhoai3.scenario-corpus/v1", "approved_by": "operator", "cors_policies": [{"id": "p1", "request_headers": ["Content-Type"]}],
+                    "scenarios": []}
+        def corpus(*scs):
+            d = json.loads(json.dumps(base_doc))
+            d["scenarios"] = list(scs)
+            (root / "verification" / "scenarios").mkdir(parents=True, exist_ok=True)
+            (root / "verification" / "scenarios" / "corpus.json").write_text(json.dumps(d), encoding="utf-8")
+            return d
+        actual = {"id": "a", "entry_point": "e", "method": "GET", "path": "/api/x", "body_absent": True, "headers": {"Origin": "http://a"}, "cors_policy": "p1"}
+        preflight = {"id": "p", "entry_point": "e", "method": "OPTIONS", "path": "/api/x", "body_absent": True, "cors_policy": "p1",
+                     "headers": {"Origin": "http://a", "Access-Control-Request-Method": "POST", "Access-Control-Request-Headers": "content-type"}}
+        for bad, needle in (
+            (dict(preflight, headers={"Origin": "http://a"}), "Access-Control-Request-Method"),
+            (dict(preflight, identity={"kind": "basic", "user_env": "U", "password_env": "P"}), "without credentials"),
+            (dict(actual, cors_policy=None), "names no cors_policy"),
+        ):
+            corpus(bad)
+            try:
+                load_corpus(root)
+                return _fail("the corpus must refuse: %s" % needle)
+            except CorpusError as exc:
+                if needle not in str(exc):
+                    return _fail("the refusal names %r: %s" % (needle, exc))
+        if cors_coverage(corpus(actual, preflight)) != []:
+            return _fail("an actual exchange and a preflight with the needed request header cover the policy")
+        if not any("no preflight" in g for g in cors_coverage(corpus(actual))):
+            return _fail("a policy without a preflight is not covered")
+        thin = dict(preflight, headers={"Origin": "http://a", "Access-Control-Request-Method": "POST"})
+        if not any("content-type" in g for g in cors_coverage(corpus(actual, thin))):
+            return _fail("a preflight that omits a needed request header does not cover the policy")
+        if not any("the source declares" in g for g in cors_coverage(corpus(actual, preflight), ["crossorigin:abc"])):
+            return _fail("a policy the source declares and the corpus does not name is a gap")
+        pols, why = source_cors_policies(root)
+        if pols or not why:
+            return _fail("an absent source model is a reason, never 'no policies': %s %s" % (pols, why))
+        ann = {"fqn": "org.springframework.web.bind.annotation.CrossOrigin", "values": {"exposedHeaders": ["errors, content-type"]}}
+        other = {"fqn": "org.springframework.web.bind.annotation.CrossOrigin", "values": {"origins": ["http://x"]}}
+        (root / "evidence" / "structure").mkdir(parents=True, exist_ok=True)
+        (root / "evidence" / "structure" / "structure.json").write_text(json.dumps({"types": [
+            {"fqn": "a.OwnerRestController", "annotations": [ann]}, {"fqn": "a.PetRestController", "annotations": [ann]},
+            {"fqn": "a.VetRestController", "methods": [{"name": "m", "annotations": [other]}]},
+            {"fqn": "a.WebConfig", "type_refs": ["org.springframework.web.servlet.config.annotation.CorsRegistry"]}]}), encoding="utf-8")
+        pols, why = source_cors_policies(root)
+        if len(pols) != 3 or why or not any(p.startswith("global:a.WebConfig") for p in pols):
+            return _fail("one policy per distinct @CrossOrigin, and a CORS registry is a global one: %s %s" % (pols, why))
+    return 0
+
+
 def main() -> int:
     if _no_corpus_case():
+        return 1
+    if _capture_contract_case() or _header_contract_case():
         return 1
     with tempfile.TemporaryDirectory(prefix="scen-") as td:
         t = Path(td)
@@ -154,14 +356,13 @@ def main() -> int:
         from _oracle_common import http_observe as _obs
         before_create = _obs(src_url, "GET", "/api/owners/7")
         create = reqs["sc:create-owner"]
-        import urllib.request as _u
-        r = _u.urlopen(_u.Request(src_url + "/api/owners", data=create["body"], method="POST", headers={"Content-Type": "application/json"}))
-        if r.status != 201:
-            return _fail("test setup: the source must create with a body")
         from _oracle_common import http_observe
+        created = http_observe(src_url, "POST", "/api/owners", body=create["body"], headers={"Content-Type": "application/json"})
+        if created["status"] != 201:
+            return _fail("test setup: the source must create with a body")
         eff_created = http_observe(src_url, "GET", "/api/owners/7")
         _capture(root, src_url, "sc:create-owner", create["request_sha256"],
-                 {"status": 201, "body_kind": "json", "body_sha256": eff_created["body_sha256"]},
+                 {"status": 201, "body_kind": "json", "body_sha256": eff_created["body_sha256"], "headers": created["headers"]},
                  [{"id": "eff:owner-7", "method": "GET", "path": "/api/owners/7", "status": eff_created["status"], "body_sha256": eff_created["body_sha256"]}],
                  digest, corpus_sha,
                  before=[{"id": "eff:owner-7", "method": "GET", "path": "/api/owners/7", "status": 404, "body_sha256": before_create["body_sha256"]}])
@@ -272,7 +473,7 @@ def main() -> int:
         if v["verdict"] != "INCONCLUSIVE" or v["reset"]["rc"] != 3:
             return _fail("the failed reset must be recorded beside the verdict: %s" % v.get("reset"))
         dest4.shutdown()
-    print("OK: scenario-parity selftest (the recorded body and headers are replayed; a write with no declared effect refuses; a 204 that deleted nothing FAILs on its resulting state; a corpus edited after capture refuses; an entry point passes only when every REQUIRED scenario passes, and a missing or foreign-corpus result is INCONCLUSIVE; a declared reset that fails stops the comparison; no corpus is idle with a receipt that says so)")
+    print("OK: scenario-parity selftest (the recorded body and headers are replayed; a recorded Location header that the destination omits FAILs, and a 201 against a capture with no header map is INCONCLUSIVE; the capture is the first response (redirects not followed) and only the declared origins are mapped in Location; a preflight is not a write, carries Origin + Access-Control-Request-Method and no credentials; CORS coverage is per policy and the source's policies come from M1's model; a write with no declared effect refuses; a 204 that deleted nothing FAILs on its resulting state; a corpus edited after capture refuses; an entry point passes only when every REQUIRED scenario passes, and a missing or foreign-corpus result is INCONCLUSIVE; a declared reset that fails stops the comparison; no corpus is idle with a receipt that says so)")
     return 0
 
 

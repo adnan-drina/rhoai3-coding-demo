@@ -68,6 +68,9 @@ public final class JdkDiagnostics {
         options.add("-proc:none");
         options.add("-Xlint:none");
         options.add("-Xmaxerrs"); options.add("10000");
+        // 10,000 is already far above this specimen. javac still reports one
+        // unhandled URISyntaxException at a time across sibling files; raising
+        // the limit does not complete diagnostic coverage (v8, 2026-09-11).
         options.add("--release"); options.add(release);
         Path scratch = Files.createTempDirectory("jdk-diagnostics");
         options.add("-d"); options.add(scratch.toString());

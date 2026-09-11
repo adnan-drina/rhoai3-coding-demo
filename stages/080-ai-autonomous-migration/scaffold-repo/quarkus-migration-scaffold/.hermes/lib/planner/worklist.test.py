@@ -7,7 +7,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from planner.cards import card_title
-from planner.worklist import RETAIN, apply_supersessions, batch_scope_digest, batch_scope_path, build_batch_scope, runtime_items  # noqa: E402
+from planner.worklist import CHECKED_FAMILY_RULE, EXPOSED, RETAIN, UNPROVEN, apply_supersessions, assess_checked_family, batch_scope_digest, batch_scope_path, build_batch_scope, retry_key, runtime_items  # noqa: E402
+from planner.dest_model import dest_model, diagnostic_identity  # noqa: E402
 from planner.worklist import KIND_RANK, cluster_items, compile_items, file_depths, incidents_from_findings, measure_of, obligation_keys, path_class, progress, surefire_from_reports, test_items  # noqa: E402
 
 
@@ -104,7 +105,7 @@ def _gate_progress_case() -> int:
     # RETAINED -- neither accepted nor thrown away.
     ok, why = progress(green, green, set(), set(), gate="package", prev_runtime=failing, cur_runtime=failing,
                        issued_items=[A], prev_gate_items={A}, cur_gate_items={B})
-    if ok is not RETAIN or "not proof it was repaired" not in why:
+    if ok is not UNPROVEN or "not proof it was repaired" not in why:
         return _fail("an unproven gate repair must be retained, not accepted: %r %s" % (ok, why))
     if ok:
         return _fail("a retained outcome must not read as accepted")
@@ -172,8 +173,155 @@ def _batch_scope_case() -> int:
     return 0
 
 
+_URI_MSG = "unreported exception java.net.URISyntaxException; must be caught or declared to be thrown"
+_URI_CODE = "compiler.err.unreported.exception.need.to.catch.or.throw"
+_URI_CONTROLLERS = ("OwnerRestController", "PetRestController", "PetTypeRestController",
+                   "SpecialtyRestController", "VetRestController", "VisitRestController")
+
+
+def _uri_diag(path: str, line: int) -> dict:
+    return {"kind": "ERROR", "path": path, "line": line, "code": _URI_CODE, "message": _URI_MSG}
+
+
+_FAMILY_CTL = (
+    "package org.springframework.samples.petclinic.rest;\n"
+    "import java.net.URI;\n"
+    "public class %s {\n"
+    "    static class Headers { void setLocation(URI u) { } }\n"
+    "    static class Builder { URI build(int id) { return URI.create(\"/x/\" + id); } }\n"
+    "    void add%s(int id, Builder b) {\n"
+    "        Headers h = new Headers();\n"
+    "        h.setLocation(%s);\n"
+    "    }\n"
+    "}\n"
+)
+_BUILDER = "b.build(id)"
+_CTOR = 'new URI("/api/x/" + id)'
+
+
+def _family_tree(root: Path, form: str) -> list[str]:
+    paths: list[str] = []
+    for name in _URI_CONTROLLERS:
+        rel = "src/main/java/org/springframework/samples/petclinic/rest/%s.java" % name
+        f = root / rel
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(_FAMILY_CTL % (name, name.replace("RestController", ""), form), encoding="utf-8")
+        paths.append(rel)
+    return paths
+
+
+def _checked_family_case() -> int:
+    """javac names one unhandled checked exception per compilation; the family is
+    what ONE transformation introduced, as the compiler enumerates it."""
+    import json
+    import subprocess
+    import tempfile
+
+    from planner.paths import LOOP_STEPS
+
+    def git(root: Path, *a: str) -> str:
+        return subprocess.run(["git", "-C", str(root), "-c", "user.email=t@t", "-c", "user.name=t", *a],
+                              check=True, capture_output=True, text=True).stdout.strip()
+
+    with tempfile.TemporaryDirectory(prefix="chk-family-") as td:
+        root = Path(td)
+        paths = _family_tree(root, _BUILDER)
+        owner, pet = paths[0], paths[1]
+        legacy = "src/main/java/org/springframework/samples/petclinic/rest/LegacyController.java"
+        (root / legacy).write_text(_FAMILY_CTL % ("LegacyController", "Legacy", _CTOR), encoding="utf-8")
+        git(root, "init", "-q")
+        git(root, "add", "-A")
+        git(root, "commit", "-qm", "baseline")
+        base = git(root, "rev-parse", "HEAD")
+        _family_tree(root, _CTOR)
+        git(root, "commit", "-qam", "the transformation")
+        t1 = git(root, "rev-parse", "HEAD")
+        (root / LOOP_STEPS).parent.mkdir(parents=True, exist_ok=True)
+        (root / LOOP_STEPS).write_text(json.dumps({"schema": "rhoai3.loop-steps/v1", "steps": [
+            {"cluster": "bootstrap", "commit": base}, {"cluster": "c:intro", "card": "t_intro", "commit": t1}]}), encoding="utf-8")
+
+        items = compile_items({"diagnostics": [_uri_diag(owner, 8)]})
+        clusters = cluster_items(items, {p: 0 for p in paths + [legacy]}, set())
+        if len(clusters) != 1 or clusters[0]["write_set"] != [owner]:
+            return _fail("javac names one file, so the cluster starts Owner-only: %s" % clusters)
+        scope = build_batch_scope(root, clusters[0], items, {"candidate_sha256": "base"})
+        if not scope or scope.get("rule") != CHECKED_FAMILY_RULE or scope.get("kind") != "repair-family":
+            return _fail("an unhandled checked exception seals the family: %s" % scope)
+        if len(scope["members"]) != 6 or set(scope["writable_paths"]) != set(paths):
+            return _fail("the family is the six sites the transformation introduced -- never the legacy site it did not touch: %s" % scope["writable_paths"])
+        if scope["introduced_by"]["commit"] != t1 or scope["introduced_by"]["card"] != "t_intro":
+            return _fail("the family is bound to the step that introduced it: %s" % scope["introduced_by"])
+        if "request-aware URI builder" not in scope["rule_note"] or "without introduced checked exceptions" not in scope["rule_note"]:
+            return _fail("a Location family's note asks for source-compatible construction: %s" % scope["rule_note"])
+        if scope["measured"] != [items[0]["id"]]:
+            return _fail("measured failures stay in item_ids: %s" % scope["measured"])
+        clusters[0]["batch_scope"] = {"rule": scope["rule"], "family_id": scope["family_id"]}
+        rk_owner = retry_key(clusters[0], items)
+        if not rk_owner.startswith("rk:compile:checked-family:"):
+            return _fail("the family budget is the family's: %s" % rk_owner)
+
+        model = dest_model(root)
+        owner_id = diagnostic_identity(model, items[0])
+        if not owner_id.startswith("chk:") or "|addOwner|" not in owner_id:
+            return _fail("the compiler places the diagnostic on its member and call site: %s" % owner_id)
+        text = (root / owner).read_text(encoding="utf-8")
+        (root / owner).write_text(text.replace("    void add", "\n\n\n    void add"), encoding="utf-8")
+        moved = compile_items({"diagnostics": [_uri_diag(owner, 11)]})
+        if moved[0]["id"] == items[0]["id"] or diagnostic_identity(dest_model(root), moved[0]) != owner_id:
+            return _fail("a moved line changes the err: id and NOT the identity")
+        (root / owner).write_text(text.replace(_CTOR, _BUILDER), encoding="utf-8")
+
+        pet_items = compile_items({"diagnostics": [_uri_diag(pet, 8)]})
+        pet_cluster = cluster_items(pet_items, {p: 0 for p in paths}, set())[0]
+        pet_scope = build_batch_scope(root, pet_cluster, pet_items, {"candidate_sha256": "cand"})
+        if not pet_scope or pet_scope["family_id"] != scope["family_id"] or len(pet_scope["members"]) != 5:
+            return _fail("Pet after Owner is the same family, less the repaired member: %s" % pet_scope)
+        pet_cluster["batch_scope"] = {"rule": pet_scope["rule"], "family_id": pet_scope["family_id"]}
+        if retry_key(pet_cluster, pet_items) != rk_owner:
+            return _fail("Owner and Pet are one budget")
+        cur_model = dest_model(root)
+        pet_id = diagnostic_identity(cur_model, pet_items[0])
+        legacy_id = diagnostic_identity(cur_model, compile_items({"diagnostics": [_uri_diag(legacy, 8)]})[0])
+        family_keys = {"chk:" + m["member"] for m in scope["members"]}
+        flat = {"known": True, "tuple": [0, 1, 0]}
+        kw = dict(issued_items=[items[0]["id"]], issued_identities={owner_id}, family_scope=family_keys)
+        ok, why = progress(flat, flat, set(), set(), cur_item_ids={pet_items[0]["id"]}, cur_identities={pet_id}, **kw)
+        if ok is not RETAIN or ok:
+            return _fail("Owner gone, Pet reported, inside the sealed family: CONTINUE in the same card: %r %s" % (ok, why))
+        ok, why = progress(flat, flat, set(), set(), cur_identities={legacy_id}, **kw)
+        if ok is not EXPOSED or "outside every sealed scope" not in why:
+            return _fail("a failure outside the family is a typed diagnosis: %r %s" % (ok, why))
+        ok, why = progress(flat, flat, set(), set(), cur_identities={owner_id}, **kw)
+        if ok or "still reported" not in why:
+            return _fail("the issued site still reported, at any line, is a reject: %r %s" % (ok, why))
+        ok, why = progress(flat, flat, set(), set(), issued_items=[items[0]["id"]], issued_identities={owner_id}, cur_identities={pet_id})
+        if ok is not EXPOSED:
+            return _fail("with no sealed family there is no continuation: %r %s" % (ok, why))
+        ok, why = progress(flat, {"known": True, "tuple": [0, 0, 0]}, set(), set(), cur_identities=set(), **kw)
+        if not ok:
+            return _fail("a true 1->0 drop is ACCEPTED: %s" % why)
+
+        verdicts = {r["path"]: r for r in assess_checked_family(root, scope)}
+        if verdicts[owner]["verdict"] != "ok" or any(verdicts[p]["verdict"] != "violates" for p in paths[1:]):
+            return _fail("the repaired member is ok; the rest still violate: %s" % {k: v["verdict"] for k, v in verdicts.items()})
+        f = root / pet
+        f.write_text(f.read_text(encoding="utf-8").replace("h.setLocation(%s);" % _CTOR,
+                     "try { h.setLocation(%s); } catch (java.net.URISyntaxException e) { }" % _CTOR), encoding="utf-8")
+        f = root / paths[4]
+        f.write_text(f.read_text(encoding="utf-8").replace("h.setLocation(%s);" % _CTOR, "URI u = b.build(id);"), encoding="utf-8")
+        verdicts = {r["path"]: r for r in assess_checked_family(root, scope)}
+        if verdicts[pet]["verdict"] != "violates" or "still calls" not in verdicts[pet]["detail"]:
+            return _fail("catching the exception is not removing it: %s" % verdicts[pet])
+        if verdicts[paths[4]]["verdict"] != "violates" or "setLocation" not in verdicts[paths[4]]["detail"]:
+            return _fail("a Location is not repaired by deleting the header: %s" % verdicts[paths[4]])
+        _family_tree(root, _BUILDER)
+        if {r["verdict"] for r in assess_checked_family(root, scope)} != {"ok"}:
+            return _fail("every member repaired with a construction that cannot throw is ok")
+    return 0
+
+
 def main() -> int:
-    if _runtime_identity_case() or _gate_progress_case() or _batch_scope_case():
+    if _runtime_identity_case() or _gate_progress_case() or _batch_scope_case() or _checked_family_case():
         return 1
 
     if path_class("pom.xml") != "build" or path_class("src/main/resources/application.properties") != "config" or path_class("src/test/java/A.java") != "test" or path_class("src/main/java/A.java") != "source":
@@ -352,7 +500,7 @@ def main() -> int:
         return _fail("reclassified items keep their authority and are never dropped")
     if measure_of(all_items, incidents_known=False, compile_known=True, tests_known=True, parity_known=False)["known"]:
         return _fail("unknown incidents never advance")
-    print("OK: worklist (lossless line-free incidents; canary excluded; only ERROR diagnostics; build→config→compile(leaf-first)→incident→test order; tests never writable; lexicographic 3-tuple progress; new-incident veto; unknown never advances; gate progress is the issued obligation disappearing, never a reworded one; a second cause at one file is a second obligation); a repository card's inventory is sealed by its own digest and two measurements never share a path")
+    print("OK: worklist (lossless line-free incidents; canary excluded; only ERROR diagnostics; build→config→compile(leaf-first)→incident→test order; tests never writable; lexicographic 3-tuple progress; new-incident veto; unknown never advances; gate progress is the issued obligation disappearing, never a reworded one; a second cause at one file is a second obligation); a repository card's inventory is sealed by its own digest and two measurements never share a path; checked-exception family: bound to its introducing step (a legacy site stays out), one budget, line-free identity across a moved line, CONTINUE / EXPOSED / still-reported / 1→0 accept, per-member assessment (catch-wrapped and header-deleted members violate)")
     return 0
 
 

@@ -35,6 +35,8 @@ from planner.canonical import write_canonical  # noqa: E402
 from planner.paths import ADMISSION_RECEIPT, EVIDENCE_BUNDLE, LOOP_ISSUED, LOOP_STEPS, TYPE_INVENTORY, WORKLIST  # noqa: E402
 from planner.pins import activation_gaps, load_pins, pin_gaps  # noqa: E402
 from planner.worklist import gate_items  # noqa: E402
+from planner.budget import budget as loop_budget  # noqa: E402
+from planner.decisions import load_decisions, max_attempts  # noqa: E402
 
 Issue = tuple[str, str, str]
 SKILLS_ASSERT = (
@@ -225,6 +227,14 @@ def convert_admitted(root: Path, *, write_root: bool = True) -> tuple[dict[str, 
             # the sealed scope inventory this card is judged against; acceptance
             # re-reads it from disk and refuses a digest that is not this one
             "batch_scope": dict(card.get("batch_scope") or {}),
+            "retry_key": str(card.get("retry_key") or card["id"]),
+            # the one budget answer (planner.budget), recorded where the card is issued
+            "budget": loop_budget(load_json(root / LOOP_STEPS) if (root / LOOP_STEPS).is_file() else {}, card["id"],
+                                  str(card.get("retry_key") or card["id"]), max_attempts(load_decisions(root))),
+            # each issued compile failure's identity WITHOUT its line: acceptance
+            # asks whether THIS is still reported, not whether its err: id is
+            "item_identities": {str(i["id"]): str(i["identity"]) for i in (worklist.get("items") or [])
+                                if str(i.get("id")) in set(card.get("items") or []) and i.get("identity")},
             "task_id": str(prev.get("task_id") or "") if prev.get("idempotency_key") == payload["idempotency_key"] else "",
         })
     return result, []

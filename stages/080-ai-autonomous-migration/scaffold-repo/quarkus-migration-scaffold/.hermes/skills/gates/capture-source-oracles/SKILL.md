@@ -74,8 +74,9 @@ python3 "${HERMES_SKILL_DIR}/scripts/compose-parity-receipt.py" --root /projects
 
 | Entry-point kind | Oracle | Mechanism |
 |---|---|---|
-| HTTP `GET`/`HEAD` | status + canonical JSON body (or text SHA-256) | requested mechanically; a templated path needs `--path-var` |
-| HTTP `POST`/`PUT`/`PATCH`/`DELETE` | a scenario: complete request + initial state + declared effects | the corpus; a write with no effect declared refuses |
+| HTTP `GET`/`HEAD` | status + canonical JSON body (or text SHA-256) + asserted response headers when captured | requested mechanically; a templated path needs `--path-var` |
+| HTTP `POST`/`PUT`/`PATCH`/`DELETE` | a scenario: complete request + initial state + declared effects + asserted headers (`Location`, `Access-Control-*`) | the corpus; a write with no effect declared refuses. The capture is the FIRST response (redirects are never followed) with the raw header values. `Location` is compared after mapping only the declared source origin to the destination's (path, escaping, query and fragment untouched); list-valued CORS headers compare as token sets. A header the exchange requires — `Location` on a 201/3xx, the permission headers on a cross-origin exchange — against a capture with no `headers` map is INCONCLUSIVE: re-capture |
+| HTTP `OPTIONS` preflight | the permission headers the source answered | a scenario carrying `Origin` + `Access-Control-Request-Method` (+ the request headers the actual call sends), no identity; it declares no effects |
 | scheduled, messaging, batch, event, lifecycle | operator-captured observation file (log excerpt, queue dump, table export); normalized line set with timestamps stripped | `--observation <id>=<file>` |
 
 ## The scenario corpus
@@ -91,6 +92,13 @@ inventory and is associated with scenario URLs), the headers, how it
 authenticates (**by environment-variable reference**), the body bytes or an
 explicit `body_absent: true`, whether the initial state is restored first, the
 effects that prove the write, and the permitted normalization.
+
+CORS is covered per policy. `cors_policies` declares each one (`id`, the
+`request_headers` its actual calls send); a scenario that sends `Origin` names
+its `cors_policy`. Each policy needs an actual cross-origin exchange and a
+preflight, and every policy the frozen source declares — each distinct
+`@CrossOrigin`, each CORS registry, read from M1's structure model — must be
+declared. Missing coverage makes the parity receipt INCONCLUSIVE.
 
 Ownership: the Operator owns intent and environment authorization; the M1
 producer owns execution; implementation workers own neither and never see an

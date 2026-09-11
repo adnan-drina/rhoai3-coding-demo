@@ -21,7 +21,7 @@ def ensure_hermes_lib() -> None:
 
 
 ensure_hermes_lib()
-from planner.canonical import load_json, write_canonical  # noqa: E402
+from planner.canonical import digest, load_json, write_canonical  # noqa: E402
 from planner.paths import PRODUCT_EXEMPT, is_product_path as _is_product_path, LOOP_ACCEPTED, LOOP_CARDS, LOOP_DEFERRED, LOOP_ISSUED, LOOP_PENDING_FILES, LOOP_STATE, LOOP_STEPS, MTA_RESCAN_FINDINGS, VERIFY_BOOT, VERIFY_DIAGNOSTICS, VERIFY_PACKAGE, VERIFY_RUN, VERIFY_SUREFIRE, WORKLIST  # noqa: E402
 
 # The accepted state's tool reports, including the gate receipts: a rejected
@@ -179,31 +179,8 @@ def state_change_violations(text: str, writes: set[str]) -> tuple[list[dict], li
     return violations, inconclusive
 
 
-def attempts_spent(steps: dict[str, Any], cluster: str, key: str) -> int:
-    """How many rejections this PROBLEM has cost.
-
-    Counted against the retry key. An older run counted against the cluster id;
-    those records are kept and still count, so an upgrade cannot hand a
-    problem a fresh budget it had already spent."""
-    attempts = steps.get("attempts") or {}
-    spent = int(attempts.get(key, 0) or 0)
-    if key != cluster:
-        spent = max(spent, int(attempts.get(cluster, 0) or 0))
-    return spent
-
-
-def attempt_budget(steps: dict[str, Any], cluster: str, limit: int) -> int:
-    """How many rejected attempts this cluster may spend before it defers.
-
-    The attempt history is append-only: clearing a deferral changes that
-    deferral's disposition, it never deletes the attempts or the identities of
-    the cards they minted (the live-board comparator expects every one of them,
-    and the record is the audit). So a clearance raises the budget instead of
-    resetting the counter -- the cluster gets ``limit`` fresh attempts from
-    where it stood when the Operator cleared it."""
-    spent_at_clearance = [int(c.get("attempts") or 0) for c in (steps.get("deferral_clearances") or [])
-                          if str(c.get("cluster") or "") in (cluster, str((steps.get("retry_keys") or {}).get(cluster) or ""))]
-    return limit + (max(spent_at_clearance) if spent_at_clearance else 0)
+# The budget has ONE definition (planner.budget); these names stay for callers.
+from planner.budget import attempt_budget, attempts_spent, budget, retry_key_for  # noqa: E402,F401
 
 
 def load_deferred(root: Path) -> dict[str, Any]:
@@ -221,6 +198,28 @@ def load_state(root: Path) -> dict[str, Any] | None:
 
 def save_state(root: Path, doc: dict[str, Any]) -> None:
     write_canonical(root / LOOP_STATE, doc)
+
+
+def publish_loop_state(root: Path, worklist: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Operator-facing loop summary for the tree on disk.
+
+    After rollback the accepted reports are restored and the work list is
+    rebuilt; this publishes that same accepted revision as state.json so the
+    summary cannot keep describing a rejected candidate (v8 Owner deferred /
+    Pet still named as head, 2026-09-11)."""
+    doc = worklist if isinstance(worklist, dict) else (_json_doc(root, WORKLIST, {}))
+    state = {
+        "schema": "rhoai3.loop-state/v1",
+        "worklist_sha256": digest(doc) if doc else "",
+        "candidate_sha256": candidate_sha256(root),
+        "measure": doc.get("measure") or {},
+        "head": doc.get("head") or "",
+        "open_clusters": sum(1 for c in (doc.get("clusters") or []) if c.get("status") == "open"),
+        "deferred": list(doc.get("deferred") or []),
+        "blocked_clusters": list(doc.get("blocked_clusters") or []),
+    }
+    save_state(root, state)
+    return state
 
 
 def load_issued(root: Path) -> dict[str, Any] | None:

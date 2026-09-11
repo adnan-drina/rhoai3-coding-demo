@@ -32,7 +32,7 @@ from _loop_common import profile_keys_lost  # noqa: E402
 from planner import pipeline, specimens  # noqa: E402
 from planner.worklist import build_worklist  # noqa: E402
 from planner.canonical import load_json, write_canonical  # noqa: E402
-from planner.paths import ADMISSION_RECEIPT, LOOP_DEFERRED, LOOP_ISSUED, LOOP_PENDING_FILES, LOOP_STEPS, VERIFY_DIAGNOSTICS, VERIFY_RUN, WORKLIST  # noqa: E402
+from planner.paths import ADMISSION_RECEIPT, LOOP_DEFERRED, LOOP_ISSUED, LOOP_PENDING_FILES, LOOP_STATE, LOOP_STEPS, VERIFY_DIAGNOSTICS, VERIFY_RUN, WORKLIST  # noqa: E402
 
 
 def _fail(msg: str) -> int:
@@ -142,7 +142,213 @@ def _si1_case() -> int:
     return 0
 
 
+_URI_MSG = "unreported exception java.net.URISyntaxException; must be caught or declared to be thrown"
+_URI_CODE = "compiler.err.unreported.exception.need.to.catch.or.throw"
+_URI_CONTROLLERS = ("OwnerRestController", "PetRestController", "PetTypeRestController",
+                    "SpecialtyRestController", "VetRestController", "VisitRestController")
+
+
+_FAMILY_CTL = (
+    "package org.springframework.samples.petclinic.rest;\n"
+    "import java.net.URI;\n"
+    "public class %s {\n"
+    "    static class Headers { void setLocation(URI u) { } }\n"
+    "    static class Builder { URI build(int id) { return URI.create(\"/x/\" + id); } }\n"
+    "    void add%s(int id, Builder b) {\n"
+    "        Headers h = new Headers();\n"
+    "        h.setLocation(%s);\n"
+    "    }\n"
+    "}\n"
+)
+_BUILDER = "b.build(id)"
+_CTOR = 'new URI("/api/x/" + id)'
+_REST = "src/main/java/org/springframework/samples/petclinic/rest/"
+
+
+def _write_uri_controllers(root: Path, form: str) -> list[str]:
+    paths: list[str] = []
+    for name in _URI_CONTROLLERS:
+        f = root / _REST / ("%s.java" % name)
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(_FAMILY_CTL % (name, name.replace("RestController", ""), form), encoding="utf-8")
+        paths.append(_REST + "%s.java" % name)
+    return paths
+
+
+def _issue_cluster(root: Path, cluster: dict, card: str) -> None:
+    """What k4_convert records, for a named cluster (the head may be another)."""
+    from planner.budget import budget
+
+    wl = load_json(root / WORKLIST)
+    ids = set(cluster.get("items") or [])
+    steps = load_json(root / LOOP_STEPS)
+    write_canonical(root / LOOP_ISSUED, {
+        "schema": "rhoai3.loop-issued/v1", "cluster": cluster["id"], "kind": cluster.get("kind") or "compile", "attempt": 1,
+        "idempotency_key": "k4:%s:test" % card, "receipt_sha256": "", "write_set": list(cluster.get("write_set") or []),
+        "gate": str(cluster.get("gate") or ""), "items": list(cluster.get("items") or []), "gate_items": [],
+        "batch_scope": dict(cluster.get("batch_scope") or {}), "retry_key": str(cluster.get("retry_key") or cluster["id"]),
+        "budget": budget(steps, cluster["id"], str(cluster.get("retry_key") or cluster["id"]), 3),
+        "item_identities": {str(i["id"]): str(i["identity"]) for i in wl["items"] if str(i["id"]) in ids and i.get("identity")},
+        "task_id": card,
+    })
+
+
+def _checked_veto_case() -> int:
+    """t_cef8a0f6: the compile count fell and the candidate had introduced an
+    unhandled checked exception. The fall does not admit it."""
+    from planner.paths import MTA_FINDINGS  # noqa: E402
+
+    with tempfile.TemporaryDirectory(prefix="chk-veto-") as td:
+        spec = specimens.specimen("http")
+        root = specimens.build_dest(Path(td) / "dest", spec, decisions=specimens.admitted_decisions(max_attempts=3))
+        owner = _write_uri_controllers(root, _BUILDER)[0]
+        specimens.prepare_loop(root, errors=[(owner, 3, "cannot find symbol", "compiler.err.cant.resolve.location")])
+        findings = load_json(root / MTA_FINDINGS)
+        cluster = next(c for c in load_json(root / WORKLIST)["clusters"] if owner in (c.get("write_set") or []))
+        _issue_cluster(root, cluster, "t_veto")
+        f = root / owner
+        f.write_text(f.read_text(encoding="utf-8").replace(_BUILDER, _CTOR), encoding="utf-8")
+        specimens.verify(root, errors=[], failures=[], findings=findings)
+        p = _advance(root, cluster["id"], "t_veto")
+        blob = p.stdout + p.stderr
+        if p.returncode == 0 or "introduced 1 unhandled checked exception" not in blob or "REVERTED" not in blob:
+            return _fail("an introduced unhandled checked exception vetoes a falling count: %s" % blob[-600:])
+        if "made 0 call(s) named URI" not in blob and "had no such site" not in blob:
+            return _fail("the veto names its proof: %s" % blob[-400:])
+        if _CTOR in f.read_text(encoding="utf-8"):
+            return _fail("the vetoed candidate is reverted")
+        if not (load_json(root / LOOP_STEPS).get("attempts") or {}):
+            return _fail("a veto is a genuine rejection and spends an attempt")
+    return 0
+
+
+def _checked_family_advance_case() -> int:
+    """v8 end to end: the family one step introduced, CONTINUE in the same card,
+    a stalled continuation rejects, an exposure outside the family is typed."""
+    from planner.paths import MTA_FINDINGS  # noqa: E402
+    from planner.worklist import item_ids, obligation_keys  # noqa: E402
+
+    with tempfile.TemporaryDirectory(prefix="chk-adv-") as td:
+        spec = specimens.specimen("http")
+        root = specimens.build_dest(Path(td) / "dest", spec, decisions=specimens.admitted_decisions(max_attempts=3))
+        paths = _write_uri_controllers(root, _BUILDER)
+        owner, pet = paths[0], paths[1]
+        legacy = _REST + "LegacyController.java"
+        (root / legacy).write_text(_FAMILY_CTL % ("LegacyController", "Legacy", _CTOR), encoding="utf-8")
+        owner_err, pet_err, legacy_err = ((owner, 8, _URI_MSG, _URI_CODE), (pet, 8, _URI_MSG, _URI_CODE), (legacy, 8, _URI_MSG, _URI_CODE))
+        specimens.prepare_loop(root, errors=[legacy_err])
+        findings = load_json(root / MTA_FINDINGS)
+        # the introducing step, as the loop records an accepted one
+        _write_uri_controllers(root, _CTOR)
+        _git(root, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qam", "the transformation")
+        specimens.verify(root, errors=[owner_err], failures=[], findings=findings)
+        cur = load_json(root / WORKLIST)
+        steps = load_json(root / LOOP_STEPS)
+        steps["steps"].append(dict(steps["steps"][-1], cluster="c:intro", card="t_intro", verdict="accepted",
+                                   commit=_git(root, "rev-parse", "HEAD").strip(), measure=cur["measure"],
+                                   obligation_keys=sorted(obligation_keys(cur)), item_ids=sorted(item_ids(cur)),
+                                   candidate_sha256=load_json(root / LOOP_STATE)["candidate_sha256"]))
+        write_canonical(root / LOOP_STEPS, steps)
+        specimens.verify(root, errors=[owner_err], failures=[], findings=findings)
+        pipeline.admit(root)
+        wl = load_json(root / WORKLIST)
+        family = [c for c in wl["clusters"] if (c.get("batch_scope") or {}).get("rule") == "checked-exception-family/v1"]
+        if len(family) != 1 or set(family[0]["write_set"]) != set(paths) or len(family[0]["items"]) != 1:
+            return _fail("the family writes the six sites the step introduced, not the legacy one, with one measured item: %s" % family)
+        cluster = family[0]
+        if not str(cluster.get("retry_key") or "").startswith("rk:compile:checked-family:"):
+            return _fail("family retry_key: %s" % cluster.get("retry_key"))
+        _issue_cluster(root, cluster, "t_fam")
+        if not all(v.startswith("chk:") for v in load_json(root / LOOP_ISSUED)["item_identities"].values()):
+            return _fail("the issued failure carries its line-free identity")
+        p = _run([sys.executable, str(BRIEF), "--root", str(root), "--cluster", cluster["id"]])
+        brief = json.loads(p.stdout) if p.returncode == 0 else {}
+        if "request-aware URI builder" not in json.dumps(brief.get("batch_scope") or {}) or (brief.get("budget") or {}).get("limit") != 3:
+            return _fail("the family brief carries the family's note and the one budget: %s%s" % (p.stdout[-400:], p.stderr[-300:]))
+
+        # Owner repaired, Pet exposed: the same card continues
+        f = root / owner
+        f.write_text(f.read_text(encoding="utf-8").replace(_CTOR, _BUILDER), encoding="utf-8")
+        specimens.verify(root, errors=[pet_err], failures=[], findings=findings)
+        before = dict(load_json(root / LOOP_STEPS).get("attempts") or {})
+        p = _advance(root, cluster["id"], "t_fam")
+        blob = p.stdout + p.stderr
+        if p.returncode != 3 or "CONTINUE" not in blob or "THIS card" not in blob:
+            return _fail("Owner gone, Pet reported inside the family: CONTINUE (exit 3): rc=%s %s" % (p.returncode, blob[-500:]))
+        if dict(load_json(root / LOOP_STEPS).get("attempts") or {}) != before or _CTOR in f.read_text(encoding="utf-8"):
+            return _fail("a continuation spends nothing and keeps the candidate on the tree")
+        if len(load_json(root / LOOP_ISSUED).get("continuations") or []) != 1:
+            return _fail("the continuation is recorded on the issued card")
+
+        # verified again without moving: that is a rejection, not a continuation
+        specimens.verify(root, errors=[pet_err], failures=[], findings=findings)
+        p = _advance(root, cluster["id"], "t_fam")
+        blob = p.stdout + p.stderr
+        if p.returncode == 0 or "did not move" not in blob or "REVERTED" not in blob:
+            return _fail("a continuation that did not move is rejected: %s" % blob[-500:])
+        steps = load_json(root / LOOP_STEPS)
+        if (steps.get("attempts") or {}).get(cluster["retry_key"]) != 1 or _CTOR not in f.read_text(encoding="utf-8"):
+            return _fail("the rejection counts against the family and reverts the candidate: %s" % steps.get("attempts"))
+        rejected = (steps.get("rejected") or [])[-1]
+        if "do not remint" not in rejected.get("legal_next", "") or (rejected.get("budget") or {}).get("spent") != 1:
+            return _fail("the reject record carries the family's legal next and the budget: %s" % rejected)
+
+        # Owner repaired, and the compiler now names a site no step of this family made
+        specimens.verify(root, errors=[owner_err], failures=[], findings=findings)
+        pipeline.admit(root)
+        _issue_cluster(root, next(c for c in load_json(root / WORKLIST)["clusters"] if c["id"] == cluster["id"]), "t_fam2")
+        f.write_text(f.read_text(encoding="utf-8").replace(_CTOR, _BUILDER), encoding="utf-8")
+        specimens.verify(root, errors=[legacy_err], failures=[], findings=findings)
+        p = _advance(root, cluster["id"], "t_fam2")
+        blob = p.stdout + p.stderr
+        if p.returncode == 0 or "VERIFICATION_PENDING" not in blob or "exposed-outside-scope" not in blob:
+            return _fail("an exposure outside the family is a typed diagnosis: %s" % blob[-500:])
+        if (load_json(root / LOOP_STEPS).get("attempts") or {}).get(cluster["retry_key"]) != 1:
+            return _fail("a typed diagnosis spends no attempt")
+    return 0
+
+
+def _disposition_case() -> int:
+    """A deferral whose cause was a harness defect is cleared by a disposition,
+    not a product change: no commit, no step, the history kept -- and the ONE
+    budget answer sees the clearance whichever identity it is asked with."""
+    from planner.budget import budget
+
+    with tempfile.TemporaryDirectory(prefix="disp-") as td:
+        spec = specimens.specimen("http")
+        root = specimens.build_dest(Path(td) / "dest", spec, decisions=specimens.admitted_decisions(max_attempts=3))
+        specimens.prepare_loop(root)
+        steps = load_json(root / LOOP_STEPS)
+        steps["attempts"] = {"rk:compile:checked-family:abc": 3}
+        steps["retry_keys"] = {"c:fam": "rk:compile:checked-family:abc"}
+        steps["rejected"] = [{"cluster": "c:fam", "card": "t_%d" % n, "retry_key": "rk:compile:checked-family:abc", "reason": "r"} for n in (1, 2, 3)]
+        write_canonical(root / LOOP_STEPS, steps)
+        write_canonical(root / LOOP_DEFERRED, {"schema": "rhoai3.loop-deferred/v1", "clusters": ["c:fam"], "reasons": {"c:fam": "3 of 3"}})
+        if budget(steps, "c:fam", "rk:compile:checked-family:abc", 3)["left"] != 0:
+            return _fail("a deferred family has no budget left before its clearance")
+        n_steps, log = len(steps["steps"]), _git(root, "log", "--oneline")
+        p = _run([sys.executable, str(HERE / "operator-step.py"), "--root", str(root), "--operator", "operator:o", "--reason", "harness fixed",
+                  "--clear-deferred", "c:fam", "--disposition-only", "--no-mint"])
+        if p.returncode != 0 or "DISPOSITION" not in p.stdout:
+            return _fail("a metadata-only disposition on a verified, clean tree records: %s%s" % (p.stdout[-300:], p.stderr[-300:]))
+        steps = load_json(root / LOOP_STEPS)
+        row = (steps.get("deferral_clearances") or [{}])[-1]
+        if load_json(root / LOOP_DEFERRED)["clusters"] or len(steps["steps"]) != n_steps or _git(root, "log", "--oneline") != log:
+            return _fail("the deferral is lifted with no commit and no step")
+        if row.get("kind") != "metadata-only" or row.get("retry_key") != "rk:compile:checked-family:abc" or row.get("attempts") != 3:
+            return _fail("the disposition names the cluster, its retry key and what that key spent: %s" % row)
+        if [r["card"] for r in steps["rejected"]] != ["t_1", "t_2", "t_3"]:
+            return _fail("the rejected rows are never dropped")
+        for ident in ("c:fam", "rk:compile:checked-family:abc"):
+            b = budget(steps, "c:fam", ident if ident.startswith("rk:") else "", 3)
+            if b["limit"] != 6 or b["left"] != 3:
+                return _fail("the clearance raises the budget for every caller, asked by %s: %s" % (ident, b))
+    return 0
+
+
 def main() -> int:
+    if _checked_veto_case() or _checked_family_advance_case() or _disposition_case():
+        return 1
     if _si1_case():
         return 1
     if _pending_classify_case():
@@ -342,8 +548,11 @@ def main() -> int:
             return _fail("rejection must count an attempt")
         p = _run([sys.executable, str(BRIEF), "--root", str(root), "--cluster", cl2["id"]])
         b2 = json.loads(p.stdout)
-        if len(b2.get("previous_attempts") or []) != 1 or "did not decrease" not in b2["previous_attempts"][0]["reason"] or b2.get("attempts_left") != 1:
+        reason = b2["previous_attempts"][0]["reason"]
+        if len(b2.get("previous_attempts") or []) != 1 or b2.get("attempts_left") != 1:
             return _fail("the retry's brief must carry the refused attempt and the remaining budget: %s" % {k: b2.get(k) for k in ("previous_attempts", "attempts_left")})
+        if "did not decrease" not in reason and "still reported" not in reason:
+            return _fail("the retry brief must name why the previous attempt was refused: %s" % reason)
 
         # --- review counterexample 7: line movement is not a new obligation ---
         specimens.issue(root)
@@ -715,7 +924,7 @@ def main() -> int:
         p = _advance(root, "c:tampered", "t_z")
         if p.returncode != 2 or "LOOP_STALE_STATE" not in p.stderr:
             return _fail("tampered work list must refuse advance: %s" % p.stderr)
-    print("OK: fix-until-green (measurement contract: unrun tests / empty reports / failed runner / skipped rescan are unknown; baseline; issued card; diagnostic cannot advance; post-verify edit + unissued cluster refused with baseline intact; out-of-scope test edit rejected + reverted + reports discarded; accept commits; staged no-progress reverted from index; line shift is not a new obligation; unresolvable candidate is VERIFICATION_PENDING (no attempt); known no-progress defers; Operator rewind restores tree+budget in a new epoch; green → packaging → startup → M4 (unknown gates never mint; an environment blocker is not a card; a gate repair is accepted phase-aware); unresolved test = typed blocker; tampered list refused)")
+    print("OK: fix-until-green (checked-exception veto: a falling count does not admit an introduced unhandled exception; family bound to its introducing step: Owner→Pet CONTINUE in the same card without an attempt, a stalled continuation rejects, an exposure outside the family is a typed diagnosis; a harness-caused deferral is cleared by a metadata-only disposition and the one budget sees it; measurement contract: unrun tests / empty reports / failed runner / skipped rescan are unknown; baseline; issued card; diagnostic cannot advance; post-verify edit + unissued cluster refused with baseline intact; out-of-scope test edit rejected + reverted + reports discarded; accept commits; staged no-progress reverted from index; line shift is not a new obligation; unresolvable candidate is VERIFICATION_PENDING (no attempt); known no-progress defers; Operator rewind restores tree+budget in a new epoch; green → packaging → startup → M4 (unknown gates never mint; an environment blocker is not a card; a gate repair is accepted phase-aware); unresolved test = typed blocker; tampered list refused)")
     return 0
 
 

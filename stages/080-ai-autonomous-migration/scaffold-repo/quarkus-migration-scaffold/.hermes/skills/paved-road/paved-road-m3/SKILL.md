@@ -67,13 +67,20 @@ rule to `kanban_complete`.
 5. `python3 .hermes/skills/migration/fix-until-green/scripts/advance.py --root . --cluster <id> --card $HERMES_KANBAN_TASK`
    — the transaction decides. `OK: ACCEPTED` committed and minted the next
    card. `REVERTED` (exit 1) discarded the candidate and re-minted this
-   cluster as its own next card. `VERIFICATION_PENDING` (exit 1) retained
-   the candidate without counting an attempt. `DEFERRED` (exit 1) stopped the loop.
+   cluster as its own next card. `CONTINUE` (exit 3, repair-family cards)
+   kept the candidate on the tree without counting an attempt: the compiler
+   now names another member of this card's sealed family — repair it (the
+   brief's `batch_scope` lists every member and its verdict), then steps 4
+   and 5 again on this card. `VERIFICATION_PENDING` (exit 1) retained the
+   candidate without counting an attempt. `DEFERRED` (exit 1) stopped the
+   loop. A candidate that introduces an unhandled checked exception is
+   `REVERTED` even when the measure fell.
 6. Terminator: **`kanban_complete`** after ACCEPTED or REVERTED (K2 allows
    it because the loop record names this card and steps 1, 2, 4, 5 are in
    this log). `kanban_block` kind=needs_input naming the cluster after
-   VERIFICATION_PENDING, DEFERRED or a `REFUSE: LOOP_*`. Never `kanban_request_review` on a loop
-   card; never retry inside this card (the retry is the next K4 card).
+   VERIFICATION_PENDING, DEFERRED or a `REFUSE: LOOP_*`. `CONTINUE` is not a
+   verdict: neither complete nor block. Never `kanban_request_review` on a loop
+   card; never retry inside this card after REVERTED (the retry is the next K4 card).
    After VERIFICATION_PENDING, restore with `restore-pending.py` when the
    prerequisite changes, then run acceptance verify and advance on **this**
    card — do not mint a new attempt.

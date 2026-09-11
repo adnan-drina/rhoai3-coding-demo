@@ -53,7 +53,7 @@ new behaviour, weaken G-1…G-4, or replace free-primitives / MTA.
 
 | File | Use when |
 |------|----------|
-| `references/rest-annotations.md` | JAX-RS / RESTEasy → `quarkus-rest` annotation map |
+| `references/rest-annotations.md` | JAX-RS / RESTEasy → `quarkus-rest` annotation map; Location via a request-aware `@Context UriInfo` builder (never an introduced checked exception) |
 | `references/exception-mapping.md` | Local/global exception handlers; the advice-class gotcha; legacy error-body shape |
 | `references/di-config.md` | Scopes, profiles, MapStruct (doctrine pending R-SKILL-F; do not mandate `componentModel=cdi`) |
 | `references/persistence.md` | Entity / tx / schema cards; this specimen's default is Spring Data JPA (ADR-004) |

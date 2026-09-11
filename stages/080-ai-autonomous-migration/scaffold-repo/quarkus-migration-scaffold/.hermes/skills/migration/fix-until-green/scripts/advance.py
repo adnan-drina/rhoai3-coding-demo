@@ -11,7 +11,9 @@ otherwise:
     (an edit after verification is refused and reverted);
   * every changed product path is inside the issued cluster's write set
     (tests are never in a write set);
-  * the measure strictly decreased with no new mandatory obligation;
+  * the measure strictly decreased with no new mandatory obligation, or a
+    typed gate/coverage outcome retained the candidate unaccepted;
+
   * verification ran in acceptance mode (diagnostic cannot promote or reject).
 
 Accept → commit exactly the changed paths, snapshot the tool reports,
@@ -32,17 +34,19 @@ import argparse
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _loop_common import attempt_budget, attempts_spent, candidate_sha256, classify_inconclusive, clear_pending, source_write_members, state_change_violations, catalog_property_mappings, ensure_hermes_lib, git, load_deferred, load_issued, load_state, load_steps, pending_for, product_paths_changed, profile_keys_lost_in_tree, restore_reports, revert_paths, save_deferred, save_pending_candidate, save_steps, snapshot_reports  # noqa: E402
+from _loop_common import attempt_budget, attempts_spent, budget, candidate_sha256, classify_inconclusive, clear_pending, source_write_members, state_change_violations, catalog_property_mappings, ensure_hermes_lib, git, load_deferred, load_issued, load_state, load_steps, pending_for, product_paths_changed, profile_keys_lost_in_tree, publish_loop_state, restore_reports, revert_paths, save_deferred, save_pending_candidate, save_steps, snapshot_reports  # noqa: E402
 
 ensure_hermes_lib()
 from planner import pipeline  # noqa: E402
-from planner.canonical import digest, load_json  # noqa: E402
+from planner.canonical import digest, load_json, write_canonical  # noqa: E402
+from planner.dest_model import checked_exception_delta  # noqa: E402
 from planner.decisions import load_decisions, max_attempts  # noqa: E402
 from planner.paths import EVIDENCE_BUNDLE, LOOP_ACCEPTED, LOOP_ISSUED, MTA_RESCAN_FINDINGS, VERIFY_RUN, WORKLIST  # noqa: E402
-from planner.worklist import RETAIN, assess_batch_scope, batch_scope_digest, build_worklist, gate_items, incidents_from_findings, item_ids, obligation_keys, progress  # noqa: E402
+from planner.worklist import CHECKED_FAMILY_RULE, EXPOSED, RETAIN, UNPROVEN, assess_batch_scope, batch_scope_digest, build_worklist, gate_items, incidents_from_findings, item_ids, obligation_keys, progress  # noqa: E402
 
 
 def _verify_meta(run: dict) -> dict:
@@ -63,34 +67,63 @@ def _reject(root: Path, steps: dict, cluster: str, card: str, cur: dict, reason:
     """Discard the candidate, count the attempt, re-seal and re-issue the
     cluster (K4 mints the next attempt); defer + stop at the threshold."""
     verify = _verify_meta(load_json(root / VERIFY_RUN) if (root / VERIFY_RUN).is_file() else {})
+    issued = load_issued(root) or {}
+    loci_before = [{"id": str(i.get("id") or i), "path": str(i.get("path") or ""), "line": i.get("line")}
+                   for i in (cur.get("items") or []) if str(i.get("id") or i) in set(issued.get("items") or [])]
+    if not loci_before:
+        loci_before = [{"id": str(x)} for x in (issued.get("items") or [])]
+    loci_after = [{"id": str(i.get("id")), "path": str(i.get("path") or ""), "line": i.get("line"),
+                   "detail": str(i.get("detail") or i.get("message") or "")[:200]}
+                  for i in (cur.get("items") or []) if str(i.get("id") or "").startswith("err:")]
     clear_pending(steps, cluster, why="rejected")
     revert_paths(root, changed)
     restore_reports(root)
-    # the budget belongs to the problem, not to the card: gate + cause + file
+    # the budget belongs to the problem, not to the card: gate + cause + file,
+    # or the sealed repair-family identity. Read it from the issued record first:
+    # after a sibling is exposed the candidate work list may no longer contain
+    # this cluster id (v8 Owner → Pet, 2026-09-11).
     cur_list = load_json(root / WORKLIST) if (root / WORKLIST).is_file() else {}
     row = next((c for c in (cur_list.get("clusters") or []) if str(c.get("id")) == cluster), {})
-    key = str(row.get("retry_key") or cluster)
+    if str(issued.get("cluster") or "") == cluster and issued.get("retry_key"):
+        key = str(issued["retry_key"])
+    else:
+        key = str(row.get("retry_key") or cluster)
     attempts = dict(steps.get("attempts") or {})
     attempts[key] = attempts_spent(steps, cluster, key) + 1
     steps["attempts"] = attempts
     steps.setdefault("retry_keys", {})[cluster] = key
-    steps.setdefault("rejected", []).append({"cluster": cluster, "card": card, "measure": cur.get("measure"), "reason": reason, "changed": changed, "verify": verify})
+    family = str((issued.get("batch_scope") or {}).get("rule") or "") == CHECKED_FAMILY_RULE
+    legal_next = (("do not remint a single-file retry of this cluster: the family's remaining members stay in the "
+                   "sealed write set. " if family else "") +
+                  "Do not repeat this patch; the next brief names the previous diagnostic movement and this reason.")
+    steps.setdefault("rejected", []).append({
+        "cluster": cluster, "card": card, "measure": cur.get("measure"), "reason": reason,
+        "changed": changed, "verify": verify, "loci_before": loci_before, "loci_after": loci_after,
+        "write_set": list(issued.get("write_set") or []), "legal_next": legal_next,
+        "patch_summary": sorted(changed), "retry_key": key,
+        "budget": budget(steps, cluster, key, max_attempts(load_decisions(root))),
+    })
     save_steps(root, steps)
     if (root / LOOP_ISSUED).is_file():
         (root / LOOP_ISSUED).unlink()
-    limit = attempt_budget(steps, key, max_attempts(load_decisions(root)))
-    build_worklist(root)
+    limit = attempt_budget(steps, cluster, max_attempts(load_decisions(root)), key)
+    rebuilt = build_worklist(root)
     if attempts[key] >= limit:
         deferred = load_deferred(root)
         if cluster not in deferred["clusters"]:
             deferred["clusters"].append(cluster)
-            deferred["reasons"][cluster] = "%d rejected attempt(s) against %s; last: %s" % (attempts[key], key, reason)
+            deferred["reasons"][cluster] = "%d of %d attempt(s) spent against %s; last: %s" % (attempts[key], limit, key, reason)
             save_deferred(root, deferred)
-        build_worklist(root)
+        rebuilt = build_worklist(root)
         pipeline.admit(root)
-        print("DEFERRED %s after %d attempt(s): %s → the loop STOPS here (kanban_block kind=needs_input naming the cluster). Operator: fix the cause, then scripts/rewind.py --to-step N --operator WHO --reason WHY restores an accepted step with a fresh budget" % (cluster, attempts[key], reason), file=sys.stderr)
+        publish_loop_state(root, rebuilt)
+        print("DEFERRED %s after %d of %d attempt(s) against %s: %s → the loop STOPS here (kanban_block kind=needs_input naming the cluster). "
+              "Operator: remove the cause, then record the clearance -- operator-step.py --clear-deferred %s with the product change, or "
+              "--clear-deferred %s --disposition-only when the cause was a harness defect. The budget rises by what was spent; no attempt "
+              "or card is deleted." % (cluster, attempts[key], limit, key, reason, cluster, cluster), file=sys.stderr)
         return 1
     rec = pipeline.admit(root)
+    publish_loop_state(root, rebuilt)
     print("REVERTED %s attempt %d/%d (budget %s): %s" % (cluster, attempts[key], limit, key, reason), file=sys.stderr)
     if mint and rec.get("status") == "ADMITTED":
         # the same cluster, next attempt key: the retry is its own card (pilot v6
@@ -126,8 +159,9 @@ def _pending(root: Path, steps: dict, cluster: str, card: str, cur: dict, reason
     restore_reports(root)
     steps.setdefault("pending", []).append(row)
     save_steps(root, steps)
-    build_worklist(root)
+    rebuilt = build_worklist(root)
     pipeline.admit(root)
+    publish_loop_state(root, rebuilt)
     print(
         "VERIFICATION_PENDING %s cause=%s card=%s: %s → retain the candidate; do not re-implement. "
         "When the prerequisite changes: python3 .hermes/skills/migration/fix-until-green/scripts/restore-pending.py --root . --cluster %s "
@@ -136,6 +170,42 @@ def _pending(root: Path, steps: dict, cluster: str, card: str, cur: dict, reason
         file=sys.stderr,
     )
     return 1
+
+
+def _continue(root: Path, steps: dict, cluster: str, card: str, cur: dict, reason: str, changed: list[str], on_disk: str,
+              scope_doc: dict, reported: list[str], *, mint: bool, hermes: str) -> int:
+    """RETAIN inside a sealed family: the SAME card continues, bounded.
+
+    The compiler reports one unhandled checked exception at a time, so fixing
+    one family member exposes the next. That is the family's own remaining
+    work, inside the write set the card was sealed with; stopping the worker
+    there (what VERIFICATION_PENDING did) turned a six-member repair into six
+    Operator restores. So the candidate stays on the tree, nothing is
+    reverted, no attempt is spent, and the continuation is recorded on the
+    issued card. Bounded twice: at most one continuation per family member,
+    and a continuation that did not move (the same member still reported) is
+    a rejection, not another continuation."""
+    issued = load_issued(root) or {}
+    conts = list(issued.get("continuations") or [])
+    bound = max(1, len(scope_doc.get("members") or []))
+    if conts:
+        stuck = sorted(set(conts[-1].get("reported") or []) & set(reported))
+        if stuck:
+            return _reject(root, steps, cluster, card, cur, "continuation %d did not move: %s is still reported" % (len(conts), ", ".join(stuck[:2])),
+                           changed, mint=mint, hermes=hermes)
+    if len(conts) >= bound:
+        return _pending(root, steps, cluster, card, cur, "the sealed family allows %d continuation(s), one per member, and all are spent: %s" % (bound, reason),
+                        changed, on_disk, cause="continuation-budget")
+    conts.append({"n": len(conts) + 1, "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "card": card,
+                  "measure": (cur.get("measure") or {}).get("tuple"), "reported": sorted(reported),
+                  "changed": sorted(changed), "candidate_sha256": on_disk})
+    issued["continuations"] = conts
+    write_canonical(root / LOOP_ISSUED, issued)
+    print("CONTINUE %s continuation %d/%d card=%s: %s → the candidate stays on the tree and no attempt is spent. Repair the family "
+          "members the brief lists (batch_scope) inside the sealed write set, then run-verify.sh --mode acceptance and advance.py "
+          "again on THIS card. Not a verdict: do not kanban_complete or kanban_block." % (cluster, len(conts), bound, card, reason),
+          file=sys.stderr)
+    return 3
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -281,6 +351,31 @@ def main(argv: list[str] | None = None) -> int:
         print("WARN: %s inconclusive on %s (not a pass and not a violation): %s"
               % (si1_unknown[0]["rule"], ", ".join(sorted({r["path"] for r in si1_unknown})),
                  "; ".join(r["detail"] for r in si1_unknown[:2])), file=sys.stderr)
+    # A proven newly INTRODUCED unhandled checked exception vetoes acceptance
+    # even when the tuple falls (architect decision 3, 2026-09-11). javac
+    # reports one such site per compilation, so a count can fall while a
+    # transformation introduces six: t_cef8a0f6 took the compile count from 29
+    # to 16 by writing six unhandled URI constructors, and was accepted. The
+    # obligation is compiler-derived: baseline (the last accepted commit) and
+    # candidate are modelled under the same compiler configuration, catches
+    # and declared throws accounted for; a site the baseline already had is
+    # EXPOSED, not introduced; incomplete baseline coverage is INCONCLUSIVE.
+    java_changed = [c for c in changed if c.startswith("src/main/java/") and c.endswith(".java")]
+    checked: dict = {}
+    if java_changed:
+        checked = checked_exception_delta(root, str(prev.get("commit") or "HEAD"), java_changed)
+        vetoes = (["%s.%s calls %s: %s unhandled (%s)" % (r["type"].rsplit(".", 1)[-1], r["member_id"], r["callee"], r["exception"], r.get("proof") or "")
+                   for r in checked["introduced"]] +
+                  ["%s.%s now declares %s" % (r["type"].rsplit(".", 1)[-1], r["member_id"], ",".join(r["exceptions"])) for r in checked["throws_added"]])
+        if vetoes:
+            return _reject(root, steps, args.cluster, args.card, cur,
+                           "introduced %d unhandled checked exception(s), a compiler-derived obligation that vetoes acceptance whatever the measure does: %s"
+                           % (len(vetoes), "; ".join(vetoes[:4])), changed, mint=not args.no_mint, hermes=args.hermes)
+        if checked["state"] in ("unavailable", "inconclusive"):
+            return _pending(root, steps, args.cluster, args.card, cur,
+                            "whether this candidate introduces an unhandled checked exception could not be decided: %s"
+                            % (checked["why"] or "; ".join("%s (%s)" % (r.get("key") or r.get("path"), r.get("why")) for r in checked["inconclusive"][:2])),
+                            changed, on_disk, cause="unassessable-exceptions")
     # The SEALED SCOPE: a repository card carries an inventory of every member
     # the declared rule reaches, and the card is not finished while one of them
     # still breaks that rule. An already-correct member needs no edit and earns
@@ -288,6 +383,10 @@ def main(argv: list[str] | None = None) -> int:
     # the tree rather than from anything the worker wrote.
     scope_ref = issued.get("batch_scope") or {}
     scope_rows: list[dict] = []
+    scope_doc: dict = {}
+    family = False
+    bad: list[dict] = []
+    family_detail = ""
     if scope_ref:
         scope_doc = load_json(root / str(scope_ref.get("path") or "")) if (root / str(scope_ref.get("path") or "")).is_file() else {}
         if not scope_doc:
@@ -300,11 +399,15 @@ def main(argv: list[str] | None = None) -> int:
                            changed, mint=not args.no_mint, hermes=args.hermes)
         scope_rows = assess_batch_scope(root, scope_doc)
         bad = [r for r in scope_rows if r.get("verdict") == "violates"]
-        if bad:
-            return _reject(root, steps, args.cluster, args.card, cur,
-                           "%s member(s) of %s still break %s: %s" % (
-                               len(bad), scope_doc.get("repository"), scope_doc.get("rule"),
-                               "; ".join("%s (%s)" % (r["member"], r["detail"]) for r in bad[:4])),
+        family = str(scope_doc.get("rule") or "") == CHECKED_FAMILY_RULE
+        target = str(scope_doc.get("repository") or scope_doc.get("signature") or scope_doc.get("rule") or "scope")
+        family_detail = "%s member(s) of %s still break %s: %s" % (
+            len(bad), target, scope_doc.get("rule"), "; ".join("%s (%s)" % (r["member"], r["detail"]) for r in bad[:4]))
+        # A family member still unhandled is the family's REMAINING work, which
+        # the measure below decides about (continue, or reject when the issued
+        # one is still reported). A repository member is judged here.
+        if bad and not family:
+            return _reject(root, steps, args.cluster, args.card, cur, family_detail,
                            changed, mint=not args.no_mint, hermes=args.hermes)
         # An assessment that could not be made is not an assessment that
         # passed. The card cannot complete on a member nobody could resolve;
@@ -317,31 +420,57 @@ def main(argv: list[str] | None = None) -> int:
                                 "; ".join("%s (%s)" % (r["member"], r["detail"]) for r in unknown[:3])),
                             changed, on_disk, cause="unassessable-scope")
     gate = str(issued.get("gate") or "")
+    # identities without lines: whether the issued failure is "still reported"
+    cur_identities = {str(i.get("identity")) for i in (cur.get("items") or []) if str(i.get("source") or "") == "javac" and i.get("identity")}
+    issued_identities = {str(v) for v in (issued.get("item_identities") or {}).values() if v} or None
+    family_keys = ({"chk:" + str(m.get("member") or "") for m in (scope_doc.get("members") or [])}
+                   if scope_ref and family else None)
     ok, reason = progress(prev["measure"], cur["measure"], prev_keys, cur_keys,
                           gate=gate,
                           prev_runtime=prev.get("runtime") or {}, cur_runtime=cur.get("runtime") or {},
                           issued_items=list(issued.get("items") or []),
                           prev_gate_items=set(str(i) for i in (issued.get("gate_items") or [])),
-                          cur_gate_items=gate_items(cur, gate))
+                          cur_gate_items=gate_items(cur, gate),
+                          cur_item_ids=item_ids(cur),
+                          issued_identities=issued_identities,
+                          cur_identities=cur_identities if issued_identities is not None else None,
+                          family_scope=family_keys)
     if not ok:
         if ok is RETAIN:
-            # the repair may well be right and the gate cannot say so yet:
-            # retain it, spend no attempt, and let the same card carry on
+            # the compiler moved to another member of THIS card's sealed family
+            return _continue(root, steps, args.cluster, args.card, cur, reason, changed, on_disk, scope_doc,
+                             sorted(cur_identities - set(issued_identities or ())), mint=not args.no_mint, hermes=args.hermes)
+        if ok is EXPOSED:
+            # outside every sealed scope: a typed diagnosis, the candidate kept
+            return _pending(root, steps, args.cluster, args.card, cur, reason, changed, on_disk, cause="exposed-outside-scope")
+        if ok is UNPROVEN:
+            # the repair may well be right and the gate cannot say so yet
             return _pending(root, steps, args.cluster, args.card, cur, reason, changed, on_disk, cause="unproven-repair")
         if not (cur.get("measure") or {}).get("known"):
             return _pending(root, steps, args.cluster, args.card, cur, reason, changed, on_disk)
         clear_pending(steps, args.cluster, why="rejected")
         return _reject(root, steps, args.cluster, args.card, cur, reason, changed, mint=not args.no_mint, hermes=args.hermes)
+    if scope_ref and family and bad:
+        # the measure fell and a member still breaks the family's rule (caught,
+        # declared, or its operation deleted): that is not a repair
+        return _reject(root, steps, args.cluster, args.card, cur, family_detail, changed, mint=not args.no_mint, hermes=args.hermes)
     clear_pending(steps, args.cluster, why="accepted")
     sha = _commit(root, changed, "fix-until-green: %s attempt %s %s" % (args.cluster, issued.get("attempt"), cur["measure"]["tuple"]))
     snapshot_reports(root)
     steps["steps"].append({"cluster": args.cluster, "card": args.card, "attempt": issued.get("attempt"), "idempotency_key": issued.get("idempotency_key"), "commit": sha, "candidate_sha256": on_disk, "measure": cur["measure"], "item_ids": sorted(item_ids(cur)), "obligation_keys": sorted(obligation_keys(cur)), "worklist_sha256": digest(cur), "changed": changed, "verdict": "accepted", "reason": reason, "runtime": cur.get("runtime") or {}, "gate": str(issued.get("gate") or ""), "discharged": sorted(str(i) for i in (issued.get("items") or [])), "si1_inconclusive": si1_unknown, "batch_scope": ({"digest": str(scope_ref.get("digest") or ""), "assessed": len(scope_rows),
-                                                          "inconclusive": [r for r in scope_rows if r.get("verdict") == "inconclusive"]} if scope_ref else {}), "amendments": list(issued.get("amendments") or []), "verify": _verify_meta(run if isinstance(run, dict) else {})})
+                                                          "inconclusive": [r for r in scope_rows if r.get("verdict") == "inconclusive"]} if scope_ref else {}), "amendments": list(issued.get("amendments") or []), "verify": _verify_meta(run if isinstance(run, dict) else {}),
+                           "continuations": list(issued.get("continuations") or []),
+                           "checked_exceptions": ({k: (checked.get(k) if k in ("state", "base", "coverage") else len(checked.get(k) or []))
+                                                   for k in ("state", "base", "introduced", "exposed", "resolved", "throws_added", "inconclusive", "coverage")}
+                                                  if checked else {})})
     save_steps(root, steps)
     (root / LOOP_ISSUED).unlink()
     print("OK: ACCEPTED %s (%s) commit %s" % (args.cluster, reason, sha[:12]))
-    build_worklist(root)
+    rebuild = build_worklist(root)
     rec = pipeline.admit(root)
+    # published either way: the accepted step is on record whether or not the
+    # next card can be admitted, and the state must describe it
+    publish_loop_state(root, rebuild)
     if rec["status"] != "ADMITTED":
         print("REFUSE: LOOP_ADMISSION %s: %s" % (rec["status"], "; ".join(rec["reasons"][:3])), file=sys.stderr)
         return 1

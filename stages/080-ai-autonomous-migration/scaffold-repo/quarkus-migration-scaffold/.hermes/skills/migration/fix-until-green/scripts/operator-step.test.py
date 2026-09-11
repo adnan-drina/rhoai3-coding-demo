@@ -96,6 +96,15 @@ def main() -> int:
     if [r["card"] for r in kept.get("rejected") or []] != ["t_rejected"]:
         return _fail("the rejected rows are the record of what the cluster minted and must never be dropped: %s" % kept.get("rejected"))
 
+    # A metadata-only disposition is for a cause removed OUTSIDE the product
+    # tree; with a product change on disk it would record an intention.
+    rc, blob, tmp = _run(MAIN_SRC, "--clear-deferred", "c:deferred", "--disposition-only")
+    if rc != 1 or "has changes" not in blob:
+        return _fail("--disposition-only with a product change must refuse: rc=%d %s" % (rc, blob[:300]))
+    rc, blob, tmp = _run(MAIN_SRC, "--disposition-only")
+    if rc != 1 or "name the cluster" not in blob:
+        return _fail("--disposition-only records a clearance and needs --clear-deferred: rc=%d %s" % (rc, blob[:300]))
+
     # Control: the same change on a main source is not this guard's business. It
     # gets past it (and stops later, on the missing measure) — so a red above is
     # the path, not the tool refusing everything.
@@ -108,7 +117,7 @@ def main() -> int:
     if len(log.strip().splitlines()) != 2:
         return _fail("the main-source control must have committed the change: %s" % log)
 
-    print("OK: operator-step selftest (test-source change refuses without an ADR, without a reviewer, and with the operator as reviewer, before committing; main-source control passes the guard and commits; a deferral that is not open refuses and one whose re-measure failed survives)")
+    print("OK: operator-step selftest (test-source change refuses without an ADR, without a reviewer, and with the operator as reviewer, before committing; main-source control passes the guard and commits; a deferral that is not open refuses and one whose re-measure failed survives; a metadata-only disposition refuses with a product change or no cluster)")
     return 0
 
 

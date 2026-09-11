@@ -688,6 +688,14 @@ def check_build_profiles(root: Path, copy: Path, catalog: dict, decisions_doc: d
             changes.append({"op": "properties.build-profile", "value": ",".join(active), "provenance": "decisions.yaml build_profiles (%s)" % decided.get("adr")})
         prop.parent.mkdir(parents=True, exist_ok=True)
         prop.write_text("\n".join(lines).rstrip("\n") + "\n", encoding="utf-8")
+        # quarkus.profile in application.properties selects the RUNTIME
+        # profile; the build (where @IfBuildProfile beans and Spring Data
+        # repositories are decided) reads -Dquarkus.profile. A/B on v8,
+        # 2026-09-11: without the flag the build failed on OwnerRepository,
+        # with -Dquarkus.profile=prod,spring-data-jpa it got past it. Every
+        # mvn the loop, CI and a person run reads .mvn/maven.config, so the
+        # decided profiles are wired there, once.
+        _wire_build_profile(root, ",".join(active), str(decided.get("adr") or ""), changes)
     # Nothing gated may be left over. A condition on a profile the destination
     # neither activates nor retires selects between alternatives nobody chose
     # between, and the bean it guards is gone at build time with no obligation
@@ -1121,6 +1129,25 @@ def retire_sources(root: Path, copy: Path, retired: dict[str, str], changes: lis
             changes.append({"op": "source.retire", "path": rel, "reason": "not imported: retired by %s (decisions.yaml retired_sources)" % adr, "adr": adr})
         else:
             blocks.append({"class": "RETIRED_SOURCE_MISSING", "subject": rel, "detail": "%s retires %s but the frozen legacy source has no such file; fix the decision" % (adr, rel)})
+
+
+def _wire_build_profile(root: Path, value: str, adr: str, changes: list[dict]) -> None:
+    """.mvn/maven.config carries -Dquarkus.profile=<the decided build profiles>.
+
+    Existing lines are kept as they are (the -s .mvn/settings.xml wiring among
+    them); a stale -Dquarkus.profile line is replaced; nothing changes when the
+    file already says this."""
+    cfg = root / ".mvn" / "maven.config"
+    lines = cfg.read_text(encoding="utf-8").splitlines() if cfg.is_file() else []
+    want = "-Dquarkus.profile=%s" % value
+    kept = [ln for ln in lines if not any(tok.startswith("-Dquarkus.profile=") for tok in ln.split())]
+    new = kept + [want]
+    if new == lines:
+        return
+    cfg.parent.mkdir(parents=True, exist_ok=True)
+    cfg.write_text("\n".join(new) + "\n", encoding="utf-8")
+    changes.append({"op": "maven-config.build-profile", "value": value, "path": ".mvn/maven.config",
+                    "provenance": "decisions.yaml build_profiles (%s); the build reads -Dquarkus.profile, not application.properties" % adr})
 
 
 def check_maven_settings(root: Path, catalog: dict, blocks: list[dict]) -> None:

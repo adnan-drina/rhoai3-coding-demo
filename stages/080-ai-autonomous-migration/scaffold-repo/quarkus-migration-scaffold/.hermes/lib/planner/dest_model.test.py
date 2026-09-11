@@ -15,7 +15,7 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from planner.dest_model import DestModelUnavailable, condition_key, dest_model, profile_conditions, source_write_members  # noqa: E402
+from planner.dest_model import DestModelUnavailable, checked_exception_delta, condition_key, dest_model, profile_conditions, source_write_members  # noqa: E402
 from planner.worklist import assess_batch_scope  # noqa: E402
 
 STUBS = {
@@ -241,15 +241,102 @@ def _overload_case() -> int:
     return 0
 
 
+_CTL = """package p;
+import java.net.URI;
+public class %sCtl {
+    static class Headers { void setLocation(URI u) { } }
+    static class Builder { URI build(int id) { return URI.create("/api/x/" + id); } }
+    void add(int id, Builder b) {
+        Headers h = new Headers();
+        h.setLocation(%s);
+    }
+}
+"""
+
+
+def _checked_case() -> int:
+    """javac names one unhandled checked exception per compilation; the model
+    names every one, without its line, and says which a candidate introduced."""
+    def git(root: Path, *a: str) -> str:
+        return subprocess.run(["git", "-C", str(root), *a], check=True, capture_output=True, text=True).stdout.strip()
+
+    with tempfile.TemporaryDirectory(prefix="dm-checked-") as td:
+        root = Path(td)
+        paths = []
+        for n in ("Owner", "Pet"):
+            f = root / "src/main/java/p" / ("%sCtl.java" % n)
+            f.parent.mkdir(parents=True, exist_ok=True)
+            f.write_text(_CTL % (n, "b.build(id)"), encoding="utf-8")
+            paths.append(f.relative_to(root).as_posix())
+        git(root, "init", "-q")
+        git(root, "-c", "user.email=t@t", "-c", "user.name=t", "add", "-A")
+        git(root, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "baseline")
+        base = git(root, "rev-parse", "HEAD")
+        for rel in paths:
+            f = root / rel
+            f.write_text(f.read_text(encoding="utf-8").replace("b.build(id)", 'new URI("/api/x/" + id)'), encoding="utf-8")
+        d = checked_exception_delta(root, base, paths)
+        if d["state"] != "known" or len(d["introduced"]) != 2 or d["exposed"]:
+            return _fail("a transformation that adds two unhandled constructors introduces two sites: %s" % d)
+        if {r["consumer"] for r in d["introduced"]} != {"p.OwnerCtl.Headers.setLocation(java.net.URI)", "p.PetCtl.Headers.setLocation(java.net.URI)"}:
+            return _fail("each site names the operation its value feeds: %s" % [r["consumer"] for r in d["introduced"]])
+        git(root, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qam", "the transformation")
+        t1 = git(root, "rev-parse", "HEAD")
+        owner, pet = root / paths[0], root / paths[1]
+        owner.write_text(owner.read_text(encoding="utf-8").replace('new URI("/api/x/" + id)', 'URI.create("/api/x/" + id)'), encoding="utf-8")
+        d = checked_exception_delta(root, t1, paths)
+        if d["introduced"] or [r["path"] for r in d["exposed"]] != [paths[1]] or [r["path"] for r in d["resolved"]] != [paths[0]]:
+            return _fail("repairing Owner resolves Owner and EXPOSES Pet, which the candidate did not make: %s" % d)
+        keys = {r["key"] for r in d["exposed"]}
+        pet.write_text(pet.read_text(encoding="utf-8").replace("    void add(", "\n\n\n    void add("), encoding="utf-8")
+        d = checked_exception_delta(root, t1, paths)
+        if {r["key"] for r in d["exposed"]} != keys or d["introduced"]:
+            return _fail("moving Pet's site three lines does not make it a new site: %s" % d)
+        pet.write_text(pet.read_text(encoding="utf-8").replace("void add(int id, Builder b) {", "void add(int id, Builder b) throws java.net.URISyntaxException {"), encoding="utf-8")
+        d = checked_exception_delta(root, t1, paths)
+        if [r["exceptions"] for r in d["throws_added"]] != [["java.net.URISyntaxException"]]:
+            return _fail("declaring what used to be unhandled is an introduction, not a repair: %s" % d)
+        # a baseline the compiler could not attribute is still PARSED: a member
+        # that made no call named URI cannot have held a URI site
+        pet.write_text((_CTL % ("Pet", "b.build(id)")).replace("Builder b)", "Builder b, Missing m)"), encoding="utf-8")
+        git(root, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qam", "unresolvable baseline")
+        t2 = git(root, "rev-parse", "HEAD")
+        pet.write_text(_CTL % ("Pet", 'new URI("/api/x/" + id)'), encoding="utf-8")
+        d = checked_exception_delta(root, t2, [paths[1]])
+        if len(d["introduced"]) != 1 or "made 0 call(s) named URI" not in str(d["introduced"][0].get("proof")):
+            return _fail("an unattributed baseline member with no call named URI proves the site new: %s" % d)
+        # a site the baseline COULD decide, in a file it could not fully attribute,
+        # is decided where it stands: the same unhandled site, exposed not new
+        pet.write_text((_CTL % ("Pet", 'new URI("/api/y/" + id)')).replace("Builder b)", "Builder b, Missing m)"), encoding="utf-8")
+        git(root, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qam", "unresolvable baseline with the call")
+        t3 = git(root, "rev-parse", "HEAD")
+        pet.write_text(_CTL % ("Pet", 'new URI("/api/y/" + id)'), encoding="utf-8")
+        d = checked_exception_delta(root, t3, [paths[1]])
+        if d["introduced"] or len(d["exposed"]) != 1:
+            return _fail("a baseline site decidable in a partially attributed file is the same site: %s" % d)
+        # a baseline that could NOT decide the site (its catch type is unresolved)
+        # cannot make the candidate's site new or old: INCONCLUSIVE, never a pass
+        body = (_CTL % ("Pet", "u")).replace("Headers h = new Headers();",
+                                             'Headers h = new Headers(); URI u = null; try { u = new URI("/z"); } catch (MissingException e) { }')
+        pet.write_text(body, encoding="utf-8")
+        git(root, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qam", "undecidable baseline")
+        t4 = git(root, "rev-parse", "HEAD")
+        pet.write_text(body.replace("try { u = new URI(\"/z\"); } catch (MissingException e) { }", 'u = new URI("/z");'), encoding="utf-8")
+        d = checked_exception_delta(root, t4, [paths[1]])
+        if d["introduced"] or d["state"] != "inconclusive" or "baseline could not decide" not in str(d["inconclusive"]):
+            return _fail("an undecidable baseline site makes the candidate INCONCLUSIVE: %s" % d)
+    return 0
+
+
 def main() -> int:
     if not shutil.which("javac"):
         print("SKIP: dest-model selftest needs a JDK on PATH")
         return 0
-    if _conditions_case() or _assess_case() or _source_root_case() or _overload_case():
+    if _conditions_case() or _assess_case() or _source_root_case() or _overload_case() or _checked_case():
         return 1
     print("OK: dest-model (a fully qualified condition is visible; two identical annotations are two decisions with "
           "their own ranges; an import binds a condition with no classpath while a wildcard import does not, and a non-literal argument is never a profile name; a redeclared inherited findAll "
-          "is answered by its supertype; a deleted member is not inherited; a member is a signature, so an overload never answers for another and a generic save(T) matches as save(Vet); two source roots are two models in either order; the source write set comes from resolved calls; an unreadable source model or type is inconclusive)")
+          "is answered by its supertype; a deleted member is not inherited; a member is a signature, so an overload never answers for another and a generic save(T) matches as save(Vet); two source roots are two models in either order; the source write set comes from resolved calls; an unreadable source model or type is inconclusive; unhandled checked exceptions: a transformation's sites are introduced, a partial repair exposes rather than introduces, a moved line is the same site, an added throws is an introduction, an unattributed baseline is proved by its parse tree or left INCONCLUSIVE)")
     return 0
 
 

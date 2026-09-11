@@ -9,7 +9,8 @@ longer exists) and a rewind would restore the retired files.
 
 What it does (every check refuses before it changes anything):
   * refuses with an issued card open (close it: rewind.py --close-card, or
-    let it finish) or with nothing changed in the product tree;
+    let it finish) or with nothing changed in the product tree -- except
+    --disposition-only, which refuses WITH a change (see below);
   * refuses a change to test sources that names no ADR, or no independent
     reviewer, or a reviewer equal to the operator (ADR-008);
   * refuses --clear-deferred for a cluster that is not deferred, and lifts a
@@ -17,6 +18,10 @@ What it does (every check refuses before it changes anything):
     deferral is lifted by a measured tree, never by the intent to fix it);
     the clearance is appended as a disposition and raises the attempt budget --
     neither the attempts nor the cards they minted are ever removed;
+  * --disposition-only records a clearance whose cause was removed OUTSIDE the
+    product tree (a harness correction): no commit, no step, the product tree
+    must be clean and the current verification must describe it. The same
+    lineage is recorded; the budget rises the same way;
   * commits exactly the changed product paths with the operator and reason;
   * RE-MEASURES the tree (run-verify.sh; --verify-cmd overrides for tests);
   * appends a step {verdict: operator, adr, operator, reason, commit,
@@ -36,7 +41,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _loop_common import ensure_hermes_lib, git, load_deferred, load_issued, load_state, load_steps, product_paths_changed, save_deferred, save_steps, snapshot_reports  # noqa: E402
+from _loop_common import attempts_spent, candidate_sha256, ensure_hermes_lib, git, load_deferred, load_issued, load_state, load_steps, product_paths_changed, publish_loop_state, retry_key_for, save_deferred, save_steps, snapshot_reports  # noqa: E402
 
 ensure_hermes_lib()
 from planner import pipeline  # noqa: E402
@@ -52,12 +57,77 @@ def _refuse(msg: str) -> int:
     return 1
 
 
+def _append_clearances(steps: dict, cleared: list[str], args: argparse.Namespace, reasons: dict, *, kind: str, commit: str) -> None:
+    """The history is append-only. The rejected rows are the record of which
+    cards a cluster minted -- the live-board comparator expects every one of
+    them as a closed card, and dropping a row made three real cards foreign
+    on pilot v7 -- and the attempt count is what the record says the problem
+    spent. So a clearance appends a disposition that names BOTH identities
+    (cluster and retry key) and what was spent against the key, and the
+    budget resolver raises the limit from there (planner.budget)."""
+    for c in cleared:
+        key = retry_key_for(steps, c)
+        steps.setdefault("deferral_clearances", []).append({
+            "cluster": c, "retry_key": key, "kind": kind, "commit": commit,
+            "operator": args.operator, "reason": args.reason,
+            "at": _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "attempts": attempts_spent(steps, c, key),
+            "cards": [str(r.get("card") or "") for r in (steps.get("rejected") or [])
+                      if (str(r.get("cluster") or "") == c or str(r.get("retry_key") or "") == key) and r.get("card")],
+            "was_deferred_because": str(reasons.get(c) or ""),
+        })
+    for r in steps.get("rejected") or []:
+        if str((r or {}).get("cluster") or "") in set(cleared):
+            r["deferral_cleared_by"] = args.operator
+
+
+def _disposition_only(root: Path, args: argparse.Namespace, steps: dict, deferred: dict, open_clusters: list[str], changed: list[str]) -> int:
+    """A clearance whose cause was removed outside the product tree.
+
+    Nothing is committed and no step is appended: the product did not change,
+    so the last step still describes it. What is required instead is that the
+    CURRENT verification describes this tree (a deferral is lifted by a
+    measured tree, never by the intent to fix it) and that the measure is
+    known."""
+    if not args.clear_deferred:
+        return _refuse("--disposition-only records a --clear-deferred disposition; name the cluster")
+    if changed:
+        return _refuse("--disposition-only is for a cause removed outside the product tree, and the product tree has changes: %s" % ", ".join(changed[:3]))
+    state = load_state(root)
+    if not state or str(state.get("candidate_sha256") or "") != candidate_sha256(root):
+        return _refuse("the current verification does not describe this tree; run run-verify.sh --mode acceptance first")
+    if not (state.get("measure") or {}).get("known"):
+        return _refuse("the measure is not known: %s" % (state.get("measure") or {}).get("blocked"))
+    cleared = [c for c in open_clusters if c in set(args.clear_deferred)]
+    reasons = dict(deferred.get("reasons") or {})
+    deferred["clusters"] = [c for c in open_clusters if c not in set(cleared)]
+    deferred["reasons"] = {k: v for k, v in reasons.items() if k not in set(cleared)}
+    save_deferred(root, deferred)
+    head = str((steps.get("steps") or [{}])[-1].get("commit") or "")
+    _append_clearances(steps, cleared, args, reasons, kind="metadata-only", commit=head)
+    save_steps(root, steps)
+    rebuilt = build_worklist(root)
+    rec = pipeline.admit(root)
+    publish_loop_state(root, rebuilt)
+    print("OK: DISPOSITION %s cleared by %s (metadata only: no commit, no step; the last step %s still describes the tree) admission %s"
+          % (", ".join(cleared), args.operator, head[:12], rec.get("status")))
+    if rec.get("status") != "ADMITTED":
+        print("REFUSE: LOOP_ADMISSION %s: %s" % (rec["status"], "; ".join(rec.get("reasons") or [])[:300]), file=sys.stderr)
+        return 1
+    if args.no_mint:
+        return 0
+    from advance import _mint  # noqa: E402
+
+    return _mint(root, args.hermes)
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--root", required=True)
     ap.add_argument("--operator", required=True)
     ap.add_argument("--reason", required=True)
-    ap.add_argument("--clear-deferred", action="append", default=[], help="a cluster deferred to a human (ADR-002 max_attempts) whose cause this change removes: drop it from verification/loop/deferred.json and reset its attempt count, so the loop can issue it again; repeatable, and refused for a cluster that is not deferred")
+    ap.add_argument("--clear-deferred", action="append", default=[], help="a cluster deferred to a human (ADR-002 max_attempts) whose cause this change removes: drop it from verification/loop/deferred.json and append a disposition that raises its budget by what it had spent (attempts and cards are never deleted), so the loop can issue it again; repeatable, and refused for a cluster that is not deferred")
+    ap.add_argument("--disposition-only", action="store_true", help="record the --clear-deferred disposition WITHOUT a product change (the cause was a harness defect, since corrected): no commit and no step; refused when the product tree has changes or the current verification does not describe it")
     ap.add_argument("--author", default="", help="the seat that wrote the change, when it is not the operator (recorded, never inferred)")
     ap.add_argument("--reviewer", default="", help="the seat that independently reviewed the change; required, and distinct from --operator, when the change touches test sources (ADR-008)")
     ap.add_argument("--adr", default="", help="the accepted ADR(s) this change applies, e.g. ADR-004,ADR-005")
@@ -77,6 +147,8 @@ def main(argv: list[str] | None = None) -> int:
     if unknown:
         return _refuse("--clear-deferred names %s, which %s deferred; open deferrals: %s" % (", ".join(unknown), "is not" if len(unknown) == 1 else "are not", ", ".join(open_clusters) or "none"))
     changed = product_paths_changed(root)
+    if args.disposition_only:
+        return _disposition_only(root, args, steps, deferred, open_clusters, changed)
     if not changed:
         return _refuse("nothing changed in the product tree")
     # A test source states what the destination must do. An operator may change
@@ -110,6 +182,7 @@ def main(argv: list[str] | None = None) -> int:
     cleared: list[str] = []
     if args.clear_deferred:
         cleared = [c for c in open_clusters if c in set(args.clear_deferred)]
+        reasons = dict(deferred.get("reasons") or {})
         deferred["clusters"] = [c for c in open_clusters if c not in set(cleared)]
         deferred["reasons"] = {k: v for k, v in (deferred.get("reasons") or {}).items() if k not in set(cleared)}
         save_deferred(root, deferred)
@@ -119,18 +192,7 @@ def main(argv: list[str] | None = None) -> int:
         # cards foreign on pilot v7 -- and the attempt count is what the record
         # says the cluster spent. So clearing a deferral appends a disposition
         # and RAISES the budget (attempt_budget) instead of deleting either.
-        attempts = dict(steps.get("attempts") or {})
-        for c in cleared:
-            steps.setdefault("deferral_clearances", []).append({
-                "cluster": c, "operator": args.operator, "reason": args.reason,
-                "at": _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-                "attempts": int(attempts.get(c, 0)),
-                "cards": [str(r.get("card") or "") for r in (steps.get("rejected") or []) if str(r.get("cluster") or "") == c and r.get("card")],
-                "was_deferred_because": str((deferred.get("reasons") or {}).get(c) or ""),
-            })
-        for r in steps.get("rejected") or []:
-            if str((r or {}).get("cluster") or "") in set(cleared):
-                r["deferral_cleared_by"] = args.operator
+        _append_clearances(steps, cleared, args, reasons, kind="operator-step", commit=sha)
     steps["steps"].append({
         "cluster": "operator", "card": "", "attempt": 0, "verdict": "operator",
         "operator": args.operator, "author": args.author or args.operator, "reviewer": args.reviewer, "adr": args.adr, "reason": args.reason,
@@ -140,8 +202,9 @@ def main(argv: list[str] | None = None) -> int:
         "cleared_deferred": cleared,
     })
     save_steps(root, steps)
-    build_worklist(root)
+    rebuilt = build_worklist(root)
     rec = pipeline.admit(root)
+    publish_loop_state(root, rebuilt)
     print("OK: OPERATOR STEP %s (%d path(s), measure %s%s) admission %s" % (sha[:12], len(changed), state["measure"]["tuple"], "; deferral cleared: " + ", ".join(cleared) if cleared else "", rec.get("status")))
     if rec.get("status") != "ADMITTED":
         print("REFUSE: LOOP_ADMISSION %s: %s" % (rec["status"], "; ".join(rec.get("reasons") or [])[:300]), file=sys.stderr)
