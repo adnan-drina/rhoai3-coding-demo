@@ -259,6 +259,7 @@ FQN_RE = re.compile(r"\b(?:[a-z][A-Za-z0-9_]*\.){2,}[A-Z][A-Za-z0-9_]*\b")
 RUNTIME_CAUSES = (
     ("No implementation of interface", "missing-implementation"),
     ("UnableToParseMethodException", "underivable-query-method"),
+    ("was not part of the Quarkus index", "unindexed-type"),
     ("Unable to find datasource", "datasource-unconfigured"),
     ("is not configured", "datasource-unconfigured"),
     ("ConfigurationException", "configuration-invalid"),
@@ -304,7 +305,13 @@ def runtime_locus(text: str, root: Path | None) -> str:
 
     A message that names a type is pointing at that type. Guessing is not
     involved: the path is derived from the fully-qualified name and only used
-    when the file is really there."""
+    when the file is really there.
+
+    A failure that names NO file of this tree is left unlocated on purpose:
+    sending the worker to application.properties for a repository problem is
+    worse than saying plainly that the platform named nothing (pilot v7:
+    "void was not part of the Quarkus index" from the Spring Data processor,
+    which is about a repository method and mentions no type of ours)."""
     if root is None:
         return ""
     for fqn in FQN_RE.findall(text or ""):
@@ -354,9 +361,18 @@ def runtime_items(package: dict[str, Any] | None, boot: dict[str, Any] | None, r
         detail = str(doc.get("detail") or doc.get("failed_goal") or "")
         log = str(doc.get("log_tail") or "")
         kind, cluster_kind, locus = classify_runtime_failure(detail + "\n" + log)
+        unlocated = False
         named = runtime_locus(detail + "\n" + log, root)
         if named:
             locus, cluster_kind = named, "compile"
+        elif "threw an exception" in (detail + "\n" + log) and kind == "application-configuration":
+            # An augmentation failure that names no file of ours cannot be made
+            # into an actionable card: sending the worker to
+            # application.properties (or to pom.xml) for a repository problem
+            # is worse than saying plainly that nobody can locate it. It is
+            # reported as a blocker instead, and a human reads the message
+            # (pilot v7: "void was not part of the Quarkus index").
+            unlocated = True
         # The identity is WHERE and WHAT, never the wording: the gate, the kind,
         # the cause from a closed vocabulary, and the file. A tool that
         # rephrases the same failure at the same place is the same obligation,
@@ -370,7 +386,8 @@ def runtime_items(package: dict[str, Any] | None, boot: dict[str, Any] | None, r
         ident = sha256_bytes(canonical_bytes({"gate": gate, "kind": kind, "cause": cause, "locus": locus, "member": member}))[:16]
         out.append({
             "id": "rt:%s:%s" % (gate, ident), "source": "runtime", "gate": gate,
-            "kind": cluster_kind, "obligation": kind, "cause": cause, "member": member, "category": "mandatory",
+            "kind": cluster_kind, "obligation": kind, "cause": cause, "member": member,
+            "unlocated": unlocated, "category": "mandatory",
             "path": locus, "line": 0, "rule_id": "RUNTIME_%s" % kind.replace("-", "_").upper(),
             "message_sha256": sha256_bytes((detail + log).encode("utf-8")),
             "detail": detail[:200],
@@ -799,7 +816,12 @@ def build_worklist(root: Path, *, write: bool = True) -> dict[str, Any]:
     # destination that could not be built at all).
     package_doc = load_json(root / VERIFY_PACKAGE) if (root / VERIFY_PACKAGE).is_file() else None
     boot_doc = load_json(root / VERIFY_BOOT) if (root / VERIFY_BOOT).is_file() else None
-    rt = runtime_items(package_doc, boot_doc, root)
+    rt_all = runtime_items(package_doc, boot_doc, root)
+    rt = [i for i in rt_all if not i.get("unlocated")]
+    for i in rt_all:
+        if i.get("unlocated"):
+            blocked.append("the %s gate failed with a message that names no file of this tree, so no card can carry it: %s"
+                           % (i.get("gate"), str(i.get("detail") or i.get("message") or "")[:200]))
     runtime = runtime_state(package_doc, boot_doc)
     for b in runtime["blockers"]:
         blocked.append("runtime gate blocked by the environment: %s" % b)

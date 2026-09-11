@@ -243,6 +243,50 @@ def compile_advice(item: dict, root: Path, inventory: list[dict], renames: dict[
     return out
 
 
+DECL_RE = re.compile(r"^\s*(?:@[\w.]+(?:\([^)]*\))?\s+)*[\w.<>,\[\]\s]+?\s+(\w+)\s*\(", re.M)
+# the same structured patterns the work list uses, read here from the message so
+# the brief helps whatever produced the item
+MEMBER_RES = (re.compile(r"Method '([A-Za-z_][A-Za-z0-9_]*)' of repository"),
+              re.compile(r"method '([A-Za-z_][A-Za-z0-9_]*)' of class"))
+
+
+def runtime_advice(item: dict, root: Path) -> dict:
+    """Advice for a packaging or startup obligation.
+
+    The platform reports ONE member at a time, so a card that fixes only the
+    named one comes straight back with the next. The other members declared in
+    the same file are listed here: they are where the same cause is likely to
+    be waiting, and fixing them together is one verification instead of five
+    (measured on pilot v7, where a repository's save, delete, findById and
+    findAll each cost a full cycle)."""
+    out = {
+        "description": "the destination did not build or did not start; repair the cause the platform named, at the file it named",
+        "message": str(item.get("message") or item.get("detail") or ""),
+        "cause": str(item.get("cause") or ""),
+        "member": str(item.get("member") or ""),
+        "links": ["https://quarkus.io/version/3.27/guides/spring-data-jpa", "https://quarkus.io/version/3.27/guides/maven-tooling"],
+    }
+    path = str(item.get("path") or "")
+    member = str(item.get("member") or "")
+    if not member:
+        blob = "%s\n%s" % (item.get("message") or "", item.get("detail") or "")
+        for rx in MEMBER_RES:
+            m = rx.search(blob)
+            if m:
+                member = m.group(1)
+                out["member"] = member
+                break
+    if member and path.endswith(".java"):
+        f = root / path
+        if f.is_file():
+            others = sorted({m for m in DECL_RE.findall(f.read_text(encoding="utf-8", errors="replace")) if m != member})
+            if others:
+                out["siblings"] = others
+                out["sibling_note"] = ("the platform names one member at a time; %s declares %s as well, and the same cause is likely to apply to them. "
+                                       "Repair them together: each one left costs another full verification." % (path.rsplit("/", 1)[-1], ", ".join(others)))
+    return out
+
+
 def config_advice(item: dict, root: Path, rules: dict, cat: dict) -> dict:
     """The property line the incident points at, the incident variables, and the
     catalog's documented mapping for that key (properties / property_prefixes)."""
@@ -374,6 +418,8 @@ def enrich(items: list[dict], root: Path, cluster: dict) -> list[dict]:
             cfg = config_advice(it, root, rules, cat)
             if cfg:
                 row["config"] = cfg
+        if it.get("source") == "runtime":
+            row["advice"] = runtime_advice(it, root)
         if it.get("rule_id") == "BUILD_UNRESOLVABLE":
             # the resolver's own words; nothing else is measurable until Maven resolves the pom
             row["advice"] = {"description": "Maven cannot resolve the pom: fix the named coordinate (a BOM-managed artifact needs no version; an artifact the BOM does not manage must not be added under an old name)", "message": str(it.get("message") or it.get("detail") or ""), "links": ["https://quarkus.io/guides/maven-tooling"]}

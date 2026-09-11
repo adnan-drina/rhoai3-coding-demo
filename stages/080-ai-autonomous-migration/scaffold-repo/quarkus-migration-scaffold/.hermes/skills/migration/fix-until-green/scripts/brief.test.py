@@ -28,7 +28,37 @@ def _fail(msg: str) -> int:
     return 1
 
 
+def _runtime_advice_case() -> int:
+    """A packaging obligation names one member; the brief names the rest."""
+    import importlib.util
+    import tempfile
+    spec = importlib.util.spec_from_file_location("brief_mod", HERE / "brief.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)  # type: ignore[union-attr]
+    with tempfile.TemporaryDirectory(prefix="rtadv-") as td:
+        root = Path(td)
+        f = root / "src" / "main" / "java" / "a" / "UserRepository.java"
+        f.parent.mkdir(parents=True)
+        f.write_text("package a;\npublic interface UserRepository {\n"
+                     "    void save(User u);\n    void delete(User u);\n    User findById(int id);\n}\n", encoding="utf-8")
+        item = {"source": "runtime", "gate": "package", "cause": "underivable-query-method", "member": "save",
+                "path": "src/main/java/a/UserRepository.java", "message": "Method 'save' cannot be parsed"}
+        adv = mod.runtime_advice(item, root)
+        if adv.get("siblings") != ["delete", "findById"]:
+            return _fail("the brief must name the other declared members: %s" % adv.get("siblings"))
+        if "another full verification" not in adv.get("sibling_note", ""):
+            return _fail("and say why fixing them together matters: %s" % adv.get("sibling_note"))
+        bare = mod.runtime_advice({"source": "runtime", "gate": "boot", "cause": "datasource-unconfigured",
+                                   "path": "src/main/resources/application.properties", "message": "x"}, root)
+        if bare.get("siblings"):
+            return _fail("a failure that names no member has no siblings to name: %s" % bare)
+    return 0
+
+
 def main() -> int:
+    if _runtime_advice_case():
+        return 1
+
     with tempfile.TemporaryDirectory() as td:
         root = Path(td)
         cat_src = GOLDEN / ".hermes" / "planning" / "catalogs" / "compat-mapping.json"
@@ -148,7 +178,7 @@ def main() -> int:
         c4 = rows[0].get("config") or {}
         if c4.get("profile") != "hsqldb" or [k["key"] for k in c4.get("spring_keys") or []] != ["spring.jpa.database", "spring.datasource.username"] or c4["spring_keys"][1]["to"] != "quarkus.datasource.username":
             return _fail("a file-level profile incident must name the profile and the remaining Spring keys with their mappings: %s" % c4)
-    print("OK: brief enrichment (pom unmanaged→managed; compile: inventory hit / present flag / Jakarta rename / reference file; config: line, key, variables, key+value mapping, prefix expansion)")
+    print("OK: brief enrichment (pom unmanaged→managed; compile: inventory hit / present flag / Jakarta rename / reference file; config: line, key, variables, key+value mapping, prefix expansion; runtime: the cause, the member, and the siblings likely to carry it)")
     return 0
 
 

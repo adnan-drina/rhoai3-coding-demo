@@ -51,6 +51,10 @@ def _runtime_identity_case() -> int:
     m3, _ = ident("[error] Build step Z#build threw an exception: io.quarkus.spring.data.deployment.UnableToParseMethodException: Method 'save' of repository 'x.Y' cannot be parsed (round 2)")
     if m1 != m3:
         return _fail("the same method, reported around different words, is one obligation")
+    # a failure that names no file of this tree cannot be a card
+    un = runtime_items({"ran": True, "rc": 1, "detail": "Build step P#build threw an exception: java.lang.IllegalStateException: void was not part of the Quarkus index", "log_tail": ""}, None, None)
+    if len(un) != 1 or not un[0].get("unlocated") or un[0]["cause"] != "unindexed-type":
+        return _fail("an unlocatable augmentation failure is marked and classified: %s" % un)
     d, cd = ident("something no signature predicted")
     e, ce = ident("something else no signature predicted")
     if cd != "unclassified" or d != e:

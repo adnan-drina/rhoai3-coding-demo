@@ -810,6 +810,9 @@ check "080 a runtime obligation's cause comes from a closed vocabulary, so an un
 check "080 a failure that names the member it could not handle makes that member part of the obligation" \
   "cd '${SCAFFOLD_080}' && python3 -c \"import sys; sys.path.insert(0,'.hermes/lib'); from planner.worklist import runtime_member; print('%s|%s' % (runtime_member(chr(34)+'Method '+chr(39)+'save'+chr(39)+' of repository x.Y'+chr(34)), runtime_member('nothing named here')))\"" \
   "save|"
+check "080 the brief names the members likely to carry the same cause, so one card is one verification" \
+  "grep -q -F 'sibling_note' '${SCAFFOLD_SKILLS}/migration/fix-until-green/scripts/brief.py' && python3 '${SCAFFOLD_SKILLS}/migration/fix-until-green/scripts/brief.test.py' >/dev/null && echo 1 || echo 0" \
+  "1"
 check "080 acceptance is phase-aware: a gate repair with an unchanged measure is accepted, a regression is not" \
   "cd '${SCAFFOLD_080}' && python3 -c \"import sys; sys.path.insert(0,'.hermes/lib'); from planner.worklist import progress; m={'known':True,'tuple':[0,0,0]}; w={'known':True,'tuple':[0,1,0]}; f={'package':{'ran':True,'rc':1}}; t={'package':{'ran':True,'rc':0}}; print('%s %s %s' % (progress(m,m,set(),set(),gate='package',prev_runtime=f,cur_runtime=t)[0], progress(m,m,set(),set())[0], progress(m,w,set(),set(),gate='package',prev_runtime=f,cur_runtime=t)[0]))\"" \
   "True False False"
