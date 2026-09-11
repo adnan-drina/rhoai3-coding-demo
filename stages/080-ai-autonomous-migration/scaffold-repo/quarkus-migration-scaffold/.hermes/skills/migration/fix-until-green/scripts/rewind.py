@@ -189,6 +189,9 @@ def main(argv: list[str] | None = None) -> int:
     steps["steps"] = recorded[: args.to_step + 1]
     steps["rejected"] = rejected
     steps["attempts"] = {}
+    for row in steps.get("pending") or []:
+        if isinstance(row, dict) and not row.get("cleared"):
+            row["rewound"] = True
     steps.setdefault("rewinds", []).append(entry)
     save_steps(root, steps)
     save_deferred(root, {"schema": "rhoai3.loop-deferred/v1", "clusters": [], "reasons": {}})

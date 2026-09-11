@@ -51,6 +51,29 @@ def _runtime_identity_case() -> int:
     m3, _ = ident("[error] Build step Z#build threw an exception: io.quarkus.spring.data.deployment.UnableToParseMethodException: Method 'save' of repository 'x.Y' cannot be parsed (round 2)")
     if m1 != m3:
         return _fail("the same method, reported around different words, is one obligation")
+    # a platform that quotes the offending value has named the file, when
+    # exactly one source carries that literal
+    import tempfile
+    with tempfile.TemporaryDirectory(prefix="locus-") as td:
+        r = Path(td)
+        f = r / "src" / "main" / "java" / "a" / "RootRestController.java"
+        f.parent.mkdir(parents=True)
+        f.write_text('@Value("#{servletContext.contextPath}")\nString path;\n', encoding="utf-8")
+        msg = ("Build step X#build threw an exception: java.lang.IllegalArgumentException: SpEL expressions are not "
+               "supported when using org.springframework.beans.factory.annotation.Value. Offending value is "
+               "'@Value(\"#{servletContext.contextPath}\")'")
+        items = runtime_items({"ran": True, "rc": 1, "detail": "Failed to execute goal x", "log_tail": msg}, None, r)
+        if len(items) != 1 or items[0]["path"] != "src/main/java/a/RootRestController.java":
+            return _fail("a uniquely quoted literal must locate the file: %s" % [(i.get("path"), i.get("cause")) for i in items])
+        if items[0]["cause"] != "unsupported-spel":
+            return _fail("and the cause comes from the vocabulary: %s" % items[0]["cause"])
+        # two files carrying it is not a location
+        g = r / "src" / "main" / "java" / "a" / "Other.java"
+        g.write_text('@Value("#{servletContext.contextPath}")\nString also;\n', encoding="utf-8")
+        items = runtime_items({"ran": True, "rc": 1, "detail": "Failed to execute goal x", "log_tail": msg}, None, r)
+        if not items[0].get("unlocated"):
+            return _fail("a literal in two files locates nothing: %s" % items[0].get("path"))
+
     # a failure that names no file of this tree cannot be a card
     un = runtime_items({"ran": True, "rc": 1, "detail": "Build step P#build threw an exception: java.lang.IllegalStateException: void was not part of the Quarkus index", "log_tail": ""}, None, None)
     if len(un) != 1 or not un[0].get("unlocated") or un[0]["cause"] != "unindexed-type":

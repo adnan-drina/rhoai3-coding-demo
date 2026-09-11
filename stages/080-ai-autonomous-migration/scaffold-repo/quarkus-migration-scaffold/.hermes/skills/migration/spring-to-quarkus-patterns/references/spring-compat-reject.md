@@ -7,14 +7,18 @@
 **Sources:** Operator E-20260813T162429Z · Architect E-20260813T164142Z · AGENTS "Native Quarkus only"
 **Input (cite only):** Red Hat Developer Quarkus–Spring compatibility cheat sheet (PDF; copyrighted) — paraphrase + locus, never paste.
 
-This file is **not** a migration how-to. It exists so a worker who reaches for
-`quarkus-spring-*` knows **what the layer actually does** and **why this harness
-forbids it**. Native form lives in sibling References.
+This file is **not** a migration how-to. ADR-001 put the destination on the
+Spring-compatibility path; `compat-mapping.json` is the allow-list. Read the
+mechanism notes as **what the shim does not provide**. Native form for
+features the shim omits lives in sibling References (for persistence,
+`references/spring-data-jpa.md` — not a Panache rewrite).
 
 ## Standing invariant
 
-Destination `pom.xml` must not declare `quarkus-spring-*`. Claim accuracy refuses
-a completion summary that names "Quarkus" while the diff still carries a compat GAV.
+Destination `pom.xml` may declare only the `quarkus-spring-*` extensions the
+catalog maps. Adding an unmapped compat GAV, or claiming full Spring runtime
+semantics from the shim, is still a defect. Claim accuracy refuses a
+completion summary that names a technology the diff does not show.
 
 ## Mechanism
 
@@ -34,7 +38,7 @@ pass while behaviour diverges from evidence.
 | rej-web | `quarkus-spring-web` | Reads MVC-ish annotations into Quarkus REST | Advice/path/filter semantics are not Spring MVC |
 | rej-props | `quarkus-spring-boot-properties` | Accepts some Boot property shapes | Dual config trees hide which source won |
 | rej-sec | Spring Security compat | Maps a subset into Quarkus security | Empty config shells pass compile; fail 401/403 proof |
-| rej-data | `quarkus-spring-data-jpa` | Subset of Spring Data on Hibernate/Panache | Unsupported APIs fail late; "Spring Data" claim without Spring semantics |
+| rej-data | `quarkus-spring-data-jpa` **unsupported subset** | Build-time generation of a **subset** of Spring Data | Keep ADR-004; do not use QueryDSL / QBE / `JpaSpecificationExecutor` / native `@Query` / `Future` returns / `@Lock`. Those fail at augment (`UnableToParseMethodException`) or at invoke. Playbook: `spring-data-jpa.md` |
 | rej-data-rest | spring-data-rest compat | Auto-exported repository HTTP | REST contract must come from evidence, not auto-export |
 | rej-cache | spring-cache compat | Annotation cache names → Quarkus cache | Keys/TTL not proven by annotation presence |
 | rej-sched | spring-scheduled compat | `@Scheduled`-style → Quarkus scheduler | Overlap rules are Quarkus scheduler |
@@ -42,20 +46,22 @@ pass while behaviour diverges from evidence.
 
 ### Unsupported-subset trap (Data JPA — cite only)
 
-Cheat sheet Data JPA unsupported catalogue (pp.4–5 locus, paraphrased categories):
-Query-by-Example executor methods, QueryDSL, customizing the base repository type,
-`Future`-typed returns, certain `@Query` native/named forms. Prefer native cards
-in `persistence.md`.
+Official guide + cheat sheet Data JPA unsupported catalogue (paraphrased):
+Query-by-Example executor methods, QueryDSL, `JpaSpecificationExecutor`,
+customizing the base repository type, `Future`-typed returns, native/named
+`@Query`, `@Lock`. Stay on `quarkus-spring-data-jpa` for the supported subset
+(`references/spring-data-jpa.md`); do not "fix" those gaps by adding Panache.
 
 ## Authorize / Forbid
 
 | Authorize | Forbid |
 |-----------|--------|
-| Citing this file when refusing a compat GAV | Adding `quarkus-spring-*` "to unblock" |
-| Pointing to sibling refs for native form | Treating the cheat sheet as IMPLEMENT how-to |
-| Blocking Done text that requires Spring annotations on destination | Verbatim paste of cheat-sheet prose/code; specimen literals (R-SK.5) |
+| Citing this file when refusing an **unmapped** compat GAV or an unsupported Data JPA API | Adding an unmapped `quarkus-spring-*` "to unblock", or rewriting ADR-004 repositories as Panache |
+| Pointing to `spring-data-jpa.md` for the supported subset | Treating the cheat sheet as IMPLEMENT how-to |
+| Blocking Done text that claims full Spring runtime semantics | Verbatim paste of cheat-sheet prose/code; specimen literals (R-SK.5) |
 
 ## Agent text
 
-If the next step is "add `quarkus-spring-*`," stop. Cite this file in the BLOCK /
-Needs note; do not essay classpath architecture.
+If the next step is "add an unmapped `quarkus-spring-*`" or "replace Spring Data
+with Panache on this specimen," stop. Cite this file and ADR-004; do not essay
+classpath architecture.

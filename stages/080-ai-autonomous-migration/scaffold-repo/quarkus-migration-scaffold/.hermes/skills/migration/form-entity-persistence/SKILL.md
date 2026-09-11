@@ -1,11 +1,11 @@
 ---
 name: form-entity-persistence
-description: Before authoring JPA entity / persistence-form stories or M3 PROVISION_DATABASE — choose MappedSuperclass vs Inheritance, Panache vs EntityManager, and copy k8s-templates postgres into k8s/ only when harvest database.needed is true; use when mapping form or datasource provisioning is the story concern. Not for datasource profile properties (configure-quarkus-profiles) and not for a cut-time needsDatabase checkbox.
+description: Before authoring JPA entity / persistence-form stories or M3 PROVISION_DATABASE — choose MappedSuperclass vs Inheritance; this specimen keeps Spring Data JPA (ADR-004) and uses EntityManager only when that subset cannot express the query; copy k8s-templates postgres into k8s/ only when harvest database.needed is true. Not for datasource profile properties (configure-quarkus-profiles) and not for a cut-time needsDatabase checkbox.
 license: Apache-2.0
 compatibility: Linux seat; Jakarta Persistence; Quarkus Hibernate ORM
 metadata:
   author: rhoai3-harness-team
-  version: "1.0.0"
+  version: "1.1.0"
   hermes:
     tags:
     - migration
@@ -32,7 +32,9 @@ Deep notes: `references/entity-mapping.md`, `references/panache-vs-em.md`,
   `k8s-templates/app-datasource-env.yaml` into `k8s/app.yaml` **iff**
   `evidence/required-extensions.json` `database.needed` is true. K4
   mints this story; do not invent postgres for a greeting harvest.
-- Choosing active-record Panache vs repository / `EntityManager`.
+- Choosing entity mapping form. Repositories on this specimen stay Spring
+  Data JPA (ADR-004); `EntityManager` only when the supported subset cannot
+  express the query.
 - Before stamping query-shaped exits on an entity-only body —
   `derive-story-oracles` first.
 - **Not** for datasource/profile properties — `configure-quarkus-profiles`.
@@ -50,9 +52,10 @@ Deep notes: `references/entity-mapping.md`, `references/panache-vs-em.md`,
    (+ strategy trade-offs in the same reference).
 3. Bidirectional associations: set the **owning** side (`@JoinColumn`);
    `mappedBy` inverse alone does not persist.
-4. Choose Panache vs `EntityManager` via `references/panache-vs-em.md`
-   (hierarchy/aggregate/test-doubles → repository/EM; simple CRUD → Panache
-   repo OK). Panache entities attach to **one** persistence unit only.
+4. Keep Spring Data JPA repositories (ADR-004). Reach for `@Inject EntityManager`
+   via `references/panache-vs-em.md` only when the supported subset cannot
+   express the query. Panache is not the default; Panache entities attach to
+   **one** persistence unit only.
 5. HQL/JPQL paths use **entity attribute names**, never column names
    (vendor-specific silent pass if column happens to match — not portable).
 6. Entity-only done criteria: prefer schema validate

@@ -42,11 +42,18 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--test-rc", type=int, default=None)
     ap.add_argument("--findings", default="")
     ap.add_argument("--run", default="", help="rhoai3.verify-run/v1 outcomes from run-verify.sh")
+    ap.add_argument("--mode", choices=("acceptance", "diagnostic"), default="", help="what this verification WAS; an unstated mode is treated as diagnostic and cannot promote")
     args = ap.parse_args(argv)
     root = Path(args.root).resolve()
     run = load_json(Path(args.run)) if args.run and Path(args.run).is_file() else {}
     run = dict(run) if isinstance(run, dict) else {}
     run.setdefault("schema", "rhoai3.verify-run/v1")
+    # An unstated mode is NOT an acceptance pass. Everything else unknown in
+    # this harness ranks as not-clean -- an unrun gate, an absent surefire
+    # report, a skipped rescan -- and a run receipt that does not say it was a
+    # full pass must not be able to promote one. run-verify.sh records the mode
+    # it ran in; a caller that has no receipt states it with --mode.
+    run["mode"] = args.mode or str(run.get("mode") or "") or "diagnostic"
     run.setdefault("diagnostics", {"ran": False, "rc": None})
     run.setdefault("tests", {"ran": False, "rc": None})
     run.setdefault("rescan", {"ran": False, "rc": None})

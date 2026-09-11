@@ -42,6 +42,7 @@ M2_PRODUCER = "admit-migration-plan"
 # advance.py is the producer and a VERDICT step: its exit code is not the
 # grade (REVERTED / DEFERRED exit 1 by design); the grade is the loop record
 # (verification/loop/steps.json) naming this card with a verdict.
+# VERIFICATION_PENDING is not a complete-able verdict (kanban_block).
 M3_SKILL = "fix-until-green"
 # m4-verify: the source oracles come first (they are the only source of an
 # expected runtime value), the pre-verdict runner runs the pinned feeding

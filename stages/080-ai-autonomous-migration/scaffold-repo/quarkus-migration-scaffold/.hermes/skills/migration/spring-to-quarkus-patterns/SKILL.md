@@ -5,7 +5,7 @@ license: Apache-2.0
 compatibility: Linux seat; Python 3.11+
 metadata:
   author: rhoai3-harness-team
-  version: "1.4.1"
+  version: "1.5.0"
   hermes:
     tags:
     - migration
@@ -22,7 +22,8 @@ metadata:
   indicators, or Spring test slices.
 - When a Quarkus counterpart looks **missing** — no advice-class annotation, no
   injectable `JdbcTemplate` bean, no framework error-body type. Each has a card;
-  read it before declaring `dependency_wait` or a typed BLOCK.
+  read it before declaring `dependency_wait` or a typed BLOCK. JDBC
+  repositories are retired on this specimen (ADR-004).
 - When the answer is drifting into a classpath/architecture essay or a
   javadoc-only shell — the `*-anti-essay` overlays exist for exactly that:
   cite, then write.
@@ -55,7 +56,8 @@ new behaviour, weaken G-1…G-4, or replace free-primitives / MTA.
 | `references/rest-annotations.md` | JAX-RS / RESTEasy → `quarkus-rest` annotation map |
 | `references/exception-mapping.md` | Local/global exception handlers; the advice-class gotcha; legacy error-body shape |
 | `references/di-config.md` | Scopes, profiles, MapStruct (doctrine pending R-SKILL-F; do not mandate `componentModel=cdi`) |
-| `references/persistence.md` | Spring Data → Panache **or** EntityManager (decide before claim); deep form → skill `form-entity-persistence` |
+| `references/persistence.md` | Entity / tx / schema cards; this specimen's default is Spring Data JPA (ADR-004) |
+| `references/spring-data-jpa.md` | Supported subset, unsupported methods, one-repository batching; official Quarkus Spring Data JPA guide |
 | `references/transitive-supporting-types.md` | Partitioned DTO/mapper closure — supporting types decision (R-SKILL-A) |
 | `references/jdbc-anti-essay.md` | Raw `JdbcTemplate` on destination — write the Agroal/injection form, do not essay |
 | `references/testing.md` | `@QuarkusTest` / REST Assured vs Spring test slices; **§Failure / Import / Mock procedures** + golden REST fixture path |
@@ -100,8 +102,10 @@ This skill's write contract is consult-then-write. W6 bootstrap is a
    Still run `check-jdbc-deps-preflight.py` ahead of the first JDBC repository
    write when that path applies. Security deps land in the same story as the
    security write, not a follow-up.
-4. **Take the forced decisions before the claim**, not after: Panache repository
-   vs injected `EntityManager`; automatic `@Valid` vs manual validation;
+4. **Take the forced decisions before the claim**, not after: this specimen
+   keeps Spring Data JPA (ADR-004) inside the supported subset; reach for
+   `@Inject EntityManager` only when that subset cannot express the query.
+   Panache is not the default. Also: automatic `@Valid` vs manual validation;
    `@Liveness` vs `@Readiness`. Each card names the failure that follows the
    wrong pick.
 5. **Write one operand at a time** from checkpoint `next`, stamping after each
@@ -163,6 +167,7 @@ except the W6 bootstrap check:
   migrated from a legacy indicator; `/q/health/live` and `/q/health/ready` both
   resolve; a dependency-backed check reports DOWN under readiness.
 - **Claim accuracy:** only catalog-mapped `quarkus-spring-*` extensions in `pom.xml`, and every
-  technology named in the completion summary is visible in the diff — "Panache",
-  "Quarkus security" and "tests roll back" each require their types or
-  annotations to be present.
+  technology named in the completion summary is visible in the diff — "Panache"
+  (not the default here), "Quarkus security" and "tests roll back" each require
+  their types or annotations to be present. A "Spring Data" claim on this
+  specimen is the ADR-004 path (`quarkus-spring-data-jpa`), not a Panache rewrite.

@@ -28,6 +28,35 @@ def _fail(msg: str) -> int:
     return 1
 
 
+def _repository_inventory_case() -> int:
+    """A *Repository.java brief names every declared method and what it extends."""
+    import importlib.util
+    import tempfile
+    spec = importlib.util.spec_from_file_location("brief_mod", HERE / "brief.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)  # type: ignore[union-attr]
+    with tempfile.TemporaryDirectory(prefix="repoinv-") as td:
+        root = Path(td)
+        f = root / "src" / "main" / "java" / "a" / "UserRepository.java"
+        f.parent.mkdir(parents=True)
+        f.write_text("package a;\npublic interface UserRepository extends JpaRepository<User, Long> {\n"
+                     "    @Query(\"SELECT u FROM User u\")\n"
+                     "    List<User> findAll();\n"
+                     "    void save(User u);\n}\n", encoding="utf-8")
+        inv = mod.repository_inventory(root, "src/main/java/a/UserRepository.java")
+        names = {m["name"] for m in (inv or {}).get("methods") or []}
+        if inv is None or "JpaRepository" not in (inv.get("extends") or "") or names != {"findAll", "save"}:
+            return _fail("repository inventory must list extends + methods: %s" % inv)
+        finder = next(m for m in inv["methods"] if m["name"] == "findAll")
+        if not finder.get("query") or finder.get("modifying"):
+            return _fail("findAll must be marked @Query: %s" % finder)
+        if "one transformation" not in (inv.get("batch") or ""):
+            return _fail("inventory must carry the batching rule: %s" % inv.get("batch"))
+        if mod.repository_inventory(root, "src/main/java/a/ClinicService.java") is not None:
+            return _fail("non-repository paths have no inventory")
+    return 0
+
+
 def _runtime_advice_case() -> int:
     """A packaging obligation names one member; the brief names the rest."""
     import importlib.util
@@ -58,6 +87,19 @@ def _runtime_advice_case() -> int:
             return _fail("the brief must show where the member is declared elsewhere, with its annotations: %s" % refs)
         if "already present in this destination" not in adv.get("elsewhere_note", ""):
             return _fail("and say that it is not something to invent: %s" % adv.get("elsewhere_note"))
+        # the query the destination cannot see, because a retirement removed it
+        frozen = root / ".derived" / "frozen-input" / "src" / "main" / "java" / "a" / "jpa" / "JpaUserRepositoryImpl.java"
+        frozen.parent.mkdir(parents=True, exist_ok=True)
+        frozen.write_text("package a.jpa;\npublic class JpaUserRepositoryImpl {\n"
+                          "    public void save(User u) {\n"
+                          "        this.em.createQuery(\"SELECT u FROM User u ORDER BY u.id\");\n    }\n}\n", encoding="utf-8")
+        adv = mod.runtime_advice(item, root)
+        fi = adv.get("frozen_implementations") or []
+        if not fi or fi[0]["query"] != "SELECT u FROM User u ORDER BY u.id":
+            return _fail("the brief must carry the frozen implementation and its query: %s" % fi)
+        if "rather than writing one" not in adv.get("frozen_note", ""):
+            return _fail("and say why it is there: %s" % adv.get("frozen_note"))
+
         # a write must not be "repaired" with a bare @Query
         if "not a repair for it" not in (adv.get("caution") or ""):
             return _fail("a write needs the caution: %s" % adv.get("caution"))
@@ -74,6 +116,8 @@ def _runtime_advice_case() -> int:
 
 
 def main() -> int:
+    if _repository_inventory_case():
+        return 1
     if _runtime_advice_case():
         return 1
 

@@ -11,16 +11,20 @@ otherwise:
     (an edit after verification is refused and reverted);
   * every changed product path is inside the issued cluster's write set
     (tests are never in a write set);
-  * the measure strictly decreased with no new mandatory obligation.
+  * the measure strictly decreased with no new mandatory obligation;
+  * verification ran in acceptance mode (diagnostic cannot promote or reject).
 
 Accept → commit exactly the changed paths, snapshot the tool reports,
 rebuild the work list, re-seal admission, and (unless --no-mint) mint the
 next card. Reject → restore HEAD in index and working tree, restore the
 accepted reports, count the attempt, re-seal; at the ADR threshold the
 cluster is deferred and the loop STOPS (pilot rule): no next card.
+Unknown / inconclusive measure → VERIFICATION_PENDING: retain the
+candidate files, restore the accepted tree, do not count an attempt, do
+not mint; terminator is kanban_block kind=needs_input.
 
 --baseline records step 0 (the bootstrapped tree) without a comparison.
-Exit 0 accepted; 1 reverted / deferred / refused; 2 usage or no state.
+Exit 0 accepted; 1 reverted / deferred / pending / refused; 2 usage or no state.
 """
 from __future__ import annotations
 
@@ -31,14 +35,18 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _loop_common import attempt_budget, candidate_sha256, query_annotated_writes, catalog_property_mappings, ensure_hermes_lib, git, load_cards, load_deferred, load_issued, load_state, load_steps, product_paths_changed, profile_keys_lost_in_tree, restore_reports, revert_paths, save_deferred, save_steps, snapshot_reports  # noqa: E402
+from _loop_common import attempt_budget, candidate_sha256, classify_inconclusive, clear_pending, query_annotated_writes, catalog_property_mappings, ensure_hermes_lib, git, load_deferred, load_issued, load_state, load_steps, pending_for, product_paths_changed, profile_keys_lost_in_tree, restore_reports, revert_paths, save_deferred, save_pending_candidate, save_steps, snapshot_reports  # noqa: E402
 
 ensure_hermes_lib()
 from planner import pipeline  # noqa: E402
 from planner.canonical import digest, load_json  # noqa: E402
 from planner.decisions import load_decisions, max_attempts  # noqa: E402
-from planner.paths import EVIDENCE_BUNDLE, LOOP_ACCEPTED, LOOP_ISSUED, MTA_RESCAN_FINDINGS, WORKLIST  # noqa: E402
+from planner.paths import EVIDENCE_BUNDLE, LOOP_ACCEPTED, LOOP_ISSUED, MTA_RESCAN_FINDINGS, VERIFY_RUN, WORKLIST  # noqa: E402
 from planner.worklist import build_worklist, gate_items, incidents_from_findings, item_ids, obligation_keys, progress  # noqa: E402
+
+
+def _verify_meta(run: dict) -> dict:
+    return {"mode": str(run.get("mode") or "acceptance"), "stages_ms": run.get("stages_ms") or {}, "total_ms": run.get("total_ms")}
 
 
 def _commit(root: Path, paths: list[str], message: str) -> str:
@@ -54,12 +62,14 @@ def _commit(root: Path, paths: list[str], message: str) -> str:
 def _reject(root: Path, steps: dict, cluster: str, card: str, cur: dict, reason: str, changed: list[str], *, mint: bool = False, hermes: str = "hermes") -> int:
     """Discard the candidate, count the attempt, re-seal and re-issue the
     cluster (K4 mints the next attempt); defer + stop at the threshold."""
+    verify = _verify_meta(load_json(root / VERIFY_RUN) if (root / VERIFY_RUN).is_file() else {})
+    clear_pending(steps, cluster, why="rejected")
     revert_paths(root, changed)
     restore_reports(root)
     attempts = dict(steps.get("attempts") or {})
     attempts[cluster] = int(attempts.get(cluster, 0)) + 1
     steps["attempts"] = attempts
-    steps.setdefault("rejected", []).append({"cluster": cluster, "card": card, "measure": cur.get("measure"), "reason": reason, "changed": changed})
+    steps.setdefault("rejected", []).append({"cluster": cluster, "card": card, "measure": cur.get("measure"), "reason": reason, "changed": changed, "verify": verify})
     save_steps(root, steps)
     if (root / LOOP_ISSUED).is_file():
         (root / LOOP_ISSUED).unlink()
@@ -84,6 +94,45 @@ def _reject(root: Path, steps: dict, cluster: str, card: str, cur: dict, reason:
     return 1
 
 
+def _pending(root: Path, steps: dict, cluster: str, card: str, cur: dict, reason: str, changed: list[str], on_disk: str) -> int:
+    """Retain an unaccepted candidate when verification cannot conclude.
+
+    Does not count an implementation attempt. Restores the accepted tree so
+    Operator steps can land. Keeps issued.json so the same card can restore
+    the candidate and re-verify; K4 must not mint a new attempt (pending
+    blocks next_card). Terminator: kanban_block kind=needs_input naming the cluster."""
+    run = load_json(root / VERIFY_RUN) if (root / VERIFY_RUN).is_file() else {}
+    cause = classify_inconclusive(cur.get("measure") or {}, run if isinstance(run, dict) else {})
+    clear_pending(steps, cluster, why="replaced")
+    issued = load_issued(root)
+    row = save_pending_candidate(
+        root,
+        cluster=cluster,
+        card=card,
+        changed=changed,
+        candidate_sha256_value=on_disk,
+        measure=cur.get("measure") or {},
+        reason=reason,
+        cause=cause,
+        run=run if isinstance(run, dict) else {},
+        issued=issued if isinstance(issued, dict) else {},
+    )
+    revert_paths(root, changed)
+    restore_reports(root)
+    steps.setdefault("pending", []).append(row)
+    save_steps(root, steps)
+    build_worklist(root)
+    pipeline.admit(root)
+    print(
+        "VERIFICATION_PENDING %s cause=%s card=%s: %s → retain the candidate; do not re-implement. "
+        "When the prerequisite changes: python3 .hermes/skills/migration/fix-until-green/scripts/restore-pending.py --root . --cluster %s "
+        "then bash run-verify.sh --mode acceptance and advance.py. Terminator: kanban_block kind=needs_input naming the cluster."
+        % (cluster, cause, card, reason, cluster),
+        file=sys.stderr,
+    )
+    return 1
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--root", required=True)
@@ -98,25 +147,35 @@ def main(argv: list[str] | None = None) -> int:
     if state is None:
         print("FAIL: LOOP_NOT_VERIFIED run run-verify.sh first", file=sys.stderr)
         return 2
+    steps = load_steps(root)
+    on_disk = candidate_sha256(root)
+    pending_row = pending_for(steps, args.cluster) if (not args.baseline and args.cluster) else None
+    last_sha = str((steps["steps"][-1].get("candidate_sha256") if steps.get("steps") else "") or "")
+    if pending_row and last_sha and on_disk == last_sha:
+        print("REFUSE: LOOP_PENDING_NOT_RESTORED a VERIFICATION_PENDING candidate is retained for %s; restore-pending.py then run-verify.sh --mode acceptance (do not count an attempt)" % args.cluster, file=sys.stderr)
+        return 1
     cur = load_json(root / WORKLIST)
     if digest(cur) != state.get("worklist_sha256"):
         print("FAIL: LOOP_STALE_STATE work list changed after verify", file=sys.stderr)
         return 2
-    on_disk = candidate_sha256(root)
+    run = load_json(root / VERIFY_RUN) if (root / VERIFY_RUN).is_file() else {}
+    if not args.baseline and isinstance(run, dict) and str(run.get("mode") or "acceptance") == "diagnostic":
+        print("REFUSE: LOOP_DIAGNOSTIC_NOT_ACCEPTANCE diagnostic mode cannot promote or reject; run run-verify.sh --mode acceptance on this candidate", file=sys.stderr)
+        return 1
     if on_disk != state.get("candidate_sha256"):
         # the tree changed after verification: the measure no longer describes it
         if args.baseline:
             print("FAIL: LOOP_CANDIDATE_CHANGED tree edited after run-verify.sh; run it again", file=sys.stderr)
             return 2
         changed = product_paths_changed(root)
-        steps = load_steps(root)
         print("REFUSE: LOOP_CANDIDATE_CHANGED product tree edited after verification (verified %s, on disk %s); nothing promoted" % (str(state.get("candidate_sha256"))[:12], on_disk[:12]), file=sys.stderr)
+        if pending_row:
+            return 1
         if steps["steps"] and args.cluster:
             _reject(root, steps, args.cluster, args.card, cur, "tree edited after verification", changed)
         else:
             revert_paths(root, changed)
         return 1
-    steps = load_steps(root)
     if args.baseline:
         if steps["steps"]:
             print("OK: baseline already recorded (%s)" % steps["steps"][0].get("commit", "")[:12])
@@ -209,10 +268,14 @@ def main(argv: list[str] | None = None) -> int:
                           prev_gate_items=set(str(i) for i in (issued.get("gate_items") or [])),
                           cur_gate_items=gate_items(cur, gate))
     if not ok:
+        if not (cur.get("measure") or {}).get("known"):
+            return _pending(root, steps, args.cluster, args.card, cur, reason, changed, on_disk)
+        clear_pending(steps, args.cluster, why="rejected")
         return _reject(root, steps, args.cluster, args.card, cur, reason, changed, mint=not args.no_mint, hermes=args.hermes)
+    clear_pending(steps, args.cluster, why="accepted")
     sha = _commit(root, changed, "fix-until-green: %s attempt %s %s" % (args.cluster, issued.get("attempt"), cur["measure"]["tuple"]))
     snapshot_reports(root)
-    steps["steps"].append({"cluster": args.cluster, "card": args.card, "attempt": issued.get("attempt"), "idempotency_key": issued.get("idempotency_key"), "commit": sha, "candidate_sha256": on_disk, "measure": cur["measure"], "item_ids": sorted(item_ids(cur)), "obligation_keys": sorted(obligation_keys(cur)), "worklist_sha256": digest(cur), "changed": changed, "verdict": "accepted", "reason": reason, "runtime": cur.get("runtime") or {}, "gate": str(issued.get("gate") or "")})
+    steps["steps"].append({"cluster": args.cluster, "card": args.card, "attempt": issued.get("attempt"), "idempotency_key": issued.get("idempotency_key"), "commit": sha, "candidate_sha256": on_disk, "measure": cur["measure"], "item_ids": sorted(item_ids(cur)), "obligation_keys": sorted(obligation_keys(cur)), "worklist_sha256": digest(cur), "changed": changed, "verdict": "accepted", "reason": reason, "runtime": cur.get("runtime") or {}, "gate": str(issued.get("gate") or ""), "verify": _verify_meta(run if isinstance(run, dict) else {})})
     save_steps(root, steps)
     (root / LOOP_ISSUED).unlink()
     print("OK: ACCEPTED %s (%s) commit %s" % (args.cluster, reason, sha[:12]))

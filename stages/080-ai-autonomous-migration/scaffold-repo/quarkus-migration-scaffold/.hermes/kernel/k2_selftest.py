@@ -1083,6 +1083,24 @@ def main() -> int:
             fails += 1
         else:
             print("ok impl_complete_loop_unrecorded_card")
+        (dest / "verification" / "loop" / "steps.json").write_text(
+            json.dumps({"schema": "rhoai3.loop-steps/v1", "steps": [{"card": "", "cluster": "bootstrap"}], "pending": [{"card": "t_pend", "cluster": "c:1", "cause": "harness"}], "rejected": [], "attempts": {}}),
+            encoding="utf-8",
+        )
+        (loop_root / "kanban" / "logs" / "t_pend.log").write_text(
+            "Query: work kanban task t_pend\n"
+            "  ┊ 💻 $         python3 .hermes/skills/migration/fix-until-green/scripts/brief.py --root .  0.3s\n"
+            "  ┊ 💻 $         bash .hermes/skills/migration/fix-until-green/scripts/run-verify.sh --root .  70.4s\n"
+            "  ┊ 💻 $         python3 .hermes/skills/migration/fix-until-green/scripts/advance.py --root . --cluster c:1 --card t_pend  7.4s [exit 1]\n"
+            "VERIFICATION_PENDING c:1 cause=harness card=t_pend: tests unknown\n",
+            encoding="utf-8",
+        )
+        r = run("", roots, cwd=cwd, tool="kanban_complete", extra_env={"HERMES_PROFILE": "implementer", "HERMES_HOME": str(loop_home), "HERMES_KANBAN_TASK": "t_pend", "K2_BOUND_GATE_EXIT": "0"})
+        if r.get("action") != "block":
+            print("FAIL impl_complete_loop_pending_refused", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok impl_complete_loop_pending_refused")
         # v7 item 8: inline python is refused on the issued loop card only; scripts the road names stay allowed
         (dest / "verification" / "loop" / "issued.json").write_text(json.dumps({"schema": "rhoai3.loop-issued/v1", "task_id": "t_loopcard", "cluster": "c:1"}), encoding="utf-8")
         loop_card_env = {"HERMES_PROFILE": "implementer", "HERMES_KANBAN_TASK": "t_loopcard", "K2_BOUND_GATE_EXIT": "0"}

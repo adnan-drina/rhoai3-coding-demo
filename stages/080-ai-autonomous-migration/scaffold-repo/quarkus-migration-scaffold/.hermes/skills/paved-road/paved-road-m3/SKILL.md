@@ -11,7 +11,7 @@ license: Apache-2.0
 compatibility: Linux seat; Hermes v0.20.5 Kanban; Python 3.11+
 metadata:
   author: rhoai3-harness-team
-  version: "1.0.0"
+  version: "1.1.0"
   hermes:
     tags:
     - paved-road
@@ -59,17 +59,24 @@ rule to `kanban_complete`.
    No inline python (`python3 -c`, `python3 -`) on a loop card: K2 refuses
    it. Everything it would compute is already in the brief.
 4. `bash .hermes/skills/migration/fix-until-green/scripts/run-verify.sh --root .`
-   — the real tools. exit 1 here is a tool failure: re-run it; if it stays
-   red, `kanban_block` kind=needs_input naming the tool.
+   — the real tools. Default is `--mode acceptance` (tests, MTA, packaging/startup
+   when green). `--mode diagnostic` is classpath + compiler only and **cannot**
+   feed advance.py. exit 1 here is a tool failure: re-run it; if it stays
+   red, `kanban_block` kind=needs_input naming the tool. Do not run extra
+   `mvn compile`/`test`/`verify` beside this script.
 5. `python3 .hermes/skills/migration/fix-until-green/scripts/advance.py --root . --cluster <id> --card $HERMES_KANBAN_TASK`
    — the transaction decides. `OK: ACCEPTED` committed and minted the next
    card. `REVERTED` (exit 1) discarded the candidate and re-minted this
-   cluster as its own next card. `DEFERRED` (exit 1) stopped the loop.
+   cluster as its own next card. `VERIFICATION_PENDING` (exit 1) retained
+   the candidate without counting an attempt. `DEFERRED` (exit 1) stopped the loop.
 6. Terminator: **`kanban_complete`** after ACCEPTED or REVERTED (K2 allows
    it because the loop record names this card and steps 1, 2, 4, 5 are in
    this log). `kanban_block` kind=needs_input naming the cluster after
-   DEFERRED or a `REFUSE: LOOP_*`. Never `kanban_request_review` on a loop
+   VERIFICATION_PENDING, DEFERRED or a `REFUSE: LOOP_*`. Never `kanban_request_review` on a loop
    card; never retry inside this card (the retry is the next K4 card).
+   After VERIFICATION_PENDING, restore with `restore-pending.py` when the
+   prerequisite changes, then run acceptance verify and advance on **this**
+   card — do not mint a new attempt.
 
 ## Reference skills (view only when the brief's advice is not enough)
 

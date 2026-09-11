@@ -31,7 +31,7 @@ from _loop_common import profile_keys_lost  # noqa: E402
 from planner import pipeline, specimens  # noqa: E402
 from planner.worklist import build_worklist  # noqa: E402
 from planner.canonical import load_json, write_canonical  # noqa: E402
-from planner.paths import ADMISSION_RECEIPT, LOOP_DEFERRED, LOOP_ISSUED, LOOP_STEPS, VERIFY_DIAGNOSTICS, VERIFY_RUN, WORKLIST  # noqa: E402
+from planner.paths import ADMISSION_RECEIPT, LOOP_DEFERRED, LOOP_ISSUED, LOOP_PENDING_FILES, LOOP_STEPS, VERIFY_DIAGNOSTICS, VERIFY_RUN, WORKLIST  # noqa: E402
 
 
 def _fail(msg: str) -> int:
@@ -96,6 +96,20 @@ def _attempt_budget_case() -> int:
     return 0
 
 
+def _pending_classify_case() -> int:
+    from _loop_common import classify_inconclusive  # noqa: E402
+
+    if classify_inconclusive({"blocked": ["build unresolvable: missing version"]}, {}) != "environment":
+        return _fail("unresolvable Maven is environment, not a product reject")
+    if classify_inconclusive({"blocked": ["no surefire report was produced; tests unknown"]}, {}) != "harness":
+        return _fail("missing Surefire is harness")
+    if classify_inconclusive({"blocked": ["mystery"]}, {"mode": "diagnostic"}) != "harness":
+        return _fail("diagnostic mode is harness")
+    if classify_inconclusive({"blocked": ["something the classifier does not know"]}, {}) != "unresolved":
+        return _fail("unknown blocked text stays unresolved")
+    return 0
+
+
 def _write_veto_case() -> int:
     """A repair may not annotate a write with a query.
 
@@ -135,6 +149,8 @@ def _write_veto_case() -> int:
 
 def main() -> int:
     if _write_veto_case():
+        return 1
+    if _pending_classify_case():
         return 1
     if _attempt_budget_case():
         return 1
@@ -238,6 +254,22 @@ def main() -> int:
             return _fail("element kinds: %s" % [i["element"] for i in pom_items])
         pom_before = (root / "pom.xml").read_text(encoding="utf-8")
 
+        # diagnostic mode cannot promote or reject; the candidate stays for an acceptance pass
+        (root / "pom.xml").write_text(pom_before + "\n<!-- diag -->\n", encoding="utf-8")
+        specimens.verify(root, errors=errors, failures=[], findings=findings)
+        run_doc = load_json(root / VERIFY_RUN) if (root / VERIFY_RUN).is_file() else {"schema": "rhoai3.verify-run/v1"}
+        run_doc["mode"] = "diagnostic"
+        write_canonical(root / VERIFY_RUN, run_doc)
+        p = _advance(root, head["logical_id"], "t_diag")
+        if p.returncode != 1 or "LOOP_DIAGNOSTIC_NOT_ACCEPTANCE" not in p.stderr:
+            return _fail("diagnostic mode must refuse advance: %s" % p.stderr[-300:])
+        if (root / "pom.xml").read_text(encoding="utf-8") == pom_before:
+            return _fail("diagnostic refuse must leave the candidate on disk")
+        if load_json(root / LOOP_STEPS)["attempts"].get(head["logical_id"]):
+            return _fail("diagnostic refuse must not count an attempt")
+        (root / "pom.xml").write_text(pom_before, encoding="utf-8")
+        specimens.verify(root, errors=errors, failures=[], findings=findings)
+
         # legacy baseline: strip the recorded obligation_keys; every later accept/revert below must re-key the
         # baseline from the accepted rescan findings instead of comparing content-hash ids against rule|file keys
         st = load_json(root / "verification/loop/steps.json")
@@ -333,20 +365,45 @@ def main() -> int:
             return _fail("a shifted incident must not veto progress: %s%s" % (p.stdout, p.stderr))
         accepted_head = _git(root, "rev-parse", "HEAD").strip()
 
-        # --- deferral stops the loop (threshold 2) ---
+        # --- unknown measure retains the candidate (VERIFICATION_PENDING); known no-progress still defers ---
         cl3 = _head(root)
         t3 = root / cl3["path"]
         orig3 = t3.read_text(encoding="utf-8")
-        for attempt in (1, 2):
-            specimens.issue(root)
-            t3.write_text(orig3 + "// attempt %d\n" % attempt, encoding="utf-8")
-            # attempt 1: a candidate Maven cannot resolve is an UNKNOWN compile count, never a smaller one
-            specimens.verify(root, errors=one_less, failures=[], findings=f3, unresolvable="'dependencies.dependency.version' for io.quarkus:x is missing" if attempt == 1 else None)
-            p = _advance(root, cl3["id"], "t_c%d" % (3 + attempt))
-            if p.returncode != 1:
-                return _fail("no-progress attempt %d must fail: %s" % (attempt, p.stdout))
-            if attempt == 1 and ("REVERTED" not in p.stderr or "build unresolvable" not in p.stderr):
-                return _fail("an unresolvable candidate must revert as unknown: %s" % p.stderr[-300:])
+        specimens.issue(root)
+        t3.write_text(orig3 + "// unresolvable\n", encoding="utf-8")
+        specimens.verify(root, errors=one_less, failures=[], findings=f3, unresolvable="'dependencies.dependency.version' for io.quarkus:x is missing")
+        p = _advance(root, cl3["id"], "t_pending")
+        if p.returncode != 1 or "VERIFICATION_PENDING" not in p.stderr:
+            return _fail("an unresolvable candidate must be pending, not a counted revert: %s" % p.stderr[-300:])
+        if load_json(root / LOOP_STEPS)["attempts"].get(cl3["id"]):
+            return _fail("pending must not count an attempt: %s" % load_json(root / LOOP_STEPS)["attempts"])
+        if t3.read_text(encoding="utf-8") != orig3:
+            return _fail("pending must restore the accepted tree")
+        if convert_admitted(root)[0] is not None:
+            return _fail("K4 must mint nothing while a candidate is VERIFICATION_PENDING")
+        stored = root / LOOP_PENDING_FILES / cl3["id"].replace(":", "_").replace("/", "_") / cl3["path"]
+        if not stored.is_file() or "// unresolvable" not in stored.read_text(encoding="utf-8"):
+            return _fail("pending must retain the candidate files: %s" % stored)
+        p = _advance(root, cl3["id"], "t_pending")
+        if p.returncode != 1 or "LOOP_PENDING_NOT_RESTORED" not in p.stderr:
+            return _fail("advance on the accepted tree while pending must refuse without counting: %s" % p.stderr[-300:])
+        if load_json(root / LOOP_STEPS)["attempts"].get(cl3["id"]):
+            return _fail("LOOP_PENDING_NOT_RESTORED must not count an attempt")
+        p = _run([sys.executable, str(HERE / "restore-pending.py"), "--root", str(root), "--cluster", cl3["id"]])
+        if p.returncode != 0 or t3.read_text(encoding="utf-8") != orig3 + "// unresolvable\n":
+            return _fail("restore-pending must put the candidate back: %s%s" % (p.stdout, p.stderr))
+        specimens.verify(root, errors=one_less, failures=[], findings=f3)
+        p = _advance(root, cl3["id"], "t_pending")
+        if p.returncode != 1 or "REVERTED" not in p.stderr:
+            return _fail("a restored candidate that still does not progress must revert: %s" % p.stderr[-300:])
+        if load_json(root / LOOP_STEPS)["attempts"].get(cl3["id"]) != 1:
+            return _fail("the known no-progress after pending is attempt 1: %s" % load_json(root / LOOP_STEPS)["attempts"])
+        specimens.issue(root)
+        t3.write_text(orig3 + "// attempt 2\n", encoding="utf-8")
+        specimens.verify(root, errors=one_less, failures=[], findings=f3)
+        p = _advance(root, cl3["id"], "t_c5")
+        if p.returncode != 1:
+            return _fail("no-progress attempt 2 must fail: %s" % p.stdout)
         if "DEFERRED" not in p.stderr or "STOPS" not in p.stderr:
             return _fail("threshold must defer and stop: %s" % p.stderr[-300:])
         if t3.read_text(encoding="utf-8") != orig3 or _git(root, "rev-parse", "HEAD").strip() != accepted_head:
@@ -638,7 +695,7 @@ def main() -> int:
         p = _advance(root, "c:tampered", "t_z")
         if p.returncode != 2 or "LOOP_STALE_STATE" not in p.stderr:
             return _fail("tampered work list must refuse advance: %s" % p.stderr)
-    print("OK: fix-until-green (measurement contract: unrun tests / empty reports / failed runner / skipped rescan are unknown; baseline; issued card; post-verify edit + unissued cluster refused with baseline intact; out-of-scope test edit rejected + reverted + reports discarded; accept commits; staged no-progress reverted from index; line shift is not a new obligation; unresolvable candidate is unknown; deferral stops the loop; Operator rewind restores tree+budget in a new epoch; green → packaging → startup → M4 (unknown gates never mint; an environment blocker is not a card; a gate repair is accepted phase-aware); unresolved test = typed blocker; tampered list refused)")
+    print("OK: fix-until-green (measurement contract: unrun tests / empty reports / failed runner / skipped rescan are unknown; baseline; issued card; diagnostic cannot advance; post-verify edit + unissued cluster refused with baseline intact; out-of-scope test edit rejected + reverted + reports discarded; accept commits; staged no-progress reverted from index; line shift is not a new obligation; unresolvable candidate is VERIFICATION_PENDING (no attempt); known no-progress defers; Operator rewind restores tree+budget in a new epoch; green → packaging → startup → M4 (unknown gates never mint; an environment blocker is not a card; a gate repair is accepted phase-aware); unresolved test = typed blocker; tampered list refused)")
     return 0
 
 

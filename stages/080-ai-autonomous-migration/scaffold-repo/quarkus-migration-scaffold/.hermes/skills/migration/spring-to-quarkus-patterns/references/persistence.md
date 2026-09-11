@@ -2,19 +2,24 @@
 
 ## Source
 
-- Living map: quarkusio/skills `migrate-spring-to-quarkus` (prefer on overlap)
+- Living map: quarkusio/skills `migrate-spring-to-quarkus` (prefer on overlap
+  for annotation/Jakarta rows)
+- **This specimen:** ADR-004 in `decisions.yaml` — Spring Data JPA on
+  `quarkus-spring-data-jpa`. Playbook:
+  `references/spring-data-jpa.md`. Official guide:
+  https://quarkus.io/version/3.27/guides/spring-data-jpa
 - Pedagogical locus: Deandrea et al., 2021, Ch 4 — cite only
 
 ## Cards
 
 | id | Spring | Quarkus | status | note |
 |----|--------|---------|--------|------|
-| pers-repo | `JpaRepository` / Spring Data | Panache **repository** pattern | ADOPT | Active record allowed, not default |
-| pers-em | `@PersistenceContext EntityManager` | `@Inject EntityManager` CDI | ADOPT | Valid when Panache repo does not fit (S-004) |
+| pers-repo | `JpaRepository` / Spring Data | **same interfaces** on `quarkus-spring-data-jpa` (supported subset) | ADOPT | ADR-004. Not Panache for this specimen. See `spring-data-jpa.md` |
+| pers-em | `@PersistenceContext EntityManager` | `@Inject EntityManager` CDI | ADOPT | Custom JPQL the Spring Data subset cannot express |
 | pers-entity | `@Entity` JPA | `@Entity` (Jakarta) | ADOPT | `javax`→`jakarta` |
 | pers-tx | `@Transactional` (Spring) | `@Transactional` (Quarkus / Narayana) | ADOPT | Same name; confirm import |
 | pers-migrate | Spring `sql.init` / Flyway / Liquibase | **one working schema mechanism** | ADOPT | Flyway only if the legacy used Flyway; else Hibernate schema generation + import/init SQL |
-| pers-jdbc | Spring datasource | `quarkus-jdbc-*` matching `db-kind` + URL | ADOPT | AR-2.1 — mismatch = non-startable |
+| pers-jdbc | Spring datasource | `quarkus-jdbc-*` matching `db-kind` + URL | ADOPT | AR-2.1 — mismatch = non-startable. JDBC **repositories** are retired (ADR-004) |
 | pers-flyway-run | Flyway at boot | `quarkus-flyway` + `migrate-at-start=true` + `V*__*.sql` under `db/migration` | STRENGTHEN | Only when dest chose Flyway; default migrate-at-start is **false** |
 
 ### Runnable DB profile (AR-2.1 — binding)
@@ -36,25 +41,21 @@ the harvest referent has none.
 extensions Quarkus still ships. **Do not** target `db-kind=hsqldb` or
 `jdbc:hsqldb:` as the destination runnable profile: Quarkus dropped the
 HSQLDB JDBC extension from the current catalog (extension catalog /
-Quarkus JDBC guides). Legacy Spring specimens that used HSQLDB must map
-to **h2 mem** (or postgres/mysql profiles), not a 1:1 hsqldb retarget.
-`application-hsqldb.properties` profiles are **RETIRE candidates** — do not
-mint new stories that require them. Cite AR-2.1 mismatch rules above when
-URLs and `db-kind` disagree.
+Quarkus JDBC guides). This specimen's destination is PostgreSQL 16
+(ADR-009). Legacy Spring HSQLDB is the frozen source baseline, not the dest
+engine. Cite AR-2.1 mismatch rules above when URLs and `db-kind` disagree.
 
-### EntityManager vs Panache (decide before claim)
-
-Deep form (MappedSuperclass vs Inheritance, entity-only oracles): skill
-`form-entity-persistence`.
+### Persistence choice (this specimen — ADR-004)
 
 | Prefer | When |
 |--------|------|
-| **Panache repository** | CRUD aligned with Spring Data method names; simple queries |
-| **`@Inject EntityManager`** | Custom JPQL/merge/delete patterns; profile-specific impl merge |
-| **Neither Spring Data** | Never `quarkus-spring-data-*` |
+| **Spring Data JPA** (`quarkus-spring-data-jpa`) | Default. Keep `JpaRepository` / `CrudRepository` / fragments inside the [supported subset](https://quarkus.io/guides/spring-data-jpa) |
+| **`@Inject EntityManager`** | Custom JPQL/merge/delete the subset cannot express |
+| **Panache** | Not the default here. Only with an ADR that supersedes ADR-004 |
 
 Do **not** claim “Panache” in the completion summary unless Panache types appear
-in the diff (`claim_accuracy`).
+in the diff (`claim_accuracy`). Do **not** add a second `quarkus-spring-data-*`
+GAV or a freehand version — the BOM from `.hermes/pins.json` is the version.
 
 ### Absent result + transactions (AR-3.5)
 
@@ -69,9 +70,10 @@ in the diff (`claim_accuracy`).
 
 ## Agent text
 
-Default to Panache repositories when they fit legacy behaviour; otherwise CDI
-`EntityManager` is an acceptable Quarkus layer — name what you shipped. Use
-Flyway when the legacy did; otherwise schema generation + import/init SQL.
-Do not add Spring Data or `quarkus-spring-data-*`.
-Name absent-result and transaction ownership in the completion summary when
-touched.
+This specimen keeps Spring Data JPA repositories on `quarkus-spring-data-jpa`
+(ADR-004). Stay inside the supported subset; put unsupported methods on a
+fragment or an explicit JPQL `@Query`. Repair every applicable method in one
+repository together (`references/spring-data-jpa.md`). Use CDI `EntityManager`
+only when the subset cannot express the query. Do not add Panache to clear a
+build-time parse failure. Name absent-result and transaction ownership in the
+completion summary when touched.

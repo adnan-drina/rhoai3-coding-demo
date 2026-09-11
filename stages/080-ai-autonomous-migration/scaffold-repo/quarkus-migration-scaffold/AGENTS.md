@@ -127,7 +127,7 @@ On a loop card (M3, pinned `paved-road-m3`) there is no reviewer seat: the
 implementer `kanban_complete`s once `advance.py` recorded ACCEPTED or
 REVERTED for the card (K2 checks the loop record and that brief, run-verify
 and advance ran in this log); a reverted attempt is done, its retry is the
-next K4 card; DEFERRED is `kanban_block`. **Reviewer** `kanban_complete`
+next K4 card; VERIFICATION_PENDING and DEFERRED are `kanban_block`. **Reviewer** `kanban_complete`
 only after `assert-paved-road-audit.py` exits 0. `kanban_block` is external
 escalation (MaaS 500, missing key, GPU), not a red paved-road step.
 Mint proof is `kanban_request_review --metadata` `created_cards`
@@ -177,8 +177,9 @@ mints one card for the head cluster, the worker edits only that cluster's
 write set, `run-verify.sh` recomputes the list, and `advance.py` is a
 transaction: it promotes only the issued card's candidate, exactly as
 verified, inside the write set, on a strict decrease of the measure with
-no new mandatory obligation (commit, next card); otherwise it discards the
-candidate (index and working tree) and re-issues the cluster; at the ADR
+no new mandatory obligation (commit, next card); an unknown measure
+retains the candidate (`VERIFICATION_PENDING`, no attempt counted);
+otherwise it discards the candidate (index and working tree) and re-issues the cluster; at the ADR
 threshold it defers to a human and the loop stops. Three sealed artifacts under
 `evidence/planning/` (evidence-bundle → worklist → admission-receipt).
 Ordering, verification, acceptance and termination are mechanical; a

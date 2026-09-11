@@ -267,7 +267,8 @@ LOOP_VERDICTS = ("OK: ACCEPTED", "REVERTED ", "DEFERRED ")
 
 def loop_record_names_task(task):
     """verification/loop/steps.json (under an allow root) names the card as an
-    accepted step or a rejected attempt: the durable form of the verdict."""
+    accepted step or a rejected attempt: the durable form of the verdict.
+    A VERIFICATION_PENDING row is not a complete-able verdict."""
     if not task:
         return False
     roots = [x for x in allow.split(os.pathsep) if x] + [os.environ.get("HERMES_WRITE_SAFE_ROOT") or ""]

@@ -10,7 +10,7 @@
 | id | Spring | Quarkus | status | note |
 |----|--------|---------|--------|------|
 | di-component | `@Component` / `@Service` | `@ApplicationScoped` (or stereotype) | ADOPT | Default for services |
-| di-repo | `@Repository` | `@ApplicationScoped` + Panache repository | ADOPT | See persistence.md |
+| di-repo | `@Repository` | Spring Data repository bean (ADR-004) or `@ApplicationScoped` helper | ADOPT | See persistence.md / spring-data-jpa.md |
 | di-inject | `@Autowired` field | constructor injection | STRENGTHEN | Field injection refuse where cheap |
 | di-singleton | `@Service` singleton intent | `@ApplicationScoped` preferred over `@Singleton` | STRENGTHEN | `@Singleton` not client-proxyable / harder to mock |
 | cfg-value | `@Value("${k}")` | `@ConfigProperty(name="k")` | ADOPT | |

@@ -807,9 +807,21 @@ check "080 a packaging or startup gate that did not run is unknown, never a pass
 check "080 a runtime obligation's cause comes from a closed vocabulary, so an unpredicted failure cannot mint a new one" \
   "cd '${SCAFFOLD_080}' && python3 -c \"import sys; sys.path.insert(0,'.hermes/lib'); from planner.worklist import runtime_cause; print('%s %s %s' % (runtime_cause('No implementation of interface x.Y was found'), runtime_cause('UnableToParseMethodException: Method findAll'), runtime_cause('anything nobody wrote a signature for')))\"" \
   "missing-implementation underivable-query-method unclassified"
+check "080 a failure that quotes the offending value locates the one file carrying it, and two files locate nothing" \
+  "grep -q -F 'def quoted_literal_locus' '${SCAFFOLD_LIB}/planner/worklist.py' && grep -q -F 'Uniqueness is the whole check' '${SCAFFOLD_LIB}/planner/worklist.py' && echo 1 || echo 0" \
+  "1"
 check "080 a failure that names the member it could not handle makes that member part of the obligation" \
   "cd '${SCAFFOLD_080}' && python3 -c \"import sys; sys.path.insert(0,'.hermes/lib'); from planner.worklist import runtime_member; print('%s|%s' % (runtime_member(chr(34)+'Method '+chr(39)+'save'+chr(39)+' of repository x.Y'+chr(34)), runtime_member('nothing named here')))\"" \
   "save|"
+check "080 an unstated verification mode cannot promote (unknown is not an acceptance pass)" \
+  "grep -q -F 'or \"diagnostic\"' '${SCAFFOLD_SKILLS}/migration/fix-until-green/scripts/verify.py' && grep -q -F 'An unstated mode is NOT an acceptance pass' '${SCAFFOLD_SKILLS}/migration/fix-until-green/scripts/verify.py' && echo 1 || echo 0" \
+  "1"
+check "080 a retained candidate keeps its deletions and must come back as itself" \
+  "grep -q -F 'PendingRestoreError' '${SCAFFOLD_SKILLS}/migration/fix-until-green/scripts/_loop_common.py' && grep -q -F '\"deleted\": deleted' '${SCAFFOLD_SKILLS}/migration/fix-until-green/scripts/_loop_common.py' && grep -q -F 'LOOP_PENDING_CANDIDATE_CHANGED' '${SCAFFOLD_SKILLS}/migration/fix-until-green/scripts/restore-pending.py' && echo 1 || echo 0" \
+  "1"
+check "080 the brief cites the frozen implementation a retirement removed, with its query" \
+  "grep -q -F 'def frozen_member_implementations' '${SCAFFOLD_SKILLS}/migration/fix-until-green/scripts/brief.py' && grep -q -F 'rather than writing one' '${SCAFFOLD_SKILLS}/migration/fix-until-green/scripts/brief.py' && echo 1 || echo 0" \
+  "1"
 check "080 a candidate that annotates a write with a query is refused by acceptance, not merely cautioned" \
   "grep -q -F 'query_annotated_writes' '${SCAFFOLD_SKILLS}/migration/fix-until-green/scripts/advance.py' && grep -q -F 'a write may not be repaired with a query annotation' '${SCAFFOLD_SKILLS}/migration/fix-until-green/scripts/advance.py' && echo 1 || echo 0" \
   "1"

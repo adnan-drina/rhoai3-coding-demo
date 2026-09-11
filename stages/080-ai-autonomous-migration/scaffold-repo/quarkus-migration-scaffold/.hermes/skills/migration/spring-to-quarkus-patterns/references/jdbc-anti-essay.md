@@ -26,7 +26,8 @@ This file is an **additive** extension. Workers must `skill_view` the base
 6. **No CDI `JdbcTemplate` bean** — Quarkus has no producer for Spring
    `JdbcTemplate`. Inject Agroal `javax.sql.DataSource` / `jakarta` DataSource
    and construct `new JdbcTemplate(dataSource)` in the repository ctor (or
-   migrate to Panache / raw JDBC). Never `@Inject JdbcTemplate`.
+   use the Spring Data JPA repository ADR-004 selected). Never `@Inject JdbcTemplate`.
+   This specimen retired `repository/jdbc/**` (ADR-004); do not resurrect it.
 7. **MapStruct + Arc** — after mapper interface changes, require `mvn clean`
    (or clean compile) so `*MapperImpl` still `implements` the mapper interface;
    stale bytecode → Arc `UnsatisfiedResolutionException` at boot.

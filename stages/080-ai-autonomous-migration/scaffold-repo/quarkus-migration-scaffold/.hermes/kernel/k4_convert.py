@@ -30,7 +30,7 @@ from k4_producers import card_from_payload, producer_issues  # noqa: E402
 from k4_schema import CLOSE_ID, IMPL, REMEDY  # noqa: E402
 from planner.admission import artifact_digests_on_disk, verify_receipt  # noqa: E402
 from planner.canonical import load_json, sha256_file  # noqa: E402
-from planner.cards import idempotency_key, next_card, parse_body, render_body  # noqa: E402
+from planner.cards import idempotency_key, next_card, parse_body, pending_cluster_ids, render_body  # noqa: E402
 from planner.canonical import write_canonical  # noqa: E402
 from planner.paths import ADMISSION_RECEIPT, EVIDENCE_BUNDLE, LOOP_ISSUED, LOOP_STEPS, TYPE_INVENTORY, WORKLIST  # noqa: E402
 from planner.pins import activation_gaps, load_pins, pin_gaps  # noqa: E402
@@ -49,9 +49,10 @@ TERMINATOR_M3 = (
     "decisions.yaml, never a dependency or plugin the brief did not ask for. Then bash "
     "fix-until-green/scripts/run-verify.sh --root . and python3 fix-until-green/scripts/advance.py --root . "
     "--cluster <id> --card $HERMES_KANBAN_TASK. The measure decides: ACCEPTED commits and mints the next card; "
-    "REVERTED re-mints this cluster; DEFERRED stops the loop for the Operator. Terminator: kanban_complete after "
+    "REVERTED re-mints this cluster; VERIFICATION_PENDING retains the candidate (no new attempt) when verification "
+    "cannot conclude; DEFERRED stops the loop for the Operator. Terminator: kanban_complete after "
     "ACCEPTED or REVERTED (the loop record is the audit; K2 allows it once brief, run-verify and advance ran in "
-    "this log); kanban_block kind=needs_input naming the cluster after DEFERRED or REFUSE: LOOP_*. Never "
+    "this log); kanban_block kind=needs_input naming the cluster after VERIFICATION_PENDING, DEFERRED or REFUSE: LOOP_*. Never "
     "kanban_request_review on a loop card; never retry inside this card; never widen the write set."
 )
 TERMINATOR_M4 = (
@@ -169,6 +170,9 @@ def convert_admitted(root: Path, *, write_root: bool = True) -> tuple[dict[str, 
     steps = load_json(root / LOOP_STEPS) if (root / LOOP_STEPS).is_file() else None
     card = next_card(worklist, steps)
     if card is None:
+        pending = pending_cluster_ids(steps)
+        if pending:
+            return None, [_issue("K4_LOOP", "VERIFICATION_PENDING on %s; restore-pending.py then run-verify.sh --mode acceptance; do not mint a new attempt" % ",".join(pending))]
         deferred = worklist.get("deferred") or []
         return None, [_issue("K4_LOOP", "deferred cluster(s) %s block the run" % ",".join(deferred) if deferred else "measure not known or list not empty; nothing to mint")]
     digests = artifact_digests_on_disk(root)

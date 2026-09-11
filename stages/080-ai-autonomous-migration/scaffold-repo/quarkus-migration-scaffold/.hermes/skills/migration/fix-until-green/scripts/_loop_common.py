@@ -22,12 +22,13 @@ def ensure_hermes_lib() -> None:
 
 ensure_hermes_lib()
 from planner.canonical import load_json, write_canonical  # noqa: E402
-from planner.paths import PRODUCT_EXEMPT, is_product_path as _is_product_path, LOOP_ACCEPTED, LOOP_CARDS, LOOP_DEFERRED, LOOP_ISSUED, LOOP_STATE, LOOP_STEPS, MTA_RESCAN_FINDINGS, VERIFY_BOOT, VERIFY_DIAGNOSTICS, VERIFY_PACKAGE, VERIFY_RUN, VERIFY_SUREFIRE, WORKLIST  # noqa: E402
+from planner.paths import PRODUCT_EXEMPT, is_product_path as _is_product_path, LOOP_ACCEPTED, LOOP_CARDS, LOOP_DEFERRED, LOOP_ISSUED, LOOP_PENDING_FILES, LOOP_STATE, LOOP_STEPS, MTA_RESCAN_FINDINGS, VERIFY_BOOT, VERIFY_DIAGNOSTICS, VERIFY_PACKAGE, VERIFY_RUN, VERIFY_SUREFIRE, WORKLIST  # noqa: E402
 
-# The accepted state's tool reports AND the work list they produced: a gate
-# card is accepted on what its own obligation did, so acceptance has to be
-# able to read the list the card was issued from, not just its measure.
-REPORTS = (VERIFY_DIAGNOSTICS, VERIFY_SUREFIRE, VERIFY_RUN, MTA_RESCAN_FINDINGS, VERIFY_PACKAGE, VERIFY_BOOT, WORKLIST)
+# The accepted state's tool reports, including the gate receipts: a rejected
+# candidate's packaging or startup result must not survive it. The work list is
+# NOT here -- it is derived, it is rebuilt by every verification, and restoring
+# an old copy makes the loop see a list its own measurement did not produce.
+REPORTS = (VERIFY_DIAGNOSTICS, VERIFY_SUREFIRE, VERIFY_RUN, MTA_RESCAN_FINDINGS, VERIFY_PACKAGE, VERIFY_BOOT)
 
 
 def _json_doc(root: Path, rel: Path, default: dict[str, Any]) -> dict[str, Any]:
@@ -264,3 +265,145 @@ def restore_reports(root: Path) -> None:
             shutil.copy2(src, target)
         elif target.is_file():
             target.unlink()
+
+
+def classify_inconclusive(measure: dict[str, Any] | None, run: dict[str, Any] | None = None) -> str:
+    """Why a measure is not known: harness, environment, or unresolved.
+
+    Known product regressions are never classified here — those still reject.
+    Missing Surefire stays unknown (harness): do not treat it as a pass."""
+    blocked = " ".join(str(x) for x in ((measure or {}).get("blocked") or []))
+    blob = blocked.lower()
+    mode = str((run or {}).get("mode") or "")
+    if mode == "diagnostic":
+        return "harness"
+    env_marks = (
+        "build unresolvable",
+        "runtime gate blocked by the environment",
+        "connection refused",
+        "password authentication failed",
+        "unknownhostexception",
+        "could not connect",
+        "no such host",
+    )
+    harness_marks = (
+        "no surefire",
+        "tests unknown",
+        "did not run in this verification",
+        "mta rescan did not run",
+        "disagree with maven",
+        "checker is not reading",
+        "mvn test exited",
+    )
+    if any(m in blob for m in env_marks):
+        return "environment"
+    if any(m in blob for m in harness_marks):
+        return "harness"
+    return "unresolved"
+
+
+def pending_cluster_ids(steps: dict[str, Any] | None) -> list[str]:
+    out: list[str] = []
+    for row in (steps or {}).get("pending") or []:
+        if isinstance(row, dict) and row.get("cluster") and not row.get("cleared") and not row.get("rewound"):
+            cid = str(row["cluster"])
+            if cid not in out:
+                out.append(cid)
+    return out
+
+
+def pending_for(steps: dict[str, Any] | None, cluster: str) -> dict[str, Any] | None:
+    for row in reversed((steps or {}).get("pending") or []):
+        if isinstance(row, dict) and str(row.get("cluster") or "") == cluster and not row.get("cleared") and not row.get("rewound"):
+            return row
+    return None
+
+
+def _pending_dir(root: Path, cluster: str) -> Path:
+    safe = cluster.replace(":", "_").replace("/", "_")
+    return root / LOOP_PENDING_FILES / safe
+
+
+class PendingRestoreError(RuntimeError):
+    """A retained candidate did not come back as itself."""
+
+
+def save_pending_candidate(root: Path, *, cluster: str, card: str, changed: list[str],
+                           candidate_sha256_value: str, measure: dict[str, Any], reason: str,
+                           cause: str, run: dict[str, Any] | None, issued: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Copy the candidate's changed product files aside before the tree is restored."""
+    dest = _pending_dir(root, cluster)
+    if dest.exists():
+        shutil.rmtree(dest)
+    dest.mkdir(parents=True, exist_ok=True)
+    stored: list[str] = []
+    deleted: list[str] = []
+    for rel in changed:
+        src = root / rel
+        if not src.is_file():
+            # the candidate DELETED this path; retaining only the files it
+            # wrote would restore a tree the candidate never had (the
+            # repository work removes declarations routinely)
+            deleted.append(rel)
+            continue
+        target = dest / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, target)
+        stored.append(rel)
+    run_src = root / VERIFY_RUN
+    if run_src.is_file():
+        shutil.copy2(run_src, dest / "run.json")
+    return {
+        "cluster": cluster,
+        "card": card,
+        "cause": cause,
+        "reason": reason,
+        "measure": measure,
+        "blocked": list((measure or {}).get("blocked") or []),
+        "changed": list(changed),
+        "stored": stored,
+        "deleted": deleted,
+        "candidate_sha256": candidate_sha256_value,
+        "run_mode": str((run or {}).get("mode") or "acceptance"),
+        "stages_ms": (run or {}).get("stages_ms") or {},
+        "total_ms": (run or {}).get("total_ms"),
+        "issued": dict(issued or {}),
+        "files_dir": str(LOOP_PENDING_FILES / cluster.replace(":", "_").replace("/", "_")),
+    }
+
+
+def restore_pending_candidate(root: Path, cluster: str, row: dict[str, Any]) -> list[str]:
+    """Put the retained candidate back on the product tree. Does not verify.
+
+    Restores what the candidate wrote AND what it deleted, then checks that the
+    tree is the candidate the row names: a retained candidate that comes back
+    as something else would be promoted under its record."""
+    dest = _pending_dir(root, cluster)
+    restored: list[str] = []
+    for rel in row.get("stored") or row.get("changed") or []:
+        src = dest / rel
+        if not src.is_file():
+            continue
+        target = root / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, target)
+        restored.append(rel)
+    for rel in row.get("deleted") or []:
+        target = root / rel
+        if target.is_file():
+            target.unlink()
+            restored.append(rel)
+    want = str(row.get("candidate_sha256") or "")
+    if want:
+        got = candidate_sha256(root)
+        if got != want:
+            raise PendingRestoreError(
+                "the restored tree is %s, and the retained candidate was %s; it is not the candidate this record names"
+                % (got[:12], want[:12]))
+    return restored
+
+
+def clear_pending(steps: dict[str, Any], cluster: str, *, why: str) -> None:
+    for row in steps.get("pending") or []:
+        if isinstance(row, dict) and str(row.get("cluster") or "") == cluster and not row.get("cleared"):
+            row["cleared"] = why

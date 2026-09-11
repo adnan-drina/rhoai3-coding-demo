@@ -18,7 +18,7 @@
       "id": "run-verify",
       "backing": "native",
       "native": "run-verify.sh",
-      "note": "The real tools on the candidate (online warm-up, then offline JDK diagnostics, surefire, MTA rescan) \u2192 the measure. exit 1 is a tool failure (re-run or kanban_block), never a verdict."
+      "note": "The real tools on the candidate. Default --mode acceptance (online warm-up, then offline JDK diagnostics, surefire, MTA rescan, packaging/startup when green). --mode diagnostic is not an acceptance pass. exit 1 is a tool failure (re-run or kanban_block), never a verdict."
     },
     {
       "id": "advance",
@@ -29,7 +29,7 @@
       "keep": [
         "verification/loop/steps.json"
       ],
-      "note": "The acceptance transaction. ACCEPTED commits and mints the next card; REVERTED discards the candidate and re-mints this cluster; DEFERRED stops the loop. REVERTED/DEFERRED exit 1 by design: the grade is the loop record naming this card, not the exit code."
+      "note": "The acceptance transaction. ACCEPTED commits and mints the next card; REVERTED discards the candidate and re-mints this cluster; VERIFICATION_PENDING retains the candidate without counting an attempt; DEFERRED stops the loop. REVERTED/DEFERRED/PENDING exit 1 by design: the grade is the loop record naming this card as accepted or rejected, not the exit code. PENDING is kanban_block, not complete."
     }
   ]
 }

@@ -53,6 +53,7 @@ LOOP_DIR = VERIFICATION_DIR / "loop"
 LOOP_STEPS = LOOP_DIR / "steps.json"
 LOOP_DEFERRED = LOOP_DIR / "deferred.json"
 LOOP_STATE = LOOP_DIR / "state.json"
+LOOP_PENDING_FILES = LOOP_DIR / "pending-files"
 
 PRODUCER_NAMES = ("freeze", "build", "jdk-model", "mta", "bootstrap")
 

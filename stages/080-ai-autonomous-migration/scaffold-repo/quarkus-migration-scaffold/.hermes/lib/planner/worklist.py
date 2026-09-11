@@ -260,6 +260,7 @@ RUNTIME_CAUSES = (
     ("No implementation of interface", "missing-implementation"),
     ("UnableToParseMethodException", "underivable-query-method"),
     ("was not part of the Quarkus index", "unindexed-type"),
+    ("SpEL expressions are not supported", "unsupported-spel"),
     ("Unable to find datasource", "datasource-unconfigured"),
     ("is not configured", "datasource-unconfigured"),
     ("ConfigurationException", "configuration-invalid"),
@@ -272,6 +273,38 @@ RUNTIME_CAUSES = (
     ("Table not found", "schema-missing-object"),
     ("does not exist", "schema-missing-object"),
 )
+
+
+QUOTED_RE = re.compile(r"'([^']{8,120})'|\"([^\"]{8,120})\"")
+
+
+def quoted_literal_locus(text: str, root: Path | None) -> str:
+    """The one source file carrying a literal the message quotes, or ""."""
+    if root is None:
+        return ""
+    base = Path(root) / "src" / "main"
+    if not base.is_dir():
+        return ""
+    seen: list[str] = []
+    for m in QUOTED_RE.finditer(text or ""):
+        literal = (m.group(1) or m.group(2) or "").strip()
+        if not literal or literal in seen or literal.startswith(("http", "/")):
+            continue
+        seen.append(literal)
+        hits: list[str] = []
+        for f in sorted(base.rglob("*")):
+            if not f.is_file() or f.suffix not in (".java", ".properties", ".xml", ".yaml", ".yml"):
+                continue
+            try:
+                if literal in f.read_text(encoding="utf-8", errors="replace"):
+                    hits.append(f.relative_to(root).as_posix())
+            except OSError:
+                continue
+            if len(hits) > 1:
+                break
+        if len(hits) == 1:
+            return hits[0]
+    return ""
 
 
 def runtime_cause(text: str) -> str:
@@ -318,7 +351,13 @@ def runtime_locus(text: str, root: Path | None) -> str:
         rel = "src/main/java/%s.java" % fqn.replace(".", "/")
         if (Path(root) / rel).is_file():
             return rel
-    return ""
+    # Second strategy: a platform that quotes the offending VALUE has named the
+    # file as surely as if it had named the type, provided exactly one source
+    # carries that literal. Uniqueness is the whole check -- two matches is not
+    # a location (measured live: "SpEL expressions are not supported ...
+    # Offending value is '@Value(\"#{servletContext.contextPath}\")'" named no
+    # type of ours and exactly one file had the string).
+    return quoted_literal_locus(text, root)
 # A failure the destination cannot repair by editing its own tree. It is a
 # blocker, never a card: no amount of patching pom.xml makes an unreachable
 # database reachable.

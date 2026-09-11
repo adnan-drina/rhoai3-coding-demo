@@ -17,7 +17,7 @@ import textwrap
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _loop_common import ensure_hermes_lib  # noqa: E402
+from _loop_common import ensure_hermes_lib, pending_for  # noqa: E402
 
 ensure_hermes_lib()
 from planner.canonical import load_json, write_canonical  # noqa: E402
@@ -28,8 +28,11 @@ PROCEDURE = (
     "Patch the write set one item at a time (targeted edits; never rewrite a whole file, never touch a "
     "path outside the write set, never tests). Each item names its rule, its advice (the rule's own guidance), "
     "and for pom.xml the exact element at the reported line. An item whose advice names an artifact that is "
-    "already in the pom is marked advice_present: verify and move on, do not add it twice. Then run "
-    "run-verify.sh and advance.py; the measure decides, not you."
+    "already in the pom is marked advice_present: verify and move on, do not add it twice. For a "
+    "*Repository.java, inventory every method and repair the applicable ones together (one transformation); "
+    "compile-only is not an exit. Do not run extra mvn compile/test/verify beside run-verify.sh. "
+    "Optional --mode diagnostic is classpath + compiler only and cannot feed advance.py. Then run "
+    "run-verify.sh --mode acceptance and advance.py; the measure decides, not you."
 )
 
 
@@ -250,6 +253,38 @@ MEMBER_RES = (re.compile(r"Method '([A-Za-z_][A-Za-z0-9_]*)' of repository"),
               re.compile(r"method '([A-Za-z_][A-Za-z0-9_]*)' of class"))
 
 
+def frozen_member_implementations(root: Path, member: str, limit: int = 2) -> list[dict]:
+    """How the FROZEN SOURCE implemented this member, with its query.
+
+    A retirement removes the code and the frozen copy keeps it: pilot v7's
+    repositories needed the JPQL that lived only in the JPA implementations
+    ADR-004 retired, could not see it, and invented @Query text that silenced
+    the build and meant nothing. This is the evidence that stops that."""
+    out: list[dict] = []
+    base = Path(root) / ".derived" / "frozen-input" / "src" / "main" / "java"
+    if not member or not base.is_dir():
+        return out
+    rx = re.compile(r"^.*\b%s\s*\(" % re.escape(member), re.M)
+    for f in sorted(base.rglob("*.java")):
+        text = f.read_text(encoding="utf-8", errors="replace")
+        m = rx.search(text)
+        if not m:
+            continue
+        lines = text.splitlines()
+        idx = text[: m.start()].count("\n")
+        body = "\n".join(lines[idx: idx + 12]).strip()
+        row = {"path": f.relative_to(Path(root) / ".derived" / "frozen-input").as_posix(), "snippet": body[:600]}
+        q = re.search(r'"(SELECT|UPDATE|DELETE|INSERT)\s[^"]{4,300}"', body, re.I)
+        if q:
+            row["query"] = q.group(0).strip('"')
+        out.append(row)
+        if len(out) >= limit:
+            break
+    # an implementation carrying a query is the one worth reading first
+    out.sort(key=lambda r: 0 if r.get("query") else 1)
+    return out
+
+
 def member_references(root: Path, member: str, exclude: str, limit: int = 3) -> list[dict]:
     """Where else this member is declared in the destination's own sources,
     with the lines around it (annotations included)."""
@@ -273,6 +308,53 @@ def member_references(root: Path, member: str, exclude: str, limit: int = 3) -> 
         if len(out) >= limit:
             break
     return out
+
+
+REPO_EXTENDS_RE = re.compile(r"\binterface\s+(?P<name>\w+)\s+extends\s+(?P<ext>[^{]+)")
+REPO_METHOD_RE = re.compile(
+    r"(?P<prefix>(?:@[\w.]+(?:\([^)]*\))?\s+)*)"
+    r"(?:public\s+)?(?P<ret>[\w.<>,\[\]\s]+?)\s+(?P<name>\w+)\s*\((?P<args>[^)]*)\)\s*;",
+    re.S,
+)
+
+
+def repository_inventory(root: Path, path: str) -> dict | None:
+    """Every method this repository declares, plus what it extends.
+
+    The platform names one member per obligation. Repairing only that member
+    returns the next sibling as a new card (pilot v7). The brief lists them
+    so one candidate can apply one transformation across the file."""
+    if not str(path).endswith("Repository.java"):
+        return None
+    f = Path(root) / path
+    if not f.is_file():
+        return None
+    text = f.read_text(encoding="utf-8", errors="replace")
+    ext = REPO_EXTENDS_RE.search(text)
+    methods: list[dict] = []
+    for m in REPO_METHOD_RE.finditer(text):
+        name = m.group("name")
+        if name in ("if", "for", "while", "switch", "return", "new"):
+            continue
+        prefix = m.group("prefix") or ""
+        methods.append({
+            "name": name,
+            "returns": " ".join((m.group("ret") or "").split()),
+            "args": " ".join((m.group("args") or "").split()),
+            "query": "@Query" in prefix,
+            "modifying": "@Modifying" in prefix,
+        })
+    if not ext and not methods:
+        return None
+    return {
+        "path": path,
+        "extends": " ".join((ext.group("ext") if ext else "").split()),
+        "methods": methods,
+        "batch": ("Repair every applicable method in this repository in this candidate, using one "
+                  "transformation. Compile-only is not an exit: the acceptance pass must include "
+                  "successful augmentation. Do not repeat a previous_attempts strategy."),
+        "playbook": "spring-to-quarkus-patterns/references/spring-data-jpa.md",
+    }
 
 
 def runtime_advice(item: dict, root: Path) -> dict:
@@ -321,6 +403,14 @@ def runtime_advice(item: dict, root: Path) -> dict:
         # derived while SpringDataPetRepository carried its @Query two files
         # away). Reading is not writing; the worker still edits only its own
         # write set.
+        frozen = frozen_member_implementations(root, member)
+        if frozen:
+            out["frozen_implementations"] = frozen
+            with_query = [r for r in frozen if r.get("query")]
+            out["frozen_note"] = ("the frozen source implements %s in %s%s. A retirement removes the code and the frozen copy keeps it: "
+                                  "take the query from there rather than writing one"
+                                  % (member, ", ".join(r["path"].rsplit("/", 1)[-1] for r in frozen),
+                                     (' — for example %s' % with_query[0]["query"]) if with_query else ""))
         elsewhere = member_references(root, member, path)
         if elsewhere:
             out["declared_elsewhere"] = elsewhere
@@ -535,6 +625,8 @@ def main(argv: list[str] | None = None) -> int:
     # previous card's deletion and was vetoed for the same reason)
     previous = [{"card": r.get("card"), "reason": r.get("reason"), "changed": r.get("changed"), "measure": (r.get("measure") or {}).get("tuple")}
                 for r in (steps.get("rejected") or []) if isinstance(r, dict) and r.get("cluster") == cluster["id"] and not r.get("rewound")]
+    pending = pending_for(steps, cluster["id"])
+    repo = repository_inventory(root, str(cluster.get("path") or ""))
     brief = {
         "schema": "rhoai3.loop-brief/v1",
         "cluster": cluster,
@@ -545,8 +637,19 @@ def main(argv: list[str] | None = None) -> int:
         "attempts_left": max(0, int(_max_attempts(root)) - len(previous)),
         "measure": doc["measure"],
         "procedure": PROCEDURE,
-        "rule": "Edit only the write set. Do not edit tests. Do not touch pom.xml unless it is in the write set. Do not repeat a previous attempt (previous_attempts says what was refused and why). Then run run-verify.sh and advance.py; the measure decides, not you.",
+        "rule": "Edit only the write set. Do not edit tests. Do not touch pom.xml unless it is in the write set. Do not repeat a previous attempt (previous_attempts says what was refused and why). Do not run extra mvn beside run-verify.sh. Then run run-verify.sh --mode acceptance and advance.py; the measure decides, not you.",
     }
+    if pending:
+        brief["verification_pending"] = {
+            "card": pending.get("card"),
+            "cause": pending.get("cause"),
+            "reason": pending.get("reason"),
+            "blocked": pending.get("blocked") or [],
+            "changed": pending.get("changed") or pending.get("stored") or [],
+            "restore": "python3 .hermes/skills/migration/fix-until-green/scripts/restore-pending.py --root . --cluster %s" % cluster["id"],
+        }
+    if repo:
+        brief["repository"] = repo
     write_canonical(root / LOOP_DIR / ("brief-%s.json" % cluster["id"].replace(":", "-")), brief)
     print(json.dumps(brief, indent=2, sort_keys=True))
     return 0

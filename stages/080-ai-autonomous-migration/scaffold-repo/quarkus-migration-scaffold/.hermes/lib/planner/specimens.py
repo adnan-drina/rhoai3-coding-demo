@@ -136,7 +136,7 @@ def specimen(name: str, base: str = "org.acme.clinic") -> dict[str, Any]:
                 {"uri": "file:///analysis/src/main/java/%s/pet/PetController.java" % base.replace(".", "/"), "lineNumber": 9, "message": "x"},
                 {"uri": "file:///analysis/src/main/java/%s/vet/VetController.java" % base.replace(".", "/"), "lineNumber": 9, "message": "x"},
             ]},
-            "springboot-jpa-to-quarkus-00002": {"category": "mandatory", "effort": 1, "description": "Spring Data → Panache", "incidents": [
+            "springboot-jpa-to-quarkus-00002": {"category": "mandatory", "effort": 1, "description": "Spring Data JPA (quarkus-spring-data-jpa supported subset)", "incidents": [
                 {"uri": "file:///analysis/src/main/java/%s/owner/OwnerRepository.java" % base.replace(".", "/"), "lineNumber": 5, "message": "x"},
             ]},
             "javaee-pom-to-quarkus-00003": {"category": "mandatory", "effort": 1, "description": "pom", "incidents": [
@@ -464,7 +464,9 @@ def write_verified_state(root: Path, *, errors: list[tuple[str, int, str]] | Non
     sim.mkdir(parents=True, exist_ok=True)
     write_canonical(sim / "diagnostics.json", diagnostics_doc(errors or [], unresolvable))
     write_canonical(sim / "surefire.json", surefire_doc(failures or []))
-    args = ["--diagnostics", str(sim / "diagnostics.json"), "--surefire-json", str(sim / "surefire.json"), "--test-rc", str(test_rc if test_rc is not None else (1 if failures else 0))]
+    # the simulator stands in for a full run-verify pass, and says so: an
+    # unstated mode is diagnostic and cannot promote (verify.py)
+    args = ["--mode", "acceptance", "--diagnostics", str(sim / "diagnostics.json"), "--surefire-json", str(sim / "surefire.json"), "--test-rc", str(test_rc if test_rc is not None else (1 if failures else 0))]
     if findings is not None:
         write_canonical(sim / "findings.json", findings)
         args += ["--findings", str(sim / "findings.json")]

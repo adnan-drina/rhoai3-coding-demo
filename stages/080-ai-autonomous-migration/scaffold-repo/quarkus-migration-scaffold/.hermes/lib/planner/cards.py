@@ -88,8 +88,8 @@ def render_body(body: dict[str, Any]) -> str:
     lines += ["    %s" % c for c in steps]
     lines += [
         "",
-        "The tools decide: ACCEPTED commits and mints the next card; REVERTED re-mints this cluster; DEFERRED stops the loop.",
-        "Terminator: `kanban_complete` after ACCEPTED or REVERTED (the loop record is the audit; K2 allows it). `kanban_block` kind=needs_input naming the cluster after DEFERRED or a `REFUSE: LOOP_*`. Never `kanban_request_review` on a loop card; never retry inside this card.",
+        "The tools decide: ACCEPTED commits and mints the next card; REVERTED re-mints this cluster; VERIFICATION_PENDING retains the candidate without counting an attempt; DEFERRED stops the loop.",
+        "Terminator: `kanban_complete` after ACCEPTED or REVERTED (the loop record is the audit; K2 allows it). `kanban_block` kind=needs_input naming the cluster after VERIFICATION_PENDING, DEFERRED or a `REFUSE: LOOP_*`. Never `kanban_request_review` on a loop card; never retry inside this card.",
         "",
         "<details><summary>machine body (K1)</summary>",
         "",
@@ -126,10 +126,23 @@ def parse_body(text: Any) -> dict[str, Any]:
     return parsed if isinstance(parsed, dict) else {}
 
 
+def pending_cluster_ids(steps: dict[str, Any] | None) -> list[str]:
+    """Clusters with an uncleared VERIFICATION_PENDING candidate (do not mint)."""
+    out: list[str] = []
+    for row in (steps or {}).get("pending") or []:
+        if isinstance(row, dict) and row.get("cluster") and not row.get("cleared") and not row.get("rewound"):
+            cid = str(row["cluster"])
+            if cid not in out:
+                out.append(cid)
+    return out
+
+
 def next_card(worklist: dict[str, Any], steps: dict[str, Any] | None) -> dict[str, Any] | None:
     """The one card the loop needs now, or None when the run cannot proceed
-    (a deferred cluster is open and nothing else is left)."""
+    (a deferred cluster is open, a pending candidate is retained, or nothing else is left)."""
     attempts = dict((steps or {}).get("attempts") or {})
+    if pending_cluster_ids(steps):
+        return None
     head = head_cluster(worklist)
     if head is not None:
         card = {

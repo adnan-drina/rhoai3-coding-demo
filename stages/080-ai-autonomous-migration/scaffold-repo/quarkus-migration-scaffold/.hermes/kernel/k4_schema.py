@@ -28,8 +28,9 @@ REMEDY = {
     "K4_ACTIVATION": "K4 re-derives the activation/pilot verdict from .hermes/pins.json; a receipt text never overrides it.",
     "K4_PINS": "Mandatory tool pins must be present and match their producer receipts (TOOL_UNPINNED / TOOL_PIN_MISMATCH).",
     "K4_LOOP": (
-        "No card can be minted: a deferred (manual) cluster is open and nothing else remains, or the "
-        "measure is not fully known. kanban_block kind=needs_input naming the deferred cluster."
+        "No card can be minted: a deferred (manual) cluster is open, a VERIFICATION_PENDING "
+        "candidate is retained (restore it and re-verify; do not mint a new attempt), or the "
+        "measure is not fully known. kanban_block kind=needs_input naming the cluster."
     ),
     "K4_SCOPE": "M3 bodies need files_writable equal to the cluster write set; the close card writes only evidence/ and verification/.",
     "K4_CREATED_CARDS": "Manifest created_cards is the exact one-element payload list ([] forbids).",
