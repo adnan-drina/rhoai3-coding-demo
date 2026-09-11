@@ -50,18 +50,42 @@ silent for ~8 minutes (a large tool call) and costs the worker its full stale
 timeout. The pod restarts once and dest-init re-runs; verify with
 `getent hosts <maas host>` inside the pod.
 
+### Stage 080: authorizing a run (the pilot seal)
+
+The golden ships `pins.planner.activation: not-activated` on purpose, and a
+destination that inherits it mints **M1 only** — admission never ADMITs and K4
+emits nothing. A run is authorized by sealing the destination's own
+`.hermes/pins.json` *after* M1 has produced its evidence bundle, because the
+seal names the exact bundle it covers:
+
+```json
+"planner": { "activation": "pilot",
+             "pilot": { "run_id": "v8",
+                        "authorized_by": "<operator>",
+                        "evidence_bundle_sha256": "<sha256 of evidence/planning/evidence-bundle.json>" } }
+```
+
+Admission then admits that bundle and no other, and K4 re-derives the check
+from this file rather than from receipt text or step order. Never overwrite a
+destination's `pins.json` with the golden's when syncing a harness repair: the
+seal lives there and nowhere else. A worker never edits this block.
+
 ### Stage 080 loop: Operator actions (no human sign-off)
 
 The M3 loop is autonomous by design: every card ends on a mechanical
-verdict (`advance.py` ACCEPTED / REVERTED / DEFERRED) and the implementer
-completes the card on that verdict (K2 checks the loop record). There is
+verdict (`advance.py` ACCEPTED / REVERTED / VERIFICATION_PENDING / DEFERRED).
+The implementer completes the card only on ACCEPTED or REVERTED (K2 checks
+the loop record). `VERIFICATION_PENDING` and `DEFERRED` are
+`kanban_block kind=needs_input`. There is
 no approval gate and no reviewer seat on loop cards. What the Operator
 does is repair mechanisms, never edit product code or evidence by hand:
 
 | Situation | Operator action |
 |---|---|
+| A cluster is `VERIFICATION_PENDING` (verification could not conclude) | Do not remint. Classify the cause in `verification/loop/steps.json` `pending[]`. Fix the harness/environment prerequisite (for example a generated-source pin). Then `restore-pending.py --root . --cluster <id>`, `run-verify.sh --mode acceptance`, and `advance.py` on the **same** card. |
 | A cluster is `DEFERRED` (attempt budget spent) | Find the cause in `verification/loop/steps.json` `rejected[].reason`. A catalog gap or measurement defect is a harness fix (golden + dest install); a design decision is an ADR in `decisions.yaml`. Then `fix-until-green/scripts/rewind.py --root . --to-step N --operator WHO --reason WHY` restores the accepted step, re-measures it, clears the budget and mints in a new epoch. |
 | An accepted step turns out to be a false green | Same rewind, to the step before it. Nothing is deleted; the rewound steps and rejections stay on the record as `rewound`. |
+| A gate fails with a message that names no file of the tree (the work list says `unlocatable`) | `fix-until-green/scripts/diagnose.py --root . --list` names the failure and what has been spent on it; `--open` starts one of two ten-minute attempts, `--close --conclusion LOCATED\|ENVIRONMENT\|DECISION_REQUIRED\|INCONCLUSIVE --investigated … --finding … --proposed-action …` records it under `evidence/diagnosis/`. The tool grants no write authority — a product change while it runs refuses the close — and closing **discharges nothing**: the blocker stays blocking, and what changes is that the run now carries a conclusion someone can act on. A third attempt refuses: that is the finding that the failure needs a decision, not more looking. |
 | A card ended `blocked` although the loop record names its verdict | `hermes kanban complete <id> --summary "…"` from the workspace CLI (the daemon promotes the child only when every parent is done). |
 | A card sits in `triage` | Dashboard "→ ready" (the CLI has no triage verb). |
 | The worker stalls for minutes then reconnects | Check `providers.custom.stale_timeout_seconds` and `HERMES_STREAM_STALE_TIMEOUT` (900) in the managed config; exact-180 s `DC` lines in the gateway access log mean the default is back. `DC` lines at 400–500 s with the pod socket still established mean the workspace is on the public path: `getent hosts maas.apps.<domain>` must print the internal ClusterIP 172.30.250.250 (devfile `pod-overrides` hostAlias; recreate the workspace after the template refresh). |
