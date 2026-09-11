@@ -9,7 +9,7 @@
       "keep": [
         "verification/parity/receipt.json"
       ],
-      "note": "Record what the legacy system does, per admitted entry point (verification/source-oracles/<slug>.json), compare the destination against it (compare-runtime-parity.py per entry point) and compose the receipt-bound summary (compose-parity-receipt.py). Expected values come only from the oracles; never from the card body, never from what the destination happens to return."
+      "note": "Compare the destination against what the SOURCE was recorded doing at M1. Reads: compare-runtime-parity.py per admitted entry point, against verification/source-oracles/<slug>.json. Writes: compare-scenario-parity.py per scenario the approved corpus requires -- it restores the declared initial state, proves the destination is in it, replays the complete recorded request (body and headers included) and reads back every declared effect. Then compose the receipt-bound summary (compose-parity-receipt.py), where an entry point covered by scenarios passes only when every REQUIRED one passed. Expected values come only from the M1 capture; never from the card body, never from what the destination happens to return. Nothing here captures the source: that happened at M1, and re-capturing now would record the source's answer to a question the destination has already been asked."
     },
     {
       "id": "check-domain-parity",

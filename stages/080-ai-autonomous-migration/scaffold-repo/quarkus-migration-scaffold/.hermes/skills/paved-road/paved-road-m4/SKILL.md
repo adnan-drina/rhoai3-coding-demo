@@ -32,14 +32,21 @@ source did. Everything here is measurement. Nothing here decides.
 
 ## Procedure (in order)
 
-1. `skill_view capture-source-oracles` → run its scripts. Record the
-   expected behaviour of the **legacy** system per admitted entry point
-   (`verification/source-oracles/<slug>.json`), compare the destination
-   against each (`compare-runtime-parity.py`), then compose the
-   receipt-bound summary (`compose-parity-receipt.py`, KEEP
-   `verification/parity/receipt.json`). An expected value comes only from
-   an oracle. Never from the card body, never from what the destination
-   happens to return, never from what you believe the legacy did.
+1. `skill_view capture-source-oracles` → run its **comparison** scripts. The
+   source was recorded at M1; M4 asks the destination the same questions.
+   Reads: `compare-runtime-parity.py` per admitted entry point, against
+   `verification/source-oracles/<slug>.json`. Writes:
+   `compare-scenario-parity.py` per scenario the approved corpus requires —
+   it restores the declared initial state, proves the destination is in it,
+   replays the complete recorded request (body and headers included) and
+   reads back every declared effect. Then compose the receipt-bound summary
+   (`compose-parity-receipt.py`, KEEP `verification/parity/receipt.json`);
+   an entry point covered by scenarios passes only when every **required**
+   one passed. An expected value comes only from the M1 capture. Never from
+   the card body, never from what the destination happens to return, never
+   from what you believe the legacy did, and never by re-capturing the
+   source now — that would record its answer to a question the destination
+   has already been asked.
 2. `skill_view check-domain-parity` → run its evaluators. G-1 to G-4
    measured against the referent, each writing its own verdict. A REFUSE
    is a real outcome; the next step is to report it, not to soften it.
