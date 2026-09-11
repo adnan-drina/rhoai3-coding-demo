@@ -280,6 +280,25 @@ def runtime_cause(text: str) -> str:
     return "unclassified"
 
 
+# Where a tool names the MEMBER it could not handle, that member is part of the
+# obligation: a repository with three underivable methods is three repairs, and
+# a loop that cannot see the first one revert the whole file's work every time
+# (the reverted tree means each attempt must redo what the last one did). The
+# patterns are structured, not free text -- the name comes from the code.
+RUNTIME_MEMBER_RES = (
+    re.compile(r"Method '([A-Za-z_][A-Za-z0-9_]*)' of repository"),
+    re.compile(r"method '([A-Za-z_][A-Za-z0-9_]*)' of class"),
+)
+
+
+def runtime_member(text: str) -> str:
+    for rx in RUNTIME_MEMBER_RES:
+        m = rx.search(text or "")
+        if m:
+            return m.group(1)
+    return ""
+
+
 def runtime_locus(text: str, root: Path | None) -> str:
     """The source file a runtime failure names, when the tree has it.
 
@@ -347,14 +366,15 @@ def runtime_items(package: dict[str, Any] | None, boot: dict[str, Any] | None, r
         # "No implementation of interface" became UnableToParseMethodException
         # at the same repository once it became a Spring Data repository).
         cause = runtime_cause(detail + "\n" + log)
-        ident = sha256_bytes(canonical_bytes({"gate": gate, "kind": kind, "cause": cause, "locus": locus}))[:16]
+        member = runtime_member(detail + "\n" + log)
+        ident = sha256_bytes(canonical_bytes({"gate": gate, "kind": kind, "cause": cause, "locus": locus, "member": member}))[:16]
         out.append({
             "id": "rt:%s:%s" % (gate, ident), "source": "runtime", "gate": gate,
-            "kind": cluster_kind, "obligation": kind, "cause": cause, "category": "mandatory",
+            "kind": cluster_kind, "obligation": kind, "cause": cause, "member": member, "category": "mandatory",
             "path": locus, "line": 0, "rule_id": "RUNTIME_%s" % kind.replace("-", "_").upper(),
             "message_sha256": sha256_bytes((detail + log).encode("utf-8")),
             "detail": detail[:200],
-            "message": ("%s gate failed (%s): %s\n%s" % (gate, kind, detail, log))[:1200],
+            "message": ("%s gate failed (%s%s): %s\n%s" % (gate, kind, (" at %s" % member) if member else "", detail, log))[:1200],
         })
     return out
 

@@ -42,6 +42,15 @@ def _runtime_identity_case() -> int:
         return _fail("a different cause at the same place is a different obligation: %s vs %s" % (ca, cc))
     if (ca, cc) != ("missing-implementation", "underivable-query-method"):
         return _fail("the causes come from the closed vocabulary: %s %s" % (ca, cc))
+    # a cause that manifests once per METHOD is one obligation per method:
+    # fixing save must count even though delete then fails the same way
+    m1, _ = ident("Build step X#build threw an exception: io.quarkus.spring.data.deployment.UnableToParseMethodException: Method 'save' of repository 'x.Y' cannot be parsed")
+    m2, _ = ident("Build step X#build threw an exception: io.quarkus.spring.data.deployment.UnableToParseMethodException: Method 'delete' of repository 'x.Y' cannot be parsed")
+    if m1 == m2:
+        return _fail("two underivable methods in one repository are two obligations")
+    m3, _ = ident("[error] Build step Z#build threw an exception: io.quarkus.spring.data.deployment.UnableToParseMethodException: Method 'save' of repository 'x.Y' cannot be parsed (round 2)")
+    if m1 != m3:
+        return _fail("the same method, reported around different words, is one obligation")
     d, cd = ident("something no signature predicted")
     e, ce = ident("something else no signature predicted")
     if cd != "unclassified" or d != e:
