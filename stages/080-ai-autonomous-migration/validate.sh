@@ -849,6 +849,9 @@ check "080 the body-less write comparison is gone: a non-idempotent oracle is ro
 check "080 starting the source and capturing scenarios is an M1 producer step, not an Operator rescue" \
   "python3 -c \"import json; d=json.load(open('${SCAFFOLD_SKILLS}/paved-road/paved-road-m1/steps.json')); ids=[s['id'] for s in d['steps']]; print('ok' if ids.index('capture-source-scenarios') > ids.index('assemble-evidence-bundle') else 'bad')\"" \
   "ok"
+check "080 the scenario corpus ships an example a run can start from, and it obeys its own rules" \
+  "cd '${SCAFFOLD_080}' && python3 -c \"import json,sys; sys.path.insert(0,'.hermes/skills/gates/capture-source-oracles/scripts'); d=json.load(open('.hermes/planning/scenarios.example.json')); sc=d['scenarios'][0]; ok=d['schema']=='rhoai3.scenario-corpus/v1' and d.get('approved_by') and sc.get('body_file') and sc.get('effects') and '{' not in sc['path']; print('ok' if ok else 'bad')\"" \
+  "ok"
 check "080 a scenario carries a concrete request: a route pattern, a missing body statement, or a write with no effect refuses" \
   "grep -q -F 'never a route pattern' '${SCAFFOLD_SKILLS}/gates/capture-source-oracles/scripts/_scenarios.py' && grep -q -F 'body_absent: true' '${SCAFFOLD_SKILLS}/gates/capture-source-oracles/scripts/_scenarios.py' && grep -q -F 'at least one effect' '${SCAFFOLD_SKILLS}/gates/capture-source-oracles/scripts/compare-scenario-parity.py' && echo 1 || echo 0" \
   "1"

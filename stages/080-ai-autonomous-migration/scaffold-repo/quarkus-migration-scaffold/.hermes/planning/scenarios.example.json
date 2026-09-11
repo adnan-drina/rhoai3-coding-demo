@@ -1,0 +1,40 @@
+{
+  "note": "Copy to <destination>/verification/scenarios/corpus.json and edit. This is Operator-approved INTENT: what the source is asked to do, so the destination can be asked exactly the same thing. It records no expected values - those come only from capturing the source (capture-source-scenarios.py).",
+  "schema": "rhoai3.scenario-corpus/v1",
+  "approved_by": "operator:<who approved these scenarios>",
+  "initial_state": {
+    "reset": ".hermes/skills/gates/capture-source-oracles/scripts/reset-parity-db.sh --root . restores the destination instance; the frozen source restores the same dataset by restarting when its baseline engine is in-memory",
+    "dataset": "the specimen's own seeded dataset, and what is true of it that the scenarios depend on",
+    "engines": "source <decisions.yaml datasource.source_baseline_db_kind>, destination <decisions.yaml datasource.db_kind>"
+  },
+  "path_vars": {
+    "note": "values for templated segments of the IDEMPOTENT reads, taken from the source's own seeded data; a read whose path still carries a variable is INCONCLUSIVE, never guessed",
+    "ownerId": "1"
+  },
+  "scenarios": [
+    {
+      "id": "sc:<short-name>",
+      "entry_point": "ep:<fully.qualified.Controller>#<signature>:http",
+      "method": "PUT",
+      "path": "/api/owners/1",
+      "headers": {"Content-Type": "application/json"},
+      "identity": {"kind": "basic", "user_env": "APP_USER", "password_env": "APP_PASSWORD"},
+      "body_file": "verification/scenarios/bodies/<short-name>.json",
+      "body_absent": false,
+      "reset_before": true,
+      "effects": [
+        {"id": "eff:<what-this-proves>", "method": "GET", "path": "/api/owners/1"}
+      ],
+      "normalization": [],
+      "why": "why this scenario is the one that proves the endpoint's behaviour"
+    }
+  ],
+  "rules": [
+    "A concrete URL, never a route pattern: {var} or * refuses. The route stays in the entry-point inventory and is associated with scenario URLs.",
+    "Either body_file or body_absent: true. A DELETE legitimately has no body, and that is a fact to record rather than an omission to infer.",
+    "A write with no declared effect refuses: an identical response does not prove the write happened.",
+    "identity names ENVIRONMENT VARIABLES. Credentials are never recorded here.",
+    "Prefer a first scenario whose identifier the write does not assign (update a seeded row rather than create one): effect probes are then deterministic on both engines.",
+    "One successful response per endpoint is not behavioural coverage. Authentication, rejection and validation failures need scenarios too."
+  ]
+}

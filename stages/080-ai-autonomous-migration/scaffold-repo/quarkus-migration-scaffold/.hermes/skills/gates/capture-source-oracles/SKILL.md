@@ -81,7 +81,9 @@ python3 "${HERMES_SKILL_DIR}/scripts/compose-parity-receipt.py" --root /projects
 ## The scenario corpus
 
 `verification/scenarios/corpus.json` (`rhoai3.scenario-corpus/v1`) is
-**Operator-approved intent** and names its approver. An optional `path_vars`
+**Operator-approved intent** and names its approver. Start from
+`.hermes/planning/scenarios.example.json`, which carries the shape and the
+rules below. An optional `path_vars`
 map supplies the values the idempotent reads need for templated paths, from
 the source's own seeded data. Each scenario carries the
 method, a **concrete** URL (never a route pattern — the route stays in the
