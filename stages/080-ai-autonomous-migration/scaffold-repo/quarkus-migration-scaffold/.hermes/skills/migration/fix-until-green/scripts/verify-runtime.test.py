@@ -68,12 +68,12 @@ def main() -> int:
             return _fail("a change anywhere in the application must change its digest")
 
         pkg = {"artifact": "target/quarkus-app", "artifact_sha256": manifest, "candidate_sha256": "cand"}
-        b = mod.boot(root, DS, pkg, 18099, "/", 5, "java", "cand")
+        b = mod.boot(root, DS, ["prod"], pkg, 18099, "/", 5, "java", "cand")
         if b["ready"] or "not the one packaging verified" not in b["detail"]:
             return _fail("starting an application that changed after packaging must refuse: %s" % b)
 
         pkg = {"artifact": "target/quarkus-app", "artifact_sha256": manifest2, "candidate_sha256": "cand"}
-        b = mod.boot(root, DS, pkg, 18099, "/", 5, "java", "other-candidate")
+        b = mod.boot(root, DS, ["prod"], pkg, 18099, "/", 5, "java", "other-candidate")
         if b["ready"] or "another tree" not in b["detail"]:
             return _fail("startup evidence must be about the tree packaging verified: %s" % b)
 
@@ -81,7 +81,7 @@ def main() -> int:
         srv = HTTPServer(("127.0.0.1", 0), Stranger)
         port = srv.server_address[1]
         threading.Thread(target=srv.serve_forever, daemon=True).start()
-        b = mod.boot(root, DS, pkg, port, "/", 5, "java", "cand")
+        b = mod.boot(root, DS, ["prod"], pkg, port, "/", 5, "java", "cand")
         srv.shutdown()
         if b["ready"] or "already answering" not in b["detail"]:
             return _fail("a port that answers before anything is started must refuse: %s" % b)

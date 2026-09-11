@@ -219,6 +219,17 @@ def main(argv: list[str] | None = None) -> int:
         pipeline.admit(root)
         return 1
     allowed = set(issued.get("write_set") or [])
+    # An amendment is the only way the write set grows, and it is only an
+    # authority if it was granted BEFORE the file moved. Acceptance re-checks
+    # that: a recorded amendment whose file was already dirty when it was
+    # granted authorized nothing.
+    bad_amendments = [a for a in (issued.get("amendments") or [])
+                      if not a.get("granted_before_sha256") or a.get("dirty_at_grant")]
+    if bad_amendments:
+        return _reject(root, steps, args.cluster, args.card, cur,
+                       "amendment(s) without authority: %s were added to the write set after the file had already been "
+                       "edited, so no card ever authorized the change" % ", ".join(str(a.get("path")) for a in bad_amendments[:3]),
+                       changed, mint=not args.no_mint, hermes=args.hermes)
     outside = [p for p in changed if p not in allowed]
     if outside:
         return _reject(root, steps, args.cluster, args.card, cur, "changed path(s) outside the write set: %s" % ",".join(outside[:5]), changed, mint=not args.no_mint, hermes=args.hermes)
@@ -295,6 +306,16 @@ def main(argv: list[str] | None = None) -> int:
                                len(bad), scope_doc.get("repository"), scope_doc.get("rule"),
                                "; ".join("%s (%s)" % (r["member"], r["detail"]) for r in bad[:4])),
                            changed, mint=not args.no_mint, hermes=args.hermes)
+        # An assessment that could not be made is not an assessment that
+        # passed. The card cannot complete on a member nobody could resolve;
+        # that is a prerequisite to repair, not an attempt to spend.
+        unknown = [r for r in scope_rows if r.get("verdict") == "inconclusive"]
+        if unknown:
+            return _pending(root, steps, args.cluster, args.card, cur,
+                            "%s member(s) of %s could not be assessed against %s: %s" % (
+                                len(unknown), scope_doc.get("repository"), scope_doc.get("rule"),
+                                "; ".join("%s (%s)" % (r["member"], r["detail"]) for r in unknown[:3])),
+                            changed, on_disk, cause="unassessable-scope")
     gate = str(issued.get("gate") or "")
     ok, reason = progress(prev["measure"], cur["measure"], prev_keys, cur_keys,
                           gate=gate,

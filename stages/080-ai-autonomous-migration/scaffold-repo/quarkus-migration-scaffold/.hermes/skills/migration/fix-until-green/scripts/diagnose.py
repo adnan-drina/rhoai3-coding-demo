@@ -36,11 +36,11 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _loop_common import ensure_hermes_lib, product_paths_changed  # noqa: E402
+from _loop_common import candidate_sha256, ensure_hermes_lib, product_paths_changed  # noqa: E402
 
 ensure_hermes_lib()
 
-from planner.canonical import load_json, write_canonical  # noqa: E402
+from planner.canonical import load_json, sha256_file, write_canonical  # noqa: E402
 from planner.paths import WORKLIST  # noqa: E402
 
 DIAGNOSIS_DIR = Path("evidence") / "diagnosis"
@@ -112,8 +112,14 @@ def _cmd_open(root: Path, failure: str, row: dict) -> int:
         "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now)),
         "deadline_epoch": int(now) + MINUTES * 60,
         "failure": {k: row.get(k) for k in ("id", "kind", "gate", "cause", "detail")},
+        # The whole content of the product tree, not the list of names in it.
+        # A file that was already dirty stays dirty however many times it is
+        # edited, so a name list says nothing (measured: an investigation
+        # changed an already-modified file twice and closed clean).
         "inputs": {"worklist_present": (root / WORKLIST).is_file(),
-                   "product_paths_changed": product_paths_changed(root)},
+                   "product_paths_changed": product_paths_changed(root),
+                   "candidate_sha256": candidate_sha256(root),
+                   "worklist_sha256": sha256_file(root / WORKLIST) if (root / WORKLIST).is_file() else ""},
         "scratch": (DIAGNOSIS_DIR / failure.replace(":", "-").replace("/", "-") / ("scratch-%d" % n)).as_posix(),
     })
     doc["attempt"] = n
@@ -142,16 +148,24 @@ def _cmd_close(root: Path, failure: str, args: argparse.Namespace) -> int:
     # the one authority this tool does not have: the product tree must be
     # exactly as it was, or the investigation edited what it came to look at
     moved = product_paths_changed(root)
-    before = list((opened.get("inputs") or {}).get("product_paths_changed") or [])
-    if sorted(moved) != sorted(before):
+    inputs = opened.get("inputs") or {}
+    before = list(inputs.get("product_paths_changed") or [])
+    before_content = str(inputs.get("candidate_sha256") or "")
+    now_content = candidate_sha256(root)
+    names_differ = sorted(moved) != sorted(before)
+    content_differs = bool(before_content) and before_content != now_content
+    if names_differ or content_differs or not before_content:
+        detail = (", ".join(sorted(set(moved) ^ set(before))[:5]) if names_differ
+                  else ("the same files, different content (%s -> %s)" % (before_content[:12], now_content[:12])
+                        if before_content else "this attempt recorded no content digest to compare against"))
         _append(failure_dir(root, failure) / ("%d.json" % n), {
             "event": "refused", "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "reason": "the product tree changed during the investigation",
             "paths": sorted(set(moved) ^ set(before)),
+            "candidate_sha256": {"at_open": before_content, "at_close": now_content},
         })
         return _refuse("the product tree changed while this investigation ran (%s); an investigation reads, it does "
-                       "not repair. Revert those paths; the refusal is on the record."
-                       % ", ".join(sorted(set(moved) ^ set(before))[:5]))
+                       "not repair. Revert it; the refusal is on the record." % detail)
     late = time.time() > float(opened.get("deadline_epoch") or 0)
     conclusion = "INCONCLUSIVE" if (late and args.conclusion != "INCONCLUSIVE") else args.conclusion
     event = {
@@ -164,6 +178,7 @@ def _cmd_close(root: Path, failure: str, args: argparse.Namespace) -> int:
         "proposed_action": str(args.proposed_action).strip(),
         "path": str(args.path or ""),
         "over_deadline": late,
+        "candidate_sha256": now_content,
         "discharges": [],
     }
     if late:

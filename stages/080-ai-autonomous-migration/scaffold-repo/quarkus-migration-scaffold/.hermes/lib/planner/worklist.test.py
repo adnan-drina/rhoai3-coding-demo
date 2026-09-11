@@ -7,7 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from planner.cards import card_title
-from planner.worklist import RETAIN, apply_supersessions, assess_batch_scope, batch_scope_digest, build_batch_scope, runtime_items  # noqa: E402
+from planner.worklist import RETAIN, apply_supersessions, batch_scope_digest, batch_scope_path, build_batch_scope, runtime_items  # noqa: E402
 from planner.worklist import KIND_RANK, cluster_items, compile_items, file_depths, incidents_from_findings, measure_of, obligation_keys, path_class, progress, surefire_from_reports, test_items  # noqa: E402
 
 
@@ -136,47 +136,18 @@ def _gate_progress_case() -> int:
 
 
 def _batch_scope_case() -> int:
-    """A repository card is judged against a SEALED inventory of every member
-    the declared rule reaches, and an already-correct member stays as it is."""
+    """The SEAL: an inventory is immutable, named by its own digest, and never
+    carries the measured failure into the rule it declares.
+
+    What the rule SAYS about each member is asked of the compiler and lives in
+    dest_model.test.py; this is about identity."""
     import tempfile
 
-    repo = """package p;
-public interface VetRepository extends JpaRepository<Vet, Integer> {
-
-    @Query("SELECT v FROM Vet v")
-    List<Vet> findAllVets();
-
-    List<Vet> findByLastName(String lastName);
-
-    List<Pet> findPetTypes();
-
-    @Query("SELECT p FROM Pet p")
-    void savePet(Pet p);
-
-    @Modifying
-    @Query("DELETE FROM Pet p WHERE p.id = :id")
-    void deletePet(int id);
-
-    default int helper() { return 1; }
-}
-"""
-    frozen = """package p;
-public class JpaVetRepositoryImpl {
-    public void savePet(Pet p) { this.em.persist(p); }
-    public void deletePet(int id) { this.em.remove(p); }
-    public List<Vet> findAllVets() { return this.em.createQuery("SELECT v FROM Vet v").getResultList(); }
-}
-"""
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
         rel = "src/main/java/p/VetRepository.java"
         (root / rel).parent.mkdir(parents=True, exist_ok=True)
-        (root / rel).write_text(repo)
-        fz = root / ".derived/frozen-input/src/main/java/p"
-        fz.mkdir(parents=True, exist_ok=True)
-        (fz / "JpaVetRepositoryImpl.java").write_text(frozen)
-        (root / "evidence").mkdir(exist_ok=True)
-        (root / "evidence/type-inventory.json").write_text("{}")
+        (root / rel).write_text("package p;\npublic interface VetRepository { Object first(); }\n")
         cluster = {"id": "c:abc", "items": ["rt:package:1"], "write_set": [rel]}
         items = [{"id": "rt:package:1", "source": "runtime", "gate": "package",
                   "cause": "underivable-query-method", "path": rel}]
@@ -187,26 +158,17 @@ public class JpaVetRepositoryImpl {
             return _fail("the seal must be reproducible from content alone")
         if scope["measured"] != ["rt:package:1"]:
             return _fail("the measured failure stays in item_ids; the inventory never becomes one")
-        if not any(m["member"] == "findAllVets" and m["source_refs"] for m in scope["members"]):
-            return _fail("the inventory must carry where the frozen source implemented a member")
-        rows = {r["member"]: r["verdict"] for r in assess_batch_scope(root, scope)}
-        want = {"findAllVets": "ok", "findByLastName": "ok", "findPetTypes": "violates",
-                "savePet": "violates", "deletePet": "ok", "helper": "ok"}
-        if rows != want:
-            return _fail("assessment against the declared rule: %s" % rows)
-        # repairing both violations finishes the card; nothing was owed for the
-        # members that were already right
-        fixed = repo.replace("    List<Pet> findPetTypes();",
-                             '    @Query("SELECT DISTINCT p.type FROM Pet p")\n    List<Pet> findPetTypes();')
-        fixed = fixed.replace('    @Query("SELECT p FROM Pet p")\n    void savePet',
-                              '    @Modifying\n    @Query("UPDATE Pet p SET p.name = :n")\n    void savePet')
-        (root / rel).write_text(fixed)
-        if [r for r in assess_batch_scope(root, scope) if r["verdict"] == "violates"]:
-            return _fail("a repaired repository must assess clean against the same sealed inventory")
-        # a repository that is gone cannot be assessed, and silence is not a pass
-        (root / rel).unlink()
-        if [r for r in assess_batch_scope(root, scope) if r["verdict"] == "ok"]:
-            return _fail("a missing repository is inconclusive, never clean")
+        # the path IS the seal: a later inventory for the same cluster cannot
+        # land on the file an outstanding card is judged against
+        first = batch_scope_path(scope)
+        (root / rel).write_text("package p;\npublic interface VetRepository { Object first(); Object second(); }\n")
+        scope2 = build_batch_scope(root, cluster, items, {"candidate_sha256": "y"})
+        if scope2["digest"] == scope["digest"]:
+            return _fail("a different tree is a different inventory")
+        if batch_scope_path(scope2) == first:
+            return _fail("two inventories of one cluster must not share a path: %s" % first)
+        if first.parent != batch_scope_path(scope2).parent:
+            return _fail("both still belong to the same cluster's directory")
     return 0
 
 
@@ -390,7 +352,7 @@ def main() -> int:
         return _fail("reclassified items keep their authority and are never dropped")
     if measure_of(all_items, incidents_known=False, compile_known=True, tests_known=True, parity_known=False)["known"]:
         return _fail("unknown incidents never advance")
-    print("OK: worklist (lossless line-free incidents; canary excluded; only ERROR diagnostics; build→config→compile(leaf-first)→incident→test order; tests never writable; lexicographic 3-tuple progress; new-incident veto; unknown never advances; gate progress is the issued obligation disappearing, never a reworded one; a second cause at one file is a second obligation); a repository card is judged against a sealed member inventory")
+    print("OK: worklist (lossless line-free incidents; canary excluded; only ERROR diagnostics; build→config→compile(leaf-first)→incident→test order; tests never writable; lexicographic 3-tuple progress; new-incident veto; unknown never advances; gate progress is the issued obligation disappearing, never a reworded one; a second cause at one file is a second obligation); a repository card's inventory is sealed by its own digest and two measurements never share a path")
     return 0
 
 

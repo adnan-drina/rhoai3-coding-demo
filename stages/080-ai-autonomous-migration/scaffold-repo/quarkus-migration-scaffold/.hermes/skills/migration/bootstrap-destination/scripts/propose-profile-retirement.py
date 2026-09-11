@@ -7,10 +7,19 @@ contain. Enumerating by hand is tedious and error-prone, so this proposes the
 rows; it does not write decisions.yaml, and it never will. The whole point of
 the enumeration is that a person read it.
 
-A condition is proposed for retirement when the destination does not activate
-its profile, because that is precisely the condition whose bean disappears at
-build time with nothing to say about it. A condition on an ACTIVE profile is
-never proposed: it is doing its job.
+A condition is proposed when the destination does not activate its profile,
+because that is precisely the condition whose bean disappears at build time
+with nothing to say about it. A condition on an ACTIVE profile is never
+proposed: it is doing its job.
+
+Retiring a condition does NOT remove its bean. `@IfBuildProfile("x")` says the
+bean exists only under profile x; removing the annotation makes the bean
+unconditional, so it is always there. Activating x and retiring the condition
+are both ways to give the destination that bean, and they differ in what they
+preserve: activation keeps the legacy's selection semantics and leaves the
+sources alone, retirement records that the alternatives the condition selected
+between are gone. What loses the bean is the third option -- deciding
+nothing.
 
   python3 propose-profile-retirement.py --root .
   python3 propose-profile-retirement.py --root . --active jpa   # what-if
@@ -60,7 +69,8 @@ def main(argv: list[str] | None = None) -> int:
               % (", ".join(active) or "none"))
         return 0
     print("# %d condition(s) on profiles this run does not activate (%s)." % (len(rows), ", ".join(active) or "none"))
-    print("# Read every row before accepting it: each one removes a bean from the build.")
+    print("# Read every row before accepting it: each one makes its bean UNCONDITIONAL,")
+    print("# which is a decision about the alternatives that condition selected between.")
     print("build_profiles:")
     print("  inventory_sha256: %s" % (inv or "MISSING-run-the-inventory-producer-first"))
     print("  retire:")

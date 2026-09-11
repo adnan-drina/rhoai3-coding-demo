@@ -771,6 +771,18 @@ check "080 scan-with-mta selftest passes (provenance, canary, never --source)" \
 check "080 worklist selftest passes (order, measure, progress rule)" \
   "python3 '${SCAFFOLD_LIB}/planner/worklist.test.py' >/dev/null && echo 1 || echo 0" \
   "1"
+check "080 dest-model selftest passes (resolved signatures, real inheritance, exact annotation ranges)" \
+  "python3 '${SCAFFOLD_LIB}/planner/dest_model.test.py' >/dev/null && echo 1 || echo 0" \
+  "1"
+check "080 scope-amendment selftest passes (authority before the edit, locus, bounded)" \
+  "python3 '${SCAFFOLD_SKILLS}/migration/fix-until-green/scripts/amend-scope.test.py' >/dev/null && echo 1 || echo 0" \
+  "1"
+check "080 diagnosis selftest passes (bounded, reads only, discharges nothing)" \
+  "python3 '${SCAFFOLD_SKILLS}/migration/fix-until-green/scripts/diagnose.test.py' >/dev/null && echo 1 || echo 0" \
+  "1"
+check "080 no profile condition or repository member is read with a regular expression" \
+  "if grep -nE '[[:<:]](PROFILE_RE|_declared_members)[[:>:]]' '${SCAFFOLD_LIB}/planner/worklist.py' '${SCAFFOLD_SKILLS}/migration/bootstrap-destination/scripts/bootstrap-destination.py' >/dev/null 2>&1; then echo REGEX; else echo MODEL; fi" \
+  "MODEL"
 check "080 yamlite parses idFields: [id] without PyYAML" \
   "python3 '${SCAFFOLD_LIB}/planner/yamlite.test.py' >/dev/null && echo 1 || echo 0" \
   "1"

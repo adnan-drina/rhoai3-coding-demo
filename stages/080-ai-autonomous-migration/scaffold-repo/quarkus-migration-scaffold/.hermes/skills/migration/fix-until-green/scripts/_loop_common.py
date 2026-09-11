@@ -126,21 +126,21 @@ def _members(text: str) -> list[tuple[str, list[tuple[str, str]]]]:
 def source_write_members(root: Path) -> set[str]:
     """Members the FROZEN source implemented as a state change.
 
-    Evidence, not naming convention: the legacy implementation of the member
-    calls persist/merge/remove/executeUpdate or the JDBC template's update."""
-    out: set[str] = set()
-    base = Path(root) / ".derived" / "frozen-input" / "src" / "main" / "java"
-    if not base.is_dir():
-        return out
-    for f in sorted(base.rglob("*.java")):
-        text = f.read_text(encoding="utf-8", errors="replace")
-        for m in _DECL.finditer(text):
-            if not text[m.end() - 1:m.end()] == "{":
-                continue
-            body = text[m.end(): m.end() + 1200]
-            if any(call in body for call in _SOURCE_WRITE_CALLS):
-                out.add(m.group("name"))
-    return out
+    Read from M1's structural model, whose call edges the compiler resolved.
+    Scanning the body text near a declaration attributed one member's
+    EntityManager.persist to the member above it (measured live 2026-09-11),
+    which is how a read-only findById came to be judged a write."""
+    from planner.dest_model import source_write_members as _model_writes
+
+    writes, _why = _model_writes(root)
+    return writes
+
+
+def source_write_members_known(root: Path) -> tuple[set[str], str]:
+    """The same, with the reason when the model could not be read."""
+    from planner.dest_model import source_write_members as _model_writes
+
+    return _model_writes(root)
 
 
 def state_change_violations(text: str, writes: set[str]) -> tuple[list[dict], list[dict]]:

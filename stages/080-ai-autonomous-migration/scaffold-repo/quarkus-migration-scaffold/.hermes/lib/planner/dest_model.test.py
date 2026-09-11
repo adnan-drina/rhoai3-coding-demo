@@ -1,0 +1,211 @@
+#!/usr/bin/env python3
+"""dest-model selftest: the three questions regex answered wrongly.
+
+Each case is a counterexample the architect reproduced against the regex
+implementations (review of 80b8bf7e, 2026-09-11), with the positive path
+beside it: fixing a false positive by refusing everything is not a fix.
+"""
+from __future__ import annotations
+
+import json
+import shutil
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from planner.dest_model import DestModelUnavailable, condition_key, dest_model, profile_conditions, source_write_members  # noqa: E402
+from planner.worklist import assess_batch_scope  # noqa: E402
+
+STUBS = {
+    "org/springframework/context/annotation/Profile.java":
+        "package org.springframework.context.annotation;\nimport java.lang.annotation.*;\n"
+        "@Retention(RetentionPolicy.RUNTIME) @Target({ElementType.TYPE, ElementType.METHOD})\n"
+        "public @interface Profile { String[] value(); }\n",
+    "io/quarkus/arc/profile/IfBuildProfile.java":
+        "package io.quarkus.arc.profile;\nimport java.lang.annotation.*;\n"
+        "@Retention(RetentionPolicy.RUNTIME) @Target({ElementType.TYPE, ElementType.METHOD})\n"
+        "public @interface IfBuildProfile { String value(); }\n",
+    "org/springframework/data/jpa/repository/JpaRepository.java":
+        "package org.springframework.data.jpa.repository;\nimport java.util.List;\n"
+        "public interface JpaRepository<T, ID> { List<T> findAll(); T save(T e); void delete(T e); }\n",
+    "org/springframework/data/jpa/repository/Query.java":
+        "package org.springframework.data.jpa.repository;\nimport java.lang.annotation.*;\n"
+        "@Retention(RetentionPolicy.RUNTIME) @Target(ElementType.METHOD)\n"
+        "public @interface Query { String value(); }\n",
+}
+
+
+def _fail(msg: str) -> int:
+    print("FAIL: " + msg, file=sys.stderr)
+    return 1
+
+
+# M1's model of the SOURCE: `save` persists, `findById` only reads. The regex
+# it replaced attributed one member's call to the member declared above it.
+FROZEN = {
+    "types": [{"path": "src/main/java/p/JpaVetRepositoryImpl.java", "methods": [
+        {"name": "findById", "signature": "findById(int)",
+         "calls": [{"name": "find", "owner": "javax.persistence.EntityManager"}]},
+        {"name": "save", "signature": "save(p.Vet)",
+         "calls": [{"name": "persist", "owner": "javax.persistence.EntityManager"}]},
+        {"name": "vetsOfTheMonth", "signature": "vetsOfTheMonth()",
+         "calls": [{"name": "getResultList", "owner": "javax.persistence.Query"}]},
+    ]}],
+}
+
+
+def _tree(root: Path, files: dict[str, str], *, classpath: bool = True, frozen: bool = True) -> None:
+    (root / ".hermes").mkdir(parents=True, exist_ok=True)
+    (root / ".hermes/pins.json").write_text('{"pins":{"quarkus_platform":{"java_release":21}}}')
+    if frozen:
+        st = root / "evidence/structure/structure.json"
+        st.parent.mkdir(parents=True, exist_ok=True)
+        st.write_text(json.dumps(FROZEN))
+    for rel, text in files.items():
+        p = root / "src/main/java" / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(text)
+    if not classpath:
+        return
+    stub_src = root / ".stub"
+    for rel, text in STUBS.items():
+        p = stub_src / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(text)
+    out = root / ".stubcls"
+    out.mkdir(exist_ok=True)
+    subprocess.run(["javac", "-d", str(out), *[str(p) for p in stub_src.rglob("*.java")]],
+                   check=True, capture_output=True)
+    cp = root / "verification/build/.work/classpath.txt"
+    cp.parent.mkdir(parents=True, exist_ok=True)
+    cp.write_text(str(out))
+
+
+TWO_IDENTICAL = ("package p;\nimport org.springframework.context.annotation.Profile;\n"
+                 "public class Config {\n"
+                 "    @Profile(\"spring-data-jpa\")\n    Object first() { return new Object(); }\n"
+                 "    @Profile(\"spring-data-jpa\")\n    Object second() { return new Object(); }\n"
+                 "    @io.quarkus.arc.profile.IfBuildProfile(\"secret\")\n    Object third() { return new Object(); }\n}\n")
+
+
+def _conditions_case() -> int:
+    with tempfile.TemporaryDirectory(prefix="dm-cond-") as d:
+        root = Path(d)
+        _tree(root, {"p/Config.java": TWO_IDENTICAL})
+        rows = profile_conditions(dest_model(root))
+        if len(rows) != 3:
+            return _fail("three declarations carry a condition, not %d: %s" % (len(rows), rows))
+        if not any(r["annotation"] == "IfBuildProfile" and r["profile"] == "secret" for r in rows):
+            return _fail("a fully qualified annotation is a condition and must be visible: %s" % rows)
+        keys = {condition_key(r) for r in rows}
+        if len(keys) != 3:
+            return _fail("two identical annotations on two members are two decisions: %s" % keys)
+        if any(r["resolution"] != "full" for r in rows):
+            return _fail("with the classpath present every condition resolves: %s" % rows)
+        if any(r["start"] < 0 or r["end"] <= r["start"] for r in rows):
+            return _fail("each condition must carry the range the compiler gave it: %s" % rows)
+
+        # The bootstrap runs before the first build, so there is no classpath
+        # then. An import binds a simple name as surely as the compiler does,
+        # and a fully qualified use needs no binding at all: both stay
+        # retirable. What stays INCONCLUSIVE is a name nothing binds.
+        (root / "verification/build/.work/classpath.txt").unlink()
+        rows2 = profile_conditions(dest_model(root, refresh=True))
+        if len(rows2) != 3:
+            return _fail("an unbuildable tree still declares its conditions: %s" % rows2)
+        if any(r["resolution"] != "full" for r in rows2):
+            return _fail("an import binds the annotation even with no classpath: %s" % rows2)
+        if {r["resolved_by"] for r in rows2} != {"import", "compiler"}:
+            return _fail("the model must say HOW each condition was resolved: %s" % [r["resolved_by"] for r in rows2])
+
+        unbound = ("package p;\nimport org.springframework.context.annotation.*;\n"
+                   "public class Loose {\n    @Profile(\"x\")\n    Object m() { return null; }\n}\n")
+        (root / "src/main/java/p/Loose.java").write_text(unbound)
+        rows3 = [r for r in profile_conditions(dest_model(root, refresh=True)) if r["path"].endswith("Loose.java")]
+        if not rows3 or any(r["resolution"] == "full" for r in rows3):
+            return _fail("a wildcard import binds nothing; that condition is inconclusive: %s" % rows3)
+        if any(not r["value_known"] for r in rows3):
+            return _fail("the profile it names is still readable, so accounting can still see it: %s" % rows3)
+
+        nonliteral = ("package p;\nimport org.springframework.context.annotation.Profile;\n"
+                      "public class Const {\n    static final String P = \"y\";\n"
+                      "    @Profile(P)\n    Object m() { return null; }\n}\n")
+        (root / "src/main/java/p/Const.java").write_text(nonliteral)
+        rows4 = [r for r in profile_conditions(dest_model(root, refresh=True)) if r["path"].endswith("Const.java")]
+        if not rows4 or any(r["value_known"] for r in rows4):
+            return _fail("an argument that is not a string literal is a question, not a profile name: %s" % rows4)
+    return 0
+
+
+def _assess_case() -> int:
+    repo = ("package p;\nimport java.util.List;\n"
+            "import org.springframework.data.jpa.repository.JpaRepository;\n"
+            "import org.springframework.data.jpa.repository.Query;\n"
+            "public interface VetRepository extends JpaRepository<Vet, Integer> {\n"
+            "    List<Vet> findAll();\n"
+            "    List<Vet> findByLastName(String lastName);\n"
+            "    @Query(\"SELECT DISTINCT v FROM Vet v\")\n    List<Vet> allVets();\n"
+            "    List<Vet> vetsOfTheMonth();\n"
+            "}\n")
+    with tempfile.TemporaryDirectory(prefix="dm-assess-") as d:
+        root = Path(d)
+        _tree(root, {"p/Vet.java": "package p;\npublic class Vet {}\n", "p/VetRepository.java": repo})
+        rel = "src/main/java/p/VetRepository.java"
+        scope = {"repository": rel, "rule": "spring-data-repository-contract/v1", "members": [
+            {"member": "findAll", "signature": "findAll()"},
+            {"member": "findByLastName", "signature": "findByLastName(java.lang.String)"},
+            {"member": "allVets", "signature": "allVets()"},
+            {"member": "vetsOfTheMonth", "signature": "vetsOfTheMonth()"},
+        ]}
+        got = {r["member"]: r["verdict"] for r in assess_batch_scope(root, scope)}
+        want = {"findAll": "ok", "findByLastName": "ok", "allVets": "ok", "vetsOfTheMonth": "violates"}
+        if got != want:
+            return _fail("a redeclared inherited method is answered by the supertype, not underivable: %s" % got)
+
+        # a member that is GONE, from a type that inherits nothing, is not
+        # "inherited" -- absence is not evidence
+        (root / "src/main/java/p/Bare.java").write_text("package p;\npublic interface Bare {}\n")
+        bare = {"repository": "src/main/java/p/Bare.java", "rule": "r",
+                "members": [{"member": "customLookup", "signature": "customLookup()"}]}
+        rows = assess_batch_scope(root, bare)
+        if rows[0]["verdict"] != "violates":
+            return _fail("a deleted member on a type that extends nothing is a violation: %s" % rows)
+
+        # a member the SOURCE implemented as a state change, answered with a
+        # read, is the defect SI-1 exists to catch -- and findById, which only
+        # reads, must not be mistaken for one
+        writes, why = source_write_members(root)
+        if why or writes != {"save"}:
+            return _fail("the write set comes from resolved calls, not from text near a name: %s %s" % (writes, why))
+
+        # and with no model of the source, a member that might have been a
+        # write is not quietly passed
+        (root / "evidence/structure/structure.json").unlink()
+        rows = {r["member"]: r["verdict"] for r in assess_batch_scope(root, scope)}
+        if rows.get("allVets") != "inconclusive" or rows.get("findAll") != "ok":
+            return _fail("without the source model a query-bearing member is inconclusive, an inherited one still ok: %s" % rows)
+
+        # and when the compiler cannot resolve the type, nothing is claimed
+        (root / "verification/build/.work/classpath.txt").unlink()
+        rows = assess_batch_scope(root, scope)
+        if rows[0]["verdict"] != "inconclusive":
+            return _fail("an unresolvable type must be inconclusive, never a pass: %s" % rows)
+    return 0
+
+
+def main() -> int:
+    if not shutil.which("javac"):
+        print("SKIP: dest-model selftest needs a JDK on PATH")
+        return 0
+    if _conditions_case() or _assess_case():
+        return 1
+    print("OK: dest-model (a fully qualified condition is visible; two identical annotations are two decisions with "
+          "their own ranges; an import binds a condition with no classpath while a wildcard import does not, and a non-literal argument is never a profile name; a redeclared inherited findAll "
+          "is answered by its supertype; a deleted member is not inherited; the source write set comes from resolved calls; an unreadable source model or type is inconclusive)")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

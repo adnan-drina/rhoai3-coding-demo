@@ -52,7 +52,7 @@ def _ensure_hermes_lib() -> None:
 
 _ensure_hermes_lib()
 from planner.canonical import canonical_bytes, write_canonical  # noqa: E402
-from planner.decisions import DecisionsError, datasource, load_decisions  # noqa: E402
+from planner.decisions import DecisionsError, build_profiles, datasource, load_decisions  # noqa: E402
 from planner.paths import VERIFY_BOOT, VERIFY_PACKAGE  # noqa: E402
 from planner.worklist import runtime_environment_blocker  # noqa: E402
 
@@ -120,12 +120,32 @@ def _failed_goal(log: str) -> str:
     return ""
 
 
-def package(root: Path, profile: str, mvn: str, timeout: int, candidate: str) -> dict:
+def configured_profiles(root: Path) -> list[str]:
+    """What the tree itself says it builds with (quarkus.profile)."""
+    prop = root / "src" / "main" / "resources" / "application.properties"
+    if not prop.is_file():
+        return []
+    for raw in prop.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = raw.strip()
+        if line.startswith("quarkus.profile="):
+            return [x.strip() for x in line.partition("=")[2].split(",") if x.strip()]
+    return []
+
+
+def package(root: Path, profiles: list[str], mvn: str, timeout: int, candidate: str) -> dict:
     """mvn verify with nothing skipped. The artifact and its digest are the
     identity the boot gate must match: readiness evidence for a different
-    build is not readiness evidence for this one."""
+    build is not readiness evidence for this one.
+
+    The profile set comes from the BUILD PROFILE decision, never from the
+    datasource's own profile field. A system property outranks
+    application.properties, so passing the datasource profile here silently
+    replaced the profile set the bootstrap had written and un-gated every bean
+    the build was supposed to have (measured on the v8 draft: the tree said
+    spring-data-jpa, the command said prod)."""
     log_p = root / "verification" / "build" / "package.log"
     log_p.parent.mkdir(parents=True, exist_ok=True)
+    profile = ",".join(profiles)
     argv = [mvn, "-B", "verify"]
     if profile:
         argv.append("-Dquarkus.profile=%s" % profile)
@@ -140,7 +160,8 @@ def package(root: Path, profile: str, mvn: str, timeout: int, candidate: str) ->
     log_p.write_text(out, encoding="utf-8")
     doc = {
         "schema": "rhoai3.verify-package/v1", "gate": "package", "ran": True, "rc": rc,
-        "argv": argv, "profile": profile, "at": _now(), "elapsed_ms": int((time.time() - started) * 1000),
+        "argv": argv, "profile": profile, "profiles": list(profiles),
+        "configured_profiles": configured_profiles(root), "at": _now(), "elapsed_ms": int((time.time() - started) * 1000),
         "failed_goal": _failed_goal(out) if rc else "",
         "detail": ("mvn verify exited %d at %s" % (rc, _failed_goal(out) or "an unnamed goal")) if rc else "",
         "log": str(log_p.relative_to(root)), "log_tail": _tail(out) if rc else "",
@@ -227,7 +248,7 @@ def database_ready(log_text: str, ds: dict) -> tuple[bool, str]:
     return False, "the application never reported its installed features, so the datasource cannot be said to have started"
 
 
-def boot(root: Path, ds: dict, package_doc: dict, port: int, root_path: str, timeout: int, java: str, candidate: str) -> dict:
+def boot(root: Path, ds: dict, profiles: list[str], package_doc: dict, port: int, root_path: str, timeout: int, java: str, candidate: str) -> dict:
     """Start the packaged artifact and give it a bounded time to answer.
 
     Every claim here is bound to something measured: the artifact is re-hashed
@@ -270,8 +291,8 @@ def boot(root: Path, ds: dict, package_doc: dict, port: int, root_path: str, tim
     log_p.parent.mkdir(parents=True, exist_ok=True)
     env = dict(os.environ)
     env["QUARKUS_HTTP_PORT"] = str(port)
-    if ds.get("profile"):
-        env["QUARKUS_PROFILE"] = str(ds["profile"])
+    if profiles:
+        env["QUARKUS_PROFILE"] = ",".join(profiles)
     doc["ran"] = True
     started = time.time()
     with log_p.open("wb") as sink:
@@ -354,18 +375,37 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     root = Path(args.root).resolve()
     try:
-        ds = datasource(load_decisions(root))
+        decisions = load_decisions(root)
+        ds = datasource(decisions)
     except DecisionsError as exc:
         print("FAIL: RUNTIME %s" % exc, file=sys.stderr)
         return 1
     if not ds:
         print("FAIL: RUNTIME the effective datasource is not decided (decisions.yaml datasource under an accepted ADR); packaging and startup have no database to verify against", file=sys.stderr)
         return 1
+    # The profile set is the BUILD PROFILE decision. The datasource's own
+    # profile field says which profile that decision belongs to; if the build
+    # does not activate it, the configuration measured here is not the
+    # configuration decided, and that is a refusal rather than an override.
+    profiles = [str(x) for x in (build_profiles(decisions).get("active") or [])]
+    ds_profile = str(ds.get("profile") or "")
+    if ds_profile and ds_profile not in profiles:
+        print("FAIL: RUNTIME the datasource decision names profile %r and the build activates %s; a gate that passed the "
+              "datasource profile on the command line would override the tree's own quarkus.profile (a system property "
+              "outranks application.properties). Reconcile decisions.yaml build_profiles.active with datasource.profile."
+              % (ds_profile, ", ".join(profiles) or "no profile"), file=sys.stderr)
+        return 1
+    in_tree = configured_profiles(root)
+    if profiles and in_tree and sorted(in_tree) != sorted(profiles):
+        print("FAIL: RUNTIME the tree is configured for %s and the decision says %s; run bootstrap-destination so the "
+              "tree carries the decided set, rather than letting the command line replace it."
+              % (",".join(in_tree), ",".join(profiles)), file=sys.stderr)
+        return 1
     rc = 0
     pkg = None
     candidate = candidate_sha256(root)
     if args.gate in ("package", "both"):
-        pkg = package(root, str(ds.get("profile") or ""), args.mvn, args.package_timeout, candidate)
+        pkg = package(root, profiles, args.mvn, args.package_timeout, candidate)
         write_canonical(root / VERIFY_PACKAGE, pkg)
         print("%s: PACKAGE rc=%s %s" % ("OK" if pkg["rc"] == 0 else "REFUSE", pkg["rc"], pkg.get("detail") or pkg.get("artifact")))
         if pkg["rc"] != 0:
@@ -374,7 +414,7 @@ def main(argv: list[str] | None = None) -> int:
         if pkg is None:
             pkg = json.loads((root / VERIFY_PACKAGE).read_text(encoding="utf-8")) if (root / VERIFY_PACKAGE).is_file() else {}
         if rc == 0:
-            b = boot(root, ds, pkg, args.port, root_path_of(root), args.boot_timeout, args.java, candidate)
+            b = boot(root, ds, profiles, pkg, args.port, root_path_of(root), args.boot_timeout, args.java, candidate)
             write_canonical(root / VERIFY_BOOT, b)
             print("%s: BOOT ready=%s rc=%s %s" % ("OK" if b.get("ready") else "REFUSE", b.get("ready"), b.get("rc"), b.get("detail") or b.get("probe")))
             if not b.get("ready"):

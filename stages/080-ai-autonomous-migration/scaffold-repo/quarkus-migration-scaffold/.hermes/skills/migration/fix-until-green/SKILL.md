@@ -116,6 +116,7 @@ record naming the card.
 - `scripts/amend-scope.py` — widen a sealed batch card's write set by ONE file, on the record (`--path` + `--reason`), BEFORE touching it; the inventory itself is never rewritten and two amendments per card is the limit
 - `scripts/diagnose.py` — (Operator) investigate a failure no card can carry: `--list` names them, `--open` starts one of two ten-minute attempts, `--close --conclusion LOCATED|ENVIRONMENT|DECISION_REQUIRED|INCONCLUSIVE` records the finding under `evidence/diagnosis/`. It grants no write authority — a product change during an investigation refuses the close — and closing discharges nothing
 - `scripts/jdk-diagnostics/JdkDiagnostics.java` — compiler diagnostics as JSON (JDK compiler API)
+- `scripts/jdk-dest-model/DestModel.java` — the DESTINATION's own structure from the JDK compiler API: resolved member signatures, what a type actually inherits and what its supertypes declare, and every annotation with its exact character range and its imports. Read through `planner.dest_model`, which caches it against the content of the sources AND the classpath it was compiled with, and raises rather than guessing. A regular expression answered these questions wrongly in both directions (a fully qualified annotation read as absent; a redeclared `findAll()` as underivable; a deleted member as inherited), so nothing here is read from text
 - `scripts/_loop_common.py` — shared helpers
 - `scripts/fix-until-green.test.py`, `scripts/amend-scope.test.py`, `scripts/diagnose.test.py` — selftests
 

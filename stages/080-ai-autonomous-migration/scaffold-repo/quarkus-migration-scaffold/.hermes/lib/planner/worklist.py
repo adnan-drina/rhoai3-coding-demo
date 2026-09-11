@@ -34,6 +34,7 @@ from pathlib import Path
 from typing import Any
 
 from planner.canonical import canonical_bytes, digest, load_json, sha256_bytes, sha256_file, sort_unique
+from planner.dest_model import DestModelUnavailable, dest_model, source_write_members as _model_writes, types_of
 from planner.paths import is_product_path, EVIDENCE_BUNDLE, TYPE_INVENTORY, LOOP_DEFERRED, LOOP_STEPS, MTA_RESCAN_FINDINGS, PARITY_DIR, VERIFY_BOOT, VERIFY_DIAGNOSTICS, VERIFY_PACKAGE, VERIFY_RUN, VERIFY_SUREFIRE, WORKLIST
 
 SCHEMA = "rhoai3.worklist/v1"
@@ -715,20 +716,42 @@ RETAIN = _Retain("retain")
 
 
 BATCH_SCOPE_DIR = Path("evidence") / "planning" / "batch-scope"
+
+
+def batch_scope_path(scope: dict[str, Any]) -> Path:
+    """Where an inventory lives: under its own digest, so it is immutable.
+
+    A remeasurement of the same repository is a different inventory, not a
+    replacement for the one a card was issued against (measured: changing the
+    first member and remeasuring on the second rewrote the sealed file, and
+    acceptance then refused its own card for a seal mismatch)."""
+    return BATCH_SCOPE_DIR / str(scope.get("cluster") or "").replace(":", "-") / ("%s.json" % str(scope.get("digest") or "")[:32])
 BATCH_RULE = "spring-data-repository-contract/v1"
 _DERIVABLE = re.compile(r"^(find|read|get|query|count|exists|stream)\w*By\w+$|^(count|exists)$")
+
+
+def _repo_type(root: Path, rel: str) -> tuple[dict[str, Any] | None, str]:
+    """The compiled type at `rel`, or (None, why-not). Never a guess."""
+    try:
+        model = dest_model(root)
+    except DestModelUnavailable as exc:
+        return None, str(exc)
+    rows = types_of(model, rel)
+    if not rows:
+        return None, "the model has no type for %s" % rel
+    return rows[0], ""
 
 
 def build_batch_scope(root: Path, cluster: dict[str, Any], items: list[dict[str, Any]], bundle: dict[str, Any]) -> dict[str, Any] | None:
     """A SEALED SCOPE INVENTORY for a repository repair: what the card may
     touch, and every member the declared rule applies to.
 
-    The source proves a member EXISTS. It does not prove the member is broken,
-    so nothing here becomes an obligation and nothing here enters the measure:
-    the measured failure stays in item_ids. What the inventory does is make the
-    brief's advice enforceable — every member is assessed against the rule, and
-    an already-correct one may stay exactly as it is (architect direction C,
-    2026-09-11)."""
+    The compiler supplies the members, their resolved signatures and what the
+    type actually inherits. Nothing here becomes an obligation and nothing
+    enters the measure: the measured failure stays in item_ids. What the
+    inventory does is make the card's completion checkable — every member is
+    assessed against the declared rule, and an already-correct one may stay
+    exactly as it is (architect direction C, 2026-09-11)."""
     rows = [i for i in items if str(i.get("id")) in set(cluster.get("items") or []) and str(i.get("source")) == "runtime"]
     if not rows:
         return None
@@ -738,35 +761,39 @@ def build_batch_scope(root: Path, cluster: dict[str, Any], items: list[dict[str,
     src = Path(root) / path
     if not src.is_file():
         return None
-    text = src.read_text(encoding="utf-8", errors="replace")
-    inventory_p = Path(root) / TYPE_INVENTORY
+    typ, why = _repo_type(Path(root), path)
     members: list[dict[str, Any]] = []
-    seen: set[str] = set()
-    for name, _anns, _body in _declared_members(text):
-        if name in seen:
-            continue
-        seen.add(name)
-        sigs = member_signatures(root, path, name) or ["%s(?)" % name]
-        members.append({
-            "member": name,
-            "signatures": sigs,
-            "ambiguous": len(sigs) > 1,
-            "source_refs": _frozen_refs(root, name),
-        })
+    if typ is not None:
+        for m in typ.get("declared") or []:
+            name = str(m.get("name") or "")
+            sig = str(m.get("signature") or "")
+            if not name or name == "<init>":
+                continue
+            members.append({
+                "member": name,
+                "signature": sig,
+                "signatures": sorted({str(x.get("signature")) for x in (typ.get("declared") or []) if str(x.get("name")) == name}),
+                "ambiguous": sum(1 for x in (typ.get("declared") or []) if str(x.get("name")) == name) > 1,
+                "resolution": str(m.get("resolution") or ""),
+                "source_refs": _frozen_refs(root, name),
+            })
     doc = {
-        "schema": "rhoai3.batch-scope/v1",
+        "schema": "rhoai3.batch-scope/v2",
         "producer": "worklist.build_batch_scope",
-        "tool": {"model": "jdk-model", "inventory": str(TYPE_INVENTORY), "version": "1.0.0"},
+        "tool": {"model": "jdk-dest-model", "version": "1.0.0"},
         "rule": BATCH_RULE,
         "cluster": str(cluster.get("id") or ""),
         "repository": path,
+        "type_fqn": str((typ or {}).get("fqn") or ""),
+        "supertypes": list((typ or {}).get("supertypes") or []),
+        "model_resolution": str((typ or {}).get("resolution") or "unavailable"),
+        "model_note": why,
         "writable_paths": sorted(set(cluster.get("write_set") or [path])),
         "inputs": {
             "candidate_sha256": str((bundle or {}).get("candidate_sha256") or ""),
-            "type_inventory_sha256": sha256_file(inventory_p),
             "repository_sha256": sha256_file(src),
         },
-        "members": members,
+        "members": sorted(members, key=lambda m: (m["member"], m["signature"])),
         "measured": sorted(str(i.get("id")) for i in rows),
     }
     doc["digest"] = batch_scope_digest(doc)
@@ -777,28 +804,6 @@ def batch_scope_digest(doc: dict[str, Any]) -> str:
     """The seal, recomputed from content. The stored field is a convenience;
     a checker that trusted it would be trusting the file it is checking."""
     return sha256_bytes(canonical_bytes({k: v for k, v in (doc or {}).items() if k != "digest"}))
-
-
-def _declared_members(text: str) -> list[tuple[str, list[str], bool]]:
-    """(name, annotation names, carries a body) per declaration, line-oriented.
-
-    A body matters: a `default` method answers for itself, so no rule about
-    queries applies to it."""
-    out: list[tuple[str, list[str], bool]] = []
-    pending: list[str] = []
-    for raw in (text or "").splitlines():
-        line = raw.strip()
-        if not line or line.startswith(("//", "*", "/*")):
-            continue
-        if line.startswith("@"):
-            pending.append(line.split("(", 1)[0][1:].rsplit(".", 1)[-1])
-            continue
-        m = re.match(r"^(?:public|protected|private|default|static|abstract|final|\s)*[\w.<>,\[\]\s]*?\b(\w+)\s*\(", line)
-        if m and "(" in line and "interface" not in line and "class" not in line:
-            body = line.rstrip().endswith("{") or " default " in (" " + line)
-            out.append((m.group(1), list(pending), body))
-        pending = []
-    return out
 
 
 def _frozen_refs(root: Path, member: str, limit: int = 2) -> list[dict[str, str]]:
@@ -825,63 +830,96 @@ def _frozen_refs(root: Path, member: str, limit: int = 2) -> list[dict[str, str]
 
 
 def assess_batch_scope(root: Path, scope: dict[str, Any]) -> list[dict[str, Any]]:
-    """Assess every inventoried member against the declared rule.
+    """Assess every inventoried member against the declared rule, from the
+    compiled tree.
 
-    ok        the member satisfies the contract as it stands (it may be
-              untouched: being already correct is not a defect)
-    violates  the member breaks the contract and the card is not finished
-    inconclusive  the rule cannot read this declaration
+    ok            the member satisfies the contract as it stands (it may be
+                  untouched: being already correct is not a defect)
+    violates      the member breaks the contract and the card is not finished
+    inconclusive  the compiler could not resolve this, so nothing is claimed
 
     Inspecting a member earns nothing and changing one earns nothing; only the
-    assessment counts, and a worker's prose cannot supply it."""
-    out: list[dict[str, Any]] = []
+    assessment counts, and a worker's prose cannot supply it. An inconclusive
+    verdict is not a pass: the caller must refuse."""
     path = str(scope.get("repository") or "")
-    src = Path(root) / path
-    if not src.is_file():
-        return [{"member": "*", "verdict": "inconclusive", "detail": "%s is gone from the tree" % path}]
-    text = src.read_text(encoding="utf-8", errors="replace")
-    declared = {name: (anns, body) for name, anns, body in _declared_members(text)}
-    writes = _source_write_members(root)
+    typ, why = _repo_type(Path(root), path)
+    if typ is None:
+        return [{"member": "*", "signature": "", "verdict": "inconclusive",
+                 "detail": "the destination model is unavailable, so no member can be assessed: %s" % why}]
+    if str(typ.get("resolution") or "") != "full":
+        return [{"member": "*", "signature": "", "verdict": "inconclusive",
+                 "detail": "the compiler could not fully resolve %s, so its members cannot be assessed" % path}]
+    declared = {str(m.get("signature")): m for m in typ.get("declared") or []}
+    by_name: dict[str, list[dict[str, Any]]] = {}
+    for m in typ.get("declared") or []:
+        by_name.setdefault(str(m.get("name")), []).append(m)
+    # What the supertypes declare, whether or not this type redeclares it. A
+    # redeclared method is still answered from above; getAllMembers hides
+    # exactly that case behind the override, which is how a valid findAll()
+    # came to read as an underivable query.
+    above = list(typ.get("supertype_methods") or []) + list(typ.get("inherited") or [])
+    inherited_names = {row.split("(", 1)[0] for row in above}
+    inherited_sigs = {row.split(" from ", 1)[0] for row in above}
+    writes, why_writes = _model_writes(root)
+    out: list[dict[str, Any]] = []
     for row in scope.get("members") or []:
         member = str(row.get("member"))
-        row_d = declared.get(member)
-        if row_d is None:
-            out.append({"member": member, "verdict": "ok", "detail": "not declared here; inherited from the platform's repository interface"})
+        sig = str(row.get("signature") or "")
+        m = declared.get(sig) or (by_name.get(member) or [None])[0]
+        if m is None:
+            # The member is not declared. Only the compiler may say it is
+            # inherited, and only when the type actually inherits it.
+            if not typ.get("inherited_known"):
+                out.append({"member": member, "signature": sig, "verdict": "inconclusive",
+                            "detail": "not declared, and what this type inherits could not be resolved"})
+            elif member in inherited_names:
+                out.append({"member": member, "signature": sig, "verdict": "ok",
+                            "detail": "not declared here; inherited from %s" % next(
+                                (r.split(" from ", 1)[1] for r in above if r.startswith(member + "(")), "a supertype")})
+            else:
+                out.append({"member": member, "signature": sig, "verdict": "violates", "rule": scope.get("rule"),
+                            "detail": "the member is gone from this type and nothing it extends declares it"})
             continue
-        anns, has_body = row_d
-        if has_body:
-            out.append({"member": member, "verdict": "ok", "detail": "implemented in place; no query is owed"})
+        if str(m.get("resolution") or "") != "full":
+            out.append({"member": member, "signature": str(m.get("signature") or sig), "verdict": "inconclusive",
+                        "detail": "the compiler could not resolve this declaration"})
             continue
+        anns = {str(a.get("simple") or "") for a in m.get("annotations") or []}
+        msig = str(m.get("signature") or sig)
         has_query = "Query" in anns
         modifying = "Modifying" in anns
+        if m.get("has_body"):
+            out.append({"member": member, "signature": msig, "verdict": "ok",
+                        "detail": "implemented in place; no query is owed"})
+            continue
+        # Determinations that need nothing but this declaration come first.
+        if msig in inherited_sigs or member in inherited_names:
+            out.append({"member": member, "signature": msig, "verdict": "ok",
+                        "detail": "redeclares a method the type inherits; the platform answers it from the supertype"})
+            continue
+        derivable = bool(_DERIVABLE.match(member))
         if member in writes:
             if has_query and not modifying:
-                out.append({"member": member, "verdict": "violates", "rule": scope.get("rule"),
+                out.append({"member": member, "signature": msig, "verdict": "violates", "rule": scope.get("rule"),
                             "detail": "a source write answered with a query and no @Modifying"})
             else:
-                out.append({"member": member, "verdict": "ok", "detail": "write kept as a write"})
+                out.append({"member": member, "signature": msig, "verdict": "ok", "detail": "write kept as a write"})
             continue
-        if has_query or _DERIVABLE.match(member):
-            out.append({"member": member, "verdict": "ok", "detail": "derivable by name" if not has_query else "carries a query"})
-        else:
-            out.append({"member": member, "verdict": "violates", "rule": scope.get("rule"),
-                        "detail": "a finder the parser cannot derive from its name and that carries no query"})
-    return out
-
-
-def _source_write_members(root: Path) -> set[str]:
-    base = Path(root) / ".derived" / "frozen-input" / "src" / "main" / "java"
-    out: set[str] = set()
-    if not base.is_dir():
-        return out
-    calls = ("persist(", "merge(", "remove(", "executeUpdate(", ".update(", ".save(", ".delete(")
-    decl = re.compile(r"[\w.<>,\[\]]+\s+(\w+)\s*\([^)]*\)\s*(?:throws[^{]+)?\{")
-    for f in sorted(base.rglob("*.java")):
-        text = f.read_text(encoding="utf-8", errors="replace")
-        for m in decl.finditer(text):
-            body = text[m.end(): m.end() + 1200]
-            if any(c in body for c in calls):
-                out.add(m.group(1))
+        if why_writes and not derivable:
+            # Without the source model this member might have been a state
+            # change, and a query on a write is exactly the defect SI-1 exists
+            # to catch. Saying nothing is the only honest answer.
+            out.append({"member": member, "signature": msig, "verdict": "inconclusive",
+                        "detail": "whether the source implemented this as a state change could not be read: %s" % why_writes})
+            continue
+        if has_query:
+            out.append({"member": member, "signature": msig, "verdict": "ok", "detail": "carries a query"})
+            continue
+        if derivable:
+            out.append({"member": member, "signature": msig, "verdict": "ok", "detail": "derivable by name"})
+            continue
+        out.append({"member": member, "signature": msig, "verdict": "violates", "rule": scope.get("rule"),
+                    "detail": "a finder the parser cannot derive from its name, that carries no query, and that the type does not inherit"})
     return out
 
 
@@ -1140,7 +1178,7 @@ def build_worklist(root: Path, *, write: bool = True) -> dict[str, Any]:
         scope = build_batch_scope(root, c, items, {"candidate_sha256": str(run.get("candidate_sha256") or "")})
         if scope:
             scopes.append(scope)
-            c["batch_scope"] = {"path": (BATCH_SCOPE_DIR / ("%s.json" % scope["cluster"].replace(":", "-"))).as_posix(),
+            c["batch_scope"] = {"path": batch_scope_path(scope).as_posix(),
                                 "digest": scope["digest"], "rule": scope["rule"],
                                 "members": len(scope["members"])}
     open_clusters = [c for c in clusters if c["status"] == "open"]
@@ -1175,9 +1213,14 @@ def build_worklist(root: Path, *, write: bool = True) -> dict[str, Any]:
 
         by_cluster = {c["id"]: c for c in clusters}
         for scope in scopes:
-            out = root / BATCH_SCOPE_DIR / ("%s.json" % scope["cluster"].replace(":", "-"))
+            out = root / batch_scope_path(scope)
             out.parent.mkdir(parents=True, exist_ok=True)
-            write_canonical(out, scope)
+            # An inventory is written ONCE, at a path named by its own seal.
+            # A later measurement of the same repository produces a different
+            # inventory at a different path, and the one the outstanding card
+            # is judged against is still exactly where the card left it.
+            if not out.is_file():
+                write_canonical(out, scope)
             # the card's K1 ref digests the FILE; the seal acceptance checks
             # digests the CONTENT. They are different questions.
             ref = (by_cluster.get(scope["cluster"]) or {}).get("batch_scope")

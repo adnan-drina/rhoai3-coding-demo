@@ -48,6 +48,7 @@ _ensure_hermes_lib()
 from planner.canonical import digest, load_json, sha256_file, write_canonical  # noqa: E402
 from planner.paths import BOM_MANAGED, BOOTSTRAP_RECEIPT, CATALOGS_DIR, DECISIONS, EVIDENCE_BUNDLE, TYPE_INVENTORY, producer_receipt  # noqa: E402
 from planner.decisions import DecisionsError, build_profiles, datasource, load_decisions, retired_profile_gates, retired_sources, retirement_inventory_sha256  # noqa: E402
+from planner.dest_model import condition_key  # noqa: E402
 from planner.pins import load_pins, pin  # noqa: E402
 
 NS = "http://maven.apache.org/POM/4.0.0"
@@ -410,67 +411,73 @@ def rename_jakarta_imports(root: Path, catalog: dict, changes: list[dict], block
         changes.append({"op": "source.rename-imports", "path": path, "imports": n, "source": "compat-mapping.json package_renames (Jakarta EE 10 namespace)"})
 
 
-PROFILE_ANNOTATIONS = ("org.springframework.context.annotation.Profile", "io.quarkus.arc.profile.IfBuildProfile")
-PROFILE_RE = re.compile(r"@(?:Profile|IfBuildProfile)\s*\(\s*[{\s]*\"([^\"]+)\"")
-
-
 def profile_gated_sources(root: Path) -> dict[str, list[str]]:
-    """Imported sources whose beans exist only under a named profile."""
+    """Destination sources whose beans exist only under a named profile,
+    path -> profile names, from the compiled model (never from text)."""
     out: dict[str, list[str]] = {}
-    base = root / "src" / "main" / "java"
-    if not base.is_dir():
-        return out
-    for p in sorted(base.rglob("*.java")):
-        text = p.read_text(encoding="utf-8", errors="replace")
-        if not any(a.rsplit(".", 1)[-1] in text for a in PROFILE_ANNOTATIONS):
+    rows, _why = all_profile_conditions(root)
+    for c in rows:
+        out.setdefault(c["path"], [])
+        if c["profile"] and c["profile"] not in out[c["path"]]:
+            out[c["path"]].append(c["profile"])
+    return {k: sorted(v) for k, v in out.items() if v}
+
+
+def profile_conditions(root: Path, source_root: str = "src/main/java") -> list[dict[str, str]]:
+    """Every profile condition in the DESTINATION's own sources, one row per
+    DECLARATION, as the compiler sees them.
+
+    Only src/main/java and src/test/java: the frozen copy under .derived is
+    the legacy's record and archived evidence is a receipt, and retiring
+    something in either would be rewriting history rather than migrating.
+
+    Asked of the JDK, not of a regular expression: a fully qualified
+    `@io.quarkus.arc.profile.IfBuildProfile` is a condition and a pattern
+    looking for `@IfBuildProfile(` cannot see it, and two identical
+    annotations on two members are two decisions."""
+    rows: list[dict[str, str]] = []
+    for rel in (source_root,) if source_root else ():
+        if not (root / rel).is_dir():
             continue
-        names = sorted(set(PROFILE_RE.findall(text)))
-        if names:
-            out[p.relative_to(root).as_posix()] = names
-    return out
+        model = _dest_model(root, rel)
+        rows.extend(_conditions(model, rel))
+    return rows
 
 
-def profile_conditions(root: Path) -> list[dict[str, str]]:
-    """Every profile condition in the DESTINATION's own sources, one per site.
+def _dest_model(root: Path, source_root: str):
+    from planner.dest_model import dest_model
 
-    Only src/main/java and src/test/java: the frozen copy under .derived is the
-    legacy's record and archived evidence is a receipt, and retiring something
-    in either would be rewriting history rather than migrating."""
+    return dest_model(root, source_root=source_root)
+
+
+def _conditions(model, source_root: str) -> list[dict[str, str]]:
+    from planner.dest_model import profile_conditions as _pc
+
+    return _pc(model, source_root=source_root)
+
+
+def all_profile_conditions(root: Path) -> tuple[list[dict[str, str]], str]:
+    """Conditions over every destination source root, or ([], why-not)."""
     out: list[dict[str, str]] = []
-    for rel_base in ("src/main/java", "src/test/java"):
-        base = root / rel_base
-        if not base.is_dir():
+    for rel in ("src/main/java", "src/test/java"):
+        if not (root / rel).is_dir():
             continue
-        for p in sorted(base.rglob("*.java")):
-            text = p.read_text(encoding="utf-8", errors="replace")
-            if not any(a.rsplit(".", 1)[-1] in text for a in PROFILE_ANNOTATIONS):
-                continue
-            rel = p.relative_to(root).as_posix()
-            typ = p.stem
-            pending: list[tuple[str, str]] = []
-            for raw in text.splitlines():
-                line = raw.strip()
-                m = re.match(r"@(Profile|IfBuildProfile|UnlessBuildProfile)\s*\(", line)
-                if m:
-                    for name in PROFILE_RE.findall(line):
-                        pending.append((m.group(1), name))
-                    continue
-                if not pending or not line or line.startswith(("@", "//", "*", "/*")):
-                    continue
-                member = ""
-                d = re.match(r"^(?:public|protected|private|default|static|abstract|final|\s)*[\w.<>,\[\]\s]*?\b(\w+)\s*[({=;]", line)
-                if d and not re.match(r"^(?:public|protected|private|\s)*(?:abstract\s+)?(?:class|interface|enum|record)\b", line):
-                    member = d.group(1)
-                for ann, name in pending:
-                    out.append({"path": rel, "type": typ, "member": member, "annotation": ann, "profile": name})
-                pending = []
-    return out
+        try:
+            out.extend(_conditions(_dest_model(root, rel), rel))
+        except Exception as exc:  # DestModelUnavailable and anything the tool raises
+            return [], "%s: %s" % (rel, exc)
+    return out, ""
 
 
 def apply_profile_retirement(root: Path, decisions_doc: dict, changes: list[dict], blocks: list[dict]) -> None:
     """Remove exactly the profile conditions decisions.yaml enumerates.
 
-    Enumerated, because a blanket retirement is unreviewable; bound to the type
+    Exactly: one approved row retires ONE declaration's annotation, located by
+    the compiler at a character range. Approving a condition on one method has
+    never meant approving the identical condition on the method below it
+    (measured: it removed both).
+
+    Enumerated, because a blanket retirement is unreviewable; bound to the
     inventory it was proposed from, because a tree that moved since then has
     conditions nobody looked at; and applied HERE, before the annotation
     remapping, so what the rest of the bootstrap and the work list see is the
@@ -493,49 +500,76 @@ def apply_profile_retirement(root: Path, decisions_doc: dict, changes: list[dict
                                   "conditions may have appeared or moved since. Re-propose and re-accept."
                                   % (want[:12] or "(none)", got[:12] or "(none)"))})
         return
-    present = {(r["path"], r["type"], r["member"], r["annotation"], r["profile"]) for r in profile_conditions(root)}
-    missing = [r for r in rows if (r["path"], r["type"], r["member"], r["annotation"], r["profile"]) not in present]
+    present, why = all_profile_conditions(root)
+    if why:
+        blocks.append({"class": "PROFILE_MODEL_UNAVAILABLE", "subject": "jdk-dest-model",
+                       "detail": ("a retirement removes code, so it is applied only against a model of the tree the "
+                                  "compiler produced, and that model could not be produced (%s). Nothing was retired." % why)})
+        return
+    by_key = {}
+    for c in present:
+        by_key.setdefault(condition_key(c), []).append(c)
+    missing = [r for r in rows if condition_key(r) not in by_key]
     if missing:
         blocks.append({"class": "PROFILE_RETIREMENT_ABSENT", "subject": missing[0]["path"],
                        "detail": ("%d enumerated condition(s) are not in the tree, so the decision describes a tree this is "
                                   "not: %s. Absence is not the same as already retired." % (
                                       len(missing), "; ".join("%s %s @%s(\"%s\")" % (m["path"].rsplit("/", 1)[-1], m["member"] or m["type"], m["annotation"], m["profile"]) for m in missing[:3])))})
         return
-    by_path: dict[str, list[dict[str, str]]] = {}
+    targets: list[dict] = []
     for r in rows:
-        by_path.setdefault(r["path"], []).append(r)
+        for c in by_key[condition_key(r)]:
+            if c.get("resolution") != "full":
+                blocks.append({"class": "PROFILE_RETIREMENT_INCONCLUSIVE", "subject": c["path"],
+                               "detail": ("the compiler could not fully resolve @%s on %s in %s, so this condition cannot be "
+                                          "removed by identity. Build the destination (or fix the file) and re-run; an "
+                                          "unresolved declaration is never retired on a guess."
+                                          % (c["annotation"], c["member"] or c["type"], c["path"]))})
+                return
+            targets.append(c)
+    by_path: dict[str, list[dict]] = {}
+    for c in targets:
+        by_path.setdefault(c["path"], []).append(c)
     for rel, group in sorted(by_path.items()):
         f = root / rel
         text = f.read_text(encoding="utf-8", errors="replace")
-        wanted = {(g["annotation"], g["profile"]) for g in group}
-        kept: list[str] = []
-        removed = 0
-        for raw in text.splitlines():
-            line = raw.strip()
-            m = re.match(r"@(Profile|IfBuildProfile|UnlessBuildProfile)\s*\(", line)
-            if m and any((m.group(1), name) in wanted for name in PROFILE_RE.findall(line)):
-                removed += 1
-                continue
-            kept.append(raw)
-        if not removed:
-            continue
-        out = "\n".join(kept).rstrip("\n") + "\n"
+        # highest offset first, so earlier ranges stay valid
+        cuts = sorted({(int(c["start"]), int(c["end"])) for c in group if int(c.get("start", -1)) >= 0}, reverse=True)
+        if len(cuts) != len({condition_key(c) for c in group}):
+            blocks.append({"class": "PROFILE_RETIREMENT_INCONCLUSIVE", "subject": rel,
+                           "detail": "the model gave no character range for one of the approved conditions in %s" % rel})
+            return
+        out = text
+        for start, end in cuts:
+            tail = out[end:]
+            lead = out[:start]
+            # take the blank line the annotation occupied with it
+            while tail[:1] in (" ", "\t"):
+                tail = tail[1:]
+            if tail[:1] == "\n":
+                tail = tail[1:]
+            i = len(lead)
+            while i > 0 and lead[i - 1] in " \t":
+                i -= 1
+            out = lead[:i] + tail
         if out.count("{") != text.count("{") or out.count("}") != text.count("}"):
-            blocks.append({"class": "PROFILE_RETIREMENT_ABSENT", "subject": rel,
+            blocks.append({"class": "PROFILE_RETIREMENT_INCONCLUSIVE", "subject": rel,
                            "detail": "removing the enumerated condition(s) would leave %s unbalanced; refusing to write it" % rel})
-            continue
+            return
         f.write_text(out, encoding="utf-8")
-        changes.append({"op": "source.retire-profile-condition", "path": rel, "count": removed,
-                        "value": ", ".join(sorted("@%s(\"%s\")" % (g["annotation"], g["profile"]) for g in group)),
-                        "provenance": "decisions.yaml build_profiles.retire (%s)" % (group[0].get("adr") or "")})
-    # the import is dead once the last condition in the file is gone
+        changes.append({"op": "source.retire-profile-condition", "path": rel, "count": len(cuts),
+                        "value": ", ".join(sorted("%s @%s(\"%s\")" % (c["member"] or c["type"], c["annotation"], c["profile"]) for c in group)),
+                        "provenance": "decisions.yaml build_profiles.retire (%s)" % (rows[0].get("adr") or "")})
+    # the import is dead once the last condition it named is gone from the file
+    left, _ = all_profile_conditions(root)
+    still = {(c["path"], c["annotation"]) for c in left}
     for rel in sorted(by_path):
         f = root / rel
         if not f.is_file():
             continue
         text = f.read_text(encoding="utf-8", errors="replace")
-        for ann in ("Profile", "IfBuildProfile", "UnlessBuildProfile"):
-            if re.search(r"@%s\s*\(" % ann, text):
+        for ann in sorted({c["annotation"] for c in by_path[rel]}):
+            if (rel, ann) in still:
                 continue
             new_text = "\n".join(l for l in text.splitlines() if not re.match(r"\s*import\s+[\w.]+\.%s\s*;" % ann, l))
             if new_text != text:
@@ -569,7 +603,10 @@ def check_build_profiles(root: Path, copy: Path, catalog: dict, decisions_doc: d
     gated = profile_gated_sources(root)
     relevant = {path: names for path, names in gated.items() if not legacy_active or set(names) & set(legacy_active)}
     decided = build_profiles(decisions_doc)
-    if not relevant and not profile_conditions(root):
+    # A model that could not be produced is not an empty tree. Fall through
+    # to the accounting block below, which says so.
+    _conds, _why = all_profile_conditions(root)
+    if not relevant and not _conds and not _why:
         return
     if not decided:
         names = sorted({n for v in relevant.values() for n in v})
@@ -605,18 +642,42 @@ def check_build_profiles(root: Path, copy: Path, catalog: dict, decisions_doc: d
     # between, and the bean it guards is gone at build time with no obligation
     # naming why (pilot v7). Activated or enumerated as retired: those are the
     # two ways to account for one, and there is no third.
-    accounted = set(active) | {r["profile"] for r in retired_profile_gates(decisions_doc)}
-    left = [c for c in profile_conditions(root) if c["profile"] not in accounted]
+    # Each REMAINING condition is accounted for on its own. A retirement
+    # approved for one declaration says nothing about an identical condition
+    # somewhere else, and an enumerated row that is still in the tree was not
+    # applied -- either way the condition is still here and still unanswered.
+    remaining, why = all_profile_conditions(root)
+    if why:
+        blocks.append({"class": "PROFILE_MODEL_UNAVAILABLE", "subject": "jdk-dest-model",
+                       "detail": ("the destination's profile conditions could not be enumerated from a compiled model "
+                                  "(%s), so this run cannot claim any of them is accounted for." % why)})
+        return
+    # Only a condition whose PROFILE could not be read is unanswerable here;
+    # one whose annotation the compiler could not name is still a condition on
+    # a named profile, and activating that profile answers it. (Retirement is
+    # the operation that needs the annotation settled, and it demands it.)
+    unreadable = [c for c in remaining if not c.get("value_known")]
+    left = [c for c in remaining if c["profile"] not in set(active)]
     if left:
         names = sorted({c["profile"] for c in left})
         blocks.append({
             "class": "BUILD_PROFILE_UNACCOUNTED",
             "subject": ", ".join(names),
-            "detail": ("%d profile condition(s) over the destination's own sources are on profiles this run neither "
-                       "activates nor retires: %s. Activate the profile in build_profiles.active, or enumerate each "
-                       "condition in build_profiles.retire (propose-profile-retirement.py proposes the rows). "
-                       "A condition nobody accounted for removes its bean at build time and says nothing about it."
+            "detail": ("%d profile condition(s) over the destination's own sources are on profiles this run does not "
+                       "activate: %s. Activate the profile in build_profiles.active, or enumerate EACH of those "
+                       "declarations in build_profiles.retire (propose-profile-retirement.py proposes the rows). "
+                       "A condition on a profile nobody activates removes its bean at build time and says nothing "
+                       "about it; retiring the condition instead leaves the bean unconditional."
                        % (len(left), "; ".join("%s %s @%s(\"%s\")" % (c["path"].rsplit("/", 1)[-1], c["member"] or c["type"], c["annotation"], c["profile"]) for c in left[:4]))),
+        })
+    if unreadable:
+        blocks.append({
+            "class": "BUILD_PROFILE_INCONCLUSIVE",
+            "subject": unreadable[0]["path"],
+            "detail": ("%d profile condition(s) select on something this run cannot read as a profile name: %s. An "
+                       "argument that is not a string literal is a question, not an answer, and it is never counted "
+                       "as accounted for."
+                       % (len(unreadable), "; ".join("%s %s @%s" % (c["path"].rsplit("/", 1)[-1], c["member"] or c["type"], c["annotation"]) for c in unreadable[:3]))),
         })
 
 
@@ -1056,7 +1117,7 @@ def reapply_catalog(root: Path) -> int:
     receipt["inputs"] = dict(receipt.get("inputs") or {})
     receipt["inputs"]["catalog_sha256"] = sha256_file(cat_p)
     receipt["outputs"] = [{"path": "pom.xml", "sha256": sha256_file(pom)}]
-    rewrite_blocks(receipt, ("VERSION_UNMANAGED", "BOM_PROBE_MISSING", "TOOL_MISSING", "DATASOURCE_UNSUPPORTED", "DATASOURCE_EXTENSION_MISMATCH", "DECISIONS_INVALID", "BUILD_PROFILE_UNDECIDED", "BUILD_PROFILE_UNACCOUNTED", "PROFILE_RETIREMENT_UNBOUND", "PROFILE_RETIREMENT_STALE", "PROFILE_RETIREMENT_ABSENT"), blocks)
+    rewrite_blocks(receipt, ("VERSION_UNMANAGED", "BOM_PROBE_MISSING", "TOOL_MISSING", "DATASOURCE_UNSUPPORTED", "DATASOURCE_EXTENSION_MISMATCH", "DECISIONS_INVALID", "BUILD_PROFILE_UNDECIDED", "BUILD_PROFILE_UNACCOUNTED", "BUILD_PROFILE_INCONCLUSIVE", "PROFILE_RETIREMENT_UNBOUND", "PROFILE_RETIREMENT_STALE", "PROFILE_RETIREMENT_ABSENT", "PROFILE_RETIREMENT_INCONCLUSIVE", "PROFILE_MODEL_UNAVAILABLE"), blocks)
     write_canonical(receipt_p, receipt)
     for c in changes:
         print("  - %s %s" % (c["op"], c.get("gav") or c.get("artifact") or c.get("path") or c.get("key") or ""))

@@ -23,12 +23,13 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _loop_common import ensure_hermes_lib, load_issued  # noqa: E402
+from _loop_common import ensure_hermes_lib, load_issued, product_paths_changed  # noqa: E402
 
 ensure_hermes_lib()
 
-from planner.canonical import load_json, write_canonical  # noqa: E402
+from planner.canonical import load_json, sha256_file, write_canonical  # noqa: E402
 from planner.paths import LOOP_ISSUED, is_product_path  # noqa: E402
+from planner.dest_model import DestModelUnavailable, dest_model, types_of  # noqa: E402
 from planner.worklist import batch_scope_digest  # noqa: E402
 
 # How far one card may reach beyond the file it was issued for. Two is enough
@@ -40,6 +41,36 @@ AMENDMENT_LIMIT = 2
 def _refuse(msg: str) -> int:
     print("REFUSE: SCOPE_AMENDMENT %s" % msg, file=sys.stderr)
     return 1
+
+
+def _locus(root: Path, scope: dict, rel: str) -> tuple[str, str]:
+    """Why this file is part of the failure the card carries, or why not.
+
+    A repository's queries reach the types they select and the types its
+    members mention. The compiler says which those are; a file outside them
+    is a different problem."""
+    repo = str(scope.get("repository") or "")
+    if not repo:
+        return "", "the card carries no repository"
+    try:
+        model = dest_model(root)
+    except DestModelUnavailable as exc:
+        return "", "the destination model is unavailable, so nothing can be shown to be in scope (%s)" % exc
+    rows = types_of(model, repo)
+    if not rows:
+        return "", "the model has no type for %s" % repo
+    reachable: set[str] = set()
+    for t in rows:
+        reachable.update(str(x) for x in (t.get("supertypes") or []))
+        for m in t.get("declared") or []:
+            reachable.update(str(r) for r in (m.get("type_refs") or []))
+    wanted = types_of(model, rel)
+    for t in wanted:
+        fqn = str(t.get("fqn") or "")
+        if any(fqn and (fqn == r or r.startswith(fqn + "<") or ("<" in r and fqn in r)) for r in reachable):
+            return "referenced by %s" % repo, ""
+    return "", "%s declares %s, which %s neither extends nor mentions" % (
+        rel, ", ".join(sorted(str(t.get("fqn")) for t in wanted)) or "no type", repo)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -87,7 +118,26 @@ def main(argv: list[str] | None = None) -> int:
                        "which is a planning answer: let the card be refused and re-planned"
                        % (len(amendments), AMENDMENT_LIMIT))
 
-    amendments.append({"path": rel, "reason": str(args.reason).strip(), "attempt": issued.get("attempt")})
+    # Authority is granted BEFORE the file moves, never after. A file that is
+    # already edited cannot be authorized retrospectively: there would be
+    # nothing left to authorize, only something to excuse.
+    if rel in set(product_paths_changed(root)):
+        return _refuse("%s has already been edited. An amendment authorizes a change that has not happened yet; "
+                       "revert it, record the amendment, then make the change." % rel)
+
+    # And the ask has to be about the failure this card carries. The locus is
+    # the measured obligation's own file and the members named in the sealed
+    # inventory: a file with no bearing on either is a different card.
+    scope_doc = load_json(scope_p)
+    locus, why = _locus(root, scope_doc, rel)
+    if not locus:
+        return _refuse("%s bears no relation to what this card measures: %s. A file the failure does not reach is a "
+                       "planning answer, not an amendment." % (rel, why))
+
+    amendments.append({"path": rel, "reason": str(args.reason).strip(), "attempt": issued.get("attempt"),
+                       "granted_before_sha256": sha256_file(root / rel),
+                       "dirty_at_grant": False,
+                       "locus": locus})
     issued["amendments"] = amendments
     issued["write_set"] = sorted(set(issued.get("write_set") or []) | {rel})
     write_canonical(root / LOOP_ISSUED, issued)
