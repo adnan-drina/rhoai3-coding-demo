@@ -843,15 +843,20 @@ def _drop_undecided_datasource_keys(root: Path, lines: list[str], ds: dict, deci
     keep = decided_profiles(ds, decisions_doc)
     out: list[str] = []
     removed: dict[str, list[str]] = {}
+    kept_note: list[str] = []
     for raw in lines:
         stripped = raw.strip()
-        # the note this function itself appended on an earlier run: drop it and
-        # write exactly one at the end. The specimen keeps its profiles in
-        # separate application-<profile>.properties files, which the bootstrap
-        # re-imports and re-merges on EVERY run, so this whole path repeats and
-        # anything appended unconditionally grows the file each time (measured
-        # live on v8: three comment lines per bootstrap).
+        # the note this function itself appended on an earlier run: hold it
+        # aside and write exactly one at the end. The specimen keeps its
+        # profiles in separate application-<profile>.properties files, which
+        # the bootstrap re-imports and re-merges on EVERY run, so this whole
+        # path repeats and anything appended unconditionally grows the file
+        # each time (measured live on v8: three comment lines per bootstrap).
+        # HELD, not dropped: when the families are already gone there is
+        # nothing to remove this run, and a note that only survived the run
+        # that wrote it would take the reason with it.
         if stripped.startswith(_REMOVAL_NOTE_MARK):
+            kept_note.append(raw)
             continue
         m = _DS_FAMILY.match(stripped)
         if m and m.group("profile") not in keep:
@@ -876,6 +881,12 @@ def _drop_undecided_datasource_keys(root: Path, lines: list[str], ds: dict, deci
         out += ["", "%s the %s datasource families are not this destination's" % (_REMOVAL_NOTE_MARK, ", ".join(sorted(removed))),
                 "%s configuration and this run never selects those profiles; the legacy" % _REMOVAL_NOTE_MARK,
                 "%s copy is preserved verbatim under .derived/frozen-input (%s)." % (_REMOVAL_NOTE_MARK, ds.get("adr"))]
+    elif kept_note:
+        # nothing to remove this run because an earlier run already did it;
+        # the reason it gives is still the truth about this tree
+        while out and out[-1].strip() == "":
+            out.pop()
+        out += [""] + kept_note
     # a removal can leave three or more blank lines behind; one is enough
     tidy: list[str] = []
     for raw in out:

@@ -257,7 +257,7 @@ def _reapply_catalog_case() -> int:
         (t / "LegacyNamespaceTest.java").write_text("package org.acme;\nimport javax.validation.Validator;\nclass LegacyNamespaceTest { Validator v; }\n", encoding="utf-8")
         p1 = subprocess.run([sys.executable, str(SCRIPT), "--root", str(root), "--reapply-catalog"], text=True, capture_output=True)
         if p1.returncode != 0:
-            return _fail("reapply-catalog: %s%s" % (p1.stdout, p1.stderr[-400:]))
+            return _fail("reapply-catalog: %s%s" % (layout, p1.stdout, p1.stderr[-400:]))
         got = pom.read_text(encoding="utf-8")
         if "assertj-core" not in got or "<sourceFolder>src/main/java</sourceFolder>" not in got:
             return _fail("reapply-catalog must add the test-scoped artifact and pin the generated-source folder: %s" % got[-600:])
@@ -613,6 +613,24 @@ def _datasource_checker_integration_case() -> int:
     M2 blocked. A worker cannot resolve a contradiction between two parts of
     the harness, and identical retries cannot either. Unit coverage on each
     side separately never saw it."""
+    for layout in ("separate-files", "inline"):
+        rc = _datasource_checker_layout(layout)
+        if rc:
+            return rc
+    return 0
+
+
+def _datasource_checker_layout(layout: str) -> int:
+    """One layout of the legacy's profile configuration.
+
+    separate-files  application-<profile>.properties, as the real specimen
+                    keeps them -- the bootstrap re-imports and re-merges these
+                    on EVERY run, so the removal path repeats every time
+    inline          %profile keys already in application.properties -- the
+                    removal runs ONCE and later runs have nothing to remove,
+                    which is where a note that is stripped but only rewritten
+                    when something was removed disappears on run 2
+    """
     CHECKER = HERE / "check-datasource-decision.py"
     LEGACY_PROPS = ("spring.profiles.active=hsqldb,spring-data-jpa\n"
                     "%hsqldb.quarkus.datasource.jdbc.url=jdbc:hsqldb:mem:petclinic\n"
@@ -642,13 +660,17 @@ def _datasource_checker_integration_case() -> int:
         # inlined them made the idempotence assertion hollow: nothing was left
         # to re-merge, so nothing could grow (measured live on v8, where the
         # file grew three comment lines per bootstrap).
-        (res / "application.properties").write_text(LEGACY_PROPS, encoding="utf-8")
-        (res / "application-hsqldb.properties").write_text(
-            "spring.datasource.url=jdbc:hsqldb:mem:petclinic\nspring.datasource.username=sa\n", encoding="utf-8")
-        (res / "application-mysql.properties").write_text(
-            "spring.datasource.url=jdbc:mysql://localhost:3306/petclinic\nspring.datasource.password=petclinic\n", encoding="utf-8")
-        (res / "application-postgresql.properties").write_text(
-            "spring.datasource.url=jdbc:postgresql://localhost:5432/petclinic\nspring.datasource.password=petclinic\n", encoding="utf-8")
+        frozen_main = "spring.profiles.active=hsqldb,spring-data-jpa\n" if layout == "separate-files" else LEGACY_PROPS
+        if layout == "separate-files":
+            (res / "application.properties").write_text(frozen_main, encoding="utf-8")
+            (res / "application-hsqldb.properties").write_text(
+                "spring.datasource.url=jdbc:hsqldb:mem:petclinic\nspring.datasource.username=sa\n", encoding="utf-8")
+            (res / "application-mysql.properties").write_text(
+                "spring.datasource.url=jdbc:mysql://localhost:3306/petclinic\nspring.datasource.password=petclinic\n", encoding="utf-8")
+            (res / "application-postgresql.properties").write_text(
+                "spring.datasource.url=jdbc:postgresql://localhost:5432/petclinic\nspring.datasource.password=petclinic\n", encoding="utf-8")
+        else:
+            (res / "application.properties").write_text(LEGACY_PROPS, encoding="utf-8")
         db = res / "db" / "postgresql"
         db.mkdir(parents=True, exist_ok=True)
         (db / "initDB.sql").write_text("CREATE TABLE owners (id INT PRIMARY KEY);\n", encoding="utf-8")
@@ -657,11 +679,11 @@ def _datasource_checker_integration_case() -> int:
 
         p1 = subprocess.run([sys.executable, str(SCRIPT), "--root", str(root)], text=True, capture_output=True)
         if p1.returncode != 0:
-            return _fail("bootstrap must pass on the legacy mix: %s%s" % (p1.stdout, p1.stderr[-400:]))
+            return _fail("[%s] bootstrap must pass on the legacy mix: %s%s" % (p1.stdout, p1.stderr[-400:]))
         c1 = subprocess.run([sys.executable, str(CHECKER), str(root)], text=True, capture_output=True)
         if c1.returncode != 0:
-            return _fail("THE CONTRADICTION: bootstrap passed and its own checker refused the tree it wrote:\n%s"
-                         % (c1.stdout + c1.stderr)[-700:])
+            return _fail("[%s] THE CONTRADICTION: bootstrap passed and its own checker refused the tree it wrote:\n%s"
+                         % (layout, (c1.stdout + c1.stderr)[-700:]))
 
         prop = root / "src" / "main" / "resources" / "application.properties"
         text_now = prop.read_text(encoding="utf-8")
@@ -672,8 +694,8 @@ def _datasource_checker_integration_case() -> int:
             return _fail("the decided datasource must still be there: %s" % text_now[-300:])
         if ".derived/frozen-input" not in text_now:
             return _fail("the removal must say where the legacy copy is preserved")
-        if (frozen / "src/main/resources/application.properties").read_text(encoding="utf-8") != LEGACY_PROPS:
-            return _fail("the frozen legacy record must be untouched by the removal")
+        if (frozen / "src/main/resources/application.properties").read_text(encoding="utf-8") != frozen_main:
+            return _fail("[%s] the frozen legacy record must be untouched by the removal" % layout)
         pom_now = (root / "pom.xml").read_text(encoding="utf-8")
         if "quarkus-jdbc-mysql" in pom_now:
             return _fail("a JDBC extension for an undecided db-kind must not survive")
@@ -692,10 +714,13 @@ def _datasource_checker_integration_case() -> int:
             pn = subprocess.run([sys.executable, str(SCRIPT), "--root", str(root)], text=True, capture_output=True)
             if pn.returncode != 0:
                 return _fail("bootstrap run %d must pass: %s%s" % (n, pn.stdout, pn.stderr[-300:]))
+            prop_now = (root / "src/main/resources/application.properties").read_text(encoding="utf-8")
             if tree_hash(root) != before:
-                prop_now = (root / "src/main/resources/application.properties").read_text(encoding="utf-8")
-                return _fail("reapplying the bootstrap (run %d) must change nothing; properties tail:\n%s"
-                             % (n, prop_now[-400:]))
+                return _fail("[%s] reapplying the bootstrap (run %d) must change nothing; properties tail:\n%s"
+                             % (layout, n, prop_now[-400:]))
+            if "[undecided-datasource]" not in prop_now:
+                return _fail("[%s] run %d dropped the note that says why those families are gone; a reason that "
+                             "survives only the run that wrote it is not a record" % (layout, n))
         c2 = subprocess.run([sys.executable, str(CHECKER), str(root)], text=True, capture_output=True)
         if c2.returncode != 0:
             return _fail("the checker must still pass after reapplication:\n%s" % (c2.stdout + c2.stderr)[-500:])
@@ -824,7 +849,7 @@ def main() -> int:
         p = subprocess.run([sys.executable, str(SCRIPT), "--root", str(r)], text=True, capture_output=True)
         if [c for c in load_json(r / "evidence/producers/bootstrap.json")["changes"] if c["op"] in ("source.delete", "source.retire") and c["path"] == vet_path]:
             return _fail("an ADR that is not accepted retires nothing")
-    print("OK: bootstrap-destination (trivial launcher deleted; second run preserves the tree; @Bean launcher kept + BOOTSTRAP_BLOCKED; unmapped starter kept + block; Maven settings wiring required; pinned version beats the legacy carry / VERSION_UNMANAGED / BOM_PROBE_MISSING; ADR-retired sources deleted with provenance / stale path blocks; reapply-catalog carries a late row and refuses without a receipt; the decided datasource lands unprefixed with its extension, and an undocumented / mismatched / absent one blocks; an undecided build profile blocks and a decided one reaches the destination; a profile condition nobody activates or enumerates is unaccounted; an enumerated retirement must be bound to this tree's inventory and describe conditions it actually has, and the proposer writes nothing; the legacy driver/profile mix goes bootstrap -> checker PASS with removals recorded and reapplication inert; a retirement is cut in UTF-16 offsets and leaves valid Java even when an astral character precedes the annotation)")
+    print("OK: bootstrap-destination (trivial launcher deleted; second run preserves the tree; @Bean launcher kept + BOOTSTRAP_BLOCKED; unmapped starter kept + block; Maven settings wiring required; pinned version beats the legacy carry / VERSION_UNMANAGED / BOM_PROBE_MISSING; ADR-retired sources deleted with provenance / stale path blocks; reapply-catalog carries a late row and refuses without a receipt; the decided datasource lands unprefixed with its extension, and an undocumented / mismatched / absent one blocks; an undecided build profile blocks and a decided one reaches the destination; a profile condition nobody activates or enumerates is unaccounted; an enumerated retirement must be bound to this tree's inventory and describe conditions it actually has, and the proposer writes nothing; the legacy driver/profile mix goes bootstrap -> checker PASS in BOTH the separate-file and inline layouts, with removals recorded, the reason note surviving every run, and reapplication inert; a retirement is cut in UTF-16 offsets and leaves valid Java even when an astral character precedes the annotation)")
     return 0
 
 
