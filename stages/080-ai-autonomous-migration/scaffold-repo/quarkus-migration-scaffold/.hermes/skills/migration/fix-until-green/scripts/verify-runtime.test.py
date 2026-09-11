@@ -86,6 +86,17 @@ def main() -> int:
         if b["ready"] or "already answering" not in b["detail"]:
             return _fail("a port that answers before anything is started must refuse: %s" % b)
 
+        # the error lines, not the closing summary: a failure named halfway
+        # through a Maven log must reach the receipt
+        log = ("[INFO] building\n"
+               "[ERROR] \t[error]: Build step SpringDataJPAProcessor#build threw an exception: UnableToParseMethodException: Method 'findPetTypes' of repository 'a.PetRepository'\n"
+               + "[INFO] surefire summary line\n" * 200)
+        errs = mod._errors(log)
+        if "findPetTypes" not in errs or "surefire summary" in errs:
+            return _fail("the receipt must carry the error lines, not the tail: %r" % errs[:200])
+        if mod._tail(log).find("findPetTypes") != -1:
+            return _fail("test setup: the tail must NOT contain the error, or this proves nothing")
+
         # the datasource has to appear in the application's own startup report
         ok, why = mod.database_ready("INFO  [io.quarkus] Installed features: [agroal, cdi, hibernate-orm, jdbc-postgresql, rest]", DS)
         if not ok:

@@ -48,6 +48,16 @@ def _runtime_advice_case() -> int:
             return _fail("the brief must name the other declared members: %s" % adv.get("siblings"))
         if "another full verification" not in adv.get("sibling_note", ""):
             return _fail("and say why fixing them together matters: %s" % adv.get("sibling_note"))
+        # the answer already in the tree: the same member, annotated, elsewhere
+        other = root / "src" / "main" / "java" / "a" / "SpringDataUserRepository.java"
+        other.write_text("package a;\npublic interface SpringDataUserRepository extends UserRepository {\n"
+                         "    @Override\n    @Query(\"SELECT u FROM User u\")\n    void save(User u);\n}\n", encoding="utf-8")
+        adv = mod.runtime_advice(item, root)
+        refs = adv.get("declared_elsewhere") or []
+        if not refs or refs[0]["path"] != "src/main/java/a/SpringDataUserRepository.java" or "@Query" not in refs[0]["snippet"]:
+            return _fail("the brief must show where the member is declared elsewhere, with its annotations: %s" % refs)
+        if "already present in this destination" not in adv.get("elsewhere_note", ""):
+            return _fail("and say that it is not something to invent: %s" % adv.get("elsewhere_note"))
         bare = mod.runtime_advice({"source": "runtime", "gate": "boot", "cause": "datasource-unconfigured",
                                    "path": "src/main/resources/application.properties", "message": "x"}, root)
         if bare.get("siblings"):

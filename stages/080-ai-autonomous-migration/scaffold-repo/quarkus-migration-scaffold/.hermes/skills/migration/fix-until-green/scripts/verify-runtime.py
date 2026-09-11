@@ -28,6 +28,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -89,6 +90,21 @@ def _tail(text: str) -> str:
     return text[-LOG_TAIL_BYTES:]
 
 
+ERROR_LINE = re.compile(r"^\[ERROR\]|\[error\]:")
+
+
+def _errors(text: str, limit: int = 40) -> str:
+    """The lines the build actually failed on.
+
+    The tail of a Maven log is a summary, not a diagnosis: the [ERROR] lines
+    naming the failing build step scroll past long before it ends. Classifying
+    a failure from the tail measured the wrong part of the log (pilot v7: a
+    repository method the platform could not derive was classified from
+    surefire's closing lines and came out unclassified, at the wrong file)."""
+    out = [line for line in (text or "").splitlines() if ERROR_LINE.search(line)]
+    return "\n".join(out[:limit])
+
+
 def _sha256(path: Path) -> str:
     h = hashlib.sha256()
     with path.open("rb") as fh:
@@ -128,6 +144,7 @@ def package(root: Path, profile: str, mvn: str, timeout: int, candidate: str) ->
         "failed_goal": _failed_goal(out) if rc else "",
         "detail": ("mvn verify exited %d at %s" % (rc, _failed_goal(out) or "an unnamed goal")) if rc else "",
         "log": str(log_p.relative_to(root)), "log_tail": _tail(out) if rc else "",
+        "errors": _errors(out) if rc else "",
         "artifact": "", "artifact_sha256": "",
     }
     blocker = runtime_environment_blocker(out) if rc else ""
@@ -308,6 +325,7 @@ def boot(root: Path, ds: dict, package_doc: dict, port: int, root_path: str, tim
     doc["log"] = str(log_p.relative_to(root))
     if not doc["ready"]:
         doc["log_tail"] = _tail(out)
+        doc["errors"] = _errors(out)
         blocker = runtime_environment_blocker(out)
         if blocker:
             doc["blocker"] = "environment: %s" % blocker

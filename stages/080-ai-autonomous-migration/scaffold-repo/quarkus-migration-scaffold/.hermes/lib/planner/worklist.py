@@ -359,7 +359,10 @@ def runtime_items(package: dict[str, Any] | None, boot: dict[str, Any] | None, r
         if not failed:
             continue
         detail = str(doc.get("detail") or doc.get("failed_goal") or "")
-        log = str(doc.get("log_tail") or "")
+        # the error lines when the runner captured them, else the tail: a
+        # Maven log ends in a summary, and the failing build step is named
+        # long before that
+        log = str(doc.get("errors") or doc.get("log_tail") or "")
         kind, cluster_kind, locus = classify_runtime_failure(detail + "\n" + log)
         unlocated = False
         named = runtime_locus(detail + "\n" + log, root)

@@ -250,6 +250,31 @@ MEMBER_RES = (re.compile(r"Method '([A-Za-z_][A-Za-z0-9_]*)' of repository"),
               re.compile(r"method '([A-Za-z_][A-Za-z0-9_]*)' of class"))
 
 
+def member_references(root: Path, member: str, exclude: str, limit: int = 3) -> list[dict]:
+    """Where else this member is declared in the destination's own sources,
+    with the lines around it (annotations included)."""
+    out: list[dict] = []
+    base = Path(root) / "src" / "main" / "java"
+    if not member or not base.is_dir():
+        return out
+    rx = re.compile(r"^.*\b%s\s*\(" % re.escape(member), re.M)
+    for f in sorted(base.rglob("*.java")):
+        rel = f.relative_to(root).as_posix()
+        if rel == exclude:
+            continue
+        text = f.read_text(encoding="utf-8", errors="replace")
+        m = rx.search(text)
+        if not m:
+            continue
+        lines = text.splitlines()
+        idx = text[: m.start()].count("\n")
+        snippet = "\n".join(lines[max(0, idx - 3): idx + 2]).strip()
+        out.append({"path": rel, "snippet": snippet[:400]})
+        if len(out) >= limit:
+            break
+    return out
+
+
 def runtime_advice(item: dict, root: Path) -> dict:
     """Advice for a packaging or startup obligation.
 
@@ -276,6 +301,20 @@ def runtime_advice(item: dict, root: Path) -> dict:
                 member = m.group(1)
                 out["member"] = member
                 break
+    if member:
+        # The same member declared elsewhere in the destination: for a query
+        # method the platform cannot derive, the annotation that makes it
+        # derivable is usually already in the tree, on the interface that
+        # overrides it (pilot v7: PetRepository.findPetTypes could not be
+        # derived while SpringDataPetRepository carried its @Query two files
+        # away). Reading is not writing; the worker still edits only its own
+        # write set.
+        elsewhere = member_references(root, member, path)
+        if elsewhere:
+            out["declared_elsewhere"] = elsewhere
+            out["elsewhere_note"] = ("%s is also declared in %s; if it carries the annotation or query this one needs, that is the answer "
+                                     "already present in this destination, not something to invent"
+                                     % (member, ", ".join(e["path"] for e in elsewhere)))
     if member and path.endswith(".java"):
         f = root / path
         if f.is_file():
