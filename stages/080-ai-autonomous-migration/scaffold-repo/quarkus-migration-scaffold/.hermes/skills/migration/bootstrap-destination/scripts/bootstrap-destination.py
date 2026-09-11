@@ -820,6 +820,8 @@ def apply_datasource_decision(root: Path, catalog: dict, decisions_doc: dict, ch
 
 
 _DS_FAMILY = re.compile(r"^%(?P<profile>[A-Za-z0-9_.-]+)\.quarkus\.(datasource|hibernate-orm)\b")
+_MERGED_FROM = re.compile(r"^# bootstrap: merged from .* \(Quarkus profile (?P<profile>[A-Za-z0-9_.-]+)\)")
+_REMOVAL_NOTE_MARK = "# bootstrap[undecided-datasource]:"
 
 
 def decided_profiles(ds: dict, decisions_doc: dict) -> set[str]:
@@ -842,20 +844,38 @@ def _drop_undecided_datasource_keys(root: Path, lines: list[str], ds: dict, deci
     out: list[str] = []
     removed: dict[str, list[str]] = {}
     for raw in lines:
-        m = _DS_FAMILY.match(raw.strip())
+        stripped = raw.strip()
+        # the note this function itself appended on an earlier run: drop it and
+        # write exactly one at the end. The specimen keeps its profiles in
+        # separate application-<profile>.properties files, which the bootstrap
+        # re-imports and re-merges on EVERY run, so this whole path repeats and
+        # anything appended unconditionally grows the file each time (measured
+        # live on v8: three comment lines per bootstrap).
+        if stripped.startswith(_REMOVAL_NOTE_MARK):
+            continue
+        m = _DS_FAMILY.match(stripped)
         if m and m.group("profile") not in keep:
-            removed.setdefault(m.group("profile"), []).append(raw.strip().partition("=")[0])
+            removed.setdefault(m.group("profile"), []).append(stripped.partition("=")[0])
+            continue
+        # and the merge comment that introduced the family we just removed
+        mc = _MERGED_FROM.match(stripped)
+        if mc and mc.group("profile") not in keep:
             continue
         out.append(raw)
     if removed:
+        # stripping the note leaves the blank line that preceded it, and the
+        # fresh block adds its own: one blank accumulated per run until the
+        # tidy cap absorbed it, so run 1 and run 2 were never identical.
+        while out and out[-1].strip() == "":
+            out.pop()
         for profile in sorted(removed):
             changes.append({"op": "properties.remove-undecided-datasource-keys", "profile": profile,
                             "keys": sorted(removed[profile]),
                             "provenance": "decisions.yaml datasource (%s): this run selects %s"
                                           % (ds.get("adr"), ", ".join(sorted(keep)) or "no profile")})
-        out += ["", "# bootstrap: the %s datasource families the legacy carried are not this" % ", ".join(sorted(removed)),
-                "# destination's configuration and this run never selects those profiles; the",
-                "# legacy copy is preserved verbatim under .derived/frozen-input (%s)." % ds.get("adr")]
+        out += ["", "%s the %s datasource families are not this destination's" % (_REMOVAL_NOTE_MARK, ", ".join(sorted(removed))),
+                "%s configuration and this run never selects those profiles; the legacy" % _REMOVAL_NOTE_MARK,
+                "%s copy is preserved verbatim under .derived/frozen-input (%s)." % (_REMOVAL_NOTE_MARK, ds.get("adr"))]
     # a removal can leave three or more blank lines behind; one is enough
     tidy: list[str] = []
     for raw in out:

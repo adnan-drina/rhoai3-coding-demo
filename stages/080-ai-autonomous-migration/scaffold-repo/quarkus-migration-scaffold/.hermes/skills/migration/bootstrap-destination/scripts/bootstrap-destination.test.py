@@ -637,7 +637,18 @@ def _datasource_checker_integration_case() -> int:
         fpom.write_text(xml.replace("  <dependencies>\n", drivers, 1), encoding="utf-8")
         res = frozen / "src" / "main" / "resources"
         res.mkdir(parents=True, exist_ok=True)
+        # The real specimen keeps each profile in its OWN Spring file, and the
+        # bootstrap re-imports and re-merges them on every run. A fixture that
+        # inlined them made the idempotence assertion hollow: nothing was left
+        # to re-merge, so nothing could grow (measured live on v8, where the
+        # file grew three comment lines per bootstrap).
         (res / "application.properties").write_text(LEGACY_PROPS, encoding="utf-8")
+        (res / "application-hsqldb.properties").write_text(
+            "spring.datasource.url=jdbc:hsqldb:mem:petclinic\nspring.datasource.username=sa\n", encoding="utf-8")
+        (res / "application-mysql.properties").write_text(
+            "spring.datasource.url=jdbc:mysql://localhost:3306/petclinic\nspring.datasource.password=petclinic\n", encoding="utf-8")
+        (res / "application-postgresql.properties").write_text(
+            "spring.datasource.url=jdbc:postgresql://localhost:5432/petclinic\nspring.datasource.password=petclinic\n", encoding="utf-8")
         db = res / "db" / "postgresql"
         db.mkdir(parents=True, exist_ok=True)
         (db / "initDB.sql").write_text("CREATE TABLE owners (id INT PRIMARY KEY);\n", encoding="utf-8")
@@ -674,13 +685,17 @@ def _datasource_checker_integration_case() -> int:
             if op not in ops:
                 return _fail("every removal is recorded against the decision that caused it; missing %s in %s" % (op, sorted(ops)))
 
-        # REAPPLICATION CHANGES NOTHING
+        # REAPPLICATION CHANGES NOTHING -- twice, because a file that grows by
+        # a fixed block each run is identical between no two consecutive runs
         before = tree_hash(root)
-        p2 = subprocess.run([sys.executable, str(SCRIPT), "--root", str(root)], text=True, capture_output=True)
-        if p2.returncode != 0:
-            return _fail("a second bootstrap must pass: %s%s" % (p2.stdout, p2.stderr[-300:]))
-        if tree_hash(root) != before:
-            return _fail("reapplying the bootstrap must change nothing")
+        for n in (2, 3):
+            pn = subprocess.run([sys.executable, str(SCRIPT), "--root", str(root)], text=True, capture_output=True)
+            if pn.returncode != 0:
+                return _fail("bootstrap run %d must pass: %s%s" % (n, pn.stdout, pn.stderr[-300:]))
+            if tree_hash(root) != before:
+                prop_now = (root / "src/main/resources/application.properties").read_text(encoding="utf-8")
+                return _fail("reapplying the bootstrap (run %d) must change nothing; properties tail:\n%s"
+                             % (n, prop_now[-400:]))
         c2 = subprocess.run([sys.executable, str(CHECKER), str(root)], text=True, capture_output=True)
         if c2.returncode != 0:
             return _fail("the checker must still pass after reapplication:\n%s" % (c2.stdout + c2.stderr)[-500:])
