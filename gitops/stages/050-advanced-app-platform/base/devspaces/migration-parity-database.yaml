@@ -8,10 +8,20 @@
 # per run, never shared with anything that matters.
 #
 # The credentials reach the workspace as environment variables through the Dev
-# Spaces automount contract (label controller.devfile.io/watch-secret plus
-# annotation controller.devfile.io/mount-as: env), so a migration workspace has
-# them the moment it starts. decisions.yaml references them BY NAME and never
-# records a value; the password is generated here and never leaves the cluster.
+# Spaces automount contract, which needs BOTH labels and the annotation:
+#   controller.devfile.io/mount-to-devworkspace: "true"  <- injects the secret
+#   controller.devfile.io/watch-secret: "true"           <- re-injects on change
+#   controller.devfile.io/mount-as: env                  <- as env, not a file
+# watch-secret alone injects NOTHING. Measured on the v8 workspace start
+# (2026-09-11): the secret carried watch-secret + mount-as and the pod came up
+# with no PETCLINIC_DB_* at all, because nothing marked it for mounting. The
+# other two automounted secrets in this namespace (workspace-maas-credentials,
+# workspace-sonar-credentials) carry both labels; that is the contract.
+# decisions.yaml references the variables BY NAME and never records a value;
+# the password is generated here and never leaves the cluster.
+#
+# A running workspace does not pick this up: DWO injects at pod creation, so a
+# workspace started before the labels are right must be restarted.
 #
 # Ref: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/
 #      (automounting secrets into workspaces)
@@ -107,8 +117,11 @@ spec:
                 --dry-run=client -o yaml | oc apply -f -
 
               # the automount contract: every workspace in this namespace gets
-              # these three as environment variables at start
+              # these three as environment variables at start. mount-to-devworkspace
+              # is the label that INJECTS; watch-secret only re-injects on change,
+              # and on its own it does nothing at all.
               oc label secret "${WORKSPACE_SECRET}" -n "${NS}" \
+                controller.devfile.io/mount-to-devworkspace=true \
                 controller.devfile.io/watch-secret=true --overwrite
               oc annotate secret "${WORKSPACE_SECRET}" -n "${NS}" \
                 controller.devfile.io/mount-as=env --overwrite
