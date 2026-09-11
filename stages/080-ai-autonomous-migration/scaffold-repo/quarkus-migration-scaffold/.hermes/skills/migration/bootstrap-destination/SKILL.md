@@ -68,6 +68,24 @@ the pinned BOM manages (`evidence/build/bom-managed.json`); network once.
    then measures the rendered tree against the decision. It does not prove the
    configuration works: packaging and boot verification do that, and neither
    replaces the other.
+1b. **build profiles** (ADR-010) — the legacy chose which implementation
+   exists with `spring.profiles.active`; the platform resolves
+   `@IfBuildProfile` at build time, so a profile nobody activates removes
+   every bean gated on it and the build fails one missing implementation at
+   a time with nothing naming the cause (measured on pilot v7). So every
+   profile condition over the destination's own source roots must be
+   *accounted for*: activated in `build_profiles.active`, or retired — and a
+   retirement is **enumerated**, one row per condition
+   (`build_profiles.retire[] = {path, type, member, annotation, profile}`),
+   bound to the inventory it was read from
+   (`build_profiles.inventory_sha256`). `propose-profile-retirement.py`
+   proposes those rows and writes nothing; a person accepts them. The
+   bootstrap applies them here, before the annotation remapping, and refuses
+   a list that is unbound (`PROFILE_RETIREMENT_UNBOUND`), bound to another
+   inventory (`PROFILE_RETIREMENT_STALE`) or describing a condition this tree
+   does not have (`PROFILE_RETIREMENT_ABSENT`). Anything left over is
+   `BUILD_PROFILE_UNACCOUNTED`. A bare `retire_gates: true` retires nothing:
+   a retirement nobody can read is a deletion.
 2. **pom** — from `.hermes/planning/catalogs/compat-mapping.json` and
    `.hermes/pins.json`: removes `spring-boot-starter-parent`, imports the
    pinned `quarkus-bom`, maps every listed starter and JDBC driver to its

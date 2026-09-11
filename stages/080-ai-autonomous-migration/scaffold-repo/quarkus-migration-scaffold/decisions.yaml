@@ -30,6 +30,9 @@ adrs:
   - id: ADR-009
     status: accepted
     title: The destination runs on PostgreSQL 16 (registry.redhat.io/rhel9/postgresql-16, the supported image this environment already runs); the frozen source keeps its HSQLDB baseline and provenance, which is an engine CHANGE and is recorded as one - HSQLDB has no Quarkus JDBC extension on RHBQ 3.27, the source already ships PostgreSQL schema and seed assets and the destination already carries the PostgreSQL driver, and schema and seed stay owned by those source assets so the parity referent is the source's own dataset (spring-petclinic-rest, decided 2026-09-10)
+  - id: ADR-010
+    status: accepted
+    title: A build profile condition is retired ONE CONDITION AT A TIME, enumerated in build_profiles.retire as {path, type, member, annotation, profile} and bound to the type inventory it was proposed from (build_profiles.inventory_sha256); the rows are machine-proposed (propose-profile-retirement.py) and human-accepted, the bootstrap applies them before its annotation remapping and refuses a list that is unbound, bound to another inventory, or describes a condition this tree does not have, and M2 refuses any remaining condition over the destination's own source roots that the run neither activates nor enumerates - a blanket retire_gates flag retires nothing, because a retirement nobody can read is a deletion (decided 2026-09-11)
 
 destination_platform:
   id: quarkus-rhbq-3.27   # key of .hermes/planning/catalogs/destination-platforms.json

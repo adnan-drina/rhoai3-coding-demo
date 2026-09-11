@@ -179,6 +179,19 @@ def state_change_violations(text: str, writes: set[str]) -> tuple[list[dict], li
     return violations, inconclusive
 
 
+def attempts_spent(steps: dict[str, Any], cluster: str, key: str) -> int:
+    """How many rejections this PROBLEM has cost.
+
+    Counted against the retry key. An older run counted against the cluster id;
+    those records are kept and still count, so an upgrade cannot hand a
+    problem a fresh budget it had already spent."""
+    attempts = steps.get("attempts") or {}
+    spent = int(attempts.get(key, 0) or 0)
+    if key != cluster:
+        spent = max(spent, int(attempts.get(cluster, 0) or 0))
+    return spent
+
+
 def attempt_budget(steps: dict[str, Any], cluster: str, limit: int) -> int:
     """How many rejected attempts this cluster may spend before it defers.
 
@@ -189,7 +202,7 @@ def attempt_budget(steps: dict[str, Any], cluster: str, limit: int) -> int:
     resetting the counter -- the cluster gets ``limit`` fresh attempts from
     where it stood when the Operator cleared it."""
     spent_at_clearance = [int(c.get("attempts") or 0) for c in (steps.get("deferral_clearances") or [])
-                          if str(c.get("cluster") or "") == cluster]
+                          if str(c.get("cluster") or "") in (cluster, str((steps.get("retry_keys") or {}).get(cluster) or ""))]
     return limit + (max(spent_at_clearance) if spent_at_clearance else 0)
 
 

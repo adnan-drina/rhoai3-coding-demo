@@ -154,6 +154,38 @@ def build_profiles(doc: dict[str, Any]) -> dict[str, Any]:
     return dict(bp)
 
 
+def retired_profile_gates(doc: dict[str, Any]) -> list[dict[str, str]]:
+    """The profile conditions an accepted ADR retires, one row per condition.
+
+    A blanket "retire the gates" is not a decision anyone can review: it
+    absorbs whatever the tree contains on the day it runs. An enumeration can
+    be read, diffed, and refused when the tree moved under it."""
+    bp = doc.get("build_profiles")
+    if not isinstance(bp, dict) or not _adr_ok(doc, bp.get("adr")):
+        return []
+    out: list[dict[str, str]] = []
+    for row in bp.get("retire") or []:
+        if not isinstance(row, dict):
+            continue
+        if not (row.get("path") and row.get("type") and row.get("annotation") and row.get("profile")):
+            continue
+        out.append({
+            "path": str(row["path"]).replace("\\", "/").lstrip("/"),
+            "type": str(row["type"]),
+            "member": str(row.get("member") or ""),
+            "annotation": str(row["annotation"]).lstrip("@").rsplit(".", 1)[-1],
+            "profile": str(row["profile"]),
+            "reason": str(row.get("reason") or ""),
+            "adr": str(bp.get("adr") or ""),
+        })
+    return out
+
+
+def retirement_inventory_sha256(doc: dict[str, Any]) -> str:
+    bp = doc.get("build_profiles")
+    return str(bp.get("inventory_sha256") or "") if isinstance(bp, dict) else ""
+
+
 def known_db_kinds(root: Path) -> dict[str, Any]:
     doc = load_json(Path(root) / CATALOGS_DIR / "compat-mapping.json")
     return (doc.get("datasources") or {}).get("db_kinds") or {}

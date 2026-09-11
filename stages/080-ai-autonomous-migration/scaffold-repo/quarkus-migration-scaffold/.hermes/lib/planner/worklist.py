@@ -34,7 +34,7 @@ from pathlib import Path
 from typing import Any
 
 from planner.canonical import canonical_bytes, digest, load_json, sha256_bytes, sha256_file, sort_unique
-from planner.paths import is_product_path, EVIDENCE_BUNDLE, LOOP_DEFERRED, LOOP_STEPS, MTA_RESCAN_FINDINGS, PARITY_DIR, VERIFY_BOOT, VERIFY_DIAGNOSTICS, VERIFY_PACKAGE, VERIFY_RUN, VERIFY_SUREFIRE, WORKLIST
+from planner.paths import is_product_path, EVIDENCE_BUNDLE, TYPE_INVENTORY, LOOP_DEFERRED, LOOP_STEPS, MTA_RESCAN_FINDINGS, PARITY_DIR, VERIFY_BOOT, VERIFY_DIAGNOSTICS, VERIFY_PACKAGE, VERIFY_RUN, VERIFY_SUREFIRE, WORKLIST
 
 SCHEMA = "rhoai3.worklist/v1"
 KIND_RANK = {"build": 0, "config": 1, "compile": 2, "incident": 3, "test": 4, "parity": 5}
@@ -333,6 +333,32 @@ def runtime_member(text: str) -> str:
     return ""
 
 
+def member_signatures(root: Path | None, rel: str, member: str) -> list[str]:
+    """Every signature of this member in the destination's own JDK model.
+
+    The platform names a method, not a signature. When a name is overloaded the
+    obligation stays ONE ambiguous diagnostic linked to both candidates rather
+    than two invented failures or an arbitrary pick; the raw message is kept
+    beside the resolution."""
+    if root is None or not rel or not member:
+        return []
+    p = Path(root) / TYPE_INVENTORY
+    if not p.is_file():
+        return []
+    try:
+        doc = load_json(p)
+    except (OSError, ValueError):
+        return []
+    out: list[str] = []
+    for row in doc.get("types") or []:
+        if str(row.get("dest_file") or row.get("file") or "") != rel:
+            continue
+        for meth in row.get("methods") or []:
+            if str(meth.get("name") or "") == member:
+                out.append(str(meth.get("signature") or member + "(?)"))
+    return sorted(set(out))
+
+
 def runtime_locus(text: str, root: Path | None) -> str:
     """The source file a runtime failure names, when the tree has it.
 
@@ -430,6 +456,8 @@ def runtime_items(package: dict[str, Any] | None, boot: dict[str, Any] | None, r
             "id": "rt:%s:%s" % (gate, ident), "source": "runtime", "gate": gate,
             "kind": cluster_kind, "obligation": kind, "cause": cause, "member": member,
             "unlocated": unlocated, "category": "mandatory",
+            "signatures": member_signatures(root, locus, member),
+            "ambiguous_member": len(member_signatures(root, locus, member)) > 1,
             "path": locus, "line": 0, "rule_id": "RUNTIME_%s" % kind.replace("-", "_").upper(),
             "message_sha256": sha256_bytes((detail + log).encode("utf-8")),
             "detail": detail[:200],
@@ -686,6 +714,203 @@ class _Retain(str):
 RETAIN = _Retain("retain")
 
 
+BATCH_SCOPE_DIR = Path("evidence") / "planning" / "batch-scope"
+BATCH_RULE = "spring-data-repository-contract/v1"
+_DERIVABLE = re.compile(r"^(find|read|get|query|count|exists|stream)\w*By\w+$|^(count|exists)$")
+
+
+def build_batch_scope(root: Path, cluster: dict[str, Any], items: list[dict[str, Any]], bundle: dict[str, Any]) -> dict[str, Any] | None:
+    """A SEALED SCOPE INVENTORY for a repository repair: what the card may
+    touch, and every member the declared rule applies to.
+
+    The source proves a member EXISTS. It does not prove the member is broken,
+    so nothing here becomes an obligation and nothing here enters the measure:
+    the measured failure stays in item_ids. What the inventory does is make the
+    brief's advice enforceable — every member is assessed against the rule, and
+    an already-correct one may stay exactly as it is (architect direction C,
+    2026-09-11)."""
+    rows = [i for i in items if str(i.get("id")) in set(cluster.get("items") or []) and str(i.get("source")) == "runtime"]
+    if not rows:
+        return None
+    path = str(rows[0].get("path") or "")
+    if not path.endswith("Repository.java"):
+        return None
+    src = Path(root) / path
+    if not src.is_file():
+        return None
+    text = src.read_text(encoding="utf-8", errors="replace")
+    inventory_p = Path(root) / TYPE_INVENTORY
+    members: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for name, _anns, _body in _declared_members(text):
+        if name in seen:
+            continue
+        seen.add(name)
+        sigs = member_signatures(root, path, name) or ["%s(?)" % name]
+        members.append({
+            "member": name,
+            "signatures": sigs,
+            "ambiguous": len(sigs) > 1,
+            "source_refs": _frozen_refs(root, name),
+        })
+    doc = {
+        "schema": "rhoai3.batch-scope/v1",
+        "producer": "worklist.build_batch_scope",
+        "tool": {"model": "jdk-model", "inventory": str(TYPE_INVENTORY), "version": "1.0.0"},
+        "rule": BATCH_RULE,
+        "cluster": str(cluster.get("id") or ""),
+        "repository": path,
+        "writable_paths": sorted(set(cluster.get("write_set") or [path])),
+        "inputs": {
+            "candidate_sha256": str((bundle or {}).get("candidate_sha256") or ""),
+            "type_inventory_sha256": sha256_file(inventory_p),
+            "repository_sha256": sha256_file(src),
+        },
+        "members": members,
+        "measured": sorted(str(i.get("id")) for i in rows),
+    }
+    doc["digest"] = batch_scope_digest(doc)
+    return doc
+
+
+def batch_scope_digest(doc: dict[str, Any]) -> str:
+    """The seal, recomputed from content. The stored field is a convenience;
+    a checker that trusted it would be trusting the file it is checking."""
+    return sha256_bytes(canonical_bytes({k: v for k, v in (doc or {}).items() if k != "digest"}))
+
+
+def _declared_members(text: str) -> list[tuple[str, list[str], bool]]:
+    """(name, annotation names, carries a body) per declaration, line-oriented.
+
+    A body matters: a `default` method answers for itself, so no rule about
+    queries applies to it."""
+    out: list[tuple[str, list[str], bool]] = []
+    pending: list[str] = []
+    for raw in (text or "").splitlines():
+        line = raw.strip()
+        if not line or line.startswith(("//", "*", "/*")):
+            continue
+        if line.startswith("@"):
+            pending.append(line.split("(", 1)[0][1:].rsplit(".", 1)[-1])
+            continue
+        m = re.match(r"^(?:public|protected|private|default|static|abstract|final|\s)*[\w.<>,\[\]\s]*?\b(\w+)\s*\(", line)
+        if m and "(" in line and "interface" not in line and "class" not in line:
+            body = line.rstrip().endswith("{") or " default " in (" " + line)
+            out.append((m.group(1), list(pending), body))
+        pending = []
+    return out
+
+
+def _frozen_refs(root: Path, member: str, limit: int = 2) -> list[dict[str, str]]:
+    """Where the FROZEN source implemented this member, and its query."""
+    out: list[dict[str, str]] = []
+    base = Path(root) / ".derived" / "frozen-input" / "src" / "main" / "java"
+    if not base.is_dir():
+        return out
+    rx = re.compile(r"\b%s\s*\(" % re.escape(member))
+    for f in sorted(base.rglob("*.java")):
+        text = f.read_text(encoding="utf-8", errors="replace")
+        m = rx.search(text)
+        if not m:
+            continue
+        body = text[m.start(): m.start() + 900]
+        row = {"path": f.relative_to(Path(root) / ".derived" / "frozen-input").as_posix()}
+        q = re.search(r'"((?:SELECT|UPDATE|DELETE|INSERT)\s[^"]{4,300})"', body, re.I)
+        if q:
+            row["query"] = q.group(1)
+        out.append(row)
+        if len(out) >= limit:
+            break
+    return out
+
+
+def assess_batch_scope(root: Path, scope: dict[str, Any]) -> list[dict[str, Any]]:
+    """Assess every inventoried member against the declared rule.
+
+    ok        the member satisfies the contract as it stands (it may be
+              untouched: being already correct is not a defect)
+    violates  the member breaks the contract and the card is not finished
+    inconclusive  the rule cannot read this declaration
+
+    Inspecting a member earns nothing and changing one earns nothing; only the
+    assessment counts, and a worker's prose cannot supply it."""
+    out: list[dict[str, Any]] = []
+    path = str(scope.get("repository") or "")
+    src = Path(root) / path
+    if not src.is_file():
+        return [{"member": "*", "verdict": "inconclusive", "detail": "%s is gone from the tree" % path}]
+    text = src.read_text(encoding="utf-8", errors="replace")
+    declared = {name: (anns, body) for name, anns, body in _declared_members(text)}
+    writes = _source_write_members(root)
+    for row in scope.get("members") or []:
+        member = str(row.get("member"))
+        row_d = declared.get(member)
+        if row_d is None:
+            out.append({"member": member, "verdict": "ok", "detail": "not declared here; inherited from the platform's repository interface"})
+            continue
+        anns, has_body = row_d
+        if has_body:
+            out.append({"member": member, "verdict": "ok", "detail": "implemented in place; no query is owed"})
+            continue
+        has_query = "Query" in anns
+        modifying = "Modifying" in anns
+        if member in writes:
+            if has_query and not modifying:
+                out.append({"member": member, "verdict": "violates", "rule": scope.get("rule"),
+                            "detail": "a source write answered with a query and no @Modifying"})
+            else:
+                out.append({"member": member, "verdict": "ok", "detail": "write kept as a write"})
+            continue
+        if has_query or _DERIVABLE.match(member):
+            out.append({"member": member, "verdict": "ok", "detail": "derivable by name" if not has_query else "carries a query"})
+        else:
+            out.append({"member": member, "verdict": "violates", "rule": scope.get("rule"),
+                        "detail": "a finder the parser cannot derive from its name and that carries no query"})
+    return out
+
+
+def _source_write_members(root: Path) -> set[str]:
+    base = Path(root) / ".derived" / "frozen-input" / "src" / "main" / "java"
+    out: set[str] = set()
+    if not base.is_dir():
+        return out
+    calls = ("persist(", "merge(", "remove(", "executeUpdate(", ".update(", ".save(", ".delete(")
+    decl = re.compile(r"[\w.<>,\[\]]+\s+(\w+)\s*\([^)]*\)\s*(?:throws[^{]+)?\{")
+    for f in sorted(base.rglob("*.java")):
+        text = f.read_text(encoding="utf-8", errors="replace")
+        for m in decl.finditer(text):
+            body = text[m.end(): m.end() + 1200]
+            if any(c in body for c in calls):
+                out.add(m.group(1))
+    return out
+
+
+def retry_key(cluster: dict[str, Any], items: list[dict[str, Any]] | None = None) -> str:
+    """What a retry budget is counted against.
+
+    Card identity and retry identity are not the same thing. A card is the
+    work in front of a worker now; a budget is the patience the run has for
+    one PROBLEM. So the key is the gate, the normalised cause and the file --
+    never the member, the item set, the attempt number or the wording, all of
+    which change while the same problem is being worked.
+
+    Two different causes at one file are two problems and get their own
+    budgets; the same cause reported about a different member does not
+    replenish anything. Anything that is not a runtime obligation keeps
+    counting against its cluster id, which for a file cluster is already the
+    path (worklist.cluster_items)."""
+    rows = [i for i in (items or []) if str(i.get("id")) in set(cluster.get("items") or [])]
+    runtime = [i for i in rows if str(i.get("source")) == "runtime"]
+    if not runtime:
+        return str(cluster.get("id") or "")
+    gates = sorted({str(i.get("gate") or "") for i in runtime})
+    causes = sorted({str(i.get("cause") or "") for i in runtime})
+    paths = sorted({str(i.get("path") or "") for i in runtime})
+    if len(gates) != 1 or len(causes) != 1 or len(paths) != 1:
+        return str(cluster.get("id") or "")
+    return "rk:%s:%s:%s" % (gates[0], causes[0], sha256_bytes(paths[0].encode("utf-8"))[:12])
+
+
 def gate_items(worklist: dict[str, Any], gate: str) -> set[str]:
     """The ids of the obligations one gate currently holds."""
     return {str(i["id"]) for i in (worklist.get("items") or []) if str(i.get("gate") or "") == gate}
@@ -884,23 +1109,40 @@ def build_worklist(root: Path, *, write: bool = True) -> dict[str, Any]:
     boot_doc = load_json(root / VERIFY_BOOT) if (root / VERIFY_BOOT).is_file() else None
     rt_all = runtime_items(package_doc, boot_doc, root)
     rt = [i for i in rt_all if not i.get("unlocated")]
+    # A blocker no card can carry still has an identity, because an Operator
+    # has to be able to investigate THIS one twice and no more. Without an id
+    # a diagnosis has nothing to attach to and nothing to count against.
+    unlocatable: list[dict[str, Any]] = []
     for i in rt_all:
         if i.get("unlocated"):
+            detail = str(i.get("detail") or i.get("message") or "")[:400]
             blocked.append("the %s gate failed with a message that names no file of this tree, so no card can carry it: %s"
-                           % (i.get("gate"), str(i.get("detail") or i.get("message") or "")[:200]))
+                           % (i.get("gate"), detail[:200]))
+            unlocatable.append({"id": str(i.get("id")), "kind": "unlocatable", "gate": str(i.get("gate") or ""),
+                                "cause": str(i.get("cause") or ""), "detail": detail})
     runtime = runtime_state(package_doc, boot_doc)
     for b in runtime["blockers"]:
         blocked.append("runtime gate blocked by the environment: %s" % b)
+        unlocatable.append({"id": "fx:environment:%s" % sha256_bytes(str(b).encode("utf-8"))[:12],
+                            "kind": "environment", "gate": "", "cause": "environment", "detail": str(b)[:400]})
     items = sorted(mandatory + comp + tst + par + rt, key=lambda i: i["id"])
     clusters = cluster_items(items, file_depths(bundle), deferred)
     # A cluster made only of one gate's obligations carries that gate, so the
     # card, the issued record and acceptance all know which phase is being
     # repaired (a packaging repair can leave the compile/test tuple unchanged).
     by_id = {i["id"]: i for i in items}
+    scopes: list[dict[str, Any]] = []
     for c in clusters:
         gates = {str(by_id[i].get("gate") or "") for i in c.get("items") or [] if i in by_id}
         if len(gates) == 1 and gates != {""}:
             c["gate"] = gates.pop()
+        c["retry_key"] = retry_key(c, items)
+        scope = build_batch_scope(root, c, items, {"candidate_sha256": str(run.get("candidate_sha256") or "")})
+        if scope:
+            scopes.append(scope)
+            c["batch_scope"] = {"path": (BATCH_SCOPE_DIR / ("%s.json" % scope["cluster"].replace(":", "-"))).as_posix(),
+                                "digest": scope["digest"], "rule": scope["rule"],
+                                "members": len(scope["members"])}
     open_clusters = [c for c in clusters if c["status"] == "open"]
     head = open_clusters[0]["id"] if open_clusters else ""
     doc = {
@@ -923,6 +1165,7 @@ def build_worklist(root: Path, *, write: bool = True) -> dict[str, Any]:
         "clusters": clusters,
         "deferred": sorted(deferred),
         "blocked_clusters": [c["id"] for c in clusters if c["status"] == "blocked"],
+        "unlocatable": unlocatable,
         "head": head,
         "measure": measure_of(items, incidents_known=incidents_known, compile_known=compile_known, tests_known=tests_known, parity_known=parity_known, blocked=blocked),
         "order_policy": "build → config → compile (leaf types first) → incident → test → parity; within a rank by dependency depth then path; tests are never in a write set. Packaging and startup obligations enter as build/config items carrying their gate; the closing card needs an empty list AND both gates passing on the same packaged artifact.",
@@ -930,6 +1173,16 @@ def build_worklist(root: Path, *, write: bool = True) -> dict[str, Any]:
     if write:
         from planner.canonical import write_canonical
 
+        by_cluster = {c["id"]: c for c in clusters}
+        for scope in scopes:
+            out = root / BATCH_SCOPE_DIR / ("%s.json" % scope["cluster"].replace(":", "-"))
+            out.parent.mkdir(parents=True, exist_ok=True)
+            write_canonical(out, scope)
+            # the card's K1 ref digests the FILE; the seal acceptance checks
+            # digests the CONTENT. They are different questions.
+            ref = (by_cluster.get(scope["cluster"]) or {}).get("batch_scope")
+            if ref is not None:
+                ref["file_sha256"] = sha256_file(out)
         write_canonical(root / WORKLIST, doc)
     return doc
 

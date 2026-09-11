@@ -35,14 +35,14 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _loop_common import attempt_budget, candidate_sha256, classify_inconclusive, clear_pending, source_write_members, state_change_violations, catalog_property_mappings, ensure_hermes_lib, git, load_deferred, load_issued, load_state, load_steps, pending_for, product_paths_changed, profile_keys_lost_in_tree, restore_reports, revert_paths, save_deferred, save_pending_candidate, save_steps, snapshot_reports  # noqa: E402
+from _loop_common import attempt_budget, attempts_spent, candidate_sha256, classify_inconclusive, clear_pending, source_write_members, state_change_violations, catalog_property_mappings, ensure_hermes_lib, git, load_deferred, load_issued, load_state, load_steps, pending_for, product_paths_changed, profile_keys_lost_in_tree, restore_reports, revert_paths, save_deferred, save_pending_candidate, save_steps, snapshot_reports  # noqa: E402
 
 ensure_hermes_lib()
 from planner import pipeline  # noqa: E402
 from planner.canonical import digest, load_json  # noqa: E402
 from planner.decisions import load_decisions, max_attempts  # noqa: E402
 from planner.paths import EVIDENCE_BUNDLE, LOOP_ACCEPTED, LOOP_ISSUED, MTA_RESCAN_FINDINGS, VERIFY_RUN, WORKLIST  # noqa: E402
-from planner.worklist import RETAIN, build_worklist, gate_items, incidents_from_findings, item_ids, obligation_keys, progress  # noqa: E402
+from planner.worklist import RETAIN, assess_batch_scope, batch_scope_digest, build_worklist, gate_items, incidents_from_findings, item_ids, obligation_keys, progress  # noqa: E402
 
 
 def _verify_meta(run: dict) -> dict:
@@ -66,27 +66,32 @@ def _reject(root: Path, steps: dict, cluster: str, card: str, cur: dict, reason:
     clear_pending(steps, cluster, why="rejected")
     revert_paths(root, changed)
     restore_reports(root)
+    # the budget belongs to the problem, not to the card: gate + cause + file
+    cur_list = load_json(root / WORKLIST) if (root / WORKLIST).is_file() else {}
+    row = next((c for c in (cur_list.get("clusters") or []) if str(c.get("id")) == cluster), {})
+    key = str(row.get("retry_key") or cluster)
     attempts = dict(steps.get("attempts") or {})
-    attempts[cluster] = int(attempts.get(cluster, 0)) + 1
+    attempts[key] = attempts_spent(steps, cluster, key) + 1
     steps["attempts"] = attempts
+    steps.setdefault("retry_keys", {})[cluster] = key
     steps.setdefault("rejected", []).append({"cluster": cluster, "card": card, "measure": cur.get("measure"), "reason": reason, "changed": changed, "verify": verify})
     save_steps(root, steps)
     if (root / LOOP_ISSUED).is_file():
         (root / LOOP_ISSUED).unlink()
-    limit = attempt_budget(steps, cluster, max_attempts(load_decisions(root)))
+    limit = attempt_budget(steps, key, max_attempts(load_decisions(root)))
     build_worklist(root)
-    if attempts[cluster] >= limit:
+    if attempts[key] >= limit:
         deferred = load_deferred(root)
         if cluster not in deferred["clusters"]:
             deferred["clusters"].append(cluster)
-            deferred["reasons"][cluster] = "%d rejected attempt(s); last: %s" % (attempts[cluster], reason)
+            deferred["reasons"][cluster] = "%d rejected attempt(s) against %s; last: %s" % (attempts[key], key, reason)
             save_deferred(root, deferred)
         build_worklist(root)
         pipeline.admit(root)
-        print("DEFERRED %s after %d attempt(s): %s → the loop STOPS here (kanban_block kind=needs_input naming the cluster). Operator: fix the cause, then scripts/rewind.py --to-step N --operator WHO --reason WHY restores an accepted step with a fresh budget" % (cluster, attempts[cluster], reason), file=sys.stderr)
+        print("DEFERRED %s after %d attempt(s): %s → the loop STOPS here (kanban_block kind=needs_input naming the cluster). Operator: fix the cause, then scripts/rewind.py --to-step N --operator WHO --reason WHY restores an accepted step with a fresh budget" % (cluster, attempts[key], reason), file=sys.stderr)
         return 1
     rec = pipeline.admit(root)
-    print("REVERTED %s attempt %d/%d: %s" % (cluster, attempts[cluster], limit, reason), file=sys.stderr)
+    print("REVERTED %s attempt %d/%d (budget %s): %s" % (cluster, attempts[key], limit, key, reason), file=sys.stderr)
     if mint and rec.get("status") == "ADMITTED":
         # the same cluster, next attempt key: the retry is its own card (pilot v6
         # measured the gap — the skill promised the re-issue, nothing minted it)
@@ -265,6 +270,31 @@ def main(argv: list[str] | None = None) -> int:
         print("WARN: %s inconclusive on %s (not a pass and not a violation): %s"
               % (si1_unknown[0]["rule"], ", ".join(sorted({r["path"] for r in si1_unknown})),
                  "; ".join(r["detail"] for r in si1_unknown[:2])), file=sys.stderr)
+    # The SEALED SCOPE: a repository card carries an inventory of every member
+    # the declared rule reaches, and the card is not finished while one of them
+    # still breaks that rule. An already-correct member needs no edit and earns
+    # no credit either way; only the assessment counts, and it is made here from
+    # the tree rather than from anything the worker wrote.
+    scope_ref = issued.get("batch_scope") or {}
+    scope_rows: list[dict] = []
+    if scope_ref:
+        scope_doc = load_json(root / str(scope_ref.get("path") or "")) if (root / str(scope_ref.get("path") or "")).is_file() else {}
+        if not scope_doc:
+            return _reject(root, steps, args.cluster, args.card, cur,
+                           "the card's scope inventory %s is not on disk, so no member can be assessed" % scope_ref.get("path"),
+                           changed, mint=not args.no_mint, hermes=args.hermes)
+        if batch_scope_digest(scope_doc) != str(scope_ref.get("digest") or ""):
+            return _reject(root, steps, args.cluster, args.card, cur,
+                           "the scope inventory on disk is not the one sealed with the card",
+                           changed, mint=not args.no_mint, hermes=args.hermes)
+        scope_rows = assess_batch_scope(root, scope_doc)
+        bad = [r for r in scope_rows if r.get("verdict") == "violates"]
+        if bad:
+            return _reject(root, steps, args.cluster, args.card, cur,
+                           "%s member(s) of %s still break %s: %s" % (
+                               len(bad), scope_doc.get("repository"), scope_doc.get("rule"),
+                               "; ".join("%s (%s)" % (r["member"], r["detail"]) for r in bad[:4])),
+                           changed, mint=not args.no_mint, hermes=args.hermes)
     gate = str(issued.get("gate") or "")
     ok, reason = progress(prev["measure"], cur["measure"], prev_keys, cur_keys,
                           gate=gate,
@@ -284,7 +314,8 @@ def main(argv: list[str] | None = None) -> int:
     clear_pending(steps, args.cluster, why="accepted")
     sha = _commit(root, changed, "fix-until-green: %s attempt %s %s" % (args.cluster, issued.get("attempt"), cur["measure"]["tuple"]))
     snapshot_reports(root)
-    steps["steps"].append({"cluster": args.cluster, "card": args.card, "attempt": issued.get("attempt"), "idempotency_key": issued.get("idempotency_key"), "commit": sha, "candidate_sha256": on_disk, "measure": cur["measure"], "item_ids": sorted(item_ids(cur)), "obligation_keys": sorted(obligation_keys(cur)), "worklist_sha256": digest(cur), "changed": changed, "verdict": "accepted", "reason": reason, "runtime": cur.get("runtime") or {}, "gate": str(issued.get("gate") or ""), "discharged": sorted(str(i) for i in (issued.get("items") or [])), "si1_inconclusive": si1_unknown, "verify": _verify_meta(run if isinstance(run, dict) else {})})
+    steps["steps"].append({"cluster": args.cluster, "card": args.card, "attempt": issued.get("attempt"), "idempotency_key": issued.get("idempotency_key"), "commit": sha, "candidate_sha256": on_disk, "measure": cur["measure"], "item_ids": sorted(item_ids(cur)), "obligation_keys": sorted(obligation_keys(cur)), "worklist_sha256": digest(cur), "changed": changed, "verdict": "accepted", "reason": reason, "runtime": cur.get("runtime") or {}, "gate": str(issued.get("gate") or ""), "discharged": sorted(str(i) for i in (issued.get("items") or [])), "si1_inconclusive": si1_unknown, "batch_scope": ({"digest": str(scope_ref.get("digest") or ""), "assessed": len(scope_rows),
+                                                          "inconclusive": [r for r in scope_rows if r.get("verdict") == "inconclusive"]} if scope_ref else {}), "amendments": list(issued.get("amendments") or []), "verify": _verify_meta(run if isinstance(run, dict) else {})})
     save_steps(root, steps)
     (root / LOOP_ISSUED).unlink()
     print("OK: ACCEPTED %s (%s) commit %s" % (args.cluster, reason, sha[:12]))

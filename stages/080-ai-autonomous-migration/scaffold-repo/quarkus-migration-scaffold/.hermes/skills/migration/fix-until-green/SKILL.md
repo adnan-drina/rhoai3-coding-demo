@@ -113,9 +113,11 @@ record naming the card.
 - `scripts/restore-pending.py` — put a retained candidate back on the product tree (then acceptance verify + advance)
 - `scripts/operator-step.py` — Operator step: a decided change to the product tree (an ADR retirement applied by `bootstrap-destination.py --retire-only`) committed, re-measured and recorded as a loop step (`verdict: operator`) so the next card's baseline is true
 - `scripts/rewind.py` — Operator rewind to an accepted step (`--to-step N --operator WHO --reason WHY`; re-measures with run-verify.sh, refuses on a measure mismatch, starts a new card-key epoch)
+- `scripts/amend-scope.py` — widen a sealed batch card's write set by ONE file, on the record (`--path` + `--reason`), BEFORE touching it; the inventory itself is never rewritten and two amendments per card is the limit
+- `scripts/diagnose.py` — (Operator) investigate a failure no card can carry: `--list` names them, `--open` starts one of two ten-minute attempts, `--close --conclusion LOCATED|ENVIRONMENT|DECISION_REQUIRED|INCONCLUSIVE` records the finding under `evidence/diagnosis/`. It grants no write authority — a product change during an investigation refuses the close — and closing discharges nothing
 - `scripts/jdk-diagnostics/JdkDiagnostics.java` — compiler diagnostics as JSON (JDK compiler API)
 - `scripts/_loop_common.py` — shared helpers
-- `scripts/fix-until-green.test.py` — selftest
+- `scripts/fix-until-green.test.py`, `scripts/amend-scope.test.py`, `scripts/diagnose.test.py` — selftests
 
 ## Pitfalls
 

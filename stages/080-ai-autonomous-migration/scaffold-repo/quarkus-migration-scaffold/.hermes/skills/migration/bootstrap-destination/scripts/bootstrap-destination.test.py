@@ -470,22 +470,75 @@ def _build_profile_case() -> int:
         if tree_hash(d2) != before:
             return _fail("setting the same profiles twice must change nothing")
 
-        # decided the other way: the gates are retired, so nothing is activated
-        retired = specimens.admitted_decisions()
-        retired["build_profiles"] = {"adr": "ADR-001", "active": [], "retire_gates": True}
-        d3 = specimens.build_dest(Path(td) / "retired", specimens.specimen("http"), decisions=retired)
-        f3 = d3 / ".derived" / "frozen-input"
-        (f3 / "src" / "main" / "resources").mkdir(parents=True, exist_ok=True)
-        (f3 / "src" / "main" / "resources" / "application.properties").write_text("spring.profiles.active=hsqldb,spring-data-jpa\n", encoding="utf-8")
-        g3 = f3 / "src" / "main" / "java" / "org" / "acme" / "clinic" / "owner" / "SpringDataOwnerRepository.java"
-        g3.parent.mkdir(parents=True, exist_ok=True)
-        g3.write_text(gated.read_text(encoding="utf-8"), encoding="utf-8")
-        pipeline.assemble_bundle(d3)
-        p2 = subprocess.run([sys.executable, str(SCRIPT), "--root", str(d3)], text=True, capture_output=True)
-        if p2.returncode != 0:
-            return _fail("retiring the gates is a decision too: %s%s" % (p2.stdout, p2.stderr[-300:]))
-        if "quarkus.profile=" in (d3 / "src/main/resources/application.properties").read_text(encoding="utf-8"):
+        # decided the other way: the gates are retired. Enumerated, one row per
+        # condition, bound to the inventory it was read from -- a bare
+        # retire_gates flag retires nothing and leaves the condition unaccounted.
+        REL = "src/main/java/org/acme/clinic/owner/SpringDataOwnerRepository.java"
+
+        ROW = {"path": REL, "type": "SpringDataOwnerRepository", "member": "",
+               "annotation": "Profile", "profile": "spring-data-jpa",
+               "reason": "the alternative this selected between is retired"}
+
+        def _run_retired(name, bp):
+            dec = specimens.admitted_decisions()
+            dec["build_profiles"] = bp
+            d = specimens.build_dest(Path(td) / name, specimens.specimen("http"), decisions=dec)
+            f = d / ".derived" / "frozen-input"
+            (f / "src" / "main" / "resources").mkdir(parents=True, exist_ok=True)
+            (f / "src" / "main" / "resources" / "application.properties").write_text("spring.profiles.active=hsqldb,spring-data-jpa\n", encoding="utf-8")
+            g = f / REL
+            g.parent.mkdir(parents=True, exist_ok=True)
+            g.write_text(gated.read_text(encoding="utf-8"), encoding="utf-8")
+            pipeline.assemble_bundle(d)
+            return d, subprocess.run([sys.executable, str(SCRIPT), "--root", str(d)], text=True, capture_output=True)
+
+        d3, p2 = _run_retired("retired-blanket", {"adr": "ADR-001", "active": [], "retire_gates": True})
+        if p2.returncode == 0 or "BUILD_PROFILE_UNACCOUNTED" not in p2.stderr:
+            return _fail("a blanket retire_gates retires nothing and must leave the condition unaccounted: %s" % p2.stderr[-300:])
+        inv = hashlib.sha256((d3 / "evidence/type-inventory.json").read_bytes()).hexdigest()
+
+        d4, p3 = _run_retired("retired-unbound", {"adr": "ADR-001", "active": [], "retire_gates": True, "retire": [ROW]})
+        if p3.returncode == 0 or "PROFILE_RETIREMENT_UNBOUND" not in p3.stderr:
+            return _fail("an enumeration bound to no inventory must refuse: %s" % p3.stderr[-300:])
+
+        d5, p4 = _run_retired("retired-stale", {"adr": "ADR-001", "active": [], "retire_gates": True,
+                                                "retire": [ROW], "inventory_sha256": "deadbeef" * 8})
+        if p4.returncode == 0 or "PROFILE_RETIREMENT_STALE" not in p4.stderr:
+            return _fail("an enumeration bound to another tree's inventory must refuse: %s" % p4.stderr[-300:])
+
+        absent = dict(ROW, member="findByLastName")
+        d6, p5 = _run_retired("retired-absent", {"adr": "ADR-001", "active": [], "retire_gates": True,
+                                                 "retire": [absent], "inventory_sha256": inv})
+        if p5.returncode == 0 or "PROFILE_RETIREMENT_ABSENT" not in p5.stderr:
+            return _fail("a row that describes a condition this tree does not have must refuse: %s" % p5.stderr[-300:])
+
+        d7, p6 = _run_retired("retired-enumerated", {"adr": "ADR-001", "active": [], "retire_gates": True,
+                                                     "retire": [ROW], "inventory_sha256": inv})
+        if p6.returncode != 0:
+            return _fail("an enumerated retirement bound to this tree must pass: %s%s" % (p6.stdout, p6.stderr[-400:]))
+        text = (d7 / REL).read_text(encoding="utf-8")
+        if "@Profile" in text:
+            return _fail("the enumerated condition must be gone from the destination: %s" % text)
+        if "import org.springframework.context.annotation.Profile" in text:
+            return _fail("the import is dead once the last condition in the file is gone: %s" % text)
+        if text.count("{") != gated.read_text(encoding="utf-8").count("{"):
+            return _fail("retirement must not disturb the rest of the file: %s" % text)
+        if "quarkus.profile=" in (d7 / "src/main/resources/application.properties").read_text(encoding="utf-8"):
             return _fail("retiring the gates activates no profile")
+        rec = load_json(d7 / "evidence/producers/bootstrap.json")
+        row = next((c for c in rec["changes"] if c["op"] == "source.retire-profile-condition"), None)
+        if not row or row["path"] != REL or "spring-data-jpa" not in row["value"]:
+            return _fail("the receipt must record exactly what was retired: %s" % row)
+
+        # the proposer proposes and accepts nothing
+        d8, _ = _run_retired("proposed", {"adr": "ADR-001", "active": ["prod"]})
+        before = (d8 / "decisions.yaml").read_bytes()
+        pp = subprocess.run([sys.executable, str(HERE / "propose-profile-retirement.py"), "--root", str(d8)],
+                            text=True, capture_output=True)
+        if pp.returncode != 0 or "profile: spring-data-jpa" not in pp.stdout or "inventory_sha256" not in pp.stdout:
+            return _fail("the proposer must emit the rows and the binding: %s%s" % (pp.stdout[-300:], pp.stderr[-200:]))
+        if (d8 / "decisions.yaml").read_bytes() != before:
+            return _fail("the proposer must never write decisions.yaml")
     return 0
 
 
@@ -611,7 +664,7 @@ def main() -> int:
         p = subprocess.run([sys.executable, str(SCRIPT), "--root", str(r)], text=True, capture_output=True)
         if [c for c in load_json(r / "evidence/producers/bootstrap.json")["changes"] if c["op"] in ("source.delete", "source.retire") and c["path"] == vet_path]:
             return _fail("an ADR that is not accepted retires nothing")
-    print("OK: bootstrap-destination (trivial launcher deleted; second run preserves the tree; @Bean launcher kept + BOOTSTRAP_BLOCKED; unmapped starter kept + block; Maven settings wiring required; pinned version beats the legacy carry / VERSION_UNMANAGED / BOM_PROBE_MISSING; ADR-retired sources deleted with provenance / stale path blocks; reapply-catalog carries a late row and refuses without a receipt; the decided datasource lands unprefixed with its extension, and an undocumented / mismatched / absent one blocks; an undecided build profile blocks and a decided one reaches the destination)")
+    print("OK: bootstrap-destination (trivial launcher deleted; second run preserves the tree; @Bean launcher kept + BOOTSTRAP_BLOCKED; unmapped starter kept + block; Maven settings wiring required; pinned version beats the legacy carry / VERSION_UNMANAGED / BOM_PROBE_MISSING; ADR-retired sources deleted with provenance / stale path blocks; reapply-catalog carries a late row and refuses without a receipt; the decided datasource lands unprefixed with its extension, and an undocumented / mismatched / absent one blocks; an undecided build profile blocks and a decided one reaches the destination; a profile condition nobody activates or enumerates is unaccounted; an enumerated retirement must be bound to this tree's inventory and describe conditions it actually has, and the proposer writes nothing)")
     return 0
 
 

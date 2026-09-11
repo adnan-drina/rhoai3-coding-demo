@@ -21,8 +21,8 @@ from _loop_common import ensure_hermes_lib, pending_for  # noqa: E402
 
 ensure_hermes_lib()
 from planner.canonical import load_json, write_canonical  # noqa: E402
-from planner.paths import LOOP_DIR, MTA_FINDINGS, MTA_RESCAN_FINDINGS, WORKLIST, BOM_MANAGED, TYPE_INVENTORY  # noqa: E402
-from planner.worklist import head_cluster, items_of  # noqa: E402
+from planner.paths import LOOP_DIR, LOOP_ISSUED, MTA_FINDINGS, MTA_RESCAN_FINDINGS, WORKLIST, BOM_MANAGED, TYPE_INVENTORY  # noqa: E402
+from planner.worklist import assess_batch_scope, head_cluster, items_of  # noqa: E402
 
 PROCEDURE = (
     "Patch the write set one item at a time (targeted edits; never rewrite a whole file, never touch a "
@@ -650,6 +650,31 @@ def main(argv: list[str] | None = None) -> int:
         }
     if repo:
         brief["repository"] = repo
+    # The SEALED SCOPE. The card is not finished while any inventoried member
+    # still breaks the rule, so the worker is told the whole roster and the
+    # current verdict on each one — including the members that are already
+    # right and must be left alone.
+    ref = cluster.get("batch_scope") or {}
+    scope_p = root / str(ref.get("path") or "") if ref.get("path") else None
+    if scope_p is not None and scope_p.is_file():
+        scope = load_json(scope_p)
+        verdicts = {r["member"]: r for r in assess_batch_scope(root, scope)}
+        brief["batch_scope"] = {
+            "rule": scope.get("rule"),
+            "repository": scope.get("repository"),
+            "digest": ref.get("digest"),
+            "members": [dict(m, **{"verdict": verdicts.get(m["member"], {}).get("verdict", "inconclusive"),
+                                   "detail": verdicts.get(m["member"], {}).get("detail", "")})
+                        for m in scope.get("members") or []],
+            "rule_note": ("Every member listed here is assessed against the rule when the candidate is judged, "
+                          "and any that still violates it refuses the card. A member whose verdict is already ok "
+                          "needs no edit and earns nothing if you change it. Written explanations do not count: "
+                          "the assessment is made from the tree."),
+            "amend": ("If a member cannot be finished without editing a file outside the write set, record the "
+                      "amendment BEFORE touching it: amend-scope.py --root . --cluster %s --card $HERMES_KANBAN_TASK "
+                      "--path <file> --reason <what this card cannot finish without it>. Bounded: two per card." % cluster["id"]),
+            "amendments": list(((load_json(root / LOOP_ISSUED) if (root / LOOP_ISSUED).is_file() else {}) or {}).get("amendments") or []),
+        }
     write_canonical(root / LOOP_DIR / ("brief-%s.json" % cluster["id"].replace(":", "-")), brief)
     print(json.dumps(brief, indent=2, sort_keys=True))
     return 0

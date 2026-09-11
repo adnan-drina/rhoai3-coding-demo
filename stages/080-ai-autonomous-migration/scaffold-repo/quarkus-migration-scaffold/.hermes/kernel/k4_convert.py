@@ -85,6 +85,9 @@ def _body(card: dict[str, Any], receipt: dict[str, Any], worklist_sha: str, arti
         {"key": "type-inventory", "path": str(TYPE_INVENTORY), "sha256": type_sha},
         {"key": "worklist", "path": str(WORKLIST), "sha256": worklist_sha},
     ]
+    scope = card.get("batch_scope") or {}
+    if scope.get("path") and scope.get("file_sha256"):
+        refs.append({"key": "batch-scope", "path": str(scope["path"]), "sha256": str(scope["file_sha256"])})
     return {
         "task_id": card["id"],
         "role": IMPL,
@@ -219,6 +222,9 @@ def convert_admitted(root: Path, *, write_root: bool = True) -> tuple[dict[str, 
             # against that, not against the last accepted step (a gate can
             # start failing long after the last acceptance)
             "gate_items": sorted(gate_items(worklist, str(card.get("gate") or ""))) if card.get("gate") else [],
+            # the sealed scope inventory this card is judged against; acceptance
+            # re-reads it from disk and refuses a digest that is not this one
+            "batch_scope": dict(card.get("batch_scope") or {}),
             "task_id": str(prev.get("task_id") or "") if prev.get("idempotency_key") == payload["idempotency_key"] else "",
         })
     return result, []

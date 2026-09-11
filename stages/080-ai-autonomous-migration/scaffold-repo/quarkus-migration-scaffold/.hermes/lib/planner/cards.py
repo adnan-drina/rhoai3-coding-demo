@@ -158,6 +158,8 @@ def next_card(worklist: dict[str, Any], steps: dict[str, Any] | None) -> dict[st
         }
         if head.get("gate"):
             card["gate"] = str(head["gate"])
+        if head.get("batch_scope"):
+            card["batch_scope"] = dict(head["batch_scope"])
         return card
     if worklist.get("deferred") or worklist.get("blocked_clusters"):
         return None

@@ -316,10 +316,57 @@
         },
         "retire_gates": {
           "type": "boolean",
-          "description": "true when the decision is to remove the profile gates because the alternatives they selected between are retired"
+          "description": "true when the decision is to remove the profile gates because the alternatives they selected between are retired Enumerate exactly what is retired in retire[]; a bare true retires nothing (ADR-010)."
         },
         "note": {
           "type": "string"
+        },
+        "retire": {
+          "type": "array",
+          "description": "The profile conditions the destination retires, ONE ROW PER CONDITION. A blanket retirement is not reviewable and not reproducible: it silently absorbs whatever the tree happens to contain when it runs. Each row names the file, the type, the member the annotation sits on (empty for a type-level annotation), the annotation itself and the profile it names, so a reviewer can see exactly what disappears. The rows are machine-PROPOSED (propose-profile-retirement.py) and human-ACCEPTED: the proposer never edits decisions.yaml. inventory_sha256 binds the set to the type inventory it was proposed from, so a tree that moved since then refuses rather than retiring something nobody looked at. (ADR-010)",
+          "items": {
+            "type": "object",
+            "required": [
+              "path",
+              "type",
+              "annotation",
+              "profile"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "description": "destination-relative source file"
+              },
+              "type": {
+                "type": "string",
+                "minLength": 1,
+                "description": "the declaring type's simple name"
+              },
+              "member": {
+                "type": "string",
+                "description": "the method or field the annotation sits on; empty for a type-level annotation"
+              },
+              "annotation": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Profile or IfBuildProfile or UnlessBuildProfile"
+              },
+              "profile": {
+                "type": "string",
+                "minLength": 1,
+                "description": "the profile name the condition selects on"
+              },
+              "reason": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "inventory_sha256": {
+          "type": "string",
+          "description": "sha256 of evidence/type-inventory.json as it stood when retire[] was proposed. The bootstrap refuses a retirement bound to a different inventory."
         }
       }
     }

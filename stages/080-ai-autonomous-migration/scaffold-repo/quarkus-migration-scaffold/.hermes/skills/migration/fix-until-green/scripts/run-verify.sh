@@ -210,7 +210,9 @@ PYEOF
   if [[ "${GREEN}" == "yes" ]]; then
     T0="$(now_ms)"
     set +e
-    python3 "${SCRIPT_DIR}/verify-runtime.py" --root "${ROOT}"
+    # a second tree in the same workspace must not start on the first one's
+    # port: the boot gate would attribute a listener it did not start
+    python3 "${SCRIPT_DIR}/verify-runtime.py" --root "${ROOT}" --port "${VERIFY_BOOT_PORT:-8081}"
     set -e
     RT_MS="$(( $(now_ms) - T0 ))"
     python3 - "${RUN}" "${RT_MS}" <<'PYEOF'
