@@ -38,7 +38,7 @@ from planner import pipeline  # noqa: E402
 from planner.canonical import digest, load_json  # noqa: E402
 from planner.decisions import load_decisions, max_attempts  # noqa: E402
 from planner.paths import EVIDENCE_BUNDLE, LOOP_ACCEPTED, LOOP_ISSUED, MTA_RESCAN_FINDINGS, WORKLIST  # noqa: E402
-from planner.worklist import build_worklist, incidents_from_findings, item_ids, obligation_keys, progress  # noqa: E402
+from planner.worklist import build_worklist, gate_items, incidents_from_findings, item_ids, obligation_keys, progress  # noqa: E402
 
 
 def _commit(root: Path, paths: list[str], message: str) -> str:
@@ -180,9 +180,13 @@ def main(argv: list[str] | None = None) -> int:
         else:
             prev_keys = set(prev.get("item_ids") or [])
             cur_keys = item_ids(cur)
+    gate = str(issued.get("gate") or "")
     ok, reason = progress(prev["measure"], cur["measure"], prev_keys, cur_keys,
-                          gate=str(issued.get("gate") or ""),
-                          prev_runtime=prev.get("runtime") or {}, cur_runtime=cur.get("runtime") or {})
+                          gate=gate,
+                          prev_runtime=prev.get("runtime") or {}, cur_runtime=cur.get("runtime") or {},
+                          issued_items=list(issued.get("items") or []),
+                          prev_gate_items=set(str(i) for i in (issued.get("gate_items") or [])),
+                          cur_gate_items=gate_items(cur, gate))
     if not ok:
         return _reject(root, steps, args.cluster, args.card, cur, reason, changed, mint=not args.no_mint, hermes=args.hermes)
     sha = _commit(root, changed, "fix-until-green: %s attempt %s %s" % (args.cluster, issued.get("attempt"), cur["measure"]["tuple"]))

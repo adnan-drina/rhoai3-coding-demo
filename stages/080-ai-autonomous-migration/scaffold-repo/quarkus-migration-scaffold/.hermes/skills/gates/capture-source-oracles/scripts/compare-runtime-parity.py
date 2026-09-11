@@ -13,7 +13,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _oracle_common import ORACLES, PARITY, http_observe, normalize_observation, slug  # noqa: E402
 from planner.admission import verify_receipt  # noqa: E402
-from planner.canonical import load_json, write_canonical  # noqa: E402
+from planner.canonical import digest, load_json, write_canonical  # noqa: E402
+from planner.paths import EVIDENCE_BUNDLE  # noqa: E402
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -39,8 +40,10 @@ def main(argv: list[str] | None = None) -> int:
         oracle = load_json(op)
         if oracle.get("status") != "CAPTURED":
             verdict["reason"] = "source oracle %s: %s" % (oracle.get("status"), oracle.get("reason"))
-        elif oracle.get("receipt_sha256") != receipt["receipt_digest"]:
+        elif str(oracle.get("receipt_sha256") or "") not in ("", receipt["receipt_digest"]):
             verdict["reason"] = "source oracle belongs to receipt %s, not %s" % (str(oracle.get("receipt_sha256"))[:12], receipt["receipt_digest"][:12])
+        elif str(oracle.get("evidence_bundle_sha256") or "") not in ("", digest(load_json(root / EVIDENCE_BUNDLE))):
+            verdict["reason"] = "source oracle describes another frozen source (%s)" % str(oracle.get("evidence_bundle_sha256"))[:12]
         elif oracle.get("kind") == "http" and str((oracle.get("oracle") or {}).get("method") or "GET").upper() not in ("GET", "HEAD"):
             # This script replays a method and a path. That is enough for a
             # read and provably not enough for a write: it sent no body, so a

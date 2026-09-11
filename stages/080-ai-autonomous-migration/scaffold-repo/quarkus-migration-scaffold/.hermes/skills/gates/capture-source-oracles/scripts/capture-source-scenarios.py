@@ -143,6 +143,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--java", default="java")
     ap.add_argument("--mvn", default="mvn")
     ap.add_argument("--any-status", action="store_true", help="allow a non-ADMITTED receipt (capture may precede admission)")
+    ap.add_argument("--no-reads", action="store_true", help="skip the idempotent reads; by default they are captured through the same running source, so nobody has to start it twice")
     args = ap.parse_args(argv)
     root = Path(args.root).resolve()
     # The capture belongs to M1: it records what the FROZEN SOURCE does, so it
@@ -193,7 +194,8 @@ def main(argv: list[str] | None = None) -> int:
                            "artifact": runtime.jar.name if runtime.jar else "", "starts": runtime.starts},
                 "initial_state": dict(corpus.get("initial_state") or {}),
                 "normalization": list(sc.get("normalization") or []),
-                "status": "UNCAPTURED", "reason": "", "request": {}, "response": {}, "effects": [],
+                "reset_before": bool(sc.get("reset_before", True)),
+                "status": "UNCAPTURED", "reason": "", "request": {}, "response": {}, "before": [], "effects": [],
             }
             out = root / SCENARIO_ORACLES / (scenario_slug(sc["id"]) + ".json")
             try:
@@ -219,6 +221,16 @@ def main(argv: list[str] | None = None) -> int:
                     continue
                 rec["source"]["starts"] = runtime.starts
             rec["request"] = {k: req[k] for k in ("method", "path", "headers", "identity", "body_sha256", "body_absent", "request_sha256")}
+            # What the source saw BEFORE the request. The destination has to
+            # start from the same place or the comparison is meaningless: a
+            # delete that removes nothing passes trivially against a
+            # destination where the row was already absent.
+            for eff in sc.get("effects") or []:
+                probe = http_observe(runtime.base_url, str(eff.get("method") or "GET"), str(eff.get("path") or "/"), headers=headers)
+                rec["before"].append({"id": str(eff.get("id") or eff.get("path")), "method": str(eff.get("method") or "GET"),
+                                      "path": str(eff.get("path") or "/"), "status": probe.get("status"),
+                                      "body_kind": probe.get("body_kind"), "body_sha256": probe.get("body_sha256"),
+                                      "body_sample": probe.get("body_sample", "")})
             obs = http_observe(runtime.base_url, req["method"], req["path"], body=req["body"], headers={**req["headers"], **headers})
             rec["response"] = obs
             if not obs.get("status"):
@@ -235,6 +247,23 @@ def main(argv: list[str] | None = None) -> int:
             rec["status"] = "CAPTURED"
             write_canonical(out, rec)
             captured += 1
+        # The reads, through the same runtime this producer owns. Capturing
+        # them separately meant starting the source a second time by hand,
+        # which is exactly the Operator rescue this step replaces.
+        if not args.no_reads:
+            err = runtime.start()
+            if err:
+                failures.append("reads: %s" % err)
+            else:
+                argv = [sys.executable, str(Path(__file__).resolve().parent / "capture-source-oracles.py"),
+                        "--root", str(root), "--base-url", runtime.base_url, "--any-status"]
+                for name, value in sorted((corpus.get("path_vars") or {}).items()):
+                    argv += ["--path-var", "%s=%s" % (name, value)]
+                proc = subprocess.run(argv, text=True, capture_output=True)
+                reads = (proc.stdout + proc.stderr).strip().splitlines()[-1:] or [""]
+                print("  reads: %s" % reads[0])
+                if proc.returncode != 0:
+                    failures.append("reads: %s" % reads[0])
     finally:
         runtime.stop()
     print("%s: source scenarios captured=%d of %d (corpus %s) → %s"

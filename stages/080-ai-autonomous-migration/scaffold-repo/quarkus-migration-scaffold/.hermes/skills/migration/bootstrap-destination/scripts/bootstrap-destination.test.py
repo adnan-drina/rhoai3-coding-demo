@@ -365,8 +365,20 @@ def _datasource_case() -> int:
         prop_txt = prop_p.read_text(encoding="utf-8")
         prop_p.write_text(prop_txt.replace("quarkus.datasource.db-kind=postgresql", "%prod.quarkus.datasource.db-kind=postgresql"), encoding="utf-8")
         pc = subprocess.run([sys.executable, str(CHECK), str(root)], text=True, capture_output=True)
-        if pc.returncode != 1 or "profile-prefixed key is not a configured datasource" not in pc.stderr:
-            return _fail("a profile-prefixed db-kind must refuse: rc=%s %s" % (pc.returncode, pc.stderr[-300:]))
+        if pc.returncode != 1 or "not set unprefixed" not in pc.stderr:
+            return _fail("a db-kind that exists only under a profile must refuse: rc=%s %s" % (pc.returncode, pc.stderr[-300:]))
+        # and a profile override that points at ANOTHER database must refuse,
+        # because that is what the destination would actually use
+        prop_p.write_text(prop_txt + "\n%prod.quarkus.datasource.jdbc.url=jdbc:postgresql://wrong-db:5432/wrong\n", encoding="utf-8")
+        pc = subprocess.run([sys.executable, str(CHECK), str(root)], text=True, capture_output=True)
+        if pc.returncode != 1 or "under the prod profile" not in pc.stderr:
+            return _fail("an active-profile override pointing elsewhere must refuse: rc=%s %s" % (pc.returncode, pc.stderr[-400:]))
+        # an override under a profile this run did not select is reported too
+        prop_p.write_text(prop_txt + "\n%staging.quarkus.datasource.jdbc.url=jdbc:postgresql://other-db:5432/other\n", encoding="utf-8")
+        pc = subprocess.run([sys.executable, str(CHECK), str(root)], text=True, capture_output=True)
+        if pc.returncode != 1 or "another profile would configure a different database" not in pc.stderr:
+            return _fail("a different profile pointing at another database must be reported: rc=%s %s" % (pc.returncode, pc.stderr[-400:]))
+        prop_p.write_text(prop_txt, encoding="utf-8")
         prop_p.write_text(prop_txt.replace("${FIXTURE_DB_PASSWORD}", "hunter2"), encoding="utf-8")
         pc = subprocess.run([sys.executable, str(CHECK), str(root)], text=True, capture_output=True)
         if pc.returncode != 1 or "environment reference" not in pc.stderr:

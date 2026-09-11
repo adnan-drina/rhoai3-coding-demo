@@ -309,7 +309,11 @@ def runtime_items(package: dict[str, Any] | None, boot: dict[str, Any] | None, r
         named = runtime_locus(detail + "\n" + log, root)
         if named:
             locus, cluster_kind = named, "compile"
-        ident = sha256_bytes(canonical_bytes({"gate": gate, "kind": kind, "detail": detail[:400]}))[:16]
+        # The identity is WHERE and WHAT, never the wording. A tool that
+        # rephrases the same failure at the same place must not look like a new
+        # obligation -- and, on the other side of the same rule, a repair that
+        # only changes the message must not look like progress.
+        ident = sha256_bytes(canonical_bytes({"gate": gate, "kind": kind, "locus": locus}))[:16]
         out.append({
             "id": "rt:%s:%s" % (gate, ident), "source": "runtime", "gate": gate,
             "kind": cluster_kind, "obligation": kind, "category": "mandatory",
@@ -557,8 +561,15 @@ def measure_of(items: list[dict[str, Any]], *, incidents_known: bool, compile_kn
     return m
 
 
+def gate_items(worklist: dict[str, Any], gate: str) -> set[str]:
+    """The ids of the obligations one gate currently holds."""
+    return {str(i["id"]) for i in (worklist.get("items") or []) if str(i.get("gate") or "") == gate}
+
+
 def progress(prev: dict[str, Any], cur: dict[str, Any], prev_ids: set[str], cur_ids: set[str],
-             *, gate: str = "", prev_runtime: dict[str, Any] | None = None, cur_runtime: dict[str, Any] | None = None) -> tuple[bool, str]:
+             *, gate: str = "", prev_runtime: dict[str, Any] | None = None, cur_runtime: dict[str, Any] | None = None,
+             issued_items: list[str] | None = None, prev_gate_items: set[str] | None = None,
+             cur_gate_items: set[str] | None = None) -> tuple[bool, str]:
     """Accept iff strictly smaller lexicographically and no new mandatory obligation.
 
     Phase-aware: a card issued for the ``package`` or ``boot`` gate is repairing
@@ -618,6 +629,19 @@ def progress(prev: dict[str, Any], cur: dict[str, Any], prev_ids: set[str], cur_
         if _passing(cur_rt, gate) and not _passing(prev_rt, gate):
             return True, "the %s gate went from failing to passing with the measure unchanged at %s" % (gate, b)
         if not _passing(cur_rt, gate):
+            # A gate can hold more than one obligation, and only one of them is
+            # on this card. Repairing it is progress even while the gate still
+            # fails on another -- provided THIS obligation is gone (its
+            # identity is gate+kind+locus, so a reworded failure at the same
+            # place is not gone) and the gate did not acquire more of them.
+            issued = {i for i in (issued_items or []) if str(i).startswith("rt:")}
+            before, after = prev_gate_items or set(), cur_gate_items or set()
+            if issued and not (issued & after):
+                if len(after) > len(before):
+                    return False, "the %s obligation was repaired and the gate acquired %d more (%d → %d); that is not a smaller list" % (gate, len(after) - len(before), len(before), len(after))
+                return True, "the %s obligation %s is gone and the gate holds no more than before (%d → %d)" % (gate, ",".join(sorted(issued)[:2]), len(before), len(after))
+            if issued:
+                return False, "the %s obligation %s is still open (its identity is the gate, the kind and the file; a different message at the same place is the same obligation)" % (gate, ",".join(sorted(issued)[:2]))
             return False, "the %s gate is still not passing (%s)" % (gate, "; ".join((cur_rt.get("reasons") or [])[:2]) or "see its receipt")
     return False, "measure %s did not decrease from %s" % (b, a)
 

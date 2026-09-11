@@ -34,6 +34,7 @@ from planner.cards import idempotency_key, next_card, parse_body, render_body  #
 from planner.canonical import write_canonical  # noqa: E402
 from planner.paths import ADMISSION_RECEIPT, EVIDENCE_BUNDLE, LOOP_ISSUED, LOOP_STEPS, TYPE_INVENTORY, WORKLIST  # noqa: E402
 from planner.pins import activation_gaps, load_pins, pin_gaps  # noqa: E402
+from planner.worklist import gate_items  # noqa: E402
 
 Issue = tuple[str, str, str]
 SKILLS_ASSERT = (
@@ -209,6 +210,11 @@ def convert_admitted(root: Path, *, write_root: bool = True) -> tuple[dict[str, 
             "receipt_sha256": receipt["receipt_digest"],
             "write_set": list(card["write_set"]),
             "gate": str(card.get("gate") or ""),
+            "items": list(card.get("items") or []),
+            # what the gate held when this card was issued: acceptance compares
+            # against that, not against the last accepted step (a gate can
+            # start failing long after the last acceptance)
+            "gate_items": sorted(gate_items(worklist, str(card.get("gate") or ""))) if card.get("gate") else [],
             "task_id": str(prev.get("task_id") or "") if prev.get("idempotency_key") == payload["idempotency_key"] else "",
         })
     return result, []

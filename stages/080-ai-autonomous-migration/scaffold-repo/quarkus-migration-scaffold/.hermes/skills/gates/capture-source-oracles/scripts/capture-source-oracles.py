@@ -21,7 +21,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _oracle_common import IDEMPOTENT, ORACLES, entry_points, http_observe, normalize_observation, slug  # noqa: E402
 from planner.admission import verify_receipt  # noqa: E402
-from planner.canonical import sha256_file, write_canonical  # noqa: E402
+from planner.canonical import digest, load_json, sha256_file, write_canonical  # noqa: E402
+from planner.paths import EVIDENCE_BUNDLE  # noqa: E402
 
 
 def substitute_path(template: str, values: dict[str, str]) -> tuple[str, dict[str, str], list[str]]:
@@ -57,11 +58,20 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--any-status", action="store_true", help="allow a non-ADMITTED receipt (capture may precede admission)")
     args = ap.parse_args(argv)
     root = Path(args.root).resolve()
+    # Reads are captured at M1, from the running source, BEFORE the plan is
+    # admitted: requiring an admission receipt made a fresh M1 impossible. The
+    # capture binds to the evidence bundle (the frozen source it describes) and
+    # records the receipt only when there already is one.
+    bundle_p = root / EVIDENCE_BUNDLE
+    if not bundle_p.is_file():
+        print("REFUSE: ORACLES missing %s; the reads are captured from the source that bundle describes" % EVIDENCE_BUNDLE, file=sys.stderr)
+        return 1
+    bundle_sha = digest(load_json(bundle_p))
     receipt, gaps = verify_receipt(root, require_admitted=not args.any_status)
-    if gaps or receipt is None:
+    if receipt is not None and gaps:
         for g in gaps:
             print("  - " + g, file=sys.stderr)
-        print("REFUSE: ORACLES receipt not authoritative", file=sys.stderr)
+        print("REFUSE: ORACLES the admission receipt on disk is not authoritative", file=sys.stderr)
         return 1
     path_vars = _pairs(args.path_var)
     obs = _pairs(args.observation)
@@ -74,7 +84,9 @@ def main(argv: list[str] | None = None) -> int:
     captured = 0
     inconclusive = 0
     for ep in eps:
-        rec = {"schema": "rhoai3.source-oracle/v1", "entry_point": ep["id"], "kind": ep["kind"], "receipt_sha256": receipt["receipt_digest"], "status": "UNCAPTURED", "reason": "", "oracle": {}}
+        rec = {"schema": "rhoai3.source-oracle/v1", "entry_point": ep["id"], "kind": ep["kind"],
+               "receipt_sha256": receipt["receipt_digest"] if receipt else "", "evidence_bundle_sha256": bundle_sha,
+               "status": "UNCAPTURED", "reason": "", "oracle": {}}
         if ep["kind"] == "http":
             method = ep.get("http_method") or "GET"
             template = ep.get("http_path") or "/"

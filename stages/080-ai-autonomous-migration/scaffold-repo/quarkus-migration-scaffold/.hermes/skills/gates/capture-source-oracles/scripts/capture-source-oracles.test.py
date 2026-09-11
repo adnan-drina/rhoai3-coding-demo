@@ -110,6 +110,21 @@ def main() -> int:
             if rec["status"] != "CAPTURED" or rec["oracle"]["path"] != "/api/owners/1" or rec["oracle"]["path_vars"] != {"ownerId": "1"}:
                 return _fail("a substituted path must be captured concretely and record what it substituted: %s" % rec)
 
+            # a fresh M1 has no admission receipt: the reads still capture,
+            # bound to the frozen source the bundle describes
+            import os as _os
+            receipt_p = hroot / "evidence" / "planning" / "admission-receipt.json"
+            kept = receipt_p.read_bytes()
+            receipt_p.unlink()
+            pm1 = _run([sys.executable, str(CAPTURE), "--root", str(hroot), "--base-url", src_url, "--any-status"])
+            if pm1.returncode != 0:
+                return _fail("a read capture before admission must work (M1 precedes M2): %s%s" % (pm1.stdout, pm1.stderr))
+            fresh = load_json(hroot / "verification" / "source-oracles" / (slug(get_owner) + ".json"))
+            if fresh["status"] != "CAPTURED" or fresh["receipt_sha256"] != "" or not fresh.get("evidence_bundle_sha256"):
+                return _fail("a pre-admission capture binds to the bundle, not to a receipt: %s" % {k: fresh[k] for k in ("status", "receipt_sha256", "evidence_bundle_sha256")})
+            receipt_p.write_bytes(kept)
+            _run([sys.executable, str(CAPTURE), "--root", str(hroot), "--base-url", src_url])
+
             # parity PASS (key order differs but canonical JSON matches)
             if _run([sys.executable, str(COMPARE), "--root", str(hroot), "--entry-point", get_owner, "--dest-url", same_url]).returncode != 0:
                 return _fail("identical destination must PASS")

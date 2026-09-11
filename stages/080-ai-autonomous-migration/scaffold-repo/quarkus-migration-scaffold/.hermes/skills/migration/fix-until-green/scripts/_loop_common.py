@@ -21,9 +21,12 @@ def ensure_hermes_lib() -> None:
 
 ensure_hermes_lib()
 from planner.canonical import load_json, write_canonical  # noqa: E402
-from planner.paths import PRODUCT_EXEMPT, is_product_path as _is_product_path, LOOP_ACCEPTED, LOOP_CARDS, LOOP_DEFERRED, LOOP_ISSUED, LOOP_STATE, LOOP_STEPS, MTA_RESCAN_FINDINGS, VERIFY_DIAGNOSTICS, VERIFY_RUN, VERIFY_SUREFIRE  # noqa: E402
+from planner.paths import PRODUCT_EXEMPT, is_product_path as _is_product_path, LOOP_ACCEPTED, LOOP_CARDS, LOOP_DEFERRED, LOOP_ISSUED, LOOP_STATE, LOOP_STEPS, MTA_RESCAN_FINDINGS, VERIFY_BOOT, VERIFY_DIAGNOSTICS, VERIFY_PACKAGE, VERIFY_RUN, VERIFY_SUREFIRE, WORKLIST  # noqa: E402
 
-REPORTS = (VERIFY_DIAGNOSTICS, VERIFY_SUREFIRE, VERIFY_RUN, MTA_RESCAN_FINDINGS)
+# The accepted state's tool reports AND the work list they produced: a gate
+# card is accepted on what its own obligation did, so acceptance has to be
+# able to read the list the card was issued from, not just its measure.
+REPORTS = (VERIFY_DIAGNOSTICS, VERIFY_SUREFIRE, VERIFY_RUN, MTA_RESCAN_FINDINGS, VERIFY_PACKAGE, VERIFY_BOOT, WORKLIST)
 
 
 def _json_doc(root: Path, rel: Path, default: dict[str, Any]) -> dict[str, Any]:

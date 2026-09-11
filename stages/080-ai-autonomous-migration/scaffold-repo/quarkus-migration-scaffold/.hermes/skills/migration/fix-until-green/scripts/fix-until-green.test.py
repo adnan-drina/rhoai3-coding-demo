@@ -477,6 +477,57 @@ def main() -> int:
         if p.returncode != 0 or "ACCEPTED" not in p.stdout or "went from failing to passing" not in p.stdout:
             return _fail("a packaging repair with an unchanged measure must be accepted on its gate: %s%s" % (p.stdout, p.stderr))
 
+        # --- two independent packaging defects, one repaired ---
+        # The gate holds one obligation per place it fails. Repairing the one
+        # this card was issued for is progress even while the gate still fails
+        # somewhere else; a rewording at the same place is not.
+        srcs = sorted(root.glob("src/main/java/**/*.java"))
+        one, two = srcs[0].relative_to(root).as_posix(), srcs[1].relative_to(root).as_posix()
+        fqn = lambda rel: rel[len("src/main/java/"):-len(".java")].replace("/", ".")
+        two_defects = ("Build step io.quarkus.spring.data.deployment.SpringDataJPAProcessor#build threw an exception: "
+                       "No implementation of interface %s was found, and none of %s either" % (fqn(one), fqn(two)))
+        specimens.runtime(root, package_rc=1, boot_ready=None, detail="Failed to execute goal quarkus-maven-plugin:build", log=two_defects)
+        specimens.verify(root, errors=[], failures=[], findings=f4)
+        pipeline.admit(root)
+        wl = load_json(root / WORKLIST)
+        first = [i for i in wl["items"] if i["source"] == "runtime"]
+        if len(first) != 1 or first[0]["path"] != one:
+            return _fail("the gate reports the place it is failing now: %s" % first)
+        cl2 = [c for c in wl["clusters"] if c["status"] == "open"][0]
+        issued2 = specimens.issue(root)
+        if issued2["logical_id"] != cl2["id"]:
+            return _fail("the packaging obligation must be the card")
+
+        # a) the same failure, reworded, at the same place: NOT progress
+        (root / one).write_text((root / one).read_text(encoding="utf-8") + "// touched\n", encoding="utf-8")
+        specimens.runtime(root, package_rc=1, boot_ready=None, detail="Failed to execute goal quarkus-maven-plugin:build",
+                          log="Build step SpringDataJPAProcessor#build threw an exception: could not satisfy %s (rephrased)" % fqn(one))
+        specimens.verify(root, errors=[], failures=[], findings=f4)
+        p = _advance(root, cl2["id"], "t_pkg2")
+        if p.returncode == 0 or "still open" not in (p.stdout + p.stderr):
+            return _fail("a reworded failure at the same place must not count as progress: %s%s" % (p.stdout, p.stderr))
+
+        # the rejection restored the accepted tree AND its receipts; the next
+        # verification measures that tree again and re-derives the same
+        # obligation, which is what the loop really does after a revert
+        specimens.runtime(root, package_rc=1, boot_ready=None, detail="Failed to execute goal quarkus-maven-plugin:build", log=two_defects)
+        specimens.verify(root, errors=[], failures=[], findings=f4)
+        pipeline.admit(root)
+        # b) that place repaired, another still failing: progress
+        specimens.issue(root)
+        (root / one).write_text((root / one).read_text(encoding="utf-8") + "// repaired\n", encoding="utf-8")
+        specimens.runtime(root, package_rc=1, boot_ready=None, detail="Failed to execute goal quarkus-maven-plugin:build",
+                          log="Build step SpringDataJPAProcessor#build threw an exception: No implementation of interface %s was found" % fqn(two))
+        specimens.verify(root, errors=[], failures=[], findings=f4)
+        p = _advance(root, cl2["id"], "t_pkg3")
+        if p.returncode != 0 or "is gone and the gate holds no more than before" not in p.stdout:
+            return _fail("repairing this card's obligation while the gate still fails elsewhere must be accepted: %s%s" % (p.stdout, p.stderr))
+
+        # settle: the gate passes again for the rest of the walk
+        specimens.runtime(root, package_rc=0, boot_ready=None)
+        specimens.verify(root, errors=[], failures=[], findings=f4)
+        pipeline.admit(root)
+
         # startup still unknown: the closing card stays unminted
         try:
             specimens.issue(root)

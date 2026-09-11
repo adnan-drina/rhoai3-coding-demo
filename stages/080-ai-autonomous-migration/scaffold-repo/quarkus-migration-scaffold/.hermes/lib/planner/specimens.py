@@ -367,13 +367,13 @@ def full_decisions(*, platform: str = "quarkus-rhbq-3.27", max_attempts: int | N
     return doc
 
 
-def runtime(root: Path, *, package_rc: int | None = 0, boot_ready: bool | None = True, blocker: str = "", detail: str = "", log: str = "") -> None:
+def runtime(root: Path, *, package_rc: int | None = 0, boot_ready: bool | None = True, blocker: str = "", detail: str = "", log: str = "", artifact: str = "") -> None:
     """Simulate the packaging and startup gates. ``None`` means the gate did not
     run, which the work list must treat as unknown -- never as a pass."""
     from planner.canonical import write_canonical as _w
     from planner.paths import VERIFY_BOOT, VERIFY_PACKAGE
 
-    digest = "a" * 64
+    digest = artifact or "a" * 64
     if package_rc is None:
         (root / VERIFY_PACKAGE).unlink(missing_ok=True)
     else:

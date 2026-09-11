@@ -62,6 +62,8 @@ def load_corpus(root: Path) -> dict[str, Any]:
         raise CorpusError("%s is not a %s document" % (CORPUS, SCHEMA))
     if not doc.get("approved_by"):
         raise CorpusError("%s names no approver; scenario intent is the Operator's, not a worker's" % CORPUS)
+    if doc.get("path_vars") is not None and not isinstance(doc.get("path_vars"), dict):
+        raise CorpusError("%s path_vars must be a mapping of template variable to a value from the source's own seeded data" % CORPUS)
     seen: set[str] = set()
     for i, sc in enumerate(doc.get("scenarios") or []):
         if not isinstance(sc, dict):
@@ -108,16 +110,21 @@ def request_of(root: Path, sc: dict[str, Any]) -> dict[str, Any]:
     identity = sc.get("identity") or {}
     ident_kind = str(identity.get("kind") or "none")
     ident_user_env = str(identity.get("user_env") or "")
+    ident_password_env = str(identity.get("password_env") or "")
+    # The REFERENCES travel with the request and are digested: which account a
+    # request runs as is part of what makes it the same request. The values
+    # never appear here. Dropping password_env made every authenticated replay
+    # INCONCLUSIVE with both credentials present.
     digest_input = {
         "method": str(sc["method"]).upper(), "path": str(sc["path"]),
         "headers": dict(sorted(headers.items())),
-        "identity": {"kind": ident_kind, "user_env": ident_user_env},
+        "identity": {"kind": ident_kind, "user_env": ident_user_env, "password_env": ident_password_env},
         "body_sha256": sha256_bytes(body) if body is not None else "",
         "body_absent": body is None,
     }
     return {
         "method": digest_input["method"], "path": digest_input["path"], "headers": headers,
-        "identity": {"kind": ident_kind, "user_env": ident_user_env},
+        "identity": {"kind": ident_kind, "user_env": ident_user_env, "password_env": ident_password_env},
         "body": body, "body_sha256": digest_input["body_sha256"], "body_absent": body is None,
         "request_sha256": sha256_bytes(canonical_bytes(digest_input)),
     }

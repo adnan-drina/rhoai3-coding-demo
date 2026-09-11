@@ -5,10 +5,15 @@ The decision lives in decisions.yaml (`datasource`, under an accepted ADR) and
 is rendered by bootstrap-destination. This checker measures the rendered tree
 against the decision, at M2, before any worker reaches runtime verification:
 
-  * the unprefixed keys the platform resolves at build time must be present and
-    equal to the decision (a %profile-prefixed key alone is not a configured
-    datasource -- that is exactly how pilot v7 reached an empty work list and
-    then failed augmentation with "Datasource <default> is not configured");
+  * the values the platform would resolve FOR THE SELECTED PROFILE must equal
+    the decision. A %profile-prefixed key overrides the unprefixed one when
+    that profile is active, so both are read and the override wins; and a
+    key for a DIFFERENT profile that would point at another database is
+    reported, because nothing stops that profile being selected at run time.
+    An unprefixed key must still be present: the platform resolves the
+    datasource at build time, and pilot v7 reached an empty work list with
+    only %hsqldb.* keys and then failed augmentation with "Datasource
+    <default> is not configured";
   * the JDBC extension documented for the decided db_kind must be in the pom,
     and no OTHER db-kind extension may be there, because with two drivers and
     no db-kind the platform cannot choose;
@@ -46,6 +51,18 @@ from planner.decisions import DecisionsError, datasource, load_decisions, missin
 from planner.paths import CATALOGS_DIR, DECISIONS  # noqa: E402
 
 
+def _all_profile_keys(root: Path) -> list[str]:
+    p = root / "src" / "main" / "resources" / "application.properties"
+    if not p.is_file():
+        return []
+    out = []
+    for raw in p.read_text(encoding="utf-8", errors="replace").splitlines():
+        s = raw.strip()
+        if s.startswith("%") and "=" in s and not s.startswith(("#", "!")):
+            out.append(s.partition("=")[0].strip())
+    return out
+
+
 def _refuse(findings: list[str]) -> int:
     for f in findings:
         print("  - %s" % f, file=sys.stderr)
@@ -53,18 +70,42 @@ def _refuse(findings: list[str]) -> int:
     return 1
 
 
-def effective_properties(root: Path) -> dict[str, str]:
+def effective_properties(root: Path, profile: str) -> tuple[dict[str, str], dict[str, str]]:
+    """(effective values for the selected profile, where each came from).
+
+    A %profile-prefixed key is NOT inert: when that profile is active the
+    platform prefers it over the unprefixed one
+    (https://quarkus.io/version/3.27/guides/config-reference/#profiles). This
+    checker used to ignore prefixed keys entirely, so a
+    %prod.quarkus.datasource.jdbc.url pointing at another database produced
+    zero findings while being exactly what the destination would use."""
     p = root / "src" / "main" / "resources" / "application.properties"
-    out: dict[str, str] = {}
+    base: dict[str, str] = {}
+    override: dict[str, str] = {}
     if not p.is_file():
-        return out
+        return {}, {}
     for raw in p.read_text(encoding="utf-8", errors="replace").splitlines():
         s = raw.strip()
-        if not s or s.startswith(("#", "!")) or "=" not in s or s.startswith("%"):
+        if not s or s.startswith(("#", "!")) or "=" not in s:
             continue
         key, _, value = s.partition("=")
-        out[key.strip()] = value.strip()
-    return out
+        key, value = key.strip(), value.strip()
+        if key.startswith("%"):
+            profiles, _, rest = key[1:].partition(".")
+            if profile and profile in [x.strip() for x in profiles.split(",")]:
+                override[rest] = value
+            continue
+        base[key] = value
+    effective = dict(base)
+    source = {k: "application.properties" for k in base}
+    for key, value in override.items():
+        effective[key] = value
+        source[key] = "%%%s.%s" % (profile, key)
+    # the caller needs to know which keys exist unprefixed: the platform
+    # resolves the datasource at build time, so a value that exists only under
+    # a profile is not a configured datasource even when its value is right
+    source["__unprefixed__"] = ",".join(sorted(base))
+    return effective, source
 
 
 def check(root: Path) -> list[str]:
@@ -82,7 +123,8 @@ def check(root: Path) -> list[str]:
     catalog = load_json(root / CATALOGS_DIR / "compat-mapping.json")
     kinds = (catalog.get("datasources") or {}).get("db_kinds") or {}
     kind = str(ds["db_kind"])
-    props = effective_properties(root)
+    profile = str(ds.get("profile") or "")
+    props, came_from = effective_properties(root, profile)
     want = {
         "quarkus.datasource.db-kind": kind,
         "quarkus.datasource.jdbc.url": "${%s}" % ds["jdbc_url_env"],
@@ -90,12 +132,16 @@ def check(root: Path) -> list[str]:
         "quarkus.datasource.password": "${%s}" % ds["password_env"],
         "quarkus.hibernate-orm.database.generation": str(ds["hibernate_generation"]),
     }
+    unprefixed = set((came_from.get("__unprefixed__") or "").split(",")) - {""}
     for key, value in want.items():
         got = props.get(key)
+        if key not in unprefixed:
+            out.append("%s is not set unprefixed in src/main/resources/application.properties; the platform resolves the datasource at build time, so a profile-prefixed key alone is not a configured datasource" % key)
         if got is None:
-            out.append("%s is not set in src/main/resources/application.properties; a profile-prefixed key is not a configured datasource" % key)
+            continue
         elif got != value:
-            out.append("%s is %r, the decision says %r" % (key, got, value))
+            out.append("%s is %r under the %s profile (from %s), the decision says %r"
+                       % (key, got, profile or "default", came_from.get(key, "application.properties"), value))
     for key in ("quarkus.datasource.jdbc.url", "quarkus.datasource.username", "quarkus.datasource.password"):
         got = props.get(key) or ""
         if got and not re.fullmatch(r"\$\{[A-Za-z_][A-Za-z0-9_]*\}", got):
@@ -108,6 +154,17 @@ def check(root: Path) -> list[str]:
                      if k != kind and str(row.get("extension") or "").split(":", 1)[1] in pom})
     if others:
         out.append("pom.xml also carries %s; with more than one JDBC extension and no decided db-kind the platform cannot choose, so remove what this run does not use" % ", ".join(others))
+    # a profile the decision did not select may still be selected at run time
+    other = sorted({k.split(".", 1)[0][1:] for k in _all_profile_keys(root) if k.split(".", 1)[0][1:] != profile})
+    conflicting = []
+    for name in other:
+        alt, _ = effective_properties(root, name)
+        for key, value in want.items():
+            if alt.get(key) not in (None, value):
+                conflicting.append("%%%s.%s=%s" % (name, key, alt.get(key)))
+    if conflicting:
+        out.append("another profile would configure a different database: %s; the decision selects %r, so remove what this run does not use or record the other profile as a decision"
+                   % (", ".join(sorted(conflicting)[:4]), profile))
     if str(ds.get("schema_owner")) == "source-assets":
         for field in ("schema_sql", "seed_sql"):
             rel = str(ds.get(field) or "")

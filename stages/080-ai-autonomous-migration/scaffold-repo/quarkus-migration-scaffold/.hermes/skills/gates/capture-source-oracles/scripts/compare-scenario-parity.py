@@ -18,6 +18,8 @@ INCONCLUSIVE exit 1 and say which comparison failed.
 from __future__ import annotations
 
 import argparse
+import shlex
+import subprocess
 import sys
 from pathlib import Path
 
@@ -37,12 +39,14 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--root", required=True)
     ap.add_argument("--scenario", required=True)
     ap.add_argument("--dest-url", required=True, help="the destination's base URL, including its root path")
+    ap.add_argument("--reset-cmd", default="", help="the command that restores the declared initial state; defaults to the reset script beside this one. A scenario that declares reset_before is INCONCLUSIVE without it.")
+    ap.add_argument("--no-reset", action="store_true", help="the caller restored the initial state itself; it must still match what the source started from, which is checked either way")
     args = ap.parse_args(argv)
     root = Path(args.root).resolve()
     receipt, gaps = verify_receipt(root, require_admitted=True)
     verdict = {"schema": "rhoai3.scenario-parity/v1", "scenario": args.scenario, "entry_point": "",
                "receipt_sha256": receipt["receipt_digest"] if receipt else "", "verdict": "INCONCLUSIVE",
-               "reason": "", "request": {}, "expected": {}, "observed": {}, "effects": []}
+               "corpus_sha256": "", "reason": "", "request": {}, "reset": {}, "before": [], "expected": {}, "observed": {}, "effects": []}
     out = root / SCENARIO_PARITY / (scenario_slug(args.scenario) + ".json")
     if gaps or receipt is None:
         verdict["reason"] = "receipt not authoritative: " + "; ".join(gaps)
@@ -59,6 +63,7 @@ def main(argv: list[str] | None = None) -> int:
         print("REFUSE: SCENARIO_PARITY %s INCONCLUSIVE (%s)" % (args.scenario, exc), file=sys.stderr)
         return 1
     verdict["entry_point"] = str(sc["entry_point"])
+    verdict["corpus_sha256"] = corpus_digest(corpus)
     verdict["request"] = {k: req[k] for k in ("method", "path", "headers", "identity", "body_sha256", "body_absent", "request_sha256")}
     oracle_p = root / SCENARIO_ORACLES / (scenario_slug(args.scenario) + ".json")
     if not oracle_p.is_file():
@@ -94,6 +99,45 @@ def main(argv: list[str] | None = None) -> int:
         write_canonical(out, verdict)
         print("REFUSE: SCENARIO_PARITY %s INCONCLUSIVE (%s)" % (args.scenario, gap), file=sys.stderr)
         return 1
+
+    # Restore the declared initial state, and then PROVE the destination is in
+    # it. Without this a delete that deletes nothing passed against a
+    # destination whose row was already gone: the response matched and so did
+    # the effect, because both were "absent".
+    if sc.get("reset_before", True) and not args.no_reset:
+        cmd = shlex.split(args.reset_cmd) if args.reset_cmd else ["bash", str(Path(__file__).resolve().parent / "reset-parity-db.sh"), "--root", str(root)]
+        proc = subprocess.run(cmd, text=True, capture_output=True)
+        verdict["reset"] = {"ran": True, "rc": proc.returncode, "argv": cmd, "output": (proc.stdout + proc.stderr).strip()[-400:]}
+        if proc.returncode != 0:
+            verdict["reason"] = "the declared initial state could not be restored (%s exited %d): %s" % (cmd[0], proc.returncode, verdict["reset"]["output"][-200:])
+            write_canonical(out, verdict)
+            print("REFUSE: SCENARIO_PARITY %s INCONCLUSIVE (%s)" % (args.scenario, verdict["reason"]), file=sys.stderr)
+            return 1
+    else:
+        verdict["reset"] = {"ran": False, "rc": None, "declared": bool(sc.get("reset_before", True)), "reason": "--no-reset: the caller restored it" if args.no_reset else "the scenario does not declare reset_before"}
+
+    before_expected = oracle.get("before") or []
+    if sc.get("reset_before", True) and not before_expected:
+        verdict["reason"] = ("the source capture recorded no initial state for a scenario that declares reset_before; "
+                             "re-capture the source so the state it started from is on record")
+        write_canonical(out, verdict)
+        print("REFUSE: SCENARIO_PARITY %s INCONCLUSIVE (%s)" % (args.scenario, verdict["reason"]), file=sys.stderr)
+        return 1
+    for exp_before in before_expected:
+        probe = http_observe(args.dest_url, str(exp_before.get("method") or "GET"), str(exp_before.get("path") or "/"), headers=headers)
+        row = {"id": exp_before.get("id"), "path": exp_before.get("path"),
+               "expected": {"status": exp_before.get("status"), "body_sha256": exp_before.get("body_sha256")},
+               "observed": {"status": probe.get("status"), "body_sha256": probe.get("body_sha256"), "body_sample": probe.get("body_sample", "")}}
+        row["match"] = bool(probe.get("status") == exp_before.get("status") and probe.get("body_sha256") == exp_before.get("body_sha256"))
+        verdict["before"].append(row)
+    unmatched = [r for r in verdict["before"] if not r["match"]]
+    if unmatched:
+        verdict["reason"] = ("the destination is not in the state the source started from: %s"
+                             % "; ".join("%s status %s vs %s" % (r["id"], r["observed"]["status"], r["expected"]["status"]) for r in unmatched)[:300])
+        write_canonical(out, verdict)
+        print("REFUSE: SCENARIO_PARITY %s INCONCLUSIVE (%s)" % (args.scenario, verdict["reason"]), file=sys.stderr)
+        return 1
+
     exp = oracle.get("response") or {}
     verdict["expected"] = {"status": exp.get("status"), "body_kind": exp.get("body_kind"), "body_sha256": exp.get("body_sha256")}
     got = http_observe(args.dest_url, req["method"], req["path"], body=req["body"], headers={**req["headers"], **headers})

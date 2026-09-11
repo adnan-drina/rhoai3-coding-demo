@@ -50,17 +50,21 @@ complete recorded request against a known initial state, with the effects that
 prove what it did.
 
 ```bash
-# 1. reads (source system up). A templated path needs a real value from the
-#    source's own seeded data; without one the oracle is INCONCLUSIVE.
-python3 "${HERMES_SKILL_DIR}/scripts/capture-source-oracles.py" --root /projects/modernized \
-  --base-url http://legacy:9966/petclinic --path-var ownerId=1 \
-  --observation 'ep:org.acme.jobs.SyncJob#sync():scheduled=/tmp/legacy-sync.log'
-
-# 2. scenarios (M1 producer: it packages the frozen source, starts it,
-#    restores the initial state per scenario, captures, and stops)
+# 1. capture at M1 — one command, one runtime. It packages the frozen source,
+#    starts it, restores the initial state before each scenario that asks for
+#    it, replays the approved corpus, then captures the idempotent reads
+#    through the same running source (corpus path_vars supply any templated
+#    segment) and stops what it started. No admission receipt is needed: M1
+#    precedes M2, so the capture binds to the evidence bundle.
 python3 "${HERMES_SKILL_DIR}/scripts/capture-source-scenarios.py" --root /projects/modernized
 
-# 3. compare, with the destination up
+#    reads alone, against a source someone else is running:
+python3 "${HERMES_SKILL_DIR}/scripts/capture-source-oracles.py" --root /projects/modernized \
+  --base-url http://legacy:9966/petclinic --path-var ownerId=1 --any-status \
+  --observation 'ep:org.acme.jobs.SyncJob#sync():scheduled=/tmp/legacy-sync.log'
+
+# 2. compare at M4, with the destination up. The scenario comparator restores
+#    the declared initial state first and proves the destination is in it.
 python3 "${HERMES_SKILL_DIR}/scripts/compare-runtime-parity.py" --root /projects/modernized \
   --dest-url http://localhost:8080/petclinic --entry-point 'ep:…'
 python3 "${HERMES_SKILL_DIR}/scripts/compare-scenario-parity.py" --root /projects/modernized \
@@ -77,7 +81,9 @@ python3 "${HERMES_SKILL_DIR}/scripts/compose-parity-receipt.py" --root /projects
 ## The scenario corpus
 
 `verification/scenarios/corpus.json` (`rhoai3.scenario-corpus/v1`) is
-**Operator-approved intent** and names its approver. Each scenario carries the
+**Operator-approved intent** and names its approver. An optional `path_vars`
+map supplies the values the idempotent reads need for templated paths, from
+the source's own seeded data. Each scenario carries the
 method, a **concrete** URL (never a route pattern — the route stays in the
 inventory and is associated with scenario URLs), the headers, how it
 authenticates (**by environment-variable reference**), the body bytes or an
@@ -103,6 +109,15 @@ What refuses, and why:
 - A source capture taken against a different corpus digest. Re-capture the
   source rather than comparing across corpora.
 - A `204` that deleted nothing. The response matches and the effect does not.
+- A destination that is **not in the state the source started from**. Each
+  capture records the effect probes *before* the request too, and the
+  comparator restores the declared initial state (`reset_before`) and then
+  proves it. Without that, a delete against a destination whose row was
+  already absent passed on both the response and the effect.
+- A declared reset that could not run. The comparison does not happen.
+- A required scenario with **no result**, a result bound to another receipt or
+  another corpus, or two results for one scenario. The required set comes from
+  the corpus, never from which files exist.
 
 ## Verification
 

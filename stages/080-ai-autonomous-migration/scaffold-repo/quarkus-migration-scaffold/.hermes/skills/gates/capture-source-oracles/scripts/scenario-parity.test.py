@@ -89,22 +89,24 @@ CORPUS = {
     "scenarios": [
         {"id": "sc:create-owner", "entry_point": "", "method": "POST", "path": "/api/owners",
          "headers": {"Content-Type": "application/json"}, "body_file": "verification/scenarios/bodies/create-owner.json",
-         "reset_before": False, "effects": [{"id": "eff:owner-7", "method": "GET", "path": "/api/owners/7"}],
+         "reset_before": True, "effects": [{"id": "eff:owner-7", "method": "GET", "path": "/api/owners/7"}],
          "normalization": []},
         {"id": "sc:delete-owner", "entry_point": "", "method": "DELETE", "path": "/api/owners/7",
-         "body_absent": True, "reset_before": False,
+         "body_absent": True, "reset_before": True,
          "effects": [{"id": "eff:owner-7-gone", "method": "GET", "path": "/api/owners/7"}], "normalization": []},
     ],
 }
 
 
-def _capture(root: Path, base: str, sc_id: str, req_sha: str, response: dict, effects: list[dict], receipt_digest: str, corpus_sha: str) -> None:
-    """Record a source capture the way the M1 producer would."""
+def _capture(root: Path, base: str, sc_id: str, req_sha: str, response: dict, effects: list[dict], receipt_digest: str, corpus_sha: str, before: list[dict] | None = None) -> None:
+    """Record a source capture the way the M1 producer would, including the
+    state the source was in before the request."""
     write_canonical(root / SCENARIO_ORACLES / (scenario_slug(sc_id) + ".json"), {
         "schema": "rhoai3.source-scenario/v1", "scenario": sc_id, "entry_point": next(s["entry_point"] for s in CORPUS["scenarios"] if s["id"] == sc_id),
         "receipt_sha256": receipt_digest, "corpus_sha256": corpus_sha, "status": "CAPTURED", "reason": "",
         "source": {"base_url": base}, "initial_state": CORPUS["initial_state"], "normalization": [],
-        "request": {"request_sha256": req_sha}, "response": response, "effects": effects,
+        "reset_before": True, "request": {"request_sha256": req_sha}, "response": response,
+        "before": list(before or []), "effects": effects,
     })
 
 
@@ -131,6 +133,8 @@ def main() -> int:
         Service.owners = {}
         Service.lie_on_delete = False
         src, src_url = serve()
+        from _oracle_common import http_observe as _obs
+        before_create = _obs(src_url, "GET", "/api/owners/7")
         create = reqs["sc:create-owner"]
         import urllib.request as _u
         r = _u.urlopen(_u.Request(src_url + "/api/owners", data=create["body"], method="POST", headers={"Content-Type": "application/json"}))
@@ -139,28 +143,33 @@ def main() -> int:
         from _oracle_common import http_observe
         eff_created = http_observe(src_url, "GET", "/api/owners/7")
         _capture(root, src_url, "sc:create-owner", create["request_sha256"],
-                 {"status": 201, "body_kind": "json", "body_sha256": http_observe(src_url, "GET", "/api/owners/7")["body_sha256"]},
+                 {"status": 201, "body_kind": "json", "body_sha256": eff_created["body_sha256"]},
                  [{"id": "eff:owner-7", "method": "GET", "path": "/api/owners/7", "status": eff_created["status"], "body_sha256": eff_created["body_sha256"]}],
-                 digest, corpus_sha)
+                 digest, corpus_sha,
+                 before=[{"id": "eff:owner-7", "method": "GET", "path": "/api/owners/7", "status": 404, "body_sha256": before_create["body_sha256"]}])
+        # the source starts the delete with the row PRESENT: that is the state
+        # a destination has to be in before the delete means anything
+        before_delete = http_observe(src_url, "GET", "/api/owners/7")
         delete_obs = http_observe(src_url, "DELETE", "/api/owners/7")
         eff_gone = http_observe(src_url, "GET", "/api/owners/7")
         _capture(root, src_url, "sc:delete-owner", reqs["sc:delete-owner"]["request_sha256"],
                  {"status": delete_obs["status"], "body_kind": delete_obs["body_kind"], "body_sha256": delete_obs["body_sha256"]},
                  [{"id": "eff:owner-7-gone", "method": "GET", "path": "/api/owners/7", "status": eff_gone["status"], "body_sha256": eff_gone["body_sha256"]}],
-                 digest, corpus_sha)
+                 digest, corpus_sha,
+                 before=[{"id": "eff:owner-7-gone", "method": "GET", "path": "/api/owners/7", "status": before_delete["status"], "body_sha256": before_delete["body_sha256"]}])
         src.shutdown()
 
         # the destination: the same implementation. The replay must PASS.
         Service.owners = {}
         Service.lie_on_delete = False
         dest, dest_url = serve()
-        p = subprocess.run([sys.executable, str(COMPARE), "--root", str(root), "--scenario", "sc:create-owner", "--dest-url", dest_url], text=True, capture_output=True)
+        p = subprocess.run([sys.executable, str(COMPARE), "--no-reset", "--root", str(root), "--scenario", "sc:create-owner", "--dest-url", dest_url], text=True, capture_output=True)
         if p.returncode != 0:
             return _fail("an identical destination must PASS the recorded write: %s%s" % (p.stdout, p.stderr))
         v = load_json(root / SCENARIO_PARITY / (scenario_slug("sc:create-owner") + ".json"))
         if v["observed"]["status"] != 201 or not v["effects"] or not v["effects"][0]["match"]:
             return _fail("the replay must send the body and check the effect: %s" % v)
-        p = subprocess.run([sys.executable, str(COMPARE), "--root", str(root), "--scenario", "sc:delete-owner", "--dest-url", dest_url], text=True, capture_output=True)
+        p = subprocess.run([sys.executable, str(COMPARE), "--no-reset", "--root", str(root), "--scenario", "sc:delete-owner", "--dest-url", dest_url], text=True, capture_output=True)
         if p.returncode != 0:
             return _fail("an identical destination must PASS the recorded delete: %s%s" % (p.stdout, p.stderr))
         dest.shutdown()
@@ -170,8 +179,13 @@ def main() -> int:
         Service.owners = {}
         Service.lie_on_delete = True
         liar, liar_url = serve()
-        subprocess.run([sys.executable, str(COMPARE), "--root", str(root), "--scenario", "sc:create-owner", "--dest-url", liar_url], text=True, capture_output=True)
-        p = subprocess.run([sys.executable, str(COMPARE), "--root", str(root), "--scenario", "sc:delete-owner", "--dest-url", liar_url], text=True, capture_output=True)
+        # a destination whose row is already gone is not in the source's
+        # initial state: the delete cannot be compared there at all
+        p = subprocess.run([sys.executable, str(COMPARE), "--no-reset", "--root", str(root), "--scenario", "sc:delete-owner", "--dest-url", liar_url], text=True, capture_output=True)
+        if p.returncode != 1 or "not in the state the source started from" not in p.stderr:
+            return _fail("a destination that never had the row must refuse the delete comparison: rc=%s %s" % (p.returncode, p.stderr[:300]))
+        subprocess.run([sys.executable, str(COMPARE), "--no-reset", "--root", str(root), "--scenario", "sc:create-owner", "--dest-url", liar_url], text=True, capture_output=True)
+        p = subprocess.run([sys.executable, str(COMPARE), "--no-reset", "--root", str(root), "--scenario", "sc:delete-owner", "--dest-url", liar_url], text=True, capture_output=True)
         if p.returncode != 1 or "effect eff:owner-7-gone" not in p.stderr:
             return _fail("a 204 that deleted nothing must FAIL its resulting-state check: rc=%s %s" % (p.returncode, p.stderr[:300]))
         v = load_json(root / SCENARIO_PARITY / (scenario_slug("sc:delete-owner") + ".json"))
@@ -186,7 +200,7 @@ def main() -> int:
         edited = load_json(root / "verification" / "scenarios" / "corpus.json")
         edited["scenarios"][0]["path"] = "/api/owners?tampered=1"
         write_canonical(root / "verification" / "scenarios" / "corpus.json", edited)
-        p = subprocess.run([sys.executable, str(COMPARE), "--root", str(root), "--scenario", "sc:create-owner", "--dest-url", dest2_url], text=True, capture_output=True)
+        p = subprocess.run([sys.executable, str(COMPARE), "--no-reset", "--root", str(root), "--scenario", "sc:create-owner", "--dest-url", dest2_url], text=True, capture_output=True)
         if p.returncode != 1 or "corpus" not in p.stderr:
             return _fail("a corpus that changed after capture must refuse: rc=%s %s" % (p.returncode, p.stderr[:300]))
         write_canonical(root / "verification" / "scenarios" / "corpus.json", corpus)
@@ -196,14 +210,51 @@ def main() -> int:
         Service.owners = {}
         dest3, dest3_url = serve()
         for sid in ("sc:create-owner", "sc:delete-owner"):
-            subprocess.run([sys.executable, str(COMPARE), "--root", str(root), "--scenario", sid, "--dest-url", dest3_url], text=True, capture_output=True)
+            subprocess.run([sys.executable, str(COMPARE), "--no-reset", "--root", str(root), "--scenario", sid, "--dest-url", dest3_url], text=True, capture_output=True)
         p = subprocess.run([sys.executable, str(RECEIPT), "--root", str(root)], text=True, capture_output=True)
         doc = load_json(root / "verification" / "parity" / "receipt.json")
         row = next(r for r in doc["entry_points"] if r["entry_point"] == ep)
         if row["verdict"] != "PASS" or sorted(row["scenarios"]) != ["sc:create-owner", "sc:delete-owner"]:
             return _fail("an entry point's verdict is the conjunction of its scenarios: %s" % row)
+
+        # a scenario the corpus REQUIRES and nothing compared: the receipt
+        # enumerated result files, so a required scenario could disappear and
+        # the entry point still read PASS
+        with_extra = load_json(root / "verification" / "scenarios" / "corpus.json")
+        with_extra["scenarios"].append({"id": "sc:required-second", "entry_point": ep, "method": "GET", "path": "/api/owners",
+                                        "body_absent": True, "reset_before": False, "effects": [], "normalization": []})
+        write_canonical(root / "verification" / "scenarios" / "corpus.json", with_extra)
+        subprocess.run([sys.executable, str(RECEIPT), "--root", str(root)], text=True, capture_output=True)
+        doc = load_json(root / "verification" / "parity" / "receipt.json")
+        row = next(r for r in doc["entry_points"] if r["entry_point"] == ep)
+        if row["verdict"] != "INCONCLUSIVE" or "sc:required-second" not in row["reason"]:
+            return _fail("a required scenario with no result must be INCONCLUSIVE, never PASS: %s" % row)
+        # and a result compared against a different corpus satisfies nothing
+        write_canonical(root / "verification" / "scenarios" / "corpus.json", corpus)
+        stale = load_json(root / SCENARIO_PARITY / (scenario_slug("sc:create-owner") + ".json"))
+        stale["corpus_sha256"] = "0" * 64
+        write_canonical(root / SCENARIO_PARITY / (scenario_slug("sc:create-owner") + ".json"), stale)
+        subprocess.run([sys.executable, str(RECEIPT), "--root", str(root)], text=True, capture_output=True)
+        doc = load_json(root / "verification" / "parity" / "receipt.json")
+        row = next(r for r in doc["entry_points"] if r["entry_point"] == ep)
+        if row["verdict"] != "INCONCLUSIVE" or "corpus" not in row["reason"]:
+            return _fail("a result compared against another corpus must not satisfy coverage: %s" % row)
         dest3.shutdown()
-    print("OK: scenario-parity selftest (the recorded body and headers are replayed; a write with no declared effect refuses; a 204 that deleted nothing FAILs on its resulting state; a corpus edited after capture refuses; an entry point passes only when every scenario passes)")
+
+        # a scenario that declares reset_before and cannot restore that state
+        # is INCONCLUSIVE: the comparison never happens
+        Service.owners = {}
+        dest4, dest4_url = serve()
+        p = subprocess.run([sys.executable, str(COMPARE), "--root", str(root), "--scenario", "sc:create-owner",
+                            "--dest-url", dest4_url, "--reset-cmd", "%s -c 'import sys; sys.exit(3)'" % sys.executable],
+                           text=True, capture_output=True)
+        if p.returncode != 1 or "could not be restored" not in p.stderr:
+            return _fail("a reset that fails must stop the comparison: rc=%s %s" % (p.returncode, p.stderr[:300]))
+        v = load_json(root / SCENARIO_PARITY / (scenario_slug("sc:create-owner") + ".json"))
+        if v["verdict"] != "INCONCLUSIVE" or v["reset"]["rc"] != 3:
+            return _fail("the failed reset must be recorded beside the verdict: %s" % v.get("reset"))
+        dest4.shutdown()
+    print("OK: scenario-parity selftest (the recorded body and headers are replayed; a write with no declared effect refuses; a 204 that deleted nothing FAILs on its resulting state; a corpus edited after capture refuses; an entry point passes only when every REQUIRED scenario passes, and a missing or foreign-corpus result is INCONCLUSIVE; a declared reset that fails stops the comparison)")
     return 0
 
 

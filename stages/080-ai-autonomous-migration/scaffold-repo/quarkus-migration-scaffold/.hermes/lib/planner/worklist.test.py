@@ -23,7 +23,56 @@ def _fail(msg: str) -> int:
     return 1
 
 
+def _gate_progress_case() -> int:
+    """Acceptance inside a gate: what counts, and what only looks like it."""
+    green = {"known": True, "tuple": [0, 0, 0]}
+    worse = {"known": True, "tuple": [0, 1, 0]}
+    failing = {"package": {"ran": True, "rc": 1}, "boot": {"ran": False, "rc": None, "ready": False}}
+    passing = {"package": {"ran": True, "rc": 0}, "boot": {"ran": False, "rc": None, "ready": False}}
+    both = {"package": {"ran": True, "rc": 0}, "boot": {"ran": True, "rc": 0, "ready": True}}
+    boot_broken = {"package": {"ran": True, "rc": 0}, "boot": {"ran": True, "rc": 1, "ready": False}}
+    A, B = "rt:package:aaaa", "rt:package:bbbb"
+
+    ok, why = progress(green, green, set(), set(), gate="package", prev_runtime=failing, cur_runtime=passing,
+                       issued_items=[A], prev_gate_items={A}, cur_gate_items=set())
+    if not ok:
+        return _fail("a gate that starts passing is progress: %s" % why)
+    # the obligation this card was issued for is gone; the gate still fails elsewhere
+    ok, why = progress(green, green, set(), set(), gate="package", prev_runtime=failing, cur_runtime=failing,
+                       issued_items=[A], prev_gate_items={A}, cur_gate_items={B})
+    if not ok or "is gone" not in why:
+        return _fail("repairing this card's obligation while the gate fails elsewhere is progress: %s" % why)
+    # the same obligation, reworded: its identity is gate+kind+locus, so it is still there
+    ok, why = progress(green, green, set(), set(), gate="package", prev_runtime=failing, cur_runtime=failing,
+                       issued_items=[A], prev_gate_items={A}, cur_gate_items={A})
+    if ok or "still open" not in why:
+        return _fail("a failure that only reads differently is not progress: %s" % why)
+    # a repair that leaves the gate holding more than it did
+    ok, why = progress(green, green, set(), set(), gate="package", prev_runtime=failing, cur_runtime=failing,
+                       issued_items=[A], prev_gate_items={A}, cur_gate_items={B, "rt:package:cccc"})
+    if ok or "not a smaller list" not in why:
+        return _fail("a repair that multiplies the gate's obligations is not progress: %s" % why)
+    # a gate repair may not break the phase before it
+    ok, why = progress(green, green, set(), set(), gate="package", prev_runtime=both, cur_runtime=boot_broken,
+                       issued_items=[A], prev_gate_items={A}, cur_gate_items=set())
+    if ok or "may not break the phase before it" not in why:
+        return _fail("breaking startup while repairing packaging is not progress: %s" % why)
+    # and it may not make compilation or tests worse
+    ok, why = progress(green, worse, set(), set(), gate="package", prev_runtime=failing, cur_runtime=passing,
+                       issued_items=[A], prev_gate_items={A}, cur_gate_items=set())
+    if ok or "regressed" not in why:
+        return _fail("a gate repair may not regress the measure: %s" % why)
+    # a card with no gate is judged by the measure alone
+    ok, _ = progress(green, green, set(), set())
+    if ok:
+        return _fail("an ordinary card still needs a strictly smaller measure")
+    return 0
+
+
 def main() -> int:
+    if _gate_progress_case():
+        return 1
+
     if path_class("pom.xml") != "build" or path_class("src/main/resources/application.properties") != "config" or path_class("src/test/java/A.java") != "test" or path_class("src/main/java/A.java") != "source":
         return _fail("path classes")
     if path_class("src/test/resources/application.properties") != "config" or path_class("src/test/resources/data.sql") != "test":
@@ -200,7 +249,7 @@ def main() -> int:
         return _fail("reclassified items keep their authority and are never dropped")
     if measure_of(all_items, incidents_known=False, compile_known=True, tests_known=True, parity_known=False)["known"]:
         return _fail("unknown incidents never advance")
-    print("OK: worklist (lossless line-free incidents; canary excluded; only ERROR diagnostics; build→config→compile(leaf-first)→incident→test order; tests never writable; lexicographic 3-tuple progress; new-incident veto; unknown never advances)")
+    print("OK: worklist (lossless line-free incidents; canary excluded; only ERROR diagnostics; build→config→compile(leaf-first)→incident→test order; tests never writable; lexicographic 3-tuple progress; new-incident veto; unknown never advances; gate progress is the issued obligation disappearing, never a reworded one)")
     return 0
 
 

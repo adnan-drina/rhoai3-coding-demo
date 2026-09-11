@@ -819,6 +819,24 @@ check "080 a cleared deferral raises the attempt budget and never deletes the at
 check "080 the coverage plugin is pinned to a version that can read the pinned toolchain's class files (JaCoCo >= 0.8.11 for Java 21)" \
   "python3 -c \"import json; c=json.load(open('${SCAFFOLD_080}/.hermes/planning/catalogs/compat-mapping.json')); v=c['plugin_config']['org.jacoco:jacoco-maven-plugin']['version']; print('ok' if tuple(int(x) for x in v.split('.')) >= (0,8,11) else v)\"" \
   "ok"
+check "080 the boot gate binds to the whole packaged application, a free port, the process it started and a datasource that came up (verify-runtime selftest)" \
+  "python3 '${SCAFFOLD_SKILLS}/migration/fix-until-green/scripts/verify-runtime.test.py' >/dev/null && echo 1 || echo 0" \
+  "1"
+check "080 the parity receipt requires the corpus's scenarios, not the result files that happen to exist" \
+  "grep -q -F 'never from which result files happen to exist' '${SCAFFOLD_SKILLS}/gates/capture-source-oracles/scripts/compose-parity-receipt.py' && grep -q -F 'required scenario(s) have no result' '${SCAFFOLD_SKILLS}/gates/capture-source-oracles/scripts/compose-parity-receipt.py' && echo 1 || echo 0" \
+  "1"
+check "080 a replay restores the declared initial state and proves the destination is in it" \
+  "grep -q -F 'not in the state the source started from' '${SCAFFOLD_SKILLS}/gates/capture-source-oracles/scripts/compare-scenario-parity.py' && grep -q -F 'could not be restored' '${SCAFFOLD_SKILLS}/gates/capture-source-oracles/scripts/compare-scenario-parity.py' && echo 1 || echo 0" \
+  "1"
+check "080 the datasource checker reads the selected profile's overrides, and another profile pointing elsewhere is reported" \
+  "grep -q -F 'under the %s profile' '${SCAFFOLD_SKILLS}/migration/bootstrap-destination/scripts/check-datasource-decision.py' && grep -q -F 'another profile would configure a different database' '${SCAFFOLD_SKILLS}/migration/bootstrap-destination/scripts/check-datasource-decision.py' && echo 1 || echo 0" \
+  "1"
+check "080 an authenticated replay keeps its password reference through the request digest" \
+  "cd '${SCAFFOLD_080}' && python3 -c \"import sys,tempfile; sys.path.insert(0,'.hermes/skills/gates/capture-source-oracles/scripts'); from pathlib import Path; from _scenarios import request_of; r=request_of(Path(tempfile.mkdtemp()), {'id':'x','entry_point':'e','method':'GET','path':'/a','body_absent':True,'identity':{'kind':'basic','user_env':'U','password_env':'P'}}); print('ok' if r['identity'].get('password_env')=='P' else 'dropped')\"" \
+  "ok"
+check "080 a read capture works before admission (M1 precedes M2) and binds to the frozen source" \
+  "grep -q -F 'BEFORE the plan is' '${SCAFFOLD_SKILLS}/gates/capture-source-oracles/scripts/capture-source-oracles.py' && grep -q -F 'evidence_bundle_sha256' '${SCAFFOLD_SKILLS}/gates/capture-source-oracles/scripts/capture-source-oracles.py' && echo 1 || echo 0" \
+  "1"
 check "080 a recorded write is replayed with its body, headers and effects; a 204 that deleted nothing FAILs (scenario-parity selftest)" \
   "python3 '${SCAFFOLD_SKILLS}/gates/capture-source-oracles/scripts/scenario-parity.test.py' >/dev/null && echo 1 || echo 0" \
   "1"
