@@ -31,7 +31,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _loop_common import attempt_budget, candidate_sha256, catalog_property_mappings, ensure_hermes_lib, git, load_cards, load_deferred, load_issued, load_state, load_steps, product_paths_changed, profile_keys_lost_in_tree, restore_reports, revert_paths, save_deferred, save_steps, snapshot_reports  # noqa: E402
+from _loop_common import attempt_budget, candidate_sha256, query_annotated_writes, catalog_property_mappings, ensure_hermes_lib, git, load_cards, load_deferred, load_issued, load_state, load_steps, product_paths_changed, profile_keys_lost_in_tree, restore_reports, revert_paths, save_deferred, save_steps, snapshot_reports  # noqa: E402
 
 ensure_hermes_lib()
 from planner import pipeline  # noqa: E402
@@ -180,6 +180,27 @@ def main(argv: list[str] | None = None) -> int:
         else:
             prev_keys = set(prev.get("item_ids") or [])
             cur_keys = item_ids(cur)
+    # A repair may not annotate a write with a query. Spring Data derives
+    # writes from CrudRepository; a @Query on save or delete either does
+    # nothing or does the wrong thing, and a bare one exists only to stop the
+    # platform complaining (pilot v7 annotated ten of them and the build kept
+    # moving while the repositories stopped meaning anything). A real
+    # modifying statement is legitimate and is left alone.
+    annotated: list[str] = []
+    for rel in changed:
+        if not rel.endswith(".java"):
+            continue
+        f = root / rel
+        if not f.is_file():
+            continue
+        for name, query in query_annotated_writes(f.read_text(encoding="utf-8", errors="replace")):
+            annotated.append("%s#%s%s" % (rel.rsplit("/", 1)[-1], name, (" = %r" % query[:60]) if query else " (no query)"))
+    if annotated:
+        return _reject(root, steps, args.cluster, args.card, cur,
+                       "a write may not be repaired with a query annotation: %s. Spring Data provides save and delete through "
+                       "CrudRepository<T, ID>; annotate a real modifying statement with @Modifying, or extend CrudRepository and "
+                       "drop the local declaration" % ", ".join(sorted(annotated)[:4]),
+                       changed, mint=not args.no_mint, hermes=args.hermes)
     gate = str(issued.get("gate") or "")
     ok, reason = progress(prev["measure"], cur["measure"], prev_keys, cur_keys,
                           gate=gate,

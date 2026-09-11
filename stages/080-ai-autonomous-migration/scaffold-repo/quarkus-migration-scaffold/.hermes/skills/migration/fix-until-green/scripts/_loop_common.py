@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 import shutil
 import subprocess
 import sys
@@ -40,6 +41,38 @@ def load_steps(root: Path) -> dict[str, Any]:
 
 def save_steps(root: Path, doc: dict[str, Any]) -> None:
     write_canonical(root / LOOP_STEPS, doc)
+
+
+WRITE_METHOD_PREFIXES = ("save", "delete", "remove", "update", "insert", "persist", "merge")
+QUERY_ON_METHOD_RE = re.compile(
+    r'@Query\s*(?:\(\s*(?:value\s*=\s*)?"(?P<q>[^"]*)"[^)]*\)|\(\s*\)|\b)'
+    r'(?P<between>(?:\s*@[\w.]+(?:\([^)]*\))?)*)'
+    r'\s*[\w.<>,\[\]]+\s+(?P<name>\w+)\s*\(', re.S)
+
+
+def query_annotated_writes(text: str) -> list[tuple[str, str]]:
+    """(method, query) for write-named methods this source annotates with
+    @Query without a modifying statement.
+
+    Spring Data derives writes from CrudRepository, not from a query: a @Query
+    on save or delete either does nothing or does the wrong thing, and a bare
+    one exists only to stop the platform complaining. A real modifying
+    statement (@Modifying with UPDATE/DELETE/INSERT) is legitimate and is left
+    alone."""
+    out: list[tuple[str, str]] = []
+    for m in QUERY_ON_METHOD_RE.finditer(text or ""):
+        name = m.group("name")
+        if not name.lower().startswith(WRITE_METHOD_PREFIXES):
+            continue
+        query = (m.group("q") or "").strip()
+        # @Modifying may sit on either side of @Query; look at the declaration
+        # as a whole rather than at one side of it
+        window = (text[max(0, m.start() - 200): m.end()] or "")
+        modifying = "@Modifying" in window
+        if modifying and query[:6].upper() in ("UPDATE", "DELETE", "INSERT"):
+            continue
+        out.append((name, query))
+    return out
 
 
 def attempt_budget(steps: dict[str, Any], cluster: str, limit: int) -> int:

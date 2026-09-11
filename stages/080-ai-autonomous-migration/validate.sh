@@ -810,6 +810,9 @@ check "080 a runtime obligation's cause comes from a closed vocabulary, so an un
 check "080 a failure that names the member it could not handle makes that member part of the obligation" \
   "cd '${SCAFFOLD_080}' && python3 -c \"import sys; sys.path.insert(0,'.hermes/lib'); from planner.worklist import runtime_member; print('%s|%s' % (runtime_member(chr(34)+'Method '+chr(39)+'save'+chr(39)+' of repository x.Y'+chr(34)), runtime_member('nothing named here')))\"" \
   "save|"
+check "080 a candidate that annotates a write with a query is refused by acceptance, not merely cautioned" \
+  "grep -q -F 'query_annotated_writes' '${SCAFFOLD_SKILLS}/migration/fix-until-green/scripts/advance.py' && grep -q -F 'a write may not be repaired with a query annotation' '${SCAFFOLD_SKILLS}/migration/fix-until-green/scripts/advance.py' && echo 1 || echo 0" \
+  "1"
 check "080 the brief names the members likely to carry the same cause, so one card is one verification" \
   "grep -q -F 'sibling_note' '${SCAFFOLD_SKILLS}/migration/fix-until-green/scripts/brief.py' && python3 '${SCAFFOLD_SKILLS}/migration/fix-until-green/scripts/brief.test.py' >/dev/null && echo 1 || echo 0" \
   "1"

@@ -96,7 +96,46 @@ def _attempt_budget_case() -> int:
     return 0
 
 
+def _write_veto_case() -> int:
+    """A repair may not annotate a write with a query.
+
+    The detector is the interesting part: Spring Data derives writes from
+    CrudRepository, so a @Query on save or delete either does nothing or does
+    the wrong thing, while a real modifying statement is legitimate. advance.py
+    refuses a candidate that contains one (its call is asserted by the stage
+    validator)."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from _loop_common import query_annotated_writes  # noqa: E402
+
+    bad = ('public interface R {\n'
+           '    @Query("SELECT u FROM User u WHERE u.id = ?1.id")\n'
+           '    void save(User u);\n'
+           '    @Query\n'
+           '    void delete(User u);\n'
+           '    @Query("SELECT p FROM Pet p")\n'
+           '    List<Pet> findAll();\n'
+           '}\n')
+    found = dict(query_annotated_writes(bad))
+    if sorted(found) != ["delete", "save"]:
+        return _fail("a query annotation on save or delete is refused; a finder's is not: %s" % sorted(found))
+    if found["delete"] != "" or not found["save"].startswith("SELECT"):
+        return _fail("the refusal must carry what was written: %s" % found)
+    ok = ('public interface R {\n'
+          '    @Modifying\n'
+          '    @Query("DELETE FROM Pet p WHERE p.id = ?1")\n'
+          '    void deleteById(int id);\n'
+          '    @Query("UPDATE User u SET u.enabled = false WHERE u.id = ?1")\n'
+          '    @Modifying\n'
+          '    void updateDisabled(int id);\n'
+          '}\n')
+    if query_annotated_writes(ok):
+        return _fail("a real modifying statement is legitimate, on either side of @Modifying: %s" % query_annotated_writes(ok))
+    return 0
+
+
 def main() -> int:
+    if _write_veto_case():
+        return 1
     if _attempt_budget_case():
         return 1
     if _profile_keys_cases():
