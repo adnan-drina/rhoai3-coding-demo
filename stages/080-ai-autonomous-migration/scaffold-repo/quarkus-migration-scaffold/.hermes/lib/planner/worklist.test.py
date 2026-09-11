@@ -7,7 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from planner.cards import card_title
-from planner.worklist import apply_supersessions
+from planner.worklist import apply_supersessions, runtime_items  # noqa: E402
 from planner.worklist import KIND_RANK, cluster_items, compile_items, file_depths, incidents_from_findings, measure_of, obligation_keys, path_class, progress, surefire_from_reports, test_items  # noqa: E402
 
 
@@ -21,6 +21,32 @@ def surefire_from_reports_ran_flag():
 def _fail(msg: str) -> int:
     print("FAIL: " + msg, file=sys.stderr)
     return 1
+
+
+def _runtime_identity_case() -> int:
+    """Two problems at one file are two obligations; two wordings are one."""
+    def ident(detail, log=""):
+        pkg = {"ran": True, "rc": 1, "detail": detail, "log_tail": log}
+        items = runtime_items(pkg, None, None)
+        return items[0]["id"], items[0].get("cause")
+
+    # the same cause reported around different words: one obligation. (The
+    # vocabulary is matched on the tool's own marker, so this is what
+    # "reworded" can mean without the tool changing its exception class.)
+    a, ca = ident("Build step SpringDataJPAProcessor#build threw an exception: No implementation of interface x.Y was found")
+    b, cb = ident("[error]: Build step ...#build threw an exception: No implementation of interface x.Y was found (after 2 rounds)")
+    if a != b:
+        return _fail("the same cause, differently worded, is one obligation: %s vs %s" % (ca, cb))
+    c, cc = ident("Build step SpringDataJPAProcessor#build threw an exception: io.quarkus.spring.data.deployment.UnableToParseMethodException: Method findAll")
+    if c == a:
+        return _fail("a different cause at the same place is a different obligation: %s vs %s" % (ca, cc))
+    if (ca, cc) != ("missing-implementation", "underivable-query-method"):
+        return _fail("the causes come from the closed vocabulary: %s %s" % (ca, cc))
+    d, cd = ident("something no signature predicted")
+    e, ce = ident("something else no signature predicted")
+    if cd != "unclassified" or d != e:
+        return _fail("an unmatched failure is one obligation however it is phrased: %s %s" % (cd, ce))
+    return 0
 
 
 def _gate_progress_case() -> int:
@@ -70,7 +96,7 @@ def _gate_progress_case() -> int:
 
 
 def main() -> int:
-    if _gate_progress_case():
+    if _runtime_identity_case() or _gate_progress_case():
         return 1
 
     if path_class("pom.xml") != "build" or path_class("src/main/resources/application.properties") != "config" or path_class("src/test/java/A.java") != "test" or path_class("src/main/java/A.java") != "source":
@@ -249,7 +275,7 @@ def main() -> int:
         return _fail("reclassified items keep their authority and are never dropped")
     if measure_of(all_items, incidents_known=False, compile_known=True, tests_known=True, parity_known=False)["known"]:
         return _fail("unknown incidents never advance")
-    print("OK: worklist (lossless line-free incidents; canary excluded; only ERROR diagnostics; build→config→compile(leaf-first)→incident→test order; tests never writable; lexicographic 3-tuple progress; new-incident veto; unknown never advances; gate progress is the issued obligation disappearing, never a reworded one)")
+    print("OK: worklist (lossless line-free incidents; canary excluded; only ERROR diagnostics; build→config→compile(leaf-first)→incident→test order; tests never writable; lexicographic 3-tuple progress; new-incident veto; unknown never advances; gate progress is the issued obligation disappearing, never a reworded one; a second cause at one file is a second obligation)")
     return 0
 
 

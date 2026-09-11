@@ -804,6 +804,9 @@ check "080 an empty work list does not close the run: the closing card needs pac
 check "080 a packaging or startup gate that did not run is unknown, never a pass" \
   "cd '${SCAFFOLD_080}' && python3 -c \"import sys; sys.path.insert(0,'.hermes/lib'); from planner.worklist import runtime_state as r; a=r(None,None); b=r({'ran':True,'rc':0,'artifact_sha256':'x'},{'ran':True,'rc':0,'ready':True,'artifact_sha256':'y'}); c=r({'ran':True,'rc':0,'artifact_sha256':'x'},{'ran':True,'rc':0,'ready':True,'artifact_sha256':'x'}); print('%s %s %s' % (a['ready'], b['ready'], c['ready']))\"" \
   "False False True"
+check "080 a runtime obligation's cause comes from a closed vocabulary, so an unpredicted failure cannot mint a new one" \
+  "cd '${SCAFFOLD_080}' && python3 -c \"import sys; sys.path.insert(0,'.hermes/lib'); from planner.worklist import runtime_cause; print('%s %s %s' % (runtime_cause('No implementation of interface x.Y was found'), runtime_cause('UnableToParseMethodException: Method findAll'), runtime_cause('anything nobody wrote a signature for')))\"" \
+  "missing-implementation underivable-query-method unclassified"
 check "080 acceptance is phase-aware: a gate repair with an unchanged measure is accepted, a regression is not" \
   "cd '${SCAFFOLD_080}' && python3 -c \"import sys; sys.path.insert(0,'.hermes/lib'); from planner.worklist import progress; m={'known':True,'tuple':[0,0,0]}; w={'known':True,'tuple':[0,1,0]}; f={'package':{'ran':True,'rc':1}}; t={'package':{'ran':True,'rc':0}}; print('%s %s %s' % (progress(m,m,set(),set(),gate='package',prev_runtime=f,cur_runtime=t)[0], progress(m,m,set(),set())[0], progress(m,w,set(),set(),gate='package',prev_runtime=f,cur_runtime=t)[0]))\"" \
   "True False False"

@@ -250,6 +250,35 @@ RUNTIME_SIGNATURES = (
 )
 FQN_RE = re.compile(r"\b(?:[a-z][A-Za-z0-9_]*\.){2,}[A-Z][A-Za-z0-9_]*\b")
 
+# A CLOSED vocabulary of causes, matched from the tools' own exception and
+# marker strings. It is part of an obligation's identity, so that two genuinely
+# different problems at one file are two obligations (a file can need a second
+# repair after the first succeeds) while any rewording of the same problem
+# stays one. Nothing here is derived from free text: an unmatched failure is
+# always "unclassified", so no phrasing can mint a new obligation.
+RUNTIME_CAUSES = (
+    ("No implementation of interface", "missing-implementation"),
+    ("UnableToParseMethodException", "underivable-query-method"),
+    ("Unable to find datasource", "datasource-unconfigured"),
+    ("is not configured", "datasource-unconfigured"),
+    ("ConfigurationException", "configuration-invalid"),
+    ("UnsatisfiedResolutionException", "unsatisfied-injection"),
+    ("AmbiguousResolutionException", "ambiguous-injection"),
+    ("DefinitionException", "definition-invalid"),
+    ("Unsupported class file major version", "toolchain-class-version"),
+    ("SQLGrammarException", "schema-missing-object"),
+    ("relation \"", "schema-missing-object"),
+    ("Table not found", "schema-missing-object"),
+    ("does not exist", "schema-missing-object"),
+)
+
+
+def runtime_cause(text: str) -> str:
+    for needle, cause in RUNTIME_CAUSES:
+        if needle in (text or ""):
+            return cause
+    return "unclassified"
+
 
 def runtime_locus(text: str, root: Path | None) -> str:
     """The source file a runtime failure names, when the tree has it.
@@ -309,14 +338,19 @@ def runtime_items(package: dict[str, Any] | None, boot: dict[str, Any] | None, r
         named = runtime_locus(detail + "\n" + log, root)
         if named:
             locus, cluster_kind = named, "compile"
-        # The identity is WHERE and WHAT, never the wording. A tool that
-        # rephrases the same failure at the same place must not look like a new
-        # obligation -- and, on the other side of the same rule, a repair that
-        # only changes the message must not look like progress.
-        ident = sha256_bytes(canonical_bytes({"gate": gate, "kind": kind, "locus": locus}))[:16]
+        # The identity is WHERE and WHAT, never the wording: the gate, the kind,
+        # the cause from a closed vocabulary, and the file. A tool that
+        # rephrases the same failure at the same place is the same obligation,
+        # so a repair that only changes the message is not progress; but a file
+        # whose first problem is fixed and whose SECOND problem then surfaces
+        # gets a new obligation, because the cause differs (measured live:
+        # "No implementation of interface" became UnableToParseMethodException
+        # at the same repository once it became a Spring Data repository).
+        cause = runtime_cause(detail + "\n" + log)
+        ident = sha256_bytes(canonical_bytes({"gate": gate, "kind": kind, "cause": cause, "locus": locus}))[:16]
         out.append({
             "id": "rt:%s:%s" % (gate, ident), "source": "runtime", "gate": gate,
-            "kind": cluster_kind, "obligation": kind, "category": "mandatory",
+            "kind": cluster_kind, "obligation": kind, "cause": cause, "category": "mandatory",
             "path": locus, "line": 0, "rule_id": "RUNTIME_%s" % kind.replace("-", "_").upper(),
             "message_sha256": sha256_bytes((detail + log).encode("utf-8")),
             "detail": detail[:200],

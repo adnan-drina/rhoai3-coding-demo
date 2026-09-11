@@ -498,10 +498,10 @@ def main() -> int:
         if issued2["logical_id"] != cl2["id"]:
             return _fail("the packaging obligation must be the card")
 
-        # a) the same failure, reworded, at the same place: NOT progress
+        # a) the same cause at the same place, differently worded: NOT progress
         (root / one).write_text((root / one).read_text(encoding="utf-8") + "// touched\n", encoding="utf-8")
         specimens.runtime(root, package_rc=1, boot_ready=None, detail="Failed to execute goal quarkus-maven-plugin:build",
-                          log="Build step SpringDataJPAProcessor#build threw an exception: could not satisfy %s (rephrased)" % fqn(one))
+                          log="[error] after 2 rounds: Build step X#build threw an exception: No implementation of interface %s was found" % fqn(one))
         specimens.verify(root, errors=[], failures=[], findings=f4)
         p = _advance(root, cl2["id"], "t_pkg2")
         if p.returncode == 0 or "still open" not in (p.stdout + p.stderr):
@@ -513,6 +513,20 @@ def main() -> int:
         specimens.runtime(root, package_rc=1, boot_ready=None, detail="Failed to execute goal quarkus-maven-plugin:build", log=two_defects)
         specimens.verify(root, errors=[], failures=[], findings=f4)
         pipeline.admit(root)
+        # a2) a DIFFERENT cause at the same place IS a different obligation:
+        #     a file can need a second repair once its first is done
+        specimens.runtime(root, package_rc=1, boot_ready=None, detail="Failed to execute goal quarkus-maven-plugin:build",
+                          log="Build step X#build threw an exception: io.quarkus.spring.data.deployment.UnableToParseMethodException: Method 'findAll' of %s" % fqn(one))
+        specimens.verify(root, errors=[], failures=[], findings=f4)
+        pipeline.admit(root)
+        second = [i for i in load_json(root / WORKLIST)["items"] if i["source"] == "runtime"]
+        if len(second) != 1 or second[0]["cause"] != "underivable-query-method" or second[0]["path"] != one:
+            return _fail("a second cause at the same file must be its own obligation: %s" % second)
+        # back to the first cause for the acceptance case below
+        specimens.runtime(root, package_rc=1, boot_ready=None, detail="Failed to execute goal quarkus-maven-plugin:build", log=two_defects)
+        specimens.verify(root, errors=[], failures=[], findings=f4)
+        pipeline.admit(root)
+
         # b) that place repaired, another still failing: progress
         specimens.issue(root)
         (root / one).write_text((root / one).read_text(encoding="utf-8") + "// repaired\n", encoding="utf-8")
