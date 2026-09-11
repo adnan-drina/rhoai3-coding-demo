@@ -741,8 +741,21 @@ def apply_datasource_decision(root: Path, catalog: dict, decisions_doc: dict, ch
     configured". The decision therefore lands as unprefixed keys in
     src/main/resources/application.properties, with credentials referenced by
     environment variable name, and the matching JDBC extension is added to the
-    pom. The profile-prefixed families the legacy carried are left exactly where
-    they are: they are the source's own record, not this destination's config."""
+    pom.
+
+    The decision also governs what SURVIVES. The catalog maps every legacy JDBC
+    driver to its extension, so a specimen carrying three drivers arrives with
+    extensions the decision never chose, and the legacy's profile-prefixed
+    datasource families point at other databases with literal credentials in
+    them. This used to be left in place as "the source's own record" -- but the
+    record is `.derived/frozen-input`, which holds the legacy configuration
+    verbatim; a second copy in the DESTINATION is residue, not provenance, and
+    check-datasource-decision.py refuses it. Bootstrap and its own checker
+    disagreeing is not a state a worker can resolve: measured on the v8 run,
+    M2 blocked with the bootstrap passing and the checker refusing the tree it
+    had just written (2026-09-11). So the undecided extension and the
+    non-activated datasource families are removed here, and every removal is
+    recorded against the decision that caused it."""
     ds = datasource(decisions_doc)
     if not ds:
         return  # missing_decisions already keeps admission INCONCLUSIVE
@@ -800,7 +813,90 @@ def apply_datasource_decision(root: Path, catalog: dict, decisions_doc: dict, ch
         lines += ["", "# bootstrap: effective datasource decided in decisions.yaml (%s); credentials are" % ds.get("adr"),
                   "# environment references, and the engine change from %s is recorded in that ADR." % ds.get("source_baseline_db_kind"),
                   *added]
+    # 3. what the decision does NOT keep
+    lines = _drop_undecided_datasource_keys(root, lines, ds, decisions_doc, changes)
     prop.write_text("\n".join(lines).rstrip("\n") + "\n", encoding="utf-8")
+    _drop_undecided_jdbc_extensions(root, kinds, ext, ds, changes)
+
+
+_DS_FAMILY = re.compile(r"^%(?P<profile>[A-Za-z0-9_.-]+)\.quarkus\.(datasource|hibernate-orm)\b")
+
+
+def decided_profiles(ds: dict, decisions_doc: dict) -> set[str]:
+    """The profiles this destination actually builds and runs with."""
+    out = {str(x) for x in (build_profiles(decisions_doc).get("active") or [])}
+    if ds.get("profile"):
+        out.add(str(ds["profile"]))
+    return out
+
+
+def _drop_undecided_datasource_keys(root: Path, lines: list[str], ds: dict, decisions_doc: dict,
+                                    changes: list[dict]) -> list[str]:
+    """Remove %profile datasource/ORM keys for profiles this run never selects.
+
+    They are not inert in the way "left as a record" suggests: each names a
+    different database, several carry literal credentials, and nothing stops
+    the profile being selected at run time. The legacy copy under
+    .derived/frozen-input is untouched, so nothing is lost."""
+    keep = decided_profiles(ds, decisions_doc)
+    out: list[str] = []
+    removed: dict[str, list[str]] = {}
+    for raw in lines:
+        m = _DS_FAMILY.match(raw.strip())
+        if m and m.group("profile") not in keep:
+            removed.setdefault(m.group("profile"), []).append(raw.strip().partition("=")[0])
+            continue
+        out.append(raw)
+    if removed:
+        for profile in sorted(removed):
+            changes.append({"op": "properties.remove-undecided-datasource-keys", "profile": profile,
+                            "keys": sorted(removed[profile]),
+                            "provenance": "decisions.yaml datasource (%s): this run selects %s"
+                                          % (ds.get("adr"), ", ".join(sorted(keep)) or "no profile")})
+        out += ["", "# bootstrap: the %s datasource families the legacy carried are not this" % ", ".join(sorted(removed)),
+                "# destination's configuration and this run never selects those profiles; the",
+                "# legacy copy is preserved verbatim under .derived/frozen-input (%s)." % ds.get("adr")]
+    # a removal can leave three or more blank lines behind; one is enough
+    tidy: list[str] = []
+    for raw in out:
+        if raw.strip() == "" and tidy[-2:] == ["", ""]:
+            continue
+        tidy.append(raw)
+    return tidy
+
+
+def _drop_undecided_jdbc_extensions(root: Path, kinds: dict, decided_ext: str, ds: dict, changes: list[dict]) -> None:
+    """Remove JDBC extensions for db-kinds the decision did not choose.
+
+    The catalog maps every legacy driver it knows; the decision picks one
+    engine. Carrying the losers is decision drift -- and the platform is being
+    asked to hold two drivers for a datasource that names one db-kind."""
+    others = {str((row or {}).get("extension") or "") for k, row in (kinds or {}).items()
+              if str((row or {}).get("extension") or "") and str((row or {}).get("extension")) != decided_ext}
+    if not others:
+        return
+    pom = root / "pom.xml"
+    if not pom.is_file():
+        return
+    ET.register_namespace("", NS)
+    tree = ET.parse(pom)
+    project = tree.getroot()
+    deps = project.find(q("dependencies"))
+    if deps is None:
+        return
+    dropped: list[str] = []
+    for d in list(deps.findall(q("dependency"))):
+        gav = "%s:%s" % (text(d, "groupId"), text(d, "artifactId"))
+        if gav in others:
+            deps.remove(d)
+            dropped.append(gav)
+    if dropped:
+        ET.indent(tree, space="  ")
+        tree.write(pom, encoding="utf-8", xml_declaration=True)
+        for gav in sorted(dropped):
+            changes.append({"op": "pom.remove-undecided-datasource-extension", "gav": gav,
+                            "provenance": "decisions.yaml datasource (%s) decided db_kind %s (%s)"
+                                          % (ds.get("adr"), ds.get("db_kind"), decided_ext)})
 
 
 def bootstrap_properties(root: Path, catalog: dict, changes: list[dict]) -> None:

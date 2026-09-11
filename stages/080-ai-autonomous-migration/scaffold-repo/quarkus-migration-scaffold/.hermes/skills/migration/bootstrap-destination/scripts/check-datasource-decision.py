@@ -15,8 +15,10 @@ against the decision, at M2, before any worker reaches runtime verification:
     only %hsqldb.* keys and then failed augmentation with "Datasource
     <default> is not configured";
   * the JDBC extension documented for the decided db_kind must be in the pom,
-    and no OTHER db-kind extension may be there, because with two drivers and
-    no db-kind the platform cannot choose;
+    and no OTHER db-kind extension may be there. Not because the platform
+    could not choose -- db-kind is set, so it can -- but because a driver the
+    decision never selected has no reason to be in the build, and the
+    bootstrap is what must not leave it behind;
   * credentials must be environment references, never literals in the tree;
   * when the decision says the source assets own schema and seed, those files
     must exist in the destination.
@@ -153,7 +155,13 @@ def check(root: Path) -> list[str]:
     others = sorted({str(row.get("extension") or "").split(":", 1)[1] for k, row in kinds.items()
                      if k != kind and str(row.get("extension") or "").split(":", 1)[1] in pom})
     if others:
-        out.append("pom.xml also carries %s; with more than one JDBC extension and no decided db-kind the platform cannot choose, so remove what this run does not use" % ", ".join(others))
+        # The reason is DECISION DRIFT, not ambiguity: db-kind is set, so the
+        # platform can choose perfectly well. What it cannot do is explain why
+        # a driver the decision never selected is in the build. Saying "the
+        # platform cannot choose" while db-kind sits in the same file sent the
+        # v8 M2 worker looking for a problem that was not there.
+        out.append("pom.xml also carries %s; decisions.yaml selects db_kind %s, so a driver this run never uses is "
+                   "decision drift and the bootstrap must not leave it behind" % (", ".join(others), kind))
     # a profile the decision did not select may still be selected at run time
     other = sorted({k.split(".", 1)[0][1:] for k in _all_profile_keys(root) if k.split(".", 1)[0][1:] != profile})
     conflicting = []

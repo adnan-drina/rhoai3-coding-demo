@@ -61,8 +61,14 @@ the pinned BOM manages (`evidence/build/bom-managed.json`); network once.
    the isolated instance, credential *references*, the reset procedure, and
    who owns schema and seed. The bootstrap renders it as **unprefixed**
    `quarkus.datasource.*` keys and adds the documented extension; the
-   profile-prefixed families the legacy carried are left where they are, as
-   the source's own record. An engine the platform documents no extension for
+   profile-prefixed families the legacy carried are REMOVED for every profile
+   this run does not select, with each removal recorded against the decision:
+   they name other databases, several carry literal credentials, and the
+   source's own record is `.derived/frozen-input`, which keeps the legacy
+   configuration verbatim. A second copy in the destination is residue, and
+   `check-datasource-decision.py` refuses it -- bootstrap and its own checker
+   disagreeing is not a state a worker can resolve (measured: v8 M2 blocked on
+   exactly that, 2026-09-11). An engine the platform documents no extension for
    (`DATASOURCE_UNSUPPORTED`) or an extension that does not match the engine
    (`DATASOURCE_EXTENSION_MISMATCH`) blocks. `check-datasource-decision.py`
    then measures the rendered tree against the decision. It does not prove the

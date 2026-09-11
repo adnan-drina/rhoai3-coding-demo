@@ -388,7 +388,7 @@ def _datasource_case() -> int:
         pom_keep = pom_p2.read_text(encoding="utf-8")
         pom_p2.write_text(pom_keep.replace("</dependencies>", "  <dependency>\n      <groupId>io.quarkus</groupId>\n      <artifactId>quarkus-jdbc-mysql</artifactId>\n    </dependency>\n  </dependencies>", 1), encoding="utf-8")
         pc = subprocess.run([sys.executable, str(CHECK), str(root)], text=True, capture_output=True)
-        if pc.returncode != 1 or "more than one JDBC extension" not in pc.stderr:
+        if pc.returncode != 1 or "decision drift" not in pc.stderr:
             return _fail("a second JDBC extension must refuse: rc=%s %s" % (pc.returncode, pc.stderr[-300:]))
         pom_p2.write_text(pom_keep, encoding="utf-8")
 
@@ -603,10 +603,94 @@ def _retire_offsets_case() -> int:
     return 0
 
 
+def _datasource_checker_integration_case() -> int:
+    """THE MISSING GATE: bootstrap and its own checker must agree on the tree
+    bootstrap just wrote, for a specimen carrying the legacy's whole driver and
+    profile mix -- and reapplying must change nothing.
+
+    Measured on the live v8 run (2026-09-11): bootstrap PASSed, then
+    check-datasource-decision.py REFUSED the same tree with two findings, and
+    M2 blocked. A worker cannot resolve a contradiction between two parts of
+    the harness, and identical retries cannot either. Unit coverage on each
+    side separately never saw it."""
+    CHECKER = HERE / "check-datasource-decision.py"
+    LEGACY_PROPS = ("spring.profiles.active=hsqldb,spring-data-jpa\n"
+                    "%hsqldb.quarkus.datasource.jdbc.url=jdbc:hsqldb:mem:petclinic\n"
+                    "%mysql.quarkus.datasource.jdbc.url=jdbc:mysql://localhost:3306/petclinic\n"
+                    "%mysql.quarkus.datasource.password=petclinic\n"
+                    "%postgresql.quarkus.datasource.jdbc.url=jdbc:postgresql://localhost:5432/petclinic\n"
+                    "%postgresql.quarkus.datasource.password=petclinic\n")
+    with tempfile.TemporaryDirectory(prefix="ds-integ-") as td:
+        decided = specimens.admitted_decisions()
+        decided["build_profiles"] = {"adr": "ADR-001", "active": ["prod", "spring-data-jpa"]}
+        root = specimens.build_dest(Path(td) / "d", specimens.specimen("http"), decisions=decided)
+        frozen = root / ".derived" / "frozen-input"
+
+        # the legacy's mix, where the legacy actually keeps it
+        fpom = frozen / "pom.xml"
+        xml = fpom.read_text(encoding="utf-8")
+        drivers = ("  <dependencies>\n"
+                   "    <dependency><groupId>mysql</groupId><artifactId>mysql-connector-java</artifactId></dependency>\n"
+                   "    <dependency><groupId>org.postgresql</groupId><artifactId>postgresql</artifactId></dependency>\n")
+        if "  <dependencies>\n" not in xml:
+            return _fail("the frozen specimen pom has no dependencies block to extend")
+        fpom.write_text(xml.replace("  <dependencies>\n", drivers, 1), encoding="utf-8")
+        res = frozen / "src" / "main" / "resources"
+        res.mkdir(parents=True, exist_ok=True)
+        (res / "application.properties").write_text(LEGACY_PROPS, encoding="utf-8")
+        db = res / "db" / "postgresql"
+        db.mkdir(parents=True, exist_ok=True)
+        (db / "initDB.sql").write_text("CREATE TABLE owners (id INT PRIMARY KEY);\n", encoding="utf-8")
+        (db / "populateDB.sql").write_text("INSERT INTO owners VALUES (1);\n", encoding="utf-8")
+        pipeline.assemble_bundle(root)
+
+        p1 = subprocess.run([sys.executable, str(SCRIPT), "--root", str(root)], text=True, capture_output=True)
+        if p1.returncode != 0:
+            return _fail("bootstrap must pass on the legacy mix: %s%s" % (p1.stdout, p1.stderr[-400:]))
+        c1 = subprocess.run([sys.executable, str(CHECKER), str(root)], text=True, capture_output=True)
+        if c1.returncode != 0:
+            return _fail("THE CONTRADICTION: bootstrap passed and its own checker refused the tree it wrote:\n%s"
+                         % (c1.stdout + c1.stderr)[-700:])
+
+        prop = root / "src" / "main" / "resources" / "application.properties"
+        text_now = prop.read_text(encoding="utf-8")
+        for gone in ("%mysql.quarkus.datasource", "%hsqldb.quarkus.datasource", "%postgresql.quarkus.datasource"):
+            if gone in text_now:
+                return _fail("a datasource family for a profile this run never selects must not survive: %s" % gone)
+        if "quarkus.datasource.db-kind=postgresql" not in text_now:
+            return _fail("the decided datasource must still be there: %s" % text_now[-300:])
+        if ".derived/frozen-input" not in text_now:
+            return _fail("the removal must say where the legacy copy is preserved")
+        if (frozen / "src/main/resources/application.properties").read_text(encoding="utf-8") != LEGACY_PROPS:
+            return _fail("the frozen legacy record must be untouched by the removal")
+        pom_now = (root / "pom.xml").read_text(encoding="utf-8")
+        if "quarkus-jdbc-mysql" in pom_now:
+            return _fail("a JDBC extension for an undecided db-kind must not survive")
+        if "quarkus-jdbc-postgresql" not in pom_now:
+            return _fail("the decided JDBC extension must be in the pom")
+        rec = load_json(root / "evidence/producers/bootstrap.json")
+        ops = {c["op"] for c in rec["changes"]}
+        for op in ("properties.remove-undecided-datasource-keys", "pom.remove-undecided-datasource-extension"):
+            if op not in ops:
+                return _fail("every removal is recorded against the decision that caused it; missing %s in %s" % (op, sorted(ops)))
+
+        # REAPPLICATION CHANGES NOTHING
+        before = tree_hash(root)
+        p2 = subprocess.run([sys.executable, str(SCRIPT), "--root", str(root)], text=True, capture_output=True)
+        if p2.returncode != 0:
+            return _fail("a second bootstrap must pass: %s%s" % (p2.stdout, p2.stderr[-300:]))
+        if tree_hash(root) != before:
+            return _fail("reapplying the bootstrap must change nothing")
+        c2 = subprocess.run([sys.executable, str(CHECKER), str(root)], text=True, capture_output=True)
+        if c2.returncode != 0:
+            return _fail("the checker must still pass after reapplication:\n%s" % (c2.stdout + c2.stderr)[-500:])
+    return 0
+
+
 def main() -> int:
     if _build_profile_case():
         return 1
-    if _retire_offsets_case() or _plugin_config_case() or _profile_merge_case() or _jakarta_imports_case() or _version_precedence_case() or _reapply_catalog_case() or _datasource_case():
+    if _datasource_checker_integration_case() or _retire_offsets_case() or _plugin_config_case() or _profile_merge_case() or _jakarta_imports_case() or _version_precedence_case() or _reapply_catalog_case() or _datasource_case():
         return 1
     with tempfile.TemporaryDirectory(prefix="boot-") as tmp:
         t = Path(tmp).resolve()
@@ -725,7 +809,7 @@ def main() -> int:
         p = subprocess.run([sys.executable, str(SCRIPT), "--root", str(r)], text=True, capture_output=True)
         if [c for c in load_json(r / "evidence/producers/bootstrap.json")["changes"] if c["op"] in ("source.delete", "source.retire") and c["path"] == vet_path]:
             return _fail("an ADR that is not accepted retires nothing")
-    print("OK: bootstrap-destination (trivial launcher deleted; second run preserves the tree; @Bean launcher kept + BOOTSTRAP_BLOCKED; unmapped starter kept + block; Maven settings wiring required; pinned version beats the legacy carry / VERSION_UNMANAGED / BOM_PROBE_MISSING; ADR-retired sources deleted with provenance / stale path blocks; reapply-catalog carries a late row and refuses without a receipt; the decided datasource lands unprefixed with its extension, and an undocumented / mismatched / absent one blocks; an undecided build profile blocks and a decided one reaches the destination; a profile condition nobody activates or enumerates is unaccounted; an enumerated retirement must be bound to this tree's inventory and describe conditions it actually has, and the proposer writes nothing; a retirement is cut in UTF-16 offsets and leaves valid Java even when an astral character precedes the annotation)")
+    print("OK: bootstrap-destination (trivial launcher deleted; second run preserves the tree; @Bean launcher kept + BOOTSTRAP_BLOCKED; unmapped starter kept + block; Maven settings wiring required; pinned version beats the legacy carry / VERSION_UNMANAGED / BOM_PROBE_MISSING; ADR-retired sources deleted with provenance / stale path blocks; reapply-catalog carries a late row and refuses without a receipt; the decided datasource lands unprefixed with its extension, and an undocumented / mismatched / absent one blocks; an undecided build profile blocks and a decided one reaches the destination; a profile condition nobody activates or enumerates is unaccounted; an enumerated retirement must be bound to this tree's inventory and describe conditions it actually has, and the proposer writes nothing; the legacy driver/profile mix goes bootstrap -> checker PASS with removals recorded and reapplication inert; a retirement is cut in UTF-16 offsets and leaves valid Java even when an astral character precedes the annotation)")
     return 0
 
 

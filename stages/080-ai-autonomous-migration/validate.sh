@@ -852,8 +852,14 @@ check "080 the build profile is a decision: a profile the legacy activated, stil
 check "080 the effective datasource is a decision: an absent or half-filled block keeps admission INCONCLUSIVE" \
   "cd '${SCAFFOLD_080}' && python3 -c \"import sys,copy; sys.path.insert(0,'.hermes/lib'); from pathlib import Path; from planner.decisions import load_decisions, missing_decisions; d=load_decisions(Path('.')); full=len(missing_decisions(d, Path('.'))); e=copy.deepcopy(d); e.pop('datasource'); h=copy.deepcopy(d); h['datasource']['jdbc_url_env']=''; print('%d %d %d' % (full, len(missing_decisions(e, Path('.'))), len(missing_decisions(h, Path('.')))))\"" \
   "0 1 1"
+# Three PROPERTIES, one marker each, counted distinctly -- the previous form
+# summed matching lines across an alternation, so two hits on one phrase could
+# stand in for a property that had gone missing.
 check "080 the destination's rendered datasource is measured against the decision at M2 (unprefixed keys, one matching driver, referenced credentials)" \
-  "grep -c -E 'profile-prefixed key is not a configured datasource|more than one JDBC extension|environment reference' '${SCAFFOLD_SKILLS}/migration/bootstrap-destination/scripts/check-datasource-decision.py' | awk '{print (\$1>=3)?1:0}'" \
+  "C='${SCAFFOLD_SKILLS}/migration/bootstrap-destination/scripts/check-datasource-decision.py'; n=0; for p in 'another profile would configure a different database' 'decision drift' 'environment reference'; do grep -q \"\$p\" \"\$C\" && n=\$((n+1)); done; echo \$n" \
+  "3"
+check "080 bootstrap and its own datasource checker agree on the tree bootstrap wrote (integration, not unit)" \
+  "grep -c 'THE CONTRADICTION' '${SCAFFOLD_SKILLS}/migration/bootstrap-destination/scripts/bootstrap-destination.test.py' | awk '{print (\$1>=1)?1:0}'" \
   "1"
 check "080 a cleared deferral raises the attempt budget and never deletes the attempts or their cards" \
   "grep -q -F 'def attempt_budget' '${SCAFFOLD_SKILLS}/migration/fix-until-green/scripts/_loop_common.py' && grep -q -F 'deferral_clearances' '${SCAFFOLD_SKILLS}/migration/fix-until-green/scripts/operator-step.py' && echo 1 || echo 0" \
