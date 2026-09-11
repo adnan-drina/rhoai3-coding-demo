@@ -421,7 +421,77 @@ def _datasource_case() -> int:
     return 0
 
 
+def _build_profile_case() -> int:
+    """A profile the legacy activated, and sources still gated on it: the
+    destination must say what happens to them, or the beans vanish silently."""
+    import json
+    import re as _re
+    with tempfile.TemporaryDirectory(prefix="prof-") as td:
+        root = specimens.build_dest(Path(td) / "d", specimens.specimen("http"), decisions=specimens.admitted_decisions())
+        frozen = root / ".derived" / "frozen-input"
+        res = frozen / "src" / "main" / "resources"
+        res.mkdir(parents=True, exist_ok=True)
+        (res / "application.properties").write_text("spring.profiles.active=hsqldb,spring-data-jpa\n", encoding="utf-8")
+        gated = frozen / "src" / "main" / "java" / "org" / "acme" / "clinic" / "owner" / "SpringDataOwnerRepository.java"
+        gated.parent.mkdir(parents=True, exist_ok=True)
+        gated.write_text("package org.acme.clinic.owner;\n"
+                         "import org.springframework.context.annotation.Profile;\n"
+                         "@Profile(\"spring-data-jpa\")\n"
+                         "public interface SpringDataOwnerRepository {}\n", encoding="utf-8")
+        pipeline.assemble_bundle(root)
+        p0 = subprocess.run([sys.executable, str(SCRIPT), "--root", str(root)], text=True, capture_output=True)
+        if p0.returncode != 1 or "BUILD_PROFILE_UNDECIDED" not in p0.stderr:
+            return _fail("a profile the legacy activated, still gating a source, must block: rc=%s %s" % (p0.returncode, p0.stderr[-400:]))
+        if "spring-data-jpa" not in p0.stderr:
+            return _fail("the block must name the profile: %s" % p0.stderr[-200:])
+
+        # decided: the destination builds with those profiles
+        decided = specimens.admitted_decisions()
+        decided["build_profiles"] = {"adr": "ADR-001", "active": ["prod", "spring-data-jpa"]}
+        d2 = specimens.build_dest(Path(td) / "decided", specimens.specimen("http"), decisions=decided)
+        f2 = d2 / ".derived" / "frozen-input"
+        (f2 / "src" / "main" / "resources").mkdir(parents=True, exist_ok=True)
+        (f2 / "src" / "main" / "resources" / "application.properties").write_text("spring.profiles.active=hsqldb,spring-data-jpa\n", encoding="utf-8")
+        g2 = f2 / "src" / "main" / "java" / "org" / "acme" / "clinic" / "owner" / "SpringDataOwnerRepository.java"
+        g2.parent.mkdir(parents=True, exist_ok=True)
+        g2.write_text(gated.read_text(encoding="utf-8"), encoding="utf-8")
+        pipeline.assemble_bundle(d2)
+        p1 = subprocess.run([sys.executable, str(SCRIPT), "--root", str(d2)], text=True, capture_output=True)
+        if p1.returncode != 0:
+            return _fail("a decided build profile must pass: %s%s" % (p1.stdout, p1.stderr[-300:]))
+        props = (d2 / "src/main/resources/application.properties").read_text(encoding="utf-8")
+        if "quarkus.profile=prod,spring-data-jpa" not in props:
+            return _fail("the decided profiles must reach the destination: %s" % props[-300:])
+        rec = load_json(d2 / "evidence/producers/bootstrap.json")
+        if not any(c["op"] == "properties.build-profile" for c in rec["changes"]):
+            return _fail("the receipt must record which profiles were set")
+        before = tree_hash(d2)
+        subprocess.run([sys.executable, str(SCRIPT), "--root", str(d2)], text=True, capture_output=True)
+        if tree_hash(d2) != before:
+            return _fail("setting the same profiles twice must change nothing")
+
+        # decided the other way: the gates are retired, so nothing is activated
+        retired = specimens.admitted_decisions()
+        retired["build_profiles"] = {"adr": "ADR-001", "active": [], "retire_gates": True}
+        d3 = specimens.build_dest(Path(td) / "retired", specimens.specimen("http"), decisions=retired)
+        f3 = d3 / ".derived" / "frozen-input"
+        (f3 / "src" / "main" / "resources").mkdir(parents=True, exist_ok=True)
+        (f3 / "src" / "main" / "resources" / "application.properties").write_text("spring.profiles.active=hsqldb,spring-data-jpa\n", encoding="utf-8")
+        g3 = f3 / "src" / "main" / "java" / "org" / "acme" / "clinic" / "owner" / "SpringDataOwnerRepository.java"
+        g3.parent.mkdir(parents=True, exist_ok=True)
+        g3.write_text(gated.read_text(encoding="utf-8"), encoding="utf-8")
+        pipeline.assemble_bundle(d3)
+        p2 = subprocess.run([sys.executable, str(SCRIPT), "--root", str(d3)], text=True, capture_output=True)
+        if p2.returncode != 0:
+            return _fail("retiring the gates is a decision too: %s%s" % (p2.stdout, p2.stderr[-300:]))
+        if "quarkus.profile=" in (d3 / "src/main/resources/application.properties").read_text(encoding="utf-8"):
+            return _fail("retiring the gates activates no profile")
+    return 0
+
+
 def main() -> int:
+    if _build_profile_case():
+        return 1
     if _plugin_config_case() or _profile_merge_case() or _jakarta_imports_case() or _version_precedence_case() or _reapply_catalog_case() or _datasource_case():
         return 1
     with tempfile.TemporaryDirectory(prefix="boot-") as tmp:
@@ -541,7 +611,7 @@ def main() -> int:
         p = subprocess.run([sys.executable, str(SCRIPT), "--root", str(r)], text=True, capture_output=True)
         if [c for c in load_json(r / "evidence/producers/bootstrap.json")["changes"] if c["op"] in ("source.delete", "source.retire") and c["path"] == vet_path]:
             return _fail("an ADR that is not accepted retires nothing")
-    print("OK: bootstrap-destination (trivial launcher deleted; second run preserves the tree; @Bean launcher kept + BOOTSTRAP_BLOCKED; unmapped starter kept + block; Maven settings wiring required; pinned version beats the legacy carry / VERSION_UNMANAGED / BOM_PROBE_MISSING; ADR-retired sources deleted with provenance / stale path blocks; reapply-catalog carries a late row and refuses without a receipt; the decided datasource lands unprefixed with its extension, and an undocumented / mismatched / absent one blocks)")
+    print("OK: bootstrap-destination (trivial launcher deleted; second run preserves the tree; @Bean launcher kept + BOOTSTRAP_BLOCKED; unmapped starter kept + block; Maven settings wiring required; pinned version beats the legacy carry / VERSION_UNMANAGED / BOM_PROBE_MISSING; ADR-retired sources deleted with provenance / stale path blocks; reapply-catalog carries a late row and refuses without a receipt; the decided datasource lands unprefixed with its extension, and an undocumented / mismatched / absent one blocks; an undecided build profile blocks and a decided one reaches the destination)")
     return 0
 
 

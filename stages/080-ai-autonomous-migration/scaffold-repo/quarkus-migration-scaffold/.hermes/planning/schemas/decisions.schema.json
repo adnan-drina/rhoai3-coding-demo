@@ -290,6 +290,38 @@
           "description": "the engine the frozen source ran on; kept so the source baseline and its provenance are not rewritten by the destination's choice"
         }
       }
+    },
+    "build_profiles": {
+      "type": "object",
+      "description": "Which build profiles the destination runs with. The legacy selected implementations with spring.profiles.active; the platform resolves @IfBuildProfile at build time, so a profile nobody activates silently removes every bean gated on it. Required when the bootstrap finds profile-gated sources whose profiles the dropped spring.profiles.active used to activate.",
+      "required": [
+        "adr",
+        "active"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "adr": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "active": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "quarkus.profile, in order. Empty means the gates are retired rather than activated, which needs an ADR saying so."
+        },
+        "retire_gates": {
+          "type": "boolean",
+          "description": "true when the decision is to remove the profile gates because the alternatives they selected between are retired"
+        },
+        "note": {
+          "type": "string"
+        }
+      }
     }
   }
 }

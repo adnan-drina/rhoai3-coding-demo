@@ -27,6 +27,7 @@ Exit 0 ok; 1 blocked (receipt written) or refused (catalog / pins / frozen copy 
 from __future__ import annotations
 
 import argparse
+import re
 import shutil
 import sys
 import xml.etree.ElementTree as ET
@@ -46,7 +47,7 @@ def _ensure_hermes_lib() -> None:
 _ensure_hermes_lib()
 from planner.canonical import digest, load_json, sha256_file, write_canonical  # noqa: E402
 from planner.paths import BOM_MANAGED, BOOTSTRAP_RECEIPT, CATALOGS_DIR, DECISIONS, EVIDENCE_BUNDLE, producer_receipt  # noqa: E402
-from planner.decisions import DecisionsError, datasource, load_decisions, retired_sources  # noqa: E402
+from planner.decisions import DecisionsError, build_profiles, datasource, load_decisions, retired_sources  # noqa: E402
 from planner.pins import load_pins, pin  # noqa: E402
 
 NS = "http://maven.apache.org/POM/4.0.0"
@@ -407,6 +408,83 @@ def rename_jakarta_imports(root: Path, catalog: dict, changes: list[dict], block
             per_file[parts[0]] = per_file.get(parts[0], 0) + 1
     for path, n in sorted(per_file.items()):
         changes.append({"op": "source.rename-imports", "path": path, "imports": n, "source": "compat-mapping.json package_renames (Jakarta EE 10 namespace)"})
+
+
+PROFILE_ANNOTATIONS = ("org.springframework.context.annotation.Profile", "io.quarkus.arc.profile.IfBuildProfile")
+PROFILE_RE = re.compile(r"@(?:Profile|IfBuildProfile)\s*\(\s*[{\s]*\"([^\"]+)\"")
+
+
+def profile_gated_sources(root: Path) -> dict[str, list[str]]:
+    """Imported sources whose beans exist only under a named profile."""
+    out: dict[str, list[str]] = {}
+    base = root / "src" / "main" / "java"
+    if not base.is_dir():
+        return out
+    for p in sorted(base.rglob("*.java")):
+        text = p.read_text(encoding="utf-8", errors="replace")
+        if not any(a.rsplit(".", 1)[-1] in text for a in PROFILE_ANNOTATIONS):
+            continue
+        names = sorted(set(PROFILE_RE.findall(text)))
+        if names:
+            out[p.relative_to(root).as_posix()] = names
+    return out
+
+
+def check_build_profiles(root: Path, copy: Path, catalog: dict, decisions_doc: dict, changes: list[dict], blocks: list[dict]) -> None:
+    """The legacy's profile selection is a decision, not a deletion.
+
+    spring.profiles.active chose which implementation exists. The catalog drops
+    that key (the platform has no equivalent runtime property), and the sources
+    keep their profile gates. If nobody decides which profiles the destination
+    builds with, every gated bean disappears and the platform refuses for want
+    of an implementation -- one file at a time, with no obligation naming the
+    real cause (measured on pilot v7: five repository repairs, each correct,
+    each followed by the next repository).
+
+    So: when the frozen legacy activated profiles and the destination still has
+    sources gated on any of them, decisions.yaml must say what happens to them
+    -- which profiles are active, or that the gates are retired."""
+    legacy_active: list[str] = []
+    src = copy / "src" / "main" / "resources" / "application.properties"
+    if src.is_file():
+        for raw in src.read_text(encoding="utf-8", errors="replace").splitlines():
+            line = raw.strip()
+            if line.startswith("spring.profiles.active="):
+                legacy_active = [x.strip() for x in line.partition("=")[2].split(",") if x.strip()]
+    gated = profile_gated_sources(root)
+    relevant = {path: names for path, names in gated.items() if not legacy_active or set(names) & set(legacy_active)}
+    decided = build_profiles(decisions_doc)
+    if not relevant:
+        return
+    if not decided:
+        names = sorted({n for v in relevant.values() for n in v})
+        blocks.append({
+            "class": "BUILD_PROFILE_UNDECIDED",
+            "subject": ", ".join(names),
+            "detail": ("the legacy activated %s and %d source(s) are still gated on %s (%s); decisions.yaml build_profiles must name the "
+                       "profiles the destination builds with, or record that the gates are retired because the alternatives they selected "
+                       "between are gone. A profile nobody activates removes every bean gated on it."
+                       % (", ".join(legacy_active) or "no profile", len(relevant), ", ".join(names), ", ".join(sorted(relevant)[:3]))),
+        })
+        return
+    active = [str(x) for x in (decided.get("active") or [])]
+    if active:
+        prop = root / "src" / "main" / "resources" / "application.properties"
+        lines = prop.read_text(encoding="utf-8", errors="replace").splitlines() if prop.is_file() else []
+        want = "quarkus.profile=%s" % ",".join(active)
+        for i, raw in enumerate(lines):
+            if raw.strip().startswith("quarkus.profile="):
+                if lines[i].strip() != want:
+                    lines[i] = want
+                    changes.append({"op": "properties.build-profile", "value": ",".join(active), "provenance": "decisions.yaml build_profiles (%s)" % decided.get("adr")})
+                break
+        else:
+            lines += ["", "# bootstrap: the build profiles decided in decisions.yaml (%s); the legacy" % decided.get("adr"),
+                      "# selected implementations with spring.profiles.active=%s" % ",".join(legacy_active),
+                      want]
+            changes.append({"op": "properties.build-profile", "value": ",".join(active), "provenance": "decisions.yaml build_profiles (%s)" % decided.get("adr")})
+        prop.parent.mkdir(parents=True, exist_ok=True)
+        prop.write_text("\n".join(lines).rstrip("\n") + "\n", encoding="utf-8")
 
 
 def apply_datasource_decision(root: Path, catalog: dict, decisions_doc: dict, changes: list[dict], blocks: list[dict]) -> None:
@@ -832,7 +910,11 @@ def reapply_catalog(root: Path) -> int:
     tree.write(pom, encoding="utf-8", xml_declaration=True)
     if (root / DECISIONS).is_file():
         try:
-            apply_datasource_decision(root, catalog, load_decisions(root), changes, blocks)
+            doc = load_decisions(root)
+            apply_datasource_decision(root, catalog, doc, changes, blocks)
+            freeze_p = producer_receipt(root, "freeze")
+            copy = Path(str(load_json(freeze_p).get("analysis_copy") or "")) if freeze_p.is_file() else Path("/nonexistent")
+            check_build_profiles(root, copy, catalog, doc, changes, blocks)
         except DecisionsError as exc:
             blocks.append({"class": "DECISIONS_INVALID", "subject": str(DECISIONS), "detail": str(exc)})
     rename_jakarta_imports(root, catalog, changes, blocks)
@@ -840,7 +922,7 @@ def reapply_catalog(root: Path) -> int:
     receipt["inputs"] = dict(receipt.get("inputs") or {})
     receipt["inputs"]["catalog_sha256"] = sha256_file(cat_p)
     receipt["outputs"] = [{"path": "pom.xml", "sha256": sha256_file(pom)}]
-    rewrite_blocks(receipt, ("VERSION_UNMANAGED", "BOM_PROBE_MISSING", "TOOL_MISSING", "DATASOURCE_UNSUPPORTED", "DATASOURCE_EXTENSION_MISMATCH", "DECISIONS_INVALID"), blocks)
+    rewrite_blocks(receipt, ("VERSION_UNMANAGED", "BOM_PROBE_MISSING", "TOOL_MISSING", "DATASOURCE_UNSUPPORTED", "DATASOURCE_EXTENSION_MISMATCH", "DECISIONS_INVALID", "BUILD_PROFILE_UNDECIDED"), blocks)
     write_canonical(receipt_p, receipt)
     for c in changes:
         print("  - %s %s" % (c["op"], c.get("gav") or c.get("artifact") or c.get("path") or c.get("key") or ""))
@@ -906,7 +988,9 @@ def main(argv: list[str] | None = None) -> int:
     bootstrap_properties(root, catalog, changes)
     if (root / DECISIONS).is_file():
         try:
-            apply_datasource_decision(root, catalog, load_decisions(root), changes, blocks)
+            doc = load_decisions(root)
+            apply_datasource_decision(root, catalog, doc, changes, blocks)
+            check_build_profiles(root, copy, catalog, doc, changes, blocks)
         except DecisionsError as exc:
             blocks.append({"class": "DECISIONS_INVALID", "subject": str(DECISIONS), "detail": str(exc)})
     bootstrap_main_class(root, catalog, bundle, changes, blocks)

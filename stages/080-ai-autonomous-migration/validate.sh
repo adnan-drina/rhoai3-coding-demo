@@ -807,6 +807,9 @@ check "080 a packaging or startup gate that did not run is unknown, never a pass
 check "080 acceptance is phase-aware: a gate repair with an unchanged measure is accepted, a regression is not" \
   "cd '${SCAFFOLD_080}' && python3 -c \"import sys; sys.path.insert(0,'.hermes/lib'); from planner.worklist import progress; m={'known':True,'tuple':[0,0,0]}; w={'known':True,'tuple':[0,1,0]}; f={'package':{'ran':True,'rc':1}}; t={'package':{'ran':True,'rc':0}}; print('%s %s %s' % (progress(m,m,set(),set(),gate='package',prev_runtime=f,cur_runtime=t)[0], progress(m,m,set(),set())[0], progress(m,w,set(),set(),gate='package',prev_runtime=f,cur_runtime=t)[0]))\"" \
   "True False False"
+check "080 the build profile is a decision: a profile the legacy activated, still gating a source, blocks until decisions.yaml says what happens to it" \
+  "grep -q -F 'BUILD_PROFILE_UNDECIDED' '${SCAFFOLD_SKILLS}/migration/bootstrap-destination/scripts/bootstrap-destination.py' && grep -q -F 'def check_build_profiles' '${SCAFFOLD_SKILLS}/migration/bootstrap-destination/scripts/bootstrap-destination.py' && echo 1 || echo 0" \
+  "1"
 check "080 the effective datasource is a decision: an absent or half-filled block keeps admission INCONCLUSIVE" \
   "cd '${SCAFFOLD_080}' && python3 -c \"import sys,copy; sys.path.insert(0,'.hermes/lib'); from pathlib import Path; from planner.decisions import load_decisions, missing_decisions; d=load_decisions(Path('.')); full=len(missing_decisions(d, Path('.'))); e=copy.deepcopy(d); e.pop('datasource'); h=copy.deepcopy(d); h['datasource']['jdbc_url_env']=''; print('%d %d %d' % (full, len(missing_decisions(e, Path('.'))), len(missing_decisions(h, Path('.')))))\"" \
   "0 1 1"

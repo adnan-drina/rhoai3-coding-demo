@@ -138,6 +138,22 @@ def datasource(doc: dict[str, Any]) -> dict[str, Any]:
     return dict(ds)
 
 
+def build_profiles(doc: dict[str, Any]) -> dict[str, Any]:
+    """The decided build profiles, or {} when they are not decided.
+
+    A profile is not decoration: the legacy chose which implementation exists
+    with spring.profiles.active, and the platform resolves @IfBuildProfile at
+    build time. A destination that activates none of the profiles its own
+    sources are gated on has no implementations at all, which is what stalled
+    pilot v7 at the packaging gate."""
+    bp = doc.get("build_profiles")
+    if not isinstance(bp, dict) or not _adr_ok(doc, bp.get("adr")):
+        return {}
+    if not bp.get("active") and not bp.get("retire_gates"):
+        return {}
+    return dict(bp)
+
+
 def known_db_kinds(root: Path) -> dict[str, Any]:
     doc = load_json(Path(root) / CATALOGS_DIR / "compat-mapping.json")
     return (doc.get("datasources") or {}).get("db_kinds") or {}
