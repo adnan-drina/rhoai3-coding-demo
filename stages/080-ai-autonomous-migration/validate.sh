@@ -822,8 +822,11 @@ check "080 a retained candidate keeps its deletions and must come back as itself
 check "080 the brief cites the frozen implementation a retirement removed, with its query" \
   "grep -q -F 'def frozen_member_implementations' '${SCAFFOLD_SKILLS}/migration/fix-until-green/scripts/brief.py' && grep -q -F 'rather than writing one' '${SCAFFOLD_SKILLS}/migration/fix-until-green/scripts/brief.py' && echo 1 || echo 0" \
   "1"
-check "080 a candidate that annotates a write with a query is refused by acceptance, not merely cautioned" \
-  "grep -q -F 'query_annotated_writes' '${SCAFFOLD_SKILLS}/migration/fix-until-green/scripts/advance.py' && grep -q -F 'a write may not be repaired with a query annotation' '${SCAFFOLD_SKILLS}/migration/fix-until-green/scripts/advance.py' && echo 1 || echo 0" \
+check "080 SI-1: a member the source wrote with must still write, and the rule reads the declaration rather than its name" \
+  "cd '${SCAFFOLD_080}' && python3 -c \"import sys; sys.path.insert(0,'.hermes/skills/migration/fix-until-green/scripts'); from _loop_common import state_change_violations as v; w={'save','delete'}; q=chr(34); bad=len(v('@org.springframework.data.jpa.repository.Query('+q+'SELECT u FROM User u'+q+')\n void save(User u);', w)[0]); okm=len(v('@Query('+q+'DELETE FROM Pet p'+q+')\n @Modifying\n void delete(Pet p);', w)[0]); rd=len(v('@Query('+q+'SELECT p FROM Pet p'+q+')\n Pet updatedPetById(int id);', w)[0]); unk=len(v('@Query(C.SAVE)\n void save(User u);', w)[1]); print('%d%d%d%d' % (bad, okm, rd, unk))\"" \
+  "1001"
+check "080 a failing gate cannot discharge an obligation: the candidate is retained, not accepted" \
+  "grep -q -F 'not proof it was repaired' '${SCAFFOLD_LIB}/planner/worklist.py' && grep -q -F 'unproven-repair' '${SCAFFOLD_SKILLS}/migration/fix-until-green/scripts/advance.py' && echo 1 || echo 0" \
   "1"
 check "080 the brief names the members likely to carry the same cause, so one card is one verification" \
   "grep -q -F 'sibling_note' '${SCAFFOLD_SKILLS}/migration/fix-until-green/scripts/brief.py' && python3 '${SCAFFOLD_SKILLS}/migration/fix-until-green/scripts/brief.test.py' >/dev/null && echo 1 || echo 0" \

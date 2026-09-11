@@ -16,6 +16,7 @@ import tempfile
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+SCRIPTS = HERE
 GOLDEN = HERE.parents[4]
 VERIFY = HERE / "verify.py"
 ADVANCE = HERE / "advance.py"
@@ -110,45 +111,39 @@ def _pending_classify_case() -> int:
     return 0
 
 
-def _write_veto_case() -> int:
-    """A repair may not annotate a write with a query.
+def _si1_case() -> int:
+    """SI-1/v2: a member the SOURCE wrote with must still write.
 
-    The detector is the interesting part: Spring Data derives writes from
-    CrudRepository, so a @Query on save or delete either does nothing or does
-    the wrong thing, while a real modifying statement is legitimate. advance.py
-    refuses a candidate that contains one (its call is asserted by the stage
-    validator)."""
+    The rule the architect asked for, replacing a name-prefix veto that missed
+    a fully-qualified @Query, borrowed @Modifying from a neighbour, and flagged
+    a read called updatedPetById."""
     sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from _loop_common import query_annotated_writes  # noqa: E402
+    from _loop_common import state_change_violations  # noqa: E402
 
-    bad = ('public interface R {\n'
-           '    @Query("SELECT u FROM User u WHERE u.id = ?1.id")\n'
-           '    void save(User u);\n'
-           '    @Query\n'
-           '    void delete(User u);\n'
-           '    @Query("SELECT p FROM Pet p")\n'
-           '    List<Pet> findAll();\n'
-           '}\n')
-    found = dict(query_annotated_writes(bad))
-    if sorted(found) != ["delete", "save"]:
-        return _fail("a query annotation on save or delete is refused; a finder's is not: %s" % sorted(found))
-    if found["delete"] != "" or not found["save"].startswith("SELECT"):
-        return _fail("the refusal must carry what was written: %s" % found)
-    ok = ('public interface R {\n'
-          '    @Modifying\n'
-          '    @Query("DELETE FROM Pet p WHERE p.id = ?1")\n'
-          '    void deleteById(int id);\n'
-          '    @Query("UPDATE User u SET u.enabled = false WHERE u.id = ?1")\n'
-          '    @Modifying\n'
-          '    void updateDisabled(int id);\n'
-          '}\n')
-    if query_annotated_writes(ok):
-        return _fail("a real modifying statement is legitimate, on either side of @Modifying: %s" % query_annotated_writes(ok))
+    writes = {"save", "delete"}
+    cases = {
+        "fully-qualified @Query on a write": ('@org.springframework.data.jpa.repository.Query("SELECT u FROM User u")\n    void save(User u);', 1, 0),
+        "a @Query carrying no statement": ("@Query\n    void save(User u);", 1, 0),
+        "@Modifying on the PRECEDING member is not borrowed": ('@Modifying\n    @Query("UPDATE Pet p SET p.n = ?1")\n    void updateName(String n);\n\n    @Query("UPDATE User u SET u.id = u.id")\n    void save(User u);', 1, 0),
+        "a documented modifying delete": ('@Modifying\n    @Query("DELETE FROM Pet p WHERE p.id = ?1")\n    void delete(Pet p);', 0, 0),
+        "annotation order does not change the verdict": ('@Query("DELETE FROM Pet p WHERE p.id = ?1")\n    @Modifying\n    void delete(Pet p);', 0, 0),
+        "a multi-line query argument": ('@Modifying\n    @Query(\n        "DELETE FROM Pet p WHERE p.id = ?1"\n    )\n    void delete(Pet p);', 0, 0),
+        "a read whose name begins like a write": ('@Query("SELECT p FROM Pet p")\n    Pet updatedPetById(int id);', 0, 0),
+        "an inherited write declares nothing": ("public interface R extends CrudRepository<User,Integer> { }", 0, 0),
+        "an argument the rule cannot read": ("@Query(QUERIES.SAVE)\n    void save(User u);", 0, 1),
+    }
+    for name, (src, want_bad, want_unknown) in cases.items():
+        bad, unknown = state_change_violations(src, writes)
+        if len(bad) != want_bad or len(unknown) != want_unknown:
+            return _fail("%s: %d violation(s) and %d inconclusive, wanted %d and %d" % (name, len(bad), len(unknown), want_bad, want_unknown))
+    bad, _ = state_change_violations('@Query("SELECT u FROM User u")\n    void save(User u);', writes)
+    if bad[0]["rule"] != "SI-1/v2" or "state change" not in bad[0]["detail"]:
+        return _fail("the finding must name its rule and its contract: %s" % bad[0])
     return 0
 
 
 def main() -> int:
-    if _write_veto_case():
+    if _si1_case():
         return 1
     if _pending_classify_case():
         return 1
@@ -570,8 +565,8 @@ def main() -> int:
         specimens.runtime(root, package_rc=0, boot_ready=None)
         specimens.verify(root, errors=[], failures=[], findings=f4)
         p = _advance(root, cl["id"], "t_pkg")
-        if p.returncode != 0 or "ACCEPTED" not in p.stdout or "went from failing to passing" not in p.stdout:
-            return _fail("a packaging repair with an unchanged measure must be accepted on its gate: %s%s" % (p.stdout, p.stderr))
+        if p.returncode != 0 or "ACCEPTED" not in p.stdout or "discharges" not in p.stdout:
+            return _fail("a packaging repair with an unchanged measure must be accepted when the gate passes: %s%s" % (p.stdout, p.stderr))
 
         # --- two independent packaging defects, one repaired ---
         # The gate holds one obligation per place it fails. Repairing the one
@@ -600,7 +595,7 @@ def main() -> int:
                           log="[error] after 2 rounds: Build step X#build threw an exception: No implementation of interface %s was found" % fqn(one))
         specimens.verify(root, errors=[], failures=[], findings=f4)
         p = _advance(root, cl2["id"], "t_pkg2")
-        if p.returncode == 0 or "still open" not in (p.stdout + p.stderr):
+        if p.returncode == 0 or "still reported" not in (p.stdout + p.stderr):
             return _fail("a reworded failure at the same place must not count as progress: %s%s" % (p.stdout, p.stderr))
 
         # the rejection restored the accepted tree AND its receipts; the next
@@ -629,9 +624,34 @@ def main() -> int:
         specimens.runtime(root, package_rc=1, boot_ready=None, detail="Failed to execute goal quarkus-maven-plugin:build",
                           log="Build step SpringDataJPAProcessor#build threw an exception: No implementation of interface %s was found" % fqn(two))
         specimens.verify(root, errors=[], failures=[], findings=f4)
+        attempts_before = dict((load_json(root / LOOP_STEPS).get("attempts") or {}))
         p = _advance(root, cl2["id"], "t_pkg3")
-        if p.returncode != 0 or "is gone and the gate holds no more than before" not in p.stdout:
-            return _fail("repairing this card's obligation while the gate still fails elsewhere must be accepted: %s%s" % (p.stdout, p.stderr))
+        # a failing gate cannot discharge an obligation: the repair is RETAINED,
+        # not accepted, and no attempt is spent
+        blob = p.stdout + p.stderr
+        if p.returncode == 0 or "VERIFICATION_PENDING" not in blob or "not proof it was repaired" not in blob:
+            return _fail("an unproven gate repair must be retained, not accepted: %s" % blob[:400])
+        steps_now = load_json(root / LOOP_STEPS)
+        if (steps_now.get("attempts") or {}) != attempts_before:
+            return _fail("retaining a candidate must not spend an attempt: %s → %s" % (attempts_before, steps_now.get("attempts")))
+        if not [r for r in (steps_now.get("pending") or []) if r.get("cluster") == cl2["id"] and r.get("cause") == "unproven-repair"]:
+            return _fail("the retained candidate must be recorded with its cause: %s" % steps_now.get("pending"))
+
+        # and the way out is the one the record names: restore the candidate,
+        # repair what the gate now reports, and let the gate passing discharge
+        # the whole batch at once
+        rp = subprocess.run([sys.executable, str(SCRIPTS / "restore-pending.py"), "--root", str(root), "--cluster", cl2["id"]],
+                            text=True, capture_output=True)
+        if rp.returncode != 0 or "restored" not in rp.stdout:
+            return _fail("restore-pending must put the retained candidate back: %s%s" % (rp.stdout, rp.stderr))
+        specimens.runtime(root, package_rc=0, boot_ready=None)
+        specimens.verify(root, errors=[], failures=[], findings=f4)
+        p = _advance(root, cl2["id"], "t_pkg3b")
+        if p.returncode != 0 or "ACCEPTED" not in p.stdout:
+            return _fail("the gate passing must discharge the retained batch: %s%s" % (p.stdout, p.stderr))
+        last = load_json(root / LOOP_STEPS)["steps"][-1]
+        if not last.get("discharged"):
+            return _fail("the accepted step must record which obligations it discharged: %s" % last.get("discharged"))
 
         # settle: the gate passes again for the rest of the walk
         specimens.runtime(root, package_rc=0, boot_ready=None)

@@ -674,6 +674,18 @@ def measure_of(items: list[dict[str, Any]], *, incidents_known: bool, compile_kn
     return m
 
 
+class _Retain(str):
+    """A third outcome beside accept and reject: keep the candidate, prove
+    nothing, spend no attempt. Truthy comparisons treat it as "not accepted",
+    and callers that know about it retain instead of reverting."""
+
+    def __bool__(self) -> bool:  # noqa: D105 - "not accepted"
+        return False
+
+
+RETAIN = _Retain("retain")
+
+
 def gate_items(worklist: dict[str, Any], gate: str) -> set[str]:
     """The ids of the obligations one gate currently holds."""
     return {str(i["id"]) for i in (worklist.get("items") or []) if str(i.get("gate") or "") == gate}
@@ -739,22 +751,34 @@ def progress(prev: dict[str, Any], cur: dict[str, Any], prev_ids: set[str], cur_
         other = "package" if gate == "boot" else "boot"
         if _passing(prev_rt, other) and not _passing(cur_rt, other):
             return False, "the %s gate was passing and is not any more; a %s repair may not break the phase before it" % (other, gate)
-        if _passing(cur_rt, gate) and not _passing(prev_rt, gate):
-            return True, "the %s gate went from failing to passing with the measure unchanged at %s" % (gate, b)
+        issued_now = {i for i in (issued_items or []) if str(i).startswith("rt:")}
+        if _passing(cur_rt, gate) and not (issued_now & (cur_gate_items or set())):
+            # the gate passing is the only thing that can discharge this card's
+            # obligations, and it discharges all of them at once (a batch)
+            if issued_now:
+                return True, "the %s gate passes and discharges %s" % (gate, ",".join(sorted(issued_now)[:3]))
+            return True, "the %s gate passes with the measure unchanged at %s" % (gate, b)
         if not _passing(cur_rt, gate):
-            # A gate can hold more than one obligation, and only one of them is
-            # on this card. Repairing it is progress even while the gate still
-            # fails on another -- provided THIS obligation is gone (its
-            # identity is gate+kind+locus, so a reworded failure at the same
-            # place is not gone) and the gate did not acquire more of them.
+            # A failing gate cannot discharge an obligation. This tool reports
+            # ONE failure at a time, so an issued obligation's disappearance
+            # from the output is not proof it was repaired: it may simply not
+            # have been reached. Accepting on absence is the same error as
+            # calling an unrun check clean, and it is how a half-repaired
+            # repository could be promoted (architect review, 2026-09-11).
+            #
+            # So while the gate fails there are exactly two outcomes: the
+            # obligation is still reported, which is proof the repair did not
+            # land -- or it is not, which is unproven and the candidate is
+            # RETAINED rather than accepted or thrown away.
             issued = {i for i in (issued_items or []) if str(i).startswith("rt:")}
-            before, after = prev_gate_items or set(), cur_gate_items or set()
-            if issued and not (issued & after):
-                if len(after) > len(before):
-                    return False, "the %s obligation was repaired and the gate acquired %d more (%d → %d); that is not a smaller list" % (gate, len(after) - len(before), len(before), len(after))
-                return True, "the %s obligation %s is gone and the gate holds no more than before (%d → %d)" % (gate, ",".join(sorted(issued)[:2]), len(before), len(after))
+            after = cur_gate_items or set()
+            if issued and (issued & after):
+                return False, "the %s obligation %s is still reported (its identity is the gate, the cause, the file and the member; a different message at the same place is the same obligation)" % (gate, ",".join(sorted(issued & after)[:2]))
             if issued:
-                return False, "the %s obligation %s is still open (its identity is the gate, the kind and the file; a different message at the same place is the same obligation)" % (gate, ",".join(sorted(issued)[:2]))
+                return RETAIN, ("the %s gate still fails and %s is no longer reported, which is not proof it was repaired: this tool "
+                                "reports one failure at a time. The candidate is retained unaccepted; repair the members it now names "
+                                "in the same candidate, and the gate passing discharges them together"
+                                % (gate, ",".join(sorted(issued)[:2])))
             return False, "the %s gate is still not passing (%s)" % (gate, "; ".join((cur_rt.get("reasons") or [])[:2]) or "see its receipt")
     return False, "measure %s did not decrease from %s" % (b, a)
 

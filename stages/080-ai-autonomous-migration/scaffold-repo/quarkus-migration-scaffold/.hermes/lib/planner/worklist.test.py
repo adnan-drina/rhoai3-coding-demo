@@ -7,7 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from planner.cards import card_title
-from planner.worklist import apply_supersessions, runtime_items  # noqa: E402
+from planner.worklist import RETAIN, apply_supersessions, runtime_items  # noqa: E402
 from planner.worklist import KIND_RANK, cluster_items, compile_items, file_depths, incidents_from_findings, measure_of, obligation_keys, path_class, progress, surefire_from_reports, test_items  # noqa: E402
 
 
@@ -99,21 +99,25 @@ def _gate_progress_case() -> int:
                        issued_items=[A], prev_gate_items={A}, cur_gate_items=set())
     if not ok:
         return _fail("a gate that starts passing is progress: %s" % why)
-    # the obligation this card was issued for is gone; the gate still fails elsewhere
+    # the obligation is no longer reported, but the gate still fails: this tool
+    # reports one failure at a time, so absence is not proof. The candidate is
+    # RETAINED -- neither accepted nor thrown away.
     ok, why = progress(green, green, set(), set(), gate="package", prev_runtime=failing, cur_runtime=failing,
                        issued_items=[A], prev_gate_items={A}, cur_gate_items={B})
-    if not ok or "is gone" not in why:
-        return _fail("repairing this card's obligation while the gate fails elsewhere is progress: %s" % why)
+    if ok is not RETAIN or "not proof it was repaired" not in why:
+        return _fail("an unproven gate repair must be retained, not accepted: %r %s" % (ok, why))
+    if ok:
+        return _fail("a retained outcome must not read as accepted")
     # the same obligation, reworded: its identity is gate+kind+locus, so it is still there
     ok, why = progress(green, green, set(), set(), gate="package", prev_runtime=failing, cur_runtime=failing,
                        issued_items=[A], prev_gate_items={A}, cur_gate_items={A})
-    if ok or "still open" not in why:
+    if ok or "still reported" not in why:
         return _fail("a failure that only reads differently is not progress: %s" % why)
-    # a repair that leaves the gate holding more than it did
-    ok, why = progress(green, green, set(), set(), gate="package", prev_runtime=failing, cur_runtime=failing,
-                       issued_items=[A], prev_gate_items={A}, cur_gate_items={B, "rt:package:cccc"})
-    if ok or "not a smaller list" not in why:
-        return _fail("a repair that multiplies the gate's obligations is not progress: %s" % why)
+    # the gate passing discharges the whole batch the card was issued for
+    ok, why = progress(green, green, set(), set(), gate="package", prev_runtime=failing, cur_runtime=passing,
+                       issued_items=[A, B], prev_gate_items={A, B}, cur_gate_items=set())
+    if not ok or "discharges" not in why:
+        return _fail("a passing gate discharges every obligation on the card: %s" % why)
     # a gate repair may not break the phase before it
     ok, why = progress(green, green, set(), set(), gate="package", prev_runtime=both, cur_runtime=boot_broken,
                        issued_items=[A], prev_gate_items={A}, cur_gate_items=set())

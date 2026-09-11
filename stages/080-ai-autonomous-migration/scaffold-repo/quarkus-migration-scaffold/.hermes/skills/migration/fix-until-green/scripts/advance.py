@@ -35,14 +35,14 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _loop_common import attempt_budget, candidate_sha256, classify_inconclusive, clear_pending, query_annotated_writes, catalog_property_mappings, ensure_hermes_lib, git, load_deferred, load_issued, load_state, load_steps, pending_for, product_paths_changed, profile_keys_lost_in_tree, restore_reports, revert_paths, save_deferred, save_pending_candidate, save_steps, snapshot_reports  # noqa: E402
+from _loop_common import attempt_budget, candidate_sha256, classify_inconclusive, clear_pending, source_write_members, state_change_violations, catalog_property_mappings, ensure_hermes_lib, git, load_deferred, load_issued, load_state, load_steps, pending_for, product_paths_changed, profile_keys_lost_in_tree, restore_reports, revert_paths, save_deferred, save_pending_candidate, save_steps, snapshot_reports  # noqa: E402
 
 ensure_hermes_lib()
 from planner import pipeline  # noqa: E402
 from planner.canonical import digest, load_json  # noqa: E402
 from planner.decisions import load_decisions, max_attempts  # noqa: E402
 from planner.paths import EVIDENCE_BUNDLE, LOOP_ACCEPTED, LOOP_ISSUED, MTA_RESCAN_FINDINGS, VERIFY_RUN, WORKLIST  # noqa: E402
-from planner.worklist import build_worklist, gate_items, incidents_from_findings, item_ids, obligation_keys, progress  # noqa: E402
+from planner.worklist import RETAIN, build_worklist, gate_items, incidents_from_findings, item_ids, obligation_keys, progress  # noqa: E402
 
 
 def _verify_meta(run: dict) -> dict:
@@ -94,7 +94,7 @@ def _reject(root: Path, steps: dict, cluster: str, card: str, cur: dict, reason:
     return 1
 
 
-def _pending(root: Path, steps: dict, cluster: str, card: str, cur: dict, reason: str, changed: list[str], on_disk: str) -> int:
+def _pending(root: Path, steps: dict, cluster: str, card: str, cur: dict, reason: str, changed: list[str], on_disk: str, cause: str = "") -> int:
     """Retain an unaccepted candidate when verification cannot conclude.
 
     Does not count an implementation attempt. Restores the accepted tree so
@@ -102,7 +102,7 @@ def _pending(root: Path, steps: dict, cluster: str, card: str, cur: dict, reason
     the candidate and re-verify; K4 must not mint a new attempt (pending
     blocks next_card). Terminator: kanban_block kind=needs_input naming the cluster."""
     run = load_json(root / VERIFY_RUN) if (root / VERIFY_RUN).is_file() else {}
-    cause = classify_inconclusive(cur.get("measure") or {}, run if isinstance(run, dict) else {})
+    cause = cause or classify_inconclusive(cur.get("measure") or {}, run if isinstance(run, dict) else {})
     clear_pending(steps, cluster, why="replaced")
     issued = load_issued(root)
     row = save_pending_candidate(
@@ -239,27 +239,32 @@ def main(argv: list[str] | None = None) -> int:
         else:
             prev_keys = set(prev.get("item_ids") or [])
             cur_keys = item_ids(cur)
-    # A repair may not annotate a write with a query. Spring Data derives
-    # writes from CrudRepository; a @Query on save or delete either does
-    # nothing or does the wrong thing, and a bare one exists only to stop the
-    # platform complaining (pilot v7 annotated ten of them and the build kept
-    # moving while the repositories stopped meaning anything). A real
-    # modifying statement is legitimate and is left alone.
-    annotated: list[str] = []
+    # SI-1: a member the SOURCE implemented as a state change must still
+    # perform one. The rule is the contract, not a naming convention: a
+    # @Modifying UPDATE/DELETE/INSERT passes, a query this rule cannot read is
+    # inconclusive and recorded, and a write answered with a read fails.
+    si1_writes = source_write_members(root)
+    si1_bad: list[dict] = []
+    si1_unknown: list[dict] = []
     for rel in changed:
         if not rel.endswith(".java"):
             continue
         f = root / rel
         if not f.is_file():
             continue
-        for name, query in query_annotated_writes(f.read_text(encoding="utf-8", errors="replace")):
-            annotated.append("%s#%s%s" % (rel.rsplit("/", 1)[-1], name, (" = %r" % query[:60]) if query else " (no query)"))
-    if annotated:
+        bad, unknown = state_change_violations(f.read_text(encoding="utf-8", errors="replace"), si1_writes)
+        for row in bad + unknown:
+            row["path"] = rel
+        si1_bad.extend(bad)
+        si1_unknown.extend(unknown)
+    if si1_bad:
         return _reject(root, steps, args.cluster, args.card, cur,
-                       "a write may not be repaired with a query annotation: %s. Spring Data provides save and delete through "
-                       "CrudRepository<T, ID>; annotate a real modifying statement with @Modifying, or extend CrudRepository and "
-                       "drop the local declaration" % ", ".join(sorted(annotated)[:4]),
+                       "%s: %s" % (si1_bad[0]["rule"], "; ".join("%s %s" % (r["path"].rsplit("/", 1)[-1], r["detail"]) for r in si1_bad[:3])),
                        changed, mint=not args.no_mint, hermes=args.hermes)
+    if si1_unknown:
+        print("WARN: %s inconclusive on %s (not a pass and not a violation): %s"
+              % (si1_unknown[0]["rule"], ", ".join(sorted({r["path"] for r in si1_unknown})),
+                 "; ".join(r["detail"] for r in si1_unknown[:2])), file=sys.stderr)
     gate = str(issued.get("gate") or "")
     ok, reason = progress(prev["measure"], cur["measure"], prev_keys, cur_keys,
                           gate=gate,
@@ -268,6 +273,10 @@ def main(argv: list[str] | None = None) -> int:
                           prev_gate_items=set(str(i) for i in (issued.get("gate_items") or [])),
                           cur_gate_items=gate_items(cur, gate))
     if not ok:
+        if ok is RETAIN:
+            # the repair may well be right and the gate cannot say so yet:
+            # retain it, spend no attempt, and let the same card carry on
+            return _pending(root, steps, args.cluster, args.card, cur, reason, changed, on_disk, cause="unproven-repair")
         if not (cur.get("measure") or {}).get("known"):
             return _pending(root, steps, args.cluster, args.card, cur, reason, changed, on_disk)
         clear_pending(steps, args.cluster, why="rejected")
@@ -275,7 +284,7 @@ def main(argv: list[str] | None = None) -> int:
     clear_pending(steps, args.cluster, why="accepted")
     sha = _commit(root, changed, "fix-until-green: %s attempt %s %s" % (args.cluster, issued.get("attempt"), cur["measure"]["tuple"]))
     snapshot_reports(root)
-    steps["steps"].append({"cluster": args.cluster, "card": args.card, "attempt": issued.get("attempt"), "idempotency_key": issued.get("idempotency_key"), "commit": sha, "candidate_sha256": on_disk, "measure": cur["measure"], "item_ids": sorted(item_ids(cur)), "obligation_keys": sorted(obligation_keys(cur)), "worklist_sha256": digest(cur), "changed": changed, "verdict": "accepted", "reason": reason, "runtime": cur.get("runtime") or {}, "gate": str(issued.get("gate") or ""), "verify": _verify_meta(run if isinstance(run, dict) else {})})
+    steps["steps"].append({"cluster": args.cluster, "card": args.card, "attempt": issued.get("attempt"), "idempotency_key": issued.get("idempotency_key"), "commit": sha, "candidate_sha256": on_disk, "measure": cur["measure"], "item_ids": sorted(item_ids(cur)), "obligation_keys": sorted(obligation_keys(cur)), "worklist_sha256": digest(cur), "changed": changed, "verdict": "accepted", "reason": reason, "runtime": cur.get("runtime") or {}, "gate": str(issued.get("gate") or ""), "discharged": sorted(str(i) for i in (issued.get("items") or [])), "si1_inconclusive": si1_unknown, "verify": _verify_meta(run if isinstance(run, dict) else {})})
     save_steps(root, steps)
     (root / LOOP_ISSUED).unlink()
     print("OK: ACCEPTED %s (%s) commit %s" % (args.cluster, reason, sha[:12]))

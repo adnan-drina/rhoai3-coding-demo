@@ -44,36 +44,139 @@ def save_steps(root: Path, doc: dict[str, Any]) -> None:
     write_canonical(root / LOOP_STEPS, doc)
 
 
-WRITE_METHOD_PREFIXES = ("save", "delete", "remove", "update", "insert", "persist", "merge")
-QUERY_ON_METHOD_RE = re.compile(
-    r'@Query\s*(?:\(\s*(?:value\s*=\s*)?"(?P<q>[^"]*)"[^)]*\)|\(\s*\)|\b)'
-    r'(?P<between>(?:\s*@[\w.]+(?:\([^)]*\))?)*)'
-    r'\s*[\w.<>,\[\]]+\s+(?P<name>\w+)\s*\(', re.S)
+# ---------------------------------------------------------------------------
+# semantic invariant SI-1 (v2): a source write must keep its state change
+# ---------------------------------------------------------------------------
+#
+# Rule, versioned and documented, replacing the v1 name-prefix veto the
+# architect review rejected (2026-09-11). The contract is not "a write may not
+# use @Query" -- the platform documents @Modifying update/delete queries as
+# supported (https://quarkus.io/guides/spring-data-jpa/#what-is-supported).
+# The contract is that a member the SOURCE implemented as a state change must
+# still perform one.
+#
+# What the v1 predicate got wrong, all three reproduced: it missed a
+# fully-qualified @Query, borrowed @Modifying from a neighbouring declaration
+# because it read a fixed window of characters, and flagged a read named
+# updatedPetById because it matched on a name prefix.
+#
+# Syntax it cannot parse is INCONCLUSIVE, never a pass and never a violation.
+
+SI1_RULE = "SI-1/v2"
+_ANNOTATION = re.compile(r"@([\w.]+)\s*(\((?:[^()\"]|\"(?:[^\"\\]|\\.)*\")*\))?", re.S)
+_DECL = re.compile(r"(?P<ret>[\w.<>,\[\]\s]+?)\s+(?P<name>\w+)\s*\((?P<args>[^)]*)\)\s*(?:throws[^;{]+)?[;{]", re.S)
+_STATEMENT = re.compile(r"^\s*(SELECT|UPDATE|DELETE|INSERT)\b", re.I)
+# how the frozen source performs a state change, per persistence mechanism
+_SOURCE_WRITE_CALLS = ("persist(", "merge(", "remove(", "executeUpdate(", "saveAndFlush(",
+                       ".update(", ".save(", ".delete(", ".insert(")
 
 
-def query_annotated_writes(text: str) -> list[tuple[str, str]]:
-    """(method, query) for write-named methods this source annotates with
-    @Query without a modifying statement.
+def _query_statement(args: str) -> tuple[str, bool]:
+    """(the statement keyword, parsed) from a @Query's arguments.
 
-    Spring Data derives writes from CrudRepository, not from a query: a @Query
-    on save or delete either does nothing or does the wrong thing, and a bare
-    one exists only to stop the platform complaining. A real modifying
-    statement (@Modifying with UPDATE/DELETE/INSERT) is legitimate and is left
-    alone."""
-    out: list[tuple[str, str]] = []
-    for m in QUERY_ON_METHOD_RE.finditer(text or ""):
-        name = m.group("name")
-        if not name.lower().startswith(WRITE_METHOD_PREFIXES):
+    An argument this rule cannot read -- a constant, a SpEL expression -- is
+    reported as unparsed, which makes the finding inconclusive rather than
+    letting it pass or condemning it."""
+    if not args or args.strip() in ("", "(", "()"):
+        return "", True          # @Query carrying no statement at all
+    m = re.search(r'"((?:[^"\\]|\\.)*)"', args, re.S)
+    if not m:
+        return "", False
+    stmt = _STATEMENT.match(m.group(1).strip())
+    return (stmt.group(1).upper() if stmt else ""), True
+
+
+def _members(text: str) -> list[tuple[str, list[tuple[str, str]]]]:
+    """(member name, its own annotations) for each declaration in a type.
+
+    Line-oriented on purpose: a regex over the whole file reads an annotation
+    as a return type and then attributes it to the wrong member, which is how
+    the v1 rule borrowed @Modifying from a neighbour and missed a
+    fully-qualified @Query. Annotations accumulate until the declaration they
+    precede, and are discarded with it.
+    """
+    out: list[tuple[str, list[tuple[str, str]]]] = []
+    pending: list[str] = []
+    buf = ""
+    for raw in (text or "").splitlines():
+        line = raw.strip()
+        if not line or line.startswith(("//", "*", "/*")):
             continue
-        query = (m.group("q") or "").strip()
-        # @Modifying may sit on either side of @Query; look at the declaration
-        # as a whole rather than at one side of it
-        window = (text[max(0, m.start() - 200): m.end()] or "")
-        modifying = "@Modifying" in window
-        if modifying and query[:6].upper() in ("UPDATE", "DELETE", "INSERT"):
+        buf = (buf + " " + line).strip() if buf else line
+        if buf.startswith("@"):
+            if buf.count("(") != buf.count(")"):
+                continue          # a multi-line annotation argument
+            pending.append(buf)
+            buf = ""
             continue
-        out.append((name, query))
+        buf = ""
+        m = re.match(r"^(?:public|protected|private|default|static|abstract|final|\s)*"
+                     r"[\w.<>,\[\]\s]*?\b(\w+)\s*\(", line)
+        if m and ("(" in line):
+            anns: list[tuple[str, str]] = []
+            for a in pending:
+                am = re.match(r"@([\w.]+)\s*(\(.*\))?$", a, re.S)
+                if am:
+                    anns.append((am.group(1).rsplit(".", 1)[-1], (am.group(2) or "").strip()))
+            out.append((m.group(1), anns))
+        pending = []
     return out
+
+
+def source_write_members(root: Path) -> set[str]:
+    """Members the FROZEN source implemented as a state change.
+
+    Evidence, not naming convention: the legacy implementation of the member
+    calls persist/merge/remove/executeUpdate or the JDBC template's update."""
+    out: set[str] = set()
+    base = Path(root) / ".derived" / "frozen-input" / "src" / "main" / "java"
+    if not base.is_dir():
+        return out
+    for f in sorted(base.rglob("*.java")):
+        text = f.read_text(encoding="utf-8", errors="replace")
+        for m in _DECL.finditer(text):
+            if not text[m.end() - 1:m.end()] == "{":
+                continue
+            body = text[m.end(): m.end() + 1200]
+            if any(call in body for call in _SOURCE_WRITE_CALLS):
+                out.add(m.group("name"))
+    return out
+
+
+def state_change_violations(text: str, writes: set[str]) -> tuple[list[dict], list[dict]]:
+    """(violations, inconclusive) of SI-1 for one source file.
+
+    A member the source wrote with must still write: a @Query that SELECTs, or
+    one carrying no statement at all, replaces the state change with a read. A
+    @Modifying UPDATE/DELETE/INSERT is a state change and passes, whatever the
+    annotations' spelling or order. A member the source did not write with is
+    not this rule's business, and a member with no @Query at all is inherited
+    or derived and is not either."""
+    violations: list[dict] = []
+    inconclusive: list[dict] = []
+    for name, anns in _members(text):
+        if name not in writes:
+            continue
+        query = next((a for a in anns if a[0] == "Query"), None)
+        if query is None:
+            continue
+        modifying = any(a[0] == "Modifying" for a in anns)
+        stmt, parsed = _query_statement(query[1])
+        if not parsed:
+            inconclusive.append({"rule": SI1_RULE, "member": name,
+                                 "detail": "the @Query argument is not a literal this rule can read (%s)" % query[1][:60]})
+            continue
+        if stmt in ("UPDATE", "DELETE", "INSERT") and modifying:
+            continue
+        violations.append({
+            "rule": SI1_RULE, "member": name,
+            "statement": stmt or "(none)",
+            "modifying": modifying,
+            "detail": ("%s is a state change in the source; this declaration answers it with %s. Spring Data provides save and delete "
+                       "through CrudRepository, and a modifying query needs @Modifying with UPDATE, DELETE or INSERT"
+                       % (name, ("a %s query" % stmt) if stmt else "a @Query carrying no statement")),
+        })
+    return violations, inconclusive
 
 
 def attempt_budget(steps: dict[str, Any], cluster: str, limit: int) -> int:
