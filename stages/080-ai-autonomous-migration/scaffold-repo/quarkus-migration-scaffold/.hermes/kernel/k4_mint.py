@@ -32,7 +32,7 @@ from k4_convert import convert_admitted, format_issues, validate_result  # noqa:
 from k4_producers import card_from_payload, producer_issues  # noqa: E402
 from k4_schema import IMPL, KEY_PREFIX, REMEDY, VERIFIER_ID, WRITER_ID  # noqa: E402
 from planner.canonical import load_json, write_canonical  # noqa: E402
-from planner.live_board import compare_board, expected_from_loop, mint_map_from_receipts, parse_snapshot  # noqa: E402
+from planner.live_board import collect_board, compare_board, expected_from_loop, mint_map_from_receipts  # noqa: E402
 from planner.paths import LOOP_CARDS, LOOP_ISSUED, LOOP_STEPS  # noqa: E402
 
 Issue = tuple[str, str, str]
@@ -297,32 +297,10 @@ def record_issued_task(root: Path, minted: dict[str, Any]) -> None:
 
 def verify_board(root: Path, result: dict[str, Any], *, runner: Runner, hermes: str = "hermes", exempt: list[str]) -> dict[str, Any]:
     """Post-mint K3 live comparison; raises K4_BOARD on mismatch."""
-    code, out, err = runner([hermes, "kanban", "list", "--json"])
-    if code != 0:
-        _fail([_issue("K4_BOARD", "hermes kanban list --json exit %s: %s" % (code, (err or "").strip()[:200]))])
-    cards = parse_snapshot(json.loads(out))
-    enriched = []
-    for card in cards:
-        cid = str(card.get("id") or card.get("task_id") or "")
-        c2, o2, _ = runner([hermes, "kanban", "show", cid, "--json"]) if cid else (1, "", "")
-        if c2 == 0:
-            try:
-                detail = json.loads(o2)
-            except json.JSONDecodeError:
-                detail = {}
-            if isinstance(detail, dict):
-                merged = dict(card)
-                task = detail.get("task")
-                merged.update(task if isinstance(task, dict) else detail)
-                # `hermes kanban show --json` keeps the edges beside the task
-                # ({"task": {...}, "parents": [...], "children": [...]}), so a
-                # task-only merge sees no parents (pilot v6: the first mint
-                # after an accepted step failed K4_BOARD with parents [])
-                for k in ("parents", "children"):
-                    if k not in merged and isinstance(detail.get(k), list):
-                        merged[k] = detail[k]
-                card = merged
-        enriched.append(card)
+    try:
+        enriched = collect_board(runner, hermes)
+    except ValueError as exc:
+        _fail([_issue("K4_BOARD", str(exc))])
     mint_map = mint_map_from_receipts(load_mint_receipts(root))
     steps = load_json(root / LOOP_STEPS) if (root / LOOP_STEPS).is_file() else None
     open_card = result["payloads"][0] if result.get("payloads") else None

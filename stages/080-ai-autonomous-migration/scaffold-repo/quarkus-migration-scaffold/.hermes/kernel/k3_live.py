@@ -30,7 +30,7 @@ from k4_convert import convert_admitted  # noqa: E402
 from k4_mint import load_mint_receipts  # noqa: E402
 from planner.admission import verify_receipt  # noqa: E402
 from planner.canonical import load_json, write_canonical  # noqa: E402
-from planner.live_board import compare_board, expected_from_loop, mint_map_from_receipts, parse_snapshot  # noqa: E402
+from planner.live_board import collect_board, compare_board, expected_from_loop, mint_map_from_receipts, parse_snapshot  # noqa: E402
 from planner.paths import LOOP_CARDS, LOOP_STEPS  # noqa: E402
 
 FORBIDDEN = ("swarm", "decompose", "daemon", "create_task", "link", "create")
@@ -46,27 +46,9 @@ def _run(argv: list[str]) -> tuple[int, str, str]:
 
 
 def collect_live(hermes: str) -> list[dict[str, Any]]:
-    code, out, err = _run([hermes, "kanban", "list", "--json"])
-    if code != 0:
-        raise ValueError("K3_LIVE: hermes kanban list --json exit %s: %s" % (code, err.strip()[:200]))
-    cards = parse_snapshot(json.loads(out))
-    enriched: list[dict[str, Any]] = []
-    for card in cards:
-        cid = str(card.get("id") or card.get("task_id") or "")
-        if not cid:
-            continue
-        code, out, _ = _run([hermes, "kanban", "show", cid, "--json"])
-        if code == 0:
-            try:
-                detail = json.loads(out)
-            except json.JSONDecodeError:
-                detail = {}
-            if isinstance(detail, dict):
-                merged = dict(card)
-                merged.update(detail.get("task") if isinstance(detail.get("task"), dict) else detail)
-                card = merged
-        enriched.append(card)
-    return enriched
+    """The live board, enriched -- ONE implementation, shared with K4
+    (planner.live_board.collect_board)."""
+    return collect_board(_run, hermes)
 
 
 def expected_cards(root: Path) -> tuple[dict[str, dict[str, Any]], dict[str, str], list[str]]:

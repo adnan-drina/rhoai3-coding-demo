@@ -14,9 +14,59 @@ mapping K4 captured from its own create responses
 """
 from __future__ import annotations
 
+import json
 from typing import Any
 
 RECEIPT_STEM = 16
+
+
+def enrich_card(card: dict[str, Any], detail: dict[str, Any] | None) -> dict[str, Any]:
+    """One listed row plus what ``hermes kanban show --json`` adds.
+
+    That payload keeps the EDGES BESIDE the task -- ``{"task": {...},
+    "parents": [...], "children": [...]}`` -- so a task-only merge sees no
+    parents at all. Measured twice: pilot v6 failed K4_BOARD this way, and on
+    dest v8 (2026-09-12) the K3 path still had the task-only merge, so every
+    card came back parentless and all nineteen edges "mismatched" while the
+    board was in fact correct. Two copies of one merge; only one was fixed.
+    This is now the only copy."""
+    if not isinstance(detail, dict):
+        return dict(card)
+    merged = dict(card)
+    task = detail.get("task")
+    merged.update(task if isinstance(task, dict) else detail)
+    for key in ("parents", "children"):
+        if key not in merged and isinstance(detail.get(key), list):
+            merged[key] = detail[key]
+    return merged
+
+
+def collect_board(run: Any, hermes: str = "hermes") -> list[dict[str, Any]]:
+    """The live board as the comparator needs it: ``kanban list --json``, each
+    row enriched with ``kanban show --json``.
+
+    ``run(argv) -> (code, stdout, stderr)`` is the caller's own runner, so K3
+    and K4 share this collection without sharing a subprocess policy. A
+    listing that fails raises; a row whose ``show`` fails is kept as listed
+    (it simply carries no edges, which the comparator then reports)."""
+    code, out, err = run([hermes, "kanban", "list", "--json"])
+    if code != 0:
+        raise ValueError("hermes kanban list --json exit %s: %s" % (code, (err or "").strip()[:200]))
+    cards: list[dict[str, Any]] = []
+    for card in parse_snapshot(json.loads(out)):
+        cid = _card_id(card)
+        if not cid:
+            continue
+        code, out, _ = run([hermes, "kanban", "show", cid, "--json"])
+        detail: dict[str, Any] | None = None
+        if code == 0:
+            try:
+                parsed = json.loads(out)
+            except json.JSONDecodeError:
+                parsed = None
+            detail = parsed if isinstance(parsed, dict) else None
+        cards.append(enrich_card(card, detail))
+    return cards
 
 
 def _card_id(card: dict[str, Any]) -> str:

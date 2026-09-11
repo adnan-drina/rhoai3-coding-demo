@@ -465,8 +465,8 @@ def _build_profile_case() -> int:
         rec = load_json(d2 / "evidence/producers/bootstrap.json")
         if not any(c["op"] == "properties.build-profile" for c in rec["changes"]):
             return _fail("the receipt must record which profiles were set")
-        # the BUILD reads -Dquarkus.profile, not application.properties (v8 A/B):
-        # every mvn reads .mvn/maven.config, and its settings wiring is kept
+        # the decided profiles must reach the build: every mvn reads
+        # .mvn/maven.config, and its settings wiring is kept
         cfg = (d2 / ".mvn" / "maven.config").read_text(encoding="utf-8").splitlines() if (d2 / ".mvn" / "maven.config").is_file() else []
         if "-Dquarkus.profile=prod,spring-data-jpa" not in cfg:
             return _fail("the decided build profiles must reach the build through .mvn/maven.config: %s" % cfg)

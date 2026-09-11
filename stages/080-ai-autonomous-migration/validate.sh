@@ -614,6 +614,9 @@ check "080 golden K1 schema loader validator present" \
 check "080 golden K3 snapshot + live comparator present" \
   "test -f '${SCAFFOLD_KERNEL}/k3_schema.py' && test -f '${SCAFFOLD_KERNEL}/k3_verify.py' && test -f '${SCAFFOLD_KERNEL}/k3_live.py' && echo present || echo missing" \
   "present"
+check "080 the live board is enriched by ONE implementation, and K3 and K4 both use it (the edges arrive beside the task)" \
+  "n=0; grep -q -F 'def collect_board' '${SCAFFOLD_LIB}/planner/live_board.py' && n=\$((n+1)); grep -q -F 'collect_board(' '${SCAFFOLD_KERNEL}/k3_live.py' && n=\$((n+1)); grep -q -F 'collect_board(' '${SCAFFOLD_KERNEL}/k4_mint.py' && n=\$((n+1)); grep -q -F 'detail.get(\"task\")' '${SCAFFOLD_KERNEL}/k3_live.py' '${SCAFFOLD_KERNEL}/k4_mint.py' || n=\$((n+1)); echo \$n" \
+  "4"
 check "080 K1 selftest passes (receipt/write-set/artifact body codes)" \
   "python3 '${SCAFFOLD_KERNEL}/k1_selftest.py' >/dev/null && echo 1 || echo 0" \
   "1"

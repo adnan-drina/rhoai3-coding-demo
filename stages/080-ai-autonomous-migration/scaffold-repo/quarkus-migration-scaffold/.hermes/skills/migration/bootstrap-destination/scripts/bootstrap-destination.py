@@ -688,13 +688,14 @@ def check_build_profiles(root: Path, copy: Path, catalog: dict, decisions_doc: d
             changes.append({"op": "properties.build-profile", "value": ",".join(active), "provenance": "decisions.yaml build_profiles (%s)" % decided.get("adr")})
         prop.parent.mkdir(parents=True, exist_ok=True)
         prop.write_text("\n".join(lines).rstrip("\n") + "\n", encoding="utf-8")
-        # quarkus.profile in application.properties selects the RUNTIME
-        # profile; the build (where @IfBuildProfile beans and Spring Data
-        # repositories are decided) reads -Dquarkus.profile. A/B on v8,
-        # 2026-09-11: without the flag the build failed on OwnerRepository,
-        # with -Dquarkus.profile=prod,spring-data-jpa it got past it. Every
-        # mvn the loop, CI and a person run reads .mvn/maven.config, so the
-        # decided profiles are wired there, once.
+        # The decided build profiles must reach the BUILD, not only the
+        # runtime: .mvn/maven.config is the one file every mvn the loop, CI
+        # and a person run reads, so they are wired there once. This is the
+        # ADR's own instruction; it is NOT a repair for any packaging
+        # failure. (A single-sample A/B once appeared to show the flag
+        # changing which repository a Quarkus Spring Data failure named;
+        # six controlled builds on the same tree refuted that -- the named
+        # repository is arbitrary and the failure is profile-independent.)
         _wire_build_profile(root, ",".join(active), str(decided.get("adr") or ""), changes)
     # Nothing gated may be left over. A condition on a profile the destination
     # neither activates nor retires selects between alternatives nobody chose
