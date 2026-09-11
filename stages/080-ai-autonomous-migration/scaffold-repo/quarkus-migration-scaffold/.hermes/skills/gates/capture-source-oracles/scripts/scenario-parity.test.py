@@ -110,7 +110,25 @@ def _capture(root: Path, base: str, sc_id: str, req_sha: str, response: dict, ef
     })
 
 
+def _no_corpus_case() -> int:
+    """A specimen with no approved scenarios still finishes M1, and the
+    absence is on the record rather than in nobody's head."""
+    producer = HERE / "capture-source-scenarios.py"
+    with tempfile.TemporaryDirectory(prefix="nocorpus-") as td:
+        root = specimens.build_dest(Path(td) / "dest", specimens.specimen("http"), decisions=specimens.admitted_decisions())
+        specimens.prepare_loop(root)
+        p = subprocess.run([sys.executable, str(producer), "--root", str(root)], text=True, capture_output=True)
+        if p.returncode != 0 or "nothing captured" not in p.stdout:
+            return _fail("no corpus must be idle, not a failure: rc=%s %s%s" % (p.returncode, p.stdout, p.stderr[:200]))
+        rec = load_json(root / SCENARIO_ORACLES / "_capture.json")
+        if rec["status"] != "idle" or rec["captured"] != 0 or "missing" not in rec["reason"]:
+            return _fail("the receipt must say plainly that nothing was captured and why: %s" % rec)
+    return 0
+
+
 def main() -> int:
+    if _no_corpus_case():
+        return 1
     with tempfile.TemporaryDirectory(prefix="scen-") as td:
         t = Path(td)
         root = specimens.build_dest(t / "dest", specimens.specimen("http"), decisions=specimens.admitted_decisions())
@@ -254,7 +272,7 @@ def main() -> int:
         if v["verdict"] != "INCONCLUSIVE" or v["reset"]["rc"] != 3:
             return _fail("the failed reset must be recorded beside the verdict: %s" % v.get("reset"))
         dest4.shutdown()
-    print("OK: scenario-parity selftest (the recorded body and headers are replayed; a write with no declared effect refuses; a 204 that deleted nothing FAILs on its resulting state; a corpus edited after capture refuses; an entry point passes only when every REQUIRED scenario passes, and a missing or foreign-corpus result is INCONCLUSIVE; a declared reset that fails stops the comparison)")
+    print("OK: scenario-parity selftest (the recorded body and headers are replayed; a write with no declared effect refuses; a 204 that deleted nothing FAILs on its resulting state; a corpus edited after capture refuses; an entry point passes only when every REQUIRED scenario passes, and a missing or foreign-corpus result is INCONCLUSIVE; a declared reset that fails stops the comparison; no corpus is idle with a receipt that says so)")
     return 0
 
 

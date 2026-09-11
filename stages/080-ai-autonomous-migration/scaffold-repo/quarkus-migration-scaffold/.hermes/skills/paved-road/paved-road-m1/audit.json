@@ -59,7 +59,7 @@
       "backing": "skill",
       "id": "capture-source-scenarios",
       "keep": [
-        "verification/source-oracles/scenarios"
+        "verification/source-oracles/scenarios/_capture.json"
       ],
       "needle": "capture-source-oracles"
     },

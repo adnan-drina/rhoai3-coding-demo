@@ -57,9 +57,9 @@
       "backing": "skill",
       "skill": "capture-source-oracles",
       "keep": [
-        "verification/source-oracles/scenarios"
+        "verification/source-oracles/scenarios/_capture.json"
       ],
-      "note": "Record what the SOURCE does, while the source is still the only thing that can say. scripts/capture-source-scenarios.py packages the frozen source, starts its isolated runtime, restores the initial state before each scenario that asks for it, replays the Operator-approved corpus (verification/scenarios/corpus.json) recording the state before and after each request, then captures the idempotent reads through that same runtime and stops what it started. No admission receipt is needed here: M1 precedes M2, so the capture binds to the evidence bundle. Idle when the corpus is absent: an empty corpus is a recorded gap, never an invented expectation. Nothing here reads the destination, and no worker ever sets an expected value."
+      "note": "Record what the SOURCE does, while the source is still the only thing that can say. scripts/capture-source-scenarios.py packages the frozen source, starts its isolated runtime, restores the initial state before each scenario that asks for it, replays the Operator-approved corpus (verification/scenarios/corpus.json) recording the state before and after each request, then captures the idempotent reads through that same runtime and stops what it started. No admission receipt is needed here: M1 precedes M2, so the capture binds to the evidence bundle. Idle when the corpus is absent, and it says so in its receipt (verification/source-oracles/scenarios/_capture.json): a missing corpus is a recorded gap, never an invented expectation and never silence. Nothing here reads the destination, and no worker ever sets an expected value."
     },
     {
       "id": "kanban-attach",

@@ -40,6 +40,10 @@ from planner.canonical import digest  # noqa: E402
 from planner.paths import EVIDENCE_BUNDLE, producer_receipt  # noqa: E402
 
 
+def _now() -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
 def _fail(msg: str) -> int:
     print("FAIL: SOURCE_SCENARIOS %s" % msg, file=sys.stderr)
     return 1
@@ -160,9 +164,22 @@ def main(argv: list[str] | None = None) -> int:
         for g in gaps:
             print("  - " + g, file=sys.stderr)
         return _fail("the admission receipt on disk is not authoritative")
+    receipt_p = root / SCENARIO_ORACLES / "_capture.json"
     try:
         corpus = load_corpus(root)
     except CorpusError as exc:
+        # No corpus is a recorded gap, not a failure: a specimen may have no
+        # approved write scenarios yet, and M1 still has to finish. What must
+        # never happen is silence -- the receipt says plainly that nothing was
+        # captured and why, so the absence is visible at M4.
+        if "missing" in str(exc):
+            write_canonical(receipt_p, {
+                "schema": "rhoai3.source-capture/v1", "producer": "capture-source-scenarios.py",
+                "at": _now(), "status": "idle", "reason": str(exc),
+                "evidence_bundle_sha256": bundle_sha, "corpus_sha256": "", "captured": 0, "scenarios": [],
+            })
+            print("OK: no scenario corpus (%s); nothing captured, and the receipt says so → %s" % (exc, receipt_p.relative_to(root)))
+            return 0
         return _fail(str(exc))
     freeze_p = producer_receipt(root, "freeze")
     if not freeze_p.is_file():
@@ -266,6 +283,16 @@ def main(argv: list[str] | None = None) -> int:
                     failures.append("reads: %s" % reads[0])
     finally:
         runtime.stop()
+    write_canonical(receipt_p, {
+        "schema": "rhoai3.source-capture/v1", "producer": "capture-source-scenarios.py", "at": _now(),
+        "status": "ok" if not failures else "blocked",
+        "reason": "; ".join(failures)[:400],
+        "evidence_bundle_sha256": bundle_sha, "corpus_sha256": corpus_sha,
+        "captured": captured, "requested": len(wanted),
+        "scenarios": sorted(str(sc["id"]) for sc in wanted),
+        "reads": bool(not args.no_reads),
+        "source": {"analysis_copy_digest": str(freeze.get("source_digest") or ""), "starts": runtime.starts},
+    })
     print("%s: source scenarios captured=%d of %d (corpus %s) → %s"
           % ("OK" if not failures else "REFUSE", captured, len(wanted), corpus_sha[:12], SCENARIO_ORACLES))
     for f in failures:
