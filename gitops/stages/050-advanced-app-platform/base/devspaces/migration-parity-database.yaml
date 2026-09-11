@@ -1,0 +1,198 @@
+# The isolated database a migration run compares against (Stage 080, ADR-009).
+#
+# Runtime parity needs the destination to run, and the destination needs a
+# database the platform documents a JDBC extension for. The legacy specimen's
+# HSQLDB baseline has none on RHBQ 3.27, so the destination runs PostgreSQL 16
+# and the source keeps its own baseline; decisions.yaml records that as an
+# engine change. This is the instance that decision names, per namespace and
+# per run, never shared with anything that matters.
+#
+# The credentials reach the workspace as environment variables through the Dev
+# Spaces automount contract (label controller.devfile.io/watch-secret plus
+# annotation controller.devfile.io/mount-as: env), so a migration workspace has
+# them the moment it starts. decisions.yaml references them BY NAME and never
+# records a value; the password is generated here and never leaves the cluster.
+#
+# Ref: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/
+#      (automounting secrets into workspaces)
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: migration-parity-db-provisioner
+  namespace: wksp-ai-developer
+  annotations:
+    argocd.argoproj.io/sync-wave: "17"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: migration-parity-db-secret-manager
+  namespace: wksp-ai-developer
+  annotations:
+    argocd.argoproj.io/sync-wave: "17"
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["create", "get", "patch", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: migration-parity-db-provisioner-secret-manager
+  namespace: wksp-ai-developer
+  annotations:
+    argocd.argoproj.io/sync-wave: "17"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: migration-parity-db-secret-manager
+subjects:
+  - kind: ServiceAccount
+    name: migration-parity-db-provisioner
+    namespace: wksp-ai-developer
+---
+# One generated password, two secrets: what the server is started with, and
+# what a workspace reads. They are separate because the key NAMES differ and
+# the workspace one is automounted wholesale into every workspace in the
+# namespace; a server variable does not belong in a developer's environment.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: provision-migration-parity-db
+  namespace: wksp-ai-developer
+  annotations:
+    argocd.argoproj.io/sync-wave: "18"
+    argocd.argoproj.io/sync-options: Force=true,Replace=true
+spec:
+  backoffLimit: 2
+  template:
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: migration-parity-db-provisioner
+      containers:
+        - name: provision
+          image: registry.redhat.io/openshift4/ose-cli
+          command:
+            - /bin/bash
+            - -ceu
+            - |
+              NS="wksp-ai-developer"
+              DB_NAME="petclinic"
+              DB_USER="petclinic"
+              SERVER_SECRET="petclinic-parity-postgres"
+              WORKSPACE_SECRET="petclinic-parity-db"
+              HOST="petclinic-parity-postgres.${NS}.svc"
+
+              # keep an existing password: regenerating it would orphan the
+              # data a run is in the middle of comparing against
+              PASSWORD="$(oc get secret "${SERVER_SECRET}" -n "${NS}" -o jsonpath='{.data.database-password}' 2>/dev/null | base64 -d || true)"
+              if [ -z "${PASSWORD}" ]; then
+                PASSWORD="$(head -c 24 /dev/urandom | base64 | tr -d '/+=' | head -c 24)"
+                echo "generated a new parity database password"
+              else
+                echo "kept the existing parity database password"
+              fi
+
+              oc create secret generic "${SERVER_SECRET}" -n "${NS}" \
+                --from-literal=database-name="${DB_NAME}" \
+                --from-literal=database-user="${DB_USER}" \
+                --from-literal=database-password="${PASSWORD}" \
+                --dry-run=client -o yaml | oc apply -f -
+
+              oc create secret generic "${WORKSPACE_SECRET}" -n "${NS}" \
+                --from-literal=PETCLINIC_DB_URL="jdbc:postgresql://${HOST}:5432/${DB_NAME}" \
+                --from-literal=PETCLINIC_DB_USER="${DB_USER}" \
+                --from-literal=PETCLINIC_DB_PASSWORD="${PASSWORD}" \
+                --dry-run=client -o yaml | oc apply -f -
+
+              # the automount contract: every workspace in this namespace gets
+              # these three as environment variables at start
+              oc label secret "${WORKSPACE_SECRET}" -n "${NS}" \
+                controller.devfile.io/watch-secret=true --overwrite
+              oc annotate secret "${WORKSPACE_SECRET}" -n "${NS}" \
+                controller.devfile.io/mount-as=env --overwrite
+
+              echo "parity database credentials provisioned (${WORKSPACE_SECRET} automounted as env)"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: petclinic-parity-postgres
+  namespace: wksp-ai-developer
+  labels:
+    app: petclinic-parity-postgres
+    rhoai3.io/purpose: stage-080-parity
+  annotations:
+    argocd.argoproj.io/sync-wave: "19"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: petclinic-parity-postgres
+  template:
+    metadata:
+      labels:
+        app: petclinic-parity-postgres
+    spec:
+      containers:
+        - name: postgresql
+          # the supported image this cluster already runs elsewhere; ADR-009
+          # records PostgreSQL 16 as the destination engine
+          image: registry.redhat.io/rhel9/postgresql-16:latest
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRESQL_DATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: petclinic-parity-postgres
+                  key: database-name
+            - name: POSTGRESQL_USER
+              valueFrom:
+                secretKeyRef:
+                  name: petclinic-parity-postgres
+                  key: database-user
+            - name: POSTGRESQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: petclinic-parity-postgres
+                  key: database-password
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          readinessProbe:
+            exec:
+              command: ["/usr/libexec/check-container"]
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/pgsql/data
+      volumes:
+        # deliberately ephemeral: every scenario run restores the schema and
+        # seed the decision names, so durable storage would preserve exactly
+        # the state parity must not depend on
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: petclinic-parity-postgres
+  namespace: wksp-ai-developer
+  labels:
+    app: petclinic-parity-postgres
+    rhoai3.io/purpose: stage-080-parity
+  annotations:
+    argocd.argoproj.io/sync-wave: "19"
+spec:
+  selector:
+    app: petclinic-parity-postgres
+  ports:
+    - port: 5432
+      targetPort: 5432

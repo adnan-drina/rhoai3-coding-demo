@@ -21,6 +21,7 @@ resources:
   - workspace-api-egress-adminnetworkpolicy.yaml
   - workspace-git-credentials.yaml
   - workspace-sonar-credentials.yaml
+  - migration-parity-database.yaml
   - vscode-editor-configurations.yaml
   - workspaces.yaml
   - agentic-workspace.yaml
