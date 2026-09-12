@@ -1,0 +1,102 @@
+{
+  "_proposal_note": "AMENDED DRAFT. Concrete requests resolved from the local frozen-source structural inventory. Not installed and not Operator-approved. Bind source digest, entry-point IDs and CORS configuration to v8 before signing and capture anew against the v8 frozen baseline. Prior captures and the idle receipt are retained.",
+  "schema": "rhoai3.scenario-corpus/v1",
+  "approved_by": null,
+  "initial_state": {
+    "reset": ".hermes/skills/gates/capture-source-oracles/scripts/reset-parity-db.sh --root . restores the destination's isolated PostgreSQL instance (drop and recreate the schema, then apply the schema and seed assets decisions.yaml names); the frozen source restores the same dataset by restarting, because its baseline engine is in-memory HSQLDB",
+    "dataset": "the specimen's own seeded dataset, equivalent on both engines"
+  },
+  "path_vars": {
+    "ownerId": "1",
+    "petId": "1",
+    "petTypeId": "1",
+    "specialtyId": "1",
+    "vetId": "1",
+    "visitId": "1",
+    "lastName": "Franklin"
+  },
+  "cors_policies": [
+    {
+      "id": "crossorigin:7b1a3d9234cd",
+      "note": "Source annotation values: exposedHeaders = [\"errors, content-type\"], shared by eight REST controllers. Omitted annotation attributes remain omitted; runtime permission values must be captured from the source.",
+      "request_headers": [
+        "Content-Type"
+      ]
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "sc:update-owner-1-city",
+      "_note": "v7 request body, path, method and effect probes preserved byte-for-byte; entry-point binding corrected to the locally measured DTO signature. V8 binding awaits confirmation.",
+      "entry_point": "ep:org.springframework.samples.petclinic.rest.OwnerRestController#updateOwner(int,org.springframework.samples.petclinic.dto.OwnerDto,org.springframework.validation.BindingResult,org.springframework.web.util.UriComponentsBuilder):http",
+      "method": "PUT",
+      "path": "/api/owners/1",
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "body_file": "verification/scenarios/bodies/update-owner-1-city.json",
+      "reset_before": true,
+      "effects": [
+        {
+          "id": "eff:owner-1-after-update",
+          "method": "GET",
+          "path": "/api/owners/1"
+        },
+        {
+          "id": "eff:owners-list-after-update",
+          "method": "GET",
+          "path": "/api/owners"
+        }
+      ]
+    },
+    {
+      "id": "sc:create-owner-location",
+      "_note": "ADDED: actual cross-origin POST paired with the OPTIONS preflight. Source capture must demonstrate creation, an absolute Location and the resulting owner in the list; expected response values are observed, never invented.",
+      "entry_point": "ep:org.springframework.samples.petclinic.rest.OwnerRestController#addOwner(org.springframework.samples.petclinic.dto.OwnerDto,org.springframework.validation.BindingResult,org.springframework.web.util.UriComponentsBuilder):http",
+      "method": "POST",
+      "path": "/api/owners",
+      "headers": {
+        "Content-Type": "application/json",
+        "Origin": "http://petclinic.example.test:4200"
+      },
+      "body_file": "verification/scenarios/bodies/create-owner.json",
+      "reset_before": true,
+      "effects": [
+        {
+          "id": "eff:owners-list-after-create",
+          "method": "GET",
+          "path": "/api/owners"
+        }
+      ],
+      "cors_policy": "crossorigin:7b1a3d9234cd"
+    },
+    {
+      "id": "sc:cors-actual-owners",
+      "_note": "ADDED: independent actual cross-origin GET from the seeded state; source permission and exposed headers are captured.",
+      "entry_point": "ep:org.springframework.samples.petclinic.rest.OwnerRestController#getOwners():http",
+      "method": "GET",
+      "path": "/api/owners",
+      "headers": {
+        "Origin": "http://petclinic.example.test:4200"
+      },
+      "cors_policy": "crossorigin:7b1a3d9234cd",
+      "body_absent": true,
+      "reset_before": true
+    },
+    {
+      "id": "sc:cors-preflight-owners",
+      "_note": "ADDED: anonymous preflight for the actual POST above, with the same path and Origin and its Content-Type request header. No database effects.",
+      "entry_point": "ep:org.springframework.samples.petclinic.rest.OwnerRestController#addOwner(org.springframework.samples.petclinic.dto.OwnerDto,org.springframework.validation.BindingResult,org.springframework.web.util.UriComponentsBuilder):http",
+      "method": "OPTIONS",
+      "path": "/api/owners",
+      "headers": {
+        "Origin": "http://petclinic.example.test:4200",
+        "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "content-type"
+      },
+      "cors_policy": "crossorigin:7b1a3d9234cd",
+      "body_absent": true,
+      "reset_before": false
+    }
+  ]
+}

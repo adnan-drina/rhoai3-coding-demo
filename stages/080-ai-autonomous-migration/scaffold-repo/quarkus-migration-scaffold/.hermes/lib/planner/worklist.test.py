@@ -9,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from planner.cards import card_title
 from planner.worklist import CHECKED_FAMILY_RULE, EXPOSED, RETAIN, UNPROVEN, apply_supersessions, assess_checked_family, batch_scope_digest, batch_scope_path, build_batch_scope, retry_key, runtime_items  # noqa: E402
 from planner.dest_model import dest_model, diagnostic_identity  # noqa: E402
-from planner.worklist import KIND_RANK, cluster_items, compile_items, file_depths, incidents_from_findings, measure_of, obligation_keys, path_class, progress, surefire_from_reports, test_items  # noqa: E402
+from planner.worklist import KIND_RANK, cluster_items, runtime_items, compile_items, file_depths, incidents_from_findings, measure_of, obligation_keys, path_class, progress, surefire_from_reports, test_items  # noqa: E402
 
 
 def surefire_from_reports_ran_flag():
@@ -320,8 +320,57 @@ def _checked_family_case() -> int:
     return 0
 
 
+_SET_WIDE_LOG = (
+    "[ERROR] \t[error]: Build step io.quarkus.spring.data.deployment.SpringDataJPAProcessor#build threw an exception: "
+    "java.lang.IllegalArgumentException: No implementation of interface "
+    "org.springframework.samples.petclinic.repository.%s was found\n"
+    "[ERROR] \tat io.quarkus.spring.data.deployment.generate.FragmentMethodsUtil.getImplementationDotName(FragmentMethodsUtil.java:38)"
+)
+
+
+def _set_wide_case() -> int:
+    """A failure about a SET must not take its identity from the member the
+    platform happened to name first: six builds of one unchanged v8 tree named
+    six different repositories (2026-09-12)."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory(prefix="set-wide-") as td:
+        root = Path(td)
+        base = root / "src/main/java/org/springframework/samples/petclinic/repository"
+        base.mkdir(parents=True, exist_ok=True)
+        for name in ("OwnerRepository", "UserRepository", "VisitRepository"):
+            (base / ("%s.java" % name)).write_text("package org.springframework.samples.petclinic.repository;\npublic interface %s {}\n" % name, encoding="utf-8")
+        ids, rows = set(), []
+        for name in ("OwnerRepository", "UserRepository", "VisitRepository"):
+            pkg = {"ran": True, "rc": 1, "detail": "mvn verify exited 1 at quarkus-maven-plugin:build", "errors": _SET_WIDE_LOG % name}
+            got = runtime_items(pkg, None, root)
+            if len(got) != 1:
+                return _fail("one gate failure is one obligation: %s" % got)
+            row = got[0]
+            if not row.get("unlocated") or row.get("path") or row.get("member"):
+                return _fail("a set-wide failure carries no file and no member: %s" % {k: row.get(k) for k in ("unlocated", "path", "member")})
+            if row.get("set_wide") != "spring-data-fragment-implementations" or row.get("cause") != "missing-implementation":
+                return _fail("the blocker is typed by processor and cause: %s" % {k: row.get(k) for k in ("set_wide", "cause")})
+            if name not in row["message"] or [p for p in row.get("observed") or [] if name in p] == []:
+                return _fail("the raw message and what it named are kept as observations: %s" % row.get("observed"))
+            ids.add(row["id"])
+            rows.append(row)
+        if len(ids) != 1:
+            return _fail("permuted first-reported names must be ONE blocker identity, got %s" % sorted(ids))
+        if cluster_items([r for r in rows if not r.get("unlocated")], {}, set()):
+            return _fail("a set-wide blocker must never become a card")
+        # control: a different cause that names a file of this tree still locates
+        other = {"ran": True, "rc": 1, "detail": "mvn verify exited 1",
+                 "errors": "UnableToParseMethodException: Method 'findByFoo' of repository class "
+                           "org.springframework.samples.petclinic.repository.OwnerRepository is not supported"}
+        ctl = runtime_items(other, None, root)[0]
+        if ctl.get("unlocated") or not str(ctl.get("path") or "").endswith("OwnerRepository.java") or ctl.get("set_wide"):
+            return _fail("a locatable cause must still locate: %s" % {k: ctl.get(k) for k in ("unlocated", "path", "set_wide")})
+    return 0
+
+
 def main() -> int:
-    if _runtime_identity_case() or _gate_progress_case() or _batch_scope_case() or _checked_family_case():
+    if _runtime_identity_case() or _gate_progress_case() or _batch_scope_case() or _checked_family_case() or _set_wide_case():
         return 1
 
     if path_class("pom.xml") != "build" or path_class("src/main/resources/application.properties") != "config" or path_class("src/test/java/A.java") != "test" or path_class("src/main/java/A.java") != "source":
@@ -500,7 +549,7 @@ def main() -> int:
         return _fail("reclassified items keep their authority and are never dropped")
     if measure_of(all_items, incidents_known=False, compile_known=True, tests_known=True, parity_known=False)["known"]:
         return _fail("unknown incidents never advance")
-    print("OK: worklist (lossless line-free incidents; canary excluded; only ERROR diagnostics; build→config→compile(leaf-first)→incident→test order; tests never writable; lexicographic 3-tuple progress; new-incident veto; unknown never advances; gate progress is the issued obligation disappearing, never a reworded one; a second cause at one file is a second obligation); a repository card's inventory is sealed by its own digest and two measurements never share a path; checked-exception family: bound to its introducing step (a legacy site stays out), one budget, line-free identity across a moved line, CONTINUE / EXPOSED / still-reported / 1→0 accept, per-member assessment (catch-wrapped and header-deleted members violate)")
+    print("OK: worklist (lossless line-free incidents; canary excluded; only ERROR diagnostics; build→config→compile(leaf-first)→incident→test order; tests never writable; lexicographic 3-tuple progress; new-incident veto; unknown never advances; gate progress is the issued obligation disappearing, never a reworded one; a second cause at one file is a second obligation); a repository card's inventory is sealed by its own digest and two measurements never share a path; checked-exception family: bound to its introducing step (a legacy site stays out), one budget, line-free identity across a moved line, CONTINUE / EXPOSED / still-reported / 1→0 accept, per-member assessment (catch-wrapped and header-deleted members violate); a set-wide packaging cause is one typed blocker under permuted first-reported names and never a card")
     return 0
 
 

@@ -346,8 +346,51 @@ def _disposition_case() -> int:
     return 0
 
 
+_SET_WIDE_ERRORS = (
+    "[ERROR] \t[error]: Build step io.quarkus.spring.data.deployment.SpringDataJPAProcessor#build threw an exception: "
+    "java.lang.IllegalArgumentException: No implementation of interface "
+    "org.springframework.samples.petclinic.repository.%s was found\n"
+    "[ERROR] \tat io.quarkus.spring.data.deployment.generate.FragmentMethodsUtil.getImplementationDotName(FragmentMethodsUtil.java:38)"
+)
+
+
+def _set_wide_blocker_case() -> int:
+    """A packaging failure about a SET reaches the work list as ONE typed
+    blocker, never as a card for the repository it happened to name."""
+    from planner.worklist import build_worklist  # noqa: E402
+
+    with tempfile.TemporaryDirectory(prefix="set-wide-e2e-") as td:
+        spec = specimens.specimen("http")
+        root = specimens.build_dest(Path(td) / "dest", spec, decisions=specimens.admitted_decisions(max_attempts=3))
+        base = root / "src/main/java/org/springframework/samples/petclinic/repository"
+        base.mkdir(parents=True, exist_ok=True)
+        for name in ("OwnerRepository", "VisitRepository"):
+            (base / ("%s.java" % name)).write_text(
+                "package org.springframework.samples.petclinic.repository;\npublic interface %s {}\n" % name, encoding="utf-8")
+        specimens.prepare_loop(root)
+        seen = set()
+        for name in ("OwnerRepository", "VisitRepository"):
+            specimens.runtime(root, package_rc=1, detail="mvn verify exited 1 at quarkus-maven-plugin:build",
+                              log=_SET_WIDE_ERRORS % name)
+            wl = build_worklist(root)
+            pkg_clusters = [c for c in wl["clusters"] if str(c.get("gate") or "") == "package"]
+            if pkg_clusters:
+                return _fail("a set-wide cause must mint nothing: %s" % [c["write_set"] for c in pkg_clusters])
+            rows = [u for u in wl.get("unlocatable") or [] if u.get("scope") == "spring-data-fragment-implementations"]
+            if len(rows) != 1:
+                return _fail("exactly one typed blocker: %s" % (wl.get("unlocatable") or []))
+            if not any(name in o for o in rows[0].get("observed") or []):
+                return _fail("the blocker keeps what the message named: %s" % rows[0])
+            if not any("SET-WIDE" in b for b in wl["measure"].get("blocked") or []):
+                return _fail("the measure must say why nothing can be minted: %s" % wl["measure"].get("blocked"))
+            seen.add(rows[0]["id"])
+        if len(seen) != 1:
+            return _fail("the blocker identity must not follow the reported name: %s" % sorted(seen))
+    return 0
+
+
 def main() -> int:
-    if _checked_veto_case() or _checked_family_advance_case() or _disposition_case():
+    if _checked_veto_case() or _checked_family_advance_case() or _disposition_case() or _set_wide_blocker_case():
         return 1
     if _si1_case():
         return 1
@@ -742,8 +785,12 @@ def main() -> int:
         cl = [c for c in wl["clusters"] if c["status"] == "open"][0]
         if cl.get("gate") != "package":
             return _fail("the cluster must carry the gate it repairs: %s" % cl)
-        # a failure that NAMES a type in this tree lands on that type, not on
-        # pom.xml (measured live: SpringDataJPAProcessor named VetRepository)
+        # A failure that NAMES a type of this tree lands on that type rather
+        # than on pom.xml -- for a cause that is really ABOUT that type. The
+        # Spring Data fragment cause is not: it names one member of a set that
+        # is failing as a set, and which member it names changes between runs
+        # (six builds of one unchanged v8 tree named six repositories,
+        # 2026-09-12). It is a typed blocker, and it mints nothing.
         named = sorted(root.glob("src/main/java/**/*.java"))[0].relative_to(root).as_posix()
         fqn = named[len("src/main/java/"):-len(".java")].replace("/", ".")
         specimens.runtime(root, package_rc=1, boot_ready=None,
@@ -751,9 +798,21 @@ def main() -> int:
                           log="Build step io.quarkus.spring.data.deployment.SpringDataJPAProcessor#build threw an exception: No implementation of interface %s was found" % fqn)
         specimens.verify(root, errors=[], failures=[], findings=f4)
         pipeline.admit(root)
+        wl_set = load_json(root / WORKLIST)
+        if [i for i in wl_set["items"] if i["source"] == "runtime"] or [c for c in wl_set["clusters"] if c.get("gate") == "package"]:
+            return _fail("a set-wide cause must mint nothing: %s" % [i.get("path") for i in wl_set["items"] if i["source"] == "runtime"])
+        blocker = [u for u in wl_set.get("unlocatable") or [] if u.get("scope") == "spring-data-fragment-implementations"]
+        if len(blocker) != 1 or named not in (blocker[0].get("observed") or []):
+            return _fail("the set-wide failure is one typed blocker keeping what it named: %s" % (wl_set.get("unlocatable") or []))
+        # control: a cause that IS about that type still lands on it
+        specimens.runtime(root, package_rc=1, boot_ready=None,
+                          detail="Failed to execute goal quarkus-maven-plugin:build",
+                          log="Build step X#build threw an exception: io.quarkus.spring.data.deployment.UnableToParseMethodException on %s" % fqn)
+        specimens.verify(root, errors=[], failures=[], findings=f4)
+        pipeline.admit(root)
         named_items = [i for i in load_json(root / WORKLIST)["items"] if i["source"] == "runtime"]
         if len(named_items) != 1 or named_items[0]["path"] != named or named_items[0]["kind"] != "compile":
-            return _fail("an augmentation failure must land on the type it names: %s (wanted %s)" % (named_items, named))
+            return _fail("an augmentation failure about a type must land on it: %s (wanted %s)" % (named_items, named))
         # back to the plugin failure for the acceptance case below
         specimens.runtime(root, package_rc=1, boot_ready=None, detail="Failed to execute goal org.jacoco:jacoco-maven-plugin:0.8.7:report", log="Unsupported class file major version 65")
         specimens.verify(root, errors=[], failures=[], findings=f4)
@@ -784,8 +843,10 @@ def main() -> int:
         srcs = sorted(root.glob("src/main/java/**/*.java"))
         one, two = srcs[0].relative_to(root).as_posix(), srcs[1].relative_to(root).as_posix()
         fqn = lambda rel: rel[len("src/main/java/"):-len(".java")].replace("/", ".")
-        two_defects = ("Build step io.quarkus.spring.data.deployment.SpringDataJPAProcessor#build threw an exception: "
-                       "No implementation of interface %s was found, and none of %s either" % (fqn(one), fqn(two)))
+        # The vehicle is a per-FILE cause. The Spring Data fragment cause is
+        # set-wide and cannot carry a per-place obligation at all.
+        two_defects = ("Build step X#build threw an exception: io.quarkus.spring.data.deployment.UnableToParseMethodException: "
+                       "on %s (and later %s)" % (fqn(one), fqn(two)))
         specimens.runtime(root, package_rc=1, boot_ready=None, detail="Failed to execute goal quarkus-maven-plugin:build", log=two_defects)
         specimens.verify(root, errors=[], failures=[], findings=f4)
         pipeline.admit(root)
@@ -801,7 +862,7 @@ def main() -> int:
         # a) the same cause at the same place, differently worded: NOT progress
         (root / one).write_text((root / one).read_text(encoding="utf-8") + "// touched\n", encoding="utf-8")
         specimens.runtime(root, package_rc=1, boot_ready=None, detail="Failed to execute goal quarkus-maven-plugin:build",
-                          log="[error] after 2 rounds: Build step X#build threw an exception: No implementation of interface %s was found" % fqn(one))
+                          log="[error] after 2 rounds: Build step X#build threw an exception: io.quarkus.spring.data.deployment.UnableToParseMethodException reported at %s" % fqn(one))
         specimens.verify(root, errors=[], failures=[], findings=f4)
         p = _advance(root, cl2["id"], "t_pkg2")
         if p.returncode == 0 or "still reported" not in (p.stdout + p.stderr):
@@ -816,11 +877,11 @@ def main() -> int:
         # a2) a DIFFERENT cause at the same place IS a different obligation:
         #     a file can need a second repair once its first is done
         specimens.runtime(root, package_rc=1, boot_ready=None, detail="Failed to execute goal quarkus-maven-plugin:build",
-                          log="Build step X#build threw an exception: io.quarkus.spring.data.deployment.UnableToParseMethodException: Method 'findAll' of %s" % fqn(one))
+                          log="Build step X#build threw an exception: void was not part of the Quarkus index, from %s" % fqn(one))
         specimens.verify(root, errors=[], failures=[], findings=f4)
         pipeline.admit(root)
         second = [i for i in load_json(root / WORKLIST)["items"] if i["source"] == "runtime"]
-        if len(second) != 1 or second[0]["cause"] != "underivable-query-method" or second[0]["path"] != one:
+        if len(second) != 1 or second[0]["cause"] != "unindexed-type" or second[0]["path"] != one:
             return _fail("a second cause at the same file must be its own obligation: %s" % second)
         # back to the first cause for the acceptance case below
         specimens.runtime(root, package_rc=1, boot_ready=None, detail="Failed to execute goal quarkus-maven-plugin:build", log=two_defects)
@@ -831,7 +892,7 @@ def main() -> int:
         specimens.issue(root)
         (root / one).write_text((root / one).read_text(encoding="utf-8") + "// repaired\n", encoding="utf-8")
         specimens.runtime(root, package_rc=1, boot_ready=None, detail="Failed to execute goal quarkus-maven-plugin:build",
-                          log="Build step SpringDataJPAProcessor#build threw an exception: No implementation of interface %s was found" % fqn(two))
+                          log="Build step X#build threw an exception: io.quarkus.spring.data.deployment.UnableToParseMethodException reported at %s" % fqn(two))
         specimens.verify(root, errors=[], failures=[], findings=f4)
         attempts_before = dict((load_json(root / LOOP_STEPS).get("attempts") or {}))
         p = _advance(root, cl2["id"], "t_pkg3")
@@ -924,7 +985,7 @@ def main() -> int:
         p = _advance(root, "c:tampered", "t_z")
         if p.returncode != 2 or "LOOP_STALE_STATE" not in p.stderr:
             return _fail("tampered work list must refuse advance: %s" % p.stderr)
-    print("OK: fix-until-green (checked-exception veto: a falling count does not admit an introduced unhandled exception; family bound to its introducing step: Owner→Pet CONTINUE in the same card without an attempt, a stalled continuation rejects, an exposure outside the family is a typed diagnosis; a harness-caused deferral is cleared by a metadata-only disposition and the one budget sees it; measurement contract: unrun tests / empty reports / failed runner / skipped rescan are unknown; baseline; issued card; diagnostic cannot advance; post-verify edit + unissued cluster refused with baseline intact; out-of-scope test edit rejected + reverted + reports discarded; accept commits; staged no-progress reverted from index; line shift is not a new obligation; unresolvable candidate is VERIFICATION_PENDING (no attempt); known no-progress defers; Operator rewind restores tree+budget in a new epoch; green → packaging → startup → M4 (unknown gates never mint; an environment blocker is not a card; a gate repair is accepted phase-aware); unresolved test = typed blocker; tampered list refused)")
+    print("OK: fix-until-green (checked-exception veto: a falling count does not admit an introduced unhandled exception; family bound to its introducing step: Owner→Pet CONTINUE in the same card without an attempt, a stalled continuation rejects, an exposure outside the family is a typed diagnosis; a harness-caused deferral is cleared by a metadata-only disposition and the one budget sees it; a set-wide packaging cause reaches the work list as one typed blocker with no card, under permuted reported names; measurement contract: unrun tests / empty reports / failed runner / skipped rescan are unknown; baseline; issued card; diagnostic cannot advance; post-verify edit + unissued cluster refused with baseline intact; out-of-scope test edit rejected + reverted + reports discarded; accept commits; staged no-progress reverted from index; line shift is not a new obligation; unresolvable candidate is VERIFICATION_PENDING (no attempt); known no-progress defers; Operator rewind restores tree+budget in a new epoch; green → packaging → startup → M4 (unknown gates never mint; an environment blocker is not a card; a gate repair is accepted phase-aware); unresolved test = typed blocker; tampered list refused)")
     return 0
 
 

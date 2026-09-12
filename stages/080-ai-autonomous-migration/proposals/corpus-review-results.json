@@ -1,0 +1,61 @@
+{
+  "status": "AMENDED_DRAFT_NOT_APPROVED",
+  "source_binding": "local specimen only; live v8 recheck unavailable after API timeouts",
+  "local_source_digest": "322a6149734fd8ce09b638a57312106dce879ec9ab5aa2263939a22c38ac6fd4",
+  "cors_policy_ids": [
+    "crossorigin:7b1a3d9234cd"
+  ],
+  "original_draft_file_sha256": "fe3d46bd42da479ee7dda174ddc1236da4bc2a69d466f4c550e7e40ddb2dbf8d",
+  "amended_draft_corpus_sha256": "a27a93eb6c0bc34c56964aa2fd21f9a8cc2dbdbf98691103d5b4be93ea9e594f",
+  "requests": [
+    {
+      "id": "sc:update-owner-1-city",
+      "entry_point": "ep:org.springframework.samples.petclinic.rest.OwnerRestController#updateOwner(int,org.springframework.samples.petclinic.dto.OwnerDto,org.springframework.validation.BindingResult,org.springframework.web.util.UriComponentsBuilder):http",
+      "method": "PUT",
+      "path": "/api/owners/1",
+      "body_sha256": "3dc011998e72e5c88c2ac0e3bf9d2cbec2e139aad04393e374f871fc6c090403",
+      "request_sha256": "6fc01292ae92ebd72f0ce46182645aeb1028457d77c441a2aedc60e0513226eb"
+    },
+    {
+      "id": "sc:create-owner-location",
+      "entry_point": "ep:org.springframework.samples.petclinic.rest.OwnerRestController#addOwner(org.springframework.samples.petclinic.dto.OwnerDto,org.springframework.validation.BindingResult,org.springframework.web.util.UriComponentsBuilder):http",
+      "method": "POST",
+      "path": "/api/owners",
+      "body_sha256": "5a82405cd593238572b5dc3c250c45fcb1577e2a93b4c2cf24a32057222ef495",
+      "request_sha256": "0fc4d42b2fea2cdcae96e8ff07801267071fd8a4707ad33289a9dc704ef70ec8"
+    },
+    {
+      "id": "sc:cors-actual-owners",
+      "entry_point": "ep:org.springframework.samples.petclinic.rest.OwnerRestController#getOwners():http",
+      "method": "GET",
+      "path": "/api/owners",
+      "body_sha256": "",
+      "request_sha256": "cd0544ceb3eb68f40d9ca010f3310adc7b71528b34bcc4fe8ecba73128a51415"
+    },
+    {
+      "id": "sc:cors-preflight-owners",
+      "entry_point": "ep:org.springframework.samples.petclinic.rest.OwnerRestController#addOwner(org.springframework.samples.petclinic.dto.OwnerDto,org.springframework.validation.BindingResult,org.springframework.web.util.UriComponentsBuilder):http",
+      "method": "OPTIONS",
+      "path": "/api/owners",
+      "body_sha256": "",
+      "request_sha256": "5c93693be969bd554aa8de64c7a7a656739da9bd3cd34fe4c33e79f35af3958a"
+    }
+  ],
+  "checks": {
+    "all_request_bodies_resolve": true,
+    "all_entry_points_match_local_inventory": true,
+    "post_and_preflight_pair": true,
+    "declared_source_policy_coverage_gaps": [],
+    "unsigned_draft_refused": true,
+    "original_draft_preserved_byte_for_byte": true,
+    "v7_update_body_preserved_byte_for_byte": true,
+    "create_body_preserved_from_later_user_proposal": true
+  },
+  "not_tested": [
+    "live v8 source digest equality",
+    "source execution or destination execution",
+    "positive Location and CORS response qualification",
+    "full M4 parity"
+  ],
+  "create_body_source": "/Users/adrina/Sandbox/rhoai3-coding-demo/stages/080-ai-autonomous-migration/proposals/bodies/create-owner.json"
+}

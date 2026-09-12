@@ -55,12 +55,16 @@ def is_preflight(method: str, headers: dict[str, str] | None) -> bool:
 
 
 def required_headers(method: str, status: Any, request_headers: dict[str, str] | None) -> list[str]:
-    """Which asserted headers this exchange REQUIRES a recorded value for.
+    """Which asserted headers this exchange's capture must have COVERED.
 
     A Location on a 201 or a redirect; the CORS permission headers on any
-    exchange that carries a cross-origin Origin (the preflight ones on a
-    preflight). A capture with no header map cannot answer these, so a
-    comparison that needs one is INCONCLUSIVE rather than a quiet skip."""
+    exchange that carries a cross-origin Origin (the preflight set on a
+    preflight -- Expose-Headers belongs to the ACTUAL request, not to the
+    preflight). Coverage means the capture recorded a header MAP: a recorded
+    null for one of these is a legitimate observation (a source that grants no
+    credential permission records none) and is compared as recorded. What is
+    refused is comparing an exchange like this against a capture that has no
+    header map at all -- INCONCLUSIVE, never a quiet skip."""
     need: list[str] = []
     try:
         code = int(status)

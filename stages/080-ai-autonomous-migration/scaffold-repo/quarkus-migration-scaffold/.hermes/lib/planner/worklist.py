@@ -286,6 +286,42 @@ RUNTIME_CAUSES = (
 )
 
 
+# A failure that is about a SET, not a file. The platform names one member of
+# the set and which one it names changes between runs: six builds of one
+# unchanged v8 tree named Owner, User, Visit, PetType, Pet and Specialty in
+# turn (2026-09-12). Pinning the obligation to the name of the moment churns
+# its identity, its write set and its retry budget, and would send a worker to
+# repair an arbitrary file. Recognised here by the PROCESSOR that raised it
+# plus the closed-vocabulary cause; the members are not invented -- deriving
+# the complete set belongs to a family planner, and until then this is a typed
+# blocker, never a card.
+RUNTIME_SET_WIDE = (
+    ("io.quarkus.spring.data.deployment", "missing-implementation", "spring-data-fragment-implementations"),
+)
+
+
+def set_wide_scope(text: str, cause: str) -> str:
+    """The scope id when this failure is about a set, else ""."""
+    for marker, want_cause, scope in RUNTIME_SET_WIDE:
+        if cause == want_cause and marker in (text or ""):
+            return scope
+    return ""
+
+
+def named_source_types(text: str, root: Path | None) -> list[str]:
+    """Every type the message names that this tree really has, as paths.
+
+    The raw message stays the observation; this is what it pointed at."""
+    if root is None:
+        return []
+    out: list[str] = []
+    for fqn in FQN_RE.findall(text or ""):
+        rel = "src/main/java/%s.java" % fqn.replace(".", "/")
+        if (Path(root) / rel).is_file() and rel not in out:
+            out.append(rel)
+    return out
+
+
 QUOTED_RE = re.compile(r"'([^']{8,120})'|\"([^\"]{8,120})\"")
 
 
@@ -462,10 +498,19 @@ def runtime_items(package: dict[str, Any] | None, boot: dict[str, Any] | None, r
         # at the same repository once it became a Spring Data repository).
         cause = runtime_cause(detail + "\n" + log)
         member = runtime_member(detail + "\n" + log)
-        ident = sha256_bytes(canonical_bytes({"gate": gate, "kind": kind, "cause": cause, "locus": locus, "member": member}))[:16]
+        # A set-wide cause keeps neither the file nor the member in its
+        # identity: both are whichever one the platform reached first.
+        scope = set_wide_scope(detail + "\n" + log, cause)
+        observed = named_source_types(detail + "\n" + log, root)
+        if scope:
+            locus, member, unlocated = "", "", True
+            ident = sha256_bytes(canonical_bytes({"gate": gate, "kind": kind, "cause": cause, "set_wide": scope}))[:16]
+        else:
+            ident = sha256_bytes(canonical_bytes({"gate": gate, "kind": kind, "cause": cause, "locus": locus, "member": member}))[:16]
         out.append({
             "id": "rt:%s:%s" % (gate, ident), "source": "runtime", "gate": gate,
             "kind": cluster_kind, "obligation": kind, "cause": cause, "member": member,
+            "set_wide": scope, "observed": observed,
             "unlocated": unlocated, "category": "mandatory",
             "signatures": member_signatures(root, locus, member),
             "ambiguous_member": len(member_signatures(root, locus, member)) > 1,
@@ -1398,10 +1443,16 @@ def build_worklist(root: Path, *, write: bool = True) -> dict[str, Any]:
     for i in rt_all:
         if i.get("unlocated"):
             detail = str(i.get("detail") or i.get("message") or "")[:400]
-            blocked.append("the %s gate failed with a message that names no file of this tree, so no card can carry it: %s"
-                           % (i.get("gate"), detail[:200]))
+            if i.get("set_wide"):
+                blocked.append("the %s gate failed with a SET-WIDE cause (%s): the platform names one member of a failing set and "
+                               "that name changes between runs, so no single-file card may be minted; it named %s here: %s"
+                               % (i.get("gate"), i.get("set_wide"), ", ".join(i.get("observed") or []) or "no file of this tree", detail[:160]))
+            else:
+                blocked.append("the %s gate failed with a message that names no file of this tree, so no card can carry it: %s"
+                               % (i.get("gate"), detail[:200]))
             unlocatable.append({"id": str(i.get("id")), "kind": "unlocatable", "gate": str(i.get("gate") or ""),
-                                "cause": str(i.get("cause") or ""), "detail": detail})
+                                "cause": str(i.get("cause") or ""), "scope": str(i.get("set_wide") or ""),
+                                "observed": list(i.get("observed") or []), "detail": detail})
     runtime = runtime_state(package_doc, boot_doc)
     for b in runtime["blockers"]:
         blocked.append("runtime gate blocked by the environment: %s" % b)
