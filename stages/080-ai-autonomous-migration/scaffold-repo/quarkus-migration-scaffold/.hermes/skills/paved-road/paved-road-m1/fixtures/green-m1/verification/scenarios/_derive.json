@@ -1,0 +1,5 @@
+{
+ "schema": "rhoai3.scenario-derivation/v1",
+ "producer": "derive-source-scenarios.py",
+ "status": "ok"
+}

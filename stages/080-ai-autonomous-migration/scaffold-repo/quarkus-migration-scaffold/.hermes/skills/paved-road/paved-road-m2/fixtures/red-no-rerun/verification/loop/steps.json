@@ -1,0 +1,10 @@
+{
+  "attempts": {},
+  "schema": "rhoai3.loop-steps/v1",
+  "steps": [
+    {
+      "cluster": "bootstrap",
+      "verdict": "baseline"
+    }
+  ]
+}

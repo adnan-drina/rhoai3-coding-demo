@@ -50,13 +50,22 @@ complete recorded request against a known initial state, with the effects that
 prove what it did.
 
 ```bash
+# 0. derive the corpus at M1, from the frozen source's own evidence (the
+#    bundle's entry points, the OpenAPI examples, the seed rows, the
+#    @CrossOrigin policies). Gaps are recorded, never filled in.
+python3 "${HERMES_SKILL_DIR}/scripts/derive-source-scenarios.py" --root /projects/modernized
+
 # 1. capture at M1 — one command, one runtime. It packages the frozen source,
 #    starts it, restores the initial state before each scenario that asks for
-#    it, replays the approved corpus, then captures the idempotent reads
+#    it, replays the derived corpus, then captures the idempotent reads
 #    through the same running source (corpus path_vars supply any templated
 #    segment) and stops what it started. No admission receipt is needed: M1
 #    precedes M2, so the capture binds to the evidence bundle.
 python3 "${HERMES_SKILL_DIR}/scripts/capture-source-scenarios.py" --root /projects/modernized
+
+#    then qualify what was captured against each scenario's own contract;
+#    the parity receipt counts only qualified captures as coverage
+python3 "${HERMES_SKILL_DIR}/scripts/qualify-source-captures.py" --root /projects/modernized
 
 #    reads alone, against a source someone else is running:
 python3 "${HERMES_SKILL_DIR}/scripts/capture-source-oracles.py" --root /projects/modernized \
@@ -92,10 +101,77 @@ or absence. Retain complete evidence before qualifying that scenario; do not
 weaken its predicate. An unreadable exposed-header model refuses capture
 before starting the source. `CAPTURED` still requires separate qualification.
 
-`verification/scenarios/corpus.json` (`rhoai3.scenario-corpus/v1`) is
-**Operator-approved intent** and names its approver. Start from
-`.hermes/planning/scenarios.example.json`, which carries the shape and the
-rules below. An optional `path_vars`
+### Deriving the corpus
+
+`verification/scenarios/corpus.json` (`rhoai3.scenario-corpus/v1`) is a
+**producer output**: `scripts/derive-source-scenarios.py` derives it from
+evidence the harness already holds, and nothing in it is authored by a worker
+or signed by a person. The concrete URLs come from the evidence bundle's entry
+points; the request bodies from the frozen source's OpenAPI document (its own
+`example` values, `$ref` and `allOf` resolved, `id` never sent on a create);
+the seeded identifiers (`path_vars`, the row an update or delete addresses)
+from `src/main/resources/db/<engine>/populateDB.sql`; the cross-origin
+exchanges from every `@CrossOrigin` policy in M1's structure model. One
+scenario per rule per write entry point — `create`, `create-invalid` (one
+property violating a declared `pattern` or `minLength`, verified against the
+pattern), `update`, `delete` — and per policy a `cors-actual` read and a
+`cors-preflight`. Each scenario records `derived_from` (which inputs produced
+it) and `qualify` (what its capture must show).
+
+What cannot be derived is a **gap**, recorded in the corpus and the receipt
+and never filled in: a required property without an example, a path variable
+no seed row supplies, an entry point with no HTTP method. The corpus is bound
+to the evidence bundle by digest in `verification/scenarios/_derive.json`;
+the loader refuses a derived corpus edited after derivation (its digest no
+longer matches), one derived against another bundle, or one whose receipt is
+not `status: ok`. A hand-authored corpus naming `approved_by` is now the
+**exception** (a specimen whose evidence cannot be derived); a placeholder
+approver (`TODO`, `<who>`) is refused, and the derivation refuses to overwrite
+a hand-authored corpus at its output path.
+
+### Qualifying captures
+
+`CAPTURED` records an observation, including an unexpected one.
+`scripts/qualify-source-captures.py` checks every capture against its
+scenario's `qualify` block and writes
+`verification/source-oracles/scenarios/_qualification.json`: `expect_status`;
+`location: absolute-under-base` (absolute, on the capture's `source.base_url`
+origin, under its path); `after_contains_body` (the request body's key/values
+present in an object of the retained read-back afterwards);
+`after_adds_one_body` (exactly one more matching object after than before —
+a document's example is often a seeded row verbatim, so a derived create
+promises "one more", never "absent before"); `before_lacks_body` (kept for a
+hand-authored corpus); `after_equals_before` (same digest and status); 
+`errors_header_names_field`; `after_effect_status`; `cors_allow_origin`,
+`cors_expose_headers`, `cors_allow_method`, `cors_allow_headers` (token sets).
+Retained bodies are read only when their file matches `retained_sha256`, the
+body is complete (`raw_body_sha256`, not `truncated`) and the row's
+`body_sha256` recomputes. A missing capture, a missing or unbound body, a
+digest mismatch or a scenario without a contract is INCONCLUSIVE, never a
+pass; a check that does not hold is FAIL. The gate exits 0 only when every
+scenario the corpus lists is PASS. `compose-parity-receipt.py` reads the
+verdicts: a scenario qualified **INCONCLUSIVE** (or with no record) makes its
+entry point INCONCLUSIVE (`capture not qualified: …`), and a derived corpus
+with no qualification at all is INCONCLUSIVE (`captures not qualified`). A
+scenario qualified **FAIL** does *not*: its capture is still faithful parity
+evidence (a source that refuses to delete a referenced row has demonstrated a
+rejection the destination must reproduce), so the entry point is judged on
+parity and the scenario is listed under the receipt's `coverage_gaps`
+(`{scenario, entry_point, reason}`) — the intent was not demonstrated, and
+that stays on the record. An Operator-authored corpus without a
+qualification file keeps its previous behaviour.
+
+The operation for a route is found by path (exact, else the longest document
+path the route ends with) or, when the document's paths do not name the
+code's routes (petclinic documents `/owner` while the controller maps
+`/api/owners`), by `operationId` equal to the entry point's method name; two
+controllers sharing a method name are told apart by the operation's tag or
+body-schema stem, and an ambiguity that survives is a gap.
+
+### The corpus document
+
+Start from `.hermes/planning/scenarios.example.json` only for the
+hand-authored exception; it carries the shape and the rules below. An optional `path_vars`
 map supplies the values the idempotent reads need for templated paths, from
 the source's own seeded data. Each scenario carries the
 method, a **concrete** URL (never a route pattern — the route stays in the
@@ -157,9 +233,15 @@ What refuses, and why:
 
 ## Scripts
 
+- `scripts/derive-source-scenarios.py` — M1 producer: derive the corpus from
+  the bundle, the OpenAPI examples, the seed and the CORS policies; gaps
+  recorded, bound to the bundle in `verification/scenarios/_derive.json`
 - `scripts/capture-source-oracles.py` — read capture from the source system
 - `scripts/capture-source-scenarios.py` — M1 producer: package and start the
-  frozen source, restore state, capture the approved scenarios, clean up
+  frozen source, restore state, capture the derived scenarios, clean up
+- `scripts/qualify-source-captures.py` — the qualification gate: every capture
+  against its scenario's `qualify` contract, reading the retained bodies by
+  digest; PASS / FAIL / INCONCLUSIVE per scenario, exit 0 only on all PASS
 - `scripts/compare-runtime-parity.py` — destination comparison for reads
 - `scripts/compare-scenario-parity.py` — recorded-request replay plus effects
 - `scripts/compose-parity-receipt.py` — receipt-bound parity receipt; an entry
@@ -168,4 +250,6 @@ What refuses, and why:
   state the corpus names (drop and recreate the schema, apply the schema and
   seed assets `decisions.yaml` points at)
 - `scripts/_scenarios.py` — the corpus model and the request digest
-- `scripts/capture-source-oracles.test.py`, `scripts/scenario-parity.test.py` — selftests
+- `scripts/capture-source-oracles.test.py`, `scripts/scenario-parity.test.py`,
+  `scripts/scenario-derivation.test.py` — selftests (the last one: derivation,
+  loader binding, qualification and the receipt's use of it)

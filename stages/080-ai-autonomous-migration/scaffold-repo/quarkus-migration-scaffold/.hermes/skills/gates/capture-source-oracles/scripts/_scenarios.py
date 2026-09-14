@@ -8,7 +8,14 @@ answered 400 for, and identical services compared FAIL. The fix is a corpus
 that carries the complete request, and a replay that reconstructs it from the
 corpus and verifies its digest before sending it.
 
-A scenario is Operator-approved intent. It carries:
+A scenario is derived from the frozen source's own evidence (the OpenAPI
+document, the seed data and M1's structure model: derive-source-scenarios.py)
+and bound to the evidence bundle by digest; a hand-authored corpus that names
+an ``approved_by`` is the exception, kept for a specimen whose evidence cannot
+be derived. The corpus used to be "Operator-approved intent" with a signature
+standing in for provenance, which is a human sign-off by another name; the
+project rule is verification gates and an audit trail, never a signature. A
+scenario carries:
 
   method, path        the concrete URL, never a route pattern
   headers             what the request needs (content type, accept)
@@ -37,12 +44,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _oracle_common import ensure_hermes_lib  # noqa: E402
 
 ensure_hermes_lib()
-from planner.canonical import canonical_bytes, load_json, sha256_bytes  # noqa: E402
-from planner.paths import STRUCTURE  # noqa: E402
+from planner.canonical import canonical_bytes, digest, load_json, sha256_bytes  # noqa: E402
+from planner.paths import EVIDENCE_BUNDLE, STRUCTURE  # noqa: E402
 
 CORPUS = Path("verification") / "scenarios" / "corpus.json"
+DERIVE_RECEIPT = Path("verification") / "scenarios" / "_derive.json"
+DERIVATION_SCHEMA = "rhoai3.scenario-derivation/v1"
 SCENARIO_ORACLES = Path("verification") / "source-oracles" / "scenarios"
 SCENARIO_PARITY = Path("verification") / "parity" / "scenarios"
+QUALIFICATION = SCENARIO_ORACLES / "_qualification.json"
+QUALIFICATION_SCHEMA = "rhoai3.scenario-qualification/v1"
 SCHEMA = "rhoai3.scenario-corpus/v1"
 
 
@@ -61,8 +72,9 @@ def load_corpus(root: Path) -> dict[str, Any]:
     doc = load_json(p)
     if not isinstance(doc, dict) or doc.get("schema") != SCHEMA:
         raise CorpusError("%s is not a %s document" % (CORPUS, SCHEMA))
-    if not doc.get("approved_by"):
-        raise CorpusError("%s names no approver; scenario intent is the Operator's, not a worker's" % CORPUS)
+    provenance_gap = corpus_provenance_gap(root, doc)
+    if provenance_gap:
+        raise CorpusError(provenance_gap)
     if doc.get("path_vars") is not None and not isinstance(doc.get("path_vars"), dict):
         raise CorpusError("%s path_vars must be a mapping of template variable to a value from the source's own seeded data" % CORPUS)
     seen: set[str] = set()
@@ -94,6 +106,65 @@ def load_corpus(root: Path) -> dict[str, Any]:
         if sc.get("cors_policy") and str(sc["cors_policy"]) not in {str(p.get("id")) for p in (doc.get("cors_policies") or [])}:
             raise CorpusError("scenario %s names cors_policy %r, which cors_policies does not declare" % (sc["id"], sc["cors_policy"]))
     return doc
+
+
+_PLACEHOLDER_MARKS = ("TODO", "<", ">")
+
+
+def is_derived(doc: dict[str, Any]) -> bool:
+    """A corpus that names its producer rather than a person."""
+    return isinstance(doc.get("derived_from"), dict) and not doc.get("approved_by")
+
+
+def corpus_provenance_gap(root: Path, doc: dict[str, Any]) -> str:
+    """Why this corpus may NOT be trusted; "" when its provenance holds.
+
+    Two provenances are accepted. A DERIVED corpus (``derived_from``) is bound
+    to the derivation receipt beside it: the receipt says ``status: ok``, its
+    ``corpus_sha256`` equals this document's digest (a derived corpus edited
+    after derivation no longer matches and is refused -- the edit is a hand
+    author with no name) and its ``evidence_bundle_sha256`` equals the digest
+    of the bundle in this tree (a corpus derived from another frozen source
+    proves nothing about this one). A hand-AUTHORED corpus names a person in
+    ``approved_by``; a placeholder (``TODO``, ``<who>``) is not a name. The
+    wording never says "missing": capture-source-scenarios.py reads that word
+    as "no corpus at all", which is idle, and a broken binding is not idle."""
+    approved = doc.get("approved_by")
+    if approved:
+        text = str(approved)
+        if any(m in text for m in _PLACEHOLDER_MARKS):
+            return "%s approved_by %r is a placeholder, not an approver" % (CORPUS, text)
+        return ""
+    derived = doc.get("derived_from")
+    if not isinstance(derived, dict):
+        return ("%s is neither derived (derived_from) nor hand-authored (approved_by); "
+                "derive it from the frozen source's evidence (derive-source-scenarios.py)" % CORPUS)
+    rp = Path(root) / DERIVE_RECEIPT
+    if not rp.is_file():
+        return "%s says it is derived but there is no derivation receipt %s beside it" % (CORPUS, DERIVE_RECEIPT)
+    try:
+        receipt = load_json(rp)
+    except (OSError, ValueError) as exc:
+        return "%s could not be read: %s" % (DERIVE_RECEIPT, exc)
+    if not isinstance(receipt, dict) or receipt.get("schema") != DERIVATION_SCHEMA:
+        return "%s is not a %s document" % (DERIVE_RECEIPT, DERIVATION_SCHEMA)
+    if receipt.get("status") != "ok":
+        return "%s records status %r, so the derivation did not complete" % (DERIVE_RECEIPT, receipt.get("status"))
+    have = corpus_digest(doc)
+    if str(receipt.get("corpus_sha256") or "") != have:
+        return ("%s digest %s is not the one the derivation receipt recorded (%s): the corpus was edited after derivation, "
+                "and an edit has no provenance" % (CORPUS, have[:12], str(receipt.get("corpus_sha256") or "")[:12]))
+    bp = Path(root) / EVIDENCE_BUNDLE
+    if not bp.is_file():
+        return "%s is derived but there is no %s in this tree to bind it to" % (CORPUS, EVIDENCE_BUNDLE)
+    try:
+        bundle_sha = digest(load_json(bp))
+    except (OSError, ValueError) as exc:
+        return "%s could not be read: %s" % (EVIDENCE_BUNDLE, exc)
+    if str(receipt.get("evidence_bundle_sha256") or "") != bundle_sha:
+        return ("%s was derived against evidence bundle %s, this tree's bundle is %s: derive it again"
+                % (CORPUS, str(receipt.get("evidence_bundle_sha256") or "")[:12], bundle_sha[:12]))
+    return ""
 
 
 def cors_coverage(doc: dict[str, Any], source_policies: list[str] | None = None) -> list[str]:
@@ -129,24 +200,29 @@ _CORS_API = ("org.springframework.web.cors.", "org.springframework.web.servlet.c
              "org.springframework.web.servlet.config.annotation.CorsRegistration")
 
 
-def source_cors_policies(root: Path) -> tuple[list[str], str]:
-    """(the CORS policies the FROZEN source declares, why-unknown).
+def source_cors_policy_map(root: Path) -> tuple[dict[str, dict[str, Any]], str]:
+    """({policy id: {"kind", "values", "types"}}, why-unknown) -- the CORS
+    policies the FROZEN source declares, with the annotation values and the
+    types that carry each one.
 
     Read from M1's structural model of the source, never from text: every
     distinct @CrossOrigin configuration is one policy (the same annotation on
     six controllers is one policy, a different exposedHeaders is another), and
-    a type wired to Spring's CORS configuration API is a global policy. An
-    unreadable model is a reason, not an empty list: "no policies" and "not
-    read" must not look the same."""
+    a type wired to Spring's CORS configuration API is a global policy. The id
+    is the digest of the annotation values, so the derivation, the coverage
+    check and the parity receipt name the same policy. An unreadable model is
+    a reason, not an empty map: "no policies" and "not read" must not look the
+    same."""
     p = Path(root) / STRUCTURE
     if not p.is_file():
-        return [], "M1's structural model %s is not in this tree, so the source's CORS policies are unknown" % STRUCTURE
+        return {}, "M1's structural model %s is not in this tree, so the source's CORS policies are unknown" % STRUCTURE
     try:
         doc = load_json(p)
     except (OSError, ValueError) as exc:
-        return [], "%s could not be read: %s" % (STRUCTURE, exc)
-    out: set[str] = set()
+        return {}, "%s could not be read: %s" % (STRUCTURE, exc)
+    out: dict[str, dict[str, Any]] = {}
     for t in doc.get("types") or []:
+        fqn_t = str(t.get("fqn") or "")
         anns = list(t.get("annotations") or [])
         for m in t.get("methods") or []:
             anns.extend(m.get("annotations") or [])
@@ -154,11 +230,23 @@ def source_cors_policies(root: Path) -> tuple[list[str], str]:
             fqn = str(a.get("fqn") or a.get("name") or "")
             if fqn == "org.springframework.web.bind.annotation.CrossOrigin" or fqn.rsplit(".", 1)[-1] == "CrossOrigin":
                 values = a.get("values") if a.get("values") is not None else a.get("attributes") or {}
-                out.add("crossorigin:%s" % sha256_bytes(canonical_bytes(values))[:12])
+                pid = "crossorigin:%s" % sha256_bytes(canonical_bytes(values))[:12]
+                row = out.setdefault(pid, {"kind": "crossorigin", "values": values, "types": []})
+                if fqn_t and fqn_t not in row["types"]:
+                    row["types"].append(fqn_t)
         refs = [str(x) for x in (t.get("type_refs") or t.get("refs") or [])] + [str(x) for x in (t.get("supertypes") or [])]
         if any(r.startswith(_CORS_API) for r in refs):
-            out.add("global:%s" % t.get("fqn"))
-    return sorted(out), ""
+            out["global:%s" % fqn_t] = {"kind": "global", "values": {}, "types": [fqn_t]}
+    for row in out.values():
+        row["types"].sort()
+    return dict(sorted(out.items())), ""
+
+
+def source_cors_policies(root: Path) -> tuple[list[str], str]:
+    """(the CORS policy ids the FROZEN source declares, why-unknown); see
+    source_cors_policy_map."""
+    policies, why = source_cors_policy_map(root)
+    return sorted(policies), why
 
 
 def source_exposed_headers(root: Path) -> tuple[list[str], str]:

@@ -1,0 +1,5 @@
+{
+ "schema": "rhoai3.source-scenario/v1",
+ "scenario": "sc:example",
+ "status": "CAPTURED"
+}

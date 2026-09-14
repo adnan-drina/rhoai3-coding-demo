@@ -1,0 +1,5 @@
+{
+ "schema": "rhoai3.scenario-corpus/v1",
+ "derived_from": {"producer": "derive-source-scenarios.py"},
+ "scenarios": []
+}

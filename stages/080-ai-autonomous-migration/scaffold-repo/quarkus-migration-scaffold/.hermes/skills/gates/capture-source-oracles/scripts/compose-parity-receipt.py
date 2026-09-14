@@ -15,7 +15,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _oracle_common import PARITY, slug  # noqa: E402
-from _scenarios import CorpusError, SCENARIO_PARITY, corpus_digest, cors_coverage, load_corpus, source_cors_policies  # noqa: E402
+from _scenarios import CorpusError, QUALIFICATION, QUALIFICATION_SCHEMA, SCENARIO_PARITY, corpus_digest, cors_coverage, is_derived, load_corpus, source_cors_policies  # noqa: E402
 from planner.admission import verify_receipt  # noqa: E402
 from planner.canonical import load_json, write_canonical  # noqa: E402
 from planner.paths import EVIDENCE_BUNDLE  # noqa: E402
@@ -51,6 +51,29 @@ def main(argv: list[str] | None = None) -> int:
     required: dict[str, list[str]] = {}
     for sc in (corpus.get("scenarios") or []):
         required.setdefault(str(sc.get("entry_point") or ""), []).append(str(sc.get("id")))
+    # A capture is coverage only once it is QUALIFIED: CAPTURED records an
+    # observation, and a create the source answered 500 for replays faithfully
+    # while proving nothing about creating. A derived corpus (no person signed
+    # it) needs the qualification gate's verdict per scenario; a hand-authored
+    # one keeps the Operator's own review when no gate ran, and is held to the
+    # gate's verdict when one did.
+    qualified: dict[str, str] = {}
+    qualification_loaded = False  # an empty verdict map is still a loaded qualification (nothing in it PASSes)
+    qualification_gap = ""
+    qp = root / QUALIFICATION
+    if qp.is_file():
+        qdoc = load_json(qp)
+        if qdoc.get("schema") != QUALIFICATION_SCHEMA:
+            qualification_gap = "%s is not a %s document" % (QUALIFICATION, QUALIFICATION_SCHEMA)
+        elif corpus_sha and str(qdoc.get("corpus_sha256") or "") != corpus_sha:
+            qualification_gap = "captures were qualified against corpus %s, this is %s" % (str(qdoc.get("corpus_sha256"))[:12], corpus_sha[:12])
+        else:
+            qualification_loaded = True
+            qualified = {sid: "%s: %s" % (r.get("verdict"), r.get("reason") or "") if r.get("verdict") != "PASS" else "PASS"
+                         for sid, r in (qdoc.get("scenarios") or {}).items()}
+    elif corpus and is_derived(corpus):
+        qualification_gap = "captures not qualified (run qualify-source-captures.py)"
+    coverage_gaps: list[dict[str, str]] = []
     results: dict[str, list[dict[str, Any]]] = {}
     sdir = root / SCENARIO_PARITY
     for sp in sorted(sdir.glob("*.json")) if sdir.is_dir() else []:
@@ -62,9 +85,22 @@ def main(argv: list[str] | None = None) -> int:
         names = sorted(required.get(ep) or [])
         if names:
             missing: list[str] = []
-            problems: list[str] = []
+            problems: list[str] = [qualification_gap] if qualification_gap else []
             failures: list[str] = []
             for sid in names:
+                if qualification_loaded:
+                    q = qualified.get(sid)
+                    if q is None:
+                        problems.append("capture not qualified: %s has no qualification record" % sid)
+                    elif q.startswith("FAIL"):
+                        # a capture that does not show what the scenario was
+                        # for is still faithful parity evidence (a source that
+                        # refuses to delete a referenced row has demonstrated a
+                        # rejection the destination must reproduce); the
+                        # scenario counts for parity and is a COVERAGE gap
+                        coverage_gaps.append({"scenario": sid, "entry_point": ep, "reason": "capture not qualified: %s" % q})
+                    elif q != "PASS":
+                        problems.append("capture not qualified: %s %s" % (sid, q))
                 found = results.get(sid) or []
                 if not found:
                     missing.append(sid)
@@ -115,9 +151,15 @@ def main(argv: list[str] | None = None) -> int:
         verdict = "INCONCLUSIVE"
     doc = {"schema": "rhoai3.parity-receipt/v1", "receipt_sha256": receipt["receipt_digest"], "producer": "compose-parity-receipt.py",
            "corpus_sha256": corpus_sha, "corpus_error": corpus_error, "entry_points": rows, "total": len(rows), "not_passed": failed,
-           "cors": {"source_policies": source_policies, "gaps": cors_gaps}, "verdict": verdict}
+           "cors": {"source_policies": source_policies, "gaps": cors_gaps},
+           "qualification": {"present": qp.is_file(), "derived_corpus": bool(corpus) and is_derived(corpus), "gap": qualification_gap,
+                             "not_passed": sorted(sid for sid, v in qualified.items() if v != "PASS")},
+           "coverage_gaps": coverage_gaps,
+           "verdict": verdict}
     out = root / PARITY / "receipt.json"
     write_canonical(out, doc)
+    for g in coverage_gaps:
+        print("  - coverage gap %s (%s): %s" % (g["scenario"], g["entry_point"], g["reason"]))
     if doc["verdict"] == "PASS":
         print("OK: parity receipt PASS (%d entry points) → %s" % (len(rows), out))
         return 0

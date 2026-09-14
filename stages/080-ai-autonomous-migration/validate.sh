@@ -620,6 +620,9 @@ check "080 a set-wide packaging cause is a typed blocker, never a one-file card 
 check "080 the live board is enriched by ONE implementation, and K3 and K4 both use it (the edges arrive beside the task)" \
   "n=0; grep -q -F 'def collect_board' '${SCAFFOLD_LIB}/planner/live_board.py' && n=\$((n+1)); grep -q -F 'collect_board(' '${SCAFFOLD_KERNEL}/k3_live.py' && n=\$((n+1)); grep -q -F 'collect_board(' '${SCAFFOLD_KERNEL}/k4_mint.py' && n=\$((n+1)); grep -q -F 'detail.get(\"task\")' '${SCAFFOLD_KERNEL}/k3_live.py' '${SCAFFOLD_KERNEL}/k4_mint.py' || n=\$((n+1)); echo \$n" \
   "4"
+check "080 the scenario corpus is a producer output and captures are qualified by a gate, never signed by a person (derive + qualify present, selftest referenced and green)" \
+  "n=0; test -f '${SCAFFOLD_080}/.hermes/skills/gates/capture-source-oracles/scripts/derive-source-scenarios.py' && n=\$((n+1)); test -f '${SCAFFOLD_080}/.hermes/skills/gates/capture-source-oracles/scripts/qualify-source-captures.py' && n=\$((n+1)); grep -q -F 'scenario-derivation.test.py' '${SCAFFOLD_080}/.hermes/skills/gates/capture-source-oracles/SKILL.md' && n=\$((n+1)); grep -q -F 'derive-source-scenarios' '${SCAFFOLD_080}/.hermes/skills/paved-road/paved-road-m1/steps.json' && n=\$((n+1)); python3 '${SCAFFOLD_080}/.hermes/skills/gates/capture-source-oracles/scripts/scenario-derivation.test.py' >/dev/null 2>&1 && n=\$((n+1)); echo \$n" \
+  "5"
 check "080 K1 selftest passes (receipt/write-set/artifact body codes)" \
   "python3 '${SCAFFOLD_KERNEL}/k1_selftest.py' >/dev/null && echo 1 || echo 0" \
   "1"

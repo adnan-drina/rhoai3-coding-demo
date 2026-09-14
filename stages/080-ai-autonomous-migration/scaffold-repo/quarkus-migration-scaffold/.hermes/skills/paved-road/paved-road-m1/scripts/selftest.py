@@ -49,10 +49,13 @@ def main() -> int:
         return _fail("M1 must start with the freeze and never list derive-legacy-boot3: %s" % skills)
     if skills.index("inventory-legacy-surface") > skills.index("scan-with-mta"):
         return _fail("M1 order %s" % skills)
-    # the bundle is assembled, and only then is the source recorded: the
-    # capture reads the bundle's entry points and binds to its digest
-    if skills[-1] != "capture-source-oracles" or skills.index("assemble-evidence-bundle") != len(skills) - 2:
-        return _fail("M1 must end with the bundle and then the source capture: %s" % skills)
+    # the bundle is assembled, and only then is the corpus derived from it and
+    # the source recorded: both read the bundle's entry points and bind to its
+    # digest, and the capture replays what the derivation wrote
+    ids = [s["id"] for s in doc["steps"] if s["backing"] == "skill"]
+    if (skills[-2:] != ["capture-source-oracles", "capture-source-oracles"] or skills.index("assemble-evidence-bundle") != len(skills) - 3
+            or ids[-2:] != ["derive-source-scenarios", "capture-source-scenarios"]):
+        return _fail("M1 must end with the bundle, then the corpus derivation, then the source capture: %s" % ids)
     producer = [s for s in doc["steps"] if s.get("producer")][0]
     if producer["skill"] != "assemble-evidence-bundle" or "evidence/planning/evidence-bundle.json" not in producer["keep"]:
         return _fail("M1 producer must be assemble-evidence-bundle owning evidence-bundle.json")

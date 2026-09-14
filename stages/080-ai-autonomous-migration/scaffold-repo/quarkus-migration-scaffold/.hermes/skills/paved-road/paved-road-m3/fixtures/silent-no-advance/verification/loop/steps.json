@@ -1,0 +1,13 @@
+{
+ "schema": "rhoai3.loop-steps/v1",
+ "attempts": {},
+ "rewinds": [],
+ "steps": [
+  {
+   "card": "",
+   "cluster": "bootstrap",
+   "verdict": "baseline"
+  }
+ ],
+ "rejected": []
+}

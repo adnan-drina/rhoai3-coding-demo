@@ -1,5 +1,5 @@
 {
-  "note": "Copy to <destination>/verification/scenarios/corpus.json and edit. This is Operator-approved INTENT: what the source is asked to do, so the destination can be asked exactly the same thing. It records no expected values - those come only from capturing the source (capture-source-scenarios.py).",
+  "note": "The corpus is normally DERIVED (derive-source-scenarios.py writes <destination>/verification/scenarios/corpus.json from the evidence bundle, the frozen source's OpenAPI examples, its seed data and its @CrossOrigin policies, bound to the bundle digest in _derive.json). Hand authoring from this example is the EXCEPTION, for a specimen whose evidence cannot be derived: copy, edit, and name a real approver in approved_by (a placeholder is refused). Either way the corpus is what the source is asked to do, so the destination can be asked exactly the same thing; it records no expected values - those come only from capturing the source (capture-source-scenarios.py), and captures count as coverage only once qualified (qualify-source-captures.py).",
   "schema": "rhoai3.scenario-corpus/v1",
   "approved_by": "operator:<who approved these scenarios>",
   "initial_state": {

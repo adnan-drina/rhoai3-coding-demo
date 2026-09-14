@@ -1,0 +1,6 @@
+{
+ "schema": "rhoai3.source-capture/v1",
+ "producer": "capture-source-scenarios.py",
+ "status": "ok",
+ "captured": 1
+}

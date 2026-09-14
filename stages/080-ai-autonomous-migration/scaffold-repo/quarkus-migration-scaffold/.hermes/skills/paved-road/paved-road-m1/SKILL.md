@@ -43,7 +43,7 @@ the root of the planner digest chain (SAD §6).
 
 1. Read `steps.json`. Follow that listed order:
    freeze → build → JDK-model inventory → bytecode (optional) → context probe
-   → MTA → assemble → attach.
+   → MTA → assemble → derive the scenario corpus → capture the source → attach.
    - `skill` — `skill_view` that leaf and follow its SKILL.md.
    - `native` — run the named script under `.hermes/kernel/`
      (`kanban_attach.py --task "$HERMES_KANBAN_TASK" --exec`).

@@ -57,6 +57,15 @@
     },
     {
       "backing": "skill",
+      "id": "derive-source-scenarios",
+      "keep": [
+        "verification/scenarios/corpus.json",
+        "verification/scenarios/_derive.json"
+      ],
+      "needle": "capture-source-oracles"
+    },
+    {
+      "backing": "skill",
       "id": "capture-source-scenarios",
       "keep": [
         "verification/source-oracles/scenarios/_capture.json"

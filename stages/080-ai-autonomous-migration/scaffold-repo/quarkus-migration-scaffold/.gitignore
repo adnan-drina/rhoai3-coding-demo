@@ -11,6 +11,11 @@ evidence/build/
 evidence/structure/
 evidence/planning/
 verification/
+# Paved-road KEEP fixtures carry a frozen verification/ tree (the derived
+# scenario corpus + its receipt). Un-ignore only those fixture trees; a
+# dest verification/ artifact anywhere else stays ignored.
+!.hermes/skills/paved-road/*/fixtures/**/verification/
+!.hermes/skills/paved-road/*/fixtures/**/verification/**
 
 # Admission fixture run output (UPLIFT-7 — never tip-commit)
 evidence/fixtures/admission/out/
