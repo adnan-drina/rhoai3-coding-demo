@@ -483,8 +483,51 @@ def save_pending_candidate(root: Path, *, cluster: str, card: str, changed: list
         "stages_ms": (run or {}).get("stages_ms") or {},
         "total_ms": (run or {}).get("total_ms"),
         "issued": dict(issued or {}),
+        "head_commit": git(root, "rev-parse", "HEAD").stdout.strip(),
         "files_dir": str(LOOP_PENDING_FILES / cluster.replace(":", "_").replace("/", "_")),
     }
+
+
+def _pending_restore_drift(root: Path, cluster: str, row: dict[str, Any]) -> str:
+    """Why the restored tree is not this candidate, or "" when it is.
+
+    The whole-tree digest the row carries is the candidate ON THE BASELINE IT
+    WAS WRITTEN ON, and that baseline may legitimately move while the
+    candidate waits: the prerequisite a VERIFICATION_PENDING card waits for is
+    sometimes Operator-owned (ADR-008, the port of a retained Spring test),
+    and an Operator step commits it beside the pending card. So identity is
+    checked where it is claimed -- this candidate's OWN paths are the retained
+    bytes, the paths it deleted are gone, and no other product path differs
+    from the committed tree -- which says the same thing as the digest when
+    the baseline did not move, and stays true when it did.
+
+    What the digest could not have told either way: an Operator step that
+    changed a file this candidate also holds. Restoring would silently drop
+    that change, so it is refused by name."""
+    dest = _pending_dir(root, cluster)
+    own = set(str(p) for p in (list(row.get("changed") or []) + list(row.get("stored") or []) + list(row.get("deleted") or [])))
+    base = str(row.get("head_commit") or "")
+    if base:
+        moved = git(root, "diff", "--name-only", base, "HEAD")
+        if moved.returncode == 0:
+            collided = sorted(set(ln.strip() for ln in moved.stdout.splitlines() if ln.strip()) & own)
+            if collided:
+                return ("the committed tree moved from %s to %s in %s, which this candidate also holds; restoring it would drop "
+                        "that change (rewind the card instead)" % (base[:12], git(root, "rev-parse", "HEAD").stdout.strip()[:12], ", ".join(collided[:3])))
+    for rel in row.get("stored") or []:
+        src, target = dest / rel, root / rel
+        if not src.is_file():
+            continue
+        if not target.is_file() or target.read_bytes() != src.read_bytes():
+            return "%s is not the file this record retained" % rel
+    for rel in row.get("deleted") or []:
+        if (root / rel).is_file():
+            return "%s is back on the tree, and this candidate had deleted it" % rel
+    outside = sorted(p for p in product_paths_changed(root) if p not in own)
+    if outside:
+        return ("the product tree differs from the committed tree outside this candidate's paths: %s"
+                % ", ".join(outside[:3]))
+    return ""
 
 
 def restore_pending_candidate(root: Path, cluster: str, row: dict[str, Any]) -> list[str]:
@@ -512,9 +555,13 @@ def restore_pending_candidate(root: Path, cluster: str, row: dict[str, Any]) -> 
     if want:
         got = candidate_sha256(root)
         if got != want:
-            raise PendingRestoreError(
-                "the restored tree is %s, and the retained candidate was %s; it is not the candidate this record names"
-                % (got[:12], want[:12]))
+            # not the same tree -- which is only a defect if this candidate is
+            # not what the record names; the accepted baseline under it may
+            # have moved on purpose (an Operator step beside the pending card)
+            drift = _pending_restore_drift(root, cluster, row)
+            if drift:
+                raise PendingRestoreError(
+                    "the restored tree is %s, and the retained candidate was %s: %s" % (got[:12], want[:12], drift))
     return restored
 
 

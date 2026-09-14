@@ -8,9 +8,18 @@ baseline is wrong (its measure and obligation keys describe a tree that no
 longer exists) and a rewind would restore the retired files.
 
 What it does (every check refuses before it changes anything):
-  * refuses with an issued card open (close it: rewind.py --close-card, or
-    let it finish) or with nothing changed in the product tree -- except
-    --disposition-only, which refuses WITH a change (see below);
+  * refuses with a LIVE issued card (a worker's candidate may be on the tree:
+    let it finish, or revert it with rewind.py --close-card) or with nothing
+    changed in the product tree -- except --disposition-only, which refuses
+    WITH a change (see below). An issued card whose candidate is RETAINED
+    (VERIFICATION_PENDING: an uncleared pending row for its cluster, the
+    candidate aside under verification/loop/pending-files/) is not live, and
+    the step is recorded BESIDE it: the accepted tree is on disk, the card is
+    kept untouched, and nothing is minted whatever --no-mint says, because the
+    pending card still owns the head. That case is not a corner: the
+    prerequisite a pending card waits for is sometimes Operator-owned
+    (ADR-008: the port of a retained Spring test), and refusing there leaves
+    the protocol with no way to resume;
   * refuses a change to test sources that names no ADR, or no independent
     reviewer, or a reviewer equal to the operator (ADR-008);
   * refuses --clear-deferred for a cluster that is not deferred, and lifts a
@@ -25,9 +34,11 @@ What it does (every check refuses before it changes anything):
   * commits exactly the changed product paths with the operator and reason;
   * RE-MEASURES the tree (run-verify.sh; --verify-cmd overrides for tests);
   * appends a step {verdict: operator, adr, operator, reason, commit,
-    measure, obligation_keys} to verification/loop/steps.json, snapshots the
-    reports as the accepted state, rebuilds the work list, re-seals
-    admission and (unless --no-mint) mints the next card.
+    measure, obligation_keys, beside_pending} to verification/loop/steps.json,
+    snapshots the reports as the accepted state (so the pending card's later
+    advance measures against THIS step, not the one before it), rebuilds the
+    work list, re-seals admission and (unless --no-mint, or unless the step
+    was recorded beside a pending card) mints the next card.
 
 Exit 0 recorded; 1 refused; 2 usage.
 """
@@ -41,7 +52,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _loop_common import attempts_spent, candidate_sha256, ensure_hermes_lib, git, load_deferred, load_issued, load_state, load_steps, product_paths_changed, publish_loop_state, retry_key_for, save_deferred, save_steps, snapshot_reports  # noqa: E402
+from _loop_common import attempts_spent, candidate_sha256, ensure_hermes_lib, git, load_deferred, load_issued, load_state, load_steps, pending_for, product_paths_changed, publish_loop_state, retry_key_for, save_deferred, save_steps, snapshot_reports  # noqa: E402
 
 ensure_hermes_lib()
 from planner import pipeline  # noqa: E402
@@ -50,11 +61,38 @@ from planner.paths import WORKLIST  # noqa: E402
 from planner.worklist import build_worklist, obligation_keys  # noqa: E402
 
 RUN_VERIFY = Path(__file__).resolve().parent / "run-verify.sh"
+RESUME = ("python3 .hermes/skills/migration/fix-until-green/scripts/restore-pending.py --root . --cluster %s, "
+          "then bash .hermes/skills/migration/fix-until-green/scripts/run-verify.sh --root . --mode acceptance, "
+          "then advance.py --root . --cluster %s --card %s")
 
 
 def _refuse(msg: str) -> int:
     print("REFUSE: LOOP_OPERATOR_STEP %s" % msg, file=sys.stderr)
     return 1
+
+
+def _beside_pending(root: Path, steps: dict) -> tuple[dict | None, int | None]:
+    """(the pending row this step would stand beside, refusal) for the issued card.
+
+    An issued card is LIVE when no uncleared pending row names its cluster: a
+    worker's candidate may be on the product tree, and a step recorded over it
+    would commit the worker's unaccepted work as the Operator's. A card whose
+    candidate is RETAINED is the opposite: the tree is the accepted tree, the
+    candidate is aside under pending-files, and what the card waits for may be
+    exactly this step (advance.py's own instruction: "when the prerequisite
+    changes, restore-pending then run-verify then advance"). So the retained
+    case records the step and keeps the card; only the live case refuses."""
+    issued = load_issued(root)
+    if issued is None:
+        return None, None
+    cluster = str(issued.get("cluster") or "")
+    row = pending_for(steps, cluster) if cluster else None
+    if row is None:
+        return None, _refuse("an issued card is live (%s, cluster %s); let it finish or revert it (rewind.py --close-card)"
+                             % (str(issued.get("task_id") or "no card"), cluster or "unknown"))
+    return {"cluster": cluster,
+            "card": str(row.get("card") or issued.get("task_id") or ""),
+            "cause": str(row.get("cause") or "")}, None
 
 
 def _append_clearances(steps: dict, cleared: list[str], args: argparse.Namespace, reasons: dict, *, kind: str, commit: str) -> None:
@@ -81,7 +119,7 @@ def _append_clearances(steps: dict, cleared: list[str], args: argparse.Namespace
             r["deferral_cleared_by"] = args.operator
 
 
-def _disposition_only(root: Path, args: argparse.Namespace, steps: dict, deferred: dict, open_clusters: list[str], changed: list[str]) -> int:
+def _disposition_only(root: Path, args: argparse.Namespace, steps: dict, deferred: dict, open_clusters: list[str], changed: list[str], beside: dict | None = None) -> int:
     """A clearance whose cause was removed outside the product tree.
 
     Nothing is committed and no step is appended: the product did not change,
@@ -114,6 +152,10 @@ def _disposition_only(root: Path, args: argparse.Namespace, steps: dict, deferre
     if rec.get("status") != "ADMITTED":
         print("REFUSE: LOOP_ADMISSION %s: %s" % (rec["status"], "; ".join(rec.get("reasons") or [])[:300]), file=sys.stderr)
         return 1
+    if beside:
+        print("   beside VERIFICATION_PENDING %s (card %s): the card stays issued and nothing is minted. Resume it with %s"
+              % (beside["cluster"], beside["card"] or "none", RESUME % (beside["cluster"], beside["cluster"], beside["card"] or "<card>")))
+        return 0
     if args.no_mint:
         return 0
     from advance import _mint  # noqa: E402
@@ -139,8 +181,9 @@ def main(argv: list[str] | None = None) -> int:
     steps = load_steps(root)
     if not steps.get("steps"):
         return _refuse("no baseline step recorded")
-    if load_issued(root) is not None:
-        return _refuse("an issued card is open (verification/loop/issued.json); close it before recording an operator step")
+    beside, refused = _beside_pending(root, steps)
+    if refused is not None:
+        return refused
     deferred = load_deferred(root)
     open_clusters = list(deferred.get("clusters") or [])
     unknown = [c for c in args.clear_deferred if c not in open_clusters]
@@ -148,9 +191,21 @@ def main(argv: list[str] | None = None) -> int:
         return _refuse("--clear-deferred names %s, which %s deferred; open deferrals: %s" % (", ".join(unknown), "is not" if len(unknown) == 1 else "are not", ", ".join(open_clusters) or "none"))
     changed = product_paths_changed(root)
     if args.disposition_only:
-        return _disposition_only(root, args, steps, deferred, open_clusters, changed)
+        return _disposition_only(root, args, steps, deferred, open_clusters, changed, beside)
     if not changed:
         return _refuse("nothing changed in the product tree")
+    if beside:
+        # The step stands beside the pending card because the tree is the
+        # ACCEPTED tree. If the retained candidate has been restored onto it,
+        # it is not, and committing here would sign the worker's unaccepted
+        # candidate as the Operator's change.
+        row = pending_for(steps, beside["cluster"]) or {}
+        own = set(row.get("changed") or []) | set(row.get("stored") or []) | set(row.get("deleted") or [])
+        clash = sorted(set(changed) & own)
+        if clash:
+            return _refuse("the retained candidate for %s is back on the product tree (%s); an operator step beside a pending card records "
+                           "the Operator's change on the accepted tree -- revert those paths (the candidate is kept under %s) and re-run"
+                           % (beside["cluster"], ", ".join(clash[:3]), row.get("files_dir") or "verification/loop/pending-files/"))
     # A test source states what the destination must do. An operator may change
     # one only under an ADR and only with a second seat naming itself; without
     # that, the intervention is one seat editing both the claim and its proof.
@@ -193,22 +248,33 @@ def main(argv: list[str] | None = None) -> int:
         # says the cluster spent. So clearing a deferral appends a disposition
         # and RAISES the budget (attempt_budget) instead of deleting either.
         _append_clearances(steps, cleared, args, reasons, kind="operator-step", commit=sha)
-    steps["steps"].append({
+    step = {
         "cluster": "operator", "card": "", "attempt": 0, "verdict": "operator",
         "operator": args.operator, "author": args.author or args.operator, "reviewer": args.reviewer, "adr": args.adr, "reason": args.reason,
         "at": _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "commit": sha, "candidate_sha256": str(state.get("candidate_sha256") or ""),
         "measure": state["measure"], "obligation_keys": sorted(obligation_keys(cur)), "changed": changed,
         "cleared_deferred": cleared,
-    })
+    }
+    if beside:
+        step["beside_pending"] = dict(beside)
+        step["mint"] = ("withheld: the VERIFICATION_PENDING card %s still owns the head; it resumes on this step"
+                        % (beside["card"] or beside["cluster"]))
+    steps["steps"].append(step)
     save_steps(root, steps)
     rebuilt = build_worklist(root)
     rec = pipeline.admit(root)
     publish_loop_state(root, rebuilt)
     print("OK: OPERATOR STEP %s (%d path(s), measure %s%s) admission %s" % (sha[:12], len(changed), state["measure"]["tuple"], "; deferral cleared: " + ", ".join(cleared) if cleared else "", rec.get("status")))
+    if beside:
+        print("   beside VERIFICATION_PENDING %s (card %s, cause %s): the card stays issued and nothing is minted -- this step is its new "
+              "baseline. Resume it with %s" % (beside["cluster"], beside["card"] or "none", beside["cause"] or "unknown",
+                                               RESUME % (beside["cluster"], beside["cluster"], beside["card"] or "<card>")))
     if rec.get("status") != "ADMITTED":
         print("REFUSE: LOOP_ADMISSION %s: %s" % (rec["status"], "; ".join(rec.get("reasons") or [])[:300]), file=sys.stderr)
         return 1
+    if beside:
+        return 0
     if args.no_mint:
         return 0
     from advance import _mint  # noqa: E402
