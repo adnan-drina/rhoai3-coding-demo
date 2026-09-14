@@ -64,7 +64,9 @@ python3 "${HERMES_SKILL_DIR}/scripts/derive-source-scenarios.py" --root /project
 python3 "${HERMES_SKILL_DIR}/scripts/capture-source-scenarios.py" --root /projects/modernized
 
 #    then qualify what was captured against each scenario's own contract;
-#    the parity receipt counts only qualified captures as coverage
+#    the parity receipt counts only qualified captures as coverage. This is
+#    the third M1 step of this skill (paved-road-m1 steps.json), and it
+#    RECORDS its verdict: only a refusal to judge exits non-zero
 python3 "${HERMES_SKILL_DIR}/scripts/qualify-source-captures.py" --root /projects/modernized
 
 #    reads alone, against a source someone else is running:
@@ -118,6 +120,23 @@ pattern), `update`, `delete` — and per policy a `cors-actual` read and a
 `cors-preflight`. Each scenario records `derived_from` (which inputs produced
 it) and `qualify` (what its capture must show).
 
+A **delete** addresses a row the database will let go. Every schema file
+beside the seed (any `*.sql` in the same directory declaring `CREATE TABLE`,
+found by content — petclinic's is `initDB.sql`, and every file read is listed
+in `_derive.json`) is parsed for `FOREIGN KEY (col) REFERENCES table (col)`,
+inline on a column or added by `ALTER TABLE`. The positive delete takes the
+lowest seed row of the resource's table that nothing references; when every
+row is referenced there is **no positive delete** and a typed gap names the
+constraint (`every seed row of specialties is referenced
+(FK_VET_SPECIALTIES_SPECIALTIES/vet_specialties.specialty_id); no deletable
+row derivable`). Where a referenced row exists and no `ON DELETE
+CASCADE`/`SET NULL` carries the children away, one **negative**
+`sc:delete-referenced-<resource>-<id>` records the refusal the source owns:
+any 4xx, and the item still readable (`200`) afterwards. The table is named
+by the path variable's own mapping (`{petTypeId}` → `types`), else the
+route's segments with the same singular/plural tolerance; a table that cannot
+be named is a gap and the row falls back to the path variable's.
+
 What cannot be derived is a **gap**, recorded in the corpus and the receipt
 and never filled in: a required property without an example, a path variable
 no seed row supplies, an entry point with no HTTP method. The corpus is bound
@@ -152,7 +171,9 @@ results per scenario**:
   `negative` (create-invalid: the source rejected as intended — the status,
   a parsed field error naming the property, and no effect).
 
-The checks: `expect_status`; `location: absolute-under-base` (absolute, on
+The checks: `expect_status`; `expect_status_class` (`4xx`: the source
+refused, and which 4xx is its own choice — a derived `delete-referenced`
+states exactly this); `location: absolute-under-base` (absolute, on
 the capture's `source.base_url` origin, under its path, compared literally);
 `creates_one_entity` with `identity_field` (derived from the collection
 GET's OpenAPI response schema — the items' `id`, else the first readOnly
@@ -173,19 +194,45 @@ header not parseable", no such element is FAIL); `after_effect_status`;
 it judged (`capture_sha256`, `request_sha256`, `corpus_sha256`,
 `evidence_bundle_sha256`).
 
+Evidence is weighed first and intent second, and the two are not the same
+question. An UNUSABLE capture — absent, unbound, a retained body that is not
+whole or not its digest, a read-back that did not answer 2xx, an `errors`
+header that does not parse, a 5xx the contract does not name — is
+INCONCLUSIVE, never FAIL, with what was observed in `known_failures`. With
+usable evidence the capability is judged over the predicates that could be
+judged: **any judged predicate failing is FAIL**, none failing with at least
+one unjudgeable (`creates_one_entity` where the document names no
+`identity_field`) is INCONCLUSIVE, all judged and passing is PASS. A 400
+carrying a well-formed errors header is usable evidence, so an
+`expect_status` miss on it is a judged failure — on v9 that mismatch was
+reported INCONCLUSIVE because the same create's identity was unanswerable,
+and went unrecorded. The unjudgeable predicate stays in `checks` (`ok: null`)
+and in `unjudged` either way.
+
 Negative scenarios are derived **one per constrained property**
 (`sc:create-invalid-<resource>-<property>`), so a `firstName` rejection is
 never mistaken for `telephone` coverage.
 
-The gate exits 0 only when every scenario is capability PASS.
+The gate is an **M1 step** (`paved-road-m1` `steps.json`, right after
+`capture-source-scenarios`), and its verdict is a record, not a refusal: it
+exits 0 whenever a bound qualification document was written, PASS, FAIL or
+INCONCLUSIVE alike (`OK: qualification FAIL (4 of 19 not qualified) → …`),
+and exits 1 only when it cannot judge at all — no corpus, a corpus that is
+neither derived nor authored, a provenance whose digests no longer bind, or
+not one capture on disk. A FAIL is a fact about the SOURCE, which M4 turns
+into a coverage gap and which never becomes a destination card, so failing
+the step on it would have been a refusal to record what the source does.
 `compose-parity-receipt.py` reads the records: a qualification whose
 `capture_sha256` no longer matches the capture on disk is stale
 (`requalify after recapture`, INCONCLUSIVE); a scenario qualified
 INCONCLUSIVE, or with no record, makes its entry point INCONCLUSIVE
-(`capture not qualified: …`); a derived corpus with no qualification at all
+(`capture not qualified: …`) and is listed under `coverage_gaps` with
+`kind: inconclusive-qualification` — a capability nobody judged is a
+capability nobody demonstrated, and without that entry the M4 coverage
+account could not see it; a derived corpus with no qualification at all
 is INCONCLUSIVE (`captures not qualified`). A **positive** scenario whose
-capability is FAIL is a **source-side fixture failure** (a 500 deleting a
-referenced pettype): the source did not perform the operation, so parity
+capability is FAIL is a **source-side fixture failure** (a create the source
+answered 400 for): the source did not perform the operation, so parity
 is not asked — `compare-scenario-parity.py` writes INCONCLUSIVE `source
 fixture failed qualification: …`, the entry point is INCONCLUSIVE, the
 scenario is listed under `coverage_gaps` with `kind: fixture-failed`, it
@@ -209,8 +256,18 @@ point's method name, same HTTP method, provided exactly one controller
 member of that name exists in the bundle or one is singled out by a
 compatible request schema (the parameter DTO and the schema share a stem
 after `Dto|Fields|Request|Input|Payload`: `OwnerDto` ↔ `OwnerFields`); tags
-only narrow, never establish, and a surviving ambiguity is a gap. The
-discrepancy is recorded in `derived_from.evidence`
+only narrow, never establish, and a surviving ambiguity is a gap. A name
+match is not yet a binding: the operation's **path variables must be exactly
+resolvable through the route's** — the same set of names, compared literally
+(one variable on each side under a different name still binds, since the
+path binder this adapter stands in for matches with the names erased). A
+difference is a typed gap and **no scenario at all**, positive or invalid
+(`create ep:…addPet: operationId addPet binds POST /owner/{ownerId}/pet
+(variables: ownerId) to route /api/pets (variables: none); path-variable sets
+differ; not bound`): on v9 that binding handed `POST /api/pets` a
+`PetFields` body whose identity the route cannot express, the source answered
+400, and the gate could only say INCONCLUSIVE. The discrepancy that DOES bind
+is recorded in `derived_from.evidence`
 (`openapi-path:/owner≠route:/api/owners; bound by operationId addOwner`).
 The derivation receipt also binds every body file's bytes and every
 scenario's `request_sha256`; a body edited after derivation is refused.
@@ -281,14 +338,16 @@ What refuses, and why:
 ## Scripts
 
 - `scripts/derive-source-scenarios.py` — M1 producer: derive the corpus from
-  the bundle, the OpenAPI examples, the seed and the CORS policies; gaps
-  recorded, bound to the bundle in `verification/scenarios/_derive.json`
+  the bundle, the OpenAPI examples, the seed rows, the seed schema's foreign
+  keys and the CORS policies; gaps recorded, bound to the bundle in
+  `verification/scenarios/_derive.json` (which also lists every SQL file read)
 - `scripts/capture-source-oracles.py` — read capture from the source system
 - `scripts/capture-source-scenarios.py` — M1 producer: package and start the
   frozen source, restore state, capture the derived scenarios, clean up
-- `scripts/qualify-source-captures.py` — the qualification gate: every capture
-  against its scenario's `qualify` contract, reading the retained bodies by
-  digest; PASS / FAIL / INCONCLUSIVE per scenario, exit 0 only on all PASS
+- `scripts/qualify-source-captures.py` — the qualification gate and the third
+  M1 step: every capture against its scenario's `qualify` contract, reading the
+  retained bodies by digest; PASS / FAIL / INCONCLUSIVE per scenario, all three
+  recorded and exiting 0; exit 1 only on a refusal to judge
 - `scripts/compare-runtime-parity.py` — destination comparison for reads
 - `scripts/compare-scenario-parity.py` — recorded-request replay plus effects
 - `scripts/compose-parity-receipt.py` — receipt-bound parity receipt; an entry

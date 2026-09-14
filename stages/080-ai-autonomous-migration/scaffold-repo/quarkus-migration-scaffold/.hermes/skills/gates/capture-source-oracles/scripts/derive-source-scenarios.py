@@ -607,15 +607,26 @@ def _tuple_values(text: str, start: int) -> list[str]:
 
 
 def parse_seed(text: str) -> dict[str, dict[str, Any]]:
-    """{table: {"columns": [...] or [], "values": [first row]}} -- the first
-    INSERT row per table is enough to name an existing identifier."""
+    """{table: {"columns": [...] or [], "values": [first row], "rows": [every row]}}.
+
+    The first INSERT row per table names an existing identifier; EVERY row is
+    kept too, because a delete cannot be derived from the first row alone: it
+    has to know which rows another table's foreign key already references
+    (petclinic seeds ``vet_specialties`` against every ``specialties`` row, so
+    deleting row 1 answers 400, not 204)."""
     out: dict[str, dict[str, Any]] = {}
     for m in _INSERT_RE.finditer(text):
         table = m.group(1).lower()
-        if table in out:
-            continue
         cols = [c.strip().strip('`"').lower() for c in (m.group(3) or "").split(",") if c.strip()] if m.group(2) else []
-        out[table] = {"columns": cols, "values": _tuple_values(text, m.end())}
+        values = _tuple_values(text, m.end())
+        row = out.get(table)
+        if row is None:
+            out[table] = {"columns": cols, "values": values, "rows": [values]}
+        elif cols == row["columns"]:
+            # a second statement shaped like the first: another row of the same
+            # table. A differently shaped one is not merged (its positions do
+            # not line up), and saying so is better than misreading it
+            row["rows"].append(values)
     return out
 
 
@@ -631,12 +642,102 @@ def parse_schema_columns(text: str) -> dict[str, list[str]]:
     return out
 
 
+_FK_RE = re.compile(r"FOREIGN\s+KEY\s*\(([^)]*)\)\s*REFERENCES\s+[`\"]?([A-Za-z_]\w*)[`\"]?\s*\(([^)]*)\)", re.IGNORECASE)
+_INLINE_REF_RE = re.compile(r"REFERENCES\s+[`\"]?([A-Za-z_]\w*)[`\"]?\s*\(([^)]*)\)", re.IGNORECASE)
+_ON_DELETE_RE = re.compile(r"ON\s+DELETE\s+(CASCADE|SET\s+NULL|SET\s+DEFAULT|RESTRICT|NO\s+ACTION)", re.IGNORECASE)
+_CONSTRAINT_NAME_RE = re.compile(r"CONSTRAINT\s+[`\"]?([A-Za-z_]\w*)[`\"]?", re.IGNORECASE)
+_ALTER_ADD_RE = re.compile(r"ALTER\s+TABLE\s+[`\"]?([A-Za-z_]\w*)[`\"]?\s+ADD\s+(.*?);", re.IGNORECASE | re.DOTALL)
+# an ON DELETE rule that makes the parent row deletable anyway: the child rows
+# go with it (CASCADE) or stop pointing at it (SET NULL / SET DEFAULT)
+_PERMISSIVE_ON_DELETE = ("cascade", "set null", "set default")
+
+
+def _cols(text: str) -> list[str]:
+    return [c.strip().strip('`"').lower() for c in str(text).split(",") if c.strip()]
+
+
+def _fk_row(table: str, columns: list[str], ref_table: str, ref_columns: list[str], clause: str) -> dict[str, Any]:
+    on_delete = _ON_DELETE_RE.search(clause)
+    name = _CONSTRAINT_NAME_RE.search(clause)
+    return {
+        "table": table, "column": columns[0] if columns else "", "columns": columns,
+        "ref_table": ref_table.lower(), "ref_column": ref_columns[0] if ref_columns else "", "ref_columns": ref_columns,
+        "on_delete": re.sub(r"\s+", " ", on_delete.group(1)).lower() if on_delete else "",
+        "constraint": name.group(1) if name else "",
+    }
+
+
+def parse_foreign_keys(text: str) -> list[dict[str, Any]]:
+    """Every ``FOREIGN KEY (col) REFERENCES table (col)`` the schema declares,
+    table-level, inline on a column, or added by ``ALTER TABLE``.
+
+    A delete scenario that ignores these picks a row the database will not let
+    go: v9's ``DELETE /api/specialties/1`` answered 400
+    ``DataIntegrityViolationException ... FK_VET_SPECIALTIES_SPECIALTIES``
+    because ``vet_specialties`` references every seeded specialty."""
+    out: list[dict[str, Any]] = []
+    for m in _CREATE_RE.finditer(text):
+        table = m.group(1).lower()
+        for part in _tuple_values(m.group(2) + ")", 0):
+            s = part.strip()
+            fk = _FK_RE.search(s)
+            if fk is not None:
+                out.append(_fk_row(table, _cols(fk.group(1)), fk.group(2), _cols(fk.group(3)), s))
+                continue
+            ref = _INLINE_REF_RE.search(s)
+            tok = s.split()
+            if ref is None or not tok or tok[0].upper() in _CONSTRAINT_WORDS:
+                continue
+            out.append(_fk_row(table, [tok[0].strip('`"').lower()], ref.group(1), _cols(ref.group(2)), s))
+    for m in _ALTER_ADD_RE.finditer(text):
+        fk = _FK_RE.search(m.group(2))
+        if fk is not None:
+            out.append(_fk_row(m.group(1).lower(), _cols(fk.group(1)), fk.group(2), _cols(fk.group(3)), m.group(2)))
+    return out
+
+
+def fk_label(fk: dict[str, Any]) -> str:
+    """How a constraint is named in a gap: its own name when the schema gives
+    one, and always the column that points at the parent."""
+    where = "%s.%s" % (fk["table"], fk["column"])
+    return "%s/%s" % (fk["constraint"], where) if fk["constraint"] else where
+
+
 def _snake(name: str) -> str:
     return re.sub(r"(?<!^)(?=[A-Z])", "_", name).lower()
 
 
 def _plural(word: str) -> str:
     return word[:-1] + "ies" if word.endswith("y") else word + "s"
+
+
+def _singular(word: str) -> str:
+    if word.endswith("ies") and len(word) > 3:
+        return word[:-3] + "y"
+    if word.endswith("s") and not word.endswith("ss") and len(word) > 1:
+        return word[:-1]
+    return word
+
+
+def id_table_candidates(name: str) -> list[str]:
+    """The seed tables an ``<entity>Id`` path variable can name, in order --
+    the mapping ``resolve_path_var`` already uses (``petTypeId`` ->
+    ``pettypes``, ``pet_types``, ``types``)."""
+    if not (name.endswith("Id") and len(name) > 2):
+        return []
+    base = name[:-2]
+    words = re.findall(r"[A-Z]?[a-z0-9]+|[A-Z]+(?![a-z])", base) or [base]
+    return list(dict.fromkeys([_plural(base.lower()), _plural(_snake(base)), _plural(words[-1].lower())]))
+
+
+def table_candidates(name: str, route: str) -> list[str]:
+    """The seed tables a route's item segment can name: the path variable's own
+    candidates first (the existing mapping), then the route's own segments with
+    the same singular/plural tolerance."""
+    out = id_table_candidates(name)
+    for seg in reversed([s for s in route.split("/") if s and "{" not in s and "*" not in s]):
+        out.extend([seg.lower(), _snake(seg), _plural(seg.lower()), _singular(seg.lower())])
+    return list(dict.fromkeys(x for x in out if x))
 
 
 def _row_value(row: dict[str, Any], column: str, default_index: int | None) -> str | None:
@@ -655,10 +756,7 @@ def resolve_path_var(name: str, seed: dict[str, dict[str, Any]], columns: dict[s
     first row of the table the route names, column ``last_name``), else the
     OpenAPI path parameter's example. None when nothing supplies it."""
     if name.endswith("Id") and len(name) > 2:
-        base = name[:-2]
-        words = re.findall(r"[A-Z]?[a-z0-9]+|[A-Z]+(?![a-z])", base) or [base]
-        candidates = [_plural(base.lower()), _plural(_snake(base)), _plural(words[-1].lower())]
-        for table in dict.fromkeys(candidates):
+        for table in id_table_candidates(name):
             if table in seed:
                 val = _row_value(seed[table], "id", 0)
                 if val is not None:
@@ -728,6 +826,28 @@ def find_seed(copy: Path, engine: str) -> tuple[Path | None, str]:
     return None, ""
 
 
+def find_schema_sql(seed_p: Path) -> list[Path]:
+    """The schema files that stand beside the seed: every other ``*.sql`` in
+    the same directory that declares a table.
+
+    The rule used to name one file (``schema.sql``), so petclinic's own
+    ``initDB.sql`` -- which is where its FOREIGN KEY constraints are -- was
+    never read. Discovery is by the same rule as the seed (the decided
+    engine's directory) and by CONTENT (``CREATE TABLE``), never by a
+    specimen's filename."""
+    out: list[Path] = []
+    for p in sorted(seed_p.parent.glob("*.sql")):
+        if p.name == seed_p.name or not p.is_file():
+            continue
+        try:
+            text = p.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if _CREATE_RE.search(text):
+            out.append(p)
+    return out
+
+
 def _decided_engines(root: Path) -> tuple[str, str]:
     """(source engine, destination engine) from decisions.yaml when it is
     readable; a preference for which seed to read, never a gate."""
@@ -758,6 +878,9 @@ def _invalid_value(example: Any, pattern: str) -> str | None:
 def _resource(collection: str) -> str:
     segs = [s for s in collection.split("/") if s and "{" not in s and "*" not in s]
     return segs[-1] if segs else "root"
+
+
+_RULE_OF_METHOD = {"POST": "create", "PUT": "update", "DELETE": "delete", "GET": "read", "HEAD": "read"}
 
 
 def _short(policy_id: str) -> str:
@@ -799,14 +922,17 @@ def _write_body(root: Path, scenario_id: str, body: Any) -> str:
 
 class Derivation:
     def __init__(self, root: Path, bundle: dict[str, Any], openapi: dict[str, Any], seed: dict[str, dict[str, Any]],
-                 columns: dict[str, list[str]], policies: dict[str, dict[str, Any]], origin: str) -> None:
+                 columns: dict[str, list[str]], policies: dict[str, dict[str, Any]], origin: str,
+                 foreign_keys: list[dict[str, Any]] | None = None) -> None:
         self.root = root
         self.openapi = openapi
         self.seed = seed
         self.columns = columns
+        self.foreign_keys = list(foreign_keys or [])
         self.policies = policies
         self.origin = origin
         self.gaps: list[str] = []
+        self.unbound: set[str] = set()  # entry points whose binding gap is already recorded
         self.scenarios: list[dict[str, Any]] = []
         self.path_vars: dict[str, str] = {}
         self.path_var_evidence: dict[str, str] = {}
@@ -867,7 +993,7 @@ class Derivation:
             got[name] = val
         return got, unresolved
 
-    def _lookup(self, ep: dict[str, Any], strict: bool = True) -> tuple[str, dict[str, Any], dict[str, Any], str] | None:
+    def _lookup(self, ep: dict[str, Any], strict: bool = True, kind: str = "") -> tuple[str, dict[str, Any], dict[str, Any], str] | None:
         """(path, path item, operation, binding evidence) for an entry point.
 
         By path when the document names the code's routes; else by
@@ -877,7 +1003,19 @@ class Derivation:
         controllers both declare ``addOwner``): then only the one whose name
         stem matches the operation's tag or body schema (``owner`` ->
         ``OwnerFields``) binds, and an ambiguity that survives is a gap, not
-        a guess."""
+        a guess.
+
+        A name match is not yet a binding: the operation's contract has to be
+        REACHABLE through the route. Measured on v9 (2026-09-14), operationId
+        ``addPet`` bound ``POST /owner/{ownerId}/pet`` to the route
+        ``POST /api/pets``, which carries no ``ownerId`` at all -- the derived
+        ``PetFields`` body went to a route that cannot express the operation's
+        identity and the source answered 400. So the operation's path
+        variables must be exactly resolvable through the route's: the same set
+        of names, compared literally. One variable on each side under a
+        different name still binds (``find_operation`` already matches paths
+        with the variable names erased, and the adapter is not stricter than
+        the binder it stands in for)."""
         method = str(ep.get("http_method") or "").upper()
         route = str(ep.get("http_path") or "")
         name = member_name(ep.get("member"))
@@ -891,6 +1029,7 @@ class Derivation:
                 # another's body (architect review of 708cfef9: addVet bound
                 # to the addOwner controller by path alone)
                 self.gaps.append("conflicting binding: path %s ↔ operationId %s ≠ member %s (%s); nothing is derived for it" % (oa_path, opid, name, ep.get("id")))
+                self.unbound.add(str(ep.get("id")))
                 return None
             return oa_path, item, op, "openapi:%s#%s(path)" % (oa_path, method.lower())
         # the explicit adapter: the document's paths do not name the code's
@@ -904,6 +1043,7 @@ class Derivation:
             return None
         if len(ops) > 1:
             self.gaps.append("operationId %s appears on %d paths (%s); no single operation binds %s" % (name, len(ops), ", ".join(p for p, _, _ in ops), ep.get("id")))
+            self.unbound.add(str(ep.get("id")))
             return None
         oa_path, item, op = ops[0]
         claimants = [e for e in self.eps if str(e.get("http_method") or "").upper() == method and member_name(e.get("member")) == name]
@@ -921,7 +1061,16 @@ class Derivation:
                 return None
             if survivors[0] is not ep:
                 return None
-        return oa_path, item, op, "openapi-path:%s≠route:%s; bound by operationId %s" % (oa_path, route, name)
+        op_vars = re.findall(r"\{([^{}]+)\}", oa_path)
+        route_vars = re.findall(r"\{([^{}]+)\}", route)
+        if set(op_vars) != set(route_vars) and not (len(op_vars) == 1 and len(route_vars) == 1):
+            self.gaps.append("%s%s: operationId %s binds %s %s (variables: %s) to route %s (variables: %s); path-variable sets differ; not bound"
+                             % ((kind + " ") if kind else "", ep.get("id"), name, method, oa_path, ", ".join(op_vars) or "none",
+                                route, ", ".join(route_vars) or "none"))
+            self.unbound.add(str(ep.get("id")))
+            return None
+        renamed = ("; single path variable {%s} read as {%s}" % (op_vars[0], route_vars[0])) if op_vars != route_vars and op_vars else ""
+        return oa_path, item, op, "openapi-path:%s≠route:%s; bound by operationId %s%s" % (oa_path, route, name, renamed)
 
     # -- rules -------------------------------------------------------------
     def run(self) -> None:
@@ -935,7 +1084,7 @@ class Derivation:
                 continue
             # a read consults the document for path-parameter examples only;
             # the binding rules (and their gaps) are for the writes it feeds
-            found = self._lookup(ep, strict=method not in ("GET", "HEAD"))
+            found = self._lookup(ep, strict=method not in ("GET", "HEAD"), kind=_RULE_OF_METHOD.get(method, ""))
             examples = path_param_examples(self.openapi, found[1], found[2]) if found else {}
             got, unresolved = self._resolve_vars(ep, examples)
             for name in unresolved:
@@ -962,7 +1111,8 @@ class Derivation:
             self.gaps.append("create %s: path %s carries variables; the create rule needs a collection path" % (eid, route))
             return
         if found is None:
-            self.gaps.append("create %s: no OpenAPI operation for POST %s" % (eid, route))
+            if eid not in self.unbound:  # why it did not bind is already a typed gap
+                self.gaps.append("create %s: no OpenAPI operation for POST %s" % (eid, route))
             return
         oa_path, _item, op, binding = found
         schema = body_schema(self.openapi, op)
@@ -1104,7 +1254,8 @@ class Derivation:
             self.gaps.append("update %s: variable {%s} is not the terminal segment of %s; the item and collection reads cannot be named" % (eid, names[0], route))
             return
         if found is None:
-            self.gaps.append("update %s: no OpenAPI operation for PUT %s" % (eid, route))
+            if eid not in self.unbound:  # why it did not bind is already a typed gap
+                self.gaps.append("update %s: no OpenAPI operation for PUT %s" % (eid, route))
             return
         oa_path, _item, op, binding = found
         schema = body_schema(self.openapi, op)
@@ -1139,6 +1290,81 @@ class Derivation:
             "why": "the document's own example of %s written over the seeded row %s; the read-backs show the row and the list carry it" % (label, seeded),
         })
 
+    # -- the seed rows a delete may address ---------------------------------
+    def _seed_table(self, var: str, route: str) -> str:
+        for table in table_candidates(var, route):
+            if table in self.seed:
+                return table
+        return ""
+
+    def _column_values(self, table: str, column: str) -> list[str]:
+        row = self.seed.get(table)
+        if not row or not column:
+            return []
+        cols = row.get("columns") or self.columns.get(table) or []
+        if column not in cols:
+            return []
+        i = cols.index(column)
+        return [str(vals[i]).strip("'\"") for vals in (row.get("rows") or []) if i < len(vals)]
+
+    @staticmethod
+    def _by_id(values: list[str]) -> list[str]:
+        numeric = all(re.fullmatch(r"-?\d+", v) for v in values) if values else False
+        return sorted(dict.fromkeys(values), key=(lambda v: (0, int(v), "")) if numeric else (lambda v: (1, 0, v)))
+
+    def _delete_target(self, eid: str, route: str, var: str, seeded: str) -> dict[str, Any]:
+        """Which seed row a delete may address, and which one it may not.
+
+        A delete is derived against the database the source actually loads, so
+        the row it addresses must be one nothing points at. v9 picked row 1
+        blindly and the source answered 400
+        ``DataIntegrityViolationException ... FK_VET_SPECIALTIES_SPECIALTIES``:
+        every seeded specialty is referenced by ``vet_specialties``.
+
+        Returns ``table``, ``chosen`` (the deletable row, "" when there is
+        none), ``evidence``, ``blocked`` (a referenced row, "" when there is
+        none) and ``constraints`` (what references it)."""
+        out: dict[str, Any] = {"table": "", "chosen": seeded, "evidence": [self.path_var_evidence.get(var, "")],
+                               "blocked": "", "constraints": ""}
+        table = self._seed_table(var, route)
+        if not table:
+            self.gaps.append("delete %s: no seed table is named by {%s} or by the segments of %s (seed tables: %s); "
+                             "its foreign keys are unknown and the row is chosen from the path variable alone"
+                             % (eid, var, route, ", ".join(sorted(self.seed)) or "none"))
+            return out
+        out["table"] = table
+        # an ON DELETE CASCADE / SET NULL carries the children away, so such a
+        # foreign key does not block the parent's delete
+        blocking = [fk for fk in self.foreign_keys if fk["ref_table"] == table and fk["on_delete"] not in _PERMISSIVE_ON_DELETE]
+        if not blocking:
+            return out
+        ids = self._by_id(self._column_values(table, blocking[0]["ref_column"] or "id"))
+        if not ids:
+            self.gaps.append("delete %s: %s is referenced by %s but its %s column cannot be read from the seed; the row is chosen from the path variable alone"
+                             % (eid, table, ", ".join(sorted(fk_label(fk) for fk in blocking)), blocking[0]["ref_column"] or "id"))
+            return out
+        referenced_by: dict[str, set[str]] = {}
+        for fk in blocking:
+            vals = {v for v in self._column_values(fk["table"], fk["column"]) if v in set(ids)}
+            if vals:
+                referenced_by[fk_label(fk)] = vals
+        referenced = {v for vals in referenced_by.values() for v in vals}
+        schema_evidence = "schema:%s" % "; ".join("FOREIGN KEY %s → %s.%s" % (fk_label(fk), fk["ref_table"], fk["ref_column"]) for fk in blocking)
+        constraints = ", ".join(sorted(referenced_by)) or ", ".join(sorted(fk_label(fk) for fk in blocking))
+        free = [i for i in ids if i not in referenced]
+        if free:
+            out["chosen"] = free[0]
+            out["evidence"] = ["seed:%s#%s unreferenced by %s" % (table, free[0], constraints), schema_evidence]
+        else:
+            out["chosen"] = ""
+            out["evidence"] = []
+            self.gaps.append("delete %s: every seed row of %s is referenced (%s); no deletable row derivable" % (eid, table, constraints))
+        blocked = self._by_id(sorted(referenced))
+        if blocked:
+            out["blocked"] = blocked[0]
+            out["constraints"] = ", ".join(sorted(label for label, vals in referenced_by.items() if blocked[0] in vals))
+        return out
+
     def _delete(self, ep: dict[str, Any], got: dict[str, str], unresolved: list[str]) -> None:
         eid, route = str(ep["id"]), str(ep.get("http_path") or "")
         names = re.findall(r"\{([^{}]+)\}", route)
@@ -1150,18 +1376,41 @@ class Derivation:
         if not route.endswith("{%s}" % names[0]):
             self.gaps.append("delete %s: variable {%s} is not the terminal segment of %s" % (eid, names[0], route))
             return
-        seeded = got[names[0]]
-        item_path = route.replace("{%s}" % names[0], seeded)
+        var = names[0]
         resource = _resource(route[: route.rfind("/{")] or "/")
-        eff = "eff:%s-%s-after-delete" % (resource, seeded)
+        target = self._delete_target(eid, route, var, got[var])
+        chosen, seed_evidence = str(target["chosen"]), list(target["evidence"])
+        if chosen:
+            item_path = route.replace("{%s}" % var, chosen)
+            eff = "eff:%s-%s-after-delete" % (resource, chosen)
+            self._add({
+                "id": "sc:delete-%s-%s" % (resource, chosen), "entry_point": eid, "method": "DELETE", "path": item_path,
+                "headers": {}, "identity": {"kind": "none"}, "body_absent": True, "reset_before": True,
+                "effects": [{"id": eff, "method": "GET", "path": item_path}],
+                "normalization": [],
+                "derived_from": {"kind": "delete", "entry_point": eid, "evidence": ["bundle:%s" % eid] + [e for e in seed_evidence if e]},
+                "qualify": {"intent": "positive", "expect_status": [200, 204], "after_effect_status": {eff: 404}},
+                "why": "the seeded row %s exists by construction and nothing references it; the read-back after the delete must not find it" % chosen,
+            })
+        # a row another table points at, with no ON DELETE CASCADE / SET NULL
+        # to carry the children away, is a REFUSAL the source owns: one
+        # negative scenario per resource records what it answers
+        blocked_id, constraints = str(target["blocked"]), str(target["constraints"])
+        if not blocked_id:
+            return
+        item_path = route.replace("{%s}" % var, blocked_id)
+        eff = "eff:%s-%s-after-refused-delete" % (resource, blocked_id)
         self._add({
-            "id": "sc:delete-%s-%s" % (resource, seeded), "entry_point": eid, "method": "DELETE", "path": item_path,
+            "id": "sc:delete-referenced-%s-%s" % (resource, blocked_id), "entry_point": eid, "method": "DELETE", "path": item_path,
             "headers": {}, "identity": {"kind": "none"}, "body_absent": True, "reset_before": True,
             "effects": [{"id": eff, "method": "GET", "path": item_path}],
             "normalization": [],
-            "derived_from": {"kind": "delete", "entry_point": eid, "evidence": ["bundle:%s" % eid, self.path_var_evidence.get(names[0], "")]},
-            "qualify": {"intent": "positive", "expect_status": [200, 204], "after_effect_status": {eff: 404}},
-            "why": "the seeded row %s exists by construction; the read-back after the delete must not find it" % seeded,
+            "derived_from": {"kind": "delete-referenced", "entry_point": eid,
+                             "evidence": ["bundle:%s" % eid, "seed:%s#%s referenced by %s" % (target["table"], blocked_id, constraints),
+                                          "schema:%s declares no ON DELETE CASCADE or SET NULL" % constraints]},
+            "qualify": {"intent": "negative", "expect_status_class": "4xx", "after_effect_status": {eff: 200}},
+            "why": "seed row %s is referenced by %s and the schema carries no ON DELETE CASCADE or SET NULL, so the source refuses the delete: "
+                   "the response is a 4xx (any) and the read-back still answers 200 with the row" % (blocked_id, constraints),
         })
 
     def _cors(self) -> None:
@@ -1260,23 +1509,36 @@ def main(argv: list[str] | None = None) -> int:
     seed_p, engine = find_seed(copy, src_engine)
     seed: dict[str, dict[str, Any]] = {}
     columns: dict[str, list[str]] = {}
+    foreign_keys: list[dict[str, Any]] = []
+    sql_read: list[dict[str, str]] = []
     if seed_p is None:
         gaps.append("no seed file src/main/resources/db/<engine>/populateDB.sql under the frozen source; path variables and seeded rows cannot be named")
         inputs["seed"] = {"path": "", "sha256": ""}
     else:
         inputs["seed"] = _input(seed_p, copy)
+        sql_read.append(inputs["seed"])
         seed = parse_seed(seed_p.read_text(encoding="utf-8", errors="replace"))
-        schema_p = seed_p.with_name("schema.sql")
-        if schema_p.is_file():
-            inputs["schema"] = _input(schema_p, copy)
-            columns = parse_schema_columns(schema_p.read_text(encoding="utf-8", errors="replace"))
+        schema_files = find_schema_sql(seed_p)
+        if not schema_files:
+            gaps.append("no schema file declaring CREATE TABLE beside %s; the seed's foreign keys are unknown and a delete cannot avoid a referenced row"
+                        % _rel(seed_p, copy))
+        for schema_p in schema_files:
+            text = schema_p.read_text(encoding="utf-8", errors="replace")
+            sql_read.append(_input(schema_p, copy))
+            columns.update(parse_schema_columns(text))
+            foreign_keys.extend(parse_foreign_keys(text))
+        if schema_files:
+            inputs["schema"] = _input(schema_files[0], copy)
+    # which SQL the derivation actually read is part of the audit trail: a
+    # missing schema file is why a delete was derived blind
+    inputs["sql"] = sql_read
     structure_p = root / STRUCTURE
     inputs["structure"] = _input(structure_p, root)
     policies, policy_gap = source_cors_policy_map(root)
     if policy_gap:
         gaps.append("CORS policies unknown: %s; no cross-origin scenario is derived" % policy_gap)
     try:
-        d = Derivation(root, bundle, openapi, seed, columns, policies, args.origin)
+        d = Derivation(root, bundle, openapi, seed, columns, policies, args.origin, foreign_keys)
         d.run()
     except Refusal as exc:
         return blocked(str(exc))

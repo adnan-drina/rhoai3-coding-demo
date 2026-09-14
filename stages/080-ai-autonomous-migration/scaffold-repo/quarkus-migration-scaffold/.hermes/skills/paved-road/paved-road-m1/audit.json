@@ -73,6 +73,14 @@
       "needle": "capture-source-oracles"
     },
     {
+      "backing": "skill",
+      "id": "qualify-source-captures",
+      "keep": [
+        "verification/source-oracles/scenarios/_qualification.json"
+      ],
+      "needle": "capture-source-oracles"
+    },
+    {
       "backing": "native",
       "id": "kanban-attach",
       "keep": [

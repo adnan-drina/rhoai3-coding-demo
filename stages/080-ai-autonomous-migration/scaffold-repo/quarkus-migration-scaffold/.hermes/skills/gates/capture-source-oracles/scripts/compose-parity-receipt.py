@@ -122,6 +122,12 @@ def main(argv: list[str] | None = None) -> int:
                                               "reason": "source fixture failed qualification: %s" % q["reason"]})
                         problems.append("source fixture failed qualification: %s %s" % (sid, q["reason"]))
                     elif q["capability"] != "PASS":
+                        # a capability nobody could judge is a capability
+                        # nobody demonstrated: the M4 coverage account reads
+                        # coverage_gaps, so an INCONCLUSIVE that only became a
+                        # problem line left the capability looking covered
+                        coverage_gaps.append({"scenario": sid, "entry_point": ep, "kind": "inconclusive-qualification", "intent": q["intent"],
+                                              "reason": "capture not qualified: %s" % q["reason"]})
                         problems.append("capture not qualified: %s INCONCLUSIVE: %s" % (sid, q["reason"]))
                     elif q["intent"] == "negative":
                         negative.append(sid)  # the source rejects as intended: negative coverage only

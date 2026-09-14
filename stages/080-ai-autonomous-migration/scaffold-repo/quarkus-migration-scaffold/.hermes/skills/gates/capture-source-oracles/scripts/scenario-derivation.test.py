@@ -96,7 +96,8 @@ def _entry(key: str, method: str, path: str, member: str) -> dict[str, Any]:
 
 
 def build_root(td: Path, *, drop_telephone_example: bool = False, servlet: bool = False, api_docs: str | None = None,
-               extra_eps: list[dict[str, Any]] | None = None, post_operation_id: str = "addOwner", list_schema: bool = True) -> Path:
+               extra_eps: list[dict[str, Any]] | None = None, post_operation_id: str = "addOwner", list_schema: bool = True,
+               seed_sql: str = "", schema_sql: str = "", schema_name: str = "schema.sql") -> Path:
     root = td / "dest"
     copy = td / "frozen"
     res = copy / "src" / "main" / "resources"
@@ -106,10 +107,10 @@ def build_root(td: Path, *, drop_telephone_example: bool = False, servlet: bool 
     (res / "db" / "hsqldb" / "populateDB.sql").write_text(
         "INSERT INTO owners VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023');\n"
         "INSERT INTO owners VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749');\n"
-        "INSERT INTO types VALUES (1, 'cat');\n", encoding="utf-8")
-    (res / "db" / "hsqldb" / "schema.sql").write_text(
+        "INSERT INTO types VALUES (1, 'cat');\n" + seed_sql, encoding="utf-8")
+    (res / "db" / "hsqldb" / schema_name).write_text(
         "CREATE TABLE owners (\n  id INTEGER IDENTITY PRIMARY KEY,\n  first_name VARCHAR(30),\n  last_name VARCHAR(30),\n"
-        "  address VARCHAR(255),\n  city VARCHAR(80),\n  telephone VARCHAR(20)\n);\n", encoding="utf-8")
+        "  address VARCHAR(255),\n  city VARCHAR(80),\n  telephone VARCHAR(20)\n);\n" + schema_sql, encoding="utf-8")
     write_canonical(producer_receipt(root, "freeze"), {"analysis_copy": str(copy), "source_digest": "fixture-source-digest"})
     write_canonical(root / STRUCTURE, {"types": [
         {"fqn": CONTROLLER, "annotations": [{"fqn": "org.springframework.web.bind.annotation.CrossOrigin", "values": {"exposedHeaders": ["errors, content-type"]}}]},
@@ -380,6 +381,141 @@ def _gap_cases() -> int:
     return 0
 
 
+PET_CONTROLLER = "a.PetRestController"
+_PET_DOCS = (
+    "openapi: 3.0.1\n"
+    "info:\n  title: Pets\n  version: '1.0'\n"
+    "paths:\n"
+    "  /owner/{ownerId}/pet:\n"
+    "    parameters:\n      - name: ownerId\n        in: path\n        required: true\n        schema:\n          type: integer\n        example: 1\n"
+    "    post:\n      operationId: addPet\n      requestBody:\n        content:\n          application/json:\n"
+    "            schema:\n              $ref: '#/components/schemas/PetFields'\n        required: true\n"
+    "      responses:\n        201:\n          description: created\n"
+    "  /pet/{petId}:\n"
+    "    parameters:\n      - name: petId\n        in: path\n        required: true\n        schema:\n          type: integer\n        example: 1\n"
+    "    put:\n      operationId: updatePet\n      requestBody:\n        content:\n          application/json:\n"
+    "            schema:\n              $ref: '#/components/schemas/PetFields'\n        required: true\n"
+    "      responses:\n        '204':\n          description: updated\n"
+    "components:\n  schemas:\n"
+    "    PetFields:\n      type: object\n      properties:\n"
+    "        name:\n          type: string\n          minLength: 1\n          example: Leo\n"
+    "      required:\n        - name\n"
+)
+
+
+def _pet_ep(method: str, route: str, member: str) -> dict[str, Any]:
+    return {"id": "ep:%s#%s:http" % (PET_CONTROLLER, member), "kind": "http", "type": PET_CONTROLLER, "member": member,
+            "path": "src/main/java/a/PetRestController.java", "http_method": method, "http_path": route}
+
+
+def _path_variable_case() -> int:
+    """An operationId match is not a binding unless the operation's path
+    variables are resolvable through the route's.
+
+    Measured on v9 (2026-09-14): ``addPet`` bound ``POST /owner/{ownerId}/pet``
+    to the route ``POST /api/pets``, which carries no ``ownerId``, and the
+    derived ``PetFields`` body went to a route that cannot express the
+    operation's identity -- the source answered 400 and the qualification
+    could not say what happened. The same document's ``updatePet``
+    (``PUT /pet/{petId}`` ↔ ``PUT /api/pets/{petId}``) has the same variable
+    set and must still bind."""
+    with tempfile.TemporaryDirectory(prefix="derive-pathvars-") as td:
+        eps = [_pet_ep("POST", "/api/pets", "addPet(a.PetDto)"), _pet_ep("PUT", "/api/pets/{petId}", "updatePet(int,a.PetDto)")]
+        root = build_root(Path(td), api_docs=_PET_DOCS, extra_eps=eps,
+                          seed_sql="INSERT INTO pets VALUES (1, 'Leo');\n",
+                          schema_sql="CREATE TABLE pets (\n  id INTEGER IDENTITY PRIMARY KEY,\n  name VARCHAR(30)\n);\n")
+        p = _derive(root)
+        if p.returncode != 0:
+            return _fail("a path-variable mismatch is a gap, not a refusal: rc=%s %s%s" % (p.returncode, p.stdout, p.stderr))
+        corpus = load_json(root / CORPUS_P)
+        ids = {str(s["id"]) for s in corpus["scenarios"]}
+        if any(i.startswith("sc:create-") for i in ids):
+            return _fail("no scenario, positive or invalid, is emitted for an unbound route: %s" % sorted(ids))
+        want_gap = ("create ep:%s#addPet(a.PetDto):http: operationId addPet binds POST /owner/{ownerId}/pet (variables: ownerId) "
+                    "to route /api/pets (variables: none); path-variable sets differ; not bound" % PET_CONTROLLER)
+        if want_gap not in corpus["gaps"]:
+            return _fail("the gap names both paths and both variable sets: %s" % corpus["gaps"])
+        if any(g.startswith("create ") and "no OpenAPI operation" in g for g in corpus["gaps"]):
+            return _fail("the typed gap replaces the generic one; it is not reported twice: %s" % corpus["gaps"])
+        update = [s for s in corpus["scenarios"] if s["id"] == "sc:update-pets-1"]
+        if len(update) != 1:
+            return _fail("a matching variable set still binds: %s / %s" % (sorted(ids), corpus["gaps"]))
+        if "openapi-path:/pet/{petId}≠route:/api/pets/{petId}; bound by operationId updatePet" not in update[0]["derived_from"]["evidence"]:
+            return _fail("the binding evidence still records the path discrepancy: %s" % update[0]["derived_from"])
+    return 0
+
+
+def _foreign_key_delete_case() -> int:
+    """A delete addresses a row the database will let go.
+
+    v9 derived ``DELETE /api/specialties/1`` because 1 is the first seeded row;
+    the source answered 400 ``DataIntegrityViolationException ...
+    FK_VET_SPECIALTIES_SPECIALTIES`` because ``vet_specialties`` references
+    every seeded specialty. The schema says so, so the derivation reads it."""
+    seed = ("INSERT INTO owners VALUES (3, 'Eduardo', 'Rodriquez', '2693 Commerce St.', 'McFarland', '6085558763');\n"
+            "INSERT INTO pets VALUES (1, 'Leo', 1);\n"
+            "INSERT INTO pets VALUES (2, 'Basil', 2);\n"
+            "INSERT INTO specialties VALUES (1, 'radiology');\n"
+            "INSERT INTO specialties VALUES (2, 'surgery');\n"
+            "INSERT INTO vet_specialties VALUES (2, 1);\n"
+            "INSERT INTO vet_specialties VALUES (3, 2);\n")
+    schema = ("CREATE TABLE pets (\n  id INTEGER IDENTITY PRIMARY KEY,\n  name VARCHAR(30),\n  owner_id INT NOT NULL,\n"
+              "  FOREIGN KEY (owner_id) REFERENCES owners (id)\n);\n"
+              "CREATE TABLE specialties (\n  id INTEGER IDENTITY PRIMARY KEY,\n  name VARCHAR(80)\n);\n"
+              "CREATE TABLE vet_specialties (\n  vet_id INT NOT NULL,\n  specialty_id INT NOT NULL,\n"
+              "  CONSTRAINT FK_VET_SPECIALTIES_SPECIALTIES FOREIGN KEY (specialty_id) REFERENCES specialties (id)\n);\n")
+    with tempfile.TemporaryDirectory(prefix="derive-fk-") as td:
+        eps = [_entry("delete", "DELETE", "/api/owners/{ownerId}", "deleteOwner(int)"),
+               {"id": "ep:a.SpecialtyRestController#deleteSpecialty(int):http", "kind": "http", "type": "a.SpecialtyRestController",
+                "member": "deleteSpecialty(int)", "path": "src/main/java/a/SpecialtyRestController.java",
+                "http_method": "DELETE", "http_path": "/api/specialties/{specialtyId}"}]
+        # the schema lives in the seed's own directory under petclinic's own
+        # name: discovery is by content, never by a specimen's filename
+        root = build_root(Path(td), extra_eps=eps, seed_sql=seed, schema_sql=schema, schema_name="initDB.sql")
+        p = _derive(root)
+        if p.returncode != 0:
+            return _fail("a foreign key is evidence, not a refusal: rc=%s %s%s" % (p.returncode, p.stdout, p.stderr))
+        corpus = load_json(root / CORPUS_P)
+        sc = {str(s["id"]): s for s in corpus["scenarios"]}
+        deletes = {i for i in sc if "delete" in i}
+        if deletes != {"sc:delete-owners-3", "sc:delete-referenced-owners-1", "sc:delete-referenced-specialties-1"}:
+            return _fail("the positive delete addresses the unreferenced row and every blocked resource gets one negative: %s\ngaps: %s" % (sorted(deletes), corpus["gaps"]))
+        pos = sc["sc:delete-owners-3"]
+        if pos["path"] != "/api/owners/3" or "seed:owners#3 unreferenced by pets.owner_id" not in pos["derived_from"]["evidence"]:
+            return _fail("the choice and its evidence are recorded on the scenario: %s" % pos["derived_from"])
+        if "schema:FOREIGN KEY pets.owner_id → owners.id" not in pos["derived_from"]["evidence"]:
+            return _fail("the constraint that forced the choice is named: %s" % pos["derived_from"])
+        if any("every seed row of owners is referenced" in g for g in corpus["gaps"]):
+            return _fail("a table with a free row is not a gap: %s" % corpus["gaps"])
+        want = ("delete ep:a.SpecialtyRestController#deleteSpecialty(int):http: every seed row of specialties is referenced "
+                "(FK_VET_SPECIALTIES_SPECIALTIES/vet_specialties.specialty_id); no deletable row derivable")
+        if want not in corpus["gaps"]:
+            return _fail("an all-referenced table is a typed gap naming the constraint: %s" % corpus["gaps"])
+        neg = sc["sc:delete-referenced-specialties-1"]
+        if neg["qualify"] != {"intent": "negative", "expect_status_class": "4xx",
+                              "after_effect_status": {"eff:specialties-1-after-refused-delete": 200}}:
+            return _fail("the negative delete states exactly what is checked: %s" % neg["qualify"])
+        if not neg.get("body_absent") or neg["path"] != "/api/specialties/1" or neg["method"] != "DELETE":
+            return _fail("the refused delete is the same request against a referenced row: %s" % neg)
+        if "FK_VET_SPECIALTIES_SPECIALTIES/vet_specialties.specialty_id" not in " ".join(neg["derived_from"]["evidence"]):
+            return _fail("the negative names what references the row: %s" % neg["derived_from"])
+        rec = load_json(root / DERIVE_RECEIPT)
+        read = [i["path"] for i in rec["inputs"]["sql"]]
+        if read != ["src/main/resources/db/hsqldb/populateDB.sql", "src/main/resources/db/hsqldb/initDB.sql"]:
+            return _fail("the receipt records which SQL the derivation read: %s" % read)
+    # ... and with no schema file beside the seed, the foreign keys are unknown
+    # and the derivation says so rather than deriving a delete blind
+    with tempfile.TemporaryDirectory(prefix="derive-noschema-") as td:
+        root = build_root(Path(td))
+        (Path(td) / "frozen" / "src" / "main" / "resources" / "db" / "hsqldb" / "schema.sql").unlink()
+        if _derive(root).returncode != 0:
+            return _fail("a missing schema file is a gap, not a refusal")
+        gaps = load_json(root / CORPUS_P)["gaps"]
+        if not any("no schema file declaring CREATE TABLE" in g for g in gaps):
+            return _fail("a seed with no schema beside it records why its foreign keys are unknown: %s" % gaps)
+    return 0
+
+
 def _retain(root: Path, sid: str, name: str, payload: Any) -> tuple[dict[str, Any], str]:
     raw = json.dumps(payload).encode("utf-8")
     sha = normalize_body(raw, "application/json")[1]
@@ -464,8 +600,12 @@ def _qualification_case(root: Path) -> int:
              {"eff:owners-list-after-create": (200, seeded)}, {"eff:owners-list-after-create": (200, seeded + [created])})
     p, q = _qualify(root)
     r = q["scenarios"]["sc:create-owners"]
-    if p.returncode != 1 or r["verdict"] != "FAIL" or not any(c["check"] == "location" and c["ok"] is False for c in r["checks"]) or "sc:create-owners" not in p.stderr:
-        return _fail("a relative Location FAILs and names location: %s %s" % (r, p.stderr))
+    # a recorded FAIL is a source fact, not a refusal: the gate exits 0 and
+    # still names the scenario on stderr
+    if p.returncode != 0 or r["verdict"] != "FAIL" or not any(c["check"] == "location" and c["ok"] is False for c in r["checks"]) or "sc:create-owners" not in p.stderr:
+        return _fail("a relative Location FAILs and names location: rc=%s %s %s" % (p.returncode, r, p.stderr))
+    if "OK: qualification FAIL" not in p.stdout:
+        return _fail("the verdict line still prints on a recorded FAIL: %s" % p.stdout)
     # a Location on another origin is not under the base either
     _capture(root, sc["sc:create-owners"], corpus_sha, 201, dict(good_create, Location="http://elsewhere:8080/petclinic/api/owners/11"), created,
              {"eff:owners-list-after-create": (200, seeded)}, {"eff:owners-list-after-create": (200, seeded + [created])})
@@ -587,12 +727,45 @@ def _qualification_case(root: Path) -> int:
         sc2 = {str(s["id"]): s for s in corpus2["scenarios"]}
         if sc2["sc:create-owners"]["qualify"]["identity_field"] is not None:
             return _fail("no response schema on the collection GET means identity_field null: %s" % sc2["sc:create-owners"]["qualify"])
-        _capture(root2, sc2["sc:create-owners"], corpus_digest(corpus2), 201, good_create, created,
+        corpus2_sha = corpus_digest(corpus2)
+        _capture(root2, sc2["sc:create-owners"], corpus2_sha, 201, good_create, created,
                  {"eff:owners-list-after-create": (200, seeded)}, {"eff:owners-list-after-create": (200, seeded + [created])})
         p2, q2 = _qualify(root2)
         r2 = q2["scenarios"]["sc:create-owners"]
         if r2["capability"] != "INCONCLUSIVE" or "collection identity not derivable" not in r2["reason"]:
             return _fail("a create without a derivable identity is INCONCLUSIVE, never counted: %s" % r2)
+        # ... and it is the PREDICATE that is unanswerable, not the evidence:
+        # every other check was judged and passed
+        if (r2["evidence"] != {"status": "USABLE", "reasons": []} or r2["known_failures"] != []
+                or [u.split(":")[0] for u in r2["unjudged"]] != ["creates_one_entity"]
+                or not all(c["ok"] is True for c in r2["checks"] if c["check"] != "creates_one_entity")):
+            return _fail("all judged and passing beside one unjudgeable predicate is INCONCLUSIVE, with sound evidence: %s" % r2)
+        if p2.returncode != 0:
+            return _fail("a recorded INCONCLUSIVE is a verdict, not a refusal: rc=%s %s" % (p2.returncode, p2.stderr))
+        # the v9 shape: the source answered 400 to a create, the errors header
+        # parses, and the collection's identity_field is null. The 400 is
+        # USABLE evidence and the expect_status miss is a JUDGED failure, so
+        # the verdict is FAIL -- the unanswerable create predicate beside it
+        # does not turn an answered mismatch back into a question
+        _capture(root2, sc2["sc:create-owners"], corpus2_sha, 400,
+                 dict(cors, Location=None, errors='[{"fieldName":"id","fieldValue":"null","errorMessage":"must not be null"}]'),
+                 {"error": "bad request"}, {"eff:owners-list-after-create": (200, seeded)}, {"eff:owners-list-after-create": (200, seeded)})
+        p2, q2 = _qualify(root2)
+        r2 = q2["scenarios"]["sc:create-owners"]
+        if r2["capability"] != "FAIL" or r2["evidence"]["status"] != "USABLE":
+            return _fail("a 400 with a well-formed errors header is usable evidence and its expect_status miss is FAIL: %s" % r2)
+        if (not any("expect_status" in f and "status 400" in f for f in r2["known_failures"])
+                or not any(c["check"] == "creates_one_entity" and c["ok"] is None for c in r2["checks"])):
+            return _fail("the judged failure and the unjudgeable predicate are both on the record: %s" % r2)
+        if p2.returncode != 0 or "OK: qualification FAIL" not in p2.stdout:
+            return _fail("a recorded FAIL exits 0 and prints its verdict: rc=%s %s%s" % (p2.returncode, p2.stdout, p2.stderr))
+        # a refusal to JUDGE is different: with the corpus naming requests and
+        # not one capture on disk, no qualification document is written
+        for stale in (root2 / SCENARIO_ORACLES).glob("sc*.json"):
+            stale.unlink()
+        p2 = subprocess.run([sys.executable, str(QUALIFY), "--root", str(root2)], text=True, capture_output=True)
+        if p2.returncode != 1 or "REFUSE" not in p2.stderr or "no capture" not in p2.stderr:
+            return _fail("no capture at all is a refusal to judge: rc=%s %s%s" % (p2.returncode, p2.stdout, p2.stderr))
     # a scenario without a contract cannot be qualified
     bare = json.loads(json.dumps(corpus))
     for s in bare["scenarios"]:
@@ -602,8 +775,8 @@ def _qualification_case(root: Path) -> int:
     rec["corpus_sha256"] = corpus_digest(bare)
     write_canonical(root / DERIVE_RECEIPT, rec)
     p, q = _qualify(root)
-    if p.returncode != 1 or any(r["capability"] != "INCONCLUSIVE" or "no qualification contract" not in r["reason"] for r in q["scenarios"].values()):
-        return _fail("a scenario without a qualify block is INCONCLUSIVE: %s" % q["scenarios"])
+    if p.returncode != 0 or any(r["capability"] != "INCONCLUSIVE" or "no qualification contract" not in r["reason"] for r in q["scenarios"].values()):
+        return _fail("a scenario without a qualify block is INCONCLUSIVE and recorded, not refused: rc=%s %s" % (p.returncode, q["scenarios"]))
     return 0
 
 
@@ -648,8 +821,10 @@ def _receipt_case() -> int:
         subprocess.run([sys.executable, str(RECEIPT), "--root", str(root)], text=True, capture_output=True)
         doc = load_json(root / "verification" / "parity" / "receipt.json")
         row = next(r for r in doc["entry_points"] if r["entry_point"] == ep)
-        if row["verdict"] != "INCONCLUSIVE" or "capture not qualified: sc:read-x INCONCLUSIVE" not in row["reason"] or doc["coverage_gaps"]:
-            return _fail("a scenario qualified INCONCLUSIVE makes its entry point INCONCLUSIVE: %s" % row)
+        if (row["verdict"] != "INCONCLUSIVE" or "capture not qualified: sc:read-x INCONCLUSIVE" not in row["reason"]
+                or doc["coverage_gaps"] != [{"scenario": "sc:read-x", "entry_point": ep, "kind": "inconclusive-qualification", "intent": "positive",
+                                            "reason": "capture not qualified: no capture"}]):
+            return _fail("a scenario qualified INCONCLUSIVE makes its entry point INCONCLUSIVE and is an uncovered capability: %s %s" % (row, doc["coverage_gaps"]))
         # a POSITIVE scenario whose capability FAILED is a source-side fixture
         # failure: no parity credit, the entry point INCONCLUSIVE, and a
         # coverage gap of kind fixture-failed on the receipt
@@ -718,7 +893,8 @@ def main() -> int:
         if rc:
             return rc
         assert root is not None
-        if _gap_cases() or _real_excerpt_case() or _qualification_case(root) or _receipt_case():
+        if (_gap_cases() or _real_excerpt_case() or _path_variable_case() or _foreign_key_delete_case()
+                or _qualification_case(root) or _receipt_case()):
             return 1
     finally:
         if td is not None:
@@ -730,12 +906,18 @@ def main() -> int:
           "paths do not name the code's routes and a same-named method on another controller is a gap; no OpenAPI document refuses; the derivation is deterministic and never "
           "clobbers a hand-authored corpus; the loader accepts the derived corpus, refuses it after any edit or against another bundle, "
           "and refuses a placeholder approver and a body edited after derivation; a conflicting operationId on a path match is a typed gap; "
+          "an operationId whose operation carries path variables the route cannot supply is a typed gap and no scenario, while a matching "
+          "variable set still binds; a delete addresses the lowest seed row nothing references, an all-referenced table is a typed gap naming "
+          "the constraint and earns one negative delete-referenced scenario instead, the schema is discovered beside the seed by content "
+          "(initDB.sql) and recorded in the receipt, and a seed with no schema says its foreign keys are unknown; "
           "qualification judges evidence before intent: it PASSes captures that show the contract, FAILs a relative or foreign Location, a create "
           "with no new identity or a duplicated prior entity or a Location naming 999, a 400 without the errors header, one naming another field, "
           "or one with a changed list, and is INCONCLUSIVE with known_failures recorded for a 500 beside an unbound read-back, a non-JSON errors "
           "header, 500 read-backs, a null identity field, a missing or unbound retained body, no capture, another corpus, another request or no "
-          "contract; the parity receipt is INCONCLUSIVE for a derived corpus nobody qualified, a scenario qualified INCONCLUSIVE, unrecorded or "
-          "stale, lists a positive FAIL as a fixture-failed coverage gap with the entry point INCONCLUSIVE, counts a negative PASS as negative "
+          "contract; a judged failure beside an unjudgeable predicate is FAIL and both stay on the record, a recorded FAIL or INCONCLUSIVE exits "
+          "0 with its verdict printed while no capture at all is a refusal exiting 1; the parity receipt is INCONCLUSIVE for a derived corpus "
+          "nobody qualified, a scenario qualified INCONCLUSIVE, unrecorded or stale, lists a positive FAIL as a fixture-failed coverage gap and "
+          "an INCONCLUSIVE as an inconclusive-qualification one with the entry point INCONCLUSIVE, counts a negative PASS as negative "
           "coverage only, and an Operator-authored corpus keeps its behaviour)")
     return 0
 

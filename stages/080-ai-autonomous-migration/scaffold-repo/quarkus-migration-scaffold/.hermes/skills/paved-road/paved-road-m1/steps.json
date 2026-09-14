@@ -72,6 +72,15 @@
       "note": "Record what the SOURCE does, while the source is still the only thing that can say. scripts/capture-source-scenarios.py packages the frozen source, starts its isolated runtime, restores the initial state before each scenario that asks for it, replays the derived corpus (verification/scenarios/corpus.json) recording the state before and after each request, then captures the idempotent reads through that same runtime and stops what it started. No admission receipt is needed here: M1 precedes M2, so the capture binds to the evidence bundle. Idle when the corpus is absent, and it says so in its receipt (verification/source-oracles/scenarios/_capture.json): a missing corpus is a recorded gap, never an invented expectation and never silence. Nothing here reads the destination, and no worker ever sets an expected value."
     },
     {
+      "id": "qualify-source-captures",
+      "backing": "skill",
+      "skill": "capture-source-oracles",
+      "keep": [
+        "verification/source-oracles/scenarios/_qualification.json"
+      ],
+      "note": "Judge what was captured, while the capture is still bound to the corpus that produced it. scripts/qualify-source-captures.py reads every capture against its scenario's own qualify block and writes verification/source-oracles/scenarios/_qualification.json, each record bound to the exact capture, request, corpus and bundle it judged. Evidence comes before intent: a capture that cannot be judged (absent, unbound, a retained body that is not whole or not its digest, a read-back that did not answer 2xx, a server error the contract does not name) is INCONCLUSIVE and never FAIL. Then capability over the predicates that could be judged: one judged predicate failing is FAIL, none failing with one unanswerable is INCONCLUSIVE, all judged and passing is PASS. FAIL and INCONCLUSIVE are RECORDED SOURCE FACTS, not refusals: the parity receipt lists them under coverage_gaps and the M4 coverage account records them as uncovered capabilities, and neither ever becomes a destination repair card. The step refuses only when there is nothing to judge: no corpus, a corpus whose provenance does not bind, or no capture at all."
+    },
+    {
       "id": "kanban-attach",
       "backing": "native",
       "native": "kanban_attach.py",

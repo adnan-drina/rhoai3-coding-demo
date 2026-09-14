@@ -49,13 +49,14 @@ def main() -> int:
         return _fail("M1 must start with the freeze and never list derive-legacy-boot3: %s" % skills)
     if skills.index("inventory-legacy-surface") > skills.index("scan-with-mta"):
         return _fail("M1 order %s" % skills)
-    # the bundle is assembled, and only then is the corpus derived from it and
-    # the source recorded: both read the bundle's entry points and bind to its
-    # digest, and the capture replays what the derivation wrote
+    # the bundle is assembled, and only then is the corpus derived from it, the
+    # source recorded and the captures judged: all three read the bundle's
+    # entry points and bind to its digest, the capture replays what the
+    # derivation wrote, and the qualification is bound to that exact capture
     ids = [s["id"] for s in doc["steps"] if s["backing"] == "skill"]
-    if (skills[-2:] != ["capture-source-oracles", "capture-source-oracles"] or skills.index("assemble-evidence-bundle") != len(skills) - 3
-            or ids[-2:] != ["derive-source-scenarios", "capture-source-scenarios"]):
-        return _fail("M1 must end with the bundle, then the corpus derivation, then the source capture: %s" % ids)
+    if (skills[-3:] != ["capture-source-oracles"] * 3 or skills.index("assemble-evidence-bundle") != len(skills) - 4
+            or ids[-3:] != ["derive-source-scenarios", "capture-source-scenarios", "qualify-source-captures"]):
+        return _fail("M1 must end with the bundle, then the corpus derivation, the source capture and the qualification: %s" % ids)
     producer = [s for s in doc["steps"] if s.get("producer")][0]
     if producer["skill"] != "assemble-evidence-bundle" or "evidence/planning/evidence-bundle.json" not in producer["keep"]:
         return _fail("M1 producer must be assemble-evidence-bundle owning evidence-bundle.json")

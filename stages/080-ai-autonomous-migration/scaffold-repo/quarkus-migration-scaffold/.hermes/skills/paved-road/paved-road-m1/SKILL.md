@@ -43,13 +43,19 @@ the root of the planner digest chain (SAD §6).
 
 1. Read `steps.json`. Follow that listed order:
    freeze → build → JDK-model inventory → bytecode (optional) → context probe
-   → MTA → assemble → derive the scenario corpus → capture the source → attach.
+   → MTA → assemble → derive the scenario corpus → capture the source →
+   qualify the captures → attach.
    - `skill` — `skill_view` that leaf and follow its SKILL.md.
    - `native` — run the named script under `.hermes/kernel/`
      (`kanban_attach.py --task "$HERMES_KANBAN_TASK" --exec`).
 2. KEEP paths on the step must exist under the workspace root.
 3. A producer that records `status: unpinned` (structure extractor) or a build that
    records `outcome: failure` is **evidence**, not a defect to repair.
+   A qualification verdict of `FAIL` or `INCONCLUSIVE` is the same kind of
+   thing: a recorded fact about the **source**, which becomes a coverage gap
+   at M4 and never a destination card. The step is red only when the gate
+   could not judge at all (no corpus, no capture, a provenance that does not
+   bind).
    extractor unpinned / JDK mismatch → `kanban_block` (kind `needs_input`, the pin is an
    ADR). Build failure → continue; the ledger makes it planning-only.
 4. `bash .hermes/skills/harness/dispatch-phase/scripts/autostart-migration.sh --root /projects/modernized`

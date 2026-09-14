@@ -65,8 +65,11 @@ def parity_verdicts(root: Path) -> tuple[str, dict[str, str]]:
 def uncovered_capabilities(root: Path) -> list[dict]:
     """The parity receipt's ``coverage_gaps``: scenarios whose capture did
     not demonstrate the operation the scenario intends (``fixture-failed``:
-    the SOURCE did not perform it, e.g. a 500 deleting a referenced pettype)
-    or whose qualification judged another capture (``stale-qualification``).
+    the SOURCE did not perform it, e.g. a create the source answered 400 for),
+    whose capture could not be judged at all (``inconclusive-qualification``:
+    unusable evidence, or a predicate the document leaves unanswerable -- a
+    capability nobody judged is a capability nobody demonstrated), or whose
+    qualification judged another capture (``stale-qualification``).
     The parity receipt used to be read for its per-entry-point verdict only,
     so such a gap was invisible here (architect review of 708cfef9): an
     entry point could earn replacement credit for a capability nobody

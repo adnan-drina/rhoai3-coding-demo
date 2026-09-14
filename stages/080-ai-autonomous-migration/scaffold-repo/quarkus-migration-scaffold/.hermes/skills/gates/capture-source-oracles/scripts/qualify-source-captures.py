@@ -36,18 +36,31 @@ field -> INCONCLUSIVE "collection identity not derivable". The ``errors``
 header must parse as JSON (petclinic's BindingErrorsResponse is an array of
 objects): non-JSON is INCONCLUSIVE, a parsed array without the field is FAIL.
 
+Capability is judged over the predicates that COULD be judged: any judged one
+failing is FAIL (a 400 carrying a well-formed errors header is usable
+evidence, and an ``expect_status`` miss on it is a judged failure, not a
+puzzle); none failing with at least one unjudgeable (``creates_one_entity``
+where the document names no ``identity_field``) is INCONCLUSIVE; all judged
+and passing is PASS. The unjudgeable predicate stays in the record either way.
+
 Every record is bound to the exact capture it judged (``capture_sha256`` of
 the capture file, ``request_sha256``, the corpus and bundle digests) so a
 qualification that outlives its capture is stale, never reused.
 
-Writes verification/source-oracles/scenarios/_qualification.json. Exit 0 only
-when every scenario the corpus lists is capability PASS; 1 otherwise; 2 usage.
+Writes verification/source-oracles/scenarios/_qualification.json. A FAIL is a
+RECORDED SOURCE FACT, not a refusal: the source did not demonstrate what the
+scenario intends, which M4 turns into a coverage gap and which never becomes a
+destination repair card. So exit 0 whenever a bound qualification document was
+written, whatever its verdict, and 1 only on a refusal to JUDGE -- no corpus,
+a corpus that is neither derived nor authored, a corpus whose digests no
+longer bind, or no capture at all to judge. 2 usage.
 """
 from __future__ import annotations
 
 import argparse
 import hashlib
 import json
+import re
 import sys
 import time
 import urllib.parse
@@ -63,16 +76,25 @@ from planner.canonical import digest, load_json, write_canonical  # noqa: E402
 from planner.paths import EVIDENCE_BUNDLE  # noqa: E402
 
 PRODUCER = "qualify-source-captures.py"
-KNOWN_CHECKS = ("expect_status", "location", "after_contains_body", "before_lacks_body", "creates_one_entity", "after_equals_before",
-                "errors_header_names_field", "after_effect_status", "cors_allow_origin", "cors_expose_headers",
+KNOWN_CHECKS = ("expect_status", "expect_status_class", "location", "after_contains_body", "before_lacks_body", "creates_one_entity",
+                "after_equals_before", "errors_header_names_field", "after_effect_status", "cors_allow_origin", "cors_expose_headers",
                 "cors_allow_method", "cors_allow_headers")
 CONTRACT_KEYS = ("intent", "identity_field")  # parameters of the contract, not checks
 BODY_CHECKS = ("after_contains_body", "before_lacks_body", "creates_one_entity", "after_equals_before")
 HEADER_CHECKS = ("location", "errors_header_names_field", "cors_allow_origin", "cors_expose_headers", "cors_allow_method", "cors_allow_headers")
+_STATUS_CLASS_RE = re.compile(r"^([1-5])xx$", re.IGNORECASE)
 
 
 class Unusable(Exception):
     """Evidence that cannot be judged; the reason is the message."""
+
+
+class Unjudgeable(Unusable):
+    """A PREDICATE that cannot be judged although the evidence is sound: the
+    document names no ``identity_field``, the contract names a check this gate
+    does not implement. It leaves the capture usable, so a judged predicate
+    that FAILS beside it still makes the verdict FAIL -- an unanswerable
+    question about a create does not un-answer the answered ones."""
 
 
 def _now() -> str:
@@ -199,9 +221,33 @@ def _errors_elements(value: str) -> list[dict[str, Any]]:
     return _objects(parsed)
 
 
+def _status_class(want: Any) -> tuple[int, int]:
+    """(low, high) of a ``4xx``-style class; the contract states what it means
+    by "the source refused", and an unreadable class is not a silent pass."""
+    m = _STATUS_CLASS_RE.match(str(want or ""))
+    if m is None:
+        raise Unjudgeable("expect_status_class %r is not a status class like '4xx'" % want)
+    return int(m.group(1)) * 100, int(m.group(1)) * 100 + 99
+
+
+def _expected(q: dict[str, Any], status: int) -> bool:
+    """Whether the contract names this status at all (list or class)."""
+    if "expect_status" in q:
+        allowed = q["expect_status"] if isinstance(q["expect_status"], list) else [q["expect_status"]]
+        if any(int(x) == status for x in allowed):
+            return True
+    if "expect_status_class" in q:
+        try:
+            low, high = _status_class(q["expect_status_class"])
+        except Unjudgeable:
+            return False
+        return low <= status <= high
+    return False
+
+
 def _creates_one_entity(root: Path, sid: str, sc: dict[str, Any], cap: dict[str, Any], identity: str | None) -> tuple[bool, str]:
     if not identity:
-        raise Unusable("collection identity not derivable (identity_field null); a create cannot be judged")
+        raise Unjudgeable("collection identity not derivable (identity_field null); a create cannot be judged")
     body = _request_body(root, sc)
     before, after = _rows(cap, "before"), _rows(cap, "effects")
     if not before or not after or set(before) != set(after):
@@ -249,6 +295,7 @@ def qualify_scenario(root: Path, sc: dict[str, Any], cap: dict[str, Any] | None,
     intent = str((q or {}).get("intent") or "positive")
     checks: list[dict[str, Any]] = []
     evidence_reasons: list[str] = []
+    unjudged: list[str] = []
     known_failures: list[str] = []
     try:
         request_sha = request_of(root, sc)["request_sha256"]
@@ -262,7 +309,7 @@ def qualify_scenario(root: Path, sc: dict[str, Any], cap: dict[str, Any] | None,
         usable = not evidence_reasons
         return dict(base, verdict=capability, capability=capability,
                     evidence={"status": "USABLE" if usable else "UNUSABLE", "reasons": list(evidence_reasons)},
-                    known_failures=list(known_failures), reason=reason[:400], checks=checks)
+                    known_failures=list(known_failures), unjudged=list(unjudged), reason=reason[:400], checks=checks)
 
     def record(name: str, ok: bool | None, detail: str) -> None:
         checks.append({"check": name, "ok": ok, "detail": detail})
@@ -294,6 +341,15 @@ def qualify_scenario(root: Path, sc: dict[str, Any], cap: dict[str, Any] | None,
     before, after = _rows(cap, "before"), _rows(cap, "effects")
     if any(k in q for k in HEADER_CHECKS) and not isinstance(headers, dict):
         evidence_reasons.append("the capture recorded no header map")
+    # a server error the contract does not name is not the operation's answer:
+    # nothing else in the contract can be read off it, so the evidence is
+    # UNUSABLE and the capability INCONCLUSIVE -- with the 500 on the record
+    status = int(resp.get("status") or 0)
+    if 500 <= status < 600 and not _expected(q, status):
+        record("expect_status", False, "status %s, expected one of %s"
+               % (status, q.get("expect_status") if "expect_status" in q else q.get("expect_status_class") or "a non-5xx answer"))
+        evidence_reasons.append("the source answered %s, which the contract does not name; a server error is not the operation's answer" % status)
+        return finish("INCONCLUSIVE", "; ".join(evidence_reasons))
     # ---- the checks; an Unusable raised inside is evidence, not a verdict ----
     for name, want in q.items():
         if name in CONTRACT_KEYS:
@@ -302,9 +358,13 @@ def qualify_scenario(root: Path, sc: dict[str, Any], cap: dict[str, Any] | None,
             if name == "expect_status":
                 allowed = [int(x) for x in (want if isinstance(want, list) else [want])]
                 record(name, int(resp.get("status") or 0) in allowed, "status %s, expected one of %s" % (resp.get("status"), allowed))
+            elif name == "expect_status_class":
+                low, high = _status_class(want)
+                got = int(resp.get("status") or 0)
+                record(name, low <= got <= high, "status %s, expected any %s" % (resp.get("status"), str(want)))
             elif name == "location":
                 if want != "absolute-under-base":
-                    raise Unusable("unknown location rule %r" % want)
+                    raise Unjudgeable("unknown location rule %r" % want)
                 if not isinstance(headers, dict):
                     raise Unusable("the capture recorded no header map")
                 loc = _header(headers, "Location")
@@ -353,7 +413,7 @@ def qualify_scenario(root: Path, sc: dict[str, Any], cap: dict[str, Any] | None,
                 record(name, hit, "errors header %s an element naming %s (%d element(s))" % ("carries" if hit else "carries no", want, len(elements)))
             elif name == "after_effect_status":
                 if not isinstance(want, dict):
-                    raise Unusable("after_effect_status must map effect id to status")
+                    raise Unjudgeable("after_effect_status must map effect id to status")
                 bad = []
                 for eid, status in sorted(want.items()):
                     row = after.get(str(eid))
@@ -381,7 +441,11 @@ def qualify_scenario(root: Path, sc: dict[str, Any], cap: dict[str, Any] | None,
                 got = _tokens(_header(headers, "Access-Control-Allow-Methods"))
                 record(name, str(want).lower() in got, "Access-Control-Allow-Methods %r, need %s" % (_header(headers, "Access-Control-Allow-Methods"), want))
             else:
-                raise Unusable("unknown qualification check %r" % name)
+                raise Unjudgeable("unknown qualification check %r" % name)
+        except Unjudgeable as exc:
+            # the evidence is sound; this one predicate has no answer
+            unjudged.append("%s: %s" % (name, exc))
+            checks.append({"check": name, "ok": None, "detail": str(exc)})
         except Unusable as exc:
             evidence_reasons.append("%s: %s" % (name, exc))
             checks.append({"check": name, "ok": None, "detail": str(exc)})
@@ -390,7 +454,14 @@ def qualify_scenario(root: Path, sc: dict[str, Any], cap: dict[str, Any] | None,
         # (a 500, a missing header) stay on the record in known_failures
         return finish("INCONCLUSIVE", "; ".join(evidence_reasons))
     if known_failures:
-        return finish("FAIL", "; ".join(known_failures))
+        # a judged predicate failed. An unjudgeable one beside it does not
+        # soften that: the source answered, and the answer was not the
+        # contract's (v9: a 400 with a well-formed errors header against a
+        # create whose identity_field the document never named was reported
+        # INCONCLUSIVE, so the mismatch went unrecorded)
+        return finish("FAIL", "; ".join(known_failures + unjudged))
+    if unjudged:
+        return finish("INCONCLUSIVE", "; ".join(unjudged))
     return finish("PASS", "")
 
 
@@ -407,8 +478,16 @@ def main(argv: list[str] | None = None) -> int:
     corpus_sha = corpus_digest(corpus)
     bundle_p = root / EVIDENCE_BUNDLE
     bundle_sha = digest(load_json(bundle_p)) if bundle_p.is_file() else ""
+    scenarios = list(corpus.get("scenarios") or [])
+    # a refusal to JUDGE: the corpus names requests and the source was never
+    # asked any of them. That is not a verdict about the source, so no
+    # qualification document is written for it
+    if scenarios and not any((root / SCENARIO_ORACLES / (scenario_slug(str(sc["id"])) + ".json")).is_file() for sc in scenarios):
+        print("REFUSE: QUALIFY_CAPTURES no capture under %s for any of the %d scenario(s) the corpus names; capture the source first "
+              "(capture-source-scenarios.py)" % (SCENARIO_ORACLES, len(scenarios)), file=sys.stderr)
+        return 1
     results: dict[str, dict[str, Any]] = {}
-    for sc in corpus.get("scenarios") or []:
+    for sc in scenarios:
         sid = str(sc["id"])
         cp = root / SCENARIO_ORACLES / (scenario_slug(sid) + ".json")
         cap = None
@@ -439,8 +518,12 @@ def main(argv: list[str] | None = None) -> int:
     if verdict == "PASS":
         print("OK: %d capture(s) qualified against the corpus %s → %s" % (len(results), corpus_sha[:12], out.relative_to(root)))
         return 0
-    print("REFUSE: qualification %s (%d of %d not qualified) → %s" % (verdict, len(not_passed), len(results), out.relative_to(root)), file=sys.stderr)
-    return 1
+    # FAIL and INCONCLUSIVE are RECORDED SOURCE FACTS, not refusals. The gate
+    # ran, judged every capture and bound the verdicts to them; M4 turns a
+    # non-PASS into a coverage gap and never into a destination repair card.
+    # Exiting 1 here made the M1 step fail on what the source actually does.
+    print("OK: qualification %s (%d of %d not qualified) → %s" % (verdict, len(not_passed), len(results), out.relative_to(root)))
+    return 0
 
 
 if __name__ == "__main__":
