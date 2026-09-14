@@ -369,6 +369,132 @@ def _set_wide_case() -> int:
     return 0
 
 
+# The startup log of destination v9 (2026-09-14), whose property name after
+# "for:" is EMPTY because the annotation that names it was emptied.
+_CV_LOG = ("[io.quarkus.runtime.Application] (main) Failed to start application:\n"
+           "java.util.NoSuchElementException: SRCFG00014: Failed to load config value of type class java.lang.String for: %s")
+_CV_DETAIL = "the application exited with 1 before becoming ready"
+_SPRING_VALUE = "org.springframework.beans.factory.annotation.Value"
+_MP_CONFIG_PROPERTY = "org.eclipse.microprofile.config.inject.ConfigProperty"
+
+
+def _cv_root(td: str, pkg: str, type_name: str, fields: list[tuple[str, str, str, str]]) -> tuple[Path, str]:
+    """A tree with M1's structural model of one type and its annotated fields.
+
+    ``fields`` are (field, annotation fqn or "", attribute, written value)."""
+    import json
+
+    from planner.paths import STRUCTURE
+
+    root = Path(td)
+    rel = "src/main/java/%s/%s.java" % (pkg.replace(".", "/"), type_name)
+    (root / rel).parent.mkdir(parents=True, exist_ok=True)
+    (root / rel).write_text("package %s;\n" % pkg, encoding="utf-8")
+    doc = {"schema": "rhoai3.structure/v1", "producer": {"tool": "jdk-model", "version": "jdk-21", "mode": "full"},
+           "source_digest": "d" * 64, "mode": "full",
+           "types": [{"fqn": "%s.%s" % (pkg, type_name), "path": rel, "kind": "class", "resolution": "full",
+                      "annotations": [], "supertypes": [], "constructors": [], "methods": [], "type_refs": [],
+                      "fields": [{"name": f, "type": "java.lang.String",
+                                  "annotations": ([{"fqn": a, "values": {attr: [v]}}] if a else [])}
+                                 for f, a, attr, v in fields]}]}
+    (root / STRUCTURE).parent.mkdir(parents=True, exist_ok=True)
+    (root / STRUCTURE).write_text(json.dumps(doc), encoding="utf-8")
+    return root, rel
+
+
+def _cv_item(root: Path, printed: str) -> dict:
+    boot = {"ran": True, "rc": 1, "ready": False, "detail": _CV_DETAIL, "log_tail": _CV_LOG % printed}
+    items = runtime_items(None, boot, root)
+    return items[0] if len(items) == 1 else {"__count__": len(items)}
+
+
+def _cv_shape(item: dict, pkg: str, type_name: str, field: str) -> tuple:
+    """The DECISION, with this specimen's identifiers taken out of it."""
+    def mask(s: str) -> str:
+        for real, tok in (("%s.%s" % (pkg, type_name), "<TYPE>"), (pkg.replace(".", "/"), "<PKG>"),
+                          (type_name, "<NAME>"), (field, "<FIELD>")):
+            s = s.replace(real, tok)
+        return s
+    return (mask(str(item.get("path") or "")), item.get("kind"), item.get("cause"),
+            mask(str(item.get("member") or "")), bool(item.get("unlocated")), mask(str(item.get("detail") or "")))
+
+
+def _config_value_case() -> int:
+    """A property the platform could not load is repaired where it is NAMED.
+
+    Measured on destination v9 (2026-09-14): a worker had replaced
+    @Value("#{servletContext.contextPath}") with @Value(""), quarkus-spring-di
+    looked up a config property with an empty name, and startup died. The work
+    list called it unclassified and minted the card at application.properties,
+    where no worker can repair an annotation."""
+    import tempfile
+
+    from planner.worklist import APP_PROPERTIES
+
+    specimens = (("org.springframework.samples.petclinic.rest", "RootRestController", "servletContextPath"),
+                 ("com.acme.shop.api", "EntryController", "basePath"))
+    shapes: list[list[tuple]] = []
+    for pkg, type_name, field in specimens:
+        seen: list[tuple] = []
+        # (a) the v9 case: the name is empty and an emptied @Value carries it
+        with tempfile.TemporaryDirectory(prefix="cv-empty-") as td:
+            root, rel = _cv_root(td, pkg, type_name, [(field, _SPRING_VALUE, "value", "")])
+            it = _cv_item(root, "")
+            if it.get("path") != rel or it.get("kind") != "compile" or it.get("cause") != "config-value":
+                return _fail("an emptied @Value is repaired at its own file, not at the properties file: %s"
+                             % {k: it.get(k) for k in ("path", "kind", "cause")})
+            if it.get("member") != field or it.get("unlocated"):
+                return _fail("the field that carries the annotation is named: %s" % {k: it.get(k) for k in ("member", "unlocated")})
+            if "EMPTY" not in it["detail"] or "@Value(\"\")" not in it["detail"] or "quarkus.http.root-path" not in it["detail"]:
+                return _fail("the detail must say the name is empty, quote the annotation and teach the mapping: %s" % it["detail"])
+            card = cluster_items([it], {}, set())
+            if len(card) != 1 or card[0]["write_set"] != [rel]:
+                return _fail("the card's write set is the file that carries the annotation: %s" % card)
+            seen.append(_cv_shape(it, pkg, type_name, field))
+        # (b) Spring's placeholder form names the same property as the bare one
+        with tempfile.TemporaryDirectory(prefix="cv-placeholder-") as td:
+            root, rel = _cv_root(td, pkg, type_name, [(field, _SPRING_VALUE, "value", "${a.b:x}")])
+            it = _cv_item(root, "a.b")
+            if it.get("path") != rel or it.get("member") != field or it.get("kind") != "compile":
+                return _fail("${x:default} names property x: %s" % {k: it.get(k) for k in ("path", "member", "kind")})
+            if "\"a.b\"" not in it["detail"]:
+                return _fail("the detail quotes the property name: %s" % it["detail"])
+            seen.append(_cv_shape(it, pkg, type_name, field))
+            # and MicroProfile's own annotation names it the same way
+            root2, rel2 = _cv_root(td + "/mp", pkg, type_name, [(field, _MP_CONFIG_PROPERTY, "name", "a.b")])
+            it2 = _cv_item(root2, "a.b")
+            if it2.get("path") != rel2 or it2.get("member") != field or "@ConfigProperty(name = \"a.b\")" not in it2["detail"]:
+                return _fail("@ConfigProperty(name=x) names property x: %s" % {k: it2.get(k) for k in ("path", "member", "detail")})
+        # (c) a real name nothing reads is a key the properties file must supply
+        with tempfile.TemporaryDirectory(prefix="cv-missing-") as td:
+            root, _ = _cv_root(td, pkg, type_name, [(field, _SPRING_VALUE, "value", "${other.key}")])
+            it = _cv_item(root, "a.b")
+            if it.get("path") != APP_PROPERTIES or it.get("kind") != "config" or it.get("unlocated"):
+                return _fail("a missing key belongs to the properties file: %s" % {k: it.get(k) for k in ("path", "kind", "unlocated")})
+            if it.get("cause") != "config-value" or "\"a.b\"" not in it["detail"]:
+                return _fail("the cause and the name are still carried: %s" % {k: it.get(k) for k in ("cause", "detail")})
+            seen.append(_cv_shape(it, pkg, type_name, field))
+        # (d) an empty name nothing reads can be repaired nowhere: a properties
+        # file cannot supply a key with no name, and the annotation that
+        # produced it is not in the model
+        with tempfile.TemporaryDirectory(prefix="cv-unlocated-") as td:
+            root, _ = _cv_root(td, pkg, type_name, [(field, _SPRING_VALUE, "value", "${other.key}")])
+            it = _cv_item(root, "")
+            if not it.get("unlocated") or it.get("path"):
+                return _fail("an empty name nobody declares is a blocker with no file: %s" % {k: it.get(k) for k in ("unlocated", "path")})
+            if "an empty config property name comes from an annotation the structure model does not record" not in it["detail"]:
+                return _fail("the blocker must say why nothing can be located: %s" % it["detail"])
+            if cluster_items([it], {}, set()) and not it.get("unlocated"):
+                return _fail("a blocker is never a card")
+            seen.append(_cv_shape(it, pkg, type_name, field))
+        shapes.append(seen)
+    # (e) the decisions are about the structure, not about the names in it
+    if shapes[0] != shapes[1]:
+        first = [a for a, b in zip(shapes[0], shapes[1]) if a != b]
+        return _fail("a renamed specimen must decide the same, identifiers aside: %s" % first)
+    return 0
+
+
 def _parity_typing_case() -> int:
     """A parity mismatch is typed by its own diffs: CORS permission the
     destination did not grant is application configuration; a Location, an
@@ -424,7 +550,8 @@ def _parity_typing_case() -> int:
 
 
 def main() -> int:
-    if _runtime_identity_case() or _gate_progress_case() or _batch_scope_case() or _checked_family_case() or _set_wide_case() or _parity_typing_case():
+    if (_runtime_identity_case() or _gate_progress_case() or _batch_scope_case() or _checked_family_case()
+            or _set_wide_case() or _config_value_case() or _parity_typing_case()):
         return 1
 
     if path_class("pom.xml") != "build" or path_class("src/main/resources/application.properties") != "config" or path_class("src/test/java/A.java") != "test" or path_class("src/main/java/A.java") != "source":
@@ -603,7 +730,7 @@ def main() -> int:
         return _fail("reclassified items keep their authority and are never dropped")
     if measure_of(all_items, incidents_known=False, compile_known=True, tests_known=True, parity_known=False)["known"]:
         return _fail("unknown incidents never advance")
-    print("OK: worklist (lossless line-free incidents; canary excluded; only ERROR diagnostics; build→config→compile(leaf-first)→incident→test order; tests never writable; lexicographic 3-tuple progress; new-incident veto; unknown never advances; gate progress is the issued obligation disappearing, never a reworded one; a second cause at one file is a second obligation); a repository card's inventory is sealed by its own digest and two measurements never share a path; checked-exception family: bound to its introducing step (a legacy site stays out), one budget, line-free identity across a moved line, CONTINUE / EXPOSED / still-reported / 1→0 accept, per-member assessment (catch-wrapped and header-deleted members violate); a set-wide packaging cause is one typed blocker under permuted first-reported names and never a card; parity mismatches are typed by their diffs (CORS → application.properties, the rest → the controller; scenario verdicts count, the receipt does not)")
+    print("OK: worklist (lossless line-free incidents; canary excluded; only ERROR diagnostics; build→config→compile(leaf-first)→incident→test order; tests never writable; lexicographic 3-tuple progress; new-incident veto; unknown never advances; gate progress is the issued obligation disappearing, never a reworded one; a second cause at one file is a second obligation); a repository card's inventory is sealed by its own digest and two measurements never share a path; checked-exception family: bound to its introducing step (a legacy site stays out), one budget, line-free identity across a moved line, CONTINUE / EXPOSED / still-reported / 1→0 accept, per-member assessment (catch-wrapped and header-deleted members violate); a set-wide packaging cause is one typed blocker under permuted first-reported names and never a card; an unloadable config value is located at the annotation that names the property (${x:d} and a bare x are one property), at application.properties only when the name is real and unread, and is a blocker when the name is empty and unread -- the same decisions under renamed identifiers; parity mismatches are typed by their diffs (CORS → application.properties, the rest → the controller; scenario verdicts count, the receipt does not)")
     return 0
 
 

@@ -45,7 +45,7 @@ from typing import Any
 from planner.canonical import canonical_bytes, digest, load_json, sha256_bytes, sha256_file, sort_unique
 from planner.dest_model import (DestModelUnavailable, above_members, dest_model, diagnostic_identity, member_ids, model_at_commit,  # noqa: E501
                                  site_for_diagnostic, site_signature, source_write_members as _model_writes, types_of, unhandled_sites)
-from planner.paths import is_product_path, EVIDENCE_BUNDLE, TYPE_INVENTORY, LOOP_DEFERRED, LOOP_STEPS, MTA_RESCAN_FINDINGS, PARITY_DIR, VERIFY_BOOT, VERIFY_DIAGNOSTICS, VERIFY_PACKAGE, VERIFY_RUN, VERIFY_SUREFIRE, WORKLIST
+from planner.paths import is_product_path, EVIDENCE_BUNDLE, STRUCTURE, TYPE_INVENTORY, LOOP_DEFERRED, LOOP_STEPS, MTA_RESCAN_FINDINGS, PARITY_DIR, VERIFY_BOOT, VERIFY_DIAGNOSTICS, VERIFY_PACKAGE, VERIFY_RUN, VERIFY_SUREFIRE, WORKLIST
 
 SCHEMA = "rhoai3.worklist/v1"
 KIND_RANK = {"build": 0, "config": 1, "compile": 2, "incident": 3, "test": 4, "parity": 5}
@@ -243,6 +243,13 @@ def compile_items(diags: dict[str, Any]) -> list[dict[str, Any]]:
 # come from the tools themselves, so the classification is deterministic and a
 # controller gets the same obligation for the same failure every time.
 RUNTIME_SIGNATURES = (
+    # A property the platform could not resolve at startup. It is first because
+    # it is the most specific thing a startup log can say about configuration:
+    # a log that also carries a generic "is not configured" is still this
+    # failure. application.properties is only the FALLBACK locus -- the
+    # annotation that names the property is looked for first (see
+    # config_value_decision).
+    ("Failed to load config value", "application-configuration", "config", "src/main/resources/application.properties"),
     ("is not configured", "application-configuration", "config", "src/main/resources/application.properties"),
     ("ConfigurationException", "application-configuration", "config", "src/main/resources/application.properties"),
     ("Unable to find datasource", "application-configuration", "config", "src/main/resources/application.properties"),
@@ -268,6 +275,9 @@ FQN_RE = re.compile(r"\b(?:[a-z][A-Za-z0-9_]*\.){2,}[A-Z][A-Za-z0-9_]*\b")
 # stays one. Nothing here is derived from free text: an unmatched failure is
 # always "unclassified", so no phrasing can mint a new obligation.
 RUNTIME_CAUSES = (
+    # More specific than the generic configuration markers below, so it is
+    # matched first: the platform named the property it could not load.
+    ("Failed to load config value", "config-value"),
     ("No implementation of interface", "missing-implementation"),
     ("UnableToParseMethodException", "underivable-query-method"),
     ("was not part of the Quarkus index", "unindexed-type"),
@@ -406,6 +416,159 @@ def member_signatures(root: Path | None, rel: str, member: str) -> list[str]:
     return sorted(set(out))
 
 
+# --- a config property the platform could not load -------------------------
+#
+# "Failed to load config value of type class java.lang.String for: X" is a
+# question about WHERE X is read, and X is read from an ANNOTATION, not from
+# application.properties. Sending the worker to the properties file is sending
+# him where the defect cannot be (measured live on v9, 2026-09-14: a worker had
+# replaced @Value("#{servletContext.contextPath}") with @Value(""), so the
+# property name after "for:" was empty and the card was minted at
+# application.properties, where nothing could be repaired).
+#
+# The sites are read from M1's structural model, never from the Java text: the
+# JDK recorded each annotation with its resolved name and its values.
+SPRING_VALUE_ANNOTATION = "org.springframework.beans.factory.annotation.Value"
+MP_CONFIG_PROPERTY_ANNOTATION = "org.eclipse.microprofile.config.inject.ConfigProperty"
+# the property name runs from "for:" to the end of that line, and may be empty
+CONFIG_VALUE_FOR_RE = re.compile(r"Failed to load config value[^\n]*?\bfor:[ \t]*([^\n]*)")
+# what the worker has to know to repair the site, whatever the specimen is
+CONFIG_VALUE_LESSON = ("under quarkus-spring-di @Value(\"x\") READS config property x -- @Value(\"${x}\") and "
+                       "@Value(\"${x:d}\") name that same property x -- so the annotation's value is a property "
+                       "name, not a literal; the application's root path is the property quarkus.http.root-path")
+
+
+def config_property_name(text: str) -> str:
+    """The property name the platform printed after "for:" (may be "")."""
+    m = CONFIG_VALUE_FOR_RE.search(text or "")
+    return m.group(1).strip() if m else ""
+
+
+def config_property_of(raw: Any) -> str:
+    """The config property an annotation value resolves to.
+
+    Spring's placeholder form and the bare form name the same property:
+    ``${x}`` and ``${x:default}`` are both x, and under quarkus-spring-di a
+    bare ``x`` is x as well."""
+    v = str(raw if raw is not None else "").strip()
+    if v.startswith("${") and v.endswith("}"):
+        v = v[2:-1].split(":", 1)[0]
+    return v.strip()
+
+
+def _single_value(raw: Any) -> Any:
+    """The one value of an annotation attribute, or None if it is not single.
+
+    The JDK model records attribute values as a list, because an annotation
+    attribute may be an array. A property name is a single value; an array is
+    not one property and is left alone."""
+    if isinstance(raw, list):
+        return raw[0] if len(raw) == 1 else None
+    return raw
+
+
+def config_property_annotation(ann: dict[str, Any]) -> tuple[str, str] | None:
+    """(property this annotation names, how to write it) or None.
+
+    Only the two annotations that NAME a config property are read: Spring's
+    @Value (which quarkus-spring-di maps onto MicroProfile Config) and
+    MicroProfile's own @ConfigProperty."""
+    if not isinstance(ann, dict):
+        return None
+    fqn = str(ann.get("fqn") or ann.get("name") or "")
+    simple = fqn.rsplit(".", 1)[-1]
+    values = ann.get("values") if isinstance(ann.get("values"), dict) else {}
+    if fqn == SPRING_VALUE_ANNOTATION or fqn == "Value":
+        raw, attr = _single_value(values.get("value")), "value"
+    elif fqn == MP_CONFIG_PROPERTY_ANNOTATION or fqn == "ConfigProperty":
+        raw, attr = _single_value(values.get("name")), "name"
+    else:
+        return None
+    if raw is None:
+        return None
+    written = "@%s(\"%s\")" % (simple, raw) if attr == "value" else "@%s(name = \"%s\")" % (simple, raw)
+    return config_property_of(raw), written
+
+
+def structure_types(root: Path | None) -> list[dict[str, Any]]:
+    """M1's structural model of this tree, or [] when it is not here."""
+    if root is None:
+        return []
+    p = Path(root) / STRUCTURE
+    if not p.is_file():
+        return []
+    try:
+        doc = load_json(p)
+    except (OSError, ValueError):
+        return []
+    return [t for t in (doc.get("types") or []) if isinstance(t, dict)]
+
+
+def structure_type_path(root: Path | None, typ: dict[str, Any]) -> str:
+    """This type's source file, derived the way the other locators derive one:
+    from the fully-qualified name when the tree really has that file, else the
+    path the model itself recorded."""
+    fqn = str(typ.get("fqn") or typ.get("name") or "")
+    derived = ("src/main/java/%s.java" % fqn.replace(".", "/")) if fqn else ""
+    claimed = str(typ.get("path") or "")
+    if root is not None:
+        if derived and (Path(root) / derived).is_file():
+            return derived
+        if claimed and (Path(root) / claimed).is_file():
+            return claimed
+    return claimed or derived
+
+
+def config_value_sites(root: Path | None, prop: str) -> list[dict[str, str]]:
+    """Every field or parameter whose annotation names THIS config property.
+
+    Deterministic: sorted by file, then type, then member."""
+    out: list[dict[str, str]] = []
+    for typ in structure_types(root):
+        path = structure_type_path(root, typ)
+        members: list[tuple[str, Any]] = [(str(f.get("name") or ""), f.get("annotations"))
+                                          for f in typ.get("fields") or [] if isinstance(f, dict)]
+        for holder in list(typ.get("methods") or []) + list(typ.get("constructors") or []):
+            if not isinstance(holder, dict):
+                continue
+            for par in holder.get("params") or []:
+                if isinstance(par, dict):
+                    members.append((str(par.get("name") or ""), par.get("annotations")))
+        for member, anns in members:
+            for ann in anns or []:
+                named = config_property_annotation(ann)
+                if named is not None and named[0] == prop:
+                    out.append({"path": path, "type": str(typ.get("fqn") or ""), "member": member, "annotation": named[1]})
+    return sorted(out, key=lambda s: (s["path"], s["type"], s["member"], s["annotation"]))
+
+
+def config_value_decision(text: str, root: Path | None, fallback: str) -> tuple[str, str, str, bool, str]:
+    """(locus, cluster kind, member, unlocated, what the worker must be told).
+
+    A property is read at the annotation that names it; the properties file is
+    only where a MISSING key would be supplied. An empty name is neither: no
+    key can be added for it, and the annotation that produced it is not in the
+    model, so it is reported as a blocker rather than sent anywhere."""
+    prop = config_property_name(text)
+    quoted = "\"%s\"" % prop if prop else "EMPTY (nothing follows \"for:\")"
+    sites = config_value_sites(root, prop)
+    if sites:
+        first = sites[0]  # the lowest path: deterministic when several read it
+        others = ["%s.%s %s" % (s["type"], s["member"], s["annotation"]) for s in sites[1:]]
+        note = "the config property the platform could not load is %s, and it is named by %s on %s.%s" % (
+            quoted, first["annotation"], first["type"], first["member"])
+        if others:
+            note += "; the same property is also read at %s -- repair this one, the rest stay reported" % ", ".join(others)
+        return first["path"], "compile", first["member"], False, note + "; " + CONFIG_VALUE_LESSON
+    if prop:
+        return (fallback, "config", "", False,
+                "the config property the platform could not load is %s, and no @Value or @ConfigProperty in the "
+                "structural model names it, so it is a key %s must supply; %s" % (quoted, fallback, CONFIG_VALUE_LESSON))
+    return ("", "config", "", True,
+            "the config property name the platform printed after \"for:\" is EMPTY: an empty config property name "
+            "comes from an annotation the structure model does not record")
+
+
 def runtime_locus(text: str, root: Path | None) -> str:
     """The source file a runtime failure names, when the tree has it.
 
@@ -475,12 +638,14 @@ def runtime_items(package: dict[str, Any] | None, boot: dict[str, Any] | None, r
         # Maven log ends in a summary, and the failing build step is named
         # long before that
         log = str(doc.get("errors") or doc.get("log_tail") or "")
-        kind, cluster_kind, locus = classify_runtime_failure(detail + "\n" + log)
+        text = detail + "\n" + log
+        kind, cluster_kind, locus = classify_runtime_failure(text)
+        fallback_locus = locus  # what the signature alone says, before any locator
         unlocated = False
-        named = runtime_locus(detail + "\n" + log, root)
+        named = runtime_locus(text, root)
         if named:
             locus, cluster_kind = named, "compile"
-        elif "threw an exception" in (detail + "\n" + log) and kind == "application-configuration":
+        elif "threw an exception" in text and kind == "application-configuration":
             # An augmentation failure that names no file of ours cannot be made
             # into an actionable card: sending the worker to
             # application.properties (or to pom.xml) for a repository problem
@@ -496,28 +661,41 @@ def runtime_items(package: dict[str, Any] | None, boot: dict[str, Any] | None, r
         # gets a new obligation, because the cause differs (measured live:
         # "No implementation of interface" became UnableToParseMethodException
         # at the same repository once it became a Spring Data repository).
-        cause = runtime_cause(detail + "\n" + log)
-        member = runtime_member(detail + "\n" + log)
+        cause = runtime_cause(text)
+        member = runtime_member(text)
+        note = ""
+        if cause == "config-value":
+            # A property is read at the annotation that names it. The message
+            # names no type, so every locator above would either miss it or
+            # (worse) leave the properties-file fallback standing, where no
+            # worker can repair an annotation site.
+            locus, cluster_kind, member, unlocated, note = config_value_decision(text, root, fallback_locus)
         # A set-wide cause keeps neither the file nor the member in its
         # identity: both are whichever one the platform reached first.
-        scope = set_wide_scope(detail + "\n" + log, cause)
-        observed = named_source_types(detail + "\n" + log, root)
+        scope = set_wide_scope(text, cause)
+        observed = named_source_types(text, root)
         if scope:
             locus, member, unlocated = "", "", True
             ident = sha256_bytes(canonical_bytes({"gate": gate, "kind": kind, "cause": cause, "set_wide": scope}))[:16]
         else:
             ident = sha256_bytes(canonical_bytes({"gate": gate, "kind": kind, "cause": cause, "locus": locus, "member": member}))[:16]
+        # a member the model names as a FIELD is not a method: asking the type
+        # inventory for its signatures could only answer about something else
+        sigs = [] if note else member_signatures(root, locus, member)
         out.append({
             "id": "rt:%s:%s" % (gate, ident), "source": "runtime", "gate": gate,
             "kind": cluster_kind, "obligation": kind, "cause": cause, "member": member,
             "set_wide": scope, "observed": observed,
             "unlocated": unlocated, "category": "mandatory",
-            "signatures": member_signatures(root, locus, member),
-            "ambiguous_member": len(member_signatures(root, locus, member)) > 1,
+            "signatures": sigs,
+            "ambiguous_member": len(sigs) > 1,
             "path": locus, "line": 0, "rule_id": "RUNTIME_%s" % kind.replace("-", "_").upper(),
             "message_sha256": sha256_bytes((detail + log).encode("utf-8")),
-            "detail": detail[:200],
-            "message": ("%s gate failed (%s%s): %s\n%s" % (gate, kind, (" at %s" % member) if member else "", detail, log))[:1200],
+            # what the tool said stays; what was derived from the structural
+            # model is added, because it is what the worker has to be told
+            "detail": ("%s -- %s" % (note, detail[:200]))[:600] if note else detail[:200],
+            "message": ("%s gate failed (%s%s): %s\n%s%s" % (gate, kind, (" at %s" % member) if member else "", detail,
+                                                             (note + "\n") if note else "", log))[:1200],
         })
     return out
 
