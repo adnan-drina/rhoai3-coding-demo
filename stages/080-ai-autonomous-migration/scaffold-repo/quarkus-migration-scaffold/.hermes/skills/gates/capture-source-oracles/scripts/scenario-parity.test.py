@@ -251,6 +251,8 @@ def _capture_contract_case() -> int:
     base = "http://127.0.0.1:%d" % srv.server_address[1]
     obs = http_observe(base, "GET", "/petclinic/")
     srv.shutdown()
+    if "raw" in obs:
+        return _fail("http_observe must not hand back bytes unless asked")
     if obs.get("status") != 302 or obs.get("redirects_followed") is not False:
         return _fail("the capture is the FIRST response, not the redirect's target: %s" % obs)
     if (obs.get("headers") or {}).get("Location") != base + "/petclinic/swagger-ui.html":
@@ -335,6 +337,19 @@ def _capture_contract_case() -> int:
         rec = asserted_headers(_Msg({"errors": "[{\"field\":\"telephone\"}]", "location": None}), exposed)
         if rec.get("errors") != "[{\"field\":\"telephone\"}]" or "content-type" not in rec:
             return _fail("an exposed header is recorded beside the CORS set: %s" % rec)
+        # full bodies are retained as evidence beside a capture, bound by digest
+        import hashlib as _hl
+        from _oracle_common import RETAINED_BODY_CAP, retain_body
+        with tempfile.TemporaryDirectory(prefix="retain-") as rd:
+            raw = b'[{"id":11,"lastName":"Probe"}]'
+            sha = _hl.sha256(raw).hexdigest()
+            ev = retain_body(Path(rd), "after-eff", raw, sha)
+            if _hl.sha256(Path(ev["body_file"]).read_bytes()).hexdigest() != sha or ev["truncated"] or ev["body_bytes"] != len(raw):
+                return _fail("a retained body is the recorded body, byte for byte: %s" % ev)
+            big = b"x" * (RETAINED_BODY_CAP + 5)
+            ev2 = retain_body(Path(rd), "big", big, _hl.sha256(big).hexdigest())
+            if not ev2["truncated"] or ev2["retained_bytes"] != RETAINED_BODY_CAP or ev2["body_bytes"] != len(big):
+                return _fail("a body over the cap is cut and says so: %s" % ev2)
         if header_diffs({"errors": "[x]"}, {"errors": None}) != ["header errors None vs [x]"]:
             return _fail("a recorded errors header the destination drops is a diff: %s" % header_diffs({"errors": "[x]"}, {"errors": None}))
     return 0
@@ -487,7 +502,7 @@ def main() -> int:
         if v["verdict"] != "INCONCLUSIVE" or v["reset"]["rc"] != 3:
             return _fail("the failed reset must be recorded beside the verdict: %s" % v.get("reset"))
         dest4.shutdown()
-    print("OK: scenario-parity selftest (the recorded body and headers are replayed; a recorded Location header that the destination omits FAILs, and a 201 against a capture with no header map is INCONCLUSIVE; the capture is the first response (redirects not followed) and only the declared origins are mapped in Location; a preflight is not a write, carries Origin + Access-Control-Request-Method and no credentials; CORS coverage is per policy and the source's policies come from M1's model; the headers the source exposes are asserted too; a write with no declared effect refuses; a 204 that deleted nothing FAILs on its resulting state; a corpus edited after capture refuses; an entry point passes only when every REQUIRED scenario passes, and a missing or foreign-corpus result is INCONCLUSIVE; a declared reset that fails stops the comparison; no corpus is idle with a receipt that says so)")
+    print("OK: scenario-parity selftest (the recorded body and headers are replayed; a recorded Location header that the destination omits FAILs, and a 201 against a capture with no header map is INCONCLUSIVE; the capture is the first response (redirects not followed) and only the declared origins are mapped in Location; a preflight is not a write, carries Origin + Access-Control-Request-Method and no credentials; CORS coverage is per policy and the source's policies come from M1's model; the headers the source exposes are asserted too, and full bodies are retained as digest-bound evidence; a write with no declared effect refuses; a 204 that deleted nothing FAILs on its resulting state; a corpus edited after capture refuses; an entry point passes only when every REQUIRED scenario passes, and a missing or foreign-corpus result is INCONCLUSIVE; a declared reset that fails stops the comparison; no corpus is idle with a receipt that says so)")
     return 0
 
 

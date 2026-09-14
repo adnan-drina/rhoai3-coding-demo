@@ -1,5 +1,5 @@
 {
-  "_proposal_note": "AMENDED DRAFT. Concrete requests resolved from the local frozen-source structural inventory. Not installed and not Operator-approved. Bind source digest, entry-point IDs and CORS configuration to v8 before signing and capture anew against the v8 frozen baseline. Prior captures and the idle receipt are retained. AMENDED AGAIN 2026-09-14 by claude: sc:create-owner-invalid added (validation-failure path); the digest changed, so corpus-review-results.json is STALE until the architect regenerates it. approved_by stays null.",
+  "_proposal_note": "REVIEWED DRAFT 2026-09-14, ready for the Operator's signature together with corpus-review-results.json and its body digests. The five scenario references, source digest and CORS configuration were checked read-only against v9's live M1 evidence. The v8 filename is retained for proposal continuity; v9 is the run of record. Not installed, not Operator-approved, and no source capture or runtime qualification was performed by this review. Fill the real approved_by value and recompute the final manifest before signing; that edit changes the corpus digest. Preserve the idle receipt and capture afresh against v9's frozen source. Coverage requires the qualification criteria in the manifest, including complete read-back evidence and the newly asserted header keys; CAPTURED alone is insufficient.",
   "schema": "rhoai3.scenario-corpus/v1",
   "approved_by": null,
   "initial_state": {
@@ -27,7 +27,7 @@
   "scenarios": [
     {
       "id": "sc:update-owner-1-city",
-      "_note": "v7 request body, path, method and effect probes preserved byte-for-byte; entry-point binding corrected to the locally measured DTO signature. V8 binding awaits confirmation.",
+      "_note": "v7 request body, path, method and effect probes preserved; entry-point binding uses the DTO signature confirmed in v9's live M1 bundle on 2026-09-14. Runtime qualification still requires the update and both read-backs to succeed.",
       "entry_point": "ep:org.springframework.samples.petclinic.rest.OwnerRestController#updateOwner(int,org.springframework.samples.petclinic.dto.OwnerDto,org.springframework.validation.BindingResult,org.springframework.web.util.UriComponentsBuilder):http",
       "method": "PUT",
       "path": "/api/owners/1",
@@ -100,7 +100,7 @@
     },
     {
       "id": "sc:create-owner-invalid",
-      "_note": "ADDED 2026-09-14 (architect to review): the validation-failure path. The source rejects a telephone that fails @Digits with 400 and carries the field errors in the `errors` response header -- the header its @CrossOrigin exposes. The effect proves nothing was created. Compared under the source-exposed-headers rule: `errors` and `content-type` are asserted beside Location and the CORS set.",
+      "_note": "REVIEWED 2026-09-14: validation-failure intent. The source controller validates OwnerDto, whose generated telephone getter has @Pattern(regexp=\"^[0-9]*$\"); @Digits is on the entity, not this request DTO. Keep telephone not-a-number and all other create fields unchanged. Qualification must observe 400, a nonempty errors header with a telephone field error, and complete before/after owner lists proving no creation. The declared GET alone proves none of those outcomes. Source-exposed errors and content-type are compared literally alongside Location and the CORS set; expected values come from the fresh source capture.",
       "entry_point": "ep:org.springframework.samples.petclinic.rest.OwnerRestController#addOwner(org.springframework.samples.petclinic.dto.OwnerDto,org.springframework.validation.BindingResult,org.springframework.web.util.UriComponentsBuilder):http",
       "method": "POST",
       "path": "/api/owners",

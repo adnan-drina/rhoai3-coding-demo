@@ -30,7 +30,7 @@ import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _oracle_common import ensure_hermes_lib, http_observe  # noqa: E402
+from _oracle_common import ensure_hermes_lib, http_observe, retain_body  # noqa: E402
 from _scenarios import CorpusError, SCENARIO_ORACLES, auth_headers, corpus_digest, load_corpus, request_of, scenario_slug, source_exposed_headers  # noqa: E402
 
 ensure_hermes_lib()
@@ -215,7 +215,10 @@ def main(argv: list[str] | None = None) -> int:
     # what was asserted rather than assume
     exposed, exposed_gap = source_exposed_headers(root)
     if exposed_gap:
-        print("WARN: %s; captures assert Location and the CORS set only" % exposed_gap, file=sys.stderr)
+        # fail closed: a capture that could not learn which headers the source
+        # exposes would assert too little and read as complete (architect
+        # review, 2026-09-14). No source is started for it.
+        return _fail("%s; the capture cannot know which headers the source exposes, so nothing is captured" % exposed_gap)
     runtime = SourceRuntime(copy, args.port, base_path, args.ready_timeout, args.java, args.mvn, log_dir)
     captured = 0
     failures: list[str] = []
@@ -264,26 +267,41 @@ def main(argv: list[str] | None = None) -> int:
             # start from the same place or the comparison is meaningless: a
             # delete that removes nothing passes trivially against a
             # destination where the row was already absent.
+            # the full bodies are kept beside the capture, bound by digest, so
+            # qualification can SEE the created owner in the list and the
+            # rejected one absent -- a sample or a digest alone cannot say
+            bodies_dir = root / SCENARIO_ORACLES / "bodies" / scenario_slug(sc["id"])
             for eff in sc.get("effects") or []:
-                probe = http_observe(runtime.base_url, str(eff.get("method") or "GET"), str(eff.get("path") or "/"), headers=headers)
-                rec["before"].append({"id": str(eff.get("id") or eff.get("path")), "method": str(eff.get("method") or "GET"),
-                                      "path": str(eff.get("path") or "/"), "status": probe.get("status"),
-                                      "body_kind": probe.get("body_kind"), "body_sha256": probe.get("body_sha256"),
-                                      "body_sample": probe.get("body_sample", "")})
+                probe = http_observe(runtime.base_url, str(eff.get("method") or "GET"), str(eff.get("path") or "/"), headers=headers, keep_body=True)
+                eid = str(eff.get("id") or eff.get("path"))
+                row = {"id": eid, "method": str(eff.get("method") or "GET"),
+                       "path": str(eff.get("path") or "/"), "status": probe.get("status"),
+                       "body_kind": probe.get("body_kind"), "body_sha256": probe.get("body_sha256"),
+                       "body_sample": probe.get("body_sample", "")}
+                if probe.get("status"):
+                    row["evidence"] = retain_body(bodies_dir, "before-%s" % scenario_slug(eid), probe.get("raw") or b"", str(probe.get("body_sha256") or ""))
+                rec["before"].append(row)
             obs = http_observe(runtime.base_url, req["method"], req["path"], body=req["body"], headers={**req["headers"], **headers},
-                               assert_headers=exposed)
+                               assert_headers=exposed, keep_body=True)
+            raw = obs.pop("raw", b"")
             rec["response"] = obs
+            if obs.get("status"):
+                rec["response"]["evidence"] = retain_body(bodies_dir, "response", raw, str(obs.get("body_sha256") or ""))
             if not obs.get("status"):
                 rec["reason"] = "the source did not answer: %s" % obs.get("error")
                 write_canonical(out, rec)
                 failures.append("%s: %s" % (sc["id"], rec["reason"]))
                 continue
             for eff in sc.get("effects") or []:
-                probe = http_observe(runtime.base_url, str(eff.get("method") or "GET"), str(eff.get("path") or "/"), headers=headers)
-                rec["effects"].append({"id": str(eff.get("id") or eff.get("path")), "method": str(eff.get("method") or "GET"),
-                                       "path": str(eff.get("path") or "/"), "status": probe.get("status"),
-                                       "body_kind": probe.get("body_kind"), "body_sha256": probe.get("body_sha256"),
-                                       "body_sample": probe.get("body_sample", "")})
+                probe = http_observe(runtime.base_url, str(eff.get("method") or "GET"), str(eff.get("path") or "/"), headers=headers, keep_body=True)
+                eid = str(eff.get("id") or eff.get("path"))
+                row = {"id": eid, "method": str(eff.get("method") or "GET"),
+                       "path": str(eff.get("path") or "/"), "status": probe.get("status"),
+                       "body_kind": probe.get("body_kind"), "body_sha256": probe.get("body_sha256"),
+                       "body_sample": probe.get("body_sample", "")}
+                if probe.get("status"):
+                    row["evidence"] = retain_body(bodies_dir, "after-%s" % scenario_slug(eid), probe.get("raw") or b"", str(probe.get("body_sha256") or ""))
+                rec["effects"].append(row)
             rec["status"] = "CAPTURED"
             write_canonical(out, rec)
             captured += 1

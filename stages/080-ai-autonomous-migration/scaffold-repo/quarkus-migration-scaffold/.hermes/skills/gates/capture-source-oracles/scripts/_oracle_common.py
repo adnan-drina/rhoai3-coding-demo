@@ -178,8 +178,30 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 _OPENER = urllib.request.build_opener(_NoRedirect)
 
 
+RETAINED_BODY_CAP = 1 << 20  # 1 MiB per retained body; larger ones are cut and say so
+
+
+def retain_body(out_dir: Path, name: str, raw: bytes, sha: str) -> dict[str, Any]:
+    """Keep a response body as EVIDENCE beside the capture, bound by digest.
+
+    A receipt that keeps a 200-character sample cannot show that the created
+    owner is in the list or the rejected one absent; a digest alone cannot
+    name either. The full bytes are written to
+    ``<out_dir>/<name>.body`` and the record says where and how long. The
+    file's digest is the recorded body_sha256 unless the body was cut at the
+    cap, in which case ``truncated`` says so and the digest still names the
+    whole body."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    kept = raw[:RETAINED_BODY_CAP]
+    p = out_dir / ("%s.body" % name)
+    p.write_bytes(kept)
+    return {"body_file": p.as_posix(), "body_bytes": len(raw), "retained_bytes": len(kept),
+            "truncated": len(kept) < len(raw), "body_sha256": sha}
+
+
 def http_observe(base_url: str, method: str, path: str, body: bytes | None = None, timeout: float = 20.0,
-                 headers: dict[str, str] | None = None, assert_headers: tuple[str, ...] | list[str] = ()) -> dict[str, Any]:
+                 headers: dict[str, str] | None = None, assert_headers: tuple[str, ...] | list[str] = (),
+                 keep_body: bool = False) -> dict[str, Any]:
     """One request, recorded, redirects NOT followed. The body and the headers
     are sent as given: a replay that drops them is not a replay (the
     destination comparator used to send no body at all, so every recorded
@@ -205,8 +227,11 @@ def http_observe(base_url: str, method: str, path: str, body: bytes | None = Non
         return {"status": 0, "body_kind": "unreachable", "body_sha256": "", "error": str(exc),
                 "headers": asserted_headers(None)}
     kind, sha, sample = normalize_body(raw, ctype)
-    return {"status": status, "body_kind": kind, "body_sha256": sha, "body_sample": sample, "headers": hdrs,
-            "redirects_followed": False, "url": url}
+    out = {"status": status, "body_kind": kind, "body_sha256": sha, "body_sample": sample, "headers": hdrs,
+           "redirects_followed": False, "url": url}
+    if keep_body:
+        out["raw"] = raw  # the caller retains it as evidence (retain_body); never written into a canonical record
+    return out
 
 
 def normalize_body(raw: bytes, content_type: str) -> tuple[str, str, str]:
