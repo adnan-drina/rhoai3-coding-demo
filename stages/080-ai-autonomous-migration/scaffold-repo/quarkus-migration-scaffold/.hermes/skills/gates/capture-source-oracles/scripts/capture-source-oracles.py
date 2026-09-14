@@ -10,6 +10,17 @@ Writes are NOT captured here. A write is a complete request against a known
 initial state whose effects have to be read back, so it belongs to the
 scenario corpus (capture-source-scenarios.py). Anything not captured is
 recorded UNCAPTURED or INCONCLUSIVE, never invented.
+
+Binding rule. Every oracle is bound to the FROZEN SOURCE (the evidence bundle
+digest), never to the admission receipt: the source's behaviour does not
+change when the destination's admission is re-sealed. Measured on v9
+(2026-09-14): the sealed work-list digest differed from the one on disk 28 s
+after the seal because a worker's diagnostic verify rebuilt the list -- the
+normal state beside the M3 loop -- and a producer that could only run between
+seals could never run beside a loop. The receipt digest is recorded on an
+oracle only when the receipt is authoritative; otherwise it is "" and the
+capture is still CAPTURED. --any-status is kept for callers and changes
+nothing: a non-ADMITTED or stale receipt is never a refusal here.
 """
 from __future__ import annotations
 
@@ -67,12 +78,13 @@ def main(argv: list[str] | None = None) -> int:
         print("REFUSE: ORACLES missing %s; the reads are captured from the source that bundle describes" % EVIDENCE_BUNDLE, file=sys.stderr)
         return 1
     bundle_sha = digest(load_json(bundle_p))
-    receipt, gaps = verify_receipt(root, require_admitted=not args.any_status)
+    # the receipt digest is recorded only when the receipt is authoritative;
+    # a stale or non-ADMITTED one is a note, never a refusal: the frozen
+    # source the oracles describe did not change
+    receipt, gaps = verify_receipt(root, require_admitted=False)
+    receipt_sha = receipt["receipt_digest"] if receipt is not None and not gaps else ""
     if receipt is not None and gaps:
-        for g in gaps:
-            print("  - " + g, file=sys.stderr)
-        print("REFUSE: ORACLES the admission receipt on disk is not authoritative", file=sys.stderr)
-        return 1
+        print("  note: admission receipt not recorded on these oracles: %s" % "; ".join(gaps)[:300], file=sys.stderr)
     path_vars = _pairs(args.path_var)
     obs = _pairs(args.observation)
     eps = entry_points(root)
@@ -85,7 +97,7 @@ def main(argv: list[str] | None = None) -> int:
     inconclusive = 0
     for ep in eps:
         rec = {"schema": "rhoai3.source-oracle/v1", "entry_point": ep["id"], "kind": ep["kind"],
-               "receipt_sha256": receipt["receipt_digest"] if receipt else "", "evidence_bundle_sha256": bundle_sha,
+               "receipt_sha256": receipt_sha, "evidence_bundle_sha256": bundle_sha,
                "status": "UNCAPTURED", "reason": "", "oracle": {}}
         if ep["kind"] == "http":
             method = ep.get("http_method") or "GET"

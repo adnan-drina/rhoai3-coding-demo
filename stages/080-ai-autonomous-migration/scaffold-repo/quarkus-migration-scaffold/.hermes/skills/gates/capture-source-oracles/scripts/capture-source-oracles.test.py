@@ -19,7 +19,7 @@ HERE = Path(__file__).resolve().parent
 GOLDEN = HERE.parents[4]
 sys.path.insert(0, str(GOLDEN / ".hermes" / "lib"))
 from planner import pipeline, specimens  # noqa: E402
-from planner.canonical import load_json, write_canonical  # noqa: E402
+from planner.canonical import digest, load_json, write_canonical  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _oracle_common import slug  # noqa: E402
@@ -159,18 +159,50 @@ def main() -> int:
             p = _run([sys.executable, str(COMPARE), "--root", str(root), "--entry-point", msg])
             if p.returncode != 1 or "INCONCLUSIVE" not in p.stderr:
                 return _fail("missing destination observation must be INCONCLUSIVE")
-            # hand-written expected value is not accepted: oracle bound to another receipt
+            # the oracle is bound to the FROZEN SOURCE, never to the receipt:
+            # an oracle from another bundle is INCONCLUSIVE, one with no bundle
+            # digest (an older capture) too, and a hand-written expected value
+            # cannot be smuggled in under either
             op = next((root / "verification" / "source-oracles").glob("*.json"))
             doc = load_json(op)
-            doc["receipt_sha256"] = "0" * 64
+            kept_doc = json.dumps(doc)
+            doc["evidence_bundle_sha256"] = "0" * 64
             op.write_text(json.dumps(doc), encoding="utf-8")
             p = _run([sys.executable, str(COMPARE), "--root", str(root), "--entry-point", doc["entry_point"], "--dest-observation", str(dest_obs)])
-            if p.returncode != 1 or "another receipt" not in p.stderr and "belongs to receipt" not in p.stderr:
-                return _fail("oracle from another receipt must be INCONCLUSIVE: %s" % p.stderr)
+            if p.returncode != 1 or "another frozen source" not in p.stderr:
+                return _fail("oracle from another bundle must be INCONCLUSIVE: %s" % p.stderr)
+            doc.pop("evidence_bundle_sha256")
+            op.write_text(json.dumps(doc), encoding="utf-8")
+            p = _run([sys.executable, str(COMPARE), "--root", str(root), "--entry-point", doc["entry_point"], "--dest-observation", str(dest_obs)])
+            if p.returncode != 1 or "not bound to the frozen source" not in p.stderr:
+                return _fail("an oracle with no bundle digest must be INCONCLUSIVE: %s" % p.stderr)
+            op.write_text(kept_doc, encoding="utf-8")
+            # a capture taken under a NON-AUTHORITATIVE receipt (the work list
+            # rebuilt after the seal, as beside the M3 loop on v9) is still
+            # CAPTURED, bound to the bundle, and usable once the receipt is
+            # authoritative again; the VERDICT stays bound to the receipt
+            wl = hroot / "evidence" / "planning" / "worklist.json"
+            kept_wl = wl.read_bytes()
+            touched = load_json(wl)
+            touched["_rebuilt_after_seal"] = True
+            wl.write_text(json.dumps(touched), encoding="utf-8")
+            p = _run([sys.executable, str(CAPTURE), "--root", str(hroot), "--base-url", src_url, "--entry-point", get_owner])
+            if p.returncode != 0 or "not authoritative" in p.stderr:
+                return _fail("a stale receipt must not stop the read capture: rc=%s %s" % (p.returncode, p.stderr[-300:]))
+            stale = load_json(hroot / "verification" / "source-oracles" / (slug(get_owner) + ".json"))
+            bundle_sha = digest(load_json(hroot / "evidence" / "planning" / "evidence-bundle.json"))
+            if stale["status"] != "CAPTURED" or stale["receipt_sha256"] != "" or stale["evidence_bundle_sha256"] != bundle_sha:
+                return _fail("a capture under a stale receipt is CAPTURED and bound to the bundle only: %s" % {k: stale.get(k) for k in ("status", "receipt_sha256", "evidence_bundle_sha256")})
+            wl.write_bytes(kept_wl)
+            if _run([sys.executable, str(COMPARE), "--root", str(hroot), "--entry-point", get_owner, "--dest-url", same_url]).returncode != 0:
+                return _fail("that capture must be usable once the receipt is authoritative")
+            v = load_json(hroot / "verification" / "parity" / (slug(get_owner) + ".json"))
+            if v["verdict"] != "PASS" or v["receipt_sha256"] != load_json(hroot / "evidence" / "planning" / "admission-receipt.json")["receipt_digest"]:
+                return _fail("the verdict is a destination judgement and stays receipt-bound: %s" % {k: v.get(k) for k in ("verdict", "receipt_sha256")})
         finally:
             for s in (src, same, diff):
                 s.shutdown()
-    print("OK: capture-source-oracles (HTTP capture/parity PASS+FAIL; non-idempotent INCONCLUSIVE; non-HTTP observations; receipt binding; parity receipt refuses)")
+    print("OK: capture-source-oracles (HTTP capture/parity PASS+FAIL; non-idempotent INCONCLUSIVE; non-HTTP observations; bundle binding: an oracle from another bundle or with no bundle digest is INCONCLUSIVE, a capture under a stale receipt is CAPTURED and usable, the verdict stays receipt-bound; parity receipt refuses)")
     return 0
 
 

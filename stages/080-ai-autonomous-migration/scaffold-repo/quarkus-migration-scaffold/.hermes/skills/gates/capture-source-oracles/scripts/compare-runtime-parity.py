@@ -3,6 +3,15 @@
 
 Writes verification/parity/<slug>.json with PASS / FAIL / INCONCLUSIVE.
 Exit 0 only on PASS. A missing or UNCAPTURED oracle is INCONCLUSIVE.
+
+Binding rule. The ORACLE is bound to the frozen source (the evidence bundle
+digest); the VERDICT is a destination judgement and stays bound to the
+admission receipt. This script used to refuse an oracle whose receipt digest
+was not the current one, which made every M1 read oracle INCONCLUSIVE the
+moment the next accepted step re-sealed admission (measured on v9,
+2026-09-14) -- yet the source's behaviour does not change when the
+destination's admission is re-sealed. An oracle from another bundle, or one
+with no bundle digest at all (an older capture), is INCONCLUSIVE.
 """
 from __future__ import annotations
 
@@ -40,10 +49,11 @@ def main(argv: list[str] | None = None) -> int:
         oracle = load_json(op)
         if oracle.get("status") != "CAPTURED":
             verdict["reason"] = "source oracle %s: %s" % (oracle.get("status"), oracle.get("reason"))
-        elif str(oracle.get("receipt_sha256") or "") not in ("", receipt["receipt_digest"]):
-            verdict["reason"] = "source oracle belongs to receipt %s, not %s" % (str(oracle.get("receipt_sha256"))[:12], receipt["receipt_digest"][:12])
-        elif str(oracle.get("evidence_bundle_sha256") or "") not in ("", digest(load_json(root / EVIDENCE_BUNDLE))):
-            verdict["reason"] = "source oracle describes another frozen source (%s)" % str(oracle.get("evidence_bundle_sha256"))[:12]
+        elif not oracle.get("evidence_bundle_sha256"):
+            verdict["reason"] = "capture not bound to the frozen source (no evidence_bundle_sha256; re-capture the reads)"
+        elif str(oracle.get("evidence_bundle_sha256")) != digest(load_json(root / EVIDENCE_BUNDLE)):
+            verdict["reason"] = ("source oracle describes another frozen source (bundle %s, this tree's is %s); the destination cannot be compared against a source that is not this one"
+                                 % (str(oracle.get("evidence_bundle_sha256"))[:12], digest(load_json(root / EVIDENCE_BUNDLE))[:12]))
         elif oracle.get("kind") == "http" and str((oracle.get("oracle") or {}).get("method") or "GET").upper() not in ("GET", "HEAD"):
             # This script replays a method and a path. That is enough for a
             # read and provably not enough for a write: it sent no body, so a

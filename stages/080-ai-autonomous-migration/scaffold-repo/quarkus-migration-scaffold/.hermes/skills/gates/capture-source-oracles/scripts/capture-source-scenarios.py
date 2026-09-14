@@ -16,6 +16,18 @@ value, and nothing here reads the destination.
 Writes verification/source-oracles/scenarios/<slug>.json per scenario, each
 bound to the corpus digest, the frozen source digest and the runtime it ran
 against. Exit 0 when every selected scenario was captured, 1 otherwise, 2 usage.
+
+Binding rule. A capture is bound to the FROZEN SOURCE (the evidence bundle
+digest) and to the corpus, never to the admission receipt. Measured on v9
+(2026-09-14): this producer refused to start the source because the receipt's
+sealed work-list digest (69ea62037d7d) differed from the work list on disk
+(14a2507dc2f0) -- a worker's diagnostic verify had rebuilt the list 28 s after
+the seal, which is the normal state beside the M3 loop. The source's behaviour
+does not change when the destination's admission is re-sealed, and a producer
+that could only run between seals could never run beside a loop. So the
+receipt digest is recorded only when the receipt is authoritative, the gaps
+are noted on the producer receipt (``receipt_note``) so the observation is
+honest, and the only refusal is a missing evidence bundle.
 """
 from __future__ import annotations
 
@@ -173,11 +185,14 @@ def main(argv: list[str] | None = None) -> int:
     if not bundle_p.is_file():
         return _fail("missing %s; the scenarios are captured from the frozen source the bundle describes" % EVIDENCE_BUNDLE)
     bundle_sha = digest(load_json(bundle_p))
+    # the receipt digest is recorded only when the receipt is authoritative;
+    # a stale one (the work list rebuilt after the seal, beside the loop) is
+    # a note, never a refusal -- the frozen source did not change
     receipt, gaps = verify_receipt(root, require_admitted=False)
-    if gaps and receipt is not None:
-        for g in gaps:
-            print("  - " + g, file=sys.stderr)
-        return _fail("the admission receipt on disk is not authoritative")
+    receipt_sha = receipt["receipt_digest"] if receipt is not None and not gaps else ""
+    receipt_note = "" if not gaps else ("admission receipt not recorded: " + "; ".join(gaps))[:400]
+    if receipt_note:
+        print("  note: %s" % receipt_note, file=sys.stderr)
     receipt_p = root / SCENARIO_ORACLES / "_capture.json"
     try:
         corpus = load_corpus(root)
@@ -192,6 +207,7 @@ def main(argv: list[str] | None = None) -> int:
                 "schema": "rhoai3.source-capture/v1", "producer": "capture-source-scenarios.py",
                 "at": _now(), "status": "idle", "reason": str(exc),
                 "evidence_bundle_sha256": bundle_sha, "corpus_sha256": "", "captured": 0, "scenarios": [],
+                "receipt_sha256": receipt_sha, "receipt_note": receipt_note,
             })
             print("OK: no scenario corpus (%s); nothing captured, and the receipt says so → %s" % (exc, receipt_p.relative_to(root)))
             return 0
@@ -229,7 +245,7 @@ def main(argv: list[str] | None = None) -> int:
         for sc in wanted:
             rec = {
                 "schema": "rhoai3.source-scenario/v1", "scenario": str(sc["id"]), "entry_point": str(sc["entry_point"]),
-                "receipt_sha256": receipt["receipt_digest"] if receipt else "",
+                "receipt_sha256": receipt_sha,
                 "evidence_bundle_sha256": bundle_sha, "corpus_sha256": corpus_sha,
                 "source": {"analysis_copy_digest": str(freeze.get("source_digest") or ""), "base_url": runtime.base_url,
                            "artifact": runtime.jar.name if runtime.jar else "", "starts": runtime.starts},
@@ -330,6 +346,7 @@ def main(argv: list[str] | None = None) -> int:
         "status": "ok" if not failures else "blocked",
         "reason": "; ".join(failures)[:400],
         "evidence_bundle_sha256": bundle_sha, "corpus_sha256": corpus_sha,
+        "receipt_sha256": receipt_sha, "receipt_note": receipt_note,
         "captured": captured, "requested": len(wanted),
         "scenarios": sorted(str(sc["id"]) for sc in wanted),
         "reads": bool(not args.no_reads),
