@@ -323,6 +323,20 @@ def _capture_contract_case() -> int:
         pols, why = source_cors_policies(root)
         if len(pols) != 3 or why or not any(p.startswith("global:a.WebConfig") for p in pols):
             return _fail("one policy per distinct @CrossOrigin, and a CORS registry is a global one: %s %s" % (pols, why))
+        # the headers the source EXPOSES are asserted, from the same model
+        from _scenarios import source_exposed_headers
+        exposed, why = source_exposed_headers(root)
+        if exposed != ["content-type", "errors"] or why:
+            return _fail("exposedHeaders are split and asserted: %s %s" % (exposed, why))
+        from _oracle_common import asserted_headers
+        class _Msg(dict):
+            def get(self, k, d=None):
+                return super().get(k.lower(), d)
+        rec = asserted_headers(_Msg({"errors": "[{\"field\":\"telephone\"}]", "location": None}), exposed)
+        if rec.get("errors") != "[{\"field\":\"telephone\"}]" or "content-type" not in rec:
+            return _fail("an exposed header is recorded beside the CORS set: %s" % rec)
+        if header_diffs({"errors": "[x]"}, {"errors": None}) != ["header errors None vs [x]"]:
+            return _fail("a recorded errors header the destination drops is a diff: %s" % header_diffs({"errors": "[x]"}, {"errors": None}))
     return 0
 
 
@@ -473,7 +487,7 @@ def main() -> int:
         if v["verdict"] != "INCONCLUSIVE" or v["reset"]["rc"] != 3:
             return _fail("the failed reset must be recorded beside the verdict: %s" % v.get("reset"))
         dest4.shutdown()
-    print("OK: scenario-parity selftest (the recorded body and headers are replayed; a recorded Location header that the destination omits FAILs, and a 201 against a capture with no header map is INCONCLUSIVE; the capture is the first response (redirects not followed) and only the declared origins are mapped in Location; a preflight is not a write, carries Origin + Access-Control-Request-Method and no credentials; CORS coverage is per policy and the source's policies come from M1's model; a write with no declared effect refuses; a 204 that deleted nothing FAILs on its resulting state; a corpus edited after capture refuses; an entry point passes only when every REQUIRED scenario passes, and a missing or foreign-corpus result is INCONCLUSIVE; a declared reset that fails stops the comparison; no corpus is idle with a receipt that says so)")
+    print("OK: scenario-parity selftest (the recorded body and headers are replayed; a recorded Location header that the destination omits FAILs, and a 201 against a capture with no header map is INCONCLUSIVE; the capture is the first response (redirects not followed) and only the declared origins are mapped in Location; a preflight is not a write, carries Origin + Access-Control-Request-Method and no credentials; CORS coverage is per policy and the source's policies come from M1's model; the headers the source exposes are asserted too; a write with no declared effect refuses; a 204 that deleted nothing FAILs on its resulting state; a corpus edited after capture refuses; an entry point passes only when every REQUIRED scenario passes, and a missing or foreign-corpus result is INCONCLUSIVE; a declared reset that fails stops the comparison; no corpus is idle with a receipt that says so)")
     return 0
 
 

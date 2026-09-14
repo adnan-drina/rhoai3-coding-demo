@@ -161,6 +161,42 @@ def source_cors_policies(root: Path) -> tuple[list[str], str]:
     return sorted(out), ""
 
 
+def source_exposed_headers(root: Path) -> tuple[list[str], str]:
+    """(the response headers the FROZEN source exposes to cross-origin
+    callers, why-unknown) -- every ``exposedHeaders`` value of every
+    ``@CrossOrigin`` in M1's structure model, split on commas.
+
+    A header the source chose to expose is part of its behaviour: petclinic
+    answers a validation failure as 400 with the errors in an ``errors`` header
+    and exposes exactly that header. Asserting the CORS permission set alone
+    would let a destination drop or move those errors and still pass. Read
+    from the model, never from text; unreadable is a reason, not an empty
+    list."""
+    p = Path(root) / STRUCTURE
+    if not p.is_file():
+        return [], "M1's structural model %s is not in this tree, so the source's exposed headers are unknown" % STRUCTURE
+    try:
+        doc = load_json(p)
+    except (OSError, ValueError) as exc:
+        return [], "%s could not be read: %s" % (STRUCTURE, exc)
+    out: set[str] = set()
+    for t in doc.get("types") or []:
+        anns = list(t.get("annotations") or [])
+        for m in t.get("methods") or []:
+            anns.extend(m.get("annotations") or [])
+        for a in anns:
+            fqn = str(a.get("fqn") or a.get("name") or "")
+            if fqn.rsplit(".", 1)[-1] != "CrossOrigin":
+                continue
+            values = a.get("values") if a.get("values") is not None else a.get("attributes") or {}
+            raw = values.get("exposedHeaders") if isinstance(values, dict) else None
+            for item in (raw if isinstance(raw, list) else [raw] if raw else []):
+                for tok in str(item).split(","):
+                    if tok.strip():
+                        out.add(tok.strip())
+    return sorted(out), ""
+
+
 def corpus_digest(doc: dict[str, Any]) -> str:
     return sha256_bytes(canonical_bytes(doc))
 

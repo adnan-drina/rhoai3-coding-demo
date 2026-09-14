@@ -31,7 +31,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _oracle_common import ensure_hermes_lib, http_observe  # noqa: E402
-from _scenarios import CorpusError, SCENARIO_ORACLES, auth_headers, corpus_digest, load_corpus, request_of, scenario_slug  # noqa: E402
+from _scenarios import CorpusError, SCENARIO_ORACLES, auth_headers, corpus_digest, load_corpus, request_of, scenario_slug, source_exposed_headers  # noqa: E402
 
 ensure_hermes_lib()
 from planner.admission import verify_receipt  # noqa: E402
@@ -210,6 +210,12 @@ def main(argv: list[str] | None = None) -> int:
     if not wanted:
         return _fail("no scenario selected")
     corpus_sha = corpus_digest(corpus)
+    # the headers the source itself exposes are asserted alongside Location
+    # and the CORS set; recorded on every capture so a comparator can see
+    # what was asserted rather than assume
+    exposed, exposed_gap = source_exposed_headers(root)
+    if exposed_gap:
+        print("WARN: %s; captures assert Location and the CORS set only" % exposed_gap, file=sys.stderr)
     runtime = SourceRuntime(copy, args.port, base_path, args.ready_timeout, args.java, args.mvn, log_dir)
     captured = 0
     failures: list[str] = []
@@ -226,6 +232,7 @@ def main(argv: list[str] | None = None) -> int:
                            "artifact": runtime.jar.name if runtime.jar else "", "starts": runtime.starts},
                 "initial_state": dict(corpus.get("initial_state") or {}),
                 "normalization": list(sc.get("normalization") or []),
+                "asserted_headers_extra": list(exposed),
                 "reset_before": bool(sc.get("reset_before", True)),
                 "status": "UNCAPTURED", "reason": "", "request": {}, "response": {}, "before": [], "effects": [],
             }
@@ -263,7 +270,8 @@ def main(argv: list[str] | None = None) -> int:
                                       "path": str(eff.get("path") or "/"), "status": probe.get("status"),
                                       "body_kind": probe.get("body_kind"), "body_sha256": probe.get("body_sha256"),
                                       "body_sample": probe.get("body_sample", "")})
-            obs = http_observe(runtime.base_url, req["method"], req["path"], body=req["body"], headers={**req["headers"], **headers})
+            obs = http_observe(runtime.base_url, req["method"], req["path"], body=req["body"], headers={**req["headers"], **headers},
+                               assert_headers=exposed)
             rec["response"] = obs
             if not obs.get("status"):
                 rec["reason"] = "the source did not answer: %s" % obs.get("error")

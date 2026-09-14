@@ -93,13 +93,18 @@ def map_origin(value: str | None, source_origin: str, dest_origin: str) -> str |
     return value
 
 
-def asserted_headers(msg: Any) -> dict[str, str | None]:
-    """The header contract for CORS and Location. Absent keys are None.
+def asserted_headers(msg: Any, extra: tuple[str, ...] | list[str] = ()) -> dict[str, str | None]:
+    """The header contract for CORS and Location, plus every header the SOURCE
+    itself exposes (``extra``: its CORS exposedHeaders, read from M1's model --
+    a source that exposes an ``errors`` header has made that header part of
+    its contract, and a 400 whose errors moved elsewhere must not pass).
+    Absent keys are None.
 
     Captures that predate this map omit ``headers`` entirely; comparators must
     not invent expected values for those. New captures always record the map."""
     out: dict[str, str | None] = {}
-    for key in ASSERTED_RESPONSE_HEADERS:
+    keys = list(ASSERTED_RESPONSE_HEADERS) + [k for k in extra if k and k not in ASSERTED_RESPONSE_HEADERS]
+    for key in keys:
         val = None
         if msg is not None:
             try:
@@ -174,7 +179,7 @@ _OPENER = urllib.request.build_opener(_NoRedirect)
 
 
 def http_observe(base_url: str, method: str, path: str, body: bytes | None = None, timeout: float = 20.0,
-                 headers: dict[str, str] | None = None) -> dict[str, Any]:
+                 headers: dict[str, str] | None = None, assert_headers: tuple[str, ...] | list[str] = ()) -> dict[str, Any]:
     """One request, recorded, redirects NOT followed. The body and the headers
     are sent as given: a replay that drops them is not a replay (the
     destination comparator used to send no body at all, so every recorded
@@ -190,12 +195,12 @@ def http_observe(base_url: str, method: str, path: str, body: bytes | None = Non
             raw = resp.read()
             status = resp.status
             ctype = resp.headers.get("Content-Type", "")
-            hdrs = asserted_headers(resp.headers)
+            hdrs = asserted_headers(resp.headers, assert_headers)
     except urllib.error.HTTPError as exc:
         raw = exc.read()
         status = exc.code
         ctype = exc.headers.get("Content-Type", "") if exc.headers else ""
-        hdrs = asserted_headers(exc.headers)
+        hdrs = asserted_headers(exc.headers, assert_headers)
     except (urllib.error.URLError, OSError) as exc:
         return {"status": 0, "body_kind": "unreachable", "body_sha256": "", "error": str(exc),
                 "headers": asserted_headers(None)}

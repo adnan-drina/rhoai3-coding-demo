@@ -26,7 +26,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _oracle_common import ensure_hermes_lib, header_diffs, http_observe, is_preflight, origin_of, required_headers  # noqa: E402
 from _scenarios import (CorpusError, SCENARIO_ORACLES, SCENARIO_PARITY, auth_headers, corpus_digest,  # noqa: E402
-                        load_corpus, request_of, scenario, scenario_slug)
+                        load_corpus, request_of, scenario, scenario_slug, source_exposed_headers)
 
 ensure_hermes_lib()
 from planner.admission import verify_receipt  # noqa: E402
@@ -141,7 +141,11 @@ def main(argv: list[str] | None = None) -> int:
     exp = oracle.get("response") or {}
     verdict["expected"] = {"status": exp.get("status"), "body_kind": exp.get("body_kind"), "body_sha256": exp.get("body_sha256"),
                            "headers": exp.get("headers")}
-    got = http_observe(args.dest_url, req["method"], req["path"], body=req["body"], headers={**req["headers"], **headers})
+    # assert exactly what the capture asserted: the headers the source exposes
+    # are recorded on the oracle, and fall back to the model for older ones
+    extra = list(oracle.get("asserted_headers_extra") or source_exposed_headers(root)[0])
+    got = http_observe(args.dest_url, req["method"], req["path"], body=req["body"], headers={**req["headers"], **headers},
+                       assert_headers=extra)
     verdict["observed"] = {"status": got.get("status"), "body_kind": got.get("body_kind"), "body_sha256": got.get("body_sha256"),
                            "body_sample": got.get("body_sample", ""), "headers": got.get("headers")}
     if not got.get("status"):
