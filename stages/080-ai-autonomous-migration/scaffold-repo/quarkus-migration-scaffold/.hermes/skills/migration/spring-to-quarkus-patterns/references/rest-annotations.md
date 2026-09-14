@@ -11,6 +11,8 @@ Paraphrased public API names. Prefer living Full-path from
 - **Primary (artifact review AR-3.4):** Research pack
   `source-analysis/external-review/20260810-artifact-review-quarkus-cites.md`
   — Quarkus validation guide (REST `@Valid`)
+- [Quarkus 3.27 CORS guide](https://quarkus.io/version/3.27/guides/security-cors/)
+  — application filter configuration and defaults.
 
 ## Cards
 
@@ -40,8 +42,24 @@ Paraphrased public API names. Prefer living Full-path from
 |----|--------------|--------------|--------|------|
 | rest-cdi-scope | implicit Spring component scan | `@ApplicationScoped` (or `@Singleton`) on every `@Path` resource + exception mappers | ADOPT | |
 | rest-package | keep `org.springframework.samples…` | **Move** JAX-RS resources out of `org.springframework.*` — Quarkus build-time discovery skips that prefix | ADOPT | |
-| rest-cors | `@CrossOrigin` / filters in story | **OUT OF SCOPE** for REST stories (tip-bank B2) — platform/infra | REJECT in-story | Prove CORS with header assertions against a frozen source capture; adding scenarios without comparing `Access-Control-*` will not catch a drop. |
+| rest-cors | Source `@CrossOrigin` policy named by a `PARITY_CORS` / `cors-config` obligation | Reproduce it with `quarkus.http.cors.*` in the issued `src/main/resources/application.properties` write set; enable with `quarkus.http.cors.enabled=true` | ADOPT for the typed config repair | Never re-add `@CrossOrigin`. Read the source policy and qualified actual/preflight captures; configure origins, methods, request headers, exposed headers, credentials and max-age to preserve them. Re-run parity; compile success does not discharge this obligation. |
 | rest-location-uri | a `UriComponentsBuilder` parameter: `ucBuilder.path("/api/…/{id}").buildAndExpand(id).toUri()` | a JAX-RS `@Context UriInfo` parameter: `uriInfo.getBaseUriBuilder().path("/api/…/{id}").build(id)` — the source's own path template | ADOPT | The source's Location is ABSOLUTE and request-derived: scheme, host, port and the context path. [`UriInfo#getBaseUriBuilder`](https://jakarta.ee/specifications/restful-ws/3.1/apidocs/jakarta.ws.rs/jakarta/ws/rs/core/uriinfo#getBaseUriBuilder()) carries the same base. `@Context UriInfo` as a method parameter of a Spring `@RestController` is not in the Quarkus Spring Web guide; it was verified by probe on RHBQ 3.27.3 (the context path appears once; a forwarded Host is honoured), so keep the Location scenario in the parity corpus. `new URI(String)` throws the checked `URISyntaxException`: do not introduce it (no `throws`, no catch — acceptance vetoes an introduced unhandled checked exception). `URI.create` of a relative path compiles, but drops the base and the context path, which parity compares. |
+
+For `rest-cors`, omitted Spring origins and omitted Quarkus origins are not
+equivalent. Derive the policy from the frozen source and its captures; do not
+replace an unrestricted source policy with just the corpus's one test Origin.
+Set credential permission deliberately: Quarkus can default it to true for an
+exact origin match. Convert captured max-age seconds to the supported duration
+form. Do not turn the single preflight's requested method/header subset into
+a global restriction that breaks other source operations.
+
+The Quarkus filter is application-wide. If one configuration cannot preserve
+the source's route-specific policies, record a typed scope blocker for a
+separate design decision. Do not widen permissions, alter platform ingress,
+edit a controller outside the card's write set, or restore the annotation to
+make this card pass. `exposed-headers` grants browser access to existing
+response headers; it does not create an `errors` header. Missing error values,
+Location, status, body and effect behavior stay with the response obligation.
 
 ## Binding (AR-3.4 / AR-2.4)
 

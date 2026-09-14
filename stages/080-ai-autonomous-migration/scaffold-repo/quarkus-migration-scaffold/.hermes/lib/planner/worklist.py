@@ -635,7 +635,7 @@ def parity_items(root: Path, bundle: dict[str, Any]) -> list[dict[str, Any]]:
                             rule_id="PARITY_CORS", cause="cors-config",
                             detail=("%s: CORS %s" % (scenario or ep, "; ".join(cors)))[:200],
                             message=("%s (%s): the destination grants no CORS permission the source granted: %s. On Quarkus this is "
-                                     "application configuration, not a controller annotation: quarkus.http.cors=true, "
+                                     "application configuration, not a controller annotation: quarkus.http.cors.enabled=true, "
                                      "quarkus.http.cors.origins mirroring the source (an absent origins attribute means any origin), "
                                      "quarkus.http.cors.exposed-headers and .methods/.headers set to the source's recorded values quoted "
                                      "in the diffs. Do not restore a removed @CrossOrigin." % (ep, scenario or "read oracle", "; ".join(cors)))[:1200]))

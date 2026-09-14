@@ -339,24 +339,77 @@ def _capture_contract_case() -> int:
             return _fail("an exposed header is recorded beside the CORS set: %s" % rec)
         # full bodies are retained as evidence beside a capture, bound by digest
         import hashlib as _hl
-        from _oracle_common import RETAINED_BODY_CAP, retain_body
+        from _oracle_common import RETAINED_BODY_CAP, normalize_body, retain_body
         with tempfile.TemporaryDirectory(prefix="retain-") as rd:
-            raw = b'[{"id":11,"lastName":"Probe"}]'
-            sha = _hl.sha256(raw).hexdigest()
-            ev = retain_body(Path(rd), "after-eff", raw, sha)
-            if _hl.sha256(Path(ev["body_file"]).read_bytes()).hexdigest() != sha or ev["truncated"] or ev["body_bytes"] != len(raw):
-                return _fail("a retained body is the recorded body, byte for byte: %s" % ev)
+            previous = Service.owners
+            Service.owners = {"11": {"lastName": "Probe", "id": 11}}
+            service, url = serve()
+            try:
+                observed = http_observe(url, "GET", "/api/owners/11", keep_body=True)
+            finally:
+                service.shutdown()
+                service.server_close()
+                Service.owners = previous
+            raw = observed["raw"]
+            raw_sha = _hl.sha256(raw).hexdigest()
+            if raw_sha == observed["body_sha256"]:
+                return _fail("the JSON fixture must distinguish wire bytes from canonical parity bytes")
+            ev = retain_body(Path(rd), "after-eff", raw, observed["body_sha256"])
+            kept = Path(ev["body_file"]).read_bytes()
+            if (kept != raw or ev["retained_sha256"] != raw_sha or ev["raw_body_sha256"] != raw_sha
+                    or ev["body_sha256"] != normalize_body(kept, "application/json")[1]
+                    or ev["truncated"] or ev["body_bytes"] != len(raw)):
+                return _fail("retention binds wire bytes separately from the observed canonical JSON digest: %s" % ev)
             big = b"x" * (RETAINED_BODY_CAP + 5)
             ev2 = retain_body(Path(rd), "big", big, _hl.sha256(big).hexdigest())
-            if not ev2["truncated"] or ev2["retained_bytes"] != RETAINED_BODY_CAP or ev2["body_bytes"] != len(big):
+            if (not ev2["truncated"] or ev2["retained_bytes"] != RETAINED_BODY_CAP or ev2["body_bytes"] != len(big)
+                    or ev2["retained_sha256"] != _hl.sha256(Path(ev2["body_file"]).read_bytes()).hexdigest()
+                    or ev2["raw_body_sha256"] != _hl.sha256(big).hexdigest()
+                    or ev2["retained_sha256"] == ev2["raw_body_sha256"]):
                 return _fail("a body over the cap is cut and says so: %s" % ev2)
         if header_diffs({"errors": "[x]"}, {"errors": None}) != ["header errors None vs [x]"]:
             return _fail("a recorded errors header the destination drops is a diff: %s" % header_diffs({"errors": "[x]"}, {"errors": None}))
     return 0
 
 
+def _missing_exposed_model_case() -> int:
+    """Missing or unreadable exposure evidence must refuse before source setup."""
+    import contextlib
+    import importlib.util
+    import io
+    from unittest.mock import patch
+    from planner.paths import STRUCTURE, producer_receipt
+
+    spec = importlib.util.spec_from_file_location("capture_scenarios_test", HERE / "capture-source-scenarios.py")
+    producer = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(producer)
+    with tempfile.TemporaryDirectory(prefix="capture-model-") as td:
+        root = specimens.build_dest(Path(td) / "dest", specimens.specimen("http"), decisions=specimens.admitted_decisions())
+        specimens.prepare_loop(root)
+        frozen = root / "frozen"
+        frozen.mkdir()
+        (frozen / "pom.xml").write_text("<project/>")
+        write_canonical(producer_receipt(root, "freeze"), {"analysis_copy": str(frozen), "source_digest": "fixture"})
+        write_canonical(root / "verification/scenarios/corpus.json", {
+            "schema": "rhoai3.scenario-corpus/v1", "approved_by": "operator:test",
+            "scenarios": [{"id": "sc:read", "entry_point": "ep:test", "method": "GET", "path": "/api/owners", "body_absent": True}]})
+        model = root / STRUCTURE
+        model.unlink(missing_ok=True)
+        for malformed in (False, True):
+            if malformed:
+                model.parent.mkdir(parents=True, exist_ok=True)
+                model.write_text("{invalid-json")
+            errors = io.StringIO()
+            with patch.object(producer, "SourceRuntime", side_effect=AssertionError("source must not start")) as runtime:
+                with contextlib.redirect_stderr(errors):
+                    result = producer.main(["--root", str(root), "--base-path", "/petclinic"])
+                if result != 1 or runtime.called or "FAIL: SOURCE_SCENARIOS" not in errors.getvalue() or "nothing is captured" not in errors.getvalue():
+                    return _fail("an unreadable exposure model refuses before source setup: %s" % errors.getvalue())
+    return 0
+
+
 def main() -> int:
-    if _no_corpus_case():
+    if _no_corpus_case() or _missing_exposed_model_case():
         return 1
     if _capture_contract_case() or _header_contract_case():
         return 1

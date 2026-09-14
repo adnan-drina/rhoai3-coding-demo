@@ -12,7 +12,7 @@ license: Apache-2.0
 compatibility: Linux seat; Python 3.11+; network to the source and destination systems
 metadata:
   author: rhoai3-harness-team
-  version: "1.0.0"
+  version: "1.0.1"
   hermes:
     tags:
     - gates
@@ -80,6 +80,17 @@ python3 "${HERMES_SKILL_DIR}/scripts/compose-parity-receipt.py" --root /projects
 | scheduled, messaging, batch, event, lifecycle | operator-captured observation file (log excerpt, queue dump, table export); normalized line set with timestamps stripped | `--observation <id>=<file>` |
 
 ## The scenario corpus
+
+Scenario responses and before/after probes retain body evidence under
+`verification/source-oracles/scenarios/bodies/<scenario>/`. Verify the file
+against `evidence.retained_sha256`; for complete bodies it also matches
+`evidence.raw_body_sha256`. The row's `body_sha256` remains the parity digest:
+canonical JSON for JSON, raw bytes otherwise. Recompute that normalization
+from the retained bytes and check it against the row before qualifying them.
+The 1 MiB cap is explicit: `truncated: true` cannot prove full-list presence
+or absence. Retain complete evidence before qualifying that scenario; do not
+weaken its predicate. An unreadable exposed-header model refuses capture
+before starting the source. `CAPTURED` still requires separate qualification.
 
 `verification/scenarios/corpus.json` (`rhoai3.scenario-corpus/v1`) is
 **Operator-approved intent** and names its approver. Start from

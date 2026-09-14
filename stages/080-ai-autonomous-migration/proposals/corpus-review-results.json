@@ -234,7 +234,12 @@
     "invalid_body_differs_only_in_telephone": true,
     "scenario_parity_selftest": "PASS, local loopback fixtures; no v9 application execution",
     "dropped_errors_header_is_a_diff": true,
-    "charset_only_content_type_change_is_a_diff": true
+    "charset_only_content_type_change_is_a_diff": true,
+    "canonical_json_and_retained_wire_hashes_distinguished": true,
+    "retention_truncation_hashes_verified": true,
+    "missing_or_malformed_exposure_model_refuses_before_source_setup": true,
+    "worklist_parity_typing_selftest": "PASS locally, including scenario CORS/response split and the documented enable key",
+    "skill_format_validation": "0 errors; capture skill reports existing nested scripts/reset-db and generated scripts/__pycache__ depth warnings"
   },
   "comparison_contract": {
     "primary_response_header_keys": [
@@ -261,7 +266,7 @@
       "Bind source digest, bundle digest, final signed corpus digest and request/body digests to this packet; archive the prior idle receipt.",
       "Record the first response with redirects_followed false and asserted_headers_extra exactly [content-type, errors].",
       "The response headers map contains all nine primary-response header keys, including explicit null for headers actually absent. Invalid-create errors must be present and nonempty.",
-      "Retain complete before/after owner response bodies, or equivalent semantic qualification results tied to the same full-body digests and capture execution. A 200-character sample cannot establish owner presence or absence.",
+      "Read the retained response and before/after body files from each row's evidence. Require truncated=false and retained_bytes=body_bytes; verify retained_sha256 and raw_body_sha256 against the file, then recompute the row's body_sha256 using the recorded body kind (canonical JSON for JSON, raw bytes otherwise). Only complete verified lists can establish owner presence or absence.",
       "Verify reset and identity allocation state before destination comparison. Matching list rows alone does not prove matching next generated ids."
     ],
     "scenarios": {
@@ -295,44 +300,63 @@
   },
   "capture_prerequisites": [
     "After signature, pause dispatch at a quiescent card boundary and keep it paused through capture qualification.",
-    "Install and record a coherent capture gate script set from the intended golden f4afa010; verify reviewed script hashes and installed-code tests. Preserve authorization pins, home/board/logs, config and loop state.",
-    "Provide complete read-back evidence or digest-bound semantic qualification during the source execution; f4afa010 capture receipts alone retain only 200-character body samples.",
+    "Use golden 76e110e6 as the replacement base, then publish and identify the successor containing this review's retention hash correction, rest-cors guidance and documented CORS enable key before installation. This includes loop code (lib/planner/worklist.py), gate scripts and guidance. Install the coherent manifest between cards, preserve pins/home/board/logs/config/loop state, record the installation separately, and verify installed-code tests.",
+    "Require complete retained read-back bodies and verify raw/file hashes separately from canonical parity hashes. The 1 MiB truncation flag is not qualification; truncated evidence cannot prove full-list presence or absence.",
     "Install the signed corpus and all three bodies at the declared destination paths; verify their final manifest digests before capture."
   ],
   "implementation_limits": [
-    "An older source header map lacking errors/content-type can still compare without detecting those missing assertions. The focused helper probe reproduces this; fresh complete header evidence is mandatory for this packet.",
-    "An unreadable source exposed-header model only warns during capture. Qualification must refuse missing model binding or missing expected extra-header keys.",
+    "Older source header maps can omit errors/content-type assertions. Fresh complete maps are mandatory for this packet; v9 has no prior captures according to the Operator, so compatibility handling is not needed for this first capture.",
+    "The producer now refuses an unreadable exposed-header model before source setup; the local selftest covers both missing and malformed JSON models. Live v9 execution remains untested.",
     "CAPTURED records an HTTP observation, including an unexpected status; it does not establish the scenario purpose or authorize coverage.",
-    "Owner lists are retained only as full-body digests plus 200-character samples by the reviewed producer. Complete list evidence or digest-bound semantic observations remain a capture prerequisite."
+    "Bodies larger than 1 MiB are truncated and explicitly marked. Qualification requiring a complete list must refuse that evidence and obtain a complete capture.",
+    "The 76e110e6 base retains raw body bytes but labels their digest with the canonical JSON parity hash. The local correction adds raw_body_sha256 and retained_sha256 while preserving body_sha256. It must be published and installed before this amended evidence contract is used."
   ],
   "signing": {
     "scope": "The Operator signs the final corpus document and this review manifest together; the manifest binds every referenced body byte digest, request digest, source binding and comparison/qualification contract.",
-    "procedure": "Review the full packet, fill the real approved_by identity in the corpus and manifest, recompute the corpus file and canonical digests plus every request/body digest, and sign that final pair. Preserve this unsigned review as provenance.",
+    "procedure": "Review the full packet and the implementation follow-up, fill the real approved_by identity in the corpus and manifest, recompute the corpus file and canonical digests plus every request/body digest, and sign that final pair. Any edited bytes after a detached signature require a new signature. Preserve aa9dbe59 as the reviewed unsigned provenance.",
     "approval_changes_corpus_digest": true,
     "body_content_is_in_corpus_digest": false,
     "body_content_binding": "body_manifest SHA-256 plus request_sha256; body paths alone do not bind bytes.",
-    "signature": null
+    "signature": null,
+    "post_approval_recompute": "PENDING_REAL_OPERATOR_APPROVAL; this implementation update does not supply approved_by or a signature."
   },
   "reviewed_capture_code": {
-    "repository_commit": "08940409338aa6b9a4616130240af983ec849e30",
-    "requested_golden": "f4afa010",
-    "golden_equivalence": "Reported by the Operator; this review checked repository script bytes, not the published golden tree.",
+    "repository_commit": "aa9dbe59547b82836f71af8e5d7595f43255409b",
+    "requested_golden": "76e110e6",
+    "golden_equivalence": "76e110e6 is the Operator-reported published base; this review did not inspect that golden checkout. The hashes below describe reviewed local code including unpublished amendments.",
     "scripts_sha256": {
-      "_oracle_common.py": "e915af5ddcc37b889e441e4d08880663761a8ac4b2edfd743b0a535442b47c07",
+      "_oracle_common.py": "f4b499cd8bb41adc090b227803661efd5e4c1a2055ccdc4b12532e30e92c6e58",
       "_scenarios.py": "bd6e6184a881c367c4812bf02161be9099b2fdd934f9a4ee99bc853d56862636",
       "capture-source-oracles.py": "275026b17c20cbcc013821498a53399e0d5f970e532d2a24da4309b3ec38dc1e",
-      "capture-source-scenarios.py": "ab9a2ebd080c6edb12a7f7505ebab9d599269b775633430fd6d7a7a48dc73a92",
+      "capture-source-scenarios.py": "e01ffc568e09045ce735bba0b0237b419fe82bcb1be5b794951b56774f146d25",
       "compare-runtime-parity.py": "5eb0f39fb0af51f4e355481daec91847687e21d8541bfeaf49d43f09a2e3cc12",
       "compare-scenario-parity.py": "85d7d236fb218118205ef5cecaacd3ad21e6ffd72fc11e12ab2572d402a9687e",
       "compose-parity-receipt.py": "2d121e43bc618c49b0bc0789124a550bdb393c22f44048489cb3f21ebc4ae4d5",
       "reset-parity-db.sh": "b6484e65eaa9528233357e59a7d64e543665459cc47201e7cea9e558978c1dc1"
+    },
+    "required_unpublished_amendments": [
+      "Separate raw and retained file hashes from canonical parity body_sha256",
+      "Amend rest-cors guidance and its load trigger",
+      "Use quarkus.http.cors.enabled=true in the parity obligation message"
+    ],
+    "loop_and_guidance_sha256": {
+      "lib/planner/worklist.py": "e38c94c58be34235cfaebfc380b9952a7b96bfe15c2d2798ce3ef9164ab4297b",
+      "skills/migration/spring-to-quarkus-patterns/SKILL.md": "14a039136757518bd5fd97a0a26de7caaa5726aa6877524bb1945ca6c8553f1f",
+      "skills/migration/spring-to-quarkus-patterns/references/rest-annotations.md": "49518a20160d5c1b4a2fdfc98861b5519fc5c9e83751c94116381f4069616ed0",
+      "skills/gates/capture-source-oracles/SKILL.md": "309b3e19efc0d4c14a70a9865f3122baedc2ed9e7dda41be55768d147af212fc"
+    },
+    "validation_code_sha256": {
+      "lib/planner/worklist.test.py": "d03d31f58c81634ebbbdd28854fa15991382fe4db90efdda677565c2e70ba75e",
+      "skills/gates/capture-source-oracles/scripts/scenario-parity.test.py": "a4e023331ba09eb52b04315741c489501d4e85e1e71db1623b3d55d327c987ac"
     }
   },
   "not_tested": [
     "Source HTTP execution or destination execution for this packet",
     "Runtime 201/400, Location, CORS and full owner-list qualification",
     "Equivalent database identity allocation after reset",
-    "Installed v9 f4afa010 gate scripts and their tests",
+    "Published successor to 76e110e6 and installed v9 loop/gate/guidance code and tests",
     "Full M4 parity"
-  ]
+  ],
+  "reviewed_unsigned_baseline_commit": "aa9dbe59547b82836f71af8e5d7595f43255409b",
+  "implementation_review_status": "LOCAL_AMENDMENTS_TESTED_NOT_PUBLISHED_OR_INSTALLED"
 }

@@ -5,7 +5,7 @@ license: Apache-2.0
 compatibility: Linux seat; Python 3.11+
 metadata:
   author: rhoai3-harness-team
-  version: "1.5.0"
+  version: "1.5.1"
   hermes:
     tags:
     - migration
@@ -53,7 +53,7 @@ new behaviour, weaken G-1…G-4, or replace free-primitives / MTA.
 
 | File | Use when |
 |------|----------|
-| `references/rest-annotations.md` | JAX-RS / RESTEasy → `quarkus-rest` annotation map; Location via a request-aware `@Context UriInfo` builder (never an introduced checked exception) |
+| `references/rest-annotations.md` | JAX-RS / RESTEasy → `quarkus-rest` annotation map; Location via a request-aware `@Context UriInfo` builder; `PARITY_CORS` / `cors-config` repairs use application configuration, never restored `@CrossOrigin` |
 | `references/exception-mapping.md` | Local/global exception handlers; the advice-class gotcha; legacy error-body shape |
 | `references/di-config.md` | Scopes, profiles, MapStruct (doctrine pending R-SKILL-F; do not mandate `componentModel=cdi`) |
 | `references/persistence.md` | Entity / tx / schema cards; this specimen's default is Spring Data JPA (ADR-004) |

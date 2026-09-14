@@ -407,7 +407,7 @@ def _parity_typing_case() -> int:
         cors = by.get((ep, "sc:cors-actual-owners", "cors-config"))
         if not cors or cors["path"] != APP_PROPERTIES or cors["kind"] != "config" or cors["rule_id"] != "PARITY_CORS":
             return _fail("CORS-only diffs are a config obligation at application.properties: %s" % cors)
-        if "errors, content-type" not in cors["message"] or "quarkus.http.cors" not in cors["message"] or "Do not restore" not in cors["message"]:
+        if "errors, content-type" not in cors["message"] or "quarkus.http.cors.enabled=true" not in cors["message"] or "Do not restore" not in cors["message"]:
             return _fail("the CORS obligation quotes the source's recorded values and names the config path: %s" % cors["message"][:300])
         loc = by.get((ep2, "sc:create-owner-location", "response"))
         cors2 = by.get((ep2, "sc:create-owner-location", "cors-config"))

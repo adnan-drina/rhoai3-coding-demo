@@ -188,15 +188,18 @@ def retain_body(out_dir: Path, name: str, raw: bytes, sha: str) -> dict[str, Any
     owner is in the list or the rejected one absent; a digest alone cannot
     name either. The full bytes are written to
     ``<out_dir>/<name>.body`` and the record says where and how long. The
-    file's digest is the recorded body_sha256 unless the body was cut at the
-    cap, in which case ``truncated`` says so and the digest still names the
-    whole body."""
+    parity body_sha256 stays the caller's normalized digest (canonical JSON
+    for a JSON response). raw_body_sha256 binds the complete response bytes;
+    retained_sha256 binds the file, including when it is a truncated prefix.
+    Qualification requiring the complete body must refuse truncated evidence."""
     out_dir.mkdir(parents=True, exist_ok=True)
     kept = raw[:RETAINED_BODY_CAP]
     p = out_dir / ("%s.body" % name)
     p.write_bytes(kept)
     return {"body_file": p.as_posix(), "body_bytes": len(raw), "retained_bytes": len(kept),
-            "truncated": len(kept) < len(raw), "body_sha256": sha}
+            "truncated": len(kept) < len(raw), "body_sha256": sha,
+            "raw_body_sha256": hashlib.sha256(raw).hexdigest(),
+            "retained_sha256": hashlib.sha256(kept).hexdigest()}
 
 
 def http_observe(base_url: str, method: str, path: str, body: bytes | None = None, timeout: float = 20.0,
