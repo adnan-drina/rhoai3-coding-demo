@@ -564,18 +564,81 @@ def test_items(surefire: dict[str, Any]) -> list[dict[str, Any]]:
     return out
 
 
+_CORS_HEADER = "Access-Control-"
+APP_PROPERTIES = "src/main/resources/application.properties"
+
+
+def classify_parity_diffs(reason: str) -> tuple[list[str], list[str]]:
+    """Split a parity verdict's diffs into (cors, other).
+
+    The comparator writes one diff per finding, "; "-joined: ``status A vs
+    B``, ``body A vs B``, ``header NAME have vs want``, ``effect ID: ...``.
+    A ``header Access-Control-*`` diff is a CORS permission the destination
+    did not grant; nothing in a controller can grant it on Quarkus, so it is
+    a CONFIG obligation. Everything else -- a Location, a header the source
+    exposes (``errors``), a status, a body, an effect -- is the operation's
+    own behaviour and belongs at the controller."""
+    cors, other = [], []
+    for d in [x.strip() for x in str(reason or "").split(";") if x.strip()]:
+        if d.startswith("header " + _CORS_HEADER):
+            cors.append(d)
+        else:
+            other.append(d)
+    return cors, other
+
+
 def parity_items(root: Path, bundle: dict[str, Any]) -> list[dict[str, Any]]:
+    """Obligations from M4's parity verdicts: the read-oracle verdicts in
+    verification/parity/*.json and the SCENARIO verdicts in
+    verification/parity/scenarios/*.json.
+
+    One obligation per failed scenario (two scenarios on one entry point are
+    two obligations), typed from the verdict's own diffs: CORS-only diffs land
+    on application.properties as a ``cors-config`` obligation whose message
+    quotes the source's recorded values; every other diff lands on the entry
+    point's controller; a verdict carrying both kinds becomes two. The
+    message carries the diffs, so the brief says WHAT differs, not just that
+    something does. The parity receipt (a summary, no entry point) is not an
+    obligation and is skipped by schema."""
     out: list[dict[str, Any]] = []
     ep_path = {str(e["id"]): str(e.get("path") or "") for e in (bundle.get("entry_points") or [])}
     pdir = root / PARITY_DIR
     if not pdir.is_dir():
         return out
-    for p in sorted(pdir.glob("*.json")):
-        doc = load_json(p)
+    docs: list[tuple[Path, dict[str, Any]]] = [(p, load_json(p)) for p in sorted(pdir.glob("*.json"))]
+    sdir = pdir / "scenarios"
+    if sdir.is_dir():
+        docs += [(p, load_json(p)) for p in sorted(sdir.glob("*.json"))]
+    for p, doc in docs:
         if not isinstance(doc, dict) or str(doc.get("verdict")) != "FAIL":
             continue
+        if str(doc.get("schema") or "") not in ("rhoai3.parity/v1", "rhoai3.scenario-parity/v1") or not doc.get("entry_point"):
+            continue  # the receipt, or a document that names no operation
         ep = str(doc.get("entry_point") or "")
-        out.append({"id": "parity:%s" % sha256_bytes(ep.encode("utf-8"))[:16], "source": "parity", "kind": "parity", "category": "mandatory", "path": ep_path.get(ep) or GLOBAL, "line": 0, "rule_id": "PARITY", "message_sha256": sha256_bytes(str(doc.get("reason") or "").encode("utf-8")), "detail": ep[:200]})
+        scenario = str(doc.get("scenario") or "")
+        reason = str(doc.get("reason") or "")
+        cors, other = classify_parity_diffs(reason)
+        if not cors and not other:
+            other = [reason or "parity FAIL without a recorded diff"]
+        base = {"source": "parity", "kind": "parity", "category": "mandatory", "line": 0,
+                "entry_point": ep, "scenario": scenario, "verdict_file": p.relative_to(root).as_posix(),
+                "message_sha256": sha256_bytes(reason.encode("utf-8"))}
+        if other:
+            key = canonical_bytes({"ep": ep, "scenario": scenario, "what": "response"})
+            out.append(dict(base, id="parity:%s" % sha256_bytes(key)[:16], path=ep_path.get(ep) or GLOBAL,
+                            rule_id="PARITY", cause="response",
+                            detail=("%s: %s" % (scenario or ep, "; ".join(other)))[:200],
+                            message=("%s differs from the source (%s): %s" % (ep, scenario or "read oracle", "; ".join(other)))[:1200]))
+        if cors:
+            key = canonical_bytes({"ep": ep, "scenario": scenario, "what": "cors"})
+            out.append(dict(base, id="parity:%s" % sha256_bytes(key)[:16], path=APP_PROPERTIES, kind="config",
+                            rule_id="PARITY_CORS", cause="cors-config",
+                            detail=("%s: CORS %s" % (scenario or ep, "; ".join(cors)))[:200],
+                            message=("%s (%s): the destination grants no CORS permission the source granted: %s. On Quarkus this is "
+                                     "application configuration, not a controller annotation: quarkus.http.cors=true, "
+                                     "quarkus.http.cors.origins mirroring the source (an absent origins attribute means any origin), "
+                                     "quarkus.http.cors.exposed-headers and .methods/.headers set to the source's recorded values quoted "
+                                     "in the diffs. Do not restore a removed @CrossOrigin." % (ep, scenario or "read oracle", "; ".join(cors)))[:1200]))
     return out
 
 
@@ -1427,7 +1490,7 @@ def build_worklist(root: Path, *, write: bool = True) -> dict[str, Any]:
         tests_known = False
         blocked.append("tests did not run in this verification" if not tests_run.get("ran") else "no surefire report was produced; tests unknown")
     par = parity_items(root, bundle)
-    parity_known = (root / PARITY_DIR).is_dir() and any((root / PARITY_DIR).glob("*.json"))
+    parity_known = (root / PARITY_DIR).is_dir() and (any((root / PARITY_DIR).glob("*.json")) or any((root / PARITY_DIR / "scenarios").glob("*.json")))
     # Packaging and startup are transitions out of the compile/test loop, not
     # part of its tuple: their failures arrive as obligations with a gate, and
     # a gate that never ran stays unknown (pilot v7 reached [0,0,0] with a

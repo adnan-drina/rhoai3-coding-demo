@@ -9,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from planner.cards import card_title
 from planner.worklist import CHECKED_FAMILY_RULE, EXPOSED, RETAIN, UNPROVEN, apply_supersessions, assess_checked_family, batch_scope_digest, batch_scope_path, build_batch_scope, retry_key, runtime_items  # noqa: E402
 from planner.dest_model import dest_model, diagnostic_identity  # noqa: E402
-from planner.worklist import KIND_RANK, cluster_items, runtime_items, compile_items, file_depths, incidents_from_findings, measure_of, obligation_keys, path_class, progress, surefire_from_reports, test_items  # noqa: E402
+from planner.worklist import APP_PROPERTIES, KIND_RANK, cluster_items, parity_items, runtime_items, compile_items, file_depths, incidents_from_findings, measure_of, obligation_keys, path_class, progress, surefire_from_reports, test_items  # noqa: E402
 
 
 def surefire_from_reports_ran_flag():
@@ -369,8 +369,62 @@ def _set_wide_case() -> int:
     return 0
 
 
+def _parity_typing_case() -> int:
+    """A parity mismatch is typed by its own diffs: CORS permission the
+    destination did not grant is application configuration; a Location, an
+    exposed header, a status, a body or an effect is the operation's own
+    behaviour at the controller. Scenario verdicts count; the receipt does not."""
+    import json
+    import tempfile
+
+    from planner.paths import PARITY_DIR
+
+    ep = "ep:a.OwnerRestController#getOwners():http"
+    ep2 = "ep:a.OwnerRestController#addOwner(a.OwnerDto):http"
+    bundle = {"entry_points": [{"id": ep, "path": "src/main/java/a/OwnerRestController.java"},
+                               {"id": ep2, "path": "src/main/java/a/OwnerRestController.java"}]}
+    with tempfile.TemporaryDirectory(prefix="parity-typing-") as td:
+        root = Path(td)
+        pdir = root / PARITY_DIR
+        (pdir / "scenarios").mkdir(parents=True, exist_ok=True)
+        def w(rel, doc):
+            (pdir / rel).write_text(json.dumps(doc), encoding="utf-8")
+        w("receipt.json", {"schema": "rhoai3.parity-receipt/v1", "verdict": "FAIL", "reason": "1 of 3 not passed"})
+        w("ep_get.json", {"schema": "rhoai3.parity/v1", "entry_point": ep, "verdict": "FAIL", "reason": "status 500 vs 200"})
+        w("ep_ok.json", {"schema": "rhoai3.parity/v1", "entry_point": ep2, "verdict": "PASS", "reason": ""})
+        w("scenarios/sc_cors.json", {"schema": "rhoai3.scenario-parity/v1", "entry_point": ep, "scenario": "sc:cors-actual-owners", "verdict": "FAIL",
+                                     "reason": "header Access-Control-Allow-Origin None vs *; header Access-Control-Expose-Headers None vs errors, content-type"})
+        w("scenarios/sc_create.json", {"schema": "rhoai3.scenario-parity/v1", "entry_point": ep2, "scenario": "sc:create-owner-location", "verdict": "FAIL",
+                                       "reason": "header Location http://d/api/owners/11 vs http://d/petclinic/api/owners/11; header Access-Control-Allow-Origin None vs *"})
+        w("scenarios/sc_inc.json", {"schema": "rhoai3.scenario-parity/v1", "entry_point": ep2, "scenario": "sc:x", "verdict": "INCONCLUSIVE", "reason": "no capture"})
+        items = parity_items(root, bundle)
+        by = {(i["entry_point"], i.get("scenario") or "", i["cause"]): i for i in items}
+        if len(items) != 4:
+            return _fail("read-oracle FAIL + CORS scenario + a split mixed scenario = 4 obligations; receipt/PASS/INCONCLUSIVE none: %s" % [(i["entry_point"][-20:], i.get("scenario"), i["cause"], i["path"]) for i in items])
+        ro = by.get((ep, "", "response"))
+        if not ro or ro["path"] != "src/main/java/a/OwnerRestController.java" or "status 500 vs 200" not in ro["detail"]:
+            return _fail("a read-oracle status diff lands on the controller with its diff in the detail: %s" % ro)
+        cors = by.get((ep, "sc:cors-actual-owners", "cors-config"))
+        if not cors or cors["path"] != APP_PROPERTIES or cors["kind"] != "config" or cors["rule_id"] != "PARITY_CORS":
+            return _fail("CORS-only diffs are a config obligation at application.properties: %s" % cors)
+        if "errors, content-type" not in cors["message"] or "quarkus.http.cors" not in cors["message"] or "Do not restore" not in cors["message"]:
+            return _fail("the CORS obligation quotes the source's recorded values and names the config path: %s" % cors["message"][:300])
+        loc = by.get((ep2, "sc:create-owner-location", "response"))
+        cors2 = by.get((ep2, "sc:create-owner-location", "cors-config"))
+        if not loc or not cors2 or "Location" not in loc["detail"] or "Location" in cors2["detail"]:
+            return _fail("a verdict with a Location diff AND a CORS diff is two obligations, each carrying only its own diffs: %s | %s" % (loc, cors2))
+        if len({i["id"] for i in items}) != 4:
+            return _fail("obligation ids must be distinct per scenario and kind")
+        # and the receipt alone (a FAIL summary with no entry point) is never an obligation
+        for f in ("ep_get.json", "scenarios/sc_cors.json", "scenarios/sc_create.json"):
+            (pdir / f).unlink()
+        if parity_items(root, bundle):
+            return _fail("the parity receipt is a summary, not an obligation: %s" % parity_items(root, bundle))
+    return 0
+
+
 def main() -> int:
-    if _runtime_identity_case() or _gate_progress_case() or _batch_scope_case() or _checked_family_case() or _set_wide_case():
+    if _runtime_identity_case() or _gate_progress_case() or _batch_scope_case() or _checked_family_case() or _set_wide_case() or _parity_typing_case():
         return 1
 
     if path_class("pom.xml") != "build" or path_class("src/main/resources/application.properties") != "config" or path_class("src/test/java/A.java") != "test" or path_class("src/main/java/A.java") != "source":
@@ -549,7 +603,7 @@ def main() -> int:
         return _fail("reclassified items keep their authority and are never dropped")
     if measure_of(all_items, incidents_known=False, compile_known=True, tests_known=True, parity_known=False)["known"]:
         return _fail("unknown incidents never advance")
-    print("OK: worklist (lossless line-free incidents; canary excluded; only ERROR diagnostics; build→config→compile(leaf-first)→incident→test order; tests never writable; lexicographic 3-tuple progress; new-incident veto; unknown never advances; gate progress is the issued obligation disappearing, never a reworded one; a second cause at one file is a second obligation); a repository card's inventory is sealed by its own digest and two measurements never share a path; checked-exception family: bound to its introducing step (a legacy site stays out), one budget, line-free identity across a moved line, CONTINUE / EXPOSED / still-reported / 1→0 accept, per-member assessment (catch-wrapped and header-deleted members violate); a set-wide packaging cause is one typed blocker under permuted first-reported names and never a card")
+    print("OK: worklist (lossless line-free incidents; canary excluded; only ERROR diagnostics; build→config→compile(leaf-first)→incident→test order; tests never writable; lexicographic 3-tuple progress; new-incident veto; unknown never advances; gate progress is the issued obligation disappearing, never a reworded one; a second cause at one file is a second obligation); a repository card's inventory is sealed by its own digest and two measurements never share a path; checked-exception family: bound to its introducing step (a legacy site stays out), one budget, line-free identity across a moved line, CONTINUE / EXPOSED / still-reported / 1→0 accept, per-member assessment (catch-wrapped and header-deleted members violate); a set-wide packaging cause is one typed blocker under permuted first-reported names and never a card; parity mismatches are typed by their diffs (CORS → application.properties, the rest → the controller; scenario verdicts count, the receipt does not)")
     return 0
 
 
