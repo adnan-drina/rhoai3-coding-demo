@@ -56,6 +56,10 @@ RESET_TEXT = (".hermes/skills/gates/capture-source-oracles/scripts/reset-parity-
               "instance; the frozen source restores the same dataset by restarting when its baseline engine is in-memory")
 # characters tried, in order, to build a value a ``pattern`` forbids
 FORBIDDEN_CANDIDATES = ("!", "#", "-", " ", "a", "1", "~", "%", "@")
+# how many of a cascading delete's referencing rows are read back afterwards:
+# the effect proves the children went with the parent, and proving it over
+# three rows is the same proof as over thirty at a fraction of the capture
+_CASCADE_CHILD_CAP = 3
 
 
 class Refusal(Exception):
@@ -777,6 +781,292 @@ def resolve_path_var(name: str, seed: dict[str, dict[str, Any]], columns: dict[s
 
 
 # --------------------------------------------------------------------------
+# the persistence model: which references the APPLICATION removes itself
+# --------------------------------------------------------------------------
+# Measured on v9 (2026-09-14): a schema foreign key with no ON DELETE CASCADE
+# does NOT mean the source refuses the delete. ``DELETE /api/owners/1``
+# answered 204 although ``pets.owner_id`` points at owner 1, because
+# ``Owner.pets`` is a ``@OneToMany(cascade = ALL)`` and the application removes
+# the children before the database ever sees the parent's delete. Only
+# ``specialties`` refused, because ``Specialty`` declares nothing and the
+# ``vet_specialties`` rows stay. So a refusal expectation derived from the
+# schema alone is not evidence-derived: the relationship annotations in M1's
+# structure model are the other half of the evidence, and they are read here.
+_RELATION_ANNS = ("OneToMany", "ManyToMany", "OneToOne", "ManyToOne")
+_CASCADE_REMOVING = ("ALL", "REMOVE")
+_CASCADE_TOKENS = ("ALL", "PERSIST", "MERGE", "REMOVE", "REFRESH", "DETACH")
+
+
+def _simple(fqn: str) -> str:
+    return str(fqn).rsplit(".", 1)[-1].strip()
+
+
+def _ann_values(ann: Any) -> dict[str, Any]:
+    if not isinstance(ann, dict):
+        return {}
+    vals = ann.get("values")
+    if vals is None:
+        vals = ann.get("attributes")
+    return vals if isinstance(vals, dict) else {}
+
+
+def _find_ann(anns: Any, simple: str) -> dict[str, Any] | None:
+    for a in (anns or []):
+        if isinstance(a, dict) and _simple(a.get("fqn") or a.get("name") or "") == simple:
+            return a
+    return None
+
+
+def _ann_strings(values: dict[str, Any], key: str) -> list[str]:
+    raw = values.get(key)
+    items = raw if isinstance(raw, list) else [raw] if raw is not None else []
+    return [str(x).strip() for x in items if str(x).strip()]
+
+
+def _ann_first(values: dict[str, Any], key: str) -> str:
+    got = _ann_strings(values, key)
+    return got[0] if got else ""
+
+
+def cascade_tokens(values: dict[str, Any]) -> tuple[list[str], str]:
+    """(the CascadeType tokens a relationship declares, the unrecognised one).
+
+    ``cascade = CascadeType.ALL``, ``{CascadeType.PERSIST, CascadeType.MERGE}``
+    and a bare ``ALL`` all reach the model as strings; a token this list does
+    not know is not guessed at -- it makes the decision underivable."""
+    out: list[str] = []
+    for item in _ann_strings(values, "cascade"):
+        for tok in re.split(r"[,{}]", item):
+            tok = tok.strip()
+            if not tok:
+                continue
+            tok = _simple(tok).upper()
+            if tok not in _CASCADE_TOKENS:
+                return out, tok
+            out.append(tok)
+    return list(dict.fromkeys(out)), ""
+
+
+def entity_table_candidates(simple: str) -> list[str]:
+    """The tables an entity's simple name can map to when it declares no
+    ``@Table(name)``: the same singular/plural tolerance the path variables
+    already use (``PetType`` -> ``pettypes``, ``pet_types``, ``types`` is NOT
+    derivable from the name, which is exactly why ``@Table`` is read first)."""
+    lo = simple.lower()
+    sn = _snake(simple)
+    return list(dict.fromkeys([lo, sn, _plural(lo), _plural(sn), _singular(lo), _singular(sn)]))
+
+
+class PersistenceModel:
+    """The JPA relationships M1's structure model records, indexed by table.
+
+    ``available`` is False when no structure model could be read: "the source
+    removes nothing" and "nobody looked" must not be the same answer."""
+
+    def __init__(self, types: Any, tables: set[str]) -> None:
+        self.available = bool(types)
+        self.by_fqn: dict[str, dict[str, Any]] = {}
+        self.entities: dict[str, dict[str, Any]] = {}
+        self.by_table: dict[str, list[str]] = {}
+        self.by_simple: dict[str, list[str]] = {}
+        for t in (types or []):
+            if isinstance(t, dict) and t.get("fqn"):
+                self.by_fqn[str(t["fqn"])] = t
+        for fqn, t in sorted(self.by_fqn.items()):
+            if _find_ann(t.get("annotations"), "Entity") is None:
+                continue
+            simple = _simple(fqn)
+            table, evidence = self._table_of(t, simple, tables)
+            self.entities[fqn] = {"fqn": fqn, "simple": simple, "table": table, "table_evidence": evidence,
+                                  "fields": self._fields_of(fqn)}
+            self.by_simple.setdefault(simple, []).append(fqn)
+            if table:
+                self.by_table.setdefault(table, []).append(fqn)
+
+    @staticmethod
+    def _table_of(t: dict[str, Any], simple: str, tables: set[str]) -> tuple[str, str]:
+        ann = _find_ann(t.get("annotations"), "Table")
+        named = _ann_first(_ann_values(ann), "name") if ann is not None else ""
+        if named:
+            return named.lower(), "structure:%s @Table(name=%s)" % (simple, named.lower())
+        for cand in entity_table_candidates(simple):
+            if cand in tables:
+                return cand, "structure:%s → %s (entity name; no @Table)" % (simple, cand)
+        return "", "structure:%s declares no @Table and no schema table is named by %s" % (simple, simple)
+
+    def _fields_of(self, fqn: str) -> list[dict[str, Any]]:
+        """The entity's own fields plus every field it inherits from a
+        supertype the bundle records (petclinic keeps ``id`` on a
+        ``@MappedSuperclass``; a relationship can live there too)."""
+        out: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        queue = [fqn]
+        while queue:
+            cur = queue.pop(0)
+            if cur in seen or cur not in self.by_fqn:
+                continue
+            seen.add(cur)
+            t = self.by_fqn[cur]
+            for f in (t.get("fields") or []):
+                if isinstance(f, dict) and f.get("name"):
+                    out.append({"name": str(f["name"]), "type": str(f.get("type") or ""),
+                                "annotations": list(f.get("annotations") or []), "declared_by": _simple(cur)})
+            queue.extend(str(s) for s in (t.get("supertypes") or []))
+        return out
+
+    def relationship_fields(self, ent: dict[str, Any]) -> list[tuple[dict[str, Any], str, dict[str, Any]]]:
+        """(field, relationship kind, its annotation values) for every field
+        carrying a JPA relationship annotation."""
+        out = []
+        for f in ent["fields"]:
+            for kind in _RELATION_ANNS:
+                ann = _find_ann(f["annotations"], kind)
+                if ann is not None:
+                    out.append((f, kind, _ann_values(ann)))
+                    break
+        return out
+
+    def _entity_named(self, name: str) -> str:
+        name = _simple(re.sub(r"\.class$", "", str(name).strip()))
+        if not name:
+            return ""
+        hits = self.by_simple.get(name) or []
+        return hits[0] if len(hits) == 1 else ""
+
+    def target_entity(self, ent: dict[str, Any], field: dict[str, Any], values: dict[str, Any]) -> tuple[str, str]:
+        """(the fqn of the entity on the other end of ``field``, why not).
+
+        The structure model records the erased field type (``java.util.Set``),
+        so a collection's element type is never read off the field. It is
+        derived, in order, from ``targetEntity``, from the field type when that
+        IS an entity, from ``mappedBy`` (the entity declaring a field of that
+        name whose type is this entity), and last from the field name against
+        the entity names. An ambiguity is not resolved by guessing."""
+        named = _ann_first(values, "targetEntity")
+        if named:
+            got = self._entity_named(named)
+            return (got, "") if got else ("", "targetEntity %s names no single entity in the structure model" % named)
+        if field["type"] in self.entities:
+            return field["type"], ""
+        mapped = _ann_first(values, "mappedBy")
+        if mapped:
+            hits = sorted(fqn for fqn, other in self.entities.items()
+                          if any(f["name"] == mapped and f["type"] == ent["fqn"] for f in other["fields"]))
+            if len(hits) == 1:
+                return hits[0], ""
+            if len(hits) > 1:
+                return "", ("mappedBy=%s names %d entities with a field of that name typed %s"
+                            % (mapped, len(hits), ent["simple"]))
+            # the inverse end of a collection is itself erased in the model, so
+            # mappedBy names nothing to walk back to; the name is tried next
+        for cand in (_singular(field["name"]), field["name"]):
+            hits = [fqn for fqn in self.entities if _simple(fqn).lower() == cand.lower()]
+            if len(hits) == 1:
+                return hits[0], ""
+        return "", ("field %s.%s is typed %s, declares neither targetEntity nor mappedBy, and its name names no single entity"
+                    % (ent["simple"], field["name"], field["type"] or "?"))
+
+
+def _join_table_of(values: dict[str, Any], field: dict[str, Any]) -> str:
+    ann = _find_ann(field["annotations"], "JoinTable")
+    if ann is None:
+        return ""
+    return _ann_first(_ann_values(ann), "name").lower()
+
+
+def application_removes(model: PersistenceModel, table: str, fk: dict[str, Any],
+                        foreign_keys: list[dict[str, Any]]) -> tuple[str, str, list[str]]:
+    """Does deleting a row of ``table`` remove the rows of ``fk['table']`` that
+    point at it, without the database refusing?
+
+    Returns (verdict, evidence, the entity-to-table mappings it relied on).
+    ``verdict`` is ``schema`` (the constraint carries the children away),
+    ``application`` (a cascading/orphan-removing relationship, or ownership of
+    a ``@ManyToMany`` join table), ``none`` (nothing removes them: the source
+    refuses) or ``unknown`` (the evidence does not decide, so NEITHER scenario
+    is derived)."""
+    if fk["on_delete"] in _PERMISSIVE_ON_DELETE:
+        return "schema", "schema:FOREIGN KEY %s declares ON DELETE %s" % (fk_label(fk), fk["on_delete"].upper()), []
+    ref = "%s.%s" % (fk["table"], fk["column"])
+    if not model.available:
+        return "unknown", "no structure model at %s, so the application's own relationships are unknown" % STRUCTURE.as_posix(), []
+    owners = model.by_table.get(table) or []
+    if not owners:
+        return "unknown", "no @Entity in the structure model maps to table %s" % table, []
+    if len(owners) > 1:
+        return "unknown", "%d entities map to table %s (%s)" % (len(owners), table, ", ".join(_simple(f) for f in owners)), []
+    ent = model.entities[owners[0]]
+    mine = [ent["table_evidence"]]
+    undecided = ""
+    for field, kind, values in model.relationship_fields(ent):
+        toks, bad = cascade_tokens(values)
+        if bad:
+            return "unknown", "%s.%s declares cascade token %s, which is not a CascadeType this derivation knows" % (ent["simple"], field["name"], bad), mine
+        join = _join_table_of(values, field)
+        target, why = model.target_entity(ent, field, values)
+        if not target and not join:
+            undecided = undecided or why
+            continue
+        target_table = model.entities[target]["table"] if target in model.entities else ""
+        if target and not target_table:
+            undecided = undecided or ("%s.%s targets %s, which maps to no schema table" % (ent["simple"], field["name"], _simple(target)))
+            continue
+        mapping = mine + ([model.entities[target]["table_evidence"]] if target in model.entities else [])
+        # (b) the join table of a @ManyToMany this entity OWNS: JPA deletes the
+        # join rows with the owning entity, so nothing is left pointing at it
+        if kind == "ManyToMany":
+            owned = join == fk["table"] if join else _owns_implicit_join(model, ent, field, target, fk["table"], foreign_keys)
+            if owned:
+                return "application", ("structure:%s.%s @ManyToMany %s: %s owns the %s join table, whose rows JPA removes with the owning entity"
+                                       % (ent["simple"], field["name"],
+                                          "@JoinTable(name=%s)" % join if join else "(no @JoinTable; the join table carries both foreign keys)",
+                                          ent["simple"], fk["table"])), mapping
+        # (a) a relationship at the referencing table that cascades the remove
+        if target_table == fk["table"]:
+            orphan = _ann_first(values, "orphanRemoval").lower() == "true"
+            removing = [t for t in toks if t in _CASCADE_REMOVING]
+            if removing or orphan:
+                detail = ", ".join(([("cascade=%s" % "+".join(removing))] if removing else []) + (["orphanRemoval=true"] if orphan else []))
+                return "application", ("structure:%s.%s @%s(%s) → %s (table %s): the application removes %s itself"
+                                       % (ent["simple"], field["name"], kind, detail, _simple(target), target_table, ref)), mapping
+    if undecided:
+        return "unknown", undecided, mine
+    return "none", ("structure:%s (table %s) declares no relationship to %s with cascade ALL/REMOVE or orphanRemoval and owns no join table there: none declared"
+                    % (ent["simple"], table, fk["table"])), mine
+
+
+def _owns_implicit_join(model: PersistenceModel, ent: dict[str, Any], field: dict[str, Any], target: str,
+                        join_table: str, foreign_keys: list[dict[str, Any]]) -> bool:
+    """``ent`` is the owning side of a ``@ManyToMany`` whose join table JPA
+    names by default: the OTHER side declares ``mappedBy`` pointing at this
+    field, and ``join_table`` carries a foreign key to each side's table."""
+    other = model.entities.get(target)
+    if other is None:
+        return False
+    points_back = False
+    for f, kind, values in model.relationship_fields(other):
+        if kind == "ManyToMany" and _ann_first(values, "mappedBy") == field["name"]:
+            back, _ = model.target_entity(other, f, values)
+            if back == ent["fqn"]:
+                points_back = True
+    if not points_back:
+        return False
+    refs = {fk["ref_table"] for fk in foreign_keys if fk["table"] == join_table}
+    return ent["table"] in refs and other["table"] in refs
+
+
+def load_persistence_model(root: Path, tables: set[str]) -> PersistenceModel:
+    p = Path(root) / STRUCTURE
+    if not p.is_file():
+        return PersistenceModel([], tables)
+    try:
+        doc = load_json(p)
+    except (OSError, ValueError):
+        return PersistenceModel([], tables)
+    return PersistenceModel((doc.get("types") or []) if isinstance(doc, dict) else [], tables)
+
+
+# --------------------------------------------------------------------------
 # the derivation
 # --------------------------------------------------------------------------
 def _now() -> str:
@@ -923,10 +1213,12 @@ def _write_body(root: Path, scenario_id: str, body: Any) -> str:
 class Derivation:
     def __init__(self, root: Path, bundle: dict[str, Any], openapi: dict[str, Any], seed: dict[str, dict[str, Any]],
                  columns: dict[str, list[str]], policies: dict[str, dict[str, Any]], origin: str,
-                 foreign_keys: list[dict[str, Any]] | None = None) -> None:
+                 foreign_keys: list[dict[str, Any]] | None = None,
+                 persistence: PersistenceModel | None = None) -> None:
         self.root = root
         self.openapi = openapi
         self.seed = seed
+        self.persistence = persistence if persistence is not None else PersistenceModel([], set())
         self.columns = columns
         self.foreign_keys = list(foreign_keys or [])
         self.policies = policies
@@ -1323,9 +1615,11 @@ class Derivation:
 
         Returns ``table``, ``chosen`` (the deletable row, "" when there is
         none), ``evidence``, ``blocked`` (a referenced row, "" when there is
-        none) and ``constraints`` (what references it)."""
+        none), ``constraints`` (what references it), the ``blocked_fks`` that
+        reference that row, and ``removal`` ({verdict: [evidence]}) -- what,
+        if anything, takes those references away."""
         out: dict[str, Any] = {"table": "", "chosen": seeded, "evidence": [self.path_var_evidence.get(var, "")],
-                               "blocked": "", "constraints": ""}
+                               "blocked": "", "constraints": "", "blocked_fks": [], "removal": {}, "removal_rows": [], "mappings": []}
         table = self._seed_table(var, route)
         if not table:
             self.gaps.append("delete %s: no seed table is named by {%s} or by the segments of %s (seed tables: %s); "
@@ -1333,24 +1627,27 @@ class Derivation:
                              % (eid, var, route, ", ".join(sorted(self.seed)) or "none"))
             return out
         out["table"] = table
-        # an ON DELETE CASCADE / SET NULL carries the children away, so such a
-        # foreign key does not block the parent's delete
-        blocking = [fk for fk in self.foreign_keys if fk["ref_table"] == table and fk["on_delete"] not in _PERMISSIVE_ON_DELETE]
-        if not blocking:
+        # EVERY inbound reference counts here. Whether the source lets the
+        # parent go is decided below, per constraint, from the schema AND the
+        # application's own relationships -- not from ON DELETE alone.
+        inbound = [fk for fk in self.foreign_keys if fk["ref_table"] == table]
+        if not inbound:
             return out
-        ids = self._by_id(self._column_values(table, blocking[0]["ref_column"] or "id"))
+        ids = self._by_id(self._column_values(table, inbound[0]["ref_column"] or "id"))
         if not ids:
             self.gaps.append("delete %s: %s is referenced by %s but its %s column cannot be read from the seed; the row is chosen from the path variable alone"
-                             % (eid, table, ", ".join(sorted(fk_label(fk) for fk in blocking)), blocking[0]["ref_column"] or "id"))
+                             % (eid, table, ", ".join(sorted(fk_label(fk) for fk in inbound)), inbound[0]["ref_column"] or "id"))
             return out
         referenced_by: dict[str, set[str]] = {}
-        for fk in blocking:
+        fk_of_label: dict[str, dict[str, Any]] = {}
+        for fk in inbound:
             vals = {v for v in self._column_values(fk["table"], fk["column"]) if v in set(ids)}
             if vals:
                 referenced_by[fk_label(fk)] = vals
+                fk_of_label[fk_label(fk)] = fk
         referenced = {v for vals in referenced_by.values() for v in vals}
-        schema_evidence = "schema:%s" % "; ".join("FOREIGN KEY %s → %s.%s" % (fk_label(fk), fk["ref_table"], fk["ref_column"]) for fk in blocking)
-        constraints = ", ".join(sorted(referenced_by)) or ", ".join(sorted(fk_label(fk) for fk in blocking))
+        schema_evidence = "schema:%s" % "; ".join("FOREIGN KEY %s → %s.%s" % (fk_label(fk), fk["ref_table"], fk["ref_column"]) for fk in inbound)
+        constraints = ", ".join(sorted(referenced_by)) or ", ".join(sorted(fk_label(fk) for fk in inbound))
         free = [i for i in ids if i not in referenced]
         if free:
             out["chosen"] = free[0]
@@ -1360,10 +1657,71 @@ class Derivation:
             out["evidence"] = []
             self.gaps.append("delete %s: every seed row of %s is referenced (%s); no deletable row derivable" % (eid, table, constraints))
         blocked = self._by_id(sorted(referenced))
-        if blocked:
-            out["blocked"] = blocked[0]
-            out["constraints"] = ", ".join(sorted(label for label, vals in referenced_by.items() if blocked[0] in vals))
+        if not blocked:
+            return out
+        out["blocked"] = blocked[0]
+        labels = sorted(label for label, vals in referenced_by.items() if blocked[0] in vals)
+        out["constraints"] = ", ".join(labels)
+        out["blocked_fks"] = [fk_of_label[label] for label in labels]
+        rows: list[dict[str, Any]] = []
+        removal: dict[str, list[str]] = {}
+        mappings: list[str] = []
+        for label in labels:
+            verdict, why, mapping = application_removes(self.persistence, table, fk_of_label[label], self.foreign_keys)
+            rows.append({"label": label, "fk": fk_of_label[label], "verdict": verdict, "why": why})
+            removal.setdefault(verdict, []).append(why)
+            mappings.extend(m for m in mapping if m)
+        out["removal"] = removal
+        out["removal_rows"] = rows
+        out["mappings"] = sorted(dict.fromkeys(mappings))
         return out
+
+    # -- the rows that reference a row, and how they are read back -----------
+    def _table_rows(self, table: str) -> list[dict[str, str]]:
+        """The seed rows of ``table`` as column->value maps; the column names
+        come from the INSERT when it lists them, else from the schema."""
+        row = self.seed.get(table)
+        if not row:
+            return []
+        cols = row.get("columns") or self.columns.get(table) or []
+        out: list[dict[str, str]] = []
+        for vals in (row.get("rows") or []):
+            out.append({c: str(vals[i]).strip("'\"") for i, c in enumerate(cols) if i < len(vals)})
+        return out
+
+    def _item_route(self, table: str) -> tuple[str, str]:
+        """(route, variable) of the bound item GET whose row is a row of
+        ``table``, "" when the bundle exposes none: a join table has no route,
+        so its rows are simply not observable and the scenario says so."""
+        best: tuple[tuple[int, str, str], str, str] | None = None
+        for e in self.eps:
+            if str(e.get("http_method") or "").upper() != "GET":
+                continue
+            r = str(e.get("http_path") or "")
+            names = re.findall(r"\{([^{}]+)\}", r)
+            if len(names) != 1 or "*" in r or not r.endswith("{%s}" % names[0]):
+                continue
+            if self._seed_table(names[0], r) != table:
+                continue
+            key = (len(r), r, str(e.get("id")))
+            if best is None or key < best[0]:
+                best = (key, r, names[0])
+        return (best[1], best[2]) if best is not None else ("", "")
+
+    def _referencing_children(self, fk: dict[str, Any], parent_id: str) -> tuple[list[tuple[str, str, str]], str]:
+        """([(child resource, child id, its item path)] for the rows of
+        ``fk['table']`` pointing at ``parent_id``, why none)."""
+        child_table = str(fk["table"])
+        route, var = self._item_route(child_table)
+        if not route:
+            return [], "no bound item route reads a row of %s" % child_table
+        cols = self.seed.get(child_table, {}).get("columns") or self.columns.get(child_table) or []
+        key = "id" if "id" in cols else (_snake(var) if _snake(var) in cols else "")
+        if not key:
+            return [], "no column of %s identifies the row %s reads" % (child_table, route)
+        resource = _resource(route[: route.rfind("/{")] or "/")
+        hits = self._by_id([r[key] for r in self._table_rows(child_table) if r.get(fk["column"]) == parent_id and r.get(key)])
+        return [(resource, i, route.replace("{%s}" % var, i)) for i in hits], ""
 
     def _delete(self, ep: dict[str, Any], got: dict[str, str], unresolved: list[str]) -> None:
         eid, route = str(ep["id"]), str(ep.get("http_path") or "")
@@ -1392,25 +1750,85 @@ class Derivation:
                 "qualify": {"intent": "positive", "expect_status": [200, 204], "after_effect_status": {eff: 404}},
                 "why": "the seeded row %s exists by construction and nothing references it; the read-back after the delete must not find it" % chosen,
             })
-        # a row another table points at, with no ON DELETE CASCADE / SET NULL
-        # to carry the children away, is a REFUSAL the source owns: one
-        # negative scenario per resource records what it answers
         blocked_id, constraints = str(target["blocked"]), str(target["constraints"])
         if not blocked_id:
             return
+        self._referenced_delete(ep, route, var, resource, blocked_id, constraints, target)
+
+    def _referenced_delete(self, ep: dict[str, Any], route: str, var: str, resource: str, blocked_id: str,
+                           constraints: str, target: dict[str, Any]) -> None:
+        """What a row ANOTHER row points at proves, decided by the evidence.
+
+        The schema says a reference exists; only the application says whether
+        it survives the parent's delete. Three answers, three outcomes: nothing
+        removes it (the source refuses -- a negative scenario), something does
+        (the source deletes the lot -- a positive cascading scenario naming the
+        children), or the evidence does not say (a typed gap and NO scenario:
+        an expectation nobody can derive is not an oracle)."""
+        eid = str(ep["id"])
         item_path = route.replace("{%s}" % var, blocked_id)
-        eff = "eff:%s-%s-after-refused-delete" % (resource, blocked_id)
+        removal: dict[str, list[str]] = target["removal"]
+        fk_evidence = ["seed:%s#%s referenced by %s" % (target["table"], blocked_id, constraints)] + [
+            "schema:FOREIGN KEY %s → %s.%s%s" % (fk_label(fk), fk["ref_table"], fk["ref_column"],
+                                                 " ON DELETE %s" % fk["on_delete"].upper() if fk["on_delete"] else "")
+            for fk in target["blocked_fks"]]
+        if "unknown" in removal:
+            for r in target["removal_rows"]:
+                if r["verdict"] == "unknown":
+                    self.gaps.append("delete-referenced %s: whether the application removes %s.%s references is not derivable (%s)"
+                                     % (eid, r["fk"]["table"], r["fk"]["column"], r["why"]))
+            return
+        if "none" in removal:
+            eff = "eff:%s-%s-after-refused-delete" % (resource, blocked_id)
+            self._add({
+                "id": "sc:delete-referenced-%s-%s" % (resource, blocked_id), "entry_point": eid, "method": "DELETE", "path": item_path,
+                "headers": {}, "identity": {"kind": "none"}, "body_absent": True, "reset_before": True,
+                "effects": [{"id": eff, "method": "GET", "path": item_path}],
+                "normalization": [],
+                "derived_from": {"kind": "delete-referenced", "entry_point": eid,
+                                 "evidence": ["bundle:%s" % eid] + fk_evidence
+                                 + ["schema:%s declares no ON DELETE CASCADE or SET NULL" % constraints]
+                                 + list(target["mappings"]) + sorted(dict.fromkeys(removal["none"]))},
+                "qualify": {"intent": "negative", "expect_status_class": "4xx", "after_effect_status": {eff: 200}},
+                "why": "seed row %s is referenced by %s, the schema carries no ON DELETE CASCADE or SET NULL and the application declares "
+                       "nothing that removes those references, so the source refuses the delete: the response is a 4xx (any) and the "
+                       "read-back still answers 200 with the row" % (blocked_id, constraints),
+            })
+            return
+        # the references go with the parent: what the source demonstrates is a
+        # DELETE that succeeds and takes the children with it
+        eff = "eff:%s-%s-after-cascading-delete" % (resource, blocked_id)
+        effects = [{"id": eff, "method": "GET", "path": item_path}]
+        after: dict[str, int] = {eff: 404}
+        notes: list[str] = []
+        for fk in target["blocked_fks"]:
+            children, why = self._referencing_children(fk, blocked_id)
+            if why:
+                notes.append("note:the rows of %s that reference %s#%s are not observable through routes (%s); only the deleted row is checked"
+                             % (fk["table"], target["table"], blocked_id, why))
+                continue
+            if len(children) > _CASCADE_CHILD_CAP:
+                notes.append("note:%d rows of %s reference %s#%s; only the first %d are read back"
+                             % (len(children), fk["table"], target["table"], blocked_id, _CASCADE_CHILD_CAP))
+                children = children[:_CASCADE_CHILD_CAP]
+            for child_resource, child_id, child_path in children:
+                ceff = "eff:%s-%s-after-cascading-delete" % (child_resource, child_id)
+                if ceff in after:
+                    continue
+                effects.append({"id": ceff, "method": "GET", "path": child_path})
+                after[ceff] = 404
         self._add({
-            "id": "sc:delete-referenced-%s-%s" % (resource, blocked_id), "entry_point": eid, "method": "DELETE", "path": item_path,
+            "id": "sc:delete-cascading-%s-%s" % (resource, blocked_id), "entry_point": eid, "method": "DELETE", "path": item_path,
             "headers": {}, "identity": {"kind": "none"}, "body_absent": True, "reset_before": True,
-            "effects": [{"id": eff, "method": "GET", "path": item_path}],
+            "effects": effects,
             "normalization": [],
-            "derived_from": {"kind": "delete-referenced", "entry_point": eid,
-                             "evidence": ["bundle:%s" % eid, "seed:%s#%s referenced by %s" % (target["table"], blocked_id, constraints),
-                                          "schema:%s declares no ON DELETE CASCADE or SET NULL" % constraints]},
-            "qualify": {"intent": "negative", "expect_status_class": "4xx", "after_effect_status": {eff: 200}},
-            "why": "seed row %s is referenced by %s and the schema carries no ON DELETE CASCADE or SET NULL, so the source refuses the delete: "
-                   "the response is a 4xx (any) and the read-back still answers 200 with the row" % (blocked_id, constraints),
+            "derived_from": {"kind": "delete-cascading", "entry_point": eid,
+                             "evidence": ["bundle:%s" % eid] + fk_evidence + list(target["mappings"])
+                             + sorted(dict.fromkeys(removal.get("application", []) + removal.get("schema", []))) + notes},
+            "qualify": {"intent": "positive", "expect_status": [200, 204], "after_effect_status": after},
+            "why": "seed row %s is referenced by %s, and the reference is removed with the row (%s), so the source performs the delete: "
+                   "the response is 200 or 204, the row reads back 404 and so does each referencing row a bound route can read"
+                   % (blocked_id, constraints, "; ".join(sorted(dict.fromkeys(removal.get("application", []) + removal.get("schema", []))))),
         })
 
     def _cors(self) -> None:
@@ -1537,8 +1955,13 @@ def main(argv: list[str] | None = None) -> int:
     policies, policy_gap = source_cors_policy_map(root)
     if policy_gap:
         gaps.append("CORS policies unknown: %s; no cross-origin scenario is derived" % policy_gap)
+    # the other half of a delete's evidence: whether the APPLICATION removes
+    # the rows that point at the one being deleted (JPA cascade / orphan
+    # removal / an owned @ManyToMany join table), read from the same structure
+    # model the CORS policies come from
+    persistence = load_persistence_model(root, set(columns) | set(seed))
     try:
-        d = Derivation(root, bundle, openapi, seed, columns, policies, args.origin, foreign_keys)
+        d = Derivation(root, bundle, openapi, seed, columns, policies, args.origin, foreign_keys, persistence)
         d.run()
     except Refusal as exc:
         return blocked(str(exc))

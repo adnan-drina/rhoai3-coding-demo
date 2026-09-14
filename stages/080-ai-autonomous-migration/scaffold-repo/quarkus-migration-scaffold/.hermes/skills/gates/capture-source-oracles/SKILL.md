@@ -113,11 +113,13 @@ points; the request bodies from the frozen source's OpenAPI document (its own
 `example` values, `$ref` and `allOf` resolved, `id` never sent on a create);
 the seeded identifiers (`path_vars`, the row an update or delete addresses)
 from `src/main/resources/db/<engine>/populateDB.sql`; the cross-origin
-exchanges from every `@CrossOrigin` policy in M1's structure model. One
-scenario per rule per write entry point — `create`, `create-invalid` (one
-property violating a declared `pattern` or `minLength`, verified against the
-pattern), `update`, `delete` — and per policy a `cors-actual` read and a
-`cors-preflight`. Each scenario records `derived_from` (which inputs produced
+exchanges from every `@CrossOrigin` policy, and whether a delete's
+references survive it from every JPA relationship, both in M1's structure
+model. One scenario per rule per write entry point — `create`,
+`create-invalid` (one property violating a declared `pattern` or `minLength`,
+verified against the pattern), `update`, `delete` (`delete-referenced` or
+`delete-cascading` where a row is referenced) — and per policy a
+`cors-actual` read and a `cors-preflight`. Each scenario records `derived_from` (which inputs produced
 it) and `qualify` (what its capture must show).
 
 A **delete** addresses a row the database will let go. Every schema file
@@ -126,16 +128,59 @@ found by content — petclinic's is `initDB.sql`, and every file read is listed
 in `_derive.json`) is parsed for `FOREIGN KEY (col) REFERENCES table (col)`,
 inline on a column or added by `ALTER TABLE`. The positive delete takes the
 lowest seed row of the resource's table that nothing references; when every
-row is referenced there is **no positive delete** and a typed gap names the
-constraint (`every seed row of specialties is referenced
+row is referenced there is **no** unreferenced positive delete and a typed gap
+names the constraint (`every seed row of specialties is referenced
 (FK_VET_SPECIALTIES_SPECIALTIES/vet_specialties.specialty_id); no deletable
-row derivable`). Where a referenced row exists and no `ON DELETE
-CASCADE`/`SET NULL` carries the children away, one **negative**
-`sc:delete-referenced-<resource>-<id>` records the refusal the source owns:
-any 4xx, and the item still readable (`200`) afterwards. The table is named
-by the path variable's own mapping (`{petTypeId}` → `types`), else the
-route's segments with the same singular/plural tolerance; a table that cannot
-be named is a gap and the row falls back to the path variable's.
+row derivable`). The table is named by the path variable's own mapping
+(`{petTypeId}` → `types`), else the route's segments with the same
+singular/plural tolerance; a table that cannot be named is a gap and the row
+falls back to the path variable's.
+
+A referenced row is a different question, and **the schema does not answer
+it**. A foreign key with no `ON DELETE CASCADE` says the DATABASE will refuse;
+it does not say the SOURCE will, because the application may remove the
+references itself first. Measured on v9 (2026-09-14): the derived negatives
+expected a refusal for owners, pets, types and vets and the frozen source
+deleted all four (204); only `specialties` refused. So the other half of the
+evidence is the persistence model in M1's structure model, read from the
+annotations and their values — never from text. For the lowest referenced row,
+each constraint that reaches it is classified:
+
+- the **application** removes it — the delete target's entity declares a
+  relationship whose target entity maps to the referencing table with
+  `cascade` containing `ALL`/`REMOVE` or `orphanRemoval = true`
+  (`Owner.pets @OneToMany(cascade = ALL)`), or the referencing table is the
+  join table of a `@ManyToMany` the entity **owns** (it declares the
+  `@JoinTable`, or the other side declares `mappedBy` pointing at its field —
+  `Vet.specialties @JoinTable(vet_specialties)`);
+- the **schema** removes it — the constraint itself declares `ON DELETE
+  CASCADE` / `SET NULL`;
+- **nothing** removes it — the entity declares neither (`Specialty` is the
+  inverse `@ManyToMany` side; `PetType` declares nothing at all, `Pet.type`
+  being a `@ManyToOne` on the child).
+
+An entity is mapped to its table by `@Table(name)` when present, else by its
+simple name with the same singular/plural tolerance, and that mapping is
+recorded as evidence. A relationship's target entity is derived from
+`targetEntity`, from the field type when that is itself an entity, from
+`mappedBy` (the entity declaring a field of that name typed as this one) and
+last from the field name — the structure model records the ERASED field type
+(`java.util.Set`), so a collection's element type is never read off the field.
+
+Each answer derives a different scenario, and nothing is derived from the
+answer nobody has:
+
+| the reference is removed by | scenario | contract |
+|---|---|---|
+| the application, or the schema's own `ON DELETE` rule | one positive `sc:delete-cascading-<resource>-<id>` on the lowest referenced row | `expect_status: [200, 204]`, the item reads back `404`, and so does each referencing row a **bound item route** can read (at most three, the cap noted in `derived_from`); with no such route the effect list is the item alone and `derived_from` says the children are unobservable through routes |
+| nothing | one negative `sc:delete-referenced-<resource>-<id>` | any `4xx`, and the item still readable (`200`) afterwards |
+| not derivable — no structure model, an entity or field that maps to no table, a cascade token this derivation does not know | **neither**; a typed gap (`delete-referenced ep:…: whether the application removes pets.owner_id references is not derivable (…)`) | — |
+
+Both carry the FK evidence **and** the application-removal evidence in
+`derived_from`, so the qualification record can quote which annotation on
+which field decided it (or `none declared`). The gate needs no new check
+kind: a cascading delete's effects are one `after_effect_status` map of
+effect id → `404`.
 
 What cannot be derived is a **gap**, recorded in the corpus and the receipt
 and never filled in: a required property without an example, a path variable
@@ -339,7 +384,8 @@ What refuses, and why:
 
 - `scripts/derive-source-scenarios.py` — M1 producer: derive the corpus from
   the bundle, the OpenAPI examples, the seed rows, the seed schema's foreign
-  keys and the CORS policies; gaps recorded, bound to the bundle in
+  keys, the JPA relationships that decide whether the application removes those
+  references itself, and the CORS policies; gaps recorded, bound to the bundle in
   `verification/scenarios/_derive.json` (which also lists every SQL file read)
 - `scripts/capture-source-oracles.py` — read capture from the source system
 - `scripts/capture-source-scenarios.py` — M1 producer: package and start the

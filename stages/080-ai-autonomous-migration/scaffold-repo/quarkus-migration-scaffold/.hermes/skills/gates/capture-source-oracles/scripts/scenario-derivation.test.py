@@ -95,9 +95,26 @@ def _entry(key: str, method: str, path: str, member: str) -> dict[str, Any]:
             "http_method": method, "http_path": path}
 
 
+def entity(simple: str, table: str = "", fields: list[dict[str, Any]] | None = None, supertypes: list[str] | None = None) -> dict[str, Any]:
+    """A structure-model @Entity as M1 records one: the table from @Table(name)
+    when given, and the erased field types the model really carries."""
+    anns: list[dict[str, Any]] = [{"fqn": "javax.persistence.Entity", "values": {}}]
+    if table:
+        anns.append({"fqn": "javax.persistence.Table", "values": {"name": [table]}})
+    return {"fqn": "a.model.%s" % simple, "annotations": anns, "fields": list(fields or []), "supertypes": list(supertypes or [])}
+
+
+def rel(name: str, kind: str, values: dict[str, Any], type_: str = "java.util.Set", join_table: str = "") -> dict[str, Any]:
+    anns: list[dict[str, Any]] = [{"fqn": "javax.persistence.%s" % kind, "values": values}]
+    if join_table:
+        anns.append({"fqn": "javax.persistence.JoinTable", "values": {"name": [join_table]}})
+    return {"name": name, "type": type_, "annotations": anns}
+
+
 def build_root(td: Path, *, drop_telephone_example: bool = False, servlet: bool = False, api_docs: str | None = None,
                extra_eps: list[dict[str, Any]] | None = None, post_operation_id: str = "addOwner", list_schema: bool = True,
-               seed_sql: str = "", schema_sql: str = "", schema_name: str = "schema.sql") -> Path:
+               seed_sql: str = "", schema_sql: str = "", schema_name: str = "schema.sql",
+               entities: list[dict[str, Any]] | None = None, no_structure: bool = False) -> Path:
     root = td / "dest"
     copy = td / "frozen"
     res = copy / "src" / "main" / "resources"
@@ -112,9 +129,10 @@ def build_root(td: Path, *, drop_telephone_example: bool = False, servlet: bool 
         "CREATE TABLE owners (\n  id INTEGER IDENTITY PRIMARY KEY,\n  first_name VARCHAR(30),\n  last_name VARCHAR(30),\n"
         "  address VARCHAR(255),\n  city VARCHAR(80),\n  telephone VARCHAR(20)\n);\n" + schema_sql, encoding="utf-8")
     write_canonical(producer_receipt(root, "freeze"), {"analysis_copy": str(copy), "source_digest": "fixture-source-digest"})
-    write_canonical(root / STRUCTURE, {"types": [
-        {"fqn": CONTROLLER, "annotations": [{"fqn": "org.springframework.web.bind.annotation.CrossOrigin", "values": {"exposedHeaders": ["errors, content-type"]}}]},
-        {"fqn": "a.OwnerDto", "annotations": []}]})
+    if not no_structure:
+        write_canonical(root / STRUCTURE, {"types": [
+            {"fqn": CONTROLLER, "annotations": [{"fqn": "org.springframework.web.bind.annotation.CrossOrigin", "values": {"exposedHeaders": ["errors, content-type"]}}]},
+            {"fqn": "a.OwnerDto", "annotations": []}] + list(entities or [])})
     eps = [_entry("list", "GET", "/api/owners", "getOwners()"), _entry("get", "GET", "/api/owners/{ownerId}", "getOwner(int)"),
            _entry("create", "POST", "/api/owners", "addOwner(a.OwnerDto)"), _entry("update", "PUT", "/api/owners/{ownerId}", "updateOwner(int,a.OwnerDto)"),
            _entry("delete", "DELETE", "/api/owners/{ownerId}", "deleteOwner(int)")]
@@ -470,8 +488,12 @@ def _foreign_key_delete_case() -> int:
                 "member": "deleteSpecialty(int)", "path": "src/main/java/a/SpecialtyRestController.java",
                 "http_method": "DELETE", "http_path": "/api/specialties/{specialtyId}"}]
         # the schema lives in the seed's own directory under petclinic's own
-        # name: discovery is by content, never by a specimen's filename
-        root = build_root(Path(td), extra_eps=eps, seed_sql=seed, schema_sql=schema, schema_name="initDB.sql")
+        # name: discovery is by content, never by a specimen's filename.
+        # Neither entity removes what points at it, so the refusal is the
+        # source's own and the negative scenario is derivable
+        ents = [entity("Owner", "owners"), entity("Pet", "pets", [rel("owner", "ManyToOne", {}, "a.model.Owner")]),
+                entity("Specialty", "specialties"), entity("Vet", "vets")]
+        root = build_root(Path(td), extra_eps=eps, seed_sql=seed, schema_sql=schema, schema_name="initDB.sql", entities=ents)
         p = _derive(root)
         if p.returncode != 0:
             return _fail("a foreign key is evidence, not a refusal: rc=%s %s%s" % (p.returncode, p.stdout, p.stderr))
@@ -513,6 +535,163 @@ def _foreign_key_delete_case() -> int:
         gaps = load_json(root / CORPUS_P)["gaps"]
         if not any("no schema file declaring CREATE TABLE" in g for g in gaps):
             return _fail("a seed with no schema beside it records why its foreign keys are unknown: %s" % gaps)
+    return 0
+
+
+_REMOVAL_SEED = (
+    "INSERT INTO pets VALUES (1, 'Leo', 1);\n"
+    "INSERT INTO pets VALUES (2, 'Basil', 1);\n"
+    "INSERT INTO pets VALUES (3, 'Rosy', 1);\n"
+    "INSERT INTO pets VALUES (4, 'Jewel', 1);\n"
+    "INSERT INTO pets VALUES (5, 'Iggy', 2);\n"
+    "INSERT INTO vets VALUES (1, 'James');\n"
+    "INSERT INTO vets VALUES (2, 'Helen');\n"
+    "INSERT INTO specialties VALUES (1, 'radiology');\n"
+    "INSERT INTO specialties VALUES (2, 'surgery');\n"
+    "INSERT INTO vet_specialties VALUES (1, 1);\n"
+    "INSERT INTO vet_specialties VALUES (2, 2);\n")
+
+
+def _removal_schema(on_delete: str = "") -> str:
+    return ("CREATE TABLE pets (\n  id INTEGER IDENTITY PRIMARY KEY,\n  name VARCHAR(30),\n  owner_id INT NOT NULL,\n"
+            "  FOREIGN KEY (owner_id) REFERENCES owners (id)%s\n);\n" % on_delete +
+            "CREATE TABLE vets (\n  id INTEGER IDENTITY PRIMARY KEY,\n  name VARCHAR(30)\n);\n"
+            "CREATE TABLE specialties (\n  id INTEGER IDENTITY PRIMARY KEY,\n  name VARCHAR(80)\n);\n"
+            "CREATE TABLE vet_specialties (\n  vet_id INT NOT NULL,\n  specialty_id INT NOT NULL,\n"
+            "  CONSTRAINT FK_VS_VETS FOREIGN KEY (vet_id) REFERENCES vets (id),\n"
+            "  CONSTRAINT FK_VS_SPECIALTIES FOREIGN KEY (specialty_id) REFERENCES specialties (id)\n);\n")
+
+
+def _ep(type_simple: str, member: str, method: str, route: str) -> dict[str, Any]:
+    return {"id": "ep:a.%s#%s:http" % (type_simple, member), "kind": "http", "type": "a.%s" % type_simple, "member": member,
+            "path": "src/main/java/a/%s.java" % type_simple, "http_method": method, "http_path": route}
+
+
+_REMOVAL_EPS = [
+    _entry("delete", "DELETE", "/api/owners/{ownerId}", "deleteOwner(int)"),
+    _ep("PetRestController", "getPet(int)", "GET", "/api/pets/{petId}"),
+    _ep("VetRestController", "deleteVet(int)", "DELETE", "/api/vets/{vetId}"),
+    _ep("SpecialtyRestController", "deleteSpecialty(int)", "DELETE", "/api/specialties/{specialtyId}"),
+]
+
+
+def _application_removal_case() -> int:
+    """A schema foreign key does not say whether the SOURCE refuses the delete.
+
+    Measured on destination v9 (2026-09-14): the derived negative
+    ``sc:delete-referenced-*`` expected a refusal for owners, pets, types and
+    vets, and the frozen source deleted all four (204). Only ``specialties``
+    refused. The difference is in the application, not the schema:
+    ``Owner.pets`` is ``@OneToMany(cascade = ALL)`` and ``Vet.specialties``
+    owns the ``vet_specialties`` ``@JoinTable``, so the application removes the
+    references itself, while ``Specialty`` is the inverse side and declares
+    nothing. The structure model records exactly that, so the derivation reads
+    it and derives by what the evidence supports: a cascading positive, a
+    refusal, or -- when nothing decides -- neither, and a typed gap."""
+    owner_pets = entity("Owner", "owners", [rel("pets", "OneToMany", {"cascade": ["ALL"], "mappedBy": ["owner"]})])
+    pet = entity("Pet", "pets", [rel("owner", "ManyToOne", {}, "a.model.Owner")])
+    vet_owning = entity("Vet", "vets", [rel("specialties", "ManyToMany", {"fetch": ["EAGER"]}, join_table="vet_specialties")])
+    specialty_inverse = entity("Specialty", "specialties", [rel("vets", "ManyToMany", {"mappedBy": ["specialties"]})])
+
+    # (a) cascade ALL on the parent's own field, and (b) the owning @ManyToMany
+    with tempfile.TemporaryDirectory(prefix="derive-cascade-") as td:
+        root = build_root(Path(td), extra_eps=_REMOVAL_EPS, seed_sql=_REMOVAL_SEED, schema_sql=_removal_schema(),
+                          entities=[owner_pets, pet, vet_owning, specialty_inverse])
+        p = _derive(root)
+        if p.returncode != 0:
+            return _fail("the relationship model is evidence, not a refusal: rc=%s %s%s" % (p.returncode, p.stdout, p.stderr))
+        corpus = load_json(root / CORPUS_P)
+        sc = {str(s["id"]): s for s in corpus["scenarios"]}
+        deletes = sorted(i for i in sc if "delete" in i)
+        if deletes != ["sc:delete-cascading-owners-1", "sc:delete-cascading-vets-1", "sc:delete-referenced-specialties-1"]:
+            return _fail("cascade ALL and an owned join table derive a cascading positive; the inverse side keeps the refusal: %s\ngaps: %s"
+                         % (deletes, corpus["gaps"]))
+        casc = sc["sc:delete-cascading-owners-1"]
+        if casc["path"] != "/api/owners/1" or not casc.get("body_absent") or not casc.get("reset_before") or casc["method"] != "DELETE":
+            return _fail("the cascading delete is the same request against the referenced row: %s" % casc)
+        if casc["derived_from"]["kind"] != "delete-cascading":
+            return _fail("the cascading delete names its own rule: %s" % casc["derived_from"])
+        # the children are read back one per referencing row, capped at three
+        if [e["path"] for e in casc["effects"]] != ["/api/owners/1", "/api/pets/1", "/api/pets/2", "/api/pets/3"]:
+            return _fail("the effects are the row and each referencing row a bound item route reads: %s" % casc["effects"])
+        if casc["qualify"] != {"intent": "positive", "expect_status": [200, 204], "after_effect_status": {
+                "eff:owners-1-after-cascading-delete": 404, "eff:pets-1-after-cascading-delete": 404,
+                "eff:pets-2-after-cascading-delete": 404, "eff:pets-3-after-cascading-delete": 404}}:
+            return _fail("the cascading delete states exactly what is checked: %s" % casc["qualify"])
+        ev = casc["derived_from"]["evidence"]
+        if "schema:FOREIGN KEY pets.owner_id → owners.id" not in ev:
+            return _fail("the FK evidence is on the scenario: %s" % ev)
+        if not any(e.startswith("structure:Owner.pets @OneToMany(cascade=ALL)") and "table pets" in e for e in ev):
+            return _fail("the application-removal evidence names the annotation and the field: %s" % ev)
+        if "structure:Owner @Table(name=owners)" not in ev or "structure:Pet @Table(name=pets)" not in ev:
+            return _fail("how each entity was mapped to its table is evidence too: %s" % ev)
+        if not any(e.startswith("note:4 rows of pets reference owners#1") and "first 3" in e for e in ev):
+            return _fail("the cap on the read-back children is noted: %s" % ev)
+        vets = sc["sc:delete-cascading-vets-1"]
+        if [e["path"] for e in vets["effects"]] != ["/api/vets/1"]:
+            return _fail("a join table has no item route, so only the deleted row is read back: %s" % vets["effects"])
+        if not any("owns the vet_specialties join table" in e for e in vets["derived_from"]["evidence"]):
+            return _fail("the owning @ManyToMany is the removal evidence: %s" % vets["derived_from"])
+        if not any(e.startswith("note:") and "not observable through routes" in e for e in vets["derived_from"]["evidence"]):
+            return _fail("a child nothing can read is said to be unobservable, not silently dropped: %s" % vets["derived_from"])
+        neg = sc["sc:delete-referenced-specialties-1"]
+        if neg["qualify"] != {"intent": "negative", "expect_status_class": "4xx",
+                              "after_effect_status": {"eff:specialties-1-after-refused-delete": 200}}:
+            return _fail("the inverse @ManyToMany side keeps the refusal contract: %s" % neg["qualify"])
+        if not any("none declared" in e for e in neg["derived_from"]["evidence"]):
+            return _fail("the negative records that the application declares no removal: %s" % neg["derived_from"])
+        if "structure:Specialty @Table(name=specialties)" not in neg["derived_from"]["evidence"]:
+            return _fail("the negative records the mapping it judged: %s" % neg["derived_from"])
+
+    # (c) the schema's own ON DELETE CASCADE, with an application that declares
+    # nothing: the reference still goes, so the scenario is still positive.
+    # This Owner declares no @Table either, so its table comes from its name
+    with tempfile.TemporaryDirectory(prefix="derive-ondelete-") as td:
+        root = build_root(Path(td), extra_eps=_REMOVAL_EPS, seed_sql=_REMOVAL_SEED,
+                          schema_sql=_removal_schema(" ON DELETE CASCADE"),
+                          entities=[entity("Owner"), pet, vet_owning, specialty_inverse])
+        if _derive(root).returncode != 0:
+            return _fail("an ON DELETE CASCADE is evidence, not a refusal")
+        corpus = load_json(root / CORPUS_P)
+        sc = {str(s["id"]): s for s in corpus["scenarios"]}
+        if "sc:delete-cascading-owners-1" not in sc or "sc:delete-referenced-owners-1" in sc:
+            return _fail("ON DELETE CASCADE carries the children away: %s\ngaps: %s" % (sorted(sc), corpus["gaps"]))
+        ev = sc["sc:delete-cascading-owners-1"]["derived_from"]["evidence"]
+        if not any("ON DELETE CASCADE" in e and e.startswith("schema:FOREIGN KEY pets.owner_id") for e in ev):
+            return _fail("the constraint's own rule is the removal evidence: %s" % ev)
+
+    # an entity with no @Table is mapped by its own name, and says so
+    with tempfile.TemporaryDirectory(prefix="derive-nametable-") as td:
+        root = build_root(Path(td), extra_eps=_REMOVAL_EPS, seed_sql=_REMOVAL_SEED, schema_sql=_removal_schema(),
+                          entities=[entity("Owner", "", [rel("pets", "OneToMany", {"orphanRemoval": ["true"]})]),
+                                    entity("Pet", "", [rel("owner", "ManyToOne", {}, "a.model.Owner")])])
+        if _derive(root).returncode != 0:
+            return _fail("an entity without @Table is a mapping, not a refusal")
+        sc = {str(s["id"]): s for s in load_json(root / CORPUS_P)["scenarios"]}
+        if "sc:delete-cascading-owners-1" not in sc:
+            return _fail("orphanRemoval removes the reference just as cascade REMOVE does: %s" % sorted(sc))
+        ev = sc["sc:delete-cascading-owners-1"]["derived_from"]["evidence"]
+        if "structure:Owner → owners (entity name; no @Table)" not in ev or "structure:Pet → pets (entity name; no @Table)" not in ev:
+            return _fail("the name-derived mapping is recorded as such: %s" % ev)
+        if not any("orphanRemoval=true" in e for e in ev):
+            return _fail("orphanRemoval is named as the removal evidence: %s" % ev)
+
+    # no structure model: neither scenario, and a typed gap saying why
+    with tempfile.TemporaryDirectory(prefix="derive-nostructure-") as td:
+        root = build_root(Path(td), extra_eps=_REMOVAL_EPS, seed_sql=_REMOVAL_SEED, schema_sql=_removal_schema(), no_structure=True)
+        if _derive(root).returncode != 0:
+            return _fail("a missing structure model is a gap, not a refusal")
+        corpus = load_json(root / CORPUS_P)
+        ids = {str(s["id"]) for s in corpus["scenarios"]}
+        if any(i.startswith("sc:delete-referenced-") or i.startswith("sc:delete-cascading-") for i in ids):
+            return _fail("an expectation nobody can derive is not an oracle: %s" % sorted(ids))
+        want = ("delete-referenced ep:a.OwnerRestController#deleteOwner(int):http: whether the application removes pets.owner_id "
+                "references is not derivable (no structure model at evidence/structure/structure.json, so the application's own "
+                "relationships are unknown)")
+        if want not in corpus["gaps"]:
+            return _fail("the gap names the reference and why it is not derivable: %s" % corpus["gaps"])
+        if not any("vet_specialties.specialty_id references is not derivable" in g for g in corpus["gaps"]):
+            return _fail("every undecidable reference gets its own gap: %s" % corpus["gaps"])
     return 0
 
 
@@ -894,7 +1073,7 @@ def main() -> int:
             return rc
         assert root is not None
         if (_gap_cases() or _real_excerpt_case() or _path_variable_case() or _foreign_key_delete_case()
-                or _qualification_case(root) or _receipt_case()):
+                or _application_removal_case() or _qualification_case(root) or _receipt_case()):
             return 1
     finally:
         if td is not None:
@@ -909,7 +1088,12 @@ def main() -> int:
           "an operationId whose operation carries path variables the route cannot supply is a typed gap and no scenario, while a matching "
           "variable set still binds; a delete addresses the lowest seed row nothing references, an all-referenced table is a typed gap naming "
           "the constraint and earns one negative delete-referenced scenario instead, the schema is discovered beside the seed by content "
-          "(initDB.sql) and recorded in the receipt, and a seed with no schema says its foreign keys are unknown; "
+          "(initDB.sql) and recorded in the receipt, and a seed with no schema says its foreign keys are unknown; what a REFERENCED row "
+          "proves is read from the application too: a cascade ALL / orphanRemoval relationship, an owned @ManyToMany join table or the "
+          "constraint's own ON DELETE CASCADE derive a positive delete-cascading naming each referencing row a bound item route reads "
+          "(capped at three, and unobservable children said to be so), the inverse @ManyToMany side keeps the negative, both carry the FK, "
+          "the entity-to-table mapping and the removal evidence, and with no structure model neither scenario is derived and a typed gap "
+          "names the reference; "
           "qualification judges evidence before intent: it PASSes captures that show the contract, FAILs a relative or foreign Location, a create "
           "with no new identity or a duplicated prior entity or a Location naming 999, a 400 without the errors header, one naming another field, "
           "or one with a changed list, and is INCONCLUSIVE with known_failures recorded for a 500 beside an unbound read-back, a non-JSON errors "
