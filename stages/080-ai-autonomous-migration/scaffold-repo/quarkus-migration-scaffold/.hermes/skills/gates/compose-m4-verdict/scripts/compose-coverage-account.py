@@ -62,9 +62,31 @@ def parity_verdicts(root: Path) -> tuple[str, dict[str, str]]:
     return str(doc.get("verdict") or ""), rows
 
 
+def uncovered_capabilities(root: Path) -> list[dict]:
+    """The parity receipt's ``coverage_gaps``: scenarios whose capture did
+    not demonstrate the operation the scenario intends (``fixture-failed``:
+    the SOURCE did not perform it, e.g. a 500 deleting a referenced pettype)
+    or whose qualification judged another capture (``stale-qualification``).
+    The parity receipt used to be read for its per-entry-point verdict only,
+    so such a gap was invisible here (architect review of 708cfef9): an
+    entry point could earn replacement credit for a capability nobody
+    demonstrated. Each is recorded as UNCOVERED and denies credit."""
+    p = root / PARITY_DIR / "receipt.json"
+    if not p.is_file():
+        return []
+    out = []
+    for g in (load_json(p).get("coverage_gaps") or []):
+        if isinstance(g, dict) and g.get("entry_point"):
+            out.append({"scenario": str(g.get("scenario") or ""), "entry_point": str(g.get("entry_point")),
+                        "kind": str(g.get("kind") or "not-qualified"), "intent": str(g.get("intent") or "positive"),
+                        "reason": str(g.get("reason") or "")})
+    return sorted(out, key=lambda g: (g["entry_point"], g["scenario"]))
+
+
 def rows_of(doc: dict, root: Path) -> list[dict]:
     ok = accepted_adrs(doc)
     parity_verdict, per_ep = parity_verdicts(root)
+    uncovered = uncovered_capabilities(root)
     surefire = load_json(root / SUREFIRE_RECEIPT) if (root / SUREFIRE_RECEIPT).is_file() else None
     tests_executed = bool(surefire) and int(surefire.get("rc", 1)) == 0
     out: list[dict] = []
@@ -84,6 +106,11 @@ def rows_of(doc: dict, root: Path) -> list[dict]:
                 gaps.append("%s is not an entry point the parity receipt measured" % ep)
             elif verdict != "PASS":
                 gaps.append("%s measured %s, not PASS" % (ep, verdict))
+            for g in uncovered:
+                if g["entry_point"] == ep and g["intent"] == "positive":
+                    # no replacement credit for a capability the source never
+                    # demonstrated, whatever the entry point's parity verdict
+                    gaps.append("%s: %s did not demonstrate its capability (%s: %s); no replacement credit" % (ep, g["scenario"], g["kind"], g["reason"][:160]))
         if named and kind == "test" and not tests_executed:
             gaps.append("a retired test is replaced only beside fresh executed test evidence (%s)" % ("assert-surefire-results receipt rc %s" % surefire.get("rc") if surefire else "no assert-surefire-results receipt"))
         out.append({
@@ -112,6 +139,7 @@ def main(argv: list[str] | None = None) -> int:
     parity_verdict, per_ep = parity_verdicts(root)
     rows = rows_of(doc, root)
     gaps = [r["path"] for r in rows if r["remaining_gap"]]
+    uncovered = uncovered_capabilities(root)
     account = {
         "schema": "rhoai3.coverage-account/v1",
         "producer": "compose-coverage-account.py",
@@ -124,8 +152,13 @@ def main(argv: list[str] | None = None) -> int:
             "implementations": sum(1 for r in rows if r["kind"] == "implementation"),
             "replaced": len(rows) - len(gaps),
             "remaining_gaps": len(gaps),
+            "uncovered_capabilities": len(uncovered),
         },
         "remaining_gaps": sorted(gaps),
+        # capabilities the source never demonstrated (the parity receipt's
+        # coverage_gaps): uncovered, never silently covered by a passing
+        # entry point
+        "uncovered_capabilities": uncovered,
     }
     out = Path(args.out).resolve() if args.out else root / ACCOUNT
     write_canonical(out, account)

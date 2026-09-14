@@ -72,9 +72,6 @@ def load_corpus(root: Path) -> dict[str, Any]:
     doc = load_json(p)
     if not isinstance(doc, dict) or doc.get("schema") != SCHEMA:
         raise CorpusError("%s is not a %s document" % (CORPUS, SCHEMA))
-    provenance_gap = corpus_provenance_gap(root, doc)
-    if provenance_gap:
-        raise CorpusError(provenance_gap)
     if doc.get("path_vars") is not None and not isinstance(doc.get("path_vars"), dict):
         raise CorpusError("%s path_vars must be a mapping of template variable to a value from the source's own seeded data" % CORPUS)
     seen: set[str] = set()
@@ -105,6 +102,11 @@ def load_corpus(root: Path) -> dict[str, Any]:
             raise CorpusError("scenario %s sends a cross-origin Origin and names no cors_policy; coverage is counted per policy" % sc["id"])
         if sc.get("cors_policy") and str(sc["cors_policy"]) not in {str(p.get("id")) for p in (doc.get("cors_policies") or [])}:
             raise CorpusError("scenario %s names cors_policy %r, which cors_policies does not declare" % (sc["id"], sc["cors_policy"]))
+    # provenance last: it recomputes request digests, which assumes the
+    # scenarios are well-formed (checked above)
+    provenance_gap = corpus_provenance_gap(root, doc)
+    if provenance_gap:
+        raise CorpusError(provenance_gap)
     return doc
 
 
@@ -164,6 +166,31 @@ def corpus_provenance_gap(root: Path, doc: dict[str, Any]) -> str:
     if str(receipt.get("evidence_bundle_sha256") or "") != bundle_sha:
         return ("%s was derived against evidence bundle %s, this tree's bundle is %s: derive it again"
                 % (CORPUS, str(receipt.get("evidence_bundle_sha256") or "")[:12], bundle_sha[:12]))
+    # the corpus digest binds body FILENAMES only; the receipt binds the body
+    # bytes and every complete request digest, and each is recomputed here (a
+    # body edited after derivation passed the corpus digest: architect review
+    # of 708cfef9, body_only_edit_after_derivation)
+    bodies = receipt.get("bodies")
+    requests = receipt.get("requests")
+    if not isinstance(bodies, dict) or not isinstance(requests, dict):
+        return "%s binds no body or request digests (bodies/requests); derive the corpus again" % DERIVE_RECEIPT
+    for sc in doc.get("scenarios") or []:
+        if not isinstance(sc, dict):
+            continue
+        sid = str(sc.get("id"))
+        bf = str(sc.get("body_file") or "")
+        if bf:
+            bp = Path(root) / bf
+            if not bp.is_file():
+                return "body/request edited after derivation: %s names body_file %s, which is absent" % (sid, bf)
+            if sha256_bytes(bp.read_bytes()) != str(bodies.get(bf) or ""):
+                return "body/request edited after derivation: %s (%s) no longer has the bytes the derivation wrote" % (bf, sid)
+        try:
+            have = request_of(root, sc)["request_sha256"]
+        except CorpusError as exc:
+            return "body/request edited after derivation: %s" % exc
+        if have != str(requests.get(sid) or ""):
+            return "body/request edited after derivation: %s request digest %s is not the derived %s" % (sid, have[:12], str(requests.get(sid) or "")[:12])
     return ""
 
 

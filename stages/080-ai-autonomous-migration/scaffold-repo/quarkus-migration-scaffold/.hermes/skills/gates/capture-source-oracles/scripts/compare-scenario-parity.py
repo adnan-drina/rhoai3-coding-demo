@@ -18,6 +18,7 @@ INCONCLUSIVE exit 1 and say which comparison failed.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import shlex
 import subprocess
 import sys
@@ -25,7 +26,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _oracle_common import ensure_hermes_lib, header_diffs, http_observe, is_preflight, origin_of, required_headers  # noqa: E402
-from _scenarios import (CorpusError, SCENARIO_ORACLES, SCENARIO_PARITY, auth_headers, corpus_digest,  # noqa: E402
+from _scenarios import (CorpusError, QUALIFICATION, SCENARIO_ORACLES, SCENARIO_PARITY, auth_headers, corpus_digest,  # noqa: E402
                         load_corpus, request_of, scenario, scenario_slug, source_exposed_headers)
 
 ensure_hermes_lib()
@@ -73,13 +74,37 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     oracle = load_json(oracle_p)
     checks: list[str] = []
+    # A positive scenario whose capture FAILED qualification is a SOURCE-SIDE
+    # fixture failure (a 500 deleting a referenced pettype): the source did
+    # not perform the operation, so there is nothing to compare, no parity
+    # credit, and no destination repair card. Parity is not asked
+    # (architect review of 708cfef9). Only a qualification bound to THIS
+    # capture counts; a stale one judged another capture.
+    qp = root / QUALIFICATION
+    if qp.is_file():
+        try:
+            qdoc = load_json(qp)
+        except (OSError, ValueError):
+            qdoc = {}
+        q = (qdoc.get("scenarios") or {}).get(args.scenario) if isinstance(qdoc, dict) else None
+        if isinstance(q, dict) and str(qdoc.get("corpus_sha256") or "") == verdict["corpus_sha256"]:
+            bound = str(q.get("capture_sha256") or "")
+            on_disk = hashlib.sha256(oracle_p.read_bytes()).hexdigest()
+            verdict["qualification"] = {"capability": q.get("capability"), "intent": q.get("intent"), "stale": bool(bound) and bound != on_disk}
+            if (not bound or bound == on_disk) and str(q.get("capability")) == "FAIL" and str(q.get("intent") or "positive") == "positive":
+                verdict["reason"] = "source fixture failed qualification: %s" % (q.get("reason") or "")
+                write_canonical(out, verdict)
+                print("REFUSE: SCENARIO_PARITY %s INCONCLUSIVE (%s)" % (args.scenario, verdict["reason"]), file=sys.stderr)
+                return 1
     if oracle.get("status") != "CAPTURED":
         checks.append("the source capture is %s: %s" % (oracle.get("status"), oracle.get("reason")))
     # The capture is bound to the frozen source (the evidence bundle) and to
     # the corpus, not to the admission receipt: it is taken at M1, and a
     # destination repair must not oblige anyone to re-capture the source.
     bundle_sha = digest(load_json(root / EVIDENCE_BUNDLE))
-    if str(oracle.get("evidence_bundle_sha256") or "") not in ("", bundle_sha):
+    if not oracle.get("evidence_bundle_sha256"):
+        checks.append("capture not bound to the frozen source (no evidence_bundle_sha256); re-capture it")
+    elif str(oracle.get("evidence_bundle_sha256")) != bundle_sha:
         checks.append("the source capture describes bundle %s, this run's is %s" % (str(oracle.get("evidence_bundle_sha256"))[:12], bundle_sha[:12]))
     if oracle.get("corpus_sha256") != corpus_digest(corpus):
         checks.append("the source capture was taken against corpus %s, this is corpus %s; re-capture the source rather than comparing across corpora"

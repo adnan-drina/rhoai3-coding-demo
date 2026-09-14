@@ -41,7 +41,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _oracle_common import ensure_hermes_lib  # noqa: E402
-from _scenarios import CORPUS, DERIVATION_SCHEMA, DERIVE_RECEIPT, SCHEMA, corpus_digest, source_cors_policy_map  # noqa: E402
+from _scenarios import CORPUS, DERIVATION_SCHEMA, DERIVE_RECEIPT, SCHEMA, corpus_digest, request_of, source_cors_policy_map  # noqa: E402
 
 ensure_hermes_lib()
 from planner import yamlite  # noqa: E402
@@ -498,14 +498,37 @@ def member_name(member: Any) -> str:
     return str(member or "").split("(", 1)[0].strip()
 
 
-def operation_stems(doc: dict[str, Any], op: dict[str, Any]) -> list[str]:
-    out = [str(t).lower() for t in (op.get("tags") or []) if str(t).strip()]
+_TYPE_SUFFIXES = ("dto", "fields", "request", "input", "payload")
+
+
+def type_stem(name: str) -> str:
+    """``OwnerDto`` / ``OwnerFields`` -> ``owner``: the entity a request type
+    is named for, after the conventional suffixes."""
+    s = str(name or "").rsplit(".", 1)[-1].lower()
+    for suf in _TYPE_SUFFIXES:
+        if s.endswith(suf) and len(s) > len(suf):
+            return s[: -len(suf)]
+    return s
+
+
+def member_param_stems(member: Any) -> list[str]:
+    """The stems of a controller member's parameter types
+    (``addOwner(a.OwnerDto,org.springframework.validation.BindingResult)`` ->
+    ``[owner, bindingresult]``)."""
+    inner = str(member or "").partition("(")[2].rpartition(")")[0]
+    return [type_stem(p.strip()) for p in inner.split(",") if p.strip()]
+
+
+def operation_tag_stems(op: dict[str, Any]) -> list[str]:
+    return [str(t).lower() for t in (op.get("tags") or []) if str(t).strip()]
+
+
+def request_schema_name(doc: dict[str, Any], op: dict[str, Any]) -> str:
     schema = body_schema(doc, op)
-    if schema is not None:
-        _, name = _deref(doc, schema)
-        if name:
-            out.append(name.lower())
-    return out
+    if schema is None:
+        return ""
+    _, name = _deref(doc, schema)
+    return name
 
 
 def find_operation(doc: dict[str, Any], http_path: str, method: str) -> tuple[str, dict[str, Any], dict[str, Any]] | None:
@@ -844,7 +867,7 @@ class Derivation:
             got[name] = val
         return got, unresolved
 
-    def _lookup(self, ep: dict[str, Any]) -> tuple[str, dict[str, Any], dict[str, Any], str] | None:
+    def _lookup(self, ep: dict[str, Any], strict: bool = True) -> tuple[str, dict[str, Any], dict[str, Any], str] | None:
         """(path, path item, operation, binding evidence) for an entry point.
 
         By path when the document names the code's routes; else by
@@ -856,10 +879,26 @@ class Derivation:
         ``OwnerFields``) binds, and an ambiguity that survives is a gap, not
         a guess."""
         method = str(ep.get("http_method") or "").upper()
-        found = find_operation(self.openapi, str(ep.get("http_path") or ""), method)
-        if found is not None:
-            return found[0], found[1], found[2], "openapi:%s#%s(path)" % (found[0], method.lower())
+        route = str(ep.get("http_path") or "")
         name = member_name(ep.get("member"))
+        found = find_operation(self.openapi, route, method)
+        if found is not None:
+            oa_path, item, op = found
+            opid = str(op.get("operationId") or "")
+            if strict and opid and name and opid != name:
+                # the path matches but the document says this operation is
+                # another member's: binding it would hand one controller
+                # another's body (architect review of 708cfef9: addVet bound
+                # to the addOwner controller by path alone)
+                self.gaps.append("conflicting binding: path %s ↔ operationId %s ≠ member %s (%s); nothing is derived for it" % (oa_path, opid, name, ep.get("id")))
+                return None
+            return oa_path, item, op, "openapi:%s#%s(path)" % (oa_path, method.lower())
+        # the explicit adapter: the document's paths do not name the code's
+        # routes, so the operation is the one whose operationId names this
+        # controller member -- same method, exactly one member of that name
+        # among the bundle's entry points, or one singled out by a COMPATIBLE
+        # request schema (OwnerDto <-> OwnerFields); tags and name stems only
+        # narrow, never establish
         ops = self.by_opid.get((method, name)) or []
         if not name or not ops:
             return None
@@ -869,16 +908,20 @@ class Derivation:
         oa_path, item, op = ops[0]
         claimants = [e for e in self.eps if str(e.get("http_method") or "").upper() == method and member_name(e.get("member")) == name]
         if len(claimants) > 1:
-            stems = operation_stems(self.openapi, op)
-            survivors = [e for e in claimants if any(s.startswith(_stem(str(e.get("type") or ""))) for s in stems)]
+            schema_name = request_schema_name(self.openapi, op)
+            survivors = [e for e in claimants if schema_name and type_stem(schema_name) in member_param_stems(e.get("member"))]
+            if len(survivors) > 1:
+                narrow = [e for e in survivors if any(t.startswith(_stem(str(e.get("type") or ""))) for t in operation_tag_stems(op))]
+                survivors = narrow if len(narrow) == 1 else survivors
             if len(survivors) != 1:
                 if ep is claimants[0]:
-                    self.gaps.append("operationId %s (%s %s) is claimed by %d entry points and its tags/schema (%s) single out none: %s"
-                                     % (name, method, oa_path, len(claimants), ", ".join(stems) or "none", ", ".join(str(e.get("id")) for e in claimants)))
+                    self.gaps.append("ambiguous binding: operationId %s (%s %s) is claimed by %d members and its request schema %s singles out %s: %s"
+                                     % (name, method, oa_path, len(claimants), schema_name or "(none)", "none" if not survivors else "%d" % len(survivors),
+                                        ", ".join(str(e.get("id")) for e in claimants)))
                 return None
             if survivors[0] is not ep:
                 return None
-        return oa_path, item, op, "openapi:%s#%s(operationId %s)" % (oa_path, method.lower(), name)
+        return oa_path, item, op, "openapi-path:%s≠route:%s; bound by operationId %s" % (oa_path, route, name)
 
     # -- rules -------------------------------------------------------------
     def run(self) -> None:
@@ -890,7 +933,9 @@ class Derivation:
                 kind = str(ep.get("kind") or "http")
                 self.gaps.append("entry point %s has no HTTP method (%s); nothing is derived for it" % (eid, "a non-HTTP entry point is captured by observation" if kind != "http" else "a servlet mapping is not a request the corpus can derive"))
                 continue
-            found = self._lookup(ep)
+            # a read consults the document for path-parameter examples only;
+            # the binding rules (and their gaps) are for the writes it feeds
+            found = self._lookup(ep, strict=method not in ("GET", "HEAD"))
             examples = path_param_examples(self.openapi, found[1], found[2]) if found else {}
             got, unresolved = self._resolve_vars(ep, examples)
             for name in unresolved:
@@ -940,6 +985,9 @@ class Derivation:
         evidence = ["bundle:%s" % eid, binding, "openapi:%s#post.requestBody(%s)" % (oa_path, label)]
         if policy:
             evidence.append("structure:%s@CrossOrigin(%s)" % (type_fqn, policy))
+        identity, id_evidence = self._identity_field(oa_path, _item, op)
+        if id_evidence:
+            evidence.append(id_evidence)
         sid = "sc:create-%s" % resource
         sc: dict[str, Any] = {
             "id": sid, "entry_point": eid, "method": "POST", "path": route, "headers": headers,
@@ -948,50 +996,101 @@ class Derivation:
             "effects": [{"id": "eff:%s-list-after-create" % resource, "method": "GET", "path": route}],
             "normalization": [],
             "derived_from": {"kind": "create", "entry_point": eid, "evidence": evidence},
-            # count-based, not absent-before: a document's example is often a
-            # seeded row verbatim (petclinic's OwnerFields example IS owner 1),
-            # so "absent before" could never hold; "one more than before" can
-            "qualify": {"expect_status": [201], "location": "absolute-under-base", "after_contains_body": True, "after_adds_one_body": True},
-            "why": "the document's own example of %s, created on the collection the route names; the read-back shows one more matching row than before" % label,
+            # identity-aware, not count-based: exactly one entity with a NEW
+            # identity, carrying the body, every prior entity kept, and the
+            # Location naming that identity (architect review of 708cfef9: a
+            # duplicate row with an existing id and a Location pointing at
+            # 999 passed a count). identity_field null -> the gate is
+            # INCONCLUSIVE, never a guess
+            "qualify": {"intent": "positive", "expect_status": [201], "location": "absolute-under-base", "after_contains_body": True,
+                        "creates_one_entity": True, "identity_field": identity},
+            "why": "the document's own example of %s, created on the collection the route names; the read-back shows exactly one new entity carrying it" % label,
         }
         if policy:
             sc["cors_policy"] = policy
         self._add(sc)
-        # create-invalid: the same body with ONE property the schema refuses
-        field, bad_value = "", None
+        # create-invalid, ONE per constrained property: a firstName rejection
+        # is not telephone coverage. Each body violates exactly one declared
+        # constraint (a pattern, verified against it; else a required
+        # minLength string set to "")
+        constrained: list[tuple[str, Any]] = []
         for pname, pnode in (sch.get("properties") or {}).items():
             psch = merged_schema(self.openapi, pnode, pname)
-            if psch.get("pattern") and pname in body:
+            if pname not in body:
+                continue
+            if psch.get("pattern"):
                 bad_value = _invalid_value(body[pname], str(psch["pattern"]))
                 if bad_value is not None:
-                    field = pname
-                    break
-        if not field:
-            for pname in (sch.get("required") or []):
-                psch = merged_schema(self.openapi, (sch.get("properties") or {}).get(pname), pname)
-                if psch.get("type") == "string" and int(psch.get("minLength") or 0) >= 1 and pname in body:
-                    field, bad_value = pname, ""
-                    break
-        if not field:
+                    constrained.append((pname, bad_value))
+                    continue
+            if pname in (sch.get("required") or []) and psch.get("type") == "string" and int(psch.get("minLength") or 0) >= 1:
+                constrained.append((pname, ""))
+        if not constrained:
             self.gaps.append("create-invalid %s: %s has no property with a pattern or a required minLength string; no invalid body can be derived" % (eid, label))
             return
-        invalid = dict(body)
-        invalid[field] = bad_value
-        isid = "sc:create-invalid-%s" % resource
-        isc: dict[str, Any] = {
-            "id": isid, "entry_point": eid, "method": "POST", "path": route, "headers": dict(headers),
-            "identity": {"kind": "none"}, "body_file": _write_body(self.root, isid, invalid), "body_absent": False,
-            "reset_before": True,
-            "effects": [{"id": "eff:%s-list-after-invalid-create" % resource, "method": "GET", "path": route}],
-            "normalization": [],
-            "derived_from": {"kind": "create-invalid", "entry_point": eid,
-                             "evidence": evidence + ["openapi:%s.%s constraint" % (label, field)]},
-            "qualify": {"expect_status": [400], "errors_header_names_field": field, "after_equals_before": True},
-            "why": "the same body with %s violating the constraint the document declares; the read-back shows nothing was created" % field,
-        }
-        if policy:
-            isc["cors_policy"] = policy
-        self._add(isc)
+        for field, bad_value in constrained:
+            invalid = dict(body)
+            invalid[field] = bad_value
+            isid = "sc:create-invalid-%s-%s" % (resource, field)
+            isc: dict[str, Any] = {
+                "id": isid, "entry_point": eid, "method": "POST", "path": route, "headers": dict(headers),
+                "identity": {"kind": "none"}, "body_file": _write_body(self.root, isid, invalid), "body_absent": False,
+                "reset_before": True,
+                "effects": [{"id": "eff:%s-list-after-invalid-create-%s" % (resource, field), "method": "GET", "path": route}],
+                "normalization": [],
+                "derived_from": {"kind": "create-invalid", "entry_point": eid,
+                                 "evidence": evidence + ["openapi:%s.%s constraint" % (label, field)]},
+                "qualify": {"intent": "negative", "expect_status": [400], "errors_header_names_field": field, "after_equals_before": True},
+                "why": "the same body with %s violating the constraint the document declares; the source must reject it and create nothing" % field,
+            }
+            if policy:
+                isc["cors_policy"] = policy
+            self._add(isc)
+
+    def _identity_field(self, oa_path: str, item: dict[str, Any], post_op: dict[str, Any]) -> tuple[str | None, str]:
+        """(the collection's identity property, evidence) from the OpenAPI
+        RESPONSE schema of the collection GET -- the ``get`` of the same path
+        item the create bound to -- the items' property named ``id``, else
+        the first readOnly integer property (``Owner`` = allOf(OwnerFields)
+        + id). When the path item has no listing, the create's own 2xx
+        response entity says the same. None when the document does not say:
+        the gate then refuses to judge the create, never counts."""
+        def entity_identity(sch: dict[str, Any], where: str) -> tuple[str | None, str]:
+            props = sch.get("properties") or {}
+            label = sch.get("label") or "entity"
+            if "id" in props:
+                return "id", "openapi:%s %s(%s).id" % (oa_path, where, label)
+            for pname, pnode in props.items():
+                psch = merged_schema(self.openapi, pnode, pname)
+                if psch.get("readOnly") is True and psch.get("type") == "integer":
+                    return pname, "openapi:%s %s(%s).%s readOnly integer" % (oa_path, where, label, pname)
+            return None, ""
+
+        def json_schemas(op: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
+            out = []
+            for code, resp in sorted((op.get("responses") or {}).items(), key=lambda kv: str(kv[0])):
+                if not str(code).startswith("2") and str(code) != "default":
+                    continue
+                resp, _ = _deref(self.openapi, resp)
+                for ctype, media in ((resp or {}).get("content") or {}).items():
+                    if "json" in str(ctype).lower() and isinstance(media, dict) and media.get("schema") is not None:
+                        out.append((str(code), merged_schema(self.openapi, media["schema"])))
+            return out
+
+        get_op = item.get("get") if isinstance(item, dict) else None
+        if isinstance(get_op, dict):
+            for code, sch in json_schemas(get_op):
+                items = sch.get("items") if sch.get("type") == "array" or "items" in sch else None
+                if items is None:
+                    continue
+                found = entity_identity(merged_schema(self.openapi, items), "#get.responses.%s items" % code)
+                if found[0]:
+                    return found
+        for code, sch in json_schemas(post_op):
+            found = entity_identity(sch, "#post.responses.%s" % code)
+            if found[0]:
+                return found
+        return None, ""
 
     def _update(self, ep: dict[str, Any], found: Any, got: dict[str, str], unresolved: list[str]) -> None:
         eid, route = str(ep["id"]), str(ep.get("http_path") or "")
@@ -1036,7 +1135,7 @@ class Derivation:
             "normalization": [],
             "derived_from": {"kind": "update", "entry_point": eid,
                              "evidence": ["bundle:%s" % eid, binding, "openapi:%s#put.requestBody(%s)" % (oa_path, label), self.path_var_evidence.get(names[0], "")]},
-            "qualify": {"expect_status": [200, 204], "after_contains_body": True},
+            "qualify": {"intent": "positive", "expect_status": [200, 204], "after_contains_body": True},
             "why": "the document's own example of %s written over the seeded row %s; the read-backs show the row and the list carry it" % (label, seeded),
         })
 
@@ -1061,7 +1160,7 @@ class Derivation:
             "effects": [{"id": eff, "method": "GET", "path": item_path}],
             "normalization": [],
             "derived_from": {"kind": "delete", "entry_point": eid, "evidence": ["bundle:%s" % eid, self.path_var_evidence.get(names[0], "")]},
-            "qualify": {"expect_status": [200, 204], "after_effect_status": {eff: 404}},
+            "qualify": {"intent": "positive", "expect_status": [200, 204], "after_effect_status": {eff: 404}},
             "why": "the seeded row %s exists by construction; the read-back after the delete must not find it" % seeded,
         })
 
@@ -1080,7 +1179,7 @@ class Derivation:
             if actual is None:
                 self.gaps.append("cors policy %s: no controller carrying it has a collection GET to exercise the actual exchange" % pid)
             else:
-                q: dict[str, Any] = {"expect_status": [200], "cors_allow_origin": True}
+                q: dict[str, Any] = {"intent": "positive", "expect_status": [200], "cors_allow_origin": True}
                 exposed = _exposed(pol.get("values"))
                 if exposed:
                     q["cors_expose_headers"] = exposed
@@ -1103,7 +1202,7 @@ class Derivation:
                     "body_absent": True, "reset_before": False, "effects": [], "normalization": [], "cors_policy": pid,
                     "derived_from": {"kind": "cors-preflight", "entry_point": str(post["id"]),
                                      "evidence": ["structure:%s(%s)" % (pid, ", ".join(pol.get("types") or [])), "bundle:%s" % post["id"]]},
-                    "qualify": {"expect_status": [200, 204], "cors_allow_origin": True, "cors_allow_method": "POST", "cors_allow_headers": ["content-type"]},
+                    "qualify": {"intent": "positive", "expect_status": [200, 204], "cors_allow_origin": True, "cors_allow_method": "POST", "cors_allow_headers": ["content-type"]},
                     "why": "the preflight a browser sends before the create under %s; no credentials, no effects" % pid,
                 })
 
@@ -1209,11 +1308,16 @@ def main(argv: list[str] | None = None) -> int:
     }
     corpus_sha = corpus_digest(doc)
     write_canonical(out_p, doc)
+    # the corpus digest binds body FILENAMES; the bytes and the complete
+    # request digests are bound here, so an edited body file (architect
+    # review of 708cfef9: body_only_edit_after_derivation) is refused too
+    bodies = {str(s["body_file"]): sha256_file(root / str(s["body_file"])) for s in d.scenarios if s.get("body_file")}
+    requests = {str(s["id"]): request_of(root, s)["request_sha256"] for s in d.scenarios}
     write_canonical(receipt_p, {
         "schema": DERIVATION_SCHEMA, "producer": PRODUCER, "at": _now(), "status": "ok", "reason": "",
         "evidence_bundle_sha256": bundle_sha, "corpus_sha256": corpus_sha, "corpus": _rel(out_p, root),
         "inputs": inputs, "seed_engine": engine, "origin": args.origin,
-        "scenarios": [str(s["id"]) for s in d.scenarios], "gaps": gaps,
+        "scenarios": [str(s["id"]) for s in d.scenarios], "bodies": bodies, "requests": requests, "gaps": gaps,
     })
     print("OK: derived %d scenario(s), %d gap(s) (corpus %s, bundle %s) → %s" % (len(d.scenarios), len(gaps), corpus_sha[:12], bundle_sha[:12], _rel(out_p, root)))
     for g in gaps:

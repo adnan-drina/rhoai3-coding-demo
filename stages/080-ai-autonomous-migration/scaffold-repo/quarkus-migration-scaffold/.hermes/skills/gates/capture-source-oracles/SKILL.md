@@ -134,39 +134,86 @@ a hand-authored corpus at its output path.
 `CAPTURED` records an observation, including an unexpected one.
 `scripts/qualify-source-captures.py` checks every capture against its
 scenario's `qualify` block and writes
-`verification/source-oracles/scenarios/_qualification.json`: `expect_status`;
-`location: absolute-under-base` (absolute, on the capture's `source.base_url`
-origin, under its path); `after_contains_body` (the request body's key/values
-present in an object of the retained read-back afterwards);
-`after_adds_one_body` (exactly one more matching object after than before —
-a document's example is often a seeded row verbatim, so a derived create
-promises "one more", never "absent before"); `before_lacks_body` (kept for a
-hand-authored corpus); `after_equals_before` (same digest and status); 
-`errors_header_names_field`; `after_effect_status`; `cors_allow_origin`,
-`cors_expose_headers`, `cors_allow_method`, `cors_allow_headers` (token sets).
-Retained bodies are read only when their file matches `retained_sha256`, the
-body is complete (`raw_body_sha256`, not `truncated`) and the row's
-`body_sha256` recomputes. A missing capture, a missing or unbound body, a
-digest mismatch or a scenario without a contract is INCONCLUSIVE, never a
-pass; a check that does not hold is FAIL. The gate exits 0 only when every
-scenario the corpus lists is PASS. `compose-parity-receipt.py` reads the
-verdicts: a scenario qualified **INCONCLUSIVE** (or with no record) makes its
-entry point INCONCLUSIVE (`capture not qualified: …`), and a derived corpus
-with no qualification at all is INCONCLUSIVE (`captures not qualified`). A
-scenario qualified **FAIL** does *not*: its capture is still faithful parity
-evidence (a source that refuses to delete a referenced row has demonstrated a
-rejection the destination must reproduce), so the entry point is judged on
-parity and the scenario is listed under the receipt's `coverage_gaps`
-(`{scenario, entry_point, reason}`) — the intent was not demonstrated, and
-that stays on the record. An Operator-authored corpus without a
-qualification file keeps its previous behaviour.
+`verification/source-oracles/scenarios/_qualification.json` with **two
+results per scenario**:
+
+- `evidence`: `USABLE` or `UNUSABLE` — can this capture be judged at all?
+  It must exist and be `CAPTURED`, be bound to this corpus, this bundle and
+  this very request (`request_sha256`), every retained body the contract
+  reads must be present, digest-bound (`retained_sha256`, `raw_body_sha256`,
+  not `truncated`, `body_sha256` recomputing) and every read-back the
+  contract reads must have answered 2xx. Evidence is judged **before**
+  intent: with unusable evidence `capability` is INCONCLUSIVE, never FAIL,
+  while `known_failures` still records what was observed (a 500 is on the
+  record, not hidden).
+- `capability`: `PASS | FAIL | INCONCLUSIVE` — did the source demonstrate
+  what the scenario intends? `qualify.intent` is `positive` (create, update,
+  delete, cors-actual, cors-preflight: the source performed it) or
+  `negative` (create-invalid: the source rejected as intended — the status,
+  a parsed field error naming the property, and no effect).
+
+The checks: `expect_status`; `location: absolute-under-base` (absolute, on
+the capture's `source.base_url` origin, under its path, compared literally);
+`creates_one_entity` with `identity_field` (derived from the collection
+GET's OpenAPI response schema — the items' `id`, else the first readOnly
+integer; `null` makes the gate INCONCLUSIVE "collection identity not
+derivable"): exactly one entity with a NEW identity appears after the
+create, it carries every key/value of the request body, every prior entity
+is still present unchanged, and the Location's last path segment is that
+identity — a duplicate row with an existing id and a Location pointing at
+999 FAILs naming each broken condition; `after_contains_body`;
+`before_lacks_body` (hand-authored corpora); `after_equals_before` (same
+digest and status, both read-backs 2xx and retained);
+`errors_header_names_field` (the `errors` header must parse as JSON —
+petclinic's BindingErrorsResponse is an array of objects — and carry an
+element whose values include the property: not JSON is INCONCLUSIVE "errors
+header not parseable", no such element is FAIL); `after_effect_status`;
+`cors_allow_origin`, `cors_expose_headers`, `cors_allow_method`,
+`cors_allow_headers` (token sets). Each record is bound to the exact capture
+it judged (`capture_sha256`, `request_sha256`, `corpus_sha256`,
+`evidence_bundle_sha256`).
+
+Negative scenarios are derived **one per constrained property**
+(`sc:create-invalid-<resource>-<property>`), so a `firstName` rejection is
+never mistaken for `telephone` coverage.
+
+The gate exits 0 only when every scenario is capability PASS.
+`compose-parity-receipt.py` reads the records: a qualification whose
+`capture_sha256` no longer matches the capture on disk is stale
+(`requalify after recapture`, INCONCLUSIVE); a scenario qualified
+INCONCLUSIVE, or with no record, makes its entry point INCONCLUSIVE
+(`capture not qualified: …`); a derived corpus with no qualification at all
+is INCONCLUSIVE (`captures not qualified`). A **positive** scenario whose
+capability is FAIL is a **source-side fixture failure** (a 500 deleting a
+referenced pettype): the source did not perform the operation, so parity
+is not asked — `compare-scenario-parity.py` writes INCONCLUSIVE `source
+fixture failed qualification: …`, the entry point is INCONCLUSIVE, the
+scenario is listed under `coverage_gaps` with `kind: fixture-failed`, it
+earns no parity credit and never becomes a destination repair card
+(`worklist.parity_items` issues obligations only from FAIL verdicts). A
+negative scenario whose capability is PASS compares parity normally and is
+counted as negative coverage only (`coverage.negative` on the row). The M4
+coverage account (`compose-coverage-account.py`) records every receipt
+coverage gap as an `uncovered_capabilities` entry and denies replacement
+credit to any `replaced_by` entry point carrying a positive one. An
+Operator-authored corpus without a qualification file keeps its previous
+behaviour.
 
 The operation for a route is found by path (exact, else the longest document
-path the route ends with) or, when the document's paths do not name the
+path the route ends with); a path match whose `operationId` names a
+different controller member is a typed gap (`conflicting binding: path X ↔
+operationId Y ≠ member Z`). When the document's paths do not name the
 code's routes (petclinic documents `/owner` while the controller maps
-`/api/owners`), by `operationId` equal to the entry point's method name; two
-controllers sharing a method name are told apart by the operation's tag or
-body-schema stem, and an ambiguity that survives is a gap.
+`/api/owners`) an explicit adapter binds by `operationId` equal to the entry
+point's method name, same HTTP method, provided exactly one controller
+member of that name exists in the bundle or one is singled out by a
+compatible request schema (the parameter DTO and the schema share a stem
+after `Dto|Fields|Request|Input|Payload`: `OwnerDto` ↔ `OwnerFields`); tags
+only narrow, never establish, and a surviving ambiguity is a gap. The
+discrepancy is recorded in `derived_from.evidence`
+(`openapi-path:/owner≠route:/api/owners; bound by operationId addOwner`).
+The derivation receipt also binds every body file's bytes and every
+scenario's `request_sha256`; a body edited after derivation is refused.
 
 ### The corpus document
 

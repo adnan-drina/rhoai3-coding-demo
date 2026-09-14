@@ -74,6 +74,10 @@ retired_sources:
     adr: ADR-010
     reason: the ADR is only proposed
     replaced_by: [ep-passes]
+  - path: src/main/java/a/FixtureFailed.java
+    adr: ADR-009
+    reason: claims a scenario whose source capture never demonstrated the operation
+    replaced_by: [ep-fixture]
 """
 
 
@@ -93,7 +97,13 @@ def _root(td: Path, *, surefire_rc: int | None) -> Path:
     (parity / "receipt.json").write_text(json.dumps({
         "schema": "rhoai3.parity-receipt/v1", "verdict": "FAIL",
         "entry_points": [{"entry_point": "ep-passes", "verdict": "PASS", "reason": ""},
-                         {"entry_point": "ep-fails", "verdict": "FAIL", "reason": "body differs"}],
+                         {"entry_point": "ep-fails", "verdict": "FAIL", "reason": "body differs"},
+                         {"entry_point": "ep-fixture", "verdict": "PASS", "reason": "1 required scenario(s): sc:delete-pettypes-1"}],
+        # the receipt's coverage gaps: the source never demonstrated this
+        # capability (a 500 deleting a referenced pettype), so parity PASS
+        # on the entry point must not become replacement credit
+        "coverage_gaps": [{"scenario": "sc:delete-pettypes-1", "entry_point": "ep-fixture", "kind": "fixture-failed", "intent": "positive",
+                           "reason": "source fixture failed qualification: expect_status: status 500, expected one of [200, 204]"}],
     }), encoding="utf-8")
     if surefire_rc is not None:
         d = root / "evidence" / "receipts" / "gates"
@@ -114,7 +124,7 @@ def main() -> int:
         if p.returncode != 0:
             return _fail("composer: %s%s" % (p.stdout, p.stderr))
         rows, doc = _rows(root)
-        if sorted(rows) != ["src/main/java/a/ClaimedButFailing.java", "src/main/java/a/NotDecided.java",
+        if sorted(rows) != ["src/main/java/a/ClaimedButFailing.java", "src/main/java/a/FixtureFailed.java", "src/main/java/a/NotDecided.java",
                             "src/main/java/a/Replaced.java", "src/main/java/a/Unreplaced.java",
                             "src/test/java/a/RetiredTest.java"]:
             return _fail("every retired source needs a row: %s" % sorted(rows))
@@ -128,7 +138,12 @@ def main() -> int:
             return _fail("a retirement whose ADR is only proposed must be a gap")
         if rows["src/test/java/a/RetiredTest.java"]["kind"] != "test" or rows["src/test/java/a/RetiredTest.java"]["remaining_gap"]:
             return _fail("a retired test beside passing scenarios and executed tests is replaced: %s" % rows["src/test/java/a/RetiredTest.java"])
-        if doc["summary"] != {"retired": 5, "tests": 1, "implementations": 4, "replaced": 2, "remaining_gaps": 3}:
+        if not rows["src/main/java/a/FixtureFailed.java"]["remaining_gap"] or "no replacement credit" not in " ".join(rows["src/main/java/a/FixtureFailed.java"]["gap_reasons"]):
+            return _fail("a replacement whose positive scenario the source never demonstrated earns no credit, whatever its parity verdict: %s" % rows["src/main/java/a/FixtureFailed.java"])
+        if doc["uncovered_capabilities"] != [{"scenario": "sc:delete-pettypes-1", "entry_point": "ep-fixture", "kind": "fixture-failed", "intent": "positive",
+                                              "reason": "source fixture failed qualification: expect_status: status 500, expected one of [200, 204]"}]:
+            return _fail("the receipt's coverage gaps are recorded as uncovered capabilities: %s" % doc.get("uncovered_capabilities"))
+        if doc["summary"] != {"retired": 6, "tests": 1, "implementations": 5, "replaced": 2, "remaining_gaps": 4, "uncovered_capabilities": 1}:
             return _fail("summary: %s" % doc["summary"])
 
         # a retired test without fresh executed test evidence is a gap
@@ -144,15 +159,15 @@ def main() -> int:
         verdict_p = root / "evidence" / "verdicts" / "m4-verdict.json"
         verdict_p.write_text(json.dumps({"gate": "M4_VERDICT", "phase": "M4", "ran": True, "verdict": "REFUSE",
                                          "ship": False, "failed_floors": ["check-product-tests"], "floors": [{"name": "check-product-tests", "rc": 1, "idle": False}],
-                                         "coverage_account": {"retired": 5, "remaining_gaps": 3}}), encoding="utf-8")
+                                         "coverage_account": {"retired": 6, "remaining_gaps": 4}}), encoding="utf-8")
         p = subprocess.run([sys.executable, str(LINT), str(root)], text=True, capture_output=True)
         if p.returncode != 0:
-            return _fail("a complete account with three recorded gaps must PASS: %s%s" % (p.stdout, p.stderr))
+            return _fail("a complete account with four recorded gaps must PASS: %s%s" % (p.stdout, p.stderr))
         before = (root / "evidence" / "verdicts" / "coverage-account.json").read_bytes()
 
         verdict_p.write_text(json.dumps({"gate": "M4_VERDICT", "phase": "M4", "ran": True, "verdict": "REFUSE",
                                          "ship": False, "failed_floors": ["check-product-tests"], "floors": [{"name": "check-product-tests", "rc": 1, "idle": False}],
-                                         "coverage_account": {"retired": 5, "remaining_gaps": 0}}), encoding="utf-8")
+                                         "coverage_account": {"retired": 6, "remaining_gaps": 0}}), encoding="utf-8")
         p = subprocess.run([sys.executable, str(LINT), str(root)], text=True, capture_output=True)
         if p.returncode != 1 or "carries coverage_account" not in p.stderr:
             return _fail("a verdict that under-reports the gaps must refuse: rc=%s %s" % (p.returncode, p.stderr[:300]))
@@ -175,7 +190,7 @@ def main() -> int:
         p = subprocess.run([sys.executable, str(LINT), str(root)], text=True, capture_output=True)
         if p.returncode != 1 or "unaccounted" not in p.stderr:
             return _fail("an absent account must refuse naming the unaccounted retirements: rc=%s %s" % (p.returncode, p.stderr[:300]))
-    print("OK: coverage-account selftest (every retirement rowed; PASS scenario replaces, no scenario / failed scenario / proposed ADR / missing test evidence are recorded gaps; lint PASSes on disclosed gaps and refuses an under-reporting verdict, an edited account and an absent one, without authoring)")
+    print("OK: coverage-account selftest (every retirement rowed; PASS scenario replaces, no scenario / failed scenario / proposed ADR / missing test evidence / a fixture-failed capability are recorded gaps and the receipt's coverage gaps are uncovered capabilities; lint PASSes on disclosed gaps and refuses an under-reporting verdict, an edited account and an absent one, without authoring)")
     return 0
 
 

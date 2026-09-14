@@ -6,22 +6,42 @@ create the source answered 500 for is captured just as faithfully as one it
 answered 201 for, and replaying either against the destination compares
 nothing about what the scenario was for. The five-scenario review
 (2026-09-14) listed what a capture has to SHOW before it may count as
-coverage -- the 201 with an absolute Location under the source's base, the
-created owner present in the list afterwards and absent before, the 400
-whose errors header names the rejected field with the list unchanged -- and
-put a person in charge of checking it. That is a sign-off, and the project
-rule is a gate with an audit trail instead.
+coverage and put a person in charge of checking it; the project rule is a
+gate with an audit trail instead, so each derived scenario carries a
+``qualify`` block and this producer checks every capture against it.
 
-So each derived scenario carries a ``qualify`` block naming those
-observations, and this producer checks every capture against it, reading the
-retained bodies by digest. Nothing here decides what the source SHOULD have
-answered: the contract is the scenario's, the answer is the capture's, and a
-capture that cannot be checked (no capture, no retained body, a digest that
-does not match, a truncated list) is INCONCLUSIVE, never a pass. The parity
-receipt treats anything but PASS here as "capture not qualified".
+Two results per scenario, not one (architect review of 708cfef9):
+
+  evidence    USABLE or UNUSABLE -- can this capture be judged at all? The
+              capture must exist, be CAPTURED, be bound to this corpus, this
+              bundle and this very request; every retained body the contract
+              reads must be present, digest-bound and complete; every
+              read-back the contract reads must have answered 2xx. Evidence
+              is judged BEFORE intent: with unusable evidence the capability
+              is INCONCLUSIVE, never FAIL, while ``known_failures`` still
+              records what was observed (a 500 is recorded, not hidden).
+  capability  PASS | FAIL | INCONCLUSIVE -- did the source demonstrate the
+              operation the scenario intends? ``intent: positive`` (create,
+              update, delete, cors) means it performed it; ``intent:
+              negative`` (create-invalid) means it rejected as intended: the
+              status, a parsed field error naming the field, and no effect.
+
+The creation predicate is identity-aware, not count-based: the derivation
+names the collection's ``identity_field`` from the OpenAPI response schema,
+and a create qualifies only when exactly one entity with a NEW identity
+appears, carrying the request body, every prior entity is kept unchanged, and
+the Location's last path segment is that identity (a duplicate row with an
+existing id and a Location pointing at 999 passed a count). No identity
+field -> INCONCLUSIVE "collection identity not derivable". The ``errors``
+header must parse as JSON (petclinic's BindingErrorsResponse is an array of
+objects): non-JSON is INCONCLUSIVE, a parsed array without the field is FAIL.
+
+Every record is bound to the exact capture it judged (``capture_sha256`` of
+the capture file, ``request_sha256``, the corpus and bundle digests) so a
+qualification that outlives its capture is stale, never reused.
 
 Writes verification/source-oracles/scenarios/_qualification.json. Exit 0 only
-when every scenario the corpus lists is PASS; 1 otherwise; 2 usage.
+when every scenario the corpus lists is capability PASS; 1 otherwise; 2 usage.
 """
 from __future__ import annotations
 
@@ -36,20 +56,23 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _oracle_common import ensure_hermes_lib, normalize_body, origin_of  # noqa: E402
-from _scenarios import CorpusError, QUALIFICATION, QUALIFICATION_SCHEMA, SCENARIO_ORACLES, corpus_digest, load_corpus, scenario_slug  # noqa: E402
+from _scenarios import CorpusError, QUALIFICATION, QUALIFICATION_SCHEMA, SCENARIO_ORACLES, corpus_digest, load_corpus, request_of, scenario_slug  # noqa: E402
 
 ensure_hermes_lib()
 from planner.canonical import digest, load_json, write_canonical  # noqa: E402
 from planner.paths import EVIDENCE_BUNDLE  # noqa: E402
 
 PRODUCER = "qualify-source-captures.py"
-KNOWN_CHECKS = ("expect_status", "location", "after_contains_body", "before_lacks_body", "after_adds_one_body", "after_equals_before",
+KNOWN_CHECKS = ("expect_status", "location", "after_contains_body", "before_lacks_body", "creates_one_entity", "after_equals_before",
                 "errors_header_names_field", "after_effect_status", "cors_allow_origin", "cors_expose_headers",
                 "cors_allow_method", "cors_allow_headers")
+CONTRACT_KEYS = ("intent", "identity_field")  # parameters of the contract, not checks
+BODY_CHECKS = ("after_contains_body", "before_lacks_body", "creates_one_entity", "after_equals_before")
+HEADER_CHECKS = ("location", "errors_header_names_field", "cors_allow_origin", "cors_expose_headers", "cors_allow_method", "cors_allow_headers")
 
 
-class Inconclusive(Exception):
-    """Evidence that cannot be checked; the reason is the message."""
+class Unusable(Exception):
+    """Evidence that cannot be judged; the reason is the message."""
 
 
 def _now() -> str:
@@ -82,31 +105,43 @@ def _body_path(root: Path, scenario_id: str, recorded: str) -> Path | None:
 def retained_body(root: Path, scenario_id: str, row: dict[str, Any], what: str) -> bytes:
     """The retained bytes of a capture row, verified against the digests the
     capture recorded: the file digest (retained_sha256), the complete-body
-    digest when the body is complete (raw_body_sha256) and the row's parity
+    digest (raw_body_sha256, so the body is whole) and the row's parity
     digest (body_sha256, canonical JSON for JSON) recomputed from the bytes.
-    Anything that does not add up is INCONCLUSIVE, not a body."""
+    Anything that does not add up is UNUSABLE evidence, not a body."""
     ev = row.get("evidence") if isinstance(row, dict) else None
     if not isinstance(ev, dict) or not ev.get("body_file"):
-        raise Inconclusive("%s has no retained body (a capture that predates retention cannot be qualified)" % what)
+        raise Unusable("%s has no retained body (a capture that predates retention cannot be qualified)" % what)
     p = _body_path(root, scenario_id, str(ev["body_file"]))
     if p is None:
-        raise Inconclusive("%s retained body %s is absent" % (what, ev["body_file"]))
+        raise Unusable("%s retained body %s is absent" % (what, ev["body_file"]))
     if not ev.get("retained_sha256") or not ev.get("raw_body_sha256"):
-        # a retained file nobody bound by digest is bytes of unknown origin
-        raise Inconclusive("%s retained body not digest-bound (no retained_sha256/raw_body_sha256 on the evidence row)" % what)
+        raise Unusable("%s retained body not digest-bound (no retained_sha256/raw_body_sha256 on the evidence row)" % what)
     raw = p.read_bytes()
     sha = hashlib.sha256(raw).hexdigest()
     if sha != ev["retained_sha256"]:
-        raise Inconclusive("%s retained body digest %s is not the recorded %s" % (what, sha[:12], str(ev["retained_sha256"])[:12]))
+        raise Unusable("%s retained body digest %s is not the recorded %s" % (what, sha[:12], str(ev["retained_sha256"])[:12]))
     if ev.get("truncated"):
-        raise Inconclusive("%s retained body is truncated (%s of %s bytes); a partial list proves neither presence nor absence"
-                           % (what, ev.get("retained_bytes"), ev.get("body_bytes")))
+        raise Unusable("%s retained body is truncated (%s of %s bytes); a partial list proves neither presence nor absence"
+                       % (what, ev.get("retained_bytes"), ev.get("body_bytes")))
     if sha != ev["raw_body_sha256"]:
-        raise Inconclusive("%s retained body is not the complete response (digest %s vs raw %s)" % (what, sha[:12], str(ev["raw_body_sha256"])[:12]))
+        raise Unusable("%s retained body is not the complete response (digest %s vs raw %s)" % (what, sha[:12], str(ev["raw_body_sha256"])[:12]))
     want = str(row.get("body_sha256") or ev.get("body_sha256") or "")
     if want and normalize_body(raw, "")[1] != want:
-        raise Inconclusive("%s retained body does not normalize to the recorded body_sha256 %s" % (what, want[:12]))
+        raise Unusable("%s retained body does not normalize to the recorded body_sha256 %s" % (what, want[:12]))
     return raw
+
+
+def _read_back_body(root: Path, sid: str, row: dict[str, Any], what: str) -> Any:
+    """A read-back the contract reads must have answered 2xx with a verified,
+    complete retained JSON body."""
+    status = int(row.get("status") or 0)
+    if not 200 <= status < 300:
+        raise Unusable("%s answered %s, not 2xx; its body cannot stand for the collection" % (what, row.get("status")))
+    raw = retained_body(root, sid, row, what)
+    try:
+        return json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError):
+        raise Unusable("%s retained body is not JSON" % what)
 
 
 def _objects(node: Any) -> list[dict[str, Any]]:
@@ -121,29 +156,32 @@ def _objects(node: Any) -> list[dict[str, Any]]:
     return out
 
 
-def _count(raw: bytes, body: dict[str, Any], what: str) -> int:
-    """How many objects in a retained JSON body carry every key/value of the
-    request body (compared as JSON values, at any depth)."""
-    try:
-        parsed = json.loads(raw.decode("utf-8"))
-    except (UnicodeDecodeError, ValueError):
-        raise Inconclusive("%s retained body is not JSON" % what)
-    return sum(1 for obj in _objects(parsed) if all(k in obj and obj[k] == v for k, v in body.items()))
+def _entities(parsed: Any) -> list[dict[str, Any]]:
+    """The entities a collection read-back lists: the top-level array of
+    objects, or the first array-of-objects value of an envelope object."""
+    if isinstance(parsed, list):
+        return [o for o in parsed if isinstance(o, dict)]
+    if isinstance(parsed, dict):
+        for v in parsed.values():
+            if isinstance(v, list) and v and all(isinstance(o, dict) for o in v):
+                return list(v)
+        return [parsed]
+    return []
 
 
-def _contains(raw: bytes, body: dict[str, Any], what: str) -> bool:
-    return _count(raw, body, what) > 0
+def _matches(obj: dict[str, Any], body: dict[str, Any]) -> bool:
+    return all(k in obj and obj[k] == v for k, v in body.items())
 
 
 def _request_body(root: Path, sc: dict[str, Any]) -> dict[str, Any]:
     if not sc.get("body_file"):
-        raise Inconclusive("the scenario sends no body, so nothing can be looked for in the read-back")
+        raise Unusable("the scenario sends no body, so nothing can be looked for in the read-back")
     p = root / str(sc["body_file"])
     if not p.is_file():
-        raise Inconclusive("body_file %s is absent" % sc["body_file"])
+        raise Unusable("body_file %s is absent" % sc["body_file"])
     body = json.loads(p.read_text(encoding="utf-8"))
     if not isinstance(body, dict):
-        raise Inconclusive("body_file %s is not a JSON object" % sc["body_file"])
+        raise Unusable("body_file %s is not a JSON object" % sc["body_file"])
     return body
 
 
@@ -151,124 +189,209 @@ def _rows(cap: dict[str, Any], key: str) -> dict[str, dict[str, Any]]:
     return {str(r.get("id")): r for r in (cap.get(key) or []) if isinstance(r, dict)}
 
 
-def qualify_scenario(root: Path, sc: dict[str, Any], cap: dict[str, Any] | None, corpus_sha: str) -> dict[str, Any]:
+def _errors_elements(value: str) -> list[dict[str, Any]]:
+    """petclinic's BindingErrorsResponse: a JSON array of objects. Anything
+    that does not parse is UNUSABLE (not a rejection the gate can read)."""
+    try:
+        parsed = json.loads(value)
+    except ValueError:
+        raise Unusable("errors header not parseable as JSON: %r" % value[:120])
+    return _objects(parsed)
+
+
+def _creates_one_entity(root: Path, sid: str, sc: dict[str, Any], cap: dict[str, Any], identity: str | None) -> tuple[bool, str]:
+    if not identity:
+        raise Unusable("collection identity not derivable (identity_field null); a create cannot be judged")
+    body = _request_body(root, sc)
+    before, after = _rows(cap, "before"), _rows(cap, "effects")
+    if not before or not after or set(before) != set(after):
+        raise Unusable("before and after read-backs do not pair up")
+    problems: list[str] = []
+    new_identity: Any = None
+    for eid in sorted(before):
+        b_ents = _entities(_read_back_body(root, sid, before[eid], "before %s" % eid))
+        a_ents = _entities(_read_back_body(root, sid, after[eid], "after %s" % eid))
+        if any(identity not in o for o in b_ents + a_ents):
+            raise Unusable("%s: an entity carries no %r identity; the read-back cannot be judged by identity" % (eid, identity))
+        before_ids = {json.dumps(o[identity], sort_keys=True) for o in b_ents}
+        new = [o for o in a_ents if json.dumps(o[identity], sort_keys=True) not in before_ids]
+        if len(new) != 1:
+            problems.append("%s: %d entit%s with a new %s after the create, expected exactly one" % (eid, len(new), "y" if len(new) == 1 else "ies", identity))
+        else:
+            new_identity = new[0][identity]
+            if not _matches(new[0], body):
+                missing = sorted(k for k, v in body.items() if k not in new[0] or new[0][k] != v)
+                problems.append("%s: the new entity %s does not carry the request body (differs in %s)" % (eid, json.dumps(new_identity), ", ".join(missing)))
+        after_by_id = {}
+        for o in a_ents:
+            after_by_id.setdefault(json.dumps(o[identity], sort_keys=True), []).append(o)
+        for o in b_ents:
+            key = json.dumps(o[identity], sort_keys=True)
+            kept = after_by_id.get(key) or []
+            if len(kept) != 1 or kept[0] != o:
+                problems.append("%s: prior entity %s is %s after the create" % (eid, json.dumps(o[identity]), "duplicated" if len(kept) > 1 else "changed" if kept else "gone"))
+    loc = _header((cap.get("response") or {}).get("headers"), "Location")
+    last = urllib.parse.urlsplit(loc or "").path.rstrip("/").rsplit("/", 1)[-1]
+    if new_identity is not None:
+        if last != str(new_identity):
+            problems.append("Location %r does not end with the new identity %s" % (loc, json.dumps(new_identity)))
+    else:
+        problems.append("Location %r names no newly created entity (last segment %r)" % (loc, last))
+    if problems:
+        return False, "; ".join(problems)
+    return True, "exactly one new entity %s carrying the body, prior entities kept, Location names it" % json.dumps(new_identity)
+
+
+def qualify_scenario(root: Path, sc: dict[str, Any], cap: dict[str, Any] | None, corpus_sha: str, bundle_sha: str,
+                     capture_sha: str) -> dict[str, Any]:
     sid = str(sc["id"])
     q = sc.get("qualify")
+    intent = str((q or {}).get("intent") or "positive")
     checks: list[dict[str, Any]] = []
+    evidence_reasons: list[str] = []
+    known_failures: list[str] = []
+    try:
+        request_sha = request_of(root, sc)["request_sha256"]
+    except CorpusError as exc:
+        request_sha = ""
+        evidence_reasons.append(str(exc))
+    base = {"intent": intent, "capture_sha256": capture_sha, "request_sha256": request_sha,
+            "evidence_bundle_sha256": bundle_sha, "corpus_sha256": corpus_sha}
+
+    def finish(capability: str, reason: str) -> dict[str, Any]:
+        usable = not evidence_reasons
+        return dict(base, verdict=capability, capability=capability,
+                    evidence={"status": "USABLE" if usable else "UNUSABLE", "reasons": list(evidence_reasons)},
+                    known_failures=list(known_failures), reason=reason[:400], checks=checks)
 
     def record(name: str, ok: bool | None, detail: str) -> None:
         checks.append({"check": name, "ok": ok, "detail": detail})
+        if ok is False:
+            known_failures.append("%s: %s" % (name, detail))
 
     if not isinstance(q, dict) or not q:
-        return {"verdict": "INCONCLUSIVE", "reason": "no qualification contract (the scenario carries no qualify block)", "checks": []}
+        evidence_reasons.append("no qualification contract (the scenario carries no qualify block)")
+        return finish("INCONCLUSIVE", evidence_reasons[0])
+    # ---- evidence first: is this the capture of THIS scenario, and whole? ----
     if cap is None:
-        return {"verdict": "INCONCLUSIVE", "reason": "no capture", "checks": []}
+        evidence_reasons.append("no capture")
+        return finish("INCONCLUSIVE", "no capture")
     if str(cap.get("status")) != "CAPTURED":
-        return {"verdict": "INCONCLUSIVE", "reason": "capture status %s: %s" % (cap.get("status"), cap.get("reason") or ""), "checks": []}
+        evidence_reasons.append("capture status %s: %s" % (cap.get("status"), cap.get("reason") or ""))
+        return finish("INCONCLUSIVE", evidence_reasons[-1])
     if str(cap.get("corpus_sha256") or "") != corpus_sha:
-        return {"verdict": "INCONCLUSIVE", "reason": "capture bound to corpus %s, this is %s" % (str(cap.get("corpus_sha256"))[:12], corpus_sha[:12]), "checks": []}
+        evidence_reasons.append("capture bound to corpus %s, this is %s" % (str(cap.get("corpus_sha256"))[:12], corpus_sha[:12]))
+    if bundle_sha and str(cap.get("evidence_bundle_sha256") or "") != bundle_sha:
+        evidence_reasons.append("capture bound to evidence bundle %s, this tree's is %s" % (str(cap.get("evidence_bundle_sha256"))[:12], bundle_sha[:12]))
+    recorded_req = str((cap.get("request") or {}).get("request_sha256") or "")
+    if request_sha and recorded_req != request_sha:
+        evidence_reasons.append("capture answers request %s, the scenario describes %s (not this scenario's capture)" % (recorded_req[:12] or "(none)", request_sha[:12]))
+    if evidence_reasons:
+        return finish("INCONCLUSIVE", "; ".join(evidence_reasons))
     resp = cap.get("response") or {}
     headers = resp.get("headers")
     req_headers = (cap.get("request") or {}).get("headers") or sc.get("headers") or {}
     before, after = _rows(cap, "before"), _rows(cap, "effects")
+    if any(k in q for k in HEADER_CHECKS) and not isinstance(headers, dict):
+        evidence_reasons.append("the capture recorded no header map")
+    # ---- the checks; an Unusable raised inside is evidence, not a verdict ----
     for name, want in q.items():
+        if name in CONTRACT_KEYS:
+            continue
         try:
             if name == "expect_status":
                 allowed = [int(x) for x in (want if isinstance(want, list) else [want])]
                 record(name, int(resp.get("status") or 0) in allowed, "status %s, expected one of %s" % (resp.get("status"), allowed))
             elif name == "location":
                 if want != "absolute-under-base":
-                    raise Inconclusive("unknown location rule %r" % want)
+                    raise Unusable("unknown location rule %r" % want)
                 if not isinstance(headers, dict):
-                    raise Inconclusive("the capture recorded no header map")
+                    raise Unusable("the capture recorded no header map")
                 loc = _header(headers, "Location")
-                base = str((cap.get("source") or {}).get("base_url") or "")
-                base_origin = origin_of(base)
-                base_path = urllib.parse.urlsplit(base).path.rstrip("/")
+                base_url = str((cap.get("source") or {}).get("base_url") or "")
+                base_origin = origin_of(base_url)
+                base_path = urllib.parse.urlsplit(base_url).path.rstrip("/")
                 if not base_origin:
-                    raise Inconclusive("the capture records no source.base_url to judge Location against")
+                    raise Unusable("the capture records no source.base_url to judge Location against")
                 parts = urllib.parse.urlsplit(loc or "")
                 absolute = bool(parts.scheme and parts.netloc)
-                ok = absolute and origin_of(loc or "") == base_origin and (parts.path == base_path or parts.path.startswith(base_path + "/") if base_path else True)
-                record(name, ok, "Location %r%s; base %s" % (loc, "" if absolute else " is not absolute", base))
+                under = (parts.path == base_path or parts.path.startswith(base_path + "/")) if base_path else True
+                ok = absolute and origin_of(loc or "") == base_origin and under
+                record(name, ok, "Location %r%s; base %s" % (loc, "" if absolute else " is not absolute", base_url))
+            elif name == "creates_one_entity":
+                ok, detail = _creates_one_entity(root, sid, sc, cap, q.get("identity_field"))
+                record(name, ok, detail)
             elif name == "after_contains_body":
                 body = _request_body(root, sc)
                 if not after:
-                    raise Inconclusive("the capture recorded no after-effects")
-                missing = [eid for eid, row in sorted(after.items()) if not _contains(retained_body(root, sid, row, "after %s" % eid), body, "after %s" % eid)]
+                    raise Unusable("the capture recorded no after-effects")
+                missing = [eid for eid, row in sorted(after.items()) if not any(_matches(o, body) for o in _objects(_read_back_body(root, sid, row, "after %s" % eid)))]
                 record(name, not missing, "the request body %s %s" % ("is absent from" if missing else "is present in", ", ".join(missing) or ", ".join(sorted(after))))
             elif name == "before_lacks_body":
                 body = _request_body(root, sc)
                 if not before:
-                    raise Inconclusive("the capture recorded no before read-backs")
-                present = [eid for eid, row in sorted(before.items()) if _contains(retained_body(root, sid, row, "before %s" % eid), body, "before %s" % eid)]
+                    raise Unusable("the capture recorded no before read-backs")
+                present = [eid for eid, row in sorted(before.items()) if any(_matches(o, body) for o in _objects(_read_back_body(root, sid, row, "before %s" % eid)))]
                 record(name, not present, "the request body %s before the request (%s)" % ("was already present" if present else "was absent", ", ".join(present) or ", ".join(sorted(before))))
-            elif name == "after_adds_one_body":
-                # the read-back afterwards holds exactly one more object matching
-                # the body than before: a document's example is often a seeded
-                # row verbatim, so absence before is not something a derived
-                # create can promise, while "one more" always is
-                body = _request_body(root, sc)
-                if not before or not after or set(before) != set(after):
-                    raise Inconclusive("before and after read-backs do not pair up")
-                counts = {}
-                for eid in sorted(before):
-                    nb = _count(retained_body(root, sid, before[eid], "before %s" % eid), body, "before %s" % eid)
-                    na = _count(retained_body(root, sid, after[eid], "after %s" % eid), body, "after %s" % eid)
-                    counts[eid] = (nb, na)
-                bad = ["%s: %d matching before, %d after" % (eid, nb, na) for eid, (nb, na) in counts.items() if na != nb + 1]
-                record(name, not bad, "; ".join(bad) or "; ".join("%s: %d matching before, %d after" % (eid, nb, na) for eid, (nb, na) in counts.items()))
             elif name == "after_equals_before":
                 if not before or not after or set(before) != set(after):
-                    raise Inconclusive("before and after read-backs do not pair up")
+                    raise Unusable("before and after read-backs do not pair up")
+                for eid in sorted(before):
+                    _read_back_body(root, sid, before[eid], "before %s" % eid)
+                    _read_back_body(root, sid, after[eid], "after %s" % eid)
                 diff = [eid for eid in sorted(before) if before[eid].get("body_sha256") != after[eid].get("body_sha256") or before[eid].get("status") != after[eid].get("status")]
                 record(name, not diff, "read-backs %s" % ("changed: " + ", ".join(diff) if diff else "unchanged: " + ", ".join(sorted(before))))
             elif name == "errors_header_names_field":
                 if not isinstance(headers, dict):
-                    raise Inconclusive("the capture recorded no header map")
+                    raise Unusable("the capture recorded no header map")
                 val = _header(headers, "errors")
-                record(name, bool(val) and str(want) in str(val), "errors header %s" % (repr(val)[:160] if val else "absent"))
+                if not val:
+                    record(name, False, "errors header absent")
+                    continue
+                elements = _errors_elements(val)
+                hit = any(any(str(v) == str(want) for v in el.values()) for el in elements)
+                record(name, hit, "errors header %s an element naming %s (%d element(s))" % ("carries" if hit else "carries no", want, len(elements)))
             elif name == "after_effect_status":
                 if not isinstance(want, dict):
-                    raise Inconclusive("after_effect_status must map effect id to status")
+                    raise Unusable("after_effect_status must map effect id to status")
                 bad = []
                 for eid, status in sorted(want.items()):
                     row = after.get(str(eid))
                     if row is None:
-                        raise Inconclusive("effect %s was not captured" % eid)
+                        raise Unusable("effect %s was not captured" % eid)
                     if int(row.get("status") or 0) != int(status):
                         bad.append("%s answered %s, expected %s" % (eid, row.get("status"), status))
                 record(name, not bad, "; ".join(bad) or "effects answered as the contract names")
             elif name == "cors_allow_origin":
                 if not isinstance(headers, dict):
-                    raise Inconclusive("the capture recorded no header map")
+                    raise Unusable("the capture recorded no header map")
                 sent = _header(req_headers, "Origin")
                 got = _header(headers, "Access-Control-Allow-Origin")
                 record(name, bool(sent) and got in (sent, "*"), "Access-Control-Allow-Origin %r for Origin %r" % (got, sent))
             elif name in ("cors_expose_headers", "cors_allow_headers"):
                 if not isinstance(headers, dict):
-                    raise Inconclusive("the capture recorded no header map")
+                    raise Unusable("the capture recorded no header map")
                 hdr = "Access-Control-Expose-Headers" if name == "cors_expose_headers" else "Access-Control-Allow-Headers"
                 got = _tokens(_header(headers, hdr))
                 need = {str(x).strip().lower() for x in (want or [])}
-                record(name, need <= got, "%s %r covers %s" % (hdr, _header(headers, hdr), sorted(need)) if need <= got else "%s %r lacks %s" % (hdr, _header(headers, hdr), sorted(need - got)))
+                record(name, need <= got, "%s %r %s %s" % (hdr, _header(headers, hdr), "covers" if need <= got else "lacks", sorted(need if need <= got else need - got)))
             elif name == "cors_allow_method":
                 if not isinstance(headers, dict):
-                    raise Inconclusive("the capture recorded no header map")
+                    raise Unusable("the capture recorded no header map")
                 got = _tokens(_header(headers, "Access-Control-Allow-Methods"))
                 record(name, str(want).lower() in got, "Access-Control-Allow-Methods %r, need %s" % (_header(headers, "Access-Control-Allow-Methods"), want))
             else:
-                raise Inconclusive("unknown qualification check %r" % name)
-        except Inconclusive as exc:
-            record(name, None, str(exc))
-    if any(c["ok"] is False for c in checks):
-        verdict = "FAIL"
-    elif any(c["ok"] is None for c in checks):
-        verdict = "INCONCLUSIVE"
-    else:
-        verdict = "PASS"
-    reason = "; ".join("%s: %s" % (c["check"], c["detail"]) for c in checks if c["ok"] is not True)[:400]
-    return {"verdict": verdict, "reason": reason, "checks": checks}
+                raise Unusable("unknown qualification check %r" % name)
+        except Unusable as exc:
+            evidence_reasons.append("%s: %s" % (name, exc))
+            checks.append({"check": name, "ok": None, "detail": str(exc)})
+    if evidence_reasons:
+        # unusable evidence: INCONCLUSIVE, never FAIL; the observed failures
+        # (a 500, a missing header) stay on the record in known_failures
+        return finish("INCONCLUSIVE", "; ".join(evidence_reasons))
+    if known_failures:
+        return finish("FAIL", "; ".join(known_failures))
+    return finish("PASS", "")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -289,15 +412,21 @@ def main(argv: list[str] | None = None) -> int:
         sid = str(sc["id"])
         cp = root / SCENARIO_ORACLES / (scenario_slug(sid) + ".json")
         cap = None
+        capture_sha = ""
         if cp.is_file():
+            raw = cp.read_bytes()
+            capture_sha = hashlib.sha256(raw).hexdigest()
             try:
-                cap = load_json(cp)
-            except (OSError, ValueError) as exc:
-                results[sid] = {"verdict": "INCONCLUSIVE", "reason": "capture unreadable: %s" % exc, "checks": []}
+                cap = json.loads(raw.decode("utf-8"))
+            except ValueError as exc:
+                results[sid] = {"verdict": "INCONCLUSIVE", "capability": "INCONCLUSIVE", "intent": str((sc.get("qualify") or {}).get("intent") or "positive"),
+                                "evidence": {"status": "UNUSABLE", "reasons": ["capture unreadable: %s" % exc]}, "known_failures": [],
+                                "reason": "capture unreadable: %s" % exc, "checks": [], "capture_sha256": capture_sha, "request_sha256": "",
+                                "evidence_bundle_sha256": bundle_sha, "corpus_sha256": corpus_sha}
                 continue
-        results[sid] = qualify_scenario(root, sc, cap, corpus_sha)
-    not_passed = sorted(sid for sid, r in results.items() if r["verdict"] != "PASS")
-    verdict = "PASS" if results and not not_passed else "FAIL" if any(r["verdict"] == "FAIL" for r in results.values()) else "INCONCLUSIVE"
+        results[sid] = qualify_scenario(root, sc, cap, corpus_sha, bundle_sha, capture_sha)
+    not_passed = sorted(sid for sid, r in results.items() if r["capability"] != "PASS")
+    verdict = "PASS" if results and not not_passed else "FAIL" if any(r["capability"] == "FAIL" for r in results.values()) else "INCONCLUSIVE"
     out = root / QUALIFICATION
     write_canonical(out, {
         "schema": QUALIFICATION_SCHEMA, "producer": PRODUCER, "at": _now(),
@@ -305,7 +434,8 @@ def main(argv: list[str] | None = None) -> int:
         "scenarios": dict(sorted(results.items())), "total": len(results), "not_passed": len(not_passed), "verdict": verdict,
     })
     for sid in not_passed:
-        print("  - %s %s: %s" % (sid, results[sid]["verdict"], results[sid]["reason"]), file=sys.stderr)
+        r = results[sid]
+        print("  - %s %s (evidence %s): %s" % (sid, r["capability"], r["evidence"]["status"], r["reason"]), file=sys.stderr)
     if verdict == "PASS":
         print("OK: %d capture(s) qualified against the corpus %s → %s" % (len(results), corpus_sha[:12], out.relative_to(root)))
         return 0

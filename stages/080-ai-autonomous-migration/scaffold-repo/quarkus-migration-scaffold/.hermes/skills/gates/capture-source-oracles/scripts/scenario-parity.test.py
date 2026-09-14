@@ -104,9 +104,11 @@ CORPUS = {
 def _capture(root: Path, base: str, sc_id: str, req_sha: str, response: dict, effects: list[dict], receipt_digest: str, corpus_sha: str, before: list[dict] | None = None) -> None:
     """Record a source capture the way the M1 producer would, including the
     state the source was in before the request."""
+    from planner.canonical import digest as _digest
     write_canonical(root / SCENARIO_ORACLES / (scenario_slug(sc_id) + ".json"), {
         "schema": "rhoai3.source-scenario/v1", "scenario": sc_id, "entry_point": next(s["entry_point"] for s in CORPUS["scenarios"] if s["id"] == sc_id),
         "receipt_sha256": receipt_digest, "corpus_sha256": corpus_sha, "status": "CAPTURED", "reason": "",
+        "evidence_bundle_sha256": _digest(load_json(root / "evidence" / "planning" / "evidence-bundle.json")),
         "source": {"base_url": base}, "initial_state": CORPUS["initial_state"], "normalization": [],
         "reset_before": True, "request": {"request_sha256": req_sha}, "response": response,
         "before": list(before or []), "effects": effects,
@@ -408,8 +410,68 @@ def _missing_exposed_model_case() -> int:
     return 0
 
 
+def _stale_receipt_case() -> int:
+    """A receipt that is not authoritative (the work list rebuilt after the
+    seal, the normal state beside the M3 loop -- v9, 2026-09-14) does not stop
+    the producer: the capture is bound to the frozen source and the corpus,
+    the receipt digest is simply not recorded, and the gaps are noted."""
+    import contextlib
+    import importlib.util
+    import io
+    from unittest.mock import patch
+    from planner.paths import producer_receipt
+
+    spec = importlib.util.spec_from_file_location("capture_scenarios_stale", HERE / "capture-source-scenarios.py")
+    producer = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(producer)
+
+    class Reached(Exception):
+        pass
+
+    with tempfile.TemporaryDirectory(prefix="capture-stale-") as td:
+        root = specimens.build_dest(Path(td) / "dest", specimens.specimen("http"), decisions=specimens.admitted_decisions())
+        specimens.prepare_loop(root)
+        if pipeline.admit(root)["status"] != "ADMITTED":
+            return _fail("stale-receipt fixture not admitted")
+        frozen = root / "frozen"
+        frozen.mkdir()
+        (frozen / "pom.xml").write_text("<project/>")
+        write_canonical(producer_receipt(root, "freeze"), {"analysis_copy": str(frozen), "source_digest": "fixture"})
+        write_canonical(root / "verification/scenarios/corpus.json", {
+            "schema": "rhoai3.scenario-corpus/v1", "approved_by": "operator:test",
+            "scenarios": [{"id": "sc:read", "entry_point": "ep:test", "method": "GET", "path": "/api/owners", "body_absent": True}]})
+        wl = root / "evidence" / "planning" / "worklist.json"
+        touched = load_json(wl)
+        touched["_rebuilt_after_seal"] = True
+        write_canonical(wl, touched)
+        if not verify_gaps(root):
+            return _fail("the fixture receipt must be stale for this case")
+        errors = io.StringIO()
+        with patch.object(producer, "SourceRuntime", side_effect=Reached("the producer reached the source runtime")):
+            with contextlib.redirect_stderr(errors):
+                try:
+                    producer.main(["--root", str(root), "--base-path", "/petclinic"])
+                    return _fail("the fixture never reached the runtime: %s" % errors.getvalue())
+                except Reached:
+                    pass
+        if "not authoritative" in errors.getvalue() or "admission receipt not recorded" not in errors.getvalue():
+            return _fail("a stale receipt is a note, never a refusal: %s" % errors.getvalue())
+        # the idle receipt path records the note too
+        (root / "verification/scenarios/corpus.json").unlink()
+        p = subprocess.run([sys.executable, str(HERE / "capture-source-scenarios.py"), "--root", str(root)], text=True, capture_output=True)
+        rec = load_json(root / SCENARIO_ORACLES / "_capture.json")
+        if p.returncode != 0 or rec["receipt_sha256"] != "" or "worklist digest" not in rec.get("receipt_note", "") or not rec["evidence_bundle_sha256"]:
+            return _fail("the producer receipt says the admission receipt was not recorded and why: rc=%s %s" % (p.returncode, rec))
+    return 0
+
+
+def verify_gaps(root: Path) -> list[str]:
+    from planner.admission import verify_receipt
+    return verify_receipt(root, require_admitted=False)[1]
+
+
 def main() -> int:
-    if _no_corpus_case() or _missing_exposed_model_case():
+    if _no_corpus_case() or _missing_exposed_model_case() or _stale_receipt_case():
         return 1
     if _capture_contract_case() or _header_contract_case():
         return 1
@@ -470,6 +532,53 @@ def main() -> int:
         v = load_json(root / SCENARIO_PARITY / (scenario_slug("sc:create-owner") + ".json"))
         if v["observed"]["status"] != 201 or not v["effects"] or not v["effects"][0]["match"]:
             return _fail("the replay must send the body and check the effect: %s" % v)
+        # the capture is bound to the frozen source and the corpus, never to
+        # the receipt: one taken under a non-authoritative receipt (recorded
+        # receipt_sha256 "") compares just the same, one from another bundle
+        # or with no bundle digest is INCONCLUSIVE, and the VERDICT stays
+        # bound to the current receipt
+        cap_p = root / SCENARIO_ORACLES / (scenario_slug("sc:create-owner") + ".json")
+        cap = load_json(cap_p)
+        bundle_sha = load_json(root / "evidence/planning/evidence-bundle.json")
+        from planner.canonical import digest as _digest
+        bundle_sha = _digest(bundle_sha)
+        for patch_cap, want_rc, needle in ((dict(cap, receipt_sha256="", evidence_bundle_sha256=bundle_sha), 0, ""),
+                                           (dict(cap, receipt_sha256="", evidence_bundle_sha256="0" * 64), 1, "describes bundle"),
+                                           ({k: v for k, v in cap.items() if k != "evidence_bundle_sha256"}, 1, "not bound to the frozen source")):
+            write_canonical(cap_p, patch_cap)
+            Service.owners = {}
+            p = subprocess.run([sys.executable, str(COMPARE), "--no-reset", "--root", str(root), "--scenario", "sc:create-owner", "--dest-url", dest_url], text=True, capture_output=True)
+            if p.returncode != want_rc or needle not in p.stderr:
+                return _fail("capture binding (%s): rc=%s %s" % (needle or "stale receipt, same bundle", p.returncode, p.stderr[-300:]))
+            v = load_json(root / SCENARIO_PARITY / (scenario_slug("sc:create-owner") + ".json"))
+            if v["receipt_sha256"] != digest:
+                return _fail("the verdict stays bound to the current receipt: %s" % v["receipt_sha256"])
+        write_canonical(cap_p, cap)
+        # a POSITIVE scenario whose capture FAILED qualification is a
+        # source-side fixture failure: parity is not asked, the verdict is
+        # INCONCLUSIVE (never a FAIL that becomes a repair card), and only a
+        # qualification bound to THIS capture counts
+        import hashlib as _hashlib
+        from _scenarios import QUALIFICATION
+        cap_sha = _hashlib.sha256(cap_p.read_bytes()).hexdigest()
+        write_canonical(root / QUALIFICATION, {"schema": "rhoai3.scenario-qualification/v1", "corpus_sha256": corpus_sha,
+                                               "scenarios": {"sc:create-owner": {"capability": "FAIL", "intent": "positive", "reason": "expect_status: status 500",
+                                                                                 "capture_sha256": cap_sha}}, "verdict": "FAIL"})
+        Service.owners = {}
+        p = subprocess.run([sys.executable, str(COMPARE), "--no-reset", "--root", str(root), "--scenario", "sc:create-owner", "--dest-url", dest_url], text=True, capture_output=True)
+        v = load_json(root / SCENARIO_PARITY / (scenario_slug("sc:create-owner") + ".json"))
+        if p.returncode != 1 or v["verdict"] != "INCONCLUSIVE" or "source fixture failed qualification" not in v["reason"] or Service.owners:
+            return _fail("a fixture-failed positive scenario is INCONCLUSIVE and nothing is replayed: rc=%s %s %s" % (p.returncode, v.get("reason"), p.stderr[-200:]))
+        # ... a stale qualification (another capture) does not short-circuit
+        write_canonical(root / QUALIFICATION, {"schema": "rhoai3.scenario-qualification/v1", "corpus_sha256": corpus_sha,
+                                               "scenarios": {"sc:create-owner": {"capability": "FAIL", "intent": "positive", "reason": "old", "capture_sha256": "0" * 64}}, "verdict": "FAIL"})
+        p = subprocess.run([sys.executable, str(COMPARE), "--no-reset", "--root", str(root), "--scenario", "sc:create-owner", "--dest-url", dest_url], text=True, capture_output=True)
+        if p.returncode != 0 or load_json(root / SCENARIO_PARITY / (scenario_slug("sc:create-owner") + ".json"))["verdict"] != "PASS":
+            return _fail("a stale qualification judged another capture and does not stop the comparison: %s" % p.stderr[-200:])
+        (root / QUALIFICATION).unlink()
+        # leave the destination as the original create left it: owner 7
+        # present, which is the state the delete below starts from
+        Service.owners = {"7": {"id": 7, "lastName": "Franklin"}}
         p = subprocess.run([sys.executable, str(COMPARE), "--no-reset", "--root", str(root), "--scenario", "sc:delete-owner", "--dest-url", dest_url], text=True, capture_output=True)
         if p.returncode != 0:
             return _fail("an identical destination must PASS the recorded delete: %s%s" % (p.stdout, p.stderr))
@@ -555,7 +664,7 @@ def main() -> int:
         if v["verdict"] != "INCONCLUSIVE" or v["reset"]["rc"] != 3:
             return _fail("the failed reset must be recorded beside the verdict: %s" % v.get("reset"))
         dest4.shutdown()
-    print("OK: scenario-parity selftest (the recorded body and headers are replayed; a recorded Location header that the destination omits FAILs, and a 201 against a capture with no header map is INCONCLUSIVE; the capture is the first response (redirects not followed) and only the declared origins are mapped in Location; a preflight is not a write, carries Origin + Access-Control-Request-Method and no credentials; CORS coverage is per policy and the source's policies come from M1's model; the headers the source exposes are asserted too, and full bodies are retained as digest-bound evidence; a write with no declared effect refuses; a 204 that deleted nothing FAILs on its resulting state; a corpus edited after capture refuses; an entry point passes only when every REQUIRED scenario passes, and a missing or foreign-corpus result is INCONCLUSIVE; a declared reset that fails stops the comparison; no corpus is idle with a receipt that says so)")
+    print("OK: scenario-parity selftest (the recorded body and headers are replayed; a recorded Location header that the destination omits FAILs, and a 201 against a capture with no header map is INCONCLUSIVE; the capture is the first response (redirects not followed) and only the declared origins are mapped in Location; a preflight is not a write, carries Origin + Access-Control-Request-Method and no credentials; CORS coverage is per policy and the source's policies come from M1's model; the headers the source exposes are asserted too, and full bodies are retained as digest-bound evidence; a write with no declared effect refuses; a 204 that deleted nothing FAILs on its resulting state; a corpus edited after capture refuses; the capture is bound to the frozen source and the corpus, never to the admission receipt (a stale receipt is a note on the producer receipt, not a refusal; a capture from another bundle or with no bundle digest is INCONCLUSIVE; the verdict stays receipt-bound); an entry point passes only when every REQUIRED scenario passes, and a missing or foreign-corpus result is INCONCLUSIVE; a declared reset that fails stops the comparison; no corpus is idle with a receipt that says so)")
     return 0
 
 

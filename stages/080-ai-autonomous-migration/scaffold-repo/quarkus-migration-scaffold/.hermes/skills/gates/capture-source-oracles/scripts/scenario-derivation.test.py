@@ -32,7 +32,7 @@ RECEIPT = HERE / "compose-parity-receipt.py"
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parents[3] / "lib"))
 from _oracle_common import normalize_body, retain_body  # noqa: E402
-from _scenarios import CorpusError, DERIVE_RECEIPT, QUALIFICATION, SCENARIO_ORACLES, corpus_digest, load_corpus, scenario_slug, source_cors_policies  # noqa: E402
+from _scenarios import CorpusError, DERIVE_RECEIPT, QUALIFICATION, SCENARIO_ORACLES, corpus_digest, load_corpus, request_of, scenario_slug, source_cors_policies  # noqa: E402
 from planner import pipeline, specimens  # noqa: E402
 from planner.canonical import digest, load_json, write_canonical  # noqa: E402
 from planner.paths import EVIDENCE_BUNDLE, STRUCTURE, producer_receipt  # noqa: E402
@@ -56,18 +56,20 @@ def _fail(msg: str) -> int:
     return 1
 
 
-def _api_docs(drop_telephone_example: bool = False) -> str:
+def _api_docs(drop_telephone_example: bool = False, post_operation_id: str = "addOwner", list_schema: bool = True) -> str:
     tel_example = "" if drop_telephone_example else "          example: '6085551023'\n"
+    listing = ("          content:\n            application/json:\n              schema:\n                type: array\n"
+               "                items:\n                  $ref: '#/components/schemas/Owner'\n") if list_schema else ""
     return (
         "openapi: 3.0.1\n"
         "info:\n  title: Spring PetClinic\n  description: |\n    Sample application.\n  version: '1.0'\n"
         "servers:\n  - url: http://localhost:9966/petclinic/api\n"
         "paths:\n"
         "  /owners:\n"
-        "    post:\n      operationId: addOwner\n      requestBody:\n        content:\n          application/json:\n"
+        "    post:\n      operationId: " + post_operation_id + "\n      requestBody:\n        content:\n          application/json:\n"
         "            schema:\n              $ref: '#/components/schemas/OwnerFields'\n        required: true\n"
         "      responses:\n        201:\n          description: created\n"
-        "    get:\n      operationId: listOwners\n      responses:\n        '200':\n          description: ok\n"
+        "    get:\n      operationId: listOwners\n      responses:\n        '200':\n          description: ok\n" + listing +
         "  /owners/{ownerId}:\n"
         "    parameters:\n      - name: ownerId\n        in: path\n        required: true\n        schema:\n          type: integer\n        example: 1\n"
         "    get:\n      operationId: getOwner\n      responses:\n        '200':\n          description: ok\n"
@@ -94,13 +96,13 @@ def _entry(key: str, method: str, path: str, member: str) -> dict[str, Any]:
 
 
 def build_root(td: Path, *, drop_telephone_example: bool = False, servlet: bool = False, api_docs: str | None = None,
-               extra_eps: list[dict[str, Any]] | None = None) -> Path:
+               extra_eps: list[dict[str, Any]] | None = None, post_operation_id: str = "addOwner", list_schema: bool = True) -> Path:
     root = td / "dest"
     copy = td / "frozen"
     res = copy / "src" / "main" / "resources"
     (res / "db" / "hsqldb").mkdir(parents=True)
     (copy / "pom.xml").write_text("<project/>", encoding="utf-8")
-    (res / "api-docs.yml").write_text(api_docs if api_docs is not None else _api_docs(drop_telephone_example), encoding="utf-8")
+    (res / "api-docs.yml").write_text(api_docs if api_docs is not None else _api_docs(drop_telephone_example, post_operation_id, list_schema), encoding="utf-8")
     (res / "db" / "hsqldb" / "populateDB.sql").write_text(
         "INSERT INTO owners VALUES (1, 'George', 'Franklin', '110 W. Liberty St.', 'Madison', '6085551023');\n"
         "INSERT INTO owners VALUES (2, 'Betty', 'Davis', '638 Cardinal Ave.', 'Sun Prairie', '6085551749');\n"
@@ -161,19 +163,25 @@ def _real_excerpt_case() -> int:
         create = [s for s in by_ep.get("ep:%s#%s:http" % (REAL_CONTROLLER, REAL_MEMBERS["create"]), []) if s["derived_from"]["kind"] == "create"]
         invalid = [s for s in by_ep.get("ep:%s#%s:http" % (REAL_CONTROLLER, REAL_MEMBERS["create"]), []) if s["derived_from"]["kind"] == "create-invalid"]
         update = by_ep.get("ep:%s#%s:http" % (REAL_CONTROLLER, REAL_MEMBERS["update"]), [])
-        if len(create) != 1 or len(invalid) != 1 or len(update) != 1:
-            return _fail("the real controller's create, invalid create and update bind by operationId: %s\ngaps: %s" % (sorted(sc), corpus["gaps"]))
-        if not any("operationId addOwner" in e for e in create[0]["derived_from"]["evidence"]) or not any("operationId updateOwner" in e for e in update[0]["derived_from"]["evidence"]):
-            return _fail("the binding evidence names the operationId: %s" % create[0]["derived_from"])
+        if len(create) != 1 or len(invalid) != 5 or len(update) != 1:
+            return _fail("the real controller's create, five invalid creates (one per constrained property) and update bind by operationId: %s\ngaps: %s" % (sorted(sc), corpus["gaps"]))
+        if ("openapi-path:/owner≠route:/api/owners; bound by operationId addOwner" not in create[0]["derived_from"]["evidence"]
+                or "openapi-path:/owner/{ownerId}≠route:/api/owners/{ownerId}; bound by operationId updateOwner" not in update[0]["derived_from"]["evidence"]):
+            return _fail("the binding evidence records the path discrepancy and the operationId: %s" % create[0]["derived_from"])
+        if {s["id"] for s in invalid} != {"sc:create-invalid-owners-%s" % f for f in ("firstName", "lastName", "address", "city", "telephone")}:
+            return _fail("one negative per constrained property of the real schema: %s" % sorted(s["id"] for s in invalid))
+        if create[0]["qualify"]["identity_field"] != "id":
+            return _fail("the identity comes from the real listOwners response schema: %s" % create[0]["qualify"])
         body = json.loads((root / create[0]["body_file"]).read_text())
         if body != {"firstName": "George", "lastName": "Franklin", "address": "110 W. Liberty St.", "city": "Madison", "telephone": "6085551023"}:
             return _fail("the create body is the real document's OwnerFields examples: %s" % body)
         if create[0]["path"] != "/api/owners" or update[0]["path"] != "/api/owners/1" or json.loads((root / update[0]["body_file"]).read_text()) != body:
             return _fail("concrete paths are the code's routes, bodies the document's: %s %s" % (create[0]["path"], update[0]["path"]))
-        inv = json.loads((root / invalid[0]["body_file"]).read_text())
+        tel = next(s for s in invalid if s["id"] == "sc:create-invalid-owners-telephone")
+        inv = json.loads((root / tel["body_file"]).read_text())
         changed = [k for k in body if inv.get(k) != body[k]]
-        if changed != ["firstName"] or re.fullmatch(r"^[a-zA-Z]*$", inv["firstName"]) is not None or invalid[0]["qualify"]["errors_header_names_field"] != "firstName":
-            return _fail("the invalid body breaks exactly the first constrained property of the real schema: %s" % inv)
+        if changed != ["telephone"] or re.fullmatch(r"^[0-9]*$", inv["telephone"]) is not None or tel["qualify"] != {"intent": "negative", "expect_status": [400], "errors_header_names_field": "telephone", "after_equals_before": True}:
+            return _fail("each invalid body breaks exactly its own property of the real schema: %s %s" % (inv, tel["qualify"]))
         # UserRestController#addOwner shares the method name and must NOT be
         # handed OwnerFields: its stem (user) matches neither the tag nor the schema
         users = [s for s in corpus["scenarios"] if s["path"] == "/api/users"]
@@ -200,11 +208,11 @@ def _derivation_case() -> tuple[int, Path | None, tempfile.TemporaryDirectory | 
     if len(pols) != 1 or why:
         return _fail("fixture declares one policy: %s %s" % (pols, why)), None, td
     short = pols[0].split(":", 1)[1]
-    want = {"sc:create-owners", "sc:create-invalid-owners", "sc:update-owners-1", "sc:delete-owners-1",
+    want = {"sc:create-owners", "sc:create-invalid-owners-telephone", "sc:create-invalid-owners-firstName", "sc:update-owners-1", "sc:delete-owners-1",
             "sc:cors-actual-%s" % short, "sc:cors-preflight-%s" % short}
     got = {str(s["id"]) for s in corpus["scenarios"]}
     if got != want:
-        return _fail("the derived ids are exactly the six rules over the write entry points (nothing for the reads): %s" % sorted(got)), None, td
+        return _fail("the derived ids are the rules over the write entry points, one negative per constrained property, nothing for the reads: %s" % sorted(got)), None, td
     if corpus.get("approved_by") is not None or corpus["derived_from"]["producer"] != "derive-source-scenarios.py":
         return _fail("a derived corpus names its producer, not a person: %s" % corpus.get("derived_from")), None, td
     if corpus["derived_from"]["evidence_bundle_sha256"] != digest(load_json(root / EVIDENCE_BUNDLE)) or not corpus["derived_from"]["openapi"]["sha256"]:
@@ -214,26 +222,32 @@ def _derivation_case() -> tuple[int, Path | None, tempfile.TemporaryDirectory | 
     expected_body = {k: v for k, v in SEED_OWNER_1.items() if k != "id"}
     if create_body != expected_body:
         return _fail("the create body is the document's examples without id: %s" % create_body), None, td
-    if sc["sc:create-owners"]["qualify"] != {"expect_status": [201], "location": "absolute-under-base", "after_contains_body": True, "after_adds_one_body": True}:
-        return _fail("the create scenario carries its qualification contract: %s" % sc["sc:create-owners"].get("qualify")), None, td
+    if sc["sc:create-owners"]["qualify"] != {"intent": "positive", "expect_status": [201], "location": "absolute-under-base", "after_contains_body": True,
+                                            "creates_one_entity": True, "identity_field": "id"}:
+        return _fail("the create scenario carries its identity-aware contract, with the identity derived from the collection GET's response schema: %s" % sc["sc:create-owners"].get("qualify")), None, td
+    if not any("items(Owner).id" in e for e in sc["sc:create-owners"]["derived_from"]["evidence"]):
+        return _fail("the identity field names its evidence: %s" % sc["sc:create-owners"]["derived_from"]), None, td
     if sc["sc:create-owners"]["headers"].get("Origin") is None or sc["sc:create-owners"].get("cors_policy") != pols[0]:
         return _fail("a create on a controller carrying a CORS policy sends Origin and names the policy: %s" % sc["sc:create-owners"]), None, td
-    invalid = json.loads((root / sc["sc:create-invalid-owners"]["body_file"]).read_text())
+    invalid = json.loads((root / sc["sc:create-invalid-owners-telephone"]["body_file"]).read_text())
     if re.fullmatch(r"^[0-9]*$", invalid["telephone"]) is not None:
         return _fail("the invalid body's telephone must violate its pattern: %r" % invalid["telephone"]), None, td
     if {k: v for k, v in invalid.items() if k != "telephone"} != {k: v for k, v in create_body.items() if k != "telephone"}:
         return _fail("only telephone differs in the invalid body: %s" % invalid), None, td
     if re.fullmatch(r"^[a-zA-Z]*$", invalid["firstName"]) is None:
         return _fail("every other constrained field stays valid: %s" % invalid), None, td
-    if sc["sc:create-invalid-owners"]["qualify"].get("errors_header_names_field") != "telephone":
-        return _fail("the invalid scenario names the rejected field: %s" % sc["sc:create-invalid-owners"]["qualify"]), None, td
+    if sc["sc:create-invalid-owners-telephone"]["qualify"] != {"intent": "negative", "expect_status": [400], "errors_header_names_field": "telephone", "after_equals_before": True}:
+        return _fail("the invalid scenario is negative and names the rejected field: %s" % sc["sc:create-invalid-owners-telephone"]["qualify"]), None, td
+    invalid_fn = json.loads((root / sc["sc:create-invalid-owners-firstName"]["body_file"]).read_text())
+    if re.fullmatch(r"^[a-zA-Z]*$", invalid_fn["firstName"]) is not None or [k for k in create_body if invalid_fn[k] != create_body[k]] != ["firstName"]:
+        return _fail("one negative scenario per constrained property, each violating exactly its own: %s" % invalid_fn), None, td
     update_body = json.loads((root / sc["sc:update-owners-1"]["body_file"]).read_text())
     if update_body != expected_body or sc["sc:update-owners-1"]["path"] != "/api/owners/1":
         return _fail("the update writes the examples over the seeded row (id is readOnly and not sent): %s %s" % (update_body, sc["sc:update-owners-1"]["path"])), None, td
     if [e["path"] for e in sc["sc:update-owners-1"]["effects"]] != ["/api/owners/1", "/api/owners"]:
         return _fail("the update reads back the item and the collection: %s" % sc["sc:update-owners-1"]["effects"]), None, td
     d = sc["sc:delete-owners-1"]
-    if not d.get("body_absent") or d["qualify"] != {"expect_status": [200, 204], "after_effect_status": {"eff:owners-1-after-delete": 404}}:
+    if not d.get("body_absent") or d["qualify"] != {"intent": "positive", "expect_status": [200, 204], "after_effect_status": {"eff:owners-1-after-delete": 404}}:
         return _fail("the delete has no body and expects the row gone: %s" % d), None, td
     ca, cp = sc["sc:cors-actual-%s" % short], sc["sc:cors-preflight-%s" % short]
     if ca["method"] != "GET" or ca["path"] != "/api/owners" or ca["qualify"].get("cors_expose_headers") != ["content-type", "errors"] or ca["headers"].get("Origin") != "http://parity.invalid:4200":
@@ -246,6 +260,8 @@ def _derivation_case() -> tuple[int, Path | None, tempfile.TemporaryDirectory | 
         return _fail("the complete fixture derives with no gap: %s" % corpus["gaps"]), None, td
     if receipt["status"] != "ok" or receipt["corpus_sha256"] != corpus_digest(corpus) or sorted(receipt["scenarios"]) != sorted(want):
         return _fail("the receipt binds the corpus digest and lists the scenarios: %s" % receipt), None, td
+    if set(receipt["bodies"]) != {s["body_file"] for s in corpus["scenarios"] if s.get("body_file")} or set(receipt["requests"]) != want:
+        return _fail("the receipt binds every body's bytes and every request digest: %s %s" % (sorted(receipt["bodies"]), sorted(receipt["requests"]))), None, td
     if not (root / "verification" / "scenarios" / "bodies" / "create-owners.json").read_text().endswith("\n"):
         return _fail("bodies are written with a trailing newline"), None, td
     # a second derivation is byte-identical: nothing in the corpus is a clock or a host
@@ -268,6 +284,21 @@ def _derivation_case() -> tuple[int, Path | None, tempfile.TemporaryDirectory | 
         if "edited after derivation" not in str(exc) or "missing" in str(exc):
             return _fail("the refusal names the digest mismatch and never says 'missing': %s" % exc), None, td
     write_canonical(root / CORPUS_P, corpus)
+    # ... and refuses a BODY edited after derivation, which the corpus
+    # digest alone (binding filenames) accepted (architect review of
+    # 708cfef9: body_only_edit_after_derivation)
+    bf = root / sc["sc:create-invalid-owners-telephone"]["body_file"]
+    kept_body = bf.read_bytes()
+    edited_body = json.loads(kept_body.decode("utf-8"))
+    edited_body["firstName"] = "Edited"
+    bf.write_text(json.dumps(edited_body, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+    try:
+        load_corpus(root)
+        return _fail("a body file edited after derivation must be refused"), None, td
+    except CorpusError as exc:
+        if "body/request edited after derivation" not in str(exc):
+            return _fail("the refusal names the body/request binding: %s" % exc), None, td
+    bf.write_bytes(kept_body)
     # ... and refuses a receipt bound to another bundle
     rebound = dict(receipt)
     rebound["evidence_bundle_sha256"] = "0" * 64
@@ -326,6 +357,18 @@ def _gap_cases() -> int:
         bodies = root / "verification" / "scenarios" / "bodies"
         if bodies.is_dir() and any(p.name.startswith("create") for p in bodies.iterdir()):
             return _fail("no body is written for a scenario that is not emitted")
+    with tempfile.TemporaryDirectory(prefix="derive-conflict-") as td:
+        # a path that matches but whose operationId names another member
+        # (architect review of 708cfef9: addVet bound to the addOwner
+        # controller by path alone) is a typed gap, never a binding
+        root = build_root(Path(td), post_operation_id="addVet")
+        p = _derive(root)
+        corpus = load_json(root / CORPUS_P)
+        ids = {str(s["id"]) for s in corpus["scenarios"]}
+        if p.returncode != 0 or any(i.startswith("sc:create-") for i in ids):
+            return _fail("a conflicting operationId must not bind: rc=%s %s" % (p.returncode, sorted(ids)))
+        if not any(g.startswith("conflicting binding: path /owners ↔ operationId addVet ≠ member addOwner") for g in corpus["gaps"]):
+            return _fail("the conflict is a typed gap: %s" % corpus["gaps"])
     with tempfile.TemporaryDirectory(prefix="derive-refuse-") as td:
         root = build_root(Path(td))
         (Path(td) / "frozen" / "src" / "main" / "resources" / "api-docs.yml").unlink()
@@ -344,14 +387,15 @@ def _retain(root: Path, sid: str, name: str, payload: Any) -> tuple[dict[str, An
 
 
 def _capture(root: Path, sc: dict[str, Any], corpus_sha: str, status: int, headers: dict[str, Any], body: Any,
-             before: dict[str, tuple[int, Any]], after: dict[str, tuple[int, Any]]) -> Path:
+             before: dict[str, tuple[int, Any]], after: dict[str, tuple[int, Any]], request_sha: str | None = None) -> Path:
     sid = str(sc["id"])
     ev, sha = _retain(root, sid, "response", body)
     rec: dict[str, Any] = {
         "schema": "rhoai3.source-scenario/v1", "scenario": sid, "entry_point": sc["entry_point"],
         "evidence_bundle_sha256": digest(load_json(root / EVIDENCE_BUNDLE)), "corpus_sha256": corpus_sha,
         "source": {"base_url": BASE, "analysis_copy_digest": "fixture-source-digest"}, "status": "CAPTURED", "reason": "",
-        "request": {"method": sc["method"], "path": sc["path"], "headers": dict(sc.get("headers") or {})},
+        "request": {"method": sc["method"], "path": sc["path"], "headers": dict(sc.get("headers") or {}),
+                    "request_sha256": request_sha if request_sha is not None else request_of(root, sc)["request_sha256"]},
         "response": {"status": status, "headers": headers, "body_kind": "json", "body_sha256": sha, "evidence": ev},
         "before": [], "effects": [],
     }
@@ -384,8 +428,11 @@ def _qualification_case(root: Path) -> int:
     _capture(root, sc["sc:create-owners"], corpus_sha, 201, good_create, created,
              {"eff:owners-list-after-create": (200, seeded)}, {"eff:owners-list-after-create": (200, seeded + [created])})
     invalid_hdrs = dict(cors, Location=None, errors='[{"fieldName":"telephone","fieldValue":"6085551023!","errorMessage":"numeric value out of bounds"}]')
-    _capture(root, sc["sc:create-invalid-owners"], corpus_sha, 400, invalid_hdrs, {"error": "bad request"},
-             {"eff:owners-list-after-invalid-create": (200, seeded)}, {"eff:owners-list-after-invalid-create": (200, seeded)})
+    inv_tel, inv_fn = sc["sc:create-invalid-owners-telephone"], sc["sc:create-invalid-owners-firstName"]
+    eff_tel, eff_fn = "eff:owners-list-after-invalid-create-telephone", "eff:owners-list-after-invalid-create-firstName"
+    _capture(root, inv_tel, corpus_sha, 400, invalid_hdrs, {"error": "bad request"}, {eff_tel: (200, seeded)}, {eff_tel: (200, seeded)})
+    fn_hdrs = dict(invalid_hdrs, errors='[{"fieldName":"firstName","fieldValue":"George!","errorMessage":"must match"}]')
+    _capture(root, inv_fn, corpus_sha, 400, fn_hdrs, {"error": "bad request"}, {eff_fn: (200, seeded)}, {eff_fn: (200, seeded)})
     update_body = json.loads((root / sc["sc:update-owners-1"]["body_file"]).read_text())
     updated = dict(update_body, id=1)
     _capture(root, sc["sc:update-owners-1"], corpus_sha, 204, {"Location": None}, "",
@@ -398,12 +445,20 @@ def _qualification_case(root: Path) -> int:
              {"Access-Control-Allow-Origin": origin, "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE", "Access-Control-Allow-Headers": "content-type",
               "Access-Control-Max-Age": "1800", "Location": None}, "", {}, {})
     p, q = _qualify(root)
-    verdicts = {sid: r["verdict"] for sid, r in q["scenarios"].items()}
+    verdicts = {sid: r["capability"] for sid, r in q["scenarios"].items()}
     if p.returncode != 0 or q["verdict"] != "PASS" or set(verdicts.values()) != {"PASS"} or q["corpus_sha256"] != corpus_sha:
         return _fail("captures that show what every scenario says are PASS: rc=%s %s %s%s" % (p.returncode, verdicts, p.stdout, p.stderr))
-    checks = {c["check"]: c for c in q["scenarios"]["sc:create-owners"]["checks"]}
-    if set(checks) != {"expect_status", "location", "after_contains_body", "after_adds_one_body"} or not all(c["ok"] is True for c in checks.values()):
+    rec = q["scenarios"]["sc:create-owners"]
+    checks = {c["check"]: c for c in rec["checks"]}
+    if set(checks) != {"expect_status", "location", "after_contains_body", "creates_one_entity"} or not all(c["ok"] is True for c in checks.values()):
         return _fail("the create's checks are exactly its contract: %s" % checks)
+    cap_p = root / SCENARIO_ORACLES / (scenario_slug("sc:create-owners") + ".json")
+    if (rec["evidence"] != {"status": "USABLE", "reasons": []} or rec["intent"] != "positive" or rec["known_failures"] != []
+            or rec["capture_sha256"] != hashlib.sha256(cap_p.read_bytes()).hexdigest() or rec["request_sha256"] != request_of(root, sc["sc:create-owners"])["request_sha256"]
+            or rec["corpus_sha256"] != corpus_sha or rec["evidence_bundle_sha256"] != digest(load_json(root / EVIDENCE_BUNDLE))):
+        return _fail("a record carries both results and is bound to the exact capture: %s" % {k: rec[k] for k in ("evidence", "intent", "known_failures", "capture_sha256", "request_sha256")})
+    if q["scenarios"]["sc:create-invalid-owners-telephone"]["intent"] != "negative" or q["scenarios"]["sc:create-invalid-owners-firstName"]["intent"] != "negative":
+        return _fail("negative scenarios are recorded as negative")
     # a relative Location is not the source's absolute form under its base
     _capture(root, sc["sc:create-owners"], corpus_sha, 201, dict(good_create, Location="/petclinic/api/owners/11"), created,
              {"eff:owners-list-after-create": (200, seeded)}, {"eff:owners-list-after-create": (200, seeded + [created])})
@@ -424,32 +479,78 @@ def _qualification_case(root: Path) -> int:
     r = q["scenarios"]["sc:create-owners"]
     # the example body IS seed owner 1, so "present afterwards" holds trivially;
     # "one more than before" is what catches a create that created nothing
-    if r["verdict"] != "FAIL" or not any(c["check"] == "after_adds_one_body" and c["ok"] is False for c in r["checks"]):
-        return _fail("a 201 whose read-back gained no matching row FAILs: %s" % r)
+    if r["capability"] != "FAIL" or r["evidence"]["status"] != "USABLE" or not any(c["check"] == "creates_one_entity" and c["ok"] is False for c in r["checks"]):
+        return _fail("a 201 whose read-back gained no new entity FAILs: %s" % r)
     _capture(root, sc["sc:create-owners"], corpus_sha, 201, good_create, created,
              {"eff:owners-list-after-create": (200, seeded)}, {"eff:owners-list-after-create": (200, seeded + [created])})
     # the 400 without the errors header the source exposes
-    _capture(root, sc["sc:create-invalid-owners"], corpus_sha, 400, dict(invalid_hdrs, errors=None), {"error": "bad request"},
-             {"eff:owners-list-after-invalid-create": (200, seeded)}, {"eff:owners-list-after-invalid-create": (200, seeded)})
+    _capture(root, inv_tel, corpus_sha, 400, dict(invalid_hdrs, errors=None), {"error": "bad request"}, {eff_tel: (200, seeded)}, {eff_tel: (200, seeded)})
     p, q = _qualify(root)
-    r = q["scenarios"]["sc:create-invalid-owners"]
-    if r["verdict"] != "FAIL" or not any(c["check"] == "errors_header_names_field" and c["ok"] is False for c in r["checks"]):
+    r = q["scenarios"]["sc:create-invalid-owners-telephone"]
+    if r["capability"] != "FAIL" or not any(c["check"] == "errors_header_names_field" and c["ok"] is False for c in r["checks"]):
         return _fail("a 400 without the errors header FAILs: %s" % r)
-    # ... and a 400 that nevertheless changed the list
-    _capture(root, sc["sc:create-invalid-owners"], corpus_sha, 400, invalid_hdrs, {"error": "bad request"},
-             {"eff:owners-list-after-invalid-create": (200, seeded)}, {"eff:owners-list-after-invalid-create": (200, seeded + [created])})
+    # ... a 400 whose parsed errors name another field: the rejection is not this scenario's
+    _capture(root, inv_tel, corpus_sha, 400, fn_hdrs, {"error": "bad request"}, {eff_tel: (200, seeded)}, {eff_tel: (200, seeded)})
     p, q = _qualify(root)
-    if q["scenarios"]["sc:create-invalid-owners"]["verdict"] != "FAIL":
+    if q["scenarios"]["sc:create-invalid-owners-telephone"]["capability"] != "FAIL":
+        return _fail("a firstName rejection is not telephone coverage: %s" % q["scenarios"]["sc:create-invalid-owners-telephone"])
+    # ... and a 400 that nevertheless changed the list
+    _capture(root, inv_tel, corpus_sha, 400, invalid_hdrs, {"error": "bad request"}, {eff_tel: (200, seeded)}, {eff_tel: (200, seeded + [created])})
+    p, q = _qualify(root)
+    if q["scenarios"]["sc:create-invalid-owners-telephone"]["capability"] != "FAIL":
         return _fail("a rejected create that changed the list FAILs")
-    _capture(root, sc["sc:create-invalid-owners"], corpus_sha, 400, invalid_hdrs, {"error": "bad request"},
-             {"eff:owners-list-after-invalid-create": (200, seeded)}, {"eff:owners-list-after-invalid-create": (200, seeded)})
-    # a missing retained body cannot be checked
+    # invalid_non_json_error_and_unretained_500_readbacks: a non-JSON errors
+    # header and 500 read-backs with no retained body are UNUSABLE evidence,
+    # never a PASS on a substring
+    _capture(root, inv_tel, corpus_sha, 400, dict(invalid_hdrs, errors="telephone"), {"error": "bad request"}, {eff_tel: (500, {"error": "boom"})}, {eff_tel: (500, {"error": "boom"})})
+    cap_p = root / SCENARIO_ORACLES / (scenario_slug("sc:create-invalid-owners-telephone") + ".json")
+    cap = load_json(cap_p)
+    for row in cap["before"] + cap["effects"]:
+        row.pop("evidence", None)
+    write_canonical(cap_p, cap)
+    p, q = _qualify(root)
+    r = q["scenarios"]["sc:create-invalid-owners-telephone"]
+    if r["capability"] != "INCONCLUSIVE" or r["evidence"]["status"] != "UNUSABLE" or "errors header not parseable" not in r["reason"] or "not 2xx" not in r["reason"]:
+        return _fail("invalid_non_json_error_and_unretained_500_readbacks is INCONCLUSIVE naming both: %s" % r)
+    _capture(root, inv_tel, corpus_sha, 400, invalid_hdrs, {"error": "bad request"}, {eff_tel: (200, seeded)}, {eff_tel: (200, seeded)})
+    # duplicate_existing_id_and_wrong_location: a duplicate of a seeded row
+    # (same identity) and a Location pointing at 999 passed a count; the
+    # identity-aware predicate FAILs naming each broken condition
     cap_p = root / SCENARIO_ORACLES / (scenario_slug("sc:create-owners") + ".json")
+    _capture(root, sc["sc:create-owners"], corpus_sha, 201, dict(good_create, Location=BASE + "/api/owners/999"), created,
+             {"eff:owners-list-after-create": (200, seeded)}, {"eff:owners-list-after-create": (200, seeded + [dict(SEED_OWNER_1)])})
+    p, q = _qualify(root)
+    r = q["scenarios"]["sc:create-owners"]
+    if (r["capability"] != "FAIL" or r["evidence"]["status"] != "USABLE" or "expected exactly one" not in r["reason"]
+            or "duplicated" not in r["reason"] or "999" not in r["reason"]):
+        return _fail("duplicate_existing_id_and_wrong_location FAILs naming the new-identity, prior-entity and Location conditions: %s" % r)
+    # failed_status_plus_unbound_after_body: a 500 beside an unbound read-back
+    # is INCONCLUSIVE (unusable evidence), with the 500 on the record
+    _capture(root, sc["sc:create-owners"], corpus_sha, 500, good_create, {"error": "boom"},
+             {"eff:owners-list-after-create": (200, seeded)}, {"eff:owners-list-after-create": (200, seeded + [created])})
+    cap = load_json(cap_p)
+    cap["effects"][0].pop("evidence")
+    write_canonical(cap_p, cap)
+    p, q = _qualify(root)
+    r = q["scenarios"]["sc:create-owners"]
+    if r["capability"] != "INCONCLUSIVE" or r["evidence"]["status"] != "UNUSABLE" or not any("status 500" in f for f in r["known_failures"]):
+        return _fail("failed_status_plus_unbound_after_body is INCONCLUSIVE with the 500 recorded: %s" % r)
+    # foreign_capture_identity_and_request: a capture answering another
+    # request is not this scenario's capture
+    _capture(root, sc["sc:create-owners"], corpus_sha, 201, good_create, created,
+             {"eff:owners-list-after-create": (200, seeded)}, {"eff:owners-list-after-create": (200, seeded + [created])}, request_sha="f" * 64)
+    p, q = _qualify(root)
+    r = q["scenarios"]["sc:create-owners"]
+    if r["capability"] != "INCONCLUSIVE" or "not this scenario's capture" not in r["reason"]:
+        return _fail("foreign_capture_identity_and_request is INCONCLUSIVE: %s" % r)
+    # a missing retained body cannot be checked
+    _capture(root, sc["sc:create-owners"], corpus_sha, 201, good_create, created,
+             {"eff:owners-list-after-create": (200, seeded)}, {"eff:owners-list-after-create": (200, seeded + [created])})
     cap = load_json(cap_p)
     Path(cap["effects"][0]["evidence"]["body_file"]).unlink()
     p, q = _qualify(root)
     r = q["scenarios"]["sc:create-owners"]
-    if r["verdict"] != "INCONCLUSIVE" or not any(c["check"] == "after_contains_body" and c["ok"] is None and "absent" in c["detail"] for c in r["checks"]):
+    if r["capability"] != "INCONCLUSIVE" or r["evidence"]["status"] != "UNUSABLE" or not any(c["check"] == "after_contains_body" and c["ok"] is None and "absent" in c["detail"] for c in r["checks"]):
         return _fail("a missing retained body is INCONCLUSIVE with the reason: %s" % r)
     # a retained body whose bytes are not the recorded digest is not evidence
     _capture(root, sc["sc:create-owners"], corpus_sha, 201, good_create, created,
@@ -457,7 +558,7 @@ def _qualification_case(root: Path) -> int:
     cap = load_json(cap_p)
     Path(cap["effects"][0]["evidence"]["body_file"]).write_bytes(json.dumps(seeded + [created, {"id": 12}]).encode())
     p, q = _qualify(root)
-    if q["scenarios"]["sc:create-owners"]["verdict"] != "INCONCLUSIVE" or "digest" not in q["scenarios"]["sc:create-owners"]["reason"]:
+    if q["scenarios"]["sc:create-owners"]["capability"] != "INCONCLUSIVE" or "digest" not in q["scenarios"]["sc:create-owners"]["reason"]:
         return _fail("a retained body that does not match its digest is INCONCLUSIVE: %s" % q["scenarios"]["sc:create-owners"])
     # a row retained without digests is bytes of unknown origin
     _capture(root, sc["sc:create-owners"], corpus_sha, 201, good_create, created,
@@ -466,18 +567,32 @@ def _qualification_case(root: Path) -> int:
     cap["effects"][0]["evidence"].pop("raw_body_sha256")
     write_canonical(cap_p, cap)
     p, q = _qualify(root)
-    if q["scenarios"]["sc:create-owners"]["verdict"] != "INCONCLUSIVE" or "not digest-bound" not in q["scenarios"]["sc:create-owners"]["reason"]:
+    if q["scenarios"]["sc:create-owners"]["capability"] != "INCONCLUSIVE" or "not digest-bound" not in q["scenarios"]["sc:create-owners"]["reason"]:
         return _fail("a retained body without its digests is INCONCLUSIVE: %s" % q["scenarios"]["sc:create-owners"])
     # no capture at all, and a capture of another corpus
     cap_p.unlink()
     p, q = _qualify(root)
-    if q["scenarios"]["sc:create-owners"]["verdict"] != "INCONCLUSIVE" or q["scenarios"]["sc:create-owners"]["reason"] != "no capture":
+    if q["scenarios"]["sc:create-owners"]["capability"] != "INCONCLUSIVE" or q["scenarios"]["sc:create-owners"]["reason"] != "no capture":
         return _fail("no capture is INCONCLUSIVE: %s" % q["scenarios"]["sc:create-owners"])
     _capture(root, sc["sc:create-owners"], "1" * 64, 201, good_create, created,
              {"eff:owners-list-after-create": (200, seeded)}, {"eff:owners-list-after-create": (200, seeded + [created])})
     p, q = _qualify(root)
-    if q["scenarios"]["sc:create-owners"]["verdict"] != "INCONCLUSIVE" or "corpus" not in q["scenarios"]["sc:create-owners"]["reason"]:
+    if q["scenarios"]["sc:create-owners"]["capability"] != "INCONCLUSIVE" or "corpus" not in q["scenarios"]["sc:create-owners"]["reason"]:
         return _fail("a capture bound to another corpus is INCONCLUSIVE: %s" % q["scenarios"]["sc:create-owners"])
+    # identity_field null: the gate refuses to judge a create by count
+    with tempfile.TemporaryDirectory(prefix="derive-noid-") as td2:
+        root2 = build_root(Path(td2), list_schema=False)
+        _derive(root2)
+        corpus2 = load_corpus(root2)
+        sc2 = {str(s["id"]): s for s in corpus2["scenarios"]}
+        if sc2["sc:create-owners"]["qualify"]["identity_field"] is not None:
+            return _fail("no response schema on the collection GET means identity_field null: %s" % sc2["sc:create-owners"]["qualify"])
+        _capture(root2, sc2["sc:create-owners"], corpus_digest(corpus2), 201, good_create, created,
+                 {"eff:owners-list-after-create": (200, seeded)}, {"eff:owners-list-after-create": (200, seeded + [created])})
+        p2, q2 = _qualify(root2)
+        r2 = q2["scenarios"]["sc:create-owners"]
+        if r2["capability"] != "INCONCLUSIVE" or "collection identity not derivable" not in r2["reason"]:
+            return _fail("a create without a derivable identity is INCONCLUSIVE, never counted: %s" % r2)
     # a scenario without a contract cannot be qualified
     bare = json.loads(json.dumps(corpus))
     for s in bare["scenarios"]:
@@ -487,7 +602,7 @@ def _qualification_case(root: Path) -> int:
     rec["corpus_sha256"] = corpus_digest(bare)
     write_canonical(root / DERIVE_RECEIPT, rec)
     p, q = _qualify(root)
-    if p.returncode != 1 or any(r["verdict"] != "INCONCLUSIVE" or "no qualification contract" not in r["reason"] for r in q["scenarios"].values()):
+    if p.returncode != 1 or any(r["capability"] != "INCONCLUSIVE" or "no qualification contract" not in r["reason"] for r in q["scenarios"].values()):
         return _fail("a scenario without a qualify block is INCONCLUSIVE: %s" % q["scenarios"])
     return 0
 
@@ -509,7 +624,8 @@ def _receipt_case() -> int:
                                  "effects": [], "normalization": [], "qualify": {"expect_status": [200]}}]}
         write_canonical(root / CORPUS_P, corpus)
         write_canonical(root / DERIVE_RECEIPT, {"schema": "rhoai3.scenario-derivation/v1", "producer": "derive-source-scenarios.py", "status": "ok",
-                                                "evidence_bundle_sha256": digest(load_json(root / EVIDENCE_BUNDLE)), "corpus_sha256": corpus_digest(corpus)})
+                                                "evidence_bundle_sha256": digest(load_json(root / EVIDENCE_BUNDLE)), "corpus_sha256": corpus_digest(corpus),
+                                                "bodies": {}, "requests": {"sc:read-x": request_of(root, corpus["scenarios"][0])["request_sha256"]}})
         corpus_sha = corpus_digest(load_json(root / CORPUS_P))
         receipt_digest = load_json(root / "evidence/planning/admission-receipt.json")["receipt_digest"]
         write_canonical(root / "verification" / "parity" / "scenarios" / (scenario_slug("sc:read-x") + ".json"),
@@ -528,24 +644,45 @@ def _receipt_case() -> int:
         # a qualification that is INCONCLUSIVE (no capture, evidence not
         # digest-bound): the entry point cannot be judged
         write_canonical(root / QUALIFICATION, {"schema": "rhoai3.scenario-qualification/v1", "corpus_sha256": corpus_sha,
-                                               "scenarios": {"sc:read-x": {"verdict": "INCONCLUSIVE", "reason": "no capture"}}, "verdict": "INCONCLUSIVE"})
+                                               "scenarios": {"sc:read-x": {"capability": "INCONCLUSIVE", "intent": "positive", "reason": "no capture"}}, "verdict": "INCONCLUSIVE"})
         subprocess.run([sys.executable, str(RECEIPT), "--root", str(root)], text=True, capture_output=True)
         doc = load_json(root / "verification" / "parity" / "receipt.json")
         row = next(r for r in doc["entry_points"] if r["entry_point"] == ep)
         if row["verdict"] != "INCONCLUSIVE" or "capture not qualified: sc:read-x INCONCLUSIVE" not in row["reason"] or doc["coverage_gaps"]:
             return _fail("a scenario qualified INCONCLUSIVE makes its entry point INCONCLUSIVE: %s" % row)
-        # a qualification that FAILED: the capture is still faithful parity
-        # evidence, so the entry point is judged on parity and the scenario
-        # is a coverage gap on the receipt
+        # a POSITIVE scenario whose capability FAILED is a source-side fixture
+        # failure: no parity credit, the entry point INCONCLUSIVE, and a
+        # coverage gap of kind fixture-failed on the receipt
         write_canonical(root / QUALIFICATION, {"schema": "rhoai3.scenario-qualification/v1", "corpus_sha256": corpus_sha,
-                                               "scenarios": {"sc:read-x": {"verdict": "FAIL", "reason": "expect_status: status 500"}}, "verdict": "FAIL"})
+                                               "scenarios": {"sc:read-x": {"capability": "FAIL", "intent": "positive", "reason": "expect_status: status 500"}}, "verdict": "FAIL"})
         p = subprocess.run([sys.executable, str(RECEIPT), "--root", str(root)], text=True, capture_output=True)
         doc = load_json(root / "verification" / "parity" / "receipt.json")
         row = next(r for r in doc["entry_points"] if r["entry_point"] == ep)
-        if p.returncode != 0 or doc["verdict"] != "PASS" or row["verdict"] != "PASS":
-            return _fail("a FAIL qualification does not make the parity receipt INCONCLUSIVE: %s %s%s" % (row, p.stdout, p.stderr))
-        if doc["coverage_gaps"] != [{"scenario": "sc:read-x", "entry_point": ep, "reason": "capture not qualified: FAIL: expect_status: status 500"}] or "coverage gap sc:read-x" not in p.stdout:
-            return _fail("the FAIL is a coverage gap on the receipt, printed: %s %s" % (doc["coverage_gaps"], p.stdout))
+        if p.returncode != 1 or row["verdict"] != "INCONCLUSIVE" or "source fixture failed qualification: sc:read-x" not in row["reason"]:
+            return _fail("a positive FAIL qualification is a fixture failure, INCONCLUSIVE for its entry point: %s %s%s" % (row, p.stdout, p.stderr))
+        if doc["coverage_gaps"] != [{"scenario": "sc:read-x", "entry_point": ep, "kind": "fixture-failed", "intent": "positive",
+                                     "reason": "source fixture failed qualification: expect_status: status 500"}] or "coverage gap sc:read-x" not in p.stdout:
+            return _fail("the fixture failure is a coverage gap on the receipt, printed: %s %s" % (doc["coverage_gaps"], p.stdout))
+        # a NEGATIVE scenario whose capability PASSED compares parity normally
+        # and counts as negative coverage only
+        write_canonical(root / QUALIFICATION, {"schema": "rhoai3.scenario-qualification/v1", "corpus_sha256": corpus_sha,
+                                               "scenarios": {"sc:read-x": {"capability": "PASS", "intent": "negative", "reason": ""}}, "verdict": "PASS"})
+        subprocess.run([sys.executable, str(RECEIPT), "--root", str(root)], text=True, capture_output=True)
+        doc = load_json(root / "verification" / "parity" / "receipt.json")
+        row = next(r for r in doc["entry_points"] if r["entry_point"] == ep)
+        if row["verdict"] != "PASS" or row["coverage"] != {"positive": [], "negative": ["sc:read-x"]} or doc["coverage_gaps"]:
+            return _fail("a negative PASS is negative coverage only: %s" % row)
+        # a qualification bound to another capture is stale
+        cap_p = root / SCENARIO_ORACLES / (scenario_slug("sc:read-x") + ".json")
+        write_canonical(cap_p, {"schema": "rhoai3.source-scenario/v1", "scenario": "sc:read-x", "status": "CAPTURED"})
+        write_canonical(root / QUALIFICATION, {"schema": "rhoai3.scenario-qualification/v1", "corpus_sha256": corpus_sha,
+                                               "scenarios": {"sc:read-x": {"capability": "PASS", "intent": "positive", "reason": "", "capture_sha256": "0" * 64}}, "verdict": "PASS"})
+        subprocess.run([sys.executable, str(RECEIPT), "--root", str(root)], text=True, capture_output=True)
+        doc = load_json(root / "verification" / "parity" / "receipt.json")
+        row = next(r for r in doc["entry_points"] if r["entry_point"] == ep)
+        if row["verdict"] != "INCONCLUSIVE" or "requalify after recapture" not in row["reason"] or [g["kind"] for g in doc["coverage_gaps"]] != ["stale-qualification"]:
+            return _fail("a qualification whose capture changed is stale: %s %s" % (row, doc["coverage_gaps"]))
+        cap_p.unlink()
         # a qualification with no record for the scenario
         write_canonical(root / QUALIFICATION, {"schema": "rhoai3.scenario-qualification/v1", "corpus_sha256": corpus_sha, "scenarios": {}, "verdict": "INCONCLUSIVE"})
         subprocess.run([sys.executable, str(RECEIPT), "--root", str(root)], text=True, capture_output=True)
@@ -554,7 +691,7 @@ def _receipt_case() -> int:
             return _fail("a scenario with no qualification record is INCONCLUSIVE: %s" % row)
         # ... and PASS once qualified
         write_canonical(root / QUALIFICATION, {"schema": "rhoai3.scenario-qualification/v1", "corpus_sha256": corpus_sha,
-                                               "scenarios": {"sc:read-x": {"verdict": "PASS", "reason": ""}}, "verdict": "PASS"})
+                                               "scenarios": {"sc:read-x": {"capability": "PASS", "intent": "positive", "reason": ""}}, "verdict": "PASS"})
         subprocess.run([sys.executable, str(RECEIPT), "--root", str(root)], text=True, capture_output=True)
         row = next(r for r in load_json(root / "verification" / "parity" / "receipt.json")["entry_points"] if r["entry_point"] == ep)
         if row["verdict"] != "PASS":
@@ -592,11 +729,14 @@ def main() -> int:
           "and a servlet with no method are gaps, never inventions; a verbatim excerpt of petclinic's real document binds by operationId when its "
           "paths do not name the code's routes and a same-named method on another controller is a gap; no OpenAPI document refuses; the derivation is deterministic and never "
           "clobbers a hand-authored corpus; the loader accepts the derived corpus, refuses it after any edit or against another bundle, "
-          "and refuses a placeholder approver; qualification PASSes captures that show the contract, FAILs a relative or foreign Location, "
-          "a read-back without the created row, a 400 without the errors header or with a changed list, and is INCONCLUSIVE without a "
-          "retained, digest-bound body, without a capture, against another corpus or without a contract; the parity receipt is "
-          "INCONCLUSIVE for a derived corpus nobody qualified or a scenario qualified INCONCLUSIVE or unrecorded, lists a FAIL qualification as a "
-          "coverage gap while the entry point is judged on parity, and an Operator-authored corpus keeps its behaviour)")
+          "and refuses a placeholder approver and a body edited after derivation; a conflicting operationId on a path match is a typed gap; "
+          "qualification judges evidence before intent: it PASSes captures that show the contract, FAILs a relative or foreign Location, a create "
+          "with no new identity or a duplicated prior entity or a Location naming 999, a 400 without the errors header, one naming another field, "
+          "or one with a changed list, and is INCONCLUSIVE with known_failures recorded for a 500 beside an unbound read-back, a non-JSON errors "
+          "header, 500 read-backs, a null identity field, a missing or unbound retained body, no capture, another corpus, another request or no "
+          "contract; the parity receipt is INCONCLUSIVE for a derived corpus nobody qualified, a scenario qualified INCONCLUSIVE, unrecorded or "
+          "stale, lists a positive FAIL as a fixture-failed coverage gap with the entry point INCONCLUSIVE, counts a negative PASS as negative "
+          "coverage only, and an Operator-authored corpus keeps its behaviour)")
     return 0
 
 
