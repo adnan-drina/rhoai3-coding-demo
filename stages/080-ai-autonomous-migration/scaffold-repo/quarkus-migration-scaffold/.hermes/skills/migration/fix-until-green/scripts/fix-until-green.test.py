@@ -308,6 +308,82 @@ def _checked_family_advance_case() -> int:
     return 0
 
 
+def _introduced_attribution_case() -> int:
+    """v9 t_3903f495: the right repair with the wrong import swapped 13
+    attribution diagnostics for 13 of the same shape, and equal counts parked
+    the card as exposed-outside-scope. An attribution diagnostic the accepted
+    tree did not report was introduced: REVERTED, the symbols named, an
+    attempt spent. Controls: a FLOW code newly reported outside any family is
+    still the typed diagnosis; an attribution diagnostic the accepted tree
+    already had (in another file) is not introduced."""
+    from planner.paths import MTA_FINDINGS  # noqa: E402
+
+    _ATTR = "compiler.err.cant.resolve.location"
+    with tempfile.TemporaryDirectory(prefix="chk-attr-") as td:
+        spec = specimens.specimen("http")
+        root = specimens.build_dest(Path(td) / "dest", spec, decisions=specimens.admitted_decisions(max_attempts=3))
+        paths = _write_uri_controllers(root, _BUILDER)
+        owner, pet = paths[0], paths[1]
+        owner_err = (owner, 3, "cannot find symbol class UriComponentsBuilder", _ATTR)
+        pet_err = (pet, 3, "cannot find symbol class ResponseEntity", _ATTR)
+        # the accepted tree reports one attribution diagnostic in each of two files
+        specimens.prepare_loop(root, errors=[owner_err, pet_err])
+        findings = load_json(root / MTA_FINDINGS)
+        wl = load_json(root / WORKLIST)
+        cluster = next(c for c in wl["clusters"] if owner in (c.get("write_set") or []))
+        if pet in (cluster.get("write_set") or []):
+            return _fail("the control needs Owner and Pet in separate clusters: %s" % cluster)
+        f = root / owner
+        original = f.read_text(encoding="utf-8")
+
+        def _edit(marker: str) -> None:
+            f.write_text(original.replace("import java.net.URI;\n", "import java.net.URI;\n// %s\n" % marker), encoding="utf-8")
+
+        # the candidate "repairs" Owner and javac reports a DIFFERENT symbol there: same count
+        _issue_cluster(root, cluster, "t_attr")
+        _edit("jakarta.ws.rs.Context for jakarta.ws.rs.core.Context")
+        specimens.verify(root, errors=[(owner, 4, "cannot find symbol class Context", _ATTR), pet_err], failures=[], findings=findings)
+        p = _advance(root, cluster["id"], "t_attr")
+        blob = p.stdout + p.stderr
+        if p.returncode == 0 or "REVERTED" not in blob or "introduced 1 compile diagnostic" not in blob or "Context" not in blob:
+            return _fail("an introduced attribution diagnostic is rejected, not parked: rc=%s %s" % (p.returncode, blob[-600:]))
+        if "VERIFICATION_PENDING" in blob or "exposed-outside-scope" in blob:
+            return _fail("the rejection is a verdict, not a typed diagnosis: %s" % blob[-400:])
+        steps = load_json(root / LOOP_STEPS)
+        key = str(cluster.get("retry_key") or cluster["id"])
+        if (steps.get("attempts") or {}).get(key) != 1 or f.read_text(encoding="utf-8") != original:
+            return _fail("the rejection spends an attempt and reverts the candidate: %s" % steps.get("attempts"))
+        rejected = (steps.get("rejected") or [])[-1]
+        if "write set" not in rejected.get("legal_next", "") or "introduced 1 compile diagnostic" not in rejected.get("reason", ""):
+            return _fail("the rejected row tells the retry to fix the named symbols inside the write set: %s" % rejected)
+
+        # control 1: a FLOW code newly reported outside any sealed family is still the typed diagnosis
+        pipeline.admit(root)
+        _issue_cluster(root, next(c for c in load_json(root / WORKLIST)["clusters"] if c["id"] == cluster["id"]), "t_attr2")
+        _edit("a flow-class report")
+        specimens.verify(root, errors=[(owner, 8, _URI_MSG, _URI_CODE), pet_err], failures=[], findings=findings)
+        p = _advance(root, cluster["id"], "t_attr2")
+        blob = p.stdout + p.stderr
+        if p.returncode == 0 or "VERIFICATION_PENDING" not in blob or "exposed-outside-scope" not in blob or "introduced" in blob:
+            return _fail("a flow-class diagnostic the compiler reports one at a time is exposed, not introduced: rc=%s %s" % (p.returncode, blob[-600:]))
+        if (load_json(root / LOOP_STEPS).get("attempts") or {}).get(key) != 1:
+            return _fail("the typed diagnosis spends no attempt")
+
+        # control 2: Owner's diagnostic gone, Pet's still reported -- the accepted tree already had it
+        p = _run([sys.executable, str(HERE / "restore-pending.py"), "--root", str(root), "--cluster", cluster["id"]])
+        if p.returncode != 0:
+            return _fail("restore-pending: %s%s" % (p.stdout, p.stderr))
+        _edit("the right import")
+        specimens.verify(root, errors=[pet_err], failures=[], findings=findings)
+        p = _advance(root, cluster["id"], "t_attr2")
+        blob = p.stdout + p.stderr
+        if "introduced" in blob:
+            return _fail("a diagnostic the accepted tree already had in another file is not introduced: %s" % blob[-500:])
+        if p.returncode != 0 or "ACCEPTED" not in p.stdout:
+            return _fail("Owner repaired with Pet's accepted diagnostic still standing is accepted: rc=%s %s" % (p.returncode, blob[-500:]))
+    return 0
+
+
 def _disposition_case() -> int:
     """A deferral whose cause was a harness defect is cleared by a disposition,
     not a product change: no commit, no step, the history kept -- and the ONE
@@ -390,7 +466,7 @@ def _set_wide_blocker_case() -> int:
 
 
 def main() -> int:
-    if _checked_veto_case() or _checked_family_advance_case() or _disposition_case() or _set_wide_blocker_case():
+    if _checked_veto_case() or _checked_family_advance_case() or _introduced_attribution_case() or _disposition_case() or _set_wide_blocker_case():
         return 1
     if _si1_case():
         return 1
@@ -985,7 +1061,7 @@ def main() -> int:
         p = _advance(root, "c:tampered", "t_z")
         if p.returncode != 2 or "LOOP_STALE_STATE" not in p.stderr:
             return _fail("tampered work list must refuse advance: %s" % p.stderr)
-    print("OK: fix-until-green (checked-exception veto: a falling count does not admit an introduced unhandled exception; family bound to its introducing step: Owner→Pet CONTINUE in the same card without an attempt, a stalled continuation rejects, an exposure outside the family is a typed diagnosis; a harness-caused deferral is cleared by a metadata-only disposition and the one budget sees it; a set-wide packaging cause reaches the work list as one typed blocker with no card, under permuted reported names; measurement contract: unrun tests / empty reports / failed runner / skipped rescan are unknown; baseline; issued card; diagnostic cannot advance; post-verify edit + unissued cluster refused with baseline intact; out-of-scope test edit rejected + reverted + reports discarded; accept commits; staged no-progress reverted from index; line shift is not a new obligation; unresolvable candidate is VERIFICATION_PENDING (no attempt); known no-progress defers; Operator rewind restores tree+budget in a new epoch; green → packaging → startup → M4 (unknown gates never mint; an environment blocker is not a card; a gate repair is accepted phase-aware); unresolved test = typed blocker; tampered list refused)")
+    print("OK: fix-until-green (checked-exception veto: a falling count does not admit an introduced unhandled exception; family bound to its introducing step: Owner→Pet CONTINUE in the same card without an attempt, a stalled continuation rejects, an exposure outside the family is a typed diagnosis; an introduced attribution diagnostic is rejected, not parked (javac reports every one of them at once; a flow code newly reported stays exposed; one the accepted tree already had is not introduced); a harness-caused deferral is cleared by a metadata-only disposition and the one budget sees it; a set-wide packaging cause reaches the work list as one typed blocker with no card, under permuted reported names; measurement contract: unrun tests / empty reports / failed runner / skipped rescan are unknown; baseline; issued card; diagnostic cannot advance; post-verify edit + unissued cluster refused with baseline intact; out-of-scope test edit rejected + reverted + reports discarded; accept commits; staged no-progress reverted from index; line shift is not a new obligation; unresolvable candidate is VERIFICATION_PENDING (no attempt); known no-progress defers; Operator rewind restores tree+budget in a new epoch; green → packaging → startup → M4 (unknown gates never mint; an environment blocker is not a card; a gate repair is accepted phase-aware); unresolved test = typed blocker; tampered list refused)")
     return 0
 
 

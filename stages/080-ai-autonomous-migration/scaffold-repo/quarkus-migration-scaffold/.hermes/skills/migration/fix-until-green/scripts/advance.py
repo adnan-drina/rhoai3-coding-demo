@@ -13,6 +13,22 @@ otherwise:
     (tests are never in a write set);
   * the measure strictly decreased with no new mandatory obligation, or a
     typed gate/coverage outcome retained the candidate unaccepted;
+  * no ATTRIBUTION compile diagnostic (a symbol javac cannot resolve, a
+    package that does not exist -- every code outside FLOW_CODES) is
+    reported that the accepted tree did not report, in any file. javac
+    reports all of those in one compilation, so one the accepted tree lacked
+    was introduced by the candidate; only the flow-analysis codes are
+    reported one at a time, and only they can be "exposed". Dest v9
+    t_3903f495 (c:fb2e558f39a5, UriComponentsBuilder, 7 items, 6 files)
+    replaced the builder with `@Context UriInfo` in six controllers -- the
+    right repair -- but imported jakarta.ws.rs.Context instead of
+    jakarta.ws.rs.core.Context: the 13 accepted diagnostics (6 doesnt.exist
+    on org.springframework.web.util, 7 cant.resolve.location on
+    UriComponentsBuilder) went and 13 new ones of the same shape came (6 bad
+    imports, 7 @Context usages). Equal counts reached progress()'s identity
+    branch, which found them outside the sealed family and parked the card
+    for a human as exposed-outside-scope. It is REVERTED with the symbols
+    named, so the next attempt fixes one import;
 
   * verification ran in acceptance mode (diagnostic cannot promote or reject).
 
@@ -43,10 +59,47 @@ from _loop_common import attempt_budget, attempts_spent, budget, candidate_sha25
 ensure_hermes_lib()
 from planner import pipeline  # noqa: E402
 from planner.canonical import digest, load_json, write_canonical  # noqa: E402
-from planner.dest_model import checked_exception_delta  # noqa: E402
+from planner.dest_model import checked_exception_delta, diagnostic_identity  # noqa: E402
 from planner.decisions import load_decisions, max_attempts  # noqa: E402
-from planner.paths import EVIDENCE_BUNDLE, LOOP_ACCEPTED, LOOP_ISSUED, MTA_RESCAN_FINDINGS, VERIFY_RUN, WORKLIST  # noqa: E402
-from planner.worklist import CHECKED_FAMILY_RULE, EXPOSED, RETAIN, UNPROVEN, assess_batch_scope, batch_scope_digest, build_worklist, gate_items, incidents_from_findings, item_ids, obligation_keys, progress  # noqa: E402
+from planner.paths import EVIDENCE_BUNDLE, LOOP_ACCEPTED, LOOP_ISSUED, MTA_RESCAN_FINDINGS, VERIFY_DIAGNOSTICS, VERIFY_RUN, WORKLIST  # noqa: E402
+from planner.worklist import CHECKED_FAMILY_RULE, EXPOSED, RETAIN, UNPROVEN, assess_batch_scope, batch_scope_digest, build_worklist, compile_items, gate_items, incidents_from_findings, item_ids, obligation_keys, progress  # noqa: E402
+
+# The codes javac's flow analysis reports ONE site at a time per compilation
+# (control in dest_model.py: three files with the same defect are one reported
+# error). The same list as DestModel.FLOW_CODES (jdk-dest-model/DestModel.java);
+# keep them together. Every other compiler.* error is an ATTRIBUTION diagnostic
+# and javac reports all of them at once, so "the count did not fall and the
+# compiler now names something else" means something else for the two kinds:
+# a flow code may have been hidden behind the one just repaired (exposed); an
+# attribution code the accepted tree did not report was introduced.
+FLOW_CODES = frozenset((
+    "compiler.err.unreported.exception.need.to.catch.or.throw",
+    "compiler.err.unreported.exception.default.constructor",
+    "compiler.err.unreported.exception.implicit.close",
+    "compiler.err.var.might.not.have.been.initialized",
+    "compiler.err.var.might.already.be.assigned",
+    "compiler.err.missing.ret.stmt",
+    "compiler.err.unreachable.stmt",
+))
+
+
+def _attribution_items(items: list) -> dict:
+    """Line-free identity → item, for every javac ATTRIBUTION diagnostic.
+
+    Only compiler.* codes: a BUILD_UNRESOLVABLE or GENERATED_SOURCE_ERROR item
+    is javac's absence or its generator's configuration, not a report of the
+    tree. The identity is diagnostic_identity's diag: form (file, code, message
+    digest; no line), the same one the work list stamps on its items, so an
+    edit that moves a diagnostic down a line does not make it a new one."""
+    out: dict = {}
+    for i in items or []:
+        if str(i.get("source") or "") != "javac":
+            continue
+        code = str(i.get("rule_id") or i.get("code") or "")
+        if not code.startswith("compiler.") or code in FLOW_CODES:
+            continue
+        out[str(i.get("identity") or "") or diagnostic_identity(None, i)] = i
+    return out
 
 
 def _verify_meta(run: dict) -> dict:
@@ -63,9 +116,12 @@ def _commit(root: Path, paths: list[str], message: str) -> str:
     return git(root, "rev-parse", "HEAD").stdout.strip()
 
 
-def _reject(root: Path, steps: dict, cluster: str, card: str, cur: dict, reason: str, changed: list[str], *, mint: bool = False, hermes: str = "hermes") -> int:
+def _reject(root: Path, steps: dict, cluster: str, card: str, cur: dict, reason: str, changed: list[str], *, mint: bool = False, hermes: str = "hermes",
+            legal_next: str = "") -> int:
     """Discard the candidate, count the attempt, re-seal and re-issue the
-    cluster (K4 mints the next attempt); defer + stop at the threshold."""
+    cluster (K4 mints the next attempt); defer + stop at the threshold.
+    `legal_next` is what the retry brief tells the next attempt it may do;
+    a reason that knows better than the default says so here."""
     verify = _verify_meta(load_json(root / VERIFY_RUN) if (root / VERIFY_RUN).is_file() else {})
     issued = load_issued(root) or {}
     loci_before = [{"id": str(i.get("id") or i), "path": str(i.get("path") or ""), "line": i.get("line")}
@@ -95,6 +151,7 @@ def _reject(root: Path, steps: dict, cluster: str, card: str, cur: dict, reason:
     family = str((issued.get("batch_scope") or {}).get("rule") or "") == CHECKED_FAMILY_RULE
     legal_next = (("do not remint a single-file retry of this cluster: the family's remaining members stay in the "
                    "sealed write set. " if family else "") +
+                  (legal_next.rstrip(". ") + ". " if legal_next else "") +
                   "Do not repeat this patch; the next brief names the previous diagnostic movement and this reason.")
     steps.setdefault("rejected", []).append({
         "cluster": cluster, "card": card, "measure": cur.get("measure"), "reason": reason,
@@ -419,6 +476,43 @@ def main(argv: list[str] | None = None) -> int:
                                 len(unknown), scope_doc.get("repository"), scope_doc.get("rule"),
                                 "; ".join("%s (%s)" % (r["member"], r["detail"]) for r in unknown[:3])),
                             changed, on_disk, cause="unassessable-scope")
+    # An ATTRIBUTION diagnostic the accepted tree did not report was introduced
+    # by this candidate, in whatever file it stands: javac reports every one of
+    # them in one compilation (only FLOW_CODES come one at a time), and a
+    # candidate that deletes a method breaks callers in files it never touched.
+    # Dest v9 t_3903f495 (c:fb2e558f39a5, UriComponentsBuilder, 7 items in 6
+    # files): the right repair with the wrong import (jakarta.ws.rs.Context for
+    # jakarta.ws.rs.core.Context) swapped 13 diagnostics for 13 of the same
+    # shape; equal counts reached progress()'s identity branch, which parked
+    # the card as exposed-outside-scope for a human. Decided here, BEFORE
+    # progress(), on purpose: a candidate that lowers the count and breaks a
+    # caller is rejected too, not accepted on the fall. The identity is
+    # line-free (file, code, message digest); the message names the line.
+    # Compared against the accepted snapshot of javac's own report, never
+    # against the previous step's err: ids alone, which hash the line and so
+    # cannot tell a moved diagnostic from a new one.
+    cur_attr = _attribution_items(cur.get("items") or [])
+    snap = root / LOOP_ACCEPTED / VERIFY_DIAGNOSTICS.name
+    if snap.is_file():
+        prev_attr = set(_attribution_items(compile_items(load_json(snap))))
+        introduced = sorted(set(cur_attr) - prev_attr)
+    else:
+        # only the previous step's ids: a current item carrying one of them is
+        # the same diagnostic for certain, anything else is undecidable
+        prev_err = set(str(x) for x in (prev.get("item_ids") or []))
+        introduced = []
+        undecided = sorted(k for k, i in cur_attr.items() if str(i.get("id") or "") not in prev_err)
+        if undecided:
+            print("WARN: introduced-diagnostic veto skipped: no accepted diagnostics snapshot at %s, and %d current diagnostic(s) carry "
+                  "no accepted err: id, which cannot tell a moved line from a new report" % (snap, len(undecided)), file=sys.stderr)
+    if introduced:
+        named = ["%s:%s %s — %s" % (cur_attr[k].get("path") or "", cur_attr[k].get("line") or 0,
+                                     cur_attr[k].get("rule_id") or "", str(cur_attr[k].get("message") or cur_attr[k].get("detail") or "")[:120])
+                 for k in introduced[:3]]
+        return _reject(root, steps, args.cluster, args.card, cur,
+                       "introduced %d compile diagnostic(s) the accepted tree did not have: %s" % (len(introduced), "; ".join(named)),
+                       changed, mint=not args.no_mint, hermes=args.hermes,
+                       legal_next="fix the named symbols in the same write set; do not widen the write set to satisfy a missing import")
     gate = str(issued.get("gate") or "")
     # identities without lines: whether the issued failure is "still reported"
     cur_identities = {str(i.get("identity")) for i in (cur.get("items") or []) if str(i.get("source") or "") == "javac" and i.get("identity")}
@@ -441,7 +535,11 @@ def main(argv: list[str] | None = None) -> int:
             return _continue(root, steps, args.cluster, args.card, cur, reason, changed, on_disk, scope_doc,
                              sorted(cur_identities - set(issued_identities or ())), mint=not args.no_mint, hermes=args.hermes)
         if ok is EXPOSED:
-            # outside every sealed scope: a typed diagnosis, the candidate kept
+            # outside every sealed scope: a typed diagnosis, the candidate kept.
+            # Reachable only for a flow-class diagnostic (FLOW_CODES, reported
+            # one at a time, so the accepted tree may well have had the site)
+            # or for one the accepted snapshot could not be compared against:
+            # an introduced attribution diagnostic was rejected above.
             return _pending(root, steps, args.cluster, args.card, cur, reason, changed, on_disk, cause="exposed-outside-scope")
         if ok is UNPROVEN:
             # the repair may well be right and the gate cannot say so yet
