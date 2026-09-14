@@ -76,9 +76,9 @@ from planner.canonical import digest, load_json, write_canonical  # noqa: E402
 from planner.paths import EVIDENCE_BUNDLE  # noqa: E402
 
 PRODUCER = "qualify-source-captures.py"
-KNOWN_CHECKS = ("expect_status", "expect_status_class", "location", "after_contains_body", "before_lacks_body", "creates_one_entity",
-                "after_equals_before", "errors_header_names_field", "after_effect_status", "cors_allow_origin", "cors_expose_headers",
-                "cors_allow_method", "cors_allow_headers")
+KNOWN_CHECKS = ("expect_status", "expect_status_class", "usable_first_response", "location", "after_contains_body", "before_lacks_body",
+                "creates_one_entity", "after_equals_before", "errors_header_names_field", "after_effect_status", "cors_allow_origin",
+                "cors_expose_headers", "cors_allow_method", "cors_allow_headers")
 CONTRACT_KEYS = ("intent", "identity_field")  # parameters of the contract, not checks
 BODY_CHECKS = ("after_contains_body", "before_lacks_body", "creates_one_entity", "after_equals_before")
 HEADER_CHECKS = ("location", "errors_header_names_field", "cors_allow_origin", "cors_expose_headers", "cors_allow_method", "cors_allow_headers")
@@ -362,6 +362,23 @@ def qualify_scenario(root: Path, sc: dict[str, Any], cap: dict[str, Any] | None,
                 low, high = _status_class(want)
                 got = int(resp.get("status") or 0)
                 record(name, low <= got <= high, "status %s, expected any %s" % (resp.get("status"), str(want)))
+            elif name == "usable_first_response":
+                # A mapping that declares no HTTP method answers a GET, but
+                # WHICH answer is its own: petclinic's root mapping redirects
+                # (3xx), another such mapping renders (2xx). Neither class is
+                # knowable a priori, so the contract asks only what evidence
+                # can settle -- a first response the comparator can compare --
+                # and the class the source actually gave is RECORDED. A 5xx is
+                # already unusable evidence above; an answer that never came is
+                # unusable here.
+                if want is not True:
+                    raise Unjudgeable("usable_first_response must be true; the contract states no expected status class")
+                got = int(resp.get("status") or 0)
+                if not got:
+                    raise Unusable("the capture records no first response (%s)" % (resp.get("error") or "no status"))
+                observed = "%dxx" % (got // 100)
+                checks.append({"check": name, "ok": True, "observed_status_class": observed,
+                               "detail": "first response %s (%s), redirects not followed; the contract expects no status class and records this one" % (got, observed)})
             elif name == "location":
                 if want != "absolute-under-base":
                     raise Unjudgeable("unknown location rule %r" % want)

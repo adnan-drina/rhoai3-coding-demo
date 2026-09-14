@@ -118,7 +118,8 @@ references survive it from every JPA relationship, both in M1's structure
 model. One scenario per rule per write entry point — `create`,
 `create-invalid` (one property violating a declared `pattern` or `minLength`,
 verified against the pattern), `update`, `delete` (`delete-referenced` or
-`delete-cascading` where a row is referenced) — and per policy a
+`delete-cascading` where a row is referenced) — one `read` per entry point
+whose mapping declares no HTTP method, and per policy a
 `cors-actual` read and a `cors-preflight`. Each scenario records `derived_from` (which inputs produced
 it) and `qualify` (what its capture must show).
 
@@ -182,9 +183,35 @@ which field decided it (or `none declared`). The gate needs no new check
 kind: a cascading delete's effects are one `after_effect_status` map of
 effect id → `404`.
 
+An entry point whose mapping declares **no HTTP method** is not a gap. Spring
+MVC reads `@RequestMapping` without `method` as matching EVERY method, so a
+GET is a request the evidence supports, and one read scenario `sc:read-<path
+slug>` is derived for it: a GET of the concrete path (path variables through
+the same `path_vars` rule), `body_absent`, `reset_before: false`, no effects,
+`derived_from` naming `structure:<controller>#<member> @RequestMapping without
+method → GET (Spring: no method matches every method)`. Its contract is the
+source's **own first response** — status, headers and body, redirects never
+followed — because neither class is knowable in advance: petclinic's root
+mapping answers `302` to `servletContextPath + "/swagger-ui/index.html"`,
+another such mapping renders a page. So `qualify` states
+`usable_first_response` and nothing else: qualification judges whether the
+evidence can be judged at all and RECORDS the status class it observed
+(`observed_status_class`), PASS on a usable non-5xx answer, INCONCLUSIVE
+otherwise. At M4 the comparator compares that first response, `Location`
+included, after mapping only the declared source origin — so a redirect target
+that moved is a parity mismatch typed by its diffs. Measured on v9
+(2026-09-14): this mapping was a gap, nothing observed it, and the destination
+then replaced the SpEL `@Value("#{servletContext.contextPath}")` with
+`@Value("")` — a redirect out of the destination's own root path that no
+scenario could see. A method-less mapping whose handler declares a
+`@RequestBody` parameter derives **no** GET (it consumes a body) and a typed
+gap says so, as do a wildcard route and a member M1's structure model does not
+record (a servlet mapping is not a request the corpus can derive).
+
 What cannot be derived is a **gap**, recorded in the corpus and the receipt
 and never filled in: a required property without an example, a path variable
-no seed row supplies, an entry point with no HTTP method. The corpus is bound
+no seed row supplies, a mapping with neither an HTTP method nor a method-less
+`@RequestMapping` to derive one from. The corpus is bound
 to the evidence bundle by digest in `verification/scenarios/_derive.json`;
 the loader refuses a derived corpus edited after derivation (its digest no
 longer matches), one derived against another bundle, or one whose receipt is
@@ -216,7 +243,9 @@ results per scenario**:
   `negative` (create-invalid: the source rejected as intended — the status,
   a parsed field error naming the property, and no effect).
 
-The checks: `expect_status`; `expect_status_class` (`4xx`: the source
+The checks: `expect_status`; `usable_first_response` (a read derived from a
+method-less mapping: the capture carries a first response at all — the class
+is not asserted, it is recorded); `expect_status_class` (`4xx`: the source
 refused, and which 4xx is its own choice — a derived `delete-referenced`
 states exactly this); `location: absolute-under-base` (absolute, on
 the capture's `source.base_url` origin, under its path, compared literally);

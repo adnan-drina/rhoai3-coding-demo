@@ -6,7 +6,11 @@ seed names row 1 and whose one controller carries a @CrossOrigin policy. The
 derivation must produce exactly the create / create-invalid / update / delete
 / cors-actual / cors-preflight scenarios from those inputs and nothing for the
 reads; a required property with no example is a gap and no scenario (never an
-invented value); an entry point with no HTTP method is a gap. The loader must
+invented value); an entry point whose mapping declares no HTTP method answers
+every one of them, so it derives ONE read scenario whose contract is the
+source's own first response, while a handler consuming a request body, a
+wildcard route and a mapping the structure model does not record stay gaps.
+The loader must
 accept the derived corpus, refuse it after any edit, refuse it bound to another
 bundle and refuse a placeholder approver. The qualification gate must PASS a
 capture that shows what the scenario says, FAIL one that does not (a relative
@@ -114,7 +118,8 @@ def rel(name: str, kind: str, values: dict[str, Any], type_: str = "java.util.Se
 def build_root(td: Path, *, drop_telephone_example: bool = False, servlet: bool = False, api_docs: str | None = None,
                extra_eps: list[dict[str, Any]] | None = None, post_operation_id: str = "addOwner", list_schema: bool = True,
                seed_sql: str = "", schema_sql: str = "", schema_name: str = "schema.sql",
-               entities: list[dict[str, Any]] | None = None, no_structure: bool = False) -> Path:
+               entities: list[dict[str, Any]] | None = None, no_structure: bool = False,
+               extra_types: list[dict[str, Any]] | None = None, add_eps: list[dict[str, Any]] | None = None) -> Path:
     root = td / "dest"
     copy = td / "frozen"
     res = copy / "src" / "main" / "resources"
@@ -132,7 +137,7 @@ def build_root(td: Path, *, drop_telephone_example: bool = False, servlet: bool 
     if not no_structure:
         write_canonical(root / STRUCTURE, {"types": [
             {"fqn": CONTROLLER, "annotations": [{"fqn": "org.springframework.web.bind.annotation.CrossOrigin", "values": {"exposedHeaders": ["errors, content-type"]}}]},
-            {"fqn": "a.OwnerDto", "annotations": []}] + list(entities or [])})
+            {"fqn": "a.OwnerDto", "annotations": []}] + list(entities or []) + list(extra_types or [])})
     eps = [_entry("list", "GET", "/api/owners", "getOwners()"), _entry("get", "GET", "/api/owners/{ownerId}", "getOwner(int)"),
            _entry("create", "POST", "/api/owners", "addOwner(a.OwnerDto)"), _entry("update", "PUT", "/api/owners/{ownerId}", "updateOwner(int,a.OwnerDto)"),
            _entry("delete", "DELETE", "/api/owners/{ownerId}", "deleteOwner(int)")]
@@ -140,6 +145,7 @@ def build_root(td: Path, *, drop_telephone_example: bool = False, servlet: bool 
         eps.append({"id": "ep:a.RedirectServlet#:http", "kind": "http", "type": "a.RedirectServlet", "member": "", "path": "src/main/java/a/RedirectServlet.java", "http_method": "", "http_path": "/"})
     if extra_eps is not None:
         eps = list(extra_eps)  # the caller's bundle, not the fixture controller's
+    eps = eps + list(add_eps or [])
     write_canonical(root / EVIDENCE_BUNDLE, {"schema": "rhoai3.evidence-bundle/v1", "entry_points": eps})
     return root
 
@@ -369,6 +375,8 @@ def _gap_cases() -> int:
             return _fail("a required property with no example yields no scenario, never an invented value: %s" % sorted(ids))
         if not any(g == "no example for OwnerFields.telephone" for g in corpus["gaps"]):
             return _fail("the gap names the schema and property: %s" % corpus["gaps"])
+        if any(str(i).startswith("sc:read-") for i in ids):
+            return _fail("a servlet the structure model does not record derives no read scenario: %s" % sorted(ids))
         if not any("ep:a.RedirectServlet#:http" in g and "no HTTP method" in g for g in corpus["gaps"]):
             return _fail("a servlet entry point with no method is a gap: %s" % corpus["gaps"])
         if "sc:delete-owners-1" not in ids:
@@ -396,6 +404,165 @@ def _gap_cases() -> int:
             return _fail("no OpenAPI document is a refusal: rc=%s %s" % (p.returncode, p.stderr))
         if load_json(root / DERIVE_RECEIPT)["status"] != "blocked" or (root / CORPUS_P).exists():
             return _fail("a refusal leaves a blocked receipt and no corpus")
+    return 0
+
+
+# --------------------------------------------------------------------------
+# a mapping that declares no HTTP method
+# --------------------------------------------------------------------------
+_SPRING = "org.springframework.web.bind.annotation."
+
+
+def _mapping_type(fqn: str, member: str, *, route: str = "/", ann: str = "RequestMapping",
+                  values: dict[str, Any] | None = None, params: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    """A controller as M1's structure model records one: the handler, the
+    mapping annotation with its VALUES, and the parameters with theirs."""
+    return {"fqn": fqn, "annotations": [{"fqn": _SPRING + "RestController", "values": {}}],
+            "methods": [{"name": member.split("(", 1)[0], "signature": member, "params": list(params or []),
+                         "annotations": [{"fqn": _SPRING + ann, "values": {"value": [route]} if values is None else values}]}]}
+
+
+def _mapping_ep(fqn: str, member: str, route: str) -> dict[str, Any]:
+    """An entry point the bundle records with NO http_method, as M1 records a
+    @RequestMapping that names none."""
+    return {"id": "ep:%s#%s:http" % (fqn, member), "kind": "http", "type": fqn, "member": member,
+            "path": "src/main/java/%s.java" % fqn.replace(".", "/"), "http_method": "", "http_path": route,
+            "evidence": "method-annotation:" + _SPRING + "RequestMapping"}
+
+
+def _norm(text: str, names: list[str]) -> str:
+    """The specimen's own names erased, longest first, so two fixtures that
+    differ only in naming produce the same text."""
+    for i, n in sorted(enumerate(names), key=lambda kv: -len(kv[1])):
+        if n:
+            text = text.replace(n, "<%d>" % i)
+    return text
+
+
+def _read_decision(root: Path, names: list[str], eid: str) -> dict[str, Any]:
+    """What the derivation DECIDED for one entry point, with the names erased:
+    the read scenarios' shape and evidence, and the gaps naming it."""
+    corpus = load_json(root / CORPUS_P)
+    reads = [s for s in corpus["scenarios"] if str(s["id"]).startswith("sc:read-")]
+    rows = []
+    for sc in reads:
+        row = {k: sc.get(k) for k in ("method", "headers", "identity", "body_absent", "reset_before", "effects", "normalization", "qualify")}
+        row["kind"] = sc["derived_from"]["kind"]
+        row["evidence"] = [_norm(e, names) for e in sc["derived_from"]["evidence"]]
+        rows.append(row)
+    return {"reads": rows, "gaps": sorted(_norm(g, names) for g in corpus["gaps"] if eid in g)}
+
+
+def _methodless_decisions(fqn: str, member: str, route: str, wildcard: str,
+                          ptype: str, pname: str) -> dict[str, Any]:
+    """The three decisions for a method-less mapping under ONE set of names:
+    the plain handler, the one that consumes a request body, and the one whose
+    route carries a wildcard."""
+    eid = "ep:%s#%s:http" % (fqn, member)
+    names = [fqn, member, ptype, pname, wildcard]
+    body_param = {"name": pname, "type": ptype, "annotations": [{"fqn": _SPRING + "RequestBody", "values": {}}]}
+    out: dict[str, Any] = {}
+    for key, types, eps in (
+            ("plain", [_mapping_type(fqn, member, route=route)], [_mapping_ep(fqn, member, route)]),
+            ("consumes_body", [_mapping_type(fqn, member, route=route, params=[body_param])], [_mapping_ep(fqn, member, route)]),
+            ("wildcard", [_mapping_type(fqn, member, route=wildcard)], [_mapping_ep(fqn, member, wildcard)])):
+        with tempfile.TemporaryDirectory(prefix="derive-methodless-") as td:
+            root = build_root(Path(td), extra_types=types, add_eps=eps)
+            p = _derive(root)
+            if p.returncode != 0:
+                raise AssertionError("a method-less mapping is derived or a recorded gap, never a refusal: %s" % p.stderr)
+            out[key] = _read_decision(root, names, eid)
+    return out
+
+
+def _methodless_mapping_case() -> int:
+    """Spring MVC: @RequestMapping WITHOUT method matches every method, so a
+    GET is a request the evidence supports.
+
+    Measured on v9 (2026-09-14): RootRestController#redirectToSwagger declares
+    @RequestMapping(value = "/") and answers GET / with a 302 to the servlet
+    context path. The derivation recorded a gap and derived nothing, so no
+    scenario observed the redirect -- and a worker then replaced the SpEL
+    context path on the destination with "", sending the redirect outside the
+    destination's root path, a behavioural withdrawal nothing could see. A
+    handler that consumes a request body answers no such GET, a wildcard route
+    is still not a request, and none of these decisions depends on the
+    specimen's names."""
+    fqn, member, route = "a.RootRestController", "redirectToSwagger(javax.servlet.http.HttpServletResponse)", "/"
+    eid = "ep:%s#%s:http" % (fqn, member)
+    with tempfile.TemporaryDirectory(prefix="derive-methodless-") as td:
+        root = build_root(Path(td), extra_types=[_mapping_type(fqn, member)], add_eps=[_mapping_ep(fqn, member, route)])
+        p = _derive(root)
+        if p.returncode != 0:
+            return _fail("a method-less mapping derives, it does not refuse: rc=%s %s" % (p.returncode, p.stderr))
+        corpus = load_json(root / CORPUS_P)
+        reads = [s for s in corpus["scenarios"] if str(s["id"]).startswith("sc:read-")]
+        if [str(s["id"]) for s in reads] != ["sc:read-root"]:
+            return _fail("ONE read scenario, named for the path it requests: %s" % [str(s["id"]) for s in corpus["scenarios"]])
+        sc = reads[0]
+        if [sc["method"], sc["path"], sc["body_absent"], sc["reset_before"], sc["effects"], sc["headers"]] != ["GET", "/", True, False, [], {}]:
+            return _fail("a derived read is a GET of the concrete path, with no body, no reset and no effects: %s" % sc)
+        if sc["qualify"] != {"intent": "positive", "usable_first_response": True}:
+            return _fail("neither 2xx nor 3xx is knowable a priori, so the contract judges evidence usability only: %s" % sc["qualify"])
+        want = "structure:%s#%s @RequestMapping without method → GET (Spring: no method matches every method)" % (fqn, member)
+        if sc["derived_from"]["kind"] != "read" or want not in sc["derived_from"]["evidence"]:
+            return _fail("the evidence line names the mapping Spring reads: %s" % sc["derived_from"])
+        if any(eid in g for g in corpus["gaps"]):
+            return _fail("an entry point that derived a scenario is no longer a gap: %s" % corpus["gaps"])
+        # the loader accepts it: a GET with no body is a complete request
+        try:
+            load_corpus(root)
+        except CorpusError as exc:
+            return _fail("the derived read scenario must load: %s" % exc)
+    try:
+        mine = _methodless_decisions(fqn, member, route, "/legacy/*", "a.OwnerDto", "payload")
+    except AssertionError as exc:
+        return _fail(str(exc))
+    body_gaps = mine["consumes_body"]["gaps"]
+    if mine["consumes_body"]["reads"] or len(body_gaps) != 1 or "consumes a request body" not in body_gaps[0] or "@RequestBody" not in body_gaps[0]:
+        return _fail("a handler that consumes a body derives no GET, and the gap says why: %s" % mine["consumes_body"])
+    wild_gaps = mine["wildcard"]["gaps"]
+    if mine["wildcard"]["reads"] or len(wild_gaps) != 1 or "carries a wildcard and is not a request" not in wild_gaps[0]:
+        return _fail("a wildcard route keeps the existing gap and derives nothing: %s" % mine["wildcard"])
+    # the specimen-independence invariance check: different package, type,
+    # member, route and parameter names, same decisions
+    try:
+        renamed = _methodless_decisions("z.gateway.PortalResource", "showPortal(javax.servlet.http.HttpServletResponse)",
+                                        "/portal", "/archive/*", "z.gateway.PortalPayload", "incoming")
+    except AssertionError as exc:
+        return _fail(str(exc))
+    if renamed != mine:
+        return _fail("the decisions are derived from the evidence, not from the names:\n  %s\n  %s" % (mine, renamed))
+    return 0
+
+
+def _methodless_qualification_case() -> int:
+    """The read contract judges EVIDENCE and records what it saw. A usable
+    first response is a PASS whatever its class -- the source's redirect is as
+    legitimate an answer as a page -- and a 5xx nothing named is INCONCLUSIVE
+    with the failure on the record, never a PASS and never a FAIL."""
+    fqn, member = "a.RootRestController", "redirectToSwagger(javax.servlet.http.HttpServletResponse)"
+    for status, want_capability, want_class in ((302, "PASS", "3xx"), (200, "PASS", "2xx"), (503, "INCONCLUSIVE", "")):
+        with tempfile.TemporaryDirectory(prefix="derive-methodless-q-") as td:
+            root = build_root(Path(td), extra_types=[_mapping_type(fqn, member)], add_eps=[_mapping_ep(fqn, member, "/")])
+            if _derive(root).returncode != 0:
+                return _fail("the fixture must derive")
+            corpus = load_corpus(root)
+            sc = {str(s["id"]): s for s in corpus["scenarios"]}["sc:read-root"]
+            headers = {"Location": BASE + "/swagger-ui/index.html" if status == 302 else None}
+            _capture(root, sc, corpus_digest(corpus), status, headers, {"ok": True}, {}, {})
+            p, doc = _qualify(root)
+            if p.returncode != 0:
+                return _fail("a recorded verdict exits 0: rc=%s %s" % (p.returncode, p.stderr))
+            row = doc["scenarios"]["sc:read-root"]
+            if row["capability"] != want_capability:
+                return _fail("a %s first response qualifies %s, not %s: %s" % (status, want_capability, row["capability"], row["reason"]))
+            check = next((c for c in row["checks"] if c["check"] == "usable_first_response"), None)
+            if want_capability == "PASS":
+                if row["evidence"]["status"] != "USABLE" or check is None or check.get("observed_status_class") != want_class:
+                    return _fail("the observed status class is RECORDED, not expected: %s" % row["checks"])
+            elif row["evidence"]["status"] != "UNUSABLE" or not any("%s" % status in f for f in row["known_failures"]):
+                return _fail("a 5xx the contract does not name is unusable evidence with the failure recorded: %s" % row)
     return 0
 
 
@@ -1072,7 +1239,8 @@ def main() -> int:
         if rc:
             return rc
         assert root is not None
-        if (_gap_cases() or _real_excerpt_case() or _path_variable_case() or _foreign_key_delete_case()
+        if (_gap_cases() or _real_excerpt_case() or _methodless_mapping_case() or _methodless_qualification_case()
+                or _path_variable_case() or _foreign_key_delete_case()
                 or _application_removal_case() or _qualification_case(root) or _receipt_case()):
             return 1
     finally:
@@ -1081,7 +1249,11 @@ def main() -> int:
     print("OK: scenario-derivation (the corpus is derived from the frozen source's OpenAPI examples, seed rows and @CrossOrigin policies -- "
           "six scenarios over the write entry points and nothing for the reads, bodies are the document's own examples without id, "
           "the invalid body violates exactly one declared constraint, path_vars come from the seed; a required property without an example "
-          "and a servlet with no method are gaps, never inventions; a verbatim excerpt of petclinic's real document binds by operationId when its "
+          "are gaps, never inventions; a mapping that declares NO HTTP method matches every method, so it derives one GET read scenario of its "
+          "concrete path (no body, no reset, no effects) whose contract judges evidence usability only and RECORDS the status class the source "
+          "gave -- 3xx and 2xx both PASS, a 5xx nobody named is INCONCLUSIVE with the failure recorded -- while a handler consuming a "
+          "@RequestBody, a wildcard route and a servlet the structure model does not record derive nothing and say why, and every one of those "
+          "decisions is the same under another package, type, member, route and parameter naming; a verbatim excerpt of petclinic's real document binds by operationId when its "
           "paths do not name the code's routes and a same-named method on another controller is a gap; no OpenAPI document refuses; the derivation is deterministic and never "
           "clobbers a hand-authored corpus; the loader accepts the derived corpus, refuses it after any edit or against another bundle, "
           "and refuses a placeholder approver and a body edited after derivation; a conflicting operationId on a path match is a typed gap; "

@@ -1067,6 +1067,73 @@ def load_persistence_model(root: Path, tables: set[str]) -> PersistenceModel:
 
 
 # --------------------------------------------------------------------------
+# the HTTP method a mapping that declares none still answers
+# --------------------------------------------------------------------------
+# Spring MVC: ``@RequestMapping`` WITHOUT ``method`` matches EVERY method, so
+# such an entry point answers a GET -- and a GET is a request this corpus can
+# derive. Measured on v9 (2026-09-14): ``RootRestController#redirectToSwagger``
+# declares ``@RequestMapping(value = "/")`` and answers ``GET /`` with a 302 to
+# ``servletContextPath + "/swagger-ui/index.html"``. The derivation recorded a
+# gap and derived nothing, so no scenario observed it -- and a worker then
+# replaced the SpEL ``@Value("#{servletContext.contextPath}")`` with
+# ``@Value("")`` on the destination, sending the redirect outside the
+# destination's own root path. A behavioural withdrawal nothing could see.
+#
+# The shortcut annotations (``@GetMapping`` and its siblings) each imply their
+# own method, so only ``@RequestMapping`` can be method-less; a handler with no
+# mapping annotation in M1's structure model is not a Spring request mapping at
+# all (a servlet mapping is the case the previous gap named) and stays a gap.
+# Read from the model, never from text.
+_MAPPING_PKG = "org.springframework.web.bind.annotation"
+_ANY_METHOD_ANN = "RequestMapping"
+_REQUEST_BODY_ANN = "RequestBody"
+
+
+def mapping_annotation(anns: Any) -> dict[str, Any] | None:
+    """The Spring request-mapping annotation among ``anns``, if any."""
+    for a in (anns or []):
+        if not isinstance(a, dict):
+            continue
+        fqn = str(a.get("fqn") or a.get("name") or "")
+        simple = _simple(fqn)
+        if simple.endswith("Mapping") and (fqn == simple or fqn.startswith(_MAPPING_PKG)):
+            return a
+    return None
+
+
+def methodless_mapping(type_row: Any, method_row: Any) -> tuple[str, str]:
+    """(the mapping that makes this handler answer every HTTP method, why not).
+
+    The handler's own mapping decides; a type-level one answers only when the
+    member declares none. A mapping that names its method, or no mapping at
+    all, derives nothing and says which."""
+    for where, anns in (("handler", (method_row or {}).get("annotations")), ("type", (type_row or {}).get("annotations"))):
+        ann = mapping_annotation(anns)
+        if ann is None:
+            continue
+        simple = _simple(ann.get("fqn") or ann.get("name") or "")
+        if simple != _ANY_METHOD_ANN:
+            return "", "the %s declares @%s, which carries its own HTTP method" % (where, simple)
+        declared = _ann_strings(_ann_values(ann), "method")
+        if declared:
+            return "", "@%s on the %s declares method=%s" % (simple, where, ", ".join(declared))
+        return "@%s on the %s" % (simple, where), ""
+    return "", "neither the handler nor its type declares a Spring request mapping"
+
+
+def request_body_param(method_row: Any) -> str:
+    """The handler parameter annotated ``@RequestBody``; "" when it has none.
+
+    A mapping that declares no method still matches every method, but a
+    handler that CONSUMES a body does not answer a GET the corpus could send:
+    the evidence supports no request, so it derives none."""
+    for p in ((method_row or {}).get("params") or []):
+        if isinstance(p, dict) and _find_ann(p.get("annotations"), _REQUEST_BODY_ANN) is not None:
+            return "%s %s" % (str(p.get("type") or "?"), str(p.get("name") or "?"))
+    return ""
+
+
+# --------------------------------------------------------------------------
 # the derivation
 # --------------------------------------------------------------------------
 def _now() -> str:
@@ -1171,6 +1238,15 @@ def _resource(collection: str) -> str:
 
 
 _RULE_OF_METHOD = {"POST": "create", "PUT": "update", "DELETE": "delete", "GET": "read", "HEAD": "read"}
+
+
+def _read_slug(path: str) -> str:
+    """The scenario slug of a concrete read path: its segments, joined. The
+    root path names no segment, so it is ``root`` (``_resource``'s own
+    fallback) -- the id is derived from the request, never from the
+    specimen's names."""
+    segs = [s for s in re.split(r"[^A-Za-z0-9]+", str(path or "")) if s]
+    return "-".join(segs).lower() if segs else _resource(str(path or ""))
 
 
 def _short(policy_id: str) -> str:
@@ -1370,19 +1446,23 @@ class Derivation:
             eid = str(ep.get("id") or "")
             method = str(ep.get("http_method") or "").upper()
             route = str(ep.get("http_path") or "")
-            if not method:
-                kind = str(ep.get("kind") or "http")
-                self.gaps.append("entry point %s has no HTTP method (%s); nothing is derived for it" % (eid, "a non-HTTP entry point is captured by observation" if kind != "http" else "a servlet mapping is not a request the corpus can derive"))
+            if not method and str(ep.get("kind") or "http") != "http":
+                self.gaps.append("entry point %s has no HTTP method (a non-HTTP entry point is captured by observation); nothing is derived for it" % eid)
                 continue
             # a read consults the document for path-parameter examples only;
-            # the binding rules (and their gaps) are for the writes it feeds
-            found = self._lookup(ep, strict=method not in ("GET", "HEAD"), kind=_RULE_OF_METHOD.get(method, ""))
+            # the binding rules (and their gaps) are for the writes it feeds.
+            # A mapping that declares no method binds to no operation either:
+            # the document keys its operations by method
+            found = self._lookup(ep, strict=method not in ("GET", "HEAD"), kind=_RULE_OF_METHOD.get(method, "")) if method else None
             examples = path_param_examples(self.openapi, found[1], found[2]) if found else {}
             got, unresolved = self._resolve_vars(ep, examples)
             for name in unresolved:
                 self.gaps.append("path variable {%s} of %s resolves nowhere (no seed row, no OpenAPI example); scenarios needing it are not emitted" % (name, eid))
             if "*" in route:
                 self.gaps.append("entry point %s route %s carries a wildcard and is not a request" % (eid, route))
+                continue
+            if not method:
+                self._methodless_read(ep, got, unresolved)
                 continue
             if method in ("GET", "HEAD"):
                 continue  # reads are captured by capture-source-oracles.py with path_vars
@@ -1396,6 +1476,75 @@ class Derivation:
                 self.gaps.append("entry point %s uses %s, for which no derivation rule exists" % (eid, method))
         self._cors()
         self.scenarios.sort(key=lambda s: str(s["id"]))
+
+    # -- an entry point whose mapping declares no HTTP method ---------------
+    def _structure_member(self, ep: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any], str]:
+        """(the type, the handler, why not) for an entry point, from M1's
+        structure model. An overload the signature does not single out is a
+        reason, not a guess."""
+        if not self.persistence.available:
+            return {}, {}, "M1's structure model was not read"
+        type_fqn = str(ep.get("type") or "")
+        t = self.persistence.by_fqn.get(type_fqn)
+        if not isinstance(t, dict):
+            return {}, {}, "the structure model records no type %s" % (type_fqn or "(none)")
+        member = str(ep.get("member") or "")
+        name = member_name(ep.get("member"))
+        methods = [m for m in (t.get("methods") or []) if isinstance(m, dict)]
+        exact = [m for m in methods if str(m.get("signature") or "") == member]
+        if len(exact) == 1:
+            return t, exact[0], ""
+        by_name = [m for m in methods if str(m.get("name") or "") == name]
+        if name and len(by_name) == 1:
+            return t, by_name[0], ""
+        return t, {}, "the structure model records no single member %s on %s" % (member or name or "(unnamed)", type_fqn)
+
+    def _methodless_read(self, ep: dict[str, Any], got: dict[str, str], unresolved: list[str]) -> None:
+        """A mapping that names no HTTP method answers every one of them, so a
+        GET is a request the evidence supports, and its ONE read scenario's
+        contract is the source's own first response (redirects are never
+        followed). Nothing here states an expected status class: whether the
+        source answers 2xx or 3xx is not knowable a priori, so qualification
+        judges the evidence and RECORDS the class it observed."""
+        eid, route, type_fqn = str(ep["id"]), str(ep.get("http_path") or ""), str(ep.get("type") or "")
+        member = str(ep.get("member") or "") or member_name(ep.get("member"))
+        t, m, why = self._structure_member(ep)
+        if why:
+            self.gaps.append("entry point %s has no HTTP method and none is derivable (%s); nothing is derived for it" % (eid, why))
+            return
+        mapping, why = methodless_mapping(t, m)
+        if not mapping:
+            self.gaps.append("entry point %s has no HTTP method and no method-less mapping to derive one from (%s); "
+                             "a servlet mapping is not a request the corpus can derive, and nothing is derived for it" % (eid, why))
+            return
+        consumed = request_body_param(m)
+        if consumed:
+            self.gaps.append("entry point %s declares %s without an HTTP method, but its handler consumes a request body (@%s %s); "
+                             "a GET carries none, so nothing is derived for it" % (eid, mapping, _REQUEST_BODY_ANN, consumed))
+            return
+        if unresolved:
+            return  # the unresolved variable is already a typed gap
+        path = route
+        for name, value in sorted(got.items()):
+            path = path.replace("{%s}" % name, value)
+        if "{" in path or "}" in path:
+            self.gaps.append("entry point %s route %s is still a template after path-variable resolution; a scenario carries a concrete URL" % (eid, route))
+            return
+        sid = "sc:read-%s" % _read_slug(path)
+        self._add({
+            "id": sid, "entry_point": eid, "method": "GET", "path": path, "headers": {},
+            "identity": {"kind": "none"}, "body_absent": True, "reset_before": False,
+            "effects": [], "normalization": [],
+            "derived_from": {"kind": "read", "entry_point": eid,
+                             "evidence": ["bundle:%s" % eid,
+                                          "structure:%s#%s @%s without method → GET (Spring: no method matches every method)"
+                                          % (type_fqn, member, _ANY_METHOD_ANN)]
+                             + [self.path_var_evidence.get(n, "") for n in sorted(got) if self.path_var_evidence.get(n)]},
+            "qualify": {"intent": "positive", "usable_first_response": True},
+            "why": "the mapping declares no HTTP method, so it answers a GET too; the contract is the source's OWN first response "
+                   "(status, headers and body, redirects not followed) -- whether it is 2xx or 3xx is not knowable in advance, "
+                   "so the observed status class is recorded rather than expected",
+        })
 
     def _create(self, ep: dict[str, Any], found: Any, got: dict[str, str], unresolved: list[str]) -> None:
         eid, route, type_fqn = str(ep["id"]), str(ep.get("http_path") or ""), str(ep.get("type") or "")
