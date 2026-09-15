@@ -204,18 +204,46 @@ if [[ "${PLANNER_ACTIVATION}" == "activated" || "${PLANNER_ACTIVATION}" == "pilo
   M2_ID="$(parse_id <<<"${M2_JSON}")" || fail_status "M2 create JSON missing t_* id"
 fi
 
+PREV_M1=""
+PREV_M2=""
+if [[ -f "${STATUS}" ]]; then
+  PREV_M1="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("m1_id") or "")' "${STATUS}" 2>/dev/null || true)"
+  PREV_M2="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("m2_id") or "")' "${STATUS}" 2>/dev/null || true)"
+fi
+REUSED=0
+if [[ -n "${PREV_M1}" && "${PREV_M1}" == "${M1_ID}" && "${PREV_M2}" == "${M2_ID}" ]]; then
+  REUSED=1
+fi
+
 export AUTOSTART_JSON
-AUTOSTART_JSON="$(python3 -c 'import json,sys; print(json.dumps({
+AUTOSTART_JSON="$(python3 -c '
+import json, sys
+m1, m2, planner, reused = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4] == "1"
+if reused and m2:
+    reason = "M1 reused; M2 reused as child (planner %s)" % planner
+elif reused:
+    reason = "M1 reused; M2 not minted (planner %s)" % planner
+elif m2:
+    reason = "M1 minted; M2 minted as child (planner %s)" % planner
+else:
+    reason = "M1 minted; M2 not minted (planner activation gate not passed; SOLUTION-ARCHITECTURE section 12)"
+print(json.dumps({
   "state": "minted",
-  "reason": ("M1 minted; M2 minted as child (planner %s)" % sys.argv[3] if sys.argv[2] else "M1 minted; M2 not minted (planner activation gate not passed; SOLUTION-ARCHITECTURE section 12)"),
-  "planner_activation": sys.argv[3],
-  "m1_id": sys.argv[1],
-  "m2_id": sys.argv[2],
+  "reason": reason,
+  "planner_activation": planner,
+  "m1_id": m1,
+  "m2_id": m2,
+  "reused": reused,
   "argv_m1": ["hermes","kanban","create","--json","M1 ANALYZE","--idempotency-key","m1-analyze"],
-  "argv_m2": (["hermes","kanban","create","--json","M2 PLAN","--parent",sys.argv[1],"--idempotency-key","m2-plan"] if sys.argv[2] else []),
-}))' "${M1_ID}" "${M2_ID}" "${PLANNER_ACTIVATION}")"
+  "argv_m2": (["hermes","kanban","create","--json","M2 PLAN","--parent",m1,"--idempotency-key","m2-plan"] if m2 else []),
+}))
+' "${M1_ID}" "${M2_ID}" "${PLANNER_ACTIVATION}" "${REUSED}")"
 write_status
-if [[ -n "${M2_ID}" ]]; then
+if [[ "${REUSED}" == "1" && -n "${M2_ID}" ]]; then
+  echo "OK: autostart reused M1=${M1_ID} M2=${M2_ID} (planner ${PLANNER_ACTIVATION}; dest-init idempotent, not a new mint)"
+elif [[ "${REUSED}" == "1" ]]; then
+  echo "OK: autostart reused M1=${M1_ID} (planner ${PLANNER_ACTIVATION}; dest-init idempotent, not a new mint)"
+elif [[ -n "${M2_ID}" ]]; then
   echo "OK: autostart minted M1=${M1_ID} M2=${M2_ID} (planner ${PLANNER_ACTIVATION})"
 else
   echo "OK: autostart minted M1=${M1_ID} (M2 not minted: planner ${PLANNER_ACTIVATION})"

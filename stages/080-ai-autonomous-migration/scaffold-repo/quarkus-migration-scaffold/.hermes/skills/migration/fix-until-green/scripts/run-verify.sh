@@ -11,7 +11,11 @@
 #      surefire reports (the old ones are deleted first) and the mvn exit
 #      status recorded
 #   4. destination MTA rescan (mta-rescan-destination.sh) when the CLI is
-#      present AND mode=acceptance
+#      present AND mode=acceptance, on this candidate every time. The
+#      first measure slot is measured or declared unknown: MTA analyses
+#      source patterns, not bytecode (v9: incidents 4→0 at the first
+#      accepted step while 233 compile errors remained). Diagnostic never
+#      rescans; incidents stay unknown and cannot feed advance.
 #   5. when the measure is green and known: the packaging gate (full mvn verify)
 #      and the startup gate (that artifact, the decided datasource, bounded) via
 #      verify-runtime.py, then a re-measure so their obligations reach the list

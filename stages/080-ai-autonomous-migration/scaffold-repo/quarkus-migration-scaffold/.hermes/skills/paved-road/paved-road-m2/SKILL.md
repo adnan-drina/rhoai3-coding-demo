@@ -25,8 +25,7 @@ metadata:
 
 `steps.json` is the contract; `audit.json` is generated from it
 (`python3 .hermes/lib/paved_road.py generate --steps steps.json --out audit.json`).
-The reviewer runs `scripts/assert-paved-road-audit.py` over the official
-Kanban log; silence, a missing KEEP file, or an unmatched `[exit 1]` refuses.
+The reviewer runs `python3 .hermes/skills/paved-road/paved-road-m2/scripts/assert-paved-road-audit.py --root /projects/modernized "$HERMES_KANBAN_TASK"` over the official Kanban log (`$HERMES_HOME/kanban/logs/<id>.log`). Do not pass `--log` unless that file exists; a workshop path such as `/projects/modernized/kanban/logs/` is not the official log (v9 M2 `t_77e1fdac`). Silence, a missing KEEP file, or an unmatched `[exit 1]` refuses.
 
 ## Procedure (in order)
 

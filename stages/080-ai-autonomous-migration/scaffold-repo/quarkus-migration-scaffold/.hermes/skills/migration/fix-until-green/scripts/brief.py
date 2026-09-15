@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
-"""Print the head cluster's brief: the only thing a worker edits.
+"""Print this card's brief: the only thing a worker edits.
 
 The brief is derived from the sealed work list (never written by a
 model): cluster id, kind, write set, and every item (rule / compiler
-code, line, detail). Exit 0 with the brief; 1 when the work list has no
-open cluster (the loop is done or fully deferred).
+code, line, detail). The cluster is this card's issued cluster
+(``verification/loop/issued.json`` when ``$HERMES_KANBAN_TASK`` matches,
+or ``--cluster``), not whatever the work-list head is after a bounce.
+Exit 0 with the brief; 1 when this card has no cluster to brief
+(``LOOP_WRONG_CARD`` / ``LOOP_CLUSTER_NOT_OPEN`` / ``LOOP_NO_OPEN_CLUSTER``).
 """
 from __future__ import annotations
 
@@ -28,7 +31,9 @@ PROCEDURE = (
     "Patch the write set one item at a time (targeted edits; never rewrite a whole file, never touch a "
     "path outside the write set, never tests). Each item names its rule, its advice (the rule's own guidance), "
     "and for pom.xml the exact element at the reported line. An item whose advice names an artifact that is "
-    "already in the pom is marked advice_present: verify and move on, do not add it twice. For a "
+    "already in the pom is marked advice_present: verify and move on, do not add it twice. A compile item "
+    "with already_imported: true is a classpath/API replacement, not a missing import — follow do_not; do "
+    "not add the same import again. For a "
     "*Repository.java, inventory every method and repair the applicable ones together (one transformation); "
     "compile-only is not an exit. Do not run extra mvn compile/test/verify beside run-verify.sh. "
     "Optional --mode diagnostic is classpath + compiler only and cannot feed advance.py. Then run "
@@ -220,23 +225,31 @@ def compile_advice(item: dict, root: Path, inventory: list[dict], renames: dict[
         if members:
             out["inventory_package"] = {"types": len(members), "present_in_destination": sorted(m for m in members if any((root / str(r.get("dest_file") or "x")).is_file() for r in inventory if r["fqn"] == m))[:5]}
     # a bare symbol ("class Id") names its package only through the file's imports:
-    # `import javax.persistence.Id;` or `import javax.persistence.*;` binds the rename
+    # `import javax.persistence.Id;` or `import javax.persistence.*;` binds the rename.
+    # An explicit import of the unresolved token (Spring BindingResult, UriInfo, …)
+    # is already_imported: adding it again cannot satisfy the diagnostic.
     imported = ""
     if sym:
         src = root / str(item.get("path") or "")
         if src.is_file():
+            exact = ""
+            wild = ""
             for ln in src.read_text(encoding="utf-8", errors="replace").splitlines():
                 ln = ln.strip()
                 if not ln.startswith("import "):
                     continue
                 spec = ln[len("import "):].rstrip(";").strip()
-                if spec.endswith("." + token) or spec.endswith(".*"):
+                if spec.endswith("." + token):
+                    exact = spec
+                    break
+                if not wild and spec.endswith(".*"):
                     head = spec.rsplit(".", 1)[0]
-                    if spec.endswith("." + token) or any(head == old or head.startswith(old + ".") for old in renames):
-                        imported = spec
-                        break
+                    if any(head == old or head.startswith(old + ".") for old in renames):
+                        wild = spec
+            imported = exact or wild
         if imported:
             out["imported_as"] = imported
+            out["already_imported"] = True
     for old, new in renames.items():
         if (pkg and token.startswith(old)) or (imported and (imported == old + "." + token or imported.startswith(old + "."))) \
                 or (sym and re.search(r"\b" + re.escape(old) + r"\.[\w.]*" + re.escape(token) + r"\b", msg)):
@@ -245,6 +258,15 @@ def compile_advice(item: dict, root: Path, inventory: list[dict], renames: dict[
     hits = reference_hits(refs, token, root)
     if hits:
         out["references"] = hits
+    if out.get("already_imported"):
+        if out.get("rename"):
+            repl = "%s.%s" % (out["rename"]["to"], token) if not imported.endswith(".*") else out["rename"]["to"] + ".*"
+            out["do_not"] = ("Do not add this import again; it is already in the file. Replace %s with the "
+                             "documented rename %s." % (imported, repl))
+        else:
+            out["do_not"] = ("Do not add this import again; it is already in the file. The compiler cannot "
+                             "resolve it because the type is not on the destination classpath. Follow "
+                             "references[]; do not add a dependency or plugin the write set does not list.")
     return out
 
 
@@ -607,17 +629,86 @@ def _max_attempts(root: Path) -> int:
         return 3
 
 
+def _refuse(code: str, detail: str) -> int:
+    print("REFUSE: %s %s" % (code, detail), file=sys.stderr)
+    return 1
+
+
+def load_issued(root: Path) -> dict:
+    p = root / LOOP_ISSUED
+    if not p.is_file():
+        return {}
+    try:
+        doc = load_json(p)
+    except (OSError, ValueError):
+        return {}
+    return doc if isinstance(doc, dict) else {}
+
+
+def select_cluster(doc: dict, root: Path, cluster_arg: str, task_env: str) -> tuple[dict | None, str, str]:
+    """This card's cluster, or (None, LOOP_* code, detail).
+
+    Measured live on destination v9 (2026-09-15), card t_cc3b6aac: after a
+    workspace bounce the work-list head was empty, brief.py printed
+    LOOP_NO_OPEN_CLUSTER, and the worker rummaged issued.json / steps.json
+    for ~20 minutes. The issued card is the plan; the head after a rebuild
+    is not this card.
+    """
+    clusters = {str(c["id"]): c for c in (doc.get("clusters") or []) if isinstance(c, dict) and c.get("id")}
+    issued = load_issued(root)
+    issued_cid = str(issued.get("cluster") or "")
+    issued_tid = str(issued.get("task_id") or "")
+    task = (task_env or "").strip()
+    terminator = ("Terminator: kanban_block kind=needs_input naming the cluster. "
+                  "Do not rummage verification/loop/. Do not patch a different cluster's write set.")
+
+    if cluster_arg:
+        if issued_tid and task and issued_tid != task:
+            return None, "LOOP_WRONG_CARD", (
+                "--card env %r is not the minted card %s; %s" % (task, issued_tid, terminator))
+        if issued_cid and issued_tid and task == issued_tid and cluster_arg != issued_cid:
+            return None, "LOOP_WRONG_CARD", (
+                "--cluster %r is not the issued cluster %s for this card; %s" % (cluster_arg, issued_cid, terminator))
+        hit = clusters.get(cluster_arg)
+        if hit is None:
+            return None, "LOOP_CLUSTER_NOT_OPEN", (
+                "cluster %s is not on the open work list; %s" % (cluster_arg, terminator))
+        return hit, "", ""
+
+    if task and issued_tid:
+        if issued_tid != task:
+            return None, "LOOP_WRONG_CARD", (
+                "this task %r is not the issued loop card %s; terminator kanban_complete if the loop record "
+                "already names this card, else %s" % (task, issued_tid, terminator))
+        if issued_cid:
+            hit = clusters.get(issued_cid)
+            if hit is None:
+                return None, "LOOP_CLUSTER_NOT_OPEN", (
+                    "issued cluster %s (card %s) is not on the open work list (head=%s); %s"
+                    % (issued_cid, issued_tid, doc.get("head") or "-", terminator))
+            return hit, "", ""
+
+    head = head_cluster(doc)
+    if head is not None:
+        return head, "", ""
+    extra = ""
+    if issued_cid:
+        extra = " issued card is %s cluster %s;" % (issued_tid or "(unbound)", issued_cid)
+    return None, "LOOP_NO_OPEN_CLUSTER", (
+        "(work list head is empty);%s pass --cluster <id> or set HERMES_KANBAN_TASK to the issued card. %s"
+        % (extra, terminator))
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--root", required=True)
-    ap.add_argument("--cluster", default="", help="a specific cluster id (default: the head)")
+    ap.add_argument("--cluster", default="", help="this card's cluster id (default: issued.json when $HERMES_KANBAN_TASK matches, else the head)")
     args = ap.parse_args(argv)
     root = Path(args.root).resolve()
     doc = load_json(root / WORKLIST)
-    cluster = next((c for c in doc["clusters"] if c["id"] == args.cluster), None) if args.cluster else head_cluster(doc)
+    cluster, code, detail = select_cluster(doc, root, args.cluster, os.environ.get("HERMES_KANBAN_TASK") or "")
     if cluster is None:
-        print("REFUSE: LOOP_NO_OPEN_CLUSTER (work list head is empty)", file=sys.stderr)
-        return 1
+        return _refuse(code, detail)
     write_set = list(cluster.get("write_set") or [])
     items = collapse_generated(enrich(items_of(doc, cluster), root, cluster))
     steps_p = root / LOOP_DIR / "steps.json"
@@ -661,7 +752,7 @@ def main(argv: list[str] | None = None) -> int:
         "attempts_left": _budget(steps, cluster["id"], rk, int(_max_attempts(root)))["left"],
         "measure": doc["measure"],
         "procedure": PROCEDURE,
-        "rule": "Edit only the write set. Do not edit tests. Do not touch pom.xml unless it is in the write set. Do not repeat a previous attempt (previous_attempts names the refused patch, before/after diagnostic loci, and the legal next action). Do not run extra mvn beside run-verify.sh. Then run run-verify.sh --mode acceptance and advance.py; the measure decides, not you.",
+        "rule": "Edit only the write set. Do not edit tests. Do not touch pom.xml unless it is in the write set. Do not repeat a previous attempt (previous_attempts names the refused patch, before/after diagnostic loci, and the legal next action). A compile item with already_imported is not a missing import. Do not run extra mvn beside run-verify.sh. Then run run-verify.sh --mode acceptance and advance.py; the measure decides, not you.",
     }
     if pending:
         brief["verification_pending"] = {

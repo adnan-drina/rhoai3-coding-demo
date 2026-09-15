@@ -1053,6 +1053,21 @@ def main() -> int:
         wl = load_json(root / WORKLIST)
         if wl["measure"]["known"] or "rescan did not run" not in " ".join(wl["measure"]["blocked"]):
             return _fail("a skipped rescan must make incidents unknown: %s" % wl["measure"])
+        # a skipped destination rescan must not copy the last incident slot
+        # even when findings.json still exists: MTA analyses source, not
+        # bytecode (v9 incidents 4→0 while 233 compile errors remained)
+        specimens.verify(root, errors=[], failures=[], findings=f4)
+        run_p = root / "verification" / "build" / "run.json"
+        run = load_json(run_p)
+        run["rescan"] = {"ran": False, "reused": True, "skipped": True, "rc": 0, "ms": 0}
+        write_canonical(run_p, run)
+        from planner.worklist import build_worklist
+        wl = build_worklist(root)
+        if wl["measure"]["known"]:
+            return _fail("a skipped destination rescan must not copy the last incident slot: %s" % wl["measure"])
+        kind = ((wl.get("sources") or {}).get("incidents") or {}).get("kind")
+        if kind == "destination-rescan-reused":
+            return _fail("reuse-as-known kind must not exist: %s" % kind)
         # tampered work list → advance refuses
         specimens.verify(root, errors=[], failures=[], findings=f4)
         doc = load_json(root / WORKLIST)

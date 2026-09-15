@@ -92,7 +92,8 @@ def main(argv: list[str] | None = None) -> int:
         dst.parent.mkdir(parents=True, exist_ok=True)
         if src.resolve() != dst.resolve():
             shutil.copy2(src, dst)
-        run["rescan"] = {"ran": True, "rc": run["rescan"].get("rc", 0) if run["rescan"].get("ran") else 0}
+        prev = run.get("rescan") or {}
+        run["rescan"] = {"ran": True, "rc": prev.get("rc", 0) if prev.get("ran") else 0}
     run["candidate_sha256"] = candidate_sha256(root)
     write_canonical(root / VERIFY_RUN, run)
     doc = build_worklist(root)

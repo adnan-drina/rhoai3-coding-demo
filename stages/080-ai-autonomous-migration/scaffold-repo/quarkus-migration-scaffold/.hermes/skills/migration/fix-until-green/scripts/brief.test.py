@@ -115,6 +115,63 @@ def _runtime_advice_case() -> int:
     return 0
 
 
+def _issued_cluster_case() -> int:
+    """After a bounce the work-list head can be empty while issued.json still
+    names this card. The brief must serve THAT cluster, not LOOP_NO_OPEN_CLUSTER."""
+    import io
+    from contextlib import redirect_stderr
+
+    from brief import select_cluster
+    from planner.paths import LOOP_ISSUED, WORKLIST
+
+    with tempfile.TemporaryDirectory(prefix="issued-brief-") as td:
+        root = Path(td)
+        cluster = {"id": "c:issued", "kind": "compile", "path": "src/main/java/A.java",
+                   "write_set": ["src/main/java/A.java"], "items": ["err:1"]}
+        wl = {"schema": "rhoai3.worklist/v1", "head": "", "measure": {"tuple": [0, 1, 0], "known": True, "blocked": []},
+              "clusters": [cluster], "items": [{"id": "err:1", "source": "javac", "kind": "compile",
+                                                "category": "mandatory", "path": "src/main/java/A.java", "line": 1,
+                                                "rule_id": "compiler.err.cant.resolve.location", "message": "x"}],
+              "not_counted": []}
+        write_canonical(root / WORKLIST, wl)
+        write_canonical(root / LOOP_ISSUED, {"schema": "rhoai3.loop-issued/v1", "cluster": "c:issued", "task_id": "t_abc12345"})
+        hit, code, _ = select_cluster(wl, root, "", "t_abc12345")
+        if hit is None or hit["id"] != "c:issued" or code:
+            return _fail("issued cluster must win over an empty head: %s %s" % (hit, code))
+        hit, code, detail = select_cluster(wl, root, "", "t_other000")
+        if hit is not None or code != "LOOP_WRONG_CARD":
+            return _fail("a different HERMES_KANBAN_TASK is LOOP_WRONG_CARD: %s %s" % (code, detail))
+        hit, code, detail = select_cluster(wl, root, "", "")
+        if hit is not None or code != "LOOP_NO_OPEN_CLUSTER" or "kanban_block" not in detail:
+            return _fail("empty head with no task env is LOOP_NO_OPEN_CLUSTER with a terminator: %s %s" % (code, detail))
+        gone = dict(wl, clusters=[])
+        hit, code, detail = select_cluster(gone, root, "", "t_abc12345")
+        if hit is not None or code != "LOOP_CLUSTER_NOT_OPEN" or "kanban_block" not in detail:
+            return _fail("issued cluster missing from the list is LOOP_CLUSTER_NOT_OPEN: %s %s" % (code, detail))
+        prev = os.environ.get("HERMES_KANBAN_TASK")
+        os.environ.pop("HERMES_KANBAN_TASK", None)
+        try:
+            buf = io.StringIO()
+            with redirect_stderr(buf):
+                rc = __import__("brief").main(["--root", str(root)])
+            if rc != 1 or "LOOP_NO_OPEN_CLUSTER" not in buf.getvalue():
+                return _fail("brief.py on empty head refuses LOOP_NO_OPEN_CLUSTER: rc=%s %s" % (rc, buf.getvalue()))
+            os.environ["HERMES_KANBAN_TASK"] = "t_abc12345"
+            err, out = io.StringIO(), io.StringIO()
+            with redirect_stderr(err), __import__("contextlib").redirect_stdout(out):
+                rc = __import__("brief").main(["--root", str(root)])
+            if rc != 0:
+                return _fail("brief.py with matching task serves the issued cluster: rc=%s %s" % (rc, err.getvalue()))
+            if '"c:issued"' not in out.getvalue():
+                return _fail("brief.py must print the issued cluster: %s" % out.getvalue()[:400])
+        finally:
+            if prev is None:
+                os.environ.pop("HERMES_KANBAN_TASK", None)
+            else:
+                os.environ["HERMES_KANBAN_TASK"] = prev
+    return 0
+
+
 def main() -> int:
     if _repository_inventory_case():
         return 1
@@ -137,7 +194,7 @@ def main() -> int:
         (root / "src" / "main" / "java" / "org" / "acme" / "model" / "Owner.java").write_text("class Owner {}\n", encoding="utf-8")
         (root / "src" / "main" / "java" / "org" / "acme" / "rest").mkdir(parents=True)
         (root / "src" / "main" / "java" / "org" / "acme" / "rest" / "PetResource.java").write_text(
-            "package org.acme.rest;\nimport javax.persistence.Id;\nimport javax.validation.*;\nimport org.acme.dto.PetDto;\nclass PetResource {}\n", encoding="utf-8")
+            "package org.acme.rest;\nimport javax.persistence.Id;\nimport javax.validation.*;\nimport org.acme.dto.PetDto;\nimport org.springframework.validation.BindingResult;\nclass PetResource {}\n", encoding="utf-8")
         (root / "src" / "main" / "resources").mkdir(parents=True)
         (root / "src" / "main" / "resources" / "application.properties").write_text(
             "# db\nspring.datasource.url=jdbc:h2:mem:x\nspring.jpa.hibernate.ddl-auto=create-drop\nlogging.level.org.acme=DEBUG\n", encoding="utf-8")
@@ -194,6 +251,8 @@ def main() -> int:
              "message": "cannot find symbol\n  symbol:   class Id\n  location: class org.acme.rest.PetResource"},
             {"id": "err:6", "source": "javac", "kind": "compile", "category": "mandatory", "path": java_cluster["path"], "line": 3, "rule_id": "compiler.err.cant.resolve.location",
              "message": "cannot find symbol\n  symbol:   class NotNull\n  location: class org.acme.rest.PetResource"},
+            {"id": "err:7", "source": "javac", "kind": "compile", "category": "mandatory", "path": java_cluster["path"], "line": 4, "rule_id": "compiler.err.cant.resolve.location",
+             "message": "cannot find symbol\n  symbol:   class BindingResult\n  location: class org.acme.rest.PetResource"},
         ]
         rows = enrich(items, root, java_cluster)
         a = rows[0]["advice"]
@@ -215,6 +274,15 @@ def main() -> int:
         e = rows[5]["advice"]
         if e.get("imported_as") != "javax.validation.*" or (e.get("rename") or {}).get("to") != "jakarta.validation":
             return _fail("a bare symbol bound by a javax wildcard import must carry the rename: %s" % e)
+        if "Do not add this import again" not in (e.get("do_not") or "") or e.get("already_imported") is not True:
+            return _fail("a javax symbol already imported must carry already_imported and do_not: %s" % e)
+        br = rows[6]["advice"]
+        if br.get("imported_as") != "org.springframework.validation.BindingResult" or br.get("already_imported") is not True:
+            return _fail("an explicit Spring import of the unresolved symbol is already_imported: %s" % br)
+        if br.get("rename") or "not on the destination classpath" not in (br.get("do_not") or ""):
+            return _fail("BindingResult is a classpath replacement, not a Jakarta rename: %s" % br)
+        if not br.get("references"):
+            return _fail("BindingResult must cite a spring-to-quarkus-patterns reference: %s" % br)
 
         cfg_cluster = {"id": "c:cfg", "kind": "config", "path": "src/main/resources/application.properties", "write_set": ["src/main/resources/application.properties"]}
         items = [
@@ -240,7 +308,9 @@ def main() -> int:
         c4 = rows[0].get("config") or {}
         if c4.get("profile") != "hsqldb" or [k["key"] for k in c4.get("spring_keys") or []] != ["spring.jpa.database", "spring.datasource.username"] or c4["spring_keys"][1]["to"] != "quarkus.datasource.username":
             return _fail("a file-level profile incident must name the profile and the remaining Spring keys with their mappings: %s" % c4)
-    print("OK: brief enrichment (pom unmanaged→managed; compile: inventory hit / present flag / Jakarta rename / reference file; config: line, key, variables, key+value mapping, prefix expansion; runtime: the cause, the member, and the siblings likely to carry it)")
+    if _issued_cluster_case():
+        return 1
+    print("OK: brief enrichment (pom unmanaged→managed; compile: inventory hit / present flag / Jakarta rename / reference file / already_imported classpath; config: line, key, variables, key+value mapping, prefix expansion; runtime: the cause, the member, and the siblings likely to carry it; issued cluster over empty head)")
     return 0
 
 

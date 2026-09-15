@@ -67,8 +67,8 @@ the root of the planner digest chain (SAD §6).
    the plan. Mints nothing under a not-activated planner; idempotent.
 5. Happy-path terminator: `kanban_request_review` (reviewer `reviewer`), then end the turn. A later nudge to finish is already satisfied by the review handoff; do not answer it with `kanban_complete` (K2 refuses it for the implementer) or `kanban_block`.
 6. `kanban_block` for external/platform (MaaS 500, missing key, GPU).
-7. Reviewer runs `scripts/assert-paved-road-audit.py --log <official> --root <ws>`.
-   `--log` must be `kanban/logs/t_*.log` (or a land-time `fixtures/**/official.log`).
+7. Reviewer runs `python3 .hermes/skills/paved-road/paved-road-m1/scripts/assert-paved-road-audit.py --root /projects/modernized "$HERMES_KANBAN_TASK"`.
+   The official log is `$HERMES_HOME/kanban/logs/<id>.log`. Do not pass `--log` unless that file exists; a workshop path such as `/projects/modernized/kanban/logs/` is not the official log (v9 M1 `t_e84503a8`).
 
 ## Gotchas
 

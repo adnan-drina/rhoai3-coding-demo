@@ -44,9 +44,12 @@ SKILLS_ASSERT = (
     "A false consult — claiming a skill that was not loaded — is a defect. Do not silence a missing pin."
 )
 TERMINATOR_M3 = (
-    "skill_view paved-road-m3 first (the pinned index; it views fix-until-green). Read the brief "
-    "(fix-until-green/scripts/brief.py): every item carries the rule's advice and, for pom items, the exact "
+    "skill_view paved-road-m3 first (the pinned index; it views fix-until-green). Read THIS card's brief "
+    "(fix-until-green/scripts/brief.py --root . --cluster <id>; if --cluster is omitted the script binds to "
+    "verification/loop/issued.json when $HERMES_KANBAN_TASK matches — never the work-list head after a bounce). "
+    "Every item carries the rule's advice and, for pom items, the exact "
     "element, the advised artifacts already present and the BOM-unmanaged ones with their managed equivalent. "
+    "A compile item with already_imported is a classpath/API replacement, not a missing import. "
     "Patch the write set one item at a time; never rewrite a whole file, never tests, never evidence/, never "
     "decisions.yaml, never a dependency or plugin the brief did not ask for. Then bash "
     "fix-until-green/scripts/run-verify.sh --root . and python3 fix-until-green/scripts/advance.py --root . "

@@ -83,15 +83,33 @@ def kanban_root_home() -> str:
     return home
 
 
-def resolve_log(task_id: str | None, log: Path | None) -> Path | None:
-    if log is not None:
-        return log
-    if not task_id:
+def _official_log(task_id: str | None) -> Path | None:
+    tid = (task_id or "").strip()
+    if not tid:
         return None
     home = kanban_root_home()
     if not home:
         return None
-    return Path(home) / "kanban" / "logs" / (task_id + ".log")
+    return Path(home) / "kanban" / "logs" / (tid + ".log")
+
+
+def resolve_log(task_id: str | None, log: Path | None) -> Path | None:
+    """Official kanban log for this task.
+
+    Dest reviewers (v9 M1 t_e84503a8, M2 t_77e1fdac) passed
+    ``--log /projects/modernized/kanban/logs/<id>.log`` which is not
+    ``$HERMES_HOME/kanban/logs``. A missing ``--log`` falls back to the
+    official file; ``$HERMES_KANBAN_TASK`` fills a missing positional id.
+    """
+    tid = (task_id or os.environ.get("HERMES_KANBAN_TASK") or "").strip() or None
+    if log is not None:
+        if log.is_file():
+            return log
+        fallback = _official_log(tid)
+        if fallback is not None and fallback.is_file():
+            return fallback
+        return log
+    return _official_log(tid)
 
 
 _CACHE_TERMINAL = "cache/terminal-output"
@@ -625,6 +643,7 @@ def _cmd_audit(argv: list[str]) -> int:
     args = ap.parse_args(argv)
     log = resolve_log(args.task_id, args.log)
     if log is None:
+        print("FAIL: pass a t_* id, $HERMES_KANBAN_TASK, or --log to an existing official kanban log", file=sys.stderr)
         return 2
     return audit_paths(log, args.root, args.steps)
 

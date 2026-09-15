@@ -1657,10 +1657,16 @@ def build_worklist(root: Path, *, write: bool = True) -> dict[str, Any]:
     roots = [str(root), "/projects/modernized"]
     blocked: list[str] = []
     rescan = run.get("rescan") or {}
+    # A skipped rescan is unknown even when findings.json still exists.
+    # MTA analyses source patterns, not bytecode: v9 incident count went
+    # 4→0 at the first accepted step with 233 compile errors remaining.
+    # Copying the last slot would hide that drop and would accept a
+    # candidate that reintroduces a Spring API while errors remain.
     if findings_path.is_file() and rescan.get("ran"):
         incidents = incidents_from_findings(load_json(findings_path), roots, canary)
         incidents_known = True
-        incident_source = {"kind": "destination-rescan", "path": str(MTA_RESCAN_FINDINGS), "sha256": sha256_file(findings_path)}
+        incident_source = {"kind": "destination-rescan",
+                           "path": str(MTA_RESCAN_FINDINGS), "sha256": sha256_file(findings_path)}
     elif not steps_exist:
         # before the baseline the frozen-source obligations are the plan —
         # but only when the MTA producer actually ran: an absent scan is

@@ -53,6 +53,7 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     log = resolve_log(args.task_id, args.log)
     if log is None:
+        print("FAIL: pass a t_* id, $HERMES_KANBAN_TASK, or --log to an existing official kanban log", file=sys.stderr)
         return 2
     return audit_paths(log, args.root, args.steps)
 

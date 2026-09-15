@@ -1101,6 +1101,89 @@ def main() -> int:
             fails += 1
         else:
             print("ok impl_complete_loop_pending_refused")
+        # v9 t_cc3b6aac: brief.py LOOP_WRONG_CARD / LOOP_CLUSTER_NOT_OPEN is a
+        # legal stop. kanban_block must work without run-verify/advance in
+        # the log; rummage and the rest of the road must not.
+        brief_home = Path(td) / "brief-refuse-home"
+        (brief_home / "kanban" / "logs").mkdir(parents=True)
+        (brief_home / "kanban" / "logs" / "t_brief.log").write_text(
+            "Query: work kanban task t_brief\n"
+            "  ┊ 💻 $         python3 .hermes/skills/migration/fix-until-green/"
+            "scripts/brief.py --root . --cluster c:1  0.3s [exit 1]\n"
+            "REFUSE: LOOP_CLUSTER_NOT_OPEN issued cluster c:1 is not on the open work list\n",
+            encoding="utf-8",
+        )
+        (dest / "verification" / "loop").mkdir(parents=True, exist_ok=True)
+        (dest / "verification" / "loop" / "issued.json").write_text(
+            json.dumps({
+                "schema": "rhoai3.loop-issued/v1",
+                "task_id": "t_brief",
+                "cluster": "c:1",
+                "write_set": ["pom.xml"],
+            }),
+            encoding="utf-8",
+        )
+        brief_env = {
+            "HERMES_PROFILE": "implementer",
+            "HERMES_HOME": str(brief_home),
+            "HERMES_KANBAN_TASK": "t_brief",
+            "HERMES_WRITE_SAFE_ROOT": str(dest),
+            "K2_FILES_WRITABLE": "pom.xml",
+        }
+        r = run("", roots, cwd=cwd, tool="kanban_block", extra_env=brief_env)
+        if r.get("action") == "block":
+            print("FAIL brief_refuse_kanban_block_tool", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok brief_refuse_kanban_block_tool")
+        r = run("hermes kanban block t_brief", roots, cwd=cwd, extra_env=brief_env)
+        if r.get("action") == "block":
+            print("FAIL brief_refuse_kanban_block_cli", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok brief_refuse_kanban_block_cli")
+        r = run(
+            "python3 .hermes/skills/migration/fix-until-green/scripts/brief.py "
+            "--root . --cluster c:1",
+            roots,
+            cwd=cwd,
+            extra_env=brief_env,
+        )
+        if r.get("action") == "block":
+            print("FAIL brief_refuse_rerun_brief", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok brief_refuse_rerun_brief")
+        r = run(
+            "cat verification/loop/issued.json",
+            roots,
+            cwd=cwd,
+            extra_env=brief_env,
+        )
+        msg = r.get("message") or ""
+        if r.get("action") != "block" or "continue after mandated" not in msg:
+            print("FAIL brief_refuse_rummage_refused", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok brief_refuse_rummage_refused")
+        r = run(
+            "bash .hermes/skills/migration/fix-until-green/scripts/run-verify.sh --root .",
+            roots,
+            cwd=cwd,
+            extra_env=brief_env,
+        )
+        msg = r.get("message") or ""
+        if r.get("action") != "block" or "continue after mandated" not in msg:
+            print("FAIL brief_refuse_run_verify_refused", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok brief_refuse_run_verify_refused")
+        r = run("", roots, cwd=cwd, tool="kanban_complete", extra_env=brief_env)
+        if r.get("action") != "block":
+            print("FAIL brief_refuse_complete_refused", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok brief_refuse_complete_refused")
         # v7 item 8: inline python is refused on the issued loop card only; scripts the road names stay allowed
         (dest / "verification" / "loop" / "issued.json").write_text(json.dumps({"schema": "rhoai3.loop-issued/v1", "task_id": "t_loopcard", "cluster": "c:1"}), encoding="utf-8")
         loop_card_env = {"HERMES_PROFILE": "implementer", "HERMES_KANBAN_TASK": "t_loopcard", "K2_BOUND_GATE_EXIT": "0"}

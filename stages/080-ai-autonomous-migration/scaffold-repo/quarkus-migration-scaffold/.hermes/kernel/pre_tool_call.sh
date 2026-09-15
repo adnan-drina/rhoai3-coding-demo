@@ -392,6 +392,12 @@ def bound_gates_red():
         "assemble-evidence-bundle", "freeze-migration-input", "normalize-structure",
         "assert-frozen-root-pair", "assert-frozen-input-intact", "assert-mta-canary",
         "run-verify", "fix-until-green/scripts/verify", "fix-until-green/scripts/advance",
+        # brief.py [exit 1] (LOOP_WRONG_CARD / LOOP_CLUSTER_NOT_OPEN /
+        # LOOP_NO_OPEN_CLUSTER) is a legal stop: re-run the needle or
+        # kanban_block. v9 t_cc3b6aac rummaged verification/loop/ for
+        # ~20 min after LOOP_NO_OPEN_CLUSTER because this needle was not
+        # bound; kanban_complete still needs the full road (is_complete).
+        "fix-until-green/scripts/brief",
         "compare-runtime-parity", "compose-parity-receipt",
         "assert-m4-verdict-schema", "check-product-tests", "run-m4-pre-verdict", "assert-pinned-gates-ran",
         "assert-retrievable-tree", "check-domain-parity",

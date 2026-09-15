@@ -38,7 +38,7 @@ one loop. The model proposes; the tools decide.
 ## Procedure
 
 ```bash
-python3 "${HERMES_SKILL_DIR}/scripts/brief.py" --root /projects/modernized          # 1. what this card is
+python3 "${HERMES_SKILL_DIR}/scripts/brief.py" --root /projects/modernized --cluster <id>   # 1. THIS card (issued.json if --cluster omitted and $HERMES_KANBAN_TASK matches; never the work-list head after a bounce)
 #   … patch the write set one item at a time (the brief lists each item with its advice and,
 #     for pom.xml, the element at the reported line); never a whole-file rewrite; never tests … # 2. propose
 bash "${HERMES_SKILL_DIR}/scripts/run-verify.sh" --root /projects/modernized --mode acceptance  # 3. tools recompute the work list

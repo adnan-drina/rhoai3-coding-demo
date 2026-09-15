@@ -172,6 +172,7 @@ class TestAutostartAndCoverage(unittest.TestCase):
         self.assertIn("kanban_block", src)
         self.assertIn("skill_view", src)
         self.assertIn("planner_activation", src)
+        self.assertIn("reused", src)
         self.assertNotIn("speckit", src.lower())
 
     def test_coverage_golden(self):
@@ -208,6 +209,45 @@ class TestResolveLogProfileHome(unittest.TestCase):
             root = Path(td)
             (root / "kanban" / "logs").mkdir(parents=True)
             self.assertEqual(self._with_home(root, "t_def"), root / "kanban" / "logs" / "t_def.log")
+
+    def test_missing_log_flag_falls_back_to_official(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            official = root / "kanban" / "logs" / "t_ok.log"
+            official.parent.mkdir(parents=True)
+            official.write_text("ok\n", encoding="utf-8")
+            missing = Path(td) / "projects" / "modernized" / "kanban" / "logs" / "t_ok.log"
+            prev = os.environ.get("HERMES_HOME")
+            os.environ["HERMES_HOME"] = str(root)
+            try:
+                self.assertEqual(resolve_log("t_ok", missing), official)
+            finally:
+                if prev is None:
+                    os.environ.pop("HERMES_HOME", None)
+                else:
+                    os.environ["HERMES_HOME"] = prev
+
+    def test_task_env_fills_missing_id(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            official = root / "kanban" / "logs" / "t_env.log"
+            official.parent.mkdir(parents=True)
+            official.write_text("ok\n", encoding="utf-8")
+            prev_home = os.environ.get("HERMES_HOME")
+            prev_task = os.environ.get("HERMES_KANBAN_TASK")
+            os.environ["HERMES_HOME"] = str(root)
+            os.environ["HERMES_KANBAN_TASK"] = "t_env"
+            try:
+                self.assertEqual(resolve_log(None, None), official)
+            finally:
+                if prev_home is None:
+                    os.environ.pop("HERMES_HOME", None)
+                else:
+                    os.environ["HERMES_HOME"] = prev_home
+                if prev_task is None:
+                    os.environ.pop("HERMES_KANBAN_TASK", None)
+                else:
+                    os.environ["HERMES_KANBAN_TASK"] = prev_task
 
 
 class TestAuditLogMustBeOfficial(unittest.TestCase):

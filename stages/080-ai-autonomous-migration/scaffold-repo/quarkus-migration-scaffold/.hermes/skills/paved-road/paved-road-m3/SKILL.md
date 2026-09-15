@@ -35,8 +35,16 @@ rule to `kanban_complete`.
    `author-destination-pom`, `manage-quarkus-extensions` or
    `reference-rh-quarkus-pom` on a loop card (pilot v5 measured the
    whole-pom rewrite they produce). The brief carries the pom data.
-2. `python3 .hermes/skills/migration/fix-until-green/scripts/brief.py --root .`
-   — the head cluster's brief. **The brief is the plan.** Each item carries
+2. `python3 .hermes/skills/migration/fix-until-green/scripts/brief.py --root . --cluster <id>`
+   — **this card's** brief (the cluster id is stamped on the card). If
+   `--cluster` is omitted, the script binds to `verification/loop/issued.json`
+   when `$HERMES_KANBAN_TASK` matches. The work-list **head** after a workspace
+   bounce is not this card (v9 `t_cc3b6aac`: `LOOP_NO_OPEN_CLUSTER` then
+   rummaging). `REFUSE: LOOP_WRONG_CARD` / `LOOP_CLUSTER_NOT_OPEN` /
+   `LOOP_NO_OPEN_CLUSTER` → `kanban_block` kind=needs_input naming the cluster;
+   do not rummage `verification/loop/`. K2 treats `brief.py` `[exit 1]` as a
+   bound gate: re-run brief or `kanban_block` (run-verify and advance need not
+   have run). **The brief is the plan.** Each item carries
    the rule's advice; pom items carry the element at the line, which
    advised artifacts are already present, and which advised artifact the
    BOM does not manage together with the managed equivalent
@@ -44,7 +52,9 @@ rule to `kanban_complete`.
    never the old name, never a version). Compile items carry the compiler
    diagnostic, the inventory hit for a missing type, the Jakarta rename for
    a `javax.*` package, and the reference file that covers a Spring symbol.
-   Config items carry the property line and the catalog mapping.
+   An item with `already_imported: true` is a classpath/API replacement —
+   follow `do_not`; do not add the same import again. Config items carry the
+   property line and the catalog mapping.
 3. Patch the write set **one item at a time**. Never satisfy an item by
    deleting the code or configuration it is about: an obligation on a
    Spring profile file is met by moving its keys into
@@ -78,7 +88,8 @@ rule to `kanban_complete`.
 6. Terminator: **`kanban_complete`** after ACCEPTED or REVERTED (K2 allows
    it because the loop record names this card and steps 1, 2, 4, 5 are in
    this log). `kanban_block` kind=needs_input naming the cluster after
-   VERIFICATION_PENDING, DEFERRED or a `REFUSE: LOOP_*`. `CONTINUE` is not a
+   VERIFICATION_PENDING, DEFERRED or a `REFUSE: LOOP_*` (K2 allows that
+   block even when run-verify and advance did not run). `CONTINUE` is not a
    verdict: neither complete nor block. Never `kanban_request_review` on a loop
    card; never retry inside this card after REVERTED (the retry is the next K4 card).
    After VERIFICATION_PENDING, restore with `restore-pending.py` when the
