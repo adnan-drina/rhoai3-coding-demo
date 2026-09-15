@@ -25,6 +25,18 @@ Every scenario names which inputs produced it (``derived_from``) and what a
 capture of it has to show (``qualify``). Nothing here records an expected
 value: those come only from capturing the source.
 
+``--security-mode enabled`` derives the OTHER corpus ADR-014 requires
+(``verification/scenarios-enabled/corpus.json``): per authorization policy the
+frozen source states, the same request answered for an identity the policy
+accepts, for nobody, for an invalid credential and for an authenticated
+identity that lacks the role. The requests are not derived again -- they are
+REUSED from the disabled corpus, bound by scenario id and body digest, so the
+two modes send the same bytes and any difference in the answer is the security
+switch. Identities are declared by credential REFERENCE (``--identity
+NAME=REF``); the harness never reads a password. A role the seed settles is
+read from the seed, and a policy expression outside the supported grammar,
+like an identity nobody declared, is a typed gap with no scenarios.
+
 Exit 0 when a corpus was derived (gaps allowed and recorded), 1 when it refuses
 (no bundle, no frozen source, no OpenAPI document, or a hand-authored corpus
 already at the output path), 2 usage.
@@ -41,7 +53,10 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _oracle_common import ensure_hermes_lib  # noqa: E402
-from _scenarios import CORPUS, DERIVATION_SCHEMA, DERIVE_RECEIPT, SCHEMA, corpus_digest, request_of, source_cors_policy_map  # noqa: E402
+from _scenarios import (CHALLENGE_HEADER, CORPUS, DEFAULT_SECURITY_MODE, DERIVATION_SCHEMA, DERIVE_RECEIPT,  # noqa: E402
+                        ROLE_PREFIX, SCHEMA, SECURITY_MODES, CorpusError, authorization_roles, corpus_digest, corpus_path,
+                        derive_receipt_path, load_corpus, normalize_security_mode, parse_assignments, request_of,
+                        role_matches, source_authorization_policy_map, source_cors_policy_map, source_role_constants)
 
 ensure_hermes_lib()
 from planner import yamlite  # noqa: E402
@@ -632,6 +647,31 @@ def parse_seed(text: str) -> dict[str, dict[str, Any]]:
             # not line up), and saying so is better than misreading it
             row["rows"].append(values)
     return out
+
+
+def table_rows(seed: dict[str, dict[str, Any]], columns: dict[str, list[str]], table: str) -> list[dict[str, str]]:
+    """The seed rows of ``table`` as column->value maps; the column names come
+    from the INSERT when it lists them, else from the schema."""
+    row = seed.get(table)
+    if not row:
+        return []
+    cols = row.get("columns") or columns.get(table) or []
+    out: list[dict[str, str]] = []
+    for vals in (row.get("rows") or []):
+        out.append({c: str(vals[i]).strip("'\"") for i, c in enumerate(cols) if i < len(vals)})
+    return out
+
+
+def column_values(seed: dict[str, dict[str, Any]], columns: dict[str, list[str]], table: str, column: str) -> list[str]:
+    """Every seeded value of one column, in insertion order."""
+    row = seed.get(table)
+    if not row or not column:
+        return []
+    cols = row.get("columns") or columns.get(table) or []
+    if column not in cols:
+        return []
+    i = cols.index(column)
+    return [str(vals[i]).strip("'\"") for vals in (row.get("rows") or []) if i < len(vals)]
 
 
 def parse_schema_columns(text: str) -> dict[str, list[str]]:
@@ -1739,14 +1779,7 @@ class Derivation:
         return ""
 
     def _column_values(self, table: str, column: str) -> list[str]:
-        row = self.seed.get(table)
-        if not row or not column:
-            return []
-        cols = row.get("columns") or self.columns.get(table) or []
-        if column not in cols:
-            return []
-        i = cols.index(column)
-        return [str(vals[i]).strip("'\"") for vals in (row.get("rows") or []) if i < len(vals)]
+        return column_values(self.seed, self.columns, table, column)
 
     @staticmethod
     def _by_id(values: list[str]) -> list[str]:
@@ -1827,16 +1860,7 @@ class Derivation:
 
     # -- the rows that reference a row, and how they are read back -----------
     def _table_rows(self, table: str) -> list[dict[str, str]]:
-        """The seed rows of ``table`` as column->value maps; the column names
-        come from the INSERT when it lists them, else from the schema."""
-        row = self.seed.get(table)
-        if not row:
-            return []
-        cols = row.get("columns") or self.columns.get(table) or []
-        out: list[dict[str, str]] = []
-        for vals in (row.get("rows") or []):
-            out.append({c: str(vals[i]).strip("'\"") for i, c in enumerate(cols) if i < len(vals)})
-        return out
+        return table_rows(self.seed, self.columns, table)
 
     def _item_route(self, table: str) -> tuple[str, str]:
         """(route, variable) of the bound item GET whose row is a row of
@@ -2023,55 +2047,346 @@ class Derivation:
                 })
 
 
-def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--root", required=True)
-    ap.add_argument("--out", default=CORPUS.as_posix(), help="corpus path, relative to --root")
-    ap.add_argument("--receipt", default=DERIVE_RECEIPT.as_posix(), help="derivation receipt path, relative to --root")
-    ap.add_argument("--origin", default="http://parity.invalid:4200",
-                    help="the cross-origin Origin to send when a policy allows any origin; a policy that declares origins gets its first one")
-    args = ap.parse_args(argv)
-    root = Path(args.root).resolve()
-    out_p = root / args.out
-    receipt_p = root / args.receipt
-    bundle_p = root / EVIDENCE_BUNDLE
-    if not bundle_p.is_file():
-        print("REFUSE: DERIVE_SCENARIOS missing %s; the corpus is derived from the frozen source the bundle describes" % EVIDENCE_BUNDLE, file=sys.stderr)
-        return 1
-    bundle = load_json(bundle_p)
-    bundle_sha = digest(bundle)
-    inputs: dict[str, Any] = {"evidence_bundle": _input(bundle_p, root)}
+# --------------------------------------------------------------------------
+# the enabled security mode: one probe set per authorization policy (ADR-014)
+# --------------------------------------------------------------------------
+# ADR-014 keeps the source's authorization semantics, and says what an
+# enabled-mode oracle has to show: each distinct policy exercised with an
+# allowed identity, anonymous access, invalid credentials and an authenticated
+# identity that lacks the required role, compared against the SOURCE's actual
+# outcomes -- challenges and denied-write effects included. It also says what
+# to do when the fixtures for that are not there: record a blocker. So nothing
+# here invents an identity, a role or a credential. What is missing is named.
+#
+# The request is not derived a second time. A policy guards an entry point the
+# disabled corpus already carries a qualified-shaped scenario for, and that
+# scenario's method, path, headers and body bytes are reused verbatim, bound
+# by its id and its body digest: the two modes then differ in exactly one
+# thing, which is the identity the request carries.
+_AUTH_INVALID = "invalid"       # the reserved --identity name: a credential declared INVALID
+# the checks that judge what a request DID, carried from the base scenario to
+# the allowed probe (its status is not carried: the source's actual outcome is
+# what the capture records, and 201-or-not is not knowable for an identity
+# nobody has run the request as yet)
+_EFFECT_CHECKS = ("after_effect_status", "after_contains_body", "before_lacks_body", "creates_one_entity", "after_equals_before")
+_READ_METHODS = ("GET", "HEAD", "OPTIONS")
+
+
+def _identity_rows(identities: Any, roles: Any) -> tuple[list[dict[str, Any]], str, list[str]]:
+    """(the seeded identities, the invalid credential reference, gaps).
+
+    ``--identity NAME=REF`` declares which credential reference authenticates
+    as which seeded identity; the reserved NAME ``invalid`` declares a
+    reference the Operator states is NOT a valid credential. ``--identity-roles
+    NAME=ROLE[,ROLE...]`` declares what that identity holds. Only names travel:
+    a password is never read here, and never recorded anywhere."""
+    refs = parse_assignments(identities, "--identity")
+    declared = parse_assignments(roles, "--identity-roles")
     gaps: list[str] = []
+    invalid_ref = refs.pop(_AUTH_INVALID, "")
+    if _AUTH_INVALID in declared:
+        gaps.append("auth-identity %s: %r is the reserved name of a credential declared INVALID; it holds no roles"
+                    % (_AUTH_INVALID, _AUTH_INVALID))
+        declared.pop(_AUTH_INVALID, None)
+    rows: list[dict[str, Any]] = []
+    for name in sorted(refs):
+        held = [r.strip() for r in str(declared.pop(name, "")).split(",") if r.strip()]
+        rows.append({"name": name, "credential_ref": refs[name], "roles": sorted(dict.fromkeys(held)),
+                     "roles_source": "declared" if held else "", "roles_evidence": []})
+    for name in sorted(declared):
+        gaps.append("auth-identity %s: roles are declared for it and no --identity %s=CREDENTIAL_REF names how it authenticates" % (name, name))
+    return rows, invalid_ref, gaps
 
-    def blocked(reason: str) -> int:
-        write_canonical(receipt_p, {
-            "schema": DERIVATION_SCHEMA, "producer": PRODUCER, "at": _now(), "status": "blocked", "reason": reason,
-            "evidence_bundle_sha256": bundle_sha, "corpus_sha256": "", "inputs": inputs, "scenarios": [], "gaps": gaps,
-        })
-        print("REFUSE: DERIVE_SCENARIOS %s" % reason, file=sys.stderr)
-        return 1
 
-    if out_p.is_file():
-        try:
-            existing = load_json(out_p)
-        except (OSError, ValueError):
-            existing = {}
-        if isinstance(existing, dict) and existing.get("approved_by") and not existing.get("derived_from"):
-            return blocked("%s is a hand-authored corpus (approved_by %r); it is not overwritten -- move it, or derive to another --out"
-                           % (_rel(out_p, root), existing.get("approved_by")))
-    freeze_p = producer_receipt(root, "freeze")
-    if not freeze_p.is_file():
-        return blocked("no freeze receipt; the corpus is derived from the FROZEN source, never from the destination")
-    freeze = load_json(freeze_p)
-    inputs["freeze"] = _input(freeze_p, root)
-    copy = Path(str(freeze.get("analysis_copy") or ""))
-    if not copy.is_dir():
-        return blocked("the freeze receipt's analysis_copy %s is not a directory" % copy)
-    found = find_openapi(copy)
-    if found is None:
-        return blocked("no OpenAPI document (openapi: + paths:) under %s; request bodies come from its examples, never from a worker" % (copy / RESOURCES))
-    oa_path, openapi = found
-    inputs["openapi"] = _input(oa_path, copy)
+def seed_identity_roles(seed: dict[str, dict[str, Any]], columns: dict[str, list[str]], foreign_keys: list[dict[str, Any]],
+                        persistence: PersistenceModel, wanted: list[str]) -> tuple[dict[str, list[str]], list[str], str]:
+    """({seeded identity: the roles it holds}, evidence, why-not) read from the
+    source's OWN seed through the JPA identity mapping.
+
+    The Operator declares what the seeded identities hold; the seed SAYS it,
+    and a declaration the evidence contradicts is a gap rather than an oracle.
+    Nothing here knows what a user table or a role table is called. The join is
+    made from the policies themselves: the table carrying a column whose seeded
+    values are the roles the policies accept is the role table, its single
+    foreign key names the identity table, and both must be mapped by an entity
+    in M1's structure model -- that mapping is what makes them the identity
+    store the application reads rather than two tables that happen to match.
+    The delete rules already parse this seed and these constraints; this reads
+    the same parse."""
+    if not wanted:
+        return {}, [], "no policy states a role to look for"
+    if not persistence.available:
+        return {}, [], "M1's structure model was not read, so no entity maps the seeded tables"
+    if not seed:
+        return {}, [], "the frozen source's seed was not read"
+    accepted: set[str] = set()
+    for role in wanted:
+        accepted |= {role, ROLE_PREFIX + role if not role.startswith(ROLE_PREFIX) else role[len(ROLE_PREFIX):]}
+    for table in sorted(seed):
+        cols = (seed.get(table) or {}).get("columns") or columns.get(table) or []
+        for column in cols:
+            values = [v for v in column_values(seed, columns, table, column) if v]
+            if not values or not (set(values) & accepted):
+                continue
+            if not persistence.by_table.get(table):
+                return {}, [], ("the roles the policies accept are seeded in %s, which no JPA entity maps; "
+                                "the identity store is not derivable from it" % table)
+            fks = [fk for fk in foreign_keys if fk["table"] == table]
+            if len(fks) != 1:
+                return {}, [], ("%s carries the seeded roles and %d foreign keys (%s); which one names the identity it "
+                                "belongs to is not derivable" % (table, len(fks), ", ".join(sorted(fk_label(fk) for fk in fks)) or "none"))
+            fk = fks[0]
+            if not persistence.by_table.get(fk["ref_table"]):
+                return {}, [], "%s references %s, which no JPA entity maps; the identity store is not derivable" % (table, fk["ref_table"])
+            held: dict[str, list[str]] = {}
+            for row in table_rows(seed, columns, table):
+                who, role = row.get(fk["column"], ""), row.get(column, "")
+                if who and role:
+                    held.setdefault(who, [])
+                    if role not in held[who]:
+                        held[who].append(role)
+            if not held:
+                return {}, [], "%s.%s carries the seeded roles but no row names both an identity and a role" % (table, column)
+            evidence = [
+                "seed:%s.%s carries the roles the policies accept" % (table, column),
+                "schema:FOREIGN KEY %s → %s.%s" % (fk_label(fk), fk["ref_table"], fk["ref_column"]),
+                "structure:%s → %s (JPA identity mapping)" % (", ".join(sorted(persistence.by_table[fk["ref_table"]])), fk["ref_table"]),
+                "structure:%s → %s (JPA identity mapping)" % (", ".join(sorted(persistence.by_table[table])), table),
+            ]
+            return {k: sorted(v) for k, v in sorted(held.items())}, evidence, ""
+    return {}, [], "no seeded column carries any role the policies accept"
+
+
+class EnabledDerivation:
+    """The enabled-mode corpus: four probes per authorization policy over a
+    request the disabled corpus already states."""
+
+    def __init__(self, root: Path, base: dict[str, Any], base_sha: str, policies: dict[str, dict[str, Any]],
+                 constants: dict[str, dict[str, str]], identities: list[dict[str, Any]], invalid_ref: str) -> None:
+        self.root = root
+        self.base = base
+        self.base_sha = base_sha
+        self.policies = policies
+        self.constants = constants
+        self.identities = identities
+        self.invalid_ref = invalid_ref
+        self.gaps: list[str] = []
+        self.scenarios: list[dict[str, Any]] = []
+        self.covered: list[dict[str, Any]] = []
+        self.by_ep: dict[str, list[dict[str, Any]]] = {}
+        for sc in (base.get("scenarios") or []):
+            if isinstance(sc, dict):
+                self.by_ep.setdefault(str(sc.get("entry_point") or ""), []).append(sc)
+        self.guards: dict[str, list[str]] = {}
+        for pid, pol in sorted(policies.items()):
+            for eid in (pol.get("entry_points") or []):
+                self.guards.setdefault(str(eid), []).append(pid)
+
+    # -- helpers -----------------------------------------------------------
+    def _add(self, sc: dict[str, Any]) -> None:
+        if any(s["id"] == sc["id"] for s in self.scenarios):
+            self.gaps.append("scenario id %s would be derived twice (entry point %s); the second is not emitted" % (sc["id"], sc["entry_point"]))
+            return
+        self.scenarios.append(sc)
+
+    def _base_for(self, eid: str) -> tuple[dict[str, Any] | None, str]:
+        """(the disabled-mode scenario whose request this policy is probed
+        with, why-none).
+
+        Qualified-shaped: it carries a qualification contract, so what its
+        capture must show is already stated and the allowed probe can reuse
+        the assertions about what the request DID. A preflight carries no
+        identity by construction, and a cross-origin exchange belongs to the
+        CORS oracle -- an authorization probe carrying an Origin would answer
+        two questions at once and be counted for neither."""
+        rows = [sc for sc in self.by_ep.get(eid, [])
+                if isinstance(sc.get("qualify"), dict) and sc["qualify"]
+                and str(sc.get("method") or "").upper() != "OPTIONS"
+                and not any(str(k).lower() == "origin" for k in (sc.get("headers") or {}))]
+        if not rows:
+            return None, ("the disabled corpus carries no qualified-shaped scenario for it that an identity may be added to "
+                          "(reads are captured outside the corpus and a cross-origin exchange is the CORS oracle's)")
+        rows.sort(key=lambda sc: (0 if str((sc.get("qualify") or {}).get("intent") or "positive") == "positive" else 1,
+                                  len(str(sc.get("id"))), str(sc.get("id"))))
+        return rows[0], ""
+
+    def _holder(self, roles: list[str]) -> dict[str, Any] | None:
+        """The declared identity that holds one of the accepted roles, fewest
+        roles first: the least-privileged identity that the policy accepts
+        proves the policy, and one that holds everything proves less."""
+        rows = [i for i in self.identities if any(role_matches(h, r) for h in i["roles"] for r in roles)]
+        rows.sort(key=lambda i: (len(i["roles"]), i["name"]))
+        return rows[0] if rows else None
+
+    def _outsider(self, roles: list[str]) -> dict[str, Any] | None:
+        """A declared identity that is authenticated and holds NONE of the
+        accepted roles. An identity whose roles nobody knows is not one: it
+        may hold the role, and the scenario would expect a refusal the source
+        does not give."""
+        rows = [i for i in self.identities if i["roles"] and not any(role_matches(h, r) for h in i["roles"] for r in roles)]
+        rows.sort(key=lambda i: (len(i["roles"]), i["name"]))
+        return rows[0] if rows else None
+
+    def _body_of(self, base: dict[str, Any]) -> tuple[str, str]:
+        """(body_file, its digest) of the reused request; ("", "") when the
+        request carries no body."""
+        bf = str(base.get("body_file") or "")
+        if not bf:
+            return "", ""
+        p = self.root / bf
+        return bf, (sha256_file(p) if p.is_file() else "")
+
+    def _probe(self, kind: str, slug: str, pid: str, pol: dict[str, Any], roles: list[str], eid: str,
+               base: dict[str, Any], identity: dict[str, Any], who: dict[str, Any] | None,
+               qualify: dict[str, Any], why: str, extra_evidence: list[str] | None = None) -> None:
+        bf, body_sha = self._body_of(base)
+        evidence = [
+            "bundle:%s" % eid,
+            "policy:%s @%s(%s) on %s" % (pid, pol.get("annotation"), pol.get("expression"), ", ".join(pol.get("members") or [])),
+            "policy:%s accepts %s" % (pid, ", ".join(roles)),
+            # the identity is named by what it HOLDS and by the environment
+            # variable that holds its credential; never by a credential
+            ("identity:%s holds %s, credential_ref %s%s"
+             % (who["name"], ", ".join(who["roles"]) or "no declared role", who["credential_ref"],
+                " (%s)" % who["roles_source"] if who["roles_source"] else "")
+             if who else ("identity:anonymous; the request carries no credential" if str(identity.get("kind") or "none") == "none"
+                          else "identity:credential_ref %s, declared invalid by the Operator" % str(identity.get("credential_ref") or ""))),
+            "corpus:%s reused (%s %s, body %s)" % (base["id"], base["method"], base["path"], body_sha or "absent"),
+            "corpus:%s digest %s" % (_rel(self.root / CORPUS, self.root), self.base_sha),
+        ]
+        sc: dict[str, Any] = {
+            "id": "sc:auth-%s-%s" % (kind, slug), "entry_point": eid,
+            "method": str(base["method"]), "path": str(base["path"]),
+            "headers": {str(k): str(v) for k, v in (base.get("headers") or {}).items()},
+            "identity": dict(identity),
+            "reset_before": bool(base.get("reset_before", True)),
+            "effects": [dict(e) for e in (base.get("effects") or [])],
+            "normalization": list(base.get("normalization") or []),
+            "security_mode": "enabled",
+            "authorization_policy": pid,
+            "base_scenario": str(base["id"]),
+            "base_body_sha256": body_sha,
+            "derived_from": {"kind": "auth-%s" % kind, "entry_point": eid, "evidence": evidence + list(extra_evidence or [])},
+            "qualify": dict(qualify),
+            "why": why,
+        }
+        if bf:
+            sc["body_file"] = bf
+        else:
+            sc["body_absent"] = True
+        if kind in ("anonymous", "invalid"):
+            # the challenge is part of the refusal: a source that answers 401
+            # with WWW-Authenticate has stated how to authenticate, and a
+            # destination that drops it has changed the behaviour. Asserted on
+            # the first response only -- redirects are never followed
+            sc["asserted_headers"] = [CHALLENGE_HEADER]
+        self._add(sc)
+
+    @staticmethod
+    def _allowed_qualify(base: dict[str, Any]) -> dict[str, Any]:
+        """The allowed identity's contract: the source's ACTUAL outcome (the
+        capture records the status class it gave, nothing expects one) plus
+        the base scenario's assertions about what the request did."""
+        bq = base.get("qualify") or {}
+        q: dict[str, Any] = {"intent": "positive", "usable_first_response": True}
+        for name in _EFFECT_CHECKS:
+            if name in bq:
+                q[name] = json.loads(json.dumps(bq[name]))
+        if "creates_one_entity" in q and "identity_field" in bq:
+            q["identity_field"] = bq["identity_field"]
+        return q
+
+    @staticmethod
+    def _denied_qualify(base: dict[str, Any]) -> dict[str, Any]:
+        """A refusal's contract: a 4xx of any kind -- 401 and 403 are both the
+        source's own answer and neither is assumed -- and, for a write, the
+        read-backs the base scenario declares unchanged across it."""
+        q: dict[str, Any] = {"intent": "negative", "expect_status_class": "4xx"}
+        if base.get("effects") and str(base.get("method") or "").upper() not in _READ_METHODS:
+            q["after_equals_before"] = True
+        return q
+
+    # -- the rule ----------------------------------------------------------
+    def run(self) -> None:
+        for pid, pol in sorted(self.policies.items()):
+            expression = str(pol.get("expression") or "")
+            roles, why = authorization_roles(str(pol.get("annotation") or ""), expression, self.constants)
+            if why or not roles:
+                self.gaps.append("auth-policy %s: not in the supported grammar (%s); no scenario is derived for %s"
+                                 % (expression or "(empty)", why or "it names no role", pid))
+                continue
+            for eid in sorted(str(e) for e in (pol.get("entry_points") or [])):
+                base, none_why = self._base_for(eid)
+                if base is None:
+                    self.gaps.append("auth-base %s %s: %s; the policy is not exercised" % (pid, eid, none_why))
+                    continue
+                slug = str(base["id"]).split(":", 1)[-1]
+                if len(self.guards.get(eid, [])) > 1:
+                    slug = "%s-%s" % (slug, _short(pid))
+                self._policy_probes(pid, pol, roles, eid, base, slug)
+            if not (pol.get("entry_points") or []):
+                self.gaps.append("auth-base %s: the policy guards no entry point the evidence bundle records; it is not exercised" % pid)
+        self.scenarios.sort(key=lambda s: str(s["id"]))
+        # a policy guarding two entry points states its blockers once: the
+        # missing identity is the policy's, not each request's
+        self.gaps = list(dict.fromkeys(self.gaps))
+
+    def _policy_probes(self, pid: str, pol: dict[str, Any], roles: list[str], eid: str,
+                       base: dict[str, Any], slug: str) -> None:
+        self.covered.append({"policy": pid, "entry_point": eid, "base_scenario": str(base["id"]), "roles": list(roles)})
+        allowed = self._holder(roles)
+        if allowed is None:
+            self.gaps.append("auth-allowed %s: no declared identity holds %s; declare one (--identity NAME=CREDENTIAL_REF with "
+                             "--identity-roles NAME=%s) or record the blocker" % (pid, ", ".join(roles), roles[0]))
+        else:
+            self._probe("allowed", slug, pid, pol, roles, eid, base,
+                        {"kind": "basic", "credential_ref": allowed["credential_ref"]}, allowed,
+                        self._allowed_qualify(base),
+                        "the same request as %s, carrying an identity the policy accepts; what the source answers IS the "
+                        "expectation -- the capture records it -- and what the request did is judged the way %s judges it"
+                        % (base["id"], base["id"]),
+                        list(allowed.get("roles_evidence") or []))
+        self._probe("anonymous", slug, pid, pol, roles, eid, base, {"kind": "none"}, None,
+                    self._denied_qualify(base),
+                    "the same request with no credential at all: the policy accepts %s, so the source refuses it (any 4xx -- "
+                    "401 and 403 are both its own answer), sends its challenge if it has one, and the read-backs the base "
+                    "scenario declares are unchanged across it" % ", ".join(roles))
+        if not self.invalid_ref:
+            self.gaps.append("auth-invalid %s: no credential is declared invalid (--identity %s=CREDENTIAL_REF); the invalid-credential "
+                             "probe is not derived" % (pid, _AUTH_INVALID))
+        else:
+            self._probe("invalid", slug, pid, pol, roles, eid, base,
+                        {"kind": "basic", "credential_ref": self.invalid_ref}, None,
+                        self._denied_qualify(base),
+                        "the same request carrying the credential reference the Operator declares invalid: the source refuses it "
+                        "(any 4xx), sends its challenge if it has one, and the read-backs are unchanged across it")
+        outsider = self._outsider(roles)
+        if outsider is None:
+            # ADR-014's blocker: an identity that lacks the role is a FIXTURE.
+            # Inventing one would be manufacturing a privileged identity's
+            # opposite -- an account the source does not have -- and the
+            # refusal it expects would be nobody's behaviour
+            self.gaps.append("auth-norole %s: no declared identity lacks %s; the seed provides none" % (pid, ", ".join(roles)))
+            return
+        self._probe("norole", slug, pid, pol, roles, eid, base,
+                    {"kind": "basic", "credential_ref": outsider["credential_ref"]}, outsider,
+                    self._denied_qualify(base),
+                    "the same request carrying an authenticated identity that holds %s and none of %s: authentication is not "
+                    "authorization, so the source refuses it (any 4xx) and the read-backs are unchanged across it"
+                    % (", ".join(outsider["roles"]), ", ".join(roles)),
+                    list(outsider.get("roles_evidence") or []))
+
+
+def _sql_evidence(root: Path, copy: Path, inputs: dict[str, Any], gaps: list[str]) -> tuple[
+        str, str, str, Path | None, dict[str, dict[str, Any]], dict[str, list[str]], list[dict[str, Any]]]:
+    """(source engine, destination engine, the engine the seed was read from,
+    the seed file, the seeded rows, the schema's columns, its foreign keys).
+
+    The frozen source's own SQL, read once for whichever mode is being
+    derived: the disabled corpus addresses seeded rows with it, and the
+    enabled corpus reads the seeded identities' roles out of the same parse.
+    Which files were read is recorded on the receipt (``inputs.sql``): a
+    missing schema is why a decision was made blind."""
     src_engine, dest_engine = _decided_engines(root)
     seed_p, engine = find_seed(copy, src_engine)
     seed: dict[str, dict[str, Any]] = {}
@@ -2099,6 +2414,208 @@ def main(argv: list[str] | None = None) -> int:
     # which SQL the derivation actually read is part of the audit trail: a
     # missing schema file is why a delete was derived blind
     inputs["sql"] = sql_read
+    return src_engine, dest_engine, engine, seed_p, seed, columns, foreign_keys
+
+
+def _derive_enabled(root: Path, args: Any, mode: str, out_p: Path, receipt_p: Path, bundle_sha: str,
+                    freeze: dict[str, Any], copy: Path, inputs: dict[str, Any], gaps: list[str], blocked: Any) -> int:
+    """The enabled-mode corpus (ADR-014): the authorization probes.
+
+    Refuses when the evidence the probes are made of is absent -- the
+    source's policies, or the disabled corpus whose requests they reuse. What
+    is merely UNDECLARED (an identity holding the role, one lacking it, a
+    credential that is invalid) is a typed gap and no scenario, which is the
+    blocker ADR-014 asks for rather than a manufactured identity."""
+    structure_p = root / STRUCTURE
+    inputs["structure"] = _input(structure_p, root)
+    policies, policy_gap = source_authorization_policy_map(root)
+    if policy_gap:
+        return blocked("the source's authorization policies are unknown: %s; an enabled-mode corpus is derived per policy" % policy_gap)
+    constants, constants_gap = source_role_constants(root)
+    if constants_gap:
+        gaps.append("auth-constants: %s; an expression naming a constant cannot be read" % constants_gap)
+    try:
+        base = load_corpus(root)
+    except CorpusError as exc:
+        return blocked("the %s corpus is what the enabled probes reuse their requests from, and it does not hold: %s"
+                       % (DEFAULT_SECURITY_MODE, exc))
+    base_sha = corpus_digest(base)
+    inputs["base_corpus"] = {"path": CORPUS.as_posix(), "sha256": base_sha}
+    try:
+        identities, invalid_ref, identity_gaps = _identity_rows(args.identity, args.identity_roles)
+    except CorpusError as exc:
+        print("REFUSE: DERIVE_SCENARIOS %s" % exc, file=sys.stderr)
+        return 2
+    gaps.extend(identity_gaps)
+    # what the SEED says the identities hold. The roles the policies accept
+    # are what the identity store is found by, so the expressions are read
+    # first -- an unreadable one is a gap of its own below, at the policy
+    _, _, _, _, seed, columns, foreign_keys = _sql_evidence(root, copy, inputs, gaps)
+    persistence = load_persistence_model(root, set(columns) | set(seed))
+    wanted: list[str] = []
+    for pol in policies.values():
+        roles, _why = authorization_roles(str(pol.get("annotation") or ""), str(pol.get("expression") or ""), constants)
+        wanted.extend(roles)
+    seeded, seed_evidence, seed_why = seed_identity_roles(seed, columns, foreign_keys, persistence, sorted(set(wanted)))
+    for row in identities:
+        derived = seeded.get(row["name"]) or []
+        if derived and row["roles"] and sorted(row["roles"]) != sorted(derived):
+            gaps.append("auth-identity %s: the Operator declares %s and the seed gives %s; the seed is the evidence and is used"
+                        % (row["name"], ", ".join(row["roles"]), ", ".join(derived)))
+        if derived:
+            row["roles"] = list(derived)
+            row["roles_source"] = "declared and seeded" if row["roles_source"] else "from the seed"
+            row["roles_evidence"] = list(seed_evidence)
+        elif not row["roles"]:
+            gaps.append("auth-roles %s: no roles are declared for it (--identity-roles %s=ROLE) and none are derivable from the seed (%s); "
+                        "it is used for no probe" % (row["name"], row["name"], seed_why or "it names no seeded identity"))
+    d = EnabledDerivation(root, base, base_sha, policies, constants, identities, invalid_ref)
+    d.run()
+    gaps.extend(d.gaps)
+    if any(str(sc["derived_from"]["kind"]) != "auth-allowed" and sc.get("effects") for sc in d.scenarios):
+        # said once, and honestly: the capture probes a scenario's effects
+        # with that scenario's OWN identity, so a refused write's read-backs
+        # are read as the refused caller sees them. Unchanged is still
+        # unchanged; proving it with an allowed identity needs the capture to
+        # carry a second one, which is not this producer's to give
+        gaps.append("auth-effects: the denied-write read-backs are taken with the refusing request's own identity, so they show the "
+                    "state as that caller sees it; an authenticated read-back of a refused write needs the capture to probe effects "
+                    "with a second identity")
+    doc = {
+        "schema": SCHEMA,
+        "security_mode": mode,
+        "derived_from": {
+            "producer": PRODUCER, "evidence_bundle_sha256": bundle_sha,
+            "source_digest": str(freeze.get("source_digest") or ""),
+            "security_mode": mode,
+            "base_corpus": dict(inputs["base_corpus"]),
+            "structure_sha256": inputs["structure"]["sha256"],
+        },
+        "initial_state": dict(base.get("initial_state") or {}),
+        "path_vars": dict(base.get("path_vars") or {}),
+        # no authorization probe carries an Origin (the CORS oracle owns those
+        # exchanges), so this corpus declares no CORS policy
+        "cors_policies": [],
+        "identities": [{"name": i["name"], "credential_ref": i["credential_ref"], "roles": list(i["roles"]),
+                        "roles_source": i["roles_source"]} for i in identities],
+        "invalid_credential_ref": invalid_ref,
+        "authorization_policies": [
+            {"id": pid, "annotation": pol.get("annotation"), "expression": pol.get("expression"),
+             "roles": authorization_roles(str(pol.get("annotation") or ""), str(pol.get("expression") or ""), constants)[0],
+             "entry_points": list(pol.get("entry_points") or []), "members": list(pol.get("members") or [])}
+            for pid, pol in sorted(policies.items())],
+        "scenarios": d.scenarios,
+        "gaps": gaps,
+    }
+    corpus_sha = corpus_digest(doc)
+    write_canonical(out_p, doc)
+    bodies = {str(s["body_file"]): sha256_file(root / str(s["body_file"])) for s in d.scenarios if s.get("body_file")}
+    requests = {str(s["id"]): request_of(root, s)["request_sha256"] for s in d.scenarios}
+    write_canonical(receipt_p, {
+        "schema": DERIVATION_SCHEMA, "producer": PRODUCER, "at": _now(), "status": "ok", "reason": "",
+        "security_mode": mode,
+        "evidence_bundle_sha256": bundle_sha, "corpus_sha256": corpus_sha, "corpus": _rel(out_p, root),
+        "base_corpus": dict(inputs["base_corpus"]),
+        # the credentials are REFERENCES: which variable holds which identity's
+        # credential, never what it holds
+        "identities": [{"name": i["name"], "credential_ref": i["credential_ref"], "roles": list(i["roles"]),
+                        "roles_source": i["roles_source"]} for i in identities],
+        "invalid_credential_ref": invalid_ref,
+        "seed_identity_roles": {k: list(v) for k, v in sorted(seeded.items())},
+        "seed_identity_roles_evidence": list(seed_evidence), "seed_identity_roles_gap": seed_why,
+        "authorization_policies": [row["id"] for row in doc["authorization_policies"]],
+        "covered": d.covered,
+        "inputs": inputs, "origin": args.origin,
+        "scenarios": [str(s["id"]) for s in d.scenarios], "bodies": bodies, "requests": requests, "gaps": gaps,
+    })
+    print("OK: derived %d %s-mode scenario(s) over %d policy(ies), %d gap(s) (corpus %s, base %s) → %s"
+          % (len(d.scenarios), mode, len(policies), len(gaps), corpus_sha[:12], base_sha[:12], _rel(out_p, root)))
+    for g in gaps:
+        print("  - gap: %s" % g)
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--root", required=True)
+    ap.add_argument("--out", default="", help="corpus path, relative to --root (default: the corpus of --security-mode)")
+    ap.add_argument("--receipt", default="", help="derivation receipt path, relative to --root (default: beside the corpus)")
+    ap.add_argument("--origin", default="http://parity.invalid:4200",
+                    help="the cross-origin Origin to send when a policy allows any origin; a policy that declares origins gets its first one")
+    ap.add_argument("--security-mode", default=DEFAULT_SECURITY_MODE, choices=list(SECURITY_MODES),
+                    help="which security mode this corpus is for (ADR-014); enabled derives the authorization probes")
+    ap.add_argument("--identity", action="append", default=[], metavar="NAME=CREDENTIAL_REF",
+                    help="enabled mode, repeatable: the environment variable holding the credential that authenticates as the "
+                         "seeded identity NAME; the reserved NAME 'invalid' declares a credential that is NOT valid. "
+                         "Only the NAME of the variable is ever read or recorded")
+    ap.add_argument("--identity-roles", action="append", default=[], metavar="NAME=ROLE[,ROLE...]",
+                    help="enabled mode, repeatable: the roles the seeded identity NAME holds, as the Operator reads them off the "
+                         "seed; derived from the seed too where the structure model maps the identity store, and a declaration "
+                         "the seed contradicts is a gap")
+    args = ap.parse_args(argv)
+    root = Path(args.root).resolve()
+    try:
+        mode = normalize_security_mode(args.security_mode)
+    except CorpusError as exc:
+        print("REFUSE: DERIVE_SCENARIOS %s" % exc, file=sys.stderr)
+        return 2
+    if mode == DEFAULT_SECURITY_MODE and (args.identity or args.identity_roles):
+        # a mistyped command must not derive the anonymous corpus while the
+        # Operator believes identities went into it
+        print("REFUSE: DERIVE_SCENARIOS --identity/--identity-roles declare who the ENABLED mode authenticates as; "
+              "the %s mode sends no credential (pass --security-mode enabled)" % DEFAULT_SECURITY_MODE, file=sys.stderr)
+        return 2
+    out_p = root / (args.out or corpus_path(mode).as_posix())
+    receipt_p = root / (args.receipt or derive_receipt_path(mode).as_posix())
+    bundle_p = root / EVIDENCE_BUNDLE
+    if not bundle_p.is_file():
+        print("REFUSE: DERIVE_SCENARIOS missing %s; the corpus is derived from the frozen source the bundle describes" % EVIDENCE_BUNDLE, file=sys.stderr)
+        return 1
+    bundle = load_json(bundle_p)
+    bundle_sha = digest(bundle)
+    inputs: dict[str, Any] = {"evidence_bundle": _input(bundle_p, root)}
+    gaps: list[str] = []
+
+    def blocked(reason: str) -> int:
+        doc = {
+            "schema": DERIVATION_SCHEMA, "producer": PRODUCER, "at": _now(), "status": "blocked", "reason": reason,
+            "evidence_bundle_sha256": bundle_sha, "corpus_sha256": "", "inputs": inputs, "scenarios": [], "gaps": gaps,
+        }
+        if mode != DEFAULT_SECURITY_MODE:
+            # a receipt of the default mode is where it always was and says
+            # what it always said; another mode always names itself
+            doc["security_mode"] = mode
+        write_canonical(receipt_p, doc)
+        print("REFUSE: DERIVE_SCENARIOS %s" % reason, file=sys.stderr)
+        return 1
+
+    if out_p.is_file():
+        try:
+            existing = load_json(out_p)
+        except (OSError, ValueError):
+            existing = {}
+        if isinstance(existing, dict) and existing.get("approved_by") and not existing.get("derived_from"):
+            return blocked("%s is a hand-authored corpus (approved_by %r); it is not overwritten -- move it, or derive to another --out"
+                           % (_rel(out_p, root), existing.get("approved_by")))
+    freeze_p = producer_receipt(root, "freeze")
+    if not freeze_p.is_file():
+        return blocked("no freeze receipt; the corpus is derived from the FROZEN source, never from the destination")
+    freeze = load_json(freeze_p)
+    inputs["freeze"] = _input(freeze_p, root)
+    copy = Path(str(freeze.get("analysis_copy") or ""))
+    if not copy.is_dir():
+        return blocked("the freeze receipt's analysis_copy %s is not a directory" % copy)
+    if mode != DEFAULT_SECURITY_MODE:
+        # the enabled mode reuses the other mode's requests; it derives no
+        # body, so it needs no OpenAPI document -- what it needs is the
+        # source's policies, the seed behind them and that corpus
+        return _derive_enabled(root, args, mode, out_p, receipt_p, bundle_sha, freeze, copy, inputs, gaps, blocked)
+    found = find_openapi(copy)
+    if found is None:
+        return blocked("no OpenAPI document (openapi: + paths:) under %s; request bodies come from its examples, never from a worker" % (copy / RESOURCES))
+    oa_path, openapi = found
+    inputs["openapi"] = _input(oa_path, copy)
+    src_engine, dest_engine, engine, seed_p, seed, columns, foreign_keys = _sql_evidence(root, copy, inputs, gaps)
     structure_p = root / STRUCTURE
     inputs["structure"] = _input(structure_p, root)
     policies, policy_gap = source_cors_policy_map(root)

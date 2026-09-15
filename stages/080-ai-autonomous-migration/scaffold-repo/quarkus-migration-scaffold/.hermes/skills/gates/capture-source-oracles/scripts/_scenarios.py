@@ -116,6 +116,30 @@ def parity_receipt_path(security_mode: Any = DEFAULT_SECURITY_MODE) -> Path:
     return Path("verification") / "parity" / ("receipt%s.json" % _mode_suffix(security_mode))
 
 
+def scenarios_dir(security_mode: Any = DEFAULT_SECURITY_MODE) -> Path:
+    """Where the corpus of ONE mode lives. The default mode resolves to the
+    directory CORPUS and DERIVE_RECEIPT already name, so nothing moves; the
+    enabled mode gets its own, and the two corpora cannot be confused for one
+    another by forgetting which was derived last."""
+    return Path("verification") / ("scenarios" + _mode_suffix(security_mode))
+
+
+def corpus_path(security_mode: Any = DEFAULT_SECURITY_MODE) -> Path:
+    return scenarios_dir(security_mode) / "corpus.json"
+
+
+def derive_receipt_path(security_mode: Any = DEFAULT_SECURITY_MODE) -> Path:
+    return scenarios_dir(security_mode) / "_derive.json"
+
+
+def scenario_bodies_dir(security_mode: Any = DEFAULT_SECURITY_MODE) -> Path:
+    """Where a derivation writes request bodies. The enabled mode writes none:
+    it REUSES the disabled corpus's requests, bodies included, so the two
+    modes send the same bytes and a difference in the answer is the security
+    switch and nothing else."""
+    return scenarios_dir(security_mode) / "bodies"
+
+
 def capture_security_mode(root: Path, security_mode: Any = DEFAULT_SECURITY_MODE) -> tuple[str, str]:
     """(the mode the capture receipt in that directory RECORDS, why-unknown).
 
@@ -141,15 +165,18 @@ def scenario_slug(scenario_id: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]+", "_", str(scenario_id))[:120]
 
 
-def load_corpus(root: Path) -> dict[str, Any]:
-    p = Path(root) / CORPUS
+def load_corpus(root: Path, security_mode: Any = DEFAULT_SECURITY_MODE) -> dict[str, Any]:
+    """The corpus of one security mode. The default mode reads exactly the
+    path (and states exactly the refusals) it always did."""
+    corpus_rel = corpus_path(security_mode)
+    p = Path(root) / corpus_rel
     if not p.is_file():
-        raise CorpusError("missing %s (the Operator-approved scenario corpus)" % CORPUS)
+        raise CorpusError("missing %s (the Operator-approved scenario corpus)" % corpus_rel)
     doc = load_json(p)
     if not isinstance(doc, dict) or doc.get("schema") != SCHEMA:
-        raise CorpusError("%s is not a %s document" % (CORPUS, SCHEMA))
+        raise CorpusError("%s is not a %s document" % (corpus_rel, SCHEMA))
     if doc.get("path_vars") is not None and not isinstance(doc.get("path_vars"), dict):
-        raise CorpusError("%s path_vars must be a mapping of template variable to a value from the source's own seeded data" % CORPUS)
+        raise CorpusError("%s path_vars must be a mapping of template variable to a value from the source's own seeded data" % corpus_rel)
     seen: set[str] = set()
     for i, sc in enumerate(doc.get("scenarios") or []):
         if not isinstance(sc, dict):
@@ -181,9 +208,16 @@ def load_corpus(root: Path) -> dict[str, Any]:
             raise CorpusError("scenario %s sends a cross-origin Origin and names no cors_policy; coverage is counted per policy" % sc["id"])
         if sc.get("cors_policy") and str(sc["cors_policy"]) not in {str(p.get("id")) for p in (doc.get("cors_policies") or [])}:
             raise CorpusError("scenario %s names cors_policy %r, which cors_policies does not declare" % (sc["id"], sc["cors_policy"]))
+    # a corpus that names a mode must be the mode that was asked for: a
+    # corpus is copied, and reading the enabled one as the disabled one would
+    # judge 401s against anonymous expectations (the reuse ADR-014 forbids)
+    recorded = str(doc.get("security_mode") or "")
+    if recorded and recorded != normalize_security_mode(security_mode):
+        raise CorpusError("%s records security_mode %r; this is the %s corpus"
+                          % (corpus_rel, recorded, normalize_security_mode(security_mode)))
     # provenance last: it recomputes request digests, which assumes the
     # scenarios are well-formed (checked above)
-    provenance_gap = corpus_provenance_gap(root, doc)
+    provenance_gap = corpus_provenance_gap(root, doc, security_mode)
     if provenance_gap:
         raise CorpusError(provenance_gap)
     return doc
@@ -197,7 +231,7 @@ def is_derived(doc: dict[str, Any]) -> bool:
     return isinstance(doc.get("derived_from"), dict) and not doc.get("approved_by")
 
 
-def corpus_provenance_gap(root: Path, doc: dict[str, Any]) -> str:
+def corpus_provenance_gap(root: Path, doc: dict[str, Any], security_mode: Any = DEFAULT_SECURITY_MODE) -> str:
     """Why this corpus may NOT be trusted; "" when its provenance holds.
 
     Two provenances are accepted. A DERIVED corpus (``derived_from``) is bound
@@ -210,41 +244,43 @@ def corpus_provenance_gap(root: Path, doc: dict[str, Any]) -> str:
     ``approved_by``; a placeholder (``TODO``, ``<who>``) is not a name. The
     wording never says "missing": capture-source-scenarios.py reads that word
     as "no corpus at all", which is idle, and a broken binding is not idle."""
+    corpus_rel = corpus_path(security_mode)
+    receipt_rel = derive_receipt_path(security_mode)
     approved = doc.get("approved_by")
     if approved:
         text = str(approved)
         if any(m in text for m in _PLACEHOLDER_MARKS):
-            return "%s approved_by %r is a placeholder, not an approver" % (CORPUS, text)
+            return "%s approved_by %r is a placeholder, not an approver" % (corpus_rel, text)
         return ""
     derived = doc.get("derived_from")
     if not isinstance(derived, dict):
         return ("%s is neither derived (derived_from) nor hand-authored (approved_by); "
-                "derive it from the frozen source's evidence (derive-source-scenarios.py)" % CORPUS)
-    rp = Path(root) / DERIVE_RECEIPT
+                "derive it from the frozen source's evidence (derive-source-scenarios.py)" % corpus_rel)
+    rp = Path(root) / receipt_rel
     if not rp.is_file():
-        return "%s says it is derived but there is no derivation receipt %s beside it" % (CORPUS, DERIVE_RECEIPT)
+        return "%s says it is derived but there is no derivation receipt %s beside it" % (corpus_rel, receipt_rel)
     try:
         receipt = load_json(rp)
     except (OSError, ValueError) as exc:
-        return "%s could not be read: %s" % (DERIVE_RECEIPT, exc)
+        return "%s could not be read: %s" % (receipt_rel, exc)
     if not isinstance(receipt, dict) or receipt.get("schema") != DERIVATION_SCHEMA:
-        return "%s is not a %s document" % (DERIVE_RECEIPT, DERIVATION_SCHEMA)
+        return "%s is not a %s document" % (receipt_rel, DERIVATION_SCHEMA)
     if receipt.get("status") != "ok":
-        return "%s records status %r, so the derivation did not complete" % (DERIVE_RECEIPT, receipt.get("status"))
+        return "%s records status %r, so the derivation did not complete" % (receipt_rel, receipt.get("status"))
     have = corpus_digest(doc)
     if str(receipt.get("corpus_sha256") or "") != have:
         return ("%s digest %s is not the one the derivation receipt recorded (%s): the corpus was edited after derivation, "
-                "and an edit has no provenance" % (CORPUS, have[:12], str(receipt.get("corpus_sha256") or "")[:12]))
+                "and an edit has no provenance" % (corpus_rel, have[:12], str(receipt.get("corpus_sha256") or "")[:12]))
     bp = Path(root) / EVIDENCE_BUNDLE
     if not bp.is_file():
-        return "%s is derived but there is no %s in this tree to bind it to" % (CORPUS, EVIDENCE_BUNDLE)
+        return "%s is derived but there is no %s in this tree to bind it to" % (corpus_rel, EVIDENCE_BUNDLE)
     try:
         bundle_sha = digest(load_json(bp))
     except (OSError, ValueError) as exc:
         return "%s could not be read: %s" % (EVIDENCE_BUNDLE, exc)
     if str(receipt.get("evidence_bundle_sha256") or "") != bundle_sha:
         return ("%s was derived against evidence bundle %s, this tree's bundle is %s: derive it again"
-                % (CORPUS, str(receipt.get("evidence_bundle_sha256") or "")[:12], bundle_sha[:12]))
+                % (corpus_rel, str(receipt.get("evidence_bundle_sha256") or "")[:12], bundle_sha[:12]))
     # the corpus digest binds body FILENAMES only; the receipt binds the body
     # bytes and every complete request digest, and each is recomputed here (a
     # body edited after derivation passed the corpus digest: architect review
@@ -252,7 +288,7 @@ def corpus_provenance_gap(root: Path, doc: dict[str, Any]) -> str:
     bodies = receipt.get("bodies")
     requests = receipt.get("requests")
     if not isinstance(bodies, dict) or not isinstance(requests, dict):
-        return "%s binds no body or request digests (bodies/requests); derive the corpus again" % DERIVE_RECEIPT
+        return "%s binds no body or request digests (bodies/requests); derive the corpus again" % receipt_rel
     for sc in doc.get("scenarios") or []:
         if not isinstance(sc, dict):
             continue
@@ -699,3 +735,196 @@ def source_authorization_policies(root: Path) -> tuple[list[str], str]:
     see source_authorization_policy_map."""
     policies, why = source_authorization_policy_map(root)
     return sorted(policies), why
+
+
+# ---------------------------------------------------------------------------
+# what a policy ACCEPTS: the supported expression grammar (ADR-014)
+# ---------------------------------------------------------------------------
+# The enabled-mode derivation needs one thing from each policy: which roles it
+# lets through. Everything else about an authorization expression -- a method
+# argument, a bean call, a boolean combination -- is a question this grammar
+# does not answer, and an expression it cannot read is a typed GAP with no
+# scenarios rather than a guess: deriving "authenticated without the role"
+# from an expression nobody parsed would name an identity the source may well
+# accept, and the negative scenario would be a false expectation.
+#
+# Supported: hasRole(<role>), hasAnyRole(<role>, ...), and the role LIST of
+# @RolesAllowed / @Secured, where <role> is a quoted literal or a constant
+# reference that resolves through M1's structure model (@roles.OWNER_ADMIN,
+# #roles.OWNER_ADMIN, Roles.OWNER_ADMIN, T(a.b.Roles).OWNER_ADMIN). The
+# constant is read from the model's own field values, never from a specimen's
+# role names: the harness does not know what a role is called.
+ROLE_PREFIX = "ROLE_"
+# a field's recorded constant value; M1's model carries the literal under
+# whichever of these keys its extractor writes
+_CONSTANT_VALUE_KEYS = ("constant", "constant_value", "value", "literal", "initializer")
+_ROLE_CALLS = ("hasRole", "hasAnyRole")
+_ROLE_SET_ANNOTATIONS = ("RolesAllowed", "Secured")
+# the challenge a source sends with an unauthenticated refusal; asserted on
+# the FIRST response of the scenarios that provoke it (redirects are never
+# followed, so there is no second one to read)
+CHALLENGE_HEADER = "WWW-Authenticate"
+
+
+def _unquote(text: str) -> str:
+    t = str(text).strip()
+    if len(t) >= 2 and t[0] == t[-1] and t[0] in ("'", '"'):
+        return t[1:-1]
+    return t
+
+
+def source_role_constants(root: Path) -> tuple[dict[str, dict[str, str]], str]:
+    """({constants type, lower-cased simple name: {field: literal}},
+    why-unknown) -- the string constants M1's structure model records.
+
+    A source that spells its roles once in a constants type and refers to them
+    from every ``@PreAuthorize`` (``hasRole(@roles.OWNER_ADMIN)``) has put the
+    role NAME in the model's field values; the expression alone carries only a
+    reference. Two types with the same simple name and different values
+    resolve to neither: an ambiguous reference is not a role."""
+    p = Path(root) / STRUCTURE
+    if not p.is_file():
+        return {}, "M1's structural model %s is not in this tree, so a role constant cannot be resolved" % STRUCTURE
+    try:
+        model = load_json(p)
+    except (OSError, ValueError) as exc:
+        return {}, "%s could not be read: %s" % (STRUCTURE, exc)
+    out: dict[str, dict[str, str]] = {}
+    ambiguous: set[str] = set()
+    for t in (model.get("types") or []):
+        if not isinstance(t, dict):
+            continue
+        simple = str(t.get("fqn") or "").rsplit(".", 1)[-1].strip().lower()
+        if not simple:
+            continue
+        fields: dict[str, str] = {}
+        for f in (t.get("fields") or []):
+            if not isinstance(f, dict) or not str(f.get("name") or ""):
+                continue
+            for key in _CONSTANT_VALUE_KEYS:
+                raw = f.get(key)
+                if isinstance(raw, str) and _unquote(raw):
+                    fields[str(f["name"])] = _unquote(raw)
+                    break
+        if not fields:
+            continue
+        if simple in out and out[simple] != fields:
+            ambiguous.add(simple)
+        out[simple] = fields
+    for simple in ambiguous:
+        out.pop(simple, None)
+    return dict(sorted(out.items())), ""
+
+
+def _role_token(token: str, constants: dict[str, dict[str, str]], *, literal_ok: bool) -> tuple[str, str]:
+    """(the role a single argument names, why-not).
+
+    ``literal_ok`` says whether a bare word is a role NAME: it is in a
+    ``@RolesAllowed`` value list (the model records those as strings) and it
+    is not inside a SpEL call, where a bare word is a reference to something
+    this grammar has not read."""
+    tok = str(token).strip()
+    if not tok:
+        return "", "an empty role"
+    if tok[0] in ("'", '"'):
+        role = _unquote(tok)
+        return (role, "") if role else ("", "the empty string is not a role")
+    ref = tok
+    if ref.startswith("T(") and ")" in ref:
+        ref = ref[ref.index(")") + 1:].lstrip(".")
+        ref = "%s.%s" % (tok[2:tok.index(")")].rsplit(".", 1)[-1], ref) if ref else ""
+    ref = ref.lstrip("@#")
+    if "." in ref:
+        owner, _, field = ref.rpartition(".")
+        owner = owner.rsplit(".", 1)[-1].strip().lower()
+        if owner in constants and field in constants[owner]:
+            return constants[owner][field], ""
+        return "", "the constant %s resolves to no string field of a type the structure model records" % tok
+    if literal_ok:
+        return tok, ""
+    return "", "%s is neither a quoted role nor a constant this model resolves" % tok
+
+
+def _balanced(text: str) -> bool:
+    """Whether every parenthesis in ``text`` closes inside it."""
+    depth = 0
+    for ch in str(text):
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth < 0:
+                return False
+    return depth == 0
+
+
+def _split_args(text: str) -> list[str]:
+    """The top-level comma-separated arguments of a call; a comma inside
+    ``T(a.b.C)`` is not an argument separator."""
+    out: list[str] = []
+    depth, current = 0, ""
+    for ch in str(text):
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+        if ch == "," and depth <= 0:
+            out.append(current)
+            current = ""
+            continue
+        current += ch
+    out.append(current)
+    return [a.strip() for a in out if a.strip()]
+
+
+def authorization_roles(annotation: str, expression: str,
+                        constants: dict[str, dict[str, str]] | None = None) -> tuple[list[str], str]:
+    """(the roles this policy ACCEPTS, why-unsupported).
+
+    "" for the reason and a non-empty list is the only readable answer; an
+    expression outside the grammar returns ([], reason) and the caller records
+    a typed gap rather than deriving anything for it."""
+    consts = constants or {}
+    text = str(expression or "").strip()
+    if not text:
+        return [], "the policy states no expression"
+    if str(annotation) in _ROLE_SET_ANNOTATIONS:
+        roles: list[str] = []
+        for tok in _split_args(text):
+            role, why = _role_token(tok, consts, literal_ok=True)
+            if why:
+                return [], why
+            roles.append(role)
+        return sorted(dict.fromkeys(roles)), ""
+    call = re.fullmatch(r"([A-Za-z]\w*)\s*\((.*)\)", text, re.DOTALL)
+    # the call has to BE the whole expression: ``hasRole('A') or hasRole('B')``
+    # matches that pattern too, and reading it as one call would derive a
+    # "lacks the role" identity the source in fact lets through
+    if call is not None and not _balanced(call.group(2)):
+        return [], "the expression combines terms (%s); a combination is not one role test" % text
+    if call is None or call.group(1) not in _ROLE_CALLS:
+        return [], "only %s and the role lists of %s are read" % (
+            ", ".join("%s(...)" % c for c in _ROLE_CALLS), ", ".join("@%s" % a for a in _ROLE_SET_ANNOTATIONS))
+    args = _split_args(call.group(2))
+    if not args or (call.group(1) == "hasRole" and len(args) != 1):
+        return [], "%s takes %s" % (call.group(1), "exactly one role" if call.group(1) == "hasRole" else "at least one role")
+    roles = []
+    for tok in args:
+        role, why = _role_token(tok, consts, literal_ok=False)
+        if why:
+            return [], why
+        roles.append(role)
+    return sorted(dict.fromkeys(roles)), ""
+
+
+def role_matches(held: Any, accepted: Any) -> bool:
+    """Whether an identity holding ``held`` satisfies a policy accepting
+    ``accepted``. A platform that prefixes authorities (Spring's ``hasRole``
+    prepends ``ROLE_``) makes ``ADMIN`` and ``ROLE_ADMIN`` the same role, and
+    a seeded row may be stored either way; nothing else is folded."""
+    def forms(role: Any) -> set[str]:
+        r = str(role or "").strip()
+        if not r:
+            return set()
+        return {r, r[len(ROLE_PREFIX):] if r.startswith(ROLE_PREFIX) else ROLE_PREFIX + r}
+    return bool(forms(held) & forms(accepted))

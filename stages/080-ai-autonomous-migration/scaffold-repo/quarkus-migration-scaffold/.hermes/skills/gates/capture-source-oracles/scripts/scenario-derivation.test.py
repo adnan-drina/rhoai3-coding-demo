@@ -37,6 +37,7 @@ sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parents[3] / "lib"))
 from _oracle_common import normalize_body, retain_body  # noqa: E402
 from _scenarios import CorpusError, DERIVE_RECEIPT, QUALIFICATION, SCENARIO_ORACLES, corpus_digest, load_corpus, request_of, scenario_slug, source_cors_policies  # noqa: E402
+from planner.canonical import sha256_file  # noqa: E402
 from planner import pipeline, specimens  # noqa: E402
 from planner.canonical import digest, load_json, write_canonical  # noqa: E402
 from planner.paths import EVIDENCE_BUNDLE, STRUCTURE, producer_receipt  # noqa: E402
@@ -1319,6 +1320,516 @@ def _authorization_policy_case() -> int:
     return 0
 
 
+# --------------------------------------------------------------------------
+# the enabled security mode (ADR-014)
+# --------------------------------------------------------------------------
+ENABLED_CORPUS_P = Path("verification") / "scenarios-enabled" / "corpus.json"
+ENABLED_RECEIPT_P = Path("verification") / "scenarios-enabled" / "_derive.json"
+# what the disabled derivation produced before the enabled mode existed, file
+# by file. The enabled corpus is a NEW artifact beside it; a byte of the other
+# mode's output moving would mean the modes are not separate after all
+DISABLED_OUTPUT_SHA256 = {
+    "verification/scenarios/bodies/create-invalid-owners-firstName.json": "d59f3e0e22e15c1776b2df76ea900b5cc4abaa89e9a21938271ba2ef4e98bb23",
+    "verification/scenarios/bodies/create-invalid-owners-telephone.json": "e1a3fbb3bf89929d9ea0bc6944b47ded3f844473d1e8fa7892884e141e030037",
+    "verification/scenarios/bodies/create-owners.json": "af31ffdcc5159780b66903b1754109c340d18375a3c5bacac8c66f533eea7516",
+    "verification/scenarios/bodies/update-owners-1.json": "af31ffdcc5159780b66903b1754109c340d18375a3c5bacac8c66f533eea7516",
+    "verification/scenarios/corpus.json": "d8401ac17ba4d37ada324158b033161d604ee5bc6665283e49ea4d53978f5312",
+}
+
+
+class Names:
+    """Every name a specimen chooses. Two instances of this class are the
+    same source under different names, and the derivation must decide the
+    same things about both."""
+
+    def __init__(self, pkg: str, controller: str, read_type: str, roles_type: str, resource: str, var: str,
+                 field: str, example: str, create: str, delete: str, other: str, read: str, read_route: str,
+                 roles: tuple[str, str, str], role_fields: tuple[str, str, str], user_table: str, role_table: str,
+                 user_col: str, role_col: str, who_all: str, who_one: str, cred_all: str, cred_one: str, cred_bad: str) -> None:
+        self.pkg, self.controller, self.read_type, self.roles_type = pkg, controller, read_type, roles_type
+        self.resource, self.var, self.field, self.example = resource, var, field, example
+        self.create, self.delete, self.other, self.read, self.read_route = create, delete, other, read, read_route
+        self.roles, self.role_fields = roles, role_fields
+        self.user_table, self.role_table, self.user_col, self.role_col = user_table, role_table, user_col, role_col
+        self.who_all, self.who_one = who_all, who_one
+        self.cred_all, self.cred_one, self.cred_bad = cred_all, cred_one, cred_bad
+
+    @property
+    def ctrl_fqn(self) -> str:
+        return "%s.%s" % (self.pkg, self.controller)
+
+    @property
+    def read_fqn(self) -> str:
+        return "%s.%s" % (self.pkg, self.read_type)
+
+    @property
+    def user_entity(self) -> str:
+        return self.user_table.rstrip("s").capitalize()
+
+    @property
+    def role_entity(self) -> str:
+        return self.role_table.rstrip("s").capitalize()
+
+    @property
+    def route(self) -> str:
+        return "/api/%s" % self.resource
+
+    def every(self) -> list[str]:
+        """The strings a comparison must erase, longest first."""
+        return [self.ctrl_fqn, self.read_fqn, "%s.%s" % (self.pkg, self.roles_type), self.pkg, self.controller,
+                self.read_type, self.roles_type, self.resource, self.var, self.field, self.example, self.create,
+                self.delete, self.other, self.read, self.read_route, self.user_table, self.role_table, self.user_col,
+                self.role_col, self.who_all, self.who_one, self.cred_all, self.cred_one, self.cred_bad,
+                self.read_route.strip("/"), self.user_entity, self.role_entity, *self.roles, *self.role_fields]
+
+
+PLAIN = Names(pkg="a.rest", controller="OwnerRestController", read_type="RootRestController", roles_type="Roles",
+              resource="owners", var="ownerId", field="lastName", example="Franklin", create="addOwner",
+              delete="deleteOwner", other="statusOfOwner", read="redirectToDocs", read_route="/docs",
+              roles=("ROLE_OWNER_ADMIN", "ROLE_VET_ADMIN", "ROLE_ADMIN"),
+              role_fields=("OWNER_ADMIN", "VET_ADMIN", "ADMIN"),
+              user_table="users", role_table="roles", user_col="username", role_col="role",
+              who_all="admin", who_one="helper", cred_all="PARITY_ADMIN", cred_one="PARITY_HELPER", cred_bad="PARITY_WRONG")
+
+RENAMED = Names(pkg="z.legacy.web", controller="CustodianEndpoint", read_type="LandingEndpoint", roles_type="Grants",
+                resource="widgets", var="widgetId", field="label", example="Zeta", create="registerWidget",
+                delete="removeWidget", other="pingWidget", read="landing", read_route="/home",
+                roles=("GRANT_KEEPER", "GRANT_WATCHER", "GRANT_BOSS"),
+                role_fields=("KEEPER", "WATCHER", "BOSS"),
+                user_table="principals", role_table="grants", user_col="login", role_col="grant_name",
+                who_all="keeper", who_one="reader", cred_all="FIXTURE_KEEPER", cred_one="FIXTURE_READER", cred_bad="FIXTURE_BAD")
+
+_PRE_AUTHORIZE = "org.springframework.security.access.prepost.PreAuthorize"
+
+
+def _authz_api_docs(n: Names) -> str:
+    fields, entity = "%sFields" % n.controller, "%sEntity" % n.controller
+    return (
+        "openapi: 3.0.1\n"
+        "info:\n  title: fixture\n  version: '1.0'\n"
+        "paths:\n"
+        "  %s:\n" % n.route +
+        "    post:\n      operationId: %s\n      requestBody:\n        content:\n          application/json:\n" % n.create +
+        "            schema:\n              $ref: '#/components/schemas/%s'\n        required: true\n" % fields +
+        "      responses:\n        201:\n          description: created\n"
+        "    get:\n      operationId: list%s\n      responses:\n        '200':\n          description: ok\n" % n.controller +
+        "          content:\n            application/json:\n              schema:\n                type: array\n"
+        "                items:\n                  $ref: '#/components/schemas/%s'\n" % entity +
+        "  %s/{%s}:\n" % (n.route, n.var) +
+        "    parameters:\n      - name: %s\n        in: path\n        required: true\n        schema:\n          type: integer\n        example: 1\n" % n.var +
+        "    delete:\n      operationId: %s\n      responses:\n        '204':\n          description: deleted\n" % n.delete +
+        "components:\n  schemas:\n"
+        "    %s:\n      type: object\n      properties:\n" % fields +
+        "        %s:\n          type: string\n          minLength: 1\n          pattern: '^[a-zA-Z]*$'\n          example: %s\n" % (n.field, n.example) +
+        "      required:\n        - %s\n" % n.field +
+        "    %s:\n      allOf:\n        - $ref: '#/components/schemas/%s'\n" % (entity, fields) +
+        "        - type: object\n          properties:\n            id:\n              type: integer\n              readOnly: true\n              example: 1\n"
+    )
+
+
+def _authz_root(td: Path, name: str, n: Names, *, holdings: dict[str, list[str]] | None = None,
+                unsupported: bool = True, map_identity: bool = True) -> Path:
+    """A frozen source with an authorization policy on a write, another on a
+    method-less read, a constants type the expressions refer to, and a seeded
+    identity store the structure model maps.
+
+    ``holdings`` is what the SEED says each identity holds (default: one
+    identity with every role, one with a single role)."""
+    root, copy = td / name / "dest", td / name / "frozen"
+    res = copy / "src" / "main" / "resources"
+    (res / "db" / "hsqldb").mkdir(parents=True)
+    (copy / "pom.xml").write_text("<project/>", encoding="utf-8")
+    (res / "api-docs.yml").write_text(_authz_api_docs(n), encoding="utf-8")
+    held = holdings if holdings is not None else {n.who_all: list(n.roles), n.who_one: [n.roles[1]]}
+    rows = []
+    i = 0
+    for who in sorted(held):
+        for role in held[who]:
+            i += 1
+            rows.append("INSERT INTO %s VALUES (%d, '%s', '%s');\n" % (n.role_table, i, who, role))
+    (res / "db" / "hsqldb" / "populateDB.sql").write_text(
+        "INSERT INTO %s VALUES (1, '%s');\n" % (n.resource, n.example)
+        + "INSERT INTO %s VALUES (2, 'Other');\n" % n.resource
+        + "".join("INSERT INTO %s VALUES ('%s', 'secret');\n" % (n.user_table, who) for who in sorted(held))
+        + "".join(rows), encoding="utf-8")
+    (res / "db" / "hsqldb" / "initDB.sql").write_text(
+        "CREATE TABLE %s (\n  id INTEGER IDENTITY PRIMARY KEY,\n  %s VARCHAR(30)\n);\n" % (n.resource, _snake_col(n.field))
+        + "CREATE TABLE %s (\n  %s VARCHAR(20) PRIMARY KEY,\n  password VARCHAR(20)\n);\n" % (n.user_table, n.user_col)
+        + "CREATE TABLE %s (\n  id INTEGER IDENTITY PRIMARY KEY,\n  %s VARCHAR(20) NOT NULL,\n  %s VARCHAR(30) NOT NULL,\n"
+          "  FOREIGN KEY (%s) REFERENCES %s (%s)\n);\n" % (n.role_table, n.user_col, n.role_col, n.user_col, n.user_table, n.user_col),
+        encoding="utf-8")
+    write_canonical(producer_receipt(root, "freeze"), {"analysis_copy": str(copy), "source_digest": "fixture-source-digest"})
+    write_pol = {"fqn": _PRE_AUTHORIZE, "values": {"value": "hasRole(@%s.%s)" % (n.roles_type.lower(), n.role_fields[0])}}
+    read_pol = {"fqn": _PRE_AUTHORIZE, "values": {"value": "hasAnyRole(@%s.%s, #%s.%s)"
+                                                  % (n.roles_type.lower(), n.role_fields[1], n.roles_type.lower(), n.role_fields[2])}}
+    methods = [
+        {"name": n.create, "signature": "%s(%s.%sDto)" % (n.create, n.pkg, n.controller), "annotations": [dict(write_pol)]},
+        {"name": n.delete, "signature": "%s(int)" % n.delete, "annotations": [dict(write_pol)]},
+    ]
+    if unsupported:
+        methods.append({"name": n.other, "signature": "%s()" % n.other,
+                        "annotations": [{"fqn": _PRE_AUTHORIZE, "values": {"value": "isAuthenticated()"}}]})
+    types = [
+        {"fqn": n.ctrl_fqn, "annotations": [], "methods": methods},
+        {"fqn": n.read_fqn, "annotations": [],
+         "methods": [{"name": n.read, "signature": "%s()" % n.read, "params": [],
+                      "annotations": [{"fqn": "org.springframework.web.bind.annotation.RequestMapping", "values": {"value": [n.read_route]}},
+                                      dict(read_pol)]}]},
+        # the constants the expressions refer to, as M1 records field values:
+        # two spellings of the same claim, so neither is the only one read
+        {"fqn": "%s.%s" % (n.pkg, n.roles_type), "annotations": [], "fields": [
+            {"name": n.role_fields[0], "type": "java.lang.String", "constant": n.roles[0]},
+            {"name": n.role_fields[1], "type": "java.lang.String", "constant": n.roles[1]},
+            {"name": n.role_fields[2], "type": "java.lang.String", "value": '"%s"' % n.roles[2]}]},
+    ]
+    if map_identity:
+        # the JPA identity mapping: without it the seeded tables are two
+        # tables that happen to carry matching strings
+        types += [entity(n.user_entity, n.user_table), entity(n.role_entity, n.role_table)]
+    write_canonical(root / STRUCTURE, {"types": types})
+    write_canonical(root / EVIDENCE_BUNDLE, {"schema": "rhoai3.evidence-bundle/v1", "entry_points": [
+        {"id": "ep:%s#%s:http" % (n.ctrl_fqn, methods[0]["signature"]), "kind": "http", "type": n.ctrl_fqn,
+         "member": methods[0]["signature"], "http_method": "POST", "http_path": n.route},
+        {"id": "ep:%s#%s:http" % (n.ctrl_fqn, methods[1]["signature"]), "kind": "http", "type": n.ctrl_fqn,
+         "member": methods[1]["signature"], "http_method": "DELETE", "http_path": "%s/{%s}" % (n.route, n.var)},
+        {"id": "ep:%s#%s():http" % (n.read_fqn, n.read), "kind": "http", "type": n.read_fqn, "member": "%s()" % n.read,
+         "http_method": "", "http_path": n.read_route},
+    ]})
+    return root
+
+
+def _snake_col(field: str) -> str:
+    return re.sub(r"(?<!^)(?=[A-Z])", "_", field).lower()
+
+
+def _derive_enabled_fixture(root: Path, n: Names, *, identities: list[str] | None = None,
+                            roles: list[str] | None = None) -> subprocess.CompletedProcess:
+    args: list[str] = []
+    for item in (identities if identities is not None else
+                 ["%s=%s" % (n.who_all, n.cred_all), "%s=%s" % (n.who_one, n.cred_one), "invalid=%s" % n.cred_bad]):
+        args += ["--identity", item]
+    for item in (roles or []):
+        args += ["--identity-roles", item]
+    return _derive(root, "--security-mode", "enabled", *args)
+
+
+def _rename_map(other: Names, plain: Names) -> list[tuple[str, str]]:
+    """Every name of one specimen mapped back to the other's, longest first.
+
+    The comparison runs the renamed corpus through this map: if the
+    derivation decided the same things, what comes out is the first corpus,
+    character for character. Erasing the names instead would erase the
+    harness's own words too (a specimen that calls a column ``role`` shares
+    the word with every sentence about roles), and a comparison that erases
+    the vocabulary cannot see a decision change."""
+    pairs = [(a, b) for a, b in zip(other.every(), plain.every()) if a and b and a != b]
+    return sorted(dict.fromkeys(pairs), key=lambda kv: -len(kv[0]))
+
+
+def _enabled_decisions(root: Path, rename: list[tuple[str, str]] | None = None) -> dict[str, Any]:
+    """What the enabled derivation DECIDED: the scenarios it derived and the
+    gaps it recorded, with ``rename`` applied, policy ids read as the
+    expressions they digest and digests erased (two specimens spell the same
+    body differently, and its digest is not a decision)."""
+    corpus = load_json(root / ENABLED_CORPUS_P)
+
+    def sub(text: str) -> str:
+        for a, b in (rename or []):
+            text = text.replace(a, b)
+        return text
+
+    policy_names = {str(row["id"]): "<policy %s>" % sub(str(row["expression"]))
+                    for row in corpus.get("authorization_policies") or []}
+
+    def norm(value: Any) -> Any:
+        text = sub(json.dumps(value, sort_keys=True))
+        for pid, label in policy_names.items():
+            text = text.replace(pid, label)
+        return json.loads(re.sub(r"\b[0-9a-f]{12,64}\b", "<sha>", text))
+
+    rows = []
+    for sc in corpus["scenarios"]:
+        rows.append(norm({
+            "id": sc["id"], "kind": sc["derived_from"]["kind"], "method": sc["method"], "path": sc["path"],
+            "identity": sc["identity"], "reset_before": sc["reset_before"],
+            "effects": [e["id"] for e in sc["effects"]],
+            "body": "present" if sc.get("body_file") else "absent",
+            "asserted_headers": sc.get("asserted_headers"),
+            "qualify": sc["qualify"], "evidence": sc["derived_from"]["evidence"], "why": sc["why"],
+        }))
+    # sorted by the RENAMED names: which identity sorts first is a fact about
+    # the names, not a decision about the source
+    rows.sort(key=lambda r: str(r["id"]))
+    identities = sorted(norm(corpus["identities"]), key=lambda i: str(i["name"]))
+    return {"scenarios": rows, "gaps": sorted(norm(corpus["gaps"])), "identities": identities,
+            "policies": sorted(policy_names.values())}
+
+
+def _enabled_mode_case() -> int:
+    """ADR-014's four probes per policy, over a request the disabled corpus
+    already states.
+
+    The enabled mode is a different behaviour of the same source: the request
+    must be the SAME one, or a difference in the answer is not the security
+    switch. So nothing is derived a second time -- the disabled corpus's
+    scenario is reused by id and body digest, and only the identity changes.
+    What the Operator did not declare is not invented: the identity that lacks
+    the role is the blocker ADR-014 names, and an expression this grammar
+    cannot read derives nothing at all."""
+    with tempfile.TemporaryDirectory(prefix="derive-enabled-") as td:
+        n = PLAIN
+        root = _authz_root(Path(td), "one", n)
+        base = _derive(root)
+        if base.returncode != 0:
+            return _fail("the disabled corpus derives first: rc=%s %s" % (base.returncode, base.stderr))
+        base_corpus = load_json(root / CORPUS_P)
+        base_sha = corpus_digest(base_corpus)
+        p = _derive_enabled_fixture(root, n)
+        if p.returncode != 0 or "enabled-mode scenario" not in p.stdout:
+            return _fail("the enabled corpus derives: rc=%s %s%s" % (p.returncode, p.stdout, p.stderr))
+        if not (root / ENABLED_CORPUS_P).is_file() or corpus_digest(load_json(root / CORPUS_P)) != base_sha:
+            return _fail("the enabled corpus is a separate artifact and the disabled one is untouched")
+        corpus = load_json(root / ENABLED_CORPUS_P)
+        ids = [str(s["id"]) for s in corpus["scenarios"]]
+        want = sorted("sc:auth-%s-%s" % (kind, slug)
+                      for slug in ("create-owners", "delete-owners-1") for kind in ("allowed", "anonymous", "invalid", "norole"))
+        want += sorted("sc:auth-%s-read-docs" % kind for kind in ("allowed", "anonymous", "invalid"))
+        if ids != sorted(want):
+            return _fail("four probes per policy and entry point, and no norole where nobody lacks the role: %s" % ids)
+        sc = {str(s["id"]): s for s in corpus["scenarios"]}
+        # the request is the base scenario's, to the byte
+        create = base_corpus["scenarios"][[str(s["id"]) for s in base_corpus["scenarios"]].index("sc:create-owners")]
+        for kind in ("allowed", "anonymous", "invalid", "norole"):
+            probe = sc["sc:auth-%s-create-owners" % kind]
+            if (probe["method"], probe["path"], probe["headers"], probe.get("body_file"), probe["effects"], probe["reset_before"]) != (
+                    create["method"], create["path"], create["headers"], create.get("body_file"), create["effects"], create["reset_before"]):
+                return _fail("%s reuses the base request unchanged: %s" % (kind, probe))
+            if probe["base_scenario"] != "sc:create-owners" or probe["base_body_sha256"] != sha256_file(root / create["body_file"]):
+                return _fail("the probe is bound to the base scenario by id and body digest: %s" % probe)
+        # who each probe runs as, and what it expects
+        if (sc["sc:auth-allowed-create-owners"]["identity"] != {"kind": "basic", "credential_ref": n.cred_all}
+                or sc["sc:auth-norole-create-owners"]["identity"] != {"kind": "basic", "credential_ref": n.cred_one}
+                or sc["sc:auth-anonymous-create-owners"]["identity"] != {"kind": "none"}
+                or sc["sc:auth-invalid-create-owners"]["identity"] != {"kind": "basic", "credential_ref": n.cred_bad}):
+            return _fail("the allowed identity holds the role, the norole one does not, anonymous carries nothing and invalid carries the "
+                         "reference declared invalid: %s" % {k: v["identity"] for k, v in sc.items()})
+        if sc["sc:auth-allowed-read-docs"]["identity"]["credential_ref"] != n.cred_one:
+            return _fail("the least-privileged identity the policy accepts is the one that proves it: %s" % sc["sc:auth-allowed-read-docs"]["identity"])
+        if sc["sc:auth-allowed-create-owners"]["qualify"] != {
+                "intent": "positive", "usable_first_response": True, "after_contains_body": True,
+                "creates_one_entity": True, "identity_field": "id"}:
+            return _fail("the allowed probe expects no status -- the source's own answer is recorded -- and keeps the base's effect "
+                         "assertions: %s" % sc["sc:auth-allowed-create-owners"]["qualify"])
+        if sc["sc:auth-allowed-delete-owners-1"]["qualify"] != {
+                "intent": "positive", "usable_first_response": True,
+                "after_effect_status": {"eff:owners-1-after-delete": 404}}:
+            return _fail("the allowed delete keeps the base's after-effect assertion: %s" % sc["sc:auth-allowed-delete-owners-1"]["qualify"])
+        for kind in ("anonymous", "invalid", "norole"):
+            if sc["sc:auth-%s-create-owners" % kind]["qualify"] != {
+                    "intent": "negative", "expect_status_class": "4xx", "after_equals_before": True}:
+                return _fail("a refused write is any 4xx with the base's read-backs unchanged: %s" % sc["sc:auth-%s-create-owners" % kind]["qualify"])
+        if sc["sc:auth-anonymous-read-docs"]["qualify"] != {"intent": "negative", "expect_status_class": "4xx"}:
+            return _fail("a refused read has no after-effects to hold still: %s" % sc["sc:auth-anonymous-read-docs"]["qualify"])
+        # the challenge is asserted where a challenge is what the source sends
+        if ([k for k in sorted(sc) if sc[k].get("asserted_headers")]
+                != sorted("sc:auth-%s-%s" % (kind, slug) for kind in ("anonymous", "invalid")
+                          for slug in ("create-owners", "delete-owners-1", "read-docs"))
+                or sc["sc:auth-anonymous-read-docs"]["asserted_headers"] != ["WWW-Authenticate"]):
+            return _fail("the unauthenticated probes assert the challenge header and the others do not: %s"
+                         % {k: v.get("asserted_headers") for k, v in sc.items()})
+        # what every scenario STATES about where it came from
+        ev = sc["sc:auth-norole-delete-owners-1"]["derived_from"]["evidence"]
+        policy = sc["sc:auth-norole-delete-owners-1"]["authorization_policy"]
+        if not (any(e.startswith("policy:%s @PreAuthorize(hasRole(@roles.OWNER_ADMIN))" % policy) for e in ev)
+                and "policy:%s accepts %s" % (policy, n.roles[0]) in ev
+                and any(e.startswith("identity:%s holds %s, credential_ref %s" % (n.who_one, n.roles[1], n.cred_one)) for e in ev)
+                and any(e.startswith("corpus:sc:delete-owners-1 reused") for e in ev)):
+            return _fail("every scenario names the policy, its expression, what the identity holds and the credential REFERENCE: %s" % ev)
+        blob = json.dumps(corpus) + json.dumps(load_json(root / ENABLED_RECEIPT_P))
+        if "secret" in blob or "Basic " in blob or "Authorization" in blob:
+            return _fail("a credential (or a header built from one) reached the evidence")
+        # the gaps: an unreadable expression, and ADR-014's blocker
+        gaps = corpus["gaps"]
+        read_policy = sc["sc:auth-allowed-read-docs"]["authorization_policy"]
+        if not any(g.startswith("auth-policy isAuthenticated(): not in the supported grammar") for g in gaps):
+            return _fail("an expression outside the grammar is a typed gap and no scenario: %s" % gaps)
+        if "auth-norole %s: no declared identity lacks %s, %s; the seed provides none" % (read_policy, n.roles[2], n.roles[1]) not in gaps:
+            return _fail("no identity lacking the role is the blocker ADR-014 names, never an invented account: %s" % gaps)
+        if not any(g.startswith("auth-effects:") for g in gaps):
+            return _fail("the denied-write read-backs say whose view they are: %s" % gaps)
+        # the receipt binds the mode, the identities and the corpus it reused
+        receipt = load_json(root / ENABLED_RECEIPT_P)
+        if (receipt["security_mode"] != "enabled" or receipt["base_corpus"] != {"path": CORPUS_P.as_posix(), "sha256": base_sha}
+                or receipt["invalid_credential_ref"] != n.cred_bad
+                or [i["credential_ref"] for i in receipt["identities"]] != [n.cred_all, n.cred_one]
+                or sorted(receipt["requests"]) != sorted(ids)):
+            return _fail("the receipt records the mode, the identities by reference and the base corpus it reused: %s" % receipt)
+        if corpus.get("security_mode") != "enabled":
+            return _fail("the corpus says which mode it is for")
+        try:
+            loaded = load_corpus(root, "enabled")
+        except CorpusError as exc:
+            return _fail("the loader accepts the enabled corpus it derived: %s" % exc)
+        if len(loaded["scenarios"]) != len(ids):
+            return _fail("the loader reads every derived scenario")
+        # and refuses to read it as the other mode's
+        (root / CORPUS_P).write_bytes((root / ENABLED_CORPUS_P).read_bytes())
+        try:
+            load_corpus(root)
+            return _fail("a corpus of another mode must not load as this one")
+        except CorpusError as exc:
+            if "security_mode" not in str(exc):
+                return _fail("the refusal names the mode: %s" % exc)
+    return 0
+
+
+def _enabled_rename_case() -> int:
+    """The same source under other names decides the same things: packages,
+    types, members, routes, role names, constant fields, identity tables,
+    seeded identities and credential references all differ, and mapping the
+    names back gives the same corpus."""
+    with tempfile.TemporaryDirectory(prefix="derive-enabled-rename-") as td:
+        out = []
+        for name, n, rename in (("plain", PLAIN, None), ("renamed", RENAMED, _rename_map(RENAMED, PLAIN))):
+            root = _authz_root(Path(td), name, n)
+            if _derive(root).returncode != 0:
+                return _fail("%s: the disabled corpus derives" % name)
+            p = _derive_enabled_fixture(root, n)
+            if p.returncode != 0:
+                return _fail("%s: the enabled corpus derives: %s" % (name, p.stderr))
+            out.append(_enabled_decisions(root, rename))
+        if out[0] != out[1]:
+            first = json.dumps(out[0], indent=1, sort_keys=True).splitlines()
+            second = json.dumps(out[1], indent=1, sort_keys=True).splitlines()
+            diff = [(a, b) for a, b in zip(first, second) if a != b][:6]
+            return _fail("a renamed specimen decides the same things: %s" % diff)
+    return 0
+
+
+def _enabled_identity_case() -> int:
+    """Where the roles come from, and what happens when they are not there.
+
+    The Operator declares which credential reference authenticates as which
+    seeded identity; the SEED says what that identity holds wherever the
+    structure model maps the identity store, and a declaration the seed
+    contradicts is a gap with the evidence used. With no identity store to
+    read, the declaration stands on its own; with neither, the identity is
+    used for no probe. An undeclared invalid credential derives no
+    invalid-credential probe, and no identity at all leaves the anonymous
+    probe -- which needs none -- and blockers for the rest."""
+    with tempfile.TemporaryDirectory(prefix="derive-enabled-roles-") as td:
+        n = PLAIN
+        # (a) the seed contradicts the declaration
+        root = _authz_root(Path(td), "seeded", n)
+        _derive(root)
+        p = _derive_enabled_fixture(root, n, roles=["%s=%s" % (n.who_one, n.roles[0])])
+        if p.returncode != 0:
+            return _fail("a contradicted declaration is a gap, not a refusal: %s" % p.stderr)
+        corpus = load_json(root / ENABLED_CORPUS_P)
+        if not any(g.startswith("auth-identity %s: the Operator declares %s and the seed gives %s" % (n.who_one, n.roles[0], n.roles[1]))
+                   and "the seed is the evidence and is used" in g for g in corpus["gaps"]):
+            return _fail("a declaration the seed contradicts is a typed gap: %s" % corpus["gaps"])
+        if [i for i in corpus["identities"] if i["name"] == n.who_one][0]["roles"] != [n.roles[1]]:
+            return _fail("the seed is what is used: %s" % corpus["identities"])
+        # (b) no identity store in the model: the declaration stands alone
+        root = _authz_root(Path(td), "unmapped", n, map_identity=False)
+        _derive(root)
+        p = _derive_enabled_fixture(root, n, roles=["%s=%s,%s,%s" % (n.who_all, *n.roles), "%s=%s" % (n.who_one, n.roles[1])])
+        if p.returncode != 0:
+            return _fail("declared roles alone still derive: %s" % p.stderr)
+        corpus = load_json(root / ENABLED_CORPUS_P)
+        if ([i["roles_source"] for i in corpus["identities"]] != ["declared", "declared"]
+                or not any("sc:auth-norole-" in str(s["id"]) for s in corpus["scenarios"])):
+            return _fail("with no identity store the Operator's declaration is what there is: %s" % corpus["identities"])
+        # (c) an identity with no roles from either source is used for nothing
+        p = _derive_enabled_fixture(root, n)
+        corpus = load_json(root / ENABLED_CORPUS_P)
+        if not any(g.startswith("auth-roles %s:" % n.who_all) for g in corpus["gaps"]) or [s for s in corpus["scenarios"] if s["identity"].get("credential_ref") == n.cred_all]:
+            return _fail("an identity whose roles nobody knows proves nothing: %s" % corpus["gaps"])
+        # (d) no invalid credential, and no identity at all
+        root = _authz_root(Path(td), "bare", n)
+        _derive(root)
+        p = _derive_enabled_fixture(root, n, identities=["%s=%s" % (n.who_all, n.cred_all)])
+        corpus = load_json(root / ENABLED_CORPUS_P)
+        kinds = sorted({str(s["derived_from"]["kind"]) for s in corpus["scenarios"]})
+        if (kinds != ["auth-allowed", "auth-anonymous"]
+                or not any(g.startswith("auth-invalid ") for g in corpus["gaps"])
+                or not any(g.startswith("auth-norole ") for g in corpus["gaps"])):
+            return _fail("an undeclared invalid credential, and one identity that holds every role, are gaps and no probes: %s %s"
+                         % (kinds, corpus["gaps"]))
+        p = _derive_enabled_fixture(root, n, identities=[])
+        corpus = load_json(root / ENABLED_CORPUS_P)
+        kinds = sorted({str(s["derived_from"]["kind"]) for s in corpus["scenarios"]})
+        if kinds != ["auth-anonymous"] or not any(g.startswith("auth-allowed ") for g in corpus["gaps"]):
+            return _fail("with no identity declared only the anonymous probe is derivable: %s %s" % (kinds, corpus["gaps"]))
+        # a malformed declaration is usage, and the disabled mode takes none
+        if _derive(root, "--security-mode", "enabled", "--identity", "no-equals-sign").returncode != 2:
+            return _fail("NAME=CREDENTIAL_REF is the shape, and anything else is usage")
+        if _derive(root, "--identity", "%s=%s" % (n.who_all, n.cred_all)).returncode != 2:
+            return _fail("the disabled mode sends no credential and refuses an identity")
+    return 0
+
+
+def _enabled_regression_case() -> int:
+    """The other mode's output does not move. The enabled corpus is a new
+    artifact beside the disabled one; every byte the disabled derivation wrote
+    before the enabled mode existed is still what it writes."""
+    with tempfile.TemporaryDirectory(prefix="derive-regression-") as td:
+        root = build_root(Path(td))
+        p = _derive(root)
+        if p.returncode != 0:
+            return _fail("the control fixture derives: %s" % p.stderr)
+        got = {str(f.relative_to(root)): hashlib.sha256(f.read_bytes()).hexdigest()
+               for f in sorted((root / "verification").rglob("*")) if f.is_file() and f.name != "_derive.json"}
+        if got != DISABLED_OUTPUT_SHA256:
+            return _fail("the disabled derivation writes exactly what it wrote before the enabled mode existed:\n  now: %s\n  was: %s"
+                         % (json.dumps(got, indent=1, sort_keys=True), json.dumps(DISABLED_OUTPUT_SHA256, indent=1, sort_keys=True)))
+    return 0
+
+
+def _authorization_grammar_case() -> int:
+    """Which roles a policy accepts, read from its expression and the source's
+    own constants -- and the refusal to read one it does not know.
+
+    A constant reference carries no role name: the name is in the structure
+    model's field values, and resolving it there is what keeps this
+    specimen-agnostic. An expression outside the grammar returns a REASON, so
+    the derivation records a gap instead of deriving a probe against a policy
+    nobody read."""
+    from _scenarios import authorization_roles, role_matches, source_role_constants
+
+    with tempfile.TemporaryDirectory(prefix="authz-grammar-") as td:
+        n = PLAIN
+        root = _authz_root(Path(td), "one", n)
+        constants, why = source_role_constants(root)
+        if why or constants.get(n.roles_type.lower()) != dict(zip(n.role_fields, n.roles)):
+            return _fail("the constants come from the model's own field values (both spellings): %s %s" % (constants, why))
+        cases = [
+            ("PreAuthorize", "hasRole('%s')" % n.roles[0], [n.roles[0]]),
+            ("PreAuthorize", "hasRole(@%s.%s)" % (n.roles_type.lower(), n.role_fields[0]), [n.roles[0]]),
+            ("PreAuthorize", "hasRole(#%s.%s)" % (n.roles_type.lower(), n.role_fields[1]), [n.roles[1]]),
+            ("PreAuthorize", "hasAnyRole(@%s.%s, @%s.%s)" % (n.roles_type.lower(), n.role_fields[1], n.roles_type.lower(), n.role_fields[2]),
+             sorted([n.roles[1], n.roles[2]])),
+            ("RolesAllowed", "%s, %s" % (n.roles[0], n.roles[1]), sorted([n.roles[0], n.roles[1]])),
+            ("Secured", n.roles[2], [n.roles[2]]),
+        ]
+        for annotation, expression, want in cases:
+            got, gap = authorization_roles(annotation, expression, constants)
+            if gap or got != want:
+                return _fail("%s(%s) accepts %s: got %s %s" % (annotation, expression, want, got, gap))
+        for expression in ("isAuthenticated()", "permitAll()", "hasAuthority('%s')" % n.roles[0],
+                           "hasRole('%s') or hasRole('%s')" % (n.roles[0], n.roles[1]),
+                           "@securityMode.disabled() OR hasRole('%s')" % n.roles[0],
+                           "hasRole(#lookup.of(1))", "hasRole(@nosuch.%s)" % n.role_fields[0], ""):
+            got, gap = authorization_roles("PreAuthorize", expression, constants)
+            if got or not gap:
+                return _fail("%r is outside the grammar and says why: %s %s" % (expression, got, gap))
+        # a platform that prefixes authorities makes the two spellings one role
+        if not role_matches("ROLE_X", "X") or not role_matches("X", "ROLE_X") or role_matches("X", "Y"):
+            return _fail("ROLE_X and X are the same role; X and Y are not")
+    return 0
+
+
 def main() -> int:
     rc, root, td = _derivation_case()
     try:
@@ -1327,6 +1838,8 @@ def main() -> int:
         assert root is not None
         if (_gap_cases() or _real_excerpt_case() or _methodless_mapping_case() or _methodless_qualification_case()
                 or _path_variable_case() or _foreign_key_delete_case() or _authorization_policy_case()
+                or _authorization_grammar_case() or _enabled_mode_case() or _enabled_rename_case()
+                or _enabled_identity_case() or _enabled_regression_case()
                 or _application_removal_case() or _qualification_case(root) or _receipt_case()):
             return 1
     finally:
@@ -1364,7 +1877,20 @@ def main() -> int:
           "the source's authorization policies are read from the model and keyed by what they say -- a type policy with one member "
           "override is two policies mapped to the entry points each guards, the same two under another package, type, member and "
           "annotation spelling are the same two, a role set in either order is one policy, and a missing model or bundle is a reason "
-          "rather than an empty answer)")
+          "rather than an empty answer; "
+          "the enabled-mode corpus is derived per policy into its own path and the disabled one is byte-for-byte untouched: which roles "
+          "a policy accepts is read from hasRole / hasAnyRole / a @RolesAllowed or @Secured list, with a constant reference resolved "
+          "through the structure model's own field values, and an expression outside that grammar -- a combination, an authority, a bean "
+          "call -- is a typed gap and no scenario; each policy guarding an entry point the disabled corpus carries a qualified-shaped "
+          "scenario for is probed with an identity that holds the role, with nobody, with a credential declared invalid and with an "
+          "authenticated identity that lacks it, reusing that scenario's method, path, headers and body bytes bound by its id and body "
+          "digest; the allowed probe expects no status (the source's own answer is what the capture records) and keeps the base's effect "
+          "assertions, the refusals expect any 4xx with the base read-backs unchanged for a write, the unauthenticated ones assert the "
+          "WWW-Authenticate challenge on the first response, and every scenario names the policy, its expression, what the identity holds "
+          "and the credential REFERENCE -- never a credential; the seeded identities' roles are read from the seed through the JPA "
+          "identity mapping where the model provides one, a declaration the seed contradicts is a gap with the seed used, and an identity "
+          "whose roles nobody knows, an undeclared invalid credential and no identity lacking the role are ADR-014 blockers rather than "
+          "invented accounts; all of it is the same under another package, type, member, route, role, table and credential naming)")
     return 0
 
 

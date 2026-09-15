@@ -146,16 +146,12 @@ python3 "${HERMES_SKILL_DIR}/scripts/compose-parity-receipt.py" --root /projects
   receipt composer refuse a directory whose `_capture.json` records another
   mode. A capture that records no mode at all is a pre-ADR-014 capture and is
   the disabled mode, and only that.
-- Deriving the enabled-mode corpus (allowed identity / anonymous / invalid
-  credentials / authenticated without the role) is a **later** change.
-  `_scenarios.py` already exposes what it will consume:
-  `source_authorization_policy_map(root)` lists the distinct policies the
-  frozen source states (`@PreAuthorize`, `@RolesAllowed`, `@Secured`, read from
-  M1's structure model) with the entry points each guards, a member's own
-  annotation overriding its type's; the id is the digest of the annotation and
-  its expression, so one policy on six handlers is one policy and a renamed
-  specimen states the same set. A missing model or bundle is a reason, never
-  an empty answer.
+- The enabled mode has its **own corpus**, derived per authorization policy:
+  see *Deriving the enabled-mode corpus* below. `verification/scenarios/` is
+  the disabled corpus, `verification/scenarios-enabled/` the enabled one
+  (`corpus_path`, `derive_receipt_path`); a corpus records the
+  `security_mode` it is for and the loader refuses to read one mode's corpus
+  as the other's.
 
 ## The scenario corpus
 
@@ -297,6 +293,81 @@ not `status: ok`. A hand-authored corpus naming `approved_by` is now the
 **exception** (a specimen whose evidence cannot be derived); a placeholder
 approver (`TODO`, `<who>`) is refused, and the derivation refuses to overwrite
 a hand-authored corpus at its output path.
+
+### Deriving the enabled-mode corpus (ADR-014)
+
+The same source with its security switch enabled is a different behaviour,
+and ADR-014 says what an oracle of it must show: **each distinct
+authorization policy exercised with an allowed identity, anonymous access,
+invalid credentials and an authenticated identity lacking the required
+role**, compared against the source's own outcomes, challenges and
+denied-write effects included — and, where the fixtures for that are not
+there, a **blocker** rather than a manufactured identity.
+
+```bash
+# the credentials stay in the environment; only the NAMES are passed and recorded
+python3 "${HERMES_SKILL_DIR}/scripts/derive-source-scenarios.py" --root /projects/modernized \
+  --security-mode enabled \
+  --identity admin=PARITY_ADMIN --identity helper=PARITY_HELPER \
+  --identity invalid=PARITY_WRONG \
+  --identity-roles helper=ROLE_VET_ADMIN        # optional where the seed says it
+```
+
+- `--identity NAME=CREDENTIAL_REF` (repeatable) declares which environment
+  variable holds the credential that authenticates as the **seeded identity**
+  `NAME` (the value the identity store's own rows carry). The reserved name
+  `invalid` declares a reference the Operator states is *not* a valid
+  credential. No password is ever read here, and only the reference is
+  written down — into the scenario's `identity`, its `derived_from` and the
+  receipt. The disabled mode refuses both options: it sends no credential.
+- `--identity-roles NAME=ROLE[,ROLE…]` (repeatable) declares what that
+  identity holds. Where M1's structure model maps the identity store, the
+  roles are **derived from the seed** instead: the table carrying a column
+  whose seeded values are the roles the policies accept is the role table,
+  its single foreign key names the identity table, and both must be mapped by
+  a JPA entity — the same seed parse the delete rules use. A declaration the
+  seed contradicts is a typed gap and **the seed is used**. An identity whose
+  roles neither source settles is used for no probe.
+- **The request is not derived again.** A policy is probed over the
+  qualified-shaped scenario the *disabled* corpus already carries for the
+  entry point it guards, reused method, path, headers and body bytes, bound
+  by that scenario's id and body digest (`base_scenario`,
+  `base_body_sha256`, and the base corpus digest in the receipt). The two
+  modes then send the same bytes, and a difference in the answer is the
+  security switch. Cross-origin exchanges are not reused: they are the CORS
+  oracle's scenarios, and a probe carrying an `Origin` would answer two
+  questions at once.
+- **Expression grammar.** `hasRole(…)`, `hasAnyRole(…)` and the role list of
+  `@RolesAllowed` / `@Secured`, where a role is a quoted literal or a constant
+  reference (`@roles.OWNER_ADMIN`, `#roles.OWNER_ADMIN`, `Roles.OWNER_ADMIN`,
+  `T(a.b.Roles).OWNER_ADMIN`) resolved through the **structure model's own
+  field values** — the harness never knows what a role is called. Anything
+  else (a combination, `hasAuthority`, a bean call) is the typed gap
+  `auth-policy <expression>: not in the supported grammar` and derives
+  nothing: an identity "lacking the role" of an expression nobody read is a
+  false expectation.
+- **What each probe expects.** `sc:auth-allowed-*` states no status — the
+  source's actual outcome is what the capture records (`usable_first_response`)
+  — and keeps the base scenario's assertions about what the request *did*.
+  `sc:auth-anonymous-*`, `sc:auth-invalid-*` and `sc:auth-norole-*` expect any
+  `4xx` (401 and 403 are both the source's own answer) and, for a write, the
+  base scenario's read-backs unchanged across it; the two unauthenticated ones
+  also assert the challenge header `WWW-Authenticate` on the first response
+  (`asserted_headers`).
+- **Blockers, never inventions.** No declared identity holding the role, none
+  lacking it (`auth-norole <policy>: no declared identity lacks <roles>; the
+  seed provides none`), no invalid credential declared, or no qualified-shaped
+  base scenario for a guarded entry point — each is a typed gap with no
+  scenario. Reads are captured outside the corpus, so a policy guarding a
+  plain `GET` has no base to reuse and says so.
+
+**Two seams this producer does not own.** The capture probes a scenario's
+effects with that scenario's *own* identity, so a refused write's read-backs
+are the refused caller's view — proving it with an allowed identity needs
+`capture-source-scenarios.py` to carry a second one. And that script (like
+`compose-parity-receipt.py`) still loads `verification/scenarios/corpus.json`
+for every mode: `load_corpus(root, security_mode)` and `asserted_headers`
+are there to be passed through when those builders take them up.
 
 ### Qualifying captures
 
@@ -445,6 +516,16 @@ same request, so it is digested; a key that would hold the credential itself
 (`password`, `secret`, `token`, `authorization`) is refused outright, and so
 is any other kind.
 
+An **enabled-mode** corpus carries a little more, and the loader reads it the
+same way: `security_mode: "enabled"` on the document and on every scenario
+(a corpus of one mode never loads as the other's), `identities` and
+`invalid_credential_ref` (names and roles beside the credential REFERENCE,
+never a credential), `authorization_policies` (id, annotation, expression,
+the roles it accepts, the entry points it guards), and per scenario the
+`authorization_policy` it exercises, the `base_scenario` and
+`base_body_sha256` of the disabled-mode request it reuses, and the
+`asserted_headers` a refusal must be read with.
+
 CORS is covered per policy. `cors_policies` declares each one (`id`, the
 `request_headers` its actual calls send); a scenario that sends `Origin` names
 its `cors_policy`. Each policy needs an actual cross-origin exchange and a
@@ -518,6 +599,11 @@ What refuses, and why:
   keys, the JPA relationships that decide whether the application removes those
   references itself, and the CORS policies; gaps recorded, bound to the bundle in
   `verification/scenarios/_derive.json` (which also lists every SQL file read)
+- `scripts/derive-source-scenarios.py --security-mode enabled` — the same
+  producer, deriving the enabled-mode corpus into
+  `verification/scenarios-enabled/`: four probes per authorization policy over
+  the disabled corpus's own requests, identities by credential reference,
+  blockers recorded (see *Deriving the enabled-mode corpus*)
 - `scripts/capture-source-oracles.py` — read capture from the source system
 - `scripts/capture-source-scenarios.py` — M1 producer: package and start the
   frozen source, restore state, capture the derived scenarios, clean up
