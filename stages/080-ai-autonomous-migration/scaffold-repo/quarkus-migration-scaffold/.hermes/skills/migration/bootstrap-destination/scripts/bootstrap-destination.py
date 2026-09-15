@@ -14,6 +14,13 @@
             generated parity tests need is part of the COMMITTED pom, so
             nothing has to edit pom.xml at M4 for them to be runnable
 3. config   rename mapped property keys (line-based key=value; no regex)
+3b. baseline derive src/main/resources/db/<engine>/baseline-data.sql from the
+            dataset the contract DECLARES (corpus initial_state) plus the
+            destination schema asset's generated-identity columns, so the
+            destination starts parity from the state the source was captured
+            in (ADR-009); the reset loads it instead of the source's own
+            per-engine seed, and a hand-edited copy is refused, never
+            overwritten
 4. main     delete the @SpringBootApplication class named by the JDK model
             ONLY when it is a trivial launcher (no fields, no other
             annotations, no method but main); a launcher that declares
@@ -53,6 +60,8 @@ def _ensure_hermes_lib() -> None:
 
 
 _ensure_hermes_lib()
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _baseline_data as baseline_data  # noqa: E402
 import parity_pom  # noqa: E402
 from planner.canonical import digest, load_json, sha256_file, write_canonical  # noqa: E402
 from planner.paths import BOM_MANAGED, BOOTSTRAP_RECEIPT, CATALOGS_DIR, DECISIONS, EVIDENCE_BUNDLE, TYPE_INVENTORY, producer_receipt  # noqa: E402
@@ -871,6 +880,115 @@ def apply_datasource_decision(root: Path, catalog: dict, decisions_doc: dict, ch
     _drop_undecided_jdbc_extensions(root, kinds, ext, ds, changes)
 
 
+def apply_baseline_data(root: Path, decisions_doc: dict, changes: list[dict], blocks: list[dict],
+                        copy: Path | None = None) -> dict:
+    """Derive the destination's baseline data asset (ADR-009 baseline state).
+
+    The engine is a decision; the DATA the engine starts from is not. It is the
+    dataset the application contract declares -- the corpus's ``initial_state``
+    -- and the destination must hold exactly that, with its generated-identity
+    sequences continuing from the seeded maximum the way the engine the source
+    was captured on did. Installing the source's own per-engine seed instead is
+    what v9 did, and on the specimen it differed from the declared dataset in
+    17 date literals while the schema restarted seven sequences at a fixed 100:
+    every POST returned a ``Location`` with the wrong id and any read-back could
+    differ in a date, with nothing in the build to say so.
+
+    So the asset is GENERATED here, from two files under version control, and
+    the reset loads it instead of the seed. What it was generated from is in
+    its own header and in the receipt, and a hand-edited copy is refused rather
+    than silently overwritten -- an asset the loop cannot regenerate is not
+    evidence of anything.
+
+    Never blocks for want of an input: a tree with no declared dataset, no
+    destination schema asset, or an engine this translator has no rules for
+    records the reason and leaves the existing reset behaviour alone."""
+    ds = datasource(decisions_doc)
+    if not ds:
+        return {}
+    engine = str(ds.get("db_kind") or "")
+    asset = baseline_data.baseline_path(root, ds)
+    info: dict = {
+        "asset": asset.relative_to(root).as_posix() if str(asset).startswith(str(root)) else str(asset),
+        "status": "skipped", "reason": "",
+        "translator": "%s/%s" % (baseline_data.TRANSLATOR, baseline_data.TRANSLATOR_VERSION),
+        "destination_engine": engine,
+    }
+    if engine not in baseline_data.SUPPORTED_ENGINES:
+        info["reason"] = ("the baseline translator has no rules for destination engine %r (it knows %s); the reset keeps "
+                          "loading the seed the decision names and reports the baseline unverified"
+                          % (engine, ", ".join(baseline_data.SUPPORTED_ENGINES)))
+        return info
+    schema_rel = str(ds.get("schema_sql") or "").strip().replace("\\", "/")
+    schema_p = root / schema_rel if schema_rel else None
+    if schema_p is None or not schema_p.is_file():
+        info["reason"] = ("decisions.yaml datasource names no destination schema asset in this tree (schema_sql=%r), so the "
+                          "generated-identity columns to align cannot be read" % schema_rel)
+        return info
+    dataset_p, dataset_rel, named_by = baseline_data.declared_dataset(root, ds, copy)
+    if not dataset_rel:
+        info["reason"] = "no declared dataset: the corpus names none and no %s was found under the source's db directory" % baseline_data.SEED_BASENAME
+        return info
+    if not dataset_p or not dataset_p.is_file():
+        info["reason"] = "the contract names %s (%s), which is not in this tree" % (dataset_rel, named_by)
+        return info
+    contract = {
+        "translator": baseline_data.TRANSLATOR, "translator_version": baseline_data.TRANSLATOR_VERSION,
+        "destination_engine": engine,
+        "declared_dataset": {"path": dataset_rel, "sha256": sha256_file(dataset_p), "named_by": named_by},
+        "schema_asset": {"path": schema_rel, "sha256": sha256_file(schema_p)},
+    }
+    try:
+        built = baseline_data.build_baseline(
+            dataset_p.read_text(encoding="utf-8", errors="replace"),
+            schema_p.read_text(encoding="utf-8", errors="replace"), engine)
+        text = baseline_data.render_asset(built, contract)
+    except baseline_data.BaselineRefusal as exc:
+        blocks.append({"class": "BASELINE_UNTRANSLATABLE", "subject": dataset_rel,
+                       "detail": "the declared dataset %s (%s) cannot be translated for %s: %s"
+                                 % (dataset_rel, named_by, engine, exc.detail)})
+        info["status"] = "refused"
+        info["reason"] = exc.detail
+        info["contract"] = contract
+        return info
+    info["contract"] = contract
+    info["contract_sha256"] = baseline_data.contract_digest(contract)
+    info["rows"] = dict(built.row_counts)
+    info["sequences"] = list(built.sequences)
+    rel = info["asset"]
+    if asset.is_file():
+        current = asset.read_text(encoding="utf-8", errors="replace")
+        if current == text:
+            info["status"] = "unchanged"
+            return info
+        if not baseline_data.is_generated(current):
+            blocks.append({"class": "BASELINE_HAND_EDITED", "subject": rel,
+                           "detail": "%s already exists and carries no %s marker; the bootstrap will not overwrite a file it did "
+                                     "not generate. Move it aside to let the derived baseline be written there."
+                                     % (rel, baseline_data.BASELINE_MARKER)})
+            info["status"] = "refused"
+            return info
+        if baseline_data.header(current).get("contract-sha256") == info["contract_sha256"]:
+            blocks.append({"class": "BASELINE_HAND_EDITED", "subject": rel,
+                           "detail": "%s was generated from this same contract (%s) and no longer matches what the translator "
+                                     "produces from it: it was edited by hand. The baseline is derived, so fix the declared "
+                                     "dataset %s or the schema asset %s and re-run; deleting %s regenerates it."
+                                     % (rel, info["contract_sha256"][:12], dataset_rel, schema_rel, rel)})
+            info["status"] = "refused"
+            return info
+        op, info["status"] = "db.baseline-data-regenerate", "regenerated"
+        info["previous_contract_sha256"] = baseline_data.header(current).get("contract-sha256", "")
+    else:
+        op, info["status"] = "db.baseline-data", "generated"
+    asset.parent.mkdir(parents=True, exist_ok=True)
+    asset.write_text(text, encoding="utf-8")
+    changes.append({"op": op, "path": rel,
+                    "provenance": "decisions.yaml datasource (%s): derived from the declared dataset %s (%s) and the schema asset %s by %s/%s"
+                                  % (ds.get("adr"), dataset_rel, named_by, schema_rel,
+                                     baseline_data.TRANSLATOR, baseline_data.TRANSLATOR_VERSION)})
+    return info
+
+
 _DS_FAMILY = re.compile(r"^%(?P<profile>[A-Za-z0-9_.-]+)\.quarkus\.(datasource|hibernate-orm)\b")
 _MERGED_FROM = re.compile(r"^# bootstrap: merged from .* \(Quarkus profile (?P<profile>[A-Za-z0-9_.-]+)\)")
 _REMOVAL_NOTE_MARK = "# bootstrap[undecided-datasource]:"
@@ -1352,6 +1470,7 @@ def reapply_catalog(root: Path) -> int:
     apply_plugin_config(project, plugins, catalog, changes)
     ET.indent(tree, space="  ")
     tree.write(pom, encoding="utf-8", xml_declaration=True)
+    baseline_info: dict = {}
     if (root / DECISIONS).is_file():
         try:
             doc = load_decisions(root)
@@ -1359,6 +1478,7 @@ def reapply_catalog(root: Path) -> int:
             apply_profile_retirement(root, doc, changes, blocks)
             freeze_p = producer_receipt(root, "freeze")
             copy = Path(str(load_json(freeze_p).get("analysis_copy") or "")) if freeze_p.is_file() else Path("/nonexistent")
+            baseline_info = apply_baseline_data(root, doc, changes, blocks, copy)
             check_build_profiles(root, copy, catalog, doc, changes, blocks)
         except DecisionsError as exc:
             blocks.append({"class": "DECISIONS_INVALID", "subject": str(DECISIONS), "detail": str(exc)})
@@ -1369,7 +1489,9 @@ def reapply_catalog(root: Path) -> int:
     receipt["inputs"] = dict(receipt.get("inputs") or {})
     receipt["inputs"]["catalog_sha256"] = sha256_file(cat_p)
     receipt["outputs"] = [{"path": "pom.xml", "sha256": sha256_file(pom)}]
-    rewrite_blocks(receipt, ("VERSION_UNMANAGED", "BOM_PROBE_MISSING", "TOOL_MISSING", "DATASOURCE_UNSUPPORTED", "DATASOURCE_EXTENSION_MISMATCH", "DECISIONS_INVALID", "PARITY_PROFILE_UNOWNED", "BUILD_PROFILE_UNDECIDED", "BUILD_PROFILE_UNACCOUNTED", "BUILD_PROFILE_INCONCLUSIVE", "PROFILE_RETIREMENT_UNBOUND", "PROFILE_RETIREMENT_STALE", "PROFILE_RETIREMENT_ABSENT", "PROFILE_RETIREMENT_INCONCLUSIVE", "PROFILE_MODEL_UNAVAILABLE"), blocks)
+    if baseline_info:
+        receipt["baseline"] = baseline_info
+    rewrite_blocks(receipt, ("VERSION_UNMANAGED", "BOM_PROBE_MISSING", "TOOL_MISSING", "DATASOURCE_UNSUPPORTED", "DATASOURCE_EXTENSION_MISMATCH", "BASELINE_UNTRANSLATABLE", "BASELINE_HAND_EDITED", "DECISIONS_INVALID", "PARITY_PROFILE_UNOWNED", "BUILD_PROFILE_UNDECIDED", "BUILD_PROFILE_UNACCOUNTED", "BUILD_PROFILE_INCONCLUSIVE", "PROFILE_RETIREMENT_UNBOUND", "PROFILE_RETIREMENT_STALE", "PROFILE_RETIREMENT_ABSENT", "PROFILE_RETIREMENT_INCONCLUSIVE", "PROFILE_MODEL_UNAVAILABLE"), blocks)
     write_canonical(receipt_p, receipt)
     for c in changes:
         print("  - %s %s" % (c["op"], c.get("gav") or c.get("artifact") or c.get("path") or c.get("key") or ""))
@@ -1434,11 +1556,13 @@ def main(argv: list[str] | None = None) -> int:
         print("FAIL: BOOTSTRAP_POM_PARSE %s" % exc, file=sys.stderr)
         return 1
     bootstrap_properties(root, catalog, changes)
+    baseline_info: dict = {}
     if (root / DECISIONS).is_file():
         try:
             doc = load_decisions(root)
             apply_datasource_decision(root, catalog, doc, changes, blocks)
             apply_profile_retirement(root, doc, changes, blocks)
+            baseline_info = apply_baseline_data(root, doc, changes, blocks, copy)
             check_build_profiles(root, copy, catalog, doc, changes, blocks)
         except DecisionsError as exc:
             blocks.append({"class": "DECISIONS_INVALID", "subject": str(DECISIONS), "detail": str(exc)})
@@ -1459,6 +1583,8 @@ def main(argv: list[str] | None = None) -> int:
         "path": "spring-compat",
         "retired_sources": retired,
     }
+    if baseline_info:
+        receipt["baseline"] = baseline_info
     write_canonical(root / BOOTSTRAP_RECEIPT, receipt)
     if blocks:
         for b in blocks:

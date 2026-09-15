@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""bootstrap-destination selftest: the m4-parity block is bootstrapped (ADR-015); trivial launcher deleted; launcher with behavior kept + block;
+"""bootstrap-destination selftest: the m4-parity block is bootstrapped (ADR-015); the baseline data asset is DERIVED from the dataset the contract declares
+with one sequence alignment per identity column (ADR-009); trivial launcher deleted; launcher with behavior kept + block;
 unmapped starter kept + block; second run preserves the whole tree; blocked receipt → admission INCONCLUSIVE;
 --reapply-catalog carries a late catalog row into a bootstrapped tree without touching accepted work."""
 from __future__ import annotations
@@ -796,8 +797,240 @@ def _parity_profile_case() -> int:
     return 0
 
 
+# --------------------------------------------------------------------------
+# ADR-009 baseline state: the destination's initialized data is DERIVED from
+# the dataset the contract declares, not from the source's per-engine seed
+# --------------------------------------------------------------------------
+# The two seeds hold the same rows: what differs is a class of literal (on the
+# specimen, 17 dates) and the sequence behaviour on top of them. So the fixture
+# carries BOTH, and every assertion here is about which one reached the
+# destination -- a derivation that read the per-engine seed would produce a
+# file that looks perfectly reasonable and fails parity on a Location header.
+_DECLARED_SEED = """-- the frozen source's own seeded dataset, on the engine it was captured with
+INSERT INTO owners VALUES (1, 'George', '110 W. Liberty St.');
+INSERT INTO owners VALUES (2, 'O''Brien', NULL);
+INSERT INTO pets VALUES (1, 'Leo', '2010-09-07', 1);
+INSERT INTO pets VALUES (2, 'Basil', '2012-08-06', 2);
+INSERT INTO pets VALUES (3, 'Rosy', '2011-04-17', 1);
+INSERT INTO users (username, enabled) VALUES ('admin', true);
+"""
+# the same rows on the destination engine, differing in three date literals --
+# the class of difference ADR-009's bootstrap installed without noticing
+_ENGINE_SEED = """INSERT INTO owners VALUES (1, 'George', '110 W. Liberty St.') ON CONFLICT DO NOTHING;
+INSERT INTO owners VALUES (2, 'O''Brien', NULL) ON CONFLICT DO NOTHING;
+INSERT INTO pets VALUES (1, 'Leo', '2000-09-07', 1) ON CONFLICT DO NOTHING;
+INSERT INTO pets VALUES (2, 'Basil', '2002-08-06', 2) ON CONFLICT DO NOTHING;
+INSERT INTO pets VALUES (3, 'Rosy', '2001-04-17', 1) ON CONFLICT DO NOTHING;
+INSERT INTO users (username, enabled) VALUES ('admin', true) ON CONFLICT DO NOTHING;
+"""
+_DEST_SCHEMA = """CREATE TABLE IF NOT EXISTS owners (
+  id SERIAL,
+  first_name VARCHAR(30),
+  address VARCHAR(255),
+  CONSTRAINT pk_owners PRIMARY KEY (id)
+);
+CREATE INDEX IF NOT EXISTS idx_owners_first_name ON owners (first_name);
+ALTER SEQUENCE owners_id_seq RESTART WITH 100;
+
+CREATE TABLE IF NOT EXISTS pets (
+  id SERIAL,
+  name VARCHAR(30),
+  birth_date DATE,
+  owner_id INT NOT NULL,
+  FOREIGN KEY (owner_id) REFERENCES owners(id),
+  CONSTRAINT pk_pets PRIMARY KEY (id)
+);
+ALTER SEQUENCE pets_id_seq RESTART WITH 100;
+
+CREATE TABLE IF NOT EXISTS users (
+  id SERIAL,
+  username VARCHAR(20) NOT NULL,
+  enabled boolean NOT NULL DEFAULT true,
+  CONSTRAINT pk_users PRIMARY KEY (id)
+);
+ALTER SEQUENCE users_id_seq RESTART WITH 100;
+"""
+_DECLARED_DATES = ("'2010-09-07'", "'2012-08-06'", "'2011-04-17'")
+_ENGINE_DATES = ("'2000-09-07'", "'2002-08-06'", "'2001-04-17'")
+_BASELINE_REL = "src/main/resources/db/postgresql/baseline-data.sql"
+_DECLARED_REL = "src/main/resources/db/hsqldb/populateDB.sql"
+
+
+def _rename(sql: str, pairs: tuple[tuple[str, str], ...]) -> str:
+    out = sql
+    for old, new in pairs:
+        out = out.replace(old, new)
+    return out
+
+
+def _baseline_tree(root: Path, *, declared: str = _DECLARED_SEED, engine_seed: str = _ENGINE_SEED,
+                   schema: str = _DEST_SCHEMA, corpus: bool = True) -> Path:
+    """A destination whose frozen source carries both seeds and whose corpus
+    declares the source-engine one as the initial state."""
+    root = specimens.build_dest(root, specimens.specimen("http"), decisions=specimens.admitted_decisions())
+    frozen = root / ".derived" / "frozen-input" / "src" / "main" / "resources" / "db"
+    (frozen / "hsqldb").mkdir(parents=True, exist_ok=True)
+    (frozen / "postgresql").mkdir(parents=True, exist_ok=True)
+    (frozen / "hsqldb" / "populateDB.sql").write_text(declared, encoding="utf-8")
+    (frozen / "postgresql" / "populateDB.sql").write_text(engine_seed, encoding="utf-8")
+    (frozen / "postgresql" / "initDB.sql").write_text(schema, encoding="utf-8")
+    if corpus:
+        import json as _json
+        p = root / "verification" / "scenarios" / "corpus.json"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(_json.dumps({
+            "schema": "rhoai3.scenario-corpus/v1",
+            "initial_state": {
+                "reset": "reset-parity-db.sh --root .",
+                "dataset": "the frozen source's own seed %s (tables owners, pets, users), restored by restarting the source" % _DECLARED_REL,
+            },
+            "scenarios": [],
+        }, indent=2), encoding="utf-8")
+    pipeline.assemble_bundle(root)
+    return root
+
+
+def _baseline_case() -> int:
+    """The derived baseline: declared data, aligned sequences, versioned,
+    regenerated deterministically, refused when hand-edited or untranslatable."""
+    import json
+
+    with tempfile.TemporaryDirectory(prefix="baseline-") as td:
+        t = Path(td)
+        root = _baseline_tree(t / "declared")
+        p = subprocess.run([sys.executable, str(SCRIPT), "--root", str(root)], text=True, capture_output=True)
+        if p.returncode != 0:
+            return _fail("bootstrap with a declared dataset must pass: %s%s" % (p.stdout, p.stderr[-500:]))
+        asset = root / _BASELINE_REL
+        if not asset.is_file():
+            return _fail("the derived baseline asset must be written to %s" % _BASELINE_REL)
+        text = asset.read_text(encoding="utf-8")
+
+        # 1. the rows are the DECLARED ones, literal for literal
+        for lit in _DECLARED_DATES:
+            if lit not in text:
+                return _fail("the derived asset must carry the declared literal %s" % lit)
+        for lit in _ENGINE_DATES:
+            if lit in text:
+                return _fail("the derived asset must NOT carry the per-engine seed's literal %s" % lit)
+        if "O''Brien" not in text or "NULL" not in text or "true" not in text:
+            return _fail("quoted strings, NULL and booleans must survive translation: %s" % text[-400:])
+        if "ON CONFLICT" in text:
+            return _fail("conflict handling is the source's import concern; the reset loads into a schema it just created")
+
+        # 2. one alignment statement per generated-identity column the schema declares
+        aligned = [ln for ln in text.splitlines() if "pg_get_serial_sequence" in ln]
+        if len(aligned) != 3 or not all(("'%s', 'id'" % tb) in text for tb in ("owners", "pets", "users")):
+            return _fail("one sequence alignment per identity column (owners, pets, users): %s" % aligned)
+        if "COALESCE((SELECT max(\"id\")" not in text:
+            return _fail("the alignment must continue from the seeded maximum, not a fixed number")
+
+        # 3. versioning: the header names the contract it was generated from
+        hdr = {}
+        for line in text.splitlines():
+            if line.startswith("-- ") and ": " in line:
+                k, _, v = line[3:].partition(": ")
+                hdr.setdefault(k.strip(), v.strip())
+        if hdr.get("marker") != "rhoai3.baseline-data/v1" or hdr.get("translator") != "baseline-data-translator/1.0.0":
+            return _fail("the asset must carry its marker and translator version: %s" % hdr)
+        if len(hdr.get("contract-sha256", "")) != 64 or hdr.get("declared-dataset") != _DECLARED_REL:
+            return _fail("the asset must carry the contract digest and the declared dataset it came from: %s" % hdr)
+
+        # 4. the receipt records what it was derived from and what it declares
+        rec = load_json(root / "evidence/producers/bootstrap.json")
+        bl = rec.get("baseline") or {}
+        if bl.get("status") != "generated" or bl.get("translator") != "baseline-data-translator/1.0.0":
+            return _fail("the receipt must record the baseline derivation: %s" % bl)
+        declared_in = (bl.get("contract") or {}).get("declared_dataset") or {}
+        want_sha = hashlib.sha256((root / _DECLARED_REL).read_bytes()).hexdigest()
+        if declared_in.get("path") != _DECLARED_REL or declared_in.get("sha256") != want_sha:
+            return _fail("the receipt must name the declared dataset and its digest: %s" % declared_in)
+        if bl.get("rows") != {"owners": 2, "pets": 3, "users": 1}:
+            return _fail("the receipt must record the rows per table: %s" % bl.get("rows"))
+        seqs = {"%s.%s" % (s["table"], s["column"]): s["seeded_max"] for s in bl.get("sequences") or []}
+        if seqs != {"owners.id": 2, "pets.id": 3, "users.id": None}:
+            return _fail("the receipt must record the sequences aligned and their seeded values: %s" % seqs)
+        if not any(c["op"] == "db.baseline-data" and c["path"] == _BASELINE_REL for c in rec["changes"]):
+            return _fail("the derivation must be recorded as a change against the decision")
+        # the source's own per-engine seed stays in the tree, untouched
+        if (root / "src/main/resources/db/postgresql/populateDB.sql").read_text(encoding="utf-8") != _ENGINE_SEED:
+            return _fail("the source's own seed asset must remain in the tree untouched")
+
+        # 5. deterministic regeneration: a second bootstrap and --reapply-catalog
+        #    both reproduce the same bytes and record no change
+        p = subprocess.run([sys.executable, str(SCRIPT), "--root", str(root)], text=True, capture_output=True)
+        if p.returncode != 0 or asset.read_text(encoding="utf-8") != text:
+            return _fail("a second bootstrap must regenerate the asset byte-identically")
+        if (load_json(root / "evidence/producers/bootstrap.json").get("baseline") or {}).get("status") != "unchanged":
+            return _fail("an unchanged asset must be recorded as unchanged, not rewritten")
+        p = subprocess.run([sys.executable, str(SCRIPT), "--root", str(root), "--reapply-catalog"], text=True, capture_output=True)
+        if p.returncode != 0 or asset.read_text(encoding="utf-8") != text:
+            return _fail("--reapply-catalog must regenerate the asset deterministically: rc=%s %s" % (p.returncode, p.stderr[-300:]))
+        # the Operator step for a destination bootstrapped before the asset
+        # existed: --reapply-catalog must GENERATE it, not only reproduce it
+        asset.unlink()
+        p = subprocess.run([sys.executable, str(SCRIPT), "--root", str(root), "--reapply-catalog"], text=True, capture_output=True)
+        if p.returncode != 0 or not asset.is_file() or asset.read_text(encoding="utf-8") != text:
+            return _fail("--reapply-catalog must deliver the asset to an already-bootstrapped tree: rc=%s %s" % (p.returncode, p.stderr[-300:]))
+        rerec = load_json(root / "evidence/producers/bootstrap.json")
+        if (rerec.get("baseline") or {}).get("status") != "generated":
+            return _fail("the Operator step must record the derivation on the receipt: %s" % rerec.get("baseline"))
+
+        # 6. a hand-edited asset is refused, by name, not overwritten
+        edited = text.replace("'Leo'", "'Leopold'")
+        asset.write_text(edited, encoding="utf-8")
+        p = subprocess.run([sys.executable, str(SCRIPT), "--root", str(root)], text=True, capture_output=True)
+        if p.returncode != 1 or "BASELINE_HAND_EDITED" not in p.stderr or _BASELINE_REL not in p.stderr:
+            return _fail("a hand-edited baseline must be refused by name: rc=%s %s" % (p.returncode, p.stderr[-400:]))
+        if asset.read_text(encoding="utf-8") != edited:
+            return _fail("a refusal never overwrites the file it refuses")
+        asset.unlink()
+        p = subprocess.run([sys.executable, str(SCRIPT), "--root", str(root)], text=True, capture_output=True)
+        if p.returncode != 0 or asset.read_text(encoding="utf-8") != text:
+            return _fail("deleting the asset must regenerate exactly it: rc=%s" % p.returncode)
+
+        # 7. a literal form the translator has no rule for refuses, quoting the statement
+        bad = _baseline_tree(t / "bad", declared=_DECLARED_SEED + "INSERT INTO owners VALUES (3, upper('x'), NULL);\n")
+        p = subprocess.run([sys.executable, str(SCRIPT), "--root", str(bad)], text=True, capture_output=True)
+        if p.returncode != 1 or "BASELINE_UNTRANSLATABLE" not in p.stderr or "upper('x')" not in p.stderr:
+            return _fail("an untranslatable literal must refuse with the statement quoted: rc=%s %s" % (p.returncode, p.stderr[-400:]))
+        if (bad / _BASELINE_REL).exists():
+            return _fail("a refused derivation writes no asset")
+
+        # 8. a renamed specimen reaches the same decisions: nothing here knows
+        #    a table, a column or a value of any particular application
+        pairs = (("owners", "clients"), ("pets", "animals"), ("users", "accounts"),
+                 ("first_name", "given_name"), ("birth_date", "born_on"), ("id", "ref"))
+        other = _baseline_tree(t / "renamed",
+                               declared=_rename(_DECLARED_SEED, pairs),
+                               engine_seed=_rename(_ENGINE_SEED, pairs),
+                               schema=_rename(_DEST_SCHEMA, pairs))
+        p = subprocess.run([sys.executable, str(SCRIPT), "--root", str(other)], text=True, capture_output=True)
+        if p.returncode != 0:
+            return _fail("a renamed specimen must bootstrap: %s%s" % (p.stdout, p.stderr[-400:]))
+        obl = load_json(other / "evidence/producers/bootstrap.json").get("baseline") or {}
+        if obl.get("rows") != {"clients": 2, "animals": 3, "accounts": 1}:
+            return _fail("the same decisions on renamed tables: %s" % obl.get("rows"))
+        oseqs = {"%s.%s" % (s["table"], s["column"]): s["seeded_max"] for s in obl.get("sequences") or []}
+        if oseqs != {"clients.ref": 2, "animals.ref": 3, "accounts.ref": None}:
+            return _fail("the same sequence decisions on renamed columns: %s" % oseqs)
+        otext = (other / _BASELINE_REL).read_text(encoding="utf-8")
+        if any(lit in otext for lit in _ENGINE_DATES) or not all(lit in otext for lit in _DECLARED_DATES):
+            return _fail("the renamed specimen's baseline must still be the DECLARED dataset")
+
+        # 9. no declared dataset and no seed to discover: recorded, never blocked
+        plain = specimens.build_dest(t / "plain", specimens.specimen("http"), decisions=specimens.admitted_decisions())
+        pipeline.assemble_bundle(plain)
+        p = subprocess.run([sys.executable, str(SCRIPT), "--root", str(plain)], text=True, capture_output=True)
+        pbl = load_json(plain / "evidence/producers/bootstrap.json").get("baseline") or {}
+        if p.returncode != 0 or pbl.get("status") != "skipped" or not pbl.get("reason"):
+            return _fail("a tree with no schema asset must record the reason, not block: rc=%s %s" % (p.returncode, pbl))
+        json.dumps(bl)  # the receipt stays canonical-serialisable
+    return 0
+
+
 def main() -> int:
-    if _build_profile_case() or _parity_profile_case():
+    if _build_profile_case() or _parity_profile_case() or _baseline_case():
         return 1
     if _datasource_checker_integration_case() or _retire_offsets_case() or _plugin_config_case() or _profile_merge_case() or _jakarta_imports_case() or _version_precedence_case() or _reapply_catalog_case() or _datasource_case():
         return 1
@@ -918,7 +1151,7 @@ def main() -> int:
         p = subprocess.run([sys.executable, str(SCRIPT), "--root", str(r)], text=True, capture_output=True)
         if [c for c in load_json(r / "evidence/producers/bootstrap.json")["changes"] if c["op"] in ("source.delete", "source.retire") and c["path"] == vet_path]:
             return _fail("an ADR that is not accepted retires nothing")
-    print("OK: bootstrap-destination (trivial launcher deleted; second run preserves the tree; @Bean launcher kept + BOOTSTRAP_BLOCKED; unmapped starter kept + block; Maven settings wiring required; pinned version beats the legacy carry / VERSION_UNMANAGED / BOM_PROBE_MISSING; ADR-retired sources deleted with provenance / stale path blocks; reapply-catalog carries a late row and refuses without a receipt; the decided datasource lands unprefixed with its extension, and an undocumented / mismatched / absent one blocks; an undecided build profile blocks and a decided one reaches the destination; a profile condition nobody activates or enumerates is unaccounted; an enumerated retirement must be bound to this tree's inventory and describe conditions it actually has, and the proposer writes nothing; the legacy driver/profile mix goes bootstrap -> checker PASS in BOTH the separate-file and inline layouts, with removals recorded, the reason note surviving every run, and reapplication inert; a retirement is cut in UTF-16 offsets and leaves valid Java even when an astral character precedes the annotation)")
+    print("OK: bootstrap-destination (the derived baseline carries the DECLARED dataset not the per-engine seed, aligns every identity sequence to the seeded maximum, regenerates deterministically and refuses a hand-edited or untranslatable one, on a renamed specimen too; trivial launcher deleted; second run preserves the tree; @Bean launcher kept + BOOTSTRAP_BLOCKED; unmapped starter kept + block; Maven settings wiring required; pinned version beats the legacy carry / VERSION_UNMANAGED / BOM_PROBE_MISSING; ADR-retired sources deleted with provenance / stale path blocks; reapply-catalog carries a late row and refuses without a receipt; the decided datasource lands unprefixed with its extension, and an undocumented / mismatched / absent one blocks; an undecided build profile blocks and a decided one reaches the destination; a profile condition nobody activates or enumerates is unaccounted; an enumerated retirement must be bound to this tree's inventory and describe conditions it actually has, and the proposer writes nothing; the legacy driver/profile mix goes bootstrap -> checker PASS in BOTH the separate-file and inline layouts, with removals recorded, the reason note surviving every run, and reapplication inert; a retirement is cut in UTF-16 offsets and leaves valid Java even when an astral character precedes the annotation)")
     return 0
 
 

@@ -105,6 +105,37 @@ the pinned BOM manages (`evidence/build/bom-managed.json`); network once.
    legacy build resolved (`managed_versions` in the build receipt, from
    the legacy effective pom) and recorded as `pom.pin-legacy-version`;
    no legacy version → `VERSION_UNMANAGED`; no probe → `BOM_PROBE_MISSING`.
+3b. **baseline data** (ADR-009) — the engine is a decision; the DATA the
+   destination starts from is not. It is the dataset the application contract
+   DECLARES — the corpus's `initial_state` (`derived_from.seed`, else the
+   `.sql` path the prose names), and only when the corpus names nothing is it
+   discovered by the same rule the derivation uses (the source engine's
+   `db/<engine>/populateDB.sql`). The bootstrap derives
+   `src/main/resources/db/<engine>/baseline-data.sql` (the one name, the
+   constant `BASELINE_FILENAME` in `scripts/_baseline_data.py`) from it: the
+   INSERT statements translated for the destination engine one literal at a
+   time, then one sequence-alignment statement per generated-identity column
+   the **destination schema asset** declares, so every sequence continues from
+   the seeded maximum. The source's own per-engine seed stays in the tree,
+   untouched; it is simply no longer what the reset loads.
+   Why it exists: v9 installed the source's `db/postgresql` assets while the
+   corpus declared `db/hsqldb/populateDB.sql`. The two hold the same rows and
+   differ in **17 date literals**, and the PostgreSQL schema `RESTART`s seven
+   identity sequences at a fixed 100 where the engine the source was captured
+   on continued from the seeded maximum — so a `POST` returned a `Location`
+   with the wrong id and a read-back could differ in a date, with nothing in
+   the build to say so.
+   The asset carries its own header: the marker, the translator version, the
+   contract digest, and the declared dataset and schema asset it came from
+   (path + sha256); the receipt records the same plus the rows per table and
+   the sequences aligned with their seeded values. `--reapply-catalog`
+   regenerates it deterministically. A literal form the translator has no rule
+   for is `BASELINE_UNTRANSLATABLE` with the statement quoted; a copy carrying
+   the marker that no longer matches what its own contract generates is
+   `BASELINE_HAND_EDITED` **by name** and is never overwritten. A tree with no
+   declared dataset, no destination schema asset, or an engine the translator
+   has no rules for records the reason and blocks nothing — the reset then
+   keeps its previous behaviour and prints that the baseline is unverified.
 3. **config** — renames mapped `application*.properties` keys and maps
    documented values (`create-drop` → `drop-and-create`); keys with no
    Quarkus equivalent are commented out and recorded.
@@ -130,7 +161,8 @@ Then `build-worklist` verifies the tree and records the baseline.
 
 - `scripts/probe-bom-managed.py` — what the pinned BOM manages (Maven effective pom → `evidence/build/bom-managed.json`)
 - `scripts/bootstrap-destination.py` — the transform + receipt
-- `scripts/bootstrap-destination.test.py` — selftest (trivial launcher deleted; launcher with behavior kept + block; unmapped starter kept + block; second run preserves the tree)
+- `scripts/_baseline_data.py` — the declared dataset → `baseline-data.sql` translator, the sequence alignment, and the reset contract (`plan_from_asset`, `verification_sql`, `verify_observations`); also the CLI the parity reset calls
+- `scripts/bootstrap-destination.test.py` — selftest (trivial launcher deleted; launcher with behavior kept + block; unmapped starter kept + block; second run preserves the tree; the derived baseline carries the declared dataset, aligns every identity sequence, regenerates deterministically, and refuses a hand-edited or untranslatable one)
 
 ## Pitfalls
 
@@ -139,3 +171,9 @@ Then `build-worklist` verifies the tree and records the baseline.
   item for the loop.
 - Running it on a tree that already has accepted loop steps: the import
   is idempotent, but a re-bootstrap after steps is a new run.
+- Editing `baseline-data.sql` to make a comparison pass. It is derived: the
+  edit is refused by name on the next run, and the thing to fix is the
+  declared dataset or the destination schema asset it was derived from.
+  Generalizing one specimen's sequence strategy into the translator is the
+  same mistake in the other direction — the alignment is read from the
+  schema's own identity columns, never assumed.
