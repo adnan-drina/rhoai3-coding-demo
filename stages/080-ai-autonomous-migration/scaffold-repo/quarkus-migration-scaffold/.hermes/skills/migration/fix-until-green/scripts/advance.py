@@ -30,6 +30,13 @@ otherwise:
     for a human as exposed-outside-scope. It is REVERTED with the symbols
     named, so the next attempt fixes one import;
 
+  * a card issued for the PARITY gate is judged by the comparison the
+    acceptance path re-ran for its scenarios (run-verify.sh → run-parity.py):
+    the composed receipt must record every issued obligation's scenario as
+    PASS, and no entry point it recorded PASS before may be anything else now.
+    A receipt that was not composed, or a comparison that did not run, is an
+    unmeasured slot: VERIFICATION_PENDING, no attempt spent;
+
   * verification ran in acceptance mode (diagnostic cannot promote or reject).
 
 Accept → commit exactly the changed paths, snapshot the tool reports,
@@ -54,15 +61,15 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _loop_common import attempt_budget, attempts_spent, budget, candidate_sha256, classify_inconclusive, clear_pending, source_write_members, state_change_violations, catalog_property_mappings, ensure_hermes_lib, git, load_deferred, load_issued, load_state, load_steps, pending_for, product_paths_changed, profile_keys_lost_in_tree, publish_loop_state, restore_reports, revert_paths, save_deferred, save_pending_candidate, save_steps, snapshot_reports  # noqa: E402
+from _loop_common import PARITY_SNAPSHOT, attempt_budget, attempts_spent, budget, candidate_sha256, classify_inconclusive, clear_pending, source_write_members, state_change_violations, catalog_property_mappings, ensure_hermes_lib, git, load_deferred, load_issued, load_state, load_steps, pending_for, product_paths_changed, profile_keys_lost_in_tree, publish_loop_state, restore_reports, revert_paths, save_deferred, save_pending_candidate, save_steps, snapshot_reports  # noqa: E402
 
 ensure_hermes_lib()
 from planner import pipeline  # noqa: E402
 from planner.canonical import digest, load_json, write_canonical  # noqa: E402
 from planner.dest_model import checked_exception_delta, diagnostic_identity  # noqa: E402
 from planner.decisions import load_decisions, max_attempts  # noqa: E402
-from planner.paths import EVIDENCE_BUNDLE, LOOP_ACCEPTED, LOOP_ISSUED, MTA_RESCAN_FINDINGS, VERIFY_DIAGNOSTICS, VERIFY_RUN, WORKLIST  # noqa: E402
-from planner.worklist import CHECKED_FAMILY_RULE, EXPOSED, RETAIN, UNPROVEN, assess_batch_scope, batch_scope_digest, build_worklist, compile_items, gate_items, incidents_from_findings, item_ids, obligation_keys, progress  # noqa: E402
+from planner.paths import EVIDENCE_BUNDLE, LOOP_ACCEPTED, LOOP_ISSUED, MTA_RESCAN_FINDINGS, VERIFY_DIAGNOSTICS, VERIFY_DIR, VERIFY_RUN, WORKLIST  # noqa: E402
+from planner.worklist import CHECKED_FAMILY_RULE, EXPOSED, PARITY_RECEIPT, RETAIN, UNPROVEN, assess_batch_scope, batch_scope_digest, build_worklist, compile_items, gate_items, incidents_from_findings, item_ids, obligation_keys, progress  # noqa: E402
 
 # The codes javac's flow analysis reports ONE site at a time per compilation
 # (control in dest_model.py: three files with the same defect are one reported
@@ -100,6 +107,31 @@ def _attribution_items(items: list) -> dict:
             continue
         out[str(i.get("identity") or "") or diagnostic_identity(None, i)] = i
     return out
+
+
+PARITY_BEFORE = VERIFY_DIR / "parity-before.json"
+
+
+def _parity_receipts(root: Path, run: dict) -> tuple[dict, dict]:
+    """(what parity said BEFORE this candidate, what it says now).
+
+    "Now" counts only when the comparison RAN in this verification
+    (run.json runtime.parity): a receipt left over from an earlier card
+    measures nothing about this one, and the measurement contract is the same
+    here as for every other tool.
+
+    "Before" is the accepted state's receipt: the snapshot taken at the last
+    accepted step when there is one, and otherwise the copy run-verify.sh took
+    of the receipt as it stood before this candidate's comparison -- the same
+    document, because until the first parity step is accepted the receipt on
+    disk is the one the M4 road composed on the accepted tree."""
+    ran = bool(((run.get("runtime") or {}).get("parity") or {}).get("ran"))
+    cur = load_json(root / PARITY_RECEIPT) if (ran and (root / PARITY_RECEIPT).is_file()) else {}
+    snap = root / LOOP_ACCEPTED / PARITY_SNAPSHOT / PARITY_RECEIPT.name
+    if snap.is_file():
+        return load_json(snap), cur
+    before = root / PARITY_BEFORE
+    return (load_json(before) if before.is_file() else {}), cur
 
 
 def _verify_meta(run: dict) -> dict:
@@ -519,9 +551,11 @@ def main(argv: list[str] | None = None) -> int:
     issued_identities = {str(v) for v in (issued.get("item_identities") or {}).values() if v} or None
     family_keys = ({"chk:" + str(m.get("member") or "") for m in (scope_doc.get("members") or [])}
                    if scope_ref and family else None)
+    prev_parity, cur_parity = _parity_receipts(root, run if isinstance(run, dict) else {})
     ok, reason = progress(prev["measure"], cur["measure"], prev_keys, cur_keys,
                           gate=gate,
                           prev_runtime=prev.get("runtime") or {}, cur_runtime=cur.get("runtime") or {},
+                          prev_parity=prev_parity, cur_parity=cur_parity,
                           issued_items=list(issued.get("items") or []),
                           prev_gate_items=set(str(i) for i in (issued.get("gate_items") or [])),
                           cur_gate_items=gate_items(cur, gate),
@@ -555,7 +589,7 @@ def main(argv: list[str] | None = None) -> int:
     clear_pending(steps, args.cluster, why="accepted")
     sha = _commit(root, changed, "fix-until-green: %s attempt %s %s" % (args.cluster, issued.get("attempt"), cur["measure"]["tuple"]))
     snapshot_reports(root)
-    steps["steps"].append({"cluster": args.cluster, "card": args.card, "attempt": issued.get("attempt"), "idempotency_key": issued.get("idempotency_key"), "commit": sha, "candidate_sha256": on_disk, "measure": cur["measure"], "item_ids": sorted(item_ids(cur)), "obligation_keys": sorted(obligation_keys(cur)), "worklist_sha256": digest(cur), "changed": changed, "verdict": "accepted", "reason": reason, "runtime": cur.get("runtime") or {}, "gate": str(issued.get("gate") or ""), "discharged": sorted(str(i) for i in (issued.get("items") or [])), "si1_inconclusive": si1_unknown, "batch_scope": ({"digest": str(scope_ref.get("digest") or ""), "assessed": len(scope_rows),
+    steps["steps"].append({"cluster": args.cluster, "card": args.card, "attempt": issued.get("attempt"), "idempotency_key": issued.get("idempotency_key"), "commit": sha, "candidate_sha256": on_disk, "measure": cur["measure"], "item_ids": sorted(item_ids(cur)), "obligation_keys": sorted(obligation_keys(cur)), "worklist_sha256": digest(cur), "changed": changed, "verdict": "accepted", "reason": reason, "runtime": cur.get("runtime") or {}, "gate": str(issued.get("gate") or ""), "parity": ({"verdict": str((cur_parity or {}).get("verdict") or ""), "scenarios": list((((run if isinstance(run, dict) else {}).get("runtime") or {}).get("parity") or {}).get("scenarios") or [])} if cur_parity else {}), "discharged": sorted(str(i) for i in (issued.get("items") or [])), "si1_inconclusive": si1_unknown, "batch_scope": ({"digest": str(scope_ref.get("digest") or ""), "assessed": len(scope_rows),
                                                           "inconclusive": [r for r in scope_rows if r.get("verdict") == "inconclusive"]} if scope_ref else {}), "amendments": list(issued.get("amendments") or []), "verify": _verify_meta(run if isinstance(run, dict) else {}),
                            "continuations": list(issued.get("continuations") or []),
                            "checked_exceptions": ({k: (checked.get(k) if k in ("state", "base", "coverage") else len(checked.get(k) or []))

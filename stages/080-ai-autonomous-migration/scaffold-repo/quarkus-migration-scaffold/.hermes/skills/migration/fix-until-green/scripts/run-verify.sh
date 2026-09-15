@@ -20,6 +20,17 @@
 #      and the startup gate (that artifact, the decided datasource, bounded) via
 #      verify-runtime.py, then a re-measure so their obligations reach the list
 #      (--no-runtime skips step 5; a simulator passes it)
+#   6. the PARITY gate, and only for a card whose obligation is a parity
+#      mismatch (verification/loop/issued.json carries gate=parity, or
+#      --parity says so): run-parity.py scoped to the scenarios that card's
+#      obligations are made of, then a re-measure. A parity repair leaves the
+#      compile/test tuple untouched, so nothing else in this file can say
+#      whether it landed -- only the comparison run again can (v9 card
+#      t_77cae2b2: the CORS properties the brief asked for were REVERTED
+#      because [0,0,0] did not decrease and the obligation was never
+#      re-measured). It is not run for any other card: the comparison starts
+#      the packaged destination and replays scenarios, and that cost buys
+#      nothing on a compile card.
 # Maven reads the tree's own .mvn/maven.config (-s .mvn/settings.xml: the
 # Red Hat GA repository); the bootstrap refuses when that wiring is absent.
 # Every tool's outcome is recorded in run.json (mode + per-stage ms); verify.py
@@ -29,12 +40,14 @@ set -euo pipefail
 ROOT=""
 RUNTIME=1
 MODE="acceptance"
+FORCE_PARITY=false
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --root) ROOT="${2:-}"; shift 2 ;;
     --mode) MODE="${2:-}"; shift 2 ;;
     --no-runtime) RUNTIME=0; shift ;;
-    *) echo "usage: run-verify.sh --root <dest> [--mode acceptance|diagnostic] [--no-runtime]" >&2; exit 2 ;;
+    --parity) FORCE_PARITY=true; shift ;;
+    *) echo "usage: run-verify.sh --root <dest> [--mode acceptance|diagnostic] [--no-runtime] [--parity]" >&2; exit 2 ;;
   esac
 done
 [[ -n "${ROOT}" && -d "${ROOT}" ]] || { echo "FAIL: --root must be an existing directory" >&2; exit 2; }
@@ -228,6 +241,114 @@ doc.setdefault("stages_ms", {})["runtime"] = ms
 doc["total_ms"] = int(doc.get("total_ms") or 0) + ms
 json.dump(doc, open(p, "w"))
 PYEOF
+    python3 "${SCRIPT_DIR}/verify.py" --root "${ROOT}" --run "${RUN}" --diagnostics "${DIAG}" ${TEST_ARGS[@]+"${TEST_ARGS[@]}"} ${FIND_ARGS[@]+"${FIND_ARGS[@]}"}
+    VERIFY_RC=$?
+  fi
+fi
+
+# 6. the parity gate: the scenario comparison, re-run for THIS card. Asked of
+# the issued card, not of the work list -- the obligation is discharged by its
+# own scenarios coming back PASS, and no other card pays for it.
+# No --dest-url: the startup gate STOPS the application it started
+# (verify-runtime.py boot(), SIGTERM then SIGKILL on the process group), so
+# there is nothing left running to compare against. The runner starts the same
+# packaged artifact itself, against the decided datasource, and stops it again.
+PARITY_RUN_PY="${SCRIPT_DIR}/../../../paved-road/paved-road-m4/scripts/run-parity.py"
+PARITY_BEFORE="${ROOT}/verification/build/parity-before.json"
+PARITY_RECEIPT="${ROOT}/verification/parity/receipt.json"
+if [[ "${MODE}" == "acceptance" && "${RUNTIME}" -eq 1 && "${VERIFY_RC}" -eq 0 ]]; then
+  PARITY_PLAN="$(python3 - "${ROOT}" "${FORCE_PARITY}" <<'PYEOF'
+import json, sys
+from pathlib import Path
+root = Path(sys.argv[1])
+force = sys.argv[2] == "true"
+sys.path.insert(0, str(root / ".hermes" / "lib"))
+from planner.paths import LOOP_ISSUED, VERIFY_BOOT, WORKLIST  # noqa: E402
+
+
+def doc(rel):
+    p = root / rel
+    if not p.is_file():
+        return {}
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except ValueError:
+        return {}
+
+
+issued = doc(LOOP_ISSUED)
+if not force and str(issued.get("gate") or "") != "parity":
+    print("no")
+    raise SystemExit(0)
+boot = doc(VERIFY_BOOT)
+if not (boot.get("ran") and boot.get("rc") == 0 and boot.get("ready")):
+    # the comparison runs the PACKAGED destination; with no artifact that
+    # started and became ready there is nothing to compare, and a run that
+    # cannot start one measures nothing
+    print("skip:the startup gate did not pass in this verification")
+    raise SystemExit(0)
+wanted = {str(i) for i in (issued.get("items") or [])}
+sids = sorted({str(s) for it in (doc(WORKLIST).get("items") or [])
+               if str(it.get("id")) in wanted for s in (it.get("scenarios") or []) if str(s)})
+print("run:" + ",".join(sids))
+PYEOF
+)" || PARITY_PLAN="skip:the issued card could not be read"
+  if [[ "${PARITY_PLAN}" == skip:* ]]; then
+    echo "WARN: parity comparison not run (${PARITY_PLAN#skip:}); this card's parity obligation stays UNKNOWN and advance.py cannot accept it" >&2
+  fi
+  if [[ "${PARITY_PLAN}" == run:* ]]; then
+    SIDS="${PARITY_PLAN#run:}"
+    PARITY_ARGS=()
+    if [[ -n "${SIDS}" ]]; then
+      IFS=',' read -r -a SID_ARR <<< "${SIDS}"
+      for s in "${SID_ARR[@]}"; do
+        [[ -n "${s}" ]] && PARITY_ARGS+=(--scenario "${s}")
+      done
+    else
+      # a parity obligation whose entry point declares no scenario is a read
+      # oracle: it is re-measured by the unscoped run, which compares those
+      echo "parity: the issued obligations name no scenario; comparing the whole phase (read oracles included)"
+    fi
+    # the receipt as it stood BEFORE this candidate's comparison: acceptance
+    # asks of it what was already PASSing, so that a repair that breaks another
+    # scenario is not accepted. It is the accepted tree's receipt, because the
+    # accepted tree's records are what a rejection restored.
+    rm -f "${PARITY_BEFORE}"
+    [[ -f "${PARITY_RECEIPT}" ]] && cp "${PARITY_RECEIPT}" "${PARITY_BEFORE}"
+    T0="$(now_ms)"
+    set +e
+    python3 "${PARITY_RUN_PY}" --root "${ROOT}" ${PARITY_ARGS[@]+"${PARITY_ARGS[@]}"} >"${WORK}/parity.log" 2>&1
+    PARITY_RC=$?
+    set -e
+    PARITY_MS="$(( $(now_ms) - T0 ))"
+    tail -20 "${WORK}/parity.log" || true
+    export PARITY_RC PARITY_MS PARITY_SIDS="${SIDS}"
+    python3 - "${RUN}" "${ROOT}" <<'PYEOF'
+import json, os, sys
+from pathlib import Path
+run_p, root = sys.argv[1], Path(sys.argv[2])
+receipt = root / "verification" / "parity" / "receipt.json"
+verdict = ""
+if receipt.is_file():
+    try:
+        verdict = str((json.loads(receipt.read_text(encoding="utf-8")) or {}).get("verdict") or "")
+    except ValueError:
+        verdict = ""
+ms = int(os.environ.get("PARITY_MS") or 0)
+doc = json.load(open(run_p))
+doc.setdefault("runtime", {})["parity"] = {
+    "ran": True,
+    "rc": int(os.environ.get("PARITY_RC") or 0),
+    "scenarios": [s for s in (os.environ.get("PARITY_SIDS") or "").split(",") if s],
+    "receipt_verdict": verdict,
+    "ms": ms,
+}
+doc.setdefault("stages_ms", {})["parity"] = ms
+doc["total_ms"] = int(doc.get("total_ms") or 0) + ms
+json.dump(doc, open(run_p, "w"))
+PYEOF
+    # re-measure: the comparison rewrote the verdicts the work list reads, so
+    # the obligations it still reports are the ones this candidate left
     python3 "${SCRIPT_DIR}/verify.py" --root "${ROOT}" --run "${RUN}" --diagnostics "${DIAG}" ${TEST_ARGS[@]+"${TEST_ARGS[@]}"} ${FIND_ARGS[@]+"${FIND_ARGS[@]}"}
     VERIFY_RC=$?
   fi

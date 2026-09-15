@@ -26,7 +26,12 @@ when it is gone without the count falling the compiler's next report decides
 -- another member of the card's sealed family CONTINUES the card (RETAIN),
 anything else is a typed diagnosis (EXPOSED). The family itself is the sites
 of one signature that ONE accepted step introduced (build_checked_family_scope).
-Parity is measured by M4 and reported beside the tuple, never inside it.
+Parity is measured by M4 and reported beside the tuple, never inside it: a
+parity obligation carries ``gate: parity`` and the scenarios it is made of, the
+acceptance path re-runs that comparison for those scenarios, and the step is
+accepted when the composed receipt records them PASS (v9 card t_77cae2b2: the
+CORS repair the brief asked for was REVERTED because [0,0,0] did not decrease
+and nothing ever re-compared the scenario).
 
 Measurement contract: every component is known only when its tool ran in
 this verification and produced a report (verification/build/run.json);
@@ -1016,6 +1021,82 @@ def response_advice(diffs: list[str], path: str) -> dict[str, Any]:
     return out
 
 
+PARITY_RECEIPT = PARITY_DIR / "receipt.json"
+PARITY_RECEIPT_SCHEMA = "rhoai3.parity-receipt/v1"
+
+
+def parity_obligation_id(entry_point: str, scenario: str, what: str) -> str:
+    """The identity of a parity obligation: the entry point, the scenario that
+    measured it (empty for a read oracle) and WHICH of the two kinds of diff it
+    carries. Line-free and message-free like every other obligation identity
+    here, so a comparator that rewords its diff reports the same obligation."""
+    return "parity:%s" % sha256_bytes(canonical_bytes({"ep": entry_point, "scenario": scenario, "what": what}))[:16]
+
+
+def load_parity_receipt(root: Path) -> dict[str, Any]:
+    p = Path(root) / PARITY_RECEIPT
+    if not p.is_file():
+        return {}
+    try:
+        doc = load_json(p)
+    except (OSError, ValueError):
+        return {}
+    return doc if isinstance(doc, dict) else {}
+
+
+def parity_state(receipt: dict[str, Any] | None) -> dict[str, Any]:
+    """What a COMPOSED parity receipt says, keyed the way acceptance asks it.
+
+    ``known`` is the measurement contract applied to parity: a receipt that was
+    never composed (absent, another schema, no entry point row) measured
+    nothing, and an unmeasured parity slot can neither discharge an obligation
+    nor prove that no other scenario regressed.
+
+    ``obligations`` inverts the receipt into the ids ``parity_items`` would mint
+    from it: the id is a function of (entry point, scenario, kind), so an issued
+    obligation can be looked up in a LATER receipt without anyone having
+    recorded what it was made of. A scenario's verdict is the verdict of the
+    entry point row that declares it -- the row is PASS only when every required
+    scenario of that entry point passed (compose-parity-receipt.py)."""
+    rows = (receipt or {}).get("entry_points") if isinstance(receipt, dict) else None
+    if (not isinstance(receipt, dict) or str(receipt.get("schema") or "") != PARITY_RECEIPT_SCHEMA
+            or not isinstance(rows, list) or not rows):
+        return {"known": False, "verdict": "", "entry_points": {}, "scenarios": {}, "obligations": {}}
+    eps: dict[str, str] = {}
+    scen: dict[str, str] = {}
+    obl: dict[str, dict[str, str]] = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        ep = str(row.get("entry_point") or "")
+        if not ep:
+            continue
+        verdict = str(row.get("verdict") or "")
+        eps[ep] = verdict
+        names = [str(s) for s in (row.get("scenarios") or []) if str(s)]
+        for sid in names:
+            scen[sid] = verdict
+        # "" is the read-oracle obligation of this entry point: the comparison
+        # that replays a method and a path, which declares no scenario.
+        for sid in sorted(set(names) | {""}):
+            for what in ("response", "cors"):
+                obl[parity_obligation_id(ep, sid, what)] = {"entry_point": ep, "scenario": sid,
+                                                            "what": what, "verdict": verdict}
+    return {"known": True, "verdict": str(receipt.get("verdict") or ""),
+            "entry_points": eps, "scenarios": scen, "obligations": obl}
+
+
+def parity_scenarios_of(receipt: dict[str, Any] | None, entry_point: str, scenario: str) -> list[str]:
+    """The scenario ids one obligation is made of: its own when it has one, and
+    otherwise the ones the receipt's row for its entry point declares."""
+    if scenario:
+        return [scenario]
+    for row in ((receipt or {}).get("entry_points") or []) if isinstance(receipt, dict) else []:
+        if isinstance(row, dict) and str(row.get("entry_point") or "") == entry_point:
+            return sorted({str(s) for s in (row.get("scenarios") or []) if str(s)})
+    return []
+
+
 def _source_cors_policies(root: Path) -> list[str]:
     """The CORS policies the FROZEN source declares, as the parity receipt
     recorded them. A missing or unreadable receipt is an empty list: the
@@ -1057,6 +1138,7 @@ def parity_items(root: Path, bundle: dict[str, Any]) -> list[dict[str, Any]]:
     if not pdir.is_dir():
         return out
     source_policies = _source_cors_policies(root)
+    receipt = load_parity_receipt(root)
     docs: list[tuple[Path, dict[str, Any]]] = [(p, load_json(p)) for p in sorted(pdir.glob("*.json"))]
     sdir = pdir / "scenarios"
     if sdir.is_dir():
@@ -1072,20 +1154,25 @@ def parity_items(root: Path, bundle: dict[str, Any]) -> list[dict[str, Any]]:
         cors, other = classify_parity_diffs(reason)
         if not cors and not other:
             other = [reason or "parity FAIL without a recorded diff"]
-        base = {"source": "parity", "kind": "parity", "category": "mandatory", "line": 0,
+        # ``gate`` makes acceptance phase-aware, exactly as it does for
+        # packaging and startup: repairing a parity mismatch leaves the
+        # compile/test tuple untouched, and the step is accepted because its own
+        # gate -- the scenario comparison -- goes from failing to passing.
+        # ``scenarios`` is what the gate has to re-run to say so, so the
+        # acceptance path can scope the comparison to this card.
+        base = {"source": "parity", "kind": "parity", "gate": "parity", "category": "mandatory", "line": 0,
                 "entry_point": ep, "scenario": scenario, "verdict_file": p.relative_to(root).as_posix(),
+                "scenarios": parity_scenarios_of(receipt, ep, scenario),
                 "message_sha256": sha256_bytes(reason.encode("utf-8"))}
         if other:
-            key = canonical_bytes({"ep": ep, "scenario": scenario, "what": "response"})
             locus = ep_path.get(ep) or GLOBAL
-            out.append(dict(base, id="parity:%s" % sha256_bytes(key)[:16], path=locus,
+            out.append(dict(base, id=parity_obligation_id(ep, scenario, "response"), path=locus,
                             rule_id="PARITY", cause="response",
                             detail=("%s: %s" % (scenario or ep, "; ".join(other)))[:200],
                             message=("%s differs from the source (%s): %s" % (ep, scenario or "read oracle", "; ".join(other)))[:1200],
                             advice=response_advice(other, locus)))
         if cors:
-            key = canonical_bytes({"ep": ep, "scenario": scenario, "what": "cors"})
-            out.append(dict(base, id="parity:%s" % sha256_bytes(key)[:16], path=APP_PROPERTIES, kind="config",
+            out.append(dict(base, id=parity_obligation_id(ep, scenario, "cors"), path=APP_PROPERTIES, kind="config",
                             rule_id="PARITY_CORS", cause="cors-config",
                             detail=("%s: CORS %s" % (scenario or ep, "; ".join(cors)))[:200],
                             message=("%s (%s): the destination grants no CORS permission the source granted: %s. On Quarkus this is "
@@ -1724,8 +1811,17 @@ def retry_key(cluster: dict[str, Any], items: list[dict[str, Any]] | None = None
 
 
 def gate_items(worklist: dict[str, Any], gate: str) -> set[str]:
-    """The ids of the obligations one gate currently holds."""
+    """The ids of the obligations one gate currently holds.
+
+    For ``parity`` those are the obligations the composed receipt's own
+    verdicts produced in this measurement (parity_items), which is what the
+    comparison the acceptance path re-ran reports NOW."""
     return {str(i["id"]) for i in (worklist.get("items") or []) if str(i.get("gate") or "") == gate}
+
+
+def _gate_passing(runtime: dict[str, Any] | None, name: str) -> bool:
+    row = (runtime.get(name) or {}) if isinstance(runtime, dict) else {}
+    return bool(row.get("ran")) and row.get("rc") == 0 and (row.get("ready", True) is not False)
 
 
 def progress(prev: dict[str, Any], cur: dict[str, Any], prev_ids: set[str], cur_ids: set[str],
@@ -1733,15 +1829,21 @@ def progress(prev: dict[str, Any], cur: dict[str, Any], prev_ids: set[str], cur_
              issued_items: list[str] | None = None, prev_gate_items: set[str] | None = None,
              cur_gate_items: set[str] | None = None, cur_item_ids: set[str] | None = None,
              issued_identities: set[str] | None = None, cur_identities: set[str] | None = None,
-             family_scope: set[str] | None = None) -> tuple[bool, str]:
+             family_scope: set[str] | None = None,
+             prev_parity: dict[str, Any] | None = None, cur_parity: dict[str, Any] | None = None) -> tuple[bool, str]:
     """Accept iff strictly smaller lexicographically and no new mandatory obligation.
 
-    Phase-aware: a card issued for the ``package`` or ``boot`` gate is repairing
-    something the compile/test tuple cannot see, so fixing it can leave the
-    tuple unchanged. Such a step is accepted when its OWN gate goes from
-    failing to passing and the tuple does not regress. The tuple still may not
-    get worse, no new mandatory obligation may appear, and the other gate may
-    not go backwards -- a repair is not a licence to break the phase before it.
+    Phase-aware: a card issued for the ``package``, ``boot`` or ``parity`` gate
+    is repairing something the compile/test tuple cannot see, so fixing it can
+    leave the tuple unchanged. Such a step is accepted when its OWN gate goes
+    from failing to passing and the tuple does not regress. The tuple still may
+    not get worse, no new mandatory obligation may appear, and the other gates
+    may not go backwards -- a repair is not a licence to break the phase before
+    it. The parity gate is the scenario comparison M4 runs (run-parity.py), and
+    ``prev_parity`` / ``cur_parity`` are the composed receipts before and after;
+    it discharges an obligation only POSITIVELY, by the receipt recording its
+    scenario as PASS, because an obligation also disappears when its scenario
+    became INCONCLUSIVE.
 
     Compile-aware: javac reports one diagnostic at a time. When the issued
     compile failure disappears and the observed compile count does not
@@ -1787,13 +1889,74 @@ def progress(prev: dict[str, Any], cur: dict[str, Any], prev_ids: set[str], cur_
         return False, "new mandatory obligation(s): %s" % ",".join(new_mandatory[:5])
     if b < a:
         return True, "measure %s < %s" % (b, a)
+    if gate == "parity":
+        # The parity gate is a comparison, not a build: the destination
+        # answers differently from the source at a named entry point, and the
+        # only thing that can say the repair landed is that comparison run
+        # again. It is re-run by the acceptance path for this card's own
+        # scenarios (run-verify.sh --mode acceptance → run-parity.py).
+        if b > a:
+            return False, "measure %s regressed from %s; a parity repair may not make compilation or tests worse" % (b, a)
+        for name in ("package", "boot"):
+            if _gate_passing(prev_runtime or {}, name) and not _gate_passing(cur_runtime or {}, name):
+                return False, ("the %s gate was passing and is not any more; a parity repair may not break the phase "
+                               "before it" % name)
+        before = parity_state(prev_parity)
+        after = parity_state(cur_parity)
+        if not after["known"] or not before["known"] or cur.get("parity_mismatches") is None:
+            # The measurement contract, applied to parity: a receipt that was
+            # not composed in this verification (the runner could not run, the
+            # composer refused) measured nothing about this card's obligation,
+            # and it cannot prove that no other scenario regressed either. That
+            # is not a failed repair -- the candidate is retained, unaccepted,
+            # and no attempt is spent.
+            return UNPROVEN, ("the parity comparison is not a measurement here (receipt before: %s, after: %s, parity slot "
+                              "of the measure: %s): nothing was compared, so this card's obligation is neither discharged "
+                              "nor refuted. The candidate is retained unaccepted; run run-verify.sh --mode acceptance for "
+                              "this card -- its acceptance path re-runs %s for the issued scenarios -- and advance again"
+                              % ("composed" if before["known"] else "not composed",
+                                 "composed" if after["known"] else "not composed",
+                                 "unknown" if cur.get("parity_mismatches") is None else cur.get("parity_mismatches"),
+                                 PARITY_RECEIPT.as_posix()))
+        issued_par = {str(i) for i in (issued_items or []) if str(i).startswith("parity:")}
+        still = sorted(issued_par & (cur_gate_items or set()))
+        if still:
+            return False, ("the parity obligation %s is still reported (its identity is the entry point, the scenario and "
+                           "the kind of diff; a comparator that rewords its diff reports the same obligation)"
+                           % ",".join(still[:2]))
+        # A parity repair may not break another scenario. Asked of the receipt,
+        # not of the obligation ids: a scenario that became INCONCLUSIVE mints
+        # no obligation at all, and would be invisible to a comparison of ids.
+        regressed = sorted(ep for ep, v in before["entry_points"].items()
+                           if v == "PASS" and after["entry_points"].get(ep, "") != "PASS")
+        if regressed:
+            return False, ("the parity comparison at %s was PASS before this candidate and is %s now; a parity repair may "
+                           "not break another scenario"
+                           % (regressed[0], after["entry_points"].get(regressed[0]) or "no longer in the receipt"))
+        appeared = sorted((cur_gate_items or set()) - (prev_gate_items or set()) - issued_par)
+        if appeared:
+            return False, ("this candidate reports parity obligation(s) the gate did not hold when the card was issued: %s"
+                           % ",".join(appeared[:3]))
+        if issued_par:
+            not_passed = []
+            for oid in sorted(issued_par):
+                row = after["obligations"].get(oid)
+                if row is None or row.get("verdict") != "PASS":
+                    not_passed.append("%s (%s)" % (oid, (row or {}).get("verdict") or "no row in the receipt"))
+            if not_passed:
+                return False, ("the parity obligation %s is still reported: its scenario did not come back PASS in %s"
+                               % ("; ".join(not_passed[:2]), PARITY_RECEIPT.as_posix()))
+            named = sorted({(after["obligations"][o].get("scenario") or after["obligations"][o].get("entry_point") or o)
+                            for o in issued_par})
+            return True, ("the parity comparison discharges %s: %s came back PASS in %s with the measure unchanged at %s"
+                          % (",".join(sorted(issued_par)[:3]), ", ".join(named[:3]), PARITY_RECEIPT.as_posix(), b))
+        return True, "the parity comparison reports no obligation for this card and no scenario regressed (measure %s)" % b
     if gate in ("package", "boot"):
         prev_rt = prev_runtime or {}
         cur_rt = cur_runtime or {}
 
         def _passing(rt: dict[str, Any], name: str) -> bool:
-            row = (rt.get(name) or {}) if isinstance(rt, dict) else {}
-            return bool(row.get("ran")) and row.get("rc") == 0 and (row.get("ready", True) is not False)
+            return _gate_passing(rt, name)
 
         if b > a:
             return False, "measure %s regressed from %s; a %s repair may not make compilation or tests worse" % (b, a, gate)

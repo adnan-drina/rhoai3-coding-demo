@@ -66,6 +66,9 @@ bash "${HERMES_SKILL_DIR}/scripts/run-verify.sh" --root /projects/modernized --m
 | the candidate reports an **attribution** compile diagnostic (a symbol javac cannot resolve, a package that does not exist — every code outside javac's flow-analysis set) that the accepted tree's diagnostics snapshot did not report, in any file — javac reports all of those in one compilation, so one the accepted tree lacked was introduced (a deleted method breaks callers in files the card never touched); the identity is line-free (file, code, message digest) | `REVERTED` (`introduced … compile diagnostic(s) the accepted tree did not have`, up to three named as `path:line code — message`) | candidate discarded; attempt counted — decided **before** the measure, so a count that fell while a caller broke is rejected too; `legal_next`: fix the named symbols in the same write set, never widen it to satisfy a missing import (dest v9 `t_3903f495`: `jakarta.ws.rs.Context` for `jakarta.ws.rs.core.Context` swapped 13 diagnostics for 13 and was parked as exposed) |
 | … and what the compiler names now is a **flow-class** diagnostic (unreported exception, uninitialized variable, missing return, unreachable statement — reported one site at a time, so the accepted tree may well have had it) outside every sealed scope of the card, or one the accepted snapshot could not be compared against | `VERIFICATION_PENDING` (`exposed-outside-scope`) | candidate retained; accepted tree restored; attempt **not** counted |
 | a failing package/boot gate no longer names the issued obligation | `VERIFICATION_PENDING` (`unproven-repair`) | candidate retained; attempt **not** counted |
+| a **parity** card: every issued obligation's scenario comes back `PASS` in the re-composed receipt, no entry point that was `PASS` before is anything else now, the tuple did not regress and package/boot did not go backwards | accepted (`the parity comparison discharges …`) | the repair is accepted with the tuple unchanged — a parity repair is invisible to `(incidents, compile, tests)` |
+| a **parity** card whose obligation is still reported, or that broke a scenario the receipt recorded `PASS` | `REVERTED` | candidate discarded; attempt counted |
+| a **parity** card whose comparison did not run or whose receipt could not be composed | `VERIFICATION_PENDING` | nothing was measured about the obligation; candidate retained; attempt **not** counted |
 | the issued compile diagnostic is still reported, or the measure did not otherwise decrease | `REVERTED` | candidate discarded (index and working tree); accepted reports restored; attempt counted |
 
 | Outcome | What happened | Your terminator |
@@ -119,7 +122,11 @@ mandatory obligation. Obligation identity is line-free: moving code is
 not a new obligation.
 
 The measure is `(mandatory incidents, compile errors, failing tests,
-parity mismatches)`. Removing a Spring annotation may add compile errors
+parity mismatches)`. The first three are the tuple; parity sits beside it and
+is measured by its own gate — a parity card is accepted when the comparison
+the acceptance path re-ran records its scenarios `PASS`, never by the tuple
+falling (v9 card `t_77cae2b2`: a correct CORS repair was reverted because
+`[0,0,0]` did not decrease and nothing re-compared the scenario). Removing a Spring annotation may add compile errors
 while removing an incident — that is progress (lexicographic). Making a
 test pass by editing the test is not possible (tests are never in a
 write set).
@@ -146,7 +153,8 @@ record naming the card.
 ## Scripts
 
 - `scripts/brief.py` — the head cluster's brief
-- `scripts/run-verify.sh` — `--mode diagnostic` (classpath + JDK diagnostics) or `--mode acceptance` (default: online warm-up, then offline JDK diagnostics, surefire, MTA rescan, packaging/startup when green) → `verify.py`; every tool's exit status and stage duration lands in `verification/build/run.json`
+- `scripts/run-verify.sh` — `--mode diagnostic` (classpath + JDK diagnostics) or `--mode acceptance` (default: online warm-up, then offline JDK diagnostics, surefire, MTA rescan, packaging/startup when green, then the parity comparison **for a parity card**) → `verify.py`; every tool's exit status and stage duration lands in `verification/build/run.json`
+- the parity stage runs only when the issued card carries `gate: parity` (or `--parity` forces it) and the startup gate passed in this verification: it copies the receipt it started from to `verification/build/parity-before.json`, runs `paved-road-m4/scripts/run-parity.py` scoped with `--scenario` to the scenarios that card's obligations are made of (read oracles are skipped under the filter and said so in `_run.json`; the composer still runs, over every record on disk), records `runtime.parity` (`ran`, `rc`, `scenarios`, `receipt_verdict`, `ms`) in `run.json`, and re-measures. No other card pays for it
 - `scripts/verify.py` — tool outputs + recorded outcomes → work list + state + candidate identity
 - `scripts/advance.py` — the acceptance transaction (`--baseline` records step 0; unknown measure → `VERIFICATION_PENDING`)
 - `scripts/restore-pending.py` — put a retained candidate back on the product tree (then acceptance verify + advance)

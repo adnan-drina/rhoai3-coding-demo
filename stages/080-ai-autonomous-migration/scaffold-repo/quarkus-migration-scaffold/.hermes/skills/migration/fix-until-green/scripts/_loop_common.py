@@ -22,13 +22,22 @@ def ensure_hermes_lib() -> None:
 
 ensure_hermes_lib()
 from planner.canonical import digest, load_json, write_canonical  # noqa: E402
-from planner.paths import PRODUCT_EXEMPT, is_product_path as _is_product_path, LOOP_ACCEPTED, LOOP_CARDS, LOOP_DEFERRED, LOOP_ISSUED, LOOP_PENDING_FILES, LOOP_STATE, LOOP_STEPS, MTA_RESCAN_FINDINGS, VERIFY_BOOT, VERIFY_DIAGNOSTICS, VERIFY_PACKAGE, VERIFY_RUN, VERIFY_SUREFIRE, WORKLIST  # noqa: E402
+from planner.paths import PARITY_DIR, PRODUCT_EXEMPT, is_product_path as _is_product_path, LOOP_ACCEPTED, LOOP_CARDS, LOOP_DEFERRED, LOOP_ISSUED, LOOP_PENDING_FILES, LOOP_STATE, LOOP_STEPS, MTA_RESCAN_FINDINGS, VERIFY_BOOT, VERIFY_DIAGNOSTICS, VERIFY_PACKAGE, VERIFY_RUN, VERIFY_SUREFIRE, WORKLIST  # noqa: E402
 
 # The accepted state's tool reports, including the gate receipts: a rejected
 # candidate's packaging or startup result must not survive it. The work list is
 # NOT here -- it is derived, it is rebuilt by every verification, and restoring
 # an old copy makes the loop see a list its own measurement did not produce.
 REPORTS = (VERIFY_DIAGNOSTICS, VERIFY_SUREFIRE, VERIFY_RUN, MTA_RESCAN_FINDINGS, VERIFY_PACKAGE, VERIFY_BOOT)
+# The parity comparison the acceptance path re-runs for a parity card: the
+# composed receipt and the per-verdict records the work list reads. A rejected
+# candidate's comparison must not survive it either, so they are snapshotted and
+# restored like the reports above -- with one difference. An ABSENT snapshot
+# leaves the records on disk alone instead of deleting them: before the first
+# accepted parity step the records under verification/parity are the M4 road's,
+# measured on the accepted tree, and deleting them would erase the obligations
+# rather than restore them.
+PARITY_SNAPSHOT = Path("parity")
 
 
 def _json_doc(root: Path, rel: Path, default: dict[str, Any]) -> dict[str, Any]:
@@ -360,6 +369,20 @@ def revert_paths(root: Path, paths: list[str]) -> None:
     git(root, "reset", "-q")
 
 
+def parity_records(base: Path) -> list[Path]:
+    """The parity documents under one tree, relative to it: the composed
+    receipt and every verdict record (per entry point, per scenario). The run
+    record and the destination log are not evidence of a verdict and are left
+    where they are."""
+    out: list[Path] = []
+    d = Path(base)
+    if not d.is_dir():
+        return out
+    out += [p.relative_to(base) for p in sorted(d.glob("*.json")) if p.name != "_run.json"]
+    out += [p.relative_to(base) for p in sorted((d / "scenarios").glob("*.json"))]
+    return out
+
+
 def snapshot_reports(root: Path) -> None:
     """Keep the accepted state's tool reports so a rejected candidate's reports never survive it."""
     dest = root / LOOP_ACCEPTED
@@ -368,6 +391,14 @@ def snapshot_reports(root: Path) -> None:
         src = root / rel
         if src.is_file():
             shutil.copy2(src, dest / rel.name)
+    live = root / PARITY_DIR
+    records = parity_records(live)
+    if records:
+        shutil.rmtree(dest / PARITY_SNAPSHOT, ignore_errors=True)
+        for rel in records:
+            target = dest / PARITY_SNAPSHOT / rel
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(live / rel, target)
 
 
 def restore_reports(root: Path) -> None:
@@ -380,6 +411,18 @@ def restore_reports(root: Path) -> None:
             shutil.copy2(src, target)
         elif target.is_file():
             target.unlink()
+    snap = dest / PARITY_SNAPSHOT
+    kept = parity_records(snap)
+    if not kept:
+        return  # no accepted comparison to restore: see PARITY_SNAPSHOT
+    live = root / PARITY_DIR
+    for rel in parity_records(live):
+        if rel not in kept:
+            (live / rel).unlink()
+    for rel in kept:
+        target = live / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(snap / rel, target)
 
 
 def classify_inconclusive(measure: dict[str, Any] | None, run: dict[str, Any] | None = None) -> str:

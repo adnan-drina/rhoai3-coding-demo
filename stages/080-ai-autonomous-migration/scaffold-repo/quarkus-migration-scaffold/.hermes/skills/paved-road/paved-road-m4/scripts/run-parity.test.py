@@ -99,6 +99,12 @@ CORPUS = {
          "headers": {"Content-Type": "application/json"},
          "body_file": "verification/scenarios/bodies/create-owner.json", "reset_before": True,
          "effects": [{"id": "eff:owner-7", "method": "GET", "path": "/api/owners/7"}], "normalization": []},
+        # a second scenario on the same entry point: what a SCOPED run must
+        # leave alone is only visible when there is something to leave alone
+        {"id": "sc:create-owner-second", "entry_point": CREATE_EP, "method": "POST", "path": "/api/owners",
+         "headers": {"Content-Type": "application/json"},
+         "body_file": "verification/scenarios/bodies/create-owner-second.json", "reset_before": True,
+         "effects": [{"id": "eff:owner-8", "method": "GET", "path": "/api/owners/8"}], "normalization": []},
     ],
 }
 
@@ -130,36 +136,41 @@ def _build(td: Path, base: str) -> Path:
     (root / "verification" / "scenarios" / "bodies").mkdir(parents=True, exist_ok=True)
     (root / "verification" / "scenarios" / "bodies" / "create-owner.json").write_text(
         json.dumps({"id": 7, "lastName": "Franklin"}), encoding="utf-8")
+    (root / "verification" / "scenarios" / "bodies" / "create-owner-second.json").write_text(
+        json.dumps({"id": 8, "lastName": "Rodriquez"}), encoding="utf-8")
     write_canonical(root / "verification" / "scenarios" / "corpus.json", CORPUS)
     corpus = load_json(root / "verification" / "scenarios" / "corpus.json")
     corpus_sha = corpus_digest(corpus)
-    req = request_of(root, CORPUS["scenarios"][0])
 
     # The source is recorded the way capture-source-scenarios.py records it:
     # restore the initial state, probe what the source started from, replay the
-    # complete request, read the effects back. The reads are captured after it,
-    # through the same running source, so their oracles describe the state the
-    # replayed scenario leaves behind -- which is the state the destination is
-    # in when the runner reaches its read comparisons.
-    http_observe(base, "GET", "/__reset")
-    before = http_observe(base, "GET", "/api/owners/7")
-    created = http_observe(base, "POST", "/api/owners", body=req["body"], headers=req["headers"])
-    after = http_observe(base, "GET", "/api/owners/7")
-    if created.get("status") != 201:
-        raise SystemExit("the stub source did not create: %s" % created)
-    write_canonical(root / SCENARIO_ORACLES / (scenario_slug("sc:create-owner") + ".json"), {
-        "schema": "rhoai3.source-scenario/v1", "scenario": "sc:create-owner", "entry_point": CREATE_EP,
-        "receipt_sha256": receipt_digest, "corpus_sha256": corpus_sha, "status": "CAPTURED", "reason": "",
-        "evidence_bundle_sha256": bundle_sha, "source": {"base_url": base},
-        "initial_state": dict(CORPUS["initial_state"]), "normalization": [], "reset_before": True,
-        "request": {"request_sha256": req["request_sha256"]},
-        "response": {"status": created["status"], "body_kind": created["body_kind"],
-                     "body_sha256": created["body_sha256"], "headers": created["headers"]},
-        "before": [{"id": "eff:owner-7", "method": "GET", "path": "/api/owners/7",
-                    "status": before["status"], "body_sha256": before["body_sha256"]}],
-        "effects": [{"id": "eff:owner-7", "method": "GET", "path": "/api/owners/7",
-                     "status": after["status"], "body_sha256": after["body_sha256"]}],
-    })
+    # complete request, read the effects back -- for each scenario in CORPUS
+    # ORDER. The reads are captured after them, through the same running source,
+    # so their oracles describe the state the replayed corpus leaves behind --
+    # which is the state the destination is in when the runner reaches its read
+    # comparisons.
+    for sc, effect in zip(CORPUS["scenarios"], ("eff:owner-7", "eff:owner-8")):
+        req = request_of(root, sc)
+        path = "/api/owners/%s" % ("7" if effect.endswith("7") else "8")
+        http_observe(base, "GET", "/__reset")
+        before = http_observe(base, "GET", path)
+        created = http_observe(base, "POST", "/api/owners", body=req["body"], headers=req["headers"])
+        after = http_observe(base, "GET", path)
+        if created.get("status") != 201:
+            raise SystemExit("the stub source did not create: %s" % created)
+        write_canonical(root / SCENARIO_ORACLES / (scenario_slug(str(sc["id"])) + ".json"), {
+            "schema": "rhoai3.source-scenario/v1", "scenario": str(sc["id"]), "entry_point": CREATE_EP,
+            "receipt_sha256": receipt_digest, "corpus_sha256": corpus_sha, "status": "CAPTURED", "reason": "",
+            "evidence_bundle_sha256": bundle_sha, "source": {"base_url": base},
+            "initial_state": dict(CORPUS["initial_state"]), "normalization": [], "reset_before": True,
+            "request": {"request_sha256": req["request_sha256"]},
+            "response": {"status": created["status"], "body_kind": created["body_kind"],
+                         "body_sha256": created["body_sha256"], "headers": created["headers"]},
+            "before": [{"id": effect, "method": "GET", "path": path,
+                        "status": before["status"], "body_sha256": before["body_sha256"]}],
+            "effects": [{"id": effect, "method": "GET", "path": path,
+                         "status": after["status"], "body_sha256": after["body_sha256"]}],
+        })
     proc = subprocess.run([sys.executable, str(CAPTURE_READS), "--root", str(root), "--base-url", base],
                           text=True, capture_output=True)
     if proc.returncode != 0:
@@ -167,9 +178,10 @@ def _build(td: Path, base: str) -> Path:
     return root
 
 
-def _run(root: Path, base: str, reset: Path) -> tuple[int, str, dict]:
+def _run(root: Path, base: str, reset: Path, scenarios: tuple[str, ...] = ()) -> tuple[int, str, dict]:
+    scoped = [a for sid in scenarios for a in ("--scenario", sid)]
     proc = subprocess.run([sys.executable, str(RUNNER), "--root", str(root), "--dest-url", base,
-                           "--reset-cmd", "%s %s" % (sys.executable, reset)], text=True, capture_output=True)
+                           "--reset-cmd", "%s %s" % (sys.executable, reset), *scoped], text=True, capture_output=True)
     run_doc = load_json(root / PARITY / "_run.json") if (root / PARITY / "_run.json").is_file() else {}
     return proc.returncode, proc.stdout + proc.stderr, run_doc
 
@@ -198,10 +210,13 @@ def main() -> int:
             if str(reset) not in str(doc.get("reset_cmd") or ""):
                 return _fail("the reset command must be on the record: %s" % doc.get("reset_cmd"))
             sc = doc["scenarios"]
-            if [sc["declared"], sc["run"], sc["passed"], sc["failed"], sc["inconclusive"]] != [1, 1, 1, 0, 0]:
+            if [sc["declared"], sc["run"], sc["passed"], sc["failed"], sc["inconclusive"]] != [2, 2, 2, 0, 0]:
                 return _fail("scenario counts %s (%s)" % (sc, blob[-800:]))
-            if [r["id"] for r in sc["results"]] != ["sc:create-owner"] or sc["results"][0]["rc"] != 0:
-                return _fail("the per-scenario record must name the scenario and its child's rc: %s" % sc["results"])
+            if [r["id"] for r in sc["results"]] != ["sc:create-owner", "sc:create-owner-second"] or sc["results"][0]["rc"] != 0:
+                return _fail("the per-scenario record must name every scenario in corpus order and its child's rc: %s" % sc["results"])
+            if doc.get("scenario_filter") or not (doc.get("read_oracles") or {}).get("ran"):
+                return _fail("an unfiltered run compares the read oracles and says so: %s"
+                             % {k: doc.get(k) for k in ("scenario_filter", "read_oracles")})
             ep = doc["entry_points"]
             if [ep["admitted"], ep["compared"], ep["passed"], ep["skipped"]] != [4, 3, 3, 1]:
                 return _fail("entry-point counts %s (%s)" % (ep, blob[-800:]))
@@ -213,9 +228,10 @@ def main() -> int:
                 return _fail("the receipt must be composed last and PASS here: %s" % {k: doc.get(k) for k in ("compose", "receipt_verdict", "ok")})
 
             # the records the composer reads, written by the children
-            sp = root / SCENARIO_PARITY / (scenario_slug("sc:create-owner") + ".json")
-            if not sp.is_file() or load_json(sp)["verdict"] != "PASS":
-                return _fail("the scenario parity record must exist and PASS: %s" % sp)
+            for sid in ("sc:create-owner", "sc:create-owner-second"):
+                sp = root / SCENARIO_PARITY / (scenario_slug(sid) + ".json")
+                if not sp.is_file() or load_json(sp)["verdict"] != "PASS":
+                    return _fail("the scenario parity record must exist and PASS: %s" % sp)
             for e in READ_EPS:
                 p = root / PARITY / (slug(e) + ".json")
                 if not p.is_file() or load_json(p)["verdict"] != "PASS":
@@ -230,6 +246,36 @@ def main() -> int:
             b = {k: v for k, v in doc2.items() if k != "at"}
             if rc2 != 0 or a != b:
                 return _fail("the runner must be idempotent: rc=%s, %s" % (rc2, [k for k in a if a[k] != b.get(k)]))
+
+            # --- scoped to one scenario: only that one is compared, and the
+            #     receipt is still composed, from every record on disk ---
+            rc5, blob5, doc5 = _run(root, base, reset, scenarios=("sc:create-owner-second",))
+            if rc5 != 0:
+                return _fail("a scoped run over a matching destination must exit 0: %s" % blob5[-1200:])
+            sc5 = doc5["scenarios"]
+            if doc5.get("scenario_filter") != ["sc:create-owner-second"] or [sc5["declared"], sc5["selected"], sc5["run"]] != [2, 1, 1]:
+                return _fail("the filter must select from the corpus and say what it selected: %s | %s"
+                             % (doc5.get("scenario_filter"), sc5))
+            if [r["id"] for r in sc5["results"]] != ["sc:create-owner-second"]:
+                return _fail("a scoped run must replay ONLY the scenarios it names: %s" % sc5["results"])
+            if (doc5["read_oracles"]["ran"] or "skipped" not in doc5["read_oracles"]["reason"]
+                    or doc5["entry_points"]["compared"] != 0 or doc5["entry_points"]["skipped"] != 4
+                    or not all("skipped" in r["reason"] for r in doc5["entry_points"]["not_compared"])):
+                return _fail("a scoped run skips the read oracles and NAMES every entry point it did not compare: %s | %s"
+                             % (doc5.get("read_oracles"), doc5["entry_points"]))
+            if doc5["compose"]["rc"] != 0 or doc5.get("receipt_verdict") != "PASS" or not doc5.get("ok"):
+                return _fail("a scoped run still composes the receipt, over every record on disk: %s"
+                             % {k: doc5.get(k) for k in ("compose", "receipt_verdict", "ok")})
+            receipt5 = load_json(root / PARITY / "receipt.json")
+            if receipt5["verdict"] != "PASS" or receipt5["total"] != 4:
+                return _fail("the receipt a scoped run composes still states every entry point: %s"
+                             % {k: receipt5.get(k) for k in ("verdict", "total", "not_passed")})
+
+            # a scenario nobody declared is a comparison that cannot be made
+            rc6, blob6, doc6 = _run(root, base, reset, scenarios=("sc:not-in-the-corpus",))
+            if rc6 != 1 or doc6["scenarios"]["run"] != 0 or not any("not declared" in f for f in doc6.get("failures") or []):
+                return _fail("a filter naming an undeclared scenario must refuse and say so: rc=%s %s"
+                             % (rc6, doc6.get("failures")))
 
             # --- a destination that really differs: FAIL is a measurement ---
             Service.drift = True
@@ -255,8 +301,9 @@ def main() -> int:
     finally:
         srv.shutdown()
     print("OK: run-parity selftest (every scenario in corpus order; every captured read oracle compared; the "
-          "uncomparable named; receipt composed last; idempotent; FAIL is a verdict not a runner failure; "
-          "a missing corpus refuses)")
+          "uncomparable named; receipt composed last; idempotent; --scenario replays only the scenarios it names, "
+          "skips the read oracles by name and still composes the whole receipt, and refuses an undeclared id; "
+          "FAIL is a verdict not a runner failure; a missing corpus refuses)")
     return 0
 
 

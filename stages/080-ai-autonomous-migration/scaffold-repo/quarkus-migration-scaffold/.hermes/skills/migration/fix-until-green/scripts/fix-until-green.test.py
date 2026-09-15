@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -308,6 +309,150 @@ def _checked_family_advance_case() -> int:
     return 0
 
 
+_PARITY_EP = "ep:org.acme.OwnerRestController#getOwners():http"
+_PARITY_SID = "sc:cors-actual-owners"
+_PARITY_REASON = "header Access-Control-Allow-Origin None vs *; header Access-Control-Expose-Headers None vs errors"
+
+
+def _parity_records(root: Path, verdict: str) -> None:
+    """What the M4 comparison leaves on disk: one scenario verdict and the
+    receipt composed from it (compose-parity-receipt.py's shape)."""
+    from planner.paths import PARITY_DIR
+
+    pdir = root / PARITY_DIR
+    (pdir / "scenarios").mkdir(parents=True, exist_ok=True)
+    write_canonical(pdir / "scenarios" / "sc_cors.json",
+                    {"schema": "rhoai3.scenario-parity/v1", "entry_point": _PARITY_EP, "scenario": _PARITY_SID,
+                     "verdict": verdict, "reason": _PARITY_REASON if verdict != "PASS" else ""})
+    write_canonical(pdir / "receipt.json",
+                    {"schema": "rhoai3.parity-receipt/v1", "verdict": verdict, "total": 1,
+                     "not_passed": 0 if verdict == "PASS" else 1,
+                     "entry_points": [{"entry_point": _PARITY_EP, "verdict": verdict,
+                                       "reason": "" if verdict == "PASS" else _PARITY_REASON,
+                                       "scenarios": [_PARITY_SID], "coverage": {"positive": [_PARITY_SID], "negative": []}}]})
+
+
+def _parity_verified(root: Path, findings: dict, *, ran: bool = True, verdict: str = "") -> None:
+    """The acceptance pass for a parity card: run-verify.sh copies the receipt
+    it started from, runs the comparison, records runtime.parity in run.json and
+    re-measures. Here the comparison is simulated; everything else is real."""
+    from planner.paths import VERIFY_RUN
+
+    # the acceptance path reaches parity through the packaging and startup
+    # gates, and runs them on this candidate (a rejection discarded the last
+    # candidate's receipts, so they are not inherited)
+    specimens.runtime(root, package_rc=0, boot_ready=True)
+    specimens.verify(root, errors=[], failures=[], findings=findings)
+    doc = load_json(root / VERIFY_RUN)
+    doc.setdefault("runtime", {})["parity"] = {
+        "ran": ran, "rc": 0, "scenarios": [_PARITY_SID] if ran else [],
+        "receipt_verdict": verdict, "ms": 1}
+    write_canonical(root / VERIFY_RUN, doc)
+
+
+def _parity_card_case() -> int:
+    """v9 card t_77cae2b2 end to end: the worker wrote the CORS properties the
+    brief asked for, the acceptance pass was green, and advance.py answered
+    "measure [0, 0, 0] did not decrease from [0, 0, 0]" -- because the parity
+    obligation was never re-measured. Here the comparison is part of the
+    acceptance path, and it is the comparison that decides."""
+    from planner.paths import MTA_FINDINGS, VERIFY_DIR  # noqa: E402
+
+    with tempfile.TemporaryDirectory(prefix="parity-adv-") as td:
+        root = specimens.build_dest(Path(td) / "dest", specimens.specimen("http"),
+                                    decisions=specimens.admitted_decisions(max_attempts=3))
+        specimens.prepare_loop(root)
+        findings = json.loads(json.dumps(load_json(root / MTA_FINDINGS)))
+        findings["violations"] = {k: v for k, v in (findings.get("violations") or {}).items()
+                                  if v.get("category") != "mandatory"}
+        # green, packaged and started: M4 ran, and the comparison FAILED
+        specimens.runtime(root, package_rc=0, boot_ready=True)
+        _parity_records(root, "FAIL")
+        specimens.verify(root, errors=[], failures=[], findings=findings)
+        pipeline.admit(root)
+        # the accepted state the M4 road left: the tuple is green and parity is
+        # the only thing outstanding, which is what makes the tuple useless as a
+        # measure of this card
+        from planner.worklist import item_ids, obligation_keys  # noqa: E402
+
+        cur = load_json(root / WORKLIST)
+        steps = load_json(root / LOOP_STEPS)
+        steps["steps"][-1] = dict(steps["steps"][-1], measure=cur["measure"], runtime=cur.get("runtime") or {},
+                                  obligation_keys=sorted(obligation_keys(cur)), item_ids=sorted(item_ids(cur)),
+                                  candidate_sha256=load_json(root / LOOP_STATE)["candidate_sha256"])
+        write_canonical(root / LOOP_STEPS, steps)
+        wl = load_json(root / WORKLIST)
+        if wl["measure"]["tuple"] != [0, 0, 0] or wl["measure"]["parity_mismatches"] != 1:
+            return _fail("a parity mismatch sits beside the tuple, not inside it: %s" % wl["measure"])
+        cl = [c for c in wl["clusters"] if c["status"] == "open"]
+        if len(cl) != 1 or cl[0].get("gate") != "parity" or cl[0]["write_set"] != ["src/main/resources/application.properties"]:
+            return _fail("the parity obligation must be one card carrying its gate: %s" % cl)
+        cluster = cl[0]
+        card = specimens.issue(root)
+        issued = load_json(root / LOOP_ISSUED)
+        if card.get("logical_id") != cluster["id"] or issued.get("gate") != "parity" or issued.get("gate_items") != cluster["items"]:
+            return _fail("K4 must mint the parity cluster and carry gate=parity and what the gate held onto the issued card: %s | %s"
+                         % (card.get("logical_id"), {k: issued.get(k) for k in ("gate", "gate_items", "items")}))
+        p = _run([sys.executable, str(BRIEF), "--root", str(root), "--cluster", cluster["id"]])
+        brief = json.loads(p.stdout) if p.returncode == 0 else {}
+        if _PARITY_SID not in json.dumps((brief.get("parity") or {})) or "PASS" not in json.dumps(brief.get("parity") or {}):
+            return _fail("the parity brief must name the scenarios and what discharges them: %s%s" % (p.stdout[-400:], p.stderr[-300:]))
+
+        props = root / "src/main/resources/application.properties"
+        repair = "\nquarkus.http.cors.enabled=true\nquarkus.http.cors.origins=*\n"
+
+        # 1. the comparison did not run: nothing was measured about the
+        #    obligation, so the candidate is retained and no attempt is spent
+        props.write_text(props.read_text(encoding="utf-8") + repair, encoding="utf-8")
+        _parity_verified(root, findings, ran=False)
+        p = _advance(root, cluster["id"], "t_par0")
+        blob = p.stdout + p.stderr
+        if p.returncode == 0 or "VERIFICATION_PENDING" not in blob or "not a measurement" not in blob:
+            return _fail("a parity card whose comparison did not run must be retained, not judged: %s" % blob[-600:])
+        if (load_json(root / LOOP_STEPS).get("attempts") or {}):
+            return _fail("retaining a candidate must not spend an attempt: %s" % load_json(root / LOOP_STEPS).get("attempts"))
+
+        # 2. the comparison ran and still reports the obligation: REVERTED
+        rp = _run([sys.executable, str(SCRIPTS / "restore-pending.py"), "--root", str(root), "--cluster", cluster["id"]])
+        if rp.returncode != 0 or "restored" not in rp.stdout:
+            return _fail("restore-pending must put the retained candidate back: %s%s" % (rp.stdout, rp.stderr))
+        shutil.copyfile(root / "verification" / "parity" / "receipt.json", root / VERIFY_DIR / "parity-before.json")
+        _parity_records(root, "FAIL")
+        _parity_verified(root, findings, verdict="FAIL")
+        p = _advance(root, cluster["id"], "t_par1")
+        blob = p.stdout + p.stderr
+        if p.returncode == 0 or "REVERTED" not in blob or "still reported" not in blob:
+            return _fail("an obligation the comparison still reports must be reverted: %s" % blob[-600:])
+        if repair.strip() in props.read_text(encoding="utf-8"):
+            return _fail("a rejected parity candidate must be reverted from the tree")
+
+        # 3. the same repair, and this time the comparison comes back PASS.
+        #    The rejection discarded the candidate's reports, so the accepted
+        #    tree is measured again -- and the obligation is back, unrepaired.
+        _parity_verified(root, findings, verdict="FAIL")
+        pipeline.admit(root)
+        retry = specimens.issue(root)
+        if retry.get("logical_id") != cluster["id"]:
+            return _fail("the reverted parity card must be re-issued: %s" % retry.get("logical_id"))
+        props.write_text(props.read_text(encoding="utf-8") + repair, encoding="utf-8")
+        shutil.copyfile(root / "verification" / "parity" / "receipt.json", root / VERIFY_DIR / "parity-before.json")
+        _parity_records(root, "PASS")
+        _parity_verified(root, findings, verdict="PASS")
+        p = _advance(root, cluster["id"], "t_par2")
+        if p.returncode != 0 or "ACCEPTED" not in p.stdout or "discharges" not in p.stdout:
+            return _fail("a parity repair the comparison confirms must be accepted with the tuple unchanged: %s%s"
+                         % (p.stdout[-600:], p.stderr[-600:]))
+        step = load_json(root / LOOP_STEPS)["steps"][-1]
+        if step.get("gate") != "parity" or (step.get("parity") or {}).get("verdict") != "PASS":
+            return _fail("the accepted step must record the gate and the receipt it was accepted on: %s" % step)
+        if step.get("measure", {}).get("tuple") != [0, 0, 0]:
+            return _fail("a parity repair does not move the tuple: %s" % step.get("measure"))
+        snap = root / "verification" / "loop" / "accepted" / "parity" / "receipt.json"
+        if not snap.is_file() or load_json(snap)["verdict"] != "PASS":
+            return _fail("the accepted state's parity receipt must be snapshotted like the other reports: %s" % snap)
+    return 0
+
+
 def _introduced_attribution_case() -> int:
     """v9 t_3903f495: the right repair with the wrong import swapped 13
     attribution diagnostics for 13 of the same shape, and equal counts parked
@@ -466,7 +611,7 @@ def _set_wide_blocker_case() -> int:
 
 
 def main() -> int:
-    if _checked_veto_case() or _checked_family_advance_case() or _introduced_attribution_case() or _disposition_case() or _set_wide_blocker_case():
+    if _checked_veto_case() or _checked_family_advance_case() or _introduced_attribution_case() or _disposition_case() or _set_wide_blocker_case() or _parity_card_case():
         return 1
     if _si1_case():
         return 1
@@ -1076,7 +1221,7 @@ def main() -> int:
         p = _advance(root, "c:tampered", "t_z")
         if p.returncode != 2 or "LOOP_STALE_STATE" not in p.stderr:
             return _fail("tampered work list must refuse advance: %s" % p.stderr)
-    print("OK: fix-until-green (checked-exception veto: a falling count does not admit an introduced unhandled exception; family bound to its introducing step: Owner→Pet CONTINUE in the same card without an attempt, a stalled continuation rejects, an exposure outside the family is a typed diagnosis; an introduced attribution diagnostic is rejected, not parked (javac reports every one of them at once; a flow code newly reported stays exposed; one the accepted tree already had is not introduced); a harness-caused deferral is cleared by a metadata-only disposition and the one budget sees it; a set-wide packaging cause reaches the work list as one typed blocker with no card, under permuted reported names; measurement contract: unrun tests / empty reports / failed runner / skipped rescan are unknown; baseline; issued card; diagnostic cannot advance; post-verify edit + unissued cluster refused with baseline intact; out-of-scope test edit rejected + reverted + reports discarded; accept commits; staged no-progress reverted from index; line shift is not a new obligation; unresolvable candidate is VERIFICATION_PENDING (no attempt); known no-progress defers; Operator rewind restores tree+budget in a new epoch; green → packaging → startup → M4 (unknown gates never mint; an environment blocker is not a card; a gate repair is accepted phase-aware); unresolved test = typed blocker; tampered list refused)")
+    print("OK: fix-until-green (checked-exception veto: a falling count does not admit an introduced unhandled exception; family bound to its introducing step: Owner→Pet CONTINUE in the same card without an attempt, a stalled continuation rejects, an exposure outside the family is a typed diagnosis; an introduced attribution diagnostic is rejected, not parked (javac reports every one of them at once; a flow code newly reported stays exposed; one the accepted tree already had is not introduced); a harness-caused deferral is cleared by a metadata-only disposition and the one budget sees it; a set-wide packaging cause reaches the work list as one typed blocker with no card, under permuted reported names; measurement contract: unrun tests / empty reports / failed runner / skipped rescan are unknown; baseline; issued card; diagnostic cannot advance; post-verify edit + unissued cluster refused with baseline intact; out-of-scope test edit rejected + reverted + reports discarded; accept commits; staged no-progress reverted from index; line shift is not a new obligation; unresolvable candidate is VERIFICATION_PENDING (no attempt); known no-progress defers; Operator rewind restores tree+budget in a new epoch; green → packaging → startup → M4 (unknown gates never mint; an environment blocker is not a card; a gate repair is accepted phase-aware); unresolved test = typed blocker; tampered list refused; PARITY CARD (v9 t_77cae2b2): the obligation carries gate=parity onto the issued card, the brief names its scenarios and what discharges them, a comparison that did not run retains the candidate without an attempt, one that still reports the obligation reverts it, and the repair is ACCEPTED on the re-composed receipt with the tuple unchanged at [0,0,0], the receipt snapshotted with the accepted reports)")
     return 0
 
 

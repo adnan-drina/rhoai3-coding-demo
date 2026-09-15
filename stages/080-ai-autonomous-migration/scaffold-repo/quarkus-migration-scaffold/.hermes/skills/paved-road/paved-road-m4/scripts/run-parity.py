@@ -15,6 +15,13 @@ and incompletely. So the order and the completeness move here:
      compare-runtime-parity.py
   3. compose-parity-receipt.py, once, last
 
+--scenario (repeatable) scopes step 1 to the named corpus scenarios and skips
+step 2: that is how the fix-until-green acceptance path re-measures ONE parity
+card's obligation without paying for the whole phase. Step 3 still runs, over
+every record on disk, so the receipt a scoped run composes still states the
+verdict of every entry point -- the scoped ones from this run, the rest from
+the records their last full run left. The record says what was skipped and why.
+
 The admitted entry points are the ones the composer itself counts: the
 evidence bundle's entry_points (_oracle_common.entry_points), and the
 scenarios the corpus requires of them (_scenarios.load_corpus). Nothing is
@@ -78,6 +85,12 @@ from planner.canonical import load_json, write_canonical  # noqa: E402
 SCHEMA = "rhoai3.parity-run/v1"
 RUN_RECORD = PARITY / "_run.json"
 READ_METHODS = ("GET", "HEAD")
+# What a scoped run does NOT measure, named in the record rather than left to
+# be inferred from a count: a filtered run is a re-measurement of one card's
+# obligation, and the read oracles of every other entry point keep the verdicts
+# their last full run recorded (the composer reads those records, not this run).
+READ_ORACLES_FILTERED = ("skipped: this run compares only the scenarios it was scoped to (%s); the read-oracle verdicts "
+                         "on disk are the ones the last unfiltered run recorded")
 
 
 def _now() -> str:
@@ -257,6 +270,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--root", required=True, help="the destination product root")
     ap.add_argument("--dest-url", default="", help="a destination someone else is running; without it the packaged one is started here and stopped again")
     ap.add_argument("--reset-cmd", default="", help="the command that restores the declared initial state (default: the reset script beside the capture skill)")
+    ap.add_argument("--scenario", action="append", default=[], metavar="ID",
+                    help="repeatable: compare ONLY these corpus scenarios (the fix-until-green acceptance path scopes the "
+                         "comparison to the scenarios the issued parity card is made of). The read-oracle phase is skipped "
+                         "under the filter and said so in _run.json; the composer still runs, over every record on disk")
     ap.add_argument("--port", type=int, default=8081, help="the port the destination this runner starts listens on")
     ap.add_argument("--ready-timeout", type=int, default=180)
     ap.add_argument("--java", default="java")
@@ -276,7 +293,13 @@ def main(argv: list[str] | None = None) -> int:
     except CorpusError as exc:
         corpus_error = str(exc)
     corpus_sha = corpus_digest(corpus) if corpus else ""
-    scenarios = [sc for sc in (corpus.get("scenarios") or []) if str(sc.get("id") or "")]
+    declared = [sc for sc in (corpus.get("scenarios") or []) if str(sc.get("id") or "")]
+    # The filter SELECTS from the corpus; it never invents a scenario. An id
+    # nobody declared is a caller asking for a comparison that cannot be made,
+    # and it refuses rather than running a smaller set in silence.
+    wanted_ids = sorted({str(s) for s in (args.scenario or []) if str(s)})
+    unknown_ids = [s for s in wanted_ids if s not in {str(sc["id"]) for sc in declared}]
+    scenarios = [sc for sc in declared if str(sc["id"]) in set(wanted_ids)] if wanted_ids else declared
 
     doc: dict[str, Any] = {
         "schema": SCHEMA, "producer": "run-parity.py", "at": _now(), "root": str(root),
@@ -284,7 +307,11 @@ def main(argv: list[str] | None = None) -> int:
         "receipt_sha256": receipt["receipt_digest"] if receipt else "",
         "receipt_gaps": list(receipt_gaps or []),
         "corpus": str(CORPUS.as_posix()), "corpus_sha256": corpus_sha, "corpus_error": corpus_error,
-        "scenarios": {"declared": len(scenarios), "run": 0, "passed": 0, "failed": 0, "inconclusive": 0, "results": []},
+        "scenario_filter": list(wanted_ids),
+        "scenarios": {"declared": len(declared), "selected": len(scenarios), "run": 0, "passed": 0, "failed": 0,
+                      "inconclusive": 0, "results": []},
+        "read_oracles": {"ran": not wanted_ids,
+                         "reason": (READ_ORACLES_FILTERED % ", ".join(wanted_ids)) if wanted_ids else ""},
         "entry_points": {"admitted": len(wanted), "compared": 0, "passed": 0, "failed": 0, "inconclusive": 0,
                          "skipped": 0, "results": [], "not_compared": []},
         "compose": {"rc": None, "argv": []},
@@ -296,6 +323,9 @@ def main(argv: list[str] | None = None) -> int:
         # The corpus is the only source of a write comparison. Its absence is
         # not an idle phase at M4: the scenario child could not run at all.
         failures.append("corpus: %s" % corpus_error)
+    if unknown_ids:
+        failures.append("scenario filter: %s is not declared by the corpus (%s); nothing was compared for it"
+                        % (", ".join(unknown_ids), CORPUS.as_posix()))
 
     dest = None
     try:
@@ -337,8 +367,11 @@ def main(argv: list[str] | None = None) -> int:
             key = {"PASS": "passed", "FAIL": "failed"}.get(verdict, "inconclusive")
             doc["scenarios"][key] += 1
 
-        # 2. every admitted entry point that has a captured read oracle
-        for ep in wanted:
+        # 2. every admitted entry point that has a captured read oracle -- unless
+        #    this run was scoped to named scenarios, when the read oracles are
+        #    not what is being re-measured and every entry point is named as
+        #    not compared, with the reason
+        for ep in (wanted if not wanted_ids else []):
             gap = read_oracle_gap(root, ep)
             if gap:
                 doc["entry_points"]["skipped"] += 1
@@ -357,6 +390,10 @@ def main(argv: list[str] | None = None) -> int:
             doc["entry_points"]["compared"] += 1
             key = {"PASS": "passed", "FAIL": "failed"}.get(verdict, "inconclusive")
             doc["entry_points"][key] += 1
+        if wanted_ids:
+            for ep in wanted:
+                doc["entry_points"]["skipped"] += 1
+                doc["entry_points"]["not_compared"].append({"entry_point": ep, "reason": doc["read_oracles"]["reason"]})
     finally:
         if dest is not None:
             dest.stop()
@@ -374,9 +411,10 @@ def main(argv: list[str] | None = None) -> int:
 
     doc["ok"] = not failures
     write_canonical(out, doc)
-    summary = ("%d/%d scenario(s) run (%d PASS, %d FAIL, %d INCONCLUSIVE); %d/%d entry point(s) compared "
+    summary = ("%s%d/%d scenario(s) run (%d PASS, %d FAIL, %d INCONCLUSIVE); %d/%d entry point(s) compared "
                "(%d not compared); receipt %s"
-               % (doc["scenarios"]["run"], doc["scenarios"]["declared"], doc["scenarios"]["passed"],
+               % (("scoped to %s: " % ", ".join(wanted_ids)) if wanted_ids else "",
+                  doc["scenarios"]["run"], doc["scenarios"]["selected"], doc["scenarios"]["passed"],
                   doc["scenarios"]["failed"], doc["scenarios"]["inconclusive"], doc["entry_points"]["compared"],
                   doc["entry_points"]["admitted"], doc["entry_points"]["skipped"], verdict or "NOT COMPOSED"))
     for row in doc["entry_points"]["not_compared"]:

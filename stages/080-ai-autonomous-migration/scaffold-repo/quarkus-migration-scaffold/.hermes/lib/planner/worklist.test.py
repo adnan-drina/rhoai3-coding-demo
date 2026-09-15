@@ -601,6 +601,14 @@ def _parity_typing_case() -> int:
         w("scenarios/sc_inc.json", {"schema": "rhoai3.scenario-parity/v1", "entry_point": ep2, "scenario": "sc:x", "verdict": "INCONCLUSIVE", "reason": "no capture"})
         items = parity_items(root, bundle)
         by = {(i["entry_point"], i.get("scenario") or "", i["cause"]): i for i in items}
+        # every parity obligation carries the gate that measures it and the
+        # scenarios the acceptance path has to re-run to say whether it landed
+        if [i for i in items if i.get("gate") != "parity"]:
+            return _fail("a parity obligation is measured by the parity gate and must carry it: %s"
+                         % [(i["id"], i.get("gate")) for i in items])
+        scen = {(i.get("scenario") or ""): i.get("scenarios") for i in items}
+        if scen.get("sc:cors-actual-owners") != ["sc:cors-actual-owners"] or scen.get("") != []:
+            return _fail("a scenario obligation is made of its own scenario; a read-oracle obligation of none: %s" % scen)
         if len(items) != 4:
             return _fail("read-oracle FAIL + CORS scenario + a split mixed scenario = 4 obligations; receipt/PASS/INCONCLUSIVE none: %s" % [(i["entry_point"][-20:], i.get("scenario"), i["cause"], i["path"]) for i in items])
         ro = by.get((ep, "", "response"))
@@ -749,9 +757,109 @@ def _parity_advice_case() -> int:
     return 0
 
 
+def _parity_gate_case() -> int:
+    """The parity gate: what discharges a parity card, and what only looks like
+    it. v9 card t_77cae2b2 wrote the CORS properties the brief asked for, passed
+    the whole acceptance path, and was REVERTED with "measure [0,0,0] did not
+    decrease from [0,0,0]" — because nothing ever re-ran the comparison. The
+    tuple cannot see a parity repair; only the receipt can."""
+    import json
+    import tempfile
+
+    from planner.paths import PARITY_DIR
+
+    ep = "ep:a.OwnerRestController#getOwners():http"
+    ep2 = "ep:a.OwnerRestController#addOwner(a.OwnerDto):http"
+    bundle = {"entry_points": [{"id": ep, "path": "src/main/java/a/OwnerRestController.java"},
+                               {"id": ep2, "path": "src/main/java/a/OwnerRestController.java"}]}
+
+    def receipt(verdicts: dict) -> dict:
+        return {"schema": "rhoai3.parity-receipt/v1", "verdict": "FAIL" if any(v != "PASS" for v in verdicts.values()) else "PASS",
+                "entry_points": [{"entry_point": e, "verdict": v, "reason": "",
+                                  "scenarios": ["sc:cors-actual-owners"] if e == ep else ["sc:create-owner-location"]}
+                                 for e, v in sorted(verdicts.items())]}
+
+    # the obligation an entry point's READ ORACLE mints is made of the
+    # scenarios its receipt row declares: the runner has to be told what to
+    # replay, and the verdict has no scenario of its own
+    with tempfile.TemporaryDirectory(prefix="parity-gate-") as td:
+        root = Path(td)
+        pdir = root / PARITY_DIR
+        (pdir / "scenarios").mkdir(parents=True, exist_ok=True)
+        (pdir / "receipt.json").write_text(json.dumps(receipt({ep: "FAIL", ep2: "PASS"})), encoding="utf-8")
+        (pdir / "ep_get.json").write_text(json.dumps(
+            {"schema": "rhoai3.parity/v1", "entry_point": ep, "verdict": "FAIL", "reason": "status 500 vs 200"}), encoding="utf-8")
+        ro = parity_items(root, bundle)
+        if len(ro) != 1 or ro[0].get("gate") != "parity" or ro[0].get("scenarios") != ["sc:cors-actual-owners"]:
+            return _fail("a read-oracle obligation takes the scenarios its receipt row declares: %s"
+                         % [(i.get("gate"), i.get("scenarios")) for i in ro])
+        issued = ro[0]["id"]
+
+    green = {"known": True, "tuple": [0, 0, 0], "parity_mismatches": 1}
+    done = {"known": True, "tuple": [0, 0, 0], "parity_mismatches": 0}
+    both = {"package": {"ran": True, "rc": 0}, "boot": {"ran": True, "rc": 0, "ready": True}}
+    before = receipt({ep: "FAIL", ep2: "PASS"})
+
+    # discharged: the comparison came back PASS for this card's scenario
+    ok, why = progress(green, done, set(), set(), gate="parity", prev_runtime=both, cur_runtime=both,
+                       prev_parity=before, cur_parity=receipt({ep: "PASS", ep2: "PASS"}),
+                       issued_items=[issued], prev_gate_items={issued}, cur_gate_items=set())
+    if not ok or "discharges" not in why:
+        return _fail("a parity repair its own comparison confirms must be accepted with the tuple unchanged: %s" % why)
+
+    # still reported: the same obligation is in the new measurement
+    ok, why = progress(green, green, set(), set(), gate="parity", prev_runtime=both, cur_runtime=both,
+                       prev_parity=before, cur_parity=before,
+                       issued_items=[issued], prev_gate_items={issued}, cur_gate_items={issued})
+    if ok or "still reported" not in why:
+        return _fail("an obligation the comparison still reports is not progress: %r %s" % (ok, why))
+
+    # the obligation is gone from the list but its scenario did not PASS
+    # (INCONCLUSIVE mints no obligation at all): absence is not a repair
+    ok, why = progress(green, done, set(), set(), gate="parity", prev_runtime=both, cur_runtime=both,
+                       prev_parity=before, cur_parity=receipt({ep: "INCONCLUSIVE", ep2: "PASS"}),
+                       issued_items=[issued], prev_gate_items={issued}, cur_gate_items=set())
+    if ok or "still reported" not in why:
+        return _fail("a scenario that became INCONCLUSIVE has not been repaired: %r %s" % (ok, why))
+
+    # another scenario regressed: a parity repair may not break one that passed
+    ok, why = progress(green, done, set(), set(), gate="parity", prev_runtime=both, cur_runtime=both,
+                       prev_parity=before, cur_parity=receipt({ep: "PASS", ep2: "FAIL"}),
+                       issued_items=[issued], prev_gate_items={issued}, cur_gate_items=set())
+    if ok or "may not break another scenario" not in why:
+        return _fail("breaking another entry point while repairing this one is not progress: %s" % why)
+
+    # no receipt: nothing was compared, so nothing is proved either way
+    ok, why = progress(green, done, set(), set(), gate="parity", prev_runtime=both, cur_runtime=both,
+                       prev_parity=before, cur_parity={},
+                       issued_items=[issued], prev_gate_items={issued}, cur_gate_items=set())
+    if ok is not UNPROVEN or "not a measurement" not in why:
+        return _fail("an un-composed receipt must retain the candidate, not accept or reject it: %r %s" % (ok, why))
+    if ok:
+        return _fail("a retained outcome must not read as accepted")
+
+    # the parity slot of the measure itself unknown is the same answer
+    ok, why = progress(green, {"known": True, "tuple": [0, 0, 0], "parity_mismatches": None}, set(), set(),
+                       gate="parity", prev_runtime=both, cur_runtime=both,
+                       prev_parity=before, cur_parity=receipt({ep: "PASS", ep2: "PASS"}),
+                       issued_items=[issued], prev_gate_items={issued}, cur_gate_items=set())
+    if ok is not UNPROVEN:
+        return _fail("an unknown parity slot cannot accept a parity card: %r %s" % (ok, why))
+
+    # and the phase before it still stands
+    broken = {"package": {"ran": True, "rc": 0}, "boot": {"ran": True, "rc": 1, "ready": False}}
+    ok, why = progress(green, done, set(), set(), gate="parity", prev_runtime=both, cur_runtime=broken,
+                       prev_parity=before, cur_parity=receipt({ep: "PASS", ep2: "PASS"}),
+                       issued_items=[issued], prev_gate_items={issued}, cur_gate_items=set())
+    if ok or "may not break the phase before it" not in why:
+        return _fail("breaking startup while repairing parity is not progress: %s" % why)
+    return 0
+
+
 def main() -> int:
     if (_runtime_identity_case() or _gate_progress_case() or _batch_scope_case() or _checked_family_case()
-            or _set_wide_case() or _config_value_case() or _parity_typing_case() or _parity_advice_case()):
+            or _set_wide_case() or _config_value_case() or _parity_typing_case() or _parity_advice_case()
+            or _parity_gate_case()):
         return 1
 
     if path_class("pom.xml") != "build" or path_class("src/main/resources/application.properties") != "config" or path_class("src/test/java/A.java") != "test" or path_class("src/main/java/A.java") != "source":
@@ -930,7 +1038,7 @@ def main() -> int:
         return _fail("reclassified items keep their authority and are never dropped")
     if measure_of(all_items, incidents_known=False, compile_known=True, tests_known=True, parity_known=False)["known"]:
         return _fail("unknown incidents never advance")
-    print("OK: worklist (lossless line-free incidents; canary excluded; only ERROR diagnostics; build→config→compile(leaf-first)→incident→test order; tests never writable; lexicographic 3-tuple progress; new-incident veto; unknown never advances; gate progress is the issued obligation disappearing, never a reworded one; a second cause at one file is a second obligation); a repository card's inventory is sealed by its own digest and two measurements never share a path; checked-exception family: bound to its introducing step (a legacy site stays out), one budget, line-free identity across a moved line, CONTINUE / EXPOSED / still-reported / 1→0 accept, per-member assessment (catch-wrapped and header-deleted members violate); a set-wide packaging cause is one typed blocker under permuted first-reported names and never a card; an unloadable config value is located at the annotation that names the property IN THE DESTINATION'S OWN MODEL (the frozen source's model answers only when the destination cannot be modelled, and the brief says which did; ${x:d} and a bare x are one property), at application.properties only when the name is real and unread, and is a blocker when the name is empty and unread -- the same decisions under renamed identifiers; parity mismatches are typed by their diffs (CORS → application.properties, the rest → the controller; scenario verdicts count, the receipt does not) and carry their exit conditions as advice built from those diffs (CORS properties are the source's own recorded values with the paired actual request and the exposed headers as the exit; a redirect is the source's status and its literal Location after origin mapping only, the doubled root path named, the legacy address served from the packaged UI, a property outside the write set entering through amend-scope) — the same advice, about its own values, on a specimen that shares no name with this one")
+    print("OK: worklist (lossless line-free incidents; canary excluded; only ERROR diagnostics; build→config→compile(leaf-first)→incident→test order; tests never writable; lexicographic 3-tuple progress; new-incident veto; unknown never advances; gate progress is the issued obligation disappearing, never a reworded one; a second cause at one file is a second obligation); a repository card's inventory is sealed by its own digest and two measurements never share a path; checked-exception family: bound to its introducing step (a legacy site stays out), one budget, line-free identity across a moved line, CONTINUE / EXPOSED / still-reported / 1→0 accept, per-member assessment (catch-wrapped and header-deleted members violate); a set-wide packaging cause is one typed blocker under permuted first-reported names and never a card; an unloadable config value is located at the annotation that names the property IN THE DESTINATION'S OWN MODEL (the frozen source's model answers only when the destination cannot be modelled, and the brief says which did; ${x:d} and a bare x are one property), at application.properties only when the name is real and unread, and is a blocker when the name is empty and unread -- the same decisions under renamed identifiers; parity mismatches are typed by their diffs (CORS → application.properties, the rest → the controller; scenario verdicts count, the receipt does not) and carry their exit conditions as advice built from those diffs (CORS properties are the source's own recorded values with the paired actual request and the exposed headers as the exit; a redirect is the source's status and its literal Location after origin mapping only, the doubled root path named, the legacy address served from the packaged UI, a property outside the write set entering through amend-scope) — the same advice, about its own values, on a specimen that shares no name with this one; the PARITY GATE: an obligation carries gate=parity and the scenarios it is made of (a read oracle takes its receipt row's), and a card is discharged only by the re-composed receipt recording those scenarios PASS -- still reported, gone but INCONCLUSIVE, another entry point broken, a startup gate broken and an un-composed receipt all refuse")
     return 0
 
 

@@ -620,6 +620,42 @@ def enrich(items: list[dict], root: Path, cluster: dict) -> list[dict]:
     return out
 
 
+def parity_brief(items: list[dict], cluster: dict) -> dict:
+    """What a PARITY card is measured by, on the card itself.
+
+    A parity repair leaves the compile/test tuple where it was, so "the measure
+    decides" would read as "nothing can ever accept this card" (v9 card
+    t_77cae2b2: the CORS properties the brief asked for were written, the
+    acceptance pass was green, and advance.py reverted them because [0,0,0] did
+    not decrease). What decides is the comparison itself, re-run for this
+    card's own scenarios by the SAME acceptance command -- so the card says so,
+    and names the scenarios that have to come back PASS."""
+    rows = [i for i in items or [] if str(i.get("source") or "") == "parity"]
+    if not rows and str(cluster.get("gate") or "") != "parity":
+        return {}
+    scenarios = sorted({str(s) for i in rows for s in (i.get("scenarios") or []) if str(s)})
+    entry_points = sorted({str(i.get("entry_point") or "") for i in rows if i.get("entry_point")})
+    return {
+        "gate": "parity",
+        "scenarios": scenarios,
+        "entry_points": entry_points,
+        "measured_by": (
+            "run-verify.sh --mode acceptance re-runs the scenario comparison for this card (run-parity.py, scoped to %s) "
+            "after the packaging and startup gates, and re-composes verification/parity/receipt.json. You run the same "
+            "command you always run; nothing extra." % (", ".join(scenarios) if scenarios else
+                                                        "this card's entry points, read oracles included")),
+        "discharged_when": (
+            "the re-composed receipt records %s as PASS. Disappearing from the work list is not enough: a scenario that "
+            "became INCONCLUSIVE disappears too, and that is not a repair." %
+            (", ".join(scenarios) if scenarios else "the entry point(s) this card names")),
+        "refused_when": (
+            "the same obligation is still reported, or an entry point the receipt recorded PASS before this card is no "
+            "longer PASS -- a parity repair may not break another scenario. If the comparison could not run or the "
+            "receipt could not be composed, nothing was measured: the candidate is retained (VERIFICATION_PENDING) and "
+            "no attempt is spent."),
+    }
+
+
 def _max_attempts(root: Path) -> int:
     try:
         from planner.decisions import load_decisions, max_attempts
@@ -765,6 +801,9 @@ def main(argv: list[str] | None = None) -> int:
         }
     if repo:
         brief["repository"] = repo
+    parity = parity_brief(items, cluster)
+    if parity:
+        brief["parity"] = parity
     # The SEALED SCOPE. The card is not finished while any inventoried member
     # still breaks the rule, so the worker is told the whole roster and the
     # current verdict on each one — including the members that are already
