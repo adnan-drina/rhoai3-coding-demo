@@ -232,6 +232,12 @@ def next_card(worklist: dict[str, Any], steps: dict[str, Any] | None) -> dict[st
             card["gate"] = str(head["gate"])
         if head.get("batch_scope"):
             card["batch_scope"] = dict(head["batch_scope"])
+        # A formed unit carries its sealed identity onto the card: the rule, the
+        # symbols, the documented targets, the evidence and the completion
+        # checks. The MEMBERS stay in the sealed inventory the card's refs point
+        # at -- a body is not where an inventory lives.
+        if head.get("unit"):
+            card["unit"] = dict(head["unit"])
         if head.get("retry_key"):
             card["retry_key"] = rk
         return card

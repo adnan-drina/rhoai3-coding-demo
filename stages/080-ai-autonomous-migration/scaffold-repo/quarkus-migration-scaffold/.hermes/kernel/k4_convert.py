@@ -43,6 +43,11 @@ Issue = tuple[str, str, str]
 # actually on disk: an exit criterion naming a script nobody can run is a
 # refusal the worker cannot satisfy.
 VERDICT_SCHEMA_SCRIPT = "skills/gates/compose-m4-verdict/scripts/assert-m4-verdict-schema.py"
+# What of a unit the BODY carries. The inventory is on disk under its own
+# digest and the body refs it; K1 refuses a body that inlines derived content,
+# and a full member list is exactly that.
+UNIT_BODY_SYMBOLS = 8
+UNIT_BODY_EVIDENCE = 8
 SKILLS_ASSERT = (
     "consult each skill pinned on this card; unused pins are legal (skills_unused). "
     "A false consult — claiming a skill that was not loaded — is a defect. Do not silence a missing pin."
@@ -128,7 +133,8 @@ def _body(card: dict[str, Any], receipt: dict[str, Any], worklist_sha: str, arti
     scope = card.get("batch_scope") or {}
     if scope.get("path") and scope.get("file_sha256"):
         refs.append({"key": "batch-scope", "path": str(scope["path"]), "sha256": str(scope["file_sha256"])})
-    return {
+    body_unit = _unit_block(card)
+    body = {
         "task_id": card["id"],
         "role": IMPL,
         "phase": card["phase"],
@@ -145,6 +151,32 @@ def _body(card: dict[str, Any], receipt: dict[str, Any], worklist_sha: str, arti
         "files_in_scope": list(paths),
         "files_writable": list(paths),
         "exit_criteria": exits,
+    }
+    if body_unit:
+        body["unit"] = body_unit
+    return body
+
+
+def _unit_block(card: dict[str, Any]) -> dict[str, Any]:
+    """The additive `unit` block, and only for a cluster the former made.
+
+    It carries the unit's identity, what it may work on and how it is judged --
+    never its member inventory, which stays in the sealed batch-scope document
+    the refs already name (K1 refuses an inlined blob, and a 160-site inventory
+    is one). `write_set` keeps its row shape and simply lists more paths, so
+    BODY_SCOPE, INCREMENT_KINDS, CARD_SKILLS and the board are untouched."""
+    unit = card.get("unit") or {}
+    if not isinstance(unit, dict) or not unit.get("unit_id"):
+        return {}
+    return {
+        "unit_id": str(unit.get("unit_id") or ""),
+        "rule": str(unit.get("rule") or ""),
+        "family_key": str(unit.get("family_key") or ""),
+        "symbols": list(unit.get("symbols") or [])[:UNIT_BODY_SYMBOLS],
+        "target_symbols": list(unit.get("target_symbols") or [])[:UNIT_BODY_SYMBOLS],
+        "evidence": list(unit.get("evidence") or [])[:UNIT_BODY_EVIDENCE],
+        "size": dict(unit.get("size") or {}),
+        "completion": [str(c) for c in (unit.get("completion") or [])],
     }
 
 
@@ -265,6 +297,11 @@ def convert_admitted(root: Path, *, write_root: bool = True) -> tuple[dict[str, 
             # the sealed scope inventory this card is judged against; acceptance
             # re-reads it from disk and refuses a digest that is not this one
             "batch_scope": dict(card.get("batch_scope") or {}),
+            # the formed unit and its SYMBOL seal, beside the file seal: which
+            # diagnostics the checkpoint may tolerate, what assess_unit must
+            # find discharged, what a CONTINUE may move to
+            "unit": dict(card.get("unit") or {}),
+            "unit_symbols": list((card.get("unit") or {}).get("symbols") or []),
             "retry_key": str(card.get("retry_key") or card["id"]),
             # the one budget answer (planner.budget), recorded where the card is issued
             "budget": loop_budget(load_json(root / LOOP_STEPS) if (root / LOOP_STEPS).is_file() else {}, card["id"],

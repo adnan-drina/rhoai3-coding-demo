@@ -8,6 +8,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from planner.cards import card_title
 from planner.worklist import CHECKED_FAMILY_RULE, EXPOSED, RETAIN, UNPROVEN, apply_supersessions, assess_checked_family, batch_scope_digest, batch_scope_path, build_batch_scope, retry_key, runtime_items  # noqa: E402
+from planner.canonical import digest  # noqa: E402
+from planner.worklist import SYMBOL_CLUSTER_MAX_FILES  # noqa: E402
+from planner.worklist import RULE_CONFIG_CONSUMERS, SPRING_VALUE_ANNOTATION as SPRING_VALUE  # noqa: E402
+from planner.worklist import (RULE_DECLARATION_CLOSURE, RULE_DIAGNOSTIC_FAMILY, RULE_PACKAGE_LEAF,  # noqa: E402
+                              UNIT_MAX_FILES, UNIT_MAX_SITES, UNIT_MAX_SYMBOLS, build_unit_scope, form_units,
+                              runtime_cause, unit_formation_for, unit_formation_mode, unit_id_of)
 from planner.dest_model import dest_model, diagnostic_identity  # noqa: E402
 from planner.worklist import APP_PROPERTIES, KIND_RANK, cluster_items, parity_items, runtime_items, compile_items, file_depths, incidents_from_findings, measure_of, obligation_keys, path_class, progress, surefire_from_reports, test_items  # noqa: E402
 
@@ -856,10 +862,619 @@ def _parity_gate_case() -> int:
     return 0
 
 
+# ---------------------------------------------------------------------------
+# unit formation (design of 2026-09-15 §1): the four typed rules, the seal,
+# the bound, and the experiment's table reproduced where a fixture can say it
+# ---------------------------------------------------------------------------
+#
+# Every case is asserted TWICE: once on world A and once on a structurally
+# identical twin with every package, type, member and foreign symbol renamed
+# (SAD §2.1 criterion 2). A rule that read a name of this specimen would pass
+# the first and fail the second.
+
+GOLDEN = Path(__file__).resolve().parents[3]
+
+
+def _dm_ann(fqn: str) -> dict:
+    return {"fqn": fqn, "simple": fqn.rsplit(".", 1)[-1], "values": {}, "resolution": "full"}
+
+
+def _dm_member(name: str, signature: str, *, has_body: bool = False, calls=(), throws=(), annotations=()) -> dict:
+    return {"name": name, "signature": signature, "resolution": "full", "has_body": has_body,
+            "annotations": [dict(a) for a in annotations], "calls": list(calls),
+            "throws_checked": list(throws), "type_refs": [], "call_names": []}
+
+
+def _dm_type(fqn: str, path: str, *, kind: str = "class", imports=(), supertypes=(), annotations=(),
+             declared=(), type_refs=(), resolution: str = "full") -> dict:
+    return {"path": path, "fqn": fqn, "kind": kind, "resolution": resolution,
+            "imports": list(imports), "supertypes": list(supertypes),
+            "annotations": [dict(a) for a in annotations], "declared": [dict(d) for d in declared],
+            "fields": [], "unhandled_throws": [], "inherited": [], "supertype_methods": [],
+            "inherited_known": True, "type_refs": sorted(set(type_refs))}
+
+
+def _javac(path: str, token: str, n: int, *, kind: str = "class") -> dict:
+    return {"id": "err:%s:%s:%d" % (path.rsplit("/", 1)[-1], token, n), "source": "javac", "kind": "compile",
+            # build_worklist stamps the line-free identity before clustering
+            "identity": "diag:%s|%s|%d" % (path, token, n),
+            "category": "mandatory", "path": path, "line": 10 + n,
+            "rule_id": "compiler.err.cant.resolve.location",
+            "message": "cannot find symbol\n  symbol:   %s %s\n  location: class X" % (kind, token)}
+
+
+# world A and its renamed twin: nothing structural differs, every identifier does
+_WORLD_A = {
+    "base": "org.acme.clinic",
+    "svc_pkg": "service", "rest_pkg": "rest", "leaf_pkg": "util", "gated_pkg": "repo", "frag_pkg": "frag",
+    "svc": "ClinicService", "impl": "ClinicServiceImpl",
+    "controllers": ("OwnerRestController", "PetRestController", "VisitRestController"),
+    "member": "lookupOwner", "param": "int",
+    "exc": "org.springframework.dao.DataAccessException",
+    "spanning": "org.springframework.transaction.annotation.Transactional",
+    "gated": "org.springframework.context.annotation.Profile",
+    "leaf_symbols": ("org.springframework.util.MutableSortDefinition", "org.springframework.beans.support.PropertyComparator",
+                     "org.springframework.core.style.ToStringCreator", "org.springframework.format.annotation.DateTimeFormat"),
+    # one of these carries a documented catalog target; the rest do not
+    "web_symbols": ("javax.ws.rs.core.Context", "org.springframework.validation.BindingResult",
+                    "org.springframework.validation.FieldError", "org.springframework.http.HttpStatus",
+                    "org.springframework.web.bind.annotation.CrossOrigin"),
+    "frag_member": "lookupByCustomClause", "frag_n": 7,
+}
+_WORLD_B = {
+    "base": "com.example.warehouse",
+    "svc_pkg": "domain", "rest_pkg": "api", "leaf_pkg": "helper", "gated_pkg": "store", "frag_pkg": "mixin",
+    "svc": "DepotGateway", "impl": "DepotGatewayBean",
+    "controllers": ("CrateEndpoint", "PalletEndpoint", "ShipmentEndpoint"),
+    "member": "resolveCrate", "param": "long",
+    "exc": "io.legacyframework.persistence.StoreAccessFault",
+    "spanning": "io.legacyframework.tx.UnitOfWork",
+    "gated": "io.legacyframework.ctx.Variant",
+    "leaf_symbols": ("io.legacyframework.sort.OrderSpec", "io.legacyframework.sort.AttributeRanker",
+                     "io.legacyframework.text.DescriptionMaker", "io.legacyframework.fmt.InstantPattern"),
+    "web_symbols": ("io.legacyframework.http.Injected", "io.legacyframework.bind.BindReport",
+                    "io.legacyframework.bind.FieldFault", "io.legacyframework.http.StatusCode",
+                    "io.legacyframework.web.OriginPolicy"),
+    "frag_member": "resolveByHandwrittenClause", "frag_n": 7,
+}
+_GATED_FILES = 15
+
+
+def _unit_world(n: dict) -> tuple[dict, list[dict], dict]:
+    """(dest model, javac items, the keys the rules are expected to form).
+
+    The shapes are the experiment's evidence classes: a `throws` surface across
+    an interface, its implementer and its callers (WU-1); an annotation family
+    over many files in one leaf directory (WU-2); a directory of helpers
+    nothing outside refers to (WU-4); five independent web symbols each
+    spanning two directories (WU-3); and seven fragment parents with a member
+    no implementer answers (WU-5)."""
+    base, pkg = n["base"], n["base"].replace(".", "/")
+    types: list[dict] = []
+    items: list[dict] = []
+
+    def rel(sub: str, name: str) -> str:
+        return "%s/%s/%s.java" % (pkg, sub, name)
+
+    def full(sub: str, name: str) -> str:
+        return "src/main/java/" + rel(sub, name)
+
+    def simple(fqn: str) -> str:
+        return fqn.rsplit(".", 1)[-1]
+
+    # --- (b) the throws surface: interface + implementer + three callers
+    svc = "%s.%s.%s" % (base, n["svc_pkg"], n["svc"])
+    sig = "%s(%s)" % (n["member"], n["param"])
+    types.append(_dm_type(svc, rel(n["svc_pkg"], n["svc"]), kind="interface", imports=[n["exc"]],
+                          declared=[_dm_member(n["member"], sig, throws=[n["exc"]])]))
+    impl = "%s.%s.%s" % (base, n["svc_pkg"], n["impl"])
+    types.append(_dm_type(impl, rel(n["svc_pkg"], n["impl"]), supertypes=[svc],
+                          imports=[n["exc"], n["spanning"]] + list(n["web_symbols"]),
+                          declared=[_dm_member(n["member"], sig, has_body=True, throws=[n["exc"]],
+                                               annotations=[_dm_ann(n["spanning"])])],
+                          type_refs=[svc]))
+    surface_files = [full(n["svc_pkg"], n["svc"]), full(n["svc_pkg"], n["impl"])]
+    for i, c in enumerate(n["controllers"]):
+        fqn = "%s.%s.%s" % (base, n["rest_pkg"], c)
+        types.append(_dm_type(fqn, rel(n["rest_pkg"], c),
+                              imports=[n["exc"], svc, n["spanning"]] + list(n["web_symbols"]),
+                              declared=[_dm_member("handle", "handle(%s)" % n["param"], has_body=True,
+                                                   calls=["%s.%s" % (svc, sig)],
+                                                   annotations=[_dm_ann(n["spanning"])] if i == 0 else ())],
+                              type_refs=[svc]))
+        surface_files.append(full(n["rest_pkg"], c))
+    for i, p in enumerate(surface_files):
+        items.append(_javac(p, simple(n["exc"]), i))
+
+    # --- (a) one family spanning two directories: never a leaf
+    items.append(_javac(full(n["svc_pkg"], n["impl"]), simple(n["spanning"]), 90, kind="interface"))
+    items.append(_javac(full(n["rest_pkg"], n["controllers"][0]), simple(n["spanning"]), 91, kind="interface"))
+
+    # --- (a) ×5: five independent web symbols, each in one controller and the
+    #     implementer, so no single directory holds a whole family (WU-3)
+    for i, sym in enumerate(n["web_symbols"]):
+        items.append(_javac(full(n["rest_pkg"], n["controllers"][i % len(n["controllers"])]), simple(sym), 100 + i))
+        items.append(_javac(full(n["svc_pkg"], n["impl"]), simple(sym), 200 + i))
+
+    # --- (c) a gated directory nothing outside refers to: one annotation
+    #     family over fifteen files (WU-2's @Profile half)
+    for i in range(_GATED_FILES):
+        name = "Gated%02d" % i
+        types.append(_dm_type("%s.%s.%s" % (base, n["gated_pkg"], name), rel(n["gated_pkg"], name),
+                              imports=[n["gated"]], annotations=[_dm_ann(n["gated"])]))
+        items.append(_javac(full(n["gated_pkg"], name), simple(n["gated"]), 300 + i, kind="interface")),
+
+    # --- (c) a directory of helpers nothing outside refers to, four symbols (WU-4)
+    for i, sym in enumerate(n["leaf_symbols"]):
+        name = "Helper%d" % i
+        types.append(_dm_type("%s.%s.%s" % (base, n["leaf_pkg"], name), rel(n["leaf_pkg"], name), imports=[sym]))
+        items.append(_javac(full(n["leaf_pkg"], name), simple(sym), 400 + i))
+
+    # --- (b) over a set the platform names one member of: seven parents, each
+    #     with a member no implementer answers, each extended by a store (WU-5)
+    frag_files: list[str] = []
+    for i in range(n["frag_n"]):
+        parent = "%s.%s.Fragment%d" % (base, n["frag_pkg"], i)
+        child = "%s.%s.Store%d" % (base, n["frag_pkg"], i)
+        types.append(_dm_type(parent, rel(n["frag_pkg"], "Fragment%d" % i), kind="interface",
+                              declared=[_dm_member(n["frag_member"], "%s(%s)" % (n["frag_member"], n["param"]))]))
+        types.append(_dm_type(child, rel(n["frag_pkg"], "Store%d" % i), kind="interface", supertypes=[parent]))
+        frag_files += [full(n["frag_pkg"], "Fragment%d" % i), full(n["frag_pkg"], "Store%d" % i)]
+
+    # --- a test source: never writable, never a unit member (WU-3 / R-1)
+    items.append(_javac("src/test/java/%s/%s/%sTest.java" % (pkg, n["rest_pkg"], n["controllers"][0]),
+                        simple(n["web_symbols"][1]), 500))
+
+    expect = {
+        "surface_key": svc, "surface_files": sorted(surface_files),
+        "gated_dir": "src/main/java/%s/%s" % (pkg, n["gated_pkg"]),
+        "leaf_dir": "src/main/java/%s/%s" % (pkg, n["leaf_pkg"]),
+        "spanning": n["spanning"], "web": [str(s) for s in n["web_symbols"]],
+        "frag_files": sorted(frag_files), "frag_n": n["frag_n"],
+        "exc": n["exc"], "gated": n["gated"],
+    }
+    return {"types": types}, items, expect
+
+
+def _set_wide_item(scope: str = "spring-data-fragment-implementations") -> dict:
+    return {"id": "rt:boot:setwide", "source": "runtime", "gate": "boot", "kind": "config",
+            "cause": "missing-implementation", "set_wide": scope, "unlocated": True, "path": "",
+            "category": "mandatory", "line": 0, "rule_id": "RUNTIME_APPLICATION_CONFIGURATION",
+            "message": "No implementation of interface X was found"}
+
+
+def _by_rule(units: list[dict]) -> dict[str, list[dict]]:
+    out: dict[str, list[dict]] = {}
+    for c in units:
+        out.setdefault(str(c["unit"]["rule"]), []).append(c)
+    return out
+
+
+def _unit_formation_case() -> int:
+    """The four typed rules, each on its own evidence class, and the same
+    verdicts on a twin that shares no identifier with the first."""
+    for label, names in (("A", _WORLD_A), ("B", _WORLD_B)):
+        model, items, want = _unit_world(names)
+        rows = items + [_set_wide_item()]
+        units, claimed = form_units(rows, {}, set(), model=model, root=GOLDEN)
+        by_rule = _by_rule(units)
+
+        # (b) WU-1: the surface is ONE unit -- the interface, its implementer
+        # and its three callers -- not two halves of a symbol group.
+        closures = [c for c in by_rule.get(RULE_DECLARATION_CLOSURE, []) if c["unit"]["family_key"].startswith(want["surface_key"])]
+        if len(closures) != 1:
+            return _fail("[%s] one declaration closure over the throws surface: %s" % (label, [c["unit"]["family_key"] for c in by_rule.get(RULE_DECLARATION_CLOSURE, [])]))
+        surface = closures[0]
+        if sorted(surface["write_set"]) != want["surface_files"]:
+            return _fail("[%s] the closure writes the declaration, its implementers and its callers: %s" % (label, surface["write_set"]))
+        states = {str(m["state"]) for m in surface["_unit_seal"]["members"]}
+        if not {"declares", "implements", "calls"} <= states:
+            return _fail("[%s] the closure's members name why each is in it: %s" % (label, sorted(states)))
+        if not any(e["kind"] == "javac" for e in surface["_unit_seal"]["evidence"]) or not any(e["kind"] == "model" for e in surface["_unit_seal"]["evidence"]):
+            return _fail("[%s] a closure cites both the diagnostic and the model relation" % label)
+
+        # (c) WU-2 / WU-4: two leaves, decided by type_refs and never by a name
+        leaves = {c["unit"]["family_key"]: c for c in by_rule.get(RULE_PACKAGE_LEAF, [])}
+        if sorted(leaves) != sorted([want["gated_dir"], want["leaf_dir"]]):
+            return _fail("[%s] the two leaf directories form: %s" % (label, sorted(leaves)))
+        if len(leaves[want["gated_dir"]]["write_set"]) != _GATED_FILES:
+            return _fail("[%s] the gated leaf is its whole directory: %d" % (label, len(leaves[want["gated_dir"]]["write_set"])))
+        if len(leaves[want["leaf_dir"]]["unit"]["symbols"]) != 4 or len(leaves[want["leaf_dir"]]["write_set"]) != 4:
+            return _fail("[%s] the helper leaf unions four families over four files: %s" % (label, leaves[want["leaf_dir"]]["unit"]))
+
+        # (a) WU-3: five independent web symbols are five units, not one
+        families = {c["unit"]["family_key"]: c for c in by_rule.get(RULE_DIAGNOSTIC_FAMILY, [])}
+        for sym in want["web"]:
+            if sym not in families:
+                return _fail("[%s] each web symbol is its own family: %s missing from %s" % (label, sym, sorted(families)))
+        if want["spanning"] not in families:
+            return _fail("[%s] a family spanning two directories is (a), never a leaf: %s" % (label, sorted(families)))
+        if len(families) != len(want["web"]) + 1:
+            return _fail("[%s] no other family forms: %s" % (label, sorted(families)))
+
+        # (b) WU-5: the set the platform names one member of becomes a unit
+        frag = [c for c in by_rule.get(RULE_DECLARATION_CLOSURE, []) if c["unit"]["family_key"].startswith("spring-data-fragment-implementations:")]
+        if len(frag) != 1 or sorted(frag[0]["write_set"]) != want["frag_files"]:
+            return _fail("[%s] the fragment set is one unit over its parents and their implementers: %s" % (label, [c["unit"]["family_key"] for c in frag]))
+        if len(frag[0]["unit"]["symbols"]) != want["frag_n"]:
+            return _fail("[%s] one symbol per unimplemented member: %s" % (label, frag[0]["unit"]["symbols"]))
+
+        # R-1: a test source is never in a write set and never a unit member
+        for c in units:
+            if any(p.startswith("src/test/") for p in c["write_set"]) or any(str(m["path"]).startswith("src/test/") for m in c["_unit_seal"]["members"]):
+                return _fail("[%s] a test source is never writable, for any unit: %s" % (label, c["unit"]["family_key"]))
+        if any(i["id"] in claimed for i in items if str(i["path"]).startswith("src/test/")):
+            return _fail("[%s] a test-only diagnostic is claimed by no unit" % label)
+
+        # every unit is inside the bound, and every unit is an ORDINARY cluster
+        for c in units:
+            size = c["unit"]["size"]
+            if size["files"] > UNIT_MAX_FILES or size["sites"] > UNIT_MAX_SITES or size["symbols"] > UNIT_MAX_SYMBOLS:
+                return _fail("[%s] %s exceeds the bound: %s" % (label, c["unit"]["family_key"], size))
+            if c["kind"] not in KIND_RANK or c["status"] not in ("open", "deferred", "blocked") or not c["id"].startswith("u:"):
+                return _fail("[%s] a unit is an ordinary cluster: %s" % (label, {k: c[k] for k in ("id", "kind", "status")}))
+            if not c["unit"]["completion"] or not c["unit"]["evidence"]:
+                return _fail("[%s] every unit carries completion checks and evidence: %s" % (label, c["unit"]["family_key"]))
+            if str(retry_key(dict(c, batch_scope={"kind": "unit", "unit_id": c["unit"]["unit_id"]}))) != "rk:unit:%s" % c["unit"]["unit_id"]:
+                return _fail("[%s] a unit's budget is keyed to the unit, not the card" % label)
+
+        # the documented target, and the counterexample it exists for
+        targets = {t["to"] for c in units for t in c["unit"]["target_symbols"]}
+        if label == "A":
+            if "jakarta.ws.rs.core.Context" not in targets:
+                return _fail("a sealed symbol with a catalog row carries its documented target: %s" % sorted(targets))
+            if "jakarta.ws.rs.Context" in targets:
+                return _fail("a target nobody documented is not a target (v9 t_3903f495)")
+            row = [t for c in units for t in c["unit"]["target_symbols"] if t["to"] == "jakarta.ws.rs.core.Context"][0]
+            if row["catalog_row"].get("catalog") != "compat-mapping.json" or not row["catalog_row"].get("block"):
+                return _fail("a target names the catalog row that documents it: %s" % row)
+        elif targets:
+            return _fail("[B] a renamed world matches no catalog row, so it has no documented target: %s" % sorted(targets))
+
+        # the set the model cannot enumerate stays the typed blocker it was
+        bare, bare_claimed = form_units([_set_wide_item()], {}, set(), model={"types": []}, root=GOLDEN)
+        if bare or bare_claimed:
+            return _fail("[%s] a set the model cannot enumerate mints nothing; the blocker stands" % label)
+        other, _ = form_units(items + [_set_wide_item("some-other-set")], {}, set(), model=model, root=GOLDEN)
+        if any(c["unit"]["family_key"].startswith("some-other-set") for c in other):
+            return _fail("[%s] only a scope RUNTIME_SET_WIDE_FORMER names may become a unit" % label)
+    return 0
+
+
+def _unit_bound_case() -> int:
+    """Deterministic narrowing, then a typed blocker. Never an arbitrary
+    file-order chunk: that is what makes a coordinated repair unrepresentable."""
+    base = "org.acme.big"
+    pkg = base.replace(".", "/")
+    sym = "org.springframework.dao.DataAccessException"
+
+    # one family, one group, more files than the bound: nothing to narrow
+    wide_items = [_javac("src/main/java/%s/w/W%02d.java" % (pkg, i), "DataAccessException", i)
+                  for i in range(UNIT_MAX_FILES + 5)]
+    wide_types = [_dm_type("%s.w.W%02d" % (base, i), "%s/w/W%02d.java" % (pkg, i), imports=[sym],
+                           type_refs=["%s.outside.Anchor" % base]) for i in range(UNIT_MAX_FILES + 5)]
+    wide_types.append(_dm_type("%s.outside.Anchor" % base, "%s/outside/Anchor.java" % pkg,
+                               type_refs=["%s.w.W00" % base]))
+    units, _ = form_units(wide_items, {}, set(), model={"types": wide_types}, root=None)
+    if len(units) != 1 or units[0]["status"] != "blocked":
+        return _fail("a family wider than the bound is a blocked cluster: %s" % [(c["unit"]["family_key"], c["status"]) for c in units])
+    block = units[0]["block"]
+    if not block.startswith("UNIT_OVERSIZE: ") or "a repair this wide is a planning answer" not in block:
+        return _fail("and the reason is typed and names the rule and the key: %r" % block)
+    if len(units[0]["write_set"]) != UNIT_MAX_FILES + 5:
+        return _fail("an oversize unit is never silently chunked: %d files" % len(units[0]["write_set"]))
+
+    # a leaf of many small families narrows by dropping the LOWEST-cardinality
+    # ones, deterministically, and records why
+    many = []
+    many_types = []
+    for i in range(UNIT_MAX_SYMBOLS + 4):
+        name = "L%02d" % i
+        fqn = "org.springframework.sym.S%02d" % i
+        many_types.append(_dm_type("%s.leaf.%s" % (base, name), "%s/leaf/%s.java" % (pkg, name), imports=[fqn]))
+        # family i has i+1 sites, so the drop order is fixed by cardinality
+        for k in range(i + 1):
+            many.append(_javac("src/main/java/%s/leaf/%s.java" % (pkg, name), "S%02d" % i, 1000 * i + k))
+    units, _ = form_units(many, {}, set(), model={"types": many_types}, root=None)
+    leaf = [c for c in units if c["unit"]["rule"] == RULE_PACKAGE_LEAF]
+    if len(leaf) != 1:
+        return _fail("the leaf unions the families: %s" % [c["unit"]["rule"] for c in units])
+    seal = leaf[0]["_unit_seal"]
+    if seal["bounds"]["symbols"] > UNIT_MAX_SYMBOLS or "narrowed" not in seal["bounds"]:
+        return _fail("narrowing brings the union inside the bound and records it: %s" % seal["bounds"])
+    if seal["bounds"]["narrowed"]["reason"] != "UNIT_NARROWED" or seal["bounds"]["narrowed"]["from"]["symbols"] != UNIT_MAX_SYMBOLS + 4:
+        return _fail("the narrowing records what it came from: %s" % seal["bounds"]["narrowed"])
+    kept = {str(s["fqn"]) for s in seal["symbols"]}
+    if "org.springframework.sym.S00" in kept or "org.springframework.sym.S11" not in kept:
+        return _fail("the lowest-cardinality families are the ones dropped: %s" % sorted(kept))
+    again, _ = form_units(list(reversed(many)), {}, set(), model={"types": list(reversed(many_types))}, root=None)
+    twin = [c for c in again if c["unit"]["rule"] == RULE_PACKAGE_LEAF][0]
+    if twin["id"] != leaf[0]["id"] or twin["write_set"] != leaf[0]["write_set"]:
+        return _fail("narrowing is deterministic: %s vs %s" % (twin["id"], leaf[0]["id"]))
+    if not any("UNIT_NARROWED" in str(e.get("ref")) for e in seal["evidence"]):
+        return _fail("and it leaves an evidence line")
+
+    # a closure over the bound drops CALLER-ONLY files and keeps the
+    # declaration and its direct implementers
+    svc = "%s.s.Wide" % base
+    sig = "call(int)"
+    ctypes = [_dm_type(svc, "%s/s/Wide.java" % pkg, kind="interface", imports=[sym],
+                       declared=[_dm_member("call", sig, throws=[sym])]),
+              _dm_type("%s.s.WideImpl" % base, "%s/s/WideImpl.java" % pkg, supertypes=[svc], imports=[sym],
+                       declared=[_dm_member("call", sig, has_body=True, throws=[sym])], type_refs=[svc])]
+    for i in range(UNIT_MAX_FILES + 3):
+        ctypes.append(_dm_type("%s.c.C%02d" % (base, i), "%s/c/C%02d.java" % (pkg, i), imports=[sym, svc],
+                               declared=[_dm_member("go", "go()", has_body=True, calls=["%s.%s" % (svc, sig)])],
+                               type_refs=[svc]))
+    citems = [_javac("src/main/java/%s/s/Wide.java" % pkg, "DataAccessException", 1)]
+    units, _ = form_units(citems, {}, set(), model={"types": ctypes}, root=None)
+    closure = [c for c in units if c["unit"]["rule"] == RULE_DECLARATION_CLOSURE]
+    if len(closure) != 1 or closure[0]["status"] != "open":
+        return _fail("a closure narrows rather than blocking: %s" % [(c["unit"]["rule"], c["status"]) for c in units])
+    paths = set(closure[0]["write_set"])
+    if "src/main/java/%s/s/Wide.java" % pkg not in paths or "src/main/java/%s/s/WideImpl.java" % pkg not in paths:
+        return _fail("narrowing keeps the declaration and its implementers: %s" % sorted(paths))
+    if any(p.startswith("src/main/java/%s/c/" % pkg) for p in paths):
+        return _fail("and drops the caller-only files: %s" % sorted(paths))
+    if "UNIT_NARROWED" not in " ".join(str(e.get("ref")) for e in closure[0]["_unit_seal"]["evidence"]):
+        return _fail("with a line saying so")
+    return 0
+
+
+def _unit_seal_case() -> int:
+    """Files AND symbols, sealed at issue, at a path named by the seal's own
+    digest. Two seals, two jobs: files are the hard boundary, symbols are the
+    obligation boundary, and a reference written during the card widens
+    neither."""
+    import tempfile
+
+    model, items, want = _unit_world(_WORLD_A)
+    units, _ = form_units(items, {}, set(), model=model, root=GOLDEN)
+    surface = [c for c in units if c["unit"]["family_key"].startswith(want["surface_key"])][0]
+    with tempfile.TemporaryDirectory(prefix="unit-seal-") as d:
+        root = Path(d)
+        scope = build_unit_scope(root, surface, items, {"candidate_sha256": "abc"})
+        if not scope:
+            return _fail("a formed unit must produce a sealed inventory")
+        missing = [k for k in ("schema", "kind", "rule", "unit_id", "family_key", "writable_paths", "symbols",
+                               "target_symbols", "members", "evidence", "completion", "bounds", "measured",
+                               "inputs", "digest", "cluster", "producer", "tool") if k not in scope]
+        if missing:
+            return _fail("the v4 seal is missing %s" % missing)
+        if scope["schema"] != "rhoai3.batch-scope/v4" or scope["kind"] != "unit":
+            return _fail("the seal names its schema and kind: %s %s" % (scope["schema"], scope["kind"]))
+        if batch_scope_digest(scope) != scope["digest"]:
+            return _fail("the seal must be reproducible from content alone")
+        if scope["writable_paths"] != sorted(surface["write_set"]):
+            return _fail("the FILE seal is the write set advance.py enforces: %s" % scope["writable_paths"])
+        if not all({"kind", "fqn"} <= set(s) for s in scope["symbols"]):
+            return _fail("every sealed symbol is typed: %s" % scope["symbols"])
+        if not all({"path", "state"} <= set(m) for m in scope["members"]):
+            return _fail("every member row says where it is and why: %s" % scope["members"][:2])
+        if not all({"kind", "ref"} <= set(e) for e in scope["evidence"]):
+            return _fail("every evidence line is typed: %s" % scope["evidence"][:2])
+        if not all({"check", "tool"} <= set(c) for c in scope["completion"]):
+            return _fail("every completion check names the tool that decides it: %s" % scope["completion"])
+        if {c["check"] for c in scope["completion"]} < {"identities-gone", "unit-assessment"}:
+            return _fail("the checks are derived from the members: %s" % [c["check"] for c in scope["completion"]])
+        if scope["inputs"]["candidate_sha256"] != "abc" or scope["measured"] != sorted(surface["items"]):
+            return _fail("the seal records what it was built from: %s" % scope["inputs"])
+
+        first = batch_scope_path(scope)
+        # a remeasurement of the same tree is a NEW inventory at a NEW path,
+        # never a rewrite of the one the card was issued against
+        moved = dict(surface)
+        moved["_unit_seal"] = dict(surface["_unit_seal"])
+        moved["_unit_seal"]["members"] = surface["_unit_seal"]["members"][:-1]
+        second = build_unit_scope(root, moved, items, {"candidate_sha256": "def"})
+        if second["digest"] == scope["digest"] or batch_scope_path(second) == first:
+            return _fail("two inventories of one cluster must not share a path")
+        if batch_scope_path(second).parent != first.parent:
+            return _fail("both still belong to the same cluster's directory")
+
+        # the budget is keyed to the PROBLEM: the same members under another
+        # candidate keep one unit_id, a different member set is another problem
+        same = build_unit_scope(root, surface, items, {"candidate_sha256": "zzz"})
+        if same["unit_id"] != scope["unit_id"]:
+            return _fail("unit_id survives remeasurement: %s vs %s" % (same["unit_id"], scope["unit_id"]))
+        if unit_id_of(scope["rule"], scope["family_key"], scope["members"][:-1]) == scope["unit_id"]:
+            return _fail("a different member set is a different problem")
+
+        # a symbol the model gains AFTER the seal does not widen it
+        widened = dict(model)
+        widened["types"] = model["types"] + [_dm_type("org.acme.clinic.rest.Sneak", "org/acme/clinic/rest/Sneak.java",
+                                                      imports=["org.springframework.security.SecurityConfig"])]
+        later, _ = form_units(items, {}, set(), model=widened, root=GOLDEN)
+        later_surface = [c for c in later if c["unit"]["family_key"].startswith(want["surface_key"])][0]
+        if {s["fqn"] for s in later_surface["unit"]["symbols"]} != {s["fqn"] for s in scope["symbols"]}:
+            return _fail("a type the candidate merely mentions does not enter the symbol seal")
+    return 0
+
+
+def _unit_mode_case() -> int:
+    """The mode is a decision, and it may not flip under a live candidate."""
+    import json
+    import tempfile
+
+    if unit_formation_mode({}) != "off" or unit_formation_mode({"loop": {"unit_formation": "v1"}}) != "v1":
+        return _fail("absent means off; v1 means v1")
+    if unit_formation_mode({"loop": {"unit_formation": "v2"}}) != "off":
+        return _fail("an undeclared mode falls back to the one that changes nothing")
+    with tempfile.TemporaryDirectory(prefix="unit-mode-") as d:
+        root = Path(d)
+        (root / "evidence" / "planning").mkdir(parents=True)
+        (root / "verification" / "loop").mkdir(parents=True)
+        decided = {"loop": {"unit_formation": "v1"}}
+        if unit_formation_for(root, decided) != ("v1", ""):
+            return _fail("with no previous list the decided mode stands")
+        (root / "evidence" / "planning" / "worklist.json").write_text(json.dumps({"unit_formation": "off"}))
+        mode, why = unit_formation_for(root, decided)
+        if (mode, why) != ("v1", ""):
+            return _fail("with no card issued the switch takes effect: %s %s" % (mode, why))
+        (root / "verification" / "loop" / "issued.json").write_text(json.dumps({"cluster": "c:live"}))
+        mode, why = unit_formation_for(root, decided)
+        if mode != "off" or not why.startswith("UNIT_MODE_SWITCH: ") or "c:live" not in why:
+            return _fail("a flip under an issued card is refused, naming the card: %s %s" % (mode, why))
+        (root / "verification" / "loop" / "issued.json").unlink()
+        (root / "verification" / "loop" / "steps.json").write_text(json.dumps({"pending": [{"cluster": "c:pend"}]}))
+        mode, why = unit_formation_for(root, decided)
+        if mode != "off" or "c:pend" not in why:
+            return _fail("an uncleared pending candidate refuses it too: %s %s" % (mode, why))
+        (root / "verification" / "loop" / "steps.json").write_text(json.dumps({"pending": [{"cluster": "c:pend", "cleared": True}]}))
+        if unit_formation_for(root, decided) != ("v1", ""):
+            return _fail("a cleared row is a clean boundary")
+    return 0
+
+
+def _unit_inert_case() -> int:
+    """With formation off, clustering is byte-for-byte what it was -- which is
+    what lets this ship without disturbing the run already under way."""
+    model, items, _want = _unit_world(_WORLD_A)
+    depths = {}
+    legacy = cluster_items(items, depths, set())
+    if digest(cluster_items(items, depths, set(), units=[])) != digest(legacy):
+        return _fail("the new keyword changes nothing when no unit is formed")
+    if digest(cluster_items(items, depths, set(), units=None)) != digest(legacy):
+        return _fail("and neither does its default")
+    # the legacy path is exactly the 8-file chunking a unit replaces
+    gated = _WORLD_A["gated"].rsplit(".", 1)[-1]
+    chunks = sorted(c["label"] for c in legacy if str(c.get("label") or "").startswith(gated + "#"))
+    if chunks != ["%s#1" % gated, "%s#2" % gated]:
+        return _fail("legacy clustering still chunks a %d-file symbol group into %d-file pieces: %s"
+                     % (_GATED_FILES, SYMBOL_CLUSTER_MAX_FILES, chunks))
+    # and with units formed, the claimed items leave the legacy passes entirely
+    units, claimed = form_units(items, depths, set(), model=model, root=GOLDEN)
+    formed = cluster_items(items, depths, set(), units=units)
+    if {c["id"] for c in units} - {c["id"] for c in formed}:
+        return _fail("a formed unit is one of the clusters")
+    seen = [i for c in formed if c["id"] not in {u["id"] for u in units} for i in c["items"]]
+    if set(seen) & claimed:
+        return _fail("an item a unit took never reaches the per-file pass: %s" % sorted(set(seen) & claimed)[:3])
+    if sorted(i for c in formed for i in c["items"]) != sorted(i["id"] for i in items):
+        return _fail("and nothing is lost: clustering is still total")
+    return 0
+
+
+def _unit_experiment_table_case() -> int:
+    """The design's table (experiments/rgctl-2026-09-15/WORK-UNITS.md, 11 units)
+    as assertions, where this fixture can express them: 5 reproduce, 3 split,
+    2 are Operator work the planner must NOT mint, 1 is correctly unreachable."""
+    model, items, want = _unit_world(_WORLD_A)
+    units, claimed = form_units(items + [_set_wide_item()], {}, set(), model=model, root=GOLDEN)
+    by_key = {c["unit"]["family_key"]: c for c in units}
+    rules = _by_rule(units)
+
+    # WU-1 reproduced: one unit, and it is the unit today's loop cannot express
+    surface = [c for c in units if c["unit"]["family_key"].startswith(want["surface_key"])]
+    if len(surface) != 1 or len(surface[0]["write_set"]) != 5:
+        return _fail("WU-1 reproduces as one coordinated unit: %s" % [(c["unit"]["family_key"], len(c["write_set"])) for c in surface])
+    # WU-2 splits into two: the gated leaf, and the family that spans two directories
+    if want["gated_dir"] not in by_key or want["spanning"] not in by_key:
+        return _fail("WU-2 splits into a leaf and a spanning family: %s" % sorted(by_key))
+    if by_key[want["gated_dir"]]["unit"]["rule"] != RULE_PACKAGE_LEAF or by_key[want["spanning"]]["unit"]["rule"] != RULE_DIAGNOSTIC_FAMILY:
+        return _fail("and each under its own rule, with its own symbol seal and its own budget")
+    if by_key[want["gated_dir"]]["unit"]["unit_id"] == by_key[want["spanning"]]["unit"]["unit_id"]:
+        return _fail("two units, two budgets")
+    # WU-3 splits into five, one per symbol
+    web = [c for c in rules.get(RULE_DIAGNOSTIC_FAMILY, []) if c["unit"]["family_key"] in set(want["web"])]
+    if len(web) != 5:
+        return _fail("WU-3 splits into five independently checkpointable units: %d" % len(web))
+    # WU-3 / R-1 unreachable, correctly: a test source is never writable
+    if any(p.startswith("src/test/") for c in units for p in c["write_set"]):
+        return _fail("R-1 stays unreachable: a test source is never writable, for any unit, for any evidence")
+    # WU-4 reproduced by the leaf rule, decided by type_refs and not by a name
+    if want["leaf_dir"] not in by_key or by_key[want["leaf_dir"]]["unit"]["rule"] != RULE_PACKAGE_LEAF:
+        return _fail("WU-4 reproduces as a package leaf: %s" % sorted(by_key))
+    # WU-5 reproduced -- the new capability: today this mints no card at all
+    frag = [c for c in units if c["unit"]["family_key"].startswith("spring-data-fragment-implementations:")]
+    if len(frag) != 1 or "rt:boot:setwide" not in claimed:
+        return _fail("WU-5 becomes a mintable unit, and the set-wide row is its obligation")
+    # WU-6 / WU-11 are ADR-shaped: nothing javac or the model states, so the
+    # former mints nothing for them
+    adr_only, adr_claimed = form_units([{"id": "rt:boot:adr", "source": "runtime", "gate": "boot", "kind": "config",
+                                         "cause": "unclassified", "set_wide": "", "unlocated": True, "path": "",
+                                         "category": "mandatory", "line": 0, "rule_id": "R", "message": "security is enabled"}],
+                                       {}, set(), model=model, root=GOLDEN)
+    if adr_only or adr_claimed:
+        return _fail("WU-6 / WU-11 are Operator steps, not planner units")
+    # WU-7 / WU-8: one obligation at one locus, and a gate obligation, stay the
+    # single cards they already are -- a unit needs more than one locus
+    single, single_claimed = form_units([_javac("src/main/java/org/acme/clinic/rest/OwnerRestController.java", "Lonely", 1)],
+                                        {}, set(), model=model, root=GOLDEN)
+    if single or single_claimed:
+        return _fail("WU-7 / WU-8 stay one card: a lone locus forms no unit")
+    # WU-9 is NOT reproducible yet, and the design says exactly why: the
+    # query-invalid cause row is not in RUNTIME_CAUSES, so a Hibernate
+    # strictness failure still classifies as a missing schema object
+    if runtime_cause("org.hibernate.query.SemanticException: could not resolve attribute 'x'") == "query-invalid":
+        return _fail("WU-9's cause row landed; the table's 'reproduced conditionally' row needs updating")
+    if runtime_cause("could not resolve attribute 'x' -- relation \"y\" does not exist") != "schema-missing-object":
+        return _fail("without the row it misfiles as a schema object, which is the gap the design records")
+    # WU-10 splits into its distinct causes: three parity causes are three
+    # problems in three places, and the former unions none of them
+    return 0
+
+
+
+def _unit_config_case() -> int:
+    """(d) a configuration property and the code that reads it: one unit over
+    the property file and every annotated consumer, on two worlds that share
+    no identifier."""
+    import tempfile
+
+    for label, prop, base, field in (("A", "app.root.path", "org.acme.clinic", "contextPath"),
+                                     ("B", "depot.base.uri", "com.example.warehouse", "baseUri")):
+        pkg = base.replace(".", "/")
+        with tempfile.TemporaryDirectory(prefix="unit-cfg-") as d:
+            root = Path(d)
+            res = root / "src" / "main" / "resources"
+            res.mkdir(parents=True)
+            (res / "application.properties").write_text("# a comment\n%%prod.%s=/x\nother.key=1\n" % prop, encoding="utf-8")
+            (res / "application-other.properties").write_text("unrelated=1\n", encoding="utf-8")
+            readers = []
+            types = []
+            for i in range(2):
+                name = "Reader%d" % i
+                types.append(dict(_dm_type("%s.web.%s" % (base, name), "%s/web/%s.java" % (pkg, name)),
+                                  fields=[{"name": field, "type": "java.lang.String",
+                                           "annotations": [{"fqn": SPRING_VALUE, "simple": "Value",
+                                                            "named": {"value": [prop]}, "resolution": "full"}]}]))
+                readers.append("src/main/java/%s/web/%s.java" % (pkg, name))
+            item = {"id": "rt:boot:cfg", "source": "runtime", "gate": "boot", "kind": "config",
+                    "cause": "config-value", "set_wide": "", "path": "src/main/resources/application.properties",
+                    "category": "mandatory", "line": 0, "rule_id": "RUNTIME_APPLICATION_CONFIGURATION",
+                    "message": "Failed to load config value of type class java.lang.String for: %s" % prop}
+            units, claimed = form_units([item], {}, set(), model={"types": types}, root=root)
+            cfg = [c for c in units if c["unit"]["rule"] == RULE_CONFIG_CONSUMERS]
+            if len(cfg) != 1 or "rt:boot:cfg" not in claimed:
+                return _fail("[%s] one unit over the property and its consumers: %s" % (label, [c["unit"]["rule"] for c in units]))
+            unit = cfg[0]
+            if unit["unit"]["family_key"] != prop:
+                return _fail("[%s] the property name is the family key: %s" % (label, unit["unit"]["family_key"]))
+            if sorted(unit["write_set"]) != sorted(readers + ["src/main/resources/application.properties"]):
+                return _fail("[%s] the write set is the property file AND the annotation sites: %s" % (label, unit["write_set"]))
+            if "src/main/resources/application-other.properties" in unit["write_set"]:
+                return _fail("[%s] a properties file that does not declare the key is not in scope" % label)
+            if [s["kind"] for s in unit["unit"]["symbols"]] != ["property"]:
+                return _fail("[%s] the sealed symbol is the property: %s" % (label, unit["unit"]["symbols"]))
+            states = {str(m["state"]) for m in unit["_unit_seal"]["members"]}
+            if states != {"reads", "declares-property"}:
+                return _fail("[%s] each member says whether it declares or reads the property: %s" % (label, sorted(states)))
+            if unit.get("gate") != "boot" or not any(c["check"] == "gate" for c in unit["_unit_seal"]["completion"]):
+                return _fail("[%s] a gate obligation carries its gate as a completion check: %s" % (label, unit["_unit_seal"]["completion"]))
+            # nothing reads it: no consumer, no unit, and today's path stands
+            alone, alone_claimed = form_units([item], {}, set(), model={"types": []}, root=root)
+            if alone or alone_claimed:
+                return _fail("[%s] a property with no annotated consumer forms no unit" % label)
+    return 0
+
+
 def main() -> int:
     if (_runtime_identity_case() or _gate_progress_case() or _batch_scope_case() or _checked_family_case()
             or _set_wide_case() or _config_value_case() or _parity_typing_case() or _parity_advice_case()
-            or _parity_gate_case()):
+            or _parity_gate_case() or _unit_formation_case() or _unit_bound_case() or _unit_seal_case()
+            or _unit_mode_case() or _unit_inert_case() or _unit_config_case()
+            or _unit_experiment_table_case()):
         return 1
 
     if path_class("pom.xml") != "build" or path_class("src/main/resources/application.properties") != "config" or path_class("src/test/java/A.java") != "test" or path_class("src/main/java/A.java") != "source":
@@ -1038,7 +1653,7 @@ def main() -> int:
         return _fail("reclassified items keep their authority and are never dropped")
     if measure_of(all_items, incidents_known=False, compile_known=True, tests_known=True, parity_known=False)["known"]:
         return _fail("unknown incidents never advance")
-    print("OK: worklist (lossless line-free incidents; canary excluded; only ERROR diagnostics; build→config→compile(leaf-first)→incident→test order; tests never writable; lexicographic 3-tuple progress; new-incident veto; unknown never advances; gate progress is the issued obligation disappearing, never a reworded one; a second cause at one file is a second obligation); a repository card's inventory is sealed by its own digest and two measurements never share a path; checked-exception family: bound to its introducing step (a legacy site stays out), one budget, line-free identity across a moved line, CONTINUE / EXPOSED / still-reported / 1→0 accept, per-member assessment (catch-wrapped and header-deleted members violate); a set-wide packaging cause is one typed blocker under permuted first-reported names and never a card; an unloadable config value is located at the annotation that names the property IN THE DESTINATION'S OWN MODEL (the frozen source's model answers only when the destination cannot be modelled, and the brief says which did; ${x:d} and a bare x are one property), at application.properties only when the name is real and unread, and is a blocker when the name is empty and unread -- the same decisions under renamed identifiers; parity mismatches are typed by their diffs (CORS → application.properties, the rest → the controller; scenario verdicts count, the receipt does not) and carry their exit conditions as advice built from those diffs (CORS properties are the source's own recorded values with the paired actual request and the exposed headers as the exit; a redirect is the source's status and its literal Location after origin mapping only, the doubled root path named, the legacy address served from the packaged UI, a property outside the write set entering through amend-scope) — the same advice, about its own values, on a specimen that shares no name with this one; the PARITY GATE: an obligation carries gate=parity and the scenarios it is made of (a read oracle takes its receipt row's), and a card is discharged only by the re-composed receipt recording those scenarios PASS -- still reported, gone but INCONCLUSIVE, another entry point broken, a startup gate broken and an un-composed receipt all refuse")
+    print("OK: worklist (lossless line-free incidents; canary excluded; only ERROR diagnostics; build→config→compile(leaf-first)→incident→test order; tests never writable; lexicographic 3-tuple progress; new-incident veto; unknown never advances; gate progress is the issued obligation disappearing, never a reworded one; a second cause at one file is a second obligation); a repository card's inventory is sealed by its own digest and two measurements never share a path; checked-exception family: bound to its introducing step (a legacy site stays out), one budget, line-free identity across a moved line, CONTINUE / EXPOSED / still-reported / 1→0 accept, per-member assessment (catch-wrapped and header-deleted members violate); a set-wide packaging cause is one typed blocker under permuted first-reported names and never a card; an unloadable config value is located at the annotation that names the property IN THE DESTINATION'S OWN MODEL (the frozen source's model answers only when the destination cannot be modelled, and the brief says which did; ${x:d} and a bare x are one property), at application.properties only when the name is real and unread, and is a blocker when the name is empty and unread -- the same decisions under renamed identifiers; parity mismatches are typed by their diffs (CORS → application.properties, the rest → the controller; scenario verdicts count, the receipt does not) and carry their exit conditions as advice built from those diffs (CORS properties are the source's own recorded values with the paired actual request and the exposed headers as the exit; a redirect is the source's status and its literal Location after origin mapping only, the doubled root path named, the legacy address served from the packaged UI, a property outside the write set entering through amend-scope) — the same advice, about its own values, on a specimen that shares no name with this one; the PARITY GATE: an obligation carries gate=parity and the scenarios it is made of (a read oracle takes its receipt row's), and a card is discharged only by the re-composed receipt recording those scenarios PASS -- still reported, gone but INCONCLUSIVE, another entry point broken, a startup gate broken and an un-composed receipt all refuse; UNIT FORMATION (decisions.loop.unit_formation v1): four typed rules over one measurement -- a throws surface closes over its interface, implementers and callers as ONE unit; an annotation family confined to a directory nothing outside refers to is a package leaf (decided by type_refs, never by a package name); a family spanning two directories and five independent web symbols stay five separate families; a set-wide packaging cause whose parents the model CAN enumerate becomes a mintable unit while one it cannot stays the typed blocker; a test source is never writable and a lone locus forms no unit; a property and its annotated consumers are one unit and a properties file that does not declare the key is out of scope -- every verdict repeated on a twin that shares no package, type, member or foreign symbol. The SEAL is rhoai3.batch-scope/v4: files AND symbols, typed evidence, completion checks naming the tool that decides them, reproducible from content, at a path named by its own digest, with unit_id surviving remeasurement (one budget per PROBLEM) and a type the candidate merely mentions never widening it; a documented target carries its compat-mapping symbol_renames row and an undocumented one is no target (v9 t_3903f495). The BOUND narrows deterministically -- caller-only files, then the lowest-cardinality families -- and refuses UNIT_OVERSIZE rather than chunking. With the mode off clustering is byte-for-byte what it was, and the mode may not flip while a card is issued or a pending row is open (UNIT_MODE_SWITCH)")
     return 0
 
 

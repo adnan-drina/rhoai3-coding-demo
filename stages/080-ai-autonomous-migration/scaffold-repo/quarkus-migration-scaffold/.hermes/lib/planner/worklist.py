@@ -50,7 +50,7 @@ from typing import Any
 from planner.canonical import canonical_bytes, digest, load_json, sha256_bytes, sha256_file, sort_unique
 from planner.dest_model import (DestModelUnavailable, above_members, dest_model, diagnostic_identity, fields_of, member_ids, model_at_commit,  # noqa: E501
                                  site_for_diagnostic, site_signature, source_write_members as _model_writes, types_of, unhandled_sites)
-from planner.paths import is_product_path, EVIDENCE_BUNDLE, STRUCTURE, TYPE_INVENTORY, LOOP_DEFERRED, LOOP_STEPS, MTA_RESCAN_FINDINGS, PARITY_DIR, VERIFY_BOOT, VERIFY_DIAGNOSTICS, VERIFY_PACKAGE, VERIFY_RUN, VERIFY_SUREFIRE, WORKLIST
+from planner.paths import is_product_path, CATALOGS_DIR, EVIDENCE_BUNDLE, STRUCTURE, TYPE_INVENTORY, LOOP_DEFERRED, LOOP_ISSUED, LOOP_STEPS, MTA_RESCAN_FINDINGS, PARITY_DIR, VERIFY_BOOT, VERIFY_DIAGNOSTICS, VERIFY_PACKAGE, VERIFY_RUN, VERIFY_SUREFIRE, WORKLIST
 
 SCHEMA = "rhoai3.worklist/v1"
 KIND_RANK = {"build": 0, "config": 1, "compile": 2, "incident": 3, "test": 4, "parity": 5}
@@ -313,6 +313,15 @@ RUNTIME_CAUSES = (
 RUNTIME_SET_WIDE = (
     ("io.quarkus.spring.data.deployment", "missing-implementation", "spring-data-fragment-implementations"),
 )
+
+
+# Which former may turn a set-wide scope into a mintable unit. Data, not a
+# literal in the former: the row says "rule (b) can enumerate this set from
+# the model". When the former returns nothing the typed blocker stands,
+# unchanged -- a set the model cannot enumerate is still not a card.
+RUNTIME_SET_WIDE_FORMER = {
+    "spring-data-fragment-implementations": "unit/declaration-closure/v1",
+}
 
 
 def set_wide_scope(text: str, cause: str) -> str:
@@ -1265,7 +1274,14 @@ def compile_token(item: dict[str, Any]) -> str:
     return m.group(1) if m else ""
 
 
-def cluster_items(items: list[dict[str, Any]], depths: dict[str, int], deferred: set[str]) -> list[dict[str, Any]]:
+def cluster_items(items: list[dict[str, Any]], depths: dict[str, int], deferred: set[str],
+                  *, units: list[dict[str, Any]] | None = None) -> list[dict[str, Any]]:
+    # Units (form_units, decisions.loop.unit_formation == "v1") claim their
+    # items BEFORE the symbol-group and per-file passes; with none the
+    # clustering below is byte-for-byte what it was, which is what lets the
+    # former ship without disturbing a run that is already under way.
+    units = list(units or [])
+    taken: set[str] = {i for c in units for i in (c.get("items") or [])}
     # Compile items that are the same unresolved name in several files are one
     # obligation, not one per file: they get one card whose write set lists the
     # files (capped, so a card stays one model turn). Pilot v6: 829 errors were
@@ -1274,12 +1290,11 @@ def cluster_items(items: list[dict[str, Any]], depths: dict[str, int], deferred:
     by_token: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for it in items:
         tok = compile_token(it)
-        if tok:
+        if tok and it["id"] not in taken:
             by_token[tok].append(it)
     symbol_groups: list[tuple[str, list[dict[str, Any]]]] = []
-    taken: set[str] = set()
     for tok in sorted(by_token):
-        rows = by_token[tok]
+        rows = [r for r in by_token[tok] if r["id"] not in taken]
         files = sorted({r["path"] for r in rows})
         if len(files) < 2:
             continue
@@ -1293,7 +1308,7 @@ def cluster_items(items: list[dict[str, Any]], depths: dict[str, int], deferred:
     for it in items:
         if it["id"] not in taken:
             by_path[it["path"]].append(it)
-    clusters: list[dict[str, Any]] = []
+    clusters: list[dict[str, Any]] = list(units)
     for label, its in symbol_groups:
         its = sorted(its, key=lambda i: i["id"])
         files = sort_unique([i["path"] for i in its])
@@ -1595,6 +1610,8 @@ def build_batch_scope(root: Path, cluster: dict[str, Any], items: list[dict[str,
     A compile card for an unhandled checked exception gets a repair-family
     inventory instead (build_checked_family_scope). Those extra sites are not
     invented diagnostics."""
+    if cluster.get("_unit_seal"):
+        return build_unit_scope(root, cluster, items, bundle)
     rows = [i for i in items if str(i.get("id")) in set(cluster.get("items") or []) and str(i.get("source")) == "runtime"]
     if not rows:
         return build_checked_family_scope(root, cluster, items, bundle)
@@ -1693,6 +1710,8 @@ def assess_batch_scope(root: Path, scope: dict[str, Any]) -> list[dict[str, Any]
     verdict is not a pass: the caller must refuse."""
     if str(scope.get("rule") or "") == CHECKED_FAMILY_RULE:
         return assess_checked_family(root, scope)
+    if str(scope.get("kind") or "") == UNIT_KIND:
+        return assess_unit(root, scope)
     path = str(scope.get("repository") or "")
     typ, why = _repo_type(Path(root), path)
     if typ is None:
@@ -1777,6 +1796,836 @@ def assess_batch_scope(root: Path, scope: dict[str, Any]) -> list[dict[str, Any]
     return out
 
 
+# ---------------------------------------------------------------------------
+# unit formation (architect ruling 1, design of 2026-09-15 §1)
+# ---------------------------------------------------------------------------
+#
+# A unit is one COORDINATED repair: the files AND the symbols one change has
+# to cover for the tree to compile again. Nothing here invents a fact. The
+# only sources are javac identities (compile_items / compile_token /
+# diagnostic_identity), the destination model (planner.dest_model, read-only),
+# the versioned catalogs (planning/catalogs/compat-mapping.json) and
+# decisions.yaml. No graph tool, no source-text scanning, no regex over bodies.
+#
+# Without a former, the 8-file chunking of SYMBOL_CLUSTER_MAX_FILES is what a
+# multi-file repair gets, and neither half of a split `throws` surface
+# compiles. The former runs only when decisions.loop.unit_formation is "v1";
+# otherwise clustering is byte-for-byte what it was.
+
+UNIT_SCHEMA = "rhoai3.batch-scope/v4"
+UNIT_KIND = "unit"
+RULE_DIAGNOSTIC_FAMILY = "unit/diagnostic-family/v1"
+RULE_DECLARATION_CLOSURE = "unit/declaration-closure/v1"
+RULE_PACKAGE_LEAF = "unit/package-leaf/v1"
+RULE_CONFIG_CONSUMERS = "unit/config-consumers/v1"
+# Precedence when two rules claim the same item: (c) > (b) > (a) > (d),
+# evaluated in this order, first claim wins, ties broken by the sorted family
+# key. Deterministic because every input is sorted and content-addressed.
+UNIT_RULES = (RULE_PACKAGE_LEAF, RULE_DECLARATION_CLOSURE, RULE_DIAGNOSTIC_FAMILY, RULE_CONFIG_CONSUMERS)
+
+# The growth bound. 20 files covers a 15-file annotation family and a 13-file
+# throws surface; 160 sites is one measurement's worth (107 was the largest
+# observed); a package-leaf union of more than 8 symbols is not one repair.
+UNIT_MAX_FILES = 20
+UNIT_MAX_SITES = 160
+UNIT_MAX_SYMBOLS = 8
+
+UNIT_FORMATION_V1 = "v1"
+UNIT_FORMATION_OFF = "off"
+# the set-wide runtime scope rule (b) can enumerate a mintable unit for
+FRAGMENT_SET = "spring-data-fragment-implementations"
+
+
+def unit_formation_mode(decisions_doc: dict[str, Any] | None) -> str:
+    """decisions.loop.unit_formation, normalised. Absent ⇒ off ⇒ today's
+    clustering. planner.decisions owns the reading; this is the one caller."""
+    from planner.decisions import unit_formation as _read
+
+    return _read(decisions_doc or {})
+
+
+def _issued_work(root: Path) -> str:
+    """The card the run is in the middle of: the issued cluster, or a cluster
+    whose VERIFICATION_PENDING candidate is uncleared. "" when neither."""
+    root = Path(root)
+    p = root / LOOP_ISSUED
+    if p.is_file():
+        try:
+            cid = str((load_json(p) or {}).get("cluster") or "")
+        except (OSError, ValueError):
+            cid = ""
+        if cid:
+            return cid
+    s = root / LOOP_STEPS
+    if s.is_file():
+        try:
+            steps = load_json(s) or {}
+        except (OSError, ValueError):
+            steps = {}
+        for row in steps.get("pending") or []:
+            if isinstance(row, dict) and row.get("cluster") and not row.get("cleared") and not row.get("rewound"):
+                return str(row["cluster"])
+    return ""
+
+
+def unit_formation_for(root: Path, decisions_doc: dict[str, Any] | None) -> tuple[str, str]:
+    """(the mode this list is formed under, why it is not the decided one).
+
+    Flipping the mode changes cluster ids, so the issued card would vanish from
+    the work list and advance.py would refuse LOOP_NOT_ISSUED, discarding a
+    worker's candidate. The flip is therefore refused while a card is issued or
+    a pending row is open, with a typed blocker naming the card to finish
+    first; the switch takes effect at a clean boundary."""
+    wanted = unit_formation_mode(decisions_doc)
+    root = Path(root)
+    prev = ""
+    p = root / WORKLIST
+    if p.is_file():
+        try:
+            prev = str((load_json(p) or {}).get("unit_formation") or "")
+        except (OSError, ValueError):
+            prev = ""
+    if prev not in (UNIT_FORMATION_V1, UNIT_FORMATION_OFF) or prev == wanted:
+        return wanted, ""
+    card = _issued_work(root)
+    if not card:
+        return wanted, ""
+    return prev, ("UNIT_MODE_SWITCH: decisions.yaml asks for loop.unit_formation %r while this list was formed %r and "
+                  "cluster %s is still issued or pending; the flip changes every cluster id, so the outstanding "
+                  "candidate would be discarded as not-issued. Finish %s, then the switch takes effect at the next "
+                  "clean boundary." % (wanted, prev, card, card))
+
+
+# --- pure reads over the destination model ---------------------------------
+#
+# dest_model.py is read-only here: these are reads of the document the Java
+# tool already emits, so jdk-dest-model's tool.version stays 1.2.0.
+
+def _unit_types(model: dict[str, Any] | None) -> list[dict[str, Any]]:
+    return [t for t in ((model or {}).get("types") or []) if isinstance(t, dict)]
+
+
+def _unit_path(typ: dict[str, Any]) -> str:
+    return "src/main/java/" + str(typ.get("path") or "")
+
+
+def _erased(ref: Any) -> str:
+    """A type reference without its type arguments: JpaRepository<Vet,Integer>
+    is the supertype JpaRepository."""
+    s = str(ref or "")
+    i = s.find("<")
+    return s[:i] if i >= 0 else s
+
+
+def unit_bound_imports(typ: dict[str, Any]) -> dict[str, str]:
+    """simple name → FQN for the imports that BIND it. A wildcard import binds
+    nothing: it is why two different `Context` types are two families."""
+    out: dict[str, str] = {}
+    for i in typ.get("imports") or []:
+        s = str(i)
+        if s.endswith(".*"):
+            continue
+        out[s.rsplit(".", 1)[-1]] = s
+    return out
+
+
+def unit_implementers(model: dict[str, Any] | None, fqn: str) -> list[dict[str, Any]]:
+    """Types whose `supertypes` contain `fqn`. ONE HOP, never transitive: that
+    is the primary growth bound."""
+    return sorted((t for t in _unit_types(model) if fqn in [_erased(s) for s in (t.get("supertypes") or [])]),
+                  key=lambda t: (_unit_path(t), str(t.get("fqn") or "")))
+
+
+def unit_callers_of(model: dict[str, Any] | None, fqn: str, signature: str) -> list[dict[str, Any]]:
+    """Every declared member whose resolved `calls` name `fqn.signature`."""
+    want = "%s.%s" % (fqn, signature)
+    out: list[dict[str, Any]] = []
+    for t in _unit_types(model):
+        ids = member_ids(t)
+        for m in t.get("declared") or []:
+            if not isinstance(m, dict):
+                continue
+            if want in [str(c) for c in (m.get("calls") or [])]:
+                sig = str(m.get("signature") or "")
+                out.append({"path": _unit_path(t), "type": str(t.get("fqn") or ""),
+                            "member_id": ids.get(sig, str(m.get("name") or "")), "signature": sig})
+    return sorted(out, key=lambda r: (r["path"], r["type"], r["member_id"]))
+
+
+def unit_annotation_sites(model: dict[str, Any] | None) -> list[dict[str, Any]]:
+    """Every annotation the model recorded, one row per SITE — the
+    generalisation of profile_conditions() to any annotation. `fqn` is the
+    compiler's when it resolved one, else what the file's imports bind."""
+    out: list[dict[str, Any]] = []
+    for t in _unit_types(model):
+        path, fqn = _unit_path(t), str(t.get("fqn") or "")
+        bound = unit_bound_imports(t)
+        res = str(t.get("resolution") or "")
+        sites: list[tuple[str, Any, str]] = [("", t.get("annotations") or [], res)]
+        for m in t.get("declared") or []:
+            if isinstance(m, dict):
+                sites.append((str(m.get("signature") or m.get("name") or ""), m.get("annotations") or [], str(m.get("resolution") or res)))
+        for f in t.get("fields") or []:
+            if isinstance(f, dict):
+                sites.append((str(f.get("name") or ""), f.get("annotations") or [], res))
+        for member, anns, mres in sites:
+            for a in anns or []:
+                if not isinstance(a, dict):
+                    continue
+                afqn = str(a.get("fqn") or "")
+                simple = str(a.get("simple") or "") or afqn.rsplit(".", 1)[-1]
+                out.append({"path": path, "type": fqn, "member": member, "simple": simple,
+                            "fqn": afqn or bound.get(simple, ""), "resolution": mres})
+    return sorted(out, key=lambda r: (r["path"], r["type"], r["member"], r["simple"]))
+
+
+def unit_member_shape(member: dict[str, Any]) -> str:
+    """A digest over a declared member's (signature, annotations, calls,
+    throws_checked): what "this member changed" means without reading text."""
+    m = member if isinstance(member, dict) else {}
+    return sha256_bytes(canonical_bytes({
+        "signature": str(m.get("signature") or ""),
+        "annotations": sorted(str(a.get("simple") or a.get("fqn") or "") for a in (m.get("annotations") or []) if isinstance(a, dict)),
+        "calls": sorted(str(c) for c in (m.get("calls") or [])),
+        "throws_checked": sorted(str(x) for x in (m.get("throws_checked") or [])),
+    }))[:16]
+
+
+# --- the catalog rows a unit's targets are documented by --------------------
+
+def symbol_renames(root: Path | None) -> dict[str, dict[str, Any]]:
+    """compat-mapping.json `symbol_renames`: documented symbol-level targets.
+
+    Every row is a documented mapping, never an inference — the same contract
+    package_renames carries. It is what makes "the replacement this unit moves
+    to" checkable: jakarta.ws.rs.core.Context has a row and jakarta.ws.rs.Context
+    does not, so a candidate that invented the second one stays unexplained."""
+    if root is None:
+        return {}
+    p = Path(root) / CATALOGS_DIR / "compat-mapping.json"
+    if not p.is_file():
+        return {}
+    try:
+        doc = load_json(p)
+    except (OSError, ValueError):
+        return {}
+    rows = doc.get("symbol_renames") or {}
+    return {str(k): dict(v) for k, v in rows.items() if k != "note" and isinstance(v, dict) and v.get("to")}
+
+
+def package_renames_of(root: Path | None) -> dict[str, str]:
+    if root is None:
+        return {}
+    p = Path(root) / CATALOGS_DIR / "compat-mapping.json"
+    if not p.is_file():
+        return {}
+    try:
+        doc = load_json(p)
+    except (OSError, ValueError):
+        return {}
+    return {str(k): str(v) for k, v in (doc.get("package_renames") or {}).items() if k != "note" and isinstance(v, str)}
+
+
+def unit_target_symbols(symbols: list[dict[str, Any]], renames: dict[str, dict[str, Any]],
+                        packages: dict[str, str]) -> list[dict[str, Any]]:
+    """[{from, to, catalog_row}] — the documented replacement of each sealed
+    symbol, when a catalog row records one. A symbol with no row contributes
+    nothing: the unit then has no documented target, and the checkpoint has
+    nothing to tolerate."""
+    out: list[dict[str, Any]] = []
+    for s in symbols:
+        fqn = str(s.get("fqn") or "")
+        if not fqn:
+            continue
+        row = renames.get(fqn)
+        if row is not None:
+            out.append({"from": fqn, "to": str(row.get("to") or ""),
+                        "catalog_row": {"catalog": "compat-mapping.json", "block": "symbol_renames", "key": fqn,
+                                        "kind": str(row.get("kind") or ""), "source": str(row.get("source") or "")}})
+            continue
+        for old in sorted(packages, key=len, reverse=True):
+            if fqn == old or fqn.startswith(old + "."):
+                out.append({"from": fqn, "to": packages[old] + fqn[len(old):],
+                            "catalog_row": {"catalog": "compat-mapping.json", "block": "package_renames", "key": old,
+                                            "kind": "package", "source": ""}})
+                break
+    return sorted(out, key=lambda r: (r["from"], r["to"]))
+
+
+# --- the four rules --------------------------------------------------------
+
+def _unit_member(path: str, *, type_fqn: str = "", member_id: str = "", occurrence: int = 0,
+                 state: str = "", **extra: Any) -> dict[str, Any]:
+    row = {"path": path, "type": type_fqn, "member_id": member_id, "occurrence": occurrence, "state": state}
+    row.update({k: v for k, v in extra.items() if v})
+    return row
+
+
+def _annotation_simples(model: dict[str, Any] | None) -> dict[str, set[str]]:
+    out: dict[str, set[str]] = defaultdict(set)
+    for r in unit_annotation_sites(model):
+        out[r["path"]].add(r["simple"])
+    return out
+
+
+def resolve_compile_symbol(model: dict[str, Any] | None, item: dict[str, Any],
+                           annotations: dict[str, set[str]] | None = None) -> tuple[str, str]:
+    """(family key, symbol kind) for one compile item.
+
+    The key is the resolved FQN when the declaring file's imports bind the
+    token, else the bare token. That resolution is the whole point: two
+    different `Context` types stay two families instead of collapsing into one
+    (v9 card t_3903f495)."""
+    tok = compile_token(item)
+    if not tok:
+        return "", ""
+    msg = str(item.get("message") or item.get("detail") or "")
+    if _PKG_RE.search(msg) and not _SYM_RE.search(msg):
+        return tok, "package"
+    path = str(item.get("path") or "")
+    kind = "annotation" if tok in (annotations or {}).get(path, set()) else "type"
+    for t in types_of(model, path) if model else []:
+        bound = unit_bound_imports(t)
+        if tok in bound:
+            return bound[tok], kind
+    return tok, kind
+
+
+def diagnostic_families(items: list[dict[str, Any]], model: dict[str, Any] | None) -> list[dict[str, Any]]:
+    """Rule (a): every javac site that names one unresolved symbol or package,
+    resolved through the declaring file's imports."""
+    annotations = _annotation_simples(model)
+    by_key: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
+    for it in items:
+        key, kind = resolve_compile_symbol(model, it, annotations)
+        if key:
+            by_key[(key, kind)].append(it)
+    out: list[dict[str, Any]] = []
+    for (key, kind) in sorted(by_key):
+        rows = sorted(by_key[(key, kind)], key=lambda i: str(i.get("id")))
+        out.append({"key": key, "symbol_kind": kind, "items": rows,
+                    "files": sort_unique([str(r.get("path") or "") for r in rows])})
+    return out
+
+
+def _family_members(family: dict[str, Any], model: dict[str, Any] | None) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    seen: dict[str, int] = {}
+    for it in family["items"]:
+        path = str(it.get("path") or "")
+        typ = next((t for t in (types_of(model, path) if model else [])), None)
+        seen[path] = seen.get(path, 0) + 1
+        rows.append(_unit_member(path, type_fqn=str((typ or {}).get("fqn") or ""),
+                                 member_id="", occurrence=seen[path] - 1, state="reported",
+                                 identity=str(it.get("identity") or ""), item=str(it.get("id") or "")))
+    return rows
+
+
+def _family_evidence(family: dict[str, Any]) -> list[dict[str, Any]]:
+    out = [{"kind": "javac", "ref": "%s %s names %s" % (str(i.get("path") or ""), str(i.get("rule_id") or ""), family["key"])}
+           for i in family["items"]]
+    return out
+
+
+def _declaring_throws(model: dict[str, Any] | None, exception_fqn: str) -> list[tuple[dict[str, Any], dict[str, Any]]]:
+    """(type, declared member) for every member that DECLARES `exception_fqn`.
+
+    A `throws` clause on an interface is a surface: the implementers and the
+    callers are bound to it, and repairing one side alone does not compile."""
+    out: list[tuple[dict[str, Any], dict[str, Any]]] = []
+    for t in _unit_types(model):
+        for m in t.get("declared") or []:
+            if isinstance(m, dict) and exception_fqn in [str(x) for x in (m.get("throws_checked") or [])]:
+                out.append((t, m))
+    return sorted(out, key=lambda r: (_unit_path(r[0]), str(r[1].get("signature") or "")))
+
+
+def declaration_closure(model: dict[str, Any] | None, typ: dict[str, Any],
+                        members: list[dict[str, Any]]) -> dict[str, Any]:
+    """Rule (b): a declaration plus its DIRECT implementers and DIRECT callers.
+
+    One hop only. The key is (declaring fqn, member signature set), which is
+    stable under remeasurement because both come from the model."""
+    fqn = str(typ.get("fqn") or "")
+    sigs = sort_unique([str(m.get("signature") or "") for m in members])
+    rows: list[dict[str, Any]] = []
+    evidence: list[dict[str, Any]] = []
+    ids = member_ids(typ)
+    for m in members:
+        sig = str(m.get("signature") or "")
+        rows.append(_unit_member(_unit_path(typ), type_fqn=fqn, member_id=ids.get(sig, str(m.get("name") or "")),
+                                 state="declares", signature=sig, shape=unit_member_shape(m)))
+        evidence.append({"kind": "model", "ref": "%s declares %s" % (fqn, sig)})
+    for impl in unit_implementers(model, fqn):
+        iids = member_ids(impl)
+        above = {str(r.get("as_member") or r.get("signature") or "") for r in above_members(impl)}
+        for m in impl.get("declared") or []:
+            if not isinstance(m, dict):
+                continue
+            sig = str(m.get("signature") or "")
+            if sig in sigs or sig in above:
+                rows.append(_unit_member(_unit_path(impl), type_fqn=str(impl.get("fqn") or ""),
+                                         member_id=iids.get(sig, str(m.get("name") or "")), state="implements",
+                                         signature=sig, shape=unit_member_shape(m)))
+        evidence.append({"kind": "model", "ref": "%s implements %s" % (impl.get("fqn"), fqn)})
+        if not any(r["path"] == _unit_path(impl) for r in rows):
+            rows.append(_unit_member(_unit_path(impl), type_fqn=str(impl.get("fqn") or ""), state="implements"))
+    for sig in sigs:
+        for c in unit_callers_of(model, fqn, sig):
+            rows.append(_unit_member(c["path"], type_fqn=c["type"], member_id=c["member_id"], state="calls",
+                                     callee="%s.%s" % (fqn, sig)))
+            evidence.append({"kind": "model", "ref": "%s.%s calls %s.%s" % (c["type"], c["member_id"], fqn, sig)})
+    return {"key": "%s%s" % (fqn, "".join("#" + s for s in sigs)), "declaring": fqn, "signatures": sigs,
+            "members": rows, "evidence": evidence,
+            "files": sort_unique([r["path"] for r in rows])}
+
+
+def fragment_parents(model: dict[str, Any] | None) -> list[dict[str, Any]]:
+    """The parents of a repository set the platform could not implement, and
+    their implementers, enumerated from the model alone.
+
+    A parent is a type this project declares that another project type extends,
+    and that declares a member no implementer declares and no name-derivation
+    answers. The platform names ONE member of that set and which one changes
+    between runs, which is why the obligation carries no file; this is the
+    family planner the RUNTIME_SET_WIDE comment said it was waiting for. It
+    returns [] when the model cannot enumerate the set, and the typed blocker
+    then stands unchanged."""
+    types = _unit_types(model)
+    by_fqn = {str(t.get("fqn") or ""): t for t in types}
+    out: list[dict[str, Any]] = []
+    for fqn in sorted(by_fqn):
+        parent = by_fqn[fqn]
+        impls = [t for t in unit_implementers(model, fqn) if str(t.get("fqn") or "") != fqn]
+        if not impls:
+            continue
+        owed: list[dict[str, Any]] = []
+        for m in parent.get("declared") or []:
+            if not isinstance(m, dict) or m.get("has_body"):
+                continue
+            name, sig = str(m.get("name") or ""), str(m.get("signature") or "")
+            if not name or name == "<init>" or _DERIVABLE.match(name):
+                continue
+            answered = False
+            for impl in impls:
+                if any(str(d.get("signature") or "") == sig and d.get("has_body") for d in (impl.get("declared") or []) if isinstance(d, dict)):
+                    answered = True
+                    break
+                if any(str(r.get("as_member") or r.get("signature") or "") == sig and str(r.get("from") or "") != fqn
+                       for r in above_members(impl)):
+                    answered = True
+                    break
+            if not answered:
+                owed.append({"signature": sig, "name": name})
+        if owed:
+            out.append({"parent": fqn, "path": _unit_path(parent), "members": owed,
+                        "implementers": [{"fqn": str(t.get("fqn") or ""), "path": _unit_path(t)} for t in impls]})
+    return out
+
+
+def package_leaf_units(families: list[dict[str, Any]], model: dict[str, Any] | None,
+                       claimed: set[str]) -> list[dict[str, Any]]:
+    """Rule (c): the union of (a)-families confined to one package directory,
+    where no type declared outside the union names a type declared in it.
+
+    "Leaf" is decided by the model's `type_refs` on the types the union
+    actually holds, never by a package NAME: a package nothing outside refers
+    to is a leaf whatever it is called."""
+    by_dir: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for fam in families:
+        if any(str(i.get("id")) in claimed for i in fam["items"]):
+            continue
+        dirs = {p.rsplit("/", 1)[0] for p in fam["files"]}
+        if len(dirs) == 1:
+            by_dir[dirs.pop()].append(fam)
+    out: list[dict[str, Any]] = []
+    for directory in sorted(by_dir):
+        fams = sorted(by_dir[directory], key=lambda f: f["key"])
+        files = sort_unique([p for f in fams for p in f["files"]])
+        inside = {str(t.get("fqn") or "") for t in _unit_types(model) if _unit_path(t) in set(files)}
+        if not inside:
+            continue
+        outside = [t for t in _unit_types(model) if _unit_path(t) not in set(files)]
+        if any(_erased(r) in inside for t in outside for r in (t.get("type_refs") or [])):
+            continue
+        if len(files) < 2 and len(fams) < 2:
+            continue
+        out.append({"directory": directory, "families": fams, "files": files, "inside": sorted(inside)})
+    return out
+
+
+def config_consumer_units(items: list[dict[str, Any]], model: dict[str, Any] | None,
+                          root: Path | None) -> list[dict[str, Any]]:
+    """Rule (d): a configuration property and the code that reads it."""
+    out: list[dict[str, Any]] = []
+    for it in sorted(items, key=lambda i: str(i.get("id"))):
+        if str(it.get("source") or "") != "runtime" or str(it.get("cause") or "") != "config-value":
+            continue
+        prop = config_property_name(str(it.get("message") or it.get("detail") or ""))
+        if not prop:
+            continue
+        sites = _dest_config_sites(model, prop) if model else []
+        files = sort_unique([s["path"] for s in sites] + unit_property_files(root, prop))
+        if len(files) < 2:
+            continue
+        out.append({"property": prop, "sites": sites, "files": files, "item": it})
+    return out
+
+
+def unit_property_files(root: Path | None, prop: str) -> list[str]:
+    """The .properties files under the main resource root that DECLARE `prop`
+    (a `%profile.` prefix is the same key). Read as properties syntax, never
+    as text near a name."""
+    if root is None or not prop:
+        return []
+    base = Path(root) / "src" / "main" / "resources"
+    if not base.is_dir():
+        return []
+    out: list[str] = []
+    for p in sorted(base.glob("application*.properties")):
+        if not p.is_file():
+            continue
+        for line in p.read_text(encoding="utf-8", errors="replace").splitlines():
+            s = line.strip()
+            if not s or s[0] in "#!":
+                continue
+            key = s.split("=", 1)[0].split(":", 1)[0].strip()
+            if key.startswith("%") and "." in key:
+                key = key.split(".", 1)[1]
+            if key == prop:
+                out.append(p.relative_to(Path(root)).as_posix())
+                break
+    return sort_unique(out)
+
+
+# --- the bound, and the typed reason ---------------------------------------
+
+def _unit_size(unit: dict[str, Any]) -> dict[str, int]:
+    return {"files": len(unit.get("files") or []), "sites": len(unit.get("members") or []),
+            "symbols": len(unit.get("symbols") or [])}
+
+
+def _within(size: dict[str, int]) -> bool:
+    return size["files"] <= UNIT_MAX_FILES and size["sites"] <= UNIT_MAX_SITES and size["symbols"] <= UNIT_MAX_SYMBOLS
+
+
+def _bound_unit(unit: dict[str, Any]) -> dict[str, Any]:
+    """Deterministic narrowing first, a typed blocker second.
+
+    Narrowing drops caller-only files (rule (b)) or the lowest-cardinality
+    member families (rule (c)), keeping the declaration and its direct
+    implementers. Never an arbitrary file-order chunk: today's
+    SYMBOL_CLUSTER_MAX_FILES slicing is exactly what makes a coordinated
+    `throws` repair unrepresentable, because neither half compiles."""
+    before = _unit_size(unit)
+    if _within(before):
+        unit["bounds"] = dict(before, max_files=UNIT_MAX_FILES, max_sites=UNIT_MAX_SITES, max_symbols=UNIT_MAX_SYMBOLS)
+        return unit
+    if unit["rule"] == RULE_DECLARATION_CLOSURE:
+        keep = [m for m in unit["members"] if str(m.get("state")) != "calls"]
+        if keep and len(keep) < len(unit["members"]):
+            unit["members"] = keep
+            unit["files"] = sort_unique([m["path"] for m in keep])
+            unit["evidence"].append({"kind": "model", "ref": "UNIT_NARROWED: caller-only files dropped; the declaration and its direct implementers are kept"})
+    elif unit["rule"] in (RULE_PACKAGE_LEAF, RULE_DIAGNOSTIC_FAMILY):
+        groups = sorted(unit.get("groups") or [], key=lambda g: (len(g["members"]), g["key"]))
+        while groups and not _within(_unit_size(unit)) and len(groups) > 1:
+            dropped = groups.pop(0)
+            unit["groups"] = groups
+            unit["symbols"] = [s for s in unit["symbols"] if str(s.get("fqn")) != dropped["key"]]
+            unit["members"] = [m for m in unit["members"] if m not in dropped["members"]]
+            unit["items"] = [i for i in unit["items"] if i not in dropped["items"]]
+            unit["files"] = sort_unique([m["path"] for m in unit["members"]])
+            unit["evidence"].append({"kind": "model", "ref": "UNIT_NARROWED: family %s (%d site(s)) dropped, the lowest cardinality in this union" % (dropped["key"], len(dropped["members"]))})
+    after = _unit_size(unit)
+    unit["bounds"] = dict(after, max_files=UNIT_MAX_FILES, max_sites=UNIT_MAX_SITES, max_symbols=UNIT_MAX_SYMBOLS)
+    if after != before:
+        unit["bounds"]["narrowed"] = {"from": before, "to": after, "reason": "UNIT_NARROWED"}
+    if not _within(after):
+        unit["block"] = ("UNIT_OVERSIZE: %s over %s reaches %d file(s)/%d site(s)/%d symbol(s) (max %d/%d/%d); "
+                         "a repair this wide is a planning answer"
+                         % (unit["rule"], unit["family_key"], after["files"], after["sites"], after["symbols"],
+                            UNIT_MAX_FILES, UNIT_MAX_SITES, UNIT_MAX_SYMBOLS))
+    return unit
+
+
+# --- the former ------------------------------------------------------------
+
+def unit_id_of(rule: str, family_key: str, members: list[dict[str, Any]]) -> str:
+    """The budget's identity: a digest of (rule, family key, member keys). It
+    survives remeasurement, attempt numbers and scope revisions, so one PROBLEM
+    keeps one budget rather than gaining a fresh one per re-plan."""
+    keys = sort_unique(["%s|%s|%s|%s" % (m.get("path"), m.get("type"), m.get("member_id"), m.get("state"))
+                        for m in members])
+    return "u:%s" % sha256_bytes(canonical_bytes({"rule": rule, "family_key": family_key, "members": keys}))[:12]
+
+
+def _unit_cluster(unit: dict[str, Any], depths: dict[str, int], deferred: set[str]) -> dict[str, Any]:
+    """A unit is an ORDINARY cluster: same dict shape, same order_key, same
+    status vocabulary, same write_set, and a kind from KIND_RANK. That is what
+    keeps K1, cards.CARD_SKILLS, REFERENCE_SKILLS and the board untouched."""
+    files = list(unit["files"])
+    kind = unit["kind"]
+    cid = unit["unit_id"]
+    completion = unit["completion"]
+    status = "blocked" if unit.get("block") else ("deferred" if cid in deferred else "open")
+    cluster = {
+        "id": cid,
+        "path": files[0] if files else GLOBAL,
+        "label": unit["family_key"],
+        "kind": kind,
+        "items": [str(i.get("id")) for i in unit["items"]],
+        "order_key": [KIND_RANK[kind], min([depths.get(f, UNKNOWN_DEPTH) for f in files] or [UNKNOWN_DEPTH]), files[0] if files else GLOBAL],
+        "status": status,
+        "write_set": files,
+        "block": str(unit.get("block") or ""),
+        "unit": {"unit_id": cid, "rule": unit["rule"], "family_key": unit["family_key"],
+                 "symbols": unit["symbols"], "target_symbols": unit["target_symbols"],
+                 "evidence": unit["evidence"][:12], "size": {k: unit["bounds"][k] for k in ("files", "sites", "symbols")},
+                 "completion": [str(c.get("detail") or c.get("check")) for c in completion]},
+    }
+    if unit.get("gate"):
+        cluster["gate"] = unit["gate"]
+    cluster["_unit_seal"] = unit
+    return cluster
+
+
+def _unit_completion(unit: dict[str, Any]) -> list[dict[str, Any]]:
+    """The typed checks, derived from the members, each with the tool that
+    decides it. Nothing a worker writes can satisfy one."""
+    # the LINE-FREE identity when the list stamped one (build_worklist does,
+    # before clustering); the item id is the fallback, never the err: id's line
+    identities = sort_unique([str(m.get("identity") or m.get("item") or "") for m in unit["members"]
+                              if m.get("identity") or m.get("item")])
+    out: list[dict[str, Any]] = []
+    if identities:
+        out.append({"check": "identities-gone", "tool": "javac", "identities": identities,
+                    "detail": "every one of the %d javac identit%s this unit seals is no longer reported"
+                              % (len(identities), "y" if len(identities) == 1 else "ies")})
+    out.append({"check": "unit-assessment", "tool": "worklist.assess_unit",
+                "detail": "assess_unit reports no member violates and none is inconclusive (an already-correct member earns nothing and costs nothing)"})
+    if unit.get("gate"):
+        out.append({"check": "gate", "tool": "run-verify.sh", "gate": unit["gate"],
+                    "detail": "the %s gate passes on the verified artifact" % unit["gate"]})
+    return out
+
+
+def form_units(items: list[dict[str, Any]], depths: dict[str, int], deferred: set[str], *,
+               model: dict[str, Any] | None = None, root: Path | None = None) -> tuple[list[dict[str, Any]], set[str]]:
+    """The four typed rules, in precedence order, over one measurement.
+
+    Returns (unit clusters, the item ids they took). Items a unit takes are
+    removed from the per-file pass exactly as `taken` already does for symbol
+    groups."""
+    renames, packages = symbol_renames(root), package_renames_of(root)
+    compile_rows = [i for i in items if str(i.get("source") or "") == "javac"]
+    families = diagnostic_families(compile_rows, model)
+    claimed: set[str] = set()
+    units: list[dict[str, Any]] = []
+
+    def take(unit: dict[str, Any]) -> None:
+        unit["symbols"] = sorted(unit["symbols"], key=lambda s: (str(s.get("kind")), str(s.get("fqn")), str(s.get("signature") or "")))
+        unit["target_symbols"] = unit_target_symbols(unit["symbols"], renames, packages)
+        for t in unit["target_symbols"]:
+            unit["evidence"].append({"kind": "catalog", "ref": "compat-mapping.json %s: %s -> %s"
+                                                               % (t["catalog_row"]["block"], t["from"], t["to"])})
+        _bound_unit(unit)
+        unit["unit_id"] = unit_id_of(unit["rule"], unit["family_key"], unit["members"])
+        unit["completion"] = _unit_completion(unit)
+        claimed.update(str(i.get("id")) for i in unit["items"])
+        units.append(unit)
+
+    # (c) package-leaf — highest precedence: a leaf is one repair whatever its
+    # families are called.
+    for leaf in package_leaf_units(families, model, claimed):
+        members: list[dict[str, Any]] = []
+        evidence: list[dict[str, Any]] = [{"kind": "model", "ref": "no type declared outside %s names a type declared in it (type_refs)" % leaf["directory"]}]
+        groups: list[dict[str, Any]] = []
+        rows: list[dict[str, Any]] = []
+        symbols: list[dict[str, Any]] = []
+        for fam in leaf["families"]:
+            fam_members = _family_members(fam, model)
+            groups.append({"key": fam["key"], "members": fam_members, "items": fam["items"]})
+            members.extend(fam_members)
+            rows.extend(fam["items"])
+            evidence.extend(_family_evidence(fam))
+            symbols.append({"kind": fam["symbol_kind"], "fqn": fam["key"], "path": fam["files"][0]})
+        take({"rule": RULE_PACKAGE_LEAF, "family_key": leaf["directory"], "kind": "compile",
+              "items": rows, "files": leaf["files"], "members": members, "symbols": symbols,
+              "evidence": evidence, "groups": groups, "gate": ""})
+
+    # (b) declaration closure — the interface `throws` surface a diagnostic
+    # names, and the set-wide runtime rows the model can enumerate.
+    for fam in families:
+        if any(str(i.get("id")) in claimed for i in fam["items"]):
+            continue
+        pairs = _declaring_throws(model, fam["key"])
+        if not pairs:
+            continue
+        by_type: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        holders: dict[str, dict[str, Any]] = {}
+        for typ, m in pairs:
+            by_type[str(typ.get("fqn") or "")].append(m)
+            holders[str(typ.get("fqn") or "")] = typ
+        # the SURFACE is the declaration others are bound to: an interface
+        # first, then lexicographic. Repairing an implementation alone does not
+        # compile, which is the whole reason this rule exists.
+        for fqn in sorted(by_type, key=lambda f: (str(holders[f].get("kind") or "") != "interface", f)):
+            closure = declaration_closure(model, holders[fqn], by_type[fqn])
+            files = sort_unique(closure["files"] + fam["files"])
+            members = closure["members"] + _family_members(fam, model)
+            symbols = [{"kind": "member", "fqn": fqn, "signature": s, "path": _unit_path(holders[fqn])} for s in closure["signatures"]]
+            symbols.append({"kind": fam["symbol_kind"], "fqn": fam["key"], "path": fam["files"][0]})
+            take({"rule": RULE_DECLARATION_CLOSURE, "family_key": closure["key"], "kind": "compile",
+                  "items": list(fam["items"]), "files": files, "members": members, "symbols": symbols,
+                  "evidence": closure["evidence"] + _family_evidence(fam), "gate": ""})
+            break
+
+    for it in sorted([i for i in items if RUNTIME_SET_WIDE_FORMER.get(str(i.get("set_wide") or "")) == RULE_DECLARATION_CLOSURE],
+                     key=lambda i: str(i.get("id"))):
+        parents = fragment_parents(model)
+        if not parents:
+            continue  # the model cannot enumerate the set: the typed blocker stands
+        members = []
+        symbols = []
+        evidence = [{"kind": "runtime", "ref": "%s %s set_wide=%s" % (it.get("id"), it.get("cause"), FRAGMENT_SET)}]
+        files: list[str] = []
+        for p in parents:
+            files.append(p["path"])
+            for m in p["members"]:
+                members.append(_unit_member(p["path"], type_fqn=p["parent"], member_id=m["name"],
+                                            state="declares", signature=m["signature"]))
+                symbols.append({"kind": "member", "fqn": p["parent"], "signature": m["signature"], "path": p["path"]})
+                evidence.append({"kind": "model", "ref": "%s declares %s and no implementer answers it" % (p["parent"], m["signature"])})
+            for impl in p["implementers"]:
+                files.append(impl["path"])
+                members.append(_unit_member(impl["path"], type_fqn=impl["fqn"], state="implements"))
+                evidence.append({"kind": "model", "ref": "%s implements %s" % (impl["fqn"], p["parent"])})
+        take({"rule": RULE_DECLARATION_CLOSURE,
+              "family_key": "%s:%s" % (it.get("set_wide"), ",".join(sorted(p["parent"] for p in parents))),
+              "kind": str(it.get("kind") or "config"), "items": [it], "files": sort_unique(files),
+              "members": members, "symbols": symbols, "evidence": evidence, "gate": str(it.get("gate") or "")})
+
+    # (a) diagnostic family — what is left, when it spans more than one file.
+    for fam in families:
+        if any(str(i.get("id")) in claimed for i in fam["items"]) or len(fam["files"]) < 2:
+            continue
+        fam_members = _family_members(fam, model)
+        take({"rule": RULE_DIAGNOSTIC_FAMILY, "family_key": fam["key"], "kind": "compile",
+              "items": list(fam["items"]), "files": list(fam["files"]), "members": fam_members,
+              "symbols": [{"kind": fam["symbol_kind"], "fqn": fam["key"], "path": fam["files"][0]}],
+              "evidence": _family_evidence(fam),
+              "groups": [{"key": fam["key"], "members": fam_members, "items": fam["items"]}], "gate": ""})
+
+    # (d) configuration + consumers.
+    for cfg in config_consumer_units(items, model, root):
+        if str(cfg["item"].get("id")) in claimed:
+            continue
+        members = [_unit_member(s["path"], type_fqn=s["type"], member_id=s["member"], state="reads",
+                                consumer=s["annotation"]) for s in cfg["sites"]]
+        members += [_unit_member(f, state="declares-property") for f in cfg["files"] if f.endswith(".properties")]
+        evidence = [{"kind": "runtime", "ref": "%s %s for: %s" % (cfg["item"].get("id"), cfg["item"].get("cause"), cfg["property"])}]
+        evidence += [{"kind": "model", "ref": "%s.%s reads %s" % (s["type"], s["member"], cfg["property"])} for s in cfg["sites"]]
+        take({"rule": RULE_CONFIG_CONSUMERS, "family_key": cfg["property"], "kind": str(cfg["item"].get("kind") or "config"),
+              "items": [cfg["item"]], "files": list(cfg["files"]), "members": members,
+              "symbols": [{"kind": "property", "fqn": cfg["property"], "path": cfg["files"][0]}],
+              "evidence": evidence, "gate": str(cfg["item"].get("gate") or "")})
+
+    clusters = [_unit_cluster(u, depths, deferred) for u in units if u["items"]]
+    return clusters, claimed
+
+
+def build_unit_scope(root: Path, cluster: dict[str, Any], items: list[dict[str, Any]], bundle: dict[str, Any]) -> dict[str, Any] | None:
+    """The SEALED unit inventory: files AND symbols, written once at a path
+    named by its own digest.
+
+    Two seals, two jobs. FILES are the hard boundary advance.py already
+    enforces. SYMBOLS are the OBLIGATION boundary: which diagnostics the
+    checkpoint may tolerate, what assess_unit must find discharged, what
+    amend-scope accepts as a locus, what a CONTINUE may move to. They are
+    sealed at issue from the model as it stood then, so a reference the worker
+    writes during the card cannot widen them."""
+    unit = cluster.get("_unit_seal")
+    if not isinstance(unit, dict):
+        return None
+    measured = sorted(str(i.get("id")) for i in items if str(i.get("id")) in set(cluster.get("items") or []))
+    doc = {
+        "schema": UNIT_SCHEMA,
+        "kind": UNIT_KIND,
+        "producer": "worklist.build_unit_scope",
+        "tool": {"model": "jdk-dest-model", "version": "1.2.0"},
+        "rule": unit["rule"],
+        "cluster": str(cluster.get("id") or ""),
+        "unit_id": unit["unit_id"],
+        "family_key": unit["family_key"],
+        "writable_paths": sort_unique(list(cluster.get("write_set") or unit["files"])),
+        "symbols": unit["symbols"],
+        "target_symbols": unit["target_symbols"],
+        "members": unit["members"],
+        "evidence": unit["evidence"],
+        "completion": unit["completion"],
+        "bounds": unit["bounds"],
+        "measured": measured,
+        "inputs": {"candidate_sha256": str((bundle or {}).get("candidate_sha256") or "")},
+    }
+    doc["digest"] = batch_scope_digest(doc)
+    return doc
+
+
+def assess_unit(root: Path, scope: dict[str, Any]) -> list[dict[str, Any]]:
+    """Every sealed member against the rule its unit declares, from the
+    compiled tree. `inconclusive` is never a pass: the caller must refuse."""
+    rule = str(scope.get("rule") or "")
+    if rule == CHECKED_FAMILY_RULE:
+        return assess_checked_family(root, scope)
+    if rule == BATCH_RULE:
+        return assess_batch_scope(root, scope)
+    try:
+        model = dest_model(Path(root))
+    except DestModelUnavailable as exc:
+        return [{"member": "*", "verdict": "inconclusive", "detail": "the destination model is unavailable: %s" % exc}]
+    types = {(_unit_path(t), str(t.get("fqn") or "")): t for t in _unit_types(model)}
+    by_path: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for t in _unit_types(model):
+        by_path[_unit_path(t)].append(t)
+    sealed = {str(s.get("fqn") or "") for s in (scope.get("symbols") or [])}
+    out: list[dict[str, Any]] = []
+    for row in scope.get("members") or []:
+        path, fqn, mid = str(row.get("path") or ""), str(row.get("type") or ""), str(row.get("member_id") or "")
+        name = "%s%s" % (path, ("#" + mid) if mid else "")
+        base = {"member": name, "path": path, "rule": rule, "state": str(row.get("state") or "")}
+        if not path or not (Path(root) / path).is_file():
+            out.append(dict(base, verdict="violates", detail="the file is gone; a unit member is not discharged by deleting its file"))
+            continue
+        if not path.endswith(".java"):
+            out.append(dict(base, verdict="ok", detail="a configuration locus; the property check is the unit's own"))
+            continue
+        here = by_path.get(path) or []
+        if not here:
+            out.append(dict(base, verdict="inconclusive", detail="the model has no type for %s" % path))
+            continue
+        typ = types.get((path, fqn)) or here[0]
+        if str(typ.get("resolution") or "") != "full":
+            out.append(dict(base, verdict="inconclusive", detail="the compiler could not fully resolve %s" % path))
+            continue
+        imports = {str(i) for t in here for i in (t.get("imports") or [])}
+        still = sorted(s for s in sealed if s and (s in imports or any(_erased(r) == s for t in here for r in (t.get("type_refs") or []))))
+        if mid:
+            ids = member_ids(typ)
+            member = next((m for m in typ.get("declared") or [] if ids.get(str(m.get("signature") or "")) == mid or str(m.get("name") or "") == mid), None)
+            if member is None:
+                out.append(dict(base, verdict="violates", detail="the member %s is gone; its operation is not repaired by deleting it" % mid))
+                continue
+            consumer = str(row.get("consumer") or "")
+            if consumer and consumer not in (member.get("calls") or []) and not consumer.startswith("@"):
+                out.append(dict(base, verdict="violates", detail="%s no longer calls %s; the operation the value fed must be preserved" % (mid, consumer)))
+                continue
+        if still:
+            out.append(dict(base, verdict="violates", detail="%s still names the retired symbol(s) %s" % (path, ", ".join(still))))
+            continue
+        out.append(dict(base, verdict="ok", detail="%s no longer names the unit's sealed symbols and still declares what it declared" % path))
+    return out
+
 def retry_key(cluster: dict[str, Any], items: list[dict[str, Any]] | None = None) -> str:
     """What a retry budget is counted against.
 
@@ -1796,6 +2645,11 @@ def retry_key(cluster: dict[str, Any], items: list[dict[str, Any]] | None = None
     the step that introduced it. Exposing Pet after fixing Owner is the same
     family, the same key and the same budget."""
     ref = cluster.get("batch_scope") or {}
+    # A unit counts against the PROBLEM, not the card: unit_id is a digest of
+    # (rule, family key, member keys) and therefore survives remeasurement,
+    # attempt numbers and scope revisions.
+    if str(ref.get("kind") or "") == UNIT_KIND and ref.get("unit_id"):
+        return "rk:unit:%s" % ref["unit_id"]
     if str(ref.get("rule") or "") == CHECKED_FAMILY_RULE and ref.get("family_id"):
         return "rk:compile:checked-family:%s" % ref["family_id"]
     rows = [i for i in (items or []) if str(i.get("id")) in set(cluster.get("items") or [])]
@@ -2127,16 +2981,18 @@ def build_worklist(root: Path, *, write: bool = True) -> dict[str, Any]:
     # has to be able to investigate THIS one twice and no more. Without an id
     # a diagnosis has nothing to attach to and nothing to count against.
     unlocatable: list[dict[str, Any]] = []
+    unlocated_blocks: list[tuple[str, str]] = []
+    set_wide_rows = [i for i in rt_all if i.get("unlocated") and i.get("set_wide")]
     for i in rt_all:
         if i.get("unlocated"):
             detail = str(i.get("detail") or i.get("message") or "")[:400]
             if i.get("set_wide"):
-                blocked.append("the %s gate failed with a SET-WIDE cause (%s): the platform names one member of a failing set and "
+                unlocated_blocks.append((str(i.get("id")), "the %s gate failed with a SET-WIDE cause (%s): the platform names one member of a failing set and "
                                "that name changes between runs, so no single-file card may be minted; it named %s here: %s"
-                               % (i.get("gate"), i.get("set_wide"), ", ".join(i.get("observed") or []) or "no file of this tree", detail[:160]))
+                               % (i.get("gate"), i.get("set_wide"), ", ".join(i.get("observed") or []) or "no file of this tree", detail[:160])))
             else:
-                blocked.append("the %s gate failed with a message that names no file of this tree, so no card can carry it: %s"
-                               % (i.get("gate"), detail[:200]))
+                unlocated_blocks.append((str(i.get("id")), "the %s gate failed with a message that names no file of this tree, so no card can carry it: %s"
+                                         % (i.get("gate"), detail[:200])))
             unlocatable.append({"id": str(i.get("id")), "kind": "unlocatable", "gate": str(i.get("gate") or ""),
                                 "cause": str(i.get("cause") or ""), "scope": str(i.get("set_wide") or ""),
                                 "observed": list(i.get("observed") or []), "detail": detail})
@@ -2160,7 +3016,34 @@ def build_worklist(root: Path, *, write: bool = True) -> dict[str, Any]:
     for i in items:
         if str(i.get("source") or "") == "javac":
             i["identity"] = diagnostic_identity(_model if unreported_item(i) else None, i)
-    clusters = cluster_items(items, file_depths(bundle), deferred)
+    # Unit formation is a decided mode, sealed by the admission receipt through
+    # decisions.yaml. Absent ⇒ off ⇒ today's clustering; a flip while a card is
+    # issued is refused, because it would change every cluster id under a live
+    # candidate (UNIT_MODE_SWITCH).
+    formation, mode_block = unit_formation_for(root, decisions_doc)
+    if mode_block:
+        blocked.append(mode_block)
+    units: list[dict[str, Any]] = []
+    if formation == UNIT_FORMATION_V1:
+        try:
+            _unit_model = dest_model(root)
+        except DestModelUnavailable as exc:
+            _unit_model = None
+            blocked.append("unit formation is v1 but the destination could not be modelled, so no unit can be formed: %s" % exc)
+        if _unit_model is not None:
+            units, claimed = form_units(items + set_wide_rows, file_depths(bundle), deferred, model=_unit_model, root=root)
+            # A set-wide row the former could enumerate is an OBLIGATION now,
+            # not a blocker: the members are the model's, not the name the
+            # platform happened to reach first. One the former could not
+            # enumerate stays exactly the typed blocker it was.
+            promoted = [i for i in set_wide_rows if str(i.get("id")) in claimed]
+            if promoted:
+                items = sorted(items + promoted, key=lambda i: i["id"])
+                done = {str(i.get("id")) for i in promoted}
+                unlocatable = [u for u in unlocatable if str(u.get("id")) not in done]
+                unlocated_blocks = [b for b in unlocated_blocks if b[0] not in done]
+    blocked.extend(text for _id, text in unlocated_blocks)
+    clusters = cluster_items(items, file_depths(bundle), deferred, units=units)
     # A cluster made only of one gate's obligations carries that gate, so the
     # card, the issued record and acceptance all know which phase is being
     # repaired (a packaging repair can leave the compile/test tuple unchanged).
@@ -2171,8 +3054,16 @@ def build_worklist(root: Path, *, write: bool = True) -> dict[str, Any]:
         if len(gates) == 1 and gates != {""}:
             c["gate"] = gates.pop()
         scope = build_batch_scope(root, c, items, {"candidate_sha256": str(run.get("candidate_sha256") or "")})
+        # the formed unit's working copy stays out of the written document:
+        # what the card is judged against is the SEALED inventory, at its own
+        # digest path, and the cluster's compact `unit` block beside it
+        c.pop("_unit_seal", None)
         if scope:
             scopes.append(scope)
+            if str(scope.get("kind") or "") == UNIT_KIND:
+                # the file seal IS the write set; the label is the family key
+                c["write_set"] = list(scope.get("writable_paths") or c.get("write_set") or [])
+                c["label"] = str(scope.get("family_key") or "")
             if str(scope.get("kind") or "") == "repair-family":
                 c["write_set"] = list(scope.get("writable_paths") or c.get("write_set") or [])
                 c["label"] = "%s family (%d site(s))" % (str(scope.get("signature") or scope.get("family") or "checked-exception"), len(scope.get("members") or []))
@@ -2180,12 +3071,16 @@ def build_worklist(root: Path, *, write: bool = True) -> dict[str, Any]:
                                 "digest": scope["digest"], "rule": scope["rule"],
                                 "kind": str(scope.get("kind") or "repository"),
                                 "family_id": str(scope.get("family_id") or ""),
+                                "unit_id": str(scope.get("unit_id") or ""),
                                 "members": len(scope["members"])}
         c["retry_key"] = retry_key(c, items)
     open_clusters = [c for c in clusters if c["status"] == "open"]
     head = open_clusters[0]["id"] if open_clusters else ""
     doc = {
         "schema": SCHEMA,
+        # which rule formed this list; the audit reads it, and build_worklist
+        # refuses to change it under an issued card
+        "unit_formation": formation,
         "evidence_bundle_sha256": digest(bundle),
         "not_counted": not_counted,
         "candidate_sha256": str(run.get("candidate_sha256") or ""),

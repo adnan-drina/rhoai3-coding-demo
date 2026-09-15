@@ -12,7 +12,9 @@
     "https://quarkus.io/guides/hibernate-orm",
     "https://quarkus.io/guides/datasource",
     "https://quarkus.io/guides/getting-started-testing",
-    "https://quarkus.io/guides/logging"
+    "https://quarkus.io/guides/logging",
+    "https://quarkus.io/guides/migrate-to-quarkus-3",
+    "https://quarkus.io/version/3.27/guides/rest"
   ],
   "parent_to_remove": {
     "group_id": "org.springframework.boot",
@@ -314,6 +316,50 @@
       "quarkus.datasource.username": "datasource.username_env",
       "quarkus.datasource.password": "datasource.password_env",
       "quarkus.hibernate-orm.database.generation": "datasource.hibernate_generation"
+    }
+  },
+  "symbol_renames": {
+    "note": "Symbol-level targets a repair moves TO, one row per documented mapping and never an inference -- the same contract package_renames carries, at member/type granularity. Used by the unit former to seal target_symbols and by the checkpoint to decide whether a diagnostic that is still reported names a DOCUMENTED replacement: the target is the EXACT fully-qualified name, so jakarta.ws.rs.core.Context has a row and jakarta.ws.rs.Context does not, which is the whole reason these are written down rather than inferred. `to` is the target, `kind` is what the symbol is, `source` is where the mapping is documented.",
+    "javax.ws.rs.core.Context": {
+      "to": "jakarta.ws.rs.core.Context",
+      "kind": "annotation",
+      "source": "https://quarkus.io/guides/migrate-to-quarkus-3 (Jakarta EE 10 namespace: javax.* -> jakarta.*)"
+    },
+    "javax.ws.rs.core.UriInfo": {
+      "to": "jakarta.ws.rs.core.UriInfo",
+      "kind": "type",
+      "source": "https://quarkus.io/guides/migrate-to-quarkus-3 (Jakarta EE 10 namespace: javax.* -> jakarta.*)"
+    },
+    "javax.ws.rs.core.UriBuilder": {
+      "to": "jakarta.ws.rs.core.UriBuilder",
+      "kind": "type",
+      "source": "https://quarkus.io/guides/migrate-to-quarkus-3 (Jakarta EE 10 namespace: javax.* -> jakarta.*)"
+    },
+    "javax.ws.rs.core.Response": {
+      "to": "jakarta.ws.rs.core.Response",
+      "kind": "type",
+      "source": "https://quarkus.io/guides/migrate-to-quarkus-3 (Jakarta EE 10 namespace: javax.* -> jakarta.*)"
+    },
+    "javax.ws.rs.core.MediaType": {
+      "to": "jakarta.ws.rs.core.MediaType",
+      "kind": "type",
+      "source": "https://quarkus.io/guides/migrate-to-quarkus-3 (Jakarta EE 10 namespace: javax.* -> jakarta.*)"
+    },
+    "javax.ws.rs.core.HttpHeaders": {
+      "to": "jakarta.ws.rs.core.HttpHeaders",
+      "kind": "type",
+      "source": "https://quarkus.io/guides/migrate-to-quarkus-3 (Jakarta EE 10 namespace: javax.* -> jakarta.*)"
+    },
+    "org.springframework.web.util.UriComponentsBuilder": {
+      "to": "jakarta.ws.rs.core.UriBuilder",
+      "kind": "type",
+      "source": "https://quarkus.io/version/3.27/guides/rest (Jakarta REST UriInfo/UriBuilder build a request-aware absolute URI; @Context injects them)",
+      "note": "the Spring Web compatibility extension does not supply UriComponentsBuilder; the platform's own request-aware builder is reached from an injected UriInfo (uriInfo.getBaseUriBuilder()), which is what keeps an absolute Location under the application base"
+    },
+    "org.springframework.web.util.UriComponents": {
+      "to": "jakarta.ws.rs.core.UriBuilder",
+      "kind": "type",
+      "source": "https://quarkus.io/version/3.27/guides/rest (Jakarta REST UriInfo/UriBuilder build a request-aware absolute URI; @Context injects them)"
     }
   }
 }

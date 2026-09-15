@@ -34,6 +34,17 @@ def prepare(root: Path, *, errors=None) -> None:
     specimens.prepare_loop(root, errors=errors or [])
 
 
+def head_card_for_unit(worklist: dict) -> dict:
+    """The head cluster as a card, without going through next_card: the unit
+    block is what is under test, not the head derivation."""
+    from planner.cards import CARD_SKILLS, card_title  # noqa: E402
+
+    head = next(c for c in worklist["clusters"] if c["id"] == worklist["head"])
+    return {"id": head["id"], "kind": head["kind"], "title": card_title(head, 1), "phase": "M3",
+            "path": head["path"], "write_set": list(head["write_set"]), "items": list(head["items"]),
+            "attempt": 1, "skills": list(CARD_SKILLS[head["kind"]])}
+
+
 def main() -> int:
     for label in ("k4_convert.py", "k4_schema.py", "k4_mint.py"):
         for line in (KERNEL / label).read_text(encoding="utf-8").splitlines():
@@ -151,6 +162,44 @@ def main() -> int:
         for needle in ("paved-road-m3", "brief.py", "run-verify", "advance.py", "kanban_complete` after ACCEPTED"):
             if needle not in loop_prose:
                 return _fail("a loop card's prose must still be the loop's: %r missing" % needle)
+
+        # A UNIT card: the body gains one additive block and stays K1-valid.
+        # The MEMBER inventory is not in it -- it lives in the sealed
+        # batch-scope document the refs already name, and K1 refuses a body
+        # that inlines derived content. The loop card's prose is unchanged,
+        # because a unit is still one of the existing increment kinds.
+        from k4_convert import UNIT_BODY_EVIDENCE, UNIT_BODY_SYMBOLS, _unit_block  # noqa: E402
+        unit_card = dict(head_card_for_unit(wl))
+        unit_card["unit"] = {
+            "unit_id": "u:0123456789ab", "rule": "unit/declaration-closure/v1",
+            "family_key": "p.Svc#m(int)",
+            "symbols": [{"kind": "member", "fqn": "p.Svc", "signature": "m(int)", "path": "src/main/java/p/Svc.java"}] * 12,
+            "target_symbols": [{"from": "javax.ws.rs.core.Context", "to": "jakarta.ws.rs.core.Context",
+                                "catalog_row": {"catalog": "compat-mapping.json", "block": "symbol_renames"}}],
+            "evidence": [{"kind": "model", "ref": "p.Impl implements p.Svc"}] * 20,
+            "size": {"files": 13, "sites": 107, "symbols": 2},
+            "completion": ["every sealed identity gone", "assess_unit: no member violates"],
+        }
+        ubody = build_body(unit_card, rec, rec["seals"]["worklist"], body["artifacts"], type_sha)
+        k1u = validate_body(ubody, root=root)
+        if k1u:
+            return _fail("a unit body must be K1-valid: %s" % k1u)
+        if "unit" not in ubody or ubody["unit"]["unit_id"] != "u:0123456789ab":
+            return _fail("the unit block is on the body: %s" % sorted(ubody))
+        if "members" in ubody["unit"]:
+            return _fail("the member inventory stays in the sealed document, never in the body")
+        if len(ubody["unit"]["symbols"]) != UNIT_BODY_SYMBOLS or len(ubody["unit"]["evidence"]) != UNIT_BODY_EVIDENCE:
+            return _fail("the body carries a bounded view: %d symbols, %d evidence"
+                         % (len(ubody["unit"]["symbols"]), len(ubody["unit"]["evidence"])))
+        if ubody["increment_kind"] not in ("build", "config", "compile", "incident", "test", "parity"):
+            return _fail("a unit stays one of the existing increment kinds: %s" % ubody["increment_kind"])
+        if ubody["files_writable"] != [w["path"] for w in ubody["write_set"]]:
+            return _fail("write_set keeps its row shape and simply lists more paths")
+        if _unit_block({"unit": {}}) or _unit_block({}):
+            return _fail("a non-unit card gains nothing")
+        plain = build_body(head_card_for_unit(wl), rec, rec["seals"]["worklist"], body["artifacts"], type_sha)
+        if "unit" in plain or render_body(plain).split("<details>")[0] != p["body"].split("<details>")[0]:
+            return _fail("the loop-card prose is unchanged for a non-unit card")
 
         # tampered work list → verify refuses → 0 payloads
         doc = load_json(root / WORKLIST)

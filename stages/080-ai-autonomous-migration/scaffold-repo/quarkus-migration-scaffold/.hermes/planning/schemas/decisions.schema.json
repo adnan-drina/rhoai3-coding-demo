@@ -454,6 +454,34 @@
           "description": "the NAME of an environment variable holding a credential the Operator states is NOT valid; the invalid-credential probe is not derived without it"
         }
       }
+    },
+    "loop": {
+      "type": "object",
+      "description": "How the loop forms its work. unit_formation v1 turns on the unit former (lib/planner/worklist.form_units): one card per coordinated repair, with the files AND the symbols sealed in a rhoai3.batch-scope/v4 inventory. Absent means off, which is today's per-file and symbol-group clustering -- a run already under way keeps the mode it was formed under, because flipping it changes every cluster id and would discard a live candidate (UNIT_MODE_SWITCH). The mode is sealed by the admission receipt (seals.decisions_yaml), so every card is bound to it.",
+      "additionalProperties": false,
+      "properties": {
+        "unit_formation": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "v1",
+            "off",
+            null
+          ],
+          "description": "v1 forms units; off (or absent) keeps the per-file clustering."
+        },
+        "adr": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "note": {
+          "type": "string"
+        }
+      }
     }
   }
 }

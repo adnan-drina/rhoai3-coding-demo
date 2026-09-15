@@ -11,6 +11,9 @@ Four things and nothing else:
 - ``security``                (optional, ADR-014) the source's security switch
                               and the identities the enabled-mode source
                               capture authenticates as, by REFERENCE only
+- ``loop``                    (optional) how the loop forms its work:
+                              ``unit_formation: v1`` turns on the unit former,
+                              absent keeps today's per-file clustering
 
 The planner reads decisions; it never writes or infers them. A required
 decision that is null/empty is admission BLOCK ``MISSING_DECISION``; a
@@ -321,6 +324,32 @@ def retired_sources(doc: dict[str, Any]) -> dict[str, str]:
         if isinstance(row, dict) and row.get("path") and _adr_ok(doc, row.get("adr")):
             out[str(row["path"]).replace("\\", "/").lstrip("/")] = str(row["adr"])
     return out
+
+
+# ---------------------------------------------------------------------------
+# how the loop forms its work (design of 2026-09-15 §5.1)
+# ---------------------------------------------------------------------------
+# A mode, not a threshold: it changes which CARDS exist, so it is a decision
+# and it is sealed on the admission receipt with the rest of this file. Absent
+# is a decision too -- it means today's per-file clustering, which is what
+# keeps a run that is already under way byte-for-byte unchanged.
+LOOP_SECTION = "loop"
+UNIT_FORMATION_V1 = "v1"
+UNIT_FORMATION_OFF = "off"
+
+
+def loop_modes(doc: dict[str, Any]) -> dict[str, str]:
+    """The decided loop modes, normalised. Unknown or absent values fall back
+    to the mode that changes nothing, never to the new one."""
+    section = doc.get(LOOP_SECTION)
+    section = section if isinstance(section, dict) else {}
+    value = str(section.get("unit_formation") or "").strip()
+    return {"unit_formation": UNIT_FORMATION_V1 if value == UNIT_FORMATION_V1 else UNIT_FORMATION_OFF}
+
+
+def unit_formation(doc: dict[str, Any]) -> str:
+    """decisions.loop.unit_formation: "v1" or "off"."""
+    return loop_modes(doc)["unit_formation"]
 
 
 def max_attempts(doc: dict[str, Any]) -> int:

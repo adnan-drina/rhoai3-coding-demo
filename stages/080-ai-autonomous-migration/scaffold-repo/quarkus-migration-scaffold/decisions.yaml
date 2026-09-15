@@ -63,6 +63,17 @@ thresholds:
   max_attempts: 3         # rejected attempts on one cluster before it becomes a manual card
   adr: ADR-002
 
+# How the loop forms its work. v1 turns on the unit former: one card per
+# COORDINATED repair, with the files AND the symbols sealed in a
+# rhoai3.batch-scope/v4 inventory, instead of an arbitrary 8-file chunk of a
+# symbol group (neither half of a split `throws` surface compiles). Absent
+# means off, which is the per-file clustering a run already under way was
+# formed with -- the mode is sealed on the admission receipt and the work list
+# refuses to change it while a card is issued (UNIT_MODE_SWITCH), so this is
+# the default for a NEW run and never a mid-run flip.
+loop:
+  unit_formation: v1
+
 # The effective database of the destination (ADR-009). Resolved here, before a
 # worker reaches runtime verification: an absent or half-filled block keeps
 # admission INCONCLUSIVE, so nothing is minted against an undecided datasource.
