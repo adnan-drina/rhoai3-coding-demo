@@ -15,7 +15,7 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from planner.dest_model import DestModelUnavailable, checked_exception_delta, condition_key, dest_model, profile_conditions, source_write_members  # noqa: E402
+from planner.dest_model import DestModelUnavailable, checked_exception_delta, condition_key, dest_model, fields_of, profile_conditions, source_write_members  # noqa: E402
 from planner.worklist import assess_batch_scope  # noqa: E402
 
 STUBS = {
@@ -34,6 +34,14 @@ STUBS = {
         "package org.springframework.data.jpa.repository;\nimport java.lang.annotation.*;\n"
         "@Retention(RetentionPolicy.RUNTIME) @Target(ElementType.METHOD)\n"
         "public @interface Query { String value(); }\n",
+    "org/springframework/beans/factory/annotation/Value.java":
+        "package org.springframework.beans.factory.annotation;\nimport java.lang.annotation.*;\n"
+        "@Retention(RetentionPolicy.RUNTIME) @Target({ElementType.FIELD, ElementType.PARAMETER})\n"
+        "public @interface Value { String value(); }\n",
+    "org/eclipse/microprofile/config/inject/ConfigProperty.java":
+        "package org.eclipse.microprofile.config.inject;\nimport java.lang.annotation.*;\n"
+        "@Retention(RetentionPolicy.RUNTIME) @Target({ElementType.FIELD, ElementType.PARAMETER})\n"
+        "public @interface ConfigProperty { String name() default \"\"; String defaultValue() default \"\"; }\n",
 }
 
 
@@ -136,6 +144,67 @@ def _conditions_case() -> int:
         rows4 = [r for r in profile_conditions(dest_model(root, refresh=True)) if r["path"].endswith("Const.java")]
         if not rows4 or any(r["value_known"] for r in rows4):
             return _fail("an argument that is not a string literal is a question, not a profile name: %s" % rows4)
+    return 0
+
+
+_HOLDER = """package p;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
+import org.springframework.beans.factory.annotation.Value;
+public class Holder {
+    static final String KEY = "a.b";
+    @Value("${a.b:x}") String placeholder;
+    @Value("") String emptied;
+    @Value(KEY) String nonLiteral;
+    @ConfigProperty(name = "a.b", defaultValue = "d") String mp;
+    String plain;
+}
+"""
+
+
+def _fields_case() -> int:
+    """A field's annotation is a fact about the tree AS IT IS NOW.
+
+    Destination v9 (2026-09-14): a worker replaced
+    @Value("#{servletContext.contextPath}") with @Value(""), the platform
+    printed an EMPTY config property name, and the only model that carried the
+    annotation was M1's of the frozen source -- which still had the SpEL. The
+    empty string is a string literal and must be recorded as one."""
+    with tempfile.TemporaryDirectory(prefix="dm-fields-") as d:
+        root = Path(d)
+        _tree(root, {"p/Holder.java": _HOLDER})
+        rows = {r["field"]: r for r in fields_of(dest_model(root))}
+        if set(rows) != {"KEY", "placeholder", "emptied", "nonLiteral", "mp", "plain"}:
+            return _fail("every field is a declaration the model must carry: %s" % sorted(rows))
+        if rows["plain"]["annotations"] or rows["plain"]["field_type"] != "String":
+            return _fail("an unannotated field carries its written type and no annotations: %s" % rows["plain"])
+        if rows["placeholder"]["path"] != "src/main/java/p/Holder.java" or rows["placeholder"]["type"] != "p.Holder":
+            return _fail("a field row names its file from the tree root and its declaring type: %s" % rows["placeholder"])
+
+        def ann(name: str) -> dict:
+            a = rows[name]["annotations"]
+            return a[0] if len(a) == 1 else {}
+
+        spring = "org.springframework.beans.factory.annotation.Value"
+        if ann("placeholder").get("fqn") != spring or ann("placeholder").get("values") != ["${a.b:x}"]:
+            return _fail("a string-literal argument is recorded as written: %s" % ann("placeholder"))
+        if ann("placeholder").get("named") != {"value": ["${a.b:x}"]} or ann("placeholder").get("resolution") != "full":
+            return _fail("the literal is recorded under the attribute it was written for: %s" % ann("placeholder"))
+        # the empty string is a literal, and the whole v9 defect is that it is
+        # NOT the same as an absent argument
+        if ann("emptied").get("values") != [""] or ann("emptied").get("named") != {"value": [""]}:
+            return _fail("an empty string literal is a value, not an absence: %s" % ann("emptied"))
+        if ann("emptied").get("resolution") != "full":
+            return _fail("an empty string literal is fully readable: %s" % ann("emptied"))
+        # a constant reference is a question this tool does not answer
+        if ann("nonLiteral").get("values") != [] or ann("nonLiteral").get("named") != {}:
+            return _fail("an argument that is not a string literal is absent, never guessed: %s" % ann("nonLiteral"))
+        if ann("nonLiteral").get("resolution") != "inconclusive":
+            return _fail("a non-literal argument makes the annotation inconclusive: %s" % ann("nonLiteral"))
+        # two attributes are two answers: position cannot say which is the name
+        if ann("mp").get("named") != {"name": ["a.b"], "defaultValue": ["d"]}:
+            return _fail("each attribute's literals are recorded under its own name: %s" % ann("mp"))
+        if ann("mp").get("values") != ["a.b", "d"]:
+            return _fail("the flat value list is unchanged for its existing readers: %s" % ann("mp"))
     return 0
 
 
@@ -332,11 +401,12 @@ def main() -> int:
     if not shutil.which("javac"):
         print("SKIP: dest-model selftest needs a JDK on PATH")
         return 0
-    if _conditions_case() or _assess_case() or _source_root_case() or _overload_case() or _checked_case():
+    if (_conditions_case() or _fields_case() or _assess_case() or _source_root_case()
+            or _overload_case() or _checked_case()):
         return 1
     print("OK: dest-model (a fully qualified condition is visible; two identical annotations are two decisions with "
           "their own ranges; an import binds a condition with no classpath while a wildcard import does not, and a non-literal argument is never a profile name; a redeclared inherited findAll "
-          "is answered by its supertype; a deleted member is not inherited; a member is a signature, so an overload never answers for another and a generic save(T) matches as save(Vet); two source roots are two models in either order; the source write set comes from resolved calls; an unreadable source model or type is inconclusive; unhandled checked exceptions: a transformation's sites are introduced, a partial repair exposes rather than introduces, a moved line is the same site, an added throws is an introduction, an unattributed baseline is proved by its parse tree or left INCONCLUSIVE)")
+          "is answered by its supertype; every field carries its annotations, an empty string literal among them, with each literal under the attribute it was written for and a non-literal argument absent; a deleted member is not inherited; a member is a signature, so an overload never answers for another and a generic save(T) matches as save(Vet); two source roots are two models in either order; the source write set comes from resolved calls; an unreadable source model or type is inconclusive; unhandled checked exceptions: a transformation's sites are introduced, a partial repair exposes rather than introduces, a moved line is the same site, an added throws is an introduction, an unattributed baseline is proved by its parse tree or left INCONCLUSIVE)")
     return 0
 
 

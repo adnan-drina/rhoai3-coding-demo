@@ -206,6 +206,39 @@ def types_of(model: dict[str, Any], rel_from_root: str, source_root: str = "src/
     return [t for t in model.get("types") or [] if str(t.get("path") or "") == want]
 
 
+def fields_of(model: dict[str, Any], source_root: str = "src/main/java") -> list[dict[str, Any]]:
+    """Every field the model recorded, one row per DECLARATION.
+
+    (path from the TREE root, declaring type, field name, its type as written,
+    its annotations). What a field's annotation SAYS is a fact about the tree
+    as it is now, and only this model has it: M1's model is of the frozen
+    source, where the same field may still carry the value a worker replaced
+    (destination v9: @Value("#{servletContext.contextPath}") in the source
+    model, @Value("") on disk, and the empty config property name the platform
+    printed located nothing).
+
+    Fields only: the tool does not record annotations on method or constructor
+    parameters, so a caller that needs those must say the model cannot answer
+    rather than read absence as evidence."""
+    out: list[dict[str, Any]] = []
+    prefix = source_root.rstrip("/") + "/"
+    for t in model.get("types") or []:
+        path = prefix + str(t.get("path") or "")
+        fqn = str(t.get("fqn") or "")
+        for f in t.get("fields") or []:
+            if not isinstance(f, dict):
+                continue
+            out.append({
+                "path": path,
+                "type": fqn,
+                "field": str(f.get("name") or ""),
+                "field_type": str(f.get("type") or ""),
+                "annotations": list(f.get("annotations") or []),
+                "resolution": str(t.get("resolution") or ""),
+            })
+    return sorted(out, key=lambda r: (r["path"], r["type"], r["field"]))
+
+
 def profile_conditions(model: dict[str, Any], source_root: str = "src/main/java") -> list[dict[str, Any]]:
     """Every profile condition the model found, one row per DECLARATION.
 

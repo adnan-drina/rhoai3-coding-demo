@@ -43,7 +43,7 @@ from pathlib import Path
 from typing import Any
 
 from planner.canonical import canonical_bytes, digest, load_json, sha256_bytes, sha256_file, sort_unique
-from planner.dest_model import (DestModelUnavailable, above_members, dest_model, diagnostic_identity, member_ids, model_at_commit,  # noqa: E501
+from planner.dest_model import (DestModelUnavailable, above_members, dest_model, diagnostic_identity, fields_of, member_ids, model_at_commit,  # noqa: E501
                                  site_for_diagnostic, site_signature, source_write_members as _model_writes, types_of, unhandled_sites)
 from planner.paths import is_product_path, EVIDENCE_BUNDLE, STRUCTURE, TYPE_INVENTORY, LOOP_DEFERRED, LOOP_STEPS, MTA_RESCAN_FINDINGS, PARITY_DIR, VERIFY_BOOT, VERIFY_DIAGNOSTICS, VERIFY_PACKAGE, VERIFY_RUN, VERIFY_SUREFIRE, WORKLIST
 
@@ -476,11 +476,19 @@ def config_property_annotation(ann: dict[str, Any]) -> tuple[str, str] | None:
     if not isinstance(ann, dict):
         return None
     fqn = str(ann.get("fqn") or ann.get("name") or "")
-    simple = fqn.rsplit(".", 1)[-1]
-    values = ann.get("values") if isinstance(ann.get("values"), dict) else {}
-    if fqn == SPRING_VALUE_ANNOTATION or fqn == "Value":
+    # The JDK model records the name AS WRITTEN beside the resolved one, because
+    # a tree that cannot yet be compiled against its dependencies has no fqn for
+    # the annotation and the written name is then all there is. It is used only
+    # when the compiler gave nothing: a resolved foreign @Value is not this one.
+    simple = fqn.rsplit(".", 1)[-1] or str(ann.get("simple") or "")
+    # Which ATTRIBUTE each value was written for. The JDK model records that map
+    # under `named`; M1's model records the same shape under `values`. A flat
+    # list of literals cannot say which of them is the property name.
+    values = ann.get("named") if isinstance(ann.get("named"), dict) else (
+        ann.get("values") if isinstance(ann.get("values"), dict) else {})
+    if fqn in (SPRING_VALUE_ANNOTATION, "Value") or (not fqn and simple == "Value"):
         raw, attr = _single_value(values.get("value")), "value"
-    elif fqn == MP_CONFIG_PROPERTY_ANNOTATION or fqn == "ConfigProperty":
+    elif fqn in (MP_CONFIG_PROPERTY_ANNOTATION, "ConfigProperty") or (not fqn and simple == "ConfigProperty"):
         raw, attr = _single_value(values.get("name")), "name"
     else:
         return None
@@ -519,10 +527,8 @@ def structure_type_path(root: Path | None, typ: dict[str, Any]) -> str:
     return claimed or derived
 
 
-def config_value_sites(root: Path | None, prop: str) -> list[dict[str, str]]:
-    """Every field or parameter whose annotation names THIS config property.
-
-    Deterministic: sorted by file, then type, then member."""
+def _structure_config_sites(root: Path | None, prop: str) -> list[dict[str, str]]:
+    """The sites M1's model of the FROZEN SOURCE has for this property."""
     out: list[dict[str, str]] = []
     for typ in structure_types(root):
         path = structure_type_path(root, typ)
@@ -542,31 +548,82 @@ def config_value_sites(root: Path | None, prop: str) -> list[dict[str, str]]:
     return sorted(out, key=lambda s: (s["path"], s["type"], s["member"], s["annotation"]))
 
 
+def _dest_config_sites(model: dict[str, Any], prop: str) -> list[dict[str, str]]:
+    """The sites the DESTINATION's own compiled model has for this property.
+
+    Fields only: the tool records no annotations on parameters, so absence here
+    is not evidence that nothing names the property."""
+    out: list[dict[str, str]] = []
+    for row in fields_of(model):
+        for ann in row.get("annotations") or []:
+            named = config_property_annotation(ann)
+            if named is not None and named[0] == prop:
+                out.append({"path": row["path"], "type": row["type"], "member": row["field"], "annotation": named[1]})
+    return sorted(out, key=lambda s: (s["path"], s["type"], s["member"], s["annotation"]))
+
+
+def config_value_sites(root: Path | None, prop: str) -> tuple[list[dict[str, str]], str, str]:
+    """(every site whose annotation names THIS config property, which model
+    answered, why that one).
+
+    The DESTINATION is asked first. What an annotation says is a fact about the
+    tree being measured, and M1's structural model is of the FROZEN SOURCE:
+    measured on destination v9 (2026-09-14), the field still carried
+    @Value("#{servletContext.contextPath}") there while a worker's edit had
+    already made it @Value("") on disk, so the empty property name the platform
+    printed matched nothing and the obligation was reported as unlocatable --
+    while the worker on the card could name the file and the line.
+
+    The frozen source's model answers when the destination cannot be modelled
+    at all, and for the one thing the compiled model does not record -- an
+    annotation on a method or constructor parameter -- when no FIELD of the
+    destination names the property. Deterministic: sorted by file, type, member."""
+    if root is None:
+        return _structure_config_sites(root, prop), "structure", "there is no tree to model"
+    try:
+        model = dest_model(Path(root))
+    except DestModelUnavailable as exc:
+        return (_structure_config_sites(root, prop), "structure",
+                "the destination tree could not be modelled: %s" % exc)
+    sites = _dest_config_sites(model, prop)
+    if sites:
+        return sites, "dest-model", ""
+    return (_structure_config_sites(root, prop), "structure",
+            "the dest-model records annotations on FIELDS and no field of the destination names it, so the "
+            "frozen source's model was asked about parameters too")
+
+
 def config_value_decision(text: str, root: Path | None, fallback: str) -> tuple[str, str, str, bool, str]:
     """(locus, cluster kind, member, unlocated, what the worker must be told).
 
     A property is read at the annotation that names it; the properties file is
     only where a MISSING key would be supplied. An empty name is neither: no
-    key can be added for it, and the annotation that produced it is not in the
-    model, so it is reported as a blocker rather than sent anywhere."""
+    key can be added for it, and the annotation that produced it is in no
+    model, so it is reported as a blocker rather than sent anywhere.
+
+    The note names WHICH MODEL answered: the two can disagree about the same
+    field, and the reader has to know which tree the locus is a fact about."""
     prop = config_property_name(text)
     quoted = "\"%s\"" % prop if prop else "EMPTY (nothing follows \"for:\")"
-    sites = config_value_sites(root, prop)
+    sites, model, why = config_value_sites(root, prop)
+    # short, because the brief is capped and the lesson must survive it; the
+    # reason the fallback was taken goes on the blocker, which has room
+    answered = "dest-model" if model == "dest-model" else "structure model"
     if sites:
         first = sites[0]  # the lowest path: deterministic when several read it
         others = ["%s.%s %s" % (s["type"], s["member"], s["annotation"]) for s in sites[1:]]
-        note = "the config property the platform could not load is %s, and it is named by %s on %s.%s" % (
-            quoted, first["annotation"], first["type"], first["member"])
+        note = "the config property the platform could not load is %s, and it is named by %s on %s.%s (located by the %s)" % (
+            quoted, first["annotation"], first["type"], first["member"], answered)
         if others:
             note += "; the same property is also read at %s -- repair this one, the rest stay reported" % ", ".join(others)
         return first["path"], "compile", first["member"], False, note + "; " + CONFIG_VALUE_LESSON
     if prop:
         return (fallback, "config", "", False,
                 "the config property the platform could not load is %s, and no @Value or @ConfigProperty in the "
-                "structural model names it, so it is a key %s must supply; %s" % (quoted, fallback, CONFIG_VALUE_LESSON))
+                "%s names it, so it is a key %s must supply; %s" % (quoted, answered, fallback, CONFIG_VALUE_LESSON))
     return ("", "config", "", True,
             "the config property name the platform printed after \"for:\" is EMPTY: an empty config property name "
-            "comes from an annotation the structure model does not record")
+            "comes from an annotation the %s does not record%s" % (answered, ("; %s" % why) if why else ""))
 
 
 def runtime_locus(text: str, root: Path | None) -> str:
@@ -1135,7 +1192,7 @@ def build_checked_family_scope(root: Path, cluster: dict[str, Any], items: list[
         "kind": "repair-family",
         "family": "checked-exception",
         "producer": "worklist.build_checked_family_scope",
-        "tool": {"model": "jdk-dest-model", "version": "1.1.0"},
+        "tool": {"model": "jdk-dest-model", "version": "1.2.0"},
         "rule": CHECKED_FAMILY_RULE,
         "cluster": str(cluster.get("id") or ""),
         "repository": "",

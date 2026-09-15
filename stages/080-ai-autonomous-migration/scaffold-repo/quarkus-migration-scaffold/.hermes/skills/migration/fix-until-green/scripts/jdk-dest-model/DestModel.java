@@ -3,10 +3,13 @@
 // The M1 extractor models the frozen SOURCE and is pinned to that job. The
 // loop needs the same kind of truth about the tree it is editing right now:
 // which members a repository actually declares, which it actually inherits,
-// and exactly where each profile condition sits. Regex answered those
-// questions wrongly in every direction -- it read a fully qualified
-// annotation as absent, a redeclared findAll as underivable, and a deleted
-// member as inherited.
+// exactly where each profile condition sits, and what each FIELD's annotations
+// say. Regex answered those questions wrongly in every direction -- it read a
+// fully qualified annotation as absent, a redeclared findAll as underivable,
+// and a deleted member as inherited -- and the source model cannot answer them
+// at all, because a worker's edit changes the destination and not the source
+// (v9: @Value("#{servletContext.contextPath}") in the frozen source, @Value("")
+// on disk, and a config property with an empty name at startup).
 //
 // Everything here is resolved by javac. A declaration javac could not
 // resolve, or an annotation argument that is not a string literal, is
@@ -168,6 +171,7 @@ public final class DestModel {
                     row.put("annotations", annotationsOf(node.getModifiers(), path, unit, relPath));
 
                     List<Map<String, Object>> declared = new ArrayList<>();
+                    List<Map<String, Object>> fields = new ArrayList<>();
                     List<Map<String, Object>> unhandled = new ArrayList<>();
                     for (Tree member : node.getMembers()) {
                         // field initializers and initializer blocks can call a
@@ -175,6 +179,18 @@ public final class DestModel {
                         // checked exception there is never claimed as handled
                         if (member instanceof com.sun.source.tree.VariableTree) {
                             com.sun.source.tree.VariableTree v = (com.sun.source.tree.VariableTree) member;
+                            // A field's annotations are facts about the tree AS IT
+                            // IS NOW. The frozen source's model cannot answer for
+                            // them: on destination v9 the boot gate died on an
+                            // empty config property name because a worker had
+                            // replaced @Value("#{servletContext.contextPath}")
+                            // with @Value(""), and the source model -- which still
+                            // carried the SpEL -- located nothing.
+                            Map<String, Object> frow = new LinkedHashMap<>();
+                            frow.put("name", v.getName().toString());
+                            frow.put("type", v.getType() == null ? "" : v.getType().toString());
+                            frow.put("annotations", annotationsOf(v.getModifiers(), new TreePath(path, member), unit, relPath));
+                            fields.add(frow);
                             if (v.getInitializer() != null) {
                                 scanBody(task, trees, elements, positions, unit,
                                         new TreePath(new TreePath(path, member), v.getInitializer()),
@@ -263,6 +279,9 @@ public final class DestModel {
                         declared.add(mrow);
                     }
                     row.put("declared", declared);
+                    // every FIELD this type declares, with what its annotations
+                    // say -- string-literal arguments only, as above
+                    row.put("fields", fields);
                     // Every call site whose resolved callee declares a checked
                     // exception that nothing encloses: no enclosing try catches it
                     // and the member does not declare it. javac reports these one
@@ -313,12 +332,31 @@ public final class DestModel {
                         row.put("start", positions.getStartPosition(cu, a));
                         row.put("end", positions.getEndPosition(cu, a));
                         List<String> values = new ArrayList<>();
+                        // and WHICH ATTRIBUTE each literal was written for. A
+                        // flat value list cannot say whether the first literal of
+                        // @ConfigProperty(name = "x", defaultValue = "d") is the
+                        // property or the default, and picking by position would
+                        // be a guess. An attribute whose argument is not a string
+                        // literal is absent from the map, never present-and-wrong.
+                        Map<String, Object> named = new LinkedHashMap<>();
                         boolean literal = true;
                         for (ExpressionTree arg : a.getArguments()) {
-                            literal &= collectLiterals(arg, values);
+                            String attr = "value";
+                            Tree expr = arg;
+                            if (arg.getKind() == Tree.Kind.ASSIGNMENT) {
+                                com.sun.source.tree.AssignmentTree as = (com.sun.source.tree.AssignmentTree) arg;
+                                attr = as.getVariable().toString();
+                                expr = as.getExpression();
+                            }
+                            List<String> mine = new ArrayList<>();
+                            boolean ofLiterals = collectLiterals(expr, mine);
+                            literal &= ofLiterals;
+                            values.addAll(mine);
+                            if (ofLiterals) { named.put(attr, mine); }
                         }
                         if (a.getArguments().isEmpty()) { literal = true; }
                         row.put("values", values);
+                        row.put("named", named);
                         // an argument that is not a string literal is a
                         // question this tool cannot answer, and it says so
                         row.put("resolution", (fqn.isEmpty() || !literal) ? "inconclusive" : "full");

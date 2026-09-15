@@ -378,18 +378,14 @@ _SPRING_VALUE = "org.springframework.beans.factory.annotation.Value"
 _MP_CONFIG_PROPERTY = "org.eclipse.microprofile.config.inject.ConfigProperty"
 
 
-def _cv_root(td: str, pkg: str, type_name: str, fields: list[tuple[str, str, str, str]]) -> tuple[Path, str]:
-    """A tree with M1's structural model of one type and its annotated fields.
-
-    ``fields`` are (field, annotation fqn or "", attribute, written value)."""
+def _cv_structure(root: Path, pkg: str, type_name: str, rel: str,
+                  fields: list[tuple[str, str, str, str]]) -> None:
+    """M1's structural model of one type and its annotated fields, written into
+    `root`. ``fields`` are (field, annotation fqn or "", attribute, value)."""
     import json
 
     from planner.paths import STRUCTURE
 
-    root = Path(td)
-    rel = "src/main/java/%s/%s.java" % (pkg.replace(".", "/"), type_name)
-    (root / rel).parent.mkdir(parents=True, exist_ok=True)
-    (root / rel).write_text("package %s;\n" % pkg, encoding="utf-8")
     doc = {"schema": "rhoai3.structure/v1", "producer": {"tool": "jdk-model", "version": "jdk-21", "mode": "full"},
            "source_digest": "d" * 64, "mode": "full",
            "types": [{"fqn": "%s.%s" % (pkg, type_name), "path": rel, "kind": "class", "resolution": "full",
@@ -399,6 +395,50 @@ def _cv_root(td: str, pkg: str, type_name: str, fields: list[tuple[str, str, str
                                  for f, a, attr, v in fields]}]}
     (root / STRUCTURE).parent.mkdir(parents=True, exist_ok=True)
     (root / STRUCTURE).write_text(json.dumps(doc), encoding="utf-8")
+
+
+def _cv_root(td: str, pkg: str, type_name: str, fields: list[tuple[str, str, str, str]]) -> tuple[Path, str]:
+    """A tree that carries ONLY M1's model of the frozen source.
+
+    There is no src/main/java, so the destination cannot be modelled at all and
+    the frozen source's model is what answers -- the behaviour that has to
+    survive a tree the compiler cannot be run over."""
+    root = Path(td)
+    rel = "src/main/java/%s/%s.java" % (pkg.replace(".", "/"), type_name)
+    _cv_structure(root, pkg, type_name, rel, fields)
+    return root, rel
+
+
+_CV_STUB = ("package org.springframework.beans.factory.annotation;\nimport java.lang.annotation.*;\n"
+            "@Retention(RetentionPolicy.RUNTIME) @Target({ElementType.FIELD, ElementType.PARAMETER})\n"
+            "public @interface Value { String value(); }\n")
+
+
+def _cv_dest_root(td: str, pkg: str, type_name: str, field: str, written: str, frozen: str) -> tuple[Path, str]:
+    """A REAL destination tree whose field carries `written`, beside M1's model
+    of the frozen source, where the same field still carries `frozen`.
+
+    This is destination v9: the two models disagree because a worker edited the
+    annotation, and only the compiled tree can say what it says now."""
+    import subprocess
+
+    root = Path(td)
+    (root / ".hermes").mkdir(parents=True, exist_ok=True)
+    (root / ".hermes/pins.json").write_text('{"pins":{"quarkus_platform":{"java_release":21}}}', encoding="utf-8")
+    rel = "src/main/java/%s/%s.java" % (pkg.replace(".", "/"), type_name)
+    (root / rel).parent.mkdir(parents=True, exist_ok=True)
+    (root / rel).write_text("package %s;\n\nimport %s;\n\npublic class %s {\n\n    @Value(\"%s\")\n    private String %s;\n}\n"
+                            % (pkg, _SPRING_VALUE, type_name, written, field), encoding="utf-8")
+    stub = root / ".stub" / (_SPRING_VALUE.replace(".", "/") + ".java")
+    stub.parent.mkdir(parents=True, exist_ok=True)
+    stub.write_text(_CV_STUB, encoding="utf-8")
+    classes = root / ".stubcls"
+    classes.mkdir(exist_ok=True)
+    subprocess.run(["javac", "-d", str(classes), str(stub)], check=True, capture_output=True)
+    cp = root / "verification/build/.work/classpath.txt"
+    cp.parent.mkdir(parents=True, exist_ok=True)
+    cp.write_text(str(classes), encoding="utf-8")
+    _cv_structure(root, pkg, type_name, rel, [(field, _SPRING_VALUE, "value", frozen)])
     return root, rel
 
 
@@ -426,25 +466,61 @@ def _config_value_case() -> int:
     @Value("#{servletContext.contextPath}") with @Value(""), quarkus-spring-di
     looked up a config property with an empty name, and startup died. The work
     list called it unclassified and minted the card at application.properties,
-    where no worker can repair an annotation."""
+    where no worker can repair an annotation.
+
+    The first locator then searched M1's structural model -- of the FROZEN
+    SOURCE, where the field still carried the SpEL -- found nothing, and raised
+    an unlocated blocker while the worker on the card could name the file and
+    line. What an annotation SAYS is a fact about the destination, so the
+    destination's own compiled model is what answers."""
     import tempfile
 
-    from planner.worklist import APP_PROPERTIES
+    from planner.worklist import APP_PROPERTIES, _structure_config_sites, config_value_sites
 
     specimens = (("org.springframework.samples.petclinic.rest", "RootRestController", "servletContextPath"),
                  ("com.acme.shop.api", "EntryController", "basePath"))
     shapes: list[list[tuple]] = []
     for pkg, type_name, field in specimens:
         seen: list[tuple] = []
-        # (a) the v9 case: the name is empty and an emptied @Value carries it
-        with tempfile.TemporaryDirectory(prefix="cv-empty-") as td:
-            root, rel = _cv_root(td, pkg, type_name, [(field, _SPRING_VALUE, "value", "")])
+        # (a) the v9 case AS MEASURED: a real destination tree whose field
+        # carries @Value(""), while the frozen source's model still carries the
+        # SpEL the worker replaced. The two models disagree, and the obligation
+        # belongs where the annotation IS, not where it was.
+        with tempfile.TemporaryDirectory(prefix="cv-dest-") as td:
+            root, rel = _cv_dest_root(td, pkg, type_name, field, "", "#{servletContext.contextPath}")
+            if _structure_config_sites(root, ""):
+                return _fail("the frozen source's model must still carry the SpEL, or this proves nothing")
+            sites, model, _why = config_value_sites(root, "")
+            if model != "dest-model" or [s["path"] for s in sites] != [rel]:
+                return _fail("the destination's own model answers about its own annotation: %s %s" % (model, sites))
             it = _cv_item(root, "")
             if it.get("path") != rel or it.get("kind") != "compile" or it.get("cause") != "config-value":
                 return _fail("an emptied @Value is repaired at its own file, not at the properties file: %s"
                              % {k: it.get(k) for k in ("path", "kind", "cause")})
             if it.get("member") != field or it.get("unlocated"):
                 return _fail("the field that carries the annotation is named: %s" % {k: it.get(k) for k in ("member", "unlocated")})
+            if "dest-model" not in it["detail"]:
+                return _fail("the brief must say WHICH model located it: %s" % it["detail"])
+            if "EMPTY" not in it["detail"] or "@Value(\"\")" not in it["detail"] or "quarkus.http.root-path" not in it["detail"]:
+                return _fail("the detail must say the name is empty, quote the annotation and teach the mapping: %s" % it["detail"])
+            card = cluster_items([it], {}, set())
+            if len(card) != 1 or card[0]["write_set"] != [rel]:
+                return _fail("the card's write set is the file that carries the annotation: %s" % card)
+            seen.append(_cv_shape(it, pkg, type_name, field))
+        # (a2) and when the destination cannot be modelled at all, M1's model
+        # still decides the same way -- the old behaviour, fallen back to
+        with tempfile.TemporaryDirectory(prefix="cv-empty-") as td:
+            root, rel = _cv_root(td, pkg, type_name, [(field, _SPRING_VALUE, "value", "")])
+            if config_value_sites(root, "")[1] != "structure":
+                return _fail("a tree the compiler cannot be run over falls back to the frozen source's model")
+            it = _cv_item(root, "")
+            if it.get("path") != rel or it.get("kind") != "compile" or it.get("cause") != "config-value":
+                return _fail("an emptied @Value is repaired at its own file, not at the properties file: %s"
+                             % {k: it.get(k) for k in ("path", "kind", "cause")})
+            if it.get("member") != field or it.get("unlocated"):
+                return _fail("the field that carries the annotation is named: %s" % {k: it.get(k) for k in ("member", "unlocated")})
+            if "structure model" not in it["detail"]:
+                return _fail("the brief must say the fallback answered: %s" % it["detail"])
             if "EMPTY" not in it["detail"] or "@Value(\"\")" not in it["detail"] or "quarkus.http.root-path" not in it["detail"]:
                 return _fail("the detail must say the name is empty, quote the annotation and teach the mapping: %s" % it["detail"])
             card = cluster_items([it], {}, set())
@@ -730,7 +806,7 @@ def main() -> int:
         return _fail("reclassified items keep their authority and are never dropped")
     if measure_of(all_items, incidents_known=False, compile_known=True, tests_known=True, parity_known=False)["known"]:
         return _fail("unknown incidents never advance")
-    print("OK: worklist (lossless line-free incidents; canary excluded; only ERROR diagnostics; build→config→compile(leaf-first)→incident→test order; tests never writable; lexicographic 3-tuple progress; new-incident veto; unknown never advances; gate progress is the issued obligation disappearing, never a reworded one; a second cause at one file is a second obligation); a repository card's inventory is sealed by its own digest and two measurements never share a path; checked-exception family: bound to its introducing step (a legacy site stays out), one budget, line-free identity across a moved line, CONTINUE / EXPOSED / still-reported / 1→0 accept, per-member assessment (catch-wrapped and header-deleted members violate); a set-wide packaging cause is one typed blocker under permuted first-reported names and never a card; an unloadable config value is located at the annotation that names the property (${x:d} and a bare x are one property), at application.properties only when the name is real and unread, and is a blocker when the name is empty and unread -- the same decisions under renamed identifiers; parity mismatches are typed by their diffs (CORS → application.properties, the rest → the controller; scenario verdicts count, the receipt does not)")
+    print("OK: worklist (lossless line-free incidents; canary excluded; only ERROR diagnostics; build→config→compile(leaf-first)→incident→test order; tests never writable; lexicographic 3-tuple progress; new-incident veto; unknown never advances; gate progress is the issued obligation disappearing, never a reworded one; a second cause at one file is a second obligation); a repository card's inventory is sealed by its own digest and two measurements never share a path; checked-exception family: bound to its introducing step (a legacy site stays out), one budget, line-free identity across a moved line, CONTINUE / EXPOSED / still-reported / 1→0 accept, per-member assessment (catch-wrapped and header-deleted members violate); a set-wide packaging cause is one typed blocker under permuted first-reported names and never a card; an unloadable config value is located at the annotation that names the property IN THE DESTINATION'S OWN MODEL (the frozen source's model answers only when the destination cannot be modelled, and the brief says which did; ${x:d} and a bare x are one property), at application.properties only when the name is real and unread, and is a blocker when the name is empty and unread -- the same decisions under renamed identifiers; parity mismatches are typed by their diffs (CORS → application.properties, the rest → the controller; scenario verdicts count, the receipt does not)")
     return 0
 
 
