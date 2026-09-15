@@ -27,6 +27,8 @@ from _oracle_common import slug  # noqa: E402
 CAPTURE = HERE / "capture-source-oracles.py"
 COMPARE = HERE / "compare-runtime-parity.py"
 RECEIPT = HERE / "compose-parity-receipt.py"
+COMPARE_SCENARIO = HERE / "compare-scenario-parity.py"
+QUALIFY_CAPTURES = HERE / "qualify-source-captures.py"
 
 
 class Stub(BaseHTTPRequestHandler):
@@ -95,7 +97,7 @@ _LEGACY_CAPTURE_KEYS = {"schema", "scenario", "entry_point", "receipt_sha256", "
                         "source", "initial_state", "normalization", "asserted_headers_extra", "reset_before", "status",
                         "reason", "request", "response", "before", "effects"}
 _NEW_RECEIPT_KEYS = {"security_mode", "source_config", "credential_refs", "reads_note"}
-_NEW_CAPTURE_KEYS = {"security_mode"}
+_NEW_CAPTURE_KEYS = {"security_mode", "asserted_headers_scenario"}
 
 
 def _load_producer():
@@ -106,12 +108,39 @@ def _load_producer():
     return producer
 
 
-def _mode_root(td: Path, name: str, scenario: dict) -> tuple[Path, str]:
+SWITCH_KEY = "acme.security.enable"
+SWITCH_ON = "enabled"
+SWITCH_OFF = "disabled"
+
+
+def _decided_security(refs: list[str], invalid: str = "") -> dict:
+    """A ``decisions.yaml`` security section: the source's own switch by KEY,
+    and each identity by the NAME of the variable holding its credential."""
+    sec: dict = {
+        "adr": "ADR-001",
+        "switch": {"key": SWITCH_KEY, "disabled_value": SWITCH_OFF, "enabled_value": SWITCH_ON},
+        "identities": [{"name": "identity-%d" % i, "credential_ref": ref} for i, ref in enumerate(refs)],
+    }
+    if invalid:
+        sec["invalid_credential_ref"] = invalid
+    return sec
+
+
+def _mode_root(td: Path, name: str, scenario: dict, security_mode: str = "disabled",
+               security: dict | None = None) -> tuple[Path, str]:
     """A tree the scenario producer can run against: admitted, frozen source
-    receipt, and a one-scenario corpus."""
+    receipt, and a one-scenario corpus OF THAT MODE.
+
+    The corpus is written at the mode's own path, because that is where the
+    producer of that mode reads it: an enabled-mode capture replays the
+    enabled corpus's probes, never the anonymous requests beside them."""
     from planner.canonical import write_canonical
     from planner.paths import producer_receipt
-    root = specimens.build_dest(td / name, specimens.specimen("http"), decisions=specimens.admitted_decisions())
+    from _scenarios import corpus_path
+    decisions = specimens.admitted_decisions()
+    if security is not None:
+        decisions["security"] = security
+    root = specimens.build_dest(td / name, specimens.specimen("http"), decisions=decisions)
     specimens.prepare_loop(root)
     pipeline.admit(root)
     frozen = root / "frozen"
@@ -120,7 +149,7 @@ def _mode_root(td: Path, name: str, scenario: dict) -> tuple[Path, str]:
     write_canonical(producer_receipt(root, "freeze"), {"analysis_copy": str(frozen), "source_digest": "fixture"})
     ep = sorted(str(e["id"]) for e in load_json(root / "evidence" / "planning" / "evidence-bundle.json")["entry_points"])[0]
     sc = dict(scenario, entry_point=ep)
-    write_canonical(root / "verification" / "scenarios" / "corpus.json", {
+    write_canonical(root / corpus_path(security_mode), {
         "schema": "rhoai3.scenario-corpus/v1", "approved_by": "operator:test",
         "initial_state": {"reset": "restart the service", "dataset": "seeded"}, "scenarios": [sc]})
     return root, ep
@@ -196,7 +225,7 @@ def _security_mode_capture_case() -> int:
             authenticated = {"id": "sc:read-owners", "method": "GET", "path": "/api/owners", "body_absent": True,
                              "reset_before": False, "effects": [], "normalization": [],
                              "identity": {"kind": "basic", "credential_ref": ref}}
-            root, ep = _mode_root(t, "enabled", authenticated)
+            root, ep = _mode_root(t, "enabled", authenticated, "enabled")
             fake = _fake_runtime(base_url)
             with patch.object(producer, "SourceRuntime", fake):
                 # no --no-reads: the enabled mode skips the reads on its own,
@@ -249,7 +278,7 @@ def _security_mode_capture_case() -> int:
                 return _fail("the reference itself must be recorded, or nobody can tell which credential was used")
 
             # a credential passed as CONFIGURATION would be recorded verbatim
-            root2, _ = _mode_root(t, "conflict", authenticated)
+            root2, _ = _mode_root(t, "conflict", authenticated, "enabled")
             errors = io.StringIO()
             with patch.object(producer, "SourceRuntime", side_effect=AssertionError("the source must not start")):
                 with contextlib.redirect_stderr(errors):
@@ -297,7 +326,127 @@ def _security_mode_capture_case() -> int:
     return 0
 
 
+class Challenging(BaseHTTPRequestHandler):
+    """A source with its security switch ON, answering an anonymous read the
+    way ADR-014's refusal probes expect: a 4xx that SAYS how to authenticate."""
+
+    challenge = 'Basic realm="acme"'
+
+    def do_GET(self):  # noqa: N802
+        body = b'{"error":"unauthorized"}'
+        self.send_response(401)
+        if type(self).challenge:
+            self.send_header("WWW-Authenticate", type(self).challenge)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *a):  # noqa: D102
+        return
+
+
+def _serve_handler(handler) -> tuple[HTTPServer, str]:
+    srv = HTTPServer(("127.0.0.1", 0), handler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv, "http://127.0.0.1:%d" % srv.server_address[1]
+
+
+def _challenge_header_case() -> int:
+    """A scenario's OWN asserted headers are asserted, recorded and compared.
+
+    The challenge is part of a refusal: a source that answers 401 with
+    WWW-Authenticate has stated how to authenticate, and a destination that
+    drops it has changed the behaviour a client sees. Until now the capture
+    asserted only the headers the source EXPOSES through CORS, so the
+    enabled-mode derivation could name a header nobody would ever look at --
+    the comparison would have been silent about it, which is the false green
+    ADR-014 exists to prevent. The controls: the header is in the capture's
+    own asserted set and in its recorded map, a destination that omits it
+    FAILs by name, and the switch and credential REFERENCES the capture runs
+    with come from the decided file rather than a command line."""
+    import os
+    from unittest.mock import patch
+    from planner.canonical import load_json as _load
+    from _scenarios import capture_receipt_path, scenario_oracles_dir, scenario_parity_dir, scenario_slug
+
+    producer = _load_producer()
+    ref, sid = "TEST_ENABLED_CREDENTIAL", "sc:auth-anonymous-read-api-owners"
+    anonymous = {"id": sid, "method": "GET", "path": "/api/owners", "body_absent": True,
+                 "reset_before": False, "effects": [], "normalization": [],
+                 "identity": {"kind": "none"}, "asserted_headers": ["WWW-Authenticate"],
+                 "qualify": {"intent": "negative", "expect_status_class": "4xx"}}
+    kept = os.environ.get(ref)
+    os.environ[ref] = "an-identity:a-password"
+    src, src_url = _serve_handler(Challenging)
+    dest, dest_url = _serve_handler(type("Silent", (Challenging,), {"challenge": ""}))
+    try:
+        with tempfile.TemporaryDirectory(prefix="challenge-header-") as tmp:
+            t = Path(tmp).resolve()
+            root, _ = _mode_root(t, "challenge", anonymous, "enabled", security=_decided_security([ref]))
+            fake = _fake_runtime(src_url)
+            with patch.object(producer, "SourceRuntime", fake):
+                rc = producer.main(["--root", str(root), "--security-mode", "enabled"])
+            if rc != 0:
+                return _fail("an enabled-mode capture with a decided section must capture: rc=%s" % rc)
+            # the switch and the references came from the decided file, with
+            # no --source-config and no --credential-ref on the command line
+            receipt = _load(root / capture_receipt_path("enabled"))
+            if receipt.get("source_config") != {SWITCH_KEY: SWITCH_ON} or receipt.get("credential_refs") != [ref]:
+                return _fail("the capture starts the source with the DECIDED switch and reads the DECIDED references: %s"
+                             % {k: receipt.get(k) for k in ("source_config", "credential_refs")})
+            if not fake.instances or fake.instances[0].source_config != {SWITCH_KEY: SWITCH_ON}:
+                return _fail("the decided switch reaches the runtime: %s" % (fake.instances[0].source_config if fake.instances else None))
+            cap = _load(root / scenario_oracles_dir("enabled") / (scenario_slug(sid) + ".json"))
+            if cap["status"] != "CAPTURED" or cap["response"]["status"] != 401:
+                return _fail("the enabled source refuses the anonymous read: %s %s" % (cap["status"], cap.get("response")))
+            if cap.get("asserted_headers_scenario") != ["WWW-Authenticate"] or "WWW-Authenticate" not in cap["asserted_headers_extra"]:
+                return _fail("the capture records the headers THIS scenario asserts, beside the ones the source exposes: %s"
+                             % {k: cap.get(k) for k in ("asserted_headers_scenario", "asserted_headers_extra")})
+            if cap["response"]["headers"].get("WWW-Authenticate") != Challenging.challenge:
+                return _fail("the challenge the source sent is what was recorded: %s" % cap["response"]["headers"])
+
+            # ... and a destination that drops it FAILS, by name
+            p = _run([sys.executable, str(COMPARE_SCENARIO), "--root", str(root), "--scenario", sid,
+                      "--dest-url", dest_url, "--no-reset", "--security-mode", "enabled"])
+            v = _load(root / scenario_parity_dir("enabled") / (scenario_slug(sid) + ".json"))
+            if p.returncode != 1 or v["verdict"] != "FAIL" or "header WWW-Authenticate" not in v["reason"]:
+                return _fail("a dropped challenge is a diff the comparator names: rc=%s %s" % (p.returncode, v.get("reason")))
+            if v["observed"]["headers"].get("WWW-Authenticate") is not None:
+                return _fail("the destination's own value is recorded beside the source's: %s" % v["observed"]["headers"])
+
+            # a declared credential this workspace does not hold: nothing is
+            # captured, the source is never started, and the receipt names the
+            # VARIABLE -- never what it would have held
+            root2, _ = _mode_root(t, "no-credential", anonymous, "enabled",
+                                  security=_decided_security(["TEST_ABSENT_CREDENTIAL"]))
+            with patch.object(producer, "SourceRuntime", side_effect=AssertionError("the source must not start")):
+                rc = producer.main(["--root", str(root2), "--security-mode", "enabled"])
+            idle = _load(root2 / capture_receipt_path("enabled"))
+            if rc != 0 or idle.get("status") != "idle" or "TEST_ABSENT_CREDENTIAL" not in str(idle.get("reason")):
+                return _fail("a credential the workspace does not hold is a recorded blocker naming the variable: rc=%s %s"
+                             % (rc, {k: idle.get(k) for k in ("status", "reason")}))
+            if (root2 / scenario_oracles_dir("enabled") / (scenario_slug(sid) + ".json")).exists():
+                return _fail("nothing is captured when the credential is missing")
+            # ... and the qualification of that mode says the same thing
+            p = _run([sys.executable, str(QUALIFY_CAPTURES), "--root", str(root2), "--security-mode", "enabled"])
+            from _scenarios import qualification_path
+            q = _load(root2 / qualification_path("enabled"))
+            if p.returncode != 0 or q.get("status") != "idle" or q["verdict"] != "INCONCLUSIVE" or q["scenarios"]:
+                return _fail("an idle capture is nothing to judge, recorded as such: rc=%s %s" % (p.returncode, q))
+    finally:
+        for s in (src, dest):
+            s.shutdown()
+        if kept is None:
+            os.environ.pop(ref, None)
+        else:
+            os.environ[ref] = kept
+    return 0
+
+
 def main() -> int:
+    if _challenge_header_case():
+        return 1
     if _security_mode_capture_case():
         return 1
     with tempfile.TemporaryDirectory(prefix="oracle-") as tmp:
@@ -445,7 +594,11 @@ def main() -> int:
     print("OK: capture-source-oracles (HTTP capture/parity PASS+FAIL; non-idempotent INCONCLUSIVE; non-HTTP observations; bundle binding: an oracle from another bundle or with no bundle digest is INCONCLUSIVE, a capture under a stale receipt is CAPTURED and usable, the verdict stays receipt-bound; parity receipt refuses; "
           "an enabled-mode scenario capture authenticates from a declared credential REFERENCE, records the reference and the mode and "
           "never the password, the Authorization value or the account, writes into its own directory, refuses a --source-config value "
-          "equal to a credential by naming the key, and leaves the disabled mode's paths, keys and request digests untouched)")
+          "equal to a credential by naming the key, and leaves the disabled mode's paths, keys and request digests untouched; "
+          "an enabled capture reads the enabled corpus, asserts and records the headers THAT scenario declares beside the ones the "
+          "source exposes so a dropped WWW-Authenticate is a named diff, takes the switch and the credential REFERENCES from "
+          "decisions.yaml, and records an idle receipt naming the missing VARIABLE -- never its value -- when the workspace does not "
+          "hold a declared credential, which the qualification of that mode then reports as nothing to judge)")
     return 0
 
 

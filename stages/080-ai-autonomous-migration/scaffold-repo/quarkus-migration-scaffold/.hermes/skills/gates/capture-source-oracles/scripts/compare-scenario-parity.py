@@ -68,7 +68,10 @@ def main(argv: list[str] | None = None) -> int:
         print("REFUSE: SCENARIO_PARITY %s INCONCLUSIVE (%s)" % (args.scenario, verdict["reason"]), file=sys.stderr)
         return 1
     try:
-        corpus = load_corpus(root)
+        # the corpus of THIS mode (ADR-014): a replay of the enabled mode
+        # resolves its scenario from the enabled corpus, never from the
+        # anonymous one that happens to sit beside it
+        corpus = load_corpus(root, security_mode)
         sc = scenario(corpus, args.scenario)
         req = request_of(root, sc)
     except CorpusError as exc:
@@ -210,8 +213,13 @@ def main(argv: list[str] | None = None) -> int:
     verdict["expected"] = {"status": exp.get("status"), "body_kind": exp.get("body_kind"), "body_sha256": exp.get("body_sha256"),
                            "headers": exp.get("headers")}
     # assert exactly what the capture asserted: the headers the source exposes
-    # are recorded on the oracle, and fall back to the model for older ones
+    # are recorded on the oracle, and fall back to the model for older ones.
+    # The scenario's own asserted_headers are unioned in so the destination's
+    # value is OBSERVED even when the capture predates them; whether they are
+    # COMPARED is still the capture's word (header_diffs walks the expected
+    # map), because a header nobody recorded on the source has no expectation.
     extra = list(oracle.get("asserted_headers_extra") or source_exposed_headers(root)[0])
+    extra += [str(h) for h in (sc.get("asserted_headers") or []) if str(h) and str(h) not in extra]
     got = http_observe(args.dest_url, req["method"], req["path"], body=req["body"], headers={**req["headers"], **headers},
                        assert_headers=extra)
     verdict["observed"] = {"status": got.get("status"), "body_kind": got.get("body_kind"), "body_sha256": got.get("body_sha256"),

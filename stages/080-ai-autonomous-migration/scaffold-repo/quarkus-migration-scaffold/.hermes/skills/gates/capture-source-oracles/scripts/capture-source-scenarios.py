@@ -31,6 +31,17 @@ holding ``user:password``, a scenario asks for it by that name
 ever written down. A ``--source-config`` value that equals a credential is
 refused before the source starts.
 
+Normally none of that is typed: ``--from-decisions`` (the default for
+``--security-mode enabled`` when no ``--credential-ref`` is given) reads
+``decisions.yaml``'s ``security`` section -- the switch by KEY, each identity
+by the NAME of the variable holding its credential -- so the capture starts the
+source the way the corpus it replays was derived for, and the declaration an
+ADR backs is the only place either of them comes from. A section nobody
+declared, or a declared credential this workspace does not hold, captures
+NOTHING: ``_capture.json`` is written with ``status: idle`` and a reason naming
+the missing environment VARIABLE. That is ADR-014's recorded blocker -- never
+an invented identity, and never an empty directory nobody can read.
+
 Binding rule. A capture is bound to the FROZEN SOURCE (the evidence bundle
 digest) and to the corpus, never to the admission receipt. Measured on v9
 (2026-09-14): this producer refused to start the source because the receipt's
@@ -54,6 +65,7 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
+from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _oracle_common import ensure_hermes_lib, http_observe, retain_body  # noqa: E402
@@ -66,7 +78,45 @@ ensure_hermes_lib()
 from planner.admission import verify_receipt  # noqa: E402
 from planner.canonical import load_json, write_canonical  # noqa: E402
 from planner.canonical import digest  # noqa: E402
-from planner.paths import EVIDENCE_BUNDLE, producer_receipt  # noqa: E402
+from planner.decisions import DecisionsError, load_decisions, security, security_gaps  # noqa: E402
+from planner.paths import DECISIONS, EVIDENCE_BUNDLE, producer_receipt  # noqa: E402
+
+
+CAPTURE_SCHEMA = "rhoai3.source-capture/v1"
+
+
+def decided_security(root: Path) -> tuple[dict[str, Any], str]:
+    """(the decided security switch and identities, why-not) for this tree.
+
+    Who the enabled-mode capture authenticates as, and which switch turns the
+    source's security on, are DECISIONS an ADR backs -- recorded once, read by
+    the derivation and by this capture, so the corpus and the run it is
+    replayed in came from the same declaration. A missing section is a
+    REASON the caller records; it never becomes an anonymous capture wearing
+    the enabled mode's name."""
+    try:
+        doc = load_decisions(root)
+    except (DecisionsError, OSError) as exc:
+        return {}, str(exc)
+    decided = security(doc)
+    if decided:
+        return decided, ""
+    refusals = security_gaps(doc)
+    if refusals:
+        return {}, ("%s declares a security section this loader refuses: %s"
+                    % (DECISIONS.as_posix(), "; ".join("%s %s" % (g["subject"], g["detail"]) for g in refusals)))
+    return {}, ("%s declares no security section (ADR-014: the switch, the seeded identities and the credential REFERENCES "
+                "the enabled mode is captured with)" % DECISIONS.as_posix())
+
+
+def missing_credentials(credential_refs: list[str]) -> list[str]:
+    """The declared references the workspace does not hold, by NAME.
+
+    A credential the environment does not carry cannot be invented and must
+    not be worked around: the capture stops before starting the source and
+    says which VARIABLE is empty. The name is the whole message -- what it
+    would have held is never read, printed or written."""
+    return [ref for ref in credential_refs if not os.environ.get(ref, "").strip()]
 
 
 def _archive_prior(receipt_p: Path) -> None:
@@ -217,6 +267,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--credential-ref", action="append", default=[], metavar="NAME",
                     help="an environment variable holding user:password (repeatable). A scenario whose identity names it as "
                          "credential_ref is sent with Basic authentication; only the NAME is ever recorded")
+    ap.add_argument("--from-decisions", action="store_true",
+                    help="enabled mode: take the credential REFERENCES and the source's security switch from decisions.yaml's "
+                         "security section (ADR-014) -- --source-config is filled with switch.key=switch.enabled_value. The "
+                         "default whenever --security-mode enabled is given with no --credential-ref. A missing section, or a "
+                         "declared credential the workspace does not hold, captures nothing and records why")
     args = ap.parse_args(argv)
     root = Path(args.root).resolve()
     try:
@@ -225,6 +280,19 @@ def main(argv: list[str] | None = None) -> int:
     except CorpusError as exc:
         return _fail(str(exc))
     credential_refs = sorted({str(r) for r in (args.credential_ref or []) if str(r).strip()})
+    # the decided switch and identities: the same declaration the enabled
+    # corpus was derived from, so the run and the corpus agree on who the
+    # source is being asked as and which setting it was started with
+    from_decisions = bool(security_mode != DEFAULT_SECURITY_MODE and (args.from_decisions or not credential_refs))
+    decided_why = ""
+    if from_decisions:
+        decided, decided_why = decided_security(root)
+        if decided:
+            credential_refs = sorted({i["credential_ref"] for i in decided["identities"] if i["credential_ref"]}
+                                     | ({str(decided["invalid_credential_ref"])} if decided.get("invalid_credential_ref") else set()))
+            if not source_config:
+                switch = decided["switch"]
+                source_config = {switch["key"]: switch["enabled_value"]}
     # A credential passed as configuration would be written verbatim into the
     # capture receipt, which is exactly what ADR-014 forbids. The refusal
     # names the KEY, never the value.
@@ -256,8 +324,41 @@ def main(argv: list[str] | None = None) -> int:
     if receipt_note:
         print("  note: %s" % receipt_note, file=sys.stderr)
     receipt_p = root / capture_receipt_path(security_mode)
+
+    def idle(reason: str) -> int:
+        """Nothing was captured, and the receipt says exactly what is missing.
+
+        ADR-014's rule for an absent fixture: record the blocker. Not a
+        refusal -- a specimen with no security switch has no enabled mode to
+        capture -- and never silence, because an empty directory reads at M4
+        as a mode nobody thought about."""
+        _archive_prior(receipt_p)
+        write_canonical(receipt_p, {
+            "schema": CAPTURE_SCHEMA, "producer": "capture-source-scenarios.py",
+            "at": _now(), "status": "idle", "reason": reason,
+            "evidence_bundle_sha256": bundle_sha, "corpus_sha256": "", "captured": 0, "scenarios": [],
+            "receipt_sha256": receipt_sha, "receipt_note": receipt_note,
+            "security_mode": security_mode, "source_config": dict(source_config), "credential_refs": list(credential_refs),
+        })
+        print("OK: nothing captured in the %s security mode (%s); the receipt says so → %s"
+              % (security_mode, reason, receipt_p.relative_to(root)))
+        return 0
+
+    # the two fixtures ADR-014 says to RECORD rather than work around: a
+    # security section nobody declared, and a declared credential this
+    # workspace does not hold. The second names the VARIABLE and nothing else
+    # -- what it would have held is never read here, printed or written.
+    if from_decisions and decided_why:
+        return idle(decided_why)
+    if from_decisions:
+        absent = missing_credentials(credential_refs)
+        if absent:
+            return idle("the credential reference(s) %s that %s declares are not set in this workspace; a credential is never "
+                        "invented and the capture is not attempted without one" % (", ".join(absent), DECISIONS.as_posix()))
     try:
-        corpus = load_corpus(root)
+        # the corpus of THIS mode: an enabled-mode capture replays the enabled
+        # corpus's authorization probes, not the anonymous requests beside them
+        corpus = load_corpus(root, security_mode)
     except CorpusError as exc:
         # No corpus is a recorded gap, not a failure: a specimen may have no
         # approved write scenarios yet, and M1 still has to finish. What must
@@ -307,6 +408,16 @@ def main(argv: list[str] | None = None) -> int:
         if err:
             return _fail(err)
         for sc in wanted:
+            # what THIS scenario asserts, on top of the headers the source
+            # exposes to everyone. A refusal's WWW-Authenticate is the source
+            # saying how to authenticate; a destination that drops it has
+            # changed the behaviour, and a capture that never asked for the
+            # header could not show it. The scenario names it (the derivation
+            # wrote asserted_headers), the capture records the union it
+            # actually asserted, and the comparator reads that union back --
+            # so nothing downstream has to know which headers are security's.
+            own = [str(h).strip() for h in (sc.get("asserted_headers") or []) if str(h).strip()]
+            asserted = list(exposed) + [h for h in dict.fromkeys(own) if h not in exposed]
             rec = {
                 "schema": "rhoai3.source-scenario/v1", "scenario": str(sc["id"]), "entry_point": str(sc["entry_point"]),
                 "receipt_sha256": receipt_sha,
@@ -315,7 +426,8 @@ def main(argv: list[str] | None = None) -> int:
                            "artifact": runtime.jar.name if runtime.jar else "", "starts": runtime.starts},
                 "initial_state": dict(corpus.get("initial_state") or {}),
                 "normalization": list(sc.get("normalization") or []),
-                "asserted_headers_extra": list(exposed),
+                "asserted_headers_extra": list(asserted),
+                "asserted_headers_scenario": list(dict.fromkeys(own)),
                 "security_mode": security_mode,
                 "reset_before": bool(sc.get("reset_before", True)),
                 "status": "UNCAPTURED", "reason": "", "request": {}, "response": {}, "before": [], "effects": [],
@@ -363,7 +475,7 @@ def main(argv: list[str] | None = None) -> int:
                     row["evidence"] = retain_body(bodies_dir, "before-%s" % scenario_slug(eid), probe.get("raw") or b"", str(probe.get("body_sha256") or ""))
                 rec["before"].append(row)
             obs = http_observe(runtime.base_url, req["method"], req["path"], body=req["body"], headers={**req["headers"], **headers},
-                               assert_headers=exposed, keep_body=True)
+                               assert_headers=asserted, keep_body=True)
             raw = obs.pop("raw", b"")
             rec["response"] = obs
             if obs.get("status"):

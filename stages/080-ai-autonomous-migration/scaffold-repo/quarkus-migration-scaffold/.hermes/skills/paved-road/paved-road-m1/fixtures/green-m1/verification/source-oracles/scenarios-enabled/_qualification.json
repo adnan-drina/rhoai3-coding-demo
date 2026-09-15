@@ -1,0 +1,11 @@
+{
+ "schema": "rhoai3.scenario-qualification/v1",
+ "producer": "qualify-source-captures.py",
+ "security_mode": "enabled",
+ "status": "idle",
+ "reason": "decisions.yaml declares no security section (ADR-014: the switch, the seeded identities and the credential REFERENCES the enabled mode is captured with)",
+ "scenarios": {},
+ "total": 0,
+ "not_passed": 0,
+ "verdict": "INCONCLUSIVE"
+}

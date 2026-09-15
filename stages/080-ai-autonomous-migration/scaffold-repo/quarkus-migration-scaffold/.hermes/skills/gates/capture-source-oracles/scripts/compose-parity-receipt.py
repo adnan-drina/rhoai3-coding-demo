@@ -65,7 +65,9 @@ def main(argv: list[str] | None = None) -> int:
     corpus_sha = ""
     corpus_error = ""
     try:
-        corpus = load_corpus(root)
+        # the corpus of THIS mode: the enabled receipt is composed over the
+        # enabled corpus, never over the anonymous one beside it
+        corpus = load_corpus(root, security_mode)
         corpus_sha = corpus_digest(corpus)
     except CorpusError as exc:
         corpus_error = str(exc)

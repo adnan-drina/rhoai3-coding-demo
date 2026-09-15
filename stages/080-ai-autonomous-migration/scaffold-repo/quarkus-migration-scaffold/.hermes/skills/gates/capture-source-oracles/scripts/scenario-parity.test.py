@@ -573,7 +573,12 @@ def _security_mode_case() -> int:
 
         # cross-mode REUSE: the disabled captures copied into the enabled
         # directory. Every consumer refuses; none of them re-judges.
+        # The corpus is copied with them, so what each consumer refuses is the
+        # CAPTURE's mode and not a corpus nobody derived: every one of them
+        # now reads the corpus of the mode it was asked for, and the enabled
+        # run would otherwise stop at the missing enabled corpus first.
         shutil.copytree(str(root / scenario_oracles_dir("disabled")), str(root / scenario_oracles_dir("enabled")))
+        shutil.copytree(str(root / "verification" / "scenarios"), str(root / "verification" / "scenarios-enabled"))
         p = subprocess.run([sys.executable, str(COMPARE), "--root", str(root), "--scenario", "sc:list-owners",
                             "--dest-url", dest_url, "--no-reset", "--security-mode", "enabled"], text=True, capture_output=True)
         if p.returncode != 1 or "REFUSE: SCENARIO_PARITY mode mismatch" not in p.stderr:

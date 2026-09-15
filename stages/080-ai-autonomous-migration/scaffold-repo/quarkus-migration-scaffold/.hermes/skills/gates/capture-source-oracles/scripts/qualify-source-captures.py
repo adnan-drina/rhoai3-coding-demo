@@ -70,8 +70,8 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _oracle_common import ensure_hermes_lib, normalize_body, origin_of  # noqa: E402
 from _scenarios import (CorpusError, DEFAULT_SECURITY_MODE, QUALIFICATION, QUALIFICATION_SCHEMA, SCENARIO_ORACLES,  # noqa: E402,F401
-                        SECURITY_MODES, capture_security_mode, corpus_digest, load_corpus, normalize_security_mode,
-                        qualification_path, request_of, scenario_oracles_dir, scenario_slug)
+                        SECURITY_MODES, capture_receipt_path, capture_security_mode, corpus_digest, load_corpus,
+                        normalize_security_mode, qualification_path, request_of, scenario_oracles_dir, scenario_slug)
 
 ensure_hermes_lib()
 from planner.canonical import digest, load_json, write_canonical  # noqa: E402
@@ -89,6 +89,22 @@ CONTRACT_KEYS = ("intent", "identity_field")  # parameters of the contract, not 
 BODY_CHECKS = ("after_contains_body", "before_lacks_body", "creates_one_entity", "after_equals_before")
 HEADER_CHECKS = ("location", "errors_header_names_field", "cors_allow_origin", "cors_expose_headers", "cors_allow_method", "cors_allow_headers")
 _STATUS_CLASS_RE = re.compile(r"^([1-5])xx$", re.IGNORECASE)
+
+
+def _capture_idle_reason(root: Path, security_mode: str) -> str:
+    """Why this mode's capture recorded that it captured nothing; "" when it
+    ran (or when there is no receipt at all, which is a different thing and
+    stays the refusal it was)."""
+    p = Path(root) / capture_receipt_path(security_mode)
+    if not p.is_file():
+        return ""
+    try:
+        doc = load_json(p)
+    except (OSError, ValueError):
+        return ""
+    if not isinstance(doc, dict) or str(doc.get("status") or "") != "idle":
+        return ""
+    return str(doc.get("reason") or "") or "the capture of this mode recorded that it captured nothing"
 
 
 class Unusable(Exception):
@@ -514,8 +530,28 @@ def main(argv: list[str] | None = None) -> int:
         print("REFUSE: QUALIFY_CAPTURES mode mismatch: %s holds captures taken in the %s mode, this run was asked for %s"
               % (oracles_dir.as_posix(), recorded_mode, security_mode), file=sys.stderr)
         return 1
+    # The capture of this mode may have been IDLE: a security section nobody
+    # declared, or a declared credential the workspace does not hold. That is
+    # a recorded blocker (ADR-014), and there is nothing to judge -- so the
+    # qualification says so and carries the capture's own reason forward,
+    # rather than refusing over a corpus that was never derived. A judgement
+    # is never invented for it: the verdict is INCONCLUSIVE with no scenario.
+    idle_why = _capture_idle_reason(root, security_mode)
+    if idle_why:
+        out = root / qualification_path(security_mode)
+        write_canonical(out, {
+            "schema": QUALIFICATION_SCHEMA, "producer": PRODUCER, "at": _now(),
+            "corpus_sha256": "", "evidence_bundle_sha256": "",
+            "security_mode": security_mode, "security_mode_recorded": recorded_mode, "security_mode_note": "" if recorded_mode else mode_why,
+            "status": "idle", "reason": idle_why,
+            "scenarios": {}, "total": 0, "not_passed": 0, "verdict": "INCONCLUSIVE",
+        })
+        print("OK: nothing to qualify in the %s security mode (%s) → %s" % (security_mode, idle_why, out.relative_to(root)))
+        return 0
     try:
-        corpus = load_corpus(root)
+        # the corpus of THIS mode: the captures under the mode's own
+        # directory were replayed from it, and only it can contract them
+        corpus = load_corpus(root, security_mode)
     except CorpusError as exc:
         print("REFUSE: QUALIFY_CAPTURES %s" % exc, file=sys.stderr)
         return 1

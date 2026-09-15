@@ -95,6 +95,30 @@ datasource:
   hibernate_generation: none
   source_baseline_db_kind: hsqldb
 
+# The source's security switch, and who the enabled-mode source capture
+# authenticates as (ADR-014). The frozen source has two behaviours, not one:
+# with the switch off every request is anonymous, with it on the same request
+# answers 401/403 unless it carries an identity the policy allows. Both are
+# captured, separately, and the identities are the SEED's -- nobody is
+# invented, and no privileged account is manufactured to make the disabled
+# mode work. Everything below is a KEY or a NAME: the switch is the property
+# the source reads, and credential_ref is the name of an environment variable
+# holding user:password. No credential is ever written here.
+security:
+  adr: ADR-014
+  switch:
+    key: petclinic.security.enable
+    disabled_value: "false"
+    enabled_value: "true"
+  identities:
+    - name: admin
+      credential_ref: PETCLINIC_ADMIN_CREDENTIAL
+      roles:
+        - ROLE_OWNER_ADMIN
+        - ROLE_VET_ADMIN
+        - ROLE_ADMIN
+  invalid_credential_ref: PETCLINIC_INVALID_CREDENTIAL
+
 # Work-list items an accepted ADR retires (exact item ids from
 # evidence/planning/worklist.json): one incident, one ADR, one reason.
 not_applicable: []

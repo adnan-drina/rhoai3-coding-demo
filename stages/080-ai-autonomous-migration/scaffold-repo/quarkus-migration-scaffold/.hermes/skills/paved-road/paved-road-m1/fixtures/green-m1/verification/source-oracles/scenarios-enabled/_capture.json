@@ -1,0 +1,9 @@
+{
+ "schema": "rhoai3.source-capture/v1",
+ "producer": "capture-source-scenarios.py",
+ "security_mode": "enabled",
+ "status": "idle",
+ "reason": "decisions.yaml declares no security section (ADR-014: the switch, the seeded identities and the credential REFERENCES the enabled mode is captured with)",
+ "captured": 0,
+ "scenarios": []
+}

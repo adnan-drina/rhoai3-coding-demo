@@ -81,6 +81,33 @@
       "note": "Judge what was captured, while the capture is still bound to the corpus that produced it. scripts/qualify-source-captures.py reads every capture against its scenario's own qualify block and writes verification/source-oracles/scenarios/_qualification.json, each record bound to the exact capture, request, corpus and bundle it judged. Evidence comes before intent: a capture that cannot be judged (absent, unbound, a retained body that is not whole or not its digest, a read-back that did not answer 2xx, a server error the contract does not name) is INCONCLUSIVE and never FAIL. Then capability over the predicates that could be judged: one judged predicate failing is FAIL, none failing with one unanswerable is INCONCLUSIVE, all judged and passing is PASS. FAIL and INCONCLUSIVE are RECORDED SOURCE FACTS, not refusals: the parity receipt lists them under coverage_gaps and the M4 coverage account records them as uncovered capabilities, and neither ever becomes a destination repair card. The step refuses only when there is nothing to judge: no corpus, a corpus whose provenance does not bind, or no capture at all."
     },
     {
+      "id": "derive-source-scenarios-enabled",
+      "backing": "skill",
+      "skill": "capture-source-oracles",
+      "keep": [
+        "verification/scenarios-enabled/_derive.json"
+      ],
+      "note": "The source's OTHER behaviour (ADR-014). The same frozen source with its security switch ON answers the same requests differently, and a receipt that never says which setting it was taken at cannot be read. scripts/derive-source-scenarios.py --security-mode enabled derives one probe set per authorization policy the structure model states -- an identity the policy accepts, nobody, a credential declared invalid, and an authenticated identity lacking the role -- over the request the disabled corpus already carries for that entry point, or over a read it derives itself when the policy guards a GET whose path the disabled corpus resolved. Who it authenticates as comes from decisions.yaml's security section (--from-decisions is the default here): the Operator declares the switch by KEY and each seeded identity by the NAME of the variable holding its credential, and nothing else is read. With no security section the step derives nothing, writes verification/scenarios-enabled/_derive.json with status idle and the reason, and is NOT red: a specimen with no security switch has no enabled mode. The corpus, when there is one, is verification/scenarios-enabled/corpus.json; the disabled corpus is never touched."
+    },
+    {
+      "id": "capture-source-scenarios-enabled",
+      "backing": "skill",
+      "skill": "capture-source-oracles",
+      "keep": [
+        "verification/source-oracles/scenarios-enabled/_capture.json"
+      ],
+      "note": "Record what the SOURCE does with its security ON. scripts/capture-source-scenarios.py --security-mode enabled starts the frozen source with the switch decisions.yaml names (switch.key=switch.enabled_value), replays verification/scenarios-enabled/corpus.json and writes into verification/source-oracles/scenarios-enabled/ -- its own directory, so no capture of one mode can ever be read as the other's. Credentials travel by REFERENCE: the capture reads the environment variable the decision names, at request time, and records only the name. Idle with a recorded reason (status idle in the receipt) when decisions.yaml declares no security section, when there is no enabled corpus, or when a declared credential is not set in this workspace -- the receipt then names the missing VARIABLE and never what it would have held. A missing fixture is a recorded blocker (ADR-014), never an invented identity and never silence. The idempotent reads are not re-captured here: their oracle directory is not mode-scoped, and the receipt says so."
+    },
+    {
+      "id": "qualify-source-captures-enabled",
+      "backing": "skill",
+      "skill": "capture-source-oracles",
+      "keep": [
+        "verification/source-oracles/scenarios-enabled/_qualification.json"
+      ],
+      "note": "Judge the enabled-mode captures against the enabled corpus that produced them. scripts/qualify-source-captures.py --security-mode enabled reads only that mode's captures, refuses to judge a directory whose captures were taken in another mode, and writes verification/source-oracles/scenarios-enabled/_qualification.json. FAIL and INCONCLUSIVE are recorded SOURCE facts here exactly as in the disabled mode: they become coverage gaps at M4 and never destination repair cards. When the capture of this mode recorded that it was idle -- no security section in decisions.yaml, or a declared credential this workspace does not hold -- there is nothing to judge: the qualification records that same reason with status idle and verdict INCONCLUSIVE and no scenario, rather than refusing over a corpus nobody derived. ADR-014 asks for the blocker to be recorded, and this is where an absent enabled mode is visible at M4."
+    },
+    {
       "id": "kanban-attach",
       "backing": "native",
       "native": "kanban_attach.py",

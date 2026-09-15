@@ -8,6 +8,9 @@ Four things and nothing else:
 - ``not_applicable``          work-list items an ADR retires (never inferred)
 - ``retired_sources``         source files an ADR retires; the bootstrap
                               deletes exactly those (never imports them)
+- ``security``                (optional, ADR-014) the source's security switch
+                              and the identities the enabled-mode source
+                              capture authenticates as, by REFERENCE only
 
 The planner reads decisions; it never writes or infers them. A required
 decision that is null/empty is admission BLOCK ``MISSING_DECISION``; a
@@ -111,7 +114,127 @@ def missing_decisions(doc: dict[str, Any], root: Path) -> list[dict[str, str]]:
                 gap("DATASOURCE_LITERAL_SECRET", "datasource.%s" % field, "%r looks like a value, not the NAME of an environment variable; credentials are referenced, never recorded here" % value)
         if str(ds.get("schema_owner") or "") == "source-assets" and not (str(ds.get("schema_sql") or "").strip() and str(ds.get("seed_sql") or "").strip()):
             gap("MISSING_DECISION", "datasource.schema_sql", "schema_owner source-assets must name the schema and seed files the source provides")
+    gaps.extend(security_gaps(doc))
     return gaps
+
+
+# ---------------------------------------------------------------------------
+# the source's security switch and the identities it is captured with (ADR-014)
+# ---------------------------------------------------------------------------
+# Who the enabled-mode source capture authenticates as is a DECISION, not a
+# command line: an identity typed at a shell is not reviewable, does not
+# survive the run and cannot be bound to an ADR. The Operator declares it here
+# and the producers read it, so the same run is reproducible from the file.
+#
+# Nothing here is a credential. The switch is a configuration KEY and the two
+# values that name its settings; an identity names the environment VARIABLE
+# that holds ``user:password``. decisions.yaml is read, digested and copied
+# into evidence, so a value that looks like a credential is refused rather
+# than recorded -- and the refusal names the field, never what it holds.
+SECURITY_SECTION = "security"
+_SWITCH_FIELDS = (
+    ("key", "the configuration property the source reads its security switch from"),
+    ("disabled_value", "the value of that property that turns the source's security OFF"),
+    ("enabled_value", "the value that turns it ON; the enabled-mode capture starts the source with it"),
+)
+
+
+def _looks_like_a_value(text: str) -> bool:
+    """A reference is the NAME of an environment variable. ``user:password``
+    carries the separator, and a name with whitespace was never a variable
+    name: either one is a credential pasted where its name belongs."""
+    return ":" in text or any(c.isspace() for c in text)
+
+
+def security_gaps(doc: dict[str, Any]) -> list[dict[str, str]]:
+    """Why the declared ``security`` section may not be used; [] when it holds
+    or when it is absent.
+
+    Absent is not a gap: a specimen may have no security switch, and the
+    enabled-mode M1 steps then record that as the reason they did nothing.
+    Present and half-declared IS a gap, because the capture would otherwise
+    start the source with a switch nobody named."""
+    sec = doc.get(SECURITY_SECTION)
+    if sec is None:
+        return []
+    gaps: list[dict[str, str]] = []
+
+    def gap(cls: str, subject: str, detail: str) -> None:
+        gaps.append({"class": cls, "subject": subject, "detail": detail})
+
+    if not isinstance(sec, dict):
+        gap("MISSING_DECISION", SECURITY_SECTION, "security must be a mapping of switch, identities and invalid_credential_ref")
+        return gaps
+    if not _adr_ok(doc, sec.get("adr")):
+        gap("ADR_NOT_ACCEPTED", SECURITY_SECTION, "security cites %r which is not an accepted ADR" % sec.get("adr"))
+    switch = sec.get("switch")
+    if not isinstance(switch, dict):
+        gap("MISSING_DECISION", "security.switch", "name the source's own security switch: key, disabled_value, enabled_value")
+    else:
+        for field, why in _SWITCH_FIELDS:
+            if not str(switch.get(field) or "").strip():
+                gap("MISSING_DECISION", "security.switch.%s" % field, why)
+        if str(switch.get("disabled_value") or "") == str(switch.get("enabled_value") or "") and switch.get("enabled_value"):
+            gap("MISSING_DECISION", "security.switch.enabled_value",
+                "the two settings of the switch are the same value; they are two behaviours and must be two values")
+    rows = sec.get("identities")
+    if not isinstance(rows, list):
+        gap("MISSING_DECISION", "security.identities",
+            "declare the seeded identities the enabled-mode capture authenticates as, each by credential_ref")
+        rows = []
+    seen: set[str] = set()
+    for i, row in enumerate(rows):
+        where = "security.identities[%d]" % i
+        if not isinstance(row, dict):
+            gap("MISSING_DECISION", where, "an identity must be a mapping of name, credential_ref and roles")
+            continue
+        name = str(row.get("name") or "").strip()
+        if not name:
+            gap("MISSING_DECISION", "%s.name" % where, "name the seeded identity as the source's own seed spells it")
+        elif name in seen:
+            gap("MISSING_DECISION", "%s.name" % where, "identity %r is declared twice" % name)
+        else:
+            seen.add(name)
+        # the RAW value is what is judged: a name never carries whitespace, so
+        # trimming first would accept one that was pasted from somewhere else
+        ref = str(row.get("credential_ref") or "")
+        if not ref.strip():
+            gap("MISSING_DECISION", "%s.credential_ref" % where,
+                "identity %s names no credential_ref; the capture cannot authenticate as it, and a credential is never written here"
+                % (name or "(unnamed)"))
+        elif _looks_like_a_value(ref):
+            gap("SECURITY_LITERAL_CREDENTIAL", "%s.credential_ref" % where,
+                "credential_ref of identity %s looks like a value, not the NAME of an environment variable; credentials are "
+                "referenced, never recorded here" % (name or "(unnamed)"))
+        roles = row.get("roles")
+        if roles is not None and (not isinstance(roles, list) or not all(str(r).strip() for r in roles)):
+            gap("MISSING_DECISION", "%s.roles" % where, "roles is the list of roles the seed gives this identity")
+    invalid = sec.get("invalid_credential_ref")
+    if invalid is not None and str(invalid) and _looks_like_a_value(str(invalid)):
+        gap("SECURITY_LITERAL_CREDENTIAL", "security.invalid_credential_ref",
+            "invalid_credential_ref looks like a value, not the NAME of an environment variable")
+    return gaps
+
+
+def security(doc: dict[str, Any]) -> dict[str, Any]:
+    """The decided security switch and identities, or {} when they are not
+    decided (absent, or declared in a shape the loader refuses).
+
+    Callers get a normalised shape: ``{"switch": {...}, "identities":
+    [{"name", "credential_ref", "roles": [...]}], "invalid_credential_ref",
+    "adr"}``. Roles are the only values; everything else is a key or a name."""
+    sec = doc.get(SECURITY_SECTION)
+    if not isinstance(sec, dict) or security_gaps(doc):
+        return {}
+    switch = sec.get("switch") or {}
+    return {
+        "adr": str(sec.get("adr") or ""),
+        "switch": {field: str(switch.get(field) or "") for field, _why in _SWITCH_FIELDS},
+        "identities": [{"name": str(r.get("name") or ""), "credential_ref": str(r.get("credential_ref") or ""),
+                        "roles": [str(x) for x in (r.get("roles") or [])]}
+                       for r in (sec.get("identities") or []) if isinstance(r, dict)],
+        "invalid_credential_ref": str(sec.get("invalid_credential_ref") or ""),
+    }
 
 
 DATASOURCE_FIELDS = (

@@ -52,11 +52,33 @@ def main() -> int:
     # the bundle is assembled, and only then is the corpus derived from it, the
     # source recorded and the captures judged: all three read the bundle's
     # entry points and bind to its digest, the capture replays what the
-    # derivation wrote, and the qualification is bound to that exact capture
+    # derivation wrote, and the qualification is bound to that exact capture.
+    # Then the SAME three for the source's other security setting (ADR-014):
+    # the enabled mode reuses the disabled corpus's requests, so it can only
+    # be derived after that corpus exists, and each of its steps reads and
+    # writes the mode-scoped paths beside the default mode's.
     ids = [s["id"] for s in doc["steps"] if s["backing"] == "skill"]
-    if (skills[-3:] != ["capture-source-oracles"] * 3 or skills.index("assemble-evidence-bundle") != len(skills) - 4
-            or ids[-3:] != ["derive-source-scenarios", "capture-source-scenarios", "qualify-source-captures"]):
-        return _fail("M1 must end with the bundle, then the corpus derivation, the source capture and the qualification: %s" % ids)
+    order = ["derive-source-scenarios", "capture-source-scenarios", "qualify-source-captures"]
+    order += ["%s-enabled" % x for x in order]
+    if (skills[-6:] != ["capture-source-oracles"] * 6 or skills.index("assemble-evidence-bundle") != len(skills) - 7
+            or ids[-6:] != order):
+        return _fail("M1 must end with the bundle, then the corpus derivation, the source capture and the qualification, "
+                     "and then the same three for the enabled security mode: %s" % ids)
+    # each enabled step KEEPs the receipt of ITS OWN mode, and never the
+    # default mode's: an enabled step that "passed" by pointing at the
+    # disabled artifact would be the cross-mode reuse ADR-014 forbids,
+    # arriving through the audit
+    by_id = {s["id"]: s for s in doc["steps"]}
+    for sid in order[3:]:
+        keep = by_id[sid]["keep"]
+        if not keep or not all("-enabled/" in k for k in keep):
+            return _fail("%s must KEEP the enabled mode's own paths: %s" % (sid, keep))
+        if set(keep) & set(by_id[sid[: -len("-enabled")]]["keep"]):
+            return _fail("%s must not KEEP the disabled mode's artifact: %s" % (sid, keep))
+    for sid in order[3:]:
+        note = str(by_id[sid].get("note") or "")
+        if "idle" not in note or "ADR-014" not in note:
+            return _fail("%s must say it is idle with a recorded reason, and cite the ADR that asks for it" % sid)
     producer = [s for s in doc["steps"] if s.get("producer")][0]
     if producer["skill"] != "assemble-evidence-bundle" or "evidence/planning/evidence-bundle.json" not in producer["keep"]:
         return _fail("M1 producer must be assemble-evidence-bundle owning evidence-bundle.json")

@@ -1345,7 +1345,8 @@ class Names:
     def __init__(self, pkg: str, controller: str, read_type: str, roles_type: str, resource: str, var: str,
                  field: str, example: str, create: str, delete: str, other: str, read: str, read_route: str,
                  roles: tuple[str, str, str], role_fields: tuple[str, str, str], user_table: str, role_table: str,
-                 user_col: str, role_col: str, who_all: str, who_one: str, cred_all: str, cred_one: str, cred_bad: str) -> None:
+                 user_col: str, role_col: str, who_all: str, who_one: str, cred_all: str, cred_one: str, cred_bad: str,
+                 get_one: str, get_gap: str, gap_var: str) -> None:
         self.pkg, self.controller, self.read_type, self.roles_type = pkg, controller, read_type, roles_type
         self.resource, self.var, self.field, self.example = resource, var, field, example
         self.create, self.delete, self.other, self.read, self.read_route = create, delete, other, read, read_route
@@ -1353,6 +1354,10 @@ class Names:
         self.user_table, self.role_table, self.user_col, self.role_col = user_table, role_table, user_col, role_col
         self.who_all, self.who_one = who_all, who_one
         self.cred_all, self.cred_one, self.cred_bad = cred_all, cred_one, cred_bad
+        # a guarded GET the disabled corpus derives no scenario for (reads are
+        # captured outside it), and a second one whose path variable nothing
+        # resolves -- the first must be probed, the second must stay a gap
+        self.get_one, self.get_gap, self.gap_var = get_one, get_gap, gap_var
 
     @property
     def ctrl_fqn(self) -> str:
@@ -1380,7 +1385,8 @@ class Names:
                 self.read_type, self.roles_type, self.resource, self.var, self.field, self.example, self.create,
                 self.delete, self.other, self.read, self.read_route, self.user_table, self.role_table, self.user_col,
                 self.role_col, self.who_all, self.who_one, self.cred_all, self.cred_one, self.cred_bad,
-                self.read_route.strip("/"), self.user_entity, self.role_entity, *self.roles, *self.role_fields]
+                self.read_route.strip("/"), self.user_entity, self.role_entity, self.get_one, self.get_gap,
+                self.gap_var, *self.roles, *self.role_fields]
 
 
 PLAIN = Names(pkg="a.rest", controller="OwnerRestController", read_type="RootRestController", roles_type="Roles",
@@ -1389,7 +1395,8 @@ PLAIN = Names(pkg="a.rest", controller="OwnerRestController", read_type="RootRes
               roles=("ROLE_OWNER_ADMIN", "ROLE_VET_ADMIN", "ROLE_ADMIN"),
               role_fields=("OWNER_ADMIN", "VET_ADMIN", "ADMIN"),
               user_table="users", role_table="roles", user_col="username", role_col="role",
-              who_all="admin", who_one="helper", cred_all="PARITY_ADMIN", cred_one="PARITY_HELPER", cred_bad="PARITY_WRONG")
+              who_all="admin", who_one="helper", cred_all="PARITY_ADMIN", cred_one="PARITY_HELPER", cred_bad="PARITY_WRONG",
+              get_one="getOwner", get_gap="getOwnerVisits", gap_var="visitId")
 
 RENAMED = Names(pkg="z.legacy.web", controller="CustodianEndpoint", read_type="LandingEndpoint", roles_type="Grants",
                 resource="widgets", var="widgetId", field="label", example="Zeta", create="registerWidget",
@@ -1397,7 +1404,8 @@ RENAMED = Names(pkg="z.legacy.web", controller="CustodianEndpoint", read_type="L
                 roles=("GRANT_KEEPER", "GRANT_WATCHER", "GRANT_BOSS"),
                 role_fields=("KEEPER", "WATCHER", "BOSS"),
                 user_table="principals", role_table="grants", user_col="login", role_col="grant_name",
-                who_all="keeper", who_one="reader", cred_all="FIXTURE_KEEPER", cred_one="FIXTURE_READER", cred_bad="FIXTURE_BAD")
+                who_all="keeper", who_one="reader", cred_all="FIXTURE_KEEPER", cred_one="FIXTURE_READER", cred_bad="FIXTURE_BAD",
+                get_one="fetchWidget", get_gap="fetchWidgetSlots", gap_var="slotId")
 
 _PRE_AUTHORIZE = "org.springframework.security.access.prepost.PreAuthorize"
 
@@ -1427,8 +1435,58 @@ def _authz_api_docs(n: Names) -> str:
     )
 
 
+def _authz_security(n: Names, *, identities: list[str] | None = None, invalid: bool = True) -> dict[str, Any]:
+    """A ``decisions.yaml`` security section for this specimen's own names.
+
+    The Operator's declaration, in the file an ADR backs: the source's switch
+    by KEY, and each seeded identity by the NAME of the variable holding its
+    credential. No credential is in it, and the harness reads no account."""
+    who = [n.who_all, n.who_one] if identities is None else identities
+    refs = {n.who_all: n.cred_all, n.who_one: n.cred_one}
+    sec: dict[str, Any] = {
+        "adr": "ADR-003",
+        "switch": {"key": "%s.security.enable" % n.pkg, "disabled_value": "false", "enabled_value": "true"},
+        "identities": [{"name": w, "credential_ref": refs[w]} for w in who],
+    }
+    if invalid:
+        sec["invalid_credential_ref"] = n.cred_bad
+    return sec
+
+
+def _security_yaml(sec: dict[str, Any]) -> str:
+    """The security block, with every scalar quoted.
+
+    The switch's settings are STRINGS the source reads off a property -- a
+    specimen whose off setting is spelled ``false`` must not reach the loader
+    as a boolean, which is what an unquoted scalar becomes on the way back."""
+    lines = ["security:", "  adr: %s" % json.dumps(sec["adr"]), "  switch:"]
+    lines += ["    %s: %s" % (k, json.dumps(str(v))) for k, v in sorted(sec["switch"].items())]
+    lines.append("  identities:%s" % ("" if sec["identities"] else " []"))
+    for row in sec["identities"]:
+        lines.append("    - name: %s" % json.dumps(row["name"]))
+        lines.append("      credential_ref: %s" % json.dumps(row["credential_ref"]))
+        if row.get("roles"):
+            lines.append("      roles:")
+            lines += ["        - %s" % json.dumps(r) for r in row["roles"]]
+    if sec.get("invalid_credential_ref") is not None:
+        lines.append("  invalid_credential_ref: %s" % json.dumps(str(sec["invalid_credential_ref"])))
+    return "\n".join(lines) + "\n"
+
+
+def _write_decisions(root: Path, security: dict[str, Any] | None) -> None:
+    import shutil
+    # the loader validates against the schemas that ship with the workspace,
+    # so the fixture carries them the way a real destination does
+    shutil.copytree(HERE.parents[3] / "planning", root / ".hermes" / "planning", dirs_exist_ok=True)
+    text = specimens.decisions_yaml(specimens.full_decisions())
+    if security is not None:
+        text += _security_yaml(security)
+    (root / "decisions.yaml").write_text(text, encoding="utf-8")
+
+
 def _authz_root(td: Path, name: str, n: Names, *, holdings: dict[str, list[str]] | None = None,
-                unsupported: bool = True, map_identity: bool = True) -> Path:
+                unsupported: bool = True, map_identity: bool = True,
+                security: dict[str, Any] | None = None, decisions: bool = False) -> Path:
     """A frozen source with an authorization policy on a write, another on a
     method-less read, a constants type the expressions refer to, and a seeded
     identity store the structure model maps.
@@ -1465,6 +1523,12 @@ def _authz_root(td: Path, name: str, n: Names, *, holdings: dict[str, list[str]]
     methods = [
         {"name": n.create, "signature": "%s(%s.%sDto)" % (n.create, n.pkg, n.controller), "annotations": [dict(write_pol)]},
         {"name": n.delete, "signature": "%s(int)" % n.delete, "annotations": [dict(write_pol)]},
+        # the two guarded READS: the disabled corpus derives no scenario for
+        # either (an idempotent read is captured outside it), so the enabled
+        # mode has to derive its own request -- which it can do for the first
+        # (the seed resolved its path variable) and not for the second
+        {"name": n.get_one, "signature": "%s(int)" % n.get_one, "annotations": [dict(read_pol)]},
+        {"name": n.get_gap, "signature": "%s(int)" % n.get_gap, "annotations": [dict(read_pol)]},
     ]
     if unsupported:
         methods.append({"name": n.other, "signature": "%s()" % n.other,
@@ -1494,7 +1558,13 @@ def _authz_root(td: Path, name: str, n: Names, *, holdings: dict[str, list[str]]
          "member": methods[1]["signature"], "http_method": "DELETE", "http_path": "%s/{%s}" % (n.route, n.var)},
         {"id": "ep:%s#%s():http" % (n.read_fqn, n.read), "kind": "http", "type": n.read_fqn, "member": "%s()" % n.read,
          "http_method": "", "http_path": n.read_route},
+        {"id": "ep:%s#%s:http" % (n.ctrl_fqn, methods[2]["signature"]), "kind": "http", "type": n.ctrl_fqn,
+         "member": methods[2]["signature"], "http_method": "GET", "http_path": "%s/{%s}" % (n.route, n.var)},
+        {"id": "ep:%s#%s:http" % (n.ctrl_fqn, methods[3]["signature"]), "kind": "http", "type": n.ctrl_fqn,
+         "member": methods[3]["signature"], "http_method": "GET", "http_path": "%s/{%s}" % (n.route, n.gap_var)},
     ]})
+    if decisions or security is not None:
+        _write_decisions(root, security if security is not None else _authz_security(n))
     return root
 
 
@@ -1593,10 +1663,33 @@ def _enabled_mode_case() -> int:
         ids = [str(s["id"]) for s in corpus["scenarios"]]
         want = sorted("sc:auth-%s-%s" % (kind, slug)
                       for slug in ("create-owners", "delete-owners-1") for kind in ("allowed", "anonymous", "invalid", "norole"))
-        want += sorted("sc:auth-%s-read-docs" % kind for kind in ("allowed", "anonymous", "invalid"))
+        want += sorted("sc:auth-%s-%s" % (kind, slug)
+                       for slug in ("read-docs", "read-api-%s-1" % n.resource) for kind in ("allowed", "anonymous", "invalid"))
         if ids != sorted(want):
             return _fail("four probes per policy and entry point, and no norole where nobody lacks the role: %s" % ids)
         sc = {str(s["id"]): s for s in corpus["scenarios"]}
+        # a guarded READ the disabled corpus states nothing about: its request
+        # is derived here, in the shape a read has, from the entry point's own
+        # method and route and the path variable that corpus already resolved
+        read = sc["sc:auth-allowed-read-api-%s-1" % n.resource]
+        if (read["method"], read["path"], read["headers"], read["body_absent"], read["effects"], read["reset_before"],
+                read["base_source"], read["base_scenario"], read["base_route"], read["qualify"]) != (
+                "GET", "%s/1" % n.route, {}, True, [], False, "derived-read", "", "%s/{%s}" % (n.route, n.var),
+                {"intent": "positive", "usable_first_response": True}):
+            return _fail("a guarded read gets a derived base: GET, no body, no effect, no reset, usable first response: %s" % read)
+        ev = read["derived_from"]["evidence"]
+        if (not any(e.startswith("bundle:ep:") and "GET %s/{%s}" % (n.route, n.var) in e for e in ev)
+                or not any(e.startswith("corpus:") and "path variable {%s} = 1" % n.var in e for e in ev)
+                or any(e.startswith("corpus:sc:") for e in ev)):
+            return _fail("the derived read names the entry point it came from and the path value it took, and cites no scenario: %s" % ev)
+        if sc["sc:auth-anonymous-read-api-%s-1" % n.resource]["qualify"] != {"intent": "negative", "expect_status_class": "4xx"}:
+            return _fail("a refused read expects a 4xx and holds nothing still: %s" % sc["sc:auth-anonymous-read-api-%s-1" % n.resource]["qualify"])
+        # ... and the read whose path variable nothing resolves stays the gap
+        # it was: a concrete URL is never invented to reach a probe
+        if not any(g.startswith("auth-base ") and "{%s}" % n.gap_var in g for g in corpus["gaps"]):
+            return _fail("an unresolvable route keeps the auth-base gap: %s" % corpus["gaps"])
+        if any("%s-1" % n.gap_var in str(s["path"]) or "{" in str(s["path"]) for s in corpus["scenarios"]):
+            return _fail("no scenario carries a route pattern or an invented path value")
         # the request is the base scenario's, to the byte
         create = base_corpus["scenarios"][[str(s["id"]) for s in base_corpus["scenarios"]].index("sc:create-owners")]
         for kind in ("allowed", "anonymous", "invalid", "norole"):
@@ -1633,7 +1726,7 @@ def _enabled_mode_case() -> int:
         # the challenge is asserted where a challenge is what the source sends
         if ([k for k in sorted(sc) if sc[k].get("asserted_headers")]
                 != sorted("sc:auth-%s-%s" % (kind, slug) for kind in ("anonymous", "invalid")
-                          for slug in ("create-owners", "delete-owners-1", "read-docs"))
+                          for slug in ("create-owners", "delete-owners-1", "read-docs", "read-api-%s-1" % n.resource))
                 or sc["sc:auth-anonymous-read-docs"]["asserted_headers"] != ["WWW-Authenticate"]):
             return _fail("the unauthenticated probes assert the challenge header and the others do not: %s"
                          % {k: v.get("asserted_headers") for k, v in sc.items()})
@@ -1757,7 +1850,14 @@ def _enabled_identity_case() -> int:
                 or not any(g.startswith("auth-norole ") for g in corpus["gaps"])):
             return _fail("an undeclared invalid credential, and one identity that holds every role, are gaps and no probes: %s %s"
                          % (kinds, corpus["gaps"]))
+        # ... and with NO identity declared at all -- here through a decided
+        # security section that names the switch and nobody, which is the shape
+        # a specimen has before its seeded identities are read off the seed
+        root = _authz_root(Path(td), "nobody", n, security=_authz_security(n, identities=[], invalid=False))
+        _derive(root)
         p = _derive_enabled_fixture(root, n, identities=[])
+        if p.returncode != 0:
+            return _fail("a decided section that declares nobody still derives what it can: %s%s" % (p.stdout, p.stderr))
         corpus = load_json(root / ENABLED_CORPUS_P)
         kinds = sorted({str(s["derived_from"]["kind"]) for s in corpus["scenarios"]})
         if kinds != ["auth-anonymous"] or not any(g.startswith("auth-allowed ") for g in corpus["gaps"]):
@@ -1830,6 +1930,72 @@ def _authorization_grammar_case() -> int:
     return 0
 
 
+def _enabled_decided_case() -> int:
+    """Who the enabled mode authenticates as comes from decisions.yaml.
+
+    An identity typed at a shell is not a decision anyone can review: it binds
+    to no ADR, is not in the tree the run is reproduced from, and nothing
+    downstream can say where it came from. ADR-014 puts it in the Operator's
+    own file instead -- by REFERENCE -- and the derivation reads it there by
+    default. The controls: the decided run derives exactly what the same
+    identities on the command line derive, it says which file they came from,
+    it carries the specimen's own switch forward for the capture, and a
+    workspace whose file declares no security section derives NOTHING and
+    records why -- the blocker ADR-014 asks for, not an anonymous corpus
+    wearing the enabled mode's name, and not silence."""
+    with tempfile.TemporaryDirectory(prefix="derive-decided-") as td:
+        n = PLAIN
+        # the same fixture twice: identities on the command line, identities in
+        # the decided file. Only the provenance may differ.
+        typed = _authz_root(Path(td), "typed", n)
+        _derive(typed)
+        if _derive_enabled_fixture(typed, n).returncode != 0:
+            return _fail("the command-line form still derives")
+        decided = _authz_root(Path(td), "decided", n, decisions=True)
+        _derive(decided)
+        p = _derive(decided, "--security-mode", "enabled")
+        if p.returncode != 0 or "enabled-mode scenario" not in p.stdout:
+            return _fail("--security-mode enabled with no --identity reads the decided identities: rc=%s %s%s"
+                         % (p.returncode, p.stdout, p.stderr))
+        a, b = load_json(typed / ENABLED_CORPUS_P), load_json(decided / ENABLED_CORPUS_P)
+        if [s["id"] for s in a["scenarios"]] != [s["id"] for s in b["scenarios"]] or a["gaps"] != b["gaps"]:
+            return _fail("the decided identities derive what the typed ones derive: %s vs %s"
+                         % ([s["id"] for s in b["scenarios"]], [s["id"] for s in a["scenarios"]]))
+        if (b["identities_from"] != "decisions.yaml" or a["identities_from"] != "--identity"
+                or b["invalid_credential_ref"] != n.cred_bad):
+            return _fail("each corpus says where its identities came from: %s %s" % (b.get("identities_from"), a.get("identities_from")))
+        if b["security_switch"] != {"key": "%s.security.enable" % n.pkg, "disabled_value": "false", "enabled_value": "true"}:
+            return _fail("the decided switch travels with the corpus, so the capture starts the source the way it was derived for: %s"
+                         % b.get("security_switch"))
+        if "secret" in json.dumps(b) or "Basic " in json.dumps(b):
+            return _fail("only references travel")
+        # explicitly asking for both is a usage error, not a silent precedence
+        p = _derive(decided, "--security-mode", "enabled", "--from-decisions", "--identity", "%s=%s" % (n.who_all, n.cred_all))
+        if p.returncode != 2 or "--from-decisions" not in p.stderr:
+            return _fail("--from-decisions and --identity together must refuse: rc=%s %s" % (p.returncode, p.stderr[-200:]))
+
+        # no security section: nothing is derived, and the receipt says so
+        bare = _authz_root(Path(td), "undecided", n, security=None)
+        _derive(bare)
+        _write_decisions(bare, None)
+        p = _derive(bare, "--security-mode", "enabled")
+        receipt = load_json(bare / ENABLED_RECEIPT_P)
+        if p.returncode != 0 or (bare / ENABLED_CORPUS_P).exists():
+            return _fail("an undeclared security section derives no corpus and is not red: rc=%s" % p.returncode)
+        if (receipt.get("status") != "idle" or "no security section" not in str(receipt.get("reason"))
+                or receipt.get("security_mode") != "enabled"):
+            return _fail("the receipt records the blocker ADR-014 asks for: %s" % {k: receipt.get(k) for k in ("status", "reason")})
+        # a section declared in a shape the loader refuses is named, not read
+        _write_decisions(bare, dict(_authz_security(n), invalid_credential_ref="an-account:its-password"))
+        p = _derive(bare, "--security-mode", "enabled")
+        receipt = load_json(bare / ENABLED_RECEIPT_P)
+        if p.returncode != 0 or receipt.get("status") != "idle" or "invalid_credential_ref" not in str(receipt.get("reason")):
+            return _fail("a credential written where its NAME belongs is refused and named: %s" % receipt.get("reason"))
+        if "its-password" in json.dumps(receipt):
+            return _fail("the refusal names the field, never what it holds")
+    return 0
+
+
 def main() -> int:
     rc, root, td = _derivation_case()
     try:
@@ -1838,7 +2004,7 @@ def main() -> int:
         assert root is not None
         if (_gap_cases() or _real_excerpt_case() or _methodless_mapping_case() or _methodless_qualification_case()
                 or _path_variable_case() or _foreign_key_delete_case() or _authorization_policy_case()
-                or _authorization_grammar_case() or _enabled_mode_case() or _enabled_rename_case()
+                or _authorization_grammar_case() or _enabled_mode_case() or _enabled_rename_case() or _enabled_decided_case()
                 or _enabled_identity_case() or _enabled_regression_case()
                 or _application_removal_case() or _qualification_case(root) or _receipt_case()):
             return 1
@@ -1890,7 +2056,13 @@ def main() -> int:
           "and the credential REFERENCE -- never a credential; the seeded identities' roles are read from the seed through the JPA "
           "identity mapping where the model provides one, a declaration the seed contradicts is a gap with the seed used, and an identity "
           "whose roles nobody knows, an undeclared invalid credential and no identity lacking the role are ADR-014 blockers rather than "
-          "invented accounts; all of it is the same under another package, type, member, route, role, table and credential naming)")
+          "invented accounts; a policy guarding a GET the disabled corpus states nothing about gets a read base derived here from the "
+          "entry point's own method and route and that corpus's own path values -- GET, no body, no effect, no reset, usable first "
+          "response, citing no scenario -- while a route no value resolves keeps its auth-base gap and nothing invents a path; who the "
+          "mode authenticates as comes from decisions.yaml by default, the decided identities derive exactly what the typed ones derive, "
+          "each corpus says which declaration it came from and carries the decided switch forward, asking for both at once is a usage "
+          "error, and an undeclared or refused security section derives nothing and records why without echoing what a field held; "
+          "all of it is the same under another package, type, member, route, role, table and credential naming)")
     return 0
 
 

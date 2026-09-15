@@ -112,14 +112,63 @@ same one. `_capture.json` records `security_mode`, `source_config` and
 `security_mode`; `_qualification.json` and the parity receipt record the mode
 they judged, so an M4 verdict can name it.
 
+Every consumer reads the **corpus of the mode it runs in**: the capture, the
+qualification gate, the comparator and the receipt composer all resolve it
+through `load_corpus(root, security_mode)`, so an enabled run replays
+`verification/scenarios-enabled/corpus.json` and can never grade the enabled
+source against the anonymous requests sitting beside it.
+
+### Who the enabled mode authenticates as: `decisions.yaml`
+
+The switch and the identities are the Operator's **decision**, backed by an
+ADR, not arguments typed at a shell — an identity on a command line is not
+reviewable, is not in the tree the run is reproduced from, and nothing
+downstream can say where it came from. `decisions.yaml` carries a `security:`
+section, and `--from-decisions` (the default for `--security-mode enabled`
+whenever no `--identity` / `--credential-ref` is given) is how both the
+derivation and the capture read it:
+
+```yaml
+security:
+  adr: ADR-014
+  switch:                                    # the specimen's own property
+    key: petclinic.security.enable
+    disabled_value: "false"
+    enabled_value: "true"
+  identities:
+    - name: admin                            # as the source's own seed spells it
+      credential_ref: PETCLINIC_ADMIN_CREDENTIAL   # the NAME of an env var holding user:password
+      roles: [ROLE_OWNER_ADMIN, ROLE_VET_ADMIN, ROLE_ADMIN]
+  invalid_credential_ref: PETCLINIC_INVALID_CREDENTIAL
+```
+
+Every value except `roles` is a key or a name. `planner.decisions` refuses a
+`credential_ref` that looks like a value (it carries `:` or whitespace) and an
+identity that names none, and it names the FIELD rather than echoing what it
+holds. The section is optional: a specimen with no security switch has no
+enabled mode, and the M1 steps then record that reason rather than deriving or
+capturing anything. The capture fills `--source-config` from
+`switch.key=switch.enabled_value`, so the source is started the way the corpus
+it replays was derived for.
+
+A declared credential the workspace does not hold stops the capture **before
+the source starts**: `_capture.json` is written with `status: idle` and a
+reason naming the missing environment **variable**. The qualification of that
+mode then records the same reason with `verdict: INCONCLUSIVE` and no
+scenario. A missing fixture is a recorded blocker (ADR-014) — never an
+invented identity, never silence.
+
 ```bash
-# the enabled mode: the source's own switch is an ARGUMENT (the harness never
-# knows its name), and credentials are named, never carried
-export PETCLINIC_ADMIN='<user>:<password>'        # the value stays in the environment
+# the enabled mode, driven from the decided file (the usual form)
+export PETCLINIC_ADMIN_CREDENTIAL='<user>:<password>'   # the value stays in the environment
+python3 "${HERMES_SKILL_DIR}/scripts/derive-source-scenarios.py" --root /projects/modernized --security-mode enabled
+python3 "${HERMES_SKILL_DIR}/scripts/capture-source-scenarios.py" --root /projects/modernized --security-mode enabled
+
+# ... or stated on the command line, for a fixture or one policy at a time
 python3 "${HERMES_SKILL_DIR}/scripts/capture-source-scenarios.py" --root /projects/modernized \
   --security-mode enabled \
   --source-config petclinic.security.enable=true \
-  --credential-ref PETCLINIC_ADMIN
+  --credential-ref PETCLINIC_ADMIN_CREDENTIAL
 python3 "${HERMES_SKILL_DIR}/scripts/qualify-source-captures.py" --root /projects/modernized --security-mode enabled
 python3 "${HERMES_SKILL_DIR}/scripts/compare-scenario-parity.py" --root /projects/modernized \
   --scenario 'sc:…' --dest-url http://localhost:8080/petclinic --security-mode enabled
@@ -138,6 +187,15 @@ python3 "${HERMES_SKILL_DIR}/scripts/compose-parity-receipt.py" --root /projects
   down: no password, no account, no header value. A scenario naming a
   reference the capture was not given is a gap, never a quiet anonymous
   request.
+- A scenario may declare `asserted_headers` — headers **this exchange** makes
+  part of the contract, on top of the ones the source exposes through CORS.
+  The enabled derivation puts `WWW-Authenticate` on every refusal probe: a
+  source that answers 401 with a challenge has stated how to authenticate, and
+  a destination that drops it has changed what a client sees. The capture
+  asserts the union, records it as `asserted_headers_extra` (with the
+  scenario's own in `asserted_headers_scenario`), and the comparator reads that
+  union back and diffs it under the existing header rules — so a dropped
+  challenge is a named `header WWW-Authenticate … vs …` diff, not a silence.
 - Reads (`capture-source-oracles.py`) are captured in the **disabled** mode
   only: `verification/source-oracles/` is not mode-scoped, so the enabled
   capture skips them and its receipt says so (`reads_note`).
@@ -305,7 +363,12 @@ denied-write effects included — and, where the fixtures for that are not
 there, a **blocker** rather than a manufactured identity.
 
 ```bash
-# the credentials stay in the environment; only the NAMES are passed and recorded
+# the usual form: the identities are the ones decisions.yaml declares
+python3 "${HERMES_SKILL_DIR}/scripts/derive-source-scenarios.py" --root /projects/modernized \
+  --security-mode enabled
+
+# the explicit form, for a fixture or one policy at a time. The credentials
+# stay in the environment; only the NAMES are passed and recorded
 python3 "${HERMES_SKILL_DIR}/scripts/derive-source-scenarios.py" --root /projects/modernized \
   --security-mode enabled \
   --identity admin=PARITY_ADMIN --identity helper=PARITY_HELPER \
@@ -313,6 +376,15 @@ python3 "${HERMES_SKILL_DIR}/scripts/derive-source-scenarios.py" --root /project
   --identity-roles helper=ROLE_VET_ADMIN        # optional where the seed says it
 ```
 
+- `--from-decisions` reads the identities, their credential references and the
+  source's switch from `decisions.yaml` (see *Who the enabled mode
+  authenticates as* above) — the default whenever `--security-mode enabled` is
+  given with no `--identity`. The corpus and the receipt record
+  `identities_from` and `security_switch`, so which declaration this corpus
+  came from is on the artifact. Passing both `--from-decisions` and
+  `--identity` is refused: a corpus must be able to say where its identities
+  came from. With no section the derivation writes `_derive.json` with
+  `status: idle` and the reason, and derives no corpus.
 - `--identity NAME=CREDENTIAL_REF` (repeatable) declares which environment
   variable holds the credential that authenticates as the **seeded identity**
   `NAME` (the value the identity store's own rows carry). The reserved name
@@ -337,6 +409,18 @@ python3 "${HERMES_SKILL_DIR}/scripts/derive-source-scenarios.py" --root /project
   security switch. Cross-origin exchanges are not reused: they are the CORS
   oracle's scenarios, and a probe carrying an `Origin` would answer two
   questions at once.
+- **A guarded read gets its own base.** The disabled corpus derives no
+  scenario for a plain `GET` — the idempotent reads are captured outside it —
+  so a policy on a read had no request to be probed over, which is exactly the
+  authorization the enabled mode exists to prove. When the entry point states
+  `GET` and its route is made concrete by the path variables the *disabled*
+  corpus already resolved out of the source's own seed, the derivation writes
+  that read itself, in the shape a read has (`GET`, no body, no effect,
+  `reset_before: false`, `usable_first_response`), and probes it. The
+  scenarios say so: `base_source: derived-read`, an empty `base_scenario`, the
+  route in `base_route`, and evidence naming the entry point and the path
+  value taken. A route with a variable nothing resolves keeps its `auth-base`
+  gap — a concrete URL is never invented to reach a probe.
 - **Expression grammar.** `hasRole(…)`, `hasAnyRole(…)` and the role list of
   `@RolesAllowed` / `@Secured`, where a role is a quoted literal or a constant
   reference (`@roles.OWNER_ADMIN`, `#roles.OWNER_ADMIN`, `Roles.OWNER_ADMIN`,

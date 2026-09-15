@@ -44,7 +44,8 @@ the root of the planner digest chain (SAD §6).
 1. Read `steps.json`. Follow that listed order:
    freeze → build → JDK-model inventory → bytecode (optional) → context probe
    → MTA → assemble → derive the scenario corpus → capture the source →
-   qualify the captures → attach.
+   qualify the captures → the same three again for the source's **enabled**
+   security setting → attach.
    - `skill` — `skill_view` that leaf and follow its SKILL.md.
    - `native` — run the named script under `.hermes/kernel/`
      (`kanban_attach.py --task "$HERMES_KANBAN_TASK" --exec`).
@@ -58,6 +59,12 @@ the root of the planner digest chain (SAD §6).
    bind).
    extractor unpinned / JDK mismatch → `kanban_block` (kind `needs_input`, the pin is an
    ADR). Build failure → continue; the ledger makes it planning-only.
+   The three `-enabled` steps are the same kind of thing: with no
+   `security:` section in `decisions.yaml`, or with a declared credential
+   this workspace does not hold, each writes its receipt with `status:
+   idle` and the reason and exits 0. That is a **recorded blocker**
+   (ADR-014), not a red step and not silence. The reason names the missing
+   environment **variable**, never a credential.
 4. `bash .hermes/skills/harness/dispatch-phase/scripts/autostart-migration.sh --root /projects/modernized`
    — binds the platform-recorded pilot authorization (dest-init wrote who
    authorized this run from the DevWorkspace its creator started) to the

@@ -81,6 +81,30 @@
       "needle": "capture-source-oracles"
     },
     {
+      "backing": "skill",
+      "id": "derive-source-scenarios-enabled",
+      "keep": [
+        "verification/scenarios-enabled/_derive.json"
+      ],
+      "needle": "capture-source-oracles"
+    },
+    {
+      "backing": "skill",
+      "id": "capture-source-scenarios-enabled",
+      "keep": [
+        "verification/source-oracles/scenarios-enabled/_capture.json"
+      ],
+      "needle": "capture-source-oracles"
+    },
+    {
+      "backing": "skill",
+      "id": "qualify-source-captures-enabled",
+      "keep": [
+        "verification/source-oracles/scenarios-enabled/_qualification.json"
+      ],
+      "needle": "capture-source-oracles"
+    },
+    {
       "backing": "native",
       "id": "kanban-attach",
       "keep": [

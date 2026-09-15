@@ -369,6 +369,91 @@
           "description": "sha256 of evidence/type-inventory.json as it stood when retire[] was proposed. The bootstrap refuses a retirement bound to a different inventory."
         }
       }
+    },
+    "security": {
+      "type": "object",
+      "description": "The source's security switch and the identities the enabled-mode source capture authenticates as (ADR-014). The Operator declares them; the harness knows no account and no role name. Every value except roles is a KEY or a REFERENCE -- the name of a configuration property, or the name of an environment variable holding user:password -- and never a credential: this file is read, digested and copied into evidence. Absent means no enabled-mode capture is attempted, and the M1 road steps record that as their reason rather than staying silent.",
+      "required": [
+        "adr",
+        "switch",
+        "identities"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "adr": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "the accepted ADR that decided the security modes"
+        },
+        "switch": {
+          "type": "object",
+          "description": "the specimen's own security switch: the configuration KEY and the two values that name its settings",
+          "required": [
+            "key",
+            "disabled_value",
+            "enabled_value"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "key": {
+              "type": "string",
+              "minLength": 1,
+              "description": "the configuration property name, e.g. a boolean property the source reads"
+            },
+            "disabled_value": {
+              "type": "string",
+              "minLength": 1,
+              "description": "the value that turns the source's security OFF"
+            },
+            "enabled_value": {
+              "type": "string",
+              "minLength": 1,
+              "description": "the value that turns it ON; the enabled-mode capture starts the source with key=this"
+            }
+          }
+        },
+        "identities": {
+          "type": "array",
+          "description": "the seeded identities the enabled-mode probes authenticate as. roles is what the Operator reads off the source's seed; the derivation checks it against the seed itself and a contradiction is a gap.",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "credential_ref"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "description": "the seeded identity's own name, as the seed spells it"
+              },
+              "credential_ref": {
+                "type": "string",
+                "minLength": 1,
+                "description": "the NAME of an environment variable holding user:password; never a credential"
+              },
+              "roles": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "description": "the roles the seed gives this identity"
+              }
+            }
+          }
+        },
+        "invalid_credential_ref": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "the NAME of an environment variable holding a credential the Operator states is NOT valid; the invalid-credential probe is not derived without it"
+        }
+      }
     }
   }
 }
