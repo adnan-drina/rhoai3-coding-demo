@@ -2075,6 +2075,15 @@ class Derivation:
 # scenario's method, path, headers and body bytes are reused verbatim, bound
 # by its id and its body digest: the two modes then differ in exactly one
 # thing, which is the identity the request carries.
+#
+# One identity is not enough for a REFUSAL, though. What a refused write must
+# show is that the state did not change, and the caller it refused is answered
+# 401 by the read-backs too; so a negative probe also names an
+# ``effects_identity`` -- the identity the policy accepts, the allowed probe's
+# own -- which the capture and the comparator take the before/after read-backs
+# as. Where no declared identity holds the role there is none to take them,
+# and the ``auth-effects`` gap says so instead of stating a predicate nothing
+# could settle.
 _AUTH_INVALID = "invalid"       # the reserved --identity name: a credential declared INVALID
 # the checks that judge what a request DID, carried from the base scenario to
 # the allowed probe (its status is not carried: the source's actual outcome is
@@ -2315,7 +2324,8 @@ class EnabledDerivation:
 
     def _probe(self, kind: str, slug: str, pid: str, pol: dict[str, Any], roles: list[str], eid: str,
                base: dict[str, Any], identity: dict[str, Any], who: dict[str, Any] | None,
-               qualify: dict[str, Any], why: str, extra_evidence: list[str] | None = None) -> None:
+               qualify: dict[str, Any], why: str, extra_evidence: list[str] | None = None,
+               effects_who: dict[str, Any] | None = None) -> None:
         bf, body_sha = self._body_of(base)
         derived_base = base.get("_derived_base") or {}
         request_evidence = (list(derived_base.get("evidence") or []) if derived_base else
@@ -2333,6 +2343,16 @@ class EnabledDerivation:
              if who else ("identity:anonymous; the request carries no credential" if str(identity.get("kind") or "none") == "none"
                           else "identity:credential_ref %s, declared invalid by the Operator" % str(identity.get("credential_ref") or ""))),
         ] + request_evidence
+        if effects_who is not None:
+            # WHOSE view the read-backs are. A refusal's own caller is answered
+            # 401 by the effects too, and a 401 says nothing about the state,
+            # so the before/after probes are taken as the identity this policy
+            # ACCEPTS -- the same one the allowed probe runs as, named here by
+            # what it holds and by the variable holding its credential
+            evidence.append("effects-identity:%s holds %s, credential_ref %s; the before and after read-backs are taken as this "
+                            "identity, so the state a refused request leaves is observable rather than another 401"
+                            % (effects_who["name"], ", ".join(effects_who["roles"]) or "no declared role",
+                               effects_who["credential_ref"]))
         sc: dict[str, Any] = {
             "id": "sc:auth-%s-%s" % (kind, slug), "entry_point": eid,
             "method": str(base["method"]), "path": str(base["path"]),
@@ -2354,6 +2374,8 @@ class EnabledDerivation:
             "qualify": dict(qualify),
             "why": why,
         }
+        if effects_who is not None:
+            sc["effects_identity"] = {"kind": "basic", "credential_ref": str(effects_who["credential_ref"])}
         if bf:
             sc["body_file"] = bf
         else:
@@ -2381,12 +2403,18 @@ class EnabledDerivation:
         return q
 
     @staticmethod
-    def _denied_qualify(base: dict[str, Any]) -> dict[str, Any]:
+    def _denied_qualify(base: dict[str, Any], effects_who: dict[str, Any] | None) -> dict[str, Any]:
         """A refusal's contract: a 4xx of any kind -- 401 and 403 are both the
         source's own answer and neither is assumed -- and, for a write, the
-        read-backs the base scenario declares unchanged across it."""
+        read-backs the base scenario declares unchanged across it.
+
+        "Unchanged" is only a claim somebody can judge when the read-backs are
+        taken as an identity the policy accepts (``effects_who``); with none
+        declared they are the refused caller's own 401s, and the contract does
+        not state a predicate nothing could settle -- the gap says so
+        instead."""
         q: dict[str, Any] = {"intent": "negative", "expect_status_class": "4xx"}
-        if base.get("effects") and str(base.get("method") or "").upper() not in _READ_METHODS:
+        if base.get("effects") and str(base.get("method") or "").upper() not in _READ_METHODS and effects_who is not None:
             q["after_equals_before"] = True
         return q
 
@@ -2444,21 +2472,36 @@ class EnabledDerivation:
                         "expectation -- the capture records it -- and what the request did is judged the way %s judges it"
                         % (whence, whence),
                         constant_evidence + list(allowed.get("roles_evidence") or []))
+        # WHO reads the state back after a refusal. The refused caller cannot:
+        # the effect probes carry its identity too, so an anonymous DELETE's
+        # before and after read-backs are two more 401s and "unchanged" is not
+        # judgeable (v9, 2026-09-14: 15 negative scenarios INCONCLUSIVE on
+        # exactly that). The identity the policy ACCEPTS -- the allowed
+        # probe's own -- takes them instead. With none declared the read-backs
+        # stay the refused caller's, and the gap says so rather than the
+        # contract stating a predicate nothing can settle.
+        effects_who = allowed if (allowed is not None and base.get("effects")) else None
+        if effects_who is None and base.get("effects") and str(base.get("method") or "").upper() not in _READ_METHODS:
+            self.gaps.append("auth-effects %s %s: a refused write's read-backs are taken with the refusing request's own identity, which "
+                             "shows the state as that caller sees it, and no declared identity holds %s to take them instead; the state "
+                             "this policy's refusals leave is not observable and no after_equals_before is derived"
+                             % (pid, eid, ", ".join(roles)))
         self._probe("anonymous", slug, pid, pol, roles, eid, base, {"kind": "none"}, None,
-                    self._denied_qualify(base),
+                    self._denied_qualify(base, effects_who),
                     "the same request with no credential at all: the policy accepts %s, so the source refuses it (any 4xx -- "
                     "401 and 403 are both its own answer), sends its challenge if it has one, and the read-backs the base "
-                    "scenario declares are unchanged across it" % ", ".join(roles), constant_evidence)
+                    "scenario declares are unchanged across it" % ", ".join(roles), constant_evidence,
+                    effects_who=effects_who)
         if not self.invalid_ref:
             self.gaps.append("auth-invalid %s: no credential is declared invalid (--identity %s=CREDENTIAL_REF); the invalid-credential "
                              "probe is not derived" % (pid, _AUTH_INVALID))
         else:
             self._probe("invalid", slug, pid, pol, roles, eid, base,
                         {"kind": "basic", "credential_ref": self.invalid_ref}, None,
-                        self._denied_qualify(base),
+                        self._denied_qualify(base, effects_who),
                         "the same request carrying the credential reference the Operator declares invalid: the source refuses it "
                         "(any 4xx), sends its challenge if it has one, and the read-backs are unchanged across it",
-                        constant_evidence)
+                        constant_evidence, effects_who=effects_who)
         outsider = self._outsider(roles)
         if outsider is None:
             # ADR-014's blocker: an identity that lacks the role is a FIXTURE.
@@ -2469,11 +2512,12 @@ class EnabledDerivation:
             return
         self._probe("norole", slug, pid, pol, roles, eid, base,
                     {"kind": "basic", "credential_ref": outsider["credential_ref"]}, outsider,
-                    self._denied_qualify(base),
+                    self._denied_qualify(base, effects_who),
                     "the same request carrying an authenticated identity that holds %s and none of %s: authentication is not "
                     "authorization, so the source refuses it (any 4xx) and the read-backs are unchanged across it"
                     % (", ".join(outsider["roles"]), ", ".join(roles)),
-                    constant_evidence + list(outsider.get("roles_evidence") or []))
+                    constant_evidence + list(outsider.get("roles_evidence") or []),
+                    effects_who=effects_who)
 
 
 def _sql_evidence(root: Path, copy: Path, inputs: dict[str, Any], gaps: list[str]) -> tuple[
@@ -2712,15 +2756,6 @@ def _derive_enabled(root: Path, args: Any, mode: str, out_p: Path, receipt_p: Pa
     d = EnabledDerivation(root, base, base_sha, policies, constants, identities, invalid_ref, entry_points=bundle_eps)
     d.run()
     gaps.extend(d.gaps)
-    if any(str(sc["derived_from"]["kind"]) != "auth-allowed" and sc.get("effects") for sc in d.scenarios):
-        # said once, and honestly: the capture probes a scenario's effects
-        # with that scenario's OWN identity, so a refused write's read-backs
-        # are read as the refused caller sees them. Unchanged is still
-        # unchanged; proving it with an allowed identity needs the capture to
-        # carry a second one, which is not this producer's to give
-        gaps.append("auth-effects: the denied-write read-backs are taken with the refusing request's own identity, so they show the "
-                    "state as that caller sees it; an authenticated read-back of a refused write needs the capture to probe effects "
-                    "with a second identity")
     doc = {
         "schema": SCHEMA,
         "security_mode": mode,

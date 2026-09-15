@@ -31,6 +31,15 @@ holding ``user:password``, a scenario asks for it by that name
 ever written down. A ``--source-config`` value that equals a credential is
 refused before the source starts.
 
+Read-backs of a REFUSED request (ADR-014). A scenario's effects used to be
+probed with that scenario's own identity, so an anonymous DELETE's before and
+after read-backs were two more 401s and "the state did not change" could not
+be judged at all. A scenario may name an ``effects_identity`` -- the identity
+its policy accepts -- and the before/after probes are taken as that one while
+the request itself stays exactly the request the source refused. Its
+credential arrives by REFERENCE like every other, must be declared to this
+capture the same way, and the capture records the identity by NAME.
+
 Normally none of that is typed: ``--from-decisions`` (the default for
 ``--security-mode enabled`` when no ``--credential-ref`` is given) reads
 ``decisions.yaml``'s ``security`` section -- the switch by KEY, each identity
@@ -70,9 +79,9 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _oracle_common import ensure_hermes_lib, http_observe, retain_body  # noqa: E402
 from _scenarios import (CorpusError, DEFAULT_SECURITY_MODE, SCENARIO_ORACLES, SECURITY_MODES, auth_headers,  # noqa: E402,F401
-                        auth_headers_for, capture_receipt_path, corpus_digest, credential_conflicts, load_corpus,
-                        normalize_security_mode, parse_assignments, request_of, scenario_oracles_dir, scenario_slug,
-                        source_exposed_headers)
+                        auth_headers_for, capture_receipt_path, corpus_digest, credential_conflicts,
+                        effects_identity_of, load_corpus, normalize_security_mode, normalized_identity,
+                        parse_assignments, request_of, scenario_oracles_dir, scenario_slug, source_exposed_headers)
 
 ensure_hermes_lib()
 from planner.admission import verify_receipt  # noqa: E402
@@ -441,6 +450,18 @@ def main(argv: list[str] | None = None) -> int:
                 failures.append("%s: %s" % (sc["id"], exc))
                 continue
             headers, gap = auth_headers_for(req["identity"], credential_refs)
+            # WHO reads the state back. A scenario the source REFUSES is
+            # refused its read-backs too -- the before and after probes of an
+            # anonymous DELETE answer 401, and a 401 proves nothing about what
+            # the write did or did not do -- so a scenario may name an
+            # ``effects_identity``, and the probes are taken as that one. Its
+            # credential arrives the same way every other does: by REFERENCE,
+            # read from the environment at request time, recorded by name.
+            effects_identity = effects_identity_of(sc)
+            eff_headers, eff_gap = ((headers, "") if effects_identity is None
+                                    else auth_headers_for(effects_identity, credential_refs))
+            if not gap and eff_gap:
+                gap = "the read-backs of this scenario are taken as another identity, and %s" % eff_gap
             if gap:
                 rec["status"] = "INCONCLUSIVE"
                 rec["reason"] = gap
@@ -464,8 +485,13 @@ def main(argv: list[str] | None = None) -> int:
             # qualification can SEE the created owner in the list and the
             # rejected one absent -- a sample or a digest alone cannot say
             bodies_dir = root / oracles_dir / "bodies" / scenario_slug(sc["id"])
+            if effects_identity is not None:
+                # by NAME, like every other identity in this evidence: which
+                # variable holds the credential the read-backs were taken
+                # with, never what it holds
+                rec["effects_identity"] = normalized_identity(effects_identity)
             for eff in sc.get("effects") or []:
-                probe = http_observe(runtime.base_url, str(eff.get("method") or "GET"), str(eff.get("path") or "/"), headers=headers, keep_body=True)
+                probe = http_observe(runtime.base_url, str(eff.get("method") or "GET"), str(eff.get("path") or "/"), headers=eff_headers, keep_body=True)
                 eid = str(eff.get("id") or eff.get("path"))
                 row = {"id": eid, "method": str(eff.get("method") or "GET"),
                        "path": str(eff.get("path") or "/"), "status": probe.get("status"),
@@ -486,7 +512,7 @@ def main(argv: list[str] | None = None) -> int:
                 failures.append("%s: %s" % (sc["id"], rec["reason"]))
                 continue
             for eff in sc.get("effects") or []:
-                probe = http_observe(runtime.base_url, str(eff.get("method") or "GET"), str(eff.get("path") or "/"), headers=headers, keep_body=True)
+                probe = http_observe(runtime.base_url, str(eff.get("method") or "GET"), str(eff.get("path") or "/"), headers=eff_headers, keep_body=True)
                 eid = str(eff.get("id") or eff.get("path"))
                 row = {"id": eid, "method": str(eff.get("method") or "GET"),
                        "path": str(eff.get("path") or "/"), "status": probe.get("status"),

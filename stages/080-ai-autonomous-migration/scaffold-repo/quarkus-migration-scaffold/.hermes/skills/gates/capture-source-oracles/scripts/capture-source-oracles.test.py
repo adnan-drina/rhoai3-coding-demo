@@ -326,6 +326,129 @@ def _security_mode_capture_case() -> int:
     return 0
 
 
+class GuardedStore(BaseHTTPRequestHandler):
+    """A source with its security switch ON, holding a collection: every
+    request it cannot authenticate is refused with 401, the authenticated
+    ones are answered. A refused DELETE changes nothing -- which is precisely
+    what a read-back has to be able to SEE."""
+
+    expected = ""
+    owners: list = []
+    seen: list = []
+
+    def _answer(self, code: int, payload) -> None:
+        body = json.dumps(payload).encode()
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _authenticated(self) -> bool:
+        type(self).seen.append((self.command, self.path, bool(self.headers.get("Authorization"))))
+        return self.headers.get("Authorization") == type(self).expected
+
+    def do_GET(self):  # noqa: N802
+        if not self._authenticated():
+            return self._answer(401, {"error": "unauthorized"})
+        return self._answer(200, list(type(self).owners))
+
+    def do_DELETE(self):  # noqa: N802
+        if not self._authenticated():
+            return self._answer(401, {"error": "unauthorized"})
+        type(self).owners = [o for o in type(self).owners if str(o["id"]) != self.path.rsplit("/", 1)[-1]]
+        return self._answer(204, None)
+
+    def log_message(self, *a):  # noqa: D102
+        return
+
+
+def _effects_identity_capture_case() -> int:
+    """The read-backs of a REFUSED request are taken as the identity the
+    policy accepts.
+
+    v9 (2026-09-15): the capture probed a scenario's effects with that
+    scenario's own identity, so the before and after read-backs of an
+    anonymous write were two more 401s and the state they were supposed to
+    show could not be seen at all. The controls: the anonymous DELETE is
+    still anonymous (the source refuses it, and the capture records the
+    refusal as the first response), the read-backs beside it answered 200
+    because they carried the accepted identity, the capture says by NAME
+    which identity that was, and no credential -- nor the header built from
+    one -- is anywhere in what it wrote."""
+    import base64
+    import os
+    from unittest.mock import patch
+    from planner.canonical import load_json as _load
+    from _scenarios import capture_receipt_path, scenario_oracles_dir, scenario_slug
+
+    producer = _load_producer()
+    secret, user, ref = "an0ther-s3cret", "an-identity-the-policy-allows", "TEST_EFFECTS_CREDENTIAL"
+    token = "Basic %s" % base64.b64encode(("%s:%s" % (user, secret)).encode("utf-8")).decode("ascii")
+    sid = "sc:auth-anonymous-delete-owners-1"
+    scenario = {"id": sid, "method": "DELETE", "path": "/api/owners/1", "body_absent": True,
+                "reset_before": False, "normalization": [], "identity": {"kind": "none"},
+                "effects": [{"id": "eff:owners-after-denied-delete", "method": "GET", "path": "/api/owners"}],
+                "effects_identity": {"kind": "basic", "credential_ref": ref},
+                "asserted_headers": ["WWW-Authenticate"],
+                "qualify": {"intent": "negative", "expect_status_class": "4xx", "after_equals_before": True}}
+    handler = type("G", (GuardedStore,), {"expected": token, "owners": [{"id": 1, "lastName": "Franklin"}], "seen": []})
+    srv, base_url = _serve_handler(handler)
+    kept = os.environ.get(ref)
+    os.environ[ref] = "%s:%s" % (user, secret)
+    try:
+        with tempfile.TemporaryDirectory(prefix="effects-identity-") as tmp:
+            t = Path(tmp).resolve()
+            root, _ = _mode_root(t, "effects", scenario, "enabled")
+            with patch.object(producer, "SourceRuntime", _fake_runtime(base_url)):
+                rc = producer.main(["--root", str(root), "--security-mode", "enabled",
+                                    "--source-config", "%s=%s" % (SWITCH_KEY, SWITCH_ON), "--credential-ref", ref])
+            cap = _load(root / scenario_oracles_dir("enabled") / (scenario_slug(sid) + ".json"))
+            if rc != 0 or cap["status"] != "CAPTURED":
+                return _fail("the capture must complete: rc=%s %s %s" % (rc, cap["status"], cap.get("reason")))
+            if cap["response"]["status"] != 401 or cap["request"]["identity"]["kind"] != "none":
+                return _fail("the request itself stays the anonymous one the source refuses: %s %s"
+                             % (cap["request"]["identity"], cap["response"]["status"]))
+            before, after = cap["before"][0], cap["effects"][0]
+            if before["status"] != 200 or after["status"] != 200:
+                return _fail("the read-backs are taken as an identity the source answers: %s %s" % (before, after))
+            if before["body_sha256"] != after["body_sha256"]:
+                return _fail("the refused DELETE deleted nothing, and the read-backs show it: %s vs %s"
+                             % (before["body_sha256"], after["body_sha256"]))
+            if cap.get("effects_identity") != {"kind": "basic", "user_env": "", "password_env": "", "credential_ref": ref}:
+                return _fail("the capture records WHOSE read-backs these are, by reference: %s" % cap.get("effects_identity"))
+            if ("DELETE", "/api/owners/1", False) not in handler.seen or ("GET", "/api/owners", True) not in handler.seen:
+                return _fail("the write went anonymously and the read-backs authenticated: %s" % handler.seen)
+            written = _all_bytes(root / "verification")
+            for forbidden, what in ((secret, "the password"), (token, "the Authorization value"), (user, "the account name")):
+                if forbidden.encode("utf-8") in written:
+                    return _fail("%s reached the evidence; only the reference may" % what)
+            if ref.encode("utf-8") not in written:
+                return _fail("the reference is recorded, or nobody can tell which credential read the state back")
+            if _load(root / capture_receipt_path("enabled")).get("credential_refs") != [ref]:
+                return _fail("the receipt names the credential this capture was given")
+
+            # a read-back identity this capture was not given is a gap naming
+            # the VARIABLE, never a quiet anonymous probe
+            root2, _ = _mode_root(t, "effects-undeclared", scenario, "enabled")
+            with patch.object(producer, "SourceRuntime", _fake_runtime(base_url)):
+                rc = producer.main(["--root", str(root2), "--security-mode", "enabled",
+                                    "--credential-ref", "TEST_OTHER_CREDENTIAL"])
+            cap2 = _load(root2 / scenario_oracles_dir("enabled") / (scenario_slug(sid) + ".json"))
+            if rc != 1 or cap2["status"] != "INCONCLUSIVE" or "read-backs" not in cap2["reason"] or ref not in cap2["reason"]:
+                return _fail("an undeclared read-back credential is an INCONCLUSIVE capture naming it: rc=%s %s"
+                             % (rc, {k: cap2.get(k) for k in ("status", "reason")}))
+            if cap2["before"] or cap2["effects"]:
+                return _fail("nothing is probed with a credential this capture was not given: %s" % cap2)
+    finally:
+        srv.shutdown()
+        if kept is None:
+            os.environ.pop(ref, None)
+        else:
+            os.environ[ref] = kept
+    return 0
+
+
 class Challenging(BaseHTTPRequestHandler):
     """A source with its security switch ON, answering an anonymous read the
     way ADR-014's refusal probes expect: a 4xx that SAYS how to authenticate."""
@@ -448,6 +571,8 @@ def main() -> int:
     if _challenge_header_case():
         return 1
     if _security_mode_capture_case():
+        return 1
+    if _effects_identity_capture_case():
         return 1
     with tempfile.TemporaryDirectory(prefix="oracle-") as tmp:
         t = Path(tmp).resolve()
@@ -598,7 +723,11 @@ def main() -> int:
           "an enabled capture reads the enabled corpus, asserts and records the headers THAT scenario declares beside the ones the "
           "source exposes so a dropped WWW-Authenticate is a named diff, takes the switch and the credential REFERENCES from "
           "decisions.yaml, and records an idle receipt naming the missing VARIABLE -- never its value -- when the workspace does not "
-          "hold a declared credential, which the qualification of that mode then reports as nothing to judge)")
+          "hold a declared credential, which the qualification of that mode then reports as nothing to judge; a scenario naming an "
+          "effects_identity has its before/after read-backs taken as THAT identity while the request stays the anonymous one the "
+          "source refuses -- so a refused write's unchanged state is visible as 200s rather than two more 401s -- the capture "
+          "records whose read-backs they are by reference, and a read-back credential this capture was not given is an "
+          "INCONCLUSIVE capture naming the variable with nothing probed)")
     return 0
 
 

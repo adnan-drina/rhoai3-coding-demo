@@ -461,6 +461,23 @@ python3 "${HERMES_SKILL_DIR}/scripts/derive-source-scenarios.py" --root /project
   base scenario's read-backs unchanged across it; the two unauthenticated ones
   also assert the challenge header `WWW-Authenticate` on the first response
   (`asserted_headers`).
+- **Who reads the state back (`effects_identity`).** A refused write has to
+  show that nothing changed, and the caller it refused is answered `401` by
+  the read-backs too: on v9 the before/after probes of every
+  `sc:auth-anonymous-*` and `sc:auth-invalid-*` write answered 401, so all 15
+  qualified INCONCLUSIVE with *`before eff:… answered 401, not 2xx; its body
+  cannot stand for the collection`*. Each negative probe therefore names an
+  `effects_identity` — the identity the policy accepts, the same one its
+  `auth-allowed` sibling runs as, by credential REFERENCE — and the capture
+  and the comparator take the read-backs as that one while the request itself
+  stays exactly the request the source refused. The scenario says so in
+  `derived_from.evidence` (`effects-identity:<who> holds <roles>,
+  credential_ref <NAME>; the before and after read-backs are taken as this
+  identity`). Where no declared identity holds the role there is nobody to
+  read the state back as: `after_equals_before` is **not** stated (a
+  predicate nothing could settle is not a contract) and the gap
+  `auth-effects <policy> <entry point>: … the state this policy's refusals
+  leave is not observable` stands instead.
 - **Blockers, never inventions.** No declared identity holding the role, none
   lacking it (`auth-norole <policy>: no declared identity lacks <roles>; the
   seed provides none`), no invalid credential declared, or no qualified-shaped
@@ -468,10 +485,7 @@ python3 "${HERMES_SKILL_DIR}/scripts/derive-source-scenarios.py" --root /project
   scenario. Reads are captured outside the corpus, so a policy guarding a
   plain `GET` has no base to reuse and says so.
 
-**Two seams this producer does not own.** The capture probes a scenario's
-effects with that scenario's *own* identity, so a refused write's read-backs
-are the refused caller's view — proving it with an allowed identity needs
-`capture-source-scenarios.py` to carry a second one. And that script (like
+**One seam this producer does not own.** `capture-source-scenarios.py` (like
 `compose-parity-receipt.py`) still loads `verification/scenarios/corpus.json`
 for every mode: `load_corpus(root, security_mode)` and `asserted_headers`
 are there to be passed through when those builders take them up.
@@ -489,7 +503,9 @@ results per scenario**:
   this very request (`request_sha256`), every retained body the contract
   reads must be present, digest-bound (`retained_sha256`, `raw_body_sha256`,
   not `truncated`, `body_sha256` recomputing) and every read-back the
-  contract reads must have answered 2xx. Evidence is judged **before**
+  contract reads must have been taken as the identity the scenario names for
+  its effects (`effects_identity`, else the request's own) and must have
+  answered 2xx. Evidence is judged **before**
   intent: with unusable evidence `capability` is INCONCLUSIVE, never FAIL,
   while `known_failures` still records what was observed (a 500 is on the
   record, not hidden).
@@ -713,7 +729,9 @@ What refuses, and why:
   blockers recorded (see *Deriving the enabled-mode corpus*)
 - `scripts/capture-source-oracles.py` — read capture from the source system
 - `scripts/capture-source-scenarios.py` — M1 producer: package and start the
-  frozen source, restore state, capture the derived scenarios, clean up
+  frozen source, restore state, capture the derived scenarios (the effect
+  read-backs taken as the scenario's `effects_identity` where it names one),
+  clean up
 - `scripts/qualify-source-captures.py` — the qualification gate and the third
   M1 step: every capture against its scenario's `qualify` contract, reading the
   retained bodies by digest; PASS / FAIL / INCONCLUSIVE per scenario, all three

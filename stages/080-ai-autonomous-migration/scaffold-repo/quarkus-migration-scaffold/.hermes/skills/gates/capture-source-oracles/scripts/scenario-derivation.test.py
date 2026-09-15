@@ -870,7 +870,8 @@ def _retain(root: Path, sid: str, name: str, payload: Any) -> tuple[dict[str, An
 
 
 def _capture(root: Path, sc: dict[str, Any], corpus_sha: str, status: int, headers: dict[str, Any], body: Any,
-             before: dict[str, tuple[int, Any]], after: dict[str, tuple[int, Any]], request_sha: str | None = None) -> Path:
+             before: dict[str, tuple[int, Any]], after: dict[str, tuple[int, Any]], request_sha: str | None = None,
+             effects_identity: dict[str, Any] | None = None) -> Path:
     sid = str(sc["id"])
     ev, sha = _retain(root, sid, "response", body)
     rec: dict[str, Any] = {
@@ -882,6 +883,10 @@ def _capture(root: Path, sc: dict[str, Any], corpus_sha: str, status: int, heade
         "response": {"status": status, "headers": headers, "body_kind": "json", "body_sha256": sha, "evidence": ev},
         "before": [], "effects": [],
     }
+    if effects_identity is not None:
+        # whom the producer took the read-backs as, recorded by NAME the way
+        # capture-source-scenarios.py records it
+        rec["effects_identity"] = dict(effects_identity)
     for key, rows in (("before", before), ("effects", after)):
         for eff in sc.get("effects") or []:
             st, payload = rows[eff["id"]]
@@ -890,6 +895,101 @@ def _capture(root: Path, sc: dict[str, Any], corpus_sha: str, status: int, heade
     out = root / SCENARIO_ORACLES / (scenario_slug(sid) + ".json")
     write_canonical(out, rec)
     return out
+
+
+def _effects_identity_qualification_case() -> int:
+    """What a REFUSED write left behind, judged.
+
+    Measured on destination v9 (2026-09-15): 15 negative authorization
+    scenarios qualified INCONCLUSIVE with ``before eff:... answered 401, not
+    2xx; its body cannot stand for the collection``. The read-backs carried
+    the refusing request's own identity, so the one thing those scenarios
+    exist to show -- the state did not change -- could not be read off the
+    evidence at all. With the read-backs taken as the identity the policy
+    ACCEPTS (``effects_identity``), the predicate is judgeable both ways: PASS
+    when the state is unchanged, FAIL when the refused write changed it
+    anyway. A capture that took them as somebody else is UNUSABLE evidence
+    naming the identity, and a scenario that declares none keeps exactly the
+    answer it had."""
+    accepted = {"kind": "basic", "user_env": "", "password_env": "", "credential_ref": "PARITY_ADMIN"}
+    eff = {"id": "eff:owners-after-denied-delete", "method": "GET", "path": "/api/owners"}
+    seeded = [SEED_OWNER_1, SEED_OWNER_2]
+    refusal = ({"WWW-Authenticate": 'Basic realm="fixture"', "Location": None}, {"error": "unauthorized"})
+
+    def corpus_with(effects_identity: dict[str, Any] | None) -> dict[str, Any]:
+        sc: dict[str, Any] = {
+            "id": "sc:auth-anonymous-delete-owners-1", "entry_point": EP["delete"], "method": "DELETE",
+            "path": "/api/owners/1", "headers": {}, "identity": {"kind": "none"}, "body_absent": True,
+            "reset_before": True, "effects": [dict(eff)], "normalization": [],
+            "qualify": {"intent": "negative", "expect_status_class": "4xx", "after_equals_before": True}}
+        if effects_identity is not None:
+            sc["effects_identity"] = dict(effects_identity)
+        return {"schema": "rhoai3.scenario-corpus/v1", "approved_by": "operator:test",
+                "initial_state": {"reset": "restart the source", "dataset": "two owners"},
+                "path_vars": {"ownerId": "1"}, "scenarios": [sc]}
+
+    with tempfile.TemporaryDirectory(prefix="qualify-effects-identity-") as td:
+        root = build_root(Path(td))
+        declared = corpus_with({"kind": "basic", "credential_ref": "PARITY_ADMIN"})
+        write_canonical(root / CORPUS_P, declared)
+        sc = declared["scenarios"][0]
+        sha = corpus_digest(load_json(root / CORPUS_P))
+
+        # (a) the state the refusal left, read back as the accepted identity
+        _capture(root, sc, sha, 401, refusal[0], refusal[1], {eff["id"]: (200, seeded)}, {eff["id"]: (200, seeded)},
+                 effects_identity=accepted)
+        p, q = _qualify(root)
+        r = q["scenarios"][sc["id"]]
+        if p.returncode != 0 or r["capability"] != "PASS" or r["evidence"] != {"status": "USABLE", "reasons": []}:
+            return _fail("a refusal whose accepted-identity read-backs are unchanged is a PASS, not an INCONCLUSIVE: %s" % r)
+        if not any(c["check"] == "after_equals_before" and c["ok"] is True for c in r["checks"]):
+            return _fail("after_equals_before is the predicate that was judged: %s" % r["checks"])
+
+        # (b) ... and a refused write that nevertheless changed the state FAILs
+        _capture(root, sc, sha, 401, refusal[0], refusal[1], {eff["id"]: (200, seeded)},
+                 {eff["id"]: (200, [SEED_OWNER_2])}, effects_identity=accepted)
+        p, q = _qualify(root)
+        r = q["scenarios"][sc["id"]]
+        if r["capability"] != "FAIL" or not any(c["check"] == "after_equals_before" and c["ok"] is False for c in r["checks"]):
+            return _fail("a 401 that deleted the row anyway is a judged FAIL: %s" % r)
+
+        # (c) a capture that took the read-backs as the refused caller is
+        # evidence about another question, and the reason names the identity
+        # by reference rather than leaving "answered 401" to be interpreted
+        _capture(root, sc, sha, 401, refusal[0], refusal[1], {eff["id"]: (401, refusal[1])}, {eff["id"]: (401, refusal[1])})
+        p, q = _qualify(root)
+        r = q["scenarios"][sc["id"]]
+        if (r["capability"] != "INCONCLUSIVE" or r["evidence"]["status"] != "UNUSABLE"
+                or "credential_ref PARITY_ADMIN" not in r["reason"] or "the request's own identity" not in r["reason"]):
+            return _fail("read-backs taken as somebody else are unusable evidence naming both identities: %s" % r)
+        if "PARITY" not in json.dumps(q) or "password" in json.dumps(q).lower():
+            return _fail("the identity travels by reference and nothing else does: %s" % r["reason"])
+
+        # (d) a scenario that declares no effects identity keeps the answer it
+        # had: the read-backs are the request's own, and 401s cannot stand for
+        # the collection
+        plain = corpus_with(None)
+        write_canonical(root / CORPUS_P, plain)
+        sha = corpus_digest(load_json(root / CORPUS_P))
+        _capture(root, plain["scenarios"][0], sha, 401, refusal[0], refusal[1],
+                 {eff["id"]: (401, refusal[1])}, {eff["id"]: (401, refusal[1])})
+        p, q = _qualify(root)
+        r = q["scenarios"][sc["id"]]
+        if r["capability"] != "INCONCLUSIVE" or "not 2xx" not in r["reason"]:
+            return _fail("with no effects identity declared the v9 answer stands unchanged: %s" % r)
+
+        # ... and a corpus naming an effects identity for a scenario with no
+        # read-backs to take is refused outright
+        empty = corpus_with({"kind": "basic", "credential_ref": "PARITY_ADMIN"})
+        empty["scenarios"][0]["effects"] = []
+        write_canonical(root / CORPUS_P, empty)
+        try:
+            load_corpus(root)
+            return _fail("an effects identity for read-backs nobody takes must be refused")
+        except CorpusError as exc:
+            if "read-backs nobody takes" not in str(exc):
+                return _fail("the refusal says what is wrong: %s" % exc)
+    return 0
 
 
 def _qualify(root: Path) -> tuple[subprocess.CompletedProcess, dict[str, Any]]:
@@ -1660,7 +1760,7 @@ def _enabled_decisions(root: Path, rename: list[tuple[str, str]] | None = None) 
     for sc in corpus["scenarios"]:
         rows.append(norm({
             "id": sc["id"], "kind": sc["derived_from"]["kind"], "method": sc["method"], "path": sc["path"],
-            "identity": sc["identity"], "reset_before": sc["reset_before"],
+            "identity": sc["identity"], "effects_identity": sc.get("effects_identity"), "reset_before": sc["reset_before"],
             "effects": [e["id"] for e in sc["effects"]],
             "body": "present" if sc.get("body_file") else "absent",
             "asserted_headers": sc.get("asserted_headers"),
@@ -1787,8 +1887,25 @@ def _enabled_mode_case() -> int:
             return _fail("an expression outside the grammar is a typed gap and no scenario: %s" % gaps)
         if "auth-norole %s: no declared identity lacks %s, %s; the seed provides none" % (read_policy, n.roles[2], n.roles[1]) not in gaps:
             return _fail("no identity lacking the role is the blocker ADR-014 names, never an invented account: %s" % gaps)
-        if not any(g.startswith("auth-effects:") for g in gaps):
-            return _fail("the denied-write read-backs say whose view they are: %s" % gaps)
+        # whose view the denied-write read-backs are: the identity the policy
+        # ACCEPTS, not the caller it refused. The refused caller's own probes
+        # answer 401, and a 401 says nothing about what the write did (v9,
+        # 2026-09-14: 15 negative scenarios INCONCLUSIVE on after_equals_before)
+        for kind in ("anonymous", "invalid", "norole"):
+            probe = sc["sc:auth-%s-create-owners" % kind]
+            if probe.get("effects_identity") != {"kind": "basic", "credential_ref": n.cred_all}:
+                return _fail("a refused write reads its state back as the identity the policy accepts: %s"
+                             % probe.get("effects_identity"))
+            if not any(e.startswith("effects-identity:%s holds " % n.who_all) and "credential_ref %s" % n.cred_all in e
+                       and "read-backs are taken as this identity" in e for e in probe["derived_from"]["evidence"]):
+                return _fail("the scenario says the read-backs are taken as that identity, and names it by reference: %s"
+                             % probe["derived_from"]["evidence"])
+        if sc["sc:auth-allowed-create-owners"].get("effects_identity") is not None:
+            return _fail("the allowed probe is already the accepted identity and names no second one")
+        if sc["sc:auth-anonymous-read-docs"].get("effects_identity") is not None:
+            return _fail("a probe that declares no effect names no identity to take them as")
+        if any(g.startswith("auth-effects") for g in gaps):
+            return _fail("with a declared identity the policy accepts, a refused write's state IS observable: %s" % gaps)
         # the receipt binds the mode, the identities and the corpus it reused
         receipt = load_json(root / ENABLED_RECEIPT_P)
         if (receipt["security_mode"] != "enabled" or receipt["base_corpus"] != {"path": CORPUS_P.as_posix(), "sha256": base_sha}
@@ -1975,6 +2092,19 @@ def _enabled_identity_case() -> int:
         kinds = sorted({str(s["derived_from"]["kind"]) for s in corpus["scenarios"]})
         if kinds != ["auth-anonymous"] or not any(g.startswith("auth-allowed ") for g in corpus["gaps"]):
             return _fail("with no identity declared only the anonymous probe is derivable: %s %s" % (kinds, corpus["gaps"]))
+        # ... and with nobody to read the state back as, the auth-effects gap
+        # is what stands: a refused write's read-backs are the refused
+        # caller's own 401s, so no after_equals_before is stated at all --
+        # a predicate nothing could settle is not a contract
+        writes = [s for s in corpus["scenarios"] if s.get("effects")]
+        if not writes:
+            return _fail("the fixture must carry a refused write for this control")
+        if any(s.get("effects_identity") is not None or "after_equals_before" in s["qualify"] for s in writes):
+            return _fail("with no accepted identity nothing reads the state back, and nothing claims it is unchanged: %s"
+                         % [(s["id"], s.get("effects_identity"), s["qualify"]) for s in writes])
+        if not any(g.startswith("auth-effects ") and "no declared identity holds" in g and "not observable" in g
+                   for g in corpus["gaps"]):
+            return _fail("the unobservable state of a refused write is the gap ADR-014 asks for: %s" % corpus["gaps"])
         # a malformed declaration is usage, and the disabled mode takes none
         if _derive(root, "--security-mode", "enabled", "--identity", "no-equals-sign").returncode != 2:
             return _fail("NAME=CREDENTIAL_REF is the shape, and anything else is usage")
@@ -2158,7 +2288,8 @@ def main() -> int:
                 or _authorization_grammar_case() or _enabled_mode_case() or _enabled_constants_case()
                 or _enabled_rename_case() or _enabled_decided_case()
                 or _enabled_identity_case() or _enabled_regression_case()
-                or _application_removal_case() or _qualification_case(root) or _receipt_case()):
+                or _application_removal_case() or _qualification_case(root)
+                or _effects_identity_qualification_case() or _receipt_case()):
             return 1
     finally:
         if td is not None:

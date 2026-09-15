@@ -26,6 +26,9 @@ scenario carries:
   effects             read-backs that prove what the write did; response
                       equality alone cannot (a DELETE answering 204 that
                       deleted nothing must fail its effect check)
+  effects_identity    who the read-backs are taken as, when that differs from
+                      the request's identity (a refused write's own caller
+                      sees 401, and 401 proves nothing about the state)
   normalization       the permitted differences, named
 
 Nothing here records an expected value. Expected values come only from the
@@ -204,6 +207,13 @@ def load_corpus(root: Path, security_mode: Any = DEFAULT_SECURITY_MODE) -> dict[
         identity_gap = identity_shape_gap(sc.get("identity"))
         if identity_gap:
             raise CorpusError("scenario %s %s" % (sc["id"], identity_gap))
+        if sc.get("effects_identity") is not None:
+            effects_gap = identity_shape_gap(sc.get("effects_identity"))
+            if effects_gap:
+                raise CorpusError("scenario %s effects_identity: %s" % (sc["id"], effects_gap))
+            if not sc.get("effects"):
+                raise CorpusError("scenario %s names an effects_identity and declares no effects: the identity names "
+                                  "read-backs nobody takes" % sc["id"])
         if "origin" in hdrs and not sc.get("cors_policy"):
             raise CorpusError("scenario %s sends a cross-origin Origin and names no cors_policy; coverage is counted per policy" % sc["id"])
         if sc.get("cors_policy") and str(sc["cors_policy"]) not in {str(p.get("id")) for p in (doc.get("cors_policies") or [])}:
@@ -438,6 +448,40 @@ def scenario(doc: dict[str, Any], scenario_id: str) -> dict[str, Any]:
     raise CorpusError("no scenario %r in %s" % (scenario_id, CORPUS))
 
 
+def normalized_identity(identity: Any) -> dict[str, Any]:
+    """One identity as the evidence carries it: NAMES only.
+
+    ``credential_ref`` joins the two env names only when something names one:
+    adding an empty key to every request would change the digest of every
+    scenario already captured, and a shape nobody uses must not invalidate
+    another mode's evidence."""
+    ident = identity if isinstance(identity, dict) else {}
+    out: dict[str, Any] = {"kind": str(ident.get("kind") or "none"),
+                           "user_env": str(ident.get("user_env") or ""),
+                           "password_env": str(ident.get("password_env") or "")}
+    ref = str(ident.get("credential_ref") or "")
+    if ref:
+        out["credential_ref"] = ref
+    return out
+
+
+def effects_identity_of(sc: dict[str, Any]) -> dict[str, Any] | None:
+    """The identity a scenario's effect READ-BACKS are taken with, or None
+    when they are taken as the request itself.
+
+    A negative authorization scenario is a request the source REFUSES, and
+    its read-backs used to be taken with the refusing caller's identity: the
+    before and after probes of an anonymous DELETE answered 401, so "the
+    state is unchanged" -- the whole point of the scenario -- could not be
+    judged (v9: 15 scenarios INCONCLUSIVE on ``after_equals_before``). A
+    scenario may therefore declare ``effects_identity``, the identity the
+    policy ACCEPTS, and the read-backs are taken as that one. It is not part
+    of the request and never enters the request digest: the request the
+    source refused is the same request either way."""
+    ident = (sc or {}).get("effects_identity")
+    return dict(ident) if isinstance(ident, dict) and ident else None
+
+
 def request_of(root: Path, sc: dict[str, Any]) -> dict[str, Any]:
     """The complete request a scenario describes, with its digest.
 
@@ -451,22 +495,11 @@ def request_of(root: Path, sc: dict[str, Any]) -> dict[str, Any]:
             raise CorpusError("scenario %s names body_file %s, which does not exist" % (sc["id"], sc["body_file"]))
         body = p.read_bytes()
     headers = {str(k): str(v) for k, v in (sc.get("headers") or {}).items()}
-    identity = sc.get("identity") or {}
-    ident_kind = str(identity.get("kind") or "none")
-    ident_user_env = str(identity.get("user_env") or "")
-    ident_password_env = str(identity.get("password_env") or "")
-    ident_ref = str(identity.get("credential_ref") or "")
     # The REFERENCES travel with the request and are digested: which account a
     # request runs as is part of what makes it the same request. The values
     # never appear here. Dropping password_env made every authenticated replay
     # INCONCLUSIVE with both credentials present.
-    # ``credential_ref`` joins them only when a scenario names one: adding an
-    # empty key to every request would change the digest of every scenario
-    # already captured, and a mode nobody uses must not invalidate the other
-    # mode's evidence.
-    ident: dict[str, Any] = {"kind": ident_kind, "user_env": ident_user_env, "password_env": ident_password_env}
-    if ident_ref:
-        ident["credential_ref"] = ident_ref
+    ident = normalized_identity(sc.get("identity"))
     digest_input = {
         "method": str(sc["method"]).upper(), "path": str(sc["path"]),
         "headers": dict(sorted(headers.items())),

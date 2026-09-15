@@ -27,14 +27,26 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _oracle_common import ensure_hermes_lib, header_diffs, http_observe, is_preflight, origin_of, required_headers  # noqa: E402
 from _scenarios import (CorpusError, DEFAULT_SECURITY_MODE, QUALIFICATION, SCENARIO_ORACLES, SCENARIO_PARITY,  # noqa: E402,F401
-                        SECURITY_MODES, auth_headers, corpus_digest, load_corpus, normalize_security_mode,
-                        qualification_path, request_of, scenario, scenario_oracles_dir, scenario_parity_dir,
-                        scenario_slug, source_exposed_headers)
+                        SECURITY_MODES, auth_headers, corpus_digest, effects_identity_of, load_corpus,
+                        normalize_security_mode, normalized_identity, qualification_path, request_of, scenario,
+                        scenario_oracles_dir, scenario_parity_dir, scenario_slug, source_exposed_headers)
 
 ensure_hermes_lib()
 from planner.admission import verify_receipt  # noqa: E402
 from planner.canonical import digest, load_json, write_canonical  # noqa: E402
 from planner.paths import EVIDENCE_BUNDLE  # noqa: E402
+
+
+def _identity_label(identity: dict) -> str:
+    """How an identity is SAID in a refusal: by the variable holding its
+    credential, never by what the variable holds."""
+    ref = str((identity or {}).get("credential_ref") or "")
+    if ref:
+        return "credential_ref %s" % ref
+    pair = [str((identity or {}).get(k) or "") for k in ("user_env", "password_env")]
+    if all(pair):
+        return "%s/%s" % tuple(pair)
+    return "the request's own identity"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -143,6 +155,18 @@ def main(argv: list[str] | None = None) -> int:
     if recorded.get("request_sha256") != req["request_sha256"]:
         checks.append("the request this corpus describes (%s) is not the one the source answered (%s); the replay would not be a replay"
                       % (req["request_sha256"][:12], str(recorded.get("request_sha256"))[:12]))
+    # WHOSE view the recorded read-backs are. A refused write's effects are
+    # read back as an identity the policy accepts (the scenario's
+    # ``effects_identity``), because the refused caller is answered 401 by the
+    # read-backs too; comparing those rows against probes taken as anyone else
+    # would compare two different observations.
+    effects_identity = effects_identity_of(sc)
+    want_effects_identity = normalized_identity(effects_identity) if effects_identity is not None else {}
+    got_effects_identity = oracle.get("effects_identity") if isinstance(oracle.get("effects_identity"), dict) else {}
+    if want_effects_identity != got_effects_identity:
+        checks.append("this corpus takes the read-backs as %s and the source capture took them as %s; re-capture the source rather "
+                      "than comparing read-backs of two identities"
+                      % (_identity_label(want_effects_identity), _identity_label(got_effects_identity)))
     if checks:
         verdict["reason"] = "; ".join(checks)
         write_canonical(out, verdict)
@@ -154,6 +178,16 @@ def main(argv: list[str] | None = None) -> int:
         write_canonical(out, verdict)
         print("REFUSE: SCENARIO_PARITY %s INCONCLUSIVE (%s)" % (args.scenario, gap), file=sys.stderr)
         return 1
+    # the read-backs are taken as the identity the source's were taken as: the
+    # same reference, resolved from THIS environment
+    eff_headers, eff_gap = ((headers, "") if effects_identity is None else auth_headers(effects_identity))
+    if eff_gap:
+        verdict["reason"] = "the read-backs of this scenario are taken as another identity, and %s" % eff_gap
+        write_canonical(out, verdict)
+        print("REFUSE: SCENARIO_PARITY %s INCONCLUSIVE (%s)" % (args.scenario, verdict["reason"]), file=sys.stderr)
+        return 1
+    if effects_identity is not None:
+        verdict["effects_identity"] = dict(want_effects_identity)
 
     # Restore the declared initial state, and then PROVE the destination is in
     # it. Without this a delete that deletes nothing passed against a
@@ -195,7 +229,7 @@ def main(argv: list[str] | None = None) -> int:
         verdict["before_state"] = ("none declared: the scenario declares no effect, so the source recorded no initial state; "
                                    "the comparison is the response itself")
     for exp_before in before_expected:
-        probe = http_observe(args.dest_url, str(exp_before.get("method") or "GET"), str(exp_before.get("path") or "/"), headers=headers)
+        probe = http_observe(args.dest_url, str(exp_before.get("method") or "GET"), str(exp_before.get("path") or "/"), headers=eff_headers)
         row = {"id": exp_before.get("id"), "path": exp_before.get("path"),
                "expected": {"status": exp_before.get("status"), "body_sha256": exp_before.get("body_sha256")},
                "observed": {"status": probe.get("status"), "body_sha256": probe.get("body_sha256"), "body_sample": probe.get("body_sample", "")}}
@@ -251,7 +285,7 @@ def main(argv: list[str] | None = None) -> int:
     diffs.extend(header_diffs(exp.get("headers"), got.get("headers"), source_origin=source_origin, dest_origin=dest_origin))
     # the resulting state: what the write actually did
     for eff in oracle.get("effects") or []:
-        probe = http_observe(args.dest_url, str(eff.get("method") or "GET"), str(eff.get("path") or "/"), headers=headers)
+        probe = http_observe(args.dest_url, str(eff.get("method") or "GET"), str(eff.get("path") or "/"), headers=eff_headers)
         row = {"id": eff.get("id"), "method": eff.get("method"), "path": eff.get("path"),
                "expected": {"status": eff.get("status"), "body_sha256": eff.get("body_sha256")},
                "observed": {"status": probe.get("status"), "body_sha256": probe.get("body_sha256"), "body_sample": probe.get("body_sample", "")}}

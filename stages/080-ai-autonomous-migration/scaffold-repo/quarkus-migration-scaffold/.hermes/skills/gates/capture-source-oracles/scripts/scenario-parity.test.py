@@ -10,6 +10,7 @@ effect check.
 """
 from __future__ import annotations
 
+import base64
 import json
 import shlex
 import subprocess
@@ -604,6 +605,157 @@ def _security_mode_case() -> int:
     return 0
 
 
+class GuardedService(BaseHTTPRequestHandler):
+    """A service with its security switch ON: it refuses what it cannot
+    authenticate, and answers what it can. A refused DELETE changes nothing."""
+
+    expected = ""
+    owners: dict = {}
+    seen: list = []
+
+    def _answer(self, code: int, payload=None) -> None:
+        body = json.dumps(payload).encode() if payload is not None else b""
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        if body:
+            self.wfile.write(body)
+
+    def _authenticated(self) -> bool:
+        type(self).seen.append((self.command, self.path, bool(self.headers.get("Authorization"))))
+        return self.headers.get("Authorization") == type(self).expected
+
+    def do_GET(self):  # noqa: N802
+        if not self._authenticated():
+            return self._answer(401, {"error": "unauthorized"})
+        return self._answer(200, sorted(type(self).owners))
+
+    def do_DELETE(self):  # noqa: N802
+        if not self._authenticated():
+            return self._answer(401, {"error": "unauthorized"})
+        type(self).owners.pop(self.path.rsplit("/", 1)[-1], None)
+        return self._answer(204)
+
+    def log_message(self, *a):  # noqa: D102
+        return
+
+
+def _effects_identity_parity_case() -> int:
+    """The destination's read-backs are taken as the scenario's effects
+    identity too.
+
+    A refused write's state is only observable to an identity the policy
+    accepts: the source capture's before/after rows were taken as that one,
+    so probing the destination as the refused caller would compare a 200 the
+    source recorded against a 401 the destination answered -- two different
+    questions, reported as a destination defect. The controls: an identical
+    guarded destination PASSes, its read-back probes carried the credential
+    while the write itself stayed anonymous, and a capture that took the
+    read-backs as somebody else is refused rather than compared."""
+    import os
+    from _oracle_common import http_observe
+    from _scenarios import corpus_path
+    from planner.canonical import digest as _digest
+
+    ref, sid = "TEST_PARITY_EFFECTS_CREDENTIAL", "sc:auth-anonymous-delete-owners-7"
+    user, secret = "an-identity-the-policy-allows", "n0t-in-the-evidence"
+    token = "Basic %s" % base64.b64encode(("%s:%s" % (user, secret)).encode("utf-8")).decode("ascii")
+    eff = {"id": "eff:owners-after-denied-delete", "method": "GET", "path": "/api/owners"}
+    kept = os.environ.get(ref)
+    os.environ[ref] = "%s:%s" % (user, secret)
+    src_handler = type("SrcGuarded", (GuardedService,), {"expected": token, "owners": {"7": {"id": 7}}, "seen": []})
+    dest_handler = type("DestGuarded", (GuardedService,), {"expected": token, "owners": {"7": {"id": 7}}, "seen": []})
+    src = HTTPServer(("127.0.0.1", 0), src_handler)
+    dest = HTTPServer(("127.0.0.1", 0), dest_handler)
+    for s in (src, dest):
+        threading.Thread(target=s.serve_forever, daemon=True).start()
+    src_url = "http://127.0.0.1:%d" % src.server_address[1]
+    dest_url = "http://127.0.0.1:%d" % dest.server_address[1]
+    try:
+        with tempfile.TemporaryDirectory(prefix="effects-identity-parity-") as td:
+            root = specimens.build_dest(Path(td) / "dest", specimens.specimen("http"), decisions=specimens.admitted_decisions())
+            specimens.prepare_loop(root)
+            if pipeline.admit(root)["status"] != "ADMITTED":
+                return _fail("the effects-identity fixture must be admitted")
+            receipt_digest = load_json(root / "evidence/planning/admission-receipt.json")["receipt_digest"]
+            bundle_sha = _digest(load_json(root / "evidence" / "planning" / "evidence-bundle.json"))
+            ep = sorted(str(e["id"]) for e in load_json(root / "evidence/planning/evidence-bundle.json")["entry_points"])[0]
+            sc = {"id": sid, "entry_point": ep, "method": "DELETE", "path": "/api/owners/7", "headers": {},
+                  "identity": {"kind": "none"}, "body_absent": True, "reset_before": False,
+                  "effects": [dict(eff)], "normalization": [],
+                  "effects_identity": {"kind": "basic", "credential_ref": ref},
+                  "qualify": {"intent": "negative", "expect_status_class": "4xx", "after_equals_before": True}}
+            corpus_doc = {"schema": "rhoai3.scenario-corpus/v1", "approved_by": "operator:test",
+                          "initial_state": {"reset": "restart the service", "dataset": "one owner"},
+                          "security_mode": "enabled", "scenarios": [sc]}
+            write_canonical(root / corpus_path("enabled"), corpus_doc)
+            corpus_sha = corpus_digest(load_json(root / corpus_path("enabled")))
+            req = request_of(root, sc)
+
+            # what the SOURCE did: the read-backs as the accepted identity,
+            # the write itself as the caller the source refuses
+            auth = {"Authorization": token}
+            before = http_observe(src_url, "GET", eff["path"], headers=auth)
+            refused = http_observe(src_url, "DELETE", sc["path"])
+            after = http_observe(src_url, "GET", eff["path"], headers=auth)
+            if (before["status"], refused["status"], after["status"]) != (200, 401, 200):
+                return _fail("the fixture source must refuse the anonymous write and answer the authenticated read-backs: %s"
+                             % [before["status"], refused["status"], after["status"]])
+            capture = {
+                "schema": "rhoai3.source-scenario/v1", "scenario": sid, "entry_point": ep,
+                "receipt_sha256": receipt_digest, "corpus_sha256": corpus_sha, "status": "CAPTURED", "reason": "",
+                "evidence_bundle_sha256": bundle_sha, "source": {"base_url": src_url},
+                "initial_state": corpus_doc["initial_state"], "normalization": [], "reset_before": False,
+                "security_mode": "enabled",
+                "effects_identity": {"kind": "basic", "user_env": "", "password_env": "", "credential_ref": ref},
+                "request": {"request_sha256": req["request_sha256"]},
+                "response": {"status": refused["status"], "body_kind": refused["body_kind"],
+                             "body_sha256": refused["body_sha256"], "headers": refused["headers"]},
+                "before": [{"id": eff["id"], "method": "GET", "path": eff["path"], "status": before["status"],
+                            "body_kind": before["body_kind"], "body_sha256": before["body_sha256"]}],
+                "effects": [{"id": eff["id"], "method": "GET", "path": eff["path"], "status": after["status"],
+                             "body_kind": after["body_kind"], "body_sha256": after["body_sha256"]}],
+            }
+            out = root / scenario_oracles_dir("enabled") / (scenario_slug(sid) + ".json")
+            write_canonical(out, capture)
+
+            dest_handler.seen = []
+            p = subprocess.run([sys.executable, str(COMPARE), "--root", str(root), "--scenario", sid,
+                                "--dest-url", dest_url, "--no-reset", "--security-mode", "enabled"], text=True, capture_output=True)
+            v = load_json(root / scenario_parity_dir("enabled") / (scenario_slug(sid) + ".json"))
+            if p.returncode != 0 or v["verdict"] != "PASS":
+                return _fail("an identical guarded destination PASSes: rc=%s %s %s" % (p.returncode, v.get("verdict"), v.get("reason")))
+            if v.get("effects_identity") != {"kind": "basic", "user_env": "", "password_env": "", "credential_ref": ref}:
+                return _fail("the verdict records whose read-backs it took, by reference: %s" % v.get("effects_identity"))
+            if ("DELETE", "/api/owners/7", False) not in dest_handler.seen:
+                return _fail("the replayed write is the anonymous one the source sent: %s" % dest_handler.seen)
+            if [row for row in dest_handler.seen if row[0] == "GET"] != [("GET", eff["path"], True)] * 2:
+                return _fail("both read-backs are taken as the effects identity, or the destination answers 401 to a question "
+                             "the source answered 200: %s" % dest_handler.seen)
+            if secret in json.dumps(v) or token in json.dumps(v):
+                return _fail("only the reference travels into the verdict")
+
+            # a capture that took the read-backs as somebody else is not
+            # compared at all: its rows answer another question
+            capture.pop("effects_identity")
+            write_canonical(out, capture)
+            p = subprocess.run([sys.executable, str(COMPARE), "--root", str(root), "--scenario", sid,
+                                "--dest-url", dest_url, "--no-reset", "--security-mode", "enabled"], text=True, capture_output=True)
+            v = load_json(root / scenario_parity_dir("enabled") / (scenario_slug(sid) + ".json"))
+            if p.returncode != 1 or v["verdict"] != "INCONCLUSIVE" or "credential_ref %s" % ref not in v["reason"]:
+                return _fail("read-backs of two identities are not comparable, and the refusal names both: rc=%s %s"
+                             % (p.returncode, v.get("reason")))
+    finally:
+        for s in (src, dest):
+            s.shutdown()
+        if kept is None:
+            os.environ.pop(ref, None)
+        else:
+            os.environ[ref] = kept
+    return 0
+
+
 def _missing_exposed_model_case() -> int:
     """Missing or unreadable exposure evidence must refuse before source setup."""
     import contextlib
@@ -702,6 +854,8 @@ def verify_gaps(root: Path) -> list[str]:
 
 def main() -> int:
     if _no_corpus_case() or _missing_exposed_model_case() or _stale_receipt_case() or _security_mode_case():
+        return 1
+    if _effects_identity_parity_case():
         return 1
     if _effectless_reset_case():
         return 1
@@ -901,7 +1055,10 @@ def main() -> int:
           "state stays INCONCLUSIVE; a corpus edited after capture refuses; the capture is bound to the frozen source and the corpus, never to the admission receipt (a stale receipt is a note on the producer receipt, not a refusal; a capture from another bundle or with no bundle digest is INCONCLUSIVE; the verdict stays receipt-bound); an entry point passes only when every REQUIRED scenario passes, and a missing or foreign-corpus result is INCONCLUSIVE; a declared reset that fails stops the comparison; no corpus is idle with a receipt that says so; "
           "the security mode binds the evidence: the qualification, the scenario verdict and the parity receipt each record the mode "
           "they are of, and the disabled captures copied into the enabled directory are refused by the comparator, the qualification "
-          "gate and the receipt composer alike -- no cross-mode reuse)")
+          "gate and the receipt composer alike -- no cross-mode reuse; a scenario naming an effects_identity has its destination "
+          "read-backs taken as that identity too, so a refused write's state is compared as the source saw it while the write "
+          "itself stays anonymous, and a capture that took the read-backs as somebody else is refused by reference rather than "
+          "compared)")
     return 0
 
 

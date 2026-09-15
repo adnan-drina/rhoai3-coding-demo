@@ -16,7 +16,10 @@ Two results per scenario, not one (architect review of 708cfef9):
               capture must exist, be CAPTURED, be bound to this corpus, this
               bundle and this very request; every retained body the contract
               reads must be present, digest-bound and complete; every
-              read-back the contract reads must have answered 2xx. Evidence
+              read-back the contract reads must have been taken as the
+              identity the scenario names for its effects (``effects_identity``
+              -- a refused write's own caller is answered 401 by the
+              read-backs too) and must have answered 2xx. Evidence
               is judged BEFORE intent: with unusable evidence the capability
               is INCONCLUSIVE, never FAIL, while ``known_failures`` still
               records what was observed (a 500 is recorded, not hidden).
@@ -70,8 +73,9 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _oracle_common import ensure_hermes_lib, normalize_body, origin_of  # noqa: E402
 from _scenarios import (CorpusError, DEFAULT_SECURITY_MODE, QUALIFICATION, QUALIFICATION_SCHEMA, SCENARIO_ORACLES,  # noqa: E402,F401
-                        SECURITY_MODES, capture_receipt_path, capture_security_mode, corpus_digest, load_corpus,
-                        normalize_security_mode, qualification_path, request_of, scenario_oracles_dir, scenario_slug)
+                        SECURITY_MODES, capture_receipt_path, capture_security_mode, corpus_digest,
+                        effects_identity_of, load_corpus, normalize_security_mode, normalized_identity,
+                        qualification_path, request_of, scenario_oracles_dir, scenario_slug)
 
 ensure_hermes_lib()
 from planner.canonical import digest, load_json, write_canonical  # noqa: E402
@@ -87,6 +91,10 @@ KNOWN_CHECKS = ("expect_status", "expect_status_class", "usable_first_response",
                 "cors_expose_headers", "cors_allow_method", "cors_allow_headers")
 CONTRACT_KEYS = ("intent", "identity_field")  # parameters of the contract, not checks
 BODY_CHECKS = ("after_contains_body", "before_lacks_body", "creates_one_entity", "after_equals_before")
+# checks that read a read-back ROW without reading its body: they are about
+# the state a request left just as much, so they are judged against the same
+# identity question (whose probes these are)
+READ_BACK_CHECKS = ("after_effect_status",)
 HEADER_CHECKS = ("location", "errors_header_names_field", "cors_allow_origin", "cors_expose_headers", "cors_allow_method", "cors_allow_headers")
 _STATUS_CLASS_RE = re.compile(r"^([1-5])xx$", re.IGNORECASE)
 
@@ -121,6 +129,18 @@ class Unjudgeable(Unusable):
 
 def _now() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
+def _identity_label(identity: Any) -> str:
+    """How an identity is SAID in a reason: by the variable holding its
+    credential, never by what the variable holds."""
+    ref = str((identity or {}).get("credential_ref") or "")
+    if ref:
+        return "credential_ref %s" % ref
+    pair = [str((identity or {}).get(k) or "") for k in ("user_env", "password_env")]
+    if all(pair):
+        return "%s/%s" % tuple(pair)
+    return "the request's own identity"
 
 
 def _header(headers: Any, name: str) -> str | None:
@@ -355,6 +375,18 @@ def qualify_scenario(root: Path, sc: dict[str, Any], cap: dict[str, Any] | None,
     recorded_req = str((cap.get("request") or {}).get("request_sha256") or "")
     if request_sha and recorded_req != request_sha:
         evidence_reasons.append("capture answers request %s, the scenario describes %s (not this scenario's capture)" % (recorded_req[:12] or "(none)", request_sha[:12]))
+    # WHOSE read-backs these are. A contract that reads them is judging the
+    # state a request left, and a capture that took them as somebody else --
+    # the refused caller, whose probes answer 401 -- is evidence about another
+    # question. Named here rather than left to surface as "answered 401, not
+    # 2xx", which says what happened and not why.
+    declared_effects_identity = effects_identity_of(sc)
+    want_effects_identity = normalized_identity(declared_effects_identity) if declared_effects_identity is not None else {}
+    got_effects_identity = cap.get("effects_identity") if isinstance(cap.get("effects_identity"), dict) else {}
+    if any(k in q for k in BODY_CHECKS + READ_BACK_CHECKS) and want_effects_identity != got_effects_identity:
+        evidence_reasons.append("the scenario takes its read-backs as %s and the capture took them as %s; re-capture the source so "
+                                "the read-backs are the ones the contract judges"
+                                % (_identity_label(want_effects_identity), _identity_label(got_effects_identity)))
     if evidence_reasons:
         return finish("INCONCLUSIVE", "; ".join(evidence_reasons))
     resp = cap.get("response") or {}
