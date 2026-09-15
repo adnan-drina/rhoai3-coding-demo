@@ -53,9 +53,10 @@ else
   # Preflight: product tests must exist for acceptance dry-run
   python3 "${SKILL_DIR}/scripts/check-g1-acceptance-operand.py" "${MODULE_DIR}" \
     || die "AR-3.6 acceptance operand check failed before PIT"
-  # Preflight: boot/CRUD/security/DB families (AR-2.8)
+  # Preflight: product tests measured by execution and by the declared
+  # scenario capabilities of the qualified corpus (AR-2.8)
   python3 "${SKILL_DIR}/scripts/check-product-tests.py" "${MODULE_DIR}" \
-    || die "AR-2.8 product-test family check failed before PIT"
+    || die "AR-2.8 executed-product-test check failed before PIT"
 fi
 
 # PIT 1.25.x defaults HTML-only in some setups; parser needs mutations.xml.

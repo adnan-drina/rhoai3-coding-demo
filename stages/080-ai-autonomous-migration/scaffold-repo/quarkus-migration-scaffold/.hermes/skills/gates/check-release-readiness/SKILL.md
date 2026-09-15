@@ -60,7 +60,9 @@ Operator `074910ZO`). Commands under **Checks**.
    `151334ZA` **(a)** runner-invoked). `run-m4-floor.sh` calls it first.
    Order: snapshot surefire/failsafe into `evidence/m4-pre-rebuild/` (first
    XML snapshot wins; never overwrite with empty), parse the snapshot
-   (Failures>0 or missing XML is REFUSE), refuse an M4 body that names
+   (`assert-surefire-results.py`; Failures/Errors>0, a skipped case, no XML at
+   all, or a phase whose sources exist and whose reports do not is REFUSE),
+   refuse an M4 body that names
    `Token:`/`ship:`, then `assert-retrievable-tree`, **run the pinned
    feeding gates** (`check-partition-coverage`, `check-product-tests`,
    `check-test-toolchain`) with `--write-receipt` into
@@ -103,7 +105,12 @@ bash "${HERMES_SKILL_DIR}/scripts/run-m4-pre-verdict.sh" /projects/modernized
 
 # Snapshot + surefire + M4 body (also invoked by the runner above)
 python3 "${HERMES_SKILL_DIR}/scripts/snapshot-m4-test-reports.py" /projects/modernized
-python3 "${HERMES_SKILL_DIR}/scripts/assert-surefire-results.py" /projects/modernized
+# Evidence-based diagnosis per phase (surefire ↔ *Test.java/*Tests.java,
+# failsafe ↔ *IT.java). 0 = clean counts; 1 = refusal; 2 = XML that exists and
+# cannot be read. --build-log names an extra Maven log to quote a skip cause
+# from (root *.log, evidence/ and target/ logs are read anyway).
+python3 "${HERMES_SKILL_DIR}/scripts/assert-surefire-results.py" /projects/modernized \
+  [--build-log build.log]
 python3 "${HERMES_SKILL_DIR}/scripts/assert-m4-card-body.py"
 
 # Verdict routing + §18.0 composition
@@ -134,7 +141,8 @@ python3 "${HERMES_SKILL_DIR}/../../migration/spring-to-quarkus-patterns/scripts/
 # W6 — subclass @Id when a mapped superclass already declares identity
 python3 "${HERMES_SKILL_DIR}/../../migration/form-entity-persistence/scripts/assert-inherited-id-not-redeclared.py" /projects/modernized
 
-# AD-H §G.1 / AR-2.8 — product-test families (boot/CRUD/security/DB); not harness probe
+# AD-H §G.1 / AR-2.8 — product tests measured by execution + the declared
+# scenario capabilities of the qualified corpus; not harness probe
 python3 "${HERMES_SKILL_DIR}/../check-domain-parity/scripts/check-product-tests.py" /projects/modernized
 
 # dest-8 complete-around lint (pass the measured floor rc; do not re-run AR-2.8 here)
@@ -195,6 +203,22 @@ Rebuild later only on dest GO.
   alone is REFUSE) and **fail closed**. KEEP the detector (Operator
   `115007ZO` / `122315ZO`: dest-3 encode-after-refusal is the class; tirith
   is retired and never covered it).
+- `assert-surefire-results.py` states what the evidence shows, per phase
+  (ADR-015). (a) No source for a phase (surefire ↔ `*Test.java`/`*Tests.java`,
+  failsafe ↔ `*IT.java`) and no report for it: the phase is legitimately empty
+  and is printed as such — informational, because AR-2.8 still counts the
+  other phase's executions; it becomes a refusal only where AR-2.8 would also
+  count zero, i.e. no executed clean case bound to this tree. (b) Sources
+  exist and the phase produced no report: REFUSE, quoting the cause the
+  evidence shows (`pom.xml` skip property, a `-DskipTests` /
+  `maven.test.skip` / `Tests are skipped` line with its file and line number,
+  the phase summary's `failureMessage`, or `verification/build/surefire.json`
+  recording a phase that ran and left no per-case report) — or saying the
+  files read name none. (c) Failures, errors or skips: REFUSE naming each case
+  with the report it was read from. (d) All clean: PASS with the per-phase
+  counts and the directories they were read from. `failsafe-summary.xml` is a
+  phase summary, never a malformed report (the v9 refusal); an XML root that is
+  neither a suite nor a summary is exit 2, not a pass.
   Idle is not a pass for those asserts. `specimen-n/a: no DB` belongs on a
   `"ran": true` N/A file. `check-release-readiness` `scripts/` must `grep`
   both leaf names and `assert-no-fence-evasion` (Architect `151334ZA` (a);

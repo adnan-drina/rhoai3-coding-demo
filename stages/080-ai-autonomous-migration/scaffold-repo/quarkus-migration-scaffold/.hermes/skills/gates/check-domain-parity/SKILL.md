@@ -84,20 +84,28 @@ sources live under `examples/g1-volume-probe/` (relocated out of template `src/`
 Probe-only trees **REFUSE**
 as acceptance (`check-g1-acceptance-operand.py`).
 
-**AR-2.8:** product-test **families** (`check-product-tests.py`). Missing
-`evidence/entry-point-inventory.json` keeps the four-family floor. With
-inventory, require only harvested surfaces: **boot** is start/smoke of those
-HTTP paths (`@QuarkusTest` `GET /greeting` is boot; `/q/health` is not a
-grounding exception). Security / crud / db are **N/A with inventory evidence**
-when M1 found no auth, mutating `/api/`, or datasource — not idle-in-ACCEPT,
-not invent `/q/health`. Contract
-`.hermes/planning/README.md` (write-set discipline: one writer per path).
+**AR-2.8:** product tests measured by **execution** and by the capabilities the
+evidence declares (`check-product-tests.py`; ADR-015). A product test counts
+when a source for it exists under `src/test/java` (`*Test.java`,
+`*Tests.java`, `*IT.java`, outside `com.example.tooling.smoke.*`) **and** an
+execution record names that class with the case neither skipped nor failed nor
+errored. The coverage the floor demands is the **declared scenario
+capabilities**: every scenario of `verification/scenarios/corpus.json` whose
+record in `verification/source-oracles/scenarios/_qualification.json` has
+capability `PASS`. A capability is covered by a case of
+`evidence/tests/generated-manifest.json` (schema `rhoai3.generated-tests/v1`,
+optional; its `corpus_sha256` must match this tree's corpus) that executed
+cleanly, or by a retained case whose class or method **names** the scenario.
+No qualified capability ⇒ capability coverage is **N/A with its reason**
+(not idle-in-ACCEPT), and at least one executed clean product case is still
+required. Nothing is demanded that this tree's own evidence does not declare.
+Contract `.hermes/planning/README.md` (write-set discipline: one writer per path).
 
 ```bash
 # Acceptance operand preflight (probe refuse)
 python3 "${HERMES_SKILL_DIR}/scripts/check-g1-acceptance-operand.py" /projects/modernized
 
-# Product-test families (boot/CRUD/security/DB)
+# Product tests: executed cases + declared scenario capabilities (AR-2.8)
 python3 "${HERMES_SKILL_DIR}/scripts/check-product-tests.py" /projects/modernized
 
 # Live count (product default — writes evidence JSON optional)
@@ -149,10 +157,14 @@ Operand first, then live evidence, then pin. Scripts are under
    when `src/test/java` holds no `*Test.java`/`*IT.java` outside
    `com.example.tooling.smoke.*`. `G1_OPERAND=tooling_smoke` permits harness-only, and
    that result is never acceptance evidence.
-2. **Qualify the test families** — `check-product-tests.py <root>`. Exit 1
-   when a *required* family is missing. Required = four families if inventory
-   is absent; otherwise inventory-grounded (boot = harvested HTTP start/smoke).
-   Explicit `AR28:<family>` markers accepted. Do not invent `/q/health`.
+2. **Qualify the executed product tests** — `check-product-tests.py <root>`.
+   Exit 1 when there is no product test source, only harness probes, no
+   execution record, no executed clean case bound to a source of this tree, or
+   not one declared capability is covered; `--require-coverage` refuses any
+   uncovered capability. Exit 2 when the corpus, the qualification, the
+   generated manifest or a report exists and cannot be read. Uncovered
+   capabilities are printed by name as GAPs; scenarios the source never
+   qualified are printed as N/A and are never demanded.
 3. **Measure G-1 volume live** — `count-pit-dry-run.sh <module> [evidence.json]`
    re-runs steps 1–2 itself, then `mvn test-compile … pitest mutationCoverage
    -Dpit.dryRun=true`, refuses a missing JUnit-5 plugin or a zero-test skip, and

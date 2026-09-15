@@ -88,6 +88,18 @@ python3 .hermes/skills/gates/check-domain-parity/scripts/check-product-tests.py 
   /projects/modernized
 ```
 
+   AR-2.8 (`check-product-tests.py`) measures product tests by **execution**
+   and by the capabilities the evidence declares (ADR-015): a source under
+   `src/test/java` outside the harness probe package whose class an execution
+   record names with the case neither skipped nor failed nor errored, and the
+   declared scenario capabilities — the scenarios of
+   `verification/scenarios/corpus.json` qualified `PASS` in
+   `verification/source-oracles/scenarios/_qualification.json` — covered by a
+   cleanly executed case of `evidence/tests/generated-manifest.json` or by a
+   retained case that names the scenario. Its rc 2 means evidence that exists
+   and cannot be read; record that as a failed floor, never as idle. A named
+   capability GAP is not a pass either: copy it into the verdict.
+
 3. Author `evidence/verdicts/m4-verdict.json` from those rcs. Required
    field **`failed_floors`**: the list of floor names whose `rc != 0`
    (`[]` if none). Do not omit it. Do not put a failed name in a reason
