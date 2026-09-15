@@ -567,6 +567,76 @@ def _challenge_header_case() -> int:
     return 0
 
 
+def _candidate_binding_case(root: Path, entry_point: str, dest_url: str) -> int:
+    """The READ comparator on the acceptance path (the hole 6cdef368 left).
+
+    A parity obligation whose entry point declares no scenario is a read
+    oracle, and run-verify.sh then compares the WHOLE phase for it -- this
+    comparator included. That verify rebuilt the work list on the candidate
+    first, so the live seal is stale by construction: without a binding this
+    comparator refuses every entry point as INCONCLUSIVE, the composer has
+    nothing to compose from, and the card can never advance. It fails closed,
+    and closed forever.
+
+    So: with the seal stale, sealed mode still refuses (the control), --issued
+    measures the candidate and records what it measured, and a card minted
+    under another receipt than the one on disk is refused by name."""
+    from planner.paths import ADMISSION_RECEIPT, LOOP_ISSUED, VERIFY_RUN, WORKLIST
+
+    sys.path.insert(0, str(HERE))
+    from _scenarios import product_tree_digest  # noqa: E402
+
+    out = root / "verification" / "parity" / (slug(entry_point) + ".json")
+    kept_wl = (root / WORKLIST).read_bytes()
+    try:
+        wl = load_json(root / WORKLIST)
+        wl["_rebuilt_on_the_candidate"] = True
+        write_canonical(root / WORKLIST, wl)
+        receipt_digest = load_json(root / ADMISSION_RECEIPT)["receipt_digest"]
+        card = "t_222c582a"
+        write_canonical(root / LOOP_ISSUED, {"schema": "rhoai3.loop-issued/v1", "cluster": "c:parity",
+                                             "task_id": card, "attempt": 4, "gate": "parity",
+                                             "receipt_sha256": receipt_digest, "items": ["parity:aaaa"]})
+        on_tree = product_tree_digest(root)
+        write_canonical(root / VERIFY_RUN, {"schema": "rhoai3.verify-run/v1", "mode": "acceptance",
+                                            "candidate_sha256": on_tree})
+        # the control: the M4 road still asks the seal, and the seal is stale
+        p = _run([sys.executable, str(COMPARE), "--root", str(root), "--entry-point", entry_point, "--dest-url", dest_url])
+        if p.returncode != 1 or "not authoritative" not in p.stderr or load_json(out)["verdict"] != "INCONCLUSIVE":
+            return _fail("without the binding the stale seal must refuse, or this control proves nothing: rc=%s %s"
+                         % (p.returncode, p.stderr[-300:]))
+        # ...and the same comparison, told which card it is for, measures the
+        # candidate instead and says what it measured
+        p = _run([sys.executable, str(COMPARE), "--root", str(root), "--entry-point", entry_point,
+                  "--dest-url", dest_url, "--issued", str(root / LOOP_ISSUED)])
+        want = {"mode": "candidate", "candidate_sha256": on_tree, "issued_receipt_sha256": receipt_digest, "card": card}
+        v = load_json(out)
+        if p.returncode != 0 or v["verdict"] != "PASS" or v.get("binding") != want or v["receipt_sha256"] != receipt_digest:
+            return _fail("a candidate-bound read comparison must compose a verdict over the stale seal and record what "
+                         "it is OF: rc=%s %s %s" % (p.returncode, {k: v.get(k) for k in ("verdict", "binding", "receipt_sha256", "reason")}, p.stderr[-300:]))
+        # a card minted under another receipt than the one on disk: the binding
+        # cannot be made, and the refusal names the subject
+        write_canonical(root / LOOP_ISSUED, dict(load_json(root / LOOP_ISSUED), receipt_sha256="0" * 64))
+        p = _run([sys.executable, str(COMPARE), "--root", str(root), "--entry-point", entry_point,
+                  "--dest-url", dest_url, "--issued", str(root / LOOP_ISSUED)])
+        v = load_json(out)
+        if p.returncode != 1 or v["verdict"] != "INCONCLUSIVE" or "another receipt" not in v["reason"]:
+            return _fail("a card minted under another receipt must be refused by name: rc=%s %s"
+                         % (p.returncode, {k: v.get(k) for k in ("verdict", "reason")}))
+        # and the sealed road is untouched: no flags, no binding to make, the
+        # seal is asked again
+        (root / LOOP_ISSUED).unlink()
+        (root / WORKLIST).write_bytes(kept_wl)
+        p = _run([sys.executable, str(COMPARE), "--root", str(root), "--entry-point", entry_point, "--dest-url", dest_url])
+        v = load_json(out)
+        if p.returncode != 0 or v["verdict"] != "PASS" or v.get("binding") != {"mode": "sealed"} or v["receipt_sha256"] != receipt_digest:
+            return _fail("with the seal restored and no flags the M4 road is unchanged: rc=%s %s"
+                         % (p.returncode, {k: v.get(k) for k in ("verdict", "binding", "receipt_sha256")}))
+    finally:
+        (root / WORKLIST).write_bytes(kept_wl)
+    return 0
+
+
 def main() -> int:
     if _challenge_header_case():
         return 1
@@ -713,10 +783,15 @@ def main() -> int:
             v = load_json(hroot / "verification" / "parity" / (slug(get_owner) + ".json"))
             if v["verdict"] != "PASS" or v["receipt_sha256"] != load_json(hroot / "evidence" / "planning" / "admission-receipt.json")["receipt_digest"]:
                 return _fail("the verdict is a destination judgement and stays receipt-bound: %s" % {k: v.get(k) for k in ("verdict", "receipt_sha256")})
+            if _candidate_binding_case(hroot, get_owner, same_url):
+                return 1
         finally:
             for s in (src, same, diff):
                 s.shutdown()
     print("OK: capture-source-oracles (HTTP capture/parity PASS+FAIL; non-idempotent INCONCLUSIVE; non-HTTP observations; bundle binding: an oracle from another bundle or with no bundle digest is INCONCLUSIVE, a capture under a stale receipt is CAPTURED and usable, the verdict stays receipt-bound; parity receipt refuses; "
+          "the READ comparator takes the acceptance path's binding too (--issued): over a work list rebuilt on the candidate the sealed road still refuses, the candidate-bound "
+          "comparison measures and records the candidate, the receipt the card was minted under and the card, a card minted under another receipt is refused by name, and with "
+          "the seal restored the unflagged comparison is the sealed M4 road again; "
           "an enabled-mode scenario capture authenticates from a declared credential REFERENCE, records the reference and the mode and "
           "never the password, the Authorization value or the account, writes into its own directory, refuses a --source-config value "
           "equal to a credential by naming the key, and leaves the disabled mode's paths, keys and request digests untouched; "

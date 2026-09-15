@@ -36,7 +36,9 @@ passed in with --dest-url and is never stopped.
 
 --issued <verification/loop/issued.json> says this run measures the CANDIDATE
 that issued card was verified on rather than the accepted tree, and is passed
-to the comparator and the composer so all three agree about it: on that path
+to BOTH comparators (scenario and read oracle) and to the composer so all of
+them agree about it -- a parity obligation whose entry point declares no
+scenario is a read oracle, and the whole phase is compared for it: on that path
 the acceptance verify has already rebuilt the work list on the candidate, so
 the live seal cannot match it, and what binds the verdicts instead is the
 candidate digest this verification recorded, the receipt the card was minted
@@ -45,6 +47,15 @@ receipt.
 
 Writes verification/parity/_run.json (rhoai3.parity-run/v1) beside the receipt:
 what ran, in what order, with each child's exit code, and the binding.
+
+``receipt_verdict`` is the verdict of a receipt THIS run composed, and null
+when the composer refused. A refusing composer writes nothing and the previous
+receipt stays on disk, still readable and still saying PASS: a scoped run over
+a work list rebuilt on the candidate reported "receipt PASS" at rc 0 while the
+only scenario it compared came back INCONCLUSIVE. So the receipt is read as
+this run's measurement only when this run wrote it, it is OF what this run
+measured (``binding``) and it names the receipt this run is bound to; the
+record says which of those failed, and the runner exits 1.
 
 Exit 0 when every child RAN and the receipt was composed. The receipt's own
 verdict is the measurement, not this runner's grade: a FAIL or INCONCLUSIVE
@@ -57,6 +68,7 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import json
 import os
 import shlex
 import signal
@@ -87,10 +99,10 @@ RESET_SCRIPT = CAPTURE / "reset-parity-db.sh"
 sys.path.insert(0, str(CAPTURE))
 sys.path.insert(0, str(HERMES / "lib"))
 from _oracle_common import ORACLES, PARITY, entry_points, slug  # noqa: E402
-from _scenarios import (CORPUS, CorpusError, SCENARIO_PARITY, candidate_binding, corpus_digest, load_corpus,  # noqa: E402
-                        scenario_slug, sealed_binding)
+from _scenarios import (CORPUS, CorpusError, SCENARIO_PARITY, binding_of, candidate_binding, corpus_digest,  # noqa: E402
+                        load_corpus, scenario_slug, sealed_binding)
 from planner.admission import verify_receipt  # noqa: E402
-from planner.canonical import load_json, write_canonical  # noqa: E402
+from planner.canonical import load_json, sha256_file, write_canonical  # noqa: E402
 
 SCHEMA = "rhoai3.parity-run/v1"
 RUN_RECORD = PARITY / "_run.json"
@@ -131,6 +143,63 @@ def _verdict_of(path: Path) -> tuple[str, str]:
     if not isinstance(doc, dict):
         return "", "record %s is not an object" % path.name
     return str(doc.get("verdict") or ""), str(doc.get("reason") or "")
+
+
+def json_compact(obj: Any) -> str:
+    return json.dumps(obj, sort_keys=True, separators=(",", ":"))
+
+
+def _file_stamp(path: Path) -> dict[str, Any]:
+    """What identifies the file on disk right now: whether it is there, its
+    content digest, its size and the nanosecond it was last written.
+
+    write_canonical ALWAYS rewrites the bytes, so a file whose digest, size and
+    mtime are all the ones taken a moment earlier was not written in between."""
+    try:
+        st = path.stat()
+    except OSError:
+        return {"present": False, "sha256": "", "size": 0, "mtime_ns": 0}
+    try:
+        sha = sha256_file(path)
+    except OSError:
+        sha = ""
+    return {"present": True, "sha256": sha, "size": int(st.st_size), "mtime_ns": int(st.st_mtime_ns)}
+
+
+def _composed_by_this_run(before: dict[str, Any], after: dict[str, Any], doc: Any,
+                          binding: dict[str, Any], receipt_sha: str, rc: int) -> str:
+    """"" when the receipt on disk is the one THIS run's composer wrote, else
+    why it is not.
+
+    The composer refuses without writing (a binding it cannot make, a mode
+    mismatch, a seal that is not authoritative) and the PREVIOUS receipt then
+    stays on disk, unchanged and still readable. Reading its verdict as this
+    run's measurement is a false green, and it was measured: a scoped unbound
+    run over a rebuilt work list printed "receipt PASS" at rc 0 while the only
+    scenario it compared came back INCONCLUSIVE.
+
+    So the receipt is trusted only when this run produced it, on three counts
+    the receipt itself carries: it was WRITTEN during this run (the composer
+    refuses without writing, and write_canonical never leaves the bytes,
+    the size and the mtime all as they were), it is OF what this run measured
+    (``binding``), and it names the receipt this run is bound to
+    (``receipt_sha256``). Any one of them failing leaves the verdict
+    unmeasured rather than borrowed from whoever wrote the file last."""
+    if not after.get("present"):
+        return "compose-parity-receipt.py wrote no receipt at all (rc %d)" % rc
+    if before.get("present") and all(before.get(k) == after.get(k) for k in ("sha256", "size", "mtime_ns")):
+        return ("the receipt on disk is the one this run started from, byte for byte and to the nanosecond; the composer "
+                "refused (rc %d) and left it" % rc)
+    if not isinstance(doc, dict):
+        return "the composed receipt is not an object"
+    got = binding_of(doc)
+    if got != (binding or {}):
+        return ("it is a measurement of %s and this run measured %s"
+                % (json_compact(got), json_compact(binding or {})))
+    if receipt_sha and str(doc.get("receipt_sha256") or "") != receipt_sha:
+        return ("it names receipt %s and this run is bound to %s"
+                % (str(doc.get("receipt_sha256") or "")[:12] or "none", receipt_sha[:12]))
+    return ""
 
 
 def _run_child(argv: list[str], label: str) -> subprocess.CompletedProcess:
@@ -286,7 +355,7 @@ def main(argv: list[str] | None = None) -> int:
                          "under the filter and said so in _run.json; the composer still runs, over every record on disk")
     ap.add_argument("--issued", default="", metavar="PATH",
                     help="verification/loop/issued.json: this run measures the CANDIDATE that issued card was verified on, "
-                         "not the accepted tree. The binding is passed to the comparator and the composer, which then do not "
+                         "not the accepted tree. The binding is passed to both comparators and the composer, which then do not "
                          "ask the live seal to match the work list the acceptance path rebuilt on the candidate, and is "
                          "recorded in _run.json. Passing it more than once is the same as passing it once.")
     ap.add_argument("--port", type=int, default=8081, help="the port the destination this runner starts listens on")
@@ -311,6 +380,11 @@ def main(argv: list[str] | None = None) -> int:
     issued_argv = ["--issued", str(args.issued)] if args.issued else []
 
     receipt, receipt_gaps = verify_receipt(root, require_admitted=True)
+    # Which receipt a receipt composed by THIS run must name: the one the card
+    # was minted under on the acceptance path, the live seal on the M4 road.
+    expected_receipt_sha = (str(binding.get("issued_receipt_sha256") or "")
+                            if str(binding.get("mode") or "") == "candidate"
+                            else str((receipt or {}).get("receipt_digest") or ""))
     wanted = sorted(str(e.get("id")) for e in entry_points(root) if e.get("id"))
     corpus: dict[str, Any] = {}
     corpus_error = ""
@@ -411,7 +485,7 @@ def main(argv: list[str] | None = None) -> int:
                 doc["entry_points"]["not_compared"].append({"entry_point": ep, "reason": gap})
                 continue
             argv_ep = [sys.executable, str(COMPARE_RUNTIME), "--root", str(root), "--entry-point", ep,
-                       "--dest-url", dest_url]
+                       "--dest-url", dest_url, *issued_argv]
             proc = _run_child(argv_ep, "entry point %s" % ep)
             verdict, reason = _verdict_of(root / PARITY / (slug(ep) + ".json"))
             doc["entry_points"]["results"].append({"entry_point": ep, "rc": proc.returncode,
@@ -432,15 +506,34 @@ def main(argv: list[str] | None = None) -> int:
             dest.stop()
 
     # 3. the receipt, once, last
+    receipt_p = root / PARITY / "receipt.json"
+    # the receipt as it stood BEFORE the composer ran: what tells a receipt
+    # this run composed apart from the one a refusing composer left behind
+    before_stamp = _file_stamp(receipt_p)
     argv_rc = [sys.executable, str(COMPOSE_RECEIPT), "--root", str(root), *issued_argv]
     proc = _run_child(argv_rc, "compose-parity-receipt")
     doc["compose"] = {"rc": proc.returncode, "argv": argv_rc[1:]}
-    receipt_p = root / PARITY / "receipt.json"
+    after_stamp = _file_stamp(receipt_p)
+    composed_doc: Any = None
+    if after_stamp.get("present"):
+        try:
+            composed_doc = load_json(receipt_p)
+        except (OSError, ValueError):
+            composed_doc = None
+    not_ours = _composed_by_this_run(before_stamp, after_stamp, composed_doc, binding, expected_receipt_sha,
+                                     proc.returncode)
     verdict, _ = _verdict_of(receipt_p)
-    doc["receipt_verdict"] = verdict
-    if not verdict:
-        failures.append("compose-parity-receipt.py composed no receipt (rc %d): %s"
-                        % (proc.returncode, ((proc.stderr or proc.stdout or "").strip()[-300:])))
+    # A verdict this run did not produce is not this run's measurement. The
+    # runner reports the receipt's verdict, and that report is read as the
+    # phase's outcome; reporting the previous receipt's verdict after a
+    # composer that refused is a false green, so there is nothing to report.
+    doc["receipt"] = {"path": str(receipt_p.relative_to(root)), "composed_by_this_run": not not_ours,
+                      "reason": not_ours}
+    doc["receipt_verdict"] = verdict if not not_ours else None
+    if not_ours:
+        failures.append("receipt not composed by this run: %s%s"
+                        % (not_ours, (" :: " + (proc.stderr or proc.stdout or "").strip()[-300:])
+                           if (proc.stderr or proc.stdout or "").strip() else ""))
 
     doc["ok"] = not failures
     write_canonical(out, doc)
@@ -449,7 +542,8 @@ def main(argv: list[str] | None = None) -> int:
                % (("scoped to %s: " % ", ".join(wanted_ids)) if wanted_ids else "",
                   doc["scenarios"]["run"], doc["scenarios"]["selected"], doc["scenarios"]["passed"],
                   doc["scenarios"]["failed"], doc["scenarios"]["inconclusive"], doc["entry_points"]["compared"],
-                  doc["entry_points"]["admitted"], doc["entry_points"]["skipped"], verdict or "NOT COMPOSED"))
+                  doc["entry_points"]["admitted"], doc["entry_points"]["skipped"],
+                  doc["receipt_verdict"] or "NOT COMPOSED BY THIS RUN"))
     for row in doc["entry_points"]["not_compared"]:
         print("  - not compared: %s (%s)" % (row["entry_point"], row["reason"]))
     if failures:

@@ -39,7 +39,9 @@ otherwise:
     composed against the CANDIDATE (the acceptance path rebuilt the work list
     on it, so the live seal cannot match), and it says so: a receipt bound to
     another card or to a tree this verification did not measure is not this
-    card's evidence and leaves the slot unmeasured;
+    card's evidence and leaves the slot unmeasured -- and so is one that says
+    nothing at all when the comparison ran bound to the issued card, because
+    that is the receipt a refusing composer left behind;
 
   * verification ran in acceptance mode (diagnostic cannot promote or reject).
 
@@ -124,6 +126,43 @@ def _card_names(issued: dict, card: str) -> set[str]:
     return {str(v) for v in values if v}
 
 
+PARITY_RUN_RECORD = PARITY_RECEIPT.parent / "_run.json"
+
+
+def _issued_bound_comparison(root: Path, run: dict) -> bool:
+    """Did the comparison in THIS verification run bound to an issued card?
+
+    run-verify.sh hands run-parity.py the issued card whenever there is one, so
+    on the acceptance path every comparison is candidate-bound; the runner
+    records what it ran under in verification/parity/_run.json (``issued``,
+    ``binding``), and run.json's runtime.parity says the comparison ran in this
+    verification. When the run was issued-bound, a receipt that is NOT
+    candidate-bound cannot be its output: the composer would have written the
+    binding it was given, so a sealed or unbound receipt on disk is one an
+    earlier run left -- exactly what a refusing composer leaves behind."""
+    if not bool(((run.get("runtime") or {}).get("parity") or {}).get("ran")):
+        return False
+    parity = (run.get("runtime") or {}).get("parity") or {}
+    # what the verification itself recorded, when it records it
+    if str(parity.get("issued") or ""):
+        return True
+    b = parity.get("binding") if isinstance(parity.get("binding"), dict) else {}
+    if b:
+        return str(b.get("mode") or "sealed") == "candidate"
+    # otherwise the runner's own record of the run that just happened
+    p = root / PARITY_RUN_RECORD
+    if not p.is_file():
+        return False
+    try:
+        rec = load_json(p)
+    except (OSError, ValueError):
+        return False
+    if not isinstance(rec, dict):
+        return False
+    rb = rec.get("binding") if isinstance(rec.get("binding"), dict) else {}
+    return bool(str(rec.get("issued") or "")) or str(rb.get("mode") or "sealed") == "candidate"
+
+
 def _candidate_binding_gap(receipt: dict, run: dict, issued: dict, card: str) -> str:
     """Why a CANDIDATE-bound parity receipt is not this step's measurement.
 
@@ -158,6 +197,12 @@ def _parity_receipts(root: Path, run: dict, issued: dict | None = None, card: st
     against the CANDIDATE (compose-parity-receipt.py --issued) says so, and
     then it also has to be THIS card's and THIS candidate's.
 
+    The converse matters just as much: when the comparison ran bound to the
+    issued card, a receipt it composed WOULD carry that binding, so one that
+    does not is the receipt the last run left when this run's composer refused
+    to compose. It still says PASS and it measures another tree; it is not
+    "now".
+
     "Before" is the accepted state's receipt: the snapshot taken at the last
     accepted step when there is one, and otherwise the copy run-verify.sh took
     of the receipt as it stood before this candidate's comparison. Either may
@@ -167,6 +212,16 @@ def _parity_receipts(root: Path, run: dict, issued: dict | None = None, card: st
     cur = load_json(root / PARITY_RECEIPT) if (ran and (root / PARITY_RECEIPT).is_file()) else {}
     if cur:
         gap = _candidate_binding_gap(cur, run, issued or {}, card)
+        if not gap and _issued_bound_comparison(root, run):
+            # The comparison ran bound to the issued card, so what it composed
+            # is candidate-bound. A receipt that is not is the one the last run
+            # left on disk when this run's composer REFUSED to compose -- the
+            # false green this rule exists for: it still says PASS, and it is
+            # not a measurement of this candidate.
+            mode = str((cur.get("binding") or {}).get("mode") or "") if isinstance(cur.get("binding"), dict) else ""
+            if mode != "candidate":
+                gap = ("this verification's comparison was bound to the issued card and a receipt it composed would say "
+                       "so; this one is %s and was left by an earlier run" % (mode + "-bound" if mode else "bound to nothing"))
         if gap:
             print("WARN: %s is not this card's measurement: %s; parity is UNMEASURED here"
                   % (PARITY_RECEIPT.as_posix(), gap), file=sys.stderr)

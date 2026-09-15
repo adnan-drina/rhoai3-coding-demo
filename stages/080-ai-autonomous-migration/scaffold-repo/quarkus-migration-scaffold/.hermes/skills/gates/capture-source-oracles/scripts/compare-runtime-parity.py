@@ -12,6 +12,22 @@ moment the next accepted step re-sealed admission (measured on v9,
 2026-09-14) -- yet the source's behaviour does not change when the
 destination's admission is re-sealed. An oracle from another bundle, or one
 with no bundle digest at all (an older capture), is INCONCLUSIVE.
+
+WHICH destination the verdict is about is recorded on it as ``binding``, the
+same two answers compare-scenario-parity.py records. By default it is the
+accepted tree under the live seal (``mode: sealed``, the M4 road). With
+--issued it is the CANDIDATE that issued card was verified on (``mode:
+candidate``): the acceptance path rebuilds the work list on the candidate
+before this stage runs, so the live seal is stale by construction, and what
+binds the verdict instead is the candidate digest this verification recorded,
+the receipt the card was minted under, and the card.
+
+Both comparators need this, not just the scoped one. A parity obligation whose
+entry point declares no scenario is a READ oracle, and run-verify.sh compares
+the whole phase for it -- this script included. Without the binding that
+comparison refused on the stale seal for every entry point (INCONCLUSIVE), the
+composer had nothing to compose from, and the card could never advance: it
+failed closed, and closed forever.
 """
 from __future__ import annotations
 
@@ -21,6 +37,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _oracle_common import ORACLES, PARITY, http_observe, normalize_observation, slug  # noqa: E402
+from _scenarios import BINDING_CANDIDATE, candidate_binding, sealed_binding  # noqa: E402
 from planner.admission import verify_receipt  # noqa: E402
 from planner.canonical import digest, load_json, write_canonical  # noqa: E402
 from planner.paths import EVIDENCE_BUNDLE  # noqa: E402
@@ -32,12 +49,46 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--entry-point", required=True)
     ap.add_argument("--dest-url", default="")
     ap.add_argument("--dest-observation", default="", help="captured destination observation file for non-HTTP kinds")
+    ap.add_argument("--issued", default="", metavar="PATH",
+                    help="verification/loop/issued.json: this verdict is of the CANDIDATE that issued card was verified on, "
+                         "not of the accepted tree. The live seal is then not required to match the rebuilt work list (the "
+                         "acceptance path rebuilds it on the candidate before the comparison runs); the verdict records the "
+                         "candidate, the receipt the card was minted under and the card itself. Without it the verdict is "
+                         "sealed-bound, exactly as on the M4 road.")
+    ap.add_argument("--candidate", default="", metavar="SHA",
+                    help="the candidate digest the caller believes this tree has; checked against verification/build/run.json "
+                         "and against the tree itself, never trusted. Implies --issued.")
+    ap.add_argument("--issued-receipt", default="", metavar="SHA",
+                    help="the admission receipt the issued card was minted under; checked against the issued card. Implies --issued.")
     args = ap.parse_args(argv)
     root = Path(args.root).resolve()
+    # the binding FIRST: what this verdict is about is not a detail of how it
+    # is written down, it decides which seal it is measured against
+    binding, binding_gaps = ({}, [])
+    if args.issued or args.candidate or args.issued_receipt:
+        binding, binding_gaps = candidate_binding(root, issued_path=args.issued, candidate_sha256=args.candidate,
+                                                  issued_receipt_sha256=args.issued_receipt)
+    else:
+        binding = sealed_binding()
     receipt, gaps = verify_receipt(root, require_admitted=True)
-    verdict = {"schema": "rhoai3.parity/v1", "entry_point": args.entry_point, "receipt_sha256": receipt["receipt_digest"] if receipt else "", "verdict": "INCONCLUSIVE", "reason": "", "expected": {}, "observed": {}}
+    candidate_mode = str(binding.get("mode") or "") == BINDING_CANDIDATE
+    # A candidate-bound verdict still names a receipt: the one the issued card
+    # was minted under, which candidate_binding proved is the receipt on disk.
+    receipt_sha = str(binding.get("issued_receipt_sha256") or "") if candidate_mode else (receipt["receipt_digest"] if receipt else "")
+    verdict = {"schema": "rhoai3.parity/v1", "entry_point": args.entry_point, "receipt_sha256": receipt_sha,
+               "binding": dict(binding) if binding else {"mode": BINDING_CANDIDATE, "gaps": list(binding_gaps)},
+               "verdict": "INCONCLUSIVE", "reason": "", "expected": {}, "observed": {}}
     out = root / PARITY / (slug(args.entry_point) + ".json")
-    if gaps or receipt is None:
+    if binding_gaps:
+        verdict["reason"] = "the issued binding could not be made: " + "; ".join(binding_gaps)
+        write_canonical(out, verdict)
+        print("REFUSE: PARITY %s INCONCLUSIVE (%s)" % (args.entry_point, verdict["reason"]), file=sys.stderr)
+        return 1
+    # On the acceptance path the live seal is stale BY CONSTRUCTION: run-verify.sh
+    # rebuilds the work list on the candidate before this stage runs, so its
+    # digest can never be the accepted tree's sealed one. The binding above is
+    # what this verdict is bound to instead; the seal is not asked.
+    if not candidate_mode and (gaps or receipt is None):
         verdict["reason"] = "receipt not authoritative: " + "; ".join(gaps)
         write_canonical(out, verdict)
         print("REFUSE: PARITY %s INCONCLUSIVE (%s)" % (args.entry_point, verdict["reason"]), file=sys.stderr)

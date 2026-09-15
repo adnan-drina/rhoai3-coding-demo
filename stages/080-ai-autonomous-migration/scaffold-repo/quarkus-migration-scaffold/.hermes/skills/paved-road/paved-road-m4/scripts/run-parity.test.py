@@ -307,6 +307,24 @@ def main() -> int:
             if doc7["scenarios"]["inconclusive"] != 1 or "worklist digest" not in sv7.get("reason", "") or doc7["compose"]["rc"] != 1:
                 return _fail("the stale seal must refuse without --issued, or this control proves nothing: %s | %s"
                              % (sv7.get("reason"), {k: doc7.get(k) for k in ("scenarios", "compose")}))
+            # ...and THAT is the false green: the composer refused, the receipt
+            # the last run composed stayed on disk still saying PASS, and this
+            # run reported "receipt PASS" at rc 0 while the only scenario it
+            # compared was INCONCLUSIVE. A verdict this run did not produce is
+            # not this run's measurement.
+            if load_json(root / PARITY / "receipt.json").get("verdict") != "PASS":
+                return _fail("the control needs the leftover receipt to still say PASS, or it proves nothing")
+            if rc7 != 1:
+                return _fail("a composer that refused is a child that could not run: rc=%s %s" % (rc7, blob7[-600:]))
+            if doc7.get("receipt_verdict") is not None or (doc7.get("receipt") or {}).get("composed_by_this_run") is not False:
+                return _fail("a receipt this run did not compose has no verdict to report: %s"
+                             % {k: doc7.get(k) for k in ("receipt_verdict", "receipt")})
+            if "refused" not in ((doc7.get("receipt") or {}).get("reason") or "") or not any(
+                    "receipt not composed by this run" in f for f in doc7.get("failures") or []):
+                return _fail("the record must say the receipt was not composed by this run, and why: %s | %s"
+                             % (doc7.get("receipt"), doc7.get("failures")))
+            if "NOT COMPOSED BY THIS RUN" not in blob7:
+                return _fail("the runner must not print a verdict it did not measure: %s" % blob7[-600:])
             rc8, blob8, doc8 = _run(root, base, reset, scenarios=scoped, issued=str(root / LOOP_ISSUED))
             want = {"mode": "candidate", "candidate_sha256": on_tree, "issued_receipt_sha256": receipt_digest, "card": card}
             if rc8 != 0 or doc8.get("binding") != want or doc8.get("issued") != str(root / LOOP_ISSUED):
@@ -320,6 +338,22 @@ def main() -> int:
             if rcpt.get("binding") != want or doc8.get("receipt_verdict") != "PASS":
                 return _fail("the composer child must have been told the binding: %s / %s"
                              % (rcpt.get("binding"), doc8.get("receipt_verdict")))
+            # A parity obligation whose entry point declares no scenario is a
+            # READ oracle, and run-verify.sh compares the whole phase for it.
+            # The flag has to reach that comparator too, or the stale seal
+            # refuses every entry point and the card can never advance.
+            rc11, blob11, doc11 = _run(root, base, reset, issued=str(root / LOOP_ISSUED))
+            ev = load_json(root / PARITY / (slug(READ_EPS[0]) + ".json"))
+            if rc11 != 0 or doc11["entry_points"]["compared"] != 3 or doc11["entry_points"]["passed"] != 3:
+                return _fail("an unscoped candidate-bound run must compare the read oracles: rc=%s %s %s"
+                             % (rc11, doc11.get("entry_points"), blob11[-600:]))
+            if ev.get("verdict") != "PASS" or ev.get("binding") != want or ev.get("receipt_sha256") != receipt_digest:
+                return _fail("the read-oracle comparator must have been told the binding: %s"
+                             % {k: ev.get(k) for k in ("verdict", "binding", "receipt_sha256", "reason")})
+            if doc11.get("receipt_verdict") != "PASS" or not (doc11.get("receipt") or {}).get("composed_by_this_run"):
+                return _fail("the candidate-bound phase must compose its own receipt: %s"
+                             % {k: doc11.get(k) for k in ("receipt_verdict", "receipt")})
+
             # an --issued path that names no card is refused once, by the runner
             rc9, blob9, doc9 = _run(root, base, reset, scenarios=scoped, issued=str(root / "verification" / "loop" / "nothing.json"))
             if rc9 != 1 or not any("issued binding" in f for f in doc9.get("failures") or []):
@@ -358,10 +392,12 @@ def main() -> int:
           "uncomparable named; receipt composed last; idempotent; --scenario replays only the scenarios it names, "
           "skips the read oracles by name and still composes the whole receipt, and refuses an undeclared id; "
           "FAIL is a verdict not a runner failure; a missing corpus refuses; --issued carries the acceptance path's "
-          "binding into BOTH children -- the scenario verdict and the composed receipt each record the candidate, the "
-          "receipt the card was minted under and the card -- where the same run without it refuses on the work list "
-          "rebuilt on that candidate, an --issued path naming no card refuses once in the run record, and with the seal "
-          "restored the unbound run is the sealed M4 road again)")
+          "binding into BOTH comparators and the composer -- the scenario verdict, the read-oracle verdict and the "
+          "composed receipt each record the candidate, the receipt the card was minted under and the card -- where the "
+          "same run without it refuses on the work list rebuilt on that candidate, an --issued path naming no card "
+          "refuses once in the run record, and with the seal restored the unbound run is the sealed M4 road again; "
+          "a composer that REFUSED leaves the last run's receipt on disk still saying PASS, and the runner reports no "
+          "verdict for it: receipt_verdict null, the record says it was not composed by this run and why, rc 1)")
     return 0
 
 

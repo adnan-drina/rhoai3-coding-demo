@@ -356,7 +356,22 @@ def _candidate_binding(root: Path, card: str) -> dict:
             "card": card}
 
 
-def _parity_verified(root: Path, findings: dict, *, ran: bool = True, verdict: str = "") -> None:
+def _parity_run_record(root: Path, binding: dict | None) -> None:
+    """The runner's own record of the comparison this verification made
+    (run-parity.py's _run.json): what it was told to measure. run-verify.sh
+    hands it the issued card whenever there is one, so on the acceptance path
+    the run is candidate-bound and a receipt it composed would say so."""
+    from planner.paths import PARITY_DIR
+
+    write_canonical(root / PARITY_DIR / "_run.json",
+                    {"schema": "rhoai3.parity-run/v1", "producer": "run-parity.py",
+                     "issued": str(root / "verification" / "loop" / "issued.json") if binding else "",
+                     "binding": dict(binding) if binding else {"mode": "sealed"},
+                     "receipt": {"composed_by_this_run": True, "reason": ""}})
+
+
+def _parity_verified(root: Path, findings: dict, *, ran: bool = True, verdict: str = "",
+                     run_binding: dict | None = None) -> None:
     """The acceptance pass for a parity card: run-verify.sh copies the receipt
     it started from, runs the comparison, records runtime.parity in run.json and
     re-measures. Here the comparison is simulated; everything else is real."""
@@ -372,6 +387,8 @@ def _parity_verified(root: Path, findings: dict, *, ran: bool = True, verdict: s
         "ran": ran, "rc": 0, "scenarios": [_PARITY_SID] if ran else [],
         "receipt_verdict": verdict, "ms": 1}
     write_canonical(root / VERIFY_RUN, doc)
+    if ran:
+        _parity_run_record(root, run_binding)
 
 
 def _parity_card_case() -> int:
@@ -483,6 +500,27 @@ def _parity_card_case() -> int:
         if "t_somebodyelse" not in blob or (load_json(root / LOOP_STEPS).get("attempts") or {}) != spent:
             return _fail("the refusal names the card the receipt was composed for, and spends no attempt: %s" % blob[-600:])
 
+        # ... and the mirror of it, which is a FALSE GREEN rather than a
+        # refusal: the comparison ran bound to THIS card, so a receipt it
+        # composed would say so -- and the one on disk says nothing at all. It
+        # is the receipt the last run left when this run's composer REFUSED to
+        # compose (the composer writes nothing when it refuses), it still says
+        # PASS, and it is a measurement of the accepted tree, not of this
+        # candidate. Nothing is judged from it and no attempt is spent.
+        rp = _run([sys.executable, str(SCRIPTS / "restore-pending.py"), "--root", str(root), "--cluster", cluster["id"]])
+        if rp.returncode != 0 or "restored" not in rp.stdout:
+            return _fail("restore-pending must put the retained candidate back: %s%s" % (rp.stdout, rp.stderr))
+        _parity_records(root, "PASS")
+        _parity_verified(root, findings, verdict="PASS")
+        _parity_run_record(root, _candidate_binding(root, "t_par2"))
+        spent = dict(load_json(root / LOOP_STEPS).get("attempts") or {})
+        p = _advance(root, cluster["id"], "t_par2")
+        blob = p.stdout + p.stderr
+        if p.returncode == 0 or "ACCEPTED" in p.stdout or "VERIFICATION_PENDING" not in blob or "not a measurement" not in blob:
+            return _fail("a receipt left by a composer that refused must not be read as this card's PASS: %s" % blob[-600:])
+        if "left by an earlier run" not in blob or (load_json(root / LOOP_STEPS).get("attempts") or {}) != spent:
+            return _fail("the refusal must say the receipt is not this verification's, and spend no attempt: %s" % blob[-600:])
+
         rp = _run([sys.executable, str(SCRIPTS / "restore-pending.py"), "--root", str(root), "--cluster", cluster["id"]])
         if rp.returncode != 0 or "restored" not in rp.stdout:
             return _fail("restore-pending must put the retained candidate back: %s%s" % (rp.stdout, rp.stderr))
@@ -490,6 +528,7 @@ def _parity_card_case() -> int:
         _parity_verified(root, findings, verdict="PASS")
         binding = _candidate_binding(root, "t_par2")
         _parity_records(root, "PASS", binding=binding)
+        _parity_run_record(root, binding)
         p = _advance(root, cluster["id"], "t_par2")
         if p.returncode != 0 or "ACCEPTED" not in p.stdout or "discharges" not in p.stdout:
             return _fail("a parity repair the comparison confirms must be accepted with the tuple unchanged: %s%s"
@@ -1275,7 +1314,7 @@ def main() -> int:
         p = _advance(root, "c:tampered", "t_z")
         if p.returncode != 2 or "LOOP_STALE_STATE" not in p.stderr:
             return _fail("tampered work list must refuse advance: %s" % p.stderr)
-    print("OK: fix-until-green (checked-exception veto: a falling count does not admit an introduced unhandled exception; family bound to its introducing step: Owner→Pet CONTINUE in the same card without an attempt, a stalled continuation rejects, an exposure outside the family is a typed diagnosis; an introduced attribution diagnostic is rejected, not parked (javac reports every one of them at once; a flow code newly reported stays exposed; one the accepted tree already had is not introduced); a harness-caused deferral is cleared by a metadata-only disposition and the one budget sees it; a set-wide packaging cause reaches the work list as one typed blocker with no card, under permuted reported names; measurement contract: unrun tests / empty reports / failed runner / skipped rescan are unknown; baseline; issued card; diagnostic cannot advance; post-verify edit + unissued cluster refused with baseline intact; out-of-scope test edit rejected + reverted + reports discarded; accept commits; staged no-progress reverted from index; line shift is not a new obligation; unresolvable candidate is VERIFICATION_PENDING (no attempt); known no-progress defers; Operator rewind restores tree+budget in a new epoch; green → packaging → startup → M4 (unknown gates never mint; an environment blocker is not a card; a gate repair is accepted phase-aware); unresolved test = typed blocker; tampered list refused; PARITY CARD (v9 t_77cae2b2): the obligation carries gate=parity onto the issued card, the brief names its scenarios and what discharges them, a comparison that did not run retains the candidate without an attempt, one that still reports the obligation reverts it, and the repair is ACCEPTED on the re-composed receipt with the tuple unchanged at [0,0,0], the receipt snapshotted with the accepted reports)")
+    print("OK: fix-until-green (checked-exception veto: a falling count does not admit an introduced unhandled exception; family bound to its introducing step: Owner→Pet CONTINUE in the same card without an attempt, a stalled continuation rejects, an exposure outside the family is a typed diagnosis; an introduced attribution diagnostic is rejected, not parked (javac reports every one of them at once; a flow code newly reported stays exposed; one the accepted tree already had is not introduced); a harness-caused deferral is cleared by a metadata-only disposition and the one budget sees it; a set-wide packaging cause reaches the work list as one typed blocker with no card, under permuted reported names; measurement contract: unrun tests / empty reports / failed runner / skipped rescan are unknown; baseline; issued card; diagnostic cannot advance; post-verify edit + unissued cluster refused with baseline intact; out-of-scope test edit rejected + reverted + reports discarded; accept commits; staged no-progress reverted from index; line shift is not a new obligation; unresolvable candidate is VERIFICATION_PENDING (no attempt); known no-progress defers; Operator rewind restores tree+budget in a new epoch; green → packaging → startup → M4 (unknown gates never mint; an environment blocker is not a card; a gate repair is accepted phase-aware); unresolved test = typed blocker; tampered list refused; PARITY CARD (v9 t_77cae2b2): the obligation carries gate=parity onto the issued card, the brief names its scenarios and what discharges them, a comparison that did not run retains the candidate without an attempt, one that still reports the obligation reverts it, a receipt composed for another card is not this card's measurement, a receipt that carries NO binding after a comparison bound to this card is the one a refusing composer left (VERIFICATION_PENDING, no attempt, never ACCEPTED), and the repair is ACCEPTED on the re-composed candidate-bound receipt with the tuple unchanged at [0,0,0], the receipt snapshotted with the accepted reports)")
     return 0
 
 
