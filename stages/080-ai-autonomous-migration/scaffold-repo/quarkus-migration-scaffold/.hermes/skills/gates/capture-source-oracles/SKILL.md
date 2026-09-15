@@ -123,6 +123,17 @@ whose mapping declares no HTTP method, and per policy a
 `cors-actual` read and a `cors-preflight`. Each scenario records `derived_from` (which inputs produced
 it) and `qualify` (what its capture must show).
 
+**A data read declares `reset_before` too.** The derivation does **not** skip
+the reset for a scenario just because it declares no effect: a `GET` of a
+collection answers with whatever rows it finds, so its recorded body is only
+deterministic if it reads a restored state — `sc:cors-actual-*` is a
+collection GET and keeps `reset_before: true`, whatever the order the corpus
+is walked in. What such a scenario does not have is a recorded **before**
+state: the capture records the state the source started from by probing the
+scenario's own effects, so one that declares none can never have one. That is
+the comparator's business, not the derivation's — see *What refuses, and why*
+below.
+
 A **delete** addresses a row the database will let go. Every schema file
 beside the seed (any `*.sql` in the same directory declaring `CREATE TABLE`,
 found by content — petclinic's is `initDB.sql`, and every file read is listed
@@ -388,7 +399,20 @@ What refuses, and why:
   capture records the effect probes *before* the request too, and the
   comparator restores the declared initial state (`reset_before`) and then
   proves it. Without that, a delete against a destination whose row was
-  already absent passed on both the response and the effect.
+  already absent passed on both the response and the effect. A scenario that
+  declares `reset_before` and **effects** whose capture recorded no before
+  state is INCONCLUSIVE: those probes were asked for, so re-capture the
+  source. A scenario that declares `reset_before` and **no effects** is a
+  different case and is **not** a refusal: the capture records the before
+  state by probing the scenario's own effects, so one that declares none never
+  had a before state for anyone to record. It is reset like any other — the
+  request may depend on the seeded rows, and a collection read's body is only
+  deterministic against a restored state — and then compared on its first
+  response: the verdict notes `before_state: none declared`, PASS when the
+  response matches, FAIL typed by its diffs when it does not, never
+  INCONCLUSIVE for the absence of a state nobody could have recorded.
+  Measured on v9's first M4 parity receipt (2026-09-15): `sc:cors-actual-*`
+  (a `GET` with `effects: []`) came back INCONCLUSIVE on exactly that absence.
 - A declared reset that could not run. The comparison does not happen.
 - A required scenario with **no result**, a result bound to another receipt or
   another corpus, or two results for one scenario. The required set comes from

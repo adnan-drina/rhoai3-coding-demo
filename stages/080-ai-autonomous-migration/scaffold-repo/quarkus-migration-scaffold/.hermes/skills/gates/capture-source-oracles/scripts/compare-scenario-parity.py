@@ -47,7 +47,8 @@ def main(argv: list[str] | None = None) -> int:
     receipt, gaps = verify_receipt(root, require_admitted=True)
     verdict = {"schema": "rhoai3.scenario-parity/v1", "scenario": args.scenario, "entry_point": "",
                "receipt_sha256": receipt["receipt_digest"] if receipt else "", "verdict": "INCONCLUSIVE",
-               "corpus_sha256": "", "reason": "", "request": {}, "reset": {}, "before": [], "expected": {}, "observed": {}, "effects": []}
+               "corpus_sha256": "", "reason": "", "request": {}, "reset": {}, "before": [], "before_state": "",
+               "expected": {}, "observed": {}, "effects": []}
     out = root / SCENARIO_PARITY / (scenario_slug(args.scenario) + ".json")
     if gaps or receipt is None:
         verdict["reason"] = "receipt not authoritative: " + "; ".join(gaps)
@@ -142,12 +143,28 @@ def main(argv: list[str] | None = None) -> int:
         verdict["reset"] = {"ran": False, "rc": None, "declared": bool(sc.get("reset_before", True)), "reason": "--no-reset: the caller restored it" if args.no_reset else "the scenario does not declare reset_before"}
 
     before_expected = oracle.get("before") or []
+    # The capture records the state the source started from by probing the
+    # scenario's OWN effects, so a scenario that declares no effect can never
+    # have one. Demanding it made every effect-less read INCONCLUSIVE for the
+    # absence of a state nobody could have recorded (v9's first M4 receipt,
+    # sc:cors-actual-*). The fix is here and not in the derivation: a data
+    # read that declares reset_before is still RESET -- the reset above ran,
+    # and a collection GET's recorded body is only deterministic against a
+    # restored state -- and the comparison then proceeds on the first
+    # response, with the absence stated rather than silent. A scenario WITH effects and
+    # no before state is still INCONCLUSIVE: there the capture skipped probes
+    # it was asked to take, and a delete that removes nothing would pass
+    # against a destination whose row was already gone.
     if sc.get("reset_before", True) and not before_expected:
-        verdict["reason"] = ("the source capture recorded no initial state for a scenario that declares reset_before; "
-                             "re-capture the source so the state it started from is on record")
-        write_canonical(out, verdict)
-        print("REFUSE: SCENARIO_PARITY %s INCONCLUSIVE (%s)" % (args.scenario, verdict["reason"]), file=sys.stderr)
-        return 1
+        if sc.get("effects"):
+            verdict["reason"] = ("the source capture recorded no initial state for a scenario that declares reset_before "
+                                 "and %d effect(s); re-capture the source so the state it started from is on record"
+                                 % len(sc.get("effects") or []))
+            write_canonical(out, verdict)
+            print("REFUSE: SCENARIO_PARITY %s INCONCLUSIVE (%s)" % (args.scenario, verdict["reason"]), file=sys.stderr)
+            return 1
+        verdict["before_state"] = ("none declared: the scenario declares no effect, so the source recorded no initial state; "
+                                   "the comparison is the response itself")
     for exp_before in before_expected:
         probe = http_observe(args.dest_url, str(exp_before.get("method") or "GET"), str(exp_before.get("path") or "/"), headers=headers)
         row = {"id": exp_before.get("id"), "path": exp_before.get("path"),

@@ -11,6 +11,7 @@ effect check.
 from __future__ import annotations
 
 import json
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -374,6 +375,115 @@ def _capture_contract_case() -> int:
     return 0
 
 
+def _effectless_reset_case() -> int:
+    """A scenario that declares no effect has no before-state to compare.
+
+    Measured on v9's first M4 parity receipt: ``sc:cors-actual-*`` -- a GET
+    with ``effects: []`` -- came back INCONCLUSIVE because the capture
+    recorded no ``before``. It never could: the capture probes the scenario's
+    OWN effects to record the state the source started from. Here the reset
+    still runs (the request may depend on the seeded rows), the absence is
+    stated on the verdict, and the comparison is the response itself: PASS
+    against an identical destination, FAIL typed by the diffs against a
+    divergent one. A scenario WITH effects and no before is still
+    INCONCLUSIVE -- there the capture skipped probes it was asked to take."""
+    corpus_doc = {
+        "schema": "rhoai3.scenario-corpus/v1", "approved_by": "operator:test",
+        "initial_state": {"reset": "restart the service", "dataset": "one owner"},
+        "scenarios": [
+            {"id": "sc:list-owners", "entry_point": "", "method": "GET", "path": "/api/owners",
+             "body_absent": True, "reset_before": True, "effects": [], "normalization": []},
+            {"id": "sc:delete-owner", "entry_point": "", "method": "DELETE", "path": "/api/owners/7",
+             "body_absent": True, "reset_before": True,
+             "effects": [{"id": "eff:owner-7-gone", "method": "GET", "path": "/api/owners/7"}], "normalization": []},
+        ],
+    }
+    with tempfile.TemporaryDirectory(prefix="effectless-") as td:
+        t = Path(td)
+        root = specimens.build_dest(t / "dest", specimens.specimen("http"), decisions=specimens.admitted_decisions())
+        specimens.prepare_loop(root)
+        rec = pipeline.admit(root)
+        if rec["status"] != "ADMITTED":
+            return _fail("effect-less fixture not admitted: %s" % rec["reasons"][:3])
+        receipt_digest = load_json(root / "evidence/planning/admission-receipt.json")["receipt_digest"]
+        ep = sorted(str(e["id"]) for e in load_json(root / "evidence/planning/evidence-bundle.json")["entry_points"])[0]
+        for sc in corpus_doc["scenarios"]:
+            sc["entry_point"] = ep
+        write_canonical(root / "verification" / "scenarios" / "corpus.json", corpus_doc)
+        corpus_sha = corpus_digest(load_json(root / "verification" / "scenarios" / "corpus.json"))
+        reqs = {sc["id"]: request_of(root, sc) for sc in corpus_doc["scenarios"]}
+        from planner.canonical import digest as _digest
+        bundle_sha = _digest(load_json(root / "evidence" / "planning" / "evidence-bundle.json"))
+
+        def capture(sc_id: str, base: str, response: dict, effects: list[dict]) -> None:
+            """A capture with NO ``before``: an effect-less scenario can have none."""
+            write_canonical(root / SCENARIO_ORACLES / (scenario_slug(sc_id) + ".json"), {
+                "schema": "rhoai3.source-scenario/v1", "scenario": sc_id, "entry_point": ep,
+                "receipt_sha256": receipt_digest, "corpus_sha256": corpus_sha, "status": "CAPTURED", "reason": "",
+                "evidence_bundle_sha256": bundle_sha, "source": {"base_url": base},
+                "initial_state": corpus_doc["initial_state"], "normalization": [], "reset_before": True,
+                "request": {"request_sha256": reqs[sc_id]["request_sha256"]}, "response": response,
+                "before": [], "effects": effects,
+            })
+
+        # the source: one owner, read cross-origin-style by a plain GET
+        Service.owners = {"7": {"id": 7, "lastName": "Franklin"}}
+        Service.lie_on_delete = False
+        src, src_url = serve()
+        from _oracle_common import http_observe
+        listed = http_observe(src_url, "GET", "/api/owners")
+        capture("sc:list-owners", src_url, {"status": listed["status"], "body_kind": listed["body_kind"],
+                                            "body_sha256": listed["body_sha256"], "headers": listed["headers"]}, [])
+        deleted = http_observe(src_url, "DELETE", "/api/owners/7")
+        gone = http_observe(src_url, "GET", "/api/owners/7")
+        capture("sc:delete-owner", src_url, {"status": deleted["status"], "body_kind": deleted["body_kind"], "body_sha256": deleted["body_sha256"]},
+                [{"id": "eff:owner-7-gone", "method": "GET", "path": "/api/owners/7", "status": gone["status"], "body_sha256": gone["body_sha256"]}])
+        src.shutdown()
+
+        marker = root / "reset-ran.txt"
+        reset_cmd = "%s -c %s" % (shlex.quote(sys.executable), shlex.quote("open(%r, 'a').write('x')" % str(marker)))
+
+        # an identical destination PASSes, the declared reset still ran, and
+        # the verdict says plainly that there was no before-state to compare
+        Service.owners = {"7": {"id": 7, "lastName": "Franklin"}}
+        dest, dest_url = serve()
+        p = subprocess.run([sys.executable, str(COMPARE), "--root", str(root), "--scenario", "sc:list-owners",
+                            "--dest-url", dest_url, "--reset-cmd", reset_cmd], text=True, capture_output=True)
+        v = load_json(root / SCENARIO_PARITY / (scenario_slug("sc:list-owners") + ".json"))
+        if p.returncode != 0 or v["verdict"] != "PASS":
+            return _fail("an effect-less scenario with no recorded before must compare on the response: rc=%s %s %s"
+                         % (p.returncode, v.get("verdict"), (p.stdout + p.stderr)[-400:]))
+        if not marker.is_file() or v["reset"].get("ran") is not True:
+            return _fail("the declared reset still runs for an effect-less scenario: %s" % v.get("reset"))
+        if not str(v.get("before_state") or "").startswith("none declared") or v["before"]:
+            return _fail("the verdict states the absence rather than refusing over it: %s" % v.get("before_state"))
+        dest.shutdown()
+
+        # a destination whose list differs FAILs, typed by the diff
+        Service.owners = {"9": {"id": 9, "lastName": "Davis"}}
+        other, other_url = serve()
+        p = subprocess.run([sys.executable, str(COMPARE), "--root", str(root), "--scenario", "sc:list-owners",
+                            "--dest-url", other_url, "--reset-cmd", reset_cmd], text=True, capture_output=True)
+        v = load_json(root / SCENARIO_PARITY / (scenario_slug("sc:list-owners") + ".json"))
+        if p.returncode != 1 or v["verdict"] != "FAIL" or "body" not in v["reason"]:
+            return _fail("a divergent effect-less read is a FAIL naming the diff, never INCONCLUSIVE: rc=%s %s %s"
+                         % (p.returncode, v.get("verdict"), v.get("reason")))
+        other.shutdown()
+
+        # ... and a scenario WITH effects whose capture recorded no before
+        # state is still INCONCLUSIVE: those probes were asked for
+        Service.owners = {"7": {"id": 7, "lastName": "Franklin"}}
+        dest2, dest2_url = serve()
+        p = subprocess.run([sys.executable, str(COMPARE), "--root", str(root), "--scenario", "sc:delete-owner",
+                            "--dest-url", dest2_url, "--reset-cmd", reset_cmd], text=True, capture_output=True)
+        v = load_json(root / SCENARIO_PARITY / (scenario_slug("sc:delete-owner") + ".json"))
+        if p.returncode != 1 or v["verdict"] != "INCONCLUSIVE" or "recorded no initial state" not in v["reason"]:
+            return _fail("a scenario with effects and no before state is still INCONCLUSIVE: rc=%s %s %s"
+                         % (p.returncode, v.get("verdict"), v.get("reason")))
+        dest2.shutdown()
+    return 0
+
+
 def _missing_exposed_model_case() -> int:
     """Missing or unreadable exposure evidence must refuse before source setup."""
     import contextlib
@@ -472,6 +582,8 @@ def verify_gaps(root: Path) -> list[str]:
 
 def main() -> int:
     if _no_corpus_case() or _missing_exposed_model_case() or _stale_receipt_case():
+        return 1
+    if _effectless_reset_case():
         return 1
     if _capture_contract_case() or _header_contract_case():
         return 1
@@ -664,7 +776,9 @@ def main() -> int:
         if v["verdict"] != "INCONCLUSIVE" or v["reset"]["rc"] != 3:
             return _fail("the failed reset must be recorded beside the verdict: %s" % v.get("reset"))
         dest4.shutdown()
-    print("OK: scenario-parity selftest (the recorded body and headers are replayed; a recorded Location header that the destination omits FAILs, and a 201 against a capture with no header map is INCONCLUSIVE; the capture is the first response (redirects not followed) and only the declared origins are mapped in Location; a preflight is not a write, carries Origin + Access-Control-Request-Method and no credentials; CORS coverage is per policy and the source's policies come from M1's model; the headers the source exposes are asserted too, and full bodies are retained as digest-bound evidence; a write with no declared effect refuses; a 204 that deleted nothing FAILs on its resulting state; a corpus edited after capture refuses; the capture is bound to the frozen source and the corpus, never to the admission receipt (a stale receipt is a note on the producer receipt, not a refusal; a capture from another bundle or with no bundle digest is INCONCLUSIVE; the verdict stays receipt-bound); an entry point passes only when every REQUIRED scenario passes, and a missing or foreign-corpus result is INCONCLUSIVE; a declared reset that fails stops the comparison; no corpus is idle with a receipt that says so)")
+    print("OK: scenario-parity selftest (the recorded body and headers are replayed; a recorded Location header that the destination omits FAILs, and a 201 against a capture with no header map is INCONCLUSIVE; the capture is the first response (redirects not followed) and only the declared origins are mapped in Location; a preflight is not a write, carries Origin + Access-Control-Request-Method and no credentials; CORS coverage is per policy and the source's policies come from M1's model; the headers the source exposes are asserted too, and full bodies are retained as digest-bound evidence; a write with no declared effect refuses; a 204 that deleted nothing FAILs on its resulting state; an effect-less scenario that declares reset_before still runs the reset, notes that no before state was declared and "
+          "compares on the first response (PASS when equal, FAIL typed by its diffs when not), while one WITH effects and no before "
+          "state stays INCONCLUSIVE; a corpus edited after capture refuses; the capture is bound to the frozen source and the corpus, never to the admission receipt (a stale receipt is a note on the producer receipt, not a refusal; a capture from another bundle or with no bundle digest is INCONCLUSIVE; the verdict stays receipt-bound); an entry point passes only when every REQUIRED scenario passes, and a missing or foreign-corpus result is INCONCLUSIVE; a declared reset that fails stops the comparison; no corpus is idle with a receipt that says so)")
     return 0
 
 
