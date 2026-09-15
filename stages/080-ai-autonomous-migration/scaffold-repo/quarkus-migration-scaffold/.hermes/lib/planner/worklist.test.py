@@ -625,9 +625,133 @@ def _parity_typing_case() -> int:
     return 0
 
 
+def _parity_advice_case() -> int:
+    """The two cards v9's first M4 verdict mints carry their exit conditions.
+
+    Both receipts are the shapes the comparator prints today: a CORS preflight
+    that granted nothing, and a root read answering the wrong redirect status
+    at a doubled root path. Every value in the advice is quoted from the diffs,
+    so a specimen that shares no name with this one gets the same advice about
+    its own values -- asserted by running the whole case twice."""
+    import json
+    import tempfile
+
+    from planner.paths import PARITY_DIR
+
+    PETCLINIC = {
+        "pkg": "org.springframework.samples.petclinic",
+        "root_type": "RootRestController", "root_member": "redirectToSwagger",
+        "api_type": "OwnerRestController", "api_member": "getOwners",
+        "preflight": "sc:cors-preflight-owners", "read_root": "sc:read-root",
+        "root_path": "petclinic", "ui": "swagger-ui",
+        "origin": "http://localhost:4200", "methods": "GET,POST,PUT,DELETE,OPTIONS",
+        "headers": "Content-Type", "exposed": "errors", "max_age": "1800",
+        "policy": "crossorigin:9f1c2b3a4d5e",
+    }
+    LEDGER = {
+        "pkg": "com.acme.ledger",
+        "root_type": "EntryPointResource", "root_member": "toDocs",
+        "api_type": "AccountResource", "api_member": "listAccounts",
+        "preflight": "op:preflight-accounts", "read_root": "op:read-entry",
+        "root_path": "ledger", "ui": "openapi-ui",
+        "origin": "https://console.acme.test", "methods": "GET,PATCH,OPTIONS",
+        "headers": "Accept,Content-Type", "exposed": "x-violations", "max_age": "600",
+        "policy": "crossorigin:11aa22bb33cc",
+    }
+
+    for spec in (PETCLINIC, LEDGER):
+        ep_root = "ep:%s.%s#%s():http" % (spec["pkg"], spec["root_type"], spec["root_member"])
+        ep_api = "ep:%s.%s#%s():http" % (spec["pkg"], spec["api_type"], spec["api_member"])
+        root_file = "src/main/java/%s/%s.java" % (spec["pkg"].replace(".", "/"), spec["root_type"])
+        api_file = "src/main/java/%s/%s.java" % (spec["pkg"].replace(".", "/"), spec["api_type"])
+        bundle = {"entry_points": [{"id": ep_root, "path": root_file}, {"id": ep_api, "path": api_file}]}
+        # the destination doubles the root path onto a value that already had it
+        want_loc = "http://dest:8080/%s/%s/index.html" % (spec["root_path"], spec["ui"])
+        raw_loc = "http://source:9966/%s/%s/index.html" % (spec["root_path"], spec["ui"])
+        have_loc = "http://dest:8080/%s/%s/%s/index.html" % (spec["root_path"], spec["root_path"], spec["ui"])
+        with tempfile.TemporaryDirectory(prefix="parity-advice-") as td:
+            root = Path(td)
+            pdir = root / PARITY_DIR
+            (pdir / "scenarios").mkdir(parents=True, exist_ok=True)
+
+            def w(rel, doc):
+                (pdir / rel).write_text(json.dumps(doc), encoding="utf-8")
+
+            w("receipt.json", {"schema": "rhoai3.parity-receipt/v1", "verdict": "FAIL",
+                               "cors": {"source_policies": [spec["policy"]], "gaps": []}})
+            w("scenarios/preflight.json", {
+                "schema": "rhoai3.scenario-parity/v1", "entry_point": ep_api, "scenario": spec["preflight"], "verdict": "FAIL",
+                "reason": ("header Access-Control-Allow-Origin None vs %s; header Access-Control-Allow-Methods None vs %s; "
+                           "header Access-Control-Allow-Headers None vs %s; header Access-Control-Expose-Headers None vs %s; "
+                           "header Access-Control-Max-Age None vs %s"
+                           % (spec["origin"], spec["methods"], spec["headers"], spec["exposed"], spec["max_age"]))})
+            w("scenarios/read_root.json", {
+                "schema": "rhoai3.scenario-parity/v1", "entry_point": ep_root, "scenario": spec["read_root"], "verdict": "FAIL",
+                "reason": "status 303 vs 302; header Location %s vs %s (source %s)" % (have_loc, want_loc, raw_loc)})
+            w("scenarios/plain.json", {
+                "schema": "rhoai3.scenario-parity/v1", "entry_point": ep_api, "scenario": spec["preflight"] + "-actual",
+                "verdict": "FAIL", "reason": "status 500 vs 200"})
+            items = {(i["entry_point"], i["scenario"], i["cause"]): i for i in parity_items(root, bundle)}
+
+            cors = items.get((ep_api, spec["preflight"], "cors-config"))
+            if not cors or not isinstance(cors.get("advice"), dict):
+                return _fail("the CORS obligation must carry advice: %s" % cors)
+            a = cors["advice"]
+            want_props = {
+                "quarkus.http.cors.enabled": "true",
+                "quarkus.http.cors.origins": spec["origin"],
+                "quarkus.http.cors.methods": spec["methods"],
+                "quarkus.http.cors.headers": spec["headers"],
+                "quarkus.http.cors.exposed-headers": spec["exposed"],
+                "quarkus.http.cors.access-control-max-age": spec["max_age"],
+            }
+            if a["properties"] != want_props:
+                return _fail("every CORS property is the SOURCE's own value, quoted from the diffs: %s" % a["properties"])
+            if a["source_policies"] != [spec["policy"]]:
+                return _fail("the advice names the source policies the receipt recorded: %s" % a["source_policies"])
+            blob = json.dumps(a)
+            for needed in ("preflight", "PAIRED actual", spec["exposed"], "@CrossOrigin", "ANY origin"):
+                if needed not in blob:
+                    return _fail("the CORS advice must state %r: %s" % (needed, blob[:600]))
+            if "quarkus.http.cors" not in blob or spec["origin"] not in blob:
+                return _fail("the CORS advice must quote the evidence, never a preset: %s" % blob[:600])
+
+            red = items.get((ep_root, spec["read_root"], "response"))
+            if not red or not isinstance(red.get("advice"), dict):
+                return _fail("the redirect obligation must carry advice: %s" % red)
+            r = red["advice"]
+            blob = json.dumps(r)
+            if red["path"] != root_file:
+                return _fail("a redirect difference is the operation's own behaviour, at its controller: %s" % red["path"])
+            if "302" not in r["exit"][0] or "303" not in r["exit"][0]:
+                return _fail("the source's status is the expectation and the destination's is named: %s" % r["exit"][0])
+            for needed in (want_loc, raw_loc, have_loc, "ORIGIN mapped",
+                           "%r" % spec["root_path"], "already carries its slashes",
+                           "quarkus.swagger-ui.always-include=true", "quarkus.swagger-ui.path",
+                           "packaged", "amend-scope.py"):
+                if needed not in blob:
+                    return _fail("the redirect advice must state %r: %s" % (needed, blob[:900]))
+            if "following the redirect" not in blob or "404" not in blob or "another redirect status" not in blob:
+                return _fail("the redirect advice must refuse 303, redirect following and a dead URL: %s" % blob[:900])
+
+            plain = items.get((ep_api, spec["preflight"] + "-actual", "response"))
+            if not plain or "swagger" in json.dumps(plain["advice"]) or "redirect" in json.dumps(plain["advice"]["refused"]):
+                return _fail("a status-only difference is not a redirect and gets no redirect advice: %s" % plain)
+
+            other = PETCLINIC if spec is LEDGER else LEDGER
+            everything = json.dumps(sorted(items.values(), key=lambda i: i["id"]), default=str)
+            # the platform's own property names (quarkus.swagger-ui.*) are not a
+            # specimen's values; these tokens are
+            leaked = [t for t in (other["root_path"], other["origin"], other["exposed"],
+                                  other["root_type"], other["preflight"]) if t in everything]
+            if leaked:
+                return _fail("advice must carry no other specimen's values: %s" % leaked)
+    return 0
+
+
 def main() -> int:
     if (_runtime_identity_case() or _gate_progress_case() or _batch_scope_case() or _checked_family_case()
-            or _set_wide_case() or _config_value_case() or _parity_typing_case()):
+            or _set_wide_case() or _config_value_case() or _parity_typing_case() or _parity_advice_case()):
         return 1
 
     if path_class("pom.xml") != "build" or path_class("src/main/resources/application.properties") != "config" or path_class("src/test/java/A.java") != "test" or path_class("src/main/java/A.java") != "source":
@@ -806,7 +930,7 @@ def main() -> int:
         return _fail("reclassified items keep their authority and are never dropped")
     if measure_of(all_items, incidents_known=False, compile_known=True, tests_known=True, parity_known=False)["known"]:
         return _fail("unknown incidents never advance")
-    print("OK: worklist (lossless line-free incidents; canary excluded; only ERROR diagnostics; build→config→compile(leaf-first)→incident→test order; tests never writable; lexicographic 3-tuple progress; new-incident veto; unknown never advances; gate progress is the issued obligation disappearing, never a reworded one; a second cause at one file is a second obligation); a repository card's inventory is sealed by its own digest and two measurements never share a path; checked-exception family: bound to its introducing step (a legacy site stays out), one budget, line-free identity across a moved line, CONTINUE / EXPOSED / still-reported / 1→0 accept, per-member assessment (catch-wrapped and header-deleted members violate); a set-wide packaging cause is one typed blocker under permuted first-reported names and never a card; an unloadable config value is located at the annotation that names the property IN THE DESTINATION'S OWN MODEL (the frozen source's model answers only when the destination cannot be modelled, and the brief says which did; ${x:d} and a bare x are one property), at application.properties only when the name is real and unread, and is a blocker when the name is empty and unread -- the same decisions under renamed identifiers; parity mismatches are typed by their diffs (CORS → application.properties, the rest → the controller; scenario verdicts count, the receipt does not)")
+    print("OK: worklist (lossless line-free incidents; canary excluded; only ERROR diagnostics; build→config→compile(leaf-first)→incident→test order; tests never writable; lexicographic 3-tuple progress; new-incident veto; unknown never advances; gate progress is the issued obligation disappearing, never a reworded one; a second cause at one file is a second obligation); a repository card's inventory is sealed by its own digest and two measurements never share a path; checked-exception family: bound to its introducing step (a legacy site stays out), one budget, line-free identity across a moved line, CONTINUE / EXPOSED / still-reported / 1→0 accept, per-member assessment (catch-wrapped and header-deleted members violate); a set-wide packaging cause is one typed blocker under permuted first-reported names and never a card; an unloadable config value is located at the annotation that names the property IN THE DESTINATION'S OWN MODEL (the frozen source's model answers only when the destination cannot be modelled, and the brief says which did; ${x:d} and a bare x are one property), at application.properties only when the name is real and unread, and is a blocker when the name is empty and unread -- the same decisions under renamed identifiers; parity mismatches are typed by their diffs (CORS → application.properties, the rest → the controller; scenario verdicts count, the receipt does not) and carry their exit conditions as advice built from those diffs (CORS properties are the source's own recorded values with the paired actual request and the exposed headers as the exit; a redirect is the source's status and its literal Location after origin mapping only, the doubled root path named, the legacy address served from the packaged UI, a property outside the write set entering through amend-scope) — the same advice, about its own values, on a specimen that shares no name with this one")
     return 0
 
 

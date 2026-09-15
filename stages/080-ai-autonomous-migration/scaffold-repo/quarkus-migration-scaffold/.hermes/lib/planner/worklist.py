@@ -822,6 +822,216 @@ def classify_parity_diffs(reason: str) -> tuple[list[str], list[str]]:
     return cors, other
 
 
+# ---------------------------------------------------------------------------
+# parity advice: the exit conditions, quoted from the verdict's own diffs
+# ---------------------------------------------------------------------------
+
+# The comparator's diff grammar (_oracle_common.header_diffs,
+# compare-scenario-parity.py): the DESTINATION's value is first, the SOURCE's
+# second. Location carries the source's raw value after the mapped one.
+_DIFF_STATUS_RE = re.compile(r"^status (?P<have>\S+) vs (?P<want>\S+)$")
+_DIFF_HEADER_RE = re.compile(r"^header (?P<name>[A-Za-z0-9-]+) (?P<have>.*?) vs (?P<want>.*)$")
+_DIFF_LOCATION_SOURCE_RE = re.compile(r"^(?P<want>.*?) \(source (?P<raw>.*)\)$")
+
+# Every CORS permission is a property on this platform; nothing in application
+# code grants one. The map is the platform's, not a specimen's.
+CORS_PROPERTY = {
+    "access-control-allow-origin": "quarkus.http.cors.origins",
+    "access-control-allow-methods": "quarkus.http.cors.methods",
+    "access-control-allow-headers": "quarkus.http.cors.headers",
+    "access-control-expose-headers": "quarkus.http.cors.exposed-headers",
+    "access-control-allow-credentials": "quarkus.http.cors.access-control-allow-credentials",
+    "access-control-max-age": "quarkus.http.cors.access-control-max-age",
+}
+CORS_ENABLED = "quarkus.http.cors.enabled"
+CORS_LINKS = ["https://quarkus.io/version/3.27/guides/http-reference#cors-filter"]
+
+# A path token that says the address is an API-documentation UI: the thing a
+# migration replaces rather than reimplements. Technology tokens, never a
+# specimen's own route.
+_DOC_UI_TOKENS = ("swagger", "openapi", "api-docs", "apidocs", "redoc")
+DOC_UI_LINKS = ["https://quarkus.io/version/3.27/guides/openapi-swaggerui"]
+REDIRECT_LINKS = ["https://quarkus.io/version/3.27/guides/http-reference#configure-http-access"]
+
+
+def parse_parity_diff(diff: str) -> dict[str, str]:
+    """One comparator diff, taken apart: what the DESTINATION answered
+    (``have``) and what the SOURCE answered (``want``). ``kind`` is status,
+    header, body, effect or other; ``source`` carries a Location's raw
+    pre-mapping value. Nothing here knows any specimen."""
+    d = str(diff or "").strip()
+    m = _DIFF_STATUS_RE.match(d)
+    if m:
+        return {"kind": "status", "name": "status", "have": m.group("have"), "want": m.group("want"), "source": "", "raw": d}
+    m = _DIFF_HEADER_RE.match(d)
+    if m:
+        name, have, want, src = m.group("name"), m.group("have"), m.group("want"), ""
+        loc = _DIFF_LOCATION_SOURCE_RE.match(want)
+        if loc:
+            want, src = loc.group("want"), loc.group("raw")
+        return {"kind": "header", "name": name, "have": have, "want": want, "source": src, "raw": d}
+    kind = "body" if d.startswith("body ") else ("effect" if d.startswith("effect ") else "other")
+    return {"kind": kind, "name": kind, "have": "", "want": "", "source": "", "raw": d}
+
+
+def _url_path(url: str) -> str:
+    """The path of an absolute or relative URL, without importing a parser for
+    one field (an unparseable value is returned as it stands)."""
+    s = str(url or "")
+    if "://" in s:
+        s = s.split("://", 1)[1]
+        s = s[s.find("/"):] if "/" in s else "/"
+    return s.split("?", 1)[0].split("#", 1)[0]
+
+
+def _doubled_segment(path: str) -> str:
+    """The first path segment that repeats itself immediately -- the shape a
+    root path prepended to a value that already carried it leaves behind."""
+    segs = [s for s in _url_path(path).split("/") if s]
+    for a, b in zip(segs, segs[1:]):
+        if a == b:
+            return a
+    return ""
+
+
+def cors_advice(diffs: list[str], source_policies: list[str]) -> dict[str, Any]:
+    """The CORS card's exit conditions, built from this verdict's own diffs.
+
+    ADR-014's companion ruling on the v9 M4 receipt: the destination granted no
+    cross-origin permission the source granted. On this platform that is
+    configuration; the values are the SOURCE's, quoted from the evidence, and a
+    preflight answering 200 proves nothing on its own."""
+    parsed = [parse_parity_diff(d) for d in diffs]
+    headers = [p for p in parsed if p["kind"] == "header"]
+    properties: dict[str, str] = {CORS_ENABLED: "true"}
+    observed: dict[str, dict[str, str]] = {}
+    for p in headers:
+        observed[p["name"]] = {"destination": p["have"], "source": p["want"]}
+        key = CORS_PROPERTY.get(p["name"].lower())
+        if key:
+            properties[key] = p["want"]
+    exposed = next((p["want"] for p in headers if p["name"].lower() == "access-control-expose-headers"), "")
+    quoted = "; ".join(p["raw"] for p in parsed) or "no recorded diff"
+    exit_conditions = [
+        "%s=true is set: without it the platform grants nothing and every permission header stays absent." % CORS_ENABLED,
+        ("each property carries the value the SOURCE sent, taken from this verdict's own diffs (%s)%s — not from a preset, "
+         "a guide's example or another specimen." % (quoted,
+                                                     " and from the source CORS policies the parity receipt records (%s)" % ", ".join(source_policies)
+                                                     if source_policies else "")),
+        ("an unset property is not the same as the source's: on this platform an absent origins means ANY origin, so the "
+         "source's origins, methods, allowed headers, exposed headers, credentials and max-age are each written out, even "
+         "where the source's own value is the permissive one."),
+        ("the preflight answering 200 is not success: the PAIRED actual request at this entry point must come back carrying "
+         "the same permission headers%s." % (" and must expose exactly %s to the caller" % exposed if exposed else
+                                             " and must expose to the caller every header the source's Access-Control-Expose-Headers named")),
+        "both scenarios at this entry point (the preflight and the actual request) come back PASS from their own parity verdicts.",
+    ]
+    return {
+        "description": ("the destination granted no CORS permission the source granted; on this platform CORS is application "
+                        "CONFIGURATION, never a controller annotation"),
+        "diffs": [p["raw"] for p in parsed],
+        "observed_headers": observed,
+        "properties": properties,
+        "source_policies": list(source_policies),
+        "exit": exit_conditions,
+        "refused": [
+            "restoring the removed @CrossOrigin, or any other controller annotation: it grants nothing here",
+            "inheriting the platform's permissive defaults instead of writing the source's recorded values",
+            "an OPTIONS 200 with no permission headers, or with headers the source never sent",
+            "widening the policy past what the source granted so that a scenario passes",
+            "leaving an exposed header out: a response header the source exposed is part of its behaviour",
+        ],
+        "links": CORS_LINKS,
+    }
+
+
+def response_advice(diffs: list[str], path: str) -> dict[str, Any]:
+    """The controller card's exit conditions for a response difference, and —
+    when the diffs describe a REDIRECT — ADR-016's ruling on it.
+
+    A redirect is the source's own status and its literal Location with the
+    origin mapped and nothing else changed. The root-path property already
+    carries its slashes, so a root path prepended to a value that already had
+    it leaves a doubled segment; the diff itself shows which."""
+    parsed = [parse_parity_diff(d) for d in diffs]
+    status = next((p for p in parsed if p["kind"] == "status"), None)
+    location = next((p for p in parsed if p["kind"] == "header" and p["name"].lower() == "location"), None)
+    quoted = "; ".join(p["raw"] for p in parsed) or "no recorded diff"
+    out: dict[str, Any] = {
+        "description": "the destination's response differs from the source's at this entry point; repair the operation, not the measurement",
+        "diffs": [p["raw"] for p in parsed],
+        "links": list(REDIRECT_LINKS),
+    }
+    redirect = bool(location) or bool(status and (str(status["have"]).startswith("3") or str(status["want"]).startswith("3")))
+    if not redirect:
+        out["exit"] = ["this scenario's own parity verdict comes back PASS with every diff gone: %s" % quoted]
+        out["refused"] = [
+            "normalizing the difference away in the corpus or the comparator instead of repairing the behaviour",
+            "an expectation taken from anywhere but the captured source response",
+        ]
+        return out
+
+    exit_conditions: list[str] = []
+    refused = [
+        "another redirect status because it is 'also a redirect': the source's status is the expectation",
+        "following the redirect during parity, or comparing the page it lands on instead of the first response",
+        "normalizing this difference away in the corpus or the comparator",
+        "a compatibility address that answers 404 or an error: a dead URL is not a redirect",
+        "restoring the documentation framework the migration retired",
+    ]
+    if status:
+        exit_conditions.append("the request answers %s, the status the SOURCE answered; the destination answers %s today."
+                               % (status["want"], status["have"]))
+    if location:
+        want, have, raw = location["want"], location["have"], location["source"]
+        exit_conditions.append(
+            "the Location is exactly %s — the source's own Location (%s) with the ORIGIN mapped and nothing else changed: no "
+            "re-rooting, no normalization, no trailing-slash edit. The destination sends %s today."
+            % (want, raw or want, have))
+        doubled = _doubled_segment(have)
+        if doubled and not _doubled_segment(want):
+            exit_conditions.append(
+                "the destination's Location repeats the segment %r. The root-path property already carries its slashes, so a "
+                "value that is built on top of it must not include it a second time; the doubling is the defect, not the path."
+                % doubled)
+        target = _url_path(want)
+        if any(tok in target.lower() for tok in _DOC_UI_TOKENS):
+            exit_conditions.append(
+                "%s is live in the PACKAGED production artifact: the replacement UI is included in the package "
+                "(quarkus.swagger-ui.always-include=true) and addressed at that legacy path (quarkus.swagger-ui.path matching "
+                "%s, written without repeating the root path), so the legacy address serves or redirects to it."
+                % (target, target))
+            exit_conditions.append(
+                "a bounded navigation check from the packaged artifact reaches the real UI and the OpenAPI document; the "
+                "address existing in configuration is not the same as it answering.")
+            out["links"] = DOC_UI_LINKS + list(REDIRECT_LINKS)
+    exit_conditions.append(
+        "a property change lives in %s, outside this card's write set (%s): record it with amend-scope.py --path <file> "
+        "--reason <why> BEFORE editing it." % (APP_PROPERTIES, path or GLOBAL))
+    exit_conditions.append("this scenario's own parity verdict comes back PASS with every diff gone: %s" % quoted)
+    out["description"] = ("the destination's redirect differs from the source's; the source's status and its literal Location "
+                          "after origin mapping only are the expectation")
+    out["exit"] = exit_conditions
+    out["refused"] = refused
+    return out
+
+
+def _source_cors_policies(root: Path) -> list[str]:
+    """The CORS policies the FROZEN source declares, as the parity receipt
+    recorded them. A missing or unreadable receipt is an empty list: the
+    advice then quotes only the diffs, which are always present."""
+    p = Path(root) / PARITY_DIR / "receipt.json"
+    if not p.is_file():
+        return []
+    try:
+        doc = load_json(p)
+    except (OSError, ValueError):
+        return []
+    cors = doc.get("cors") if isinstance(doc, dict) else None
+    policies = (cors or {}).get("source_policies") if isinstance(cors, dict) else None
+    return [str(x) for x in policies] if isinstance(policies, list) else []
+
+
 def parity_items(root: Path, bundle: dict[str, Any]) -> list[dict[str, Any]]:
     """Obligations from M4's parity verdicts: the read-oracle verdicts in
     verification/parity/*.json and the SCENARIO verdicts in
@@ -834,12 +1044,19 @@ def parity_items(root: Path, bundle: dict[str, Any]) -> list[dict[str, Any]]:
     point's controller; a verdict carrying both kinds becomes two. The
     message carries the diffs, so the brief says WHAT differs, not just that
     something does. The parity receipt (a summary, no entry point) is not an
-    obligation and is skipped by schema."""
+    obligation and is skipped by schema.
+
+    Each obligation also carries ``advice``: the exit conditions the architect
+    ruled for its kind, built from THIS verdict's diffs (cors_advice,
+    response_advice). The brief hands a worklist item to the worker whole, so
+    the advice travels with the card; nothing in it is written for a
+    particular specimen -- every value in it is quoted from the evidence."""
     out: list[dict[str, Any]] = []
     ep_path = {str(e["id"]): str(e.get("path") or "") for e in (bundle.get("entry_points") or [])}
     pdir = root / PARITY_DIR
     if not pdir.is_dir():
         return out
+    source_policies = _source_cors_policies(root)
     docs: list[tuple[Path, dict[str, Any]]] = [(p, load_json(p)) for p in sorted(pdir.glob("*.json"))]
     sdir = pdir / "scenarios"
     if sdir.is_dir():
@@ -860,10 +1077,12 @@ def parity_items(root: Path, bundle: dict[str, Any]) -> list[dict[str, Any]]:
                 "message_sha256": sha256_bytes(reason.encode("utf-8"))}
         if other:
             key = canonical_bytes({"ep": ep, "scenario": scenario, "what": "response"})
-            out.append(dict(base, id="parity:%s" % sha256_bytes(key)[:16], path=ep_path.get(ep) or GLOBAL,
+            locus = ep_path.get(ep) or GLOBAL
+            out.append(dict(base, id="parity:%s" % sha256_bytes(key)[:16], path=locus,
                             rule_id="PARITY", cause="response",
                             detail=("%s: %s" % (scenario or ep, "; ".join(other)))[:200],
-                            message=("%s differs from the source (%s): %s" % (ep, scenario or "read oracle", "; ".join(other)))[:1200]))
+                            message=("%s differs from the source (%s): %s" % (ep, scenario or "read oracle", "; ".join(other)))[:1200],
+                            advice=response_advice(other, locus)))
         if cors:
             key = canonical_bytes({"ep": ep, "scenario": scenario, "what": "cors"})
             out.append(dict(base, id="parity:%s" % sha256_bytes(key)[:16], path=APP_PROPERTIES, kind="config",
@@ -873,7 +1092,8 @@ def parity_items(root: Path, bundle: dict[str, Any]) -> list[dict[str, Any]]:
                                      "application configuration, not a controller annotation: quarkus.http.cors.enabled=true, "
                                      "quarkus.http.cors.origins mirroring the source (an absent origins attribute means any origin), "
                                      "quarkus.http.cors.exposed-headers and .methods/.headers set to the source's recorded values quoted "
-                                     "in the diffs. Do not restore a removed @CrossOrigin." % (ep, scenario or "read oracle", "; ".join(cors)))[:1200]))
+                                     "in the diffs. Do not restore a removed @CrossOrigin." % (ep, scenario or "read oracle", "; ".join(cors)))[:1200],
+                            advice=cors_advice(cors, source_policies)))
     return out
 
 
