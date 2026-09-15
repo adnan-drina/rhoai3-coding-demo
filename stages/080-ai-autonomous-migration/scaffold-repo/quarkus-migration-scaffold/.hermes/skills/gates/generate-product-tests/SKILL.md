@@ -21,7 +21,7 @@ metadata:
     kind: guidance
     paths:
       reads: ["/projects/modernized/verification/scenarios", "/projects/modernized/verification/source-oracles"]
-      writes: ["/projects/modernized/src/test/java", "/projects/modernized/src/test/resources/generated", "/projects/modernized/evidence/tests"]
+      writes: ["/projects/modernized/src/parity-test/java", "/projects/modernized/src/parity-test/resources/generated", "/projects/modernized/evidence/tests", "/projects/modernized/pom.xml"]
 ---
 # Generated product parity tests (M4)
 
@@ -37,8 +37,10 @@ will be asked, from evidence somebody else recorded.
 
 ## When to Use
 
-- **M4, before packaging and before the tests run.** Generate first, so the
-  test phase measures the generated cases rather than whatever a worker wrote.
+- **M4, after the parity runner and before the pre-verdict runner.** Generate
+  first, so the test phase the runner drives measures the generated cases
+  rather than whatever a worker wrote. Never at M1, M2 or inside the M3 loop:
+  the generated cases are not part of the loop's measure.
 - **M4 release floor, with `--check`.** The generated files on disk must be
   the bytes the manifest binds. An edited expectation refuses.
 - **Not** to hand-write a parity test. Not to "fix" a failing generated case
@@ -49,6 +51,52 @@ will be asked, from evidence somebody else recorded.
   execution runs in the test JVM against the development runtime;
   the parity gate runs against the artifact that ships. ADR-015 keeps both.
 
+## Where the tests live, and when they run
+
+**The generated cases execute in the M4 phase and in no other.** They are
+written to a dedicated source root:
+
+| | |
+|---|---|
+| sources | `src/parity-test/java` |
+| resources | `src/parity-test/resources` |
+| what compiles them | the `m4-parity` profile in the destination `pom.xml` |
+| what activates it | the M4 pre-verdict runner (`mvn -Pm4-parity test`) |
+
+Not `src/test/java`. A generated case measures PARITY, and parity is measured
+once, against the tree M4 is closing on. Under the loop's own test root every
+M3 verify would compile and run these cases; their failures would enter the
+loop's measure — the tuple that decides ACCEPTED vs REVERTED — and revert the
+step under verification for a reason that has nothing to do with it. The
+phase rule is mechanical, not advisory: `--out` or `--resources` pointing
+under `src/test/` is a refusal.
+
+### The pom profile is harness-owned too
+
+This producer ensures the destination `pom.xml` carries exactly one marked
+block:
+
+```xml
+    <!-- rhoai3:generated-tests:begin -->
+    …<profile><id>m4-parity</id>… org.codehaus.mojo:build-helper-maven-plugin
+       add-test-source      @ generate-test-sources → src/parity-test/java
+       add-test-resource    @ generate-test-resources → src/parity-test/resources
+    <!-- rhoai3:generated-tests:end -->
+```
+
+- a re-run replaces **exactly** that block and nothing else in the pom; an
+  `m4-parity` profile found OUTSIDE the markers is a refusal, not something to
+  take over;
+- the plugin is pinned (`3.6.0`) and the pin is recorded in the manifest.
+  `probe-bom-managed.py` measures the BOM's `dependencyManagement`, which
+  never manages a build plugin, so it cannot answer for this artifact; when a
+  probe result does list it, the version is dropped and the BOM's is used —
+  the evidence decides, not the constant;
+- the edit is printed on a `POM:` line and recorded under `pom_profile` /
+  `pom_profile_sha256`. **It is not committed here.** M4 commits nothing; the
+  pom and the generated tree are part of what the phase's own retrievability
+  and floor checks read.
+
 ## What it generates
 
 ```bash
@@ -58,8 +106,8 @@ python3 "${HERMES_SKILL_DIR}/scripts/generate-product-tests.py" --root /projects
 
 | Option | Meaning |
 |---|---|
-| `--out src/test/java` | where the generated sources go |
-| `--resources src/test/resources` | where the recorded request bodies are copied |
+| `--out src/parity-test/java` | where the generated sources go (the default; never a root the M3 loop compiles) |
+| `--resources src/parity-test/resources` | where the recorded request bodies are copied |
 | `--security-mode disabled\|enabled` | `enabled` lets an authenticating scenario carry its credentials **by reference**; `disabled` makes such a scenario a gap rather than an unauthenticated replay |
 | `--reset-cmd '<argv>'` | the reset contract, defaulting to the script `capture-source-oracles` restores with |
 | `--check` | verify the files on disk against the manifest digests |
@@ -72,7 +120,7 @@ For every scenario whose qualification records `capability: PASS`:
 - a **real request** through REST Assured — the recorded method, the concrete
   recorded path, the recorded headers (hop-by-hop dropped, `Origin` kept), the
   body bytes from the corpus body file, copied to
-  `src/test/resources/generated/<slug>.body` and verified against the digest
+  `src/parity-test/resources/generated/<slug>.body` and verified against the digest
   the corpus bound. No mocked controller, no mocked repository, no
   authentication substitute;
 - `redirects().follow(false)` — the **first response** is the observation;
@@ -115,7 +163,8 @@ an environment variable, and the manifest records the reference names.
   "corpus_sha256": "…",
   "cases": [{"scenario": "sc:…", "class": "…ParityTest", "method": "parity_…", "entry_point": "ep:…", "…": "…"}],
   "gaps":  [{"scenario": "sc:…", "capability": "FAIL|INCONCLUSIVE", "kind": "…", "reason": "…"}],
-  "files": [{"path": "src/test/java/…", "sha256": "…"}],
+  "files": [{"path": "src/parity-test/java/…", "sha256": "…"}],
+  "pom_profile_sha256": "…", "pom_profile": {"profile_id": "m4-parity", "plugin": {"…": "…"}},
   "evidence_bundle_sha256": "…", "source_digest": "…", "qualification_sha256": "…",
   "security_mode": "disabled", "generator_version": "1.0.0", "reset_contract": {"…": "…"}
 }
@@ -141,9 +190,15 @@ Exit 1, `REFUSE: GENERATE_TESTS …`, and nothing is written:
   **requalify after recapture**; a stale judgement is not a judgement;
 - no reset contract in the tree and no `--reset-cmd`: a `@BeforeEach` that
   cannot restore the recorded state would assert against whatever it found;
+- no `pom.xml` in the tree, a pom that is not parseable XML, a pom that
+  already declares an `m4-parity` profile outside the markers, or one whose
+  markers are unbalanced;
+- `--out` or `--resources` under `src/test/java` / `src/test/resources`: the
+  generated cases would run in every M3 verify;
 - `--check`: a generated file that is missing, whose bytes moved, or an
-  unlisted `.java` in a generated package; and a manifest written for another
-  corpus.
+  unlisted `.java` in a generated package; a manifest written for another
+  corpus; a manifest with no `pom_profile_sha256`; and the `m4-parity` block
+  edited or gone — a suite nothing compiles is a suite that never ran.
 
 A single scenario that cannot be generated faithfully is never a partial
 test — it is a **gap**: no entry point whose declaring type is a Java type, a
@@ -154,13 +209,16 @@ under `--security-mode disabled`.
 
 ## How the M4 road calls it
 
-1. `generate-product-tests.py --root .` — **before** packaging and before the
-   test phase, so the reports the phase produces are the generated cases'.
-2. the destination is packaged and its tests run; every generated case must
-   run with zero skips, failures and errors, against the tree and
-   configuration under test.
-3. `generate-product-tests.py --root . --check` at the release floor, beside
-   the other pinned gates, so the verdict cites tests the harness still owns.
+1. `generate-product-tests.py --root .` — a step of `paved-road-m4`, after the
+   batch parity runner and **before** the pre-verdict runner, so the rebuild
+   that runner drives is what executes the generated cases.
+2. `run-m4-pre-verdict.sh` runs `mvn -Pm4-parity test` (no `clean`) and then
+   snapshots the reports to `evidence/m4-pre-rebuild/test-reports`; every
+   generated case must run there with zero skips, failures and errors,
+   against the tree and configuration under test.
+3. `generate-product-tests.py --root . --check` is one of that runner's
+   feeding gates, with its own receipt under `evidence/receipts/gates/`, so
+   the verdict cites tests — and a profile — the harness still owns.
 4. `check-domain-parity`'s product-test floor reads the same manifest: a
    family it requires is covered by generated cases, and a gap is visible
    rather than absent.
@@ -183,6 +241,12 @@ is unchanged and still required.
   `@QuarkusTest`, REST Assured and JUnit; and the generated canonical body
   digest cross-checked against the comparator's own canonical form on a JVM.
   The two JDK-dependent checks skip with a message when no JDK is on PATH.
+  And the pom: the marked block is added (with or without an existing
+  `<profiles>`), it is idempotent across two runs, the pom stays parseable
+  XML, the manifest binds the block on disk and records the plugin pin, a
+  foreign `m4-parity` profile refuses, a tree with no `pom.xml` refuses,
+  `--out`/`--resources` under the loop's test roots refuse, and `--check`
+  refuses both an edited block and a missing one.
 
 ## Scripts
 

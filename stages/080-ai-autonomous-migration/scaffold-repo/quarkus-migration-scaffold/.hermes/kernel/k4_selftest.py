@@ -110,18 +110,26 @@ def main() -> int:
         if exits["parity"]["cmd"] != "python3 .hermes/skills/paved-road/paved-road-m4/scripts/run-parity.py --root .":
             return _fail("the parity exit must be the batch runner, not the composer: %s" % exits.get("parity"))
         order = [e["check"] for e in cbody["exit_criteria"]]
-        if order[:5] != ["skills", "terminator", "parity", "mta_rescan", "pre_verdict"]:
+        # ADR-015: the generator runs after the parity runner and before the
+        # pre-verdict runner, because the runner's m4-parity rebuild is what
+        # executes the generated cases.
+        if order[:6] != ["skills", "terminator", "parity", "generate_tests", "mta_rescan", "pre_verdict"]:
             return _fail("the M4 exits are the phase's order: %s" % order)
+        if "generate-product-tests.py --root ." not in exits["generate_tests"]["cmd"]:
+            return _fail("the generate exit must be the producer itself: %s" % exits.get("generate_tests"))
         if "verdict_schema" not in exits or VERDICT_SCHEMA_SCRIPT not in exits["verdict_schema"]["cmd"]:
             return _fail("the verdict schema assertion is on disk and must be an exit: %s" % order)
-        for needle in ("run-parity.py", "assert-mta-rescan.py", "run-m4-pre-verdict.sh", "compose-m4-verdict",
+        for needle in ("run-parity.py", "generate-product-tests", "src/parity-test/java", "m4-parity",
+                       "assert-mta-rescan.py", "run-m4-pre-verdict.sh", "compose-m4-verdict",
                        "kanban_request_review reviewer=reviewer", "REFUSE", "Never kanban_complete"):
             if needle not in TERMINATOR_M4:
                 return _fail("TERMINATOR_M4 must name %r" % needle)
         prose = render_body(cbody).split("<details>")[0]
         if not prose.startswith("## M4 VERIFY"):
             return _fail("the close card's prose is its own: %r" % prose[:80])
-        for needle in ("skill_view paved-road-m4", "run-parity.py", "assert-mta-rescan.py", "run-m4-pre-verdict.sh",
+        for needle in ("skill_view paved-road-m4", "run-parity.py", "skill_view generate-product-tests",
+                       "generate-product-tests.py --root .", "src/parity-test/java", "-Pm4-parity",
+                       "assert-mta-rescan.py", "run-m4-pre-verdict.sh",
                        "skill_view compose-m4-verdict", "evidence/verdicts/m4-verdict.json",
                        "kanban_request_review", "reviewer=reviewer", "REFUSE", "Never dest-dispatch M5"):
             if needle not in prose:

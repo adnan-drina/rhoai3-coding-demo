@@ -33,6 +33,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
 
@@ -57,6 +58,24 @@ SPEC_A = {"pkg": "alpha.one", "sub": "alpha", "sub2": "entrance", "type": "Alpha
           "root_type": "EntranceResource", "route": "/api/alphas", "res": "alpha"}
 SPEC_B = {"pkg": "beta.two", "sub": "beta", "sub2": "doorway", "type": "BetaResource",
           "root_type": "DoorwayResource", "route": "/api/betas", "res": "beta"}
+
+# A destination pom with no <profiles> of its own: the producer must add the
+# marked block, and adding it twice must change nothing.
+POM_FIXTURE = """<?xml version='1.0' encoding='utf-8'?>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>fixture.dest</groupId>
+  <artifactId>dest</artifactId>
+  <version>1.0.0-SNAPSHOT</version>
+  <build>
+    <plugins>
+      <plugin>
+        <artifactId>maven-surefire-plugin</artifactId>
+      </plugin>
+    </plugins>
+  </build>
+</project>
+"""
 
 FAILURES: list[str] = []
 
@@ -134,6 +153,7 @@ def build_root(root: Path, spec: dict[str, str], *, derived: bool = True, authen
     root.mkdir(parents=True, exist_ok=True)
     (root / RESET_SCRIPT).parent.mkdir(parents=True, exist_ok=True)
     (root / RESET_SCRIPT).write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    (root / "pom.xml").write_text(POM_FIXTURE, encoding="utf-8")
 
     scenarios = scenarios_of(spec)
     if authenticated:
@@ -321,7 +341,7 @@ def case_accounting(tmp: Path) -> int:
                             "alpha.one.entrance.generated.EntranceResourceParityTest"]:
         return fail("the class is the entry point's declaring type in its own .generated package: %s" % sorted(by_class))
     for fqcn, group in by_class.items():
-        src = root / "src/test/java" / (fqcn.replace(".", "/") + ".java")
+        src = root / "src/parity-test/java" / (fqcn.replace(".", "/") + ".java")
         if not src.is_file():
             return fail("no source for the class the manifest names: %s" % fqcn)
         text = src.read_text(encoding="utf-8")
@@ -340,18 +360,18 @@ def case_accounting(tmp: Path) -> int:
             return fail("%s must reset and PROVE the recorded initial state before each case" % fqcn)
 
     # the recorded body bytes travel with the tests, bound by digest
-    body = root / "src/test/resources/generated/sc_create-alpha.body"
+    body = root / "src/parity-test/resources/generated/sc_create-alpha.body"
     if not body.is_file():
         return fail("the recorded request body must be copied beside the tests")
     listed = {row["path"]: row["sha256"] for row in manifest["files"]}
-    if listed.get("src/test/resources/generated/sc_create-alpha.body") != hashlib.sha256(body.read_bytes()).hexdigest():
+    if listed.get("src/parity-test/resources/generated/sc_create-alpha.body") != hashlib.sha256(body.read_bytes()).hexdigest():
         return fail("every generated file is listed with its digest: %s" % sorted(listed))
     if not any(p.endswith("ParitySupport.java") for p in listed):
         return fail("the shared support class must be generated and listed")
 
     # the source's values, not the destination's
     create = next(c for c in cases if c["scenario"] == "sc:create-alpha")
-    text = (root / "src/test/java/alpha/one/alpha/generated/AlphaResourceParityTest.java").read_text(encoding="utf-8")
+    text = (root / "src/parity-test/java/alpha/one/alpha/generated/AlphaResourceParityTest.java").read_text(encoding="utf-8")
     if "statusCode(201)" not in text:
         return fail("the recorded status is the assertion: %s" % create)
     if "%s/api/alphas/7" % SOURCE_BASE not in text:
@@ -381,8 +401,8 @@ def case_deterministic(tmp: Path) -> int:
 
 
 def _snapshot(root: Path) -> dict[str, str]:
-    out: dict[str, str] = {}
-    for base in ("src/test/java", "src/test/resources", "evidence/tests"):
+    out: dict[str, str] = {"pom.xml": (root / "pom.xml").read_text(encoding="utf-8")}
+    for base in ("src/parity-test/java", "src/parity-test/resources", "evidence/tests"):
         d = root / base
         if not d.is_dir():
             continue
@@ -390,6 +410,101 @@ def _snapshot(root: Path) -> dict[str, str]:
             if p.is_file():
                 out[p.relative_to(root).as_posix()] = p.read_text(encoding="utf-8")
     return out
+
+
+def case_pom_profile(tmp: Path) -> int:
+    """The generated tests run in the M4 phase and nowhere else: they are
+    written outside the loop's test roots, and the only thing that compiles
+    them is the marked m4-parity block this producer owns in pom.xml."""
+    rc = 0
+    root = build_root(tmp / "pom", SPEC_A)
+    proc = run(root)
+    if proc.returncode != 0:
+        return fail("generation refused a bound fixture: %s%s" % (proc.stdout, proc.stderr))
+    pom = (root / "pom.xml").read_text(encoding="utf-8")
+    for needle in ("<!-- rhoai3:generated-tests:begin -->", "<!-- rhoai3:generated-tests:end -->",
+                   "<id>m4-parity</id>", "build-helper-maven-plugin", "add-test-source", "add-test-resource",
+                   "<phase>generate-test-sources</phase>", "<phase>generate-test-resources</phase>",
+                   "<source>src/parity-test/java</source>", "<directory>src/parity-test/resources</directory>"):
+        if needle not in pom:
+            rc |= fail("the pom block must carry %r: %s" % (needle, pom))
+    if pom.count("<id>m4-parity</id>") != 1:
+        rc |= fail("exactly one m4-parity profile: %s" % pom)
+    # the plugin is pinned, because the BOM probe measures dependencyManagement
+    # and never manages a build plugin
+    if "<version>3.6.0</version>" not in pom:
+        rc |= fail("the plugin must be pinned to a version the BOM does not manage: %s" % pom)
+    try:
+        ET.fromstring(pom)
+    except ET.ParseError as exc:
+        rc |= fail("the rewritten pom must stay parseable XML: %s" % exc)
+
+    manifest = load_json(root / MANIFEST)
+    body = pom[pom.index("<!-- rhoai3:generated-tests:begin -->"):
+               pom.index("<!-- rhoai3:generated-tests:end -->") + len("<!-- rhoai3:generated-tests:end -->")]
+    if manifest.get("pom_profile_sha256") != hashlib.sha256(body.encode("utf-8")).hexdigest():
+        rc |= fail("the manifest must bind the block on disk: %s" % manifest.get("pom_profile_sha256"))
+    pin = (manifest.get("pom_profile") or {}).get("plugin") or {}
+    if pin.get("artifact_id") != "build-helper-maven-plugin" or pin.get("version") != "3.6.0":
+        rc |= fail("the manifest must record the plugin pin and why: %s" % pin)
+    if (manifest.get("pom_profile") or {}).get("test_source") != "src/parity-test/java":
+        rc |= fail("the manifest must record the source root the profile adds: %s" % manifest.get("pom_profile"))
+
+    # a re-run replaces exactly that block, and only it
+    if run(root).returncode != 0:
+        rc |= fail("a second generation refused")
+    if (root / "pom.xml").read_text(encoding="utf-8") != pom:
+        rc |= fail("the pom edit must be idempotent")
+
+    # --check is the floor's question: the block is present and unchanged
+    if run(root, "--check").returncode != 0:
+        rc |= fail("--check must accept the block the generator just wrote")
+    (root / "pom.xml").write_text(pom.replace("<source>src/parity-test/java</source>",
+                                              "<source>src/test/java</source>"), encoding="utf-8")
+    proc = run(root, "--check")
+    if proc.returncode == 0 or "m4-parity block" not in proc.stderr:
+        rc |= fail("--check must refuse an edited block: %s%s" % (proc.stdout, proc.stderr))
+    (root / "pom.xml").write_text(pom.replace(body, ""), encoding="utf-8")
+    proc = run(root, "--check")
+    if proc.returncode == 0 or "carries no" not in proc.stderr:
+        rc |= fail("--check must refuse a pom whose profile is gone: %s%s" % (proc.stdout, proc.stderr))
+    (root / "pom.xml").write_text(pom, encoding="utf-8")
+    if run(root, "--check").returncode != 0:
+        rc |= fail("--check must accept the restored pom")
+
+    # a profile this producer does not own is never taken over
+    foreign = build_root(tmp / "pom-foreign", SPEC_A)
+    (foreign / "pom.xml").write_text(POM_FIXTURE.replace(
+        "</project>", "  <profiles>\n    <profile>\n      <id>m4-parity</id>\n    </profile>\n  </profiles>\n</project>"),
+        encoding="utf-8")
+    proc = run(foreign)
+    if proc.returncode == 0 or "outside the" not in proc.stderr:
+        rc |= fail("an m4-parity profile outside the markers must refuse: %s%s" % (proc.stdout, proc.stderr))
+
+    # an existing <profiles> is extended, not replaced
+    other = build_root(tmp / "pom-profiles", SPEC_A)
+    (other / "pom.xml").write_text(POM_FIXTURE.replace(
+        "</project>", "  <profiles>\n    <profile>\n      <id>native</id>\n    </profile>\n  </profiles>\n</project>"),
+        encoding="utf-8")
+    if run(other).returncode != 0:
+        rc |= fail("a pom with its own <profiles> must be extended")
+    text = (other / "pom.xml").read_text(encoding="utf-8")
+    if "<id>native</id>" not in text or "<id>m4-parity</id>" not in text or text.count("<profiles>") != 1:
+        rc |= fail("the existing profiles must survive and only one <profiles> may exist: %s" % text)
+
+    # the phase rule, as a refusal: never the roots the M3 loop compiles
+    for flag, value in (("--out", "src/test/java"), ("--resources", "src/test/resources")):
+        proc = run(build_root(tmp / ("pom-loop-root" + flag.strip("-")), SPEC_A), flag, value)
+        if proc.returncode == 0 or "M3 loop's test roots" not in proc.stderr:
+            rc |= fail("%s %s must refuse: %s%s" % (flag, value, proc.stdout, proc.stderr))
+
+    # no pom, no profile, no run: a refusal, not a silent generation
+    nopom = build_root(tmp / "pom-missing", SPEC_A)
+    (nopom / "pom.xml").unlink()
+    proc = run(nopom)
+    if proc.returncode == 0 or "no pom.xml" not in proc.stderr:
+        rc |= fail("a tree with no pom.xml must refuse: %s%s" % (proc.stdout, proc.stderr))
+    return rc
 
 
 def case_check(tmp: Path) -> int:
@@ -400,7 +515,7 @@ def case_check(tmp: Path) -> int:
     if proc.returncode != 0:
         return fail("--check must agree with what the generator just wrote: %s%s" % (proc.stdout, proc.stderr))
 
-    target = root / "src/test/java/alpha/one/alpha/generated/AlphaResourceParityTest.java"
+    target = root / "src/parity-test/java/alpha/one/alpha/generated/AlphaResourceParityTest.java"
     original = target.read_text(encoding="utf-8")
     target.write_text(original.replace("statusCode(201)", "statusCode(200)"), encoding="utf-8")
     proc = run(root, "--check")
@@ -493,7 +608,7 @@ def case_security_mode(tmp: Path) -> int:
     refs = sorted({ref for c in manifest["cases"] for ref in c["credential_references"]})
     if refs != ["APP_PASSWORD", "APP_USER"]:
         return fail("the credential REFERENCES belong in the manifest: %s" % refs)
-    text = (root / "src/test/java/alpha/one/alpha/generated/AlphaResourceParityTest.java").read_text(encoding="utf-8")
+    text = (root / "src/parity-test/java/alpha/one/alpha/generated/AlphaResourceParityTest.java").read_text(encoding="utf-8")
     if "credential(\"APP_PASSWORD\")" not in text:
         return fail("the generated request must resolve credentials by reference")
     for secret in ("password=", "Basic ", "hunter2", ":admin"):
@@ -753,7 +868,7 @@ def case_canonical_form(tmp: Path) -> int:
 
 
 def main() -> int:
-    cases = (case_accounting, case_deterministic, case_check, case_refusals, case_security_mode,
+    cases = (case_accounting, case_deterministic, case_pom_profile, case_check, case_refusals, case_security_mode,
              case_renamed_specimen, case_no_specimen_literal, case_java_plausible, case_canonical_form)
     rc = 0
     with tempfile.TemporaryDirectory(prefix="generate-product-tests-") as td:

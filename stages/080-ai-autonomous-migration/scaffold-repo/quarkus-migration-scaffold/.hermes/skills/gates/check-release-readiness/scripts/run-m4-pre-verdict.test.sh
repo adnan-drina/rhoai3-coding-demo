@@ -16,6 +16,26 @@ grep -q 'check-product-tests' "${SCRIPT_DIR}/run-m4-pre-verdict.sh"
 grep -q 'check-test-toolchain' "${SCRIPT_DIR}/run-m4-pre-verdict.sh"
 grep -q 'verify-admission-receipt' "${SCRIPT_DIR}/run-m4-pre-verdict.sh"
 grep -q 'run_feed_gate' "${SCRIPT_DIR}/run-m4-pre-verdict.sh"
+# ADR-015: the generated parity tests execute HERE and nowhere else, and the
+# runner checks they are still the bytes the harness wrote.
+grep -q 'generate-product-tests' "${SCRIPT_DIR}/run-m4-pre-verdict.sh"
+grep -q 'run_feed_gate generate-product-tests' "${SCRIPT_DIR}/run-m4-pre-verdict.sh"
+grep -qF -- '-P${PARITY_PROFILE}' "${SCRIPT_DIR}/run-m4-pre-verdict.sh"
+grep -q 'PARITY_PROFILE="m4-parity"' "${SCRIPT_DIR}/run-m4-pre-verdict.sh"
+# The rebuild must precede the snapshot, or the snapshot the floors read
+# carries the M3 reports and none of the generated cases.
+build_line="$(grep -n '^run_parity_build$' "${SCRIPT_DIR}/run-m4-pre-verdict.sh" | head -1 | cut -d: -f1)"
+snap_line="$(grep -n 'python3 "${SNAP}"' "${SCRIPT_DIR}/run-m4-pre-verdict.sh" | head -1 | cut -d: -f1)"
+if [[ -z "${build_line}" || -z "${snap_line}" || "${build_line}" -ge "${snap_line}" ]]; then
+  echo "FAIL: the m4-parity rebuild must run before the report snapshot (${build_line} vs ${snap_line})" >&2
+  exit 1
+fi
+gen_line="$(grep -n 'run_feed_gate generate-product-tests' "${SCRIPT_DIR}/run-m4-pre-verdict.sh" | head -1 | cut -d: -f1)"
+pin_line0="$(grep -n 'python3 "${PINNED}"' "${SCRIPT_DIR}/run-m4-pre-verdict.sh" | head -1 | cut -d: -f1)"
+if [[ -z "${gen_line}" || "${gen_line}" -ge "${pin_line0}" ]]; then
+  echo "FAIL: generate-product-tests --check must feed before assert-pinned-gates-ran (${gen_line} vs ${pin_line0})" >&2
+  exit 1
+fi
 feed_line="$(grep -n 'run_feed_gate check-domain-parity' "${SCRIPT_DIR}/run-m4-pre-verdict.sh" | head -1 | cut -d: -f1)"
 pin_line="$(grep -n 'python3 "${PINNED}"' "${SCRIPT_DIR}/run-m4-pre-verdict.sh" | head -1 | cut -d: -f1)"
 if [[ -z "${feed_line}" || -z "${pin_line}" || "${feed_line}" -ge "${pin_line}" ]]; then
@@ -108,7 +128,27 @@ unset HERMES_KANBAN_TASK
 printf '%s\n' "echo secret | base64 -d >/dev/null" > "$TMP/benign.log"
 export FENCE_EVASION_LOG="$TMP/benign.log"
 
-bash "${SCRIPT_DIR}/run-m4-pre-verdict.sh" "$TMP"
+bash "${SCRIPT_DIR}/run-m4-pre-verdict.sh" "$TMP" 2>"$TMP/run.err"
+
+# ADR-015, this tree: the pom carries no m4-parity block, so nothing compiles
+# a generated suite. The runner says so and keeps going — the product-test
+# floor is what measures the gap — and it never silently "passes" the build.
+grep -q "no m4-parity block in pom.xml" "$TMP/run.err" || {
+  echo "FAIL: a pom with no m4-parity block must be named, not skipped in silence" >&2
+  cat "$TMP/run.err" >&2
+  exit 1
+}
+# The feeding gate leaves a receipt even when it refuses: silence is the
+# refusal, a measured rc belongs on the completion floors.
+GEN_RECEIPT="$TMP/evidence/receipts/gates/generate-product-tests.json"
+[[ -f "${GEN_RECEIPT}" ]] || { echo "FAIL: no receipt for generate-product-tests --check" >&2; exit 1; }
+grep -q '"gate": "generate-product-tests"' "${GEN_RECEIPT}" || {
+  echo "FAIL: the receipt must name the gate" >&2; exit 1; }
+grep -q '"rc": 1' "${GEN_RECEIPT}" || {
+  echo "FAIL: --check on a tree with no generated manifest must be recorded as a refusal" >&2
+  cat "${GEN_RECEIPT}" >&2
+  exit 1
+}
 
 mkdir -p "$TMP/evidence/verdicts/refusals"
 printf '%s\n' '{"ran":false,"reason":"runtime parity (G-4) is N/A; M5 ACCEPT would require G-4"}' \

@@ -68,7 +68,12 @@ TERMINATOR_M4 = (
     "skill_view paved-road-m4 first (the pinned index; its steps.json is the contract). Run, in this order: "
     "python3 .hermes/skills/paved-road/paved-road-m4/scripts/run-parity.py --root . (THE parity phase -- every "
     "corpus scenario, every captured read oracle, then the receipt, in one tool; never a per-entry-point loop "
-    "you drive yourself), python3 .hermes/skills/analysis/scan-with-mta/scripts/assert-mta-rescan.py ., "
+    "you drive yourself), skill_view generate-product-tests then python3 "
+    ".hermes/skills/gates/generate-product-tests/scripts/generate-product-tests.py --root . (ADR-015: the HARNESS "
+    "writes the product acceptance tests from the M1 captures, into src/parity-test/java, which nothing compiles "
+    "but the m4-parity profile the pre-verdict runner activates; you never author one of these tests and never "
+    "weaken what one asserts -- a generated case that fails is a parity finding), "
+    "python3 .hermes/skills/analysis/scan-with-mta/scripts/assert-mta-rescan.py ., "
     "bash .hermes/skills/gates/check-release-readiness/scripts/run-m4-pre-verdict.sh /projects/modernized, then "
     "compose-m4-verdict to author evidence/verdicts/m4-verdict.json from the measured exits and nothing else "
     "(assert-m4-verdict-schema.py lints it). Expected runtime values come only from verification/source-oracles. "
@@ -94,6 +99,11 @@ def _body(card: dict[str, Any], receipt: dict[str, Any], worklist_sha: str, arti
         # receipt. Naming the COMPOSER here made the composer the parity step
         # -- which is exactly what v9's worker ran, and all it ran.
         exits.append({"check": "parity", "cmd": "python3 .hermes/skills/paved-road/paved-road-m4/scripts/run-parity.py --root ."})
+        # ADR-015: the harness generates the product acceptance tests, here,
+        # between the parity runner and the pre-verdict runner. The runner's
+        # m4-parity rebuild is what executes them, so a generator named after
+        # it would leave the floors reading a suite that never ran.
+        exits.append({"check": "generate_tests", "cmd": "python3 .hermes/skills/gates/generate-product-tests/scripts/generate-product-tests.py --root ."})
         exits.append({"check": "mta_rescan", "cmd": "python3 .hermes/skills/analysis/scan-with-mta/scripts/assert-mta-rescan.py ."})
         exits.append({"check": "pre_verdict", "cmd": "bash .hermes/skills/gates/check-release-readiness/scripts/run-m4-pre-verdict.sh /projects/modernized"})
         if (_KERNEL.parent / VERDICT_SCHEMA_SCRIPT).is_file():

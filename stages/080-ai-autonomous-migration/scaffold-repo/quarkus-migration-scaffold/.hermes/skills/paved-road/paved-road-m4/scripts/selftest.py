@@ -63,6 +63,21 @@ def main() -> int:
         return _fail("the parity step must KEEP the receipt and the run record: %s" % parity.get("keep"))
     if not (HERE / "run-parity.py").is_file():
         return _fail("the parity step names a runner that is not in this skill's scripts/")
+    # The generated product tests are generated after parity has run and
+    # BEFORE the pre-verdict runner: the rebuild that runner drives is what
+    # executes them, so a generator placed after it would leave the floors
+    # measuring a suite that never ran. They are also the only thing the
+    # m4-parity profile compiles, which is why the M3 loop never sees them.
+    gen = "generate-product-tests"
+    if gen not in ids:
+        return _fail("M4 must generate the product acceptance tests (ADR-015): %s" % ids)
+    if not (ids.index("parity") < ids.index(gen) < ids.index("pre-verdict")):
+        return _fail("%s runs after the parity runner and before the pre-verdict runner: %s" % (gen, ids))
+    gen_step = next(s for s in doc["steps"] if s["id"] == gen)
+    if gen_step.get("backing") != "skill" or gen_step.get("skill") != gen:
+        return _fail("the generator step is backed by the %s skill: %s" % (gen, gen_step))
+    if gen_step.get("keep") != ["evidence/tests/generated-manifest.json"]:
+        return _fail("the generator step must KEEP the manifest the floors consume: %s" % gen_step.get("keep"))
     if ids[-1] != "check-release-readiness":
         return _fail("the readiness lint must come last (it may agree or refuse, never author): %s" % ids)
 

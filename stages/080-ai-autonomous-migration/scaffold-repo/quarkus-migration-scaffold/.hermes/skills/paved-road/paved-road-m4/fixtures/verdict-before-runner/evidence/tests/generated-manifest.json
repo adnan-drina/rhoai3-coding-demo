@@ -1,0 +1,11 @@
+{
+ "out": "src/parity-test/java",
+ "pom_profile_sha256": "1b9f3c5e77a20000000000000000000000000000000000000000000000000000",
+ "resources": "src/parity-test/resources",
+ "schema": "rhoai3.generated-tests/v1",
+ "totals": {
+  "cases": 6,
+  "gaps": 0,
+  "scenarios": 6
+ }
+}

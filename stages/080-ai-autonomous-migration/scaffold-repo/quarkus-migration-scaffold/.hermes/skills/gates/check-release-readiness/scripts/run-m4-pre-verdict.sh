@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 # Architect 151334ZA (a): runner-invoked M4 pre-verdict.
+# Run the generated product parity tests under the harness-owned m4-parity
+# profile (ADR-015; nothing else compiles src/parity-test/java, and the M3
+# loop must never run them), then:
 # Snapshot test reports, parse surefire, refuse a pre-specified verdict
 # token, then assert-retrievable-tree, run pinned feeding gates (receipt
 # writers), assert-pinned-gates-ran, assert-g4-claim-consistency,
@@ -12,6 +15,9 @@
 # Env: M4_CARD_SKILLS — OBJECT when set (Architect 130758ZA dest-8
 # override). Default bound-gate list is used when unset.
 # Env: M4_CARD_BODY — M4 card body when kanban show is unavailable.
+# Env: M4_SKIP_PARITY_BUILD — skip the m4-parity rebuild (admission tests and
+# trees with no generated suite). The floors still measure the gap: a
+# generated case with no execution record covers no capability.
 # Env: FENCE_EVASION_LOGS — colon/newline list of work logs (complete set).
 # Env: FENCE_EVASION_LOG — single extra path; land-time only when no task id.
 # Env: HERMES_KANBAN_TASK — walk parent-chain logs. Never scan this card
@@ -37,6 +43,9 @@ TOOLCHAIN="${SCRIPT_DIR}/check-test-toolchain.py"
 DETECTOR="${SCRIPT_DIR}/../../assert-no-fence-evasion/scripts/assert-no-fence-evasion.py"
 G4="${SCRIPT_DIR}/assert-g4-claim-consistency.py"
 RESOLVE="${SCRIPT_DIR}/resolve-m4-work-logs.py"
+GENTESTS="${SCRIPT_DIR}/../../generate-product-tests/scripts/generate-product-tests.py"
+PARITY_PROFILE="m4-parity"
+PARITY_MARKER="rhoai3:generated-tests:begin"
 DEFAULT_SKILLS="admit-migration-plan,check-domain-parity,check-release-readiness,assert-pinned-gates-ran,assert-retrievable-tree"
 RECEIPT="${SCRIPT_DIR}/../../assert-pinned-gates-ran/scripts/write-gate-receipt.py"
 if [[ -n "${M4_CARD_SKILLS:-}" ]]; then
@@ -77,12 +86,53 @@ run_feed_gate() {
   return 0
 }
 
+# The generated product parity tests (ADR-015) live in src/parity-test/java
+# and NOTHING compiles them except the harness-owned m4-parity profile, so
+# this phase is the one that executes them: under src/test/java every M3
+# verify would run them and a parity finding would revert the step that was
+# being verified. The rebuild runs BEFORE the snapshot so the snapshot the
+# floors read (evidence/m4-pre-rebuild/test-reports) carries the generated
+# cases' surefire XML. It never cleans: `mvn test` only rewrites the reports
+# of the classes it re-runs, and dest-5's lesson was `mvn clean`.
+# Never fail-fast here: a red generated case must reach the snapshot, where
+# assert-surefire-results refuses it as the measurement it is.
+run_parity_build() {
+  if [[ -n "${M4_SKIP_PARITY_BUILD:-}" ]]; then
+    echo "run-m4-pre-verdict: M4_SKIP_PARITY_BUILD set — the generated parity tests did not run here" >&2
+    return 0
+  fi
+  if [[ ! -f "${PRODUCT_ROOT}/pom.xml" ]] || ! grep -q "${PARITY_MARKER}" "${PRODUCT_ROOT}/pom.xml"; then
+    echo "run-m4-pre-verdict: no ${PARITY_PROFILE} block in pom.xml — nothing compiles the generated parity tests; the product-test floor measures that gap" >&2
+    return 0
+  fi
+  if ! command -v mvn >/dev/null 2>&1; then
+    echo "run-m4-pre-verdict: mvn is not on PATH — the generated parity tests did not run here; the product-test floor measures that gap" >&2
+    return 0
+  fi
+  local rc=0
+  # Maven reads the tree's own .mvn/maven.config (-s .mvn/settings.xml); the
+  # profile is ADDED to whatever that configures, never instead of it.
+  (
+    export JAVA_HOME="${JAVA_HOME_21:-${JAVA_HOME:-}}"
+    [[ -n "${JAVA_HOME}" ]] && export PATH="${JAVA_HOME}/bin:${PATH}"
+    cd "${PRODUCT_ROOT}" && mvn -B "-P${PARITY_PROFILE}" test
+  ) || rc=$?
+  echo "run-m4-pre-verdict: mvn -P${PARITY_PROFILE} test rc=${rc} (the generated cases' reports are under target/; a red case is a parity finding the floors read, not a reason to stop before the snapshot)"
+  return 0
+}
+
+run_parity_build
 python3 "${SNAP}" "${PRODUCT_ROOT}"
 python3 "${SURE}" "${PRODUCT_ROOT}"
 python3 "${BODY}"
 run_gate assert-retrievable-tree python3 "${TREE}" "${PRODUCT_ROOT}"
 # Feeding gates before assert-pinned-gates-ran (Architect 091125ZA).
 run_feed_gate admit-migration-plan python3 "${ADMIT}" --root "${PRODUCT_ROOT}"
+# The generated tests are the harness's, and --check says the bytes on disk
+# and the m4-parity block in pom.xml are still the ones it wrote. A weakened
+# expectation, a deleted case or a deleted profile is a floor failure carried
+# into the verdict by its receipt, never an edit the phase accepts.
+run_feed_gate generate-product-tests python3 "${GENTESTS}" --root "${PRODUCT_ROOT}" --check
 run_feed_gate check-domain-parity python3 "${DOMAIN}" "${PRODUCT_ROOT}" --write-receipt
 run_feed_gate check-release-readiness python3 "${TOOLCHAIN}" "${PRODUCT_ROOT}" --write-receipt
 python3 "${PINNED}" "${PRODUCT_ROOT}" --skills "${SKILLS}"
@@ -104,4 +154,4 @@ if [[ "${scanned}" -lt 1 ]]; then
   echo "run-m4-pre-verdict: REFUSE silent skip of assert-no-fence-evasion — empty work-log set" >&2
   exit 2
 fi
-echo "OK: run-m4-pre-verdict (snapshot+surefire+card-body + assert-retrievable-tree + pinned feeding gates + assert-pinned-gates-ran + assert-g4-claim-consistency + assert-no-fence-evasion; scanned ${scanned} work log(s))"
+echo "OK: run-m4-pre-verdict (${PARITY_PROFILE} rebuild + snapshot+surefire+card-body + assert-retrievable-tree + pinned feeding gates (generate-product-tests --check included) + assert-pinned-gates-ran + assert-g4-claim-consistency + assert-no-fence-evasion; scanned ${scanned} work log(s))"

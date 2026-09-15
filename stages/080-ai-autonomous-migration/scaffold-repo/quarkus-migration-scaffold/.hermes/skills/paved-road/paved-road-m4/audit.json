@@ -24,6 +24,14 @@
     },
     {
       "backing": "skill",
+      "id": "generate-product-tests",
+      "keep": [
+        "evidence/tests/generated-manifest.json"
+      ],
+      "needle": "generate-product-tests"
+    },
+    {
+      "backing": "skill",
       "id": "check-domain-parity",
       "keep": [],
       "needle": "check-domain-parity"

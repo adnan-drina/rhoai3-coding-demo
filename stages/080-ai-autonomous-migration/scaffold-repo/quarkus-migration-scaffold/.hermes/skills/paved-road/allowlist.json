@@ -16,7 +16,6 @@
     "assert-retrievable-tree",
     "assert-pinned-gates-ran",
     "assert-no-fence-evasion",
-    "derive-story-oracles",
-    "generate-product-tests"
+    "derive-story-oracles"
   ]
 }

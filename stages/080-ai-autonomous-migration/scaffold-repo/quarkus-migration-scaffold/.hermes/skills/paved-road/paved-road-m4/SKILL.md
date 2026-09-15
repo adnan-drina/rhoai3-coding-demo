@@ -3,7 +3,8 @@ name: paved-road-m4
 description: >
   Pin only this on the M4 VERIFY card (K4 mints it when the work list
   reaches empty). Index for the closing phase: record what the legacy
-  system does, measure the destination against it, run the fail-closed
+  system does, measure the destination against it, generate the product
+  acceptance tests from the source captures, run the fail-closed
   pre-verdict runner, compose the verdict from measured exit codes, lint
   it. The verdict is composed, never chosen: a non-empty failed_floors is
   a REFUSE. Never for M1, M2, M3, or story implementation.
@@ -19,7 +20,7 @@ metadata:
     category: paved-road
     kind: guidance
 ---
-# Paved road: M4 VERIFY (oracles → parity → pre-verdict → verdict → lint)
+# Paved road: M4 VERIFY (oracles → parity → generate → pre-verdict → verdict → lint)
 
 `steps.json` is the contract; `audit.json` is generated from it
 (`python3 .hermes/lib/paved_road.py generate --steps steps.json --out audit.json`).
@@ -62,23 +63,50 @@ source did. Everything here is measurement. Nothing here decides.
 
    The runner exits 0 whenever every child ran and the receipt was composed.
    A receipt verdict of `FAIL` or `INCONCLUSIVE` is the measurement, not a
-   runner failure: it is carried into the verdict at step 5. The runner exits
+   runner failure: it is carried into the verdict at step 6. The runner exits
    1 only when a child could not run — no corpus, a destination that never
    became ready, a child that recorded no verdict, a composer that refused to
    compose — and that is a `kanban_block` kind=needs_input, not a verdict.
-3. `skill_view check-domain-parity` → run its evaluators. G-1 to G-4
+3. `skill_view generate-product-tests` then
+   `python3 .hermes/skills/gates/generate-product-tests/scripts/generate-product-tests.py --root .`
+   — the HARNESS writes the product acceptance tests (ADR-015): one
+   `@QuarkusTest` case per qualified scenario, asserting the status, canonical
+   body, required headers and declared effects the SOURCE was recorded
+   producing. You never author one of these tests and never weaken what one
+   asserts; a scenario the source did not demonstrate is a named gap in the
+   manifest, not a silent omission. KEEP
+   `evidence/tests/generated-manifest.json`.
+
+   The generated sources go to `src/parity-test/java` (+
+   `src/parity-test/resources`), and nothing compiles them except the
+   `m4-parity` profile this producer writes into `pom.xml` between its own
+   comment markers. That is the phase rule made mechanical: under
+   `src/test/java` every M3 verify would run these cases, a parity finding
+   would enter the loop's own measure, and it would revert the step being
+   verified for a reason that has nothing to do with it. Parity is measured
+   once, here. The pom edit is harness-owned — recorded in the manifest,
+   printed, and not committed by this step.
+
+   It runs **after** step 2 and **before** step 5: the rebuild step 5 drives
+   (`-Pm4-parity`) is what executes the generated cases and leaves their
+   surefire XML where the floors read it.
+4. `skill_view check-domain-parity` → run its evaluators. G-1 to G-4
    measured against the referent, each writing its own verdict. A REFUSE
    is a real outcome; the next step is to report it, not to soften it.
-4. `bash .hermes/skills/gates/check-release-readiness/scripts/run-m4-pre-verdict.sh /projects/modernized`
-   — the fail-closed runner: it snapshots the test reports **before any
-   rebuild**, parses surefire, refuses a card body that pre-specifies a
+5. `bash .hermes/skills/gates/check-release-readiness/scripts/run-m4-pre-verdict.sh /projects/modernized`
+   — the fail-closed runner: it first runs the generated parity suite
+   (`mvn -Pm4-parity test`, no `clean`: that profile is the only thing that
+   compiles `src/parity-test/java`), snapshots the test reports so a later
+   rebuild cannot hide them, parses surefire, refuses a card body that pre-specifies a
    verdict, asserts the tree is retrievable, runs the pinned feeding
-   gates so their receipts exist, then asserts that every pinned gate
+   gates so their receipts exist — `generate-product-tests --check` among
+   them, so the verdict cites tests the harness still owns byte for byte,
+   profile block included — then asserts that every pinned gate
    ran, that the G-4 claims are consistent, and that the fence was not
    evaded. KEEP `evidence/receipts/gates`. The feeding gates must run
    before the receipts are asserted, or the floor refuses on an empty
    directory.
-5. `skill_view compose-m4-verdict` → author
+6. `skill_view compose-m4-verdict` → author
    `evidence/verdicts/m4-verdict.json` from the measured exit codes and
    nothing else, with an explicit `failed_floors`. A non-empty
    `failed_floors` makes the verdict `REFUSE`. `idle: true` is a legal
@@ -87,11 +115,11 @@ source did. Everything here is measurement. Nothing here decides.
    and carry its counts in the verdict's `coverage_account`: every source an
    accepted ADR retired gets a row naming its replacement scenario and its
    remaining gap.
-6. `skill_view check-release-readiness` → lint what you just wrote: the
+7. `skill_view check-release-readiness` → lint what you just wrote: the
    verdict against its schema, the floor receipts, the claim tokens, and the
    coverage account against `decisions.yaml` and the parity receipt. This
    step can agree or refuse. It cannot change the verdict or the account.
-7. Terminator: `kanban_request_review reviewer=reviewer`, then end the turn.
+8. Terminator: `kanban_request_review reviewer=reviewer`, then end the turn.
    That is the terminator for **every** outcome the phase can reach,
    `REFUSE` included: a REFUSE verdict is what M4 measured, so the card is
    complete work and goes to the reviewer. Never `kanban_complete` — K2
@@ -142,6 +170,10 @@ python3 .hermes/skills/migration/fix-until-green/scripts/resume-after-m4.py --ro
 - A verdict written before the pre-verdict runner (the runner is what
   makes the receipts the verdict cites exist).
 - An expected runtime value that is not in an oracle.
+- A generated product test whose bytes moved, an unlisted file in a generated
+  package, or a `pom.xml` whose `m4-parity` block is edited or gone: the
+  harness owns those files, and a suite that nothing compiles is a suite that
+  never ran.
 - A parity phase with no `verification/parity/_run.json`: the receipt alone
   cannot say which comparisons ran, so a receipt composed before them reads
   exactly like one composed after them.
@@ -153,7 +185,7 @@ python3 .hermes/skills/migration/fix-until-green/scripts/resume-after-m4.py --ro
 ## Operator
 
 A REFUSE verdict is the run's honest result, not a failure of the loop.
-`resume-after-m4.py` (step 7) is what consumes it: the floors a card can
+`resume-after-m4.py` (step 8) is what consumes it: the floors a card can
 repair become the next M3 card, and the floors a decision owns land in
 `verification/loop/release-blockers.json` with their ADR and seat. The
 Operator reads that file, removes the cause (a harness capability under
@@ -166,7 +198,7 @@ answer: the same measurement on the same tree returns the same verdict.
 
 `python3 scripts/selftest.py` (golden only, never on a card): steps.json ↔
 audit.json sync, the kind rules (oracles first, the parity runner then the
-pre-verdict runner as the only native steps, the pre-verdict runner before
+pre-verdict runner as the only native steps, the generator between them, the pre-verdict runner before
 the producer, `compose-m4-verdict` the only producer, lint after it), the
 fixture PASS/REFUSE set, and the coverage lint.
 `python3 scripts/run-parity.test.py` exercises the batch runner end to end

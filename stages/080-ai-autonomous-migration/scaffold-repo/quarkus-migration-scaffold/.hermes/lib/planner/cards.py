@@ -102,6 +102,8 @@ def _close_prose(body: dict[str, Any]) -> str:
     for e in body.get("exit_criteria") or []:
         if not isinstance(e, dict) or not e.get("cmd"):
             continue
+        if str(e.get("check")) == "generate_tests":
+            lines.append("    skill_view generate-product-tests   # ADR-015: the harness writes the product acceptance tests; you never author or weaken one")
         if str(e.get("check")) == "verdict_schema":
             lines.append("    skill_view compose-m4-verdict   # author evidence/verdicts/m4-verdict.json from the exits above")
         lines.append("    %s" % e["cmd"])
@@ -112,7 +114,11 @@ def _close_prose(body: dict[str, Any]) -> str:
         "Then read `evidence/verdicts/m4-verdict.json`: it is COMPOSED from the exit codes above and nothing else. "
         "`REFUSE` is a verdict — the honest result of a measurement — not a failure to close, and not something to "
         "re-run the phase hoping to change. Parity is the batch runner, once: there is no per-entry-point loop for "
-        "you to drive, and `verification/parity/_run.json` records what actually ran.",
+        "you to drive, and `verification/parity/_run.json` records what actually ran. "
+        "The generated product tests are the harness's (`evidence/tests/generated-manifest.json` lists every one of "
+        "them with its digest): they are written to `src/parity-test/java`, the pre-verdict runner is what compiles "
+        "and runs them (`-Pm4-parity`), and the release floor refuses when a byte of one moved. A generated case "
+        "that fails is a parity finding for the destination, never an expectation to edit.",
         "Terminator: `kanban_request_review` with `reviewer=reviewer`, once the verdict file exists — for EVERY "
         "verdict it can hold. Never `kanban_complete` (K2 refuses it on this card). Never `kanban_block` for a "
         "REFUSE verdict; block only when the phase could not measure at all (no destination, no database, no "

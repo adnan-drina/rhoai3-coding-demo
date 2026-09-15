@@ -19,6 +19,15 @@
       "note": "The batch parity runner: one command for the whole phase, in this order -- every scenario the corpus declares in corpus order with the reset command, then every admitted entry point that has a captured http read oracle, then compose-parity-receipt.py last. It starts the packaged destination against the decided datasource unless --dest-url names one someone else is running, and stops what it started. Never a per-entry-point loop driven by the worker: measured on v9 (t_32c82390) that loop ran the composer first and never compared a single entry point, and 24 of 34 ended 'no parity record'. The runner exits 0 whenever every child ran and the receipt was composed; a receipt verdict of FAIL or INCONCLUSIVE is the measurement, not a runner failure, and it is carried into the verdict by compose-m4-verdict."
     },
     {
+      "id": "generate-product-tests",
+      "backing": "skill",
+      "skill": "generate-product-tests",
+      "keep": [
+        "evidence/tests/generated-manifest.json"
+      ],
+      "note": "The harness generates the product acceptance tests from the M1 captures (ADR-015): one @QuarkusTest case per qualified scenario, asserting the status, canonical body, required headers and declared effects the SOURCE was recorded producing. A worker never authors or weakens one of these expectations, and an unqualified scenario is a named gap in evidence/tests/generated-manifest.json rather than a silent omission. It runs HERE, after the parity runner and before the pre-verdict runner, because the rebuild the runner drives is what executes the generated cases and leaves their surefire XML for the floors. The generated sources go to src/parity-test/java (+ src/parity-test/resources), which nothing compiles except the m4-parity profile this producer writes into pom.xml: under src/test/java every M3 verify would run them, a parity finding would enter the loop's own measure, and it would revert the step that was being verified for a reason that has nothing to do with it. The pom edit is harness-owned -- it is recorded in the manifest and printed, and this step does not commit it."
+    },
+    {
       "id": "check-domain-parity",
       "backing": "skill",
       "skill": "check-domain-parity",
