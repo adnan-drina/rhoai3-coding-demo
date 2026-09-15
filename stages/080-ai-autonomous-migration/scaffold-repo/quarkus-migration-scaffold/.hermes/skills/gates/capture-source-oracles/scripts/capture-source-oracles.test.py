@@ -59,7 +59,247 @@ def _run(argv: list[str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(argv, text=True, capture_output=True)
 
 
+# --------------------------------------------------------------------------
+# the security mode of a capture (ADR-014)
+# --------------------------------------------------------------------------
+class Guarded(BaseHTTPRequestHandler):
+    """A source that answers only an authenticated read -- the enabled mode's
+    behaviour, which is what makes it a different capture from the disabled
+    one's."""
+
+    expected = ""
+
+    def do_GET(self):  # noqa: N802
+        if self.headers.get("Authorization") != type(self).expected:
+            body = b'{"error":"unauthorized"}'
+            self.send_response(401)
+        else:
+            body = b'{"owners":[]}'
+            self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *a):  # noqa: D102
+        return
+
+
+# Every key the capture receipt and a scenario capture carried BEFORE modes
+# were bound. The disabled mode must still produce exactly these, so the
+# regression control is "what is left after removing the new keys", not a
+# reading of the new code.
+_LEGACY_RECEIPT_KEYS = {"schema", "producer", "at", "status", "reason", "evidence_bundle_sha256", "corpus_sha256",
+                        "receipt_sha256", "receipt_note", "captured", "requested", "scenarios", "reads", "source"}
+_LEGACY_CAPTURE_KEYS = {"schema", "scenario", "entry_point", "receipt_sha256", "evidence_bundle_sha256", "corpus_sha256",
+                        "source", "initial_state", "normalization", "asserted_headers_extra", "reset_before", "status",
+                        "reason", "request", "response", "before", "effects"}
+_NEW_RECEIPT_KEYS = {"security_mode", "source_config", "credential_refs", "reads_note"}
+_NEW_CAPTURE_KEYS = {"security_mode"}
+
+
+def _load_producer():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("capture_scenarios_mode", HERE / "capture-source-scenarios.py")
+    producer = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(producer)
+    return producer
+
+
+def _mode_root(td: Path, name: str, scenario: dict) -> tuple[Path, str]:
+    """A tree the scenario producer can run against: admitted, frozen source
+    receipt, and a one-scenario corpus."""
+    from planner.canonical import write_canonical
+    from planner.paths import producer_receipt
+    root = specimens.build_dest(td / name, specimens.specimen("http"), decisions=specimens.admitted_decisions())
+    specimens.prepare_loop(root)
+    pipeline.admit(root)
+    frozen = root / "frozen"
+    frozen.mkdir(exist_ok=True)
+    (frozen / "pom.xml").write_text("<project/>", encoding="utf-8")
+    write_canonical(producer_receipt(root, "freeze"), {"analysis_copy": str(frozen), "source_digest": "fixture"})
+    ep = sorted(str(e["id"]) for e in load_json(root / "evidence" / "planning" / "evidence-bundle.json")["entry_points"])[0]
+    sc = dict(scenario, entry_point=ep)
+    write_canonical(root / "verification" / "scenarios" / "corpus.json", {
+        "schema": "rhoai3.scenario-corpus/v1", "approved_by": "operator:test",
+        "initial_state": {"reset": "restart the service", "dataset": "seeded"}, "scenarios": [sc]})
+    return root, ep
+
+
+def _fake_runtime(base_url: str):
+    """The producer's runtime, without maven and a JVM: it records the
+    configuration it was constructed with and answers at ``base_url``."""
+    class FakeRuntime:
+        instances: list = []
+
+        def __init__(self, copy, port, base_path, timeout, java, mvn, log_dir, source_config=None):
+            self.source_config = dict(source_config or {})
+            self.base_url = base_url
+            self.jar = Path("fixture.jar")
+            self.starts = 0
+            FakeRuntime.instances.append(self)
+
+        def start(self) -> str:
+            self.starts += 1
+            return ""
+
+        def stop(self) -> None:
+            return None
+
+    FakeRuntime.instances = []
+    return FakeRuntime
+
+
+def _all_bytes(where: Path) -> bytes:
+    out = b""
+    for p in sorted(where.rglob("*")):
+        if p.is_file():
+            out += p.read_bytes()
+    return out
+
+
+def _security_mode_capture_case() -> int:
+    """The enabled-mode capture: a credential by REFERENCE, a recorded mode,
+    and a directory of its own.
+
+    ADR-014 requires the frozen source to be captured separately with its
+    security switch disabled and enabled, with mode identity preventing
+    cross-mode reuse, and evidence that stores credential REFERENCES and never
+    a password or an Authorization value. v9's captures had neither: taken at
+    the source's default setting, carrying no mode at all. The controls are
+    that the capture authenticates (the stub answers 401 without it), that the
+    secret appears NOWHERE in the tree it wrote, that a credential passed as
+    configuration is refused before the source starts, and that the disabled
+    mode's paths and records are what they were."""
+    import base64
+    import contextlib
+    import io
+    import os
+    from unittest.mock import patch
+    from planner.canonical import canonical_bytes, load_json as _load, sha256_bytes
+    from _scenarios import request_of, scenario_oracles_dir, scenario_slug
+
+    producer = _load_producer()
+    secret = "sup3r-s3cret-passw0rd"
+    user = "an-identity-the-policy-allows"
+    ref = "TEST_SOURCE_CREDENTIAL"
+    token = base64.b64encode(("%s:%s" % (user, secret)).encode("utf-8")).decode("ascii")
+    guarded = type("G", (Guarded,), {"expected": "Basic %s" % token})
+    srv = HTTPServer(("127.0.0.1", 0), guarded)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    base_url = "http://127.0.0.1:%d" % srv.server_address[1]
+    kept = os.environ.get(ref)
+    os.environ[ref] = "%s:%s" % (user, secret)
+    try:
+        with tempfile.TemporaryDirectory(prefix="secmode-capture-") as tmp:
+            t = Path(tmp).resolve()
+            authenticated = {"id": "sc:read-owners", "method": "GET", "path": "/api/owners", "body_absent": True,
+                             "reset_before": False, "effects": [], "normalization": [],
+                             "identity": {"kind": "basic", "credential_ref": ref}}
+            root, ep = _mode_root(t, "enabled", authenticated)
+            fake = _fake_runtime(base_url)
+            with patch.object(producer, "SourceRuntime", fake):
+                # no --no-reads: the enabled mode skips the reads on its own,
+                # because the read oracles are not mode-scoped
+                rc = producer.main(["--root", str(root), "--security-mode", "enabled",
+                                    "--source-config", "acme.security.enable=true",
+                                    "--credential-ref", ref])
+            if rc != 0:
+                return _fail("an enabled-mode capture with a declared credential must capture: rc=%s" % rc)
+            if not fake.instances or fake.instances[0].source_config != {"acme.security.enable": "true"}:
+                return _fail("the source is started with the configuration the caller named: %s"
+                             % (fake.instances[0].source_config if fake.instances else None))
+            # ... and the real runtime hands it to the process it starts,
+            # through both channels it already configures the source with
+            started: list = []
+            real = producer.SourceRuntime(root, 9966, "", 1, "java", "mvn", root, source_config={"acme.security.enable": "true"})
+            real.jar = Path("app.jar")
+            with patch.object(producer.subprocess, "Popen", lambda argv, **kw: started.append(argv) or type("P", (), {"poll": lambda self: None, "pid": 0})()):
+                with patch.object(producer, "_wait_ready", lambda *a, **k: (True, "")):
+                    real.start()
+            argv = started[0] if started else []
+            if "-Dacme.security.enable=true" not in argv or "--acme.security.enable=true" not in argv:
+                return _fail("the runtime starts the source with the named configuration: %s" % argv)
+            out = root / scenario_oracles_dir("enabled") / (scenario_slug("sc:read-owners") + ".json")
+            if not out.is_file():
+                return _fail("the enabled mode writes into its own directory: %s" % scenario_oracles_dir("enabled"))
+            if (root / scenario_oracles_dir("disabled")).exists():
+                return _fail("an enabled-mode capture writes nothing into the disabled mode's directory")
+            cap = _load(out)
+            if cap["status"] != "CAPTURED" or cap["response"]["status"] != 200:
+                return _fail("the capture must be authenticated (the source answers 401 otherwise): %s %s"
+                             % (cap["status"], cap.get("response")))
+            if cap.get("security_mode") != "enabled":
+                return _fail("every capture file says which mode it is of: %s" % cap.get("security_mode"))
+            if cap["request"]["identity"] != {"kind": "basic", "user_env": "", "password_env": "", "credential_ref": ref}:
+                return _fail("the request records the credential REFERENCE: %s" % cap["request"]["identity"])
+            receipt = _load(root / scenario_oracles_dir("enabled") / "_capture.json")
+            if (receipt.get("security_mode") != "enabled" or receipt.get("source_config") != {"acme.security.enable": "true"}
+                    or receipt.get("credential_refs") != [ref]):
+                return _fail("the capture receipt records the mode, the configuration and the references: %s"
+                             % {k: receipt.get(k) for k in ("security_mode", "source_config", "credential_refs")})
+            if receipt.get("reads") is not False or "not mode-scoped" not in str(receipt.get("reads_note") or ""):
+                return _fail("the read oracles are not mode-scoped, so the receipt says they were not captured: %s" % receipt.get("reads_note"))
+            # the control ADR-014 names: the secret is not in the evidence
+            written = _all_bytes(root / "verification")
+            for forbidden, what in ((secret, "the password"), (token, "the Authorization value"), (user, "the account name")):
+                if forbidden.encode("utf-8") in written:
+                    return _fail("%s was written into the evidence; only the reference may be" % what)
+            if ref.encode("utf-8") not in written:
+                return _fail("the reference itself must be recorded, or nobody can tell which credential was used")
+
+            # a credential passed as CONFIGURATION would be recorded verbatim
+            root2, _ = _mode_root(t, "conflict", authenticated)
+            errors = io.StringIO()
+            with patch.object(producer, "SourceRuntime", side_effect=AssertionError("the source must not start")):
+                with contextlib.redirect_stderr(errors):
+                    rc = producer.main(["--root", str(root2), "--security-mode", "enabled",
+                                        "--source-config", "acme.datasource.password=%s" % secret,
+                                        "--credential-ref", ref, "--no-reads"])
+            text = errors.getvalue()
+            if rc != 1 or "FAIL: SOURCE_SCENARIOS" not in text or "acme.datasource.password" not in text:
+                return _fail("a --source-config value equal to a credential must refuse and name the key: rc=%s %s" % (rc, text))
+            if secret in text:
+                return _fail("the refusal must name the key, never the value")
+
+            # ... and the disabled mode is exactly what it was
+            anonymous = {"id": "sc:read-owners", "method": "GET", "path": "/api/owners", "body_absent": True,
+                         "reset_before": False, "effects": [], "normalization": []}
+            root3, _ = _mode_root(t, "disabled", anonymous)
+            with patch.object(producer, "SourceRuntime", _fake_runtime(base_url)):
+                rc = producer.main(["--root", str(root3), "--no-reads"])
+            legacy_out = root3 / "verification" / "source-oracles" / "scenarios" / (scenario_slug("sc:read-owners") + ".json")
+            if rc != 0 or not legacy_out.is_file():
+                return _fail("the disabled mode keeps the path it has always had: rc=%s" % rc)
+            dcap = _load(legacy_out)
+            drec = _load(root3 / "verification" / "source-oracles" / "scenarios" / "_capture.json")
+            if set(dcap) - _NEW_CAPTURE_KEYS != _LEGACY_CAPTURE_KEYS:
+                return _fail("a disabled-mode capture gained or lost a key: %s" % sorted(set(dcap) - _NEW_CAPTURE_KEYS ^ _LEGACY_CAPTURE_KEYS))
+            if set(drec) - _NEW_RECEIPT_KEYS != _LEGACY_RECEIPT_KEYS:
+                return _fail("the disabled-mode receipt gained or lost a key: %s" % sorted(set(drec) - _NEW_RECEIPT_KEYS ^ _LEGACY_RECEIPT_KEYS))
+            if drec["security_mode"] != "disabled" or drec["source_config"] != {} or drec["credential_refs"] != []:
+                return _fail("the default mode is recorded as itself: %s" % {k: drec.get(k) for k in ("security_mode", "source_config", "credential_refs")})
+            # the request digest of an identity-less scenario has not moved:
+            # recomputed the way it was computed before credential_ref existed
+            sc = _load(root3 / "verification" / "scenarios" / "corpus.json")["scenarios"][0]
+            before = sha256_bytes(canonical_bytes({
+                "method": "GET", "path": "/api/owners", "headers": {},
+                "identity": {"kind": "none", "user_env": "", "password_env": ""},
+                "body_sha256": "", "body_absent": True}))
+            if request_of(root3, sc)["request_sha256"] != before or dcap["request"]["request_sha256"] != before:
+                return _fail("adding credential_ref must not move the digest of a scenario that names none")
+    finally:
+        srv.shutdown()
+        if kept is None:
+            os.environ.pop(ref, None)
+        else:
+            os.environ[ref] = kept
+    return 0
+
+
 def main() -> int:
+    if _security_mode_capture_case():
+        return 1
     with tempfile.TemporaryDirectory(prefix="oracle-") as tmp:
         t = Path(tmp).resolve()
         root = specimens.build_dest(t / "dest", specimens.specimen("scheduled"), decisions=specimens.admitted_decisions("scheduled"))
@@ -202,7 +442,10 @@ def main() -> int:
         finally:
             for s in (src, same, diff):
                 s.shutdown()
-    print("OK: capture-source-oracles (HTTP capture/parity PASS+FAIL; non-idempotent INCONCLUSIVE; non-HTTP observations; bundle binding: an oracle from another bundle or with no bundle digest is INCONCLUSIVE, a capture under a stale receipt is CAPTURED and usable, the verdict stays receipt-bound; parity receipt refuses)")
+    print("OK: capture-source-oracles (HTTP capture/parity PASS+FAIL; non-idempotent INCONCLUSIVE; non-HTTP observations; bundle binding: an oracle from another bundle or with no bundle digest is INCONCLUSIVE, a capture under a stale receipt is CAPTURED and usable, the verdict stays receipt-bound; parity receipt refuses; "
+          "an enabled-mode scenario capture authenticates from a declared credential REFERENCE, records the reference and the mode and "
+          "never the password, the Authorization value or the account, writes into its own directory, refuses a --source-config value "
+          "equal to a credential by naming the key, and leaves the disabled mode's paths, keys and request digests untouched)")
     return 0
 
 

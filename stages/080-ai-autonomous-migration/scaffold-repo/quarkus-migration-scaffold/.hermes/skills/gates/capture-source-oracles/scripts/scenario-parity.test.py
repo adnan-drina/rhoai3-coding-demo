@@ -23,9 +23,12 @@ HERE = Path(__file__).resolve().parent
 CAPTURE = HERE / "capture-source-oracles.py"
 COMPARE = HERE / "compare-scenario-parity.py"
 RECEIPT = HERE / "compose-parity-receipt.py"
+QUALIFY = HERE / "qualify-source-captures.py"
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parents[3] / "lib"))
-from _scenarios import load_corpus, SCENARIO_ORACLES, SCENARIO_PARITY, corpus_digest, request_of, scenario_slug  # noqa: E402
+from _scenarios import (load_corpus, SCENARIO_ORACLES, SCENARIO_PARITY, capture_receipt_path, corpus_digest,  # noqa: E402
+                        parity_receipt_path, qualification_path, request_of, scenario_oracles_dir,
+                        scenario_parity_dir, scenario_slug)
 from planner import pipeline, specimens  # noqa: E402
 from planner.canonical import load_json, write_canonical  # noqa: E402
 
@@ -484,6 +487,118 @@ def _effectless_reset_case() -> int:
     return 0
 
 
+def _security_mode_case() -> int:
+    """The security mode binds qualification, comparison and the receipt.
+
+    ADR-014: the frozen source is captured once with its security switch
+    disabled and once with it enabled, and "mode/configuration identity must
+    prevent cross-mode receipt reuse". The control here is that reuse made
+    concrete -- the disabled-mode captures copied into the enabled-mode
+    directory, which is what a hurried hand would do. Every consumer of that
+    directory must refuse it: the qualification gate, the comparator (a
+    destination started with security enabled graded against anonymous
+    expectations is the defect ADR-014 exists for) and the receipt composer.
+    The mode also has to be READABLE afterwards, so it is written into the
+    qualification document and the receipt an M4 verdict quotes."""
+    import shutil
+    corpus_doc = {
+        "schema": "rhoai3.scenario-corpus/v1", "approved_by": "operator:test",
+        "initial_state": {"reset": "restart the service", "dataset": "one owner"},
+        "scenarios": [{"id": "sc:list-owners", "entry_point": "", "method": "GET", "path": "/api/owners",
+                       "body_absent": True, "reset_before": True, "effects": [], "normalization": []}],
+    }
+    with tempfile.TemporaryDirectory(prefix="secmode-") as td:
+        t = Path(td)
+        root = specimens.build_dest(t / "dest", specimens.specimen("http"), decisions=specimens.admitted_decisions())
+        specimens.prepare_loop(root)
+        rec = pipeline.admit(root)
+        if rec["status"] != "ADMITTED":
+            return _fail("security-mode fixture not admitted: %s" % rec["reasons"][:3])
+        receipt_digest = load_json(root / "evidence/planning/admission-receipt.json")["receipt_digest"]
+        ep = sorted(str(e["id"]) for e in load_json(root / "evidence/planning/evidence-bundle.json")["entry_points"])[0]
+        corpus_doc["scenarios"][0]["entry_point"] = ep
+        write_canonical(root / "verification" / "scenarios" / "corpus.json", corpus_doc)
+        corpus_sha = corpus_digest(load_json(root / "verification" / "scenarios" / "corpus.json"))
+        from planner.canonical import digest as _digest
+        bundle_sha = _digest(load_json(root / "evidence" / "planning" / "evidence-bundle.json"))
+        req = request_of(root, corpus_doc["scenarios"][0])
+
+        # the disabled-mode capture, in the directory that mode has always used
+        Service.owners = {"7": {"id": 7, "lastName": "Franklin"}}
+        Service.lie_on_delete = False
+        src, src_url = serve()
+        from _oracle_common import http_observe
+        listed = http_observe(src_url, "GET", "/api/owners")
+        src.shutdown()
+        write_canonical(root / scenario_oracles_dir("disabled") / (scenario_slug("sc:list-owners") + ".json"), {
+            "schema": "rhoai3.source-scenario/v1", "scenario": "sc:list-owners", "entry_point": ep,
+            "receipt_sha256": receipt_digest, "corpus_sha256": corpus_sha, "status": "CAPTURED", "reason": "",
+            "evidence_bundle_sha256": bundle_sha, "source": {"base_url": src_url},
+            "initial_state": corpus_doc["initial_state"], "normalization": [], "reset_before": True,
+            "security_mode": "disabled",
+            "request": {"request_sha256": req["request_sha256"]},
+            "response": {"status": listed["status"], "body_kind": listed["body_kind"],
+                         "body_sha256": listed["body_sha256"], "headers": listed["headers"]},
+            "before": [], "effects": [],
+        })
+        write_canonical(root / capture_receipt_path("disabled"), {
+            "schema": "rhoai3.source-capture/v1", "producer": "capture-source-scenarios.py", "at": "2026-09-15T00:00:00Z",
+            "status": "ok", "reason": "", "evidence_bundle_sha256": bundle_sha, "corpus_sha256": corpus_sha,
+            "receipt_sha256": receipt_digest, "receipt_note": "", "security_mode": "disabled", "source_config": {},
+            "credential_refs": [], "captured": 1, "requested": 1, "scenarios": ["sc:list-owners"], "reads": False,
+            "source": {"analysis_copy_digest": "fixture", "starts": 1}})
+
+        # the qualification names the mode it judged
+        p = subprocess.run([sys.executable, str(QUALIFY), "--root", str(root)], text=True, capture_output=True)
+        qdoc = load_json(root / qualification_path("disabled"))
+        if p.returncode != 0 or qdoc.get("security_mode") != "disabled":
+            return _fail("the qualification must record the mode it judged: rc=%s %s" % (p.returncode, qdoc.get("security_mode")))
+
+        # a comparison in the default mode still works, and says which mode it was
+        Service.owners = {"7": {"id": 7, "lastName": "Franklin"}}
+        dest, dest_url = serve()
+        p = subprocess.run([sys.executable, str(COMPARE), "--root", str(root), "--scenario", "sc:list-owners",
+                            "--dest-url", dest_url, "--no-reset"], text=True, capture_output=True)
+        v = load_json(root / scenario_parity_dir("disabled") / (scenario_slug("sc:list-owners") + ".json"))
+        if p.returncode != 0 or v["verdict"] != "PASS" or v.get("security_mode") != "disabled":
+            return _fail("the default mode keeps its paths and names itself: rc=%s %s %s"
+                         % (p.returncode, v.get("verdict"), v.get("security_mode")))
+
+        # the receipt of that mode records it, so an M4 verdict can name the
+        # mode it judged rather than leaving a reader to guess
+        subprocess.run([sys.executable, str(RECEIPT), "--root", str(root)], text=True, capture_output=True)
+        rdoc = load_json(root / parity_receipt_path("disabled"))
+        if rdoc.get("security_mode") != "disabled":
+            return _fail("the parity receipt must record the mode it is of: %s" % rdoc.get("security_mode"))
+
+        # cross-mode REUSE: the disabled captures copied into the enabled
+        # directory. Every consumer refuses; none of them re-judges.
+        shutil.copytree(str(root / scenario_oracles_dir("disabled")), str(root / scenario_oracles_dir("enabled")))
+        p = subprocess.run([sys.executable, str(COMPARE), "--root", str(root), "--scenario", "sc:list-owners",
+                            "--dest-url", dest_url, "--no-reset", "--security-mode", "enabled"], text=True, capture_output=True)
+        if p.returncode != 1 or "REFUSE: SCENARIO_PARITY mode mismatch" not in p.stderr:
+            return _fail("a capture from another mode must refuse the comparison: rc=%s %s" % (p.returncode, p.stderr[-300:]))
+        ev = load_json(root / scenario_parity_dir("enabled") / (scenario_slug("sc:list-owners") + ".json"))
+        if ev["verdict"] != "INCONCLUSIVE" or ev.get("captured_security_mode") != "disabled" or ev.get("security_mode") != "enabled":
+            return _fail("the refused comparison records both modes: %s" % {k: ev.get(k) for k in ("verdict", "security_mode", "captured_security_mode")})
+        dest.shutdown()
+        p = subprocess.run([sys.executable, str(QUALIFY), "--root", str(root), "--security-mode", "enabled"], text=True, capture_output=True)
+        if p.returncode != 1 or "REFUSE: QUALIFY_CAPTURES mode mismatch" not in p.stderr:
+            return _fail("the qualification gate must refuse another mode's captures: rc=%s %s" % (p.returncode, p.stderr[-300:]))
+        # the copy carried the disabled mode's qualification along with it;
+        # the refusal must leave it exactly as it found it rather than
+        # re-stamping another mode's verdicts as this one's
+        copied = load_json(root / qualification_path("enabled"))
+        if copied.get("security_mode") != "disabled":
+            return _fail("a refusal to judge rewrites nothing: %s" % copied.get("security_mode"))
+        p = subprocess.run([sys.executable, str(RECEIPT), "--root", str(root), "--security-mode", "enabled"], text=True, capture_output=True)
+        if p.returncode != 1 or "REFUSE: PARITY_RECEIPT mode mismatch" not in p.stderr:
+            return _fail("the receipt composer must refuse to mix modes: rc=%s %s" % (p.returncode, p.stderr[-300:]))
+        if (root / parity_receipt_path("enabled")).exists():
+            return _fail("a refused receipt is not written")
+    return 0
+
+
 def _missing_exposed_model_case() -> int:
     """Missing or unreadable exposure evidence must refuse before source setup."""
     import contextlib
@@ -581,7 +696,7 @@ def verify_gaps(root: Path) -> list[str]:
 
 
 def main() -> int:
-    if _no_corpus_case() or _missing_exposed_model_case() or _stale_receipt_case():
+    if _no_corpus_case() or _missing_exposed_model_case() or _stale_receipt_case() or _security_mode_case():
         return 1
     if _effectless_reset_case():
         return 1
@@ -778,7 +893,10 @@ def main() -> int:
         dest4.shutdown()
     print("OK: scenario-parity selftest (the recorded body and headers are replayed; a recorded Location header that the destination omits FAILs, and a 201 against a capture with no header map is INCONCLUSIVE; the capture is the first response (redirects not followed) and only the declared origins are mapped in Location; a preflight is not a write, carries Origin + Access-Control-Request-Method and no credentials; CORS coverage is per policy and the source's policies come from M1's model; the headers the source exposes are asserted too, and full bodies are retained as digest-bound evidence; a write with no declared effect refuses; a 204 that deleted nothing FAILs on its resulting state; an effect-less scenario that declares reset_before still runs the reset, notes that no before state was declared and "
           "compares on the first response (PASS when equal, FAIL typed by its diffs when not), while one WITH effects and no before "
-          "state stays INCONCLUSIVE; a corpus edited after capture refuses; the capture is bound to the frozen source and the corpus, never to the admission receipt (a stale receipt is a note on the producer receipt, not a refusal; a capture from another bundle or with no bundle digest is INCONCLUSIVE; the verdict stays receipt-bound); an entry point passes only when every REQUIRED scenario passes, and a missing or foreign-corpus result is INCONCLUSIVE; a declared reset that fails stops the comparison; no corpus is idle with a receipt that says so)")
+          "state stays INCONCLUSIVE; a corpus edited after capture refuses; the capture is bound to the frozen source and the corpus, never to the admission receipt (a stale receipt is a note on the producer receipt, not a refusal; a capture from another bundle or with no bundle digest is INCONCLUSIVE; the verdict stays receipt-bound); an entry point passes only when every REQUIRED scenario passes, and a missing or foreign-corpus result is INCONCLUSIVE; a declared reset that fails stops the comparison; no corpus is idle with a receipt that says so; "
+          "the security mode binds the evidence: the qualification, the scenario verdict and the parity receipt each record the mode "
+          "they are of, and the disabled captures copied into the enabled directory are refused by the comparator, the qualification "
+          "gate and the receipt composer alike -- no cross-mode reuse)")
     return 0
 
 

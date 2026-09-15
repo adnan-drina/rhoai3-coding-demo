@@ -1233,6 +1233,92 @@ def _receipt_case() -> int:
     return 0
 
 
+_AUTHZ = "org.springframework.security.access.prepost.PreAuthorize"
+_ROLES_ALLOWED = "javax.annotation.security.RolesAllowed"
+
+
+def _authz_fixture(td: Path, name: str, pkg: str, ctrl: str, read: str, write: str,
+                   role_a: str, role_b: str) -> tuple[Path, dict[str, str]]:
+    """A controller guarded by a type-level policy with one member overriding
+    it -- two policies -- recorded the way M1's structure model records one."""
+    root = td / name
+    fqn = "%s.%s" % (pkg, ctrl)
+    types = [{"fqn": fqn,
+              "annotations": [{"fqn": _AUTHZ, "values": {"value": "hasRole('%s')" % role_a}}],
+              "methods": [{"name": read, "signature": "%s()" % read, "annotations": []},
+                          {"name": write, "signature": "%s(int)" % write,
+                           "annotations": [{"fqn": _AUTHZ, "values": {"value": "hasRole('%s')" % role_b}}]}]}]
+    eps = {"read": "ep:%s#%s():http" % (fqn, read), "write": "ep:%s#%s(int):http" % (fqn, write)}
+    write_canonical(root / STRUCTURE, {"types": types})
+    write_canonical(root / EVIDENCE_BUNDLE, {"schema": "rhoai3.evidence-bundle/v1", "entry_points": [
+        {"id": eps["read"], "kind": "http", "type": fqn, "member": "%s()" % read, "http_method": "GET", "http_path": "/api/x"},
+        {"id": eps["write"], "kind": "http", "type": fqn, "member": "%s(int)" % write, "http_method": "DELETE", "http_path": "/api/x/{id}"}]})
+    return root, eps
+
+
+def _authorization_policy_case() -> int:
+    """The source's authorization policies, read from the model and keyed by
+    what they SAY.
+
+    ADR-014 keeps the enabled mode's authorization semantics, and the
+    enabled-mode corpus (allowed identity / anonymous / invalid credentials /
+    authenticated without the role) is derived per POLICY. Deriving it needs
+    the distinct policies and the entry points each one guards, named from
+    M1's model rather than from a specimen's controller text -- so the helper
+    is tested on two policies, on the same two under another package, type,
+    member and annotation spelling, and on the absence of the model, which is
+    a reason and never an empty answer."""
+    from _scenarios import source_authorization_policies, source_authorization_policy_map
+
+    with tempfile.TemporaryDirectory(prefix="authz-") as td:
+        t = Path(td)
+        root, eps = _authz_fixture(t, "one", "a", "OwnerRestController", "getOwners", "deleteOwner",
+                                   "ROLE_OWNER_ADMIN", "ROLE_VET_ADMIN")
+        policies, why = source_authorization_policy_map(root)
+        if why or len(policies) != 2:
+            return _fail("a type policy with one member override is two policies: %s %s" % (sorted(policies), why))
+        by_ep = {e: row["expression"] for row in policies.values() for e in row["entry_points"]}
+        if by_ep != {eps["read"]: "hasRole('ROLE_OWNER_ADMIN')", eps["write"]: "hasRole('ROLE_VET_ADMIN')"}:
+            return _fail("each entry point maps to the policy that guards it, the member's own overriding its type's: %s" % by_ep)
+        if sorted(source_authorization_policies(root)[0]) != sorted(policies):
+            return _fail("the id list and the map must name the same policies")
+
+        # the same two policies under entirely different names
+        renamed, reps = _authz_fixture(t, "two", "z.legacy.web", "CustodianEndpoint", "listAll", "removeOne",
+                                       "ROLE_OWNER_ADMIN", "ROLE_VET_ADMIN")
+        rpolicies, rwhy = source_authorization_policy_map(renamed)
+        if rwhy or sorted(rpolicies) != sorted(policies):
+            return _fail("a renamed specimen states the same policies: %s vs %s" % (sorted(rpolicies), sorted(policies)))
+        rby_ep = {e: row["expression"] for row in rpolicies.values() for e in row["entry_points"]}
+        if set(rby_ep) & set(by_ep) or sorted(rby_ep.values()) != sorted(by_ep.values()):
+            return _fail("the entry points are the renamed ones and the expressions are the same: %s" % rby_ep)
+
+        # a role SET is a set: two spellings of one policy are one policy
+        order = t / "order"
+        write_canonical(order / STRUCTURE, {"types": [
+            {"fqn": "a.First", "annotations": [{"fqn": _ROLES_ALLOWED, "values": {"value": ["ROLE_A", "ROLE_B"]}}],
+             "methods": [{"name": "one", "signature": "one()", "annotations": []}]},
+            {"fqn": "a.Second", "annotations": [{"fqn": _ROLES_ALLOWED, "values": {"value": ["ROLE_B", "ROLE_A"]}}],
+             "methods": [{"name": "two", "signature": "two()", "annotations": []}]}]})
+        write_canonical(order / EVIDENCE_BUNDLE, {"schema": "rhoai3.evidence-bundle/v1", "entry_points": [
+            {"id": "ep:a.First#one():http", "kind": "http", "type": "a.First", "member": "one()"},
+            {"id": "ep:a.Second#two():http", "kind": "http", "type": "a.Second", "member": "two()"}]})
+        opolicies, owhy = source_authorization_policy_map(order)
+        if owhy or len(opolicies) != 1 or len(list(opolicies.values())[0]["entry_points"]) != 2:
+            return _fail("the same roles in another order are one policy guarding both: %s %s" % (opolicies, owhy))
+
+        # absence is a reason: "no policies" and "not read" must not look alike
+        (root / STRUCTURE).unlink()
+        gone, gone_why = source_authorization_policy_map(root)
+        if gone or "unknown" not in gone_why:
+            return _fail("a missing structure model is a reason, not an empty policy set: %r" % gone_why)
+        (renamed / EVIDENCE_BUNDLE).unlink()
+        gone, gone_why = source_authorization_policy_map(renamed)
+        if gone or "unknown" not in gone_why:
+            return _fail("a missing evidence bundle is a reason: which entry points the policies guard is unknown: %r" % gone_why)
+    return 0
+
+
 def main() -> int:
     rc, root, td = _derivation_case()
     try:
@@ -1240,7 +1326,7 @@ def main() -> int:
             return rc
         assert root is not None
         if (_gap_cases() or _real_excerpt_case() or _methodless_mapping_case() or _methodless_qualification_case()
-                or _path_variable_case() or _foreign_key_delete_case()
+                or _path_variable_case() or _foreign_key_delete_case() or _authorization_policy_case()
                 or _application_removal_case() or _qualification_case(root) or _receipt_case()):
             return 1
     finally:
@@ -1274,7 +1360,11 @@ def main() -> int:
           "0 with its verdict printed while no capture at all is a refusal exiting 1; the parity receipt is INCONCLUSIVE for a derived corpus "
           "nobody qualified, a scenario qualified INCONCLUSIVE, unrecorded or stale, lists a positive FAIL as a fixture-failed coverage gap and "
           "an INCONCLUSIVE as an inconclusive-qualification one with the entry point INCONCLUSIVE, counts a negative PASS as negative "
-          "coverage only, and an Operator-authored corpus keeps its behaviour)")
+          "coverage only, and an Operator-authored corpus keeps its behaviour; "
+          "the source's authorization policies are read from the model and keyed by what they say -- a type policy with one member "
+          "override is two policies mapped to the entry points each guards, the same two under another package, type, member and "
+          "annotation spelling are the same two, a role set in either order is one policy, and a missing model or bundle is a reason "
+          "rather than an empty answer)")
     return 0
 
 

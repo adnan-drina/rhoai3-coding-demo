@@ -16,7 +16,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _oracle_common import PARITY, slug  # noqa: E402
-from _scenarios import CorpusError, QUALIFICATION, QUALIFICATION_SCHEMA, SCENARIO_ORACLES, SCENARIO_PARITY, corpus_digest, cors_coverage, is_derived, load_corpus, scenario_slug, source_cors_policies  # noqa: E402
+from _scenarios import (CorpusError, DEFAULT_SECURITY_MODE, QUALIFICATION, QUALIFICATION_SCHEMA, SCENARIO_ORACLES,  # noqa: E402,F401
+                        SCENARIO_PARITY, SECURITY_MODES, capture_security_mode, corpus_digest, cors_coverage,
+                        is_derived, load_corpus, normalize_security_mode, parity_receipt_path, qualification_path,
+                        scenario_oracles_dir, scenario_parity_dir, scenario_slug, source_cors_policies)
 from planner.admission import verify_receipt  # noqa: E402
 from planner.canonical import load_json, write_canonical  # noqa: E402
 from planner.paths import EVIDENCE_BUNDLE  # noqa: E402
@@ -25,8 +28,25 @@ from planner.paths import EVIDENCE_BUNDLE  # noqa: E402
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--root", required=True)
+    ap.add_argument("--security-mode", choices=list(SECURITY_MODES), default=DEFAULT_SECURITY_MODE,
+                    help="the security mode this receipt is of (ADR-014). It selects the captures, the qualification and the "
+                         "scenario verdicts, and the receipt refuses to compose over evidence from another mode")
     args = ap.parse_args(argv)
     root = Path(args.root).resolve()
+    try:
+        security_mode = normalize_security_mode(args.security_mode)
+    except CorpusError as exc:
+        print("REFUSE: PARITY_RECEIPT %s" % exc, file=sys.stderr)
+        return 1
+    oracles_dir = scenario_oracles_dir(security_mode)
+    # The mode the capture RECORDS decides; an M4 verdict then names the mode
+    # it judged instead of leaving a reader to guess which switch the source
+    # was standing behind.
+    recorded_mode, mode_why = capture_security_mode(root, security_mode)
+    if recorded_mode and recorded_mode != security_mode:
+        print("REFUSE: PARITY_RECEIPT mode mismatch: %s holds captures taken in the %s mode, this receipt is of %s"
+              % (oracles_dir.as_posix(), recorded_mode, security_mode), file=sys.stderr)
+        return 1
     receipt, gaps = verify_receipt(root, require_admitted=True)
     if gaps or receipt is None:
         for g in gaps:
@@ -61,11 +81,15 @@ def main(argv: list[str] | None = None) -> int:
     qualified: dict[str, dict[str, Any]] = {}
     qualification_loaded = False  # an empty verdict map is still a loaded qualification (nothing in it PASSes)
     qualification_gap = ""
-    qp = root / QUALIFICATION
+    qp = root / qualification_path(security_mode)
+    mode_mixes: list[str] = []
     if qp.is_file():
         qdoc = load_json(qp)
+        qmode = str(qdoc.get("security_mode") or "") if isinstance(qdoc, dict) else ""
+        if qmode and qmode != security_mode:
+            mode_mixes.append("%s qualified the %s mode" % (qualification_path(security_mode).as_posix(), qmode))
         if qdoc.get("schema") != QUALIFICATION_SCHEMA:
-            qualification_gap = "%s is not a %s document" % (QUALIFICATION, QUALIFICATION_SCHEMA)
+            qualification_gap = "%s is not a %s document" % (qualification_path(security_mode), QUALIFICATION_SCHEMA)
         elif corpus_sha and str(qdoc.get("corpus_sha256") or "") != corpus_sha:
             qualification_gap = "captures were qualified against corpus %s, this is %s" % (str(qdoc.get("corpus_sha256"))[:12], corpus_sha[:12])
         else:
@@ -75,7 +99,7 @@ def main(argv: list[str] | None = None) -> int:
                     continue
                 # a qualification is bound to the exact capture it judged;
                 # a capture re-taken since is unjudged, not judged PASS
-                cp = root / SCENARIO_ORACLES / (scenario_slug(str(sid)) + ".json")
+                cp = root / oracles_dir / (scenario_slug(str(sid)) + ".json")
                 on_disk = hashlib.sha256(cp.read_bytes()).hexdigest() if cp.is_file() else ""
                 bound = str(r.get("capture_sha256") or "")
                 qualified[str(sid)] = {
@@ -88,10 +112,21 @@ def main(argv: list[str] | None = None) -> int:
         qualification_gap = "captures not qualified (run qualify-source-captures.py)"
     coverage_gaps: list[dict[str, str]] = []
     results: dict[str, list[dict[str, Any]]] = {}
-    sdir = root / SCENARIO_PARITY
+    sdir = root / scenario_parity_dir(security_mode)
     for sp in sorted(sdir.glob("*.json")) if sdir.is_dir() else []:
         doc = load_json(sp)
+        dmode = str(doc.get("security_mode") or "")
+        if dmode and dmode != security_mode:
+            mode_mixes.append("%s compared the %s mode" % (sp.name, dmode))
         results.setdefault(str(doc.get("scenario") or ""), []).append(doc)
+    # A receipt that mixes modes is the cross-mode reuse ADR-014 forbids,
+    # arriving one file at a time. Refuse before judging anything.
+    if mode_mixes:
+        for m in mode_mixes:
+            print("  - " + m, file=sys.stderr)
+        print("REFUSE: PARITY_RECEIPT mode mismatch: this receipt is of the %s mode and %d artifact(s) are of another"
+              % (security_mode, len(mode_mixes)), file=sys.stderr)
+        return 1
     rows = []
     failed = 0
     for ep in wanted:
@@ -184,13 +219,14 @@ def main(argv: list[str] | None = None) -> int:
         verdict = "INCONCLUSIVE"
     doc = {"schema": "rhoai3.parity-receipt/v1", "receipt_sha256": receipt["receipt_digest"], "producer": "compose-parity-receipt.py",
            "corpus_sha256": corpus_sha, "corpus_error": corpus_error, "entry_points": rows, "total": len(rows), "not_passed": failed,
+           "security_mode": security_mode, "security_mode_recorded": recorded_mode, "security_mode_note": "" if recorded_mode else mode_why,
            "cors": {"source_policies": source_policies, "gaps": cors_gaps},
            "qualification": {"present": qp.is_file(), "derived_corpus": bool(corpus) and is_derived(corpus), "gap": qualification_gap,
                              "not_passed": sorted(sid for sid, v in qualified.items() if v["capability"] != "PASS" or v["stale"]),
                              "stale": sorted(sid for sid, v in qualified.items() if v["stale"])},
            "coverage_gaps": coverage_gaps,
            "verdict": verdict}
-    out = root / PARITY / "receipt.json"
+    out = root / parity_receipt_path(security_mode)
     write_canonical(out, doc)
     for g in coverage_gaps:
         print("  - coverage gap %s (%s): %s" % (g["scenario"], g["entry_point"], g["reason"]))

@@ -17,6 +17,20 @@ Writes verification/source-oracles/scenarios/<slug>.json per scenario, each
 bound to the corpus digest, the frozen source digest and the runtime it ran
 against. Exit 0 when every selected scenario was captured, 1 otherwise, 2 usage.
 
+Security mode (ADR-014). The source's security switch has two settings and
+they are two behaviours, so each is captured SEPARATELY and says which it is:
+``--security-mode disabled`` (the default, and the directory above) or
+``--security-mode enabled``, which writes
+verification/source-oracles/scenarios-enabled/ instead. The switch itself is
+the specimen's, not this harness's: it arrives as ``--source-config
+KEY=VALUE`` (repeatable), is passed to the runtime as a system property and as
+the runner's own argument, and is recorded verbatim on the receipt. Credentials
+arrive by REFERENCE -- ``--credential-ref NAME`` names an environment variable
+holding ``user:password``, a scenario asks for it by that name
+(``identity: {"kind": "basic", "credential_ref": NAME}``), and only the name is
+ever written down. A ``--source-config`` value that equals a credential is
+refused before the source starts.
+
 Binding rule. A capture is bound to the FROZEN SOURCE (the evidence bundle
 digest) and to the corpus, never to the admission receipt. Measured on v9
 (2026-09-14): this producer refused to start the source because the receipt's
@@ -43,7 +57,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _oracle_common import ensure_hermes_lib, http_observe, retain_body  # noqa: E402
-from _scenarios import CorpusError, SCENARIO_ORACLES, auth_headers, corpus_digest, load_corpus, request_of, scenario_slug, source_exposed_headers  # noqa: E402
+from _scenarios import (CorpusError, DEFAULT_SECURITY_MODE, SCENARIO_ORACLES, SECURITY_MODES, auth_headers,  # noqa: E402,F401
+                        auth_headers_for, capture_receipt_path, corpus_digest, credential_conflicts, load_corpus,
+                        normalize_security_mode, parse_assignments, request_of, scenario_oracles_dir, scenario_slug,
+                        source_exposed_headers)
 
 ensure_hermes_lib()
 from planner.admission import verify_receipt  # noqa: E402
@@ -103,7 +120,8 @@ class SourceRuntime:
     gets a fresh one, so the initial state the corpus names is the state the
     source actually saw."""
 
-    def __init__(self, copy: Path, port: int, base_path: str, timeout: int, java: str, mvn: str, log_dir: Path) -> None:
+    def __init__(self, copy: Path, port: int, base_path: str, timeout: int, java: str, mvn: str, log_dir: Path,
+                 source_config: dict[str, str] | None = None) -> None:
         self.copy = copy
         self.port = port
         self.base_path = base_path
@@ -111,6 +129,11 @@ class SourceRuntime:
         self.java = java
         self.mvn = mvn
         self.log_dir = log_dir
+        # The configuration this run starts the source WITH (ADR-014): the
+        # keys are the caller's, never this harness's -- which property turns
+        # the source's security on is a property of the specimen, so it
+        # arrives as an argument and is recorded, not named in code.
+        self.source_config = dict(source_config or {})
         self.jar: Path | None = None
         self.proc: subprocess.Popen | None = None
         self.starts = 0
@@ -143,8 +166,18 @@ class SourceRuntime:
         sink = log.open("wb")
         env = dict(os.environ)
         env.setdefault("SERVER_PORT", str(self.port))
-        self.proc = subprocess.Popen([self.java, "-jar", str(self.jar), "--server.port=%d" % self.port],
-                                     cwd=str(self.copy), stdout=sink, stderr=subprocess.STDOUT, env=env, start_new_session=True)
+        # The runner already configures the source two ways -- an environment
+        # variable and a ``--key=value`` argument for the port -- so the
+        # caller's configuration goes through the same channels: a JVM system
+        # property, which any runtime reads, and the argument form this
+        # runner already uses, which the source's own framework binds with the
+        # highest precedence. Passing one value twice is harmless; passing it
+        # through a channel the source ignores is not.
+        self.proc = subprocess.Popen(
+            [self.java] + ["-D%s=%s" % (k, v) for k, v in sorted(self.source_config.items())]
+            + ["-jar", str(self.jar), "--server.port=%d" % self.port]
+            + ["--%s=%s" % (k, v) for k, v in sorted(self.source_config.items())],
+            cwd=str(self.copy), stdout=sink, stderr=subprocess.STDOUT, env=env, start_new_session=True)
         ok, why = _wait_ready(self.base_url, self.timeout, self.proc)
         return "" if ok else "the frozen source did not become ready: %s (see %s)" % (why, log.name)
 
@@ -174,8 +207,37 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--mvn", default="mvn")
     ap.add_argument("--any-status", action="store_true", help="allow a non-ADMITTED receipt (capture may precede admission)")
     ap.add_argument("--no-reads", action="store_true", help="skip the idempotent reads; by default they are captured through the same running source, so nobody has to start it twice")
+    ap.add_argument("--security-mode", choices=list(SECURITY_MODES), default=DEFAULT_SECURITY_MODE,
+                    help="which setting of the source's security switch this capture is of (ADR-014). The two modes are captured "
+                         "separately and into separate directories; the mode is recorded on every file this writes")
+    ap.add_argument("--source-config", action="append", default=[], metavar="KEY=VALUE",
+                    help="configuration the frozen source is STARTED with (repeatable), passed as a JVM system property and as the "
+                         "runner's own --key=value argument. For the enabled mode the caller passes the specimen's own security "
+                         "switch, e.g. --source-config petclinic.security.enable=true; the key is recorded, never assumed")
+    ap.add_argument("--credential-ref", action="append", default=[], metavar="NAME",
+                    help="an environment variable holding user:password (repeatable). A scenario whose identity names it as "
+                         "credential_ref is sent with Basic authentication; only the NAME is ever recorded")
     args = ap.parse_args(argv)
     root = Path(args.root).resolve()
+    try:
+        security_mode = normalize_security_mode(args.security_mode)
+        source_config = parse_assignments(args.source_config, "--source-config")
+    except CorpusError as exc:
+        return _fail(str(exc))
+    credential_refs = sorted({str(r) for r in (args.credential_ref or []) if str(r).strip()})
+    # A credential passed as configuration would be written verbatim into the
+    # capture receipt, which is exactly what ADR-014 forbids. The refusal
+    # names the KEY, never the value.
+    conflicts = credential_conflicts(source_config, credential_refs)
+    if conflicts:
+        return _fail("--source-config %s carries the value of a credential (%s); configuration is recorded in the evidence, "
+                     "so a credential must be passed by reference (--credential-ref) and never as a property"
+                     % (", ".join(conflicts), ", ".join(credential_refs)))
+    oracles_dir = scenario_oracles_dir(security_mode)
+    read_reads = bool(not args.no_reads and security_mode == DEFAULT_SECURITY_MODE)
+    reads_note = "" if read_reads or args.no_reads else (
+        "the idempotent read oracles were not captured: they live in an oracle directory that is not mode-scoped, and this "
+        "capture is of the %s security mode; capture the reads in the %s mode" % (security_mode, DEFAULT_SECURITY_MODE))
     # The capture belongs to M1: it records what the FROZEN SOURCE does, so it
     # is bound to the evidence bundle (which exists then) and to the corpus.
     # An admission receipt may not exist yet; when it does, it is recorded too.
@@ -193,7 +255,7 @@ def main(argv: list[str] | None = None) -> int:
     receipt_note = "" if not gaps else ("admission receipt not recorded: " + "; ".join(gaps))[:400]
     if receipt_note:
         print("  note: %s" % receipt_note, file=sys.stderr)
-    receipt_p = root / SCENARIO_ORACLES / "_capture.json"
+    receipt_p = root / capture_receipt_path(security_mode)
     try:
         corpus = load_corpus(root)
     except CorpusError as exc:
@@ -208,6 +270,7 @@ def main(argv: list[str] | None = None) -> int:
                 "at": _now(), "status": "idle", "reason": str(exc),
                 "evidence_bundle_sha256": bundle_sha, "corpus_sha256": "", "captured": 0, "scenarios": [],
                 "receipt_sha256": receipt_sha, "receipt_note": receipt_note,
+                "security_mode": security_mode, "source_config": dict(source_config), "credential_refs": list(credential_refs),
             })
             print("OK: no scenario corpus (%s); nothing captured, and the receipt says so → %s" % (exc, receipt_p.relative_to(root)))
             return 0
@@ -235,7 +298,8 @@ def main(argv: list[str] | None = None) -> int:
         # exposes would assert too little and read as complete (architect
         # review, 2026-09-14). No source is started for it.
         return _fail("%s; the capture cannot know which headers the source exposes, so nothing is captured" % exposed_gap)
-    runtime = SourceRuntime(copy, args.port, base_path, args.ready_timeout, args.java, args.mvn, log_dir)
+    runtime = SourceRuntime(copy, args.port, base_path, args.ready_timeout, args.java, args.mvn, log_dir,
+                            source_config=source_config)
     captured = 0
     failures: list[str] = []
     try:
@@ -252,10 +316,11 @@ def main(argv: list[str] | None = None) -> int:
                 "initial_state": dict(corpus.get("initial_state") or {}),
                 "normalization": list(sc.get("normalization") or []),
                 "asserted_headers_extra": list(exposed),
+                "security_mode": security_mode,
                 "reset_before": bool(sc.get("reset_before", True)),
                 "status": "UNCAPTURED", "reason": "", "request": {}, "response": {}, "before": [], "effects": [],
             }
-            out = root / SCENARIO_ORACLES / (scenario_slug(sc["id"]) + ".json")
+            out = root / oracles_dir / (scenario_slug(sc["id"]) + ".json")
             try:
                 req = request_of(root, sc)
             except CorpusError as exc:
@@ -263,7 +328,7 @@ def main(argv: list[str] | None = None) -> int:
                 write_canonical(out, rec)
                 failures.append("%s: %s" % (sc["id"], exc))
                 continue
-            headers, gap = auth_headers(req["identity"])
+            headers, gap = auth_headers_for(req["identity"], credential_refs)
             if gap:
                 rec["status"] = "INCONCLUSIVE"
                 rec["reason"] = gap
@@ -286,7 +351,7 @@ def main(argv: list[str] | None = None) -> int:
             # the full bodies are kept beside the capture, bound by digest, so
             # qualification can SEE the created owner in the list and the
             # rejected one absent -- a sample or a digest alone cannot say
-            bodies_dir = root / SCENARIO_ORACLES / "bodies" / scenario_slug(sc["id"])
+            bodies_dir = root / oracles_dir / "bodies" / scenario_slug(sc["id"])
             for eff in sc.get("effects") or []:
                 probe = http_observe(runtime.base_url, str(eff.get("method") or "GET"), str(eff.get("path") or "/"), headers=headers, keep_body=True)
                 eid = str(eff.get("id") or eff.get("path"))
@@ -324,7 +389,13 @@ def main(argv: list[str] | None = None) -> int:
         # The reads, through the same runtime this producer owns. Capturing
         # them separately meant starting the source a second time by hand,
         # which is exactly the Operator rescue this step replaces.
-        if not args.no_reads:
+        # They are captured in the DEFAULT mode only: the read oracles live in
+        # verification/source-oracles/, which is not mode-scoped, so capturing
+        # them in the enabled mode would overwrite the other mode's expected
+        # values with 401s -- the cross-mode reuse ADR-014 forbids, arriving
+        # through the back door. The receipt says so rather than staying
+        # silent about it.
+        if read_reads:
             err = runtime.start()
             if err:
                 failures.append("reads: %s" % err)
@@ -347,13 +418,14 @@ def main(argv: list[str] | None = None) -> int:
         "reason": "; ".join(failures)[:400],
         "evidence_bundle_sha256": bundle_sha, "corpus_sha256": corpus_sha,
         "receipt_sha256": receipt_sha, "receipt_note": receipt_note,
+        "security_mode": security_mode, "source_config": dict(source_config), "credential_refs": list(credential_refs),
         "captured": captured, "requested": len(wanted),
         "scenarios": sorted(str(sc["id"]) for sc in wanted),
-        "reads": bool(not args.no_reads),
+        "reads": bool(read_reads), "reads_note": reads_note,
         "source": {"analysis_copy_digest": str(freeze.get("source_digest") or ""), "starts": runtime.starts},
     })
     print("%s: source scenarios captured=%d of %d (corpus %s) → %s"
-          % ("OK" if not failures else "REFUSE", captured, len(wanted), corpus_sha[:12], SCENARIO_ORACLES))
+          % ("OK" if not failures else "REFUSE", captured, len(wanted), corpus_sha[:12], oracles_dir))
     for f in failures:
         print("  - %s" % f, file=sys.stderr)
     return 0 if not failures else 1

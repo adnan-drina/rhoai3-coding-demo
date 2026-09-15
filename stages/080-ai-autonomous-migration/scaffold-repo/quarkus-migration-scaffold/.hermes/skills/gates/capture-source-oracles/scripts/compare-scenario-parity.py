@@ -26,8 +26,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _oracle_common import ensure_hermes_lib, header_diffs, http_observe, is_preflight, origin_of, required_headers  # noqa: E402
-from _scenarios import (CorpusError, QUALIFICATION, SCENARIO_ORACLES, SCENARIO_PARITY, auth_headers, corpus_digest,  # noqa: E402
-                        load_corpus, request_of, scenario, scenario_slug, source_exposed_headers)
+from _scenarios import (CorpusError, DEFAULT_SECURITY_MODE, QUALIFICATION, SCENARIO_ORACLES, SCENARIO_PARITY,  # noqa: E402,F401
+                        SECURITY_MODES, auth_headers, corpus_digest, load_corpus, normalize_security_mode,
+                        qualification_path, request_of, scenario, scenario_oracles_dir, scenario_parity_dir,
+                        scenario_slug, source_exposed_headers)
 
 ensure_hermes_lib()
 from planner.admission import verify_receipt  # noqa: E402
@@ -42,14 +44,24 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--dest-url", required=True, help="the destination's base URL, including its root path")
     ap.add_argument("--reset-cmd", default="", help="the command that restores the declared initial state; defaults to the reset script beside this one. A scenario that declares reset_before is INCONCLUSIVE without it.")
     ap.add_argument("--no-reset", action="store_true", help="the caller restored the initial state itself; it must still match what the source started from, which is checked either way")
+    ap.add_argument("--security-mode", choices=list(SECURITY_MODES), default=DEFAULT_SECURITY_MODE,
+                    help="the security mode the DESTINATION is running in (ADR-014). It selects the captures to compare against, "
+                         "and a capture taken in another mode is refused: a destination started with security enabled proves "
+                         "nothing against anonymous expectations")
     args = ap.parse_args(argv)
     root = Path(args.root).resolve()
+    try:
+        security_mode = normalize_security_mode(args.security_mode)
+    except CorpusError as exc:
+        print("REFUSE: SCENARIO_PARITY %s" % exc, file=sys.stderr)
+        return 1
+    oracles_dir = scenario_oracles_dir(security_mode)
     receipt, gaps = verify_receipt(root, require_admitted=True)
     verdict = {"schema": "rhoai3.scenario-parity/v1", "scenario": args.scenario, "entry_point": "",
                "receipt_sha256": receipt["receipt_digest"] if receipt else "", "verdict": "INCONCLUSIVE",
-               "corpus_sha256": "", "reason": "", "request": {}, "reset": {}, "before": [], "before_state": "",
-               "expected": {}, "observed": {}, "effects": []}
-    out = root / SCENARIO_PARITY / (scenario_slug(args.scenario) + ".json")
+               "corpus_sha256": "", "security_mode": security_mode, "reason": "", "request": {}, "reset": {},
+               "before": [], "before_state": "", "expected": {}, "observed": {}, "effects": []}
+    out = root / scenario_parity_dir(security_mode) / (scenario_slug(args.scenario) + ".json")
     if gaps or receipt is None:
         verdict["reason"] = "receipt not authoritative: " + "; ".join(gaps)
         write_canonical(out, verdict)
@@ -67,13 +79,27 @@ def main(argv: list[str] | None = None) -> int:
     verdict["entry_point"] = str(sc["entry_point"])
     verdict["corpus_sha256"] = corpus_digest(corpus)
     verdict["request"] = {k: req[k] for k in ("method", "path", "headers", "identity", "body_sha256", "body_absent", "request_sha256")}
-    oracle_p = root / SCENARIO_ORACLES / (scenario_slug(args.scenario) + ".json")
+    oracle_p = root / oracles_dir / (scenario_slug(args.scenario) + ".json")
     if not oracle_p.is_file():
         verdict["reason"] = "no source capture for this scenario; the expected values come only from the source"
         write_canonical(out, verdict)
         print("REFUSE: SCENARIO_PARITY %s INCONCLUSIVE (%s)" % (args.scenario, verdict["reason"]), file=sys.stderr)
         return 1
     oracle = load_json(oracle_p)
+    # The mode BINDS the comparison (ADR-014). A capture that recorded no mode
+    # is one taken before modes were bound, which is the default mode and only
+    # that: comparing it against a destination running with security enabled
+    # would grade an authenticated service on anonymous expectations.
+    captured_mode = str(oracle.get("security_mode") or "") or DEFAULT_SECURITY_MODE
+    if captured_mode != security_mode:
+        verdict["captured_security_mode"] = captured_mode
+        verdict["reason"] = ("the source capture was taken in the %s security mode and this comparison is of the %s mode; "
+                             "capture the source in the %s mode rather than comparing across modes"
+                             % (captured_mode, security_mode, security_mode))
+        write_canonical(out, verdict)
+        print("REFUSE: SCENARIO_PARITY mode mismatch: %s (%s)" % (args.scenario, verdict["reason"]), file=sys.stderr)
+        return 1
+    verdict["captured_security_mode"] = captured_mode
     checks: list[str] = []
     # A positive scenario whose capture FAILED qualification is a SOURCE-SIDE
     # fixture failure (a 500 deleting a referenced pettype): the source did
@@ -81,7 +107,7 @@ def main(argv: list[str] | None = None) -> int:
     # credit, and no destination repair card. Parity is not asked
     # (architect review of 708cfef9). Only a qualification bound to THIS
     # capture counts; a stale one judged another capture.
-    qp = root / QUALIFICATION
+    qp = root / qualification_path(security_mode)
     if qp.is_file():
         try:
             qdoc = load_json(qp)

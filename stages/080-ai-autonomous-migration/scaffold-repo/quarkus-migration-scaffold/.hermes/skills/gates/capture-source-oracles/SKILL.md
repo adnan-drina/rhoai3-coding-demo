@@ -90,6 +90,73 @@ python3 "${HERMES_SKILL_DIR}/scripts/compose-parity-receipt.py" --root /projects
 | HTTP `OPTIONS` preflight | the permission headers the source answered (`Allow-Origin`, `Allow-Credentials`, `Allow-Methods`, `Allow-Headers`, `Max-Age`; `Expose-Headers` is the actual request's, not the preflight's) | a scenario carrying `Origin` + `Access-Control-Request-Method` (+ the request headers the actual call sends), no identity; it declares no effects |
 | scheduled, messaging, batch, event, lifecycle | operator-captured observation file (log excerpt, queue dump, table export); normalized line set with timestamps stripped | `--observation <id>=<file>` |
 
+## The security mode of an oracle (ADR-014)
+
+The frozen source has a security switch, and its two settings are two
+behaviours: disabled, every request is anonymous; enabled, the same request
+answers 401 or 403 unless it carries an identity the policy allows. Each is
+captured **separately** and each artifact says which it is, so no receipt of
+one mode can stand for the other. A destination started with security enabled
+is compared against enabled captures only.
+
+| Mode | Captures | Qualification | Scenario verdicts | Receipt |
+|---|---|---|---|---|
+| `disabled` (default) | `verification/source-oracles/scenarios/` | `…/scenarios/_qualification.json` | `verification/parity/scenarios/` | `verification/parity/receipt.json` |
+| `enabled` | `verification/source-oracles/scenarios-enabled/` | `…/scenarios-enabled/_qualification.json` | `verification/parity/scenarios-enabled/` | `verification/parity/receipt-enabled.json` |
+
+Every path is resolved through `_scenarios.py`
+(`scenario_oracles_dir`, `qualification_path`, `scenario_parity_dir`,
+`parity_receipt_path`, `capture_receipt_path`), so every consumer resolves the
+same one. `_capture.json` records `security_mode`, `source_config` and
+`credential_refs`; each scenario capture and each parity verdict records
+`security_mode`; `_qualification.json` and the parity receipt record the mode
+they judged, so an M4 verdict can name it.
+
+```bash
+# the enabled mode: the source's own switch is an ARGUMENT (the harness never
+# knows its name), and credentials are named, never carried
+export PETCLINIC_ADMIN='<user>:<password>'        # the value stays in the environment
+python3 "${HERMES_SKILL_DIR}/scripts/capture-source-scenarios.py" --root /projects/modernized \
+  --security-mode enabled \
+  --source-config petclinic.security.enable=true \
+  --credential-ref PETCLINIC_ADMIN
+python3 "${HERMES_SKILL_DIR}/scripts/qualify-source-captures.py" --root /projects/modernized --security-mode enabled
+python3 "${HERMES_SKILL_DIR}/scripts/compare-scenario-parity.py" --root /projects/modernized \
+  --scenario 'sc:…' --dest-url http://localhost:8080/petclinic --security-mode enabled
+python3 "${HERMES_SKILL_DIR}/scripts/compose-parity-receipt.py" --root /projects/modernized --security-mode enabled
+```
+
+- `--source-config KEY=VALUE` (repeatable) is passed to the runtime as a JVM
+  system property **and** as the runner's own `--key=value` argument, and is
+  recorded verbatim on the capture receipt. A value equal to a credential the
+  environment holds is refused before the source starts; the refusal names the
+  key, never the value.
+- `--credential-ref NAME` (repeatable) declares an environment variable holding
+  `user:password`. A scenario asks for it by name —
+  `identity: {"kind": "basic", "credential_ref": NAME}` — and the capture sends
+  `Authorization: Basic …` built at request time. Only the NAME is written
+  down: no password, no account, no header value. A scenario naming a
+  reference the capture was not given is a gap, never a quiet anonymous
+  request.
+- Reads (`capture-source-oracles.py`) are captured in the **disabled** mode
+  only: `verification/source-oracles/` is not mode-scoped, so the enabled
+  capture skips them and its receipt says so (`reads_note`).
+- Mixing refuses, everywhere: `compare-scenario-parity.py` prints
+  `REFUSE: SCENARIO_PARITY mode mismatch`, and the qualification gate and the
+  receipt composer refuse a directory whose `_capture.json` records another
+  mode. A capture that records no mode at all is a pre-ADR-014 capture and is
+  the disabled mode, and only that.
+- Deriving the enabled-mode corpus (allowed identity / anonymous / invalid
+  credentials / authenticated without the role) is a **later** change.
+  `_scenarios.py` already exposes what it will consume:
+  `source_authorization_policy_map(root)` lists the distinct policies the
+  frozen source states (`@PreAuthorize`, `@RolesAllowed`, `@Secured`, read from
+  M1's structure model) with the entry points each guards, a member's own
+  annotation overriding its type's; the id is the digest of the annotation and
+  its expression, so one policy on six handlers is one policy and a renamed
+  specimen states the same set. A missing model or bundle is a reason, never
+  an empty answer.
+
 ## The scenario corpus
 
 Scenario responses and before/after probes retain body evidence under
@@ -369,6 +436,15 @@ authenticates (**by environment-variable reference**), the body bytes or an
 explicit `body_absent: true`, whether the initial state is restored first, the
 effects that prove the write, and the permitted normalization.
 
+`identity` accepts two kinds. `{"kind": "none"}` (the default, and the only
+one the disabled mode uses) is an anonymous request. `{"kind": "basic",
+"credential_ref": NAME}` names one environment variable holding
+`user:password`; `{"kind": "basic", "user_env": A, "password_env": B}` names
+the two halves separately. A reference is part of what makes a request the
+same request, so it is digested; a key that would hold the credential itself
+(`password`, `secret`, `token`, `authorization`) is refused outright, and so
+is any other kind.
+
 CORS is covered per policy. `cors_policies` declares each one (`id`, the
 `request_headers` its actual calls send); a scenario that sends `Origin` names
 its `cors_policy`. Each policy needs an actual cross-origin exchange and a
@@ -427,7 +503,9 @@ What refuses, and why:
   hook refuses `kanban_complete` on that card.
 - `compose-parity-receipt.py` writes `verification/parity/receipt.json`
   binding every parity verdict to the receipt digest; it is produced by
-  this script (an independent producer), not by the verdict author.
+  this script (an independent producer), not by the verdict author. It
+  records the `security_mode` it composed and refuses to compose over
+  evidence from another mode.
 - `scripts/capture-source-oracles.test.py`: HTTP capture and compare
   PASS/FAIL against a local stub server; non-HTTP compare with matching
   and diverging observations; missing oracle → INCONCLUSIVE; a
@@ -454,7 +532,9 @@ What refuses, and why:
 - `scripts/reset-parity-db.sh` — restore the decided instance to the initial
   state the corpus names (drop and recreate the schema, apply the schema and
   seed assets `decisions.yaml` points at)
-- `scripts/_scenarios.py` — the corpus model and the request digest
+- `scripts/_scenarios.py` — the corpus model, the request digest, the
+  security-mode paths, the credential references and the source's declared
+  CORS and authorization policies
 - `scripts/capture-source-oracles.test.py`, `scripts/scenario-parity.test.py`,
   `scripts/scenario-derivation.test.py` — selftests (the last one: derivation,
   loader binding, qualification and the receipt's use of it)

@@ -69,13 +69,19 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _oracle_common import ensure_hermes_lib, normalize_body, origin_of  # noqa: E402
-from _scenarios import CorpusError, QUALIFICATION, QUALIFICATION_SCHEMA, SCENARIO_ORACLES, corpus_digest, load_corpus, request_of, scenario_slug  # noqa: E402
+from _scenarios import (CorpusError, DEFAULT_SECURITY_MODE, QUALIFICATION, QUALIFICATION_SCHEMA, SCENARIO_ORACLES,  # noqa: E402,F401
+                        SECURITY_MODES, capture_security_mode, corpus_digest, load_corpus, normalize_security_mode,
+                        qualification_path, request_of, scenario_oracles_dir, scenario_slug)
 
 ensure_hermes_lib()
 from planner.canonical import digest, load_json, write_canonical  # noqa: E402
 from planner.paths import EVIDENCE_BUNDLE  # noqa: E402
 
 PRODUCER = "qualify-source-captures.py"
+# The capture directory this process is judging. One run judges ONE security
+# mode (ADR-014); main() rebinds it from --security-mode so the retained-body
+# fallback never reaches into the other mode's evidence.
+_ORACLES_DIR = SCENARIO_ORACLES
 KNOWN_CHECKS = ("expect_status", "expect_status_class", "usable_first_response", "location", "after_contains_body", "before_lacks_body",
                 "creates_one_entity", "after_equals_before", "errors_header_names_field", "after_effect_status", "cors_allow_origin",
                 "cors_expose_headers", "cors_allow_method", "cors_allow_headers")
@@ -120,7 +126,7 @@ def _body_path(root: Path, scenario_id: str, recorded: str) -> Path | None:
         return p
     if (root / recorded).is_file():
         return root / recorded
-    alt = root / SCENARIO_ORACLES / "bodies" / scenario_slug(scenario_id) / p.name
+    alt = root / _ORACLES_DIR / "bodies" / scenario_slug(scenario_id) / p.name
     return alt if alt.is_file() else None
 
 
@@ -483,10 +489,31 @@ def qualify_scenario(root: Path, sc: dict[str, Any], cap: dict[str, Any] | None,
 
 
 def main(argv: list[str] | None = None) -> int:
+    global _ORACLES_DIR
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--root", required=True)
+    ap.add_argument("--security-mode", choices=list(SECURITY_MODES), default=DEFAULT_SECURITY_MODE,
+                    help="which security mode's captures to judge (ADR-014). The mode the capture receipt RECORDS wins: "
+                         "a directory whose captures were taken in another mode is a refusal, never a re-judgement")
     args = ap.parse_args(argv)
     root = Path(args.root).resolve()
+    try:
+        security_mode = normalize_security_mode(args.security_mode)
+    except CorpusError as exc:
+        print("REFUSE: QUALIFY_CAPTURES %s" % exc, file=sys.stderr)
+        return 1
+    _ORACLES_DIR = scenario_oracles_dir(security_mode)
+    oracles_dir = _ORACLES_DIR
+    # The mode is read from the capture receipt, not assumed from the
+    # argument: a qualification names the mode it judged, and a directory
+    # holding another mode's captures is a refusal to judge. A capture taken
+    # before modes were bound records none, and is judged as what it was
+    # asked for -- with the mode still written down.
+    recorded_mode, mode_why = capture_security_mode(root, security_mode)
+    if recorded_mode and recorded_mode != security_mode:
+        print("REFUSE: QUALIFY_CAPTURES mode mismatch: %s holds captures taken in the %s mode, this run was asked for %s"
+              % (oracles_dir.as_posix(), recorded_mode, security_mode), file=sys.stderr)
+        return 1
     try:
         corpus = load_corpus(root)
     except CorpusError as exc:
@@ -499,14 +526,14 @@ def main(argv: list[str] | None = None) -> int:
     # a refusal to JUDGE: the corpus names requests and the source was never
     # asked any of them. That is not a verdict about the source, so no
     # qualification document is written for it
-    if scenarios and not any((root / SCENARIO_ORACLES / (scenario_slug(str(sc["id"])) + ".json")).is_file() for sc in scenarios):
+    if scenarios and not any((root / oracles_dir / (scenario_slug(str(sc["id"])) + ".json")).is_file() for sc in scenarios):
         print("REFUSE: QUALIFY_CAPTURES no capture under %s for any of the %d scenario(s) the corpus names; capture the source first "
-              "(capture-source-scenarios.py)" % (SCENARIO_ORACLES, len(scenarios)), file=sys.stderr)
+              "(capture-source-scenarios.py)" % (oracles_dir, len(scenarios)), file=sys.stderr)
         return 1
     results: dict[str, dict[str, Any]] = {}
     for sc in scenarios:
         sid = str(sc["id"])
-        cp = root / SCENARIO_ORACLES / (scenario_slug(sid) + ".json")
+        cp = root / oracles_dir / (scenario_slug(sid) + ".json")
         cap = None
         capture_sha = ""
         if cp.is_file():
@@ -523,10 +550,11 @@ def main(argv: list[str] | None = None) -> int:
         results[sid] = qualify_scenario(root, sc, cap, corpus_sha, bundle_sha, capture_sha)
     not_passed = sorted(sid for sid, r in results.items() if r["capability"] != "PASS")
     verdict = "PASS" if results and not not_passed else "FAIL" if any(r["capability"] == "FAIL" for r in results.values()) else "INCONCLUSIVE"
-    out = root / QUALIFICATION
+    out = root / qualification_path(security_mode)
     write_canonical(out, {
         "schema": QUALIFICATION_SCHEMA, "producer": PRODUCER, "at": _now(),
         "corpus_sha256": corpus_sha, "evidence_bundle_sha256": bundle_sha,
+        "security_mode": security_mode, "security_mode_recorded": recorded_mode, "security_mode_note": "" if recorded_mode else mode_why,
         "scenarios": dict(sorted(results.items())), "total": len(results), "not_passed": len(not_passed), "verdict": verdict,
     })
     for sid in not_passed:

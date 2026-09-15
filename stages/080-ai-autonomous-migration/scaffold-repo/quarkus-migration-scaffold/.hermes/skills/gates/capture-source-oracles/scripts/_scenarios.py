@@ -56,9 +56,85 @@ QUALIFICATION = SCENARIO_ORACLES / "_qualification.json"
 QUALIFICATION_SCHEMA = "rhoai3.scenario-qualification/v1"
 SCHEMA = "rhoai3.scenario-corpus/v1"
 
+# ---------------------------------------------------------------------------
+# security mode (ADR-014)
+# ---------------------------------------------------------------------------
+# The frozen source has a security SWITCH, and the two settings are two
+# different behaviours: with it disabled every request is anonymous, with it
+# enabled the same request answers 401/403 unless it carries an identity the
+# policy allows. A receipt that does not say which one it judged cannot be
+# read: v9's captures were taken with the switch at its default and carried no
+# mode at all, so an enabled-mode destination could have been "proved" against
+# anonymous expectations. So the mode travels with every artifact, the
+# comparison refuses to cross modes, and the two capture sets live in separate
+# directories -- reuse is prevented by the path, not by remembering.
+SECURITY_MODES = ("disabled", "enabled")
+DEFAULT_SECURITY_MODE = "disabled"
+CAPTURE_RECEIPT_NAME = "_capture.json"
+QUALIFICATION_NAME = "_qualification.json"
+
 
 class CorpusError(ValueError):
     pass
+
+
+def normalize_security_mode(security_mode: Any) -> str:
+    """The canonical mode name; a mode nobody declared is refused, never
+    silently read as the default."""
+    mode = str(security_mode if security_mode is not None else DEFAULT_SECURITY_MODE).strip().lower()
+    if mode not in SECURITY_MODES:
+        raise CorpusError("security mode %r is not one of %s" % (security_mode, ", ".join(SECURITY_MODES)))
+    return mode
+
+
+def _mode_suffix(security_mode: Any = DEFAULT_SECURITY_MODE) -> str:
+    """"" for the default mode, so every existing path stays exactly where it
+    is and a tree captured before ADR-014 keeps working."""
+    mode = normalize_security_mode(security_mode)
+    return "" if mode == DEFAULT_SECURITY_MODE else "-%s" % mode
+
+
+def scenario_oracles_dir(security_mode: Any = DEFAULT_SECURITY_MODE) -> Path:
+    """Where the captures of ONE mode live. Every consumer resolves the
+    directory through this function, so no two modes can ever share one."""
+    return Path("verification") / "source-oracles" / ("scenarios" + _mode_suffix(security_mode))
+
+
+def capture_receipt_path(security_mode: Any = DEFAULT_SECURITY_MODE) -> Path:
+    return scenario_oracles_dir(security_mode) / CAPTURE_RECEIPT_NAME
+
+
+def qualification_path(security_mode: Any = DEFAULT_SECURITY_MODE) -> Path:
+    return scenario_oracles_dir(security_mode) / QUALIFICATION_NAME
+
+
+def scenario_parity_dir(security_mode: Any = DEFAULT_SECURITY_MODE) -> Path:
+    return Path("verification") / "parity" / ("scenarios" + _mode_suffix(security_mode))
+
+
+def parity_receipt_path(security_mode: Any = DEFAULT_SECURITY_MODE) -> Path:
+    return Path("verification") / "parity" / ("receipt%s.json" % _mode_suffix(security_mode))
+
+
+def capture_security_mode(root: Path, security_mode: Any = DEFAULT_SECURITY_MODE) -> tuple[str, str]:
+    """(the mode the capture receipt in that directory RECORDS, why-unknown).
+
+    "" with a reason is not "disabled": a capture taken before modes were
+    bound recorded no mode, and the caller decides whether that is
+    compatible with what it was asked for."""
+    mode = normalize_security_mode(security_mode)
+    rel = capture_receipt_path(mode)
+    p = Path(root) / rel
+    if not p.is_file():
+        return "", "no capture receipt %s in this tree" % rel.as_posix()
+    try:
+        doc = load_json(p)
+    except (OSError, ValueError) as exc:
+        return "", "%s could not be read: %s" % (rel.as_posix(), exc)
+    recorded = str((doc or {}).get("security_mode") or "") if isinstance(doc, dict) else ""
+    if not recorded:
+        return "", "%s records no security_mode (a capture taken before the mode was bound)" % rel.as_posix()
+    return recorded, ""
 
 
 def scenario_slug(scenario_id: str) -> str:
@@ -98,6 +174,9 @@ def load_corpus(root: Path) -> dict[str, Any]:
                                   "(and Access-Control-Request-Headers when the actual request sends any)" % sc["id"])
             if str((sc.get("identity") or {}).get("kind") or "none") != "none":
                 raise CorpusError("scenario %s is a preflight: browsers send it without credentials, so it carries no identity" % sc["id"])
+        identity_gap = identity_shape_gap(sc.get("identity"))
+        if identity_gap:
+            raise CorpusError("scenario %s %s" % (sc["id"], identity_gap))
         if "origin" in hdrs and not sc.get("cors_policy"):
             raise CorpusError("scenario %s sends a cross-origin Origin and names no cors_policy; coverage is counted per policy" % sc["id"])
         if sc.get("cors_policy") and str(sc["cors_policy"]) not in {str(p.get("id")) for p in (doc.get("cors_policies") or [])}:
@@ -340,20 +419,28 @@ def request_of(root: Path, sc: dict[str, Any]) -> dict[str, Any]:
     ident_kind = str(identity.get("kind") or "none")
     ident_user_env = str(identity.get("user_env") or "")
     ident_password_env = str(identity.get("password_env") or "")
+    ident_ref = str(identity.get("credential_ref") or "")
     # The REFERENCES travel with the request and are digested: which account a
     # request runs as is part of what makes it the same request. The values
     # never appear here. Dropping password_env made every authenticated replay
     # INCONCLUSIVE with both credentials present.
+    # ``credential_ref`` joins them only when a scenario names one: adding an
+    # empty key to every request would change the digest of every scenario
+    # already captured, and a mode nobody uses must not invalidate the other
+    # mode's evidence.
+    ident: dict[str, Any] = {"kind": ident_kind, "user_env": ident_user_env, "password_env": ident_password_env}
+    if ident_ref:
+        ident["credential_ref"] = ident_ref
     digest_input = {
         "method": str(sc["method"]).upper(), "path": str(sc["path"]),
         "headers": dict(sorted(headers.items())),
-        "identity": {"kind": ident_kind, "user_env": ident_user_env, "password_env": ident_password_env},
+        "identity": dict(ident),
         "body_sha256": sha256_bytes(body) if body is not None else "",
         "body_absent": body is None,
     }
     return {
         "method": digest_input["method"], "path": digest_input["path"], "headers": headers,
-        "identity": {"kind": ident_kind, "user_env": ident_user_env, "password_env": ident_password_env},
+        "identity": dict(ident),
         "body": body, "body_sha256": digest_input["body_sha256"], "body_absent": body is None,
         "request_sha256": sha256_bytes(canonical_bytes(digest_input)),
     }
@@ -362,14 +449,253 @@ def request_of(root: Path, sc: dict[str, Any]) -> dict[str, Any]:
 def auth_headers(identity: dict[str, Any]) -> tuple[dict[str, str], str]:
     """(headers, gap). Credentials come from the environment by NAME; a missing
     one is a gap the caller must report, never a silent anonymous request."""
-    kind = str((identity or {}).get("kind") or "none")
+    return auth_headers_for(identity, None)
+
+
+# ---------------------------------------------------------------------------
+# credentials: the evidence carries the REFERENCE (ADR-014)
+# ---------------------------------------------------------------------------
+# Two shapes name the same thing. ``user_env``/``password_env`` names the two
+# halves separately; ``credential_ref`` names ONE variable holding
+# ``user:password``, which is the shape the enabled-mode capture is driven
+# with (``--credential-ref NAME``) because the capture then has a single name
+# to declare, record and refuse to confuse with configuration. Neither shape
+# ever puts a credential -- or the Authorization header built from one -- into
+# a corpus, a capture or a receipt.
+CREDENTIAL_SEPARATOR = ":"
+_IDENTITY_VALUE_KEYS = ("password", "secret", "token", "authorization", "credential")
+_IDENTITY_KINDS = ("none", "basic")
+
+
+def identity_shape_gap(identity: Any) -> str:
+    """Why this ``identity`` may not be used; "" when it is well-formed.
+
+    Accepts ``none`` and ``basic``. A ``basic`` identity names either a
+    ``credential_ref`` or both ``user_env`` and ``password_env``; a key that
+    would hold the credential ITSELF is refused outright, because a corpus is
+    read, digested and copied into every receipt downstream of it."""
+    if identity in (None, {}):
+        return ""
+    if not isinstance(identity, dict):
+        return "identity is not an object"
+    for key in sorted(identity):
+        if str(key).lower() in _IDENTITY_VALUE_KEYS:
+            return ("identity carries %r: evidence names the environment variable that holds a credential "
+                    "(credential_ref, or user_env/password_env), never the credential" % str(key))
+    kind = str(identity.get("kind") or "none")
+    if kind not in _IDENTITY_KINDS:
+        return "declares identity kind %r; the loader accepts %s" % (kind, " and ".join(_IDENTITY_KINDS))
+    if kind == "basic" and not str(identity.get("credential_ref") or "") and not (
+            str(identity.get("user_env") or "") and str(identity.get("password_env") or "")):
+        return ("authenticates with basic and names no credential_ref (nor user_env and password_env); "
+                "the request cannot be made without a named credential")
+    return ""
+
+
+def credential_env_values(credential_refs: Any) -> set[str]:
+    """Every string the named credential variables hold, and each half of a
+    ``user:password`` one. Used to keep a credential out of the recorded
+    configuration -- the halves count because the password half is the one
+    that would be pasted into a property by mistake."""
+    out: set[str] = set()
+    for ref in (credential_refs or []):
+        raw = os.environ.get(str(ref), "")
+        if not raw:
+            continue
+        out.add(raw)
+        if CREDENTIAL_SEPARATOR in raw:
+            user, _, password = raw.partition(CREDENTIAL_SEPARATOR)
+            out.update(x for x in (user, password) if x)
+    return out
+
+
+def credential_conflicts(source_config: dict[str, str], credential_refs: Any) -> list[str]:
+    """The configuration KEYS whose value is a credential the environment
+    holds under one of the named references.
+
+    ``source_config`` is recorded verbatim on the capture receipt -- that is
+    what makes the mode reproducible -- so a credential passed as
+    configuration would be written into the evidence. Naming the key (never
+    the value) is enough to fix it."""
+    values = credential_env_values(credential_refs)
+    return sorted(k for k, v in (source_config or {}).items() if str(v) in values)
+
+
+def parse_assignments(items: Any, what: str = "--source-config") -> dict[str, str]:
+    """``KEY=VALUE`` repetitions as a mapping. The harness never knows the KEY:
+    which switch turns the source's security on is an argument it records, not
+    a name it carries."""
+    out: dict[str, str] = {}
+    for item in (items or []):
+        text = str(item)
+        key, sep, value = text.partition("=")
+        if not sep or not key.strip():
+            raise CorpusError("%s %r is not KEY=VALUE" % (what, text))
+        if key.strip() in out:
+            raise CorpusError("%s names %s twice" % (what, key.strip()))
+        out[key.strip()] = value
+    return out
+
+
+def auth_headers_for(identity: dict[str, Any], credential_refs: Any = None) -> tuple[dict[str, str], str]:
+    """(headers, gap) for one identity, with the credential read at request
+    time from the environment.
+
+    ``credential_refs`` is the allow-list the caller declared (None = no
+    restriction, the historical behaviour). A scenario naming a reference the
+    caller did not declare is a GAP, not a quiet anonymous request: the
+    capture reads only variables it was told to read, so what a capture may
+    touch is on its own command line and on its receipt."""
+    ident = identity or {}
+    kind = str(ident.get("kind") or "none")
     if kind in ("", "none"):
         return {}, ""
     if kind != "basic":
         return {}, "identity kind %r is not supported; the corpus must describe how the request authenticates" % kind
-    user = os.environ.get(str(identity.get("user_env") or ""), "")
-    password = os.environ.get(str(identity.get("password_env") or ""), "")
-    if not user or not password:
-        return {}, "identity needs %s and %s in the environment" % (identity.get("user_env"), identity.get("password_env"))
+    ref = str(ident.get("credential_ref") or "")
+    if ref:
+        if credential_refs is not None and ref not in {str(r) for r in credential_refs}:
+            return {}, ("identity names credential_ref %s, which this capture was not given (pass --credential-ref %s); "
+                        "a credential is never read from an undeclared variable" % (ref, ref))
+        raw = os.environ.get(ref, "")
+        if not raw:
+            return {}, "identity needs %s in the environment (it holds user%spassword)" % (ref, CREDENTIAL_SEPARATOR)
+        user, sep, password = raw.partition(CREDENTIAL_SEPARATOR)
+        if not sep or not user or not password:
+            return {}, "the credential %s does not hold user%spassword" % (ref, CREDENTIAL_SEPARATOR)
+    else:
+        user = os.environ.get(str(ident.get("user_env") or ""), "")
+        password = os.environ.get(str(ident.get("password_env") or ""), "")
+        if not user or not password:
+            return {}, "identity needs %s and %s in the environment" % (ident.get("user_env"), ident.get("password_env"))
     token = base64.b64encode(("%s:%s" % (user, password)).encode("utf-8")).decode("ascii")
     return {"Authorization": "Basic %s" % token}, ""
+
+
+# ---------------------------------------------------------------------------
+# the source's own authorization policies (ADR-014)
+# ---------------------------------------------------------------------------
+_AUTHZ_ANNOTATIONS = ("PreAuthorize", "RolesAllowed", "Secured")
+
+
+def _authz_expression(simple: str, values: Any) -> str:
+    """The policy a single annotation states, as one comparable expression.
+
+    ``@PreAuthorize`` carries an expression; ``@RolesAllowed`` and
+    ``@Secured`` carry a role SET, so their roles are sorted -- two handlers
+    that list the same roles in another order state one policy, not two."""
+    vals = values if isinstance(values, dict) else {}
+    raw = vals.get("value")
+    if raw is None and len(vals) == 1:
+        raw = list(vals.values())[0]
+    items = raw if isinstance(raw, list) else ([] if raw in (None, "") else [raw])
+    texts = [str(x) for x in items if str(x).strip()]
+    if simple == "PreAuthorize":
+        return " ".join(texts).strip()
+    return ", ".join(sorted(texts))
+
+
+def _authz_of(annotations: Any) -> list[tuple[str, str]]:
+    """[(annotation simple name, expression)] for one member or type."""
+    out: list[tuple[str, str]] = []
+    for a in (annotations or []):
+        if not isinstance(a, dict):
+            continue
+        fqn = str(a.get("fqn") or a.get("name") or "")
+        simple = fqn.rsplit(".", 1)[-1]
+        if simple not in _AUTHZ_ANNOTATIONS:
+            continue
+        values = a.get("values") if a.get("values") is not None else a.get("attributes") or {}
+        out.append((simple, _authz_expression(simple, values)))
+    return sorted(set(out))
+
+
+def source_authorization_policy_map(root: Path) -> tuple[dict[str, dict[str, Any]], str]:
+    """({policy id: {"annotation", "expression", "entry_points", "types",
+    "members"}}, why-unknown) -- the DISTINCT authorization policies the frozen
+    source states, and which entry points each one guards.
+
+    Read from M1's structure model (``@PreAuthorize``, ``@RolesAllowed``,
+    ``@Secured``) and joined to the evidence bundle's entry points, never from
+    text and never from a specimen's own role names: the id is the digest of
+    the annotation and its expression, so the same policy on six handlers is
+    one policy and a renamed controller states the same set. A member's own
+    annotation overrides its type's, the way the platform resolves it.
+
+    Enabled-mode scenario derivation (allowed identity / anonymous / invalid
+    credentials / authenticated without the role) is a later change; it
+    consumes this map, so the policies it must cover are named here rather
+    than inferred from a controller's text. An unreadable model or a missing
+    bundle is a REASON: "no policies" and "not read" must not look alike."""
+    sp = Path(root) / STRUCTURE
+    if not sp.is_file():
+        return {}, "M1's structural model %s is not in this tree, so the source's authorization policies are unknown" % STRUCTURE
+    try:
+        model = load_json(sp)
+    except (OSError, ValueError) as exc:
+        return {}, "%s could not be read: %s" % (STRUCTURE, exc)
+    bp = Path(root) / EVIDENCE_BUNDLE
+    if not bp.is_file():
+        return {}, ("%s is not in this tree, so which entry points the source's authorization policies guard is unknown"
+                    % EVIDENCE_BUNDLE)
+    try:
+        bundle = load_json(bp)
+    except (OSError, ValueError) as exc:
+        return {}, "%s could not be read: %s" % (EVIDENCE_BUNDLE, exc)
+    by_member: dict[tuple[str, str], list[str]] = {}
+    by_type: dict[str, list[str]] = {}
+    for e in (bundle.get("entry_points") or []):
+        if not isinstance(e, dict):
+            continue
+        eid, etype, member = str(e.get("id") or ""), str(e.get("type") or ""), str(e.get("member") or "")
+        if not eid or not etype:
+            continue
+        by_member.setdefault((etype, member), []).append(eid)
+        by_type.setdefault(etype, []).append(eid)
+    out: dict[str, dict[str, Any]] = {}
+
+    def add(simple: str, expression: str, fqn: str, member: str, eids: list[str]) -> None:
+        pid = "authz:%s" % sha256_bytes(canonical_bytes({"annotation": simple, "expression": expression}))[:12]
+        row = out.setdefault(pid, {"annotation": simple, "expression": expression,
+                                   "entry_points": [], "types": [], "members": []})
+        for eid in eids:
+            if eid not in row["entry_points"]:
+                row["entry_points"].append(eid)
+        if fqn and fqn not in row["types"]:
+            row["types"].append(fqn)
+        label = "%s#%s" % (fqn, member) if member else fqn
+        if label not in row["members"]:
+            row["members"].append(label)
+
+    for t in (model.get("types") or []):
+        if not isinstance(t, dict):
+            continue
+        fqn = str(t.get("fqn") or "")
+        type_policies = _authz_of(t.get("annotations"))
+        covered: set[str] = set()
+        for m in (t.get("methods") or []):
+            if not isinstance(m, dict):
+                continue
+            sig = str(m.get("signature") or m.get("name") or "")
+            eids = by_member.get((fqn, sig)) or by_member.get((fqn, str(m.get("name") or ""))) or []
+            own = _authz_of(m.get("annotations"))
+            for simple, expression in (own or type_policies):
+                add(simple, expression, fqn, sig, eids)
+            covered.update(eids)
+        # a type-level policy guards whatever the type answers that no member
+        # of the model claimed (a supertype or marker entry point)
+        rest = [eid for eid in (by_type.get(fqn) or []) if eid not in covered]
+        for simple, expression in type_policies:
+            add(simple, expression, fqn, "", rest)
+    for row in out.values():
+        row["entry_points"].sort()
+        row["types"].sort()
+        row["members"].sort()
+    return dict(sorted(out.items())), ""
+
+
+def source_authorization_policies(root: Path) -> tuple[list[str], str]:
+    """(the authorization policy ids the FROZEN source states, why-unknown);
+    see source_authorization_policy_map."""
+    policies, why = source_authorization_policy_map(root)
+    return sorted(policies), why
