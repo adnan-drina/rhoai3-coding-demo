@@ -102,6 +102,37 @@ source did. Everything here is measurement. Nothing here decides.
    destination to call, no database, no corpus, MaaS down — never for a
    verdict you dislike.
 
+   The M4 worker's turn ends there. **The reviewer** (or the Operator), once
+   the review audit above passes, runs the one command that decides what the
+   verdict means for the run:
+
+```bash
+python3 .hermes/skills/migration/fix-until-green/scripts/resume-after-m4.py --root . --exec --operator WHO
+```
+
+   It refuses unless the verdict is this run's — its `card_id` is the issued
+   close card, the parity receipt it cites is bound to the admission receipt
+   that seals the tree on disk — no candidate is retained for the close card,
+   and the product tree is clean. Three outcomes:
+
+   - `RESUMED` (exit 0): the parity floor's FAIL verdicts are mandatory
+     obligations whose loci are files of this tree. The close card goes on the
+     loop record, the work list is rebuilt, admission is re-sealed and K4
+     mints the next M3 card. The loop is running again; the reviewer has
+     nothing further to do on this card.
+   - `BLOCKED` (exit 2): every failed floor is a decision, not a card
+     (`check-product-tests` / `assert-surefire-results` → ADR-015, a harness
+     capability; an entry point whose read-back answered 401/403 → ADR-014,
+     one bounded Operator step). Nothing is minted, the close card stays
+     issued, and `verification/loop/release-blockers.json` names each floor
+     with the ADR and the seat that owns it. That file is the Operator's queue.
+   - `REFUSE: LOOP_RESUME` (exit 1): the verdict is not this run's, a worker
+     still holds the tree, or this verdict was already resumed. Nothing changed.
+
+   Both classes at once is the normal case (v9's first M4 verdict): the parity
+   card is minted **and** the blockers file is written, one printed line per
+   class. Do not re-run M4 to change a verdict — the resume is what consumes it.
+
 ## What refuses, and why that is the point
 
 - A verdict that names a floor you did not run.
@@ -122,11 +153,14 @@ source did. Everything here is measurement. Nothing here decides.
 ## Operator
 
 A REFUSE verdict is the run's honest result, not a failure of the loop.
-The Operator reads `failed_floors`, fixes the cause (a harness defect, a
-catalog gap, an ADR in `decisions.yaml`), and either re-opens the work
-with `fix-until-green/scripts/rewind.py` or accepts the refusal and
-records why. Do not re-run M4 hoping for a different answer: the same
-measurement on the same tree returns the same verdict.
+`resume-after-m4.py` (step 7) is what consumes it: the floors a card can
+repair become the next M3 card, and the floors a decision owns land in
+`verification/loop/release-blockers.json` with their ADR and seat. The
+Operator reads that file, removes the cause (a harness capability under
+ADR-015, a bounded security step under ADR-014, an ADR in `decisions.yaml`),
+and then either resumes again or re-opens earlier work with
+`fix-until-green/scripts/rewind.py`. Do not re-run M4 hoping for a different
+answer: the same measurement on the same tree returns the same verdict.
 
 ## Self-test
 

@@ -78,6 +78,33 @@ bash "${HERMES_SKILL_DIR}/scripts/run-verify.sh" --root /projects/modernized --m
 | (Operator) `scripts/rewind.py` | the Operator puts the loop back at an accepted step: product tree restored and re-measured, later steps and the spent budget moved to the record as `rewound`, deferral cleared, next card minted in a new epoch | not a card action; `--operator` and `--reason` are recorded in `steps.json.rewinds` |
 | `REFUSE: LOOP_*` | stale state / no baseline / receipt not authoritative | `kanban_block` kind=needs_input |
 
+## After M4
+
+M4 is a measurement, and `REFUSE` is one of its answers. The close card ends
+on `kanban_request_review`; what happens next is one command, run by the
+reviewer (or the Operator) once the review audit passes:
+
+```bash
+python3 "${HERMES_SKILL_DIR}/scripts/resume-after-m4.py" --root /projects/modernized --exec --operator WHO
+```
+
+It refuses unless the verdict is this run's (its `card_id` is the issued close
+card, the parity receipt it cites is bound to the admission receipt that seals
+the tree), no candidate is retained for the close card, and the product tree
+is clean. Then it splits the verdict's `failed_floors`:
+
+| Outcome | What it means | What it does |
+|---|---|---|
+| `RESUMED` (exit 0) | the parity floor's FAIL verdicts became mandatory obligations (`parity_items`) whose loci are files of this tree | closes the M4 card on the record, rebuilds the work list, re-seals admission and mints the head cluster — the same transaction an accepted step runs. The loop is running again |
+| `BLOCKED` (exit 2) | every failed floor is a decision, not a card: `check-product-tests` / `assert-surefire-results` are ADR-015 (a harness capability owns the generated tests), an entry point whose read-back answered 401/403 is ADR-014 (one bounded Operator step) | mints nothing, keeps the close card issued, and writes `verification/loop/release-blockers.json` naming each floor and the seat that owns it |
+| `REFUSE: LOOP_RESUME` (exit 1) | the verdict is not this run's, a worker still holds the tree, or this verdict was already resumed | nothing changed |
+
+Both at once — v9's first M4 verdict — is the normal case: the parity card is
+minted **and** the blockers file is written, one printed line per class. The
+loop continues on what it can repair; the decisions are recorded, not hidden.
+A resume is not a re-run of M4: the same tree measured again returns the same
+verdict.
+
 Measurement contract: a component is known only when its tool ran in this
 verification (`verification/build/run.json`). Tests that did not run, an
 empty surefire directory, a `mvn test` failure with no recorded failing
@@ -124,13 +151,14 @@ record naming the card.
 - `scripts/advance.py` — the acceptance transaction (`--baseline` records step 0; unknown measure → `VERIFICATION_PENDING`)
 - `scripts/restore-pending.py` — put a retained candidate back on the product tree (then acceptance verify + advance)
 - `scripts/operator-step.py` — Operator step: a decided change to the product tree (an ADR retirement applied by `bootstrap-destination.py --retire-only`) committed, re-measured and recorded as a loop step (`verdict: operator`) so the next card's baseline is true. Refused while an issued card is **live** (no retained candidate: a worker's candidate may be on the tree); recorded **beside** an issued card whose candidate is retained (`VERIFICATION_PENDING`), which keeps the card untouched, records `beside_pending` {cluster, card, cause} in the step, and mints nothing whatever `--no-mint` says, because the pending card owns the head. `--clear-deferred` appends a disposition naming the cluster, its retry key and what it spent, and the budget rises by that (`planner/budget.py` is the one budget answer); `--disposition-only` records that disposition with no product change, for a cause that was a harness defect
+- `scripts/resume-after-m4.py` — the edge out of M4 (`--root . --exec`): a composed verdict bound to the issued close card is split into parity obligations (minted as the next M3 card, through `k4_mint.py`, after the work list is rebuilt and admission re-sealed) and release floors no card discharges (`verification/loop/release-blockers.json`, each naming its ADR and seat). Exit 0 resumed, 2 blocked, 1 refused; a second run on the same verdict refuses
 - `scripts/rewind.py` — Operator rewind to an accepted step (`--to-step N --operator WHO --reason WHY`; re-measures with run-verify.sh, refuses on a measure mismatch, starts a new card-key epoch)
 - `scripts/amend-scope.py` — widen a sealed batch card's write set by ONE file, on the record (`--path` + `--reason`), BEFORE touching it; the inventory itself is never rewritten and two amendments per card is the limit
 - `scripts/diagnose.py` — (Operator) investigate a failure no card can carry: `--list` names them, `--open` starts one of two ten-minute attempts, `--close --conclusion LOCATED|ENVIRONMENT|DECISION_REQUIRED|INCONCLUSIVE` records the finding under `evidence/diagnosis/`. It grants no write authority — a product change during an investigation refuses the close — and closing discharges nothing
 - `scripts/jdk-diagnostics/JdkDiagnostics.java` — compiler diagnostics as JSON (JDK compiler API)
 - `scripts/jdk-dest-model/DestModel.java` — the DESTINATION's own structure from the JDK compiler API: resolved member signatures, what a type actually inherits and what its supertypes declare, and every annotation with its exact character range and its imports. Read through `planner.dest_model`, which caches it against the content of the sources AND the classpath it was compiled with, and raises rather than guessing. A regular expression answered these questions wrongly in both directions (a fully qualified annotation read as absent; a redeclared `findAll()` as underivable; a deleted member as inherited), so nothing here is read from text
 - `scripts/_loop_common.py` — shared helpers
-- `scripts/fix-until-green.test.py`, `scripts/amend-scope.test.py`, `scripts/diagnose.test.py` — selftests
+- `scripts/fix-until-green.test.py`, `scripts/amend-scope.test.py`, `scripts/diagnose.test.py`, `scripts/resume-after-m4.test.py` — selftests
 
 ## Pitfalls
 
