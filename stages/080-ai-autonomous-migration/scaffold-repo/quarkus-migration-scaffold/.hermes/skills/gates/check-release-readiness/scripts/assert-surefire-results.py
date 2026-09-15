@@ -12,9 +12,9 @@ it looks (pilot v7):
 
   * a skipped case is not a passed case. Zero failures over zero executions is
     the same silence as no report at all, and @Disabled reads as green here.
-  * at least one executed case must belong to a test source that exists in this
-    destination's src/test/java. Reports left by another tree, or by sources an
-    ADR has since retired, prove nothing about what ships.
+  * at least one executed case must belong to a test source that exists in one
+    of this destination's test roots. Reports left by another tree, or by
+    sources an ADR has since retired, prove nothing about what ships.
   * a test source in the tree that the reports never name is reported, because
     a test that compiles and never runs is the failure mode this gate exists
     for. Sources with no executable cases (abstract bases, test configuration)
@@ -28,8 +28,27 @@ EVIDENCE-BASED DIAGNOSIS (ADR-015, architect ruling 2026-09-15)
   script can read. So the verdict now names the phase, the files it read and
   the counts it found, in four distinguishable states:
 
-  (a) NO TEST SOURCE for that phase -- surefire owns ``*Test.java`` /
-      ``*Tests.java``, failsafe owns ``*IT.java`` -- and no report for it.
+TWO TEST ROOTS (ADR-015)
+  The tree's test sources do not all live in ``src/test/java``. The generated
+  parity suite lives in the root the generated manifest's ``out`` names
+  (default ``src/parity-test/java``), which nothing compiles but the
+  harness-owned ``m4-parity`` profile. This floor paired phases against
+  ``src/test/java`` alone, so a tree whose only tests are the generated suite
+  read as a tree with no test source at all: every generated execution was
+  unbound and the phase was misdiagnosed as legitimately empty. The roots are
+  now the SAME PAIR the product-tests floor measures -- ``test_roots`` /
+  ``generated_test_root`` of
+  ``check-domain-parity/scripts/check-product-tests.py``, imported from that
+  file so the two floors cannot drift apart (that module defines only
+  constants and functions at import time; its ``main`` is under
+  ``__main__``). If it is ever unimportable, the same manifest read is
+  reimplemented here and the verdict SAYS SO on its ``test roots:`` line.
+  A generated case's report is bound, counted and named exactly like a
+  retained one: the root a source sits in is not evidence about it.
+
+  (a) NO TEST SOURCE for that phase in EITHER root -- surefire owns
+      ``*Test.java`` / ``*Tests.java``, failsafe owns ``*IT.java`` -- and no
+      report for it.
       The phase is legitimately empty and is reported as such
       ("empty failsafe phase; surefire executed N case(s)"). It is
       INFORMATIONAL, never a refusal on its own: the refusal for an empty
@@ -55,8 +74,9 @@ EVIDENCE-BASED DIAGNOSIS (ADR-015, architect ruling 2026-09-15)
 
 EXIT CODES
   0  the evidence is clean: at least one executed case, none skipped, none
-     failed, at least one bound to a test source of this tree (or the tree has
-     no src/test/java at all, which is stated). Empty phases are printed.
+     failed, at least one bound to a test source of this tree (or neither test
+     root holds a source at all, which is stated with both root names). Empty
+     phases are printed.
   1  a refusal: no XML to read; a red or skipped case; a phase with sources and
      no report; reports with no executed case; no executed case belonging to
      this tree.
@@ -70,6 +90,7 @@ on stdout).
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import re
 import sys
@@ -78,8 +99,15 @@ from pathlib import Path
 
 SNAP = Path("evidence") / "m4-pre-rebuild" / "test-reports"
 TEST_ROOT = Path("src") / "test" / "java"
+# The generated parity suite's root, when no manifest names another (ADR-015).
+GENERATED_TEST_ROOT = Path("src") / "parity-test" / "java"
+GENERATED_MANIFEST = Path("evidence") / "tests" / "generated-manifest.json"
 SUREFIRE_JSON = Path("verification") / "build" / "surefire.json"
 SUREFIRE_SCHEMA = "rhoai3.surefire/v1"
+# The product-tests floor owns the roots; this floor must measure the same two.
+PRODUCT_TESTS = (
+    Path(__file__).resolve().parents[2] / "check-domain-parity" / "scripts" / "check-product-tests.py"
+)
 
 # phase name -> (test-source suffixes it owns, live report directory)
 PHASES = (
@@ -145,30 +173,99 @@ def report_dirs(root: Path) -> list[Path]:
 
 
 # ---------------------------------------------------------------------------
-# the tree: which test sources each phase owns
+# the tree: which test roots exist, and which test sources each phase owns
 # ---------------------------------------------------------------------------
 
 
+def _product_tests_module():
+    """``check-product-tests.py``, loaded for the two functions that decide the
+    test roots. Executing it defines constants, classes and functions only --
+    its ``main`` runs under ``__main__`` -- so there is no side effect to
+    inherit. Returns None when it cannot be loaded; the caller then reads the
+    manifest itself and the verdict says which of the two happened."""
+    try:
+        spec = importlib.util.spec_from_file_location("check_product_tests", PRODUCT_TESTS)
+        if spec is None or spec.loader is None:
+            return None
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        if not (hasattr(mod, "test_roots") and hasattr(mod, "generated_test_root")):
+            return None
+        return mod
+    except Exception:  # an unloadable neighbour must not take this gate with it
+        return None
+
+
+_PRODUCT_TESTS = _product_tests_module()
+ROOTS_FROM = (
+    "roots per check-domain-parity/scripts/check-product-tests.py"
+    if _PRODUCT_TESTS is not None
+    else "roots reimplemented here: check-domain-parity/scripts/check-product-tests.py "
+         "could not be imported, so %s was read by this script" % GENERATED_MANIFEST.as_posix()
+)
+
+
+def generated_test_root(root: Path) -> Path:
+    """The root the harness generated its parity cases into, as the manifest's
+    ``out`` says (default ``src/parity-test/java``). A manifest that cannot be
+    read does not decide the root here."""
+    if _PRODUCT_TESTS is not None:
+        return Path(_PRODUCT_TESTS.generated_test_root(Path(root)))
+    p = Path(root) / GENERATED_MANIFEST
+    if not p.is_file():
+        return GENERATED_TEST_ROOT
+    try:
+        doc = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return GENERATED_TEST_ROOT
+    out = str(doc.get("out") or "") if isinstance(doc, dict) else ""
+    return Path(out) if out else GENERATED_TEST_ROOT
+
+
+def test_roots(root: Path) -> list[Path]:
+    """The loop's test root and the generated parity root, in that order, with
+    no duplicate when a tree declares them the same."""
+    if _PRODUCT_TESTS is not None:
+        return [Path(r) for r in _PRODUCT_TESTS.test_roots(Path(root))]
+    seen: list[Path] = []
+    for rel in (TEST_ROOT, generated_test_root(root)):
+        if rel not in seen:
+            seen.append(rel)
+    return seen
+
+
+def roots_label(root: Path) -> str:
+    """Both roots, named, for every line that claims a source is or is not
+    there. An absence is about the places it was looked for."""
+    return " or ".join(rel.as_posix() for rel in test_roots(root))
+
+
+def roots_line(root: Path) -> str:
+    return "test roots: %s (%s)" % (
+        ", ".join(rel.as_posix() for rel in test_roots(root)), ROOTS_FROM)
+
+
+def _sources(root: Path, suffixes: tuple[str, ...] | None) -> dict[str, str]:
+    """{dotted class name: path relative to root} over BOTH test roots. A
+    generated source is indexed exactly like a retained one."""
+    out: dict[str, str] = {}
+    for rel in test_roots(root):
+        base = root / rel
+        if not base.is_dir():
+            continue
+        for p in sorted(base.rglob("*.java")):
+            if suffixes is not None and not p.name.endswith(suffixes):
+                continue
+            out[p.relative_to(base).with_suffix("").as_posix().replace("/", ".")] = _rel(root, p)
+    return out
+
+
 def test_sources(root: Path) -> dict[str, str]:
-    """{dotted class name: path relative to root} for every src/test/java source."""
-    base = root / TEST_ROOT
-    if not base.is_dir():
-        return {}
-    return {
-        p.relative_to(base).with_suffix("").as_posix().replace("/", "."): _rel(root, p)
-        for p in sorted(base.rglob("*.java"))
-    }
+    return _sources(root, None)
 
 
 def phase_sources(root: Path, suffixes: tuple[str, ...]) -> dict[str, str]:
-    base = root / TEST_ROOT
-    if not base.is_dir():
-        return {}
-    return {
-        p.relative_to(base).with_suffix("").as_posix().replace("/", "."): _rel(root, p)
-        for p in sorted(base.rglob("*.java"))
-        if p.name.endswith(suffixes)
-    }
+    return _sources(root, suffixes)
 
 
 # ---------------------------------------------------------------------------
@@ -366,18 +463,21 @@ def _diagnose(root: Path, logs: list[Path]) -> int:
     # (b) with nothing at all to read: no XML anywhere is the fail-closed case.
     if not files:
         causes, read = skip_evidence(root, logs)
-        detail = ["read: %s (no XML); for cause: %s" % (where, ", ".join(read) or "no build log")]
+        detail = [
+            "read: %s (no XML); for cause: %s" % (where, ", ".join(read) or "no build log"),
+            roots_line(root),
+        ]
         detail += ["cause: " + c for c in causes] or ["cause: the files read name none"]
         if sources:
             return _fail(
                 "%d test source(s) under %s and no surefire/failsafe XML under %s — fail closed: "
                 "a test that compiles and never runs is not evidence"
-                % (len(sources), TEST_ROOT.as_posix(), where),
+                % (len(sources), roots_label(root), where),
                 detail + ["source: %s" % s for s in sorted(sources.values())[:8]],
             )
         return _fail(
             "no surefire/failsafe XML under %s and no test source under %s — fail closed "
-            "(nothing was executed, nothing was read)" % (where, TEST_ROOT.as_posix()),
+            "(nothing was executed, nothing was read)" % (where, roots_label(root)),
             detail,
         )
 
@@ -422,6 +522,7 @@ def _diagnose(root: Path, logs: list[Path]) -> int:
 
     read_line = "read: %s — %d suite report(s), %d phase summary(ies)" % (
         where, len(suite_docs), sum(1 for name, _, _ in PHASES for _ in per_phase[name]["summaries"]))
+    root_line = roots_line(root)
     phase_lines = []
     for name, _, rel in PHASES:
         bucket = per_phase[name]
@@ -435,7 +536,7 @@ def _diagnose(root: Path, logs: list[Path]) -> int:
 
     # (c) reports exist and are red, or carry skips: name them per case.
     if failures > 0 or errors > 0 or red:
-        detail = [read_line] + phase_lines
+        detail = [read_line, root_line] + phase_lines
         detail += ["%s %s (%s)%s" % (phase, case, report, ": " + msg if msg else "")
                    for phase, case, report, msg in red[:20]]
         return _fail(
@@ -444,7 +545,7 @@ def _diagnose(root: Path, logs: list[Path]) -> int:
             detail,
         )
     if skipped:
-        detail = [read_line] + phase_lines
+        detail = [read_line, root_line] + phase_lines
         detail += ["%s %s (%s)%s" % (phase, case, report, ": " + msg if msg else "")
                    for phase, case, report, msg in skipped[:20]]
         return _fail(
@@ -467,7 +568,7 @@ def _diagnose(root: Path, logs: list[Path]) -> int:
                    " — %s" % summary["message"] if summary["message"] else "")
             )
             files_read.append(_rel(root, summary["path"]))
-        detail = [read_line] + phase_lines
+        detail = [read_line, root_line] + phase_lines
         detail.append("read for cause: %s" % (", ".join(files_read) or "no build log, no phase summary"))
         detail += ["cause: " + c for c in causes] or [
             "cause: the files read name none — the phase was skipped or its plugin never ran"
@@ -481,7 +582,7 @@ def _diagnose(root: Path, logs: list[Path]) -> int:
 
     # No executed case anywhere: the empty-suite refusal AR-2.8 also makes.
     if not executed:
-        detail = [read_line] + phase_lines
+        detail = [read_line, root_line] + phase_lines
         for name, _, _ in PHASES:
             for summary in per_phase[name]["summaries"]:
                 detail.append("%s reports completed=%d%s" % (
@@ -509,7 +610,7 @@ def _diagnose(root: Path, logs: list[Path]) -> int:
         )
         empty_notes.append(
             "empty %s phase — no %s under %s and no report under %s%s; %s"
-            % (name, bucket["suffixes"], TEST_ROOT.as_posix(), searched[name],
+            % (name, bucket["suffixes"], roots_label(root), searched[name],
                " (%s)" % summary_note if summary_note else "", other)
         )
 
@@ -517,11 +618,12 @@ def _diagnose(root: Path, logs: list[Path]) -> int:
     if sources_note:
         mine = sorted({c for c, _ in executed if c in sources})
         if not mine:
-            detail = [read_line] + phase_lines + empty_notes
+            detail = [read_line, root_line] + phase_lines + empty_notes
             return _fail(
                 "no executed case belongs to a test source in this tree; the reports name %s "
-                "while src/test/java holds %s"
-                % (", ".join(sorted({c for c, _ in executed})[:3]), ", ".join(sources_note[:3])),
+                "while %s holds %s"
+                % (", ".join(sorted({c for c, _ in executed})[:3]), roots_label(root),
+                   ", ".join(sources_note[:3])),
                 detail,
             )
         silent = sorted(set(sources_note) - {c for c, _ in executed})
@@ -533,11 +635,12 @@ def _diagnose(root: Path, logs: list[Path]) -> int:
         )
     else:
         print(
-            "OK: surefire-results (Failures=0 Errors=0 Skipped=0 Tests=%d reports=%d; no src/test/java in this tree)"
-            % (tests, len(suite_docs)),
+            "OK: surefire-results (Failures=0 Errors=0 Skipped=0 Tests=%d reports=%d; "
+            "no test source under %s in this tree)"
+            % (tests, len(suite_docs), roots_label(root)),
             file=sys.stderr,
         )
-    for line in [read_line] + phase_lines + empty_notes:
+    for line in [read_line, root_line] + phase_lines + empty_notes:
         print("  " + line, file=sys.stderr)
     return 0
 

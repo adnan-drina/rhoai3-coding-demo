@@ -73,10 +73,43 @@ NOT_A_REPORT = """\
 """
 
 
+GENERATED_PASSING = """\
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.demo.catalog.parity.CatalogParityTest" tests="2" failures="0" errors="0" skipped="0" time="0.1">
+  <testcase name="listItems" classname="com.demo.catalog.parity.CatalogParityTest" time="0.05"/>
+  <testcase name="readItem" classname="com.demo.catalog.parity.CatalogParityTest" time="0.05"/>
+</testsuite>
+"""
+
+# The generated parity root's default, and the one a manifest may move it to.
+DEFAULT_GENERATED_ROOT = "src/parity-test/java"
+
+
 def write_source(root: Path, dotted: str) -> None:
     path = root / "src" / "test" / "java" / (dotted.replace(".", "/") + ".java")
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("class X {}\n", encoding="utf-8")
+
+
+def write_generated_source(root: Path, dotted: str, out: str = DEFAULT_GENERATED_ROOT) -> None:
+    """A case of the generated parity suite: same shape, another root."""
+    path = root / Path(out) / (dotted.replace(".", "/") + ".java")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("class X {}\n", encoding="utf-8")
+
+
+def write_generated_manifest(root: Path, out: str, cases: tuple[dict, ...] = ()) -> None:
+    path = root / "evidence" / "tests" / "generated-manifest.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps({
+            "schema": "rhoai3.generated-tests/v1",
+            "out": out,
+            "corpus_sha256": "",
+            "cases": list(cases),
+        }),
+        encoding="utf-8",
+    )
 
 
 def write_xml(root: Path, name: str, body: str) -> None:
@@ -355,6 +388,90 @@ class EvidenceBasedDiagnosisTests(unittest.TestCase):
             proc = run_py(SURE, root)
             self.assertEqual(proc.returncode, 2, proc.stderr)
             self.assertIn("could not be parsed as XML", proc.stderr)
+
+
+class TwoTestRootsTests(unittest.TestCase):
+    """ADR-015: the floor pairs each phase against BOTH test roots.
+
+    ``src/test/java`` is the loop's own; the generated parity suite lives in the
+    root ``evidence/tests/generated-manifest.json``'s ``out`` names (default
+    ``src/parity-test/java``) -- the same pair
+    ``check-domain-parity/scripts/check-product-tests.py`` measures. Reading the
+    first root alone made a tree whose only tests are generated read as a tree
+    with no test source: every execution unbound, the phase called empty.
+    """
+
+    def test_generated_only_tree_passes_and_names_the_generated_root(self) -> None:
+        """Only generated sources, clean reports: PASS, with the executions
+        bound to the generated root the manifest names (not the default, so the
+        manifest is demonstrably what decides it)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_generated_manifest(
+                root,
+                "src/it-parity/java",
+                ({"scenario": "catalog:list", "class": "com.demo.catalog.parity.CatalogParityTest",
+                  "method": "listItems", "entry_point": "catalog"},),
+            )
+            write_generated_source(root, "com.demo.catalog.parity.CatalogParityTest", "src/it-parity/java")
+            write_xml(root, "TEST-com.demo.catalog.parity.CatalogParityTest.xml", GENERATED_PASSING)
+            proc = run_py(SURE, root)
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertIn("Tests=2 reports=1", proc.stderr)
+            self.assertIn("executed from this tree: com.demo.catalog.parity.CatalogParityTest", proc.stderr)
+            self.assertIn("src/it-parity/java", proc.stderr)
+            self.assertIn("surefire: 1 source(s)", proc.stderr)
+            # the defect: this tree used to read as "no src/test/java in this tree"
+            self.assertNotIn("no test source under", proc.stderr)
+
+    def test_generated_case_counts_exactly_like_a_retained_one(self) -> None:
+        """One retained source, one generated source, a report for each: both
+        are bound, both are counted, neither root is privileged."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_source(root, "com.demo.CatalogResourceTest")
+            write_generated_source(root, "com.demo.catalog.parity.CatalogParityTest")
+            write_xml(root, "TEST-com.demo.CatalogResourceTest.xml", PASSING)
+            write_xml(root, "TEST-com.demo.catalog.parity.CatalogParityTest.xml", GENERATED_PASSING)
+            proc = run_py(SURE, root)
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertIn("Tests=4 reports=2", proc.stderr)
+            self.assertIn("com.demo.CatalogResourceTest", proc.stderr)
+            self.assertIn("com.demo.catalog.parity.CatalogParityTest", proc.stderr)
+            self.assertIn("surefire: 2 source(s)", proc.stderr)
+            self.assertIn("4 executed, 0 skipped, 0 failed/errored", proc.stderr)
+            self.assertNotIn("no case named for", proc.stderr)
+
+    def test_generated_sources_without_a_report_refuse_with_the_cause(self) -> None:
+        """(b) over the generated root: the sources are there, the surefire
+        phase produced nothing, and the refusal names the source in the
+        generated root and the skip property the pom declares."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_generated_source(root, "com.demo.catalog.parity.CatalogParityTest")
+            write_failsafe_xml(root, "failsafe-summary.xml", FAILSAFE_SUMMARY_EMPTY)
+            write_pom(root, "<project><properties><skipTests>true</skipTests></properties></project>")
+            proc = run_py(SURE, root)
+            self.assertNotEqual(proc.returncode, 0, proc.stderr)
+            self.assertIn("1 surefire test source(s)", proc.stderr)
+            self.assertIn("target/surefire-reports", proc.stderr)
+            self.assertIn("pom.xml declares <skipTests>true</skipTests>", proc.stderr)
+            self.assertIn(
+                "src/parity-test/java/com/demo/catalog/parity/CatalogParityTest.java", proc.stderr)
+
+    def test_neither_root_has_a_source_is_the_informational_empty_phase(self) -> None:
+        """(a) unchanged, and now stated over both roots: no source in either
+        one is reported with both names, never as a claim about one of them."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_xml(root, "TEST-com.demo.CatalogResourceTest.xml", PASSING)
+            proc = run_py(SURE, root)
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertIn("no test source under src/test/java or src/parity-test/java", proc.stderr)
+            self.assertIn(
+                "empty failsafe phase — no *IT.java under src/test/java or src/parity-test/java",
+                proc.stderr)
+            self.assertIn("test roots: src/test/java, src/parity-test/java", proc.stderr)
 
 
 if __name__ == "__main__":
