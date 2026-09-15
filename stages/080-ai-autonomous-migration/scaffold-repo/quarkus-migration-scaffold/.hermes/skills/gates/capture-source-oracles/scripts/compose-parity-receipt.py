@@ -5,6 +5,15 @@ Independent producer: reads every parity verdict for the current
 admission receipt and every entry point in the evidence bundle. PASS only
 when every entry point has a PASS verdict bound to this receipt. Exit 0 on
 PASS; 1 otherwise (never completes around a FAIL or an INCONCLUSIVE).
+
+The receipt records what it is OF, as ``binding``: the accepted tree under the
+live seal (``mode: sealed``, the M4 road) or, with --issued, the candidate that
+issued card was verified on (``mode: candidate``, the fix-until-green
+acceptance path, where the work list has been rebuilt on the candidate and the
+live seal cannot match it). In candidate mode a scenario verdict measured for
+another card, another candidate or another receipt satisfies nothing, while a
+sealed-bound verdict still counts: those are the ones the last full M4 run left
+for every scenario a scoped run was not scoped to.
 """
 from __future__ import annotations
 
@@ -16,10 +25,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _oracle_common import PARITY, slug  # noqa: E402
-from _scenarios import (CorpusError, DEFAULT_SECURITY_MODE, QUALIFICATION, QUALIFICATION_SCHEMA, SCENARIO_ORACLES,  # noqa: E402,F401
-                        SCENARIO_PARITY, SECURITY_MODES, capture_security_mode, corpus_digest, cors_coverage,
-                        is_derived, load_corpus, normalize_security_mode, parity_receipt_path, qualification_path,
-                        scenario_oracles_dir, scenario_parity_dir, scenario_slug, source_cors_policies)
+from _scenarios import (BINDING_CANDIDATE, CorpusError, DEFAULT_SECURITY_MODE, QUALIFICATION, QUALIFICATION_SCHEMA,  # noqa: E402,F401
+                        SCENARIO_ORACLES, SCENARIO_PARITY, SECURITY_MODES, binding_mismatch, candidate_binding,
+                        capture_security_mode, corpus_digest, cors_coverage, is_derived, load_corpus,
+                        normalize_security_mode, parity_receipt_path, qualification_path, scenario_oracles_dir,
+                        scenario_parity_dir, scenario_slug, sealed_binding, source_cors_policies)
 from planner.admission import verify_receipt  # noqa: E402
 from planner.canonical import load_json, write_canonical  # noqa: E402
 from planner.paths import EVIDENCE_BUNDLE  # noqa: E402
@@ -31,8 +41,27 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--security-mode", choices=list(SECURITY_MODES), default=DEFAULT_SECURITY_MODE,
                     help="the security mode this receipt is of (ADR-014). It selects the captures, the qualification and the "
                          "scenario verdicts, and the receipt refuses to compose over evidence from another mode")
+    ap.add_argument("--issued", default="", metavar="PATH",
+                    help="verification/loop/issued.json: compose over the CANDIDATE that issued card was verified on. The live "
+                         "seal is then not required to match the rebuilt work list, the receipt records the binding, and a "
+                         "scenario verdict measured for another card, another candidate or another receipt satisfies nothing. "
+                         "Without it the receipt is sealed-bound, exactly as on the M4 road.")
+    ap.add_argument("--candidate", default="", metavar="SHA", help="the candidate digest the caller believes this tree has; checked, never trusted. Implies --issued.")
+    ap.add_argument("--issued-receipt", default="", metavar="SHA", help="the receipt the issued card was minted under; checked against the issued card. Implies --issued.")
     args = ap.parse_args(argv)
     root = Path(args.root).resolve()
+    binding, binding_gaps = ({}, [])
+    if args.issued or args.candidate or args.issued_receipt:
+        binding, binding_gaps = candidate_binding(root, issued_path=args.issued, candidate_sha256=args.candidate,
+                                                  issued_receipt_sha256=args.issued_receipt)
+    else:
+        binding = sealed_binding()
+    if binding_gaps:
+        for g in binding_gaps:
+            print("  - " + g, file=sys.stderr)
+        print("REFUSE: PARITY_RECEIPT the issued binding could not be made", file=sys.stderr)
+        return 1
+    candidate_mode = str(binding.get("mode") or "") == BINDING_CANDIDATE
     try:
         security_mode = normalize_security_mode(args.security_mode)
     except CorpusError as exc:
@@ -48,11 +77,16 @@ def main(argv: list[str] | None = None) -> int:
               % (oracles_dir.as_posix(), recorded_mode, security_mode), file=sys.stderr)
         return 1
     receipt, gaps = verify_receipt(root, require_admitted=True)
-    if gaps or receipt is None:
+    # On the acceptance path the work list was rebuilt on the candidate before
+    # this runs, so the live seal cannot match it. The binding says what this
+    # receipt is of instead; the receipt it names is still the one the card was
+    # minted under, which candidate_binding proved is the one on disk.
+    if not candidate_mode and (gaps or receipt is None):
         for g in gaps:
             print("  - " + g, file=sys.stderr)
         print("REFUSE: PARITY_RECEIPT receipt not authoritative", file=sys.stderr)
         return 1
+    receipt_sha = str(binding.get("issued_receipt_sha256") or "") if candidate_mode else str((receipt or {}).get("receipt_digest") or "")
     bundle = load_json(root / EVIDENCE_BUNDLE)
     wanted = sorted(str(e["id"]) for e in (bundle.get("entry_points") or []))
     # Which scenarios an entry point REQUIRES comes from the approved corpus,
@@ -178,8 +212,16 @@ def main(argv: list[str] | None = None) -> int:
                     problems.append("%s has %d result files" % (sid, len(found)))
                     continue
                 doc = found[0]
-                if doc.get("receipt_sha256") != receipt["receipt_digest"]:
+                # WHOSE measurement this verdict is. In candidate mode a
+                # verdict bound to the SEAL still counts -- those are the ones
+                # the last full M4 run left for every scenario a scoped run
+                # was not scoped to -- but one measured for another card, another
+                # candidate or another receipt satisfies nothing.
+                bad_binding = binding_mismatch(doc, binding) if candidate_mode else ""
+                if doc.get("receipt_sha256") != receipt_sha:
                     problems.append("%s is bound to receipt %s" % (sid, str(doc.get("receipt_sha256"))[:12]))
+                elif bad_binding:
+                    problems.append("%s is not this verification's measurement: %s" % (sid, bad_binding))
                 elif corpus_sha and str(doc.get("corpus_sha256") or "") != corpus_sha:
                     problems.append("%s was compared against corpus %s, this is %s" % (sid, str(doc.get("corpus_sha256"))[:12], corpus_sha[:12]))
                 elif doc.get("verdict") == "FAIL":
@@ -203,8 +245,9 @@ def main(argv: list[str] | None = None) -> int:
         p = root / PARITY / (slug(ep) + ".json")
         if p.is_file():
             v = load_json(p)
-            ok = v.get("verdict") == "PASS" and v.get("receipt_sha256") == receipt["receipt_digest"]
-            rows.append({"entry_point": ep, "verdict": v.get("verdict") if v.get("receipt_sha256") == receipt["receipt_digest"] else "INCONCLUSIVE", "reason": v.get("reason", "") if v.get("receipt_sha256") == receipt["receipt_digest"] else "verdict bound to another receipt", "scenarios": []})
+            bound = v.get("receipt_sha256") == receipt_sha and not (binding_mismatch(v, binding) if candidate_mode else "")
+            ok = v.get("verdict") == "PASS" and bound
+            rows.append({"entry_point": ep, "verdict": v.get("verdict") if bound else "INCONCLUSIVE", "reason": v.get("reason", "") if bound else "verdict bound to another receipt", "scenarios": []})
         else:
             ok = False
             rows.append({"entry_point": ep, "verdict": "INCONCLUSIVE", "reason": "no parity record", "scenarios": []})
@@ -219,7 +262,7 @@ def main(argv: list[str] | None = None) -> int:
     verdict = "PASS" if rows and failed == 0 else ("INCONCLUSIVE" if not rows or all(r["verdict"] == "INCONCLUSIVE" for r in rows if r["verdict"] != "PASS") else "FAIL")
     if verdict == "PASS" and cors_gaps:
         verdict = "INCONCLUSIVE"
-    doc = {"schema": "rhoai3.parity-receipt/v1", "receipt_sha256": receipt["receipt_digest"], "producer": "compose-parity-receipt.py",
+    doc = {"schema": "rhoai3.parity-receipt/v1", "receipt_sha256": receipt_sha, "binding": dict(binding), "producer": "compose-parity-receipt.py",
            "corpus_sha256": corpus_sha, "corpus_error": corpus_error, "entry_points": rows, "total": len(rows), "not_passed": failed,
            "security_mode": security_mode, "security_mode_recorded": recorded_mode, "security_mode_note": "" if recorded_mode else mode_why,
            "cors": {"source_policies": source_policies, "gaps": cors_gaps},

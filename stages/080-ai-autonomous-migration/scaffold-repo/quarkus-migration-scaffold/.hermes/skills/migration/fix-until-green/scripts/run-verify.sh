@@ -30,7 +30,10 @@
 #      because [0,0,0] did not decrease and the obligation was never
 #      re-measured). It is not run for any other card: the comparison starts
 #      the packaged destination and replays scenarios, and that cost buys
-#      nothing on a compile card.
+#      nothing on a compile card. The comparison is told which card it is for
+#      (--issued): its verdicts are of the CANDIDATE, and step 4 above has
+#      already rebuilt the work list on that candidate, so the live seal
+#      cannot match it (v9 card t_222c582a).
 # Maven reads the tree's own .mvn/maven.config (-s .mvn/settings.xml: the
 # Red Hat GA repository); the bootstrap refuses when that wiring is absent.
 # Every tool's outcome is recorded in run.json (mode + per-stage ms); verify.py
@@ -299,6 +302,24 @@ PYEOF
   if [[ "${PARITY_PLAN}" == run:* ]]; then
     SIDS="${PARITY_PLAN#run:}"
     PARITY_ARGS=()
+    # The verdicts this comparison produces are of the CANDIDATE, not of the
+    # accepted tree: verify.py above rebuilt the work list on it, so the live
+    # seal's worklist digest is the accepted tree's and can never match. The
+    # issued card is what the verdicts bind to instead (the candidate digest in
+    # run.json, the receipt the card was minted under, the card). Without this,
+    # measured on destination v9 card t_222c582a, every scenario came back
+    # "receipt not authoritative: worklist digest ... != sealed ...", the
+    # composer refused, the stale FAIL stayed on disk and the card was REVERTED
+    # -- and so was every parity card.
+    PARITY_ISSUED="${ROOT}/verification/loop/issued.json"
+    if [[ -f "${PARITY_ISSUED}" ]]; then
+      PARITY_ARGS+=(--issued "${PARITY_ISSUED}")
+    else
+      # --parity with no issued card: an Operator re-measuring the phase on a
+      # tree nobody minted a card for. There is no candidate to bind to, and
+      # the sealed road is the right one.
+      echo "parity: no issued card; the comparison is bound to the seal, not to a candidate"
+    fi
     if [[ -n "${SIDS}" ]]; then
       IFS=',' read -r -a SID_ARR <<< "${SIDS}"
       for s in "${SID_ARR[@]}"; do

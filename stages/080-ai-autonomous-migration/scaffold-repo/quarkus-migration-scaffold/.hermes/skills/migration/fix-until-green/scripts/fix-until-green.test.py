@@ -55,6 +55,13 @@ def _advance(root: Path, cluster: str, card: str) -> subprocess.CompletedProcess
     return _run([sys.executable, str(ADVANCE), "--root", str(root), "--cluster", cluster, "--card", card, "--no-mint"])
 
 
+def _seal_gaps(root: Path) -> list[str]:
+    """Why the admission receipt no longer seals what is on disk."""
+    from planner.admission import verify_receipt
+
+    return verify_receipt(root, require_admitted=True)[1]
+
+
 def _head(root: Path) -> dict:
     wl = load_json(root / WORKLIST)
     return next(c for c in wl["clusters"] if c["id"] == wl["head"])
@@ -314,22 +321,39 @@ _PARITY_SID = "sc:cors-actual-owners"
 _PARITY_REASON = "header Access-Control-Allow-Origin None vs *; header Access-Control-Expose-Headers None vs errors"
 
 
-def _parity_records(root: Path, verdict: str) -> None:
+def _parity_records(root: Path, verdict: str, binding: dict | None = None) -> None:
     """What the M4 comparison leaves on disk: one scenario verdict and the
-    receipt composed from it (compose-parity-receipt.py's shape)."""
+    receipt composed from it (compose-parity-receipt.py's shape).
+
+    ``binding`` is what the records say they are OF. The M4 road leaves none
+    (it is the accepted tree under the live seal); the acceptance path leaves
+    the candidate binding compose-parity-receipt.py --issued writes."""
     from planner.paths import PARITY_DIR
 
     pdir = root / PARITY_DIR
     (pdir / "scenarios").mkdir(parents=True, exist_ok=True)
+    extra = {"binding": dict(binding)} if binding else {}
     write_canonical(pdir / "scenarios" / "sc_cors.json",
-                    {"schema": "rhoai3.scenario-parity/v1", "entry_point": _PARITY_EP, "scenario": _PARITY_SID,
-                     "verdict": verdict, "reason": _PARITY_REASON if verdict != "PASS" else ""})
+                    dict(extra, schema="rhoai3.scenario-parity/v1", entry_point=_PARITY_EP, scenario=_PARITY_SID,
+                         verdict=verdict, reason=_PARITY_REASON if verdict != "PASS" else ""))
     write_canonical(pdir / "receipt.json",
-                    {"schema": "rhoai3.parity-receipt/v1", "verdict": verdict, "total": 1,
-                     "not_passed": 0 if verdict == "PASS" else 1,
-                     "entry_points": [{"entry_point": _PARITY_EP, "verdict": verdict,
-                                       "reason": "" if verdict == "PASS" else _PARITY_REASON,
-                                       "scenarios": [_PARITY_SID], "coverage": {"positive": [_PARITY_SID], "negative": []}}]})
+                    dict(extra, schema="rhoai3.parity-receipt/v1", verdict=verdict, total=1,
+                         not_passed=0 if verdict == "PASS" else 1,
+                         entry_points=[{"entry_point": _PARITY_EP, "verdict": verdict,
+                                        "reason": "" if verdict == "PASS" else _PARITY_REASON,
+                                        "scenarios": [_PARITY_SID], "coverage": {"positive": [_PARITY_SID], "negative": []}}]))
+
+
+def _candidate_binding(root: Path, card: str) -> dict:
+    """The binding the acceptance path's own comparison would have recorded:
+    the candidate THIS verification measured and the card it was issued for."""
+    from planner.paths import ADMISSION_RECEIPT, LOOP_ISSUED, VERIFY_RUN
+
+    return {"mode": "candidate",
+            "candidate_sha256": str(load_json(root / VERIFY_RUN).get("candidate_sha256") or ""),
+            "issued_receipt_sha256": str((load_json(root / LOOP_ISSUED) if (root / LOOP_ISSUED).is_file() else {}).get("receipt_sha256")
+                                         or load_json(root / ADMISSION_RECEIPT).get("receipt_digest") or ""),
+            "card": card}
 
 
 def _parity_verified(root: Path, findings: dict, *, ran: bool = True, verdict: str = "") -> None:
@@ -438,6 +462,34 @@ def _parity_card_case() -> int:
         shutil.copyfile(root / "verification" / "parity" / "receipt.json", root / VERIFY_DIR / "parity-before.json")
         _parity_records(root, "PASS")
         _parity_verified(root, findings, verdict="PASS")
+        # The acceptance verify REBUILT the work list on this candidate, so the
+        # live seal's worklist digest is the accepted tree's: a comparison that
+        # asked the seal to match could not have measured anything here. That is
+        # v9 card t_222c582a, where the CORS repair was right, every scenario
+        # came back "receipt not authoritative: worklist digest ... != sealed
+        # ...", and the card -- like every parity card -- was REVERTED.
+        if not any("worklist digest" in g for g in _seal_gaps(root)):
+            return _fail("the control needs the seal to be stale after the candidate's re-measure: %s" % _seal_gaps(root))
+
+        # ... so the comparison binds its verdicts to the CANDIDATE and the
+        # ISSUED card instead. One composed for another card is not this
+        # card's measurement: nothing is judged from it and no attempt is spent
+        _parity_records(root, "PASS", binding=_candidate_binding(root, "t_somebodyelse"))
+        spent = dict(load_json(root / LOOP_STEPS).get("attempts") or {})
+        p = _advance(root, cluster["id"], "t_par2")
+        blob = p.stdout + p.stderr
+        if p.returncode == 0 or "VERIFICATION_PENDING" not in blob or "not a measurement" not in blob:
+            return _fail("a parity receipt composed for another card must not judge this one: %s" % blob[-600:])
+        if "t_somebodyelse" not in blob or (load_json(root / LOOP_STEPS).get("attempts") or {}) != spent:
+            return _fail("the refusal names the card the receipt was composed for, and spends no attempt: %s" % blob[-600:])
+
+        rp = _run([sys.executable, str(SCRIPTS / "restore-pending.py"), "--root", str(root), "--cluster", cluster["id"]])
+        if rp.returncode != 0 or "restored" not in rp.stdout:
+            return _fail("restore-pending must put the retained candidate back: %s%s" % (rp.stdout, rp.stderr))
+        _parity_records(root, "PASS")
+        _parity_verified(root, findings, verdict="PASS")
+        binding = _candidate_binding(root, "t_par2")
+        _parity_records(root, "PASS", binding=binding)
         p = _advance(root, cluster["id"], "t_par2")
         if p.returncode != 0 or "ACCEPTED" not in p.stdout or "discharges" not in p.stdout:
             return _fail("a parity repair the comparison confirms must be accepted with the tuple unchanged: %s%s"
@@ -445,6 +497,8 @@ def _parity_card_case() -> int:
         step = load_json(root / LOOP_STEPS)["steps"][-1]
         if step.get("gate") != "parity" or (step.get("parity") or {}).get("verdict") != "PASS":
             return _fail("the accepted step must record the gate and the receipt it was accepted on: %s" % step)
+        if (step.get("parity") or {}).get("binding") != binding:
+            return _fail("the accepted step must record what that receipt was a measurement OF: %s" % step.get("parity"))
         if step.get("measure", {}).get("tuple") != [0, 0, 0]:
             return _fail("a parity repair does not move the tuple: %s" % step.get("measure"))
         snap = root / "verification" / "loop" / "accepted" / "parity" / "receipt.json"

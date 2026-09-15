@@ -12,6 +12,14 @@ For a write, response equality is not sufficient. Every effect the scenario
 declares is read back and compared too, so a DELETE that answers 204 without
 deleting anything fails its resulting-state check.
 
+WHICH destination the verdict is about is recorded on it as ``binding``. By
+default it is the accepted tree under the live seal (``mode: sealed``, the M4
+road). With --issued it is the CANDIDATE that issued card was verified on
+(``mode: candidate``): the acceptance path rebuilds the work list on the
+candidate before this stage runs, so the live seal is stale by construction,
+and what binds the verdict instead is the candidate digest this verification
+recorded, the receipt the card was minted under, and the card.
+
 Writes verification/parity/scenarios/<slug>.json. Exit 0 only on PASS; FAIL and
 INCONCLUSIVE exit 1 and say which comparison failed.
 """
@@ -26,10 +34,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _oracle_common import ensure_hermes_lib, header_diffs, http_observe, is_preflight, origin_of, required_headers  # noqa: E402
-from _scenarios import (CorpusError, DEFAULT_SECURITY_MODE, QUALIFICATION, SCENARIO_ORACLES, SCENARIO_PARITY,  # noqa: E402,F401
-                        SECURITY_MODES, auth_headers, corpus_digest, effects_identity_of, load_corpus,
-                        normalize_security_mode, normalized_identity, qualification_path, request_of, scenario,
-                        scenario_oracles_dir, scenario_parity_dir, scenario_slug, source_exposed_headers)
+from _scenarios import (BINDING_CANDIDATE, CorpusError, DEFAULT_SECURITY_MODE, QUALIFICATION, SCENARIO_ORACLES,  # noqa: E402,F401
+                        SCENARIO_PARITY, SECURITY_MODES, auth_headers, candidate_binding, corpus_digest,
+                        effects_identity_of, load_corpus, normalize_security_mode, normalized_identity,
+                        qualification_path, request_of, scenario, scenario_oracles_dir, scenario_parity_dir,
+                        scenario_slug, sealed_binding, source_exposed_headers)
 
 ensure_hermes_lib()
 from planner.admission import verify_receipt  # noqa: E402
@@ -60,8 +69,27 @@ def main(argv: list[str] | None = None) -> int:
                     help="the security mode the DESTINATION is running in (ADR-014). It selects the captures to compare against, "
                          "and a capture taken in another mode is refused: a destination started with security enabled proves "
                          "nothing against anonymous expectations")
+    ap.add_argument("--issued", default="", metavar="PATH",
+                    help="verification/loop/issued.json: this verdict is of the CANDIDATE that issued card was verified on, "
+                         "not of the accepted tree. The live seal is then not required to match the rebuilt work list (the "
+                         "acceptance path rebuilds it on the candidate before the comparison runs); the verdict records the "
+                         "candidate, the receipt the card was minted under and the card itself. Without it the verdict is "
+                         "sealed-bound, exactly as on the M4 road.")
+    ap.add_argument("--candidate", default="", metavar="SHA",
+                    help="the candidate digest the caller believes this tree has; checked against verification/build/run.json "
+                         "and against the tree itself, never trusted. Implies --issued.")
+    ap.add_argument("--issued-receipt", default="", metavar="SHA",
+                    help="the admission receipt the issued card was minted under; checked against the issued card. Implies --issued.")
     args = ap.parse_args(argv)
     root = Path(args.root).resolve()
+    # the binding FIRST: what this verdict is about is not a detail of how it
+    # is written down, it decides which seal it is measured against
+    binding, binding_gaps = ({}, [])
+    if args.issued or args.candidate or args.issued_receipt:
+        binding, binding_gaps = candidate_binding(root, issued_path=args.issued, candidate_sha256=args.candidate,
+                                                  issued_receipt_sha256=args.issued_receipt)
+    else:
+        binding = sealed_binding()
     try:
         security_mode = normalize_security_mode(args.security_mode)
     except CorpusError as exc:
@@ -69,12 +97,26 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     oracles_dir = scenario_oracles_dir(security_mode)
     receipt, gaps = verify_receipt(root, require_admitted=True)
+    candidate_mode = str(binding.get("mode") or "") == BINDING_CANDIDATE
+    # A candidate-bound verdict still names a receipt: the one the issued card
+    # was minted under, which candidate_binding proved is the receipt on disk.
+    receipt_sha = str(binding.get("issued_receipt_sha256") or "") if candidate_mode else (receipt["receipt_digest"] if receipt else "")
     verdict = {"schema": "rhoai3.scenario-parity/v1", "scenario": args.scenario, "entry_point": "",
-               "receipt_sha256": receipt["receipt_digest"] if receipt else "", "verdict": "INCONCLUSIVE",
+               "receipt_sha256": receipt_sha, "verdict": "INCONCLUSIVE",
+               "binding": dict(binding) if binding else {"mode": BINDING_CANDIDATE, "gaps": list(binding_gaps)},
                "corpus_sha256": "", "security_mode": security_mode, "reason": "", "request": {}, "reset": {},
                "before": [], "before_state": "", "expected": {}, "observed": {}, "effects": []}
     out = root / scenario_parity_dir(security_mode) / (scenario_slug(args.scenario) + ".json")
-    if gaps or receipt is None:
+    if binding_gaps:
+        verdict["reason"] = "the issued binding could not be made: " + "; ".join(binding_gaps)
+        write_canonical(out, verdict)
+        print("REFUSE: SCENARIO_PARITY %s INCONCLUSIVE (%s)" % (args.scenario, verdict["reason"]), file=sys.stderr)
+        return 1
+    # On the acceptance path the live seal is stale BY CONSTRUCTION: run-verify.sh
+    # rebuilds the work list on the candidate before this stage runs, so its
+    # digest can never be the accepted tree's sealed one. The binding above is
+    # what this verdict is bound to instead; the seal is not asked.
+    if not candidate_mode and (gaps or receipt is None):
         verdict["reason"] = "receipt not authoritative: " + "; ".join(gaps)
         write_canonical(out, verdict)
         print("REFUSE: SCENARIO_PARITY %s INCONCLUSIVE (%s)" % (args.scenario, verdict["reason"]), file=sys.stderr)

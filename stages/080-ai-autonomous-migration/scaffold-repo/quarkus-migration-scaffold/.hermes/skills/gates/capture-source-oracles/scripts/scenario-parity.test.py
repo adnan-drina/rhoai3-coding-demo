@@ -847,6 +847,190 @@ def _stale_receipt_case() -> int:
     return 0
 
 
+def _acceptance_binding_case() -> int:
+    """A verdict produced during an acceptance verify is of the CANDIDATE.
+
+    Measured on destination v9, card t_222c582a (the PARITY_CORS obligation,
+    attempt 4): the worker wrote the right CORS properties, the acceptance
+    path re-ran the comparison, and the scenario came back INCONCLUSIVE with
+    "receipt not authoritative: worklist digest 26403fd1ecb0 != sealed
+    eceefe4d20b9". Nothing was wrong with the repair: run-verify.sh REBUILDS
+    the work list on the candidate before the parity stage runs, so the live
+    seal's worklist digest is the accepted tree's and can never match. The
+    composer refused for the same reason, the stale FAIL stayed on disk, and
+    advance.py reverted the card -- as it did every parity card.
+
+    So: with --issued the comparison does not ask the live seal to match the
+    rebuilt list, and binds the verdict to what CAN be bound -- the candidate
+    this verification recorded, the receipt the card was minted under, and the
+    card. Without it, nothing changes: the M4 road still refuses a stale seal.
+    What cannot be bound is refused BY NAME: another receipt, another
+    candidate, another card, no issued card at all."""
+    from planner.canonical import digest as _digest
+    from planner.paths import ADMISSION_RECEIPT, LOOP_ISSUED, VERIFY_RUN, WORKLIST
+    from _scenarios import BINDING_CANDIDATE, candidate_binding, product_tree_digest
+
+    corpus_doc = {
+        "schema": "rhoai3.scenario-corpus/v1", "approved_by": "operator:test",
+        "initial_state": {"reset": "restart the service", "dataset": "one owner"},
+        "scenarios": [{"id": "sc:list-owners", "entry_point": "", "method": "GET", "path": "/api/owners",
+                       "body_absent": True, "reset_before": True, "effects": [], "normalization": []}],
+    }
+    with tempfile.TemporaryDirectory(prefix="acceptbind-") as td:
+        root = specimens.build_dest(Path(td) / "dest", specimens.specimen("http"), decisions=specimens.admitted_decisions())
+        specimens.prepare_loop(root)
+        if pipeline.admit(root)["status"] != "ADMITTED":
+            return _fail("the acceptance-binding fixture must be admitted")
+        receipt_digest = load_json(root / ADMISSION_RECEIPT)["receipt_digest"]
+        bundle_sha = _digest(load_json(root / "evidence" / "planning" / "evidence-bundle.json"))
+        ep = sorted(str(e["id"]) for e in load_json(root / "evidence/planning/evidence-bundle.json")["entry_points"])[0]
+        corpus_doc["scenarios"][0]["entry_point"] = ep
+        write_canonical(root / "verification" / "scenarios" / "corpus.json", corpus_doc)
+        corpus_sha = corpus_digest(load_json(root / "verification" / "scenarios" / "corpus.json"))
+        req = request_of(root, corpus_doc["scenarios"][0])
+        slugged = scenario_slug("sc:list-owners") + ".json"
+
+        # the source, captured at M1
+        from _oracle_common import http_observe
+        Service.owners = {"7": {"id": 7, "lastName": "Franklin"}}
+        Service.lie_on_delete = False
+        src, src_url = serve()
+        listed = http_observe(src_url, "GET", "/api/owners")
+        src.shutdown()
+        write_canonical(root / SCENARIO_ORACLES / slugged, {
+            "schema": "rhoai3.source-scenario/v1", "scenario": "sc:list-owners", "entry_point": ep,
+            "receipt_sha256": receipt_digest, "corpus_sha256": corpus_sha, "status": "CAPTURED", "reason": "",
+            "evidence_bundle_sha256": bundle_sha, "source": {"base_url": src_url},
+            "initial_state": corpus_doc["initial_state"], "normalization": [], "reset_before": True,
+            "request": {"request_sha256": req["request_sha256"]},
+            "response": {"status": listed["status"], "body_kind": listed["body_kind"],
+                         "body_sha256": listed["body_sha256"], "headers": listed["headers"]},
+            "before": [], "effects": [],
+        })
+
+        # the acceptance path's own state: the work list has been rebuilt on
+        # the candidate (so the seal is stale), a card is issued, and the
+        # verification recorded which tree it measured
+        wl = load_json(root / WORKLIST)
+        wl["_rebuilt_on_the_candidate"] = True
+        write_canonical(root / WORKLIST, wl)
+        if not any("worklist digest" in g for g in verify_gaps(root)):
+            return _fail("the fixture must reproduce the stale seal: %s" % verify_gaps(root))
+        card = "t_222c582a"
+        issued = {"schema": "rhoai3.loop-issued/v1", "cluster": "c:parity", "task_id": card, "attempt": 4,
+                  "gate": "parity", "receipt_sha256": receipt_digest, "items": ["parity:0123456789abcdef"],
+                  "write_set": ["src/main/resources/application.properties"]}
+        write_canonical(root / LOOP_ISSUED, issued)
+        on_tree = product_tree_digest(root)
+        write_canonical(root / VERIFY_RUN, {"schema": "rhoai3.verify-run/v1", "mode": "acceptance",
+                                            "candidate_sha256": on_tree})
+
+        # the product-tree identity this binding is about is the loop's own:
+        # one definition of what a product path is, one recipe, two callers
+        sys.path.insert(0, str(HERE.parents[2] / "migration" / "fix-until-green" / "scripts"))
+        from _loop_common import candidate_sha256 as loop_candidate_sha256
+        if loop_candidate_sha256(root) != on_tree:
+            return _fail("the candidate a comparison binds to must be the candidate the loop measures")
+
+        Service.owners = {"7": {"id": 7, "lastName": "Franklin"}}
+        dest, dest_url = serve()
+        try:
+            base = [sys.executable, str(COMPARE), "--root", str(root), "--scenario", "sc:list-owners",
+                    "--dest-url", dest_url, "--no-reset"]
+            issued_p = str(root / LOOP_ISSUED)
+
+            # 1. the M4 road, unchanged: a stale seal refuses
+            p = subprocess.run(base, text=True, capture_output=True)
+            v = load_json(root / SCENARIO_PARITY / slugged)
+            if p.returncode != 1 or v["verdict"] != "INCONCLUSIVE" or "worklist digest" not in v["reason"]:
+                return _fail("without --issued a stale seal still refuses: rc=%s %s" % (p.returncode, v.get("reason")))
+            if (v.get("binding") or {}).get("mode") != "sealed":
+                return _fail("a verdict of the accepted tree is sealed-bound: %s" % v.get("binding"))
+
+            # 2. the acceptance path: the same stale seal, and the comparison
+            #    is a measurement of the candidate
+            p = subprocess.run(base + ["--issued", issued_p], text=True, capture_output=True)
+            v = load_json(root / SCENARIO_PARITY / slugged)
+            if p.returncode != 0 or v["verdict"] != "PASS":
+                return _fail("with --issued the rebuilt work list is not a refusal: rc=%s %s %s"
+                             % (p.returncode, v.get("verdict"), (p.stdout + p.stderr)[-400:]))
+            want = {"mode": BINDING_CANDIDATE, "candidate_sha256": on_tree,
+                    "issued_receipt_sha256": receipt_digest, "card": card}
+            if v.get("binding") != want or v.get("receipt_sha256") != receipt_digest:
+                return _fail("the verdict records what it is bound to: %s / %s" % (v.get("binding"), v.get("receipt_sha256")))
+
+            # 3. the receipt: the composer refuses the stale seal on the M4
+            #    road and composes on the acceptance path, recording the same
+            #    binding
+            p = subprocess.run([sys.executable, str(RECEIPT), "--root", str(root)], text=True, capture_output=True)
+            if p.returncode != 1 or "receipt not authoritative" not in p.stderr:
+                return _fail("without --issued the composer still refuses a stale seal: rc=%s %s" % (p.returncode, p.stderr[-300:]))
+            subprocess.run([sys.executable, str(RECEIPT), "--root", str(root), "--issued", issued_p], text=True, capture_output=True)
+            rdoc = load_json(root / parity_receipt_path("disabled"))
+            # the whole receipt is INCONCLUSIVE here -- this specimen's other
+            # entry points have no read oracle -- but the scenario's own row is
+            # the one the acceptance path asks about, and it was composed
+            row = next(r for r in rdoc["entry_points"] if r["entry_point"] == ep)
+            if row["verdict"] != "PASS" or row["scenarios"] != ["sc:list-owners"]:
+                return _fail("the composer must compose the candidate's verdict: %s" % row)
+            if rdoc.get("binding") != want or rdoc.get("receipt_sha256") != receipt_digest:
+                return _fail("the receipt records what it is of: %s / %s" % (rdoc.get("binding"), rdoc.get("receipt_sha256")))
+
+            # 4. a verdict measured for ANOTHER card satisfies nothing: the
+            #    composer names the card rather than counting it as coverage
+            foreign = load_json(root / SCENARIO_PARITY / slugged)
+            foreign["binding"] = dict(want, card="t_somebodyelse")
+            write_canonical(root / SCENARIO_PARITY / slugged, foreign)
+            p = subprocess.run([sys.executable, str(RECEIPT), "--root", str(root), "--issued", issued_p], text=True, capture_output=True)
+            rdoc = load_json(root / parity_receipt_path("disabled"))
+            row = next(r for r in rdoc["entry_points"] if r["entry_point"] == ep)
+            if p.returncode != 1 or row["verdict"] != "INCONCLUSIVE" or "t_somebodyelse" not in row["reason"]:
+                return _fail("a verdict measured for another card must not satisfy coverage: rc=%s %s" % (p.returncode, row))
+            # ... and one measured on another candidate, likewise
+            foreign["binding"] = dict(want, candidate_sha256="0" * 64)
+            write_canonical(root / SCENARIO_PARITY / slugged, foreign)
+            subprocess.run([sys.executable, str(RECEIPT), "--root", str(root), "--issued", issued_p], text=True, capture_output=True)
+            row = next(r for r in load_json(root / parity_receipt_path("disabled"))["entry_points"] if r["entry_point"] == ep)
+            if row["verdict"] != "INCONCLUSIVE" or "the candidate" not in row["reason"]:
+                return _fail("a verdict measured on another candidate must not satisfy coverage: %s" % row)
+
+            # 5. what CANNOT be bound is refused by name, before anything is
+            #    compared: another receipt, another candidate, no issued card
+            for argv, needle in (
+                (base + ["--issued", issued_p, "--issued-receipt", "0" * 64], "--issued-receipt"),
+                (base + ["--issued", issued_p, "--candidate", "0" * 64], "--candidate"),
+                (base + ["--issued", str(root / "verification" / "loop" / "nothing.json")], "issued card is absent"),
+            ):
+                p = subprocess.run(argv, text=True, capture_output=True)
+                v = load_json(root / SCENARIO_PARITY / slugged)
+                if p.returncode != 1 or v["verdict"] != "INCONCLUSIVE" or needle not in v["reason"]:
+                    return _fail("the binding refuses %r by name: rc=%s %s" % (needle, p.returncode, v.get("reason")))
+
+            # the receipt the card was minted under is the one on disk: an
+            # issued card naming another one is not this tree's card
+            write_canonical(root / LOOP_ISSUED, dict(issued, receipt_sha256="0" * 64))
+            p = subprocess.run(base + ["--issued", issued_p], text=True, capture_output=True)
+            v = load_json(root / SCENARIO_PARITY / slugged)
+            if p.returncode != 1 or "names another receipt" not in v["reason"]:
+                return _fail("an issued card minted under another receipt refuses by name: rc=%s %s" % (p.returncode, v.get("reason")))
+            write_canonical(root / LOOP_ISSUED, issued)
+
+            # the candidate in run.json must be the tree being compared: an
+            # edit after verification is not what the card was verified on
+            props = root / "src" / "main" / "resources" / "application.properties"
+            props.parent.mkdir(parents=True, exist_ok=True)
+            props.write_text((props.read_text(encoding="utf-8") if props.is_file() else "") + "\n# edited after verification\n", encoding="utf-8")
+            p = subprocess.run(base + ["--issued", issued_p], text=True, capture_output=True)
+            v = load_json(root / SCENARIO_PARITY / slugged)
+            if p.returncode != 1 or "is not the tree this comparison is about" not in v["reason"]:
+                return _fail("a tree edited after verification refuses by name: rc=%s %s" % (p.returncode, v.get("reason")))
+            if candidate_binding(root, issued_path=issued_p)[0]:
+                return _fail("a binding that cannot be made is not returned anyway")
+        finally:
+            dest.shutdown()
+    return 0
+
+
 def verify_gaps(root: Path) -> list[str]:
     from planner.admission import verify_receipt
     return verify_receipt(root, require_admitted=False)[1]
@@ -854,6 +1038,8 @@ def verify_gaps(root: Path) -> list[str]:
 
 def main() -> int:
     if _no_corpus_case() or _missing_exposed_model_case() or _stale_receipt_case() or _security_mode_case():
+        return 1
+    if _acceptance_binding_case():
         return 1
     if _effects_identity_parity_case():
         return 1
@@ -1058,7 +1244,11 @@ def main() -> int:
           "gate and the receipt composer alike -- no cross-mode reuse; a scenario naming an effects_identity has its destination "
           "read-backs taken as that identity too, so a refused write's state is compared as the source saw it while the write "
           "itself stays anonymous, and a capture that took the read-backs as somebody else is refused by reference rather than "
-          "compared)")
+          "compared; a verdict produced during an acceptance verify binds to the CANDIDATE and the ISSUED card (--issued): the "
+          "work list the acceptance path rebuilt on the candidate is not a refusal there, the verdict and the receipt record "
+          "the candidate, the receipt the card was minted under and the card, a verdict measured for another card or on "
+          "another candidate satisfies no coverage, and another receipt, another candidate, a tree edited after verification "
+          "or no issued card at all refuse by name -- while without the flag the M4 road still refuses a stale seal)")
     return 0
 
 

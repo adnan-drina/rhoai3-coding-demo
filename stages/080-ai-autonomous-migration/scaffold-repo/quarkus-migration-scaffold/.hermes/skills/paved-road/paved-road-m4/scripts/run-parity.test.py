@@ -178,10 +178,11 @@ def _build(td: Path, base: str) -> Path:
     return root
 
 
-def _run(root: Path, base: str, reset: Path, scenarios: tuple[str, ...] = ()) -> tuple[int, str, dict]:
+def _run(root: Path, base: str, reset: Path, scenarios: tuple[str, ...] = (), issued: str = "") -> tuple[int, str, dict]:
     scoped = [a for sid in scenarios for a in ("--scenario", sid)]
+    bound = ["--issued", issued] if issued else []
     proc = subprocess.run([sys.executable, str(RUNNER), "--root", str(root), "--dest-url", base,
-                           "--reset-cmd", "%s %s" % (sys.executable, reset), *scoped], text=True, capture_output=True)
+                           "--reset-cmd", "%s %s" % (sys.executable, reset), *scoped, *bound], text=True, capture_output=True)
     run_doc = load_json(root / PARITY / "_run.json") if (root / PARITY / "_run.json").is_file() else {}
     return proc.returncode, proc.stdout + proc.stderr, run_doc
 
@@ -277,6 +278,59 @@ def main() -> int:
                 return _fail("a filter naming an undeclared scenario must refuse and say so: rc=%s %s"
                              % (rc6, doc6.get("failures")))
 
+            # --- --issued: the binding reaches both children and the record ---
+            # On the acceptance path the work list has already been rebuilt on
+            # the candidate, so the live seal cannot match it: the M4 road's
+            # own comparison refuses (v9 card t_222c582a), and the same run
+            # told which card it is for measures the candidate instead. What
+            # proves the flag reached the children is that their records --
+            # the scenario verdict and the receipt -- carry the binding.
+            from planner.paths import ADMISSION_RECEIPT, LOOP_ISSUED, VERIFY_RUN, WORKLIST
+            from _scenarios import product_tree_digest
+
+            wl_bytes = (root / WORKLIST).read_bytes()
+            wl = load_json(root / WORKLIST)
+            wl["_rebuilt_on_the_candidate"] = True
+            write_canonical(root / WORKLIST, wl)
+            receipt_digest = load_json(root / ADMISSION_RECEIPT)["receipt_digest"]
+            card = "t_222c582a"
+            write_canonical(root / LOOP_ISSUED, {"schema": "rhoai3.loop-issued/v1", "cluster": "c:parity",
+                                                 "task_id": card, "attempt": 4, "gate": "parity",
+                                                 "receipt_sha256": receipt_digest, "items": ["parity:aaaa"],
+                                                 "write_set": ["src/main/resources/application.properties"]})
+            on_tree = product_tree_digest(root)
+            write_canonical(root / VERIFY_RUN, {"schema": "rhoai3.verify-run/v1", "mode": "acceptance",
+                                                "candidate_sha256": on_tree})
+            scoped = ("sc:create-owner-second",)
+            rc7, blob7, doc7 = _run(root, base, reset, scenarios=scoped)
+            sv7 = load_json(root / SCENARIO_PARITY / (scenario_slug(scoped[0]) + ".json"))
+            if doc7["scenarios"]["inconclusive"] != 1 or "worklist digest" not in sv7.get("reason", "") or doc7["compose"]["rc"] != 1:
+                return _fail("the stale seal must refuse without --issued, or this control proves nothing: %s | %s"
+                             % (sv7.get("reason"), {k: doc7.get(k) for k in ("scenarios", "compose")}))
+            rc8, blob8, doc8 = _run(root, base, reset, scenarios=scoped, issued=str(root / LOOP_ISSUED))
+            want = {"mode": "candidate", "candidate_sha256": on_tree, "issued_receipt_sha256": receipt_digest, "card": card}
+            if rc8 != 0 or doc8.get("binding") != want or doc8.get("issued") != str(root / LOOP_ISSUED):
+                return _fail("the run record must carry the binding it ran under: rc=%s %s %s"
+                             % (rc8, doc8.get("binding"), blob8[-600:]))
+            sv = load_json(root / SCENARIO_PARITY / (scenario_slug(scoped[0]) + ".json"))
+            if sv.get("verdict") != "PASS" or sv.get("binding") != want:
+                return _fail("the comparator child must have been told the binding: %s"
+                             % {k: sv.get(k) for k in ("verdict", "binding", "reason")})
+            rcpt = load_json(root / PARITY / "receipt.json")
+            if rcpt.get("binding") != want or doc8.get("receipt_verdict") != "PASS":
+                return _fail("the composer child must have been told the binding: %s / %s"
+                             % (rcpt.get("binding"), doc8.get("receipt_verdict")))
+            # an --issued path that names no card is refused once, by the runner
+            rc9, blob9, doc9 = _run(root, base, reset, scenarios=scoped, issued=str(root / "verification" / "loop" / "nothing.json"))
+            if rc9 != 1 or not any("issued binding" in f for f in doc9.get("failures") or []):
+                return _fail("an --issued path with no card must refuse and say so: rc=%s %s" % (rc9, doc9.get("failures")))
+            (root / WORKLIST).write_bytes(wl_bytes)
+            (root / LOOP_ISSUED).unlink()
+            rc10, blob10, doc10 = _run(root, base, reset)
+            if rc10 != 0 or doc10.get("binding") != {"mode": "sealed"} or doc10.get("receipt_verdict") != "PASS":
+                return _fail("with the seal restored and no --issued the M4 road is unchanged: rc=%s %s"
+                             % (rc10, {k: doc10.get(k) for k in ("binding", "receipt_verdict")}))
+
             # --- a destination that really differs: FAIL is a measurement ---
             Service.drift = True
             rc3, blob3, doc3 = _run(root, base, reset)
@@ -303,7 +357,11 @@ def main() -> int:
     print("OK: run-parity selftest (every scenario in corpus order; every captured read oracle compared; the "
           "uncomparable named; receipt composed last; idempotent; --scenario replays only the scenarios it names, "
           "skips the read oracles by name and still composes the whole receipt, and refuses an undeclared id; "
-          "FAIL is a verdict not a runner failure; a missing corpus refuses)")
+          "FAIL is a verdict not a runner failure; a missing corpus refuses; --issued carries the acceptance path's "
+          "binding into BOTH children -- the scenario verdict and the composed receipt each record the candidate, the "
+          "receipt the card was minted under and the card -- where the same run without it refuses on the work list "
+          "rebuilt on that candidate, an --issued path naming no card refuses once in the run record, and with the seal "
+          "restored the unbound run is the sealed M4 road again)")
     return 0
 
 

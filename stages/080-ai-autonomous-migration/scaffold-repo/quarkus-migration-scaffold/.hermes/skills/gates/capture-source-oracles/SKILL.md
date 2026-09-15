@@ -710,6 +710,41 @@ What refuses, and why:
   this script (an independent producer), not by the verdict author. It
   records the `security_mode` it composed and refuses to compose over
   evidence from another mode.
+
+### Which destination a verdict is of (`binding`)
+
+Every scenario verdict and the receipt record what they are a measurement
+**of**, as `binding`:
+
+| mode | the tree | the seal | who runs it |
+| --- | --- | --- | --- |
+| `sealed` (default) | the accepted tree | the live admission receipt must still seal what is on disk | the M4 road |
+| `candidate` (`--issued`) | the candidate an issued card was verified on | not asked: the acceptance verify rebuilt the work list on that candidate | fix-until-green's acceptance path |
+
+`--issued <verification/loop/issued.json>` (also on `compose-parity-receipt.py`
+and on `paved-road-m4/scripts/run-parity.py`, which passes it to both) records
+`{mode, candidate_sha256, issued_receipt_sha256, card}` on every verdict and on
+the receipt. Optional `--candidate SHA` / `--issued-receipt SHA` state what the
+caller believes; they are checked, never trusted.
+
+Measured on destination v9, card `t_222c582a` (PARITY_CORS, attempt 4): the
+worker wrote the right CORS properties and the acceptance path re-ran the
+comparison, which came back INCONCLUSIVE with `receipt not authoritative:
+worklist digest 26403fd1ecb0 != sealed eceefe4d20b9`. `run-verify.sh` rebuilds
+the work list on the candidate before the parity stage, so the live seal's
+worklist digest is the accepted tree's and can never match. The composer
+refused for the same reason, the stale FAIL stayed on disk, and the card was
+REVERTED — as was every parity card.
+
+Bind what can be bound; refuse the rest **by name**: no issued card, an issued
+card minted under a receipt that is not the one on disk, a `--candidate` or
+`--issued-receipt` that is not what the tree and the card say, or a candidate
+digest in `verification/build/run.json` that is not the tree being compared (an
+edit after verification). In candidate mode the composer also refuses a
+scenario verdict measured for another card, on another candidate or under
+another receipt; a **sealed**-bound verdict still counts, because those are the
+ones the last full M4 run left for every scenario a scoped run was not scoped
+to.
 - `scripts/capture-source-oracles.test.py`: HTTP capture and compare
   PASS/FAIL against a local stub server; non-HTTP compare with matching
   and diverging observations; missing oracle → INCONCLUSIVE; a
@@ -737,9 +772,11 @@ What refuses, and why:
   retained bodies by digest; PASS / FAIL / INCONCLUSIVE per scenario, all three
   recorded and exiting 0; exit 1 only on a refusal to judge
 - `scripts/compare-runtime-parity.py` — destination comparison for reads
-- `scripts/compare-scenario-parity.py` — recorded-request replay plus effects
+- `scripts/compare-scenario-parity.py` — recorded-request replay plus effects;
+  `--issued` binds the verdict to the candidate and the issued card
 - `scripts/compose-parity-receipt.py` — receipt-bound parity receipt; an entry
-  point covered by scenarios passes only when every one of them passes
+  point covered by scenarios passes only when every one of them passes;
+  `--issued` composes over the candidate an issued card was verified on
 - `scripts/reset-parity-db.sh` — restore the decided instance to the initial
   state the corpus names (drop and recreate the schema, apply the schema and
   seed assets `decisions.yaml` points at)

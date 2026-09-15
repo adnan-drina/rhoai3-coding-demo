@@ -35,7 +35,11 @@ otherwise:
     the composed receipt must record every issued obligation's scenario as
     PASS, and no entry point it recorded PASS before may be anything else now.
     A receipt that was not composed, or a comparison that did not run, is an
-    unmeasured slot: VERIFICATION_PENDING, no attempt spent;
+    unmeasured slot: VERIFICATION_PENDING, no attempt spent. That receipt is
+    composed against the CANDIDATE (the acceptance path rebuilt the work list
+    on it, so the live seal cannot match), and it says so: a receipt bound to
+    another card or to a tree this verification did not measure is not this
+    card's evidence and leaves the slot unmeasured;
 
   * verification ran in acceptance mode (diagnostic cannot promote or reject).
 
@@ -112,21 +116,61 @@ def _attribution_items(items: list) -> dict:
 PARITY_BEFORE = VERIFY_DIR / "parity-before.json"
 
 
-def _parity_receipts(root: Path, run: dict) -> tuple[dict, dict]:
+def _card_names(issued: dict, card: str) -> set[str]:
+    """Every name this step's card answers to. K4 writes ``task_id`` only once
+    the card has been minted, so a candidate-bound receipt may name the cluster
+    or the idempotency key instead; all of them are this card."""
+    values = (card, (issued or {}).get("task_id"), (issued or {}).get("cluster"), (issued or {}).get("idempotency_key"))
+    return {str(v) for v in values if v}
+
+
+def _candidate_binding_gap(receipt: dict, run: dict, issued: dict, card: str) -> str:
+    """Why a CANDIDATE-bound parity receipt is not this step's measurement.
+
+    A receipt with no binding, or one bound to the seal, is the M4 road's own
+    and is read exactly as before. One bound to a candidate names the tree it
+    measured and the card it was measured for, and it counts here only when
+    both are this step's: a receipt composed for another card, or on a tree
+    this verification did not measure, is somebody else's evidence."""
+    b = receipt.get("binding") if isinstance(receipt.get("binding"), dict) else {}
+    if str(b.get("mode") or "sealed") != "candidate":
+        return ""
+    names = _card_names(issued, card)
+    got_card = str(b.get("card") or "")
+    if got_card not in names:
+        return ("it was composed for card %s and this step advances %s"
+                % (got_card or "nobody", ", ".join(sorted(names)) or "an unnamed card"))
+    want = str(run.get("candidate_sha256") or "")
+    got = str(b.get("candidate_sha256") or "")
+    if not want or got != want:
+        return ("it was composed on candidate %s and this verification measured %s"
+                % (got[:12] or "nothing", want[:12] or "nothing"))
+    return ""
+
+
+def _parity_receipts(root: Path, run: dict, issued: dict | None = None, card: str = "") -> tuple[dict, dict]:
     """(what parity said BEFORE this candidate, what it says now).
 
     "Now" counts only when the comparison RAN in this verification
     (run.json runtime.parity): a receipt left over from an earlier card
     measures nothing about this one, and the measurement contract is the same
-    here as for every other tool.
+    here as for every other tool. A receipt the acceptance path composed
+    against the CANDIDATE (compose-parity-receipt.py --issued) says so, and
+    then it also has to be THIS card's and THIS candidate's.
 
     "Before" is the accepted state's receipt: the snapshot taken at the last
     accepted step when there is one, and otherwise the copy run-verify.sh took
-    of the receipt as it stood before this candidate's comparison -- the same
-    document, because until the first parity step is accepted the receipt on
-    disk is the one the M4 road composed on the accepted tree."""
+    of the receipt as it stood before this candidate's comparison. Either may
+    be sealed (the M4 road's) or the binding the last accepted step recorded;
+    both describe the accepted tree, which is what "before" means."""
     ran = bool(((run.get("runtime") or {}).get("parity") or {}).get("ran"))
     cur = load_json(root / PARITY_RECEIPT) if (ran and (root / PARITY_RECEIPT).is_file()) else {}
+    if cur:
+        gap = _candidate_binding_gap(cur, run, issued or {}, card)
+        if gap:
+            print("WARN: %s is not this card's measurement: %s; parity is UNMEASURED here"
+                  % (PARITY_RECEIPT.as_posix(), gap), file=sys.stderr)
+            cur = {}
     snap = root / LOOP_ACCEPTED / PARITY_SNAPSHOT / PARITY_RECEIPT.name
     if snap.is_file():
         return load_json(snap), cur
@@ -551,7 +595,7 @@ def main(argv: list[str] | None = None) -> int:
     issued_identities = {str(v) for v in (issued.get("item_identities") or {}).values() if v} or None
     family_keys = ({"chk:" + str(m.get("member") or "") for m in (scope_doc.get("members") or [])}
                    if scope_ref and family else None)
-    prev_parity, cur_parity = _parity_receipts(root, run if isinstance(run, dict) else {})
+    prev_parity, cur_parity = _parity_receipts(root, run if isinstance(run, dict) else {}, issued, args.card)
     ok, reason = progress(prev["measure"], cur["measure"], prev_keys, cur_keys,
                           gate=gate,
                           prev_runtime=prev.get("runtime") or {}, cur_runtime=cur.get("runtime") or {},
@@ -589,7 +633,7 @@ def main(argv: list[str] | None = None) -> int:
     clear_pending(steps, args.cluster, why="accepted")
     sha = _commit(root, changed, "fix-until-green: %s attempt %s %s" % (args.cluster, issued.get("attempt"), cur["measure"]["tuple"]))
     snapshot_reports(root)
-    steps["steps"].append({"cluster": args.cluster, "card": args.card, "attempt": issued.get("attempt"), "idempotency_key": issued.get("idempotency_key"), "commit": sha, "candidate_sha256": on_disk, "measure": cur["measure"], "item_ids": sorted(item_ids(cur)), "obligation_keys": sorted(obligation_keys(cur)), "worklist_sha256": digest(cur), "changed": changed, "verdict": "accepted", "reason": reason, "runtime": cur.get("runtime") or {}, "gate": str(issued.get("gate") or ""), "parity": ({"verdict": str((cur_parity or {}).get("verdict") or ""), "scenarios": list((((run if isinstance(run, dict) else {}).get("runtime") or {}).get("parity") or {}).get("scenarios") or [])} if cur_parity else {}), "discharged": sorted(str(i) for i in (issued.get("items") or [])), "si1_inconclusive": si1_unknown, "batch_scope": ({"digest": str(scope_ref.get("digest") or ""), "assessed": len(scope_rows),
+    steps["steps"].append({"cluster": args.cluster, "card": args.card, "attempt": issued.get("attempt"), "idempotency_key": issued.get("idempotency_key"), "commit": sha, "candidate_sha256": on_disk, "measure": cur["measure"], "item_ids": sorted(item_ids(cur)), "obligation_keys": sorted(obligation_keys(cur)), "worklist_sha256": digest(cur), "changed": changed, "verdict": "accepted", "reason": reason, "runtime": cur.get("runtime") or {}, "gate": str(issued.get("gate") or ""), "parity": ({"verdict": str((cur_parity or {}).get("verdict") or ""), "binding": dict((cur_parity or {}).get("binding") or {}), "scenarios": list((((run if isinstance(run, dict) else {}).get("runtime") or {}).get("parity") or {}).get("scenarios") or [])} if cur_parity else {}), "discharged": sorted(str(i) for i in (issued.get("items") or [])), "si1_inconclusive": si1_unknown, "batch_scope": ({"digest": str(scope_ref.get("digest") or ""), "assessed": len(scope_rows),
                                                           "inconclusive": [r for r in scope_rows if r.get("verdict") == "inconclusive"]} if scope_ref else {}), "amendments": list(issued.get("amendments") or []), "verify": _verify_meta(run if isinstance(run, dict) else {}),
                            "continuations": list(issued.get("continuations") or []),
                            "checked_exceptions": ({k: (checked.get(k) if k in ("state", "base", "coverage") else len(checked.get(k) or []))

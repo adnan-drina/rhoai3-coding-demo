@@ -34,8 +34,17 @@ produced: target/quarkus-app/quarkus-run.jar against the decided datasource
 source, and stops what it started. A destination someone else is running is
 passed in with --dest-url and is never stopped.
 
+--issued <verification/loop/issued.json> says this run measures the CANDIDATE
+that issued card was verified on rather than the accepted tree, and is passed
+to the comparator and the composer so all three agree about it: on that path
+the acceptance verify has already rebuilt the work list on the candidate, so
+the live seal cannot match it, and what binds the verdicts instead is the
+candidate digest this verification recorded, the receipt the card was minted
+under and the card. Without it, the M4 road: the accepted tree, the sealed
+receipt.
+
 Writes verification/parity/_run.json (rhoai3.parity-run/v1) beside the receipt:
-what ran, in what order, with each child's exit code.
+what ran, in what order, with each child's exit code, and the binding.
 
 Exit 0 when every child RAN and the receipt was composed. The receipt's own
 verdict is the measurement, not this runner's grade: a FAIL or INCONCLUSIVE
@@ -78,7 +87,8 @@ RESET_SCRIPT = CAPTURE / "reset-parity-db.sh"
 sys.path.insert(0, str(CAPTURE))
 sys.path.insert(0, str(HERMES / "lib"))
 from _oracle_common import ORACLES, PARITY, entry_points, slug  # noqa: E402
-from _scenarios import CORPUS, CorpusError, SCENARIO_PARITY, corpus_digest, load_corpus, scenario_slug  # noqa: E402
+from _scenarios import (CORPUS, CorpusError, SCENARIO_PARITY, candidate_binding, corpus_digest, load_corpus,  # noqa: E402
+                        scenario_slug, sealed_binding)
 from planner.admission import verify_receipt  # noqa: E402
 from planner.canonical import load_json, write_canonical  # noqa: E402
 
@@ -274,6 +284,11 @@ def main(argv: list[str] | None = None) -> int:
                     help="repeatable: compare ONLY these corpus scenarios (the fix-until-green acceptance path scopes the "
                          "comparison to the scenarios the issued parity card is made of). The read-oracle phase is skipped "
                          "under the filter and said so in _run.json; the composer still runs, over every record on disk")
+    ap.add_argument("--issued", default="", metavar="PATH",
+                    help="verification/loop/issued.json: this run measures the CANDIDATE that issued card was verified on, "
+                         "not the accepted tree. The binding is passed to the comparator and the composer, which then do not "
+                         "ask the live seal to match the work list the acceptance path rebuilt on the candidate, and is "
+                         "recorded in _run.json. Passing it more than once is the same as passing it once.")
     ap.add_argument("--port", type=int, default=8081, help="the port the destination this runner starts listens on")
     ap.add_argument("--ready-timeout", type=int, default=180)
     ap.add_argument("--java", default="java")
@@ -283,6 +298,17 @@ def main(argv: list[str] | None = None) -> int:
         print("FAIL: PARITY_RUN --root must be an existing directory", file=sys.stderr)
         return 2
     reset_cmd = args.reset_cmd or shlex.join(["bash", str(RESET_SCRIPT), "--root", str(root)])
+
+    # What this run MEASURES: the accepted tree under the live seal, or the
+    # candidate an issued card was verified on. The children are told the same
+    # thing, so the runner, the comparator and the composer cannot disagree
+    # about which tree the verdicts are of.
+    binding, binding_gaps = ({}, [])
+    if args.issued:
+        binding, binding_gaps = candidate_binding(root, issued_path=args.issued)
+    else:
+        binding = sealed_binding()
+    issued_argv = ["--issued", str(args.issued)] if args.issued else []
 
     receipt, receipt_gaps = verify_receipt(root, require_admitted=True)
     wanted = sorted(str(e.get("id")) for e in entry_points(root) if e.get("id"))
@@ -306,6 +332,8 @@ def main(argv: list[str] | None = None) -> int:
         "dest_url": "", "started_by_runner": False, "reset_cmd": reset_cmd,
         "receipt_sha256": receipt["receipt_digest"] if receipt else "",
         "receipt_gaps": list(receipt_gaps or []),
+        "issued": str(args.issued or ""),
+        "binding": dict(binding) if binding else {"mode": "candidate", "gaps": list(binding_gaps)},
         "corpus": str(CORPUS.as_posix()), "corpus_sha256": corpus_sha, "corpus_error": corpus_error,
         "scenario_filter": list(wanted_ids),
         "scenarios": {"declared": len(declared), "selected": len(scenarios), "run": 0, "passed": 0, "failed": 0,
@@ -326,6 +354,11 @@ def main(argv: list[str] | None = None) -> int:
     if unknown_ids:
         failures.append("scenario filter: %s is not declared by the corpus (%s); nothing was compared for it"
                         % (", ".join(unknown_ids), CORPUS.as_posix()))
+    if binding_gaps:
+        # The caller asked for a candidate-bound run and the binding cannot be
+        # made: the children would each refuse for the same reason. Say it once,
+        # here, rather than as N identical scenario refusals.
+        failures.append("issued binding: %s" % "; ".join(binding_gaps))
 
     dest = None
     try:
@@ -353,7 +386,7 @@ def main(argv: list[str] | None = None) -> int:
         for sc in scenarios:
             sid = str(sc["id"])
             argv_sc = [sys.executable, str(COMPARE_SCENARIO), "--root", str(root), "--scenario", sid,
-                       "--dest-url", dest_url, "--reset-cmd", reset_cmd]
+                       "--dest-url", dest_url, "--reset-cmd", reset_cmd, *issued_argv]
             proc = _run_child(argv_sc, "scenario %s" % sid)
             verdict, reason = _verdict_of(root / SCENARIO_PARITY / (scenario_slug(sid) + ".json"))
             row = {"id": sid, "entry_point": str(sc.get("entry_point") or ""), "rc": proc.returncode,
@@ -399,7 +432,7 @@ def main(argv: list[str] | None = None) -> int:
             dest.stop()
 
     # 3. the receipt, once, last
-    argv_rc = [sys.executable, str(COMPOSE_RECEIPT), "--root", str(root)]
+    argv_rc = [sys.executable, str(COMPOSE_RECEIPT), "--root", str(root), *issued_argv]
     proc = _run_child(argv_rc, "compose-parity-receipt")
     doc["compose"] = {"rc": proc.returncode, "argv": argv_rc[1:]}
     receipt_p = root / PARITY / "receipt.json"

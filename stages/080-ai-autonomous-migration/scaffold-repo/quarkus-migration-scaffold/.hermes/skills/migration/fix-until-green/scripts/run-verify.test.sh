@@ -29,6 +29,14 @@ grep -qF 'if [[ "${MODE}" == "acceptance" && "${RUNTIME}" -eq 1 && "${VERIFY_RC}
 grep -qF 'runtime' "${SCRIPT}" || fail "run.json must carry the parity stage's outcome"
 grep -qF 'parity-before.json' "${SCRIPT}" || fail "the receipt the comparison started from must be kept"
 grep -qF -- '--scenario' "${SCRIPT}" || fail "the comparison must be scoped to the card's scenarios"
+# the verdicts this stage produces are of the CANDIDATE: step 4 above rebuilt
+# the work list on it, so the live seal cannot match, and the issued card is
+# what they bind to instead (v9 card t_222c582a, where every parity card
+# reverted on "receipt not authoritative: worklist digest ... != sealed ...")
+grep -qF -- '--issued "${PARITY_ISSUED}"' "${SCRIPT}" \
+  || fail "the comparison must be told which issued card its verdicts are bound to"
+grep -qF 'PARITY_ISSUED="${ROOT}/verification/loop/issued.json"' "${SCRIPT}" \
+  || fail "the binding must name the issued card of THIS tree"
 
 # --- the admission itself, extracted from the script ------------------------
 awk '/PARITY_PLAN="\$\(python3 - /{flag=1; next} flag && /^PYEOF$/{exit} flag{print}' "${SCRIPT}" > "${TMP}/plan.py"
@@ -85,5 +93,6 @@ G="${TMP}/g"; mkroot "${G}"; boot_ok "${G}"; worklist "${G}"
 [[ "$(plan "${G}" true)" == "run:" ]] || fail "--parity must force an unscoped comparison: $(plan "${G}" true)"
 
 echo "OK: run-verify parity stage (acceptance-only and after the runtime gates; not run for a compile or packaging card \
-or with no issued card; run for a parity card scoped to its own scenarios; skipped by name when the startup gate did \
+or with no issued card; run for a parity card scoped to its own scenarios and bound to that issued card, so the work \
+list this verification rebuilt on the candidate is not read as a stale seal; skipped by name when the startup gate did \
 not pass; forced unscoped by --parity)"

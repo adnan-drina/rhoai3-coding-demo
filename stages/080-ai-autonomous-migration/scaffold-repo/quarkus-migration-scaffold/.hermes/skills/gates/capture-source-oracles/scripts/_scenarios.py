@@ -48,7 +48,7 @@ from _oracle_common import ensure_hermes_lib  # noqa: E402
 
 ensure_hermes_lib()
 from planner.canonical import canonical_bytes, digest, load_json, sha256_bytes  # noqa: E402
-from planner.paths import EVIDENCE_BUNDLE, STRUCTURE  # noqa: E402
+from planner.paths import ADMISSION_RECEIPT, EVIDENCE_BUNDLE, LOOP_ISSUED, STRUCTURE, VERIFY_RUN, is_product_path  # noqa: E402
 
 CORPUS = Path("verification") / "scenarios" / "corpus.json"
 DERIVE_RECEIPT = Path("verification") / "scenarios" / "_derive.json"
@@ -162,6 +162,169 @@ def capture_security_mode(root: Path, security_mode: Any = DEFAULT_SECURITY_MODE
     if not recorded:
         return "", "%s records no security_mode (a capture taken before the mode was bound)" % rel.as_posix()
     return recorded, ""
+
+
+# ---------------------------------------------------------------------------
+# what a verdict is BOUND to
+# ---------------------------------------------------------------------------
+# A parity verdict says "this destination answers what the source answered".
+# WHICH destination is the question this section answers, and there are two
+# right answers, one per road.
+#
+#   sealed     the M4 road. The tree is the accepted one, the admission
+#              receipt still seals what is on disk, and the verdict binds to
+#              that receipt digest. This is what every verdict has always
+#              been, and it stays the default.
+#
+#   candidate  the fix-until-green acceptance path. run-verify.sh REBUILDS the
+#              work list on the candidate before the parity stage runs, so the
+#              live seal is stale by construction (its worklist digest is the
+#              accepted tree's). Measured on destination v9, card t_222c582a:
+#              the worker wrote the right CORS properties, the comparison ran,
+#              and every scenario came back INCONCLUSIVE with "receipt not
+#              authoritative: worklist digest ... != sealed ..." -- so the
+#              composer refused, the stale FAIL stayed on disk, and the card
+#              was REVERTED. Every parity card reverted that way.
+#
+# A candidate-bound verdict is not an unbound one: it names the tree it
+# measured (the candidate digest this verification recorded) and the card it
+# was measured for (the issued card, and the receipt that card was minted
+# under). What can be bound is bound; what cannot be is refused by name.
+BINDING_SEALED = "sealed"
+BINDING_CANDIDATE = "candidate"
+
+
+def sealed_binding() -> dict[str, Any]:
+    """The binding of a verdict produced on the accepted tree (the M4 road)."""
+    return {"mode": BINDING_SEALED}
+
+
+def product_tree_digest(root: Path) -> str:
+    """The identity of the PRODUCT tree on disk.
+
+    The same recipe the loop's own candidate identity uses
+    (fix-until-green/scripts/_loop_common.py candidate_sha256), over the same
+    one definition of what a product path is (planner.paths.is_product_path),
+    so "the candidate this verification recorded" and "the tree this
+    comparison is about" are the same measurement. scenario-parity.test.py
+    holds the two against each other."""
+    import hashlib
+
+    h = hashlib.sha256()
+    for p in sorted(Path(root).rglob("*")):
+        if not p.is_file():
+            continue
+        rel = p.relative_to(root).as_posix()
+        if not is_product_path(rel):
+            continue
+        h.update(rel.encode("utf-8"))
+        h.update(b"\0")
+        h.update(p.read_bytes())
+        h.update(b"\0")
+    return h.hexdigest()
+
+
+def candidate_binding(root: Path, *, issued_path: Any = "", candidate_sha256: str = "",
+                      issued_receipt_sha256: str = "") -> tuple[dict[str, Any], list[str]]:
+    """(the candidate binding, why it cannot be made).
+
+    ``issued_path`` defaults to the issued card of this tree; a relative path
+    resolves against ``root``. ``candidate_sha256`` and ``issued_receipt_sha256``
+    are the caller stating what it believes; they are CHECKED, never trusted.
+
+    It refuses -- with the subject named -- only when the binding cannot be
+    made at all: no issued card, an admission receipt that is not the one the
+    card was minted under, or a candidate digest that is not the tree being
+    compared. Everything else (a work list rebuilt on the candidate, a seal
+    that no longer covers it) is exactly what this mode exists for."""
+    root = Path(root)
+    issued_p = Path(issued_path) if issued_path else Path(LOOP_ISSUED)
+    if not issued_p.is_absolute():
+        issued_p = root / issued_p
+    if not issued_p.is_file():
+        return {}, ["the issued card is absent (%s); a candidate-bound verdict has to say which card it was measured "
+                    "for" % issued_p]
+    try:
+        issued = load_json(issued_p)
+    except (OSError, ValueError) as exc:
+        return {}, ["the issued card %s could not be read: %s" % (issued_p, exc)]
+    if not isinstance(issued, dict):
+        return {}, ["the issued card %s is not an object" % issued_p]
+    gaps: list[str] = []
+    minted = str(issued.get("receipt_sha256") or "")
+    card = str(issued.get("task_id") or "") or str(issued.get("cluster") or "")
+    if not minted:
+        gaps.append("the issued card records no receipt_sha256; nothing says which receipt it was minted under")
+    if not card:
+        gaps.append("the issued card names neither a card nor a cluster")
+    if issued_receipt_sha256 and minted and str(issued_receipt_sha256) != minted:
+        gaps.append("--issued-receipt %s is not the receipt the card was minted under (%s)"
+                    % (str(issued_receipt_sha256)[:12], minted[:12]))
+    on_disk = ""
+    rp = root / ADMISSION_RECEIPT
+    if rp.is_file():
+        try:
+            on_disk = str((load_json(rp) or {}).get("receipt_digest") or "")
+        except (OSError, ValueError):
+            on_disk = ""
+    if not on_disk:
+        gaps.append("no admission receipt on disk (%s); the card's receipt cannot be confirmed"
+                    % ADMISSION_RECEIPT.as_posix())
+    elif minted and on_disk != minted:
+        gaps.append("%s names another receipt (%s) than the one the card was minted under (%s)"
+                    % (ADMISSION_RECEIPT.as_posix(), on_disk[:12], minted[:12]))
+    recorded = ""
+    runp = root / VERIFY_RUN
+    if not runp.is_file():
+        gaps.append("%s is absent; this verification recorded no candidate" % VERIFY_RUN.as_posix())
+    else:
+        try:
+            recorded = str((load_json(runp) or {}).get("candidate_sha256") or "")
+        except (OSError, ValueError) as exc:
+            gaps.append("%s could not be read: %s" % (VERIFY_RUN.as_posix(), exc))
+        if runp.is_file() and not recorded:
+            gaps.append("%s records no candidate_sha256" % VERIFY_RUN.as_posix())
+    if candidate_sha256 and recorded and str(candidate_sha256) != recorded:
+        gaps.append("--candidate %s is not the candidate this verification recorded (%s)"
+                    % (str(candidate_sha256)[:12], recorded[:12]))
+    if recorded:
+        on_tree = product_tree_digest(root)
+        if on_tree != recorded:
+            gaps.append("the candidate digest in %s (%s) is not the tree this comparison is about (%s); the product "
+                        "tree changed after it was verified" % (VERIFY_RUN.as_posix(), recorded[:12], on_tree[:12]))
+    if gaps:
+        return {}, gaps
+    return {"mode": BINDING_CANDIDATE, "candidate_sha256": recorded, "issued_receipt_sha256": minted,
+            "card": card}, []
+
+
+def binding_of(doc: Any) -> dict[str, Any]:
+    """The binding a record carries. A record written before this block existed
+    carries none, and a record with no binding is a SEALED one: that is what
+    every verdict was."""
+    b = doc.get("binding") if isinstance(doc, dict) else None
+    return dict(b) if isinstance(b, dict) and b else sealed_binding()
+
+
+def binding_mismatch(doc: Any, binding: dict[str, Any]) -> str:
+    """Why this record is not a measurement of ``binding``'s candidate and card.
+
+    A record bound to the SEAL is admitted: on the acceptance path those are
+    the verdicts the last full M4 run left for every scenario this run was not
+    scoped to, and dropping them would make a scoped run look like a
+    regression at every other entry point."""
+    got = binding_of(doc)
+    if str(got.get("mode") or BINDING_SEALED) != BINDING_CANDIDATE:
+        return ""
+    for key, what in (("card", "the card"), ("candidate_sha256", "the candidate"),
+                      ("issued_receipt_sha256", "the receipt the card was minted under")):
+        want = str(binding.get(key) or "")
+        have = str(got.get(key) or "")
+        if have != want:
+            if key != "card":
+                have, want = have[:12] or "none", want[:12] or "none"
+            return "it was measured for %s %s and this one is %s" % (what, have or "none", want or "none")
+    return ""
 
 
 def scenario_slug(scenario_id: str) -> str:
