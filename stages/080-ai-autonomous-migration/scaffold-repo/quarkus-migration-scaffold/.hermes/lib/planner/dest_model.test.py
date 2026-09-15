@@ -15,7 +15,7 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from planner.dest_model import DestModelUnavailable, checked_exception_delta, condition_key, dest_model, fields_of, profile_conditions, source_write_members  # noqa: E402
+from planner.dest_model import DestModelUnavailable, checked_exception_delta, condition_key, dest_model, fields_of, profile_conditions, source_write_members, tree_model  # noqa: E402
 from planner.worklist import assess_batch_scope  # noqa: E402
 
 STUBS = {
@@ -152,11 +152,15 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.springframework.beans.factory.annotation.Value;
 public class Holder {
     static final String KEY = "a.b";
+    final String INSTANCE = "i";
+    final String COMPUTED = compute();
+    String mutable = "m";
     @Value("${a.b:x}") String placeholder;
     @Value("") String emptied;
     @Value(KEY) String nonLiteral;
     @ConfigProperty(name = "a.b", defaultValue = "d") String mp;
     String plain;
+    private String compute() { return "x"; }
 }
 """
 
@@ -173,8 +177,23 @@ def _fields_case() -> int:
         root = Path(d)
         _tree(root, {"p/Holder.java": _HOLDER})
         rows = {r["field"]: r for r in fields_of(dest_model(root))}
-        if set(rows) != {"KEY", "placeholder", "emptied", "nonLiteral", "mp", "plain"}:
+        if set(rows) != {"KEY", "INSTANCE", "COMPUTED", "mutable", "placeholder", "emptied", "nonLiteral", "mp", "plain"}:
             return _fail("every field is a declaration the model must carry: %s" % sorted(rows))
+        # what a field's initializer STATES, for the same reason: a constants
+        # type spells the role names once and every authorization expression
+        # carries only the reference (@roles.VET_ADMIN). A static final's
+        # folded value and a final instance field's literal are constants;
+        # a call, a mutable field and an uninitialized one are not.
+        constants = {name: row["constant"] for name, row in sorted(rows.items())}
+        if constants != {"KEY": "a.b", "INSTANCE": "i", "COMPUTED": "", "mutable": "", "placeholder": "",
+                         "emptied": "", "nonLiteral": "", "mp": "", "plain": ""}:
+            return _fail("a field's compile-time String initializer is its constant, and nothing else is: %s" % constants)
+        # the same question about ANOTHER tree (the frozen input), with no
+        # classpath of its own: a literal needs none, and the answer must not
+        # be this tree's classpath silently reused
+        external = {r["field"]: r["constant"] for r in fields_of(tree_model(root, root, classpath=None))}
+        if external.get("KEY") != "a.b" or external.get("INSTANCE") != "i" or external.get("mutable") != "":
+            return _fail("an external tree is modelled by the same tool and answers the same: %s" % external)
         if rows["plain"]["annotations"] or rows["plain"]["field_type"] != "String":
             return _fail("an unannotated field carries its written type and no annotations: %s" % rows["plain"])
         if rows["placeholder"]["path"] != "src/main/java/p/Holder.java" or rows["placeholder"]["type"] != "p.Holder":
@@ -406,7 +425,7 @@ def main() -> int:
         return 1
     print("OK: dest-model (a fully qualified condition is visible; two identical annotations are two decisions with "
           "their own ranges; an import binds a condition with no classpath while a wildcard import does not, and a non-literal argument is never a profile name; a redeclared inherited findAll "
-          "is answered by its supertype; every field carries its annotations, an empty string literal among them, with each literal under the attribute it was written for and a non-literal argument absent; a deleted member is not inherited; a member is a signature, so an overload never answers for another and a generic save(T) matches as save(Vet); two source roots are two models in either order; the source write set comes from resolved calls; an unreadable source model or type is inconclusive; unhandled checked exceptions: a transformation's sites are introduced, a partial repair exposes rather than introduces, a moved line is the same site, an added throws is an introduction, an unattributed baseline is proved by its parse tree or left INCONCLUSIVE)")
+          "is answered by its supertype; every field carries its annotations, an empty string literal among them, with each literal under the attribute it was written for and a non-literal argument absent, and each field's compile-time String initializer as its constant -- in this tree and in another one modelled with no classpath of its own; a deleted member is not inherited; a member is a signature, so an overload never answers for another and a generic save(T) matches as save(Vet); two source roots are two models in either order; the source write set comes from resolved calls; an unreadable source model or type is inconclusive; unhandled checked exceptions: a transformation's sites are introduced, a partial repair exposes rather than introduces, a moved line is the same site, an added throws is an introduction, an unattributed baseline is proved by its parse tree or left INCONCLUSIVE)")
     return 0
 
 

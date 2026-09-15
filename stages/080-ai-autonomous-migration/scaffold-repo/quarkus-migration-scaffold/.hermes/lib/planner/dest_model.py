@@ -36,6 +36,11 @@ GENERATED_SOURCES = "target/generated-sources"
 _TOOL = Path(__file__).resolve().parents[2] / "skills" / "migration" / "fix-until-green" / "scripts" / "jdk-dest-model" / "DestModel.java"
 
 
+# "take it from the tree the model is being produced FOR" -- distinct from
+# None, which is "there is none" (a partial attribution, said out loud)
+_THIS_TREE = object()
+
+
 class DestModelUnavailable(RuntimeError):
     """The model could not be produced. Never downgrade this to an assumption."""
 
@@ -137,19 +142,25 @@ def _tool_classes(work: Path, javac: str) -> Path:
     return classes
 
 
-def _run_tool(root: Path, src: Path, work: Path) -> dict[str, Any]:
+def _run_tool(root: Path, src: Path, work: Path, *, classpath: Any = _THIS_TREE,
+              also_sources: Any = _THIS_TREE) -> dict[str, Any]:
     """One compiler run over `src`, under THIS tree's compiler configuration:
     its classpath, its release and its generated sources. A baseline and a
     candidate modelled with different configurations would disagree about
-    things neither of them changed."""
+    things neither of them changed.
+
+    `classpath` and `also_sources` name ANOTHER tree's configuration when the
+    sources are another tree's (the frozen input): its own classpath, its own
+    generated sources, and None for "there is none", which is a partial
+    attribution and never this tree's classpath silently reused."""
     javac, java = _jdk()
     classes = _tool_classes(work, javac)
     out = work / ("raw-%s.json" % hashlib.sha256(str(src).encode("utf-8")).hexdigest()[:12])
     argv = [java, "-cp", str(classes), "DestModel", "--source", str(src), "--out", str(out), "--release", _release(root)]
-    cp = Path(root) / "verification" / "build" / ".work" / "classpath.txt"
-    if cp.is_file() and cp.stat().st_size:
+    cp = (Path(root) / "verification" / "build" / ".work" / "classpath.txt") if classpath is _THIS_TREE else classpath
+    if cp is not None and Path(cp).is_file() and Path(cp).stat().st_size:
         argv += ["--classpath", str(cp)]
-    for d in generated_source_dirs(root):
+    for d in (generated_source_dirs(root) if also_sources is _THIS_TREE else list(also_sources or [])):
         argv += ["--also-source", str(d)]
     proc = subprocess.run(argv, capture_output=True, text=True, timeout=600)
     if proc.returncode != 0 or not out.is_file():
@@ -190,6 +201,60 @@ def dest_model(root: Path, *, source_root: str = "src/main/java", refresh: bool 
     return doc
 
 
+def tree_model(root: Path, tree: Path, *, source_root: str = "src/main/java",
+               classpath: Path | None = None, refresh: bool = False) -> dict[str, Any]:
+    """The compiled model of ANOTHER tree's sources, cached against them.
+
+    `root` is only where the tool is compiled and the answer cached; `tree` is
+    what is modelled -- the FROZEN input, whose Java is not this tree's and
+    whose classpath is its own. `classpath` is that tree's build classpath, or
+    None when it has none: a literal initializer needs no classpath, so the
+    attribution is partial and the facts read off the parse tree still hold.
+    Reusing the destination's classpath or its generated sources here would
+    model one tree against another's dependencies, which is not a fact about
+    either.
+
+    Raises DestModelUnavailable for a tree with no such source root, no JDK,
+    no tool, or a tool that refused."""
+    root, tree = Path(root), Path(tree)
+    src = tree / source_root
+    if not src.is_dir():
+        raise DestModelUnavailable("%s has no %s to model" % (tree, source_root))
+    h = hashlib.sha256()
+    h.update(b"tree\0")
+    h.update(str(tree.resolve()).encode("utf-8"))
+    h.update(b"\0source_root\0")
+    h.update(source_root.encode("utf-8"))
+    h.update(b"\0classpath\0")
+    h.update(Path(classpath).read_bytes() if classpath is not None and Path(classpath).is_file() else b"")
+    h.update(b"\0tool\0")
+    h.update(_tool_sha().encode("utf-8"))
+    h.update(b"\0")
+    for p in sorted(src.rglob("*.java")):
+        h.update(p.relative_to(src).as_posix().encode("utf-8"))
+        h.update(b"\0")
+        h.update(p.read_bytes())
+        h.update(b"\0")
+    key = h.hexdigest()
+    work = root / "verification" / "build" / ".dest-model"
+    cache = work / ("tree-%s.json" % key[:16])
+    if cache.is_file() and not refresh:
+        try:
+            doc = json.loads(cache.read_text(encoding="utf-8"))
+            if str(doc.get("sources_digest") or "") == key:
+                return doc
+        except (OSError, ValueError):
+            pass
+    doc = _run_tool(root, src, work, classpath=classpath, also_sources=generated_source_dirs(tree))
+    doc["sources_digest"] = key
+    doc["source_root"] = source_root
+    doc["tree"] = str(tree)
+    doc["classpath_available"] = classpath is not None and Path(classpath).is_file() and bool(Path(classpath).stat().st_size)
+    cache.parent.mkdir(parents=True, exist_ok=True)
+    cache.write_text(json.dumps(doc), encoding="utf-8")
+    return doc
+
+
 def above_members(typ: dict[str, Any]) -> list[dict[str, Any]]:
     """Every method reachable from a supertype, as SEEN FROM this type.
 
@@ -210,7 +275,8 @@ def fields_of(model: dict[str, Any], source_root: str = "src/main/java") -> list
     """Every field the model recorded, one row per DECLARATION.
 
     (path from the TREE root, declaring type, field name, its type as written,
-    its annotations). What a field's annotation SAYS is a fact about the tree
+    the compile-time String its initializer states -- "" when it states none --
+    and its annotations). What a field's annotation SAYS is a fact about the tree
     as it is now, and only this model has it: M1's model is of the frozen
     source, where the same field may still carry the value a worker replaced
     (destination v9: @Value("#{servletContext.contextPath}") in the source
@@ -233,6 +299,10 @@ def fields_of(model: dict[str, Any], source_root: str = "src/main/java") -> list
                 "type": fqn,
                 "field": str(f.get("name") or ""),
                 "field_type": str(f.get("type") or ""),
+                # a constants type spells its role names once and every policy
+                # refers to them; the reference is all an expression carries,
+                # so the VALUE has to come from the declaration
+                "constant": f["constant"] if isinstance(f.get("constant"), str) else "",
                 "annotations": list(f.get("annotations") or []),
                 "resolution": str(t.get("resolution") or ""),
             })

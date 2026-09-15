@@ -1484,15 +1484,53 @@ def _write_decisions(root: Path, security: dict[str, Any] | None) -> None:
     (root / "decisions.yaml").write_text(text, encoding="utf-8")
 
 
+_COMPONENT = "org.springframework.stereotype.Component"
+
+
+def _authz_constant_fields(n: Names, constants: str) -> list[dict[str, Any]]:
+    """The constants type's field rows as the sealed model carries them: with
+    their values, or -- for a model sealed before the extractor recorded
+    initializers -- with the field's name and type and nothing else."""
+    rows: list[dict[str, Any]] = [{"name": field, "type": "java.lang.String"} for field in n.role_fields]
+    if constants == "sealed":
+        rows[0]["constant"] = n.roles[0]
+        rows[1]["constant"] = n.roles[1]
+        rows[2]["value"] = '"%s"' % n.roles[2]
+    return rows
+
+
+def _roles_java(copy: Path, n: Names) -> None:
+    """The constants type as the frozen source declares it: a component whose
+    final String fields carry the role names.
+
+    A structure model sealed before the extractor recorded field initializers
+    has the fields and not the values, and this tree is the only thing left
+    that can answer (destination v9, 2026-09-15)."""
+    d = copy / "src" / "main" / "java" / Path(*n.pkg.split("."))
+    d.mkdir(parents=True, exist_ok=True)
+    (d / ("%s.java" % n.roles_type)).write_text(
+        "package %s;\n" % n.pkg
+        + "import %s;\n" % _COMPONENT
+        + "@Component\npublic class %s {\n" % n.roles_type
+        + "".join('    public final String %s = "%s";\n' % (field, role)
+                  for field, role in zip(n.role_fields, n.roles))
+        + "}\n", encoding="utf-8")
+
+
 def _authz_root(td: Path, name: str, n: Names, *, holdings: dict[str, list[str]] | None = None,
                 unsupported: bool = True, map_identity: bool = True,
-                security: dict[str, Any] | None = None, decisions: bool = False) -> Path:
+                security: dict[str, Any] | None = None, decisions: bool = False,
+                constants: str = "sealed") -> Path:
     """A frozen source with an authorization policy on a write, another on a
     method-less read, a constants type the expressions refer to, and a seeded
     identity store the structure model maps.
 
     ``holdings`` is what the SEED says each identity holds (default: one
-    identity with every role, one with a single role)."""
+    identity with every role, one with a single role). ``constants`` says
+    where the role NAMES are to be found: in the sealed structure model
+    (``sealed``), only in the frozen source's own tree (``frozen``: the shape
+    of a run sealed before the extractor recorded initializers), or nowhere
+    (``none``)."""
     root, copy = td / name / "dest", td / name / "frozen"
     res = copy / "src" / "main" / "resources"
     (res / "db" / "hsqldb").mkdir(parents=True)
@@ -1539,13 +1577,14 @@ def _authz_root(td: Path, name: str, n: Names, *, holdings: dict[str, list[str]]
          "methods": [{"name": n.read, "signature": "%s()" % n.read, "params": [],
                       "annotations": [{"fqn": "org.springframework.web.bind.annotation.RequestMapping", "values": {"value": [n.read_route]}},
                                       dict(read_pol)]}]},
-        # the constants the expressions refer to, as M1 records field values:
-        # two spellings of the same claim, so neither is the only one read
-        {"fqn": "%s.%s" % (n.pkg, n.roles_type), "annotations": [], "fields": [
-            {"name": n.role_fields[0], "type": "java.lang.String", "constant": n.roles[0]},
-            {"name": n.role_fields[1], "type": "java.lang.String", "constant": n.roles[1]},
-            {"name": n.role_fields[2], "type": "java.lang.String", "value": '"%s"' % n.roles[2]}]},
+        # the constants the expressions refer to. The type is a COMPONENT --
+        # that stereotype is what makes @roles a name for it -- and M1 records
+        # each field's value in two spellings, so neither is the only one read
+        {"fqn": "%s.%s" % (n.pkg, n.roles_type), "annotations": [{"fqn": _COMPONENT, "values": {}}],
+         "fields": _authz_constant_fields(n, constants)},
     ]
+    if constants == "frozen":
+        _roles_java(copy, n)
     if map_identity:
         # the JPA identity mapping: without it the seeded tables are two
         # tables that happen to carry matching strings
@@ -1776,26 +1815,100 @@ def _enabled_mode_case() -> int:
     return 0
 
 
+def _enabled_constants_case() -> int:
+    """Where a role NAME comes from when the expression carries only a
+    reference.
+
+    Measured on destination v9 (2026-09-15): the frozen source spells its
+    roles in a ``@Component`` constants type and every ``@PreAuthorize`` says
+    ``hasRole(@roles.VET_ADMIN)``. The sealed structure model recorded the
+    type and its fields with name and type only, so the enabled derivation
+    produced 0 scenarios and 4 ``not in the supported grammar`` gaps. The
+    extractor now records the initializer; a model sealed before it did is
+    answered from the frozen tree itself, through the dest-model extractor,
+    and the receipt says so. With neither, the typed gap is exactly what it
+    was -- an unreadable expression derives nothing."""
+    with tempfile.TemporaryDirectory(prefix="derive-constants-") as td:
+        n = PLAIN
+        ids: dict[str, list[str]] = {}
+        for where in ("sealed", "frozen"):
+            root = _authz_root(Path(td), where, n, constants=where)
+            if _derive(root).returncode != 0:
+                return _fail("%s: the disabled corpus derives first" % where)
+            p = _derive_enabled_fixture(root, n)
+            if p.returncode != 0:
+                return _fail("%s: the enabled corpus derives: %s%s" % (where, p.stdout, p.stderr))
+            corpus = load_json(root / ENABLED_CORPUS_P)
+            receipt = load_json(root / ENABLED_RECEIPT_P)
+            ids[where] = [str(s["id"]) for s in corpus["scenarios"]]
+            if any(g.startswith("auth-policy hasRole") or g.startswith("auth-policy hasAnyRole") for g in corpus["gaps"]):
+                return _fail("%s: a resolvable constant leaves no grammar gap: %s" % (where, corpus["gaps"]))
+            if [row["roles"] for row in corpus["authorization_policies"] if row["expression"].startswith("hasRole")] != [[n.roles[0]]]:
+                return _fail("%s: the policy accepts the role the constant names: %s" % (where, corpus["authorization_policies"]))
+            label = "sealed structure" if where == "sealed" else "frozen-source model"
+            want = ('structure:%s @Component → bean %s; %s.%s = "%s" (constant from %s)'
+                    % (n.roles_type, n.roles_type.lower(), n.roles_type, n.role_fields[0], n.roles[0], label))
+            for sc in corpus["scenarios"]:
+                if sc["id"].endswith("-create-%s" % n.resource) and want not in sc["derived_from"]["evidence"]:
+                    return _fail("%s: every scenario says how the role name was resolved: %s" % (where, sc["derived_from"]["evidence"]))
+            record = (receipt.get("inputs") or {}).get("constants")
+            if where == "sealed":
+                # nothing else was read: the sealed model answered
+                if record is not None:
+                    return _fail("a sealed model that carries the constants is not supplemented: %s" % record)
+                continue
+            references = sorted("@%s.%s" % (n.roles_type.lower(), f) for f in n.role_fields[:2]) + [
+                "#%s.%s" % (n.roles_type.lower(), n.role_fields[2])]
+            if (not record or record.get("tool") != "jdk-dest-model" or record.get("status") != "ok"
+                    or record.get("source_root") != "src/main/java" or record.get("resolution") != "partial"
+                    or len(str(record.get("source_digest") or "")) != 64 or len(str(record.get("model_sha256") or "")) != 64
+                    or sorted(record.get("resolved") or []) != sorted(references)):
+                return _fail("the receipt records the run that resolved them: %s" % record)
+        if ids["sealed"] != ids["frozen"]:
+            return _fail("where the constant was read makes no difference to what is derived: %s vs %s" % (ids["frozen"], ids["sealed"]))
+
+        # (c) neither model carries it: the typed gap, unchanged
+        root = _authz_root(Path(td), "unresolved", n, constants="none")
+        _derive(root)
+        p = _derive_enabled_fixture(root, n)
+        if p.returncode != 0:
+            return _fail("an unreadable expression is a gap, not a refusal: %s%s" % (p.stdout, p.stderr))
+        corpus = load_json(root / ENABLED_CORPUS_P)
+        want = ("auth-policy hasRole(@%s.%s): not in the supported grammar (the constant @%s.%s resolves to no string field "
+                "of a type the structure model records)" % (n.roles_type.lower(), n.role_fields[0],
+                                                            n.roles_type.lower(), n.role_fields[0]))
+        if not any(g.startswith(want) for g in corpus["gaps"]):
+            return _fail("an unresolvable constant is the typed gap it was: %s" % corpus["gaps"])
+        if corpus["scenarios"]:
+            return _fail("an expression nobody read derives nothing: %s" % [s["id"] for s in corpus["scenarios"]])
+        if not any(g.startswith("auth-constants: the frozen source's own model could not be produced") for g in corpus["gaps"]):
+            return _fail("the attempt to read the frozen source is recorded when it cannot be made: %s" % corpus["gaps"])
+    return 0
+
+
 def _enabled_rename_case() -> int:
     """The same source under other names decides the same things: packages,
     types, members, routes, role names, constant fields, identity tables,
     seeded identities and credential references all differ, and mapping the
     names back gives the same corpus."""
     with tempfile.TemporaryDirectory(prefix="derive-enabled-rename-") as td:
-        out = []
-        for name, n, rename in (("plain", PLAIN, None), ("renamed", RENAMED, _rename_map(RENAMED, PLAIN))):
-            root = _authz_root(Path(td), name, n)
-            if _derive(root).returncode != 0:
-                return _fail("%s: the disabled corpus derives" % name)
-            p = _derive_enabled_fixture(root, n)
-            if p.returncode != 0:
-                return _fail("%s: the enabled corpus derives: %s" % (name, p.stderr))
-            out.append(_enabled_decisions(root, rename))
-        if out[0] != out[1]:
-            first = json.dumps(out[0], indent=1, sort_keys=True).splitlines()
-            second = json.dumps(out[1], indent=1, sort_keys=True).splitlines()
-            diff = [(a, b) for a, b in zip(first, second) if a != b][:6]
-            return _fail("a renamed specimen decides the same things: %s" % diff)
+        # under both readings of the constants: the value M1 sealed, and the
+        # value read back out of the frozen tree for a model that predates it
+        for constants in ("sealed", "frozen"):
+            out = []
+            for name, n, rename in (("plain", PLAIN, None), ("renamed", RENAMED, _rename_map(RENAMED, PLAIN))):
+                root = _authz_root(Path(td), "%s-%s" % (name, constants), n, constants=constants)
+                if _derive(root).returncode != 0:
+                    return _fail("%s: the disabled corpus derives" % name)
+                p = _derive_enabled_fixture(root, n)
+                if p.returncode != 0:
+                    return _fail("%s: the enabled corpus derives: %s" % (name, p.stderr))
+                out.append(_enabled_decisions(root, rename))
+            if out[0] != out[1]:
+                first = json.dumps(out[0], indent=1, sort_keys=True).splitlines()
+                second = json.dumps(out[1], indent=1, sort_keys=True).splitlines()
+                diff = [(a, b) for a, b in zip(first, second) if a != b][:6]
+                return _fail("a renamed specimen decides the same things (constants %s): %s" % (constants, diff))
     return 0
 
 
@@ -1896,14 +2009,52 @@ def _authorization_grammar_case() -> int:
     specimen-agnostic. An expression outside the grammar returns a REASON, so
     the derivation records a gap instead of deriving a probe against a policy
     nobody read."""
-    from _scenarios import authorization_roles, role_matches, source_role_constants
+    from _scenarios import (SEALED_STRUCTURE, authorization_roles, resolve_role_constant, role_constants_from_model,
+                            role_matches, source_role_constants)
 
     with tempfile.TemporaryDirectory(prefix="authz-grammar-") as td:
         n = PLAIN
         root = _authz_root(Path(td), "one", n)
         constants, why = source_role_constants(root)
-        if why or constants.get(n.roles_type.lower()) != dict(zip(n.role_fields, n.roles)):
-            return _fail("the constants come from the model's own field values (both spellings): %s %s" % (constants, why))
+        want_fields = dict(zip(n.role_fields, n.roles))
+        by_type = (constants.get("by_type") or {}).get(n.roles_type.lower()) or {}
+        by_bean = (constants.get("by_bean") or {}).get(n.roles_type[0].lower() + n.roles_type[1:]) or {}
+        if why or by_type.get("fields") != want_fields or by_bean.get("fields") != want_fields:
+            return _fail("the constants come from the model's own field values (both spellings), indexed by type and by bean "
+                         "name: %s %s" % (constants, why))
+        if set(by_type.get("sources", {}).values()) != {SEALED_STRUCTURE}:
+            return _fail("a sealed model's constants say they came from it: %s" % by_type.get("sources"))
+        # what the scenario has to be able to SAY: which type, which
+        # stereotype made it a bean, the field, its value and which model
+        # carried it
+        value, gap, evidence = resolve_role_constant("@%s.%s" % (n.roles_type.lower(), n.role_fields[1]), constants)
+        if gap or value != n.roles[1] or evidence != ('structure:%s @Component → bean %s; %s.%s = "%s" (constant from %s)'
+                                                      % (n.roles_type, n.roles_type.lower(), n.roles_type, n.role_fields[1],
+                                                         n.roles[1], SEALED_STRUCTURE)):
+            return _fail("a resolved constant names its type, its stereotype, the bean, the field and where the value came "
+                         "from: %r %s" % (evidence, gap))
+        # a bean reference is not a type reference: `@roles` is a name a
+        # component stereotype gives, and a class that merely lower-cases to
+        # it is not a bean
+        noncomponent = role_constants_from_model({"types": [
+            {"fqn": "%s.%s" % (n.pkg, n.roles_type), "annotations": [],
+             "fields": [{"name": n.role_fields[0], "type": "java.lang.String", "constant": n.roles[0]}]}]})
+        got, gap = authorization_roles("PreAuthorize", "hasRole(@%s.%s)" % (n.roles_type.lower(), n.role_fields[0]), noncomponent)
+        if got or "component-stereotyped" not in gap:
+            return _fail("a bean reference to a type no stereotype makes a bean is a gap that says so: %s %s" % (got, gap))
+        got, gap = authorization_roles("PreAuthorize", "hasRole(%s.%s)" % (n.roles_type, n.role_fields[0]), noncomponent)
+        if gap or got != [n.roles[0]]:
+            return _fail("a TYPE reference needs no stereotype: %s %s" % (got, gap))
+        # and a stereotype that NAMES the bean replaces the default name
+        named = role_constants_from_model({"types": [
+            {"fqn": "%s.%s" % (n.pkg, n.roles_type), "annotations": [{"fqn": _COMPONENT, "values": {"value": ["theRoles"]}}],
+             "fields": [{"name": n.role_fields[0], "type": "java.lang.String", "constant": n.roles[0]}]}]})
+        got, gap = authorization_roles("PreAuthorize", "hasRole(@theRoles.%s)" % n.role_fields[0], named)
+        if gap or got != [n.roles[0]]:
+            return _fail("the bean name a stereotype states is the one that resolves: %s %s" % (got, gap))
+        got, gap = authorization_roles("PreAuthorize", "hasRole(@%s.%s)" % (n.roles_type.lower(), n.role_fields[0]), named)
+        if got or "component-stereotyped" not in gap:
+            return _fail("a stereotype that names the bean registers no other name: %s %s" % (got, gap))
         cases = [
             ("PreAuthorize", "hasRole('%s')" % n.roles[0], [n.roles[0]]),
             ("PreAuthorize", "hasRole(@%s.%s)" % (n.roles_type.lower(), n.role_fields[0]), [n.roles[0]]),
@@ -2004,7 +2155,8 @@ def main() -> int:
         assert root is not None
         if (_gap_cases() or _real_excerpt_case() or _methodless_mapping_case() or _methodless_qualification_case()
                 or _path_variable_case() or _foreign_key_delete_case() or _authorization_policy_case()
-                or _authorization_grammar_case() or _enabled_mode_case() or _enabled_rename_case() or _enabled_decided_case()
+                or _authorization_grammar_case() or _enabled_mode_case() or _enabled_constants_case()
+                or _enabled_rename_case() or _enabled_decided_case()
                 or _enabled_identity_case() or _enabled_regression_case()
                 or _application_removal_case() or _qualification_case(root) or _receipt_case()):
             return 1
@@ -2046,8 +2198,12 @@ def main() -> int:
           "rather than an empty answer; "
           "the enabled-mode corpus is derived per policy into its own path and the disabled one is byte-for-byte untouched: which roles "
           "a policy accepts is read from hasRole / hasAnyRole / a @RolesAllowed or @Secured list, with a constant reference resolved "
-          "through the structure model's own field values, and an expression outside that grammar -- a combination, an authority, a bean "
-          "call -- is a typed gap and no scenario; each policy guarding an entry point the disabled corpus carries a qualified-shaped "
+          "through the structure model's own field values -- @roles naming the type a component stereotype makes that bean and no "
+          "class that merely lower-cases to it, a stereotype that states a name registering no other, and a constant the sealed model "
+          "does not carry read back from the frozen source's own tree with the run recorded on the receipt, each scenario saying which "
+          "model the value came from and both readings deriving the same corpus -- and an expression outside that grammar -- a "
+          "combination, an authority, a bean call, a constant neither model records -- is a typed gap and no scenario; each policy "
+          "guarding an entry point the disabled corpus carries a qualified-shaped "
           "scenario for is probed with an identity that holds the role, with nobody, with a credential declared invalid and with an "
           "authenticated identity that lacks it, reusing that scenario's method, path, headers and body bytes bound by its id and body "
           "digest; the allowed probe expects no status (the source's own answer is what the capture records) and keeps the base's effect "

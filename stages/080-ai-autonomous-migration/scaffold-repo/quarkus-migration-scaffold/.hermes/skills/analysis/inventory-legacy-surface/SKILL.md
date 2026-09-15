@@ -46,6 +46,17 @@ decide. Without a classpath javac still attributes the tree and marks
 every unresolved reference as an error type; the extractor records the
 name as written and the claim as `partial`. It decides nothing.
 
+A field row also carries `constant`: the compile-time `String` its own
+initializer states (the folded value of a constant variable, or the
+literal in its declaration for a `final` field the compiler folded
+nothing for). Anything else — a call, a non-constant expression, a
+mutable field, a folded value that is not a `String` — has no such key,
+never a guessed one. A source that spells its role names once in a
+constants type and refers to them from every `@PreAuthorize`
+(`hasRole(@roles.VET_ADMIN)`) puts the role NAME there and nowhere else,
+so a model without it cannot resolve the expression at all (measured on
+destination v9, 2026-09-15).
+
 ## When to Use
 
 - Third step of `paved-road-m1`, after `capture-build-evidence` and before

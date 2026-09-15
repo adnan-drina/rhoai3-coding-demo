@@ -189,6 +189,8 @@ public final class DestModel {
                             Map<String, Object> frow = new LinkedHashMap<>();
                             frow.put("name", v.getName().toString());
                             frow.put("type", v.getType() == null ? "" : v.getType().toString());
+                            String constant = stringConstant(v, path);
+                            if (constant != null) { frow.put("constant", constant); }
                             frow.put("annotations", annotationsOf(v.getModifiers(), new TreePath(path, member), unit, relPath));
                             fields.add(frow);
                             if (v.getInitializer() != null) {
@@ -363,6 +365,34 @@ public final class DestModel {
                         out.add(row);
                     }
                     return out;
+                }
+
+                /**
+                 * The compile-time String value a field's own initializer
+                 * states, or null.
+                 *
+                 * The same fact M1's extractor records about the frozen
+                 * source, asked of the tree in front of us: a run whose
+                 * SEALED structure model predates that key still has a
+                 * constants type on disk, and an authorization expression
+                 * naming @roles.VET_ADMIN carries the reference and not the
+                 * role. getConstantValue() is the folded value of a constant
+                 * variable (JLS 4.12.4); when attribution folded nothing --
+                 * this tool runs over trees that do not resolve -- a final
+                 * field's declaration tree still holds its literal. Anything
+                 * else is not a constant and the key is absent.
+                 */
+                private String stringConstant(com.sun.source.tree.VariableTree v, TreePath owner) {
+                    Element el = trees.getElement(new TreePath(owner, v));
+                    if (el instanceof javax.lang.model.element.VariableElement) {
+                        Object folded = ((javax.lang.model.element.VariableElement) el).getConstantValue();
+                        if (folded != null) { return folded instanceof String ? (String) folded : null; }
+                    }
+                    if (!v.getModifiers().getFlags().contains(javax.lang.model.element.Modifier.FINAL)) { return null; }
+                    ExpressionTree init = v.getInitializer();
+                    if (!(init instanceof LiteralTree)) { return null; }
+                    Object value = ((LiteralTree) init).getValue();
+                    return value instanceof String ? (String) value : null;
                 }
 
                 private boolean collectLiterals(Tree t, List<String> into) {

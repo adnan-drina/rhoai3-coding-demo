@@ -430,6 +430,29 @@ python3 "${HERMES_SKILL_DIR}/scripts/derive-source-scenarios.py" --root /project
   `auth-policy <expression>: not in the supported grammar` and derives
   nothing: an identity "lacking the role" of an expression nobody read is a
   false expectation.
+- **A bean reference is not a type reference.** `@roles` / `#roles` is a SpEL
+  bean name, so it resolves to the type that carries a component stereotype
+  (`@Component`, `@Service`, `@Named`) and whose *decapitalized simple name*
+  is that name — or whose stereotype **states** it (`@Component("theRoles")`
+  registers `theRoles` and nothing else). `Roles.X` and `T(a.b.Roles).X` name
+  the type itself and need no stereotype. Each scenario carries the
+  resolution: `structure:Roles @Component → bean roles; Roles.VET_ADMIN =
+  "ROLE_VET_ADMIN" (constant from sealed structure)`.
+- **Where the constant's VALUE comes from.** M1's extractor records a field's
+  compile-time `String` initializer as `constant` in `rhoai3.structure/v1`, so
+  the sealed model carries the role name itself. A run whose structure model
+  was sealed **before** that key existed records the constants type with its
+  fields and no values; rather than refuse it, the derivation compiles the
+  **frozen source** (`analysis_copy`, `src/main/java`) with the dest-model
+  extractor — its own build classpath when the build producer published one,
+  otherwise a partial attribution, which a literal initializer does not need —
+  and resolves from there. Only when a policy actually names a constant the
+  sealed model lacks, and the sealed model keeps precedence wherever it has a
+  value. The receipt records the run in `inputs.constants` (tool, tree, source
+  digest, model digest, resolution, which references it answered), and the
+  scenarios say `(constant from frozen-source model)`. With neither model
+  carrying it, the typed `auth-policy … not in the supported grammar` gap
+  stands and nothing is derived.
 - **What each probe expects.** `sc:auth-allowed-*` states no status — the
   source's actual outcome is what the capture records (`usable_first_response`)
   — and keeps the base scenario's assertions about what the request *did*.

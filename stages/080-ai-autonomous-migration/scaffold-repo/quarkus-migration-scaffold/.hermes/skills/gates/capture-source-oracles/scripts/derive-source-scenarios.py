@@ -62,14 +62,17 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _oracle_common import ensure_hermes_lib  # noqa: E402
 from _scenarios import (CHALLENGE_HEADER, CORPUS, DEFAULT_SECURITY_MODE, DERIVATION_SCHEMA, DERIVE_RECEIPT,  # noqa: E402
-                        ROLE_PREFIX, SCHEMA, SECURITY_MODES, CorpusError, authorization_roles, corpus_digest, corpus_path,
-                        derive_receipt_path, load_corpus, normalize_security_mode, parse_assignments, request_of,
-                        role_matches, source_authorization_policy_map, source_cors_policy_map, source_role_constants)
+                        FROZEN_SOURCE_MODEL, ROLE_PREFIX, SCHEMA, SECURITY_MODES, CorpusError, authorization_roles,
+                        corpus_digest, corpus_path, derive_receipt_path, load_corpus, merge_role_constants,
+                        normalize_security_mode, parse_assignments, request_of, resolve_role_constant,
+                        role_constants_from_model, role_matches, role_reference_tokens,
+                        source_authorization_policy_map, source_cors_policy_map, source_role_constants)
 
 ensure_hermes_lib()
 from planner import yamlite  # noqa: E402
 from planner.canonical import digest, load_json, sha256_file, write_canonical  # noqa: E402
 from planner.decisions import DecisionsError, load_decisions, security, security_gaps  # noqa: E402
+from planner.dest_model import DestModelUnavailable, tree_model  # noqa: E402
 from planner.paths import DECISIONS, EVIDENCE_BUNDLE, STRUCTURE, producer_receipt  # noqa: E402
 
 PRODUCER = "derive-source-scenarios.py"
@@ -2391,7 +2394,12 @@ class EnabledDerivation:
     def run(self) -> None:
         for pid, pol in sorted(self.policies.items()):
             expression = str(pol.get("expression") or "")
-            roles, why = authorization_roles(str(pol.get("annotation") or ""), expression, self.constants)
+            # how each role NAME was arrived at travels with every scenario the
+            # policy derives: a role read out of a constant is a claim about
+            # the source's own code, and the scenario has to say which type,
+            # which stereotype made it a bean, and which model carried the value
+            constant_evidence: list[str] = []
+            roles, why = authorization_roles(str(pol.get("annotation") or ""), expression, self.constants, constant_evidence)
             if why or not roles:
                 self.gaps.append("auth-policy %s: not in the supported grammar (%s); no scenario is derived for %s"
                                  % (expression or "(empty)", why or "it names no role", pid))
@@ -2404,7 +2412,7 @@ class EnabledDerivation:
                 slug = str(base["id"]).split(":", 1)[-1]
                 if len(self.guards.get(eid, [])) > 1:
                     slug = "%s-%s" % (slug, _short(pid))
-                self._policy_probes(pid, pol, roles, eid, base, slug)
+                self._policy_probes(pid, pol, roles, eid, base, slug, constant_evidence)
             if not (pol.get("entry_points") or []):
                 self.gaps.append("auth-base %s: the policy guards no entry point the evidence bundle records; it is not exercised" % pid)
         self.scenarios.sort(key=lambda s: str(s["id"]))
@@ -2413,7 +2421,8 @@ class EnabledDerivation:
         self.gaps = list(dict.fromkeys(self.gaps))
 
     def _policy_probes(self, pid: str, pol: dict[str, Any], roles: list[str], eid: str,
-                       base: dict[str, Any], slug: str) -> None:
+                       base: dict[str, Any], slug: str, constant_evidence: list[str] | None = None) -> None:
+        constant_evidence = list(constant_evidence or [])
         derived_base = bool(base.get("_derived_base"))
         # what the probes are "the same request as": a scenario the Operator
         # can look up in the disabled corpus, or the read this producer
@@ -2434,12 +2443,12 @@ class EnabledDerivation:
                         "the same request as %s, carrying an identity the policy accepts; what the source answers IS the "
                         "expectation -- the capture records it -- and what the request did is judged the way %s judges it"
                         % (whence, whence),
-                        list(allowed.get("roles_evidence") or []))
+                        constant_evidence + list(allowed.get("roles_evidence") or []))
         self._probe("anonymous", slug, pid, pol, roles, eid, base, {"kind": "none"}, None,
                     self._denied_qualify(base),
                     "the same request with no credential at all: the policy accepts %s, so the source refuses it (any 4xx -- "
                     "401 and 403 are both its own answer), sends its challenge if it has one, and the read-backs the base "
-                    "scenario declares are unchanged across it" % ", ".join(roles))
+                    "scenario declares are unchanged across it" % ", ".join(roles), constant_evidence)
         if not self.invalid_ref:
             self.gaps.append("auth-invalid %s: no credential is declared invalid (--identity %s=CREDENTIAL_REF); the invalid-credential "
                              "probe is not derived" % (pid, _AUTH_INVALID))
@@ -2448,7 +2457,8 @@ class EnabledDerivation:
                         {"kind": "basic", "credential_ref": self.invalid_ref}, None,
                         self._denied_qualify(base),
                         "the same request carrying the credential reference the Operator declares invalid: the source refuses it "
-                        "(any 4xx), sends its challenge if it has one, and the read-backs are unchanged across it")
+                        "(any 4xx), sends its challenge if it has one, and the read-backs are unchanged across it",
+                        constant_evidence)
         outsider = self._outsider(roles)
         if outsider is None:
             # ADR-014's blocker: an identity that lacks the role is a FIXTURE.
@@ -2463,7 +2473,7 @@ class EnabledDerivation:
                     "the same request carrying an authenticated identity that holds %s and none of %s: authentication is not "
                     "authorization, so the source refuses it (any 4xx) and the read-backs are unchanged across it"
                     % (", ".join(outsider["roles"]), ", ".join(roles)),
-                    list(outsider.get("roles_evidence") or []))
+                    constant_evidence + list(outsider.get("roles_evidence") or []))
 
 
 def _sql_evidence(root: Path, copy: Path, inputs: dict[str, Any], gaps: list[str]) -> tuple[
@@ -2555,6 +2565,80 @@ def decided_identities(root: Path) -> tuple[list[dict[str, Any]], str, dict[str,
     return rows, str(decided.get("invalid_credential_ref") or ""), dict(decided["switch"]), ""
 
 
+SOURCE_JAVA = "src/main/java"
+
+
+def _source_classpath(root: Path) -> Path | None:
+    """The FROZEN source's own build classpath, or None.
+
+    Discovered the way the structural extractor discovers it: the build
+    producer's receipt says whether packaging the source produced one, and the
+    file is where that producer wrote it. None is not a failure -- a literal
+    initializer needs no classpath -- and it is never silently replaced by the
+    destination's, which is a different tree's dependencies."""
+    receipt = producer_receipt(root, "build")
+    cp = Path(root) / "evidence" / "build" / "classpath.txt"
+    if not receipt.is_file():
+        return None
+    try:
+        available = bool(load_json(receipt).get("classpath_available"))
+    except (OSError, ValueError):
+        return None
+    return cp if available and cp.is_file() and cp.stat().st_size else None
+
+
+def _resolve_constants(root: Path, copy: Path, policies: dict[str, Any], constants: dict[str, Any],
+                       inputs: dict[str, Any], gaps: list[str]) -> dict[str, Any]:
+    """The constants catalog the policies are read with: M1's sealed model,
+    and -- only for what it does not carry -- the FROZEN SOURCE itself.
+
+    A structure model sealed before the extractor recorded field initializers
+    states the constants type and its fields with no value, so
+    ``hasRole(@roles.VET_ADMIN)`` resolves to nothing and the whole enabled
+    corpus is gaps (measured on destination v9, 2026-09-15: 0 scenarios, 4
+    ``not in the supported grammar``). The frozen tree that model was made
+    from is still on disk, and a literal initializer is readable from it
+    without any classpath. So it is compiled and asked -- but only when a
+    policy actually needs a constant the sealed model lacks, and the sealed
+    model keeps precedence wherever it has a value: this is a fallback for
+    older runs, never a second opinion about a sealed claim.
+
+    The run is recorded on the receipt (``inputs.constants``): the tool, the
+    sources it read and their digest, the model's digest, and which fields it
+    answered for."""
+    wanted: list[str] = []
+    for _pid, pol in sorted(policies.items()):
+        for tok in role_reference_tokens(str(pol.get("annotation") or ""), str(pol.get("expression") or "")):
+            if resolve_role_constant(tok, constants)[1] and tok not in wanted:
+                wanted.append(tok)
+    if not wanted:
+        return constants
+    record: dict[str, Any] = {
+        "tool": "jdk-dest-model", "tree": _rel(copy, root), "source_root": SOURCE_JAVA,
+        "requested": list(wanted), "resolved": [], "source_digest": "", "model_sha256": "",
+        "classpath": "", "resolution": "", "status": "", "reason": "",
+    }
+    classpath = _source_classpath(root)
+    try:
+        model = tree_model(root, copy, source_root=SOURCE_JAVA, classpath=classpath)
+    except DestModelUnavailable as exc:
+        record["status"] = "unavailable"
+        record["reason"] = str(exc)
+        inputs["constants"] = record
+        gaps.append("auth-constants: the frozen source's own model could not be produced (%s); a constant M1's sealed "
+                    "structure model does not carry cannot be resolved" % exc)
+        return constants
+    merged = merge_role_constants(constants, role_constants_from_model(model, FROZEN_SOURCE_MODEL))
+    record["status"] = "ok"
+    record["classpath"] = _rel(classpath, root) if classpath is not None else ""
+    record["resolution"] = "full" if model.get("classpath_available") else "partial"
+    record["source_digest"] = str(model.get("sources_digest") or "")
+    record["model_sha256"] = digest(model.get("types") or [])
+    record["resolved"] = sorted({tok for tok in wanted if not resolve_role_constant(tok, merged)[1]})
+    inputs["constants"] = record
+    return merged
+
+
 def _derive_enabled(root: Path, args: Any, mode: str, out_p: Path, receipt_p: Path, bundle_sha: str,
                     freeze: dict[str, Any], copy: Path, inputs: dict[str, Any], gaps: list[str], blocked: Any,
                     idle: Any = None) -> int:
@@ -2602,6 +2686,11 @@ def _derive_enabled(root: Path, args: Any, mode: str, out_p: Path, receipt_p: Pa
     # first -- an unreadable one is a gap of its own below, at the policy
     _, _, _, _, seed, columns, foreign_keys = _sql_evidence(root, copy, inputs, gaps)
     persistence = load_persistence_model(root, set(columns) | set(seed))
+    # a constant a policy names and the sealed model does not carry is read
+    # from the frozen source itself, and the receipt says it was. Asked here,
+    # where the first answer is needed: a run that derives nothing does not
+    # compile another tree to find out.
+    constants = _resolve_constants(root, copy, policies, constants, inputs, gaps)
     wanted: list[str] = []
     for pol in policies.values():
         roles, _why = authorization_roles(str(pol.get("annotation") or ""), str(pol.get("expression") or ""), constants)

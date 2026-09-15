@@ -51,6 +51,23 @@ def _java_fixture(root: Path) -> None:
         "}\n",
         encoding="utf-8",
     )
+    # a constants type: the roles a source spells once and every authorization
+    # expression refers to. The reference is all the expression carries, so
+    # the VALUE has to be in the model
+    (base / "security").mkdir(parents=True)
+    (base / "security" / "Roles.java").write_text(
+        "package org.acme.security;\n"
+        "import org.springframework.stereotype.Component;\n"
+        "@Component\npublic class Roles {\n"
+        "  public final String ADMIN = \"ROLE_ADMIN\";\n"
+        "  public static final String READER = \"ROLE_READER\";\n"
+        "  public final String COMPUTED = compute();\n"
+        "  public String mutable = \"not a constant\";\n"
+        "  public final int LIMIT = 3;\n"
+        "  private String compute() { return \"x\"; }\n"
+        "}\n",
+        encoding="utf-8",
+    )
     (base / "jobs").mkdir(parents=True)
     (base / "jobs" / "SyncJob.java").write_text(
         "package org.acme.jobs;\nimport org.springframework.scheduling.annotation.Scheduled;\n"
@@ -174,6 +191,18 @@ def main() -> int:
         ctl = names.get("org.acme.owner.OwnerController")
         if ctl is None or {a["fqn"] for a in ctl["annotations"]} != {"org.springframework.web.bind.annotation.RestController", "org.springframework.web.bind.annotation.RequestMapping"}:
             return _fail("wildcard-imported annotations must resolve through the CU imports: %s" % (ctl and ctl["annotations"]))
+        # a field's compile-time String initializer is a fact only the
+        # compiler has: an authorization expression naming @roles.ADMIN
+        # carries the reference, and the role NAME is here or nowhere
+        # (destination v9, 2026-09-15). Anything that is not a constant -- a
+        # call, a mutable field, a folded non-String -- has no key at all
+        roles = names.get("org.acme.security.Roles")
+        fields = {f["name"]: f for f in (roles or {}).get("fields") or []}
+        constants = {name: f.get("constant") for name, f in sorted(fields.items())}
+        if constants != {"ADMIN": "ROLE_ADMIN", "READER": "ROLE_READER", "COMPUTED": None, "LIMIT": None, "mutable": None}:
+            return _fail("a field's string-literal initializer is recorded and nothing else is: %s" % constants)
+        if not any(a["fqn"] == "org.springframework.stereotype.Component" for a in (roles or {}).get("annotations") or []):
+            return _fail("the stereotype that makes the constants type a bean must be recorded: %s" % (roles or {}).get("annotations"))
         epi = load_json(jdest / "evidence" / "entry-point-inventory.json")
         got = {(e["http_method"], e["http_path"]) for e in epi["entry_points"] if e["kind"] == "http"}
         if got != {("GET", "/api/owners/list"), ("POST", "/api/owners")}:
@@ -189,7 +218,8 @@ def main() -> int:
         p = _run(["bash", str(LAUNCHER), "--root", str(jdest)])
         if p.returncode != 1 or "STRUCTURE_JDK_MISMATCH" not in p.stderr or load_json(jdest / "evidence" / "producers" / "jdk-model.json")["status"] != "unpinned":
             return _fail("JDK mismatch must refuse fail-closed: %s" % p.stderr[-200:])
-    print("OK: inventory-legacy-surface (normalize; compat views; partial mode; unpinned refuse; launcher refuse; real JDK extractor on a Spring fixture; JDK mismatch refuse)")
+    print("OK: inventory-legacy-surface (normalize; compat views; partial mode; unpinned refuse; launcher refuse; real JDK extractor on a Spring fixture, "
+          "recording each field's compile-time String initializer as its constant and nothing else as one; JDK mismatch refuse)")
     return 0
 
 

@@ -305,6 +305,8 @@ public final class JdkModelExtract {
                 Map<String, Object> fd = new LinkedHashMap<>();
                 fd.put("name", f.getSimpleName().toString());
                 fd.put("type", nameOf(f.asType()));
+                String constant = stringConstant(f);
+                if (constant != null) fd.put("constant", constant);
                 fd.put("annotations", memberAnnotations(f));
                 collectRefs(f.asType(), typeRefs, partial);
                 fields.add(fd);
@@ -391,6 +393,33 @@ public final class JdkModelExtract {
         d.put("type_refs", new ArrayList<>(appRefs));
         d.put("resolution", partial[0] ? "partial" : "full");
         return d;
+    }
+
+    /**
+     * The compile-time String value a field's own initializer states, or null.
+     *
+     * A source that spells its role names once in a constants type puts the
+     * role NAME in the initializer, and an authorization expression carries
+     * only the REFERENCE (@roles.VET_ADMIN). A field row of name and type
+     * alone cannot resolve it -- measured on destination v9, where the enabled
+     * corpus derived nothing and recorded four "resolves to no string field"
+     * gaps. So the compiler is asked: getConstantValue() is the folded value
+     * of a constant variable (JLS 4.12.4), and a final field whose declaration
+     * tree holds a String literal is read from that tree when the element
+     * carries no folded value (a partial attribution folds nothing). Anything
+     * else -- a call, a non-constant expression, a mutable field -- is not a
+     * constant, and the key is ABSENT rather than guessed.
+     */
+    private static String stringConstant(VariableElement f) {
+        Object folded = f.getConstantValue();
+        if (folded != null) return folded instanceof String ? (String) folded : null;
+        if (!f.getModifiers().contains(Modifier.FINAL)) return null;
+        Tree leaf = trees.getTree(f);
+        if (!(leaf instanceof VariableTree)) return null;
+        ExpressionTree init = ((VariableTree) leaf).getInitializer();
+        if (!(init instanceof LiteralTree)) return null;
+        Object value = ((LiteralTree) init).getValue();
+        return value instanceof String ? (String) value : null;
     }
 
     private static String signature(ExecutableElement m) {

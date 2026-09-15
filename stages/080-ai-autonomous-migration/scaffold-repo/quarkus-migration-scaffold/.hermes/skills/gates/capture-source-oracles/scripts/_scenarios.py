@@ -754,12 +754,27 @@ def source_authorization_policies(root: Path) -> tuple[list[str], str]:
 # #roles.OWNER_ADMIN, Roles.OWNER_ADMIN, T(a.b.Roles).OWNER_ADMIN). The
 # constant is read from the model's own field values, never from a specimen's
 # role names: the harness does not know what a role is called.
+#
+# `@roles` and `#roles` are SpEL BEAN references, and a bean is not a type: the
+# name belongs to a type carrying a component stereotype, and is that type's
+# decapitalized simple name unless the stereotype states one. Resolving the
+# reference as though it were a type name would accept any class that happens
+# to lower-case to it.
 ROLE_PREFIX = "ROLE_"
 # a field's recorded constant value; M1's model carries the literal under
 # whichever of these keys its extractor writes
 _CONSTANT_VALUE_KEYS = ("constant", "constant_value", "value", "literal", "initializer")
 _ROLE_CALLS = ("hasRole", "hasAnyRole")
 _ROLE_SET_ANNOTATIONS = ("RolesAllowed", "Secured")
+# what makes a type a bean, and so makes its name a bean name
+_COMPONENT_STEREOTYPES = ("Component", "Named", "Service")
+# where a resolved constant's VALUE came from. The sealed model is preferred;
+# a run whose sealed structure predates the constant key falls back to the
+# frozen source's own tree, and the scenario says which one answered.
+SEALED_STRUCTURE = "sealed structure"
+FROZEN_SOURCE_MODEL = "frozen-source model"
+_NO_CONSTANT = "the constant %s resolves to no string field of a type the structure model records"
+_NOT_A_REFERENCE = "%s is neither a quoted role nor a constant this model resolves"
 # the challenge a source sends with an unauthenticated refusal; asserted on
 # the FIRST response of the scenarios that provoke it (redirects are never
 # followed, so there is no second one to read)
@@ -773,51 +788,232 @@ def _unquote(text: str) -> str:
     return t
 
 
-def source_role_constants(root: Path) -> tuple[dict[str, dict[str, str]], str]:
-    """({constants type, lower-cased simple name: {field: literal}},
-    why-unknown) -- the string constants M1's structure model records.
+def _decapitalize(simple: str) -> str:
+    """A stereotyped type's default bean name (java.beans.Introspector's rule:
+    two leading capitals are left alone, so ``URLRoles`` is ``URLRoles``)."""
+    s = str(simple)
+    if not s:
+        return ""
+    if len(s) > 1 and s[0].isupper() and s[1].isupper():
+        return s
+    return s[0].lower() + s[1:]
 
-    A source that spells its roles once in a constants type and refers to them
-    from every ``@PreAuthorize`` (``hasRole(@roles.OWNER_ADMIN)``) has put the
-    role NAME in the model's field values; the expression alone carries only a
-    reference. Two types with the same simple name and different values
-    resolve to neither: an ambiguous reference is not a role."""
-    p = Path(root) / STRUCTURE
-    if not p.is_file():
-        return {}, "M1's structural model %s is not in this tree, so a role constant cannot be resolved" % STRUCTURE
-    try:
-        model = load_json(p)
-    except (OSError, ValueError) as exc:
-        return {}, "%s could not be read: %s" % (STRUCTURE, exc)
-    out: dict[str, dict[str, str]] = {}
-    ambiguous: set[str] = set()
-    for t in (model.get("types") or []):
+
+def _annotation_simple(a: Any) -> str:
+    """An annotation row's simple name, from either model's shape (the dest
+    model records ``simple`` beside the fqn; the structure model the fqn)."""
+    if not isinstance(a, dict):
+        return ""
+    for key in ("simple", "fqn", "name"):
+        text = str(a.get(key) or "").strip()
+        if text:
+            return text.rsplit(".", 1)[-1]
+    return ""
+
+
+def _annotation_values(a: Any) -> list[str]:
+    """The string literals an annotation states for its ``value`` attribute.
+
+    The structure model keys its values by attribute; the dest model keys the
+    literal ones under ``named`` and flattens the rest. Either way an
+    attribute nobody wrote is absent, never guessed."""
+    if not isinstance(a, dict):
+        return []
+    named = a.get("named")
+    raw: Any = None
+    if isinstance(named, dict) and named:
+        raw = named.get("value")
+    if raw is None:
+        values = a.get("values")
+        raw = values.get("value") if isinstance(values, dict) else values
+    items = raw if isinstance(raw, list) else ([] if raw in (None, "") else [raw])
+    return [_unquote(str(x)) for x in items if str(x).strip()]
+
+
+def _stereotype_of(annotations: Any) -> tuple[str, list[str]]:
+    """(the component stereotype a type carries, the bean names it states).
+
+    The first stereotype in name order, so two of them decide the same way
+    every run. A stereotype that names the bean replaces the default: Spring
+    registers ``@Component("theRoles")`` under that name and no other."""
+    rows = [a for a in (annotations or []) if isinstance(a, dict)]
+    for a in sorted(rows, key=_annotation_simple):
+        simple = _annotation_simple(a)
+        if simple in _COMPONENT_STEREOTYPES:
+            return simple, [v for v in _annotation_values(a) if v]
+    return "", []
+
+
+def _field_constant(f: Any) -> str:
+    """The literal a field row records, under whichever key wrote it."""
+    if not isinstance(f, dict):
+        return ""
+    for key in _CONSTANT_VALUE_KEYS:
+        raw = f.get(key)
+        if isinstance(raw, str) and _unquote(raw):
+            return _unquote(raw)
+    return ""
+
+
+def _index_role_constants(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """The two indexes a reference is resolved through: by TYPE name (lowered,
+    as a ``Roles.X`` reference is read) and by BEAN name (exact, as ``@roles``
+    is). A name two different types answer to resolves to neither: an
+    ambiguous reference is not a role."""
+    by_type: dict[str, dict[str, Any]] = {}
+    by_bean: dict[str, dict[str, Any]] = {}
+    ambiguous_type: set[str] = set()
+    ambiguous_bean: set[str] = set()
+    for row in rows:
+        key = str(row.get("simple") or "").lower()
+        if key:
+            prev = by_type.get(key)
+            if prev is not None and (prev["fqn"] != row["fqn"] or prev["fields"] != row["fields"]):
+                ambiguous_type.add(key)
+            by_type[key] = row
+        for bean in row.get("beans") or []:
+            prev = by_bean.get(bean)
+            if prev is not None and (prev["fqn"] != row["fqn"] or prev["fields"] != row["fields"]):
+                ambiguous_bean.add(bean)
+            by_bean[bean] = row
+    for key in ambiguous_type:
+        by_type.pop(key, None)
+    for key in ambiguous_bean:
+        by_bean.pop(key, None)
+    return {
+        "rows": sorted((dict(r) for r in rows), key=lambda r: str(r.get("fqn") or "")),
+        "by_type": dict(sorted(by_type.items())),
+        "by_bean": dict(sorted(by_bean.items())),
+    }
+
+
+def role_constants_from_model(model: Any, source: str = SEALED_STRUCTURE) -> dict[str, Any]:
+    """The constants catalog of one structural model (M1's sealed model, or
+    the dest-model extractor's reading of another tree).
+
+    A row is kept when the type records a string constant OR carries a
+    component stereotype: the stereotype alone is what makes ``@roles`` a name
+    for it, and a constants type nothing records a value for must be reported
+    as a missing CONSTANT rather than a missing bean."""
+    types = model.get("types") if isinstance(model, dict) else model
+    rows: list[dict[str, Any]] = []
+    for t in (types or []):
         if not isinstance(t, dict):
             continue
-        simple = str(t.get("fqn") or "").rsplit(".", 1)[-1].strip().lower()
+        fqn = str(t.get("fqn") or "").strip()
+        simple = fqn.rsplit(".", 1)[-1].strip()
         if not simple:
             continue
         fields: dict[str, str] = {}
         for f in (t.get("fields") or []):
-            if not isinstance(f, dict) or not str(f.get("name") or ""):
-                continue
-            for key in _CONSTANT_VALUE_KEYS:
-                raw = f.get(key)
-                if isinstance(raw, str) and _unquote(raw):
-                    fields[str(f["name"])] = _unquote(raw)
-                    break
-        if not fields:
+            name = str(f.get("name") or "") if isinstance(f, dict) else ""
+            value = _field_constant(f)
+            if name and value:
+                fields[name] = value
+        stereotype, declared = _stereotype_of(t.get("annotations"))
+        beans = sorted(dict.fromkeys(declared)) if declared else ([_decapitalize(simple)] if stereotype else [])
+        if not fields and not stereotype:
             continue
-        if simple in out and out[simple] != fields:
-            ambiguous.add(simple)
-        out[simple] = fields
-    for simple in ambiguous:
-        out.pop(simple, None)
-    return dict(sorted(out.items())), ""
+        rows.append({"fqn": fqn, "simple": simple, "fields": fields,
+                     "sources": {name: source for name in fields},
+                     "stereotype": stereotype, "beans": beans})
+    return _index_role_constants(rows)
 
 
-def _role_token(token: str, constants: dict[str, dict[str, str]], *, literal_ok: bool) -> tuple[str, str]:
-    """(the role a single argument names, why-not).
+def _merge_constant_rows(preferred: dict[str, Any] | None, fallback: dict[str, Any] | None) -> dict[str, Any]:
+    if preferred is None:
+        return dict(fallback or {})
+    if fallback is None:
+        return dict(preferred)
+    row = dict(preferred)
+    fields = dict(fallback.get("fields") or {})
+    fields.update(preferred.get("fields") or {})
+    sources = dict(fallback.get("sources") or {})
+    sources.update(preferred.get("sources") or {})
+    row["fields"] = fields
+    row["sources"] = sources
+    row["stereotype"] = str(preferred.get("stereotype") or fallback.get("stereotype") or "")
+    row["beans"] = sorted(dict.fromkeys(list(preferred.get("beans") or []) + list(fallback.get("beans") or [])))
+    return row
+
+
+def merge_role_constants(preferred: dict[str, Any], fallback: dict[str, Any]) -> dict[str, Any]:
+    """One catalog from two, by type, the PREFERRED model's value winning
+    wherever it has one. The sealed model is the preferred one: what M1 sealed
+    is the claim of record, and the other tree is only read for what it does
+    not carry."""
+    rows: dict[str, dict[str, Any]] = {str(r.get("fqn") or ""): dict(r) for r in (fallback.get("rows") or [])}
+    for r in (preferred.get("rows") or []):
+        fqn = str(r.get("fqn") or "")
+        rows[fqn] = _merge_constant_rows(r, rows.get(fqn))
+    return _index_role_constants(list(rows.values()))
+
+
+def source_role_constants(root: Path) -> tuple[dict[str, Any], str]:
+    """(the constants catalog M1's sealed structure model states, why-unknown).
+
+    A source that spells its roles once in a constants type and refers to them
+    from every ``@PreAuthorize`` (``hasRole(@roles.OWNER_ADMIN)``) has put the
+    role NAME in the model's field values; the expression alone carries only a
+    reference."""
+    p = Path(root) / STRUCTURE
+    empty = _index_role_constants([])
+    if not p.is_file():
+        return empty, "M1's structural model %s is not in this tree, so a role constant cannot be resolved" % STRUCTURE
+    try:
+        model = load_json(p)
+    except (OSError, ValueError) as exc:
+        return empty, "%s could not be read: %s" % (STRUCTURE, exc)
+    return role_constants_from_model(model, SEALED_STRUCTURE), ""
+
+
+def _is_constant_reference(token: str) -> bool:
+    """Whether a token is a REFERENCE rather than a role name written out."""
+    tok = str(token).strip()
+    return bool(tok) and (tok.startswith("T(") or tok[0] in ("@", "#") or "." in tok)
+
+
+def resolve_role_constant(token: str, constants: dict[str, Any]) -> tuple[str, str, str]:
+    """(the role a constant reference names, why-not, the resolution evidence).
+
+    ``@roles.X`` / ``#roles.X`` is a SpEL bean reference: ``roles`` names a
+    type that carries a component stereotype, by the name that stereotype
+    states or by its decapitalized simple name. ``Roles.X`` and
+    ``T(a.b.Roles).X`` name the type itself. Both end at a field whose
+    recorded constant IS the role -- the harness never knows what a role is
+    called, so an unrecorded constant is a gap and never a guess."""
+    tok = str(token).strip()
+    ref = tok
+    if ref.startswith("T(") and ")" in ref:
+        ref = ref[ref.index(")") + 1:].lstrip(".")
+        ref = "%s.%s" % (tok[2:tok.index(")")].rsplit(".", 1)[-1], ref) if ref else ""
+    bean_ref = bool(ref) and ref[0] in ("@", "#")
+    ref = ref.lstrip("@#")
+    if "." not in ref:
+        return "", _NOT_A_REFERENCE % tok, ""
+    owner, _, field = ref.rpartition(".")
+    owner = owner.rsplit(".", 1)[-1].strip()
+    if bean_ref:
+        row = (constants.get("by_bean") or {}).get(owner)
+        if row is None:
+            return "", ("the bean reference %s names no component-stereotyped type (@%s) the structure model records"
+                        % (tok, ", @".join(_COMPONENT_STEREOTYPES))), ""
+    else:
+        row = (constants.get("by_type") or {}).get(owner.lower())
+        if row is None:
+            return "", _NO_CONSTANT % tok, ""
+    value = str((row.get("fields") or {}).get(field) or "")
+    if not value:
+        return "", _NO_CONSTANT % tok, ""
+    detail = '%s.%s = "%s" (constant from %s)' % (row.get("simple"), field, value,
+                                                  (row.get("sources") or {}).get(field) or SEALED_STRUCTURE)
+    evidence = ("structure:%s @%s → bean %s; %s" % (row.get("simple"), row.get("stereotype"), owner, detail)
+                if bean_ref else "structure:%s" % detail)
+    return value, "", evidence
+
+
+def _role_token(token: str, constants: dict[str, Any], *, literal_ok: bool) -> tuple[str, str, str]:
+    """(the role a single argument names, why-not, the resolution evidence).
 
     ``literal_ok`` says whether a bare word is a role NAME: it is in a
     ``@RolesAllowed`` value list (the model records those as strings) and it
@@ -825,24 +1021,15 @@ def _role_token(token: str, constants: dict[str, dict[str, str]], *, literal_ok:
     this grammar has not read."""
     tok = str(token).strip()
     if not tok:
-        return "", "an empty role"
+        return "", "an empty role", ""
     if tok[0] in ("'", '"'):
         role = _unquote(tok)
-        return (role, "") if role else ("", "the empty string is not a role")
-    ref = tok
-    if ref.startswith("T(") and ")" in ref:
-        ref = ref[ref.index(")") + 1:].lstrip(".")
-        ref = "%s.%s" % (tok[2:tok.index(")")].rsplit(".", 1)[-1], ref) if ref else ""
-    ref = ref.lstrip("@#")
-    if "." in ref:
-        owner, _, field = ref.rpartition(".")
-        owner = owner.rsplit(".", 1)[-1].strip().lower()
-        if owner in constants and field in constants[owner]:
-            return constants[owner][field], ""
-        return "", "the constant %s resolves to no string field of a type the structure model records" % tok
+        return (role, "", "") if role else ("", "the empty string is not a role", "")
+    if _is_constant_reference(tok):
+        return resolve_role_constant(tok, constants or {})
     if literal_ok:
-        return tok, ""
-    return "", "%s is neither a quoted role nor a constant this model resolves" % tok
+        return tok, "", ""
+    return "", _NOT_A_REFERENCE % tok, ""
 
 
 def _balanced(text: str) -> bool:
@@ -877,43 +1064,69 @@ def _split_args(text: str) -> list[str]:
     return [a.strip() for a in out if a.strip()]
 
 
-def authorization_roles(annotation: str, expression: str,
-                        constants: dict[str, dict[str, str]] | None = None) -> tuple[list[str], str]:
-    """(the roles this policy ACCEPTS, why-unsupported).
-
-    "" for the reason and a non-empty list is the only readable answer; an
-    expression outside the grammar returns ([], reason) and the caller records
-    a typed gap rather than deriving anything for it."""
-    consts = constants or {}
+def _role_arguments(annotation: str, expression: str) -> tuple[list[str], bool, str]:
+    """(the arguments naming this policy's roles, whether a bare word is one
+    of them, why-unsupported) -- the grammar, read once."""
     text = str(expression or "").strip()
     if not text:
-        return [], "the policy states no expression"
+        return [], False, "the policy states no expression"
     if str(annotation) in _ROLE_SET_ANNOTATIONS:
-        roles: list[str] = []
-        for tok in _split_args(text):
-            role, why = _role_token(tok, consts, literal_ok=True)
-            if why:
-                return [], why
-            roles.append(role)
-        return sorted(dict.fromkeys(roles)), ""
+        return _split_args(text), True, ""
     call = re.fullmatch(r"([A-Za-z]\w*)\s*\((.*)\)", text, re.DOTALL)
     # the call has to BE the whole expression: ``hasRole('A') or hasRole('B')``
     # matches that pattern too, and reading it as one call would derive a
     # "lacks the role" identity the source in fact lets through
     if call is not None and not _balanced(call.group(2)):
-        return [], "the expression combines terms (%s); a combination is not one role test" % text
+        return [], False, "the expression combines terms (%s); a combination is not one role test" % text
     if call is None or call.group(1) not in _ROLE_CALLS:
-        return [], "only %s and the role lists of %s are read" % (
+        return [], False, "only %s and the role lists of %s are read" % (
             ", ".join("%s(...)" % c for c in _ROLE_CALLS), ", ".join("@%s" % a for a in _ROLE_SET_ANNOTATIONS))
     args = _split_args(call.group(2))
     if not args or (call.group(1) == "hasRole" and len(args) != 1):
-        return [], "%s takes %s" % (call.group(1), "exactly one role" if call.group(1) == "hasRole" else "at least one role")
-    roles = []
+        return [], False, "%s takes %s" % (call.group(1), "exactly one role" if call.group(1) == "hasRole" else "at least one role")
+    return args, False, ""
+
+
+def role_reference_tokens(annotation: str, expression: str) -> list[str]:
+    """The constant REFERENCES this policy's role arguments name.
+
+    What a derivation needs before it decides whether another model has to be
+    read: which constants this expression depends on, without deciding yet
+    whether any of them resolve."""
+    args, _literal_ok, why = _role_arguments(annotation, expression)
+    if why:
+        return []
+    return [t for t in args if t and t[0] not in ("'", '"') and _is_constant_reference(t)]
+
+
+def authorization_roles(annotation: str, expression: str, constants: dict[str, Any] | None = None,
+                        evidence: list[str] | None = None) -> tuple[list[str], str]:
+    """(the roles this policy ACCEPTS, why-unsupported).
+
+    "" for the reason and a non-empty list is the only readable answer; an
+    expression outside the grammar returns ([], reason) and the caller records
+    a typed gap rather than deriving anything for it. ``evidence``, when a
+    list is passed, receives one line per constant resolved -- which type,
+    which stereotype made it a bean, the field, its value and which model
+    carried it -- so a scenario derived from a constant can say where the role
+    name came from."""
+    consts = constants or {}
+    args, literal_ok, why = _role_arguments(annotation, expression)
+    if why:
+        return [], why
+    roles: list[str] = []
+    lines: list[str] = []
     for tok in args:
-        role, why = _role_token(tok, consts, literal_ok=False)
+        role, why, line = _role_token(tok, consts, literal_ok=literal_ok)
         if why:
             return [], why
         roles.append(role)
+        if line:
+            lines.append(line)
+    if evidence is not None:
+        for line in lines:
+            if line not in evidence:
+                evidence.append(line)
     return sorted(dict.fromkeys(roles)), ""
 
 
