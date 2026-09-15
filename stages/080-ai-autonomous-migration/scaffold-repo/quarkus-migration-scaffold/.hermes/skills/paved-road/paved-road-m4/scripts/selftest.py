@@ -51,8 +51,18 @@ def main() -> int:
     prod = next(s for s in doc["steps"] if s.get("producer"))
     if prod.get("skill") != "compose-m4-verdict" or "evidence/verdicts/m4-verdict.json" not in prod.get("keep", []):
         return _fail("compose-m4-verdict must be the only producer and KEEP the verdict: %s" % prod)
-    if [s.get("native") for s in doc["steps"] if s["backing"] == "native"] != ["run-m4-pre-verdict.sh"]:
-        return _fail("M4 runs exactly one native step, the pre-verdict runner")
+    # The parity phase is a tool, not a worker's judgement, and it runs BEFORE
+    # the pre-verdict runner: the receipt it composes is one of the things the
+    # verdict cites. v9's first M4 card is the control (t_32c82390): a worker
+    # driving the comparators by hand ran the composer first and compared none
+    # of the 34 admitted entry points.
+    if [s.get("native") for s in doc["steps"] if s["backing"] == "native"] != ["run-parity.py", "run-m4-pre-verdict.sh"]:
+        return _fail("M4 runs two native steps in order: the batch parity runner, then the pre-verdict runner")
+    parity = next(s for s in doc["steps"] if s.get("native") == "run-parity.py")
+    if sorted(parity.get("keep") or []) != ["verification/parity/_run.json", "verification/parity/receipt.json"]:
+        return _fail("the parity step must KEEP the receipt and the run record: %s" % parity.get("keep"))
+    if not (HERE / "run-parity.py").is_file():
+        return _fail("the parity step names a runner that is not in this skill's scripts/")
     if ids[-1] != "check-release-readiness":
         return _fail("the readiness lint must come last (it may agree or refuse, never author): %s" % ids)
 
@@ -62,7 +72,7 @@ def main() -> int:
     if not any("pre-verdict runner" in e for e in validate_steps_doc(bad)):
         return _fail("a road with no pre-verdict runner must be refused")
     bad = json.loads(json.dumps(doc))
-    runner = next(s for s in bad["steps"] if s["backing"] == "native")
+    runner = next(s for s in bad["steps"] if s.get("native") == "run-m4-pre-verdict.sh")
     bad["steps"].remove(runner)
     bad["steps"].append(runner)
     if not any("must precede" in e for e in validate_steps_doc(bad)):

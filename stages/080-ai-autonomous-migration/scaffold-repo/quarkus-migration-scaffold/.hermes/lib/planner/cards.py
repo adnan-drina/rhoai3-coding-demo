@@ -64,6 +64,63 @@ def card_title(head: dict[str, Any], attempt: int) -> str:
     return "M3 %s %s (%d item%s, attempt %d)" % (head.get("kind"), name, n, "" if n == 1 else "s", attempt)
 
 
+def _machine_body(body: dict[str, Any]) -> list[str]:
+    return [
+        "",
+        "<details><summary>machine body (K1)</summary>",
+        "",
+        BODY_FENCE,
+        json.dumps(body, sort_keys=True, separators=(",", ":")),
+        "```",
+        "",
+        "</details>",
+    ]
+
+
+def _close_prose(body: dict[str, Any]) -> str:
+    """The M4 VERIFY card, in the prose a human reads on the board.
+
+    A close card used to be rendered with the M3 loop's prose: "it views
+    fix-until-green", "read the brief", "run-verify then advance", "complete
+    after ACCEPTED". Only the machine body carried M4's own exits, and the
+    markdown is what `hermes kanban show` displays -- so the card told the
+    worker to run the repair loop on a phase that has no repair loop, and to
+    end on a terminator K2 refuses here (measured on v9's t_32c82390)."""
+    lines = [
+        "## M4 VERIFY",
+        "",
+        "- **Receipt** `%s`, work list `%s`" % (str(body.get("receipt_sha256") or "")[:16], str(body.get("worklist_sha256") or "")[:16]),
+        "- **Write set**: `evidence/verdicts/`, `verification/` — evidence only. M4 does not edit the product tree.",
+        "- **Road**: `skill_view paved-road-m4` first (the pinned index; its `steps.json` is the contract).",
+        "",
+        "**Do**, in this order:",
+        "",
+    ]
+    # The producer is a SKILL, not a command, so it has no exit cmd to list --
+    # and a Do list that jumps from the pre-verdict runner to the verdict
+    # linter never says who writes the verdict in between.
+    for e in body.get("exit_criteria") or []:
+        if not isinstance(e, dict) or not e.get("cmd"):
+            continue
+        if str(e.get("check")) == "verdict_schema":
+            lines.append("    skill_view compose-m4-verdict   # author evidence/verdicts/m4-verdict.json from the exits above")
+        lines.append("    %s" % e["cmd"])
+    if not any(str((e or {}).get("check")) == "verdict_schema" for e in (body.get("exit_criteria") or []) if isinstance(e, dict)):
+        lines.append("    skill_view compose-m4-verdict   # author evidence/verdicts/m4-verdict.json from the exits above")
+    lines += [
+        "",
+        "Then read `evidence/verdicts/m4-verdict.json`: it is COMPOSED from the exit codes above and nothing else. "
+        "`REFUSE` is a verdict — the honest result of a measurement — not a failure to close, and not something to "
+        "re-run the phase hoping to change. Parity is the batch runner, once: there is no per-entry-point loop for "
+        "you to drive, and `verification/parity/_run.json` records what actually ran.",
+        "Terminator: `kanban_request_review` with `reviewer=reviewer`, once the verdict file exists — for EVERY "
+        "verdict it can hold. Never `kanban_complete` (K2 refuses it on this card). Never `kanban_block` for a "
+        "REFUSE verdict; block only when the phase could not measure at all (no destination, no database, no "
+        "corpus). Never dest-dispatch M5.",
+    ]
+    return "\n".join(lines + _machine_body(body))
+
+
 def render_body(body: dict[str, Any]) -> str:
     """Card body a human can read on the board: a Markdown summary first, the
     exact machine body (what K1 validates) in one fenced json block after it.
@@ -72,6 +129,8 @@ def render_body(body: dict[str, Any]) -> str:
     writes = [str(w.get("path") if isinstance(w, dict) else w) for w in body.get("write_set") or []]
     steps = [e.get("cmd") for e in body.get("exit_criteria") or [] if isinstance(e, dict) and e.get("cmd")]
     kind = str(ident.get("increment_kind") or "")
+    if kind == "close":
+        return _close_prose(body)
     ref = REFERENCE_SKILLS.get(kind, "")
     cid = str(ident.get("increment_id") or "")
     brief_cmd = "python3 .hermes/skills/migration/fix-until-green/scripts/brief.py --root ."
@@ -95,16 +154,8 @@ def render_body(body: dict[str, Any]) -> str:
         "",
         "The tools decide: ACCEPTED commits and mints the next card; REVERTED re-mints this cluster; CONTINUE (exit 3, repair-family cards) keeps the candidate on the tree -- keep working THIS card on the members it names, then verify and advance again; VERIFICATION_PENDING retains the candidate without counting an attempt; DEFERRED stops the loop.",
         "Terminator: `kanban_complete` after ACCEPTED or REVERTED (the loop record is the audit; K2 allows it). `kanban_block` kind=needs_input naming the cluster after VERIFICATION_PENDING, DEFERRED or a `REFUSE: LOOP_*`. CONTINUE is not a verdict: neither complete nor block. Never `kanban_request_review` on a loop card; never retry inside this card after REVERTED (the retry is the next K4 card).",
-        "",
-        "<details><summary>machine body (K1)</summary>",
-        "",
-        BODY_FENCE,
-        json.dumps(body, sort_keys=True, separators=(",", ":")),
-        "```",
-        "",
-        "</details>",
     ]
-    return "\n".join(lines)
+    return "\n".join(lines + _machine_body(body))
 
 
 def parse_body(text: Any) -> dict[str, Any]:

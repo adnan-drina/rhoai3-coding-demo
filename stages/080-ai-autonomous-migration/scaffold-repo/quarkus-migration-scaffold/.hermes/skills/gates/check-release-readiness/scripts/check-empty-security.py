@@ -19,12 +19,67 @@ from pathlib import Path
 
 EXIT_CODES = """Exit codes:
   0  pass — functional security surface present, or gate idle (no security
-     types and security not enabled)
-  1  BLOCK — missing quarkus-security / quarkus-elytron-security-jdbc, no
-     security types while security is enabled, or empty / placeholder /
-     javadoc-only security classes (AR-2.2, R-M3.39)
+     types, no method-security annotations, and security not enabled)
+  1  BLOCK — method security with no identity provider, missing
+     quarkus-security / quarkus-elytron-security-jdbc, no security types
+     while security is enabled, or empty / placeholder / javadoc-only
+     security classes (AR-2.2, R-M3.39)
   2  usage / harness defect (bad or unknown argument)
 """
+
+# Method security: the annotations that make an endpoint refuse an
+# unauthenticated caller. They are matched as annotations by simple name, so
+# the rule holds whatever the package, the type or the specimen is called.
+METHOD_SECURITY = ("PreAuthorize", "RolesAllowed", "Secured", "DenyAll")
+METHOD_SECURITY_RE = re.compile(r"@(%s)\b" % "|".join(METHOD_SECURITY))
+
+# The extensions that turn method security ON ...
+SECURITY_EXTENSIONS = ("quarkus-spring-security", "quarkus-security")
+# ... and the ones that give it somebody to authenticate AGAINST. Without one
+# of these there is no IdentityProvider, so every annotated member denies an
+# anonymous caller: the augmentation succeeds, the application starts, and
+# every call answers 403. Measured on destination v9 (2026-09-15): 403 on
+# every read while this gate passed as idle, because the annotations live on
+# controllers and the gate only ever looked at *Security*.java.
+IDENTITY_PROVIDERS = (
+    "quarkus-security-jpa",
+    "quarkus-security-jdbc",
+    "quarkus-elytron-security-properties-file",
+    "quarkus-elytron-security-jdbc",
+    "quarkus-oidc",
+    "quarkus-elytron-security-ldap",
+)
+# A configured identity is a provider too: embedded users, or an HTTP auth
+# policy/mechanism the application declares for itself.
+IDENTITY_PROPERTY_RE = re.compile(r"(?m)^\s*(?:%[\w.-]+\.)?quarkus\.(?:security\.users|http\.auth)\.")
+
+_BLOCK_COMMENT = re.compile(r"/\*.*?\*/", re.S)
+_LINE_COMMENT = re.compile(r"//.*?$", re.M)
+
+
+def artifact_ids(pom: str) -> set[str]:
+    """Every <artifactId> the pom names, matched whole.
+
+    Substring matching cannot answer this question: "quarkus-security" is a
+    substring of "quarkus-security-jpa", so a tree whose only security
+    dependency IS the identity provider would read as if it had the umbrella
+    extension and no provider."""
+    return {m.strip() for m in re.findall(r"<artifactId>([^<]+)</artifactId>", pom)}
+
+
+def method_security_sites(src: Path) -> dict[str, list[str]]:
+    """{annotation: [file, ...]} for every method-security annotation in the
+    tree. Comments are stripped first: a javadoc mentioning @RolesAllowed is
+    documentation, not an access rule."""
+    found: dict[str, list[str]] = {}
+    if not src.is_dir():
+        return found
+    for path in sorted(src.rglob("*.java")):
+        text = path.read_text(encoding="utf-8", errors="replace")
+        text = _LINE_COMMENT.sub("", _BLOCK_COMMENT.sub("", text))
+        for name in sorted(set(METHOD_SECURITY_RE.findall(text))):
+            found.setdefault(name, []).append(path.as_posix())
+    return found
 
 PLACEHOLDER_MARKERS = (
     "structural placeholder",
@@ -66,6 +121,32 @@ def main() -> int:
         java_files = list(sec.rglob("*Security*.java")) + list(
             sec.rglob("*Authentication*.java")
         )
+
+    # Method security without an identity provider. This is checked BEFORE the
+    # idle rule: the annotations live on the resources, not on a *Security*
+    # type, so a tree that denies every anonymous caller used to reach the idle
+    # return and pass. An annotated endpoint is a security surface whether or
+    # not anything in the tree is named after security.
+    sites = method_security_sites(sec)
+    artifacts = artifact_ids(pom)
+    if sites and artifacts & set(SECURITY_EXTENSIONS) and not (artifacts & set(IDENTITY_PROVIDERS)) \
+            and not IDENTITY_PROPERTY_RE.search(props_blob):
+        named = ", ".join(
+            "@%s (%d site%s, e.g. %s)"
+            % (a, len(f), "" if len(f) == 1 else "s", Path(f[0]).relative_to(root).as_posix())
+            for a, f in sorted(sites.items())
+        )
+        print(
+            "FAIL: AR-2.2 method security with no identity provider: %s; the pom has %s but none of %s, and no "
+            "quarkus.security.users.* / quarkus.http.auth.* key configures an identity. With nothing to "
+            "authenticate against there is no IdentityProvider, so every annotated endpoint denies an anonymous "
+            "caller: the application starts and answers 403 on every call. Add the identity provider the decided "
+            "design calls for, or remove the annotations the design does not."
+            % (named, ", ".join(sorted(artifacts & set(SECURITY_EXTENSIONS))), ", ".join(IDENTITY_PROVIDERS)),
+            file=sys.stderr,
+        )
+        print("AR-2.2 empty-security checks FAILED", file=sys.stderr)
+        return 1
 
     # POM-only security deps (foundation / S-001 handoff) are NOT "enabled".
     # Enabled requires properties or security Java types; else gate stays idle

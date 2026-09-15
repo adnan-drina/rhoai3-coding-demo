@@ -1,0 +1,12 @@
+{
+  "at": "2026-09-15T09:14:02Z",
+  "corpus_sha256": "0f1c2d3e4a5b6c7d8e9f0a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f",
+  "dest_url": "http://127.0.0.1:8081/petclinic",
+  "entry_points": {"admitted": 34, "compared": 28, "failed": 0, "inconclusive": 0, "passed": 28, "skipped": 6},
+  "ok": true,
+  "producer": "run-parity.py",
+  "receipt_verdict": "PASS",
+  "scenarios": {"declared": 6, "failed": 0, "inconclusive": 0, "passed": 6, "run": 6},
+  "schema": "rhoai3.parity-run/v1",
+  "started_by_runner": true
+}

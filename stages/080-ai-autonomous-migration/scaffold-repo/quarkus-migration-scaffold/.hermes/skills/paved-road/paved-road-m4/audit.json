@@ -10,10 +10,17 @@
     {
       "backing": "skill",
       "id": "capture-source-oracles",
-      "keep": [
-        "verification/parity/receipt.json"
-      ],
+      "keep": [],
       "needle": "capture-source-oracles"
+    },
+    {
+      "backing": "native",
+      "id": "parity",
+      "keep": [
+        "verification/parity/receipt.json",
+        "verification/parity/_run.json"
+      ],
+      "needle": "run-parity.py"
     },
     {
       "backing": "skill",

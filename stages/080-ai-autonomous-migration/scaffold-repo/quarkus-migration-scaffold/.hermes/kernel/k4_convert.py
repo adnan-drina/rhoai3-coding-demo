@@ -39,6 +39,10 @@ from planner.budget import budget as loop_budget  # noqa: E402
 from planner.decisions import load_decisions, max_attempts  # noqa: E402
 
 Issue = tuple[str, str, str]
+# The verdict linter, named once. It is listed as an M4 exit only when it is
+# actually on disk: an exit criterion naming a script nobody can run is a
+# refusal the worker cannot satisfy.
+VERDICT_SCHEMA_SCRIPT = "skills/gates/compose-m4-verdict/scripts/assert-m4-verdict-schema.py"
 SKILLS_ASSERT = (
     "consult each skill pinned on this card; unused pins are legal (skills_unused). "
     "A false consult — claiming a skill that was not loaded — is a defect. Do not silence a missing pin."
@@ -61,11 +65,18 @@ TERMINATOR_M3 = (
     "kanban_request_review on a loop card; never retry inside this card; never widen the write set."
 )
 TERMINATOR_M4 = (
-    "skill_view paved-road-m4 first (the pinned index; its steps.json is the contract). "
-    "Run capture-source-oracles parity for every entry point, run-m4-pre-verdict.sh, and the MTA rescan "
-    "assertion; record results under verification/. Compose evidence/verdicts/m4-verdict.json from "
-    "measured exits (compose-m4-verdict). Expected runtime values come only from verification/source-oracles. "
-    "Checkers do not author the verdict; the body does not pre-specify it. Do not dest-dispatch M5."
+    "skill_view paved-road-m4 first (the pinned index; its steps.json is the contract). Run, in this order: "
+    "python3 .hermes/skills/paved-road/paved-road-m4/scripts/run-parity.py --root . (THE parity phase -- every "
+    "corpus scenario, every captured read oracle, then the receipt, in one tool; never a per-entry-point loop "
+    "you drive yourself), python3 .hermes/skills/analysis/scan-with-mta/scripts/assert-mta-rescan.py ., "
+    "bash .hermes/skills/gates/check-release-readiness/scripts/run-m4-pre-verdict.sh /projects/modernized, then "
+    "compose-m4-verdict to author evidence/verdicts/m4-verdict.json from the measured exits and nothing else "
+    "(assert-m4-verdict-schema.py lints it). Expected runtime values come only from verification/source-oracles. "
+    "Checkers do not author the verdict; the body does not pre-specify it. Terminator: kanban_request_review "
+    "reviewer=reviewer once the verdict exists -- for EVERY verdict, REFUSE included: a REFUSE is what M4 "
+    "measured, not a failure to close. Never kanban_complete (K2 refuses it here; waiting for it to be allowed "
+    "is how v9's card hung for 30 minutes). kanban_block kind=needs_input only when the phase could not measure "
+    "at all (no destination, no database, no corpus). Never dest-dispatch M5."
 )
 
 
@@ -77,9 +88,16 @@ def _body(card: dict[str, Any], receipt: dict[str, Any], worklist_sha: str, arti
     exits: list[dict[str, str]] = [{"check": "skills", "assert": SKILLS_ASSERT}]
     if card["kind"] == "close":
         exits.append({"check": "terminator", "assert": TERMINATOR_M4})
-        exits.append({"check": "pre_verdict", "cmd": "bash .hermes/skills/gates/check-release-readiness/scripts/run-m4-pre-verdict.sh /projects/modernized"})
+        # The exits are the phase's order, so they are listed in it. Parity is
+        # one command: the batch runner runs every corpus scenario, then every
+        # admitted entry point with a captured read oracle, then composes the
+        # receipt. Naming the COMPOSER here made the composer the parity step
+        # -- which is exactly what v9's worker ran, and all it ran.
+        exits.append({"check": "parity", "cmd": "python3 .hermes/skills/paved-road/paved-road-m4/scripts/run-parity.py --root ."})
         exits.append({"check": "mta_rescan", "cmd": "python3 .hermes/skills/analysis/scan-with-mta/scripts/assert-mta-rescan.py ."})
-        exits.append({"check": "parity", "cmd": "python3 .hermes/skills/gates/capture-source-oracles/scripts/compose-parity-receipt.py --root ."})
+        exits.append({"check": "pre_verdict", "cmd": "bash .hermes/skills/gates/check-release-readiness/scripts/run-m4-pre-verdict.sh /projects/modernized"})
+        if (_KERNEL.parent / VERDICT_SCHEMA_SCRIPT).is_file():
+            exits.append({"check": "verdict_schema", "cmd": "python3 .hermes/%s evidence/verdicts/m4-verdict.json" % VERDICT_SCHEMA_SCRIPT})
     else:
         exits.append({"check": "terminator", "assert": TERMINATOR_M3})
         exits.append({"check": "verify", "cmd": "bash .hermes/skills/migration/fix-until-green/scripts/run-verify.sh --root ."})

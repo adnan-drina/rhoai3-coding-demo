@@ -87,6 +87,56 @@ def main() -> int:
         out = t / "k4.json"
         if convert_main(["--root", str(root), "--out", str(out)]) != 0 or len(json.loads(out.read_text())["payloads"]) != 1:
             return _fail("CLI convert")
+        # The M4 VERIFY card: its own exits, in the phase's order, and its own
+        # prose. Measured on v9 (t_32c82390): the close card carried the M3
+        # loop's markdown -- "it views fix-until-green", "read the brief",
+        # "run-verify then advance", "complete after ACCEPTED" -- while only
+        # the machine body named M4's exits. The markdown is what the board
+        # shows, so the worker ran the wrong phase and waited for a terminator
+        # K2 refuses here.
+        from k4_convert import TERMINATOR_M4, VERDICT_SCHEMA_SCRIPT, _body as build_body  # noqa: E402
+        from planner.cards import CARD_SKILLS, CLOSE_ID, next_card, render_body  # noqa: E402
+        empty = {"head": None, "clusters": [], "items": [], "deferred": [], "blocked_clusters": [],
+                 "measure": {"known": True, "tuple": [0, 0, 0]}, "runtime": {"ready": True}}
+        close = next_card(empty, {"steps": []})
+        if close is None or close["id"] != CLOSE_ID or close["kind"] != "close" or close["phase"] != "M4" or close["skills"] != CARD_SKILLS["close"]:
+            return _fail("an empty work list on a runnable tree mints M4 VERIFY: %s" % close)
+        type_sha = next(r["sha256"] for r in body["refs"] if r["key"] == "type-inventory")
+        cbody = build_body(close, rec, rec["seals"]["worklist"], body["artifacts"], type_sha)
+        k1 = validate_body(cbody, root=root)
+        if k1:
+            return _fail("M4 body K1: %s" % k1)
+        exits = {str(e.get("check")): e for e in cbody["exit_criteria"]}
+        if exits["parity"]["cmd"] != "python3 .hermes/skills/paved-road/paved-road-m4/scripts/run-parity.py --root .":
+            return _fail("the parity exit must be the batch runner, not the composer: %s" % exits.get("parity"))
+        order = [e["check"] for e in cbody["exit_criteria"]]
+        if order[:5] != ["skills", "terminator", "parity", "mta_rescan", "pre_verdict"]:
+            return _fail("the M4 exits are the phase's order: %s" % order)
+        if "verdict_schema" not in exits or VERDICT_SCHEMA_SCRIPT not in exits["verdict_schema"]["cmd"]:
+            return _fail("the verdict schema assertion is on disk and must be an exit: %s" % order)
+        for needle in ("run-parity.py", "assert-mta-rescan.py", "run-m4-pre-verdict.sh", "compose-m4-verdict",
+                       "kanban_request_review reviewer=reviewer", "REFUSE", "Never kanban_complete"):
+            if needle not in TERMINATOR_M4:
+                return _fail("TERMINATOR_M4 must name %r" % needle)
+        prose = render_body(cbody).split("<details>")[0]
+        if not prose.startswith("## M4 VERIFY"):
+            return _fail("the close card's prose is its own: %r" % prose[:80])
+        for needle in ("skill_view paved-road-m4", "run-parity.py", "assert-mta-rescan.py", "run-m4-pre-verdict.sh",
+                       "skill_view compose-m4-verdict", "evidence/verdicts/m4-verdict.json",
+                       "kanban_request_review", "reviewer=reviewer", "REFUSE", "Never dest-dispatch M5"):
+            if needle not in prose:
+                return _fail("the close card's prose must name %r" % needle)
+        for forbidden in ("brief.py", "advance.py", "run-verify", "paved-road-m3", "kanban_complete after ACCEPTED"):
+            if forbidden in prose:
+                return _fail("the close card's prose must not carry the M3 loop's %r" % forbidden)
+        if parse_body(render_body(cbody)) != cbody:
+            return _fail("the machine body must survive the close card's prose")
+        # the loop card's prose is unchanged
+        loop_prose = p["body"].split("<details>")[0]
+        for needle in ("paved-road-m3", "brief.py", "run-verify", "advance.py", "kanban_complete` after ACCEPTED"):
+            if needle not in loop_prose:
+                return _fail("a loop card's prose must still be the loop's: %r missing" % needle)
+
         # tampered work list → verify refuses → 0 payloads
         doc = load_json(root / WORKLIST)
         doc["head"] = "c:tampered"
