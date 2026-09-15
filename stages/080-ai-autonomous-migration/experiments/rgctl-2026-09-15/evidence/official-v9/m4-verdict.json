@@ -1,0 +1,34 @@
+{
+  "gate": "M4_VERDICT",
+  "phase": "M4",
+  "ran": true,
+  "verdict": "REFUSE",
+  "ship": false,
+  "failed_floors": [
+    "check-product-tests",
+    "assert-surefire-results",
+    "compose-parity-receipt"
+  ],
+  "floors": [
+    {"name": "check-runnable-db-config", "rc": 0, "idle": false},
+    {"name": "check-empty-security", "rc": 0, "idle": false},
+    {"name": "check-test-toolchain", "rc": 0, "idle": false},
+    {"name": "check-product-tests", "rc": 1, "idle": false},
+    {"name": "assert-surefire-results", "rc": 1, "idle": false},
+    {"name": "compose-parity-receipt", "rc": 1, "idle": false},
+    {"name": "g1-characterization", "rc": 0, "idle": false},
+    {"name": "g2-harvest-fidelity", "rc": 0, "idle": false},
+    {"name": "g3-findings-delta", "rc": 0, "idle": false},
+    {"name": "g4-runtime-parity", "rc": 0, "idle": false},
+    {"name": "assert-retrievable-tree", "rc": 0, "idle": false},
+    {"name": "assert-m4-card-body", "rc": 0, "idle": false},
+    {"name": "assert-pinned-gates-ran", "rc": 0, "idle": false},
+    {"name": "assert-g4-claim-consistency", "rc": 0, "idle": false}
+  ],
+  "coverage_account": {
+    "retired": 41,
+    "remaining_gaps": 41
+  },
+  "card_id": "t_32c82390",
+  "reason": "REFUSE: 3 failed floors. (1) check-product-tests (AR-2.8): no product *Test.java/*IT.java — ADR-007 retired 17 test sources and no replacement product tests exist. (2) assert-surefire-results: failsafe-summary.xml has no testsuite element (empty integration test suite). (3) compose-parity-receipt: parity FAIL — 2 scenarios FAIL (CORS preflight missing headers, read-root status 303 vs 302 with double-prefixed Location), 32 INCONCLUSIVE (destination returns 403 on all API effect probes due to ADR-005 security gap: DisableSecurityConfig retired but Quarkus declarative security not yet established)."
+}

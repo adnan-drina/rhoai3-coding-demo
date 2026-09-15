@@ -1,0 +1,13 @@
+e1e11e41af2f849f119acc17b621b0ae9a0cd8b5 Bootstrap destination from frozen spring-petclinic-rest (digest 322a6149...)
+3f4ae25f004527899143abe0390f4f833bc08dbd WU-1: retire the Spring DAO/ORM exception surface (233 -> 125 diagnostics, 13 files, one coordinated edit)
+e6e36297f15733d91f692e7eaf70c4dadfe38c5d WU-2: @Profile -> @IfBuildProfile, Spring @Transactional -> jakarta (125 -> 64 diagnostics, 17 files)
+7d688782597ccf31bd35c3056ccf553b49861c9f WU-4: retire Spring beans.support/core.style from the model, ordering semantics preserved (64 -> 48)
+c29c03f58712805d4ee229e2c7d8a8a01f9c8495 WU-3: Spring MVC web surface -> Quarkus REST; BindingResult->Validator, UriComponentsBuilder->UriInfo, @CrossOrigin->config, ADR-016 root redirect (48 -> 0 diagnostics)
+d9c458442759ac2565a7672154335c1b2ec31d35 WU-3 rev: port ValidatorTests off Spring's validator adapter; main+test compile clean; augmentation now reaches ADR-012
+52c4b73756f8f599b6a5cb42f0e49c807671cf5b WU-5: ADR-012 fragment adapters for all seven non-Spring-Data parents in one unit; mvn package BUILD SUCCESS
+418e825409cb65edd4ba396dcbec093bc3a5b51d WU-6: ADR-014 conditional authorization adapter (securityMode) + Jackson creator/container restoration; reads 200, 404 works, POST 201 with Location
+c6552d778f2379f5ab4e179b55e869b385f66598 WU-8: parity-driven repairs - seed dataset realigned to the corpus-declared dataset (17 dates), Jackson declaration-order serialization, absolute root Location (ADR-016)
+3670d56c9f30003d4928bba749e60c2958fb5c04 WU-9 + WU-3b: Hibernate 6 HQL strictness in the source delete fragments (column names -> association paths); Spring @CrossOrigin response shape and parameterless application/json restored
+5f157e4b5f99ed47a2fae2dd31d0b6934030ef07 WU-10: PetType cascade order under Hibernate 6, ExceptionControllerAdvice as a JAX-RS provider, identity sequences aligned to the declared initial state
+23fb8d31e304c04f61c0d9a740ad30e791777c43 WU-11: ADR-014 enabled mode - Basic authentication over the JPA identity store, {noop} credential format preserved; both modes verified from one artifact
+b34e3eaf66bab3ed6fa3e155842e8992ba1bba4c m4: generated product tests (corpus d55f314d23e9, generator 1.1.0)

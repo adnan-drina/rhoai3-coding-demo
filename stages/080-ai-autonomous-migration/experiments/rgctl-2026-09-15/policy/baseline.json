@@ -1,0 +1,118 @@
+{
+  "betweenness_top10": [
+    {
+      "node": "da0ee230-a8f7-4d0e-a964-2864adea78c3",
+      "score": 7.139893755001094e-05
+    },
+    {
+      "node": "a295a0bc-6a57-443c-a92a-05ebf4f4b6a6",
+      "score": 1.647667789615637e-05
+    },
+    {
+      "node": "141d891d-7d0e-448f-acaf-8324b710bca0",
+      "score": 9.505775709320984e-06
+    },
+    {
+      "node": "813dac03-9513-4de7-bbb0-6293c0f6546f",
+      "score": 7.81586002766392e-06
+    },
+    {
+      "node": "f8ec7638-389b-4df9-bf3b-90ae1582a83a",
+      "score": 7.604620567456787e-06
+    },
+    {
+      "node": "89cff3ed-ae18-4571-8608-370c90d3ba72",
+      "score": 6.759662726628255e-06
+    },
+    {
+      "node": "e2400f3c-6253-4f80-af5b-f964da7a5003",
+      "score": 6.337183806213989e-06
+    },
+    {
+      "node": "4d78068c-5023-4a29-bd51-8b47e18d8396",
+      "score": 6.337183806213989e-06
+    },
+    {
+      "node": "3c22b1fa-b641-4b7a-9b5c-b70ea4eefdf5",
+      "score": 6.337183806213989e-06
+    },
+    {
+      "node": "f832149a-dbbf-4ca1-b178-932f35593ff8",
+      "score": 6.337183806213989e-06
+    }
+  ],
+  "crossing_examples": {
+    "mapper->model": [
+      "org.springframework.samples.petclinic.mapper -[Uses]-> org.springframework.samples.petclinic.model.Role",
+      "org.springframework.samples.petclinic.mapper -[Uses]-> org.springframework.samples.petclinic.model.User",
+      "org.springframework.samples.petclinic.mapper -[Uses]-> org.springframework.samples.petclinic.model.Owner"
+    ],
+    "repository->model": [
+      "org.springframework.samples.petclinic.repository.springdatajpa -[Uses]-> org.springframework.samples.petclinic.model.PetType",
+      "org.springframework.samples.petclinic.repository.springdatajpa -[Uses]-> org.springframework.samples.petclinic.model.Owner",
+      "org.springframework.samples.petclinic.repository.springdatajpa.PetRepositoryFragmentImpl.save -[Calls]-> org.springframework.samples.petclinic.model.BaseEntity.getId"
+    ],
+    "rest->mapper": [
+      "org.springframework.samples.petclinic.rest.VisitRestController.getAllVisitDtos -[Calls]-> org.springframework.samples.petclinic.mapper.VisitMapper.toVisitsDto",
+      "org.springframework.samples.petclinic.rest.OwnerRestController.getOwners -[Calls]-> org.springframework.samples.petclinic.mapper.OwnerMapper.toOwnerDtoCollection",
+      "org.springframework.samples.petclinic.rest.PetTypeRestController.getAllPetTypes -[Calls]-> org.springframework.samples.petclinic.mapper.PetTypeMapper.toPetTypeDtos"
+    ],
+    "rest->model": [
+      "org.springframework.samples.petclinic.rest.VetRestController.addVet -[Calls]-> org.springframework.samples.petclinic.model.BaseEntity.getId",
+      "org.springframework.samples.petclinic.rest.PetRestController.updatePet -[Calls]-> org.springframework.samples.petclinic.model.Pet.setType",
+      "org.springframework.samples.petclinic.rest.PetRestController.updatePet -[Calls]-> org.springframework.samples.petclinic.model.Pet.getType"
+    ],
+    "rest->service": [
+      "org.springframework.samples.petclinic.rest -[Uses]-> org.springframework.samples.petclinic.service.ClinicService",
+      "org.springframework.samples.petclinic.rest -[Uses]-> org.springframework.samples.petclinic.service.ClinicService",
+      "org.springframework.samples.petclinic.rest -[Uses]-> org.springframework.samples.petclinic.service.ClinicService"
+    ],
+    "service->model": [
+      "org.springframework.samples.petclinic.service -[Uses]-> org.springframework.samples.petclinic.model.Role",
+      "org.springframework.samples.petclinic.service -[Uses]-> org.springframework.samples.petclinic.model.User",
+      "org.springframework.samples.petclinic.service.UserServiceImpl.saveUser -[Calls]-> org.springframework.samples.petclinic.model.Role.setUser"
+    ],
+    "service->repository": [
+      "org.springframework.samples.petclinic.service.ClinicServiceImpl.findAllVets -[Calls]-> org.springframework.samples.petclinic.repository.VetRepository.findAll",
+      "org.springframework.samples.petclinic.service.ClinicServiceImpl.saveVisit -[Calls]-> org.springframework.samples.petclinic.repository.VisitRepository.save",
+      "org.springframework.samples.petclinic.service.ClinicServiceImpl.findVetById -[Calls]-> org.springframework.samples.petclinic.repository.VetRepository.findById"
+    ],
+    "service->util": [
+      "org.springframework.samples.petclinic.service -[Uses]-> org.springframework.samples.petclinic.util.EntityNotFoundException"
+    ],
+    "util->model": [
+      "org.springframework.samples.petclinic.util.EntityUtils.getById -[Calls]-> org.springframework.samples.petclinic.model.BaseEntity.getId",
+      "org.springframework.samples.petclinic.util -[Uses]-> org.springframework.samples.petclinic.model.BaseEntity"
+    ]
+  },
+  "directed_domain_crossings": {
+    "mapper->model [Uses]": 9,
+    "repository->model [Calls]": 14,
+    "repository->model [References]": 6,
+    "repository->model [Uses]": 78,
+    "rest->mapper [Calls]": 34,
+    "rest->mapper [Uses]": 8,
+    "rest->model [Calls]": 40,
+    "rest->model [Uses]": 8,
+    "rest->service [Uses]": 7,
+    "service->model [Calls]": 5,
+    "service->model [Uses]": 15,
+    "service->repository [Calls]": 28,
+    "service->repository [Uses]": 7,
+    "service->util [Uses]": 1,
+    "util->model [Calls]": 1,
+    "util->model [Uses]": 1
+  },
+  "max_betweenness": 7.139893755001094e-05,
+  "nodes_mapped_to_a_domain": 951,
+  "nodes_per_domain": {
+    "mapper": 83,
+    "model": 145,
+    "repository": 346,
+    "rest": 251,
+    "security": 11,
+    "service": 103,
+    "util": 12
+  },
+  "nodes_total": 1540
+}

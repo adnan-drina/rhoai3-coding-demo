@@ -1,0 +1,193 @@
+[INFO] Scanning for projects...
+[INFO] 
+[INFO] ---------< org.springframework.samples:spring-petclinic-rest >----------
+[INFO] Building spring-petclinic-rest 2.6.2
+[INFO]   from pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- jacoco:0.8.11:prepare-agent (default) @ spring-petclinic-rest ---
+[INFO] argLine set to -javaagent:/Users/adrina/.m2/repository/org/jacoco/org.jacoco.agent/0.8.11/org.jacoco.agent-0.8.11-runtime.jar=destfile=/Users/adrina/Sandbox/rgctl-experiment/app/target/jacoco.exec,excludes=**/org/springframework/samples/petclinic/dto/**
+[INFO] 
+[INFO] --- openapi-generator:7.25.0:generate (default) @ spring-petclinic-rest ---
+[INFO] Generating with dryRun=false
+[INFO] No .openapi-generator-ignore file found.
+[INFO] OpenAPI Generator: jaxrs-spec (server)
+[INFO] Generator 'jaxrs-spec' is considered stable.
+[INFO] Environment variable JAVA_POST_PROCESS_FILE not defined so the Java code may not be properly formatted. To define it, try 'export JAVA_POST_PROCESS_FILE="/usr/local/bin/clang-format -i"' (Linux/Mac)
+[INFO] NOTE: To enable file post-processing, 'enablePostProcessFile' must be set to `true` (--enable-post-process-file for CLI).
+[INFO] Invoker Package Name, originally not set, is now derived from model package name: org.springframework.samples.petclinic
+[INFO] Processing operation failingRequest
+[INFO] Processing operation listOwners
+[INFO] Processing operation addOwner
+[INFO] Processing operation getOwner
+[INFO] Processing operation updateOwner
+[INFO] Processing operation addPet
+[INFO] Processing operation getPet
+[INFO] Processing operation updatePet
+[INFO] Processing operation addVisit
+[INFO] Processing operation listPetTypes
+[INFO] Processing operation listVets
+[INFO] writing file /Users/adrina/Sandbox/rgctl-experiment/app/target/generated-sources/openapi/src/main/java/org/springframework/samples/petclinic/dto/OwnerDto.java
+[INFO] writing file /Users/adrina/Sandbox/rgctl-experiment/app/target/generated-sources/openapi/src/main/java/org/springframework/samples/petclinic/dto/OwnerFieldsDto.java
+[INFO] writing file /Users/adrina/Sandbox/rgctl-experiment/app/target/generated-sources/openapi/src/main/java/org/springframework/samples/petclinic/dto/PetDto.java
+[INFO] writing file /Users/adrina/Sandbox/rgctl-experiment/app/target/generated-sources/openapi/src/main/java/org/springframework/samples/petclinic/dto/PetFieldsDto.java
+[INFO] writing file /Users/adrina/Sandbox/rgctl-experiment/app/target/generated-sources/openapi/src/main/java/org/springframework/samples/petclinic/dto/PetTypeDto.java
+[INFO] writing file /Users/adrina/Sandbox/rgctl-experiment/app/target/generated-sources/openapi/src/main/java/org/springframework/samples/petclinic/dto/RestErrorDto.java
+[INFO] writing file /Users/adrina/Sandbox/rgctl-experiment/app/target/generated-sources/openapi/src/main/java/org/springframework/samples/petclinic/dto/RoleDto.java
+[INFO] writing file /Users/adrina/Sandbox/rgctl-experiment/app/target/generated-sources/openapi/src/main/java/org/springframework/samples/petclinic/dto/SpecialtyDto.java
+[INFO] writing file /Users/adrina/Sandbox/rgctl-experiment/app/target/generated-sources/openapi/src/main/java/org/springframework/samples/petclinic/dto/UserDto.java
+[INFO] writing file /Users/adrina/Sandbox/rgctl-experiment/app/target/generated-sources/openapi/src/main/java/org/springframework/samples/petclinic/dto/ValidationMessageDto.java
+[INFO] writing file /Users/adrina/Sandbox/rgctl-experiment/app/target/generated-sources/openapi/src/main/java/org/springframework/samples/petclinic/dto/VetDto.java
+[INFO] writing file /Users/adrina/Sandbox/rgctl-experiment/app/target/generated-sources/openapi/src/main/java/org/springframework/samples/petclinic/dto/VisitDto.java
+[INFO] writing file /Users/adrina/Sandbox/rgctl-experiment/app/target/generated-sources/openapi/src/main/java/org/springframework/samples/petclinic/dto/VisitFieldsDto.java
+[INFO] Skipping generation of APIs.
+[INFO] Skipping generation of Webhooks.
+[INFO] Skipping generation of supporting files.
+############################################################################################
+# Thanks for using OpenAPI Generator.                                                      #
+# We appreciate your support! Please consider donating to help us maintain this project.   #
+# https://opencollective.com/openapi_generator/donate                                      #
+############################################################################################
+[INFO] 
+[INFO] --- build-helper:3.6.0:add-source (add-source) @ spring-petclinic-rest ---
+[INFO] Source directory: /Users/adrina/Sandbox/rgctl-experiment/app/target/generated-sources/openapi/src/main/java added.
+[INFO] 
+[INFO] --- resources:3.3.1:resources (default-resources) @ spring-petclinic-rest ---
+[WARNING] Using platform encoding (UTF-8 actually) to copy filtered resources, i.e. build is platform dependent!
+[INFO] Copying 14 resources from src/main/resources to target/classes
+[INFO] 
+[INFO] --- quarkus:3.27.3.SP1-redhat-00002:generate-code (default) @ spring-petclinic-rest ---
+[INFO] 
+[INFO] --- compiler:3.11.0:compile (default-compile) @ spring-petclinic-rest ---
+[INFO] Changes detected - recompiling the module! :source
+[WARNING] File encoding has not been set, using platform encoding UTF-8, i.e. build is platform dependent!
+[INFO] Compiling 83 source files with javac [debug release 21] to target/classes
+[WARNING] /Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/mapper/VisitMapper.java:[14,11] Unmapped target property: "pet".
+[WARNING] /Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/mapper/VetMapper.java:[16,12] Unmapped target property: "removeSpecialtiesItem".
+[WARNING] /Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/mapper/OwnerMapper.java:[15,14] Unmapped target property: "removePetsItem".
+[WARNING] /Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/mapper/UserMapper.java:[16,10] Unmapped target properties: "id, user".
+[WARNING] /Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/mapper/UserMapper.java:[24,13] Unmapped target property: "removeRolesItem".
+[WARNING] /Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/mapper/PetMapper.java:[16,12] Unmapped target properties: "typeId, removeVisitsItem".
+[WARNING] /Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/mapper/PetMapper.java:[22,9] Unmapped target property: "pet". Mapping from Collection element "VisitDto visits" to "Visit visits".
+[WARNING] /Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/mapper/PetMapper.java:[22,9] Unmapped target property: "owner".
+[WARNING] Implicitly compiled files were not subject to annotation processing.
+  Use -implicit to specify a policy for implicit compilation.
+[INFO] /Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/rest/ExceptionControllerAdvice.java: /Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/rest/ExceptionControllerAdvice.java uses or overrides a deprecated API.
+[INFO] /Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/rest/ExceptionControllerAdvice.java: Recompile with -Xlint:deprecation for details.
+[INFO] /Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/OwnerRepositoryFragmentImpl.java: /Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/OwnerRepositoryFragmentImpl.java uses unchecked or unsafe operations.
+[INFO] /Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/OwnerRepositoryFragmentImpl.java: Recompile with -Xlint:unchecked for details.
+[INFO] 
+[INFO] --- build-helper:3.6.0:add-test-source (rhoai3-parity-test-source) @ spring-petclinic-rest ---
+[INFO] Test Source directory: /Users/adrina/Sandbox/rgctl-experiment/app/src/parity-test/java added.
+[INFO] 
+[INFO] --- quarkus:3.27.3.SP1-redhat-00002:generate-code-tests (default) @ spring-petclinic-rest ---
+[INFO] 
+[INFO] --- build-helper:3.6.0:add-test-resource (rhoai3-parity-test-resource) @ spring-petclinic-rest ---
+[INFO] 
+[INFO] --- resources:3.3.1:testResources (default-testResources) @ spring-petclinic-rest ---
+[WARNING] Using platform encoding (UTF-8 actually) to copy filtered resources, i.e. build is platform dependent!
+[INFO] Copying 1 resource from src/test/resources to target/test-classes
+[INFO] Copying 7 resources from src/parity-test/resources to target/test-classes
+[INFO] 
+[INFO] --- compiler:3.11.0:testCompile (default-testCompile) @ spring-petclinic-rest ---
+[INFO] Changes detected - recompiling the module! :dependency
+[WARNING] File encoding has not been set, using platform encoding UTF-8, i.e. build is platform dependent!
+[INFO] Compiling 8 source files with javac [debug release 21] to target/test-classes
+[WARNING] The following options were not recognized by any processor: '[mapstruct.suppressGeneratorVersionInfoComment, mapstruct.defaultComponentModel, mapstruct.suppressGeneratorTimestamp]'
+[INFO] 
+[INFO] --- surefire:3.1.2:test (default-test) @ spring-petclinic-rest ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+Sept 15, 2026 8:42:50 PM org.jboss.logmanager.JBossLoggerFinder getLogger
+ERROR: The LogManager accessed before the "java.util.logging.manager" system property was set to "org.jboss.logmanager.LogManager". Results may be unexpected.
+Sept 15, 2026 8:42:51 PM org.jboss.threads.Version <clinit>
+INFO: JBoss Threads version 3.9.1.redhat-00001
+Sept 15, 2026 8:42:51 PM io.quarkus.spring.data.deployment.SpringDataJPAProcessor detectAndLogSpecificSpringPropertiesIfExist
+WARN: Quarkus does not support the following Spring Boot configuration properties: 
+	- spring.mvc.pathmatch.matching-strategy does not have a Quarkus equivalent
+	- spring.messages.basename does not have a Quarkus equivalent
+
+[INFO] Running org.springframework.samples.petclinic.rest.generated.OwnerRestControllerParityTest
+Sept 15, 2026 8:42:52 PM org.hibernate.jpa.internal.util.LogHelper logPersistenceUnitInformation
+INFO: HHH000204: Processing PersistenceUnitInfo [name: <default>]
+Sept 15, 2026 8:42:53 PM org.hibernate.Version logVersion
+INFO: HHH000412: Hibernate ORM core version 7.1.18.Final-redhat-00001
+Sept 15, 2026 8:42:53 PM org.hibernate.engine.jdbc.env.internal.JdbcEnvironmentInitiator logConnectionInfo
+INFO: HHH10001005: Database info:
+	Database JDBC URL [undefined/unknown]
+	Database driver: undefined/unknown
+	Database dialect: PostgreSQLDialect
+	Database version: 13.0
+	Default catalog/schema: unknown/unknown
+	Autocommit mode: undefined/unknown
+	Isolation level: <unknown>
+	JDBC fetch size: undefined/unknown
+	Pool: undefined/unknown
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+Sept 15, 2026 8:42:53 PM org.hibernate.validator.internal.util.Version <clinit>
+INFO: HV000001: Hibernate Validator 9.0.1.Final-redhat-00001
+Sept 15, 2026 8:42:53 PM io.quarkus.runtime.configuration.ConfigDiagnostic deprecated
+WARN: The "quarkus.hibernate-orm.database.generation" config property is deprecated and should not be used anymore.
+Sept 15, 2026 8:42:54 PM io.quarkus.bootstrap.runner.Timing printStartupTime
+INFO: spring-petclinic-rest 2.6.2 on JVM (powered by Quarkus 3.27.3.redhat-00002) started in 4.323s. Listening on: http://localhost:8081
+Sept 15, 2026 8:42:54 PM io.quarkus.bootstrap.runner.Timing printStartupTime
+INFO: Profiles spring-data-jpa,prod activated. 
+Sept 15, 2026 8:42:54 PM io.quarkus.bootstrap.runner.Timing printStartupTime
+INFO: Installed features: [agroal, cache, cdi, compose, hibernate-orm, hibernate-orm-panache, hibernate-validator, jdbc-postgresql, narayana-jta, rest, rest-jackson, security, security-jpa, smallrye-context-propagation, smallrye-health, smallrye-openapi, spring-cache, spring-data-jpa, spring-di, spring-security, spring-web, swagger-ui, vertx]
+[INFO] Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 11.62 s -- in org.springframework.samples.petclinic.rest.generated.OwnerRestControllerParityTest
+[INFO] Running org.springframework.samples.petclinic.rest.generated.PetRestControllerParityTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.799 s -- in org.springframework.samples.petclinic.rest.generated.PetRestControllerParityTest
+[INFO] Running org.springframework.samples.petclinic.rest.generated.RootRestControllerParityTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.010 s -- in org.springframework.samples.petclinic.rest.generated.RootRestControllerParityTest
+[INFO] Running org.springframework.samples.petclinic.rest.generated.SpecialtyRestControllerParityTest
+Sept 15, 2026 8:43:06 PM org.hibernate.engine.jdbc.spi.SqlExceptionHelper logExceptions
+WARN: HHH000247: ErrorCode: 0, SQLState: 23503
+Sept 15, 2026 8:43:06 PM org.hibernate.engine.jdbc.spi.SqlExceptionHelper logExceptions
+WARN: ERROR: update or delete on table "specialties" violates foreign key constraint "vet_specialties_specialty_id_fkey" on table "vet_specialties"
+  Detail: Key (id)=(1) is still referenced from table "vet_specialties".
+[ERROR] Tests run: 1, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.882 s <<< FAILURE! -- in org.springframework.samples.petclinic.rest.generated.SpecialtyRestControllerParityTest
+[ERROR] org.springframework.samples.petclinic.rest.generated.SpecialtyRestControllerParityTest.parity_sc_delete_referenced_specialties_1 -- Time elapsed: 0.879 s <<< FAILURE!
+java.lang.AssertionError: sc:delete-referenced-specialties-1: body f8615a77b2f0362930fd7d422651de27515e68ca78f697a35b0bc53d605e6180 vs the source's 97baac486b9a72f5d5717f4b156bd40e9c663dc664f678b39bf540046a18f5d7 (canonical JSON where the body parses as JSON, raw bytes otherwise)
+	at org.springframework.samples.petclinic.rest.generated.ParitySupport.assertBody(ParitySupport.java:225)
+	at org.springframework.samples.petclinic.rest.generated.SpecialtyRestControllerParityTest.parity_sc_delete_referenced_specialties_1(SpecialtyRestControllerParityTest.java:52)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at io.quarkus.test.junit.QuarkusTestExtension.runExtensionMethod(QuarkusTestExtension.java:1000)
+	at io.quarkus.test.junit.QuarkusTestExtension.interceptTestMethod(QuarkusTestExtension.java:848)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1596)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1596)
+
+[INFO] Running org.springframework.samples.petclinic.rest.generated.VetRestControllerParityTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.740 s -- in org.springframework.samples.petclinic.rest.generated.VetRestControllerParityTest
+[INFO] Running org.springframework.samples.petclinic.rest.generated.VisitRestControllerParityTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.909 s -- in org.springframework.samples.petclinic.rest.generated.VisitRestControllerParityTest
+Sept 15, 2026 8:43:09 PM io.quarkus.bootstrap.runner.Timing printStopTime
+INFO: spring-petclinic-rest stopped in 0.019s
+[INFO] 
+[INFO] Results:
+[INFO] 
+[ERROR] Failures: 
+[ERROR]   SpecialtyRestControllerParityTest.parity_sc_delete_referenced_specialties_1:52 sc:delete-referenced-specialties-1: body f8615a77b2f0362930fd7d422651de27515e68ca78f697a35b0bc53d605e6180 vs the source's 97baac486b9a72f5d5717f4b156bd40e9c663dc664f678b39bf540046a18f5d7 (canonical JSON where the body parses as JSON, raw bytes otherwise)
+[INFO] 
+[ERROR] Tests run: 17, Failures: 1, Errors: 0, Skipped: 0
+[INFO] 
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD FAILURE
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  25.352 s
+[INFO] Finished at: 2026-09-15T20:43:09+02:00
+[INFO] ------------------------------------------------------------------------
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.1.2:test (default-test) on project spring-petclinic-rest: There are test failures.
+[ERROR] 
+[ERROR] Please refer to /Users/adrina/Sandbox/rgctl-experiment/app/target/surefire-reports for the individual test results.
+[ERROR] Please refer to dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException

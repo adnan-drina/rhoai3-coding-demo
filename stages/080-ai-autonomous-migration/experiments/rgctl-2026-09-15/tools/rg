@@ -1,0 +1,2 @@
+#!/bin/bash
+exec /Users/adrina/Sandbox/rgctl-experiment/_tools/rgctl -r /Users/adrina/Sandbox/rgctl-experiment/frozen-src "$@"

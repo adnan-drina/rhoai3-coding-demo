@@ -1,0 +1,1060 @@
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataVisitRepository.java:18: error: cannot find symbol
+import org.springframework.context.annotation.Profile;
+                                             ^
+  symbol:   class Profile
+  location: package org.springframework.context.annotation
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/VisitRepository.java:21: error: package org.springframework.dao does not exist
+import org.springframework.dao.DataAccessException;
+                              ^
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/VisitRepositoryOverride.java:19: error: cannot find symbol
+import org.springframework.context.annotation.Profile;
+                                             ^
+  symbol:   class Profile
+  location: package org.springframework.context.annotation
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/VisitRepositoryOverride.java:27: error: cannot find symbol
+@Profile("spring-data-jpa")
+ ^
+  symbol: class Profile
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataVisitRepository.java:30: error: cannot find symbol
+@Profile("spring-data-jpa")
+ ^
+  symbol: class Profile
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/model/Visit.java:18: error: package org.springframework.format.annotation does not exist
+import org.springframework.format.annotation.DateTimeFormat;
+                                            ^
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/model/Pet.java:18: error: package org.springframework.beans.support does not exist
+import org.springframework.beans.support.MutableSortDefinition;
+                                        ^
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/model/Pet.java:19: error: package org.springframework.beans.support does not exist
+import org.springframework.beans.support.PropertyComparator;
+                                        ^
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/model/Pet.java:20: error: package org.springframework.format.annotation does not exist
+import org.springframework.format.annotation.DateTimeFormat;
+                                            ^
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/model/Owner.java:18: error: package org.springframework.beans.support does not exist
+import org.springframework.beans.support.MutableSortDefinition;
+                                        ^
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/model/Owner.java:19: error: package org.springframework.beans.support does not exist
+import org.springframework.beans.support.PropertyComparator;
+                                        ^
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/model/Owner.java:20: error: package org.springframework.core.style does not exist
+import org.springframework.core.style.ToStringCreator;
+                                     ^
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/VisitRepository.java:43: error: cannot find symbol
+    void save(Visit visit) throws DataAccessException;
+                                  ^
+  symbol:   class DataAccessException
+  location: interface VisitRepository
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/VisitRepository.java:47: error: cannot find symbol
+	Visit findById(int id) throws DataAccessException;
+	                              ^
+  symbol:   class DataAccessException
+  location: interface VisitRepository
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/VisitRepository.java:49: error: cannot find symbol
+	Collection<Visit> findAll() throws DataAccessException;
+	                                   ^
+  symbol:   class DataAccessException
+  location: interface VisitRepository
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/VisitRepository.java:51: error: cannot find symbol
+	void delete(Visit visit) throws DataAccessException;
+	                                ^
+  symbol:   class DataAccessException
+  location: interface VisitRepository
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataUserRepository.java:3: error: cannot find symbol
+import org.springframework.context.annotation.Profile;
+                                             ^
+  symbol:   class Profile
+  location: package org.springframework.context.annotation
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/UserRepository.java:3: error: package org.springframework.dao does not exist
+import org.springframework.dao.DataAccessException;
+                              ^
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataUserRepository.java:8: error: cannot find symbol
+@Profile("spring-data-jpa")
+ ^
+  symbol: class Profile
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/UserRepository.java:8: error: cannot find symbol
+    void save(User user) throws DataAccessException;
+                                ^
+  symbol:   class DataAccessException
+  location: interface UserRepository
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataPetRepositoryImpl.java:22: error: cannot find symbol
+import org.springframework.context.annotation.Profile;
+                                             ^
+  symbol:   class Profile
+  location: package org.springframework.context.annotation
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/PetRepositoryOverride.java:19: error: cannot find symbol
+import org.springframework.context.annotation.Profile;
+                                             ^
+  symbol:   class Profile
+  location: package org.springframework.context.annotation
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/PetRepositoryOverride.java:27: error: cannot find symbol
+@Profile("spring-data-jpa")
+ ^
+  symbol: class Profile
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataPetRepositoryImpl.java:30: error: cannot find symbol
+@Profile("spring-data-jpa")
+ ^
+  symbol: class Profile
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java:20: error: cannot find symbol
+import org.springframework.context.annotation.Profile;
+                                             ^
+  symbol:   class Profile
+  location: package org.springframework.context.annotation
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java:20: error: package org.springframework.dao does not exist
+import org.springframework.dao.DataAccessException;
+                              ^
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataOwnerRepository.java:34: error: cannot find symbol
+@Profile("spring-data-jpa")
+ ^
+  symbol: class Profile
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java:44: error: cannot find symbol
+    Collection<Owner> findByLastName(String lastName) throws DataAccessException;
+                                                             ^
+  symbol:   class DataAccessException
+  location: interface OwnerRepository
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java:53: error: cannot find symbol
+    Owner findById(int id) throws DataAccessException;
+                                  ^
+  symbol:   class DataAccessException
+  location: interface OwnerRepository
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java:62: error: cannot find symbol
+    void save(Owner owner) throws DataAccessException;
+                                  ^
+  symbol:   class DataAccessException
+  location: interface OwnerRepository
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java:70: error: cannot find symbol
+	Collection<Owner> findAll() throws DataAccessException;
+	                                   ^
+  symbol:   class DataAccessException
+  location: interface OwnerRepository
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/OwnerRepository.java:78: error: cannot find symbol
+	void delete(Owner owner) throws DataAccessException;
+	                                ^
+  symbol:   class DataAccessException
+  location: interface OwnerRepository
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataVisitRepositoryImpl.java:22: error: cannot find symbol
+import org.springframework.context.annotation.Profile;
+                                             ^
+  symbol:   class Profile
+  location: package org.springframework.context.annotation
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataVisitRepositoryImpl.java:23: error: package org.springframework.dao does not exist
+import org.springframework.dao.DataAccessException;
+                              ^
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataVisitRepositoryImpl.java:31: error: cannot find symbol
+@Profile("spring-data-jpa")
+ ^
+  symbol: class Profile
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataVisitRepositoryImpl.java:38: error: cannot find symbol
+	public void delete(Visit visit) throws DataAccessException {
+	                                       ^
+  symbol:   class DataAccessException
+  location: class SpringDataVisitRepositoryImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataSpecialtyRepositoryImpl.java:22: error: cannot find symbol
+import org.springframework.context.annotation.Profile;
+                                             ^
+  symbol:   class Profile
+  location: package org.springframework.context.annotation
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpecialtyRepositoryOverride.java:19: error: cannot find symbol
+import org.springframework.context.annotation.Profile;
+                                             ^
+  symbol:   class Profile
+  location: package org.springframework.context.annotation
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpecialtyRepositoryOverride.java:27: error: cannot find symbol
+@Profile("spring-data-jpa")
+ ^
+  symbol: class Profile
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataSpecialtyRepositoryImpl.java:30: error: cannot find symbol
+@Profile("spring-data-jpa")
+ ^
+  symbol: class Profile
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataPetTypeRepositoryImpl.java:19: error: cannot find symbol
+import org.springframework.context.annotation.Profile;
+                                             ^
+  symbol:   class Profile
+  location: package org.springframework.context.annotation
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/PetTypeRepositoryOverride.java:19: error: cannot find symbol
+import org.springframework.context.annotation.Profile;
+                                             ^
+  symbol:   class Profile
+  location: package org.springframework.context.annotation
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/PetTypeRepositoryOverride.java:27: error: cannot find symbol
+@Profile("spring-data-jpa")
+ ^
+  symbol: class Profile
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataPetTypeRepositoryImpl.java:33: error: cannot find symbol
+@Profile("spring-data-jpa")
+ ^
+  symbol: class Profile
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataVetRepository.java:18: error: cannot find symbol
+import org.springframework.context.annotation.Profile;
+                                             ^
+  symbol:   class Profile
+  location: package org.springframework.context.annotation
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/VetRepository.java:20: error: package org.springframework.dao does not exist
+import org.springframework.dao.DataAccessException;
+                              ^
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataVetRepository.java:30: error: cannot find symbol
+@Profile("spring-data-jpa")
+ ^
+  symbol: class Profile
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/model/Vet.java:19: error: package org.springframework.beans.support does not exist
+import org.springframework.beans.support.MutableSortDefinition;
+                                        ^
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/model/Vet.java:20: error: package org.springframework.beans.support does not exist
+import org.springframework.beans.support.PropertyComparator;
+                                        ^
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/VetRepository.java:40: error: cannot find symbol
+    Collection<Vet> findAll() throws DataAccessException;
+                                     ^
+  symbol:   class DataAccessException
+  location: interface VetRepository
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/VetRepository.java:42: error: cannot find symbol
+	Vet findById(int id) throws DataAccessException;
+	                            ^
+  symbol:   class DataAccessException
+  location: interface VetRepository
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/VetRepository.java:44: error: cannot find symbol
+	void save(Vet vet) throws DataAccessException;
+	                          ^
+  symbol:   class DataAccessException
+  location: interface VetRepository
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/VetRepository.java:46: error: cannot find symbol
+	void delete(Vet vet) throws DataAccessException;
+	                            ^
+  symbol:   class DataAccessException
+  location: interface VetRepository
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataPetTypeRepository.java:19: error: cannot find symbol
+import org.springframework.context.annotation.Profile;
+                                             ^
+  symbol:   class Profile
+  location: package org.springframework.context.annotation
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/PetTypeRepository.java:21: error: package org.springframework.dao does not exist
+import org.springframework.dao.DataAccessException;
+                              ^
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataPetTypeRepository.java:29: error: cannot find symbol
+@Profile("spring-data-jpa")
+ ^
+  symbol: class Profile
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/PetTypeRepository.java:31: error: cannot find symbol
+	PetType findById(int id) throws DataAccessException;
+	                                ^
+  symbol:   class DataAccessException
+  location: interface PetTypeRepository
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/PetTypeRepository.java:33: error: cannot find symbol
+	Collection<PetType> findAll() throws DataAccessException;
+	                                     ^
+  symbol:   class DataAccessException
+  location: interface PetTypeRepository
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/PetTypeRepository.java:35: error: cannot find symbol
+	void save(PetType petType) throws DataAccessException;
+	                                  ^
+  symbol:   class DataAccessException
+  location: interface PetTypeRepository
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/PetTypeRepository.java:37: error: cannot find symbol
+	void delete(PetType petType) throws DataAccessException;
+	                                    ^
+  symbol:   class DataAccessException
+  location: interface PetTypeRepository
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataSpecialtyRepository.java:19: error: cannot find symbol
+import org.springframework.context.annotation.Profile;
+                                             ^
+  symbol:   class Profile
+  location: package org.springframework.context.annotation
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/SpecialtyRepository.java:21: error: package org.springframework.dao does not exist
+import org.springframework.dao.DataAccessException;
+                              ^
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataSpecialtyRepository.java:30: error: cannot find symbol
+@Profile("spring-data-jpa")
+ ^
+  symbol: class Profile
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/SpecialtyRepository.java:31: error: cannot find symbol
+	Specialty findById(int id) throws DataAccessException;
+	                                  ^
+  symbol:   class DataAccessException
+  location: interface SpecialtyRepository
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/SpecialtyRepository.java:33: error: cannot find symbol
+	Collection<Specialty> findAll() throws DataAccessException;
+	                                       ^
+  symbol:   class DataAccessException
+  location: interface SpecialtyRepository
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/SpecialtyRepository.java:35: error: cannot find symbol
+	void save(Specialty specialty) throws DataAccessException;
+	                                      ^
+  symbol:   class DataAccessException
+  location: interface SpecialtyRepository
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/SpecialtyRepository.java:37: error: cannot find symbol
+	void delete(Specialty specialty) throws DataAccessException;
+	                                        ^
+  symbol:   class DataAccessException
+  location: interface SpecialtyRepository
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataPetRepository.java:20: error: cannot find symbol
+import org.springframework.context.annotation.Profile;
+                                             ^
+  symbol:   class Profile
+  location: package org.springframework.context.annotation
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataPetRepository.java:21: error: package org.springframework.dao does not exist
+import org.springframework.dao.DataAccessException;
+                              ^
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/PetRepository.java:21: error: package org.springframework.dao does not exist
+import org.springframework.dao.DataAccessException;
+                              ^
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataPetRepository.java:35: error: cannot find symbol
+@Profile("spring-data-jpa")
+ ^
+  symbol: class Profile
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataPetRepository.java:40: error: cannot find symbol
+    List<PetType> findPetTypes() throws DataAccessException;
+                                        ^
+  symbol:   class DataAccessException
+  location: interface SpringDataPetRepository
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/PetRepository.java:43: error: cannot find symbol
+    List<PetType> findPetTypes() throws DataAccessException;
+                                        ^
+  symbol:   class DataAccessException
+  location: interface PetRepository
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/PetRepository.java:52: error: cannot find symbol
+    Pet findById(int id) throws DataAccessException;
+                                ^
+  symbol:   class DataAccessException
+  location: interface PetRepository
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/PetRepository.java:60: error: cannot find symbol
+    void save(Pet pet) throws DataAccessException;
+                              ^
+  symbol:   class DataAccessException
+  location: interface PetRepository
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/PetRepository.java:68: error: cannot find symbol
+	Collection<Pet> findAll() throws DataAccessException;
+	                                 ^
+  symbol:   class DataAccessException
+  location: interface PetRepository
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/PetRepository.java:76: error: cannot find symbol
+	void delete(Pet pet) throws DataAccessException;
+	                            ^
+  symbol:   class DataAccessException
+  location: interface PetRepository
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/util/EntityUtils.java:21: error: package org.springframework.orm does not exist
+import org.springframework.orm.ObjectRetrievalFailureException;
+                              ^
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/util/EntityUtils.java:45: error: cannot find symbol
+        throws ObjectRetrievalFailureException {
+               ^
+  symbol:   class ObjectRetrievalFailureException
+  location: class EntityUtils
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java:20: error: package org.springframework.dao does not exist
+import org.springframework.dao.DataAccessException;
+                              ^
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java:37: error: cannot find symbol
+	Pet findPetById(int id) throws DataAccessException;
+	                               ^
+  symbol:   class DataAccessException
+  location: interface ClinicService
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java:38: error: cannot find symbol
+	Collection<Pet> findAllPets() throws DataAccessException;
+	                                     ^
+  symbol:   class DataAccessException
+  location: interface ClinicService
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java:39: error: cannot find symbol
+	void savePet(Pet pet) throws DataAccessException;
+	                             ^
+  symbol:   class DataAccessException
+  location: interface ClinicService
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java:40: error: cannot find symbol
+	void deletePet(Pet pet) throws DataAccessException;
+	                               ^
+  symbol:   class DataAccessException
+  location: interface ClinicService
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java:43: error: cannot find symbol
+	Visit findVisitById(int visitId) throws DataAccessException;
+	                                        ^
+  symbol:   class DataAccessException
+  location: interface ClinicService
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java:44: error: cannot find symbol
+	Collection<Visit> findAllVisits() throws DataAccessException;
+	                                         ^
+  symbol:   class DataAccessException
+  location: interface ClinicService
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java:45: error: cannot find symbol
+	void saveVisit(Visit visit) throws DataAccessException;
+	                                   ^
+  symbol:   class DataAccessException
+  location: interface ClinicService
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java:46: error: cannot find symbol
+	void deleteVisit(Visit visit) throws DataAccessException;
+	                                     ^
+  symbol:   class DataAccessException
+  location: interface ClinicService
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java:48: error: cannot find symbol
+	Vet findVetById(int id) throws DataAccessException;
+	                               ^
+  symbol:   class DataAccessException
+  location: interface ClinicService
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java:49: error: cannot find symbol
+	Collection<Vet> findVets() throws DataAccessException;
+	                                  ^
+  symbol:   class DataAccessException
+  location: interface ClinicService
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java:50: error: cannot find symbol
+	Collection<Vet> findAllVets() throws DataAccessException;
+	                                     ^
+  symbol:   class DataAccessException
+  location: interface ClinicService
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java:51: error: cannot find symbol
+	void saveVet(Vet vet) throws DataAccessException;
+	                             ^
+  symbol:   class DataAccessException
+  location: interface ClinicService
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java:52: error: cannot find symbol
+	void deleteVet(Vet vet) throws DataAccessException;
+	                               ^
+  symbol:   class DataAccessException
+  location: interface ClinicService
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java:54: error: cannot find symbol
+	Owner findOwnerById(int id) throws DataAccessException;
+	                                   ^
+  symbol:   class DataAccessException
+  location: interface ClinicService
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java:55: error: cannot find symbol
+	Collection<Owner> findAllOwners() throws DataAccessException;
+	                                         ^
+  symbol:   class DataAccessException
+  location: interface ClinicService
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java:56: error: cannot find symbol
+	void saveOwner(Owner owner) throws DataAccessException;
+	                                   ^
+  symbol:   class DataAccessException
+  location: interface ClinicService
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java:57: error: cannot find symbol
+	void deleteOwner(Owner owner) throws DataAccessException;
+	                                     ^
+  symbol:   class DataAccessException
+  location: interface ClinicService
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java:58: error: cannot find symbol
+	Collection<Owner> findOwnerByLastName(String lastName) throws DataAccessException;
+	                                                              ^
+  symbol:   class DataAccessException
+  location: interface ClinicService
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java:61: error: cannot find symbol
+	Collection<PetType> findAllPetTypes() throws DataAccessException;
+	                                             ^
+  symbol:   class DataAccessException
+  location: interface ClinicService
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java:62: error: cannot find symbol
+	Collection<PetType> findPetTypes() throws DataAccessException;
+	                                          ^
+  symbol:   class DataAccessException
+  location: interface ClinicService
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java:63: error: cannot find symbol
+	void savePetType(PetType petType) throws DataAccessException;
+	                                         ^
+  symbol:   class DataAccessException
+  location: interface ClinicService
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java:64: error: cannot find symbol
+	void deletePetType(PetType petType) throws DataAccessException;
+	                                           ^
+  symbol:   class DataAccessException
+  location: interface ClinicService
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java:67: error: cannot find symbol
+	Collection<Specialty> findAllSpecialties() throws DataAccessException;
+	                                                  ^
+  symbol:   class DataAccessException
+  location: interface ClinicService
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java:68: error: cannot find symbol
+	void saveSpecialty(Specialty specialty) throws DataAccessException;
+	                                               ^
+  symbol:   class DataAccessException
+  location: interface ClinicService
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicService.java:69: error: cannot find symbol
+	void deleteSpecialty(Specialty specialty) throws DataAccessException;
+	                                                 ^
+  symbol:   class DataAccessException
+  location: interface ClinicService
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:22: error: package org.springframework.dao does not exist
+import org.springframework.dao.DataAccessException;
+                              ^
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:23: error: package org.springframework.dao does not exist
+import org.springframework.dao.EmptyResultDataAccessException;
+                              ^
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:24: error: package org.springframework.orm does not exist
+import org.springframework.orm.ObjectRetrievalFailureException;
+                              ^
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:38: error: package org.springframework.transaction.annotation does not exist
+import org.springframework.transaction.annotation.Transactional;
+                                                 ^
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:76: error: cannot find symbol
+	public Collection<Pet> findAllPets() throws DataAccessException {
+	                                            ^
+  symbol:   class DataAccessException
+  location: class ClinicServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:82: error: cannot find symbol
+	public void deletePet(Pet pet) throws DataAccessException {
+	                                      ^
+  symbol:   class DataAccessException
+  location: class ClinicServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:88: error: cannot find symbol
+	public Visit findVisitById(int visitId) throws DataAccessException {
+	                                               ^
+  symbol:   class DataAccessException
+  location: class ClinicServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:101: error: cannot find symbol
+	public Collection<Visit> findAllVisits() throws DataAccessException {
+	                                                ^
+  symbol:   class DataAccessException
+  location: class ClinicServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:107: error: cannot find symbol
+	public void deleteVisit(Visit visit) throws DataAccessException {
+	                                            ^
+  symbol:   class DataAccessException
+  location: class ClinicServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:113: error: cannot find symbol
+	public Vet findVetById(int id) throws DataAccessException {
+	                                      ^
+  symbol:   class DataAccessException
+  location: class ClinicServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:126: error: cannot find symbol
+	public Collection<Vet> findAllVets() throws DataAccessException {
+	                                            ^
+  symbol:   class DataAccessException
+  location: class ClinicServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:132: error: cannot find symbol
+	public void saveVet(Vet vet) throws DataAccessException {
+	                                    ^
+  symbol:   class DataAccessException
+  location: class ClinicServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:138: error: cannot find symbol
+	public void deleteVet(Vet vet) throws DataAccessException {
+	                                      ^
+  symbol:   class DataAccessException
+  location: class ClinicServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:144: error: cannot find symbol
+	public Collection<Owner> findAllOwners() throws DataAccessException {
+	                                                ^
+  symbol:   class DataAccessException
+  location: class ClinicServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:150: error: cannot find symbol
+	public void deleteOwner(Owner owner) throws DataAccessException {
+	                                            ^
+  symbol:   class DataAccessException
+  location: class ClinicServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:169: error: cannot find symbol
+	public Collection<PetType> findAllPetTypes() throws DataAccessException {
+	                                                    ^
+  symbol:   class DataAccessException
+  location: class ClinicServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:175: error: cannot find symbol
+	public void savePetType(PetType petType) throws DataAccessException {
+	                                                ^
+  symbol:   class DataAccessException
+  location: class ClinicServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:181: error: cannot find symbol
+	public void deletePetType(PetType petType) throws DataAccessException {
+	                                                  ^
+  symbol:   class DataAccessException
+  location: class ClinicServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:200: error: cannot find symbol
+	public Collection<Specialty> findAllSpecialties() throws DataAccessException {
+	                                                         ^
+  symbol:   class DataAccessException
+  location: class ClinicServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:206: error: cannot find symbol
+	public void saveSpecialty(Specialty specialty) throws DataAccessException {
+	                                                      ^
+  symbol:   class DataAccessException
+  location: class ClinicServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:212: error: cannot find symbol
+	public void deleteSpecialty(Specialty specialty) throws DataAccessException {
+	                                                        ^
+  symbol:   class DataAccessException
+  location: class ClinicServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:218: error: cannot find symbol
+	public Collection<PetType> findPetTypes() throws DataAccessException {
+	                                                 ^
+  symbol:   class DataAccessException
+  location: class ClinicServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:224: error: cannot find symbol
+	public Owner findOwnerById(int id) throws DataAccessException {
+	                                          ^
+  symbol:   class DataAccessException
+  location: class ClinicServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:237: error: cannot find symbol
+	public Pet findPetById(int id) throws DataAccessException {
+	                                      ^
+  symbol:   class DataAccessException
+  location: class ClinicServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:250: error: cannot find symbol
+	public void savePet(Pet pet) throws DataAccessException {
+	                                    ^
+  symbol:   class DataAccessException
+  location: class ClinicServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:257: error: cannot find symbol
+	public void saveVisit(Visit visit) throws DataAccessException {
+	                                          ^
+  symbol:   class DataAccessException
+  location: class ClinicServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:265: error: cannot find symbol
+	public Collection<Vet> findVets() throws DataAccessException {
+	                                         ^
+  symbol:   class DataAccessException
+  location: class ClinicServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:271: error: cannot find symbol
+	public void saveOwner(Owner owner) throws DataAccessException {
+	                                          ^
+  symbol:   class DataAccessException
+  location: class ClinicServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:278: error: cannot find symbol
+	public Collection<Owner> findOwnerByLastName(String lastName) throws DataAccessException {
+	                                                                     ^
+  symbol:   class DataAccessException
+  location: class ClinicServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/UserServiceImpl.java:8: error: package org.springframework.transaction.annotation does not exist
+import org.springframework.transaction.annotation.Transactional;
+                                                 ^
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/rest/RootRestController.java:21: error: package jakarta.servlet.http does not exist
+import jakarta.servlet.http.HttpServletResponse;
+                           ^
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/rest/RootRestController.java:24: error: cannot find symbol
+import org.springframework.web.bind.annotation.CrossOrigin;
+                                              ^
+  symbol:   class CrossOrigin
+  location: package org.springframework.web.bind.annotation
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/rest/RootRestController.java:34: error: cannot find symbol
+@CrossOrigin(exposedHeaders = "errors, content-type")
+ ^
+  symbol: class CrossOrigin
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/rest/RootRestController.java:42: error: cannot find symbol
+	public void redirectToSwagger(HttpServletResponse response) throws IOException {
+	                              ^
+  symbol:   class HttpServletResponse
+  location: class RootRestController
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/rest/SpecialtyRestController.java:27: error: package org.springframework.validation does not exist
+import org.springframework.validation.BindingResult;
+                                     ^
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/rest/SpecialtyRestController.java:29: error: package org.springframework.web.util does not exist
+import org.springframework.web.util.UriComponentsBuilder;
+                                   ^
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/rest/SpecialtyRestController.java:41: error: cannot find symbol
+@CrossOrigin(exposedHeaders = "errors, content-type")
+ ^
+  symbol: class CrossOrigin
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/rest/SpecialtyRestController.java:77: error: cannot find symbol
+    public ResponseEntity<SpecialtyDto> addSpecialty(@RequestBody @Valid SpecialtyDto specialtyDto, BindingResult bindingResult, UriComponentsBuilder ucBuilder) {
+                                                                                                    ^
+  symbol:   class BindingResult
+  location: class SpecialtyRestController
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/rest/SpecialtyRestController.java:77: error: cannot find symbol
+    public ResponseEntity<SpecialtyDto> addSpecialty(@RequestBody @Valid SpecialtyDto specialtyDto, BindingResult bindingResult, UriComponentsBuilder ucBuilder) {
+                                                                                                                                 ^
+  symbol:   class UriComponentsBuilder
+  location: class SpecialtyRestController
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/rest/SpecialtyRestController.java:93: error: cannot find symbol
+    public ResponseEntity<SpecialtyDto> updateSpecialty(@PathVariable("specialtyId") int specialtyId, @RequestBody @Valid SpecialtyDto specialtyDto, BindingResult bindingResult) {
+                                                                                                                                                     ^
+  symbol:   class BindingResult
+  location: class SpecialtyRestController
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/rest/BindingErrorsResponse.java:22: error: package org.springframework.validation does not exist
+import org.springframework.validation.BindingResult;
+                                     ^
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/rest/BindingErrorsResponse.java:23: error: package org.springframework.validation does not exist
+import org.springframework.validation.FieldError;
+                                     ^
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/rest/BindingErrorsResponse.java:71: error: cannot find symbol
+	public void addAllErrors(BindingResult bindingResult) {
+	                         ^
+  symbol:   class BindingResult
+  location: class BindingErrorsResponse
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/rest/VetRestController.java:28: error: package org.springframework.validation does not exist
+import org.springframework.validation.BindingResult;
+                                     ^
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/rest/VetRestController.java:30: error: package org.springframework.web.util does not exist
+import org.springframework.web.util.UriComponentsBuilder;
+                                   ^
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/rest/VetRestController.java:42: error: cannot find symbol
+@CrossOrigin(exposedHeaders = "errors, content-type")
+ ^
+  symbol: class CrossOrigin
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/rest/VetRestController.java:79: error: cannot find symbol
+    public ResponseEntity<VetDto> addVet(@RequestBody @Valid VetDto vetDto, BindingResult bindingResult, UriComponentsBuilder ucBuilder) {
+                                                                            ^
+  symbol:   class BindingResult
+  location: class VetRestController
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/rest/VetRestController.java:79: error: cannot find symbol
+    public ResponseEntity<VetDto> addVet(@RequestBody @Valid VetDto vetDto, BindingResult bindingResult, UriComponentsBuilder ucBuilder) {
+                                                                                                         ^
+  symbol:   class UriComponentsBuilder
+  location: class VetRestController
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/rest/VetRestController.java:95: error: cannot find symbol
+    public ResponseEntity<VetDto> updateVet(@PathVariable("vetId") int vetId, @RequestBody @Valid VetDto vetDto, BindingResult bindingResult) {
+                                                                                                                 ^
+  symbol:   class BindingResult
+  location: class VetRestController
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/rest/UserRestController.java:27: error: package org.springframework.validation does not exist
+import org.springframework.validation.BindingResult;
+                                     ^
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/rest/UserRestController.java:33: error: cannot find symbol
+@CrossOrigin(exposedHeaders = "errors, content-type")
+ ^
+  symbol: class CrossOrigin
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/rest/UserRestController.java:48: error: cannot find symbol
+    public ResponseEntity<UserDto> addOwner(@RequestBody @Valid UserDto userDto, BindingResult bindingResult) throws Exception {
+                                                                                 ^
+  symbol:   class BindingResult
+  location: class UserRestController
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/rest/PetTypeRestController.java:27: error: package org.springframework.validation does not exist
+import org.springframework.validation.BindingResult;
+                                     ^
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/rest/PetTypeRestController.java:29: error: package org.springframework.web.util does not exist
+import org.springframework.web.util.UriComponentsBuilder;
+                                   ^
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/rest/PetTypeRestController.java:37: error: cannot find symbol
+@CrossOrigin(exposedHeaders = "errors, content-type")
+ ^
+  symbol: class CrossOrigin
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/rest/PetTypeRestController.java:73: error: cannot find symbol
+    public ResponseEntity<PetTypeDto> addPetType(@RequestBody @Valid PetTypeDto petType, BindingResult bindingResult, UriComponentsBuilder ucBuilder) {
+                                                                                         ^
+  symbol:   class BindingResult
+  location: class PetTypeRestController
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/rest/PetTypeRestController.java:73: error: cannot find symbol
+    public ResponseEntity<PetTypeDto> addPetType(@RequestBody @Valid PetTypeDto petType, BindingResult bindingResult, UriComponentsBuilder ucBuilder) {
+                                                                                                                      ^
+  symbol:   class UriComponentsBuilder
+  location: class PetTypeRestController
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/rest/PetTypeRestController.java:89: error: cannot find symbol
+    public ResponseEntity<PetTypeDto> updatePetType(@PathVariable("petTypeId") int petTypeId, @RequestBody @Valid PetTypeDto petType, BindingResult bindingResult) {
+                                                                                                                                      ^
+  symbol:   class BindingResult
+  location: class PetTypeRestController
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/rest/OwnerRestController.java:27: error: package org.springframework.validation does not exist
+import org.springframework.validation.BindingResult;
+                                     ^
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/rest/OwnerRestController.java:29: error: package org.springframework.web.util does not exist
+import org.springframework.web.util.UriComponentsBuilder;
+                                   ^
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/rest/OwnerRestController.java:40: error: cannot find symbol
+@CrossOrigin(exposedHeaders = "errors, content-type")
+ ^
+  symbol: class CrossOrigin
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/rest/OwnerRestController.java:88: error: cannot find symbol
+    public ResponseEntity<OwnerDto> addOwner(@RequestBody @Valid OwnerDto ownerDto, BindingResult bindingResult,
+                                                                                    ^
+  symbol:   class BindingResult
+  location: class OwnerRestController
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/rest/OwnerRestController.java:89: error: cannot find symbol
+                                             UriComponentsBuilder ucBuilder) {
+                                             ^
+  symbol:   class UriComponentsBuilder
+  location: class OwnerRestController
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/rest/OwnerRestController.java:107: error: cannot find symbol
+                                                BindingResult bindingResult, UriComponentsBuilder ucBuilder) {
+                                                ^
+  symbol:   class BindingResult
+  location: class OwnerRestController
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/rest/OwnerRestController.java:107: error: cannot find symbol
+                                                BindingResult bindingResult, UriComponentsBuilder ucBuilder) {
+                                                                             ^
+  symbol:   class UriComponentsBuilder
+  location: class OwnerRestController
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/rest/PetRestController.java:28: error: package org.springframework.validation does not exist
+import org.springframework.validation.BindingResult;
+                                     ^
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/rest/PetRestController.java:30: error: package org.springframework.web.util does not exist
+import org.springframework.web.util.UriComponentsBuilder;
+                                   ^
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/rest/PetRestController.java:41: error: cannot find symbol
+@CrossOrigin(exposedHeaders = "errors, content-type")
+ ^
+  symbol: class CrossOrigin
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/rest/PetRestController.java:82: error: cannot find symbol
+    public ResponseEntity<PetDto> addPet(@RequestBody @Valid PetDto petDto, BindingResult bindingResult, UriComponentsBuilder ucBuilder) {
+                                                                            ^
+  symbol:   class BindingResult
+  location: class PetRestController
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/rest/PetRestController.java:82: error: cannot find symbol
+    public ResponseEntity<PetDto> addPet(@RequestBody @Valid PetDto petDto, BindingResult bindingResult, UriComponentsBuilder ucBuilder) {
+                                                                                                         ^
+  symbol:   class UriComponentsBuilder
+  location: class PetRestController
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/rest/PetRestController.java:99: error: cannot find symbol
+    public ResponseEntity<PetDto> updatePet(@PathVariable("petId") int petId, @RequestBody @Valid PetDto pet, BindingResult bindingResult) {
+                                                                                                              ^
+  symbol:   class BindingResult
+  location: class PetRestController
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/rest/VisitRestController.java:27: error: package org.springframework.validation does not exist
+import org.springframework.validation.BindingResult;
+                                     ^
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/rest/VisitRestController.java:29: error: package org.springframework.web.util does not exist
+import org.springframework.web.util.UriComponentsBuilder;
+                                   ^
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/rest/VisitRestController.java:41: error: cannot find symbol
+@CrossOrigin(exposedHeaders = "errors, content-type")
+ ^
+  symbol: class CrossOrigin
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/rest/VisitRestController.java:79: error: cannot find symbol
+    public ResponseEntity<VisitDto> addVisit(@RequestBody @Valid VisitDto visitDto, BindingResult bindingResult, UriComponentsBuilder ucBuilder) {
+                                                                                    ^
+  symbol:   class BindingResult
+  location: class VisitRestController
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/rest/VisitRestController.java:79: error: cannot find symbol
+    public ResponseEntity<VisitDto> addVisit(@RequestBody @Valid VisitDto visitDto, BindingResult bindingResult, UriComponentsBuilder ucBuilder) {
+                                                                                                                 ^
+  symbol:   class UriComponentsBuilder
+  location: class VisitRestController
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/rest/VisitRestController.java:96: error: cannot find symbol
+    public ResponseEntity<VisitDto> updateVisit(@PathVariable("visitId") int visitId, @RequestBody @Valid VisitDto visitDto, BindingResult bindingResult) {
+                                                                                                                             ^
+  symbol:   class BindingResult
+  location: class VisitRestController
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:75: error: cannot find symbol
+	@Transactional(readOnly = true)
+	 ^
+  symbol:   class Transactional
+  location: class ClinicServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:81: error: cannot find symbol
+	@Transactional
+	 ^
+  symbol:   class Transactional
+  location: class ClinicServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:87: error: cannot find symbol
+	@Transactional(readOnly = true)
+	 ^
+  symbol:   class Transactional
+  location: class ClinicServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:100: error: cannot find symbol
+	@Transactional(readOnly = true)
+	 ^
+  symbol:   class Transactional
+  location: class ClinicServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:106: error: cannot find symbol
+	@Transactional
+	 ^
+  symbol:   class Transactional
+  location: class ClinicServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:112: error: cannot find symbol
+	@Transactional(readOnly = true)
+	 ^
+  symbol:   class Transactional
+  location: class ClinicServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:125: error: cannot find symbol
+	@Transactional(readOnly = true)
+	 ^
+  symbol:   class Transactional
+  location: class ClinicServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:131: error: cannot find symbol
+	@Transactional
+	 ^
+  symbol:   class Transactional
+  location: class ClinicServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:137: error: cannot find symbol
+	@Transactional
+	 ^
+  symbol:   class Transactional
+  location: class ClinicServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:143: error: cannot find symbol
+	@Transactional(readOnly = true)
+	 ^
+  symbol:   class Transactional
+  location: class ClinicServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:149: error: cannot find symbol
+	@Transactional
+	 ^
+  symbol:   class Transactional
+  location: class ClinicServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:155: error: cannot find symbol
+	@Transactional(readOnly = true)
+	 ^
+  symbol:   class Transactional
+  location: class ClinicServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:168: error: cannot find symbol
+	@Transactional(readOnly = true)
+	 ^
+  symbol:   class Transactional
+  location: class ClinicServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:174: error: cannot find symbol
+	@Transactional
+	 ^
+  symbol:   class Transactional
+  location: class ClinicServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:180: error: cannot find symbol
+	@Transactional
+	 ^
+  symbol:   class Transactional
+  location: class ClinicServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:186: error: cannot find symbol
+	@Transactional(readOnly = true)
+	 ^
+  symbol:   class Transactional
+  location: class ClinicServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:199: error: cannot find symbol
+	@Transactional(readOnly = true)
+	 ^
+  symbol:   class Transactional
+  location: class ClinicServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:205: error: cannot find symbol
+	@Transactional
+	 ^
+  symbol:   class Transactional
+  location: class ClinicServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:211: error: cannot find symbol
+	@Transactional
+	 ^
+  symbol:   class Transactional
+  location: class ClinicServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:217: error: cannot find symbol
+	@Transactional(readOnly = true)
+	 ^
+  symbol:   class Transactional
+  location: class ClinicServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:223: error: cannot find symbol
+	@Transactional(readOnly = true)
+	 ^
+  symbol:   class Transactional
+  location: class ClinicServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:236: error: cannot find symbol
+	@Transactional(readOnly = true)
+	 ^
+  symbol:   class Transactional
+  location: class ClinicServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:249: error: cannot find symbol
+	@Transactional
+	 ^
+  symbol:   class Transactional
+  location: class ClinicServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:256: error: cannot find symbol
+	@Transactional
+	 ^
+  symbol:   class Transactional
+  location: class ClinicServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:263: error: cannot find symbol
+	@Transactional(readOnly = true)
+	 ^
+  symbol:   class Transactional
+  location: class ClinicServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:270: error: cannot find symbol
+	@Transactional
+	 ^
+  symbol:   class Transactional
+  location: class ClinicServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:277: error: cannot find symbol
+	@Transactional(readOnly = true)
+	 ^
+  symbol:   class Transactional
+  location: class ClinicServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:283: error: cannot find symbol
+	@Transactional(readOnly = true)
+	 ^
+  symbol:   class Transactional
+  location: class ClinicServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/UserServiceImpl.java:17: error: cannot find symbol
+    @Transactional
+     ^
+  symbol:   class Transactional
+  location: class UserServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/model/Pet.java:89: error: cannot find symbol
+        PropertyComparator.sort(sortedVisits, new MutableSortDefinition("date", false, false));
+                                                  ^
+  symbol:   class MutableSortDefinition
+  location: class Pet
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/model/Pet.java:89: error: cannot find symbol
+        PropertyComparator.sort(sortedVisits, new MutableSortDefinition("date", false, false));
+        ^
+  symbol:   variable PropertyComparator
+  location: class Pet
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/model/Owner.java:93: error: cannot find symbol
+        PropertyComparator.sort(sortedPets, new MutableSortDefinition("name", true, true));
+                                                ^
+  symbol:   class MutableSortDefinition
+  location: class Owner
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/model/Owner.java:93: error: cannot find symbol
+        PropertyComparator.sort(sortedPets, new MutableSortDefinition("name", true, true));
+        ^
+  symbol:   variable PropertyComparator
+  location: class Owner
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/model/Owner.java:138: error: cannot find symbol
+        return new ToStringCreator(this)
+                   ^
+  symbol:   class ToStringCreator
+  location: class Owner
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/repository/springdatajpa/SpringDataVisitRepositoryImpl.java:38: error: delete(Visit) in SpringDataVisitRepositoryImpl cannot implement delete(Visit) in VisitRepositoryOverride
+	public void delete(Visit visit) throws DataAccessException {
+	            ^
+  overridden method does not throw DataAccessException
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/model/Vet.java:58: error: cannot find symbol
+        PropertyComparator.sort(sortedSpecs, new MutableSortDefinition("name", true, true));
+                                                 ^
+  symbol:   class MutableSortDefinition
+  location: class Vet
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/model/Vet.java:58: error: cannot find symbol
+        PropertyComparator.sort(sortedSpecs, new MutableSortDefinition("name", true, true));
+        ^
+  symbol:   variable PropertyComparator
+  location: class Vet
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/util/EntityUtils.java:51: error: cannot find symbol
+        throw new ObjectRetrievalFailureException(entityClass, entityId);
+                  ^
+  symbol:   class ObjectRetrievalFailureException
+  location: class EntityUtils
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:92: error: cannot find symbol
+		} catch (ObjectRetrievalFailureException|EmptyResultDataAccessException e) {
+		         ^
+  symbol:   class ObjectRetrievalFailureException
+  location: class ClinicServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:92: error: cannot find symbol
+		} catch (ObjectRetrievalFailureException|EmptyResultDataAccessException e) {
+		                                         ^
+  symbol:   class EmptyResultDataAccessException
+  location: class ClinicServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:117: error: cannot find symbol
+		} catch (ObjectRetrievalFailureException|EmptyResultDataAccessException e) {
+		         ^
+  symbol:   class ObjectRetrievalFailureException
+  location: class ClinicServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:117: error: cannot find symbol
+		} catch (ObjectRetrievalFailureException|EmptyResultDataAccessException e) {
+		                                         ^
+  symbol:   class EmptyResultDataAccessException
+  location: class ClinicServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:160: error: cannot find symbol
+		} catch (ObjectRetrievalFailureException|EmptyResultDataAccessException e) {
+		         ^
+  symbol:   class ObjectRetrievalFailureException
+  location: class ClinicServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:160: error: cannot find symbol
+		} catch (ObjectRetrievalFailureException|EmptyResultDataAccessException e) {
+		                                         ^
+  symbol:   class EmptyResultDataAccessException
+  location: class ClinicServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:191: error: cannot find symbol
+		} catch (ObjectRetrievalFailureException|EmptyResultDataAccessException e) {
+		         ^
+  symbol:   class ObjectRetrievalFailureException
+  location: class ClinicServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:191: error: cannot find symbol
+		} catch (ObjectRetrievalFailureException|EmptyResultDataAccessException e) {
+		                                         ^
+  symbol:   class EmptyResultDataAccessException
+  location: class ClinicServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:228: error: cannot find symbol
+		} catch (ObjectRetrievalFailureException|EmptyResultDataAccessException e) {
+		         ^
+  symbol:   class ObjectRetrievalFailureException
+  location: class ClinicServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:228: error: cannot find symbol
+		} catch (ObjectRetrievalFailureException|EmptyResultDataAccessException e) {
+		                                         ^
+  symbol:   class EmptyResultDataAccessException
+  location: class ClinicServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:241: error: cannot find symbol
+		} catch (ObjectRetrievalFailureException|EmptyResultDataAccessException e) {
+		         ^
+  symbol:   class ObjectRetrievalFailureException
+  location: class ClinicServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/service/ClinicServiceImpl.java:241: error: cannot find symbol
+		} catch (ObjectRetrievalFailureException|EmptyResultDataAccessException e) {
+		                                         ^
+  symbol:   class EmptyResultDataAccessException
+  location: class ClinicServiceImpl
+/Users/adrina/Sandbox/rgctl-experiment/app/src/main/java/org/springframework/samples/petclinic/rest/BindingErrorsResponse.java:72: error: cannot find symbol
+		for (FieldError fieldError : bindingResult.getFieldErrors()) {
+		     ^
+  symbol:   class FieldError
+  location: class BindingErrorsResponse
+233 errors

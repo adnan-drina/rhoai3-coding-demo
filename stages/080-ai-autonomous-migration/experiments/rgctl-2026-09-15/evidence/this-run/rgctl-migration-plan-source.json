@@ -1,0 +1,156 @@
+{
+  "schema_version": 2,
+  "preset": "risk_mitigation",
+  "preset_label": "Risk Mitigation",
+  "weights": {
+    "alpha": 0.1,
+    "beta": 0.2,
+    "gamma": 0.7
+  },
+  "order_mode": "scheduled",
+  "steps": [
+    {
+      "step": 1,
+      "community_id": 1,
+      "label": "org.springframework.samples.petclinic.model",
+      "priority_score": -0.21013153868082873,
+      "schedule_step": 1,
+      "priority_rank": 3,
+      "avg_pagerank": 0.0005191956884190736,
+      "avg_harmonic": 0.0006627495047665895,
+      "max_blast": 0.0
+    },
+    {
+      "step": 2,
+      "community_id": 7,
+      "label": "org.springframework.samples.petclinic.repository",
+      "priority_score": -0.2403019742729564,
+      "schedule_step": 2,
+      "priority_rank": 5,
+      "avg_pagerank": 0.0004930903201706574,
+      "avg_harmonic": 0.0004006172343257016,
+      "max_blast": 0.0
+    },
+    {
+      "step": 3,
+      "community_id": 8,
+      "label": "org.springframework.samples.petclinic.util",
+      "priority_score": -0.2722230386790465,
+      "schedule_step": 3,
+      "priority_rank": 7,
+      "avg_pagerank": 0.0004077225748915225,
+      "avg_harmonic": 0.0006528577276705099,
+      "max_blast": 0.0
+    },
+    {
+      "step": 4,
+      "community_id": 3,
+      "label": "org.springframework.samples.petclinic.repository.jdbc",
+      "priority_score": -0.1833120871043789,
+      "schedule_step": 4,
+      "priority_rank": 2,
+      "avg_pagerank": 0.00035794860169906836,
+      "avg_harmonic": 0.0025873197155306116,
+      "max_blast": 0.0
+    },
+    {
+      "step": 5,
+      "community_id": 4,
+      "label": "org.springframework.samples.petclinic.service.clinicService",
+      "priority_score": -0.21585084969886487,
+      "schedule_step": 5,
+      "priority_rank": 4,
+      "avg_pagerank": 0.00033792812610045075,
+      "avg_harmonic": 0.0022300154052893907,
+      "max_blast": 0.0
+    },
+    {
+      "step": 6,
+      "community_id": 6,
+      "label": "org.springframework.samples.petclinic.repository.jpa",
+      "priority_score": -0.28841215271949805,
+      "schedule_step": 6,
+      "priority_rank": 8,
+      "avg_pagerank": 0.00033792812610045075,
+      "avg_harmonic": 0.0010237996133842639,
+      "max_blast": 0.0
+    },
+    {
+      "step": 7,
+      "community_id": 2,
+      "label": "org.springframework.samples.petclinic.service",
+      "priority_score": -0.30892538946865233,
+      "schedule_step": 7,
+      "priority_rank": 9,
+      "avg_pagerank": 0.00034250942023344717,
+      "avg_harmonic": 0.0006407863910357326,
+      "max_blast": 0.0
+    },
+    {
+      "step": 8,
+      "community_id": 10,
+      "label": "org.springframework.samples.petclinic.service.userService",
+      "priority_score": -0.24333057110214384,
+      "schedule_step": 8,
+      "priority_rank": 6,
+      "avg_pagerank": 0.00034818678977899253,
+      "avg_harmonic": 0.0016791303642094135,
+      "max_blast": 0.0
+    },
+    {
+      "step": 9,
+      "community_id": 5,
+      "label": "org.springframework.samples.petclinic.mapper",
+      "priority_score": -0.309184921868192,
+      "schedule_step": 9,
+      "priority_rank": 10,
+      "avg_pagerank": 0.00041191262328842034,
+      "avg_harmonic": 0.0,
+      "max_blast": 0.0
+    },
+    {
+      "step": 10,
+      "community_id": 0,
+      "label": "org.springframework.samples.petclinic.rest",
+      "priority_score": -0.1360001128748672,
+      "schedule_step": 10,
+      "priority_rank": 1,
+      "avg_pagerank": 0.0003633053802195376,
+      "avg_harmonic": 0.0033246806264273765,
+      "max_blast": 0.0
+    },
+    {
+      "step": 11,
+      "community_id": 9,
+      "label": "org.springframework.samples.petclinic.repository.springdatajpa",
+      "priority_score": -0.32008512937227834,
+      "schedule_step": 11,
+      "priority_rank": 11,
+      "avg_pagerank": 0.00033792812610045075,
+      "avg_harmonic": 0.0004972869540903379,
+      "max_blast": 0.0
+    },
+    {
+      "step": 12,
+      "community_id": 11,
+      "label": "org.springframework.samples.petclinic.security",
+      "priority_score": -0.32500783044430126,
+      "schedule_step": 12,
+      "priority_rank": 12,
+      "avg_pagerank": 0.00033792812610045075,
+      "avg_harmonic": 0.000415454909671098,
+      "max_blast": 0.0
+    },
+    {
+      "step": 13,
+      "community_id": 12,
+      "label": "org.springframework.samples.petclinic",
+      "priority_score": -0.3312558719578387,
+      "schedule_step": 13,
+      "priority_rank": 13,
+      "avg_pagerank": 0.00033792812610045075,
+      "avg_harmonic": 0.0003115911968052387,
+      "max_blast": 0.0
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "_note": "rgctl 0.4.12 `discover --with-kantra --kantra-target quarkus` output on the frozen source, captured 2026-09-15T17:51Z. The release binary evaluated a FIXTURE catalog of ONE rule, not the ~2.6k-rule Konveyor stable/java catalog the documentation describes. It is therefore not a substitute for the MTA findings the official run carries.",
+  "schema_version": 2,
+  "command": "kantra_findings",
+  "catalog_id": "fixture@9d8becbc49495aff",
+  "ruleset": "rgctl-fixture-rules:target=quarkus",
+  "target_filter": "quarkus",
+  "evaluated_rules": 1,
+  "violations": [],
+  "skipped_rules": []
+}
