@@ -146,19 +146,38 @@ Eleven of eighteen were found only by running the packaged artifact against reco
 source requests. **Zero** were found by the relationship graph that were not already
 on the compiler's list.
 
+(The official v9 run found and repaired the first four families too — its own
+`steps.json` walks the same 233 diagnostics down to 0. The difference between the two
+runs is not which compile-time defects were found; it is behavioural coverage and the
+execution effort spent reaching it.)
+
 ---
 
-## B-1: the measure the existing loop reads is saturated
+## B-1 (CORRECTED): `mvn compile` caps at 100; the official loop does not
 
-`mvn compile` on the bootstrapped tree reports exactly **100** errors. `javac` with
-`-Xmaxerrs 100000` over the same sources plus the generated DTOs reports **233**. The
-100 is javac's default error cap.
+`mvn compile` on the bootstrapped tree reports exactly **100** errors, and `javac`
+with `-Xmaxerrs 100000` over the same sources plus the generated DTOs reports
+**233**. The 100 is javac's default error cap. That much is measured and stands.
 
-A loop whose acceptance rule is "the global diagnostic count must fall" is reading a
-saturated counter: until a repair removes more than 133 diagnostics the reported
-number stays pinned at 100 and every correct repair scores as no progress. WU-1
-removed 108 real diagnostics; under the capped measure it would have moved the number
-from 100 to 100.
+**The inference I drew from it was wrong and is withdrawn.** I claimed the official
+loop's progress measure was saturated at 100. It is not. The official loop measures
+with the uncapped JDK diagnostics checker, and its own records prove it: v9's
+`verification/loop/steps.json` opens at commit `b196f1e3`,
+`reason: "bootstrap-destination baseline"`, `measure.compile_errors: **233**` — the
+same 233 my census produced — and then descends 233 → 217 → 203 → 179 → 170 as the
+repairs land. No official measure is capped, and there is no capped-counter defect to
+fix.
 
-`tools/diag.sh` is the uncapped census used throughout.
-`evidence/this-run/javac-baseline.log` is the raw output.
+This was my own recurring failure: I measured the artifact in front of me
+(`mvn compile`) and inferred what the loop measures, instead of reading what the loop
+recorded. `evidence/official-v9/steps.json` had the answer from the moment it was
+copied out.
+
+What survives is narrower and still worth stating: **`mvn compile` is not a safe
+source for a diagnostic count**, so any ad-hoc check, script or report that reads
+Maven's error lines rather than the diagnostics checker will under-report by the cap.
+`tools/diag.sh` is the uncapped census this run used, kept here as a convenience, not
+as a correction to the harness.
+
+`evidence/this-run/javac-baseline.log` is the raw 233-diagnostic output.
+`evidence/official-v9/steps.json` is the official baseline that matches it.

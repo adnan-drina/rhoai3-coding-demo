@@ -24,10 +24,23 @@ are measured by the same tooling against the same corpus.
 
 ## Outcome
 
+> **Correction, 2026-09-15.** An earlier revision of this file said v9 never reached
+> packaging or startup. That was wrong, and the evidence to disprove it was in the
+> copied `evidence/official-v9/steps.json` all along: v9 **accepted the package gate**
+> at commit `6a4ba85a681bf65518f97316a511176cb38e11ee`
+> (`reason: "the package gate passes and discharges rt:package:f4aa0ab756c50669"`,
+> measure `[0, 0, 0]`) and **accepted the boot gate** at commit
+> `be484e84fa75151ade77d2d8bfb93999aa2d91c4`
+> (`reason: "the boot gate passes and discharges rt:boot:4b62542369129feb"`).
+> v9 also drove its own compile diagnostics from 233 to 0. **Build and startup are not
+> where the two runs differ.** The difference is behavioural coverage and the execution
+> effort spent reaching it.
+
 | | official v9 | this run |
 |---|---|---|
-| `mvn package` clean, tests executed | not reached | **yes**, `ValidatorTests` 1/1 |
-| packaged artifact boots against the decided DB | not reached | **yes**, 1.16-1.39 s, profiles `spring-data-jpa,prod` |
+| `mvn package` clean, tests executed | **reached** — package gate accepted at `6a4ba85` | **yes**, `ValidatorTests` 1/1 |
+| packaged artifact boots against the decided DB | **reached** — boot gate accepted at `be484e84` | **yes**, 1.16-1.39 s, profiles `spring-data-jpa,prod` |
+| compile diagnostics driven to zero | **yes**, 233 -> 0 | yes, 233 -> 0 |
 | parity scenarios run | partial | **18 of 18** |
 | parity scenarios PASS | 0 | **17** |
 | parity scenarios FAIL | 2 | **1** |
@@ -67,8 +80,8 @@ verified before each comparison.
 
 **1 FAIL — `SpecialtyRestController#deleteSpecialty`, `sc:delete-referenced-specialties-1`.**
 Status, content type and resulting state all match the source: `400`,
-`text/plain;charset=UTF-8`, the specialty not deleted. The body does not and
-structurally cannot. The source's recorded body is
+`text/plain;charset=UTF-8`, the specialty not deleted. **The body does not match, and
+this is unresolved, not impossible.** The source's recorded body is
 
 ```json
 {"className":"org.springframework.dao.DataIntegrityViolationException",
@@ -79,11 +92,26 @@ It names a Spring class that the compatibility path does not provide and a const
 name that belongs to HSQLDB, not to the PostgreSQL instance ADR-009 chose. The
 destination answers the same shape with
 `org.hibernate.exception.ConstraintViolationException` and the PostgreSQL constraint
-name. Reaching byte parity would require re-introducing a retired Spring class **and**
-forging a foreign-key name from another engine. It is recorded as unreachable rather
-than closed. Note the source's own behaviour here is a failure — it could not delete a
-referenced specialty — and that failure is faithfully preserved, including by NOT
-reordering that fragment's statements the way the PetType fragment was reordered.
+name.
+
+An earlier revision of this file called that difference "structurally unreachable" and
+said byte parity would require re-introducing a retired Spring class and forging a
+foreign-key name from another engine. **That claim is withdrawn: it does not follow.**
+The recorded body contains a *serialized* exception class name and a *serialized*
+constraint name; emitting either string requires no Spring class on the classpath and
+no HSQLDB foreign key, only a translation of the destination's error into the response
+shape the source emitted.
+
+This is therefore an **open error-response compatibility issue**. It is to be
+investigated as a bounded response translation — a mapping from the destination's
+persistence failure to the source's recorded `className` and `exMessage` fields,
+derived from the source captures — **before** any contract change is proposed. It is
+neither impossible nor waivable on the present evidence.
+
+Separately, and independently of the body: the source's own behaviour here is a
+failure — it could not delete a referenced specialty — and that failure is faithfully
+preserved, including by deliberately NOT reordering that fragment's statements the way
+the PetType fragment was reordered.
 
 **13 INCONCLUSIVE — "no parity record".** Twelve POST/PUT entry points and one
 wildcard-path GET have **no scenario in the corpus**, so there is nothing to compare.
@@ -103,7 +131,7 @@ the fixture is not usable as a parity oracle.
 |---|---|
 | entry points, total | 34 |
 | **passed** — compared against a recorded source response and equal | **20** |
-| **failed** — compared and different | **1** (body only, unreachable) |
+| **failed** — compared and different | **1** (body only; open error-response compatibility issue) |
 | **untested** — no recorded source response to compare against | **13** |
 
 Security: **disabled mode is parity-verified** (all 20 passes are in disabled mode,
@@ -115,10 +143,14 @@ is open.
 
 ## Effort, with the caveat above
 
+These figures describe effort, not speed: this execution consumed the decisions and
+the v9 evidence that the earlier run had to produce, so the two are not comparable as
+rates and no causal speedup is claimed.
+
 | | official v9 | this run |
 |---|---|---|
-| wall clock | 21 cards over 2026-09-14/15 | **56 minutes** to the final parity result |
+| wall clock | 21 cards over 2026-09-14/15 | 56 minutes to the final parity result |
 | orchestration units | 21 cards, a board, a loop | 13 application commits, no board |
-| human/Operator interventions | 3 Operator steps (ADR-008/012/013) + 3 architect rulings (ADR-014/015/016) | **0** — see `INTERVENTIONS.md` for the ADR-shaped calls I made myself |
+| human/Operator interventions | 3 Operator steps (ADR-008/012/013) + 3 architect rulings (ADR-014/015/016) | **zero human interventions during this execution, using accumulated decisions and v9 evidence** — the ADR-shaped calls I made myself are listed in `INTERVENTIONS.md` |
 | retries on the same evidence and scope | not measured here | 0 |
 | reversions | 0 | 0 |

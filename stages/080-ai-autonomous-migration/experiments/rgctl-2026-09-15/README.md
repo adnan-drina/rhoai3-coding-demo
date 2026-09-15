@@ -6,23 +6,29 @@ same frozen source and the same accepted decisions (ADR-001..016) as the officia
 destination.
 
 **Answer to the decisive question:** a working, behaviourally verified migration was
-produced with no human intervention and far less orchestration — but the relationship
-graph is not what produced it. See `RECOMMENDATION.md`.
+produced with zero human interventions during this execution — using the accumulated
+decisions and the v9 evidence — and with substantially less orchestration work. The
+relationship graph is not what produced it. See `RECOMMENDATION.md`, which also carries
+the architect's rulings on this experiment.
 
 ## Result in one table
 
 | | official v9 | this run |
 |---|---|---|
-| clean `mvn package`, tests executed | not reached | yes |
-| packaged artifact boots against PostgreSQL 16 | not reached | yes, 1.2 s |
+| clean `mvn package`, tests executed | reached (package gate accepted at `6a4ba85`) | yes |
+| packaged artifact boots against PostgreSQL 16 | reached (boot gate accepted at `be484e84`) | yes, 1.2 s |
+| compile diagnostics driven to zero | yes, 233 -> 0 | yes, 233 -> 0 |
 | parity scenarios PASS / FAIL / INCONCLUSIVE | 0 / 2 / 16 | **17 / 1 / 0** |
 | entry points PASS / FAIL / INCONCLUSIVE (of 34) | 0 / 2 / 32 | **20 / 1 / 13** |
 | ADR-015 product tests | none exist | 17 generated, **16 pass** |
 | security enabled mode | 403 on everything | 401 anonymous, 200 admin |
-| human interventions | 3 Operator steps + 3 architect rulings | **0** |
-| wall clock | 21 cards over two days | **56 minutes** |
+| human interventions | 3 Operator steps + 3 architect rulings | **zero during this execution**, using accumulated decisions and v9 evidence |
+| execution effort | 21 cards over two days | 13 commits in 56 minutes |
 
-Elapsed times are not a controlled comparison — see the caveats in `COMPARISON.md`.
+Build and startup are **not** where the two runs differ — v9 reached both. The
+difference is behavioural coverage and execution effort. Elapsed figures describe
+effort, not speed: this execution consumed decisions and evidence the earlier run had
+to produce. No causal speedup is claimed. See `COMPARISON.md`.
 
 ## The migrated application
 
@@ -41,7 +47,7 @@ base e1e11e4  (bootstrap of the frozen source, before any repair)
 | `RECOMMENDATION.md` | adopt / retain / reject, and what is still open |
 | `WORK-UNITS.md` | the executable work-unit manifest, its evidence and its sequence |
 | `COMPARISON.md` | this run against the official v9 evidence, with the caveats |
-| `FINDINGS.md` | what rgctl contributed, nine places it was wrong or empty, and what actually found each defect |
+| `FINDINGS.md` | what rgctl contributed, nine places it was wrong or empty, what actually found each defect, and the withdrawn B-1 claim |
 | `POLICY.md` | the policy, its measured baseline, the mutation test, and three ways `check` passes silently |
 | `INTERVENTIONS.md` | every ADR-shaped decision I made myself, scope changes, retries, interruptions |
 | `REPRODUCE.md` | exact commands, configuration and the two non-obvious overrides the test run needs |

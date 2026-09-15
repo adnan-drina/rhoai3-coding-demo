@@ -21,12 +21,16 @@ security ruling, ADR-015 product tests, ADR-016 root redirect.
 | **True compile diagnostics** | **233** | `javac -Xmaxerrs 100000` over main + generated sources |
 | Diagnostics Maven *reports* | 100 | `mvn compile` — javac's default `-Xmaxerrs 100` cap |
 
-> **Finding B-1 (baseline instrumentation defect).** `mvn compile` reports exactly
-> 100 errors because javac's default error cap is 100. The true figure is 233.
-> A loop whose acceptance rule is "the global diagnostic count must fall" is
-> reading a saturated counter: any repair removing fewer than 133 diagnostics
-> leaves the reported number pinned at 100, and the repair is scored as no
-> progress. This is measured, not inferred — see `evidence/javac-baseline.log`.
+> **Finding B-1 (corrected).** `mvn compile` reports exactly 100 errors because
+> javac's default error cap is 100; the uncapped figure is 233. Both facts stand.
+> An earlier revision inferred from them that the official loop's progress measure
+> was capped. **That inference is withdrawn.** The official loop measures with the
+> uncapped JDK diagnostics checker: v9's own
+> `evidence/official-v9/steps.json` opens at commit `b196f1e3`,
+> `reason: "bootstrap-destination baseline"`, `measure.compile_errors: 233` — the
+> same number — and descends 233 → 217 → 203 → 179 → 170 → … → 0. No official
+> measure is capped. What survives is only that `mvn compile` is not a safe source
+> for a diagnostic count.
 
 ## Tool observations vs. planning conclusions
 

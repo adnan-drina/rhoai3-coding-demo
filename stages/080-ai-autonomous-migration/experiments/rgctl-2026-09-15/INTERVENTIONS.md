@@ -2,11 +2,13 @@
 
 ## Human interventions
 
-**None.** No human decided anything during this run, no approval gate was waited on,
-and no Operator step was requested. Everything below is a decision an ADR would have
-carried in the official process and that I made myself. That makes this run
-**autonomous in execution but assisted-equivalent in authority**: six of these are
-ADR-shaped and would need ratification before anything here ships.
+**Zero human interventions during this execution**, using the accumulated decisions
+(ADR-001..016) and the v9 evidence as inputs. No approval gate was waited on and no
+Operator step was requested. That phrasing is deliberate: the decisions this run
+consumed were produced by earlier human work, so "autonomous" describes the execution,
+not the authority. Everything below is a decision an ADR would have carried in the
+official process and that I made myself — **assisted-equivalent in authority**, and
+needing ratification before anything here ships.
 
 ## Decisions I made that an ADR should have decided
 
