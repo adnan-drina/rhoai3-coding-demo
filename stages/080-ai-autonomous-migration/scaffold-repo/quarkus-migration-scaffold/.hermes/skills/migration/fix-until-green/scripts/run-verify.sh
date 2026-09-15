@@ -16,14 +16,27 @@
 #      source patterns, not bytecode (v9: incidents 4→0 at the first
 #      accepted step while 233 compile errors remained). Diagnostic never
 #      rescans; incidents stay unknown and cannot feed advance.
-#   5. when the measure is green and known: the packaging gate (full mvn verify)
-#      and the startup gate (that artifact, the decided datasource, bounded) via
+#   5. as soon as the measure is KNOWN and the compile count is zero
+#      (runtime.trigger=compile-zero, recorded in run.json so the audit says
+#      why the gate ran): the packaging gate (full mvn verify) and the startup
+#      gate (that artifact, the decided datasource, bounded) via
 #      verify-runtime.py, then a re-measure so their obligations reach the list
-#      (--no-runtime skips step 5; a simulator passes it)
-#   6. the PARITY gate, and only for a card whose obligation is a parity
-#      mismatch (verification/loop/issued.json carries gate=parity, or
-#      --parity says so): run-parity.py scoped to the scenarios that card's
-#      obligations are made of, then a re-measure. A parity repair leaves the
+#      (--no-runtime skips step 5; a simulator passes it). MTA incidents and
+#      failing tests do not stop Maven from producing an artifact, so waiting
+#      for the whole tuple to be [0,0,0] only delayed the two gates a
+#      coordinated multi-file unit is most likely to break.
+#   6. the PARITY gate, for a card whose obligation is a parity mismatch
+#      (verification/loop/issued.json carries gate=parity, or --parity says
+#      so): run-parity.py scoped to the scenarios that card's obligations are
+#      made of, then a re-measure. And, under decisions.loop.runtime_feedback
+#      v1, one UNSCOPED sweep on any card whose acceptance verification got the
+#      startup gate to pass, bound to that card's candidate: a behavioural
+#      failure then enters the next work-list rebuild as a parity obligation
+#      immediately instead of waiting for M4 (eleven of the isolated
+#      experiment's eighteen defects were invisible to the compiler and fell
+#      out of one replay). The sweep is skipped when the tree's receipt is
+#      already bound to this candidate digest, so it costs at most one run per
+#      candidate. A parity repair leaves the
 #      compile/test tuple untouched, so nothing else in this file can say
 #      whether it landed -- only the comparison run again can (v9 card
 #      t_77cae2b2: the CORS properties the brief asked for were REVERTED
@@ -219,15 +232,30 @@ VERIFY_RC=$?
 # list. A gate that does not run stays unknown -- never initialised to zero.
 # Diagnostic mode never runs this gate.
 if [[ "${RUNTIME}" -eq 1 && "${VERIFY_RC}" -eq 0 ]]; then
-  GREEN="$(python3 - "${ROOT}" <<'PYEOF'
+  RT_TRIGGER="$(python3 - "${ROOT}" <<'PYEOF'
 import json, sys
 from pathlib import Path
 p = Path(sys.argv[1]) / "verification" / "loop" / "state.json"
 m = (json.loads(p.read_text())).get("measure") or {} if p.is_file() else {}
-print("yes" if m.get("known") and all(v == 0 for v in (m.get("tuple") or [1])) else "no")
+t = list(m.get("tuple") or [])
+# THE TRIGGER, named and recorded. The artifact is attemptable as soon as the
+# COMPILER is satisfied: MTA incidents and failing tests do not stop Maven from
+# producing one, and a packaging or startup regression is exactly what a
+# coordinated multi-file unit can cause -- the cheapest moment to catch it is
+# the checkpoint that produced it, not the end of the run. The measure must be
+# KNOWN: an unrun compiler is not a compile count of zero.
+# (tuple = [mandatory_incidents, compile_errors, failing_tests], worklist.MEASURE_KEYS)
+print("compile-zero" if m.get("known") and len(t) > 1 and t[1] == 0 else "none")
 PYEOF
 )"
-  if [[ "${GREEN}" == "yes" ]]; then
+  export RT_TRIGGER
+  python3 - "${RUN}" <<'PYEOF'
+import json, os, sys
+doc = json.load(open(sys.argv[1]))
+doc.setdefault("runtime", {})["trigger"] = os.environ.get("RT_TRIGGER") or "none"
+json.dump(doc, open(sys.argv[1], "w"))
+PYEOF
+  if [[ "${RT_TRIGGER}" != "none" ]]; then
     T0="$(now_ms)"
     set +e
     # a second tree in the same workspace must not start on the first one's
@@ -266,7 +294,9 @@ from pathlib import Path
 root = Path(sys.argv[1])
 force = sys.argv[2] == "true"
 sys.path.insert(0, str(root / ".hermes" / "lib"))
-from planner.paths import LOOP_ISSUED, VERIFY_BOOT, WORKLIST  # noqa: E402
+from planner.paths import LOOP_ISSUED, PARITY_DIR, VERIFY_BOOT, VERIFY_RUN, WORKLIST  # noqa: E402
+
+PARITY_RECEIPT = PARITY_DIR / "receipt.json"
 
 
 def doc(rel):
@@ -280,11 +310,47 @@ def doc(rel):
 
 
 issued = doc(LOOP_ISSUED)
-if not force and str(issued.get("gate") or "") != "parity":
-    print("no")
-    raise SystemExit(0)
 boot = doc(VERIFY_BOOT)
-if not (boot.get("ran") and boot.get("rc") == 0 and boot.get("ready")):
+booted = bool(boot.get("ran") and boot.get("rc") == 0 and boot.get("ready"))
+
+
+def feedback_mode():
+    """decisions.loop.runtime_feedback, normalised by planner.decisions.
+
+    The FILE is read directly rather than through load_decisions: that helper
+    validates every required decision, and this stage only asks which mode the
+    run is in. The completeness of decisions.yaml is admission business
+    (MISSING_DECISION), and it is sealed there, so nothing is skipped here.
+    Anything unreadable is off -- the mode that changes nothing."""
+    try:
+        from planner.decisions import runtime_feedback
+        from planner.paths import DECISIONS
+        from planner.yamlite import load_yaml
+        doc = load_yaml(root / DECISIONS)
+        return runtime_feedback(doc if isinstance(doc, dict) else {})
+    except Exception:
+        return "off"
+
+
+if not force and str(issued.get("gate") or "") != "parity":
+    # RUNTIME FEEDBACK: no parity obligation on this card, but the destination
+    # just started, so the whole scenario phase is comparable on this candidate
+    # and the answer is worth more now than at M4.
+    # (no apostrophes in this block: bash parses the body of a heredoc inside
+    # a command substitution, and a lone quote would swallow the script)
+    if feedback_mode() != "v1" or not booted:
+        print("no")
+        raise SystemExit(0)
+    # the cost guard: a receipt already bound to THIS candidate digest measured
+    # this exact tree, so the sweep would replay it for nothing
+    want = str(doc(VERIFY_RUN).get("candidate_sha256") or "")
+    binding = doc(PARITY_RECEIPT).get("binding") or {}
+    if want and str(binding.get("mode") or "") == "candidate" and str(binding.get("candidate_sha256") or "") == want:
+        print("done:the parity receipt is already bound to this candidate (%s); the sweep would replay it" % want[:12])
+        raise SystemExit(0)
+    print("sweep:")
+    raise SystemExit(0)
+if not booted:
     # the comparison runs the PACKAGED destination; with no artifact that
     # started and became ready there is nothing to compare, and a run that
     # cannot start one measures nothing
@@ -299,8 +365,23 @@ PYEOF
   if [[ "${PARITY_PLAN}" == skip:* ]]; then
     echo "WARN: parity comparison not run (${PARITY_PLAN#skip:}); this card's parity obligation stays UNKNOWN and advance.py cannot accept it" >&2
   fi
-  if [[ "${PARITY_PLAN}" == run:* ]]; then
-    SIDS="${PARITY_PLAN#run:}"
+  if [[ "${PARITY_PLAN}" == done:* ]]; then
+    # not a failure and not this card's obligation: the cost guard. Said out
+    # loud so the audit does not read a silent absence as a run.
+    echo "parity: runtime-feedback sweep skipped -- ${PARITY_PLAN#done:}"
+  fi
+  if [[ "${PARITY_PLAN}" == run:* || "${PARITY_PLAN}" == sweep:* ]]; then
+    # A card's own comparison is SCOPED to its scenarios; the runtime-feedback
+    # sweep is the whole phase, because it is not answering one obligation --
+    # it is asking what this candidate did to behaviour at all.
+    if [[ "${PARITY_PLAN}" == sweep:* ]]; then
+      SIDS=""
+      PARITY_TRIGGER="runtime-feedback"
+      echo "parity: runtime-feedback sweep (decisions.loop.runtime_feedback v1) -- the startup gate passed, comparing the whole phase on this candidate"
+    else
+      SIDS="${PARITY_PLAN#run:}"
+      PARITY_TRIGGER="issued-card"
+    fi
     PARITY_ARGS=()
     # The verdicts this comparison produces are of the CANDIDATE, not of the
     # accepted tree: verify.py above rebuilt the work list on it, so the live
@@ -325,7 +406,7 @@ PYEOF
       for s in "${SID_ARR[@]}"; do
         [[ -n "${s}" ]] && PARITY_ARGS+=(--scenario "${s}")
       done
-    else
+    elif [[ "${PARITY_TRIGGER}" == "issued-card" ]]; then
       # a parity obligation whose entry point declares no scenario is a read
       # oracle: it is re-measured by the unscoped run, which compares those
       echo "parity: the issued obligations name no scenario; comparing the whole phase (read oracles included)"
@@ -343,7 +424,7 @@ PYEOF
     set -e
     PARITY_MS="$(( $(now_ms) - T0 ))"
     tail -20 "${WORK}/parity.log" || true
-    export PARITY_RC PARITY_MS PARITY_SIDS="${SIDS}"
+    export PARITY_RC PARITY_MS PARITY_SIDS="${SIDS}" PARITY_TRIGGER
     python3 - "${RUN}" "${ROOT}" <<'PYEOF'
 import json, os, sys
 from pathlib import Path
@@ -360,6 +441,11 @@ doc = json.load(open(run_p))
 doc.setdefault("runtime", {})["parity"] = {
     "ran": True,
     "rc": int(os.environ.get("PARITY_RC") or 0),
+    # WHY it ran: the issued card's own obligation, or the runtime-feedback
+    # sweep. Both are of the candidate and both bind to the issued card; only
+    # the first is scoped, and only the first discharges an obligation.
+    "trigger": os.environ.get("PARITY_TRIGGER") or "issued-card",
+    "scoped": bool([s for s in (os.environ.get("PARITY_SIDS") or "").split(",") if s]),
     "scenarios": [s for s in (os.environ.get("PARITY_SIDS") or "").split(",") if s],
     "receipt_verdict": verdict,
     "ms": ms,

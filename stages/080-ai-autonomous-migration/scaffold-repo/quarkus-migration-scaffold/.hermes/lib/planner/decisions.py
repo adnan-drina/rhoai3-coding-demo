@@ -11,9 +11,12 @@ Four things and nothing else:
 - ``security``                (optional, ADR-014) the source's security switch
                               and the identities the enabled-mode source
                               capture authenticates as, by REFERENCE only
-- ``loop``                    (optional) how the loop forms its work:
-                              ``unit_formation: v1`` turns on the unit former,
-                              absent keeps today's per-file clustering
+- ``loop``                    (optional) how the loop forms and measures its
+                              work: ``unit_formation: v1`` turns on the unit
+                              former, absent keeps today's per-file
+                              clustering; ``runtime_feedback: v1`` runs the
+                              full scenario comparison once the destination
+                              boots, absent leaves it to the parity cards
 
 The planner reads decisions; it never writes or infers them. A required
 decision that is null/empty is admission BLOCK ``MISSING_DECISION``; a
@@ -336,6 +339,14 @@ def retired_sources(doc: dict[str, Any]) -> dict[str, str]:
 LOOP_SECTION = "loop"
 UNIT_FORMATION_V1 = "v1"
 UNIT_FORMATION_OFF = "off"
+# Whether the loop feeds RUNTIME behaviour back into its own work list. v1 runs
+# the full scenario comparison once the destination boots, so a behavioural
+# failure enters the next work-list rebuild as a parity obligation immediately
+# instead of waiting for M4. Absent is off, which is the v9 behaviour: the
+# comparison runs only for a card whose obligation is already a parity
+# mismatch.
+RUNTIME_FEEDBACK_V1 = "v1"
+RUNTIME_FEEDBACK_OFF = "off"
 
 
 def loop_modes(doc: dict[str, Any]) -> dict[str, str]:
@@ -343,13 +354,20 @@ def loop_modes(doc: dict[str, Any]) -> dict[str, str]:
     to the mode that changes nothing, never to the new one."""
     section = doc.get(LOOP_SECTION)
     section = section if isinstance(section, dict) else {}
-    value = str(section.get("unit_formation") or "").strip()
-    return {"unit_formation": UNIT_FORMATION_V1 if value == UNIT_FORMATION_V1 else UNIT_FORMATION_OFF}
+    formation = str(section.get("unit_formation") or "").strip()
+    feedback = str(section.get("runtime_feedback") or "").strip()
+    return {"unit_formation": UNIT_FORMATION_V1 if formation == UNIT_FORMATION_V1 else UNIT_FORMATION_OFF,
+            "runtime_feedback": RUNTIME_FEEDBACK_V1 if feedback == RUNTIME_FEEDBACK_V1 else RUNTIME_FEEDBACK_OFF}
 
 
 def unit_formation(doc: dict[str, Any]) -> str:
     """decisions.loop.unit_formation: "v1" or "off"."""
     return loop_modes(doc)["unit_formation"]
+
+
+def runtime_feedback(doc: dict[str, Any]) -> str:
+    """decisions.loop.runtime_feedback: "v1" or "off"."""
+    return loop_modes(doc)["runtime_feedback"]
 
 
 def max_attempts(doc: dict[str, Any]) -> int:

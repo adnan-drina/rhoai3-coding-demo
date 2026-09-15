@@ -15,6 +15,18 @@ count is bounded so a card cannot walk the tree one justification at a time.
 
   python3 amend-scope.py --root . --cluster c:abc --card $HERMES_KANBAN_TASK \
       --path src/main/java/.../Vet.java --reason "findByLastName needs Vet.lastName"
+
+A UNIT card is revised the same way and on the same record, with one addition:
+the revision must cite EVIDENCE a tool states (--evidence javac:<identity> |
+model:<sealed symbol> | runtime:<rt id>), because a coordinated repair spanning
+several files can always be argued into one more, and prose is not a fact. The
+revision is bounded by the same size rule that formed the unit (UNIT_MAX_FILES)
+and recorded on the issued card as ``revisions[]`` beside the amendment; the
+sealed inventory, the unit_id, the budget and the idempotency key do not move.
+
+  python3 amend-scope.py --root . --cluster u:abc123 --card $HERMES_KANBAN_TASK \
+      --path src/main/java/.../Owner.java --reason "the sealed throws surface is declared here" \
+      --evidence javac:diag:src/main/java/.../Owner.java|compiler.err...|9f3c
 """
 from __future__ import annotations
 
@@ -28,19 +40,136 @@ from _loop_common import ensure_hermes_lib, load_issued, product_paths_changed  
 ensure_hermes_lib()
 
 from planner.canonical import load_json, sha256_file, write_canonical  # noqa: E402
-from planner.paths import LOOP_ISSUED, is_product_path  # noqa: E402
+from planner.paths import LOOP_ISSUED, WORKLIST, is_product_path  # noqa: E402
 from planner.dest_model import DestModelUnavailable, dest_model, types_of  # noqa: E402
-from planner.worklist import batch_scope_digest  # noqa: E402
+from planner.worklist import UNIT_KIND, UNIT_MAX_FILES, batch_scope_digest, resolve_compile_symbol  # noqa: E402
 
 # How far one card may reach beyond the file it was issued for. Two is enough
 # for a repository whose queries need one collaborating entity; a third is the
 # signal that the cluster was wrong, which is a planning answer, not a worker's.
 AMENDMENT_LIMIT = 2
+# A UNIT is already several files by construction, so the same number would
+# refuse a legitimate revision of a coordinated repair after one collaborator.
+# Four, and never past the former's own file bound: the size rule that formed
+# the unit is the size rule that bounds its revisions, or a card could walk to
+# a width the former would have refused to mint.
+UNIT_AMENDMENT_LIMIT = 4
+EVIDENCE_KINDS = ("javac", "model", "runtime")
 
 
 def _refuse(msg: str) -> int:
     print("REFUSE: SCOPE_AMENDMENT %s" % msg, file=sys.stderr)
     return 1
+
+
+def _sealed_symbols(scope: dict) -> tuple[set[str], set[tuple[str, str]], set[str]]:
+    """(symbol fqns, (declaring fqn, signature) pairs, sealed member paths)."""
+    fqns: set[str] = set()
+    members: set[tuple[str, str]] = set()
+    for s in scope.get("symbols") or []:
+        if not isinstance(s, dict) or not s.get("fqn"):
+            continue
+        fqns.add(str(s["fqn"]))
+        if str(s.get("kind") or "") == "member" and s.get("signature"):
+            members.add((str(s["fqn"]), str(s["signature"])))
+    paths = {str(m.get("path") or "") for m in (scope.get("members") or []) if m.get("path")}
+    return fqns, members, paths
+
+
+def _worklist_items(root: Path) -> list[dict]:
+    p = root / WORKLIST
+    if not p.is_file():
+        return []
+    doc = load_json(p)
+    return [i for i in (doc.get("items") or []) if isinstance(i, dict)]
+
+
+def _evidence(root: Path, scope: dict, raw: str) -> tuple[dict, str]:
+    """(the evidence row, why it is not evidence).
+
+    Prose alone stops being sufficient for a unit. What counts is a fact one of
+    the tools states NOW: a javac identity the current work list carries, a
+    relation the sealed inventory and the model state, or a runtime obligation
+    the current work list carries. A stale identity is refused by name -- an
+    amendment justified by a diagnostic nobody reports any more is justified by
+    nothing."""
+    kind, _, ref = str(raw or "").partition(":")
+    kind, ref = kind.strip(), ref.strip()
+    if kind not in EVIDENCE_KINDS or not ref:
+        return {}, ("--evidence must be <kind>:<ref> with kind one of %s; %r is not"
+                    % ("|".join(EVIDENCE_KINDS), raw))
+    items = _worklist_items(root)
+    if kind == "javac":
+        hit = next((i for i in items if str(i.get("identity") or "") == ref or str(i.get("id") or "") == ref), None)
+        if hit is None:
+            return {}, ("no javac diagnostic with identity %r is in the current work list; an amendment justified by a "
+                        "diagnostic nobody reports any more is justified by nothing" % ref)
+        return {"kind": kind, "ref": ref, "path": str(hit.get("path") or ""), "tool_named": True}, ""
+    if kind == "runtime":
+        hit = next((i for i in items if str(i.get("id") or "") == ref and str(i.get("source") or "") == "runtime"), None)
+        if hit is None:
+            return {}, "no runtime obligation %r is in the current work list" % ref
+        return {"kind": kind, "ref": ref, "path": str(hit.get("path") or ""), "tool_named": True}, ""
+    fqns, members, _paths = _sealed_symbols(scope)
+    named = ref.split("#", 1)[0]
+    if named not in fqns and not any(named == f for f, _s in members):
+        return {}, ("%r is not a symbol this unit sealed (%s); the model may state a relation, but only about what the "
+                    "card was issued for" % (ref, ", ".join(sorted(fqns)[:3]) or "no sealed symbol"))
+    return {"kind": kind, "ref": ref, "tool_named": False}, ""
+
+
+def _unit_locus(root: Path, scope: dict, rel: str) -> tuple[str, str]:
+    """Why this file is part of the UNIT the card carries, or why not.
+
+    Four shapes, each read from the SEALED inventory and the model -- never
+    from a reference the candidate has just written:
+
+      * the inventory already carries the path (a member the card was issued
+        with, outside the write set only because the bound narrowed it);
+      * a type declared here implements or extends a sealed declaring type;
+      * a member declared here calls a sealed member;
+      * a javac diagnostic the CURRENT work list reports at this path names a
+        sealed symbol (tool-named, so nothing the worker wrote can forge it);
+      * a type here reads the sealed configuration property."""
+    fqns, members, sealed_paths = _sealed_symbols(scope)
+    if not fqns and not sealed_paths:
+        return "", "the unit seal carries no symbol and no member, so nothing in it can show a file is in scope"
+    if rel in sealed_paths:
+        return "sealed: %s is a member of the unit's own inventory" % rel, ""
+    try:
+        model = dest_model(root)
+    except DestModelUnavailable as exc:
+        return "", "the destination model is unavailable, so the file's types cannot be named (%s)" % exc
+    here = types_of(model, rel)
+    if not here:
+        return "", "the model has no type for %s" % rel
+    for t in here:
+        for sup in (t.get("supertypes") or []):
+            base = str(sup).split("<", 1)[0]
+            if base in fqns or any(base == f for f, _s in members):
+                return "sealed: %s extends or implements %s, which this unit seals" % (t.get("fqn"), base), ""
+        for m in (t.get("declared") or []):
+            for call in (m.get("calls") or []):
+                for fqn, sig in members:
+                    if str(call).startswith(fqn + ".") and str(call).endswith(sig):
+                        return "sealed: %s.%s calls %s, a member this unit seals" % (t.get("fqn"), m.get("name"), call), ""
+    annotations: dict = {}
+    for it in _worklist_items(root):
+        if str(it.get("source") or "") != "javac" or str(it.get("path") or "") != rel:
+            continue
+        key, _kind = resolve_compile_symbol(model, it, annotations)
+        if key and key in fqns:
+            return "sealed: javac reports %s at %s, and %s is a symbol this unit seals" % (it.get("rule_id"), rel, key), ""
+    for t in here:
+        for m in (t.get("declared") or []):
+            for ann in (m.get("annotations") or []):
+                for value in (ann.get("values") or {}).values():
+                    if str(value) in fqns:
+                        return "sealed: %s.%s reads %s, the property this unit seals" % (t.get("fqn"), m.get("name"), value), ""
+    return "", ("%s declares %s, which the unit's sealed symbols do not reach: it does not implement or extend one, does "
+                "not call one, is named by no javac diagnostic about one, and reads no sealed property. A relationship "
+                "the repair itself introduced authorizes nothing; a card that needs this file is a card the planner has "
+                "not minted yet." % (rel, ", ".join(sorted(str(t.get("fqn")) for t in here)) or "no type"))
 
 
 def _locus(root: Path, scope: dict, rel: str) -> tuple[str, str]:
@@ -83,6 +212,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--card", default="")
     ap.add_argument("--path", required=True, help="one repo-relative file to add to the write set")
     ap.add_argument("--reason", required=True, help="what the card cannot finish without it")
+    ap.add_argument("--evidence", default="",
+                    help="required for a unit card: <kind>:<ref> where kind is javac (a diagnostic identity the current "
+                         "work list carries), model (a relation the sealed inventory states about a sealed symbol) or "
+                         "runtime (an rt: obligation the current work list carries)")
     args = ap.parse_args(argv)
     root = Path(args.root).resolve()
 
@@ -112,14 +245,32 @@ def main(argv: list[str] | None = None) -> int:
     if len(str(args.reason).strip()) < 12:
         return _refuse("--reason must say what the card cannot finish without this file")
 
+    scope_doc = load_json(scope_p)
+    unit = str(scope_doc.get("kind") or "") == UNIT_KIND
+    limit = UNIT_AMENDMENT_LIMIT if unit else AMENDMENT_LIMIT
+
     amendments = list(issued.get("amendments") or [])
     if rel in set(issued.get("write_set") or []):
         print("OK: %s is already writable for %s" % (rel, args.cluster))
         return 0
-    if len(amendments) >= AMENDMENT_LIMIT:
-        return _refuse("this card has already been amended %d time(s) (limit %d); the cluster is wrong, "
+    # A unit's scope may be REVISED, but never past the size rule that formed
+    # it: the former refuses to mint a unit wider than UNIT_MAX_FILES, and an
+    # amendment that walked past it would produce by hand exactly the card the
+    # former declined to produce.
+    if unit and len(set(issued.get("write_set") or []) | {rel}) > UNIT_MAX_FILES:
+        return _refuse("UNIT_OVERSIZE: %s would take this unit to %d file(s) (max %d); a repair this wide is a planning "
+                       "answer, not a revision" % (rel, len(set(issued.get("write_set") or []) | {rel}), UNIT_MAX_FILES))
+    if len(amendments) >= limit:
+        return _refuse("this card has already been amended %d time(s) (limit %d); the %s is wrong, "
                        "which is a planning answer: let the card be refused and re-planned"
-                       % (len(amendments), AMENDMENT_LIMIT))
+                       % (len(amendments), limit, "unit" if unit else "cluster"))
+    evidence: dict = {}
+    if unit:
+        # Prose alone stops being sufficient for a unit: a revision of a sealed
+        # scope is recorded WITH the fact that justifies it, from a tool.
+        evidence, why = _evidence(root, scope_doc, args.evidence)
+        if not evidence:
+            return _refuse("a unit's scope is revised on evidence, never on a reason alone: %s" % why)
 
     # Authority is granted BEFORE the file moves, never after. A file that is
     # already edited cannot be authorized retrospectively: there would be
@@ -131,22 +282,36 @@ def main(argv: list[str] | None = None) -> int:
     # And the ask has to be about the failure this card carries. The locus is
     # the measured obligation's own file and the members named in the sealed
     # inventory: a file with no bearing on either is a different card.
-    scope_doc = load_json(scope_p)
-    locus, why = _locus(root, scope_doc, rel)
+    locus, why = (_unit_locus(root, scope_doc, rel) if unit else _locus(root, scope_doc, rel))
     if not locus:
         return _refuse("%s bears no relation to what this card measures: %s. A file the failure does not reach is a "
                        "planning answer, not an amendment." % (rel, why))
 
-    amendments.append({"path": rel, "reason": str(args.reason).strip(), "attempt": issued.get("attempt"),
-                       "granted_before_sha256": sha256_file(root / rel),
-                       "dirty_at_grant": False,
-                       "locus": locus})
+    row = {"path": rel, "reason": str(args.reason).strip(), "attempt": issued.get("attempt"),
+           "granted_before_sha256": sha256_file(root / rel),
+           "dirty_at_grant": False,
+           "locus": locus}
+    if evidence:
+        row["evidence"] = evidence
+    amendments.append(row)
     issued["amendments"] = amendments
+    if unit:
+        # The REVISION record: what was added, why, and the tool fact that
+        # justified it. It lives on the issued card, never in the inventory --
+        # the inventory's seal is what acceptance re-checks, and a seal that
+        # moves is not one. The unit_id and the idempotency key are untouched,
+        # so the budget does not reset and the card does not become another.
+        revisions = list(issued.get("revisions") or [])
+        revisions.append({"n": len(revisions) + 1, "path": rel, "evidence": evidence,
+                          "locus": locus, "reason": row["reason"], "attempt": issued.get("attempt"),
+                          "unit_id": str(scope_doc.get("unit_id") or ""), "rule": str(scope_doc.get("rule") or "")})
+        issued["revisions"] = revisions
     issued["write_set"] = sorted(set(issued.get("write_set") or []) | {rel})
     write_canonical(root / LOOP_ISSUED, issued)
-    print("OK: SCOPE AMENDED %s + %s (%d of %d) — the sealed inventory is unchanged; "
+    print("OK: SCOPE %s %s + %s (%d of %d)%s — the sealed inventory is unchanged; "
           "every member in it is still assessed when the candidate is judged"
-          % (args.cluster, rel, len(amendments), AMENDMENT_LIMIT))
+          % ("REVISED" if unit else "AMENDED", args.cluster, rel, len(amendments), limit,
+             (" on %s evidence %s" % (evidence["kind"], evidence["ref"])) if evidence else ""))
     return 0
 
 

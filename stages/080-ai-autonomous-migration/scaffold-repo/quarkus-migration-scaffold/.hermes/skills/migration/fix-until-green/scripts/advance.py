@@ -30,6 +30,23 @@ otherwise:
     for a human as exposed-outside-scope. It is REVERTED with the symbols
     named, so the next attempt fixes one import;
 
+  * on a UNIT card that introduced set is PARTITIONED before the veto decides.
+    A diagnostic inside the unit's FILE seal whose token resolves -- through
+    the declaring file's imports -- to a symbol the unit SEALED, or to a
+    replacement the catalogue DOCUMENTS with a row, is the unit's own work in
+    progress: it is tolerated and recorded on the step as
+    explained_regressions, and the build or config cluster that resolves it is
+    the next card. Everything else is introduced and is rejected with the same
+    message as before. jakarta.ws.rs.core.Context has a compat-mapping row and
+    jakarta.ws.rs.Context does not, so t_3903f495 is explained by nothing and
+    still REVERTS -- which is what the relaxation must never eat;
+
+  * a UNIT card is then judged at its CHECKPOINT (worklist._unit_progress):
+    its own sealed identities gone, every sealed member assessed clean from the
+    tree, no regressed test or incident slot, no gate going backwards -- and,
+    only then, a compile slot that may stand still or briefly rise for exactly
+    what the partition above explained;
+
   * a card issued for the PARITY gate is judged by the comparison the
     acceptance path re-ran for its scenarios (run-verify.sh → run-parity.py):
     the composed receipt must record every issued obligation's scenario as
@@ -72,10 +89,10 @@ from _loop_common import PARITY_SNAPSHOT, attempt_budget, attempts_spent, budget
 ensure_hermes_lib()
 from planner import pipeline  # noqa: E402
 from planner.canonical import digest, load_json, write_canonical  # noqa: E402
-from planner.dest_model import checked_exception_delta, diagnostic_identity  # noqa: E402
+from planner.dest_model import DestModelUnavailable, checked_exception_delta, dest_model, diagnostic_identity  # noqa: E402
 from planner.decisions import load_decisions, max_attempts  # noqa: E402
 from planner.paths import EVIDENCE_BUNDLE, LOOP_ACCEPTED, LOOP_ISSUED, MTA_RESCAN_FINDINGS, VERIFY_DIAGNOSTICS, VERIFY_DIR, VERIFY_RUN, WORKLIST  # noqa: E402
-from planner.worklist import CHECKED_FAMILY_RULE, EXPOSED, PARITY_RECEIPT, RETAIN, UNPROVEN, assess_batch_scope, batch_scope_digest, build_worklist, compile_items, gate_items, incidents_from_findings, item_ids, obligation_keys, progress  # noqa: E402
+from planner.worklist import CHECKED_FAMILY_RULE, EXPOSED, PARITY_RECEIPT, RETAIN, UNIT_KIND, UNPROVEN, assess_unit, batch_scope_digest, build_worklist, compile_items, gate_items, incidents_from_findings, item_ids, obligation_keys, progress, unit_continue_scope, unit_explained_regressions  # noqa: E402
 
 # The codes javac's flow analysis reports ONE site at a time per compilation
 # (control in dest_model.py: three files with the same defect are one reported
@@ -573,6 +590,7 @@ def main(argv: list[str] | None = None) -> int:
     scope_rows: list[dict] = []
     scope_doc: dict = {}
     family = False
+    unit = False
     bad: list[dict] = []
     family_detail = ""
     if scope_ref:
@@ -585,22 +603,36 @@ def main(argv: list[str] | None = None) -> int:
             return _reject(root, steps, args.cluster, args.card, cur,
                            "the scope inventory on disk is not the one sealed with the card",
                            changed, mint=not args.no_mint, hermes=args.hermes)
-        scope_rows = assess_batch_scope(root, scope_doc)
+        # assess_unit dispatches on the sealed rule: a repository inventory and
+        # a checked-exception family are assessed by the same code as before,
+        # and a unit by the rule that formed it.
+        scope_rows = assess_unit(root, scope_doc)
         bad = [r for r in scope_rows if r.get("verdict") == "violates"]
         family = str(scope_doc.get("rule") or "") == CHECKED_FAMILY_RULE
+        unit = str(scope_doc.get("kind") or "") == UNIT_KIND
         target = str(scope_doc.get("repository") or scope_doc.get("signature") or scope_doc.get("rule") or "scope")
         family_detail = "%s member(s) of %s still break %s: %s" % (
             len(bad), target, scope_doc.get("rule"), "; ".join("%s (%s)" % (r["member"], r["detail"]) for r in bad[:4]))
         # A family member still unhandled is the family's REMAINING work, which
         # the measure below decides about (continue, or reject when the issued
-        # one is still reported). A repository member is judged here.
-        if bad and not family:
+        # one is still reported). A UNIT's members are judged at its checkpoint,
+        # in progress(), after its own sealed identities are asked about -- a
+        # coordinated repair is one verdict, in one order, or the message a
+        # worker gets names the wrong half of it. A repository member is judged
+        # here, exactly as before.
+        if bad and not family and not unit:
             return _reject(root, steps, args.cluster, args.card, cur, family_detail,
                            changed, mint=not args.no_mint, hermes=args.hermes)
         # An assessment that could not be made is not an assessment that
         # passed. The card cannot complete on a member nobody could resolve;
         # that is a prerequisite to repair, not an attempt to spend.
         unknown = [r for r in scope_rows if r.get("verdict") == "inconclusive"]
+        if unknown and unit:
+            return _pending(root, steps, args.cluster, args.card, cur,
+                            "%s sealed member(s) of %s could not be assessed against %s: %s" % (
+                                len(unknown), scope_doc.get("unit_id") or args.cluster, scope_doc.get("rule"),
+                                "; ".join("%s (%s)" % (r["member"], r["detail"]) for r in unknown[:3])),
+                            changed, on_disk, cause="unassessable-scope")
         if unknown:
             return _pending(root, steps, args.cluster, args.card, cur,
                             "%s member(s) of %s could not be assessed against %s: %s" % (
@@ -636,6 +668,32 @@ def main(argv: list[str] | None = None) -> int:
         if undecided:
             print("WARN: introduced-diagnostic veto skipped: no accepted diagnostics snapshot at %s, and %d current diagnostic(s) carry "
                   "no accepted err: id, which cannot tell a moved line from a new report" % (snap, len(undecided)), file=sys.stderr)
+    # THE PARTITION, and only for a unit card. The veto itself does not move:
+    # it stays global over every file and it stays here, BEFORE progress().
+    # What a unit adds is that some of what it introduced is the unit's own
+    # work in progress -- a diagnostic inside the file seal whose token
+    # resolves to a symbol the unit sealed, or to a replacement the CATALOGUE
+    # documents. Everything else is introduced and is rejected exactly as
+    # before, with the same message. jakarta.ws.rs.core.Context has a
+    # compat-mapping row and jakarta.ws.rs.Context does not, so the v9
+    # t_3903f495 candidate -- the right repair with the wrong import -- is
+    # explained by nothing and stays REVERTED, which is the counterexample the
+    # relaxation must never eat.
+    explained_rows: list[dict] = []
+    if introduced and unit:
+        try:
+            _cand_model = dest_model(root)
+        except DestModelUnavailable as exc:
+            _cand_model = None
+            print("WARN: the destination could not be modelled (%s), so no diagnostic can be explained by this unit's "
+                  "sealed symbols; every introduced diagnostic is judged as before" % exc, file=sys.stderr)
+        explained_rows, why = unit_explained_regressions(scope_doc, cur.get("items") or [], _cand_model,
+                                                         identities=set(introduced))
+        if why:
+            print("WARN: nothing is tolerated at this checkpoint: %s" % why, file=sys.stderr)
+            explained_rows = []
+        tolerated = {r["identity"] for r in explained_rows}
+        introduced = [k for k in introduced if k not in tolerated]
     if introduced:
         named = ["%s:%s %s — %s" % (cur_attr[k].get("path") or "", cur_attr[k].get("line") or 0,
                                      cur_attr[k].get("rule_id") or "", str(cur_attr[k].get("message") or cur_attr[k].get("detail") or "")[:120])
@@ -644,15 +702,30 @@ def main(argv: list[str] | None = None) -> int:
                        "introduced %d compile diagnostic(s) the accepted tree did not have: %s" % (len(introduced), "; ".join(named)),
                        changed, mint=not args.no_mint, hermes=args.hermes,
                        legal_next="fix the named symbols in the same write set; do not widen the write set to satisfy a missing import")
+    if explained_rows:
+        print("NOTE: %d diagnostic(s) remain that this unit's sealed symbols explain and its checkpoint tolerates: %s. "
+              "They are recorded on the step as explained_regressions; the build or config cluster that resolves them "
+              "is the NEXT card, never a wider write set"
+              % (len(explained_rows), "; ".join("%s → %s" % (r["path"], r["symbol"]) for r in explained_rows[:3])),
+              file=sys.stderr)
     gate = str(issued.get("gate") or "")
     # identities without lines: whether the issued failure is "still reported"
     cur_identities = {str(i.get("identity")) for i in (cur.get("items") or []) if str(i.get("source") or "") == "javac" and i.get("identity")}
     issued_identities = {str(v) for v in (issued.get("item_identities") or {}).values() if v} or None
+    # what a CONTINUE may move to: a checked-exception family's own members, or
+    # -- for a unit -- a diagnostic reported now at a file the unit seals and at
+    # a member row its inventory carries (the flow codes come one site at a
+    # time and carry no symbol token, so they are never "explained" and the
+    # card continues on them instead).
     family_keys = ({"chk:" + str(m.get("member") or "") for m in (scope_doc.get("members") or [])}
-                   if scope_ref and family else None)
+                   if scope_ref and family else
+                   (unit_continue_scope(scope_doc, cur.get("items") or []) if scope_ref and unit else None))
     prev_parity, cur_parity = _parity_receipts(root, run if isinstance(run, dict) else {}, issued, args.card)
     ok, reason = progress(prev["measure"], cur["measure"], prev_keys, cur_keys,
                           gate=gate,
+                          unit_scope=scope_doc if unit else None,
+                          unit_assessment=scope_rows if unit else None,
+                          explained={r["identity"] for r in explained_rows},
                           prev_runtime=prev.get("runtime") or {}, cur_runtime=cur.get("runtime") or {},
                           prev_parity=prev_parity, cur_parity=cur_parity,
                           issued_items=list(issued.get("items") or []),
@@ -675,8 +748,11 @@ def main(argv: list[str] | None = None) -> int:
             # an introduced attribution diagnostic was rejected above.
             return _pending(root, steps, args.cluster, args.card, cur, reason, changed, on_disk, cause="exposed-outside-scope")
         if ok is UNPROVEN:
-            # the repair may well be right and the gate cannot say so yet
-            return _pending(root, steps, args.cluster, args.card, cur, reason, changed, on_disk, cause="unproven-repair")
+            # the repair may well be right and the gate cannot say so yet. A
+            # unit whose members could not be assessed is the other shape of
+            # the same thing, and it keeps its own cause.
+            cause = "unassessable-scope" if (unit and any(r.get("verdict") == "inconclusive" for r in scope_rows)) else "unproven-repair"
+            return _pending(root, steps, args.cluster, args.card, cur, reason, changed, on_disk, cause=cause)
         if not (cur.get("measure") or {}).get("known"):
             return _pending(root, steps, args.cluster, args.card, cur, reason, changed, on_disk)
         clear_pending(steps, args.cluster, why="rejected")
@@ -690,6 +766,14 @@ def main(argv: list[str] | None = None) -> int:
     snapshot_reports(root)
     steps["steps"].append({"cluster": args.cluster, "card": args.card, "attempt": issued.get("attempt"), "idempotency_key": issued.get("idempotency_key"), "commit": sha, "candidate_sha256": on_disk, "measure": cur["measure"], "item_ids": sorted(item_ids(cur)), "obligation_keys": sorted(obligation_keys(cur)), "worklist_sha256": digest(cur), "changed": changed, "verdict": "accepted", "reason": reason, "runtime": cur.get("runtime") or {}, "gate": str(issued.get("gate") or ""), "parity": ({"verdict": str((cur_parity or {}).get("verdict") or ""), "binding": dict((cur_parity or {}).get("binding") or {}), "scenarios": list((((run if isinstance(run, dict) else {}).get("runtime") or {}).get("parity") or {}).get("scenarios") or [])} if cur_parity else {}), "discharged": sorted(str(i) for i in (issued.get("items") or [])), "si1_inconclusive": si1_unknown, "batch_scope": ({"digest": str(scope_ref.get("digest") or ""), "assessed": len(scope_rows),
                                                           "inconclusive": [r for r in scope_rows if r.get("verdict") == "inconclusive"]} if scope_ref else {}), "amendments": list(issued.get("amendments") or []), "verify": _verify_meta(run if isinstance(run, dict) else {}),
+                           "unit": ({"unit_id": str(scope_doc.get("unit_id") or ""), "rule": str(scope_doc.get("rule") or ""),
+                                     "family_key": str(scope_doc.get("family_key") or "")} if unit else {}),
+                           # what this checkpoint TOLERATED and on whose
+                           # authority: the audit must be able to read back
+                           # which diagnostics were carried and which catalogue
+                           # row documented each one
+                           "explained_regressions": list(explained_rows),
+                           "revisions": list(issued.get("revisions") or []),
                            "continuations": list(issued.get("continuations") or []),
                            "checked_exceptions": ({k: (checked.get(k) if k in ("state", "base", "coverage") else len(checked.get(k) or []))
                                                    for k in ("state", "base", "introduced", "exposed", "resolved", "throws_added", "inconclusive", "coverage")}

@@ -71,8 +71,17 @@ thresholds:
 # formed with -- the mode is sealed on the admission receipt and the work list
 # refuses to change it while a card is issued (UNIT_MODE_SWITCH), so this is
 # the default for a NEW run and never a mid-run flip.
+# Runtime feedback (v1): once the destination boots, compare the WHOLE scenario
+# phase on the candidate the card just produced, bound to that card, so a
+# behavioural failure enters the next work list as a parity obligation
+# immediately rather than only at M4 -- eleven of the isolated experiment's
+# eighteen defects were invisible to the compiler and fell out of one replay.
+# Cost-guarded: it is skipped when the tree's parity receipt is already bound
+# to this candidate digest, and a parity CARD still runs its own scoped
+# comparison. Absent means off, which is the v9 behaviour.
 loop:
   unit_formation: v1
+  runtime_feedback: v1
 
 # The effective database of the destination (ADR-009). Resolved here, before a
 # worker reaches runtime verification: an absent or half-filled block keeps

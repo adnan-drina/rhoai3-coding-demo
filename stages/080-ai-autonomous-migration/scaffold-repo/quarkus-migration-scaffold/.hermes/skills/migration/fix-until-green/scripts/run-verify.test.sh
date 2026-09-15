@@ -38,6 +38,35 @@ grep -qF -- '--issued "${PARITY_ISSUED}"' "${SCRIPT}" \
 grep -qF 'PARITY_ISSUED="${ROOT}/verification/loop/issued.json"' "${SCRIPT}" \
   || fail "the binding must name the issued card of THIS tree"
 
+# --- the runtime trigger, named and recorded --------------------------------
+# The gates that package and start the destination run as soon as the COMPILER
+# is satisfied, not when the whole tuple is [0,0,0]: incidents and failing tests
+# do not stop Maven from producing an artifact, and a packaging regression is
+# what a coordinated multi-file unit is most likely to cause. The audit has to
+# say WHY the gate ran, so the trigger is a recorded value and not an inference.
+grep -qF 'compile-zero' "${SCRIPT}" || fail "the runtime stage must name its trigger"
+grep -qF '["trigger"] = os.environ.get("RT_TRIGGER")' "${SCRIPT}" \
+  || fail "run.json must record the runtime trigger"
+grep -qF 'if [[ "${RT_TRIGGER}" != "none" ]]; then' "${SCRIPT}" \
+  || fail "the runtime gates must be guarded by the named trigger"
+grep -qF '[[ "${MODE}" == "diagnostic" ]] && RUNTIME=0' "${SCRIPT}" \
+  || fail "diagnostic mode must still never run the runtime gates"
+# the trigger itself, extracted from the script and put to fixtures
+awk '/RT_TRIGGER="\$\(python3 - /{flag=1; next} flag && /^PYEOF$/{exit} flag{print}' "${SCRIPT}" > "${TMP}/trigger.py"
+[[ -s "${TMP}/trigger.py" ]] || fail "could not extract the runtime trigger from ${SCRIPT}"
+trigger() {
+  local root="${TMP}/t$$_$1"
+  mkdir -p "${root}/verification/loop"
+  printf '{"schema":"rhoai3.loop-state/v1","measure":%s}' "$2" >"${root}/verification/loop/state.json"
+  python3 "${TMP}/trigger.py" "${root}"
+}
+[[ "$(trigger a '{"known":true,"tuple":[4,0,2]}')" == "compile-zero" ]] \
+  || fail "a known measure with no compile error triggers the gates whatever the other slots say"
+[[ "$(trigger b '{"known":true,"tuple":[0,0,0]}')" == "compile-zero" ]] || fail "a green measure still triggers them"
+[[ "$(trigger c '{"known":true,"tuple":[0,7,0]}')" == "none" ]] || fail "a tree that does not compile has no artifact to package"
+[[ "$(trigger d '{"known":false,"tuple":[0,0,0]}')" == "none" ]] \
+  || fail "an unrun compiler is not a compile count of zero"
+
 # --- the admission itself, extracted from the script ------------------------
 awk '/PARITY_PLAN="\$\(python3 - /{flag=1; next} flag && /^PYEOF$/{exit} flag{print}' "${SCRIPT}" > "${TMP}/plan.py"
 [[ -s "${TMP}/plan.py" ]] || fail "could not extract the parity stage's admission from ${SCRIPT}"
@@ -92,7 +121,52 @@ F="${TMP}/f"; mkroot "${F}"; worklist "${F}"; issued "${F}" "parity" '["parity:a
 G="${TMP}/g"; mkroot "${G}"; boot_ok "${G}"; worklist "${G}"
 [[ "$(plan "${G}" true)" == "run:" ]] || fail "--parity must force an unscoped comparison: $(plan "${G}" true)"
 
+# --- the runtime-feedback sweep ---------------------------------------------
+# decisions.loop.runtime_feedback v1: once the destination boots, compare the
+# WHOLE phase on this candidate, on any card, so a behavioural failure enters
+# the next work-list rebuild as a parity obligation instead of waiting for M4.
+feedback() { printf 'loop:\n  runtime_feedback: %s\n' "$2" >"$1/decisions.yaml"; }
+candidate() { printf '{"schema":"rhoai3.verify-run/v1","candidate_sha256":"%s"}' "$2" >"$1/verification/build/run.json"; }
+bound() { printf '{"schema":"rhoai3.parity-receipt/v1","binding":{"mode":"%s","candidate_sha256":"%s"}}' "$2" "$3" >"$1/verification/parity/receipt.json"; }
+
+H="${TMP}/h"; mkroot "${H}"; boot_ok "${H}"; worklist "${H}"; issued "${H}" "" '["err:1"]'; candidate "${H}" "c0ffee"
+[[ "$(plan "${H}")" == "no" ]] || fail "with the mode absent a compile card still runs no comparison: $(plan "${H}")"
+feedback "${H}" off
+[[ "$(plan "${H}")" == "no" ]] || fail "the mode off is the v9 behaviour: $(plan "${H}")"
+feedback "${H}" v1
+[[ "$(plan "${H}")" == "sweep:" ]] || fail "v1 must sweep the whole phase after a passing startup gate: $(plan "${H}")"
+
+# a card whose startup gate did not pass has nothing to compare, and the sweep
+# is not a card's obligation, so it is silent rather than a WARN
+I="${TMP}/i"; mkroot "${I}"; boot_bad "${I}"; worklist "${I}"; issued "${I}" "" '["err:1"]'; feedback "${I}" v1; candidate "${I}" "c0ffee"
+[[ "$(plan "${I}")" == "no" ]] || fail "no boot, no sweep: $(plan "${I}")"
+
+# THE COST GUARD: a receipt already bound to this candidate digest measured this
+# exact tree, so the sweep would replay it for nothing
+J="${TMP}/j"; mkroot "${J}"; mkdir -p "${J}/verification/parity"; boot_ok "${J}"; worklist "${J}"
+issued "${J}" "" '["err:1"]'; feedback "${J}" v1; candidate "${J}" "c0ffee"
+bound "${J}" candidate c0ffee
+[[ "$(plan "${J}")" == done:* ]] || fail "a receipt already bound to this candidate must skip the sweep by name: $(plan "${J}")"
+bound "${J}" candidate "another"
+[[ "$(plan "${J}")" == "sweep:" ]] || fail "a receipt bound to ANOTHER candidate measured another tree: $(plan "${J}")"
+bound "${J}" sealed c0ffee
+[[ "$(plan "${J}")" == "sweep:" ]] || fail "a SEALED receipt is the M4 road's, not this candidate's: $(plan "${J}")"
+
+# and a parity CARD is unaffected by the mode: its own comparison stays scoped
+K="${TMP}/k"; mkroot "${K}"; boot_ok "${K}"; worklist "${K}"; issued "${K}" "parity" '["parity:aaaa","parity:bbbb"]'; feedback "${K}" v1
+[[ "$(plan "${K}")" == "run:sc:a-first,sc:b-second" ]] || fail "a parity card keeps its own scoped comparison: $(plan "${K}")"
+
+# what the two triggers are recorded as, and that the sweep is never scoped
+grep -qF 'PARITY_TRIGGER="runtime-feedback"' "${SCRIPT}" || fail "the sweep must record why it ran"
+grep -qF 'PARITY_TRIGGER="issued-card"' "${SCRIPT}" || fail "a card's own comparison must record why it ran"
+grep -qF '"trigger": os.environ.get("PARITY_TRIGGER")' "${SCRIPT}" || fail "run.json must carry the parity trigger"
+
 echo "OK: run-verify parity stage (acceptance-only and after the runtime gates; not run for a compile or packaging card \
 or with no issued card; run for a parity card scoped to its own scenarios and bound to that issued card, so the work \
 list this verification rebuilt on the candidate is not read as a stale seal; skipped by name when the startup gate did \
-not pass; forced unscoped by --parity)"
+not pass; forced unscoped by --parity) + the RUNTIME TRIGGER (compile-zero: known measure and no compile error, \
+whatever the incident and test slots say; an unrun compiler is not zero; recorded in run.json; diagnostic mode still \
+never runs the gates) + the RUNTIME-FEEDBACK SWEEP (decisions.loop.runtime_feedback v1 compares the whole phase on any \
+card once the destination boots, is silent with no boot and with the mode off or absent, is skipped by name when the \
+receipt is already bound to this candidate digest but not when it is bound to another candidate or to the seal, leaves \
+a parity card's own scoped comparison alone, and records which of the two triggers ran)"

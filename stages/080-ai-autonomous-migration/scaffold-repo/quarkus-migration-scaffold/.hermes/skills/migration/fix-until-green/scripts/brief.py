@@ -25,7 +25,7 @@ from _loop_common import budget as _budget, ensure_hermes_lib, pending_for  # no
 ensure_hermes_lib()
 from planner.canonical import load_json, write_canonical  # noqa: E402
 from planner.paths import LOOP_DIR, LOOP_ISSUED, MTA_FINDINGS, MTA_RESCAN_FINDINGS, WORKLIST, BOM_MANAGED, TYPE_INVENTORY  # noqa: E402
-from planner.worklist import CHECKED_FAMILY_RULE, assess_batch_scope, head_cluster, items_of  # noqa: E402
+from planner.worklist import CHECKED_FAMILY_RULE, UNIT_KIND, UNIT_MAX_FILES, assess_unit, head_cluster, items_of  # noqa: E402
 
 PROCEDURE = (
     "Patch the write set one item at a time (targeted edits; never rewrite a whole file, never touch a "
@@ -813,14 +813,27 @@ def main(argv: list[str] | None = None) -> int:
     if scope_p is not None and scope_p.is_file():
         scope = load_json(scope_p)
         family = str(scope.get("rule") or "") == CHECKED_FAMILY_RULE
+        unit = str(scope.get("kind") or "") == UNIT_KIND
         issued_now = load_json(root / LOOP_ISSUED) if (root / LOOP_ISSUED).is_file() else {}
-        verdicts = {r["member"]: r for r in assess_batch_scope(root, scope)}
+        # assess_unit dispatches on the sealed rule, so a repository inventory
+        # and a checked-exception family are assessed exactly as before and a
+        # unit is assessed by its own rule.
+        verdicts = {r["member"]: r for r in assess_unit(root, scope)}
+        def _member_name(m: dict) -> str:
+            # how assess_unit names a row: the path, and the member when the
+            # inventory records one. A repository or family inventory names its
+            # members directly and keeps the name it always had.
+            if "member" in m:
+                return str(m["member"])
+            mid = str(m.get("member_id") or "")
+            return "%s%s" % (str(m.get("path") or ""), ("#" + mid) if mid else "")
+
         brief["batch_scope"] = {
             "rule": scope.get("rule"),
             "repository": scope.get("repository"),
             "digest": ref.get("digest"),
-            "members": [dict(m, **{"verdict": verdicts.get(m["member"], {}).get("verdict", "inconclusive"),
-                                   "detail": verdicts.get(m["member"], {}).get("detail", "")})
+            "members": [dict(m, **{"verdict": verdicts.get(_member_name(m), {}).get("verdict", "inconclusive"),
+                                   "detail": verdicts.get(_member_name(m), {}).get("detail", "")})
                         for m in scope.get("members") or []],
             "rule_note": ((str(scope.get("rule_note") or "") + " ") if family else "") + (
                           "Every member listed here is assessed against the rule when the candidate is judged, "
@@ -831,11 +844,56 @@ def main(argv: list[str] | None = None) -> int:
             "continuations": list((issued_now or {}).get("continuations") or []),
             "amend": (("Family members are already in the write set; amend-scope.py does not widen a family.")
                       if family else
+                      ("A unit's scope is REVISED on evidence, never on a reason alone: amend-scope.py --root . "
+                       "--cluster %s --card $HERMES_KANBAN_TASK --path <file> --reason <what this unit cannot finish "
+                       "without it> --evidence javac:<a diagnostic identity the current work list carries> | "
+                       "model:<a symbol this unit sealed> | runtime:<an rt: obligation the current work list carries>. "
+                       "Bounded: four revisions, and never past %d file(s) in the write set." % (cluster["id"], UNIT_MAX_FILES))
+                      if unit else
                       ("If a member cannot be finished without editing a file outside the write set, record the "
                        "amendment BEFORE touching it: amend-scope.py --root . --cluster %s --card $HERMES_KANBAN_TASK "
                        "--path <file> --reason <what this card cannot finish without it>. Bounded: two per card." % cluster["id"])),
-            "amendments": list(((load_json(root / LOOP_ISSUED) if (root / LOOP_ISSUED).is_file() else {}) or {}).get("amendments") or []),
+            "amendments": list((issued_now or {}).get("amendments") or []),
         }
+        if unit:
+            # THE UNIT, as the worker has to see it: what one coherent repair
+            # covers, what it is moving to and on whose authority, what decides
+            # that it is finished, and the one rule that makes a coordinated
+            # repair possible at all -- the checkpoint, not each edit, is judged.
+            members: dict[str, list[dict]] = {}
+            for m in scope.get("members") or []:
+                name = _member_name(m)
+                v = verdicts.get(name, {})
+                members.setdefault(str(scope.get("rule") or ""), []).append({
+                    "member": name, "path": str(m.get("path") or ""), "type": str(m.get("type") or ""),
+                    "member_id": str(m.get("member_id") or ""), "state": str(m.get("state") or ""),
+                    "signature": str(m.get("signature") or ""), "consumer": str(m.get("consumer") or ""),
+                    "verdict": v.get("verdict", "inconclusive"), "detail": v.get("detail", ""),
+                })
+            brief["unit"] = {
+                "unit_id": str(scope.get("unit_id") or ""),
+                "rule": str(scope.get("rule") or ""),
+                "family_key": str(scope.get("family_key") or ""),
+                "members_by_rule": members,
+                "symbols": list(scope.get("symbols") or []),
+                # every documented target with the catalogue row that documents
+                # it: a replacement with no row is not a target, and a
+                # diagnostic about one is not explained by anything
+                "target_symbols": [{"from": t.get("from"), "to": t.get("to"), "catalog_row": t.get("catalog_row")}
+                                   for t in (scope.get("target_symbols") or [])],
+                "completion": list(scope.get("completion") or []),
+                "bounds": dict(scope.get("bounds") or {}),
+                "evidence": list(scope.get("evidence") or []),
+                "revisions": list((issued_now or {}).get("revisions") or []),
+                "checkpoint": (
+                    "This unit is judged ONCE, at its checkpoint, not per edit. Intermediate regressions INSIDE the "
+                    "sealed symbols are allowed until then: the compile count may stand still or briefly rise, and the "
+                    "step is still accepted, provided every diagnostic that remains is one the sealed symbols or the "
+                    "documented targets above explain. Nothing else is relaxed -- a failing test, a new mandatory "
+                    "obligation, a gate that was passing and is not any more, one of this unit's own sealed diagnostics "
+                    "still reported, or a sealed member that violates its rule all refuse the card. So repair the whole "
+                    "unit in one candidate; do not stop half way to make the count fall."),
+            }
     write_canonical(root / LOOP_DIR / ("brief-%s.json" % cluster["id"].replace(":", "-")), brief)
     print(json.dumps(brief, indent=2, sort_keys=True))
     return 0

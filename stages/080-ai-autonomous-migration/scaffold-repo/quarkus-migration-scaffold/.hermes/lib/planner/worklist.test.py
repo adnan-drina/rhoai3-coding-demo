@@ -13,7 +13,8 @@ from planner.worklist import SYMBOL_CLUSTER_MAX_FILES  # noqa: E402
 from planner.worklist import RULE_CONFIG_CONSUMERS, SPRING_VALUE_ANNOTATION as SPRING_VALUE  # noqa: E402
 from planner.worklist import (RULE_DECLARATION_CLOSURE, RULE_DIAGNOSTIC_FAMILY, RULE_PACKAGE_LEAF,  # noqa: E402
                               UNIT_MAX_FILES, UNIT_MAX_SITES, UNIT_MAX_SYMBOLS, build_unit_scope, form_units,
-                              runtime_cause, unit_formation_for, unit_formation_mode, unit_id_of)
+                              runtime_cause, unit_continue_scope, unit_explained_regressions, unit_formation_for,
+                              unit_formation_mode, unit_id_of)
 from planner.dest_model import dest_model, diagnostic_identity  # noqa: E402
 from planner.worklist import APP_PROPERTIES, KIND_RANK, cluster_items, parity_items, runtime_items, compile_items, file_depths, incidents_from_findings, measure_of, obligation_keys, path_class, progress, surefire_from_reports, test_items  # noqa: E402
 
@@ -1403,17 +1404,274 @@ def _unit_experiment_table_case() -> int:
                                         {}, set(), model=model, root=GOLDEN)
     if single or single_claimed:
         return _fail("WU-7 / WU-8 stay one card: a lone locus forms no unit")
-    # WU-9 is NOT reproducible yet, and the design says exactly why: the
-    # query-invalid cause row is not in RUNTIME_CAUSES, so a Hibernate
-    # strictness failure still classifies as a missing schema object
-    if runtime_cause("org.hibernate.query.SemanticException: could not resolve attribute 'x'") == "query-invalid":
-        return _fail("WU-9's cause row landed; the table's 'reproduced conditionally' row needs updating")
-    if runtime_cause("could not resolve attribute 'x' -- relation \"y\" does not exist") != "schema-missing-object":
-        return _fail("without the row it misfiles as a schema object, which is the gap the design records")
+    # WU-9 is reproducible now: the query-invalid rows are in RUNTIME_CAUSES and
+    # stand BEFORE the generic schema rows, so a Hibernate 6 strictness failure
+    # is a query defect at the fragment that declares the query and not a
+    # missing table at application.properties
+    for text in ("org.hibernate.query.SemanticException: could not resolve attribute 'x'",
+                 "jakarta.persistence.PersistenceException: QuerySyntaxException: unexpected token",
+                 "could not resolve attribute 'x' -- relation \"y\" does not exist"):
+        if runtime_cause(text) != "query-invalid":
+            return _fail("WU-9 needs the query-invalid cause, before the schema rows: %r → %s" % (text[:40], runtime_cause(text)))
+    # and the closed vocabulary is not widened: a genuine missing table is still
+    # a missing table
+    if runtime_cause("ERROR: relation \"owners\" does not exist") != "schema-missing-object":
+        return _fail("the schema cause must survive: %s" % runtime_cause("ERROR: relation \"owners\" does not exist"))
     # WU-10 splits into its distinct causes: three parity causes are three
     # problems in three places, and the former unions none of them
     return 0
 
+
+
+# --- the checkpoint -------------------------------------------------------
+#
+# The v9 counterexample in the shape the catalogue records it: a unit over a
+# retired Spring type whose DOCUMENTED target is jakarta.ws.rs.core.UriBuilder,
+# reached through an injected jakarta.ws.rs.core.Context. The right repair and
+# the wrong import differ by one package segment, and the whole relaxation is
+# only safe because the catalogue knows which of the two it wrote down.
+_URI_A = {"base": "org.acme.clinic", "pkg": "rest", "controllers": ("OwnerRestController", "PetRestController"),
+          "retired": "org.springframework.web.util.UriComponentsBuilder",
+          "target": "jakarta.ws.rs.core.UriBuilder", "typo": "jakarta.ws.rs.Context",
+          "unrelated": "org.springframework.validation.BindingResult"}
+_URI_B = {"base": "com.example.warehouse", "pkg": "api", "controllers": ("CrateEndpoint", "PalletEndpoint"),
+          "retired": "org.springframework.web.util.UriComponentsBuilder",
+          "target": "jakarta.ws.rs.core.UriBuilder", "typo": "jakarta.ws.rs.Context",
+          "unrelated": "org.springframework.validation.BindingResult"}
+
+
+def _uri_world(n: dict, imports: tuple[str, ...]) -> tuple[dict, list[str]]:
+    """(a model whose controllers carry exactly these imports, their paths)."""
+    pkg = n["base"].replace(".", "/")
+    types, paths = [], []
+    for c in n["controllers"]:
+        rel = "%s/%s/%s.java" % (pkg, n["pkg"], c)
+        types.append(_dm_type("%s.%s.%s" % (n["base"], n["pkg"], c), rel, imports=list(imports)))
+        paths.append("src/main/java/" + rel)
+    return {"types": types}, paths
+
+
+def _uri_unit(n: dict) -> tuple[dict, list[dict], list[str]]:
+    """(the sealed v4 inventory of the unit, its items, its files)."""
+    import tempfile
+
+    model, paths = _uri_world(n, (n["retired"],))
+    items = [_javac(p, n["retired"].rsplit(".", 1)[-1], i) for i, p in enumerate(paths)]
+    units, _claimed = form_units(items, {}, set(), model=model, root=GOLDEN)
+    # one family, one directory nothing outside refers to: the leaf rule claims
+    # it, and its sealed symbol is the retired type either way
+    unit = units[0]
+    with tempfile.TemporaryDirectory(prefix="unit-explain-") as d:
+        scope = build_unit_scope(Path(d), unit, items, {"candidate_sha256": "c0"})
+    return scope, items, paths
+
+
+def _leaf_unit(n: dict) -> tuple[dict, list[str]]:
+    """A package leaf sealing TWO symbols: one controller per family, in one
+    directory nothing outside refers to."""
+    import tempfile
+
+    pkg = n["base"].replace(".", "/")
+    types, paths, items = [], [], []
+    for i, (c, sym) in enumerate(zip(n["controllers"], (n["retired"], n["unrelated"]))):
+        rel = "%s/%s/%s.java" % (pkg, n["pkg"], c)
+        types.append(_dm_type("%s.%s.%s" % (n["base"], n["pkg"], c), rel, imports=[sym]))
+        paths.append("src/main/java/" + rel)
+        items.append(_javac(paths[-1], sym.rsplit(".", 1)[-1], 70 + i))
+    units, _ = form_units(items, {}, set(), model={"types": types}, root=GOLDEN)
+    leaf = next(c for c in units if c["unit"]["rule"] == RULE_PACKAGE_LEAF)
+    with tempfile.TemporaryDirectory(prefix="unit-leaf-") as d:
+        return build_unit_scope(Path(d), leaf, items, {"candidate_sha256": "c1"}), paths
+
+
+def _unit_explained_case() -> int:
+    """The partition the veto and the checkpoint share: a diagnostic is
+    explained only by a sealed symbol or by a DOCUMENTED target, and the
+    documented one is the exact name the catalogue wrote down."""
+    for label, n in (("A", _URI_A), ("B", _URI_B)):
+        scope, _items, paths = _uri_unit(n)
+        targets = {t["to"]: t for t in scope["target_symbols"]}
+        if n["target"] not in targets or not targets[n["target"]].get("catalog_row"):
+            return _fail("[%s] the seal must carry the catalogued target: %s" % (label, scope["target_symbols"]))
+
+        # (1) the unit is still working on its own sealed symbol
+        still_model, _ = _uri_world(n, (n["retired"],))
+        still = [_javac(paths[0], n["retired"].rsplit(".", 1)[-1], 9)]
+        rows, why = unit_explained_regressions(scope, still, still_model)
+        if why or [r["boundary"] for r in rows] != ["sealed"] or rows[0]["symbol"] != n["retired"]:
+            return _fail("[%s] a diagnostic about the sealed symbol is explained by it: %s %s" % (label, rows, why))
+
+        # (2) the RIGHT repair: the controllers now import the documented
+        # target and the compiler names it because the extension is not on the
+        # classpath yet. That gap is the next card, not a wider write set.
+        good_model, _ = _uri_world(n, (n["target"],))
+        good = [_javac(p, n["target"].rsplit(".", 1)[-1], 20 + i) for i, p in enumerate(paths)]
+        rows, why = unit_explained_regressions(scope, good, good_model)
+        if why or len(rows) != len(paths) or {r["boundary"] for r in rows} != {"target"}:
+            return _fail("[%s] a catalogued target explains what it replaced: %s %s" % (label, rows, why))
+        if not all(r["catalog_row"].get("key") for r in rows):
+            return _fail("[%s] an explained regression names the catalogue row that documents it: %s" % (label, rows))
+
+        # (3) THE COUNTEREXAMPLE (v9 t_3903f495): the right repair with the
+        # wrong import. jakarta.ws.rs.core.Context has a catalogue row and
+        # jakarta.ws.rs.Context does not, so nothing explains it.
+        bad_model, _ = _uri_world(n, (n["typo"],))
+        bad = [_javac(p, n["typo"].rsplit(".", 1)[-1], 30 + i) for i, p in enumerate(paths)]
+        rows, why = unit_explained_regressions(scope, bad, bad_model)
+        if rows:
+            return _fail("[%s] an invented replacement is explained by nothing: %s" % (label, rows))
+
+        # (4) without the model nothing resolves, and a bare name matched by
+        # spelling is exactly the mistake this rule exists to refuse
+        rows, why = unit_explained_regressions(scope, still, None)
+        if rows or "model is unavailable" not in why:
+            return _fail("[%s] no model, no explanation: %s %s" % (label, rows, why))
+
+        # (5) a file outside the FILE seal is never explained, whatever it names
+        out_model, out_paths = _uri_world(dict(n, pkg="elsewhere"), (n["retired"],))
+        rows, why = unit_explained_regressions(scope, [_javac(out_paths[0], n["retired"].rsplit(".", 1)[-1], 40)], out_model)
+        if rows:
+            return _fail("[%s] the file seal is the first condition: %s" % (label, rows))
+
+        # (6) a diagnostic about something the unit never sealed is explained by
+        # nothing at all -- it is not tolerated, it is simply not covered
+        two_model, _ = _uri_world(n, (n["retired"], n["unrelated"]))
+        rows, why = unit_explained_regressions(scope, [_javac(paths[0], n["unrelated"].rsplit(".", 1)[-1], 50)], two_model)
+        if rows or why:
+            return _fail("[%s] an unsealed symbol explains nothing: %s %s" % (label, rows, why))
+
+        # (7) and where a unit DOES seal two symbols (a package leaf unions its
+        # families), carrying both through one checkpoint would launder a
+        # second defect: the WHOLE tolerated set is refused, not the surplus.
+        leaf_scope, leaf_paths = _leaf_unit(n)
+        leaf_model, _ = _uri_world(n, (n["retired"], n["unrelated"]))
+        both = [_javac(leaf_paths[0], n["retired"].rsplit(".", 1)[-1], 60),
+                _javac(leaf_paths[1], n["unrelated"].rsplit(".", 1)[-1], 61)]
+        rows, why = unit_explained_regressions(leaf_scope, both, leaf_model)
+        if rows or "different symbol families" not in why:
+            return _fail("[%s] a unit carries its OWN family through its checkpoint and nothing else: %s %s" % (label, rows, why))
+    return 0
+
+
+def _measure(tup: list[int]) -> dict:
+    return {"tuple": list(tup), "known": True, "blocked": []}
+
+
+def _unit_progress_case() -> int:
+    """The checkpoint itself: what it accepts, what it continues, and every
+    thing it still refuses."""
+    scope, _items, paths = _uri_unit(_URI_A)
+    issued = {str(m["identity"]) for m in scope["members"] if m.get("identity")}
+    if not issued:
+        return _fail("the fixture unit must seal identities")
+    ok_rows = [{"member": m["path"], "verdict": "ok", "detail": "d"} for m in scope["members"]]
+    same = _measure([0, len(issued), 0])
+
+    def run(cur_measure, cur_ids, **kw):
+        return progress(same, cur_measure, set(), set(),
+                        unit_scope=scope, unit_assessment=kw.pop("assessment", ok_rows),
+                        issued_identities=issued, cur_identities=cur_ids,
+                        explained=kw.pop("explained", set()), **kw)
+
+    # DISCHARGED with the tuple unchanged: the whole point. The count did not
+    # fall because the unit traded its diagnostics for ones its own catalogued
+    # target explains, and every sealed member assesses clean.
+    later = {"diag:later:%d" % i for i in range(len(issued))}
+    okd, reason = run(_measure([0, len(issued), 0]), later, explained=later)
+    if okd is not True or "explained_regressions" not in reason:
+        return _fail("a discharged unit with an unchanged tuple is ACCEPTED: %s %s" % (okd, reason))
+    # and even when the compile slot is temporarily WORSE
+    okd, reason = run(_measure([0, len(issued) + 3, 0]), later, explained=later)
+    if okd is not True:
+        return _fail("the compile slot may stand still or briefly rise for what the unit explains: %s" % reason)
+    # the ordinary fall is still the ordinary fall
+    okd, reason = run(_measure([0, 0, 0]), set())
+    if okd is not True or "discharged at its checkpoint" not in reason:
+        return _fail("a unit whose measure fell is accepted as before: %s %s" % (okd, reason))
+
+    # ONE MEMBER REMAINING: the compiler names another site of the same unit,
+    # which is the unit's own remaining work and not a new defect.
+    nxt = [{"id": "err:next", "source": "javac", "kind": "compile", "path": paths[0], "line": 4,
+            "identity": "diag:next", "rule_id": "compiler.err.unreported.exception.need.to.catch.or.throw",
+            "category": "mandatory", "message": "unreported exception"}]
+    cont = unit_continue_scope(scope, nxt)
+    if cont != {"diag:next"}:
+        return _fail("the continuation scope is a sealed member's own file: %s" % cont)
+    okd, reason = run(_measure([0, len(issued), 0]), {"diag:next"}, family_scope=cont)
+    if okd is not RETAIN or "another member of the same unit" not in reason:
+        return _fail("the compiler naming the next member of the unit CONTINUES the card: %s %s" % (okd, reason))
+
+    # OUTSIDE THE SEALED SYMBOLS: not accepted, and not silently continued
+    outside = unit_continue_scope(scope, [{"id": "err:o", "source": "javac", "path": "src/main/java/other/X.java",
+                                           "identity": "diag:outside", "kind": "compile"}])
+    okd, reason = run(_measure([0, len(issued), 0]), {"diag:outside"}, family_scope=outside)
+    if okd is not EXPOSED or "do not explain" not in reason:
+        return _fail("a diagnostic the sealed symbols do not explain is never accepted: %s %s" % (okd, reason))
+
+    # THE COUNTEREXAMPLE, at the checkpoint: the typo explains nothing, so the
+    # empty explained set leaves it unexplained and the card is not accepted.
+    bad_model, _ = _uri_world(_URI_A, (_URI_A["typo"],))
+    bad = [_javac(p, _URI_A["typo"].rsplit(".", 1)[-1], 60 + i) for i, p in enumerate(paths)]
+    explained, _why = unit_explained_regressions(scope, bad, bad_model)
+    okd, reason = run(_measure([0, len(issued), 0]), {str(i["identity"]) for i in bad},
+                      explained={r["identity"] for r in explained})
+    if okd is True:
+        return _fail("the wrong import must not be accepted by the relaxation: %s" % reason)
+
+    # WHAT IS NOT RELAXED
+    okd, reason = run(_measure([0, 0, 1]), set())
+    if okd is not False or "failing-test" not in reason:
+        return _fail("a regressed test slot refuses however discharged the unit is: %s %s" % (okd, reason))
+    okd, reason = run(_measure([1, 0, 0]), set())
+    if okd is not False or "mandatory-incident" not in reason:
+        return _fail("a regressed incident slot refuses: %s %s" % (okd, reason))
+    okd, reason = run(_measure([0, 0, 0]), issued)
+    if okd is not False or "still reports" not in reason:
+        return _fail("one of the unit's own sealed diagnostics still reported refuses: %s %s" % (okd, reason))
+    bad_rows = ok_rows[:-1] + [{"member": "M", "verdict": "violates", "detail": "the member is gone"}]
+    okd, reason = run(_measure([0, 0, 0]), set(), assessment=bad_rows)
+    if okd is not False or "still violate" not in reason:
+        return _fail("a sealed member that violates its rule refuses: %s %s" % (okd, reason))
+    unk_rows = ok_rows[:-1] + [{"member": "M", "verdict": "inconclusive", "detail": "unresolved"}]
+    okd, reason = run(_measure([0, 0, 0]), set(), assessment=unk_rows)
+    if okd is not UNPROVEN or "not one that passed" not in reason:
+        return _fail("an assessment that could not be made is retained, not accepted: %s %s" % (okd, reason))
+    okd, reason = run(_measure([0, 0, 0]), set(),
+                      prev_runtime={"boot": {"ran": True, "rc": 0, "ready": True}},
+                      cur_runtime={"boot": {"ran": True, "rc": 1, "ready": False}})
+    if okd is not False or "may not break a phase" not in reason:
+        return _fail("a gate going backwards refuses: %s %s" % (okd, reason))
+
+    # and a card with NO unit seal is judged exactly as it was
+    plain = progress(same, _measure([0, len(issued), 0]), set(), set())
+    if plain[0] is not False or "did not decrease" not in plain[1]:
+        return _fail("without a unit seal nothing changes: %s" % (plain,))
+    return 0
+
+
+def _unit_budget_case() -> int:
+    """One budget per PROBLEM: the retry key is the unit id, and planner.budget
+    counts against it across remeasurement and revision."""
+    from planner.budget import budget as _budget
+
+    scope, _items, _paths = _uri_unit(_URI_A)
+    cluster = {"id": "u:whatever", "items": [], "batch_scope": {"kind": "unit", "unit_id": scope["unit_id"]}}
+    key = retry_key(cluster, [])
+    if key != "rk:unit:%s" % scope["unit_id"]:
+        return _fail("a unit counts against its unit_id: %s" % key)
+    # the SAME problem after a remeasurement is a different cluster id and the
+    # same key, so a re-plan does not hand it a fresh budget
+    remeasured = {"id": "u:another", "items": [], "batch_scope": {"kind": "unit", "unit_id": scope["unit_id"]}}
+    if retry_key(remeasured, []) != key:
+        return _fail("the key must survive remeasurement: %s" % retry_key(remeasured, []))
+    steps = {"attempts": {key: 2}, "retry_keys": {"u:whatever": key}}
+    b = _budget(steps, "u:whatever", key, 3)
+    if b["retry_key"] != key or b["spent"] != 2 or b["left"] != 1:
+        return _fail("planner.budget must read the unit key: %s" % b)
+    # an amendment changes neither the key nor what it has spent
+    if _budget(steps, "u:another", key, 3)["spent"] != 2:
+        return _fail("a revision never resets the budget: %s" % _budget(steps, "u:another", key, 3))
+    return 0
 
 
 def _unit_config_case() -> int:
@@ -1474,7 +1732,8 @@ def main() -> int:
             or _set_wide_case() or _config_value_case() or _parity_typing_case() or _parity_advice_case()
             or _parity_gate_case() or _unit_formation_case() or _unit_bound_case() or _unit_seal_case()
             or _unit_mode_case() or _unit_inert_case() or _unit_config_case()
-            or _unit_experiment_table_case()):
+            or _unit_experiment_table_case() or _unit_explained_case() or _unit_progress_case()
+            or _unit_budget_case()):
         return 1
 
     if path_class("pom.xml") != "build" or path_class("src/main/resources/application.properties") != "config" or path_class("src/test/java/A.java") != "test" or path_class("src/main/java/A.java") != "source":
@@ -1653,7 +1912,17 @@ def main() -> int:
         return _fail("reclassified items keep their authority and are never dropped")
     if measure_of(all_items, incidents_known=False, compile_known=True, tests_known=True, parity_known=False)["known"]:
         return _fail("unknown incidents never advance")
-    print("OK: worklist (lossless line-free incidents; canary excluded; only ERROR diagnostics; build→config→compile(leaf-first)→incident→test order; tests never writable; lexicographic 3-tuple progress; new-incident veto; unknown never advances; gate progress is the issued obligation disappearing, never a reworded one; a second cause at one file is a second obligation); a repository card's inventory is sealed by its own digest and two measurements never share a path; checked-exception family: bound to its introducing step (a legacy site stays out), one budget, line-free identity across a moved line, CONTINUE / EXPOSED / still-reported / 1→0 accept, per-member assessment (catch-wrapped and header-deleted members violate); a set-wide packaging cause is one typed blocker under permuted first-reported names and never a card; an unloadable config value is located at the annotation that names the property IN THE DESTINATION'S OWN MODEL (the frozen source's model answers only when the destination cannot be modelled, and the brief says which did; ${x:d} and a bare x are one property), at application.properties only when the name is real and unread, and is a blocker when the name is empty and unread -- the same decisions under renamed identifiers; parity mismatches are typed by their diffs (CORS → application.properties, the rest → the controller; scenario verdicts count, the receipt does not) and carry their exit conditions as advice built from those diffs (CORS properties are the source's own recorded values with the paired actual request and the exposed headers as the exit; a redirect is the source's status and its literal Location after origin mapping only, the doubled root path named, the legacy address served from the packaged UI, a property outside the write set entering through amend-scope) — the same advice, about its own values, on a specimen that shares no name with this one; the PARITY GATE: an obligation carries gate=parity and the scenarios it is made of (a read oracle takes its receipt row's), and a card is discharged only by the re-composed receipt recording those scenarios PASS -- still reported, gone but INCONCLUSIVE, another entry point broken, a startup gate broken and an un-composed receipt all refuse; UNIT FORMATION (decisions.loop.unit_formation v1): four typed rules over one measurement -- a throws surface closes over its interface, implementers and callers as ONE unit; an annotation family confined to a directory nothing outside refers to is a package leaf (decided by type_refs, never by a package name); a family spanning two directories and five independent web symbols stay five separate families; a set-wide packaging cause whose parents the model CAN enumerate becomes a mintable unit while one it cannot stays the typed blocker; a test source is never writable and a lone locus forms no unit; a property and its annotated consumers are one unit and a properties file that does not declare the key is out of scope -- every verdict repeated on a twin that shares no package, type, member or foreign symbol. The SEAL is rhoai3.batch-scope/v4: files AND symbols, typed evidence, completion checks naming the tool that decides them, reproducible from content, at a path named by its own digest, with unit_id surviving remeasurement (one budget per PROBLEM) and a type the candidate merely mentions never widening it; a documented target carries its compat-mapping symbol_renames row and an undocumented one is no target (v9 t_3903f495). The BOUND narrows deterministically -- caller-only files, then the lowest-cardinality families -- and refuses UNIT_OVERSIZE rather than chunking. With the mode off clustering is byte-for-byte what it was, and the mode may not flip while a card is issued or a pending row is open (UNIT_MODE_SWITCH)")
+    print("OK: worklist (lossless line-free incidents; canary excluded; only ERROR diagnostics; build→config→compile(leaf-first)→incident→test order; tests never writable; lexicographic 3-tuple progress; new-incident veto; unknown never advances; gate progress is the issued obligation disappearing, never a reworded one; a second cause at one file is a second obligation); a repository card's inventory is sealed by its own digest and two measurements never share a path; checked-exception family: bound to its introducing step (a legacy site stays out), one budget, line-free identity across a moved line, CONTINUE / EXPOSED / still-reported / 1→0 accept, per-member assessment (catch-wrapped and header-deleted members violate); a set-wide packaging cause is one typed blocker under permuted first-reported names and never a card; an unloadable config value is located at the annotation that names the property IN THE DESTINATION'S OWN MODEL (the frozen source's model answers only when the destination cannot be modelled, and the brief says which did; ${x:d} and a bare x are one property), at application.properties only when the name is real and unread, and is a blocker when the name is empty and unread -- the same decisions under renamed identifiers; parity mismatches are typed by their diffs (CORS → application.properties, the rest → the controller; scenario verdicts count, the receipt does not) and carry their exit conditions as advice built from those diffs (CORS properties are the source's own recorded values with the paired actual request and the exposed headers as the exit; a redirect is the source's status and its literal Location after origin mapping only, the doubled root path named, the legacy address served from the packaged UI, a property outside the write set entering through amend-scope) — the same advice, about its own values, on a specimen that shares no name with this one; the PARITY GATE: an obligation carries gate=parity and the scenarios it is made of (a read oracle takes its receipt row's), and a card is discharged only by the re-composed receipt recording those scenarios PASS -- still reported, gone but INCONCLUSIVE, another entry point broken, a startup gate broken and an un-composed receipt all refuse; UNIT FORMATION (decisions.loop.unit_formation v1): four typed rules over one measurement -- a throws surface closes over its interface, implementers and callers as ONE unit; an annotation family confined to a directory nothing outside refers to is a package leaf (decided by type_refs, never by a package name); a family spanning two directories and five independent web symbols stay five separate families; a set-wide packaging cause whose parents the model CAN enumerate becomes a mintable unit while one it cannot stays the typed blocker; a test source is never writable and a lone locus forms no unit; a property and its annotated consumers are one unit and a properties file that does not declare the key is out of scope -- every verdict repeated on a twin that shares no package, type, member or foreign symbol. The SEAL is rhoai3.batch-scope/v4: files AND symbols, typed evidence, completion checks naming the tool that decides them, reproducible from content, at a path named by its own digest, with unit_id surviving remeasurement (one budget per PROBLEM) and a type the candidate merely mentions never widening it; a documented target carries its compat-mapping symbol_renames row and an undocumented one is no target (v9 t_3903f495). The BOUND narrows deterministically -- caller-only files, then the lowest-cardinality families -- and refuses UNIT_OVERSIZE rather than chunking. With the mode off clustering is byte-for-byte what it was, and the mode may not flip while a card is issued or a pending row is open (UNIT_MODE_SWITCH). The CHECKPOINT: a \
+unit whose sealed identities are gone and whose members assess clean is ACCEPTED with the tuple unchanged, and even \
+with the compile slot briefly worse, for exactly the diagnostics its sealed symbols or its catalogued targets explain \
+-- the wrong import (jakarta.ws.rs.Context for jakarta.ws.rs.core.Context) is explained by nothing and is never \
+accepted, no model means no explanation, a file outside the file seal is never explained, and a unit that would carry \
+two symbol families through one checkpoint has its whole tolerated set refused; the compiler naming another member of \
+the same unit CONTINUES the card, anything else is EXPOSED; a regressed test or incident slot, one of the unit's own \
+diagnostics still reported, a member that violates, an assessment that could not be made and a gate going backwards \
+all refuse, and a card with no unit seal is judged exactly as before. The BUDGET is rk:unit:<unit_id>, which survives \
+remeasurement and revision, and planner.budget counts against it. WU-9's query-invalid cause row is in RUNTIME_CAUSES \
+before the schema rows")
     return 0
 
 

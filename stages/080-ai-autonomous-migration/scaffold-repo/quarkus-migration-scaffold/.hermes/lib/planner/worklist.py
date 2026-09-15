@@ -294,6 +294,19 @@ RUNTIME_CAUSES = (
     ("AmbiguousResolutionException", "ambiguous-injection"),
     ("DefinitionException", "definition-invalid"),
     ("Unsupported class file major version", "toolchain-class-version"),
+    # A QUERY the persistence provider refuses to parse or to resolve. Before
+    # the schema rows on purpose: Hibernate 6 tightened HQL/JPQL and reports
+    # its strictness failures with a message that also carries "does not
+    # exist", so the generic schema row would file a query defect as a missing
+    # table and send the worker to application.properties, where no query can
+    # be repaired (the isolated experiment's WU-9: eight queries over four
+    # fragments). The needles are the provider's OWN strings; the locus is the
+    # fragment or repository the message names (runtime_locus →
+    # named_source_types), never the properties file.
+    ("QuerySyntaxException", "query-invalid"),
+    ("SemanticException", "query-invalid"),
+    ("could not resolve attribute", "query-invalid"),
+    ("Could not resolve attribute", "query-invalid"),
     ("SQLGrammarException", "schema-missing-object"),
     ("relation \"", "schema-missing-object"),
     ("Table not found", "schema-missing-object"),
@@ -2626,6 +2639,128 @@ def assess_unit(root: Path, scope: dict[str, Any]) -> list[dict[str, Any]]:
         out.append(dict(base, verdict="ok", detail="%s no longer names the unit's sealed symbols and still declares what it declared" % path))
     return out
 
+
+# --- what a unit's sealed symbols EXPLAIN at its checkpoint -----------------
+#
+# The partition the introduced-attribution veto uses, and the one the
+# checkpoint's compile slot uses. It is one predicate with one definition, so
+# the veto and the acceptance rule can never disagree about a diagnostic.
+
+def _symbol_match(key: str, kind: str, fqn: str) -> bool:
+    """Does the resolved family key name this sealed symbol?
+
+    An exact FQN when the declaring file's imports bound the token -- that
+    resolution is the whole point, and it is what keeps jakarta.ws.rs.Context
+    from passing for jakarta.ws.rs.core.Context. A BARE token (nothing bound
+    it) may only match the symbol's simple name. A PACKAGE token names every
+    symbol declared under it."""
+    if not key or not fqn:
+        return False
+    if key == fqn:
+        return True
+    if kind == "package":
+        return fqn.startswith(key + ".")
+    if "." not in key:
+        return key == fqn.rsplit(".", 1)[-1]
+    return False
+
+
+def unit_explained_regressions(scope: dict[str, Any], items: list[dict[str, Any]],
+                               model: dict[str, Any] | None = None,
+                               identities: set[str] | None = None) -> tuple[list[dict[str, Any]], str]:
+    """(the rows a unit's sealed symbols explain, why the tolerated set is refused).
+
+    A currently reported compile diagnostic ``d`` is EXPLAINED iff all three:
+
+    1. ``d.path`` is inside the file seal (``writable_paths``), and
+    2. ``compile_token(d)``, resolved through the declaring file's imports --
+       the same resolution the former used -- names a symbol in
+       ``scope.symbols`` (the unit is still working on it) or in
+       ``scope.target_symbols`` (the replacement it is moving to), and
+    3. in the target case, that row carries a ``catalog_row``: a DOCUMENTED
+       mapping recorded at seal time, never a symbol the worker invented.
+
+    Condition 3 is the v9 t_3903f495 counterexample: jakarta.ws.rs.core.Context
+    has a compat-mapping row and jakarta.ws.rs.Context does not, so a candidate
+    that invented the second one stays unexplained and REVERTED.
+
+    Two guards on the tolerated set, both fail-closed:
+
+    * without the destination model nothing resolves, so nothing is explained
+      -- a bare token would otherwise match a sealed symbol by simple name and
+      launder exactly the typo this predicate exists to catch;
+    * the tolerated set must be ONE symbol family (the unit's own). A unit that
+      would tolerate two different families is laundering a second defect
+      through its checkpoint, and the whole set is refused.
+
+    ``identities`` narrows the question to the diagnostics acceptance is asking
+    about (the introduced set); absent, every reported diagnostic is considered."""
+    if not isinstance(scope, dict) or str(scope.get("kind") or "") != UNIT_KIND:
+        return [], "the card carries no unit seal, so no symbol of it can explain anything"
+    if model is None:
+        return [], ("the destination model is unavailable, so no token can be resolved through the declaring file's "
+                    "imports; a bare name matched by spelling is exactly the mistake this rule refuses (v9 t_3903f495)")
+    paths = {str(p) for p in (scope.get("writable_paths") or [])}
+    sealed = [(str(s.get("fqn") or ""), str(s.get("kind") or "")) for s in (scope.get("symbols") or []) if s.get("fqn")]
+    targets = [t for t in (scope.get("target_symbols") or [])
+               if isinstance(t, dict) and t.get("to") and isinstance(t.get("catalog_row"), dict) and t["catalog_row"]]
+    annotations = _annotation_simples(model)
+    rows: list[dict[str, Any]] = []
+    families: set[str] = set()
+    for it in items or []:
+        if str(it.get("source") or "") != "javac":
+            continue
+        ident = str(it.get("identity") or "")
+        if identities is not None and ident not in identities:
+            continue
+        path = str(it.get("path") or "")
+        if path not in paths:
+            continue
+        key, kind = resolve_compile_symbol(model, it, annotations)
+        if not key:
+            continue
+        hit = next((f for f, _k in sealed if _symbol_match(key, kind, f)), "")
+        catalog_row: dict[str, Any] = {}
+        if hit:
+            symbol, why = hit, "sealed"
+        else:
+            row = next((t for t in targets if _symbol_match(key, kind, str(t.get("to") or ""))), None)
+            if row is None:
+                continue
+            symbol, why, catalog_row = str(row.get("to") or ""), "target", dict(row.get("catalog_row") or {})
+        families.add(symbol)
+        rows.append({"identity": ident, "path": path, "code": str(it.get("rule_id") or ""),
+                     "token": key, "symbol": symbol, "boundary": why, "catalog_row": catalog_row})
+    if len({r["symbol"] for r in rows}) > 1:
+        return [], ("the diagnostics this checkpoint would tolerate name %d different symbol families (%s); a unit may "
+                    "only carry its OWN family through its checkpoint, and anything else is a second defect"
+                    % (len(families), ", ".join(sorted(families)[:3])))
+    return sorted(rows, key=lambda r: (r["path"], r["identity"])), ""
+
+
+def unit_continue_scope(scope: dict[str, Any], items: list[dict[str, Any]]) -> set[str]:
+    """The identities a unit card may CONTINUE to: a diagnostic reported now at
+    a file the unit seals AND at a member row its inventory carries.
+
+    This is what "the compiler names the next member of the same unit" means
+    without reading a line number: the flow-analysis codes (an unhandled
+    checked exception on a `throws` surface) are reported one site per
+    compilation and carry no symbol token at all, so they are never explained
+    by a symbol and the card continues on them instead."""
+    if not isinstance(scope, dict) or str(scope.get("kind") or "") != UNIT_KIND:
+        return set()
+    paths = {str(p) for p in (scope.get("writable_paths") or [])}
+    members = {str(m.get("path") or "") for m in (scope.get("members") or [])}
+    out: set[str] = set()
+    for it in items or []:
+        if str(it.get("source") or "") != "javac" or not it.get("identity"):
+            continue
+        path = str(it.get("path") or "")
+        if path in paths and path in members:
+            out.add(str(it["identity"]))
+    return out
+
+
 def retry_key(cluster: dict[str, Any], items: list[dict[str, Any]] | None = None) -> str:
     """What a retry budget is counted against.
 
@@ -2678,13 +2813,112 @@ def _gate_passing(runtime: dict[str, Any] | None, name: str) -> bool:
     return bool(row.get("ran")) and row.get("rc") == 0 and (row.get("ready", True) is not False)
 
 
+def _unit_progress(a: list[int], b: list[int], *, scope: dict[str, Any], assessment: list[dict[str, Any]] | None,
+                   gate: str, prev_runtime: dict[str, Any] | None, cur_runtime: dict[str, Any] | None,
+                   prev_parity: dict[str, Any] | None, cur_parity: dict[str, Any] | None,
+                   issued_identities: set[str] | None, cur_identities: set[str] | None,
+                   explained: set[str] | None, family_scope: set[str] | None) -> tuple[bool, str] | None:
+    """A unit is judged at its CHECKPOINT, not per edit.
+
+    A coordinated repair across several files passes through states in which
+    the tuple is unchanged or briefly larger -- that is what "coordinated"
+    means, and the loop never measured the intermediate states anyway
+    (verify.py runs when the worker asks). What was not true before this
+    branch is that the CHECKPOINT itself demanded a strictly smaller tuple, so
+    a repair that had to move six controllers at once could not be accepted
+    whatever it did.
+
+    So the compile slot -- and only the compile slot -- may stand still or
+    briefly rise, and only for diagnostics the unit's SEALED symbols explain
+    (unit_explained_regressions). Everything else is exactly as strict as it
+    was: no new mandatory obligation (vetoed by the caller before this runs),
+    no regressed test or incident slot, no gate going backwards, every one of
+    the unit's own sealed identities gone, and every sealed member assessed
+    from the tree.
+
+    Returns None when the verdict belongs to a branch below: a unit that
+    carries a gate is discharged by that gate passing, which the phase-aware
+    branches already decide -- these checks are added on top of them, not
+    instead of them."""
+    uid = str(scope.get("unit_id") or scope.get("cluster") or "this unit")
+    rule = str(scope.get("rule") or "")
+    # 1. no new mandatory obligation -- the caller's veto, unchanged, already run.
+    # 2. the NON-compile slots may not regress. The relaxation is for the
+    #    compile count only: a unit is never a licence to break a test or to
+    #    reintroduce an MTA obligation.
+    for idx, name in ((0, "mandatory-incident"), (2, "failing-test")):
+        if b[idx] > a[idx]:
+            return False, ("the %s slot regressed (%s from %s); a unit's checkpoint relaxes the COMPILE count only, and "
+                           "never licenses a broken test or a reintroduced obligation" % (name, b, a))
+    # 3. the gates may not go backwards, in either direction of the phase order.
+    for name in ("package", "boot"):
+        if _gate_passing(prev_runtime or {}, name) and not _gate_passing(cur_runtime or {}, name):
+            return False, ("the %s gate was passing and is not any more; %s may not break a phase it did not repair"
+                           % (name, uid))
+    before, after = parity_state(prev_parity), parity_state(cur_parity)
+    if before["known"] and after["known"]:
+        regressed = sorted(ep for ep, v in before["entry_points"].items()
+                           if v == "PASS" and after["entry_points"].get(ep, "") != "PASS")
+        if regressed:
+            return False, ("the parity comparison at %s was PASS before this candidate and is %s now; %s may not break a "
+                           "scenario that was passing"
+                           % (regressed[0], after["entry_points"].get(regressed[0]) or "no longer in the receipt", uid))
+    # 4. the unit's OWN javac identities are gone. Asked of the line-free
+    #    identity, as everywhere else: a moved site is the same site.
+    still = sorted(set(issued_identities or ()) & set(cur_identities or ()))
+    if still:
+        return False, ("%s still reports %d of the diagnostic(s) it sealed (%s); a checkpoint discharges the whole unit, "
+                       "not a part of it" % (uid, len(still), ", ".join(still[:2])))
+    # 5. every sealed member, assessed from the TREE (assess_unit), not from
+    #    anything the worker wrote. An already-correct member earns nothing and
+    #    costs nothing; an inconclusive one is never a pass.
+    rows = list(assessment or [])
+    bad = [r for r in rows if r.get("verdict") == "violates"]
+    if bad:
+        return False, ("%d sealed member(s) of %s still violate %s: %s"
+                       % (len(bad), uid, rule or "the unit's rule",
+                          "; ".join("%s (%s)" % (r.get("member"), r.get("detail")) for r in bad[:3])))
+    unknown = [r for r in rows if r.get("verdict") == "inconclusive"]
+    if unknown:
+        return UNPROVEN, ("%d sealed member(s) of %s could not be assessed against %s: %s. An assessment that could not "
+                          "be made is not one that passed; the candidate is retained unaccepted and no attempt is spent"
+                          % (len(unknown), uid, rule or "the unit's rule",
+                             "; ".join("%s (%s)" % (r.get("member"), r.get("detail")) for r in unknown[:3])))
+    # 6. where a GATE is the obligation, that gate passing is the discharge and
+    #    the phase-aware branch below decides it, with everything above already
+    #    required on top of it.
+    if gate in ("package", "boot", "parity"):
+        return None
+    if issued_identities is None or cur_identities is None:
+        return None  # no identities to partition: today's rules decide
+    # 7. the compile slot.
+    if b < a:
+        return True, "measure %s < %s and every obligation %s sealed is discharged at its checkpoint" % (b, a, uid)
+    now = sorted(set(cur_identities) - set(issued_identities))
+    unexplained = [i for i in now if i not in set(explained or ())]
+    if not unexplained:
+        return True, ("the unit's obligations are discharged at its checkpoint; %d diagnostic(s) remain that its sealed "
+                      "symbols explain (%s), recorded as explained_regressions"
+                      % (len(now), ", ".join(now[:2]) or "none"))
+    if family_scope is not None and now and set(now) <= set(family_scope):
+        return RETAIN, ("every diagnostic %s sealed is gone and the compiler now reports %s, another member of the same "
+                        "unit. Not ACCEPTED: the count did not fall. The candidate stays; repair the members it names "
+                        "inside the sealed write set" % (uid, ", ".join(now[:2])))
+    return EXPOSED, ("every diagnostic %s sealed is gone and the compiler now reports %s, which its sealed symbols do "
+                     "not explain (the file seal, the sealed symbols and the catalogued targets are the boundary). "
+                     "Not ACCEPTED; the candidate is preserved as a typed diagnosis"
+                     % (uid, ", ".join(unexplained[:2]) or "an unplaced diagnostic"))
+
+
 def progress(prev: dict[str, Any], cur: dict[str, Any], prev_ids: set[str], cur_ids: set[str],
              *, gate: str = "", prev_runtime: dict[str, Any] | None = None, cur_runtime: dict[str, Any] | None = None,
              issued_items: list[str] | None = None, prev_gate_items: set[str] | None = None,
              cur_gate_items: set[str] | None = None, cur_item_ids: set[str] | None = None,
              issued_identities: set[str] | None = None, cur_identities: set[str] | None = None,
              family_scope: set[str] | None = None,
-             prev_parity: dict[str, Any] | None = None, cur_parity: dict[str, Any] | None = None) -> tuple[bool, str]:
+             prev_parity: dict[str, Any] | None = None, cur_parity: dict[str, Any] | None = None,
+             unit_scope: dict[str, Any] | None = None, unit_assessment: list[dict[str, Any]] | None = None,
+             explained: set[str] | None = None) -> tuple[bool, str]:
     """Accept iff strictly smaller lexicographically and no new mandatory obligation.
 
     Phase-aware: a card issued for the ``package``, ``boot`` or ``parity`` gate
@@ -2707,7 +2941,13 @@ def progress(prev: dict[str, Any], cur: dict[str, Any], prev_ids: set[str], cur_
     moves the site is not a repair (issued_identities / cur_identities). What
     the compiler reports instead decides the rest: inside this card's sealed
     family (family_scope) the card CONTINUES (RETAIN); anywhere else it is a
-    typed diagnosis that preserves the candidate (EXPOSED)."""
+    typed diagnosis that preserves the candidate (EXPOSED).
+
+    Unit-aware: a card carrying a sealed v4 UNIT inventory (``unit_scope``, with
+    ``unit_assessment`` from assess_unit and ``explained`` from
+    unit_explained_regressions) is judged at its CHECKPOINT -- see
+    _unit_progress. Every other call site passes none of the three and is
+    byte-for-byte unchanged."""
     if not cur.get("known"):
         return False, "measure not fully known (%s)" % "; ".join(cur.get("blocked") or ["compile/tests/incidents unverified"])
     if not prev.get("known"):
@@ -2741,6 +2981,17 @@ def progress(prev: dict[str, Any], cur: dict[str, Any], prev_ids: set[str], cur_
     new_mandatory = sorted(i for i in cur_ids - prev_ids if i.startswith("inc:") and cur_by_rule.get(_rule(i), 0) > prev_by_rule.get(_rule(i), 0))
     if new_mandatory:
         return False, "new mandatory obligation(s): %s" % ",".join(new_mandatory[:5])
+    # The UNIT checkpoint, after the new-obligation veto (which is global and
+    # therefore already forbids a new mandatory obligation outside the unit)
+    # and before the generic b < a test, which is what it relaxes.
+    if isinstance(unit_scope, dict) and str(unit_scope.get("kind") or "") == UNIT_KIND:
+        verdict = _unit_progress(a, b, scope=unit_scope, assessment=unit_assessment, gate=gate,
+                                 prev_runtime=prev_runtime, cur_runtime=cur_runtime,
+                                 prev_parity=prev_parity, cur_parity=cur_parity,
+                                 issued_identities=issued_identities, cur_identities=cur_identities,
+                                 explained=explained, family_scope=family_scope)
+        if verdict is not None:
+            return verdict
     if b < a:
         return True, "measure %s < %s" % (b, a)
     if gate == "parity":

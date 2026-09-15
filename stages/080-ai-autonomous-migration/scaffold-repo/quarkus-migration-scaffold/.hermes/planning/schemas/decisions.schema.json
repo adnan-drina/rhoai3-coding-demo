@@ -472,6 +472,18 @@
           ],
           "description": "v1 forms units; off (or absent) keeps the per-file clustering."
         },
+        "runtime_feedback": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "v1",
+            "off",
+            null
+          ],
+          "description": "v1 runs the FULL scenario comparison (paved-road-m4/run-parity.py, unscoped) after a successful startup gate on any card whose acceptance verification reached boot, bound to that card's candidate, so a behavioural failure enters the next work-list rebuild as a parity obligation immediately instead of only at M4. It is skipped when the tree's parity receipt is already bound to this candidate digest. off (or absent) keeps the v9 behaviour: the comparison runs only for a card whose own obligation is a parity mismatch, scoped to that card's scenarios."
+        },
         "adr": {
           "type": [
             "string",

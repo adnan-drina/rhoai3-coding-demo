@@ -34,6 +34,28 @@ INCONCLUSIVE = "INCONCLUSIVE"
 COMPAT_FAIL = "COMPAT_FAIL"
 ARTIFACT_SCHEMAS = {"evidence-bundle": "evidence-bundle.schema.json", "worklist": "worklist.schema.json"}
 
+# A typed refusal surfaces under its OWN class, not under a neighbour's.
+#
+# SCOPE_UNDERIVED says "no production write scope can be derived for this
+# cluster"; UNIT_OVERSIZE says the opposite -- the scope was derived, narrowed
+# deterministically, and is still wider than one coherent repair, which is a
+# planning answer and not a missing write set. Reading the second as the first
+# would send an Operator looking for a file that is already there.
+#
+# UNIT_MODE_SWITCH is not a cluster at all: decisions.yaml asks for a formation
+# mode the work list may not adopt while a card is issued, because the flip
+# changes every cluster id and would discard a live candidate. It arrives in
+# the measure's blocked list (worklist.unit_formation_for), which otherwise
+# reads only as MEASURE_UNKNOWN.
+CLUSTER_BLOCK_CLASSES = ("UNIT_OVERSIZE",)
+MEASURE_BLOCK_CLASSES = ("UNIT_MODE_SWITCH",)
+
+
+def typed_class(text: str, classes: tuple[str, ...], default: str) -> str:
+    """The class a tool's own typed refusal names, else ``default``."""
+    head = str(text or "").split(":", 1)[0].strip()
+    return head if head in classes else default
+
 
 def installed_skills(root: Path) -> set[str]:
     base = Path(root) / ".hermes" / "skills"
@@ -85,6 +107,10 @@ def blocks_for(root: Path, bundle: dict[str, Any], worklist: dict[str, Any], dec
         if str(b.get("status")) not in ("ok", "blocked") or str((b.get("inputs") or {}).get("evidence_bundle_sha256")) != bundle_digest:
             block("BOOTSTRAP_STALE", "bootstrap", "bootstrap receipt is %s / bound to bundle %s, current bundle %s" % (b.get("status"), str((b.get("inputs") or {}).get("evidence_bundle_sha256"))[:12], bundle_digest[:12]))
     m = worklist.get("measure") or {}
+    for text in m.get("blocked") or []:
+        cls = typed_class(text, MEASURE_BLOCK_CLASSES, "")
+        if cls:
+            block(cls, "worklist", str(text))
     if not m.get("known"):
         block("MEASURE_UNKNOWN", "worklist", "compile/tests/parity not all verified (run-verify.sh); the loop never advances on an unknown measure")
     if worklist.get("evidence_bundle_sha256") != bundle_digest:
@@ -94,8 +120,14 @@ def blocks_for(root: Path, bundle: dict[str, Any], worklist: dict[str, Any], dec
     # clears it (decisions.not_applicable by ADR, or the fix lands by hand).
     for cid in worklist.get("deferred") or []:
         block("MANUAL_CLUSTER", cid, "cluster deferred after the attempt threshold; a human owns it (kanban_block kind=needs_input); the loop does not continue past it")
+    by_cluster = {str(c.get("id") or ""): c for c in (worklist.get("clusters") or []) if isinstance(c, dict)}
     for cid in worklist.get("blocked_clusters") or []:
-        block("SCOPE_UNDERIVED", cid, "no production write scope can be derived for this cluster (tests are never writable); a human or ADR must own it")
+        text = str((by_cluster.get(str(cid)) or {}).get("block") or "")
+        cls = typed_class(text, CLUSTER_BLOCK_CLASSES, "SCOPE_UNDERIVED")
+        if cls == "SCOPE_UNDERIVED":
+            block(cls, cid, "no production write scope can be derived for this cluster (tests are never writable); a human or ADR must own it")
+        else:
+            block(cls, cid, text)
     return out
 
 

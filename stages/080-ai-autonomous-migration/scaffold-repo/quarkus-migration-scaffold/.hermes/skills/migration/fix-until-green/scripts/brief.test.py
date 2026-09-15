@@ -172,8 +172,108 @@ def _issued_cluster_case() -> int:
     return 0
 
 
+def _unit_brief_case() -> int:
+    """A unit card's brief carries what one coherent repair covers: the members
+    grouped under the rule that formed them and each with its current verdict,
+    the documented targets with the catalogue rows that document them, the
+    completion checks with the tool that decides each, and the one rule that
+    makes a coordinated repair possible -- intermediate regressions inside the
+    sealed symbols are allowed until the checkpoint."""
+    import io
+    from contextlib import redirect_stderr, redirect_stdout
+
+    from planner.canonical import load_json
+    from planner.paths import LOOP_DIR, LOOP_ISSUED, WORKLIST
+    from planner.worklist import batch_scope_digest
+
+    with tempfile.TemporaryDirectory(prefix="unit-brief-") as td:
+        root = Path(td)
+        rel = "src/main/java/p/OwnerResource.java"
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / rel).write_text("package p;\npublic class OwnerResource { }\n", encoding="utf-8")
+        scope = {
+            "schema": "rhoai3.batch-scope/v4", "kind": "unit", "rule": "unit/diagnostic-family/v1",
+            "cluster": "u:abc123", "unit_id": "u:abc123",
+            "family_key": "org.springframework.web.util.UriComponentsBuilder",
+            "writable_paths": [rel],
+            "symbols": [{"kind": "type", "fqn": "org.springframework.web.util.UriComponentsBuilder", "path": rel}],
+            "target_symbols": [{"from": "org.springframework.web.util.UriComponentsBuilder",
+                                "to": "jakarta.ws.rs.core.UriBuilder",
+                                "catalog_row": {"catalog": "compat-mapping.json", "block": "symbol_renames",
+                                                "key": "org.springframework.web.util.UriComponentsBuilder",
+                                                "kind": "type", "source": "https://quarkus.io/"}}],
+            "members": [{"path": rel, "type": "p.OwnerResource", "member_id": "", "occurrence": 0,
+                         "state": "reported", "identity": "diag:a"}],
+            "evidence": [{"kind": "javac", "ref": "%s names UriComponentsBuilder" % rel}],
+            "completion": [{"check": "identities-gone", "tool": "javac", "detail": "every sealed identity is gone"},
+                           {"check": "unit-assessment", "tool": "worklist.assess_unit", "detail": "no member violates"}],
+            "bounds": {"files": 1, "sites": 1, "symbols": 1, "max_files": 20, "max_sites": 160, "max_symbols": 8},
+            "measured": ["err:1"], "inputs": {"candidate_sha256": "c0"},
+        }
+        scope["digest"] = batch_scope_digest(scope)
+        sp = Path("evidence/planning/batch-scope/u-abc123") / ("%s.json" % scope["digest"][:32])
+        write_canonical(root / sp, scope)
+        cluster = {"id": "u:abc123", "kind": "compile", "path": rel, "write_set": [rel], "items": ["err:1"],
+                   "label": scope["family_key"], "retry_key": "rk:unit:u:abc123",
+                   "batch_scope": {"path": sp.as_posix(), "digest": scope["digest"], "rule": scope["rule"],
+                                   "kind": "unit", "unit_id": "u:abc123", "members": 1}}
+        wl = {"schema": "rhoai3.worklist/v1", "head": "u:abc123", "unit_formation": "v1",
+              "measure": {"tuple": [0, 1, 0], "known": True, "blocked": []},
+              "clusters": [cluster], "not_counted": [],
+              "items": [{"id": "err:1", "source": "javac", "kind": "compile", "category": "mandatory",
+                         "path": rel, "line": 1, "identity": "diag:a",
+                         "rule_id": "compiler.err.cant.resolve.location",
+                         "message": "cannot find symbol\n  symbol:   class UriComponentsBuilder"}]}
+        write_canonical(root / WORKLIST, wl)
+        write_canonical(root / LOOP_ISSUED, {"schema": "rhoai3.loop-issued/v1", "cluster": "u:abc123",
+                                             "task_id": "t_unit0001", "write_set": [rel],
+                                             "revisions": [{"n": 1, "path": rel, "evidence": {"kind": "javac", "ref": "diag:a"}}]})
+        prev = os.environ.get("HERMES_KANBAN_TASK")
+        os.environ["HERMES_KANBAN_TASK"] = "t_unit0001"
+        try:
+            err, out = io.StringIO(), io.StringIO()
+            with redirect_stderr(err), redirect_stdout(out):
+                rc = __import__("brief").main(["--root", str(root)])
+        finally:
+            if prev is None:
+                os.environ.pop("HERMES_KANBAN_TASK", None)
+            else:
+                os.environ["HERMES_KANBAN_TASK"] = prev
+        if rc != 0:
+            return _fail("brief.py must serve a unit card: rc=%s %s" % (rc, err.getvalue()[:400]))
+        brief = load_json(root / LOOP_DIR / "brief-u-abc123.json")
+        unit = brief.get("unit") or {}
+        if unit.get("unit_id") != "u:abc123" or unit.get("rule") != "unit/diagnostic-family/v1":
+            return _fail("the brief must carry the unit's identity and rule: %s" % unit)
+        groups = unit.get("members_by_rule") or {}
+        if list(groups) != ["unit/diagnostic-family/v1"] or len(groups["unit/diagnostic-family/v1"]) != 1:
+            return _fail("the members are grouped under the rule that formed them: %s" % groups)
+        member = groups["unit/diagnostic-family/v1"][0]
+        if member.get("path") != rel or not member.get("verdict"):
+            return _fail("every member carries its locus and its current verdict: %s" % member)
+        targets = unit.get("target_symbols") or []
+        if len(targets) != 1 or (targets[0].get("catalog_row") or {}).get("block") != "symbol_renames":
+            return _fail("every documented target carries the catalogue row that documents it: %s" % targets)
+        checks = {c.get("check"): c.get("tool") for c in (unit.get("completion") or [])}
+        if checks.get("identities-gone") != "javac" or checks.get("unit-assessment") != "worklist.assess_unit":
+            return _fail("the completion checks name the tool that decides each: %s" % checks)
+        note = str(unit.get("checkpoint") or "")
+        if "judged ONCE, at its checkpoint" not in note or "INSIDE the sealed symbols are allowed" not in note:
+            return _fail("the brief must state the checkpoint rule: %r" % note[:200])
+        if "a failing test" not in note:
+            return _fail("and what it does NOT relax: %r" % note[:300])
+        if not unit.get("revisions"):
+            return _fail("a revision already granted must be visible to the next attempt: %s" % unit)
+        amend = str((brief.get("batch_scope") or {}).get("amend") or "")
+        if "--evidence" not in amend:
+            return _fail("the amend line must name --evidence for a unit: %r" % amend[:200])
+    return 0
+
+
 def main() -> int:
     if _repository_inventory_case():
+        return 1
+    if _unit_brief_case():
         return 1
     if _runtime_advice_case():
         return 1
@@ -310,7 +410,7 @@ def main() -> int:
             return _fail("a file-level profile incident must name the profile and the remaining Spring keys with their mappings: %s" % c4)
     if _issued_cluster_case():
         return 1
-    print("OK: brief enrichment (pom unmanaged→managed; compile: inventory hit / present flag / Jakarta rename / reference file / already_imported classpath; config: line, key, variables, key+value mapping, prefix expansion; runtime: the cause, the member, and the siblings likely to carry it; issued cluster over empty head)")
+    print("OK: brief enrichment (pom unmanaged→managed; compile: inventory hit / present flag / Jakarta rename / reference file / already_imported classpath; config: line, key, variables, key+value mapping, prefix expansion; runtime: the cause, the member, and the siblings likely to carry it; issued cluster over empty head; a UNIT card's brief carries the members grouped under the rule that formed them with each one's current verdict, the documented targets with their catalogue rows, the completion checks naming the tool that decides each, the revisions already granted, an amend line that names --evidence, and the checkpoint rule -- judged once, intermediate regressions inside the sealed symbols allowed until then, and nothing else relaxed)")
     return 0
 
 

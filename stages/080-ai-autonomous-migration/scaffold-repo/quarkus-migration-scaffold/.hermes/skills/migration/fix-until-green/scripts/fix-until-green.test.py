@@ -622,6 +622,195 @@ def _introduced_attribution_case() -> int:
     return 0
 
 
+_UNIT_RETIRED = "org.springframework.web.util.UriComponentsBuilder"
+_UNIT_TARGET = "jakarta.ws.rs.core.UriBuilder"
+_UNIT_CATALOG = {"catalog": "compat-mapping.json", "block": "symbol_renames", "key": _UNIT_RETIRED,
+                 "kind": "type", "source": "https://quarkus.io/version/3.27/guides/rest"}
+
+
+def _seal_unit(root: Path, paths: list[str], item_ids: list[str], identities: list[str], *,
+               member_id: str = "") -> dict:
+    """A sealed v4 unit over these files, and the cluster that carries it.
+
+    Hand-written on purpose: what is under test here is the TRANSACTION -- the
+    partition, the checkpoint and what each records -- not the former, which
+    worklist.test.py asserts against its own four rules on two worlds."""
+    from planner.worklist import batch_scope_digest, batch_scope_path
+
+    scope = {
+        "schema": "rhoai3.batch-scope/v4", "kind": "unit", "rule": "unit/diagnostic-family/v1",
+        "producer": "worklist.build_unit_scope", "tool": {"model": "jdk-dest-model", "version": "1.2.0"},
+        "cluster": "u:testunit", "unit_id": "u:testunit", "family_key": _UNIT_RETIRED,
+        "writable_paths": sorted(paths),
+        "symbols": [{"kind": "type", "fqn": _UNIT_RETIRED, "path": paths[0]}],
+        "target_symbols": [{"from": _UNIT_RETIRED, "to": _UNIT_TARGET, "catalog_row": dict(_UNIT_CATALOG)}],
+        "members": [{"path": p, "type": "org.springframework.samples.petclinic.rest.%s" % Path(p).stem,
+                     "member_id": member_id, "occurrence": 0, "state": "reported", "identity": ident,
+                     "item": iid}
+                    for p, ident, iid in zip(paths, identities, item_ids)],
+        "evidence": [{"kind": "javac", "ref": "%s names %s" % (p, _UNIT_RETIRED)} for p in paths],
+        "completion": [{"check": "identities-gone", "tool": "javac", "identities": sorted(identities),
+                        "detail": "every sealed identity is gone"},
+                       {"check": "unit-assessment", "tool": "worklist.assess_unit", "detail": "no member violates"}],
+        "bounds": {"files": len(paths), "sites": len(paths), "symbols": 1,
+                   "max_files": 20, "max_sites": 160, "max_symbols": 8},
+        "measured": sorted(item_ids), "inputs": {"candidate_sha256": ""},
+    }
+    scope["digest"] = batch_scope_digest(scope)
+    sp = batch_scope_path(scope)
+    write_canonical(root / sp, scope)
+    return {"id": "u:testunit", "kind": "compile", "path": paths[0], "label": _UNIT_RETIRED,
+            "write_set": sorted(paths), "items": sorted(item_ids), "retry_key": "rk:unit:u:testunit",
+            "batch_scope": {"path": sp.as_posix(), "digest": scope["digest"], "rule": scope["rule"],
+                            "kind": "unit", "unit_id": "u:testunit", "members": len(paths)}}
+
+
+def _unit_checkpoint_case() -> int:
+    """The checkpoint, end to end through the transaction.
+
+    A coordinated repair across two files is ACCEPTED with the compile count
+    unchanged when what remains is a diagnostic the unit's DOCUMENTED target
+    explains; the same shape with an invented replacement (v9 t_3903f495, the
+    right repair with the wrong import) is explained by nothing and REVERTS;
+    the compiler naming another member of the same unit CONTINUES the card;
+    one naming something outside it does not; and a member repaired by
+    deleting it still violates."""
+    from planner.paths import MTA_FINDINGS  # noqa: E402
+
+    _ATTR = "compiler.err.cant.resolve.location"
+
+    def sym(name: str) -> str:
+        # javac's own wording: the TOKEN is what compile_token reads, and the
+        # whole partition turns on resolving it rather than matching prose
+        return "cannot find symbol\n  symbol:   class %s\n  location: class R" % name
+
+    with tempfile.TemporaryDirectory(prefix="chk-unit-") as td:
+        spec = specimens.specimen("http")
+        root = specimens.build_dest(Path(td) / "dest", spec, decisions=specimens.admitted_decisions(max_attempts=3))
+        paths = _write_uri_controllers(root, _BUILDER)
+        owner, pet, third = paths[0], paths[1], paths[2]
+        sealed = [owner, pet]
+        errs = [(p, 3, sym("UriComponentsBuilder"), _ATTR) for p in sealed]
+        specimens.prepare_loop(root, errors=list(errs))
+        findings = load_json(root / MTA_FINDINGS)
+        wl = load_json(root / WORKLIST)
+        rows = sorted([i for i in wl["items"] if str(i.get("source")) == "javac" and str(i.get("path")) in sealed],
+                      key=lambda i: str(i["path"]))
+        if len(rows) != 2:
+            return _fail("the fixture needs one diagnostic per sealed file: %s" % [(r.get("path"), r.get("id")) for r in rows])
+        cluster = _seal_unit(root, sorted(sealed), [str(r["id"]) for r in rows], [str(r["identity"]) for r in rows])
+        originals = {p: (root / p).read_text(encoding="utf-8") for p in paths}
+
+        def edit(rel: str, marker: str) -> None:
+            (root / rel).write_text(originals[rel].replace("import java.net.URI;\n",
+                                                           "import java.net.URI;\n// %s\n" % marker), encoding="utf-8")
+
+        def restore() -> None:
+            for rel, text in originals.items():
+                (root / rel).write_text(text, encoding="utf-8")
+
+        # (1) THE COUNTEREXAMPLE FIRST, so no later pass can be read as luck.
+        # Both sealed diagnostics are gone and the candidate has invented a
+        # replacement the catalogue never wrote down. The count is unchanged.
+        _issue_cluster(root, cluster, "t_unit1")
+        for p in sealed:
+            edit(p, "jakarta.ws.rs.Context for jakarta.ws.rs.core.Context")
+        specimens.verify(root, errors=[(p, 9, sym("Context"), _ATTR) for p in sealed],
+                         failures=[], findings=findings)
+        p = _advance(root, cluster["id"], "t_unit1")
+        blob = p.stdout + p.stderr
+        if p.returncode == 0 or "REVERTED" not in blob or "introduced 2 compile diagnostic" not in blob:
+            return _fail("an invented replacement is explained by nothing and still REVERTS: rc=%s %s" % (p.returncode, blob[-700:]))
+        if "Context" not in blob:
+            return _fail("and the rejection names the symbols: %s" % blob[-400:])
+        if (root / owner).read_text(encoding="utf-8") != originals[owner]:
+            return _fail("the rejected candidate is reverted")
+
+        # (2) THE SAME SHAPE with the DOCUMENTED target: the unit traded its two
+        # sealed diagnostics for two about the replacement its seal records,
+        # with the catalogue row that documents it. The count did not fall and
+        # the step is ACCEPTED at its checkpoint.
+        pipeline.admit(root)
+        _issue_cluster(root, cluster, "t_unit2")
+        for q in sealed:
+            edit(q, "moved to %s" % _UNIT_TARGET)
+        specimens.verify(root, errors=[(q, 9, sym("UriBuilder"), _ATTR) for q in sealed],
+                         failures=[], findings=findings)
+        p = _advance(root, cluster["id"], "t_unit2")
+        blob = p.stdout + p.stderr
+        if p.returncode != 0 or "ACCEPTED" not in blob:
+            return _fail("a discharged unit is accepted with the count unchanged: rc=%s %s" % (p.returncode, blob[-700:]))
+        if "explained_regressions" not in blob:
+            return _fail("and it says what it tolerated and why: %s" % blob[-500:])
+        step = (load_json(root / LOOP_STEPS)["steps"] or [{}])[-1]
+        if (step.get("unit") or {}).get("unit_id") != "u:testunit":
+            return _fail("the accepted step records the unit it discharged: %s" % step.get("unit"))
+        rec = step.get("explained_regressions") or []
+        if len(rec) != 2 or {r["boundary"] for r in rec} != {"target"}:
+            return _fail("every tolerated diagnostic is recorded with its boundary: %s" % rec)
+        if {r["catalog_row"].get("key") for r in rec} != {_UNIT_RETIRED}:
+            return _fail("and with the catalogue row that documented it: %s" % rec)
+        for q in sealed:
+            originals[q] = (root / q).read_text(encoding="utf-8")
+
+        # (3) CONTINUE: the compiler names another member of the same unit. A
+        # flow code carries no symbol token, so nothing explains it -- and it is
+        # at a file the unit seals, which is the unit's own remaining work. The
+        # count does not fall: the other file's diagnostic is still standing.
+        pipeline.admit(root)
+
+        def javac_rows(where: list[str]) -> list[dict]:
+            doc = load_json(root / WORKLIST)
+            return sorted([i for i in doc["items"] if str(i.get("source")) == "javac" and str(i.get("path")) in where],
+                          key=lambda i: str(i["path"]))
+
+        now = javac_rows(sealed)
+        both = _seal_unit(root, sorted(sealed), [str(r["id"]) for r in now], [str(r["identity"]) for r in now])
+        spent = (load_json(root / LOOP_STEPS).get("attempts") or {}).get("rk:unit:u:testunit", 0)
+        _issue_cluster(root, both, "t_unit3")
+        for q in sealed:
+            edit(q, "another site of the same unit")
+        specimens.verify(root, errors=[(q, 8, _URI_MSG, _URI_CODE) for q in sealed], failures=[], findings=findings)
+        p = _advance(root, both["id"], "t_unit3")
+        blob = p.stdout + p.stderr
+        if p.returncode != 3 or "CONTINUE" not in blob or "another member of the same unit" not in blob:
+            return _fail("the next member of the unit continues the card: rc=%s %s" % (p.returncode, blob[-700:]))
+        if (load_json(root / LOOP_STEPS).get("attempts") or {}).get("rk:unit:u:testunit", 0) != spent:
+            return _fail("a continuation spends no attempt against the unit's budget")
+
+        # (4) OUTSIDE the unit: the same kind of diagnostic at a file the unit
+        # does not seal is not its remaining work, and is not accepted.
+        restore()
+        _issue_cluster(root, both, "t_unit4")
+        for q in sealed:
+            edit(q, "a repair with a side effect elsewhere")
+        specimens.verify(root, errors=[(owner, 8, _URI_MSG, _URI_CODE), (third, 8, _URI_MSG, _URI_CODE)],
+                         failures=[], findings=findings)
+        p = _advance(root, both["id"], "t_unit4")
+        blob = p.stdout + p.stderr
+        if p.returncode == 0 or "VERIFICATION_PENDING" not in blob or "exposed-outside-scope" not in blob:
+            return _fail("a diagnostic outside the sealed symbols is never accepted: rc=%s %s" % (p.returncode, blob[-700:]))
+
+        # (5) REPAIR BY DELETION: a sealed member answered by removing the
+        # operation violates, whatever the measure does -- here the measure
+        # falls to nothing at all and the card is still REVERTED.
+        restore()
+        specimens.verify(root, errors=[(q, 9, sym("UriBuilder"), _ATTR) for q in sealed], failures=[], findings=findings)
+        pipeline.admit(root)
+        now = javac_rows([owner])
+        gone = _seal_unit(root, [owner], [str(now[0]["id"])], [str(now[0]["identity"])], member_id="addOwner")
+        _issue_cluster(root, gone, "t_unit5")
+        (root / owner).write_text(originals[owner].split("    void add")[0] + "}\n", encoding="utf-8")
+        specimens.verify(root, errors=[(pet, 9, sym("UriBuilder"), _ATTR)], failures=[], findings=findings)
+        p = _advance(root, gone["id"], "t_unit5")
+        blob = p.stdout + p.stderr
+        if p.returncode == 0 or "REVERTED" not in blob or "violate" not in blob:
+            return _fail("a member repaired by deleting it violates: rc=%s %s" % (p.returncode, blob[-700:]))
+        if "addOwner" not in blob:
+            return _fail("and the refusal names the member that went: %s" % blob[-400:])
+    return 0
+
+
 def _disposition_case() -> int:
     """A deferral whose cause was a harness defect is cleared by a disposition,
     not a product change: no commit, no step, the history kept -- and the ONE
@@ -705,6 +894,8 @@ def _set_wide_blocker_case() -> int:
 
 def main() -> int:
     if _checked_veto_case() or _checked_family_advance_case() or _introduced_attribution_case() or _disposition_case() or _set_wide_blocker_case() or _parity_card_case():
+        return 1
+    if _unit_checkpoint_case():
         return 1
     if _si1_case():
         return 1
@@ -1314,7 +1505,7 @@ def main() -> int:
         p = _advance(root, "c:tampered", "t_z")
         if p.returncode != 2 or "LOOP_STALE_STATE" not in p.stderr:
             return _fail("tampered work list must refuse advance: %s" % p.stderr)
-    print("OK: fix-until-green (checked-exception veto: a falling count does not admit an introduced unhandled exception; family bound to its introducing step: Owner→Pet CONTINUE in the same card without an attempt, a stalled continuation rejects, an exposure outside the family is a typed diagnosis; an introduced attribution diagnostic is rejected, not parked (javac reports every one of them at once; a flow code newly reported stays exposed; one the accepted tree already had is not introduced); a harness-caused deferral is cleared by a metadata-only disposition and the one budget sees it; a set-wide packaging cause reaches the work list as one typed blocker with no card, under permuted reported names; measurement contract: unrun tests / empty reports / failed runner / skipped rescan are unknown; baseline; issued card; diagnostic cannot advance; post-verify edit + unissued cluster refused with baseline intact; out-of-scope test edit rejected + reverted + reports discarded; accept commits; staged no-progress reverted from index; line shift is not a new obligation; unresolvable candidate is VERIFICATION_PENDING (no attempt); known no-progress defers; Operator rewind restores tree+budget in a new epoch; green → packaging → startup → M4 (unknown gates never mint; an environment blocker is not a card; a gate repair is accepted phase-aware); unresolved test = typed blocker; tampered list refused; PARITY CARD (v9 t_77cae2b2): the obligation carries gate=parity onto the issued card, the brief names its scenarios and what discharges them, a comparison that did not run retains the candidate without an attempt, one that still reports the obligation reverts it, a receipt composed for another card is not this card's measurement, a receipt that carries NO binding after a comparison bound to this card is the one a refusing composer left (VERIFICATION_PENDING, no attempt, never ACCEPTED), and the repair is ACCEPTED on the re-composed candidate-bound receipt with the tuple unchanged at [0,0,0], the receipt snapshotted with the accepted reports)")
+    print("OK: fix-until-green (checked-exception veto: a falling count does not admit an introduced unhandled exception; family bound to its introducing step: Owner→Pet CONTINUE in the same card without an attempt, a stalled continuation rejects, an exposure outside the family is a typed diagnosis; an introduced attribution diagnostic is rejected, not parked (javac reports every one of them at once; a flow code newly reported stays exposed; one the accepted tree already had is not introduced); a harness-caused deferral is cleared by a metadata-only disposition and the one budget sees it; a set-wide packaging cause reaches the work list as one typed blocker with no card, under permuted reported names; measurement contract: unrun tests / empty reports / failed runner / skipped rescan are unknown; baseline; issued card; diagnostic cannot advance; post-verify edit + unissued cluster refused with baseline intact; out-of-scope test edit rejected + reverted + reports discarded; accept commits; staged no-progress reverted from index; line shift is not a new obligation; unresolvable candidate is VERIFICATION_PENDING (no attempt); known no-progress defers; Operator rewind restores tree+budget in a new epoch; green → packaging → startup → M4 (unknown gates never mint; an environment blocker is not a card; a gate repair is accepted phase-aware); unresolved test = typed blocker; tampered list refused; PARITY CARD (v9 t_77cae2b2): the obligation carries gate=parity onto the issued card, the brief names its scenarios and what discharges them, a comparison that did not run retains the candidate without an attempt, one that still reports the obligation reverts it, a receipt composed for another card is not this card's measurement, a receipt that carries NO binding after a comparison bound to this card is the one a refusing composer left (VERIFICATION_PENDING, no attempt, never ACCEPTED), and the repair is ACCEPTED on the re-composed candidate-bound receipt with the tuple unchanged at [0,0,0], the receipt snapshotted with the accepted reports); UNIT CHECKPOINT: the attribution veto is PARTITIONED for a unit card -- a candidate that invented a replacement the catalogue never wrote down still REVERTS with the symbols named (v9 t_3903f495), while one whose remaining diagnostics name the DOCUMENTED target is ACCEPTED with the compile count unchanged and records each tolerated diagnostic with its boundary and its catalogue row; the compiler naming another member of the same unit CONTINUES the card without spending an attempt, one naming a file the unit does not seal is a typed diagnosis, and a sealed member answered by deleting it violates however far the measure fell)")
     return 0
 
 
