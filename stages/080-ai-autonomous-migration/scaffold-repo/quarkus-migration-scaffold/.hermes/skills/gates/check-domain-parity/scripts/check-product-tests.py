@@ -16,10 +16,18 @@ M4 verdict:
 
 Both are replaced by evidence:
 
-  a product test counts when a file for it exists under ``src/test/java``
-  (``*Test.java``, ``*Tests.java``, ``*IT.java``, outside the harness probe
-  package) AND an execution record names that class with the case neither
-  skipped nor failed nor errored.
+  a product test counts when a file for it exists under one of this tree's
+  test roots (``*Test.java``, ``*Tests.java``, ``*IT.java``, outside the
+  harness probe package) AND an execution record names that class with the
+  case neither skipped nor failed nor errored.
+
+  There are TWO such roots. ``src/test/java`` is the loop's own, and the
+  generated parity suite lives in the root the generated manifest's ``out``
+  names (default ``src/parity-test/java``), which nothing compiles but the
+  harness-owned ``m4-parity`` profile (ADR-015). Scanning only the first one
+  was a floor measuring a root the harness had deliberately moved its cases
+  out of: every generated case then executed, and every one of them was
+  ``unbound`` -- an execution belonging to no test source of this tree.
 
   the coverage this floor demands is the set of DECLARED SCENARIO
   CAPABILITIES: every scenario of ``verification/scenarios/corpus.json``
@@ -115,6 +123,9 @@ HARNESS_PREFIX = "com/example/tooling/smoke/"
 TEST_SUFFIXES = ("Test.java", "Tests.java", "IT.java")
 
 TEST_ROOT = Path("src") / "test" / "java"
+# The generated parity suite's root (ADR-015). Read from the manifest, because
+# the generator's --out decides it; this is only the default it ships with.
+GENERATED_TEST_ROOT = Path("src") / "parity-test" / "java"
 REPORT_SNAPSHOT = Path("evidence") / "m4-pre-rebuild" / "test-reports"
 REPORT_LIVE = (Path("target") / "surefire-reports", Path("target") / "failsafe-reports")
 SUREFIRE_JSON = Path("verification") / "build" / "surefire.json"
@@ -149,34 +160,64 @@ def _norm(text: str) -> str:
 # ---------------------------------------------------------------------------
 
 
+def generated_test_root(root: Path) -> Path:
+    """The root the harness generated its parity cases into, as the manifest
+    says. A manifest that cannot be read does not decide the root here -- it is
+    read again, and refused, where the manifest itself is the evidence."""
+    p = Path(root) / GENERATED_MANIFEST
+    if not p.is_file():
+        return GENERATED_TEST_ROOT
+    try:
+        doc = _load_json(p)
+    except Unreadable:
+        return GENERATED_TEST_ROOT
+    out = str(doc.get("out") or "") if isinstance(doc, dict) else ""
+    return Path(out) if out else GENERATED_TEST_ROOT
+
+
+def test_roots(root: Path) -> list[Path]:
+    """The loop's test root and the generated parity root, in that order, with
+    no duplicate when a tree happens to declare them the same."""
+    roots = [TEST_ROOT, generated_test_root(root)]
+    seen: list[Path] = []
+    for rel in roots:
+        if rel not in seen:
+            seen.append(rel)
+    return seen
+
+
 def product_test_sources(root: Path) -> dict[str, str]:
     """{fully qualified class name: path relative to root} for every product
-    acceptance test source. ``*Tests.java`` is one of them (ADR-015): the
-    suffix says nothing about what the file tests."""
-    base = Path(root) / TEST_ROOT
-    if not base.is_dir():
-        return {}
+    acceptance test source, over BOTH test roots (ADR-015). ``*Tests.java`` is
+    one of them: the suffix says nothing about what the file tests."""
     out: dict[str, str] = {}
-    for p in sorted(base.rglob("*.java")):
-        if not p.name.endswith(TEST_SUFFIXES):
+    for rel in test_roots(root):
+        base = Path(root) / rel
+        if not base.is_dir():
             continue
-        rel = p.relative_to(base).as_posix()
-        if rel.startswith(HARNESS_PREFIX):
-            continue
-        out[rel[: -len(".java")].replace("/", ".")] = p.relative_to(root).as_posix()
+        for p in sorted(base.rglob("*.java")):
+            if not p.name.endswith(TEST_SUFFIXES):
+                continue
+            inner = p.relative_to(base).as_posix()
+            if inner.startswith(HARNESS_PREFIX):
+                continue
+            out[inner[: -len(".java")].replace("/", ".")] = p.relative_to(root).as_posix()
     return out
 
 
 def harness_test_sources(root: Path) -> list[str]:
-    base = Path(root) / TEST_ROOT
-    if not base.is_dir():
-        return []
-    return sorted(
-        p.relative_to(root).as_posix()
-        for p in base.rglob("*.java")
-        if p.name.endswith(TEST_SUFFIXES)
-        and p.relative_to(base).as_posix().startswith(HARNESS_PREFIX)
-    )
+    found: list[str] = []
+    for rel in test_roots(root):
+        base = Path(root) / rel
+        if not base.is_dir():
+            continue
+        found += [
+            p.relative_to(root).as_posix()
+            for p in base.rglob("*.java")
+            if p.name.endswith(TEST_SUFFIXES)
+            and p.relative_to(base).as_posix().startswith(HARNESS_PREFIX)
+        ]
+    return sorted(found)
 
 
 # ---------------------------------------------------------------------------
@@ -416,7 +457,8 @@ def _ar28(root: Path, require_coverage: bool) -> int:
         return 2
 
     if not sources and not harness:
-        return _fail("no *Test.java/*Tests.java/*IT.java under %s — product acceptance is empty" % TEST_ROOT.as_posix())
+        return _fail("no *Test.java/*Tests.java/*IT.java under %s — product acceptance is empty"
+                     % " or ".join(r.as_posix() for r in test_roots(root)))
     if not sources:
         rc = _fail("probe-only tests (%s) — REFUSE as product acceptance (pair AR-3.6)" % HARNESS_PREFIX.replace("/", "."))
         for p in harness[:20]:

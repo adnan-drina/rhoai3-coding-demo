@@ -96,6 +96,12 @@ run_feed_gate() {
 # of the classes it re-runs, and dest-5's lesson was `mvn clean`.
 # Never fail-fast here: a red generated case must reach the snapshot, where
 # assert-surefire-results refuses it as the measurement it is.
+# Set only when the m4-parity rebuild actually ran and exited 0: the snapshot
+# is then taken --fresh, because the reports under target/ are the ones that
+# include the generated cases and an M3 snapshot sitting in evidence/ would
+# otherwise make the floors measure a suite that ran as one that never did.
+PARITY_BUILT=0
+
 run_parity_build() {
   if [[ -n "${M4_SKIP_PARITY_BUILD:-}" ]]; then
     echo "run-m4-pre-verdict: M4_SKIP_PARITY_BUILD set — the generated parity tests did not run here" >&2
@@ -118,11 +124,21 @@ run_parity_build() {
     cd "${PRODUCT_ROOT}" && mvn -B "-P${PARITY_PROFILE}" test
   ) || rc=$?
   echo "run-m4-pre-verdict: mvn -P${PARITY_PROFILE} test rc=${rc} (the generated cases' reports are under target/; a red case is a parity finding the floors read, not a reason to stop before the snapshot)"
+  if [[ "${rc}" -eq 0 ]]; then
+    PARITY_BUILT=1
+  fi
   return 0
 }
 
 run_parity_build
-python3 "${SNAP}" "${PRODUCT_ROOT}"
+# Empty or --fresh; deliberately unquoted so an empty value passes no argument.
+SNAP_FRESH=""
+if [[ "${PARITY_BUILT}" -eq 1 ]]; then
+  SNAP_FRESH="--fresh"
+  echo "run-m4-pre-verdict: the ${PARITY_PROFILE} rebuild ran, so the snapshot is taken from THESE reports (--fresh)"
+fi
+# shellcheck disable=SC2086
+python3 "${SNAP}" ${SNAP_FRESH} "${PRODUCT_ROOT}"
 python3 "${SURE}" "${PRODUCT_ROOT}"
 python3 "${BODY}"
 run_gate assert-retrievable-tree python3 "${TREE}" "${PRODUCT_ROOT}"

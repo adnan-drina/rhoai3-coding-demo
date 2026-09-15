@@ -53,7 +53,8 @@ def main() -> int:
                 {
                     "verdict": "REFUSE",
                     "ship": False,
-                    "reason": "AR-2.8 missing product-test families: boot",
+                    "reason": ("AR-2.8 no executed product test covers ANY declared "
+                               "capability: 2 uncovered (sc-001, sc-002)"),
                 }
             )
             + "\n",

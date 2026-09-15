@@ -31,6 +31,12 @@
       "needle": "generate-product-tests"
     },
     {
+      "backing": "native",
+      "id": "commit-generated-tests",
+      "keep": [],
+      "needle": "commit-generated-tests.py"
+    },
+    {
       "backing": "skill",
       "id": "check-domain-parity",
       "keep": [],

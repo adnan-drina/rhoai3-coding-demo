@@ -6,6 +6,9 @@ Each fixture is an official kanban log plus the KEEP artifacts the audit reads.
   between the parity runner and the pre-verdict runner, and KEEPs
   `evidence/tests/generated-manifest.json`: the rebuild the runner drives is what
   executes the generated cases.
+  The commit step then runs between the generator and every gate that reads the
+  tree: the generated files are written into a tree `assert-retrievable-tree`
+  still requires to be committed.
 - `verdict-before-runner` — the pre-verdict runner never ran → REFUSE (silence): the
   verdict would cite receipts nothing produced.
 - `no-oracles` — the source oracles were never captured → REFUSE: an expected runtime

@@ -58,14 +58,18 @@ Operator `074910ZO`). Commands under **Checks**.
 
 0. **Before `PROVISIONAL_ACCEPT`** — `scripts/run-m4-pre-verdict.sh` (Architect
    `151334ZA` **(a)** runner-invoked). `run-m4-floor.sh` calls it first.
-   Order: snapshot surefire/failsafe into `evidence/m4-pre-rebuild/` (first
-   XML snapshot wins; never overwrite with empty), parse the snapshot
+   Order: run the generated parity suite (`mvn -Pm4-parity test`, no `clean` —
+   that harness-owned profile is the only thing that compiles
+   `src/parity-test/java`, ADR-015), snapshot surefire/failsafe into
+   `evidence/m4-pre-rebuild/` (never overwrite with empty; a rebuild that just
+   ran wins, `--fresh`), parse the snapshot
    (`assert-surefire-results.py`; Failures/Errors>0, a skipped case, no XML at
    all, or a phase whose sources exist and whose reports do not is REFUSE),
    refuse an M4 body that names
    `Token:`/`ship:`, then `assert-retrievable-tree`, **run the pinned
    feeding gates** (`check-partition-coverage`, `check-product-tests`,
-   `check-test-toolchain`) with `--write-receipt` into
+   `check-test-toolchain`, `generate-product-tests --check`) with
+   `--write-receipt` into
    `evidence/receipts/gates/`, then `assert-pinned-gates-ran`
    (`ran: true` only), `assert-g4-claim-consistency`, `assert-no-fence-evasion`.
    Pinning a leaf is availability, not enforcement. These do **not**
@@ -196,6 +200,10 @@ Rebuild later only on dest GO.
 - `scripts/run-m4-pre-verdict.sh` (called first by `run-m4-floor.sh`) invokes
   `snapshot-m4-test-reports.py`, `assert-surefire-results.py`,
   `assert-m4-card-body.py`, `assert-retrievable-tree.py`,
+  `generate-product-tests.py --check` (the generated suite and its `m4-parity`
+  block are still the bytes the harness wrote; the road's
+  `commit-generated-tests.py` is what committed them, which is how
+  `assert-retrievable-tree` can pass on a tree M4 generated into),
   `assert-pinned-gates-ran.py` (`ran: true` only; `ran: false` is not a run),
   `assert-g4-claim-consistency.py` (G-4 N/A vs `INCONCLUSIVE` is OBJECT),
   and `assert-no-fence-evasion.py` over **work** logs (`resolve-m4-work-logs.py`

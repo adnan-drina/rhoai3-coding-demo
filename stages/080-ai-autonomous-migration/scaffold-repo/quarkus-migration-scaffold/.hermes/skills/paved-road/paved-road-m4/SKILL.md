@@ -79,21 +79,39 @@ source did. Everything here is measurement. Nothing here decides.
 
    The generated sources go to `src/parity-test/java` (+
    `src/parity-test/resources`), and nothing compiles them except the
-   `m4-parity` profile this producer writes into `pom.xml` between its own
-   comment markers. That is the phase rule made mechanical: under
-   `src/test/java` every M3 verify would run these cases, a parity finding
-   would enter the loop's own measure, and it would revert the step being
-   verified for a reason that has nothing to do with it. Parity is measured
-   once, here. The pom edit is harness-owned — recorded in the manifest,
-   printed, and not committed by this step.
+   `m4-parity` profile in `pom.xml`, between its own comment markers. That is
+   the phase rule made mechanical: under `src/test/java` every M3 verify would
+   run these cases, a parity finding would enter the loop's own measure, and it
+   would revert the step being verified for a reason that has nothing to do
+   with it. Parity is measured once, here. That block is written by
+   `bootstrap-destination.py` (ADR-015), so it is already in the committed pom
+   when this runs and this producer finds it byte-identical and changes
+   nothing.
 
-   It runs **after** step 2 and **before** step 5: the rebuild step 5 drives
+   It runs **after** step 2 and **before** step 6: the rebuild step 6 drives
    (`-Pm4-parity`) is what executes the generated cases and leaves their
    surefire XML where the floors read it.
-4. `skill_view check-domain-parity` → run its evaluators. G-1 to G-4
+4. `python3 .hermes/skills/gates/generate-product-tests/scripts/commit-generated-tests.py --root .`
+   — commit the generated suite. The files of step 3 land in a tree
+   `assert-retrievable-tree` still requires to be committed against `HEAD`,
+   and an untracked generated file is dirt to that gate. The gate is right and
+   is not weakened: a verdict composed over a tree nobody can retrieve says
+   nothing about what was measured. This step is what makes the tree
+   retrievable again.
+
+   It commits **only** what `evidence/tests/generated-manifest.json` lists,
+   the manifest, and the generated roots — as
+   `generate-product-tests <generate-product-tests@local>`, message
+   `m4: generated product tests (corpus <sha12>, generator <version>)`. It
+   refuses first when `generate-product-tests.py --check` does (committing an
+   edited expectation would make the edit the harness's own), and it refuses
+   any other change to `src/` or `pom.xml` — a worker's edit is committed by
+   whoever made it, never swept into a harness commit. With nothing to commit
+   it says so and exits 0.
+5. `skill_view check-domain-parity` → run its evaluators. G-1 to G-4
    measured against the referent, each writing its own verdict. A REFUSE
    is a real outcome; the next step is to report it, not to soften it.
-5. `bash .hermes/skills/gates/check-release-readiness/scripts/run-m4-pre-verdict.sh /projects/modernized`
+6. `bash .hermes/skills/gates/check-release-readiness/scripts/run-m4-pre-verdict.sh /projects/modernized`
    — the fail-closed runner: it first runs the generated parity suite
    (`mvn -Pm4-parity test`, no `clean`: that profile is the only thing that
    compiles `src/parity-test/java`), snapshots the test reports so a later
@@ -106,7 +124,7 @@ source did. Everything here is measurement. Nothing here decides.
    evaded. KEEP `evidence/receipts/gates`. The feeding gates must run
    before the receipts are asserted, or the floor refuses on an empty
    directory.
-6. `skill_view compose-m4-verdict` → author
+7. `skill_view compose-m4-verdict` → author
    `evidence/verdicts/m4-verdict.json` from the measured exit codes and
    nothing else, with an explicit `failed_floors`. A non-empty
    `failed_floors` makes the verdict `REFUSE`. `idle: true` is a legal
@@ -115,11 +133,11 @@ source did. Everything here is measurement. Nothing here decides.
    and carry its counts in the verdict's `coverage_account`: every source an
    accepted ADR retired gets a row naming its replacement scenario and its
    remaining gap.
-7. `skill_view check-release-readiness` → lint what you just wrote: the
+8. `skill_view check-release-readiness` → lint what you just wrote: the
    verdict against its schema, the floor receipts, the claim tokens, and the
    coverage account against `decisions.yaml` and the parity receipt. This
    step can agree or refuse. It cannot change the verdict or the account.
-8. Terminator: `kanban_request_review reviewer=reviewer`, then end the turn.
+9. Terminator: `kanban_request_review reviewer=reviewer`, then end the turn.
    That is the terminator for **every** outcome the phase can reach,
    `REFUSE` included: a REFUSE verdict is what M4 measured, so the card is
    complete work and goes to the reviewer. Never `kanban_complete` — K2

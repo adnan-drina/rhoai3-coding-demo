@@ -644,12 +644,16 @@ def _rename(text: str) -> str:
 
 
 def case_no_specimen_literal(tmp: Path) -> int:
-    source = GENERATOR.read_text(encoding="utf-8")
     forbidden = ("petclinic", "PetClinic", "Franklin", "OwnerController", "/api/owners", "ownerId", "/api/pets", "/api/vets")
-    hit = [token for token in forbidden if token in source]
-    if hit:
-        return fail("the generator must be derived from the contract, never from a specimen: %s" % hit)
-    return 0
+    rc = 0
+    # The block writer and the commit step are this capability too: a specimen
+    # literal in either is the same defect in a different file.
+    for name in ("generate-product-tests.py", "parity_pom.py", "commit-generated-tests.py"):
+        source = (HERE / name).read_text(encoding="utf-8")
+        hit = [token for token in forbidden if token in source]
+        if hit:
+            rc |= fail("%s must be derived from the contract, never from a specimen: %s" % (name, hit))
+    return rc
 
 
 def case_java_plausible(tmp: Path) -> int:

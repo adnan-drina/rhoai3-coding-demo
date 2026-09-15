@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""paved-road-m4 selftest: sync; kind rules; green PASS; missing runner / oracles / verdict / red runner REFUSE; coverage."""
+"""paved-road-m4 selftest: sync; kind rules; the generated suite is generated then committed before any gate reads
+the tree; green PASS; missing runner / oracles / verdict / red runner REFUSE; coverage."""
 from __future__ import annotations
 
 import json
@@ -56,8 +57,10 @@ def main() -> int:
     # verdict cites. v9's first M4 card is the control (t_32c82390): a worker
     # driving the comparators by hand ran the composer first and compared none
     # of the 34 admitted entry points.
-    if [s.get("native") for s in doc["steps"] if s["backing"] == "native"] != ["run-parity.py", "run-m4-pre-verdict.sh"]:
-        return _fail("M4 runs two native steps in order: the batch parity runner, then the pre-verdict runner")
+    if [s.get("native") for s in doc["steps"] if s["backing"] == "native"] != [
+            "run-parity.py", "commit-generated-tests.py", "run-m4-pre-verdict.sh"]:
+        return _fail("M4 runs three native steps in order: the batch parity runner, the commit of the generated suite, "
+                     "then the pre-verdict runner")
     parity = next(s for s in doc["steps"] if s.get("native") == "run-parity.py")
     if sorted(parity.get("keep") or []) != ["verification/parity/_run.json", "verification/parity/receipt.json"]:
         return _fail("the parity step must KEEP the receipt and the run record: %s" % parity.get("keep"))
@@ -78,6 +81,21 @@ def main() -> int:
         return _fail("the generator step is backed by the %s skill: %s" % (gen, gen_step))
     if gen_step.get("keep") != ["evidence/tests/generated-manifest.json"]:
         return _fail("the generator step must KEEP the manifest the floors consume: %s" % gen_step.get("keep"))
+    # The generated files are written into a tree assert-retrievable-tree still
+    # requires to be committed, so the road commits them -- between the
+    # generator that wrote them and every gate that reads the tree. Without
+    # this step the M4 verdict is composed over a tree nobody can retrieve, and
+    # the gate refuses for the harness's own doing.
+    commit = "commit-generated-tests"
+    if commit not in ids:
+        return _fail("M4 must commit the generated suite it wrote (ADR-015): %s" % ids)
+    if not (ids.index(gen) < ids.index(commit) < ids.index("pre-verdict")):
+        return _fail("%s runs after the generator and before the pre-verdict runner: %s" % (commit, ids))
+    if ids.index(commit) >= ids.index("check-domain-parity"):
+        return _fail("%s runs before the gates that read the tree: %s" % (commit, ids))
+    commit_step = next(s for s in doc["steps"] if s["id"] == commit)
+    if commit_step.get("backing") != "native" or commit_step.get("native") != "commit-generated-tests.py":
+        return _fail("the commit step is the producer's own script, run natively: %s" % commit_step)
     if ids[-1] != "check-release-readiness":
         return _fail("the readiness lint must come last (it may agree or refuse, never author): %s" % ids)
 
@@ -115,7 +133,9 @@ def main() -> int:
             return _fail("%s must REFUSE naming %s: %s" % (name, needle, blob[:300]))
     if coverage(GOLDEN_ROOT) != 0:
         return _fail("coverage lint failed")
-    print("OK: paved-road-m4 selftest (sync; oracles first; runner before the producer; compose-m4-verdict the only producer; lint last; green PASS; no runner / no oracles / red runner / missing verdict REFUSE; coverage)")
+    print("OK: paved-road-m4 selftest (sync; oracles first; the generated suite is generated then committed before any "
+          "gate reads the tree; runner before the producer; compose-m4-verdict the only producer; lint last; green PASS; "
+          "no runner / no oracles / red runner / missing verdict REFUSE; coverage)")
     return 0
 
 

@@ -5,7 +5,9 @@ OK: PARITY_RUN 6/6 scenario(s) run (6 PASS, 0 FAIL, 0 INCONCLUSIVE); 28/34 entry
   ┊ 📚 skill  generate-product-tests
   ┊ 💻 $         python3 .hermes/skills/gates/generate-product-tests/scripts/generate-product-tests.py --root /projects/modernized  6.3s
 OK: GENERATE_TESTS 6 case(s) in 2 class(es), 0 gap(s), security-mode disabled (corpus 4f2a1c9d0b77) → evidence/tests/generated-manifest.json
-POM: pom.xml profile 'm4-parity' rewritten (added with a new <profiles>), test source src/parity-test/java, test resources src/parity-test/resources, org.codehaus.mojo:build-helper-maven-plugin:3.6.0, block 1b9f3c5e77a2 — harness-owned, not committed here
+POM: pom.xml profile 'm4-parity' already current (replaced), test source src/parity-test/java, test resources src/parity-test/resources, org.codehaus.mojo:build-helper-maven-plugin:3.6.0, block 1b9f3c5e77a2 — harness-owned, not committed here
+  ┊ 💻 $         python3 .hermes/skills/gates/generate-product-tests/scripts/commit-generated-tests.py --root /projects/modernized  0.9s
+OK: COMMIT_TESTS 9 path(s) committed as 7c41ab90d2e8 (generate-product-tests <generate-product-tests@local>) — m4: generated product tests (corpus 4f2a1c9d0b77, generator 1.1.0)
   ┊ 📚 skill  check-domain-parity
   ┊ 💻 $         bash .hermes/skills/gates/check-domain-parity/scripts/run-admission.sh /projects/modernized  12.4s
   ┊ 💻 $         bash .hermes/skills/gates/check-release-readiness/scripts/run-m4-pre-verdict.sh /projects/modernized  44.8s

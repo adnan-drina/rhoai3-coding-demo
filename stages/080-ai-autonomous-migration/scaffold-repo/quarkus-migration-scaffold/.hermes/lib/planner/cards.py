@@ -90,7 +90,9 @@ def _close_prose(body: dict[str, Any]) -> str:
         "## M4 VERIFY",
         "",
         "- **Receipt** `%s`, work list `%s`" % (str(body.get("receipt_sha256") or "")[:16], str(body.get("worklist_sha256") or "")[:16]),
-        "- **Write set**: `evidence/verdicts/`, `verification/` — evidence only. M4 does not edit the product tree.",
+        "- **Write set**: `evidence/verdicts/`, `verification/` — evidence only. YOU do not edit the product tree at M4. "
+        "The one exception is not yours: the harness generates `src/parity-test/` and commits it (ADR-015), which is why "
+        "the tree is still retrievable when the verdict is composed.",
         "- **Road**: `skill_view paved-road-m4` first (the pinned index; its `steps.json` is the contract).",
         "",
         "**Do**, in this order:",
@@ -104,6 +106,8 @@ def _close_prose(body: dict[str, Any]) -> str:
             continue
         if str(e.get("check")) == "generate_tests":
             lines.append("    skill_view generate-product-tests   # ADR-015: the harness writes the product acceptance tests; you never author or weaken one")
+        if str(e.get("check")) == "commit_tests":
+            lines.append("    # assert-retrievable-tree refuses the generated files while they are untracked; this commits them, and only them")
         if str(e.get("check")) == "verdict_schema":
             lines.append("    skill_view compose-m4-verdict   # author evidence/verdicts/m4-verdict.json from the exits above")
         lines.append("    %s" % e["cmd"])
@@ -118,7 +122,11 @@ def _close_prose(body: dict[str, Any]) -> str:
         "The generated product tests are the harness's (`evidence/tests/generated-manifest.json` lists every one of "
         "them with its digest): they are written to `src/parity-test/java`, the pre-verdict runner is what compiles "
         "and runs them (`-Pm4-parity`), and the release floor refuses when a byte of one moved. A generated case "
-        "that fails is a parity finding for the destination, never an expectation to edit.",
+        "that fails is a parity finding for the destination, never an expectation to edit. They are also COMMITTED "
+        "here, by `commit-generated-tests.py`, and only they: `assert-retrievable-tree` still requires `src/` and "
+        "`pom.xml` to be committed, an untracked generated file is dirt to it, and a verdict composed over a tree "
+        "nobody can retrieve says nothing about what was measured. Anything else you changed under `src/`, you "
+        "commit — that step refuses to sweep it into the harness's commit.",
         "Terminator: `kanban_request_review` with `reviewer=reviewer`, once the verdict file exists — for EVERY "
         "verdict it can hold. Never `kanban_complete` (K2 refuses it on this card). Never `kanban_block` for a "
         "REFUSE verdict; block only when the phase could not measure at all (no destination, no database, no "

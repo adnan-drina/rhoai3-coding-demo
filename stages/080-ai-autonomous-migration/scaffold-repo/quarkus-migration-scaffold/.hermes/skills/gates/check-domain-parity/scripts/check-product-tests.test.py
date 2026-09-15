@@ -78,9 +78,9 @@ def write_json(path: Path, doc: dict) -> None:
     path.write_text(json.dumps(doc, indent=2, sort_keys=True), encoding="utf-8")
 
 
-def write_source(root: Path, fqcn: str) -> None:
+def write_source(root: Path, fqcn: str, test_root: str = "src/test/java") -> None:
     pkg, _, cls = fqcn.rpartition(".")
-    p = root / "src" / "test" / "java" / pkg.replace(".", "/") / (cls + ".java")
+    p = root / test_root / pkg.replace(".", "/") / (cls + ".java")
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text("package %s;\n\npublic class %s {\n}\n" % (pkg, cls), encoding="utf-8")
 
@@ -122,12 +122,16 @@ def write_qualification(root: Path, spec: dict, *, passing: list[str] | None = N
         "verdict": "PASS" if len(names) == len(spec["scenarios"]) else "FAIL"})
 
 
-def write_manifest(root: Path, spec: dict, scenarios: list[str], *, corpus_sha: str = CORPUS_SHA, opaque: bool = False) -> None:
-    write_json(root / "evidence" / "tests" / "generated-manifest.json", {
+def write_manifest(root: Path, spec: dict, scenarios: list[str], *, corpus_sha: str = CORPUS_SHA, opaque: bool = False,
+                   out: str = "") -> None:
+    doc = {
         "schema": "rhoai3.generated-tests/v1", "corpus_sha256": corpus_sha,
         "generator": "generate-scenario-tests.py", "cases": [
             {"scenario": sid, "class": gen_class(spec, sid, opaque), "method": "run",
-             "entry_point": "ep:%s.Api#op():http" % spec["pkg"]} for sid in scenarios]})
+             "entry_point": "ep:%s.Api#op():http" % spec["pkg"]} for sid in scenarios]}
+    if out:
+        doc["out"] = out
+    write_json(root / "evidence" / "tests" / "generated-manifest.json", doc)
 
 
 def retained_only_tree(root: Path, spec: dict) -> None:
@@ -332,13 +336,73 @@ def probe_only_case() -> int:
     return 0
 
 
+def generated_root_case(spec: dict) -> int:
+    """ADR-015: the generated cases live in the root the manifest's ``out``
+    names, because nothing but the m4-parity profile may compile them. A floor
+    that scans only src/test/java calls every one of their executions
+    ``unbound`` -- an execution belonging to no test source of this tree --
+    which is the mirror of counting a source that never ran."""
+    tag = spec["name"]
+    with tempfile.TemporaryDirectory(prefix="ar28-genroot-%s-" % tag) as td:
+        base = Path(td)
+        covered = [spec["scenarios"][0]]
+
+        # 1. a generated case in the generated root, executed clean: counted,
+        #    and it covers its capability
+        for out_root in ("src/parity-test/java", "src/m4-parity/java"):
+            t = base / ("generated-" + out_root.replace("/", "-"))
+            retained_only_tree(t, spec)
+            fq = gen_class(spec, covered[0])
+            write_source(t, fq, out_root)
+            write_report(t, fq, [("run", "pass")])
+            # the manifest's own root is what the floor reads; the default is
+            # only what the generator ships with
+            write_manifest(t, spec, covered, out=("" if out_root == "src/parity-test/java" else out_root))
+            write_summary(t, tests=3, reports=2)
+            cp = run(t)
+            if cp.returncode != 0:
+                return _fail("[%s] a generated case under %s must count" % (tag, out_root), out_of(cp))
+            if "%s: generated" % covered[0] not in out_of(cp):
+                return _fail("[%s] the generated case must cover its capability from %s" % (tag, out_root), out_of(cp))
+            if "belong to no test source" in out_of(cp):
+                return _fail("[%s] a generated case in a scanned root is never unbound" % tag, out_of(cp))
+
+        # 2. a case under NEITHER root is unbound: its source is not this
+        #    tree's product acceptance, whatever executed under its name
+        t = base / "neither-root"
+        retained_only_tree(t, spec)
+        fq = gen_class(spec, covered[0])
+        write_source(t, fq, "src/elsewhere/java")
+        write_report(t, fq, [("run", "pass")])
+        write_manifest(t, spec, covered)
+        write_summary(t, tests=3, reports=2)
+        cp = run(t)
+        if "%s: generated" % covered[0] in out_of(cp):
+            return _fail("[%s] a source under neither test root must not count as coverage" % tag, out_of(cp))
+        if "%s#run" % fq not in out_of(cp) or "UNCOVERED" not in out_of(cp):
+            return _fail("[%s] the capability the unbound case claimed must be reported UNCOVERED" % tag, out_of(cp))
+
+        # 3. the empty-acceptance refusal names both roots
+        t = base / "empty"
+        write_corpus(t, spec)
+        write_qualification(t, spec)
+        cp = run(t)
+        if cp.returncode != 1:
+            return _fail("[%s] a tree with no product test source must refuse" % tag, out_of(cp))
+        for needle in ("src/test/java", "src/parity-test/java"):
+            if needle not in cp.stderr:
+                return _fail("[%s] the empty-acceptance refusal must name %s" % (tag, needle), out_of(cp))
+    return 0
+
+
 def main() -> int:
-    if (no_specimen_literals() or probe_only_case() or decisions(PETCLINIC) or decisions(LEDGER) or receipt_case()):
+    if (no_specimen_literals() or probe_only_case() or decisions(PETCLINIC) or decisions(LEDGER) or generated_root_case(PETCLINIC) or generated_root_case(LEDGER) or receipt_case()):
         return 1
     print("OK: check-product-tests (executed *Test/*Tests/*IT bound to this tree; a skipped, failed or unbound case is not an "
           "execution; capabilities are the corpus scenarios the source qualified PASS; generated coverage is manifest-bound and "
           "corpus-bound, retained coverage is a case that names the capability; no capability covered refuses, --require-coverage "
-          "refuses every gap by name; unreadable evidence is 2 — the same decisions under a fully renamed specimen)")
+          "refuses every gap by name; the generated root the manifest names is scanned beside src/test/java and a source under "
+          "neither is unbound; unreadable evidence is 2 — the same decisions under a fully renamed specimen)")
     return 0
 
 

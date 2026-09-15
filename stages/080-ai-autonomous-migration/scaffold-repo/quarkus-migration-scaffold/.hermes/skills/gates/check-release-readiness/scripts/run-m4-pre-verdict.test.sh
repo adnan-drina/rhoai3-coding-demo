@@ -30,6 +30,18 @@ if [[ -z "${build_line}" || -z "${snap_line}" || "${build_line}" -ge "${snap_lin
   echo "FAIL: the m4-parity rebuild must run before the report snapshot (${build_line} vs ${snap_line})" >&2
   exit 1
 fi
+# A rebuild that ran is the freshest evidence: the snapshot must be taken from
+# THOSE reports, not from an M3 snapshot that predates the generated cases.
+grep -q 'PARITY_BUILT=1' "${SCRIPT_DIR}/run-m4-pre-verdict.sh"
+grep -q 'SNAP_FRESH="--fresh"' "${SCRIPT_DIR}/run-m4-pre-verdict.sh"
+grep -q 'python3 "${SNAP}" ${SNAP_FRESH}' "${SCRIPT_DIR}/run-m4-pre-verdict.sh"
+fresh_line="$(grep -n 'SNAP_FRESH="--fresh"' "${SCRIPT_DIR}/run-m4-pre-verdict.sh" | head -1 | cut -d: -f1)"
+if [[ -z "${fresh_line}" || "${fresh_line}" -ge "${snap_line}" ]]; then
+  echo "FAIL: the freshness decision must be made before the snapshot runs (${fresh_line} vs ${snap_line})" >&2
+  exit 1
+fi
+grep -q -- '--fresh' "${SCRIPT_DIR}/snapshot-m4-test-reports.py"
+
 gen_line="$(grep -n 'run_feed_gate generate-product-tests' "${SCRIPT_DIR}/run-m4-pre-verdict.sh" | head -1 | cut -d: -f1)"
 pin_line0="$(grep -n 'python3 "${PINNED}"' "${SCRIPT_DIR}/run-m4-pre-verdict.sh" | head -1 | cut -d: -f1)"
 if [[ -z "${gen_line}" || "${gen_line}" -ge "${pin_line0}" ]]; then
@@ -133,6 +145,11 @@ bash "${SCRIPT_DIR}/run-m4-pre-verdict.sh" "$TMP" 2>"$TMP/run.err"
 # ADR-015, this tree: the pom carries no m4-parity block, so nothing compiles
 # a generated suite. The runner says so and keeps going — the product-test
 # floor is what measures the gap — and it never silently "passes" the build.
+if grep -q -- "--fresh" "$TMP/run.err"; then
+  echo "FAIL: a tree whose parity build never ran must not claim a fresh snapshot" >&2
+  cat "$TMP/run.err" >&2
+  exit 1
+fi
 grep -q "no m4-parity block in pom.xml" "$TMP/run.err" || {
   echo "FAIL: a pom with no m4-parity block must be named, not skipped in silence" >&2
   cat "$TMP/run.err" >&2

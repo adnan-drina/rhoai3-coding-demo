@@ -73,6 +73,9 @@ TERMINATOR_M4 = (
     "writes the product acceptance tests from the M1 captures, into src/parity-test/java, which nothing compiles "
     "but the m4-parity profile the pre-verdict runner activates; you never author one of these tests and never "
     "weaken what one asserts -- a generated case that fails is a parity finding), "
+    "python3 .hermes/skills/gates/generate-product-tests/scripts/commit-generated-tests.py --root . (the road commits "
+    "the generated suite as the harness-owned files it is: assert-retrievable-tree still requires a committed src/ and "
+    "pom.xml, and an untracked generated file is dirt to it), "
     "python3 .hermes/skills/analysis/scan-with-mta/scripts/assert-mta-rescan.py ., "
     "bash .hermes/skills/gates/check-release-readiness/scripts/run-m4-pre-verdict.sh /projects/modernized, then "
     "compose-m4-verdict to author evidence/verdicts/m4-verdict.json from the measured exits and nothing else "
@@ -104,6 +107,10 @@ def _body(card: dict[str, Any], receipt: dict[str, Any], worklist_sha: str, arti
         # m4-parity rebuild is what executes them, so a generator named after
         # it would leave the floors reading a suite that never ran.
         exits.append({"check": "generate_tests", "cmd": "python3 .hermes/skills/gates/generate-product-tests/scripts/generate-product-tests.py --root ."})
+        # The generated files land in a tree assert-retrievable-tree still
+        # requires to be committed, so the road commits them -- here, before
+        # any gate reads the tree. The gate is not weakened for the harness.
+        exits.append({"check": "commit_tests", "cmd": "python3 .hermes/skills/gates/generate-product-tests/scripts/commit-generated-tests.py --root ."})
         exits.append({"check": "mta_rescan", "cmd": "python3 .hermes/skills/analysis/scan-with-mta/scripts/assert-mta-rescan.py ."})
         exits.append({"check": "pre_verdict", "cmd": "bash .hermes/skills/gates/check-release-readiness/scripts/run-m4-pre-verdict.sh /projects/modernized"})
         if (_KERNEL.parent / VERDICT_SCHEMA_SCRIPT).is_file():

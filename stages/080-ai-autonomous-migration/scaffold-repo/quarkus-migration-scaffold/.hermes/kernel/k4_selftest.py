@@ -113,13 +113,19 @@ def main() -> int:
         # ADR-015: the generator runs after the parity runner and before the
         # pre-verdict runner, because the runner's m4-parity rebuild is what
         # executes the generated cases.
-        if order[:6] != ["skills", "terminator", "parity", "generate_tests", "mta_rescan", "pre_verdict"]:
+        if order[:7] != ["skills", "terminator", "parity", "generate_tests", "commit_tests", "mta_rescan", "pre_verdict"]:
             return _fail("the M4 exits are the phase's order: %s" % order)
         if "generate-product-tests.py --root ." not in exits["generate_tests"]["cmd"]:
             return _fail("the generate exit must be the producer itself: %s" % exits.get("generate_tests"))
+        # The tree the verdict is composed over has to be retrievable, and the
+        # generator is what made it dirty: the commit step is the exit that
+        # closes that, immediately after it and before anything reads the tree.
+        if "commit-generated-tests.py --root ." not in exits["commit_tests"]["cmd"]:
+            return _fail("the commit exit must be the producer's own script: %s" % exits.get("commit_tests"))
         if "verdict_schema" not in exits or VERDICT_SCHEMA_SCRIPT not in exits["verdict_schema"]["cmd"]:
             return _fail("the verdict schema assertion is on disk and must be an exit: %s" % order)
-        for needle in ("run-parity.py", "generate-product-tests", "src/parity-test/java", "m4-parity",
+        for needle in ("run-parity.py", "generate-product-tests", "commit-generated-tests.py", "src/parity-test/java",
+                       "m4-parity", "assert-retrievable-tree",
                        "assert-mta-rescan.py", "run-m4-pre-verdict.sh", "compose-m4-verdict",
                        "kanban_request_review reviewer=reviewer", "REFUSE", "Never kanban_complete"):
             if needle not in TERMINATOR_M4:
@@ -128,7 +134,8 @@ def main() -> int:
         if not prose.startswith("## M4 VERIFY"):
             return _fail("the close card's prose is its own: %r" % prose[:80])
         for needle in ("skill_view paved-road-m4", "run-parity.py", "skill_view generate-product-tests",
-                       "generate-product-tests.py --root .", "src/parity-test/java", "-Pm4-parity",
+                       "generate-product-tests.py --root .", "commit-generated-tests.py --root .",
+                       "src/parity-test/java", "-Pm4-parity", "assert-retrievable-tree",
                        "assert-mta-rescan.py", "run-m4-pre-verdict.sh",
                        "skill_view compose-m4-verdict", "evidence/verdicts/m4-verdict.json",
                        "kanban_request_review", "reviewer=reviewer", "REFUSE", "Never dest-dispatch M5"):

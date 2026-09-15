@@ -71,10 +71,18 @@ step under verification for a reason that has nothing to do with it. The
 phase rule is mechanical, not advisory: `--out` or `--resources` pointing
 under `src/test/` is a refusal.
 
-### The pom profile is harness-owned too
+### The pom profile is harness-owned, and it is written at bootstrap
 
-This producer ensures the destination `pom.xml` carries exactly one marked
-block:
+`bootstrap-destination.py` writes the block, from the same module this
+producer writes it from (`scripts/parity_pom.py` — one definition of what
+makes the generated tests runnable at all). So the profile is part of the
+**committed** pom before M4 begins, and the rewrite below finds it
+byte-identical and changes nothing. That is deliberate: the generated files
+are written at M4, into a tree `assert-retrievable-tree` still requires to be
+committed, and a pom the harness first edited at M4 would make that gate
+refuse for the harness's own doing.
+
+The destination `pom.xml` carries exactly one marked block:
 
 ```xml
     <!-- rhoai3:generated-tests:begin -->
@@ -92,10 +100,10 @@ block:
   never manages a build plugin, so it cannot answer for this artifact; when a
   probe result does list it, the version is dropped and the BOM's is used —
   the evidence decides, not the constant;
-- the edit is printed on a `POM:` line and recorded under `pom_profile` /
-  `pom_profile_sha256`. **It is not committed here.** M4 commits nothing; the
-  pom and the generated tree are part of what the phase's own retrievability
-  and floor checks read.
+- the block is printed on a `POM:` line and recorded under `pom_profile` /
+  `pom_profile_sha256`. On a bootstrapped tree that line reads *already
+  current*; a rewrite there means something moved the block after the
+  bootstrap, and the floor will say so.
 
 ## What it generates
 
@@ -207,21 +215,49 @@ status or no header map for an exchange that requires one, a read-back nobody
 took, an effect set the capture does not match, or an authenticating scenario
 under `--security-mode disabled`.
 
+## Committing what was generated
+
+```bash
+python3 "${HERMES_SKILL_DIR}/scripts/commit-generated-tests.py" --root /projects/modernized
+```
+
+The generated files land in a tree `assert-retrievable-tree` requires to be
+committed against `HEAD`, and an untracked generated file is dirt to that
+gate. The gate is **not** weakened: a verdict composed over a tree nobody can
+retrieve says nothing about what was measured. This step is what makes the
+tree retrievable again, and it is narrow on purpose:
+
+- it refuses unless the manifest exists and `--check` passes — committing an
+  edited expectation would make the edit the harness's own, and `--check`
+  would never see it again;
+- it commits **only** the manifest's `files[]`, the manifest, and whatever
+  else sits under the generated roots. Any other change to `src/` or
+  `pom.xml` — a worker's edit, a stray build artifact, a moved pom — is a
+  refusal that names it. Whoever made that change commits it;
+- author `generate-product-tests <generate-product-tests@local>`, message
+  `m4: generated product tests (corpus <sha12>, generator <version>)`;
+- idempotent: with nothing to commit it says so and exits 0, so a phase re-run
+  is not a failure.
+
 ## How the M4 road calls it
 
 1. `generate-product-tests.py --root .` — a step of `paved-road-m4`, after the
    batch parity runner and **before** the pre-verdict runner, so the rebuild
    that runner drives is what executes the generated cases.
-2. `run-m4-pre-verdict.sh` runs `mvn -Pm4-parity test` (no `clean`) and then
+2. `commit-generated-tests.py --root .` — the next step, before anything reads
+   the tree, so `assert-retrievable-tree` measures a committed tree rather
+   than the harness's own leftovers.
+3. `run-m4-pre-verdict.sh` runs `mvn -Pm4-parity test` (no `clean`) and then
    snapshots the reports to `evidence/m4-pre-rebuild/test-reports`; every
    generated case must run there with zero skips, failures and errors,
    against the tree and configuration under test.
-3. `generate-product-tests.py --root . --check` is one of that runner's
+4. `generate-product-tests.py --root . --check` is one of that runner's
    feeding gates, with its own receipt under `evidence/receipts/gates/`, so
    the verdict cites tests — and a profile — the harness still owns.
-4. `check-domain-parity`'s product-test floor reads the same manifest: a
-   family it requires is covered by generated cases, and a gap is visible
-   rather than absent.
+5. `check-domain-parity`'s product-test floor reads the same manifest, and
+   scans the generated root beside `src/test/java`: a declared capability is
+   covered by an executed generated case, and a gap is visible rather than
+   absent.
 
 The packaged-artifact parity run (`run-parity.py`, `compose-parity-receipt.py`)
 is unchanged and still required.
@@ -250,5 +286,13 @@ is unchanged and still required.
 
 ## Scripts
 
+- `scripts/parity_pom.py` — the `m4-parity` block: its text, its digest, the
+  plugin pin and the idempotent rewrite. Imported by the producer **and** by
+  `bootstrap-destination.py`, because two copies would be two definitions of
+  what makes the generated tests runnable
 - `scripts/generate-product-tests.py` — the producer and the `--check` gate
-- `scripts/generate-product-tests.test.py` — the selftest
+- `scripts/commit-generated-tests.py` — commits the generated suite, and only it
+- `scripts/generate-product-tests.test.py` — the producer's selftest
+- `scripts/commit-generated-tests.test.py` — the commit step's selftest, which
+  also asserts the interaction: `assert-retrievable-tree` refuses the
+  untracked suite and passes once this step has committed it

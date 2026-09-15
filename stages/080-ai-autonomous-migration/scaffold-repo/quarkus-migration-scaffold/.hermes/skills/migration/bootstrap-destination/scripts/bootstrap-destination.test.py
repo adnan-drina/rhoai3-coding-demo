@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""bootstrap-destination selftest: trivial launcher deleted; launcher with behavior kept + block;
+"""bootstrap-destination selftest: the m4-parity block is bootstrapped (ADR-015); trivial launcher deleted; launcher with behavior kept + block;
 unmapped starter kept + block; second run preserves the whole tree; blocked receipt → admission INCONCLUSIVE;
 --reapply-catalog carries a late catalog row into a bootstrapped tree without touching accepted work."""
 from __future__ import annotations
@@ -738,8 +738,66 @@ def _datasource_checker_layout(layout: str) -> int:
     return 0
 
 
+def _parity_profile_case() -> int:
+    """ADR-015: the m4-parity block is written by the BOOTSTRAP, so the profile
+    that compiles the generated parity tests is part of the committed pom and
+    the M4 generator finds it byte-identical.
+
+    The control is the generator's own writer: after the bootstrap, calling it
+    on the bootstrapped tree must report ``changed: False``. If it reported a
+    rewrite, M4 would be editing pom.xml and assert-retrievable-tree would
+    refuse a tree the harness itself made dirty."""
+    import xml.etree.ElementTree as ET
+
+    sys.path.insert(0, str(GOLDEN / ".hermes" / "skills" / "gates" / "generate-product-tests" / "scripts"))
+    import parity_pom  # noqa: E402
+
+    with tempfile.TemporaryDirectory(prefix="parity-pom-") as td:
+        root = specimens.build_dest(Path(td) / "dest", specimens.specimen("http"), decisions=specimens.admitted_decisions())
+        pipeline.assemble_bundle(root)
+        proc = subprocess.run([sys.executable, str(SCRIPT), "--root", str(root)], text=True, capture_output=True)
+        if proc.returncode != 0:
+            return _fail("bootstrap: %s%s" % (proc.stdout, proc.stderr))
+        pom = (root / "pom.xml").read_text(encoding="utf-8")
+        for needle in (parity_pom.POM_BEGIN, parity_pom.POM_END, "<id>m4-parity</id>",
+                       "build-helper-maven-plugin", "<source>src/parity-test/java</source>",
+                       "<directory>src/parity-test/resources</directory>"):
+            if needle not in pom:
+                return _fail("the bootstrapped pom must carry %r" % needle)
+        try:
+            ET.fromstring(pom)
+        except ET.ParseError as exc:
+            return _fail("the bootstrapped pom must stay parseable XML: %s" % exc)
+        rec = load_json(root / "evidence/producers/bootstrap.json")
+        wrote = [c for c in rec["changes"] if c["op"] == "pom.parity-profile"]
+        if len(wrote) != 1 or wrote[0].get("artifact") != "m4-parity":
+            return _fail("the bootstrap must record writing the profile exactly once: %s" % wrote)
+
+        # the assert this case exists for: the M4 producer changes nothing
+        block = parity_pom.ensure_pom_profile(root, parity_pom.DEFAULT_OUT, parity_pom.DEFAULT_RESOURCES)
+        if block["changed"] or block["placement"] != "replaced":
+            return _fail("the generator must find the bootstrapped block byte-identical: %s" % block)
+        if block["sha256"] != wrote[0].get("value"):
+            return _fail("the receipt must bind the block that is on disk: %s" % block["sha256"])
+        if (root / "pom.xml").read_text(encoding="utf-8") != pom:
+            return _fail("the generator must not rewrite a pom the bootstrap already wrote")
+
+        # a second bootstrap, and --reapply-catalog, both keep it: every pom
+        # pass strips the block before ElementTree sees it and writes it back
+        for args in (["--root", str(root)], ["--root", str(root), "--reapply-catalog"]):
+            proc = subprocess.run([sys.executable, str(SCRIPT), *args], text=True, capture_output=True)
+            if proc.returncode != 0:
+                return _fail("%s: %s%s" % (args[-1], proc.stdout, proc.stderr))
+            if (root / "pom.xml").read_text(encoding="utf-8") != pom:
+                return _fail("%s must leave the m4-parity block byte-identical" % args[-1])
+            again = [c for c in load_json(root / "evidence/producers/bootstrap.json")["changes"] if c["op"] == "pom.parity-profile"]
+            if again:
+                return _fail("a run that writes back the same block records no change: %s" % again)
+    return 0
+
+
 def main() -> int:
-    if _build_profile_case():
+    if _build_profile_case() or _parity_profile_case():
         return 1
     if _datasource_checker_integration_case() or _retire_offsets_case() or _plugin_config_case() or _profile_merge_case() or _jakarta_imports_case() or _version_precedence_case() or _reapply_catalog_case() or _datasource_case():
         return 1

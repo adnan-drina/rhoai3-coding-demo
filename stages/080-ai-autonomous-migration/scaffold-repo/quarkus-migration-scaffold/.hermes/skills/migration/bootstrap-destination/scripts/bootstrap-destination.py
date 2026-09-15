@@ -8,7 +8,11 @@
             drop the Spring Boot parent, import the pinned Quarkus BOM,
             map starters and JDBC drivers to extensions, drop the Spring
             Boot plugin, add the pinned Quarkus plugin, compiler/surefire
-            pins, remove leftover org.springframework.boot dependencies
+            pins, remove leftover org.springframework.boot dependencies, and
+            write the harness-owned ``m4-parity`` block (ADR-015) that adds
+            ``src/parity-test/java`` as a test source root -- the profile the
+            generated parity tests need is part of the COMMITTED pom, so
+            nothing has to edit pom.xml at M4 for them to be runnable
 3. config   rename mapped property keys (line-based key=value; no regex)
 4. main     delete the @SpringBootApplication class named by the JDK model
             ONLY when it is a trivial launcher (no fields, no other
@@ -34,17 +38,22 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 
-def _ensure_hermes_lib() -> None:
+def _hermes_root() -> Path:
     for parent in Path(__file__).resolve().parents:
-        lib = parent / "lib"
-        if (lib / ".hermes-lib").is_file():
-            if str(lib) not in sys.path:
-                sys.path.insert(0, str(lib))
-            return
+        if (parent / "lib" / ".hermes-lib").is_file():
+            return parent
     raise SystemExit("FAIL: .hermes/lib marker missing")
 
 
+def _ensure_hermes_lib() -> None:
+    hermes = _hermes_root()
+    for extra in (hermes / "lib", hermes / "skills" / "gates" / "generate-product-tests" / "scripts"):
+        if str(extra) not in sys.path:
+            sys.path.insert(0, str(extra))
+
+
 _ensure_hermes_lib()
+import parity_pom  # noqa: E402
 from planner.canonical import digest, load_json, sha256_file, write_canonical  # noqa: E402
 from planner.paths import BOM_MANAGED, BOOTSTRAP_RECEIPT, CATALOGS_DIR, DECISIONS, EVIDENCE_BUNDLE, TYPE_INVENTORY, producer_receipt  # noqa: E402
 from planner.decisions import DecisionsError, build_profiles, datasource, load_decisions, retired_profile_gates, retired_sources, retirement_inventory_sha256  # noqa: E402
@@ -172,6 +181,40 @@ def add_mapped_artifacts(deps: ET.Element, catalog: dict, to_add: list[str], sco
             sub(d, "scope", scoped.get(art) or "test")
         present.add((gid, art))
         changes.append({"op": "pom.add-extension", "gav": "%s:%s" % (gid, art)})
+
+
+def strip_parity_profile(root: Path) -> str:
+    """Take the harness-owned m4-parity block out of pom.xml before any
+    ElementTree pass, and return the digest it had ("" when absent).
+
+    ElementTree drops XML comments, and the block IS comments plus a profile:
+    parse-and-write with it in place would delete the markers that say the
+    profile is the harness's, and the next run would then refuse an m4-parity
+    profile it no longer recognises as its own."""
+    return parity_pom.strip_profile_block_file(root)
+
+
+def write_parity_profile(root: Path, before_sha: str, changes: list[dict], blocks: list[dict]) -> None:
+    """ADR-015: the profile that compiles the generated parity tests is part of
+    the BOOTSTRAPPED pom, not something first written at M4.
+
+    The generated cases are written at M4, when assert-retrievable-tree still
+    demands a committed src/ and pom.xml; a pom the harness edits at M4 would
+    make that gate refuse for the harness's own doing. Writing the same block
+    here -- from the same module the generator writes it from -- means
+    generate-product-tests.py finds it byte-identical and changes nothing."""
+    try:
+        block = parity_pom.ensure_pom_profile(root, parity_pom.DEFAULT_OUT, parity_pom.DEFAULT_RESOURCES)
+    except parity_pom.Refuse as exc:
+        blocks.append({"class": "PARITY_PROFILE_UNOWNED", "subject": "pom.xml",
+                       "detail": ("the %s profile that compiles the generated parity tests (ADR-015) could not be written: %s"
+                                  % (parity_pom.POM_PROFILE_ID, exc))})
+        return
+    if block["sha256"] != before_sha:
+        changes.append({"op": "pom.parity-profile", "artifact": parity_pom.POM_PROFILE_ID,
+                        "value": block["sha256"],
+                        "provenance": "ADR-015 (%s adds %s and %s under this profile only)"
+                                      % (parity_pom.POM_PLUGIN_ARTIFACT, parity_pom.DEFAULT_OUT, parity_pom.DEFAULT_RESOURCES)})
 
 
 def bootstrap_pom(root: Path, catalog: dict, pins: dict, changes: list[dict], blocks: list[dict]) -> None:
@@ -1291,6 +1334,7 @@ def reapply_catalog(root: Path) -> int:
     receipt = load_json(receipt_p)
     changes: list[dict] = []
     blocks: list[dict] = []
+    parity_sha = strip_parity_profile(root)
     ET.register_namespace("", NS)
     try:
         tree = ET.parse(pom)
@@ -1319,11 +1363,13 @@ def reapply_catalog(root: Path) -> int:
         except DecisionsError as exc:
             blocks.append({"class": "DECISIONS_INVALID", "subject": str(DECISIONS), "detail": str(exc)})
     rename_jakarta_imports(root, catalog, changes, blocks)
+    # Last, after every ElementTree pass over the pom (ADR-015).
+    write_parity_profile(root, parity_sha, changes, blocks)
     receipt["changes"] = list(receipt.get("changes") or []) + changes
     receipt["inputs"] = dict(receipt.get("inputs") or {})
     receipt["inputs"]["catalog_sha256"] = sha256_file(cat_p)
     receipt["outputs"] = [{"path": "pom.xml", "sha256": sha256_file(pom)}]
-    rewrite_blocks(receipt, ("VERSION_UNMANAGED", "BOM_PROBE_MISSING", "TOOL_MISSING", "DATASOURCE_UNSUPPORTED", "DATASOURCE_EXTENSION_MISMATCH", "DECISIONS_INVALID", "BUILD_PROFILE_UNDECIDED", "BUILD_PROFILE_UNACCOUNTED", "BUILD_PROFILE_INCONCLUSIVE", "PROFILE_RETIREMENT_UNBOUND", "PROFILE_RETIREMENT_STALE", "PROFILE_RETIREMENT_ABSENT", "PROFILE_RETIREMENT_INCONCLUSIVE", "PROFILE_MODEL_UNAVAILABLE"), blocks)
+    rewrite_blocks(receipt, ("VERSION_UNMANAGED", "BOM_PROBE_MISSING", "TOOL_MISSING", "DATASOURCE_UNSUPPORTED", "DATASOURCE_EXTENSION_MISMATCH", "DECISIONS_INVALID", "PARITY_PROFILE_UNOWNED", "BUILD_PROFILE_UNDECIDED", "BUILD_PROFILE_UNACCOUNTED", "BUILD_PROFILE_INCONCLUSIVE", "PROFILE_RETIREMENT_UNBOUND", "PROFILE_RETIREMENT_STALE", "PROFILE_RETIREMENT_ABSENT", "PROFILE_RETIREMENT_INCONCLUSIVE", "PROFILE_MODEL_UNAVAILABLE"), blocks)
     write_canonical(receipt_p, receipt)
     for c in changes:
         print("  - %s %s" % (c["op"], c.get("gav") or c.get("artifact") or c.get("path") or c.get("key") or ""))
@@ -1381,6 +1427,7 @@ def main(argv: list[str] | None = None) -> int:
     import_source(copy, root, changes, retired)
     retire_sources(root, copy, retired, changes, blocks)
     check_maven_settings(root, catalog, blocks)
+    parity_sha = strip_parity_profile(root)
     try:
         bootstrap_pom(root, catalog, pins, changes, blocks)
     except ET.ParseError as exc:
@@ -1397,6 +1444,8 @@ def main(argv: list[str] | None = None) -> int:
             blocks.append({"class": "DECISIONS_INVALID", "subject": str(DECISIONS), "detail": str(exc)})
     bootstrap_main_class(root, catalog, bundle, changes, blocks)
     rename_jakarta_imports(root, catalog, changes, blocks)
+    # Last, after every ElementTree pass over the pom (ADR-015).
+    write_parity_profile(root, parity_sha, changes, blocks)
     receipt = {
         "schema": "rhoai3.producer-receipt/v1",
         "producer": "bootstrap",
