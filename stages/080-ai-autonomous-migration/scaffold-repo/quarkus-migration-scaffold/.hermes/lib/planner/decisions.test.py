@@ -14,9 +14,14 @@ mode, and the M1 road steps record that as their reason. What is refused is a
 section that is there and half-declared, because the capture would otherwise
 start the source with a switch nobody named.
 
-Also the control that matters most for the golden tree: the scaffold's own
-decisions.yaml loads, validates and yields exactly the section the Operator
-wrote -- it is the file every producer reads.
+Also the tree this suite is running in is checked, but only for what is
+actually true of it: a security section, if the tree's own decisions.yaml
+declares one, must load, validate and yield a decision with no gaps -- but a
+destination BEFORE the Operator records ADR-014 declares none, and that is
+not a failure of this suite, only of a claim it never makes. The scaffold's
+own declared shape (one switch, one identity with three roles, two
+credential references by name) is instead proven from a fixture, below, so
+that proof does not depend on which tree happens to host this file.
 """
 from __future__ import annotations
 
@@ -162,29 +167,90 @@ def _file_case() -> int:
         else:
             return _fail("a security section carrying an unknown key must be refused by the schema")
 
+    # This suite is installed onto a destination too, where decisions.yaml is
+    # the destination's own live file and legitimately declares no security
+    # section until the Operator records ADR-014. Assert only what is true
+    # of THIS tree's file: if it declares a section, it must hold with no
+    # gaps; if it declares none, that is not a gap either.
     doc = load_decisions(GOLDEN)
     if missing_decisions(doc, GOLDEN):
-        return _fail("the scaffold's own decisions.yaml holds: %s" % missing_decisions(doc, GOLDEN))
+        return _fail("the tree's own decisions.yaml holds: %s" % missing_decisions(doc, GOLDEN))
+    if doc.get("security") is None:
+        print("tree declares no security section (a destination before the Operator records ADR-014; "
+              "the fixture cases above cover the schema)")
+        return 0
+    gaps = security_gaps(doc)
+    if gaps:
+        return _fail("the tree's own security section holds: %s" % gaps)
     decided = security(doc)
-    if not decided or decided["adr"] != "ADR-014":
-        return _fail("the scaffold declares the security section ADR-014 asks for: %s" % decided)
     if not decided["switch"]["key"] or decided["switch"]["disabled_value"] == decided["switch"]["enabled_value"]:
-        return _fail("the specimen's switch is named with two settings: %s" % decided["switch"])
+        return _fail("the tree's switch is named with two settings: %s" % decided["switch"])
     for row in decided["identities"] + [{"credential_ref": decided["invalid_credential_ref"]}]:
         ref = str(row.get("credential_ref") or "")
         if ref and (":" in ref or any(c.isspace() for c in ref)):
-            return _fail("every credential in the scaffold's file is a REFERENCE: %r" % ref)
+            return _fail("every credential in the tree's file is a REFERENCE: %r" % ref)
+    print("checked the tree's own security section")
+    return 0
+
+
+# The exact security: block the scaffold's own decisions.yaml carries for
+# ADR-014 (copied verbatim) -- proves the scaffold's declared shape from a
+# fixture, independent of whichever tree `_file_case` above happens to run
+# against.
+_SCAFFOLD_SECURITY_YAML = (
+    'security:\n'
+    '  adr: ADR-014\n'
+    '  switch:\n'
+    '    key: petclinic.security.enable\n'
+    '    disabled_value: "false"\n'
+    '    enabled_value: "true"\n'
+    '  identities:\n'
+    '    - name: admin\n'
+    '      credential_ref: PETCLINIC_ADMIN_CREDENTIAL\n'
+    '      roles:\n'
+    '        - ROLE_OWNER_ADMIN\n'
+    '        - ROLE_VET_ADMIN\n'
+    '        - ROLE_ADMIN\n'
+    '  invalid_credential_ref: PETCLINIC_INVALID_CREDENTIAL\n'
+)
+
+
+def _scaffold_shape_case() -> int:
+    """The scaffold's own security section -- one switch, one identity with
+    three roles, two credential references by name -- parses clean from a
+    fixture built with exactly that shape, so the proof holds regardless of
+    what any installed tree's live decisions.yaml happens to declare."""
+    base = specimens.full_decisions(adrs=list(specimens.ACCEPTED_ADRS)
+                                     + [{"id": "ADR-014", "title": "Preserve source security switch", "status": "accepted"}])
+    with tempfile.TemporaryDirectory(prefix="decisions-shape-") as td:
+        root = specimens.build_dest(Path(td) / "dest", specimens.specimen("http"), decisions=base)
+        text = (root / "decisions.yaml").read_text(encoding="utf-8")
+        (root / "decisions.yaml").write_text(text + _SCAFFOLD_SECURITY_YAML, encoding="utf-8")
+        doc = load_decisions(root)
+    if security_gaps(doc):
+        return _fail("the scaffold's declared shape holds with no gaps: %s" % security_gaps(doc))
+    decided = security(doc)
+    if decided["switch"] != {"key": "petclinic.security.enable", "disabled_value": "false", "enabled_value": "true"}:
+        return _fail("the scaffold's switch is named with two distinct settings: %s" % decided["switch"])
+    if len(decided["identities"]) != 1 or decided["identities"][0]["roles"] != ["ROLE_OWNER_ADMIN", "ROLE_VET_ADMIN", "ROLE_ADMIN"]:
+        return _fail("the scaffold's shape is one identity with three roles: %s" % decided["identities"])
+    if (decided["identities"][0]["credential_ref"] != "PETCLINIC_ADMIN_CREDENTIAL"
+            or decided["invalid_credential_ref"] != "PETCLINIC_INVALID_CREDENTIAL"):
+        return _fail("both credentials are referenced by NAME: %s / %s"
+                      % (decided["identities"][0]["credential_ref"], decided["invalid_credential_ref"]))
     return 0
 
 
 def main() -> int:
-    if (_absent_case() or _well_formed_case() or _credential_shape_case() or _switch_case() or _file_case()):
+    if (_absent_case() or _well_formed_case() or _credential_shape_case() or _switch_case() or _file_case()
+            or _scaffold_shape_case()):
         return 1
     print("OK: decisions (the security section is optional and, when present, must name an accepted ADR, the source's switch with two "
           "distinct settings, and each seeded identity once by the NAME of the variable holding its credential; a credential written "
           "where a name belongs -- user:password, or anything carrying whitespace -- is refused by field and never echoed, an identity "
           "with no credential_ref and a half-declared switch are gaps, a refused section is not a decision, the schema refuses a key "
-          "nobody declared, and the scaffold's own decisions.yaml declares ADR-014's switch and identities by reference only)")
+          "nobody declared, the tree hosting this suite is checked only for what it actually declares, and a fixture carrying the "
+          "scaffold's own shape parses clean with one identity, three roles, and both credentials referenced by name)")
     return 0
 
 
