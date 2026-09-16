@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""bootstrap-destination selftest: the m4-parity block is bootstrapped (ADR-015); the baseline data asset is DERIVED from the dataset the contract declares
+"""bootstrap-destination selftest: the m4-parity block is bootstrapped (ADR-015) and carries the destination's declared build profiles and captured security mode; the baseline data asset is DERIVED from the dataset the contract declares
 with one sequence alignment per identity column (ADR-009); trivial launcher deleted; launcher with behavior kept + block;
 unmapped starter kept + block; second run preserves the whole tree; blocked receipt → admission INCONCLUSIVE;
 --reapply-catalog carries a late catalog row into a bootstrapped tree without touching accepted work."""
@@ -1059,8 +1059,98 @@ def _baseline_case() -> int:
     return 0
 
 
+def _parity_pins_case() -> int:
+    """The bootstrap writes the pins, and it writes the SAME block the M4
+    generator writes.
+
+    Measured on destination v9: `mvn -Pm4-parity test` augmented the generated
+    @QuarkusTest classes with every profile-guarded bean @Vetoed, because
+    quarkus.profile -- which the bootstrap wires for the BUILD -- does not
+    select the test build profile; and once the profile reached the test JVM
+    the frozen source's own src/test/resources flipped the security switch and
+    17 of 18 cases answered 401. Both are values the destination DECLARES, so
+    the block restates them where the test JVM reads them.
+
+    The fixture's profile names and its switch are a renamed specimen's: a
+    bootstrap that knew the pilot's would pass this for the wrong reason."""
+    import xml.etree.ElementTree as ET
+
+    sys.path.insert(0, str(GOLDEN / ".hermes" / "skills" / "gates" / "generate-product-tests" / "scripts"))
+    import parity_pom  # noqa: E402
+
+    profiles = ["gamma", "delta-store"]
+    switch = {"key": "acme.guard.active", "disabled_value": "quiet", "enabled_value": "strict"}
+    decisions = specimens.admitted_decisions()
+    decisions["build_profiles"] = {"adr": "ADR-001", "active": list(profiles)}
+    decisions["security"] = {"adr": "ADR-001", "switch": dict(switch),
+                             "identities": [{"name": "seeded-keeper", "credential_ref": "ACME_KEEPER_CRED", "roles": ["keeper"]}]}
+
+    with tempfile.TemporaryDirectory(prefix="parity-pins-") as td:
+        root = specimens.build_dest(Path(td) / "dest", specimens.specimen("http"), decisions=decisions)
+        pipeline.assemble_bundle(root)
+        proc = subprocess.run([sys.executable, str(SCRIPT), "--root", str(root)], text=True, capture_output=True)
+        if proc.returncode != 0:
+            return _fail("bootstrap: %s%s" % (proc.stdout, proc.stderr))
+        pom = (root / "pom.xml").read_text(encoding="utf-8")
+        block = pom[pom.index(parity_pom.POM_BEGIN):pom.index(parity_pom.POM_END) + len(parity_pom.POM_END)]
+        for needle in ("<quarkus.test.profile>gamma,delta-store</quarkus.test.profile>",
+                       "<acme.guard.active>quiet</acme.guard.active>",
+                       "NOT TEST-ONLY OVERRIDES",
+                       "<artifactId>maven-surefire-plugin</artifactId>"):
+            if needle not in block:
+                return _fail("the bootstrapped block must carry %r:\n%s" % (needle, block))
+        # what the base build already sets is carried, never dropped
+        if "<java.util.logging.manager>org.jboss.logmanager.LogManager</java.util.logging.manager>" not in block:
+            return _fail("the profile must keep the test-plugin properties the pom already sets:\n%s" % block)
+        # and the base <build> keeps its own configuration untouched
+        base = pom.replace(block, "")
+        if "quarkus.test.profile" in base or switch["key"] in base:
+            return _fail("the pins belong to the profile only, not to <build>")
+        if "<java.util.logging.manager>" not in base:
+            return _fail("the base build's own surefire configuration must survive")
+        try:
+            ET.fromstring(pom)
+        except ET.ParseError as exc:
+            return _fail("a pinned pom must stay parseable XML: %s" % exc)
+
+        # THE CONTROL: one definition. The M4 generator's own writer, on the
+        # tree the bootstrap wrote, produces the same bytes and changes
+        # nothing -- so assert-retrievable-tree never sees an M4 pom edit.
+        written = parity_pom.ensure_pom_profile(root, parity_pom.DEFAULT_OUT, parity_pom.DEFAULT_RESOURCES)
+        if written["changed"]:
+            return _fail("bootstrap and generator must write byte-identical blocks: %s" % written["sha256"])
+        pinned = [(p["name"], p["value"]) for r in written["test_plugins"]
+                  if r["artifact_id"] == "maven-surefire-plugin" for p in r["system_properties"]]
+        if pinned[:2] != [("quarkus.test.profile", "gamma,delta-store"), (switch["key"], switch["disabled_value"])]:
+            return _fail("the block must record what it hands the test JVM: %s" % pinned)
+        rec = load_json(root / "evidence/producers/bootstrap.json")
+        wrote = [c for c in rec["changes"] if c["op"] == "pom.parity-profile"]
+        if len(wrote) != 1 or "quarkus.test.profile=gamma,delta-store" not in wrote[0]["provenance"]:
+            return _fail("the receipt must say what the block pins and why: %s" % wrote)
+
+        # --reapply-catalog is the recipe for a tree bootstrapped BEFORE the
+        # pins existed: the old block is replaced and the change is recorded.
+        old = parity_pom.pom_profile_block(parity_pom.DEFAULT_OUT, parity_pom.DEFAULT_RESOURCES, parity_pom.POM_PLUGIN_VERSION)
+        (root / "pom.xml").write_text(pom.replace(block, old), encoding="utf-8")
+        before = len([c for c in load_json(root / "evidence/producers/bootstrap.json")["changes"] if c["op"] == "pom.parity-profile"])
+        proc = subprocess.run([sys.executable, str(SCRIPT), "--root", str(root), "--reapply-catalog"], text=True, capture_output=True)
+        if proc.returncode != 0:
+            return _fail("--reapply-catalog: %s%s" % (proc.stdout, proc.stderr))
+        if (root / "pom.xml").read_text(encoding="utf-8") != pom:
+            return _fail("--reapply-catalog must restore exactly the pinned block")
+        after = [c for c in load_json(root / "evidence/producers/bootstrap.json")["changes"] if c["op"] == "pom.parity-profile"]
+        if len(after) != before + 1:
+            return _fail("rewriting a stale block is a change the receipt records: %s" % after)
+
+        # and reapplying again changes nothing
+        proc = subprocess.run([sys.executable, str(SCRIPT), "--root", str(root), "--reapply-catalog"], text=True, capture_output=True)
+        if proc.returncode != 0 or (root / "pom.xml").read_text(encoding="utf-8") != pom:
+            return _fail("--reapply-catalog on a pinned tree must change nothing: %s%s" % (proc.stdout, proc.stderr))
+    return 0
+
+
 def main() -> int:
-    if _build_profile_case() or _parity_profile_case() or _baseline_case():
+    if _build_profile_case() or _parity_profile_case() or _parity_pins_case() or _baseline_case():
         return 1
     if _datasource_checker_integration_case() or _retire_offsets_case() or _plugin_config_case() or _profile_merge_case() or _jakarta_imports_case() or _version_precedence_case() or _reapply_catalog_case() or _datasource_case():
         return 1
@@ -1181,7 +1271,7 @@ def main() -> int:
         p = subprocess.run([sys.executable, str(SCRIPT), "--root", str(r)], text=True, capture_output=True)
         if [c for c in load_json(r / "evidence/producers/bootstrap.json")["changes"] if c["op"] in ("source.delete", "source.retire") and c["path"] == vet_path]:
             return _fail("an ADR that is not accepted retires nothing")
-    print("OK: bootstrap-destination (the derived baseline carries the DECLARED dataset not the per-engine seed, aligns every identity sequence to the seeded maximum, regenerates deterministically and refuses a hand-edited or untranslatable one, on a renamed specimen too; trivial launcher deleted; second run preserves the tree; @Bean launcher kept + BOOTSTRAP_BLOCKED; unmapped starter kept + block; Maven settings wiring required; pinned version beats the legacy carry / VERSION_UNMANAGED / BOM_PROBE_MISSING; ADR-retired sources deleted with provenance / stale path blocks; reapply-catalog carries a late row and refuses without a receipt; the decided datasource lands unprefixed with its extension, and an undocumented / mismatched / absent one blocks; an undecided build profile blocks and a decided one reaches the destination; a profile condition nobody activates or enumerates is unaccounted; an enumerated retirement must be bound to this tree's inventory and describe conditions it actually has, and the proposer writes nothing; the legacy driver/profile mix goes bootstrap -> checker PASS in BOTH the separate-file and inline layouts, with removals recorded, the reason note surviving every run, and reapplication inert; a retirement is cut in UTF-16 offsets and leaves valid Java even when an astral character precedes the annotation)")
+    print("OK: bootstrap-destination (the derived baseline carries the DECLARED dataset not the per-engine seed, aligns every identity sequence to the seeded maximum, regenerates deterministically and refuses a hand-edited or untranslatable one, on a renamed specimen too; the m4-parity block pins the decided build profiles and the captured security mode into the test JVM, keeps what the base pom sets, is byte-identical to the generator's, and --reapply-catalog rewrites a pre-pin block; trivial launcher deleted; second run preserves the tree; @Bean launcher kept + BOOTSTRAP_BLOCKED; unmapped starter kept + block; Maven settings wiring required; pinned version beats the legacy carry / VERSION_UNMANAGED / BOM_PROBE_MISSING; ADR-retired sources deleted with provenance / stale path blocks; reapply-catalog carries a late row and refuses without a receipt; the decided datasource lands unprefixed with its extension, and an undocumented / mismatched / absent one blocks; an undecided build profile blocks and a decided one reaches the destination; a profile condition nobody activates or enumerates is unaccounted; an enumerated retirement must be bound to this tree's inventory and describe conditions it actually has, and the proposer writes nothing; the legacy driver/profile mix goes bootstrap -> checker PASS in BOTH the separate-file and inline layouts, with removals recorded, the reason note surviving every run, and reapplication inert; a retirement is cut in UTF-16 offsets and leaves valid Java even when an astral character precedes the annotation)")
     return 0
 
 

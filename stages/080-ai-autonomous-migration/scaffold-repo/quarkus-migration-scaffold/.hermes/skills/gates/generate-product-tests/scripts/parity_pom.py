@@ -23,12 +23,35 @@ ElementTree drops XML comments on parse, so any producer that rewrites the pom
 through ElementTree would silently delete the markers that say which profile
 is the harness's. ``strip_profile_block`` removes the block before such a pass
 and ``ensure_pom_profile`` writes it back verbatim afterwards.
+
+WHY THE PROFILE ALSO CONFIGURES THE TEST PLUGIN, measured on destination v9
+with the real platform build: ``mvn -Pm4-parity test`` failed in the generated
+``@QuarkusTest`` classes' augmentation with every profile-guarded bean
+``@Vetoed``, and then -- once the profile reached the test JVM -- with every
+request answered 401. Two configurations the destination DECLARED did not
+reach the surefire JVM:
+
+  the decided build profiles   the destination BUILDS with the profiles
+      decisions.yaml activates (the bootstrap writes them to
+      ``.mvn/maven.config`` as ``-Dquarkus.profile`` and to
+      ``application.properties``). ``@QuarkusTest`` augments under the TEST
+      profile, which that key does not select, so each guarded implementation
+      was vetoed and the suite measured a destination that has none.
+  the captured security mode   the frozen source's own ``src/test/resources``
+      are on the test classpath and set the source's security switch; under
+      ``@QuarkusTest`` they override the destination's configuration, so the
+      suite answered for a mode nobody captured.
+
+Neither pin is a test-only override: each restates, where the test JVM reads
+it, a value the destination already declares. Both are read from decisions and
+from the generator's manifest -- never from a specimen literal.
 """
 from __future__ import annotations
 
 import hashlib
 import json
 import re
+import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
@@ -56,6 +79,26 @@ POM_PLUGIN_ARTIFACT = "build-helper-maven-plugin"
 # is used -- the evidence decides, not this constant.
 POM_PLUGIN_VERSION = "3.6.0"
 BOM_MANAGED = Path("evidence") / "build" / "bom-managed.json"
+
+# The plugins that run a test JVM. The profile configures the ones the road's
+# pom actually declares -- surefire always (it is what ``mvn test`` runs),
+# failsafe only when the destination carries it.
+TEST_PLUGIN_GROUP = "org.apache.maven.plugins"
+SUREFIRE_ARTIFACT = "maven-surefire-plugin"
+FAILSAFE_ARTIFACT = "maven-failsafe-plugin"
+TEST_PLUGINS = (SUREFIRE_ARTIFACT, FAILSAFE_ARTIFACT)
+# The platform's own key for "which build profile the TEST augmentation uses".
+# quarkus.profile does not select it, which is why the guards were inactive.
+TEST_PROFILE_PROPERTY = "quarkus.test.profile"
+# The mode the generated suite was written for, as the generator records it.
+SECURITY_MODES = ("disabled", "enabled")
+DEFAULT_SECURITY_MODE = "disabled"
+GENERATED_MANIFEST = Path("evidence") / "tests" / "generated-manifest.json"
+DECISIONS_FILE = Path("decisions.yaml")
+# A systemPropertyVariables entry IS an XML element name. A declared switch
+# key that is not one cannot be written, and a block that silently dropped it
+# would leave the mode unpinned while claiming otherwise.
+_XML_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_.\-]*$")
 
 _PROFILES_OPEN = "<profiles>"
 _PROFILES_CLOSE = "</profiles>"
@@ -110,10 +153,269 @@ def _pom_profile_ids(text: str) -> list[str]:
     return ids
 
 
-def pom_profile_block(out_dir: str, resources_dir: str, version: str, indent: str = "    ") -> str:
+# ---------------------------------------------------------------------------
+# what the profile pins into the test JVM, and where each value comes from
+# ---------------------------------------------------------------------------
+
+def _planner_decisions() -> Any:
+    """``planner.decisions``, or None when this module is used outside a
+    ``.hermes`` tree (a fixture pom has no decisions to read)."""
+    for parent in Path(__file__).resolve().parents:
+        lib = parent / "lib"
+        if (lib / ".hermes-lib").is_file():
+            if str(lib) not in sys.path:
+                sys.path.insert(0, str(lib))
+            break
+    try:
+        from planner import decisions as _decisions  # noqa: PLC0415
+    except ImportError:
+        return None
+    return _decisions
+
+
+def read_security_mode(root: Path) -> str:
+    """The mode the generated suite on this tree was written FOR, from the
+    generator's own manifest. The bootstrap has no ``--security-mode`` of its
+    own: it must pin the mode the suite already carries, or the block it
+    writes would differ from the one the generator wrote."""
+    p = Path(root) / GENERATED_MANIFEST
+    if p.is_file():
+        try:
+            mode = str((_load_json(p) or {}).get("security_mode") or "").strip()
+        except (OSError, ValueError):
+            mode = ""
+        if mode in SECURITY_MODES:
+            return mode
+    return DEFAULT_SECURITY_MODE
+
+
+def declared_pins(root: Path, security_mode: str = "") -> dict[str, Any]:
+    """The two DECLARED values the test JVM must be given, read from
+    decisions.yaml -- never from a specimen literal.
+
+    ``test_profile``   the decided build profiles, comma-joined exactly as the
+                       bootstrap writes them for ``quarkus.profile``.
+    ``security_key``/``security_value``  the declared switch, set to the value
+                       of the mode the suite was generated for.
+
+    Whatever could not be read is a NOTE, not a silent omission: a suite whose
+    mode nobody pinned is decided by whatever the test classpath happens to
+    set, and the manifest has to say so."""
+    root = Path(root)
+    mode = str(security_mode or "").strip() or read_security_mode(root)
+    pins: dict[str, Any] = {
+        "test_profile": "",
+        "build_profiles": [],
+        "build_profiles_adr": "",
+        "security_mode": mode,
+        "security_key": "",
+        "security_value": "",
+        "security_adr": "",
+        "security_pinned": False,
+        "notes": [],
+    }
+    mod = _planner_decisions()
+    if mod is None:
+        pins["notes"].append("planner.decisions is not importable from here, so neither the decided build profiles nor the "
+                             "security switch could be read; the %s profile pins neither" % POM_PROFILE_ID)
+        return pins
+    if not (root / DECISIONS_FILE).is_file():
+        pins["notes"].append("no %s in this tree: the build profiles the test augmentation must activate are undeclared and "
+                             "the security mode of the generated suite is UNPINNED" % DECISIONS_FILE.as_posix())
+        return pins
+    try:
+        doc = mod.load_decisions(root)
+    except mod.DecisionsError as exc:
+        pins["notes"].append("%s could not be read (%s); the %s profile pins nothing from it"
+                             % (DECISIONS_FILE.as_posix(), exc, POM_PROFILE_ID))
+        return pins
+
+    decided = mod.build_profiles(doc)
+    active = [str(x) for x in (decided.get("active") or [])]
+    if active:
+        pins["build_profiles"] = active
+        pins["build_profiles_adr"] = str(decided.get("adr") or "")
+        pins["test_profile"] = ",".join(active)
+    else:
+        pins["notes"].append("decisions.yaml activates no build profile, so the test augmentation is left at the platform's "
+                             "default; every bean guarded by a profile is then absent from the generated suite's run")
+
+    sec = mod.security(doc)
+    switch = (sec.get("switch") or {}) if sec else {}
+    key = str(switch.get("key") or "").strip()
+    value = str(switch.get("enabled_value" if mode == "enabled" else "disabled_value") or "").strip()
+    if key and value:
+        if not _XML_NAME.match(key):
+            raise Refuse("the declared security switch key %r cannot be written as a systemPropertyVariables entry (it is not an "
+                         "XML element name); the %s profile would otherwise claim to pin a mode it does not pin" % (key, POM_PROFILE_ID))
+        pins["security_key"] = key
+        pins["security_value"] = value
+        pins["security_adr"] = str(sec.get("adr") or "")
+        pins["security_pinned"] = True
+    else:
+        pins["notes"].append("decisions.yaml declares no usable security switch, so the %s-mode suite's security mode is "
+                             "UNPINNED: whatever the test classpath sets decides it" % mode)
+    return pins
+
+
+def _pin_rows(pins: dict[str, Any]) -> list[tuple[str, str]]:
+    """The properties this profile pins, in a fixed order."""
+    rows: list[tuple[str, str]] = []
+    if pins.get("test_profile"):
+        rows.append((TEST_PROFILE_PROPERTY, str(pins["test_profile"])))
+    if pins.get("security_key"):
+        rows.append((str(pins["security_key"]), str(pins["security_value"])))
+    return rows
+
+
+def _xml_text(value: str) -> str:
+    return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def _comment_safe(value: str) -> str:
+    """A declared name goes into the block's COMMENT, and ``--`` inside an XML
+    comment is not well-formed. Nothing declared is rejected for it: the
+    comment is spelled so the pom stays parseable, and the pinned element
+    below carries the value itself."""
+    out = value
+    while "--" in out:
+        out = out.replace("--", "- -")
+    return out
+
+
+def _base_test_plugins(text: str) -> dict[str, tuple[str, dict[str, str]]]:
+    """``artifactId -> (groupId, {property: value})`` for the test plugins the
+    pom's OWN ``<build>`` declares, with whatever each already sets in
+    ``systemPropertyVariables`` (wherever under the plugin it sets it: the
+    failsafe configuration the platform guide documents lives inside an
+    execution). The harness block is stripped first -- reading it back would
+    make the block an input to itself."""
+    stripped, _present = strip_profile_block(text)
+    try:
+        project = ET.fromstring(stripped)
+    except ET.ParseError as exc:
+        raise Refuse("%s is not parseable XML: %s" % (POM, exc))
+    ns = project.tag.split("}")[0][1:] if project.tag.startswith("{") else ""
+    q = ("{%s}" % ns) if ns else ""
+    out: dict[str, tuple[str, dict[str, str]]] = {}
+    for build in project.findall("%sbuild" % q):
+        for plugins in build.findall("%splugins" % q):
+            for p in plugins.findall("%splugin" % q):
+                art = (p.findtext("%sartifactId" % q) or "").strip()
+                if art not in TEST_PLUGINS:
+                    continue
+                group = (p.findtext("%sgroupId" % q) or "").strip() or TEST_PLUGIN_GROUP
+                props: dict[str, str] = {}
+                for spv in p.iter("%ssystemPropertyVariables" % q):
+                    for child in spv:
+                        name = child.tag.split("}")[-1]
+                        if _XML_NAME.match(name):
+                            props[name] = (child.text or "").strip()
+                out[art] = (group, props)
+    return out
+
+
+def test_plugin_config(text: str, pins: dict[str, Any]) -> list[tuple[str, str, list[tuple[str, str]]]]:
+    """``[(groupId, artifactId, [(property, value), ...])]`` -- what the
+    profile configures, pinned properties first and then every property the
+    base pom's own configuration of that plugin already sets.
+
+    Restating the carried ones is deliberate: this profile's plugin
+    configuration is the destination's, merged with the base build's, and a
+    block that listed only the two pins would be read as the whole story by
+    anyone comparing the two. Nothing in the base ``<build>`` is edited.
+
+    Nothing to pin, nothing to configure: a tree that declares neither the
+    build profiles nor a security switch gets the block it always got."""
+    pin_rows = _pin_rows(pins)
+    if not pin_rows:
+        return []
+    declared = _base_test_plugins(text)
+    arts = [a for a in TEST_PLUGINS if a in declared] or [SUREFIRE_ARTIFACT]
+    pinned = {name for name, _v in pin_rows}
+    out: list[tuple[str, str, list[tuple[str, str]]]] = []
+    for art in arts:
+        group, carried = declared.get(art, (TEST_PLUGIN_GROUP, {}))
+        rows = list(pin_rows) + [(n, carried[n]) for n in sorted(carried) if n not in pinned]
+        out.append((group, art, rows))
+    return out
+
+
+def _pin_comment(pins: dict[str, Any], test_plugins: list[tuple[str, str, list[tuple[str, str]]]], i: str) -> list[str]:
+    """The block says, in the pom, what the two pins ARE. A reader who finds a
+    property set in a profile has to be able to tell a declared value restated
+    where the test JVM reads it from a test-only override that makes the suite
+    answer a question the destination does not."""
+    if not test_plugins:
+        return []
+    lines = [
+        "",
+        i + "  THESE ARE NOT TEST-ONLY OVERRIDES. Each systemPropertyVariables",
+        i + "  entry below restates, where the test JVM reads it, a value the",
+        i + "  destination already declares:",
+    ]
+    if pins.get("test_profile"):
+        lines += [
+            "",
+            i + "    %s" % TEST_PROFILE_PROPERTY,
+            i + "      the destination's own build profiles (decisions.yaml",
+            i + "      build_profiles%s), the same value the bootstrap writes as"
+            % ((" " + _comment_safe(str(pins["build_profiles_adr"]))) if pins.get("build_profiles_adr") else ""),
+            i + "      -Dquarkus.profile in .mvn/maven.config and as",
+            i + "      quarkus.profile in application.properties. @QuarkusTest",
+            i + "      augments under the TEST profile, which quarkus.profile does",
+            i + "      not select, so without this every profile-guarded bean is",
+            i + "      @Vetoed in the test augmentation.",
+        ]
+    if pins.get("security_key"):
+        lines += [
+            "",
+            i + "    %s" % _comment_safe(str(pins["security_key"])),
+            i + "      the source's declared security switch (decisions.yaml",
+            i + "      security.switch%s), set to the value of the %s mode the"
+            % ((" " + _comment_safe(str(pins["security_adr"]))) if pins.get("security_adr") else "",
+               _comment_safe(str(pins.get("security_mode") or ""))),
+            i + "      generated suite was captured and written for. The frozen",
+            i + "      source's own test resources are on the test classpath and",
+            i + "      would otherwise flip the mode under this suite, which would",
+            i + "      then answer for a configuration nobody captured.",
+        ]
+    lines += [
+        "",
+        i + "  Every other entry is one the base build's own configuration of",
+        i + "  that plugin already sets; it is restated here so this profile's",
+        i + "  configuration adds to it and the base <build> stays untouched.",
+    ]
+    return lines
+
+
+def _test_plugin_lines(test_plugins: list[tuple[str, str, list[tuple[str, str]]]], line: Any) -> list[str]:
+    out: list[str] = []
+    for group, artifact, rows in test_plugins:
+        out += [
+            line(3, "<plugin>"),
+            line(4, "<groupId>%s</groupId>" % group),
+            line(4, "<artifactId>%s</artifactId>" % artifact),
+            line(4, "<configuration>"),
+            line(5, "<systemPropertyVariables>"),
+        ]
+        out += [line(6, "<%s>%s</%s>" % (name, _xml_text(value), name)) for name, value in rows]
+        out += [
+            line(5, "</systemPropertyVariables>"),
+            line(4, "</configuration>"),
+            line(3, "</plugin>"),
+        ]
+    return out
+
+
+def pom_profile_block(out_dir: str, resources_dir: str, version: str, pins: dict[str, Any] | None = None,
+                      test_plugins: list[tuple[str, str, list[tuple[str, str]]]] | None = None,
+                      indent: str = "    ") -> str:
     """The block, markers included, deterministic in its inputs."""
     step = "  "
     i = indent
+    pins = pins or {}
+    test_plugins = test_plugins or []
 
     def line(depth: int, text: str) -> str:
         return i + step * depth + text
@@ -133,6 +435,7 @@ def pom_profile_block(out_dir: str, resources_dir: str, version: str, indent: st
         i + "  finding would revert the step that was being verified. This",
         i + "  profile is what makes them runnable, and only the M4 pre-verdict",
         i + "  runner activates it (-P%s)." % POM_PROFILE_ID,
+        *_pin_comment(pins, test_plugins, i),
         i + "-->",
         line(0, "<profile>"),
         line(1, "<id>%s</id>" % POM_PROFILE_ID),
@@ -171,6 +474,7 @@ def pom_profile_block(out_dir: str, resources_dir: str, version: str, indent: st
         line(5, "</execution>"),
         line(4, "</executions>"),
         line(3, "</plugin>"),
+        *_test_plugin_lines(test_plugins, line),
         line(2, "</plugins>"),
         line(1, "</build>"),
         line(0, "</profile>"),
@@ -202,11 +506,15 @@ def pom_plugin_pin(root: Path) -> dict[str, Any]:
     }
 
 
-def ensure_pom_profile(root: Path, out_dir: str, resources_dir: str) -> dict[str, Any]:
+def ensure_pom_profile(root: Path, out_dir: str, resources_dir: str, security_mode: str = "") -> dict[str, Any]:
     """Write (or rewrite) the marked block, idempotently. The pom is a
     harness-owned change here: it is recorded and printed, never committed by
     THIS function -- the bootstrap commits the tree it writes, and at M4 the
-    road's commit step commits what the generator wrote."""
+    road's commit step commits what the generator wrote.
+
+    ``security_mode`` is the mode the generated suite is written for. The
+    generator passes its own; the bootstrap passes nothing and the mode is
+    read from the generator's manifest, so both write the SAME block."""
     root = Path(root)
     text = _pom_text(root)
     region = _pom_marked_region(text)
@@ -218,7 +526,9 @@ def ensure_pom_profile(root: Path, out_dir: str, resources_dir: str) -> dict[str
         raise Refuse("%s declares %d %r profiles and only the marked one is this producer's" % (POM, len(ids), POM_PROFILE_ID))
 
     plugin = pom_plugin_pin(root)
-    block = pom_profile_block(out_dir, resources_dir, plugin["version"])
+    pins = declared_pins(root, security_mode)
+    test_plugins = test_plugin_config(text, pins)
+    block = pom_profile_block(out_dir, resources_dir, plugin["version"], pins, test_plugins)
     if region is not None:
         start, end = region
         line_start = text.rfind("\n", 0, start) + 1
@@ -251,6 +561,11 @@ def ensure_pom_profile(root: Path, out_dir: str, resources_dir: str) -> dict[str
         "test_source": out_dir,
         "test_resources": resources_dir,
         "plugin": plugin,
+        # what the profile hands the test JVM, and where each value came from
+        "pins": pins,
+        "test_plugins": [{"group_id": g, "artifact_id": a,
+                          "system_properties": [{"name": n, "value": v} for n, v in rows]}
+                         for g, a, rows in test_plugins],
         "sha256": hashlib.sha256(body.encode("utf-8")).hexdigest(),
         "changed": changed,
         "placement": where,
@@ -266,6 +581,23 @@ def read_pom_profile(root: Path) -> tuple[str, str]:
                      "test phase would silently run none of them" % (POM, POM_BEGIN, POM_PROFILE_ID))
     body = text[region[0]:region[1]]
     return hashlib.sha256(body.encode("utf-8")).hexdigest(), body
+
+
+STALE_BLOCK = "stale block: regenerate with --reapply-catalog"
+
+
+def block_pin_gaps(root: Path, body: str, security_mode: str = "") -> list[str]:
+    """Which DECLARED pin the block on disk does not carry.
+
+    A block whose bytes match its own manifest can still be the block that was
+    written before these pins existed -- and that block runs the generated
+    suite with the guards inactive and the mode decided by the test classpath.
+    The digest cannot see that; only the declaration can."""
+    gaps: list[str] = []
+    for name, value in _pin_rows(declared_pins(root, security_mode)):
+        if ("<%s>%s</%s>" % (name, _xml_text(value), name)) not in body:
+            gaps.append("%s=%s" % (name, value))
+    return gaps
 
 
 def block_sha256(text: str) -> str:

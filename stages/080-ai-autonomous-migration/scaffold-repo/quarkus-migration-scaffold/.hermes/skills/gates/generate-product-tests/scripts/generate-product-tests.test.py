@@ -77,6 +77,46 @@ POM_FIXTURE = """<?xml version='1.0' encoding='utf-8'?>
 </project>
 """
 
+# The same pom with the test-plugin configuration the platform guide documents.
+# The profile must not DROP what the base build already sets: it merges its two
+# pins into its own copy and leaves <build> alone.
+POM_FIXTURE_TESTCONFIG = POM_FIXTURE.replace("""      <plugin>
+        <artifactId>maven-surefire-plugin</artifactId>
+      </plugin>
+""", """      <plugin>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>${surefire-plugin.version}</version>
+        <configuration>
+          <systemPropertyVariables>
+            <java.util.logging.manager>org.jboss.logmanager.LogManager</java.util.logging.manager>
+            <maven.home>${maven.home}</maven.home>
+          </systemPropertyVariables>
+        </configuration>
+      </plugin>
+      <plugin>
+        <artifactId>maven-failsafe-plugin</artifactId>
+        <version>${surefire-plugin.version}</version>
+        <executions>
+          <execution>
+            <goals><goal>integration-test</goal><goal>verify</goal></goals>
+            <configuration>
+              <systemPropertyVariables>
+                <native.image.path>${project.build.directory}/runner</native.image.path>
+                <java.util.logging.manager>org.jboss.logmanager.LogManager</java.util.logging.manager>
+                <maven.home>${maven.home}</maven.home>
+              </systemPropertyVariables>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+""")
+
+# A RENAMED specimen's decisions: other profile names, another switch key and
+# two other settings. Nothing here is the pilot's, which is the control that
+# the producer reads the declaration rather than a literal it knows.
+FIXTURE_PROFILES = ["gamma", "delta-store"]
+FIXTURE_SWITCH = {"key": "acme.guard.active", "disabled_value": "quiet", "enabled_value": "strict"}
+
 FAILURES: list[str] = []
 
 
@@ -147,13 +187,32 @@ def scenarios_of(spec: dict[str, str]) -> list[dict[str, Any]]:
     ]
 
 
-def build_root(root: Path, spec: dict[str, str], *, derived: bool = True, authenticated: bool = False) -> Path:
+def write_decisions(root: Path, *, profiles: list[str] | None = None, switch: dict[str, str] | None = None) -> None:
+    """decisions.yaml for the renamed specimen, plus the schema the loader
+    validates against. What the m4-parity block pins comes from HERE, so a
+    fixture that declares other names is the whole control."""
+    sys.path.insert(0, str(HERE.parents[3] / "lib"))
+    from planner.specimens import decisions_yaml, full_decisions  # noqa: PLC0415
+
+    golden_planning = HERE.parents[4] / ".hermes" / "planning"
+    shutil.copytree(golden_planning, root / ".hermes" / "planning", dirs_exist_ok=True)
+    doc = full_decisions()
+    if profiles:
+        doc["build_profiles"] = {"adr": "ADR-001", "active": list(profiles)}
+    if switch:
+        doc["security"] = {"adr": "ADR-001", "switch": dict(switch),
+                           "identities": [{"name": "seeded-keeper", "credential_ref": "ACME_KEEPER_CRED", "roles": ["keeper"]}]}
+    (root / "decisions.yaml").write_text(decisions_yaml(doc), encoding="utf-8")
+
+
+def build_root(root: Path, spec: dict[str, str], *, derived: bool = True, authenticated: bool = False,
+               pom: str = POM_FIXTURE) -> Path:
     """A destination tree carrying exactly what this producer reads."""
     r, route = spec["res"], spec["route"]
     root.mkdir(parents=True, exist_ok=True)
     (root / RESET_SCRIPT).parent.mkdir(parents=True, exist_ok=True)
     (root / RESET_SCRIPT).write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
-    (root / "pom.xml").write_text(POM_FIXTURE, encoding="utf-8")
+    (root / "pom.xml").write_text(pom, encoding="utf-8")
 
     scenarios = scenarios_of(spec)
     if authenticated:
@@ -871,9 +930,132 @@ def case_canonical_form(tmp: Path) -> int:
     return 0
 
 
+def _block_of(root: Path) -> str:
+    pom = (root / "pom.xml").read_text(encoding="utf-8")
+    begin, end = "<!-- rhoai3:generated-tests:begin -->", "<!-- rhoai3:generated-tests:end -->"
+    return pom[pom.index(begin):pom.index(end) + len(end)]
+
+
+def case_declared_pins(tmp: Path) -> int:
+    """Measured on destination v9: the generated suite augmented with every
+    profile-guarded bean @Vetoed, and once the profile reached the test JVM the
+    frozen source's own test resources flipped the security switch and 17 of 18
+    cases answered 401. Both values were DECLARED by the destination and
+    neither reached surefire, so the block pins them.
+
+    Every name asserted here comes from the fixture's decisions.yaml, never
+    from the pilot: a producer that knew the specimen's profile names or its
+    switch key would pass this case for the wrong reason."""
+    rc = 0
+    root = build_root(tmp / "pins", SPEC_A, pom=POM_FIXTURE_TESTCONFIG)
+    write_decisions(root, profiles=FIXTURE_PROFILES, switch=FIXTURE_SWITCH)
+    proc = run(root)
+    if proc.returncode != 0:
+        return fail("generation refused a fixture with decisions: %s%s" % (proc.stdout, proc.stderr))
+    block = _block_of(root)
+
+    want = ("<quarkus.test.profile>%s</quarkus.test.profile>" % ",".join(FIXTURE_PROFILES),
+            "<%s>%s</%s>" % (FIXTURE_SWITCH["key"], FIXTURE_SWITCH["disabled_value"], FIXTURE_SWITCH["key"]))
+    for needle in want:
+        if needle not in block:
+            rc |= fail("the block must pin %r: %s" % (needle, block))
+    # the two pins are stated as what they are, not as test-only overrides
+    if "NOT TEST-ONLY OVERRIDES" not in block:
+        rc |= fail("the block must say the pins restate declared values: %s" % block)
+    # what the base pom already sets is carried, never dropped
+    for needle in ("<java.util.logging.manager>org.jboss.logmanager.LogManager</java.util.logging.manager>",
+                   "<maven.home>${maven.home}</maven.home>"):
+        if block.count(needle) != 2:
+            rc |= fail("both test plugins must keep %r the base pom sets: %s" % (needle, block))
+    if "<native.image.path>${project.build.directory}/runner</native.image.path>" not in block:
+        rc |= fail("a property only failsafe sets must stay on failsafe: %s" % block)
+    for artifact in ("maven-surefire-plugin", "maven-failsafe-plugin"):
+        if "<artifactId>%s</artifactId>" % artifact not in block:
+            rc |= fail("the profile must configure %s, which the base pom declares" % artifact)
+    # and the base <build> is untouched: the pins live in the profile only
+    base = (root / "pom.xml").read_text(encoding="utf-8").replace(block, "")
+    if "quarkus.test.profile" in base or FIXTURE_SWITCH["key"] in base:
+        rc |= fail("the pins must not be written into the base build: %s" % base)
+    try:
+        ET.fromstring((root / "pom.xml").read_text(encoding="utf-8"))
+    except ET.ParseError as exc:
+        rc |= fail("a pom carrying the pins must stay parseable XML: %s" % exc)
+
+    manifest = load_json(root / MANIFEST)
+    if manifest.get("security_mode_pinned") is not True:
+        rc |= fail("the manifest must record that the mode is pinned: %s" % manifest.get("security_mode_pinned"))
+    props = [(p["name"], p["value"])
+             for row in manifest["pom_profile"]["test_plugins"] if row["artifact_id"] == "maven-surefire-plugin"
+             for p in row["system_properties"]]
+    if props[:2] != [("quarkus.test.profile", ",".join(FIXTURE_PROFILES)),
+                     (FIXTURE_SWITCH["key"], FIXTURE_SWITCH["disabled_value"])]:
+        rc |= fail("the manifest must record what the profile hands the test JVM: %s" % props)
+    if manifest["pom_profile"]["pins"]["build_profiles"] != FIXTURE_PROFILES:
+        rc |= fail("the manifest must name the decided profiles: %s" % manifest["pom_profile"]["pins"])
+
+    # regeneration is idempotent, and --check accepts what was just written
+    pom_now = (root / "pom.xml").read_text(encoding="utf-8")
+    if run(root).returncode != 0 or (root / "pom.xml").read_text(encoding="utf-8") != pom_now:
+        rc |= fail("a second generation must leave the pinned block byte-identical")
+    if run(root, "--check").returncode != 0:
+        rc |= fail("--check must accept the block the generator just wrote")
+
+    # the mode is the one the suite was GENERATED for, not a default
+    on = build_root(tmp / "pins-enabled", SPEC_A, authenticated=True, pom=POM_FIXTURE_TESTCONFIG)
+    write_decisions(on, profiles=FIXTURE_PROFILES, switch=FIXTURE_SWITCH)
+    if run(on, "--security-mode", "enabled").returncode != 0:
+        rc |= fail("generation refused with --security-mode enabled")
+    if ("<%s>%s</%s>" % (FIXTURE_SWITCH["key"], FIXTURE_SWITCH["enabled_value"], FIXTURE_SWITCH["key"])) not in _block_of(on):
+        rc |= fail("the enabled-mode suite must pin the enabled setting: %s" % _block_of(on))
+
+    # no security section: the switch is NOT pinned, and the manifest says so
+    # rather than leaving the mode looking decided
+    nosec = build_root(tmp / "pins-nosecurity", SPEC_A, pom=POM_FIXTURE_TESTCONFIG)
+    write_decisions(nosec, profiles=FIXTURE_PROFILES)
+    if run(nosec).returncode != 0:
+        rc |= fail("generation refused a tree with no security section")
+    nosec_block = _block_of(nosec)
+    if FIXTURE_SWITCH["key"] in nosec_block:
+        rc |= fail("an undeclared switch must not be pinned: %s" % nosec_block)
+    if "<quarkus.test.profile>%s</quarkus.test.profile>" % ",".join(FIXTURE_PROFILES) not in nosec_block:
+        rc |= fail("the profile pin does not depend on the security section: %s" % nosec_block)
+    m2 = load_json(nosec / MANIFEST)
+    if m2.get("security_mode_pinned") is not False:
+        rc |= fail("the manifest must record that the mode is unpinned: %s" % m2.get("security_mode_pinned"))
+    if not any("UNPINNED" in n for n in (m2.get("pin_notes") or [])):
+        rc |= fail("the manifest must say WHY the mode is unpinned: %s" % m2.get("pin_notes"))
+
+    # THE STALE BLOCK: bytes that match their own manifest and pin nothing.
+    # The digest cannot see it -- a suite would run with the guards inactive
+    # and the mode decided by the test classpath -- so the declaration is
+    # asked, and --check refuses by name.
+    stale = build_root(tmp / "pins-stale", SPEC_A, pom=POM_FIXTURE_TESTCONFIG)
+    write_decisions(stale, profiles=FIXTURE_PROFILES, switch=FIXTURE_SWITCH)
+    if run(stale).returncode != 0:
+        rc |= fail("generation refused the stale-block fixture")
+    old = build_root(tmp / "pins-old", SPEC_A, pom=POM_FIXTURE_TESTCONFIG)   # same tree, no decisions
+    if run(old).returncode != 0:
+        rc |= fail("generation refused the pre-pin fixture")
+    old_block = _block_of(old)
+    pom_text = (stale / "pom.xml").read_text(encoding="utf-8")
+    (stale / "pom.xml").write_text(pom_text.replace(_block_of(stale), old_block), encoding="utf-8")
+    m3 = load_json(stale / MANIFEST)
+    m3["pom_profile_sha256"] = hashlib.sha256(old_block.encode("utf-8")).hexdigest()
+    write_canonical(stale / MANIFEST, m3)
+    proc = run(stale, "--check")
+    if proc.returncode == 0:
+        rc |= fail("--check accepted a block that pins neither declared value")
+    elif "stale block: regenerate with --reapply-catalog" not in proc.stderr:
+        rc |= fail("--check must refuse a stale block by name: %s" % proc.stderr)
+    elif FIXTURE_SWITCH["key"] not in proc.stderr or ",".join(FIXTURE_PROFILES) not in proc.stderr:
+        rc |= fail("the refusal must name the pins that are missing: %s" % proc.stderr)
+    return rc
+
+
 def main() -> int:
     cases = (case_accounting, case_deterministic, case_pom_profile, case_check, case_refusals, case_security_mode,
-             case_renamed_specimen, case_no_specimen_literal, case_java_plausible, case_canonical_form)
+             case_declared_pins, case_renamed_specimen, case_no_specimen_literal, case_java_plausible,
+             case_canonical_form)
     rc = 0
     with tempfile.TemporaryDirectory(prefix="generate-product-tests-") as td:
         tmp = Path(td)

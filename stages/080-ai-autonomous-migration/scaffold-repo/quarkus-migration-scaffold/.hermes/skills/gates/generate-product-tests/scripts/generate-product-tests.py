@@ -95,7 +95,9 @@ from parity_pom import (  # noqa: E402
     POM_PLUGIN_GROUP,
     POM_PLUGIN_VERSION,
     POM_PROFILE_ID,
+    STALE_BLOCK,
     Refuse,
+    block_pin_gaps,
     ensure_pom_profile,
     pom_plugin_pin,
     pom_profile_block,
@@ -125,7 +127,7 @@ from planner.canonical import digest, load_json, write_canonical  # noqa: E402
 from planner.paths import EVIDENCE_BUNDLE  # noqa: E402
 
 GENERATOR = "generate-product-tests.py"
-GENERATOR_VERSION = "1.1.0"
+GENERATOR_VERSION = "1.2.0"
 SCHEMA = "rhoai3.generated-tests/v1"
 MANIFEST = Path("evidence") / "tests" / "generated-manifest.json"
 
@@ -1356,7 +1358,7 @@ def generate(root: Path, out_dir: str, resources_dir: str, security_mode: str, r
     cases, gaps = plan_cases(root, inputs, security_mode)
     # The pom is read and validated before anything is written: a pom this
     # producer may not own is a refusal, not a half-generated tree.
-    pom_profile = ensure_pom_profile(root, out_dir.rstrip("/"), resources_dir.rstrip("/"))
+    pom_profile = ensure_pom_profile(root, out_dir.rstrip("/"), resources_dir.rstrip("/"), security_mode)
 
     support_package = ""
     if cases:
@@ -1411,6 +1413,12 @@ def generate(root: Path, out_dir: str, resources_dir: str, security_mode: str, r
         "source_digest": inputs["source_digest"],
         "qualification_sha256": inputs["qualification_sha256"],
         "security_mode": security_mode,
+        # Whether the mode above is PINNED where the suite runs. An unpinned
+        # mode is decided by whatever the test classpath sets -- on the pilot
+        # specimen, the frozen source's own test resources -- so a manifest
+        # that only recorded the mode would record an intention, not a fact.
+        "security_mode_pinned": bool((pom_profile.get("pins") or {}).get("security_pinned")),
+        "pin_notes": list((pom_profile.get("pins") or {}).get("notes") or []),
         "reset_contract": contract,
         "out": out_dir.rstrip("/"),
         "resources": resources_dir.rstrip("/"),
@@ -1436,6 +1444,14 @@ def generate(root: Path, out_dir: str, resources_dir: str, security_mode: str, r
     print("POM: %s profile %r %s (%s), test source %s, test resources %s, %s, block %s — harness-owned, not committed here"
           % (POM, POM_PROFILE_ID, "rewritten" if pom_profile["changed"] else "already current",
              pom_profile["placement"], out_dir.rstrip("/"), resources_dir.rstrip("/"), pin, pom_profile["sha256"][:12]))
+    pins = pom_profile.get("pins") or {}
+    pinned = ["%s=%s" % (p["name"], p["value"])
+              for row in (pom_profile.get("test_plugins") or [])[:1] for p in row["system_properties"]]
+    print("POM: the %s profile hands the test JVM %s (%s)"
+          % (POM_PROFILE_ID, ", ".join(pinned) or "no system property",
+             ", ".join(r["artifact_id"] for r in (pom_profile.get("test_plugins") or [])) or "no test plugin configured"))
+    for note in (pins.get("notes") or []):
+        print("POM: %s" % note)
     return 0, ("OK: GENERATE_TESTS %d case(s) in %d class(es), %d gap(s), security-mode %s (corpus %s) → %s"
                % (len(cases), len(by_class), len(gaps), security_mode, inputs["corpus_sha256"][:12], MANIFEST.as_posix()))
 
@@ -1519,7 +1535,18 @@ def check(root: Path) -> tuple[int, str]:
     if not want_pom:
         raise Refuse("%s records no pom_profile_sha256; it was written before the %s profile was harness-owned — regenerate"
                      % (MANIFEST, POM_PROFILE_ID))
-    have_pom, _body = read_pom_profile(root)
+    have_pom, body = read_pom_profile(root)
+    # BEFORE the digest: a block written before these pins existed matches its
+    # own manifest byte for byte, and runs the suite with the profile guards
+    # inactive and the security mode decided by the test classpath. The digest
+    # cannot see that, so the DECLARATION is asked first.
+    gaps = block_pin_gaps(root, body, str(manifest.get("security_mode") or ""))
+    if gaps:
+        raise Refuse("%s — the %s block of %s does not pin %s. Those are the destination's declared build profiles and the "
+                     "captured security mode; without them the generated suite runs against a destination whose "
+                     "profile-guarded beans are absent and whose security mode is whatever the test classpath sets. "
+                     "Rewrite the block: bootstrap-destination.py --root <dest> --reapply-catalog"
+                     % (STALE_BLOCK, POM_PROFILE_ID, POM, ", ".join(gaps)))
     if have_pom != want_pom:
         problems.append("the %s block of %s is %s, the harness wrote %s" % (POM_PROFILE_ID, POM, have_pom[:12], want_pom[:12]))
 

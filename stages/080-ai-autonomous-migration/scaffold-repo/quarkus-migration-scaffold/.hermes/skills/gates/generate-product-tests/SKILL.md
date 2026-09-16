@@ -89,6 +89,11 @@ The destination `pom.xml` carries exactly one marked block:
     …<profile><id>m4-parity</id>… org.codehaus.mojo:build-helper-maven-plugin
        add-test-source      @ generate-test-sources → src/parity-test/java
        add-test-resource    @ generate-test-resources → src/parity-test/resources
+     … maven-surefire-plugin (and maven-failsafe-plugin when the pom declares it)
+       <systemPropertyVariables>
+         <quarkus.test.profile>…the decided build profiles…</quarkus.test.profile>
+         <…the declared security switch…>…the generated suite's mode…</…>
+         …everything the base pom's own test-plugin configuration sets…
     <!-- rhoai3:generated-tests:end -->
 ```
 
@@ -104,6 +109,39 @@ The destination `pom.xml` carries exactly one marked block:
   `pom_profile_sha256`. On a bootstrapped tree that line reads *already
   current*; a rewrite there means something moved the block after the
   bootstrap, and the floor will say so.
+
+### The profile hands the test JVM two values the destination declares
+
+Measured on destination v9 with the real platform build: `mvn -B -Pm4-parity
+test` failed in the generated `@QuarkusTest` classes' augmentation with every
+profile-guarded bean `@Vetoed`; and once the profile did reach the test JVM,
+17 of 18 cases answered 401. Both causes were configurations the destination
+had already DECLARED and that never reached surefire. So the block configures
+the test plugin with:
+
+| property | where the value comes from | what it prevents |
+|---|---|---|
+| `quarkus.test.profile` | `decisions.yaml` `build_profiles.active`, comma-joined — the same value the bootstrap writes as `-Dquarkus.profile` in `.mvn/maven.config` and as `quarkus.profile` in `application.properties` | `@QuarkusTest` augments under the TEST profile, which `quarkus.profile` does not select, so every profile-guarded implementation is `@Vetoed` and the suite measures a destination that has none |
+| the declared security switch | `decisions.yaml` `security.switch.key`, set to `disabled_value`/`enabled_value` for the manifest's `security_mode` | the frozen source's own `src/test/resources` are on the test classpath and would otherwise flip the mode under the generated suite, which would then answer for a configuration nobody captured |
+
+Neither is a test-only override, and the block says so in its own comment:
+each restates, where the test JVM reads it, a value the destination already
+declares. Nothing here is a specimen literal — the profile names and the
+switch key come from the declaration.
+
+- every property the base pom's own surefire (or failsafe) configuration sets
+  is restated in the profile's copy. The base `<build>` is never edited;
+- `decisions.yaml` declares no `security` section → the switch is **not**
+  pinned, and the manifest records `security_mode_pinned: false` with a
+  `pin_notes` entry saying the mode is decided by whatever the test classpath
+  sets. Silence there would read as "pinned";
+- `--check` asks the DECLARATION, not only the digest: a block whose bytes
+  match its own manifest and that pins neither value is refused as
+  `stale block: regenerate with --reapply-catalog`. That is the state of every
+  tree bootstrapped before these pins existed, and the digest cannot see it;
+- the recipe for such a tree is
+  `bootstrap-destination.py --root <dest> --reapply-catalog`, which rewrites
+  the block from the same shared definition and records the change.
 
 ## What it generates
 
@@ -282,12 +320,18 @@ is unchanged and still required.
   XML, the manifest binds the block on disk and records the plugin pin, a
   foreign `m4-parity` profile refuses, a tree with no `pom.xml` refuses,
   `--out`/`--resources` under the loop's test roots refuse, and `--check`
-  refuses both an edited block and a missing one.
+  refuses both an edited block and a missing one. And the pins, on a fixture
+  whose decisions name OTHER profiles and another switch: both properties are
+  in the block, what the base pom's test plugins already set is kept, the base
+  `<build>` is untouched, an absent `security` section pins no switch and says
+  so in the manifest, and a block that matches its own digest while pinning
+  neither is refused as a stale block.
 
 ## Scripts
 
 - `scripts/parity_pom.py` — the `m4-parity` block: its text, its digest, the
-  plugin pin and the idempotent rewrite. Imported by the producer **and** by
+  plugin pin, the two declared values it hands the test JVM, and the
+  idempotent rewrite. Imported by the producer **and** by
   `bootstrap-destination.py`, because two copies would be two definitions of
   what makes the generated tests runnable
 - `scripts/generate-product-tests.py` — the producer and the `--check` gate

@@ -211,7 +211,16 @@ def write_parity_profile(root: Path, before_sha: str, changes: list[dict], block
     demands a committed src/ and pom.xml; a pom the harness edits at M4 would
     make that gate refuse for the harness's own doing. Writing the same block
     here -- from the same module the generator writes it from -- means
-    generate-product-tests.py finds it byte-identical and changes nothing."""
+    generate-product-tests.py finds it byte-identical and changes nothing.
+
+    The same block also hands the test JVM the destination's DECLARED build
+    profiles and the captured security mode (parity_pom reads both from
+    decisions.yaml, and the mode from the generator's manifest when there is
+    one). Those are not test-only overrides: without them the generated suite
+    runs with every profile-guarded bean vetoed in the @QuarkusTest
+    augmentation and the security mode decided by whatever the frozen source's
+    test resources set. This is why --reapply-catalog rewrites the block on an
+    already bootstrapped tree."""
     try:
         block = parity_pom.ensure_pom_profile(root, parity_pom.DEFAULT_OUT, parity_pom.DEFAULT_RESOURCES)
     except parity_pom.Refuse as exc:
@@ -220,10 +229,14 @@ def write_parity_profile(root: Path, before_sha: str, changes: list[dict], block
                                   % (parity_pom.POM_PROFILE_ID, exc))})
         return
     if block["sha256"] != before_sha:
+        pinned = ["%s=%s" % (p["name"], p["value"])
+                  for row in (block.get("test_plugins") or [])[:1] for p in row["system_properties"]]
         changes.append({"op": "pom.parity-profile", "artifact": parity_pom.POM_PROFILE_ID,
                         "value": block["sha256"],
-                        "provenance": "ADR-015 (%s adds %s and %s under this profile only)"
-                                      % (parity_pom.POM_PLUGIN_ARTIFACT, parity_pom.DEFAULT_OUT, parity_pom.DEFAULT_RESOURCES)})
+                        "provenance": "ADR-015 (%s adds %s and %s under this profile only; %s carry the destination's own %s)"
+                                      % (parity_pom.POM_PLUGIN_ARTIFACT, parity_pom.DEFAULT_OUT, parity_pom.DEFAULT_RESOURCES,
+                                         ", ".join(r["artifact_id"] for r in (block.get("test_plugins") or [])) or "no test plugin",
+                                         ", ".join(pinned) or "declared values (none declared in decisions.yaml)")})
 
 
 def bootstrap_pom(root: Path, catalog: dict, pins: dict, changes: list[dict], blocks: list[dict]) -> None:
