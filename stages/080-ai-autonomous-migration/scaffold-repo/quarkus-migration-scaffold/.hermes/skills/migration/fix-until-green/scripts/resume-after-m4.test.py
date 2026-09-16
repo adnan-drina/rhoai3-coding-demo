@@ -1,13 +1,20 @@
 #!/usr/bin/env python3
 """resume-after-m4 selftest: a REFUSE verdict is consumed, not the end of the run.
 
-The measured case is v9's first M4 verdict: REFUSE with `check-product-tests`
-and `assert-surefire-results` (ADR-015: a decision plus a harness capability,
-neither of them a card) and `compose-parity-receipt` (FAIL: parity mismatches
-that `planner.worklist.parity_items` turns into mandatory obligations, beside
-INCONCLUSIVE entry points whose read-back answered 403 -- ADR-014). The loop
-must continue on the obligations and record the decisions; doing one without
-the other is either a stalled run or a hidden floor.
+The measured case is v9's first M4 verdict: REFUSE over a parity receipt that
+is FAIL, with floors no card discharges (`check-product-tests` and
+`assert-surefire-results` are ADR-015's; `check-empty-security` is ADR-014's)
+and receipt rows that `planner.worklist.parity_items` turns into mandatory
+obligations. The loop must continue on the obligations and record the
+decisions; doing one without the other is either a stalled run or a hidden
+floor.
+
+Two readings of the same evidence are covered, because the harness produced
+both: a refused read-back as an INCONCLUSIVE row (the comparison could not be
+made) and, on the receipt measured on destination v9, the same refusal typed
+FAIL. Either way it is ADR-014's and never a card. And the floors the verdict
+lists never decide what is repairable: v9's verdict did not name the parity
+floor at all while its receipt carried thirteen FAIL rows.
 
 Cases:
   (a) two parity FAILs + two decision floors + a 403 entry point → one mint
@@ -20,7 +27,14 @@ Cases:
       that is not the one on disk → refused by name, nothing touched;
   (d) a second run after (a) → refused, already resumed;
   (e) the same fixture under a renamed specimen → the same decisions (the
-      classification reads floors and verdicts, never a specimen's names).
+      classification reads floors and verdicts, never a specimen's names);
+  (i) the v9 shape measured on destination v9: a verdict whose failed floors
+      are `check-empty-security` and `check-product-tests` and do NOT include
+      `compose-parity-receipt`, over a receipt that is FAIL with one CORS
+      preflight and twelve refused (403) reads. The obligations come from the
+      receipt, so the CORS repair is minted; the refused reads are ADR-014's
+      Operator step and are withheld from the mint; and the same receipt
+      without the CORS row resumes nothing (exit 2). Renamed specimen: (e).
 """
 from __future__ import annotations
 
@@ -41,11 +55,16 @@ sys.path.insert(0, str(HERE))
 from planner import pipeline, specimens  # noqa: E402
 from planner.canonical import load_json, sha256_file, write_canonical  # noqa: E402
 from planner.paths import ADMISSION_RECEIPT, LOOP_ISSUED, LOOP_STEPS, WORKLIST  # noqa: E402
-from planner.worklist import build_worklist  # noqa: E402
+from planner.worklist import APP_PROPERTIES, build_worklist, parity_items  # noqa: E402
 
 CLOSE_CARD = "t_m4close"
 BLOCKERS = Path("verification") / "loop" / "release-blockers.json"
 DECISION_FLOORS = ["assert-surefire-results", "check-product-tests"]
+# what v9's runner-driven road actually composed: two failed floors, neither of
+# them the parity floor, over a parity receipt that was FAIL with thirteen FAIL
+# rows. The security floor is ADR-014's, the product-test floor ADR-015's.
+V9_FLOORS = ["check-empty-security", "check-product-tests"]
+V9_REFUSED_READS = 12
 # a contract the admission receipt seals, and the kind of file a harness
 # generation rewrites between an M4 verdict and the resume that reads it
 CONTRACT = Path(".hermes") / "planning" / "schemas" / "decisions.schema.json"
@@ -106,6 +125,57 @@ def _parity(root: Path, eps: list, *, fails: bool, unauthorized: bool) -> None:
         "cors": {"source_policies": [], "gaps": []},
         "qualification": {"present": True, "derived_corpus": False, "gap": "", "not_passed": [], "stale": []},
         "coverage_gaps": [], "verdict": "FAIL" if fails else "INCONCLUSIVE"})
+
+
+def _parity_v9(root: Path, eps: list, *, cors: bool = True) -> list:
+    """The receipt destination v9 composed: FAIL, with one CORS preflight a card
+    repairs and twelve reads the destination REFUSED (403) that no card may.
+
+    Both kinds are typed FAIL here, which is the change this fixture exists
+    for: the refused reads used to be INCONCLUSIVE, and a resume that looks for
+    401/403 only under that verdict stops seeing them.
+
+    v9's receipt carried thirteen rows because its bundle carried thirteen
+    entry points; this bundle carries four. So three of the refused reads are
+    entry points this tree has a file for -- the ones whose obligation a mint
+    could actually pick up, and therefore the ones withholding has to cover --
+    and the rest are refused reads on entry points the bundle names no path
+    for, recorded as ADR-014 exactly the same way. Returns the refused entry
+    points, in receipt order."""
+    digest = load_json(root / "evidence" / "planning" / "admission-receipt.json")["receipt_digest"]
+    pdir = root / "verification" / "parity"
+    pdir.mkdir(parents=True, exist_ok=True)
+    rows = []
+    if cors:
+        # the preflight: a CORS permission the destination does not grant. It
+        # lands in application.properties (kind `config`), never at a controller
+        reason = "header Access-Control-Allow-Headers None vs content-type; header Access-Control-Allow-Methods None vs POST"
+        write_canonical(pdir / (_slug(eps[1]) + ".json"), {
+            "schema": "rhoai3.parity/v1", "entry_point": eps[1], "verdict": "FAIL",
+            "reason": reason, "receipt_sha256": digest})
+        # the receipt quotes each scenario's diffs under its id; the verdict
+        # file beside it carries the diffs alone (compose-parity-receipt.py)
+        rows.append({"entry_point": eps[1], "verdict": "FAIL", "reason": "sc:preflight: " + reason, "scenarios": []})
+    refused = [e for e in eps if e != eps[1]]
+    denied = "status 403 vs 200; body e3b0c44298fc1c14 vs 5f2c1d3ab77e0d41"
+    for ep in refused:
+        write_canonical(pdir / (_slug(ep) + ".json"), {
+            "schema": "rhoai3.parity/v1", "entry_point": ep, "verdict": "FAIL",
+            "reason": denied, "receipt_sha256": digest})
+        rows.append({"entry_point": ep, "verdict": "FAIL", "reason": "sc:read: " + denied, "scenarios": []})
+    for n in range(V9_REFUSED_READS - len(refused)):
+        ep = eps[0].replace("#", "#refused%d_" % n, 1)   # this specimen's own names, another operation
+        refused.append(ep)
+        rows.append({"entry_point": ep, "verdict": "FAIL", "reason": "sc:read: " + denied, "scenarios": []})
+    write_canonical(pdir / "receipt.json", {
+        "schema": "rhoai3.parity-receipt/v1", "receipt_sha256": digest,
+        "producer": "compose-parity-receipt.py", "corpus_sha256": "c" * 64, "corpus_error": "",
+        "entry_points": rows, "total": len(rows),
+        "not_passed": sum(1 for r in rows if r["verdict"] != "PASS"),
+        "cors": {"source_policies": [], "gaps": []},
+        "qualification": {"present": True, "derived_corpus": False, "gap": "", "not_passed": [], "stale": []},
+        "coverage_gaps": [], "verdict": "FAIL"})
+    return refused
 
 
 def _verdict(root: Path, floors: list, *, card: str = CLOSE_CARD, receipt: str = "", parity: str = "") -> None:
@@ -305,6 +375,190 @@ def case_renamed_specimen() -> int:
         return 0
 
 
+def _v9_blockers(doc: dict, refused: list) -> str:
+    """What the blockers file must say about a v9-shaped receipt, whatever the
+    specimen is called: every refused read is an ADR-014 entry point, the
+    security floor is ADR-014's and the product-test floor ADR-015's, and each
+    floor is recorded once however many rows explain it."""
+    got = [r["entry_point"] for r in doc["entry_points"]]
+    if sorted(got) != sorted(refused) or len(got) != V9_REFUSED_READS:
+        return "every refused read must be recorded as an entry point (%d): %s" % (V9_REFUSED_READS, got)
+    if any(r["adr"] != "ADR-014" or r["verdict"] != "FAIL" for r in doc["entry_points"]):
+        return "a FAIL row the destination refused is ADR-014's, not a card's: %s" % doc["entry_points"][:2]
+    floors = {r["floor"]: r for r in doc["floors"]}
+    if sorted(floors) != sorted(V9_FLOORS):
+        return "the verdict's own failed floors are the floor rows: %s" % sorted(floors)
+    if floors["check-empty-security"]["adr"] != "ADR-014" or floors["check-product-tests"]["adr"] != "ADR-015":
+        return "each floor must name the decision that owns it: %s" % doc["floors"]
+    if floors["check-empty-security"].get("explained_by") != V9_REFUSED_READS:
+        return "the security floor is recorded once, counting the rows that explain it: %s" % floors["check-empty-security"]
+    if doc["owners"] != ["ADR-014", "ADR-015"]:
+        return "the blockers file must name every owning decision: %s" % doc["owners"]
+    return ""
+
+
+def case_v9_receipt_shape() -> int:
+    """(i) the measured v9 shape: the obligations are the RECEIPT's, and a
+    request the destination refused is never a card.
+
+    The verdict names `check-empty-security` and `check-product-tests` and does
+    not name the parity floor at all, so a resume that reads its floor list for
+    repairs finds none -- while the receipt beside it is FAIL with a CORS
+    preflight a card repairs and twelve refused reads it must not. Exactly one
+    card is minted, and it is the CORS one: the refused reads are withheld to
+    ADR-014's Operator step and recorded."""
+    with tempfile.TemporaryDirectory(prefix="resume-m4-v9-") as td:
+        root, eps = _at_m4(Path(td))
+        refused = _parity_v9(root, eps)
+        _verdict(root, V9_FLOORS)
+        rc, out, err = _run(root)
+        blob = out + err
+        if rc != 0:
+            return _fail("a receipt with a repairable obligation must resume even when no floor names parity: rc=%d %s" % (rc, blob[-900:]))
+        if out.count("MINT (dry-run)") != 1:
+            return _fail("exactly one card must be minted: %s" % out[-600:])
+
+        # the minted card is the CORS repair: config, in application.properties
+        wl = load_json(root / WORKLIST)
+        head = [c for c in wl["clusters"] if c["id"] == wl["head"]]
+        if len(head) != 1 or head[0]["path"] != APP_PROPERTIES:
+            return _fail("the CORS obligation is the only one a card may carry here, and it is application config: %s" % head)
+        if wl["measure"]["parity_mismatches"] != 1 + len([e for e in refused if e in eps]):
+            return _fail("the work list still counts every parity mismatch it measured: %s" % wl["measure"])
+
+        doc = load_json(root / BLOCKERS)
+        why = _v9_blockers(doc, refused)
+        if why:
+            return _fail(why)
+        if len(doc["parity_obligations"]) != 1 or doc["resumed"] is not True:
+            return _fail("exactly the CORS obligation resumes: %s" % doc)
+        if len(doc["withheld_obligations"]) != len([e for e in refused if e in eps]):
+            return _fail("every refused read that HAS a locus in this tree must be withheld by name: %s" % doc["withheld_obligations"])
+        if set(doc["withheld_obligations"]) & set(doc["parity_obligations"]):
+            return _fail("a withheld obligation must not also be minted: %s" % doc)
+        if "BLOCKED: LOOP_RELEASE_FLOOR check-empty-security owned by ADR-014" not in err:
+            return _fail("the security floor must be named with ADR-014 on stderr: %s" % err[-800:])
+        if "BLOCKED: LOOP_RELEASE_FLOOR check-product-tests owned by ADR-015" not in err:
+            return _fail("the product-test floor must be named with ADR-015 on stderr: %s" % err[-800:])
+        if "RESUMED" not in out:
+            return _fail("the resumed class must be printed too: %s" % out[-400:])
+        return 0
+
+
+def case_v9_without_the_repairable_row() -> int:
+    """(i2) the control: the same receipt with the CORS row removed.
+
+    Everything left is a request the destination refused, so nothing a card may
+    carry remains and the resume blocks -- the close card stays issued, the
+    record stays empty, and the blockers file says the same thing it said
+    when a card WAS available."""
+    with tempfile.TemporaryDirectory(prefix="resume-m4-v9-blocked-") as td:
+        root, eps = _at_m4(Path(td))
+        refused = _parity_v9(root, eps, cors=False)
+        _verdict(root, V9_FLOORS)
+        issued_before = (root / LOOP_ISSUED).read_bytes()
+        rc, out, err = _run(root)
+        if rc != 2:
+            return _fail("a receipt whose every mismatch is ADR-014's must block, not mint: rc=%d %s" % (rc, (out + err)[-900:]))
+        if "MINT" in out:
+            return _fail("a blocked resume must mint nothing: %s" % out[-400:])
+        if (root / LOOP_ISSUED).read_bytes() != issued_before:
+            return _fail("the close card must stay issued when nothing resumes")
+        if [r for r in load_json(root / LOOP_STEPS).get("rejected") or [] if r.get("kind") == "close"]:
+            return _fail("a blocked resume must not close the card on the record")
+        doc = load_json(root / BLOCKERS)
+        why = _v9_blockers(doc, refused)
+        if why:
+            return _fail(why)
+        if doc["resumed"] is not False or doc["parity_obligations"]:
+            return _fail("nothing resumed, and the file must say so: %s" % doc)
+        if len(doc["withheld_obligations"]) != len([e for e in refused if e in eps]):
+            return _fail("the withheld obligations are still named: %s" % doc["withheld_obligations"])
+        return 0
+
+
+def case_v9_renamed_specimen() -> int:
+    """(i3) the v9 shape under another specimen: the same decisions.
+
+    Nothing in the classification may read a specimen's packages or files: it
+    reads the receipt's diff shapes and the verdict's floor names."""
+    with tempfile.TemporaryDirectory(prefix="resume-m4-v9-renamed-") as td:
+        root, eps = _at_m4(Path(td), base="com.example.store")
+        refused = _parity_v9(root, eps)
+        _verdict(root, V9_FLOORS)
+        rc, out, err = _run(root)
+        if rc != 0 or out.count("MINT (dry-run)") != 1:
+            return _fail("the renamed specimen must decide the same way: rc=%d %s" % (rc, (out + err)[-900:]))
+        doc = load_json(root / BLOCKERS)
+        why = _v9_blockers(doc, refused)
+        if why:
+            return _fail(why)
+        wl = load_json(root / WORKLIST)
+        head = [c for c in wl["clusters"] if c["id"] == wl["head"]]
+        if len(head) != 1 or head[0]["path"] != APP_PROPERTIES or len(doc["parity_obligations"]) != 1:
+            return _fail("the same one obligation must be minted under another specimen: %s / %s" % (head, doc["parity_obligations"]))
+        return 0
+
+
+def case_v9_head_is_a_decision() -> int:
+    """(i4) the mint takes the work list's HEAD, and nothing chooses it.
+
+    So withholding an obligation from a count is not enough: when the head
+    cluster is made of nothing but requests the destination refused, the next
+    card WOULD be the security decision, and the resume must block instead --
+    even though another entry point's mismatch is repairable and waiting
+    behind it. The invariant is asserted against the head this tree actually
+    forms, so a reordering in the planner changes the expected branch rather
+    than breaking the case."""
+    with tempfile.TemporaryDirectory(prefix="resume-m4-v9-head-") as td:
+        root, eps = _at_m4(Path(td))
+        digest = load_json(root / ADMISSION_RECEIPT)["receipt_digest"]
+        pdir = root / "verification" / "parity"
+        pdir.mkdir(parents=True, exist_ok=True)
+        denied = "status 403 vs 200; body e3b0c44298fc1c14 vs 5f2c1d3ab77e0d41"
+        repairable = "status 500 vs 200; body 7d1a vs 5f2c"
+        rows = []
+        for ep, reason in [(e, denied) for e in eps[:-1]] + [(eps[-1], repairable)]:
+            write_canonical(pdir / (_slug(ep) + ".json"), {
+                "schema": "rhoai3.parity/v1", "entry_point": ep, "verdict": "FAIL",
+                "reason": reason, "receipt_sha256": digest})
+            rows.append({"entry_point": ep, "verdict": "FAIL", "reason": "sc:read: " + reason, "scenarios": []})
+        write_canonical(pdir / "receipt.json", {
+            "schema": "rhoai3.parity-receipt/v1", "receipt_sha256": digest,
+            "producer": "compose-parity-receipt.py", "corpus_sha256": "c" * 64, "corpus_error": "",
+            "entry_points": rows, "total": len(rows), "not_passed": len(rows),
+            "cors": {"source_policies": [], "gaps": []},
+            "qualification": {"present": True, "derived_corpus": False, "gap": "", "not_passed": [], "stale": []},
+            "coverage_gaps": [], "verdict": "FAIL"})
+        _verdict(root, V9_FLOORS)
+        preview = build_worklist(root, write=False)      # writes nothing; the head the mint would take
+        head = [c for c in preview["clusters"] if c["id"] == preview["head"]]
+        if len(head) != 1:
+            return _fail("the fixture must form a head cluster: %s" % preview.get("head"))
+        bundle = load_json(root / "evidence" / "planning" / "evidence-bundle.json")
+        held = {str(i["id"]) for i in parity_items(root, bundle) if str(i.get("entry_point") or "") in set(eps[:-1])}
+        if not held or len(held) >= len(parity_items(root, bundle)):
+            return _fail("the fixture must refuse some entry points and leave one repairable: %s" % sorted(held))
+        head_items = {str(x) for x in head[0]["items"]}
+        rc, out, err = _run(root)
+        doc = load_json(root / BLOCKERS)
+        if head_items <= held:
+            if rc != 2 or "MINT" in out:
+                return _fail("a head made only of refused requests must block: rc=%d %s" % (rc, (out + err)[-700:]))
+            if "the head cluster carries only requests the destination refused" not in err:
+                return _fail("the blocked head must say why it is not a card: %s" % err[-700:])
+            if not head_items <= set(doc["withheld_obligations"]):
+                return _fail("the head's obligations are the withheld ones: %s vs %s" % (sorted(head_items), doc["withheld_obligations"]))
+            if doc["resumed"] is not False:
+                return _fail("nothing resumed, and the file must say so: %s" % doc)
+        else:
+            if rc != 0 or out.count("MINT (dry-run)") != 1:
+                return _fail("a head a card may carry must still mint: rc=%d %s" % (rc, (out + err)[-700:]))
+            if head_items & set(doc["withheld_obligations"]):
+                return _fail("the minted head must carry no withheld obligation: %s" % doc["withheld_obligations"])
+        return 0
+
+
 def _install_harness_generation(root: Path) -> None:
     """What a harness install does to a sealed contract: the file's bytes move.
 
@@ -408,7 +662,9 @@ def case_worklist_rebuilt_refuses() -> int:
 def main() -> int:
     for case in (case_both, case_decisions_only, case_wrong_card, case_wrong_receipt_bindings,
                  case_renamed_specimen, case_contract_reseal, case_product_change_refuses,
-                 case_worklist_rebuilt_refuses):
+                 case_worklist_rebuilt_refuses, case_v9_receipt_shape,
+                 case_v9_without_the_repairable_row, case_v9_head_is_a_decision,
+                 case_v9_renamed_specimen):
         rc = case()
         if rc:
             return rc
@@ -418,7 +674,10 @@ def main() -> int:
           "refused and writes nothing, as is one bound to another admission receipt or to a parity receipt this tree "
           "no longer holds; a second resume refuses on the recorded close; a renamed specimen decides the "
           "same; a sealed contract a harness install moved is re-sealed with the two receipts recorded, while a "
-          "product change or a rebuilt work list still refuses and re-seals nothing)")
+          "product change or a rebuilt work list still refuses and re-seals nothing; and on v9's own shape -- a "
+          "verdict naming check-empty-security and check-product-tests and NOT the parity floor, over a FAIL receipt "
+          "with one CORS preflight and twelve refused reads -- the CORS card is minted from the receipt, the refused "
+          "reads are withheld to ADR-014 and recorded, and the same receipt without the CORS row blocks at exit 2)")
     return 0
 
 

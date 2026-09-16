@@ -103,13 +103,31 @@ the tree), no candidate is retained for the close card, and the product tree
 is clean. When the seal is stale for one reason only — a harness generation
 rewrote a contract file the receipt seals, and nothing else moved — it re-seals
 admission before binding the verdict and records `contract_reseal` (what moved,
-both receipts) on the close row and in `release-blockers.json`. Then it splits
-the verdict's `failed_floors`:
+both receipts) on the close row and in `release-blockers.json`.
+
+Then it reads the two sides of the evidence separately. **What a card can
+repair comes from the parity receipt** — `parity_items` over the receipt on
+disk and the verdict files beside it, kept when the locus is a file of this
+tree — **never from the verdict's floor list**: v9's REFUSE named
+`check-empty-security` and `check-product-tests` and did *not* name
+`compose-parity-receipt`, over a receipt that was FAIL with thirteen FAIL rows.
+**What no card discharges comes from the failed floors and from the receipt's
+refused rows**:
+
+| Floor / row | Owner | Why it is not a card |
+|---|---|---|
+| `check-empty-security` | ADR-014, one bounded Operator step | method security with no identity provider behind it; the conditional authorization adapter and the Basic/JPA identity mapping are the Operator's, and deleting an authorization semantic or permitting all is refused |
+| any receipt row whose reason carries `status 401 vs` / `status 403 vs` | ADR-014, one bounded Operator step | the destination refused a request the source answered — whether the row is typed `INCONCLUSIVE` (the comparison could not be made) or `FAIL` (403 where the source answered 200). The obligation `parity_items` derives from it is **withheld from the mint**: a worker at a controller cannot make a security decision |
+| `check-product-tests`, `assert-surefire-results` | ADR-015, a harness capability | the generated product tests are the harness's; a card gets no authority to author or weaken them |
+| any other failed floor | no ADR (Operator) | named as-is, so an unowned floor is visible rather than silent |
+
+Each floor is recorded **once** however many receipt rows explain it
+(`explained_by` counts them).
 
 | Outcome | What it means | What it does |
 |---|---|---|
-| `RESUMED` (exit 0) | the parity floor's FAIL verdicts became mandatory obligations (`parity_items`) whose loci are files of this tree | closes the M4 card on the record, rebuilds the work list, re-seals admission and mints the head cluster — the same transaction an accepted step runs. The loop is running again |
-| `BLOCKED` (exit 2) | every failed floor is a decision, not a card: `check-product-tests` / `assert-surefire-results` are ADR-015 (a harness capability owns the generated tests), an entry point whose read-back answered 401/403 is ADR-014 (one bounded Operator step) | mints nothing, keeps the close card issued, and writes `verification/loop/release-blockers.json` naming each floor and the seat that owns it |
+| `RESUMED` (exit 0) | the receipt yields at least one obligation that is not ADR-014's | closes the M4 card on the record, rebuilds the work list, re-seals admission and mints the head cluster — the same transaction an accepted step runs. The loop is running again |
+| `BLOCKED` (exit 2) | nothing a card may carry is left once the refused rows are withheld — including a head cluster made of nothing but them, since the mint takes the head and nothing chooses it | mints nothing, keeps the close card issued, and writes `verification/loop/release-blockers.json` naming each floor, each refused entry point, the seat that owns it, and the `withheld_obligations` by id |
 | `REFUSE: LOOP_RESUME` (exit 1) | the verdict is not this run's, a worker still holds the tree, or this verdict was already resumed | nothing changed |
 
 Both at once — v9's first M4 verdict — is the normal case: the parity card is

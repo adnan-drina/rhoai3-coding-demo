@@ -7,26 +7,41 @@ close card ends on `kanban_request_review`, and the parity mismatches the
 phase measured sat in `verification/parity/` as obligations nobody minted. So
 the run stopped at its own first honest result.
 
-This tool is the missing edge. It reads the composed verdict, splits its
-failed floors into the two kinds the harness actually has, and acts on each:
+This tool is the missing edge. It reads THE PARITY RECEIPT for the work a card
+can do and the verdict's failed floors for the decisions no card discharges,
+and acts on each:
 
-  * a PARITY floor (`compose-parity-receipt`) is repairable BY A CARD when
-    `planner.worklist.parity_items` turns the FAIL verdicts into obligations
-    whose locus is a file of this tree. Those obligations are already in the
-    work list the moment it is rebuilt (`kind: parity` / `config`, category
-    `mandatory`), so resuming is: close the M4 card on the record, rebuild,
-    re-seal admission, and let K4 mint the head cluster -- exactly the
-    transaction `advance.py` runs after an accepted step;
+  * an OBLIGATION is what `planner.worklist.parity_items` makes of the current
+    receipt and the verdicts beside it, when its locus is a file of this tree.
+    It is read from the receipt itself and never from the verdict's floor list:
+    v9's runner-driven road composed a REFUSE naming `check-empty-security` and
+    `check-product-tests` and did NOT name `compose-parity-receipt`, while the
+    receipt on disk was FAIL with thirteen FAIL rows -- and a resume that asks
+    the floor list what to repair finds nothing to mint over evidence that is
+    right there. Those obligations are already in the work list the moment it
+    is rebuilt (`kind: parity` / `config`, category `mandatory`), so resuming
+    is: close the M4 card on the record, rebuild, re-seal admission, and let K4
+    mint the head cluster -- exactly the transaction `advance.py` runs after an
+    accepted step;
 
-  * a DECISION floor is everything else. `check-product-tests` and
-    `assert-surefire-results` are ADR-015 territory (a harness capability owns
-    the generated product tests; a worker card cannot author them and must not
-    weaken them), and an entry point the parity receipt could not compare
-    because the read-back answered 401/403 is ADR-014 territory (the security
-    switch, one bounded Operator step). Those are recorded in
-    `verification/loop/release-blockers.json` and named on stderr. They are
-    not minted, because a card is not what discharges them -- and they are not
-    hidden either, because a floor nobody names is a floor nobody fixes.
+  * a DECISION is everything a card cannot discharge. `check-product-tests`
+    and `assert-surefire-results` are ADR-015 territory (a harness capability
+    owns the generated product tests; a worker card cannot author them and must
+    not weaken them); `check-empty-security` and every receipt row whose
+    read-back answered 401/403 are ADR-014 territory (method security with no
+    identity provider behind it: the security switch, one bounded Operator
+    step). Those are recorded in `verification/loop/release-blockers.json` and
+    named on stderr. They are not minted, because a card is not what discharges
+    them -- and they are not hidden either, because a floor nobody names is a
+    floor nobody fixes.
+
+A row the destination REFUSED (401/403) is an ADR-014 obligation whichever
+verdict the receipt gives it. It began as INCONCLUSIVE -- the comparison could
+not be made -- and on the v9 receipt it is typed FAIL, because a destination
+that answers 403 where the source answered 200 IS a difference. Either way the
+parity item it would mint is withheld from the mint: sending a worker to a
+controller to make a security decision is the one repair this loop must not
+ask for.
 
 Both kinds at once (v9's first M4 verdict) is the normal case: the loop
 continues on the parity obligations AND writes the blockers file. One printed
@@ -65,8 +80,8 @@ parity receipt's digest to the seal it was measured under, which is why that
 binding accepts the superseded receipt as well as the new one. Any other gap
 refuses as before.
 
-Exit 0 resumed (a card was minted); 1 refused; 2 blocked (decision floors
-only, nothing a card can repair).
+Exit 0 resumed (a card was minted); 1 refused; 2 blocked (nothing a card may
+repair once the ADR-014 rows are withheld).
 """
 from __future__ import annotations
 
@@ -90,7 +105,7 @@ from planner.admission import ADMITTED, verify_receipt  # noqa: E402
 from planner.canonical import load_json, sha256_file, write_canonical  # noqa: E402
 from planner.cards import CLOSE_ID  # noqa: E402
 from planner.paths import EVIDENCE_BUNDLE, LOOP_DIR, LOOP_ISSUED, PARITY_DIR  # noqa: E402
-from planner.worklist import build_worklist, parity_items  # noqa: E402
+from planner.worklist import build_worklist, head_cluster, parity_items  # noqa: E402
 
 M4_VERDICT = Path("evidence") / "verdicts" / "m4-verdict.json"
 PARITY_RECEIPT = PARITY_DIR / "receipt.json"
@@ -105,30 +120,35 @@ PARITY_RECEIPT_SCHEMA = "rhoai3.parity-receipt/v1"
 # stops matching and the resume refuses, which is the safe direction.
 CONTRACT_GAP = "contract %s changed after admission"
 
-# The floors a parity FAIL composes. A floor in this set is repairable by a
-# card exactly when the parity verdicts under it yield an obligation whose
-# locus is a file of this tree; otherwise it joins the decision class.
+# The floors a parity FAIL composes. A floor in this set is a decision only
+# when the receipt yields no obligation a card can carry; the obligations
+# themselves are read from the receipt, not from this list.
 PARITY_FLOORS = frozenset({"compose-parity-receipt"})
+
+# ADR-014: a request the destination REFUSED (401/403) where the source
+# answered is the security switch, not a destination defect -- method security
+# declared with no identity provider behind it. The comparator writes its
+# findings as "status <have> vs <want>" diffs, so an unauthorized read-back is
+# recognised by that shape and nothing else.
+SECURITY_ADR = "ADR-014"
+SECURITY_OWNER = "Operator step"
+SECURITY_DETAIL = ("the destination refused a request the source answered; ADR-014 gives one bounded Operator step the "
+                   "conditional authorization adapter, the Basic/JPA identity mapping and both modes' captures. A card "
+                   "cannot decide who may call an entry point")
+INCONCLUSIVE_DETAIL = ("the read-back was refused by the source security switch; ADR-014 gives one bounded Operator step the "
+                       "conditional authorization adapter, the Basic/JPA identity mapping and both modes' captures. A card "
+                       "cannot compare an entry point nobody may call")
+_UNAUTHORIZED = re.compile(r"status 40[13] vs")
 
 # The closed table of release floors that are NOT cards, with the decision
 # that owns each and the seat that discharges it. Specimen-agnostic: these are
 # harness floor names and ADR ids, never a specimen's files or symbols.
 DECISION_FLOORS = {
+    "check-empty-security": (SECURITY_ADR, SECURITY_OWNER, "method security is declared with no identity provider behind it, so every guarded request answers 401/403; ADR-014 owns the conditional authorization adapter and the Basic/JPA identity mapping in ONE bounded Operator step, and refuses deleting an authorization semantic, permitting all, or manufacturing a privileged identity"),
     "check-product-tests": ("ADR-015", "harness capability", "the product acceptance tests are generated deterministically from qualified source scenarios; a worker card gets no authority to author or weaken them"),
     "assert-surefire-results": ("ADR-015", "harness capability", "the surefire floor needs its own evidence-based diagnosis; a fresh report with zero skips is a harness output, not a patch"),
 }
 UNKNOWN_FLOOR_OWNER = "Operator"
-
-# ADR-014: an entry point the receipt could not compare because the read-back
-# answered 401/403 is the security switch, not a destination defect. The
-# comparator writes its findings as "status <have> vs <want>" diffs, so the
-# unauthorized read-back is recognised by that shape and nothing else.
-INCONCLUSIVE_ADR = "ADR-014"
-INCONCLUSIVE_OWNER = "Operator step"
-INCONCLUSIVE_DETAIL = ("the read-back was refused by the source security switch; ADR-014 gives one bounded Operator step the "
-                       "conditional authorization adapter, the Basic/JPA identity mapping and both modes' captures. A card "
-                       "cannot compare an entry point nobody may call")
-_UNAUTHORIZED = re.compile(r"status 40[13] vs")
 
 
 def _refuse(msg: str) -> int:
@@ -208,27 +228,69 @@ def repairable_obligations(root: Path, bundle: dict) -> list:
 
 
 def unauthorized_entry_points(receipt: dict) -> list:
-    """INCONCLUSIVE rows whose reason is a 401/403 on the read-back (ADR-014)."""
+    """The receipt's rows whose reason is a 401/403 read-back (ADR-014).
+
+    The verdict such a row carries is NOT what types it. A refused read-back
+    began as INCONCLUSIVE, because a comparison nobody was allowed to make is
+    not a comparison; on the v9 receipt the same rows are FAIL, because a
+    destination answering 403 where the source answered 200 is a difference
+    like any other. The diff shape is the invariant across both readings, so
+    it is the only thing matched here -- and both readings name the same
+    seat, ADR-014's one bounded Operator step."""
     out = []
+    seen = set()
     for row in receipt.get("entry_points") or []:
-        if not isinstance(row, dict) or str(row.get("verdict") or "") != "INCONCLUSIVE":
+        if not isinstance(row, dict):
+            continue
+        verdict = str(row.get("verdict") or "")
+        if verdict not in ("FAIL", "INCONCLUSIVE"):
             continue
         reason = str(row.get("reason") or "")
-        if _UNAUTHORIZED.search(reason):
-            out.append({"entry_point": str(row.get("entry_point") or ""), "reason": reason[:400],
-                        "adr": INCONCLUSIVE_ADR, "owner": INCONCLUSIVE_OWNER, "detail": INCONCLUSIVE_DETAIL})
+        ep = str(row.get("entry_point") or "")
+        if not ep or ep in seen or not _UNAUTHORIZED.search(reason):
+            continue
+        seen.add(ep)
+        out.append({"entry_point": ep, "verdict": verdict, "reason": reason[:400], "adr": SECURITY_ADR,
+                    "owner": SECURITY_OWNER, "detail": SECURITY_DETAIL if verdict == "FAIL" else INCONCLUSIVE_DETAIL})
     return out
 
 
-def floor_rows(decision_floors: list, parity_unrepairable: list) -> list:
-    """One row per floor no card discharges, each naming the ADR that owns it."""
+def withhold(obligations: list, unauthorized: list) -> tuple:
+    """Split the repairable obligations into (mintable, withheld by ADR-014).
+
+    An entry point the destination refuses is ADR-014's, and the obligation
+    `parity_items` derives from its row would put a worker in front of a
+    controller with a security decision to make -- exactly what the ruling
+    reserves for one bounded Operator step. The row is recorded as a blocker
+    instead, and its obligation is withheld: not repaired, not hidden, and not
+    counted as a reason to resume."""
+    blocked = {r["entry_point"] for r in unauthorized}
+    mintable = [i for i in obligations if str(i.get("entry_point") or "") not in blocked]
+    held = [i for i in obligations if str(i.get("entry_point") or "") in blocked]
+    return mintable, held
+
+
+def floor_rows(decision_floors: list, parity_unrepairable: list, unauthorized: list) -> list:
+    """One row per floor no card discharges, each naming the ADR that owns it.
+
+    A floor is recorded ONCE however many receipt rows explain it: twelve
+    refused read-backs are twelve entry points and one `check-empty-security`,
+    and `explained_by` says how many of them the receipt carries."""
     rows = []
     for name in decision_floors:
         adr, owner, detail = DECISION_FLOORS.get(name, ("", UNKNOWN_FLOOR_OWNER, "release floor %s is not a card" % name))
-        rows.append({"floor": name, "class": "decision", "adr": adr, "owner": owner, "detail": detail})
+        row = {"floor": name, "class": "decision", "adr": adr, "owner": owner, "detail": detail}
+        if adr == SECURITY_ADR and unauthorized:
+            row["explained_by"] = len(unauthorized)
+        rows.append(row)
     for name in parity_unrepairable:
-        rows.append({"floor": name, "class": "parity", "adr": "", "owner": UNKNOWN_FLOOR_OWNER,
-                     "detail": "release floor %s is not a card: the parity verdicts under it name no obligation whose locus is a file of this tree" % name})
+        if unauthorized:
+            rows.append({"floor": name, "class": "parity", "adr": SECURITY_ADR, "owner": SECURITY_OWNER,
+                         "explained_by": len(unauthorized),
+                         "detail": "release floor %s is not a card: every parity verdict under it that names a file of this tree is a request the destination refused, which is ADR-014's bounded Operator step" % name})
+        else:
+            rows.append({"floor": name, "class": "parity", "adr": "", "owner": UNKNOWN_FLOOR_OWNER,
+                         "detail": "release floor %s is not a card: the parity verdicts under it name no obligation whose locus is a file of this tree" % name})
     return rows
 
 
@@ -417,19 +479,39 @@ def main(argv: list[str] | None = None) -> int:
                        % (str(preceipt.get("receipt_sha256"))[:12], str(receipt.get("receipt_digest"))[:12]))
     corpus_sha = str(preceipt.get("corpus_sha256") or "")
 
-    # --- classify the failed floors ------------------------------------------
+    # --- what a card can repair, and what a decision owns ---------------------
+    # The obligations are read from the RECEIPT, never from the floor list. A
+    # floor list is a runner's account of which checks it ran; the receipt is
+    # the measurement. v9's verdict named `check-empty-security` and
+    # `check-product-tests` and not `compose-parity-receipt`, over a receipt
+    # that was FAIL with thirteen FAIL rows -- and asking the floor list what
+    # to repair found nothing to mint over evidence that was on disk.
     failed = [str(x).strip() for x in (verdict.get("failed_floors") or []) if str(x).strip()]
     parity_floors = [f for f in failed if f in PARITY_FLOORS]
     decision_floors = [f for f in failed if f not in PARITY_FLOORS]
     bundle = load_json(root / EVIDENCE_BUNDLE) if (root / EVIDENCE_BUNDLE).is_file() else {}
-    obligations = repairable_obligations(root, bundle) if parity_floors else []
-    parity_unrepairable = parity_floors if (parity_floors and not obligations) else []
     unauthorized = unauthorized_entry_points(preceipt)
-    rows = floor_rows(decision_floors, parity_unrepairable)
+    obligations, withheld = withhold(repairable_obligations(root, bundle), unauthorized)
+    if obligations and withheld:
+        # The mint takes the work list's HEAD, and nothing here chooses it. So
+        # a head made of nothing but withheld obligations would send a worker
+        # to a controller for a security decision anyway: it is refused as the
+        # blocked class, with the same file written and the same exit, and the
+        # Operator's ADR-014 step is what unblocks it.
+        held_ids = {str(i.get("id")) for i in withheld}
+        head = head_cluster(build_worklist(root, write=False)) or {}
+        head_items = {str(x) for x in (head.get("items") or [])}
+        if head_items and head_items <= held_ids:
+            print("BLOCKED: LOOP_RELEASE_FLOOR %s owned by %s (%s) — the head cluster carries only requests the destination "
+                  "refused, so the next card would be a security decision: %s"
+                  % (head.get("id") or "(head)", SECURITY_ADR, SECURITY_OWNER, ", ".join(sorted(head_items))[:200]), file=sys.stderr)
+            obligations = []
+    parity_unrepairable = parity_floors if (parity_floors and not obligations) else []
+    rows = floor_rows(decision_floors, parity_unrepairable, unauthorized)
 
     if not obligations and not rows and not unauthorized:
-        return _refuse("verdict %s for card %s names no failed floor a card can repair and no floor a decision owns; "
-                       "there is nothing to resume" % (token or "(none)", card_id))
+        return _refuse("verdict %s for card %s: the parity receipt names no obligation whose locus is a file of this "
+                       "tree, and no failed floor a decision owns; there is nothing to resume" % (token or "(none)", card_id))
 
     blockers = {
         "schema": BLOCKERS_SCHEMA,
@@ -446,6 +528,9 @@ def main(argv: list[str] | None = None) -> int:
         "owners": sorted({r["adr"] for r in rows if r.get("adr")} | {r["adr"] for r in unauthorized}),
         "resumed": bool(obligations),
         "parity_obligations": sorted(str(i.get("id")) for i in obligations),
+        # what the receipt asked for and ADR-014 holds back: named, so the
+        # record says which repairs this resume did NOT mint and why
+        "withheld_obligations": sorted(str(i.get("id")) for i in withheld),
     }
     if reseal:
         # what moved, and between which two seals: the receipt the verdict was
@@ -474,10 +559,11 @@ def main(argv: list[str] | None = None) -> int:
         "failed_floors": failed, "resumed": True, "operator": args.operator, "at": _now(),
         "receipt_sha256": str(receipt.get("receipt_digest") or ""), "corpus_sha256": corpus_sha,
         "parity_obligations": sorted(str(i.get("id")) for i in obligations),
+        "withheld_obligations": sorted(str(i.get("id")) for i in withheld),
         "release_blockers": [r["floor"] for r in rows] + [r["entry_point"] for r in unauthorized],
         "measure": None, "changed": [],
-        "reason": "M4 %s: %d parity obligation(s) resumed as cards; %d release floor(s) recorded"
-                  % (token or "REFUSE", len(obligations), len(rows) + len(unauthorized)),
+        "reason": "M4 %s: %d parity obligation(s) resumed as cards; %d withheld to ADR-014; %d release floor(s) recorded"
+                  % (token or "REFUSE", len(obligations), len(withheld), len(rows) + len(unauthorized)),
     }
     if reseal:
         close_row["contract_reseal"] = reseal
@@ -496,7 +582,9 @@ def main(argv: list[str] | None = None) -> int:
             print(entry_point_line(row), file=sys.stderr)
         print("BLOCKED: %d release floor(s) and %d unauthorized entry point(s) owned by %s; recorded, not minted → %s"
               % (len(rows), len(unauthorized), ", ".join(blockers["owners"]) or "no ADR", RELEASE_BLOCKERS), file=sys.stderr)
-    print("RESUMED %s: %d parity obligation(s) → head %s" % (card_id, len(obligations), rebuilt.get("head") or "(none)"))
+    print("RESUMED %s: %d parity obligation(s)%s → head %s"
+          % (card_id, len(obligations), (" (%d withheld to %s)" % (len(withheld), SECURITY_ADR)) if withheld else "",
+             rebuilt.get("head") or "(none)"))
     if rec.get("status") != ADMITTED:
         print("REFUSE: LOOP_ADMISSION %s: %s" % (rec.get("status"), "; ".join((rec.get("reasons") or [])[:3])), file=sys.stderr)
         return 1
