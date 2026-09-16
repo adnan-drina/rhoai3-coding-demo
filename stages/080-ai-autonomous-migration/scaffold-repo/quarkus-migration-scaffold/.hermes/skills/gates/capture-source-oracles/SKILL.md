@@ -711,6 +711,48 @@ What refuses, and why:
   records the `security_mode` it composed and refuses to compose over
   evidence from another mode.
 
+### The bounded navigation check (ADR-016)
+
+The comparison compares the **first** response and never follows a redirect:
+following one records the target's answer as the source's and drops the
+`Location` that said where it pointed. That is deliberate and unchanged.
+
+ADR-016 asks for more than the first response, though. A root redirect passes
+its comparison when the status and the literal `Location` after origin mapping
+are the source's — and the ruling also requires that **that legacy address
+serves the replacement UI or redirects to its effective address**, proven by a
+separate bounded navigation reaching the real UI and a usable OpenAPI document
+in the packaged production artifact, without a redirect loop. A dead
+compatibility URL is refused by name. A 302 to a 404 satisfies the comparison
+and satisfies none of that.
+
+So `paved-road-m4/scripts/run-parity.py` performs the navigation **beside** the
+comparison, never inside it, after the scenario phase and before the composer:
+
+- for every scenario whose recorded first response **on the destination** was a
+  3xx with a `Location`, it GETs that address (absolute, or resolved against the
+  destination base), follows at most `--nav-max-hops` hops (default 3) and stops
+  at the first non-3xx — on the **destination only**;
+- `ok` is a 2xx at the end, `dead` a 4xx/5xx or a connection that could not be
+  made, `loop` a URL the walk already asked, `too-many-hops` a chain still
+  redirecting when the budget ran out;
+- it carries **no credentials** unless the scenario declares an
+  `effects_identity`, and then the same reference, resolved from the
+  environment;
+- each walk is recorded as `verification/parity/navigation/<slug>.json`
+  (`rhoai3.parity-navigation/v1`: `scenario`, `start`, `hops`, `final_status`,
+  `terminal`) and summarised in `_run.json`. `--no-navigation` records
+  `navigation: skipped` and walks nothing.
+
+`compose-parity-receipt.py` reads those records. An entry point whose
+comparison **PASSed** and whose navigation is `dead`, `loop` or
+`too-many-hops` becomes `FAIL` with `kind: navigation` and the reason
+`redirect target <url> is <terminal> on the destination (<final_status>)`; a
+passing navigation adds `navigation: ok` to the row. A comparison that FAILED
+keeps its own diff and its own typing. The work list turns a `navigation` row
+into a `PARITY` obligation with cause `redirect-target-dead`, at the controller
+that answers the redirect.
+
 ### Which destination a verdict is of (`binding`)
 
 Every scenario verdict and the receipt record what they are a measurement
@@ -775,7 +817,9 @@ to.
 - `scripts/compare-scenario-parity.py` — recorded-request replay plus effects;
   `--issued` binds the verdict to the candidate and the issued card
 - `scripts/compose-parity-receipt.py` — receipt-bound parity receipt; an entry
-  point covered by scenarios passes only when every one of them passes;
+  point covered by scenarios passes only when every one of them passes, and one
+  whose comparison passed while its redirect target is dead, loops or never
+  settles (`verification/parity/navigation/`) becomes `FAIL` typed `navigation`;
   `--issued` composes over the candidate an issued card was verified on
 - `scripts/reset-parity-db.sh` — restore the decided instance to the initial
   state the corpus names (drop and recreate the schema, apply the schema and

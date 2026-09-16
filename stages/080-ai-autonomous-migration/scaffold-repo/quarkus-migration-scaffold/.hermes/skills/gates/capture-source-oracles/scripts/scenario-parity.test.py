@@ -1031,6 +1031,83 @@ def _acceptance_binding_case() -> int:
     return 0
 
 
+def _navigation_receipt_case() -> int:
+    """A comparison that PASSed and a redirect target that answers nothing.
+
+    ADR-016 does not stop at the status and the literal Location: that legacy
+    address must also serve the replacement UI or redirect to its effective
+    address, and a bounded navigation must reach it. The comparator compares
+    the FIRST response and never follows a redirect -- by design -- so a 302
+    to a 404 is a PASS there and nothing measured the rest of the ruling. The
+    navigation record run-parity.py writes beside the comparison is what the
+    composer reads; the address below belongs to no specimen."""
+    import tempfile as _tempfile
+
+    from _oracle_common import PARITY as _PARITY
+
+    sid = "sc:read-legacy-root"
+    target = "http://dest.example:8080/legacy-docs/index.html"
+    with _tempfile.TemporaryDirectory(prefix="nav-receipt-") as td:
+        root = specimens.build_dest(Path(td) / "dest", specimens.specimen("http"), decisions=specimens.admitted_decisions())
+        specimens.prepare_loop(root)
+        rec = pipeline.admit(root)
+        if rec["status"] != "ADMITTED":
+            return _fail("fixture not admitted: %s" % rec["reasons"][:3])
+        receipt_digest = load_json(root / "evidence/planning/admission-receipt.json")["receipt_digest"]
+        ep = sorted(str(e["id"]) for e in load_json(root / "evidence/planning/evidence-bundle.json")["entry_points"])[0]
+        corpus = {"schema": "rhoai3.scenario-corpus/v1", "approved_by": "operator:test",
+                  "initial_state": {"reset": "restart the service", "dataset": "empty"},
+                  "scenarios": [{"id": sid, "entry_point": ep, "method": "GET", "path": "/", "body_absent": True,
+                                 "reset_before": False, "effects": [], "normalization": []}]}
+        write_canonical(root / "verification" / "scenarios" / "corpus.json", corpus)
+        corpus_sha = corpus_digest(load_json(root / "verification" / "scenarios" / "corpus.json"))
+        # the comparison PASSED: the destination answered the source's status
+        # and the source's literal Location after origin mapping
+        write_canonical(root / SCENARIO_PARITY / (scenario_slug(sid) + ".json"),
+                        {"schema": "rhoai3.scenario-parity/v1", "scenario": sid, "entry_point": ep,
+                         "receipt_sha256": receipt_digest, "corpus_sha256": corpus_sha, "verdict": "PASS",
+                         "reason": ""})
+        nav_p = root / _PARITY / "navigation" / (scenario_slug(sid) + ".json")
+
+        def compose() -> dict:
+            subprocess.run([sys.executable, str(RECEIPT), "--root", str(root)], text=True, capture_output=True)
+            doc = load_json(root / "verification" / "parity" / "receipt.json")
+            return next(r for r in doc["entry_points"] if r["entry_point"] == ep)
+
+        write_canonical(nav_p, {"schema": "rhoai3.parity-navigation/v1", "scenario": sid, "entry_point": ep,
+                                "start": target, "hops": [{"url": target, "status": 200}],
+                                "final_status": 200, "terminal": "ok"})
+        row = compose()
+        if row["verdict"] != "PASS" or row.get("navigation") != "ok" or row.get("kind"):
+            return _fail("a navigation that reached the UI leaves the verdict alone and is recorded on the row: %s" % row)
+
+        for terminal, final in (("dead", 404), ("loop", 302), ("too-many-hops", 302)):
+            write_canonical(nav_p, {"schema": "rhoai3.parity-navigation/v1", "scenario": sid, "entry_point": ep,
+                                    "start": target, "hops": [{"url": target, "status": final}],
+                                    "final_status": final, "terminal": terminal})
+            row = compose()
+            want = "redirect target %s is %s on the destination (%s)" % (target, terminal, final)
+            if row["verdict"] != "FAIL" or row.get("kind") != "navigation" or row["reason"] != want:
+                return _fail("a PASSing comparison whose redirect target is %s is a FAIL typed navigation: %s"
+                             % (terminal, row))
+            if row.get("navigation_failures") != [{"scenario": sid, "target": target, "terminal": terminal,
+                                                   "final_status": final}]:
+                return _fail("the row must carry what the work list locates the card from: %s" % row.get("navigation_failures"))
+            if row.get("navigation") == "ok":
+                return _fail("a failed navigation is never also recorded ok: %s" % row)
+
+        # a comparison that FAILED is not re-typed by a navigation: the diff
+        # is what the card repairs, and it is still the diff
+        write_canonical(root / SCENARIO_PARITY / (scenario_slug(sid) + ".json"),
+                        {"schema": "rhoai3.scenario-parity/v1", "scenario": sid, "entry_point": ep,
+                         "receipt_sha256": receipt_digest, "corpus_sha256": corpus_sha, "verdict": "FAIL",
+                         "reason": "status 303 vs 302"})
+        row = compose()
+        if row["verdict"] != "FAIL" or row.get("kind") == "navigation" or "303" not in row["reason"]:
+            return _fail("a failing comparison keeps its own diff and its own typing: %s" % row)
+    return 0
+
+
 def verify_gaps(root: Path) -> list[str]:
     from planner.admission import verify_receipt
     return verify_receipt(root, require_admitted=False)[1]
@@ -1046,6 +1123,8 @@ def main() -> int:
     if _effectless_reset_case():
         return 1
     if _capture_contract_case() or _header_contract_case():
+        return 1
+    if _navigation_receipt_case():
         return 1
     with tempfile.TemporaryDirectory(prefix="scen-") as td:
         t = Path(td)
@@ -1248,7 +1327,12 @@ def main() -> int:
           "work list the acceptance path rebuilt on the candidate is not a refusal there, the verdict and the receipt record "
           "the candidate, the receipt the card was minted under and the card, a verdict measured for another card or on "
           "another candidate satisfies no coverage, and another receipt, another candidate, a tree edited after verification "
-          "or no issued card at all refuse by name -- while without the flag the M4 road still refuses a stale seal)")
+          "or no issued card at all refuse by name -- while without the flag the M4 road still refuses a stale seal; "
+          "a comparison that PASSed is not the whole of the redirect ruling: the composer reads the BOUNDED NAVIGATION "
+          "records written beside it, an entry point whose redirect target is dead, loops or never settles becomes FAIL "
+          "typed navigation naming the address and the status it ended on -- carried on the row for the work list -- "
+          "a navigation that reached the UI is recorded navigation: ok and changes no verdict, and a comparison that "
+          "FAILED keeps its own diff and its own typing)")
     return 0
 
 

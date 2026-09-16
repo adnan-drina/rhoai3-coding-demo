@@ -1101,7 +1101,7 @@ def parity_state(receipt: dict[str, Any] | None) -> dict[str, Any]:
         # "" is the read-oracle obligation of this entry point: the comparison
         # that replays a method and a path, which declares no scenario.
         for sid in sorted(set(names) | {""}):
-            for what in ("response", "cors"):
+            for what in ("response", "cors", "navigation"):
                 obl[parity_obligation_id(ep, sid, what)] = {"entry_point": ep, "scenario": sid,
                                                             "what": what, "verdict": verdict}
     return {"known": True, "verdict": str(receipt.get("verdict") or ""),
@@ -1135,6 +1135,57 @@ def _source_cors_policies(root: Path) -> list[str]:
     return [str(x) for x in policies] if isinstance(policies, list) else []
 
 
+def navigation_advice(failures: list[dict[str, Any]], path: str) -> dict[str, Any]:
+    """The exit conditions for a redirect the destination answers correctly and
+    an address it points at that does not answer at all.
+
+    ADR-016 does not stop at the status and the literal Location: the legacy
+    address must also SERVE the replacement UI or redirect to its effective
+    address, and a bounded navigation must reach the real UI and a usable
+    OpenAPI document in the PACKAGED production artifact without a redirect
+    loop. A dead compatibility URL is refused by name. The comparison here
+    PASSED -- the first response is the source's -- so nothing about the first
+    response is to be changed; what failed is the destination of the redirect.
+
+    Every value quoted is this measurement's own: the target, its path, the
+    terminal state and the status the walk ended on."""
+    rows = [f for f in (failures or []) if isinstance(f, dict)]
+    quoted = "; ".join("%s is %s (%s)" % (str(f.get("target") or ""), str(f.get("terminal") or ""), f.get("final_status"))
+                       for f in rows) or "no recorded navigation"
+    target = next((str(f.get("target") or "") for f in rows if str(f.get("target") or "")), "")
+    target_path = _url_path(target)
+    exit_conditions = [
+        ("the legacy address %s ANSWERS: it serves the replacement UI itself, or redirects to the address that does. "
+         "The bounded navigation from it ends %s today." % (target or "the redirect target", quoted)),
+        ("the replacement UI is inside the PACKAGED production artifact and not only the development mode: "
+         "quarkus.swagger-ui.always-include=true."),
+        ("quarkus.swagger-ui.path addresses it at %s, written WITHOUT repeating the root path (the root-path property "
+         "already carries its slashes); where that path cannot be given to the UI, a compatibility handler that serves "
+         "or forwards to the packaged UI carries the legacy address instead."
+         % (target_path or "the path the source's own Location names")),
+        ("the bounded navigation check reaches the real UI and a usable OpenAPI document from the packaged artifact, "
+         "within the hops it allows and without revisiting a URL."),
+        ("a property change lives in %s, outside this card's write set (%s): record it with amend-scope.py --path <file> "
+         "--reason <why> BEFORE editing it." % (APP_PROPERTIES, path or GLOBAL)),
+        ("the first response is left exactly as it is: its status and its literal Location after origin mapping still "
+         "come back PASS from this entry point's own parity verdict."),
+    ]
+    return {
+        "description": ("the destination answers the redirect as the source did and the address it points at does not "
+                        "answer; the legacy address must serve the replacement UI or redirect to its effective address"),
+        "navigation": rows,
+        "exit": exit_conditions,
+        "refused": [
+            "a dead compatibility URL: an address that answers 404 or an error is not a redirect target",
+            "a redirect loop, or a chain that never settles within the hops the navigation check allows",
+            "restoring the documentation framework the migration retired",
+            ("following the redirect inside the parity comparison, or normalizing the difference away in the corpus or "
+             "the comparator: the navigation check is a SEPARATE measurement beside it"),
+        ],
+        "links": DOC_UI_LINKS + list(REDIRECT_LINKS),
+    }
+
+
 def parity_items(root: Path, bundle: dict[str, Any]) -> list[dict[str, Any]]:
     """Obligations from M4's parity verdicts: the read-oracle verdicts in
     verification/parity/*.json and the SCENARIO verdicts in
@@ -1153,7 +1204,13 @@ def parity_items(root: Path, bundle: dict[str, Any]) -> list[dict[str, Any]]:
     ruled for its kind, built from THIS verdict's diffs (cors_advice,
     response_advice). The brief hands a worklist item to the worker whole, so
     the advice travels with the card; nothing in it is written for a
-    particular specimen -- every value in it is quoted from the evidence."""
+    particular specimen -- every value in it is quoted from the evidence.
+
+    A NAVIGATION failure has no failing verdict file to read: its comparison
+    PASSed, and what failed is the separate bounded navigation the composer
+    judged. It is reported on the receipt's own entry-point row (verdict FAIL,
+    kind ``navigation``), so it is read there and lands at the controller that
+    answers the redirect, with ADR-016's exit conditions for a dead target."""
     out: list[dict[str, Any]] = []
     ep_path = {str(e["id"]): str(e.get("path") or "") for e in (bundle.get("entry_points") or [])}
     pdir = root / PARITY_DIR
@@ -1203,6 +1260,33 @@ def parity_items(root: Path, bundle: dict[str, Any]) -> list[dict[str, Any]]:
                                      "quarkus.http.cors.exposed-headers and .methods/.headers set to the source's recorded values quoted "
                                      "in the diffs. Do not restore a removed @CrossOrigin." % (ep, scenario or "read oracle", "; ".join(cors)))[:1200],
                             advice=cors_advice(cors, source_policies)))
+    # The receipt's own navigation verdicts: a comparison that PASSed and a
+    # redirect target that is dead, loops, or never settles within the bounded
+    # walk (ADR-016). There is no FAILing verdict file for these -- the
+    # comparison passed, by design -- so the row is the evidence.
+    for row in ((receipt or {}).get("entry_points") or []) if isinstance(receipt, dict) else []:
+        if not isinstance(row, dict) or str(row.get("kind") or "") != "navigation" or str(row.get("verdict") or "") != "FAIL":
+            continue
+        ep = str(row.get("entry_point") or "")
+        if not ep:
+            continue
+        reason = str(row.get("reason") or "")
+        fails = [f for f in (row.get("navigation_failures") or []) if isinstance(f, dict)]
+        locus = ep_path.get(ep) or GLOBAL
+        out.append({"source": "parity", "kind": "parity", "gate": "parity", "category": "mandatory", "line": 0,
+                    "entry_point": ep, "scenario": "", "verdict_file": PARITY_RECEIPT.as_posix(),
+                    "scenarios": parity_scenarios_of(receipt, ep, ""),
+                    "message_sha256": sha256_bytes(reason.encode("utf-8")),
+                    "id": parity_obligation_id(ep, "", "navigation"), "path": locus,
+                    "rule_id": "PARITY", "cause": "redirect-target-dead",
+                    "detail": ("%s: redirect target %s" % (ep, reason))[:200],
+                    "message": ("%s answers the redirect the source answers, and the address it points at does not: %s. "
+                                "ADR-016 asks for more than the status and the literal Location -- that legacy address "
+                                "must serve the replacement UI or redirect to its effective address, and a bounded "
+                                "navigation must reach the real UI and a usable OpenAPI document in the PACKAGED "
+                                "production artifact without a redirect loop. Do not change the first response: it is "
+                                "already the source's." % (ep, reason))[:1200],
+                    "advice": navigation_advice(fails, locus)})
     return out
 
 

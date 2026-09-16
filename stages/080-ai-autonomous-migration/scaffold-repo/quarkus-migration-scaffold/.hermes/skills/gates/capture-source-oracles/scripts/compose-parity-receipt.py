@@ -14,6 +14,16 @@ live seal cannot match it). In candidate mode a scenario verdict measured for
 another card, another candidate or another receipt satisfies nothing, while a
 sealed-bound verdict still counts: those are the ones the last full M4 run left
 for every scenario a scoped run was not scoped to.
+
+A comparison that PASSed is not the whole of ADR-016. The comparator compares
+the FIRST response and never follows a redirect, so a 302 whose status and
+literal Location are exactly the source's passes even when that address answers
+404 -- the dead compatibility URL the ruling refuses. The bounded navigation
+check run-parity.py performs beside the comparison records what the address
+actually does (verification/parity/navigation/<slug>.json); this reads those
+records, and an entry point whose comparison PASSed while its redirect target
+is dead, loops or never settles becomes FAIL with kind ``navigation``. A PASS
+navigation is recorded on the row as ``navigation: ok``.
 """
 from __future__ import annotations
 
@@ -33,6 +43,29 @@ from _scenarios import (BINDING_CANDIDATE, CorpusError, DEFAULT_SECURITY_MODE, Q
 from planner.admission import verify_receipt  # noqa: E402
 from planner.canonical import load_json, write_canonical  # noqa: E402
 from planner.paths import EVIDENCE_BUNDLE  # noqa: E402
+
+# Where run-parity.py leaves its bounded navigation records, and which terminal
+# states are a redirect target that does not do its job.
+NAVIGATION = PARITY / "navigation"
+NAVIGATION_FAILED = ("dead", "loop", "too-many-hops")
+
+
+def load_navigation(root: Path) -> dict[str, dict[str, Any]]:
+    """Every bounded navigation record on disk, by scenario id.
+
+    The records are a measurement of the destination, not of a receipt: they
+    carry no binding of their own and none is asked of them. What binds them to
+    this receipt is the scenario verdict they sit beside, which IS bound."""
+    out: dict[str, dict[str, Any]] = {}
+    ndir = Path(root) / NAVIGATION
+    for p in sorted(ndir.glob("*.json")) if ndir.is_dir() else []:
+        try:
+            doc = load_json(p)
+        except (OSError, ValueError):
+            continue
+        if isinstance(doc, dict) and str(doc.get("scenario") or ""):
+            out[str(doc["scenario"])] = doc
+    return out
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -147,6 +180,8 @@ def main(argv: list[str] | None = None) -> int:
     elif corpus and is_derived(corpus):
         qualification_gap = "captures not qualified (run qualify-source-captures.py)"
     coverage_gaps: list[dict[str, str]] = []
+    navigation = load_navigation(root)
+    navigation_failures: list[dict[str, Any]] = []
     results: dict[str, list[dict[str, Any]]] = {}
     sdir = root / scenario_parity_dir(security_mode)
     for sp in sorted(sdir.glob("*.json")) if sdir.is_dir() else []:
@@ -238,9 +273,34 @@ def main(argv: list[str] | None = None) -> int:
                 reason = "; ".join(([("%d required scenario(s) have no result: %s" % (len(missing), ", ".join(missing)))] if missing else []) + problems)[:400]
             else:
                 verdict, reason = "PASS", "%d required scenario(s): %s" % (len(names), ", ".join(names))
-            rows.append({"entry_point": ep, "verdict": verdict, "reason": reason, "scenarios": names,
-                         "coverage": {"positive": positive, "negative": negative}})
-            failed += 0 if verdict == "PASS" else 1
+            # The comparison compared the FIRST response and never followed the
+            # redirect: that is the design, and it leaves ADR-016's second exit
+            # condition unmeasured. The bounded navigation measured it, beside
+            # the comparison, and a legacy address that answers nothing is the
+            # dead compatibility URL the ruling refuses -- so a PASS whose
+            # redirect target is dead, loops or never settles is a FAIL, typed
+            # ``navigation`` so the work list can locate it at the controller
+            # that answers the redirect rather than at a response diff.
+            nav_bad = [(sid, navigation[sid]) for sid in names
+                       if str((navigation.get(sid) or {}).get("terminal") or "") in NAVIGATION_FAILED]
+            nav_ok = [sid for sid in names if str((navigation.get(sid) or {}).get("terminal") or "") == "ok"]
+            row = {"entry_point": ep, "verdict": verdict, "reason": reason, "scenarios": names,
+                   "coverage": {"positive": positive, "negative": negative}}
+            if verdict == "PASS" and nav_bad:
+                row["verdict"] = "FAIL"
+                row["kind"] = "navigation"
+                row["reason"] = "; ".join(
+                    "redirect target %s is %s on the destination (%s)"
+                    % (str(n.get("start") or ""), str(n.get("terminal") or ""), n.get("final_status"))
+                    for _, n in nav_bad)[:400]
+                row["navigation_failures"] = [{"scenario": sid, "target": str(n.get("start") or ""),
+                                               "terminal": str(n.get("terminal") or ""),
+                                               "final_status": n.get("final_status")} for sid, n in nav_bad]
+                navigation_failures.extend(row["navigation_failures"])
+            elif nav_ok and not nav_bad:
+                row["navigation"] = "ok"
+            rows.append(row)
+            failed += 0 if row["verdict"] == "PASS" else 1
             continue
         p = root / PARITY / (slug(ep) + ".json")
         if p.is_file():
@@ -270,11 +330,15 @@ def main(argv: list[str] | None = None) -> int:
                              "not_passed": sorted(sid for sid, v in qualified.items() if v["capability"] != "PASS" or v["stale"]),
                              "stale": sorted(sid for sid, v in qualified.items() if v["stale"])},
            "coverage_gaps": coverage_gaps,
+           "navigation": {"checked": len(navigation), "failures": navigation_failures},
            "verdict": verdict}
     out = root / parity_receipt_path(security_mode)
     write_canonical(out, doc)
     for g in coverage_gaps:
         print("  - coverage gap %s (%s): %s" % (g["scenario"], g["entry_point"], g["reason"]))
+    for n in navigation_failures:
+        print("  - navigation %s (%s): %s is %s (%s)" % (n["scenario"], n["terminal"], n["target"], n["terminal"],
+                                                         n["final_status"]))
     if doc["verdict"] == "PASS":
         print("OK: parity receipt PASS (%d entry points) → %s" % (len(rows), out))
         return 0

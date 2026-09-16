@@ -13,6 +13,9 @@ and incompletely. So the order and the completeness move here:
      reset command, through compare-scenario-parity.py
   2. every admitted entry point that has a CAPTURED http read oracle, through
      compare-runtime-parity.py
+  2b. a bounded navigation check for every scenario whose first response on
+     the DESTINATION was a redirect -- a SEPARATE measurement, never inside
+     the comparison
   3. compose-parity-receipt.py, once, last
 
 --scenario (repeatable) scopes step 1 to the named corpus scenarios and skips
@@ -45,6 +48,14 @@ candidate digest this verification recorded, the receipt the card was minted
 under and the card. Without it, the M4 road: the accepted tree, the sealed
 receipt.
 
+The comparison compares the FIRST response and never follows a redirect; that
+is deliberate and unchanged. ADR-016 asks something the first response cannot
+answer -- whether the legacy address SERVES the replacement UI or redirects to
+its effective address -- so a bounded navigation runs beside the comparison,
+on the destination only, and writes verification/parity/navigation/<slug>.json
+(rhoai3.parity-navigation/v1) per scenario. A 302 to a 404 passes the
+comparison and is exactly the dead compatibility URL the ruling refuses.
+
 Writes verification/parity/_run.json (rhoai3.parity-run/v1) beside the receipt:
 what ran, in what order, with each child's exit code, and the binding.
 
@@ -76,6 +87,7 @@ import subprocess
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Any
@@ -98,15 +110,37 @@ RESET_SCRIPT = CAPTURE / "reset-parity-db.sh"
 
 sys.path.insert(0, str(CAPTURE))
 sys.path.insert(0, str(HERMES / "lib"))
-from _oracle_common import ORACLES, PARITY, entry_points, slug  # noqa: E402
-from _scenarios import (CORPUS, CorpusError, SCENARIO_PARITY, binding_of, candidate_binding, corpus_digest,  # noqa: E402
-                        load_corpus, scenario_slug, sealed_binding)
+from _oracle_common import ORACLES, PARITY, entry_points, http_observe, slug  # noqa: E402
+from _scenarios import (CORPUS, CorpusError, SCENARIO_PARITY, auth_headers, binding_of, candidate_binding,  # noqa: E402
+                        corpus_digest, effects_identity_of, load_corpus, normalized_identity, scenario_slug,
+                        sealed_binding)
 from planner.admission import verify_receipt  # noqa: E402
 from planner.canonical import load_json, sha256_file, write_canonical  # noqa: E402
 
 SCHEMA = "rhoai3.parity-run/v1"
 RUN_RECORD = PARITY / "_run.json"
 READ_METHODS = ("GET", "HEAD")
+
+# The bounded navigation check (ADR-016), which is a SEPARATE measurement and
+# never part of the comparison. The comparator compares the FIRST response and
+# nothing else, by design: following a redirect inside it would record the
+# target's answer as the source's and drop the Location that said where it
+# pointed. But ADR-016's exit is not only "302 with exactly that Location" --
+# it is also "that legacy address serves the replacement UI or redirects to
+# its effective address", proven by "a separate bounded navigation check
+# reaching the real UI and usable OpenAPI document in the packaged production
+# artifact, without a redirect loop". A 302 to a 404 satisfies the comparison
+# and is the dead compatibility URL the ruling refuses; nothing measured it.
+# So the navigation runs here, beside the comparison, over the DESTINATION
+# only, writes its own records, and the composer reads them.
+NAVIGATION = PARITY / "navigation"
+NAV_SCHEMA = "rhoai3.parity-navigation/v1"
+NAV_DEFAULT_HOPS = 3
+NAV_OK = "ok"
+NAV_DEAD = "dead"
+NAV_LOOP = "loop"
+NAV_TOO_MANY = "too-many-hops"
+NAV_COUNTER = {NAV_OK: "ok", NAV_DEAD: "dead", NAV_LOOP: "loop", NAV_TOO_MANY: "too_many_hops"}
 # What a scoped run does NOT measure, named in the record rather than left to
 # be inferred from a count: a filtered run is a re-measurement of one card's
 # obligation, and the read oracles of every other entry point keep the verdicts
@@ -344,6 +378,139 @@ def read_oracle_gap(root: Path, ep: str) -> str:
     return ""
 
 
+# --- the bounded navigation check -------------------------------------------
+
+def _split_url(url: str) -> tuple[str, str]:
+    """(origin, path?query) -- http_observe takes a base and a path, and the
+    navigation walks whole URLs. An address with no scheme and host is not one
+    this check can follow, and comes back with an empty origin."""
+    parts = urllib.parse.urlsplit(str(url or ""))
+    if not parts.scheme or not parts.netloc:
+        return "", ""
+    rest = parts.path or "/"
+    if parts.query:
+        rest = rest + "?" + parts.query
+    return "%s://%s" % (parts.scheme, parts.netloc), rest
+
+
+def navigate(start: str, headers: dict[str, str] | None, max_hops: int) -> dict[str, Any]:
+    """Follow at most ``max_hops`` redirects from ``start``, one hop at a time,
+    and say where it ended.
+
+    ``ok`` is a 2xx at the end; ``dead`` is a 4xx, a 5xx or a connection that
+    could not be made (and a redirect that names no target: an address nobody
+    can follow is not a redirect); ``loop`` is a URL this walk already visited;
+    ``too-many-hops`` is a chain still redirecting when the budget ran out.
+    Each hop records the URL it asked, the status it got and the Location it
+    was sent on to, so the record shows the walk rather than only its end."""
+    hops: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    url = str(start or "")
+    terminal = ""
+    final_status = 0
+    for _ in range(max(1, int(max_hops))):
+        if url in seen:
+            terminal = NAV_LOOP
+            break
+        seen.add(url)
+        origin, rest = _split_url(url)
+        if not origin:
+            hops.append({"url": url, "status": 0, "error": "not an absolute address this check can follow"})
+            terminal = NAV_DEAD
+            break
+        got = http_observe(origin, "GET", rest, headers=dict(headers or {}))
+        status = int(got.get("status") or 0)
+        location = (got.get("headers") or {}).get("Location") if isinstance(got.get("headers"), dict) else None
+        hop: dict[str, Any] = {"url": url, "status": status}
+        if location:
+            hop["location"] = str(location)
+        if not status:
+            hop["error"] = str(got.get("error") or "")[:200]
+        hops.append(hop)
+        final_status = status
+        if not status:
+            terminal = NAV_DEAD
+            break
+        if 300 <= status < 400:
+            if not location:
+                terminal = NAV_DEAD
+                break
+            url = urllib.parse.urljoin(url, str(location))
+            continue
+        terminal = NAV_OK if 200 <= status < 300 else NAV_DEAD
+        break
+    else:
+        terminal = NAV_TOO_MANY
+    return {"start": str(start or ""), "hops": hops, "final_status": final_status, "terminal": terminal}
+
+
+def redirect_target(record: Any, dest_url: str) -> str:
+    """The address a scenario's FIRST response on the destination sent the
+    caller to, resolved against the destination -- "" when that response was
+    not a redirect with a Location.
+
+    The comparison's own record is what says so: this reads the observation it
+    already made rather than repeating the request."""
+    observed = (record or {}).get("observed") if isinstance(record, dict) else None
+    observed = observed if isinstance(observed, dict) else {}
+    try:
+        status = int(observed.get("status") or 0)
+    except (TypeError, ValueError):
+        return ""
+    if not (300 <= status < 400):
+        return ""
+    headers = observed.get("headers") if isinstance(observed.get("headers"), dict) else {}
+    location = headers.get("Location")
+    if not location:
+        return ""
+    return urllib.parse.urljoin(str(dest_url or "").rstrip("/") + "/", str(location))
+
+
+def run_navigation(root: Path, scenarios: list[dict[str, Any]], dest_url: str, max_hops: int,
+                   nav: dict[str, Any]) -> None:
+    """One bounded navigation per scenario whose first response on the
+    DESTINATION was a redirect, recorded beside the comparison it belongs to.
+
+    Credentials: none, unless the scenario declares an ``effects_identity`` --
+    the identity its read-backs are taken as -- and then the SAME reference,
+    resolved from this environment. A navigation that invented an identity
+    would be measuring an address nobody navigates to."""
+    nav["ran"] = True
+    for sc in scenarios:
+        sid = str(sc.get("id") or "")
+        if not sid:
+            continue
+        rec_p = root / SCENARIO_PARITY / (scenario_slug(sid) + ".json")
+        try:
+            record = load_json(rec_p) if rec_p.is_file() else {}
+        except (OSError, ValueError):
+            nav["not_navigated"].append({"scenario": sid, "reason": "the comparison record %s is unreadable" % rec_p.name})
+            continue
+        start = redirect_target(record, dest_url)
+        if not start:
+            continue
+        identity = effects_identity_of(sc)
+        headers: dict[str, str] = {}
+        if identity is not None:
+            headers, gap = auth_headers(identity)
+            if gap:
+                nav["not_navigated"].append({"scenario": sid, "reason": gap})
+                continue
+        result = navigate(start, headers, max_hops)
+        out = {"schema": NAV_SCHEMA, "producer": "run-parity.py", "at": _now(), "scenario": sid,
+               "entry_point": str(sc.get("entry_point") or ""), "dest_url": dest_url, "max_hops": int(max_hops),
+               "identity": dict(normalized_identity(identity)) if identity is not None else {}}
+        out.update(result)
+        write_canonical(root / NAVIGATION / (scenario_slug(sid) + ".json"), out)
+        nav["checked"] += 1
+        nav[NAV_COUNTER[result["terminal"]]] += 1
+        nav["results"].append({"scenario": sid, "entry_point": str(sc.get("entry_point") or ""),
+                               "start": result["start"], "terminal": result["terminal"],
+                               "final_status": result["final_status"], "hops": len(result["hops"])})
+        print("  [nav] %s %s → %s (%s, %d hop(s))" % (sid, result["start"], result["terminal"],
+                                                      result["final_status"], len(result["hops"])))
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--root", required=True, help="the destination product root")
@@ -358,6 +525,14 @@ def main(argv: list[str] | None = None) -> int:
                          "not the accepted tree. The binding is passed to both comparators and the composer, which then do not "
                          "ask the live seal to match the work list the acceptance path rebuilt on the candidate, and is "
                          "recorded in _run.json. Passing it more than once is the same as passing it once.")
+    ap.add_argument("--nav-max-hops", type=int, default=NAV_DEFAULT_HOPS, metavar="N",
+                    help="how many redirects the bounded navigation check follows from a scenario's redirect target "
+                         "before it calls the chain too long (default %d). The navigation is a SEPARATE measurement "
+                         "beside the comparison and is performed on the destination only; the comparison itself never "
+                         "follows a redirect." % NAV_DEFAULT_HOPS)
+    ap.add_argument("--no-navigation", action="store_true",
+                    help="do not perform the bounded navigation check. _run.json then records navigation: skipped, and "
+                         "the records of any earlier run stay on disk for the composer to read")
     ap.add_argument("--port", type=int, default=8081, help="the port the destination this runner starts listens on")
     ap.add_argument("--ready-timeout", type=int, default=180)
     ap.add_argument("--java", default="java")
@@ -416,6 +591,14 @@ def main(argv: list[str] | None = None) -> int:
                          "reason": (READ_ORACLES_FILTERED % ", ".join(wanted_ids)) if wanted_ids else ""},
         "entry_points": {"admitted": len(wanted), "compared": 0, "passed": 0, "failed": 0, "inconclusive": 0,
                          "skipped": 0, "results": [], "not_compared": []},
+        # the bounded navigation check (ADR-016): a separate measurement beside
+        # the comparison, never inside it. "skipped" is what --no-navigation
+        # records, so a reader can tell "nothing to navigate" (checked 0) from
+        # "nobody looked".
+        "navigation": ("skipped" if args.no_navigation else
+                       {"ran": False, "max_hops": int(args.nav_max_hops), "dir": NAVIGATION.as_posix(),
+                        "checked": 0, "ok": 0, "dead": 0, "loop": 0, "too_many_hops": 0,
+                        "results": [], "not_navigated": []}),
         "compose": {"rc": None, "argv": []},
         "receipt_verdict": "", "failures": [], "ok": False,
     }
@@ -501,6 +684,12 @@ def main(argv: list[str] | None = None) -> int:
             for ep in wanted:
                 doc["entry_points"]["skipped"] += 1
                 doc["entry_points"]["not_compared"].append({"entry_point": ep, "reason": doc["read_oracles"]["reason"]})
+
+        # 2b. the bounded navigation check, on the destination only, while it
+        #     is still up -- after the comparisons and before the composer,
+        #     which reads the records it leaves.
+        if not args.no_navigation:
+            run_navigation(root, scenarios, dest_url, args.nav_max_hops, doc["navigation"])
     finally:
         if dest is not None:
             dest.stop()
@@ -537,12 +726,16 @@ def main(argv: list[str] | None = None) -> int:
 
     doc["ok"] = not failures
     write_canonical(out, doc)
+    nav_doc = doc["navigation"]
+    nav_summary = ("navigation skipped" if nav_doc == "skipped" else
+                   "%d redirect target(s) navigated (%d ok, %d dead, %d loop, %d too many hops)"
+                   % (nav_doc["checked"], nav_doc["ok"], nav_doc["dead"], nav_doc["loop"], nav_doc["too_many_hops"]))
     summary = ("%s%d/%d scenario(s) run (%d PASS, %d FAIL, %d INCONCLUSIVE); %d/%d entry point(s) compared "
-               "(%d not compared); receipt %s"
+               "(%d not compared); %s; receipt %s"
                % (("scoped to %s: " % ", ".join(wanted_ids)) if wanted_ids else "",
                   doc["scenarios"]["run"], doc["scenarios"]["selected"], doc["scenarios"]["passed"],
                   doc["scenarios"]["failed"], doc["scenarios"]["inconclusive"], doc["entry_points"]["compared"],
-                  doc["entry_points"]["admitted"], doc["entry_points"]["skipped"],
+                  doc["entry_points"]["admitted"], doc["entry_points"]["skipped"], nav_summary,
                   doc["receipt_verdict"] or "NOT COMPOSED BY THIS RUN"))
     for row in doc["entry_points"]["not_compared"]:
         print("  - not compared: %s (%s)" % (row["entry_point"], row["reason"]))

@@ -764,6 +764,92 @@ def _parity_advice_case() -> int:
     return 0
 
 
+def _parity_navigation_case() -> int:
+    """The card a dead redirect target mints.
+
+    The comparison PASSed -- the destination answered the source's status and
+    its literal Location after origin mapping -- and the separate bounded
+    navigation found the address it points at dead. There is no failing
+    verdict file for that: the receipt's own row is the evidence, and the card
+    belongs at the controller that answers the redirect, carrying ADR-016's
+    exit conditions for the address rather than for the response. Run twice on
+    specimens that share no identifier, so the advice is the measurement's and
+    not this one's."""
+    import json
+    import tempfile
+
+    from planner.paths import PARITY_DIR
+
+    PETCLINIC = {"pkg": "org.springframework.samples.petclinic", "type": "RootRestController",
+                 "member": "redirectToSwagger", "scenario": "sc:read-root", "root_path": "petclinic",
+                 "ui": "swagger-ui", "host": "dest-petclinic:8080"}
+    LEDGER = {"pkg": "com.acme.ledger", "type": "EntryPointResource", "member": "toDocs",
+              "scenario": "op:read-entry", "root_path": "ledger", "ui": "openapi-ui", "host": "ledger.internal:9443"}
+
+    for spec in (PETCLINIC, LEDGER):
+        ep = "ep:%s.%s#%s():http" % (spec["pkg"], spec["type"], spec["member"])
+        controller = "src/main/java/%s/%s.java" % (spec["pkg"].replace(".", "/"), spec["type"])
+        target = "http://%s/%s/%s/index.html" % (spec["host"], spec["root_path"], spec["ui"])
+        target_path = "/%s/%s/index.html" % (spec["root_path"], spec["ui"])
+        bundle = {"entry_points": [{"id": ep, "path": controller}]}
+        with tempfile.TemporaryDirectory(prefix="parity-nav-") as td:
+            root = Path(td)
+            pdir = root / PARITY_DIR
+            (pdir / "scenarios").mkdir(parents=True, exist_ok=True)
+            reason = "redirect target %s is dead on the destination (404)" % target
+            (pdir / "receipt.json").write_text(json.dumps(
+                {"schema": "rhoai3.parity-receipt/v1", "verdict": "FAIL",
+                 "entry_points": [{"entry_point": ep, "verdict": "FAIL", "kind": "navigation", "reason": reason,
+                                   "scenarios": [spec["scenario"]],
+                                   "navigation_failures": [{"scenario": spec["scenario"], "target": target,
+                                                            "terminal": "dead", "final_status": 404}]}]}),
+                encoding="utf-8")
+            items = parity_items(root, bundle)
+            if len(items) != 1:
+                return _fail("a navigation row mints exactly one obligation, and a PASSing comparison mints none "
+                             "beside it: %s" % [(i["cause"], i["path"]) for i in items])
+            it = items[0]
+            if it["rule_id"] != "PARITY" or it["cause"] != "redirect-target-dead" or it["kind"] != "parity":
+                return _fail("a navigation failure is a typed PARITY obligation: %s"
+                             % {k: it.get(k) for k in ("rule_id", "cause", "kind")})
+            if it["path"] != controller:
+                return _fail("it belongs at the controller that answers the redirect, not at a config file: %s" % it["path"])
+            if it.get("gate") != "parity" or it.get("scenarios") != [spec["scenario"]]:
+                return _fail("it is measured by the parity gate, over the scenarios its row declares: %s"
+                             % {k: it.get(k) for k in ("gate", "scenarios")})
+            if target not in it["message"] or "dead" not in it["detail"]:
+                return _fail("the brief must name the address and what became of it: %s | %s" % (it["message"][:200], it["detail"]))
+            blob = json.dumps(it["advice"])
+            for needed in (target, target_path, "quarkus.swagger-ui.always-include=true", "quarkus.swagger-ui.path",
+                           "PACKAGED", "amend-scope.py", APP_PROPERTIES, "OpenAPI"):
+                if needed not in blob:
+                    return _fail("the navigation advice must state %r: %s" % (needed, blob[:900]))
+            refused = json.dumps(it["advice"]["refused"])
+            if "dead compatibility URL" not in refused or "loop" not in refused or "retired" not in refused:
+                return _fail("it must refuse a dead URL, a loop and restoring the retired framework: %s" % refused)
+            if "404" not in blob:
+                return _fail("the status the walk ended on is the measurement's own: %s" % blob[:600])
+
+            other = PETCLINIC if spec is LEDGER else LEDGER
+            everything = json.dumps(items, default=str)
+            # the platform's own property names (quarkus.swagger-ui.*) are not
+            # a specimen's values, so the UI token is not one of these
+            leaked = [t for t in (other["root_path"], other["host"], other["type"], other["scenario"])
+                      if t in everything]
+            if leaked:
+                return _fail("advice must carry no other specimen's values: %s" % leaked)
+
+            # a navigation row that PASSes, or a row nobody typed navigation,
+            # mints nothing: absence of a card is the measurement too
+            (pdir / "receipt.json").write_text(json.dumps(
+                {"schema": "rhoai3.parity-receipt/v1", "verdict": "PASS",
+                 "entry_points": [{"entry_point": ep, "verdict": "PASS", "navigation": "ok",
+                                   "scenarios": [spec["scenario"]]}]}), encoding="utf-8")
+            if parity_items(root, bundle):
+                return _fail("a navigation that reached the UI mints no obligation: %s" % parity_items(root, bundle))
+    return 0
+
+
 def _parity_gate_case() -> int:
     """The parity gate: what discharges a parity card, and what only looks like
     it. v9 card t_77cae2b2 wrote the CORS properties the brief asked for, passed
@@ -1730,7 +1816,7 @@ def _unit_config_case() -> int:
 def main() -> int:
     if (_runtime_identity_case() or _gate_progress_case() or _batch_scope_case() or _checked_family_case()
             or _set_wide_case() or _config_value_case() or _parity_typing_case() or _parity_advice_case()
-            or _parity_gate_case() or _unit_formation_case() or _unit_bound_case() or _unit_seal_case()
+            or _parity_navigation_case() or _parity_gate_case() or _unit_formation_case() or _unit_bound_case() or _unit_seal_case()
             or _unit_mode_case() or _unit_inert_case() or _unit_config_case()
             or _unit_experiment_table_case() or _unit_explained_case() or _unit_progress_case()
             or _unit_budget_case()):

@@ -15,7 +15,9 @@ not run (no corpus) exits 1.
 """
 from __future__ import annotations
 
+import base64
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -30,7 +32,8 @@ CAPTURE_READS = CAPTURE_DIR / "capture-source-oracles.py"
 sys.path.insert(0, str(CAPTURE_DIR))
 sys.path.insert(0, str(HERE.parents[3] / "lib"))
 from _oracle_common import ORACLES, PARITY, http_observe, slug  # noqa: E402
-from _scenarios import SCENARIO_ORACLES, SCENARIO_PARITY, corpus_digest, request_of, scenario_slug  # noqa: E402
+from _scenarios import (SCENARIO_ORACLES, SCENARIO_PARITY, corpus_digest, normalized_identity, request_of,  # noqa: E402
+                        scenario_slug)
 from planner import pipeline, specimens  # noqa: E402
 from planner.canonical import digest, load_json, write_canonical  # noqa: E402
 
@@ -38,6 +41,14 @@ CREATE_EP = "ep:org.acme.clinic.owner.OwnerController#create(Owner):http"
 READ_EPS = ("ep:org.acme.clinic.owner.OwnerController#list():http",
             "ep:org.acme.clinic.pet.PetController#list():http",
             "ep:org.acme.clinic.vet.VetController#list():http")
+NAVIGATION = PARITY / "navigation"
+# The credential the ONE scenario that declares an effects identity navigates
+# as. It is named here and held in the environment; nothing writes the value
+# into a corpus, a capture or a record.
+NAV_USER_ENV = "RUN_PARITY_NAV_USER"
+NAV_PASS_ENV = "RUN_PARITY_NAV_PASS"
+NAV_IDENTITY = {"kind": "basic", "user_env": NAV_USER_ENV, "password_env": NAV_PASS_ENV}
+NAV_BASIC = "Basic " + base64.b64encode(b"nav-user:nav-secret").decode("ascii")
 
 
 def _fail(msg: str) -> int:
@@ -53,23 +64,42 @@ class Service(BaseHTTPRequestHandler):
 
     owners: dict[str, dict] = {}
     drift = False
+    # The legacy root address always answers the SAME first response -- 302 to
+    # /ui/index.html -- in every mode, so the comparison passes throughout and
+    # only what that address DOES changes. That is the whole point: a 302 to a
+    # 404 is a PASSing comparison and a dead compatibility URL.
+    root_mode = "ok"          # ok | dead | loop
+    seen: list = []           # (path, Authorization) for every GET, in order
 
     def log_message(self, *a):  # noqa: D102 - quiet
         return
 
-    def _send(self, code: int, payload=None):
+    def _send(self, code: int, payload=None, location: str | None = None):
         body = json.dumps(payload).encode() if payload is not None else b""
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
+        if location:
+            self.send_header("Location", location)
         self.end_headers()
         if body:
             self.wfile.write(body)
 
     def do_GET(self):
+        type(self).seen.append((self.path, self.headers.get("Authorization") or ""))
         if self.path == "/__reset":
             type(self).owners = {}
             return self._send(200, {"reset": True})
+        if self.path == "/":
+            return self._send(302, None, location="/ui/index.html")
+        if self.path == "/ui/index.html":
+            if type(self).root_mode == "dead":
+                return self._send(404, {"error": "no such page"})
+            if type(self).root_mode == "loop":
+                return self._send(302, None, location="/ui/other.html")
+            return self._send(200, {"ui": "the replacement documentation UI"})
+        if self.path == "/ui/other.html":
+            return self._send(302, None, location="/ui/index.html")
         if self.path == "/api/owners":
             return self._send(200, sorted(self.owners))
         if self.path == "/api/pets":
@@ -105,6 +135,16 @@ CORPUS = {
          "headers": {"Content-Type": "application/json"},
          "body_file": "verification/scenarios/bodies/create-owner-second.json", "reset_before": True,
          "effects": [{"id": "eff:owner-8", "method": "GET", "path": "/api/owners/8"}], "normalization": []},
+        # the legacy root address: a redirect whose FIRST response the
+        # comparison compares and whose TARGET only the navigation check can
+        # reach. Two of them, because the navigation's credential rule has two
+        # halves: nothing is sent unless the scenario declares an effects
+        # identity, and then the same reference is.
+        {"id": "sc:read-root", "entry_point": CREATE_EP, "method": "GET", "path": "/",
+         "body_absent": True, "reset_before": False, "effects": [], "normalization": []},
+        {"id": "sc:read-root-auth", "entry_point": CREATE_EP, "method": "GET", "path": "/",
+         "body_absent": True, "reset_before": False, "effects_identity": dict(NAV_IDENTITY),
+         "effects": [{"id": "eff:pets", "method": "GET", "path": "/api/pets"}], "normalization": []},
     ],
 }
 
@@ -171,6 +211,32 @@ def _build(td: Path, base: str) -> Path:
             "effects": [{"id": effect, "method": "GET", "path": path,
                          "status": after["status"], "body_sha256": after["body_sha256"]}],
         })
+    # the legacy root address, captured the same way: the FIRST response, with
+    # its Location, and (for the scenario that declares one) the effect
+    # read-back taken as the identity it names
+    root_sc = {sc["id"]: sc for sc in CORPUS["scenarios"]}
+    for sid in ("sc:read-root", "sc:read-root-auth"):
+        sc = root_sc[sid]
+        req = request_of(root, sc)
+        first = http_observe(base, "GET", "/")
+        if first.get("status") != 302 or not (first.get("headers") or {}).get("Location"):
+            raise SystemExit("the stub source must redirect from the root: %s" % first)
+        oracle = {
+            "schema": "rhoai3.source-scenario/v1", "scenario": sid, "entry_point": CREATE_EP,
+            "receipt_sha256": receipt_digest, "corpus_sha256": corpus_sha, "status": "CAPTURED", "reason": "",
+            "evidence_bundle_sha256": bundle_sha, "source": {"base_url": base},
+            "initial_state": dict(CORPUS["initial_state"]), "normalization": [], "reset_before": False,
+            "request": {"request_sha256": req["request_sha256"]},
+            "response": {"status": first["status"], "body_kind": first["body_kind"],
+                         "body_sha256": first["body_sha256"], "headers": first["headers"]},
+            "before": [], "effects": [],
+        }
+        if sc.get("effects_identity"):
+            oracle["effects_identity"] = dict(normalized_identity(sc["effects_identity"]))
+            pets = http_observe(base, "GET", "/api/pets")
+            oracle["effects"] = [{"id": "eff:pets", "method": "GET", "path": "/api/pets",
+                                  "status": pets["status"], "body_sha256": pets["body_sha256"]}]
+        write_canonical(root / SCENARIO_ORACLES / (scenario_slug(sid) + ".json"), oracle)
     proc = subprocess.run([sys.executable, str(CAPTURE_READS), "--root", str(root), "--base-url", base],
                           text=True, capture_output=True)
     if proc.returncode != 0:
@@ -178,11 +244,13 @@ def _build(td: Path, base: str) -> Path:
     return root
 
 
-def _run(root: Path, base: str, reset: Path, scenarios: tuple[str, ...] = (), issued: str = "") -> tuple[int, str, dict]:
+def _run(root: Path, base: str, reset: Path, scenarios: tuple[str, ...] = (), issued: str = "",
+         extra: tuple[str, ...] = ()) -> tuple[int, str, dict]:
     scoped = [a for sid in scenarios for a in ("--scenario", sid)]
     bound = ["--issued", issued] if issued else []
     proc = subprocess.run([sys.executable, str(RUNNER), "--root", str(root), "--dest-url", base,
-                           "--reset-cmd", "%s %s" % (sys.executable, reset), *scoped, *bound], text=True, capture_output=True)
+                           "--reset-cmd", "%s %s" % (sys.executable, reset), *scoped, *bound, *extra],
+                          text=True, capture_output=True)
     run_doc = load_json(root / PARITY / "_run.json") if (root / PARITY / "_run.json").is_file() else {}
     return proc.returncode, proc.stdout + proc.stderr, run_doc
 
@@ -190,6 +258,12 @@ def _run(root: Path, base: str, reset: Path, scenarios: tuple[str, ...] = (), is
 def main() -> int:
     Service.owners = {}
     Service.drift = False
+    Service.root_mode = "ok"
+    Service.seen = []
+    # the credential the ONE scenario that declares an effects identity
+    # navigates as; every child process inherits it by NAME
+    os.environ[NAV_USER_ENV] = "nav-user"
+    os.environ[NAV_PASS_ENV] = "nav-secret"
     srv, base = _serve()
     try:
         with tempfile.TemporaryDirectory(prefix="run-parity-") as tmp:
@@ -211,9 +285,10 @@ def main() -> int:
             if str(reset) not in str(doc.get("reset_cmd") or ""):
                 return _fail("the reset command must be on the record: %s" % doc.get("reset_cmd"))
             sc = doc["scenarios"]
-            if [sc["declared"], sc["run"], sc["passed"], sc["failed"], sc["inconclusive"]] != [2, 2, 2, 0, 0]:
+            if [sc["declared"], sc["run"], sc["passed"], sc["failed"], sc["inconclusive"]] != [4, 4, 4, 0, 0]:
                 return _fail("scenario counts %s (%s)" % (sc, blob[-800:]))
-            if [r["id"] for r in sc["results"]] != ["sc:create-owner", "sc:create-owner-second"] or sc["results"][0]["rc"] != 0:
+            if [r["id"] for r in sc["results"]] != ["sc:create-owner", "sc:create-owner-second", "sc:read-root",
+                                                    "sc:read-root-auth"] or sc["results"][0]["rc"] != 0:
                 return _fail("the per-scenario record must name every scenario in corpus order and its child's rc: %s" % sc["results"])
             if doc.get("scenario_filter") or not (doc.get("read_oracles") or {}).get("ran"):
                 return _fail("an unfiltered run compares the read oracles and says so: %s"
@@ -229,7 +304,7 @@ def main() -> int:
                 return _fail("the receipt must be composed last and PASS here: %s" % {k: doc.get(k) for k in ("compose", "receipt_verdict", "ok")})
 
             # the records the composer reads, written by the children
-            for sid in ("sc:create-owner", "sc:create-owner-second"):
+            for sid in ("sc:create-owner", "sc:create-owner-second", "sc:read-root", "sc:read-root-auth"):
                 sp = root / SCENARIO_PARITY / (scenario_slug(sid) + ".json")
                 if not sp.is_file() or load_json(sp)["verdict"] != "PASS":
                     return _fail("the scenario parity record must exist and PASS: %s" % sp)
@@ -240,6 +315,33 @@ def main() -> int:
             receipt = load_json(root / PARITY / "receipt.json")
             if receipt["verdict"] != "PASS" or receipt["total"] != 4 or receipt["not_passed"] != 0:
                 return _fail("composed receipt %s" % {k: receipt.get(k) for k in ("verdict", "total", "not_passed")})
+
+            # --- the bounded navigation check: a SEPARATE measurement -------
+            # The comparison compared the first response and stopped there, as
+            # it must. ADR-016 also asks whether that legacy address serves the
+            # replacement UI, and only this walk can say.
+            nav = doc["navigation"]
+            if not nav.get("ran") or nav.get("max_hops") != 3:
+                return _fail("the navigation check runs by default, with its hop bound on the record: %s" % nav)
+            if [nav["checked"], nav["ok"], nav["dead"], nav["loop"], nav["too_many_hops"]] != [2, 2, 0, 0, 0]:
+                return _fail("only the scenarios whose FIRST response was a redirect are navigated: %s" % nav)
+            if [r["scenario"] for r in nav["results"]] != ["sc:read-root", "sc:read-root-auth"]:
+                return _fail("the navigation results must name their scenarios in corpus order: %s" % nav["results"])
+            rec = load_json(root / NAVIGATION / (scenario_slug("sc:read-root") + ".json"))
+            if rec.get("schema") != "rhoai3.parity-navigation/v1" or rec.get("scenario") != "sc:read-root":
+                return _fail("the navigation record schema: %s" % {k: rec.get(k) for k in ("schema", "scenario")})
+            if rec.get("start") != base + "/ui/index.html" or rec.get("terminal") != "ok" or rec.get("final_status") != 200:
+                return _fail("a 302 whose target answers 200 is ok, and the record names the address it walked: %s" % rec)
+            if [h["url"] for h in rec["hops"]] != [base + "/ui/index.html"] or rec["hops"][0]["status"] != 200:
+                return _fail("the record must show the walk, hop by hop: %s" % rec.get("hops"))
+            if rec.get("identity") != {}:
+                return _fail("a scenario that declares no effects identity navigates as nobody: %s" % rec.get("identity"))
+            auth_rec = load_json(root / NAVIGATION / (scenario_slug("sc:read-root-auth") + ".json"))
+            if auth_rec.get("identity") != dict(normalized_identity(NAV_IDENTITY)) or auth_rec.get("terminal") != "ok":
+                return _fail("a scenario that declares an effects identity navigates as that REFERENCE: %s" % auth_rec)
+            row = next(r for r in receipt["entry_points"] if r["entry_point"] == CREATE_EP)
+            if row["verdict"] != "PASS" or row.get("navigation") != "ok" or row.get("kind"):
+                return _fail("a passing navigation is recorded on the row and changes no verdict: %s" % row)
 
             # --- deterministic: the same tree, the same records ---
             rc2, blob2, doc2 = _run(root, base, reset)
@@ -254,7 +356,7 @@ def main() -> int:
             if rc5 != 0:
                 return _fail("a scoped run over a matching destination must exit 0: %s" % blob5[-1200:])
             sc5 = doc5["scenarios"]
-            if doc5.get("scenario_filter") != ["sc:create-owner-second"] or [sc5["declared"], sc5["selected"], sc5["run"]] != [2, 1, 1]:
+            if doc5.get("scenario_filter") != ["sc:create-owner-second"] or [sc5["declared"], sc5["selected"], sc5["run"]] != [4, 1, 1]:
                 return _fail("the filter must select from the corpus and say what it selected: %s | %s"
                              % (doc5.get("scenario_filter"), sc5))
             if [r["id"] for r in sc5["results"]] != ["sc:create-owner-second"]:
@@ -365,6 +467,71 @@ def main() -> int:
                 return _fail("with the seal restored and no --issued the M4 road is unchanged: rc=%s %s"
                              % (rc10, {k: doc10.get(k) for k in ("binding", "receipt_verdict")}))
 
+            # --- the redirect target that does not do its job ---------------
+            # In every one of these the FIRST response is unchanged: 302 to the
+            # same address, so every scenario comparison still PASSes. What
+            # changes is what that address does, and the comparison cannot see
+            # it -- which is the whole reason the navigation is a separate
+            # measurement.
+            Service.root_mode = "dead"
+            rcd, blobd, docd = _run(root, base, reset)
+            navd = docd["navigation"]
+            if rcd != 0:
+                return _fail("a dead redirect target is a measurement, not a runner failure: rc=%s %s" % (rcd, blobd[-800:]))
+            if [navd["checked"], navd["ok"], navd["dead"]] != [2, 0, 2]:
+                return _fail("a 302 to a 404 must be recorded dead: %s" % navd)
+            recd = load_json(root / NAVIGATION / (scenario_slug("sc:read-root") + ".json"))
+            if recd["terminal"] != "dead" or recd["final_status"] != 404:
+                return _fail("the record must say dead and the status it ended on: %s" % recd)
+            svd = load_json(root / SCENARIO_PARITY / (scenario_slug("sc:read-root") + ".json"))
+            if svd["verdict"] != "PASS":
+                return _fail("the comparison compares the FIRST response and must still PASS: %s" % svd.get("reason"))
+            rowd = next(r for r in load_json(root / PARITY / "receipt.json")["entry_points"]
+                        if r["entry_point"] == CREATE_EP)
+            if rowd["verdict"] != "FAIL" or rowd.get("kind") != "navigation":
+                return _fail("a PASSing comparison with a dead navigation is a FAIL typed navigation: %s" % rowd)
+            if "is dead on the destination (404)" not in rowd["reason"] or base + "/ui/index.html" not in rowd["reason"]:
+                return _fail("the row must name the address and what became of it: %s" % rowd["reason"])
+            if docd.get("receipt_verdict") != "FAIL":
+                return _fail("the composed receipt carries the navigation FAIL: %s" % docd.get("receipt_verdict"))
+
+            # a chain that comes back to an address it already asked
+            Service.root_mode = "loop"
+            rcl, blobl, docl = _run(root, base, reset)
+            navl = docl["navigation"]
+            if rcl != 0 or [navl["checked"], navl["loop"], navl["ok"]] != [2, 2, 0]:
+                return _fail("a two-URL chain must be recorded loop: rc=%s %s" % (rcl, navl))
+            recl = load_json(root / NAVIGATION / (scenario_slug("sc:read-root") + ".json"))
+            if recl["terminal"] != "loop" or [h["url"] for h in recl["hops"]] != [base + "/ui/index.html", base + "/ui/other.html"]:
+                return _fail("the loop record must show the walk that came back: %s" % recl)
+            rowl = next(r for r in load_json(root / PARITY / "receipt.json")["entry_points"]
+                        if r["entry_point"] == CREATE_EP)
+            if rowl["verdict"] != "FAIL" or rowl.get("kind") != "navigation" or "is loop on the destination" not in rowl["reason"]:
+                return _fail("a loop is the same refusal as a dead address: %s" % rowl)
+
+            # --- --no-navigation: nobody looked, and the record says so ------
+            Service.root_mode = "ok"
+            Service.seen = []
+            rcn, blobn, docn = _run(root, base, reset, extra=("--no-navigation",))
+            if rcn != 0 or docn.get("navigation") != "skipped":
+                return _fail("--no-navigation records navigation: skipped: rc=%s %r" % (rcn, docn.get("navigation")))
+            if [q for q, _ in Service.seen if q.startswith("/ui/")]:
+                return _fail("--no-navigation must walk nothing: %s" % [q for q, _ in Service.seen if q.startswith("/ui/")])
+
+            # --- the credential rule, both halves ---------------------------
+            # Nothing is sent unless the scenario declares an effects identity,
+            # and then it is the SAME reference the read-backs are taken with.
+            Service.seen = []
+            rcc, blobc, docc = _run(root, base, reset)
+            walked = [(q, a) for q, a in Service.seen if q.startswith("/ui/")]
+            if rcc != 0 or len(walked) != 2:
+                return _fail("both redirect targets are walked once: rc=%s %s" % (rcc, walked))
+            if sorted(a for _, a in walked) != sorted(["", NAV_BASIC]):
+                return _fail("exactly the scenario that declares an effects identity carries its credential, and the "
+                             "other carries none: %s" % [(q, bool(a)) for q, a in walked])
+            if docc["navigation"]["ok"] != 2:
+                return _fail("the credential run must still be ok: %s" % docc["navigation"])
+
             # --- a destination that really differs: FAIL is a measurement ---
             Service.drift = True
             rc3, blob3, doc3 = _run(root, base, reset)
@@ -397,7 +564,14 @@ def main() -> int:
           "same run without it refuses on the work list rebuilt on that candidate, an --issued path naming no card "
           "refuses once in the run record, and with the seal restored the unbound run is the sealed M4 road again; "
           "a composer that REFUSED leaves the last run's receipt on disk still saying PASS, and the runner reports no "
-          "verdict for it: receipt_verdict null, the record says it was not composed by this run and why, rc 1)")
+          "verdict for it: receipt_verdict null, the record says it was not composed by this run and why, rc 1; "
+          "the BOUNDED NAVIGATION runs beside the comparison and never inside it: every scenario whose first response "
+          "on the destination was a redirect is walked on the destination only, at most --nav-max-hops hops, stopping "
+          "at the first non-3xx, recorded per scenario under verification/parity/navigation -- a 302 to a 200 is ok "
+          "and the receipt row says navigation: ok, a 302 to a 404 is dead and a two-URL chain is loop, and in both "
+          "the comparison still PASSes while the row becomes FAIL typed navigation naming the address; --no-navigation "
+          "walks nothing and records navigation: skipped; and the walk carries no credential unless the scenario "
+          "declares an effects identity, when it carries exactly that reference)")
     return 0
 
 
