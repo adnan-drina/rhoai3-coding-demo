@@ -96,8 +96,8 @@ _LEGACY_RECEIPT_KEYS = {"schema", "producer", "at", "status", "reason", "evidenc
 _LEGACY_CAPTURE_KEYS = {"schema", "scenario", "entry_point", "receipt_sha256", "evidence_bundle_sha256", "corpus_sha256",
                         "source", "initial_state", "normalization", "asserted_headers_extra", "reset_before", "status",
                         "reason", "request", "response", "before", "effects"}
-_NEW_RECEIPT_KEYS = {"security_mode", "source_config", "credential_refs", "reads_note"}
-_NEW_CAPTURE_KEYS = {"security_mode", "asserted_headers_scenario"}
+_NEW_RECEIPT_KEYS = {"security_mode", "security_variant", "fixture", "source_config", "credential_refs", "reads_note"}
+_NEW_CAPTURE_KEYS = {"security_mode", "security_variant", "asserted_headers_scenario"}
 
 
 def _load_producer():
@@ -637,12 +637,191 @@ def _candidate_binding_case(root: Path, entry_point: str, dest_url: str) -> int:
     return 0
 
 
+# --------------------------------------------------------------------------
+# a fixture VARIANT of the source baseline (ADR-014)
+# --------------------------------------------------------------------------
+class AccountStatus(BaseHTTPRequestHandler):
+    """A source whose identity store the running dataset decides.
+
+    It reads the dataset it was started with and answers 401 for a request
+    whose identity that dataset DISABLES -- which is the behaviour a capture
+    taken against the declared baseline cannot show, because the baseline
+    enables it."""
+
+    expected = ""
+    dataset = ""
+    disabled_marker = ""
+
+    def do_GET(self):  # noqa: N802
+        cls = type(self)
+        disabled = cls.disabled_marker and cls.disabled_marker in cls.dataset
+        if self.headers.get("Authorization") != cls.expected or disabled:
+            body, code = b'{"error":"unauthorized"}', 401
+            self.send_response(code)
+            self.send_header("WWW-Authenticate", 'Basic realm="fixture"')
+        else:
+            body, code = b'{"owners":[]}', 200
+            self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *a):  # noqa: D102
+        return
+
+
+VARIANT = "identity-disabled"
+DATASET_KEY = "acme.sql.init.data-locations"
+DECLARED_DATASET = "src/main/resources/db/acme/populateDB.sql"
+DECLARED_SQL = "INSERT INTO accounts VALUES ('an-identity', true);\n"
+STATEMENT = "UPDATE accounts SET enabled = false WHERE name = 'an-identity'"
+
+
+def _variant_fixture(refs: list[str], invalid: str = "") -> dict:
+    sec = _decided_security(refs, invalid)
+    sec["fixtures"] = [{"name": VARIANT, "intent": "refuse", "scenarios": "auth-allowed",
+                        "dataset_config_key": DATASET_KEY, "statements": [STATEMENT]}]
+    return sec
+
+
+def _variant_capture_case() -> int:
+    """The variant capture starts the source against a VARIED dataset, and
+    records exactly what it varied.
+
+    The architect's exit asks what the source answers for an identity the
+    seed enables once it is disabled. The declared dataset cannot show it and
+    must not be edited, so the capture builds the variant -- the declared
+    dataset, then the fixture's statements -- points the source's own dataset
+    configuration KEY at it, and writes the captures under the variant's own
+    directory. The controls: the source is started with that key (and the
+    statements really reach it, so the stub answers 401), the variant dataset
+    is the declared bytes followed by the declared statements, its digest and
+    the statements are on the receipt, every capture says which variant it is
+    of, and the baseline's own directory is untouched."""
+    import base64
+    import os
+    from unittest.mock import patch
+    from planner.canonical import load_json as _load, sha256_file
+    from planner.paths import producer_receipt as _producer_receipt
+    from _scenarios import corpus_path, scenario_oracles_dir, scenario_slug, variant_dataset_path
+
+    producer = _load_producer()
+    secret, user, ref = "an0ther-s3cret", "an-identity", "TEST_VARIANT_CREDENTIAL"
+    token = base64.b64encode(("%s:%s" % (user, secret)).encode("utf-8")).decode("ascii")
+    handler = type("A", (AccountStatus,), {"expected": "Basic %s" % token, "dataset": "", "disabled_marker": "enabled = false"})
+    srv = HTTPServer(("127.0.0.1", 0), handler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    base_url = "http://127.0.0.1:%d" % srv.server_address[1]
+    kept = os.environ.get(ref)
+    os.environ[ref] = "%s:%s" % (user, secret)
+    try:
+        with tempfile.TemporaryDirectory(prefix="variant-capture-") as tmp:
+            t = Path(tmp).resolve()
+            probe = {"id": "sc:auth-allowed-read-owners", "method": "GET", "path": "/api/owners", "body_absent": True,
+                     "reset_before": False, "effects": [], "normalization": [],
+                     "identity": {"kind": "basic", "credential_ref": ref}}
+            root, ep = _mode_root(t, "variant", probe, "enabled", security=_variant_fixture([ref]))
+            # the frozen source carries the DECLARED dataset the statements
+            # are applied after, and the variant corpus names it by digest
+            copy = Path(_load(_producer_receipt(root, "freeze"))["analysis_copy"])
+            declared = copy / DECLARED_DATASET
+            declared.parent.mkdir(parents=True, exist_ok=True)
+            declared.write_text(DECLARED_SQL, encoding="utf-8")
+            varied = dict(probe, id="sc:fixture-%s-auth-allowed-read-owners" % VARIANT, entry_point=ep,
+                          security_mode="enabled", security_variant=VARIANT)
+            write_canonical(root / corpus_path("enabled", VARIANT), {
+                "schema": "rhoai3.scenario-corpus/v1", "approved_by": "operator:test",
+                "security_mode": "enabled", "security_variant": VARIANT,
+                "initial_state": {"reset": "restart the service", "dataset": "seeded"},
+                "fixture": {"name": VARIANT, "intent": "refuse", "scenarios": "auth-allowed",
+                            "dataset_config_key": DATASET_KEY, "statements": [STATEMENT],
+                            "dataset": {"path": DECLARED_DATASET, "sha256": sha256_file(declared)}},
+                "scenarios": [varied]})
+
+            fake = _fake_runtime(base_url)
+
+            class DatasetAware(fake):  # the stub reads what it was started with
+                def start(self):
+                    location = self.source_config.get(DATASET_KEY, "")
+                    p = location[len("file:"):] if location.startswith("file:") else location
+                    handler.dataset = Path(p).read_text(encoding="utf-8") if p and Path(p).is_file() else ""
+                    return super().start()
+
+            with patch.object(producer, "SourceRuntime", DatasetAware):
+                rc = producer.main(["--root", str(root), "--security-mode", "enabled",
+                                    "--fixture-variant", VARIANT, "--credential-ref", ref])
+            if rc != 0:
+                return _fail("a declared variant captures: rc=%s" % rc)
+            started = DatasetAware.instances[0].source_config if DatasetAware.instances else {}
+            dataset_p = root / variant_dataset_path("enabled", VARIANT)
+            if started.get(DATASET_KEY) != "file:%s" % dataset_p:
+                return _fail("the source is started with its own dataset key pointed at the variant dataset: %s" % started)
+            if started.get(SWITCH_KEY) != SWITCH_ON:
+                return _fail("the variant is still the enabled mode, started with the decided switch: %s" % started)
+            body = dataset_p.read_text(encoding="utf-8")
+            if not body.startswith(DECLARED_SQL) or STATEMENT not in body or body.index(STATEMENT) < body.index(DECLARED_SQL):
+                return _fail("the variant dataset is the DECLARED dataset and then the statements: %r" % body)
+            out = root / scenario_oracles_dir("enabled", VARIANT) / (scenario_slug(varied["id"]) + ".json")
+            if not out.is_file():
+                return _fail("the variant writes into its own directory: %s" % scenario_oracles_dir("enabled", VARIANT))
+            if (root / scenario_oracles_dir("enabled")).exists():
+                return _fail("a variant capture writes nothing into the baseline's directory")
+            cap = _load(out)
+            if cap["status"] != "CAPTURED" or cap["response"]["status"] != 401:
+                return _fail("the source answers the disabled identity 401, and that IS the capture: %s %s"
+                             % (cap["status"], cap.get("response")))
+            if cap.get("security_variant") != VARIANT or cap.get("security_mode") != "enabled":
+                return _fail("every capture says which state it is of: %s" % {k: cap.get(k) for k in ("security_mode", "security_variant")})
+            receipt = _load(root / scenario_oracles_dir("enabled", VARIANT) / "_capture.json")
+            fx = receipt.get("fixture") or {}
+            if (receipt.get("security_variant") != VARIANT or fx.get("statements") != [STATEMENT]
+                    or fx.get("dataset_config_key") != DATASET_KEY
+                    or fx.get("dataset", {}).get("sha256") != sha256_file(dataset_p)
+                    or fx.get("declared_dataset", {}).get("path") != DECLARED_DATASET):
+                return _fail("the receipt records the variant, its statements verbatim and the dataset it started the source with: %s" % receipt)
+            written = _all_bytes(root / "verification")
+            for forbidden, what in ((secret, "the password"), (token, "the Authorization value")):
+                if forbidden.encode("utf-8") in written:
+                    return _fail("%s reached the evidence of a variant capture" % what)
+
+            # the declared dataset the corpus names must be the one on disk
+            declared.write_text(DECLARED_SQL + "INSERT INTO accounts VALUES ('another', true);\n", encoding="utf-8")
+            import contextlib
+            import io
+            errors = io.StringIO()
+            with patch.object(producer, "SourceRuntime", DatasetAware):
+                with contextlib.redirect_stderr(errors):
+                    rc = producer.main(["--root", str(root), "--security-mode", "enabled",
+                                        "--fixture-variant", VARIANT, "--credential-ref", ref])
+            if rc != 1 or "was derived against" not in errors.getvalue():
+                return _fail("a declared dataset that moved under the corpus refuses: rc=%s %s" % (rc, errors.getvalue()[-300:]))
+
+            # ... and a variant nobody declared captures nothing and says so
+            root2, _ = _mode_root(t, "undeclared", probe, "enabled", security=_decided_security([ref]))
+            with patch.object(producer, "SourceRuntime", side_effect=AssertionError("the source must not start")):
+                rc = producer.main(["--root", str(root2), "--security-mode", "enabled",
+                                    "--fixture-variant", VARIANT, "--credential-ref", ref])
+            idle = _load(root2 / scenario_oracles_dir("enabled", VARIANT) / "_capture.json")
+            if rc != 0 or idle.get("status") != "idle" or "no security fixture named" not in str(idle.get("reason")):
+                return _fail("an undeclared variant records the blocker and captures nothing: rc=%s %s" % (rc, idle))
+    finally:
+        srv.shutdown()
+        if kept is None:
+            os.environ.pop(ref, None)
+        else:
+            os.environ[ref] = kept
+    return 0
+
+
 def main() -> int:
     if _challenge_header_case():
         return 1
     if _security_mode_capture_case():
         return 1
     if _effects_identity_capture_case():
+        return 1
+    if _variant_capture_case():
         return 1
     with tempfile.TemporaryDirectory(prefix="oracle-") as tmp:
         t = Path(tmp).resolve()

@@ -1446,7 +1446,7 @@ class Names:
                  field: str, example: str, create: str, delete: str, other: str, read: str, read_route: str,
                  roles: tuple[str, str, str], role_fields: tuple[str, str, str], user_table: str, role_table: str,
                  user_col: str, role_col: str, who_all: str, who_one: str, cred_all: str, cred_one: str, cred_bad: str,
-                 get_one: str, get_gap: str, gap_var: str) -> None:
+                 get_one: str, get_gap: str, gap_var: str, unguarded: str) -> None:
         self.pkg, self.controller, self.read_type, self.roles_type = pkg, controller, read_type, roles_type
         self.resource, self.var, self.field, self.example = resource, var, field, example
         self.create, self.delete, self.other, self.read, self.read_route = create, delete, other, read, read_route
@@ -1458,6 +1458,9 @@ class Names:
         # captured outside it), and a second one whose path variable nothing
         # resolves -- the first must be probed, the second must stay a gap
         self.get_one, self.get_gap, self.gap_var = get_one, get_gap, gap_var
+        # a GET NO annotation guards: unprobed until the Operator declares
+        # what the source's enabled configuration requires of every request
+        self.unguarded = unguarded
 
     @property
     def ctrl_fqn(self) -> str:
@@ -1486,7 +1489,7 @@ class Names:
                 self.delete, self.other, self.read, self.read_route, self.user_table, self.role_table, self.user_col,
                 self.role_col, self.who_all, self.who_one, self.cred_all, self.cred_one, self.cred_bad,
                 self.read_route.strip("/"), self.user_entity, self.role_entity, self.get_one, self.get_gap,
-                self.gap_var, *self.roles, *self.role_fields]
+                self.gap_var, self.unguarded, *self.roles, *self.role_fields]
 
 
 PLAIN = Names(pkg="a.rest", controller="OwnerRestController", read_type="RootRestController", roles_type="Roles",
@@ -1496,7 +1499,7 @@ PLAIN = Names(pkg="a.rest", controller="OwnerRestController", read_type="RootRes
               role_fields=("OWNER_ADMIN", "VET_ADMIN", "ADMIN"),
               user_table="users", role_table="roles", user_col="username", role_col="role",
               who_all="admin", who_one="helper", cred_all="PARITY_ADMIN", cred_one="PARITY_HELPER", cred_bad="PARITY_WRONG",
-              get_one="getOwner", get_gap="getOwnerVisits", gap_var="visitId")
+              get_one="getOwner", get_gap="getOwnerVisits", gap_var="visitId", unguarded="listOwners")
 
 RENAMED = Names(pkg="z.legacy.web", controller="CustodianEndpoint", read_type="LandingEndpoint", roles_type="Grants",
                 resource="widgets", var="widgetId", field="label", example="Zeta", create="registerWidget",
@@ -1505,7 +1508,7 @@ RENAMED = Names(pkg="z.legacy.web", controller="CustodianEndpoint", read_type="L
                 role_fields=("KEEPER", "WATCHER", "BOSS"),
                 user_table="principals", role_table="grants", user_col="login", role_col="grant_name",
                 who_all="keeper", who_one="reader", cred_all="FIXTURE_KEEPER", cred_one="FIXTURE_READER", cred_bad="FIXTURE_BAD",
-                get_one="fetchWidget", get_gap="fetchWidgetSlots", gap_var="slotId")
+                get_one="fetchWidget", get_gap="fetchWidgetSlots", gap_var="slotId", unguarded="allWidgets")
 
 _PRE_AUTHORIZE = "org.springframework.security.access.prepost.PreAuthorize"
 
@@ -1570,6 +1573,18 @@ def _security_yaml(sec: dict[str, Any]) -> str:
             lines += ["        - %s" % json.dumps(r) for r in row["roles"]]
     if sec.get("invalid_credential_ref") is not None:
         lines.append("  invalid_credential_ref: %s" % json.dumps(str(sec["invalid_credential_ref"])))
+    if sec.get("request_policy"):
+        lines.append("  request_policy: %s" % json.dumps(str(sec["request_policy"])))
+    if sec.get("fixtures"):
+        lines.append("  fixtures:")
+    for fx in (sec.get("fixtures") or []):
+        lines.append("    - name: %s" % json.dumps(fx["name"]))
+        lines.append("      scenarios: %s" % json.dumps(fx["scenarios"]))
+        lines.append("      dataset_config_key: %s" % json.dumps(fx["dataset_config_key"]))
+        if fx.get("intent"):
+            lines.append("      intent: %s" % json.dumps(fx["intent"]))
+        lines.append("      statements:")
+        lines += ["        - %s" % json.dumps(s) for s in fx["statements"]]
     return "\n".join(lines) + "\n"
 
 
@@ -1667,6 +1682,10 @@ def _authz_root(td: Path, name: str, n: Names, *, holdings: dict[str, list[str]]
         # (the seed resolved its path variable) and not for the second
         {"name": n.get_one, "signature": "%s(int)" % n.get_one, "annotations": [dict(read_pol)]},
         {"name": n.get_gap, "signature": "%s(int)" % n.get_gap, "annotations": [dict(read_pol)]},
+        # the UNANNOTATED read: no policy names it, so the annotations alone
+        # say nothing about it -- which is the whole question
+        # security.request_policy answers
+        {"name": n.unguarded, "signature": "%s()" % n.unguarded, "annotations": []},
     ]
     if unsupported:
         methods.append({"name": n.other, "signature": "%s()" % n.other,
@@ -1701,6 +1720,10 @@ def _authz_root(td: Path, name: str, n: Names, *, holdings: dict[str, list[str]]
          "member": methods[2]["signature"], "http_method": "GET", "http_path": "%s/{%s}" % (n.route, n.var)},
         {"id": "ep:%s#%s:http" % (n.ctrl_fqn, methods[3]["signature"]), "kind": "http", "type": n.ctrl_fqn,
          "member": methods[3]["signature"], "http_method": "GET", "http_path": "%s/{%s}" % (n.route, n.gap_var)},
+        # the unannotated route the pilot specimen's root redirect is: no
+        # policy names it, and its concrete URL is the root path itself
+        {"id": "ep:%s#%s:http" % (n.ctrl_fqn, methods[4]["signature"]), "kind": "http", "type": n.ctrl_fqn,
+         "member": methods[4]["signature"], "http_method": "GET", "http_path": "/"},
     ]})
     if decisions or security is not None:
         _write_decisions(root, security if security is not None else _authz_security(n))
@@ -1735,12 +1758,13 @@ def _rename_map(other: Names, plain: Names) -> list[tuple[str, str]]:
     return sorted(dict.fromkeys(pairs), key=lambda kv: -len(kv[0]))
 
 
-def _enabled_decisions(root: Path, rename: list[tuple[str, str]] | None = None) -> dict[str, Any]:
+def _enabled_decisions(root: Path, rename: list[tuple[str, str]] | None = None,
+                       corpus_p: Path = ENABLED_CORPUS_P) -> dict[str, Any]:
     """What the enabled derivation DECIDED: the scenarios it derived and the
     gaps it recorded, with ``rename`` applied, policy ids read as the
     expressions they digest and digests erased (two specimens spell the same
     body differently, and its digest is not a decision)."""
-    corpus = load_json(root / ENABLED_CORPUS_P)
+    corpus = load_json(root / corpus_p)
 
     def sub(text: str) -> str:
         for a, b in (rename or []):
@@ -2277,6 +2301,223 @@ def _enabled_decided_case() -> int:
     return 0
 
 
+# ---------------------------------------------------------------------------
+# what the source's enabled configuration requires of a request no annotation
+# names (ADR-014), and a separately recorded variant of the source baseline
+# ---------------------------------------------------------------------------
+VARIANT = "identity-disabled"
+VARIANT_CORPUS_P = Path("verification") / ("scenarios-enabled-%s" % VARIANT) / "corpus.json"
+VARIANT_RECEIPT_P = Path("verification") / ("scenarios-enabled-%s" % VARIANT) / "_derive.json"
+
+
+def _fixture_decl(n: Names) -> dict[str, Any]:
+    """The Operator's declaration of one variant of the source baseline: its
+    name, the statements it applies after the declared dataset, the class of
+    scenario it is recorded for, and the KEY the source reads its dataset
+    location from. Every value is the SPECIMEN's -- the statements name its
+    own table and column, the key its own framework's property."""
+    return {"name": VARIANT, "intent": "refuse", "scenarios": "auth-allowed",
+            "dataset_config_key": "%s.sql.init.data-locations" % n.pkg,
+            "statements": ["UPDATE %s SET enabled = false WHERE %s = '%s'" % (n.user_table, n.user_col, n.who_all)]}
+
+
+def _enabled_request_policy_case() -> int:
+    """An unannotated route is guarded too, when the source says every
+    request must be authenticated.
+
+    ADR-014's enabled mode asks what the source does with each of its
+    requests, and the annotations answer for only some of them: the pilot
+    specimen configures ``anyRequest().authenticated()``, so its root redirect
+    -- which carries no @PreAuthorize at all -- is still refused without an
+    identity, and a derivation that walks only the annotations leaves it
+    unprobed. Unprobed reads at M4 as "nothing to prove". So the Operator
+    declares what the configuration requires, in the one file an ADR backs,
+    and the derivation probes every entry point it has a request for: an
+    identity the policy accepts, nobody, and the credential declared invalid.
+    There is no fourth probe -- no identity authenticates and still fails a
+    policy whose whole requirement is authentication -- and an entry point an
+    explicit policy already guards keeps that policy, because a role is more
+    than a login."""
+    with tempfile.TemporaryDirectory(prefix="derive-reqpolicy-") as td:
+        n = PLAIN
+        declared = _authz_security(n)
+        declared["request_policy"] = "authenticated"
+        root = _authz_root(Path(td), "declared", n, security=declared)
+        if _derive(root).returncode != 0:
+            return _fail("the disabled corpus derives first")
+        p = _derive(root, "--security-mode", "enabled")
+        if p.returncode != 0:
+            return _fail("the enabled corpus derives with a declared request policy: rc=%s %s%s" % (p.returncode, p.stdout, p.stderr))
+        corpus = load_json(root / ENABLED_CORPUS_P)
+        sc = {str(s["id"]): s for s in corpus["scenarios"]}
+        # the root path names no segment, so the derived read is sc:read-root
+        # -- the id the pilot specimen's own root redirect takes
+        slug = "read-root"
+        want = ["sc:auth-%s-%s" % (kind, slug) for kind in ("allowed", "anonymous", "invalid")]
+        missing = [i for i in want if i not in sc]
+        if missing:
+            return _fail("the unannotated GET gets the allowed, anonymous and invalid probes: %s missing from %s"
+                         % (missing, sorted(sc)))
+        if "sc:auth-norole-%s" % slug in sc:
+            return _fail("authentication is the whole policy, so there is no identity that authenticates and fails it")
+        implicit = sc[want[0]]["authorization_policy"]
+        if any(sc[i]["authorization_policy"] != implicit for i in want):
+            return _fail("the three probes are of one policy: %s" % [sc[i]["authorization_policy"] for i in want])
+        # the request is the read this producer derived, and it says so
+        if (sc[want[0]]["method"], sc[want[0]]["path"], sc[want[0]]["base_source"], sc[want[0]]["base_route"]) != (
+                "GET", "/", "derived-read", "/"):
+            return _fail("the probe is the entry point's own GET of its own route: %s" % sc[want[0]])
+        if sc[want[0]]["identity"] != {"kind": "basic", "credential_ref": n.cred_one}:
+            return _fail("any declared identity satisfies it, and the least privileged proves it: %s" % sc[want[0]]["identity"])
+        if sc[want[1]]["identity"] != {"kind": "none"} or sc[want[2]]["identity"] != {"kind": "basic", "credential_ref": n.cred_bad}:
+            return _fail("anonymous carries nothing and invalid carries the reference declared invalid: %s %s"
+                         % (sc[want[1]]["identity"], sc[want[2]]["identity"]))
+        if sc[want[1]]["qualify"] != {"intent": "negative", "expect_status_class": "4xx"}:
+            return _fail("a refused read expects a 4xx: %s" % sc[want[1]]["qualify"])
+        # every scenario says the DECLARATION it came from, not an annotation
+        for i in want:
+            ev = sc[i]["derived_from"]["evidence"]
+            if not any("decisions.security.request_policy authenticated → every request" in e for e in ev):
+                return _fail("the evidence names the decision and what it covers: %s" % ev)
+            if any("@PreAuthorize" in e for e in ev):
+                return _fail("a policy nobody annotated must not be reported as an annotation: %s" % ev)
+        if corpus.get("request_policy") != "authenticated":
+            return _fail("the corpus records what the source's configuration requires: %s" % corpus.get("request_policy"))
+        row = [r for r in corpus["authorization_policies"] if r["id"] == implicit]
+        if not row or row[0]["declared_by"] != "decisions.security.request_policy" or row[0]["roles"] != []:
+            return _fail("the implicit policy names the decision that declared it and accepts no role: %s" % row)
+        # the annotated entry points keep the policies they had -- and their
+        # fourth probe with them
+        if not any(str(s["id"]).startswith("sc:auth-norole-") for s in corpus["scenarios"]):
+            return _fail("an entry point an explicit policy guards keeps that policy and its no-role probe")
+        for s in corpus["scenarios"]:
+            if s["authorization_policy"] == implicit and s["entry_point"] in {
+                    e for r in corpus["authorization_policies"] if r["id"] != implicit for e in r["entry_points"]}:
+                return _fail("an entry point an explicit policy guards is not also probed by the request policy: %s" % s["id"])
+
+        # ... and with nothing declared, the same tree derives none of them
+        plain_root = _authz_root(Path(td), "undeclared", n, security=_authz_security(n))
+        _derive(plain_root)
+        if _derive(plain_root, "--security-mode", "enabled").returncode != 0:
+            return _fail("the control tree derives")
+        plain = load_json(plain_root / ENABLED_CORPUS_P)
+        if any(str(s["id"]).endswith(slug) for s in plain["scenarios"]):
+            return _fail("without the declared request policy the unannotated GET is not probed: %s"
+                         % [s["id"] for s in plain["scenarios"]])
+        if plain.get("request_policy") or "request_policy" not in str(plain and load_json(plain_root / ENABLED_RECEIPT_P).get("request_policy_note")):
+            return _fail("a tree that declares none says so rather than staying silent: %s"
+                         % load_json(plain_root / ENABLED_RECEIPT_P).get("request_policy_note"))
+
+        # ... and the same specimen under other names decides the same things
+        other = RENAMED
+        other_declared = _authz_security(other)
+        other_declared["request_policy"] = "authenticated"
+        other_root = _authz_root(Path(td), "renamed", other, security=other_declared)
+        _derive(other_root)
+        if _derive(other_root, "--security-mode", "enabled").returncode != 0:
+            return _fail("the renamed specimen derives")
+        if _enabled_decisions(other_root, _rename_map(other, n)) != _enabled_decisions(root):
+            a, b = _enabled_decisions(other_root, _rename_map(other, n)), _enabled_decisions(root)
+            first = [(x, y) for x, y in zip(json.dumps(a, indent=1).splitlines(), json.dumps(b, indent=1).splitlines()) if x != y][:4]
+            return _fail("the request policy decides the same things under another naming: %s" % first)
+    return 0
+
+
+def _enabled_variant_case() -> int:
+    """A separately recorded variant of the source baseline.
+
+    The seed ENABLES its identities, so no capture taken against the declared
+    dataset can show what the source answers once one of them is disabled --
+    and editing the dataset every other capture is taken against is not the
+    answer. ADR-014's answer is a variant: the declared dataset plus the
+    Operator's own statements, derived into its own corpus over the same
+    requests, so the only difference between a baseline scenario and its
+    variant is the database state. What it expects is what the Operator
+    declared -- a refusal here -- and the statements travel verbatim, because
+    a run nobody can re-apply them from is not reproducible."""
+    with tempfile.TemporaryDirectory(prefix="derive-variant-") as td:
+        n = PLAIN
+        declared = _authz_security(n)
+        declared["fixtures"] = [_fixture_decl(n)]
+        root = _authz_root(Path(td), "declared", n, security=declared)
+        _derive(root)
+        if _derive(root, "--security-mode", "enabled").returncode != 0:
+            return _fail("the enabled corpus is what a variant of it varies")
+        base = load_json(root / ENABLED_CORPUS_P)
+        p = _derive(root, "--security-mode", "enabled", "--fixture-variant", VARIANT)
+        if p.returncode != 0 or "fixture variant %s" % VARIANT not in p.stdout:
+            return _fail("the variant derives: rc=%s %s%s" % (p.returncode, p.stdout, p.stderr))
+        corpus = load_json(root / VARIANT_CORPUS_P)
+        allowed = sorted(str(s["id"]) for s in base["scenarios"] if s["derived_from"]["kind"] == "auth-allowed")
+        want = sorted("sc:fixture-%s-%s" % (VARIANT, sid.split(":", 1)[-1]) for sid in allowed)
+        if sorted(str(s["id"]) for s in corpus["scenarios"]) != want or not want:
+            return _fail("one variant scenario per scenario of the declared class: %s vs %s"
+                         % (sorted(str(s["id"]) for s in corpus["scenarios"]), want))
+        by_id = {str(s["id"]): s for s in base["scenarios"]}
+        for s in corpus["scenarios"]:
+            src = by_id[s["base_scenario"]]
+            if (s["method"], s["path"], s["headers"], s["identity"], s.get("body_file"), s.get("body_absent")) != (
+                    src["method"], src["path"], src["headers"], src["identity"], src.get("body_file"), src.get("body_absent")):
+                return _fail("the request is the base scenario's, to the byte: %s" % s["id"])
+            if s["qualify"] != {"intent": "negative", "expect_status_class": "4xx"}:
+                return _fail("a variant the Operator declares a refusal for expects a 4xx: %s %s" % (s["id"], s["qualify"]))
+            if s["asserted_headers"] != ["WWW-Authenticate"] or s["effects"] != []:
+                return _fail("a refusal asserts the challenge and carries no read-back the baseline's contract owned: %s" % s)
+            if s["security_variant"] != VARIANT or s["security_mode"] != "enabled":
+                return _fail("every scenario says which state it is of: %s" % s)
+            ev = s["derived_from"]["evidence"]
+            if not any(e == "fixture:%s statement: %s" % (VARIANT, _fixture_decl(n)["statements"][0]) for e in ev):
+                return _fail("the statements are recorded verbatim: %s" % ev)
+            if not any("dataset_config_key" in str(corpus["fixture"]) and _fixture_decl(n)["dataset_config_key"] in e for e in ev):
+                return _fail("the scenario names the key the dataset location is passed through: %s" % ev)
+        fixture = corpus["fixture"]
+        if (fixture["statements"] != _fixture_decl(n)["statements"] or fixture["intent"] != "refuse"
+                or fixture["dataset_config_key"] != _fixture_decl(n)["dataset_config_key"]
+                or not fixture["dataset"]["path"].endswith("populateDB.sql") or len(fixture["dataset"]["sha256"]) != 64):
+            return _fail("the corpus states the fixture it is of and the declared dataset it is applied after: %s" % fixture)
+        if corpus["security_variant"] != VARIANT or corpus["security_mode"] != "enabled":
+            return _fail("the corpus says which state it is of: %s" % {k: corpus.get(k) for k in ("security_mode", "security_variant")})
+        try:
+            loaded = load_corpus(root, "enabled", VARIANT)
+        except CorpusError as exc:
+            return _fail("the loader accepts the variant corpus it derived: %s" % exc)
+        if len(loaded["scenarios"]) != len(want):
+            return _fail("the loader reads every variant scenario")
+        try:
+            load_corpus(root, "enabled")
+            probe = load_json(root / ENABLED_CORPUS_P)
+        except CorpusError as exc:
+            return _fail("the baseline corpus still loads as itself: %s" % exc)
+        if probe["scenarios"] == corpus["scenarios"]:
+            return _fail("the variant is a separate artifact")
+        # a variant nobody declared is never derived
+        bad = _derive(root, "--security-mode", "enabled", "--fixture-variant", "no-such-fixture")
+        if bad.returncode == 0 or "no security fixture named" not in bad.stderr:
+            return _fail("an undeclared variant refuses and names what IS declared: rc=%s %s" % (bad.returncode, bad.stderr))
+        # ... and a variant of the mode whose paths carry no suffix is refused
+        # before it can write over the baseline's own directory
+        clash = _derive(root, "--fixture-variant", VARIANT)
+        if clash.returncode != 2 or "variant of a named mode" not in clash.stderr:
+            return _fail("a variant of the default mode is a usage error: rc=%s %s" % (clash.returncode, clash.stderr))
+
+        # ... and the same specimen under other names decides the same things
+        other = RENAMED
+        other_declared = _authz_security(other)
+        other_declared["fixtures"] = [_fixture_decl(other)]
+        other_root = _authz_root(Path(td), "renamed", other, security=other_declared)
+        _derive(other_root)
+        _derive(other_root, "--security-mode", "enabled")
+        if _derive(other_root, "--security-mode", "enabled", "--fixture-variant", VARIANT).returncode != 0:
+            return _fail("the renamed specimen derives its variant")
+        rename = _rename_map(other, n)
+        if _enabled_decisions(other_root, rename, VARIANT_CORPUS_P) != _enabled_decisions(root, None, VARIANT_CORPUS_P):
+            a = _enabled_decisions(other_root, rename, VARIANT_CORPUS_P)
+            b = _enabled_decisions(root, None, VARIANT_CORPUS_P)
+            first = [(x, y) for x, y in zip(json.dumps(a, indent=1).splitlines(), json.dumps(b, indent=1).splitlines()) if x != y][:4]
+            return _fail("the variant decides the same things under another naming: %s" % first)
+    return 0
+
+
 def main() -> int:
     rc, root, td = _derivation_case()
     try:
@@ -2287,6 +2528,7 @@ def main() -> int:
                 or _path_variable_case() or _foreign_key_delete_case() or _authorization_policy_case()
                 or _authorization_grammar_case() or _enabled_mode_case() or _enabled_constants_case()
                 or _enabled_rename_case() or _enabled_decided_case()
+                or _enabled_request_policy_case() or _enabled_variant_case()
                 or _enabled_identity_case() or _enabled_regression_case()
                 or _application_removal_case() or _qualification_case(root)
                 or _effects_identity_qualification_case() or _receipt_case()):

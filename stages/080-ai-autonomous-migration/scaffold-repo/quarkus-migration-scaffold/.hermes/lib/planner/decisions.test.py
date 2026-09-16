@@ -87,7 +87,8 @@ def _well_formed_case() -> int:
                "switch": {"key": "acme.security.enable", "disabled_value": "off", "enabled_value": "on"},
                "identities": [{"name": "an-identity", "credential_ref": "ACME_IDENTITY_CREDENTIAL",
                                "roles": ["ROLE_ONE", "ROLE_TWO"]}],
-               "invalid_credential_ref": "ACME_INVALID_CREDENTIAL"}:
+               "invalid_credential_ref": "ACME_INVALID_CREDENTIAL",
+               "request_policy": "", "fixtures": []}:
         return _fail("the decided section is read as it was written: %s" % got)
     # the ADR is the backing, not decoration
     doc = _doc(_section(adr="ADR-404"))
@@ -212,6 +213,14 @@ _SCAFFOLD_SECURITY_YAML = (
     '        - ROLE_VET_ADMIN\n'
     '        - ROLE_ADMIN\n'
     '  invalid_credential_ref: PETCLINIC_INVALID_CREDENTIAL\n'
+    '  request_policy: authenticated\n'
+    '  fixtures:\n'
+    '    - name: identity-disabled\n'
+    '      intent: refuse\n'
+    '      scenarios: auth-allowed\n'
+    '      dataset_config_key: spring.sql.init.data-locations\n'
+    '      statements:\n'
+    "        - UPDATE users SET enabled = false WHERE username = 'admin'\n"
 )
 
 
@@ -238,19 +247,106 @@ def _scaffold_shape_case() -> int:
             or decided["invalid_credential_ref"] != "PETCLINIC_INVALID_CREDENTIAL"):
         return _fail("both credentials are referenced by NAME: %s / %s"
                       % (decided["identities"][0]["credential_ref"], decided["invalid_credential_ref"]))
+    # ... and what ADR-014's exits added: the request policy the source's
+    # enabled configuration applies to every request, and the one variant of
+    # the baseline the seed cannot reach
+    if decided["request_policy"] != "authenticated":
+        return _fail("the scaffold declares what its enabled configuration requires of every request: %s" % decided["request_policy"])
+    if len(decided["fixtures"]) != 1 or decided["fixtures"][0]["name"] != "identity-disabled":
+        return _fail("the scaffold declares one variant of the source baseline: %s" % decided["fixtures"])
+    fx = decided["fixtures"][0]
+    if (fx["intent"] != "refuse" or fx["scenarios"] != "auth-allowed"
+            or fx["dataset_config_key"] != "spring.sql.init.data-locations" or len(fx["statements"]) != 1):
+        return _fail("the variant states its intent, the class it varies, the dataset key and its statements: %s" % fx)
+    # the statements travel verbatim: they are what the variant IS, and a run
+    # nobody can re-apply them from is not reproducible
+    if fx["statements"] != ["UPDATE users SET enabled = false WHERE username = 'admin'"]:
+        return _fail("the declared statements are read back exactly as written: %s" % fx["statements"])
+    return 0
+
+
+def _request_policy_case() -> int:
+    """What the source's ENABLED configuration requires of a request no
+    annotation names.
+
+    A source configured with ``anyRequest().authenticated()`` guards the
+    routes that carry no ``@PreAuthorize`` as surely as the annotated ones,
+    and only the Operator can read that off the source's own configuration --
+    so it is declared here, and a value nothing implements is refused rather
+    than recorded, because the producers would silently probe nothing for it.
+    Absent is not a gap: a specimen whose configuration requires nothing of an
+    unannotated route has none."""
+    doc = _doc(_section(request_policy="authenticated"))
+    if security_gaps(doc) or security(doc)["request_policy"] != "authenticated":
+        return _fail("a declared request policy holds and is read back: %s %s" % (security_gaps(doc), security(doc)))
+    if security(_doc(_section()))["request_policy"] != "":
+        return _fail("an absent request policy is empty, not invented")
+    doc = _doc(_section(request_policy="whatever-the-source-does"))
+    if _classes(security_gaps(doc)) != [("MISSING_DECISION", "security.request_policy")] or security(doc):
+        return _fail("a request policy nothing implements is refused, not recorded: %s" % security_gaps(doc))
+    return 0
+
+
+def _fixtures_case() -> int:
+    """A separately recorded variant of the source baseline.
+
+    Its name becomes a directory, its statements are the SPECIMEN's own SQL
+    (this loader parses none of it -- only that there is at least one, and
+    that each is a non-empty string), the scenario class names a class the
+    producers derive, and dataset_config_key is the configuration property the
+    source reads its dataset location from. An intent nobody declared means
+    the variant expects whatever the source answers, which is the honest
+    default; an intent nothing implements is refused."""
+    fixture = {"name": "identity-disabled", "intent": "refuse", "scenarios": "auth-allowed",
+               "dataset_config_key": "acme.sql.init.data-locations",
+               "statements": ["UPDATE accounts SET enabled = false WHERE name = 'an-identity'"]}
+    doc = _doc(_section(fixtures=[fixture]))
+    if security_gaps(doc):
+        return _fail("a well-formed fixture holds: %s" % security_gaps(doc))
+    got = security(doc)["fixtures"]
+    if got != [fixture]:
+        return _fail("the fixture is read back as it was declared, statements and all: %s" % got)
+    if security(_doc(_section()))["fixtures"] != []:
+        return _fail("no fixture is not an empty one nobody declared")
+    # every field is checked as what it IS
+    for over, subject in (
+            ({"name": "Identity Disabled"}, "security.fixtures[0].name"),
+            ({"name": ""}, "security.fixtures[0].name"),
+            ({"statements": []}, "security.fixtures[0].statements"),
+            ({"statements": ["  "]}, "security.fixtures[0].statements"),
+            ({"scenarios": "whatever"}, "security.fixtures[0].scenarios"),
+            ({"scenarios": ""}, "security.fixtures[0].scenarios"),
+            ({"dataset_config_key": ""}, "security.fixtures[0].dataset_config_key"),
+            ({"dataset_config_key": "a key with spaces"}, "security.fixtures[0].dataset_config_key"),
+            ({"intent": "accept"}, "security.fixtures[0].intent")):
+        doc = _doc(_section(fixtures=[dict(fixture, **over)]))
+        if ("MISSING_DECISION", subject) not in _classes(security_gaps(doc)):
+            return _fail("%s must be checked as what it is: %s → %s" % (subject, over, security_gaps(doc)))
+        if security(doc):
+            return _fail("a refused fixture is not a decision: %s" % over)
+    doc = _doc(_section(fixtures=[fixture, dict(fixture, statements=["DELETE FROM accounts"])]))
+    if ("MISSING_DECISION", "security.fixtures[1].name") not in _classes(security_gaps(doc)):
+        return _fail("one variant declared twice is a gap: %s" % security_gaps(doc))
+    # an intent nobody declared is the honest default, not a gap
+    del fixture["intent"]
+    doc = _doc(_section(fixtures=[fixture]))
+    if security_gaps(doc) or security(doc)["fixtures"][0]["intent"] != "":
+        return _fail("a fixture with no declared intent holds and expects nothing: %s" % security_gaps(doc))
     return 0
 
 
 def main() -> int:
     if (_absent_case() or _well_formed_case() or _credential_shape_case() or _switch_case() or _file_case()
-            or _scaffold_shape_case()):
+            or _request_policy_case() or _fixtures_case() or _scaffold_shape_case()):
         return 1
     print("OK: decisions (the security section is optional and, when present, must name an accepted ADR, the source's switch with two "
           "distinct settings, and each seeded identity once by the NAME of the variable holding its credential; a credential written "
           "where a name belongs -- user:password, or anything carrying whitespace -- is refused by field and never echoed, an identity "
           "with no credential_ref and a half-declared switch are gaps, a refused section is not a decision, the schema refuses a key "
           "nobody declared, the tree hosting this suite is checked only for what it actually declares, and a fixture carrying the "
-          "scaffold's own shape parses clean with one identity, three roles, and both credentials referenced by name)")
+          "scaffold's own shape parses clean with one identity, three roles, both credentials referenced by name, the request "
+          "policy its enabled configuration applies to every request, and one declared variant of the source baseline whose "
+          "name, statements, scenario class, dataset key and intent are each checked as what they are)")
     return 0
 
 

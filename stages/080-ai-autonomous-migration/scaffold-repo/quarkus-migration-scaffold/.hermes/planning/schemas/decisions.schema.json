@@ -452,6 +452,74 @@
             "null"
           ],
           "description": "the NAME of an environment variable holding a credential the Operator states is NOT valid; the invalid-credential probe is not derived without it"
+        },
+        "request_policy": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "authenticated",
+            null
+          ],
+          "description": "what the source's ENABLED configuration requires of a request that no @PreAuthorize / @RolesAllowed names (ADR-014). \"authenticated\" is a source whose configuration requires authentication for every request, so an unannotated route is still guarded: the enabled derivation then probes every entry point it has a request for with an allowed identity, anonymously and with the credential declared invalid, and every scenario it derives says this key is where that came from. Absent means only the annotated entry points are probed, and the unannotated ones are neither probed nor claimed."
+        },
+        "fixtures": {
+          "type": "array",
+          "description": "separately recorded VARIANTS of the source baseline (ADR-014): behaviour the declared dataset cannot reach, such as what the source answers for an identity the seed enables once that identity is disabled. The variant is captured into its own directory, against the declared dataset with these statements applied after it, and the baseline is restored and verified afterwards. The statements are the SPECIMEN's own SQL -- opaque here, recorded verbatim in the evidence because they are fixture SQL and not credentials -- and no credential is ever written in this section.",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "statements",
+              "scenarios",
+              "dataset_config_key"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^[a-z0-9][a-z0-9-]*$",
+                "description": "the variant's own name; it becomes the suffix of the directories its corpus, captures and parity live in"
+              },
+              "statements": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "description": "the statements applied AFTER the declared dataset, in this order; the harness treats them as opaque SQL and never parses or rewrites them"
+              },
+              "scenarios": {
+                "type": "string",
+                "enum": [
+                  "auth-allowed",
+                  "auth-anonymous",
+                  "auth-invalid",
+                  "auth-norole"
+                ],
+                "description": "which class of derived enabled-mode scenario this variant is recorded for; one variant scenario is derived per scenario of that class"
+              },
+              "dataset_config_key": {
+                "type": "string",
+                "minLength": 1,
+                "description": "the configuration property NAME the source reads its dataset location from; the variant capture starts the source with it pointed at the derived variant dataset"
+              },
+              "intent": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "refuse",
+                  null
+                ],
+                "description": "\"refuse\" when the Operator states the source refuses these requests under the variant, which qualifies them against a 4xx; absent expects whatever the source answers (a usable first response), because an expectation nobody declared is not invented"
+              }
+            }
+          }
         }
       }
     },

@@ -37,7 +37,7 @@ from _oracle_common import ensure_hermes_lib, header_diffs, http_observe, is_pre
 from _scenarios import (BINDING_CANDIDATE, CorpusError, DEFAULT_SECURITY_MODE, QUALIFICATION, SCENARIO_ORACLES,  # noqa: E402,F401
                         SCENARIO_PARITY, SECURITY_MODES, auth_headers, candidate_binding, corpus_digest,
                         effects_identity_of, load_corpus, normalize_security_mode, normalized_identity,
-                        qualification_path, request_of, scenario, scenario_oracles_dir, scenario_parity_dir,
+                        normalize_variant, qualification_path, request_of, scenario, scenario_oracles_dir, scenario_parity_dir,
                         scenario_slug, sealed_binding, source_exposed_headers)
 
 ensure_hermes_lib()
@@ -69,6 +69,10 @@ def main(argv: list[str] | None = None) -> int:
                     help="the security mode the DESTINATION is running in (ADR-014). It selects the captures to compare against, "
                          "and a capture taken in another mode is refused: a destination started with security enabled proves "
                          "nothing against anonymous expectations")
+    ap.add_argument("--fixture-variant", default="", metavar="NAME",
+                    help="compare against the captures of a declared fixture VARIANT of that mode's baseline (ADR-014). The "
+                         "variant scopes the corpus, the captures, the qualification and this verdict; a capture taken "
+                         "against another dataset state -- the baseline, or another variant -- is refused by name")
     ap.add_argument("--issued", default="", metavar="PATH",
                     help="verification/loop/issued.json: this verdict is of the CANDIDATE that issued card was verified on, "
                          "not of the accepted tree. The live seal is then not required to match the rebuilt work list (the "
@@ -92,10 +96,11 @@ def main(argv: list[str] | None = None) -> int:
         binding = sealed_binding()
     try:
         security_mode = normalize_security_mode(args.security_mode)
+        variant = normalize_variant(args.fixture_variant, security_mode)
     except CorpusError as exc:
         print("REFUSE: SCENARIO_PARITY %s" % exc, file=sys.stderr)
         return 1
-    oracles_dir = scenario_oracles_dir(security_mode)
+    oracles_dir = scenario_oracles_dir(security_mode, variant)
     receipt, gaps = verify_receipt(root, require_admitted=True)
     candidate_mode = str(binding.get("mode") or "") == BINDING_CANDIDATE
     # A candidate-bound verdict still names a receipt: the one the issued card
@@ -104,9 +109,10 @@ def main(argv: list[str] | None = None) -> int:
     verdict = {"schema": "rhoai3.scenario-parity/v1", "scenario": args.scenario, "entry_point": "",
                "receipt_sha256": receipt_sha, "verdict": "INCONCLUSIVE",
                "binding": dict(binding) if binding else {"mode": BINDING_CANDIDATE, "gaps": list(binding_gaps)},
-               "corpus_sha256": "", "security_mode": security_mode, "reason": "", "request": {}, "reset": {},
+               "corpus_sha256": "", "security_mode": security_mode, "security_variant": variant,
+               "reason": "", "request": {}, "reset": {},
                "before": [], "before_state": "", "expected": {}, "observed": {}, "effects": []}
-    out = root / scenario_parity_dir(security_mode) / (scenario_slug(args.scenario) + ".json")
+    out = root / scenario_parity_dir(security_mode, variant) / (scenario_slug(args.scenario) + ".json")
     if binding_gaps:
         verdict["reason"] = "the issued binding could not be made: " + "; ".join(binding_gaps)
         write_canonical(out, verdict)
@@ -125,7 +131,7 @@ def main(argv: list[str] | None = None) -> int:
         # the corpus of THIS mode (ADR-014): a replay of the enabled mode
         # resolves its scenario from the enabled corpus, never from the
         # anonymous one that happens to sit beside it
-        corpus = load_corpus(root, security_mode)
+        corpus = load_corpus(root, security_mode, variant)
         sc = scenario(corpus, args.scenario)
         req = request_of(root, sc)
     except CorpusError as exc:
@@ -157,6 +163,23 @@ def main(argv: list[str] | None = None) -> int:
         print("REFUSE: SCENARIO_PARITY mode mismatch: %s (%s)" % (args.scenario, verdict["reason"]), file=sys.stderr)
         return 1
     verdict["captured_security_mode"] = captured_mode
+    # ... and the same for the fixture VARIANT. A capture taken against the
+    # declared dataset with a fixture's statements applied is evidence about
+    # that database state and no other: comparing it against a destination
+    # reset to the baseline (or to another variant) would judge one state's
+    # answers by another state's, which is the cross-mode reuse ADR-014
+    # forbids arriving through the dataset instead of the switch.
+    captured_variant = str(oracle.get("security_variant") or "")
+    if captured_variant != variant:
+        verdict["captured_security_variant"] = captured_variant
+        verdict["reason"] = ("the source capture was taken against the %s and this comparison is of the %s; capture the "
+                             "source against the same state rather than mixing a variant with a baseline"
+                             % ("%s fixture variant" % captured_variant if captured_variant else "mode's baseline",
+                                "%s fixture variant" % variant if variant else "mode's baseline"))
+        write_canonical(out, verdict)
+        print("REFUSE: SCENARIO_PARITY variant mismatch: %s (%s)" % (args.scenario, verdict["reason"]), file=sys.stderr)
+        return 1
+    verdict["captured_security_variant"] = captured_variant
     checks: list[str] = []
     # A positive scenario whose capture FAILED qualification is a SOURCE-SIDE
     # fixture failure (a 500 deleting a referenced pettype): the source did
@@ -164,7 +187,7 @@ def main(argv: list[str] | None = None) -> int:
     # credit, and no destination repair card. Parity is not asked
     # (architect review of 708cfef9). Only a qualification bound to THIS
     # capture counts; a stale one judged another capture.
-    qp = root / qualification_path(security_mode)
+    qp = root / qualification_path(security_mode, variant)
     if qp.is_file():
         try:
             qdoc = load_json(qp)
@@ -236,7 +259,12 @@ def main(argv: list[str] | None = None) -> int:
     # destination whose row was already gone: the response matched and so did
     # the effect, because both were "absent".
     if sc.get("reset_before", True) and not args.no_reset:
-        cmd = shlex.split(args.reset_cmd) if args.reset_cmd else ["bash", str(Path(__file__).resolve().parent / "reset-parity-db.sh"), "--root", str(root)]
+        # the destination is restored to the state this comparison is OF: the
+        # declared baseline, or -- for a fixture variant -- that baseline with
+        # the variant's own statements applied after it
+        cmd = (shlex.split(args.reset_cmd) if args.reset_cmd else
+               ["bash", str(Path(__file__).resolve().parent / "reset-parity-db.sh"), "--root", str(root)]
+               + (["--variant", variant] if variant else []))
         proc = subprocess.run(cmd, text=True, capture_output=True)
         verdict["reset"] = {"ran": True, "rc": proc.returncode, "argv": cmd, "output": (proc.stdout + proc.stderr).strip()[-400:]}
         if proc.returncode != 0:

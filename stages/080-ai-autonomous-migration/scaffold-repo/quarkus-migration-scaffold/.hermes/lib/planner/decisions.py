@@ -24,6 +24,7 @@ cited ADR that is not ``accepted`` is ``ADR_NOT_ACCEPTED``.
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -143,6 +144,23 @@ _SWITCH_FIELDS = (
     ("disabled_value", "the value of that property that turns the source's security OFF"),
     ("enabled_value", "the value that turns it ON; the enabled-mode capture starts the source with it"),
 )
+# The policy the source applies to a request NO annotation names. A source
+# whose enabled configuration requires authentication for every request
+# guards its unannotated routes too, and a derivation that only walks the
+# annotations would leave them unprobed -- which reads as "nothing to prove"
+# rather than "not measured". Only the Operator can say which it is, so it is
+# declared here, in the one file an ADR backs, and the derivation states the
+# declaration on every scenario it derives from it.
+REQUEST_POLICY_AUTHENTICATED = "authenticated"
+REQUEST_POLICIES = (REQUEST_POLICY_AUTHENTICATED,)
+# A separately recorded VARIANT of the source baseline: the declared dataset
+# with the Operator's statements applied after it, captured on its own and
+# followed by a restoration of the baseline. The statements are the
+# SPECIMEN's -- opaque SQL to everything here, recorded verbatim because they
+# are fixture SQL and not credentials -- and the name becomes a directory.
+FIXTURE_SCENARIO_CLASSES = ("auth-allowed", "auth-anonymous", "auth-invalid", "auth-norole")
+FIXTURE_INTENTS = ("refuse",)
+_FIXTURE_NAME = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 
 
 def _looks_like_a_value(text: str) -> bool:
@@ -219,6 +237,82 @@ def security_gaps(doc: dict[str, Any]) -> list[dict[str, str]]:
     if invalid is not None and str(invalid) and _looks_like_a_value(str(invalid)):
         gap("SECURITY_LITERAL_CREDENTIAL", "security.invalid_credential_ref",
             "invalid_credential_ref looks like a value, not the NAME of an environment variable")
+    policy = sec.get("request_policy")
+    if policy is not None and str(policy).strip() and str(policy).strip() not in REQUEST_POLICIES:
+        gap("MISSING_DECISION", "security.request_policy",
+            "request_policy %r is not one of %s; it says what the source's enabled configuration requires of a request no "
+            "annotation names, and a value nothing implements would leave those routes unprobed"
+            % (policy, ", ".join(REQUEST_POLICIES)))
+    gaps.extend(_fixture_gaps(sec))
+    return gaps
+
+
+def _fixture_gaps(sec: dict[str, Any]) -> list[dict[str, str]]:
+    """Why the declared ``security.fixtures`` may not be used; [] when they
+    hold or when none are declared.
+
+    Every field is checked as what it IS: the name becomes a directory, the
+    statements are opaque SQL this loader never parses (only that there is at
+    least one, and that each is a non-empty string), the scenario class names
+    a class of derived scenario, and dataset_config_key is the configuration
+    KEY the source reads its dataset location from."""
+    gaps: list[dict[str, str]] = []
+
+    def gap(cls: str, subject: str, detail: str) -> None:
+        gaps.append({"class": cls, "subject": subject, "detail": detail})
+
+    rows = sec.get("fixtures")
+    if rows is None:
+        return gaps
+    if not isinstance(rows, list):
+        gap("MISSING_DECISION", "security.fixtures",
+            "fixtures is the list of separately recorded variants of the source baseline, each with a name, the statements "
+            "it applies after the declared dataset, the scenario class it varies and the configuration key the dataset "
+            "location is passed through")
+        return gaps
+    seen: set[str] = set()
+    for i, row in enumerate(rows):
+        where = "security.fixtures[%d]" % i
+        if not isinstance(row, dict):
+            gap("MISSING_DECISION", where, "a fixture is a mapping of name, statements, scenarios and dataset_config_key")
+            continue
+        name = str(row.get("name") or "").strip()
+        if not name:
+            gap("MISSING_DECISION", "%s.name" % where, "name the variant; its name is the directory its captures live in")
+        elif not _FIXTURE_NAME.match(name):
+            gap("MISSING_DECISION", "%s.name" % where,
+                "fixture name %r is not a name a directory can carry (a-z, 0-9 and -, starting with a letter or digit)" % name)
+        elif name in seen:
+            gap("MISSING_DECISION", "%s.name" % where, "fixture %r is declared twice" % name)
+        else:
+            seen.add(name)
+        statements = row.get("statements")
+        if not isinstance(statements, list) or not statements:
+            gap("MISSING_DECISION", "%s.statements" % where,
+                "declare the statements this variant applies AFTER the declared dataset; they are the specimen's own SQL and "
+                "nothing here interprets them")
+        elif not all(isinstance(s, str) and s.strip() for s in statements):
+            gap("MISSING_DECISION", "%s.statements" % where, "every statement is a non-empty string")
+        scenarios = str(row.get("scenarios") or "").strip()
+        if not scenarios:
+            gap("MISSING_DECISION", "%s.scenarios" % where,
+                "name the class of derived scenario this variant is recorded for (%s)" % ", ".join(FIXTURE_SCENARIO_CLASSES))
+        elif scenarios not in FIXTURE_SCENARIO_CLASSES:
+            gap("MISSING_DECISION", "%s.scenarios" % where,
+                "scenarios %r is not one of %s" % (scenarios, ", ".join(FIXTURE_SCENARIO_CLASSES)))
+        key = str(row.get("dataset_config_key") or "")
+        if not key.strip():
+            gap("MISSING_DECISION", "%s.dataset_config_key" % where,
+                "name the configuration property the source reads its dataset location from; the variant capture starts the "
+                "source with it pointed at the variant dataset")
+        elif _looks_like_a_value(key):
+            gap("MISSING_DECISION", "%s.dataset_config_key" % where,
+                "dataset_config_key is a configuration property NAME, and this one carries a separator or whitespace")
+        intent = row.get("intent")
+        if intent is not None and str(intent).strip() and str(intent).strip() not in FIXTURE_INTENTS:
+            gap("MISSING_DECISION", "%s.intent" % where,
+                "intent %r is not one of %s; an intent nobody declared means the variant expects whatever the source "
+                "answers, which is the honest default" % (intent, ", ".join(FIXTURE_INTENTS)))
     return gaps
 
 
@@ -228,7 +322,9 @@ def security(doc: dict[str, Any]) -> dict[str, Any]:
 
     Callers get a normalised shape: ``{"switch": {...}, "identities":
     [{"name", "credential_ref", "roles": [...]}], "invalid_credential_ref",
-    "adr"}``. Roles are the only values; everything else is a key or a name."""
+    "request_policy", "fixtures": [{"name", "statements", "scenarios",
+    "dataset_config_key", "intent"}], "adr"}``. Roles, the statements and the
+    declared intent are the only values; everything else is a key or a name."""
     sec = doc.get(SECURITY_SECTION)
     if not isinstance(sec, dict) or security_gaps(doc):
         return {}
@@ -240,6 +336,13 @@ def security(doc: dict[str, Any]) -> dict[str, Any]:
                         "roles": [str(x) for x in (r.get("roles") or [])]}
                        for r in (sec.get("identities") or []) if isinstance(r, dict)],
         "invalid_credential_ref": str(sec.get("invalid_credential_ref") or ""),
+        "request_policy": str(sec.get("request_policy") or "").strip(),
+        "fixtures": [{"name": str(r.get("name") or "").strip(),
+                      "statements": [str(s) for s in (r.get("statements") or [])],
+                      "scenarios": str(r.get("scenarios") or "").strip(),
+                      "dataset_config_key": str(r.get("dataset_config_key") or "").strip(),
+                      "intent": str(r.get("intent") or "").strip()}
+                     for r in (sec.get("fixtures") or []) if isinstance(r, dict)],
     }
 
 

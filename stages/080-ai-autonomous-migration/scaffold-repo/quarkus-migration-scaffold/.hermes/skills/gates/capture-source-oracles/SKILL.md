@@ -103,6 +103,7 @@ is compared against enabled captures only.
 |---|---|---|---|---|
 | `disabled` (default) | `verification/source-oracles/scenarios/` | `…/scenarios/_qualification.json` | `verification/parity/scenarios/` | `verification/parity/receipt.json` |
 | `enabled` | `verification/source-oracles/scenarios-enabled/` | `…/scenarios-enabled/_qualification.json` | `verification/parity/scenarios-enabled/` | `verification/parity/receipt-enabled.json` |
+| `enabled` + `--fixture-variant NAME` | `…/scenarios-enabled-<NAME>/` | `…/scenarios-enabled-<NAME>/_qualification.json` | `verification/parity/scenarios-enabled-<NAME>/` | `verification/parity/receipt-enabled-<NAME>.json` |
 
 Every path is resolved through `_scenarios.py`
 (`scenario_oracles_dir`, `qualification_path`, `scenario_parity_dir`,
@@ -114,9 +115,59 @@ they judged, so an M4 verdict can name it.
 
 Every consumer reads the **corpus of the mode it runs in**: the capture, the
 qualification gate, the comparator and the receipt composer all resolve it
-through `load_corpus(root, security_mode)`, so an enabled run replays
+through `load_corpus(root, security_mode, variant)`, so an enabled run replays
 `verification/scenarios-enabled/corpus.json` and can never grade the enabled
 source against the anonymous requests sitting beside it.
+
+### Fixture variants of a mode's baseline
+
+A mode's baseline is the **declared dataset**. Some behaviour the architect's
+exits ask about is not reachable from it — what the source answers for an
+identity the seed *enables*, once that identity is disabled — and the answer
+is never to edit the dataset every other capture is taken against. A declared
+**fixture variant** is that state, recorded separately: the declared dataset
+with the Operator's statements applied *after* it, its own corpus, its own
+captures, its own qualification, verdicts and receipt, all under the same
+path suffix, and the baseline restored and **verified** afterwards.
+`normalize_variant` refuses a name a directory could not carry, a name that
+reads as a mode, and a variant of the suffix-less default mode. Each artifact
+records `security_variant`, and the comparator, the qualification gate and the
+receipt composer refuse to mix a variant's evidence with the baseline's,
+naming both states — the cross-mode reuse ADR-014 forbids, arriving through
+the dataset instead of the switch.
+
+```bash
+V="${HERMES_SKILL_DIR}/scripts"
+python3 "$V/derive-source-scenarios.py"  --root /projects/modernized --security-mode enabled --fixture-variant identity-disabled
+python3 "$V/capture-source-scenarios.py" --root /projects/modernized --security-mode enabled --fixture-variant identity-disabled
+python3 "$V/qualify-source-captures.py"  --root /projects/modernized --security-mode enabled --fixture-variant identity-disabled
+python3 "$V/compare-scenario-parity.py"  --root /projects/modernized --security-mode enabled --fixture-variant identity-disabled \
+  --scenario sc:fixture-identity-disabled-auth-allowed-read-root --dest-url "$DEST_URL"
+bash   "$V/reset-parity-db.sh"           --root /projects/modernized          # the restoration: baseline, verified
+```
+
+- The **derivation** reuses the mode's own scenarios of the declared class
+  (`security.fixtures[NAME].scenarios`) unchanged — same method, path,
+  headers, identity and body bytes, bound by id and body digest — so a
+  difference in the answer is the dataset and nothing else. It emits one
+  `sc:fixture-<NAME>-<base>` per selected scenario, records the fixture's
+  statements verbatim, and names the declared dataset (path and digest) they
+  are applied after. What it expects is what the Operator declared: a `4xx`
+  where `intent: refuse`, and otherwise a usable first response, because an
+  expectation nobody declared is not invented. The base's effect assertions
+  do not travel — they judge what a request did against the *baseline*.
+- The **capture** builds the variant dataset from exactly the bytes the
+  corpus names (a frozen source that moved underneath it is refused), writes
+  it to `…/scenarios-enabled-<NAME>/_variant-dataset.sql`, and starts the
+  source with `security.fixtures[NAME].dataset_config_key` pointed at it
+  through a `file:` URL alongside the mode's own switch. The receipt records
+  the statements verbatim, the declared dataset's digest and the variant
+  dataset's.
+- The **reset** (`reset-parity-db.sh --variant NAME`) loads the schema and the
+  derived baseline, **verifies** the baseline, and only then applies the
+  declared statements — so what the variant varies is a baseline the run
+  proved. Restoring is the same script with no `--variant`, which loads the
+  baseline and verifies it again.
 
 ### Who the enabled mode authenticates as: `decisions.yaml`
 
@@ -140,9 +191,24 @@ security:
       credential_ref: PETCLINIC_ADMIN_CREDENTIAL   # the NAME of an env var holding user:password
       roles: [ROLE_OWNER_ADMIN, ROLE_VET_ADMIN, ROLE_ADMIN]
   invalid_credential_ref: PETCLINIC_INVALID_CREDENTIAL
+  request_policy: authenticated              # what the ENABLED configuration requires of every request
+  fixtures:                                  # separately recorded variants of the source baseline
+    - name: identity-disabled                # becomes the suffix of this variant's directories
+      intent: refuse                         # the Operator states the source refuses these; omit to expect its own answer
+      scenarios: auth-allowed                # the class of derived scenario this variant is recorded for
+      dataset_config_key: spring.sql.init.data-locations   # the KEY the source reads its dataset location from
+      statements:                            # the SPECIMEN's own SQL, applied AFTER the declared dataset
+        - UPDATE users SET enabled = false WHERE username = 'admin'
 ```
 
-Every value except `roles` is a key or a name. `planner.decisions` refuses a
+Every value except `roles`, the fixtures' `statements` and their declared
+`intent` is a key or a name. The statements are opaque here — nothing parses
+or rewrites them — and they are recorded verbatim in the evidence because
+they are fixture SQL, not credentials, and a run nobody can re-apply them
+from is not reproducible. `request_policy` and `fixtures` are optional and
+each is checked as what it is: a policy nothing implements, a fixture name a
+directory could not carry, an empty statement list, an unknown scenario class
+or intent, and a missing `dataset_config_key` are all typed gaps by field. `planner.decisions` refuses a
 `credential_ref` that looks like a value (it carries `:` or whitespace) and an
 identity that names none, and it names the FIELD rather than echoing what it
 holds. The section is optional: a specimen with no security switch has no
@@ -485,10 +551,39 @@ python3 "${HERMES_SKILL_DIR}/scripts/derive-source-scenarios.py" --root /project
   scenario. Reads are captured outside the corpus, so a policy guarding a
   plain `GET` has no base to reuse and says so.
 
+#### The request policy: routes no annotation names
+
+`anyRequest().authenticated()` guards the routes that carry **no**
+`@PreAuthorize` as surely as the annotated ones — on the pilot specimen the
+root redirect among them — and a derivation that walks only the annotations
+leaves them unprobed, which reads at M4 as *nothing to prove* rather than
+*not measured*. Only the Operator can read that off the source's own
+configuration, so it is declared: `decisions.yaml`'s
+`security.request_policy: authenticated`.
+
+With it declared, the derivation adds one implicit policy
+(`authz:request-authenticated`) over **every HTTP entry point it has a
+request for** — a qualified-shaped scenario in the disabled corpus, or a
+derivable read base — and probes each with an identity the policy accepts
+(the least privileged declared one), anonymously, and with the credential
+declared invalid. On the pilot specimen `sc:read-root` therefore gets
+`sc:auth-allowed-read-root`, `sc:auth-anonymous-read-root` and
+`sc:auth-invalid-read-root`. There is no fourth probe: no identity
+authenticates and still fails a policy whose whole requirement is
+authentication. Entry points an **explicit** policy already guards keep
+theirs — a role is more than a login, and the probes that prove it are not
+replaced. Every scenario says where the guard came from
+(`policy:<id> decisions.security.request_policy authenticated → every
+request`) rather than citing an annotation nobody wrote, the corpus and the
+receipt record `request_policy`, and an entry point the policy covers that
+nothing can request is a named `auth-base` gap. A tree that declares none
+probes none and the receipt carries `request_policy_note` saying so.
+
 **One seam this producer does not own.** `capture-source-scenarios.py` (like
 `compose-parity-receipt.py`) still loads `verification/scenarios/corpus.json`
-for every mode: `load_corpus(root, security_mode)` and `asserted_headers`
-are there to be passed through when those builders take them up.
+for every mode: `load_corpus(root, security_mode, variant)` and
+`asserted_headers` are there to be passed through when those builders take
+them up.
 
 ### Qualifying captures
 
@@ -804,6 +899,11 @@ to.
   `verification/scenarios-enabled/`: four probes per authorization policy over
   the disabled corpus's own requests, identities by credential reference,
   blockers recorded (see *Deriving the enabled-mode corpus*)
+- `scripts/derive-source-scenarios.py --security-mode enabled --fixture-variant NAME`
+  — the same producer again, deriving a declared fixture variant of that
+  mode's baseline into `verification/scenarios-enabled-<NAME>/`: the mode's
+  own scenarios of the declared class over the varied dataset, statements
+  recorded verbatim (see *Fixture variants of a mode's baseline*)
 - `scripts/capture-source-oracles.py` — read capture from the source system
 - `scripts/capture-source-scenarios.py` — M1 producer: package and start the
   frozen source, restore state, capture the derived scenarios (the effect
@@ -813,6 +913,10 @@ to.
   M1 step: every capture against its scenario's `qualify` contract, reading the
   retained bodies by digest; PASS / FAIL / INCONCLUSIVE per scenario, all three
   recorded and exiting 0; exit 1 only on a refusal to judge
+- `scripts/reset-parity-db.sh [--variant NAME]` — restore the decided
+  instance to the declared baseline and verify it; with `--variant`, apply
+  that fixture's declared statements after the verified baseline (restoring is
+  the same script with no `--variant`)
 - `scripts/compare-runtime-parity.py` — destination comparison for reads
 - `scripts/compare-scenario-parity.py` — recorded-request replay plus effects;
   `--issued` binds the verdict to the candidate and the issued card

@@ -64,14 +64,16 @@ from _oracle_common import ensure_hermes_lib  # noqa: E402
 from _scenarios import (CHALLENGE_HEADER, CORPUS, DEFAULT_SECURITY_MODE, DERIVATION_SCHEMA, DERIVE_RECEIPT,  # noqa: E402
                         FROZEN_SOURCE_MODEL, ROLE_PREFIX, SCHEMA, SECURITY_MODES, CorpusError, authorization_roles,
                         corpus_digest, corpus_path, derive_receipt_path, load_corpus, merge_role_constants,
-                        normalize_security_mode, parse_assignments, request_of, resolve_role_constant,
+                        normalize_security_mode, normalize_variant, parse_assignments, request_of,
+                        resolve_role_constant,
                         role_constants_from_model, role_matches, role_reference_tokens,
                         source_authorization_policy_map, source_cors_policy_map, source_role_constants)
 
 ensure_hermes_lib()
 from planner import yamlite  # noqa: E402
 from planner.canonical import digest, load_json, sha256_file, write_canonical  # noqa: E402
-from planner.decisions import DecisionsError, load_decisions, security, security_gaps  # noqa: E402
+from planner.decisions import (DecisionsError, REQUEST_POLICY_AUTHENTICATED, SECURITY_SECTION,  # noqa: E402
+                               load_decisions, security, security_gaps)
 from planner.dest_model import DestModelUnavailable, tree_model  # noqa: E402
 from planner.paths import DECISIONS, EVIDENCE_BUNDLE, STRUCTURE, producer_receipt  # noqa: E402
 
@@ -2178,17 +2180,34 @@ def seed_identity_roles(seed: dict[str, dict[str, Any]], columns: dict[str, list
     return {}, [], "no seeded column carries any role the policies accept"
 
 
+# The policy a source applies to a request NO annotation names, when its
+# enabled configuration requires authentication for every request
+# (``anyRequest().authenticated()`` on the pilot specimen). It is not read off
+# a controller, because it is not written on one: the Operator declares it in
+# decisions.yaml and the id says so, rather than digesting an annotation that
+# does not exist. Every entry point an explicit policy already guards keeps
+# that policy -- a role is more than authentication, and the probes that prove
+# a role are not replaced by the probes that prove a login.
+IMPLICIT_POLICY_ID = "authz:request-authenticated"
+# the decided key, spelled as a reader of decisions.yaml would look it up
+REQUEST_POLICY_SUBJECT = "decisions.%s.request_policy" % SECURITY_SECTION
+FIXTURES_SUBJECT = "decisions.%s.fixtures" % SECURITY_SECTION
+
+
 class EnabledDerivation:
     """The enabled-mode corpus: four probes per authorization policy over a
     request the disabled corpus already states."""
 
     def __init__(self, root: Path, base: dict[str, Any], base_sha: str, policies: dict[str, dict[str, Any]],
                  constants: dict[str, dict[str, str]], identities: list[dict[str, Any]], invalid_ref: str,
-                 entry_points: list[dict[str, Any]] | None = None) -> None:
+                 entry_points: list[dict[str, Any]] | None = None, request_policy: str = "") -> None:
         self.root = root
         self.base = base
         self.base_sha = base_sha
-        self.policies = policies
+        # a copy: the implicit request policy is added to THIS map, and the
+        # caller's own reading of the source's annotations stays what the
+        # structure model said
+        self.policies = dict(policies)
         self.constants = constants
         self.identities = identities
         self.invalid_ref = invalid_ref
@@ -2208,9 +2227,58 @@ class EnabledDerivation:
                 self.eps[str(e["id"])] = e
         self.path_vars: dict[str, str] = {str(k): str(v) for k, v in (base.get("path_vars") or {}).items()}
         self.guards: dict[str, list[str]] = {}
-        for pid, pol in sorted(policies.items()):
+        for pid, pol in sorted(self.policies.items()):
             for eid in (pol.get("entry_points") or []):
                 self.guards.setdefault(str(eid), []).append(pid)
+        self.request_policy = str(request_policy or "")
+        self._add_request_policy()
+
+    def _add_request_policy(self) -> None:
+        """The policy the source applies to a request no annotation names.
+
+        ``anyRequest().authenticated()`` guards the routes that carry no
+        ``@PreAuthorize`` as surely as the annotated ones -- on the pilot
+        specimen the root redirect among them -- and a derivation that walks
+        only the annotations leaves them unprobed, which reads at M4 as
+        "nothing to prove" rather than "not measured". The Operator declares
+        what the enabled configuration requires (decisions.yaml's
+        ``security.request_policy``), and it is applied to every HTTP entry
+        point this derivation has a request for: the ones an explicit policy
+        already guards keep theirs, because a role is more than a login and
+        the probes that prove it are not replaced.
+
+        An entry point the request policy covers and NOTHING can request is
+        named as a gap: absence of a probe is a claim, and the claim is that
+        there is no request for it, not that the route is unguarded."""
+        if self.request_policy != REQUEST_POLICY_AUTHENTICATED:
+            return
+        guarded = set(self.guards)
+        candidates: list[str] = []
+        for eid, ep in sorted(self.eps.items()):
+            # an HTTP entry point, as the bundle records one; a scheduled task
+            # or a message listener is not a request and has no request policy
+            if str(ep.get("kind") or "") == "http" or str(ep.get("http_method") or "") or str(ep.get("http_path") or ""):
+                candidates.append(eid)
+        candidates += [eid for eid in sorted(self.by_ep) if eid and eid not in self.eps]
+        probeable, unprobeable = [], []
+        for eid in sorted(dict.fromkeys(candidates)):
+            if eid in guarded:
+                continue
+            base, _why = self._base_for(eid)
+            (probeable if base is not None else unprobeable).append(eid)
+        if probeable:
+            self.policies[IMPLICIT_POLICY_ID] = {
+                "annotation": "", "expression": self.request_policy, "implicit": True,
+                "declared_by": REQUEST_POLICY_SUBJECT, "entry_points": list(probeable), "types": [],
+                "members": [], "roles": [],
+            }
+            for eid in probeable:
+                self.guards.setdefault(eid, []).append(IMPLICIT_POLICY_ID)
+        if unprobeable:
+            self.gaps.append("auth-base %s: %s %s → every request, and %s has no request the disabled corpus states or this "
+                             "producer can derive; %s not exercised"
+                             % (IMPLICIT_POLICY_ID, REQUEST_POLICY_SUBJECT, self.request_policy,
+                                ", ".join(unprobeable), "it is" if len(unprobeable) == 1 else "they are"))
 
     # -- helpers -----------------------------------------------------------
     def _add(self, sc: dict[str, Any]) -> None:
@@ -2304,6 +2372,13 @@ class EnabledDerivation:
         rows.sort(key=lambda i: (len(i["roles"]), i["name"]))
         return rows[0] if rows else None
 
+    def _any_identity(self) -> dict[str, Any] | None:
+        """Any declared identity, fewest roles first: a policy that asks only
+        for authentication is satisfied by every one of them, and the least
+        privileged proves it without also proving a role."""
+        rows = sorted(self.identities, key=lambda i: (len(i["roles"]), i["name"]))
+        return rows[0] if rows else None
+
     def _outsider(self, roles: list[str]) -> dict[str, Any] | None:
         """A declared identity that is authenticated and holds NONE of the
         accepted roles. An identity whose roles nobody knows is not one: it
@@ -2331,10 +2406,19 @@ class EnabledDerivation:
         request_evidence = (list(derived_base.get("evidence") or []) if derived_base else
                             ["corpus:%s reused (%s %s, body %s)" % (base["id"], base["method"], base["path"], body_sha or "absent"),
                              "corpus:%s digest %s" % (_rel(self.root / CORPUS, self.root), self.base_sha)])
+        # where the policy came from. An annotation says which one, on which
+        # members; the request policy says which DECISION, and that it covers
+        # every request -- so a reader of the scenario can tell a guard read
+        # off the source's code from a guard the Operator declared.
+        policy_evidence = (
+            ["policy:%s %s %s → every request" % (pid, REQUEST_POLICY_SUBJECT, pol.get("expression")),
+             "policy:%s any declared identity satisfies it; anonymous and invalid credentials are refused" % pid]
+            if pol.get("implicit") else
+            ["policy:%s @%s(%s) on %s" % (pid, pol.get("annotation"), pol.get("expression"), ", ".join(pol.get("members") or [])),
+             "policy:%s accepts %s" % (pid, ", ".join(roles))])
         evidence = [
             "bundle:%s" % eid,
-            "policy:%s @%s(%s) on %s" % (pid, pol.get("annotation"), pol.get("expression"), ", ".join(pol.get("members") or [])),
-            "policy:%s accepts %s" % (pid, ", ".join(roles)),
+        ] + policy_evidence + [
             # the identity is named by what it HOLDS and by the environment
             # variable that holds its credential; never by a credential
             ("identity:%s holds %s, credential_ref %s%s"
@@ -2427,11 +2511,22 @@ class EnabledDerivation:
             # the source's own code, and the scenario has to say which type,
             # which stereotype made it a bean, and which model carried the value
             constant_evidence: list[str] = []
-            roles, why = authorization_roles(str(pol.get("annotation") or ""), expression, self.constants, constant_evidence)
-            if why or not roles:
-                self.gaps.append("auth-policy %s: not in the supported grammar (%s); no scenario is derived for %s"
-                                 % (expression or "(empty)", why or "it names no role", pid))
-                continue
+            if pol.get("implicit"):
+                # the declared request policy names no role: it is satisfied
+                # by authenticating at all, so there is no expression to read
+                # and no constant to resolve
+                roles, why = [], ""
+                if not self.identities:
+                    self.gaps.append("auth-allowed %s: %s %s accepts any declared identity and none is declared; no scenario "
+                                     "is derived for the entry points no annotation guards"
+                                     % (pid, REQUEST_POLICY_SUBJECT, expression))
+                    continue
+            else:
+                roles, why = authorization_roles(str(pol.get("annotation") or ""), expression, self.constants, constant_evidence)
+                if why or not roles:
+                    self.gaps.append("auth-policy %s: not in the supported grammar (%s); no scenario is derived for %s"
+                                     % (expression or "(empty)", why or "it names no role", pid))
+                    continue
             for eid in sorted(str(e) for e in (pol.get("entry_points") or [])):
                 base, none_why = self._base_for(eid)
                 if base is None:
@@ -2451,16 +2546,23 @@ class EnabledDerivation:
     def _policy_probes(self, pid: str, pol: dict[str, Any], roles: list[str], eid: str,
                        base: dict[str, Any], slug: str, constant_evidence: list[str] | None = None) -> None:
         constant_evidence = list(constant_evidence or [])
+        implicit = bool(pol.get("implicit"))
         derived_base = bool(base.get("_derived_base"))
         # what the probes are "the same request as": a scenario the Operator
         # can look up in the disabled corpus, or the read this producer
         # derived for a guarded entry point that corpus states nothing about
         whence = ("the read %s %s derived for %s" % (base["method"], base["path"], eid) if derived_base
                   else str(base["id"]))
+        # what the policy ACCEPTS, in the words the probes are explained with:
+        # a role set, or authentication itself
+        accepts = ", ".join(roles) if roles else str(pol.get("expression") or REQUEST_POLICY_AUTHENTICATED)
         self.covered.append({"policy": pid, "entry_point": eid, "base_scenario": "" if derived_base else str(base["id"]),
                              "base_source": "derived-read" if derived_base else "corpus",
                              "base_request": "%s %s" % (base["method"], base["path"]), "roles": list(roles)})
-        allowed = self._holder(roles)
+        # who proves the policy: the least-privileged identity it accepts, and
+        # -- for a policy that asks only for authentication -- any declared
+        # identity, the least privileged of them for the same reason
+        allowed = self._any_identity() if implicit else self._holder(roles)
         if allowed is None:
             self.gaps.append("auth-allowed %s: no declared identity holds %s; declare one (--identity NAME=CREDENTIAL_REF with "
                              "--identity-roles NAME=%s) or record the blocker" % (pid, ", ".join(roles), roles[0]))
@@ -2490,7 +2592,7 @@ class EnabledDerivation:
                     self._denied_qualify(base, effects_who),
                     "the same request with no credential at all: the policy accepts %s, so the source refuses it (any 4xx -- "
                     "401 and 403 are both its own answer), sends its challenge if it has one, and the read-backs the base "
-                    "scenario declares are unchanged across it" % ", ".join(roles), constant_evidence,
+                    "scenario declares are unchanged across it" % accepts, constant_evidence,
                     effects_who=effects_who)
         if not self.invalid_ref:
             self.gaps.append("auth-invalid %s: no credential is declared invalid (--identity %s=CREDENTIAL_REF); the invalid-credential "
@@ -2502,6 +2604,12 @@ class EnabledDerivation:
                         "the same request carrying the credential reference the Operator declares invalid: the source refuses it "
                         "(any 4xx), sends its challenge if it has one, and the read-backs are unchanged across it",
                         constant_evidence, effects_who=effects_who)
+        if implicit:
+            # there is no identity that authenticates and still fails a policy
+            # whose whole requirement is authentication: the "authenticated
+            # without the role" probe has no subject here, and inventing one
+            # would expect a refusal nobody gives
+            return
         outsider = self._outsider(roles)
         if outsider is None:
             # ADR-014's blocker: an identity that lacks the role is a FIXTURE.
@@ -2607,6 +2715,54 @@ def decided_identities(root: Path) -> tuple[list[dict[str, Any]], str, dict[str,
             for i in decided["identities"]]
     rows.sort(key=lambda r: r["name"])
     return rows, str(decided.get("invalid_credential_ref") or ""), dict(decided["switch"]), ""
+
+
+def decided_request_policy(root: Path) -> tuple[str, str]:
+    """(what the source's enabled configuration requires of a request no
+    annotation names, why-none).
+
+    Read from the decided file whichever way the identities arrived: it is a
+    fact about the SOURCE's own configuration, not about who a run
+    authenticates as. Not declared is a reason the receipt carries, never a
+    silence -- "the unannotated routes were not probed" and "the Operator
+    declared they need no identity" are different claims."""
+    try:
+        doc = load_decisions(root)
+    except (DecisionsError, OSError) as exc:
+        return "", str(exc)
+    decided = security(doc)
+    if not decided:
+        return "", ("%s declares no usable security section, so what its enabled configuration requires of an unannotated "
+                    "route is not declared" % DECISIONS.as_posix())
+    policy = str(decided.get("request_policy") or "")
+    if not policy:
+        return "", ("%s declares no security.request_policy; only the entry points an annotation guards are probed, and the "
+                    "unannotated ones are neither probed nor claimed" % DECISIONS.as_posix())
+    return policy, ""
+
+
+def decided_fixtures(root: Path) -> tuple[list[dict[str, Any]], str]:
+    """(the declared fixture variants of the source baseline, why-none).
+
+    A variant is a database state the declared dataset does not have, and the
+    statements that reach it are the Operator's -- opaque SQL here, applied
+    after the declared dataset and never instead of it."""
+    try:
+        doc = load_decisions(root)
+    except (DecisionsError, OSError) as exc:
+        return [], str(exc)
+    decided = security(doc)
+    if not decided:
+        refusals = security_gaps(doc)
+        if refusals:
+            return [], ("%s declares a security section this loader refuses: %s"
+                        % (DECISIONS.as_posix(), "; ".join("%s %s" % (g["subject"], g["detail"]) for g in refusals)))
+        return [], "%s declares no security section, so it declares no fixture variant" % DECISIONS.as_posix()
+    rows = list(decided.get("fixtures") or [])
+    if not rows:
+        return [], ("%s declares no security.fixtures; a variant of the source baseline is recorded only where the Operator "
+                    "declares one" % DECISIONS.as_posix())
+    return rows, ""
 
 
 SOURCE_JAVA = "src/main/java"
@@ -2753,9 +2909,16 @@ def _derive_enabled(root: Path, args: Any, mode: str, out_p: Path, receipt_p: Pa
             gaps.append("auth-roles %s: no roles are declared for it (--identity-roles %s=ROLE) and none are derivable from the seed (%s); "
                         "it is used for no probe" % (row["name"], row["name"], seed_why or "it names no seeded identity"))
     bundle_eps = [e for e in (load_json(root / EVIDENCE_BUNDLE).get("entry_points") or []) if isinstance(e, dict)]
-    d = EnabledDerivation(root, base, base_sha, policies, constants, identities, invalid_ref, entry_points=bundle_eps)
+    # what the source's enabled configuration requires of a request no
+    # annotation names. It is a property of the SOURCE, so it is read from the
+    # decided file whichever way the identities arrived -- and a tree that
+    # declares none derives exactly what it derived before.
+    request_policy, request_policy_why = decided_request_policy(root)
+    d = EnabledDerivation(root, base, base_sha, policies, constants, identities, invalid_ref, entry_points=bundle_eps,
+                          request_policy=request_policy)
     d.run()
     gaps.extend(d.gaps)
+    policies = d.policies
     doc = {
         "schema": SCHEMA,
         "security_mode": mode,
@@ -2779,9 +2942,16 @@ def _derive_enabled(root: Path, args: Any, mode: str, out_p: Path, receipt_p: Pa
         # KEY and the value that names its enabled setting, so the capture
         # starts the source the way this corpus was derived for
         "security_switch": dict(switch),
+        # what the enabled configuration requires of a request no annotation
+        # names, and -- when nothing declares it -- why nothing was applied.
+        # "not declared" and "declared and applied" must not look alike.
+        "request_policy": request_policy,
+        "request_policy_note": request_policy_why if not request_policy else "",
         "authorization_policies": [
             {"id": pid, "annotation": pol.get("annotation"), "expression": pol.get("expression"),
-             "roles": authorization_roles(str(pol.get("annotation") or ""), str(pol.get("expression") or ""), constants)[0],
+             "declared_by": str(pol.get("declared_by") or ""),
+             "roles": ([] if pol.get("implicit") else
+                       authorization_roles(str(pol.get("annotation") or ""), str(pol.get("expression") or ""), constants)[0]),
              "entry_points": list(pol.get("entry_points") or []), "members": list(pol.get("members") or [])}
             for pid, pol in sorted(policies.items())],
         "scenarios": d.scenarios,
@@ -2802,6 +2972,7 @@ def _derive_enabled(root: Path, args: Any, mode: str, out_p: Path, receipt_p: Pa
                         "roles_source": i["roles_source"]} for i in identities],
         "identities_from": identities_from, "security_switch": dict(switch),
         "invalid_credential_ref": invalid_ref,
+        "request_policy": request_policy, "request_policy_note": request_policy_why if not request_policy else "",
         "seed_identity_roles": {k: list(v) for k, v in sorted(seeded.items())},
         "seed_identity_roles_evidence": list(seed_evidence), "seed_identity_roles_gap": seed_why,
         "authorization_policies": [row["id"] for row in doc["authorization_policies"]],
@@ -2811,6 +2982,185 @@ def _derive_enabled(root: Path, args: Any, mode: str, out_p: Path, receipt_p: Pa
     })
     print("OK: derived %d %s-mode scenario(s) over %d policy(ies), %d gap(s) (corpus %s, base %s) → %s"
           % (len(d.scenarios), mode, len(policies), len(gaps), corpus_sha[:12], base_sha[:12], _rel(out_p, root)))
+    for g in gaps:
+        print("  - gap: %s" % g)
+    return 0
+
+
+def _variant_scenario(root: Path, variant: str, fixture: dict[str, Any], base: dict[str, Any], base_sha: str,
+                      base_corpus_rel: str, dataset: dict[str, str]) -> dict[str, Any]:
+    """One scenario of a fixture variant: the base scenario's request, sent
+    against the varied dataset.
+
+    The REQUEST is untouched -- same method, path, headers, identity and
+    bytes -- because a difference in the answer is then the fixture and
+    nothing else, exactly the way the enabled mode reuses the disabled
+    corpus's requests. What it expects is what the Operator declared: a 4xx
+    when the variant's declared intent is a refusal, and otherwise a usable
+    first response, because an expectation nobody declared is not invented.
+    The base's effect assertions do not travel: they judge what the request
+    DID under the baseline, and this scenario is about the answer the source
+    gives when the baseline is varied."""
+    refuse = str(fixture.get("intent") or "") == "refuse"
+    bf = str(base.get("body_file") or "")
+    p = root / bf
+    body_sha = (sha256_file(p) if bf and p.is_file() else "")
+    slug = str(base["id"]).split(":", 1)[-1]
+    evidence = [
+        "bundle:%s" % str(base.get("entry_point") or ""),
+        "corpus:%s reused (%s %s, body %s)" % (base["id"], base["method"], base["path"], body_sha or "absent"),
+        "corpus:%s digest %s" % (base_corpus_rel, base_sha),
+        "fixture:%s %s[%s] applies %d statement(s) after the declared dataset %s (%s)"
+        % (variant, FIXTURES_SUBJECT, variant, len(fixture.get("statements") or []), dataset.get("path"), dataset.get("sha256")),
+        "fixture:%s the source is started with %s pointed at that variant dataset"
+        % (variant, fixture.get("dataset_config_key")),
+    ]
+    # the statements VERBATIM: they are the fixture's own SQL, they are what
+    # the variant is, and a receipt that paraphrased them could not be used
+    # to reproduce the run
+    evidence += ["fixture:%s statement: %s" % (variant, s) for s in (fixture.get("statements") or [])]
+    evidence.append("fixture:%s intent %s" % (variant, "refuse: the source is declared to refuse these requests, so any 4xx "
+                                              "is the expectation" if refuse else
+                                              "(none declared): what the source answers IS the expectation, and the capture "
+                                              "records it"))
+    sc: dict[str, Any] = {
+        "id": "sc:fixture-%s-%s" % (variant, slug),
+        "entry_point": str(base.get("entry_point") or ""),
+        "method": str(base["method"]), "path": str(base["path"]),
+        "headers": {str(k): str(v) for k, v in (base.get("headers") or {}).items()},
+        "identity": dict(base.get("identity") or {"kind": "none"}),
+        "reset_before": bool(base.get("reset_before", True)),
+        # the base's read-backs judge what the request did against the
+        # BASELINE; under the variant they are neither the question nor
+        # answerable (the identity they would be taken as is the one the
+        # fixture may have disabled)
+        "effects": [],
+        "normalization": list(base.get("normalization") or []),
+        "security_mode": str(base.get("security_mode") or ""),
+        "security_variant": variant,
+        "authorization_policy": str(base.get("authorization_policy") or ""),
+        "base_source": "corpus",
+        "base_scenario": str(base["id"]),
+        "base_route": str(base.get("base_route") or ""),
+        "base_body_sha256": body_sha,
+        "derived_from": {"kind": "fixture-%s" % variant, "entry_point": str(base.get("entry_point") or ""),
+                         "evidence": evidence},
+        "qualify": ({"intent": "negative", "expect_status_class": "4xx"} if refuse
+                    else {"intent": "positive", "usable_first_response": True}),
+        "why": ("the same request as %s, against the source baseline varied by %s[%s]; %s"
+                % (base["id"], FIXTURES_SUBJECT, variant,
+                   "the Operator declares the source refuses it under this variant, so any 4xx is the expectation and the "
+                   "challenge header is read where the source sends one" if refuse else
+                   "what the source answers IS the expectation -- the capture records it")),
+    }
+    if refuse:
+        # the same reading the other refusals get: a source that says how to
+        # authenticate has stated something a destination can drop
+        sc["asserted_headers"] = [CHALLENGE_HEADER]
+    if bf:
+        sc["body_file"] = bf
+    else:
+        sc["body_absent"] = True
+    return sc
+
+
+def _derive_variant(root: Path, args: Any, mode: str, variant: str, out_p: Path, receipt_p: Path, bundle_sha: str,
+                    freeze: dict[str, Any], copy: Path, inputs: dict[str, Any], gaps: list[str], blocked: Any,
+                    idle: Any) -> int:
+    """A fixture variant of a mode's baseline corpus (ADR-014).
+
+    The architect's exit asks what the source does when an identity the seed
+    ENABLES is disabled -- behaviour no capture taken against the declared
+    dataset can show, and not a reason to edit the dataset every other capture
+    is taken against. So the variant is a separate corpus over the same
+    requests: the mode's own scenarios of the declared class, each expecting
+    what the Operator says the source answers under the variant, with the
+    statements recorded verbatim so the run can be reproduced from the
+    evidence."""
+    fixtures, why = decided_fixtures(root)
+    if why:
+        return idle("no %s-mode fixture variant is derived: %s" % (mode, why))
+    rows = [f for f in fixtures if str(f.get("name") or "") == variant]
+    if not rows:
+        return blocked("%s declares no security fixture named %r (it declares: %s); a variant is derived only from a "
+                       "declared one" % (DECISIONS.as_posix(), variant, ", ".join(str(f.get("name")) for f in fixtures)))
+    fixture = rows[0]
+    try:
+        base = load_corpus(root, mode)
+    except CorpusError as exc:
+        return blocked("the %s corpus is what a variant of that mode varies, and it does not hold: %s" % (mode, exc))
+    base_sha = corpus_digest(base)
+    base_corpus_rel = corpus_path(mode).as_posix()
+    inputs["base_corpus"] = {"path": base_corpus_rel, "sha256": base_sha}
+    wanted_class = str(fixture.get("scenarios") or "")
+    selected = [sc for sc in (base.get("scenarios") or [])
+                if isinstance(sc, dict) and str((sc.get("derived_from") or {}).get("kind") or "") == wanted_class]
+    if not selected:
+        return idle("the %s corpus carries no scenario of class %s, which is what %s[%s] varies; nothing is derived "
+                    "and this receipt says so" % (mode, wanted_class, FIXTURES_SUBJECT, variant))
+    # the DECLARED dataset the statements are applied after: the frozen
+    # source's own seed, the same file the mode's corpus was derived from,
+    # recorded with its digest so the capture builds the variant from exactly
+    # the bytes this derivation saw
+    _src, _dest, _engine, seed_p, _seed, _cols, _fks = _sql_evidence(root, copy, inputs, gaps)
+    if seed_p is None:
+        return blocked("the fixture's statements are applied AFTER the declared dataset, and the frozen source carries none "
+                       "(no seed file was found); the variant dataset cannot be built")
+    dataset = {"path": str(inputs["seed"]["path"]), "sha256": str(inputs["seed"]["sha256"])}
+    scenarios = [_variant_scenario(root, variant, fixture, sc, base_sha, base_corpus_rel, dataset) for sc in selected]
+    scenarios.sort(key=lambda s: str(s["id"]))
+    fixture_row = {
+        "name": variant, "scenarios": wanted_class, "intent": str(fixture.get("intent") or ""),
+        "dataset_config_key": str(fixture.get("dataset_config_key") or ""),
+        # verbatim: fixture SQL, not a credential, and the thing the variant IS
+        "statements": [str(s) for s in (fixture.get("statements") or [])],
+        "dataset": dict(dataset),
+        "declared_by": "%s[%s]" % (FIXTURES_SUBJECT, variant),
+    }
+    doc = {
+        "schema": SCHEMA,
+        "security_mode": mode,
+        "security_variant": variant,
+        "derived_from": {
+            "producer": PRODUCER, "evidence_bundle_sha256": bundle_sha,
+            "source_digest": str(freeze.get("source_digest") or ""),
+            "security_mode": mode, "security_variant": variant,
+            "base_corpus": dict(inputs["base_corpus"]),
+        },
+        "initial_state": dict(base.get("initial_state") or {}),
+        "path_vars": dict(base.get("path_vars") or {}),
+        "cors_policies": [],
+        "identities": [dict(i) for i in (base.get("identities") or []) if isinstance(i, dict)],
+        "identities_from": str(base.get("identities_from") or ""),
+        "invalid_credential_ref": str(base.get("invalid_credential_ref") or ""),
+        "security_switch": dict(base.get("security_switch") or {}),
+        "request_policy": str(base.get("request_policy") or ""),
+        "fixture": dict(fixture_row),
+        # the policies the varied scenarios cite are the base corpus's, kept
+        # so an id on a scenario still resolves to the policy it names
+        "authorization_policies": [dict(p) for p in (base.get("authorization_policies") or []) if isinstance(p, dict)],
+        "scenarios": scenarios,
+        "gaps": gaps,
+    }
+    corpus_sha = corpus_digest(doc)
+    write_canonical(out_p, doc)
+    bodies = {str(s["body_file"]): sha256_file(root / str(s["body_file"])) for s in scenarios if s.get("body_file")}
+    requests = {str(s["id"]): request_of(root, s)["request_sha256"] for s in scenarios}
+    write_canonical(receipt_p, {
+        "schema": DERIVATION_SCHEMA, "producer": PRODUCER, "at": _now(), "status": "ok", "reason": "",
+        "security_mode": mode, "security_variant": variant,
+        "evidence_bundle_sha256": bundle_sha, "corpus_sha256": corpus_sha, "corpus": _rel(out_p, root),
+        "base_corpus": dict(inputs["base_corpus"]),
+        "fixture": dict(fixture_row),
+        "identities": [dict(i) for i in (base.get("identities") or []) if isinstance(i, dict)],
+        "identities_from": str(base.get("identities_from") or ""),
+        "security_switch": dict(base.get("security_switch") or {}),
+        "invalid_credential_ref": str(base.get("invalid_credential_ref") or ""),
+        "inputs": inputs, "origin": args.origin,
+        "scenarios": [str(s["id"]) for s in scenarios], "bodies": bodies, "requests": requests, "gaps": gaps,
+    })
+    print("OK: derived %d %s-mode scenario(s) for fixture variant %s over the %s class, %d gap(s) (corpus %s, base %s) → %s"
+          % (len(scenarios), mode, variant, wanted_class, len(gaps), corpus_sha[:12], base_sha[:12], _rel(out_p, root)))
     for g in gaps:
         print("  - gap: %s" % g)
     return 0
@@ -2834,6 +3184,12 @@ def main(argv: list[str] | None = None) -> int:
                          "from decisions.yaml's security section (ADR-014). The default whenever --security-mode enabled is "
                          "given with no --identity: who the source is captured as is a decision an ADR backs, not an "
                          "argument typed at a shell. A missing section derives nothing and records why")
+    ap.add_argument("--fixture-variant", default="", metavar="NAME",
+                    help="derive the corpus of a declared fixture VARIANT of this mode's baseline (ADR-014): one scenario per "
+                         "scenario of the class security.fixtures[NAME].scenarios names, expecting what the source answers "
+                         "with that fixture's statements applied after the declared dataset. The variant's corpus, captures "
+                         "and parity live under their own suffixed paths, so a variant's evidence can never be read as the "
+                         "baseline's")
     ap.add_argument("--identity-roles", action="append", default=[], metavar="NAME=ROLE[,ROLE...]",
                     help="enabled mode, repeatable: the roles the seeded identity NAME holds, as the Operator reads them off the "
                          "seed; derived from the seed too where the structure model maps the identity store, and a declaration "
@@ -2842,6 +3198,7 @@ def main(argv: list[str] | None = None) -> int:
     root = Path(args.root).resolve()
     try:
         mode = normalize_security_mode(args.security_mode)
+        variant = normalize_variant(args.fixture_variant, mode)
     except CorpusError as exc:
         print("REFUSE: DERIVE_SCENARIOS %s" % exc, file=sys.stderr)
         return 2
@@ -2849,14 +3206,20 @@ def main(argv: list[str] | None = None) -> int:
         print("REFUSE: DERIVE_SCENARIOS --from-decisions reads the identities decisions.yaml declares and --identity states "
               "them on the command line; pass one or the other, so the corpus says where they came from", file=sys.stderr)
         return 2
+    if variant and (args.identity or args.identity_roles):
+        # a variant varies the DATASET a mode's corpus is replayed against; who
+        # it authenticates as is that corpus's decision and is reused from it
+        print("REFUSE: DERIVE_SCENARIOS --fixture-variant reuses the identities of the %s corpus it varies; declare them "
+              "there, not on the variant" % mode, file=sys.stderr)
+        return 2
     if mode == DEFAULT_SECURITY_MODE and (args.identity or args.identity_roles or args.from_decisions):
         # a mistyped command must not derive the anonymous corpus while the
         # Operator believes identities went into it
         print("REFUSE: DERIVE_SCENARIOS --identity/--identity-roles declare who the ENABLED mode authenticates as; "
               "the %s mode sends no credential (pass --security-mode enabled)" % DEFAULT_SECURITY_MODE, file=sys.stderr)
         return 2
-    out_p = root / (args.out or corpus_path(mode).as_posix())
-    receipt_p = root / (args.receipt or derive_receipt_path(mode).as_posix())
+    out_p = root / (args.out or corpus_path(mode, variant).as_posix())
+    receipt_p = root / (args.receipt or derive_receipt_path(mode, variant).as_posix())
     bundle_p = root / EVIDENCE_BUNDLE
     if not bundle_p.is_file():
         print("REFUSE: DERIVE_SCENARIOS missing %s; the corpus is derived from the frozen source the bundle describes" % EVIDENCE_BUNDLE, file=sys.stderr)
@@ -2875,6 +3238,8 @@ def main(argv: list[str] | None = None) -> int:
             # a receipt of the default mode is where it always was and says
             # what it always said; another mode always names itself
             doc["security_mode"] = mode
+        if variant:
+            doc["security_variant"] = variant
         write_canonical(receipt_p, doc)
         print("REFUSE: DERIVE_SCENARIOS %s" % reason, file=sys.stderr)
         return 1
@@ -2893,6 +3258,8 @@ def main(argv: list[str] | None = None) -> int:
             "evidence_bundle_sha256": bundle_sha, "corpus_sha256": "", "corpus": _rel(out_p, root),
             "inputs": inputs, "scenarios": [], "gaps": gaps,
         }
+        if variant:
+            doc["security_variant"] = variant
         write_canonical(receipt_p, doc)
         print("OK: no %s-mode corpus derived (%s); the receipt says so → %s" % (mode, reason, _rel(receipt_p, root)))
         return 0
@@ -2913,6 +3280,11 @@ def main(argv: list[str] | None = None) -> int:
     copy = Path(str(freeze.get("analysis_copy") or ""))
     if not copy.is_dir():
         return blocked("the freeze receipt's analysis_copy %s is not a directory" % copy)
+    if variant:
+        # a variant reuses the MODE's requests unchanged; what varies is the
+        # dataset the source is started with, and that is the fixture's
+        return _derive_variant(root, args, mode, variant, out_p, receipt_p, bundle_sha, freeze, copy, inputs, gaps,
+                               blocked, idle)
     if mode != DEFAULT_SECURITY_MODE:
         # the enabled mode reuses the other mode's requests; it derives no
         # body, so it needs no OpenAPI document -- what it needs is the

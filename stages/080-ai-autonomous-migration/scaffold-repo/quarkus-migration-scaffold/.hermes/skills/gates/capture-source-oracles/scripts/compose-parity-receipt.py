@@ -37,8 +37,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _oracle_common import PARITY, slug  # noqa: E402
 from _scenarios import (BINDING_CANDIDATE, CorpusError, DEFAULT_SECURITY_MODE, QUALIFICATION, QUALIFICATION_SCHEMA,  # noqa: E402,F401
                         SCENARIO_ORACLES, SCENARIO_PARITY, SECURITY_MODES, binding_mismatch, candidate_binding,
-                        capture_security_mode, corpus_digest, cors_coverage, is_derived, load_corpus,
-                        normalize_security_mode, parity_receipt_path, qualification_path, scenario_oracles_dir,
+                        capture_security_mode, capture_security_variant, corpus_digest, cors_coverage, is_derived,
+                        load_corpus,
+                        normalize_security_mode, normalize_variant, parity_receipt_path, qualification_path,
+                        scenario_oracles_dir,
                         scenario_parity_dir, scenario_slug, sealed_binding, source_cors_policies)
 from planner.admission import verify_receipt  # noqa: E402
 from planner.canonical import load_json, write_canonical  # noqa: E402
@@ -74,6 +76,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--security-mode", choices=list(SECURITY_MODES), default=DEFAULT_SECURITY_MODE,
                     help="the security mode this receipt is of (ADR-014). It selects the captures, the qualification and the "
                          "scenario verdicts, and the receipt refuses to compose over evidence from another mode")
+    ap.add_argument("--fixture-variant", default="", metavar="NAME",
+                    help="compose the receipt of a declared fixture VARIANT of that mode's baseline (ADR-014): its own "
+                         "corpus, captures, qualification, verdicts and receipt path, so a variant's receipt is never "
+                         "read as the baseline's")
     ap.add_argument("--issued", default="", metavar="PATH",
                     help="verification/loop/issued.json: compose over the CANDIDATE that issued card was verified on. The live "
                          "seal is then not required to match the rebuilt work list, the receipt records the binding, and a "
@@ -97,17 +103,25 @@ def main(argv: list[str] | None = None) -> int:
     candidate_mode = str(binding.get("mode") or "") == BINDING_CANDIDATE
     try:
         security_mode = normalize_security_mode(args.security_mode)
+        variant = normalize_variant(args.fixture_variant, security_mode)
     except CorpusError as exc:
         print("REFUSE: PARITY_RECEIPT %s" % exc, file=sys.stderr)
         return 1
-    oracles_dir = scenario_oracles_dir(security_mode)
+    oracles_dir = scenario_oracles_dir(security_mode, variant)
     # The mode the capture RECORDS decides; an M4 verdict then names the mode
     # it judged instead of leaving a reader to guess which switch the source
     # was standing behind.
-    recorded_mode, mode_why = capture_security_mode(root, security_mode)
+    recorded_mode, mode_why = capture_security_mode(root, security_mode, variant)
     if recorded_mode and recorded_mode != security_mode:
         print("REFUSE: PARITY_RECEIPT mode mismatch: %s holds captures taken in the %s mode, this receipt is of %s"
               % (oracles_dir.as_posix(), recorded_mode, security_mode), file=sys.stderr)
+        return 1
+    # ... and the fixture VARIANT the captures were taken against, for the
+    # same reason: a receipt must say which database state its verdicts are
+    # about, and must not compose one state's evidence into another's
+    recorded_variant, variant_why = capture_security_variant(root, security_mode, variant)
+    if variant_why:
+        print("REFUSE: PARITY_RECEIPT variant mismatch: %s" % variant_why, file=sys.stderr)
         return 1
     receipt, gaps = verify_receipt(root, require_admitted=True)
     # On the acceptance path the work list was rebuilt on the candidate before
@@ -134,7 +148,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         # the corpus of THIS mode: the enabled receipt is composed over the
         # enabled corpus, never over the anonymous one beside it
-        corpus = load_corpus(root, security_mode)
+        corpus = load_corpus(root, security_mode, variant)
         corpus_sha = corpus_digest(corpus)
     except CorpusError as exc:
         corpus_error = str(exc)
@@ -150,15 +164,15 @@ def main(argv: list[str] | None = None) -> int:
     qualified: dict[str, dict[str, Any]] = {}
     qualification_loaded = False  # an empty verdict map is still a loaded qualification (nothing in it PASSes)
     qualification_gap = ""
-    qp = root / qualification_path(security_mode)
+    qp = root / qualification_path(security_mode, variant)
     mode_mixes: list[str] = []
     if qp.is_file():
         qdoc = load_json(qp)
         qmode = str(qdoc.get("security_mode") or "") if isinstance(qdoc, dict) else ""
         if qmode and qmode != security_mode:
-            mode_mixes.append("%s qualified the %s mode" % (qualification_path(security_mode).as_posix(), qmode))
+            mode_mixes.append("%s qualified the %s mode" % (qualification_path(security_mode, variant).as_posix(), qmode))
         if qdoc.get("schema") != QUALIFICATION_SCHEMA:
-            qualification_gap = "%s is not a %s document" % (qualification_path(security_mode), QUALIFICATION_SCHEMA)
+            qualification_gap = "%s is not a %s document" % (qualification_path(security_mode, variant), QUALIFICATION_SCHEMA)
         elif corpus_sha and str(qdoc.get("corpus_sha256") or "") != corpus_sha:
             qualification_gap = "captures were qualified against corpus %s, this is %s" % (str(qdoc.get("corpus_sha256"))[:12], corpus_sha[:12])
         else:
@@ -183,12 +197,15 @@ def main(argv: list[str] | None = None) -> int:
     navigation = load_navigation(root)
     navigation_failures: list[dict[str, Any]] = []
     results: dict[str, list[dict[str, Any]]] = {}
-    sdir = root / scenario_parity_dir(security_mode)
+    sdir = root / scenario_parity_dir(security_mode, variant)
     for sp in sorted(sdir.glob("*.json")) if sdir.is_dir() else []:
         doc = load_json(sp)
         dmode = str(doc.get("security_mode") or "")
         if dmode and dmode != security_mode:
             mode_mixes.append("%s compared the %s mode" % (sp.name, dmode))
+        dvariant = str(doc.get("security_variant") or "")
+        if dvariant != variant:
+            mode_mixes.append("%s compared the %s" % (sp.name, ("%s fixture variant" % dvariant) if dvariant else "mode baseline"))
         results.setdefault(str(doc.get("scenario") or ""), []).append(doc)
     # A receipt that mixes modes is the cross-mode reuse ADR-014 forbids,
     # arriving one file at a time. Refuse before judging anything.
@@ -325,6 +342,7 @@ def main(argv: list[str] | None = None) -> int:
     doc = {"schema": "rhoai3.parity-receipt/v1", "receipt_sha256": receipt_sha, "binding": dict(binding), "producer": "compose-parity-receipt.py",
            "corpus_sha256": corpus_sha, "corpus_error": corpus_error, "entry_points": rows, "total": len(rows), "not_passed": failed,
            "security_mode": security_mode, "security_mode_recorded": recorded_mode, "security_mode_note": "" if recorded_mode else mode_why,
+           "security_variant": variant, "security_variant_recorded": recorded_variant, "security_variant_note": variant_why,
            "cors": {"source_policies": source_policies, "gaps": cors_gaps},
            "qualification": {"present": qp.is_file(), "derived_corpus": bool(corpus) and is_derived(corpus), "gap": qualification_gap,
                              "not_passed": sorted(sid for sid, v in qualified.items() if v["capability"] != "PASS" or v["stale"]),
@@ -332,7 +350,7 @@ def main(argv: list[str] | None = None) -> int:
            "coverage_gaps": coverage_gaps,
            "navigation": {"checked": len(navigation), "failures": navigation_failures},
            "verdict": verdict}
-    out = root / parity_receipt_path(security_mode)
+    out = root / parity_receipt_path(security_mode, variant)
     write_canonical(out, doc)
     for g in coverage_gaps:
         print("  - coverage gap %s (%s): %s" % (g["scenario"], g["entry_point"], g["reason"]))

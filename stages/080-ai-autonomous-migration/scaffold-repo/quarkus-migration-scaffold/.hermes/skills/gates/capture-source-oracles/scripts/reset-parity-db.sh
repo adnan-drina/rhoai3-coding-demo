@@ -32,20 +32,35 @@
 # the same module that wrote the asset, and the same judgement its
 # verify_observations() makes over query results in the selftest.
 #
+# Fixture variants (ADR-014). --variant NAME resets to the same verified
+# baseline and then applies the statements decisions.yaml declares under
+# security.fixtures[NAME] -- a database state the declared dataset does not
+# have, such as an identity the seed enables being disabled. The order is the
+# point: the baseline is loaded and VERIFIED first, so the variant is
+# demonstrably the declared baseline plus those statements and not some other
+# state that happens to answer the same way. The statements are the
+# specimen's own SQL and nothing here parses them. Restoring the baseline
+# afterwards is this same script with no --variant, which loads the baseline
+# and verifies it -- the restoration ADR-014 asks for, proved rather than
+# assumed.
+#
 #   reset-parity-db.sh --root /projects/modernized [--driver /path/to/driver.jar]
 #   reset-parity-db.sh --root /projects/modernized --print-plan
+#   reset-parity-db.sh --root /projects/modernized --variant identity-disabled
 #
 # Exit 0 reset (and verified, when there is a derived baseline), 1 refused, 2 usage.
 set -euo pipefail
 ROOT=""
 DRIVER=""
 PRINT_PLAN="no"
+VARIANT=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --root) ROOT="${2:-}"; shift 2 ;;
     --driver) DRIVER="${2:-}"; shift 2 ;;
+    --variant) VARIANT="${2:-}"; shift 2 ;;
     --print-plan) PRINT_PLAN="yes"; shift ;;
-    *) echo "usage: reset-parity-db.sh --root <dest> [--driver <jar>] [--print-plan]" >&2; exit 2 ;;
+    *) echo "usage: reset-parity-db.sh --root <dest> [--driver <jar>] [--variant <name>] [--print-plan]" >&2; exit 2 ;;
   esac
 done
 [[ -n "${ROOT}" && -d "${ROOT}" ]] || { echo "FAIL: --root must be an existing directory" >&2; exit 2; }
@@ -107,6 +122,39 @@ if [[ -n "${BASELINE_REL}" ]]; then
   SQL_FILES+=("${WORK}/baseline-verify.sql")
 fi
 
+# The declared variant's statements, read from the one file that may declare
+# them. They go LAST -- after the baseline's own verification -- so what they
+# vary is a baseline this run proved, and so a variant that cannot be read
+# refuses before anything is applied.
+VARIANT_COUNT=0
+if [[ -n "${VARIANT}" ]]; then
+  VARIANT_COUNT="$(python3 - "${ROOT}" "${VARIANT}" "${WORK}/variant.sql" 2>"${WORK}/variant.err" <<'PYEOF'
+import sys
+from pathlib import Path
+root, name, out = Path(sys.argv[1]), sys.argv[2], Path(sys.argv[3])
+sys.path.insert(0, str(root / ".hermes" / "lib"))
+from planner.decisions import load_decisions, security, security_gaps
+doc = load_decisions(root)
+decided = security(doc)
+if not decided:
+    refusals = security_gaps(doc)
+    raise SystemExit("decisions.yaml declares no usable security section%s"
+                     % ((": " + "; ".join("%s %s" % (g["subject"], g["detail"]) for g in refusals)) if refusals else ""))
+rows = [f for f in (decided.get("fixtures") or []) if f.get("name") == name]
+if not rows:
+    raise SystemExit("decisions.yaml declares no security fixture named %r (it declares: %s)"
+                     % (name, ", ".join(str(f.get("name")) for f in (decided.get("fixtures") or [])) or "none"))
+statements = [str(s).strip() for s in rows[0]["statements"]]
+# opaque SQL: applied exactly as declared, terminated so the runner reads
+# each as a statement, under a comment naming where it came from
+out.write_text("-- decisions.security.fixtures[%s]\n" % name
+               + "".join((s if s.endswith(";") else s + ";") + "\n" for s in statements), encoding="utf-8")
+print(len(statements))
+PYEOF
+)" || { echo "FAIL: RESET the fixture variant ${VARIANT} is unusable: $(tr '\n' ' ' <"${WORK}/variant.err")" >&2; exit 1; }
+  SQL_FILES+=("${WORK}/variant.sql")
+fi
+
 if [[ "${PRINT_PLAN}" == "yes" ]]; then
   echo "plan: reset ${DB_KIND} from ${URL_ENV} (credentials ${USER_ENV}/${PASS_ENV})"
   for rel in ${SQL_RELS[@]+"${SQL_RELS[@]}"}; do echo "apply: ${rel}"; done
@@ -115,6 +163,10 @@ if [[ "${PRINT_PLAN}" == "yes" ]]; then
     echo "verify: row counts per table and each aligned sequence's next value = max + 1"
   else
     echo "verify: none (no derived baseline asset; the baseline is unverified)"
+  fi
+  if [[ -n "${VARIANT}" ]]; then
+    echo "apply: fixture ${VARIANT} (${VARIANT_COUNT} statement(s) from decisions.yaml security.fixtures[${VARIANT}], after the verified baseline)"
+    echo "restore: reset-parity-db.sh --root ${ROOT} (loads the baseline again and verifies it)"
   fi
   exit 0
 fi
@@ -153,9 +205,13 @@ fi
 # SQLException, and this script exits non-zero: an unverified baseline is never
 # reported as a reset.
 java -cp "${DRIVER}:${WORK}" ResetDb "${URL}" "${DB_USER}" "${DB_PASSWORD}" ${SQL_FILES[@]+"${SQL_FILES[@]}"}
+VARIANT_NOTE=""
+if [[ -n "${VARIANT}" ]]; then
+  VARIANT_NOTE=", then the ${VARIANT} fixture's ${VARIANT_COUNT} statement(s)"
+fi
 if [[ -n "${BASELINE_REL}" ]]; then
   printf '%s\n' "${BASELINE_FACTS}" | sed -n '2,$p'
-  echo "OK: reset to the DECLARED initial state and verified (${SQL_RELS[*]}) using $(basename "${DRIVER}")"
+  echo "OK: reset to the DECLARED initial state and verified (${SQL_RELS[*]})${VARIANT_NOTE} using $(basename "${DRIVER}")"
 else
-  echo "OK: reset to the initial state (${SQL_RELS[*]}) using $(basename "${DRIVER}"); baseline UNVERIFIED (no derived asset)"
+  echo "OK: reset to the initial state (${SQL_RELS[*]})${VARIANT_NOTE} using $(basename "${DRIVER}"); baseline UNVERIFIED (no derived asset)"
 fi

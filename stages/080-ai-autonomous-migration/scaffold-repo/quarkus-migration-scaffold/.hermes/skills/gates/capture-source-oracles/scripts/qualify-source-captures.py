@@ -73,9 +73,9 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _oracle_common import ensure_hermes_lib, normalize_body, origin_of  # noqa: E402
 from _scenarios import (CorpusError, DEFAULT_SECURITY_MODE, QUALIFICATION, QUALIFICATION_SCHEMA, SCENARIO_ORACLES,  # noqa: E402,F401
-                        SECURITY_MODES, capture_receipt_path, capture_security_mode, corpus_digest,
+                        SECURITY_MODES, capture_receipt_path, capture_security_mode, capture_security_variant, corpus_digest,
                         effects_identity_of, load_corpus, normalize_security_mode, normalized_identity,
-                        qualification_path, request_of, scenario_oracles_dir, scenario_slug)
+                        normalize_variant, qualification_path, request_of, scenario_oracles_dir, scenario_slug)
 
 ensure_hermes_lib()
 from planner.canonical import digest, load_json, write_canonical  # noqa: E402
@@ -99,11 +99,11 @@ HEADER_CHECKS = ("location", "errors_header_names_field", "cors_allow_origin", "
 _STATUS_CLASS_RE = re.compile(r"^([1-5])xx$", re.IGNORECASE)
 
 
-def _capture_idle_reason(root: Path, security_mode: str) -> str:
+def _capture_idle_reason(root: Path, security_mode: str, variant: str = "") -> str:
     """Why this mode's capture recorded that it captured nothing; "" when it
     ran (or when there is no receipt at all, which is a different thing and
     stays the refusal it was)."""
-    p = Path(root) / capture_receipt_path(security_mode)
+    p = Path(root) / capture_receipt_path(security_mode, variant)
     if not p.is_file():
         return ""
     try:
@@ -543,24 +543,35 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--security-mode", choices=list(SECURITY_MODES), default=DEFAULT_SECURITY_MODE,
                     help="which security mode's captures to judge (ADR-014). The mode the capture receipt RECORDS wins: "
                          "a directory whose captures were taken in another mode is a refusal, never a re-judgement")
+    ap.add_argument("--fixture-variant", default="", metavar="NAME",
+                    help="judge the captures of a declared fixture VARIANT of that mode's baseline (ADR-014), under the "
+                         "variant's own directory; the variant the capture receipt RECORDS wins the same way the mode does")
     args = ap.parse_args(argv)
     root = Path(args.root).resolve()
     try:
         security_mode = normalize_security_mode(args.security_mode)
+        variant = normalize_variant(args.fixture_variant, security_mode)
     except CorpusError as exc:
         print("REFUSE: QUALIFY_CAPTURES %s" % exc, file=sys.stderr)
         return 1
-    _ORACLES_DIR = scenario_oracles_dir(security_mode)
+    _ORACLES_DIR = scenario_oracles_dir(security_mode, variant)
     oracles_dir = _ORACLES_DIR
     # The mode is read from the capture receipt, not assumed from the
     # argument: a qualification names the mode it judged, and a directory
     # holding another mode's captures is a refusal to judge. A capture taken
     # before modes were bound records none, and is judged as what it was
     # asked for -- with the mode still written down.
-    recorded_mode, mode_why = capture_security_mode(root, security_mode)
+    recorded_mode, mode_why = capture_security_mode(root, security_mode, variant)
     if recorded_mode and recorded_mode != security_mode:
         print("REFUSE: QUALIFY_CAPTURES mode mismatch: %s holds captures taken in the %s mode, this run was asked for %s"
               % (oracles_dir.as_posix(), recorded_mode, security_mode), file=sys.stderr)
+        return 1
+    # ... and the same for the fixture variant: a capture taken against a
+    # varied dataset is evidence about that dataset, and judging it as the
+    # baseline's would contract it against expectations nobody measured
+    recorded_variant, variant_why = capture_security_variant(root, security_mode, variant)
+    if variant_why:
+        print("REFUSE: QUALIFY_CAPTURES variant mismatch: %s" % variant_why, file=sys.stderr)
         return 1
     # The capture of this mode may have been IDLE: a security section nobody
     # declared, or a declared credential the workspace does not hold. That is
@@ -568,13 +579,14 @@ def main(argv: list[str] | None = None) -> int:
     # qualification says so and carries the capture's own reason forward,
     # rather than refusing over a corpus that was never derived. A judgement
     # is never invented for it: the verdict is INCONCLUSIVE with no scenario.
-    idle_why = _capture_idle_reason(root, security_mode)
+    idle_why = _capture_idle_reason(root, security_mode, variant)
     if idle_why:
-        out = root / qualification_path(security_mode)
+        out = root / qualification_path(security_mode, variant)
         write_canonical(out, {
             "schema": QUALIFICATION_SCHEMA, "producer": PRODUCER, "at": _now(),
             "corpus_sha256": "", "evidence_bundle_sha256": "",
             "security_mode": security_mode, "security_mode_recorded": recorded_mode, "security_mode_note": "" if recorded_mode else mode_why,
+        "security_variant": variant, "security_variant_recorded": recorded_variant,
             "status": "idle", "reason": idle_why,
             "scenarios": {}, "total": 0, "not_passed": 0, "verdict": "INCONCLUSIVE",
         })
@@ -583,7 +595,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         # the corpus of THIS mode: the captures under the mode's own
         # directory were replayed from it, and only it can contract them
-        corpus = load_corpus(root, security_mode)
+        corpus = load_corpus(root, security_mode, variant)
     except CorpusError as exc:
         print("REFUSE: QUALIFY_CAPTURES %s" % exc, file=sys.stderr)
         return 1
@@ -618,11 +630,12 @@ def main(argv: list[str] | None = None) -> int:
         results[sid] = qualify_scenario(root, sc, cap, corpus_sha, bundle_sha, capture_sha)
     not_passed = sorted(sid for sid, r in results.items() if r["capability"] != "PASS")
     verdict = "PASS" if results and not not_passed else "FAIL" if any(r["capability"] == "FAIL" for r in results.values()) else "INCONCLUSIVE"
-    out = root / qualification_path(security_mode)
+    out = root / qualification_path(security_mode, variant)
     write_canonical(out, {
         "schema": QUALIFICATION_SCHEMA, "producer": PRODUCER, "at": _now(),
         "corpus_sha256": corpus_sha, "evidence_bundle_sha256": bundle_sha,
         "security_mode": security_mode, "security_mode_recorded": recorded_mode, "security_mode_note": "" if recorded_mode else mode_why,
+        "security_variant": variant, "security_variant_recorded": recorded_variant,
         "scenarios": dict(sorted(results.items())), "total": len(results), "not_passed": len(not_passed), "verdict": verdict,
     })
     for sid in not_passed:

@@ -76,6 +76,21 @@ DEFAULT_SECURITY_MODE = "disabled"
 CAPTURE_RECEIPT_NAME = "_capture.json"
 QUALIFICATION_NAME = "_qualification.json"
 
+# ---------------------------------------------------------------------------
+# fixture variants of a mode's baseline (ADR-014)
+# ---------------------------------------------------------------------------
+# A mode's baseline is the source's declared dataset. Some behaviour the
+# architect's exits ask about is not reachable from it -- an account the seed
+# enables cannot show what the source does when the account is DISABLED -- and
+# the answer is not to edit the baseline, which every other capture is taken
+# against, but to record a separate VARIANT: the declared dataset plus the
+# statements the Operator declares, captured into its own directory and
+# followed by a restoration of the baseline. The variant travels in the path
+# for the same reason the mode does: a variant capture must not be readable
+# as the baseline's, and prevention by path needs nobody to remember.
+VARIANT_NAME_CHARS = "a-z, 0-9 and -, starting with a letter or digit"
+_VARIANT_NAME = re.compile(r"^[a-z0-9][a-z0-9-]*$")
+
 
 class CorpusError(ValueError):
     pass
@@ -90,67 +105,102 @@ def normalize_security_mode(security_mode: Any) -> str:
     return mode
 
 
-def _mode_suffix(security_mode: Any = DEFAULT_SECURITY_MODE) -> str:
-    """"" for the default mode, so every existing path stays exactly where it
-    is and a tree captured before ADR-014 keeps working."""
+def normalize_variant(variant: Any, security_mode: Any = DEFAULT_SECURITY_MODE) -> str:
+    """The canonical variant name, or "" for a mode's own baseline.
+
+    The name becomes a directory, so it is checked as one: a name that could
+    be read as a mode (``enabled``) would make the variant's captures
+    indistinguishable from that mode's baseline, and a name carrying a
+    separator would write outside the tree. A variant of the DEFAULT mode is
+    refused as well -- the suffix would collide with the other mode's -- so a
+    fixture variant is always a variant of a named mode's baseline."""
+    name = str(variant or "").strip()
+    if not name:
+        return ""
     mode = normalize_security_mode(security_mode)
-    return "" if mode == DEFAULT_SECURITY_MODE else "-%s" % mode
+    if not _VARIANT_NAME.match(name):
+        raise CorpusError("fixture variant %r is not a name a directory can carry (%s)" % (variant, VARIANT_NAME_CHARS))
+    if name in SECURITY_MODES:
+        raise CorpusError("fixture variant %r is the name of a security mode; a variant's directory must not be readable "
+                          "as a mode's own" % variant)
+    if mode == DEFAULT_SECURITY_MODE:
+        raise CorpusError("fixture variant %r is declared for the %s mode, whose paths carry no mode suffix; a variant is a "
+                          "variant of a named mode's baseline" % (variant, DEFAULT_SECURITY_MODE))
+    return name
 
 
-def scenario_oracles_dir(security_mode: Any = DEFAULT_SECURITY_MODE) -> Path:
-    """Where the captures of ONE mode live. Every consumer resolves the
-    directory through this function, so no two modes can ever share one."""
-    return Path("verification") / "source-oracles" / ("scenarios" + _mode_suffix(security_mode))
+def _mode_suffix(security_mode: Any = DEFAULT_SECURITY_MODE, variant: Any = "") -> str:
+    """"" for the default mode and no variant, so every existing path stays
+    exactly where it is and a tree captured before ADR-014 keeps working."""
+    mode = normalize_security_mode(security_mode)
+    name = normalize_variant(variant, mode)
+    return ("" if mode == DEFAULT_SECURITY_MODE else "-%s" % mode) + ("-%s" % name if name else "")
 
 
-def capture_receipt_path(security_mode: Any = DEFAULT_SECURITY_MODE) -> Path:
-    return scenario_oracles_dir(security_mode) / CAPTURE_RECEIPT_NAME
+def scenario_oracles_dir(security_mode: Any = DEFAULT_SECURITY_MODE, variant: Any = "") -> Path:
+    """Where the captures of ONE mode (and one of its fixture variants) live.
+    Every consumer resolves the directory through this function, so no two
+    modes -- and no variant and the baseline it varies -- can ever share one."""
+    return Path("verification") / "source-oracles" / ("scenarios" + _mode_suffix(security_mode, variant))
 
 
-def qualification_path(security_mode: Any = DEFAULT_SECURITY_MODE) -> Path:
-    return scenario_oracles_dir(security_mode) / QUALIFICATION_NAME
+def capture_receipt_path(security_mode: Any = DEFAULT_SECURITY_MODE, variant: Any = "") -> Path:
+    return scenario_oracles_dir(security_mode, variant) / CAPTURE_RECEIPT_NAME
 
 
-def scenario_parity_dir(security_mode: Any = DEFAULT_SECURITY_MODE) -> Path:
-    return Path("verification") / "parity" / ("scenarios" + _mode_suffix(security_mode))
+def qualification_path(security_mode: Any = DEFAULT_SECURITY_MODE, variant: Any = "") -> Path:
+    return scenario_oracles_dir(security_mode, variant) / QUALIFICATION_NAME
 
 
-def parity_receipt_path(security_mode: Any = DEFAULT_SECURITY_MODE) -> Path:
-    return Path("verification") / "parity" / ("receipt%s.json" % _mode_suffix(security_mode))
+def scenario_parity_dir(security_mode: Any = DEFAULT_SECURITY_MODE, variant: Any = "") -> Path:
+    return Path("verification") / "parity" / ("scenarios" + _mode_suffix(security_mode, variant))
 
 
-def scenarios_dir(security_mode: Any = DEFAULT_SECURITY_MODE) -> Path:
+def parity_receipt_path(security_mode: Any = DEFAULT_SECURITY_MODE, variant: Any = "") -> Path:
+    return Path("verification") / "parity" / ("receipt%s.json" % _mode_suffix(security_mode, variant))
+
+
+def scenarios_dir(security_mode: Any = DEFAULT_SECURITY_MODE, variant: Any = "") -> Path:
     """Where the corpus of ONE mode lives. The default mode resolves to the
     directory CORPUS and DERIVE_RECEIPT already name, so nothing moves; the
-    enabled mode gets its own, and the two corpora cannot be confused for one
-    another by forgetting which was derived last."""
-    return Path("verification") / ("scenarios" + _mode_suffix(security_mode))
+    enabled mode gets its own, each of its fixture variants gets its own
+    again, and no two corpora can be confused for one another by forgetting
+    which was derived last."""
+    return Path("verification") / ("scenarios" + _mode_suffix(security_mode, variant))
 
 
-def corpus_path(security_mode: Any = DEFAULT_SECURITY_MODE) -> Path:
-    return scenarios_dir(security_mode) / "corpus.json"
+def corpus_path(security_mode: Any = DEFAULT_SECURITY_MODE, variant: Any = "") -> Path:
+    return scenarios_dir(security_mode, variant) / "corpus.json"
 
 
-def derive_receipt_path(security_mode: Any = DEFAULT_SECURITY_MODE) -> Path:
-    return scenarios_dir(security_mode) / "_derive.json"
+def derive_receipt_path(security_mode: Any = DEFAULT_SECURITY_MODE, variant: Any = "") -> Path:
+    return scenarios_dir(security_mode, variant) / "_derive.json"
 
 
-def scenario_bodies_dir(security_mode: Any = DEFAULT_SECURITY_MODE) -> Path:
+def variant_dataset_path(security_mode: Any = DEFAULT_SECURITY_MODE, variant: Any = "") -> Path:
+    """The dataset a variant capture STARTS the source with: the declared
+    dataset with the fixture's statements after it. It is written beside the
+    captures it produced, because it is what those captures are evidence
+    of -- and its digest is on the capture receipt."""
+    return scenario_oracles_dir(security_mode, variant) / "_variant-dataset.sql"
+
+
+def scenario_bodies_dir(security_mode: Any = DEFAULT_SECURITY_MODE, variant: Any = "") -> Path:
     """Where a derivation writes request bodies. The enabled mode writes none:
     it REUSES the disabled corpus's requests, bodies included, so the two
     modes send the same bytes and a difference in the answer is the security
     switch and nothing else."""
-    return scenarios_dir(security_mode) / "bodies"
+    return scenarios_dir(security_mode, variant) / "bodies"
 
 
-def capture_security_mode(root: Path, security_mode: Any = DEFAULT_SECURITY_MODE) -> tuple[str, str]:
+def capture_security_mode(root: Path, security_mode: Any = DEFAULT_SECURITY_MODE, variant: Any = "") -> tuple[str, str]:
     """(the mode the capture receipt in that directory RECORDS, why-unknown).
 
     "" with a reason is not "disabled": a capture taken before modes were
     bound recorded no mode, and the caller decides whether that is
     compatible with what it was asked for."""
     mode = normalize_security_mode(security_mode)
-    rel = capture_receipt_path(mode)
+    rel = capture_receipt_path(mode, variant)
     p = Path(root) / rel
     if not p.is_file():
         return "", "no capture receipt %s in this tree" % rel.as_posix()
@@ -162,6 +212,32 @@ def capture_security_mode(root: Path, security_mode: Any = DEFAULT_SECURITY_MODE
     if not recorded:
         return "", "%s records no security_mode (a capture taken before the mode was bound)" % rel.as_posix()
     return recorded, ""
+
+
+def capture_security_variant(root: Path, security_mode: Any = DEFAULT_SECURITY_MODE,
+                             variant: Any = "") -> tuple[str, str]:
+    """(the fixture variant the capture receipt in that directory RECORDS,
+    why-it-differs-from-what-was-asked).
+
+    "" is the mode's own baseline, and a receipt that records a variant while
+    the caller asked for the baseline (or for another variant) is evidence of
+    a different database state -- the reason is the refusal, and it names
+    both."""
+    name = normalize_variant(variant, security_mode) if variant else ""
+    rel = capture_receipt_path(security_mode, variant)
+    p = Path(root) / rel
+    if not p.is_file():
+        return "", ""
+    try:
+        doc = load_json(p)
+    except (OSError, ValueError):
+        return "", ""
+    recorded = str((doc or {}).get("security_variant") or "") if isinstance(doc, dict) else ""
+    if recorded == name:
+        return recorded, ""
+    return recorded, ("%s was captured against the %s and this asks for the %s"
+                      % (rel.as_posix(), "%s fixture variant" % recorded if recorded else "mode's baseline",
+                         "%s fixture variant" % name if name else "mode's baseline"))
 
 
 # ---------------------------------------------------------------------------
@@ -331,10 +407,11 @@ def scenario_slug(scenario_id: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]+", "_", str(scenario_id))[:120]
 
 
-def load_corpus(root: Path, security_mode: Any = DEFAULT_SECURITY_MODE) -> dict[str, Any]:
-    """The corpus of one security mode. The default mode reads exactly the
-    path (and states exactly the refusals) it always did."""
-    corpus_rel = corpus_path(security_mode)
+def load_corpus(root: Path, security_mode: Any = DEFAULT_SECURITY_MODE, variant: Any = "") -> dict[str, Any]:
+    """The corpus of one security mode (and one of its fixture variants). The
+    default mode reads exactly the path (and states exactly the refusals) it
+    always did."""
+    corpus_rel = corpus_path(security_mode, variant)
     p = Path(root) / corpus_rel
     if not p.is_file():
         raise CorpusError("missing %s (the Operator-approved scenario corpus)" % corpus_rel)
@@ -388,9 +465,18 @@ def load_corpus(root: Path, security_mode: Any = DEFAULT_SECURITY_MODE) -> dict[
     if recorded and recorded != normalize_security_mode(security_mode):
         raise CorpusError("%s records security_mode %r; this is the %s corpus"
                           % (corpus_rel, recorded, normalize_security_mode(security_mode)))
+    # ... and a corpus derived for a fixture VARIANT is not the mode's
+    # baseline corpus: its scenarios expect the source's behaviour under a
+    # database state the baseline does not have
+    want_variant = normalize_variant(variant, security_mode) if variant else ""
+    recorded_variant = str(doc.get("security_variant") or "")
+    if recorded_variant != want_variant:
+        raise CorpusError("%s records security_variant %r; this is the %s corpus"
+                          % (corpus_rel, recorded_variant,
+                             ("%s fixture variant's" % want_variant) if want_variant else "mode baseline"))
     # provenance last: it recomputes request digests, which assumes the
     # scenarios are well-formed (checked above)
-    provenance_gap = corpus_provenance_gap(root, doc, security_mode)
+    provenance_gap = corpus_provenance_gap(root, doc, security_mode, variant)
     if provenance_gap:
         raise CorpusError(provenance_gap)
     return doc
@@ -404,7 +490,8 @@ def is_derived(doc: dict[str, Any]) -> bool:
     return isinstance(doc.get("derived_from"), dict) and not doc.get("approved_by")
 
 
-def corpus_provenance_gap(root: Path, doc: dict[str, Any], security_mode: Any = DEFAULT_SECURITY_MODE) -> str:
+def corpus_provenance_gap(root: Path, doc: dict[str, Any], security_mode: Any = DEFAULT_SECURITY_MODE,
+                          variant: Any = "") -> str:
     """Why this corpus may NOT be trusted; "" when its provenance holds.
 
     Two provenances are accepted. A DERIVED corpus (``derived_from``) is bound
@@ -417,8 +504,8 @@ def corpus_provenance_gap(root: Path, doc: dict[str, Any], security_mode: Any = 
     ``approved_by``; a placeholder (``TODO``, ``<who>``) is not a name. The
     wording never says "missing": capture-source-scenarios.py reads that word
     as "no corpus at all", which is idle, and a broken binding is not idle."""
-    corpus_rel = corpus_path(security_mode)
-    receipt_rel = derive_receipt_path(security_mode)
+    corpus_rel = corpus_path(security_mode, variant)
+    receipt_rel = derive_receipt_path(security_mode, variant)
     approved = doc.get("approved_by")
     if approved:
         text = str(approved)

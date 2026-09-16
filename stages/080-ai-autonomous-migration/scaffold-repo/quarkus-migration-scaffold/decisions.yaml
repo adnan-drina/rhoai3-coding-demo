@@ -141,6 +141,29 @@ security:
         - ROLE_VET_ADMIN
         - ROLE_ADMIN
   invalid_credential_ref: PETCLINIC_INVALID_CREDENTIAL
+  # What the source's ENABLED configuration requires of a request no
+  # annotation names. BasicAuthenticationConfig configures
+  # anyRequest().authenticated(), so an unannotated route -- the root
+  # redirect among them -- is still guarded, by "authenticated" rather than
+  # by a role. Declared here because only the Operator can read it off the
+  # source's own configuration; the derivation probes every entry point it
+  # has a request for and says this key is where that came from.
+  request_policy: authenticated
+  # Behaviour the declared dataset cannot reach. The seed enables its one
+  # identity, so no capture taken against the baseline can show what the
+  # source answers for an identity that exists and is DISABLED -- and the
+  # answer is not to edit the baseline every other capture is taken against.
+  # The variant is captured separately, against the declared dataset with
+  # these statements applied after it, and the baseline is restored and
+  # verified afterwards. The statements are the specimen's own SQL (the
+  # harness never parses them) and they carry no credential.
+  fixtures:
+    - name: identity-disabled
+      intent: refuse
+      scenarios: auth-allowed
+      dataset_config_key: spring.sql.init.data-locations
+      statements:
+        - UPDATE users SET enabled = false WHERE username = 'admin'
 
 # Work-list items an accepted ADR retires (exact item ids from
 # evidence/planning/worklist.json): one incident, one ADR, one reason.

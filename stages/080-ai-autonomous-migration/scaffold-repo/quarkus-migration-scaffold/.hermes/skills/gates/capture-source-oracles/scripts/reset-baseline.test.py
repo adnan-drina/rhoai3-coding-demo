@@ -188,11 +188,100 @@ def _verification_case() -> int:
     return 0
 
 
+# The Operator's declaration of one variant of the source baseline, under
+# names no specimen owns: the statements are the SPECIMEN's own SQL and this
+# script never parses them.
+VARIANT = "identity-disabled"
+VARIANT_STATEMENT = "UPDATE accounts SET enabled = false WHERE name = 'an-identity'"
+VARIANT_SECURITY_YAML = (
+    "security:\n"
+    "  adr: ADR-003\n"
+    "  switch:\n"
+    "    key: acme.security.enable\n"
+    '    disabled_value: "off"\n'
+    '    enabled_value: "on"\n'
+    "  identities:\n"
+    "    - name: an-identity\n"
+    "      credential_ref: ACME_IDENTITY_CREDENTIAL\n"
+    "  fixtures:\n"
+    "    - name: %s\n"
+    "      intent: refuse\n"
+    "      scenarios: auth-allowed\n"
+    "      dataset_config_key: acme.sql.init.data-locations\n"
+    "      statements:\n"
+    "        - %s\n" % (VARIANT, json.dumps(VARIANT_STATEMENT))
+)
+
+
+def _variant_case() -> int:
+    """The variant reset: the verified baseline, then the declared statements
+    -- and the restoration that follows is the baseline verified again.
+
+    ADR-014 asks for a separately recorded variant of the source baseline AND
+    for the baseline to be restored afterwards. Both halves are measured here
+    the only way they can be without a database: the plan the script resolves.
+    The order is the claim being checked -- the baseline is loaded and
+    VERIFIED before the fixture's statements are applied, so what the variant
+    varies is a baseline this run proved rather than whatever the database
+    happened to hold -- and the restoration is this same script with no
+    --variant, which loads the baseline and verifies it.
+    """
+    with tempfile.TemporaryDirectory(prefix="reset-variant-") as td:
+        t = Path(td)
+        root = _tree(t / "variant", with_baseline=True)
+        (root / "decisions.yaml").write_text(
+            (root / "decisions.yaml").read_text(encoding="utf-8") + VARIANT_SECURITY_YAML, encoding="utf-8")
+        p = subprocess.run(["bash", str(RESET), "--root", str(root), "--variant", VARIANT, "--print-plan"],
+                           text=True, capture_output=True)
+        if p.returncode != 0:
+            return _fail("a declared variant resolves without a database: rc=%s %s" % (p.returncode, p.stderr[-400:]))
+        lines = [ln for ln in p.stdout.splitlines() if ln.startswith(("apply: ", "verify: ", "restore: "))]
+        baseline = next((i for i, ln in enumerate(lines) if ln.endswith("baseline-data.sql")), -1)
+        verify = next((i for i, ln in enumerate(lines) if ln.startswith("verify: row counts")), -1)
+        fixture = next((i for i, ln in enumerate(lines) if ln.startswith("apply: fixture ")), -1)
+        restore = next((i for i, ln in enumerate(lines) if ln.startswith("restore: ")), -1)
+        if min(baseline, verify, fixture, restore) < 0:
+            return _fail("the variant plan loads the baseline, verifies it, applies the fixture and names the restoration: %s" % lines)
+        if not (baseline < verify < fixture < restore):
+            return _fail("the baseline is loaded and VERIFIED before the fixture's statements: %s" % lines)
+        if "1 statement(s)" not in lines[fixture] or VARIANT not in lines[fixture]:
+            return _fail("the plan says which fixture and how many statements: %s" % lines[fixture])
+        if "verifies it" not in lines[restore]:
+            return _fail("the restoration is the baseline, verified: %s" % lines[restore])
+        # the statements themselves are never parsed here, only passed on --
+        # and they are the last thing applied
+        p = subprocess.run(["bash", str(RESET), "--root", str(root), "--variant", VARIANT], text=True, capture_output=True,
+                           env={**os.environ, "FIXTURE_DB_URL": "", "FIXTURE_DB_USER": "", "FIXTURE_DB_PASSWORD": ""})
+        if p.returncode != 1 or "FIXTURE_DB_URL" not in p.stderr:
+            return _fail("a variant reset still refuses without the credentials the decision names: rc=%s %s"
+                         % (p.returncode, p.stderr[-300:]))
+        # a variant nobody declared is refused, and the refusal says what IS
+        # declared rather than resetting to something nobody asked for
+        p = subprocess.run(["bash", str(RESET), "--root", str(root), "--variant", "no-such-fixture", "--print-plan"],
+                           text=True, capture_output=True)
+        if p.returncode != 1 or "no security fixture named" not in p.stderr:
+            return _fail("an undeclared variant refuses by name: rc=%s %s" % (p.returncode, p.stderr[-300:]))
+        # ... and a tree that declares no security section at all says so
+        plain = _tree(t / "plain", with_baseline=True)
+        p = subprocess.run(["bash", str(RESET), "--root", str(plain), "--variant", VARIANT, "--print-plan"],
+                           text=True, capture_output=True)
+        if p.returncode != 1 or "no usable security section" not in p.stderr:
+            return _fail("a tree declaring no security section refuses the variant: rc=%s %s" % (p.returncode, p.stderr[-300:]))
+        # the baseline reset is exactly what it was: no variant, no fixture line
+        p = subprocess.run(["bash", str(RESET), "--root", str(root), "--print-plan"], text=True, capture_output=True)
+        if p.returncode != 0 or "apply: fixture" in p.stdout or "restore:" in p.stdout:
+            return _fail("the baseline reset is untouched by a declared fixture: rc=%s %s" % (p.returncode, p.stdout))
+    return 0
+
+
 def main() -> int:
-    if _plan_case() or _verification_case():
+    if _plan_case() or _verification_case() or _variant_case():
         return 1
     print("OK: reset-parity-db (the plan loads the derived baseline and not the per-engine seed; an older tree keeps the "
-          "previous behaviour and says the baseline is unverified; every existing flag still holds; the reset contract "
+          "previous behaviour and says the baseline is unverified; every existing flag still holds; a declared fixture "
+          "VARIANT loads the baseline, VERIFIES it, and only then applies the Operator's own statements, names the "
+          "restoration that follows, still refuses without the credentials the decision names, and refuses an undeclared "
+          "variant and a tree with no security section by name while the baseline reset stays what it was; the reset contract "
           "refuses a drifted row count, a sequence left at RESTART WITH, and a missing sequence, and the SQL it sends "
           "asserts the same facts)")
     return 0

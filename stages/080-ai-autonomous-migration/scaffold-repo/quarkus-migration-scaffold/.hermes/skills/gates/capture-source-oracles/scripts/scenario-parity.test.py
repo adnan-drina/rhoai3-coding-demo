@@ -1113,8 +1113,101 @@ def verify_gaps(root: Path) -> list[str]:
     return verify_receipt(root, require_admitted=False)[1]
 
 
+def _fixture_variant_case() -> int:
+    """A variant capture and a baseline capture are never mixed.
+
+    A fixture variant is a DIFFERENT database state of the same mode: the
+    declared dataset with the Operator's statements applied after it. A
+    capture taken against it answers what the source does in that state and
+    nothing about the baseline, so comparing it against a destination reset to
+    the baseline -- or the baseline's captures against a destination reset to
+    the variant -- would grade one state's answers by another's. That is the
+    cross-mode reuse ADR-014 forbids, arriving through the dataset instead of
+    the switch, so the comparator refuses both directions and names both
+    states. The control is the mix made concrete: the captures copied from one
+    directory into the other, which is what a hurried hand would do.
+    """
+    import shutil
+    variant = "identity-disabled"
+    sc = {"id": "sc:auth-allowed-list-owners", "entry_point": "", "method": "GET", "path": "/api/owners",
+          "body_absent": True, "reset_before": False, "effects": [], "normalization": [],
+          "identity": {"kind": "none"}}
+    with tempfile.TemporaryDirectory(prefix="variant-parity-") as td:
+        t = Path(td)
+        root = specimens.build_dest(t / "dest", specimens.specimen("http"), decisions=specimens.admitted_decisions())
+        specimens.prepare_loop(root)
+        rec = pipeline.admit(root)
+        if rec["status"] != "ADMITTED":
+            return _fail("variant fixture not admitted: %s" % rec["reasons"][:3])
+        receipt_digest = load_json(root / "evidence/planning/admission-receipt.json")["receipt_digest"]
+        from planner.canonical import digest as _digest
+        from _scenarios import corpus_path
+        bundle_sha = _digest(load_json(root / "evidence" / "planning" / "evidence-bundle.json"))
+        ep = sorted(str(e["id"]) for e in load_json(root / "evidence" / "planning" / "evidence-bundle.json")["entry_points"])[0]
+        sc["entry_point"] = ep
+        for mode_variant in ("", variant):
+            doc = {"schema": "rhoai3.scenario-corpus/v1", "approved_by": "operator:test",
+                   "security_mode": "enabled",
+                   "initial_state": {"reset": "restart the service", "dataset": "one owner"},
+                   "scenarios": [dict(sc)]}
+            if mode_variant:
+                doc["security_variant"] = mode_variant
+            write_canonical(root / corpus_path("enabled", mode_variant), doc)
+        corpus_sha = corpus_digest(load_json(root / corpus_path("enabled")))
+        req = request_of(root, sc)
+
+        def _oracle(where: Path, captured_variant: str) -> None:
+            write_canonical(where / (scenario_slug(sc["id"]) + ".json"), {
+                "schema": "rhoai3.source-scenario/v1", "scenario": sc["id"], "entry_point": ep,
+                "receipt_sha256": receipt_digest, "corpus_sha256": corpus_sha, "status": "CAPTURED", "reason": "",
+                "evidence_bundle_sha256": bundle_sha, "source": {"base_url": "http://source.invalid"},
+                "initial_state": {"reset": "restart the service", "dataset": "one owner"},
+                "normalization": [], "reset_before": False,
+                "security_mode": "enabled", "security_variant": captured_variant,
+                "request": {"request_sha256": req["request_sha256"]},
+                "response": {"status": 200, "body_kind": "json", "body_sha256": "0" * 64, "headers": {}},
+                "before": [], "effects": []})
+
+        # the mix, both ways: a baseline capture judged as the variant's, and
+        # the variant's judged as the baseline's
+        _oracle(root / scenario_oracles_dir("enabled", variant), "")
+        _oracle(root / scenario_oracles_dir("enabled"), variant)
+        p = subprocess.run([sys.executable, str(COMPARE), "--root", str(root), "--scenario", sc["id"],
+                            "--dest-url", "http://dest.invalid", "--no-reset", "--security-mode", "enabled",
+                            "--fixture-variant", variant], text=True, capture_output=True)
+        if p.returncode != 1 or "REFUSE: SCENARIO_PARITY variant mismatch" not in p.stderr:
+            return _fail("a baseline capture must not be compared as a variant's: rc=%s %s" % (p.returncode, p.stderr[-300:]))
+        v = load_json(root / scenario_parity_dir("enabled", variant) / (scenario_slug(sc["id"]) + ".json"))
+        if (v["verdict"] != "INCONCLUSIVE" or v.get("security_variant") != variant
+                or v.get("captured_security_variant") != "" or "baseline" not in v["reason"]):
+            return _fail("the refused comparison names both states: %s" % {k: v.get(k) for k in ("verdict", "security_variant", "captured_security_variant", "reason")})
+        p = subprocess.run([sys.executable, str(COMPARE), "--root", str(root), "--scenario", sc["id"],
+                            "--dest-url", "http://dest.invalid", "--no-reset", "--security-mode", "enabled"],
+                           text=True, capture_output=True)
+        if p.returncode != 1 or "REFUSE: SCENARIO_PARITY variant mismatch" not in p.stderr:
+            return _fail("a variant capture must not be compared as the baseline's: rc=%s %s" % (p.returncode, p.stderr[-300:]))
+        v = load_json(root / scenario_parity_dir("enabled") / (scenario_slug(sc["id"]) + ".json"))
+        if v.get("captured_security_variant") != variant or v.get("security_variant") != "":
+            return _fail("the other direction names both states too: %s" % v)
+
+        # the paths themselves keep them apart, and the loader refuses a
+        # corpus of one state read as the other's
+        if scenario_oracles_dir("enabled", variant) == scenario_oracles_dir("enabled"):
+            return _fail("a variant's captures must not share the baseline's directory")
+        shutil.copyfile(str(root / corpus_path("enabled", variant)), str(root / corpus_path("enabled")))
+        try:
+            load_corpus(root, "enabled")
+            return _fail("a variant corpus must not load as the mode's baseline corpus")
+        except Exception as exc:
+            if "security_variant" not in str(exc):
+                return _fail("the refusal names the state: %s" % exc)
+    return 0
+
+
 def main() -> int:
     if _no_corpus_case() or _missing_exposed_model_case() or _stale_receipt_case() or _security_mode_case():
+        return 1
+    if _fixture_variant_case():
         return 1
     if _acceptance_binding_case():
         return 1

@@ -51,6 +51,20 @@ NOTHING: ``_capture.json`` is written with ``status: idle`` and a reason naming
 the missing environment VARIABLE. That is ADR-014's recorded blocker -- never
 an invented identity, and never an empty directory nobody can read.
 
+Fixture variants (ADR-014). Some behaviour the architect's exits ask about is
+not reachable from the declared dataset -- what the source answers for an
+identity the seed ENABLES, once that identity is disabled -- and editing the
+dataset every other capture is taken against is not the answer.
+``--fixture-variant NAME`` captures a declared variant instead: the source is
+started with its dataset location (the KEY ``security.fixtures[NAME]``
+declares) pointed at the declared dataset with that fixture's statements
+applied AFTER it, the variant dataset is written beside the captures and
+digested on the receipt, and everything lands under
+verification/source-oracles/scenarios-<mode>-<NAME>/ so a variant's evidence
+can never be read as the baseline's. The statements are recorded verbatim:
+they are fixture SQL, not credentials, and a run nobody can re-apply them from
+is not reproducible.
+
 Binding rule. A capture is bound to the FROZEN SOURCE (the evidence bundle
 digest) and to the corpus, never to the admission receipt. Measured on v9
 (2026-09-14): this producer refused to start the source because the receipt's
@@ -80,12 +94,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _oracle_common import ensure_hermes_lib, http_observe, retain_body  # noqa: E402
 from _scenarios import (CorpusError, DEFAULT_SECURITY_MODE, SCENARIO_ORACLES, SECURITY_MODES, auth_headers,  # noqa: E402,F401
                         auth_headers_for, capture_receipt_path, corpus_digest, credential_conflicts,
-                        effects_identity_of, load_corpus, normalize_security_mode, normalized_identity,
-                        parse_assignments, request_of, scenario_oracles_dir, scenario_slug, source_exposed_headers)
+                        effects_identity_of, load_corpus, normalize_security_mode, normalize_variant,
+                        normalized_identity, parse_assignments, request_of, scenario_oracles_dir, scenario_slug,
+                        source_exposed_headers, variant_dataset_path)
 
 ensure_hermes_lib()
 from planner.admission import verify_receipt  # noqa: E402
-from planner.canonical import load_json, write_canonical  # noqa: E402
+from planner.canonical import load_json, sha256_file, write_canonical  # noqa: E402
 from planner.canonical import digest  # noqa: E402
 from planner.decisions import DecisionsError, load_decisions, security, security_gaps  # noqa: E402
 from planner.paths import DECISIONS, EVIDENCE_BUNDLE, producer_receipt  # noqa: E402
@@ -116,6 +131,41 @@ def decided_security(root: Path) -> tuple[dict[str, Any], str]:
                     % (DECISIONS.as_posix(), "; ".join("%s %s" % (g["subject"], g["detail"]) for g in refusals)))
     return {}, ("%s declares no security section (ADR-014: the switch, the seeded identities and the credential REFERENCES "
                 "the enabled mode is captured with)" % DECISIONS.as_posix())
+
+
+def variant_dataset(declared: Path, statements: list[str], marker: str) -> str:
+    """The dataset a variant capture starts the source with: the declared
+    dataset, then the fixture's statements.
+
+    The statements are opaque here -- the harness parses no SQL and rewrites
+    none -- so they are appended exactly as declared, each terminated so the
+    source's own script runner reads them as statements, under a comment
+    naming where they came from. AFTER is the whole point: the variant is the
+    declared baseline plus a change, never a dataset of its own."""
+    body = declared.read_text(encoding="utf-8", errors="replace")
+    if body and not body.endswith("\n"):
+        body += "\n"
+    out = [body, "-- %s\n" % marker]
+    for statement in statements:
+        text = str(statement).strip()
+        out.append(text if text.endswith(";") else text + ";")
+        out.append("\n")
+    return "".join(out)
+
+
+def decided_fixture(root: Path, name: str) -> tuple[dict[str, Any], str]:
+    """(the declared fixture variant of that name, why-not) from
+    decisions.yaml. A variant nobody declared is never captured: the source
+    would be started against a database state no decision names."""
+    decided, why = decided_security(root)
+    if why:
+        return {}, why
+    rows = [f for f in (decided.get("fixtures") or []) if str(f.get("name") or "") == name]
+    if not rows:
+        return {}, ("%s declares no security fixture named %r (it declares: %s)"
+                    % (DECISIONS.as_posix(), name,
+                       ", ".join(str(f.get("name")) for f in (decided.get("fixtures") or [])) or "none"))
+    return dict(rows[0]), ""
 
 
 def missing_credentials(credential_refs: list[str]) -> list[str]:
@@ -273,6 +323,11 @@ def main(argv: list[str] | None = None) -> int:
                     help="configuration the frozen source is STARTED with (repeatable), passed as a JVM system property and as the "
                          "runner's own --key=value argument. For the enabled mode the caller passes the specimen's own security "
                          "switch, e.g. --source-config petclinic.security.enable=true; the key is recorded, never assumed")
+    ap.add_argument("--fixture-variant", default="", metavar="NAME",
+                    help="capture the declared fixture VARIANT of this mode's baseline (ADR-014): the source is started with "
+                         "its dataset location pointed at the declared dataset with security.fixtures[NAME].statements "
+                         "applied after it, and the captures land under the variant's own suffixed directory. The variant "
+                         "dataset is written beside those captures and its digest is on the receipt")
     ap.add_argument("--credential-ref", action="append", default=[], metavar="NAME",
                     help="an environment variable holding user:password (repeatable). A scenario whose identity names it as "
                          "credential_ref is sent with Basic authentication; only the NAME is ever recorded")
@@ -285,6 +340,7 @@ def main(argv: list[str] | None = None) -> int:
     root = Path(args.root).resolve()
     try:
         security_mode = normalize_security_mode(args.security_mode)
+        variant = normalize_variant(args.fixture_variant, security_mode)
         source_config = parse_assignments(args.source_config, "--source-config")
     except CorpusError as exc:
         return _fail(str(exc))
@@ -310,7 +366,22 @@ def main(argv: list[str] | None = None) -> int:
         return _fail("--source-config %s carries the value of a credential (%s); configuration is recorded in the evidence, "
                      "so a credential must be passed by reference (--credential-ref) and never as a property"
                      % (", ".join(conflicts), ", ".join(credential_refs)))
-    oracles_dir = scenario_oracles_dir(security_mode)
+    # the fixture the variant IS: its statements, and the configuration key
+    # the source reads its dataset location from. Read before anything is
+    # started, so a variant nobody declared stops here rather than after the
+    # source is up.
+    fixture: dict[str, Any] = {}
+    fixture_why = ""
+    if variant:
+        fixture, fixture_why = decided_fixture(root, variant)
+        if fixture and not source_config:
+            # a variant is a variant of THIS mode's baseline, so the source is
+            # still started with the mode's own switch; the variant reads the
+            # decided file for its fixture, and the switch is in it
+            decided, _why = decided_security(root)
+            if decided:
+                source_config = {decided["switch"]["key"]: decided["switch"]["enabled_value"]}
+    oracles_dir = scenario_oracles_dir(security_mode, variant)
     read_reads = bool(not args.no_reads and security_mode == DEFAULT_SECURITY_MODE)
     reads_note = "" if read_reads or args.no_reads else (
         "the idempotent read oracles were not captured: they live in an oracle directory that is not mode-scoped, and this "
@@ -332,7 +403,7 @@ def main(argv: list[str] | None = None) -> int:
     receipt_note = "" if not gaps else ("admission receipt not recorded: " + "; ".join(gaps))[:400]
     if receipt_note:
         print("  note: %s" % receipt_note, file=sys.stderr)
-    receipt_p = root / capture_receipt_path(security_mode)
+    receipt_p = root / capture_receipt_path(security_mode, variant)
 
     def idle(reason: str) -> int:
         """Nothing was captured, and the receipt says exactly what is missing.
@@ -347,7 +418,8 @@ def main(argv: list[str] | None = None) -> int:
             "at": _now(), "status": "idle", "reason": reason,
             "evidence_bundle_sha256": bundle_sha, "corpus_sha256": "", "captured": 0, "scenarios": [],
             "receipt_sha256": receipt_sha, "receipt_note": receipt_note,
-            "security_mode": security_mode, "source_config": dict(source_config), "credential_refs": list(credential_refs),
+            "security_mode": security_mode, "security_variant": variant,
+            "source_config": dict(source_config), "credential_refs": list(credential_refs),
         })
         print("OK: nothing captured in the %s security mode (%s); the receipt says so → %s"
               % (security_mode, reason, receipt_p.relative_to(root)))
@@ -357,6 +429,8 @@ def main(argv: list[str] | None = None) -> int:
     # security section nobody declared, and a declared credential this
     # workspace does not hold. The second names the VARIABLE and nothing else
     # -- what it would have held is never read here, printed or written.
+    if variant and fixture_why:
+        return idle(fixture_why)
     if from_decisions and decided_why:
         return idle(decided_why)
     if from_decisions:
@@ -367,7 +441,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         # the corpus of THIS mode: an enabled-mode capture replays the enabled
         # corpus's authorization probes, not the anonymous requests beside them
-        corpus = load_corpus(root, security_mode)
+        corpus = load_corpus(root, security_mode, variant)
     except CorpusError as exc:
         # No corpus is a recorded gap, not a failure: a specimen may have no
         # approved write scenarios yet, and M1 still has to finish. What must
@@ -380,7 +454,8 @@ def main(argv: list[str] | None = None) -> int:
                 "at": _now(), "status": "idle", "reason": str(exc),
                 "evidence_bundle_sha256": bundle_sha, "corpus_sha256": "", "captured": 0, "scenarios": [],
                 "receipt_sha256": receipt_sha, "receipt_note": receipt_note,
-                "security_mode": security_mode, "source_config": dict(source_config), "credential_refs": list(credential_refs),
+                "security_mode": security_mode, "security_variant": variant,
+            "source_config": dict(source_config), "credential_refs": list(credential_refs),
             })
             print("OK: no scenario corpus (%s); nothing captured, and the receipt says so → %s" % (exc, receipt_p.relative_to(root)))
             return 0
@@ -408,6 +483,50 @@ def main(argv: list[str] | None = None) -> int:
         # exposes would assert too little and read as complete (architect
         # review, 2026-09-14). No source is started for it.
         return _fail("%s; the capture cannot know which headers the source exposes, so nothing is captured" % exposed_gap)
+    # The VARIANT dataset: the declared dataset the corpus was derived
+    # against, with the fixture's statements after it, written beside the
+    # captures it is about and pointed at through the specimen's own
+    # configuration key. Built from exactly the bytes the derivation saw --
+    # the corpus records the declared dataset's digest, and a frozen source
+    # that moved underneath it is refused rather than captured against
+    # something else.
+    variant_record: dict[str, Any] = {}
+    if variant:
+        declared = dict((corpus.get("fixture") or {}).get("dataset") or {})
+        key = str((corpus.get("fixture") or {}).get("dataset_config_key") or fixture.get("dataset_config_key") or "")
+        statements = [str(s) for s in ((corpus.get("fixture") or {}).get("statements") or fixture.get("statements") or [])]
+        if not key or not statements or not str(declared.get("path") or ""):
+            return _fail("the %s variant corpus does not name the declared dataset, the statements and the configuration key "
+                         "the source reads its dataset location from; it cannot be captured" % variant)
+        declared_p = copy / str(declared["path"])
+        if not declared_p.is_file():
+            return _fail("the %s variant applies its statements after the declared dataset %s, which is not in the frozen "
+                         "source at %s" % (variant, declared["path"], copy))
+        have = sha256_file(declared_p)
+        if str(declared.get("sha256") or "") and have != str(declared["sha256"]):
+            return _fail("the declared dataset %s is %s and the %s variant corpus was derived against %s; the variant must be "
+                         "built from the dataset the corpus names" % (declared["path"], have[:12], variant, str(declared["sha256"])[:12]))
+        dataset_p = root / variant_dataset_path(security_mode, variant)
+        dataset_p.parent.mkdir(parents=True, exist_ok=True)
+        dataset_p.write_text(variant_dataset(declared_p, statements,
+                                             "decisions.security.fixtures[%s]: applied after %s" % (variant, declared["path"])),
+                             encoding="utf-8")
+        source_config[key] = "file:%s" % dataset_p
+        variant_record = {
+            "name": variant, "dataset_config_key": key,
+            "declared_dataset": {"path": str(declared["path"]), "sha256": have},
+            "dataset": {"path": variant_dataset_path(security_mode, variant).as_posix(), "sha256": sha256_file(dataset_p)},
+            # verbatim: fixture SQL, not a credential, and what the run would
+            # have to re-apply to be reproduced
+            "statements": list(statements),
+            "intent": str((corpus.get("fixture") or {}).get("intent") or fixture.get("intent") or ""),
+        }
+        # the dataset location is configuration too, and configuration is
+        # recorded verbatim: it is re-checked against the declared credentials
+        conflicts = credential_conflicts(source_config, credential_refs)
+        if conflicts:
+            return _fail("--source-config %s carries the value of a credential (%s); configuration is recorded in the "
+                         "evidence, so a credential must be passed by reference" % (", ".join(conflicts), ", ".join(credential_refs)))
     runtime = SourceRuntime(copy, args.port, base_path, args.ready_timeout, args.java, args.mvn, log_dir,
                             source_config=source_config)
     captured = 0
@@ -437,7 +556,7 @@ def main(argv: list[str] | None = None) -> int:
                 "normalization": list(sc.get("normalization") or []),
                 "asserted_headers_extra": list(asserted),
                 "asserted_headers_scenario": list(dict.fromkeys(own)),
-                "security_mode": security_mode,
+                "security_mode": security_mode, "security_variant": variant,
                 "reset_before": bool(sc.get("reset_before", True)),
                 "status": "UNCAPTURED", "reason": "", "request": {}, "response": {}, "before": [], "effects": [],
             }
@@ -556,7 +675,8 @@ def main(argv: list[str] | None = None) -> int:
         "reason": "; ".join(failures)[:400],
         "evidence_bundle_sha256": bundle_sha, "corpus_sha256": corpus_sha,
         "receipt_sha256": receipt_sha, "receipt_note": receipt_note,
-        "security_mode": security_mode, "source_config": dict(source_config), "credential_refs": list(credential_refs),
+        "security_mode": security_mode, "security_variant": variant, "fixture": dict(variant_record),
+        "source_config": dict(source_config), "credential_refs": list(credential_refs),
         "captured": captured, "requested": len(wanted),
         "scenarios": sorted(str(sc["id"]) for sc in wanted),
         "reads": bool(read_reads), "reads_note": reads_note,
