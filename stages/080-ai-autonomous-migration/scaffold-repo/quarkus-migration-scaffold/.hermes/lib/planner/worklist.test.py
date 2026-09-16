@@ -2,6 +2,7 @@
 """worklist unit selftest: ordering, clustering, measure, progress, conservation."""
 from __future__ import annotations
 
+import shutil
 import sys
 from pathlib import Path
 
@@ -14,7 +15,7 @@ from planner.worklist import RULE_CONFIG_CONSUMERS, SPRING_VALUE_ANNOTATION as S
 from planner.worklist import (RULE_DECLARATION_CLOSURE, RULE_DIAGNOSTIC_FAMILY, RULE_PACKAGE_LEAF,  # noqa: E402
                               UNIT_MAX_FILES, UNIT_MAX_SITES, UNIT_MAX_SYMBOLS, build_unit_scope, form_units,
                               runtime_cause, unit_continue_scope, unit_explained_regressions, unit_formation_for,
-                              unit_formation_mode, unit_id_of)
+                              unit_formation_mode, unit_id_of, assess_unit)
 from planner.dest_model import dest_model, diagnostic_identity  # noqa: E402
 from planner.worklist import APP_PROPERTIES, KIND_RANK, cluster_items, parity_items, runtime_items, compile_items, file_depths, incidents_from_findings, measure_of, obligation_keys, path_class, progress, surefire_from_reports, test_items  # noqa: E402
 
@@ -1100,13 +1101,20 @@ def _unit_world(n: dict) -> tuple[dict, list[dict], dict]:
     # --- (b) over a set the platform names one member of: seven parents, each
     #     with a member no implementer answers, each extended by a store (WU-5)
     frag_files: list[str] = []
+    frag_children: list[str] = []
+    frag_adapters: list[str] = []
     for i in range(n["frag_n"]):
         parent = "%s.%s.Fragment%d" % (base, n["frag_pkg"], i)
         child = "%s.%s.Store%d" % (base, n["frag_pkg"], i)
         types.append(_dm_type(parent, rel(n["frag_pkg"], "Fragment%d" % i), kind="interface",
                               declared=[_dm_member(n["frag_member"], "%s(%s)" % (n["frag_member"], n["param"]))]))
-        types.append(_dm_type(child, rel(n["frag_pkg"], "Store%d" % i), kind="interface", supertypes=[parent]))
+        # the child IMPORTS the parent it extends, which is the shape the
+        # architect reproduced: a required declaration, not a retired symbol
+        types.append(_dm_type(child, rel(n["frag_pkg"], "Store%d" % i), kind="interface", supertypes=[parent],
+                              imports=[parent]))
         frag_files += [full(n["frag_pkg"], "Fragment%d" % i), full(n["frag_pkg"], "Store%d" % i)]
+        frag_children.append(full(n["frag_pkg"], "Store%d" % i))
+        frag_adapters.append(full(n["frag_pkg"], "Fragment%dImpl" % i))
 
     # --- a test source: never writable, never a unit member (WU-3 / R-1)
     items.append(_javac("src/test/java/%s/%s/%sTest.java" % (pkg, n["rest_pkg"], n["controllers"][0]),
@@ -1118,6 +1126,8 @@ def _unit_world(n: dict) -> tuple[dict, list[dict], dict]:
         "leaf_dir": "src/main/java/%s/%s" % (pkg, n["leaf_pkg"]),
         "spanning": n["spanning"], "web": [str(s) for s in n["web_symbols"]],
         "frag_files": sorted(frag_files), "frag_n": n["frag_n"],
+        "frag_children": sorted(frag_children), "frag_adapters": sorted(frag_adapters),
+        "frag_write_set": sorted([p for p in frag_files if p not in set(frag_children)] + frag_adapters),
         "exc": n["exc"], "gated": n["gated"],
     }
     return {"types": types}, items, expect
@@ -1181,10 +1191,27 @@ def _unit_formation_case() -> int:
 
         # (b) WU-5: the set the platform names one member of becomes a unit
         frag = [c for c in by_rule.get(RULE_DECLARATION_CLOSURE, []) if c["unit"]["family_key"].startswith("spring-data-fragment-implementations:")]
-        if len(frag) != 1 or sorted(frag[0]["write_set"]) != want["frag_files"]:
-            return _fail("[%s] the fragment set is one unit over its parents and their implementers: %s" % (label, [c["unit"]["family_key"] for c in frag]))
+        if len(frag) != 1 or sorted(frag[0]["write_set"]) != want["frag_write_set"]:
+            return _fail("[%s] the fragment set is one unit whose write set is the parents and the adapters they owe: %s"
+                         % (label, sorted(frag[0]["write_set"]) if frag else [c["unit"]["family_key"] for c in frag]))
         if len(frag[0]["unit"]["symbols"]) != want["frag_n"]:
             return _fail("[%s] one symbol per unimplemented member: %s" % (label, frag[0]["unit"]["symbols"]))
+        # the NEW path each parent owes, named before it exists, with the
+        # contract that names it and the parent it must implement
+        owed = frag[0]["unit"].get("implementation") or []
+        if sorted(r["path"] for r in owed) != want["frag_adapters"]:
+            return _fail("[%s] every parent owed an implementation names the file that will carry it: %s" % (label, owed))
+        if any(not r.get("contract") or not r.get("source") or not r.get("members") for r in owed):
+            return _fail("[%s] and each carries its naming contract and what it owes: %s" % (label, owed[:1]))
+        if any(r["type"] != r["parent"] + "Impl" for r in owed):
+            return _fail("[%s] the type is derived from the parent's own name, never chosen: %s" % (label, owed[:1]))
+        # the children are INVENTORY, never write set: the repair adds an
+        # implementation, it does not edit the interfaces that inherit
+        seal_paths = {str(m["path"]) for m in frag[0]["_unit_seal"]["members"]}
+        if not set(want["frag_children"]) <= seal_paths:
+            return _fail("[%s] every implementer stays in the inventory: %s" % (label, sorted(seal_paths)))
+        if set(want["frag_children"]) & set(frag[0]["write_set"]):
+            return _fail("[%s] an implementer this repair does not edit is not writable" % label)
 
         # R-1: a test source is never in a write set and never a unit member
         for c in units:
@@ -1281,8 +1308,10 @@ def _unit_bound_case() -> int:
     if not any("UNIT_NARROWED" in str(e.get("ref")) for e in seal["evidence"]):
         return _fail("and it leaves an evidence line")
 
-    # a closure over the bound drops CALLER-ONLY files and keeps the
-    # declaration and its direct implementers
+    # a closure over the bound PRESERVES its callers and refuses: a caller is
+    # bound to the declaration the unit changes, so a narrowing that dropped it
+    # would leave a unit that cannot compile, which is the failure the former
+    # exists to prevent. The bound stands and the refusal is typed.
     svc = "%s.s.Wide" % base
     sig = "call(int)"
     ctypes = [_dm_type(svc, "%s/s/Wide.java" % pkg, kind="interface", imports=[sym],
@@ -1296,15 +1325,38 @@ def _unit_bound_case() -> int:
     citems = [_javac("src/main/java/%s/s/Wide.java" % pkg, "DataAccessException", 1)]
     units, _ = form_units(citems, {}, set(), model={"types": ctypes}, root=None)
     closure = [c for c in units if c["unit"]["rule"] == RULE_DECLARATION_CLOSURE]
-    if len(closure) != 1 or closure[0]["status"] != "open":
-        return _fail("a closure narrows rather than blocking: %s" % [(c["unit"]["rule"], c["status"]) for c in units])
+    if len(closure) != 1 or closure[0]["status"] != "blocked":
+        return _fail("a closure wider than the bound is refused, never narrowed by dropping callers: %s"
+                     % [(c["unit"]["rule"], c["status"]) for c in units])
+    block = closure[0]["block"]
+    if not block.startswith("UNIT_OVERSIZE: ") or "callers are bound to the declaration" not in block:
+        return _fail("and the refusal says why narrowing is not available here: %r" % block)
     paths = set(closure[0]["write_set"])
     if "src/main/java/%s/s/Wide.java" % pkg not in paths or "src/main/java/%s/s/WideImpl.java" % pkg not in paths:
-        return _fail("narrowing keeps the declaration and its implementers: %s" % sorted(paths))
-    if any(p.startswith("src/main/java/%s/c/" % pkg) for p in paths):
-        return _fail("and drops the caller-only files: %s" % sorted(paths))
-    if "UNIT_NARROWED" not in " ".join(str(e.get("ref")) for e in closure[0]["_unit_seal"]["evidence"]):
-        return _fail("with a line saying so")
+        return _fail("the declaration and its implementers are in the refused unit: %s" % sorted(paths))
+    callers = sorted(p for p in paths if p.startswith("src/main/java/%s/c/" % pkg))
+    if len(callers) != UNIT_MAX_FILES + 3:
+        return _fail("every caller is preserved in it: %d" % len(callers))
+    if "narrowed" in closure[0]["_unit_seal"]["bounds"]:
+        return _fail("nothing was dropped, so nothing is recorded as narrowed: %s" % closure[0]["_unit_seal"]["bounds"])
+
+    # and a narrowing that DOES happen retains every obligation it excluded:
+    # the dropped families' items are claimed by no unit, so the work list
+    # still carries them as their own items
+    dropped_units, dropped_claimed = form_units(many, {}, set(), model={"types": many_types}, root=None)
+    leaf_seal = [c for c in dropped_units if c["unit"]["rule"] == RULE_PACKAGE_LEAF][0]["_unit_seal"]
+    excluded = leaf_seal["bounds"].get("excluded") or []
+    if not excluded or not all(r.get("items") for r in excluded):
+        return _fail("a narrowing records the obligations it excluded: %s" % leaf_seal["bounds"])
+    for row in excluded:
+        for iid in row["items"]:
+            if iid in dropped_claimed:
+                return _fail("an excluded obligation is retained as its own item, never swallowed: %s" % iid)
+    # and no file carrying an obligation the unit still measures is dropped
+    kept_items = {str(i["id"]) for i in leaf_seal["items"]}
+    for it in many:
+        if str(it["id"]) in kept_items and str(it["path"]) not in set(leaf_seal["files"]):
+            return _fail("a measured obligation always has a writable file: %s" % it["id"])
     return 0
 
 
@@ -1813,6 +1865,310 @@ def _unit_config_case() -> int:
     return 0
 
 
+# --- the real model, end to end -------------------------------------------
+#
+# Everything above models the destination with hand-written rows. That is what
+# let four defects through: the REAL extractor records a type's references under
+# its declared members, not on the type row, and a hand-written row that carries
+# type-level `type_refs` is a shape the tool never emits. So these cases build a
+# Java tree, run the JDK extractor over it, and ask the producer, the planner
+# and the assessor the same questions with nothing simulated between them.
+
+_REAL_A = {"base": "org.acme.clinic", "frag_pkg": "repo.custom", "store_pkg": "repo", "leaf_pkg": "util",
+           "api_pkg": "rest", "frag": "OwnerHistory", "store": "OwnerRepository", "consumer": "OwnerResource",
+           "member": "lookupByCustomClause", "helper_a": "SortDefinition", "helper_b": "ToStringCreator",
+           "sym": "MutableSortDefinition"}
+_REAL_B = {"base": "com.example.warehouse", "frag_pkg": "mixin.extra", "store_pkg": "mixin",
+           "leaf_pkg": "helper", "api_pkg": "api", "frag": "CrateLedger", "store": "CrateStore",
+           "consumer": "CrateEndpoint", "member": "resolveByHandwrittenClause", "helper_a": "OrderSpec",
+           "helper_b": "DescriptionMaker", "sym": "AttributeRanker"}
+
+
+def _jdk_root(d, files: dict[str, str]):
+    """A destination tree the real extractor can model."""
+    root = Path(d)
+    (root / ".hermes").mkdir(parents=True, exist_ok=True)
+    (root / ".hermes/pins.json").write_text('{"pins":{"quarkus_platform":{"java_release":21}}}')
+    for rel, text in files.items():
+        p = root / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(text, encoding="utf-8")
+    return root
+
+
+def _real_sources(n: dict, *, consumer: bool) -> dict[str, str]:
+    base, src = n["base"], "src/main/java/" + n["base"].replace(".", "/")
+    frag = "%s.%s.%s" % (base, n["frag_pkg"], n["frag"])
+    files = {
+        # the fragment parent: a member no implementer answers
+        "%s/%s/%s.java" % (src, n["frag_pkg"].replace(".", "/"), n["frag"]):
+            "package %s.%s;\nimport java.util.List;\npublic interface %s {\n    List<String> %s(String clause);\n}\n"
+            % (base, n["frag_pkg"], n["frag"], n["member"]),
+        # the child, in ANOTHER package, so it must IMPORT the parent it extends.
+        # This is the shape the architect reproduced: a required declaration,
+        # which an assessor that asks every sealed symbol to disappear calls a
+        # retired symbol still named.
+        "%s/%s/%s.java" % (src, n["store_pkg"].replace(".", "/"), n["store"]):
+            "package %s.%s;\nimport %s;\npublic interface %s extends %s {\n}\n"
+            % (base, n["store_pkg"], frag, n["store"], n["frag"]),
+        # two helpers in one directory: the leaf candidate
+        "%s/%s/%s.java" % (src, n["leaf_pkg"], n["helper_a"]):
+            "package %s.%s;\npublic class %s {\n    public int rank() { return 1; }\n}\n" % (base, n["leaf_pkg"], n["helper_a"]),
+        "%s/%s/%s.java" % (src, n["leaf_pkg"], n["helper_b"]):
+            "package %s.%s;\npublic class %s {\n    public String render() { return \"\"; }\n}\n" % (base, n["leaf_pkg"], n["helper_b"]),
+    }
+    if consumer:
+        # the outside consumer names a leaf type ONLY in a member signature,
+        # fully qualified, so there is no import either: the sole evidence is
+        # declared[].type_refs, which is where the extractor puts it
+        files["%s/%s/%s.java" % (src, n["api_pkg"], n["consumer"])] = (
+            "package %s.%s;\npublic class %s {\n    public %s.%s.%s pick() { return null; }\n}\n"
+            % (base, n["api_pkg"], n["consumer"], base, n["leaf_pkg"], n["helper_a"]))
+    return files
+
+
+def _real_items(n: dict) -> list[dict]:
+    src = "src/main/java/" + n["base"].replace(".", "/")
+    return [_javac("%s/%s/%s.java" % (src, n["leaf_pkg"], n["helper_a"]), n["sym"], 1),
+            _javac("%s/%s/%s.java" % (src, n["leaf_pkg"], n["helper_b"]), n["sym"], 2)]
+
+
+def _real_leaf_case() -> int:
+    """An outside consumer prevents a false leaf — asked of the model the JDK
+    extractor actually writes, where references live under declared members.
+
+    With the consumer, no leaf may form; without it, one must. A property check
+    that matches nothing passes vacuously, so the control runs too."""
+    import tempfile
+
+    from planner.worklist import unit_states_relationships, unit_type_refs
+
+    for label, n in (("A", _REAL_A), ("B", _REAL_B)):
+        leaf_dir = "src/main/java/%s/%s" % (n["base"].replace(".", "/"), n["leaf_pkg"])
+        for consumer in (True, False):
+            with tempfile.TemporaryDirectory(prefix="wl-real-leaf-") as d:
+                root = _jdk_root(d, _real_sources(n, consumer=consumer))
+                model = dest_model(root)
+                # the shape itself: the extractor writes no type-level type_refs,
+                # and the reference is under the member
+                if consumer:
+                    con = next(t for t in model["types"] if str(t["fqn"]).endswith("." + n["consumer"]))
+                    if con.get("type_refs"):
+                        return _fail("[%s] the real extractor writes no type-level type_refs: %s" % (label, con.get("type_refs")))
+                    if not any(str(n["helper_a"]) in str(r) for m in con["declared"] for r in (m.get("type_refs") or [])):
+                        return _fail("[%s] the reference is under the declared member: %s" % (label, con["declared"]))
+                    if not any(str(x).endswith("." + n["helper_a"]) for x in unit_type_refs(con)):
+                        return _fail("[%s] and unit_type_refs must see it: %s" % (label, sorted(unit_type_refs(con))))
+                units, _claimed = form_units(_real_items(n), {}, set(), model=model, root=GOLDEN)
+                leaves = [c for c in units if c["unit"]["rule"] == RULE_PACKAGE_LEAF and c["unit"]["family_key"] == leaf_dir]
+                if consumer and leaves:
+                    return _fail("[%s] a member-level reference from another package prevents the leaf: %s"
+                                 % (label, leaves[0]["write_set"]))
+                if not consumer and not leaves:
+                    return _fail("[%s] with nothing outside naming them, the helpers ARE a leaf: %s"
+                                 % (label, [c["unit"]["rule"] for c in units]))
+        # and isolation is never claimed on missing evidence: a type the
+        # compiler could not finish states no relationships at all
+        with tempfile.TemporaryDirectory(prefix="wl-real-leaf2-") as d:
+            root = _jdk_root(d, _real_sources(n, consumer=False))
+            model = dest_model(root)
+            partial = [dict(t, resolution="partial") if not _dm_is_leaf(t, n) else t for t in model["types"]]
+            if any(unit_states_relationships(t) for t in partial if not _dm_is_leaf(t, n)):
+                return _fail("[%s] a partially resolved type states no relationships" % label)
+            units, _ = form_units(_real_items(n), {}, set(), model={"types": partial}, root=GOLDEN)
+            if [c for c in units if c["unit"]["rule"] == RULE_PACKAGE_LEAF]:
+                return _fail("[%s] isolation is not established by a type that could not say what it names" % label)
+    return 0
+
+
+def _dm_is_leaf(typ: dict, n: dict) -> bool:
+    return ("%s.%s." % (n["base"], n["leaf_pkg"])) in str(typ.get("fqn") or "")
+
+
+def _real_fragment_case() -> int:
+    """The fragment unit, end to end on the real model: formed, sealed with the
+    implementation it owes, assessed before and after the adapter is written,
+    and accepted only when its gate passes.
+
+    Every verdict is repeated on a tree that shares no package, type, member or
+    identifier with the first."""
+    import tempfile
+
+    for label, n in (("A", _REAL_A), ("B", _REAL_B)):
+        base = n["base"]
+        frag = "%s.%s.%s" % (base, n["frag_pkg"], n["frag"])
+        src = "src/main/java/" + base.replace(".", "/")
+        parent_path = "%s/%s/%s.java" % (src, n["frag_pkg"].replace(".", "/"), n["frag"])
+        child_path = "%s/%s/%s.java" % (src, n["store_pkg"].replace(".", "/"), n["store"])
+        adapter = "%s/%s/%sImpl.java" % (src, n["frag_pkg"].replace(".", "/"), n["frag"])
+        with tempfile.TemporaryDirectory(prefix="wl-real-frag-") as d:
+            root = _jdk_root(d, _real_sources(n, consumer=True))
+            model = dest_model(root)
+            items = _real_items(n) + [_set_wide_item()]
+            units, claimed = form_units(items, {}, set(), model=model, root=GOLDEN)
+            frags = [c for c in units if c["unit"]["family_key"].startswith("spring-data-fragment-implementations:")]
+            if len(frags) != 1 or "rt:boot:setwide" not in claimed:
+                return _fail("[%s] the real model enumerates the fragment set into one unit: %s"
+                             % (label, [c["unit"]["family_key"] for c in units]))
+            unit = frags[0]
+            owed = unit["unit"].get("implementation") or []
+            if [r["path"] for r in owed] != [adapter] or owed[0]["parent"] != frag:
+                return _fail("[%s] the unit names the adapter it owes, derived from the parent: %s" % (label, owed))
+            if sorted(unit["write_set"]) != sorted([parent_path, adapter]):
+                return _fail("[%s] the write set is the parent and the file it owes: %s" % (label, sorted(unit["write_set"])))
+            if child_path in unit["write_set"]:
+                return _fail("[%s] the child this repair does not edit is inventory, not write set" % label)
+            scope = build_unit_scope(root, unit, items, {"candidate_sha256": "c0"})
+            if [r["path"] for r in (scope.get("implementation_obligations") or [])] != [adapter]:
+                return _fail("[%s] and the SEAL carries the obligation, so nothing can be added to it later: %s" % (label, scope.keys()))
+
+            # BEFORE the adapter: the obligation violates, and the child that
+            # IMPORTS its required parent is ok. A sealed declaration is not a
+            # retired symbol, and the architect reproduced exactly this.
+            rows = {r["member"]: r for r in assess_unit(root, scope)}
+            child = next(r for m, r in rows.items() if m.startswith(child_path))
+            if child["verdict"] != "ok":
+                return _fail("[%s] a child importing its required parent is not a residue: %s" % (label, child))
+            owed_row = next(r for m, r in rows.items() if r.get("state") == "implementation")
+            if owed_row["verdict"] != "violates" or "does not exist" not in owed_row["detail"]:
+                return _fail("[%s] an unwritten adapter is an undischarged obligation: %s" % (label, owed_row))
+
+            # an adapter that does NOT implement the parent is not the repair
+            # the path was authorized for
+            (root / adapter).write_text("package %s.%s;\npublic class %sImpl {\n}\n" % (base, n["frag_pkg"], n["frag"]),
+                                        encoding="utf-8")
+            wrong = next(r for r in assess_unit(root, scope) if r.get("state") == "implementation")
+            if wrong["verdict"] != "violates" or "does not implement" not in wrong["detail"]:
+                return _fail("[%s] the promised relationship is checked, not assumed: %s" % (label, wrong))
+
+            # THE REPAIR: the adapter implements the parent and answers the
+            # member it owed
+            (root / adapter).write_text(
+                "package %s.%s;\nimport java.util.List;\npublic class %sImpl implements %s {\n"
+                "    public List<String> %s(String clause) { return List.of(); }\n}\n"
+                % (base, n["frag_pkg"], n["frag"], n["frag"], n["member"]), encoding="utf-8")
+            after = assess_unit(root, scope)
+            bad = [r for r in after if r["verdict"] != "ok"]
+            if bad:
+                return _fail("[%s] a written adapter discharges the unit: %s" % (label, bad))
+
+            # and the PARENT INTERFACE is preserved: severing the inheritance
+            # the unit is built around is not a repair of it
+            (root / child_path).write_text("package %s.%s;\npublic interface %s {\n}\n" % (base, n["store_pkg"], n["store"]),
+                                           encoding="utf-8")
+            severed = [r for r in assess_unit(root, scope) if r["verdict"] == "violates"]
+            if not severed or "no longer implements" not in severed[0]["detail"]:
+                return _fail("[%s] the inheritance the closure was formed on must survive: %s" % (label, severed))
+            (root / child_path).write_text("package %s.%s;\nimport %s;\npublic interface %s extends %s {\n}\n"
+                                           % (base, n["store_pkg"], frag, n["store"], n["frag"]), encoding="utf-8")
+            clean = assess_unit(root, scope)
+
+            # THE CHECKPOINT: the unit carries the boot gate, so it is accepted
+            # only when that gate passes, and never on the assessment alone.
+            flat, issued_ids = _measure([0, 0, 0]), {"rt:boot:setwide"}
+            failing = {"boot": {"ran": True, "rc": 1}}
+            passing = {"boot": {"ran": True, "rc": 0, "ready": True}}
+            ok, why = progress(flat, flat, set(), set(), gate="boot", unit_scope=scope, unit_assessment=clean,
+                               prev_runtime=failing, cur_runtime=failing, issued_items=sorted(issued_ids),
+                               cur_gate_items=set(), issued_identities=set(), cur_identities=set())
+            if ok:
+                return _fail("[%s] a unit whose obligation is a gate is not discharged while the gate fails: %s" % (label, why))
+            ok, why = progress(flat, flat, set(), set(), gate="boot", unit_scope=scope, unit_assessment=clean,
+                               prev_runtime=failing, cur_runtime=passing, issued_items=sorted(issued_ids),
+                               cur_gate_items=set(), issued_identities=set(), cur_identities=set())
+            if ok is not True:
+                return _fail("[%s] and IS discharged when it passes: %s" % (label, why))
+            # the assessment still governs: a violating member refuses whatever
+            # the gate says
+            broken = list(clean) + [{"member": parent_path, "verdict": "violates", "detail": "the file is gone"}]
+            ok, why = progress(flat, flat, set(), set(), gate="boot", unit_scope=scope, unit_assessment=broken,
+                               prev_runtime=failing, cur_runtime=passing, issued_items=sorted(issued_ids),
+                               cur_gate_items=set(), issued_identities=set(), cur_identities=set())
+            if ok:
+                return _fail("[%s] a passing gate does not excuse a violating member: %s" % (label, why))
+            # and a gate that was passing may not be broken by this unit
+            ok, why = progress(flat, flat, set(), set(), gate="boot", unit_scope=scope, unit_assessment=clean,
+                               prev_runtime={"package": {"ran": True, "rc": 0}, "boot": {"ran": True, "rc": 1}},
+                               cur_runtime={"package": {"ran": True, "rc": 1}, "boot": {"ran": True, "rc": 0}},
+                               issued_items=sorted(issued_ids), cur_gate_items=set(),
+                               issued_identities=set(), cur_identities=set())
+            if ok or "was passing and is not any more" not in why:
+                return _fail("[%s] an established passing gate is preserved across the checkpoint: %s" % (label, why))
+    return 0
+
+
+def _real_explained_case() -> int:
+    """The two counterexamples, decided with the REAL model: the wrong import
+    and the unresolved lookalike are both unexplained.
+
+    Both diagnostics say `cannot find symbol: class <X>`; what separates them
+    from the accepted case is only what the file's imports bind the token to,
+    which is a question only the compiler model can answer."""
+    import tempfile
+
+    from planner.worklist import _symbol_match
+
+    retired = "org.springframework.web.util.UriComponentsBuilder"
+    target = "jakarta.ws.rs.core.UriBuilder"
+    typo = "jakarta.ws.rs.Context"
+    # the rule itself: resemblance decides nothing, an identity decides
+    if _symbol_match("UriBuilder", "type", target) or _symbol_match("Context", "annotation", "jakarta.ws.rs.core.Context"):
+        return _fail("an unqualified spelling matches no sealed identity")
+    if _symbol_match(typo, "type", "jakarta.ws.rs.core.Context"):
+        return _fail("a qualified name that is not the one written down is not it either")
+    if not _symbol_match(target, "type", target) or not _symbol_match("jakarta.ws.rs.core", "package", target):
+        return _fail("a qualified identity, and a package that contains it, still match")
+    for label, (base, ctl) in (("A", ("org.acme.clinic", "OwnerRestController")),
+                               ("B", ("com.example.warehouse", "CrateEndpoint"))):
+        src = "src/main/java/" + base.replace(".", "/")
+        rel = "%s/rest/%s.java" % (src, ctl)
+        scope = {
+            "schema": "rhoai3.batch-scope/v4", "kind": "unit", "rule": RULE_DIAGNOSTIC_FAMILY,
+            "unit_id": "u:real", "family_key": retired, "writable_paths": [rel],
+            "symbols": [{"kind": "type", "fqn": retired, "path": rel}],
+            "target_symbols": [{"from": retired, "to": target,
+                                "catalog_row": {"catalog": "compat-mapping.json", "block": "symbol_renames",
+                                                "key": retired, "kind": "type"}}],
+            "members": [{"path": rel, "type": "%s.rest.%s" % (base, ctl), "state": "reported"}],
+        }
+
+        def world(imports: tuple[str, ...], d) -> dict:
+            files = {rel: "package %s.rest;\n%spublic class %s {\n}\n"
+                          % (base, "".join("import %s;\n" % i for i in imports), ctl)}
+            # the platform types the catalogued target names, so an import of
+            # one binds to a type that is really there
+            for fqn in (target, "jakarta.ws.rs.core.Context"):
+                files["src/main/java/" + fqn.replace(".", "/") + ".java"] = (
+                    "package %s;\npublic interface %s { }\n" % (fqn.rsplit(".", 1)[0], fqn.rsplit(".", 1)[-1]))
+            return dest_model(_jdk_root(d, files))
+
+        def ask(model: dict, token: str) -> list:
+            item = dict(_javac(rel, token, 7), identity="diag:%s|%s" % (rel, token))
+            rows, why = unit_explained_regressions(scope, [item], model)
+            return rows if not why else []
+
+        # (1) the wrong import: one package segment from the catalogued target,
+        # and the catalogue wrote down the other one
+        with tempfile.TemporaryDirectory(prefix="wl-real-exp1-") as d:
+            if ask(world((typo,), d), "Context"):
+                return _fail("[%s] an invented replacement is explained by nothing (v9 t_3903f495)" % label)
+        # (2) the unresolved lookalike: nothing imports UriBuilder at all, so
+        # the token names no type, whatever it is spelled like
+        with tempfile.TemporaryDirectory(prefix="wl-real-exp2-") as d:
+            if ask(world((), d), "UriBuilder"):
+                return _fail("[%s] a simple name nobody bound is not the catalogued target" % label)
+        # (3) the control, without which the two above pass vacuously: with the
+        # documented target imported, the same diagnostic IS explained, and it
+        # carries the catalogue row that documented it
+        with tempfile.TemporaryDirectory(prefix="wl-real-exp3-") as d:
+            rows = ask(world((target,), d), "UriBuilder")
+            if len(rows) != 1 or rows[0]["symbol"] != target or rows[0]["boundary"] != "target":
+                return _fail("[%s] a resolved catalogued target IS explained: %s" % (label, rows))
+            if rows[0]["catalog_row"].get("key") != retired:
+                return _fail("[%s] and names the row that documented it: %s" % (label, rows))
+    return 0
+
+
 def main() -> int:
     if (_runtime_identity_case() or _gate_progress_case() or _batch_scope_case() or _checked_family_case()
             or _set_wide_case() or _config_value_case() or _parity_typing_case() or _parity_advice_case()
@@ -1821,6 +2177,12 @@ def main() -> int:
             or _unit_experiment_table_case() or _unit_explained_case() or _unit_progress_case()
             or _unit_budget_case()):
         return 1
+    # the same questions with nothing simulated: the JDK extractor's own model
+    if shutil.which("javac"):
+        if _real_leaf_case() or _real_fragment_case() or _real_explained_case():
+            return 1
+    else:
+        print("SKIP: the real-model cases need a JDK on PATH", file=sys.stderr)
 
     if path_class("pom.xml") != "build" or path_class("src/main/resources/application.properties") != "config" or path_class("src/test/java/A.java") != "test" or path_class("src/main/java/A.java") != "source":
         return _fail("path classes")
@@ -1998,7 +2360,9 @@ def main() -> int:
         return _fail("reclassified items keep their authority and are never dropped")
     if measure_of(all_items, incidents_known=False, compile_known=True, tests_known=True, parity_known=False)["known"]:
         return _fail("unknown incidents never advance")
-    print("OK: worklist (lossless line-free incidents; canary excluded; only ERROR diagnostics; build→config→compile(leaf-first)→incident→test order; tests never writable; lexicographic 3-tuple progress; new-incident veto; unknown never advances; gate progress is the issued obligation disappearing, never a reworded one; a second cause at one file is a second obligation); a repository card's inventory is sealed by its own digest and two measurements never share a path; checked-exception family: bound to its introducing step (a legacy site stays out), one budget, line-free identity across a moved line, CONTINUE / EXPOSED / still-reported / 1→0 accept, per-member assessment (catch-wrapped and header-deleted members violate); a set-wide packaging cause is one typed blocker under permuted first-reported names and never a card; an unloadable config value is located at the annotation that names the property IN THE DESTINATION'S OWN MODEL (the frozen source's model answers only when the destination cannot be modelled, and the brief says which did; ${x:d} and a bare x are one property), at application.properties only when the name is real and unread, and is a blocker when the name is empty and unread -- the same decisions under renamed identifiers; parity mismatches are typed by their diffs (CORS → application.properties, the rest → the controller; scenario verdicts count, the receipt does not) and carry their exit conditions as advice built from those diffs (CORS properties are the source's own recorded values with the paired actual request and the exposed headers as the exit; a redirect is the source's status and its literal Location after origin mapping only, the doubled root path named, the legacy address served from the packaged UI, a property outside the write set entering through amend-scope) — the same advice, about its own values, on a specimen that shares no name with this one; the PARITY GATE: an obligation carries gate=parity and the scenarios it is made of (a read oracle takes its receipt row's), and a card is discharged only by the re-composed receipt recording those scenarios PASS -- still reported, gone but INCONCLUSIVE, another entry point broken, a startup gate broken and an un-composed receipt all refuse; UNIT FORMATION (decisions.loop.unit_formation v1): four typed rules over one measurement -- a throws surface closes over its interface, implementers and callers as ONE unit; an annotation family confined to a directory nothing outside refers to is a package leaf (decided by type_refs, never by a package name); a family spanning two directories and five independent web symbols stay five separate families; a set-wide packaging cause whose parents the model CAN enumerate becomes a mintable unit while one it cannot stays the typed blocker; a test source is never writable and a lone locus forms no unit; a property and its annotated consumers are one unit and a properties file that does not declare the key is out of scope -- every verdict repeated on a twin that shares no package, type, member or foreign symbol. The SEAL is rhoai3.batch-scope/v4: files AND symbols, typed evidence, completion checks naming the tool that decides them, reproducible from content, at a path named by its own digest, with unit_id surviving remeasurement (one budget per PROBLEM) and a type the candidate merely mentions never widening it; a documented target carries its compat-mapping symbol_renames row and an undocumented one is no target (v9 t_3903f495). The BOUND narrows deterministically -- caller-only files, then the lowest-cardinality families -- and refuses UNIT_OVERSIZE rather than chunking. With the mode off clustering is byte-for-byte what it was, and the mode may not flip while a card is issued or a pending row is open (UNIT_MODE_SWITCH). The CHECKPOINT: a \
+    print("OK: worklist (lossless line-free incidents; canary excluded; only ERROR diagnostics; build→config→compile(leaf-first)→incident→test order; tests never writable; lexicographic 3-tuple progress; new-incident veto; unknown never advances; gate progress is the issued obligation disappearing, never a reworded one; a second cause at one file is a second obligation); a repository card's inventory is sealed by its own digest and two measurements never share a path; checked-exception family: bound to its introducing step (a legacy site stays out), one budget, line-free identity across a moved line, CONTINUE / EXPOSED / still-reported / 1→0 accept, per-member assessment (catch-wrapped and header-deleted members violate); a set-wide packaging cause is one typed blocker under permuted first-reported names and never a card; an unloadable config value is located at the annotation that names the property IN THE DESTINATION'S OWN MODEL (the frozen source's model answers only when the destination cannot be modelled, and the brief says which did; ${x:d} and a bare x are one property), at application.properties only when the name is real and unread, and is a blocker when the name is empty and unread -- the same decisions under renamed identifiers; parity mismatches are typed by their diffs (CORS → application.properties, the rest → the controller; scenario verdicts count, the receipt does not) and carry their exit conditions as advice built from those diffs (CORS properties are the source's own recorded values with the paired actual request and the exposed headers as the exit; a redirect is the source's status and its literal Location after origin mapping only, the doubled root path named, the legacy address served from the packaged UI, a property outside the write set entering through amend-scope) — the same advice, about its own values, on a specimen that shares no name with this one; the PARITY GATE: an obligation carries gate=parity and the scenarios it is made of (a read oracle takes its receipt row's), and a card is discharged only by the re-composed receipt recording those scenarios PASS -- still reported, gone but INCONCLUSIVE, another entry point broken, a startup gate broken and an un-composed receipt all refuse; UNIT FORMATION (decisions.loop.unit_formation v1): four typed rules over one measurement -- a throws surface closes over its interface, implementers and callers as ONE unit; an annotation family confined to a directory nothing outside refers to is a package leaf (decided by type_refs, never by a package name); a family spanning two directories and five independent web symbols stay five separate families; a set-wide packaging cause whose parents the model CAN enumerate becomes a mintable unit while one it cannot stays the typed blocker; a test source is never writable and a lone locus forms no unit; a property and its annotated consumers are one unit and a properties file that does not declare the key is out of scope -- every verdict repeated on a twin that shares no package, type, member or foreign symbol. The SEAL is rhoai3.batch-scope/v4: files AND symbols, typed evidence, completion checks naming the tool that decides them, reproducible from content, at a path named by its own digest, with unit_id surviving remeasurement (one budget per PROBLEM) and a type the candidate merely mentions never widening it; a documented target carries its compat-mapping symbol_renames row and an undocumented one is no target (v9 t_3903f495). The BOUND preserves what a repair needs: a union narrows by whole families, lowest cardinality first, and every \
+obligation it excludes stays in the work list as its own item with its file still writable, while a closure keeps \
+its callers and reaches the typed UNIT_OVERSIZE refusal rather than dropping them. With the mode off clustering is byte-for-byte what it was, and the mode may not flip while a card is issued or a pending row is open (UNIT_MODE_SWITCH). The CHECKPOINT: a \
 unit whose sealed identities are gone and whose members assess clean is ACCEPTED with the tuple unchanged, and even \
 with the compile slot briefly worse, for exactly the diagnostics its sealed symbols or its catalogued targets explain \
 -- the wrong import (jakarta.ws.rs.Context for jakarta.ws.rs.core.Context) is explained by nothing and is never \
@@ -2008,7 +2372,17 @@ the same unit CONTINUES the card, anything else is EXPOSED; a regressed test or 
 diagnostics still reported, a member that violates, an assessment that could not be made and a gate going backwards \
 all refuse, and a card with no unit seal is judged exactly as before. The BUDGET is rk:unit:<unit_id>, which survives \
 remeasurement and revision, and planner.budget counts against it. WU-9's query-invalid cause row is in RUNTIME_CAUSES \
-before the schema rows")
+before the schema rows. THE REAL MODEL, end to end (the JDK extractor, no simulated rows): references live under \
+DECLARED MEMBERS, so an outside consumer naming a helper only in a member signature prevents the leaf a type row \
+could not see, a partially resolved type establishes no isolation at all, and the control leaf still forms; the \
+fragment set is one unit whose write set is the parents and the adapters they OWE -- each named from the parent's \
+own fqn under the fragment naming contract -- with the children as inventory; before the adapter the obligation \
+violates while the child that IMPORTS its required parent is ok, because a sealed declaration is not a retired \
+symbol; an adapter that does not implement the parent violates, a written one discharges, and severing the \
+inheritance violates; the unit's boot gate must pass before acceptance, a passing gate never excuses a violating \
+member, and a gate that was passing may not be broken; and the two counterexamples are decided from the compiler's \
+own imports -- the wrong jakarta.ws.rs.Context and an unbound UriBuilder explain nothing while the imported \
+catalogued target does. Each of them repeated on a twin sharing no identifier")
     return 0
 
 

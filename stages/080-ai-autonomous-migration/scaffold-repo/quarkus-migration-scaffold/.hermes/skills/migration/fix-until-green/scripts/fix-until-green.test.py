@@ -686,10 +686,21 @@ def _unit_checkpoint_case() -> int:
 
     with tempfile.TemporaryDirectory(prefix="chk-unit-") as td:
         spec = specimens.specimen("http")
-        root = specimens.build_dest(Path(td) / "dest", spec, decisions=specimens.admitted_decisions(max_attempts=3))
+        # six verdicts are asserted in one tree, and what is under test is the
+        # verdict, never the budget (the budget has its own case)
+        root = specimens.build_dest(Path(td) / "dest", spec, decisions=specimens.admitted_decisions(max_attempts=8))
         paths = _write_uri_controllers(root, _BUILDER)
         owner, pet, third = paths[0], paths[1], paths[2]
         sealed = [owner, pet]
+        # the catalogued target has to EXIST for an import of it to bind: the
+        # whole predicate under test is "the token resolves, through this
+        # file's imports, to a qualified identity", and a type the compiler
+        # cannot see resolves to nothing. A stub in the baseline tree is the
+        # platform's presence, as dest_model's own selftest stubs it.
+        stub = root / "src/main/java" / (_UNIT_TARGET.replace(".", "/") + ".java")
+        stub.parent.mkdir(parents=True, exist_ok=True)
+        stub.write_text("package %s;\npublic interface %s { }\n"
+                        % (_UNIT_TARGET.rsplit(".", 1)[0], _UNIT_TARGET.rsplit(".", 1)[-1]), encoding="utf-8")
         errs = [(p, 3, sym("UriComponentsBuilder"), _ATTR) for p in sealed]
         specimens.prepare_loop(root, errors=list(errs))
         findings = load_json(root / MTA_FINDINGS)
@@ -704,6 +715,13 @@ def _unit_checkpoint_case() -> int:
         def edit(rel: str, marker: str) -> None:
             (root / rel).write_text(originals[rel].replace("import java.net.URI;\n",
                                                            "import java.net.URI;\n// %s\n" % marker), encoding="utf-8")
+
+        def edit_import(rel: str, fqn: str) -> None:
+            """The repair as a repair: the file IMPORTS what it moved to, so
+            the model binds the diagnostic's token to a qualified identity.
+            Nothing else can make a token resolve, which is the point."""
+            (root / rel).write_text(originals[rel].replace("import java.net.URI;\n",
+                                                           "import java.net.URI;\nimport %s;\n" % fqn), encoding="utf-8")
 
         def restore() -> None:
             for rel, text in originals.items():
@@ -726,14 +744,34 @@ def _unit_checkpoint_case() -> int:
         if (root / owner).read_text(encoding="utf-8") != originals[owner]:
             return _fail("the rejected candidate is reverted")
 
-        # (2) THE SAME SHAPE with the DOCUMENTED target: the unit traded its two
-        # sealed diagnostics for two about the replacement its seal records,
-        # with the catalogue row that documents it. The count did not fall and
-        # the step is ACCEPTED at its checkpoint.
+        # (1b) THE SECOND COUNTEREXAMPLE: the diagnostic names UriBuilder, the
+        # simple name of the catalogued target — and nothing in the file
+        # imports it. An unbound token resolves to no type at all, so it is a
+        # SPELLING, and a spelling is not the catalogued identity. Explained by
+        # nothing, REVERTED, exactly as the invented import above.
+        pipeline.admit(root)
+        _issue_cluster(root, cluster, "t_unit1b")
+        for q in sealed:
+            edit(q, "the right shape with nothing bound")
+        specimens.verify(root, errors=[(q, 9, sym("UriBuilder"), _ATTR) for q in sealed],
+                         failures=[], findings=findings)
+        p = _advance(root, cluster["id"], "t_unit1b")
+        blob = p.stdout + p.stderr
+        if p.returncode == 0 or "REVERTED" not in blob or "introduced 2 compile diagnostic" not in blob:
+            return _fail("an unresolved lookalike is not the catalogued target: rc=%s %s" % (p.returncode, blob[-700:]))
+        if (root / owner).read_text(encoding="utf-8") != originals[owner]:
+            return _fail("and the candidate that spelled it is reverted")
+
+        # (2) THE SAME SHAPE with the DOCUMENTED target, RESOLVED: the file
+        # imports jakarta.ws.rs.core.UriBuilder, so the token binds to the
+        # qualified identity the catalogue wrote down. The unit traded its two
+        # sealed diagnostics for two about that replacement, with the catalogue
+        # row that documents it. The count did not fall and the step is
+        # ACCEPTED at its checkpoint.
         pipeline.admit(root)
         _issue_cluster(root, cluster, "t_unit2")
         for q in sealed:
-            edit(q, "moved to %s" % _UNIT_TARGET)
+            edit_import(q, _UNIT_TARGET)
         specimens.verify(root, errors=[(q, 9, sym("UriBuilder"), _ATTR) for q in sealed],
                          failures=[], findings=findings)
         p = _advance(root, cluster["id"], "t_unit2")
@@ -750,6 +788,14 @@ def _unit_checkpoint_case() -> int:
             return _fail("every tolerated diagnostic is recorded with its boundary: %s" % rec)
         if {r["catalog_row"].get("key") for r in rec} != {_UNIT_RETIRED}:
             return _fail("and with the catalogue row that documented it: %s" % rec)
+        # what the checkpoint TOLERATED is not what it forgave: every explained
+        # diagnostic is still an obligation on the rebuilt work list, so the
+        # next card is minted for it
+        after = load_json(root / WORKLIST)
+        carried = {str(i.get("identity") or "") for i in after["items"] if str(i.get("source")) == "javac"}
+        missing = sorted(r["identity"] for r in rec if r["identity"] not in carried)
+        if missing:
+            return _fail("an explained regression is retained as an obligation, never discharged: %s" % missing)
         for q in sealed:
             originals[q] = (root / q).read_text(encoding="utf-8")
 
@@ -1505,7 +1551,7 @@ def main() -> int:
         p = _advance(root, "c:tampered", "t_z")
         if p.returncode != 2 or "LOOP_STALE_STATE" not in p.stderr:
             return _fail("tampered work list must refuse advance: %s" % p.stderr)
-    print("OK: fix-until-green (checked-exception veto: a falling count does not admit an introduced unhandled exception; family bound to its introducing step: Owner→Pet CONTINUE in the same card without an attempt, a stalled continuation rejects, an exposure outside the family is a typed diagnosis; an introduced attribution diagnostic is rejected, not parked (javac reports every one of them at once; a flow code newly reported stays exposed; one the accepted tree already had is not introduced); a harness-caused deferral is cleared by a metadata-only disposition and the one budget sees it; a set-wide packaging cause reaches the work list as one typed blocker with no card, under permuted reported names; measurement contract: unrun tests / empty reports / failed runner / skipped rescan are unknown; baseline; issued card; diagnostic cannot advance; post-verify edit + unissued cluster refused with baseline intact; out-of-scope test edit rejected + reverted + reports discarded; accept commits; staged no-progress reverted from index; line shift is not a new obligation; unresolvable candidate is VERIFICATION_PENDING (no attempt); known no-progress defers; Operator rewind restores tree+budget in a new epoch; green → packaging → startup → M4 (unknown gates never mint; an environment blocker is not a card; a gate repair is accepted phase-aware); unresolved test = typed blocker; tampered list refused; PARITY CARD (v9 t_77cae2b2): the obligation carries gate=parity onto the issued card, the brief names its scenarios and what discharges them, a comparison that did not run retains the candidate without an attempt, one that still reports the obligation reverts it, a receipt composed for another card is not this card's measurement, a receipt that carries NO binding after a comparison bound to this card is the one a refusing composer left (VERIFICATION_PENDING, no attempt, never ACCEPTED), and the repair is ACCEPTED on the re-composed candidate-bound receipt with the tuple unchanged at [0,0,0], the receipt snapshotted with the accepted reports); UNIT CHECKPOINT: the attribution veto is PARTITIONED for a unit card -- a candidate that invented a replacement the catalogue never wrote down still REVERTS with the symbols named (v9 t_3903f495), while one whose remaining diagnostics name the DOCUMENTED target is ACCEPTED with the compile count unchanged and records each tolerated diagnostic with its boundary and its catalogue row; the compiler naming another member of the same unit CONTINUES the card without spending an attempt, one naming a file the unit does not seal is a typed diagnosis, and a sealed member answered by deleting it violates however far the measure fell)")
+    print("OK: fix-until-green (checked-exception veto: a falling count does not admit an introduced unhandled exception; family bound to its introducing step: Owner→Pet CONTINUE in the same card without an attempt, a stalled continuation rejects, an exposure outside the family is a typed diagnosis; an introduced attribution diagnostic is rejected, not parked (javac reports every one of them at once; a flow code newly reported stays exposed; one the accepted tree already had is not introduced); a harness-caused deferral is cleared by a metadata-only disposition and the one budget sees it; a set-wide packaging cause reaches the work list as one typed blocker with no card, under permuted reported names; measurement contract: unrun tests / empty reports / failed runner / skipped rescan are unknown; baseline; issued card; diagnostic cannot advance; post-verify edit + unissued cluster refused with baseline intact; out-of-scope test edit rejected + reverted + reports discarded; accept commits; staged no-progress reverted from index; line shift is not a new obligation; unresolvable candidate is VERIFICATION_PENDING (no attempt); known no-progress defers; Operator rewind restores tree+budget in a new epoch; green → packaging → startup → M4 (unknown gates never mint; an environment blocker is not a card; a gate repair is accepted phase-aware); unresolved test = typed blocker; tampered list refused; PARITY CARD (v9 t_77cae2b2): the obligation carries gate=parity onto the issued card, the brief names its scenarios and what discharges them, a comparison that did not run retains the candidate without an attempt, one that still reports the obligation reverts it, a receipt composed for another card is not this card's measurement, a receipt that carries NO binding after a comparison bound to this card is the one a refusing composer left (VERIFICATION_PENDING, no attempt, never ACCEPTED), and the repair is ACCEPTED on the re-composed candidate-bound receipt with the tuple unchanged at [0,0,0], the receipt snapshotted with the accepted reports); UNIT CHECKPOINT: the attribution veto is PARTITIONED for a unit card -- a candidate that invented a replacement the catalogue never wrote down still REVERTS with the symbols named (v9 t_3903f495), while one whose remaining diagnostics name the DOCUMENTED target is ACCEPTED with the compile count unchanged and records each tolerated diagnostic with its boundary and its catalogue row; an unresolved lookalike (UriBuilder with nothing importing it) is not the catalogued target either, and the accepted case is the one whose file IMPORTS it; every tolerated diagnostic is still an obligation on the rebuilt work list; the compiler naming another member of the same unit CONTINUES the card without spending an attempt, one naming a file the unit does not seal is a typed diagnosis, and a sealed member answered by deleting it violates however far the measure fell)")
     return 0
 
 

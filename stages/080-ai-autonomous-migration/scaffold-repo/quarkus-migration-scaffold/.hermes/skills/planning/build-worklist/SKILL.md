@@ -41,6 +41,25 @@ next card. The measure is `(mandatory incidents, compile errors, failing
 tests, parity mismatches)`; the loop accepts a step only on a strict
 lexicographic decrease with no new mandatory incident.
 
+Under `decisions.loop.unit_formation: v1` a coordinated repair clusters as
+one **unit** instead of per file: a diagnostic family, a declaration and its
+direct implementers and callers, a package nothing outside names, or a
+property and its consumers. What decides those is the compiler's own model —
+a declared member's `type_refs` and resolved `calls`, the supertypes, the
+imports — never a type row's own `type_refs` (the extractor writes none) and
+never a package name. A type the compiler could not fully resolve states no
+relationships, so it can never establish that a package is isolated.
+
+A unit is bounded at 20 files, 160 sites and 8 symbols. A union narrows by
+dropping whole families, lowest cardinality first, and each dropped
+obligation stays in the work list as its own item; a declaration closure
+never drops its callers, because a caller is bound to the declaration the
+unit changes. Anything still over the bound is `UNIT_OVERSIZE`, an admission
+block, not a chunk. Where the rule can enumerate a fragment parent that no
+implementer answers, the seal also records the **implementation obligation**:
+the new type and file the naming contract fixes for it, which is what lets
+`amend-scope.py` authorize that path before it exists.
+
 ## Procedure
 
 ```bash

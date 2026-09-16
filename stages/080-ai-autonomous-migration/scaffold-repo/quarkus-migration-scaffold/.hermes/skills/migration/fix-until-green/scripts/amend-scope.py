@@ -27,6 +27,15 @@ sealed inventory, the unit_id, the budget and the idempotency key do not move.
   python3 amend-scope.py --root . --cluster u:abc123 --card $HERMES_KANBAN_TASK \
       --path src/main/java/.../Owner.java --reason "the sealed throws surface is declared here" \
       --evidence javac:diag:src/main/java/.../Owner.java|compiler.err...|9f3c
+
+A path that does not exist yet is admissible in exactly one case: the unit's
+seal records an IMPLEMENTATION OBLIGATION for it — a parent owed a concrete
+implementation, plus the naming contract that fixes the new type and its file.
+A repair whose whole purpose is to write an adapter cannot be authorized by the
+model, because the model has no type for a file nobody has written. The
+relationship the path was authorized on (the new type implements the parent) is
+verified from the model once the file exists: here on a later ask, and at the
+checkpoint by worklist.assess_unit, which refuses the unit without it.
 """
 from __future__ import annotations
 
@@ -118,21 +127,42 @@ def _evidence(root: Path, scope: dict, raw: str) -> tuple[dict, str]:
     return {"kind": kind, "ref": ref, "tool_named": False}, ""
 
 
+def _implementation_obligation(scope: dict, rel: str) -> dict:
+    """The sealed obligation that names this file, if the unit records one.
+
+    A repair that has to CREATE a file cannot be authorized by the model: the
+    model has no type for a file nobody has written, so the adapter the card
+    exists to produce was refused for not existing yet. What authorizes it is
+    the seal -- the recorded obligation (a parent declares a member no
+    implementer answers) together with the naming contract that fixes the type
+    and the path. The worker chooses neither."""
+    for row in scope.get("implementation_obligations") or []:
+        if isinstance(row, dict) and str(row.get("path") or "") == rel and row.get("parent") and row.get("type"):
+            return dict(row)
+    return {}
+
+
 def _unit_locus(root: Path, scope: dict, rel: str) -> tuple[str, str]:
     """Why this file is part of the UNIT the card carries, or why not.
 
-    Four shapes, each read from the SEALED inventory and the model -- never
-    from a reference the candidate has just written:
+    Shapes, each read from the SEALED inventory and the model -- never from a
+    reference the candidate has just written:
 
       * the inventory already carries the path (a member the card was issued
         with, outside the write set only because the bound narrowed it);
+      * the seal records an IMPLEMENTATION OBLIGATION for it: a parent owed a
+        concrete implementation, and a naming contract that says what the new
+        type and its file must be called. This is the one shape that authorizes
+        a path before it exists -- and once it does exist, the promised
+        relationship is checked, here and again at the checkpoint;
       * a type declared here implements or extends a sealed declaring type;
       * a member declared here calls a sealed member;
       * a javac diagnostic the CURRENT work list reports at this path names a
         sealed symbol (tool-named, so nothing the worker wrote can forge it);
       * a type here reads the sealed configuration property."""
     fqns, members, sealed_paths = _sealed_symbols(scope)
-    if not fqns and not sealed_paths:
+    obligation = _implementation_obligation(scope, rel)
+    if not fqns and not sealed_paths and not obligation:
         return "", "the unit seal carries no symbol and no member, so nothing in it can show a file is in scope"
     if rel in sealed_paths:
         return "sealed: %s is a member of the unit's own inventory" % rel, ""
@@ -141,6 +171,21 @@ def _unit_locus(root: Path, scope: dict, rel: str) -> tuple[str, str]:
     except DestModelUnavailable as exc:
         return "", "the destination model is unavailable, so the file's types cannot be named (%s)" % exc
     here = types_of(model, rel)
+    if obligation:
+        want, parent = str(obligation["type"]), str(obligation["parent"])
+        if not here:
+            # before creation: the obligation and the contract are the authority
+            return ("sealed: %s is owed a concrete implementation and %s names %s at %s (%s)"
+                    % (parent, "the unit's seal", want, rel, obligation.get("contract") or "naming contract")), ""
+        # after creation: the promised relationship is a fact or it is not
+        typ = next((t for t in here if str(t.get("fqn") or "") == want), None)
+        if typ is None:
+            return "", ("%s was authorized to declare %s and declares %s instead; the naming contract is what made the "
+                        "path admissible" % (rel, want, ", ".join(sorted(str(t.get("fqn")) for t in here))))
+        if parent not in [str(s).split("<", 1)[0] for s in (typ.get("supertypes") or [])]:
+            return "", ("%s does not implement %s; the path was authorized on that relationship and the model does not "
+                        "state it" % (want, parent))
+        return "sealed: %s implements %s, the parent its obligation names" % (want, parent), ""
     if not here:
         return "", "the model has no type for %s" % rel
     for t in here:
@@ -233,6 +278,10 @@ def main(argv: list[str] | None = None) -> int:
     if batch_scope_digest(load_json(scope_p)) != str(scope_ref.get("digest") or ""):
         return _refuse("the inventory on disk is not the one sealed with this card")
 
+    scope_doc = load_json(scope_p)
+    unit = str(scope_doc.get("kind") or "") == UNIT_KIND
+    limit = UNIT_AMENDMENT_LIMIT if unit else AMENDMENT_LIMIT
+
     rel = str(args.path).replace("\\", "/").lstrip("./")
     if not is_product_path(rel):
         return _refuse("%s is not a product path" % rel)
@@ -240,17 +289,29 @@ def main(argv: list[str] | None = None) -> int:
         return _refuse("a test source is never writable; an ADR and an Operator step are the only way")
     if rel == "pom.xml":
         return _refuse("the build file is its own cluster, never an amendment")
-    if not (root / rel).is_file():
-        return _refuse("%s is not a file of this tree" % rel)
+    # A path the unit is OWED may be authorized before it exists -- and only
+    # such a path. Everything else must be a file of this tree: an amendment is
+    # about work the measured tree carries, not about a file a worker imagines.
+    obligation = _implementation_obligation(scope_doc, rel) if unit else {}
+    if not (root / rel).is_file() and not obligation:
+        return _refuse("%s is not a file of this tree, and this card's seal records no implementation obligation for it; "
+                       "a new path is authorized by an obligation and a naming contract, never by a request" % rel)
     if len(str(args.reason).strip()) < 12:
         return _refuse("--reason must say what the card cannot finish without this file")
 
-    scope_doc = load_json(scope_p)
-    unit = str(scope_doc.get("kind") or "") == UNIT_KIND
-    limit = UNIT_AMENDMENT_LIMIT if unit else AMENDMENT_LIMIT
-
     amendments = list(issued.get("amendments") or [])
     if rel in set(issued.get("write_set") or []):
+        # asked again about a path authorized before it existed, and it exists
+        # now: say whether the relationship it was authorized on is a fact. The
+        # checkpoint asks the same question of the model and is the judge; this
+        # is the worker's early answer.
+        if obligation and (root / rel).is_file():
+            why = _unit_locus(root, scope_doc, rel)[1]
+            print("OK: %s is already writable for %s%s"
+                  % (rel, args.cluster, (" — but %s" % why) if why else
+                     " — and %s implements %s, the parent its obligation names" % (obligation["type"], obligation["parent"])),
+                  file=sys.stderr if why else sys.stdout)
+            return 0
         print("OK: %s is already writable for %s" % (rel, args.cluster))
         return 0
     # A unit's scope may be REVISED, but never past the size rule that formed
@@ -288,11 +349,16 @@ def main(argv: list[str] | None = None) -> int:
                        "planning answer, not an amendment." % (rel, why))
 
     row = {"path": rel, "reason": str(args.reason).strip(), "attempt": issued.get("attempt"),
-           "granted_before_sha256": sha256_file(root / rel),
+           # a path owed but not yet written has no content to seal; what is
+           # recorded instead is that it did not exist when authority was given
+           "granted_before_sha256": sha256_file(root / rel) if (root / rel).is_file() else "",
            "dirty_at_grant": False,
            "locus": locus}
     if evidence:
         row["evidence"] = evidence
+    if obligation and not (root / rel).is_file():
+        row["creates"] = {"parent": obligation["parent"], "type": obligation["type"],
+                          "contract": obligation.get("contract") or "", "source": obligation.get("source") or ""}
     amendments.append(row)
     issued["amendments"] = amendments
     if unit:

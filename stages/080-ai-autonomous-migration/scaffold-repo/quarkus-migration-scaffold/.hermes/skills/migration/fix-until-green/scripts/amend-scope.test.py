@@ -49,6 +49,51 @@ SOURCES = {
         "    public Vet lookup(int id) { return null; }\n}\n",
     "src/main/java/p/Caller.java":
         "package p;\npublic class Caller {\n    ClinicService s;\n    public Vet go() { return s.lookup(1); }\n}\n",
+    # a fragment parent nothing implements, and the repository that extends it:
+    # the unit that OWES a file nobody has written yet
+    "src/main/java/p/VetHistory.java":
+        "package p;\nimport java.util.List;\npublic interface VetHistory {\n"
+        "    List<Vet> lookupByCustomClause(String clause);\n}\n",
+    "src/main/java/p/VetStore.java":
+        "package p;\npublic interface VetStore extends VetHistory {\n}\n",
+}
+
+# The sealed unit that owes an implementation: the obligation names the parent,
+# the type and the file the naming contract fixes for it. Nothing else can make
+# a path that does not exist admissible.
+OWED_SCOPE = {
+    "schema": "rhoai3.batch-scope/v4",
+    "kind": "unit",
+    "rule": "unit/declaration-closure/v1",
+    "cluster": "u:owed01",
+    "unit_id": "u:owed01",
+    "family_key": "spring-data-fragment-implementations:p.VetHistory",
+    "writable_paths": ["src/main/java/p/VetHistory.java"],
+    "symbols": [{"kind": "member", "fqn": "p.VetHistory", "signature": "lookupByCustomClause(java.lang.String)",
+                 "path": "src/main/java/p/VetHistory.java"}],
+    "target_symbols": [],
+    "members": [{"path": "src/main/java/p/VetHistory.java", "type": "p.VetHistory",
+                 "member_id": "lookupByCustomClause", "state": "declares",
+                 "signature": "lookupByCustomClause(java.lang.String)"},
+                {"path": "src/main/java/p/VetStore.java", "type": "p.VetStore", "state": "implements",
+                 "parent": "p.VetHistory"}],
+    "implementation_obligations": [{
+        "parent": "p.VetHistory", "parent_path": "src/main/java/p/VetHistory.java",
+        "type": "p.VetHistoryImpl", "path": "src/main/java/p/VetHistoryImpl.java",
+        "members": ["lookupByCustomClause(java.lang.String)"],
+        "contract": "spring-data-fragment-impl/v1", "source": "the fragment naming contract",
+    }],
+    "measured": ["rt:boot:setwide"],
+}
+
+OWED_WORKLIST = {
+    "schema": "rhoai3.worklist/v1",
+    "items": [{"id": "rt:boot:setwide", "source": "runtime", "gate": "boot", "kind": "config",
+               "cause": "missing-implementation", "set_wide": "spring-data-fragment-implementations",
+               "category": "mandatory", "path": "", "line": 0,
+               "rule_id": "RUNTIME_APPLICATION_CONFIGURATION",
+               "message": "No implementation of interface p.VetHistory was found"}],
+    "clusters": [],
 }
 
 # The sealed v4 unit: the declaration surface, its symbols, its members. The
@@ -206,6 +251,89 @@ def _unit_case(root: Path) -> int:
     return 0
 
 
+def _owed_case(root: Path) -> int:
+    """A path the unit is OWED is authorized BEFORE it exists, from the seal's
+    own obligation and naming contract — and from nothing else.
+
+    This is the defect the architect reproduced: a card whose whole purpose is
+    to write an adapter could not put that adapter in its write set, because
+    the model has no type for a file nobody has written. The promise the path
+    was authorized on is checked once the file exists."""
+    from planner.worklist import UNIT_MAX_FILES
+
+    scope = dict(OWED_SCOPE)
+    scope["digest"] = batch_scope_digest(scope)
+    sp = root / "evidence/planning/batch-scope/u-owed01" / ("%s.json" % scope["digest"][:32])
+    sp.parent.mkdir(parents=True, exist_ok=True)
+    sp.write_text(json.dumps(scope))
+    wl = root / "evidence/planning/worklist.json"
+    wl.parent.mkdir(parents=True, exist_ok=True)
+    wl.write_text(json.dumps(OWED_WORKLIST))
+    issued = root / "verification/loop/issued.json"
+    owed = "src/main/java/p/VetHistoryImpl.java"
+
+    def reset(write_set: list | None = None) -> None:
+        issued.write_text(json.dumps({
+            "schema": "rhoai3.loop-issued/v1", "cluster": "u:owed01", "attempt": 2,
+            "write_set": list(write_set or scope["writable_paths"]),
+            "retry_key": "rk:unit:u:owed01", "budget": {"spent": 2, "max": 3},
+            "idempotency_key": "k4:t_owed:1",
+            "batch_scope": {"path": sp.relative_to(root).as_posix(), "digest": scope["digest"]},
+        }))
+
+    reset()
+    # a new path the seal does NOT name is still refused: an obligation is what
+    # authorizes a file that does not exist, never a request for one
+    rc, out = _run(root, "--path", "src/main/java/p/Invented.java", "--reason", "I would like to write this adapter",
+                   "--evidence", "model:p.VetHistory", cluster="u:owed01")
+    if rc == 0 or "records no implementation obligation" not in out:
+        return _fail("a new path nobody owes must refuse: %s" % out)
+    # and the owed path is authorized before it exists
+    rc, out = _run(root, "--path", owed, "--reason", "the fragment parent is owed a concrete implementation",
+                   "--evidence", "runtime:rt:boot:setwide", cluster="u:owed01")
+    if rc != 0 or "SCOPE REVISED" not in out:
+        return _fail("the path the unit owes must be authorized before creation: %s" % out)
+    doc = json.loads(issued.read_text())
+    if owed not in (doc.get("write_set") or []):
+        return _fail("and become writable: %s" % doc.get("write_set"))
+    amd = (doc.get("amendments") or [{}])[-1]
+    if amd.get("granted_before_sha256") != "" or (amd.get("creates") or {}).get("parent") != "p.VetHistory":
+        return _fail("the record says the file did not exist and what it must become: %s" % amd)
+    if "obligation" not in (amd.get("locus") or "") and "owed" not in (amd.get("locus") or ""):
+        return _fail("and why that authorized it: %s" % amd)
+    # the BUDGET and the identity do not move: a revision is not a new problem
+    if doc.get("retry_key") != "rk:unit:u:owed01" or doc.get("budget") != {"spent": 2, "max": 3}:
+        return _fail("a revision keeps the unit's retry budget: %s" % {k: doc.get(k) for k in ("retry_key", "budget")})
+    if doc.get("idempotency_key") != "k4:t_owed:1" or (doc.get("revisions") or [{}])[0].get("unit_id") != "u:owed01":
+        return _fail("and its identity: %s" % {k: doc.get(k) for k in ("idempotency_key", "revisions")})
+    if json.loads(sp.read_text()) != scope:
+        return _fail("the sealed inventory is not rewritten by a revision")
+
+    # AFTER creation the promise is a fact or it is not. An adapter that does
+    # not implement the parent is named as such.
+    (root / owed).write_text("package p;\npublic class VetHistoryImpl {\n}\n")
+    rc, out = _run(root, "--path", owed, "--reason", "the fragment parent is owed a concrete implementation",
+                   "--evidence", "runtime:rt:boot:setwide", cluster="u:owed01")
+    if rc != 0 or "does not implement p.VetHistory" not in out:
+        return _fail("an adapter that does not implement the parent is reported: %s" % out)
+    (root / owed).write_text("package p;\nimport java.util.List;\n"
+                             "public class VetHistoryImpl implements VetHistory {\n"
+                             "    public List<Vet> lookupByCustomClause(String clause) { return List.of(); }\n}\n")
+    rc, out = _run(root, "--path", owed, "--reason", "the fragment parent is owed a concrete implementation",
+                   "--evidence", "runtime:rt:boot:setwide", cluster="u:owed01")
+    if rc != 0 or "implements p.VetHistory" not in out:
+        return _fail("and one that does is verified from the model: %s" % out)
+
+    # the file bound governs an owed path exactly as it governs any other
+    (root / owed).unlink()
+    reset(write_set=["src/main/java/p/Filler%d.java" % i for i in range(UNIT_MAX_FILES)])
+    rc, out = _run(root, "--path", owed, "--reason", "the fragment parent is owed a concrete implementation",
+                   "--evidence", "runtime:rt:boot:setwide", cluster="u:owed01")
+    if rc == 0 or "UNIT_OVERSIZE" not in out or "max %d" % UNIT_MAX_FILES not in out:
+        return _fail("an owed path past the file bound refuses by name: %s" % out)
+    return 0
+
+
 def main() -> int:
     if not shutil.which("javac"):
         print("SKIP: amend-scope selftest needs a JDK on PATH")
@@ -324,6 +452,8 @@ def main() -> int:
 
         if _unit_case(root):
             return 1
+        if _owed_case(root):
+            return 1
 
     print("OK: amend-scope (tests, the build file, unknown paths, unreasoned asks and files the failure does not reach "
           "all refuse; a reference the repair itself introduced authorizes nothing and an inventory with no sealed reachability refuses outright; a file that is already edited cannot be authorized after the fact; a justified amendment widens "
@@ -333,7 +463,12 @@ def main() -> int:
           "refused for any unit and any evidence; a tool-named identity at a file that implements the sealed "
           "declaration, and a model relation at a file that calls the sealed member, are accepted and recorded as "
           "revisions[] carrying the evidence and the locus, with the inventory, the unit_id and the budget untouched; "
-          "four revisions and no more, and never past the size rule that formed the unit (UNIT_OVERSIZE)")
+          "four revisions and no more, and never past the size rule that formed the unit (UNIT_OVERSIZE). AN OWED PATH: "
+          "a file that does not exist yet is authorized only when the seal records an implementation obligation "
+          "and its naming contract, an invented one refuses, and the record says the file did not exist and what "
+          "it must become; the unit's retry budget, idempotency key and sealed inventory do not move; once the "
+          "file exists the promised relationship is verified from the model (an adapter that does not implement "
+          "the parent is named as such); and the file bound still governs it")
     return 0
 
 

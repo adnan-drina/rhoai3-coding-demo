@@ -2049,6 +2049,64 @@ def unit_callers_of(model: dict[str, Any] | None, fqn: str, signature: str) -> l
     return sorted(out, key=lambda r: (r["path"], r["type"], r["member_id"]))
 
 
+def call_owner(call: Any) -> str:
+    """The type a resolved call names. jdk-dest-model writes a call as
+    ``<owner fqn>.<signature>`` and a signature always carries its parameter
+    list, so the owner is what stands before the last dot ahead of the "("."""
+    head = str(call or "").split("(", 1)[0]
+    return head.rsplit(".", 1)[0] if "." in head else ""
+
+
+def unit_type_refs(typ: dict[str, Any]) -> set[str]:
+    """Every type this declaration NAMES, in the shape the real extractor emits.
+
+    The relationships the compiler states live at MEMBER level: jdk-dest-model
+    writes ``mrow.put("type_refs", …)`` for a declared member's return, its
+    parameters and its throws, ``mrow.put("calls", …)`` for the resolved
+    callees, and ``fields[].type`` for a field; the type row itself carries
+    `supertypes` and `imports` and no `type_refs` of its own (there is no
+    ``row.put("type_refs", …)`` in DestModel.java). Asking the type level of a
+    real model therefore returned nothing, and a package with a genuine outside
+    consumer was classified as a leaf. The type-level key is still read because
+    another producer's model may carry one, and dropping evidence is never the
+    safe direction."""
+    out: set[str] = set()
+    if not isinstance(typ, dict):
+        return out
+    for r in typ.get("type_refs") or []:
+        out.add(_erased(r))
+    for s in typ.get("supertypes") or []:
+        out.add(_erased(s))
+    for i in typ.get("imports") or []:
+        s = str(i)
+        if not s.endswith(".*"):
+            out.add(s)
+    for m in typ.get("declared") or []:
+        if not isinstance(m, dict):
+            continue
+        for r in m.get("type_refs") or []:
+            out.add(_erased(r))
+        for c in m.get("calls") or []:
+            owner = call_owner(c)
+            if owner:
+                out.add(owner)
+    for f in typ.get("fields") or []:
+        if isinstance(f, dict) and f.get("type"):
+            out.add(_erased(f.get("type")))
+    return {r for r in out if r}
+
+
+def unit_states_relationships(typ: dict[str, Any]) -> bool:
+    """Whether this type row can be asked what it refers to at all.
+
+    A partially resolved type is a type the compiler could not finish: its
+    member refs and its resolved calls are whatever survived the failure. An
+    ISOLATION claim ("nothing outside names what is inside") is a claim about
+    absence, and absence in a row that states no relationships is not evidence
+    of one. Fail closed: no relationship evidence, no leaf."""
+    return isinstance(typ, dict) and str(typ.get("resolution") or "") == "full"
+
+
 def unit_annotation_sites(model: dict[str, Any] | None) -> list[dict[str, Any]]:
     """Every annotation the model recorded, one row per SITE — the
     generalisation of profile_conditions() to any annotation. `fqn` is the
@@ -2096,7 +2154,14 @@ def symbol_renames(root: Path | None) -> dict[str, dict[str, Any]]:
     Every row is a documented mapping, never an inference — the same contract
     package_renames carries. It is what makes "the replacement this unit moves
     to" checkable: jakarta.ws.rs.core.Context has a row and jakarta.ws.rs.Context
-    does not, so a candidate that invented the second one stays unexplained."""
+    does not, so a candidate that invented the second one stays unexplained.
+
+    Both sides of a row are QUALIFIED identities, and a row that is not is not
+    a row. A simple name is a spelling, and a spelling cannot be resolved
+    against a compiler model: `UriBuilder` with nothing importing it names no
+    type, and a catalogue keyed by such a name would license exactly the
+    unresolved match acceptance must refuse. Unqualified rows are dropped here,
+    at the source, so no consumer can be the one that forgets."""
     if root is None:
         return {}
     p = Path(root) / CATALOGS_DIR / "compat-mapping.json"
@@ -2107,7 +2172,9 @@ def symbol_renames(root: Path | None) -> dict[str, dict[str, Any]]:
     except (OSError, ValueError):
         return {}
     rows = doc.get("symbol_renames") or {}
-    return {str(k): dict(v) for k, v in rows.items() if k != "note" and isinstance(v, dict) and v.get("to")}
+    return {str(k): dict(v) for k, v in rows.items()
+            if k != "note" and isinstance(v, dict) and v.get("to")
+            and "." in str(k) and "." in str(v.get("to"))}
 
 
 def package_renames_of(root: Path | None) -> dict[str, str]:
@@ -2263,10 +2330,11 @@ def declaration_closure(model: dict[str, Any] | None, typ: dict[str, Any],
             if sig in sigs or sig in above:
                 rows.append(_unit_member(_unit_path(impl), type_fqn=str(impl.get("fqn") or ""),
                                          member_id=iids.get(sig, str(m.get("name") or "")), state="implements",
-                                         signature=sig, shape=unit_member_shape(m)))
+                                         signature=sig, shape=unit_member_shape(m), parent=fqn))
         evidence.append({"kind": "model", "ref": "%s implements %s" % (impl.get("fqn"), fqn)})
         if not any(r["path"] == _unit_path(impl) for r in rows):
-            rows.append(_unit_member(_unit_path(impl), type_fqn=str(impl.get("fqn") or ""), state="implements"))
+            rows.append(_unit_member(_unit_path(impl), type_fqn=str(impl.get("fqn") or ""), state="implements",
+                                     parent=fqn))
     for sig in sigs:
         for c in unit_callers_of(model, fqn, sig):
             rows.append(_unit_member(c["path"], type_fqn=c["type"], member_id=c["member_id"], state="calls",
@@ -2320,14 +2388,66 @@ def fragment_parents(model: dict[str, Any] | None) -> list[dict[str, Any]]:
     return out
 
 
+# The naming contract a fragment implementation is authorized under. Spring
+# Data finds a fragment's implementation by NAME: the class implementing
+# interface `X` is `XImpl` in X's own package (Spring Data JPA reference,
+# "Custom Implementations for Spring Data Repositories"), and the Quarkus
+# Spring Data extension keeps that rule when it derives a repository. It is a
+# framework fact, derived from the parent's OWN fully qualified name, so it
+# names a specimen nowhere.
+FRAGMENT_IMPL_CONTRACT = "spring-data-fragment-impl/v1"
+FRAGMENT_IMPL_SOURCE = ("https://docs.spring.io/spring-data/jpa/reference/repositories/custom-implementations.html "
+                        "(a fragment interface X is implemented by XImpl in X's own package)")
+
+
+def unit_implementation_obligations(parents: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The new implementation paths a fragment unit is OWED, named in advance.
+
+    A repair that has to create a file cannot be authorized by the model: the
+    model has no type for a file nobody has written, so `amend-scope.py`
+    refused the adapter the card existed to produce. What authorizes it is the
+    seal itself — the obligation (this parent declares a member no implementer
+    answers) together with the naming contract (what the new type and its file
+    must be called). The path is DERIVED from the parent's own fqn, so a
+    worker cannot choose it, and the relationship it promises — the new type
+    implements the parent — is verified from the model after the file exists
+    (amend-scope's re-check and assess_unit's own)."""
+    out: list[dict[str, Any]] = []
+    for p in parents:
+        parent = str(p.get("parent") or "")
+        path = str(p.get("path") or "")
+        if not parent or not path:
+            continue
+        simple = parent.rsplit(".", 1)[-1]
+        out.append({
+            "parent": parent,
+            "parent_path": path,
+            "type": parent + "Impl",
+            "path": "%s/%sImpl.java" % (path.rsplit("/", 1)[0], simple),
+            "members": sort_unique([str(m.get("signature") or "") for m in (p.get("members") or [])]),
+            "contract": FRAGMENT_IMPL_CONTRACT,
+            "source": FRAGMENT_IMPL_SOURCE,
+        })
+    return sorted(out, key=lambda r: (r["parent"], r["path"]))
+
+
 def package_leaf_units(families: list[dict[str, Any]], model: dict[str, Any] | None,
                        claimed: set[str]) -> list[dict[str, Any]]:
     """Rule (c): the union of (a)-families confined to one package directory,
     where no type declared outside the union names a type declared in it.
 
-    "Leaf" is decided by the model's `type_refs` on the types the union
-    actually holds, never by a package NAME: a package nothing outside refers
-    to is a leaf whatever it is called."""
+    "Leaf" is decided by the relationships the compiler states about the types
+    the union actually holds, never by a package NAME: a package nothing
+    outside refers to is a leaf whatever it is called. Those relationships are
+    read at the level the extractor writes them — a declared member's
+    `type_refs` and resolved `calls`, a field's type, the supertypes and the
+    imports (unit_type_refs) — because the type row of a real model carries no
+    `type_refs` at all, and a planner that asked it there saw no consumer where
+    there was one.
+
+    Isolation is a claim about ABSENCE, so it is refused on missing evidence: a
+    single outside type the compiler could not fully resolve is a type that
+    cannot say what it names, and the union is not minted as a leaf."""
     by_dir: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for fam in families:
         if any(str(i.get("id")) in claimed for i in fam["items"]):
@@ -2343,7 +2463,9 @@ def package_leaf_units(families: list[dict[str, Any]], model: dict[str, Any] | N
         if not inside:
             continue
         outside = [t for t in _unit_types(model) if _unit_path(t) not in set(files)]
-        if any(_erased(r) in inside for t in outside for r in (t.get("type_refs") or [])):
+        if any(not unit_states_relationships(t) for t in outside):
+            continue  # no relationship evidence: isolation cannot be established
+        if any(r in inside for t in outside for r in unit_type_refs(t)):
             continue
         if len(files) < 2 and len(fams) < 2:
             continue
@@ -2409,22 +2531,28 @@ def _within(size: dict[str, int]) -> bool:
 def _bound_unit(unit: dict[str, Any]) -> dict[str, Any]:
     """Deterministic narrowing first, a typed blocker second.
 
-    Narrowing drops caller-only files (rule (b)) or the lowest-cardinality
-    member families (rule (c)), keeping the declaration and its direct
-    implementers. Never an arbitrary file-order chunk: today's
-    SYMBOL_CLUSTER_MAX_FILES slicing is exactly what makes a coordinated
-    `throws` repair unrepresentable, because neither half compiles."""
+    What narrowing may drop is now the whole question, because a narrowed unit
+    that cannot compile is worse than no unit at all:
+
+    * a CALLER of a sealed declaration is never dropped. It is bound to the
+      declaration the unit changes — a signature it passes, an exception it
+      catches — so a closure without it is a repair that does not build, and
+      the bound is then a planning answer, not a slice. Rule (b) narrows by
+      nothing and reaches UNIT_OVERSIZE instead.
+    * a union (rules (c) and (a)) drops whole FAMILIES, lowest cardinality
+      first, and every obligation it drops is RETAINED: the items go back
+      unclaimed to the ordinary per-file pass, so the work list still carries
+      them as their own items, and the seal records what left and why.
+    * whatever survives keeps every file one of its OWN obligations names. An
+      item whose file is not writable is an item the card cannot discharge, so
+      the file stays in the write set and the size is judged after it.
+
+    Never an arbitrary file-order chunk: SYMBOL_CLUSTER_MAX_FILES slicing is
+    exactly what makes a coordinated `throws` repair unrepresentable, because
+    neither half compiles."""
     before = _unit_size(unit)
-    if _within(before):
-        unit["bounds"] = dict(before, max_files=UNIT_MAX_FILES, max_sites=UNIT_MAX_SITES, max_symbols=UNIT_MAX_SYMBOLS)
-        return unit
-    if unit["rule"] == RULE_DECLARATION_CLOSURE:
-        keep = [m for m in unit["members"] if str(m.get("state")) != "calls"]
-        if keep and len(keep) < len(unit["members"]):
-            unit["members"] = keep
-            unit["files"] = sort_unique([m["path"] for m in keep])
-            unit["evidence"].append({"kind": "model", "ref": "UNIT_NARROWED: caller-only files dropped; the declaration and its direct implementers are kept"})
-    elif unit["rule"] in (RULE_PACKAGE_LEAF, RULE_DIAGNOSTIC_FAMILY):
+    excluded: list[dict[str, Any]] = []
+    if not _within(before) and unit["rule"] in (RULE_PACKAGE_LEAF, RULE_DIAGNOSTIC_FAMILY):
         groups = sorted(unit.get("groups") or [], key=lambda g: (len(g["members"]), g["key"]))
         while groups and not _within(_unit_size(unit)) and len(groups) > 1:
             dropped = groups.pop(0)
@@ -2433,16 +2561,30 @@ def _bound_unit(unit: dict[str, Any]) -> dict[str, Any]:
             unit["members"] = [m for m in unit["members"] if m not in dropped["members"]]
             unit["items"] = [i for i in unit["items"] if i not in dropped["items"]]
             unit["files"] = sort_unique([m["path"] for m in unit["members"]])
-            unit["evidence"].append({"kind": "model", "ref": "UNIT_NARROWED: family %s (%d site(s)) dropped, the lowest cardinality in this union" % (dropped["key"], len(dropped["members"]))})
+            excluded.append({"family": dropped["key"], "sites": len(dropped["members"]),
+                             "items": sort_unique([str(i.get("id") or "") for i in dropped["items"]])})
+            unit["evidence"].append({"kind": "model", "ref": "UNIT_NARROWED: family %s (%d site(s)) dropped, the lowest cardinality in this union; its %d obligation(s) stay in the work list as their own items" % (dropped["key"], len(dropped["members"]), len(dropped["items"]))})
+    # every file one of the unit's OWN obligations names stays writable: a
+    # measured item with no writable file is an item the card cannot discharge
+    obliged = sort_unique([str(i.get("path") or "") for i in (unit.get("items") or []) if i.get("path")])
+    missing = [p for p in obliged if p not in set(unit["files"])]
+    if missing:
+        unit["files"] = sort_unique(list(unit["files"]) + missing)
+        unit["evidence"].append({"kind": "javac", "ref": "%d file(s) kept in the write set because the unit still measures an obligation in them (%s)" % (len(missing), ", ".join(missing[:2]))})
     after = _unit_size(unit)
     unit["bounds"] = dict(after, max_files=UNIT_MAX_FILES, max_sites=UNIT_MAX_SITES, max_symbols=UNIT_MAX_SYMBOLS)
     if after != before:
         unit["bounds"]["narrowed"] = {"from": before, "to": after, "reason": "UNIT_NARROWED"}
+    if excluded:
+        unit["bounds"]["excluded"] = excluded
     if not _within(after):
         unit["block"] = ("UNIT_OVERSIZE: %s over %s reaches %d file(s)/%d site(s)/%d symbol(s) (max %d/%d/%d); "
                          "a repair this wide is a planning answer"
                          % (unit["rule"], unit["family_key"], after["files"], after["sites"], after["symbols"],
                             UNIT_MAX_FILES, UNIT_MAX_SITES, UNIT_MAX_SYMBOLS))
+        if unit["rule"] == RULE_DECLARATION_CLOSURE:
+            unit["block"] += ("; its callers are bound to the declaration it changes and dropping them would leave a "
+                              "unit that cannot compile")
     return unit
 
 
@@ -2481,6 +2623,8 @@ def _unit_cluster(unit: dict[str, Any], depths: dict[str, int], deferred: set[st
                  "evidence": unit["evidence"][:12], "size": {k: unit["bounds"][k] for k in ("files", "sites", "symbols")},
                  "completion": [str(c.get("detail") or c.get("check")) for c in completion]},
     }
+    if unit.get("implementation"):
+        cluster["unit"]["implementation"] = unit["implementation"]
     if unit.get("gate"):
         cluster["gate"] = unit["gate"]
     cluster["_unit_seal"] = unit
@@ -2501,6 +2645,11 @@ def _unit_completion(unit: dict[str, Any]) -> list[dict[str, Any]]:
                               % (len(identities), "y" if len(identities) == 1 else "ies")})
     out.append({"check": "unit-assessment", "tool": "worklist.assess_unit",
                 "detail": "assess_unit reports no member violates and none is inconclusive (an already-correct member earns nothing and costs nothing)"})
+    for row in unit.get("implementation") or []:
+        out.append({"check": "implementation", "tool": "worklist.assess_unit", "parent": row["parent"],
+                    "path": row["path"], "type": row["type"],
+                    "detail": "%s is implemented by a concrete %s at %s (%s), and the model shows it implements the "
+                              "parent" % (row["parent"], row["type"], row["path"], row["contract"])})
     if unit.get("gate"):
         out.append({"check": "gate", "tool": "run-verify.sh", "gate": unit["gate"],
                     "detail": "the %s gate passes on the verified artifact" % unit["gate"]})
@@ -2595,13 +2744,29 @@ def form_units(items: list[dict[str, Any]], depths: dict[str, int], deferred: se
                 symbols.append({"kind": "member", "fqn": p["parent"], "signature": m["signature"], "path": p["path"]})
                 evidence.append({"kind": "model", "ref": "%s declares %s and no implementer answers it" % (p["parent"], m["signature"])})
             for impl in p["implementers"]:
-                files.append(impl["path"])
-                members.append(_unit_member(impl["path"], type_fqn=impl["fqn"], state="implements"))
+                # the children are INVENTORY, not write set: this repair adds an
+                # implementation, it does not edit the interfaces that inherit
+                # the parent. They are assessed (the inheritance must survive)
+                # and they are reachable by a recorded revision if one is ever
+                # needed, which is what amend-scope's implements-branch is for.
+                members.append(_unit_member(impl["path"], type_fqn=impl["fqn"], state="implements",
+                                            parent=p["parent"]))
                 evidence.append({"kind": "model", "ref": "%s implements %s" % (impl["fqn"], p["parent"])})
+        # the new file this repair OWES, named before it exists: the obligation
+        # (a member no implementer answers) and the naming contract are what
+        # authorize a path the model cannot yet have a type for. It is in the
+        # write set from the start, because the file seal is what acceptance
+        # enforces and a repair that may not write its own adapter is no repair.
+        owed = unit_implementation_obligations(parents)
+        for row in owed:
+            files.append(row["path"])
+            evidence.append({"kind": "catalog", "ref": "%s: %s implements %s at %s (%s)"
+                                                      % (row["contract"], row["type"], row["parent"], row["path"], row["source"])})
         take({"rule": RULE_DECLARATION_CLOSURE,
               "family_key": "%s:%s" % (it.get("set_wide"), ",".join(sorted(p["parent"] for p in parents))),
               "kind": str(it.get("kind") or "config"), "items": [it], "files": sort_unique(files),
-              "members": members, "symbols": symbols, "evidence": evidence, "gate": str(it.get("gate") or "")})
+              "members": members, "symbols": symbols, "evidence": evidence, "gate": str(it.get("gate") or ""),
+              "implementation": owed})
 
     # (a) diagnostic family — what is left, when it spans more than one file.
     for fam in families:
@@ -2665,13 +2830,109 @@ def build_unit_scope(root: Path, cluster: dict[str, Any], items: list[dict[str, 
         "measured": measured,
         "inputs": {"candidate_sha256": str((bundle or {}).get("candidate_sha256") or "")},
     }
+    # The implementation obligations, if the rule enumerated any: the parent
+    # that is owed a concrete implementation, the type and path the naming
+    # contract fixes for it, and where that contract is documented. This is the
+    # only thing that authorizes a path no model can have a type for yet, and
+    # it is sealed with the rest — a worker cannot add one afterwards.
+    if unit.get("implementation"):
+        doc["implementation_obligations"] = unit["implementation"]
     doc["digest"] = batch_scope_digest(doc)
     return doc
 
 
+# A sealed symbol is not one kind of thing, and the assessment turns on which
+# kind it is. A type, a package or an annotation the diagnostics named is a
+# RETIRED symbol: the repair is done when the file stops naming it. A member
+# symbol is a DECLARATION the unit is coordinated around — a `throws` surface,
+# a fragment parent — and it is the thing the repair must PRESERVE. Asking a
+# member symbol to disappear is how a child that correctly imports its required
+# parent was told it "still names the retired symbol".
+UNIT_RETIRED_KINDS = ("type", "package", "annotation")
+
+
+def unit_retired_symbols(scope: dict[str, Any]) -> list[tuple[str, str]]:
+    """(fqn, kind) for the sealed symbols a repair is done with — never the
+    declarations it is built around (`member`), never a configuration key
+    (`property`)."""
+    rows = [(str(s.get("fqn") or ""), str(s.get("kind") or "")) for s in (scope.get("symbols") or [])
+            if str(s.get("kind") or "") in UNIT_RETIRED_KINDS and s.get("fqn")]
+    return sorted(set(rows))
+
+
+def _names_retired(names: set[str], fqn: str, kind: str) -> bool:
+    """Does this declaration still name the retired symbol? A package is named
+    by anything declared under it; a type or an annotation by itself."""
+    if kind == "package":
+        return any(n == fqn or n.startswith(fqn + ".") for n in names)
+    return fqn in names
+
+
+def _implements(typ: dict[str, Any], parent: str) -> bool:
+    return bool(parent) and parent in [_erased(s) for s in (typ.get("supertypes") or [])]
+
+
+def _assess_implementations(root: Path, scope: dict[str, Any], model: dict[str, Any] | None,
+                            by_path: dict[str, list[dict[str, Any]]], rule: str) -> list[dict[str, Any]]:
+    """The recorded implementation obligations, verified from the model AFTER
+    the files exist: the named type is there, it IMPLEMENTS the parent the seal
+    names, and the owed members are concrete. A path authorized before creation
+    is authorized on a promise, and this is where the promise is checked."""
+    out: list[dict[str, Any]] = []
+    for row in scope.get("implementation_obligations") or []:
+        if not isinstance(row, dict):
+            continue
+        path, parent, want = str(row.get("path") or ""), str(row.get("parent") or ""), str(row.get("type") or "")
+        base = {"member": "%s#%s" % (path, want.rsplit(".", 1)[-1]), "path": path, "rule": rule,
+                "state": "implementation", "parent": parent}
+        if not path or not (Path(root) / path).is_file():
+            out.append(dict(base, verdict="violates",
+                            detail="%s is owed a concrete implementation and %s does not exist; the obligation is "
+                                   "discharged by writing it, never by leaving it" % (parent, path)))
+            continue
+        here = by_path.get(path) or []
+        if not here:
+            out.append(dict(base, verdict="inconclusive", detail="the model has no type for %s" % path))
+            continue
+        typ = next((t for t in here if str(t.get("fqn") or "") == want), here[0])
+        if str(typ.get("resolution") or "") != "full":
+            out.append(dict(base, verdict="inconclusive", detail="the compiler could not fully resolve %s" % path))
+            continue
+        if not _implements(typ, parent):
+            out.append(dict(base, verdict="violates",
+                            detail="%s does not implement %s; the path was authorized on that relationship and the "
+                                   "model does not state it" % (typ.get("fqn"), parent)))
+            continue
+        declared = {str(m.get("signature") or "") for m in (typ.get("declared") or [])
+                    if isinstance(m, dict) and m.get("has_body")}
+        missing = sorted(s for s in (row.get("members") or []) if str(s) not in declared)
+        if missing:
+            out.append(dict(base, verdict="violates",
+                            detail="%s implements %s but declares no body for %s; an abstract answer answers nothing"
+                                   % (typ.get("fqn"), parent, ", ".join(missing[:3]))))
+            continue
+        out.append(dict(base, verdict="ok",
+                        detail="%s implements %s and declares %d concrete member(s) it owed"
+                               % (typ.get("fqn"), parent, len(row.get("members") or []))))
+    return out
+
+
 def assess_unit(root: Path, scope: dict[str, Any]) -> list[dict[str, Any]]:
     """Every sealed member against the rule its unit declares, from the
-    compiled tree. `inconclusive` is never a pass: the caller must refuse."""
+    compiled tree. `inconclusive` is never a pass: the caller must refuse.
+
+    The assessment is RULE-SPECIFIC, because the rules ask different things:
+
+    * `unit/diagnostic-family` and `unit/package-leaf` retire a symbol, so a
+      member is done when its file no longer names one and still declares what
+      it declared;
+    * `unit/declaration-closure` is built AROUND a declaration. The declaration
+      and the inheritance are what must survive — a fragment parent is required
+      by the children that extend it, and a child importing its parent is
+      correct, not a residue. What it must gain is a concrete implementation of
+      every member it owes; what it must not lose is a caller. The gate the
+      unit carries is the other half, and `progress()` requires it.
+    """
     rule = str(scope.get("rule") or "")
     if rule == CHECKED_FAMILY_RULE:
         return assess_checked_family(root, scope)
@@ -2685,12 +2946,15 @@ def assess_unit(root: Path, scope: dict[str, Any]) -> list[dict[str, Any]]:
     by_path: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for t in _unit_types(model):
         by_path[_unit_path(t)].append(t)
-    sealed = {str(s.get("fqn") or "") for s in (scope.get("symbols") or [])}
+    # only the symbols this rule RETIRES; a sealed declaration is preserved,
+    # not made to disappear
+    retired = unit_retired_symbols(scope)
     out: list[dict[str, Any]] = []
     for row in scope.get("members") or []:
         path, fqn, mid = str(row.get("path") or ""), str(row.get("type") or ""), str(row.get("member_id") or "")
+        state, parent = str(row.get("state") or ""), str(row.get("parent") or "")
         name = "%s%s" % (path, ("#" + mid) if mid else "")
-        base = {"member": name, "path": path, "rule": rule, "state": str(row.get("state") or "")}
+        base = {"member": name, "path": path, "rule": rule, "state": state}
         if not path or not (Path(root) / path).is_file():
             out.append(dict(base, verdict="violates", detail="the file is gone; a unit member is not discharged by deleting its file"))
             continue
@@ -2705,8 +2969,10 @@ def assess_unit(root: Path, scope: dict[str, Any]) -> list[dict[str, Any]]:
         if str(typ.get("resolution") or "") != "full":
             out.append(dict(base, verdict="inconclusive", detail="the compiler could not fully resolve %s" % path))
             continue
-        imports = {str(i) for t in here for i in (t.get("imports") or [])}
-        still = sorted(s for s in sealed if s and (s in imports or any(_erased(r) == s for t in here for r in (t.get("type_refs") or []))))
+        names: set[str] = set()
+        for t in here:
+            names |= unit_type_refs(t)
+        still = sorted(s for s, kind in retired if _names_retired(names, s, kind))
         if mid:
             ids = member_ids(typ)
             member = next((m for m in typ.get("declared") or [] if ids.get(str(m.get("signature") or "")) == mid or str(m.get("name") or "") == mid), None)
@@ -2717,10 +2983,19 @@ def assess_unit(root: Path, scope: dict[str, Any]) -> list[dict[str, Any]]:
             if consumer and consumer not in (member.get("calls") or []) and not consumer.startswith("@"):
                 out.append(dict(base, verdict="violates", detail="%s no longer calls %s; the operation the value fed must be preserved" % (mid, consumer)))
                 continue
+        # the INHERITANCE the closure was formed on: a row that implements a
+        # sealed declaration must still implement it. Dropping the parent is
+        # not a repair of the parent.
+        if state == "implements" and parent and not any(_implements(t, parent) for t in here):
+            out.append(dict(base, verdict="violates",
+                            detail="%s no longer implements %s; the unit is coordinated around that declaration and "
+                                   "severing it is not a repair of it" % (typ.get("fqn") or path, parent)))
+            continue
         if still:
             out.append(dict(base, verdict="violates", detail="%s still names the retired symbol(s) %s" % (path, ", ".join(still))))
             continue
-        out.append(dict(base, verdict="ok", detail="%s no longer names the unit's sealed symbols and still declares what it declared" % path))
+        out.append(dict(base, verdict="ok", detail="%s no longer names the unit's retired symbols and still declares what it declared" % path))
+    out.extend(_assess_implementations(Path(root), scope, model, by_path, rule))
     return out
 
 
@@ -2731,21 +3006,24 @@ def assess_unit(root: Path, scope: dict[str, Any]) -> list[dict[str, Any]]:
 # the veto and the acceptance rule can never disagree about a diagnostic.
 
 def _symbol_match(key: str, kind: str, fqn: str) -> bool:
-    """Does the resolved family key name this sealed symbol?
+    """Does the RESOLVED identity name this sealed symbol?
 
-    An exact FQN when the declaring file's imports bound the token -- that
-    resolution is the whole point, and it is what keeps jakarta.ws.rs.Context
-    from passing for jakarta.ws.rs.core.Context. A BARE token (nothing bound
-    it) may only match the symbol's simple name. A PACKAGE token names every
-    symbol declared under it."""
-    if not key or not fqn:
+    Only a qualified identity can. The key is what the declaring file's imports
+    bound the diagnostic's token to, asked of the compiler model; a token
+    nothing bound is a SPELLING, and a spelling resolves to no type at all. An
+    unbound `UriBuilder` is not jakarta.ws.rs.core.UriBuilder because it is
+    spelled like its last segment — it is an unresolved name, and the whole
+    reason this predicate exists is that acceptance must not take one for the
+    other. jakarta.ws.rs.Context is likewise not jakarta.ws.rs.core.Context.
+
+    A PACKAGE identity names every symbol declared under it; that is a
+    qualified relation between two qualified names, not a resemblance."""
+    if not key or not fqn or "." not in key:
         return False
     if key == fqn:
         return True
     if kind == "package":
         return fqn.startswith(key + ".")
-    if "." not in key:
-        return key == fqn.rsplit(".", 1)[-1]
     return False
 
 
@@ -2754,25 +3032,30 @@ def unit_explained_regressions(scope: dict[str, Any], items: list[dict[str, Any]
                                identities: set[str] | None = None) -> tuple[list[dict[str, Any]], str]:
     """(the rows a unit's sealed symbols explain, why the tolerated set is refused).
 
-    A currently reported compile diagnostic ``d`` is EXPLAINED iff all three:
+    A currently reported compile diagnostic ``d`` is EXPLAINED iff all four:
 
     1. ``d.path`` is inside the file seal (``writable_paths``), and
-    2. ``compile_token(d)``, resolved through the declaring file's imports --
-       the same resolution the former used -- names a symbol in
-       ``scope.symbols`` (the unit is still working on it) or in
-       ``scope.target_symbols`` (the replacement it is moving to), and
-    3. in the target case, that row carries a ``catalog_row``: a DOCUMENTED
-       mapping recorded at seal time, never a symbol the worker invented.
+    2. ``compile_token(d)`` RESOLVES, through the declaring file's imports in
+       the compiler model -- the same resolution the former used -- to a
+       QUALIFIED identity: a token nothing binds resolves to nothing and
+       explains nothing, whatever it is spelled like, and
+    3. that qualified identity names a symbol in ``scope.symbols`` (the unit is
+       still working on it) or in ``scope.target_symbols`` (the replacement it
+       is moving to), and
+    4. in the target case, that row carries a ``catalog_row`` keyed by the
+       qualified name: a DOCUMENTED mapping recorded at seal time, never a
+       symbol the worker invented.
 
-    Condition 3 is the v9 t_3903f495 counterexample: jakarta.ws.rs.core.Context
-    has a compat-mapping row and jakarta.ws.rs.Context does not, so a candidate
-    that invented the second one stays unexplained and REVERTED.
+    Conditions 2 and 4 are the two counterexamples the architect reproduced.
+    jakarta.ws.rs.core.Context has a compat-mapping row and jakarta.ws.rs.Context
+    does not, so a candidate that invented the second one stays unexplained and
+    REVERTED; and an unbound ``UriBuilder`` -- a file with no import for it at
+    all -- is not the catalogued jakarta.ws.rs.core.UriBuilder, because a
+    spelling is not an identity.
 
     Two guards on the tolerated set, both fail-closed:
 
-    * without the destination model nothing resolves, so nothing is explained
-      -- a bare token would otherwise match a sealed symbol by simple name and
-      launder exactly the typo this predicate exists to catch;
+    * without the destination model nothing resolves, so nothing is explained;
     * the tolerated set must be ONE symbol family (the unit's own). A unit that
       would tolerate two different families is laundering a second defect
       through its checkpoint, and the whole set is refused.
@@ -2786,8 +3069,13 @@ def unit_explained_regressions(scope: dict[str, Any], items: list[dict[str, Any]
                     "imports; a bare name matched by spelling is exactly the mistake this rule refuses (v9 t_3903f495)")
     paths = {str(p) for p in (scope.get("writable_paths") or [])}
     sealed = [(str(s.get("fqn") or ""), str(s.get("kind") or "")) for s in (scope.get("symbols") or []) if s.get("fqn")]
+    # a catalogued target is a row keyed by a QUALIFIED name whose target is
+    # qualified too: an unqualified row cannot document an identity, only a
+    # spelling, and a checkpoint that tolerated one would tolerate a typo
     targets = [t for t in (scope.get("target_symbols") or [])
-               if isinstance(t, dict) and t.get("to") and isinstance(t.get("catalog_row"), dict) and t["catalog_row"]]
+               if isinstance(t, dict) and "." in str(t.get("to") or "")
+               and isinstance(t.get("catalog_row"), dict) and t["catalog_row"]
+               and "." in str(t["catalog_row"].get("key") or "")]
     annotations = _annotation_simples(model)
     rows: list[dict[str, Any]] = []
     families: set[str] = set()
@@ -2801,7 +3089,10 @@ def unit_explained_regressions(scope: dict[str, Any], items: list[dict[str, Any]
         if path not in paths:
             continue
         key, kind = resolve_compile_symbol(model, it, annotations)
-        if not key:
+        # an UNRESOLVED token explains nothing: nothing in the file binds it, so
+        # it names no type, and matching it by spelling against a sealed symbol
+        # or a catalogued target is the defect, not the rule
+        if not key or "." not in key:
             continue
         hit = next((f for f, _k in sealed if _symbol_match(key, kind, f)), "")
         catalog_row: dict[str, Any] = {}
