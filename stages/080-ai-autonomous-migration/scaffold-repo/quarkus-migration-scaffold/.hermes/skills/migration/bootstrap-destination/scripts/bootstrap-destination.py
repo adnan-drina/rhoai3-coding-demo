@@ -1014,18 +1014,21 @@ def _drop_undecided_datasource_keys(root: Path, lines: list[str], ds: dict, deci
     out: list[str] = []
     removed: dict[str, list[str]] = {}
     kept_note: list[str] = []
+    note_at: int | None = None
     for raw in lines:
         stripped = raw.strip()
         # the note this function itself appended on an earlier run: hold it
-        # aside and write exactly one at the end. The specimen keeps its
-        # profiles in separate application-<profile>.properties files, which
-        # the bootstrap re-imports and re-merges on EVERY run, so this whole
-        # path repeats and anything appended unconditionally grows the file
-        # each time (measured live on v8: three comment lines per bootstrap).
+        # aside, and remember WHERE it was. The specimen keeps its profiles in
+        # separate application-<profile>.properties files, which the bootstrap
+        # re-imports and re-merges on EVERY run, so this whole path repeats and
+        # anything appended unconditionally grows the file each time (measured
+        # live on v8: three comment lines per bootstrap).
         # HELD, not dropped: when the families are already gone there is
         # nothing to remove this run, and a note that only survived the run
         # that wrote it would take the reason with it.
         if stripped.startswith(_REMOVAL_NOTE_MARK):
+            if note_at is None:
+                note_at = len(out)
             kept_note.append(raw)
             continue
         m = _DS_FAMILY.match(stripped)
@@ -1038,25 +1041,32 @@ def _drop_undecided_datasource_keys(root: Path, lines: list[str], ds: dict, deci
             continue
         out.append(raw)
     if removed:
-        # stripping the note leaves the blank line that preceded it, and the
-        # fresh block adds its own: one blank accumulated per run until the
-        # tidy cap absorbed it, so run 1 and run 2 were never identical.
-        while out and out[-1].strip() == "":
-            out.pop()
         for profile in sorted(removed):
             changes.append({"op": "properties.remove-undecided-datasource-keys", "profile": profile,
                             "keys": sorted(removed[profile]),
                             "provenance": "decisions.yaml datasource (%s): this run selects %s"
                                           % (ds.get("adr"), ", ".join(sorted(keep)) or "no profile")})
-        out += ["", "%s the %s datasource families are not this destination's" % (_REMOVAL_NOTE_MARK, ", ".join(sorted(removed))),
+        note = ["%s the %s datasource families are not this destination's" % (_REMOVAL_NOTE_MARK, ", ".join(sorted(removed))),
                 "%s configuration and this run never selects those profiles; the legacy" % _REMOVAL_NOTE_MARK,
                 "%s copy is preserved verbatim under .derived/frozen-input (%s)." % (_REMOVAL_NOTE_MARK, ds.get("adr"))]
-    elif kept_note:
+    else:
         # nothing to remove this run because an earlier run already did it;
         # the reason it gives is still the truth about this tree
-        while out and out[-1].strip() == "":
-            out.pop()
-        out += [""] + kept_note
+        note = list(kept_note)
+    if note:
+        # WHERE the block goes is the note's own place, not the end of the
+        # file. Later steps append their own blocks after it (the decided build
+        # profiles, for one), so a block that is always re-appended is hoisted
+        # past them on the second run and the file is never byte-identical to
+        # the one before it — measured on v9, where `--reapply-catalog` on an
+        # unchanged tree still rewrote application.properties. Stripping the
+        # note also leaves the blank line that preceded it, and the fresh block
+        # brings its own: exactly one separates the block from what is above.
+        at = len(out) if note_at is None else note_at
+        head, tail = out[:at], out[at:]
+        while head and head[-1].strip() == "":
+            head.pop()
+        out = head + ([""] if head else []) + note + tail
     # a removal can leave three or more blank lines behind; one is enough
     tidy: list[str] = []
     for raw in out:

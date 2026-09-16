@@ -687,6 +687,19 @@ def _datasource_checker_layout(layout: str) -> int:
         db.mkdir(parents=True, exist_ok=True)
         (db / "initDB.sql").write_text("CREATE TABLE owners (id INT PRIMARY KEY);\n", encoding="utf-8")
         (db / "populateDB.sql").write_text("INSERT INTO owners VALUES (1);\n", encoding="utf-8")
+        # A source still gated on an activated profile, so the bootstrap writes
+        # its build-profile block into the SAME file, BELOW the removal note.
+        # Without it nothing follows the note and a block that is re-appended
+        # to the end of the file looks idempotent (measured on v9: with a block
+        # below it, the note was hoisted past it and one blank line was left
+        # where it had been, so `--reapply-catalog` on an unchanged tree still
+        # rewrote application.properties).
+        gated = frozen / "src" / "main" / "java" / "org" / "acme" / "clinic" / "owner" / "SpringDataOwnerRepository.java"
+        gated.parent.mkdir(parents=True, exist_ok=True)
+        gated.write_text("package org.acme.clinic.owner;\n"
+                         "import org.springframework.context.annotation.Profile;\n"
+                         "@Profile(\"spring-data-jpa\")\n"
+                         "public interface SpringDataOwnerRepository {}\n", encoding="utf-8")
         pipeline.assemble_bundle(root)
 
         p1 = subprocess.run([sys.executable, str(SCRIPT), "--root", str(root)], text=True, capture_output=True)
@@ -720,19 +733,36 @@ def _datasource_checker_layout(layout: str) -> int:
                 return _fail("every removal is recorded against the decision that caused it; missing %s in %s" % (op, sorted(ops)))
 
         # REAPPLICATION CHANGES NOTHING -- twice, because a file that grows by
-        # a fixed block each run is identical between no two consecutive runs
+        # a fixed block each run is identical between no two consecutive runs.
+        # BYTES, not a "nothing to do" line: the two files every mode of this
+        # tool rewrites are compared against the ones run 1 wrote.
+        pom_p = root / "pom.xml"
+        props_1, pom_1 = prop.read_bytes(), pom_p.read_bytes()
         before = tree_hash(root)
-        for n in (2, 3):
-            pn = subprocess.run([sys.executable, str(SCRIPT), "--root", str(root)], text=True, capture_output=True)
+        runs = [("bootstrap run 2", []), ("bootstrap run 3", []), ("--reapply-catalog", ["--reapply-catalog"])]
+        for label, extra in runs:
+            changes_before = load_json(root / "evidence/producers/bootstrap.json")["changes"]
+            pn = subprocess.run([sys.executable, str(SCRIPT), "--root", str(root), *extra], text=True, capture_output=True)
             if pn.returncode != 0:
-                return _fail("bootstrap run %d must pass: %s%s" % (n, pn.stdout, pn.stderr[-300:]))
-            prop_now = (root / "src/main/resources/application.properties").read_text(encoding="utf-8")
+                return _fail("[%s] %s must pass: %s%s" % (layout, label, pn.stdout, pn.stderr[-300:]))
+            prop_now = prop.read_text(encoding="utf-8")
+            if prop.read_bytes() != props_1:
+                return _fail("[%s] %s rewrote application.properties on an unchanged tree; a run that changes nothing "
+                             "must leave it byte-identical:\n%s" % (layout, label, prop_now[-500:]))
+            if pom_p.read_bytes() != pom_1:
+                return _fail("[%s] %s rewrote pom.xml on an unchanged tree" % (layout, label))
             if tree_hash(root) != before:
-                return _fail("[%s] reapplying the bootstrap (run %d) must change nothing; properties tail:\n%s"
-                             % (layout, n, prop_now[-400:]))
+                return _fail("[%s] %s must change nothing; properties tail:\n%s" % (layout, label, prop_now[-400:]))
             if "[undecided-datasource]" not in prop_now:
-                return _fail("[%s] run %d dropped the note that says why those families are gone; a reason that "
-                             "survives only the run that wrote it is not a record" % (layout, n))
+                return _fail("[%s] %s dropped the note that says why those families are gone; a reason that "
+                             "survives only the run that wrote it is not a record" % (layout, label))
+            if extra == ["--reapply-catalog"]:
+                # and the receipt says so: a mode that appends a change row for
+                # a rewrite it did not make records work nobody did
+                rec_r = load_json(root / "evidence/producers/bootstrap.json")
+                if rec_r["changes"] != changes_before:
+                    return _fail("[%s] --reapply-catalog on an unchanged tree must append no change to the receipt: %s"
+                                 % (layout, [c["op"] for c in rec_r["changes"][len(changes_before):]]))
         c2 = subprocess.run([sys.executable, str(CHECKER), str(root)], text=True, capture_output=True)
         if c2.returncode != 0:
             return _fail("the checker must still pass after reapplication:\n%s" % (c2.stdout + c2.stderr)[-500:])

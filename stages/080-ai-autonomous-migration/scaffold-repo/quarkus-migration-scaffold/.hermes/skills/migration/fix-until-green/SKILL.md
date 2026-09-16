@@ -100,7 +100,11 @@ python3 "${HERMES_SKILL_DIR}/scripts/resume-after-m4.py" --root /projects/modern
 It refuses unless the verdict is this run's (its `card_id` is the issued close
 card, the parity receipt it cites is bound to the admission receipt that seals
 the tree), no candidate is retained for the close card, and the product tree
-is clean. Then it splits the verdict's `failed_floors`:
+is clean. When the seal is stale for one reason only — a harness generation
+rewrote a contract file the receipt seals, and nothing else moved — it re-seals
+admission before binding the verdict and records `contract_reseal` (what moved,
+both receipts) on the close row and in `release-blockers.json`. Then it splits
+the verdict's `failed_floors`:
 
 | Outcome | What it means | What it does |
 |---|---|---|

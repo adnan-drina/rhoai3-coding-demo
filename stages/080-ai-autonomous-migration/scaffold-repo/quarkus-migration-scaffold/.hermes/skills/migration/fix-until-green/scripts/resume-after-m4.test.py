@@ -38,11 +38,15 @@ sys.path.insert(0, str(HERE))
 
 from planner import pipeline, specimens  # noqa: E402
 from planner.canonical import load_json, write_canonical  # noqa: E402
-from planner.paths import LOOP_ISSUED, LOOP_STEPS, WORKLIST  # noqa: E402
+from planner.paths import ADMISSION_RECEIPT, LOOP_ISSUED, LOOP_STEPS, WORKLIST  # noqa: E402
+from planner.worklist import build_worklist  # noqa: E402
 
 CLOSE_CARD = "t_m4close"
 BLOCKERS = Path("verification") / "loop" / "release-blockers.json"
 DECISION_FLOORS = ["assert-surefire-results", "check-product-tests"]
+# a contract the admission receipt seals, and the kind of file a harness
+# generation rewrites between an M4 verdict and the resume that reads it
+CONTRACT = Path(".hermes") / "planning" / "schemas" / "decisions.schema.json"
 
 
 def _fail(msg: str) -> int:
@@ -263,15 +267,118 @@ def case_renamed_specimen() -> int:
         return 0
 
 
+def _install_harness_generation(root: Path) -> None:
+    """What a harness install does to a sealed contract: the file's bytes move.
+
+    Nothing about the destination's product tree, its evidence or its work list
+    changes -- only a file the admission receipt happens to seal."""
+    p = root / CONTRACT
+    p.write_text(p.read_text(encoding="utf-8").rstrip("\n") + "\n\n", encoding="utf-8")
+
+
+def case_contract_reseal() -> int:
+    """(f) v9: the harness generation installed between the M4 verdict and this
+    resume changed a sealed contract, and nothing else moved.
+
+    The verdict is still the verdict of the issued close card on this tree --
+    `card_id` binds it to the card, the parity receipt's digest to the seal it
+    was measured under. Only the seal moved, so the resume re-takes it, records
+    what moved and between which two receipts, and continues."""
+    with tempfile.TemporaryDirectory(prefix="resume-m4-reseal-") as td:
+        root, eps = _at_m4(Path(td))
+        _parity(root, eps, fails=True, unauthorized=True)
+        _verdict(root, DECISION_FLOORS + ["compose-parity-receipt"])
+        sealed = load_json(root / ADMISSION_RECEIPT)["receipt_digest"]
+        _install_harness_generation(root)
+        rc, out, err = _run(root)
+        if rc != 0:
+            return _fail("a changed contract must be re-sealed, not refused: rc=%d %s" % (rc, (out + err)[-900:]))
+        if "RESEAL" not in out or CONTRACT.as_posix() not in out:
+            return _fail("the re-seal must name the contract that moved: %s" % out[-500:])
+        if load_json(root / ADMISSION_RECEIPT)["receipt_digest"] == sealed:
+            return _fail("admission must actually be re-sealed, not merely tolerated")
+        doc = load_json(root / BLOCKERS)
+        got = doc.get("contract_reseal") or {}
+        if got.get("changed") != [CONTRACT.as_posix()]:
+            return _fail("release-blockers.json must name the contract that moved: %s" % got)
+        if got.get("old_receipt") != sealed or not got.get("new_receipt") or got["new_receipt"] == sealed:
+            return _fail("it must record both seals: the one the verdict was measured under and the one taken here: %s" % got)
+        closes = [r for r in load_json(root / LOOP_STEPS).get("rejected") or [] if r.get("kind") == "close"]
+        if len(closes) != 1 or closes[0].get("contract_reseal") != got:
+            return _fail("the close row must carry the same record: %s" % closes)
+        if closes[0]["receipt_sha256"] != got["new_receipt"]:
+            return _fail("the close row must bind to the seal this run took, not the one it superseded: %s" % closes[0]["receipt_sha256"])
+        # and the loop actually moved: the parity obligations are cards now
+        if out.count("MINT (dry-run)") != 1 or load_json(root / WORKLIST)["measure"]["parity_mismatches"] != 2:
+            return _fail("the resume must continue on the parity obligations: %s" % out[-500:])
+        return 0
+
+
+def case_product_change_refuses() -> int:
+    """(g) the control: a changed contract AND a product change since the seal.
+
+    The receipt is not authoritative for a second reason, and that reason is a
+    file somebody edited. Nothing is re-sealed and nothing is recorded."""
+    with tempfile.TemporaryDirectory(prefix="resume-m4-product-") as td:
+        root, eps = _at_m4(Path(td))
+        _parity(root, eps, fails=True, unauthorized=True)
+        _verdict(root, DECISION_FLOORS + ["compose-parity-receipt"])
+        sealed = load_json(root / ADMISSION_RECEIPT)["receipt_digest"]
+        _install_harness_generation(root)
+        src = sorted((root / "src").rglob("*.java"))
+        if not src:
+            return _fail("the fixture must carry a product source to change")
+        src[0].write_text(src[0].read_text(encoding="utf-8") + "\n// a worker's edit\n", encoding="utf-8")
+        rc, out, err = _run(root)
+        if rc != 1 or "the product tree is not clean" not in err:
+            return _fail("a product change since the seal must still refuse: rc=%d %s" % (rc, (out + err)[-600:]))
+        if load_json(root / ADMISSION_RECEIPT)["receipt_digest"] != sealed:
+            return _fail("a refused resume must re-seal nothing")
+        if (root / BLOCKERS).is_file() or [r for r in load_json(root / LOOP_STEPS).get("rejected") or [] if r.get("kind") == "close"]:
+            return _fail("a refused resume must write nothing")
+        return 0
+
+
+def case_worklist_rebuilt_refuses() -> int:
+    """(h) the second control: a changed contract AND a work list rebuilt with
+    an obligation the seal never covered.
+
+    `verify_receipt` names the work list as well as the contract, so the gaps
+    are not contracts alone and the chain is broken for a reason no re-seal
+    answers: the plan on disk is not the plan the verdict was measured under."""
+    with tempfile.TemporaryDirectory(prefix="resume-m4-worklist-") as td:
+        root, eps = _at_m4(Path(td))
+        _parity(root, eps, fails=True, unauthorized=True)
+        _verdict(root, DECISION_FLOORS + ["compose-parity-receipt"])
+        sealed = load_json(root / ADMISSION_RECEIPT)["receipt_digest"]
+        rebuilt = build_worklist(root)          # the parity FAILs are obligations now
+        if rebuilt["measure"]["parity_mismatches"] != 2:
+            return _fail("the fixture must rebuild the work list with new obligations: %s" % rebuilt["measure"])
+        _install_harness_generation(root)
+        rc, out, err = _run(root)
+        if rc != 1 or "not authoritative" not in err:
+            return _fail("a work list the seal never covered must still refuse: rc=%d %s" % (rc, (out + err)[-600:]))
+        if "worklist digest" not in err:
+            return _fail("the refusal must name the gap that is not a contract: %s" % err[-600:])
+        if load_json(root / ADMISSION_RECEIPT)["receipt_digest"] != sealed:
+            return _fail("a refused resume must re-seal nothing")
+        if (root / BLOCKERS).is_file():
+            return _fail("a refused resume must write nothing")
+        return 0
+
+
 def main() -> int:
-    for case in (case_both, case_decisions_only, case_wrong_card, case_renamed_specimen):
+    for case in (case_both, case_decisions_only, case_wrong_card, case_renamed_specimen,
+                 case_contract_reseal, case_product_change_refuses, case_worklist_rebuilt_refuses):
         rc = case()
         if rc:
             return rc
     print("OK: resume-after-m4 (a REFUSE verdict resumes the loop on its parity obligations and records the release "
           "floors it cannot repair: ADR-015 product tests / surefire and ADR-014 unauthorized read-backs; decision "
           "floors alone are exit 2 with nothing minted and the close card still issued; a verdict for another card is "
-          "refused and writes nothing; a second resume refuses on the recorded close; a renamed specimen decides the same)")
+          "refused and writes nothing; a second resume refuses on the recorded close; a renamed specimen decides the "
+          "same; a sealed contract a harness install moved is re-sealed with the two receipts recorded, while a "
+          "product change or a rebuilt work list still refuses and re-seals nothing)")
     return 0
 
 

@@ -38,6 +38,20 @@ composed from is bound to the admission receipt that seals the tree on disk,
 no candidate is retained for the close card, and the product tree is clean.
 A second run after a resume refuses: the close card is on the record.
 
+One reason the receipt can be unauthoritative is NOT a broken chain, and v9
+stopped on it: a harness generation installed between the M4 verdict and this
+resume rewrites a contract file the receipt seals, and the seal moves under a
+tree nobody touched. When the gaps name contracts and nothing else -- the
+evidence bundle, the work list, the bootstrap receipt, decisions.yaml and the
+pins all still hash to their seals, and the product tree is clean -- admission
+is RE-SEALED here (`pipeline.admit`, the same call made after the close), what
+moved and the two receipts are recorded on the close row and in
+release-blockers.json, and the run continues. The verdict is still the verdict
+of the issued close card on this tree: `card_id` binds it to the card and the
+parity receipt's digest to the seal it was measured under, which is why that
+binding accepts the superseded receipt as well as the new one. Any other gap
+refuses as before.
+
 Exit 0 resumed (a card was minted); 1 refused; 2 blocked (decision floors
 only, nothing a card can repair).
 """
@@ -60,7 +74,7 @@ from _loop_common import ensure_hermes_lib, git, load_issued, load_steps, pendin
 ensure_hermes_lib()
 from planner import pipeline  # noqa: E402
 from planner.admission import ADMITTED, verify_receipt  # noqa: E402
-from planner.canonical import load_json, write_canonical  # noqa: E402
+from planner.canonical import load_json, sha256_file, write_canonical  # noqa: E402
 from planner.cards import CLOSE_ID  # noqa: E402
 from planner.paths import EVIDENCE_BUNDLE, LOOP_DIR, LOOP_ISSUED, PARITY_DIR  # noqa: E402
 from planner.worklist import build_worklist, parity_items  # noqa: E402
@@ -70,6 +84,13 @@ PARITY_RECEIPT = PARITY_DIR / "receipt.json"
 RELEASE_BLOCKERS = LOOP_DIR / "release-blockers.json"
 BLOCKERS_SCHEMA = "rhoai3.release-blockers/v1"
 PARITY_RECEIPT_SCHEMA = "rhoai3.parity-receipt/v1"
+
+# `planner.admission.verify_receipt` reports one gap per sealed contract whose
+# file no longer hashes to its seal, in exactly this shape. It is reconstructed
+# here rather than matched by prefix so that the test below is an equality over
+# a set and not a guess about a string: if that message ever changes, the set
+# stops matching and the resume refuses, which is the safe direction.
+CONTRACT_GAP = "contract %s changed after admission"
 
 # The floors a parity FAIL composes. A floor in this set is repairable by a
 # card exactly when the parity verdicts under it yield an obligation whose
@@ -124,6 +145,38 @@ def close_rows(steps: dict) -> list:
 
 def already_resumed(steps: dict, card: str) -> bool:
     return any(str(r.get("card") or "") == card and r.get("resumed") for r in close_rows(steps))
+
+
+def moved_contracts(root: Path, receipt: dict, gaps: list) -> list:
+    """The sealed contract files whose bytes moved, when that is the WHOLE gap.
+
+    A harness generation installed between the M4 verdict and the resume
+    rewrites contracts -- schemas, catalogs, MTA rules -- and the admission
+    receipt seals every one of them. `verify_receipt` then reports the receipt
+    as not authoritative, and v9 stopped there: the verdict of the issued close
+    card, bound to that card by `card_id` and to the tree by the parity
+    receipt's digest, was discarded because a file NOBODY MEASURED had changed.
+
+    Only the seal moved in that case, and a seal is re-sealable. So this
+    answers one question precisely: is the set of gaps exactly the set of
+    contracts whose file no longer hashes to its seal? If it is, then the
+    evidence bundle, the work list, the bootstrap receipt, `decisions.yaml` and
+    the pins all still hash to their seals and the receipt's digest still
+    matches its body -- every other reason the chain could be broken is absent,
+    because each of them is a gap and there are no other gaps. Anything else,
+    including a contract the tree has LOST rather than changed, returns the
+    empty list and the caller refuses exactly as before."""
+    seals = ((receipt or {}).get("seals") or {}).get("contracts") or {}
+    changed = []
+    for rel, sha in sorted(seals.items()):
+        p = Path(root) / rel
+        if not p.is_file():
+            return []  # a contract that is gone is not a contract that moved
+        if sha256_file(p) != sha:
+            changed.append(rel)
+    if not changed or {str(g) for g in gaps} != {CONTRACT_GAP % rel for rel in changed}:
+        return []
+    return changed
 
 
 def repairable_obligations(root: Path, bundle: dict) -> list:
@@ -266,22 +319,11 @@ def main(argv: list[str] | None = None) -> int:
     preceipt = load_json(pp)
     if not isinstance(preceipt, dict) or str(preceipt.get("schema") or "") != PARITY_RECEIPT_SCHEMA:
         return _refuse("%s is not a %s document" % (PARITY_RECEIPT, PARITY_RECEIPT_SCHEMA))
-    receipt, gaps = verify_receipt(root, require_admitted=True)
-    if receipt is None or gaps:
-        for g in gaps:
-            print("  - " + g, file=sys.stderr)
-        return _refuse("the admission receipt is not authoritative for the tree on disk; nothing is re-sealed from a broken chain")
-    # The verdict itself carries no corpus digest (compose-m4-verdict's schema
-    # has no slot for one), so what CAN be checked is the receipt binding the
-    # parity receipt does carry: the corpus digest it was composed under, under
-    # the admission receipt that seals this tree. A parity receipt bound to
-    # another admission receipt describes another tree.
-    if str(preceipt.get("receipt_sha256") or "") != str(receipt.get("receipt_digest") or ""):
-        return _refuse("the parity receipt is bound to admission receipt %s; this tree is sealed under %s"
-                       % (str(preceipt.get("receipt_sha256"))[:12], str(receipt.get("receipt_digest"))[:12]))
-    corpus_sha = str(preceipt.get("corpus_sha256") or "")
 
     # --- no live worker holds the tree ---------------------------------------
+    # Asked BEFORE the seal is examined, because the contract re-seal below
+    # writes to the tree: nothing is re-sealed while a candidate is retained or
+    # while the product tree carries a change nobody measured.
     held = pending_for(steps, CLOSE_ID)
     if held is not None:
         return _refuse("a candidate is retained for the close card (%s, %s); restore-pending.py owns that protocol"
@@ -290,6 +332,48 @@ def main(argv: list[str] | None = None) -> int:
     if dirty:
         return _refuse("the product tree is not clean (%s); a worker may still hold it, and a resume must re-seal the "
                        "tree M4 measured" % ", ".join(ln[3:].strip() for ln in dirty.splitlines()[:3]))
+
+    receipt, gaps = verify_receipt(root, require_admitted=True)
+    reseal: dict | None = None
+    if receipt is not None and gaps:
+        moved = moved_contracts(root, receipt, gaps)
+        if moved:
+            # A harness generation moved a sealed contract between the verdict
+            # and this resume. The verdict is still the verdict of the issued
+            # close card on this tree -- `card_id` binds it to the card and the
+            # parity receipt's digest binds it to the seal it was measured
+            # under -- so the seal is re-taken here, with what moved recorded,
+            # and the run continues. (This is `pipeline.admit`, the same call
+            # the resume already makes after the close.)
+            old_digest = str(receipt.get("receipt_digest") or "")
+            rec0 = pipeline.admit(root)
+            receipt, gaps = verify_receipt(root, require_admitted=True)
+            if receipt is None or gaps or str(rec0.get("status") or "") != ADMITTED:
+                for g in gaps:
+                    print("  - " + g, file=sys.stderr)
+                return _refuse("re-sealing admission over the changed contract(s) %s left the receipt %s and still not "
+                               "authoritative; nothing binds to a seal that does not hold"
+                               % (", ".join(moved), rec0.get("status")))
+            reseal = {"changed": moved, "old_receipt": old_digest,
+                      "new_receipt": str(receipt.get("receipt_digest") or "")}
+            print("RESEAL %s: %d contract(s) changed after admission (%s); admission re-sealed %s → %s"
+                  % (card_id, len(moved), ", ".join(moved), old_digest[:12], reseal["new_receipt"][:12]))
+    if receipt is None or gaps:
+        for g in gaps:
+            print("  - " + g, file=sys.stderr)
+        return _refuse("the admission receipt is not authoritative for the tree on disk; nothing is re-sealed from a broken chain")
+    # The verdict itself carries no corpus digest (compose-m4-verdict's schema
+    # has no slot for one), so what CAN be checked is the receipt binding the
+    # parity receipt does carry: the corpus digest it was composed under, under
+    # the admission receipt that seals this tree. A parity receipt bound to
+    # another admission receipt describes another tree -- except the receipt
+    # THIS run just superseded, which sealed this same tree under the contracts
+    # as they were when M4 measured it.
+    bound = {str(receipt.get("receipt_digest") or "")} | ({reseal["old_receipt"]} if reseal else set())
+    if str(preceipt.get("receipt_sha256") or "") not in bound:
+        return _refuse("the parity receipt is bound to admission receipt %s; this tree is sealed under %s"
+                       % (str(preceipt.get("receipt_sha256"))[:12], str(receipt.get("receipt_digest"))[:12]))
+    corpus_sha = str(preceipt.get("corpus_sha256") or "")
 
     # --- classify the failed floors ------------------------------------------
     failed = [str(x).strip() for x in (verdict.get("failed_floors") or []) if str(x).strip()]
@@ -321,6 +405,11 @@ def main(argv: list[str] | None = None) -> int:
         "resumed": bool(obligations),
         "parity_obligations": sorted(str(i.get("id")) for i in obligations),
     }
+    if reseal:
+        # what moved, and between which two seals: the receipt the verdict was
+        # measured under is not on disk any more, so the record is the only
+        # place that still names it
+        blockers["contract_reseal"] = reseal
 
     # --- nothing a card repairs: record the decisions and stop ----------------
     if not obligations:
@@ -338,7 +427,7 @@ def main(argv: list[str] | None = None) -> int:
     # The close is on the record BEFORE the mint: `--verify-board` compares the
     # live board against this record, and an M4 card with no expected entry is
     # a foreign card.
-    steps.setdefault("rejected", []).append({
+    close_row = {
         "kind": "close", "cluster": CLOSE_ID, "card": card_id, "verdict": token,
         "failed_floors": failed, "resumed": True, "operator": args.operator, "at": _now(),
         "receipt_sha256": str(receipt.get("receipt_digest") or ""), "corpus_sha256": corpus_sha,
@@ -347,7 +436,10 @@ def main(argv: list[str] | None = None) -> int:
         "measure": None, "changed": [],
         "reason": "M4 %s: %d parity obligation(s) resumed as cards; %d release floor(s) recorded"
                   % (token or "REFUSE", len(obligations), len(rows) + len(unauthorized)),
-    })
+    }
+    if reseal:
+        close_row["contract_reseal"] = reseal
+    steps.setdefault("rejected", []).append(close_row)
     save_steps(root, steps)
     if (root / LOOP_ISSUED).is_file():
         (root / LOOP_ISSUED).unlink()
