@@ -20,7 +20,8 @@ derives from, and the exact verification the step must run.
 | spring-petclinic-rest | `src/test/java/org/springframework/samples/petclinic/model/ValidatorTests.java` | ADR-008 |
 | spring-petclinic-rest | `src/main/java/org/springframework/samples/petclinic/security/SecurityMode.java` | ADR-014 |
 | spring-petclinic-rest | `src/main/java/org/springframework/samples/petclinic/security/SourceBasicAuthenticationMechanism.java` | ADR-014 |
-| spring-petclinic-rest | `src/main/java/org/springframework/samples/petclinic/security/HttpAuthenticationSwitch.java` | ADR-014 |
+| spring-petclinic-rest | `src/main/java/org/springframework/samples/petclinic/security/HttpSecuritySwitch.java` | ADR-014 |
+| spring-petclinic-rest | `src/main/java/org/springframework/samples/petclinic/security/DisabledAccountAugmentor.java` | ADR-014 |
 | spring-petclinic-rest | `src/main/java/org/springframework/samples/petclinic/security/PrefixedPlainTextPasswordProvider.java` | ADR-014 |
 | spring-petclinic-rest | `src/main/java/org/springframework/samples/petclinic/model/User.java` | ADR-014 |
 | spring-petclinic-rest | `src/main/java/org/springframework/samples/petclinic/model/Role.java` | ADR-014 |
@@ -34,5 +35,7 @@ derives from, and the exact verification the step must run.
 | spring-petclinic-rest | `pom.xml` | ADR-014 |
 | spring-petclinic-rest | `src/main/resources/application.properties` | ADR-014 |
 
-The ADR-014 rows are one Operator step; `spring-petclinic-rest/MANIFEST.md`
-holds its clause map, its verification and its open items.
+The ADR-014 rows are one Operator step, bound to destination v9
+(`06c51a49f4e6ff94c122f12929097e8cec3dc60e`); `spring-petclinic-rest/MANIFEST.md`
+holds its clause map, the baseline it applies to, its verification and its
+prerequisites.

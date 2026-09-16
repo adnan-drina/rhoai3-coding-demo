@@ -30,8 +30,8 @@ import io.vertx.ext.web.RoutingContext;
  *
  * <p>This class is deliberately NOT a CDI bean: a bean of this type would be
  * collected as an authentication mechanism in both modes, and the switch must
- * decide. {@link HttpAuthenticationSwitch} constructs and registers it, and
- * only when the switch is on.
+ * decide. {@link HttpSecuritySwitch} constructs and registers it, and only when
+ * the switch is on.
  */
 public final class SourceBasicAuthenticationMechanism implements HttpAuthenticationMechanism {
 

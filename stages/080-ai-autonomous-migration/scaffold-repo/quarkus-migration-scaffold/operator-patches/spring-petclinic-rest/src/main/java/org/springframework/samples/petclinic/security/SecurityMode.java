@@ -23,9 +23,10 @@ import org.springframework.stereotype.Component;
  * and no credential in either mode.
  *
  * <p>This is also the single reader of the switch. The HTTP authentication
- * mechanism follows the same value through {@link HttpAuthenticationSwitch},
- * so one property decides both halves exactly as the two source configurations
- * did.
+ * mechanism and the request-level authorization policy follow the same value
+ * through {@link HttpSecuritySwitch}, and the account-status check through
+ * {@link DisabledAccountAugmentor}, so one property decides every half exactly
+ * as the two source configurations did.
  *
  * <p>Declared with Spring's {@code @Component} rather than {@code @Named}
  * because the platform resolves a {@code @PreAuthorize} bean reference through

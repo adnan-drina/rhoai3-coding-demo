@@ -31,10 +31,15 @@ import org.springframework.samples.petclinic.security.PrefixedPlainTextPasswordP
  * its columns and every accessor are otherwise unchanged, and no identity,
  * role or credential is created here.
  *
- * <p>The {@code enabled} column is mapped but is not consulted by the
- * authentication: quarkus-security-jpa 3.27 defines no account-status member
- * (@UserDefinition, @Username, @Password, @Roles, @RolesValue are the whole
- * annotation set). See MANIFEST.md, clause "account-status behaviour".
+ * <p>The {@code enabled} column carries no provider annotation because
+ * quarkus-security-jpa 3.27 defines no account-status member ({@code @UserDefinition},
+ * {@code @Username}, {@code @Password}, {@code @Roles}, {@code @RolesValue} are
+ * the whole annotation set). The source's account-status behaviour is supplied
+ * beside the provider instead, by
+ * {@link org.springframework.samples.petclinic.security.DisabledAccountAugmentor},
+ * which reads this field for the identity that just authenticated and refuses a
+ * disabled account with 401. The entity is not filtered globally, so
+ * user management still sees every row.
  */
 @Entity
 @Table(name = "users")
