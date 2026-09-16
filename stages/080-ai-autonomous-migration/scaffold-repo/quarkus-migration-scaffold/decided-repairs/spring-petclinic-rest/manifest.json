@@ -1,8 +1,8 @@
 {
   "schema": "rhoai3.decided-repairs-manifest/v1",
   "specimen": "spring-petclinic-rest",
-  "manifest_version": "1.0.0",
-  "decided_by": "ADR-019 (architect third review 2026-09-16): ADR-008 and ADR-014 enter a fresh run as bootstrap transformations; ADR-013 is a deterministic bootstrap retirement of the decided JaCoCo check execution",
+  "manifest_version": "1.1.0",
+  "decided_by": "ADR-019 (architect third review 2026-09-16): ADR-008 and ADR-014 enter a fresh run as bootstrap transformations; ADR-013 is a deterministic bootstrap retirement of the decided JaCoCo check execution; review records replaced by the architect's digest-bound review of 2026-09-16 (ADR-020), the v9 Operator steps kept as application history",
   "source": {
     "repository": "https://github.com/adnan-drina/spring-petclinic-rest-legacy.git",
     "note": "applicability is bound per transformation to the structure the frozen copy shows, not to one commit"
@@ -14,13 +14,13 @@
   ],
   "review_records": [
     {
-      "id": "RR-ADR008-v9-step16",
+      "id": "RR-ADR008-architect-2026-09-16",
       "adr": "ADR-008",
-      "kind": "operator-step",
-      "source": "v9 verification/loop/steps.json#steps[16], commit 4dda407d3b4c239b63a8364ab9a8ad23107e3e57, recorded 2026-09-14T19:24:56Z (operator-step.py --reviewer)",
+      "kind": "architect-review",
+      "source": "architect (Codex) review response relayed by the Operator 2026-09-16 (fourth review, ADR-020): static review of the six files at commit 8d14e726386a22fb5c02a50a02f5e77fe5ad1632 for ADR-008 and ADR-014 as amended by ADR-018, SHA-256 values calculated independently by the reviewer; verdict accepted_for_the_declared_specimen_and_applicability_contract; covers these artifacts only, not the whole commit and not runtime qualification",
       "operator": "operator:adnan.drina",
       "author": "claude",
-      "reviewer": "architect",
+      "reviewer": "architect (Codex)",
       "reviewed_artifacts": [
         {
           "path": "src/test/java/org/springframework/samples/petclinic/model/ValidatorTests.java",
@@ -34,13 +34,13 @@
       ]
     },
     {
-      "id": "RR-ADR014-v9-e9b8095",
+      "id": "RR-ADR014-architect-2026-09-16",
       "adr": "ADR-014",
-      "kind": "operator-step",
-      "source": "v9 operator step commit e9b8095 (ADR-014 amended per ADR-018), recorded 2026-09-16 with operator-step.py --reviewer architect --no-mint",
+      "kind": "architect-review",
+      "source": "architect (Codex) review response relayed by the Operator 2026-09-16 (fourth review, ADR-020): static review of the six files at commit 8d14e726386a22fb5c02a50a02f5e77fe5ad1632 for ADR-008 and ADR-014 as amended by ADR-018, SHA-256 values calculated independently by the reviewer; verdict accepted_for_the_declared_specimen_and_applicability_contract; covers these artifacts only, not the whole commit and not runtime qualification",
       "operator": "operator:adnan.drina",
       "author": "claude",
-      "reviewer": "architect",
+      "reviewer": "architect (Codex)",
       "reviewed_artifacts": [
         {
           "path": "src/main/java/org/springframework/samples/petclinic/security/SecurityMode.java",
@@ -91,7 +91,7 @@
       "applicability": {
         "source_sha256": "47bd7208a179fd652806b8c8ac16a4671420afaf4aff6b9125cbeaab81b3772f"
       },
-      "review_record": "RR-ADR008-v9-step16",
+      "review_record": "RR-ADR008-architect-2026-09-16",
       "obligations": [
         "fresh successful Surefire execution of ValidatorTests in this run"
       ]
@@ -103,7 +103,7 @@
       "path": "src/main/java/org/springframework/samples/petclinic/security/SecurityMode.java",
       "content": "operator-patches/spring-petclinic-rest/src/main/java/org/springframework/samples/petclinic/security/SecurityMode.java",
       "content_sha256": "3266afd876c5de3c3c0fe1298d76bf4cfc09d9ac677c5d7b79dea010b8f88f47",
-      "review_record": "RR-ADR014-v9-e9b8095"
+      "review_record": "RR-ADR014-architect-2026-09-16"
     },
     {
       "id": "adr014-new-PrefixedPlainTextPasswordProvider",
@@ -112,7 +112,7 @@
       "path": "src/main/java/org/springframework/samples/petclinic/security/PrefixedPlainTextPasswordProvider.java",
       "content": "operator-patches/spring-petclinic-rest/src/main/java/org/springframework/samples/petclinic/security/PrefixedPlainTextPasswordProvider.java",
       "content_sha256": "41e96cc94b848f811a0de6d9a1e54e727d0464c9d9e2a6595b9678183128048f",
-      "review_record": "RR-ADR014-v9-e9b8095"
+      "review_record": "RR-ADR014-architect-2026-09-16"
     },
     {
       "id": "adr014-new-SourceBasicAuthenticationMechanism",
@@ -121,7 +121,7 @@
       "path": "src/main/java/org/springframework/samples/petclinic/security/SourceBasicAuthenticationMechanism.java",
       "content": "operator-patches/spring-petclinic-rest/src/main/java/org/springframework/samples/petclinic/security/SourceBasicAuthenticationMechanism.java",
       "content_sha256": "4aabd4829892fdea380429ab3206464c0b6d7173d3f89ca9f2fac68b5cde680b",
-      "review_record": "RR-ADR014-v9-e9b8095"
+      "review_record": "RR-ADR014-architect-2026-09-16"
     },
     {
       "id": "adr014-new-HttpSecuritySwitch",
@@ -130,7 +130,7 @@
       "path": "src/main/java/org/springframework/samples/petclinic/security/HttpSecuritySwitch.java",
       "content": "operator-patches/spring-petclinic-rest/src/main/java/org/springframework/samples/petclinic/security/HttpSecuritySwitch.java",
       "content_sha256": "952275336f12744026e1cec2174ac39b97a822f561e6859a0a5f82509b08e390",
-      "review_record": "RR-ADR014-v9-e9b8095"
+      "review_record": "RR-ADR014-architect-2026-09-16"
     },
     {
       "id": "adr014-new-DisabledAccountAugmentor",
@@ -139,7 +139,7 @@
       "path": "src/main/java/org/springframework/samples/petclinic/security/DisabledAccountAugmentor.java",
       "content": "operator-patches/spring-petclinic-rest/src/main/java/org/springframework/samples/petclinic/security/DisabledAccountAugmentor.java",
       "content_sha256": "107530d86985cfd1bb092f18b1d0b6f56a459523803fb25d36a053dd1138a8f2",
-      "review_record": "RR-ADR014-v9-e9b8095"
+      "review_record": "RR-ADR014-architect-2026-09-16"
     },
     {
       "id": "adr014-conditional-authorization",
@@ -312,6 +312,38 @@
       "applicability": {
         "structure_sha256": "a62e8008c5b3a40130449b3b74262e23ef87cffe818bdf416df75ccc0ea353c4"
       }
+    }
+  ],
+  "application_history": [
+    {
+      "id": "AH-ADR008-v9-step16",
+      "adr": "ADR-008",
+      "kind": "operator-step-application",
+      "source": "v9 verification/loop/steps.json#steps[16], commit 4dda407d3b4c239b63a8364ab9a8ad23107e3e57, recorded 2026-09-14T19:24:56Z (operator-step.py --reviewer)",
+      "operator": "operator:adnan.drina",
+      "author": "claude",
+      "named_reviewer": "architect",
+      "paths": [
+        "src/test/java/org/springframework/samples/petclinic/model/ValidatorTests.java"
+      ],
+      "note": "application history only: the Operator step recorded the seats, not a digest of what was reviewed; it is not a digest-bound review record and is never reused as one (ADR-020)"
+    },
+    {
+      "id": "AH-ADR014-v9-e9b8095",
+      "adr": "ADR-014",
+      "kind": "operator-step-application",
+      "source": "v9 operator step commit e9b8095 (ADR-014 amended per ADR-018), recorded 2026-09-16 with operator-step.py --reviewer architect --no-mint",
+      "operator": "operator:adnan.drina",
+      "author": "claude",
+      "named_reviewer": "architect",
+      "paths": [
+        "src/main/java/org/springframework/samples/petclinic/security/SecurityMode.java",
+        "src/main/java/org/springframework/samples/petclinic/security/PrefixedPlainTextPasswordProvider.java",
+        "src/main/java/org/springframework/samples/petclinic/security/SourceBasicAuthenticationMechanism.java",
+        "src/main/java/org/springframework/samples/petclinic/security/HttpSecuritySwitch.java",
+        "src/main/java/org/springframework/samples/petclinic/security/DisabledAccountAugmentor.java"
+      ],
+      "note": "application history only: the Operator step recorded the seats, not a digest of what was reviewed; it is not a digest-bound review record and is never reused as one (ADR-020)"
     }
   ]
 }

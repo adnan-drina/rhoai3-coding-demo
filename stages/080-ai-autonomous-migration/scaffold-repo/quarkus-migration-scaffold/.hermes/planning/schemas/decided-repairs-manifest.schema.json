@@ -44,6 +44,52 @@
       "items": {
         "$ref": "#/definitions/transformation"
       }
+    },
+    "application_history": {
+      "type": "array",
+      "description": "Operator steps that applied these repairs on an earlier destination. History only: never a review record, never reused (ADR-020).",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "adr",
+          "kind",
+          "paths"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "adr": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "operator": {
+            "type": "string"
+          },
+          "author": {
+            "type": "string"
+          },
+          "named_reviewer": {
+            "type": "string"
+          },
+          "paths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "note": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
     }
   },
   "definitions": {
