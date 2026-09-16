@@ -15,6 +15,22 @@ another card, another candidate or another receipt satisfies nothing, while a
 sealed-bound verdict still counts: those are the ones the last full M4 run left
 for every scenario a scoped run was not scoped to.
 
+The receipt is composed over the records on DISK, which is what lets a scoped
+run keep the verdicts the last full run left for every scenario the filter was
+not scoped to -- and it is composed only over the records that BELONG to it: a
+file whose name is the slug of a scenario the current corpus declares, holding
+that scenario, compared against this corpus digest in this security mode and
+this fixture variant. Every other file under the parity scenarios directory is
+named in ``orphaned_records`` with the reason it does not belong, and counted
+nowhere else. Measured on destination v9, that directory still held
+cors-preflight-<digest>.json from an earlier naming scheme beside the current
+sc_cors-preflight-<...>.json, and every such leftover became an INCONCLUSIVE
+row ("no scenario '<id>' in the corpus") or a second result file for a
+scenario that already had one: 33 of 34 rows INCONCLUSIVE after a scoped run
+that compared one scenario and changed nothing else. A required scenario whose
+only record on disk is an orphan is still INCONCLUSIVE -- with the orphan's
+reason on the row, so the gap is named rather than reported as an absence.
+
 A comparison that PASSed is not the whole of ADR-016. The comparator compares
 the FIRST response and never follows a redirect, so a 302 whose status and
 literal Location are exactly the source's passes even when that address answers
@@ -37,10 +53,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _oracle_common import PARITY, slug  # noqa: E402
 from _scenarios import (BINDING_CANDIDATE, CorpusError, DEFAULT_SECURITY_MODE, QUALIFICATION, QUALIFICATION_SCHEMA,  # noqa: E402,F401
                         SCENARIO_ORACLES, SCENARIO_PARITY, SECURITY_MODES, binding_mismatch, candidate_binding,
-                        capture_security_mode, capture_security_variant, corpus_digest, cors_coverage, is_derived,
+                        capture_security_mode, capture_security_variant, corpus_digest, cors_coverage,
+                        declared_slugs, is_derived,
                         load_corpus,
-                        normalize_security_mode, normalize_variant, parity_receipt_path, qualification_path,
-                        scenario_oracles_dir,
+                        normalize_security_mode, normalize_variant, parity_receipt_path, partition_parity_records,
+                        qualification_path, scenario_oracles_dir,
                         scenario_parity_dir, scenario_slug, sealed_binding, source_cors_policies)
 from planner.admission import verify_receipt  # noqa: E402
 from planner.canonical import load_json, write_canonical  # noqa: E402
@@ -196,19 +213,33 @@ def main(argv: list[str] | None = None) -> int:
     coverage_gaps: list[dict[str, str]] = []
     navigation = load_navigation(root)
     navigation_failures: list[dict[str, Any]] = []
+    # Only the records that BELONG to this receipt are composed over; every
+    # other file in that directory is named as an orphan and counted nowhere
+    # else. Without a corpus nothing can be judged to belong or not belong --
+    # and nothing is read from there anyway, because the required set comes
+    # from the corpus -- so nothing is called an orphan either.
     results: dict[str, list[dict[str, Any]]] = {}
-    sdir = root / scenario_parity_dir(security_mode, variant)
-    for sp in sorted(sdir.glob("*.json")) if sdir.is_dir() else []:
-        doc = load_json(sp)
-        dmode = str(doc.get("security_mode") or "")
-        if dmode and dmode != security_mode:
-            mode_mixes.append("%s compared the %s mode" % (sp.name, dmode))
-        dvariant = str(doc.get("security_variant") or "")
-        if dvariant != variant:
-            mode_mixes.append("%s compared the %s" % (sp.name, ("%s fixture variant" % dvariant) if dvariant else "mode baseline"))
-        results.setdefault(str(doc.get("scenario") or ""), []).append(doc)
-    # A receipt that mixes modes is the cross-mode reuse ADR-014 forbids,
-    # arriving one file at a time. Refuse before judging anything.
+    orphaned: list[dict[str, str]] = []
+    if corpus:
+        kept, orphaned = partition_parity_records(root, security_mode, variant,
+                                                  declared=(corpus.get("scenarios") or []), corpus_sha=corpus_sha)
+        for _sp, doc in kept:
+            results.setdefault(str(doc.get("scenario") or ""), []).append(doc)
+    # Which required scenario each orphan would have spoken for, so a scenario
+    # whose only record on disk does not belong to this corpus is refused by
+    # the orphan's own reason rather than reported as a plain absence.
+    slugs = declared_slugs(corpus.get("scenarios") or [])
+    orphan_why: dict[str, list[str]] = {}
+    for o in orphaned:
+        for sid in {str(o.get("scenario") or ""), slugs.get(Path(o["path"]).stem, "")}:
+            if sid in slugs.values():
+                orphan_why.setdefault(sid, []).append(o["reason"])
+    # A QUALIFICATION of another mode is the cross-mode reuse ADR-014 forbids
+    # arriving through the document that says which captures are coverage:
+    # nothing here can be judged by it, so nothing is. (A parity RECORD of
+    # another mode is a leftover of another run rather than a claim about this
+    # one -- it is set aside as an orphan above, and the scenario it was the
+    # only record of is INCONCLUSIVE with that reason.)
     if mode_mixes:
         for m in mode_mixes:
             print("  - " + m, file=sys.stderr)
@@ -258,7 +289,15 @@ def main(argv: list[str] | None = None) -> int:
                         positive.append(sid)
                 found = results.get(sid) or []
                 if not found:
-                    missing.append(sid)
+                    # An absence and a record that does not belong to this
+                    # corpus are both "no verdict this receipt may read", and
+                    # they are not the same gap: the second one is named by
+                    # the reason the record was set aside.
+                    why = orphan_why.get(sid)
+                    if why:
+                        problems.append("%s has no result that belongs to this corpus: %s" % (sid, "; ".join(why)[:200]))
+                    else:
+                        missing.append(sid)
                     continue
                 if len(found) > 1:
                     problems.append("%s has %d result files" % (sid, len(found)))
@@ -348,12 +387,18 @@ def main(argv: list[str] | None = None) -> int:
                              "not_passed": sorted(sid for sid, v in qualified.items() if v["capability"] != "PASS" or v["stale"]),
                              "stale": sorted(sid for sid, v in qualified.items() if v["stale"])},
            "coverage_gaps": coverage_gaps,
+           # the files in this mode's parity scenarios directory that are NOT
+           # this receipt's evidence, each with the reason -- named here, and
+           # counted in no row, no total and no verdict
+           "orphaned_records": orphaned,
            "navigation": {"checked": len(navigation), "failures": navigation_failures},
            "verdict": verdict}
     out = root / parity_receipt_path(security_mode, variant)
     write_canonical(out, doc)
     for g in coverage_gaps:
         print("  - coverage gap %s (%s): %s" % (g["scenario"], g["entry_point"], g["reason"]))
+    for o in orphaned:
+        print("  - orphaned record %s (%s): %s" % (o["path"], o["kind"], o["reason"]))
     for n in navigation_failures:
         print("  - navigation %s (%s): %s is %s (%s)" % (n["scenario"], n["terminal"], n["target"], n["terminal"],
                                                          n["final_status"]))

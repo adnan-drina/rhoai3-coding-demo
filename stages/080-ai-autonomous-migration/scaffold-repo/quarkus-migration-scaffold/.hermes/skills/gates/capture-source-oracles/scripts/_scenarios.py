@@ -407,6 +407,123 @@ def scenario_slug(scenario_id: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]+", "_", str(scenario_id))[:120]
 
 
+# --- which parity records a receipt is composed FROM ------------------------
+# The composer composes over the records on DISK, and that is deliberate: it is
+# what lets a scoped run keep the verdicts the last full run left for every
+# scenario the filter was not scoped to. What it must never mean is composing
+# over records of another question. Measured on destination v9,
+# verification/parity/scenarios/ still held cors-preflight-<digest>.json and
+# cors-actual-<digest>.json from an earlier naming scheme beside the current
+# sc_cors-preflight-<...>.json records: each of those became an INCONCLUSIVE
+# row whose reason was "no scenario 'cors-preflight-<digest>' in the corpus",
+# or a second result file for a scenario that already had one ("N result
+# files") -- 33 of 34 rows INCONCLUSIVE after a scoped run that compared one
+# scenario and changed nothing else. A record that does not belong to this
+# corpus is not evidence against it; it is evidence of another one. So a record
+# is composed over only when its FILE NAME is the slug of a scenario the
+# current corpus declares, it holds that scenario, and it was compared against
+# this corpus digest in this security mode and this fixture variant. Every
+# other file is NAMED as an orphan and counted nowhere else.
+PARITY_ORPHANS = Path("verification") / "parity" / "_orphaned"
+ORPHAN_UNDECLARED = "undeclared-scenario"
+ORPHAN_NAME = "name-mismatch"
+ORPHAN_CORPUS = "stale-corpus"
+ORPHAN_MODE = "other-mode"
+ORPHAN_UNREADABLE = "unreadable"
+
+
+def declared_slugs(declared: Any) -> dict[str, str]:
+    """{file stem: scenario id} for every scenario a corpus declares.
+
+    Takes the corpus's own scenario objects or bare ids, so a caller that has
+    one and not the other never has to build the other."""
+    out: dict[str, str] = {}
+    for item in (declared or []):
+        sid = str(item.get("id") or "") if isinstance(item, dict) else str(item or "")
+        if sid:
+            out[scenario_slug(sid)] = sid
+    return out
+
+
+def parity_record_orphan(doc: Any, name: str, *, slugs: dict[str, str], corpus_sha: str = "",
+                         security_mode: Any = DEFAULT_SECURITY_MODE, variant: Any = "") -> dict[str, str]:
+    """Why this record is not one of THIS receipt's, or {} when it is one.
+
+    ``slugs`` is declared_slugs() of the corpus the receipt is of; ``name`` is
+    the record's file name, which is checked and not merely read past: a record
+    holding a declared scenario under a file name that is not that scenario's
+    slug is a duplicate waiting to be counted twice."""
+    mode = str(security_mode or "")
+    want_variant = str(variant or "")
+    if not isinstance(doc, dict):
+        return {"kind": ORPHAN_UNREADABLE, "scenario": "",
+                "reason": "%s is not a readable parity record" % name}
+    sid = str(doc.get("scenario") or "")
+    stem = name[:-len(".json")] if name.endswith(".json") else name
+    declared = slugs.get(stem, "")
+    if not declared:
+        if sid and sid in slugs.values():
+            return {"kind": ORPHAN_NAME, "scenario": sid,
+                    "reason": "it holds scenario %r, whose record is %s.json" % (sid, scenario_slug(sid))}
+        return {"kind": ORPHAN_UNDECLARED, "scenario": sid,
+                "reason": "no scenario %r is declared by the corpus this receipt is of" % (sid or stem)}
+    if sid != declared:
+        return {"kind": ORPHAN_NAME, "scenario": sid,
+                "reason": "it is the record of scenario %r and holds %r" % (declared, sid or "nothing")}
+    dmode = str(doc.get("security_mode") or "")
+    if dmode and dmode != mode:
+        return {"kind": ORPHAN_MODE, "scenario": sid,
+                "reason": "it compared the %s mode and this receipt is of the %s mode" % (dmode, mode)}
+    dvariant = str(doc.get("security_variant") or "")
+    if dvariant != want_variant:
+        return {"kind": ORPHAN_MODE, "scenario": sid,
+                "reason": "it compared the %s and this receipt is of the %s"
+                          % (("%s fixture variant" % dvariant) if dvariant else "mode baseline",
+                             ("%s fixture variant" % want_variant) if want_variant else "mode baseline")}
+    # A record that names ANOTHER corpus (or another mode) is evidence of
+    # another question and is set aside. A record that names NONE is evidence
+    # of no question -- a comparison that refused before it could bind one,
+    # which is this run's own measurement of a declared scenario. That is not
+    # an orphan: it stays where it is, and the row refuses it by name.
+    dcorpus = str(doc.get("corpus_sha256") or "")
+    if corpus_sha and dcorpus and dcorpus != corpus_sha:
+        return {"kind": ORPHAN_CORPUS, "scenario": sid,
+                "reason": "it was compared against corpus %s and this receipt is of %s"
+                          % (dcorpus[:12], corpus_sha[:12])}
+    return {}
+
+
+def partition_parity_records(root: Path, security_mode: Any = DEFAULT_SECURITY_MODE, variant: Any = "", *,
+                             declared: Any = (), corpus_sha: str = "") -> tuple[list[tuple[Path, dict[str, Any]]],
+                                                                               list[dict[str, str]]]:
+    """This mode's parity scenarios directory, split in two: the records the
+    receipt is composed from, and the orphans it only names.
+
+    Meta files (``_``-prefixed) and hidden files are neither: they are not
+    records, so they are not judged as one and never moved aside."""
+    base = Path(root)
+    slugs = declared_slugs(declared)
+    sdir = base / scenario_parity_dir(security_mode, variant)
+    kept: list[tuple[Path, dict[str, Any]]] = []
+    orphans: list[dict[str, str]] = []
+    for p in sorted(sdir.iterdir()) if sdir.is_dir() else []:
+        if not p.is_file() or p.name.startswith(("_", ".")):
+            continue
+        doc: Any = None
+        if p.name.endswith(".json"):
+            try:
+                doc = load_json(p)
+            except (OSError, ValueError):
+                doc = None
+        why = parity_record_orphan(doc, p.name, slugs=slugs, corpus_sha=corpus_sha,
+                                   security_mode=security_mode, variant=variant)
+        if why:
+            orphans.append({"path": p.relative_to(base).as_posix(), **why})
+        else:
+            kept.append((p, doc))
+    return kept, orphans
+
+
 def load_corpus(root: Path, security_mode: Any = DEFAULT_SECURITY_MODE, variant: Any = "") -> dict[str, Any]:
     """The corpus of one security mode (and one of its fixture variants). The
     default mode reads exactly the path (and states exactly the refusals) it

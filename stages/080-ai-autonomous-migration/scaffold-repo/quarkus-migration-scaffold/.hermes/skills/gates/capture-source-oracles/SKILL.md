@@ -793,6 +793,44 @@ What refuses, and why:
   another corpus, or two results for one scenario. The required set comes from
   the corpus, never from which files exist.
 
+### Which records a receipt is composed from (`orphaned_records`)
+
+`compose-parity-receipt.py` composes over the records on **disk**, and that is
+deliberate: it is what lets a scoped run (`run-parity.py --scenario`) keep the
+verdicts the last full run left for every scenario the filter was not scoped
+to, so the receipt still states every entry point. It composes only over the
+records that **belong** to it:
+
+- the file name is `scenario_slug(id)` of a scenario the **current** corpus
+  declares, and the record holds that scenario;
+- `corpus_sha256` is this corpus's digest (a record carrying **none** is not a
+  leftover but a comparison that refused before it could bind one: it stays,
+  and the row refuses it by name);
+- `security_mode` and `security_variant` are this receipt's.
+
+Every other file in `verification/parity/scenarios*/` is listed in the receipt
+under `orphaned_records` (`path`, `kind` in `undeclared-scenario` /
+`name-mismatch` / `stale-corpus` / `other-mode` / `unreadable`, and the
+`reason`) and is counted in **no** row, total or verdict. A required scenario
+whose only record on disk is an orphan is INCONCLUSIVE **for the orphan's
+reason**, not as a plain absence.
+
+Measured on destination v9: that directory still held
+`cors-preflight-<digest>.json` and `cors-actual-<digest>.json` from an earlier
+naming scheme beside the current `sc_cors-preflight-<...>.json` records. The
+composer read them as this corpus's evidence, each became an INCONCLUSIVE row
+whose reason was `no scenario 'cors-preflight-<digest>' in
+verification/scenarios/corpus.json` or an `N result files` problem, and the
+receipt came back **33 INCONCLUSIVE of 34** after a scoped run that compared
+one scenario and changed nothing else.
+
+`paved-road-m4/scripts/run-parity.py` prunes them before composing: each
+orphan is **moved** (never deleted) to
+`verification/parity/_orphaned/<stamp>/` with an `_index.json`
+(`rhoai3.parity-orphans/v1`) naming where each came from and why, and the move
+is recorded in `_run.json` as `orphaned`. With no corpus nothing can be judged
+to belong to one, so nothing is moved.
+
 ## Verification
 
 - Every oracle file carries `receipt_sha256`, the entry point id, and
@@ -803,8 +841,9 @@ What refuses, and why:
 - `compose-parity-receipt.py` writes `verification/parity/receipt.json`
   binding every parity verdict to the receipt digest; it is produced by
   this script (an independent producer), not by the verdict author. It
-  records the `security_mode` it composed and refuses to compose over
-  evidence from another mode.
+  records the `security_mode` it composed and never composes over evidence
+  from another mode: captures or a qualification of another mode are a
+  refusal, and a parity record of another mode is an orphan (above).
 
 ### The bounded navigation check (ADR-016)
 
@@ -924,6 +963,8 @@ to.
   point covered by scenarios passes only when every one of them passes, and one
   whose comparison passed while its redirect target is dead, loops or never
   settles (`verification/parity/navigation/`) becomes `FAIL` typed `navigation`;
+  it composes only over the records that belong to the current corpus, mode and
+  variant and names the rest under `orphaned_records`;
   `--issued` composes over the candidate an issued card was verified on
 - `scripts/reset-parity-db.sh` — restore the decided instance to the initial
   state the corpus names (drop and recreate the schema, apply the schema and

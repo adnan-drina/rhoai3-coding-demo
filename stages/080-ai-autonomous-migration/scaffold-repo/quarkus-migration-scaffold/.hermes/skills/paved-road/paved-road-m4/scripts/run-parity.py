@@ -16,6 +16,7 @@ and incompletely. So the order and the completeness move here:
   2b. a bounded navigation check for every scenario whose first response on
      the DESTINATION was a redirect -- a SEPARATE measurement, never inside
      the comparison
+  2c. every parity record that does NOT belong to this corpus, moved aside
   3. compose-parity-receipt.py, once, last
 
 --scenario (repeatable) scopes step 1 to the named corpus scenarios and skips
@@ -24,6 +25,20 @@ card's obligation without paying for the whole phase. Step 3 still runs, over
 every record on disk, so the receipt a scoped run composes still states the
 verdict of every entry point -- the scoped ones from this run, the rest from
 the records their last full run left. The record says what was skipped and why.
+
+Composing over the records on disk is what makes that possible, and it is why
+step 2c exists. Measured on destination v9, verification/parity/scenarios/ held
+cors-preflight-<digest>.json from an earlier naming scheme beside the current
+sc_cors-preflight-<...>.json, and the composer read both: the leftover became
+an INCONCLUSIVE row ("no scenario '<id>' in the corpus") and the receipt came
+back 33 INCONCLUSIVE of 34 after a scoped run that compared one scenario. A
+record whose file name is not the slug of a scenario this corpus declares, or
+which was compared against another corpus digest or in another security mode,
+is a leftover of another question: it is moved to
+verification/parity/_orphaned/<stamp>/ with an index saying where it came from
+and why, and _run.json records the move. Nothing is deleted -- another run's
+evidence stays readable -- and with no corpus nothing is judged to belong or
+not belong, so nothing is moved at all.
 
 The admitted entry points are the ones the composer itself counts: the
 evidence bundle's entry_points (_oracle_common.entry_points), and the
@@ -149,10 +164,11 @@ RESET_SCRIPT = CAPTURE / "reset-parity-db.sh"
 sys.path.insert(0, str(CAPTURE))
 sys.path.insert(0, str(HERMES / "lib"))
 from _oracle_common import ORACLES, PARITY, entry_points, http_observe, slug  # noqa: E402
-from _scenarios import (DEFAULT_SECURITY_MODE, SECURITY_MODES, CorpusError, auth_headers, binding_of,  # noqa: E402
+from _scenarios import (DEFAULT_SECURITY_MODE, PARITY_ORPHANS, SECURITY_MODES, CorpusError, auth_headers, binding_of,  # noqa: E402
                         candidate_binding, corpus_digest, corpus_path, credential_conflicts, effects_identity_of,
                         load_corpus, normalize_security_mode, normalized_identity, parity_receipt_path,
-                        parse_assignments, scenario_parity_dir, scenario_slug, sealed_binding)
+                        parse_assignments, partition_parity_records, scenario_parity_dir, scenario_slug,
+                        sealed_binding)
 from planner.admission import verify_receipt  # noqa: E402
 from planner.canonical import load_json, sha256_file, write_canonical  # noqa: E402
 from planner.paths import VERIFY_PACKAGE  # noqa: E402
@@ -180,6 +196,10 @@ NAV_DEAD = "dead"
 NAV_LOOP = "loop"
 NAV_TOO_MANY = "too-many-hops"
 NAV_COUNTER = {NAV_OK: "ok", NAV_DEAD: "dead", NAV_LOOP: "loop", NAV_TOO_MANY: "too_many_hops"}
+# Where a parity record that does not belong to this corpus is moved before the
+# composer reads the directory, and the index that says where each came from.
+# Never a delete: a record another run produced stays readable.
+ORPHAN_INDEX_SCHEMA = "rhoai3.parity-orphans/v1"
 # What a scoped run does NOT measure, named in the record rather than left to
 # be inferred from a count: a filtered run is a re-measurement of one card's
 # obligation, and the read oracles of every other entry point keep the verdicts
@@ -699,6 +719,72 @@ def run_navigation(root: Path, scenarios: list[dict[str, Any]], dest_url: str, m
                                                       result["final_status"], len(result["hops"])))
 
 
+def prune_orphaned_records(root: Path, security_mode: str, corpus: dict[str, Any], corpus_sha: str,
+                           at: str) -> dict[str, Any]:
+    """Move every parity record that does not belong to THIS corpus aside,
+    before the composer reads the directory.
+
+    The composer composes over the records on disk -- that is what keeps a
+    scoped run from erasing the verdicts the last full run left for every other
+    scenario -- and it names the ones that do not belong rather than judging
+    them. This is the other half: a leftover from an earlier naming scheme, an
+    earlier corpus or another mode is not evidence of anything about this run,
+    so it stops accumulating in the directory the next run will read. Measured
+    on destination v9: verification/parity/scenarios/ held
+    cors-preflight-<digest>.json beside the current sc_cors-preflight-<...>.json
+    and the receipt came back 33 INCONCLUSIVE of 34.
+
+    Nothing is deleted. Each record is moved under
+    verification/parity/_orphaned/<stamp>/ with an index naming where it came
+    from and why, so the evidence a previous run produced is still readable and
+    the move itself is on the record."""
+    out: dict[str, Any] = {"pruned": 0, "dir": "", "records": [], "gaps": []}
+    if not corpus:
+        out["gaps"].append("no corpus was loaded, so no record could be judged to belong to one; nothing was moved")
+        return out
+    _kept, orphans = partition_parity_records(root, security_mode, "",
+                                              declared=(corpus.get("scenarios") or []), corpus_sha=corpus_sha)
+    if not orphans:
+        return out
+    stamp = at.replace("-", "").replace(":", "") or _now().replace("-", "").replace(":", "")
+    where = root / PARITY_ORPHANS / stamp
+    n = 2
+    while where.exists():
+        where = root / PARITY_ORPHANS / ("%s-%d" % (stamp, n))
+        n += 1
+    where.mkdir(parents=True, exist_ok=True)
+    moved: list[dict[str, Any]] = []
+    for o in orphans:
+        src = root / o["path"]
+        target = where / src.name
+        k = 2
+        while target.exists():
+            target = where / ("%s-%d%s" % (src.stem, k, src.suffix))
+            k += 1
+        try:
+            src.replace(target)
+        except OSError as exc:
+            out["gaps"].append("%s could not be moved aside (%s); it stays where it is and the receipt names it"
+                               % (o["path"], exc))
+            continue
+        moved.append({**o, "moved_to": target.relative_to(root).as_posix()})
+        print("  [orphan] %s (%s): %s" % (o["path"], o["kind"], o["reason"]))
+    if not moved:
+        try:
+            where.rmdir()
+        except OSError:
+            pass
+        return out
+    write_canonical(where / "_index.json",
+                    {"schema": ORPHAN_INDEX_SCHEMA, "producer": "run-parity.py", "at": at,
+                     "from": scenario_parity_dir(security_mode).as_posix(), "security_mode": security_mode,
+                     "corpus_sha256": corpus_sha, "records": moved})
+    out["pruned"] = len(moved)
+    out["dir"] = where.relative_to(root).as_posix()
+    out["records"] = moved
+    return out
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--root", required=True, help="the destination product root")
@@ -707,7 +793,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--scenario", action="append", default=[], metavar="ID",
                     help="repeatable: compare ONLY these corpus scenarios (the fix-until-green acceptance path scopes the "
                          "comparison to the scenarios the issued parity card is made of). The read-oracle phase is skipped "
-                         "under the filter and said so in _run.json; the composer still runs, over every record on disk")
+                         "under the filter and said so in _run.json; the composer still runs, over every record on "
+                         "disk that belongs to this corpus -- so the scenarios this run did not compare keep the "
+                         "verdicts their last run recorded")
     ap.add_argument("--issued", default="", metavar="PATH",
                     help="verification/loop/issued.json: this run measures the CANDIDATE that issued card was verified on, "
                          "not the accepted tree. The binding is passed to both comparators and the composer, which then do not "
@@ -870,6 +958,10 @@ def main(argv: list[str] | None = None) -> int:
                        {"ran": False, "max_hops": int(args.nav_max_hops), "dir": NAVIGATION.as_posix(),
                         "checked": 0, "ok": 0, "dead": 0, "loop": 0, "too_many_hops": 0,
                         "results": [], "not_navigated": []}),
+        # the records in this mode's parity scenarios directory that do NOT
+        # belong to this corpus, moved aside (never deleted) before the
+        # composer reads it, with where they went
+        "orphaned": {"pruned": 0, "dir": "", "records": [], "gaps": []},
         "compose": {"rc": None, "argv": []},
         "receipt_verdict": "", "failures": [], "ok": False,
     }
@@ -999,6 +1091,12 @@ def main(argv: list[str] | None = None) -> int:
         if dest is not None:
             dest.stop()
 
+    # 2c. the records that do not belong to this corpus, moved aside before the
+    #     composer reads the directory. A scoped run composes over every record
+    #     on disk by design; an orphan left there would be judged as a scenario
+    #     of this corpus and is not one.
+    doc["orphaned"] = prune_orphaned_records(root, security_mode, corpus, corpus_sha, doc["at"])
+
     # 3. the receipt, once, last
     receipt_p = root / receipt_rel
     # the receipt as it stood BEFORE the composer ran: what tells a receipt
@@ -1035,14 +1133,16 @@ def main(argv: list[str] | None = None) -> int:
     nav_summary = ("navigation skipped" if nav_doc == "skipped" else
                    "%d redirect target(s) navigated (%d ok, %d dead, %d loop, %d too many hops)"
                    % (nav_doc["checked"], nav_doc["ok"], nav_doc["dead"], nav_doc["loop"], nav_doc["too_many_hops"]))
+    pruned = ("; %d orphaned record(s) moved to %s" % (doc["orphaned"]["pruned"], doc["orphaned"]["dir"])
+              if doc["orphaned"]["pruned"] else "")
     summary = ("%s%s%d/%d scenario(s) run (%d PASS, %d FAIL, %d INCONCLUSIVE); %d/%d entry point(s) compared "
-               "(%d not compared); %s; receipt %s"
+               "(%d not compared); %s; receipt %s%s"
                % (("%s mode: " % security_mode) if security_mode != DEFAULT_SECURITY_MODE else "",
                   ("scoped to %s: " % ", ".join(wanted_ids)) if wanted_ids else "",
                   doc["scenarios"]["run"], doc["scenarios"]["selected"], doc["scenarios"]["passed"],
                   doc["scenarios"]["failed"], doc["scenarios"]["inconclusive"], doc["entry_points"]["compared"],
                   doc["entry_points"]["admitted"], doc["entry_points"]["skipped"], nav_summary,
-                  doc["receipt_verdict"] or "NOT COMPOSED BY THIS RUN"))
+                  doc["receipt_verdict"] or "NOT COMPOSED BY THIS RUN", pruned))
     for row in doc["entry_points"]["not_compared"]:
         print("  - not compared: %s (%s)" % (row["entry_point"], row["reason"]))
     if failures:

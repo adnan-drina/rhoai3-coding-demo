@@ -96,7 +96,7 @@ RUN_KEYS_BEFORE = {"schema", "producer", "at", "root", "dest_url", "started_by_r
                    "scenarios", "read_oracles", "entry_points", "navigation", "compose", "receipt", "receipt_verdict",
                    "failures", "ok"}
 RUN_KEYS_ADDED = {"security_mode", "dest_config", "dest_config_from_decisions", "dest_config_gap", "credential_refs",
-                  "artifact"}
+                  "artifact", "orphaned"}
 
 
 def _fail(msg: str) -> int:
@@ -517,6 +517,76 @@ def main() -> int:
                 return _fail("the receipt a scoped run composes still states every entry point: %s"
                              % {k: receipt5.get(k) for k in ("verdict", "total", "not_passed")})
 
+            # --- the records a scoped run did not write, and the ones that
+            #     belong to nothing --------------------------------------
+            # Composing over the records on disk is what keeps a scoped run
+            # from erasing every other entry point's verdict, and it is why
+            # leftovers matter. Measured on destination v9,
+            # verification/parity/scenarios/ held cors-preflight-<digest>.json
+            # and cors-actual-<digest>.json from an earlier naming scheme
+            # beside the current sc_cors-preflight-<...>.json records: the
+            # composer read them as scenarios of this corpus and the receipt
+            # came back 33 INCONCLUSIVE of 34 after a scoped run that compared
+            # one scenario and changed nothing else. So the runner moves what
+            # does not belong aside -- never deletes it -- before the composer
+            # reads the directory, and the rows for the scenarios this run did
+            # not compare must be exactly the verdicts their records already
+            # carried.
+            untouched = {sid: (root / SCENARIO_PARITY / (scenario_slug(sid) + ".json")).read_bytes()
+                         for sid in ("sc:create-owner", "sc:read-root", "sc:read-root-auth")}
+            rows_before = {r["entry_point"]: r for r in load_json(root / PARITY / "receipt.json")["entry_points"]}
+            leftovers = {"cors-preflight-7b1a3d9234cd.json": "cors-preflight-7b1a3d9234cd",
+                         "cors-actual-7b1a3d9234cd.json": "cors-actual-7b1a3d9234cd",
+                         # a scenario this corpus declares, under a file name
+                         # that is not its slug: a second result for a scenario
+                         # that has exactly one
+                         "sc-create-owner-legacy.json": "sc:create-owner"}
+            for name, sid in leftovers.items():
+                write_canonical(root / SCENARIO_PARITY / name,
+                                {"schema": "rhoai3.scenario-parity/v1", "scenario": sid, "entry_point": CREATE_EP,
+                                 "receipt_sha256": doc["receipt_sha256"], "corpus_sha256": doc["corpus_sha256"],
+                                 "security_mode": "disabled", "security_variant": "",
+                                 "verdict": "INCONCLUSIVE", "reason": "no scenario %r in the corpus" % sid})
+            rc12, blob12, doc12 = _run(root, base, reset, scenarios=("sc:create-owner-second",))
+            orph = doc12["orphaned"]
+            if rc12 != 0 or orph["pruned"] != 3 or not orph["dir"].startswith("verification/parity/_orphaned/"):
+                return _fail("a scoped run moves every record that does not belong to this corpus aside: rc=%s %s"
+                             % (rc12, orph))
+            if sorted(r["path"].rsplit("/", 1)[-1] for r in orph["records"]) != sorted(leftovers):
+                return _fail("the run record must name every record it moved, and nothing else: %s" % orph["records"])
+            if any((root / SCENARIO_PARITY / name).exists() for name in leftovers):
+                return _fail("a pruned record must not still be where the composer reads: %s" % sorted(leftovers))
+            index = load_json(root / orph["dir"] / "_index.json")
+            if index.get("schema") != "rhoai3.parity-orphans/v1" or index.get("from") != SCENARIO_PARITY.as_posix():
+                return _fail("the index must say where the records came from: %s" % {k: index.get(k) for k in ("schema", "from")})
+            for moved in index["records"]:
+                if not (root / moved["moved_to"]).is_file() or not moved["reason"] or not moved["kind"]:
+                    return _fail("nothing is deleted, and each record is kept with the reason it was set aside: %s" % moved)
+            kinds = {r["path"].rsplit("/", 1)[-1]: r["kind"] for r in orph["records"]}
+            if kinds.get("sc-create-owner-legacy.json") != "name-mismatch" or kinds.get("cors-actual-7b1a3d9234cd.json") != "undeclared-scenario":
+                return _fail("each record is set aside for the reason it does not belong: %s" % kinds)
+            # ...and the receipt this run composed is whole: the scenario it
+            # compared, and every scenario it did not, from the records that
+            # were already there and were not touched
+            # both true at once: the receipt is THIS run's (bd45184c -- a
+            # receipt counts only when this run composed it), and its rows for
+            # the scenarios this run did not compare come from the records on
+            # disk that belong to this corpus
+            if (doc12["compose"]["rc"] != 0 or doc12.get("receipt_verdict") != "PASS" or not doc12.get("ok")
+                    or not (doc12.get("receipt") or {}).get("composed_by_this_run")):
+                return _fail("a scoped run over a pruned directory composes its own whole receipt: %s"
+                             % {k: doc12.get(k) for k in ("compose", "receipt_verdict", "receipt", "ok")})
+            receipt12 = load_json(root / PARITY / "receipt.json")
+            if receipt12.get("orphaned_records") != [] or receipt12["total"] != 4 or receipt12["not_passed"] != 0:
+                return _fail("nothing is left for the composer to call an orphan: %s"
+                             % {k: receipt12.get(k) for k in ("orphaned_records", "total", "not_passed")})
+            if {r["entry_point"]: r for r in receipt12["entry_points"]} != rows_before:
+                return _fail("a scoped run must leave the rows it did not re-measure exactly as they were: %s"
+                             % [r for r in receipt12["entry_points"] if rows_before.get(r["entry_point"]) != r])
+            for sid, was in untouched.items():
+                if (root / SCENARIO_PARITY / (scenario_slug(sid) + ".json")).read_bytes() != was:
+                    return _fail("a scoped run rewrites no record it was not scoped to: %s" % sid)
+
             # a scenario nobody declared is a comparison that cannot be made
             rc6, blob6, doc6 = _run(root, base, reset, scenarios=("sc:not-in-the-corpus",))
             if rc6 != 1 or doc6["scenarios"]["run"] != 0 or not any("not declared" in f for f in doc6.get("failures") or []):
@@ -836,6 +906,11 @@ def main() -> int:
     print("OK: run-parity selftest (every scenario in corpus order; every captured read oracle compared; the "
           "uncomparable named; receipt composed last; idempotent; --scenario replays only the scenarios it names, "
           "skips the read oracles by name and still composes the whole receipt, and refuses an undeclared id; "
+          "a record that belongs to no scenario of this corpus -- the v9 cors-<digest>.json names from an earlier "
+          "naming scheme, and a declared scenario under a name that is not its slug -- is MOVED ASIDE before the "
+          "composer reads the directory, never deleted, with an index naming where each came from and why, and the "
+          "move on _run.json; the scoped run that pruned them composes a whole receipt whose rows for the scenarios "
+          "it did not compare are exactly the verdicts their records already carried, and it rewrote none of them; "
           "FAIL is a verdict not a runner failure; a missing corpus refuses; --issued carries the acceptance path's "
           "binding into BOTH comparators and the composer -- the scenario verdict, the read-oracle verdict and the "
           "composed receipt each record the candidate, the receipt the card was minted under and the card -- where the "

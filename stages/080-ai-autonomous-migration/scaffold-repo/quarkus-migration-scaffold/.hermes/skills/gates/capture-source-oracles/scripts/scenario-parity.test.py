@@ -1108,6 +1108,115 @@ def _navigation_receipt_case() -> int:
     return 0
 
 
+def _orphaned_records_case() -> int:
+    """A receipt judges the current corpus from the records that belong to it.
+
+    The composer composes over the records on DISK, which is what lets a
+    scoped run keep the verdicts the last full run left for every scenario the
+    filter was not scoped to. Measured on destination v9,
+    verification/parity/scenarios/ also held cors-preflight-<digest>.json and
+    cors-actual-<digest>.json from an earlier naming scheme beside the current
+    sc_cors-preflight-<...>.json records: the leftovers were read as this
+    corpus's evidence, each became an INCONCLUSIVE row whose reason was "no
+    scenario '<id>' in verification/scenarios/corpus.json", and the receipt
+    came back 33 INCONCLUSIVE of 34 after a scoped run that compared one
+    scenario and changed nothing else.
+
+    The control here is that directory made concrete: one record that belongs,
+    and one of each way a record can fail to -- a scenario nobody declares, a
+    declared scenario under a file name that is not its slug, a record
+    compared against another corpus digest, and one compared in another
+    security mode. Each must be NAMED as an orphan and counted in no row; the
+    scenario an orphan was the only record of must be INCONCLUSIVE for the
+    orphan's own reason rather than reported as a plain absence; and with the
+    records put right the same directory composes a PASS."""
+    import tempfile as _tempfile
+
+    good, stale, foreign_mode = "sc:list-owners", "sc:get-owner", "sc:head-owner"
+    with _tempfile.TemporaryDirectory(prefix="orphan-receipt-") as td:
+        root = specimens.build_dest(Path(td) / "dest", specimens.specimen("http"), decisions=specimens.admitted_decisions())
+        specimens.prepare_loop(root)
+        rec = pipeline.admit(root)
+        if rec["status"] != "ADMITTED":
+            return _fail("orphan fixture not admitted: %s" % rec["reasons"][:3])
+        receipt_digest = load_json(root / "evidence/planning/admission-receipt.json")["receipt_digest"]
+        ep = sorted(str(e["id"]) for e in load_json(root / "evidence/planning/evidence-bundle.json")["entry_points"])[0]
+        corpus = {"schema": "rhoai3.scenario-corpus/v1", "approved_by": "operator:test",
+                  "initial_state": {"reset": "restart the service", "dataset": "one owner"},
+                  "scenarios": [{"id": sid, "entry_point": ep, "method": "GET", "path": path, "body_absent": True,
+                                 "reset_before": False, "effects": [], "normalization": []}
+                                for sid, path in ((good, "/api/owners"), (stale, "/api/owners/7"),
+                                                  (foreign_mode, "/api/owners/8"))]}
+        write_canonical(root / "verification" / "scenarios" / "corpus.json", corpus)
+        corpus_sha = corpus_digest(load_json(root / "verification" / "scenarios" / "corpus.json"))
+        sdir = root / SCENARIO_PARITY
+
+        def _record(name: str, scenario: str, **over: object) -> None:
+            doc = {"schema": "rhoai3.scenario-parity/v1", "scenario": scenario, "entry_point": ep,
+                   "receipt_sha256": receipt_digest, "corpus_sha256": corpus_sha, "security_mode": "disabled",
+                   "security_variant": "", "verdict": "PASS", "reason": ""}
+            doc.update(over)
+            write_canonical(sdir / name, doc)
+
+        _record(scenario_slug(good) + ".json", good)
+        # ... and the four that do not belong, one of each kind
+        _record(scenario_slug(stale) + ".json", stale, corpus_sha256="0" * 64)
+        _record(scenario_slug(foreign_mode) + ".json", foreign_mode, security_mode="enabled")
+        _record("cors-preflight-7b1a3d9234cd.json", "cors-preflight-7b1a3d9234cd")
+        _record("cors-actual-7b1a3d9234cd.json", good)
+
+        def compose() -> tuple[int, dict]:
+            p = subprocess.run([sys.executable, str(RECEIPT), "--root", str(root)], text=True, capture_output=True)
+            return p.returncode, load_json(root / parity_receipt_path())
+
+        rc, doc = compose()
+        orphans = {o["path"].rsplit("/", 1)[-1]: o for o in (doc.get("orphaned_records") or [])}
+        want = {scenario_slug(stale) + ".json": "stale-corpus",
+                scenario_slug(foreign_mode) + ".json": "other-mode",
+                "cors-preflight-7b1a3d9234cd.json": "undeclared-scenario",
+                "cors-actual-7b1a3d9234cd.json": "name-mismatch"}
+        if {n: o["kind"] for n, o in orphans.items()} != want:
+            return _fail("every record that does not belong to this corpus is named, with its reason: %s"
+                         % doc.get("orphaned_records"))
+        if not all(o["path"].startswith(SCENARIO_PARITY.as_posix() + "/") and o["reason"] for o in orphans.values()):
+            return _fail("an orphan is named by PATH and by reason: %s" % doc.get("orphaned_records"))
+        if "0" * 12 not in orphans[scenario_slug(stale) + ".json"]["reason"] or corpus_sha[:12] not in orphans[scenario_slug(stale) + ".json"]["reason"]:
+            return _fail("the stale record's reason names both corpora: %s" % orphans[scenario_slug(stale) + ".json"]["reason"])
+        if "enabled" not in orphans[scenario_slug(foreign_mode) + ".json"]["reason"]:
+            return _fail("the other mode's record names the mode it compared: %s" % orphans[scenario_slug(foreign_mode) + ".json"]["reason"])
+        row = next(r for r in doc["entry_points"] if r["entry_point"] == ep)
+        if rc != 1 or row["verdict"] != "INCONCLUSIVE":
+            return _fail("a required scenario whose only record is an orphan has no verdict to read: rc=%s %s" % (rc, row))
+        # the v9 receipt's two shapes, neither of which may appear: an orphan
+        # read as a scenario of this corpus, and a second file counted as a
+        # duplicate result for a scenario that has exactly one
+        if "no scenario" in row["reason"] or "result files" in row["reason"]:
+            return _fail("an orphan is judged in no row: %s" % row["reason"])
+        if good in row["reason"]:
+            return _fail("the scenario whose record belongs to this corpus is not a problem: %s" % row["reason"])
+        for sid in (stale, foreign_mode):
+            if ("%s has no result that belongs to this corpus" % sid) not in row["reason"]:
+                return _fail("the scenario an orphan was the only record of is named with the orphan's reason: %s" % row["reason"])
+        if "have no result" in row["reason"]:
+            return _fail("a record that does not belong is not the same gap as no record at all: %s" % row["reason"])
+
+        # the same directory, with the records put right: nothing is orphaned
+        # and the receipt PASSes, so what the orphans cost was exactly the
+        # orphans and not the corpus
+        (sdir / "cors-preflight-7b1a3d9234cd.json").unlink()
+        (sdir / "cors-actual-7b1a3d9234cd.json").unlink()
+        _record(scenario_slug(stale) + ".json", stale)
+        _record(scenario_slug(foreign_mode) + ".json", foreign_mode)
+        rc, doc = compose()
+        row = next(r for r in doc["entry_points"] if r["entry_point"] == ep)
+        if row["verdict"] != "PASS" or doc.get("orphaned_records") != []:
+            return _fail("the records that belong compose a PASS for their entry point: %s %s"
+                         % (doc.get("orphaned_records"), row))
+        if sorted(row["scenarios"]) != sorted([good, stale, foreign_mode]):
+            return _fail("the row still states every scenario the corpus requires: %s" % row)
+    return 0
+
+
 def verify_gaps(root: Path) -> list[str]:
     from planner.admission import verify_receipt
     return verify_receipt(root, require_admitted=False)[1]
@@ -1218,6 +1327,8 @@ def main() -> int:
     if _capture_contract_case() or _header_contract_case():
         return 1
     if _navigation_receipt_case():
+        return 1
+    if _orphaned_records_case():
         return 1
     with tempfile.TemporaryDirectory(prefix="scen-") as td:
         t = Path(td)
@@ -1425,7 +1536,13 @@ def main() -> int:
           "records written beside it, an entry point whose redirect target is dead, loops or never settles becomes FAIL "
           "typed navigation naming the address and the status it ended on -- carried on the row for the work list -- "
           "a navigation that reached the UI is recorded navigation: ok and changes no verdict, and a comparison that "
-          "FAILED keeps its own diff and its own typing)")
+          "FAILED keeps its own diff and its own typing; "
+          "and a receipt judges the CURRENT corpus from the records that belong to it: a scenario this corpus does not "
+          "declare, a declared scenario under a file name that is not its slug, a record compared against another "
+          "corpus digest and one compared in another security mode are each named under orphaned_records with the "
+          "reason and counted in no row -- the v9 receipt's 'no scenario <id> in the corpus' and 'N result files' "
+          "cannot be produced by a leftover -- while the scenario an orphan was the only record of is INCONCLUSIVE "
+          "for the orphan's own reason, and the same directory with its records put right composes a PASS)")
     return 0
 
 
