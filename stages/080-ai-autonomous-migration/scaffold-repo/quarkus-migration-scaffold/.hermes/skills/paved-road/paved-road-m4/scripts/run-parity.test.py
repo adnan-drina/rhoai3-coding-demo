@@ -16,6 +16,7 @@ not run (no corpus) exits 1.
 from __future__ import annotations
 
 import base64
+import importlib.util
 import json
 import os
 import subprocess
@@ -32,8 +33,9 @@ CAPTURE_READS = CAPTURE_DIR / "capture-source-oracles.py"
 sys.path.insert(0, str(CAPTURE_DIR))
 sys.path.insert(0, str(HERE.parents[3] / "lib"))
 from _oracle_common import ORACLES, PARITY, http_observe, slug  # noqa: E402
-from _scenarios import (SCENARIO_ORACLES, SCENARIO_PARITY, corpus_digest, normalized_identity, request_of,  # noqa: E402
-                        scenario_slug)
+from _scenarios import (SCENARIO_ORACLES, SCENARIO_PARITY, auth_headers, capture_receipt_path, corpus_digest,  # noqa: E402
+                        corpus_path, normalized_identity, parity_receipt_path, request_of, scenario_oracles_dir,
+                        scenario_parity_dir, scenario_slug)
 from planner import pipeline, specimens  # noqa: E402
 from planner.canonical import digest, load_json, write_canonical  # noqa: E402
 
@@ -50,10 +52,66 @@ NAV_PASS_ENV = "RUN_PARITY_NAV_PASS"
 NAV_IDENTITY = {"kind": "basic", "user_env": NAV_USER_ENV, "password_env": NAV_PASS_ENV}
 NAV_BASIC = "Basic " + base64.b64encode(b"nav-user:nav-secret").decode("ascii")
 
+# --- the enabled security mode (ADR-014) ------------------------------------
+# The enabled mode is its own evidence end to end: its own corpus, its own
+# captures, its own parity records, its own receipt, its own run record. The
+# identity its requests are made as arrives the only way a credential ever
+# does -- by the NAME of an environment variable, held here and written
+# nowhere.
+ENABLED = "enabled"
+ENABLED_CRED_ENV = "RUN_PARITY_ENABLED_CRED"
+ENABLED_CRED_USER = "clinic-user"
+ENABLED_CRED_PASSWORD = "clinic-secret"
+ENABLED_IDENTITY = {"kind": "basic", "credential_ref": ENABLED_CRED_ENV}
+ENABLED_BASIC = "Basic " + base64.b64encode(
+    ("%s:%s" % (ENABLED_CRED_USER, ENABLED_CRED_PASSWORD)).encode()).decode("ascii")
+ENABLED_CORPUS = {
+    "schema": "rhoai3.scenario-corpus/v1",
+    "approved_by": "operator:test",
+    "initial_state": {"reset": "GET /__reset", "dataset": "empty"},
+    "scenarios": [
+        {"id": "sc:pets-as-clinic-user", "entry_point": CREATE_EP, "method": "GET", "path": "/api/pets",
+         "identity": dict(ENABLED_IDENTITY), "body_absent": True, "reset_before": False, "effects": [],
+         "normalization": []},
+        {"id": "sc:vets-as-clinic-user", "entry_point": CREATE_EP, "method": "GET", "path": "/api/vets",
+         "identity": dict(ENABLED_IDENTITY), "body_absent": True, "reset_before": False, "effects": [],
+         "normalization": []},
+    ],
+}
+# The switch the Operator declares, and the two settings that name its
+# behaviours. The KEY is the specimen's; nothing in the harness knows it.
+SWITCH_KEY = "acme.clinic.security.mode"
+SWITCH_DISABLED = "permissive"
+SWITCH_ENABLED = "enforcing"
+SECURITY_DECISION = {
+    "adr": "ADR-014",
+    "switch": {"key": SWITCH_KEY, "disabled_value": SWITCH_DISABLED, "enabled_value": SWITCH_ENABLED},
+    "identities": [{"name": "clinic-user", "credential_ref": ENABLED_CRED_ENV, "roles": ["USER"]}],
+}
+# What the run record held before ADR-014, and what this change adds to it.
+# Pinned as a SET so a key that quietly appears (or disappears) in the default
+# mode's record is a failure here rather than a surprise at M4.
+RUN_KEYS_BEFORE = {"schema", "producer", "at", "root", "dest_url", "started_by_runner", "reset_cmd", "receipt_sha256",
+                   "receipt_gaps", "issued", "binding", "corpus", "corpus_sha256", "corpus_error", "scenario_filter",
+                   "scenarios", "read_oracles", "entry_points", "navigation", "compose", "receipt", "receipt_verdict",
+                   "failures", "ok"}
+RUN_KEYS_ADDED = {"security_mode", "dest_config", "dest_config_from_decisions", "dest_config_gap", "credential_refs",
+                  "artifact"}
+
 
 def _fail(msg: str) -> int:
     print("FAIL: " + msg, file=sys.stderr)
     return 1
+
+
+def _module(path: Path, name: str):
+    """The runner as a module, so what it DERIVES can be measured without
+    starting a destination to watch it be used."""
+    spec = importlib.util.spec_from_file_location(name, path)
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[name] = mod
+    spec.loader.exec_module(mod)
+    return mod
 
 
 class Service(BaseHTTPRequestHandler):
@@ -244,14 +302,68 @@ def _build(td: Path, base: str) -> Path:
     return root
 
 
+def _build_enabled(root: Path, base: str) -> None:
+    """The enabled mode's evidence, recorded the way the enabled-mode capture
+    records it: its own corpus, its own captures, in its own directory, each
+    file saying which mode it is of.
+
+    The requests are made as the identity the corpus NAMES -- the credential is
+    resolved from this environment at capture time, exactly as the comparator
+    will resolve it at comparison time -- so what the destination is asked, and
+    as whom, is the same question the source was asked."""
+    receipt_digest = load_json(root / "evidence/planning/admission-receipt.json")["receipt_digest"]
+    bundle_sha = digest(load_json(root / "evidence/planning/evidence-bundle.json"))
+    write_canonical(root / corpus_path(ENABLED), ENABLED_CORPUS)
+    corpus_sha = corpus_digest(load_json(root / corpus_path(ENABLED)))
+    headers, gap = auth_headers(ENABLED_IDENTITY)
+    if gap:
+        raise SystemExit("the enabled fixture cannot authenticate: %s" % gap)
+    for sc in ENABLED_CORPUS["scenarios"]:
+        req = request_of(root, sc)
+        got = http_observe(base, str(sc["method"]), str(sc["path"]), headers={**req["headers"], **headers})
+        write_canonical(root / scenario_oracles_dir(ENABLED) / (scenario_slug(str(sc["id"])) + ".json"), {
+            "schema": "rhoai3.source-scenario/v1", "scenario": str(sc["id"]), "entry_point": CREATE_EP,
+            "receipt_sha256": receipt_digest, "corpus_sha256": corpus_sha, "status": "CAPTURED", "reason": "",
+            "evidence_bundle_sha256": bundle_sha, "source": {"base_url": base},
+            "initial_state": dict(ENABLED_CORPUS["initial_state"]), "normalization": [], "reset_before": False,
+            "security_mode": ENABLED, "security_variant": "",
+            "request": {"request_sha256": req["request_sha256"]},
+            "response": {"status": got["status"], "body_kind": got["body_kind"],
+                         "body_sha256": got["body_sha256"], "headers": got["headers"]},
+            "before": [], "effects": [],
+        })
+    write_canonical(root / capture_receipt_path(ENABLED), {
+        "schema": "rhoai3.source-capture/v1", "producer": "run-parity.test.py", "status": "ok", "reason": "",
+        "security_mode": ENABLED, "security_variant": "", "corpus_sha256": corpus_sha,
+        "captured": len(ENABLED_CORPUS["scenarios"]),
+        "scenarios": [str(sc["id"]) for sc in ENABLED_CORPUS["scenarios"]],
+        "credential_refs": [ENABLED_CRED_ENV], "source_config": {SWITCH_KEY: SWITCH_ENABLED},
+        "receipt_sha256": receipt_digest, "evidence_bundle_sha256": bundle_sha,
+    })
+
+
+def _fake_artifact(root: Path) -> None:
+    """A packaged application to identify the run by. A Quarkus fast-jar IS the
+    quarkus-app directory, so the digest is over all of it -- the launcher and
+    the library tree the runner would start."""
+    app = root / "target" / "quarkus-app"
+    (app / "lib" / "main").mkdir(parents=True, exist_ok=True)
+    (app / "quarkus-run.jar").write_bytes(b"fixture launcher\n")
+    (app / "lib" / "main" / "org.acme.clinic.jar").write_bytes(b"fixture dependency\n")
+
+
 def _run(root: Path, base: str, reset: Path, scenarios: tuple[str, ...] = (), issued: str = "",
-         extra: tuple[str, ...] = ()) -> tuple[int, str, dict]:
+         extra: tuple[str, ...] = (), mode: str = "") -> tuple[int, str, dict]:
     scoped = [a for sid in scenarios for a in ("--scenario", sid)]
     bound = ["--issued", issued] if issued else []
+    moded = ["--security-mode", mode] if mode else []
     proc = subprocess.run([sys.executable, str(RUNNER), "--root", str(root), "--dest-url", base,
-                           "--reset-cmd", "%s %s" % (sys.executable, reset), *scoped, *bound, *extra],
+                           "--reset-cmd", "%s %s" % (sys.executable, reset), *scoped, *bound, *moded, *extra],
                           text=True, capture_output=True)
-    run_doc = load_json(root / PARITY / "_run.json") if (root / PARITY / "_run.json").is_file() else {}
+    # one record per mode: the enabled run must not overwrite the evidence of
+    # the run the M4 road left
+    rec = root / PARITY / ("_run.json" if mode in ("", "disabled") else "_run-%s.json" % mode)
+    run_doc = load_json(rec) if rec.is_file() else {}
     return proc.returncode, proc.stdout + proc.stderr, run_doc
 
 
@@ -264,12 +376,20 @@ def main() -> int:
     # navigates as; every child process inherits it by NAME
     os.environ[NAV_USER_ENV] = "nav-user"
     os.environ[NAV_PASS_ENV] = "nav-secret"
+    # the enabled mode's identity, held here under its NAME and written into no
+    # corpus, capture, record or receipt
+    os.environ[ENABLED_CRED_ENV] = "%s:%s" % (ENABLED_CRED_USER, ENABLED_CRED_PASSWORD)
     srv, base = _serve()
     try:
         with tempfile.TemporaryDirectory(prefix="run-parity-") as tmp:
             td = Path(tmp).resolve()
             reset = _reset_script(td, base)
             root = _build(td, base)
+            # one packaged artifact, and the enabled mode's own evidence beside
+            # the disabled mode's: ADR-014 is proved from ONE artifact restarted
+            # with the switch changed, and from captures that never share a path
+            _fake_artifact(root)
+            _build_enabled(root, base)
 
             # --- the green run: everything compared, receipt composed last ---
             rc, blob, doc = _run(root, base, reset)
@@ -302,6 +422,29 @@ def main() -> int:
                 return _fail("an entry point nobody could compare must be NAMED with its reason: %s" % ep["not_compared"])
             if doc["compose"]["rc"] != 0 or doc.get("receipt_verdict") != "PASS" or not doc.get("ok"):
                 return _fail("the receipt must be composed last and PASS here: %s" % {k: doc.get(k) for k in ("compose", "receipt_verdict", "ok")})
+
+            # --- ADR-014 regression: the default mode's record is what it was -
+            # The mode is a scoping of the evidence, not a change to the M4
+            # road. The default run must still read the same corpus, write the
+            # same receipt and the same record, and carry the new keys at their
+            # defaults -- the key SET is pinned so one that quietly appears or
+            # disappears fails here rather than at M4.
+            if set(doc) != RUN_KEYS_BEFORE | RUN_KEYS_ADDED:
+                return _fail("the run record's shape changed: added %s, missing %s"
+                             % (sorted(set(doc) - RUN_KEYS_BEFORE - RUN_KEYS_ADDED),
+                                sorted((RUN_KEYS_BEFORE | RUN_KEYS_ADDED) - set(doc))))
+            if (doc.get("security_mode") != "disabled" or doc.get("corpus") != "verification/scenarios/corpus.json"
+                    or doc["receipt"]["path"] != "verification/parity/receipt.json"):
+                return _fail("the default mode reads and writes exactly where it always did: %s"
+                             % {k: doc.get(k) for k in ("security_mode", "corpus", "receipt")})
+            if doc.get("dest_config") != {} or doc.get("dest_config_from_decisions") != [] or doc.get("dest_config_gap"):
+                return _fail("a run nobody configured carries no configuration: %s"
+                             % {k: doc.get(k) for k in ("dest_config", "dest_config_from_decisions", "dest_config_gap")})
+            # the NAMES the replay may resolve a credential from, and no value
+            if doc.get("credential_refs") != sorted([NAV_USER_ENV, NAV_PASS_ENV]):
+                return _fail("the record names the credential variables the corpus declares: %s" % doc.get("credential_refs"))
+            if not doc["artifact"]["sha256"] or doc["artifact"]["files"] != 2:
+                return _fail("the record must identify the packaged artifact it measured: %s" % doc.get("artifact"))
 
             # the records the composer reads, written by the children
             for sid in ("sc:create-owner", "sc:create-owner-second", "sc:read-root", "sc:read-root-auth"):
@@ -532,6 +675,141 @@ def main() -> int:
             if docc["navigation"]["ok"] != 2:
                 return _fail("the credential run must still be ok: %s" % docc["navigation"])
 
+            # --- ADR-014: the enabled mode, measured from the same artifact --
+            # The exit ADR-014 asks for is the enabled mode verified "from one
+            # artifact, restarted with the switch changed at runtime", against
+            # the ENABLED captures. So this run must be of the enabled mode
+            # from end to end -- its corpus, its captures, its records, its
+            # receipt, its own run record -- and must be able to be held
+            # against the disabled run as one artifact measured twice.
+            disabled_record = (root / PARITY / "_run.json").read_bytes()
+            Service.seen = []
+            rce, blobe, doce = _run(root, base, reset, mode="enabled")
+            if rce != 0:
+                return _fail("an enabled-mode run against a matching destination must exit 0: %s" % blobe[-1500:])
+            if doce.get("security_mode") != "enabled" or doce.get("corpus") != "verification/scenarios-enabled/corpus.json":
+                return _fail("the run must record the mode it is of and read that mode's corpus: %s"
+                             % {k: doce.get(k) for k in ("security_mode", "corpus", "corpus_error")})
+            sce = doce["scenarios"]
+            if [sce["declared"], sce["selected"], sce["run"], sce["passed"]] != [2, 2, 2, 2]:
+                return _fail("every scenario of the ENABLED corpus is replayed: %s (%s)" % (sce, blobe[-800:]))
+            if [r["id"] for r in sce["results"]] != [str(s["id"]) for s in ENABLED_CORPUS["scenarios"]]:
+                return _fail("the enabled corpus is replayed in ITS corpus order: %s" % sce["results"])
+            # what proves --security-mode reached the children: their verdicts
+            # say which mode they are of, and they are written in that mode's
+            # own directory -- reuse is prevented by the path, not by memory
+            for sc_row in ENABLED_CORPUS["scenarios"]:
+                sid = str(sc_row["id"])
+                sp = root / scenario_parity_dir(ENABLED) / (scenario_slug(sid) + ".json")
+                if not sp.is_file():
+                    return _fail("the enabled verdict must be written in the enabled mode's own directory: %s" % sp)
+                sv_e = load_json(sp)
+                if sv_e.get("verdict") != "PASS" or sv_e.get("security_mode") != "enabled":
+                    return _fail("the comparator child must have been told the mode: %s"
+                                 % {k: sv_e.get(k) for k in ("verdict", "security_mode", "reason")})
+                if (root / SCENARIO_PARITY / (scenario_slug(sid) + ".json")).is_file():
+                    return _fail("an enabled verdict must never land in the disabled mode's directory: %s" % sid)
+            # the read oracles are DISABLED-mode captures: not re-measured, and
+            # every entry point named with that reason rather than left to be
+            # inferred from a count
+            reads = doce["read_oracles"]
+            if reads["ran"] or "disabled-mode captures" not in reads["reason"] or "not mode-scoped" not in reads["reason"]:
+                return _fail("an enabled run must skip the read oracles and say WHY: %s" % reads)
+            epe = doce["entry_points"]
+            if epe["compared"] != 0 or epe["skipped"] != 4 or [r["reason"] for r in epe["not_compared"]] != [reads["reason"]] * 4:
+                return _fail("every entry point must be named as not compared, with the reason: %s" % epe)
+            # the destination was asked as the identity the corpus NAMES, with
+            # the credential resolved from this environment at request time
+            asked = [(q, a) for q, a in Service.seen if q in ("/api/pets", "/api/vets")]
+            if len(asked) != 2 or sorted(a for _, a in asked) != [ENABLED_BASIC, ENABLED_BASIC]:
+                return _fail("both enabled scenarios carry the identity the corpus names: %s"
+                             % [(q, bool(a)) for q, a in asked])
+            # the mode's own receipt, composed by this run, and the M4 road's
+            # record untouched beside it
+            if doce["receipt"]["path"] != "verification/parity/receipt-enabled.json" or not doce["receipt"]["composed_by_this_run"]:
+                return _fail("the enabled run composes the ENABLED receipt: %s" % doce.get("receipt"))
+            rcpt_e = load_json(root / parity_receipt_path(ENABLED))
+            if rcpt_e.get("security_mode") != "enabled" or doce.get("receipt_verdict") != "PASS":
+                return _fail("the composer child must have been told the mode: %s / %s"
+                             % (rcpt_e.get("security_mode"), doce.get("receipt_verdict")))
+            if load_json(root / PARITY / "receipt.json").get("security_mode") != "disabled":
+                return _fail("the disabled receipt must still be the disabled mode's")
+            if (root / PARITY / "_run.json").read_bytes() != disabled_record:
+                return _fail("the enabled run must not overwrite the record the M4 road left")
+            # ONE artifact, two modes: the digest is what SHOWS it
+            if not doce["artifact"]["sha256"] or doce["artifact"]["sha256"] != doc["artifact"]["sha256"]:
+                return _fail("both modes must be shown to have measured one artifact: %s vs %s"
+                             % (doce.get("artifact"), doc.get("artifact")))
+
+            # --- --from-decisions: the -D is the DECLARED switch -------------
+            # decisions.yaml is sealed by the admission receipt, so the
+            # derivation is exercised where it lives rather than by rewriting a
+            # sealed file: the switch the Operator declared, at the setting each
+            # mode declares for it, on the java command line of the artifact
+            # this runner starts.
+            rp = _module(RUNNER, "run_parity_under_test")
+            sealed_decisions = (root / "decisions.yaml").read_bytes()
+            try:
+                decided_doc = specimens.full_decisions(
+                    adrs=list(specimens.ACCEPTED_ADRS) + [{"id": "ADR-014", "title": "Security modes", "status": "accepted"}])
+                decided_doc["security"] = SECURITY_DECISION
+                (root / "decisions.yaml").write_text(specimens.decisions_yaml(decided_doc), encoding="utf-8")
+                decided, why = rp.decided_security(root)
+                if not decided or why:
+                    return _fail("the declared security section must be readable: %s" % why)
+                if rp.switch_config(decided, "enabled") != {SWITCH_KEY: SWITCH_ENABLED}:
+                    return _fail("the enabled mode takes the switch's enabled_value: %s" % rp.switch_config(decided, "enabled"))
+                if rp.switch_config(decided, "disabled") != {SWITCH_KEY: SWITCH_DISABLED}:
+                    return _fail("the disabled mode takes the switch's disabled_value: %s" % rp.switch_config(decided, "disabled"))
+                started = rp.Destination(root, 8099, "java", 1, rp.switch_config(decided, "enabled")).command()
+                if started != ["java", "-D%s=%s" % (SWITCH_KEY, SWITCH_ENABLED), "-jar", "target/quarkus-app/quarkus-run.jar"]:
+                    return _fail("the derived switch must be a system property on the artifact's command line: %s" % started)
+                # a credential is never configuration: the refusal names the KEY
+                conflicting = {"acme.clinic.admin.password": ENABLED_CRED_PASSWORD}
+                if rp.credential_conflicts(conflicting, [ENABLED_CRED_ENV]) != ["acme.clinic.admin.password"]:
+                    return _fail("a --dest-config value that IS a credential must be refused by key")
+            finally:
+                (root / "decisions.yaml").write_bytes(sealed_decisions)
+            # ...and a run that asks for the declared switch where nothing is
+            # declared refuses by NAMING what is missing, before it starts or
+            # compares anything
+            rcf, blobf, docf = _run(root, base, reset, mode="enabled", extra=("--from-decisions",))
+            if rcf != 1 or docf["scenarios"]["run"] != 0 or docf["compose"]["rc"] is not None:
+                return _fail("--from-decisions with no declared switch must refuse before anything runs: rc=%s %s"
+                             % (rcf, {k: docf.get(k) for k in ("scenarios", "compose")}))
+            if not docf.get("dest_config_gap") or not any("--from-decisions" in f and "decisions.yaml" in f
+                                                          for f in docf.get("failures") or []):
+                return _fail("the refusal must name the file that would have declared it: %s | %s"
+                             % (docf.get("dest_config_gap"), docf.get("failures")))
+
+            # --- a --dest-config that carries a credential: refused by KEY ---
+            rcx, blobx, docx = _run(root, base, reset, mode="enabled",
+                                    extra=("--dest-config", "acme.clinic.admin.password=" + ENABLED_CRED_PASSWORD))
+            if rcx != 1 or docx["scenarios"]["run"] != 0:
+                return _fail("a --dest-config carrying a credential must refuse before anything runs: rc=%s %s"
+                             % (rcx, docx.get("scenarios")))
+            if not any("acme.clinic.admin.password" in f and "credential" in f for f in docx.get("failures") or []):
+                return _fail("the refusal must name the KEY: %s" % docx.get("failures"))
+            if ENABLED_CRED_PASSWORD in blobx:
+                return _fail("the refusal must never print what the key held")
+
+            # --- a credential variable this workspace does not hold ----------
+            # named by NAME, before anything is started: a request made as
+            # nobody would record the destination's 401 as its answer
+            held = os.environ.pop(ENABLED_CRED_ENV)
+            try:
+                Service.seen = []
+                rcm, blobm, docm = _run(root, base, reset, mode="enabled")
+                if rcm != 1 or docm["scenarios"]["run"] != 0 or docm["compose"]["rc"] is not None:
+                    return _fail("a missing credential must refuse before anything runs: rc=%s %s"
+                                 % (rcm, {k: docm.get(k) for k in ("scenarios", "compose")}))
+                if not any(ENABLED_CRED_ENV in f for f in docm.get("failures") or []):
+                    return _fail("the refusal must name the VARIABLE: %s" % docm.get("failures"))
+                if [q for q, _ in Service.seen if q in ("/api/pets", "/api/vets")]:
+                    return _fail("nothing may be replayed once a declared credential is absent: %s" % Service.seen)
+            finally:
+                os.environ[ENABLED_CRED_ENV] = held
+
             # --- a destination that really differs: FAIL is a measurement ---
             Service.drift = True
             rc3, blob3, doc3 = _run(root, base, reset)
@@ -571,7 +849,19 @@ def main() -> int:
           "and the receipt row says navigation: ok, a 302 to a 404 is dead and a two-URL chain is loop, and in both "
           "the comparison still PASSes while the row becomes FAIL typed navigation naming the address; --no-navigation "
           "walks nothing and records navigation: skipped; and the walk carries no credential unless the scenario "
-          "declares an effects identity, when it carries exactly that reference)")
+          "declares an effects identity, when it carries exactly that reference; "
+          "ADR-014 -- the default mode's record is byte-for-byte the road it always was (its key set is pinned, its "
+          "corpus, receipt and run record are where they were, and the new keys carry their defaults), while "
+          "--security-mode enabled is the enabled mode end to end: the enabled corpus in ITS corpus order, verdicts "
+          "written in the enabled mode's own directory and never in the disabled one, the mode on every child's record "
+          "and on the composed receipt-enabled.json, the read oracles NOT re-measured with every entry point named for "
+          "the reason they cannot be, the destination asked as the identity the corpus names with the credential "
+          "resolved from the environment at request time, the disabled mode's own _run.json untouched beside it, and "
+          "one artifact digest shown on both records; --from-decisions derives -DKEY=VALUE from the declared switch at "
+          "each mode's own setting and puts it on the artifact's command line, and refuses by naming decisions.yaml "
+          "where nothing is declared; a --dest-config whose VALUE is a credential refuses by KEY without printing it; "
+          "and a declared credential this workspace does not hold refuses by NAME before anything is started or "
+          "replayed)")
     return 0
 
 

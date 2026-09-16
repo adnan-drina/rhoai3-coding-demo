@@ -48,6 +48,39 @@ candidate digest this verification recorded, the receipt the card was minted
 under and the card. Without it, the M4 road: the accepted tree, the sealed
 receipt.
 
+--security-mode says which setting of the source's security switch this run
+measures (ADR-014), and it is the mode's own evidence throughout: the mode's
+corpus, the mode's captures, the mode's parity records, the mode's receipt and
+the mode's run record. Every child is told the same mode, so a destination
+running with security enabled is never graded against anonymous expectations.
+Two things follow from the mode and are recorded rather than assumed:
+
+  - the read-oracle phase runs in the DEFAULT mode only. The read oracles are
+    not mode-scoped (verification/source-oracles/<slug>.json) and were captured
+    with the switch off; re-comparing them from an enabled-mode destination
+    would compare an authenticated service against anonymous expectations. The
+    enabled run names every entry point it did not compare, with that reason.
+  - the identity an enabled-mode request is made as comes from the credential
+    ENVIRONMENT VARIABLES the corpus names and the capture used -- the
+    comparator reads them itself. This runner only checks, before it starts
+    anything, that each one is set, and refuses naming the VARIABLE when it is
+    not. What it holds is never read, printed or written.
+
+--dest-config KEY=VALUE (repeatable) is the configuration the destination this
+runner STARTS is started with: -DKEY=VALUE on its java command line, recorded
+verbatim in the run record. --from-decisions fills it with the specimen's own
+security switch from decisions.yaml (security.switch.key = the mode's declared
+value), which is the default whenever an enabled-mode run has to start the
+destination itself: ADR-014's exit is ONE artifact restarted with the switch
+changed at runtime, so the switch must be a recorded property of the run and
+not a shell someone remembers. A --dest-config value that equals a credential
+the declared references hold is refused by KEY: the run record is evidence.
+
+The run record carries the packaged artifact's digest (the quarkus-app manifest
+digest the packaging and boot gates already compute over the same files), so
+the two mode runs can be SHOWN to have measured one artifact rather than
+asserted to have.
+
 The comparison compares the FIRST response and never follows a redirect; that
 is deliberate and unchanged. ADR-016 asks something the first response cannot
 answer -- whether the legacy address SERVES the replacement UI or redirects to
@@ -56,8 +89,13 @@ on the destination only, and writes verification/parity/navigation/<slug>.json
 (rhoai3.parity-navigation/v1) per scenario. A 302 to a 404 passes the
 comparison and is exactly the dead compatibility URL the ruling refuses.
 
-Writes verification/parity/_run.json (rhoai3.parity-run/v1) beside the receipt:
-what ran, in what order, with each child's exit code, and the binding.
+Writes the mode's run record (rhoai3.parity-run/v1) beside the mode's receipt:
+what ran, in what order, with each child's exit code, the binding, the mode,
+the configuration the destination was started with and the artifact digest.
+The default mode's record is verification/parity/_run.json, exactly where it
+has always been; the enabled mode writes _run-enabled.json beside it, so one
+mode's run cannot overwrite the other's evidence -- the ADR-014 exit is the
+two records held against each other.
 
 ``receipt_verdict`` is the verdict of a receipt THIS run composed, and null
 when the composer refused. A refusing composer writes nothing and the previous
@@ -111,14 +149,15 @@ RESET_SCRIPT = CAPTURE / "reset-parity-db.sh"
 sys.path.insert(0, str(CAPTURE))
 sys.path.insert(0, str(HERMES / "lib"))
 from _oracle_common import ORACLES, PARITY, entry_points, http_observe, slug  # noqa: E402
-from _scenarios import (CORPUS, CorpusError, SCENARIO_PARITY, auth_headers, binding_of, candidate_binding,  # noqa: E402
-                        corpus_digest, effects_identity_of, load_corpus, normalized_identity, scenario_slug,
-                        sealed_binding)
+from _scenarios import (DEFAULT_SECURITY_MODE, SECURITY_MODES, CorpusError, auth_headers, binding_of,  # noqa: E402
+                        candidate_binding, corpus_digest, corpus_path, credential_conflicts, effects_identity_of,
+                        load_corpus, normalize_security_mode, normalized_identity, parity_receipt_path,
+                        parse_assignments, scenario_parity_dir, scenario_slug, sealed_binding)
 from planner.admission import verify_receipt  # noqa: E402
 from planner.canonical import load_json, sha256_file, write_canonical  # noqa: E402
+from planner.paths import VERIFY_PACKAGE  # noqa: E402
 
 SCHEMA = "rhoai3.parity-run/v1"
-RUN_RECORD = PARITY / "_run.json"
 READ_METHODS = ("GET", "HEAD")
 
 # The bounded navigation check (ADR-016), which is a SEPARATE measurement and
@@ -147,6 +186,16 @@ NAV_COUNTER = {NAV_OK: "ok", NAV_DEAD: "dead", NAV_LOOP: "loop", NAV_TOO_MANY: "
 # their last full run recorded (the composer reads those records, not this run).
 READ_ORACLES_FILTERED = ("skipped: this run compares only the scenarios it was scoped to (%s); the read-oracle verdicts "
                          "on disk are the ones the last unfiltered run recorded")
+# ... and what an enabled-mode run does NOT measure, for a reason that is not a
+# choice: the read oracles live in an oracle directory that is NOT mode-scoped
+# (verification/source-oracles/<slug>.json) and were captured with the switch
+# off. Replaying them against a destination running with security enabled would
+# compare an authenticated service against anonymous expectations -- the
+# cross-mode reuse ADR-014 forbids, arriving through the phase that was never
+# mode-scoped. The verdicts the default-mode run recorded stay on disk and the
+# composer reads those; this run says plainly that it re-measured none of them.
+READ_ORACLES_MODE = ("skipped: the read oracles are %s-mode captures (%s is not mode-scoped) and this run is of the %s "
+                     "mode; the read-oracle verdicts on disk are the ones the %s-mode run recorded")
 
 
 def _now() -> str:
@@ -161,6 +210,125 @@ def _load_module(path: Path, name: str) -> Any:
     sys.modules[name] = mod
     spec.loader.exec_module(mod)
     return mod
+
+
+_GATE: Any = None
+
+
+def _runtime_gate() -> Any:
+    """The packaging/boot gate, loaded once: it owns what the packaged artifact
+    IS (the quarkus-app manifest) and how it is started, and parity measures
+    what that gate produced rather than a second opinion about it."""
+    global _GATE
+    if _GATE is None:
+        _GATE = _load_module(RUNTIME_GATE, "verify_runtime_gate")
+    return _GATE
+
+
+def run_record_path(security_mode: str) -> Path:
+    """Where THIS mode's run record goes.
+
+    The default mode keeps verification/parity/_run.json exactly where the
+    paved road KEEPs it; the enabled mode writes its own beside it. One file
+    per mode is the point: ADR-014's exit is two runs of one artifact shown
+    together, and a shared record would leave the second run's evidence as the
+    only evidence there ever was."""
+    mode = normalize_security_mode(security_mode)
+    return PARITY / ("_run.json" if mode == DEFAULT_SECURITY_MODE else "_run-%s.json" % mode)
+
+
+def artifact_identity(root: Path) -> dict[str, Any]:
+    """What the destination this run measures IS, by digest.
+
+    ADR-014 asks the enabled mode to be proved "from one artifact, restarted
+    with the switch changed at runtime". Two run records that each name the
+    same digest are what SHOWS that; two runs that merely happened in sequence
+    show nothing. The digest is the packaging gate's own: one sha256 over every
+    file of target/quarkus-app (quarkus-run.jar is a thin launcher beside lib/,
+    app/ and quarkus/, so hashing it alone would not notice a changed
+    dependency), computed by the same function the boot gate computes it with,
+    beside the digest packaging recorded for the same tree."""
+    gate = _runtime_gate()
+    files, manifest = gate.artifact_manifest(Path(root))
+    doc: dict[str, Any] = {"path": gate.APP_DIR.as_posix(), "sha256": manifest, "files": len(files),
+                           "packaged_sha256": "", "reason": ""}
+    if not manifest:
+        doc["reason"] = ("%s is absent; the packaging gate produces the artifact parity starts, and there is nothing to "
+                         "identify this run's destination by" % gate.APP_DIR.as_posix())
+    p = Path(root) / VERIFY_PACKAGE
+    if p.is_file():
+        try:
+            doc["packaged_sha256"] = str((load_json(p) or {}).get("artifact_sha256") or "")
+        except (OSError, ValueError):
+            doc["packaged_sha256"] = ""
+    if manifest and doc["packaged_sha256"] and doc["packaged_sha256"] != manifest:
+        doc["reason"] = ("the artifact on disk is not the one packaging verified (%s, packaged %s); it was rebuilt or "
+                         "changed since" % (manifest[:12], doc["packaged_sha256"][:12]))
+    return doc
+
+
+def decided_security(root: Path) -> tuple[dict[str, Any], str]:
+    """(the decided security switch and identities, why-not) from decisions.yaml.
+
+    The switch is the SPECIMEN's own: which property turns its security on is
+    an Operator decision under an accepted ADR, never a name this harness
+    carries. Nothing here is a credential -- the identities name environment
+    variables, and only the names travel."""
+    from planner.decisions import DecisionsError, load_decisions, security
+    from planner.paths import DECISIONS
+
+    try:
+        doc = load_decisions(Path(root))
+    except DecisionsError as exc:
+        return {}, str(exc)
+    decided = security(doc)
+    if not decided:
+        return {}, ("%s declares no usable security section (ADR-014): the specimen's own security switch is an Operator "
+                    "decision, and a destination started without it would be measured for a mode nobody set"
+                    % DECISIONS.as_posix())
+    return decided, ""
+
+
+def switch_config(decided: dict[str, Any], security_mode: str) -> dict[str, str]:
+    """The declared switch at this mode's setting, as one KEY=VALUE property."""
+    switch = (decided or {}).get("switch") or {}
+    key = str(switch.get("key") or "")
+    value = str(switch.get("enabled_value" if security_mode != DEFAULT_SECURITY_MODE else "disabled_value") or "")
+    return {key: value} if key and value else {}
+
+
+def corpus_credential_refs(scenarios: list[dict[str, Any]]) -> list[str]:
+    """Every environment variable the given scenarios are replayed as, by NAME.
+
+    Both identity shapes count, and both places an identity can appear: the
+    request's own ``identity`` and the ``effects_identity`` its read-backs are
+    taken as. The comparator resolves these itself at request time; this is the
+    list whose absence it would discover one refusal at a time."""
+    names: set[str] = set()
+    for sc in scenarios or []:
+        for ident in (sc.get("identity"), effects_identity_of(sc)):
+            row = normalized_identity(ident) if ident else {}
+            if str(row.get("kind") or "none") in ("", "none"):
+                continue
+            ref = str(row.get("credential_ref") or "")
+            if ref:
+                names.add(ref)
+                continue
+            names.update(n for n in (str(row.get("user_env") or ""), str(row.get("password_env") or "")) if n)
+    return sorted(names)
+
+
+def missing_credentials(names: list[str]) -> list[str]:
+    """The named variables this workspace does not hold. The NAME is the whole
+    message: what it would have held is never read, printed or written."""
+    return [n for n in names if not os.environ.get(n, "").strip()]
+
+
+def dest_config_argv(dest_config: dict[str, str]) -> list[str]:
+    """The configuration as the JVM takes it: one -DKEY=VALUE per property, in
+    a fixed order so two runs of the same configuration produce the same
+    command line."""
+    return ["-D%s=%s" % (k, v) for k, v in sorted((dest_config or {}).items())]
 
 
 def _verdict_of(path: Path) -> tuple[str, str]:
@@ -277,17 +445,34 @@ class Destination:
     comparing something other than what was verified. This starts the artifact
     that gate produced, and stops it again."""
 
-    def __init__(self, root: Path, port: int, java: str, timeout: int) -> None:
+    def __init__(self, root: Path, port: int, java: str, timeout: int,
+                 dest_config: dict[str, str] | None = None) -> None:
         self.root = root
         self.port = port
         self.java = java
         self.timeout = timeout
+        # The configuration this destination is STARTED with -- the security
+        # switch at the setting this run measures, first among them. It is the
+        # caller's (or the Operator's, through decisions.yaml): the harness
+        # knows no property name of the specimen's own.
+        self.dest_config = dict(dest_config or {})
+        self.argv: list[str] = []
         self.proc: subprocess.Popen | None = None
         self.log = root / PARITY / "logs" / "destination.log"
-        self.gate = _load_module(RUNTIME_GATE, "verify_runtime_gate")
+        self.gate = _runtime_gate()
         self.root_path = self.gate.root_path_of(root)
         self.ds: dict[str, Any] = {}
         self.profiles: list[str] = []
+
+    def command(self) -> list[str]:
+        """The command line this destination is started with.
+
+        The configuration goes on it as system properties: the SAME artifact,
+        started again with a different switch setting, which is what ADR-014
+        asks the enabled mode to be proved from. It is a method so the command
+        can be read -- by this runner's record, and by a test -- without
+        starting anything."""
+        return [self.java, *dest_config_argv(self.dest_config), "-jar", str(self.gate.RUNNER)]
 
     @property
     def base_url(self) -> str:
@@ -325,7 +510,10 @@ class Destination:
         if self.profiles:
             env["QUARKUS_PROFILE"] = ",".join(self.profiles)
         sink = self.log.open("wb")
-        self.proc = subprocess.Popen([self.java, "-jar", str(self.gate.RUNNER)], cwd=str(self.root),
+        # kept so the run record can state what was STARTED rather than what
+        # was intended
+        self.argv = self.command()
+        self.proc = subprocess.Popen(self.argv, cwd=str(self.root),
                                      stdout=sink, stderr=subprocess.STDOUT, env=env, start_new_session=True)
         ready, why = _wait_ready(self.base_url, self.timeout, self.proc)
         text = self.log.read_text(encoding="utf-8", errors="replace") if self.log.is_file() else ""
@@ -467,7 +655,7 @@ def redirect_target(record: Any, dest_url: str) -> str:
 
 
 def run_navigation(root: Path, scenarios: list[dict[str, Any]], dest_url: str, max_hops: int,
-                   nav: dict[str, Any]) -> None:
+                   nav: dict[str, Any], parity_dir: Path) -> None:
     """One bounded navigation per scenario whose first response on the
     DESTINATION was a redirect, recorded beside the comparison it belongs to.
 
@@ -480,7 +668,7 @@ def run_navigation(root: Path, scenarios: list[dict[str, Any]], dest_url: str, m
         sid = str(sc.get("id") or "")
         if not sid:
             continue
-        rec_p = root / SCENARIO_PARITY / (scenario_slug(sid) + ".json")
+        rec_p = root / parity_dir / (scenario_slug(sid) + ".json")
         try:
             record = load_json(rec_p) if rec_p.is_file() else {}
         except (OSError, ValueError):
@@ -533,6 +721,22 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--no-navigation", action="store_true",
                     help="do not perform the bounded navigation check. _run.json then records navigation: skipped, and "
                          "the records of any earlier run stay on disk for the composer to read")
+    ap.add_argument("--security-mode", choices=list(SECURITY_MODES), default=DEFAULT_SECURITY_MODE,
+                    help="which setting of the source's security switch this run measures (ADR-014, default %s). It selects "
+                         "the mode's corpus, the mode's captures, the mode's parity records, the mode's receipt and the "
+                         "mode's run record, and is passed to every comparator and to the composer. The read-oracle phase "
+                         "runs in the %s mode only: those captures are not mode-scoped"
+                         % (DEFAULT_SECURITY_MODE, DEFAULT_SECURITY_MODE))
+    ap.add_argument("--dest-config", action="append", default=[], metavar="KEY=VALUE",
+                    help="configuration the destination this runner STARTS is started with (repeatable), passed as a JVM "
+                         "system property (-DKEY=VALUE) and recorded verbatim in the run record. For the enabled mode this "
+                         "is the specimen's own security switch; the key is recorded, never assumed. A value that equals a "
+                         "declared credential is refused by key")
+    ap.add_argument("--from-decisions", action="store_true",
+                    help="take the destination's security switch from decisions.yaml's security section (ADR-014): "
+                         "--dest-config is filled with switch.key = the value that mode declares (enabled_value for the "
+                         "enabled mode, disabled_value for the disabled one). The default whenever an enabled-mode run has "
+                         "to start the destination itself. A --dest-config the caller named for the same key wins")
     ap.add_argument("--port", type=int, default=8081, help="the port the destination this runner starts listens on")
     ap.add_argument("--ready-timeout", type=int, default=180)
     ap.add_argument("--java", default="java")
@@ -541,6 +745,19 @@ def main(argv: list[str] | None = None) -> int:
     if not root.is_dir():
         print("FAIL: PARITY_RUN --root must be an existing directory", file=sys.stderr)
         return 2
+    try:
+        security_mode = normalize_security_mode(args.security_mode)
+        dest_config = parse_assignments(args.dest_config, "--dest-config")
+    except CorpusError as exc:
+        print("FAIL: PARITY_RUN %s" % exc, file=sys.stderr)
+        return 2
+    # Which evidence this run is OF, resolved once, through the same functions
+    # every other producer resolves it through: no path is spelled here, so no
+    # two of them can drift apart or share a directory between modes.
+    corpus_rel = corpus_path(security_mode)
+    parity_dir = scenario_parity_dir(security_mode)
+    receipt_rel = parity_receipt_path(security_mode)
+    mode_argv = ["--security-mode", security_mode]
     reset_cmd = args.reset_cmd or shlex.join(["bash", str(RESET_SCRIPT), "--root", str(root)])
 
     # What this run MEASURES: the accepted tree under the live seal, or the
@@ -564,7 +781,7 @@ def main(argv: list[str] | None = None) -> int:
     corpus: dict[str, Any] = {}
     corpus_error = ""
     try:
-        corpus = load_corpus(root)
+        corpus = load_corpus(root, security_mode)
     except CorpusError as exc:
         corpus_error = str(exc)
     corpus_sha = corpus_digest(corpus) if corpus else ""
@@ -576,6 +793,46 @@ def main(argv: list[str] | None = None) -> int:
     unknown_ids = [s for s in wanted_ids if s not in {str(sc["id"]) for sc in declared}]
     scenarios = [sc for sc in declared if str(sc["id"]) in set(wanted_ids)] if wanted_ids else declared
 
+    # --- what the destination is started with, and as whom it is asked ------
+    # Both are read BEFORE anything is started: a switch nobody declared and a
+    # credential this workspace does not hold are refusals that cost nothing
+    # here and cost a whole phase after the destination is up.
+    decided, decided_why = decided_security(root)
+    # The enabled mode needs the switch set on the destination it starts; that
+    # is the ADR-014 exit ("one artifact, restarted with the switch changed").
+    # A destination someone else runs is theirs to configure, and a caller that
+    # named the configuration itself has already said what it wants.
+    from_decisions = bool(args.from_decisions
+                          or (security_mode != DEFAULT_SECURITY_MODE and not dest_config and not args.dest_url))
+    derived: dict[str, str] = {}
+    derive_gap = ""
+    if from_decisions:
+        if not decided:
+            derive_gap = decided_why
+        else:
+            derived = switch_config(decided, security_mode)
+            if not derived:
+                derive_gap = ("decisions.yaml declares no %s_value for the security switch"
+                              % ("enabled" if security_mode != DEFAULT_SECURITY_MODE else "disabled"))
+    # The caller's own --dest-config wins over the derived switch: the decision
+    # is the default, not an override of what was asked for explicitly.
+    dest_config = {**derived, **dest_config}
+    # Every credential reference these requests may resolve: the ones the
+    # Operator declared and the ones this mode's corpus names. A configuration
+    # value that equals one of them would be written verbatim into the run
+    # record, which is exactly what ADR-014 keeps credentials out of.
+    credential_refs = sorted({str(i.get("credential_ref") or "") for i in ((decided or {}).get("identities") or [])
+                              if str(i.get("credential_ref") or "")}
+                             | ({str((decided or {}).get("invalid_credential_ref") or "")}
+                                if (decided or {}).get("invalid_credential_ref") else set())
+                             | set(corpus_credential_refs(scenarios)))
+    config_conflicts = credential_conflicts(dest_config, credential_refs)
+    # The identities the enabled-mode replay is made as, which the comparator
+    # reads for itself at request time. This checks they are there; it never
+    # reads what they hold.
+    absent_credentials = (missing_credentials(corpus_credential_refs(scenarios))
+                          if security_mode != DEFAULT_SECURITY_MODE else [])
+
     doc: dict[str, Any] = {
         "schema": SCHEMA, "producer": "run-parity.py", "at": _now(), "root": str(root),
         "dest_url": "", "started_by_runner": False, "reset_cmd": reset_cmd,
@@ -583,12 +840,26 @@ def main(argv: list[str] | None = None) -> int:
         "receipt_gaps": list(receipt_gaps or []),
         "issued": str(args.issued or ""),
         "binding": dict(binding) if binding else {"mode": "candidate", "gaps": list(binding_gaps)},
-        "corpus": str(CORPUS.as_posix()), "corpus_sha256": corpus_sha, "corpus_error": corpus_error,
+        "corpus": str(corpus_rel.as_posix()), "corpus_sha256": corpus_sha, "corpus_error": corpus_error,
         "scenario_filter": list(wanted_ids),
+        # what this run is OF (ADR-014), and what it started the destination
+        # with to make it so: the mode, the configuration verbatim, which of it
+        # came from the decided switch, and which credential NAMES the replay
+        # may resolve. No value of a credential is here, and none ever is.
+        "security_mode": security_mode,
+        "dest_config": dict(dest_config),
+        "dest_config_from_decisions": sorted(derived),
+        "dest_config_gap": derive_gap,
+        "credential_refs": list(credential_refs),
+        "artifact": artifact_identity(root),
         "scenarios": {"declared": len(declared), "selected": len(scenarios), "run": 0, "passed": 0, "failed": 0,
                       "inconclusive": 0, "results": []},
-        "read_oracles": {"ran": not wanted_ids,
-                         "reason": (READ_ORACLES_FILTERED % ", ".join(wanted_ids)) if wanted_ids else ""},
+        "read_oracles": {"ran": not wanted_ids and security_mode == DEFAULT_SECURITY_MODE,
+                         "reason": ("; ".join(
+                             ([READ_ORACLES_FILTERED % ", ".join(wanted_ids)] if wanted_ids else [])
+                             + ([READ_ORACLES_MODE % (DEFAULT_SECURITY_MODE, (ORACLES / "<slug>.json").as_posix(),
+                                                      security_mode, DEFAULT_SECURITY_MODE)]
+                                if security_mode != DEFAULT_SECURITY_MODE else [])))},
         "entry_points": {"admitted": len(wanted), "compared": 0, "passed": 0, "failed": 0, "inconclusive": 0,
                          "skipped": 0, "results": [], "not_compared": []},
         # the bounded navigation check (ADR-016): a separate measurement beside
@@ -602,7 +873,7 @@ def main(argv: list[str] | None = None) -> int:
         "compose": {"rc": None, "argv": []},
         "receipt_verdict": "", "failures": [], "ok": False,
     }
-    out = root / RUN_RECORD
+    out = root / run_record_path(security_mode)
     failures: list[str] = doc["failures"]
     if corpus_error:
         # The corpus is the only source of a write comparison. Its absence is
@@ -610,26 +881,60 @@ def main(argv: list[str] | None = None) -> int:
         failures.append("corpus: %s" % corpus_error)
     if unknown_ids:
         failures.append("scenario filter: %s is not declared by the corpus (%s); nothing was compared for it"
-                        % (", ".join(unknown_ids), CORPUS.as_posix()))
+                        % (", ".join(unknown_ids), corpus_rel.as_posix()))
     if binding_gaps:
         # The caller asked for a candidate-bound run and the binding cannot be
         # made: the children would each refuse for the same reason. Say it once,
         # here, rather than as N identical scenario refusals.
         failures.append("issued binding: %s" % "; ".join(binding_gaps))
 
+    # --- what stops the run BEFORE anything is started ----------------------
+    # These three are not results of a measurement; they are reasons no
+    # measurement can be made. Discovering them after the destination is up
+    # would spend the whole phase to learn what decisions.yaml and the
+    # environment could have said at the start -- and, in the credential case,
+    # would replay every enabled-mode scenario as nobody and record the 401s as
+    # the destination's answer.
+    preflight: list[str] = []
+    if derive_gap:
+        preflight.append("--from-decisions: %s" % derive_gap)
+    if config_conflicts:
+        preflight.append("--dest-config %s carries the value of a credential (%s); the run record is evidence, so a "
+                         "credential reaches the destination through the environment variable that holds it and never as "
+                         "a recorded property" % (", ".join(config_conflicts), ", ".join(credential_refs)))
+    if absent_credentials:
+        preflight.append("credential(s) %s are not set in this workspace; the %s-mode scenarios are replayed as the "
+                         "identities the corpus names, and a credential is never invented nor a request quietly made as "
+                         "nobody" % (", ".join(absent_credentials), security_mode))
+    if preflight:
+        failures.extend(preflight)
+        doc["ok"] = False
+        write_canonical(out, doc)
+        for f in preflight:
+            print("  - %s" % f, file=sys.stderr)
+        print("REFUSE: PARITY_RUN nothing was started and nothing was compared → %s" % out, file=sys.stderr)
+        return 1
+
     dest = None
     try:
         if args.dest_url:
             doc["dest_url"] = args.dest_url
+            if dest_config:
+                # Said plainly rather than left to be assumed from the presence
+                # of the key: a destination someone else runs was started by
+                # them, and this configuration reached nothing.
+                doc["dest_config_note"] = ("a destination passed with --dest-url is started by someone else; this "
+                                           "configuration is what the run was ASKED for, not what that destination runs")
         else:
-            dest = Destination(root, args.port, args.java, args.ready_timeout)
+            dest = Destination(root, args.port, args.java, args.ready_timeout, dest_config)
             print("starting the packaged destination on port %d ..." % args.port)
             err = dest.start()
             doc["dest_url"] = dest.base_url
             doc["started_by_runner"] = True
             doc["destination"] = {"port": args.port, "root_path": dest.root_path,
                                   "log": str(dest.log.relative_to(root)) if dest.log.is_file() else "",
-                                  "profiles": list(dest.profiles), "db_kind": str(dest.ds.get("db_kind") or "")}
+                                  "profiles": list(dest.profiles), "db_kind": str(dest.ds.get("db_kind") or ""),
+                                  "config": dict(dest.dest_config), "argv": list(dest.argv)}
             if err:
                 failures.append("destination: %s" % err)
                 doc["destination"]["error"] = err
@@ -643,9 +948,9 @@ def main(argv: list[str] | None = None) -> int:
         for sc in scenarios:
             sid = str(sc["id"])
             argv_sc = [sys.executable, str(COMPARE_SCENARIO), "--root", str(root), "--scenario", sid,
-                       "--dest-url", dest_url, "--reset-cmd", reset_cmd, *issued_argv]
+                       "--dest-url", dest_url, "--reset-cmd", reset_cmd, *mode_argv, *issued_argv]
             proc = _run_child(argv_sc, "scenario %s" % sid)
-            verdict, reason = _verdict_of(root / SCENARIO_PARITY / (scenario_slug(sid) + ".json"))
+            verdict, reason = _verdict_of(root / parity_dir / (scenario_slug(sid) + ".json"))
             row = {"id": sid, "entry_point": str(sc.get("entry_point") or ""), "rc": proc.returncode,
                    "verdict": verdict, "reason": reason[:300]}
             doc["scenarios"]["results"].append(row)
@@ -661,7 +966,7 @@ def main(argv: list[str] | None = None) -> int:
         #    this run was scoped to named scenarios, when the read oracles are
         #    not what is being re-measured and every entry point is named as
         #    not compared, with the reason
-        for ep in (wanted if not wanted_ids else []):
+        for ep in (wanted if doc["read_oracles"]["ran"] else []):
             gap = read_oracle_gap(root, ep)
             if gap:
                 doc["entry_points"]["skipped"] += 1
@@ -680,7 +985,7 @@ def main(argv: list[str] | None = None) -> int:
             doc["entry_points"]["compared"] += 1
             key = {"PASS": "passed", "FAIL": "failed"}.get(verdict, "inconclusive")
             doc["entry_points"][key] += 1
-        if wanted_ids:
+        if not doc["read_oracles"]["ran"]:
             for ep in wanted:
                 doc["entry_points"]["skipped"] += 1
                 doc["entry_points"]["not_compared"].append({"entry_point": ep, "reason": doc["read_oracles"]["reason"]})
@@ -689,17 +994,17 @@ def main(argv: list[str] | None = None) -> int:
         #     is still up -- after the comparisons and before the composer,
         #     which reads the records it leaves.
         if not args.no_navigation:
-            run_navigation(root, scenarios, dest_url, args.nav_max_hops, doc["navigation"])
+            run_navigation(root, scenarios, dest_url, args.nav_max_hops, doc["navigation"], parity_dir)
     finally:
         if dest is not None:
             dest.stop()
 
     # 3. the receipt, once, last
-    receipt_p = root / PARITY / "receipt.json"
+    receipt_p = root / receipt_rel
     # the receipt as it stood BEFORE the composer ran: what tells a receipt
     # this run composed apart from the one a refusing composer left behind
     before_stamp = _file_stamp(receipt_p)
-    argv_rc = [sys.executable, str(COMPOSE_RECEIPT), "--root", str(root), *issued_argv]
+    argv_rc = [sys.executable, str(COMPOSE_RECEIPT), "--root", str(root), *mode_argv, *issued_argv]
     proc = _run_child(argv_rc, "compose-parity-receipt")
     doc["compose"] = {"rc": proc.returncode, "argv": argv_rc[1:]}
     after_stamp = _file_stamp(receipt_p)
@@ -730,9 +1035,10 @@ def main(argv: list[str] | None = None) -> int:
     nav_summary = ("navigation skipped" if nav_doc == "skipped" else
                    "%d redirect target(s) navigated (%d ok, %d dead, %d loop, %d too many hops)"
                    % (nav_doc["checked"], nav_doc["ok"], nav_doc["dead"], nav_doc["loop"], nav_doc["too_many_hops"]))
-    summary = ("%s%d/%d scenario(s) run (%d PASS, %d FAIL, %d INCONCLUSIVE); %d/%d entry point(s) compared "
+    summary = ("%s%s%d/%d scenario(s) run (%d PASS, %d FAIL, %d INCONCLUSIVE); %d/%d entry point(s) compared "
                "(%d not compared); %s; receipt %s"
-               % (("scoped to %s: " % ", ".join(wanted_ids)) if wanted_ids else "",
+               % (("%s mode: " % security_mode) if security_mode != DEFAULT_SECURITY_MODE else "",
+                  ("scoped to %s: " % ", ".join(wanted_ids)) if wanted_ids else "",
                   doc["scenarios"]["run"], doc["scenarios"]["selected"], doc["scenarios"]["passed"],
                   doc["scenarios"]["failed"], doc["scenarios"]["inconclusive"], doc["entry_points"]["compared"],
                   doc["entry_points"]["admitted"], doc["entry_points"]["skipped"], nav_summary,

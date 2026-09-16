@@ -61,12 +61,47 @@ source did. Everything here is measurement. Nothing here decides.
    ran for none of the 34 admitted entry points, and 24 of them ended "no
    parity record" in a receipt that was composed anyway.
 
+   **The security mode (ADR-014).** By default the runner measures the
+   `disabled` mode: the corpus, captures, parity records and receipt that have
+   always been at those paths. When the source was also captured with its
+   security switch ON (`verification/source-oracles/scenarios-enabled/`), run
+   it a second time against the **same packaged artifact**, restarted with the
+   switch changed:
+
+```bash
+python3 .hermes/skills/paved-road/paved-road-m4/scripts/run-parity.py --root . \
+  --security-mode enabled --from-decisions
+```
+
+   `--security-mode` scopes everything to that mode — its corpus, its
+   captures, `verification/parity/scenarios-enabled/`,
+   `verification/parity/receipt-enabled.json` and its own
+   `verification/parity/_run-enabled.json` — and is passed to every comparator
+   and to the composer, so nothing can be compared across modes.
+   `--from-decisions` starts the destination with the switch `decisions.yaml`
+   declares (`security.switch.key` = that mode's value) as a `-D` system
+   property, recorded verbatim in the run record; `--dest-config KEY=VALUE`
+   says it explicitly instead. Both run records carry the packaged artifact's
+   digest, which is how "one artifact, restarted with the switch changed" is
+   shown rather than asserted. KEEP both receipts and both run records.
+
+   Two things the enabled run does **not** do, and says so: it does not
+   re-compare the read oracles (those captures are not mode-scoped and were
+   taken with the switch off — every entry point is named with that reason),
+   and it does not invent an identity. The enabled-mode requests are made as
+   the credential environment variables the corpus names and the capture used;
+   the runner checks they are set before it starts anything and refuses naming
+   the VARIABLE when one is absent. A `--dest-config` value that equals one of
+   those credentials is refused by KEY: the run record is evidence.
+
    The runner exits 0 whenever every child ran and the receipt was composed.
    A receipt verdict of `FAIL` or `INCONCLUSIVE` is the measurement, not a
    runner failure: it is carried into the verdict at step 6. The runner exits
    1 only when a child could not run — no corpus, a destination that never
    became ready, a child that recorded no verdict, a composer that refused to
-   compose — and that is a `kanban_block` kind=needs_input, not a verdict.
+   compose, a declared credential the workspace does not hold, a switch
+   `decisions.yaml` does not declare — and that is a `kanban_block`
+   kind=needs_input, not a verdict.
 3. `skill_view generate-product-tests` then
    `python3 .hermes/skills/gates/generate-product-tests/scripts/generate-product-tests.py --root .`
    — the HARNESS writes the product acceptance tests (ADR-015): one
@@ -243,4 +278,9 @@ fixture PASS/REFUSE set, and the coverage lint.
 against a stub destination: every scenario in corpus order, every captured
 read oracle compared, the uncomparable entry points named with their reason,
 the receipt composed last, a FAIL receipt exiting 0, a missing corpus
-exiting 1.
+exiting 1; and the security mode (ADR-014) — an enabled-mode run reads and
+writes only that mode's evidence, tells every child the mode, skips the read
+oracles with the reason, asks the destination as the identity the corpus
+names, leaves the disabled mode's own run record untouched and records the
+same artifact digest as it, while a missing credential refuses by NAME and a
+`--dest-config` carrying one refuses by KEY.
