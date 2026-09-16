@@ -35,6 +35,13 @@ Cases:
       receipt, so the CORS repair is minted; the refused reads are ADR-014's
       Operator step and are withheld from the mint; and the same receipt
       without the CORS row resumes nothing (exit 2). Renamed specimen: (e).
+  (f) the whole v9 sequence, in the order it happened: a parity card accepted
+      under a SCOPED comparison snapshotted that receipt as the loop's parity
+      baseline, the M4 road then composed the FULL receipt, the resume minted
+      what it owed, and the first candidate was REVERTED -- whereupon the
+      reject path restored the older scoped snapshot and the obligation the
+      loop was working on vanished. The close is what makes the comparison it
+      closed on the accepted baseline. Renamed specimen: (f2).
 """
 from __future__ import annotations
 
@@ -47,6 +54,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 SCRIPT = HERE / "resume-after-m4.py"
+ADVANCE = HERE / "advance.py"
 GOLDEN = HERE.parents[4]
 
 sys.path.insert(0, str(GOLDEN / ".hermes" / "lib"))
@@ -659,12 +667,140 @@ def case_worklist_rebuilt_refuses() -> int:
         return 0
 
 
+def _scoped_acceptance_snapshot(root: Path, eps: list, scoped: str) -> None:
+    """What the last ACCEPTED parity step left as the loop's baseline.
+
+    The acceptance path re-runs the comparison SCOPED to the issued card's own
+    scenarios, and `compose-parity-receipt.py` then composes over every record
+    on disk: the row it just re-measured, and for every other entry point the
+    record the last full run left. So the receipt carries all the rows -- and
+    the ones it did not re-run are as old as the records behind them. That is
+    the receipt `advance.py`'s `snapshot_reports` copies into
+    verification/loop/accepted/parity/ when the step is accepted."""
+    from _loop_common import snapshot_reports
+
+    digest = load_json(root / ADMISSION_RECEIPT)["receipt_digest"]
+    pdir = root / "verification" / "parity"
+    pdir.mkdir(parents=True, exist_ok=True)
+    rows = []
+    for ep in eps:
+        write_canonical(pdir / (_slug(ep) + ".json"), {
+            "schema": "rhoai3.parity/v1", "entry_point": ep, "verdict": "PASS",
+            "reason": "", "receipt_sha256": digest})
+        rows.append({"entry_point": ep, "verdict": "PASS",
+                     "reason": "re-measured for the issued card" if ep == scoped else "the last full run's record",
+                     "scenarios": []})
+    write_canonical(pdir / "receipt.json", {
+        "schema": "rhoai3.parity-receipt/v1", "receipt_sha256": digest,
+        "producer": "compose-parity-receipt.py", "corpus_sha256": "c" * 64, "corpus_error": "",
+        "binding": {"mode": "candidate", "card": "t_scoped", "candidate_sha256": "a" * 64,
+                    "issued_receipt_sha256": digest},
+        "entry_points": rows, "total": len(rows), "not_passed": 0,
+        "cors": {"source_policies": [], "gaps": []},
+        "qualification": {"present": True, "derived_corpus": False, "gap": "", "not_passed": [], "stale": []},
+        "coverage_gaps": [], "verdict": "PASS"})
+    snapshot_reports(root)
+
+
+def _reverted_candidate(root: Path, cluster: str) -> tuple[int, str]:
+    """The v9 revert, run for real: a candidate verified, the tree touched after
+    the verification, `advance.py` REVERTS it -- and its reject path calls
+    `restore_reports`, which puts the ACCEPTED parity snapshot back."""
+    props = root / APP_PROPERTIES
+    props.parent.mkdir(parents=True, exist_ok=True)
+    before = props.read_text(encoding="utf-8") if props.is_file() else ""
+    props.write_text(before + "\nquarkus.http.cors=true\n", encoding="utf-8")
+    specimens.verify(root, errors=[], failures=[], findings={})
+    props.write_text(before + "\nquarkus.http.cors=true\n# touched after the verification\n", encoding="utf-8")
+    p = subprocess.run([sys.executable, str(ADVANCE), "--root", str(root), "--cluster", cluster,
+                        "--card", "t_reverted", "--no-mint"], text=True, capture_output=True)
+    return p.returncode, p.stdout + p.stderr
+
+
+def _reverted_baseline_case(base: str) -> int:
+    """Measured on destination v9, in this order: a parity card was ACCEPTED
+    under a comparison SCOPED to one scenario, so the receipt that step
+    snapshotted as the accepted baseline is that scoped run's; the M4 road then
+    composed a FULL receipt (thirteen FAIL rows, the CORS preflight among
+    them); `resume-after-m4.py` closed the M4 card and minted the obligations
+    that receipt owed; and the very first candidate was REVERTED for an edit
+    after its verification. `advance.py`'s reject path calls `restore_reports`,
+    which restored the SCOPED snapshot over the full receipt -- and the rebuilt
+    work list then had no parity obligation at all: open_clusters 0,
+    parity_mismatches 0, no card, nothing minted. The obligation the loop was
+    working on did not fail; it vanished, because a rejected candidate's revert
+    restored a baseline older than the receipt its card was issued from.
+
+    The baseline a card is issued against is the receipt the close was made
+    on, so the close is what has to record it."""
+    with tempfile.TemporaryDirectory(prefix="resume-m4-baseline-") as td:
+        root, eps = _at_m4(Path(td), base=base)
+        _scoped_acceptance_snapshot(root, eps, eps[0])
+        refused = _parity_v9(root, eps)                      # the M4 road: FAIL, CORS + refused reads
+        _verdict(root, V9_FLOORS)
+        m4_receipt = sha256_file(root / "verification" / "parity" / "receipt.json")
+        rc, out, err = _run(root)
+        if rc != 0 or out.count("MINT (dry-run)") != 1:
+            return _fail("the fixture must resume and mint the CORS obligation: rc=%d %s" % (rc, (out + err)[-800:]))
+        wl = load_json(root / WORKLIST)
+        owed = int(wl["measure"]["parity_mismatches"] or 0)
+        cluster = str(wl.get("head") or "")
+        if owed < 1 or not cluster:
+            return _fail("the fixture must leave an open parity obligation to lose: %s / %s" % (wl["measure"], cluster))
+
+        # the close made the M4 comparison the accepted baseline, which is what
+        # `advance.py` hands progress() as the "before" of every card it minted
+        snap = root / "verification" / "loop" / "accepted" / "parity" / "receipt.json"
+        if not snap.is_file() or sha256_file(snap) != m4_receipt:
+            return _fail("the close must snapshot the receipt it closed on as the accepted parity baseline: %s"
+                         % (sha256_file(snap)[:12] if snap.is_file() else "absent"))
+        src = load_json(root / "verification" / "loop" / "accepted" / "parity-source.json")
+        if (src.get("binding") or {}).get("mode") != "sealed" or src.get("card") != CLOSE_CARD:
+            return _fail("the baseline must record whose comparison it is (sealed, the M4 card): %s" % src)
+        for ep in refused[:1] + [eps[1]]:
+            if not (root / "verification" / "parity" / (_slug(ep) + ".json")).is_file():
+                continue
+            kept = root / "verification" / "loop" / "accepted" / "parity" / (_slug(ep) + ".json")
+            if not kept.is_file() or load_json(kept)["verdict"] != "FAIL":
+                return _fail("the per-verdict records the receipt was composed from must be snapshotted too: %s" % kept)
+
+        rc, blob = _reverted_candidate(root, cluster)
+        if rc != 1 or "REVERTED" not in blob:
+            return _fail("the fixture needs the candidate REVERTED for an edit after its verification: rc=%d %s"
+                         % (rc, blob[-600:]))
+        live = load_json(root / "verification" / "parity" / "receipt.json")
+        if live.get("verdict") != "FAIL" or sha256_file(root / "verification" / "parity" / "receipt.json") != m4_receipt:
+            return _fail("a rejected candidate must not restore a parity baseline older than the receipt its card was "
+                         "issued from: the receipt on disk is now %s with %d row(s)"
+                         % (live.get("verdict"), len(live.get("entry_points") or [])))
+        after = build_worklist(root)
+        if int(after["measure"]["parity_mismatches"] or 0) != owed:
+            return _fail("the obligations the reverted card was minted for must survive the revert: %s were owed, %s are "
+                         "reported" % (owed, after["measure"]["parity_mismatches"]))
+        if not [c for c in after["clusters"] if c["status"] == "open"]:
+            return _fail("a revert that leaves no open cluster has lost the work, not judged it")
+        return 0
+
+
+def case_reverted_candidate_keeps_the_m4_baseline() -> int:
+    """(f) the v9 sequence: accepted scoped snapshot → M4 full receipt → resume
+    mints → candidate reverted → the full receipt and its obligations survive."""
+    return _reverted_baseline_case("org.acme.clinic")
+
+
+def case_reverted_baseline_renamed_specimen() -> int:
+    """(f2) the same, under another specimen: a baseline is a receipt and a
+    card id, never a specimen's names."""
+    return _reverted_baseline_case("com.example.store")
+
+
 def main() -> int:
     for case in (case_both, case_decisions_only, case_wrong_card, case_wrong_receipt_bindings,
                  case_renamed_specimen, case_contract_reseal, case_product_change_refuses,
                  case_worklist_rebuilt_refuses, case_v9_receipt_shape,
                  case_v9_without_the_repairable_row, case_v9_head_is_a_decision,
-                 case_v9_renamed_specimen):
+                 case_v9_renamed_specimen, case_reverted_candidate_keeps_the_m4_baseline,
+                 case_reverted_baseline_renamed_specimen):
         rc = case()
         if rc:
             return rc
@@ -677,7 +813,7 @@ def main() -> int:
           "product change or a rebuilt work list still refuses and re-seals nothing; and on v9's own shape -- a "
           "verdict naming check-empty-security and check-product-tests and NOT the parity floor, over a FAIL receipt "
           "with one CORS preflight and twelve refused reads -- the CORS card is minted from the receipt, the refused "
-          "reads are withheld to ADR-014 and recorded, and the same receipt without the CORS row blocks at exit 2)")
+          "reads are withheld to ADR-014 and recorded, and the same receipt without the CORS row blocks at exit 2; and the close makes the comparison it closed on the ACCEPTED parity baseline, so a candidate REVERTED off the card it minted restores THAT receipt and not the older scoped one an earlier accepted step left -- the obligations survive the revert, under a renamed specimen too)")
     return 0
 
 

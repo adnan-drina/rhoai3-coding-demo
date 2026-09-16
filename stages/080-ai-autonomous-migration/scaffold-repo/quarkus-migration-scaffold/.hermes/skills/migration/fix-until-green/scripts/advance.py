@@ -84,7 +84,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _loop_common import PARITY_SNAPSHOT, attempt_budget, attempts_spent, budget, candidate_sha256, classify_inconclusive, clear_pending, source_write_members, state_change_violations, catalog_property_mappings, ensure_hermes_lib, git, load_deferred, load_issued, load_state, load_steps, pending_for, product_paths_changed, profile_keys_lost_in_tree, publish_loop_state, restore_reports, revert_paths, save_deferred, save_pending_candidate, save_steps, snapshot_reports  # noqa: E402
+from _loop_common import PARITY_SNAPSHOT, attempt_budget, attempts_spent, budget, candidate_sha256, classify_inconclusive, clear_pending, source_write_members, state_change_violations, catalog_property_mappings, ensure_hermes_lib, git, load_deferred, load_issued, load_state, load_steps, pending_for, product_paths_changed, profile_keys_lost_in_tree, publish_loop_state, restore_reports, revert_paths, save_deferred, save_pending_candidate, save_steps, snapshot_reports, tree_changes  # noqa: E402
 
 ensure_hermes_lib()
 from planner import pipeline  # noqa: E402
@@ -443,7 +443,23 @@ def main(argv: list[str] | None = None) -> int:
         print("REFUSE: LOOP_DIAGNOSTIC_NOT_ACCEPTANCE diagnostic mode cannot promote or reject; run run-verify.sh --mode acceptance on this candidate", file=sys.stderr)
         return 1
     if on_disk != state.get("candidate_sha256"):
-        # the tree changed after verification: the measure no longer describes it
+        # The tree changed after verification, so the measure no longer
+        # describes it -- UNLESS what changed is not part of the candidate at
+        # all. `is_product_path` is an exempt list, so a diagnosis that leaves
+        # tool output in the tree (v9 t_46556d5e: javap extracted .class files
+        # under io/quarkus/ at the root, after the verification) moved this
+        # digest and cost a measured repair its attempt. Untracked files
+        # outside the migration's product are nobody's repair and no evidence
+        # against one: asked here, before any verdict, and answered by what
+        # the digest WOULD be without them.
+        scratch = tree_changes(root)[1]
+        if scratch and candidate_sha256(root, exclude=scratch) == str(state.get("candidate_sha256") or ""):
+            print("REFUSE: LOOP_SCRATCH_IN_TREE %d untracked file(s) outside this migration's product sit in the tree "
+                  "and moved the candidate digest: %s. The verified candidate is otherwise intact, so nothing is "
+                  "judged, no attempt is spent and the candidate stays where it is: remove the files (they are tool "
+                  "output, not a repair) and run advance.py again."
+                  % (len(scratch), ", ".join(scratch[:8]) + (", ..." if len(scratch) > 8 else "")), file=sys.stderr)
+            return 1
         if args.baseline:
             print("FAIL: LOOP_CANDIDATE_CHANGED tree edited after run-verify.sh; run it again", file=sys.stderr)
             return 2

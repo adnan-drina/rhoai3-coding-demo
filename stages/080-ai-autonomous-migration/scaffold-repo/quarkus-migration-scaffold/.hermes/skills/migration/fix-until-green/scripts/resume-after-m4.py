@@ -97,7 +97,7 @@ from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _loop_common import ensure_hermes_lib, git, load_issued, load_steps, pending_for, publish_loop_state, save_steps  # noqa: E402
+from _loop_common import PARITY_SOURCE_SCHEMA, ensure_hermes_lib, git, load_issued, load_steps, pending_for, publish_loop_state, save_steps, snapshot_parity  # noqa: E402
 
 ensure_hermes_lib()
 from planner import pipeline  # noqa: E402
@@ -569,6 +569,24 @@ def main(argv: list[str] | None = None) -> int:
         close_row["contract_reseal"] = reseal
     steps.setdefault("rejected", []).append(close_row)
     save_steps(root, steps)
+    # The comparison M4 composed is now the loop's ACCEPTED parity baseline: it
+    # was measured on this sealed tree, it is the receipt the cards below are
+    # minted from, and `_loop_common.restore_reports` puts the accepted
+    # snapshot back over the live records every time a candidate is discarded.
+    # Without this the baseline stays whatever the last accepted parity step
+    # left -- on v9 a receipt composed by a run SCOPED to one scenario, taken
+    # before M4 measured the phase -- and the first revert restores a baseline
+    # older than the receipt the reverted card was issued against. Measured:
+    # t_46556d5e was REVERTED for an edit after verification, the restore put
+    # the scoped receipt back over the full one, and the rebuild reported zero
+    # parity mismatches and zero open clusters. The obligation did not fail; it
+    # vanished.
+    snapshot_parity(root, {
+        "schema": PARITY_SOURCE_SCHEMA, "at": _now(), "card": card_id, "verdict": token,
+        "binding": {"mode": "sealed", "card": card_id},
+        "receipt_sha256": parity_on_disk, "corpus_sha256": corpus_sha,
+        "reason": "the M4 verdict for %s closed on this comparison; the obligations it names are minted from it" % card_id,
+    })
     if (root / LOOP_ISSUED).is_file():
         (root / LOOP_ISSUED).unlink()
     rebuilt = build_worklist(root)

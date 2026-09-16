@@ -938,8 +938,92 @@ def _set_wide_blocker_case() -> int:
     return 0
 
 
+def _scratch_in_tree_case(base: str = "org.acme.clinic") -> int:
+    """v9 t_46556d5e: the worker ran javap to diagnose its own repair, javap
+    extracted .class files under io/quarkus/ at the destination ROOT, and the
+    files landed after the verification. `is_product_path` is an exempt list
+    (not evidence/, verification/, .hermes/, .derived/, target/, .git/), so
+    that scratch counted as product: the candidate digest moved, advance.py
+    read it as a post-verification product edit, and a repair it had already
+    measured was REVERTED with an attempt spent on tool output.
+
+    A change to something this migration OWNS after verification still
+    invalidates the measured candidate. Untracked files outside its product do
+    not: they are nobody's repair and no evidence against one, so they are not
+    a verdict either -- a typed refusal, no attempt, the candidate left where
+    it is. Removing them and running advance.py again gives the verdict the
+    verification earned."""
+    from planner.paths import MTA_FINDINGS  # noqa: E402
+
+    with tempfile.TemporaryDirectory(prefix="scratch-adv-") as td:
+        root = specimens.build_dest(Path(td) / "dest", specimens.specimen("http", base=base),
+                                    decisions=specimens.admitted_decisions(max_attempts=3))
+        owner = "src/main/java/%s/owner/OwnerController.java" % base.replace(".", "/")
+        errors = [(owner, 3, "cannot find symbol ResponseEntity")]
+        specimens.prepare_loop(root, errors=errors)
+        findings = load_json(root / MTA_FINDINGS)
+        head = specimens.issue(root)
+        cluster = head["logical_id"]
+        issued = load_json(root / LOOP_ISSUED)
+        target = root / str((issued.get("write_set") or ["pom.xml"])[0])
+        before = target.read_text(encoding="utf-8")
+
+        # the repair the card asked for: one mandatory obligation on that file
+        # is gone from the rescan, and the file changed
+        repaired = json.loads(json.dumps(findings))
+        rule = next(k for k, v in (repaired.get("violations") or {}).items()
+                    if v.get("category") == "mandatory"
+                    and all(str(i.get("uri") or "").endswith("/" + target.name) for i in (v.get("incidents") or [])))
+        repaired["violations"].pop(rule)
+        target.write_text(before + "\n<!-- repaired -->\n", encoding="utf-8")
+        specimens.verify(root, errors=errors, failures=[], findings=repaired)
+        spent = dict(load_json(root / LOOP_STEPS).get("attempts") or {})
+        head_commit = _git(root, "rev-parse", "HEAD").strip()
+
+        # javap leaves its extracted classes at the tree root, AFTER the verify
+        scratch = root / "io" / "quarkus" / "runtime" / "Quarkus.class"
+        scratch.parent.mkdir(parents=True, exist_ok=True)
+        scratch.write_bytes(b"\xca\xfe\xba\xbe extracted by javap\n")
+        p = _advance(root, cluster, "t_scratch")
+        blob = p.stdout + p.stderr
+        if p.returncode != 1 or "LOOP_SCRATCH_IN_TREE" not in blob:
+            return _fail("tool output left in the tree must not be a verdict: rc=%s %s" % (p.returncode, blob[-600:]))
+        if "io/quarkus/runtime/Quarkus.class" not in blob:
+            return _fail("the refusal must name the files it is refusing over: %s" % blob[-400:])
+        if (load_json(root / LOOP_STEPS).get("attempts") or {}) != spent:
+            return _fail("a refusal over scratch must spend no attempt: %s" % load_json(root / LOOP_STEPS).get("attempts"))
+        if target.read_text(encoding="utf-8") == before or not scratch.is_file():
+            return _fail("the refusal must leave the candidate and the scratch exactly where they are")
+        if _git(root, "rev-parse", "HEAD").strip() != head_commit:
+            return _fail("a refusal promotes nothing")
+
+        # a PRODUCT path touched after the verification is still the revert it
+        # always was: the control that keeps the refusal from swallowing it
+        target.write_text(before + "\n<!-- repaired -->\n<!-- late -->\n", encoding="utf-8")
+        p = _advance(root, cluster, "t_scratch")
+        blob = p.stdout + p.stderr
+        if p.returncode != 1 or "LOOP_CANDIDATE_CHANGED" not in blob or "REVERTED" not in blob:
+            return _fail("a product edit after verification must still revert, scratch or no scratch: %s" % blob[-600:])
+
+        # the worker removes the scratch, re-measures its own repair and
+        # advances again: the normal verdict
+        import shutil as _shutil
+
+        _shutil.rmtree(root / "io")
+        specimens.issue(root)
+        target.write_text(before + "\n<!-- repaired -->\n", encoding="utf-8")
+        specimens.verify(root, errors=errors, failures=[], findings=repaired)
+        p = _advance(root, cluster, "t_scratch2")
+        if p.returncode != 0 or "ACCEPTED" not in p.stdout:
+            return _fail("with the scratch removed the candidate must get the verdict it earned: %s%s"
+                         % (p.stdout[-400:], p.stderr[-600:]))
+        return 0
+
+
 def main() -> int:
     if _checked_veto_case() or _checked_family_advance_case() or _introduced_attribution_case() or _disposition_case() or _set_wide_blocker_case() or _parity_card_case():
+        return 1
+    if _scratch_in_tree_case() or _scratch_in_tree_case("com.example.store"):
         return 1
     if _unit_checkpoint_case():
         return 1
@@ -1551,7 +1635,7 @@ def main() -> int:
         p = _advance(root, "c:tampered", "t_z")
         if p.returncode != 2 or "LOOP_STALE_STATE" not in p.stderr:
             return _fail("tampered work list must refuse advance: %s" % p.stderr)
-    print("OK: fix-until-green (checked-exception veto: a falling count does not admit an introduced unhandled exception; family bound to its introducing step: Owner→Pet CONTINUE in the same card without an attempt, a stalled continuation rejects, an exposure outside the family is a typed diagnosis; an introduced attribution diagnostic is rejected, not parked (javac reports every one of them at once; a flow code newly reported stays exposed; one the accepted tree already had is not introduced); a harness-caused deferral is cleared by a metadata-only disposition and the one budget sees it; a set-wide packaging cause reaches the work list as one typed blocker with no card, under permuted reported names; measurement contract: unrun tests / empty reports / failed runner / skipped rescan are unknown; baseline; issued card; diagnostic cannot advance; post-verify edit + unissued cluster refused with baseline intact; out-of-scope test edit rejected + reverted + reports discarded; accept commits; staged no-progress reverted from index; line shift is not a new obligation; unresolvable candidate is VERIFICATION_PENDING (no attempt); known no-progress defers; Operator rewind restores tree+budget in a new epoch; green → packaging → startup → M4 (unknown gates never mint; an environment blocker is not a card; a gate repair is accepted phase-aware); unresolved test = typed blocker; tampered list refused; PARITY CARD (v9 t_77cae2b2): the obligation carries gate=parity onto the issued card, the brief names its scenarios and what discharges them, a comparison that did not run retains the candidate without an attempt, one that still reports the obligation reverts it, a receipt composed for another card is not this card's measurement, a receipt that carries NO binding after a comparison bound to this card is the one a refusing composer left (VERIFICATION_PENDING, no attempt, never ACCEPTED), and the repair is ACCEPTED on the re-composed candidate-bound receipt with the tuple unchanged at [0,0,0], the receipt snapshotted with the accepted reports); UNIT CHECKPOINT: the attribution veto is PARTITIONED for a unit card -- a candidate that invented a replacement the catalogue never wrote down still REVERTS with the symbols named (v9 t_3903f495), while one whose remaining diagnostics name the DOCUMENTED target is ACCEPTED with the compile count unchanged and records each tolerated diagnostic with its boundary and its catalogue row; an unresolved lookalike (UriBuilder with nothing importing it) is not the catalogued target either, and the accepted case is the one whose file IMPORTS it; every tolerated diagnostic is still an obligation on the rebuilt work list; the compiler naming another member of the same unit CONTINUES the card without spending an attempt, one naming a file the unit does not seal is a typed diagnosis, and a sealed member answered by deleting it violates however far the measure fell)")
+    print("OK: fix-until-green (checked-exception veto: a falling count does not admit an introduced unhandled exception; family bound to its introducing step: Owner→Pet CONTINUE in the same card without an attempt, a stalled continuation rejects, an exposure outside the family is a typed diagnosis; an introduced attribution diagnostic is rejected, not parked (javac reports every one of them at once; a flow code newly reported stays exposed; one the accepted tree already had is not introduced); a harness-caused deferral is cleared by a metadata-only disposition and the one budget sees it; a set-wide packaging cause reaches the work list as one typed blocker with no card, under permuted reported names; measurement contract: unrun tests / empty reports / failed runner / skipped rescan are unknown; baseline; issued card; diagnostic cannot advance; post-verify edit + unissued cluster refused with baseline intact; out-of-scope test edit rejected + reverted + reports discarded; accept commits; staged no-progress reverted from index; line shift is not a new obligation; unresolvable candidate is VERIFICATION_PENDING (no attempt); known no-progress defers; Operator rewind restores tree+budget in a new epoch; green → packaging → startup → M4 (unknown gates never mint; an environment blocker is not a card; a gate repair is accepted phase-aware); unresolved test = typed blocker; tampered list refused; PARITY CARD (v9 t_77cae2b2): the obligation carries gate=parity onto the issued card, the brief names its scenarios and what discharges them, a comparison that did not run retains the candidate without an attempt, one that still reports the obligation reverts it, a receipt composed for another card is not this card's measurement, a receipt that carries NO binding after a comparison bound to this card is the one a refusing composer left (VERIFICATION_PENDING, no attempt, never ACCEPTED), and the repair is ACCEPTED on the re-composed candidate-bound receipt with the tuple unchanged at [0,0,0], the receipt snapshotted with the accepted reports); SCRATCH IN THE TREE (v9 t_46556d5e): untracked files outside this migration's product that appear after the verification (javap's extracted .class files at the root) are a typed refusal naming them -- no attempt, the candidate untouched -- while a product path touched after the verification still REVERTS, and the same candidate is ACCEPTED once the scratch is removed, under a renamed specimen too); UNIT CHECKPOINT: the attribution veto is PARTITIONED for a unit card -- a candidate that invented a replacement the catalogue never wrote down still REVERTS with the symbols named (v9 t_3903f495), while one whose remaining diagnostics name the DOCUMENTED target is ACCEPTED with the compile count unchanged and records each tolerated diagnostic with its boundary and its catalogue row; an unresolved lookalike (UriBuilder with nothing importing it) is not the catalogued target either, and the accepted case is the one whose file IMPORTS it; every tolerated diagnostic is still an obligation on the rebuilt work list; the compiler naming another member of the same unit CONTINUES the card without spending an attempt, one naming a file the unit does not seal is a typed diagnosis, and a sealed member answered by deleting it violates however far the measure fell)")
     return 0
 
 

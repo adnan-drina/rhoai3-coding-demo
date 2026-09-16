@@ -7,7 +7,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 
 def ensure_hermes_lib() -> None:
@@ -22,7 +22,7 @@ def ensure_hermes_lib() -> None:
 
 ensure_hermes_lib()
 from planner.canonical import digest, load_json, write_canonical  # noqa: E402
-from planner.paths import PARITY_DIR, PRODUCT_EXEMPT, is_product_path as _is_product_path, LOOP_ACCEPTED, LOOP_CARDS, LOOP_DEFERRED, LOOP_ISSUED, LOOP_PENDING_FILES, LOOP_STATE, LOOP_STEPS, MTA_RESCAN_FINDINGS, VERIFY_BOOT, VERIFY_DIAGNOSTICS, VERIFY_PACKAGE, VERIFY_RUN, VERIFY_SUREFIRE, WORKLIST  # noqa: E402
+from planner.paths import DECISIONS, MIGRATION, PARITY_DIR, PRODUCT_EXEMPT, is_product_path as _is_product_path, LOOP_ACCEPTED, LOOP_CARDS, LOOP_DEFERRED, LOOP_ISSUED, LOOP_PENDING_FILES, LOOP_STATE, LOOP_STEPS, MTA_RESCAN_FINDINGS, VERIFY_BOOT, VERIFY_DIAGNOSTICS, VERIFY_PACKAGE, VERIFY_RUN, VERIFY_SUREFIRE, WORKLIST  # noqa: E402
 
 # The accepted state's tool reports, including the gate receipts: a rejected
 # candidate's packaging or startup result must not survive it. The work list is
@@ -38,6 +38,21 @@ REPORTS = (VERIFY_DIAGNOSTICS, VERIFY_SUREFIRE, VERIFY_RUN, MTA_RESCAN_FINDINGS,
 # measured on the accepted tree, and deleting them would erase the obligations
 # rather than restore them.
 PARITY_SNAPSHOT = Path("parity")
+# WHOSE comparison the snapshot beside it is. Kept OUTSIDE the snapshot
+# directory on purpose: restore_reports copies every document it finds there
+# back over the live records, and a provenance note is not a verdict.
+PARITY_SNAPSHOT_SOURCE = Path("parity-source.json")
+PARITY_SOURCE_SCHEMA = "rhoai3.parity-baseline/v1"
+
+# Where THIS migration's product lives. `is_product_path` is an EXEMPT list --
+# everything that is not harness state, the frozen legacy copy or build output
+# -- so scratch a tool drops anywhere else in the destination root is "product"
+# to it. Measured on v9 card t_46556d5e: the worker's javap diagnosis left
+# extracted .class files under io/quarkus/ at the root after its verification,
+# advance.py counted them as a post-verification product edit, and a repair it
+# had already measured was REVERTED with an attempt spent on tool output.
+MIGRATION_PRODUCT_DIRS = ("src/", ".mvn/")
+MIGRATION_PRODUCT_FILES = (DECISIONS.as_posix(), MIGRATION.as_posix(), "pom.xml", "mvnw", "mvnw.cmd")
 
 
 def _json_doc(root: Path, rel: Path, default: dict[str, Any]) -> dict[str, Any]:
@@ -268,14 +283,57 @@ def product_paths_changed(root: Path) -> list[str]:
     return sorted(set(out))
 
 
-def candidate_sha256(root: Path) -> str:
-    """Identity of the product tree as it is on disk (working tree, not the index)."""
+def is_migration_product(rel: str) -> bool:
+    """Is this path somewhere a repair of THIS migration is written?
+
+    The Maven project and the decisions the loop reads. Narrower than
+    `is_product_path` on purpose, and used only to decide whether an UNTRACKED
+    file is part of the candidate: anything git already tracks is the
+    migration's whatever it is called, and only a file nobody committed and
+    nobody could have repaired is a tool's leftovers."""
+    p = str(rel).replace("\\", "/").lstrip("/")
+    return p.startswith(MIGRATION_PRODUCT_DIRS) or p in MIGRATION_PRODUCT_FILES
+
+
+def tree_changes(root: Path) -> tuple[list[str], list[str]]:
+    """(the candidate's own paths, scratch) among everything that differs from HEAD.
+
+    A path belongs to the candidate when git TRACKS it -- HEAD knows it, the
+    loop committed it, and a difference there is a change to something this
+    migration owns -- or when it is an untracked file written where the
+    migration's product lives (a new source file is a repair). An untracked
+    file anywhere else is a tool's leftovers: it is part of no repair, and it
+    is not evidence against one either."""
+    proc = git(root, "status", "--porcelain", "--untracked-files=all")
+    owned: list[str] = []
+    scratch: list[str] = []
+    for line in proc.stdout.splitlines():
+        if len(line) < 4:
+            continue
+        code, path = line[:2], line[3:].strip().strip('"')
+        if " -> " in path:
+            path = path.split(" -> ", 1)[1]
+        if not is_product_path(path):
+            continue
+        (scratch if (code == "??" and not is_migration_product(path)) else owned).append(path)
+    return sorted(set(owned)), sorted(set(scratch))
+
+
+def candidate_sha256(root: Path, exclude: Iterable[str] = ()) -> str:
+    """Identity of the product tree as it is on disk (working tree, not the index).
+
+    ``exclude`` asks the narrower question "what would this digest be WITHOUT
+    these paths" -- the only honest way to establish that a tree which no
+    longer matches its verification differs by nothing but scratch. Nothing is
+    excluded by default, and a caller that excludes a path has to have shown
+    first that the path is not part of the candidate (tree_changes)."""
+    skip = {str(x).replace("\\", "/").lstrip("/") for x in exclude}
     h = hashlib.sha256()
     for p in sorted(Path(root).rglob("*")):
         if not p.is_file():
             continue
         rel = p.relative_to(root).as_posix()
-        if not is_product_path(rel):
+        if not is_product_path(rel) or rel in skip:
             continue
         h.update(rel.encode("utf-8"))
         h.update(b"\0")
@@ -383,6 +441,37 @@ def parity_records(base: Path) -> list[Path]:
     return out
 
 
+def snapshot_parity(root: Path, source: dict[str, Any] | None = None) -> list[Path]:
+    """Make the comparison on disk the loop's ACCEPTED parity baseline.
+
+    Every step that changes WHAT THE BASELINE IS has to call this, not only
+    the acceptance path, because `restore_reports` puts this snapshot back
+    over the live records whenever a candidate is discarded. Measured on
+    destination v9: an accepted parity step snapshotted its receipt, the M4
+    road then composed a full receipt with thirteen FAIL rows, `resume-after-m4`
+    minted the cards those rows owed and snapshotted nothing -- and the first
+    reverted candidate restored the older accepted snapshot over the receipt
+    its own card had been issued from. The obligation the loop was working on
+    disappeared: no open cluster, no card, nothing minted.
+
+    ``source`` records whose comparison this baseline is (mode and card); it is
+    written beside the snapshot, never inside it. Returns the records kept."""
+    dest = root / LOOP_ACCEPTED
+    live = root / PARITY_DIR
+    records = parity_records(live)
+    if not records:
+        return []
+    dest.mkdir(parents=True, exist_ok=True)
+    shutil.rmtree(dest / PARITY_SNAPSHOT, ignore_errors=True)
+    for rel in records:
+        target = dest / PARITY_SNAPSHOT / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(live / rel, target)
+    if source is not None:
+        write_canonical(dest / PARITY_SNAPSHOT_SOURCE, dict(source))
+    return records
+
+
 def snapshot_reports(root: Path) -> None:
     """Keep the accepted state's tool reports so a rejected candidate's reports never survive it."""
     dest = root / LOOP_ACCEPTED
@@ -391,14 +480,7 @@ def snapshot_reports(root: Path) -> None:
         src = root / rel
         if src.is_file():
             shutil.copy2(src, dest / rel.name)
-    live = root / PARITY_DIR
-    records = parity_records(live)
-    if records:
-        shutil.rmtree(dest / PARITY_SNAPSHOT, ignore_errors=True)
-        for rel in records:
-            target = dest / PARITY_SNAPSHOT / rel
-            target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(live / rel, target)
+    snapshot_parity(root)
 
 
 def restore_reports(root: Path) -> None:
