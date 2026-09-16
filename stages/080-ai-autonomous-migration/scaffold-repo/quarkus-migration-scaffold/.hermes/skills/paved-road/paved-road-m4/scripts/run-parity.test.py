@@ -23,6 +23,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import zipfile
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
@@ -350,6 +351,44 @@ def _fake_artifact(root: Path) -> None:
     (app / "lib" / "main").mkdir(parents=True, exist_ok=True)
     (app / "quarkus-run.jar").write_bytes(b"fixture launcher\n")
     (app / "lib" / "main" / "org.acme.clinic.jar").write_bytes(b"fixture dependency\n")
+
+
+def _fake_java(bindir: Path, version: str) -> Path:
+    """A `java` that prints a JDK banner on stderr, as the real launcher does,
+    and starts nothing."""
+    bindir.mkdir(parents=True, exist_ok=True)
+    java = bindir / "java"
+    java.write_text("#!/bin/sh\necho 'openjdk version \"%s\" 2024-01-16' >&2\nexit 0\n" % version, encoding="utf-8")
+    java.chmod(0o755)
+    return java
+
+
+def _app_jar(root: Path, major: int) -> Path:
+    """The application's own jar in a fast-jar layout, whose first class entry
+    carries a crafted header: magic, minor 0, the given major."""
+    app = root / "target" / "quarkus-app" / "app"
+    app.mkdir(parents=True, exist_ok=True)
+    jar = app / "fixture-app-1.0.jar"
+    with zipfile.ZipFile(jar, "w") as zf:
+        zf.writestr("META-INF/MANIFEST.MF", "Manifest-Version: 1.0\n")
+        zf.writestr("org/acme/clinic/App.class", b"\xca\xfe\xba\xbe\x00\x00" + major.to_bytes(2, "big") + b"\x00" * 8)
+    return jar
+
+
+def _free_port() -> int:
+    import socket
+    with socket.socket() as so:
+        so.bind(("127.0.0.1", 0))
+        return so.getsockname()[1]
+
+
+def _start_run(root: Path, env: dict, extra: tuple[str, ...] = ()) -> tuple[int, str, dict]:
+    """The runner asked to START the destination itself (no --dest-url)."""
+    proc = subprocess.run([sys.executable, str(RUNNER), "--root", str(root), "--port", str(_free_port()),
+                           "--ready-timeout", "2", "--no-navigation", *extra],
+                          text=True, capture_output=True, env=env, timeout=300)
+    rec = root / PARITY / "_run.json"
+    return proc.returncode, proc.stdout + proc.stderr, (load_json(rec) if rec.is_file() else {})
 
 
 def _run(root: Path, base: str, reset: Path, scenarios: tuple[str, ...] = (), issued: str = "",
@@ -901,6 +940,63 @@ def main() -> int:
                 return _fail("the run record must name the missing corpus: %s" % {k: doc4.get(k) for k in ("corpus_error", "failures")})
             if doc4["scenarios"]["run"] != 0 or doc4["entry_points"]["compared"] != 3:
                 return _fail("a missing corpus stops the scenarios, not the read comparisons: %s" % doc4)
+
+            # --- the java that starts the destination (dest v9) --------------
+            # The runner took the first `java` on PATH; on the Dev Spaces image
+            # that is older than the build's, and the artifact died with
+            # UnsupportedClassVersionError before anything answered. It now
+            # resolves java exactly as the boot gate does, records it, and
+            # refuses before starting when the packaged classes need newer.
+            gate = rp._runtime_gate()
+            jt = td / "jdks"
+            j17 = _fake_java(jt / "jdk17" / "bin", "17.0.9")
+            j21 = _fake_java(jt / "jdk21" / "bin", "21.0.4")
+            order = [gate.resolve_java({"JAVA_HOME_21": str(jt / "jdk21"), "JAVA_HOME": str(jt / "jdk17")}),
+                     gate.resolve_java({"JAVA_HOME_21": "", "JAVA_HOME": str(jt / "jdk17")}),
+                     gate.resolve_java({})]
+            if order != [(str(j21), "JAVA_HOME_21"), (str(j17), "JAVA_HOME"), ("java", "PATH")]:
+                return _fail("java resolves $JAVA_HOME_21, then $JAVA_HOME, then PATH: %s" % order)
+            if [gate.java_version(str(j))[:2] for j in (j17, j21)] != [
+                    ('openjdk version "17.0.9" 2024-01-16', 17), ('openjdk version "21.0.4" 2024-01-16', 21)]:
+                return _fail("the version is the banner's first line and its feature number: %s"
+                             % [gate.java_version(str(j)) for j in (j17, j21)])
+            if [gate.feature_of(x) for x in ('java version "1.8.0_402"', 'openjdk version "25-ea"', "nonsense")] != [8, 25, None]:
+                return _fail("feature_of must read legacy and pre-release banners")
+            jar = _app_jar(root, 65)
+            if gate.artifact_class_major(root, gate.APP_DIR) != (65, "fixture-app-1.0.jar!org/acme/clinic/App.class"):
+                return _fail("the artifact's class major is read from its first class entry: %s"
+                             % (gate.artifact_class_major(root, gate.APP_DIR),))
+            env17 = dict(os.environ, JAVA_HOME_21=str(jt / "jdk17"), JAVA_HOME=str(jt / "jdk21"))
+            rcj, blobj, docj = _start_run(root, env17)
+            want = ("REFUSE: PARITY_RUN the resolved java %s (openjdk version \"17.0.9\" 2024-01-16) cannot run classes "
+                    "compiled for Java 21" % j17)
+            if rcj != 1 or want not in blobj:
+                return _fail("a runtime older than the artifact must refuse naming both: rc=%s %s" % (rcj, blobj[-800:]))
+            jrec = (docj.get("destination") or {}).get("java") or {}
+            if (jrec.get("binary"), jrec.get("source"), jrec.get("feature"), jrec.get("artifact_requires_java")) != (
+                    str(j17), "JAVA_HOME_21", 17, 21) or not str(jrec.get("version") or "").startswith("openjdk version"):
+                return _fail("_run.json destination.java records the resolved binary, its version and the need: %s" % jrec)
+            if (docj.get("destination") or {}).get("argv") or docj["scenarios"]["run"] != 0 or docj["compose"]["rc"] is not None:
+                return _fail("the refusal comes before anything is started: %s" % docj.get("destination"))
+            if (root / PARITY / "logs" / "destination.log").exists():
+                return _fail("nothing was started, so nothing was logged")
+            # --java overrides the resolution; the class-version question is
+            # then about THAT binary, and 21 can run Java 21 classes
+            rco, bloblo, doco = _start_run(root, env17, ("--java", str(j21)))
+            orec = (doco.get("destination") or {}).get("java") or {}
+            if "cannot run classes" in bloblo or (orec.get("binary"), orec.get("source"), orec.get("feature")) != (
+                    str(j21), "--java", 21):
+                return _fail("--java overrides the resolved java and is recorded as such: %s | %s" % (orec, bloblo[-600:]))
+            if (doco.get("destination") or {}).get("argv") and doco["destination"]["argv"][0] != str(j21):
+                return _fail("the destination is started with the --java binary: %s" % doco["destination"]["argv"])
+            # $JAVA_HOME is used when $JAVA_HOME_21 is not set
+            env_home = {k: v for k, v in os.environ.items() if k != "JAVA_HOME_21"}
+            env_home["JAVA_HOME"] = str(jt / "jdk21")
+            rch, blobh, doch = _start_run(root, env_home)
+            hrec = (doch.get("destination") or {}).get("java") or {}
+            if "cannot run classes" in blobh or (hrec.get("binary"), hrec.get("source")) != (str(j21), "JAVA_HOME"):
+                return _fail("$JAVA_HOME is the fallback when $JAVA_HOME_21 is unset: %s" % hrec)
+            jar.unlink()
     finally:
         srv.shutdown()
     print("OK: run-parity selftest (every scenario in corpus order; every captured read oracle compared; the "
@@ -936,7 +1032,9 @@ def main() -> int:
           "each mode's own setting and puts it on the artifact's command line, and refuses by naming decisions.yaml "
           "where nothing is declared; a --dest-config whose VALUE is a credential refuses by KEY without printing it; "
           "and a declared credential this workspace does not hold refuses by NAME before anything is started or "
-          "replayed)")
+          "replayed; the destination's java is the boot gate's own -- $JAVA_HOME_21, then $JAVA_HOME, then PATH, "
+          "--java overriding -- recorded with its version under destination.java, and a runtime older than the "
+          "packaged classes (class file major - 44) refuses before anything is started, naming both)")
     return 0
 
 

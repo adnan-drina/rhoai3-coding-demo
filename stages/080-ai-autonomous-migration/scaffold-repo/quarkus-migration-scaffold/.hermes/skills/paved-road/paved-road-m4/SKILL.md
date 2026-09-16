@@ -56,6 +56,19 @@ source did. Everything here is measurement. Nothing here decides.
    `verification/parity/_run.json` (what ran, each child's exit code, the
    entry points nobody could compare and why).
 
+   **Which `java` starts it.** The boot gate's own: `$JAVA_HOME_21/bin/java`,
+   else `$JAVA_HOME/bin/java`, else `java` on PATH (the one function
+   `fix-until-green/scripts/_java_runtime.py` that `verify-runtime.py` uses
+   too); `--java <path>` overrides it. The binary, where it came from and its
+   `java -version` line are recorded under `destination.java` in `_run.json`.
+   Before anything is started, the class-file version of the application's
+   own jar (`target/quarkus-app/app/*.jar`) is compared with that runtime, and
+   an older runtime refuses with `REFUSE: PARITY_RUN the resolved java <path>
+   (<version>) cannot run classes compiled for Java <n>` (dest v9: the first
+   `java` on PATH was older than the build's, the artifact died with
+   `UnsupportedClassVersionError`, and both phases read "the destination did
+   not become ready"). Fix the environment or pass `--java`; do not repackage.
+
    There is no per-entry-point loop for you to run. v9's first M4 card is
    why: driven by hand, the composer ran first, `compare-runtime-parity.py`
    ran for none of the 34 admitted entry points, and 24 of them ended "no

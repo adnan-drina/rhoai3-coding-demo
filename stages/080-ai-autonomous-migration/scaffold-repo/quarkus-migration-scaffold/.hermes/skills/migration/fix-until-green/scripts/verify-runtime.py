@@ -58,6 +58,7 @@ from planner.worklist import runtime_environment_blocker  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _loop_common import candidate_sha256  # noqa: E402
+from _java_runtime import artifact_class_major, feature_of, java_version, resolve_java, runtime_check  # noqa: E402,F401 -- re-exported for the parity runner
 
 APP_DIR = Path("target") / "quarkus-app"
 RUNNER = APP_DIR / "quarkus-run.jar"
@@ -371,9 +372,13 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--package-timeout", type=int, default=1800)
     ap.add_argument("--boot-timeout", type=int, default=180, help="bounded startup: the application answers within this or the gate fails")
     ap.add_argument("--mvn", default="mvn")
-    ap.add_argument("--java", default="java")
+    ap.add_argument("--java", default=None,
+                    help="the java that starts the artifact; default $JAVA_HOME_21/bin/java, then $JAVA_HOME/bin/java, "
+                         "then java on PATH (_java_runtime.resolve_java, shared with the parity runner)")
     args = ap.parse_args(argv)
     root = Path(args.root).resolve()
+    if not args.java:
+        args.java = resolve_java()[0]
     try:
         decisions = load_decisions(root)
         ds = datasource(decisions)

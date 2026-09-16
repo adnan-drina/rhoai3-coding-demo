@@ -916,6 +916,111 @@ def in_dest_write_sandbox(rp):
         return False
     return rp == root or rp.startswith(root + os.sep)
 
+# advance.py REFUSE: LOOP_SCRATCH_IN_TREE (no attempt spent) names untracked
+# files outside the migration product that moved the candidate digest; the
+# legal next step is to remove them and run advance again. Its stderr line is
+#   REFUSE: LOOP_SCRATCH_IN_TREE <n> untracked file(s) outside this
+#   migration<apostrophe>s product sit in the tree and moved the candidate digest: <p1>, <p2>[, ...]. The
+#   verified candidate is otherwise intact, ...
+# (one line; paths relative to the destination root, ", "-joined, at most 8,
+# then ", ..." when there were more). While the LAST advance invocation in
+# this card log printed it, an rm whose every operand is a named path or lies
+# under one is allowed; nothing else is (dest v9: the removal was refused as a
+# product-tree write and the worker could only block).
+SCRATCH_REFUSAL = re.compile(
+    r"REFUSE: LOOP_SCRATCH_IN_TREE \d+ untracked file\(s\) outside this migration.s product sit in the tree "
+    r"and moved the candidate digest: (.*?)\. The verified candidate is otherwise intact")
+SCRATCH_PRODUCT_DIRS = ("src", ".mvn")
+SCRATCH_PRODUCT_FILES = ("pom.xml", "decisions.yaml", "migration.yaml", "mvnw", "mvnw.cmd")
+RM_FLAGS = re.compile(r"^-[rRf]+$|^--(?:recursive|force)$")
+
+def scratch_refusal_named():
+    """The paths the LAST advance.py invocation in this card log refused as
+    scratch, or None when that invocation printed anything else."""
+    task = hook_task_id()
+    home = kanban_root_home()
+    if not task or not home:
+        return None
+    log = os.path.join(home, "kanban", "logs", "%s.log" % task)
+    try:
+        text = open(log, encoding="utf-8", errors="replace").read()
+    except OSError:
+        return None
+    named = None
+    in_advance = False
+    for line in text.splitlines():
+        if "$" in line and "fix-until-green/scripts/advance" in line:
+            in_advance = "[exit 1]" in line
+            named = None
+            continue
+        if "┊" in line:
+            # any later tool call ends advance.py output
+            in_advance = False
+            continue
+        if not in_advance or named is not None:
+            continue
+        m = SCRATCH_REFUSAL.search(line)
+        if m:
+            named = [x.strip() for x in m.group(1).split(", ") if x.strip() and x.strip() != "..."]
+    return named
+
+def scratch_is_product(rel):
+    return (rel in SCRATCH_PRODUCT_FILES
+            or any(rel == d or rel.startswith(d + "/") for d in SCRATCH_PRODUCT_DIRS))
+
+def scratch_removal_allowed(c, unmatched):
+    """rm [-r|-f]... <operands> where every operand is a path the scratch
+    refusal named (or under one). One simple command only: no operators,
+    redirections, substitutions, globs, ~, .., or paths outside the root."""
+    if not c or not any("fix-until-green/scripts/advance" in g for g in unmatched):
+        return False
+    if re.search(r"[;&|<>`$*?\[\]{}~\n\\]", c) or chr(39) in c or chr(34) in c:
+        return False
+    toks = c.split()
+    if len(toks) < 2 or toks[0] != "rm":
+        return False
+    ops = []
+    dashdash = False
+    for t in toks[1:]:
+        if not dashdash and t == "--":
+            dashdash = True
+        elif not dashdash and t.startswith("-"):
+            if not RM_FLAGS.match(t):
+                return False
+        else:
+            ops.append(t)
+    if not ops:
+        return False
+    named = scratch_refusal_named()
+    if not named:
+        return False
+    root = dest_root()
+    if not root:
+        return False
+    names = [n.strip("/") for n in named]
+    for op in ops:
+        o = op.rstrip("/")
+        if not o or ".." in o.split("/") or o in (".",):
+            return False
+        if os.path.isabs(o):
+            ab = o
+        elif hook_cwd:
+            ab = os.path.join(hook_cwd, o)
+        else:
+            return False
+        try:
+            rp = os.path.join(os.path.realpath(os.path.dirname(os.path.normpath(ab))), os.path.basename(os.path.normpath(ab)))
+        except OSError:
+            return False
+        rel = dest_rel(rp)
+        if not rel or scratch_is_product(rel):
+            return False
+        if not any(rel == n or rel.startswith(n + "/") for n in names if n and not scratch_is_product(n)):
+            return False
+    return True
+
+scratch_ok = False
+
 # dest-22 P0-B: after a mandated needle last-exited 1, the implementer
 # may re-run that needle or kanban_block. Product-tree writes, k4_mint
 # / k4_convert continue, and request_review are refused. Text in the
@@ -933,6 +1038,10 @@ if profile == "implementer" and not is_block() and not is_complete():
             # step before advance on the loop road (v6 t_57aef986 was refused
             # run-verify here and could only block)
             pass
+        elif scratch_removal_allowed(cmd, unmatched):
+            # the removal advance.py LOOP_SCRATCH_IN_TREE asked for, of exactly
+            # the paths it named; the write-set rules below do not apply to it
+            scratch_ok = True
         elif is_request_review():
             block(
                 "kanban_request_review refused: mandated needle %s last "
@@ -1000,7 +1109,7 @@ if tool in WRITE_TOOLS or looks_like_write_cmd(cmd) or effect:
             continue
         if not in_dest_write_sandbox(rp):
             block("write %s is outside the dest write sandbox (legacy is read-only)" % p)
-    outside = loop_product_write_refusals(list(effect) if effect else list(paths))
+    outside = [] if scratch_ok else loop_product_write_refusals(list(effect) if effect else list(paths))
     if outside:
         block("write refused: %s is a product path outside this card write set (%s). "
               "advance.py reverts the entire candidate over one such path, so the whole "
@@ -1047,7 +1156,7 @@ if phase in {"M4", "VERDICT"}:
                 kept.append(w)
         writeset = kept or ["evidence/"]
 story = (os.environ.get("K2_STORY_ID") or "").strip() or "this card"
-if writeset is not None:
+if writeset is not None and not scratch_ok:
     rels = []
     if tool in WRITE_TOOLS:
         for p in paths:

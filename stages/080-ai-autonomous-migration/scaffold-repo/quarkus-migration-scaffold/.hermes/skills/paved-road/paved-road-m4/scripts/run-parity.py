@@ -465,11 +465,23 @@ class Destination:
     comparing something other than what was verified. This starts the artifact
     that gate produced, and stops it again."""
 
-    def __init__(self, root: Path, port: int, java: str, timeout: int,
+    def __init__(self, root: Path, port: int, java: str | None, timeout: int,
                  dest_config: dict[str, str] | None = None) -> None:
         self.root = root
         self.port = port
-        self.java = java
+        self.gate = _runtime_gate()
+        # The java this destination is started with is the boot gate's own
+        # (verify-runtime.py / run-verify.sh: $JAVA_HOME_21, then $JAVA_HOME,
+        # then PATH), resolved by the one function both import. dest v9 took
+        # the first `java` on PATH, an older runtime than the build's, and the
+        # artifact died with UnsupportedClassVersionError. --java overrides.
+        if java:
+            self.java, self.java_source = java, "--java"
+        else:
+            self.java, self.java_source = self.gate.resolve_java()
+        # what was resolved, its version and what the artifact requires; filled
+        # by start() before anything is started, and recorded in _run.json
+        self.java_record: dict[str, Any] = {"binary": self.java, "source": self.java_source}
         self.timeout = timeout
         # The configuration this destination is STARTED with -- the security
         # switch at the setting this run measures, first among them. It is the
@@ -479,7 +491,6 @@ class Destination:
         self.argv: list[str] = []
         self.proc: subprocess.Popen | None = None
         self.log = root / PARITY / "logs" / "destination.log"
-        self.gate = _runtime_gate()
         self.root_path = self.gate.root_path_of(root)
         self.ds: dict[str, Any] = {}
         self.profiles: list[str] = []
@@ -515,6 +526,12 @@ class Destination:
         if not runner.is_file():
             return ("the destination is not packaged (%s is absent); the packaging gate produces what parity starts"
                     % self.gate.RUNNER.as_posix())
+        # Can the resolved runtime run what was packaged? Asked BEFORE starting:
+        # an artifact compiled for a newer Java dies at class loading, and the
+        # only thing the readiness wait would say is that nothing answered.
+        self.java_record, refusal = self.gate.runtime_check(self.root, self.gate.APP_DIR, self.java, self.java_source)
+        if refusal:
+            return refusal
         missing = [str(self.ds[k]) for k in ("jdbc_url_env", "username_env", "password_env")
                    if self.ds.get(k) and not os.environ.get(str(self.ds[k]))]
         if missing:
@@ -827,7 +844,11 @@ def main(argv: list[str] | None = None) -> int:
                          "to start the destination itself. A --dest-config the caller named for the same key wins")
     ap.add_argument("--port", type=int, default=8081, help="the port the destination this runner starts listens on")
     ap.add_argument("--ready-timeout", type=int, default=180)
-    ap.add_argument("--java", default="java")
+    ap.add_argument("--java", default=None,
+                    help="the java that starts the destination; default the boot gate's own: $JAVA_HOME_21/bin/java, "
+                         "then $JAVA_HOME/bin/java, then java on PATH. Recorded with its version under "
+                         "destination.java in _run.json, and refused before starting when the packaged classes need a "
+                         "newer Java")
     args = ap.parse_args(argv)
     root = Path(args.root).resolve()
     if not root.is_dir():
@@ -1026,7 +1047,8 @@ def main(argv: list[str] | None = None) -> int:
             doc["destination"] = {"port": args.port, "root_path": dest.root_path,
                                   "log": str(dest.log.relative_to(root)) if dest.log.is_file() else "",
                                   "profiles": list(dest.profiles), "db_kind": str(dest.ds.get("db_kind") or ""),
-                                  "config": dict(dest.dest_config), "argv": list(dest.argv)}
+                                  "config": dict(dest.dest_config), "argv": list(dest.argv),
+                                  "java": dict(dest.java_record)}
             if err:
                 failures.append("destination: %s" % err)
                 doc["destination"]["error"] = err

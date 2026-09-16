@@ -1248,7 +1248,129 @@ def main() -> int:
             fails += 1
         else:
             print("ok impl_request_review_cli_reviewer_allowed")
+    fails += scratch_removal_checks()
     return 1 if fails else 0
+
+
+ADVANCE = (Path(__file__).resolve().parents[1] / "skills" / "migration" / "fix-until-green" / "scripts" / "advance.py")
+ADVANCE_LINE = ("  ┊ 💻 $         python3 .hermes/skills/migration/fix-until-green/scripts/advance.py "
+                "--root . --cluster c:1 --card t_scr  1.2s [exit 1]\n")
+
+
+def scratch_refusal_line(paths: list[str]) -> str:
+    """advance.py's LOOP_SCRATCH_IN_TREE line, built the way advance.py builds it."""
+    return ("REFUSE: LOOP_SCRATCH_IN_TREE %d untracked file(s) outside this migration's product sit in the tree "
+            "and moved the candidate digest: %s. The verified candidate is otherwise intact, so nothing is "
+            "judged, no attempt is spent and the candidate stays where it is: remove the files (they are tool "
+            "output, not a repair) and run advance.py again.\n"
+            % (len(paths), ", ".join(paths[:8]) + (", ..." if len(paths) > 8 else "")))
+
+
+def scratch_removal_checks() -> int:
+    """v9: advance.py refused LOOP_SCRATCH_IN_TREE and asked for the named
+    files to be removed; K2 refused the rm as a product-tree write while
+    advance was red, so the worker could only block. The removal of exactly
+    the named paths is allowed while that refusal is the latest advance
+    output; nothing else is."""
+    fails = 0
+    src = ADVANCE.read_text(encoding="utf-8")
+    # the format the hook parses is advance.py's own
+    for frag in ('"REFUSE: LOOP_SCRATCH_IN_TREE %d untracked file(s) outside this migration\'s product sit in the tree "',
+                 '"and moved the candidate digest: %s. The verified candidate is otherwise intact',
+                 '", ".join(scratch[:8]) + (", ..." if len(scratch) > 8 else "")'):
+        if frag not in src:
+            print("FAIL scratch_refusal_format_drifted %r" % frag, file=sys.stderr)
+            fails += 1
+    with tempfile.TemporaryDirectory() as td:
+        dest = Path(td) / "dest"
+        (dest / "src" / "main" / "java").mkdir(parents=True)
+        (dest / "io" / "quarkus").mkdir(parents=True)
+        (dest / "io" / "quarkus" / "A.class").write_bytes(b"x")
+        (dest / "io" / "quarkus" / "B.class").write_bytes(b"x")
+        (dest / "notes.txt").write_text("x", encoding="utf-8")
+        (dest / "pom.xml").write_text("<project/>", encoding="utf-8")
+        (dest / "verification" / "loop").mkdir(parents=True)
+        (dest / "verification" / "loop" / "issued.json").write_text(json.dumps(
+            {"schema": "rhoai3.loop-issued/v1", "task_id": "t_scr", "cluster": "c:1",
+             "write_set": ["src/main/java/App.java"]}), encoding="utf-8")
+        home = Path(td) / "home"
+        (home / "kanban" / "logs").mkdir(parents=True)
+        log = home / "kanban" / "logs" / "t_scr.log"
+        named = ["io/quarkus/A.class", "io/quarkus/B.class"]
+        base_log = ("Query: work kanban task t_scr\n"
+                    "  ┊ 💻 $         bash .hermes/skills/migration/fix-until-green/scripts/run-verify.sh --root .  70.4s\n")
+        log.write_text(base_log + ADVANCE_LINE + scratch_refusal_line(named), encoding="utf-8")
+        roots = [str(dest)]
+        env = {"HERMES_PROFILE": "implementer", "HERMES_HOME": str(home), "HERMES_KANBAN_TASK": "t_scr",
+               "HERMES_WRITE_SAFE_ROOT": str(dest)}
+        cwd = str(dest)
+
+        def check(cmd: str, name: str, allowed: bool, needle: str = "") -> None:
+            nonlocal fails
+            r = run(cmd, roots, cwd=cwd, extra_env=env)
+            blocked = r.get("action") == "block"
+            if blocked == allowed or (needle and needle not in (r.get("message") or "")):
+                print("FAIL %s %r" % (name, cmd), r, file=sys.stderr)
+                fails += 1
+            else:
+                print("ok", name)
+
+        for cmd in ("rm io/quarkus/A.class io/quarkus/B.class",
+                    "rm -f io/quarkus/A.class",
+                    "rm -rf io/quarkus/A.class io/quarkus/B.class",
+                    "rm -r -f -- io/quarkus/B.class",
+                    "rm %s" % (dest / "io" / "quarkus" / "A.class")):
+            check(cmd, "scratch_removal_named_allowed", True)
+        for cmd, why in (("rm pom.xml", "product file"),
+                         ("rm -rf src/main/java", "product dir"),
+                         ("rm -rf src", "product dir"),
+                         ("rm notes.txt", "unnamed path"),
+                         ("rm io/quarkus/A.class notes.txt", "one unnamed operand"),
+                         ("rm -rf io", "ancestor of a named path"),
+                         ("rm -rf io/quarkus/*.class", "glob"),
+                         ("rm io/quarkus/?.class", "glob"),
+                         ("rm io/quarkus/../quarkus/A.class", "dotdot"),
+                         ("rm ../dest/io/quarkus/A.class", "dotdot"),
+                         ("rm /etc/io/quarkus/A.class", "absolute outside root"),
+                         ("rm -rf .", "root itself"),
+                         ("rm -i io/quarkus/A.class", "unlisted flag"),
+                         ("rm io/quarkus/A.class; rm pom.xml", "compound"),
+                         ("rm io/quarkus/A.class && touch pom.xml", "compound"),
+                         ("rm $(cat list) ", "substitution"),
+                         ("mv io/quarkus/A.class /tmp/x", "not rm"),
+                         ("cat io/quarkus/A.class", "not a removal")):
+            check(cmd, "scratch_removal_refused (%s)" % why, False)
+        # a rm of a product file names the red advance, as before
+        check("rm pom.xml", "scratch_removal_product_message", False, "product-tree write refused")
+        # re-running advance is still the legal next step
+        check("python3 .hermes/skills/migration/fix-until-green/scripts/advance.py --root . --cluster c:1 --card t_scr",
+              "scratch_rerun_advance_allowed", True)
+        # a later tool call after the refusal does not withdraw it; a later
+        # advance verdict does
+        log.write_text(base_log + ADVANCE_LINE + scratch_refusal_line(named)
+                       + "  ┊ 💻 $         bash .hermes/skills/migration/fix-until-green/scripts/run-verify.sh --root .  70.4s\n",
+                       encoding="utf-8")
+        check("rm io/quarkus/A.class", "scratch_removal_after_run_verify_allowed", True)
+        log.write_text(base_log + ADVANCE_LINE + scratch_refusal_line(named) + ADVANCE_LINE
+                       + "REVERTED c:1 attempt 1/3: measure [1, 1, 0] did not decrease from [1, 1, 0]\n",
+                       encoding="utf-8")
+        check("rm io/quarkus/A.class", "scratch_removal_after_later_verdict_refused", False, "product-tree write refused")
+        log.write_text(base_log + ADVANCE_LINE + scratch_refusal_line(named) + ADVANCE_LINE
+                       + "REFUSE: LOOP_CANDIDATE_CHANGED product tree edited after verification (verified a, on disk b); nothing promoted\n",
+                       encoding="utf-8")
+        check("rm io/quarkus/A.class", "scratch_removal_after_other_refusal_refused", False)
+        # prose that quotes the refusal after another tool call is not advance output
+        log.write_text(base_log + ADVANCE_LINE + "REVERTED c:1 attempt 1/3: no progress\n"
+                       + "  ┊ 💻 $         cat verification/loop/state.json  0.1s\n" + scratch_refusal_line(named),
+                       encoding="utf-8")
+        check("rm io/quarkus/A.class", "scratch_removal_quoted_prose_refused", False)
+        # the truncated list names only the paths it printed
+        many = ["tmp-%d/x.class" % i for i in range(10)]
+        log.write_text(base_log + ADVANCE_LINE + scratch_refusal_line(many), encoding="utf-8")
+        check("rm -rf tmp-0/x.class tmp-7/x.class", "scratch_removal_truncated_named_allowed", True)
+        check("rm tmp-8/x.class", "scratch_removal_truncated_unprinted_refused", False)
+        check("rm ...", "scratch_removal_ellipsis_refused", False)
+    return fails
 
 
 if __name__ == "__main__":
