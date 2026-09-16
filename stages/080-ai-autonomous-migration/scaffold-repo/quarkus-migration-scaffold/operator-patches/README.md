@@ -11,6 +11,28 @@ reviewer distinct from the operator.
 Workers never write test sources; that prohibition is enforced at the
 pre-tool-call hook and is not relaxed by anything here.
 
+A subdirectory may carry a `MANIFEST.md` beside its files when one Operator
+step applies several of them together: what each file implements, what it
+derives from, and the exact verification the step must run.
+
 | specimen | path | ADR |
 |---|---|---|
 | spring-petclinic-rest | `src/test/java/org/springframework/samples/petclinic/model/ValidatorTests.java` | ADR-008 |
+| spring-petclinic-rest | `src/main/java/org/springframework/samples/petclinic/security/SecurityMode.java` | ADR-014 |
+| spring-petclinic-rest | `src/main/java/org/springframework/samples/petclinic/security/SourceBasicAuthenticationMechanism.java` | ADR-014 |
+| spring-petclinic-rest | `src/main/java/org/springframework/samples/petclinic/security/HttpAuthenticationSwitch.java` | ADR-014 |
+| spring-petclinic-rest | `src/main/java/org/springframework/samples/petclinic/security/PrefixedPlainTextPasswordProvider.java` | ADR-014 |
+| spring-petclinic-rest | `src/main/java/org/springframework/samples/petclinic/model/User.java` | ADR-014 |
+| spring-petclinic-rest | `src/main/java/org/springframework/samples/petclinic/model/Role.java` | ADR-014 |
+| spring-petclinic-rest | `src/main/java/org/springframework/samples/petclinic/rest/OwnerRestController.java` | ADR-014 |
+| spring-petclinic-rest | `src/main/java/org/springframework/samples/petclinic/rest/PetRestController.java` | ADR-014 |
+| spring-petclinic-rest | `src/main/java/org/springframework/samples/petclinic/rest/PetTypeRestController.java` | ADR-014 |
+| spring-petclinic-rest | `src/main/java/org/springframework/samples/petclinic/rest/SpecialtyRestController.java` | ADR-014 |
+| spring-petclinic-rest | `src/main/java/org/springframework/samples/petclinic/rest/VetRestController.java` | ADR-014 |
+| spring-petclinic-rest | `src/main/java/org/springframework/samples/petclinic/rest/VisitRestController.java` | ADR-014 |
+| spring-petclinic-rest | `src/main/java/org/springframework/samples/petclinic/rest/UserRestController.java` | ADR-014 |
+| spring-petclinic-rest | `pom.xml` | ADR-014 |
+| spring-petclinic-rest | `src/main/resources/application.properties` | ADR-014 |
+
+The ADR-014 rows are one Operator step; `spring-petclinic-rest/MANIFEST.md`
+holds its clause map, its verification and its open items.
