@@ -1,0 +1,253 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "rhoai3.decided-repairs-manifest/v1",
+  "title": "Decided repair manifest (ADR-019): the versioned specimen binding decisions.yaml decided_repairs names and pins",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "specimen",
+    "manifest_version",
+    "transformations"
+  ],
+  "properties": {
+    "schema": {
+      "const": "rhoai3.decided-repairs-manifest/v1"
+    },
+    "specimen": {
+      "type": "string"
+    },
+    "manifest_version": {
+      "type": "string"
+    },
+    "decided_by": {
+      "type": "string"
+    },
+    "source": {
+      "type": "object"
+    },
+    "standing_obligations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "review_records": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/review_record"
+      }
+    },
+    "transformations": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/definitions/transformation"
+      }
+    }
+  },
+  "definitions": {
+    "review_record": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "An independent review, reusable only for the exact artifact bytes and applicability it names. author and reviewer must be two seats; an ADR identifier alone is not a record.",
+      "required": [
+        "id",
+        "adr",
+        "author",
+        "reviewer",
+        "reviewed_artifacts"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "adr": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "operator": {
+          "type": "string"
+        },
+        "author": {
+          "type": "string"
+        },
+        "reviewer": {
+          "type": "string"
+        },
+        "reviewed_artifacts": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "path",
+              "sha256"
+            ],
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "applicability": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "transformation": {
+      "type": "object",
+      "description": "One decided transformation. kind selects the fields the engine reads; every name is data.",
+      "required": [
+        "id",
+        "adr",
+        "kind"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "adr": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "add_file",
+            "replace_reviewed_file",
+            "java_annotation_expression",
+            "java_member_annotation",
+            "pom_dependency",
+            "property",
+            "pom_retire_execution"
+          ]
+        },
+        "path": {
+          "type": "string"
+        },
+        "content": {
+          "type": "string"
+        },
+        "content_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "review_record": {
+          "type": "string"
+        },
+        "obligations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "roots": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "annotation": {
+          "type": "string"
+        },
+        "attribute": {
+          "type": "string"
+        },
+        "template": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "member": {
+          "type": "string"
+        },
+        "member_kind": {
+          "type": "string",
+          "enum": [
+            "field",
+            "type"
+          ]
+        },
+        "root": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "imports": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "groupId": {
+          "type": "string"
+        },
+        "artifactId": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "scope": {
+          "type": "string"
+        },
+        "classifier": {
+          "type": "string"
+        },
+        "file": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        },
+        "plugin": {
+          "type": "object",
+          "required": [
+            "groupId",
+            "artifactId"
+          ]
+        },
+        "execution": {
+          "type": "object",
+          "required": [
+            "id",
+            "goals"
+          ]
+        },
+        "configuration": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "preserve_goals": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "coverage_note": {
+          "type": "string"
+        },
+        "applicability": {
+          "type": "object"
+        }
+      }
+    }
+  }
+}

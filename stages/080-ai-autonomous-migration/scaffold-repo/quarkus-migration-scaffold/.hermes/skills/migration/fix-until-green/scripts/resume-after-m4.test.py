@@ -64,6 +64,12 @@ from planner import pipeline, specimens  # noqa: E402
 from planner.canonical import load_json, sha256_file, write_canonical  # noqa: E402
 from planner.paths import ADMISSION_RECEIPT, LOOP_ISSUED, LOOP_STEPS, WORKLIST  # noqa: E402
 from planner.worklist import APP_PROPERTIES, build_worklist, parity_items  # noqa: E402
+from planner.paths import STRUCTURE  # noqa: E402
+import response_adapters as ra  # noqa: E402
+
+# ADR-019: a CORS obligation is owed the harness adapter; its card's locus is
+# the adapter's contract path and its write set adds the configuration
+CORS_LOCUS = ra.adapter_path(ra.CORS)
 
 CLOSE_CARD = "t_m4close"
 BLOCKERS = Path("verification") / "loop" / "release-blockers.json"
@@ -92,6 +98,13 @@ def _at_m4(tmp: Path, *, base: str = "org.acme.clinic") -> tuple[Path, list]:
     M4 close card is issued and minted (task_id recorded, as K4 records it)."""
     spec = specimens.specimen("http", base=base)
     root = specimens.build_dest(tmp / "dest", spec, decisions=specimens.admitted_decisions(max_attempts=3))
+    # the source declares a CORS policy (ADR-019 renders the adapter's rows from it)
+    structure = load_json(root / STRUCTURE)
+    for t in structure["types"]:
+        if any(str(a.get("fqn") or "").endswith("RestController") for a in t.get("annotations") or []):
+            t["annotations"].append({"fqn": "org.springframework.web.bind.annotation.CrossOrigin",
+                                     "values": {"exposedHeaders": ["errors"]}})
+    write_canonical(root / STRUCTURE, structure)
     specimens.prepare_loop(root)
     specimens.runtime(root, package_rc=0, boot_ready=True)
     specimens.verify(root, errors=[], failures=[], findings={})
@@ -426,10 +439,10 @@ def case_v9_receipt_shape() -> int:
         if out.count("MINT (dry-run)") != 1:
             return _fail("exactly one card must be minted: %s" % out[-600:])
 
-        # the minted card is the CORS repair: config, in application.properties
+        # the minted card is the CORS repair: the owed adapter and its configuration (ADR-019)
         wl = load_json(root / WORKLIST)
         head = [c for c in wl["clusters"] if c["id"] == wl["head"]]
-        if len(head) != 1 or head[0]["path"] != APP_PROPERTIES:
+        if len(head) != 1 or head[0]["path"] != CORS_LOCUS or APP_PROPERTIES not in head[0]["write_set"]:
             return _fail("the CORS obligation is the only one a card may carry here, and it is application config: %s" % head)
         if wl["measure"]["parity_mismatches"] != 1 + len([e for e in refused if e in eps]):
             return _fail("the work list still counts every parity mismatch it measured: %s" % wl["measure"])
@@ -503,7 +516,7 @@ def case_v9_renamed_specimen() -> int:
             return _fail(why)
         wl = load_json(root / WORKLIST)
         head = [c for c in wl["clusters"] if c["id"] == wl["head"]]
-        if len(head) != 1 or head[0]["path"] != APP_PROPERTIES or len(doc["parity_obligations"]) != 1:
+        if len(head) != 1 or head[0]["path"] != CORS_LOCUS or APP_PROPERTIES not in head[0]["write_set"] or len(doc["parity_obligations"]) != 1:
             return _fail("the same one obligation must be minted under another specimen: %s / %s" % (head, doc["parity_obligations"]))
         return 0
 

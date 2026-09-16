@@ -88,9 +88,9 @@ PRODUCER = "qualify-source-captures.py"
 _ORACLES_DIR = SCENARIO_ORACLES
 KNOWN_CHECKS = ("expect_status", "expect_status_class", "usable_first_response", "location", "after_contains_body", "before_lacks_body",
                 "creates_one_entity", "after_equals_before", "errors_header_names_field", "after_effect_status", "cors_allow_origin",
-                "cors_expose_headers", "cors_allow_method", "cors_allow_headers")
+                "cors_expose_headers", "cors_allow_method", "cors_allow_headers", "before_reads_usable")
 CONTRACT_KEYS = ("intent", "identity_field")  # parameters of the contract, not checks
-BODY_CHECKS = ("after_contains_body", "before_lacks_body", "creates_one_entity", "after_equals_before")
+BODY_CHECKS = ("after_contains_body", "before_lacks_body", "creates_one_entity", "after_equals_before", "before_reads_usable")
 # checks that read a read-back ROW without reading its body: they are about
 # the state a request left just as much, so they are judged against the same
 # identity question (whose probes these are)
@@ -472,6 +472,19 @@ def qualify_scenario(root: Path, sc: dict[str, Any], cap: dict[str, Any] | None,
                     _read_back_body(root, sid, after[eid], "after %s" % eid)
                 diff = [eid for eid in sorted(before) if before[eid].get("body_sha256") != after[eid].get("body_sha256") or before[eid].get("status") != after[eid].get("status")]
                 record(name, not diff, "read-backs %s" % ("changed: " + ", ".join(diff) if diff else "unchanged: " + ", ".join(sorted(before))))
+            elif name == "before_reads_usable":
+                # revert-then-read: the source's after reads cannot be taken
+                # (its database is restored only by a restart), so what the
+                # destination's post-revert reads are judged against is these
+                # baseline reads -- each declared one present, 2xx, and whole
+                if want is not True:
+                    raise Unjudgeable("before_reads_usable must be true")
+                declared = sorted(str(e.get("id") or e.get("path")) for e in (sc.get("effects") or []))
+                if not declared or sorted(before) != declared:
+                    raise Unusable("the baseline read-backs %s are not the declared %s" % (sorted(before), declared))
+                for eid in declared:
+                    _read_back_body(root, sid, before[eid], "baseline %s" % eid)
+                record(name, True, "baseline read-backs recorded: %s" % ", ".join(declared))
             elif name == "errors_header_names_field":
                 if not isinstance(headers, dict):
                     raise Unusable("the capture recorded no header map")

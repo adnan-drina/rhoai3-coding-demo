@@ -218,11 +218,14 @@ def repairable_obligations(root: Path, bundle: dict) -> list:
     An obligation the work list would place on `GLOBAL` (an entry point the
     bundle carries no path for) has no derivable write scope: admission blocks
     it as SCOPE_UNDERIVED and nothing mints. Such a parity FAIL is not a card,
-    so it is counted with the decisions, not with the repairs."""
+    so it is counted with the decisions, not with the repairs. An obligation
+    OWED a harness adapter (ADR-019) is placed on the adapter's contract path,
+    which need not exist yet: its sealed obligation is the write scope."""
     out = []
     for item in parity_items(root, bundle):
         rel = str(item.get("path") or "")
-        if rel and (root / rel).is_file():
+        owed = item.get("owed") if isinstance(item.get("owed"), dict) else {}
+        if rel and ((root / rel).is_file() or str(owed.get("path") or "") == rel):
             out.append(item)
     return out
 

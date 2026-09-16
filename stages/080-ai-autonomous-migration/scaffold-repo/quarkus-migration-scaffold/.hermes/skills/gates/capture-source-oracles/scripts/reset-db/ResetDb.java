@@ -18,6 +18,11 @@ import java.util.Properties;
  * decision references by name; nothing is printed but counts.
  *
  *   java -cp <driver.jar>:. ResetDb <jdbc-url> <user> <password> <sql-file>...
+ *   java -cp <driver.jar>:. ResetDb <jdbc-url> <user> <password> --keep-schema <sql-file>...
+ *
+ * --keep-schema applies the files to the database as it is: a fixture
+ * variant's revert changes only the rows it proves it found, and a dropped
+ * schema would erase the very state the revert is there to leave readable.
  */
 public final class ResetDb {
 
@@ -29,12 +34,15 @@ public final class ResetDb {
         Properties props = new Properties();
         props.setProperty("user", args[1]);
         props.setProperty("password", args[2]);
+        boolean keep = args.length > 3 && "--keep-schema".equals(args[3]);
         try (Connection conn = DriverManager.getConnection(args[0], props)) {
-            try (Statement st = conn.createStatement()) {
-                st.execute("DROP SCHEMA IF EXISTS public CASCADE");
-                st.execute("CREATE SCHEMA public");
+            if (!keep) {
+                try (Statement st = conn.createStatement()) {
+                    st.execute("DROP SCHEMA IF EXISTS public CASCADE");
+                    st.execute("CREATE SCHEMA public");
+                }
             }
-            for (int i = 3; i < args.length; i++) {
+            for (int i = keep ? 4 : 3; i < args.length; i++) {
                 Path p = Path.of(args[i]);
                 String sql = Files.readString(p, StandardCharsets.UTF_8);
                 try (Statement st = conn.createStatement()) {

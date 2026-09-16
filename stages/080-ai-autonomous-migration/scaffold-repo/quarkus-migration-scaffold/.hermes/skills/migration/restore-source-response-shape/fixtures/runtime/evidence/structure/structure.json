@@ -1,0 +1,330 @@
+{
+ "mode": "full",
+ "producer": {
+  "tool": "fixture"
+ },
+ "schema": "rhoai3.structure/v1",
+ "source_digest": "fixture",
+ "types": [
+  {
+   "annotations": [
+    {
+     "fqn": "org.springframework.web.bind.annotation.CrossOrigin",
+     "values": {
+      "exposedHeaders": [
+       "errors, content-type"
+      ]
+     }
+    },
+    {
+     "fqn": "org.springframework.web.bind.annotation.RequestMapping",
+     "values": {
+      "value": [
+       "/api/items"
+      ]
+     }
+    },
+    {
+     "fqn": "org.springframework.web.bind.annotation.RestController",
+     "values": {}
+    }
+   ],
+   "fqn": "org.example.shop.rest.ItemController",
+   "kind": "class",
+   "methods": [
+    {
+     "annotations": [
+      {
+       "fqn": "org.springframework.web.bind.annotation.RequestMapping",
+       "values": {
+        "method": [
+         "GET"
+        ],
+        "produces": [
+         "application/json"
+        ],
+        "value": [
+         ""
+        ]
+       }
+      }
+     ],
+     "calls": [],
+     "name": "list",
+     "resolution": "full",
+     "signature": "list()"
+    },
+    {
+     "annotations": [
+      {
+       "fqn": "org.springframework.web.bind.annotation.RequestMapping",
+       "values": {
+        "method": [
+         "POST"
+        ],
+        "value": [
+         ""
+        ]
+       }
+      }
+     ],
+     "calls": [],
+     "name": "create",
+     "resolution": "full",
+     "signature": "create()"
+    },
+    {
+     "annotations": [
+      {
+       "fqn": "org.springframework.web.bind.annotation.RequestMapping",
+       "values": {
+        "method": [
+         "PUT"
+        ],
+        "value": [
+         "/{itemId}"
+        ]
+       }
+      }
+     ],
+     "calls": [],
+     "name": "update",
+     "resolution": "full",
+     "signature": "update()"
+    },
+    {
+     "annotations": [
+      {
+       "fqn": "org.springframework.web.bind.annotation.GetMapping",
+       "values": {
+        "value": [
+         "/*/name/{name}"
+        ]
+       }
+      }
+     ],
+     "calls": [],
+     "name": "byName",
+     "resolution": "full",
+     "signature": "byName()"
+    },
+    {
+     "annotations": [],
+     "calls": [],
+     "name": "helper",
+     "resolution": "full",
+     "signature": "helper()"
+    }
+   ],
+   "supertypes": [],
+   "type_refs": []
+  },
+  {
+   "annotations": [
+    {
+     "fqn": "org.springframework.web.bind.annotation.CrossOrigin",
+     "values": {
+      "allowCredentials": [
+       "true"
+      ],
+      "allowedHeaders": [
+       "X-Allowed"
+      ],
+      "maxAge": [
+       "600"
+      ],
+      "methods": [
+       "RequestMethod.GET"
+      ],
+      "origins": [
+       "http://allowed.example"
+      ]
+     }
+    },
+    {
+     "fqn": "org.springframework.web.bind.annotation.RequestMapping",
+     "values": {
+      "value": [
+       "/api/narrow"
+      ]
+     }
+    },
+    {
+     "fqn": "org.springframework.web.bind.annotation.RestController",
+     "values": {}
+    }
+   ],
+   "fqn": "org.example.shop.rest.NarrowController",
+   "kind": "class",
+   "methods": [
+    {
+     "annotations": [
+      {
+       "fqn": "org.springframework.web.bind.annotation.RequestMapping",
+       "values": {
+        "method": [
+         "GET"
+        ],
+        "value": [
+         ""
+        ]
+       }
+      }
+     ],
+     "calls": [],
+     "name": "read",
+     "resolution": "full",
+     "signature": "read()"
+    },
+    {
+     "annotations": [
+      {
+       "fqn": "org.springframework.web.bind.annotation.RequestMapping",
+       "values": {
+        "method": [
+         "POST"
+        ],
+        "value": [
+         ""
+        ]
+       }
+      }
+     ],
+     "calls": [],
+     "name": "write",
+     "resolution": "full",
+     "signature": "write()"
+    }
+   ],
+   "supertypes": [],
+   "type_refs": []
+  },
+  {
+   "annotations": [
+    {
+     "fqn": "org.springframework.web.bind.annotation.RequestMapping",
+     "values": {
+      "value": [
+       "/api/other"
+      ]
+     }
+    },
+    {
+     "fqn": "org.springframework.web.bind.annotation.RestController",
+     "values": {}
+    }
+   ],
+   "fqn": "org.example.shop.rest.OtherController",
+   "kind": "class",
+   "methods": [
+    {
+     "annotations": [
+      {
+       "fqn": "org.springframework.web.bind.annotation.RequestMapping",
+       "values": {
+        "method": [
+         "GET"
+        ],
+        "value": [
+         ""
+        ]
+       }
+      }
+     ],
+     "calls": [],
+     "name": "read",
+     "resolution": "full",
+     "signature": "read()"
+    }
+   ],
+   "supertypes": [],
+   "type_refs": []
+  },
+  {
+   "annotations": [
+    {
+     "fqn": "org.springframework.boot.autoconfigure.condition.ConditionalOnProperty",
+     "values": {
+      "havingValue": [
+       "true"
+      ],
+      "name": [
+       "fixture.security.enable"
+      ]
+     }
+    }
+   ],
+   "fqn": "org.example.shop.security.EnabledSecurity",
+   "kind": "class",
+   "methods": [
+    {
+     "annotations": [],
+     "calls": [
+      {
+       "name": "authorizeRequests",
+       "owner": "org.springframework.security.config.annotation.web.builders.HttpSecurity"
+      },
+      {
+       "name": "anyRequest",
+       "owner": "org.springframework.security.config.annotation.web.AbstractRequestMatcherRegistry"
+      },
+      {
+       "name": "authenticated",
+       "owner": "org.springframework.security.config.annotation.web.configurers.ExpressionUrlAuthorizationConfigurer.AuthorizedUrl"
+      },
+      {
+       "name": "httpBasic",
+       "owner": "org.springframework.security.config.annotation.web.builders.HttpSecurity"
+      }
+     ],
+     "name": "configure",
+     "resolution": "full",
+     "signature": "configure()"
+    }
+   ],
+   "supertypes": [
+    "org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter"
+   ],
+   "type_refs": []
+  },
+  {
+   "annotations": [
+    {
+     "fqn": "org.springframework.boot.autoconfigure.condition.ConditionalOnProperty",
+     "values": {
+      "havingValue": [
+       "false"
+      ],
+      "name": [
+       "fixture.security.enable"
+      ]
+     }
+    }
+   ],
+   "fqn": "org.example.shop.security.DisabledSecurity",
+   "kind": "class",
+   "methods": [
+    {
+     "annotations": [],
+     "calls": [
+      {
+       "name": "authorizeRequests",
+       "owner": "org.springframework.security.config.annotation.web.builders.HttpSecurity"
+      },
+      {
+       "name": "permitAll",
+       "owner": "org.springframework.security.config.annotation.web.configurers.ExpressionUrlAuthorizationConfigurer.AuthorizedUrl"
+      }
+     ],
+     "name": "configure",
+     "resolution": "full",
+     "signature": "configure()"
+    }
+   ],
+   "supertypes": [
+    "org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter"
+   ],
+   "type_refs": []
+  }
+ ]
+}

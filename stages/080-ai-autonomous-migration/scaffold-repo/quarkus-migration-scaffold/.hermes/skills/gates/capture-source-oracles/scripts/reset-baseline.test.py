@@ -274,8 +274,99 @@ def _variant_case() -> int:
     return 0
 
 
+def _revert_case() -> int:
+    """--revert-variant: the other half of revert-then-read.
+
+    It executes ONLY the revert the variant corpus records -- computed from
+    the fixture's statements over the declared dataset -- and nothing else:
+    no schema is dropped, no baseline is loaded. The revert first proves it
+    finds the variant state and then proves it left the baseline value; the
+    judgement is the same over canned observations (no database here), and
+    the SQL it sends asserts the same facts. A plan computed from statements
+    decisions.yaml no longer declares, a corpus with no plan, and both flags
+    at once are refused by name."""
+    sys.path.insert(0, str(HERE))
+    import _variant_revert as vr
+    from planner.canonical import write_canonical
+    from _scenarios import corpus_path
+    declared_rows = "INSERT INTO accounts VALUES ('an-identity', true);\nINSERT INTO accounts VALUES ('other', true);\n"
+    schema = "CREATE TABLE accounts (name VARCHAR(20) PRIMARY KEY, enabled BOOLEAN NOT NULL);\n"
+    plan = vr.compute_plan([VARIANT_STATEMENT], declared_rows, schema, {"path": "db/populateDB.sql", "sha256": "0" * 64})
+    if plan["statements"] != ['UPDATE "accounts" SET "enabled" = true WHERE "name" = \'an-identity\'']:
+        return _fail("the revert restores the seeded value: %s" % plan["statements"])
+    # the judgement: the variant state found, exactly the rows updated, the
+    # baseline value left -- anything else is REVERT_UNEXPECTED_STATE
+    good_before, good_after = {0: {"table_rows": 2, "selected": 1, "variant": 1}}, {0: {"updated": 1, "baseline": 1}}
+    if vr.observation_gaps(plan, good_before, good_after):
+        return _fail("the variant state, reverted, is accepted")
+    for before, after, what in (({0: {"table_rows": 1, "selected": 1, "variant": 1}}, good_after, "a row gone from the table"),
+                                ({0: {"table_rows": 2, "selected": 1, "variant": 0}}, good_after, "the variant value not found"),
+                                (good_before, {0: {"updated": 1, "baseline": 0}}, "the baseline value not left")):
+        gaps = vr.observation_gaps(plan, before, after)
+        if not gaps or "REVERT_UNEXPECTED_STATE" not in gaps[0]:
+            return _fail("%s refuses: %s" % (what, gaps))
+    sql = vr.revert_sql(plan)
+    for fact in ('SELECT count(*) INTO n FROM "accounts";\n  IF n <> 2',
+                 '"enabled" IS NOT DISTINCT FROM false;\n  IF n <> 1',
+                 'GET DIAGNOSTICS n = ROW_COUNT;\n  IF n <> 1',
+                 '"enabled" IS NOT DISTINCT FROM true;\n  IF n <> 1', "RAISE EXCEPTION", "DO $revert$"):
+        if fact not in sql:
+            return _fail("the revert SQL asserts %r: %s" % (fact, sql))
+    if "DROP" in sql.upper() or "INSERT" in sql.upper():
+        return _fail("the revert changes nothing but the reverted rows: %s" % sql)
+    try:
+        vr.compute_plan(["UPDATE accounts SET enabled = false, name = 'x' WHERE name = 'an-identity'"], declared_rows, schema, {})
+        return _fail("a multi-column update has no computable revert")
+    except vr.RevertRefusal:
+        pass
+
+    with tempfile.TemporaryDirectory(prefix="reset-revert-") as td:
+        root = _tree(Path(td) / "revert", with_baseline=True)
+        (root / "decisions.yaml").write_text(
+            (root / "decisions.yaml").read_text(encoding="utf-8") + VARIANT_SECURITY_YAML, encoding="utf-8")
+        corpus = {"schema": "rhoai3.scenario-corpus/v1", "approved_by": "operator:test", "security_mode": "enabled",
+                  "security_variant": VARIANT, "initial_state": {"reset": "the reset script", "dataset": "declared"},
+                  "fixture": {"name": VARIANT, "statements": [VARIANT_STATEMENT], "revert": plan}, "scenarios": []}
+        write_canonical(root / corpus_path("enabled", VARIANT), corpus)
+
+        def run(*extra: str) -> subprocess.CompletedProcess:
+            return subprocess.run(["bash", str(RESET), "--root", str(root)] + list(extra), text=True, capture_output=True)
+
+        p = run("--revert-variant", VARIANT, "--print-plan")
+        if p.returncode != 0 or "nothing dropped, nothing loaded" not in p.stdout or "revert: fixture %s (1 " % VARIANT not in p.stdout:
+            return _fail("the revert plan resolves without a database: rc=%s %s %s" % (p.returncode, p.stdout, p.stderr[-300:]))
+        if "apply:" in p.stdout or "sql: " + plan["statements"][0] in p.stdout or 'sql:   UPDATE "accounts"' not in p.stdout:
+            return _fail("the revert applies no asset and sends exactly the verified block: %s" % p.stdout)
+        p = run("--revert-variant", VARIANT)
+        if p.returncode != 1 or "FIXTURE_DB_URL" not in p.stderr:
+            return _fail("a revert still needs the credentials the decision names: rc=%s %s" % (p.returncode, p.stderr[-300:]))
+        p = run("--revert-variant", VARIANT, "--variant", VARIANT, "--print-plan")
+        if p.returncode != 2:
+            return _fail("setting and reverting a variant at once is a usage error: rc=%s" % p.returncode)
+        # a plan computed from statements the decision no longer declares
+        stale = dict(corpus, fixture=dict(corpus["fixture"], statements=["UPDATE accounts SET enabled = false WHERE name = 'other'"]))
+        write_canonical(root / corpus_path("enabled", VARIANT), stale)
+        p = run("--revert-variant", VARIANT, "--print-plan")
+        if p.returncode != 1 or "REVERT_STALE_PLAN" not in p.stderr:
+            return _fail("a revert computed from other statements refuses: rc=%s %s" % (p.returncode, p.stderr[-300:]))
+        # a corpus with no plan names why (and what the derivation said)
+        bare = dict(corpus, fixture={"name": VARIANT, "statements": [VARIANT_STATEMENT],
+                                     "revert_refused": "REVERT_NOT_COMPUTABLE: a reason"})
+        write_canonical(root / corpus_path("enabled", VARIANT), bare)
+        p = run("--revert-variant", VARIANT, "--print-plan")
+        if p.returncode != 1 or "REVERT_NO_PLAN" not in p.stderr or "REVERT_NOT_COMPUTABLE: a reason" not in p.stderr:
+            return _fail("a corpus with no revert refuses and carries the derivation's reason: rc=%s %s" % (p.returncode, p.stderr[-300:]))
+        # a plan edited into something that is not a translated literal
+        edited = dict(corpus, fixture=dict(corpus["fixture"], revert=dict(plan, rows=[dict(plan["rows"][0], baseline_value="now()")])))
+        write_canonical(root / corpus_path("enabled", VARIANT), edited)
+        p = run("--revert-variant", VARIANT, "--print-plan")
+        if p.returncode != 1 or "REVERT_NO_PLAN" not in p.stderr:
+            return _fail("an edited revert plan is not executed: rc=%s %s" % (p.returncode, p.stderr[-300:]))
+    return 0
+
+
 def main() -> int:
-    if _plan_case() or _verification_case() or _variant_case():
+    if _plan_case() or _verification_case() or _variant_case() or _revert_case():
         return 1
     print("OK: reset-parity-db (the plan loads the derived baseline and not the per-engine seed; an older tree keeps the "
           "previous behaviour and says the baseline is unverified; every existing flag still holds; a declared fixture "
@@ -283,7 +374,9 @@ def main() -> int:
           "restoration that follows, still refuses without the credentials the decision names, and refuses an undeclared "
           "variant and a tree with no security section by name while the baseline reset stays what it was; the reset contract "
           "refuses a drifted row count, a sequence left at RESTART WITH, and a missing sequence, and the SQL it sends "
-          "asserts the same facts)")
+          "asserts the same facts; --revert-variant executes only the revert the variant corpus records, drops and loads nothing, "
+          "proves it finds the variant state and leaves the baseline value -- REVERT_UNEXPECTED_STATE otherwise -- and refuses a "
+          "stale plan, a missing or edited plan and both flags at once by name)")
     return 0
 
 

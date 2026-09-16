@@ -652,6 +652,9 @@ class AccountStatus(BaseHTTPRequestHandler):
     dataset = ""
     disabled_marker = ""
 
+    def do_DELETE(self):  # noqa: N802
+        return self.do_GET()
+
     def do_GET(self):  # noqa: N802
         cls = type(self)
         disabled = cls.disabled_marker and cls.disabled_marker in cls.dataset
@@ -814,6 +817,95 @@ def _variant_capture_case() -> int:
     return 0
 
 
+def _variant_revert_capture_case() -> int:
+    """A revert-then-read scenario is captured in two states of the source:
+    its read-backs on the DECLARED dataset (where the one identity is
+    enabled, so they answer 200 as that identity), then the request on the
+    variant dataset (where the same identity is refused). The source's
+    database lives in its process, so no revert is applied to it and no after
+    read is taken -- the capture says so -- and the next start is the
+    variant's again."""
+    import base64
+    import os
+    from unittest.mock import patch
+    from planner.canonical import load_json as _load, sha256_file
+    from planner.paths import producer_receipt as _producer_receipt
+    from _scenarios import corpus_path, scenario_oracles_dir, scenario_slug, variant_dataset_path
+
+    producer = _load_producer()
+    secret, user, ref = "r3vert-s3cret", "an-identity", "TEST_REVERT_CREDENTIAL"
+    token = base64.b64encode(("%s:%s" % (user, secret)).encode("utf-8")).decode("ascii")
+    handler = type("R", (AccountStatus,), {"expected": "Basic %s" % token, "dataset": "", "disabled_marker": "enabled = false"})
+    srv = HTTPServer(("127.0.0.1", 0), handler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    base_url = "http://127.0.0.1:%d" % srv.server_address[1]
+    kept = os.environ.get(ref)
+    os.environ[ref] = "%s:%s" % (user, secret)
+    try:
+        with tempfile.TemporaryDirectory(prefix="variant-revert-capture-") as tmp:
+            t = Path(tmp).resolve()
+            own = {"kind": "basic", "credential_ref": ref}
+            probe = {"id": "sc:fixture-%s-delete-owners" % VARIANT, "method": "DELETE", "path": "/api/owners/1",
+                     "body_absent": True, "reset_before": True, "normalization": [], "identity": dict(own),
+                     "effects": [{"id": "eff:owners", "method": "GET", "path": "/api/owners", "role": "unchanged_under_refusal"}],
+                     "effects_identity": dict(own),
+                     "effects_reader": {"strategy": "revert_then_read", "name": user, "credential_ref": ref}}
+            root, ep = _mode_root(t, "revert", dict(probe, id="sc:unused"), "enabled", security=_variant_fixture([ref]))
+            copy = Path(_load(_producer_receipt(root, "freeze"))["analysis_copy"])
+            declared = copy / DECLARED_DATASET
+            declared.parent.mkdir(parents=True, exist_ok=True)
+            declared.write_text(DECLARED_SQL, encoding="utf-8")
+            varied = dict(probe, entry_point=ep, security_mode="enabled", security_variant=VARIANT)
+            write_canonical(root / corpus_path("enabled", VARIANT), {
+                "schema": "rhoai3.scenario-corpus/v1", "approved_by": "operator:test",
+                "security_mode": "enabled", "security_variant": VARIANT,
+                "initial_state": {"reset": "restart the service", "dataset": "seeded"},
+                "fixture": {"name": VARIANT, "intent": "refuse", "scenarios": "auth-allowed",
+                            "dataset_config_key": DATASET_KEY, "statements": [STATEMENT],
+                            "dataset": {"path": DECLARED_DATASET, "sha256": sha256_file(declared)}},
+                "scenarios": [varied]})
+            fake = _fake_runtime(base_url)
+            loaded: list = []
+
+            class DatasetAware(fake):
+                def start(self):
+                    location = self.source_config.get(DATASET_KEY, "")
+                    path = location[len("file:"):] if location.startswith("file:") else location
+                    loaded.append(path)
+                    handler.dataset = Path(path).read_text(encoding="utf-8") if path and Path(path).is_file() else ""
+                    return super().start()
+
+            with patch.object(producer, "SourceRuntime", DatasetAware):
+                rc = producer.main(["--root", str(root), "--security-mode", "enabled",
+                                    "--fixture-variant", VARIANT, "--credential-ref", ref, "--no-reads"])
+            if rc != 0:
+                return _fail("a revert-then-read scenario captures: rc=%s" % rc)
+            dataset_p = str(root / variant_dataset_path("enabled", VARIANT))
+            if loaded != [dataset_p, str(declared), dataset_p]:
+                return _fail("the source is started on the variant, then the declared baseline for the reads, then the "
+                             "variant for the request: %s" % loaded)
+            cap = _load(root / scenario_oracles_dir("enabled", VARIANT) / (scenario_slug(varied["id"]) + ".json"))
+            if cap["status"] != "CAPTURED" or cap["response"]["status"] != 401:
+                return _fail("the request is refused on the variant: %s %s" % (cap["status"], cap.get("response")))
+            if [(r["id"], r["status"], r.get("role")) for r in cap["before"]] != [("eff:owners", 200, "unchanged_under_refusal")]:
+                return _fail("the read-backs are taken on the baseline as the request's own identity: %s" % cap["before"])
+            if cap["effects"] != [] or (cap.get("revert") or {}).get("applied_on_source") is not False:
+                return _fail("no revert is applied to an in-process source and no after read is taken: %s %s"
+                             % (cap["effects"], cap.get("revert")))
+            if (cap.get("effects_reader") or {}).get("strategy") != "revert_then_read" \
+                    or (cap.get("before_dataset") or {}).get("path") != DECLARED_DATASET:
+                return _fail("the capture records the strategy and the dataset the reads were taken on: %s" % cap)
+            if secret.encode() in _all_bytes(root / "verification") or token.encode() in _all_bytes(root / "verification"):
+                return _fail("only the reference travels")
+    finally:
+        srv.shutdown()
+        if kept is None:
+            os.environ.pop(ref, None)
+        else:
+            os.environ[ref] = kept
+    return 0
+
+
 def main() -> int:
     if _challenge_header_case():
         return 1
@@ -821,7 +913,7 @@ def main() -> int:
         return 1
     if _effects_identity_capture_case():
         return 1
-    if _variant_capture_case():
+    if _variant_capture_case() or _variant_revert_capture_case():
         return 1
     with tempfile.TemporaryDirectory(prefix="oracle-") as tmp:
         t = Path(tmp).resolve()

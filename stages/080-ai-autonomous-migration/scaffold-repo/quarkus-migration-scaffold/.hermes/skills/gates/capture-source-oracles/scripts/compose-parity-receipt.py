@@ -51,7 +51,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _oracle_common import PARITY, slug  # noqa: E402
-from _scenarios import (BINDING_CANDIDATE, CorpusError, DEFAULT_SECURITY_MODE, QUALIFICATION, QUALIFICATION_SCHEMA,  # noqa: E402,F401
+from _scenarios import (BINDING_CANDIDATE, CorpusError, DEFAULT_SECURITY_MODE, EFFECT_ROLE_UNCHANGED, QUALIFICATION, QUALIFICATION_SCHEMA,  # noqa: E402,F401
                         SCENARIO_ORACLES, SCENARIO_PARITY, SECURITY_MODES, binding_mismatch, candidate_binding,
                         capture_security_mode, capture_security_variant, corpus_digest, cors_coverage,
                         declared_slugs, is_derived,
@@ -67,6 +67,30 @@ from planner.paths import EVIDENCE_BUNDLE  # noqa: E402
 # states are a redirect target that does not do its job.
 NAVIGATION = PARITY / "navigation"
 NAVIGATION_FAILED = ("dead", "loop", "too-many-hops")
+
+
+def _refused_writes(corpus: Any, results: dict[str, list[dict[str, Any]]]) -> dict[str, dict[str, Any]]:
+    """What each refused write's verdict PROVES: the scenarios whose
+    read-backs play the role ``unchanged_under_refusal`` (their verdict says
+    whether the destination left the state the source left), and the ones
+    whose derivation could not take read-backs at all, with the reason. Only
+    a statement of what the rows are about -- the verdicts are counted above."""
+    out: dict[str, dict[str, Any]] = {}
+    for sc in ((corpus or {}).get("scenarios") or []) if isinstance(corpus, dict) else []:
+        if not isinstance(sc, dict):
+            continue
+        sid = str(sc.get("id") or "")
+        reads = [str(e.get("id") or "") for e in (sc.get("effects") or [])
+                 if isinstance(e, dict) and str(e.get("role") or "") == EFFECT_ROLE_UNCHANGED]
+        found = results.get(sid) or []
+        seen = str(found[0].get("verdict") or "") if len(found) == 1 else ""
+        if reads:
+            out[sid] = {"proves": "the refused write left the state unchanged", "reads": reads,
+                        "verdict": seen or "no single result"}
+        elif str(sc.get("effects_unobservable") or ""):
+            out[sid] = {"proves": "nothing about the state", "unobservable": str(sc["effects_unobservable"]),
+                        "verdict": seen or "no single result"}
+    return out
 
 
 def load_navigation(root: Path) -> dict[str, dict[str, Any]]:
@@ -392,6 +416,7 @@ def main(argv: list[str] | None = None) -> int:
            # counted in no row, no total and no verdict
            "orphaned_records": orphaned,
            "navigation": {"checked": len(navigation), "failures": navigation_failures},
+           "refused_writes": _refused_writes(corpus, results),
            "verdict": verdict}
     out = root / parity_receipt_path(security_mode, variant)
     write_canonical(out, doc)

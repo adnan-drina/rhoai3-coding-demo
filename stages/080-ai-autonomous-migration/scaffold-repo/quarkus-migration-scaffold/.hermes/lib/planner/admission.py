@@ -23,8 +23,9 @@ from pathlib import Path
 from typing import Any
 
 from planner.canonical import digest, is_sha256, load_json, sha256_file
+from planner import decided_repairs
 from planner.decisions import missing_decisions
-from planner.paths import ADMISSION_RECEIPT, BOOTSTRAP_RECEIPT, DECISIONS, EVIDENCE_BUNDLE, LOOP_STEPS, SCHEMAS_DIR, WORKLIST, contract_files
+from planner.paths import ADMISSION_RECEIPT, BOOTSTRAP_RECEIPT, DECIDED_REPAIRS_RECEIPT, DECISIONS, EVIDENCE_BUNDLE, LOOP_STEPS, SCHEMAS_DIR, WORKLIST, contract_files
 from planner.pins import activation_gaps, activation_record, digestable_pins, load_pins, pin_gaps
 from planner.schema_lite import load_schema, validate
 
@@ -106,6 +107,11 @@ def blocks_for(root: Path, bundle: dict[str, Any], worklist: dict[str, Any], dec
             block("BOOTSTRAP_BLOCKED", str(bb.get("subject")), str(bb.get("detail")))
         if str(b.get("status")) not in ("ok", "blocked") or str((b.get("inputs") or {}).get("evidence_bundle_sha256")) != bundle_digest:
             block("BOOTSTRAP_STALE", "bootstrap", "bootstrap receipt is %s / bound to bundle %s, current bundle %s" % (b.get("status"), str((b.get("inputs") or {}).get("evidence_bundle_sha256"))[:12], bundle_digest[:12]))
+    # ADR-019: repairs decided for bootstrap must be demonstrably applied
+    # before anything mints (a refused or missing row keeps this INCONCLUSIVE)
+    if decisions is not None:
+        for g in decided_repairs.receipt_gaps(root, decisions):
+            block(g["class"], g["subject"], g["detail"])
     m = worklist.get("measure") or {}
     for text in m.get("blocked") or []:
         cls = typed_class(text, MEASURE_BLOCK_CLASSES, "")
@@ -167,6 +173,9 @@ def compose_receipt(root: Path) -> dict[str, Any]:
         "contracts": {str(p.relative_to(root)): sha256_file(p) for p in contract_files(root)},
         "pins": digest(digestable_pins(pins)),
     }
+    dr = root / DECIDED_REPAIRS_RECEIPT
+    if dr.is_file():
+        seals["decided_repairs"] = sha256_file(dr)
     m = worklist.get("measure") or {}
     receipt = {
         "schema": SCHEMA,
@@ -186,6 +195,9 @@ def compose_receipt(root: Path) -> dict[str, Any]:
             "entry_points": len(bundle.get("entry_points") or []),
             "open_blocks": len(blocks),
         },
+        # what this run was prepared with (ADR-019): decided repairs applied at
+        # bootstrap are part of the comparison and intervention accounting
+        "decided_repairs": decided_repairs.summary(root, decisions),
         "loop_complete": bool(m.get("known")) and not worklist.get("head") and not worklist.get("deferred") and not worklist.get("blocked_clusters") and all(v == 0 for v in (m.get("tuple") or [1])),
     }
     steps_p = root / LOOP_STEPS
@@ -224,6 +236,10 @@ def verify_receipt(root: Path, *, require_admitted: bool = True) -> tuple[dict[s
     bs = root / BOOTSTRAP_RECEIPT
     if (sha256_file(bs) if bs.is_file() else "") != seals.get("bootstrap", ""):
         gaps.append("bootstrap receipt changed after admission")
+    if "decided_repairs" in seals:
+        dr = root / DECIDED_REPAIRS_RECEIPT
+        if (sha256_file(dr) if dr.is_file() else "") != seals.get("decided_repairs"):
+            gaps.append("decided repair receipt changed after admission")
     dec = root / DECISIONS
     if dec.is_file():
         if sha256_file(dec) != seals.get("decisions_yaml"):

@@ -810,6 +810,18 @@ check "080 golden decisions.yaml is schema-valid with no missing decision (platf
 check "080 bootstrap-destination selftest passes (launcher with behavior kept; unmapped starter blocks; Maven settings wiring required; second run preserves the tree)" \
   "python3 '${SCAFFOLD_SKILLS}/migration/bootstrap-destination/scripts/bootstrap-destination.test.py' >/dev/null && echo 1 || echo 0" \
   "1"
+check "080 decided-repairs selftest passes (ADR-019: bootstrap transformations apply structurally and idempotently, conflicts are typed refusals, review reuse needs the exact reviewed bytes, admission and the baseline see the receipt)" \
+  "python3 '${SCAFFOLD_SKILLS}/migration/bootstrap-destination/scripts/decided-repairs.test.py' >/dev/null 2>&1 && echo 1 || echo 0" \
+  "1"
+check "080 golden decided_repairs manifest is the one decisions.yaml pins, and its reviewed files are the pinned bytes" \
+  "cd '${SCAFFOLD_080}' && python3 -c \"import sys,json,hashlib; sys.path.insert(0,'.hermes/lib'); from pathlib import Path; from planner.decisions import load_decisions; s=load_decisions(Path('.'))['decided_repairs']; m=Path(s['manifest']); h=lambda p: hashlib.sha256(Path(p).read_bytes()).hexdigest(); d=json.loads(m.read_text()); ok=h(m)==s['manifest_sha256'] and all(h(t['content'])==t['content_sha256'] for t in d['transformations'] if 'content' in t); print('ok' if ok else 'bad')\"" \
+  "ok"
+check "080 restore-source-response-shape selftest passes (ADR-019: the CORS adapter renders from the source policy, never widens or echoes rejected requests, leaves Content-Type alone; the media-type adapter is its own obligation)" \
+  "python3 '${SCAFFOLD_SKILLS}/migration/restore-source-response-shape/scripts/install-response-adapter.test.py' >/dev/null 2>&1 && echo 1 || echo 0" \
+  "1"
+check "080 work list never issues a worker obligation under a harness-owned generated test root, and K2 refuses the write (ADR-015/ADR-019)" \
+  "grep -c 'harness_owned' '${SCAFFOLD_LIB}/planner/worklist.py' | awk '{print (\$1>=1)?1:0}'" \
+  "1"
 check "080 advance.py binds acceptance to the issued card and the verified candidate tree" \
   "grep -c -E 'LOOP_NOT_ISSUED|LOOP_CANDIDATE_CHANGED|LOOP_WRONG_CARD' '${SCAFFOLD_SKILLS}/migration/fix-until-green/scripts/advance.py' | awk '{print (\$1>=3)?1:0}'" \
   "1"

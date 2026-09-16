@@ -334,6 +334,69 @@ def _owed_case(root: Path) -> int:
     return 0
 
 
+def _owed_adapter_case(root: Path) -> int:
+    """ADR-019: a harness adapter the seal OWES (contract path, type, template
+    digest) is authorized before it exists, on a parity obligation the work
+    list carries; once written, the file must declare the contract's type."""
+    import response_adapters as ra
+
+    owed = ra.adapter_path(ra.CORS)
+    scope = {
+        "schema": "rhoai3.batch-scope/v4", "kind": "unit", "rule": "unit/owed-adapter/v1",
+        "cluster": "u:adapt01", "unit_id": "u:adapt01", "family_key": "source-cors-response-adapter/v1",
+        "writable_paths": ["src/main/resources/application.properties"],
+        "symbols": [{"kind": "property", "fqn": "rhoai3.source-cors", "path": "src/main/resources/application.properties"}],
+        "target_symbols": [],
+        "members": [{"path": "src/main/resources/application.properties", "type": "", "member_id": "", "occurrence": 0,
+                     "state": "declares-property"}],
+        "implementation_obligations": [dict(ra.contract(ra.CORS), parent="", parent_path="", members=[],
+                                            verify="template", adapter=ra.CORS, properties=[])],
+        "measured": ["parity:abc"],
+    }
+    scope["digest"] = batch_scope_digest(scope)
+    sp = root / "evidence/planning/batch-scope/u-adapt01" / ("%s.json" % scope["digest"][:32])
+    sp.parent.mkdir(parents=True, exist_ok=True)
+    sp.write_text(json.dumps(scope))
+    (root / "evidence/planning/worklist.json").write_text(json.dumps({"schema": "rhoai3.worklist/v1", "clusters": [], "items": [
+        {"id": "parity:abc", "source": "parity", "gate": "parity", "kind": "config", "rule_id": "PARITY_CORS",
+         "path": owed, "category": "mandatory", "line": 0, "owed": ra.contract(ra.CORS)}]}))
+    issued = root / "verification/loop/issued.json"
+    issued.write_text(json.dumps({
+        "schema": "rhoai3.loop-issued/v1", "cluster": "u:adapt01", "attempt": 1,
+        "write_set": list(scope["writable_paths"]),
+        "batch_scope": {"path": sp.relative_to(root).as_posix(), "digest": scope["digest"]},
+    }))
+    other = ra.adapter_path(ra.MEDIA_TYPE)
+    rc, out = _run(root, "--path", other, "--reason", "the media type adapter would help here too",
+                   "--evidence", "parity:parity:abc", cluster="u:adapt01")
+    if rc == 0 or "records no implementation obligation" not in out:
+        return _fail("a CORS seal never authorizes the media-type adapter: %s" % out)
+    rc, out = _run(root, "--path", owed, "--reason", "the CORS obligation is owed the source-preserving adapter",
+                   "--evidence", "parity:parity:nope", cluster="u:adapt01")
+    if rc == 0 or "no parity obligation" not in out:
+        return _fail("a parity id the work list does not carry is no evidence: %s" % out)
+    rc, out = _run(root, "--path", owed, "--reason", "the CORS obligation is owed the source-preserving adapter",
+                   "--evidence", "parity:parity:abc", cluster="u:adapt01")
+    if rc != 0 or "SCOPE REVISED" not in out:
+        return _fail("the owed adapter path is authorized before it exists: %s" % out)
+    amd = (json.loads(issued.read_text()).get("amendments") or [{}])[-1]
+    if (amd.get("creates") or {}).get("template_sha256") != ra.template_sha256(ra.CORS) or "template" not in amd.get("locus", ""):
+        return _fail("the record names the template the file must be: %s" % amd)
+    (root / owed).parent.mkdir(parents=True, exist_ok=True)
+    (root / owed).write_text("package io.rhoai3.migration.response;\npublic class SomethingElse {\n}\n")
+    rc, out = _run(root, "--path", owed, "--reason", "the CORS obligation is owed the source-preserving adapter",
+                   "--evidence", "parity:parity:abc", cluster="u:adapt01")
+    if "instead" not in out:
+        return _fail("a file that declares another type than the contract's is named: %s" % out)
+    (root / owed).write_text("package io.rhoai3.migration.response;\npublic class SourceCorsResponseAdapter {\n}\n")
+    rc, out = _run(root, "--path", owed, "--reason", "the CORS obligation is owed the source-preserving adapter",
+                   "--evidence", "parity:parity:abc", cluster="u:adapt01")
+    if rc != 0 or "the adapter its obligation names" not in out:
+        return _fail("the contract's type at the contract's path is verified from the model: %s" % out)
+    (root / owed).unlink()
+    return 0
+
+
 def main() -> int:
     if not shutil.which("javac"):
         print("SKIP: amend-scope selftest needs a JDK on PATH")
@@ -454,6 +517,8 @@ def main() -> int:
             return 1
         if _owed_case(root):
             return 1
+        if _owed_adapter_case(root):
+            return 1
 
     print("OK: amend-scope (tests, the build file, unknown paths, unreasoned asks and files the failure does not reach "
           "all refuse; a reference the repair itself introduced authorizes nothing and an inventory with no sealed reachability refuses outright; a file that is already edited cannot be authorized after the fact; a justified amendment widens "
@@ -468,7 +533,9 @@ def main() -> int:
           "and its naming contract, an invented one refuses, and the record says the file did not exist and what "
           "it must become; the unit's retry budget, idempotency key and sealed inventory do not move; once the "
           "file exists the promised relationship is verified from the model (an adapter that does not implement "
-          "the parent is named as such); and the file bound still governs it")
+          "the parent is named as such); and the file bound still governs it. AN OWED ADAPTER (ADR-019): its contract "
+          "path is authorized before it exists on a parity obligation the work list carries, never the other "
+          "adapter's path, and once written it must declare the contract's type")
     return 0
 
 

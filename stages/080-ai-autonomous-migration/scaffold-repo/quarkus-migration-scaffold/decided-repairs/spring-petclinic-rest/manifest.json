@@ -1,0 +1,317 @@
+{
+  "schema": "rhoai3.decided-repairs-manifest/v1",
+  "specimen": "spring-petclinic-rest",
+  "manifest_version": "1.0.0",
+  "decided_by": "ADR-019 (architect third review 2026-09-16): ADR-008 and ADR-014 enter a fresh run as bootstrap transformations; ADR-013 is a deterministic bootstrap retirement of the decided JaCoCo check execution",
+  "source": {
+    "repository": "https://github.com/adnan-drina/spring-petclinic-rest-legacy.git",
+    "note": "applicability is bound per transformation to the structure the frozen copy shows, not to one commit"
+  },
+  "standing_obligations": [
+    "ADR-008: fresh successful Surefire execution of the retained ValidatorTests on every run (a reused review never replaces execution)",
+    "ADR-014: packaged-runtime verification in BOTH security modes (petclinic.security.enable false and true) against separately bound captures on every run; the authenticated-without-role case stays an explicit blocker",
+    "ADR-013: coverage is still measured (prepare-agent, report); the retired thresholds are not achieved and stay an open follow-up"
+  ],
+  "review_records": [
+    {
+      "id": "RR-ADR008-v9-step16",
+      "adr": "ADR-008",
+      "kind": "operator-step",
+      "source": "v9 verification/loop/steps.json#steps[16], commit 4dda407d3b4c239b63a8364ab9a8ad23107e3e57, recorded 2026-09-14T19:24:56Z (operator-step.py --reviewer)",
+      "operator": "operator:adnan.drina",
+      "author": "claude",
+      "reviewer": "architect",
+      "reviewed_artifacts": [
+        {
+          "path": "src/test/java/org/springframework/samples/petclinic/model/ValidatorTests.java",
+          "sha256": "96c483392a361b0c190760e9fcc8e9d9f63fdcb561f484022a030eb9baba235b",
+          "applicability": {
+            "source_path": "src/test/java/org/springframework/samples/petclinic/model/ValidatorTests.java",
+            "source_sha256": "47bd7208a179fd652806b8c8ac16a4671420afaf4aff6b9125cbeaab81b3772f",
+            "contract": "assertions, test inputs, selected subject, discovery and the validation call unchanged; English locale pinned; real provider; assertj-core restored by the compat catalog"
+          }
+        }
+      ]
+    },
+    {
+      "id": "RR-ADR014-v9-e9b8095",
+      "adr": "ADR-014",
+      "kind": "operator-step",
+      "source": "v9 operator step commit e9b8095 (ADR-014 amended per ADR-018), recorded 2026-09-16 with operator-step.py --reviewer architect --no-mint",
+      "operator": "operator:adnan.drina",
+      "author": "claude",
+      "reviewer": "architect",
+      "reviewed_artifacts": [
+        {
+          "path": "src/main/java/org/springframework/samples/petclinic/security/SecurityMode.java",
+          "sha256": "3266afd876c5de3c3c0fe1298d76bf4cfc09d9ac677c5d7b79dea010b8f88f47",
+          "applicability": {
+            "contract": "new file; absent from the frozen source"
+          }
+        },
+        {
+          "path": "src/main/java/org/springframework/samples/petclinic/security/PrefixedPlainTextPasswordProvider.java",
+          "sha256": "41e96cc94b848f811a0de6d9a1e54e727d0464c9d9e2a6595b9678183128048f",
+          "applicability": {
+            "contract": "new file; absent from the frozen source"
+          }
+        },
+        {
+          "path": "src/main/java/org/springframework/samples/petclinic/security/SourceBasicAuthenticationMechanism.java",
+          "sha256": "4aabd4829892fdea380429ab3206464c0b6d7173d3f89ca9f2fac68b5cde680b",
+          "applicability": {
+            "contract": "new file; absent from the frozen source"
+          }
+        },
+        {
+          "path": "src/main/java/org/springframework/samples/petclinic/security/HttpSecuritySwitch.java",
+          "sha256": "952275336f12744026e1cec2174ac39b97a822f561e6859a0a5f82509b08e390",
+          "applicability": {
+            "contract": "new file; absent from the frozen source"
+          }
+        },
+        {
+          "path": "src/main/java/org/springframework/samples/petclinic/security/DisabledAccountAugmentor.java",
+          "sha256": "107530d86985cfd1bb092f18b1d0b6f56a459523803fb25d36a053dd1138a8f2",
+          "applicability": {
+            "contract": "new file; absent from the frozen source"
+          }
+        }
+      ]
+    }
+  ],
+  "transformations": [
+    {
+      "id": "adr008-validator-tests-port",
+      "adr": "ADR-008",
+      "kind": "replace_reviewed_file",
+      "path": "src/test/java/org/springframework/samples/petclinic/model/ValidatorTests.java",
+      "content": "operator-patches/spring-petclinic-rest/src/test/java/org/springframework/samples/petclinic/model/ValidatorTests.java",
+      "content_sha256": "96c483392a361b0c190760e9fcc8e9d9f63fdcb561f484022a030eb9baba235b",
+      "applicability": {
+        "source_sha256": "47bd7208a179fd652806b8c8ac16a4671420afaf4aff6b9125cbeaab81b3772f"
+      },
+      "review_record": "RR-ADR008-v9-step16",
+      "obligations": [
+        "fresh successful Surefire execution of ValidatorTests in this run"
+      ]
+    },
+    {
+      "id": "adr014-new-SecurityMode",
+      "adr": "ADR-014",
+      "kind": "add_file",
+      "path": "src/main/java/org/springframework/samples/petclinic/security/SecurityMode.java",
+      "content": "operator-patches/spring-petclinic-rest/src/main/java/org/springframework/samples/petclinic/security/SecurityMode.java",
+      "content_sha256": "3266afd876c5de3c3c0fe1298d76bf4cfc09d9ac677c5d7b79dea010b8f88f47",
+      "review_record": "RR-ADR014-v9-e9b8095"
+    },
+    {
+      "id": "adr014-new-PrefixedPlainTextPasswordProvider",
+      "adr": "ADR-014",
+      "kind": "add_file",
+      "path": "src/main/java/org/springframework/samples/petclinic/security/PrefixedPlainTextPasswordProvider.java",
+      "content": "operator-patches/spring-petclinic-rest/src/main/java/org/springframework/samples/petclinic/security/PrefixedPlainTextPasswordProvider.java",
+      "content_sha256": "41e96cc94b848f811a0de6d9a1e54e727d0464c9d9e2a6595b9678183128048f",
+      "review_record": "RR-ADR014-v9-e9b8095"
+    },
+    {
+      "id": "adr014-new-SourceBasicAuthenticationMechanism",
+      "adr": "ADR-014",
+      "kind": "add_file",
+      "path": "src/main/java/org/springframework/samples/petclinic/security/SourceBasicAuthenticationMechanism.java",
+      "content": "operator-patches/spring-petclinic-rest/src/main/java/org/springframework/samples/petclinic/security/SourceBasicAuthenticationMechanism.java",
+      "content_sha256": "4aabd4829892fdea380429ab3206464c0b6d7173d3f89ca9f2fac68b5cde680b",
+      "review_record": "RR-ADR014-v9-e9b8095"
+    },
+    {
+      "id": "adr014-new-HttpSecuritySwitch",
+      "adr": "ADR-014",
+      "kind": "add_file",
+      "path": "src/main/java/org/springframework/samples/petclinic/security/HttpSecuritySwitch.java",
+      "content": "operator-patches/spring-petclinic-rest/src/main/java/org/springframework/samples/petclinic/security/HttpSecuritySwitch.java",
+      "content_sha256": "952275336f12744026e1cec2174ac39b97a822f561e6859a0a5f82509b08e390",
+      "review_record": "RR-ADR014-v9-e9b8095"
+    },
+    {
+      "id": "adr014-new-DisabledAccountAugmentor",
+      "adr": "ADR-014",
+      "kind": "add_file",
+      "path": "src/main/java/org/springframework/samples/petclinic/security/DisabledAccountAugmentor.java",
+      "content": "operator-patches/spring-petclinic-rest/src/main/java/org/springframework/samples/petclinic/security/DisabledAccountAugmentor.java",
+      "content_sha256": "107530d86985cfd1bb092f18b1d0b6f56a459523803fb25d36a053dd1138a8f2",
+      "review_record": "RR-ADR014-v9-e9b8095"
+    },
+    {
+      "id": "adr014-conditional-authorization",
+      "adr": "ADR-014",
+      "kind": "java_annotation_expression",
+      "roots": [
+        "src/main/java"
+      ],
+      "annotation": "org.springframework.security.access.prepost.PreAuthorize",
+      "attribute": "value",
+      "template": "@securityMode.disabled() or {expression}",
+      "applicability": {
+        "sites": 33,
+        "structure_sha256": "0bf6cff2a37f51e0872036cb3406ad4a0a93dcf8d55f0181d56a70b0213c9834"
+      }
+    },
+    {
+      "id": "adr014-identity-user-definition",
+      "adr": "ADR-014",
+      "kind": "java_member_annotation",
+      "type": "org.springframework.samples.petclinic.model.User",
+      "annotation": "io.quarkus.security.jpa.UserDefinition",
+      "text": "@UserDefinition",
+      "imports": [
+        "io.quarkus.security.jpa.UserDefinition"
+      ],
+      "applicability": {
+        "structure_sha256": "c500a5a0ebf42b7a46c215833131a72e2c8a7346b11706f633533eaec7a6601d"
+      }
+    },
+    {
+      "id": "adr014-identity-username",
+      "adr": "ADR-014",
+      "kind": "java_member_annotation",
+      "type": "org.springframework.samples.petclinic.model.User",
+      "annotation": "io.quarkus.security.jpa.Username",
+      "text": "@Username",
+      "imports": [
+        "io.quarkus.security.jpa.Username"
+      ],
+      "applicability": {
+        "structure_sha256": "504354c333c18d8edb1a58553566565a462a02eaa44838942a1c698bbccff30e"
+      },
+      "member": "username",
+      "member_kind": "field"
+    },
+    {
+      "id": "adr014-identity-password",
+      "adr": "ADR-014",
+      "kind": "java_member_annotation",
+      "type": "org.springframework.samples.petclinic.model.User",
+      "annotation": "io.quarkus.security.jpa.Password",
+      "text": "@Password(value = PasswordType.CUSTOM, provider = PrefixedPlainTextPasswordProvider.class)",
+      "imports": [
+        "io.quarkus.security.jpa.Password",
+        "io.quarkus.security.jpa.PasswordType",
+        "org.springframework.samples.petclinic.security.PrefixedPlainTextPasswordProvider"
+      ],
+      "applicability": {
+        "structure_sha256": "4332ae0823b656007d6cf5250867a63de37b447df348c6534ab4ff9e6cc5d590"
+      },
+      "member": "password",
+      "member_kind": "field"
+    },
+    {
+      "id": "adr014-identity-roles",
+      "adr": "ADR-014",
+      "kind": "java_member_annotation",
+      "type": "org.springframework.samples.petclinic.model.User",
+      "annotation": "io.quarkus.security.jpa.Roles",
+      "text": "@Roles",
+      "imports": [
+        "io.quarkus.security.jpa.Roles"
+      ],
+      "applicability": {
+        "structure_sha256": "3c95988c57eaaa5adbd0080834376f1b606aa7cc6d74dc28eca3e76796e2ccd4"
+      },
+      "member": "roles",
+      "member_kind": "field"
+    },
+    {
+      "id": "adr014-identity-roles-value",
+      "adr": "ADR-014",
+      "kind": "java_member_annotation",
+      "type": "org.springframework.samples.petclinic.model.Role",
+      "annotation": "io.quarkus.security.jpa.RolesValue",
+      "text": "@RolesValue",
+      "imports": [
+        "io.quarkus.security.jpa.RolesValue"
+      ],
+      "applicability": {
+        "structure_sha256": "2d10a2c85e8f2fe327907ce40c0598955a87998b72b7dc0e8e82f8649c67ba5b"
+      },
+      "member": "name",
+      "member_kind": "field"
+    },
+    {
+      "id": "adr014-dependency-security-jpa",
+      "adr": "ADR-014",
+      "kind": "pom_dependency",
+      "groupId": "io.quarkus",
+      "artifactId": "quarkus-security-jpa"
+    },
+    {
+      "id": "adr014-property-switch",
+      "adr": "ADR-014",
+      "kind": "property",
+      "file": "src/main/resources/application.properties",
+      "key": "petclinic.security.enable",
+      "value": "false",
+      "applicability": {
+        "source_value": "false"
+      }
+    },
+    {
+      "id": "adr014-property-auth-basic",
+      "adr": "ADR-014",
+      "kind": "property",
+      "file": "src/main/resources/application.properties",
+      "key": "quarkus.http.auth.basic",
+      "value": "false"
+    },
+    {
+      "id": "adr014-property-auth-proactive",
+      "adr": "ADR-014",
+      "kind": "property",
+      "file": "src/main/resources/application.properties",
+      "key": "quarkus.http.auth.proactive",
+      "value": "false"
+    },
+    {
+      "id": "adr013-retire-jacoco-check",
+      "adr": "ADR-013",
+      "kind": "pom_retire_execution",
+      "plugin": {
+        "groupId": "org.jacoco",
+        "artifactId": "jacoco-maven-plugin"
+      },
+      "execution": {
+        "id": "check",
+        "goals": [
+          "check"
+        ],
+        "phase": null
+      },
+      "configuration": {
+        "rules": [
+          {
+            "element": "BUNDLE",
+            "limits": [
+              {
+                "counter": "LINE",
+                "value": "COVEREDRATIO",
+                "minimum": "0.87"
+              },
+              {
+                "counter": "BRANCH",
+                "value": "COVEREDRATIO",
+                "minimum": "0.70"
+              }
+            ]
+          }
+        ]
+      },
+      "preserve_goals": [
+        "prepare-agent",
+        "report"
+      ],
+      "coverage_note": "ADR-007 retired the seventeen test sources that met these minimums; retirement is not achievement, and restoring them is the explicit follow-up beside the QuarkusTest and REST Assured suite",
+      "applicability": {
+        "structure_sha256": "a62e8008c5b3a40130449b3b74262e23ef87cffe818bdf416df75ccc0ea353c4"
+      }
+    }
+  ]
+}

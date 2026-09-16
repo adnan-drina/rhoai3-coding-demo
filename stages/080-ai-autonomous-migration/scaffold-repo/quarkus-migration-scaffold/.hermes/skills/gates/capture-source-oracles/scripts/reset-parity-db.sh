@@ -47,6 +47,19 @@
 #   reset-parity-db.sh --root /projects/modernized [--driver /path/to/driver.jar]
 #   reset-parity-db.sh --root /projects/modernized --print-plan
 #   reset-parity-db.sh --root /projects/modernized --variant identity-disabled
+#   reset-parity-db.sh --root /projects/modernized --revert-variant identity-disabled
+#
+# --revert-variant NAME is the other half of REVERT-THEN-READ (a refused
+# variant write whose state no other declared identity can read): it loads
+# nothing and drops nothing; it executes ONLY the revert the derivation
+# computed for that variant (recorded in the variant corpus, read through the
+# corpus loader so an edited plan is refused), inside one block that first
+# proves it finds the variant state -- the fixture's table still holds the
+# baseline's row count, the predicate selects the baseline's rows, and those
+# rows hold the variant value -- then updates exactly those rows and proves
+# they hold the baseline value. Anything else raises and changes nothing. The
+# fixture statements the corpus was derived from must still be the ones
+# decisions.yaml declares.
 #
 # Exit 0 reset (and verified, when there is a derived baseline), 1 refused, 2 usage.
 set -euo pipefail
@@ -54,16 +67,19 @@ ROOT=""
 DRIVER=""
 PRINT_PLAN="no"
 VARIANT=""
+REVERT=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --root) ROOT="${2:-}"; shift 2 ;;
     --driver) DRIVER="${2:-}"; shift 2 ;;
     --variant) VARIANT="${2:-}"; shift 2 ;;
+    --revert-variant) REVERT="${2:-}"; shift 2 ;;
     --print-plan) PRINT_PLAN="yes"; shift ;;
-    *) echo "usage: reset-parity-db.sh --root <dest> [--driver <jar>] [--variant <name>] [--print-plan]" >&2; exit 2 ;;
+    *) echo "usage: reset-parity-db.sh --root <dest> [--driver <jar>] [--variant <name> | --revert-variant <name>] [--print-plan]" >&2; exit 2 ;;
   esac
 done
 [[ -n "${ROOT}" && -d "${ROOT}" ]] || { echo "FAIL: --root must be an existing directory" >&2; exit 2; }
+[[ -z "${VARIANT}" || -z "${REVERT}" ]] || { echo "FAIL: --variant sets a variant and --revert-variant reverts one; pass one" >&2; exit 2; }
 ROOT="$(cd "${ROOT}" && pwd)"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BASELINE_TOOL="${HERE}/../../../migration/bootstrap-destination/scripts/_baseline_data.py"
@@ -84,6 +100,53 @@ print(" ".join(str(ds.get(k) or "-") for k in ("db_kind", "jdbc_url_env", "usern
 PYEOF
 )
 
+if [[ -n "${REVERT}" ]]; then
+  [[ "${DB_KIND}" == "postgresql" ]] || { echo "FAIL: RESET REVERT_ENGINE the revert is written for postgresql and the decided datasource is ${DB_KIND}" >&2; exit 1; }
+  REVERT_ROWS="$(python3 - "${ROOT}" "${REVERT}" "${WORK}/revert.sql" "${HERE}" 2>"${WORK}/revert.err" <<'PYEOF'
+import sys
+from pathlib import Path
+root, name, out, here = Path(sys.argv[1]), sys.argv[2], Path(sys.argv[3]), sys.argv[4]
+sys.path.insert(0, here)
+sys.path.insert(0, str(root / ".hermes" / "lib"))
+import _variant_revert as vr
+from _scenarios import DEFAULT_SECURITY_MODE, SECURITY_MODES, CorpusError, corpus_path, load_corpus
+from planner.decisions import load_decisions, security
+corpus, why = None, []
+for mode in SECURITY_MODES:
+    if mode == DEFAULT_SECURITY_MODE or not (root / corpus_path(mode, name)).is_file():
+        continue
+    try:
+        corpus = load_corpus(root, mode, name)
+        break
+    except CorpusError as exc:
+        why.append(str(exc))
+if corpus is None:
+    raise SystemExit("REVERT_NO_CORPUS no usable variant corpus for %r%s" % (name, (": " + "; ".join(why)) if why else ""))
+fixture = corpus.get("fixture") or {}
+plan = fixture.get("revert")
+gap = vr.plan_gap(plan)
+if gap:
+    raise SystemExit("REVERT_NO_PLAN the %s variant corpus carries no executable revert (%s)%s"
+                     % (name, gap, ("; the derivation said: " + fixture["revert_refused"]) if fixture.get("revert_refused") else ""))
+decided = security(load_decisions(root)) or {}
+rows = [f for f in (decided.get("fixtures") or []) if f.get("name") == name]
+if not rows or [str(s).strip() for s in rows[0]["statements"]] != [str(s).strip() for s in (fixture.get("statements") or [])]:
+    raise SystemExit("REVERT_STALE_PLAN decisions.yaml no longer declares the statements the %s revert was computed from; "
+                     "derive the variant again" % name)
+out.write_text(vr.revert_sql(plan), encoding="utf-8")
+print(len(plan["rows"]))
+PYEOF
+)" || { echo "FAIL: RESET the ${REVERT} revert is unusable: $(tr '\n' ' ' <"${WORK}/revert.err")" >&2; exit 1; }
+  if [[ "${PRINT_PLAN}" == "yes" ]]; then
+    echo "plan: revert ${DB_KIND} from ${URL_ENV} (credentials ${USER_ENV}/${PASS_ENV}); nothing dropped, nothing loaded"
+    echo "revert: fixture ${REVERT} (${REVERT_ROWS} computed row revert(s) from the variant corpus)"
+    echo "verify: before -- the table's baseline row count, the predicate's baseline rows, the variant value on each; after -- exactly those rows updated, each holding the baseline value; otherwise nothing changes"
+    sed 's/^/sql: /' "${WORK}/revert.sql"
+    exit 0
+  fi
+fi
+
+if [[ -z "${REVERT}" ]]; then
 # The derived baseline, when this tree has one: what to load after the schema,
 # and what must then be true. Exit 3 says the tree predates it.
 BASELINE_FACTS=""
@@ -170,6 +233,7 @@ if [[ "${PRINT_PLAN}" == "yes" ]]; then
   fi
   exit 0
 fi
+fi  # not a revert
 
 URL="${!URL_ENV:-}"
 DB_USER="${!USER_ENV:-}"
@@ -200,6 +264,12 @@ REGISTERS="$(python3 -c 'import sys, zipfile; print("yes" if "META-INF/services/
 if [[ "${REGISTERS}" != "yes" ]]; then
   echo "FAIL: RESET $(basename "${DRIVER}") registers no JDBC driver; pass --driver <jar>" >&2
   exit 1
+fi
+if [[ -n "${REVERT}" ]]; then
+  java -cp "${DRIVER}:${WORK}" ResetDb "${URL}" "${DB_USER}" "${DB_PASSWORD}" --keep-schema "${WORK}/revert.sql" \
+    || { echo "FAIL: RESET REVERT_UNEXPECTED_STATE the ${REVERT} revert did not find the variant state it reverts; nothing was changed" >&2; exit 1; }
+  echo "OK: reverted the ${REVERT} fixture (${REVERT_ROWS} row revert(s)), found in the variant state and verified at the baseline values, using $(basename "${DRIVER}")"
+  exit 0
 fi
 # A verification statement that does not hold RAISEs, the runner propagates the
 # SQLException, and this script exits non-zero: an unverified baseline is never

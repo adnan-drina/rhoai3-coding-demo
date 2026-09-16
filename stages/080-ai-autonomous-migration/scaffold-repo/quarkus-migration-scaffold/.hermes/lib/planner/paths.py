@@ -29,6 +29,8 @@ EVIDENCE_BUNDLE = PLANNING_OUT / "evidence-bundle.json"
 WORKLIST = PLANNING_OUT / "worklist.json"
 ADMISSION_RECEIPT = PLANNING_OUT / "admission-receipt.json"
 BOOTSTRAP_RECEIPT = PRODUCERS_DIR / "bootstrap.json"
+# decided repairs applied by the bootstrap (ADR-019): one row per transformation
+DECIDED_REPAIRS_RECEIPT = PRODUCERS_DIR / "decided-repairs.json"
 BOM_MANAGED = Path("evidence") / "build" / "bom-managed.json"  # probe-bom-managed.py: artifacts the pinned BOM manages
 ARTIFACT_KEYS = (
     ("evidence-bundle", EVIDENCE_BUNDLE),

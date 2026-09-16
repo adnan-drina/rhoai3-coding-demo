@@ -34,7 +34,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _oracle_common import ensure_hermes_lib, header_diffs, http_observe, is_preflight, origin_of, required_headers  # noqa: E402
-from _scenarios import (BINDING_CANDIDATE, CorpusError, DEFAULT_SECURITY_MODE, QUALIFICATION, SCENARIO_ORACLES,  # noqa: E402,F401
+from _scenarios import (BINDING_CANDIDATE, CorpusError, DEFAULT_SECURITY_MODE, EFFECT_ROLE_UNCHANGED, EFFECTS_REVERT_THEN_READ,  # noqa: E402
+                        QUALIFICATION, effects_strategy_of, SCENARIO_ORACLES,  # noqa: E402,F401
                         SCENARIO_PARITY, SECURITY_MODES, auth_headers, candidate_binding, corpus_digest,
                         effects_identity_of, load_corpus, normalize_security_mode, normalized_identity,
                         normalize_variant, qualification_path, request_of, scenario, scenario_oracles_dir, scenario_parity_dir,
@@ -56,6 +57,31 @@ def _identity_label(identity: dict) -> str:
     if all(pair):
         return "%s/%s" % tuple(pair)
     return "the request's own identity"
+
+
+def _reset_argvs(reset_cmd: str, root: Path, variant: str) -> tuple[list[str], list[str], list[str]]:
+    """(baseline, variant, revert) invocations of the reset script for a
+    revert-then-read scenario. A caller's --reset-cmd names the script (and
+    its root); a --variant/--revert-variant it carries is the caller's idea of
+    which state, and the three states are this comparison's to choose."""
+    argv = shlex.split(reset_cmd) if reset_cmd else ["bash", str(Path(__file__).resolve().parent / "reset-parity-db.sh"),
+                                                     "--root", str(root)]
+    base: list[str] = []
+    skip = False
+    for i, a in enumerate(argv):
+        if skip:
+            skip = False
+            continue
+        if a in ("--variant", "--revert-variant"):
+            skip = True
+            continue
+        base.append(a)
+    return base, base + ["--variant", variant], base + ["--revert-variant", variant]
+
+
+def _run(argv: list[str]) -> dict:
+    proc = subprocess.run(argv, text=True, capture_output=True)
+    return {"ran": True, "rc": proc.returncode, "argv": argv, "output": (proc.stdout + proc.stderr).strip()[-400:]}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -258,7 +284,30 @@ def main(argv: list[str] | None = None) -> int:
     # it. Without this a delete that deletes nothing passed against a
     # destination whose row was already gone: the response matched and so did
     # the effect, because both were "absent".
-    if sc.get("reset_before", True) and not args.no_reset:
+    # REVERT-THEN-READ: three states in one comparison -- the verified
+    # baseline (where the before reads are taken), the variant (where the
+    # request is refused) and the variant reverted (where the after reads are
+    # taken) -- so the caller cannot have restored "the" state for it
+    rtr = effects_strategy_of(sc) == EFFECTS_REVERT_THEN_READ
+    rtr_argvs = _reset_argvs(args.reset_cmd, root, variant) if rtr else ([], [], [])
+    if rtr:
+        verdict["effects_strategy"] = EFFECTS_REVERT_THEN_READ
+        if not variant or args.no_reset:
+            verdict["reason"] = ("%s moves the destination through the baseline, the %s variant and its revert, and %s"
+                                 % (EFFECTS_REVERT_THEN_READ, variant or "(no)",
+                                    "--no-reset leaves it no reset to do that with" if args.no_reset else "this comparison is of no variant"))
+            write_canonical(out, verdict)
+            print("REFUSE: SCENARIO_PARITY %s INCONCLUSIVE (%s)" % (args.scenario, verdict["reason"]), file=sys.stderr)
+            return 1
+        verdict["reset"] = _run(rtr_argvs[0])
+        verdict["reset"]["state"] = "baseline"
+        if verdict["reset"]["rc"] != 0:
+            verdict["reason"] = "the verified baseline could not be restored (%s exited %d): %s" % (
+                rtr_argvs[0][0], verdict["reset"]["rc"], verdict["reset"]["output"][-200:])
+            write_canonical(out, verdict)
+            print("REFUSE: SCENARIO_PARITY %s INCONCLUSIVE (%s)" % (args.scenario, verdict["reason"]), file=sys.stderr)
+            return 1
+    elif sc.get("reset_before", True) and not args.no_reset:
         # the destination is restored to the state this comparison is OF: the
         # declared baseline, or -- for a fixture variant -- that baseline with
         # the variant's own statements applied after it
@@ -313,6 +362,16 @@ def main(argv: list[str] | None = None) -> int:
         print("REFUSE: SCENARIO_PARITY %s INCONCLUSIVE (%s)" % (args.scenario, verdict["reason"]), file=sys.stderr)
         return 1
 
+    if rtr:
+        # the variant, set by the same script, on the baseline just verified
+        step = _run(rtr_argvs[1])
+        verdict["variant_reset"] = step
+        if step["rc"] != 0:
+            verdict["reason"] = "the %s variant could not be applied (%s exited %d): %s" % (
+                variant, rtr_argvs[1][0], step["rc"], step["output"][-200:])
+            write_canonical(out, verdict)
+            print("REFUSE: SCENARIO_PARITY %s INCONCLUSIVE (%s)" % (args.scenario, verdict["reason"]), file=sys.stderr)
+            return 1
     exp = oracle.get("response") or {}
     verdict["expected"] = {"status": exp.get("status"), "body_kind": exp.get("body_kind"), "body_sha256": exp.get("body_sha256"),
                            "headers": exp.get("headers")}
@@ -353,19 +412,44 @@ def main(argv: list[str] | None = None) -> int:
     if got.get("body_sha256") != exp.get("body_sha256"):
         diffs.append("body %s vs %s" % (str(got.get("body_sha256"))[:12], str(exp.get("body_sha256"))[:12]))
     diffs.extend(header_diffs(exp.get("headers"), got.get("headers"), source_origin=source_origin, dest_origin=dest_origin))
-    # the resulting state: what the write actually did
-    for eff in oracle.get("effects") or []:
+    # the resulting state: what the write actually did -- or, for a refused
+    # write (role unchanged_under_refusal), that it did nothing: the source's
+    # before and after read-backs were equal, and the destination's after
+    # read-backs must be those same bodies
+    roles = {str(e.get("id") or e.get("path")): str(e.get("role") or "") for e in (sc.get("effects") or []) if isinstance(e, dict)}
+    expected_after = oracle.get("effects") or []
+    if rtr:
+        # the variant's own changes are reverted -- by the same script, which
+        # refuses when it does not find exactly the variant state it expects
+        # -- and the reads are then judged against the BASELINE reads the
+        # source recorded: a refused write left nothing behind, so after the
+        # revert the state is the baseline's
+        step = _run(rtr_argvs[2])
+        verdict["revert"] = step
+        if step["rc"] != 0:
+            verdict["reason"] = ("the %s variant's revert refused (%s exited %d), so the state the refused request left is not "
+                                 "readable: %s" % (variant, rtr_argvs[2][0], step["rc"], step["output"][-240:]))
+            write_canonical(out, verdict)
+            print("REFUSE: SCENARIO_PARITY %s INCONCLUSIVE (%s)" % (args.scenario, verdict["reason"]), file=sys.stderr)
+            return 1
+        expected_after = before_expected
+    for eff in expected_after:
         probe = http_observe(args.dest_url, str(eff.get("method") or "GET"), str(eff.get("path") or "/"), headers=eff_headers)
         row = {"id": eff.get("id"), "method": eff.get("method"), "path": eff.get("path"),
                "expected": {"status": eff.get("status"), "body_sha256": eff.get("body_sha256")},
                "observed": {"status": probe.get("status"), "body_sha256": probe.get("body_sha256"), "body_sample": probe.get("body_sample", "")}}
         row["match"] = bool(probe.get("status") == eff.get("status") and probe.get("body_sha256") == eff.get("body_sha256"))
+        role = roles.get(str(eff.get("id")), "")
+        if role:
+            row["role"] = role
         verdict["effects"].append(row)
         if not row["match"]:
-            diffs.append("effect %s: status %s vs %s, body %s vs %s" % (row["id"], probe.get("status"), eff.get("status"),
-                                                                        str(probe.get("body_sha256"))[:12], str(eff.get("body_sha256"))[:12]))
+            diffs.append("effect %s%s: status %s vs %s, body %s vs %s"
+                         % (row["id"], " (the refused write changed the state it reads)" if role == EFFECT_ROLE_UNCHANGED else "",
+                            probe.get("status"), eff.get("status"),
+                            str(probe.get("body_sha256"))[:12], str(eff.get("body_sha256"))[:12]))
     declared = [str(e.get("id") or e.get("path")) for e in (sc.get("effects") or [])]
-    recorded_effects = [str(e.get("id")) for e in (oracle.get("effects") or [])]
+    recorded_effects = [str(e.get("id")) for e in expected_after]
     if sorted(declared) != sorted(recorded_effects):
         verdict["reason"] = "the corpus declares effects %s but the source capture recorded %s" % (declared, recorded_effects)
         write_canonical(out, verdict)
@@ -373,6 +457,11 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     if str(req["method"]) not in ("GET", "HEAD") and not is_preflight(req["method"], req["headers"]) and not recorded_effects:
         verdict["reason"] = "a %s scenario must declare at least one effect: an identical response does not prove the write happened" % req["method"]
+        # the derivation may have said WHY it could not declare one (a refused
+        # write with no identity to read its state back as): the rule stands,
+        # and the reason names what is missing
+        if str(sc.get("effects_unobservable") or ""):
+            verdict["reason"] += "; %s" % sc["effects_unobservable"]
         write_canonical(out, verdict)
         print("REFUSE: SCENARIO_PARITY %s INCONCLUSIVE (%s)" % (args.scenario, verdict["reason"]), file=sys.stderr)
         return 1

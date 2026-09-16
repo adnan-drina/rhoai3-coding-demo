@@ -23,8 +23,8 @@ metadata:
     category: migration
     kind: guidance
     paths:
-      reads: ["/projects/modernized/.derived/frozen-input", "/projects/modernized/.hermes/planning", "/projects/modernized/.hermes/pins.json", "/projects/modernized/evidence/planning/evidence-bundle.json"]
-      writes: ["/projects/modernized/pom.xml", "/projects/modernized/src", "/projects/modernized/evidence/producers/bootstrap.json"]
+      reads: ["/projects/modernized/.derived/frozen-input", "/projects/modernized/decisions.yaml", "/projects/modernized/decided-repairs", "/projects/modernized/operator-patches", "/projects/modernized/.hermes/planning", "/projects/modernized/.hermes/pins.json", "/projects/modernized/evidence/planning/evidence-bundle.json"]
+      writes: ["/projects/modernized/pom.xml", "/projects/modernized/src", "/projects/modernized/evidence/producers/bootstrap.json", "/projects/modernized/evidence/producers/decided-repairs.json"]
 ---
 # Bootstrap the destination (step 0 of fix-until-green)
 
@@ -143,6 +143,66 @@ the pinned BOM manages (`evidence/build/bom-managed.json`); network once.
    `@SpringBootApplication` only when it is a trivial launcher (no fields,
    no other annotation, no method but `main`). A launcher that declares
    beans or configuration is kept and recorded as `MAIN_CLASS_NOT_TRIVIAL`.
+4b. **decided repairs** (ADR-019) — repairs accepted ADRs already made enter a
+   fresh run here, before the loop's first baseline, instead of as mid-run
+   Operator steps. `decisions.yaml` `decided_repairs` names the specimen
+   manifest (`decided-repairs/<specimen>/manifest.json`, schema
+   `decided-repairs-manifest.schema.json`) and pins its sha256;
+   `scripts/_decided_repairs.py` applies it. The engine knows KINDS, never an
+   application -- every type, member, annotation, coordinate and key is
+   manifest data:
+   - `add_file` — a reviewed new file, only where absent or byte-identical;
+     other bytes are `REPAIR_FILE_CONFLICT` and the file is never overwritten.
+   - `replace_reviewed_file` — a reviewed replacement, only over the exact
+     source bytes its review applies to; the independent review record (two
+     distinct seats, the reviewed artifact's sha256, its source applicability)
+     is reused only while all of them match the installed bytes; an ADR id is
+     not a record (`REPAIR_REVIEW_MISSING` / `_NOT_INDEPENDENT` /
+     `_ARTIFACT_MISMATCH` / `_APPLICABILITY`). Fresh test execution stays
+     mandatory: it is written into the receipt's `obligations`.
+   - `java_annotation_expression` — every annotation of one type resolved by
+     the JDK parse tree plus JLS import rules (`scripts/java-structure/
+     JavaStructure.java`, no regex, no classpath) gets its string attribute
+     rewritten through a template that keeps the original expression
+     verbatim; only the literal token changes. The site inventory of the
+     frozen source is the applicability; a destination site that is neither
+     original nor rewritten is `REPAIR_SITE_MISMATCH`, a non-literal value
+     `REPAIR_ANNOTATION_VALUE_NOT_LITERAL`, an unresolvable simple name
+     `REPAIR_ANNOTATION_UNRESOLVED`; the file is re-parsed after the edit and
+     restored if it no longer parses.
+   - `java_member_annotation` — one annotation on one type or field, plus its
+     imports (`REPAIR_ANNOTATION_CONFLICT`, `REPAIR_IMPORT_CONFLICT`).
+   - `pom_dependency` — one row, XML DOM; another version/scope/type is
+     `REPAIR_DEPENDENCY_CONFLICT`; a version-less row the BOM probe does not
+     list is `REPAIR_DEPENDENCY_UNMANAGED`.
+   - `property` — one `key=value`; an existing different value, unprefixed or
+     under any `%profile`, is `REPAIR_PROPERTY_CONFLICT`.
+   - `pom_retire_execution` — removes ONLY the decided execution when its
+     goals, phase and configuration equal the decision and the preserved
+     goals stay; the goal bound anywhere else, other thresholds or a lost
+     preserved goal is `REPAIR_EXECUTION_MISMATCH`; the thresholds go to the
+     receipt's `coverage_account` as `retired-not-achieved` (and from there to
+     `compose-coverage-account.py`). After the producer's LAST pom write the
+     retirement is checked on `mvn help:effective-pom` under the decided
+     build profiles and each declared Maven profile
+     (`REPAIR_EFFECTIVE_MISMATCH`, `REPAIR_EFFECTIVE_UNVERIFIED`).
+   Every transformation binds the frozen source's structure
+   (`REPAIR_NOT_APPLICABLE` when the source differs), is atomic, and leaves a
+   row in `evidence/producers/decided-repairs.json` (schema
+   `decided-repairs-receipt.schema.json`): ADR, applicability expected and
+   observed, implementation version plus engine and tool digests, input and
+   output digests, files, symbols, status applied / already-applied /
+   refused. `inventory` is the bootstrap repair inventory the run report
+   reads. A second run changes no product file and records already-applied.
+   A refusal is a bootstrap block; `bootstrap.json` `decided_repairs` binds
+   the receipt by sha256; `advance.py --baseline` refuses
+   (`LOOP_BASELINE_REPAIRS_PENDING`) and admission stays INCONCLUSIVE
+   (`DECIDED_REPAIRS_MISSING` / `_STALE` / `_INCOMPLETE`,
+   `DECIDED_REPAIR_REFUSED`) until every row is applied or already-applied.
+   Admission records the run as `autonomous_execution_with_predecided_repairs`
+   and seals the receipt. Authoring aid:
+   `python3 scripts/_decided_repairs.py --root . --describe-source` prints the
+   applicability the frozen copy yields for each transformation.
 5. **receipt** — every change, every block, the catalog digest, the bundle
    digest and the pins used. A block exits 1 and keeps admission
    `INCONCLUSIVE` (`BOOTSTRAP_BLOCKED`) until a catalog row or an ADR
@@ -162,6 +222,9 @@ Then `build-worklist` verifies the tree and records the baseline.
 - `scripts/probe-bom-managed.py` — what the pinned BOM manages (Maven effective pom → `evidence/build/bom-managed.json`)
 - `scripts/bootstrap-destination.py` — the transform + receipt
 - `scripts/_baseline_data.py` — the declared dataset → `baseline-data.sql` translator, the sequence alignment, and the reset contract (`plan_from_asset`, `verification_sql`, `verify_observations`); also the CLI the parity reset calls
+- `scripts/_decided_repairs.py` — the ADR-019 decided-repair engine (kinds above), its receipt, the effective-pom check, `--describe-source`
+- `scripts/java-structure/JavaStructure.java` — JDK compiler parse tree: imports, types, members, annotations with exact ranges and decoded literals
+- `scripts/decided-repairs.test.py` — selftest on a synthetic project: every kind, idempotency, every typed refusal, review reuse, admission/baseline gaps, bootstrap integration
 - `scripts/bootstrap-destination.test.py` — selftest (trivial launcher deleted; launcher with behavior kept + block; unmapped starter kept + block; second run preserves the tree; the derived baseline carries the declared dataset, aligns every identity sequence, regenerates deterministically, and refuses a hand-edited or untranslatable one)
 
 ## Pitfalls

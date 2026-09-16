@@ -10,6 +10,8 @@ invalidates the receipt.
 | `schemas/worklist.schema.json` | the only plan: tool-computed items, file clusters, fixed order, measure |
 | `schemas/admission-receipt.schema.json` | receipt v2: seals (bundle, work list, bootstrap, decisions, contracts, pins), blocks, activation, measure |
 | `schemas/decisions.schema.json` | `decisions.yaml` v2: destination platform, attempt threshold, ADR-retired items |
+| `schemas/decided-repairs-manifest.schema.json` | ADR-019 specimen manifest of decided repairs (the transformations, their applicability and the independent review records), named and pinned by `decisions.yaml` `decided_repairs` |
+| `schemas/decided-repairs-receipt.schema.json` | `evidence/producers/decided-repairs.json`: one row per transformation (applied / already-applied / refused + type), the repair inventory, review reuse, retired thresholds, effective-pom check |
 | `schemas/producer-receipt.schema.json` | every producer receipt (freeze, build, jdk-model, mta, bootstrap) |
 | `schemas/structure.schema.json` | JDK-model structural claims |
 | `catalogs/compat-mapping.json` | deterministic bootstrap for the Spring-compatibility path (starters → extensions, drivers, property keys, main class); every row a documented Quarkus mapping |

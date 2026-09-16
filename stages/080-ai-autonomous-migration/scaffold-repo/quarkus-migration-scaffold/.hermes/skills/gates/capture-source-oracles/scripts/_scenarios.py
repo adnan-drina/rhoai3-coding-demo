@@ -29,6 +29,14 @@ scenario carries:
   effects_identity    who the read-backs are taken as, when that differs from
                       the request's identity (a refused write's own caller
                       sees 401, and 401 proves nothing about the state)
+  effects[].role      what a read-back proves when it is not the write's own
+                      result: ``unchanged_under_refusal`` (a fixture
+                      variant's refused write; before must equal after)
+  effects_reader      for a refused variant write: who reads and how
+                      (``strategy``: second_identity | revert_then_read)
+  effects_unobservable why a write carries no read-back at all (no identity
+                      to take them as); the comparator stays INCONCLUSIVE
+                      and names it
   normalization       the permitted differences, named
 
 Nothing here records an expected value. Expected values come only from the
@@ -89,6 +97,30 @@ QUALIFICATION_NAME = "_qualification.json"
 # for the same reason the mode does: a variant capture must not be readable
 # as the baseline's, and prevention by path needs nobody to remember.
 VARIANT_NAME_CHARS = "a-z, 0-9 and -, starting with a letter or digit"
+# What a variant corpus's derivation promises, versioned so a corpus derived
+# under an older promise is derived AGAIN rather than silently mixed with
+# captures and verdicts that assume the newer one. v2 (2026-09-16, measured on
+# v9): a refused WRITE carries the base scenario's read-backs, read either as
+# a declared identity the variant does not refuse (second_identity) or as the
+# request's own identity on the baseline and again after the variant's
+# computed revert (revert_then_read), so "the refused write changed nothing"
+# is measured; v1 dropped them and every refused PUT/DELETE was INCONCLUSIVE
+# for want of an effect.
+VARIANT_DERIVATION = "rhoai3.fixture-variant-derivation/v2"
+# The role a read-back plays when the request it follows is REFUSED: its
+# before and after bodies are the source's, and the claim is that they are
+# equal -- the write did not happen. Carried on the effect so a report can say
+# what the read-back proves rather than only that it matched.
+EFFECT_ROLE_UNCHANGED = "unchanged_under_refusal"
+# how a refused write's read-backs are taken (``effects_reader.strategy``)
+EFFECTS_REVERT_THEN_READ = "revert_then_read"
+
+
+def effects_strategy_of(sc: dict[str, Any]) -> str:
+    """The read-back strategy a scenario declares; "" for the ordinary one
+    (before and after the request, in the state the request is sent in)."""
+    reader = (sc or {}).get("effects_reader")
+    return str(reader.get("strategy") or "") if isinstance(reader, dict) else ""
 _VARIANT_NAME = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 
 
@@ -591,6 +623,15 @@ def load_corpus(root: Path, security_mode: Any = DEFAULT_SECURITY_MODE, variant:
         raise CorpusError("%s records security_variant %r; this is the %s corpus"
                           % (corpus_rel, recorded_variant,
                              ("%s fixture variant's" % want_variant) if want_variant else "mode baseline"))
+    # a DERIVED variant corpus names the derivation it was made under; one
+    # made under another is derived again, never read as though it made the
+    # promises this one does (its refused writes may carry no read-back)
+    if want_variant and is_derived(doc):
+        made_by = str((doc.get("derived_from") or {}).get("variant_derivation") or "")
+        if made_by != VARIANT_DERIVATION:
+            raise CorpusError("%s was derived by fixture-variant derivation %r and this harness derives %r (a refused write "
+                              "now carries read-backs that prove it changed nothing); derive the variant again, then "
+                              "re-capture and re-qualify it" % (corpus_rel, made_by or "v1 (unversioned)", VARIANT_DERIVATION))
     # provenance last: it recomputes request digests, which assumes the
     # scenarios are well-formed (checked above)
     provenance_gap = corpus_provenance_gap(root, doc, security_mode, variant)

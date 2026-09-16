@@ -1313,10 +1313,454 @@ def _fixture_variant_case() -> int:
     return 0
 
 
+class AccountStatusService(BaseHTTPRequestHandler):
+    """A service whose account table has one identity DISABLED: that
+    identity's requests are refused, another declared identity's are
+    answered. ``writes_anyway`` is the defect a refusal can hide: the answer
+    is the source's 401, and the write happens regardless."""
+
+    refused = ""
+    reader = ""
+    owners: dict = {}
+    writes_anyway = False
+
+    def _answer(self, code: int, payload=None) -> None:
+        body = json.dumps(payload, sort_keys=True).encode() if payload is not None else b""
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        if code == 401:
+            self.send_header("WWW-Authenticate", 'Basic realm="Realm"')
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        if body:
+            self.wfile.write(body)
+
+    def _who(self) -> str:
+        auth = self.headers.get("Authorization") or ""
+        return "reader" if auth == type(self).reader else ("refused" if auth == type(self).refused else "")
+
+    def do_GET(self):  # noqa: N802
+        if self._who() != "reader":
+            return self._answer(401, {"error": "unauthorized"})
+        key = self.path.rsplit("/", 1)[-1]
+        if self.path.rstrip("/").endswith("/owners"):
+            return self._answer(200, [type(self).owners[k] for k in sorted(type(self).owners)])
+        if key not in type(self).owners:
+            return self._answer(404, {"error": "not found"})
+        return self._answer(200, type(self).owners[key])
+
+    def _write(self, apply) -> None:
+        who = self._who()
+        if who != "reader":
+            if who == "refused" and type(self).writes_anyway:
+                apply()
+            return self._answer(401, {"error": "unauthorized"})
+        apply()
+        return self._answer(204)
+
+    def do_DELETE(self):  # noqa: N802
+        key = self.path.rsplit("/", 1)[-1]
+        self._write(lambda: type(self).owners.pop(key, None))
+
+    def do_PUT(self):  # noqa: N802
+        key = self.path.rsplit("/", 1)[-1]
+        raw = self.rfile.read(int(self.headers.get("Content-Length") or 0))
+        self._write(lambda: type(self).owners.__setitem__(key, dict(json.loads(raw or b"{}"), id=int(key))))
+
+    def log_message(self, *a):  # noqa: D102
+        return
+
+
+def _variant_refused_write_case() -> int:
+    """A refused write under a fixture variant is measured, not waived.
+
+    ADR-018: what the source answers for a DISABLED account is only half of
+    the account-status exit; the other half is that the write it refused did
+    not happen. The variant's refused PUT and DELETE carry read-backs taken as
+    a declared identity the variant does not refuse, with the role
+    ``unchanged_under_refusal``, and their expected bodies are the SOURCE's
+    captures under the variant. The controls: an identical destination
+    PASSes and every read-back row says what it proves; a destination that
+    answers the same 401 and performs the write anyway FAILs on the
+    read-back, naming the refusal; a write whose derivation had no identity to
+    read the state as stays INCONCLUSIVE and the verdict names the missing
+    identity beside the rule; and the variant receipt says what each refused
+    write proves."""
+    import os
+    from _oracle_common import http_observe
+    from _scenarios import corpus_path
+    from planner.canonical import digest as _digest
+
+    variant = "identity-disabled"
+    reader_ref, refused_ref = "TEST_VARIANT_READER_CREDENTIAL", "TEST_VARIANT_REFUSED_CREDENTIAL"
+    creds = {reader_ref: ("a-reader", "r3ader-s3cret"), refused_ref: ("a-disabled-one", "d1sabled-s3cret")}
+    tokens = {ref: "Basic %s" % base64.b64encode(("%s:%s" % pair).encode("utf-8")).decode("ascii") for ref, pair in creds.items()}
+    kept = {ref: os.environ.get(ref) for ref in creds}
+    for ref, pair in creds.items():
+        os.environ[ref] = "%s:%s" % pair
+    seed = {"7": {"id": 7, "name": "seven"}, "8": {"id": 8, "name": "eight"}}
+
+    def handler(name: str) -> type:
+        return type(name, (AccountStatusService,), {"refused": tokens[refused_ref], "reader": tokens[reader_ref],
+                                                    "owners": json.loads(json.dumps(seed)), "writes_anyway": False})
+
+    servers: list[HTTPServer] = []
+
+    def start(h: type) -> str:
+        srv = HTTPServer(("127.0.0.1", 0), h)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        servers.append(srv)
+        return "http://127.0.0.1:%d" % srv.server_address[1]
+
+    role = "unchanged_under_refusal"
+    try:
+        with tempfile.TemporaryDirectory(prefix="variant-refused-write-") as td:
+            root = specimens.build_dest(Path(td) / "dest", specimens.specimen("http"), decisions=specimens.admitted_decisions())
+            specimens.prepare_loop(root)
+            if pipeline.admit(root)["status"] != "ADMITTED":
+                return _fail("the variant refused-write fixture must be admitted")
+            receipt_digest = load_json(root / "evidence/planning/admission-receipt.json")["receipt_digest"]
+            bundle_sha = _digest(load_json(root / "evidence" / "planning" / "evidence-bundle.json"))
+            ep = sorted(str(e["id"]) for e in load_json(root / "evidence/planning/evidence-bundle.json")["entry_points"])[0]
+            body_rel = "verification/scenarios-enabled-%s/bodies/update-7.json" % variant
+            (root / body_rel).parent.mkdir(parents=True, exist_ok=True)
+            (root / body_rel).write_text(json.dumps({"name": "renamed"}), encoding="utf-8")
+            refused = {"kind": "basic", "credential_ref": refused_ref}
+            reader = {"kind": "basic", "credential_ref": reader_ref}
+            reads = [{"id": "eff:owners-7", "method": "GET", "path": "/api/owners/7", "role": role},
+                     {"id": "eff:owners", "method": "GET", "path": "/api/owners", "role": role}]
+            contract = {"intent": "negative", "expect_status_class": "4xx", "after_equals_before": True}
+            scenarios = [
+                {"id": "sc:fixture-%s-delete-owners-7" % variant, "entry_point": ep, "method": "DELETE",
+                 "path": "/api/owners/7", "headers": {}, "identity": dict(refused), "body_absent": True,
+                 "reset_before": False, "effects": [dict(e) for e in reads], "effects_identity": dict(reader),
+                 "normalization": [], "security_mode": "enabled", "security_variant": variant, "qualify": dict(contract)},
+                {"id": "sc:fixture-%s-update-owners-7" % variant, "entry_point": ep, "method": "PUT",
+                 "path": "/api/owners/7", "headers": {"Content-Type": "application/json"}, "identity": dict(refused),
+                 "body_file": body_rel, "reset_before": False, "effects": [dict(e) for e in reads],
+                 "effects_identity": dict(reader), "normalization": [], "security_mode": "enabled",
+                 "security_variant": variant, "qualify": dict(contract)},
+                {"id": "sc:fixture-%s-delete-owners-8" % variant, "entry_point": ep, "method": "DELETE",
+                 "path": "/api/owners/8", "headers": {}, "identity": dict(refused), "body_absent": True,
+                 "reset_before": False, "effects": [], "normalization": [], "security_mode": "enabled",
+                 "security_variant": variant, "qualify": {"intent": "negative", "expect_status_class": "4xx"},
+                 "effects_unobservable": "missing effects identity: decisions.security.identities declares no identity "
+                                         "other than credential_ref %s (the one this variant refuses)" % refused_ref},
+            ]
+            corpus_doc = {"schema": "rhoai3.scenario-corpus/v1", "approved_by": "operator:test",
+                          "initial_state": {"reset": "restart the service", "dataset": "two owners, one account disabled"},
+                          "security_mode": "enabled", "security_variant": variant, "scenarios": scenarios}
+            write_canonical(root / corpus_path("enabled", variant), corpus_doc)
+            corpus_sha = corpus_digest(load_json(root / corpus_path("enabled", variant)))
+            write_canonical(root / capture_receipt_path("enabled", variant),
+                            {"schema": "rhoai3.source-capture/v1", "status": "ok", "security_mode": "enabled",
+                             "security_variant": variant, "corpus_sha256": corpus_sha})
+
+            # what the SOURCE did under the variant: the read-backs as the
+            # reader, the write as the disabled identity, the read-backs again
+            src_url = start(handler("SrcAccounts"))
+            odir = root / scenario_oracles_dir("enabled", variant)
+            for sc in scenarios:
+                req = request_of(root, sc)
+                eff_auth = {"Authorization": tokens[reader_ref]}
+                before = [http_observe(src_url, e["method"], e["path"], headers=eff_auth) for e in sc["effects"]]
+                got = http_observe(src_url, sc["method"], sc["path"], body=req["body"],
+                                   headers={**req["headers"], "Authorization": tokens[refused_ref]})
+                after = [http_observe(src_url, e["method"], e["path"], headers=eff_auth) for e in sc["effects"]]
+                if got["status"] != 401 or any(b["status"] != 200 for b in before + after):
+                    return _fail("the fixture source refuses the disabled identity and answers the reader: %s %s"
+                                 % (got["status"], [b["status"] for b in before + after]))
+                rows = lambda obs: [{"id": e["id"], "method": e["method"], "path": e["path"], "role": e["role"],  # noqa: E731
+                                     "status": o["status"], "body_kind": o["body_kind"], "body_sha256": o["body_sha256"]}
+                                    for e, o in zip(sc["effects"], obs)]
+                write_canonical(odir / (scenario_slug(sc["id"]) + ".json"), {
+                    "schema": "rhoai3.source-scenario/v1", "scenario": sc["id"], "entry_point": ep,
+                    "receipt_sha256": receipt_digest, "corpus_sha256": corpus_sha, "status": "CAPTURED", "reason": "",
+                    "evidence_bundle_sha256": bundle_sha, "source": {"base_url": src_url},
+                    "initial_state": corpus_doc["initial_state"], "normalization": [], "reset_before": False,
+                    "security_mode": "enabled", "security_variant": variant,
+                    **({"effects_identity": {"kind": "basic", "user_env": "", "password_env": "", "credential_ref": reader_ref}}
+                       if sc.get("effects_identity") else {}),
+                    "request": {"request_sha256": req["request_sha256"]},
+                    "response": {"status": got["status"], "body_kind": got["body_kind"], "body_sha256": got["body_sha256"],
+                                 "headers": got["headers"]},
+                    "before": rows(before), "effects": rows(after)})
+
+            def compare(sid: str, dest_url: str) -> tuple[int, dict]:
+                p = subprocess.run([sys.executable, str(COMPARE), "--root", str(root), "--scenario", sid,
+                                    "--dest-url", dest_url, "--no-reset", "--security-mode", "enabled",
+                                    "--fixture-variant", variant], text=True, capture_output=True)
+                return p.returncode, load_json(root / scenario_parity_dir("enabled", variant) / (scenario_slug(sid) + ".json"))
+
+            for sc in scenarios[:2]:
+                # an identical destination: refused, and nothing changed
+                rc, v = compare(sc["id"], start(handler("DestSame")))
+                if rc != 0 or v["verdict"] != "PASS":
+                    return _fail("an identical destination PASSes the refused %s: rc=%s %s" % (sc["method"], rc, v.get("reason")))
+                if [r.get("role") for r in v["effects"]] != [role, role] or not all(r["match"] for r in v["effects"]):
+                    return _fail("every read-back row says what it proves: %s" % v["effects"])
+                if v.get("effects_identity", {}).get("credential_ref") != reader_ref:
+                    return _fail("the destination's read-backs are taken as the reader: %s" % v.get("effects_identity"))
+                # a destination that answers the same refusal and writes anyway
+                liar = handler("DestWritesAnyway")
+                liar.writes_anyway = True
+                rc, v = compare(sc["id"], start(liar))
+                if rc != 1 or v["verdict"] != "FAIL" or "refused write changed the state" not in v["reason"]:
+                    return _fail("a refused %s that happened anyway FAILs on its read-back: rc=%s %s %s"
+                                 % (sc["method"], rc, v.get("verdict"), v.get("reason")))
+                if v["observed"]["status"] != 401:
+                    return _fail("the control is a destination whose ANSWER is right: %s" % v["observed"])
+            # no identity to read the state as: the rule stands, and says why
+            rc, v = compare(scenarios[2]["id"], start(handler("DestNoReader")))
+            if (rc != 1 or v["verdict"] != "INCONCLUSIVE" or "must declare at least one effect" not in v["reason"]
+                    or "missing effects identity" not in v["reason"] or refused_ref not in v["reason"]):
+                return _fail("a refused write with no read-back stays INCONCLUSIVE and names the missing identity: rc=%s %s"
+                             % (rc, v.get("reason")))
+            # the variant receipt says what each refused write proves
+            subprocess.run([sys.executable, str(RECEIPT), "--root", str(root), "--security-mode", "enabled",
+                            "--fixture-variant", variant], text=True, capture_output=True)
+            rp = root / parity_receipt_path("enabled", variant)
+            doc = load_json(rp) if rp.is_file() else {}
+            rw = doc.get("refused_writes") or {}
+            if (sorted(rw.get(scenarios[0]["id"], {}).get("reads") or []) != ["eff:owners", "eff:owners-7"]
+                    or "unchanged" not in str(rw.get(scenarios[0]["id"], {}).get("proves"))
+                    or "missing effects identity" not in str(rw.get(scenarios[2]["id"], {}).get("unobservable"))
+                    or rw.get(scenarios[2]["id"], {}).get("verdict") != "INCONCLUSIVE"):
+                return _fail("the variant receipt names what each refused write proves: %s" % rw)
+            written = json.dumps(doc) + "".join(p.read_text(encoding="utf-8")
+                                                for p in (root / "verification").rglob("*.json"))
+            for ref, pair in creds.items():
+                if pair[1] in written or tokens[ref] in written:
+                    return _fail("only credential references travel into the evidence")
+    finally:
+        for srv in servers:
+            srv.shutdown()
+        for ref, value in kept.items():
+            if value is None:
+                os.environ.pop(ref, None)
+            else:
+                os.environ[ref] = value
+    return 0
+
+
+class RevertStateService(BaseHTTPRequestHandler):
+    """A service with ONE declared identity, disabled by the variant and
+    enabled again by its revert. ``/__state`` is the stub's reset script:
+    baseline, variant, and a revert that refuses unless it finds the variant
+    state. ``writes_anyway`` performs a refused write; ``reenables`` is a
+    refused request that touches the variant's own column."""
+
+    token = ""
+    owners: dict = {}
+    disabled = False
+    writes_anyway = False
+    reenables = False
+    ops: list = []
+    seed: dict = {}
+
+    def _answer(self, code: int, payload=None) -> None:
+        body = json.dumps(payload, sort_keys=True).encode() if payload is not None else b""
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        if code == 401:
+            self.send_header("WWW-Authenticate", 'Basic realm="Realm"')
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        if body:
+            self.wfile.write(body)
+
+    def _ok(self) -> bool:
+        cls = type(self)
+        return self.headers.get("Authorization") == cls.token and not cls.disabled
+
+    def do_POST(self):  # noqa: N802
+        cls = type(self)
+        op = self.path.rsplit("=", 1)[-1]
+        cls.ops.append(op)
+        if op == "baseline":
+            cls.owners, cls.disabled = json.loads(json.dumps(cls.seed)), False
+        elif op == "variant":
+            cls.disabled = True
+        elif op == "revert":
+            if not cls.disabled:
+                return self._answer(409, {"error": "REVERT_UNEXPECTED_STATE the variant value is not there"})
+            cls.disabled = False
+        return self._answer(200, {"op": op})
+
+    def do_GET(self):  # noqa: N802
+        if not self._ok():
+            return self._answer(401, {"error": "unauthorized"})
+        cls = type(self)
+        if self.path.rstrip("/").endswith("/owners"):
+            return self._answer(200, [cls.owners[k] for k in sorted(cls.owners)])
+        key = self.path.rsplit("/", 1)[-1]
+        return self._answer(200, cls.owners[key]) if key in cls.owners else self._answer(404, {"error": "not found"})
+
+    def do_DELETE(self):  # noqa: N802
+        cls = type(self)
+        key = self.path.rsplit("/", 1)[-1]
+        if not self._ok():
+            if cls.writes_anyway:
+                cls.owners.pop(key, None)
+            if cls.reenables:
+                cls.disabled = False
+            return self._answer(401, {"error": "unauthorized"})
+        cls.owners.pop(key, None)
+        return self._answer(204)
+
+    def log_message(self, *a):  # noqa: D102
+        return
+
+
+_STATE_SCRIPT = """import sys, urllib.error, urllib.request
+args = sys.argv[1:]
+op = "variant" if "--variant" in args else ("revert" if "--revert-variant" in args else "baseline")
+url = args[args.index("--url") + 1]
+try:
+    urllib.request.urlopen(urllib.request.Request(url + "/__state?op=" + op, data=b"", method="POST"), timeout=5)
+except urllib.error.HTTPError as exc:
+    print("FAIL: RESET %s: %s" % (op, exc.read().decode("utf-8", "replace"))); sys.exit(1)
+print("OK: %s" % op)
+"""
+
+
+def _variant_revert_then_read_case() -> int:
+    """REVERT-THEN-READ: a refused write measured with no second identity.
+
+    The one declared identity is the one the variant disables, so the state
+    is read as that identity on the verified BASELINE, the variant is applied
+    and the request refused, the variant's own change is reverted by the reset
+    script, and the reads are taken again -- against the baseline reads the
+    SOURCE recorded. The controls: an identical destination PASSes with the
+    three states visited in order (a --variant the caller's --reset-cmd
+    carries is not what decides them); a destination that answers the same
+    401 and writes anyway FAILs; one whose refused request touched the
+    variant's own column makes the revert refuse, which is INCONCLUSIVE and
+    says so; --no-reset cannot move through three states and is refused."""
+    import os
+    from _oracle_common import http_observe
+    from _scenarios import corpus_path
+    from planner.canonical import digest as _digest
+
+    variant = "identity-disabled"
+    ref = "TEST_VARIANT_ONLY_CREDENTIAL"
+    pair = ("the-only-one", "0nly-s3cret")
+    token = "Basic %s" % base64.b64encode(("%s:%s" % pair).encode("utf-8")).decode("ascii")
+    kept = os.environ.get(ref)
+    os.environ[ref] = "%s:%s" % pair
+    seed = {"7": {"id": 7, "name": "seven"}, "8": {"id": 8, "name": "eight"}}
+    servers: list[HTTPServer] = []
+
+    def start(name: str, **flags) -> tuple[str, type]:
+        h = type(name, (RevertStateService,), dict({"token": token, "owners": json.loads(json.dumps(seed)), "seed": seed,
+                                                    "disabled": False, "writes_anyway": False, "reenables": False,
+                                                    "ops": []}, **flags))
+        srv = HTTPServer(("127.0.0.1", 0), h)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        servers.append(srv)
+        return "http://127.0.0.1:%d" % srv.server_address[1], h
+
+    own = {"kind": "basic", "credential_ref": ref}
+    try:
+        with tempfile.TemporaryDirectory(prefix="variant-revert-read-") as td:
+            root = specimens.build_dest(Path(td) / "dest", specimens.specimen("http"), decisions=specimens.admitted_decisions())
+            specimens.prepare_loop(root)
+            if pipeline.admit(root)["status"] != "ADMITTED":
+                return _fail("the revert-then-read fixture must be admitted")
+            receipt_digest = load_json(root / "evidence/planning/admission-receipt.json")["receipt_digest"]
+            bundle_sha = _digest(load_json(root / "evidence" / "planning" / "evidence-bundle.json"))
+            ep = sorted(str(e["id"]) for e in load_json(root / "evidence/planning/evidence-bundle.json")["entry_points"])[0]
+            state_script = Path(td) / "state.py"
+            state_script.write_text(_STATE_SCRIPT, encoding="utf-8")
+            reads = [{"id": "eff:owners-7", "method": "GET", "path": "/api/owners/7", "role": "unchanged_under_refusal"},
+                     {"id": "eff:owners", "method": "GET", "path": "/api/owners", "role": "unchanged_under_refusal"}]
+            sc = {"id": "sc:fixture-%s-delete-owners-7" % variant, "entry_point": ep, "method": "DELETE",
+                  "path": "/api/owners/7", "headers": {}, "identity": dict(own), "body_absent": True,
+                  "reset_before": True, "effects": [dict(e) for e in reads], "effects_identity": dict(own),
+                  "effects_reader": {"strategy": "revert_then_read", "name": "the-only-one", "credential_ref": ref},
+                  "normalization": [], "security_mode": "enabled", "security_variant": variant,
+                  "qualify": {"intent": "negative", "expect_status_class": "4xx", "before_reads_usable": True}}
+            write_canonical(root / corpus_path("enabled", variant), {
+                "schema": "rhoai3.scenario-corpus/v1", "approved_by": "operator:test",
+                "initial_state": {"reset": "the reset script", "dataset": "two owners, one account"},
+                "security_mode": "enabled", "security_variant": variant, "scenarios": [sc]})
+            corpus_sha = corpus_digest(load_json(root / corpus_path("enabled", variant)))
+            write_canonical(root / capture_receipt_path("enabled", variant),
+                            {"schema": "rhoai3.source-capture/v1", "status": "ok", "security_mode": "enabled",
+                             "security_variant": variant, "corpus_sha256": corpus_sha})
+            req = request_of(root, sc)
+
+            # the SOURCE: baseline reads as the only identity, then the variant
+            # and the refused request; its in-process database is not reverted
+            src_url, src = start("SrcRevert")
+            auth = {"Authorization": token}
+            before = [http_observe(src_url, e["method"], e["path"], headers=auth) for e in reads]
+            src.disabled = True
+            got = http_observe(src_url, "DELETE", sc["path"], headers=auth)
+            if got["status"] != 401 or any(b["status"] != 200 for b in before):
+                return _fail("the fixture source answers the baseline reads and refuses under the variant: %s %s"
+                             % (got["status"], [b["status"] for b in before]))
+            write_canonical(root / scenario_oracles_dir("enabled", variant) / (scenario_slug(sc["id"]) + ".json"), {
+                "schema": "rhoai3.source-scenario/v1", "scenario": sc["id"], "entry_point": ep,
+                "receipt_sha256": receipt_digest, "corpus_sha256": corpus_sha, "status": "CAPTURED", "reason": "",
+                "evidence_bundle_sha256": bundle_sha, "source": {"base_url": src_url},
+                "initial_state": {}, "normalization": [], "reset_before": True,
+                "security_mode": "enabled", "security_variant": variant,
+                "effects_identity": {"kind": "basic", "user_env": "", "password_env": "", "credential_ref": ref},
+                "effects_reader": dict(sc["effects_reader"]),
+                "revert": {"strategy": "revert_then_read", "applied_on_source": False, "reason": "in-process"},
+                "request": {"request_sha256": req["request_sha256"]},
+                "response": {"status": got["status"], "body_kind": got["body_kind"], "body_sha256": got["body_sha256"],
+                             "headers": got["headers"]},
+                "before": [{"id": e["id"], "method": e["method"], "path": e["path"], "role": e["role"], "status": o["status"],
+                            "body_kind": o["body_kind"], "body_sha256": o["body_sha256"]} for e, o in zip(reads, before)],
+                "effects": []})
+
+            def compare(dest_url: str, *extra: str) -> tuple[int, dict]:
+                reset = "%s %s --root %s --url %s --variant %s" % (sys.executable, state_script, root, dest_url, variant)
+                p = subprocess.run([sys.executable, str(COMPARE), "--root", str(root), "--scenario", sc["id"],
+                                    "--dest-url", dest_url, "--security-mode", "enabled", "--fixture-variant", variant,
+                                    "--reset-cmd", reset] + list(extra), text=True, capture_output=True)
+                return p.returncode, load_json(root / scenario_parity_dir("enabled", variant) / (scenario_slug(sc["id"]) + ".json"))
+
+            url, dest = start("DestSame", disabled=True, owners={})   # a dirty state the baseline reset must repair
+            rc, v = compare(url)
+            if rc != 0 or v["verdict"] != "PASS":
+                return _fail("an identical destination PASSes revert-then-read: rc=%s %s" % (rc, v.get("reason")))
+            if dest.ops != ["baseline", "variant", "revert"]:
+                return _fail("the three states are visited in order, whatever --variant the caller's command carried: %s" % dest.ops)
+            if (v.get("effects_strategy") != "revert_then_read" or [r.get("role") for r in v["effects"]] != ["unchanged_under_refusal"] * 2
+                    or v["observed"]["status"] != 401 or not all(r["match"] for r in v["before"] + v["effects"])):
+                return _fail("the verdict records the strategy, the refusal and reads matching the baseline: %s" % v)
+            url, dest = start("DestWritesAnyway", writes_anyway=True)
+            rc, v = compare(url)
+            if rc != 1 or v["verdict"] != "FAIL" or "refused write changed the state" not in v["reason"]:
+                return _fail("a refused write that happened anyway FAILs under revert-then-read: rc=%s %s %s"
+                             % (rc, v.get("verdict"), v.get("reason")))
+            url, dest = start("DestReenables", reenables=True)
+            rc, v = compare(url)
+            if (rc != 1 or v["verdict"] != "INCONCLUSIVE" or "revert refused" not in v["reason"]
+                    or "REVERT_UNEXPECTED_STATE" not in json.dumps(v.get("revert"))):
+                return _fail("a revert that finds unexpected state refuses, and the comparison says so: rc=%s %s %s"
+                             % (rc, v.get("reason"), v.get("revert")))
+            url, dest = start("DestNoReset")
+            rc, v = compare(url, "--no-reset")
+            if rc != 1 or v["verdict"] != "INCONCLUSIVE" or "--no-reset" not in v["reason"] or dest.ops:
+                return _fail("--no-reset cannot move through three states: rc=%s %s %s" % (rc, v.get("reason"), dest.ops))
+    finally:
+        for srv in servers:
+            srv.shutdown()
+        if kept is None:
+            os.environ.pop(ref, None)
+        else:
+            os.environ[ref] = kept
+    return 0
+
+
 def main() -> int:
     if _no_corpus_case() or _missing_exposed_model_case() or _stale_receipt_case() or _security_mode_case():
         return 1
-    if _fixture_variant_case():
+    if _fixture_variant_case() or _variant_refused_write_case() or _variant_revert_then_read_case():
         return 1
     if _acceptance_binding_case():
         return 1
@@ -1542,7 +1986,10 @@ def main() -> int:
           "corpus digest and one compared in another security mode are each named under orphaned_records with the "
           "reason and counted in no row -- the v9 receipt's 'no scenario <id> in the corpus' and 'N result files' "
           "cannot be produced by a leftover -- while the scenario an orphan was the only record of is INCONCLUSIVE "
-          "for the orphan's own reason, and the same directory with its records put right composes a PASS)")
+          "for the orphan's own reason, and the same directory with its records put right composes a PASS; a fixture variant's refused PUT and DELETE are measured, not waived: their unchanged_under_refusal read-backs are taken as the declared reader against the source's own captures under the variant, an identical destination PASSes with each row saying what it proves, a destination that answers the same 401 and writes anyway FAILs naming the refused write, a refused write with no identity to read its state as stays INCONCLUSIVE naming the missing identity beside the rule, and the variant receipt records what each refused write proves; with no second identity a refused write is compared REVERT-THEN-READ -- the "
+ "baseline, the variant and its revert visited in that order through the reset script, the post-revert reads judged against the "
+ "source's baseline reads -- an identical destination PASSes, one that writes despite the 401 FAILs, a revert that finds "
+ "unexpected state is INCONCLUSIVE naming it, and --no-reset is refused)")
     return 0
 
 

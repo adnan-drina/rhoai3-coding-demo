@@ -1,7 +1,8 @@
 {
   "domain": [
     "spring-to-quarkus-patterns",
-    "form-entity-persistence"
+    "form-entity-persistence",
+    "restore-source-response-shape"
   ],
   "dest-init": [
     "dispatch-phase"
@@ -16,6 +17,7 @@
     "assert-retrievable-tree",
     "assert-pinned-gates-ran",
     "assert-no-fence-evasion",
-    "derive-story-oracles"
+    "derive-story-oracles",
+    "run-report"
   ]
 }

@@ -1635,7 +1635,7 @@ def _roles_java(copy: Path, n: Names) -> None:
 def _authz_root(td: Path, name: str, n: Names, *, holdings: dict[str, list[str]] | None = None,
                 unsupported: bool = True, map_identity: bool = True,
                 security: dict[str, Any] | None = None, decisions: bool = False,
-                constants: str = "sealed") -> Path:
+                constants: str = "sealed", enabled_column: bool = False) -> Path:
     """A frozen source with an authorization policy on a write, another on a
     method-less read, a constants type the expressions refer to, and a seeded
     identity store the structure model maps.
@@ -1661,11 +1661,13 @@ def _authz_root(td: Path, name: str, n: Names, *, holdings: dict[str, list[str]]
     (res / "db" / "hsqldb" / "populateDB.sql").write_text(
         "INSERT INTO %s VALUES (1, '%s');\n" % (n.resource, n.example)
         + "INSERT INTO %s VALUES (2, 'Other');\n" % n.resource
-        + "".join("INSERT INTO %s VALUES ('%s', 'secret');\n" % (n.user_table, who) for who in sorted(held))
+        + "".join("INSERT INTO %s VALUES ('%s', 'secret'%s);\n" % (n.user_table, who, ", true" if enabled_column else "")
+                  for who in sorted(held))
         + "".join(rows), encoding="utf-8")
     (res / "db" / "hsqldb" / "initDB.sql").write_text(
         "CREATE TABLE %s (\n  id INTEGER IDENTITY PRIMARY KEY,\n  %s VARCHAR(30)\n);\n" % (n.resource, _snake_col(n.field))
-        + "CREATE TABLE %s (\n  %s VARCHAR(20) PRIMARY KEY,\n  password VARCHAR(20)\n);\n" % (n.user_table, n.user_col)
+        + "CREATE TABLE %s (\n  %s VARCHAR(20) PRIMARY KEY,\n  password VARCHAR(20)%s\n);\n"
+        % (n.user_table, n.user_col, ",\n  enabled BOOLEAN NOT NULL" if enabled_column else "")
         + "CREATE TABLE %s (\n  id INTEGER IDENTITY PRIMARY KEY,\n  %s VARCHAR(20) NOT NULL,\n  %s VARCHAR(30) NOT NULL,\n"
           "  FOREIGN KEY (%s) REFERENCES %s (%s)\n);\n" % (n.role_table, n.user_col, n.role_col, n.user_col, n.user_table, n.user_col),
         encoding="utf-8")
@@ -2461,8 +2463,20 @@ def _enabled_variant_case() -> int:
                 return _fail("the request is the base scenario's, to the byte: %s" % s["id"])
             if s["qualify"] != {"intent": "negative", "expect_status_class": "4xx"}:
                 return _fail("a variant the Operator declares a refusal for expects a 4xx: %s %s" % (s["id"], s["qualify"]))
-            if s["asserted_headers"] != ["WWW-Authenticate"] or s["effects"] != []:
-                return _fail("a refusal asserts the challenge and carries no read-back the baseline's contract owned: %s" % s)
+            if s["asserted_headers"] != ["WWW-Authenticate"] or s["effects"] != [] or s.get("effects_identity"):
+                return _fail("a refusal asserts the challenge, and with no second identity holding what the refused one "
+                             "holds it carries no read-back: %s" % s)
+            if s["method"] != "GET" and (
+                    "missing effects identity" not in str(s.get("effects_unobservable"))
+                    or "credential_ref %s" % n.cred_all not in str(s.get("effects_unobservable"))):
+                return _fail("a refused write with nobody to read its state back says so and names the refused identity: %s"
+                             % s.get("effects_unobservable"))
+            if s["method"] != "GET" and ("REVERT_NOT_COMPUTABLE" not in str(s.get("effects_unobservable"))
+                                         or "%s.enabled" % n.user_table not in str(s.get("effects_unobservable"))):
+                return _fail("... and why no revert could be computed either (the dataset defines no value of the varied "
+                             "column): %s" % s.get("effects_unobservable"))
+            if s["method"] == "GET" and "effects_unobservable" in s:
+                return _fail("a refused read proves itself by its answer and needs no read-back: %s" % s["id"])
             if s["security_variant"] != VARIANT or s["security_mode"] != "enabled":
                 return _fail("every scenario says which state it is of: %s" % s)
             ev = s["derived_from"]["evidence"]
@@ -2518,6 +2532,290 @@ def _enabled_variant_case() -> int:
     return 0
 
 
+def _load_deriver() -> Any:
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("derive_source_scenarios_under_test", DERIVE)
+    mod = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _variant_effects_rule_case() -> int:
+    """The rule itself, on synthetic base scenarios: a refused PUT and a
+    refused DELETE carry the base read REQUESTS as state-unchanged read-backs,
+    taken as a declared identity that is neither the refused one nor the one
+    declared invalid; no such identity leaves the write without read-backs
+    and a named reason; a variant with no refusal declared is untouched."""
+    mod = _load_deriver()
+    fixture = {"name": "acct-off", "intent": "refuse", "scenarios": "auth-allowed", "dataset_config_key": "k",
+               "statements": ["UPDATE principals SET active = 0"]}
+    dataset = {"path": "db/seed.sql", "sha256": "0" * 64}
+    ids = [{"name": "boss", "credential_ref": "REF_BOSS", "roles": ["G_A", "G_B"]},
+           {"name": "twin", "credential_ref": "REF_TWIN", "roles": ["G_A", "G_B", "G_C"]},
+           {"name": "small", "credential_ref": "REF_SMALL", "roles": ["G_A"]},
+           {"name": "bogus", "credential_ref": "REF_BAD", "roles": ["G_A", "G_B"]}]
+    reads = [{"id": "eff:thing-9-after-update", "method": "GET", "path": "/api/things/9"},
+             {"id": "eff:things-after-update", "method": "GET", "path": "/api/things"}]
+    with tempfile.TemporaryDirectory(prefix="variant-rule-") as td:
+        root = Path(td)
+        for method in ("PUT", "DELETE"):
+            base = {"id": "sc:auth-allowed-%s-things-9" % method.lower(), "entry_point": "ep:x", "method": method,
+                    "path": "/api/things/9", "headers": {}, "identity": {"kind": "basic", "credential_ref": "REF_BOSS"},
+                    "body_absent": True, "reset_before": True, "effects": [dict(e) for e in reads],
+                    "security_mode": "enabled", "derived_from": {"kind": "auth-allowed"},
+                    "qualify": {"intent": "positive", "after_effect_status": {reads[0]["id"]: 404}}}
+            gaps: list[str] = []
+            sc = mod._variant_scenario(root, "acct-off", fixture, base, "f" * 64, "c.json", dataset, ids, "REF_BAD", gaps)
+            if [(e["id"], e["method"], e["path"], e["role"]) for e in sc["effects"]] != [
+                    (e["id"], "GET", e["path"], "unchanged_under_refusal") for e in reads]:
+                return _fail("a refused %s carries the base read requests as state-unchanged read-backs: %s" % (method, sc["effects"]))
+            if any(set(e) != {"id", "method", "path", "role"} for e in sc["effects"]):
+                return _fail("only the read REQUEST travels, never an expectation: %s" % sc["effects"])
+            # the refused identity (REF_BOSS) and the invalid one (REF_BAD)
+            # are excluded; REF_SMALL lacks G_B; REF_TWIN holds all of it
+            if sc.get("effects_identity") != {"kind": "basic", "credential_ref": "REF_TWIN"}:
+                return _fail("the read-backs are taken as a declared identity that is neither refused nor invalid and holds "
+                             "what the refused one holds: %s" % sc.get("effects_identity"))
+            if sc["qualify"] != {"intent": "negative", "expect_status_class": "4xx", "after_equals_before": True}:
+                return _fail("the contract is a refusal whose read-backs are unchanged, and nothing of the base's: %s" % sc["qualify"])
+            if sc["identity"] != base["identity"] or gaps or "effects_unobservable" in sc:
+                return _fail("the request is untouched and nothing is missing: %s %s" % (sc["identity"], gaps))
+            if not any(e.startswith("effects-identity:twin ") for e in sc["derived_from"]["evidence"]):
+                return _fail("the evidence names whose read-backs they are: %s" % sc["derived_from"]["evidence"])
+            # nobody else declared -> no read-back, a named reason and a gap
+            gaps = []
+            lone = mod._variant_scenario(root, "acct-off", fixture, base, "f" * 64, "c.json", dataset,
+                                         [ids[0], ids[2], ids[3]], "REF_BAD", gaps)
+            why = str(lone.get("effects_unobservable") or "")
+            if (lone["effects"] or lone.get("effects_identity") or "after_equals_before" in lone["qualify"]
+                    or "missing effects identity" not in why or "credential_ref REF_BOSS" not in why or "G_A, G_B" not in why):
+                return _fail("with no identity to read the state as, the write carries no read-back and names what is "
+                             "missing: %s %s" % (lone["effects"], why))
+            if len(gaps) != 1 or base["id"] not in gaps[0]:
+                return _fail("the corpus records the missing identity as a gap: %s" % gaps)
+            # no second identity, but a computable revert: REVERT-THEN-READ as
+            # the request's own identity, judged against the baseline reads
+            plan = {"schema": "rhoai3.variant-revert/v1", "strategy": "revert_then_read", "engine": "postgresql",
+                    "rows": [], "statements": ["UPDATE \"principals\" SET \"active\" = 1 WHERE \"login\" = 'boss'"]}
+            gaps = []
+            rtr = mod._variant_scenario(root, "acct-off", fixture, base, "f" * 64, "c.json", dataset,
+                                        [ids[0], ids[2], ids[3]], "REF_BAD", gaps, plan, "")
+            if (rtr.get("effects_reader") != {"strategy": "revert_then_read", "name": "boss", "credential_ref": "REF_BOSS"}
+                    or rtr.get("effects_identity") != {"kind": "basic", "credential_ref": "REF_BOSS"}
+                    or [e["role"] for e in rtr["effects"]] != ["unchanged_under_refusal"] * 2
+                    or rtr["qualify"] != {"intent": "negative", "expect_status_class": "4xx", "before_reads_usable": True}
+                    or gaps or "effects_unobservable" in rtr):
+                return _fail("with no other identity and a computable revert the reads are revert-then-read as the "
+                             "request's own identity: %s %s %s" % (rtr.get("effects_reader"), rtr["qualify"], gaps))
+            if not any("revert_then_read" in e and plan["statements"][0] in e for e in rtr["derived_from"]["evidence"]):
+                return _fail("the evidence names the strategy and the revert it runs: %s" % rtr["derived_from"]["evidence"])
+            # ... a declared second identity still wins over the revert
+            both = mod._variant_scenario(root, "acct-off", fixture, base, "f" * 64, "c.json", dataset, ids, "REF_BAD", [],
+                                         plan, "")
+            if (both.get("effects_reader") or {}).get("strategy") != "second_identity":
+                return _fail("a specimen that declares a second identity keeps that strategy: %s" % both.get("effects_reader"))
+            # ... and with neither, both reasons are named
+            gaps = []
+            none = mod._variant_scenario(root, "acct-off", fixture, base, "f" * 64, "c.json", dataset,
+                                         [ids[0]], "REF_BAD", gaps, None, "REVERT_NOT_COMPUTABLE: 'x' is not an UPDATE")
+            why = str(none.get("effects_unobservable") or "")
+            if none["effects"] or "missing effects identity" not in why or "REVERT_NOT_COMPUTABLE" not in why or len(gaps) != 1:
+                return _fail("with neither strategy the write names both reasons: %s %s" % (why, gaps))
+            # a variant that declares no refusal is what it always was
+            gaps = []
+            plain = mod._variant_scenario(root, "acct-off", dict(fixture, intent=""), base, "f" * 64, "c.json", dataset,
+                                          ids, "REF_BAD", gaps)
+            if (plain["effects"] or "effects_identity" in plain or "effects_unobservable" in plain or gaps
+                    or plain["qualify"] != {"intent": "positive", "usable_first_response": True}):
+                return _fail("an allow-intent variant is unaffected: %s" % plain)
+        # a refused READ needs no read-back at all
+        read = {"id": "sc:auth-allowed-read-things", "entry_point": "ep:y", "method": "GET", "path": "/api/things",
+                "headers": {}, "identity": {"kind": "basic", "credential_ref": "REF_BOSS"}, "body_absent": True,
+                "reset_before": False, "effects": [], "security_mode": "enabled"}
+        sc = mod._variant_scenario(root, "acct-off", fixture, read, "f" * 64, "c.json", dataset, ids, "REF_BAD", [])
+        if sc["effects"] or "effects_identity" in sc or "effects_unobservable" in sc:
+            return _fail("a refused read is proved by its answer: %s" % sc)
+    return 0
+
+
+def _enabled_variant_effects_case() -> int:
+    """End to end: with a second declared identity that holds everything the
+    refused one holds, the derived variant's refused writes carry read-backs
+    taken as that identity, the loader accepts the corpus, the receipt says
+    which writes carry them and under which derivation, a corpus derived under
+    the older promise is refused by name -- and a renamed specimen decides
+    the same things."""
+    with tempfile.TemporaryDirectory(prefix="derive-variant-effects-") as td:
+        outcomes = []
+        for n, label in ((PLAIN, "plain"), (RENAMED, "renamed")):
+            declared = _authz_security(n)
+            declared["fixtures"] = [_fixture_decl(n)]
+            root = _authz_root(Path(td), label, n, security=declared,
+                               holdings={n.who_all: list(n.roles), n.who_one: list(n.roles)})
+            _derive(root)
+            if _derive(root, "--security-mode", "enabled").returncode != 0:
+                return _fail("the enabled corpus derives (%s)" % label)
+            base = load_json(root / ENABLED_CORPUS_P)
+            p = _derive(root, "--security-mode", "enabled", "--fixture-variant", VARIANT)
+            if p.returncode != 0:
+                return _fail("the variant derives (%s): %s%s" % (label, p.stdout, p.stderr))
+            corpus = load_json(root / VARIANT_CORPUS_P)
+            by_id = {str(s["id"]): s for s in base["scenarios"]}
+            writes = [s for s in corpus["scenarios"] if s["method"] not in ("GET", "HEAD", "OPTIONS")]
+            if {s["method"] for s in writes} != {"POST", "DELETE"}:
+                return _fail("the fixture refuses a create and a delete: %s" % sorted(s["id"] for s in writes))
+            for s in writes:
+                src = by_id[s["base_scenario"]]
+                if [e["id"] for e in s["effects"]] != [e["id"] for e in src["effects"]] or not s["effects"]:
+                    return _fail("the refused write reads back what its base reads back: %s" % s["id"])
+                if {e["role"] for e in s["effects"]} != {"unchanged_under_refusal"}:
+                    return _fail("each read-back says what it proves: %s" % s["effects"])
+                who = s.get("effects_identity") or {}
+                if (who != {"kind": "basic", "credential_ref": n.cred_one} or who == s["identity"]
+                        or who.get("credential_ref") == n.cred_bad):
+                    return _fail("the read-backs are taken as the OTHER declared identity, never the refused or the invalid "
+                                 "one: %s vs %s" % (who, s["identity"]))
+                if (s.get("effects_reader") or {}).get("strategy") != "second_identity":
+                    return _fail("the reader row records its strategy: %s" % s.get("effects_reader"))
+                if s["qualify"].get("after_equals_before") is not True or "effects_unobservable" in s:
+                    return _fail("the refused write must leave its read-backs unchanged: %s" % s["qualify"])
+            try:
+                load_corpus(root, "enabled", VARIANT)
+            except CorpusError as exc:
+                return _fail("the loader accepts the variant corpus with read-backs: %s" % exc)
+            receipt = load_json(root / VARIANT_RECEIPT_P)
+            if (receipt.get("variant_derivation") != corpus["derived_from"].get("variant_derivation")
+                    or not str(receipt.get("variant_derivation") or "").endswith("/v2")
+                    or sorted(receipt.get("effects") or {}) != sorted(s["id"] for s in writes)
+                    or any(r.get("identity") != {"kind": "basic", "credential_ref": n.cred_one}
+                           for r in (receipt.get("effects") or {}).values())):
+                return _fail("the receipt names the derivation and which writes carry read-backs as whom: %s"
+                             % {k: receipt.get(k) for k in ("variant_derivation", "effects")})
+            if receipt.get("corpus_sha256") != corpus_digest(corpus):
+                return _fail("the receipt binds the corpus it wrote")
+            outcomes.append((root, n))
+        (root, n), (other_root, other) = outcomes
+        rename = _rename_map(other, n)
+        a = _enabled_decisions(other_root, rename, VARIANT_CORPUS_P)
+        b = _enabled_decisions(root, None, VARIANT_CORPUS_P)
+        if a != b:
+            first = [(x, y) for x, y in zip(json.dumps(a, indent=1).splitlines(), json.dumps(b, indent=1).splitlines()) if x != y][:4]
+            return _fail("the read-back decision is the same under another naming: %s" % first)
+        # a variant corpus derived under the older promise (no version) is
+        # derived again, never mixed with captures that assume the newer one
+        old = load_json(root / VARIANT_CORPUS_P)
+        old["derived_from"].pop("variant_derivation")
+        write_canonical(root / VARIANT_CORPUS_P, old)
+        try:
+            load_corpus(root, "enabled", VARIANT)
+            return _fail("a variant corpus from the older derivation must not load")
+        except CorpusError as exc:
+            if "derive the variant again" not in str(exc) or "missing" in str(exc):
+                return _fail("the refusal says to derive again (and is not read as an absent corpus): %s" % exc)
+        # ... while the baseline corpus of the mode is not versioned by it
+        try:
+            load_corpus(root, "enabled")
+        except CorpusError as exc:
+            return _fail("the mode's baseline corpus is not a variant: %s" % exc)
+    return 0
+
+
+def _enabled_variant_revert_case() -> int:
+    """REVERT-THEN-READ end to end: the seed defines the varied column, no
+    second identity holds what the refused one holds, so the refused writes
+    read their state as the request's own identity on the baseline and after
+    the computed revert. The corpus carries the revert the reset executes,
+    the statements are the specimen's own column restored to the seeded
+    value, the loader accepts it, the receipt names the strategy -- and the
+    renamed specimen decides the same things."""
+    with tempfile.TemporaryDirectory(prefix="derive-variant-revert-") as td:
+        outcomes = []
+        for n, label in ((PLAIN, "plain"), (RENAMED, "renamed")):
+            declared = _authz_security(n)
+            declared["fixtures"] = [_fixture_decl(n)]
+            root = _authz_root(Path(td), label, n, security=declared, enabled_column=True)
+            _derive(root)
+            if _derive(root, "--security-mode", "enabled").returncode != 0:
+                return _fail("the enabled corpus derives (%s)" % label)
+            p = _derive(root, "--security-mode", "enabled", "--fixture-variant", VARIANT)
+            if p.returncode != 0:
+                return _fail("the variant derives (%s): %s%s" % (label, p.stdout, p.stderr))
+            corpus = load_json(root / VARIANT_CORPUS_P)
+            revert = corpus["fixture"].get("revert") or {}
+            want = 'UPDATE "%s" SET "enabled" = true WHERE "%s" = \'%s\'' % (n.user_table, n.user_col, n.who_all)
+            if revert.get("statements") != [want] or revert.get("strategy") != "revert_then_read":
+                return _fail("the revert restores the varied column to the seeded value: %s" % revert)
+            row = revert["rows"][0]
+            if (row["variant_value"], row["baseline_value"], row["rows"], row["table_rows"]) != ("false", "true", 1, 2):
+                return _fail("the revert knows what it must find and leave: %s" % row)
+            writes = [s for s in corpus["scenarios"] if s["method"] not in ("GET", "HEAD", "OPTIONS")]
+            if not writes:
+                return _fail("the fixture refuses writes")
+            for s in writes:
+                if (s.get("effects_reader") != {"strategy": "revert_then_read", "name": n.who_all, "credential_ref": n.cred_all}
+                        or s.get("effects_identity") != s["identity"] or not s["effects"]
+                        or s["qualify"].get("before_reads_usable") is not True or "after_equals_before" in s["qualify"]):
+                    return _fail("a refused write reads its state revert-then-read as its own identity: %s %s"
+                                 % (s.get("effects_reader"), s["qualify"]))
+            try:
+                load_corpus(root, "enabled", VARIANT)
+            except CorpusError as exc:
+                return _fail("the loader accepts the revert-then-read corpus: %s" % exc)
+            receipt = load_json(root / VARIANT_RECEIPT_P)
+            if {r.get("strategy") for r in (receipt.get("effects") or {}).values()} != {"revert_then_read"}:
+                return _fail("the receipt names the strategy per write: %s" % receipt.get("effects"))
+            if receipt["fixture"].get("revert") != revert:
+                return _fail("the receipt carries the revert the corpus binds")
+            outcomes.append((root, n))
+        (root, n), (other_root, other) = outcomes
+        a = _enabled_decisions(other_root, _rename_map(other, n), VARIANT_CORPUS_P)
+        b = _enabled_decisions(root, None, VARIANT_CORPUS_P)
+        if a != b:
+            first = [(x, y) for x, y in zip(json.dumps(a, indent=1).splitlines(), json.dumps(b, indent=1).splitlines()) if x != y][:4]
+            return _fail("revert-then-read is decided the same under another naming: %s" % first)
+        ra = json.dumps(load_json(other_root / VARIANT_CORPUS_P)["fixture"]["revert"]["rows"], sort_keys=True)
+        for x, y in _rename_map(other, n):
+            ra = ra.replace(x, y)
+        rb = json.dumps(load_json(root / VARIANT_CORPUS_P)["fixture"]["revert"]["rows"], sort_keys=True)
+        if json.loads(ra) != json.loads(rb):
+            return _fail("the computed revert is the same under another naming: %s vs %s" % (ra, rb))
+    return 0
+
+
+def _revert_qualification_case() -> int:
+    """A revert-then-read capture carries baseline reads and no after reads
+    (the source's database is restored only by a restart): its contract
+    PASSes on a refusal whose baseline reads are usable, and is INCONCLUSIVE
+    when a baseline read did not answer 2xx."""
+    own = {"kind": "basic", "credential_ref": "PARITY_ADMIN"}
+    eff = {"id": "eff:owners-after-refused-delete", "method": "GET", "path": "/api/owners", "role": "unchanged_under_refusal"}
+    sc = {"id": "sc:fixture-acct-off-delete-owners-1", "entry_point": EP["delete"], "method": "DELETE",
+          "path": "/api/owners/1", "headers": {}, "identity": dict(own), "body_absent": True, "reset_before": True,
+          "effects": [dict(eff)], "effects_identity": dict(own), "normalization": [],
+          "effects_reader": {"strategy": "revert_then_read", "name": "boss", "credential_ref": "PARITY_ADMIN"},
+          "qualify": {"intent": "negative", "expect_status_class": "4xx", "before_reads_usable": True}}
+    refusal = ({"WWW-Authenticate": 'Basic realm="fixture"', "Location": None}, {"error": "unauthorized"})
+    with tempfile.TemporaryDirectory(prefix="qualify-revert-") as td:
+        root = build_root(Path(td))
+        write_canonical(root / CORPUS_P, {"schema": "rhoai3.scenario-corpus/v1", "approved_by": "operator:test",
+                                          "initial_state": {"reset": "restart the source", "dataset": "two owners"},
+                                          "path_vars": {"ownerId": "1"}, "scenarios": [sc]})
+        sha = corpus_digest(load_json(root / CORPUS_P))
+        normalized = {"kind": "basic", "user_env": "", "password_env": "", "credential_ref": "PARITY_ADMIN"}
+        for status, want in ((200, "PASS"), (401, "INCONCLUSIVE")):
+            out = _capture(root, sc, sha, 401, refusal[0], refusal[1], {eff["id"]: (status, [SEED_OWNER_1])},
+                           {eff["id"]: (status, [SEED_OWNER_1])}, effects_identity=normalized)
+            cap = load_json(out)
+            cap["effects"] = []
+            write_canonical(out, cap)
+            p, q = _qualify(root)
+            r = q["scenarios"][sc["id"]]
+            if r["capability"] != want:
+                return _fail("a revert-then-read capture with a %s baseline read qualifies %s: %s" % (status, want, r))
+    return 0
+
+
 def main() -> int:
     rc, root, td = _derivation_case()
     try:
@@ -2529,6 +2827,8 @@ def main() -> int:
                 or _authorization_grammar_case() or _enabled_mode_case() or _enabled_constants_case()
                 or _enabled_rename_case() or _enabled_decided_case()
                 or _enabled_request_policy_case() or _enabled_variant_case()
+                or _variant_effects_rule_case() or _enabled_variant_effects_case()
+                or _enabled_variant_revert_case() or _revert_qualification_case()
                 or _enabled_identity_case() or _enabled_regression_case()
                 or _application_removal_case() or _qualification_case(root)
                 or _effects_identity_qualification_case() or _receipt_case()):
@@ -2591,7 +2891,14 @@ def main() -> int:
           "mode authenticates as comes from decisions.yaml by default, the decided identities derive exactly what the typed ones derive, "
           "each corpus says which declaration it came from and carries the decided switch forward, asking for both at once is a usage "
           "error, and an undeclared or refused security section derives nothing and records why without echoing what a field held; "
-          "all of it is the same under another package, type, member, route, role, table and credential naming)")
+          "all of it is the same under another package, type, member, route, role, table and credential naming; a refuse-intent fixture "
+          "variant's refused PUT, POST and DELETE carry the base read requests as unchanged_under_refusal read-backs taken as a declared "
+          "identity that is neither the refused nor the invalid one and holds what the refused one holds, with after_equals_before; with "
+          "no such identity the write carries none, names the missing identity and records a gap; refused reads and allow-intent "
+          "variants are unaffected; a variant corpus from the unversioned derivation is refused with 'derive the variant again'; with no "
+          "second identity the refused write is read REVERT-THEN-READ as its own identity -- the seeded column restored by a revert "
+          "computed only from single-column UPDATEs over the declared dataset, typed REVERT_NOT_COMPUTABLE otherwise -- a declared "
+          "second identity still wins, the strategy is recorded per reader, and its capture qualifies on usable baseline reads)")
     return 0
 
 

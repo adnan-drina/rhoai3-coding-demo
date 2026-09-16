@@ -63,7 +63,7 @@ AMENDMENT_LIMIT = 2
 # the unit is the size rule that bounds its revisions, or a card could walk to
 # a width the former would have refused to mint.
 UNIT_AMENDMENT_LIMIT = 4
-EVIDENCE_KINDS = ("javac", "model", "runtime")
+EVIDENCE_KINDS = ("javac", "model", "runtime", "parity")
 
 
 def _refuse(msg: str) -> int:
@@ -114,10 +114,10 @@ def _evidence(root: Path, scope: dict, raw: str) -> tuple[dict, str]:
             return {}, ("no javac diagnostic with identity %r is in the current work list; an amendment justified by a "
                         "diagnostic nobody reports any more is justified by nothing" % ref)
         return {"kind": kind, "ref": ref, "path": str(hit.get("path") or ""), "tool_named": True}, ""
-    if kind == "runtime":
-        hit = next((i for i in items if str(i.get("id") or "") == ref and str(i.get("source") or "") == "runtime"), None)
+    if kind in ("runtime", "parity"):
+        hit = next((i for i in items if str(i.get("id") or "") == ref and str(i.get("source") or "") == kind), None)
         if hit is None:
-            return {}, "no runtime obligation %r is in the current work list" % ref
+            return {}, "no %s obligation %r is in the current work list" % (kind, ref)
         return {"kind": kind, "ref": ref, "path": str(hit.get("path") or ""), "tool_named": True}, ""
     fqns, members, _paths = _sealed_symbols(scope)
     named = ref.split("#", 1)[0]
@@ -137,7 +137,11 @@ def _implementation_obligation(scope: dict, rel: str) -> dict:
     implementer answers) together with the naming contract that fixes the type
     and the path. The worker chooses neither."""
     for row in scope.get("implementation_obligations") or []:
-        if isinstance(row, dict) and str(row.get("path") or "") == rel and row.get("parent") and row.get("type"):
+        if not isinstance(row, dict) or str(row.get("path") or "") != rel or not row.get("type"):
+            continue
+        # a parent owed an implementation (the fragment contract), or a harness
+        # adapter owed byte-for-byte from its template (ADR-019)
+        if row.get("parent") or (row.get("verify") == "template" and row.get("template_sha256")):
             return dict(row)
     return {}
 
@@ -171,6 +175,16 @@ def _unit_locus(root: Path, scope: dict, rel: str) -> tuple[str, str]:
     except DestModelUnavailable as exc:
         return "", "the destination model is unavailable, so the file's types cannot be named (%s)" % exc
     here = types_of(model, rel)
+    if obligation and obligation.get("verify") == "template":
+        want = str(obligation["type"])
+        if not here:
+            return ("sealed: %s is owed at %s under %s (the harness template, sha256 %s)"
+                    % (want, rel, obligation.get("contract") or "naming contract",
+                       str(obligation.get("template_sha256") or "")[:12])), ""
+        if not any(str(t.get("fqn") or "") == want for t in here):
+            return "", ("%s was authorized to declare %s and declares %s instead; the naming contract is what made the "
+                        "path admissible" % (rel, want, ", ".join(sorted(str(t.get("fqn")) for t in here))))
+        return "sealed: %s declares %s, the adapter its obligation names" % (rel, want), ""
     if obligation:
         want, parent = str(obligation["type"]), str(obligation["parent"])
         if not here:
@@ -259,8 +273,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--reason", required=True, help="what the card cannot finish without it")
     ap.add_argument("--evidence", default="",
                     help="required for a unit card: <kind>:<ref> where kind is javac (a diagnostic identity the current "
-                         "work list carries), model (a relation the sealed inventory states about a sealed symbol) or "
-                         "runtime (an rt: obligation the current work list carries)")
+                         "work list carries), model (a relation the sealed inventory states about a sealed symbol), "
+                         "runtime (an rt: obligation the current work list carries) or parity (a parity: obligation "
+                         "the current work list carries)")
     args = ap.parse_args(argv)
     root = Path(args.root).resolve()
 
@@ -307,9 +322,11 @@ def main(argv: list[str] | None = None) -> int:
         # is the worker's early answer.
         if obligation and (root / rel).is_file():
             why = _unit_locus(root, scope_doc, rel)[1]
+            held = ("%s declares %s, the adapter its obligation names" % (rel, obligation["type"])
+                    if obligation.get("verify") == "template" else
+                    "%s implements %s, the parent its obligation names" % (obligation["type"], obligation["parent"]))
             print("OK: %s is already writable for %s%s"
-                  % (rel, args.cluster, (" — but %s" % why) if why else
-                     " — and %s implements %s, the parent its obligation names" % (obligation["type"], obligation["parent"])),
+                  % (rel, args.cluster, (" — but %s" % why) if why else " — and " + held),
                   file=sys.stderr if why else sys.stdout)
             return 0
         print("OK: %s is already writable for %s" % (rel, args.cluster))
@@ -357,8 +374,10 @@ def main(argv: list[str] | None = None) -> int:
     if evidence:
         row["evidence"] = evidence
     if obligation and not (root / rel).is_file():
-        row["creates"] = {"parent": obligation["parent"], "type": obligation["type"],
+        row["creates"] = {"parent": obligation.get("parent") or "", "type": obligation["type"],
                           "contract": obligation.get("contract") or "", "source": obligation.get("source") or ""}
+        if obligation.get("verify") == "template":
+            row["creates"]["template_sha256"] = str(obligation.get("template_sha256") or "")
     amendments.append(row)
     issued["amendments"] = amendments
     if unit:

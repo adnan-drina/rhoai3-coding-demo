@@ -156,6 +156,30 @@ bash   "$V/reset-parity-db.sh"           --root /projects/modernized          # 
   where `intent: refuse`, and otherwise a usable first response, because an
   expectation nobody declared is not invented. The base's effect assertions
   do not travel — they judge what a request did against the *baseline*.
+  Its effect **read requests** do, for a refused write (ADR-018): a refused
+  PUT/POST/DELETE carries them with `role: unchanged_under_refusal`, and
+  `effects_reader.strategy` says how they are read:
+  - `second_identity` — a declared identity (`security.identities`, by
+    `credential_ref`) that is neither the refused nor the invalid one and
+    holds every role the refused one holds reads before and after the
+    request under the variant; the contract adds `after_equals_before`.
+  - `revert_then_read` — chosen when no such identity is declared (no
+    identity is invented). The derivation computes `fixture.revert` from the
+    fixture's statements, only when each is a single-column
+    `UPDATE t SET c = v WHERE k = w` whose baseline value the declared
+    dataset defines (`_variant_revert.py`; otherwise
+    `REVERT_NOT_COMPUTABLE: …`). The reads are taken as the request's own
+    identity on the declared baseline; the request is sent on the variant;
+    on the destination `reset-parity-db.sh --revert-variant NAME` then runs
+    only that revert (it raises `REVERT_UNEXPECTED_STATE` and changes nothing
+    unless it finds exactly the variant state) and the reads are judged
+    against the source's baseline reads. The source's in-process database is
+    not reverted; its capture records `revert.applied_on_source: false`. The
+    contract adds `before_reads_usable`.
+  With neither, the write carries no read-back, `effects_unobservable` names
+  both reasons, and the comparator stays INCONCLUSIVE with them. Corpora are
+  stamped `derived_from.variant_derivation`; one derived under an older
+  derivation is refused by the loader ("derive the variant again").
 - The **capture** builds the variant dataset from exactly the bytes the
   corpus names (a frozen source that moved underneath it is refused), writes
   it to `…/scenarios-enabled-<NAME>/_variant-dataset.sql`, and starts the

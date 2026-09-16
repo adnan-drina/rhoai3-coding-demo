@@ -74,7 +74,7 @@ not wrap these in home scripts.
 | `inventory-legacy-surface` | analysis | JDK compiler-API extractor (`javax.lang.model` via `JavacTask`, no third-party dependency; full with a classpath, partial without) → `structure.json`, entry-point + type inventories |
 | `scan-with-mta` | analysis | MTA CLI 8.2 pin + provenance receipt + canary; kantra fallback provisional / non-admissible; never `--source` |
 | `assemble-evidence-bundle` | analysis | Seals source manifest, structure, entry points, MTA obligations into `evidence-bundle.json` (environment-independent) |
-| `bootstrap-destination` | migration | Deterministic compat-path baseline: import frozen source, pom/properties/main-class from `compat-mapping.json` + pins (stdlib only) |
+| `bootstrap-destination` | migration | Deterministic compat-path baseline: import frozen source, pom/properties/main-class from `compat-mapping.json` + pins (stdlib only); applies the ADR-019 decided repairs (`decisions.yaml` `decided_repairs` → specimen manifest under `decided-repairs/`) before the loop baseline, receipt `evidence/producers/decided-repairs.json` |
 | `build-worklist` | planning | The only plan: JDK diagnostics + surefire + MTA rescan → clustered, ordered work list; records the baseline step |
 | `admit-migration-plan` | planning | Admission receipt v2 (ADMITTED / INCONCLUSIVE / COMPAT_FAIL) + `assert-planner-activated.py` gate |
 | `verify-live-kanban-loop` | planning | K3 live comparator wrapper (expected = accepted steps + open head card) |

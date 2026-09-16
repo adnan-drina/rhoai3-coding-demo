@@ -11,6 +11,10 @@ Four things and nothing else:
 - ``security``                (optional, ADR-014) the source's security switch
                               and the identities the enabled-mode source
                               capture authenticates as, by REFERENCE only
+- ``decided_repairs``         (optional, ADR-019) the versioned specimen
+                              manifest of repairs accepted ADRs already made,
+                              applied by the bootstrap before the loop baseline
+                              (path + sha256; planner.decided_repairs)
 - ``loop``                    (optional) how the loop forms and measures its
                               work: ``unit_formation: v1`` turns on the unit
                               former, absent keeps today's per-file
@@ -122,6 +126,11 @@ def missing_decisions(doc: dict[str, Any], root: Path) -> list[dict[str, str]]:
         if str(ds.get("schema_owner") or "") == "source-assets" and not (str(ds.get("schema_sql") or "").strip() and str(ds.get("seed_sql") or "").strip()):
             gap("MISSING_DECISION", "datasource.schema_sql", "schema_owner source-assets must name the schema and seed files the source provides")
     gaps.extend(security_gaps(doc))
+    # decided repairs applied at bootstrap (ADR-019): the shape of the decision;
+    # whether they were APPLIED is admission's question (planner.decided_repairs)
+    from planner.decided_repairs import section_gaps
+
+    gaps.extend(section_gaps(doc, accepted_adrs(doc)))
     return gaps
 
 

@@ -1229,6 +1229,59 @@ def main() -> int:
                 fails += 1
             else:
                 print("ok loop_write_allowed")
+        # ADR-015/ADR-019: the generated test roots are the harness's; a worker write there is refused even when
+        # the card's write set (wrongly) names the file. The roots come from the generator's own declaration.
+        sys.path.insert(0, str(HOOK.parent.parent / "skills" / "gates" / "generate-product-tests" / "scripts"))
+        import parity_pom  # noqa: PLC0415
+        gen_file = "%s/org/x/generated/AParityTest.java" % parity_pom.DEFAULT_OUT
+        gen_res = "%s/generated/a.body" % parity_pom.DEFAULT_RESOURCES
+        (dest / "verification" / "loop" / "issued.json").write_text(json.dumps({"schema": "rhoai3.loop-issued/v1", "task_id": "t_loopcard", "cluster": "c:1", "write_set": ["pom.xml", gen_file, gen_res]}), encoding="utf-8")
+        for target in (gen_file, gen_res):
+            r = run("", roots, cwd=cwd, tool="write_file", extra_input={"path": str(dest / target), "content": "x"}, extra_env=loop_card_env)
+            if r.get("action") != "block" or "harness-owned generated test root" not in (r.get("message") or ""):
+                print("FAIL generated_root_write_refused_despite_write_set %s" % target, r, file=sys.stderr)
+                fails += 1
+            else:
+                print("ok generated_root_write_refused_despite_write_set")
+        for cmdline in ("sed -n p ./verification/x > %s" % gen_file, "cp ./verification/x %s" % gen_file,
+                        "tee %s < ./verification/x" % gen_file, "rm -f %s" % gen_file):
+            r = run(cmdline, roots, cwd=cwd, extra_env=loop_card_env)
+            if r.get("action") != "block" or "harness-owned generated test root" not in (r.get("message") or ""):
+                print("FAIL generated_root_command_refused %r" % cmdline, r, file=sys.stderr)
+                fails += 1
+            else:
+                print("ok generated_root_command_refused")
+        r = run("", roots, cwd=cwd, tool="write_file", extra_input={"path": str(dest / gen_file), "content": "x"}, extra_env={"HERMES_PROFILE": "implementer", "HERMES_KANBAN_TASK": "t_story", "K2_BOUND_GATE_EXIT": "0"})
+        if r.get("action") != "block" or "harness-owned generated test root" not in (r.get("message") or ""):
+            print("FAIL generated_root_refused_for_any_implementer", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok generated_root_refused_for_any_implementer")
+        # the manifest can declare a root of its own; it is honoured too
+        man = dest / parity_pom.GENERATED_MANIFEST
+        man.parent.mkdir(parents=True, exist_ok=True)
+        man.write_text(json.dumps({"out": "src/it-generated/java", "resources": "src/it-generated/resources"}), encoding="utf-8")
+        r = run("", roots, cwd=cwd, tool="write_file", extra_input={"path": str(dest / "src/it-generated/java/B.java"), "content": "x"}, extra_env=dict(loop_card_env, HERMES_WRITE_SAFE_ROOT=str(dest)))
+        if r.get("action") != "block" or "harness-owned generated test root" not in (r.get("message") or ""):
+            print("FAIL generated_root_from_manifest_refused", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok generated_root_from_manifest_refused")
+        man.unlink()
+        # an ordinary write in the write set is unaffected, and a reviewer reading the generated tests is unaffected
+        r = run("", roots, cwd=cwd, tool="write_file", extra_input={"path": str(dest / "pom.xml"), "content": "x"}, extra_env=loop_card_env)
+        if r.get("action") == "block":
+            print("FAIL generated_root_rule_leaves_write_set_alone", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok generated_root_rule_leaves_write_set_alone")
+        r = run("cat %s" % gen_file, roots, cwd=cwd, extra_env=loop_card_env)
+        if r.get("action") == "block" and "harness-owned" in (r.get("message") or ""):
+            print("FAIL generated_root_read_allowed", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok generated_root_read_allowed")
+        (dest / "verification" / "loop" / "issued.json").write_text(json.dumps({"schema": "rhoai3.loop-issued/v1", "task_id": "t_loopcard", "cluster": "c:1", "write_set": ["pom.xml"]}), encoding="utf-8")
         r = run("", roots, cwd=cwd, tool="write_file", extra_input={"path": str(dest / "tmp-deps/x.jar"), "content": "x"}, extra_env={"HERMES_PROFILE": "implementer", "HERMES_KANBAN_TASK": "t_notloop", "K2_BOUND_GATE_EXIT": "0"})
         if r.get("action") == "block" and "outside this card write set" in (r.get("message") or ""):
             print("FAIL non_loop_write_unrestricted", r, file=sys.stderr)

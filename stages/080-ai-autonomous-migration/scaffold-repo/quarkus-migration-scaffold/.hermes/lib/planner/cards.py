@@ -43,6 +43,9 @@ BODY_FENCE = "```json"
 # the brief's advice is not enough (never pinned: pins on v5 loop cards became
 # checklists and a whole-pom rewrite). build items need none: the brief carries
 # the pom element, the BOM-managed set and the alias catalog.
+OWED_ADAPTER_RULE = "unit/owed-adapter/v1"
+OWED_ADAPTER_SKILL = "restore-source-response-shape"
+
 REFERENCE_SKILLS: dict[str, str] = {
     "build": "",
     "config": "configure-quarkus-profiles",
@@ -146,6 +149,9 @@ def render_body(body: dict[str, Any]) -> str:
     if kind == "close":
         return _close_prose(body)
     ref = REFERENCE_SKILLS.get(kind, "")
+    if str((body.get("unit") or {}).get("rule") or "") == OWED_ADAPTER_RULE:
+        # ADR-019: a card owed a harness adapter installs it through its capability
+        ref = OWED_ADAPTER_SKILL
     cid = str(ident.get("increment_id") or "")
     brief_cmd = "python3 .hermes/skills/migration/fix-until-green/scripts/brief.py --root ."
     if cid:

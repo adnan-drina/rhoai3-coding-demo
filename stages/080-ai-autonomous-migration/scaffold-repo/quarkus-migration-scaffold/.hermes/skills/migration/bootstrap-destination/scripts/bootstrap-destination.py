@@ -62,6 +62,7 @@ def _ensure_hermes_lib() -> None:
 _ensure_hermes_lib()
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _baseline_data as baseline_data  # noqa: E402
+import _decided_repairs as decided_repairs  # noqa: E402
 import parity_pom  # noqa: E402
 from planner.canonical import digest, load_json, sha256_file, write_canonical  # noqa: E402
 from planner.paths import BOM_MANAGED, BOOTSTRAP_RECEIPT, CATALOGS_DIR, DECISIONS, EVIDENCE_BUNDLE, TYPE_INVENTORY, producer_receipt  # noqa: E402
@@ -1580,9 +1581,11 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     bootstrap_properties(root, catalog, changes)
     baseline_info: dict = {}
+    decisions_doc: dict | None = None
     if (root / DECISIONS).is_file():
         try:
             doc = load_decisions(root)
+            decisions_doc = doc
             apply_datasource_decision(root, catalog, doc, changes, blocks)
             apply_profile_retirement(root, doc, changes, blocks)
             baseline_info = apply_baseline_data(root, doc, changes, blocks, copy)
@@ -1590,9 +1593,26 @@ def main(argv: list[str] | None = None) -> int:
         except DecisionsError as exc:
             blocks.append({"class": "DECISIONS_INVALID", "subject": str(DECISIONS), "detail": str(exc)})
     bootstrap_main_class(root, catalog, bundle, changes, blocks)
+    # ADR-019: the repairs accepted ADRs already made, applied as decided
+    # transformations before the loop's first baseline. BEFORE the Jakarta
+    # rename, because a reviewed replacement is bound to the frozen source's
+    # own bytes; AFTER every other pom and properties pass, so the rows see
+    # the bootstrapped files they are declared against.
+    repairs_receipt, repairs_blocks = None, []
+    if decisions_doc is not None:
+        repairs_receipt, repairs_blocks = decided_repairs.apply_decided_repairs(
+            root, copy, decisions_doc, source_digest=str(freeze.get("source_digest") or ""))
+        for c in (repairs_receipt or {}).get("rows") or []:
+            if c["status"] == "applied":
+                changes.append({"op": "decided-repair", "value": c["id"], "adr": c["adr"], "path": ", ".join(c["files"]),
+                                "provenance": "decisions.yaml decided_repairs (%s)" % (repairs_receipt["decision"]["manifest"])})
     rename_jakarta_imports(root, catalog, changes, blocks)
     # Last, after every ElementTree pass over the pom (ADR-015).
     write_parity_profile(root, parity_sha, changes, blocks)
+    # ADR-013 exit: a retirement is verified on the EFFECTIVE model of the
+    # pom as it now stands, not on the file the engine edited
+    repairs_blocks = repairs_blocks + decided_repairs.finalize_effective(root, repairs_receipt, decisions_doc)
+    blocks.extend(repairs_blocks)
     receipt = {
         "schema": "rhoai3.producer-receipt/v1",
         "producer": "bootstrap",
@@ -1605,6 +1625,7 @@ def main(argv: list[str] | None = None) -> int:
         "changes": changes,
         "path": "spring-compat",
         "retired_sources": retired,
+        "decided_repairs": decided_repairs.bootstrap_record(root, repairs_receipt),
     }
     if baseline_info:
         receipt["baseline"] = baseline_info

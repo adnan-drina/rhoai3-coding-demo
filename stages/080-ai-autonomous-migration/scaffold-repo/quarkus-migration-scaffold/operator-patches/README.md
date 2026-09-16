@@ -8,6 +8,16 @@ change with `fix-until-green/scripts/operator-step.py --operator ... --reviewer
 not fully known afterwards. A patch under `src/test/` refuses without a
 reviewer distinct from the operator.
 
+**Fresh runs do not use this directory as a patch set** (ADR-019). The files
+that are portable -- the reviewed new security classes and the reviewed
+`ValidatorTests` port -- are consumed BY DIGEST from here by the bootstrap's
+decided-repair manifest (`decided-repairs/<specimen>/manifest.json`); the
+controllers, `pom.xml` and `application.properties` here are bound to one
+run's baseline and are never copied into another run. Their decided changes
+enter a fresh run as structural transformations instead. Editing a file the
+manifest pins refuses the next bootstrap (`REPAIR_CONTENT_DIGEST`) until the
+manifest, its review record and `decisions.yaml` are updated together.
+
 Workers never write test sources; that prohibition is enforced at the
 pre-tool-call hook and is not relaxed by anything here.
 

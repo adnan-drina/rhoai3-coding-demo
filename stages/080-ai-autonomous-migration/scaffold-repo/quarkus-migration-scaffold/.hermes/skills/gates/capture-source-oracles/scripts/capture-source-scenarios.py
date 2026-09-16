@@ -94,7 +94,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _oracle_common import ensure_hermes_lib, http_observe, retain_body  # noqa: E402
 from _scenarios import (CorpusError, DEFAULT_SECURITY_MODE, SCENARIO_ORACLES, SECURITY_MODES, auth_headers,  # noqa: E402,F401
                         auth_headers_for, capture_receipt_path, corpus_digest, credential_conflicts,
-                        effects_identity_of, load_corpus, normalize_security_mode, normalize_variant,
+                        EFFECTS_REVERT_THEN_READ, effects_identity_of, effects_strategy_of, load_corpus, normalize_security_mode, normalize_variant,
                         normalized_identity, parse_assignments, request_of, scenario_oracles_dir, scenario_slug,
                         source_exposed_headers, variant_dataset_path)
 
@@ -491,6 +491,9 @@ def main(argv: list[str] | None = None) -> int:
     # that moved underneath it is refused rather than captured against
     # something else.
     variant_record: dict[str, Any] = {}
+    # where the source reads its dataset from, for the two states a
+    # revert-then-read scenario visits: the declared baseline and the variant
+    dataset_key, baseline_location, variant_location = "", "", ""
     if variant:
         declared = dict((corpus.get("fixture") or {}).get("dataset") or {})
         key = str((corpus.get("fixture") or {}).get("dataset_config_key") or fixture.get("dataset_config_key") or "")
@@ -512,6 +515,7 @@ def main(argv: list[str] | None = None) -> int:
                                              "decisions.security.fixtures[%s]: applied after %s" % (variant, declared["path"])),
                              encoding="utf-8")
         source_config[key] = "file:%s" % dataset_p
+        dataset_key, baseline_location, variant_location = key, "file:%s" % declared_p, "file:%s" % dataset_p
         variant_record = {
             "name": variant, "dataset_config_key": key,
             "declared_dataset": {"path": str(declared["path"]), "sha256": have},
@@ -587,7 +591,24 @@ def main(argv: list[str] | None = None) -> int:
                 write_canonical(out, rec)
                 failures.append("%s: %s" % (sc["id"], gap))
                 continue
-            if sc.get("reset_before", True):
+            # REVERT-THEN-READ (a refused variant write whose read-backs no
+            # other declared identity can take): the before reads are taken
+            # on the declared BASELINE as the request's own identity, then the
+            # source is restarted on the variant for the request. The source's
+            # database lives inside its process and is restored only by a
+            # restart, so the variant's revert cannot be applied to it: its
+            # after reads are not taken, and the comparator judges the
+            # destination's post-revert reads against these baseline reads.
+            rtr = effects_strategy_of(sc) == EFFECTS_REVERT_THEN_READ
+            if rtr and not variant_location:
+                rec["status"] = "INCONCLUSIVE"
+                rec["reason"] = "%s is a fixture-variant strategy and this capture is of no variant" % EFFECTS_REVERT_THEN_READ
+                write_canonical(out, rec)
+                failures.append("%s: %s" % (sc["id"], rec["reason"]))
+                continue
+            if rtr:
+                runtime.source_config[dataset_key] = baseline_location
+            if rtr or sc.get("reset_before", True):
                 err = runtime.start()
                 if err:
                     rec["reason"] = err
@@ -616,9 +637,22 @@ def main(argv: list[str] | None = None) -> int:
                        "path": str(eff.get("path") or "/"), "status": probe.get("status"),
                        "body_kind": probe.get("body_kind"), "body_sha256": probe.get("body_sha256"),
                        "body_sample": probe.get("body_sample", "")}
+                if eff.get("role"):
+                    row["role"] = str(eff["role"])
                 if probe.get("status"):
                     row["evidence"] = retain_body(bodies_dir, "before-%s" % scenario_slug(eid), probe.get("raw") or b"", str(probe.get("body_sha256") or ""))
                 rec["before"].append(row)
+            if rtr:
+                runtime.source_config[dataset_key] = variant_location
+                err = runtime.start()
+                if err:
+                    rec["reason"] = err
+                    write_canonical(out, rec)
+                    failures.append("%s: %s" % (sc["id"], err))
+                    continue
+                rec["source"]["starts"] = runtime.starts
+                rec["effects_reader"] = dict(sc.get("effects_reader") or {})
+                rec["before_dataset"] = dict(variant_record.get("declared_dataset") or {})
             obs = http_observe(runtime.base_url, req["method"], req["path"], body=req["body"], headers={**req["headers"], **headers},
                                assert_headers=asserted, keep_body=True)
             raw = obs.pop("raw", b"")
@@ -630,13 +664,20 @@ def main(argv: list[str] | None = None) -> int:
                 write_canonical(out, rec)
                 failures.append("%s: %s" % (sc["id"], rec["reason"]))
                 continue
-            for eff in sc.get("effects") or []:
+            if rtr:
+                rec["revert"] = {"strategy": EFFECTS_REVERT_THEN_READ, "applied_on_source": False,
+                                 "reason": "the source's database lives inside its process and is restored only by a restart, so "
+                                           "the variant's revert cannot be applied to it; the destination's post-revert read-backs "
+                                           "are judged against the baseline read-backs recorded here (after == before)"}
+            for eff in ([] if rtr else (sc.get("effects") or [])):
                 probe = http_observe(runtime.base_url, str(eff.get("method") or "GET"), str(eff.get("path") or "/"), headers=eff_headers, keep_body=True)
                 eid = str(eff.get("id") or eff.get("path"))
                 row = {"id": eid, "method": str(eff.get("method") or "GET"),
                        "path": str(eff.get("path") or "/"), "status": probe.get("status"),
                        "body_kind": probe.get("body_kind"), "body_sha256": probe.get("body_sha256"),
                        "body_sample": probe.get("body_sample", "")}
+                if eff.get("role"):
+                    row["role"] = str(eff["role"])
                 if probe.get("status"):
                     row["evidence"] = retain_body(bodies_dir, "after-%s" % scenario_slug(eid), probe.get("raw") or b"", str(probe.get("body_sha256") or ""))
                 rec["effects"].append(row)

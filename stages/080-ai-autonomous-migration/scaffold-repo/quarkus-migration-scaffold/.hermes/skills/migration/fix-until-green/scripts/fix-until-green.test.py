@@ -402,6 +402,17 @@ def _parity_card_case() -> int:
     with tempfile.TemporaryDirectory(prefix="parity-adv-") as td:
         root = specimens.build_dest(Path(td) / "dest", specimens.specimen("http"),
                                     decisions=specimens.admitted_decisions(max_attempts=3))
+        # ADR-019: the source declares a CORS policy, so the CORS obligation is
+        # owed the harness adapter, rendered from THIS policy
+        from planner.paths import STRUCTURE  # noqa: E402
+        import response_adapters as ra  # noqa: E402
+
+        structure = load_json(root / STRUCTURE)
+        for t in structure["types"]:
+            if t["fqn"].endswith(".OwnerController"):
+                t["annotations"].append({"fqn": "org.springframework.web.bind.annotation.CrossOrigin",
+                                         "values": {"exposedHeaders": ["errors"]}})
+        write_canonical(root / STRUCTURE, structure)
         specimens.prepare_loop(root)
         findings = json.loads(json.dumps(load_json(root / MTA_FINDINGS)))
         findings["violations"] = {k: v for k, v in (findings.get("violations") or {}).items()
@@ -426,8 +437,11 @@ def _parity_card_case() -> int:
         if wl["measure"]["tuple"] != [0, 0, 0] or wl["measure"]["parity_mismatches"] != 1:
             return _fail("a parity mismatch sits beside the tuple, not inside it: %s" % wl["measure"])
         cl = [c for c in wl["clusters"] if c["status"] == "open"]
-        if len(cl) != 1 or cl[0].get("gate") != "parity" or cl[0]["write_set"] != ["src/main/resources/application.properties"]:
-            return _fail("the parity obligation must be one card carrying its gate: %s" % cl)
+        adapter = ra.adapter_path(ra.CORS)
+        if (len(cl) != 1 or cl[0].get("gate") != "parity"
+                or cl[0]["write_set"] != sorted([adapter, "src/main/resources/application.properties"])
+                or (cl[0].get("unit") or {}).get("rule") != "unit/owed-adapter/v1"):
+            return _fail("the parity obligation must be one card carrying its gate and its owed adapter: %s" % cl)
         cluster = cl[0]
         card = specimens.issue(root)
         issued = load_json(root / LOOP_ISSUED)
@@ -440,11 +454,16 @@ def _parity_card_case() -> int:
             return _fail("the parity brief must name the scenarios and what discharges them: %s%s" % (p.stdout[-400:], p.stderr[-300:]))
 
         props = root / "src/main/resources/application.properties"
-        repair = "\nquarkus.http.cors.enabled=true\nquarkus.http.cors.origins=*\n"
+        installer = HERE.parents[1] / "restore-source-response-shape" / "scripts" / "install-response-adapter.py"
+
+        def install_adapter() -> None:
+            ip = _run([sys.executable, str(installer), "--root", str(root), "--adapter", "cors"])
+            if ip.returncode != 0:
+                raise AssertionError("the capability must install on the issued card: %s%s" % (ip.stdout, ip.stderr))
 
         # 1. the comparison did not run: nothing was measured about the
         #    obligation, so the candidate is retained and no attempt is spent
-        props.write_text(props.read_text(encoding="utf-8") + repair, encoding="utf-8")
+        install_adapter()
         _parity_verified(root, findings, ran=False)
         p = _advance(root, cluster["id"], "t_par0")
         blob = p.stdout + p.stderr
@@ -464,8 +483,8 @@ def _parity_card_case() -> int:
         blob = p.stdout + p.stderr
         if p.returncode == 0 or "REVERTED" not in blob or "still reported" not in blob:
             return _fail("an obligation the comparison still reports must be reverted: %s" % blob[-600:])
-        if repair.strip() in props.read_text(encoding="utf-8"):
-            return _fail("a rejected parity candidate must be reverted from the tree")
+        if "rhoai3:source-cors" in props.read_text(encoding="utf-8") or (root / adapter).exists():
+            return _fail("a rejected parity candidate must be reverted from the tree, the new adapter file included")
 
         # 3. the same repair, and this time the comparison comes back PASS.
         #    The rejection discarded the candidate's reports, so the accepted
@@ -475,7 +494,7 @@ def _parity_card_case() -> int:
         retry = specimens.issue(root)
         if retry.get("logical_id") != cluster["id"]:
             return _fail("the reverted parity card must be re-issued: %s" % retry.get("logical_id"))
-        props.write_text(props.read_text(encoding="utf-8") + repair, encoding="utf-8")
+        install_adapter()
         shutil.copyfile(root / "verification" / "parity" / "receipt.json", root / VERIFY_DIR / "parity-before.json")
         _parity_records(root, "PASS")
         _parity_verified(root, findings, verdict="PASS")
@@ -903,6 +922,59 @@ _SET_WIDE_ERRORS = (
 )
 
 
+def _harness_owned_root_case() -> int:
+    """v9 (after the ADR-014 step): the mint issued an M3 incident card whose
+    write set was a GENERATED parity test (20 MTA incidents on its origin
+    mapping). The generated roots are the harness's (ADR-015/ADR-019): an
+    incident there is accounted as a finding for the generator's owner and is
+    never an obligation, and no write set may name such a path. The roots come
+    from the generator's own declaration, including a root its manifest records."""
+    sys.path.insert(0, str(HERE.parents[2] / "gates" / "generate-product-tests" / "scripts"))
+    import parity_pom  # noqa: PLC0415
+
+    with tempfile.TemporaryDirectory(prefix="owned-root-") as td:
+        spec = specimens.specimen("http")
+        root = specimens.build_dest(Path(td) / "dest", spec, decisions=specimens.admitted_decisions(max_attempts=3))
+        specimens.prepare_loop(root)
+        gen = "%s/org/acme/generated/AccountParityTest.java" % parity_pom.DEFAULT_OUT
+        extra = "src/it-generated/java/org/acme/generated/BParityTest.java"
+        product = "src/main/java/org/acme/clinic/owner/OwnerController.java"
+        for rel in (gen, extra, product):
+            (root / rel).parent.mkdir(parents=True, exist_ok=True)
+            (root / rel).write_text("package x;\nclass A {}\n", encoding="utf-8")
+        man = root / parity_pom.GENERATED_MANIFEST
+        man.parent.mkdir(parents=True, exist_ok=True)
+        man.write_text(json.dumps({"schema": "rhoai3.generated-tests/v1", "out": "src/it-generated/java",
+                                   "files": [{"path": extra, "sha256": "0" * 64}]}), encoding="utf-8")
+
+        def inc(rel: str, n: int) -> dict:
+            return {"uri": "file://%s/%s" % (root, rel), "lineNumber": n, "message": "hardcoded address %d" % n}
+
+        findings = {"schema": "rhoai3.mta-findings/v1-provisional", "violations": {
+            "localhost-http-00001": {"category": "mandatory", "incidents": [inc(gen, 10), inc(gen, 11), inc(extra, 3)]},
+            "hardcoded-ip-address": {"category": "mandatory", "incidents": [inc(product, 7)]},
+        }}
+        specimens.verify(root, errors=[], failures=[], findings=findings)
+        wl = build_worklist(root)
+        owned = wl.get("harness_owned") or {}
+        paths = sorted({f["path"] for f in owned.get("findings") or []})
+        if paths != sorted([gen, extra]) or any(f.get("owner") != "generate-product-tests" or f.get("applicable_to_workers") is not False
+                                                for f in owned.get("findings") or []):
+            return _fail("findings in generated roots are accounted to the generator's owner: %s" % owned)
+        if parity_pom.DEFAULT_OUT not in owned.get("roots", []) or "src/it-generated/java" not in owned.get("roots", []):
+            return _fail("the roots come from the generator's declaration and its manifest: %s" % owned.get("roots"))
+        bad = [c for c in wl["clusters"] if any(w.startswith((parity_pom.DEFAULT_OUT, "src/it-generated/")) for w in c.get("write_set") or [])]
+        if bad:
+            return _fail("no cluster may be issued a generated path: %s" % [(c["id"], c["write_set"]) for c in bad])
+        if any(str(i.get("path") or "").startswith((parity_pom.DEFAULT_OUT, "src/it-generated/")) for i in wl["items"]):
+            return _fail("a generated-root finding is never an obligation: %s" % [i["path"] for i in wl["items"]])
+        if not any(i.get("path") == product for i in wl["items"]):
+            return _fail("the product incident is still an obligation: %s" % [i["path"] for i in wl["items"]])
+        if wl["measure"]["tuple"][0] != 1:
+            return _fail("the incident slot counts only worker obligations: %s" % wl["measure"])
+    return 0
+
+
 def _set_wide_blocker_case() -> int:
     """A packaging failure about a SET reaches the work list as ONE typed
     blocker, never as a card for the repository it happened to name."""
@@ -1021,7 +1093,7 @@ def _scratch_in_tree_case(base: str = "org.acme.clinic") -> int:
 
 
 def main() -> int:
-    if _checked_veto_case() or _checked_family_advance_case() or _introduced_attribution_case() or _disposition_case() or _set_wide_blocker_case() or _parity_card_case():
+    if _checked_veto_case() or _checked_family_advance_case() or _introduced_attribution_case() or _disposition_case() or _set_wide_blocker_case() or _harness_owned_root_case() or _parity_card_case():
         return 1
     if _scratch_in_tree_case() or _scratch_in_tree_case("com.example.store"):
         return 1

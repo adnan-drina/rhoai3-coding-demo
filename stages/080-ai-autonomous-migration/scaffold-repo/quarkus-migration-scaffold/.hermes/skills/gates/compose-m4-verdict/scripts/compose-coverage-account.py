@@ -41,7 +41,7 @@ def _ensure_hermes_lib() -> None:
 _ensure_hermes_lib()
 from planner.canonical import load_json, write_canonical  # noqa: E402
 from planner.decisions import DecisionsError, accepted_adrs, load_decisions  # noqa: E402
-from planner.paths import DECISIONS, PARITY_DIR  # noqa: E402
+from planner.paths import DECIDED_REPAIRS_RECEIPT, DECISIONS, PARITY_DIR  # noqa: E402
 
 ACCOUNT = Path("evidence") / "verdicts" / "coverage-account.json"
 SUREFIRE_RECEIPT = Path("evidence") / "receipts" / "gates" / "assert-surefire-results.json"
@@ -84,6 +84,17 @@ def uncovered_capabilities(root: Path) -> list[dict]:
                         "kind": str(g.get("kind") or "not-qualified"), "intent": str(g.get("intent") or "positive"),
                         "reason": str(g.get("reason") or "")})
     return sorted(out, key=lambda g: (g["entry_point"], g["scenario"]))
+
+
+def retired_thresholds(root: Path) -> list[dict]:
+    """Coverage thresholds a decided retirement removed from the build
+    (ADR-013 via the bootstrap's decided repairs, ADR-019 §3). Recorded as
+    retired-not-achieved: a retirement never counts as reaching them."""
+    p = root / DECIDED_REPAIRS_RECEIPT
+    if not p.is_file():
+        return []
+    rows = ((load_json(p).get("coverage_account") or {}).get("retired_thresholds")) or []
+    return sorted((dict(r) for r in rows if isinstance(r, dict)), key=lambda r: str(r.get("id")))
 
 
 def rows_of(doc: dict, root: Path) -> list[dict]:
@@ -162,6 +173,9 @@ def main(argv: list[str] | None = None) -> int:
         # coverage_gaps): uncovered, never silently covered by a passing
         # entry point
         "uncovered_capabilities": uncovered,
+        # thresholds the build no longer enforces, kept as an open follow-up
+        # (never as coverage achieved)
+        "retired_thresholds": retired_thresholds(root),
     }
     out = Path(args.out).resolve() if args.out else root / ACCOUNT
     write_canonical(out, account)

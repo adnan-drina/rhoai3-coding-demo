@@ -1,0 +1,230 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "rhoai3.decided-repairs-receipt/v1",
+  "title": "Decided repair receipt (evidence/producers/decided-repairs.json), written by bootstrap-destination; bound by sha256 in evidence/producers/bootstrap.json decided_repairs and sealed by the admission receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "producer",
+    "status",
+    "classification",
+    "decision",
+    "implementation",
+    "source",
+    "rows",
+    "counts",
+    "inventory",
+    "review_records",
+    "coverage_account",
+    "obligations",
+    "effective_configuration",
+    "blocks",
+    "runs"
+  ],
+  "properties": {
+    "schema": {
+      "const": "rhoai3.decided-repairs-receipt/v1"
+    },
+    "producer": {
+      "const": "decided-repairs"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "ok",
+        "refused"
+      ]
+    },
+    "classification": {
+      "const": "autonomous_execution_with_predecided_repairs"
+    },
+    "decision": {
+      "type": "object",
+      "required": [
+        "adr",
+        "applies",
+        "manifest",
+        "manifest_sha256",
+        "specimen",
+        "manifest_version"
+      ]
+    },
+    "implementation": {
+      "type": "object",
+      "required": [
+        "name",
+        "version",
+        "engine_sha256",
+        "java_tool_sha256"
+      ]
+    },
+    "source": {
+      "type": "object",
+      "required": [
+        "analysis_copy",
+        "source_digest"
+      ]
+    },
+    "rows": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "adr",
+          "kind",
+          "status",
+          "implementation",
+          "applicability",
+          "inputs",
+          "outputs",
+          "files",
+          "symbols",
+          "refusal"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "adr": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "applied",
+              "already-applied",
+              "refused"
+            ]
+          },
+          "implementation": {
+            "type": "object",
+            "required": [
+              "name",
+              "version"
+            ]
+          },
+          "applicability": {
+            "type": "object",
+            "description": "expected (from the manifest) and observed (from the frozen copy) source structure"
+          },
+          "inputs": {
+            "type": "object",
+            "description": "path -> sha256 before the transformation (and the reviewed content's digest)"
+          },
+          "outputs": {
+            "type": "object",
+            "description": "path -> sha256 after"
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "symbols": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "refusal": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "{class, detail} when status is refused; class is one of the REPAIR_* types"
+          },
+          "review": {
+            "type": "object"
+          },
+          "details": {
+            "type": "object"
+          }
+        }
+      }
+    },
+    "counts": {
+      "type": "object",
+      "required": [
+        "applied",
+        "already-applied",
+        "refused"
+      ]
+    },
+    "inventory": {
+      "type": "array",
+      "description": "The bootstrap repair inventory the run report reads: one entry per transformation with its files, symbols, latest status and the run that first applied it (null when the tree already carried it).",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "adr",
+          "kind",
+          "files",
+          "symbols",
+          "status",
+          "first_applied_run"
+        ]
+      }
+    },
+    "review_records": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "author",
+          "reviewer",
+          "artifacts"
+        ]
+      }
+    },
+    "coverage_account": {
+      "type": "object",
+      "required": [
+        "retired_thresholds"
+      ]
+    },
+    "obligations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "effective_configuration": {
+      "type": "object",
+      "required": [
+        "checked"
+      ]
+    },
+    "blocks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "class",
+          "subject",
+          "detail"
+        ]
+      }
+    },
+    "runs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "run",
+          "at",
+          "manifest_sha256",
+          "counts",
+          "status"
+        ]
+      }
+    }
+  }
+}

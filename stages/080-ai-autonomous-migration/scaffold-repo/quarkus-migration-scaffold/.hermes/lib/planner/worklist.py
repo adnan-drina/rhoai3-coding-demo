@@ -51,6 +51,7 @@ from planner.canonical import canonical_bytes, digest, load_json, sha256_bytes, 
 from planner.dest_model import (DestModelUnavailable, above_members, dest_model, diagnostic_identity, fields_of, member_ids, model_at_commit,  # noqa: E501
                                  site_for_diagnostic, site_signature, source_write_members as _model_writes, types_of, unhandled_sites)
 from planner.paths import is_product_path, CATALOGS_DIR, EVIDENCE_BUNDLE, STRUCTURE, TYPE_INVENTORY, LOOP_DEFERRED, LOOP_ISSUED, LOOP_STEPS, MTA_RESCAN_FINDINGS, PARITY_DIR, VERIFY_BOOT, VERIFY_DIAGNOSTICS, VERIFY_PACKAGE, VERIFY_RUN, VERIFY_SUREFIRE, WORKLIST
+import response_adapters as _adapters  # noqa: E402  (.hermes/lib, beside this package)
 
 SCHEMA = "rhoai3.worklist/v1"
 KIND_RANK = {"build": 0, "config": 1, "compile": 2, "incident": 3, "test": 4, "parity": 5}
@@ -80,6 +81,75 @@ def path_class(path: str) -> str:
     if p.startswith("src/test/"):
         return "test"
     return "source"
+
+
+# ---------------------------------------------------------------------------
+# harness-owned generated roots (ADR-015 / ADR-019)
+# ---------------------------------------------------------------------------
+
+GENERATOR_OWNER = "generate-product-tests"
+_GENERATOR_DECLARATION = Path(__file__).resolve().parents[2] / "skills" / "gates" / GENERATOR_OWNER / "scripts" / "parity_pom.py"
+
+
+def _generator_declaration() -> Any:
+    """The generator's own module (parity_pom), or None when it cannot be read."""
+    import importlib.util
+
+    if not _GENERATOR_DECLARATION.is_file():
+        return None
+    try:
+        spec = importlib.util.spec_from_file_location("_rhoai3_generator_declaration", _GENERATOR_DECLARATION)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)  # type: ignore[union-attr]
+    except Exception:  # noqa: BLE001 -- an unreadable declaration declares nothing
+        return None
+    return mod
+
+
+def harness_owned_roots(root: Path | None) -> dict[str, Any]:
+    """Where the harness writes product-tree files no worker may touch.
+
+    The generated product tests (ADR-015) live in their own source root, and
+    ADR-015/ADR-019 give workers no test-source write authority. The roots are
+    the GENERATOR's declaration (parity_pom.DEFAULT_OUT / DEFAULT_RESOURCES)
+    plus whatever its manifest records it wrote (``out``, ``resources``, the
+    pom profile's roots, every listed file) -- never a literal here."""
+    roots: set[str] = set()
+    files: set[str] = set()
+    declared: list[str] = []
+    mod = _generator_declaration()
+    manifest_rel = ""
+    if mod is not None:
+        for name in ("DEFAULT_OUT", "DEFAULT_RESOURCES"):
+            v = str(getattr(mod, name, "") or "").strip().strip("/")
+            if v:
+                roots.add(v)
+        manifest_rel = str(getattr(mod, "GENERATED_MANIFEST", "") or "")
+        declared.append(_GENERATOR_DECLARATION.relative_to(_GENERATOR_DECLARATION.parents[4]).as_posix())
+    if root is not None and manifest_rel and (Path(root) / manifest_rel).is_file():
+        try:
+            man = load_json(Path(root) / manifest_rel)
+        except (OSError, ValueError):
+            man = {}
+        if isinstance(man, dict):
+            prof = man.get("pom_profile") if isinstance(man.get("pom_profile"), dict) else {}
+            for v in (man.get("out"), man.get("resources"), prof.get("test_source"), prof.get("test_resources")):
+                v = str(v or "").strip().strip("/")
+                if v:
+                    roots.add(v)
+            for f in man.get("files") or []:
+                path = str((f or {}).get("path") or "") if isinstance(f, dict) else ""
+                if path:
+                    files.add(path)
+            declared.append(manifest_rel)
+    return {"roots": sorted(roots), "files": sorted(files), "owner": GENERATOR_OWNER, "declared_by": declared}
+
+
+def is_harness_owned(path: str, owned: dict[str, Any]) -> bool:
+    p = str(path or "").replace("\\", "/").lstrip("/")
+    if not p:
+        return False
+    return p in set(owned.get("files") or []) or any(p == r or p.startswith(r + "/") for r in owned.get("roots") or [])
 
 
 def _incident_kind(path: str) -> str:
@@ -835,18 +905,57 @@ def classify_parity_diffs(reason: str) -> tuple[list[str], list[str]]:
 
     The comparator writes one diff per finding, "; "-joined: ``status A vs
     B``, ``body A vs B``, ``header NAME have vs want``, ``effect ID: ...``.
-    A ``header Access-Control-*`` diff is a CORS permission the destination
-    did not grant; nothing in a controller can grant it on Quarkus, so it is
-    a CONFIG obligation. Everything else -- a Location, a header the source
-    exposes (``errors``), a status, a body, an effect -- is the operation's
-    own behaviour and belongs at the controller."""
+    A ``header Access-Control-*`` diff is the source's cross-origin behaviour
+    the destination does not reproduce; ADR-019 repairs it with the
+    source-preserving CORS response adapter plus its configuration, never at a
+    controller. Everything else -- a Location, a header the source exposes
+    (``errors``), a status, a body, an effect -- is the operation's own
+    behaviour (``representation_diffs`` takes a Content-Type PARAMETER
+    difference out of it as its own obligation)."""
     cors, other = [], []
-    for d in [x.strip() for x in str(reason or "").split(";") if x.strip()]:
+    for d in _split_diffs(reason):
         if d.startswith("header " + _CORS_HEADER):
             cors.append(d)
         else:
             other.append(d)
     return cors, other
+
+
+def _split_diffs(reason: str) -> list[str]:
+    """The comparator's diffs, re-joined where a header value itself carried a
+    ';' (a Content-Type parameter list): a fragment that does not start a new
+    diff belongs to the one before it."""
+    out: list[str] = []
+    for frag in str(reason or "").split(";"):
+        f = frag.strip()
+        if not f:
+            continue
+        if out and not _DIFF_START_RE.match(f):
+            out[-1] = out[-1] + ";" + frag.rstrip()
+            continue
+        out.append(f)
+    return out
+
+
+def representation_diffs(diffs: list[str]) -> tuple[list[dict[str, Any]], list[str]]:
+    """(Content-Type PARAMETER differences, the rest).
+
+    ADR-019: a charset difference is a response-REPRESENTATION obligation of its
+    own -- its own scope, evidence and acceptance -- and never part of the CORS
+    repair. Only a difference on the SAME media type whose parameters differ is
+    taken; a different media type is the operation's behaviour and stays where
+    it was."""
+    rep: list[dict[str, Any]] = []
+    rest: list[str] = []
+    for d in diffs:
+        p = parse_parity_diff(d)
+        if p["kind"] == "header" and p["name"].lower() == "content-type":
+            diff = _adapters.media_type_difference(p["have"], p["want"])
+            if diff:
+                rep.append(dict(diff, raw=p["raw"], have=p["have"], want=p["want"]))
+                continue
+        rest.append(d)
+    return rep, rest
 
 
 # ---------------------------------------------------------------------------
@@ -859,9 +968,11 @@ def classify_parity_diffs(reason: str) -> tuple[list[str], list[str]]:
 _DIFF_STATUS_RE = re.compile(r"^status (?P<have>\S+) vs (?P<want>\S+)$")
 _DIFF_HEADER_RE = re.compile(r"^header (?P<name>[A-Za-z0-9-]+) (?P<have>.*?) vs (?P<want>.*)$")
 _DIFF_LOCATION_SOURCE_RE = re.compile(r"^(?P<want>.*?) \(source (?P<raw>.*)\)$")
+_DIFF_START_RE = re.compile(r"^(status|header|body|effect)\b")
 
-# Every CORS permission is a property on this platform; nothing in application
-# code grants one. The map is the platform's, not a specimen's.
+# The platform's CORS keys, by the header each one governs. With ADR-019 they
+# are the platform's ENFORCEMENT half of the repair (rendered from the source
+# policy by the capability); the source's per-handler shape is the adapter's.
 CORS_PROPERTY = {
     "access-control-allow-origin": "quarkus.http.cors.origins",
     "access-control-allow-methods": "quarkus.http.cors.methods",
@@ -871,7 +982,12 @@ CORS_PROPERTY = {
     "access-control-max-age": "quarkus.http.cors.access-control-max-age",
 }
 CORS_ENABLED = "quarkus.http.cors.enabled"
-CORS_LINKS = ["https://quarkus.io/version/3.27/guides/http-reference#cors-filter"]
+CORS_LINKS = ["https://quarkus.io/version/3.27/guides/security-cors",
+              "https://quarkus.io/version/3.27/guides/http-reference#filters"]
+CORS_CAUSE = "cors-response"
+REPRESENTATION_CAUSE = "content-type-parameter"
+RULE_PARITY_CORS = _adapters.CONTRACTS[_adapters.CORS]["rule_id"]
+RULE_PARITY_CONTENT_TYPE = _adapters.CONTRACTS[_adapters.MEDIA_TYPE]["rule_id"]
 
 # A path token that says the address is an API-documentation UI: the thing a
 # migration replaces rather than reimplements. Technology tokens, never a
@@ -921,54 +1037,123 @@ def _doubled_segment(path: str) -> str:
     return ""
 
 
-def cors_advice(diffs: list[str], source_policies: list[str]) -> dict[str, Any]:
-    """The CORS card's exit conditions, built from this verdict's own diffs.
+def cors_advice(diffs: list[str], source_policies: list[str], root: Path | None = None) -> dict[str, Any]:
+    """The CORS card's exit conditions (ADR-019), built from this verdict's own
+    diffs and the SOURCE policy.
 
-    ADR-014's companion ruling on the v9 M4 receipt: the destination granted no
-    cross-origin permission the source granted. On this platform that is
-    configuration; the values are the SOURCE's, quoted from the evidence, and a
-    preflight answering 200 proves nothing on its own."""
+    The repair is the harness's source-preserving CORS response adapter plus
+    its configuration, installed by the capability at the path its naming
+    contract fixes. Configuration alone cannot reproduce the source's shape
+    (the platform echoes the origin, names its whole method list and always
+    writes a credentials header), and a controller filter never sees the
+    platform's early preflight answer. The permissions come from the source
+    policy -- never from this one capture -- and the capture decides only what
+    the response must look like."""
     parsed = [parse_parity_diff(d) for d in diffs]
     headers = [p for p in parsed if p["kind"] == "header"]
-    properties: dict[str, str] = {CORS_ENABLED: "true"}
     observed: dict[str, dict[str, str]] = {}
     for p in headers:
         observed[p["name"]] = {"destination": p["have"], "source": p["want"]}
-        key = CORS_PROPERTY.get(p["name"].lower())
-        if key:
-            properties[key] = p["want"]
     exposed = next((p["want"] for p in headers if p["name"].lower() == "access-control-expose-headers"), "")
     quoted = "; ".join(p["raw"] for p in parsed) or "no recorded diff"
+    owed = _adapters.contract(_adapters.CORS)
+    rendered: dict[str, Any] = {}
+    render_block = ""
+    if root is not None:
+        try:
+            policy = _adapters.cors_policy(Path(root))
+            rendered = {"properties": dict(_adapters.cors_properties(policy)),
+                        "source_policies": policy["source_policies"],
+                        "rules": len(policy["rules"]), "security": policy["security"]}
+        except _adapters.Refuse as exc:
+            render_block = str(exc)
     exit_conditions = [
-        "%s=true is set: without it the platform grants nothing and every permission header stays absent." % CORS_ENABLED,
-        ("each property carries the value the SOURCE sent, taken from this verdict's own diffs (%s)%s — not from a preset, "
-         "a guide's example or another specimen." % (quoted,
-                                                     " and from the source CORS policies the parity receipt records (%s)" % ", ".join(source_policies)
-                                                     if source_policies else "")),
-        ("an unset property is not the same as the source's: on this platform an absent origins means ANY origin, so the "
-         "source's origins, methods, allowed headers, exposed headers, credentials and max-age are each written out, even "
-         "where the source's own value is the permissive one."),
+        ("install the capability BEFORE editing anything by hand: `%s`. It writes the adapter %s (type %s, contract %s, "
+         "the harness template byte-for-byte) and the rows it renders from the SOURCE policy into %s; both paths are in "
+         "this card's sealed write set." % (owed["install"], owed["path"], owed["type"], owed["contract"], owed["config"])),
+        ("the source policy decides routes, origins, methods and headers (M1's structural model: every @CrossOrigin, the "
+         "handlers it covers, the source's security configuration)%s; this verdict's diffs (%s) decide only what the "
+         "response must look like — one observed request never defines the permission policy."
+         % (" — the receipt records %s" % ", ".join(source_policies) if source_policies else "", quoted)),
+        ("the preflight the platform answers before any endpoint comes back in the source's shape: the source's "
+         "Access-Control-Allow-Origin value, only the matched handler's methods, only the requested headers the "
+         "policy allows, the source's max-age, and no Access-Control-Allow-Credentials unless the source sent one."),
         ("the preflight answering 200 is not success: the PAIRED actual request at this entry point must come back carrying "
          "the same permission headers%s." % (" and must expose exactly %s to the caller" % exposed if exposed else
                                              " and must expose to the caller every header the source's Access-Control-Expose-Headers named")),
-        "both scenarios at this entry point (the preflight and the actual request) come back PASS from their own parity verdicts.",
+        ("platform enforcement is preserved in BOTH security modes: a rejection stays a rejection (a 401 carries no CORS "
+         "header when the source's security ran first), and a request without Origin or from the same origin is "
+         "answered as the source answered it."),
+        "`%s --check` exits 0 on the candidate: the adapter bytes and every rendered row are exactly what the capability renders." % owed["install"],
+        "both scenarios at this entry point (the preflight and the actual request) come back PASS from their own parity verdicts, and no scenario that was PASS regresses.",
     ]
-    return {
-        "description": ("the destination granted no CORS permission the source granted; on this platform CORS is application "
-                        "CONFIGURATION, never a controller annotation"),
+    out = {
+        "description": ("the destination does not reproduce the source's cross-origin behaviour; the repair is the harness's "
+                        "source-preserving CORS response adapter plus its configuration (ADR-019), never a controller "
+                        "annotation and never configuration alone"),
         "diffs": [p["raw"] for p in parsed],
         "observed_headers": observed,
-        "properties": properties,
+        "owed": owed,
+        "write_set": [owed["path"], owed["config"]],
         "source_policies": list(source_policies),
         "exit": exit_conditions,
         "refused": [
             "restoring the removed @CrossOrigin, or any other controller annotation: it grants nothing here",
-            "inheriting the platform's permissive defaults instead of writing the source's recorded values",
-            "an OPTIONS 200 with no permission headers, or with headers the source never sent",
-            "widening the policy past what the source granted so that a scenario passes",
-            "leaving an exposed header out: a response header the source exposed is part of its behaviour",
+            "configuration alone, or a hand-written filter instead of the capability's adapter at its contract path",
+            "a wildcard policy inferred from this capture, or any permission the source policy does not grant",
+            "header rewriting that turns a rejected exchange into an allowed one, or echoing a rejected method or header",
+            "comparator normalization or an altered source expectation",
+            "changing Content-Type here: a representation difference is its own obligation (PARITY_CONTENT_TYPE)",
+            "copying the experiment's filter",
         ],
         "links": CORS_LINKS,
+    }
+    if rendered:
+        out["rendered"] = rendered
+    if render_block:
+        out["render_refused"] = render_block
+    return out
+
+
+def representation_advice(differences: list[dict[str, Any]]) -> dict[str, Any]:
+    """The Content-Type card's exit conditions (ADR-019): its own obligation,
+    scope, evidence and acceptance. Configuration or the serializer first; the
+    adapter removes only the decided parameter for the decided media types."""
+    owed = _adapters.contract(_adapters.MEDIA_TYPE)
+    quoted = "; ".join(str(d.get("raw") or "") for d in differences) or "no recorded diff"
+    try:
+        decided: dict[str, Any] = _adapters.media_type_decision(differences)
+        why = ""
+    except _adapters.Refuse as exc:
+        decided, why = {}, str(exc)
+    exit_conditions = [
+        ("prefer the platform's own answer: a response or serializer setting that makes the destination send the "
+         "source's Content-Type (%s) for these responses, if one exists for the decided media type." % quoted),
+        (("otherwise install the capability: `%s`. It writes %s (type %s, contract %s) and removes ONLY the parameter "
+          "%s=%s from %s — every other parameter, media type and the body encoding are left as they are."
+          % (owed["install"], owed["path"], owed["type"], owed["contract"], decided.get("parameter"), decided.get("value"),
+             ", ".join(decided.get("media_types") or [])))
+         if decided else "no adapter is authorized: %s" % why),
+        "`%s --check` exits 0 on the candidate when the adapter is the repair." % owed["install"],
+        "this scenario's own parity verdict comes back PASS, and no scenario that was PASS regresses.",
+    ]
+    return {
+        "description": ("the destination's Content-Type differs from the source's only in its parameters; this is a "
+                        "response-REPRESENTATION obligation of its own (ADR-019), not part of any CORS repair"),
+        "diffs": [str(d.get("raw") or "") for d in differences],
+        "decided": decided,
+        "owed": owed,
+        "write_set": [owed["path"], owed["config"]],
+        "exit": exit_conditions,
+        "refused": [
+            "dropping all Content-Type parameters to obtain a pass",
+            "removing a parameter the recorded difference did not decide, or from another media type",
+            "changing the body or its encoding",
+            "comparator normalization or an altered source expectation",
+            "using a CORS card's scope for this change",
+        ],
+        "links": ["https://quarkus.io/version/3.27/guides/rest#content-types",
+                  "https://quarkus.io/version/3.27/guides/http-reference#filters"],
     }
 
 
@@ -1047,6 +1232,11 @@ PARITY_RECEIPT = PARITY_DIR / "receipt.json"
 PARITY_RECEIPT_SCHEMA = "rhoai3.parity-receipt/v1"
 
 
+# every kind of parity obligation parity_items mints, so a later receipt can be
+# asked about any of them by id
+PARITY_KINDS = ("response", "cors", "navigation", "representation")
+
+
 def parity_obligation_id(entry_point: str, scenario: str, what: str) -> str:
     """The identity of a parity obligation: the entry point, the scenario that
     measured it (empty for a read oracle) and WHICH of the two kinds of diff it
@@ -1101,7 +1291,7 @@ def parity_state(receipt: dict[str, Any] | None) -> dict[str, Any]:
         # "" is the read-oracle obligation of this entry point: the comparison
         # that replays a method and a path, which declares no scenario.
         for sid in sorted(set(names) | {""}):
-            for what in ("response", "cors", "navigation"):
+            for what in PARITY_KINDS:
                 obl[parity_obligation_id(ep, sid, what)] = {"entry_point": ep, "scenario": sid,
                                                             "what": what, "verdict": verdict}
     return {"known": True, "verdict": str(receipt.get("verdict") or ""),
@@ -1192,19 +1382,24 @@ def parity_items(root: Path, bundle: dict[str, Any]) -> list[dict[str, Any]]:
     verification/parity/scenarios/*.json.
 
     One obligation per failed scenario (two scenarios on one entry point are
-    two obligations), typed from the verdict's own diffs: CORS-only diffs land
-    on application.properties as a ``cors-config`` obligation whose message
-    quotes the source's recorded values; every other diff lands on the entry
-    point's controller; a verdict carrying both kinds becomes two. The
-    message carries the diffs, so the brief says WHAT differs, not just that
-    something does. The parity receipt (a summary, no entry point) is not an
-    obligation and is skipped by schema.
+    two obligations), typed from the verdict's own diffs: CORS diffs become a
+    PARITY_CORS obligation owed the source-preserving CORS response adapter
+    (ADR-019) -- its locus is the adapter's contract path and its write set adds
+    the configuration file; a Content-Type PARAMETER difference becomes its own
+    PARITY_CONTENT_TYPE obligation owed the media-type adapter, never part of
+    the CORS one; every other diff lands on the entry point's controller. A
+    verdict carrying several kinds becomes several. The message carries the
+    diffs, so the brief says WHAT differs, not just that something does. The
+    parity receipt (a summary, no entry point) is not an obligation and is
+    skipped by schema.
 
     Each obligation also carries ``advice``: the exit conditions the architect
     ruled for its kind, built from THIS verdict's diffs (cors_advice,
-    response_advice). The brief hands a worklist item to the worker whole, so
-    the advice travels with the card; nothing in it is written for a
-    particular specimen -- every value in it is quoted from the evidence.
+    representation_advice, response_advice). The brief hands a worklist item to
+    the worker whole, so the advice travels with the card; nothing in it is
+    written for a particular specimen -- every value in it is quoted from the
+    evidence. An ``owed`` row names the adapter the obligation authorizes:
+    contract, type, path, template digest. owed_adapter_units seals it.
 
     A NAVIGATION failure has no failing verdict file to read: its comparison
     PASSed, and what failed is the separate bounded navigation the composer
@@ -1231,7 +1426,8 @@ def parity_items(root: Path, bundle: dict[str, Any]) -> list[dict[str, Any]]:
         scenario = str(doc.get("scenario") or "")
         reason = str(doc.get("reason") or "")
         cors, other = classify_parity_diffs(reason)
-        if not cors and not other:
+        representation, other = representation_diffs(other)
+        if not cors and not other and not representation:
             other = [reason or "parity FAIL without a recorded diff"]
         # ``gate`` makes acceptance phase-aware, exactly as it does for
         # packaging and startup: repairing a parity mismatch leaves the
@@ -1251,15 +1447,31 @@ def parity_items(root: Path, bundle: dict[str, Any]) -> list[dict[str, Any]]:
                             message=("%s differs from the source (%s): %s" % (ep, scenario or "read oracle", "; ".join(other)))[:1200],
                             advice=response_advice(other, locus)))
         if cors:
-            out.append(dict(base, id=parity_obligation_id(ep, scenario, "cors"), path=APP_PROPERTIES, kind="config",
-                            rule_id="PARITY_CORS", cause="cors-config",
+            owed = _adapters.contract(_adapters.CORS)
+            out.append(dict(base, id=parity_obligation_id(ep, scenario, "cors"), path=owed["path"], kind="config",
+                            rule_id=RULE_PARITY_CORS, cause=CORS_CAUSE, owed=owed,
                             detail=("%s: CORS %s" % (scenario or ep, "; ".join(cors)))[:200],
-                            message=("%s (%s): the destination grants no CORS permission the source granted: %s. On Quarkus this is "
-                                     "application configuration, not a controller annotation: quarkus.http.cors.enabled=true, "
-                                     "quarkus.http.cors.origins mirroring the source (an absent origins attribute means any origin), "
-                                     "quarkus.http.cors.exposed-headers and .methods/.headers set to the source's recorded values quoted "
-                                     "in the diffs. Do not restore a removed @CrossOrigin." % (ep, scenario or "read oracle", "; ".join(cors)))[:1200],
-                            advice=cors_advice(cors, source_policies)))
+                            message=("%s (%s): the destination does not reproduce the source's cross-origin behaviour: %s. "
+                                     "ADR-019: install the source-preserving CORS response adapter and its configuration "
+                                     "through the capability (%s), which renders every permission from the SOURCE policy "
+                                     "and writes %s and %s; the platform answers a preflight before any endpoint, so a "
+                                     "controller change cannot reach it. Do not restore a removed @CrossOrigin; do not "
+                                     "widen the policy to make a capture pass."
+                                     % (ep, scenario or "read oracle", "; ".join(cors), owed["install"], owed["path"],
+                                        owed["config"]))[:1200],
+                            advice=cors_advice(cors, source_policies, root)))
+        if representation:
+            owed = dict(_adapters.contract(_adapters.MEDIA_TYPE),
+                        differences=[{k: d[k] for k in ("media_type", "extra", "missing")} for d in representation])
+            raws = "; ".join(str(d["raw"]) for d in representation)
+            out.append(dict(base, id=parity_obligation_id(ep, scenario, "representation"), path=owed["path"], kind="config",
+                            rule_id=RULE_PARITY_CONTENT_TYPE, cause=REPRESENTATION_CAUSE, owed=owed,
+                            detail=("%s: %s" % (scenario or ep, raws))[:200],
+                            message=("%s (%s): the destination's Content-Type differs from the source's only in its "
+                                     "parameters: %s. ADR-019: a response-representation obligation of its own; prefer "
+                                     "response or serializer configuration, otherwise the media-type adapter removes only "
+                                     "the decided parameter (%s)." % (ep, scenario or "read oracle", raws, owed["install"]))[:1200],
+                            advice=representation_advice(representation)))
     # The receipt's own navigation verdicts: a comparison that PASSed and a
     # redirect target that is dead, loops, or never settles within the bounded
     # walk (ADR-016). There is no FAILing verdict file for these -- the
@@ -1915,6 +2127,11 @@ RULE_DIAGNOSTIC_FAMILY = "unit/diagnostic-family/v1"
 RULE_DECLARATION_CLOSURE = "unit/declaration-closure/v1"
 RULE_PACKAGE_LEAF = "unit/package-leaf/v1"
 RULE_CONFIG_CONSUMERS = "unit/config-consumers/v1"
+# ADR-019: an obligation OWED a harness adapter (a fixed template at a
+# contract path, plus rendered configuration). Formed in every formation mode,
+# because the authority to create the adapter's file is the sealed obligation,
+# not the unit former.
+RULE_OWED_ADAPTER = "unit/owed-adapter/v1"
 # Precedence when two rules claim the same item: (c) > (b) > (a) > (d),
 # evaluated in this order, first claim wins, ties broken by the sorted family
 # key. Deterministic because every input is sorted and content-addressed.
@@ -2646,6 +2863,14 @@ def _unit_completion(unit: dict[str, Any]) -> list[dict[str, Any]]:
     out.append({"check": "unit-assessment", "tool": "worklist.assess_unit",
                 "detail": "assess_unit reports no member violates and none is inconclusive (an already-correct member earns nothing and costs nothing)"})
     for row in unit.get("implementation") or []:
+        if row.get("verify") == "template":
+            out.append({"check": "adapter", "tool": "worklist.assess_unit", "path": row["path"], "type": row["type"],
+                        "contract": row["contract"],
+                        "detail": "%s is the %s template byte-for-byte (sha256 %s), the model declares %s there, and %s "
+                                  "carries exactly the %d row(s) the capability renders (%s --check)"
+                                  % (row["path"], row["contract"], str(row["template_sha256"])[:12], row["type"],
+                                     row["config"], len(row.get("properties") or []), row.get("install") or "")})
+            continue
         out.append({"check": "implementation", "tool": "worklist.assess_unit", "parent": row["parent"],
                     "path": row["path"], "type": row["type"],
                     "detail": "%s is implemented by a concrete %s at %s (%s), and the model shows it implements the "
@@ -2797,6 +3022,72 @@ def form_units(items: list[dict[str, Any]], depths: dict[str, int], deferred: se
     return clusters, claimed
 
 
+def owed_adapter_units(items: list[dict[str, Any]], root: Path | None, depths: dict[str, int],
+                       deferred: set[str]) -> tuple[list[dict[str, Any]], set[str]]:
+    """ADR-019: one sealed unit per harness adapter an obligation is OWED.
+
+    Every item carrying an ``owed`` row for the same contract is one repair:
+    the CORS adapter answers every CORS scenario at once, the media-type
+    adapter every Content-Type parameter difference at once, and neither
+    authorizes the other. The unit's write set is the adapter's contract path
+    and the configuration file, sealed BEFORE editing; its implementation
+    obligation names the type, the path, the template digest and the rows the
+    capability renders from the evidence, and assess_unit checks all of them
+    after the files exist. A rendering the evidence cannot support is a typed
+    blocker on the unit, never a guess."""
+    groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for it in items:
+        owed = it.get("owed") if isinstance(it.get("owed"), dict) else None
+        if owed and str(owed.get("contract") or "") and str(owed.get("kind") or "") in _adapters.KINDS:
+            groups[str(owed["kind"])].append(it)
+    units: list[dict[str, Any]] = []
+    claimed: set[str] = set()
+    for kind in sorted(groups):
+        rows = sorted(groups[kind], key=lambda i: str(i.get("id")))
+        c = _adapters.contract(kind)
+        block = ""
+        props: list[tuple[str, str]] = []
+        basis: dict[str, Any] = {}
+        try:
+            if kind == _adapters.CORS:
+                if root is None:
+                    raise _adapters.Refuse("CORS_POLICY_UNKNOWN", "no destination root to read the source policy from")
+                policy = _adapters.cors_policy(Path(root))
+                props = _adapters.cors_properties(policy)
+                basis = {"source_policies": policy["source_policies"], "rules": len(policy["rules"]),
+                         "security": policy["security"]}
+            else:
+                diffs = [d for i in rows for d in ((i.get("owed") or {}).get("differences") or [])]
+                decision = _adapters.media_type_decision(diffs)
+                props = _adapters.media_type_properties(decision)
+                basis = {"decided": decision}
+        except _adapters.Refuse as exc:
+            block = "ADAPTER_UNRENDERABLE: %s" % exc
+        implementation = {
+            "parent": "", "parent_path": "", "type": c["type"], "path": c["path"], "members": [],
+            "contract": c["contract"], "source": c["source"], "verify": "template", "adapter": kind,
+            "template_sha256": c["template_sha256"], "config": c["config"],
+            "properties": [[k, v] for k, v in props], "basis": basis, "install": c["install"],
+        }
+        evidence = [{"kind": "runtime", "ref": "%s %s %s" % (i.get("id"), i.get("rule_id"), i.get("scenario") or i.get("entry_point"))}
+                    for i in rows]
+        evidence.append({"kind": "catalog", "ref": "%s: %s at %s (template sha256 %s; %s)"
+                                                   % (c["contract"], c["type"], c["path"], c["template_sha256"][:12], c["source"])})
+        unit = {"rule": RULE_OWED_ADAPTER, "family_key": c["contract"], "kind": "config", "items": rows,
+                "files": sort_unique([c["path"], c["config"]]),
+                "members": [_unit_member(c["config"], state="declares-property")],
+                "symbols": [{"kind": "property", "fqn": _adapters.CONTRACTS[kind]["prefix"].rstrip("."), "path": c["config"]}],
+                "target_symbols": [], "evidence": evidence, "gate": "parity", "implementation": [implementation]}
+        _bound_unit(unit)
+        if block:
+            unit["block"] = block
+        unit["unit_id"] = unit_id_of(unit["rule"], unit["family_key"], unit["members"])
+        unit["completion"] = _unit_completion(unit)
+        claimed.update(str(i.get("id")) for i in rows)
+        units.append(unit)
+    return [_unit_cluster(u, depths, deferred) for u in units], claimed
+
+
 def build_unit_scope(root: Path, cluster: dict[str, Any], items: list[dict[str, Any]], bundle: dict[str, Any]) -> dict[str, Any] | None:
     """The SEALED unit inventory: files AND symbols, written once at a path
     named by its own digest.
@@ -2882,6 +3173,9 @@ def _assess_implementations(root: Path, scope: dict[str, Any], model: dict[str, 
     for row in scope.get("implementation_obligations") or []:
         if not isinstance(row, dict):
             continue
+        if row.get("verify") == "template":
+            out.append(_assess_owed_adapter(Path(root), row, by_path, rule))
+            continue
         path, parent, want = str(row.get("path") or ""), str(row.get("parent") or ""), str(row.get("type") or "")
         base = {"member": "%s#%s" % (path, want.rsplit(".", 1)[-1]), "path": path, "rule": rule,
                 "state": "implementation", "parent": parent}
@@ -2915,6 +3209,37 @@ def _assess_implementations(root: Path, scope: dict[str, Any], model: dict[str, 
                         detail="%s implements %s and declares %d concrete member(s) it owed"
                                % (typ.get("fqn"), parent, len(row.get("members") or []))))
     return out
+
+
+def _assess_owed_adapter(root: Path, row: dict[str, Any], by_path: dict[str, list[dict[str, Any]]],
+                         rule: str) -> dict[str, Any]:
+    """An owed harness adapter, after the fact: the file is the template
+    byte-for-byte (the sealed digest, and the template the harness ships now),
+    the model declares the contract's type there, and the configuration carries
+    exactly the sealed rendered rows -- no more of its own family, no fewer."""
+    path, want, kind = str(row.get("path") or ""), str(row.get("type") or ""), str(row.get("adapter") or "")
+    base = {"member": "%s#%s" % (path, want.rsplit(".", 1)[-1]), "path": path, "rule": rule, "state": "adapter",
+            "contract": str(row.get("contract") or "")}
+    if kind not in _adapters.KINDS:
+        return dict(base, verdict="violates", detail="the sealed obligation names no known adapter (%r)" % kind)
+    if str(row.get("template_sha256") or "") != _adapters.template_sha256(kind):
+        return dict(base, verdict="inconclusive",
+                    detail="the harness template changed since this unit was sealed (%s, now %s); re-plan the card"
+                           % (str(row.get("template_sha256"))[:12], _adapters.template_sha256(kind)[:12]))
+    props = [(str(k), str(v)) for k, v in (row.get("properties") or [])]
+    problems = _adapters.verify(Path(root), kind, props)
+    if problems:
+        return dict(base, verdict="violates",
+                    detail="the %s repair is not installed as the capability renders it: %s (run %s)"
+                           % (row.get("contract"), "; ".join(problems[:3]), row.get("install") or "the installer"))
+    here = by_path.get(path) or []
+    if not here:
+        return dict(base, verdict="inconclusive", detail="the model has no type for %s" % path)
+    if not any(str(t.get("fqn") or "") == want for t in here):
+        return dict(base, verdict="violates", detail="%s declares %s, not the contract's %s"
+                    % (path, ", ".join(sorted(str(t.get("fqn")) for t in here)), want))
+    return dict(base, verdict="ok", detail="%s is the %s template, declares %s, and %s carries the %d rendered row(s)"
+                % (path, row.get("contract"), want, row.get("config"), len(props)))
 
 
 def assess_unit(root: Path, scope: dict[str, Any]) -> list[dict[str, Any]]:
@@ -3506,6 +3831,23 @@ def load_run(root: Path) -> dict[str, Any]:
     return load_json(p) if p.is_file() else {}
 
 
+def _guard_owned(clusters: list[dict[str, Any]], owned: dict[str, Any]) -> None:
+    """The harness-owned rule as an invariant on every write set, whatever
+    formed it: an owned path is dropped, and a cluster left with nothing
+    writable is a typed blocker, never an open card."""
+    for c in clusters:
+        ws = list(c.get("write_set") or [])
+        kept = [w for w in ws if not is_harness_owned(w, owned)]
+        if kept == ws:
+            continue
+        c["write_set"] = kept
+        c.setdefault("harness_owned_paths", sorted(set(ws) - set(kept)))
+        if not kept and c.get("status") in ("open", "deferred"):
+            c["status"] = "blocked"
+            c["block"] = ("every path of this cluster is under a harness-owned generated root (%s); no worker may be "
+                          "issued it (ADR-015, ADR-019)" % ", ".join(owned.get("roots") or []))
+
+
 def build_worklist(root: Path, *, write: bool = True) -> dict[str, Any]:
     root = Path(root)
     bundle = load_json(root / EVIDENCE_BUNDLE)
@@ -3628,6 +3970,23 @@ def build_worklist(root: Path, *, write: bool = True) -> dict[str, Any]:
         unlocatable.append({"id": "fx:environment:%s" % sha256_bytes(str(b).encode("utf-8"))[:12],
                             "kind": "environment", "gate": "", "cause": "environment", "detail": str(b)[:400]})
     items = sorted(mandatory + comp + tst + par + rt, key=lambda i: i["id"])
+    # ADR-015/ADR-019: nothing a worker could be issued may land in a
+    # harness-owned generated root. Such findings stay VISIBLE -- recorded
+    # here, owned by the generator -- and are never an obligation.
+    owned_roots = harness_owned_roots(root)
+    harness_owned = [i for i in items if is_harness_owned(str(i.get("path") or ""), owned_roots)]
+    if harness_owned:
+        gone = {str(i["id"]) for i in harness_owned}
+        items = [i for i in items if str(i["id"]) not in gone]
+    harness_findings = [{"id": str(i.get("id")), "source": str(i.get("source") or ""), "kind": str(i.get("kind") or ""),
+                         "category": str(i.get("category") or ""), "rule_id": str(i.get("rule_id") or ""),
+                         "path": str(i.get("path") or ""), "line": i.get("line") or 0,
+                         "detail": str(i.get("detail") or i.get("message") or "")[:200],
+                         "owner": owned_roots["owner"], "applicable_to_workers": False,
+                         "reason": ("the path is under a harness-owned generated root (%s); workers have no write authority "
+                                    "there (ADR-015, ADR-019), so this is a finding for the generator's owner, not a card"
+                                    % ", ".join(owned_roots["roots"]))}
+                        for i in sorted(harness_owned, key=lambda i: str(i.get("id")))]
     # A compile diagnostic's identity without its line: acceptance asks whether
     # the issued failure is "still reported" of this, never of the err: id
     # (which hashes the line). Only unhandled-checked-exception diagnostics
@@ -3649,7 +4008,9 @@ def build_worklist(root: Path, *, write: bool = True) -> dict[str, Any]:
     formation, mode_block = unit_formation_for(root, decisions_doc)
     if mode_block:
         blocked.append(mode_block)
-    units: list[dict[str, Any]] = []
+    # ADR-019: an obligation owed a harness adapter is sealed in EVERY mode --
+    # the adapter's new file is authorized by that seal, not by the former.
+    units, owed_claimed = owed_adapter_units(items, root, file_depths(bundle), deferred)
     if formation == UNIT_FORMATION_V1:
         try:
             _unit_model = dest_model(root)
@@ -3657,7 +4018,9 @@ def build_worklist(root: Path, *, write: bool = True) -> dict[str, Any]:
             _unit_model = None
             blocked.append("unit formation is v1 but the destination could not be modelled, so no unit can be formed: %s" % exc)
         if _unit_model is not None:
-            units, claimed = form_units(items + set_wide_rows, file_depths(bundle), deferred, model=_unit_model, root=root)
+            formed, claimed = form_units([i for i in items if str(i.get("id")) not in owed_claimed] + set_wide_rows,
+                                         file_depths(bundle), deferred, model=_unit_model, root=root)
+            units = units + formed
             # A set-wide row the former could enumerate is an OBLIGATION now,
             # not a blocker: the members are the model's, not the name the
             # platform happened to reach first. One the former could not
@@ -3670,6 +4033,7 @@ def build_worklist(root: Path, *, write: bool = True) -> dict[str, Any]:
                 unlocated_blocks = [b for b in unlocated_blocks if b[0] not in done]
     blocked.extend(text for _id, text in unlocated_blocks)
     clusters = cluster_items(items, file_depths(bundle), deferred, units=units)
+    _guard_owned(clusters, owned_roots)
     # A cluster made only of one gate's obligations carries that gate, so the
     # card, the issued record and acceptance all know which phase is being
     # repaired (a packaging repair can leave the compile/test tuple unchanged).
@@ -3700,6 +4064,7 @@ def build_worklist(root: Path, *, write: bool = True) -> dict[str, Any]:
                                 "unit_id": str(scope.get("unit_id") or ""),
                                 "members": len(scope["members"])}
         c["retry_key"] = retry_key(c, items)
+    _guard_owned(clusters, owned_roots)  # a sealed scope may not re-admit one either
     open_clusters = [c for c in clusters if c["status"] == "open"]
     head = open_clusters[0]["id"] if open_clusters else ""
     doc = {
@@ -3720,6 +4085,10 @@ def build_worklist(root: Path, *, write: bool = True) -> dict[str, Any]:
             "run": {"path": str(VERIFY_RUN), "sha256": sha256_file(root / VERIFY_RUN)} if (root / VERIFY_RUN).is_file() else None,
         },
         "optional_incidents": sum(1 for i in incidents if i["category"] != "mandatory"),
+        # findings in harness-owned generated roots: accounted, owned by the
+        # generator, never an obligation (ADR-015/ADR-019)
+        "harness_owned": {"roots": owned_roots["roots"], "declared_by": owned_roots["declared_by"],
+                          "owner": owned_roots["owner"], "findings": harness_findings},
         "runtime": runtime,
         "items": items,
         "clusters": clusters,

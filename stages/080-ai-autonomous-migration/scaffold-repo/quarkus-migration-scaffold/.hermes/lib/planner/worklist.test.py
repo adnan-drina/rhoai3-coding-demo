@@ -622,13 +622,17 @@ def _parity_typing_case() -> int:
         ro = by.get((ep, "", "response"))
         if not ro or ro["path"] != "src/main/java/a/OwnerRestController.java" or "status 500 vs 200" not in ro["detail"]:
             return _fail("a read-oracle status diff lands on the controller with its diff in the detail: %s" % ro)
-        cors = by.get((ep, "sc:cors-actual-owners", "cors-config"))
-        if not cors or cors["path"] != APP_PROPERTIES or cors["kind"] != "config" or cors["rule_id"] != "PARITY_CORS":
-            return _fail("CORS-only diffs are a config obligation at application.properties: %s" % cors)
-        if "errors, content-type" not in cors["message"] or "quarkus.http.cors.enabled=true" not in cors["message"] or "Do not restore" not in cors["message"]:
-            return _fail("the CORS obligation quotes the source's recorded values and names the config path: %s" % cors["message"][:300])
+        cors = by.get((ep, "sc:cors-actual-owners", "cors-response"))
+        adapter = "src/main/java/io/rhoai3/migration/response/SourceCorsResponseAdapter.java"
+        if (not cors or cors["path"] != adapter or cors["kind"] != "config" or cors["rule_id"] != "PARITY_CORS"
+                or (cors.get("owed") or {}).get("contract") != "source-cors-response-adapter/v1"
+                or cors["advice"]["write_set"] != [adapter, APP_PROPERTIES]):
+            return _fail("CORS diffs are an obligation OWED the CORS adapter, its write set the adapter and the config (ADR-019): %s" % cors)
+        if ("errors, content-type" not in cors["message"] or "install-response-adapter.py" not in cors["message"]
+                or "Do not restore" not in cors["message"] or APP_PROPERTIES not in cors["message"]):
+            return _fail("the CORS obligation quotes the source's recorded values and names the capability and both paths: %s" % cors["message"][:300])
         loc = by.get((ep2, "sc:create-owner-location", "response"))
-        cors2 = by.get((ep2, "sc:create-owner-location", "cors-config"))
+        cors2 = by.get((ep2, "sc:create-owner-location", "cors-response"))
         if not loc or not cors2 or "Location" not in loc["detail"] or "Location" in cors2["detail"]:
             return _fail("a verdict with a Location diff AND a CORS diff is two obligations, each carrying only its own diffs: %s | %s" % (loc, cors2))
         if len({i["id"] for i in items}) != 4:
@@ -709,28 +713,32 @@ def _parity_advice_case() -> int:
                 "verdict": "FAIL", "reason": "status 500 vs 200"})
             items = {(i["entry_point"], i["scenario"], i["cause"]): i for i in parity_items(root, bundle)}
 
-            cors = items.get((ep_api, spec["preflight"], "cors-config"))
+            cors = items.get((ep_api, spec["preflight"], "cors-response"))
             if not cors or not isinstance(cors.get("advice"), dict):
                 return _fail("the CORS obligation must carry advice: %s" % cors)
             a = cors["advice"]
-            want_props = {
-                "quarkus.http.cors.enabled": "true",
-                "quarkus.http.cors.origins": spec["origin"],
-                "quarkus.http.cors.methods": spec["methods"],
-                "quarkus.http.cors.headers": spec["headers"],
-                "quarkus.http.cors.exposed-headers": spec["exposed"],
-                "quarkus.http.cors.access-control-max-age": spec["max_age"],
-            }
-            if a["properties"] != want_props:
-                return _fail("every CORS property is the SOURCE's own value, quoted from the diffs: %s" % a["properties"])
+            # ADR-019: configuration-only advice is replaced; the capability's
+            # adapter AND the configuration are the write set, and the values
+            # come from the source policy, not from this capture
+            if "properties" in a:
+                return _fail("the CORS advice must no longer prescribe configuration values from one capture: %s" % a["properties"])
+            if a["write_set"] != [a["owed"]["path"], "src/main/resources/application.properties"]:
+                return _fail("the CORS advice names the adapter's contract path and the config as its write set: %s" % a["write_set"])
             if a["source_policies"] != [spec["policy"]]:
                 return _fail("the advice names the source policies the receipt recorded: %s" % a["source_policies"])
+            obs = a["observed_headers"]
+            if obs.get("Access-Control-Allow-Origin", {}).get("source") != spec["origin"] or obs.get("Access-Control-Max-Age", {}).get("source") != spec["max_age"]:
+                return _fail("the advice quotes what the SOURCE sent, from the diffs: %s" % obs)
             blob = json.dumps(a)
-            for needed in ("preflight", "PAIRED actual", spec["exposed"], "@CrossOrigin", "ANY origin"):
+            for needed in ("preflight", "PAIRED actual", spec["exposed"], "@CrossOrigin", "source policy",
+                           "install-response-adapter.py", "--check", "BOTH security modes", "same origin",
+                           "wildcard policy inferred", "turns a rejected exchange into an allowed one", "PARITY_CONTENT_TYPE"):
                 if needed not in blob:
                     return _fail("the CORS advice must state %r: %s" % (needed, blob[:600]))
-            if "quarkus.http.cors" not in blob or spec["origin"] not in blob:
+            if spec["origin"] not in blob:
                 return _fail("the CORS advice must quote the evidence, never a preset: %s" % blob[:600])
+            if "render_refused" not in a:
+                return _fail("with no structural model in the tree the rendering is refused by name, never guessed: %s" % sorted(a))
 
             red = items.get((ep_root, spec["read_root"], "response"))
             if not red or not isinstance(red.get("advice"), dict):
@@ -2169,10 +2177,184 @@ def _real_explained_case() -> int:
     return 0
 
 
+def _owed_adapter_case() -> int:
+    """ADR-019: a parity obligation OWED a harness adapter is sealed with the
+    adapter's contract path and the configuration BEFORE editing; the CORS and
+    the Content-Type obligations are separate units that never authorize each
+    other; the rendered rows come from the SOURCE policy; the checkpoint
+    assesses the installed bytes, the model's type and every rendered row."""
+    import json
+    import tempfile
+
+    import response_adapters as ra
+    from planner.paths import PARITY_DIR
+    from planner.worklist import (RULE_OWED_ADAPTER, _assess_owed_adapter, owed_adapter_units,
+                                  representation_diffs)
+
+    fixture = Path(__file__).resolve().parents[2] / "skills" / "migration" / "restore-source-response-shape" / "fixtures" / "runtime"
+    ep = "ep:org.example.shop.rest.ItemController#create():http"
+    ep2 = "ep:org.example.shop.rest.ItemController#list():http"
+    ctl = "src/main/java/org/example/shop/rest/ItemController.java"
+    bundle = {"entry_points": [{"id": ep, "path": ctl}, {"id": ep2, "path": ctl}]}
+    cors_path, media_path = ra.adapter_path(ra.CORS), ra.adapter_path(ra.MEDIA_TYPE)
+
+    # the splitter keeps a parameter list together; a different media type is not a representation difference
+    rep, rest = representation_diffs(["header content-type application/json;charset=UTF-8 vs application/json",
+                                      "header content-type text/html vs application/json", "status 500 vs 200"])
+    if len(rep) != 1 or rep[0]["extra"] != [("charset", "UTF-8")] or len(rest) != 2:
+        return _fail("only a same-media-type parameter difference is a representation difference: %s | %s" % (rep, rest))
+
+    with tempfile.TemporaryDirectory(prefix="owed-adapter-") as td:
+        root = Path(td)
+        (root / "evidence" / "structure").mkdir(parents=True)
+        shutil.copy2(fixture / "evidence" / "structure" / "structure.json", root / "evidence" / "structure" / "structure.json")
+        (root / "src" / "main" / "resources").mkdir(parents=True)
+        (root / APP_PROPERTIES).write_text("quarkus.http.root-path=/shop/\nquarkus.http.cors.origins=http://stale.example\n", encoding="utf-8")
+        pdir = root / PARITY_DIR
+        (pdir / "scenarios").mkdir(parents=True)
+
+        def w(rel, doc):
+            (pdir / rel).write_text(json.dumps(doc), encoding="utf-8")
+
+        w("receipt.json", {"schema": "rhoai3.parity-receipt/v1", "verdict": "FAIL",
+                           "cors": {"source_policies": ["crossorigin:7b1a3d9234cd"], "gaps": []}})
+        w("scenarios/pre.json", {"schema": "rhoai3.scenario-parity/v1", "entry_point": ep, "scenario": "sc:pre", "verdict": "FAIL",
+                                 "reason": "header Access-Control-Allow-Origin http://client.example vs *; header Access-Control-Allow-Credentials false vs None"})
+        w("scenarios/act.json", {"schema": "rhoai3.scenario-parity/v1", "entry_point": ep2, "scenario": "sc:act", "verdict": "FAIL",
+                                 "reason": "header Access-Control-Allow-Origin http://client.example vs *; header content-type application/json;charset=UTF-8 vs application/json"})
+        w("scenarios/read.json", {"schema": "rhoai3.scenario-parity/v1", "entry_point": ep2, "scenario": "sc:read", "verdict": "FAIL",
+                                  "reason": "header content-type application/json;charset=UTF-8 vs application/json; status 500 vs 200"})
+        items = parity_items(root, bundle)
+        kinds = sorted((i["scenario"], i["rule_id"], i["path"]) for i in items)
+        want = sorted([("sc:pre", "PARITY_CORS", cors_path), ("sc:act", "PARITY_CORS", cors_path),
+                       ("sc:act", "PARITY_CONTENT_TYPE", media_path), ("sc:read", "PARITY_CONTENT_TYPE", media_path),
+                       ("sc:read", "PARITY", ctl)])
+        if kinds != want:
+            return _fail("CORS, representation and response differences are three separate obligation kinds: %s" % kinds)
+        cors_item = next(i for i in items if i["rule_id"] == "PARITY_CORS")
+        if cors_item["advice"].get("rendered", {}).get("source_policies") != sorted(["crossorigin:7b1a3d9234cd", "crossorigin:3068ac3cbdd1"]):
+            return _fail("the CORS advice carries the rendering of the SOURCE policy: %s" % cors_item["advice"].get("rendered"))
+        if "content-type" in json.dumps(cors_item["detail"]).lower():
+            return _fail("a CORS obligation never carries the Content-Type difference: %s" % cors_item["detail"])
+
+        units, claimed = owed_adapter_units(items, root, {}, set())
+        by_rule = {u["unit"]["family_key"]: u for u in units}
+        cu, mu = by_rule.get("source-cors-response-adapter/v1"), by_rule.get("source-media-type-parameter-adapter/v1")
+        if not cu or not mu or len(units) != 2:
+            return _fail("one sealed unit per owed adapter: %s" % [u["unit"]["family_key"] for u in units])
+        if cu["write_set"] != sorted([cors_path, APP_PROPERTIES]) or mu["write_set"] != sorted([media_path, APP_PROPERTIES]):
+            return _fail("each unit's write set is its adapter's contract path and the configuration: %s | %s" % (cu["write_set"], mu["write_set"]))
+        if media_path in cu["write_set"] or cors_path in mu["write_set"]:
+            return _fail("CORS ownership never authorizes the media-type adapter, nor the reverse")
+        if cu["status"] != "open" or mu["status"] != "open" or cu["gate"] != "parity" or cu["kind"] != "config":
+            return _fail("an owed-adapter unit is an open parity-gated config card: %s" % {k: cu[k] for k in ("status", "gate", "kind", "block")})
+        if claimed != {i["id"] for i in items if i["rule_id"] != "PARITY"}:
+            return _fail("the units claim exactly the owed obligations: %s" % claimed)
+        clusters = cluster_items(items, {}, set(), units=units)
+        if sorted(c["path"] for c in clusters if not c["id"].startswith("u:")) != [ctl]:
+            return _fail("a claimed obligation is not clustered again per file: %s" % [(c["id"], c["path"]) for c in clusters])
+        scope = build_unit_scope(root, cu, items, {"candidate_sha256": "x"})
+        impl = (scope or {}).get("implementation_obligations") or []
+        if (not scope or scope["rule"] != RULE_OWED_ADAPTER or len(impl) != 1 or impl[0]["verify"] != "template"
+                or impl[0]["path"] != cors_path or impl[0]["type"] != ra.adapter_type(ra.CORS)
+                or impl[0]["template_sha256"] != ra.template_sha256(ra.CORS)):
+            return _fail("the seal names the owed path, type and template digest: %s" % impl)
+        rendered = [tuple(r) for r in impl[0]["properties"]]
+        if rendered != ra.cors_properties(ra.cors_policy(root)):
+            return _fail("the sealed rows are the capability's rendering of the source policy")
+        if batch_scope_digest(scope) != scope["digest"] or build_unit_scope(root, cu, items, {"candidate_sha256": "x"})["digest"] != scope["digest"]:
+            return _fail("the owed-adapter seal is reproducible from content")
+        props = dict(rendered)
+        # the SOURCE decides: the restrictive policy is not widened by the permissive one next to it
+        if props.get("rhoai3.source-cors.rule.0.origins") != "http://allowed.example" or props.get("rhoai3.source-cors.rule.0.methods") != "GET":
+            return _fail("a restrictive source policy is rendered as it is, never widened: %s" % props)
+        if any(k.startswith("rhoai3.source-cors.rule.") and v == "*" and ".0." in k for k, v in props.items()):
+            return _fail("no wildcard enters a policy whose source names its values: %s" % props)
+
+        # the checkpoint, before and after the capability ran
+        row = impl[0]
+        typ = {"fqn": ra.adapter_type(ra.CORS), "resolution": "full", "supertypes": [], "declared": []}
+        before = _assess_owed_adapter(root, row, {}, RULE_OWED_ADAPTER)
+        if before["verdict"] != "violates":
+            return _fail("an owed adapter that is not there violates: %s" % before)
+        ra.install(root, ra.CORS, rendered, basis={}, authority={"kind": "test"})
+        if _assess_owed_adapter(root, row, {}, RULE_OWED_ADAPTER)["verdict"] != "inconclusive":
+            return _fail("an adapter the model cannot see is not assessed as a pass")
+        ok = _assess_owed_adapter(root, row, {cors_path: [typ]}, RULE_OWED_ADAPTER)
+        if ok["verdict"] != "ok":
+            return _fail("the installed adapter and rows discharge the obligation: %s" % ok)
+        wrong = _assess_owed_adapter(root, row, {cors_path: [dict(typ, fqn="x.Other")]}, RULE_OWED_ADAPTER)
+        if wrong["verdict"] != "violates":
+            return _fail("a file that declares another type violates the naming contract: %s" % wrong)
+        text = (root / APP_PROPERTIES).read_text(encoding="utf-8")
+        (root / APP_PROPERTIES).write_text(text + "quarkus.http.cors.methods=GET,POST,PUT,DELETE,PATCH\n", encoding="utf-8")
+        if _assess_owed_adapter(root, row, {cors_path: [typ]}, RULE_OWED_ADAPTER)["verdict"] != "violates":
+            return _fail("a hand-widened row of the capability's family after the block violates")
+        (root / APP_PROPERTIES).write_text(text, encoding="utf-8")
+        (root / cors_path).write_text((root / cors_path).read_text(encoding="utf-8") + "// edited\n", encoding="utf-8")
+        if _assess_owed_adapter(root, row, {cors_path: [typ]}, RULE_OWED_ADAPTER)["verdict"] != "violates":
+            return _fail("an edited adapter is not the template and violates")
+        stale = dict(row, template_sha256="0" * 64)
+        if _assess_owed_adapter(root, stale, {cors_path: [typ]}, RULE_OWED_ADAPTER)["verdict"] != "inconclusive":
+            return _fail("a seal made against another template is not assessable")
+
+        # a rendering the evidence cannot support blocks the unit by name
+        (root / "evidence" / "structure" / "structure.json").unlink()
+        blocked, _c = owed_adapter_units(items, root, {}, set())
+        cb = next(u for u in blocked if u["unit"]["family_key"] == "source-cors-response-adapter/v1")
+        if cb["status"] != "blocked" or "ADAPTER_UNRENDERABLE" not in cb["block"] or "CORS_POLICY_UNKNOWN" not in cb["block"]:
+            return _fail("no source policy, no CORS rendering: a typed blocker, never a guess: %s" % cb)
+        mixed = [dict(i, owed=dict(i["owed"], differences=[{"media_type": "application/json", "extra": [("charset", "UTF-8")], "missing": []},
+                                                           {"media_type": "application/json", "extra": [("charset", "ISO-8859-1")], "missing": []}]))
+                 if i["rule_id"] == "PARITY_CONTENT_TYPE" else i for i in items]
+        mb = next(u for u in owed_adapter_units(mixed, root, {}, set())[0] if u["unit"]["family_key"].startswith("source-media-type"))
+        if mb["status"] != "blocked" or "MEDIA_TYPE_UNDECIDED" not in mb["block"]:
+            return _fail("two different parameters decide nothing: %s" % mb.get("block"))
+    return 0
+
+
+def _harness_owned_guard_case() -> int:
+    """ADR-015/ADR-019: the generated roots come from the generator's own
+    declaration, and no write set -- whatever formed it -- keeps such a path."""
+    import json
+    import tempfile
+
+    from planner.worklist import _guard_owned, harness_owned_roots, is_harness_owned
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "skills" / "gates" / "generate-product-tests" / "scripts"))
+    import parity_pom  # noqa: PLC0415
+
+    with tempfile.TemporaryDirectory(prefix="owned-guard-") as td:
+        root = Path(td)
+        owned = harness_owned_roots(root)
+        if owned["roots"] != sorted({parity_pom.DEFAULT_OUT, parity_pom.DEFAULT_RESOURCES}) or owned["owner"] != "generate-product-tests":
+            return _fail("the generator's declaration names the roots: %s" % owned)
+        man = root / parity_pom.GENERATED_MANIFEST
+        man.parent.mkdir(parents=True)
+        man.write_text(json.dumps({"out": "gen/java", "files": [{"path": "src/main/resources/generated-seed.sql"}]}))
+        owned = harness_owned_roots(root)
+        if "gen/java" not in owned["roots"] or not is_harness_owned("src/main/resources/generated-seed.sql", owned):
+            return _fail("the manifest's recorded roots and files are owned too: %s" % owned)
+        if is_harness_owned("src/main/java/a/B.java", owned) or is_harness_owned("src/parity-testing/x", owned):
+            return _fail("a product path, or one that merely shares a prefix, is not owned")
+        gen = parity_pom.DEFAULT_OUT + "/a/generated/XParityTest.java"
+        clusters = [{"id": "c:1", "status": "open", "write_set": [gen], "block": ""},
+                    {"id": "c:2", "status": "open", "write_set": [gen, "src/main/java/a/B.java"], "block": ""},
+                    {"id": "c:3", "status": "open", "write_set": ["pom.xml"], "block": ""}]
+        _guard_owned(clusters, owned)
+        if clusters[0]["status"] != "blocked" or clusters[0]["write_set"] or "harness-owned" not in clusters[0]["block"]:
+            return _fail("a cluster left with only owned paths is a typed blocker: %s" % clusters[0])
+        if clusters[1]["write_set"] != ["src/main/java/a/B.java"] or clusters[1]["status"] != "open" or clusters[1]["harness_owned_paths"] != [gen]:
+            return _fail("an owned path is dropped from a mixed write set, on the record: %s" % clusters[1])
+        if clusters[2] != {"id": "c:3", "status": "open", "write_set": ["pom.xml"], "block": ""}:
+            return _fail("an unrelated cluster is untouched: %s" % clusters[2])
+    return 0
+
+
 def main() -> int:
     if (_runtime_identity_case() or _gate_progress_case() or _batch_scope_case() or _checked_family_case()
             or _set_wide_case() or _config_value_case() or _parity_typing_case() or _parity_advice_case()
-            or _parity_navigation_case() or _parity_gate_case() or _unit_formation_case() or _unit_bound_case() or _unit_seal_case()
+            or _parity_navigation_case() or _owed_adapter_case() or _harness_owned_guard_case() or _parity_gate_case() or _unit_formation_case() or _unit_bound_case() or _unit_seal_case()
             or _unit_mode_case() or _unit_inert_case() or _unit_config_case()
             or _unit_experiment_table_case() or _unit_explained_case() or _unit_progress_case()
             or _unit_budget_case()):
@@ -2360,7 +2542,7 @@ def main() -> int:
         return _fail("reclassified items keep their authority and are never dropped")
     if measure_of(all_items, incidents_known=False, compile_known=True, tests_known=True, parity_known=False)["known"]:
         return _fail("unknown incidents never advance")
-    print("OK: worklist (lossless line-free incidents; canary excluded; only ERROR diagnostics; build→config→compile(leaf-first)→incident→test order; tests never writable; lexicographic 3-tuple progress; new-incident veto; unknown never advances; gate progress is the issued obligation disappearing, never a reworded one; a second cause at one file is a second obligation); a repository card's inventory is sealed by its own digest and two measurements never share a path; checked-exception family: bound to its introducing step (a legacy site stays out), one budget, line-free identity across a moved line, CONTINUE / EXPOSED / still-reported / 1→0 accept, per-member assessment (catch-wrapped and header-deleted members violate); a set-wide packaging cause is one typed blocker under permuted first-reported names and never a card; an unloadable config value is located at the annotation that names the property IN THE DESTINATION'S OWN MODEL (the frozen source's model answers only when the destination cannot be modelled, and the brief says which did; ${x:d} and a bare x are one property), at application.properties only when the name is real and unread, and is a blocker when the name is empty and unread -- the same decisions under renamed identifiers; parity mismatches are typed by their diffs (CORS → application.properties, the rest → the controller; scenario verdicts count, the receipt does not) and carry their exit conditions as advice built from those diffs (CORS properties are the source's own recorded values with the paired actual request and the exposed headers as the exit; a redirect is the source's status and its literal Location after origin mapping only, the doubled root path named, the legacy address served from the packaged UI, a property outside the write set entering through amend-scope) — the same advice, about its own values, on a specimen that shares no name with this one; the PARITY GATE: an obligation carries gate=parity and the scenarios it is made of (a read oracle takes its receipt row's), and a card is discharged only by the re-composed receipt recording those scenarios PASS -- still reported, gone but INCONCLUSIVE, another entry point broken, a startup gate broken and an un-composed receipt all refuse; UNIT FORMATION (decisions.loop.unit_formation v1): four typed rules over one measurement -- a throws surface closes over its interface, implementers and callers as ONE unit; an annotation family confined to a directory nothing outside refers to is a package leaf (decided by type_refs, never by a package name); a family spanning two directories and five independent web symbols stay five separate families; a set-wide packaging cause whose parents the model CAN enumerate becomes a mintable unit while one it cannot stays the typed blocker; a test source is never writable and a lone locus forms no unit; a property and its annotated consumers are one unit and a properties file that does not declare the key is out of scope -- every verdict repeated on a twin that shares no package, type, member or foreign symbol. The SEAL is rhoai3.batch-scope/v4: files AND symbols, typed evidence, completion checks naming the tool that decides them, reproducible from content, at a path named by its own digest, with unit_id surviving remeasurement (one budget per PROBLEM) and a type the candidate merely mentions never widening it; a documented target carries its compat-mapping symbol_renames row and an undocumented one is no target (v9 t_3903f495). The BOUND preserves what a repair needs: a union narrows by whole families, lowest cardinality first, and every \
+    print("OK: worklist (lossless line-free incidents; canary excluded; only ERROR diagnostics; build→config→compile(leaf-first)→incident→test order; tests never writable; lexicographic 3-tuple progress; new-incident veto; unknown never advances; gate progress is the issued obligation disappearing, never a reworded one; a second cause at one file is a second obligation); a repository card's inventory is sealed by its own digest and two measurements never share a path; checked-exception family: bound to its introducing step (a legacy site stays out), one budget, line-free identity across a moved line, CONTINUE / EXPOSED / still-reported / 1→0 accept, per-member assessment (catch-wrapped and header-deleted members violate); a set-wide packaging cause is one typed blocker under permuted first-reported names and never a card; an unloadable config value is located at the annotation that names the property IN THE DESTINATION'S OWN MODEL (the frozen source's model answers only when the destination cannot be modelled, and the brief says which did; ${x:d} and a bare x are one property), at application.properties only when the name is real and unread, and is a blocker when the name is empty and unread -- the same decisions under renamed identifiers; parity mismatches are typed by their diffs (CORS → an obligation OWED the harness CORS adapter, a Content-Type parameter difference → its own PARITY_CONTENT_TYPE obligation, the rest → the controller; scenario verdicts count, the receipt does not) and carry their exit conditions as advice built from those diffs (ADR-019: the CORS write set is the adapter's contract path plus the configuration, permissions come from the SOURCE policy and never from one capture, with the paired actual request, the exposed headers, both security modes and the capability's --check as the exit; each owed adapter is ONE sealed unit/owed-adapter/v1 whose checkpoint assesses the template bytes, the contract type and every rendered row, and a rendering the evidence cannot support is a typed blocker; findings in harness-owned generated roots are never obligations; a redirect is the source's status and its literal Location after origin mapping only, the doubled root path named, the legacy address served from the packaged UI, a property outside the write set entering through amend-scope) — the same advice, about its own values, on a specimen that shares no name with this one; the PARITY GATE: an obligation carries gate=parity and the scenarios it is made of (a read oracle takes its receipt row's), and a card is discharged only by the re-composed receipt recording those scenarios PASS -- still reported, gone but INCONCLUSIVE, another entry point broken, a startup gate broken and an un-composed receipt all refuse; UNIT FORMATION (decisions.loop.unit_formation v1): four typed rules over one measurement -- a throws surface closes over its interface, implementers and callers as ONE unit; an annotation family confined to a directory nothing outside refers to is a package leaf (decided by type_refs, never by a package name); a family spanning two directories and five independent web symbols stay five separate families; a set-wide packaging cause whose parents the model CAN enumerate becomes a mintable unit while one it cannot stays the typed blocker; a test source is never writable and a lone locus forms no unit; a property and its annotated consumers are one unit and a properties file that does not declare the key is out of scope -- every verdict repeated on a twin that shares no package, type, member or foreign symbol. The SEAL is rhoai3.batch-scope/v4: files AND symbols, typed evidence, completion checks naming the tool that decides them, reproducible from content, at a path named by its own digest, with unit_id surviving remeasurement (one budget per PROBLEM) and a type the candidate merely mentions never widening it; a documented target carries its compat-mapping symbol_renames row and an undocumented one is no target (v9 t_3903f495). The BOUND preserves what a repair needs: a union narrows by whole families, lowest cardinality first, and every \
 obligation it excludes stays in the work list as its own item with its file still writable, while a closure keeps \
 its callers and reaches the typed UNIT_OVERSIZE refusal rather than dropping them. With the mode off clustering is byte-for-byte what it was, and the mode may not flip while a card is issued or a pending row is open (UNIT_MODE_SWITCH). The CHECKPOINT: a \
 unit whose sealed identities are gone and whose members assess clean is ACCEPTED with the tuple unchanged, and even \

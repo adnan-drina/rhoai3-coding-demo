@@ -42,7 +42,12 @@
 # (Architect 193642ZA / 195231ZA / 200550ZA; dest-13 python3 -c open() bypass).
 # Residual: command-text only, not a syscall. Write-set stays advisory
 # (AD-020; not containment).
+# Generated test roots (ADR-015 / ADR-019): the generator's own declaration
+# (generate-product-tests/scripts/parity_pom.py and the generated manifest)
+# names the roots; a worker never writes under them, whatever its write set.
 set -euo pipefail
+K2_HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export K2_HOOK_DIR
 exec python3 -c '
 import json, os, re, sys, time
 
@@ -1102,7 +1107,73 @@ def loop_product_write_refusals(candidates):
         out.append(rel)
     return sorted(set(out))
 
+GENERATOR_DECLARATION = ("skills", "gates", "generate-product-tests", "scripts", "parity_pom.py")
+
+def harness_owned_roots():
+    """The generated test roots, read from the generator OWN declaration
+    (parity_pom.DEFAULT_OUT / DEFAULT_RESOURCES and the roots its manifest
+    records), never from a literal here. [] when no declaration is readable."""
+    out = set()
+    manifest_rel = ""
+    cands = []
+    hook_dir = (os.environ.get("K2_HOOK_DIR") or "").strip()
+    if hook_dir:
+        cands.append(os.path.join(os.path.dirname(hook_dir), *GENERATOR_DECLARATION))
+    root = dest_root()
+    if root:
+        cands.append(os.path.join(root, ".hermes", *GENERATOR_DECLARATION))
+    for cand in cands:
+        if not os.path.isfile(cand):
+            continue
+        try:
+            import importlib.util
+            spec = importlib.util.spec_from_file_location("_k2_generator_declaration", cand)
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+        except Exception:
+            continue
+        for name in ("DEFAULT_OUT", "DEFAULT_RESOURCES"):
+            v = str(getattr(mod, name, "") or "").strip().strip("/")
+            if v:
+                out.add(v)
+        manifest_rel = str(getattr(mod, "GENERATED_MANIFEST", "") or "")
+        break
+    if root and manifest_rel:
+        try:
+            man = json.load(open(os.path.join(root, manifest_rel), encoding="utf-8"))
+        except (OSError, ValueError):
+            man = {}
+        prof = man.get("pom_profile") if isinstance(man, dict) and isinstance(man.get("pom_profile"), dict) else {}
+        for v in ((man.get("out") if isinstance(man, dict) else ""), (man.get("resources") if isinstance(man, dict) else ""),
+                  prof.get("test_source"), prof.get("test_resources")):
+            v = str(v or "").strip().strip("/")
+            if v:
+                out.add(v)
+    return sorted(out)
+
+def harness_owned_hits(candidates, command):
+    roots = harness_owned_roots()
+    if not roots:
+        return [], roots
+    hits = []
+    for p in candidates:
+        rel = dest_rel(resolve_rp(p)) or ""
+        if rel and any(rel == r or rel.startswith(r + "/") for r in roots):
+            hits.append(rel)
+    if command and looks_like_write_cmd(command):
+        for r in roots:
+            if re.search(r"(?:^|[\s=/.]|" + chr(34) + "|" + chr(39) + ")" + re.escape(r) + r"(?:/|\s|$|" + chr(34) + "|" + chr(39) + ")", command):
+                hits.append(r)
+    return sorted(set(hits)), roots
+
 if tool in WRITE_TOOLS or looks_like_write_cmd(cmd) or effect:
+    if profile == "implementer" or loop_write_set() is not None:
+        owned, owned_roots = harness_owned_hits(list(effect) if effect else list(paths), cmd)
+        if owned:
+            block("write refused: %s is under a harness-owned generated test root (%s). The generated product "
+                  "tests belong to generate-product-tests (ADR-015); no worker has test-source write authority "
+                  "(ADR-019), whatever the card write set says. A defect there is a harness finding: "
+                  "kanban_block kind=needs_input naming it." % (owned[0], ", ".join(owned_roots)))
     for p in paths:
         rp = resolve_rp(p)
         if toolchain_read(rp) or toolchain_read(str(p).replace("\\", "/")):

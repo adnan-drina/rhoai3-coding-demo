@@ -562,6 +562,46 @@
           "type": "string"
         }
       }
+    },
+    "decided_repairs": {
+      "type": "object",
+      "description": "Repairs accepted ADRs already made, carried into a FRESH run as bootstrap transformations (ADR-019 sections 2 and 3) instead of mid-run Operator steps. The manifest is the versioned specimen binding (application names and mappings live there, never in the engine); decisions.yaml names it and pins its sha256. bootstrap-destination applies every transformation before the first loop baseline and writes evidence/producers/decided-repairs.json, one row per transformation (applied, already-applied or refused with a type); admission and advance.py --baseline refuse while any row is refused or missing, and the run is classified autonomous_execution_with_predecided_repairs.",
+      "additionalProperties": false,
+      "required": [
+        "adr",
+        "manifest",
+        "manifest_sha256"
+      ],
+      "properties": {
+        "adr": {
+          "type": "string",
+          "description": "The ADR that decides repairs enter at bootstrap (ADR-019)."
+        },
+        "classification": {
+          "type": "string",
+          "enum": [
+            "autonomous_execution_with_predecided_repairs"
+          ]
+        },
+        "manifest": {
+          "type": "string",
+          "description": "Path of the specimen manifest (rhoai3.decided-repairs-manifest/v1), relative to the project root."
+        },
+        "manifest_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "applies": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The ADRs whose repairs the manifest carries; each must be accepted."
+        },
+        "note": {
+          "type": "string"
+        }
+      }
     }
   }
 }

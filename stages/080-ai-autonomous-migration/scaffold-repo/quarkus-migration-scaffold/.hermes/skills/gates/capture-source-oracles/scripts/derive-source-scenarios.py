@@ -61,8 +61,9 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _oracle_common import ensure_hermes_lib  # noqa: E402
+import _variant_revert  # noqa: E402
 from _scenarios import (CHALLENGE_HEADER, CORPUS, DEFAULT_SECURITY_MODE, DERIVATION_SCHEMA, DERIVE_RECEIPT,  # noqa: E402
-                        FROZEN_SOURCE_MODEL, ROLE_PREFIX, SCHEMA, SECURITY_MODES, CorpusError, authorization_roles,
+                        EFFECT_ROLE_UNCHANGED, FROZEN_SOURCE_MODEL, VARIANT_DERIVATION, normalized_identity, ROLE_PREFIX, SCHEMA, SECURITY_MODES, CorpusError, authorization_roles,
                         corpus_digest, corpus_path, derive_receipt_path, load_corpus, merge_role_constants,
                         normalize_security_mode, normalize_variant, parse_assignments, request_of,
                         resolve_role_constant,
@@ -2987,8 +2988,68 @@ def _derive_enabled(root: Path, args: Any, mode: str, out_p: Path, receipt_p: Pa
     return 0
 
 
+def _variant_reader(base: dict[str, Any], identities: list[dict[str, Any]], invalid_ref: str) -> tuple[dict[str, Any] | None, str]:
+    """(the declared identity a refused write's read-backs are taken as, why-none).
+
+    A refuse-intent variant refuses the base request's OWN identity -- that is
+    what the Operator declared it for -- so the read-backs cannot be taken as
+    that identity: under the variant they are refused too, and two refusals
+    prove nothing about the state. They are taken as another DECLARED
+    identity instead: a different credential reference, not the one declared
+    invalid, holding every role the refused identity holds (the read-backs
+    answered it on the baseline, so an identity holding at least as much is
+    answered too). Fewest roles first, then by name. The fixture's statements
+    are never parsed: which identity is refused is read off the request, and
+    whether the chosen reader is itself refused under the variant is what the
+    capture shows -- a read-back that does not answer 2xx is unusable
+    evidence at qualification, never a silent pass."""
+    refused = normalized_identity(base.get("identity"))
+    refused_ref = str(refused.get("credential_ref") or "")
+    label = ("credential_ref %s" % refused_ref if refused_ref else
+             "%s/%s" % (refused.get("user_env"), refused.get("password_env")) if refused.get("user_env") else "no credential")
+    rows = [i for i in identities if isinstance(i, dict)]
+    known = [i for i in rows if refused_ref and str(i.get("credential_ref") or "") == refused_ref]
+    needed = sorted(dict.fromkeys(str(r) for r in (known[0].get("roles") or []))) if known else []
+    if refused_ref and not known:
+        return None, ("the refused request authenticates as %s, which no declared identity names, so the roles its read-backs "
+                      "need are not known" % label)
+    candidates = [i for i in rows
+                  if str(i.get("credential_ref") or "")
+                  and normalized_identity({"kind": "basic", "credential_ref": i["credential_ref"]}) != refused
+                  and str(i.get("credential_ref")) != invalid_ref
+                  and all(any(role_matches(h, r) for h in (i.get("roles") or [])) for r in needed)]
+    candidates.sort(key=lambda i: (len(i.get("roles") or []), str(i.get("name") or "")))
+    if not candidates:
+        return None, ("missing effects identity: decisions.%s.identities declares no identity other than %s (the one this "
+                      "variant refuses)%s; declare one -- and make it exist, enabled, in the variant's dataset -- so the refused "
+                      "write's read-backs can be taken as an identity the variant does not refuse"
+                      % (SECURITY_SECTION, label, " that holds %s" % ", ".join(needed) if needed else ""))
+    return candidates[0], ""
+
+
+EFFECTS_SECOND_IDENTITY = "second_identity"
+EFFECTS_REVERT_THEN_READ = _variant_revert.STRATEGY
+
+
+def _variant_revert_plan(fixture: dict[str, Any], seed_p: Path | None, dataset: dict[str, str]) -> tuple[dict[str, Any] | None, str]:
+    """(the computed revert of the fixture's statements, why-not). Computed
+    only from single-column UPDATEs over the declared dataset the variant is
+    applied after; everything else is a typed reason (_variant_revert)."""
+    if seed_p is None:
+        return None, "the declared dataset is not in the frozen source, so no baseline value is known"
+    schema_text = "".join(p.read_text(encoding="utf-8", errors="replace") for p in find_schema_sql(seed_p))
+    try:
+        return _variant_revert.compute_plan([str(s) for s in (fixture.get("statements") or [])],
+                                            seed_p.read_text(encoding="utf-8", errors="replace"), schema_text,
+                                            dict(dataset)), ""
+    except _variant_revert.RevertRefusal as exc:
+        return None, "REVERT_NOT_COMPUTABLE: %s" % exc
+
+
 def _variant_scenario(root: Path, variant: str, fixture: dict[str, Any], base: dict[str, Any], base_sha: str,
-                      base_corpus_rel: str, dataset: dict[str, str]) -> dict[str, Any]:
+                      base_corpus_rel: str, dataset: dict[str, str], identities: list[dict[str, Any]] | None = None,
+                      invalid_ref: str = "", gaps: list[str] | None = None, revert: dict[str, Any] | None = None,
+                      revert_why: str = "no revert was computed") -> dict[str, Any]:
     """One scenario of a fixture variant: the base scenario's request, sent
     against the varied dataset.
 
@@ -2998,9 +3059,27 @@ def _variant_scenario(root: Path, variant: str, fixture: dict[str, Any], base: d
     corpus's requests. What it expects is what the Operator declared: a 4xx
     when the variant's declared intent is a refusal, and otherwise a usable
     first response, because an expectation nobody declared is not invented.
-    The base's effect assertions do not travel: they judge what the request
-    DID under the baseline, and this scenario is about the answer the source
-    gives when the baseline is varied."""
+
+    The base's effect ASSERTIONS do not travel: they judge what the request
+    did under the baseline. Its effect READ REQUESTS do, for a refused write
+    (ADR-018: the account-status exit is measured, not waived): an identical
+    4xx does not show the write did not happen. Two ways to read the state,
+    recorded on ``effects_reader.strategy``:
+
+    - ``second_identity``: a declared identity the variant does not refuse
+      (``_variant_reader``) takes the reads before and after the request,
+      under the variant; the contract is that they are equal.
+    - ``revert_then_read`` (when no such identity is declared -- a second
+      fixture identity would be an invented one): the reads are taken as the
+      base identity on the verified BASELINE, the variant is applied, the
+      request is refused, the variant's own changes are reverted by the
+      computed plan (``_variant_revert``), and the reads are taken again; the
+      contract is that they equal the baseline reads the source recorded.
+
+    Nothing here states what the reads hold -- the source capture does. With
+    neither strategy available the scenario carries no read-back and says why
+    (``effects_unobservable``); the comparator keeps it INCONCLUSIVE and names
+    that reason."""
     refuse = str(fixture.get("intent") or "") == "refuse"
     bf = str(base.get("body_file") or "")
     p = root / bf
@@ -3023,6 +3102,55 @@ def _variant_scenario(root: Path, variant: str, fixture: dict[str, Any], base: d
                                               "is the expectation" if refuse else
                                               "(none declared): what the source answers IS the expectation, and the capture "
                                               "records it"))
+    qualify: dict[str, Any] = ({"intent": "negative", "expect_status_class": "4xx"} if refuse
+                               else {"intent": "positive", "usable_first_response": True})
+    effects: list[dict[str, Any]] = []
+    reader: dict[str, Any] | None = None
+    reader_row: dict[str, Any] = {}
+    unobservable = ""
+    write = str(base.get("method") or "").upper() not in _READ_METHODS
+    reads = [e for e in (base.get("effects") or []) if isinstance(e, dict)
+             and str(e.get("method") or "GET").upper() in _READ_METHODS]
+    if refuse and write:
+        if not reads:
+            unobservable = ("the base scenario %s declares no read-back, so what the refused write left is not observable"
+                            % base["id"])
+        else:
+            reader, second_why = _variant_reader(base, list(identities or []), invalid_ref)
+            if reader is not None:
+                reader_row = {"strategy": EFFECTS_SECOND_IDENTITY, "name": str(reader.get("name") or ""),
+                              "credential_ref": str(reader["credential_ref"])}
+                qualify["after_equals_before"] = True
+                evidence.append("effects-identity:%s holds %s, credential_ref %s; the before and after read-backs of the "
+                                "refused write are taken as this identity, which the variant does not refuse, and must be "
+                                "equal" % (reader.get("name"), ", ".join(reader.get("roles") or []) or "no declared role",
+                                           reader["credential_ref"]))
+            else:
+                own = normalized_identity(base.get("identity"))
+                own_ref = str(own.get("credential_ref") or "")
+                if revert is not None and own_ref:
+                    named = [i for i in (identities or []) if str(i.get("credential_ref") or "") == own_ref]
+                    reader = {"name": str(named[0].get("name") or "") if named else "", "credential_ref": own_ref}
+                    reader_row = {"strategy": EFFECTS_REVERT_THEN_READ, "name": reader["name"], "credential_ref": own_ref}
+                    qualify["before_reads_usable"] = True
+                    evidence.append("effects-identity:%s, credential_ref %s (the request's own); %s: the read-backs are "
+                                    "taken on the verified baseline, the variant is applied, the request is refused, the "
+                                    "variant's changes are reverted (%s) and the read-backs are taken again -- they must "
+                                    "equal the baseline's" % (reader["name"] or "the base identity", own_ref,
+                                                              EFFECTS_REVERT_THEN_READ,
+                                                              "; ".join(revert.get("statements") or [])))
+                else:
+                    unobservable = "%s; and %s" % (second_why, revert_why if own_ref else
+                                                   "the refused request carries no credential reference to read as after a revert")
+        if reader is not None:
+            # the read REQUESTS only -- id, method, path -- with the role they
+            # play here; what they answer is the source capture's to record
+            effects = [{"id": str(e.get("id") or e.get("path")), "method": str(e.get("method") or "GET").upper(),
+                        "path": str(e.get("path") or "/"), "role": EFFECT_ROLE_UNCHANGED} for e in reads]
+        else:
+            evidence.append("effects-unobservable:%s" % unobservable)
+            if gaps is not None:
+                gaps.append("fixture-effects %s %s: %s; the scenario stays INCONCLUSIVE" % (variant, base["id"], unobservable))
     sc: dict[str, Any] = {
         "id": "sc:fixture-%s-%s" % (variant, slug),
         "entry_point": str(base.get("entry_point") or ""),
@@ -3030,11 +3158,7 @@ def _variant_scenario(root: Path, variant: str, fixture: dict[str, Any], base: d
         "headers": {str(k): str(v) for k, v in (base.get("headers") or {}).items()},
         "identity": dict(base.get("identity") or {"kind": "none"}),
         "reset_before": bool(base.get("reset_before", True)),
-        # the base's read-backs judge what the request did against the
-        # BASELINE; under the variant they are neither the question nor
-        # answerable (the identity they would be taken as is the one the
-        # fixture may have disabled)
-        "effects": [],
+        "effects": effects,
         "normalization": list(base.get("normalization") or []),
         "security_mode": str(base.get("security_mode") or ""),
         "security_variant": variant,
@@ -3045,14 +3169,19 @@ def _variant_scenario(root: Path, variant: str, fixture: dict[str, Any], base: d
         "base_body_sha256": body_sha,
         "derived_from": {"kind": "fixture-%s" % variant, "entry_point": str(base.get("entry_point") or ""),
                          "evidence": evidence},
-        "qualify": ({"intent": "negative", "expect_status_class": "4xx"} if refuse
-                    else {"intent": "positive", "usable_first_response": True}),
+        "qualify": qualify,
         "why": ("the same request as %s, against the source baseline varied by %s[%s]; %s"
                 % (base["id"], FIXTURES_SUBJECT, variant,
                    "the Operator declares the source refuses it under this variant, so any 4xx is the expectation and the "
                    "challenge header is read where the source sends one" if refuse else
-                   "what the source answers IS the expectation -- the capture records it")),
+                   "what the source answers IS the expectation -- the capture records it")
+                + ("; the read-backs the source records before and after it are unchanged" if effects else "")),
     }
+    if reader is not None:
+        sc["effects_identity"] = {"kind": "basic", "credential_ref": str(reader["credential_ref"])}
+        sc["effects_reader"] = dict(reader_row)
+    if unobservable:
+        sc["effects_unobservable"] = unobservable
     if refuse:
         # the same reading the other refusals get: a source that says how to
         # authenticate has stated something a destination can drop
@@ -3107,7 +3236,12 @@ def _derive_variant(root: Path, args: Any, mode: str, variant: str, out_p: Path,
         return blocked("the fixture's statements are applied AFTER the declared dataset, and the frozen source carries none "
                        "(no seed file was found); the variant dataset cannot be built")
     dataset = {"path": str(inputs["seed"]["path"]), "sha256": str(inputs["seed"]["sha256"])}
-    scenarios = [_variant_scenario(root, variant, fixture, sc, base_sha, base_corpus_rel, dataset) for sc in selected]
+    base_identities = [dict(i) for i in (base.get("identities") or []) if isinstance(i, dict)]
+    revert, revert_why = (_variant_revert_plan(fixture, seed_p, dataset) if str(fixture.get("intent") or "") == "refuse"
+                          else (None, "the variant declares no refusal"))
+    scenarios = [_variant_scenario(root, variant, fixture, sc, base_sha, base_corpus_rel, dataset, base_identities,
+                                   str(base.get("invalid_credential_ref") or ""), gaps, revert, revert_why)
+                 for sc in selected]
     scenarios.sort(key=lambda s: str(s["id"]))
     fixture_row = {
         "name": variant, "scenarios": wanted_class, "intent": str(fixture.get("intent") or ""),
@@ -3117,6 +3251,12 @@ def _derive_variant(root: Path, args: Any, mode: str, variant: str, out_p: Path,
         "dataset": dict(dataset),
         "declared_by": "%s[%s]" % (FIXTURES_SUBJECT, variant),
     }
+    if any((s.get("effects_reader") or {}).get("strategy") == EFFECTS_REVERT_THEN_READ for s in scenarios):
+        # what reset-parity-db.sh --revert-variant executes: computed here,
+        # bound into the corpus digest, and read back only through the loader
+        fixture_row["revert"] = dict(revert or {})
+    elif revert_why and str(fixture.get("intent") or "") == "refuse":
+        fixture_row["revert_refused"] = revert_why
     doc = {
         "schema": SCHEMA,
         "security_mode": mode,
@@ -3126,6 +3266,7 @@ def _derive_variant(root: Path, args: Any, mode: str, variant: str, out_p: Path,
             "source_digest": str(freeze.get("source_digest") or ""),
             "security_mode": mode, "security_variant": variant,
             "base_corpus": dict(inputs["base_corpus"]),
+            "variant_derivation": VARIANT_DERIVATION,
         },
         "initial_state": dict(base.get("initial_state") or {}),
         "path_vars": dict(base.get("path_vars") or {}),
@@ -3148,9 +3289,16 @@ def _derive_variant(root: Path, args: Any, mode: str, variant: str, out_p: Path,
     requests = {str(s["id"]): request_of(root, s)["request_sha256"] for s in scenarios}
     write_canonical(receipt_p, {
         "schema": DERIVATION_SCHEMA, "producer": PRODUCER, "at": _now(), "status": "ok", "reason": "",
-        "security_mode": mode, "security_variant": variant,
+        "security_mode": mode, "security_variant": variant, "variant_derivation": VARIANT_DERIVATION,
         "evidence_bundle_sha256": bundle_sha, "corpus_sha256": corpus_sha, "corpus": _rel(out_p, root),
         "base_corpus": dict(inputs["base_corpus"]),
+        # which refused writes carry read-backs, as whom, and which do not and why
+        "effects": {str(s["id"]): ({"identity": dict(s["effects_identity"]), "reads": [e["id"] for e in s["effects"]],
+                                    "role": EFFECT_ROLE_UNCHANGED,
+                                    "strategy": str((s.get("effects_reader") or {}).get("strategy") or "")}
+                                   if s.get("effects_identity")
+                                   else {"unobservable": str(s["effects_unobservable"])})
+                    for s in scenarios if s.get("effects_identity") or s.get("effects_unobservable")},
         "fixture": dict(fixture_row),
         "identities": [dict(i) for i in (base.get("identities") or []) if isinstance(i, dict)],
         "identities_from": str(base.get("identities_from") or ""),

@@ -89,6 +89,10 @@
     },
     "loop_complete": {
       "type": "boolean"
+    },
+    "decided_repairs": {
+      "type": "object",
+      "description": "ADR-019: the repairs decided for bootstrap this run was prepared with (planner.decided_repairs.summary): classification, manifest and receipt digests, applied / already-applied / refused counts. declared false when decisions.yaml decides none."
     }
   }
 }

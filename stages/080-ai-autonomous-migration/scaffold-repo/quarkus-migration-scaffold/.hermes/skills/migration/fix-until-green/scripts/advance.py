@@ -254,6 +254,35 @@ def _verify_meta(run: dict) -> dict:
     return {"mode": str(run.get("mode") or "acceptance"), "stages_ms": run.get("stages_ms") or {}, "total_ms": run.get("total_ms")}
 
 
+def _decided_repairs_for_baseline(root: Path) -> dict | None:
+    """ADR-019: {} when nothing is decided for bootstrap, the receipt binding
+    when the decided repairs are demonstrably applied, None (after printing
+    the refusal) when they are not -- the baseline is then not recorded."""
+    from planner import decided_repairs
+    from planner.canonical import sha256_file
+    from planner.decisions import DecisionsError
+    from planner.paths import DECISIONS, DECIDED_REPAIRS_RECEIPT
+
+    if not (root / DECISIONS).is_file():
+        return {}
+    try:
+        doc = load_decisions(root)
+    except DecisionsError:
+        return {}  # admission reports an invalid decision file on its own
+    if not decided_repairs.section(doc):
+        return {}
+    gaps = decided_repairs.receipt_gaps(root, doc, for_baseline=True)
+    if gaps:
+        for g in gaps:
+            print("  - %s %s: %s" % (g["class"], g["subject"], g["detail"]), file=sys.stderr)
+        print("FAIL: LOOP_BASELINE_REPAIRS_PENDING the decided repairs (decisions.yaml decided_repairs) are not applied; "
+              "re-run bootstrap-destination and resolve its refusals before the baseline", file=sys.stderr)
+        return None
+    rec = load_json(root / DECIDED_REPAIRS_RECEIPT)
+    return {"receipt": str(DECIDED_REPAIRS_RECEIPT), "receipt_sha256": sha256_file(root / DECIDED_REPAIRS_RECEIPT),
+            "classification": rec.get("classification"), "counts": rec.get("counts")}
+
+
 def _commit(root: Path, paths: list[str], message: str) -> str:
     git(root, "reset", "-q")  # nothing staged but what we add now
     if paths:
@@ -479,10 +508,15 @@ def main(argv: list[str] | None = None) -> int:
         if not cur["measure"].get("known"):
             print("FAIL: LOOP_BASELINE_UNKNOWN measure not fully known: %s" % "; ".join(cur["measure"].get("blocked") or []), file=sys.stderr)
             return 1
+        # ADR-019: the decided repairs are applied BEFORE the first baseline,
+        # so the baseline commit carries them and nothing is measured without
+        repairs_rec = _decided_repairs_for_baseline(root)
+        if repairs_rec is None:
+            return 1
         changed = product_paths_changed(root)
         sha = _commit(root, changed, "fix-until-green: baseline %s" % cur["measure"]["tuple"])
         snapshot_reports(root)
-        steps["steps"].append({"cluster": "bootstrap", "card": args.card, "commit": sha, "candidate_sha256": on_disk, "measure": cur["measure"], "item_ids": sorted(item_ids(cur)), "obligation_keys": sorted(obligation_keys(cur)), "worklist_sha256": digest(cur), "changed": changed, "verdict": "baseline", "reason": "bootstrap-destination baseline"})
+        steps["steps"].append({"cluster": "bootstrap", "card": args.card, "commit": sha, "candidate_sha256": on_disk, "measure": cur["measure"], "item_ids": sorted(item_ids(cur)), "obligation_keys": sorted(obligation_keys(cur)), "worklist_sha256": digest(cur), "changed": changed, "verdict": "baseline", "reason": "bootstrap-destination baseline", **({"decided_repairs": repairs_rec} if repairs_rec else {})})
         save_steps(root, steps)
         rec = pipeline.admit(root)
         print("OK: BASELINE recorded commit %s measure=%s admission=%s" % (sha[:12], cur["measure"]["tuple"], rec["status"]))
