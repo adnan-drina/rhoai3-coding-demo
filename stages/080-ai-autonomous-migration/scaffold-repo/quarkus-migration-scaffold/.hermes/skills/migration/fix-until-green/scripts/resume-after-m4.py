@@ -32,11 +32,24 @@ Both kinds at once (v9's first M4 verdict) is the normal case: the loop
 continues on the parity obligations AND writes the blockers file. One printed
 line per class, so the Operator reads what moved and what did not.
 
-Refuses, and changes nothing, unless the verdict belongs to THIS run: the
-verdict's `card_id` is the issued close card, the parity receipt it was
-composed from is bound to the admission receipt that seals the tree on disk,
-no candidate is retained for the close card, and the product tree is clean.
-A second run after a resume refuses: the close card is on the record.
+Refuses, and changes nothing, unless the verdict belongs to THIS run. Three
+bindings say so, and all three are read from artifacts rather than from a
+worker's memory (compose-m4-verdict's `bind-m4-verdict.py` writes them and its
+`assert-m4-verdict-schema.py` requires them):
+
+  * `card_id` is the issued close card (`verification/loop/issued.json`
+    `task_id`) -- WHO answered;
+  * `receipt_sha256` is the admission receipt that card was minted under (the
+    same file's `receipt_sha256`) -- WHICH TREE was measured;
+  * `parity_receipt_sha256` is the digest of `verification/parity/receipt.json`
+    itself -- WHICH EVIDENCE was judged. A parity phase that ran again after
+    the verdict was composed moves it, and the verdict is then answering for
+    evidence this tree no longer holds.
+
+Beside them: the parity receipt itself is bound to the admission receipt that
+seals the tree on disk, no candidate is retained for the close card, and the
+product tree is clean. A second run after a resume refuses: the close card is
+on the record.
 
 One reason the receipt can be unauthoritative is NOT a broken chain, and v9
 stopped on it: a harness generation installed between the M4 verdict and this
@@ -312,6 +325,25 @@ def main(argv: list[str] | None = None) -> int:
     if card_id != task:
         return _refuse("the verdict was composed for card %s; the issued close card is %s" % (card_id, task))
 
+    # The card is one of three bindings, and alone it says only WHO answered.
+    # The admission receipt the card was minted under says WHICH TREE was
+    # measured, and the parity receipt's own digest says WHICH EVIDENCE was
+    # judged. compose-m4-verdict's lint requires all three and its binder
+    # writes them from these same two files, so a disagreement here is a
+    # verdict composed against something other than what is on disk now.
+    minted_under = str(issued.get("receipt_sha256") or "").strip()
+    verdict_receipt = str(verdict.get("receipt_sha256") or "").strip()
+    if not verdict_receipt:
+        return _refuse("the verdict names no receipt_sha256, so it cannot be bound to the admission receipt card %s "
+                       "was minted under (%s); run compose-m4-verdict's bind-m4-verdict.py"
+                       % (card_id, minted_under[:12] or "(none recorded)"))
+    if not minted_under:
+        return _refuse("the issued close card records no receipt_sha256; nothing says which admission receipt card %s "
+                       "was minted under" % card_id)
+    if verdict_receipt != minted_under:
+        return _refuse("the verdict was composed under admission receipt %s; the issued close card %s was minted "
+                       "under %s" % (verdict_receipt[:12], card_id, minted_under[:12]))
+
     # --- the parity receipt the verdict was composed from ---------------------
     pp = root / PARITY_RECEIPT
     if not pp.is_file():
@@ -319,6 +351,16 @@ def main(argv: list[str] | None = None) -> int:
     preceipt = load_json(pp)
     if not isinstance(preceipt, dict) or str(preceipt.get("schema") or "") != PARITY_RECEIPT_SCHEMA:
         return _refuse("%s is not a %s document" % (PARITY_RECEIPT, PARITY_RECEIPT_SCHEMA))
+    verdict_parity = str(verdict.get("parity_receipt_sha256") or "").strip()
+    parity_on_disk = sha256_file(pp)
+    if not verdict_parity:
+        return _refuse("the verdict names no parity_receipt_sha256, so nothing binds it to the parity evidence it "
+                       "judged (%s is %s); run compose-m4-verdict's bind-m4-verdict.py"
+                       % (PARITY_RECEIPT, parity_on_disk[:12]))
+    if verdict_parity != parity_on_disk:
+        return _refuse("the verdict judged parity receipt %s; %s now digests to %s — the parity phase ran again "
+                       "after this verdict was composed, so it answers for evidence this tree no longer holds"
+                       % (verdict_parity[:12], PARITY_RECEIPT, parity_on_disk[:12]))
 
     # --- no live worker holds the tree ---------------------------------------
     # Asked BEFORE the seal is examined, because the contract re-seal below

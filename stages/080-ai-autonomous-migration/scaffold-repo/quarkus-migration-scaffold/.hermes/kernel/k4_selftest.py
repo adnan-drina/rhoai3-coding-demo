@@ -105,7 +105,7 @@ def main() -> int:
         # the machine body named M4's exits. The markdown is what the board
         # shows, so the worker ran the wrong phase and waited for a terminator
         # K2 refuses here.
-        from k4_convert import TERMINATOR_M4, VERDICT_SCHEMA_SCRIPT, _body as build_body  # noqa: E402
+        from k4_convert import TERMINATOR_M4, VERDICT_BINDER_SCRIPT, VERDICT_SCHEMA_SCRIPT, _body as build_body  # noqa: E402
         from planner.cards import CARD_SKILLS, CLOSE_ID, next_card, render_body  # noqa: E402
         empty = {"head": None, "clusters": [], "items": [], "deferred": [], "blocked_clusters": [],
                  "measure": {"known": True, "tuple": [0, 0, 0]}, "runtime": {"ready": True}}
@@ -135,6 +135,16 @@ def main() -> int:
             return _fail("the commit exit must be the producer's own script: %s" % exits.get("commit_tests"))
         if "verdict_schema" not in exits or VERDICT_SCHEMA_SCRIPT not in exits["verdict_schema"]["cmd"]:
             return _fail("the verdict schema assertion is on disk and must be an exit: %s" % order)
+        # The lint refuses an UNBOUND verdict as well as a malformed one, and
+        # the exit is where the worker learns that. v9's second M4 card wrote
+        # no card_id at all: the exit named a linter and nothing named what it
+        # requires, so the binding was left to whatever the worker remembered.
+        binding_assert = str(exits["verdict_schema"].get("assert") or "")
+        for needle in ("card_id", "receipt_sha256", "parity_receipt_sha256", "issued.json",
+                       "verification/parity/receipt.json", VERDICT_BINDER_SCRIPT):
+            if needle not in binding_assert:
+                return _fail("the verdict_schema exit must say the verdict carries its bindings (%r): %r"
+                             % (needle, binding_assert[:160]))
         for needle in ("run-parity.py", "generate-product-tests", "commit-generated-tests.py", "src/parity-test/java",
                        "m4-parity", "assert-retrievable-tree",
                        "assert-mta-rescan.py", "run-m4-pre-verdict.sh", "compose-m4-verdict",

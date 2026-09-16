@@ -108,6 +108,51 @@ python3 .hermes/skills/gates/check-domain-parity/scripts/check-product-tests.py 
    If `failed_floors` is non-empty, `verdict` is `REFUSE` (not
    `PROVISIONAL_ACCEPT`). `ship` stays `false`. M4 never ships.
 
+   Template — the measured part is yours, the three bindings are not:
+
+```json
+{
+  "gate": "M4_VERDICT",
+  "phase": "M4",
+  "ran": true,
+  "verdict": "REFUSE",
+  "ship": false,
+  "failed_floors": ["check-empty-security", "check-product-tests"],
+  "floors": [{"name": "check-empty-security", "rc": 1, "idle": false}],
+  "coverage_account": {"retired": 0, "remaining_gaps": 0},
+  "card_id": "<issued close card>",
+  "receipt_sha256": "<admission receipt it was minted under>",
+  "parity_receipt_sha256": "<digest of the parity receipt you judged>",
+  "reason": "..."
+}
+```
+
+3a. Bind the verdict to its card and its evidence. Do this with the tool, not
+   from memory — the three values are facts of the tree, and v9's second M4
+   card composed an honest REFUSE with no `card_id` at all, which left
+   `resume-after-m4.py` with a measurement it could not attribute to a run.
+
+```bash
+python3 "${HERMES_SKILL_DIR}/scripts/bind-m4-verdict.py" --root /projects/modernized
+```
+
+   It writes `card_id`, `receipt_sha256` and `parity_receipt_sha256` and
+   touches nothing a floor measured. If you are writing the JSON by hand,
+   these are the commands that print those three values (run from
+   `/projects/modernized`); copy what they print:
+
+```bash
+python3 -c 'import json;print(json.load(open("verification/loop/issued.json"))["task_id"])'
+python3 -c 'import json;print(json.load(open("verification/loop/issued.json"))["receipt_sha256"])'
+python3 -c 'import hashlib;print(hashlib.sha256(open("verification/parity/receipt.json","rb").read()).hexdigest())'
+```
+
+   `assert-m4-verdict-schema.py` (step 4) is the gate: it refuses
+   `M4_VERDICT_BINDING` when one of the three is missing, names another card,
+   names an admission receipt the card was not minted under, or names a parity
+   receipt digest this tree does not hold. `resume-after-m4.py` binds on the
+   same three.
+
 3b. Compose the coverage account. What the accepted ADRs retired must be
    accounted for here, per file, or M4 reports on a destination whose missing
    behaviour nobody named.
@@ -159,6 +204,10 @@ Do not dest-dispatch M5.
   that actually exited 1.
 - Writing `coverage_account` counts by hand, or reporting fewer gaps than
   the account holds. Both refuse.
+- Authoring the verdict without its bindings, or typing a `card_id` you
+  remember from an earlier card. The binding is read from
+  `verification/loop/issued.json` and the parity receipt by
+  `bind-m4-verdict.py`; a verdict that names no card is a verdict for no run.
 - Reading a retired test's coverage as replaced because an endpoint answers:
   a replacement is a scenario the decision **names** and the parity receipt
   measured as PASS.

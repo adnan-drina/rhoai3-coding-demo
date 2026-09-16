@@ -19,13 +19,20 @@ REQUIRED_FIELDS = (
     "failed_floors",
     "floors",
     "coverage_account",
+    "card_id",
+    "receipt_sha256",
+    "parity_receipt_sha256",
 )
 FLOOR_FIELDS = ("name", "rc", "idle")
 CODES = (
     "M4_VERDICT_SCHEMA",
     "FAILED_FLOOR_AS_IDLE",
     "ACCEPT_WITH_FAILED_FLOOR",
+    "M4_VERDICT_BINDING",
 )
+# The binding is written by a tool, so the reference must send the reader to it
+# rather than describe three values to type.
+TOOLS = ("assert-m4-verdict-schema.py", "bind-m4-verdict.py")
 
 
 def main() -> int:
@@ -49,9 +56,10 @@ def main() -> int:
     if "failed_floors" not in text:
         print("FAIL: reference must name failed_floors", file=sys.stderr)
         bad = 1
-    if "assert-m4-verdict-schema.py" not in text:
-        print("FAIL: reference must name the parser", file=sys.stderr)
-        bad = 1
+    for tool in TOOLS:
+        if tool not in text:
+            print("FAIL: reference must name %s" % tool, file=sys.stderr)
+            bad = 1
     if bad:
         return 1
     print("OK: m4-verdict-schema.md in sync with parser fields")

@@ -43,6 +43,19 @@ Issue = tuple[str, str, str]
 # actually on disk: an exit criterion naming a script nobody can run is a
 # refusal the worker cannot satisfy.
 VERDICT_SCHEMA_SCRIPT = "skills/gates/compose-m4-verdict/scripts/assert-m4-verdict-schema.py"
+VERDICT_BINDER_SCRIPT = "skills/gates/compose-m4-verdict/scripts/bind-m4-verdict.py"
+# The exit text of that lint: what it refuses beyond the shape. The bindings are
+# facts of the tree (the issued card, the seal it was minted under, the parity
+# receipt on disk), so they are written by the binder and never from memory.
+VERDICT_BINDING_ASSERT = (
+    "The verdict must carry its three bindings or the lint refuses M4_VERDICT_BINDING: card_id = the issued close "
+    "card (task_id of verification/loop/issued.json, i.e. THIS card), receipt_sha256 = the admission receipt it was "
+    "minted under (the same file's receipt_sha256), parity_receipt_sha256 = the sha256 of "
+    "verification/parity/receipt.json itself, the parity evidence you judged. Do not type them from memory and do not "
+    "carry one over from an earlier card: run python3 .hermes/%s --root . right after authoring the verdict, which "
+    "writes all three and changes nothing a floor measured. resume-after-m4.py binds on the same three, so an "
+    "unbound verdict is a measurement no run can claim." % VERDICT_BINDER_SCRIPT
+)
 # What of a unit the BODY carries. The inventory is on disk under its own
 # digest and the body refs it; K1 refuses a body that inlines derived content,
 # and a full member list is exactly that.
@@ -119,7 +132,14 @@ def _body(card: dict[str, Any], receipt: dict[str, Any], worklist_sha: str, arti
         exits.append({"check": "mta_rescan", "cmd": "python3 .hermes/skills/analysis/scan-with-mta/scripts/assert-mta-rescan.py ."})
         exits.append({"check": "pre_verdict", "cmd": "bash .hermes/skills/gates/check-release-readiness/scripts/run-m4-pre-verdict.sh /projects/modernized"})
         if (_KERNEL.parent / VERDICT_SCHEMA_SCRIPT).is_file():
-            exits.append({"check": "verdict_schema", "cmd": "python3 .hermes/%s evidence/verdicts/m4-verdict.json" % VERDICT_SCHEMA_SCRIPT})
+            # The lint checks the verdict's BINDINGS as well as its shape, and
+            # a worker who does not know that writes them from memory or not at
+            # all: v9's second M4 card composed an honest REFUSE with no
+            # card_id, nothing refused it, and the resume could not attribute
+            # the measurement to a run.
+            exits.append({"check": "verdict_schema",
+                          "cmd": "python3 .hermes/%s evidence/verdicts/m4-verdict.json" % VERDICT_SCHEMA_SCRIPT,
+                          "assert": VERDICT_BINDING_ASSERT})
     else:
         exits.append({"check": "terminator", "assert": TERMINATOR_M3})
         exits.append({"check": "verify", "cmd": "bash .hermes/skills/migration/fix-until-green/scripts/run-verify.sh --root ."})

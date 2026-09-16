@@ -133,6 +133,21 @@ source did. Everything here is measurement. Nothing here decides.
    and carry its counts in the verdict's `coverage_account`: every source an
    accepted ADR retired gets a row naming its replacement scenario and its
    remaining gap.
+
+   Then bind the verdict — with the tool, never from memory:
+
+```bash
+python3 .hermes/skills/gates/compose-m4-verdict/scripts/bind-m4-verdict.py --root .
+```
+
+   It writes `card_id` (this card, from `verification/loop/issued.json`),
+   `receipt_sha256` (the admission receipt it was minted under) and
+   `parity_receipt_sha256` (the digest of the parity receipt of step 2), and
+   changes nothing a floor measured. The lint of step 8 refuses
+   `M4_VERDICT_BINDING` without them, and `resume-after-m4.py` binds on the
+   same three. v9's second M4 card is why: it composed an honest `REFUSE` and
+   wrote no `card_id`, the card completed, and the resume had a measurement it
+   could not attribute to any run.
 8. `skill_view check-release-readiness` → lint what you just wrote: the
    verdict against its schema, the floor receipts, the claim tokens, and the
    coverage account against `decisions.yaml` and the parity receipt. This
@@ -156,10 +171,12 @@ source did. Everything here is measurement. Nothing here decides.
 python3 .hermes/skills/migration/fix-until-green/scripts/resume-after-m4.py --root . --exec --operator WHO
 ```
 
-   It refuses unless the verdict is this run's — its `card_id` is the issued
-   close card, the parity receipt it cites is bound to the admission receipt
-   that seals the tree on disk — no candidate is retained for the close card,
-   and the product tree is clean. Three outcomes:
+   It refuses unless the verdict is this run's — its three bindings
+   (`card_id` = the issued close card, `receipt_sha256` = the admission receipt
+   that card was minted under, `parity_receipt_sha256` = the digest of the
+   parity receipt on disk) all hold, the parity receipt is itself bound to the
+   admission receipt that seals the tree, no candidate is retained for the
+   close card, and the product tree is clean. Three outcomes:
 
    - `RESUMED` (exit 0): the parity floor's FAIL verdicts are mandatory
      obligations whose loci are files of this tree. The close card goes on the
@@ -182,6 +199,9 @@ python3 .hermes/skills/migration/fix-until-green/scripts/resume-after-m4.py --ro
 ## What refuses, and why that is the point
 
 - A verdict that names a floor you did not run.
+- A verdict that names no card, another card, another admission receipt, or a
+  parity receipt digest this tree does not hold: a measurement nobody can
+  attribute to a run is not a result.
 - A retirement with no row in the coverage account, a claimed replacement
   whose scenario did not pass, or a verdict reporting fewer gaps than the
   account holds. A disclosed gap does not refuse; a hidden one does.

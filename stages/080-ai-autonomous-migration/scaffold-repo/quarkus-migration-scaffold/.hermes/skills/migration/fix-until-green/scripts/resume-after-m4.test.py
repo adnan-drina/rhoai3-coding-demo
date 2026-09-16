@@ -16,6 +16,8 @@ Cases:
       point row;
   (b) decision floors only → exit 2, nothing minted, the close card still issued;
   (c) a verdict for another card → refused, nothing touched;
+  (c2) a verdict bound to another admission receipt, or to a parity receipt
+      that is not the one on disk → refused by name, nothing touched;
   (d) a second run after (a) → refused, already resumed;
   (e) the same fixture under a renamed specimen → the same decisions (the
       classification reads floors and verdicts, never a specimen's names).
@@ -37,7 +39,7 @@ sys.path.insert(0, str(GOLDEN / ".hermes" / "lib"))
 sys.path.insert(0, str(HERE))
 
 from planner import pipeline, specimens  # noqa: E402
-from planner.canonical import load_json, write_canonical  # noqa: E402
+from planner.canonical import load_json, sha256_file, write_canonical  # noqa: E402
 from planner.paths import ADMISSION_RECEIPT, LOOP_ISSUED, LOOP_STEPS, WORKLIST  # noqa: E402
 from planner.worklist import build_worklist  # noqa: E402
 
@@ -106,10 +108,18 @@ def _parity(root: Path, eps: list, *, fails: bool, unauthorized: bool) -> None:
         "coverage_gaps": [], "verdict": "FAIL" if fails else "INCONCLUSIVE"})
 
 
-def _verdict(root: Path, floors: list, *, card: str = CLOSE_CARD) -> None:
+def _verdict(root: Path, floors: list, *, card: str = CLOSE_CARD, receipt: str = "", parity: str = "") -> None:
+    """The composed verdict, bound the way compose-m4-verdict's binder binds it:
+    the issued close card, the admission receipt that card was minted under, and
+    the digest of the parity receipt this verdict judged. The three are what
+    `resume-after-m4.py` binds on; a case that passes another value is asking
+    whether the resume notices."""
+    issued = load_json(root / LOOP_ISSUED)
     write_canonical(root / "evidence" / "verdicts" / "m4-verdict.json", {
         "schema": "rhoai3.m4-verdict/v1", "gate": "M4_VERDICT", "phase": "M4", "ran": True,
         "card_id": card, "verdict": "REFUSE", "ship": False, "failed_floors": sorted(floors),
+        "receipt_sha256": receipt or str(issued.get("receipt_sha256") or ""),
+        "parity_receipt_sha256": parity or sha256_file(root / "verification" / "parity" / "receipt.json"),
         "floors": [{"name": n, "rc": 1, "idle": False} for n in sorted(floors)]
                   + [{"name": "check-runnable-db-config", "rc": 0, "idle": False}],
         "coverage_account": {"retired": 0, "remaining_gaps": 0}})
@@ -243,6 +253,34 @@ def case_wrong_card() -> int:
         return 0
 
 
+def case_wrong_receipt_bindings() -> int:
+    """(c2) the card binds, the evidence does not.
+
+    `card_id` alone says only WHO answered. A verdict composed under another
+    admission receipt was measured on another tree, and one whose
+    `parity_receipt_sha256` is not the receipt on disk judged parity evidence
+    this tree no longer holds -- the parity phase ran again after it. Both are
+    refused by name, and both leave the tree untouched."""
+    for label, kwargs, needle in (
+        ("another admission receipt", {"receipt": "e" * 64}, "was composed under admission receipt"),
+        ("a parity receipt that moved", {"parity": "f" * 64}, "judged parity receipt"),
+        ("no admission receipt at all", {"receipt": " "}, "names no receipt_sha256"),
+        ("no parity receipt digest", {"parity": " "}, "names no parity_receipt_sha256"),
+    ):
+        with tempfile.TemporaryDirectory(prefix="resume-m4-binding-") as td:
+            root, eps = _at_m4(Path(td))
+            _parity(root, eps, fails=True, unauthorized=True)
+            _verdict(root, DECISION_FLOORS + ["compose-parity-receipt"], **kwargs)
+            rc, out, err = _run(root)
+            if rc != 1 or "REFUSE: LOOP_RESUME" not in err or needle not in err:
+                return _fail("a verdict bound to %s must be refused by name: rc=%d %s" % (label, rc, (out + err)[-500:]))
+            if (root / BLOCKERS).is_file():
+                return _fail("a refused resume must write nothing (%s)" % label)
+            if load_json(root / WORKLIST)["measure"]["parity_mismatches"] is not None:
+                return _fail("a refused resume must not rebuild the work list (%s)" % label)
+    return 0
+
+
 def case_renamed_specimen() -> int:
     """(e) the same case under another specimen: the same decisions.
 
@@ -368,15 +406,17 @@ def case_worklist_rebuilt_refuses() -> int:
 
 
 def main() -> int:
-    for case in (case_both, case_decisions_only, case_wrong_card, case_renamed_specimen,
-                 case_contract_reseal, case_product_change_refuses, case_worklist_rebuilt_refuses):
+    for case in (case_both, case_decisions_only, case_wrong_card, case_wrong_receipt_bindings,
+                 case_renamed_specimen, case_contract_reseal, case_product_change_refuses,
+                 case_worklist_rebuilt_refuses):
         rc = case()
         if rc:
             return rc
     print("OK: resume-after-m4 (a REFUSE verdict resumes the loop on its parity obligations and records the release "
           "floors it cannot repair: ADR-015 product tests / surefire and ADR-014 unauthorized read-backs; decision "
           "floors alone are exit 2 with nothing minted and the close card still issued; a verdict for another card is "
-          "refused and writes nothing; a second resume refuses on the recorded close; a renamed specimen decides the "
+          "refused and writes nothing, as is one bound to another admission receipt or to a parity receipt this tree "
+          "no longer holds; a second resume refuses on the recorded close; a renamed specimen decides the "
           "same; a sealed contract a harness install moved is re-sealed with the two receipts recorded, while a "
           "product change or a rebuilt work list still refuses and re-seals nothing)")
     return 0

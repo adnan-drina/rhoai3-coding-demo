@@ -25,8 +25,37 @@ Write `evidence/verdicts/m4-verdict.json`. One object.
 | `failed_floors` | **required.** List of floor `name`s whose measured `rc != 0`. `[]` if none failed. This is the failed-floor field dest-8 lacked. |
 | `floors` | non-empty array of floor objects (see below) |
 | `coverage_account` | **required.** `{retired: int, remaining_gaps: int}`, equal to the summary of `evidence/verdicts/coverage-account.json`. What the accepted ADRs retired, and how much of it nothing yet covers. A gap is legal and must be visible; a verdict that under-reports one refuses (`assert-coverage-account.py`). |
+| `card_id` | **required.** The issued M4 close card (`task_id` of `verification/loop/issued.json`, `t_*`). Written by `bind-m4-verdict.py`, never from memory. |
+| `receipt_sha256` | **required.** The admission receipt that card was minted under — `receipt_sha256` of the same `verification/loop/issued.json`. |
+| `parity_receipt_sha256` | **required.** The SHA-256 of `verification/parity/receipt.json` itself: the parity evidence this verdict judged. |
 
-Optional: `card_id` (`t_*`), `reason` (must not call a failed floor idle).
+Optional: `reason` (must not call a failed floor idle).
+
+## The three bindings
+
+A verdict is the answer of one card, measured over one tree, judging one
+parity receipt. Those three facts are read from artifacts, so a tool writes
+them:
+
+```bash
+python3 .hermes/skills/gates/compose-m4-verdict/scripts/bind-m4-verdict.py --root .
+```
+
+It changes nothing a floor measured. Run it right after authoring the verdict.
+If you are writing the JSON by hand, these are the commands that print the
+three values — copy what they print, never what you remember:
+
+```bash
+python3 -c 'import json;print(json.load(open("verification/loop/issued.json"))["task_id"])'
+python3 -c 'import json;print(json.load(open("verification/loop/issued.json"))["receipt_sha256"])'
+python3 -c 'import hashlib;print(hashlib.sha256(open("verification/parity/receipt.json","rb").read()).hexdigest())'
+```
+
+`M4_VERDICT_BINDING` refuses a verdict that omits one of the three, names
+another card, names an admission receipt the card was not minted under, or
+names a parity receipt digest this tree does not hold. v9's second M4 card is
+the control: it composed an honest `REFUSE` with no `card_id`, nothing refused
+it, and `resume-after-m4.py` could not attribute the measurement to a run.
 
 ## Each `floors[]` object
 
@@ -50,6 +79,9 @@ contains `idle` for a failed floor.
 `M4_VERDICT_SCHEMA`: missing required key, `failed_floors` not a list,
 `floors` empty, `ship` true, `phase` not `M4`, `gate` not `M4_VERDICT`.
 
+`M4_VERDICT_BINDING`: a missing, stale or foreign `card_id`,
+`receipt_sha256` or `parity_receipt_sha256` (see *The three bindings*).
+
 ## The coverage account
 
 `evidence/verdicts/coverage-account.json` is written by
@@ -66,6 +98,7 @@ inputs and refuses a copy that disagrees.
 ```bash
 python3 .hermes/skills/gates/compose-m4-verdict/scripts/compose-coverage-account.py \
   /projects/modernized
+python3 .hermes/skills/gates/compose-m4-verdict/scripts/bind-m4-verdict.py --root .
 python3 .hermes/skills/gates/compose-m4-verdict/scripts/assert-m4-verdict-schema.py \
   evidence/verdicts/m4-verdict.json
 python3 .hermes/skills/gates/check-release-readiness/scripts/assert-coverage-account.py \
