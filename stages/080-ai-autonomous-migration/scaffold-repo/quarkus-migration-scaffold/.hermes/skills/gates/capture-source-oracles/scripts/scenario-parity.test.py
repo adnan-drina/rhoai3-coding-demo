@@ -1069,9 +1069,12 @@ def _navigation_receipt_case() -> int:
                          "reason": ""})
         nav_p = root / _PARITY / "navigation" / (scenario_slug(sid) + ".json")
 
+        docs: list = []
+
         def compose() -> dict:
             subprocess.run([sys.executable, str(RECEIPT), "--root", str(root)], text=True, capture_output=True)
             doc = load_json(root / "verification" / "parity" / "receipt.json")
+            docs.append(doc)
             return next(r for r in doc["entry_points"] if r["entry_point"] == ep)
 
         write_canonical(nav_p, {"schema": "rhoai3.parity-navigation/v1", "scenario": sid, "entry_point": ep,
@@ -1087,14 +1090,20 @@ def _navigation_receipt_case() -> int:
                                     "final_status": final, "terminal": terminal})
             row = compose()
             want = "redirect target %s is %s on the destination (%s)" % (target, terminal, final)
-            if row["verdict"] != "FAIL" or row.get("kind") != "navigation" or row["reason"] != want:
-                return _fail("a PASSing comparison whose redirect target is %s is a FAIL typed navigation: %s"
+            fails = [{"scenario": sid, "target": target, "terminal": terminal, "final_status": final}]
+            # ADR-020: the redirect keeps its PASS; reachability is its own row
+            if row["verdict"] != "PASS" or row.get("kind") or row.get("navigation") != "failed":
+                return _fail("a correct first response keeps its PASS while navigation fails separately (%s): %s"
                              % (terminal, row))
-            if row.get("navigation_failures") != [{"scenario": sid, "target": target, "terminal": terminal,
-                                                   "final_status": final}]:
-                return _fail("the row must carry what the work list locates the card from: %s" % row.get("navigation_failures"))
-            if row.get("navigation") == "ok":
-                return _fail("a failed navigation is never also recorded ok: %s" % row)
+            if row.get("navigation_failures") != fails:
+                return _fail("the row names the navigation failure beside its PASS: %s" % row.get("navigation_failures"))
+            obligations = docs[-1].get("navigation_obligations") or []
+            if obligations != [{"entry_point": ep, "kind": "navigation", "verdict": "FAIL", "scenarios": [sid],
+                                "reason": want, "navigation_failures": fails}]:
+                return _fail("the navigation failure is its own obligation row: %s" % obligations)
+            if docs[-1]["verdict"] != "FAIL" or docs[-1]["not_passed"] != sum(1 for r in docs[-1]["entry_points"] if r["verdict"] != "PASS"):
+                return _fail("the receipt fails on the obligation without counting the redirect as not passed: %s %s"
+                             % (docs[-1]["verdict"], docs[-1]["not_passed"]))
 
         # a comparison that FAILED is not re-typed by a navigation: the diff
         # is what the card repairs, and it is still the diff
@@ -1105,6 +1114,8 @@ def _navigation_receipt_case() -> int:
         row = compose()
         if row["verdict"] != "FAIL" or row.get("kind") == "navigation" or "303" not in row["reason"]:
             return _fail("a failing comparison keeps its own diff and its own typing: %s" % row)
+        if docs[-1].get("navigation_obligations"):
+            return _fail("a failing comparison is not also a navigation obligation: %s" % docs[-1]["navigation_obligations"])
     return 0
 
 
@@ -1680,10 +1691,16 @@ def _variant_revert_then_read_case() -> int:
                   "effects_reader": {"strategy": "revert_then_read", "name": "the-only-one", "credential_ref": ref},
                   "normalization": [], "security_mode": "enabled", "security_variant": variant,
                   "qualify": {"intent": "negative", "expect_status_class": "4xx", "before_reads_usable": True}}
+            # a variant READ that declares no reset (hand-authored; the
+            # derivation now always declares one): the v9 ordering that broke
+            rd = {"id": "sc:fixture-%s-read-owners" % variant, "entry_point": ep, "method": "GET", "path": "/api/owners",
+                  "headers": {}, "identity": dict(own), "body_absent": True, "reset_before": False, "effects": [],
+                  "normalization": [], "security_mode": "enabled", "security_variant": variant,
+                  "qualify": {"intent": "negative", "expect_status_class": "4xx"}}
             write_canonical(root / corpus_path("enabled", variant), {
                 "schema": "rhoai3.scenario-corpus/v1", "approved_by": "operator:test",
                 "initial_state": {"reset": "the reset script", "dataset": "two owners, one account"},
-                "security_mode": "enabled", "security_variant": variant, "scenarios": [sc]})
+                "security_mode": "enabled", "security_variant": variant, "scenarios": [sc, rd]})
             corpus_sha = corpus_digest(load_json(root / corpus_path("enabled", variant)))
             write_canonical(root / capture_receipt_path("enabled", variant),
                             {"schema": "rhoai3.source-capture/v1", "status": "ok", "security_mode": "enabled",
@@ -1715,28 +1732,63 @@ def _variant_revert_then_read_case() -> int:
                 "before": [{"id": e["id"], "method": e["method"], "path": e["path"], "role": e["role"], "status": o["status"],
                             "body_kind": o["body_kind"], "body_sha256": o["body_sha256"]} for e, o in zip(reads, before)],
                 "effects": []})
+            read = http_observe(src_url, "GET", rd["path"], headers=auth)
+            if read["status"] != 401:
+                return _fail("the fixture source refuses the read under the variant: %s" % read["status"])
+            write_canonical(root / scenario_oracles_dir("enabled", variant) / (scenario_slug(rd["id"]) + ".json"), {
+                "schema": "rhoai3.source-scenario/v1", "scenario": rd["id"], "entry_point": ep,
+                "receipt_sha256": receipt_digest, "corpus_sha256": corpus_sha, "status": "CAPTURED", "reason": "",
+                "evidence_bundle_sha256": bundle_sha, "source": {"base_url": src_url},
+                "initial_state": {}, "normalization": [], "reset_before": False,
+                "security_mode": "enabled", "security_variant": variant,
+                "request": {"request_sha256": request_of(root, rd)["request_sha256"]},
+                "response": {"status": read["status"], "body_kind": read["body_kind"], "body_sha256": read["body_sha256"],
+                             "headers": read["headers"]},
+                "before": [], "effects": []})
 
-            def compare(dest_url: str, *extra: str) -> tuple[int, dict]:
+            def compare(dest_url: str, *extra: str, scenario: dict | None = None) -> tuple[int, dict]:
+                target = scenario or sc
                 reset = "%s %s --root %s --url %s --variant %s" % (sys.executable, state_script, root, dest_url, variant)
-                p = subprocess.run([sys.executable, str(COMPARE), "--root", str(root), "--scenario", sc["id"],
+                p = subprocess.run([sys.executable, str(COMPARE), "--root", str(root), "--scenario", target["id"],
                                     "--dest-url", dest_url, "--security-mode", "enabled", "--fixture-variant", variant,
                                     "--reset-cmd", reset] + list(extra), text=True, capture_output=True)
-                return p.returncode, load_json(root / scenario_parity_dir("enabled", variant) / (scenario_slug(sc["id"]) + ".json"))
+                return p.returncode, load_json(root / scenario_parity_dir("enabled", variant) / (scenario_slug(target["id"]) + ".json"))
 
             url, dest = start("DestSame", disabled=True, owners={})   # a dirty state the baseline reset must repair
             rc, v = compare(url)
-            if rc != 0 or v["verdict"] != "PASS":
-                return _fail("an identical destination PASSes revert-then-read: rc=%s %s" % (rc, v.get("reason")))
-            if dest.ops != ["baseline", "variant", "revert"]:
-                return _fail("the three states are visited in order, whatever --variant the caller's command carried: %s" % dest.ops)
+            # ADR-020: without a source observation the destination's no-effect
+            # result stands on its own and the source effect is INCONCLUSIVE
+            if (rc != 1 or v["verdict"] != "INCONCLUSIVE" or "not observed" not in v["reason"]
+                    or v["results"].get("response") != "PASS" or v["results"].get("destination_no_effect") != "PASS"
+                    or v["results"]["source_effect"]["verdict"] != "INCONCLUSIVE"):
+                return _fail("an identical destination with no source observation is response PASS, destination no-effect "
+                             "PASS and source effect INCONCLUSIVE: rc=%s %s %s" % (rc, v.get("reason"), v.get("results")))
+            if dest.ops != ["baseline", "variant", "revert", "variant"]:
+                return _fail("the three states are visited in order, whatever --variant the caller's command carried, and "
+                             "the variant is applied again after the after-reads: %s" % dest.ops)
+            if (v.get("restored_variant") or {}).get("rc") != 0 or not dest.disabled:
+                return _fail("the comparison leaves the destination in the variant state and records it: %s" % v.get("restored_variant"))
+            # the next scenario declares no reset: it is still judged on the
+            # variant (401 as the source answered), not on the reverted baseline
+            rc, rv = compare(url, "--no-reset", scenario=rd)
+            if rc != 0 or rv["verdict"] != "PASS" or rv["observed"]["status"] != 401 or dest.ops[-1:] != ["variant"] or len(dest.ops) != 4:
+                return _fail("a variant read after a revert-then-read write is judged on the variant state: rc=%s %s %s %s"
+                             % (rc, rv.get("verdict"), rv.get("reason"), dest.ops))
             if (v.get("effects_strategy") != "revert_then_read" or [r.get("role") for r in v["effects"]] != ["unchanged_under_refusal"] * 2
                     or v["observed"]["status"] != 401 or not all(r["match"] for r in v["before"] + v["effects"])):
                 return _fail("the verdict records the strategy, the refusal and reads matching the baseline: %s" % v)
+            # the source effect is never discharged by the destination's reads
+            subprocess.run([sys.executable, str(RECEIPT), "--root", str(root), "--security-mode", "enabled",
+                            "--fixture-variant", variant], text=True, capture_output=True)
+            rw = (load_json(root / parity_receipt_path("enabled", variant)).get("refused_writes") or {}).get(sc["id"]) or {}
+            if rw.get("source_effect") != "INCONCLUSIVE" or rw.get("results", {}).get("destination_no_effect") != "PASS":
+                return _fail("the receipt keeps the destination's no-effect result apart from the source effect: %s" % rw)
             url, dest = start("DestWritesAnyway", writes_anyway=True)
             rc, v = compare(url)
-            if rc != 1 or v["verdict"] != "FAIL" or "refused write changed the state" not in v["reason"]:
-                return _fail("a refused write that happened anyway FAILs under revert-then-read: rc=%s %s %s"
-                             % (rc, v.get("verdict"), v.get("reason")))
+            if (rc != 1 or v["verdict"] != "FAIL" or "refused write changed the state" not in v["reason"]
+                    or v["results"].get("destination_no_effect") != "FAIL" or v["results"].get("response") != "PASS"):
+                return _fail("a refused write that happened anyway FAILs under revert-then-read: rc=%s %s %s %s"
+                             % (rc, v.get("verdict"), v.get("reason"), v.get("results")))
             url, dest = start("DestReenables", reenables=True)
             rc, v = compare(url)
             if (rc != 1 or v["verdict"] != "INCONCLUSIVE" or "revert refused" not in v["reason"]
@@ -1747,6 +1799,30 @@ def _variant_revert_then_read_case() -> int:
             rc, v = compare(url, "--no-reset")
             if rc != 1 or v["verdict"] != "INCONCLUSIVE" or "--no-reset" not in v["reason"] or dest.ops:
                 return _fail("--no-reset cannot move through three states: rc=%s %s %s" % (rc, v.get("reason"), dest.ops))
+
+            # the SOURCE's post-request state OBSERVED (the capture held its
+            # database, reverted the fixture rows and read through the running
+            # source): the destination is compared against those reads
+            cap_p = root / scenario_oracles_dir("enabled", variant) / (scenario_slug(sc["id"]) + ".json")
+            cap = load_json(cap_p)
+            src.disabled = False   # the source's store, reverted on the fixture rows only
+            after = [http_observe(src_url, e["method"], e["path"], headers=auth) for e in reads]
+            cap["effects"] = [{"id": e["id"], "method": e["method"], "path": e["path"], "role": e["role"], "status": o["status"],
+                               "body_kind": o["body_kind"], "body_sha256": o["body_sha256"]} for e, o in zip(reads, after)]
+            cap["source_effects"] = {"observed": True, "mechanism": "fixture", "snapshot": {"sha256": "a" * 64}}
+            write_canonical(cap_p, cap)
+            url, dest = start("DestObserved")
+            rc, v = compare(url)
+            if (rc != 0 or v["verdict"] != "PASS" or v["results"].get("destination_effect") != "PASS"
+                    or v["results"]["source_effect"] != {"verdict": "OBSERVED", "unchanged": True, "changed": [],
+                                                         "snapshot_sha256": "a" * 64}):
+                return _fail("with the source's effect observed an identical destination PASSes on it: rc=%s %s %s"
+                             % (rc, v.get("reason"), v.get("results")))
+            url, dest = start("DestObservedWrites", writes_anyway=True)
+            rc, v = compare(url)
+            if rc != 1 or v["verdict"] != "FAIL" or v["results"].get("destination_effect") != "FAIL":
+                return _fail("a destination that writes despite the refusal FAILs against the observed source: rc=%s %s"
+                             % (rc, v.get("results")))
     finally:
         for srv in servers:
             srv.shutdown()
@@ -1978,7 +2054,7 @@ def main() -> int:
           "or no issued card at all refuse by name -- while without the flag the M4 road still refuses a stale seal; "
           "a comparison that PASSed is not the whole of the redirect ruling: the composer reads the BOUNDED NAVIGATION "
           "records written beside it, an entry point whose redirect target is dead, loops or never settles becomes FAIL "
-          "typed navigation naming the address and the status it ended on -- carried on the row for the work list -- "
+          "typed navigation naming the address and the status it ended on -- as its own obligation row beside the redirect's PASS (ADR-020) -- "
           "a navigation that reached the UI is recorded navigation: ok and changes no verdict, and a comparison that "
           "FAILED keeps its own diff and its own typing; "
           "and a receipt judges the CURRENT corpus from the records that belong to it: a scenario this corpus does not "
@@ -1989,7 +2065,8 @@ def main() -> int:
           "for the orphan's own reason, and the same directory with its records put right composes a PASS; a fixture variant's refused PUT and DELETE are measured, not waived: their unchanged_under_refusal read-backs are taken as the declared reader against the source's own captures under the variant, an identical destination PASSes with each row saying what it proves, a destination that answers the same 401 and writes anyway FAILs naming the refused write, a refused write with no identity to read its state as stays INCONCLUSIVE naming the missing identity beside the rule, and the variant receipt records what each refused write proves; with no second identity a refused write is compared REVERT-THEN-READ -- the "
  "baseline, the variant and its revert visited in that order through the reset script, the post-revert reads judged against the "
  "source's baseline reads -- an identical destination PASSes, one that writes despite the 401 FAILs, a revert that finds "
- "unexpected state is INCONCLUSIVE naming it, and --no-reset is refused)")
+ "unexpected state is INCONCLUSIVE naming it, and --no-reset is refused; the variant is re-applied after the after-reads, so a "
+ "following variant read that declares no reset is still judged on the variant state)")
     return 0
 
 

@@ -88,14 +88,16 @@ PRODUCER = "qualify-source-captures.py"
 _ORACLES_DIR = SCENARIO_ORACLES
 KNOWN_CHECKS = ("expect_status", "expect_status_class", "usable_first_response", "location", "after_contains_body", "before_lacks_body",
                 "creates_one_entity", "after_equals_before", "errors_header_names_field", "after_effect_status", "cors_allow_origin",
-                "cors_expose_headers", "cors_allow_method", "cors_allow_headers", "before_reads_usable")
+                "cors_expose_headers", "cors_allow_method", "cors_allow_headers", "before_reads_usable",
+                "cors_browser_access")
 CONTRACT_KEYS = ("intent", "identity_field")  # parameters of the contract, not checks
 BODY_CHECKS = ("after_contains_body", "before_lacks_body", "creates_one_entity", "after_equals_before", "before_reads_usable")
 # checks that read a read-back ROW without reading its body: they are about
 # the state a request left just as much, so they are judged against the same
 # identity question (whose probes these are)
 READ_BACK_CHECKS = ("after_effect_status",)
-HEADER_CHECKS = ("location", "errors_header_names_field", "cors_allow_origin", "cors_expose_headers", "cors_allow_method", "cors_allow_headers")
+HEADER_CHECKS = ("location", "errors_header_names_field", "cors_allow_origin", "cors_expose_headers", "cors_allow_method", "cors_allow_headers",
+                 "cors_browser_access")
 _STATUS_CLASS_RE = re.compile(r"^([1-5])xx$", re.IGNORECASE)
 
 
@@ -472,6 +474,38 @@ def qualify_scenario(root: Path, sc: dict[str, Any], cap: dict[str, Any] | None,
                     _read_back_body(root, sid, after[eid], "after %s" % eid)
                 diff = [eid for eid in sorted(before) if before[eid].get("body_sha256") != after[eid].get("body_sha256") or before[eid].get("status") != after[eid].get("status")]
                 record(name, not diff, "read-backs %s" % ("changed: " + ", ".join(diff) if diff else "unchanged: " + ", ".join(sorted(before))))
+            elif name == "cors_browser_access":
+                # RECORDED, not expected: whether the source's answer lets a
+                # browser complete this exchange. A matched rejection is
+                # parity; it is not a demonstrated permission (ADR-020)
+                if want is not True:
+                    raise Unjudgeable("cors_browser_access must be true")
+                if not isinstance(headers, dict):
+                    raise Unusable("the capture recorded no header map")
+                sent = _header(req_headers, "Origin")
+                got = int(resp.get("status") or 0)
+                allow = _header(headers, "Access-Control-Allow-Origin")
+                why_not: list[str] = []
+                if not 200 <= got < 300:
+                    why_not.append("status %s" % got)
+                if not sent or allow not in (sent, "*"):
+                    why_not.append("Access-Control-Allow-Origin %r for Origin %r" % (allow, sent))
+                if str(sc.get("method") or "").upper() == "OPTIONS":
+                    wanted = str(_header(req_headers, "Access-Control-Request-Method") or "").lower()
+                    methods = _tokens(_header(headers, "Access-Control-Allow-Methods"))
+                    if wanted and wanted not in methods and "*" not in methods:
+                        why_not.append("Access-Control-Allow-Methods %r lacks %s" % (_header(headers, "Access-Control-Allow-Methods"), wanted))
+                    need = _tokens(_header(req_headers, "Access-Control-Request-Headers"))
+                    have = _tokens(_header(headers, "Access-Control-Allow-Headers"))
+                    if need and not need <= have and "*" not in have:
+                        why_not.append("Access-Control-Allow-Headers %r lacks %s" % (_header(headers, "Access-Control-Allow-Headers"),
+                                                                                    sorted(need - have)))
+                outcome = "permits" if not why_not else "prevents"
+                base["browser_access"] = outcome
+                checks.append({"check": name, "ok": True, "observed_browser_access": outcome,
+                               "detail": ("the source's answer lets a browser complete the exchange" if not why_not else
+                                          "the source PREVENTS the browser exchange (%s); matching it is parity, not a "
+                                          "demonstrated permission" % "; ".join(why_not))})
             elif name == "before_reads_usable":
                 # revert-then-read: the source's after reads cannot be taken
                 # (its database is restored only by a restart), so what the

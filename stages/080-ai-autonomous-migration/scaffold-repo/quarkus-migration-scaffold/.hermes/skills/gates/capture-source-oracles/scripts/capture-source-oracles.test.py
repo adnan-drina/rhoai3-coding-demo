@@ -856,6 +856,10 @@ def _variant_revert_capture_case() -> int:
             declared.parent.mkdir(parents=True, exist_ok=True)
             declared.write_text(DECLARED_SQL, encoding="utf-8")
             varied = dict(probe, entry_point=ep, security_mode="enabled", security_variant=VARIANT)
+            # a variant read after it: it resets to the VARIANT, not the baseline the reads above visited
+            followed = {"id": "sc:fixture-%s-read-owners" % VARIANT, "entry_point": ep, "method": "GET", "path": "/api/owners",
+                        "body_absent": True, "reset_before": True, "normalization": [], "identity": dict(own), "effects": [],
+                        "security_mode": "enabled", "security_variant": VARIANT}
             write_canonical(root / corpus_path("enabled", VARIANT), {
                 "schema": "rhoai3.scenario-corpus/v1", "approved_by": "operator:test",
                 "security_mode": "enabled", "security_variant": VARIANT,
@@ -863,7 +867,7 @@ def _variant_revert_capture_case() -> int:
                 "fixture": {"name": VARIANT, "intent": "refuse", "scenarios": "auth-allowed",
                             "dataset_config_key": DATASET_KEY, "statements": [STATEMENT],
                             "dataset": {"path": DECLARED_DATASET, "sha256": sha256_file(declared)}},
-                "scenarios": [varied]})
+                "scenarios": [varied, followed]})
             fake = _fake_runtime(base_url)
             loaded: list = []
 
@@ -881,17 +885,21 @@ def _variant_revert_capture_case() -> int:
             if rc != 0:
                 return _fail("a revert-then-read scenario captures: rc=%s" % rc)
             dataset_p = str(root / variant_dataset_path("enabled", VARIANT))
-            if loaded != [dataset_p, str(declared), dataset_p]:
+            if loaded != [dataset_p, str(declared), dataset_p, dataset_p]:
                 return _fail("the source is started on the variant, then the declared baseline for the reads, then the "
-                             "variant for the request: %s" % loaded)
+                             "variant for the request, and the following variant read is restarted on the variant: %s" % loaded)
+            nxt = _load(root / scenario_oracles_dir("enabled", VARIANT) / (scenario_slug(followed["id"]) + ".json"))
+            if nxt["response"]["status"] != 401 or nxt.get("reset_before") is not True:
+                return _fail("the following variant read is captured on the variant state: %s" % nxt.get("response"))
             cap = _load(root / scenario_oracles_dir("enabled", VARIANT) / (scenario_slug(varied["id"]) + ".json"))
             if cap["status"] != "CAPTURED" or cap["response"]["status"] != 401:
                 return _fail("the request is refused on the variant: %s %s" % (cap["status"], cap.get("response")))
             if [(r["id"], r["status"], r.get("role")) for r in cap["before"]] != [("eff:owners", 200, "unchanged_under_refusal")]:
                 return _fail("the read-backs are taken on the baseline as the request's own identity: %s" % cap["before"])
-            if cap["effects"] != [] or (cap.get("revert") or {}).get("applied_on_source") is not False:
-                return _fail("no revert is applied to an in-process source and no after read is taken: %s %s"
-                             % (cap["effects"], cap.get("revert")))
+            se = cap.get("source_effects") or {}
+            if cap["effects"] != [] or se.get("observed") is not False or "no executable revert" not in str(se.get("reason")):
+                return _fail("with no store to hold the source's database the effect is recorded NOT observed, with the "
+                             "reason, and no after read is taken: %s %s" % (cap["effects"], se))
             if (cap.get("effects_reader") or {}).get("strategy") != "revert_then_read" \
                     or (cap.get("before_dataset") or {}).get("path") != DECLARED_DATASET:
                 return _fail("the capture records the strategy and the dataset the reads were taken on: %s" % cap)
@@ -906,6 +914,218 @@ def _variant_revert_capture_case() -> int:
     return 0
 
 
+def _variant_store_capture_case() -> int:
+    """The SOURCE's post-request state, observed (ADR-020): the refused
+    request is sent to a source whose database a store holds; the store's
+    post-request snapshot is retained and digested, the fixture rows only are
+    reverted, and the reads are taken through the SAME running source -- no
+    restart between the request and the observation. A store whose revert
+    finds unexpected state records the effect as not observed, with the
+    snapshot."""
+    import base64
+    import hashlib
+    import os
+    from unittest.mock import patch
+    from planner.canonical import load_json as _load, sha256_file
+    from planner.paths import producer_receipt as _producer_receipt
+    from _scenarios import corpus_path, scenario_oracles_dir, scenario_slug
+    import _variant_revert as vr
+
+    producer = _load_producer()
+    secret, user, ref = "st0re-s3cret", "an-identity", "TEST_STORE_CREDENTIAL"
+    token = base64.b64encode(("%s:%s" % (user, secret)).encode("utf-8")).decode("ascii")
+    handler = type("S", (AccountStatus,), {"expected": "Basic %s" % token, "dataset": "", "disabled_marker": "enabled = false"})
+    srv = HTTPServer(("127.0.0.1", 0), handler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    base_url = "http://127.0.0.1:%d" % srv.server_address[1]
+    kept = os.environ.get(ref)
+    os.environ[ref] = "%s:%s" % (user, secret)
+    schema = "CREATE TABLE accounts (name VARCHAR(20) PRIMARY KEY, enabled BOOLEAN NOT NULL);\n"
+    plan = vr.compute_plan([STATEMENT], DECLARED_SQL, schema, {"path": DECLARED_DATASET, "sha256": "0" * 64})
+    events: list = []
+
+    class FakeStore:
+        spec = {"engine": "fixture-engine", "file": "src/main/resources/application.properties"}
+        jar_record = {"name": "engine.jar", "sha256": "e" * 64}
+        refuse = False
+
+        def start(self, files):
+            events.append(("store-start", [f.name for f in files]))
+            handler.dataset = Path(files[-1]).read_text(encoding="utf-8")
+            return ""
+
+        def source_overrides(self):
+            return {"fixture.datasource.url": "fixture://held"}
+
+        def snapshot(self, path):
+            events.append(("snapshot", handler.dataset))
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(handler.dataset, encoding="utf-8")
+            return {"path": str(path), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}, ""
+
+        def revert(self, got_plan):
+            events.append(("revert", list(got_plan["statements"])))
+            if type(self).refuse:
+                return 3, "REVERT_UNEXPECTED_STATE accounts.enabled: the rows do not hold the variant value false"
+            handler.dataset = handler.dataset.replace(STATEMENT, "-- reverted")
+            return 0, "reverted 1 row group(s)"
+
+        def stop(self):
+            events.append(("store-stop",))
+
+    try:
+        with tempfile.TemporaryDirectory(prefix="variant-store-capture-") as tmp:
+            t = Path(tmp).resolve()
+            own = {"kind": "basic", "credential_ref": ref}
+            probe = {"id": "sc:fixture-%s-delete-owners" % VARIANT, "method": "DELETE", "path": "/api/owners/1",
+                     "body_absent": True, "reset_before": True, "normalization": [], "identity": dict(own),
+                     "effects": [{"id": "eff:owners", "method": "GET", "path": "/api/owners", "role": "unchanged_under_refusal"}],
+                     "effects_identity": dict(own),
+                     "effects_reader": {"strategy": "revert_then_read", "name": user, "credential_ref": ref}}
+            root, ep = _mode_root(t, "store", dict(probe, id="sc:unused"), "enabled", security=_variant_fixture([ref]))
+            copy = Path(_load(_producer_receipt(root, "freeze"))["analysis_copy"])
+            declared = copy / DECLARED_DATASET
+            declared.parent.mkdir(parents=True, exist_ok=True)
+            declared.write_text(DECLARED_SQL, encoding="utf-8")
+            (declared.parent / "initDB.sql").write_text(schema, encoding="utf-8")
+            varied = dict(probe, entry_point=ep, security_mode="enabled", security_variant=VARIANT)
+            write_canonical(root / corpus_path("enabled", VARIANT), {
+                "schema": "rhoai3.scenario-corpus/v1", "approved_by": "operator:test",
+                "security_mode": "enabled", "security_variant": VARIANT,
+                "initial_state": {"reset": "restart the service", "dataset": "seeded"},
+                "fixture": {"name": VARIANT, "intent": "refuse", "scenarios": "auth-allowed",
+                            "dataset_config_key": DATASET_KEY, "statements": [STATEMENT], "revert": plan,
+                            "dataset": {"path": DECLARED_DATASET, "sha256": sha256_file(declared)}},
+                "scenarios": [varied]})
+            fake = _fake_runtime(base_url)
+
+            class Runtime(fake):
+                def start(self):
+                    held = "fixture.datasource.url" in self.source_config
+                    events.append(("source-start", "store" if held else "in-process"))
+                    if not held:
+                        loc = self.source_config.get(DATASET_KEY, "")
+                        path = loc[len("file:"):] if loc.startswith("file:") else loc
+                        handler.dataset = Path(path).read_text(encoding="utf-8") if path and Path(path).is_file() else ""
+                    return super().start()
+
+                def stop(self):
+                    events.append(("source-stop",))
+
+            out = root / scenario_oracles_dir("enabled", VARIANT) / (scenario_slug(varied["id"]) + ".json")
+            for refuse in (False, True):
+                events.clear()
+                FakeStore.refuse = refuse
+                with patch.object(producer, "SourceRuntime", Runtime), \
+                        patch.object(producer, "SOURCE_STORE_OPENER", lambda *a, **k: (FakeStore(), "")):
+                    rc = producer.main(["--root", str(root), "--security-mode", "enabled",
+                                        "--fixture-variant", VARIANT, "--credential-ref", ref, "--no-reads"])
+                cap = _load(out)
+                se = cap.get("source_effects") or {}
+                if rc != 0 or cap["status"] != "CAPTURED" or cap["response"]["status"] != 401:
+                    return _fail("the refused request is captured against the held store: rc=%s %s" % (rc, cap.get("response")))
+                kinds = [e[0] for e in events]
+                i_req, i_snap = kinds.index("source-start", kinds.index("store-start")), kinds.index("snapshot")
+                if kinds[kinds.index("store-start") + 1] != "source-start" or events[i_req][1] != "store":
+                    return _fail("the source is started against the store: %s" % events)
+                if "source-start" in kinds[i_req + 1:kinds.index("store-stop")]:
+                    return _fail("nothing restarts the source between the request and the observation: %s" % events)
+                if STATEMENT not in events[i_snap][1] or events[kinds.index("store-start")][1] != ["initDB.sql", "_variant-dataset.sql"]:
+                    return _fail("the store is initialised with the schema and the variant, and snapshotted in the variant "
+                                 "state: %s" % events)
+                if not refuse:
+                    if (se.get("observed") is not True or se.get("restarted_between") is not False
+                            or se.get("revert", {}).get("statements") != plan["statements"]
+                            or len(se.get("snapshot", {}).get("sha256", "")) != 64
+                            or se.get("datasource_keys") != ["fixture.datasource.url"]):
+                        return _fail("the capture records the observation, its snapshot and the revert: %s" % se)
+                    if [(r["id"], r["status"]) for r in cap["effects"]] != [("eff:owners", 200)]:
+                        return _fail("the reads are taken through the running source after the revert: %s" % cap["effects"])
+                    if "fixture://held" in json.dumps(_load(root / scenario_oracles_dir("enabled", VARIANT) / "_capture.json")):
+                        return _fail("the store's location is not recorded as the source's configuration")
+                else:
+                    if (se.get("observed") is not False or "REVERT_UNEXPECTED_STATE" not in se.get("reason", "")
+                            or not se.get("snapshot") or cap["effects"]):
+                        return _fail("a revert that finds unexpected state on the source is recorded, not read past: %s" % se)
+                if kinds[-1] != "source-stop" and "store-stop" not in kinds:
+                    return _fail("the store is stopped: %s" % events)
+    finally:
+        srv.shutdown()
+        if kept is None:
+            os.environ.pop(ref, None)
+        else:
+            os.environ[ref] = kept
+    return 0
+
+
+def _source_store_engine_case() -> int:
+    """The store itself, against the real engine when this workspace has it:
+    the source's datasource is found in its own configuration, the engine
+    jar is the one its artifact ships, and the server-held database is
+    initialised, snapshotted and reverted -- a second revert finds the
+    baseline, not the variant, and refuses. Without the engine jar or a JDK
+    the case says so and measures only the discovery."""
+    import shutil
+    import zipfile
+    import _source_store as ss
+    import _variant_revert as vr
+    with tempfile.TemporaryDirectory(prefix="source-store-") as tmp:
+        t = Path(tmp)
+        copy = t / "src-copy"
+        res = copy / "src" / "main" / "resources"
+        res.mkdir(parents=True)
+        spec, why = ss.discover(copy)
+        if spec or "SOURCE_STORE_UNKNOWN" not in why:
+            return _fail("a source that configures no in-memory datasource names that: %s" % why)
+        (res / "application.properties").write_text("acme.profile=x\n", encoding="utf-8")
+        (res / "application-x.properties").write_text(
+            "acme.ds.url=jdbc:hsqldb:mem:acme\nacme.ds.username=sa \nacme.ds.password=\n", encoding="utf-8")
+        spec, why = ss.discover(copy)
+        if why or (spec["url_key"], spec["user_key"], spec["user"], spec["engine"]) != ("acme.ds.url", "acme.ds.username", "sa ", "hsqldb"):
+            return _fail("the datasource is read from the source's own configuration: %s %s" % (spec, why))
+        jars = sorted((Path.home() / ".m2" / "repository" / "org" / "hsqldb" / "hsqldb").glob("*/hsqldb-*.jar"))
+        jars = [j for j in jars if "sources" not in j.name and "javadoc" not in j.name]
+        if not jars or not shutil.which("javac") or not shutil.which("java"):
+            print("  note: no hsqldb engine jar or JDK in this workspace; the store's engine run is not measured here")
+            return 0
+        artifact = t / "source.jar"
+        with zipfile.ZipFile(artifact, "w") as z:
+            z.write(jars[-1], "BOOT-INF/lib/%s" % jars[-1].name)
+        store, why = ss.open_store(copy, artifact, t / "work")
+        if store is None:
+            return _fail("a store opens for a configured, shipped engine: %s" % why)
+        if store.source_overrides() != {"acme.ds.url": store.url, "acme.ds.username": "sa"}:
+            return _fail("the source is pointed at the store through its own keys: %s" % store.source_overrides())
+        db = t / "db"
+        db.mkdir()
+        (db / "initDB.sql").write_text("CREATE TABLE accounts (name VARCHAR(20) PRIMARY KEY, enabled BOOLEAN NOT NULL);\n"
+                                       "CREATE TABLE notes (id INTEGER PRIMARY KEY, body VARCHAR(20));\n", encoding="utf-8")
+        seed = "INSERT INTO accounts VALUES ('an-identity', true);\nINSERT INTO notes VALUES (1, 'a;b');\n"
+        (db / "populateDB.sql").write_text(seed, encoding="utf-8")
+        (db / "variant.sql").write_text(seed + STATEMENT + ";\n", encoding="utf-8")
+        plan = vr.compute_plan([STATEMENT], seed, (db / "initDB.sql").read_text(), {"path": "db/populateDB.sql"})
+        try:
+            files = ss.schema_files(db / "populateDB.sql") + [db / "variant.sql"]
+            if [f.name for f in files] != ["initDB.sql", "variant.sql"]:
+                return _fail("the schema files are found beside the dataset by content: %s" % files)
+            err = store.start(files)
+            if err:
+                return _fail("the store starts and is initialised: %s" % err)
+            snap, err = store.snapshot(t / "snap" / "post.script")
+            text = Path(snap.get("path", "")).read_text(encoding="utf-8") if snap else ""
+            if err or len(snap["sha256"]) != 64 or "ACCOUNTS" not in text.upper():
+                return _fail("the post-request snapshot is the engine's own, digested: %s %s" % (snap, err))
+            rc, out = store.revert(plan)
+            if rc != 0:
+                return _fail("the revert finds the variant state and restores it: %s" % out)
+            rc, out = store.revert(plan)
+            if rc != 3 or "REVERT_UNEXPECTED_STATE" not in out:
+                return _fail("a revert that finds the baseline instead of the variant refuses: rc=%s %s" % (rc, out))
+        finally:
+            store.stop()
+    return 0
+
+
 def main() -> int:
     if _challenge_header_case():
         return 1
@@ -913,7 +1133,8 @@ def main() -> int:
         return 1
     if _effects_identity_capture_case():
         return 1
-    if _variant_capture_case() or _variant_revert_capture_case():
+    if (_variant_capture_case() or _variant_revert_capture_case() or _variant_store_capture_case()
+            or _source_store_engine_case()):
         return 1
     with tempfile.TemporaryDirectory(prefix="oracle-") as tmp:
         t = Path(tmp).resolve()

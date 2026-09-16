@@ -222,7 +222,17 @@ def main() -> int:
         check(rc == 1 and "ADAPTER_CONFLICT" in out
               and (root / ra.adapter_path(ra.CORS)).read_text().startswith("package io.rhoai3.migration.response;\nclass"),
               "conflicting adapter content refuses and is left alone", out)
-        (root / ra.adapter_path(ra.CORS)).write_bytes(ra.template_bytes(ra.CORS))
+        # the harness's OWN earlier release is upgraded in place, on the record
+        import hashlib
+        old_bytes = b"package io.rhoai3.migration.response;\n// an earlier harness release\n"
+        ra.PRIOR_TEMPLATES[ra.CORS][hashlib.sha256(old_bytes).hexdigest()] = "test release"
+        (root / ra.adapter_path(ra.CORS)).write_bytes(old_bytes)
+        rows_now = ra.cors_properties(ra.cors_policy(root))
+        up = ra.install(root, ra.CORS, rows_now, basis={}, authority={"kind": "test"})
+        check((root / ra.adapter_path(ra.CORS)).read_bytes() == ra.template_bytes(ra.CORS)
+              and up.get("upgraded_from", {}).get("release") == "test release",
+              "an earlier harness release is upgraded in place and recorded", up.get("upgraded_from"))
+        check(all(len(k) == 64 for k in ra.PRIOR_TEMPLATES[ra.CORS]), "prior template digests are full sha256")
 
         # media type: decided from the obligation's own differences; the CORS block is not disturbed
         worklist(root, [cors_item, {"id": "parity:m", "rule_id": "PARITY_CONTENT_TYPE",
@@ -259,6 +269,9 @@ def main() -> int:
     check("Content-Type" not in code and "CONTENT_TYPE" not in code, "the CORS adapter never touches Content-Type")
     check("boolean granted = response.headers().contains(ALLOW_ORIGIN);" in cors and "if (!granted || decision.kind != Kind.ALLOW)" in cors,
           "a response the platform did not grant leaves without CORS headers")
+    check("ctx.put(SAME_ORIGIN, origin);\n            request.headers().remove(ORIGIN);" in cors
+          and "request.headers().set(ORIGIN, sameOrigin);" in cors,
+          "a same-origin request is hidden from the platform CORS filter and gets its Origin back before routing (ADR-020)")
     check(re.search(r'if \(origin == null\) \{\s*ctx\.next\(\);\s*return;', cors) is not None,
           "a request without Origin is passed through untouched")
     for name, text in (("cors", cors), ("media", media)):

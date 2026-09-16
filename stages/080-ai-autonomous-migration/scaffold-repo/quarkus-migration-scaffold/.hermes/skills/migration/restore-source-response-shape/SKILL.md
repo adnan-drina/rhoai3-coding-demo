@@ -100,7 +100,11 @@ does not write it, edit it or copy it.
   source, that refusal happens after authentication. A route outside every
   source policy gets no CORS header.
 - **Untouched:** requests without `Origin`. Same-origin requests are not CORS
-  requests for the source either, so they leave without CORS headers.
+  requests for the source either (ADR-020). The platform's CORS filter does
+  not judge them, so a method outside its list is not a 403. They reach
+  ordinary routing exactly as they would without `Origin` (a 405 stays a
+  405), `Origin` is restored for the application, and they leave without CORS
+  headers.
   `Content-Type` is never read or written.
 - **Both security modes:** while the source's switch has the value under which
   it refused anonymous requests, a preflight is authenticated like any other
@@ -121,7 +125,7 @@ source sending a parameter the destination does not send.
 | Script | Proves |
 |---|---|
 | `scripts/install-response-adapter.test.py` | rendering from the source model (restrictive fixtures, method-level policies, renamed specimen, refusals), installer authority, conflicts, profile refusal, idempotency, the media-type decision, the templates' structural facts |
-| `scripts/runtime-check.sh` | **real runtime**: installs both adapters into `fixtures/runtime` through the installer and runs its `@QuarkusTest` suite (21 cases) with the pinned platform: source-shaped preflight and paired actual responses, restrictive-policy refusals, no blind echo, no-Origin and same-origin requests untouched, no permission outside the source policy, both security modes including 401 and post-authentication 403, the media-type parameter removed and nothing else. It also runs a control where the adapter sits below the platform CORS filter; that control must fail the preflight case. |
+| `scripts/runtime-check.sh` | **real runtime**: installs both adapters into `fixtures/runtime` through the installer and runs its `@QuarkusTest` suite (24 cases) with the pinned platform: source-shaped preflight and paired actual responses, restrictive-policy refusals, no blind echo, no-Origin requests untouched, same-origin requests routed exactly as without Origin (an unmapped method is the routing's own 405, where the platform alone answers 403), no permission outside the source policy, both security modes including the mechanism's own 401 challenge and post-authentication 403, the media-type parameter removed and nothing else. It also runs a control where the adapter sits below the platform CORS filter; that control must fail the preflight case. |
 
 `runtime-check.sh` runs Maven offline by default (`--online` to resolve).
 The planner half, meaning obligation typing, the sealed `unit/owed-adapter/v1`

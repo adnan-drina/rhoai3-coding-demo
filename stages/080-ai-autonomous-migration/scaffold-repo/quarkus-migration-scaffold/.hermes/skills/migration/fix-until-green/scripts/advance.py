@@ -92,7 +92,7 @@ from planner.canonical import digest, load_json, write_canonical  # noqa: E402
 from planner.dest_model import DestModelUnavailable, checked_exception_delta, dest_model, diagnostic_identity  # noqa: E402
 from planner.decisions import load_decisions, max_attempts  # noqa: E402
 from planner.paths import EVIDENCE_BUNDLE, LOOP_ACCEPTED, LOOP_ISSUED, MTA_RESCAN_FINDINGS, VERIFY_DIAGNOSTICS, VERIFY_DIR, VERIFY_RUN, WORKLIST  # noqa: E402
-from planner.worklist import CHECKED_FAMILY_RULE, EXPOSED, PARITY_RECEIPT, RETAIN, UNIT_KIND, UNPROVEN, assess_unit, batch_scope_digest, build_worklist, compile_items, gate_items, incidents_from_findings, item_ids, obligation_keys, progress, unit_continue_scope, unit_explained_regressions  # noqa: E402
+from planner.worklist import carry_unmeasured, parity_remeasured, CHECKED_FAMILY_RULE, EXPOSED, PARITY_RECEIPT, RETAIN, UNIT_KIND, UNPROVEN, assess_unit, batch_scope_digest, build_worklist, compile_items, gate_items, incidents_from_findings, item_ids, obligation_keys, progress, unit_continue_scope, unit_explained_regressions  # noqa: E402
 
 # The codes javac's flow analysis reports ONE site at a time per compilation
 # (control in dest_model.py: three files with the same defect are one reported
@@ -771,6 +771,15 @@ def main(argv: list[str] | None = None) -> int:
                    if scope_ref and family else
                    (unit_continue_scope(scope_doc, cur.get("items") or []) if scope_ref and unit else None))
     prev_parity, cur_parity = _parity_receipts(root, run if isinstance(run, dict) else {}, issued, args.card)
+    # F1: a SCOPED comparison re-ran only this card's scenarios; every other
+    # entry point is carried from the accepted baseline, never read as a
+    # regression (and never as a pass it did not earn)
+    remeasured = parity_remeasured(run if isinstance(run, dict) else {})
+    judged_parity, carried_rows = carry_unmeasured(prev_parity, cur_parity, remeasured)
+    if carried_rows:
+        print("NOTE: the scoped comparison re-ran %s; %d entry point(s) carried from the accepted baseline %s: %s"
+              % (", ".join(sorted(remeasured or [])), len(carried_rows), str((prev_parity or {}).get("receipt_sha256") or "")[:12],
+                 ", ".join("%s %s" % (c["entry_point"], c["verdict"]) for c in carried_rows[:4])))
     ok, reason = progress(prev["measure"], cur["measure"], prev_keys, cur_keys,
                           gate=gate,
                           unit_scope=scope_doc if unit else None,
@@ -778,6 +787,7 @@ def main(argv: list[str] | None = None) -> int:
                           explained={r["identity"] for r in explained_rows},
                           prev_runtime=prev.get("runtime") or {}, cur_runtime=cur.get("runtime") or {},
                           prev_parity=prev_parity, cur_parity=cur_parity,
+                          parity_remeasured=remeasured,
                           issued_items=list(issued.get("items") or []),
                           prev_gate_items=set(str(i) for i in (issued.get("gate_items") or [])),
                           cur_gate_items=gate_items(cur, gate),
@@ -814,7 +824,11 @@ def main(argv: list[str] | None = None) -> int:
     clear_pending(steps, args.cluster, why="accepted")
     sha = _commit(root, changed, "fix-until-green: %s attempt %s %s" % (args.cluster, issued.get("attempt"), cur["measure"]["tuple"]))
     snapshot_reports(root)
-    steps["steps"].append({"cluster": args.cluster, "card": args.card, "attempt": issued.get("attempt"), "idempotency_key": issued.get("idempotency_key"), "commit": sha, "candidate_sha256": on_disk, "measure": cur["measure"], "item_ids": sorted(item_ids(cur)), "obligation_keys": sorted(obligation_keys(cur)), "worklist_sha256": digest(cur), "changed": changed, "verdict": "accepted", "reason": reason, "runtime": cur.get("runtime") or {}, "gate": str(issued.get("gate") or ""), "parity": ({"verdict": str((cur_parity or {}).get("verdict") or ""), "binding": dict((cur_parity or {}).get("binding") or {}), "scenarios": list((((run if isinstance(run, dict) else {}).get("runtime") or {}).get("parity") or {}).get("scenarios") or [])} if cur_parity else {}), "discharged": sorted(str(i) for i in (issued.get("items") or [])), "si1_inconclusive": si1_unknown, "batch_scope": ({"digest": str(scope_ref.get("digest") or ""), "assessed": len(scope_rows),
+    if carried_rows:
+        # the accepted baseline is what acceptance JUDGED: the scoped receipt
+        # with its un-re-run rows carried, each marked carried_from
+        write_canonical(root / LOOP_ACCEPTED / PARITY_SNAPSHOT / PARITY_RECEIPT.name, judged_parity)
+    steps["steps"].append({"cluster": args.cluster, "card": args.card, "attempt": issued.get("attempt"), "idempotency_key": issued.get("idempotency_key"), "commit": sha, "candidate_sha256": on_disk, "measure": cur["measure"], "item_ids": sorted(item_ids(cur)), "obligation_keys": sorted(obligation_keys(cur)), "worklist_sha256": digest(cur), "changed": changed, "verdict": "accepted", "reason": reason, "runtime": cur.get("runtime") or {}, "gate": str(issued.get("gate") or ""), "parity": ({"verdict": str((cur_parity or {}).get("verdict") or ""), "binding": dict((cur_parity or {}).get("binding") or {}), "scenarios": list((((run if isinstance(run, dict) else {}).get("runtime") or {}).get("parity") or {}).get("scenarios") or []), "carried": list(carried_rows)} if cur_parity else {}), "discharged": sorted(str(i) for i in (issued.get("items") or [])), "si1_inconclusive": si1_unknown, "batch_scope": ({"digest": str(scope_ref.get("digest") or ""), "assessed": len(scope_rows),
                                                           "inconclusive": [r for r in scope_rows if r.get("verdict") == "inconclusive"]} if scope_ref else {}), "amendments": list(issued.get("amendments") or []), "verify": _verify_meta(run if isinstance(run, dict) else {}),
                            "unit": ({"unit_id": str(scope_doc.get("unit_id") or ""), "rule": str(scope_doc.get("rule") or ""),
                                      "family_key": str(scope_doc.get("family_key") or "")} if unit else {}),

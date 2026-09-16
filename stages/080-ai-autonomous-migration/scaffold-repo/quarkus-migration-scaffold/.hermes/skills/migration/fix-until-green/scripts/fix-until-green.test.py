@@ -975,6 +975,103 @@ def _harness_owned_root_case() -> int:
     return 0
 
 
+def _parity_baseline_refresh_case() -> int:
+    """F2 (v9 step 2410082): an Operator step that CHANGES the product may not
+    freeze the parity receipt of the tree before it. The accepted baseline is
+    UNMEASURED (reason and prior digest kept), the live records are set aside,
+    a revert cannot bring the stale obligation back, and only a sealed,
+    whole, current-admission, same-artifact comparison of the accepted tree
+    is snapshotted by refresh-accepted-parity.py."""
+    from planner.paths import MTA_FINDINGS, PARITY_DIR  # noqa: E402
+    from _loop_common import restore_reports  # noqa: E402
+
+    from planner.paths import STRUCTURE  # noqa: E402
+
+    refresh = HERE / "refresh-accepted-parity.py"
+    with tempfile.TemporaryDirectory(prefix="parity-refresh-") as td:
+        root = specimens.build_dest(Path(td) / "dest", specimens.specimen("http"),
+                                    decisions=specimens.admitted_decisions(max_attempts=3))
+        structure = load_json(root / STRUCTURE)
+        for t in structure["types"]:
+            if t["fqn"].endswith(".OwnerController"):
+                t["annotations"].append({"fqn": "org.springframework.web.bind.annotation.CrossOrigin", "values": {}})
+        write_canonical(root / STRUCTURE, structure)
+        specimens.prepare_loop(root)
+        findings = json.loads(json.dumps(load_json(root / MTA_FINDINGS)))
+        findings["violations"] = {k: v for k, v in (findings.get("violations") or {}).items() if v.get("category") != "mandatory"}
+        specimens.runtime(root, package_rc=0, boot_ready=True)
+        _parity_records(root, "FAIL")
+        specimens.verify(root, errors=[], failures=[], findings=findings)
+        pipeline.admit(root)
+        stale_sha = load_json(root / PARITY_DIR / "receipt.json")
+        if not load_json(root / WORKLIST)["measure"]["parity_mismatches"]:
+            return _fail("the fixture starts with a parity obligation")
+        # the Operator step changes the product; its re-measure runs no comparison
+        sim = root / "verification" / "loop" / "op-sim-parity.py"
+        sim.write_text("import sys, json\nsys.path.insert(0, %r)\nfrom planner import specimens\nr = specimens.verify(%r, errors=[], failures=[], findings=json.loads(%r))\nsys.exit(r.returncode)\n"
+                       % (str(GOLDEN / ".hermes" / "lib"), str(root), json.dumps(findings)), encoding="utf-8")
+        victim = next(p for p in sorted((root / "src" / "main" / "java").rglob("*.java")))
+        victim.write_text(victim.read_text(encoding="utf-8") + "\n// operator change\n", encoding="utf-8")
+        p = _run([sys.executable, str(OPERATOR_STEP), "--root", str(root), "--operator", "adnan.drina", "--reason", "decided repair",
+                  "--adr", "ADR-019", "--no-mint", "--verify-cmd", "%s %s" % (sys.executable, sim)])
+        if p.returncode != 0:
+            return _fail("operator step: %s%s" % (p.stdout[-300:], p.stderr[-300:]))
+        snap = load_json(root / "verification" / "loop" / "accepted" / "parity" / "receipt.json")
+        if snap.get("verdict") != "UNMEASURED" or "no parity comparison" not in snap["unmeasured"]["reason"]:
+            return _fail("the step's baseline is UNMEASURED with its reason: %s" % snap)
+        if snap["unmeasured"]["prior"].get("verdict") != stale_sha.get("verdict") or not snap["unmeasured"]["prior"].get("file_sha256"):
+            return _fail("the replaced receipt is kept as history: %s" % snap["unmeasured"])
+        if list((root / PARITY_DIR / "scenarios").glob("*.json")) or not list((root / "verification" / "loop" / "parity-set-aside").rglob("*.json")):
+            return _fail("the other tree's records are set aside, not left live and not deleted")
+        wl = build_worklist(root)
+        if wl["measure"]["parity_mismatches"] is not None or not (wl["sources"]["parity"] or {}).get("unmeasured"):
+            return _fail("an UNMEASURED baseline is unknown parity, not zero and not the stale FAIL: %s" % wl["sources"]["parity"])
+        # a later revert restores the UNMEASURED baseline, never the stale FAIL
+        _parity_records(root, "FAIL")
+        restore_reports(root)
+        if load_json(root / PARITY_DIR / "receipt.json").get("verdict") != "UNMEASURED" or list((root / PARITY_DIR / "scenarios").glob("*.json")):
+            return _fail("a revert over an UNMEASURED baseline brings back no other tree's verdicts")
+
+        def sealed(binding_extra: dict | None = None, *, admission: str = "", artifact: str = "", scoped: list | None = None, verdict: str = "FAIL") -> None:
+            rec = load_json(root / "evidence" / "planning" / "admission-receipt.json")["receipt_digest"]
+            _parity_records(root, verdict)
+            r = load_json(root / PARITY_DIR / "receipt.json")
+            r["receipt_sha256"] = admission or rec
+            if binding_extra:
+                r["binding"] = binding_extra
+            write_canonical(root / PARITY_DIR / "receipt.json", r)
+            write_canonical(root / PARITY_DIR / "_run.json", {
+                "schema": "rhoai3.parity-run/v1", "producer": "run-parity.py", "receipt_sha256": admission or rec,
+                "binding": {"mode": "sealed"}, "scenario_filter": list(scoped or []), "security_mode": "disabled",
+                "artifact": {"sha256": artifact or load_json(root / "verification" / "build" / "package.json")["artifact_sha256"]},
+                "receipt": {"composed_by_this_run": True}})
+
+        base = [sys.executable, str(refresh), "--root", str(root), "--operator", "adnan.drina", "--reason", "sealed run on the accepted tree", "--no-mint"]
+        for label, kw, needle in (("another admission", {"admission": "f" * 64}, "admission receipt"),
+                                  ("another artifact", {"artifact": "e" * 64}, "artifact"),
+                                  ("a scoped run", {"scoped": ["sc:x"]}, "scoped"),
+                                  ("a candidate receipt", {"binding_extra": {"mode": "candidate"}}, "candidate-bound")):
+            sealed(**kw)
+            p = _run(base)
+            if p.returncode != 1 or needle not in p.stderr:
+                return _fail("refresh refuses %s: %s" % (label, p.stderr[-300:]))
+            if load_json(root / "verification" / "loop" / "accepted" / "parity" / "receipt.json").get("verdict") != "UNMEASURED":
+                return _fail("a refused refresh changes nothing (%s)" % label)
+        sealed()
+        p = _run(base)
+        if p.returncode != 0 or "LOOP_PARITY_REFRESH" not in p.stdout:
+            return _fail("a sealed comparison of the accepted tree refreshes the baseline: %s%s" % (p.stdout[-300:], p.stderr[-300:]))
+        snap = load_json(root / "verification" / "loop" / "accepted" / "parity" / "receipt.json")
+        steps = load_json(root / LOOP_STEPS)
+        if snap.get("verdict") != "FAIL" or not steps.get("parity_refreshes") or "parity_refreshed" not in steps["steps"][-1]:
+            return _fail("the refresh is snapshotted and recorded: %s %s" % (snap.get("verdict"), steps.get("parity_refreshes")))
+        if steps["parity_refreshes"][-1]["replaces"]["verdict"] != "UNMEASURED":
+            return _fail("the refresh records what it replaced: %s" % steps["parity_refreshes"][-1])
+        if not load_json(root / WORKLIST)["measure"]["parity_mismatches"] or load_json(root / ADMISSION_RECEIPT)["status"] != "ADMITTED":
+            return _fail("the rebuilt work list carries this tree's parity obligations and admission is re-sealed")
+    return 0
+
+
 def _set_wide_blocker_case() -> int:
     """A packaging failure about a SET reaches the work list as ONE typed
     blocker, never as a card for the repository it happened to name."""
@@ -1093,7 +1190,7 @@ def _scratch_in_tree_case(base: str = "org.acme.clinic") -> int:
 
 
 def main() -> int:
-    if _checked_veto_case() or _checked_family_advance_case() or _introduced_attribution_case() or _disposition_case() or _set_wide_blocker_case() or _harness_owned_root_case() or _parity_card_case():
+    if _checked_veto_case() or _checked_family_advance_case() or _introduced_attribution_case() or _disposition_case() or _set_wide_blocker_case() or _harness_owned_root_case() or _parity_baseline_refresh_case() or _parity_card_case():
         return 1
     if _scratch_in_tree_case() or _scratch_in_tree_case("com.example.store"):
         return 1

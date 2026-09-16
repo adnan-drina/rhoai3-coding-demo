@@ -21,7 +21,7 @@ def ensure_hermes_lib() -> None:
 
 
 ensure_hermes_lib()
-from planner.canonical import digest, load_json, write_canonical  # noqa: E402
+from planner.canonical import digest, load_json, sha256_file, write_canonical  # noqa: E402
 from planner.paths import DECISIONS, MIGRATION, PARITY_DIR, PRODUCT_EXEMPT, is_product_path as _is_product_path, LOOP_ACCEPTED, LOOP_CARDS, LOOP_DEFERRED, LOOP_ISSUED, LOOP_PENDING_FILES, LOOP_STATE, LOOP_STEPS, MTA_RESCAN_FINDINGS, VERIFY_BOOT, VERIFY_DIAGNOSTICS, VERIFY_PACKAGE, VERIFY_RUN, VERIFY_SUREFIRE, WORKLIST  # noqa: E402
 
 # The accepted state's tool reports, including the gate receipts: a rejected
@@ -472,7 +472,88 @@ def snapshot_parity(root: Path, source: dict[str, Any] | None = None) -> list[Pa
     return records
 
 
-def snapshot_reports(root: Path) -> None:
+PARITY_UNMEASURED = "UNMEASURED"
+
+
+def snapshot_parity_unmeasured(root: Path, reason: str, *, commit: str = "", by: str = "") -> dict[str, Any]:
+    """F2: the accepted baseline after a step that CHANGED the product.
+
+    The comparison on disk was made on the tree before that step, so freezing
+    it would give every later revert a receipt of another tree -- on v9 the
+    ADR-019 step froze the pre-adapter FAIL, a revert restored it, and the loop
+    re-issued the repair it had just applied. The baseline is instead recorded
+    as UNMEASURED for this tree, with the reason and the digest of the receipt
+    it replaces kept as history, until refresh-accepted-parity.py snapshots a
+    sealed comparison of this tree."""
+    dest = root / LOOP_ACCEPTED
+    live = root / PARITY_DIR / "receipt.json"
+    prior = {}
+    if live.is_file():
+        try:
+            doc = load_json(live)
+        except (OSError, ValueError):
+            doc = {}
+        prior = {"receipt_sha256": str((doc or {}).get("receipt_sha256") or ""), "verdict": str((doc or {}).get("verdict") or ""),
+                 "file_sha256": sha256_file(live), "binding": dict((doc or {}).get("binding") or {}) if isinstance((doc or {}).get("binding"), dict) else {}}
+    receipt = {"schema": "rhoai3.parity-receipt/v1", "verdict": PARITY_UNMEASURED, "entry_points": [], "total": 0,
+               "unmeasured": {"reason": str(reason), "commit": commit, "by": by, "prior": prior}}
+    dest.mkdir(parents=True, exist_ok=True)
+    shutil.rmtree(dest / PARITY_SNAPSHOT, ignore_errors=True)
+    (dest / PARITY_SNAPSHOT).mkdir(parents=True, exist_ok=True)
+    write_canonical(dest / PARITY_SNAPSHOT / "receipt.json", receipt)
+    write_canonical(dest / PARITY_SNAPSHOT_SOURCE, {"schema": PARITY_SOURCE_SCHEMA, "mode": "unmeasured", "reason": str(reason),
+                                                    "commit": commit, "by": by, "prior": prior})
+    # and the LIVE records say the same: the work list rebuilt next must not
+    # mint from another tree's verdicts (they are set aside, never deleted)
+    _set_parity_aside(root)
+    (root / PARITY_DIR).mkdir(parents=True, exist_ok=True)
+    write_canonical(root / PARITY_DIR / "receipt.json", receipt)
+    return receipt
+
+
+PARITY_SET_ASIDE = LOOP_ACCEPTED.parent / "parity-set-aside"
+
+
+def _set_parity_aside(root: Path) -> None:
+    live = root / PARITY_DIR
+    for rel in parity_records(live):
+        target = root / PARITY_SET_ASIDE / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(live / rel), str(target))
+
+
+def parity_not_of_this_tree(root: Path, *, direct: bool = False) -> str:
+    """Why the parity receipt on disk is NOT a whole comparison of the tree the
+    last verification measured ("" when it is): the comparison ran in that
+    verification (run.json runtime.parity), unscoped, and the runner's record
+    says its composer wrote the receipt, sealed. Anything else is a receipt of
+    another tree or of part of this one."""
+    live = root / PARITY_DIR / "receipt.json"
+    if not live.is_file():
+        return "no parity receipt"
+    run = _json_doc(root, VERIFY_RUN, {})
+    par = ((run.get("runtime") or {}).get("parity") or {}) if isinstance(run, dict) else {}
+    # ``direct``: the Operator ran run-parity.py on the accepted tree after the
+    # verification; the caller then binds it by admission receipt and artifact
+    if not direct and not par.get("ran"):
+        return "the last verification ran no parity comparison, so the receipt on disk is an earlier tree's"
+    if not direct and par.get("scoped"):
+        return "the last comparison was scoped to %s" % ", ".join(par.get("scenarios") or [])
+    rec = _json_doc(root, PARITY_DIR / "_run.json", {})
+    if list(rec.get("scenario_filter") or []):
+        return "the runner's record is scoped to %s" % ", ".join(rec.get("scenario_filter") or [])
+    if str(rec.get("security_mode") or "disabled") != "disabled" and direct:
+        return "the runner's record is of the %s security mode; the loop's baseline is the default mode's" % rec.get("security_mode")
+    if not bool((rec.get("receipt") or {}).get("composed_by_this_run")):
+        return "the runner's record does not say its composer wrote the receipt on disk"
+    doc = _json_doc(root, PARITY_DIR / "receipt.json", {})
+    mode = str(((doc.get("binding") or {}) if isinstance(doc.get("binding"), dict) else {}).get("mode") or "sealed")
+    if mode != "sealed":
+        return "the receipt is %s-bound, not a sealed comparison of the accepted tree" % mode
+    return ""
+
+
+def snapshot_reports(root: Path, *, parity_unmeasured: str = "", commit: str = "", by: str = "") -> None:
     """Keep the accepted state's tool reports so a rejected candidate's reports never survive it."""
     dest = root / LOOP_ACCEPTED
     dest.mkdir(parents=True, exist_ok=True)
@@ -480,7 +561,12 @@ def snapshot_reports(root: Path) -> None:
         src = root / rel
         if src.is_file():
             shutil.copy2(src, dest / rel.name)
-    snapshot_parity(root)
+    if parity_unmeasured and (parity_records(root / PARITY_DIR) or parity_records(dest / PARITY_SNAPSHOT)):
+        snapshot_parity_unmeasured(root, parity_unmeasured, commit=commit, by=by)
+    elif parity_unmeasured:
+        return  # parity was never compared here: there is nothing to freeze or to mark
+    else:
+        snapshot_parity(root)
 
 
 def restore_reports(root: Path) -> None:
@@ -498,6 +584,14 @@ def restore_reports(root: Path) -> None:
     if not kept:
         return  # no accepted comparison to restore: see PARITY_SNAPSHOT
     live = root / PARITY_DIR
+    try:
+        unmeasured = str((load_json(snap / "receipt.json") or {}).get("verdict") or "") == PARITY_UNMEASURED
+    except (OSError, ValueError):
+        unmeasured = False
+    if unmeasured:
+        # the accepted tree was never compared: no record of any other tree
+        # may stand in for it (they are set aside, never deleted)
+        _set_parity_aside(root)
     for rel in parity_records(live):
         if rel not in kept:
             (live / rel).unlink()

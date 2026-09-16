@@ -50,8 +50,10 @@ import io.vertx.ext.web.RoutingContext;
  *       policy does not allow is refused (403, as the source refused it) or simply
  *       not named; a requested header is echoed only when the policy allows it.</li>
  *   <li>A request without {@code Origin} is not touched at all. A same-origin request
- *       is not a CORS request for the source either, so it leaves with no CORS
- *       header, whatever the platform added.</li>
+ *       is not a CORS request for the source either: the platform's CORS filter does
+ *       not judge it, it reaches ordinary routing exactly as without {@code Origin}
+ *       (the header is restored after authorization), and it leaves with no CORS
+ *       header.</li>
  *   <li>It does not touch {@code Content-Type} or any other response header.</li>
  * </ul>
  *
@@ -88,6 +90,7 @@ public class SourceCorsResponseAdapter {
     static final String DEFERRED_ORIGIN = "rhoai3.source-cors.deferred-origin";
     static final String DEFERRED_REJECT = "rhoai3.source-cors.deferred-reject";
     static final String ANSWERED = "rhoai3.source-cors.answered";
+    static final String SAME_ORIGIN = "rhoai3.source-cors.same-origin";
 
     void register(@Observes Filters filters) {
         Policy policy = Policy.load(ConfigProvider.getConfig());
@@ -95,9 +98,7 @@ public class SourceCorsResponseAdapter {
             return;
         }
         filters.register(ctx -> early(policy, ctx), EARLY_PRIORITY);
-        if (policy.securityPrecedes) {
-            filters.register(ctx -> late(policy, ctx), LATE_PRIORITY);
-        }
+        filters.register(ctx -> late(policy, ctx), LATE_PRIORITY);
     }
 
     // ------------------------------------------------------------------ filters
@@ -116,6 +117,12 @@ public class SourceCorsResponseAdapter {
         }
         HttpServerResponse response = ctx.response();
         if (isSameOrigin(request, origin)) {
+            // Not a CORS request for the source: it proceeds to ordinary routing exactly
+            // as without Origin (ADR-020). The platform's CORS filter would otherwise
+            // judge it (a 403 for a method outside its list); hide the header from it
+            // and restore it once routing is next.
+            ctx.put(SAME_ORIGIN, origin);
+            request.headers().remove(ORIGIN);
             ctx.addHeadersEndHandler(ignored -> stripAll(response));
             ctx.next();
             return;
@@ -151,6 +158,12 @@ public class SourceCorsResponseAdapter {
     static void late(Policy policy, RoutingContext ctx) {
         HttpServerRequest request = ctx.request();
         HttpServerResponse response = ctx.response();
+        String sameOrigin = ctx.get(SAME_ORIGIN);
+        if (sameOrigin != null) {
+            request.headers().set(ORIGIN, sameOrigin);
+            ctx.next();
+            return;
+        }
         String deferred = ctx.get(DEFERRED_ORIGIN);
         if (deferred != null) {
             request.headers().set(ORIGIN, deferred);

@@ -106,7 +106,11 @@ VARIANT_NAME_CHARS = "a-z, 0-9 and -, starting with a letter or digit"
 # computed revert (revert_then_read), so "the refused write changed nothing"
 # is measured; v1 dropped them and every refused PUT/DELETE was INCONCLUSIVE
 # for want of an effect.
-VARIANT_DERIVATION = "rhoai3.fixture-variant-derivation/v2"
+# v3 (2026-09-16, v9 re-measure): every variant scenario declares
+# reset_before -- a variant scenario is defined by its dataset state, and a
+# read that inherited the state a revert-then-read write left (the baseline,
+# account enabled) answered 200 where the source answered 401.
+VARIANT_DERIVATION = "rhoai3.fixture-variant-derivation/v3"
 # The role a read-back plays when the request it follows is REFUSED: its
 # before and after bodies are the source's, and the claim is that they are
 # equal -- the write did not happen. Carried on the effect so a report can say
@@ -122,6 +126,16 @@ def effects_strategy_of(sc: dict[str, Any]) -> str:
     reader = (sc or {}).get("effects_reader")
     return str(reader.get("strategy") or "") if isinstance(reader, dict) else ""
 _VARIANT_NAME = re.compile(r"^[a-z0-9][a-z0-9-]*$")
+
+
+# what a CORS-bearing scenario IS (``scenario_type``). A browser never sends
+# credentials on a preflight (WHATWG Fetch, CORS protocol), so an OPTIONS that
+# carries an identity is a DIAGNOSTIC PROBE: admitted by the loader under that
+# type only, recorded and compared like any exchange, and never counted as
+# browser-preflight coverage.
+SCENARIO_BROWSER_PREFLIGHT = "browser-preflight"
+SCENARIO_CORS_ACTUAL = "cors-actual"
+SCENARIO_DIAGNOSTIC_PROBE = "diagnostic-probe"
 
 
 class CorpusError(ValueError):
@@ -591,8 +605,11 @@ def load_corpus(root: Path, security_mode: Any = DEFAULT_SECURITY_MODE, variant:
             if "origin" not in hdrs or "access-control-request-method" not in hdrs:
                 raise CorpusError("scenario %s is an OPTIONS preflight and must carry Origin and Access-Control-Request-Method "
                                   "(and Access-Control-Request-Headers when the actual request sends any)" % sc["id"])
-            if str((sc.get("identity") or {}).get("kind") or "none") != "none":
-                raise CorpusError("scenario %s is a preflight: browsers send it without credentials, so it carries no identity" % sc["id"])
+            if (str((sc.get("identity") or {}).get("kind") or "none") != "none"
+                    and str(sc.get("scenario_type") or "") != SCENARIO_DIAGNOSTIC_PROBE):
+                raise CorpusError("scenario %s is a preflight: browsers send it without credentials, so it carries no identity "
+                                  "(an authenticated OPTIONS is admitted only as scenario_type %s)"
+                                  % (sc["id"], SCENARIO_DIAGNOSTIC_PROBE))
         identity_gap = identity_shape_gap(sc.get("identity"))
         if identity_gap:
             raise CorpusError("scenario %s %s" % (sc["id"], identity_gap))
@@ -743,7 +760,10 @@ def cors_coverage(doc: dict[str, Any], source_policies: list[str] | None = None)
         lower = [(sc, {str(k).lower(): str(v) for k, v in (sc.get("headers") or {}).items()}) for sc in mine]
         actual = [sc for sc, h in lower if str(sc.get("method")).upper() != "OPTIONS" and "origin" in h]
         need = {str(x).strip().lower() for x in (pol.get("request_headers") or []) if str(x).strip()}
+        # a diagnostic probe carries credentials no browser sends on a
+        # preflight: it answers a question, and discharges no coverage
         pre = [sc for sc, h in lower if str(sc.get("method")).upper() == "OPTIONS" and "origin" in h
+               and str(sc.get("scenario_type") or "") != SCENARIO_DIAGNOSTIC_PROBE
                and "access-control-request-method" in h
                and need <= {t.strip().lower() for t in h.get("access-control-request-headers", "").split(",") if t.strip()}]
         if not actual:

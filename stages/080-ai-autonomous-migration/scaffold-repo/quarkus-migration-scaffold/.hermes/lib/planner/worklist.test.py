@@ -709,7 +709,7 @@ def _parity_advice_case() -> int:
                 "schema": "rhoai3.scenario-parity/v1", "entry_point": ep_root, "scenario": spec["read_root"], "verdict": "FAIL",
                 "reason": "status 303 vs 302; header Location %s vs %s (source %s)" % (have_loc, want_loc, raw_loc)})
             w("scenarios/plain.json", {
-                "schema": "rhoai3.scenario-parity/v1", "entry_point": ep_api, "scenario": spec["preflight"] + "-actual",
+                "schema": "rhoai3.scenario-parity/v1", "entry_point": ep_api, "scenario": "sc:plain-" + spec["api_member"],
                 "verdict": "FAIL", "reason": "status 500 vs 200"})
             items = {(i["entry_point"], i["scenario"], i["cause"]): i for i in parity_items(root, bundle)}
 
@@ -758,7 +758,7 @@ def _parity_advice_case() -> int:
             if "following the redirect" not in blob or "404" not in blob or "another redirect status" not in blob:
                 return _fail("the redirect advice must refuse 303, redirect following and a dead URL: %s" % blob[:900])
 
-            plain = items.get((ep_api, spec["preflight"] + "-actual", "response"))
+            plain = items.get((ep_api, "sc:plain-" + spec["api_member"], "response"))
             if not plain or "swagger" in json.dumps(plain["advice"]) or "redirect" in json.dumps(plain["advice"]["refused"]):
                 return _fail("a status-only difference is not a redirect and gets no redirect advice: %s" % plain)
 
@@ -2351,10 +2351,201 @@ def _harness_owned_guard_case() -> int:
     return 0
 
 
+def _cors_scenario_case() -> int:
+    """ADR-020: a cross-origin scenario's status (and a preflight's whole
+    response) is the CORS adapter's obligation; stricter is never waived; an
+    actual request's body stays the operation's; a non-CORS scenario is untouched."""
+    import json
+    import tempfile
+
+    from planner.paths import PARITY_DIR
+
+    ep = "ep:com.acme.ledger.AccountResource#list():http"
+    ctl = "src/main/java/com/acme/ledger/AccountResource.java"
+    bundle = {"entry_points": [{"id": ep, "path": ctl}]}
+    with tempfile.TemporaryDirectory(prefix="cors-scen-") as td:
+        root = Path(td)
+        pdir = root / PARITY_DIR
+        (pdir / "scenarios").mkdir(parents=True)
+        corpus = root / "verification" / "scenarios" / "corpus.json"
+        corpus.parent.mkdir(parents=True)
+        corpus.write_text(json.dumps({"scenarios": [
+            {"id": "sc:xo-options-accounts", "method": "OPTIONS", "cors_policy": "crossorigin:1",
+             "headers": {"Origin": "http://self", "Access-Control-Request-Method": "PATCH"}}]}))
+
+        def w(name, sid, reason, **extra):
+            (pdir / "scenarios" / name).write_text(json.dumps(dict(
+                {"schema": "rhoai3.scenario-parity/v1", "entry_point": ep, "scenario": sid, "verdict": "FAIL", "reason": reason}, **extra)))
+
+        w("a.json", "sc:cors-same-origin-unmapped-accounts", "status 403 vs 405; header Allow None vs GET, OPTIONS",
+          request={"method": "DELETE"})
+        w("b.json", "sc:cors-actual-accounts", "body 11aa vs 22bb; status 500 vs 200; header Access-Control-Allow-Origin None vs *")
+        w("c.json", "sc:cors-preflight-enabled-accounts", "status 200 vs 401; body  vs {}; header WWW-Authenticate None vs Basic realm=x")
+        w("d.json", "sc:xo-options-accounts", "status 403 vs 200; header Allow None vs GET")
+        w("e.json", "sc:read-accounts", "status 403 vs 405")
+        w("f.json", "sc:cors-preflight-x", "status 403 vs 200", verdict="INCONCLUSIVE")
+        # F3: body + Content-Type only is body parity and PARITY_CONTENT_TYPE, never PARITY_CORS
+        w("g.json", "sc:cors-actual-bodyonly", "body 11aa vs 22bb; header content-type application/json;charset=UTF-8 vs application/json")
+        w("h.json", "sc:cors-preflight-bodyonly", "body 11aa vs 22bb; header content-type application/json;charset=UTF-8 vs application/json")
+        items = parity_items(root, bundle)
+        by = {(i["scenario"], i["rule_id"]): i for i in items}
+        want = {("sc:cors-same-origin-unmapped-accounts", "PARITY_CORS"), ("sc:cors-actual-accounts", "PARITY_CORS"),
+                ("sc:cors-actual-accounts", "PARITY"), ("sc:cors-preflight-enabled-accounts", "PARITY_CORS"),
+                ("sc:xo-options-accounts", "PARITY_CORS"), ("sc:read-accounts", "PARITY"),
+                ("sc:cors-actual-bodyonly", "PARITY"), ("sc:cors-actual-bodyonly", "PARITY_CONTENT_TYPE"),
+                ("sc:cors-preflight-bodyonly", "PARITY"), ("sc:cors-preflight-bodyonly", "PARITY_CONTENT_TYPE")}
+        if set(by) != want:
+            return _fail("cross-origin scenario diffs are typed by ADR-020: %s" % sorted(by))
+        if "status 403 vs 405" not in by[("sc:cors-same-origin-unmapped-accounts", "PARITY_CORS")]["detail"]:
+            return _fail("a stricter same-origin status is a CORS obligation: %s" % by[("sc:cors-same-origin-unmapped-accounts", "PARITY_CORS")])
+        actual_cors, actual_resp = by[("sc:cors-actual-accounts", "PARITY_CORS")], by[("sc:cors-actual-accounts", "PARITY")]
+        if "status 500 vs 200" not in actual_cors["detail"] or "body" in actual_cors["detail"] or "body 11aa" not in actual_resp["detail"]:
+            return _fail("an actual request's status is the CORS decision; its body is the operation's: %s | %s"
+                         % (actual_cors["detail"], actual_resp["detail"]))
+        pre = by[("sc:cors-preflight-enabled-accounts", "PARITY_CORS")]["detail"]
+        if not all(t in pre for t in ("status 200 vs 401", "body", "WWW-Authenticate")):
+            return _fail("a preflight's complete response, challenge included, is the CORS obligation: %s" % pre)
+        if by[("sc:read-accounts", "PARITY")]["path"] != ctl or by[("sc:cors-same-origin-unmapped-accounts", "PARITY_CORS")]["path"] == ctl:
+            return _fail("a non-CORS scenario keeps its controller locus; a CORS one is the adapter's")
+        if "ADR-020" not in json.dumps(by[("sc:xo-options-accounts", "PARITY_CORS")]["advice"]):
+            return _fail("the CORS advice states the complete-response rule")
+    return 0
+
+
+def _scoped_carry_case() -> int:
+    """F1 (v9 t_91e9a0a1, t_c076813e, t_a97e890b): a SCOPED comparison reports
+    every entry point it did not re-run INCONCLUSIVE; that is carried from the
+    accepted baseline, never a regression. A re-run scenario is judged strictly,
+    a carry never turns FAIL into PASS, and an UNMEASURED baseline retains."""
+    from planner.worklist import PARITY_UNMEASURED, carry_unmeasured, parity_remeasured, parity_obligation_id
+
+    epa, epb, epc = "ep:x.A#a():http", "ep:x.B#b():http", "ep:x.C#c():http"
+    ida = parity_obligation_id(epa, "sc:cors-preflight-a", "cors")
+
+    def receipt(rows, sha):
+        return {"schema": "rhoai3.parity-receipt/v1", "receipt_sha256": sha, "verdict": "FAIL",
+                "entry_points": [{"entry_point": e, "verdict": v, "reason": r, "scenarios": sc} for e, v, r, sc in rows]}
+
+    before = receipt([(epa, "FAIL", "sc:cors-preflight-a: header x", ["sc:cors-preflight-a"]),
+                      (epb, "PASS", "1 required", ["sc:read-b"]), (epc, "FAIL", "status 500 vs 200", ["sc:read-c"])], "a409f225ccfd")
+    after = receipt([(epa, "PASS", "1 required", ["sc:cors-preflight-a"]),
+                     (epb, "INCONCLUSIVE", "sc:read-b is bound to receipt a409f225ccfd", ["sc:read-b"]),
+                     (epc, "INCONCLUSIVE", "sc:read-c is bound to receipt a409f225ccfd", ["sc:read-c"])], "b0")
+    run = {"runtime": {"parity": {"ran": True, "scoped": True, "scenarios": ["sc:cors-preflight-a"], "trigger": "issued-card"}}}
+    remeasured = parity_remeasured(run)
+    if remeasured != {"cors-preflight-a"} or parity_remeasured({"runtime": {"parity": {"ran": True, "scoped": False}}}) is not None:
+        return _fail("the re-measured set is run.json's scoped scenario list: %s" % remeasured)
+    eff, carried = carry_unmeasured(before, after, remeasured)
+    rows = {r["entry_point"]: r for r in eff["entry_points"]}
+    if rows[epb]["verdict"] != "PASS" or "carried_from" not in rows[epb] or rows[epb]["carried_from"]["receipt_sha256"] != "a409f225ccfd":
+        return _fail("B, passing before and not re-run, is carried and says from where: %s" % rows[epb])
+    if rows[epc]["verdict"] != "FAIL" or [c["entry_point"] for c in carried] != [epb, epc]:
+        return _fail("a carry keeps a FAIL a FAIL: %s %s" % (rows[epc], carried))
+    m = {"known": True, "tuple": [0, 0, 0], "parity_mismatches": 1}
+    common = dict(gate="parity", issued_items=[ida], prev_gate_items={ida}, cur_gate_items=set(),
+                  prev_runtime={}, cur_runtime={}, prev_parity=before, cur_parity=after)
+    ok, why = progress(m, m, set(), set(), parity_remeasured=remeasured, **common)
+    if ok is not True:
+        return _fail("a scoped repair whose own scenario passes is accepted, B carried: %s" % why)
+    ok, why = progress(m, m, set(), set(), **common)
+    if ok is not False or "was PASS before" not in why:
+        return _fail("the control: without the scope the INCONCLUSIVE row is still read as a regression: %s %s" % (ok, why))
+    # A re-run AND regressed: strict
+    regressed = receipt([(epa, "FAIL", "sc:cors-preflight-a: header y", ["sc:cors-preflight-a"]),
+                         (epb, "INCONCLUSIVE", "bound", ["sc:read-b"])], "b1")
+    ok, why = progress(m, m, set(), set(), parity_remeasured=remeasured, **dict(common, cur_parity=regressed, cur_gate_items={ida}))
+    if ok is not False:
+        return _fail("a re-run scenario that still fails is judged strictly: %s" % why)
+    before2 = receipt([(epa, "PASS", "", ["sc:cors-preflight-a"]), (epb, "PASS", "", ["sc:read-b"])], "c0")
+    after2 = receipt([(epa, "INCONCLUSIVE", "no capture", ["sc:cors-preflight-a"]), (epb, "INCONCLUSIVE", "bound", ["sc:read-b"])], "c1")
+    ok, why = progress(m, m, set(), set(), parity_remeasured=remeasured, **dict(common, prev_parity=before2, cur_parity=after2, issued_items=[], prev_gate_items=set()))
+    if ok is not False or "cors-preflight-a" not in why and epa not in why:
+        return _fail("a re-measured scenario that became INCONCLUSIVE is a regression, never carried: %s %s" % (ok, why))
+    # an UNMEASURED baseline: retained, never reverted
+    unmeasured = {"schema": "rhoai3.parity-receipt/v1", "verdict": PARITY_UNMEASURED, "entry_points": [],
+                  "unmeasured": {"reason": "operator step 2410082 changed the product after the last comparison"}}
+    ok, why = progress(m, m, set(), set(), parity_remeasured=remeasured, **dict(common, prev_parity=unmeasured))
+    if ok is not UNPROVEN or "refresh-accepted-parity.py" not in why:
+        return _fail("an UNMEASURED baseline retains the candidate and names the refresh: %s %s" % (ok, why))
+    return 0
+
+
+def _receipt_v2_case() -> int:
+    """The composer's current receipt: navigation_obligations[], enabled-mode
+    CORS scenario types, cors.outcomes browser_access, and a refused write
+    whose source effect was never observed."""
+    import json
+    import tempfile
+
+    from planner.paths import PARITY_DIR
+    from planner.worklist import parity_obligation_id, parity_state
+
+    ep = "ep:com.acme.ledger.EntryResource#toDocs():http"
+    ep2 = "ep:com.acme.ledger.AccountResource#delete(int):http"
+    ctl = "src/main/java/com/acme/ledger/EntryResource.java"
+    bundle = {"entry_points": [{"id": ep, "path": ctl}, {"id": ep2, "path": "src/main/java/com/acme/ledger/AccountResource.java"}]}
+    with tempfile.TemporaryDirectory(prefix="receipt-v2-") as td:
+        root = Path(td)
+        pdir = root / PARITY_DIR
+        (pdir / "scenarios").mkdir(parents=True)
+        corpus = root / "verification" / "scenarios" / "corpus.json"
+        corpus.parent.mkdir(parents=True)
+        corpus.write_text(json.dumps({"scenarios": [
+            {"id": "sc:cors-enabled-preflight-p1", "method": "OPTIONS", "cors_policy": "crossorigin:1", "scenario_type": "browser-preflight"},
+            {"id": "sc:cors-enabled-actual-anonymous-p1", "method": "GET", "cors_policy": "crossorigin:1", "scenario_type": "cors-actual"},
+            {"id": "sc:cors-enabled-probe-authenticated-p1", "method": "OPTIONS", "cors_policy": "crossorigin:1", "scenario_type": "diagnostic-probe"},
+            {"id": "sc:cors-enabled-actual-authenticated-p1", "method": "GET", "cors_policy": "crossorigin:1", "scenario_type": "cors-actual"}]}))
+        (pdir / "receipt.json").write_text(json.dumps({
+            "schema": "rhoai3.parity-receipt/v1", "verdict": "FAIL",
+            "entry_points": [{"entry_point": ep, "verdict": "PASS", "navigation": "failed", "scenarios": ["sc:read-entry"]}],
+            "navigation_obligations": [{"entry_point": ep, "kind": "navigation", "verdict": "FAIL", "scenarios": ["sc:read-entry"],
+                                        "reason": "redirect target http://d/ui/index.html is dead on the destination (404)",
+                                        "navigation_failures": [{"scenario": "sc:read-entry", "target": "http://d/ui/index.html",
+                                                                 "terminal": "dead", "final_status": 404}]}],
+            "cors": {"source_policies": ["crossorigin:1"], "gaps": [], "outcomes": {
+                "sc:cors-enabled-actual-authenticated-p1": {"policy": "crossorigin:1", "type": "cors-actual", "browser_access": "prevents"},
+                "sc:cors-enabled-actual-authenticated-p1-granting": {"policy": "crossorigin:1", "type": "cors-actual", "browser_access": "prevents"}}}}))
+
+        def w(name, sid, reason, **extra):
+            (pdir / "scenarios" / name).write_text(json.dumps(dict(
+                {"schema": "rhoai3.scenario-parity/v1", "entry_point": ep2, "scenario": sid, "verdict": "FAIL", "reason": reason}, **extra)))
+
+        w("a.json", "sc:cors-enabled-preflight-p1", "status 200 vs 401; header WWW-Authenticate None vs Basic realm=x; body  vs {}")
+        w("b.json", "sc:cors-enabled-actual-anonymous-p1", "header Access-Control-Allow-Origin * vs None; body 1 vs 2; header content-type application/json;charset=UTF-8 vs application/json")
+        w("c.json", "sc:cors-enabled-probe-authenticated-p1", "status 200 vs 401")
+        w("d.json", "sc:cors-enabled-actual-authenticated-p1", "header Access-Control-Allow-Origin None vs *; header Access-Control-Expose-Headers None vs errors")
+        w("e.json", "sc:cors-enabled-actual-authenticated-p1-granting", "header Access-Control-Allow-Origin * vs None")
+        w("f.json", "sc:refuse-delete-accounts", "effect eff:accounts-after (the refused write changed the state it reads): status 200 vs 200, body 1 vs 2",
+          results={"response": "PASS", "destination_no_effect": "FAIL", "source_effect": {"verdict": "INCONCLUSIVE", "reason": "the source's post-request state was not observed"}})
+        notes: list = []
+        items = parity_items(root, bundle, notes)
+        by = {(i["scenario"], i["rule_id"]): i for i in items}
+        nav = [i for i in items if i.get("cause") == "redirect-target-dead"]
+        if len(nav) != 1 or nav[0]["path"] != ctl or nav[0]["scenarios"] != ["sc:read-entry"]:
+            return _fail("a navigation obligation is read from navigation_obligations[]: %s" % nav)
+        st = parity_state(json.loads((pdir / "receipt.json").read_text()))
+        if st["obligations"][parity_obligation_id(ep, "", "navigation")]["verdict"] != "FAIL" or st["entry_points"][ep] != "PASS":
+            return _fail("a passing redirect with a dead target keeps PASS and its navigation obligation is FAIL: %s" % st["entry_points"])
+        pre = by.get(("sc:cors-enabled-preflight-p1", "PARITY_CORS"))
+        if not pre or "WWW-Authenticate" not in pre["detail"] or ("sc:cors-enabled-preflight-p1", "PARITY") in by:
+            return _fail("an enabled browser preflight's whole response is the CORS obligation (typed by the corpus): %s" % sorted(by))
+        if not {("sc:cors-enabled-actual-anonymous-p1", r) for r in ("PARITY_CORS", "PARITY", "PARITY_CONTENT_TYPE")} <= set(by):
+            return _fail("an enabled actual request: CORS headers, body at the controller, charset its own: %s" % sorted(by))
+        if any(k[0] == "sc:cors-enabled-probe-authenticated-p1" for k in by) or not any(n["kind"] == "diagnostic-probe" for n in notes):
+            return _fail("a diagnostic probe owes no worker anything and is noted: %s" % notes)
+        if any(k[0] == "sc:cors-enabled-actual-authenticated-p1" for k in by) or not any(n["kind"] == "cors-prevented" for n in notes):
+            return _fail("a source that prevents the exchange owes no permission the destination also withholds: %s" % sorted(by))
+        if ("sc:cors-enabled-actual-authenticated-p1-granting", "PARITY_CORS") not in by:
+            return _fail("a destination granting what a preventing source did not is still owed (control)")
+        if any(k[0] == "sc:refuse-delete-accounts" for k in by) or not any(n["kind"] == "source-effect-unobserved" for n in notes):
+            return _fail("an effect judged without the source's own effect is a note, never a repair card: %s" % sorted(by))
+    return 0
+
+
 def main() -> int:
     if (_runtime_identity_case() or _gate_progress_case() or _batch_scope_case() or _checked_family_case()
             or _set_wide_case() or _config_value_case() or _parity_typing_case() or _parity_advice_case()
-            or _parity_navigation_case() or _owed_adapter_case() or _harness_owned_guard_case() or _parity_gate_case() or _unit_formation_case() or _unit_bound_case() or _unit_seal_case()
+            or _parity_navigation_case() or _owed_adapter_case() or _cors_scenario_case() or _scoped_carry_case() or _receipt_v2_case() or _harness_owned_guard_case() or _parity_gate_case() or _unit_formation_case() or _unit_bound_case() or _unit_seal_case()
             or _unit_mode_case() or _unit_inert_case() or _unit_config_case()
             or _unit_experiment_table_case() or _unit_explained_case() or _unit_progress_case()
             or _unit_budget_case()):

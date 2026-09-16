@@ -52,7 +52,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _loop_common import attempts_spent, candidate_sha256, ensure_hermes_lib, git, load_deferred, load_issued, load_state, load_steps, pending_for, product_paths_changed, publish_loop_state, retry_key_for, save_deferred, save_steps, snapshot_reports  # noqa: E402
+from _loop_common import attempts_spent, candidate_sha256, ensure_hermes_lib, git, load_deferred, load_issued, load_state, load_steps, pending_for, product_paths_changed, publish_loop_state, retry_key_for, save_deferred, parity_not_of_this_tree, save_steps, snapshot_reports  # noqa: E402
 
 ensure_hermes_lib()
 from planner import pipeline  # noqa: E402
@@ -233,7 +233,11 @@ def main(argv: list[str] | None = None) -> int:
     if not state or not (state.get("measure") or {}).get("known"):
         return _refuse("measure not known after the commit %s: %s" % (sha[:12], (state or {}).get("measure")))
     cur = load_json(root / WORKLIST)
-    snapshot_reports(root)
+    # F2: the step changed the product; a parity receipt of the tree before it
+    # is not this tree's baseline
+    stale = parity_not_of_this_tree(root)
+    snapshot_reports(root, parity_unmeasured=("operator step %s changed the product and %s" % (sha[:12], stale)) if stale else "",
+                     commit=sha, by=args.operator)
     cleared: list[str] = []
     if args.clear_deferred:
         cleared = [c for c in open_clusters if c in set(args.clear_deferred)]

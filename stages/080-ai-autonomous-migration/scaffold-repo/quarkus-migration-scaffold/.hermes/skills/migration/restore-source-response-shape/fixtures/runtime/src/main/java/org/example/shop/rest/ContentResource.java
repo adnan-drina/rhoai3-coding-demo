@@ -31,6 +31,14 @@ public class ContentResource {
         return typed("application/json;profile=x;charset=UTF-8");
     }
 
+    /** What the application sees of Origin (a same-origin request keeps it). */
+    @GET
+    @Path("origin")
+    @jakarta.ws.rs.Produces("text/plain")
+    public String origin(@jakarta.ws.rs.HeaderParam("Origin") String origin) {
+        return String.valueOf(origin);
+    }
+
     @GET
     @Path("text-utf8")
     public Response textUtf8() {

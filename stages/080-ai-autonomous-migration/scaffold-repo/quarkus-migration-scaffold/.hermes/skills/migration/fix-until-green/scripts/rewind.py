@@ -38,7 +38,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _loop_common import ensure_hermes_lib, git, is_product_path, load_deferred, load_issued, load_state, load_steps, product_paths_changed, revert_paths, save_deferred, save_steps, snapshot_reports  # noqa: E402
+from _loop_common import ensure_hermes_lib, git, is_product_path, load_deferred, load_issued, load_state, load_steps, product_paths_changed, revert_paths, save_deferred, parity_not_of_this_tree, save_steps, snapshot_reports  # noqa: E402
 
 ensure_hermes_lib()
 from planner import pipeline  # noqa: E402
@@ -150,7 +150,11 @@ def main(argv: list[str] | None = None) -> int:
                    "fix-until-green: rewind to step %d (%s) by %s: %s" % (args.to_step, commit[:12], args.operator, args.reason))
         if proc.returncode != 0:
             return _refuse("commit failed: %s" % proc.stderr.strip()[:200])
-    snapshot_reports(root)
+    # F2: the restored tree is the target step's; a parity receipt made on any
+    # other tree is not its baseline
+    stale = parity_not_of_this_tree(root)
+    snapshot_reports(root, parity_unmeasured=("rewind to step %d (%s) and %s" % (args.to_step, commit[:12], stale)) if stale else "",
+                     commit=git(root, "rev-parse", "HEAD").stdout.strip(), by=args.operator)
 
     moved = recorded[args.to_step + 1:]
     rejected = list(steps.get("rejected") or [])

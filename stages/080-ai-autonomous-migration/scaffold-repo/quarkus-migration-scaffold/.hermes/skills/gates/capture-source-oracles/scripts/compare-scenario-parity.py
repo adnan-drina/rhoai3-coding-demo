@@ -137,7 +137,7 @@ def main(argv: list[str] | None = None) -> int:
                "binding": dict(binding) if binding else {"mode": BINDING_CANDIDATE, "gaps": list(binding_gaps)},
                "corpus_sha256": "", "security_mode": security_mode, "security_variant": variant,
                "reason": "", "request": {}, "reset": {},
-               "before": [], "before_state": "", "expected": {}, "observed": {}, "effects": []}
+               "before": [], "before_state": "", "expected": {}, "observed": {}, "effects": [], "results": {}}
     out = root / scenario_parity_dir(security_mode, variant) / (scenario_slug(args.scenario) + ".json")
     if binding_gaps:
         verdict["reason"] = "the issued binding could not be made: " + "; ".join(binding_gaps)
@@ -432,7 +432,27 @@ def main(argv: list[str] | None = None) -> int:
             write_canonical(out, verdict)
             print("REFUSE: SCENARIO_PARITY %s INCONCLUSIVE (%s)" % (args.scenario, verdict["reason"]), file=sys.stderr)
             return 1
-        expected_after = before_expected
+        # ADR-020: what the SOURCE's post-request state was is known only
+        # when the capture observed it (a same-engine store, reverted on the
+        # fixture rows, read by the still-running source). Otherwise the
+        # destination's reads can show only that the DESTINATION changed
+        # nothing -- judged against the source's baseline reads, as a
+        # separate result -- and the source effect stays INCONCLUSIVE.
+        source_effects = oracle.get("source_effects") if isinstance(oracle.get("source_effects"), dict) else {}
+        if source_effects.get("observed") is True and oracle.get("effects"):
+            src_before = {str(r.get("id")): (r.get("status"), r.get("body_sha256")) for r in before_expected}
+            src_after = {str(r.get("id")): (r.get("status"), r.get("body_sha256")) for r in oracle.get("effects") or []}
+            changed = sorted(k for k in src_after if src_before.get(k) != src_after[k])
+            verdict["results"]["source_effect"] = {
+                "verdict": "OBSERVED", "unchanged": not changed, "changed": changed,
+                "snapshot_sha256": str((source_effects.get("snapshot") or {}).get("sha256") or "")}
+        else:
+            expected_after = before_expected
+            verdict["results"]["source_effect"] = {
+                "verdict": "INCONCLUSIVE",
+                "reason": "the source's post-request state was not observed (%s); a declared refusal and a captured 4xx "
+                          "prove neither that the handler never ran nor that it left the state unchanged"
+                          % (source_effects.get("reason") or "the capture records no source observation")}
     for eff in expected_after:
         probe = http_observe(args.dest_url, str(eff.get("method") or "GET"), str(eff.get("path") or "/"), headers=eff_headers)
         row = {"id": eff.get("id"), "method": eff.get("method"), "path": eff.get("path"),
@@ -448,6 +468,18 @@ def main(argv: list[str] | None = None) -> int:
                          % (row["id"], " (the refused write changed the state it reads)" if role == EFFECT_ROLE_UNCHANGED else "",
                             probe.get("status"), eff.get("status"),
                             str(probe.get("body_sha256"))[:12], str(eff.get("body_sha256"))[:12]))
+    if rtr:
+        # the revert left the BASELINE; a variant comparison leaves the
+        # variant, so no later scenario -- even one that declares no reset --
+        # is judged on a state it is not about (v9: 14 reads answered 200)
+        step = _run(rtr_argvs[1])
+        verdict["restored_variant"] = step
+        if step["rc"] != 0:
+            verdict["reason"] = ("the %s variant could not be re-applied after the revert (%s exited %d), so the destination is "
+                                 "left on the baseline: %s" % (variant, rtr_argvs[1][0], step["rc"], step["output"][-200:]))
+            write_canonical(out, verdict)
+            print("REFUSE: SCENARIO_PARITY %s INCONCLUSIVE (%s)" % (args.scenario, verdict["reason"]), file=sys.stderr)
+            return 1
     declared = [str(e.get("id") or e.get("path")) for e in (sc.get("effects") or [])]
     recorded_effects = [str(e.get("id")) for e in expected_after]
     if sorted(declared) != sorted(recorded_effects):
@@ -465,8 +497,29 @@ def main(argv: list[str] | None = None) -> int:
         write_canonical(out, verdict)
         print("REFUSE: SCENARIO_PARITY %s INCONCLUSIVE (%s)" % (args.scenario, verdict["reason"]), file=sys.stderr)
         return 1
-    verdict["verdict"] = "PASS" if not diffs else "FAIL"
-    verdict["reason"] = "; ".join(diffs)
+    # the results, SEPARATELY: the first response, what the destination's
+    # reads show, and (for a refused variant write) what is known of the
+    # source's own effect
+    effect_diffs = [d for d in diffs if d.startswith("effect ")]
+    verdict["results"]["response"] = "FAIL" if len(effect_diffs) != len(diffs) else "PASS"
+    if verdict["effects"]:
+        name = "destination_effect" if not rtr or verdict["results"].get("source_effect", {}).get("verdict") == "OBSERVED" \
+            else "destination_no_effect"
+        verdict["results"][name] = "FAIL" if effect_diffs else "PASS"
+    source_open = verdict["results"].get("source_effect", {}).get("verdict") == "INCONCLUSIVE"
+    if diffs:
+        verdict["verdict"] = "FAIL"
+        verdict["reason"] = "; ".join(diffs)
+    elif source_open:
+        verdict["verdict"] = "INCONCLUSIVE"
+        verdict["reason"] = verdict["results"]["source_effect"]["reason"]
+    else:
+        verdict["verdict"] = "PASS"
+        verdict["reason"] = ""
+    write_canonical(out, verdict)
+    if verdict["verdict"] == "INCONCLUSIVE":
+        print("REFUSE: SCENARIO_PARITY %s INCONCLUSIVE (%s)" % (args.scenario, verdict["reason"]), file=sys.stderr)
+        return 1
     write_canonical(out, verdict)
     if verdict["verdict"] == "PASS":
         print("OK: SCENARIO_PARITY %s PASS (%s %s, %d effect(s)) → %s" % (args.scenario, req["method"], req["path"], len(verdict["effects"]), out))

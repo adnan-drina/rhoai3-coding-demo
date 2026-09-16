@@ -37,8 +37,11 @@ literal Location are exactly the source's passes even when that address answers
 404 -- the dead compatibility URL the ruling refuses. The bounded navigation
 check run-parity.py performs beside the comparison records what the address
 actually does (verification/parity/navigation/<slug>.json); this reads those
-records, and an entry point whose comparison PASSed while its redirect target
-is dead, loops or never settles becomes FAIL with kind ``navigation``. A PASS
+records. First-response parity and target reachability are SEPARATE results
+(ADR-020): an entry point whose comparison PASSed keeps its PASS, its row says
+``navigation: failed`` with the failures, and the failure is its own row under
+``navigation_obligations`` (``kind: navigation``, verdict FAIL) -- which fails
+the receipt without re-typing the redirect as a response diff. A PASS
 navigation is recorded on the row as ``navigation: ok``.
 """
 from __future__ import annotations
@@ -51,7 +54,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _oracle_common import PARITY, slug  # noqa: E402
-from _scenarios import (BINDING_CANDIDATE, CorpusError, DEFAULT_SECURITY_MODE, EFFECT_ROLE_UNCHANGED, QUALIFICATION, QUALIFICATION_SCHEMA,  # noqa: E402,F401
+from _scenarios import (BINDING_CANDIDATE, CorpusError, DEFAULT_SECURITY_MODE, EFFECT_ROLE_UNCHANGED, QUALIFICATION,  # noqa: E402
+                        SCENARIO_BROWSER_PREFLIGHT, SCENARIO_CORS_ACTUAL, SCENARIO_DIAGNOSTIC_PROBE, QUALIFICATION_SCHEMA,  # noqa: E402,F401
                         SCENARIO_ORACLES, SCENARIO_PARITY, SECURITY_MODES, binding_mismatch, candidate_binding,
                         capture_security_mode, capture_security_variant, corpus_digest, cors_coverage,
                         declared_slugs, is_derived,
@@ -84,12 +88,40 @@ def _refused_writes(corpus: Any, results: dict[str, list[dict[str, Any]]]) -> di
                  if isinstance(e, dict) and str(e.get("role") or "") == EFFECT_ROLE_UNCHANGED]
         found = results.get(sid) or []
         seen = str(found[0].get("verdict") or "") if len(found) == 1 else ""
+        separate = dict(found[0].get("results") or {}) if len(found) == 1 else {}
         if reads:
+            # ADR-020: response parity, the destination's effect and the
+            # source's effect are separate results; a destination-only
+            # no-effect result is never promoted to source parity
             out[sid] = {"proves": "the refused write left the state unchanged", "reads": reads,
-                        "verdict": seen or "no single result"}
+                        "strategy": str((sc.get("effects_reader") or {}).get("strategy") or ""),
+                        "verdict": seen or "no single result", "results": separate,
+                        "source_effect": str((separate.get("source_effect") or {}).get("verdict") or "not measured")}
         elif str(sc.get("effects_unobservable") or ""):
             out[sid] = {"proves": "nothing about the state", "unobservable": str(sc["effects_unobservable"]),
                         "verdict": seen or "no single result"}
+    return out
+
+
+def _cors_outcomes(corpus: Any, qualified: dict[str, dict[str, Any]],
+                   results: dict[str, list[dict[str, Any]]]) -> dict[str, dict[str, Any]]:
+    """Per CORS-bearing scenario: what it is, whether the SOURCE's answer lets
+    a browser complete the exchange (``permits``) or prevents it
+    (``prevents``; matching that is parity, not a demonstrated permission),
+    its verdict, and whether it can discharge browser coverage at all (a
+    diagnostic probe never does)."""
+    out: dict[str, dict[str, Any]] = {}
+    for sc in ((corpus or {}).get("scenarios") or []) if isinstance(corpus, dict) else []:
+        if not isinstance(sc, dict) or not str(sc.get("cors_policy") or ""):
+            continue
+        sid = str(sc.get("id") or "")
+        stype = str(sc.get("scenario_type") or "") or (
+            SCENARIO_BROWSER_PREFLIGHT if str(sc.get("method") or "").upper() == "OPTIONS" else SCENARIO_CORS_ACTUAL)
+        found = results.get(sid) or []
+        out[sid] = {"policy": str(sc["cors_policy"]), "type": stype,
+                    "browser_access": str((qualified.get(sid) or {}).get("browser_access") or ""),
+                    "verdict": str(found[0].get("verdict") or "") if len(found) == 1 else "no single result",
+                    "discharges_browser_coverage": stype != SCENARIO_DIAGNOSTIC_PROBE}
     return out
 
 
@@ -231,12 +263,14 @@ def main(argv: list[str] | None = None) -> int:
                     "intent": str(r.get("intent") or "positive"),
                     "reason": str(r.get("reason") or ""),
                     "stale": bool(bound) and bound != on_disk,
+                    "browser_access": str(r.get("browser_access") or ""),
                 }
     elif corpus and is_derived(corpus):
         qualification_gap = "captures not qualified (run qualify-source-captures.py)"
     coverage_gaps: list[dict[str, str]] = []
     navigation = load_navigation(root)
     navigation_failures: list[dict[str, Any]] = []
+    navigation_obligations: list[dict[str, Any]] = []
     # Only the records that BELONG to this receipt are composed over; every
     # other file in that directory is named as an orphan and counted nowhere
     # else. Without a corpus nothing can be judged to belong or not belong --
@@ -367,16 +401,20 @@ def main(argv: list[str] | None = None) -> int:
             row = {"entry_point": ep, "verdict": verdict, "reason": reason, "scenarios": names,
                    "coverage": {"positive": positive, "negative": negative}}
             if verdict == "PASS" and nav_bad:
-                row["verdict"] = "FAIL"
-                row["kind"] = "navigation"
-                row["reason"] = "; ".join(
-                    "redirect target %s is %s on the destination (%s)"
-                    % (str(n.get("start") or ""), str(n.get("terminal") or ""), n.get("final_status"))
-                    for _, n in nav_bad)[:400]
-                row["navigation_failures"] = [{"scenario": sid, "target": str(n.get("start") or ""),
-                                               "terminal": str(n.get("terminal") or ""),
-                                               "final_status": n.get("final_status")} for sid, n in nav_bad]
-                navigation_failures.extend(row["navigation_failures"])
+                # the redirect IS the source's (PASS stays); reachability of its
+                # target is a separate obligation with its own row
+                fails = [{"scenario": sid, "target": str(n.get("start") or ""),
+                          "terminal": str(n.get("terminal") or ""),
+                          "final_status": n.get("final_status")} for sid, n in nav_bad]
+                row["navigation"] = "failed"
+                row["navigation_failures"] = fails
+                navigation_obligations.append({
+                    "entry_point": ep, "kind": "navigation", "verdict": "FAIL", "scenarios": list(names),
+                    "reason": "; ".join("redirect target %s is %s on the destination (%s)"
+                                        % (str(n.get("start") or ""), str(n.get("terminal") or ""), n.get("final_status"))
+                                        for _, n in nav_bad)[:400],
+                    "navigation_failures": list(fails)})
+                navigation_failures.extend(fails)
             elif nav_ok and not nav_bad:
                 row["navigation"] = "ok"
             rows.append(row)
@@ -399,14 +437,29 @@ def main(argv: list[str] | None = None) -> int:
     cors_gaps = cors_coverage(corpus, source_policies) if corpus else []
     if policy_gap:
         cors_gaps.append(policy_gap)
+    cors_outcomes = _cors_outcomes(corpus, qualified, results)
+    if security_mode != DEFAULT_SECURITY_MODE and corpus:
+        # with security enabled, a policy is covered only once the SOURCE's
+        # answer to its browser preflight has been captured and read: until
+        # then the enabled-mode CORS claim is not made (a diagnostic probe
+        # never stands in for it)
+        for pid in sorted({str(p.get("id")) for p in (corpus.get("cors_policies") or []) if isinstance(p, dict)}):
+            seen = [o for o in cors_outcomes.values() if o["policy"] == pid and o["type"] == SCENARIO_BROWSER_PREFLIGHT
+                    and o["browser_access"]]
+            if not seen:
+                cors_gaps.append("cors policy %s: no captured, qualified browser preflight with security enabled" % pid)
     verdict = "PASS" if rows and failed == 0 else ("INCONCLUSIVE" if not rows or all(r["verdict"] == "INCONCLUSIVE" for r in rows if r["verdict"] != "PASS") else "FAIL")
     if verdict == "PASS" and cors_gaps:
         verdict = "INCONCLUSIVE"
+    if navigation_obligations and verdict != "FAIL":
+        # a dead, looping or unsettled redirect target is a failed obligation
+        # of the receipt, even where every first response is the source's
+        verdict = "FAIL"
     doc = {"schema": "rhoai3.parity-receipt/v1", "receipt_sha256": receipt_sha, "binding": dict(binding), "producer": "compose-parity-receipt.py",
            "corpus_sha256": corpus_sha, "corpus_error": corpus_error, "entry_points": rows, "total": len(rows), "not_passed": failed,
            "security_mode": security_mode, "security_mode_recorded": recorded_mode, "security_mode_note": "" if recorded_mode else mode_why,
            "security_variant": variant, "security_variant_recorded": recorded_variant, "security_variant_note": variant_why,
-           "cors": {"source_policies": source_policies, "gaps": cors_gaps},
+           "cors": {"source_policies": source_policies, "gaps": cors_gaps, "outcomes": cors_outcomes},
            "qualification": {"present": qp.is_file(), "derived_corpus": bool(corpus) and is_derived(corpus), "gap": qualification_gap,
                              "not_passed": sorted(sid for sid, v in qualified.items() if v["capability"] != "PASS" or v["stale"]),
                              "stale": sorted(sid for sid, v in qualified.items() if v["stale"])},
@@ -416,6 +469,7 @@ def main(argv: list[str] | None = None) -> int:
            # counted in no row, no total and no verdict
            "orphaned_records": orphaned,
            "navigation": {"checked": len(navigation), "failures": navigation_failures},
+           "navigation_obligations": navigation_obligations,
            "refused_writes": _refused_writes(corpus, results),
            "verdict": verdict}
     out = root / parity_receipt_path(security_mode, variant)
@@ -430,7 +484,7 @@ def main(argv: list[str] | None = None) -> int:
     if doc["verdict"] == "PASS":
         print("OK: parity receipt PASS (%d entry points) → %s" % (len(rows), out))
         return 0
-    for r in rows:
+    for r in rows + navigation_obligations:
         if r["verdict"] != "PASS":
             print("  - %s %s: %s" % (r["entry_point"], r["verdict"], r["reason"]), file=sys.stderr)
     for g in cors_gaps:

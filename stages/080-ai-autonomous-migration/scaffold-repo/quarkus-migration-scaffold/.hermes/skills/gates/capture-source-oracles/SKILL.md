@@ -119,6 +119,25 @@ through `load_corpus(root, security_mode, variant)`, so an enabled run replays
 `verification/scenarios-enabled/corpus.json` and can never grade the enabled
 source against the anonymous requests sitting beside it.
 
+### CORS with security enabled (ADR-020)
+
+The enabled corpus declares the source's CORS policies and derives, per
+policy, from the disabled corpus's own requests: `sc:cors-enabled-preflight-*`
+(browser preflight, no credentials), `sc:cors-enabled-actual-anonymous-*`,
+`sc:cors-enabled-actual-authenticated-*` (a declared identity the route's
+guard accepts) and `sc:cors-enabled-probe-authenticated-*` —
+`scenario_type: diagnostic-probe`, the only OPTIONS the loader admits with
+credentials, never counted as browser-preflight coverage. The capture decides
+every expectation; qualification records `browser_access: permits|prevents`
+(a matched source rejection is parity, not a demonstrated permission), and
+the enabled receipt stays INCONCLUSIVE on CORS until a qualified browser
+preflight is on record (`cors.outcomes`).
+
+The receipt keeps first-response redirect parity and target reachability
+apart: a PASSing redirect whose target is dead stays PASS on its entry-point
+row (`navigation: failed`) and the failure is its own row under
+`navigation_obligations`, which fails the receipt.
+
 ### Fixture variants of a mode's baseline
 
 A mode's baseline is the **declared dataset**. Some behaviour the architect's
@@ -173,9 +192,20 @@ bash   "$V/reset-parity-db.sh"           --root /projects/modernized          # 
     on the destination `reset-parity-db.sh --revert-variant NAME` then runs
     only that revert (it raises `REVERT_UNEXPECTED_STATE` and changes nothing
     unless it finds exactly the variant state) and the reads are judged
-    against the source's baseline reads. The source's in-process database is
-    not reverted; its capture records `revert.applied_on_source: false`. The
-    contract adds `before_reads_usable`.
+    against the source's own post-request reads. On the source (ADR-020) the
+    request is sent to the source running against a same-engine database held
+    by a server process built from the engine jar its artifact ships
+    (`_source_store.py`, `reset-db/StoreDb.java`; the datasource key is read
+    from the source's own `application*.properties`): the post-request
+    snapshot is retained and digested, only the fixture rows are reverted
+    (checked), and the reads are taken through the still-running source —
+    `source_effects.observed: true`. Where no store can be held the capture
+    records `observed: false` with the reason, and the comparator keeps the
+    destination's no-effect result, the response result and the source
+    effect (INCONCLUSIVE) apart in `results`; the scenario is not PASS. The
+    contract adds `before_reads_usable` and `after_equals_before`. Every
+    variant scenario declares `reset_before` (derivation v3), and the
+    comparator re-applies the variant after a revert-then-read scenario.
   With neither, the write carries no read-back, `effects_unobservable` names
   both reasons, and the comparator stays INCONCLUSIVE with them. Corpora are
   stamped `derived_from.variant_derivation`; one derived under an older

@@ -63,7 +63,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _oracle_common import ensure_hermes_lib  # noqa: E402
 import _variant_revert  # noqa: E402
 from _scenarios import (CHALLENGE_HEADER, CORPUS, DEFAULT_SECURITY_MODE, DERIVATION_SCHEMA, DERIVE_RECEIPT,  # noqa: E402
-                        EFFECT_ROLE_UNCHANGED, FROZEN_SOURCE_MODEL, VARIANT_DERIVATION, normalized_identity, ROLE_PREFIX, SCHEMA, SECURITY_MODES, CorpusError, authorization_roles,
+                        EFFECT_ROLE_UNCHANGED, FROZEN_SOURCE_MODEL, SCENARIO_BROWSER_PREFLIGHT,
+                        SCENARIO_CORS_ACTUAL, SCENARIO_DIAGNOSTIC_PROBE, VARIANT_DERIVATION, normalized_identity, ROLE_PREFIX, SCHEMA, SECURITY_MODES, CorpusError, authorization_roles,
                         corpus_digest, corpus_path, derive_receipt_path, load_corpus, merge_role_constants,
                         normalize_security_mode, normalize_variant, parse_assignments, request_of,
                         resolve_role_constant,
@@ -2503,8 +2504,118 @@ class EnabledDerivation:
             q["after_equals_before"] = True
         return q
 
+    # -- CORS with security enabled (ADR-020) -------------------------------
+    def _guard_identity(self, eid: str) -> tuple[dict[str, Any] | None, str]:
+        """(the declared identity the entry point's guard accepts, the guard's
+        policy id). An unguarded route is still asked authenticated: any
+        declared identity, least privileged first."""
+        for pid in self.guards.get(eid, []):
+            pol = self.policies.get(pid) or {}
+            if pol.get("implicit"):
+                return self._any_identity(), pid
+            roles, why = authorization_roles(str(pol.get("annotation") or ""), str(pol.get("expression") or ""), self.constants)
+            if why or not roles:
+                return None, pid
+            return self._holder(roles), pid
+        return self._any_identity(), ""
+
+    def _cors_scenario(self, base: dict[str, Any], sid: str, kind: str, stype: str, identity: dict[str, Any],
+                       who: dict[str, Any] | None, pid_cors: str, guard: str, why: str, qualify: dict[str, Any]) -> None:
+        bf, body_sha = self._body_of(base)
+        evidence = ["bundle:%s" % base["entry_point"],
+                    "corpus:%s reused (%s %s, headers %s)" % (base["id"], base["method"], base["path"],
+                                                             ", ".join(sorted(base.get("headers") or {}))),
+                    "corpus:%s digest %s" % (_rel(self.root / CORPUS, self.root), self.base_sha),
+                    "cors-policy:%s (the source's own, from the disabled corpus's cors_policies)" % pid_cors,
+                    ("identity:%s holds %s, credential_ref %s" % (who["name"], ", ".join(who["roles"]) or "no declared role",
+                                                                 who["credential_ref"]))
+                    if who else "identity:anonymous; the request carries no credential"]
+        if stype == SCENARIO_DIAGNOSTIC_PROBE:
+            evidence.append("probe:an OPTIONS carrying credentials is not what a browser sends (WHATWG Fetch: a CORS preflight "
+                            "never carries credentials); it is recorded and compared as a diagnostic probe and discharges "
+                            "no browser-preflight coverage")
+        sc: dict[str, Any] = {
+            "id": sid, "entry_point": str(base["entry_point"]), "method": str(base["method"]), "path": str(base["path"]),
+            "headers": {str(k): str(v) for k, v in (base.get("headers") or {}).items()},
+            "identity": dict(identity), "reset_before": bool(base.get("reset_before", True)),
+            "effects": [], "normalization": list(base.get("normalization") or []),
+            "security_mode": "enabled", "authorization_policy": guard, "cors_policy": pid_cors,
+            "scenario_type": stype,
+            "base_source": "corpus", "base_scenario": str(base["id"]), "base_route": "", "base_body_sha256": body_sha,
+            "derived_from": {"kind": kind, "entry_point": str(base["entry_point"]), "evidence": evidence},
+            "qualify": dict(qualify), "why": why,
+            # a refusal's challenge is part of the answer, and its ABSENCE on a
+            # CORS answer is compared like any asserted header
+            "asserted_headers": [CHALLENGE_HEADER],
+        }
+        if bf:
+            sc["body_file"] = bf
+        else:
+            sc["body_absent"] = True
+        self._add(sc)
+
+    def _cors_run(self) -> None:
+        """Per CORS policy the disabled corpus exercises: the browser
+        preflight (no credentials), the actual request anonymous and as a
+        declared identity the route's guard accepts, and an authenticated
+        OPTIONS typed as a diagnostic probe. The requests are the disabled
+        corpus's own; what the source answers with security ENABLED is the
+        capture's to record -- a refusal is recorded as the source PREVENTING
+        the browser exchange, never qualified as a permission."""
+        declared = {str(p.get("id")) for p in (self.base.get("cors_policies") or []) if isinstance(p, dict)}
+        by_policy: dict[str, dict[str, dict[str, Any]]] = {}
+        for sc in (self.base.get("scenarios") or []):
+            if not isinstance(sc, dict) or not str(sc.get("cors_policy") or ""):
+                continue
+            kind = str((sc.get("derived_from") or {}).get("kind") or "")
+            if kind in ("cors-actual", "cors-preflight"):
+                by_policy.setdefault(str(sc["cors_policy"]), {}).setdefault(kind, sc)
+        observed = {"intent": "observed", "usable_first_response": True, "cors_browser_access": True}
+        for pid in sorted(declared):
+            short = _short(pid)
+            have = by_policy.get(pid, {})
+            pre, actual = have.get("cors-preflight"), have.get("cors-actual")
+            if pre is None:
+                self.gaps.append("cors-enabled %s: the disabled corpus carries no preflight for it; no enabled preflight or "
+                                 "diagnostic probe is derived" % pid)
+            else:
+                self._cors_scenario(pre, "sc:cors-enabled-preflight-%s" % short, "cors-enabled-preflight",
+                                    SCENARIO_BROWSER_PREFLIGHT, {"kind": "none"}, None, pid, "",
+                                    "the browser preflight of %s with security enabled -- no credentials, as a browser sends "
+                                    "it; whether the source permits the method and headers is what the capture records" % pid,
+                                    observed)
+                who, guard = self._guard_identity(str(pre["entry_point"]))
+                if who is None:
+                    self.gaps.append("cors-enabled %s: no declared identity is accepted by %s; the authenticated diagnostic "
+                                     "probe is not derived" % (pid, guard or "the route"))
+                else:
+                    self._cors_scenario(pre, "sc:cors-enabled-probe-authenticated-%s" % short, "cors-diagnostic-probe",
+                                        SCENARIO_DIAGNOSTIC_PROBE,
+                                        {"kind": "basic", "credential_ref": who["credential_ref"]}, who, pid, guard,
+                                        "a DIAGNOSTIC authenticated OPTIONS for %s: recorded and compared, never browser-"
+                                        "preflight coverage" % pid,
+                                        {"intent": "observed", "usable_first_response": True})
+            if actual is None:
+                self.gaps.append("cors-enabled %s: the disabled corpus carries no actual cross-origin request for it; none is "
+                                 "derived" % pid)
+                continue
+            self._cors_scenario(actual, "sc:cors-enabled-actual-anonymous-%s" % short, "cors-enabled-actual-anonymous",
+                                SCENARIO_CORS_ACTUAL, {"kind": "none"}, None, pid, "",
+                                "the actual cross-origin request of %s with security enabled and no credentials" % pid, observed)
+            who, guard = self._guard_identity(str(actual["entry_point"]))
+            if who is None:
+                self.gaps.append("cors-enabled %s: no declared identity is accepted by %s; the authenticated actual request is "
+                                 "not derived and the policy's authenticated behaviour stays unmeasured" % (pid, guard or "the route"))
+                continue
+            self._cors_scenario(actual, "sc:cors-enabled-actual-authenticated-%s" % short, "cors-enabled-actual-authenticated",
+                                SCENARIO_CORS_ACTUAL, {"kind": "basic", "credential_ref": who["credential_ref"]}, who, pid,
+                                guard, "the actual cross-origin request of %s as a declared identity %s accepts: the "
+                                "permission and exposure headers of the authenticated answer" % (pid, guard or "the route"),
+                                observed)
+
     # -- the rule ----------------------------------------------------------
     def run(self) -> None:
+        self._cors_run()
         for pid, pol in sorted(self.policies.items()):
             expression = str(pol.get("expression") or "")
             # how each role NAME was arrived at travels with every scenario the
@@ -2932,9 +3043,9 @@ def _derive_enabled(root: Path, args: Any, mode: str, out_p: Path, receipt_p: Pa
         },
         "initial_state": dict(base.get("initial_state") or {}),
         "path_vars": dict(base.get("path_vars") or {}),
-        # no authorization probe carries an Origin (the CORS oracle owns those
-        # exchanges), so this corpus declares no CORS policy
-        "cors_policies": [],
+        # the source's own CORS policies, exercised here with security
+        # enabled (ADR-020) by the cors-enabled scenarios
+        "cors_policies": [dict(p) for p in (base.get("cors_policies") or []) if isinstance(p, dict)],
         "identities": [{"name": i["name"], "credential_ref": i["credential_ref"], "roles": list(i["roles"]),
                         "roles_source": i["roles_source"]} for i in identities],
         "identities_from": identities_from,
@@ -3133,6 +3244,9 @@ def _variant_scenario(root: Path, variant: str, fixture: dict[str, Any], base: d
                     reader = {"name": str(named[0].get("name") or "") if named else "", "credential_ref": own_ref}
                     reader_row = {"strategy": EFFECTS_REVERT_THEN_READ, "name": reader["name"], "credential_ref": own_ref}
                     qualify["before_reads_usable"] = True
+                    # the SOURCE's post-request state, observed after the
+                    # revert of the fixture rows only, equals its baseline
+                    qualify["after_equals_before"] = True
                     evidence.append("effects-identity:%s, credential_ref %s (the request's own); %s: the read-backs are "
                                     "taken on the verified baseline, the variant is applied, the request is refused, the "
                                     "variant's changes are reverted (%s) and the read-backs are taken again -- they must "
@@ -3157,7 +3271,10 @@ def _variant_scenario(root: Path, variant: str, fixture: dict[str, Any], base: d
         "method": str(base["method"]), "path": str(base["path"]),
         "headers": {str(k): str(v) for k, v in (base.get("headers") or {}).items()},
         "identity": dict(base.get("identity") or {"kind": "none"}),
-        "reset_before": bool(base.get("reset_before", True)),
+        # ALWAYS: a variant scenario is defined by its dataset state, so it
+        # starts from the variant, never from whatever the previous scenario
+        # left (a revert-then-read write ends on the baseline)
+        "reset_before": True,
         "effects": effects,
         "normalization": list(base.get("normalization") or []),
         "security_mode": str(base.get("security_mode") or ""),

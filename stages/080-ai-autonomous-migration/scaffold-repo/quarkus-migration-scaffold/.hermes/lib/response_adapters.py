@@ -71,6 +71,16 @@ CONTRACTS: dict[str, dict[str, Any]] = {
 }
 
 
+# Earlier bytes of a harness template, by digest. An installed file carrying
+# one of these is the harness's own earlier release and may be upgraded in
+# place (recorded in the receipt); any other content is still a conflict.
+PRIOR_TEMPLATES: dict[str, dict[str, str]] = {
+    CORS: {"4d381666e6f3f87a892ca93c7c6bd8bb85f672db157356c44b4486ff81f3ba05":
+           "source-cors-response-adapter/v1 as first installed (before ADR-020 same-origin routing)"},
+    MEDIA_TYPE: {},
+}
+
+
 class Refuse(Exception):
     """A typed reason the capability will not render or install."""
 
@@ -684,6 +694,12 @@ def install(root: Path, kind: str, rows: list[tuple[str, str]], *, basis: dict[s
     target = root / adapter_path(kind)
     want = template_bytes(kind)
     before_file = target.read_bytes() if target.is_file() else None
+    upgraded_from = ""
+    if before_file is not None and before_file != want:
+        prior = hashlib.sha256(before_file).hexdigest()
+        if prior in PRIOR_TEMPLATES.get(kind, {}):
+            upgraded_from = prior
+            before_file = None  # the harness's own earlier bytes: replaced, on the record
     if before_file is not None and before_file != want:
         raise Refuse("ADAPTER_CONFLICT", "%s exists with other content (sha256 %s, template %s); the naming contract "
                      "reserves this path for the harness template" % (adapter_path(kind),
@@ -711,6 +727,8 @@ def install(root: Path, kind: str, rows: list[tuple[str, str]], *, basis: dict[s
         "config_sha256_after": hashlib.sha256(new.encode("utf-8")).hexdigest(),
         "adapter_sha256": hashlib.sha256(want).hexdigest(),
     }
+    if upgraded_from:
+        receipt["upgraded_from"] = {"sha256": upgraded_from, "release": PRIOR_TEMPLATES[kind][upgraded_from]}
     if write:
         if before_file is None:
             target.parent.mkdir(parents=True, exist_ok=True)

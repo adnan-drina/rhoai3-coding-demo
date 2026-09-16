@@ -1635,7 +1635,7 @@ def _roles_java(copy: Path, n: Names) -> None:
 def _authz_root(td: Path, name: str, n: Names, *, holdings: dict[str, list[str]] | None = None,
                 unsupported: bool = True, map_identity: bool = True,
                 security: dict[str, Any] | None = None, decisions: bool = False,
-                constants: str = "sealed", enabled_column: bool = False) -> Path:
+                constants: str = "sealed", enabled_column: bool = False, cors: bool = False) -> Path:
     """A frozen source with an authorization policy on a write, another on a
     method-less read, a constants type the expressions refer to, and a seeded
     identity store the structure model maps.
@@ -1693,7 +1693,9 @@ def _authz_root(td: Path, name: str, n: Names, *, holdings: dict[str, list[str]]
         methods.append({"name": n.other, "signature": "%s()" % n.other,
                         "annotations": [{"fqn": _PRE_AUTHORIZE, "values": {"value": "isAuthenticated()"}}]})
     types = [
-        {"fqn": n.ctrl_fqn, "annotations": [], "methods": methods},
+        {"fqn": n.ctrl_fqn, "methods": methods,
+         "annotations": ([{"fqn": "org.springframework.web.bind.annotation.CrossOrigin",
+                           "values": {"exposedHeaders": ["errors"]}}] if cors else [])},
         {"fqn": n.read_fqn, "annotations": [],
          "methods": [{"name": n.read, "signature": "%s()" % n.read, "params": [],
                       "annotations": [{"fqn": "org.springframework.web.bind.annotation.RequestMapping", "values": {"value": [n.read_route]}},
@@ -2479,6 +2481,8 @@ def _enabled_variant_case() -> int:
                 return _fail("a refused read proves itself by its answer and needs no read-back: %s" % s["id"])
             if s["security_variant"] != VARIANT or s["security_mode"] != "enabled":
                 return _fail("every scenario says which state it is of: %s" % s)
+            if s["reset_before"] is not True:
+                return _fail("a variant scenario is defined by its dataset state and always starts from it: %s" % s["id"])
             ev = s["derived_from"]["evidence"]
             if not any(e == "fixture:%s statement: %s" % (VARIANT, _fixture_decl(n)["statements"][0]) for e in ev):
                 return _fail("the statements are recorded verbatim: %s" % ev)
@@ -2604,7 +2608,8 @@ def _variant_effects_rule_case() -> int:
             if (rtr.get("effects_reader") != {"strategy": "revert_then_read", "name": "boss", "credential_ref": "REF_BOSS"}
                     or rtr.get("effects_identity") != {"kind": "basic", "credential_ref": "REF_BOSS"}
                     or [e["role"] for e in rtr["effects"]] != ["unchanged_under_refusal"] * 2
-                    or rtr["qualify"] != {"intent": "negative", "expect_status_class": "4xx", "before_reads_usable": True}
+                    or rtr["qualify"] != {"intent": "negative", "expect_status_class": "4xx", "before_reads_usable": True,
+                                          "after_equals_before": True}
                     or gaps or "effects_unobservable" in rtr):
                 return _fail("with no other identity and a computable revert the reads are revert-then-read as the "
                              "request's own identity: %s %s %s" % (rtr.get("effects_reader"), rtr["qualify"], gaps))
@@ -2686,7 +2691,7 @@ def _enabled_variant_effects_case() -> int:
                 return _fail("the loader accepts the variant corpus with read-backs: %s" % exc)
             receipt = load_json(root / VARIANT_RECEIPT_P)
             if (receipt.get("variant_derivation") != corpus["derived_from"].get("variant_derivation")
-                    or not str(receipt.get("variant_derivation") or "").endswith("/v2")
+                    or not str(receipt.get("variant_derivation") or "").endswith("/v3")
                     or sorted(receipt.get("effects") or {}) != sorted(s["id"] for s in writes)
                     or any(r.get("identity") != {"kind": "basic", "credential_ref": n.cred_one}
                            for r in (receipt.get("effects") or {}).values())):
@@ -2713,6 +2718,15 @@ def _enabled_variant_effects_case() -> int:
         except CorpusError as exc:
             if "derive the variant again" not in str(exc) or "missing" in str(exc):
                 return _fail("the refusal says to derive again (and is not read as an absent corpus): %s" % exc)
+        # ... and one derived under v2 (reads that declared no reset) too
+        old["derived_from"]["variant_derivation"] = "rhoai3.fixture-variant-derivation/v2"
+        write_canonical(root / VARIANT_CORPUS_P, old)
+        try:
+            load_corpus(root, "enabled", VARIANT)
+            return _fail("a v2 variant corpus must not load under v3")
+        except CorpusError as exc:
+            if "/v2" not in str(exc) or "/v3" not in str(exc) or "derive the variant again" not in str(exc):
+                return _fail("the v2 refusal names both derivations: %s" % exc)
         # ... while the baseline corpus of the mode is not versioned by it
         try:
             load_corpus(root, "enabled")
@@ -2755,7 +2769,8 @@ def _enabled_variant_revert_case() -> int:
             for s in writes:
                 if (s.get("effects_reader") != {"strategy": "revert_then_read", "name": n.who_all, "credential_ref": n.cred_all}
                         or s.get("effects_identity") != s["identity"] or not s["effects"]
-                        or s["qualify"].get("before_reads_usable") is not True or "after_equals_before" in s["qualify"]):
+                        or s["qualify"].get("before_reads_usable") is not True
+                        or s["qualify"].get("after_equals_before") is not True):
                     return _fail("a refused write reads its state revert-then-read as its own identity: %s %s"
                                  % (s.get("effects_reader"), s["qualify"]))
             try:
@@ -2816,6 +2831,138 @@ def _revert_qualification_case() -> int:
     return 0
 
 
+def _enabled_cors_case() -> int:
+    """CORS with security enabled (ADR-020): per source policy the browser
+    preflight WITHOUT credentials, the actual request anonymous and as a
+    declared identity the route accepts, and an authenticated OPTIONS typed as
+    a diagnostic probe -- which the loader admits only under that type and
+    which never counts as browser-preflight coverage. The requests are the
+    disabled corpus's own; nothing states what the source answers."""
+    from _scenarios import cors_coverage
+    with tempfile.TemporaryDirectory(prefix="derive-enabled-cors-") as td:
+        decided = []
+        for n, label in ((PLAIN, "plain"), (RENAMED, "renamed")):
+            root = _authz_root(Path(td), label, n, security=_authz_security(n), cors=True)
+            _derive(root)
+            base = load_json(root / CORPUS_P)
+            if not base["cors_policies"]:
+                return _fail("the fixture's disabled corpus exercises a CORS policy")
+            p = _derive(root, "--security-mode", "enabled")
+            if p.returncode != 0:
+                return _fail("the enabled corpus derives with CORS (%s): %s%s" % (label, p.stdout, p.stderr))
+            corpus = load_json(root / ENABLED_CORPUS_P)
+            if [c["id"] for c in corpus["cors_policies"]] != [c["id"] for c in base["cors_policies"]]:
+                return _fail("the enabled corpus declares the source's CORS policies: %s" % corpus["cors_policies"])
+            pid = base["cors_policies"][0]["id"]
+            by = {str(s["id"]): s for s in corpus["scenarios"] if s.get("cors_policy") == pid}
+            kinds = {s["derived_from"]["kind"]: s for s in by.values()}
+            want = {"cors-enabled-preflight", "cors-diagnostic-probe", "cors-enabled-actual-anonymous",
+                    "cors-enabled-actual-authenticated"}
+            if set(kinds) != want:
+                return _fail("four CORS scenarios per policy: %s" % sorted(kinds))
+            pre, probe = kinds["cors-enabled-preflight"], kinds["cors-diagnostic-probe"]
+            anon, auth = kinds["cors-enabled-actual-anonymous"], kinds["cors-enabled-actual-authenticated"]
+            base_by = {str(s["id"]): s for s in base["scenarios"]}
+            if (pre["method"], pre["identity"], pre["scenario_type"]) != ("OPTIONS", {"kind": "none"}, "browser-preflight"):
+                return _fail("the browser preflight carries no credentials: %s" % pre)
+            if (probe["method"], probe["scenario_type"], probe["identity"]) != (
+                    "OPTIONS", "diagnostic-probe", {"kind": "basic", "credential_ref": n.cred_all}):
+                return _fail("the authenticated OPTIONS is a diagnostic probe as the identity the create's guard accepts: %s" % probe)
+            if anon["identity"] != {"kind": "none"} or auth["identity"] != {"kind": "basic", "credential_ref": n.cred_one}:
+                return _fail("the actual request anonymous and as the least-privileged declared identity: %s %s"
+                             % (anon["identity"], auth["identity"]))
+            for sc in by.values():
+                src = base_by[sc["base_scenario"]]
+                if (sc["method"], sc["path"], sc["headers"]) != (src["method"], src["path"], src["headers"]):
+                    return _fail("the request is the disabled corpus's own: %s" % sc["id"])
+                if sc["security_mode"] != "enabled" or "Origin" not in sc["headers"]:
+                    return _fail("an enabled-mode cross-origin exchange: %s" % sc["id"])
+                want_q = ({"intent": "observed", "usable_first_response": True} if sc is probe else
+                          {"intent": "observed", "usable_first_response": True, "cors_browser_access": True})
+                if sc["qualify"] != want_q:
+                    return _fail("the capture decides; only browser exchanges record browser access: %s %s" % (sc["id"], sc["qualify"]))
+            try:
+                loaded = load_corpus(root, "enabled")
+            except CorpusError as exc:
+                return _fail("the loader admits the diagnostic probe with credentials: %s" % exc)
+            if cors_coverage(loaded):
+                return _fail("the enabled corpus covers its CORS policy: %s" % cors_coverage(loaded))
+            without = dict(loaded, scenarios=[s for s in loaded["scenarios"] if s["id"] != pre["id"]])
+            gaps = cors_coverage(without)
+            if not gaps or "no preflight" not in gaps[0]:
+                return _fail("a diagnostic probe never discharges browser-preflight coverage: %s" % gaps)
+            # the prohibition stands for anything that is not a probe
+            forged = load_json(root / ENABLED_CORPUS_P)
+            for sc in forged["scenarios"]:
+                if sc["id"] == pre["id"]:
+                    sc["identity"] = {"kind": "basic", "credential_ref": n.cred_all}
+            write_canonical(root / "verification" / "forged.json", forged)
+            try:
+                from _scenarios import CorpusError as _CE  # noqa: F401
+                import importlib
+                sm = importlib.import_module("_scenarios")
+                bad = dict(forged, derived_from=None, approved_by="operator:test")
+                write_canonical(root / ENABLED_CORPUS_P, bad)
+                sm.load_corpus(root, "enabled")
+                return _fail("a browser preflight with credentials is refused")
+            except CorpusError as exc:
+                if "diagnostic-probe" not in str(exc):
+                    return _fail("the refusal names the probe type: %s" % exc)
+            write_canonical(root / ENABLED_CORPUS_P, corpus)
+            decided.append((root, n))
+        (root, n), (other_root, other) = decided
+        a = _enabled_decisions(other_root, _rename_map(other, n))
+        b = _enabled_decisions(root)
+        if a != b:
+            first = [(x, y) for x, y in zip(json.dumps(a, indent=1).splitlines(), json.dumps(b, indent=1).splitlines()) if x != y][:4]
+            return _fail("enabled CORS is decided the same under another naming: %s" % first)
+    return 0
+
+
+def _cors_access_qualification_case() -> int:
+    """What the source's CORS answer lets a browser do is RECORDED: a 401
+    preflight without CORS headers is matched parity but PREVENTS the
+    exchange; a 200 carrying the permission headers PERMITS it. Neither is an
+    expectation, so both qualify."""
+    origin = "http://parity.invalid:4200"
+    sc = {"id": "sc:cors-enabled-preflight-x", "entry_point": EP["create"], "method": "OPTIONS", "path": "/api/owners",
+          "headers": {"Origin": origin, "Access-Control-Request-Method": "POST", "Access-Control-Request-Headers": "content-type"},
+          "identity": {"kind": "none"}, "body_absent": True, "reset_before": False, "effects": [], "normalization": [],
+          "cors_policy": "cors:x", "scenario_type": "browser-preflight",
+          "qualify": {"intent": "observed", "usable_first_response": True, "cors_browser_access": True}}
+    with tempfile.TemporaryDirectory(prefix="qualify-cors-access-") as td:
+        root = build_root(Path(td))
+        write_canonical(root / CORPUS_P, {"schema": "rhoai3.scenario-corpus/v1", "approved_by": "operator:test",
+                                          "initial_state": {"reset": "restart", "dataset": "seed"},
+                                          "cors_policies": [{"id": "cors:x", "request_headers": ["Content-Type"]}],
+                                          "scenarios": [sc]})
+        sha = corpus_digest(load_json(root / CORPUS_P))
+        none = {"Access-Control-Allow-Origin": None, "Access-Control-Allow-Methods": None, "Access-Control-Allow-Headers": None,
+                "WWW-Authenticate": 'Basic realm="x"', "Location": None}
+        ok = {"Access-Control-Allow-Origin": origin, "Access-Control-Allow-Methods": "GET,POST",
+              "Access-Control-Allow-Headers": "content-type", "Location": None}
+        for status, headers, want in ((401, none, "prevents"), (200, ok, "permits")):
+            _capture(root, sc, sha, status, headers, {} if status == 200 else {"error": "unauthorized"}, {}, {})
+            _, q = _qualify(root)
+            r = q["scenarios"][sc["id"]]
+            if r["capability"] != "PASS" or r.get("browser_access") != want:
+                return _fail("a %s preflight qualifies and records that the source %s the browser exchange: %s"
+                             % (status, want, r))
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("compose_for_test", RECEIPT)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        probe = dict(sc, id="sc:cors-enabled-probe-x", scenario_type="diagnostic-probe")
+        out = mod._cors_outcomes({"scenarios": [sc, probe]},
+                                 {sc["id"]: {"browser_access": "prevents"}},
+                                 {sc["id"]: [{"verdict": "PASS"}]})
+        if (out[sc["id"]] != {"policy": "cors:x", "type": "browser-preflight", "browser_access": "prevents",
+                              "verdict": "PASS", "discharges_browser_coverage": True}
+                or out[probe["id"]]["discharges_browser_coverage"] is not False):
+            return _fail("the receipt distinguishes a matched rejection and never lets a probe discharge coverage: %s" % out)
+    return 0
+
+
 def main() -> int:
     rc, root, td = _derivation_case()
     try:
@@ -2829,6 +2976,7 @@ def main() -> int:
                 or _enabled_request_policy_case() or _enabled_variant_case()
                 or _variant_effects_rule_case() or _enabled_variant_effects_case()
                 or _enabled_variant_revert_case() or _revert_qualification_case()
+                or _enabled_cors_case() or _cors_access_qualification_case()
                 or _enabled_identity_case() or _enabled_regression_case()
                 or _application_removal_case() or _qualification_case(root)
                 or _effects_identity_qualification_case() or _receipt_case()):
@@ -2898,7 +3046,7 @@ def main() -> int:
           "variants are unaffected; a variant corpus from the unversioned derivation is refused with 'derive the variant again'; with no "
           "second identity the refused write is read REVERT-THEN-READ as its own identity -- the seeded column restored by a revert "
           "computed only from single-column UPDATEs over the declared dataset, typed REVERT_NOT_COMPUTABLE otherwise -- a declared "
-          "second identity still wins, the strategy is recorded per reader, and its capture qualifies on usable baseline reads)")
+          "second identity still wins, the strategy is recorded per reader, and its capture qualifies on usable baseline reads; every variant scenario declares reset_before (v3) and a v2 corpus is refused)")
     return 0
 
 

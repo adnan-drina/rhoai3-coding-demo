@@ -76,6 +76,27 @@ class DisabledModeTest {
     }
 
     @Test
+    void sameOriginProceedsToRoutingExactlyAsWithoutOrigin() {
+        // ADR-020: DELETE is outside the platform's method list; the platform would answer 403.
+        // The source routed it: the resource maps no DELETE here, so the answer is the routing's own.
+        Response plain = req().delete("/api/items");
+        Response same = req().header("Origin", Cors.sameOrigin()).delete("/api/items");
+        assertEquals(405, plain.statusCode());
+        assertEquals(plain.statusCode(), same.statusCode());
+        assertEquals(plain.getHeader("Allow"), same.getHeader("Allow"));
+        noCors(same);
+        Response patch = req().header("Origin", Cors.sameOrigin()).patch("/api/items/7");
+        assertEquals(req().patch("/api/items/7").statusCode(), patch.statusCode());
+        noCors(patch);
+        // a same-origin OPTIONS carrying Access-Control-Request-Method is not a preflight for the source
+        Response opt = preflight("/api/items", Cors.sameOrigin(), "DELETE", null);
+        assertEquals(req().options("/api/items").statusCode(), opt.statusCode());
+        noCors(opt);
+        // the application still sees the Origin it was sent
+        assertEquals(Cors.sameOrigin(), req().header("Origin", Cors.sameOrigin()).get("/api/content/origin").asString());
+    }
+
+    @Test
     void aRouteWithoutASourcePolicyGetsNoPermission() {
         Response r = req().header("Origin", CLIENT).get("/api/other");
         assertEquals(200, r.statusCode());

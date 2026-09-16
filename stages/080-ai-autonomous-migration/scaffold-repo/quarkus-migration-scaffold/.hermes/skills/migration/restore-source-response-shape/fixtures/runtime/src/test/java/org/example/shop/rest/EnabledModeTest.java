@@ -37,6 +37,9 @@ class EnabledModeTest {
         Response r = preflight("/api/items", CLIENT, "POST", "Content-Type");
         assertEquals(401, r.statusCode());
         noCors(r);
+        // the challenge is the real mechanism's, exactly as for an anonymous request without Origin (ADR-020)
+        assertEquals(req().get("/api/items").getHeader("WWW-Authenticate"), r.getHeader("WWW-Authenticate"));
+        org.junit.jupiter.api.Assertions.assertNotNull(r.getHeader("WWW-Authenticate"));
     }
 
     @Test
@@ -88,6 +91,18 @@ class EnabledModeTest {
             .header("Origin", EVIL).header("Access-Control-Request-Method", "GET").options("/api/narrow");
         assertEquals(403, pre.statusCode());
         noCors(pre);
+    }
+
+    @Test
+    void sameOriginUnmappedMethodIsRoutedInBothIdentities() {
+        Response anon = req().header("Origin", Cors.sameOrigin()).delete("/api/items");
+        assertEquals(req().delete("/api/items").statusCode(), anon.statusCode());
+        assertEquals(401, anon.statusCode());
+        noCors(anon);
+        Response auth = req().auth().preemptive().basic(USER, PASSWORD).header("Origin", Cors.sameOrigin()).delete("/api/items");
+        assertEquals(req().auth().preemptive().basic(USER, PASSWORD).delete("/api/items").statusCode(), auth.statusCode());
+        assertEquals(405, auth.statusCode());
+        noCors(auth);
     }
 
     @Test

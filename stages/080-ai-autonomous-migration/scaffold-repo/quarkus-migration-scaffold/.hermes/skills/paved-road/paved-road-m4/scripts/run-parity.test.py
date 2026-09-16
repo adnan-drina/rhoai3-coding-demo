@@ -740,10 +740,14 @@ def main() -> int:
                 return _fail("the comparison compares the FIRST response and must still PASS: %s" % svd.get("reason"))
             rowd = next(r for r in load_json(root / PARITY / "receipt.json")["entry_points"]
                         if r["entry_point"] == CREATE_EP)
-            if rowd["verdict"] != "FAIL" or rowd.get("kind") != "navigation":
-                return _fail("a PASSing comparison with a dead navigation is a FAIL typed navigation: %s" % rowd)
-            if "is dead on the destination (404)" not in rowd["reason"] or base + "/ui/index.html" not in rowd["reason"]:
-                return _fail("the row must name the address and what became of it: %s" % rowd["reason"])
+            if rowd["verdict"] != "PASS" or rowd.get("navigation") != "failed":
+                return _fail("a PASSing comparison keeps its PASS while its navigation fails (ADR-020): %s" % rowd)
+            obld = [o for o in load_json(root / PARITY / "receipt.json").get("navigation_obligations") or []
+                    if o["entry_point"] == CREATE_EP]
+            if len(obld) != 1 or obld[0]["kind"] != "navigation" or obld[0]["verdict"] != "FAIL":
+                return _fail("a dead navigation is its own obligation row: %s" % obld)
+            if "is dead on the destination (404)" not in obld[0]["reason"] or base + "/ui/index.html" not in obld[0]["reason"]:
+                return _fail("the obligation must name the address and what became of it: %s" % obld[0]["reason"])
             if docd.get("receipt_verdict") != "FAIL":
                 return _fail("the composed receipt carries the navigation FAIL: %s" % docd.get("receipt_verdict"))
 
@@ -758,8 +762,10 @@ def main() -> int:
                 return _fail("the loop record must show the walk that came back: %s" % recl)
             rowl = next(r for r in load_json(root / PARITY / "receipt.json")["entry_points"]
                         if r["entry_point"] == CREATE_EP)
-            if rowl["verdict"] != "FAIL" or rowl.get("kind") != "navigation" or "is loop on the destination" not in rowl["reason"]:
-                return _fail("a loop is the same refusal as a dead address: %s" % rowl)
+            obll = [o for o in load_json(root / PARITY / "receipt.json").get("navigation_obligations") or []
+                    if o["entry_point"] == CREATE_EP]
+            if rowl["verdict"] != "PASS" or len(obll) != 1 or "is loop on the destination" not in obll[0]["reason"]:
+                return _fail("a loop is the same separate obligation as a dead address: %s %s" % (rowl, obll))
 
             # --- --no-navigation: nobody looked, and the record says so ------
             Service.root_mode = "ok"
@@ -1018,7 +1024,7 @@ def main() -> int:
           "on the destination was a redirect is walked on the destination only, at most --nav-max-hops hops, stopping "
           "at the first non-3xx, recorded per scenario under verification/parity/navigation -- a 302 to a 200 is ok "
           "and the receipt row says navigation: ok, a 302 to a 404 is dead and a two-URL chain is loop, and in both "
-          "the comparison still PASSes while the row becomes FAIL typed navigation naming the address; --no-navigation "
+          "the comparison and its row still PASS while the navigation becomes its own FAIL obligation row naming the address; --no-navigation "
           "walks nothing and records navigation: skipped; and the walk carries no credential unless the scenario "
           "declares an effects identity, when it carries exactly that reference; "
           "ADR-014 -- the default mode's record is byte-for-byte the road it always was (its key set is pinned, its "

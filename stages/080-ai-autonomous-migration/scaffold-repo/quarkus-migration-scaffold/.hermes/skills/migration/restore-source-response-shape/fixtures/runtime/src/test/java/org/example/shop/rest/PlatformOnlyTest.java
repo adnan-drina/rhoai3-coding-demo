@@ -42,6 +42,13 @@ class PlatformOnlyTest {
     }
 
     @Test
+    void thePlatformAloneRejectsASameOriginMethodOutsideItsList() {
+        // the stricter-than-source case ADR-020 rules a repair obligation; the adapter removes it
+        Response r = req().header("Origin", Cors.sameOrigin()).delete("/api/items");
+        assertEquals(403, r.statusCode());
+    }
+
+    @Test
     void withoutTheMediaTypeAdapterTheParameterStays() {
         Response r = req().header("Origin", CLIENT).get("/api/content/json-utf8");
         assertEquals("application/json;charset=UTF-8", r.getHeader("Content-Type"));
