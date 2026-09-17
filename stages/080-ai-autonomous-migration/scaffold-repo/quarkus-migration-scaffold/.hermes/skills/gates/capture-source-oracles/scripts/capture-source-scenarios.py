@@ -96,7 +96,7 @@ import _source_store  # noqa: E402
 from _variant_revert import plan_gap as revert_plan_gap  # noqa: E402
 from _scenarios import (CorpusError, DEFAULT_SECURITY_MODE, SCENARIO_ORACLES, SECURITY_MODES, auth_headers,  # noqa: E402,F401
                         auth_headers_for, capture_receipt_path, corpus_digest, credential_conflicts,
-                        EFFECTS_REVERT_THEN_READ, effects_identity_of, effects_strategy_of, load_corpus, normalize_security_mode, normalize_variant,
+                        EFFECTS_REVERT_THEN_READ, EFFECTS_SECOND_IDENTITY, effects_identity_of, effects_strategy_of, load_corpus, normalize_security_mode, normalize_variant,
                         normalized_identity, parse_assignments, request_of, scenario_oracles_dir, scenario_slug,
                         source_exposed_headers, variant_dataset_path)
 
@@ -567,6 +567,10 @@ def main(argv: list[str] | None = None) -> int:
                 "reset_before": bool(sc.get("reset_before", True)),
                 "status": "UNCAPTURED", "reason": "", "request": {}, "response": {}, "before": [], "effects": [],
             }
+            if str(sc.get("scenario_type") or ""):
+                # the gating classification, bound at capture (ADR-021); a
+                # scenario that names none keeps the capture shape it had
+                rec["scenario_type"] = str(sc["scenario_type"])
             out = root / oracles_dir / (scenario_slug(sc["id"]) + ".json")
             try:
                 req = request_of(root, sc)
@@ -594,27 +598,81 @@ def main(argv: list[str] | None = None) -> int:
                 write_canonical(out, rec)
                 failures.append("%s: %s" % (sc["id"], gap))
                 continue
-            # REVERT-THEN-READ (a refused variant write whose read-backs no
-            # other declared identity can take): the before reads are taken
-            # on the declared BASELINE as the request's own identity; the
-            # request is then sent to the source running against a SAME-ENGINE
-            # database held outside its process (_source_store), whose
-            # post-request state is snapshotted, reverted on the fixture's
-            # rows only, and read through the still-running source (ADR-020).
-            # Where no such store can be held, the source effect is recorded
-            # as NOT observed, with the reason -- never inferred from the 4xx.
-            rtr = effects_strategy_of(sc) == EFFECTS_REVERT_THEN_READ
+            # A REFUSED VARIANT WRITE (ADR-020/021): the source runs against a
+            # SAME-ENGINE database held outside its process (_source_store).
+            # Its scoped state is read immediately before the request and
+            # again after it completed, BEFORE any revert; both observations,
+            # their digests and the comparison are retained. HTTP read-backs
+            # are taken beside them and never stand in for them.
+            #   second_identity: before reads, request and after reads under
+            #     the variant, as the identity the variant does not refuse;
+            #   revert_then_read: before reads on the declared BASELINE (the
+            #     in-process source) as the request's own identity; then the
+            #     held store, the request, the post-request snapshot, the
+            #     checked revert of the fixture rows only, and the after reads
+            #     through the still-running source.
+            # Where no store can be held the source effect is recorded as NOT
+            # observed, with the reason -- never inferred from the 4xx.
+            strategy = effects_strategy_of(sc)
+            rtr = strategy == EFFECTS_REVERT_THEN_READ
+            refused_write = strategy in (EFFECTS_REVERT_THEN_READ, EFFECTS_SECOND_IDENTITY)
             if rtr and not variant_location:
                 rec["status"] = "INCONCLUSIVE"
                 rec["reason"] = "%s is a fixture-variant strategy and this capture is of no variant" % EFFECTS_REVERT_THEN_READ
                 write_canonical(out, rec)
                 failures.append("%s: %s" % (sc["id"], rec["reason"]))
                 continue
+            store = None
+            source_effects: dict[str, Any] = {}
+            overrides: dict[str, str] = {}
+            plan = (corpus.get("fixture") or {}).get("revert") if rtr else None
+            scope = [str(t) for t in ((sc.get("effects_db_scope") or {}).get("tables") or [])]
+
+            def hold() -> str:
+                nonlocal store, overrides
+                if not variant_location:
+                    return "a held source database is a fixture-variant mechanism and this capture is of no variant"
+                if not scope:
+                    return "the scenario declares no database effect scope (%s)" % (
+                        (sc.get("effects_db_scope") or {}).get("why") or "effects_db_scope is absent; derive the variant again")
+                if rtr:
+                    gap_ = revert_plan_gap(plan)
+                    if gap_:
+                        return "the variant corpus carries no executable revert (%s)" % gap_
+                store, why_ = SOURCE_STORE_OPENER(copy, runtime.jar, log_dir / ("store-" + scenario_slug(sc["id"])), args.java)
+                if store is None:
+                    return why_
+                open_stores.append(store)
+                declared_ds = copy / str((variant_record.get("declared_dataset") or {}).get("path") or "")
+                files = _source_store.schema_files(declared_ds) + [root / variant_dataset_path(security_mode, variant)]
+                why_ = store.start(files)
+                if why_:
+                    store = None
+                    return why_
+                overrides = store.source_overrides()
+                runtime.source_config.update(overrides)
+                source_effects["init"] = [f.name for f in files]
+                return ""
+
+            def release() -> None:
+                nonlocal store
+                if store is not None:
+                    runtime.stop()
+                    store.stop()
+                    store = None
+                for k in overrides:
+                    runtime.source_config.pop(k, None)
+
             if rtr:
                 runtime.source_config[dataset_key] = baseline_location
-            if rtr or sc.get("reset_before", True):
+            elif refused_write:
+                why = hold()
+                if why:
+                    source_effects = {"observed": False, "reason": why}
+            if rtr or sc.get("reset_before", True) or store is not None:
                 err = runtime.start()
                 if err:
+                    release()
                     rec["reason"] = err
                     write_canonical(out, rec)
                     failures.append("%s: %s" % (sc["id"], err))
@@ -646,44 +704,29 @@ def main(argv: list[str] | None = None) -> int:
                 if probe.get("status"):
                     row["evidence"] = retain_body(bodies_dir, "before-%s" % scenario_slug(eid), probe.get("raw") or b"", str(probe.get("body_sha256") or ""))
                 rec["before"].append(row)
-            store = None
-            source_effects: dict[str, Any] = {}
-            overrides: dict[str, str] = {}
             if rtr:
                 runtime.source_config[dataset_key] = variant_location
-                plan = (corpus.get("fixture") or {}).get("revert")
-                why = revert_plan_gap(plan)
-                if why:
-                    why = "the variant corpus carries no executable revert (%s)" % why
-                else:
-                    store, why = SOURCE_STORE_OPENER(copy, runtime.jar, log_dir / ("store-" + scenario_slug(sc["id"])),
-                                                     args.java)
-                if store is not None:
-                    open_stores.append(store)
-                    declared_ds = copy / str((variant_record.get("declared_dataset") or {}).get("path") or "")
-                    files = _source_store.schema_files(declared_ds) + [root / variant_dataset_path(security_mode, variant)]
-                    why = store.start(files)
-                    if why:
-                        store = None
-                    else:
-                        overrides = store.source_overrides()
-                        runtime.source_config.update(overrides)
-                        source_effects = {"init": [f.name for f in files]}
+                why = hold()
                 if why:
                     source_effects = {"observed": False, "reason": why}
                 err = runtime.start()
                 if err:
-                    for k in overrides:
-                        runtime.source_config.pop(k, None)
-                    if store is not None:
-                        store.stop()
+                    release()
                     rec["reason"] = err
                     write_canonical(out, rec)
                     failures.append("%s: %s" % (sc["id"], err))
                     continue
                 rec["source"]["starts"] = runtime.starts
-                rec["effects_reader"] = dict(sc.get("effects_reader") or {})
                 rec["before_dataset"] = dict(variant_record.get("declared_dataset") or {})
+            if refused_write:
+                rec["effects_reader"] = dict(sc.get("effects_reader") or {})
+            obs_dir = root / oracles_dir / "db-observations" / scenario_slug(sc["id"])
+            db_before: dict[str, Any] = {}
+            if store is not None:
+                # IMMEDIATELY before the request
+                db_before, why = store.observe(scope, obs_dir / "before.rows")
+                if why:
+                    source_effects = {"observed": False, "reason": why}
             obs = http_observe(runtime.base_url, req["method"], req["path"], body=req["body"], headers={**req["headers"], **headers},
                                assert_headers=asserted, keep_body=True)
             raw = obs.pop("raw", b"")
@@ -691,34 +734,53 @@ def main(argv: list[str] | None = None) -> int:
             if obs.get("status"):
                 rec["response"]["evidence"] = retain_body(bodies_dir, "response", raw, str(obs.get("body_sha256") or ""))
             if not obs.get("status"):
+                release()
                 rec["reason"] = "the source did not answer: %s" % obs.get("error")
                 write_canonical(out, rec)
                 failures.append("%s: %s" % (sc["id"], rec["reason"]))
                 continue
+            # the after reads: always for an ordinary scenario and for a
+            # second-identity write (kept beside the database evidence); for
+            # revert-then-read only once the fixture rows are reverted
             take_after = not rtr
-            if rtr and store is not None:
-                # the post-request state, retained BEFORE anything changes it
-                snap, why = store.snapshot(root / oracles_dir / "snapshots" / (scenario_slug(sc["id"]) + ".script"))
-                rc_rev, rev_out = (1, "") if why else store.revert(plan)
+            if store is not None and db_before:
+                # after the request completed, BEFORE anything is reverted
+                db_after, why = store.observe(scope, obs_dir / "after.rows")
+                snap, why_snap = store.snapshot(root / oracles_dir / "snapshots" / (scenario_slug(sc["id"]) + ".script")) \
+                    if not why else ({}, "")
+                why = why or why_snap
+                rc_rev, rev_out = (0, "")
+                if not why and rtr:
+                    rc_rev, rev_out = store.revert(plan)
                 if why:
                     source_effects = {"observed": False, "reason": why}
                 elif rc_rev != 0:
-                    # the source's own post-request state is not the variant
-                    # state the revert expects: the refused request may have
-                    # changed the fixture's rows. Recorded, with the snapshot;
-                    # the reads would not be the question any more
+                    # the fixture rows are not in the variant state the revert
+                    # expects: recorded with both observations, not read past
                     source_effects = {"observed": False, "snapshot": snap,
+                                      "db": {"before": db_before, "after": db_after,
+                                             "comparison": _source_store.compare_observations(
+                                                 Path(db_before["path"]), Path(db_after["path"]))},
                                       "reason": "the revert refused on the source's post-request state: %s" % rev_out[-240:]}
                 else:
                     take_after = True
+                    comparison = _source_store.compare_observations(Path(db_before["path"]), Path(db_after["path"]))
                     source_effects = {
-                        "observed": True, "mechanism": _source_store.MECHANISM, "engine": store.spec["engine"],
-                        "engine_jar": dict(store.jar_record), "datasource_keys": sorted(overrides),
-                        "configured_by": store.spec.get("file"), "init": source_effects.get("init", []),
-                        "snapshot": dict(snap, taken="after the refused request, before the revert"),
-                        "revert": {"rows": len(plan.get("rows") or []), "statements": list(plan.get("statements") or []),
-                                   "applied_to": "the retained post-request database, fixture rows only"},
+                        "observed": True, "strategy": strategy, "mechanism": _source_store.MECHANISM,
+                        "engine": store.spec["engine"], "engine_jar": dict(store.jar_record),
+                        "datasource_keys": sorted(overrides), "configured_by": store.spec.get("file"),
+                        "init": source_effects.get("init", []),
+                        "db": {"scope": dict(sc.get("effects_db_scope") or {}),
+                               "before": dict(db_before, taken="after fixture initialisation, immediately before the request"),
+                               "after": dict(db_after, taken="after the request completed, before any revert"),
+                               "comparison": comparison},
+                        "snapshot": dict(snap, taken="after the refused request, before any revert"),
+                        "revert": ({"rows": len(plan.get("rows") or []), "statements": list(plan.get("statements") or []),
+                                    "applied_to": "the retained post-request database, fixture rows only"} if rtr else None),
                         "restarted_between": False,
+                        # the database comparison is the no-effect evidence;
+                        # the runtime's caches were not inspected
+                        "caching": "not inspected: the database comparison is the state evidence",
                     }
             for eff in (sc.get("effects") or []) if take_after else []:
                 probe = http_observe(runtime.base_url, str(eff.get("method") or "GET"), str(eff.get("path") or "/"), headers=eff_headers, keep_body=True)
@@ -732,14 +794,10 @@ def main(argv: list[str] | None = None) -> int:
                 if probe.get("status"):
                     row["evidence"] = retain_body(bodies_dir, "after-%s" % scenario_slug(eid), probe.get("raw") or b"", str(probe.get("body_sha256") or ""))
                 rec["effects"].append(row)
-            if rtr:
+            if refused_write:
                 rec["source_effects"] = dict(source_effects)
-                if store is not None:
-                    # the next scenario starts on the in-process variant again
-                    runtime.stop()
-                    store.stop()
-                    for k in overrides:
-                        runtime.source_config.pop(k, None)
+                # the next scenario starts on the in-process variant again
+                release()
             rec["status"] = "CAPTURED"
             write_canonical(out, rec)
             captured += 1

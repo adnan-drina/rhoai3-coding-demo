@@ -20,6 +20,8 @@ import java.util.Properties;
  *   apply  URL USER PASSWORD FILE...   run each file's statements, in order
  *   script URL USER PASSWORD PATH      write the engine's own full snapshot (SCRIPT) to PATH
  *   revert URL USER PASSWORD PLAN      the fixture revert, checked, all or nothing
+ *   observe URL USER PASSWORD TABLES OUT  every row of each table (one bare name per line in TABLES),
+ *                                      all columns, written to OUT as sorted "table, column=value..." lines
  *   ping   URL USER PASSWORD           connect and disconnect
  *
  * PLAN is one row per line, tab-separated: table, column, variant value,
@@ -67,6 +69,10 @@ public final class StoreDb {
                         st.execute("SCRIPT '" + args[4].replace("'", "''") + "'");
                     }
                     System.out.println("snapshot written");
+                    break;
+                case "observe":
+                    System.out.println("observed " + observe(conn, Files.readAllLines(Path.of(args[4]), StandardCharsets.UTF_8),
+                                                             Path.of(args[5])) + " row(s)");
                     break;
                 case "revert":
                     System.exit(revert(conn, Files.readAllLines(Path.of(args[4]), StandardCharsets.UTF_8)));
@@ -134,6 +140,50 @@ public final class StoreDb {
             System.out.println("reverted " + done + " row group(s)");
             return 0;
         }
+    }
+
+    private static String cell(String v) {
+        if (v == null) {
+            return "\\N";
+        }
+        return v.replace("\\", "\\\\").replace("\t", "\\t").replace("\n", "\\n").replace("\r", "\\r");
+    }
+
+    /**
+     * A consistent read of every row of every scoped table: one transaction at
+     * SERIALIZABLE isolation, so the rows are one state, not a moving one.
+     */
+    private static int observe(Connection conn, List<String> tables, Path out) throws Exception {
+        conn.setAutoCommit(false);
+        conn.setTransactionIsolation(Connection.TRANSACTION_SERIALIZABLE);
+        List<String> lines = new ArrayList<>();
+        try (Statement st = conn.createStatement()) {
+            for (String raw : tables) {
+                String t = raw.trim();
+                if (t.isEmpty()) {
+                    continue;
+                }
+                if (!t.matches("[A-Za-z_][A-Za-z0-9_$.]*")) {
+                    throw new IllegalArgumentException("not a bare table name: " + t);
+                }
+                try (ResultSet rs = st.executeQuery("SELECT * FROM " + t)) {
+                    java.sql.ResultSetMetaData md = rs.getMetaData();
+                    int n = md.getColumnCount();
+                    while (rs.next()) {
+                        StringBuilder b = new StringBuilder(t.toLowerCase());
+                        for (int i = 1; i <= n; i++) {
+                            b.append('\t').append(md.getColumnLabel(i).toLowerCase()).append('=').append(cell(rs.getString(i)));
+                        }
+                        lines.add(b.toString());
+                    }
+                }
+                lines.add(t.toLowerCase() + "\t#table");
+            }
+        }
+        conn.commit();
+        java.util.Collections.sort(lines);
+        Files.writeString(out, String.join("\n", lines) + "\n", StandardCharsets.UTF_8);
+        return (int) lines.stream().filter(l -> !l.endsWith("\t#table")).count();
     }
 
     /** Statements split on the semicolons outside literals; -- comments dropped. */

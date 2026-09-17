@@ -127,7 +127,13 @@ policy, from the disabled corpus's own requests: `sc:cors-enabled-preflight-*`
 `sc:cors-enabled-actual-authenticated-*` (a declared identity the route's
 guard accepts) and `sc:cors-enabled-probe-authenticated-*` —
 `scenario_type: diagnostic-probe`, the only OPTIONS the loader admits with
-credentials, never counted as browser-preflight coverage. The capture decides
+credentials, never counted as browser-preflight coverage. A diagnostic probe
+is non-gating (ADR-021): it is not required of its entry point, counts in no
+verdict, `not_passed` or coverage, and its result is listed under the
+receipt's `diagnostics`. Its classification is bound at capture and fixed by
+the first recorded result (`verification/parity/classification*.json`); a
+corpus that relabels a compared scenario is refused by the comparator and
+counted as required by the composer (`classification_refusals`). The capture decides
 every expectation; qualification records `browser_access: permits|prevents`
 (a matched source rejection is parity, not a demonstrated permission), and
 the enabled receipt stays INCONCLUSIVE on CORS until a qualified browser
@@ -204,8 +210,20 @@ bash   "$V/reset-parity-db.sh"           --root /projects/modernized          # 
     destination's no-effect result, the response result and the source
     effect (INCONCLUSIVE) apart in `results`; the scenario is not PASS. The
     contract adds `before_reads_usable` and `after_equals_before`. Every
-    variant scenario declares `reset_before` (derivation v3), and the
-    comparator re-applies the variant after a revert-then-read scenario.
+    variant scenario declares `reset_before`, and the comparator re-applies
+    the variant after a revert-then-read scenario.
+  - ADR-021 (derivation v4): "unchanged" is a DATABASE claim. A refused write
+    (either strategy) carries `effects_db_scope` — the source-schema tables
+    its route and read-backs name, plus every table whose foreign key
+    references one of them, with the rule recorded — and its contract adds
+    `db_unchanged`. The capture reads every row and column of that scope in
+    one transaction immediately before the request and again after it,
+    before any revert (`source_effects.db`: both observations, digests,
+    comparison and its definition). Qualification recomputes the comparison
+    from the retained bytes; HTTP read-backs are kept beside it and never
+    qualify "unchanged" (a disagreement is recorded, the database decides).
+    The comparator reports the source effect as OBSERVED only with that
+    comparison.
   With neither, the write carries no read-back, `effects_unobservable` names
   both reasons, and the comparator stays INCONCLUSIVE with them. Corpora are
   stamped `derived_from.variant_derivation`; one derived under an older

@@ -72,6 +72,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _oracle_common import ensure_hermes_lib, normalize_body, origin_of  # noqa: E402
+from _source_store import compare_observations  # noqa: E402
 from _scenarios import (CorpusError, DEFAULT_SECURITY_MODE, QUALIFICATION, QUALIFICATION_SCHEMA, SCENARIO_ORACLES,  # noqa: E402,F401
                         SECURITY_MODES, capture_receipt_path, capture_security_mode, capture_security_variant, corpus_digest,
                         effects_identity_of, load_corpus, normalize_security_mode, normalized_identity,
@@ -89,7 +90,7 @@ _ORACLES_DIR = SCENARIO_ORACLES
 KNOWN_CHECKS = ("expect_status", "expect_status_class", "usable_first_response", "location", "after_contains_body", "before_lacks_body",
                 "creates_one_entity", "after_equals_before", "errors_header_names_field", "after_effect_status", "cors_allow_origin",
                 "cors_expose_headers", "cors_allow_method", "cors_allow_headers", "before_reads_usable",
-                "cors_browser_access")
+                "cors_browser_access", "db_unchanged")
 CONTRACT_KEYS = ("intent", "identity_field")  # parameters of the contract, not checks
 BODY_CHECKS = ("after_contains_body", "before_lacks_body", "creates_one_entity", "after_equals_before", "before_reads_usable")
 # checks that read a read-back ROW without reading its body: they are about
@@ -349,6 +350,9 @@ def qualify_scenario(root: Path, sc: dict[str, Any], cap: dict[str, Any] | None,
     base = {"intent": intent, "capture_sha256": capture_sha, "request_sha256": request_sha,
             "evidence_bundle_sha256": bundle_sha, "corpus_sha256": corpus_sha}
 
+    if str(sc.get("scenario_type") or ""):
+        base["scenario_type"] = str(sc["scenario_type"])
+
     def finish(capability: str, reason: str) -> dict[str, Any]:
         usable = not evidence_reasons
         return dict(base, verdict=capability, capability=capability,
@@ -506,6 +510,43 @@ def qualify_scenario(root: Path, sc: dict[str, Any], cap: dict[str, Any] | None,
                                "detail": ("the source's answer lets a browser complete the exchange" if not why_not else
                                           "the source PREVENTS the browser exchange (%s); matching it is parity, not a "
                                           "demonstrated permission" % "; ".join(why_not))})
+            elif name == "db_unchanged":
+                # ADR-021: the no-effect claim is a DATABASE claim over the
+                # declared scope -- two retained observations, before and
+                # after the request, compared again here from their bytes.
+                # The HTTP read-backs are kept beside it and never qualify it.
+                if want is not True:
+                    raise Unjudgeable("db_unchanged must be true")
+                se = cap.get("source_effects") if isinstance(cap.get("source_effects"), dict) else {}
+                db = se.get("db") if isinstance(se.get("db"), dict) else {}
+                files = []
+                for which in ("before", "after"):
+                    row = db.get(which) if isinstance(db.get(which), dict) else {}
+                    fp = Path(str(row.get("path") or ""))
+                    fp = fp if fp.is_absolute() else root / fp
+                    if not row or not fp.is_file():
+                        raise Unusable("no %s database observation of the declared scope is retained (%s)"
+                                       % (which, se.get("reason") or "the capture records none"))
+                    if hashlib.sha256(fp.read_bytes()).hexdigest() != str(row.get("sha256") or ""):
+                        raise Unusable("the %s database observation is not the one the capture digested" % which)
+                    files.append(fp)
+                again = compare_observations(files[0], files[1])
+                recorded = (db.get("comparison") or {}).get("equal")
+                if recorded is not again["equal"]:
+                    raise Unusable("the recorded database comparison (%s) is not what its observations show (%s)"
+                                   % (recorded, again["equal"]))
+                http_same = (bool(before) and set(before) == set(after)
+                             and all(before[k].get("body_sha256") == after[k].get("body_sha256")
+                                     and before[k].get("status") == after[k].get("status") for k in before))
+                detail = ("the declared scope (%s) is unchanged across the request" % ", ".join(again["tables"])
+                          if again["equal"] else
+                          "the request changed the database: %s" % "; ".join(
+                              "%s %d→%d rows" % (t, d["before_count"], d["after_count"])
+                              for t, d in sorted(again["differences"].items())))
+                if after and http_same != again["equal"]:
+                    detail += ("; the HTTP read-backs say %s -- the database evidence decides, and both are kept"
+                               % ("unchanged" if http_same else "changed"))
+                record(name, again["equal"], detail)
             elif name == "before_reads_usable":
                 # revert-then-read: the source's after reads cannot be taken
                 # (its database is restored only by a restart), so what the

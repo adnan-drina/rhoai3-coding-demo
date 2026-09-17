@@ -110,7 +110,11 @@ VARIANT_NAME_CHARS = "a-z, 0-9 and -, starting with a letter or digit"
 # reset_before -- a variant scenario is defined by its dataset state, and a
 # read that inherited the state a revert-then-read write left (the baseline,
 # account enabled) answered 200 where the source answered 401.
-VARIANT_DERIVATION = "rhoai3.fixture-variant-derivation/v3"
+# v4 (2026-09-17, ADR-021): a refused write declares the database scope its
+# no-effect claim covers (effects_db_scope) and its contract requires the
+# before/after database comparison (db_unchanged); HTTP read-backs alone
+# never qualify "unchanged".
+VARIANT_DERIVATION = "rhoai3.fixture-variant-derivation/v4"
 # The role a read-back plays when the request it follows is REFUSED: its
 # before and after bodies are the source's, and the claim is that they are
 # equal -- the write did not happen. Carried on the effect so a report can say
@@ -118,6 +122,7 @@ VARIANT_DERIVATION = "rhoai3.fixture-variant-derivation/v3"
 EFFECT_ROLE_UNCHANGED = "unchanged_under_refusal"
 # how a refused write's read-backs are taken (``effects_reader.strategy``)
 EFFECTS_REVERT_THEN_READ = "revert_then_read"
+EFFECTS_SECOND_IDENTITY = "second_identity"
 
 
 def effects_strategy_of(sc: dict[str, Any]) -> str:
@@ -181,6 +186,60 @@ def _mode_suffix(security_mode: Any = DEFAULT_SECURITY_MODE, variant: Any = "") 
     mode = normalize_security_mode(security_mode)
     name = normalize_variant(variant, mode)
     return ("" if mode == DEFAULT_SECURITY_MODE else "-%s" % mode) + ("-%s" % name if name else "")
+
+
+def classification_ledger_path(security_mode: Any = DEFAULT_SECURITY_MODE, variant: Any = "") -> Path:
+    """Where the first recorded classification of every compared scenario is
+    kept (ADR-021): beside the receipt, not among the verdicts."""
+    return Path("verification") / "parity" / ("classification%s.json" % _mode_suffix(security_mode, variant))
+
+
+def is_diagnostic(sc: Any) -> bool:
+    return isinstance(sc, dict) and str(sc.get("scenario_type") or "") == SCENARIO_DIAGNOSTIC_PROBE
+
+
+def classification_conflict(root: Path, sc: dict[str, Any], security_mode: Any = DEFAULT_SECURITY_MODE,
+                            variant: Any = "") -> str:
+    """Why this scenario's gating classification may not be used; "" when
+    it holds. A scenario is gating or diagnostic from the FIRST result
+    recorded for it on: relabelling it afterwards -- in either direction --
+    is refused, whatever the corpus now says (ADR-021)."""
+    p = Path(root) / classification_ledger_path(security_mode, variant)
+    try:
+        ledger = load_json(p) if p.is_file() else {}
+    except (OSError, ValueError):
+        return "%s cannot be read, so the scenario's recorded classification is unknown" % p.name
+    row = ((ledger or {}).get("scenarios") or {}).get(str(sc.get("id"))) if isinstance(ledger, dict) else None
+    if not isinstance(row, dict):
+        return ""
+    was = str(row.get("scenario_type") or "")
+    now = str(sc.get("scenario_type") or "")
+    if (was == SCENARIO_DIAGNOSTIC_PROBE) != (now == SCENARIO_DIAGNOSTIC_PROBE):
+        return ("scenario %s was first compared as %s and the corpus now types it %s; a scenario's gating classification "
+                "is fixed once a result exists" % (sc.get("id"), was or "a contract scenario", now or "a contract scenario"))
+    return ""
+
+
+def record_classification(root: Path, sc: dict[str, Any], corpus_sha: str, security_mode: Any = DEFAULT_SECURITY_MODE,
+                          variant: Any = "") -> None:
+    """Keep the first classification of a compared scenario; never rewrite it."""
+    p = Path(root) / classification_ledger_path(security_mode, variant)
+    try:
+        ledger = load_json(p) if p.is_file() else {}
+    except (OSError, ValueError):
+        return
+    if not isinstance(ledger, dict):
+        ledger = {}
+    rows = ledger.setdefault("scenarios", {})
+    ledger["schema"] = "rhoai3.scenario-classification/v1"
+    sid = str(sc.get("id"))
+    if sid in rows:
+        return
+    rows[sid] = {"scenario_type": str(sc.get("scenario_type") or ""), "first_corpus_sha256": corpus_sha,
+                 "gating": not is_diagnostic(sc)}
+    p.parent.mkdir(parents=True, exist_ok=True)
+    from planner.canonical import write_canonical as _write
+    _write(p, ledger)
 
 
 def scenario_oracles_dir(security_mode: Any = DEFAULT_SECURITY_MODE, variant: Any = "") -> Path:

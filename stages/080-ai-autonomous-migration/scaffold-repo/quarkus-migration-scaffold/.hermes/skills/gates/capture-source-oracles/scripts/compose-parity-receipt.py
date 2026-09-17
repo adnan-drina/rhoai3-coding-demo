@@ -55,7 +55,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _oracle_common import PARITY, slug  # noqa: E402
 from _scenarios import (BINDING_CANDIDATE, CorpusError, DEFAULT_SECURITY_MODE, EFFECT_ROLE_UNCHANGED, QUALIFICATION,  # noqa: E402
-                        SCENARIO_BROWSER_PREFLIGHT, SCENARIO_CORS_ACTUAL, SCENARIO_DIAGNOSTIC_PROBE, QUALIFICATION_SCHEMA,  # noqa: E402,F401
+                        SCENARIO_BROWSER_PREFLIGHT, SCENARIO_CORS_ACTUAL, SCENARIO_DIAGNOSTIC_PROBE,
+                        classification_conflict, is_diagnostic, QUALIFICATION_SCHEMA,  # noqa: E402,F401
                         SCENARIO_ORACLES, SCENARIO_PARITY, SECURITY_MODES, binding_mismatch, candidate_binding,
                         capture_security_mode, capture_security_variant, corpus_digest, cors_coverage,
                         declared_slugs, is_derived,
@@ -100,6 +101,24 @@ def _refused_writes(corpus: Any, results: dict[str, list[dict[str, Any]]]) -> di
         elif str(sc.get("effects_unobservable") or ""):
             out[sid] = {"proves": "nothing about the state", "unobservable": str(sc["effects_unobservable"]),
                         "verdict": seen or "no single result"}
+    return out
+
+
+def _diagnostics(corpus: Any, ids: set[str], results: dict[str, list[dict[str, Any]]],
+                 qualified: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    out: dict[str, dict[str, Any]] = {}
+    for sc in ((corpus or {}).get("scenarios") or []) if isinstance(corpus, dict) else []:
+        sid = str((sc or {}).get("id") or "")
+        if sid not in ids:
+            continue
+        found = results.get(sid) or []
+        out[sid] = {"entry_point": str(sc.get("entry_point") or ""), "scenario_type": str(sc.get("scenario_type") or ""),
+                    "cors_policy": str(sc.get("cors_policy") or ""),
+                    "verdict": str(found[0].get("verdict") or "") if len(found) == 1 else
+                    ("no result" if not found else "%d results" % len(found)),
+                    "reason": str(found[0].get("reason") or "") if len(found) == 1 else "",
+                    "qualification": str((qualified.get(sid) or {}).get("capability") or ""),
+                    "gating": False, "obligations": 0, "browser_coverage": False}
     return out
 
 
@@ -226,7 +245,19 @@ def main(argv: list[str] | None = None) -> int:
     except CorpusError as exc:
         corpus_error = str(exc)
     required: dict[str, list[str]] = {}
+    # ADR-021: a diagnostic probe gates nothing -- it is not required of its
+    # entry point, counts in no verdict and earns no coverage; its result is
+    # kept apart under ``diagnostics``. Unless it was relabelled after a
+    # result existed: then it is required, with the refusal as a problem.
+    diagnostic_ids: set[str] = set()
+    relabelled: dict[str, str] = {}
     for sc in (corpus.get("scenarios") or []):
+        conflict = classification_conflict(root, sc, security_mode, variant) if isinstance(sc, dict) else ""
+        if conflict:
+            relabelled[str(sc.get("id"))] = conflict
+        if is_diagnostic(sc) and not conflict:
+            diagnostic_ids.add(str(sc.get("id")))
+            continue
         required.setdefault(str(sc.get("entry_point") or ""), []).append(str(sc.get("id")))
     # A capture is coverage only once it is QUALIFIED: CAPTURED records an
     # observation, and a create the source answered 500 for replays faithfully
@@ -315,6 +346,8 @@ def main(argv: list[str] | None = None) -> int:
             positive: list[str] = []
             negative: list[str] = []
             for sid in names:
+                if sid in relabelled:
+                    problems.append(relabelled[sid])
                 if qualification_loaded:
                     q = qualified.get(sid)
                     if q is None:
@@ -377,7 +410,8 @@ def main(argv: list[str] | None = None) -> int:
                     failures.append("%s: %s" % (sid, doc.get("reason")))
                 elif doc.get("verdict") != "PASS":
                     problems.append("%s: %s" % (sid, doc.get("reason") or doc.get("verdict")))
-            foreign = sorted(sid for sid in results if sid not in set(names) and any(str(d.get("entry_point") or "") == ep for d in results[sid]))
+            foreign = sorted(sid for sid in results if sid not in set(names) and sid not in diagnostic_ids
+                             and any(str(d.get("entry_point") or "") == ep for d in results[sid]))
             if foreign:
                 problems.append("result(s) for %s, which the corpus does not require of this entry point" % ", ".join(foreign[:3]))
             if failures:
@@ -400,6 +434,9 @@ def main(argv: list[str] | None = None) -> int:
             nav_ok = [sid for sid in names if str((navigation.get(sid) or {}).get("terminal") or "") == "ok"]
             row = {"entry_point": ep, "verdict": verdict, "reason": reason, "scenarios": names,
                    "coverage": {"positive": positive, "negative": negative}}
+            refusals = [relabelled[sid] for sid in names if sid in relabelled]
+            if refusals:
+                row["classification_refusals"] = refusals
             if verdict == "PASS" and nav_bad:
                 # the redirect IS the source's (PASS stays); reachability of its
                 # target is a separate obligation with its own row
@@ -471,6 +508,8 @@ def main(argv: list[str] | None = None) -> int:
            "navigation": {"checked": len(navigation), "failures": navigation_failures},
            "navigation_obligations": navigation_obligations,
            "refused_writes": _refused_writes(corpus, results),
+           # results that gate nothing: visible, never required, never coverage
+           "diagnostics": _diagnostics(corpus, diagnostic_ids, results, qualified),
            "verdict": verdict}
     out = root / parity_receipt_path(security_mode, variant)
     write_canonical(out, doc)

@@ -3157,10 +3157,47 @@ def _variant_revert_plan(fixture: dict[str, Any], seed_p: Path | None, dataset: 
         return None, "REVERT_NOT_COMPUTABLE: %s" % exc
 
 
+def effect_db_scope(base: dict[str, Any], reads: list[dict[str, Any]], columns: dict[str, list[str]],
+                    foreign_keys: list[dict[str, Any]], eps: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    """The database state a refused write's no-effect claim covers (ADR-021),
+    derived from what the scenario already reads: the tables its entry
+    point's route and its effect reads name (the same singular/plural
+    tolerance the path-variable mapping uses, against the source schema's
+    own tables), and every table whose foreign key references one of them --
+    the relationships a write could change. The definition travels with the
+    scenario; an empty scope is a reason, never an empty claim."""
+    tables = set(columns)
+    found: dict[str, str] = {}
+    ep = eps.get(str(base.get("entry_point") or "")) or {}
+    route = str(ep.get("http_path") or "")
+    for var in re.findall(r"\{([^{}]+)\}", route):
+        for cand in table_candidates(var, route):
+            if cand in tables:
+                found.setdefault(cand, "route %s {%s}" % (route, var))
+                break
+    for e in reads:
+        path = str(e.get("path") or "")
+        for seg in [x for x in path.split("/") if x and not x.isdigit()]:
+            for cand in dict.fromkeys([seg.lower(), _snake(seg), _plural(seg.lower()), _singular(seg.lower())]):
+                if cand in tables:
+                    found.setdefault(cand, "read %s %s" % (e.get("id"), path))
+                    break
+    if not found:
+        return {"tables": [], "why": ("no table of the source schema is named by %s's route or its read-backs; the "
+                                      "database state its refusal leaves is not scoped" % base.get("id"))}
+    related = {fk["table"]: "foreign key %s → %s" % (fk["table"], fk["ref_table"])
+               for fk in foreign_keys if fk.get("ref_table") in found and fk.get("table") in tables}
+    evidence = ["scope:%s (%s)" % (t, found[t]) for t in sorted(found)]
+    evidence += ["scope:%s (%s)" % (t, related[t]) for t in sorted(related) if t not in found]
+    return {"tables": sorted(set(found) | set(related)), "evidence": evidence,
+            "rule": ("the tables the entry point's route and the scenario's read-backs name in the source schema, and every "
+                     "table whose foreign key references one of them")}
+
+
 def _variant_scenario(root: Path, variant: str, fixture: dict[str, Any], base: dict[str, Any], base_sha: str,
                       base_corpus_rel: str, dataset: dict[str, str], identities: list[dict[str, Any]] | None = None,
                       invalid_ref: str = "", gaps: list[str] | None = None, revert: dict[str, Any] | None = None,
-                      revert_why: str = "no revert was computed") -> dict[str, Any]:
+                      revert_why: str = "no revert was computed", db_scope: dict[str, Any] | None = None) -> dict[str, Any]:
     """One scenario of a fixture variant: the base scenario's request, sent
     against the varied dataset.
 
@@ -3257,6 +3294,10 @@ def _variant_scenario(root: Path, variant: str, fixture: dict[str, Any], base: d
                     unobservable = "%s; and %s" % (second_why, revert_why if own_ref else
                                                    "the refused request carries no credential reference to read as after a revert")
         if reader is not None:
+            # ADR-021: "unchanged" is a DATABASE claim over a declared scope,
+            # read before and after the request; HTTP read-backs are kept
+            # beside it and never qualify it on their own
+            qualify["db_unchanged"] = True
             # the read REQUESTS only -- id, method, path -- with the role they
             # play here; what they answer is the source capture's to record
             effects = [{"id": str(e.get("id") or e.get("path")), "method": str(e.get("method") or "GET").upper(),
@@ -3297,6 +3338,7 @@ def _variant_scenario(root: Path, variant: str, fixture: dict[str, Any], base: d
     if reader is not None:
         sc["effects_identity"] = {"kind": "basic", "credential_ref": str(reader["credential_ref"])}
         sc["effects_reader"] = dict(reader_row)
+        sc["effects_db_scope"] = dict(db_scope or {"tables": [], "why": "no database scope was derived"})
     if unobservable:
         sc["effects_unobservable"] = unobservable
     if refuse:
@@ -3349,6 +3391,8 @@ def _derive_variant(root: Path, args: Any, mode: str, variant: str, out_p: Path,
     # recorded with its digest so the capture builds the variant from exactly
     # the bytes this derivation saw
     _src, _dest, _engine, seed_p, _seed, _cols, _fks = _sql_evidence(root, copy, inputs, gaps)
+    bundle_eps = {str(e.get("id")): e for e in (load_json(root / EVIDENCE_BUNDLE).get("entry_points") or [])
+                  if isinstance(e, dict)}
     if seed_p is None:
         return blocked("the fixture's statements are applied AFTER the declared dataset, and the frozen source carries none "
                        "(no seed file was found); the variant dataset cannot be built")
@@ -3357,7 +3401,9 @@ def _derive_variant(root: Path, args: Any, mode: str, variant: str, out_p: Path,
     revert, revert_why = (_variant_revert_plan(fixture, seed_p, dataset) if str(fixture.get("intent") or "") == "refuse"
                           else (None, "the variant declares no refusal"))
     scenarios = [_variant_scenario(root, variant, fixture, sc, base_sha, base_corpus_rel, dataset, base_identities,
-                                   str(base.get("invalid_credential_ref") or ""), gaps, revert, revert_why)
+                                   str(base.get("invalid_credential_ref") or ""), gaps, revert, revert_why,
+                                   effect_db_scope(sc, [e for e in (sc.get("effects") or []) if isinstance(e, dict)],
+                                                   _cols, _fks, bundle_eps))
                  for sc in selected]
     scenarios.sort(key=lambda s: str(s["id"]))
     fixture_row = {

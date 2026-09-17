@@ -2581,8 +2581,12 @@ def _variant_effects_rule_case() -> int:
             if sc.get("effects_identity") != {"kind": "basic", "credential_ref": "REF_TWIN"}:
                 return _fail("the read-backs are taken as a declared identity that is neither refused nor invalid and holds "
                              "what the refused one holds: %s" % sc.get("effects_identity"))
-            if sc["qualify"] != {"intent": "negative", "expect_status_class": "4xx", "after_equals_before": True}:
-                return _fail("the contract is a refusal whose read-backs are unchanged, and nothing of the base's: %s" % sc["qualify"])
+            if sc["qualify"] != {"intent": "negative", "expect_status_class": "4xx", "after_equals_before": True,
+                                 "db_unchanged": True}:
+                return _fail("the contract is a refusal whose database and read-backs are unchanged, and nothing of the "
+                             "base's: %s" % sc["qualify"])
+            if sc.get("effects_db_scope") != {"tables": [], "why": "no database scope was derived"}:
+                return _fail("a scenario given no scope says so: %s" % sc.get("effects_db_scope"))
             if sc["identity"] != base["identity"] or gaps or "effects_unobservable" in sc:
                 return _fail("the request is untouched and nothing is missing: %s %s" % (sc["identity"], gaps))
             if not any(e.startswith("effects-identity:twin ") for e in sc["derived_from"]["evidence"]):
@@ -2609,7 +2613,7 @@ def _variant_effects_rule_case() -> int:
                     or rtr.get("effects_identity") != {"kind": "basic", "credential_ref": "REF_BOSS"}
                     or [e["role"] for e in rtr["effects"]] != ["unchanged_under_refusal"] * 2
                     or rtr["qualify"] != {"intent": "negative", "expect_status_class": "4xx", "before_reads_usable": True,
-                                          "after_equals_before": True}
+                                          "after_equals_before": True, "db_unchanged": True}
                     or gaps or "effects_unobservable" in rtr):
                 return _fail("with no other identity and a computable revert the reads are revert-then-read as the "
                              "request's own identity: %s %s %s" % (rtr.get("effects_reader"), rtr["qualify"], gaps))
@@ -2683,6 +2687,10 @@ def _enabled_variant_effects_case() -> int:
                                  "one: %s vs %s" % (who, s["identity"]))
                 if (s.get("effects_reader") or {}).get("strategy") != "second_identity":
                     return _fail("the reader row records its strategy: %s" % s.get("effects_reader"))
+                scope = s.get("effects_db_scope") or {}
+                if n.resource not in (scope.get("tables") or []) or not scope.get("rule") or s["qualify"].get("db_unchanged") is not True:
+                    return _fail("the no-effect claim is a database claim over a derived, recorded scope: %s %s"
+                                 % (scope, s["qualify"]))
                 if s["qualify"].get("after_equals_before") is not True or "effects_unobservable" in s:
                     return _fail("the refused write must leave its read-backs unchanged: %s" % s["qualify"])
             try:
@@ -2691,7 +2699,7 @@ def _enabled_variant_effects_case() -> int:
                 return _fail("the loader accepts the variant corpus with read-backs: %s" % exc)
             receipt = load_json(root / VARIANT_RECEIPT_P)
             if (receipt.get("variant_derivation") != corpus["derived_from"].get("variant_derivation")
-                    or not str(receipt.get("variant_derivation") or "").endswith("/v3")
+                    or not str(receipt.get("variant_derivation") or "").endswith("/v4")
                     or sorted(receipt.get("effects") or {}) != sorted(s["id"] for s in writes)
                     or any(r.get("identity") != {"kind": "basic", "credential_ref": n.cred_one}
                            for r in (receipt.get("effects") or {}).values())):
@@ -2725,7 +2733,7 @@ def _enabled_variant_effects_case() -> int:
             load_corpus(root, "enabled", VARIANT)
             return _fail("a v2 variant corpus must not load under v3")
         except CorpusError as exc:
-            if "/v2" not in str(exc) or "/v3" not in str(exc) or "derive the variant again" not in str(exc):
+            if "/v2" not in str(exc) or "/v4" not in str(exc) or "derive the variant again" not in str(exc):
                 return _fail("the v2 refusal names both derivations: %s" % exc)
         # ... while the baseline corpus of the mode is not versioned by it
         try:

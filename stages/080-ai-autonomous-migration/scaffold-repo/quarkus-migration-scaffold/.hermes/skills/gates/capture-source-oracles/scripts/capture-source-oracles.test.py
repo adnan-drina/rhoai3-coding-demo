@@ -848,7 +848,7 @@ def _variant_revert_capture_case() -> int:
             probe = {"id": "sc:fixture-%s-delete-owners" % VARIANT, "method": "DELETE", "path": "/api/owners/1",
                      "body_absent": True, "reset_before": True, "normalization": [], "identity": dict(own),
                      "effects": [{"id": "eff:owners", "method": "GET", "path": "/api/owners", "role": "unchanged_under_refusal"}],
-                     "effects_identity": dict(own),
+                     "effects_identity": dict(own), "effects_db_scope": {"tables": ["accounts"], "rule": "fixture"},
                      "effects_reader": {"strategy": "revert_then_read", "name": user, "credential_ref": ref}}
             root, ep = _mode_root(t, "revert", dict(probe, id="sc:unused"), "enabled", security=_variant_fixture([ref]))
             copy = Path(_load(_producer_receipt(root, "freeze"))["analysis_copy"])
@@ -915,34 +915,53 @@ def _variant_revert_capture_case() -> int:
 
 
 def _variant_store_capture_case() -> int:
-    """The SOURCE's post-request state, observed (ADR-020): the refused
-    request is sent to a source whose database a store holds; the store's
-    post-request snapshot is retained and digested, the fixture rows only are
-    reverted, and the reads are taken through the SAME running source -- no
-    restart between the request and the observation. A store whose revert
-    finds unexpected state records the effect as not observed, with the
-    snapshot."""
+    """The SOURCE's post-request state, observed (ADR-020/021).
+
+    The refused request is sent to a source whose database a store holds.
+    The scoped database state is read immediately before the request and
+    again after it, before the revert; both observations and their digests
+    are retained with the comparison; the post-request snapshot is retained;
+    the fixture rows only are reverted; the HTTP reads are taken through the
+    SAME running source. The counterexample: a handler that answers 401,
+    deletes a row anyway, while a warmed cache keeps serving the old body --
+    the HTTP read-backs say "unchanged" and qualification still FAILs on the
+    database comparison. A revert that finds unexpected state records the
+    effect as not observed, with both observations."""
     import base64
     import hashlib
     import os
     from unittest.mock import patch
     from planner.canonical import load_json as _load, sha256_file
     from planner.paths import producer_receipt as _producer_receipt
-    from _scenarios import corpus_path, scenario_oracles_dir, scenario_slug
+    from _scenarios import corpus_path, qualification_path, scenario_oracles_dir, scenario_slug
     import _variant_revert as vr
 
     producer = _load_producer()
     secret, user, ref = "st0re-s3cret", "an-identity", "TEST_STORE_CREDENTIAL"
     token = base64.b64encode(("%s:%s" % (user, secret)).encode("utf-8")).decode("ascii")
-    handler = type("S", (AccountStatus,), {"expected": "Basic %s" % token, "dataset": "", "disabled_marker": "enabled = false"})
-    srv = HTTPServer(("127.0.0.1", 0), handler)
+    events: list = []
+    state: dict = {}
+
+    class Handler(AccountStatus):
+        expected = "Basic %s" % token
+        dataset = ""
+        disabled_marker = "enabled = false"
+        mutates = False
+
+        def do_DELETE(self):  # noqa: N802
+            events.append(("request",))
+            if type(self).mutates:
+                # the handler ran: 401 on the wire, a row gone in the database
+                state["owners"] = [r for r in state["owners"] if r != "id=1\tname=one"]
+            return self.do_GET()   # 401; and GET keeps answering the cached list
+
+    srv = HTTPServer(("127.0.0.1", 0), Handler)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     base_url = "http://127.0.0.1:%d" % srv.server_address[1]
     kept = os.environ.get(ref)
     os.environ[ref] = "%s:%s" % (user, secret)
     schema = "CREATE TABLE accounts (name VARCHAR(20) PRIMARY KEY, enabled BOOLEAN NOT NULL);\n"
     plan = vr.compute_plan([STATEMENT], DECLARED_SQL, schema, {"path": DECLARED_DATASET, "sha256": "0" * 64})
-    events: list = []
 
     class FakeStore:
         spec = {"engine": "fixture-engine", "file": "src/main/resources/application.properties"}
@@ -951,23 +970,33 @@ def _variant_store_capture_case() -> int:
 
         def start(self, files):
             events.append(("store-start", [f.name for f in files]))
-            handler.dataset = Path(files[-1]).read_text(encoding="utf-8")
+            Handler.dataset = Path(files[-1]).read_text(encoding="utf-8")
+            state.clear()
+            state["owners"] = ["id=1\tname=one", "id=2\tname=two"]
             return ""
 
         def source_overrides(self):
             return {"fixture.datasource.url": "fixture://held"}
 
-        def snapshot(self, path):
-            events.append(("snapshot", handler.dataset))
+        def observe(self, tables, path):
+            events.append(("observe", list(tables)))
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(handler.dataset, encoding="utf-8")
+            lines = sorted(["%s\t%s" % (t, r) for t in tables for r in state.get(t, [])] + ["%s\t#table" % t for t in tables])
+            path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            return {"path": str(path), "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                    "rows": sum(len(state.get(t, [])) for t in tables)}, ""
+
+        def snapshot(self, path):
+            events.append(("snapshot",))
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(Handler.dataset, encoding="utf-8")
             return {"path": str(path), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}, ""
 
         def revert(self, got_plan):
             events.append(("revert", list(got_plan["statements"])))
             if type(self).refuse:
                 return 3, "REVERT_UNEXPECTED_STATE accounts.enabled: the rows do not hold the variant value false"
-            handler.dataset = handler.dataset.replace(STATEMENT, "-- reverted")
+            Handler.dataset = Handler.dataset.replace(STATEMENT, "-- reverted")
             return 0, "reverted 1 row group(s)"
 
         def stop(self):
@@ -981,7 +1010,10 @@ def _variant_store_capture_case() -> int:
                      "body_absent": True, "reset_before": True, "normalization": [], "identity": dict(own),
                      "effects": [{"id": "eff:owners", "method": "GET", "path": "/api/owners", "role": "unchanged_under_refusal"}],
                      "effects_identity": dict(own),
-                     "effects_reader": {"strategy": "revert_then_read", "name": user, "credential_ref": ref}}
+                     "effects_db_scope": {"tables": ["owners"], "rule": "fixture scope"},
+                     "effects_reader": {"strategy": "revert_then_read", "name": user, "credential_ref": ref},
+                     "qualify": {"intent": "negative", "expect_status_class": "4xx", "before_reads_usable": True,
+                                 "after_equals_before": True, "db_unchanged": True}}
             root, ep = _mode_root(t, "store", dict(probe, id="sc:unused"), "enabled", security=_variant_fixture([ref]))
             copy = Path(_load(_producer_receipt(root, "freeze"))["analysis_copy"])
             declared = copy / DECLARED_DATASET
@@ -1006,49 +1038,85 @@ def _variant_store_capture_case() -> int:
                     if not held:
                         loc = self.source_config.get(DATASET_KEY, "")
                         path = loc[len("file:"):] if loc.startswith("file:") else loc
-                        handler.dataset = Path(path).read_text(encoding="utf-8") if path and Path(path).is_file() else ""
+                        Handler.dataset = Path(path).read_text(encoding="utf-8") if path and Path(path).is_file() else ""
                     return super().start()
 
                 def stop(self):
                     events.append(("source-stop",))
 
             out = root / scenario_oracles_dir("enabled", VARIANT) / (scenario_slug(varied["id"]) + ".json")
-            for refuse in (False, True):
+
+            def capture() -> tuple[int, dict]:
                 events.clear()
-                FakeStore.refuse = refuse
                 with patch.object(producer, "SourceRuntime", Runtime), \
                         patch.object(producer, "SOURCE_STORE_OPENER", lambda *a, **k: (FakeStore(), "")):
                     rc = producer.main(["--root", str(root), "--security-mode", "enabled",
                                         "--fixture-variant", VARIANT, "--credential-ref", ref, "--no-reads"])
-                cap = _load(out)
-                se = cap.get("source_effects") or {}
-                if rc != 0 or cap["status"] != "CAPTURED" or cap["response"]["status"] != 401:
-                    return _fail("the refused request is captured against the held store: rc=%s %s" % (rc, cap.get("response")))
-                kinds = [e[0] for e in events]
-                i_req, i_snap = kinds.index("source-start", kinds.index("store-start")), kinds.index("snapshot")
-                if kinds[kinds.index("store-start") + 1] != "source-start" or events[i_req][1] != "store":
-                    return _fail("the source is started against the store: %s" % events)
-                if "source-start" in kinds[i_req + 1:kinds.index("store-stop")]:
-                    return _fail("nothing restarts the source between the request and the observation: %s" % events)
-                if STATEMENT not in events[i_snap][1] or events[kinds.index("store-start")][1] != ["initDB.sql", "_variant-dataset.sql"]:
-                    return _fail("the store is initialised with the schema and the variant, and snapshotted in the variant "
-                                 "state: %s" % events)
-                if not refuse:
-                    if (se.get("observed") is not True or se.get("restarted_between") is not False
-                            or se.get("revert", {}).get("statements") != plan["statements"]
-                            or len(se.get("snapshot", {}).get("sha256", "")) != 64
-                            or se.get("datasource_keys") != ["fixture.datasource.url"]):
-                        return _fail("the capture records the observation, its snapshot and the revert: %s" % se)
-                    if [(r["id"], r["status"]) for r in cap["effects"]] != [("eff:owners", 200)]:
-                        return _fail("the reads are taken through the running source after the revert: %s" % cap["effects"])
-                    if "fixture://held" in json.dumps(_load(root / scenario_oracles_dir("enabled", VARIANT) / "_capture.json")):
-                        return _fail("the store's location is not recorded as the source's configuration")
-                else:
-                    if (se.get("observed") is not False or "REVERT_UNEXPECTED_STATE" not in se.get("reason", "")
-                            or not se.get("snapshot") or cap["effects"]):
-                        return _fail("a revert that finds unexpected state on the source is recorded, not read past: %s" % se)
-                if kinds[-1] != "source-stop" and "store-stop" not in kinds:
-                    return _fail("the store is stopped: %s" % events)
+                return rc, _load(out)
+
+            def qualify() -> dict:
+                subprocess.run([sys.executable, str(HERE / "qualify-source-captures.py"), "--root", str(root),
+                                "--security-mode", "enabled", "--fixture-variant", VARIANT], text=True, capture_output=True)
+                return _load(root / qualification_path("enabled", VARIANT))["scenarios"][varied["id"]]
+
+            # (1) the source changed nothing
+            rc, cap = capture()
+            se = cap.get("source_effects") or {}
+            if rc != 0 or cap["status"] != "CAPTURED" or cap["response"]["status"] != 401:
+                return _fail("the refused request is captured against the held store: rc=%s %s" % (rc, cap.get("response")))
+            order = [e[0] for e in events]
+            want = ["store-start", "source-start", "observe", "request", "observe", "snapshot", "revert"]
+            got = [k for k in order if k in set(want)]
+            if got[got.index("store-start"):got.index("revert") + 1] != want:
+                return _fail("store, source, database read, request, database read, snapshot, revert -- in that order: %s" % events)
+            if "source-start" in order[order.index("request"):order.index("store-stop")]:
+                return _fail("nothing restarts the source between the request and the observations: %s" % events)
+            db = se.get("db") or {}
+            if (se.get("observed") is not True or db.get("comparison", {}).get("equal") is not True
+                    or db.get("scope", {}).get("tables") != ["owners"] or not Path(db["before"]["path"]).is_file()
+                    or db["before"]["sha256"] != db["after"]["sha256"] or "definition" not in db["comparison"]
+                    or "before" not in db["before"]["taken"] or "before any revert" not in db["after"]["taken"]):
+                return _fail("both observations, their digests, the scope and the comparison are retained: %s" % se)
+            if [(r["id"], r["status"]) for r in cap["effects"]] != [("eff:owners", 200)]:
+                return _fail("the HTTP reads are taken beside the database evidence: %s" % cap["effects"])
+            q = qualify()
+            if q["capability"] != "PASS" or not any(c["check"] == "db_unchanged" and c["ok"] is True for c in q["checks"]):
+                return _fail("an unchanged database qualifies the refusal: %s" % q)
+
+            # (2) the counterexample: 401, a row deleted, the cache serving the old list
+            Handler.mutates = True
+            rc, cap = capture()
+            Handler.mutates = False
+            se = cap.get("source_effects") or {}
+            diff = (se.get("db") or {}).get("comparison") or {}
+            if rc != 0 or se.get("observed") is not True or diff.get("equal") is not False or "owners" not in diff.get("differences", {}):
+                return _fail("the database comparison records the mutation the 401 hid: %s" % se)
+            cap_before = {r["id"]: r["body_sha256"] for r in cap["before"]}
+            if cap_before != {r["id"]: r["body_sha256"] for r in cap["effects"]}:
+                return _fail("the fixture's cache must serve the old body, or the counterexample proves nothing")
+            q = qualify()
+            db_check = [c for c in q["checks"] if c["check"] == "db_unchanged"]
+            http_check = [c for c in q["checks"] if c["check"] == "after_equals_before"]
+            if (q["capability"] != "FAIL" or not db_check or db_check[0]["ok"] is not False
+                    or "the HTTP read-backs say unchanged" not in db_check[0]["detail"]
+                    or not http_check or http_check[0]["ok"] is not True):
+                return _fail("HTTP says unchanged, the database says changed: the database decides and both are kept: %s" % q)
+
+            # (3) a tampered observation is not evidence
+            before_p = Path(cap["source_effects"]["db"]["before"]["path"])
+            before_p.write_text(before_p.read_text(encoding="utf-8") + "owners\tid=9\n", encoding="utf-8")
+            q = qualify()
+            if q["capability"] != "INCONCLUSIVE" or "not the one the capture digested" not in q["reason"]:
+                return _fail("an observation edited after capture is unusable: %s" % q)
+
+            # (4) a revert that finds unexpected state
+            FakeStore.refuse = True
+            rc, cap = capture()
+            FakeStore.refuse = False
+            se = cap.get("source_effects") or {}
+            if (se.get("observed") is not False or "REVERT_UNEXPECTED_STATE" not in se.get("reason", "")
+                    or not se.get("snapshot") or not (se.get("db") or {}).get("comparison") or cap["effects"]):
+                return _fail("a revert that finds unexpected state is recorded with both observations, not read past: %s" % se)
     finally:
         srv.shutdown()
         if kept is None:
@@ -1115,9 +1183,21 @@ def _source_store_engine_case() -> int:
             text = Path(snap.get("path", "")).read_text(encoding="utf-8") if snap else ""
             if err or len(snap["sha256"]) != 64 or "ACCOUNTS" not in text.upper():
                 return _fail("the post-request snapshot is the engine's own, digested: %s %s" % (snap, err))
+            before, err = store.observe(["accounts", "notes"], t / "obs" / "before.rows")
+            again, err2 = store.observe(["accounts", "notes"], t / "obs" / "again.rows")
+            if err or err2 or before["sha256"] != again["sha256"] or before["rows"] != 2:
+                return _fail("two reads of an unchanged scope are the same observation: %s %s %s %s" % (before, again, err, err2))
+            if not ss.compare_observations(Path(before["path"]), Path(again["path"]))["equal"]:
+                return _fail("an unchanged scope compares equal")
+            if "notes\tid=1\tbody=a;b" not in Path(before["path"]).read_text(encoding="utf-8"):
+                return _fail("every column of every row is read: %s" % Path(before["path"]).read_text(encoding="utf-8"))
             rc, out = store.revert(plan)
             if rc != 0:
                 return _fail("the revert finds the variant state and restores it: %s" % out)
+            after, err = store.observe(["accounts", "notes"], t / "obs" / "after.rows")
+            cmp_ = ss.compare_observations(Path(before["path"]), Path(after["path"]))
+            if err or cmp_["equal"] or list(cmp_["differences"]) != ["accounts"]:
+                return _fail("a changed value is a difference in its own table only: %s %s" % (cmp_, err))
             rc, out = store.revert(plan)
             if rc != 3 or "REVERT_UNEXPECTED_STATE" not in out:
                 return _fail("a revert that finds the baseline instead of the variant refuses: rc=%s %s" % (rc, out))

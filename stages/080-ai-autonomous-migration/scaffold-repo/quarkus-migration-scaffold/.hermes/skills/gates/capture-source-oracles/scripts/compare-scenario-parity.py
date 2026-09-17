@@ -35,7 +35,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _oracle_common import ensure_hermes_lib, header_diffs, http_observe, is_preflight, origin_of, required_headers  # noqa: E402
 from _scenarios import (BINDING_CANDIDATE, CorpusError, DEFAULT_SECURITY_MODE, EFFECT_ROLE_UNCHANGED, EFFECTS_REVERT_THEN_READ,  # noqa: E402
-                        QUALIFICATION, effects_strategy_of, SCENARIO_ORACLES,  # noqa: E402,F401
+                        EFFECTS_SECOND_IDENTITY, SCENARIO_DIAGNOSTIC_PROBE,
+                        QUALIFICATION, classification_conflict, effects_strategy_of, record_classification, SCENARIO_ORACLES,  # noqa: E402,F401
                         SCENARIO_PARITY, SECURITY_MODES, auth_headers, candidate_binding, corpus_digest,
                         effects_identity_of, load_corpus, normalize_security_mode, normalized_identity,
                         normalize_variant, qualification_path, request_of, scenario, scenario_oracles_dir, scenario_parity_dir,
@@ -167,6 +168,15 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     verdict["entry_point"] = str(sc["entry_point"])
     verdict["corpus_sha256"] = corpus_digest(corpus)
+    # the gating classification is part of what is compared (ADR-021): bound
+    # before the replay, and fixed once any result for the scenario exists
+    verdict["scenario_type"] = str(sc.get("scenario_type") or "")
+    conflict = classification_conflict(root, sc, security_mode, variant)
+    if conflict:
+        verdict["reason"] = conflict
+        write_canonical(out, verdict)
+        print("REFUSE: SCENARIO_PARITY %s INCONCLUSIVE (%s)" % (args.scenario, conflict), file=sys.stderr)
+        return 1
     verdict["request"] = {k: req[k] for k in ("method", "path", "headers", "identity", "body_sha256", "body_absent", "request_sha256")}
     oracle_p = root / oracles_dir / (scenario_slug(args.scenario) + ".json")
     if not oracle_p.is_file():
@@ -207,6 +217,12 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     verdict["captured_security_variant"] = captured_variant
     checks: list[str] = []
+    captured_type = str(oracle.get("scenario_type") or "")
+    if captured_type != verdict["scenario_type"] and (
+            SCENARIO_DIAGNOSTIC_PROBE in (captured_type, verdict["scenario_type"]) or "scenario_type" in oracle):
+        checks.append("the source capture was taken as %s and the corpus types the scenario %s; a classification is bound "
+                      "at capture and never changed after it" % (captured_type or "a contract scenario",
+                                                                 verdict["scenario_type"] or "a contract scenario"))
     # A positive scenario whose capture FAILED qualification is a SOURCE-SIDE
     # fixture failure (a 500 deleting a referenced pettype): the source did
     # not perform the operation, so there is nothing to compare, no parity
@@ -258,6 +274,8 @@ def main(argv: list[str] | None = None) -> int:
         checks.append("this corpus takes the read-backs as %s and the source capture took them as %s; re-capture the source rather "
                       "than comparing read-backs of two identities"
                       % (_identity_label(want_effects_identity), _identity_label(got_effects_identity)))
+    if not checks:
+        record_classification(root, sc, verdict["corpus_sha256"], security_mode, variant)
     if checks:
         verdict["reason"] = "; ".join(checks)
         write_canonical(out, verdict)
@@ -432,27 +450,39 @@ def main(argv: list[str] | None = None) -> int:
             write_canonical(out, verdict)
             print("REFUSE: SCENARIO_PARITY %s INCONCLUSIVE (%s)" % (args.scenario, verdict["reason"]), file=sys.stderr)
             return 1
-        # ADR-020: what the SOURCE's post-request state was is known only
-        # when the capture observed it (a same-engine store, reverted on the
-        # fixture rows, read by the still-running source). Otherwise the
-        # destination's reads can show only that the DESTINATION changed
-        # nothing -- judged against the source's baseline reads, as a
-        # separate result -- and the source effect stays INCONCLUSIVE.
+    if rtr or effects_strategy_of(sc) == EFFECTS_SECOND_IDENTITY:
+        # ADR-020/021: what the SOURCE's post-request state was is known only
+        # when the capture observed it (a same-engine store, its scoped state
+        # read before and after the request). Otherwise -- for
+        # revert-then-read -- the destination's reads can show only that the
+        # DESTINATION changed nothing, judged against the source's baseline
+        # reads as a separate result, and the source effect stays
+        # INCONCLUSIVE.
         source_effects = oracle.get("source_effects") if isinstance(oracle.get("source_effects"), dict) else {}
-        if source_effects.get("observed") is True and oracle.get("effects"):
-            src_before = {str(r.get("id")): (r.get("status"), r.get("body_sha256")) for r in before_expected}
-            src_after = {str(r.get("id")): (r.get("status"), r.get("body_sha256")) for r in oracle.get("effects") or []}
-            changed = sorted(k for k in src_after if src_before.get(k) != src_after[k])
+        db = source_effects.get("db") if isinstance(source_effects.get("db"), dict) else {}
+        comparison = db.get("comparison") if isinstance(db.get("comparison"), dict) else None
+        if source_effects.get("observed") is True and oracle.get("effects") and comparison is not None:
+            # ADR-021: the source effect is the DATABASE comparison over the
+            # declared scope; the HTTP read-backs are what the destination is
+            # compared against
             verdict["results"]["source_effect"] = {
-                "verdict": "OBSERVED", "unchanged": not changed, "changed": changed,
+                "verdict": "OBSERVED", "db_unchanged": bool(comparison.get("equal")),
+                "changed_tables": sorted((comparison.get("differences") or {})),
+                "scope": list((db.get("scope") or {}).get("tables") or []),
+                "db_before_sha256": str((db.get("before") or {}).get("sha256") or ""),
+                "db_after_sha256": str((db.get("after") or {}).get("sha256") or ""),
                 "snapshot_sha256": str((source_effects.get("snapshot") or {}).get("sha256") or "")}
         else:
-            expected_after = before_expected
+            if rtr:
+                expected_after = before_expected
             verdict["results"]["source_effect"] = {
                 "verdict": "INCONCLUSIVE",
-                "reason": "the source's post-request state was not observed (%s); a declared refusal and a captured 4xx "
-                          "prove neither that the handler never ran nor that it left the state unchanged"
-                          % (source_effects.get("reason") or "the capture records no source observation")}
+                "reason": "the source's post-request database state was not observed and compared (%s); a declared "
+                          "refusal, a captured 4xx or HTTP read-backs alone prove neither that the handler never ran nor "
+                          "that it left the state unchanged"
+                          % (source_effects.get("reason") or ("the capture records no database comparison"
+                                                              if source_effects.get("observed") else
+                                                              "the capture records no source observation"))}
     for eff in expected_after:
         probe = http_observe(args.dest_url, str(eff.get("method") or "GET"), str(eff.get("path") or "/"), headers=eff_headers)
         row = {"id": eff.get("id"), "method": eff.get("method"), "path": eff.get("path"),

@@ -221,6 +221,18 @@ class SourceStore:
         return {"path": str(path), "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
                 "bytes": path.stat().st_size}, ""
 
+    def observe(self, tables: list[str], path: Path) -> tuple[dict[str, Any], str]:
+        """Every row of each scoped table, all columns, read in one
+        transaction and retained with its digest."""
+        path.parent.mkdir(parents=True, exist_ok=True)
+        listing = path.with_suffix(".tables")
+        listing.write_text("\n".join(tables) + "\n", encoding="utf-8")
+        rc, out = self._runner("observe", str(listing), str(path))
+        if rc != 0 or not path.is_file():
+            return {}, "SOURCE_STORE_OBSERVE the database state was not read: %s" % out[-200:]
+        return {"path": str(path), "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                "rows": sum(1 for ln in path.read_text(encoding="utf-8").splitlines() if not ln.endswith("\t#table"))}, ""
+
     def revert(self, plan: dict[str, Any]) -> tuple[int, str]:
         rows = []
         for r in plan.get("rows") or []:
@@ -246,6 +258,42 @@ class SourceStore:
                 except Exception:
                     pass
         self.proc = None
+
+
+COMPARISON_DEFINITION = ("every row of each scoped table, every column, read in one transaction immediately before "
+                         "the refused request and again after it completed (before any revert); the two observations "
+                         "are compared as multisets of whole rows, so a changed value, an added or removed row and a "
+                         "changed reference (a foreign-key column) all differ. Nothing is excluded: the fixture is the "
+                         "same at both points.")
+_DIFF_CAP = 20
+
+
+def compare_observations(before: Path, after: Path) -> dict[str, Any]:
+    """The comparison of two observations, table by table."""
+    def rows(p: Path) -> dict[str, list[str]]:
+        out: dict[str, list[str]] = {}
+        for ln in p.read_text(encoding="utf-8").splitlines():
+            table, _, rest = ln.partition("\t")
+            if rest == "#table":
+                out.setdefault(table, [])
+            else:
+                out.setdefault(table, []).append(rest)
+        return out
+    b, a = rows(before), rows(after)
+    diffs: dict[str, dict[str, Any]] = {}
+    for table in sorted(set(b) | set(a)):
+        left, right = sorted(b.get(table, [])), sorted(a.get(table, []))
+        if left == right:
+            continue
+        rl, rr = list(left), list(right)
+        for row in left:
+            if row in rr:
+                rr.remove(row)
+                rl.remove(row)
+        diffs[table] = {"before_count": len(left), "after_count": len(right),
+                        "only_before": rl[:_DIFF_CAP], "only_after": rr[:_DIFF_CAP]}
+    return {"equal": not diffs, "tables": sorted(set(b) | set(a)), "differences": diffs,
+            "definition": COMPARISON_DEFINITION}
 
 
 def open_store(copy: Path, artifact: Path | None, work: Path, java: str = "java") -> tuple[SourceStore | None, str]:

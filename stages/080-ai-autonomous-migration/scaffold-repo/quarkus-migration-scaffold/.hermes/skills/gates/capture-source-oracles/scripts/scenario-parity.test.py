@@ -1119,6 +1119,113 @@ def _navigation_receipt_case() -> int:
     return 0
 
 
+def _diagnostic_probe_case() -> int:
+    """ADR-021: a diagnostic probe gates nothing, and cannot be relabelled.
+
+    A probe's mismatch is a diagnostic result -- visible under
+    ``diagnostics``, zero obligations, no effect on the entry point's
+    verdict, ``not_passed`` or the receipt -- while the same mismatch in a
+    required contract scenario still fails. The classification is bound at
+    capture and fixed by the first recorded result: a corpus that relabels a
+    compared scenario (either way) is refused, by the comparator and by the
+    composer, which then counts the scenario as required."""
+    from _scenarios import classification_ledger_path
+    sid_req, sid_probe = "sc:cors-actual-x", "sc:cors-probe-x"
+    with tempfile.TemporaryDirectory(prefix="diag-probe-") as td:
+        root = specimens.build_dest(Path(td) / "dest", specimens.specimen("http"), decisions=specimens.admitted_decisions())
+        specimens.prepare_loop(root)
+        if pipeline.admit(root)["status"] != "ADMITTED":
+            return _fail("the diagnostic fixture must be admitted")
+        receipt_digest = load_json(root / "evidence/planning/admission-receipt.json")["receipt_digest"]
+        ep = sorted(str(e["id"]) for e in load_json(root / "evidence/planning/evidence-bundle.json")["entry_points"])[0]
+        origin = {"Origin": "http://parity.invalid:4200"}
+        probe = {"id": sid_probe, "entry_point": ep, "method": "OPTIONS", "path": "/api/owners", "reset_before": False,
+                 "headers": dict(origin, **{"Access-Control-Request-Method": "POST"}), "body_absent": True,
+                 "identity": {"kind": "basic", "credential_ref": "TEST_PROBE_CREDENTIAL"}, "effects": [],
+                 "normalization": [], "cors_policy": "cors:x", "scenario_type": "diagnostic-probe"}
+        required = {"id": sid_req, "entry_point": ep, "method": "GET", "path": "/api/owners", "reset_before": False,
+                    "headers": dict(origin), "body_absent": True, "effects": [], "normalization": [],
+                    "cors_policy": "cors:x", "scenario_type": "cors-actual"}
+        corpus = {"schema": "rhoai3.scenario-corpus/v1", "approved_by": "operator:test",
+                  "initial_state": {"reset": "restart", "dataset": "empty"},
+                  "cors_policies": [{"id": "cors:x", "request_headers": []}], "scenarios": [required, probe]}
+        cp = root / "verification" / "scenarios" / "corpus.json"
+        write_canonical(cp, corpus)
+        try:
+            load_corpus(root)
+        except Exception as exc:
+            return _fail("the loader admits a credentialed OPTIONS typed as a diagnostic probe: %s" % exc)
+        corpus_sha = corpus_digest(load_json(cp))
+
+        def verdict(sid: str, v: str, stype: str) -> None:
+            write_canonical(root / SCENARIO_PARITY / (scenario_slug(sid) + ".json"),
+                            {"schema": "rhoai3.scenario-parity/v1", "scenario": sid, "entry_point": ep,
+                             "receipt_sha256": receipt_digest, "corpus_sha256": corpus_sha, "verdict": v,
+                             "reason": "" if v == "PASS" else "header Access-Control-Allow-Origin None vs *",
+                             "scenario_type": stype})
+
+        def compose() -> tuple[dict, dict]:
+            subprocess.run([sys.executable, str(RECEIPT), "--root", str(root)], text=True, capture_output=True)
+            doc = load_json(root / "verification" / "parity" / "receipt.json")
+            return doc, next(r for r in doc["entry_points"] if r["entry_point"] == ep)
+
+        verdict(sid_req, "PASS", "cors-actual")
+        verdict(sid_probe, "FAIL", "diagnostic-probe")
+        doc, row = compose()
+        diag = (doc.get("diagnostics") or {}).get(sid_probe) or {}
+        if row["verdict"] != "PASS" or sid_probe in row["scenarios"] or "FAIL" in row["reason"]:
+            return _fail("a probe's mismatch does not touch its entry point's verdict: %s" % row)
+        if (diag.get("verdict") != "FAIL" or diag.get("gating") is not False or diag.get("obligations") != 0
+                or diag.get("browser_coverage") is not False):
+            return _fail("the probe's result is visible as a non-gating diagnostic: %s" % diag)
+        if doc["not_passed"] != sum(1 for r in doc["entry_points"] if r["verdict"] != "PASS") or sid_probe in json.dumps(doc["entry_points"]):
+            return _fail("the probe is counted nowhere in the mandatory aggregation: %s" % doc["entry_points"])
+        # the same mismatch in the required contract scenario still fails
+        verdict(sid_req, "FAIL", "cors-actual")
+        doc, row = compose()
+        if row["verdict"] != "FAIL":
+            return _fail("a required scenario's mismatch still fails: %s" % row)
+        verdict(sid_req, "PASS", "cors-actual")
+
+        # relabelling after a result exists is refused: the ledger fixed the
+        # probe as a contract scenario the first time it was compared
+        ledger = root / classification_ledger_path()
+        write_canonical(ledger, {"schema": "rhoai3.scenario-classification/v1",
+                                 "scenarios": {sid_probe: {"scenario_type": "", "gating": True}}})
+        doc, row = compose()
+        if (sid_probe not in row["scenarios"] or row["verdict"] == "PASS"
+                or "fixed once a result exists" not in " ".join(row.get("classification_refusals") or [])):
+            return _fail("a probe relabelled after a result is required again, with the refusal: %s" % row)
+        if sid_probe in (doc.get("diagnostics") or {}):
+            return _fail("a relabelled scenario gets no diagnostic exemption: %s" % doc.get("diagnostics"))
+        # the comparator refuses it too, before any replay
+        p = subprocess.run([sys.executable, str(COMPARE), "--root", str(root), "--scenario", sid_probe,
+                            "--dest-url", "http://dest.invalid", "--no-reset"], text=True, capture_output=True)
+        v = load_json(root / SCENARIO_PARITY / (scenario_slug(sid_probe) + ".json"))
+        if p.returncode != 1 or v["verdict"] != "INCONCLUSIVE" or "fixed once a result exists" not in v["reason"]:
+            return _fail("the comparator refuses a relabelled scenario: rc=%s %s" % (p.returncode, v.get("reason")))
+        ledger.unlink()
+        # ... and a capture taken under another classification is not compared
+        req = request_of(root, probe)
+        write_canonical(root / SCENARIO_ORACLES / (scenario_slug(sid_probe) + ".json"), {
+            "schema": "rhoai3.source-scenario/v1", "scenario": sid_probe, "entry_point": ep,
+            "receipt_sha256": receipt_digest, "corpus_sha256": corpus_sha, "status": "CAPTURED", "reason": "",
+            "evidence_bundle_sha256": __import__("planner.canonical", fromlist=["digest"]).digest(
+                load_json(root / "evidence" / "planning" / "evidence-bundle.json")),
+            "source": {"base_url": "http://source.invalid"}, "scenario_type": "",
+            "request": {"request_sha256": req["request_sha256"]},
+            "response": {"status": 200, "body_kind": "empty", "body_sha256": "0" * 64, "headers": {}},
+            "before": [], "effects": []})
+        p = subprocess.run([sys.executable, str(COMPARE), "--root", str(root), "--scenario", sid_probe,
+                            "--dest-url", "http://dest.invalid", "--no-reset"], text=True, capture_output=True)
+        v = load_json(root / SCENARIO_PARITY / (scenario_slug(sid_probe) + ".json"))
+        if p.returncode != 1 or "bound at capture" not in v["reason"]:
+            return _fail("a capture taken under another classification is refused: rc=%s %s" % (p.returncode, v.get("reason")))
+        if ledger.exists():
+            return _fail("a refused comparison records no classification")
+    return 0
+
+
 def _orphaned_records_case() -> int:
     """A receipt judges the current corpus from the records that belong to it.
 
@@ -1445,11 +1552,14 @@ def _variant_refused_write_case() -> int:
                 {"id": "sc:fixture-%s-delete-owners-7" % variant, "entry_point": ep, "method": "DELETE",
                  "path": "/api/owners/7", "headers": {}, "identity": dict(refused), "body_absent": True,
                  "reset_before": False, "effects": [dict(e) for e in reads], "effects_identity": dict(reader),
+                 "effects_reader": {"strategy": "second_identity", "name": "a-reader", "credential_ref": reader_ref},
                  "normalization": [], "security_mode": "enabled", "security_variant": variant, "qualify": dict(contract)},
                 {"id": "sc:fixture-%s-update-owners-7" % variant, "entry_point": ep, "method": "PUT",
                  "path": "/api/owners/7", "headers": {"Content-Type": "application/json"}, "identity": dict(refused),
                  "body_file": body_rel, "reset_before": False, "effects": [dict(e) for e in reads],
-                 "effects_identity": dict(reader), "normalization": [], "security_mode": "enabled",
+                 "effects_identity": dict(reader),
+                 "effects_reader": {"strategy": "second_identity", "name": "a-reader", "credential_ref": reader_ref},
+                 "normalization": [], "security_mode": "enabled",
                  "security_variant": variant, "qualify": dict(contract)},
                 {"id": "sc:fixture-%s-delete-owners-8" % variant, "entry_point": ep, "method": "DELETE",
                  "path": "/api/owners/8", "headers": {}, "identity": dict(refused), "body_absent": True,
@@ -1490,7 +1600,12 @@ def _variant_refused_write_case() -> int:
                     "evidence_bundle_sha256": bundle_sha, "source": {"base_url": src_url},
                     "initial_state": corpus_doc["initial_state"], "normalization": [], "reset_before": False,
                     "security_mode": "enabled", "security_variant": variant,
-                    **({"effects_identity": {"kind": "basic", "user_env": "", "password_env": "", "credential_ref": reader_ref}}
+                    **({"effects_identity": {"kind": "basic", "user_env": "", "password_env": "", "credential_ref": reader_ref},
+                        # ADR-021: the source's scoped database state, before and after
+                        "source_effects": {"observed": True, "strategy": "second_identity",
+                                           "db": {"scope": {"tables": ["owners"]}, "before": {"sha256": "b" * 64},
+                                                  "after": {"sha256": "c" * 64},
+                                                  "comparison": {"equal": True, "differences": {}}}}}
                        if sc.get("effects_identity") else {}),
                     "request": {"request_sha256": req["request_sha256"]},
                     "response": {"status": got["status"], "body_kind": got["body_kind"], "body_sha256": got["body_sha256"],
@@ -1512,6 +1627,8 @@ def _variant_refused_write_case() -> int:
                     return _fail("every read-back row says what it proves: %s" % v["effects"])
                 if v.get("effects_identity", {}).get("credential_ref") != reader_ref:
                     return _fail("the destination's read-backs are taken as the reader: %s" % v.get("effects_identity"))
+                if v["results"].get("source_effect", {}).get("verdict") != "OBSERVED" or v["results"]["source_effect"].get("db_unchanged") is not True:
+                    return _fail("the source effect is the database comparison: %s" % v.get("results"))
                 # a destination that answers the same refusal and writes anyway
                 liar = handler("DestWritesAnyway")
                 liar.writes_anyway = True
@@ -1521,6 +1638,17 @@ def _variant_refused_write_case() -> int:
                                  % (sc["method"], rc, v.get("verdict"), v.get("reason")))
                 if v["observed"]["status"] != 401:
                     return _fail("the control is a destination whose ANSWER is right: %s" % v["observed"])
+            # without the database comparison the source effect is not observed,
+            # however well the HTTP read-backs match
+            cap0 = root / scenario_oracles_dir("enabled", variant) / (scenario_slug(scenarios[0]["id"]) + ".json")
+            doc0 = load_json(cap0)
+            doc0["source_effects"] = {"observed": False, "reason": "SOURCE_STORE_UNKNOWN fixture"}
+            write_canonical(cap0, doc0)
+            rc, v = compare(scenarios[0]["id"], start(handler("DestNoDb")))
+            if (rc != 1 or v["verdict"] != "INCONCLUSIVE" or v["results"]["source_effect"]["verdict"] != "INCONCLUSIVE"
+                    or "SOURCE_STORE_UNKNOWN" not in v["reason"] or v["results"].get("destination_effect") != "PASS"):
+                return _fail("HTTP read-backs alone never observe the source effect: rc=%s %s %s"
+                             % (rc, v.get("reason"), v.get("results")))
             # no identity to read the state as: the rule stands, and says why
             rc, v = compare(scenarios[2]["id"], start(handler("DestNoReader")))
             if (rc != 1 or v["verdict"] != "INCONCLUSIVE" or "must declare at least one effect" not in v["reason"]
@@ -1809,13 +1937,16 @@ def _variant_revert_then_read_case() -> int:
             after = [http_observe(src_url, e["method"], e["path"], headers=auth) for e in reads]
             cap["effects"] = [{"id": e["id"], "method": e["method"], "path": e["path"], "role": e["role"], "status": o["status"],
                                "body_kind": o["body_kind"], "body_sha256": o["body_sha256"]} for e, o in zip(reads, after)]
-            cap["source_effects"] = {"observed": True, "mechanism": "fixture", "snapshot": {"sha256": "a" * 64}}
+            cap["source_effects"] = {"observed": True, "mechanism": "fixture", "snapshot": {"sha256": "a" * 64},
+                                     "db": {"scope": {"tables": ["owners"]}, "before": {"sha256": "b" * 64},
+                                            "after": {"sha256": "c" * 64}, "comparison": {"equal": True, "differences": {}}}}
             write_canonical(cap_p, cap)
             url, dest = start("DestObserved")
             rc, v = compare(url)
             if (rc != 0 or v["verdict"] != "PASS" or v["results"].get("destination_effect") != "PASS"
-                    or v["results"]["source_effect"] != {"verdict": "OBSERVED", "unchanged": True, "changed": [],
-                                                         "snapshot_sha256": "a" * 64}):
+                    or v["results"]["source_effect"] != {"verdict": "OBSERVED", "db_unchanged": True, "changed_tables": [],
+                                                         "scope": ["owners"], "db_before_sha256": "b" * 64,
+                                                         "db_after_sha256": "c" * 64, "snapshot_sha256": "a" * 64}):
                 return _fail("with the source's effect observed an identical destination PASSes on it: rc=%s %s %s"
                              % (rc, v.get("reason"), v.get("results")))
             url, dest = start("DestObservedWrites", writes_anyway=True)
@@ -1836,7 +1967,7 @@ def _variant_revert_then_read_case() -> int:
 def main() -> int:
     if _no_corpus_case() or _missing_exposed_model_case() or _stale_receipt_case() or _security_mode_case():
         return 1
-    if _fixture_variant_case() or _variant_refused_write_case() or _variant_revert_then_read_case():
+    if _fixture_variant_case() or _variant_refused_write_case() or _variant_revert_then_read_case() or _diagnostic_probe_case():
         return 1
     if _acceptance_binding_case():
         return 1
