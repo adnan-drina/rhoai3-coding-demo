@@ -1174,10 +1174,15 @@ data:
             "default": "qwen3-6-27b",
             "base_url": "",
             "api_mode": "chat_completions",
-            # Total context ceiling (vLLM --max-model-len). Hermes unset
-            # max_tokens defaults to half (=65536), which makes any prompt
-            # ≥65537 arithmetically unservable (Deputy E-20260809T180800Z).
-            "context_length": 131072,
+            # Declared BELOW the served window (vLLM --max-model-len 131072):
+            # Hermes budgets the prompt as context_length - max_tokens with an
+            # input estimate that undercounts the server tokenizer, so a
+            # declared 131072 let a worker send 122881 + 8192 > 131072 and the
+            # call failed as a silent 900s stall x3 (v9 t_a755c0a1,
+            # 2026-09-17). 110000 keeps prompt + output inside the window
+            # with ~11% estimator error. Hermes unset max_tokens defaults to
+            # half the context (Deputy E-20260809T180800Z), hence max_tokens.
+            "context_length": 110000,
             "max_tokens": 8192,
         },
         "model_aliases": {
@@ -1329,7 +1334,8 @@ data:
                 "discover_models": False,
                 "models": {
                     "qwen3-6-27b": {
-                        "context_length": 131072,
+                        # below the served 131072; see model.context_length
+                        "context_length": 110000,
                         "stale_timeout_seconds": 900,
                         # Request + stream-read timeout for this model. Hermes
                         # defaults the stream read timeout to 120s for non-local
