@@ -2542,10 +2542,91 @@ def _receipt_v2_case() -> int:
     return 0
 
 
+def _split_discharge_case() -> int:
+    """G1 (v9 t_55220d84) and G2: a scenario whose diffs F3 split across
+    obligations discharges each obligation by its OWN diffs; a mid-card
+    rebuild from a scoped receipt keeps what nobody re-ran."""
+    import json
+    import tempfile
+
+    from planner.paths import LOOP_ACCEPTED, PARITY_DIR, VERIFY_RUN
+    from planner.worklist import judged_parity_receipt, parity_obligation_discharged, parity_obligation_id, parity_state
+
+    ep = "ep:com.acme.ledger.AccountResource#list():http"
+    nav_ep = "ep:com.acme.ledger.EntryResource#toDocs():http"
+    sid = "sc:cors-actual-accounts"
+    bundle = {"entry_points": [{"id": ep, "path": "src/main/java/com/acme/ledger/AccountResource.java"},
+                               {"id": nav_ep, "path": "src/main/java/com/acme/ledger/EntryResource.java"}]}
+    charset = "header content-type application/json;charset=UTF-8 vs application/json"
+    rep_id, body_id = parity_obligation_id(ep, sid, "representation"), parity_obligation_id(ep, sid, "response")
+
+    def rec(reason, verdict="FAIL"):
+        return {"schema": "rhoai3.scenario-parity/v1", "entry_point": ep, "scenario": sid, "verdict": verdict, "reason": reason}
+
+    def receipt(verdict, nav=True, sha="before"):
+        doc = {"schema": "rhoai3.parity-receipt/v1", "receipt_sha256": sha, "verdict": "FAIL",
+               "entry_points": [{"entry_point": ep, "verdict": verdict, "reason": "", "scenarios": [sid]},
+                                {"entry_point": nav_ep, "verdict": "PASS" if nav else "INCONCLUSIVE", "reason": "" if nav else "sc:read-entry is bound to receipt before",
+                                 "scenarios": ["sc:read-entry"], **({"navigation": "failed"} if nav else {})}]}
+        if nav:
+            doc["navigation_obligations"] = [{"entry_point": nav_ep, "kind": "navigation", "verdict": "FAIL", "scenarios": ["sc:read-entry"],
+                                              "reason": "redirect target http://d/ui is dead (404)", "navigation_failures": []}]
+        return doc
+
+    with tempfile.TemporaryDirectory(prefix="split-discharge-") as td:
+        root = Path(td)
+        acc = root / LOOP_ACCEPTED / "parity"
+        (acc / "scenarios").mkdir(parents=True)
+        (root / PARITY_DIR / "scenarios").mkdir(parents=True)
+        (root / VERIFY_RUN).parent.mkdir(parents=True)
+        (acc / "receipt.json").write_text(json.dumps(receipt("FAIL")))
+        (acc / "scenarios" / "sc.json").write_text(json.dumps(rec("body 11aa vs 22bb; " + charset)))
+        (root / VERIFY_RUN).write_text(json.dumps({"runtime": {"parity": {"ran": True, "scoped": True, "scenarios": [sid]}}}))
+        before = json.loads((acc / "receipt.json").read_text())
+        m = {"known": True, "tuple": [0, 0, 0], "parity_mismatches": 1}
+
+        def attempt(live_reason, issued, live_verdict="FAIL"):
+            (root / PARITY_DIR / "scenarios" / "sc.json").write_text(json.dumps(rec(live_reason, live_verdict)))
+            (root / PARITY_DIR / "receipt.json").write_text(json.dumps(receipt(live_verdict, nav=False, sha="after")))
+            judged, _carried = judged_parity_receipt(root)
+            obl = parity_state(judged)["obligations"]
+            discharged = {issued: parity_obligation_discharged(root, obl[issued], {"cors-actual-accounts"}, judged)}
+            items = parity_items(root, bundle, receipt=judged)
+            cur = {i["id"] for i in items}
+            return progress(m, m, set(), set(), gate="parity", issued_items=[issued],
+                            prev_gate_items={rep_id, body_id, parity_obligation_id(nav_ep, "", "navigation")},
+                            cur_gate_items=cur, prev_runtime={}, cur_runtime={}, prev_parity=before,
+                            cur_parity=(root / PARITY_DIR / "receipt.json").read_text() and json.loads((root / PARITY_DIR / "receipt.json").read_text()),
+                            parity_remeasured={"cors-actual-accounts"}, parity_discharged=discharged), cur
+
+        (ok, why), cur = attempt("body 11aa vs 22bb", rep_id)
+        if ok is not True:
+            return _fail("the charset card that removed only the charset is ACCEPTED: %s" % why)
+        if parity_obligation_id(nav_ep, "", "navigation") not in cur or body_id not in cur or rep_id in cur:
+            return _fail("G2: the rebuild from the scoped receipt keeps the carried navigation and the body obligation: %s" % sorted(cur))
+        (ok, why), _ = attempt("body 33cc vs 22bb", rep_id)
+        if ok is not False or "33cc" not in why:
+            return _fail("a charset card that also moved the body digest is REVERTED, naming it: %s %s" % (ok, why))
+        (ok, why), _ = attempt(charset, body_id)
+        if ok is not True:
+            return _fail("the body card that fixed the body, charset remaining, is ACCEPTED for the body: %s" % why)
+        (ok, why), _ = attempt("body 11aa vs 22bb; " + charset, rep_id)
+        if ok is not False:
+            return _fail("an unchanged scenario discharges nothing: %s" % why)
+        (acc / "scenarios" / "sc.json").write_text(json.dumps(rec("body 11aa vs 22bb; " + charset)))
+        (root / PARITY_DIR / "scenarios" / "sc.json").write_text(json.dumps(rec("body 11aa vs 22bb")))
+        row = {"entry_point": ep, "scenario": sid, "what": "representation", "verdict": "FAIL"}
+        if parity_obligation_discharged(root, row, {"other"})[0] or parity_obligation_discharged(root, row, None)[0]:
+            return _fail("an obligation whose scenario was not re-run is never discharged")
+        if parity_obligation_discharged(root, dict(row, scenario=""), {"cors-actual-accounts"})[0]:
+            return _fail("a read oracle is discharged only by PASS")
+    return 0
+
+
 def main() -> int:
     if (_runtime_identity_case() or _gate_progress_case() or _batch_scope_case() or _checked_family_case()
             or _set_wide_case() or _config_value_case() or _parity_typing_case() or _parity_advice_case()
-            or _parity_navigation_case() or _owed_adapter_case() or _cors_scenario_case() or _scoped_carry_case() or _receipt_v2_case() or _harness_owned_guard_case() or _parity_gate_case() or _unit_formation_case() or _unit_bound_case() or _unit_seal_case()
+            or _parity_navigation_case() or _owed_adapter_case() or _cors_scenario_case() or _scoped_carry_case() or _receipt_v2_case() or _split_discharge_case() or _harness_owned_guard_case() or _parity_gate_case() or _unit_formation_case() or _unit_bound_case() or _unit_seal_case()
             or _unit_mode_case() or _unit_inert_case() or _unit_config_case()
             or _unit_experiment_table_case() or _unit_explained_case() or _unit_progress_case()
             or _unit_budget_case()):

@@ -145,9 +145,29 @@ def _issued_cluster_case() -> int:
         if hit is not None or code != "LOOP_NO_OPEN_CLUSTER" or "kanban_block" not in detail:
             return _fail("empty head with no task env is LOOP_NO_OPEN_CLUSTER with a terminator: %s %s" % (code, detail))
         gone = dict(wl, clusters=[])
+        # G2 (v9 t_55220d84): the issued card's OWN cluster is never "not open"
+        # to it -- a mid-card rebuild measured its obligations gone, and
+        # advance.py is the judge; the worker must not block
         hit, code, detail = select_cluster(gone, root, "", "t_abc12345")
+        if hit is None or code or hit["id"] != "c:issued" or "advance.py" not in (hit.get("not_open") or {}).get("next", ""):
+            return _fail("the issued cluster missing from the list is served with advance as the next step: %s %s" % (code, hit))
+        hit, code, detail = select_cluster(gone, root, "c:issued", "t_abc12345")
+        if hit is None or code or "kanban_block for this" not in hit["not_open"]["next"]:
+            return _fail("--cluster naming the issued cluster is served the same way: %s %s" % (code, hit))
+        hit, code, detail = select_cluster(gone, root, "c:other", "")
         if hit is not None or code != "LOOP_CLUSTER_NOT_OPEN" or "kanban_block" not in detail:
-            return _fail("issued cluster missing from the list is LOOP_CLUSTER_NOT_OPEN: %s %s" % (code, detail))
+            return _fail("a cluster that is neither open nor issued is still LOOP_CLUSTER_NOT_OPEN: %s %s" % (code, detail))
+        write_canonical(root / WORKLIST, gone)
+        os.environ["HERMES_KANBAN_TASK"] = "t_abc12345"
+        try:
+            err, out = io.StringIO(), io.StringIO()
+            with redirect_stderr(err), __import__("contextlib").redirect_stdout(out):
+                rc = __import__("brief").main(["--root", str(root)])
+        finally:
+            os.environ.pop("HERMES_KANBAN_TASK", None)
+        if rc != 0 or '"issued_not_open"' not in out.getvalue() or "advance.py" not in out.getvalue():
+            return _fail("brief.py exits 0 and tells the card to run advance: rc=%s %s %s" % (rc, out.getvalue()[:300], err.getvalue()[:300]))
+        write_canonical(root / WORKLIST, wl)
         prev = os.environ.get("HERMES_KANBAN_TASK")
         os.environ.pop("HERMES_KANBAN_TASK", None)
         try:

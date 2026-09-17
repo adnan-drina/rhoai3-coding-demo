@@ -36,7 +36,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _loop_common import (PARITY_SNAPSHOT, PARITY_SOURCE_SCHEMA, candidate_sha256, ensure_hermes_lib, load_issued,  # noqa: E402
+from _loop_common import (PARITY_REFRESHES, PARITY_SNAPSHOT, archive_parity_baseline, PARITY_SOURCE_SCHEMA, candidate_sha256, ensure_hermes_lib, load_issued,  # noqa: E402
                           load_state, load_steps, parity_not_of_this_tree, product_paths_changed, save_steps, snapshot_parity)
 
 ensure_hermes_lib()
@@ -127,6 +127,8 @@ def main(argv: list[str] | None = None) -> int:
     row = dict(source, at=_dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), records=len(kept),
                parity_mismatches=(wl.get("measure") or {}).get("parity_mismatches"))
     steps.setdefault("parity_refreshes", []).append(row)
+    # kept by number: a later rewind to this step restores THIS baseline
+    row["archive"] = archive_parity_baseline(root, len(steps["parity_refreshes"]) - 1).relative_to(root).as_posix()
     recorded[-1] = dict(recorded[-1], parity_refreshed=len(steps["parity_refreshes"]) - 1)
     steps["steps"] = recorded
     save_steps(root, steps)

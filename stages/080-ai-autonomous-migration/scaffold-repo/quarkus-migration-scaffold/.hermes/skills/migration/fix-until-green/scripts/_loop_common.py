@@ -512,6 +512,46 @@ def snapshot_parity_unmeasured(root: Path, reason: str, *, commit: str = "", by:
 
 
 PARITY_SET_ASIDE = LOOP_ACCEPTED.parent / "parity-set-aside"
+# every refreshed baseline, kept by refresh number, so a rewind to the step it
+# measured can restore it instead of declaring that tree UNMEASURED
+PARITY_REFRESHES = LOOP_ACCEPTED.parent / "parity-refreshes"
+
+
+def archive_parity_baseline(root: Path, n: int) -> Path:
+    """Copy the accepted parity baseline (records and source) under refresh ``n``."""
+    dest = root / PARITY_REFRESHES / str(n)
+    shutil.rmtree(dest, ignore_errors=True)
+    dest.mkdir(parents=True, exist_ok=True)
+    src = root / LOOP_ACCEPTED / PARITY_SNAPSHOT
+    if src.is_dir():
+        shutil.copytree(src, dest / PARITY_SNAPSHOT)
+    if (root / LOOP_ACCEPTED / PARITY_SNAPSHOT_SOURCE).is_file():
+        shutil.copy2(root / LOOP_ACCEPTED / PARITY_SNAPSHOT_SOURCE, dest / PARITY_SNAPSHOT_SOURCE)
+    return dest
+
+
+def install_parity_baseline(root: Path, src: Path, source: dict[str, Any] | None = None) -> list[Path]:
+    """Make the parity records under ``src`` (a snapshot directory) the
+    accepted baseline AND the live records; what was live is set aside."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory(prefix="parity-baseline-") as td:
+        staged = Path(td) / "parity"
+        shutil.copytree(src, staged)
+        records = parity_records(staged)
+        dest = root / LOOP_ACCEPTED
+        dest.mkdir(parents=True, exist_ok=True)
+        shutil.rmtree(dest / PARITY_SNAPSHOT, ignore_errors=True)
+        shutil.copytree(staged, dest / PARITY_SNAPSHOT)
+        if source is not None:
+            write_canonical(dest / PARITY_SNAPSHOT_SOURCE, dict(source))
+        _set_parity_aside(root)
+        live = root / PARITY_DIR
+        for rel in records:
+            target = live / rel
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(staged / rel, target)
+    return records
 
 
 def _set_parity_aside(root: Path) -> None:

@@ -50,7 +50,7 @@ from typing import Any
 from planner.canonical import canonical_bytes, digest, load_json, sha256_bytes, sha256_file, sort_unique
 from planner.dest_model import (DestModelUnavailable, above_members, dest_model, diagnostic_identity, fields_of, member_ids, model_at_commit,  # noqa: E501
                                  site_for_diagnostic, site_signature, source_write_members as _model_writes, types_of, unhandled_sites)
-from planner.paths import is_product_path, CATALOGS_DIR, EVIDENCE_BUNDLE, STRUCTURE, TYPE_INVENTORY, LOOP_DEFERRED, LOOP_ISSUED, LOOP_STEPS, MTA_RESCAN_FINDINGS, PARITY_DIR, VERIFY_BOOT, VERIFY_DIAGNOSTICS, VERIFY_PACKAGE, VERIFY_RUN, VERIFY_SUREFIRE, WORKLIST
+from planner.paths import is_product_path, LOOP_ACCEPTED, VERIFY_DIR, CATALOGS_DIR, EVIDENCE_BUNDLE, STRUCTURE, TYPE_INVENTORY, LOOP_DEFERRED, LOOP_ISSUED, LOOP_STEPS, MTA_RESCAN_FINDINGS, PARITY_DIR, VERIFY_BOOT, VERIFY_DIAGNOSTICS, VERIFY_PACKAGE, VERIFY_RUN, VERIFY_SUREFIRE, WORKLIST
 import response_adapters as _adapters  # noqa: E402  (.hermes/lib, beside this package)
 
 SCHEMA = "rhoai3.worklist/v1"
@@ -1454,7 +1454,149 @@ def carry_unmeasured(before: dict[str, Any] | None, after: dict[str, Any] | None
     cur["entry_points"] = rows
     if carried:
         cur["carried"] = carried
+        moved = {c["entry_point"] for c in carried}
+        have = {str(n.get("entry_point") or "") for n in (cur.get("navigation_obligations") or []) if isinstance(n, dict)}
+        extra = [dict(n, carried_from=str(before.get("receipt_sha256") or "")) for n in (before.get("navigation_obligations") or [])
+                 if isinstance(n, dict) and str(n.get("entry_point") or "") in moved - have]
+        if extra:
+            cur["navigation_obligations"] = list(cur.get("navigation_obligations") or []) + extra
     return cur, carried
+
+
+def judged_parity_receipt(root: Path, run: dict[str, Any] | None = None) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """(the parity receipt the loop reads, the rows carried into it) -- ONE
+    answer for the work-list build and for acceptance (G2). After a SCOPED
+    comparison the live receipt says INCONCLUSIVE for every entry point it did
+    not re-run; the accepted baseline supplies those (carry_unmeasured), so a
+    mid-card rebuild keeps the obligations nobody re-measured."""
+    root = Path(root)
+    live = load_parity_receipt(root)
+    if run is None:
+        run = load_json(root / VERIFY_RUN) if (root / VERIFY_RUN).is_file() else {}
+    remeasured = parity_remeasured(run)
+    if remeasured is None or not live:
+        return live, []
+    before = {}
+    for p in (root / LOOP_ACCEPTED / "parity" / "receipt.json", root / VERIFY_DIR / "parity-before.json"):
+        if p.is_file():
+            try:
+                before = load_json(p)
+            except (OSError, ValueError):
+                before = {}
+            break
+    return carry_unmeasured(before, live, remeasured)
+
+
+class ParitySplitter:
+    """How one scenario verdict's differences divide into obligations (F3,
+    ADR-020): (cors, other, representation, withheld?) or None for a diagnostic
+    probe. The work-list build and per-obligation acceptance (G1) use the
+    same division, so an obligation is judged by exactly its own diffs."""
+
+    def __init__(self, root: Path | None, receipt: dict[str, Any] | None) -> None:
+        self.cross_origin = cors_scenarios(root)
+        cors = (receipt or {}).get("cors") if isinstance(receipt, dict) else None
+        outcomes = (cors or {}).get("outcomes") if isinstance(cors, dict) else None
+        self.cors_outcomes = outcomes if isinstance(outcomes, dict) else {}
+
+    def split(self, scenario: str, ep: str, doc: dict[str, Any],
+              notes: list[dict[str, Any]] | None = None) -> tuple[list[str], list[str], list[dict[str, Any]], bool] | None:
+        notes = [] if notes is None else notes
+        reason = str(doc.get("reason") or "")
+        co = self.cross_origin
+        row_info = co.get(scenario) or co.get(_sid(scenario)) or co.get("sc:" + _sid(scenario)) or {}
+        if row_info.get("probe") or (not row_info and _CORS_PROBE_RE.match(scenario)):
+            # a diagnostic probe (an authenticated OPTIONS no browser sends)
+            # is compared and recorded, and owes no worker anything
+            notes.append({"kind": "diagnostic-probe", "scenario": scenario, "entry_point": ep, "reason": reason[:300],
+                          "detail": "a diagnostic probe is not browser coverage and mints no obligation (open architect point)"})
+            return None
+        withheld = False
+        cors, other = classify_parity_diffs(reason)
+        representation, other = representation_diffs(other)
+        cors, other = cors_scenario_split(scenario, doc, co, cors, other)
+        access = str(((self.cors_outcomes.get(scenario) or self.cors_outcomes.get(_sid(scenario)) or {}).get("browser_access") or ""))
+        if access == "prevents" and cors:
+            # the SOURCE prevents this exchange: a destination that grants no
+            # permission either matches it, and no permission is owed. A
+            # destination that GRANTS what the source did not is still owed.
+            granted = [d for d in cors if parse_parity_diff(d)["kind"] != "header"
+                       or str(parse_parity_diff(d)["have"]).strip() not in ("", "None")]
+            if len(granted) != len(cors):
+                withheld = True
+                notes.append({"kind": "cors-prevented", "scenario": scenario, "entry_point": ep,
+                              "detail": "the source prevents this exchange; a permission the destination also withholds is not owed",
+                              "diffs": [d for d in cors if d not in granted]})
+            cors = granted
+        effects = [d for d in other if parse_parity_diff(d)["kind"] == "effect"]
+        results = doc.get("results") if isinstance(doc.get("results"), dict) else {}
+        if effects and str(((results.get("source_effect") or {}) if isinstance(results.get("source_effect"), dict) else {}).get("verdict") or "") == "INCONCLUSIVE":
+            # the source's own effect was never observed: what the destination
+            # did to the state is a separate result, not a repair card (ADR-020)
+            withheld = True
+            notes.append({"kind": "source-effect-unobserved", "scenario": scenario, "entry_point": ep, "diffs": effects,
+                          "detail": str((results.get("source_effect") or {}).get("reason") or "")[:300]})
+            other = [d for d in other if d not in effects]
+        return cors, other, representation, withheld
+
+    def own(self, what: str, scenario: str, ep: str, doc: dict[str, Any]) -> list[str]:
+        """The diffs of ``doc`` that belong to the obligation kind ``what``."""
+        split = self.split(scenario, ep, doc)
+        if split is None:
+            return []
+        cors, other, representation, _w = split
+        return {"cors": cors, "response": other, "representation": [str(d.get("raw") or "") for d in representation]}.get(what, [])
+
+
+def scenario_record(base: Path, scenario: str) -> dict[str, Any]:
+    """The one scenario verdict under ``base``/scenarios for ``scenario``, or {}."""
+    d = Path(base) / "scenarios"
+    if not d.is_dir():
+        return {}
+    hits = []
+    for p in sorted(d.glob("*.json")):
+        try:
+            doc = load_json(p)
+        except (OSError, ValueError):
+            continue
+        if isinstance(doc, dict) and _sid(doc.get("scenario")) == _sid(scenario):
+            hits.append(doc)
+    return hits[0] if len(hits) == 1 else {}
+
+
+def parity_obligation_discharged(root: Path, row: dict[str, Any], remeasured: set[str] | None,
+                                 receipt: dict[str, Any] | None = None) -> tuple[bool, str]:
+    """G1: one obligation of a scenario whose differences F3 split across
+    several obligations is discharged by ITS OWN differences being gone from
+    the re-run scenario -- never by the scenario passing, which the other
+    obligations' differences may still prevent. Strict otherwise: the scenario
+    must have been re-run in this comparison, and every difference it still
+    reports must be one the accepted baseline already reported, character for
+    character (a body digest that moved is a new difference, whichever
+    obligation it belongs to)."""
+    sid, what, ep = str(row.get("scenario") or ""), str(row.get("what") or ""), str(row.get("entry_point") or "")
+    if not sid or what not in ("cors", "response", "representation"):
+        return False, "only a scenario verdict can discharge part of itself"
+    if remeasured is None or _sid(sid) not in remeasured:
+        return False, "%s was not re-run in this comparison" % sid
+    root = Path(root)
+    cur = scenario_record(root / PARITY_DIR, sid)
+    prev = scenario_record(root / LOOP_ACCEPTED / "parity", sid)
+    if str(cur.get("verdict") or "") != "FAIL":
+        return False, "%s came back %s" % (sid, cur.get("verdict") or "with no single record")
+    if str(prev.get("verdict") or "") not in ("FAIL", "PASS"):
+        return False, "the accepted baseline holds no single record of %s" % sid
+    splitter = ParitySplitter(root, receipt)
+    own = splitter.own(what, sid, ep, cur)
+    if own:
+        return False, "its own difference(s) remain: %s" % "; ".join(own)[:200]
+    now = set(_split_diffs(str(cur.get("reason") or "")))
+    was = set(_split_diffs(str(prev.get("reason") or ""))) if str(prev.get("verdict")) == "FAIL" else set()
+    new = sorted(now - was)
+    if new:
+        return False, "the candidate changed or introduced %s in %s" % ("; ".join(new)[:200], sid)
+    return True, ("its own difference(s) are gone from the re-run %s; what remains (%s) belongs to other obligations "
+                  "and is unchanged" % (sid, "; ".join(sorted(now))[:160]))
 
 
 def parity_scenarios_of(receipt: dict[str, Any] | None, entry_point: str, scenario: str) -> list[str]:
@@ -1535,7 +1677,8 @@ def navigation_advice(failures: list[dict[str, Any]], path: str) -> dict[str, An
     }
 
 
-def parity_items(root: Path, bundle: dict[str, Any], notes: list[dict[str, Any]] | None = None) -> list[dict[str, Any]]:
+def parity_items(root: Path, bundle: dict[str, Any], notes: list[dict[str, Any]] | None = None,
+                 receipt: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     """Obligations from M4's parity verdicts: the read-oracle verdicts in
     verification/parity/*.json and the SCENARIO verdicts in
     verification/parity/scenarios/*.json.
@@ -1571,12 +1714,9 @@ def parity_items(root: Path, bundle: dict[str, Any], notes: list[dict[str, Any]]
     if not pdir.is_dir():
         return out
     source_policies = _source_cors_policies(root)
-    cross_origin = cors_scenarios(root)
-    receipt = load_parity_receipt(root)
-    cors_outcomes = (((receipt.get("cors") or {}) if isinstance(receipt.get("cors"), dict) else {}).get("outcomes") or {}) if isinstance(receipt, dict) else {}
-    if not isinstance(cors_outcomes, dict):
-        cors_outcomes = {}
-    notes: list[dict[str, Any]] = [] if notes is None else notes
+    receipt = judged_parity_receipt(root)[0] if receipt is None else receipt
+    splitter = ParitySplitter(root, receipt)
+    notes = [] if notes is None else notes
     docs: list[tuple[Path, dict[str, Any]]] = [(p, load_json(p)) for p in sorted(pdir.glob("*.json"))]
     sdir = pdir / "scenarios"
     if sdir.is_dir():
@@ -1589,38 +1729,13 @@ def parity_items(root: Path, bundle: dict[str, Any], notes: list[dict[str, Any]]
         ep = str(doc.get("entry_point") or "")
         scenario = str(doc.get("scenario") or "")
         reason = str(doc.get("reason") or "")
-        row_info = cross_origin.get(scenario) or cross_origin.get(_sid(scenario)) or cross_origin.get("sc:" + _sid(scenario)) or {}
-        if row_info.get("probe") or (not row_info and _CORS_PROBE_RE.match(scenario)):
-            # a diagnostic probe (an authenticated OPTIONS no browser sends)
-            # is compared and recorded, and owes no worker anything
-            notes.append({"kind": "diagnostic-probe", "scenario": scenario, "entry_point": ep, "reason": reason[:300],
-                          "detail": "a diagnostic probe is not browser coverage and mints no obligation (open architect point)"})
-            continue
-        cors, other = classify_parity_diffs(reason)
-        representation, other = representation_diffs(other)
-        cors, other = cors_scenario_split(scenario, doc, cross_origin, cors, other)
-        access = str(((cors_outcomes.get(scenario) or cors_outcomes.get(_sid(scenario)) or {}).get("browser_access") or ""))
-        if access == "prevents" and cors:
-            # the SOURCE prevents this exchange: a destination that grants no
-            # permission either matches it, and no permission is owed. A
-            # destination that GRANTS what the source did not is still owed.
-            granted = [d for d in cors if parse_parity_diff(d)["kind"] != "header"
-                       or str(parse_parity_diff(d)["have"]).strip() not in ("", "None")]
-            if len(granted) != len(cors):
-                notes.append({"kind": "cors-prevented", "scenario": scenario, "entry_point": ep,
-                              "detail": "the source prevents this exchange; a permission the destination also withholds is not owed",
-                              "diffs": [d for d in cors if d not in granted]})
-            cors = granted
-        effects = [d for d in other if parse_parity_diff(d)["kind"] == "effect"]
-        if effects and str((((doc.get("results") or {}) if isinstance(doc.get("results"), dict) else {}).get("source_effect") or {}).get("verdict") or "") == "INCONCLUSIVE":
-            # the source's own effect was never observed: what the destination
-            # did to the state is a separate result, not a repair card (ADR-020)
-            notes.append({"kind": "source-effect-unobserved", "scenario": scenario, "entry_point": ep, "diffs": effects,
-                          "detail": str(((doc.get("results") or {}).get("source_effect") or {}).get("reason") or "")[:300]})
-            other = [d for d in other if d not in effects]
+        split = splitter.split(scenario, ep, doc, notes)
+        if split is None:
+            continue  # a diagnostic probe: noted, owes nothing
+        cors, other, representation, withheld = split
         if not cors and not other and not representation:
-            continue
-        if not cors and not other and not representation:
+            if withheld:
+                continue  # every difference was withheld, each with its note
             other = [reason or "parity FAIL without a recorded diff"]
         # ``gate`` makes acceptance phase-aware, exactly as it does for
         # packaging and startup: repairing a parity mismatch leaves the
@@ -3812,7 +3927,8 @@ def progress(prev: dict[str, Any], cur: dict[str, Any], prev_ids: set[str], cur_
              family_scope: set[str] | None = None,
              prev_parity: dict[str, Any] | None = None, cur_parity: dict[str, Any] | None = None,
              unit_scope: dict[str, Any] | None = None, unit_assessment: list[dict[str, Any]] | None = None,
-             explained: set[str] | None = None, parity_remeasured: set[str] | None = None) -> tuple[bool, str]:
+             explained: set[str] | None = None, parity_remeasured: set[str] | None = None,
+             parity_discharged: dict[str, tuple[bool, str]] | None = None) -> tuple[bool, str]:
     """Accept iff strictly smaller lexicographically and no new mandatory obligation.
 
     Phase-aware: a card issued for the ``package``, ``boot`` or ``parity`` gate
@@ -3948,8 +4064,12 @@ def progress(prev: dict[str, Any], cur: dict[str, Any], prev_ids: set[str], cur_
             not_passed = []
             for oid in sorted(issued_par):
                 row = after["obligations"].get(oid)
+                if row is not None and row.get("verdict") == "FAIL" and (parity_discharged or {}).get(oid, (False, ""))[0]:
+                    continue  # G1: its own differences are gone; the rest are other obligations'
                 if row is None or row.get("verdict") != "PASS":
-                    not_passed.append("%s (%s)" % (oid, (row or {}).get("verdict") or "no row in the receipt"))
+                    why = (parity_discharged or {}).get(oid, (False, ""))[1]
+                    not_passed.append("%s (%s%s)" % (oid, (row or {}).get("verdict") or "no row in the receipt",
+                                                     ": " + why if why else ""))
             if not_passed:
                 return False, ("the parity obligation %s is still reported: its scenario did not come back PASS in %s"
                                % ("; ".join(not_passed[:2]), PARITY_RECEIPT.as_posix()))
@@ -4138,7 +4258,8 @@ def build_worklist(root: Path, *, write: bool = True) -> dict[str, Any]:
         tests_known = False
         blocked.append("tests did not run in this verification" if not tests_run.get("ran") else "no surefire report was produced; tests unknown")
     parity_notes: list[dict[str, Any]] = []
-    par = parity_items(root, bundle, parity_notes)
+    judged_receipt, parity_carried = judged_parity_receipt(root, run)
+    par = parity_items(root, bundle, parity_notes, receipt=judged_receipt)
     parity_known = (root / PARITY_DIR).is_dir() and (any((root / PARITY_DIR).glob("*.json")) or any((root / PARITY_DIR / "scenarios").glob("*.json")))
     unmeasured_parity = parity_unmeasured(load_parity_receipt(root))
     if unmeasured_parity:
@@ -4285,7 +4406,8 @@ def build_worklist(root: Path, *, write: bool = True) -> dict[str, Any]:
             "incidents": incident_source,
             "diagnostics": {"path": str(VERIFY_DIAGNOSTICS), "sha256": sha256_file(diag_path), "rc": diag_run.get("rc")} if isinstance(diags, dict) else None,
             "surefire": {"path": str(VERIFY_SUREFIRE), "sha256": sha256_file(sure_path), "rc": tests_run.get("rc"), "reports": sure.get("reports")} if isinstance(sure, dict) else None,
-            "parity": dict({"path": str(PARITY_DIR), "count": len(par), "known": parity_known, "notes": parity_notes},
+            "parity": dict({"path": str(PARITY_DIR), "count": len(par), "known": parity_known, "notes": parity_notes,
+                            "carried": parity_carried},
                            **({"unmeasured": unmeasured_parity, "refresh": REFRESH_PARITY} if unmeasured_parity else {})),
             "package": {"path": str(VERIFY_PACKAGE), "sha256": sha256_file(root / VERIFY_PACKAGE)} if package_doc is not None else None,
             "boot": {"path": str(VERIFY_BOOT), "sha256": sha256_file(root / VERIFY_BOOT)} if boot_doc is not None else None,

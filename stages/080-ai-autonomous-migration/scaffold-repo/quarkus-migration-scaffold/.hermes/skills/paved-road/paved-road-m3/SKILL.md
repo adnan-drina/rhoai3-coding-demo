@@ -42,7 +42,11 @@ rule to `kanban_complete`.
    bounce is not this card (v9 `t_cc3b6aac`: `LOOP_NO_OPEN_CLUSTER` then
    rummaging). `REFUSE: LOOP_WRONG_CARD` / `LOOP_CLUSTER_NOT_OPEN` /
    `LOOP_NO_OPEN_CLUSTER` → `kanban_block` kind=needs_input naming the cluster;
-   do not rummage `verification/loop/`. K2 treats `brief.py` `[exit 1]` as a
+   do not rummage `verification/loop/`. **Your own issued cluster is never
+   "not open" to you:** when a mid-card verification no longer lists it, the
+   brief says `issued_not_open` and its procedure is run-verify (if the
+   candidate changed) then `advance.py` for this card — do that and follow the
+   verdict; do not block. K2 treats `brief.py` `[exit 1]` as a
    bound gate: re-run brief or `kanban_block` (run-verify and advance need not
    have run). **The brief is the plan.** Each item carries
    the rule's advice; pom items carry the element at the line, which

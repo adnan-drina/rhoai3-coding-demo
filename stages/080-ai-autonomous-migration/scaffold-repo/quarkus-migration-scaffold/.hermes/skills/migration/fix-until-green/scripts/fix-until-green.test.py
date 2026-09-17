@@ -1069,6 +1069,32 @@ def _parity_baseline_refresh_case() -> int:
             return _fail("the refresh records what it replaced: %s" % steps["parity_refreshes"][-1])
         if not load_json(root / WORKLIST)["measure"]["parity_mismatches"] or load_json(root / ADMISSION_RECEIPT)["status"] != "ADMITTED":
             return _fail("the rebuilt work list carries this tree's parity obligations and admission is re-sealed")
+        if not (root / steps["parity_refreshes"][-1]["archive"] / "parity" / "receipt.json").is_file():
+            return _fail("the refreshed baseline is archived by refresh number: %s" % steps["parity_refreshes"][-1])
+        # a rewind to the REFRESHED step keeps that tree measured (v9 step 27),
+        # from the archive, and -- for a refresh recorded before archives -- from
+        # the accepted snapshot while it is still that refresh's receipt
+        last = len(steps["steps"]) - 1
+        rew = [sys.executable, str(REWIND), "--root", str(root), "--operator", "adnan.drina", "--reason", "back to the refreshed step",
+               "--to-step", str(last), "--remeasure", "--no-mint", "--verify-cmd", "%s %s" % (sys.executable, sim)]
+        for label in ("archive", "legacy snapshot"):
+            _parity_records(root, "PASS")  # whatever a later card left live
+            p = _run(rew)
+            if p.returncode != 0 or "is restored" not in p.stdout:
+                return _fail("rewind to the refreshed step (%s): %s%s" % (label, p.stdout[-300:], p.stderr[-300:]))
+            snap = load_json(root / "verification" / "loop" / "accepted" / "parity" / "receipt.json")
+            live = load_json(root / PARITY_DIR / "receipt.json")
+            if snap.get("verdict") != "FAIL" or live.get("verdict") != "FAIL":
+                return _fail("the refreshed baseline stands after the rewind (%s): %s / %s" % (label, snap.get("verdict"), live.get("verdict")))
+            shutil.rmtree(root / "verification" / "loop" / "parity-refreshes", ignore_errors=True)
+        # control: once the accepted snapshot is no longer that refresh's receipt, the tree is UNMEASURED
+        _parity_records(root, "PASS")
+        from _loop_common import snapshot_parity  # noqa: E402
+        snapshot_parity(root)
+        p = _run(rew)
+        snap = load_json(root / "verification" / "loop" / "accepted" / "parity" / "receipt.json")
+        if p.returncode != 0 or snap.get("verdict") != "UNMEASURED" or "no longer its receipt" not in snap["unmeasured"]["reason"]:
+            return _fail("without that refresh's receipt the rewound tree is UNMEASURED, saying why: %s %s" % (snap, p.stderr[-200:]))
     return 0
 
 

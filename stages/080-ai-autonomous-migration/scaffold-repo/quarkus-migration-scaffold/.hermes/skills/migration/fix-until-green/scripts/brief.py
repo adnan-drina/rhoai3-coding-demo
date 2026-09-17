@@ -681,6 +681,27 @@ def load_issued(root: Path) -> dict:
     return doc if isinstance(doc, dict) else {}
 
 
+NOT_OPEN_NEXT = ("Your issued cluster is no longer on the open work list: the last verification measured its "
+                 "obligations as gone. That is for advance.py to judge, not for you: run "
+                 "`bash .hermes/skills/migration/fix-until-green/scripts/run-verify.sh --root . --mode acceptance` if the "
+                 "candidate changed since, then `python3 .hermes/skills/migration/fix-until-green/scripts/advance.py "
+                 "--root . --cluster %s --card $HERMES_KANBAN_TASK`, and follow its verdict. Do not kanban_block for this.")
+
+
+def _issued_not_open(issued: dict, doc: dict) -> dict:
+    """G2: the ISSUED card's own cluster is never "not open" to that card. A
+    mid-card rebuild that no longer lists it is a measurement of the
+    candidate (the obligations may be discharged); the issued record is the
+    plan, and advance.py is the judge."""
+    cid = str(issued.get("cluster") or "")
+    ws = [str(w) for w in (issued.get("write_set") or [])]
+    return {"id": cid, "path": ws[0] if ws else "", "kind": str(issued.get("kind") or ""),
+            "items": [str(i) for i in (issued.get("items") or [])], "write_set": ws,
+            "gate": str(issued.get("gate") or ""), "status": "issued",
+            "retry_key": str(issued.get("retry_key") or cid), "batch_scope": dict(issued.get("batch_scope") or {}),
+            "not_open": {"head": str(doc.get("head") or ""), "next": NOT_OPEN_NEXT % cid}}
+
+
 def select_cluster(doc: dict, root: Path, cluster_arg: str, task_env: str) -> tuple[dict | None, str, str]:
     """This card's cluster, or (None, LOOP_* code, detail).
 
@@ -706,6 +727,8 @@ def select_cluster(doc: dict, root: Path, cluster_arg: str, task_env: str) -> tu
             return None, "LOOP_WRONG_CARD", (
                 "--cluster %r is not the issued cluster %s for this card; %s" % (cluster_arg, issued_cid, terminator))
         hit = clusters.get(cluster_arg)
+        if hit is None and issued_cid and cluster_arg == issued_cid:
+            return _issued_not_open(issued, doc), "", ""
         if hit is None:
             return None, "LOOP_CLUSTER_NOT_OPEN", (
                 "cluster %s is not on the open work list; %s" % (cluster_arg, terminator))
@@ -719,9 +742,7 @@ def select_cluster(doc: dict, root: Path, cluster_arg: str, task_env: str) -> tu
         if issued_cid:
             hit = clusters.get(issued_cid)
             if hit is None:
-                return None, "LOOP_CLUSTER_NOT_OPEN", (
-                    "issued cluster %s (card %s) is not on the open work list (head=%s); %s"
-                    % (issued_cid, issued_tid, doc.get("head") or "-", terminator))
+                return _issued_not_open(issued, doc), "", ""
             return hit, "", ""
 
     head = head_cluster(doc)
@@ -790,6 +811,9 @@ def main(argv: list[str] | None = None) -> int:
         "procedure": PROCEDURE,
         "rule": "Edit only the write set. Do not edit tests. Do not touch pom.xml unless it is in the write set. Do not repeat a previous attempt (previous_attempts names the refused patch, before/after diagnostic loci, and the legal next action). A compile item with already_imported is not a missing import. Do not run extra mvn beside run-verify.sh. Then run run-verify.sh --mode acceptance and advance.py; the measure decides, not you.",
     }
+    if cluster.get("not_open"):
+        brief["issued_not_open"] = dict(cluster["not_open"])
+        brief["procedure"] = cluster["not_open"]["next"]
     if pending:
         brief["verification_pending"] = {
             "card": pending.get("card"),

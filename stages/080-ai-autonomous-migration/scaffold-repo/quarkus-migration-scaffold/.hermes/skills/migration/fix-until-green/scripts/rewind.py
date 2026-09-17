@@ -33,16 +33,18 @@ from __future__ import annotations
 import argparse
 import datetime as _dt
 import shlex
+import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _loop_common import ensure_hermes_lib, git, is_product_path, load_deferred, load_issued, load_state, load_steps, product_paths_changed, revert_paths, save_deferred, parity_not_of_this_tree, save_steps, snapshot_reports  # noqa: E402
+from _loop_common import PARITY_REFRESHES, PARITY_SNAPSHOT, PARITY_SNAPSHOT_SOURCE, candidate_sha256, install_parity_baseline, ensure_hermes_lib, git, is_product_path, load_deferred, load_issued, load_state, load_steps, product_paths_changed, revert_paths, save_deferred, parity_not_of_this_tree, save_steps, snapshot_reports  # noqa: E402
 
 ensure_hermes_lib()
 from planner import pipeline  # noqa: E402
-from planner.paths import LOOP_ISSUED  # noqa: E402
+from planner.canonical import load_json, sha256_file  # noqa: E402
+from planner.paths import LOOP_ACCEPTED, LOOP_ISSUED  # noqa: E402
 from planner.worklist import build_worklist  # noqa: E402
 
 RUN_VERIFY = Path(__file__).resolve().parent / "run-verify.sh"
@@ -80,6 +82,36 @@ def _restore(root: Path, commit: str, changes: list[tuple[str, str]]) -> list[st
             git(root, "checkout", commit, "--", path)
         touched.append(path)
     return touched
+
+
+def _refreshed_baseline(root: Path, steps: dict, recorded: list, idx: int) -> tuple[dict, str]:
+    """({dir, source, n, how}, why-not) for the refreshed parity baseline of the
+    step a rewind restores. Only when that refresh measured exactly the tree now
+    on disk: its archive when there is one; for a refresh recorded before
+    archives existed, the accepted snapshot itself -- only if no accepted step
+    came after the target and the snapshot still is that refresh's receipt."""
+    target = recorded[idx]
+    n = target.get("parity_refreshed")
+    rows = list(steps.get("parity_refreshes") or [])
+    if n is None or not isinstance(n, int) or not 0 <= n < len(rows):
+        return {}, ""
+    row = rows[n]
+    tree = candidate_sha256(root)
+    if str(row.get("candidate_sha256") or "") != tree:
+        return {}, "refresh %d measured tree %s and the restored tree is %s" % (n, str(row.get("candidate_sha256"))[:12], tree[:12])
+    archive = root / PARITY_REFRESHES / str(n)
+    if (archive / PARITY_SNAPSHOT / "receipt.json").is_file():
+        src = load_json(archive / PARITY_SNAPSHOT_SOURCE) if (archive / PARITY_SNAPSHOT_SOURCE).is_file() else dict(row)
+        return {"dir": archive / PARITY_SNAPSHOT, "source": src, "n": n, "how": "archived"}, ""
+    if idx != len(recorded) - 1:
+        return {}, "refresh %d has no archive and accepted steps followed it" % n
+    snap = root / LOOP_ACCEPTED / PARITY_SNAPSHOT / "receipt.json"
+    src_p = root / LOOP_ACCEPTED / PARITY_SNAPSHOT_SOURCE
+    src = load_json(src_p) if src_p.is_file() else {}
+    if (snap.is_file() and str(src.get("mode") or "") == "refreshed" and src.get("step") == idx
+            and str(src.get("receipt_file_sha256") or "") == sha256_file(snap)):
+        return {"dir": root / LOOP_ACCEPTED / PARITY_SNAPSHOT, "source": src, "n": n, "how": "the accepted snapshot is that refresh's receipt"}, ""
+    return {}, "refresh %d has no archive and the accepted snapshot is no longer its receipt" % n
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -153,8 +185,24 @@ def main(argv: list[str] | None = None) -> int:
     # F2: the restored tree is the target step's; a parity receipt made on any
     # other tree is not its baseline
     stale = parity_not_of_this_tree(root)
-    snapshot_reports(root, parity_unmeasured=("rewind to step %d (%s) and %s" % (args.to_step, commit[:12], stale)) if stale else "",
+    refreshed, why_not = _refreshed_baseline(root, steps, recorded, args.to_step) if stale else ({}, "")
+    staging = None
+    if refreshed:
+        import tempfile
+
+        staging = tempfile.TemporaryDirectory(prefix="rewind-parity-")
+        shutil.copytree(refreshed["dir"], Path(staging.name) / "parity")
+        refreshed["dir"] = Path(staging.name) / "parity"
+    snapshot_reports(root, parity_unmeasured=("" if (refreshed or not stale) else
+                                              "rewind to step %d (%s) and %s%s" % (args.to_step, commit[:12], stale,
+                                                                                   ("; " + why_not) if why_not else "")),
                      commit=git(root, "rev-parse", "HEAD").stdout.strip(), by=args.operator)
+    if refreshed:
+        # the target step's tree WAS measured: its refreshed baseline stands
+        install_parity_baseline(root, refreshed["dir"], dict(refreshed["source"], restored_by_rewind=args.operator))
+        print("parity: the baseline refreshed for step %d (refresh %d, %s) is restored" %
+              (args.to_step, refreshed["n"], refreshed["how"]))
+        staging.cleanup()
 
     moved = recorded[args.to_step + 1:]
     rejected = list(steps.get("rejected") or [])
