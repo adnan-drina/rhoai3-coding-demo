@@ -33,7 +33,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _oracle_common import ensure_hermes_lib, header_diffs, http_observe, is_preflight, origin_of, required_headers  # noqa: E402
+from _oracle_common import (DESTINATION_BODIES, body_diff, ensure_hermes_lib, header_diffs, http_observe,  # noqa: E402
+                            is_preflight, origin_of, required_headers, retain_body, retained_bytes)
 from _scenarios import (BINDING_CANDIDATE, CorpusError, DEFAULT_SECURITY_MODE, EFFECT_ROLE_UNCHANGED, EFFECTS_REVERT_THEN_READ,  # noqa: E402
                         EFFECTS_SECOND_IDENTITY, SCENARIO_DIAGNOSTIC_PROBE,
                         QUALIFICATION, classification_conflict, effects_strategy_of, record_classification, SCENARIO_ORACLES,  # noqa: E402,F401
@@ -402,7 +403,8 @@ def main(argv: list[str] | None = None) -> int:
     extra = list(oracle.get("asserted_headers_extra") or source_exposed_headers(root)[0])
     extra += [str(h) for h in (sc.get("asserted_headers") or []) if str(h) and str(h) not in extra]
     got = http_observe(args.dest_url, req["method"], req["path"], body=req["body"], headers={**req["headers"], **headers},
-                       assert_headers=extra)
+                       assert_headers=extra, keep_body=True)
+    got_raw = got.pop("raw", b"")
     verdict["observed"] = {"status": got.get("status"), "body_kind": got.get("body_kind"), "body_sha256": got.get("body_sha256"),
                            "body_sample": got.get("body_sample", ""), "headers": got.get("headers")}
     if not got.get("status"):
@@ -429,6 +431,17 @@ def main(argv: list[str] | None = None) -> int:
         diffs.append("status %s vs %s" % (got.get("status"), exp.get("status")))
     if got.get("body_sha256") != exp.get("body_sha256"):
         diffs.append("body %s vs %s" % (str(got.get("body_sha256"))[:12], str(exp.get("body_sha256"))[:12]))
+        # H1a: WHERE the bodies differ, from the retained source body and the
+        # destination's own, retained beside the verdict the same way (capped,
+        # digested, never inside this record)
+        dest_dir = root / scenario_parity_dir(security_mode, variant) / DESTINATION_BODIES / scenario_slug(args.scenario)
+        verdict["observed"]["evidence"] = retain_body(dest_dir, "response", got_raw, str(got.get("body_sha256") or ""))
+        src_raw, src_why = retained_bytes(root, exp.get("evidence"),
+                                          root / oracles_dir / "bodies" / scenario_slug(args.scenario) / "response.body")
+        verdict["body_diff"] = (body_diff(None, None, unavailable="the source body: %s" % src_why) if src_raw is None else
+                                body_diff(src_raw, got_raw, truncated_input=(
+                                    src_why == "truncated" or bool(verdict["observed"]["evidence"].get("truncated")))))
+        diffs[-1] += " (%s)" % verdict["body_diff"]["summary"]
     diffs.extend(header_diffs(exp.get("headers"), got.get("headers"), source_origin=source_origin, dest_origin=dest_origin))
     # the resulting state: what the write actually did -- or, for a refused
     # write (role unchanged_under_refusal), that it did nothing: the source's

@@ -1599,6 +1599,65 @@ def parity_obligation_discharged(root: Path, row: dict[str, Any], remeasured: se
                   "and is unchanged" % (sid, "; ".join(sorted(now))[:160]))
 
 
+BODY_DIFF_SHOWN = 5
+_PATH_TOKEN_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
+
+def _body_path_property(path: str) -> str:
+    """The last PROPERTY name of a body path ($.pets[0].visits, /pets/0/visits
+    -> visits); "" when the path names none."""
+    toks = [t for t in _PATH_TOKEN_RE.findall(str(path or "")) if t not in ("root",)]
+    return toks[-1] if toks else ""
+
+
+def body_locus_hints(root: Path | None, body_diff: dict[str, Any]) -> list[dict[str, str]]:
+    """Where a body difference may be PRODUCED, when that is cheap to name:
+    for an ORDER-only difference at a collection property, the source-model
+    getter of that property (the source model is the frozen structure; the
+    destination keeps the same relative path). Nothing else is guessed."""
+    if not isinstance(body_diff, dict) or not body_diff.get("order_only") or root is None:
+        return []
+    props = sorted({_body_path_property(d.get("path")) for d in (body_diff.get("differences") or [])
+                    if isinstance(d, dict) and str(d.get("kind") or "") == "order"} - {""})
+    if not props:
+        return []
+    out: list[dict[str, str]] = []
+    for t in structure_types(Path(root)):
+        path = structure_type_path(Path(root), t) or str(t.get("path") or "")
+        for m in t.get("methods") or []:
+            name = str((m or {}).get("name") or "")
+            for prop in props:
+                if name == "get" + prop[:1].upper() + prop[1:]:
+                    out.append({"property": prop, "type": str(t.get("fqn") or ""), "member": name, "path": path,
+                                "why": "the source orders %s in %s.%s; an order-only difference there is produced by "
+                                       "that getter's translation, not by the controller" % (prop, t.get("fqn"), name)})
+    return sorted(out, key=lambda h: (h["path"], h["member"]))[:3]
+
+
+def body_diff_advice(root: Path | None, doc: dict[str, Any], item_id: str) -> dict[str, Any]:
+    """The structured body difference the comparator recorded, bounded, with
+    where its value may come from and how the card may reach that file."""
+    bd = doc.get("body_diff") if isinstance(doc.get("body_diff"), dict) else None
+    if not bd:
+        return {}
+    diffs = [d for d in (bd.get("differences") or []) if isinstance(d, dict)]
+    hints = body_locus_hints(root, bd)
+    out: dict[str, Any] = {
+        "kind": str(bd.get("kind") or ""), "summary": str(bd.get("summary") or "")[:400],
+        "order_only": bool(bd.get("order_only")), "differences": diffs[:BODY_DIFF_SHOWN],
+        "differences_total": len(diffs), "truncated": bool(bd.get("truncated")) or len(diffs) > BODY_DIFF_SHOWN,
+        "locus": ("a body difference is often produced OUTSIDE the controller -- a model getter, a mapper, the "
+                  "serialization configuration. Read the differing path(s) above, find the file that produces that "
+                  "value, and add it to this card's write set BEFORE editing it: python3 "
+                  ".hermes/skills/migration/fix-until-green/scripts/amend-scope.py --root . --cluster <this cluster> "
+                  "--card $HERMES_KANBAN_TASK --path <that file> --reason <what differs there> --evidence parity:%s"
+                  % item_id),
+    }
+    if hints:
+        out["locus_hints"] = hints
+    return out
+
+
 def parity_scenarios_of(receipt: dict[str, Any] | None, entry_point: str, scenario: str) -> list[str]:
     """The scenario ids one obligation is made of: its own when it has one, and
     otherwise the ones the receipt's row for its entry point declares."""
@@ -1749,11 +1808,22 @@ def parity_items(root: Path, bundle: dict[str, Any], notes: list[dict[str, Any]]
                 "message_sha256": sha256_bytes(reason.encode("utf-8"))}
         if other:
             locus = ep_path.get(ep) or GLOBAL
-            out.append(dict(base, id=parity_obligation_id(ep, scenario, "response"), path=locus,
+            rid = parity_obligation_id(ep, scenario, "response")
+            advice = response_advice(other, locus)
+            body = body_diff_advice(root, doc, rid) if any(parse_parity_diff(d)["kind"] == "body" for d in other) else {}
+            summary = ""
+            if body:
+                advice["body_diff"] = body
+                summary = " Body: %s" % (body["summary"] or "; ".join(
+                    "%s %s (%s vs %s)" % (d.get("kind"), d.get("path"), d.get("observed"), d.get("expected"))
+                    for d in body["differences"][:2]))
+                if body.get("locus_hints"):
+                    summary += " Likely produced in %s." % ", ".join("%s (%s)" % (h["path"], h["member"]) for h in body["locus_hints"])
+            out.append(dict(base, id=rid, path=locus,
                             rule_id="PARITY", cause="response",
                             detail=("%s: %s" % (scenario or ep, "; ".join(other)))[:200],
-                            message=("%s differs from the source (%s): %s" % (ep, scenario or "read oracle", "; ".join(other)))[:1200],
-                            advice=response_advice(other, locus)))
+                            message=("%s differs from the source (%s): %s.%s" % (ep, scenario or "read oracle", "; ".join(other), summary))[:1200],
+                            advice=advice))
         if cors:
             owed = _adapters.contract(_adapters.CORS)
             out.append(dict(base, id=parity_obligation_id(ep, scenario, "cors"), path=owed["path"], kind="config",
@@ -1781,6 +1851,17 @@ def parity_items(root: Path, bundle: dict[str, Any], notes: list[dict[str, Any]]
                                      "response or serializer configuration, otherwise the media-type adapter removes only "
                                      "the decided parameter (%s)." % (ep, scenario or "read oracle", raws, owed["install"]))[:1200],
                             advice=representation_advice(representation)))
+    # obligations whose body differences point at the SAME producing file are
+    # likely one root cause: each names the others (they stay separate cards)
+    by_locus: dict[str, list[str]] = defaultdict(list)
+    for it in out:
+        for h in ((it.get("advice") or {}).get("body_diff") or {}).get("locus_hints") or []:
+            by_locus[h["path"]].append(it["id"])
+    for it in out:
+        bd = (it.get("advice") or {}).get("body_diff") or {}
+        same = sorted({o for h in bd.get("locus_hints") or [] for o in by_locus.get(h["path"], []) if o != it["id"]})
+        if same:
+            bd["same_locus_obligations"] = same
     # The receipt's own navigation verdicts: a comparison that PASSed and a
     # redirect target that is dead, loops, or never settles within the bounded
     # walk (ADR-016). There is no FAILing verdict file for these -- the

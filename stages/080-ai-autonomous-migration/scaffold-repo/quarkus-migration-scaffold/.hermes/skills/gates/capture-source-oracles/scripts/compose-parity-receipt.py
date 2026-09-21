@@ -341,6 +341,7 @@ def main(argv: list[str] | None = None) -> int:
         names = sorted(required.get(ep) or [])
         if names:
             missing: list[str] = []
+            body_diffs: list[dict[str, Any]] = []
             problems: list[str] = [qualification_gap] if qualification_gap else []
             failures: list[str] = []
             positive: list[str] = []
@@ -408,6 +409,13 @@ def main(argv: list[str] | None = None) -> int:
                     problems.append("%s was compared against corpus %s, this is %s" % (sid, str(doc.get("corpus_sha256"))[:12], corpus_sha[:12]))
                 elif doc.get("verdict") == "FAIL":
                     failures.append("%s: %s" % (sid, doc.get("reason")))
+                    bd = doc.get("body_diff")
+                    if isinstance(bd, dict):
+                        # a pointer, not a copy: the verdict file holds the diff
+                        body_diffs.append({"scenario": sid, "summary": str(bd.get("summary") or ""),
+                                           "order_only": bool(bd.get("order_only")), "kind": str(bd.get("kind") or ""),
+                                           "verdict_file": (scenario_parity_dir(security_mode, variant)
+                                                            / (scenario_slug(sid) + ".json")).as_posix()})
                 elif doc.get("verdict") != "PASS":
                     problems.append("%s: %s" % (sid, doc.get("reason") or doc.get("verdict")))
             foreign = sorted(sid for sid in results if sid not in set(names) and sid not in diagnostic_ids
@@ -434,6 +442,8 @@ def main(argv: list[str] | None = None) -> int:
             nav_ok = [sid for sid in names if str((navigation.get(sid) or {}).get("terminal") or "") == "ok"]
             row = {"entry_point": ep, "verdict": verdict, "reason": reason, "scenarios": names,
                    "coverage": {"positive": positive, "negative": negative}}
+            if body_diffs:
+                row["body_diffs"] = body_diffs
             refusals = [relabelled[sid] for sid in names if sid in relabelled]
             if refusals:
                 row["classification_refusals"] = refusals
@@ -462,7 +472,13 @@ def main(argv: list[str] | None = None) -> int:
             v = load_json(p)
             bound = v.get("receipt_sha256") == receipt_sha and not (binding_mismatch(v, binding) if candidate_mode else "")
             ok = v.get("verdict") == "PASS" and bound
-            rows.append({"entry_point": ep, "verdict": v.get("verdict") if bound else "INCONCLUSIVE", "reason": v.get("reason", "") if bound else "verdict bound to another receipt", "scenarios": []})
+            row = {"entry_point": ep, "verdict": v.get("verdict") if bound else "INCONCLUSIVE", "reason": v.get("reason", "") if bound else "verdict bound to another receipt", "scenarios": []}
+            if bound and isinstance(v.get("body_diff"), dict):
+                row["body_diffs"] = [{"scenario": "", "summary": str(v["body_diff"].get("summary") or ""),
+                                      "order_only": bool(v["body_diff"].get("order_only")),
+                                      "kind": str(v["body_diff"].get("kind") or ""),
+                                      "verdict_file": (PARITY / (slug(ep) + ".json")).as_posix()}]
+            rows.append(row)
         else:
             ok = False
             rows.append({"entry_point": ep, "verdict": "INCONCLUSIVE", "reason": "no parity record", "scenarios": []})

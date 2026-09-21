@@ -264,6 +264,94 @@ def _locus(root: Path, scope: dict, rel: str) -> tuple[str, str]:
                 "minted yet." % (rel, ", ".join(sorted(str(t.get("fqn")) for t in wanted)) or "no type", repo))
 
 
+PARITY_REACH_DEPTH = 3
+
+
+def _parity_locus(root: Path, issued: dict, rel: str, evidence_ref: str) -> tuple[str, str]:
+    """H1b: a body difference is often PRODUCED outside the controller (a model
+    getter, a mapper, the serialization configuration). A parity card may reach
+    that file on its OWN parity obligation's evidence, when the file is either
+    the locus the planner hinted for that obligation, or declares a type the
+    obligation's controller reaches through the compiler's own references
+    (bounded depth). A request alone never does."""
+    if evidence_ref not in {str(i) for i in (issued.get("items") or [])}:
+        return "", "parity:%s is not an obligation this card was issued" % evidence_ref
+    item = next((i for i in _worklist_items(root) if str(i.get("id") or "") == evidence_ref), None)
+    if item is None:
+        return "", "no parity obligation %r is in the current work list" % evidence_ref
+    advice = item.get("advice") if isinstance(item.get("advice"), dict) else {}
+    body = advice.get("body_diff") if isinstance(advice.get("body_diff"), dict) else {}
+    if not body and "body " not in str(item.get("detail") or item.get("message") or ""):
+        return "", "parity obligation %s records no body difference, so no other file produces it" % evidence_ref
+    if not (rel.startswith("src/main/") and (root / rel).is_file()):
+        return "", "%s is not a main source file of this tree" % rel
+    for h in body.get("locus_hints") or []:
+        if str(h.get("path") or "") == rel:
+            return "parity: %s is the hinted producer of %s's body difference (%s)" % (rel, evidence_ref, h.get("member")), ""
+    try:
+        from planner.worklist import unit_bound_imports, unit_type_refs  # noqa: PLC0415
+
+        model = dest_model(root)
+    except DestModelUnavailable as exc:
+        return "", "the destination model is unavailable, so %s cannot be related to the controller (%s)" % (rel, exc)
+    by_fqn = {str(t.get("fqn") or ""): t for t in (model.get("types") or []) if isinstance(t, dict)}
+    wanted = {str(t.get("fqn") or "") for t in types_of(model, rel)}
+    frontier = {str(t.get("fqn") or "") for t in types_of(model, str(item.get("path") or ""))}
+    seen = set(frontier)
+    for depth in range(1, PARITY_REACH_DEPTH + 1):
+        nxt = set()
+        for f in frontier:
+            typ = by_fqn.get(f) or {}
+            bound = unit_bound_imports(typ)
+            pkg = f.rsplit(".", 1)[0] if "." in f else ""
+            for r in unit_type_refs(typ):
+                # a field's type is written as in the source: bind a simple
+                # name by the declaring file's imports, then its own package
+                for cand in (r, bound.get(r, ""), ("%s.%s" % (pkg, r)) if pkg and "." not in r else ""):
+                    if cand and cand in by_fqn and cand not in seen:
+                        nxt.add(cand)
+                        break
+        hit = sorted(nxt & wanted)
+        if hit:
+            return ("parity: %s (controller of %s) reaches %s in %d step(s)" % (item.get("path"), evidence_ref, hit[0], depth)), ""
+        seen |= nxt
+        frontier = nxt
+    return "", ("%s declares %s, which %s does not reach within %d reference step(s); name the file that produces the "
+                "differing value" % (rel, ", ".join(sorted(wanted)) or "no type", item.get("path"), PARITY_REACH_DEPTH))
+
+
+def _parity_amend(root: Path, issued: dict, args: argparse.Namespace, ref: str) -> int:
+    """A parity card with no sealed inventory: one more file, on its own parity
+    obligation's evidence, bounded like any card (AMENDMENT_LIMIT)."""
+    rel = str(args.path).replace("\\", "/").lstrip("./")
+    if not is_product_path(rel) or rel.startswith("src/test/") or rel == "pom.xml":
+        return _refuse("%s is not a path a parity card may reach" % rel)
+    if len(str(args.reason).strip()) < 12:
+        return _refuse("--reason must say what the card cannot finish without this file")
+    if rel in set(issued.get("write_set") or []):
+        print("OK: %s is already writable for %s" % (rel, args.cluster))
+        return 0
+    amendments = list(issued.get("amendments") or [])
+    if len(amendments) >= AMENDMENT_LIMIT:
+        return _refuse("this card has already been amended %d time(s) (limit %d); a planning answer, not an amendment"
+                       % (len(amendments), AMENDMENT_LIMIT))
+    if rel in set(product_paths_changed(root)):
+        return _refuse("%s has already been edited. An amendment authorizes a change that has not happened yet; "
+                       "revert it, record the amendment, then make the change." % rel)
+    locus, why = _parity_locus(root, issued, rel, ref)
+    if not locus:
+        return _refuse("%s bears no relation to what this card measures: %s" % (rel, why))
+    amendments.append({"path": rel, "reason": str(args.reason).strip(), "attempt": issued.get("attempt"),
+                       "granted_before_sha256": sha256_file(root / rel), "dirty_at_grant": False, "locus": locus,
+                       "evidence": {"kind": "parity", "ref": ref, "tool_named": True}})
+    issued["amendments"] = amendments
+    issued["write_set"] = sorted(set(issued.get("write_set") or []) | {rel})
+    write_canonical(root / LOOP_ISSUED, issued)
+    print("OK: SCOPE AMENDED %s + %s (%d of %d) on parity evidence %s -- %s"
+          % (args.cluster, rel, len(amendments), AMENDMENT_LIMIT, ref, locus))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--root", required=True)
@@ -285,6 +373,9 @@ def main(argv: list[str] | None = None) -> int:
     if issued.get("task_id") and args.card and args.card != issued["task_id"]:
         return _refuse("--card %r is not the minted card %s" % (args.card, issued["task_id"]))
     scope_ref = issued.get("batch_scope") or {}
+    evidence_kind, _, evidence_ref = str(args.evidence or "").partition(":")
+    if not scope_ref and str(issued.get("gate") or "") == "parity" and evidence_kind == "parity":
+        return _parity_amend(root, issued, args, evidence_ref.strip())
     if not scope_ref:
         return _refuse("this card carries no sealed scope, so there is nothing to amend")
     scope_p = root / str(scope_ref.get("path") or "")
@@ -360,7 +451,12 @@ def main(argv: list[str] | None = None) -> int:
     # And the ask has to be about the failure this card carries. The locus is
     # the measured obligation's own file and the members named in the sealed
     # inventory: a file with no bearing on either is a different card.
-    locus, why = (_unit_locus(root, scope_doc, rel) if unit else _locus(root, scope_doc, rel))
+    locus, why = "", ""
+    if evidence.get("kind") == "parity":
+        locus, why = _parity_locus(root, issued, rel, str(evidence.get("ref") or ""))
+    if not locus:
+        locus, why2 = (_unit_locus(root, scope_doc, rel) if unit else _locus(root, scope_doc, rel))
+        why = why2 if not why else "%s; %s" % (why, why2)
     if not locus:
         return _refuse("%s bears no relation to what this card measures: %s. A file the failure does not reach is a "
                        "planning answer, not an amendment." % (rel, why))

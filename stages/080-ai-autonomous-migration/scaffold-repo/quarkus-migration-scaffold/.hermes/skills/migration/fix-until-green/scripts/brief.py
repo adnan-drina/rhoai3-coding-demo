@@ -639,6 +639,12 @@ def parity_brief(items: list[dict], cluster: dict) -> dict:
         "gate": "parity",
         "scenarios": scenarios,
         "entry_points": entry_points,
+        # H1b: what the body difference IS, where it may be produced, and how
+        # the card reaches that file -- a digest alone sent v9 t_a755c0a1 to
+        # the wrong layer for 74 minutes
+        "body_diffs": [dict((i.get("advice") or {}).get("body_diff") or {}, obligation=str(i.get("id") or ""),
+                            scenario=str(i.get("scenario") or ""))
+                       for i in rows if (i.get("advice") or {}).get("body_diff")],
         "measured_by": (
             "run-verify.sh --mode acceptance re-runs the scenario comparison for this card (run-parity.py, scoped to %s) "
             "after the packaging and startup gates, and re-composes verification/parity/receipt.json. You run the same "

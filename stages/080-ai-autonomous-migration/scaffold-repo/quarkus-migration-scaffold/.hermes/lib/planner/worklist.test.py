@@ -2623,10 +2623,64 @@ def _split_discharge_case() -> int:
     return 0
 
 
+def _body_diff_case() -> int:
+    """H1b (v9 t_a755c0a1): a body obligation carries the comparator's
+    structured body difference, bounded, the locus rule and the amend-scope
+    route; an order-only difference at a collection property names the
+    source-model getter that orders it; two obligations with the same producer
+    name each other."""
+    import json
+    import tempfile
+
+    from planner.paths import PARITY_DIR, STRUCTURE
+
+    ep1, ep2 = "ep:com.acme.ledger.AccountResource#get(int):http", "ep:com.acme.ledger.LedgerResource#get(int):http"
+    bundle = {"entry_points": [{"id": ep1, "path": "src/main/java/com/acme/ledger/AccountResource.java"},
+                               {"id": ep2, "path": "src/main/java/com/acme/ledger/LedgerResource.java"}]}
+    with tempfile.TemporaryDirectory(prefix="body-diff-") as td:
+        root = Path(td)
+        (root / STRUCTURE).parent.mkdir(parents=True)
+        (root / STRUCTURE).write_text(json.dumps({"types": [
+            {"fqn": "com.acme.ledger.model.Account", "path": "src/main/java/com/acme/ledger/model/Account.java",
+             "methods": [{"name": "getEntries"}, {"name": "getName"}]},
+            {"fqn": "com.acme.ledger.model.Other", "path": "src/main/java/com/acme/ledger/model/Other.java",
+             "methods": [{"name": "getEntriesCount"}]}]}))
+        (root / PARITY_DIR / "scenarios").mkdir(parents=True)
+        diffs = [{"path": "$.accounts[%d].entries" % n, "kind": "order", "expected": "[3,2,1]", "observed": "[1,2,3]"} for n in range(7)]
+        for name, ep, sid in (("a.json", ep1, "sc:read-account"), ("b.json", ep2, "sc:read-ledger")):
+            (root / PARITY_DIR / "scenarios" / name).write_text(json.dumps({
+                "schema": "rhoai3.scenario-parity/v1", "entry_point": ep, "scenario": sid, "verdict": "FAIL",
+                "reason": "body 0701a0ba9586 vs e2326615f78b",
+                "body_diff": {"kind": "json", "differences": diffs, "order_only": True,
+                              "summary": "7 collection(s) in a different order: $.accounts[*].entries", "truncated": False}}))
+        (root / PARITY_DIR / "scenarios" / "c.json").write_text(json.dumps({
+            "schema": "rhoai3.scenario-parity/v1", "entry_point": ep1, "scenario": "sc:read-value", "verdict": "FAIL",
+            "reason": "body 11 vs 22", "body_diff": {"kind": "json", "order_only": False, "summary": "1 value differs",
+                                                    "differences": [{"path": "$.entries", "kind": "value", "expected": 1, "observed": 2}]}}))
+        items = {i["scenario"]: i for i in parity_items(root, bundle)}
+        a = items["sc:read-account"]
+        bd = (a.get("advice") or {}).get("body_diff") or {}
+        if len(bd.get("differences") or []) != 5 or bd.get("differences_total") != 7 or not bd.get("truncated") or not bd.get("order_only"):
+            return _fail("the body difference is carried, bounded: %s" % bd)
+        if "--evidence parity:%s" % a["id"] not in bd.get("locus", "") or "OUTSIDE the controller" not in bd["locus"]:
+            return _fail("the advice says where a body difference may come from and how to reach it: %s" % bd.get("locus"))
+        hints = bd.get("locus_hints") or []
+        if [(h["path"], h["member"]) for h in hints] != [("src/main/java/com/acme/ledger/model/Account.java", "getEntries")]:
+            return _fail("an order-only difference at a collection names that property's source getter, and only it: %s" % hints)
+        if "Account.java (getEntries)" not in a["message"] or "different order" not in a["message"]:
+            return _fail("the obligation's message says what differs and where it is likely produced: %s" % a["message"])
+        if bd.get("same_locus_obligations") != [items["sc:read-ledger"]["id"]]:
+            return _fail("two obligations with one producer name each other: %s" % bd.get("same_locus_obligations"))
+        v = items["sc:read-value"]["advice"]["body_diff"]
+        if v.get("locus_hints") or v.get("same_locus_obligations") or v["differences"][0]["kind"] != "value":
+            return _fail("a value difference is shown and hints nothing: %s" % v)
+    return 0
+
+
 def main() -> int:
     if (_runtime_identity_case() or _gate_progress_case() or _batch_scope_case() or _checked_family_case()
             or _set_wide_case() or _config_value_case() or _parity_typing_case() or _parity_advice_case()
-            or _parity_navigation_case() or _owed_adapter_case() or _cors_scenario_case() or _scoped_carry_case() or _receipt_v2_case() or _split_discharge_case() or _harness_owned_guard_case() or _parity_gate_case() or _unit_formation_case() or _unit_bound_case() or _unit_seal_case()
+            or _parity_navigation_case() or _owed_adapter_case() or _cors_scenario_case() or _scoped_carry_case() or _receipt_v2_case() or _split_discharge_case() or _body_diff_case() or _harness_owned_guard_case() or _parity_gate_case() or _unit_formation_case() or _unit_bound_case() or _unit_seal_case()
             or _unit_mode_case() or _unit_inert_case() or _unit_config_case()
             or _unit_experiment_table_case() or _unit_explained_case() or _unit_progress_case()
             or _unit_budget_case()):

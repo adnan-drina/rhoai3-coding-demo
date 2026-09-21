@@ -36,7 +36,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _oracle_common import ORACLES, PARITY, http_observe, normalize_observation, slug  # noqa: E402
+from _oracle_common import (DESTINATION_BODIES, ORACLES, PARITY, body_diff, http_observe,  # noqa: E402
+                            normalize_observation, retain_body, retained_bytes, slug)
 from _scenarios import BINDING_CANDIDATE, candidate_binding, sealed_binding  # noqa: E402
 from planner.admission import verify_receipt  # noqa: E402
 from planner.canonical import digest, load_json, write_canonical  # noqa: E402
@@ -121,8 +122,19 @@ def main(argv: list[str] | None = None) -> int:
             if not args.dest_url:
                 verdict["reason"] = "no --dest-url"
             else:
-                got = http_observe(args.dest_url, exp.get("method", "GET"), exp.get("path", "/"))
+                got = http_observe(args.dest_url, exp.get("method", "GET"), exp.get("path", "/"), keep_body=True)
+                got_raw = got.pop("raw", b"")
                 verdict["observed"] = {"status": got.get("status"), "body_sha256": got.get("body_sha256"), "body_kind": got.get("body_kind"), "body_sample": got.get("body_sample", "")}
+                if got.get("status") and got.get("body_sha256") != exp.get("body_sha256"):
+                    # H1a: where the bodies differ, from both retained bodies
+                    verdict["observed"]["evidence"] = retain_body(root / PARITY / DESTINATION_BODIES / slug(args.entry_point),
+                                                                  "response", got_raw, str(got.get("body_sha256") or ""))
+                    src_raw, src_why = retained_bytes(root, exp.get("evidence"),
+                                                      root / ORACLES / "bodies" / slug(args.entry_point) / "response.body")
+                    verdict["body_diff"] = (body_diff(None, None, unavailable="the source body: %s" % src_why)
+                                            if src_raw is None else
+                                            body_diff(src_raw, got_raw, truncated_input=(
+                                                src_why == "truncated" or bool(verdict["observed"]["evidence"].get("truncated")))))
                 if got.get("status") == 0:
                     verdict["reason"] = "destination unreachable: %s" % got.get("error")
                 elif got.get("status") == exp.get("status") and got.get("body_sha256") == exp.get("body_sha256"):
@@ -130,6 +142,8 @@ def main(argv: list[str] | None = None) -> int:
                 else:
                     verdict["verdict"] = "FAIL"
                     verdict["reason"] = "status %s vs %s; body %s vs %s" % (got.get("status"), exp.get("status"), str(got.get("body_sha256"))[:12], str(exp.get("body_sha256"))[:12])
+                    if verdict.get("body_diff"):
+                        verdict["reason"] += " (%s)" % verdict["body_diff"]["summary"]
         else:
             exp = oracle["oracle"]
             verdict["expected"] = {"observation_sha256": exp.get("observation_sha256"), "lines": exp.get("lines")}

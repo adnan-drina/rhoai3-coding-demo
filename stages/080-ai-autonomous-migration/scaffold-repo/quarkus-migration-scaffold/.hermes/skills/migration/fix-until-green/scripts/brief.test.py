@@ -290,12 +290,29 @@ def _unit_brief_case() -> int:
     return 0
 
 
+def _body_diff_brief_case() -> int:
+    """H1b: the parity brief shows each body difference, where it may be produced and the amend-scope route."""
+    from brief import parity_brief
+
+    bd = {"summary": "order of $.pets[*].visits", "order_only": True, "differences": [{"path": "$.pets[0].visits", "kind": "order"}],
+          "locus": "... --evidence parity:parity:x", "locus_hints": [{"path": "src/main/java/a/Pet.java", "member": "getVisits"}]}
+    rows = [{"id": "parity:x", "source": "parity", "gate": "parity", "scenario": "sc:read", "entry_point": "ep:a", "advice": {"body_diff": bd}},
+            {"id": "parity:y", "source": "parity", "gate": "parity", "scenario": "sc:cors", "entry_point": "ep:a", "advice": {}}]
+    out = parity_brief(rows, {"gate": "parity"})
+    got = out.get("body_diffs") or []
+    if len(got) != 1 or got[0]["obligation"] != "parity:x" or got[0]["locus_hints"][0]["member"] != "getVisits" or "--evidence parity:" not in got[0]["locus"]:
+        return _fail("the parity brief shows the body difference and its producer: %s" % got)
+    return 0
+
+
 def main() -> int:
     if _repository_inventory_case():
         return 1
     if _unit_brief_case():
         return 1
     if _runtime_advice_case():
+        return 1
+    if _body_diff_brief_case():
         return 1
 
     with tempfile.TemporaryDirectory() as td:

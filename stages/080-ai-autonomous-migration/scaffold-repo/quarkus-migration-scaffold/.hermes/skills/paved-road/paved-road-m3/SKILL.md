@@ -46,7 +46,12 @@ rule to `kanban_complete`.
    "not open" to you:** when a mid-card verification no longer lists it, the
    brief says `issued_not_open` and its procedure is run-verify (if the
    candidate changed) then `advance.py` for this card — do that and follow the
-   verdict; do not block. K2 treats `brief.py` `[exit 1]` as a
+   verdict; do not block. A **body** parity item carries `advice.body_diff`
+   (the differing paths, their kind -- `order`, `value`, `missing`, ... -- and
+   often `locus_hints`, the file that produces the value). The producing file
+   is often outside the controller (a model getter, a mapper): add it with
+   `amend-scope.py --path <file> --reason <why> --evidence parity:<item id>`
+   before editing it, rather than blocking. K2 treats `brief.py` `[exit 1]` as a
    bound gate: re-run brief or `kanban_block` (run-verify and advance need not
    have run). **The brief is the plan.** Each item carries
    the rule's advice; pom items carry the element at the line, which

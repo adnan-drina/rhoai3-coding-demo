@@ -397,6 +397,55 @@ def _owed_adapter_case(root: Path) -> int:
     return 0
 
 
+def _parity_body_case(root: Path) -> int:
+    """H1b (v9 t_a755c0a1): a body difference produced outside the controller.
+    A parity card with no sealed inventory reaches the producing file on its
+    OWN parity obligation's evidence -- the planner's hinted locus, or a type
+    its controller reaches -- and on nothing else."""
+    files = {"src/main/java/p/web/OwnerCtl.java": "package p.web;\nimport p.Holder;\npublic class OwnerCtl {\n    public Holder get() { return null; }\n}\n",
+             "src/main/java/p/Holder.java": "package p;\npublic class Holder {\n    public Pet pet;\n}\n"}
+    for rel, text in files.items():
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / rel).write_text(text)
+    _git(root, "add", "-A")
+    _git(root, "commit", "-qm", "parity fixture")
+    ctl = "src/main/java/p/web/OwnerCtl.java"
+    item = {"id": "parity:body1", "source": "parity", "gate": "parity", "kind": "parity", "rule_id": "PARITY",
+            "path": ctl, "detail": "sc:read-owner: body aa vs bb",
+            "advice": {"body_diff": {"summary": "order of pet.visits", "order_only": True, "locus_hints": []}}}
+    wl = root / "evidence/planning/worklist.json"
+    wl.write_text(json.dumps({"schema": "rhoai3.worklist/v1", "clusters": [], "items": [
+        item, {"id": "parity:other", "source": "parity", "path": ctl, "detail": "body x vs y"}]}))
+    issued = root / "verification/loop/issued.json"
+    issued.write_text(json.dumps({"schema": "rhoai3.loop-issued/v1", "cluster": "c:par", "attempt": 1, "gate": "parity",
+                                  "items": ["parity:body1"], "write_set": [ctl]}))
+    reason = "the visits order is produced by the model getter"
+    rc, out = _run(root, "--path", "src/main/java/p/Pet.java", "--reason", reason, cluster="c:par")
+    if rc == 0 or "no sealed scope" not in out:
+        return _fail("without parity evidence a parity card has nothing to amend: %s" % out)
+    rc, out = _run(root, "--path", "src/main/java/p/Pet.java", "--reason", reason, "--evidence", "parity:parity:other", cluster="c:par")
+    if rc == 0 or "not an obligation this card was issued" not in out:
+        return _fail("another card's parity obligation is no evidence: %s" % out)
+    rc, out = _run(root, "--path", "src/main/java/p/SecurityConfig.java", "--reason", reason, "--evidence", "parity:parity:body1", cluster="c:par")
+    if rc == 0 or "does not reach" not in out:
+        return _fail("a file the controller does not reach is refused: %s" % out)
+    rc, out = _run(root, "--path", "src/main/java/p/Pet.java", "--reason", reason, "--evidence", "parity:parity:body1", cluster="c:par")
+    if rc != 0 or "reaches p.Pet in 2 step" not in out:
+        return _fail("the model file the controller reaches is authorized on parity evidence: %s" % out)
+    doc = json.loads(issued.read_text())
+    if "src/main/java/p/Pet.java" not in doc["write_set"] or doc["amendments"][-1]["evidence"]["kind"] != "parity":
+        return _fail("the amendment is recorded with its parity evidence: %s" % doc)
+    item["advice"]["body_diff"]["locus_hints"] = [{"path": "src/main/java/p/SecurityConfig.java", "member": "getX"}]
+    wl.write_text(json.dumps({"schema": "rhoai3.worklist/v1", "clusters": [], "items": [item]}))
+    rc, out = _run(root, "--path", "src/main/java/p/SecurityConfig.java", "--reason", reason, "--evidence", "parity:parity:body1", cluster="c:par")
+    if rc != 0 or "hinted producer" not in out:
+        return _fail("the planner's hinted locus is authorized: %s" % out)
+    rc, out = _run(root, "--path", "src/main/java/p/Vet.java", "--reason", reason, "--evidence", "parity:parity:body1", cluster="c:par")
+    if rc == 0 or "limit 2" not in out:
+        return _fail("a parity card is bounded like any card: %s" % out)
+    return 0
+
+
 def main() -> int:
     if not shutil.which("javac"):
         print("SKIP: amend-scope selftest needs a JDK on PATH")
@@ -518,6 +567,8 @@ def main() -> int:
         if _owed_case(root):
             return 1
         if _owed_adapter_case(root):
+            return 1
+        if _parity_body_case(root):
             return 1
 
     print("OK: amend-scope (tests, the build file, unknown paths, unreasoned asks and files the failure does not reach "

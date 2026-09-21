@@ -119,6 +119,20 @@ through `load_corpus(root, security_mode, variant)`, so an enabled run replays
 `verification/scenarios-enabled/corpus.json` and can never grade the enabled
 source against the anonymous requests sitting beside it.
 
+### Where a body differs (H1a)
+
+A body mismatch in a scenario or read-oracle verdict carries `body_diff`:
+`{"kind": "json"|"text"|"unavailable", "differences": [{"path", "kind":
+order|value|missing|extra|type|length, "expected", "observed"}], "order_only",
+"summary", "truncated"}` (plus `total` when more than 50 differences exist).
+A list with the same elements in another order is one `order` difference;
+the summary collapses indices to `[*]`. Values are shortened. The
+destination body is retained beside the verdict under `_bodies/` (capped,
+digested, never inside the record); read oracles now retain the source body
+under `verification/source-oracles/bodies/`. The receipt row carries
+`body_diffs` pointers (`scenario`, `summary`, `order_only`, `kind`,
+`verdict_file`).
+
 ### CORS with security enabled (ADR-020)
 
 The enabled corpus declares the source's CORS policies and derives, per

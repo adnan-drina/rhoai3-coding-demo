@@ -30,7 +30,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _oracle_common import IDEMPOTENT, ORACLES, entry_points, http_observe, normalize_observation, slug  # noqa: E402
+from _oracle_common import IDEMPOTENT, ORACLES, entry_points, http_observe, normalize_observation, retain_body, slug  # noqa: E402
 from planner.admission import verify_receipt  # noqa: E402
 from planner.canonical import digest, load_json, sha256_file, write_canonical  # noqa: E402
 from planner.paths import EVIDENCE_BUNDLE  # noqa: E402
@@ -118,7 +118,13 @@ def main(argv: list[str] | None = None) -> int:
                 rec["status"] = "INCONCLUSIVE"
                 rec["reason"] = "path %s carries a wildcard and is not a request; the entry-point mapping must name a concrete path" % path
             elif method in IDEMPOTENT:
-                o = http_observe(args.base_url, method, path)
+                o = http_observe(args.base_url, method, path, keep_body=True)
+                raw = o.pop("raw", b"")
+                if o.get("status"):
+                    # the body itself, retained beside the oracle (H1a): a
+                    # destination mismatch can then say WHERE it differs
+                    o["evidence"] = retain_body(root / ORACLES / "bodies" / slug(ep["id"]), "response", raw,
+                                                str(o.get("body_sha256") or ""))
                 rec["oracle"] = {"method": method, "path": path, **extra, **o}
                 rec["status"] = "CAPTURED" if o.get("status") else "UNCAPTURED"
                 rec["reason"] = o.get("error", "")

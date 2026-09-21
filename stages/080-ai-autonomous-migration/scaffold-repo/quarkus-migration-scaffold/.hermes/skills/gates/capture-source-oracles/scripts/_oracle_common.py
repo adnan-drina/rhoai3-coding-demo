@@ -237,6 +237,146 @@ def http_observe(base_url: str, method: str, path: str, body: bytes | None = Non
     return out
 
 
+# ---------------------------------------------------------------------------
+# where two bodies differ (H1a): a digest says THAT they differ, this says WHERE
+# ---------------------------------------------------------------------------
+BODY_DIFF_CAP = 50        # differences listed; more are counted and the diff says truncated
+_SHORT = 80               # characters of a value quoted in a difference
+DESTINATION_BODIES = "_bodies"   # beside the verdicts; "_" keeps it out of the record partition
+
+
+def _short(value: Any) -> Any:
+    text = value if isinstance(value, str) else json.dumps(value, sort_keys=True, separators=(",", ":"))
+    return text if len(text) <= _SHORT else text[:_SHORT - 1] + "…"
+
+
+def _canon(value: Any) -> bytes:
+    return canonical_bytes(value)
+
+
+def _kind_of(value: Any) -> str:
+    if isinstance(value, bool):
+        return "boolean"
+    if value is None:
+        return "null"
+    if isinstance(value, (int, float)):
+        return "number"
+    return {dict: "object", list: "array", str: "string"}.get(type(value), type(value).__name__)
+
+
+def _json_differences(expected: Any, observed: Any, path: str, out: list[dict[str, Any]]) -> None:
+    ek, ok = _kind_of(expected), _kind_of(observed)
+    if ek != ok:
+        out.append({"path": path, "kind": "type", "expected": ek, "observed": ok})
+        return
+    if ek == "object":
+        for key in sorted(set(expected) | set(observed)):
+            sub = "%s.%s" % (path, key) if re.match(r"^[A-Za-z_$][A-Za-z0-9_$]*$", str(key)) else "%s[%s]" % (path, json.dumps(key))
+            if key not in observed:
+                out.append({"path": sub, "kind": "missing", "expected": _short(expected[key]), "observed": None})
+            elif key not in expected:
+                out.append({"path": sub, "kind": "extra", "expected": None, "observed": _short(observed[key])})
+            else:
+                _json_differences(expected[key], observed[key], sub, out)
+        return
+    if ek == "array":
+        if _canon(expected) == _canon(observed):
+            return
+        if sorted(_canon(x) for x in expected) == sorted(_canon(x) for x in observed):
+            # the same elements, in another order: one difference for the list
+            out.append({"path": path, "kind": "order", "expected": _short(expected[:3]), "observed": _short(observed[:3])})
+            return
+        if len(expected) != len(observed):
+            out.append({"path": path, "kind": "length", "expected": len(expected), "observed": len(observed)})
+        for i in range(min(len(expected), len(observed))):
+            _json_differences(expected[i], observed[i], "%s[%d]" % (path, i), out)
+        return
+    if expected != observed:
+        out.append({"path": path, "kind": "value", "expected": _short(expected), "observed": _short(observed)})
+
+
+def _pattern(path: str) -> str:
+    return re.sub(r"\[\d+\]", "[*]", path)
+
+
+def _summary(differences: list[dict[str, Any]], total: int) -> str:
+    if not differences:
+        return "no difference"
+    groups: dict[tuple[str, str], int] = {}
+    for d in differences:
+        key = (d["kind"], _pattern(d["path"]))
+        groups[key] = groups.get(key, 0) + 1
+    if all(d["kind"] == "order" for d in differences):
+        return "; ".join("same elements, different order at %s (%d list%s)" % (pat, n, "" if n == 1 else "s")
+                         for (_k, pat), n in sorted(groups.items(), key=lambda kv: kv[0][1]))
+    parts = ["%s at %s (%d)" % (kind, pat, n) for (kind, pat), n in sorted(groups.items(), key=lambda kv: (kv[0][1], kv[0][0]))]
+    return "%d difference(s): %s" % (total, "; ".join(parts[:6]) + ("; …" if len(parts) > 6 else ""))
+
+
+def body_diff(expected_raw: bytes | None, observed_raw: bytes | None, *, unavailable: str = "",
+              truncated_input: bool = False) -> dict[str, Any]:
+    """Where the destination's body differs from the source's.
+
+    ``{"kind": "json"|"text"|"unavailable", "differences": [{"path", "kind",
+    "expected", "observed"}], "order_only", "summary", "truncated"}``. A JSON
+    list holding the same elements in another order is ONE ``order``
+    difference at its path; the summary collapses indices to ``[*]``. Values
+    are shortened; nothing is quoted but the values at differing paths."""
+    if expected_raw is None or observed_raw is None:
+        return {"kind": "unavailable", "differences": [], "order_only": False, "truncated": False,
+                "summary": unavailable or "no retained body to compare"}
+    try:
+        e = json.loads(expected_raw.decode("utf-8"))
+        o = json.loads(observed_raw.decode("utf-8"))
+        kind = "json"
+    except (UnicodeDecodeError, ValueError):
+        kind = "text"
+    diffs: list[dict[str, Any]] = []
+    if kind == "json":
+        _json_differences(e, o, "$", diffs)
+    elif expected_raw != observed_raw:
+        el = expected_raw.decode("utf-8", errors="replace").splitlines()
+        ol = observed_raw.decode("utf-8", errors="replace").splitlines()
+        if sorted(el) == sorted(ol):
+            diffs.append({"path": "lines", "kind": "order", "expected": _short(el[:3]), "observed": _short(ol[:3])})
+        else:
+            if len(el) != len(ol):
+                diffs.append({"path": "lines", "kind": "length", "expected": len(el), "observed": len(ol)})
+            for i in range(max(len(el), len(ol))):
+                a = el[i] if i < len(el) else None
+                b = ol[i] if i < len(ol) else None
+                if a != b:
+                    diffs.append({"path": "line %d" % (i + 1), "kind": "value" if a is not None and b is not None
+                                  else ("missing" if b is None else "extra"),
+                                  "expected": None if a is None else _short(a), "observed": None if b is None else _short(b)})
+    total = len(diffs)
+    return {"kind": kind, "differences": diffs[:BODY_DIFF_CAP], "order_only": bool(diffs) and all(d["kind"] == "order" for d in diffs),
+            "summary": _summary(diffs, total), "truncated": total > BODY_DIFF_CAP or truncated_input,
+            **({"total": total} if total > BODY_DIFF_CAP else {})}
+
+
+def retained_bytes(root: Path, evidence: Any, fallback: Path | None = None) -> tuple[bytes | None, str]:
+    """(the retained body bytes a record names, why-not), verified against the
+    digest the record carries."""
+    ev = evidence if isinstance(evidence, dict) else {}
+    cands = []
+    if ev.get("body_file"):
+        bf = Path(str(ev["body_file"]))
+        cands += [bf, Path(root) / bf, (fallback.parent / bf.name) if fallback else None]
+    if fallback is not None:
+        cands.append(fallback)
+    for c in cands:
+        if c is not None and c.is_file():
+            raw = c.read_bytes()
+            want = str(ev.get("retained_sha256") or "")
+            if want and hashlib.sha256(raw).hexdigest() != want:
+                return None, "the retained body %s is not the one its record digested" % c.name
+            if ev.get("truncated"):
+                return raw, "truncated"
+            return raw, ""
+    return None, "the record retains no body (re-capture to keep one)"
+
+
 def normalize_body(raw: bytes, content_type: str) -> tuple[str, str, str]:
     text = raw.decode("utf-8", errors="replace")
     try:

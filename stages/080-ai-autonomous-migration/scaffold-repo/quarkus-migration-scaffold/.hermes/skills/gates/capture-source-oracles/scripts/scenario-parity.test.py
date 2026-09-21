@@ -1226,6 +1226,155 @@ def _diagnostic_probe_case() -> int:
     return 0
 
 
+def _body_diff_case() -> int:
+    """H1a: a body mismatch says WHERE, not only that.
+
+    The v9 Owner card had two digests and a 200-character sample, and the one
+    real difference -- each pet's visits in the opposite order -- could not be
+    located. The diff is structural: a list holding the same elements in
+    another order is one ``order`` difference per list, collapsed to
+    ``[*]`` in the summary; a changed value, a missing field and a non-JSON
+    body are named at their path or line. The destination body is retained
+    beside the verdict (capped, digested), the scenario and the read-oracle
+    verdicts both carry ``body_diff``, and the receipt row points at it."""
+    from _oracle_common import ORACLES as _ORACLES, PARITY as _PARITY, body_diff, normalize_body, retain_body, slug as _slug
+    visits = lambda order: [{"date": d, "id": i} for d, i in order]  # noqa: E731
+    src = [{"id": 1, "lastName": "Franklin", "pets": [{"name": "Leo", "visits": visits([("2013-01-04", 4), ("2013-01-01", 1)])}]},
+           {"id": 2, "lastName": "Davis", "pets": [{"name": "Basil", "visits": visits([("2013-01-03", 3), ("2013-01-02", 2)])}]}]
+    dst = json.loads(json.dumps(src))
+    for owner in dst:
+        owner["pets"][0]["visits"].reverse()
+    enc = lambda v: json.dumps(v).encode("utf-8")  # noqa: E731
+    d = body_diff(enc(src), enc(dst))
+    if (d["kind"], d["order_only"], d["truncated"]) != ("json", True, False) or \
+            [x["path"] for x in d["differences"]] != ["$[0].pets[0].visits", "$[1].pets[0].visits"] or \
+            d["summary"] != "same elements, different order at $[*].pets[*].visits (2 lists)":
+        return _fail("an order-only difference is one per list and collapsed in the summary: %s" % d)
+    changed = json.loads(json.dumps(src))
+    changed[1]["lastName"] = "Davies"
+    del changed[0]["pets"][0]["name"]
+    d = body_diff(enc(src), enc(changed))
+    kinds = {(x["path"], x["kind"]) for x in d["differences"]}
+    if d["order_only"] or kinds != {("$[1].lastName", "value"), ("$[0].pets[0].name", "missing")}:
+        return _fail("a value change and a missing field are named at their paths: %s" % d)
+    if not any(x["expected"] == "Davis" and x["observed"] == "Davies" for x in d["differences"]):
+        return _fail("the values at a differing path are quoted, shortened: %s" % d["differences"])
+    d = body_diff(b"<html>one</html>\nok", b"<html>two</html>\nok")
+    if d["kind"] != "text" or d["differences"] != [{"path": "line 1", "kind": "value", "expected": "<html>one</html>",
+                                                    "observed": "<html>two</html>"}]:
+        return _fail("a non-JSON body is compared by line: %s" % d)
+    d = body_diff(enc([1, 2]), enc({"a": 1}))
+    if d["differences"] != [{"path": "$", "kind": "type", "expected": "array", "observed": "object"}]:
+        return _fail("a type change is named: %s" % d)
+    d = body_diff(enc({"k%03d" % i: i for i in range(80)}), enc({}))
+    if not d["truncated"] or len(d["differences"]) != 50 or d.get("total") != 80:
+        return _fail("a long diff is capped and says so: %s" % {k: d.get(k) for k in ("truncated", "total")})
+    if body_diff(None, b"x", unavailable="gone")["kind"] != "unavailable":
+        return _fail("no retained source body is a named unavailability")
+
+    class Owners(BaseHTTPRequestHandler):
+        payload = b""
+
+        def do_GET(self):  # noqa: N802
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(type(self).payload)))
+            self.end_headers()
+            self.wfile.write(type(self).payload)
+
+        def log_message(self, *a):  # noqa: D102
+            return
+
+    Owners.payload = enc(dst)
+    srv = HTTPServer(("127.0.0.1", 0), Owners)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    url = "http://127.0.0.1:%d" % srv.server_address[1]
+    try:
+        with tempfile.TemporaryDirectory(prefix="body-diff-") as td:
+            root = specimens.build_dest(Path(td) / "dest", specimens.specimen("http"), decisions=specimens.admitted_decisions())
+            specimens.prepare_loop(root)
+            if pipeline.admit(root)["status"] != "ADMITTED":
+                return _fail("the body-diff fixture must be admitted")
+            receipt_digest = load_json(root / "evidence/planning/admission-receipt.json")["receipt_digest"]
+            from planner.canonical import digest as _digest
+            bundle_sha = _digest(load_json(root / "evidence" / "planning" / "evidence-bundle.json"))
+            eps = sorted(str(e["id"]) for e in load_json(root / "evidence/planning/evidence-bundle.json")["entry_points"])
+            ep, read_ep = eps[0], eps[-1]
+            sid = "sc:read-owners"
+            sc = {"id": sid, "entry_point": ep, "method": "GET", "path": "/api/owners", "body_absent": True,
+                  "reset_before": False, "effects": [], "normalization": []}
+            write_canonical(root / "verification" / "scenarios" / "corpus.json",
+                            {"schema": "rhoai3.scenario-corpus/v1", "approved_by": "operator:test",
+                             "initial_state": {"reset": "restart", "dataset": "two owners"}, "scenarios": [sc]})
+            corpus_sha = corpus_digest(load_json(root / "verification" / "scenarios" / "corpus.json"))
+            kind, sha, sample = normalize_body(enc(src), "application/json")
+            ev = retain_body(root / SCENARIO_ORACLES / "bodies" / scenario_slug(sid), "response", enc(src), sha)
+            ev["body_file"] = str(Path(ev["body_file"]).relative_to(root))
+            write_canonical(root / SCENARIO_ORACLES / (scenario_slug(sid) + ".json"), {
+                "schema": "rhoai3.source-scenario/v1", "scenario": sid, "entry_point": ep,
+                "receipt_sha256": receipt_digest, "corpus_sha256": corpus_sha, "status": "CAPTURED", "reason": "",
+                "evidence_bundle_sha256": bundle_sha, "source": {"base_url": "http://source.invalid"},
+                "normalization": [], "reset_before": False, "request": {"request_sha256": request_of(root, sc)["request_sha256"]},
+                "response": {"status": 200, "body_kind": kind, "body_sha256": sha, "headers": {}, "evidence": ev},
+                "before": [], "effects": []})
+            p = subprocess.run([sys.executable, str(COMPARE), "--root", str(root), "--scenario", sid, "--dest-url", url,
+                                "--no-reset"], text=True, capture_output=True)
+            v = load_json(root / SCENARIO_PARITY / (scenario_slug(sid) + ".json"))
+            bd = v.get("body_diff") or {}
+            if p.returncode != 1 or v["verdict"] != "FAIL" or not bd.get("order_only") or "different order at" not in v["reason"]:
+                return _fail("the scenario verdict locates the order-only difference: rc=%s %s %s" % (p.returncode, v.get("reason"), bd))
+            dev = v["observed"].get("evidence") or {}
+            kept = Path(dev.get("body_file", ""))
+            if not kept.is_file() or kept.read_bytes() != enc(dst) or len(dev.get("retained_sha256", "")) != 64:
+                return _fail("the destination body is retained beside the verdict, digested: %s" % dev)
+            if "_bodies" not in kept.as_posix() or enc(dst).decode() in json.dumps(v):
+                return _fail("the destination body is never inside the verdict record: %s" % kept)
+            subprocess.run([sys.executable, str(RECEIPT), "--root", str(root)], text=True, capture_output=True)
+            row = next(r for r in load_json(root / _PARITY / "receipt.json")["entry_points"] if r["entry_point"] == ep)
+            if row.get("body_diffs") != [{"scenario": sid, "summary": bd["summary"], "order_only": True, "kind": "json",
+                                          "verdict_file": (SCENARIO_PARITY / (scenario_slug(sid) + ".json")).as_posix()}]:
+                return _fail("the receipt row points at the diff: %s" % row.get("body_diffs"))
+            # an identical destination: no diff, no retained body
+            Owners.payload = enc(src)
+            subprocess.run([sys.executable, str(COMPARE), "--root", str(root), "--scenario", sid, "--dest-url", url,
+                            "--no-reset"], text=True, capture_output=True)
+            v = load_json(root / SCENARIO_PARITY / (scenario_slug(sid) + ".json"))
+            if v["verdict"] != "PASS" or "body_diff" in v or "evidence" in v["observed"]:
+                return _fail("a matching body carries no diff: %s" % v)
+
+            # the read-oracle comparator, the same way
+            Owners.payload = enc(changed)
+            rev = retain_body(root / _ORACLES / "bodies" / _slug(read_ep), "response", enc(src), sha)
+            write_canonical(root / _ORACLES / (_slug(read_ep) + ".json"), {
+                "schema": "rhoai3.source-oracle/v1", "entry_point": read_ep, "kind": "http", "status": "CAPTURED",
+                "reason": "", "receipt_sha256": receipt_digest, "evidence_bundle_sha256": bundle_sha,
+                "oracle": {"method": "GET", "path": "/api/owners", "status": 200, "body_kind": kind, "body_sha256": sha,
+                           "evidence": rev}})
+            runtime = HERE / "compare-runtime-parity.py"
+            p = subprocess.run([sys.executable, str(runtime), "--root", str(root), "--entry-point", read_ep, "--dest-url", url],
+                               text=True, capture_output=True)
+            v = load_json(root / _PARITY / (_slug(read_ep) + ".json"))
+            kinds = {(x["path"], x["kind"]) for x in (v.get("body_diff") or {}).get("differences") or []}
+            if p.returncode != 1 or v["verdict"] != "FAIL" or kinds != {("$[1].lastName", "value"), ("$[0].pets[0].name", "missing")}:
+                return _fail("the read-oracle verdict locates the difference: rc=%s %s %s" % (p.returncode, v.get("reason"), kinds))
+            if not Path((v["observed"].get("evidence") or {}).get("body_file", "")).is_file():
+                return _fail("the read-oracle comparison retains the destination body: %s" % v["observed"])
+            # an oracle captured before retention: the diff says why it cannot say where
+            doc = load_json(root / _ORACLES / (_slug(read_ep) + ".json"))
+            doc["oracle"].pop("evidence")
+            write_canonical(root / _ORACLES / (_slug(read_ep) + ".json"), doc)
+            for f in (root / _ORACLES / "bodies" / _slug(read_ep)).iterdir():
+                f.unlink()
+            subprocess.run([sys.executable, str(runtime), "--root", str(root), "--entry-point", read_ep, "--dest-url", url],
+                           text=True, capture_output=True)
+            v = load_json(root / _PARITY / (_slug(read_ep) + ".json"))
+            if (v.get("body_diff") or {}).get("kind") != "unavailable" or "retains no body" not in v["body_diff"]["summary"]:
+                return _fail("an oracle with no retained body yields a named unavailable diff: %s" % v.get("body_diff"))
+    finally:
+        srv.shutdown()
+    return 0
+
+
 def _orphaned_records_case() -> int:
     """A receipt judges the current corpus from the records that belong to it.
 
@@ -1967,7 +2116,8 @@ def _variant_revert_then_read_case() -> int:
 def main() -> int:
     if _no_corpus_case() or _missing_exposed_model_case() or _stale_receipt_case() or _security_mode_case():
         return 1
-    if _fixture_variant_case() or _variant_refused_write_case() or _variant_revert_then_read_case() or _diagnostic_probe_case():
+    if (_fixture_variant_case() or _variant_refused_write_case() or _variant_revert_then_read_case() or _diagnostic_probe_case()
+            or _body_diff_case()):
         return 1
     if _acceptance_binding_case():
         return 1
@@ -2197,7 +2347,9 @@ def main() -> int:
  "baseline, the variant and its revert visited in that order through the reset script, the post-revert reads judged against the "
  "source's baseline reads -- an identical destination PASSes, one that writes despite the 401 FAILs, a revert that finds "
  "unexpected state is INCONCLUSIVE naming it, and --no-reset is refused; the variant is re-applied after the after-reads, so a "
- "following variant read that declares no reset is still judged on the variant state)")
+ "following variant read that declares no reset is still judged on the variant state; a body mismatch carries body_diff -- "
+ "order-only lists once per path with [*] in the summary, values, missing fields, types and non-JSON lines named, the destination "
+ "body retained beside the verdict and pointed at from the receipt row -- for scenario and read-oracle verdicts alike)")
     return 0
 
 
