@@ -161,6 +161,8 @@ def _run_tool(root: Path, src: Path, work: Path, *, classpath: Any = _THIS_TREE,
     if cp is not None and Path(cp).is_file() and Path(cp).stat().st_size:
         argv += ["--classpath", str(cp)]
     for d in (generated_source_dirs(root) if also_sources is _THIS_TREE else list(also_sources or [])):
+        if Path(d).resolve() == Path(src).resolve():
+            continue  # a generated root modelled as `src` is not compiled twice
         argv += ["--also-source", str(d)]
     proc = subprocess.run(argv, capture_output=True, text=True, timeout=600)
     if proc.returncode != 0 or not out.is_file():
@@ -199,6 +201,77 @@ def dest_model(root: Path, *, source_root: str = "src/main/java", refresh: bool 
     cache.parent.mkdir(parents=True, exist_ok=True)
     cache.write_text(json.dumps(doc), encoding="utf-8")
     return doc
+
+
+def generated_type_file(root: Path, fqn: str) -> tuple[Path | None, Path | None]:
+    """(the generated .java file declaring `fqn`, the generated source dir it
+    sits under) -- from the Maven convention target/generated-sources/<dir>/…
+    and nothing else; (None, None) when no generated dir holds that file."""
+    if not fqn:
+        return None, None
+    suffix = "/" + fqn.replace(".", "/") + ".java"
+    for d in generated_source_dirs(Path(root)):
+        for p in sorted(d.rglob(fqn.rsplit(".", 1)[-1] + ".java")):
+            if p.as_posix().endswith(suffix):
+                return p, d
+    return None, None
+
+
+def generated_type_model(root: Path, fqn: str) -> dict[str, Any]:
+    """The model's row for a GENERATED type: its generated dir is modelled as
+    the source root (the other generated dirs and the classpath resolve it),
+    and the row carries `generated_root`, `generated_path` (both from the tree
+    root) and `unresolved` (javac reported an attribution error in that file,
+    so what it says about it is partial). {} when no generated dir declares
+    the type; raises DestModelUnavailable when the model cannot be made."""
+    root = Path(root)
+    p, d = generated_type_file(root, fqn)
+    if p is None or d is None:
+        return {}
+    rel = d.relative_to(root).as_posix()
+    model = dest_model(root, source_root=rel)
+    in_dir = p.relative_to(d).as_posix()
+    for t in model.get("types") or []:
+        if str(t.get("fqn") or "") == fqn:
+            return dict(t, generated_root=rel, generated_path=p.relative_to(root).as_posix(),
+                        unresolved=in_dir in {str(u) for u in (model.get("unresolved_files") or [])})
+    return {}
+
+
+def creator_required_properties(typ: dict[str, Any]) -> dict[str, Any]:
+    """What a type's constructors REQUIRE of a JSON body: for each constructor
+    the properties its parameters bind with @JsonProperty(required = true)
+    (the property name the annotation states, else the parameter's), and
+    whether the constructor is a @JsonCreator. Read from the compiler model's
+    parameter annotations; a parameter whose annotation the model could not
+    resolve is reported under `inconclusive`, never as required or as not."""
+    creators: list[dict[str, Any]] = []
+    for m in typ.get("declared") or []:
+        if not isinstance(m, dict) or str(m.get("name") or "") != "<init>":
+            continue
+        required: list[str] = []
+        inconclusive: list[str] = []
+        is_creator = any(str(a.get("simple") or "") == "JsonCreator" or str(a.get("fqn") or "").endswith(".JsonCreator")
+                         for a in (m.get("annotations") or []) if isinstance(a, dict))
+        for p in m.get("params") or []:
+            if not isinstance(p, dict):
+                continue
+            for a in p.get("annotations") or []:
+                if not isinstance(a, dict) or not (str(a.get("simple") or "") == "JsonProperty" or str(a.get("fqn") or "").endswith(".JsonProperty")):
+                    continue
+                named = a.get("named") if isinstance(a.get("named"), dict) else {}
+                if str(a.get("resolution") or "") != "full" and "required" not in named:
+                    inconclusive.append(str(p.get("name") or ""))
+                    continue
+                if [str(x) for x in (named.get("required") or [])] == ["true"]:
+                    value = [str(x) for x in (named.get("value") or [])]
+                    required.append(value[0] if value else str(p.get("name") or ""))
+        creators.append({"signature": str(m.get("signature") or ""), "json_creator": is_creator,
+                         "required": required, "inconclusive": inconclusive,
+                         "line": int(m.get("start_line") or 0)})
+    return {"constructors": creators,
+            "required": sorted({r for c in creators if c["json_creator"] or c["required"] for r in c["required"]}),
+            "inconclusive": sorted({r for c in creators for r in c["inconclusive"]})}
 
 
 def tree_model(root: Path, tree: Path, *, source_root: str = "src/main/java",

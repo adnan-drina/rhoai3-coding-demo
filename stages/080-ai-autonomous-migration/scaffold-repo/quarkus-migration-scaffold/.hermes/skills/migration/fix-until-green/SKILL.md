@@ -52,6 +52,22 @@ Optional cheap pass before acceptance (classpath + JDK diagnostics only; cannot 
 bash "${HERMES_SKILL_DIR}/scripts/run-verify.sh" --root /projects/modernized --mode diagnostic
 ```
 
+- Evidence: the measured artifact is the packaged application run-verify.sh
+  builds under the declared build profiles (`decisions.yaml build_profiles`)
+  and starts as the parity phase starts it. `mvn quarkus:dev`, a dev-profile
+  build, `java -jar`, or any server you start is NOT evidence (K2 refuses it
+  on a loop card). The ONLY way to observe the destination is run-verify.sh:
+  it packages, starts, replays the card's scenarios and its read oracles, and
+  leaves the verdicts, the destination log and (for a 5xx) the exception
+  under `verification/parity`; the brief is their digest.
+- Stop: run-verify.sh prints `verify runs on card …: N` with the obligations
+  still reported (`verification/loop/verify-runs.json`; the brief's
+  `verify_runs`). After two acceptance runs with the same obligations still
+  reported: write a typed diagnosis (what you changed; what each verify
+  measured; the one hypothesis you could not test and the evidence that would
+  test it) and `kanban_block` kind=needs_input carrying it. No third verify
+  without a new edit. Never start a server to explore.
+
 `advance.py` is a transaction over the candidate verify.py measured:
 
 | Check | Refusal | Effect |
@@ -213,6 +229,18 @@ record naming the card.
   or one dependency block at a time; the verifier measures the result, not
   the size of the edit.
 
+- A behaviour that differs between `mvn quarkus:dev` and the packaged build
+  under the declared profiles (v9 `t_d280284d`: a create that worked in dev
+  and answered 400 with an empty body packaged) is a build-profile
+  difference, not a controller defect: beans gated by `@IfBuildProfile` and
+  build-time config are resolved at BUILD time from `decisions.yaml
+  build_profiles.active` (ADR-011), and a condition on a profile nobody
+  activates removes its bean without a word. The harness's check for it is
+  the bootstrap's `BUILD_PROFILE_UNACCOUNTED` block (M2), with
+  `bootstrap-destination/scripts/propose-profile-retirement.py --root .`
+  proposing the `build_profiles.retire` rows a person accepts (ADR-010) --
+  an Operator decision, never a card's. A card names the hypothesis in its
+  diagnosis and blocks; it does not run a dev build to compare.
 - Touching a file outside the write set: the diff is reverted with the
   step, and K2 refuses the write in the first place.
 - "Fixing" by deleting the offending code: incidents drop, but tests or

@@ -41,6 +41,7 @@ obligation; the line stays on the item for the brief.
 """
 from __future__ import annotations
 
+import json
 import re
 import xml.etree.ElementTree as ET
 from collections import defaultdict
@@ -1105,6 +1106,10 @@ CORS_ENABLED = "quarkus.http.cors.enabled"
 CORS_LINKS = ["https://quarkus.io/version/3.27/guides/security-cors",
               "https://quarkus.io/version/3.27/guides/http-reference#filters"]
 CORS_CAUSE = "cors-response"
+# H7: a request body refused by a GENERATED type's required-args constructor;
+# the generator plugin's configuration in pom.xml is the producer
+GENERATED_BODY_CAUSE = "generated-body-binding"
+RULE_PARITY_GENERATED_BODY = "PARITY_GENERATED_BODY"
 REPRESENTATION_CAUSE = "content-type-parameter"
 RULE_PARITY_CORS = _adapters.CONTRACTS[_adapters.CORS]["rule_id"]
 RULE_PARITY_CONTENT_TYPE = _adapters.CONTRACTS[_adapters.MEDIA_TYPE]["rule_id"]
@@ -1934,6 +1939,319 @@ def entry_point_handler(root: Path | None, ep_row: dict[str, Any]) -> tuple[dict
     return typ, (hit[0] if len(hit) == 1 else {})
 
 
+def corpus_body_keys(root: Path | None, scenario: str) -> dict[str, Any]:
+    """The recorded request body of one corpus scenario, as the top-level keys
+    of its JSON object: {file, keys} -- or {file, keys: None, reason} when the
+    scenario names a body file this tree does not hold or one that is not a
+    JSON object, and {} when the corpus does not name a body for it."""
+    if root is None or not scenario:
+        return {}
+    p = Path(root) / SCENARIO_CORPUS
+    if not p.is_file():
+        return {}
+    try:
+        doc = load_json(p)
+    except (OSError, ValueError):
+        return {}
+    for sc in (doc.get("scenarios") or []) if isinstance(doc, dict) else []:
+        if not isinstance(sc, dict) or _sid(str(sc.get("id") or "")) != _sid(scenario):
+            continue
+        bf = str(sc.get("body_file") or "")
+        if not bf:
+            return {}
+        bp = Path(bf) if Path(bf).is_absolute() else Path(root) / bf
+        if not bp.is_file():
+            return {"file": bf, "keys": None, "reason": "the corpus names a body file this tree does not hold"}
+        try:
+            body = json.loads(bp.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {"file": bf, "keys": None, "reason": "the recorded body is not JSON"}
+        if not isinstance(body, dict):
+            return {"file": bf, "keys": None, "reason": "the recorded body is not a JSON object"}
+        return {"file": bf, "keys": sorted(str(k) for k in body)}
+    return {}
+
+
+OPENAPI_GENERATOR_ARTIFACT = "openapi-generator-maven-plugin"
+_PLUGIN_LEAVES = ("generatorName", "library", "inputSpec", "modelPackage", "apiPackage", "output", "skipValidateSpec")
+
+
+def generator_plugin_config(root: Path | None, artifact: str = OPENAPI_GENERATOR_ARTIFACT) -> dict[str, Any]:
+    """The build's configuration of one source generator, read from pom.xml
+    structurally (expat, with line numbers): the plugin's groupId/artifactId/
+    version, the lines of its <plugin> and <configuration> elements, the
+    configuration leaves the generator is driven by (generatorName, library,
+    inputSpec, …) and its configOptions -- an execution's configuration
+    merged over the plugin's. {} without a pom or without the plugin."""
+    if root is None:
+        return {}
+    pom = Path(root) / "pom.xml"
+    if not pom.is_file():
+        return {}
+    import xml.parsers.expat
+
+    parser = xml.parsers.expat.ParserCreate()
+    stack: list[str] = []
+    text: list[str] = []
+    plugins: list[dict[str, Any]] = []
+    cur: dict[str, Any] | None = None
+    opts_depth = 0
+
+    def _in_plugin() -> bool:
+        return cur is not None and "plugin" in stack
+
+    def start(name: str, _attrs: dict) -> None:
+        nonlocal cur, opts_depth
+        stack.append(name)
+        text.clear()
+        if name == "plugin" and stack[-2:-1] == ["plugins"]:
+            cur = {"line": parser.CurrentLineNumber, "groupId": "", "artifactId": "", "version": "",
+                   "configuration_line": 0, "configuration": {}, "configOptions": {}, "config_lines": {}}
+        elif cur is not None and name == "configuration":
+            # the plugin's own configuration, or an execution's (which wins)
+            if stack.count("execution") == 0 or not cur["configuration_line"]:
+                cur["configuration_line"] = parser.CurrentLineNumber
+        elif cur is not None and name == "configOptions":
+            opts_depth = len(stack)
+
+    def end(name: str) -> None:
+        nonlocal cur, opts_depth
+        value = "".join(text).strip()
+        if cur is not None:
+            depth = len(stack)
+            if name in ("groupId", "artifactId", "version") and stack[-2:-1] == ["plugin"]:
+                cur[name] = value
+            elif opts_depth and depth == opts_depth + 1:
+                cur["configOptions"][name] = value
+            elif name in _PLUGIN_LEAVES and "configuration" in stack:
+                cur["configuration"][name] = value
+                cur["config_lines"][name] = parser.CurrentLineNumber
+            if name == "configOptions":
+                opts_depth = 0
+            if name == "plugin" and stack[-2:-1] == ["plugins"]:
+                plugins.append(cur)
+                cur = None
+        stack.pop()
+        text.clear()
+
+    def chars(data: str) -> None:
+        text.append(data)
+
+    parser.StartElementHandler = start
+    parser.EndElementHandler = end
+    parser.CharacterDataHandler = chars
+    try:
+        parser.Parse(pom.read_bytes(), True)
+    except xml.parsers.expat.ExpatError:
+        return {}
+    hit = next((p for p in plugins if p["artifactId"] == artifact), None)
+    return dict(hit, path="pom.xml") if hit else {}
+
+
+def generated_body_binding(root: Path | None, body_type: str, scenario: str) -> dict[str, Any]:
+    """H7: is the request body type GENERATED, and does its constructor
+    require properties the recorded request does not send?
+
+    Deterministic, from the tree: the type's file under a generated-sources
+    root (Maven convention, from the model's own generated dirs), its
+    constructors' @JsonProperty(required = true) parameters from the compiler
+    model, the scenario's recorded body from the corpus, and the generator's
+    configuration from pom.xml. The catalog's build_plugins row for that
+    generator supplies the option and its documented words. {} for a type that
+    is not generated; a generated type whose model or body could not be read
+    says so under `inconclusive` and claims nothing."""
+    if root is None or not body_type:
+        return {}
+    from planner.dest_model import DestModelUnavailable, creator_required_properties, generated_type_file, generated_type_model
+
+    gp, gd = generated_type_file(Path(root), body_type)
+    if gp is None:
+        return {}
+    out: dict[str, Any] = {"generated": True, "type": body_type, "generated_path": gp.relative_to(root).as_posix(),
+                           "generated_root": gd.relative_to(root).as_posix() if gd else "", "missing_required": [],
+                           "required": [], "inconclusive": ""}
+    try:
+        typ = generated_type_model(Path(root), body_type)
+    except DestModelUnavailable as e:
+        out["inconclusive"] = "the compiler model of the generated root could not be made: %s" % e
+        typ = {}
+    if typ:
+        creators = creator_required_properties(typ)
+        out["required"] = creators["required"]
+        out["constructors"] = creators["constructors"]
+        if typ.get("unresolved"):
+            out["inconclusive"] = "javac reported an attribution error in the generated file; its constructor annotations are partial"
+        elif creators["inconclusive"]:
+            out["inconclusive"] = "the @JsonProperty on %s could not be resolved to literals" % ", ".join(creators["inconclusive"])
+    elif not out["inconclusive"]:
+        out["inconclusive"] = "the generated root's model holds no row for %s" % body_type
+    body = corpus_body_keys(root, scenario)
+    out["body_file"] = str(body.get("file") or "")
+    out["body_keys"] = body.get("keys")
+    if body.get("keys") is None:
+        out["inconclusive"] = out["inconclusive"] or str(body.get("reason") or "the corpus records no body for this scenario")
+    elif out["required"] and not out["inconclusive"]:
+        out["missing_required"] = sorted(r for r in out["required"] if r not in set(body["keys"]))
+    plugin = generator_plugin_config(root)
+    out["plugin"] = plugin
+    catalog = _build_plugins_catalog(root)
+    gen = str((plugin.get("configuration") or {}).get("generatorName") or "")
+    row = ((catalog.get("%s:%s" % (plugin.get("groupId") or "org.openapitools", plugin.get("artifactId"))) or {}) if plugin else {}) or (
+        catalog.get("org.openapitools:" + OPENAPI_GENERATOR_ARTIFACT) or {})
+    grow = ((row.get("generators") or {}).get(gen) or {}) if gen else {}
+    out["catalog_row"] = dict(grow, generator=gen, plugin_docs=str(row.get("docs") or ""),
+                              option_location=str(row.get("option_location") or "")) if grow else {}
+    return out
+
+
+def _build_plugins_catalog(root: Path | None) -> dict[str, Any]:
+    if root is None:
+        return {}
+    p = Path(root) / CATALOGS_DIR / "compat-mapping.json"
+    if not p.is_file():
+        return {}
+    try:
+        doc = load_json(p)
+    except (OSError, ValueError):
+        return {}
+    block = doc.get("build_plugins") if isinstance(doc, dict) else None
+    return {k: v for k, v in block.items() if k != "note" and isinstance(v, dict)} if isinstance(block, dict) else {}
+
+
+def generated_body_text(gb: dict[str, Any], item_id: str) -> str:
+    """The advice for a generated request body type, verbatim from the tree's
+    facts and the catalog row -- the FIRST ACTION when properties are missing."""
+    plugin = gb.get("plugin") or {}
+    cfg = plugin.get("configuration") or {}
+    row = gb.get("catalog_row") or {}
+    who = ("%s:%s" % (plugin.get("groupId") or "?", plugin.get("artifactId") or "?")) if plugin else "a generator no pom.xml plugin declares"
+    settings = ", ".join("%s=%s" % (k, cfg[k]) for k in ("generatorName", "library") if cfg.get(k)) or "generatorName unknown"
+    spec = cfg.get("inputSpec") or "an unrecorded spec"
+    head = ("the request body type %s is GENERATED by %s (%s) from %s into %s" % (
+        gb.get("type"), who, settings, spec, gb.get("generated_path")))
+    if gb.get("missing_required"):
+        opt = row.get("required_args_constructor") or {}
+        text = ("%s; its constructor requires %s (@JsonProperty(required = true) on a @JsonCreator constructor), which the "
+                "source's recorded request %s does not send (its keys: %s). %s"
+                % (head, ", ".join(gb["missing_required"]), gb.get("body_file") or "body", ", ".join(gb.get("body_keys") or []) or "none",
+                   row.get("models") or ""))
+        if opt:
+            text += (" The documented option is `%s` (%s; default %s; %s): set <%s>%s</%s> under the plugin's <configOptions> "
+                     "in pom.xml (line %s of the <configuration> at line %s). %s (%s)"
+                     % (opt.get("option"), opt.get("description"), opt.get("default"), row.get("option_location") or "configOptions",
+                        opt.get("option"), opt.get("value_that_stops_it"), opt.get("option"),
+                        plugin.get("configuration_line") or "?", plugin.get("line") or "?", row.get("action") or "", row.get("source") or ""))
+        elif row:
+            text += " The catalog row for this generator documents no option that stops the required-args constructor (%s); the alternatives it gives: %s" % (
+                row.get("source"), "; ".join("%s -- %s" % (o.get("option"), o.get("description")) for o in (row.get("related_options") or [])) or "none")
+        else:
+            text += (" No catalog row documents this generator's model options: read the generator's official reference and "
+                     "cite the option that stops the required-args constructor before editing the pom.")
+        if row.get("observation"):
+            text += " Observation, not this obligation's: %s" % row["observation"]
+        text += (" No controller edit can fix this: the body is refused before the handler. This obligation is on pom.xml "
+                 "(a build card; pom.xml is its write set) and is discharged when run-verify.sh re-runs the scenario and it PASSes.")
+        return text
+    if gb.get("inconclusive"):
+        return "%s; whether its constructor requires properties the request lacks could not be decided: %s. Nothing is claimed about it." % (head, gb["inconclusive"])
+    return "%s; its constructor requires %s and the recorded request sends them all, so the generator is not what refuses this body." % (
+        head, ", ".join(gb.get("required") or []) or "no property")
+
+
+VERDICT_REQUEST_BODY = "request body"
+VERDICT_SUPPORTED_ANNOTATION = "supported annotation"
+VERDICT_SUPPORTED_TYPE = "supported type"
+VERDICT_UNDOCUMENTED = "undocumented"
+VERDICT_UNDOCUMENTED_NO_ROW = "undocumented (no catalog row: read the guide the block cites)"
+VERDICT_NO_CATALOG = "unknown (no compat catalog in this tree)"
+
+
+def classify_handler_parameter(par: dict[str, Any], catalog: dict[str, Any]) -> dict[str, Any]:
+    """One handler parameter against the catalog's handler_parameters rows:
+    name, type, annotations, the verdict (request body / supported annotation
+    / supported type / undocumented), every undocumented row it matches --
+    by its type or by an annotation it carries -- with the row's note, source
+    and action, and ``line``: the whole classification rendered once, so the
+    advice carries it verbatim and never says "see the catalog"."""
+    ptype, pname, anns = str(par.get("type") or ""), str(par.get("name") or ""), _ann_fqns(par.get("annotations"))
+    row: dict[str, Any] = {"name": pname, "type": ptype, "annotations": anns}
+    cites: list[dict[str, str]] = []
+    for key, rowdoc in catalog.get("undocumented", {}).items():
+        by_type = _same_symbol(ptype, key)
+        if by_type or any(_same_symbol(a, key) for a in anns):
+            cites.append({"catalog": "compat-mapping.json", "block": "handler_parameters.undocumented", "key": key,
+                          "kind": str(rowdoc.get("kind") or ("type" if by_type else "annotation")),
+                          "matched": "type" if by_type else "annotation",
+                          "source": str(rowdoc.get("source") or ""), "note": str(rowdoc.get("note") or ""),
+                          "action": str(rowdoc.get("action") or "")})
+    supported_ann = [a for a in anns if any(_same_symbol(a, k) for k in catalog.get("supported_annotations", []))]
+    if any(_same_symbol(a, _REQUEST_BODY_ANN) for a in anns):
+        row["binding"] = VERDICT_REQUEST_BODY
+    elif supported_ann:
+        row["binding"] = VERDICT_SUPPORTED_ANNOTATION
+    elif any(_same_symbol(ptype, k) for k in catalog.get("supported_types", [])):
+        row["binding"] = VERDICT_SUPPORTED_TYPE
+    elif cites:
+        row["binding"] = VERDICT_UNDOCUMENTED
+    elif catalog:
+        row["binding"] = VERDICT_UNDOCUMENTED_NO_ROW
+    else:
+        row["binding"] = VERDICT_NO_CATALOG
+    if cites:
+        row["catalog_rows"] = cites
+    ann_txt = (" @" + " @".join(a.rsplit(".", 1)[-1] for a in anns)) if anns else ""
+    if row["binding"] == VERDICT_REQUEST_BODY:
+        verdict = "request body parameter (%s): @RequestBody is a supported annotation" % ptype
+    elif row["binding"] == VERDICT_SUPPORTED_ANNOTATION:
+        verdict = "supported annotation (%s)" % ", ".join("@" + a.rsplit(".", 1)[-1] for a in supported_ann)
+    else:
+        verdict = row["binding"]
+    extra = "".join((" -- %s (%s)" % (c["note"], c["source"])) if c["matched"] == "type" else
+                    ("; @%s on this parameter is undocumented -- %s (%s)" % (c["key"].rsplit(".", 1)[-1], c["note"], c["source"]))
+                    for c in cites)
+    row["line"] = "%s %s%s: %s%s" % (ptype, pname, ann_txt, verdict, extra)
+    return row
+
+
+def handler_first_action(params: list[dict[str, Any]], catalog: dict[str, Any], body_type: str,
+                         handler_path: str) -> tuple[str, list[str]]:
+    """(the ONE first action for this handler, the remaining undocumented kinds
+    to repair in the same edit). Derived from the classification and the
+    catalog rows' own ``action`` text, in this order: an undocumented parameter
+    TYPE (the compat layer binds nothing to it), then an undocumented
+    annotation, then -- every kind documented -- the body and content-type
+    checks. The engine carries no framework prose beyond what a row states."""
+    actions: list[str] = []
+    seen: set[str] = set()
+    for want_kind in ("type", "annotation"):
+        for p in params:
+            for c in p.get("catalog_rows") or []:
+                if c["matched"] != want_kind or c["key"] in seen:
+                    continue
+                seen.add(c["key"])
+                act = c["action"] or ("no action recorded on the catalog row: read %s and apply what it documents" % c["source"])
+                if want_kind == "type":
+                    actions.append("an undocumented parameter kind is present: %s (parameter %s) -- %s" % (c["key"], p["name"], act))
+                else:
+                    actions.append("an undocumented annotation is present: @%s on %s %s -- %s"
+                                   % (c["key"].rsplit(".", 1)[-1], p["type"], p["name"], act))
+    if actions:
+        return actions[0], actions[1:]
+    if not params:
+        return ("the structure model shows no parameters for this handler: read its signature in %s ONCE, then classify each "
+                "parameter against the rows above (supported annotations: %s; supported types: %s)"
+                % (handler_path or "the handler file", ", ".join(a.rsplit(".", 1)[-1] for a in catalog.get("supported_annotations", [])) or "?",
+                   ", ".join(t.rsplit(".", 1)[-1] for t in catalog.get("supported_types", [])) or "?"), [])
+    no_row = [p for p in params if p["binding"] in (VERDICT_UNDOCUMENTED_NO_ROW, VERDICT_NO_CATALOG)]
+    if no_row:
+        return ("a parameter kind with no catalog row is present: %s -- read the guide the block cites (%s) for that kind and replace "
+                "the parameter with what it documents" % (", ".join("%s %s" % (p["type"], p["name"]) for p in no_row),
+                                                          catalog.get("source") or "the Spring Web compatibility guide"), [])
+    return ("every parameter is a documented kind, so the refusal is in the body's binding or in content negotiation: compare the "
+            "request's Content-Type against what the handler consumes, and the JSON shape and constraint annotations of %s "
+            "against the body the scenario sends" % (body_type or "the request body type"), [])
+
+
 def request_rejection_advice(root: Path | None, ep_row: dict[str, Any], doc: dict[str, Any], item_id: str,
                              diffs: list[str], request_row: dict[str, Any] | None = None) -> dict[str, Any]:
     """H6b: a 4xx the destination answered where the source answered 2xx/3xx,
@@ -1982,28 +2300,9 @@ def request_rejection_advice(root: Path | None, ep_row: dict[str, Any], doc: dic
     for par in (method.get("params") or []) if method else []:
         if not isinstance(par, dict):
             continue
-        ptype, pname, anns = str(par.get("type") or ""), str(par.get("name") or ""), _ann_fqns(par.get("annotations"))
-        row = {"name": pname, "type": ptype, "annotations": anns}
-        cites: list[dict[str, str]] = []
-        for key, rowdoc in catalog.get("undocumented", {}).items():
-            if _same_symbol(ptype, key) or any(_same_symbol(a, key) for a in anns):
-                cites.append({"catalog": "compat-mapping.json", "block": "handler_parameters.undocumented", "key": key,
-                              "source": str(rowdoc.get("source") or ""), "note": str(rowdoc.get("note") or "")})
-        if any(_same_symbol(a, _REQUEST_BODY_ANN) for a in anns):
-            row["binding"] = "request body"
-            body_type = body_type or ptype
-        elif any(_same_symbol(a, k) for a in anns for k in catalog.get("supported_annotations", [])):
-            row["binding"] = "documented annotation"
-        elif any(_same_symbol(ptype, k) for k in catalog.get("supported_types", [])):
-            row["binding"] = "documented type"
-        elif cites:
-            row["binding"] = "not among the documented parameter kinds"
-        elif catalog:
-            row["binding"] = "not among the documented parameter kinds (no catalog row: read the guide the block cites)"
-        else:
-            row["binding"] = "unknown (no compat catalog in this tree)"
-        if cites:
-            row["catalog_rows"] = cites
+        row = classify_handler_parameter(par, catalog)
+        if row["binding"] == "request body":
+            body_type = body_type or row["type"]
         params.append(row)
     hints: list[dict[str, str]] = []
     if handler_path:
@@ -2016,23 +2315,62 @@ def request_rejection_advice(root: Path | None, ep_row: dict[str, Any], doc: dic
         if dto_path and all(h["path"] != dto_path for h in hints):
             hints.append({"path": dto_path, "type": str(dto.get("fqn") or ""), "member": "",
                           "why": "the request body parameter's type: its constraint annotations and its JSON shape decide whether the body binds and validates"})
-    unlisted = [p for p in params if p["binding"].startswith("not among")]
-    cited = [c for p in params for c in (p.get("catalog_rows") or [])]
+    cited: list[dict[str, str]] = []
+    for p in params:
+        for c in p.get("catalog_rows") or []:
+            if all(c["key"] != x["key"] for x in cited):
+                cited.append(c)
+    handler_type = str(typ.get("fqn") or ep_row.get("type") or "")
+    handler_member = str(method.get("signature") or method.get("name") or ep_row.get("member") or "")
+    handler_key = "%s#%s" % (handler_type, handler_member)
+    classification = [p["line"] for p in params]
+    first, rest = handler_first_action(params, catalog, body_type, handler_path)
+    # H7: a GENERATED body type whose constructor requires what the request
+    # does not send is the generator's doing, not the handler's: the locus is
+    # the plugin configuration in pom.xml and the first action is its option
+    gb = generated_body_binding(root, body_type, str(doc.get("scenario") or ""))
+    if gb:
+        gb["text"] = generated_body_text(gb, item_id)
+        if gb.get("missing_required"):
+            rest = [first] + rest
+            first = gb["text"]
+            plugin = gb.get("plugin") or {}
+            pom_hints = [{"path": "pom.xml", "type": "%s:%s" % (plugin.get("groupId") or "", plugin.get("artifactId") or ""),
+                          "member": "configuration", "line": int(plugin.get("configuration_line") or 0),
+                          "why": "the generator plugin's configuration: the option that stops the required-args constructor goes under its configOptions"}] if plugin else []
+            spec = str((plugin.get("configuration") or {}).get("inputSpec") or "")
+            if spec:
+                pom_hints.append({"path": spec, "type": "", "member": "",
+                                  "why": "the spec the body type is generated from: its schema's `required` list is what the constructor enforces (read it; change it only if the source's contract does not require the property either)"})
+            pom_hints.append({"path": str(gb.get("generated_path") or ""), "type": body_type, "member": "<init>",
+                              "why": "the generated type (READ ONLY: the next build rewrites it); its @JsonCreator constructor is the evidence"})
+            hints = pom_hints + hints
+    # THE ADVICE, self-contained: the classification of THIS handler's own
+    # parameters (name, type, annotations, verdict, the catalog row's note and
+    # source) and one first action derived from it. v9 t_d280284d read the
+    # controller four times and the catalog never, because the text said
+    # "compare ... against the compat catalog" and named no row.
     text = (
         "the destination refused the request before or at the handler boundary (status %s, %s) while the source accepted it "
-        "(status %s): compare the handler's parameter binding against the compat catalog -- the request body parameter%s, "
-        "its validation annotations, any parameter the platform's compat layer does not bind (%s), and the content-type "
-        "negotiation (the request's Content-Type against what the handler consumes). Nothing in the destination log at "
-        "default level explains a 4xx: the answer is in the handler signature, not in a stack."
-        % (have, observed_body, want,
-           (" (%s)" % body_type) if body_type else "",
-           ("this handler declares %s" % ", ".join("%s %s" % (p["type"], p["name"]) for p in unlisted)) if unlisted else
-           ("none in this handler's signature by the catalog" if params else
-            "the structure model does not show this handler's parameters: read the signature in the file")))
-    if cited:
-        text += " Catalog: " + "; ".join("%s -- %s (%s)" % (c["key"], c["note"], c["source"]) for c in cited[:4])
+        "(status %s). Nothing in the destination log at default level explains a 4xx: the answer is in the handler signature, "
+        "not in a stack. Handler %s.%s%s. Parameters, classified against the compat catalog's handler_parameters rows%s: %s. "
+        "The other boundary check is content-type negotiation: the request's Content-Type against what the handler consumes. "
+        "FIRST ACTION: %s"
+        % (have, observed_body, want, handler_type or "?", handler_member or "?",
+           (" in %s" % handler_path) if handler_path else "",
+           (" (%s)" % catalog.get("source")) if catalog.get("source") else "",
+           "; ".join(classification) if classification else
+           ("the structure model does not show this handler's parameters: read the signature in %s once" % (handler_path or "the handler file")),
+           first))
+    if rest:
+        text += " NEXT, in the same edit: " + " | ".join(rest)
     out: dict[str, Any] = {
         "status": have, "expected_status": want, "observed_body": observed_body, "request_body": True,
+        "handler_key": handler_key,
+        "classification": classification,
+        "first_action": first,
+        "next_actions": rest,
+        "generated_body": gb,
         "handler": {"type": str(typ.get("fqn") or ep_row.get("type") or ""),
                     "member": str(method.get("signature") or method.get("name") or ep_row.get("member") or ""),
                     "params": params},
@@ -2222,8 +2560,21 @@ def parity_items(root: Path, bundle: dict[str, Any], notes: list[dict[str, Any]]
                 summary += " Refused at the handler boundary: status %s (%s) where the source answered %s; look at %s." % (
                     rejection["status"], rejection["observed_body"], rejection["expected_status"],
                     ", ".join(h["path"] for h in rejection["locus_hints"]) or "the handler")
-            out.append(dict(base, id=rid, path=locus,
-                            rule_id="PARITY", cause="response",
+            row = dict(base, id=rid, path=locus, rule_id="PARITY", cause="response")
+            gb = (rejection or {}).get("generated_body") or {}
+            if gb.get("missing_required"):
+                # H7: the body is refused by a GENERATED type's constructor; the
+                # producer is the generator plugin's configuration, so the
+                # obligation is a BUILD item on pom.xml (write set pom.xml at
+                # formation -- amend-scope never grants the build file) that
+                # keeps its parity gate: the comparison still decides it
+                plugin = gb.get("plugin") or {}
+                row.update(path="pom.xml", kind="build", rule_id=RULE_PARITY_GENERATED_BODY, cause=GENERATED_BODY_CAUSE,
+                           line=int(plugin.get("configuration_line") or plugin.get("line") or 0),
+                           generated_type=str(gb.get("type") or ""), missing_required=list(gb["missing_required"]))
+                summary = " Generated body type %s requires %s, which the recorded request does not send: the generator's configuration in pom.xml is the locus, not the controller." % (
+                    gb.get("type"), ", ".join(gb["missing_required"]))
+            out.append(dict(row,
                             detail=("%s: %s" % (scenario or ep, "; ".join(other)))[:200],
                             message=("%s differs from the source (%s): %s.%s" % (ep, scenario or "read oracle", "; ".join(other), summary))[:1200],
                             advice=advice))

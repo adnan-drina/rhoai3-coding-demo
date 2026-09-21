@@ -1213,6 +1213,31 @@ def main() -> int:
             fails += 1
         else:
             print("ok non_loop_card_inline_python_allowed")
+        # the evidence rule: a server the worker starts, a dev-profile build or a
+        # jar it runs is not the measured artifact on a loop card (v9 t_d280284d)
+        for cmdline in ("mvn quarkus:dev", "cd /projects/modernized && ./mvnw -q quarkus:dev -Dquarkus.http.port=8081",
+                        "mvn -o quarkus:run", "java -jar target/quarkus-app/quarkus-run.jar", "mvn package -Dquarkus.profile=dev",
+                        "quarkus dev", "nohup java -Dquarkus.http.port=8081 -jar target/quarkus-app/quarkus-run.jar &"):
+            r = run(cmdline, roots, cwd=cwd, extra_env=loop_card_env)
+            if r.get("action") != "block" or "starting the application refused" not in (r.get("message") or ""):
+                print("FAIL loop_card_app_start_refused %r" % cmdline, r, file=sys.stderr)
+                fails += 1
+            else:
+                print("ok loop_card_app_start_refused")
+        for cmdline in ("bash .hermes/skills/migration/fix-until-green/scripts/run-verify.sh --root . --mode acceptance",
+                        "cat verification/parity/receipt.json", "grep -n quarkus:dev pom.xml"):
+            r = run(cmdline, roots, cwd=cwd, extra_env=loop_card_env)
+            if r.get("action") == "block" and "starting the application" in (r.get("message") or ""):
+                print("FAIL loop_card_app_start_road_allowed %r" % cmdline, r, file=sys.stderr)
+                fails += 1
+            else:
+                print("ok loop_card_app_start_road_allowed")
+        r = run("mvn quarkus:dev", roots, cwd=cwd, extra_env={"HERMES_PROFILE": "implementer", "HERMES_KANBAN_TASK": "t_notloop", "K2_BOUND_GATE_EXIT": "0"})
+        if r.get("action") == "block" and "starting the application" in (r.get("message") or ""):
+            print("FAIL non_loop_card_app_start_allowed", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok non_loop_card_app_start_allowed")
         # a loop card may not write a product path outside its write set: advance reverts the whole candidate over one
         (dest / "verification" / "loop" / "issued.json").write_text(json.dumps({"schema": "rhoai3.loop-issued/v1", "task_id": "t_loopcard", "cluster": "c:1", "write_set": ["pom.xml"]}), encoding="utf-8")
         for target in ("tmp-deps/x.jar", "src/main/java/A.java"):

@@ -498,4 +498,20 @@ PYEOF
     VERIFY_RC=$?
   fi
 fi
+# The verify count for the issued card and the obligations the rebuilt work
+# list still reports of it (recorded in verification/loop/verify-runs.json,
+# rendered by brief.py as verify_runs): the stop rule in paved-road-m3 is
+# applied from this line, not from the worker's own counting. Recorded only
+# for a verification that measured (rc 0); a tool failure is not a run.
+if [[ "${VERIFY_RC}" -eq 0 ]]; then
+  python3 - "${ROOT}" "${MODE}" "${SCRIPT_DIR}" <<'PYEOF' || echo "WARN: verify count not recorded" >&2
+import sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[3])
+from _loop_common import record_verify_run
+line = record_verify_run(Path(sys.argv[1]), mode=sys.argv[2]).get("line") or ""
+if line:
+    print(line)
+PYEOF
+fi
 exit "${VERIFY_RC}"

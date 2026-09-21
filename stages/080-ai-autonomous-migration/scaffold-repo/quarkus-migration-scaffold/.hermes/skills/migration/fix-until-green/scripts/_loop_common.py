@@ -828,3 +828,98 @@ def clear_pending(steps: dict[str, Any], cluster: str, *, why: str) -> None:
     for row in steps.get("pending") or []:
         if isinstance(row, dict) and str(row.get("cluster") or "") == cluster and not row.get("cleared"):
             row["cleared"] = why
+
+
+# --- the verify count per card -------------------------------------------
+# v9 t_d280284d ran run-verify.sh twice with the same seven obligations
+# reported, then spent the rest of the hour exploring. The stop rule
+# (paved-road-m3) needs a count the worker does not have to keep itself, so
+# run-verify.sh records each run for the issued card here and prints it, and
+# brief.py renders it as `verify_runs`.
+LOOP_VERIFY_RUNS = LOOP_STEPS.parent / "verify-runs.json"
+
+
+def load_verify_runs(root: Path) -> dict[str, Any]:
+    return _json_doc(root, LOOP_VERIFY_RUNS, {"schema": "rhoai3.loop-verify-runs/v1", "runs": []})
+
+
+def _issued_obligations_reported(root: Path, issued: dict[str, Any], worklist: dict[str, Any] | None) -> list[str]:
+    """The issued card's obligations the CURRENT work list still reports:
+    the issued item ids present in the rebuilt list, or -- when the issued
+    record names none -- the issued cluster's items as the list has them now."""
+    from planner.worklist import item_ids
+
+    wl = worklist if worklist is not None else (load_json(root / WORKLIST) if (root / WORKLIST).is_file() else {})
+    if not isinstance(wl, dict):
+        return []
+    issued_items = [str(i) for i in (issued.get("gate_items") or issued.get("items") or [])]
+    if issued_items:
+        present = set(item_ids(wl))
+        return sorted(i for i in issued_items if i in present)
+    cid = str(issued.get("cluster") or "")
+    row = next((c for c in (wl.get("clusters") or []) if isinstance(c, dict) and str(c.get("id") or "") == cid), None)
+    return sorted(str(i) for i in (row.get("items") or [])) if row else []
+
+
+def record_verify_run(root: Path, *, mode: str, worklist: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Append this run-verify.sh run for the issued card and return
+    ``verify_runs_for`` plus ``line`` (what run-verify.sh prints). Nothing is
+    recorded without an issued card (an Operator re-measure is not a card's run)."""
+    issued = load_issued(root) or {}
+    card = str(issued.get("task_id") or "")
+    if not card:
+        return {"card": "", "count": 0, "line": ""}
+    run_p = root / VERIFY_RUN
+    candidate = ""
+    if run_p.is_file():
+        try:
+            candidate = str((load_json(run_p) or {}).get("candidate_sha256") or "")
+        except (OSError, ValueError):
+            candidate = ""
+    reported = _issued_obligations_reported(root, issued, worklist)
+    doc = load_verify_runs(root)
+    runs = [r for r in (doc.get("runs") or []) if isinstance(r, dict) and str(r.get("card") or "") == card]
+    doc.setdefault("runs", []).append({
+        "card": card, "cluster": str(issued.get("cluster") or ""), "n": len(runs) + 1, "mode": mode,
+        "candidate_sha256": candidate, "obligations_reported": reported,
+        "unchanged": bool(runs) and reported == list(runs[-1].get("obligations_reported") or []),
+    })
+    write_canonical(root / LOOP_VERIFY_RUNS, doc)
+    out = verify_runs_for(root, card)
+    out["line"] = verify_runs_line(out)
+    return out
+
+
+def verify_runs_for(root: Path, card: str) -> dict[str, Any]:
+    """The verify count for one card and what the stop rule needs: the
+    obligations the last run still reported, whether they are the same as the
+    run before, and whether the rule applies (two ACCEPTANCE runs, the same
+    non-empty obligations reported after both)."""
+    runs = [r for r in (load_verify_runs(root).get("runs") or []) if isinstance(r, dict) and str(r.get("card") or "") == card] if card else []
+    acceptance = [r for r in runs if str(r.get("mode") or "") == "acceptance"]
+    last = acceptance[-1] if acceptance else (runs[-1] if runs else {})
+    reported = [str(x) for x in (last.get("obligations_reported") or [])]
+    unchanged = len(acceptance) >= 2 and reported == [str(x) for x in (acceptance[-2].get("obligations_reported") or [])]
+    return {
+        "card": card, "count": len(runs), "acceptance_count": len(acceptance),
+        "obligations_reported": reported, "unchanged_since_previous": unchanged,
+        "stop_rule_applies": unchanged and bool(reported),
+        "runs": [{"n": r.get("n"), "mode": r.get("mode"), "obligations_reported": list(r.get("obligations_reported") or [])} for r in runs],
+    }
+
+
+def verify_runs_line(vr: dict[str, Any]) -> str:
+    """One line for the worker, printed by run-verify.sh; nothing without a card or a run."""
+    if not vr.get("card") or not int(vr.get("count") or 0):
+        return ""
+    rep = vr.get("obligations_reported") or []
+    line = "verify runs on card %s: %d (%d acceptance); obligations of the issued card still reported: %s%s" % (
+        vr["card"], int(vr.get("count") or 0), int(vr.get("acceptance_count") or 0),
+        (", ".join(rep) if rep else "none"),
+        (" (unchanged since the previous acceptance run)" if vr.get("unchanged_since_previous") else ""))
+    if vr.get("stop_rule_applies"):
+        line += (". STOP RULE APPLIES: two acceptance runs left the same obligations reported. Do not run a third verify "
+                 "without a new edit and never start a server to explore: write the typed diagnosis (what you changed, what "
+                 "each verify measured, the one hypothesis you could not test and the evidence that would test it) and "
+                 "kanban_block kind=needs_input carrying it.")
+    return line

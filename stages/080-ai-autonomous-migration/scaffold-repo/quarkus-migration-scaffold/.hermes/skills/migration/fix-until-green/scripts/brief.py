@@ -20,7 +20,7 @@ import textwrap
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _loop_common import budget as _budget, ensure_hermes_lib, pending_for  # noqa: E402
+from _loop_common import budget as _budget, ensure_hermes_lib, pending_for, verify_runs_for  # noqa: E402
 
 ensure_hermes_lib()
 from planner.canonical import load_json, write_canonical  # noqa: E402
@@ -42,9 +42,39 @@ SCOPE_RULE = (
     "set is reverted by advance.py."
 )
 
+# The evidence rule and the stop rule, stated once here and once in the M3
+# skill in the same words. v9 t_d280284d (OwnerRestController, 7 boundary
+# refusals): 84 tool calls, the controller read 4 times, 2 verifies, then the
+# last third of the hour on `mvn quarkus:dev` and curl -- a dev-profile build
+# that is not the measured artifact (ADR-011: the packaged build under the
+# declared profiles is).
+EVIDENCE_RULE = (
+    "Evidence rule: the measured artifact is the packaged application run-verify.sh builds under the declared build "
+    "profiles (decisions.yaml build_profiles) and starts exactly as the parity phase starts it. mvn quarkus:dev, a "
+    "dev-profile build, java -jar, or any server you start yourself is NOT evidence and must not be used (K2 refuses it "
+    "on a loop card): a dev build activates other beans and config than the packaged declared-profile build, so what it "
+    "shows is not what is measured. The ONLY way to observe the destination is run-verify.sh --mode acceptance: it "
+    "packages, starts, replays this card's scenarios and re-runs its read oracles, and leaves the verdicts, the "
+    "destination log and -- for a 5xx -- the exception under verification/parity; this brief is their digest."
+)
+
+STOP_RULE = (
+    "Stop rule: verify_runs counts the run-verify.sh runs on THIS card and lists the obligations still reported after "
+    "each. After two acceptance runs with the same obligations still reported, stop exploring: write a typed diagnosis "
+    "-- what you changed, what each verify measured, the one hypothesis you could not test and the evidence that would "
+    "test it -- and kanban_block kind=needs_input carrying it. Do not run a third verify without a new edit. Never "
+    "start a server to explore."
+)
+
+READS_RULE = (
+    "Reads: this brief carries every diff, the advice, the loci and the catalog rows. Read a product file at most once "
+    "per edit cycle. Do not read receipt.json, _run.json or verdict files: the brief is their digest."
+)
+
 PROCEDURE = (
     "Patch the write set one item at a time (targeted edits; never rewrite a whole file, never tests). "
-    + SCOPE_RULE + " Each item names its rule, its advice (the rule's own guidance), "
+    + SCOPE_RULE + " " + EVIDENCE_RULE + " " + STOP_RULE + " " + READS_RULE
+    + " Each item names its rule, its advice (the rule's own guidance), "
     "and for pom.xml the exact element at the reported line. An item whose advice names an artifact that is "
     "already in the pom is marked advice_present: verify and move on, do not add it twice. A compile item "
     "with already_imported: true is a classpath/API replacement, not a missing import — follow do_not; do "
@@ -635,6 +665,76 @@ def enrich(items: list[dict], root: Path, cluster: dict) -> list[dict]:
     return out
 
 
+HANDLER_ITEM_FIELDS = ("status", "expected_status", "observed_body")
+# what the handler entry carries ONCE: the structured advice (each line and
+# each action verbatim), never the prose `locus` that repeats them, and the
+# parameter rows without their catalog rows (`catalog_rows` has each once)
+HANDLER_SHARED_FIELDS = ("handler", "classification", "first_action", "next_actions", "catalog_rows",
+                         "catalog_source", "locus_hints", "body_type", "generated_body")
+
+
+def rejection_handler_key(rr: dict) -> str:
+    """The handler a request-rejection advice is about: the planner's
+    handler_key, else type#member from its handler row, else its first locus."""
+    if rr.get("handler_key"):
+        return str(rr["handler_key"])
+    h = rr.get("handler") if isinstance(rr.get("handler"), dict) else {}
+    if h.get("type") or h.get("member"):
+        return "%s#%s" % (h.get("type") or "", h.get("member") or "")
+    hints = rr.get("locus_hints") or []
+    if hints and isinstance(hints[0], dict):
+        return "%s#%s" % (hints[0].get("type") or hints[0].get("path") or "", hints[0].get("member") or "")
+    return ""
+
+
+def group_request_rejections(rows: list[dict]) -> tuple[list[dict], dict[str, dict]]:
+    """(one slim row per item, the shared advice once per handler).
+
+    Seven obligations at one handler carry the same classification, the same
+    catalog rows and the same first action; rendering it seven times is seven
+    times the worker's context for nothing. Each item keeps what is its own
+    (obligation, scenario, the status pair, the observed body) and names its
+    handler; `handlers[key]` carries the rest verbatim, once."""
+    slim: list[dict] = []
+    handlers: dict[str, dict] = {}
+    for i in rows:
+        rr = (i.get("advice") or {}).get("request_rejection")
+        if not rr:
+            continue
+        key = rejection_handler_key(rr) or str(i.get("id") or "")
+        if key not in handlers:
+            entry = dict({k: rr[k] for k in HANDLER_SHARED_FIELDS if k in rr}, obligations=[])
+            if isinstance(entry.get("handler"), dict):
+                entry["handler"] = dict(entry["handler"], params=[{k: v for k, v in p.items() if k != "catalog_rows"}
+                                                                  for p in (entry["handler"].get("params") or []) if isinstance(p, dict)])
+            entry["boundary"] = ("the destination refused these requests before or at the handler boundary while the source "
+                                 "accepted them; nothing in the destination log at default level explains a 4xx: the answer is "
+                                 "in the handler signature above, not in a stack. Apply FIRST ACTION, then next_actions, in one edit.")
+            entry["amend"] = ("a file outside the write set (a locus_hints path) is amended BEFORE editing it: python3 "
+                              ".hermes/skills/migration/fix-until-green/scripts/amend-scope.py --root . --cluster <this cluster> "
+                              "--card $HERMES_KANBAN_TASK --path <that file> --reason <what binds there> --evidence parity:%s"
+                              % str(i.get("id") or ""))
+            handlers[key] = entry
+        handlers[key]["obligations"].append(str(i.get("id") or ""))
+        slim.append(dict({k: rr[k] for k in HANDLER_ITEM_FIELDS if k in rr}, obligation=str(i.get("id") or ""),
+                         scenario=str(i.get("scenario") or ""), handler=key))
+    return slim, handlers
+
+
+def slim_item_rejections(items: list[dict]) -> None:
+    """On the brief's item rows, replace each request_rejection advice by a
+    pointer to its handler entry (the parity brief renders it once)."""
+    for i in items:
+        adv = i.get("advice") if isinstance(i.get("advice"), dict) else None
+        rr = (adv or {}).get("request_rejection")
+        if not rr:
+            continue
+        key = rejection_handler_key(rr) or str(i.get("id") or "")
+        adv["request_rejection"] = dict({k: rr[k] for k in HANDLER_ITEM_FIELDS if k in rr}, handler=key,
+                                        see="parity.handlers[%s]: the parameter classification, FIRST ACTION, locus_hints "
+                                            "and catalog rows, rendered once for every item at this handler" % key)
+
+
 def parity_brief(items: list[dict], cluster: dict) -> dict:
     """What a PARITY card is measured by, on the card itself.
 
@@ -650,6 +750,7 @@ def parity_brief(items: list[dict], cluster: dict) -> dict:
         return {}
     scenarios = sorted({str(s) for i in rows for s in (i.get("scenarios") or []) if str(s)})
     entry_points = sorted({str(i.get("entry_point") or "") for i in rows if i.get("entry_point")})
+    rejections, handlers = group_request_rejections(rows)
     return {
         "gate": "parity",
         "scenarios": scenarios,
@@ -669,11 +770,15 @@ def parity_brief(items: list[dict], cluster: dict) -> dict:
         # H6b: a 4xx with an empty (or platform) body where the source accepted
         # the same body-carrying request is a refusal before or at the handler
         # boundary -- the card gets the handler's parameter binding against the
-        # compat catalog and the handler and DTO files, not a stack it does not have
-        "request_rejections": [dict((i.get("advice") or {}).get("request_rejection") or {}, obligation=str(i.get("id") or ""),
-                                    scenario=str(i.get("scenario") or ""))
-                               for i in rows if (i.get("advice") or {}).get("request_rejection")],
+        # compat catalog and the handler and DTO files, not a stack it does not
+        # have. The classification is rendered ONCE per handler under
+        # `handlers`; each item names its handler (v9 t_d280284d carried seven
+        # items at one handler, and the worker's context is the scarce resource)
+        "request_rejections": rejections,
+        "handlers": handlers,
         "scope": SCOPE_RULE,
+        "evidence": EVIDENCE_RULE,
+        "stop": STOP_RULE,
         "measured_by": (
             "run-verify.sh --mode acceptance re-runs the scenario comparison for this card (run-parity.py, scoped to %s, "
             "and the read oracle of %s) after the packaging and startup gates, and re-composes "
@@ -690,6 +795,15 @@ def parity_brief(items: list[dict], cluster: dict) -> dict:
             "receipt could not be composed, nothing was measured: the candidate is retained (VERIFICATION_PENDING) and "
             "no attempt is spent."),
     }
+
+
+def _card_of(root: Path, cluster: dict, task_env: str) -> str:
+    """The card this brief is for: the issued card when it carries this
+    cluster, else the task the environment names."""
+    issued = load_issued(root)
+    if str(issued.get("cluster") or "") == str(cluster.get("id") or "") and issued.get("task_id"):
+        return str(issued["task_id"])
+    return (task_env or "").strip()
 
 
 def _max_attempts(root: Path) -> int:
@@ -846,7 +960,15 @@ def main(argv: list[str] | None = None) -> int:
         "measure": doc["measure"],
         "procedure": PROCEDURE,
         "rule": "Edit only the write set as amended on the record (" + SCOPE_RULE + ") Do not edit tests. Do not touch pom.xml unless it is in the write set. Do not repeat a previous attempt (previous_attempts names the refused patch, before/after diagnostic loci, and the legal next action). A compile item with already_imported is not a missing import. Do not run extra mvn beside run-verify.sh. Then run run-verify.sh --mode acceptance and advance.py; the measure decides, not you.",
+        "evidence_rule": EVIDENCE_RULE,
+        "stop_rule": STOP_RULE,
+        # the verify count for THIS card and the obligations each run left
+        # reported (run-verify.sh records it): the stop rule is applied from
+        # this, not from the worker's own counting
+        "verify_runs": dict(verify_runs_for(root, _card_of(root, cluster, os.environ.get("HERMES_KANBAN_TASK") or "")),
+                            rule=STOP_RULE),
     }
+    slim_item_rejections(items)
     if cluster.get("not_open"):
         brief["issued_not_open"] = dict(cluster["not_open"])
         brief["procedure"] = cluster["not_open"]["next"]

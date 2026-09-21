@@ -457,6 +457,24 @@ if profile == "implementer" and ((tool in {"terminal", "bash", "shell"} and cmd 
           "and previous_attempts. Read it with cat, patch the write set, then run "
           "run-verify.sh and advance.py.")
 
+# The evidence rule (paved-road-m3): the measured artifact is the packaged
+# build run-verify.sh makes under decisions.yaml build_profiles and starts as
+# the parity phase does. v9 t_d280284d spent the last third of its hour on
+# `mvn quarkus:dev` and curl: a dev-profile build (other beans, other config)
+# that is not the artifact measured -- the create worked there and answered
+# 400 packaged. A server the worker starts is not evidence on a loop card.
+APP_START = re.compile(
+    r"(?:^|[\s;&|(])(?:\./)?mvnw?\b[^;&|\n]*(?:\bquarkus:(?:dev|run|remote-dev)\b|\bspring-boot:run\b|-Dquarkus\.profile=)"
+    r"|(?:^|[\s;&|(])quarkus\s+dev\b"
+    r"|(?:^|[\s;&|(])java\b[^;&|\n]*\s-jar\s")
+if profile == "implementer" and tool in {"terminal", "bash", "shell"} and cmd and APP_START.search(cmd) and is_loop_card():
+    block("starting the application refused on a loop card: the measured artifact is the packaged build "
+          "run-verify.sh makes under decisions.yaml build_profiles and starts as the parity phase does; "
+          "quarkus:dev, a dev-profile build, java -jar or any server you start is not evidence (a dev build "
+          "activates other beans and config). Run run-verify.sh --mode acceptance: it packages, starts, "
+          "replays the scenarios of this card and re-runs its read oracles, and leaves the verdicts, the destination "
+          "log and any exception under verification/parity; the brief is their digest.")
+
 # A green paved-road audit IS the review: the road declares that audit as the
 # whole check (it reads the official log and every KEEP artifact). the v6 M1
 # reviewer spent nine minutes re-parsing attachments after a green audit and

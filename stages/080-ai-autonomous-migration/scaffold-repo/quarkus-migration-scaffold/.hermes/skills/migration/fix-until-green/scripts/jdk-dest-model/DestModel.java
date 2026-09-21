@@ -240,6 +240,22 @@ public final class DestModel {
                         }
                         mrow.put("throws_checked", throwsChecked);
                         mrow.put("annotations", annotationsOf(m.getModifiers(), mp, unit, relPath));
+                        // the PARAMETERS, each with its own annotations: a
+                        // generated DTO's @JsonCreator constructor says which
+                        // properties a request body must carry only here
+                        // (@JsonProperty(required = true, value = "…")), and a
+                        // handler's parameter list is what the compat layer binds
+                        List<Map<String, Object>> params = new ArrayList<>();
+                        for (com.sun.source.tree.VariableTree pv : m.getParameters()) {
+                            Map<String, Object> prow = new LinkedHashMap<>();
+                            prow.put("name", pv.getName().toString());
+                            Element pel = trees.getElement(new TreePath(mp, pv));
+                            prow.put("type", pel != null ? pel.asType().toString()
+                                    : (pv.getType() == null ? "" : pv.getType().toString()));
+                            prow.put("annotations", annotationsOf(pv.getModifiers(), new TreePath(mp, pv), unit, relPath));
+                            params.add(prow);
+                        }
+                        mrow.put("params", params);
                         com.sun.source.tree.LineMap lines = unit.getLineMap();
                         long ms = positions.getStartPosition(unit, m), mend = positions.getEndPosition(unit, m);
                         mrow.put("start_line", ms >= 0 ? lines.getLineNumber(ms) : -1);
@@ -351,10 +367,16 @@ public final class DestModel {
                                 expr = as.getExpression();
                             }
                             List<String> mine = new ArrayList<>();
-                            boolean ofLiterals = collectLiterals(expr, mine);
+                            // `values` keeps the String literals it always
+                            // carried; `named` also holds a boolean or numeric
+                            // literal spelled as written (required = true),
+                            // because a @JsonProperty(required = true) is a
+                            // fact about what a body must carry
+                            List<String> scalars = new ArrayList<>();
+                            boolean ofLiterals = collectLiterals(expr, mine, scalars);
                             literal &= ofLiterals;
                             values.addAll(mine);
-                            if (ofLiterals) { named.put(attr, mine); }
+                            if (ofLiterals) { named.put(attr, scalars); }
                         }
                         if (a.getArguments().isEmpty()) { literal = true; }
                         row.put("values", values);
@@ -395,19 +417,23 @@ public final class DestModel {
                     return value instanceof String ? (String) value : null;
                 }
 
-                private boolean collectLiterals(Tree t, List<String> into) {
+                private boolean collectLiterals(Tree t, List<String> strings, List<String> scalars) {
                     if (t instanceof LiteralTree) {
                         Object v = ((LiteralTree) t).getValue();
-                        if (v instanceof String) { into.add((String) v); return true; }
+                        if (v instanceof String) { strings.add((String) v); scalars.add((String) v); return true; }
+                        if (v instanceof Boolean || v instanceof Number || v instanceof Character) {
+                            scalars.add(String.valueOf(v));
+                            return true;
+                        }
                         return false;
                     }
                     switch (t.getKind()) {
                         case ASSIGNMENT:
-                            return collectLiterals(((com.sun.source.tree.AssignmentTree) t).getExpression(), into);
+                            return collectLiterals(((com.sun.source.tree.AssignmentTree) t).getExpression(), strings, scalars);
                         case NEW_ARRAY: {
                             boolean all = true;
                             for (ExpressionTree e : ((com.sun.source.tree.NewArrayTree) t).getInitializers()) {
-                                all &= collectLiterals(e, into);
+                                all &= collectLiterals(e, strings, scalars);
                             }
                             return all;
                         }

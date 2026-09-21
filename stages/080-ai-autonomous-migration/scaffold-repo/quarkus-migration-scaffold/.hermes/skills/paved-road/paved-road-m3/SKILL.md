@@ -46,22 +46,17 @@ rule to `kanban_complete`.
    "not open" to you:** when a mid-card verification no longer lists it, the
    brief says `issued_not_open` and its procedure is run-verify (if the
    candidate changed) then `advance.py` for this card — do that and follow the
-   verdict; do not block. A **body** parity item carries `advice.body_diff`
-   (the differing paths, their kind -- `order`, `value`, `missing`, ... -- and
-   often `locus_hints`, the file that produces the value). A parity item whose
-   status difference is a **5xx** the source did not answer carries
-   `advice.server_error`: the exception the destination logged for that
-   request (matched by the error id its body carried), its message, and
-   `locus_hints` naming the product file(s) its stack frames pass through --
-   the body itself is only an error id. A parity item whose status difference
-   is a **4xx** with an empty body where the source accepted the same
-   body-carrying request carries `advice.request_rejection`: the handler's
-   parameters resolved through the structure model against the compat
-   catalog's `handler_parameters` rows (the request body parameter, the
-   validation annotations, the kinds the documentation does not list), with
-   `locus_hints` naming the handler file and the body parameter's type -- a
-   refusal at the handler boundary logs nothing at default level. All three
-   are handled by the scope rule in step 3. K2 treats `brief.py` `[exit 1]` as a
+   verdict; do not block. A parity card's advice is under `parity`:
+   `body_diffs` (the differing paths and the producing file), `server_errors`
+   (the exception behind a 5xx and the first product frame), and `handlers`
+   -- one entry per handler for every `request_rejections` item at it (a 4xx
+   with an empty body where the source accepted the same body-carrying
+   request): each parameter classified against the compat catalog with the
+   rows' notes and sources, and `first_action`. Do it; do not re-derive it.
+   A handler entry with `generated_body.missing_required` is a **pom.xml
+   build card** (the body type is generated; its first action is the
+   generator option under `<configOptions>`); never edit the generated file.
+   All three are handled by the scope rule in step 3. K2 treats `brief.py` `[exit 1]` as a
    bound gate: re-run brief or `kanban_block` (run-verify and advance need not
    have run). **The brief is the plan.** Each item carries
    the rule's advice; pom items carry the element at the line, which
@@ -125,6 +120,28 @@ rule to `kanban_complete`.
    After VERIFICATION_PENDING, restore with `restore-pending.py` when the
    prerequisite changes, then run acceptance verify and advance on **this**
    card — do not mint a new attempt.
+
+## Evidence, stop, reads (every loop card)
+
+- Evidence: the measured artifact is the packaged application run-verify.sh
+  builds under the declared build profiles (`decisions.yaml build_profiles`)
+  and starts as the parity phase starts it. `mvn quarkus:dev`, a dev-profile
+  build, `java -jar`, or any server you start is NOT evidence (K2 refuses
+  it): a dev build activates other beans and config than the packaged build.
+- The ONLY way to observe the destination is run-verify.sh: it packages,
+  starts, replays this card's scenarios, re-runs its read oracles, and leaves
+  the verdicts, the destination log and (for a 5xx) the exception under
+  `verification/parity`. The brief is their digest.
+- Stop: run-verify.sh prints `verify runs on card …: N` with the obligations
+  still reported; the brief carries it as `verify_runs`. After two acceptance
+  runs with the same obligations still reported: stop exploring. Write a
+  typed diagnosis (what you changed; what each verify measured; the one
+  hypothesis you could not test and the evidence that would test it) and
+  `kanban_block` kind=needs_input carrying it. No third verify without a new
+  edit. Never start a server to explore.
+- Reads: the brief carries every diff, the advice, the loci and the catalog
+  rows. Read a product file at most once per edit cycle. Do not read
+  `receipt.json`, `_run.json` or verdict files.
 
 ## Reference skills (view only when the brief's advice is not enough)
 

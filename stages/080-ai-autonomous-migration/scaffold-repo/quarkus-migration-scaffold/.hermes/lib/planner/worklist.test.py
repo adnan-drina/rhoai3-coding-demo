@@ -2568,15 +2568,59 @@ def _request_rejection_advice_case() -> int:
         if not all(c["source"].startswith("https://quarkus.io/version/3.27/guides/") for c in a["catalog_rows"]):
             return _fail("every cited row carries its official source: %s" % a["catalog_rows"])
         text = str(a.get("locus") or "")
+        cat_rows = json.loads((here / "planning" / "catalogs" / "compat-mapping.json").read_text())["handler_parameters"]["undocumented"]
+        # self-contained: THIS handler's parameters classified inline (name,
+        # type, annotation, verdict, the row's note and source) and ONE first
+        # action derived from the classification, in the row's own words --
+        # never "compare against the catalog" without the rows
         for must in ("refused the request before or at the handler boundary (status 400, empty body)", "source accepted it (status 201)",
-                     "request body parameter (%s)" % dto_fqn, "org.springframework.validation.BindingResult binding",
-                     "org.springframework.web.util.UriComponentsBuilder ucBuilder", "content-type", "Catalog: ",
+                     "Handler %s.%s in %s" % (ctl_fqn, sig, ctl),
+                     "handler_parameters rows (https://quarkus.io/version/3.27/guides/spring-web#supported-spring-web-functionalities)",
+                     "%s dto @RequestBody @Valid: request body parameter (%s): @RequestBody is a supported annotation; @Valid on this parameter is undocumented -- %s (%s)"
+                     % (dto_fqn, dto_fqn, cat_rows["jakarta.validation.Valid"]["note"], cat_rows["jakarta.validation.Valid"]["source"]),
+                     "org.springframework.validation.BindingResult binding: undocumented -- %s (%s)"
+                     % (cat_rows["org.springframework.validation.BindingResult"]["note"], cat_rows["org.springframework.validation.BindingResult"]["source"]),
+                     "org.springframework.web.util.UriComponentsBuilder ucBuilder: undocumented -- ",
+                     "content-type negotiation",
+                     "FIRST ACTION: an undocumented parameter kind is present: org.springframework.validation.BindingResult (parameter binding) -- %s"
+                     % cat_rows["org.springframework.validation.BindingResult"]["action"],
+                     "NEXT, in the same edit: an undocumented parameter kind is present: org.springframework.web.util.UriComponentsBuilder (parameter ucBuilder) -- %s"
+                     % cat_rows["org.springframework.web.util.UriComponentsBuilder"]["action"],
+                     "| an undocumented annotation is present: @Valid on %s dto -- %s" % (dto_fqn, cat_rows["jakarta.validation.Valid"]["action"]),
                      "amend-scope.py", "--evidence parity:%s" % items["sc:create-1"]["id"]):
             if must not in text:
                 return _fail("the advice must say %r: %s" % (must, text))
+        if "see the catalog" in text.lower() or "compare the handler's parameter binding against the compat catalog" in text:
+            return _fail("the advice never points at the catalog instead of quoting it: %s" % text)
+        if text.index("FIRST ACTION:") < text.index("ucBuilder: undocumented") or text.count("FIRST ACTION:") != 1:
+            return _fail("one first action, after the classification: %s" % text)
+        if (a.get("handler_key") != "%s#%s" % (ctl_fqn, sig) or len(a.get("classification") or []) != 3
+                or not str(a.get("first_action") or "").startswith("an undocumented parameter kind is present: org.springframework.validation.BindingResult")
+                or [n.split(":")[0] for n in a.get("next_actions") or []] != ["an undocumented parameter kind is present", "an undocumented annotation is present"]):
+            return _fail("handler_key, one classification line per parameter, the first action and the rest are structured too: %s"
+                         % {k: a.get(k) for k in ("handler_key", "classification", "first_action", "next_actions")})
         bindings = {p["name"]: p["binding"] for p in a["handler"]["params"]}
-        if bindings["dto"] != "request body" or not bindings["binding"].startswith("not among") or not bindings["ucBuilder"].startswith("not among"):
+        if bindings != {"dto": "request body", "binding": "undocumented", "ucBuilder": "undocumented"}:
             return _fail("each parameter is classified by the catalog: %s" % bindings)
+        if [c["action"] for p in a["handler"]["params"] for c in p.get("catalog_rows") or []] != [
+                cat_rows["jakarta.validation.Valid"]["action"], cat_rows["org.springframework.validation.BindingResult"]["action"],
+                cat_rows["org.springframework.web.util.UriComponentsBuilder"]["action"]]:
+            return _fail("every cited row carries the catalog's own action text: %s" % a["handler"]["params"])
+        # every parameter supported: the first action is the body/content-type check, and nothing is invented
+        from planner.worklist import handler_first_action, classify_handler_parameter, handler_parameters
+        cat = handler_parameters(root)
+        plain = [classify_handler_parameter(p, cat) for p in (
+            {"name": "id", "type": "int", "annotations": [{"fqn": "org.springframework.web.bind.annotation.PathVariable"}]},
+            {"name": "body", "type": dto_fqn, "annotations": [{"fqn": "org.springframework.web.bind.annotation.RequestBody"}]},
+            {"name": "req", "type": "jakarta.servlet.http.HttpServletRequest"})]
+        if [p["binding"] for p in plain] != ["supported annotation", "request body", "supported type"] or "@PathVariable" not in plain[0]["line"]:
+            return _fail("supported kinds classify by annotation, body and type: %s" % [p["line"] for p in plain])
+        first, rest = handler_first_action(plain, cat, dto_fqn, ctl)
+        if not first.startswith("every parameter is a documented kind") or dto_fqn not in first or rest:
+            return _fail("with every kind documented the first action is the body and content-type check: %s" % first)
+        first, rest = handler_first_action([], cat, "", ctl)
+        if "read its signature in %s ONCE" % ctl not in first or rest:
+            return _fail("with no parameters in the model the first action is one read of the signature: %s" % first)
         if "Refused at the handler boundary: status 400 (empty body) where the source answered 201" not in items["sc:create-1"]["message"]:
             return _fail("the obligation's message says so: %s" % items["sc:create-1"]["message"])
         if items["sc:create-invalid"]["advice"].get("request_rejection"):
@@ -2592,8 +2636,187 @@ def _request_rejection_advice_case() -> int:
         # no catalog in the tree: the advice still names the boundary and the handler, and says the catalog is absent
         (root / CATALOGS_DIR / "compat-mapping.json").unlink()
         a2 = {i["scenario"]: i for i in parity_items(root, bundle)}["sc:create-1"]["advice"]["request_rejection"]
-        if a2.get("catalog_rows") or "Catalog: " in a2["locus"] or [h["path"] for h in a2["locus_hints"]] != [ctl, dto]:
-            return _fail("without a catalog nothing is cited and nothing is guessed: %s" % a2["locus"][:200])
+        if (a2.get("catalog_rows") or "undocumented --" in a2["locus"] or [h["path"] for h in a2["locus_hints"]] != [ctl, dto]
+                or "unknown (no compat catalog in this tree)" not in a2["locus"]
+                or not str(a2.get("first_action") or "").startswith("a parameter kind with no catalog row is present: org.springframework.validation.BindingResult binding")):
+            return _fail("without a catalog nothing is cited and nothing is guessed: %s" % a2["locus"][:400])
+    return 0
+
+
+_JACKSON_STUBS = {
+    "com/fasterxml/jackson/annotation/JsonProperty.java": (
+        "package com.fasterxml.jackson.annotation;\nimport java.lang.annotation.*;\n@Retention(RetentionPolicy.RUNTIME) @Target({ElementType.PARAMETER, ElementType.FIELD, ElementType.METHOD})\n"
+        "public @interface JsonProperty { String value() default \"\"; boolean required() default false; }\n"),
+    "com/fasterxml/jackson/annotation/JsonCreator.java": (
+        "package com.fasterxml.jackson.annotation;\nimport java.lang.annotation.*;\n@Retention(RetentionPolicy.RUNTIME) @Target({ElementType.CONSTRUCTOR, ElementType.METHOD})\n"
+        "public @interface JsonCreator { }\n"),
+}
+_GENERATED_DTO = (
+    "package com.acme.ledger.dto;\n\nimport com.fasterxml.jackson.annotation.JsonCreator;\nimport com.fasterxml.jackson.annotation.JsonProperty;\n"
+    "import java.util.List;\n\npublic class AccountDto {\n    private String firstName;\n    private List<String> pets;\n\n"
+    "    @JsonCreator\n    public AccountDto(@JsonProperty(required = true, value = \"pets\") List<String> pets) {\n        this.pets = pets;\n    }\n\n"
+    "    public String getFirstName() { return firstName; }\n    public void setFirstName(String firstName) { this.firstName = firstName; }\n"
+    "    public List<String> getPets() { return pets; }\n}\n")
+_GENERATOR_POM = (
+    "<project>\n  <modelVersion>4.0.0</modelVersion>\n  <groupId>com.acme</groupId>\n  <artifactId>ledger</artifactId>\n  <version>1</version>\n"
+    "  <build>\n    <plugins>\n      <plugin>\n        <groupId>org.apache.maven.plugins</groupId>\n        <artifactId>maven-compiler-plugin</artifactId>\n"
+    "        <configuration>\n          <release>21</release>\n        </configuration>\n      </plugin>\n"
+    "      <plugin>\n        <groupId>org.openapitools</groupId>\n        <artifactId>openapi-generator-maven-plugin</artifactId>\n        <version>7.25.0</version>\n"
+    "        <executions>\n          <execution>\n            <goals>\n              <goal>generate</goal>\n            </goals>\n"
+    "            <configuration>\n              <inputSpec>${project.basedir}/src/main/resources/openapi.yml</inputSpec>\n"
+    "              <generatorName>jaxrs-spec</generatorName>\n              <library>quarkus</library>\n              <modelPackage>com.acme.ledger.dto</modelPackage>\n"
+    "              <configOptions>\n                <useJakartaEe>true</useJakartaEe>\n                <sourceFolder>src/main/java</sourceFolder>\n              </configOptions>\n"
+    "            </configuration>\n          </execution>\n        </executions>\n      </plugin>\n    </plugins>\n  </build>\n</project>\n")
+
+
+def _generated_body_case() -> int:
+    """H7 (v9 t_d280284d, measured root cause): the destination's request body
+    DTO is GENERATED by openapi-generator-maven-plugin with generatorName
+    jaxrs-spec, whose models carry a @JsonCreator constructor with
+    @JsonProperty(required = true) for every spec-required property; the
+    source's recorded create body (generated with `spring`, bound by setters)
+    lacks one of them, so Jackson refuses it 400 before the handler. The
+    planner reads the generated type's constructor from the compiler model,
+    the recorded body from the corpus and the plugin from pom.xml (expat, with
+    lines), names the missing properties, cites the generator's documented
+    option from the catalog, routes the obligation to a BUILD item on pom.xml
+    (pom.xml in the write set at formation; the parity gate kept) and puts the
+    pom, the spec and the generated file first among the loci. A generated
+    body whose required properties the request all sends stays a controller
+    obligation with no generator finding; a non-generated DTO of the same shape
+    gets no generated_body at all."""
+    import json
+    import shutil
+    import subprocess
+    import tempfile
+
+    from planner.paths import CATALOGS_DIR, PARITY_DIR, STRUCTURE
+    from planner.worklist import (RULE_PARITY_GENERATED_BODY, SCENARIO_CORPUS, cluster_items, corpus_body_keys,
+                                  generator_plugin_config)
+
+    if not shutil.which("javac"):
+        print("SKIP generated body case: no javac on PATH")
+        return 0
+    ctl_fqn, dto_fqn = "com.acme.ledger.AccountResource", "com.acme.ledger.dto.AccountDto"
+    ctl = "src/main/java/com/acme/ledger/AccountResource.java"
+    gen_rel = "target/generated-sources/openapi/src/main/java/com/acme/ledger/dto/AccountDto.java"
+    src_rel = "src/main/java/com/acme/ledger/dto/AccountDto.java"
+    sig = "create(%s)" % dto_fqn
+    ep = "ep:%s#%s:http" % (ctl_fqn, sig)
+    bundle = {"entry_points": [{"id": ep, "type": ctl_fqn, "member": sig, "path": ctl}]}
+    here = Path(__file__).resolve().parents[2]
+    empty = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+
+    def structure(dto_path: str) -> dict:
+        return {"types": [
+            {"fqn": ctl_fqn, "path": ctl, "methods": [{"name": "create", "signature": sig, "params": [
+                {"name": "dto", "type": dto_fqn, "annotations": [{"fqn": "org.springframework.web.bind.annotation.RequestBody"}, {"fqn": "jakarta.validation.Valid"}]}]}]},
+            {"fqn": dto_fqn, "path": dto_path, "fields": []}]}
+
+    def verdict(root: Path, name: str, sid: str) -> None:
+        (root / PARITY_DIR / "scenarios" / name).write_text(json.dumps(
+            {"schema": "rhoai3.scenario-parity/v1", "entry_point": ep, "scenario": sid, "verdict": "FAIL",
+             "reason": "status 400 vs 201; body %s vs 5f1d2c (1 difference(s)); header Location None vs http://s/api/accounts/12" % empty[:12],
+             "request": {"method": "POST", "path": "/api/accounts", "body_absent": False},
+             "observed": {"status": 400, "body_kind": "text", "body_sha256": empty, "body_sample": "", "headers": {}}}))
+
+    with tempfile.TemporaryDirectory(prefix="generated-body-") as td:
+        root = Path(td)
+        (root / ".hermes").mkdir()
+        (root / ".hermes/pins.json").write_text('{"pins":{"quarkus_platform":{"java_release":21}}}')
+        (root / CATALOGS_DIR).mkdir(parents=True)
+        shutil.copy(here / "planning" / "catalogs" / "compat-mapping.json", root / CATALOGS_DIR / "compat-mapping.json")
+        (root / STRUCTURE).parent.mkdir(parents=True)
+        (root / STRUCTURE).write_text(json.dumps(structure(gen_rel)))
+        (root / ctl).parent.mkdir(parents=True)
+        (root / ctl).write_text("package com.acme.ledger;\npublic class AccountResource {}\n")
+        # Jackson's annotations on the classpath, so the generated file resolves fully
+        stub_src, stub_cls = root / ".stub", root / ".stubcls"
+        for rel, text in _JACKSON_STUBS.items():
+            (stub_src / rel).parent.mkdir(parents=True, exist_ok=True)
+            (stub_src / rel).write_text(text)
+        stub_cls.mkdir()
+        subprocess.run(["javac", "-d", str(stub_cls), *[str(p) for p in stub_src.rglob("*.java")]], check=True, capture_output=True)
+        (root / "verification/build/.work").mkdir(parents=True)
+        (root / "verification/build/.work/classpath.txt").write_text(str(stub_cls))
+        (root / gen_rel).parent.mkdir(parents=True)
+        (root / gen_rel).write_text(_GENERATED_DTO)
+        (root / "pom.xml").write_text(_GENERATOR_POM)
+        (root / "src/main/resources").mkdir(parents=True)
+        (root / "src/main/resources/openapi.yml").write_text("openapi: 3.0.0\n")
+        bodies = root / "verification/scenarios/bodies"
+        bodies.mkdir(parents=True)
+        (bodies / "create-1.json").write_text(json.dumps({"firstName": "a", "lastName": "b"}))
+        (bodies / "create-2.json").write_text(json.dumps({"firstName": "a", "pets": []}))
+        (root / SCENARIO_CORPUS).write_text(json.dumps({"schema": "rhoai3.scenario-corpus/v1", "scenarios": [
+            {"id": "sc:create-1", "entry_point": ep, "method": "POST", "path": "/api/accounts", "body_file": "verification/scenarios/bodies/create-1.json", "body_absent": False},
+            {"id": "sc:create-2", "entry_point": ep, "method": "POST", "path": "/api/accounts", "body_file": "verification/scenarios/bodies/create-2.json", "body_absent": False}]}))
+        (root / PARITY_DIR / "scenarios").mkdir(parents=True)
+        verdict(root, "a.json", "sc:create-1")
+        verdict(root, "b.json", "sc:create-2")
+        # the pieces, each deterministic from the tree
+        plug = generator_plugin_config(root)
+        if (plug.get("artifactId") != "openapi-generator-maven-plugin" or plug.get("groupId") != "org.openapitools"
+                or plug["configuration"].get("generatorName") != "jaxrs-spec" or plug["configuration"].get("library") != "quarkus"
+                or not plug["configuration"].get("inputSpec", "").endswith("src/main/resources/openapi.yml")
+                or plug["configOptions"] != {"useJakartaEe": "true", "sourceFolder": "src/main/java"}
+                or plug["line"] != 15 or plug["configuration_line"] != 24 or plug.get("version") != "7.25.0"):
+            return _fail("the generator plugin is read from the pom structurally, with its lines and its options: %s" % plug)
+        if corpus_body_keys(root, "sc:create-1") != {"file": "verification/scenarios/bodies/create-1.json", "keys": ["firstName", "lastName"]}:
+            return _fail("the recorded body's keys come from the corpus: %s" % corpus_body_keys(root, "sc:create-1"))
+        items = {i["scenario"]: i for i in parity_items(root, bundle)}
+        a = items["sc:create-1"]
+        gb = a["advice"]["request_rejection"]["generated_body"]
+        if (not gb.get("generated") or gb.get("generated_path") != gen_rel or gb.get("generated_root") != "target/generated-sources/openapi"
+                or gb.get("required") != ["pets"] or gb.get("missing_required") != ["pets"] or gb.get("body_keys") != ["firstName", "lastName"]
+                or gb.get("inconclusive") or not gb["constructors"] or not gb["constructors"][0]["json_creator"]):
+            return _fail("the generated type's constructor requirements and the missing keys are read from the model and the corpus: %s"
+                         % {k: gb.get(k) for k in ("generated", "generated_path", "generated_root", "required", "missing_required", "body_keys", "inconclusive", "constructors")})
+        if (gb["catalog_row"].get("required_args_constructor", {}).get("option") != "generateJsonCreator"
+                or gb["catalog_row"]["required_args_constructor"].get("default") != "true"
+                or gb["catalog_row"].get("source") != "https://openapi-generator.tech/docs/generators/jaxrs-spec"):
+            return _fail("the option is the catalog's, with its documented default and source: %s" % gb.get("catalog_row"))
+        rr = a["advice"]["request_rejection"]
+        first = rr["first_action"]
+        for must in ("the request body type %s is GENERATED by org.openapitools:openapi-generator-maven-plugin (generatorName=jaxrs-spec, library=quarkus) from ${project.basedir}/src/main/resources/openapi.yml into %s" % (dto_fqn, gen_rel),
+                     "its constructor requires pets (@JsonProperty(required = true) on a @JsonCreator constructor), which the source's recorded request verification/scenarios/bodies/create-1.json does not send (its keys: firstName, lastName)",
+                     "The `spring` generator (library spring-boot)", "The documented option is `generateJsonCreator` (Whether to generate @JsonCreator constructor for required properties.; default true;",
+                     "set <generateJsonCreator>false</generateJsonCreator> under the plugin's <configOptions> in pom.xml (line 24 of the <configuration> at line 15)",
+                     "https://openapi-generator.tech/docs/generators/jaxrs-spec", "Do not edit the generated file", "Observation, not this obligation's:",
+                     "No controller edit can fix this", "This obligation is on pom.xml (a build card; pom.xml is its write set)"):
+            if must not in first:
+                return _fail("the first action must say %r: %s" % (must, first))
+        if not rr["next_actions"] or not rr["next_actions"][0].startswith("an undocumented annotation is present: @Valid"):
+            return _fail("the handler-parameter action follows the generator action: %s" % rr["next_actions"][:1])
+        hints = [(h["path"], h.get("member", ""), int(h.get("line") or 0)) for h in rr["locus_hints"]]
+        if hints[:3] != [("pom.xml", "configuration", 24), ("${project.basedir}/src/main/resources/openapi.yml", "", 0), (gen_rel, "<init>", 0)] or hints[3][0] != ctl:
+            return _fail("the loci are the plugin configuration, the spec, the generated file (read only), then the handler: %s" % hints)
+        if (a["path"] != "pom.xml" or a["kind"] != "build" or a["rule_id"] != RULE_PARITY_GENERATED_BODY or a["gate"] != "parity"
+                or a["cause"] != "generated-body-binding" or a["line"] != 24 or a.get("missing_required") != ["pets"] or a.get("generated_type") != dto_fqn
+                or "Generated body type %s requires pets" % dto_fqn not in a["message"] or a["scenarios"] != ["sc:create-1"]):
+            return _fail("the obligation is a BUILD item on pom.xml that keeps its parity gate and scenario: %s"
+                         % {k: a.get(k) for k in ("path", "kind", "rule_id", "gate", "cause", "line", "missing_required", "generated_type", "scenarios")})
+        cl = cluster_items([a], {}, set())
+        if len(cl) != 1 or cl[0]["path"] != "pom.xml" or cl[0]["kind"] != "build" or cl[0]["write_set"] != ["pom.xml"] or cl[0]["status"] != "open":
+            return _fail("it forms the pom build cluster with pom.xml in the write set: %s" % cl)
+        # every required property present: a controller obligation, and the generator is named as NOT the cause
+        b = items["sc:create-2"]
+        gb2 = b["advice"]["request_rejection"]["generated_body"]
+        if (b["path"] != ctl or b["kind"] != "parity" or b["rule_id"] != "PARITY" or gb2.get("missing_required") != [] or gb2.get("required") != ["pets"]
+                or "sends them all, so the generator is not what refuses this body" not in gb2.get("text", "")
+                or not b["advice"]["request_rejection"]["first_action"].startswith("an undocumented annotation is present: @Valid")):
+            return _fail("a generated body whose required properties are all sent is a controller obligation with no generator finding: %s %s"
+                         % (b["path"], gb2.get("text", "")[-160:]))
+        # a non-generated DTO of the same shape: no generated_body, the H6b advice as before
+        shutil.rmtree(root / "target")
+        (root / src_rel).parent.mkdir(parents=True)
+        (root / src_rel).write_text(_GENERATED_DTO)
+        (root / STRUCTURE).write_text(json.dumps(structure(src_rel)))
+        c = {i["scenario"]: i for i in parity_items(root, bundle)}["sc:create-1"]
+        if (c["path"] != ctl or c["kind"] != "parity" or c["advice"]["request_rejection"].get("generated_body") != {}
+                or [h["path"] for h in c["advice"]["request_rejection"]["locus_hints"]] != [ctl, src_rel]):
+            return _fail("a DTO under src/ is not generated: the obligation stays at the controller with the handler advice: %s %s"
+                         % (c["path"], c["advice"]["request_rejection"].get("generated_body")))
     return 0
 
 
@@ -3086,7 +3309,7 @@ def _server_error_advice_case() -> int:
 def main() -> int:
     if (_runtime_identity_case() or _gate_progress_case() or _batch_scope_case() or _checked_family_case()
             or _set_wide_case() or _config_value_case() or _parity_typing_case() or _parity_advice_case()
-            or _parity_navigation_case() or _owed_adapter_case() or _cors_scenario_case() or _cors_actual_routing_case() or _request_rejection_advice_case() or _scoped_carry_case() or _receipt_v2_case() or _split_discharge_case() or _read_oracle_discharge_case() or _body_diff_case() or _server_error_advice_case() or _harness_owned_guard_case() or _parity_gate_case() or _unit_formation_case() or _unit_bound_case() or _unit_seal_case()
+            or _parity_navigation_case() or _owed_adapter_case() or _cors_scenario_case() or _cors_actual_routing_case() or _request_rejection_advice_case() or _generated_body_case() or _scoped_carry_case() or _receipt_v2_case() or _split_discharge_case() or _read_oracle_discharge_case() or _body_diff_case() or _server_error_advice_case() or _harness_owned_guard_case() or _parity_gate_case() or _unit_formation_case() or _unit_bound_case() or _unit_seal_case()
             or _unit_mode_case() or _unit_inert_case() or _unit_config_case()
             or _unit_experiment_table_case() or _unit_explained_case() or _unit_progress_case()
             or _unit_budget_case()):

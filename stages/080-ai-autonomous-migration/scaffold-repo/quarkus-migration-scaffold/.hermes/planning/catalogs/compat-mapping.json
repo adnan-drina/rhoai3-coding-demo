@@ -363,7 +363,7 @@
     }
   },
   "handler_parameters": {
-    "note": "Controller-method PARAMETER kinds the Spring Web compatibility extension documents (H6b). The guide's 'Supported Spring Web functionalities' lists the annotations a parameter may carry and, beyond those, only jakarta.servlet.http.HttpServletRequest and HttpServletResponse as parameter types; a parameter of any other kind is not among the documented ones. A 4xx the destination answers with an empty body where the source accepted the same request is the shape of a request refused before or at the handler boundary, and the planner (worklist.request_rejection_advice) resolves THIS handler's signature through the structure model against these rows. `undocumented` holds the kinds a Spring handler commonly declares that the list does not name; each row cites where its replacement is documented. Rows are documentation, never an inference about what the compat layer does with such a parameter -- the loop finds that.",
+    "note": "Controller-method PARAMETER kinds the Spring Web compatibility extension documents (H6b). The guide's 'Supported Spring Web functionalities' lists the annotations a parameter may carry and, beyond those, only jakarta.servlet.http.HttpServletRequest and HttpServletResponse as parameter types; a parameter of any other kind is not among the documented ones. A 4xx the destination answers with an empty body where the source accepted the same request is the shape of a request refused before or at the handler boundary, and the planner (worklist.request_rejection_advice) resolves THIS handler's signature through the structure model against these rows. `undocumented` holds the kinds a Spring handler commonly declares that the list does not name; each row cites where its replacement is documented. Rows are documentation, never an inference about what the compat layer does with such a parameter -- the loop finds that. Each `undocumented` row carries an `action`: the one concrete first edit for a handler that declares that kind, phrased from the documentation the row cites and from nothing specific to any specimen; the planner renders it as the item's first action.",
     "source": "https://quarkus.io/version/3.27/guides/spring-web#supported-spring-web-functionalities",
     "supported_annotations": [
       "org.springframework.web.bind.annotation.RequestParam",
@@ -381,27 +381,80 @@
       "org.springframework.validation.BindingResult": {
         "kind": "type",
         "source": "https://quarkus.io/version/3.27/guides/spring-web#supported-spring-web-functionalities",
-        "note": "not among the parameter kinds the Spring Web guide lists. On the destination a constraint violation on a validated parameter is a jakarta.validation.ConstraintViolationException answered by the platform's built-in ExceptionMapper as 400 with a JSON violation report (https://quarkus.io/version/3.27/guides/validation#rest-end-point-validation); a handler that inspects the BindingResult to build its own error body does that through the platform's mechanism instead (references/rest-annotations.md rest-valid, references/exception-mapping.md exc-validation)."
+        "note": "not among the parameter kinds the Spring Web guide lists. On the destination a constraint violation on a validated parameter is a jakarta.validation.ConstraintViolationException answered by the platform's built-in ExceptionMapper as 400 with a JSON violation report (https://quarkus.io/version/3.27/guides/validation#rest-end-point-validation); a handler that inspects the BindingResult to build its own error body does that through the platform's mechanism instead (references/rest-annotations.md rest-valid, references/exception-mapping.md exc-validation).",
+        "action": "the compat layer does not bind a BindingResult: remove it from the parameter list, and since a @Valid body is rejected by the platform's built-in validation mapper with a 400 JSON report before the handler runs, the source's own error response (status, headers, body as the scenario's expected response records them) can only come from validating INSIDE the handler: remove @Valid from the body parameter, inject jakarta.validation.Validator (@Inject Validator validator), call validator.validate(body) where the source inspected the BindingResult, and build the source's response from the returned Set<ConstraintViolation<T>> (each violation's getPropertyPath() and getMessage() are the field and message Spring's FieldError carried). BindingResult must not remain a parameter (references/rest-annotations.md rest-valid, references/exception-mapping.md exc-validation)."
       },
       "org.springframework.validation.Errors": {
         "kind": "type",
         "source": "https://quarkus.io/version/3.27/guides/spring-web#supported-spring-web-functionalities",
-        "note": "the supertype of BindingResult: the same row (https://quarkus.io/version/3.27/guides/validation#rest-end-point-validation)."
+        "note": "the supertype of BindingResult: the same row (https://quarkus.io/version/3.27/guides/validation#rest-end-point-validation).",
+        "action": "the same first action as BindingResult: remove the parameter, validate inside the handler with an injected jakarta.validation.Validator, build the source's response from the violations."
       },
       "org.springframework.web.util.UriComponentsBuilder": {
         "kind": "type",
         "source": "https://quarkus.io/version/3.27/guides/spring-web#supported-spring-web-functionalities",
-        "note": "not among the parameter kinds the Spring Web guide lists; symbol_renames maps it to jakarta.ws.rs.core.UriBuilder reached from an injected jakarta.ws.rs.core.UriInfo (uriInfo.getBaseUriBuilder(), references/rest-annotations.md rest-location-uri)."
+        "note": "not among the parameter kinds the Spring Web guide lists; symbol_renames maps it to jakarta.ws.rs.core.UriBuilder reached from an injected jakarta.ws.rs.core.UriInfo (uriInfo.getBaseUriBuilder(), references/rest-annotations.md rest-location-uri).",
+        "action": "the compat layer does not bind a UriComponentsBuilder: replace the parameter with @Context jakarta.ws.rs.core.UriInfo uriInfo and build the Location as uriInfo.getBaseUriBuilder().path(<the source's own path template>).build(<the id values>) -- never new URI(String) (its checked URISyntaxException is vetoed) and never URI.create of a relative path (it drops the base the scenario compares) (references/rest-annotations.md rest-location-uri)."
       },
       "jakarta.validation.Valid": {
         "kind": "annotation",
         "source": "https://quarkus.io/version/3.27/guides/validation#rest-end-point-validation",
-        "note": "not in the Spring Web guide's annotation table. Quarkus's validation guide documents @Valid on a REST endpoint parameter (quarkus-hibernate-validator, the extension spring-boot-starter-validation maps to): a violation is answered 400 with a JSON violation report by a built-in jakarta.ws.rs.ext.ExceptionMapper."
+        "note": "not in the Spring Web guide's annotation table. Quarkus's validation guide documents @Valid on a REST endpoint parameter (quarkus-hibernate-validator, the extension spring-boot-starter-validation maps to): a violation is answered 400 with a JSON violation report by a built-in jakarta.ws.rs.ext.ExceptionMapper.",
+        "action": "the platform validates a @Valid endpoint parameter BEFORE the handler runs and answers a violation itself (400, JSON violation report, built-in ExceptionMapper). Keep @Valid only when the source's response to an invalid body IS that report. When the source answers an invalid body with its own status, headers or body (the scenario's expected response records them), remove @Valid from the parameter, inject jakarta.validation.Validator (@Inject Validator validator), call validator.validate(body) in the method, and build the source's response from the Set<ConstraintViolation<T>> it returns (references/rest-annotations.md rest-valid, references/exception-mapping.md exc-validation)."
       },
       "javax.validation.Valid": {
         "kind": "annotation",
         "source": "https://quarkus.io/version/3.27/guides/validation#rest-end-point-validation",
-        "note": "the pre-Jakarta spelling of jakarta.validation.Valid (package_renames javax.validation -> jakarta.validation); the same row."
+        "note": "the pre-Jakarta spelling of jakarta.validation.Valid (package_renames javax.validation -> jakarta.validation); the same row.",
+        "action": "rename the import to jakarta.validation.Valid (package_renames), then the same first action as jakarta.validation.Valid."
+      }
+    }
+  },
+  "build_plugins": {
+    "note": "Build plugins that GENERATE the destination's sources, and what their documented generators do to a request body (H7). A request body type that lives under target/generated-sources is owned by its generator's configuration in pom.xml, never by the controller: the planner (worklist.generated_body_binding) reads the generated type's constructor from the compiler model, compares the properties it requires with the recorded request body, and cites the row here. Rows are documentation from the generator's official reference; each option is quoted with its documented description and default. Nothing here is inferred from a specimen.",
+    "org.openapitools:openapi-generator-maven-plugin": {
+      "docs": "https://openapi-generator.tech/docs/plugins/",
+      "option_location": "a generator option goes under <configuration><configOptions><NAME>VALUE</NAME></configOptions> of the plugin (or of the execution that runs the generator)",
+      "generators": {
+        "jaxrs-spec": {
+          "source": "https://openapi-generator.tech/docs/generators/jaxrs-spec",
+          "models": "a model class gets a @JsonCreator constructor whose parameters carry @JsonProperty(required = true) for every property the spec's schema lists under `required` (generateJsonCreator, default true); Jackson then refuses a body that lacks one of those keys before any handler runs (a 400 at the boundary). The `spring` generator (library spring-boot) the legacy build used binds models through setters, so the same body was accepted there.",
+          "required_args_constructor": {
+            "option": "generateJsonCreator",
+            "description": "Whether to generate @JsonCreator constructor for required properties.",
+            "default": "true",
+            "value_that_stops_it": "false",
+            "where": "configOptions"
+          },
+          "related_options": [
+            {
+              "option": "generateBuilders",
+              "description": "Whether to generate builders for models",
+              "default": "false"
+            },
+            {
+              "option": "generateConstructorWithAllArgs",
+              "description": "whether to generate a constructor for all arguments",
+              "default": "false"
+            },
+            {
+              "option": "useJakartaEe",
+              "description": "whether to use Jakarta EE namespace instead of javax",
+              "default": "false"
+            },
+            {
+              "option": "library",
+              "description": "library template (sub-template) to use: <default> (JAXRS spec only, to be deployed in an app server), quarkus, thorntail, openliberty, helidon, kumuluzee",
+              "default": "<default>"
+            }
+          ],
+          "action": "set <generateJsonCreator>false</generateJsonCreator> under the plugin's <configOptions> in pom.xml (the generator then emits no required-args @JsonCreator constructor and the model binds through its setters, as the spring generator's did); leave the spec's `required` lists as they are unless the source's contract does not require the property either. Do not edit the generated file (the next build rewrites it) and do not touch the controller for this difference.",
+          "observation": "a @ControllerAdvice/@ExceptionHandler that turns the deserialization failure into a body in the source is a separate concern: the destination's platform answers the boundary refusal itself, and whether a mapper renders a body is a build-profile/mapping question, not this obligation's."
+        },
+        "spring": {
+          "source": "https://openapi-generator.tech/docs/generators/spring",
+          "models": "the legacy build's generator (library spring-boot): models bind through setters; no required-args constructor unless generatedConstructorWithRequiredArgs is set (default false)."
+        }
       }
     }
   }
