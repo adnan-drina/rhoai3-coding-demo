@@ -1250,6 +1250,11 @@ data:
         # and would skip dangerous-command checks (weaken L1).
         "terminal": {
             "backend": "local",
+            # Per-call timeout for the worker's terminal tool (the product
+            # default is 180 s). advance.py's acceptance re-measures, commits
+            # and re-seals in 30-40 s and was killed mid-way on v9 (exit 124,
+            # 2026-09-21), leaving an ACCEPTED step behind a blocked card.
+            "timeout": 900,
         },
         # W2 §4.5 / E-20260807T154519Z — engine must not invent untyped
         # subtasks outside our per-phase schema (AD-H §3).
