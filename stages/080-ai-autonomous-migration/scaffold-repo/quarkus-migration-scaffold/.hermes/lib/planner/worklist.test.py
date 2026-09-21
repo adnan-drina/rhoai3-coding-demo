@@ -2807,6 +2807,54 @@ def _generated_body_case() -> int:
                 or not b["advice"]["request_rejection"]["first_action"].startswith("an undocumented annotation is present: @Valid")):
             return _fail("a generated body whose required properties are all sent is a controller obligation with no generator finding: %s %s"
                          % (b["path"], gb2.get("text", "")[-160:]))
+        # H8 routing stability, 1: the detection keys on the scenario RECORD, so
+        # a receipt whose row is INCONCLUSIVE (a partly re-run entry point, or
+        # "bound to receipt") does not move the obligation to the controller
+        incon = {"schema": "rhoai3.parity-receipt/v1", "receipt_sha256": "x", "verdict": "INCONCLUSIVE",
+                 "entry_points": [{"entry_point": ep, "verdict": "INCONCLUSIVE", "reason": "sc:create-1 is bound to receipt y", "scenarios": ["sc:create-1", "sc:create-2"]}]}
+        a2 = {i["scenario"]: i for i in parity_items(root, bundle, receipt=incon)}["sc:create-1"]
+        if a2["path"] != "pom.xml" or a2["kind"] != "build" or a2["id"] != a["id"]:
+            return _fail("an INCONCLUSIVE row does not move a generated-body obligation off pom.xml, and its id is stable: %s %s" % (a2["path"], a2["id"] == a["id"]))
+        # H8 routing stability, 2: after a revert target/ holds the REJECTED
+        # candidate's output (no @JsonCreator) while the pom on disk does not
+        # stop the option: the generated sources are stale, the spec's own
+        # `required` list is what the constructor enforces, and the routing
+        # holds
+        (root / gen_rel).write_text(_GENERATED_DTO.replace("    @JsonCreator\n    public AccountDto(@JsonProperty(required = true, value = \"pets\") List<String> pets) {\n        this.pets = pets;\n    }\n", ""))
+        (root / "src/main/resources/openapi.yml").write_text('{"openapi": "3.0.0", "components": {"schemas": {"Account": {"required": ["pets"], "properties": {"pets": {"type": "array"}}}}}}')
+        pom_suffix = _GENERATOR_POM.replace("<modelPackage>com.acme.ledger.dto</modelPackage>", "<modelPackage>com.acme.ledger.dto</modelPackage>\n              <modelNameSuffix>Dto</modelNameSuffix>")
+        (root / "pom.xml").write_text(pom_suffix)
+        a3 = {i["scenario"]: i for i in parity_items(root, bundle)}["sc:create-1"]
+        gb3 = a3["advice"]["request_rejection"]["generated_body"]
+        if (not gb3.get("stale_generated") or gb3.get("creator_seen") or gb3.get("required") != ["pets"] or gb3.get("missing_required") != ["pets"]
+                or gb3.get("required_from") != "spec schema Account (src/main/resources/openapi.yml)" or gb3["option"] != {"name": "generateJsonCreator", "set_to": "", "default": "true", "stopped": False}
+                or a3["path"] != "pom.xml" or "another build's output" not in a3["advice"]["request_rejection"]["first_action"]):
+            return _fail("a stale target/ is read from the pom's option state and the spec's required list; the routing holds: %s %s"
+                         % (a3["path"], {k: gb3.get(k) for k in ("stale_generated", "creator_seen", "required", "missing_required", "required_from", "option")}))
+        # ... and with the spec unreadable, the routing this obligation was LAST ISSUED on holds (the issued card / rejected row)
+        (root / "src/main/resources/openapi.yml").write_text("openapi: 3.0.0\ncomponents:\n  schemas:\n    Account: &anchor\n      description: >\n        folded\n")
+        from planner.canonical import write_canonical
+        from planner.paths import LOOP_ISSUED
+        write_canonical(root / LOOP_ISSUED, {"schema": "rhoai3.loop-issued/v1", "task_id": "t_pomcard", "cluster": "c:pom", "items": [a["id"]], "write_set": ["pom.xml"]})
+        a4 = {i["scenario"]: i for i in parity_items(root, bundle)}["sc:create-1"]
+        gb4 = a4["advice"]["request_rejection"]["generated_body"]
+        if (a4["path"] != "pom.xml" or a4["rule_id"] != RULE_PARITY_GENERATED_BODY or gb4.get("missing_required") != [] or not gb4.get("inconclusive")
+                or (gb4.get("carried_routing") or {}).get("card") != "t_pomcard" or "last issued on" not in gb4["carried_routing"]["reason"]
+                or "The last measurement put this obligation on pom.xml" not in a4["advice"]["request_rejection"]["first_action"]):
+            return _fail("a stale target/ with an unreadable spec keeps the routing the obligation was last issued on, saying why: %s %s"
+                         % (a4["path"], {k: gb4.get(k) for k in ("missing_required", "inconclusive", "carried_routing")}))
+        (root / LOOP_ISSUED).unlink()
+        a5 = {i["scenario"]: i for i in parity_items(root, bundle)}["sc:create-1"]
+        if a5["path"] != ctl or a5["advice"]["request_rejection"]["generated_body"].get("carried_routing"):
+            return _fail("never issued anywhere and nothing readable: the controller, and no claim: %s" % a5["path"])
+        # ... and when the pom DOES stop the option, a creator-less generated file is this pom's output: not a generator finding
+        (root / "pom.xml").write_text(pom_suffix.replace("<useJakartaEe>true</useJakartaEe>", "<useJakartaEe>true</useJakartaEe>\n                <generateJsonCreator>false</generateJsonCreator>"))
+        a6 = {i["scenario"]: i for i in parity_items(root, bundle)}["sc:create-1"]
+        gb6 = a6["advice"]["request_rejection"]["generated_body"]
+        if a6["path"] != ctl or gb6.get("stale_generated") or not gb6["option"]["stopped"] or gb6.get("required"):
+            return _fail("with generateJsonCreator=false in the pom the generated file is current and the generator is not the cause: %s %s" % (a6["path"], gb6.get("option")))
+        (root / "pom.xml").write_text(_GENERATOR_POM)
+        (root / gen_rel).write_text(_GENERATED_DTO)
         # a non-generated DTO of the same shape: no generated_body, the H6b advice as before
         shutil.rmtree(root / "target")
         (root / src_rel).parent.mkdir(parents=True)
@@ -2817,6 +2865,121 @@ def _generated_body_case() -> int:
                 or [h["path"] for h in c["advice"]["request_rejection"]["locus_hints"]] != [ctl, src_rel]):
             return _fail("a DTO under src/ is not generated: the obligation stays at the controller with the handler advice: %s %s"
                          % (c["path"], c["advice"]["request_rejection"].get("generated_body")))
+    return 0
+
+
+def _partial_rerun_carry_case() -> int:
+    """H8 (v9 t_3c2ed945, cluster c:9c5fb3d1b7e3): the entry point addOwner
+    has 7 scenarios; the pom build card holds 2 (create-owners,
+    update-owners-1), the scoped run re-runs only those, both PASS, and the
+    other 5 are FAIL in the accepted baseline. The composer's row is
+    INCONCLUSIVE ("bound to receipt" for the 5) and a row-level carry cannot
+    take it. Per-scenario carry recomposes the row FAIL with the 5 carried;
+    each issued obligation is judged by its OWN record, so the card is
+    ACCEPTED and the 5 stay obligations on the controller. Controls: one of
+    the 2 still FAIL -> REVERTED naming it; a re-run scenario INCONCLUSIVE ->
+    REVERTED; a whole-phase run discharges by the record too."""
+    import json
+    import tempfile
+
+    from planner.canonical import write_canonical
+    from planner.paths import LOOP_ACCEPTED, LOOP_ISSUED, PARITY_DIR, VERIFY_RUN
+    from planner.worklist import (PARITY_WHOLE_PHASE, judged_parity_receipt, parity_discharge_scope, parity_obligation_discharged,
+                                  parity_obligation_id, parity_remeasured, parity_state)
+
+    ep = "ep:com.acme.ledger.OwnerResource#addOwner(com.acme.ledger.dto.OwnerDto):http"
+    ctl = "src/main/java/com/acme/ledger/OwnerResource.java"
+    bundle = {"entry_points": [{"id": ep, "type": "com.acme.ledger.OwnerResource", "member": "addOwner(com.acme.ledger.dto.OwnerDto)", "path": ctl}]}
+    card = ["sc:create-owners", "sc:update-owners-1"]
+    others = ["sc:create-owners-invalid-%d" % i for i in range(1, 6)]
+    names = card + others
+    ids = {sid: parity_obligation_id(ep, sid, "response") for sid in names}
+    empty = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+
+    def rec(sid, verdict, reason):
+        return {"schema": "rhoai3.scenario-parity/v1", "entry_point": ep, "scenario": sid, "verdict": verdict, "reason": reason,
+                "request": {"method": "POST", "path": "/api/owners", "body_absent": False},
+                "observed": {"status": 400, "body_kind": "text", "body_sha256": empty, "body_sample": "", "headers": {}}}
+
+    fail_reason = {sid: ("status 400 vs 201; header Location None vs http://s/api/owners/1" if sid == "sc:create-owners" else
+                         "status 400 vs 204" if sid == "sc:update-owners-1" else "header errors None vs x") for sid in names}
+
+    def receipt(verdict, reason, sha, extra=None):
+        return dict({"schema": "rhoai3.parity-receipt/v1", "receipt_sha256": sha, "verdict": "FAIL",
+                     "entry_points": [{"entry_point": ep, "verdict": verdict, "reason": reason, "scenarios": names}]}, **(extra or {}))
+
+    with tempfile.TemporaryDirectory(prefix="partial-rerun-") as td:
+        root = Path(td)
+        acc, live = root / LOOP_ACCEPTED / "parity", root / PARITY_DIR
+        (acc / "scenarios").mkdir(parents=True)
+        (live / "scenarios").mkdir(parents=True)
+        (root / VERIFY_RUN).parent.mkdir(parents=True)
+        base_reason = "; ".join("%s: %s" % (sid, fail_reason[sid]) for sid in names)
+        (acc / "receipt.json").write_text(json.dumps(receipt("FAIL", base_reason, "base0")))
+        for i, sid in enumerate(names):
+            (acc / "scenarios" / ("s%d.json" % i)).write_text(json.dumps(rec(sid, "FAIL", fail_reason[sid])))
+            (live / "scenarios" / ("s%d.json" % i)).write_text(json.dumps(rec(sid, "FAIL", fail_reason[sid])))
+        before = json.loads((acc / "receipt.json").read_text())
+        write_canonical(root / LOOP_ISSUED, {"schema": "rhoai3.loop-issued/v1", "task_id": "t_pom", "cluster": "c:pom", "gate": "parity",
+                                             "items": [ids[s] for s in card], "gate_items": sorted(ids.values()), "write_set": ["pom.xml"]})
+        m = {"known": True, "tuple": [0, 0, 0], "parity_mismatches": 7}
+
+        def attempt(live_verdicts, *, scoped=True):
+            """The candidate's live records for the card's scenarios, the composer's
+            row over them (INCONCLUSIVE: the 5 are bound to the baseline receipt),
+            then exactly advance.py's path."""
+            run = {"runtime": {"parity": {"ran": True, "scoped": scoped, "trigger": "issued-card", "scenarios": card if scoped else []}}}
+            (root / VERIFY_RUN).write_text(json.dumps(run))
+            for i, sid in enumerate(names):
+                if sid in live_verdicts:
+                    v, r = live_verdicts[sid]
+                    (live / "scenarios" / ("s%d.json" % i)).write_text(json.dumps(rec(sid, v, r)))
+            fails = ["%s: %s" % (s, live_verdicts[s][1]) for s in card if live_verdicts.get(s, ("", ""))[0] == "FAIL"]
+            if scoped:
+                problems = ["%s is bound to receipt base0" % s for s in others] + ["%s: %s" % (s, live_verdicts[s][1]) for s in card if live_verdicts.get(s, ("", ""))[0] == "INCONCLUSIVE"]
+                row_v, row_r = ("FAIL", "; ".join(fails)) if fails else ("INCONCLUSIVE", "; ".join(problems))
+            else:
+                row_v, row_r = ("FAIL", "; ".join(fails + ["%s: %s" % (s, fail_reason[s]) for s in others]))
+            (live / "receipt.json").write_text(json.dumps(receipt(row_v, row_r, "cand1", {"binding": {"mode": "candidate", "card": "t_pom"}})))
+            judged, carried = judged_parity_receipt(root)
+            scope = parity_discharge_scope(run)
+            obl = parity_state(judged)["obligations"]
+            discharged = {ids[s]: parity_obligation_discharged(root, obl[ids[s]], scope, judged) for s in card if ids[s] in obl}
+            items = parity_items(root, bundle, receipt=judged)
+            cur = {i["id"]: i for i in items}
+            ok, why = progress(m, m, set(), set(), gate="parity", issued_items=[ids[s] for s in card], prev_gate_items=set(ids.values()),
+                               cur_gate_items=set(cur), prev_runtime={}, cur_runtime={}, prev_parity=before, cur_parity=judged,
+                               parity_remeasured=parity_remeasured(run), parity_discharged=discharged)
+            return ok, why, judged, carried, cur
+
+        # the v9 shape: both re-run PASS, the 5 not re-run FAIL in the baseline
+        ok, why, judged, carried, cur = attempt({s: ("PASS", "") for s in card})
+        row = judged["entry_points"][0]
+        if (row["verdict"] != "FAIL" or row.get("carried_scenarios") != others or row.get("scenario_verdicts", {}).get("sc:create-owners") != "PASS"
+                or not (row.get("carried_from") or {}).get("per_scenario") or "sc:create-owners-invalid-1: header errors None vs x" not in row["reason"]):
+            return _fail("the partly re-run row is recomposed per scenario: FAIL with the 5 carried and the 2 from their records: %s" % row)
+        if len(carried) != 1 or carried[0].get("scenarios") != others or carried[0].get("rerun") != sorted(_s for _s in ["create-owners", "update-owners-1"]):
+            return _fail("the carry names the scenarios taken from the baseline and the ones re-run: %s" % carried)
+        if ok is not True or "discharges" not in why:
+            return _fail("the v9 card is ACCEPTED: its own scenarios came back PASS in their records: %s %s" % (ok, why))
+        if any(ids[s] in cur for s in card) or not all(ids[s] in cur for s in others) or any(cur[ids[s]]["path"] != ctl for s in others):
+            return _fail("the 5 scenarios nobody re-ran stay obligations on the controller, the 2 are gone: %s" % sorted(cur))
+        # control: one of the two still FAIL -> REVERTED naming it
+        ok, why, judged, _c, _cur = attempt({"sc:create-owners": ("PASS", ""), "sc:update-owners-1": ("FAIL", "status 400 vs 204")})
+        if ok is not False or ids["sc:update-owners-1"] not in why or "still reported" not in why:
+            return _fail("a re-run scenario still failing reverts, naming its obligation: %s %s" % (ok, why))
+        # control: a re-run scenario INCONCLUSIVE -> REVERTED (never carried around)
+        ok, why, judged, carried, _cur = attempt({"sc:create-owners": ("PASS", ""), "sc:update-owners-1": ("INCONCLUSIVE", "no capture")})
+        if ok is not False or judged["entry_points"][0]["verdict"] != "INCONCLUSIVE" or carried or ids["sc:update-owners-1"] not in why:
+            return _fail("a re-run scenario without a verdict is judged as composed and reverts: %s %s %s" % (ok, why, carried))
+        # a whole-phase comparison: every record is this run's, and the record decides
+        for i, sid in enumerate(others):
+            (live / "scenarios" / ("s%d.json" % (i + 2))).write_text(json.dumps(rec(sid, "FAIL", fail_reason[sid])))
+        ok, why, judged, carried, cur = attempt({s: ("PASS", "") for s in card}, scoped=False)
+        if ok is not True or carried or parity_discharge_scope({"runtime": {"parity": {"ran": True, "scoped": False}}}) is not PARITY_WHOLE_PHASE:
+            return _fail("a whole-phase run discharges the card's obligations by their records, carrying nothing: %s %s" % (ok, why))
+        if parity_discharge_scope({"runtime": {"parity": {"ran": False}}}) is not None or "anything" not in PARITY_WHOLE_PHASE or list(PARITY_WHOLE_PHASE):
+            return _fail("the discharge scope is None when nothing ran, and the whole phase contains everything")
     return 0
 
 
@@ -3309,7 +3472,7 @@ def _server_error_advice_case() -> int:
 def main() -> int:
     if (_runtime_identity_case() or _gate_progress_case() or _batch_scope_case() or _checked_family_case()
             or _set_wide_case() or _config_value_case() or _parity_typing_case() or _parity_advice_case()
-            or _parity_navigation_case() or _owed_adapter_case() or _cors_scenario_case() or _cors_actual_routing_case() or _request_rejection_advice_case() or _generated_body_case() or _scoped_carry_case() or _receipt_v2_case() or _split_discharge_case() or _read_oracle_discharge_case() or _body_diff_case() or _server_error_advice_case() or _harness_owned_guard_case() or _parity_gate_case() or _unit_formation_case() or _unit_bound_case() or _unit_seal_case()
+            or _parity_navigation_case() or _owed_adapter_case() or _cors_scenario_case() or _cors_actual_routing_case() or _request_rejection_advice_case() or _generated_body_case() or _partial_rerun_carry_case() or _scoped_carry_case() or _receipt_v2_case() or _split_discharge_case() or _read_oracle_discharge_case() or _body_diff_case() or _server_error_advice_case() or _harness_owned_guard_case() or _parity_gate_case() or _unit_formation_case() or _unit_bound_case() or _unit_seal_case()
             or _unit_mode_case() or _unit_inert_case() or _unit_config_case()
             or _unit_experiment_table_case() or _unit_explained_case() or _unit_progress_case()
             or _unit_budget_case()):

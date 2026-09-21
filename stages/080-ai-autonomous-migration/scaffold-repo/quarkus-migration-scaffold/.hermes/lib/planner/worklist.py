@@ -1465,6 +1465,35 @@ def _sid(s: Any) -> str:
     return v[3:] if v.startswith("sc:") else v
 
 
+class _WholePhase(frozenset):
+    """The re-measured set of a comparison that compared EVERYTHING: every
+    scenario id and every entry point is in it. Iterates as empty (nothing to
+    name), is truthy, and prints as itself."""
+
+    def __contains__(self, item: object) -> bool:  # noqa: D401
+        return True
+
+    def __bool__(self) -> bool:
+        return True
+
+    def __repr__(self) -> str:
+        return "PARITY_WHOLE_PHASE"
+
+
+PARITY_WHOLE_PHASE: frozenset = _WholePhase()
+
+
+def parity_discharge_scope(run: dict[str, Any] | None) -> set[str] | frozenset | None:
+    """What an obligation's own record may be judged against: the scoped
+    run's set, PARITY_WHOLE_PHASE when the comparison RAN unscoped (every
+    record is this run's), None when it did not run."""
+    par = (((run or {}).get("runtime") or {}).get("parity") or {}) if isinstance(run, dict) else {}
+    if not par.get("ran"):
+        return None
+    scoped = parity_remeasured(run)
+    return scoped if scoped is not None else PARITY_WHOLE_PHASE
+
+
 def parity_remeasured(run: dict[str, Any] | None) -> set[str] | None:
     """What THIS verification's comparison re-ran, when it was scoped
     (run.json runtime.parity): the scenario ids (``scenarios``, without their
@@ -1484,8 +1513,58 @@ def parity_remeasured(run: dict[str, Any] | None) -> set[str] | None:
             | {str(e) for e in (par.get("read_oracles_rerun") or []) if str(e)})
 
 
+def _recompose_partial_row(root: Path, row: dict[str, Any], old: dict[str, Any] | None, remeasured: set[str],
+                           before: dict[str, Any]) -> dict[str, Any] | None:
+    """H8: an entry point whose scenarios were PARTLY re-run. The composer
+    reports it INCONCLUSIVE ("… is bound to receipt …" for every scenario the
+    scoped run did not touch), and a row-level carry cannot take it (some of
+    its scenarios WERE measured). Recompose it per scenario, by the composer's
+    own row rule: a re-run scenario's verdict is its live record, a scenario
+    not re-run keeps the accepted baseline's record; any FAIL makes the row
+    FAIL (reason: the failures), else any scenario without a usable verdict
+    makes it INCONCLUSIVE, else PASS. `carried_scenarios` says which were
+    taken from the baseline. None when nothing can be recomposed (no root, or
+    a re-run scenario came back without a PASS/FAIL record: that is a
+    regression to be judged as composed)."""
+    names = [str(s) for s in (row.get("scenarios") or []) if str(s)]
+    live_dir, base_dir = Path(root) / PARITY_DIR, Path(root) / LOOP_ACCEPTED / "parity"
+    verdicts: list[tuple[str, str, str, bool]] = []  # (sid, verdict, reason, carried)
+    for sid in names:
+        if _sid(sid) in remeasured:
+            rec = scenario_record(live_dir, sid)
+            v = str(rec.get("verdict") or "")
+            if v not in ("PASS", "FAIL"):
+                return None  # a re-run scenario without a verdict is judged as composed, never carried around
+            verdicts.append((sid, v, str(rec.get("reason") or ""), False))
+        else:
+            rec = scenario_record(base_dir, sid)
+            v = str(rec.get("verdict") or "")
+            if v not in ("PASS", "FAIL"):
+                verdicts.append((sid, "INCONCLUSIVE", "the accepted baseline holds no single record of %s" % sid, True))
+            else:
+                verdicts.append((sid, v, str(rec.get("reason") or ""), True))
+    failures = ["%s: %s" % (sid, reason) for sid, v, reason, _c in verdicts if v == "FAIL"]
+    gaps = [reason for _sid_, v, reason, _c in verdicts if v == "INCONCLUSIVE"]
+    if failures:
+        verdict, reason = "FAIL", "; ".join(failures)[:400]
+    elif gaps:
+        verdict, reason = "INCONCLUSIVE", "; ".join(gaps)[:400]
+    else:
+        verdict, reason = "PASS", "%d required scenario(s): %s" % (len(names), ", ".join(names))
+    out = dict(row, verdict=verdict, reason=reason,
+               carried_scenarios=[sid for sid, _v, _r, c in verdicts if c],
+               scenario_verdicts={sid: v for sid, v, _r, _c in verdicts},
+               carried_from={"receipt_sha256": str(before.get("receipt_sha256") or ""),
+                             "binding": dict(before.get("binding") or {}) if isinstance(before.get("binding"), dict) else {},
+                             "composed": {"verdict": row.get("verdict"), "reason": str(row.get("reason") or "")[:200]},
+                             "per_scenario": True})
+    if old is not None and old.get("navigation"):
+        out.setdefault("navigation", old.get("navigation"))
+    return out
+
+
 def carry_unmeasured(before: dict[str, Any] | None, after: dict[str, Any] | None,
-                     remeasured: set[str] | None) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+                     remeasured: set[str] | None, root: Path | None = None) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     """(the receipt acceptance judges, the rows it CARRIED from before).
 
     A scoped comparison re-runs only the card's own scenarios (and, H3, the
@@ -1519,6 +1598,19 @@ def carry_unmeasured(before: dict[str, Any] | None, after: dict[str, Any] | None
             rows.append(row)
             carried.append({"entry_point": ep, "verdict": row.get("verdict"), "scenarios": sorted(names)})
             continue
+        if (str(r.get("verdict") or "") == "INCONCLUSIVE" and (names & remeasured) and (names - remeasured)
+                and root is not None):
+            # H8 (v9 t_3c2ed945): a PARTLY re-run entry point -- 7 scenarios,
+            # the card's 2 re-run and PASS, 5 bound to the baseline receipt --
+            # is recomposed per scenario, never left INCONCLUSIVE to revert a
+            # correct repair, and never carried whole (its re-run scenarios
+            # are judged from their own records)
+            row = _recompose_partial_row(root, r, old, remeasured, before)
+            if row is not None:
+                rows.append(row)
+                carried.append({"entry_point": ep, "verdict": row.get("verdict"), "scenarios": list(row.get("carried_scenarios") or []),
+                                "rerun": sorted(names & remeasured), "per_scenario": True})
+                continue
         rows.append(r)
     cur["entry_points"] = rows
     if carried:
@@ -1553,7 +1645,7 @@ def judged_parity_receipt(root: Path, run: dict[str, Any] | None = None) -> tupl
             except (OSError, ValueError):
                 before = {}
             break
-    return carry_unmeasured(before, live, remeasured)
+    return carry_unmeasured(before, live, remeasured, root)
 
 
 class ParitySplitter:
@@ -1713,6 +1805,8 @@ def parity_obligation_discharged(root: Path, row: dict[str, Any], remeasured: se
     if what not in ("cors", "response", "representation"):
         return False, "only a scenario or read-oracle verdict can discharge part of itself"
     root = Path(root)
+    # ``remeasured`` is the scoped run's set, PARITY_WHOLE_PHASE for a run that
+    # compared everything, and None when nothing says what was re-run
     if sid:
         if remeasured is None or _sid(sid) not in remeasured:
             return False, "%s was not re-run in this comparison" % sid
@@ -1973,7 +2067,7 @@ def corpus_body_keys(root: Path | None, scenario: str) -> dict[str, Any]:
 
 
 OPENAPI_GENERATOR_ARTIFACT = "openapi-generator-maven-plugin"
-_PLUGIN_LEAVES = ("generatorName", "library", "inputSpec", "modelPackage", "apiPackage", "output", "skipValidateSpec")
+_PLUGIN_LEAVES = ("generatorName", "library", "inputSpec", "modelPackage", "apiPackage", "output", "skipValidateSpec", "modelNamePrefix", "modelNameSuffix")
 
 
 def generator_plugin_config(root: Path | None, artifact: str = OPENAPI_GENERATOR_ARTIFACT) -> dict[str, Any]:
@@ -2048,7 +2142,109 @@ def generator_plugin_config(root: Path | None, artifact: str = OPENAPI_GENERATOR
     return dict(hit, path="pom.xml") if hit else {}
 
 
-def generated_body_binding(root: Path | None, body_type: str, scenario: str) -> dict[str, Any]:
+_MAVEN_PROPS = (("${project.basedir}/", ""), ("${basedir}/", ""), ("${project.build.directory}", "target"),
+                ("${project.basedir}", ""), ("${basedir}", ""))
+
+
+def _spec_path(root: Path, input_spec: str) -> Path | None:
+    s = str(input_spec or "").strip()
+    for k, v in _MAVEN_PROPS:
+        s = s.replace(k, v)
+    s = s.lstrip("/") if s.startswith("/") and not Path(s).is_file() else s
+    p = Path(s) if Path(s).is_absolute() else Path(root) / s
+    return p if p.is_file() else None
+
+
+def _load_spec(p: Path) -> tuple[Any, str]:
+    """(the parsed OpenAPI document, '') or (None, why): JSON, PyYAML when
+    importable, else the planner's YAML subset -- never a guess."""
+    text = p.read_text(encoding="utf-8", errors="replace")
+    # a JSON document is a YAML document: read it as JSON first, whatever the suffix
+    try:
+        return json.loads(text), ""
+    except ValueError as e:
+        if p.suffix.lower() == ".json":
+            return None, "the spec is not JSON: %s" % e
+    try:
+        import yaml  # type: ignore
+
+        return yaml.safe_load(text), ""
+    except ImportError:
+        pass
+    except Exception as e:  # noqa: BLE001 - a YAML error of any class is "unreadable", said out loud
+        return None, "the spec could not be parsed: %s" % str(e)[:120]
+    try:
+        from planner.yamlite import loads as _yl
+
+        return _yl(text), ""
+    except Exception as e:  # noqa: BLE001
+        return None, "the spec could not be parsed by the planner's YAML subset (no PyYAML): %s" % str(e)[:120]
+
+
+def spec_required_properties(root: Path | None, plugin: dict[str, Any], body_type: str) -> dict[str, Any]:
+    """The `required` list of the spec schema a generated model comes from:
+    the model's simple name minus the plugin's modelNamePrefix/modelNameSuffix
+    (openapi-generator's documented naming), looked up under
+    components.schemas (OpenAPI 3) or definitions (Swagger 2), with one level
+    of allOf/$ref composition. {spec, schema, required} or {spec, schema,
+    required: None, reason}."""
+    if root is None or not plugin or not body_type:
+        return {}
+    cfg = plugin.get("configuration") or {}
+    opts = plugin.get("configOptions") or {}
+    p = _spec_path(Path(root), str(cfg.get("inputSpec") or ""))
+    if p is None:
+        return {"spec": str(cfg.get("inputSpec") or ""), "schema": "", "required": None, "reason": "the plugin's inputSpec is not a file of this tree"}
+    simple = body_type.rsplit(".", 1)[-1]
+    prefix = str(opts.get("modelNamePrefix") or cfg.get("modelNamePrefix") or "")
+    suffix = str(opts.get("modelNameSuffix") or cfg.get("modelNameSuffix") or "")
+    name = simple
+    if prefix and name.startswith(prefix):
+        name = name[len(prefix):]
+    if suffix and name.endswith(suffix):
+        name = name[:-len(suffix)]
+    doc, why = _load_spec(p)
+    rel = p.relative_to(root).as_posix() if str(p).startswith(str(root)) else str(p)
+    if doc is None or not isinstance(doc, dict):
+        return {"spec": rel, "schema": name, "required": None, "reason": why or "the spec is not a mapping"}
+    schemas = ((doc.get("components") or {}).get("schemas") if isinstance(doc.get("components"), dict) else None) or doc.get("definitions") or {}
+    if not isinstance(schemas, dict) or name not in schemas or not isinstance(schemas.get(name), dict):
+        return {"spec": rel, "schema": name, "required": None, "reason": "the spec has no schema %s (modelNamePrefix=%r, modelNameSuffix=%r)" % (name, prefix, suffix)}
+
+    def required_of(schema: dict[str, Any], depth: int = 0) -> list[str]:
+        req = [str(x) for x in (schema.get("required") or []) if str(x)]
+        if depth < 1:
+            for part in (schema.get("allOf") or []) if isinstance(schema.get("allOf"), list) else []:
+                if isinstance(part, dict):
+                    ref = str(part.get("$ref") or "")
+                    target = schemas.get(ref.rsplit("/", 1)[-1]) if ref else part
+                    if isinstance(target, dict):
+                        req += required_of(target, depth + 1)
+        return req
+
+    return {"spec": rel, "schema": name, "required": sorted(set(required_of(schemas[name])))}
+
+
+def _last_issued_routing(root: Path, item_id: str) -> dict[str, Any]:
+    """Where THIS obligation was last issued: the issued card, else the newest
+    rejected row that carried it -- with its write set. {} when never issued."""
+    for p, kind in ((Path(root) / LOOP_ISSUED, "issued"), (Path(root) / LOOP_STEPS, "rejected")):
+        if not p.is_file():
+            continue
+        try:
+            doc = load_json(p)
+        except (OSError, ValueError):
+            continue
+        rows = [doc] if kind == "issued" else list(reversed([r for r in (doc.get("rejected") or []) if isinstance(r, dict)]))
+        for r in rows:
+            items = [str(x) for x in (r.get("items") or [])] or [str(x.get("id") or "") for x in (r.get("loci_before") or []) if isinstance(x, dict)]
+            if item_id in items:
+                return {"card": str(r.get("card") or r.get("task_id") or ""), "cluster": str(r.get("cluster") or ""),
+                        "write_set": [str(w) for w in (r.get("write_set") or [])], "record": kind}
+    return {}
+
+
+def generated_body_binding(root: Path | None, body_type: str, scenario: str, item_id: str = "") -> dict[str, Any]:
     """H7: is the request body type GENERATED, and does its constructor
     require properties the recorded request does not send?
 
@@ -2088,10 +2284,6 @@ def generated_body_binding(root: Path | None, body_type: str, scenario: str) -> 
     body = corpus_body_keys(root, scenario)
     out["body_file"] = str(body.get("file") or "")
     out["body_keys"] = body.get("keys")
-    if body.get("keys") is None:
-        out["inconclusive"] = out["inconclusive"] or str(body.get("reason") or "the corpus records no body for this scenario")
-    elif out["required"] and not out["inconclusive"]:
-        out["missing_required"] = sorted(r for r in out["required"] if r not in set(body["keys"]))
     plugin = generator_plugin_config(root)
     out["plugin"] = plugin
     catalog = _build_plugins_catalog(root)
@@ -2101,6 +2293,50 @@ def generated_body_binding(root: Path | None, body_type: str, scenario: str) -> 
     grow = ((row.get("generators") or {}).get(gen) or {}) if gen else {}
     out["catalog_row"] = dict(grow, generator=gen, plugin_docs=str(row.get("docs") or ""),
                               option_location=str(row.get("option_location") or "")) if grow else {}
+    # H8 routing stability: what the generator EMITS is decided by the pom on
+    # disk, not by whatever build last wrote target/ (after a revert the
+    # generated sources are the rejected candidate's). The option state in
+    # the pom says whether a required-args constructor is expected; when the
+    # generated file lacks one the pom did not stop, target/ is stale and the
+    # spec's own `required` list is what that constructor enforces.
+    opt = (grow.get("required_args_constructor") or {}) if grow else {}
+    opt_name, stop_value = str(opt.get("option") or ""), str(opt.get("value_that_stops_it") or "")
+    opt_state = str((plugin.get("configOptions") or {}).get(opt_name) or "").strip().lower() if opt_name else ""
+    out["option"] = {"name": opt_name, "set_to": opt_state or "", "default": str(opt.get("default") or ""),
+                     "stopped": bool(opt_name) and bool(stop_value) and opt_state == stop_value.lower()}
+    creator_seen = any(c.get("json_creator") for c in (out.get("constructors") or []))
+    out["creator_seen"] = creator_seen
+    out["stale_generated"] = False
+    out["required_from"] = "generated constructor" if out["required"] else ""
+    if not out["required"] and not creator_seen and grow and opt_name and not out["option"]["stopped"] and not out["inconclusive"]:
+        # the pom expects the constructor (option at its documented default,
+        # or set to anything but the stopping value) and the generated file
+        # has none: not this pom's output
+        out["stale_generated"] = True
+        spec = spec_required_properties(root, plugin, body_type)
+        out["spec"] = spec
+        if spec.get("required"):
+            out["required"] = list(spec["required"])
+            out["required_from"] = "spec schema %s (%s)" % (spec.get("schema"), spec.get("spec"))
+        elif spec.get("required") == []:
+            out["required_from"] = "spec schema %s (%s): no required property" % (spec.get("schema"), spec.get("spec"))
+        else:
+            out["inconclusive"] = ("target/generated-sources is not this pom's output (no required-args constructor in %s while "
+                                   "%s is not %s in pom.xml, default %s) and %s" % (gp.name, opt_name or "the option", stop_value or "off",
+                                                                                     opt.get("default") or "?", spec.get("reason") or "the spec could not be read"))
+    if body.get("keys") is None:
+        out["inconclusive"] = out["inconclusive"] or str(body.get("reason") or "the corpus records no body for this scenario")
+    elif out["required"] and not out["inconclusive"]:
+        out["missing_required"] = sorted(r for r in out["required"] if r not in set(body["keys"]))
+    out["carried_routing"] = {}
+    if out["stale_generated"] and not out["missing_required"] and out["inconclusive"] and item_id:
+        last = _last_issued_routing(Path(root), item_id)
+        if last.get("write_set") == ["pom.xml"]:
+            # the last measurement of this obligation (its issued card) put it
+            # on pom.xml; a stale target/ is no evidence against that
+            out["carried_routing"] = dict(last, reason="target/generated-sources is stale and the spec could not be read; the routing "
+                                                        "is the one this obligation was last issued on (%s %s); run-verify.sh regenerates "
+                                                        "the sources from the pom on disk" % (last.get("record"), last.get("card")))
     return out
 
 
@@ -2131,9 +2367,12 @@ def generated_body_text(gb: dict[str, Any], item_id: str) -> str:
         gb.get("type"), who, settings, spec, gb.get("generated_path")))
     if gb.get("missing_required"):
         opt = row.get("required_args_constructor") or {}
-        text = ("%s; its constructor requires %s (@JsonProperty(required = true) on a @JsonCreator constructor), which the "
+        text = ("%s; its constructor requires %s (%s), which the "
                 "source's recorded request %s does not send (its keys: %s). %s"
-                % (head, ", ".join(gb["missing_required"]), gb.get("body_file") or "body", ", ".join(gb.get("body_keys") or []) or "none",
+                % (head, ", ".join(gb["missing_required"]),
+                   ("@JsonProperty(required = true) on a @JsonCreator constructor" if gb.get("creator_seen") else
+                    "read from %s: target/generated-sources on disk is another build's output, and the pom on disk does not stop the required-args constructor" % (gb.get("required_from") or "the spec")),
+                   gb.get("body_file") or "body", ", ".join(gb.get("body_keys") or []) or "none",
                    row.get("models") or ""))
         if opt:
             text += (" The documented option is `%s` (%s; default %s; %s): set <%s>%s</%s> under the plugin's <configOptions> "
@@ -2152,6 +2391,13 @@ def generated_body_text(gb: dict[str, Any], item_id: str) -> str:
         text += (" No controller edit can fix this: the body is refused before the handler. This obligation is on pom.xml "
                  "(a build card; pom.xml is its write set) and is discharged when run-verify.sh re-runs the scenario and it PASSes.")
         return text
+    if gb.get("carried_routing"):
+        opt = row.get("required_args_constructor") or {}
+        return ("%s; %s. The last measurement put this obligation on pom.xml; the documented option is `%s` (%s; default %s): "
+                "set <%s>%s</%s> under the plugin's <configOptions> if it is not set yet, then run-verify.sh -- it regenerates the "
+                "sources from the pom on disk and re-measures. No controller edit can fix a body refused before the handler. (%s)"
+                % (head, gb["carried_routing"].get("reason"), opt.get("option"), opt.get("description"), opt.get("default"),
+                   opt.get("option"), opt.get("value_that_stops_it"), opt.get("option"), row.get("source") or ""))
     if gb.get("inconclusive"):
         return "%s; whether its constructor requires properties the request lacks could not be decided: %s. Nothing is claimed about it." % (head, gb["inconclusive"])
     return "%s; its constructor requires %s and the recorded request sends them all, so the generator is not what refuses this body." % (
@@ -2328,10 +2574,10 @@ def request_rejection_advice(root: Path | None, ep_row: dict[str, Any], doc: dic
     # H7: a GENERATED body type whose constructor requires what the request
     # does not send is the generator's doing, not the handler's: the locus is
     # the plugin configuration in pom.xml and the first action is its option
-    gb = generated_body_binding(root, body_type, str(doc.get("scenario") or ""))
+    gb = generated_body_binding(root, body_type, str(doc.get("scenario") or ""), item_id)
     if gb:
         gb["text"] = generated_body_text(gb, item_id)
-        if gb.get("missing_required"):
+        if gb.get("missing_required") or gb.get("carried_routing"):
             rest = [first] + rest
             first = gb["text"]
             plugin = gb.get("plugin") or {}
@@ -2562,7 +2808,7 @@ def parity_items(root: Path, bundle: dict[str, Any], notes: list[dict[str, Any]]
                     ", ".join(h["path"] for h in rejection["locus_hints"]) or "the handler")
             row = dict(base, id=rid, path=locus, rule_id="PARITY", cause="response")
             gb = (rejection or {}).get("generated_body") or {}
-            if gb.get("missing_required"):
+            if gb.get("missing_required") or gb.get("carried_routing"):
                 # H7: the body is refused by a GENERATED type's constructor; the
                 # producer is the generator plugin's configuration, so the
                 # obligation is a BUILD item on pom.xml (write set pom.xml at
@@ -2572,8 +2818,9 @@ def parity_items(root: Path, bundle: dict[str, Any], notes: list[dict[str, Any]]
                 row.update(path="pom.xml", kind="build", rule_id=RULE_PARITY_GENERATED_BODY, cause=GENERATED_BODY_CAUSE,
                            line=int(plugin.get("configuration_line") or plugin.get("line") or 0),
                            generated_type=str(gb.get("type") or ""), missing_required=list(gb["missing_required"]))
-                summary = " Generated body type %s requires %s, which the recorded request does not send: the generator's configuration in pom.xml is the locus, not the controller." % (
-                    gb.get("type"), ", ".join(gb["missing_required"]))
+                summary = (" Generated body type %s requires %s, which the recorded request does not send: the generator's configuration in pom.xml is the locus, not the controller." % (
+                    gb.get("type"), ", ".join(gb["missing_required"])) if gb.get("missing_required") else
+                    " Generated body type %s: %s" % (gb.get("type"), (gb.get("carried_routing") or {}).get("reason")))
             out.append(dict(row,
                             detail=("%s: %s" % (scenario or ep, "; ".join(other)))[:200],
                             message=("%s differs from the source (%s): %s.%s" % (ep, scenario or "read oracle", "; ".join(other), summary))[:1200],
@@ -4906,12 +5153,21 @@ def progress(prev: dict[str, Any], cur: dict[str, Any], prev_ids: set[str], cur_
             not_passed = []
             for oid in sorted(issued_par):
                 row = after["obligations"].get(oid)
-                if row is not None and row.get("verdict") == "FAIL" and (parity_discharged or {}).get(oid, (False, ""))[0]:
-                    continue  # G1: its own differences are gone; the rest are other obligations'
+                judged = (parity_discharged or {}).get(oid)
+                if judged is not None:
+                    # H8: EVERY obligation that has its own record -- a
+                    # scenario's (PARITY, PARITY_CORS, PARITY_CONTENT_TYPE,
+                    # PARITY_GENERATED_BODY) or a read oracle's -- is discharged
+                    # by THAT record (parity_obligation_discharged), never by
+                    # the entry-point row: a row partly re-run composes
+                    # INCONCLUSIVE while the card's own scenarios came back PASS
+                    # (v9 t_3c2ed945, a correct pom repair reverted)
+                    if judged[0]:
+                        continue
+                    not_passed.append("%s (%s: %s)" % (oid, (row or {}).get("verdict") or "no row in the receipt", judged[1]))
+                    continue
                 if row is None or row.get("verdict") != "PASS":
-                    why = (parity_discharged or {}).get(oid, (False, ""))[1]
-                    not_passed.append("%s (%s%s)" % (oid, (row or {}).get("verdict") or "no row in the receipt",
-                                                     ": " + why if why else ""))
+                    not_passed.append("%s (%s)" % (oid, (row or {}).get("verdict") or "no row in the receipt"))
             if not_passed:
                 return False, ("the parity obligation %s is still reported: its scenario did not come back PASS in %s"
                                % ("; ".join(not_passed[:2]), PARITY_RECEIPT.as_posix()))

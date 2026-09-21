@@ -96,7 +96,7 @@ from planner.canonical import digest, load_json, write_canonical  # noqa: E402
 from planner.dest_model import DestModelUnavailable, checked_exception_delta, dest_model, diagnostic_identity  # noqa: E402
 from planner.decisions import load_decisions, max_attempts  # noqa: E402
 from planner.paths import EVIDENCE_BUNDLE, LOOP_ACCEPTED, LOOP_ISSUED, MTA_RESCAN_FINDINGS, VERIFY_DIAGNOSTICS, VERIFY_DIR, VERIFY_RUN, WORKLIST  # noqa: E402
-from planner.worklist import carry_unmeasured, parity_obligation_discharged, parity_remeasured, parity_state, CHECKED_FAMILY_RULE, EXPOSED, PARITY_RECEIPT, RETAIN, UNIT_KIND, UNPROVEN, assess_unit, batch_scope_digest, build_worklist, compile_items, gate_items, incidents_from_findings, item_ids, obligation_keys, progress, unit_continue_scope, unit_explained_regressions  # noqa: E402
+from planner.worklist import carry_unmeasured, parity_discharge_scope, parity_obligation_discharged, parity_remeasured, parity_state, CHECKED_FAMILY_RULE, EXPOSED, PARITY_RECEIPT, RETAIN, UNIT_KIND, UNPROVEN, assess_unit, batch_scope_digest, build_worklist, compile_items, gate_items, incidents_from_findings, item_ids, obligation_keys, progress, unit_continue_scope, unit_explained_regressions  # noqa: E402
 
 # The codes javac's flow analysis reports ONE site at a time per compilation
 # (control in dest_model.py: three files with the same defect are one reported
@@ -779,15 +779,19 @@ def main(argv: list[str] | None = None) -> int:
     # entry point is carried from the accepted baseline, never read as a
     # regression (and never as a pass it did not earn)
     remeasured = parity_remeasured(run if isinstance(run, dict) else {})
-    judged_parity, carried_rows = carry_unmeasured(prev_parity, cur_parity, remeasured)
+    judged_parity, carried_rows = carry_unmeasured(prev_parity, cur_parity, remeasured, root)
     # G1: an obligation F3 split out of a scenario is discharged by its OWN
-    # differences leaving the re-run scenario, not by the whole scenario passing
+    # differences leaving the re-run scenario, not by the whole scenario passing.
+    # H8: asked of EVERY issued parity obligation that has its own record,
+    # whatever the entry-point row says (a partly re-run row is INCONCLUSIVE
+    # while the card's own scenarios passed: v9 t_3c2ed945)
     judged_obl = parity_state(judged_parity)["obligations"] if judged_parity else {}
     parity_discharged = {}
+    discharge_scope = parity_discharge_scope(run if isinstance(run, dict) else {})
     for oid in (issued.get("items") or []):
         row = judged_obl.get(str(oid))
-        if row is not None and row.get("verdict") == "FAIL":
-            parity_discharged[str(oid)] = parity_obligation_discharged(root, row, remeasured, judged_parity)
+        if row is not None and str(row.get("what") or "") in ("cors", "response", "representation"):
+            parity_discharged[str(oid)] = parity_obligation_discharged(root, row, discharge_scope, judged_parity)
     reran_oracles = sorted(str(e) for e in ((((run if isinstance(run, dict) else {}).get("runtime") or {}).get("parity") or {}).get("read_oracles_rerun") or []))
     if carried_rows:
         print("NOTE: the scoped comparison re-ran %s; %d entry point(s) carried from the accepted baseline %s: %s"
