@@ -336,8 +336,33 @@ def _scope_rule_brief_case() -> int:
     return 0
 
 
+def _request_rejection_brief_case() -> int:
+    """H6b: the parity brief shows each boundary refusal with the handler and
+    body-type files its locus hints name and the catalog rows it cites."""
+    from brief import parity_brief
+
+    rr = {"status": "400", "expected_status": "201", "observed_body": "empty body",
+          "locus": "the destination refused the request before or at the handler boundary (status 400, empty body) ... --evidence parity:parity:r",
+          "locus_hints": [{"path": "src/main/java/a/AccountResource.java", "member": "create(a.AccountDto)"}, {"path": "src/main/java/a/AccountDto.java", "member": ""}],
+          "catalog_rows": [{"key": "org.springframework.validation.BindingResult", "source": "https://quarkus.io/version/3.27/guides/spring-web"}]}
+    rows = [{"id": "parity:r", "source": "parity", "gate": "parity", "scenario": "sc:create", "entry_point": "ep:a", "advice": {"request_rejection": rr}},
+            {"id": "parity:y", "source": "parity", "gate": "parity", "scenario": "sc:read", "entry_point": "ep:a", "advice": {}}]
+    out = parity_brief(rows, {"gate": "parity"})
+    got = out.get("request_rejections") or []
+    if (len(got) != 1 or got[0]["obligation"] != "parity:r" or got[0]["scenario"] != "sc:create"
+            or [h["path"] for h in got[0]["locus_hints"]] != ["src/main/java/a/AccountResource.java", "src/main/java/a/AccountDto.java"]
+            or got[0]["catalog_rows"][0]["key"] != "org.springframework.validation.BindingResult"
+            or not got[0]["locus"].startswith("the destination refused the request before or at the handler boundary")):
+        return _fail("the parity brief shows the boundary refusal, its files and its catalog rows: %s" % got)
+    if out.get("server_errors") != [] or out.get("body_diffs") != []:
+        return _fail("the other advice lists stay empty: %s" % out)
+    return 0
+
+
 def main() -> int:
     if _scope_rule_brief_case():
+        return 1
+    if _request_rejection_brief_case():
         return 1
     if _repository_inventory_case():
         return 1

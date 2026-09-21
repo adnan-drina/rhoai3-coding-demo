@@ -2399,8 +2399,11 @@ def _cors_scenario_case() -> int:
         if "status 403 vs 405" not in by[("sc:cors-same-origin-unmapped-accounts", "PARITY_CORS")]["detail"]:
             return _fail("a stricter same-origin status is a CORS obligation: %s" % by[("sc:cors-same-origin-unmapped-accounts", "PARITY_CORS")])
         actual_cors, actual_resp = by[("sc:cors-actual-accounts", "PARITY_CORS")], by[("sc:cors-actual-accounts", "PARITY")]
-        if "status 500 vs 200" not in actual_cors["detail"] or "body" in actual_cors["detail"] or "body 11aa" not in actual_resp["detail"]:
-            return _fail("an actual request's status is the CORS decision; its body is the operation's: %s | %s"
+        # H6a: a 500 is not a CORS-typed refusal -- the operation answered it,
+        # so it routes as it would without an Origin; the header stays the adapter's
+        if ("status 500 vs 200" not in actual_resp["detail"] or "body 11aa" not in actual_resp["detail"]
+                or "status" in actual_cors["detail"] or "Access-Control-Allow-Origin" not in actual_cors["detail"]):
+            return _fail("an actual request's non-CORS status and body are the operation's; only the CORS header is the adapter's: %s | %s"
                          % (actual_cors["detail"], actual_resp["detail"]))
         pre = by[("sc:cors-preflight-enabled-accounts", "PARITY_CORS")]["detail"]
         if not all(t in pre for t in ("status 200 vs 401", "body", "WWW-Authenticate")):
@@ -2409,6 +2412,188 @@ def _cors_scenario_case() -> int:
             return _fail("a non-CORS scenario keeps its controller locus; a CORS one is the adapter's")
         if "ADR-020" not in json.dumps(by[("sc:xo-options-accounts", "PARITY_CORS")]["advice"]):
             return _fail("the CORS advice states the complete-response rule")
+    return 0
+
+
+def _cors_actual_routing_case() -> int:
+    """H6a (v9 sc:create-owners): a status difference on a cross-origin ACTUAL
+    request is the CORS adapter's only when it is a CORS-typed refusal the
+    capability's known responses name (the adapter's 403 with its body, the
+    platform filter's 403) -- and never when a non-cross-origin scenario of
+    the same entry point and method reports the same status difference. Any
+    other status routes to the controller with the body and the other
+    headers; a preflight's status and an Access-Control-* header on an
+    actual request stay the adapter's."""
+    import json
+    import tempfile
+
+    from planner.paths import PARITY_DIR
+
+    ep = "ep:com.acme.ledger.AccountResource#create(com.acme.ledger.AccountDto):http"
+    ep2 = "ep:com.acme.ledger.AccountResource#rename(int,com.acme.ledger.AccountDto):http"
+    ctl = "src/main/java/com/acme/ledger/AccountResource.java"
+    bundle = {"entry_points": [{"id": ep, "path": ctl}, {"id": ep2, "path": ctl}]}
+    with tempfile.TemporaryDirectory(prefix="cors-actual-") as td:
+        root = Path(td)
+        pdir = root / PARITY_DIR
+        (pdir / "scenarios").mkdir(parents=True)
+        corpus = root / "verification" / "scenarios" / "corpus.json"
+        corpus.parent.mkdir(parents=True)
+        xo = {"Origin": "http://parity.invalid:4200", "Content-Type": "application/json"}
+        corpus.write_text(json.dumps({"scenarios": [
+            {"id": "sc:create-accounts", "method": "POST", "path": "/api/accounts", "cors_policy": "crossorigin:1", "headers": xo, "body_file": "b.json"},
+            {"id": "sc:create-accounts-refused", "method": "POST", "path": "/api/accounts", "cors_policy": "crossorigin:1", "headers": xo, "body_file": "b.json"},
+            {"id": "sc:rename-accounts-1", "method": "PUT", "path": "/api/accounts/1", "cors_policy": "crossorigin:1", "headers": xo, "body_file": "b.json"},
+            {"id": "sc:rename-accounts-2", "method": "PUT", "path": "/api/accounts/2", "headers": {"Content-Type": "application/json"}, "body_file": "b.json"},
+            {"id": "sc:create-accounts-preflight", "method": "OPTIONS", "path": "/api/accounts", "cors_policy": "crossorigin:1",
+             "scenario_type": "browser-preflight", "headers": {"Origin": "http://parity.invalid:4200", "Access-Control-Request-Method": "POST"}},
+            {"id": "sc:list-accounts-xo", "method": "GET", "path": "/api/accounts", "cors_policy": "crossorigin:1", "headers": {"Origin": "http://parity.invalid:4200"}},
+        ]}))
+        empty = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+
+        def w(name, sid, ep_, reason, observed, method, **extra):
+            (pdir / "scenarios" / name).write_text(json.dumps(dict(
+                {"schema": "rhoai3.scenario-parity/v1", "entry_point": ep_, "scenario": sid, "verdict": "FAIL", "reason": reason,
+                 "request": {"method": method, "path": "/api/accounts", "body_absent": False, "body_sha256": "ab" * 32},
+                 "observed": observed}, **extra)))
+
+        # the v9 shape: cross-origin POST, 400 with an empty body where the source answered 201 with a body and a Location
+        w("a.json", "sc:create-accounts", ep, "status 400 vs 201; body %s vs 5f1d2c (1 difference(s): missing at line 1); header Location None vs http://s/api/accounts/12" % empty[:12],
+          {"status": 400, "body_kind": "text", "body_sha256": empty, "body_sample": "", "headers": {}}, "POST")
+        # a cross-origin POST the adapter refused: 403 with its own body
+        w("b.json", "sc:create-accounts-refused", ep, "status 403 vs 201; body 1a2b vs 5f1d2c; header Location None vs http://s/api/accounts/12",
+          {"status": 403, "body_kind": "text", "body_sha256": "1a" * 32, "body_sample": "Invalid CORS request", "headers": {}}, "POST")
+        # a cross-origin PUT answered 403 AND the same entry point's non-cross-origin PUT answered 403 vs 204 too: never CORS
+        w("c.json", "sc:rename-accounts-1", ep2, "status 403 vs 204; header Access-Control-Allow-Origin None vs *",
+          {"status": 403, "body_kind": "text", "body_sha256": empty, "body_sample": "", "headers": {}}, "PUT")
+        w("d.json", "sc:rename-accounts-2", ep2, "status 403 vs 204",
+          {"status": 403, "body_kind": "text", "body_sha256": empty, "body_sample": "", "headers": {}}, "PUT")
+        # a preflight status difference stays the adapter's whole response
+        w("e.json", "sc:create-accounts-preflight", ep, "status 400 vs 200; header Access-Control-Allow-Methods None vs POST",
+          {"status": 400, "body_kind": "text", "body_sha256": empty, "body_sample": "", "headers": {}}, "OPTIONS")
+        # an Access-Control-* header difference on an actual request is the adapter's; the body is the operation's
+        w("f.json", "sc:list-accounts-xo", ep, "header Access-Control-Expose-Headers None vs errors; body 11 vs 22",
+          {"status": 200, "body_kind": "json", "body_sha256": "11" * 32, "body_sample": "[]", "headers": {}}, "GET")
+        items = parity_items(root, bundle)
+        by = {(i["scenario"], i["rule_id"]): i for i in items}
+        want = {("sc:create-accounts", "PARITY"), ("sc:create-accounts-refused", "PARITY_CORS"), ("sc:create-accounts-refused", "PARITY"),
+                ("sc:rename-accounts-1", "PARITY"), ("sc:rename-accounts-1", "PARITY_CORS"), ("sc:rename-accounts-2", "PARITY"),
+                ("sc:create-accounts-preflight", "PARITY_CORS"), ("sc:list-accounts-xo", "PARITY_CORS"), ("sc:list-accounts-xo", "PARITY")}
+        if set(by) != want:
+            return _fail("H6a routing: %s" % sorted(by))
+        v9 = by[("sc:create-accounts", "PARITY")]
+        if (v9["path"] != ctl or not all(t in v9["detail"] for t in ("status 400 vs 201", "body", "Location"))):
+            return _fail("the v9 shape: one controller obligation carrying status, body and Location; the CORS unit gets nothing: %s" % v9["detail"])
+        ref = by[("sc:create-accounts-refused", "PARITY_CORS")]
+        if "status 403 vs 201" not in ref["detail"] or "Location" in ref["detail"] or "Location" not in by[("sc:create-accounts-refused", "PARITY")]["detail"]:
+            return _fail("a 403 with the adapter's own body is the CORS decision; the body and Location stay the operation's: %s" % ref["detail"])
+        ctl1 = by[("sc:rename-accounts-1", "PARITY")]
+        if "status 403 vs 204" not in ctl1["detail"] or "status" in by[("sc:rename-accounts-1", "PARITY_CORS")]["detail"]:
+            return _fail("a status the same entry point answers without any Origin is never CORS-owned: %s" % ctl1["detail"])
+        pre = by[("sc:create-accounts-preflight", "PARITY_CORS")]["detail"]
+        if "status 400 vs 200" not in pre or "Allow-Methods" not in pre:
+            return _fail("a preflight's status difference is the adapter's whole response: %s" % pre)
+        if "Expose-Headers" not in by[("sc:list-accounts-xo", "PARITY_CORS")]["detail"] or "body 11" not in by[("sc:list-accounts-xo", "PARITY")]["detail"]:
+            return _fail("an Access-Control-* header on an actual request is the adapter's; the body the operation's")
+        # the same division judges discharge (G1): the controller obligation's own diffs are the three, the CORS one's none
+        from planner.worklist import ParitySplitter
+
+        splitter = ParitySplitter(root, None)
+        a = json.loads((pdir / "scenarios" / "a.json").read_text())
+        if len(splitter.own("response", "sc:create-accounts", ep, a)) != 3 or splitter.own("cors", "sc:create-accounts", ep, a):
+            return _fail("the discharge division is the build division: %s" % splitter.own("response", "sc:create-accounts", ep, a))
+        c = json.loads((pdir / "scenarios" / "c.json").read_text())
+        if splitter.own("cors", "sc:rename-accounts-1", ep2, c) != ["header Access-Control-Allow-Origin None vs *"]:
+            return _fail("the control rule holds in the discharge division too: %s" % splitter.own("cors", "sc:rename-accounts-1", ep2, c))
+    return 0
+
+
+def _request_rejection_advice_case() -> int:
+    """H6b (v9 sc:create-owners / sc:update-owners-1): a 4xx with an empty
+    body where the source answered 2xx/3xx to the same body-carrying request
+    carries advice naming the handler boundary, the handler's parameters
+    resolved through the structure model against the catalog's
+    handler_parameters rows (the exact rows cited), and the handler and body
+    type files as locus hints. A 4xx the source also answered with a 4xx
+    gets none; a 4xx with a JSON error body keeps body_diff and gets it too."""
+    import json
+    import shutil
+    import tempfile
+
+    from planner.paths import CATALOGS_DIR, PARITY_DIR, STRUCTURE
+
+    ctl_fqn, dto_fqn = "com.acme.ledger.AccountResource", "com.acme.ledger.dto.AccountDto"
+    ctl, dto = "src/main/java/com/acme/ledger/AccountResource.java", "src/main/java/com/acme/ledger/dto/AccountDto.java"
+    sig = "create(%s,org.springframework.validation.BindingResult,org.springframework.web.util.UriComponentsBuilder)" % dto_fqn
+    ep = "ep:%s#%s:http" % (ctl_fqn, sig)
+    bundle = {"entry_points": [{"id": ep, "type": ctl_fqn, "member": sig, "path": ctl}]}
+    here = Path(__file__).resolve().parents[2]
+    with tempfile.TemporaryDirectory(prefix="request-rejection-") as td:
+        root = Path(td)
+        (root / CATALOGS_DIR).mkdir(parents=True)
+        shutil.copy(here / "planning" / "catalogs" / "compat-mapping.json", root / CATALOGS_DIR / "compat-mapping.json")
+        (root / STRUCTURE).parent.mkdir(parents=True)
+        (root / STRUCTURE).write_text(json.dumps({"types": [
+            {"fqn": ctl_fqn, "path": ctl, "methods": [
+                {"name": "create", "signature": sig, "params": [
+                    {"name": "dto", "type": dto_fqn, "annotations": [{"fqn": "org.springframework.web.bind.annotation.RequestBody"}, {"fqn": "jakarta.validation.Valid"}]},
+                    {"name": "binding", "type": "org.springframework.validation.BindingResult"},
+                    {"name": "ucBuilder", "type": "org.springframework.web.util.UriComponentsBuilder"}]},
+                {"name": "get", "signature": "get(int)", "params": [{"name": "id", "type": "int", "annotations": [{"fqn": "org.springframework.web.bind.annotation.PathVariable"}]}]}]},
+            {"fqn": dto_fqn, "path": dto, "fields": [{"name": "name", "type": "java.lang.String", "annotations": [{"fqn": "jakarta.validation.constraints.NotEmpty"}]}]}]}))
+        (root / PARITY_DIR / "scenarios").mkdir(parents=True)
+        empty = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+
+        def w(name, sid, reason, observed, **extra):
+            (root / PARITY_DIR / "scenarios" / name).write_text(json.dumps(dict(
+                {"schema": "rhoai3.scenario-parity/v1", "entry_point": ep, "scenario": sid, "verdict": "FAIL", "reason": reason,
+                 "request": {"method": "POST", "path": "/api/accounts", "body_absent": False}, "observed": observed}, **extra)))
+        w("a.json", "sc:create-1", "status 400 vs 201; body %s vs 5f1d2c (1 difference(s)); header Location None vs http://s/api/accounts/12" % empty[:12],
+          {"status": 400, "body_kind": "text", "body_sha256": empty, "body_sample": "", "headers": {}})
+        w("b.json", "sc:create-invalid", "status 400 vs 400; body 11 vs 22",
+          {"status": 400, "body_kind": "json", "body_sha256": "11" * 32, "body_sample": '{"violations":[]}', "headers": {}})
+        w("c.json", "sc:create-2", "status 422 vs 201; body 33 vs 5f1d2c (2 difference(s))",
+          {"status": 422, "body_kind": "json", "body_sha256": "33" * 32, "body_sample": '{"title":"Constraint Violation"}', "headers": {"content-type": "application/problem+json"}},
+          body_diff={"kind": "json", "summary": "value at $.title", "differences": [{"path": "$.title", "kind": "value"}]})
+        w("d.json", "sc:create-nobody", "status 400 vs 201",
+          {"status": 400, "body_kind": "text", "body_sha256": empty, "body_sample": "", "headers": {}},
+          request={"method": "POST", "path": "/api/accounts", "body_absent": True})
+        items = {i["scenario"]: i for i in parity_items(root, bundle)}
+        a = items["sc:create-1"]["advice"].get("request_rejection") or {}
+        if [h["path"] for h in a.get("locus_hints") or []] != [ctl, dto]:
+            return _fail("the hints are the handler file and the body type's file, from the model: %s" % a.get("locus_hints"))
+        keys = [c["key"] for c in a.get("catalog_rows") or []]
+        if sorted(keys) != ["jakarta.validation.Valid", "org.springframework.validation.BindingResult", "org.springframework.web.util.UriComponentsBuilder"]:
+            return _fail("the exact catalog rows for this handler's signature are cited: %s" % keys)
+        if not all(c["source"].startswith("https://quarkus.io/version/3.27/guides/") for c in a["catalog_rows"]):
+            return _fail("every cited row carries its official source: %s" % a["catalog_rows"])
+        text = str(a.get("locus") or "")
+        for must in ("refused the request before or at the handler boundary (status 400, empty body)", "source accepted it (status 201)",
+                     "request body parameter (%s)" % dto_fqn, "org.springframework.validation.BindingResult binding",
+                     "org.springframework.web.util.UriComponentsBuilder ucBuilder", "content-type", "Catalog: ",
+                     "amend-scope.py", "--evidence parity:%s" % items["sc:create-1"]["id"]):
+            if must not in text:
+                return _fail("the advice must say %r: %s" % (must, text))
+        bindings = {p["name"]: p["binding"] for p in a["handler"]["params"]}
+        if bindings["dto"] != "request body" or not bindings["binding"].startswith("not among") or not bindings["ucBuilder"].startswith("not among"):
+            return _fail("each parameter is classified by the catalog: %s" % bindings)
+        if "Refused at the handler boundary: status 400 (empty body) where the source answered 201" not in items["sc:create-1"]["message"]:
+            return _fail("the obligation's message says so: %s" % items["sc:create-1"]["message"])
+        if items["sc:create-invalid"]["advice"].get("request_rejection"):
+            return _fail("a 4xx the source also answered with a 4xx is a body difference, not a boundary refusal")
+        if items["sc:create-nobody"]["advice"].get("request_rejection"):
+            return _fail("a request that carried no body gets no boundary-refusal advice")
+        c = items["sc:create-2"]["advice"]
+        if not c.get("body_diff") or not c.get("request_rejection") or "json body application/problem+json" not in c["request_rejection"]["observed_body"]:
+            return _fail("a 4xx with a JSON error body keeps body_diff and gets the advice, quoting the body: %s" % c.get("request_rejection", {}).get("observed_body"))
+        # the two obligations at one handler name each other
+        if items["sc:create-2"]["advice"]["request_rejection"].get("same_locus_obligations") != [items["sc:create-1"]["id"]]:
+            return _fail("obligations refused at the same handler name each other")
+        # no catalog in the tree: the advice still names the boundary and the handler, and says the catalog is absent
+        (root / CATALOGS_DIR / "compat-mapping.json").unlink()
+        a2 = {i["scenario"]: i for i in parity_items(root, bundle)}["sc:create-1"]["advice"]["request_rejection"]
+        if a2.get("catalog_rows") or "Catalog: " in a2["locus"] or [h["path"] for h in a2["locus_hints"]] != [ctl, dto]:
+            return _fail("without a catalog nothing is cited and nothing is guessed: %s" % a2["locus"][:200])
     return 0
 
 
@@ -2901,7 +3086,7 @@ def _server_error_advice_case() -> int:
 def main() -> int:
     if (_runtime_identity_case() or _gate_progress_case() or _batch_scope_case() or _checked_family_case()
             or _set_wide_case() or _config_value_case() or _parity_typing_case() or _parity_advice_case()
-            or _parity_navigation_case() or _owed_adapter_case() or _cors_scenario_case() or _scoped_carry_case() or _receipt_v2_case() or _split_discharge_case() or _read_oracle_discharge_case() or _body_diff_case() or _server_error_advice_case() or _harness_owned_guard_case() or _parity_gate_case() or _unit_formation_case() or _unit_bound_case() or _unit_seal_case()
+            or _parity_navigation_case() or _owed_adapter_case() or _cors_scenario_case() or _cors_actual_routing_case() or _request_rejection_advice_case() or _scoped_carry_case() or _receipt_v2_case() or _split_discharge_case() or _read_oracle_discharge_case() or _body_diff_case() or _server_error_advice_case() or _harness_owned_guard_case() or _parity_gate_case() or _unit_formation_case() or _unit_bound_case() or _unit_seal_case()
             or _unit_mode_case() or _unit_inert_case() or _unit_config_case()
             or _unit_experiment_table_case() or _unit_explained_case() or _unit_progress_case()
             or _unit_budget_case()):

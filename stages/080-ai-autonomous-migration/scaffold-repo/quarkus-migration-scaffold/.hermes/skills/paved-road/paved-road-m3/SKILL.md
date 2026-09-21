@@ -53,8 +53,15 @@ rule to `kanban_complete`.
    `advice.server_error`: the exception the destination logged for that
    request (matched by the error id its body carried), its message, and
    `locus_hints` naming the product file(s) its stack frames pass through --
-   the body itself is only an error id. Both are handled by the scope rule in
-   step 3. K2 treats `brief.py` `[exit 1]` as a
+   the body itself is only an error id. A parity item whose status difference
+   is a **4xx** with an empty body where the source accepted the same
+   body-carrying request carries `advice.request_rejection`: the handler's
+   parameters resolved through the structure model against the compat
+   catalog's `handler_parameters` rows (the request body parameter, the
+   validation annotations, the kinds the documentation does not list), with
+   `locus_hints` naming the handler file and the body parameter's type -- a
+   refusal at the handler boundary logs nothing at default level. All three
+   are handled by the scope rule in step 3. K2 treats `brief.py` `[exit 1]` as a
    bound gate: re-run brief or `kanban_block` (run-verify and advance need not
    have run). **The brief is the plan.** Each item carries
    the rule's advice; pom items carry the element at the line, which
@@ -75,7 +82,8 @@ rule to `kanban_complete`.
    **Scope rule** (for every parity item, and for any runtime obligation
    whose producing file is outside the write set): find the producing file
    -- the item's `locus_hints` name it: a `body_diff`'s producer, a
-   `server_error`'s first product frame -- record it BEFORE editing it with
+   `server_error`'s first product frame, a `request_rejection`'s handler or
+   body type -- record it BEFORE editing it with
    `amend-scope.py --root . --cluster <id> --card $HERMES_KANBAN_TASK --path
    <file> --reason <why> --evidence parity:<item id>` (bounded by the card's
    own bounds: two amendments, a unit's four and never past its file bound),

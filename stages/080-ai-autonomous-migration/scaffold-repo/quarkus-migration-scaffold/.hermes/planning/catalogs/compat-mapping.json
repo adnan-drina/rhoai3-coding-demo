@@ -1,6 +1,6 @@
 {
   "schema": "rhoai3.catalog.compat-mapping/v1",
-  "note": "Deterministic bootstrap for the Spring-compatibility path (SAD v3 \u00a76). Every row is a documented Quarkus mapping, never an inference: starters map to the Quarkus Spring compatibility extensions and their runtime prerequisites; property keys map per the quarkus-spring-boot-properties and hibernate-orm guides. Versions are never here: the BOM and plugin come from .hermes/pins.json (quarkus_platform, compiler_plugin, surefire_plugin). A starter or driver without a row stays in the pom and is surfaced by the compiler and the MTA rescan as work-list items; nothing is guessed.",
+  "note": "Deterministic bootstrap for the Spring-compatibility path (SAD v3 §6). Every row is a documented Quarkus mapping, never an inference: starters map to the Quarkus Spring compatibility extensions and their runtime prerequisites; property keys map per the quarkus-spring-boot-properties and hibernate-orm guides. Versions are never here: the BOM and plugin come from .hermes/pins.json (quarkus_platform, compiler_plugin, surefire_plugin). A starter or driver without a row stays in the pom and is surfaced by the compiler and the MTA rescan as work-list items; nothing is guessed.",
   "sources": [
     "https://quarkus.io/guides/spring-di",
     "https://quarkus.io/guides/spring-web",
@@ -149,7 +149,7 @@
     "io.quarkus:quarkus-rest-client-reactive-jsonb": "io.quarkus:quarkus-rest-client-jsonb"
   },
   "package_renames": {
-    "note": "Jakarta EE 10 namespace (Quarkus 3 migration guide, 'Jakarta EE 10' section): javax.* \u2192 jakarta.* for these packages. The brief attaches the rename to a compiler diagnostic that names one of them; the worker changes the import, never the dependency.",
+    "note": "Jakarta EE 10 namespace (Quarkus 3 migration guide, 'Jakarta EE 10' section): javax.* → jakarta.* for these packages. The brief attaches the rename to a compiler diagnostic that names one of them; the worker changes the import, never the dependency.",
     "javax.persistence": "jakarta.persistence",
     "javax.validation": "jakarta.validation",
     "javax.transaction": "jakarta.transaction",
@@ -221,7 +221,7 @@
     }
   },
   "replace_dependencies": {
-    "note": "javax \u2192 jakarta artifact renames the BOM manages (MTA javax-to-jakarta-dependencies-00001/00003).",
+    "note": "javax → jakarta artifact renames the BOM manages (MTA javax-to-jakarta-dependencies-00001/00003).",
     "javax.xml.bind:jaxb-api": "jakarta.xml.bind:jakarta.xml.bind-api",
     "javax.validation:validation-api": "jakarta.validation:jakarta.validation-api",
     "javax.persistence:javax.persistence-api": "jakarta.persistence:jakarta.persistence-api",
@@ -360,6 +360,49 @@
       "to": "jakarta.ws.rs.core.UriBuilder",
       "kind": "type",
       "source": "https://quarkus.io/version/3.27/guides/rest (Jakarta REST UriInfo/UriBuilder build a request-aware absolute URI; @Context injects them)"
+    }
+  },
+  "handler_parameters": {
+    "note": "Controller-method PARAMETER kinds the Spring Web compatibility extension documents (H6b). The guide's 'Supported Spring Web functionalities' lists the annotations a parameter may carry and, beyond those, only jakarta.servlet.http.HttpServletRequest and HttpServletResponse as parameter types; a parameter of any other kind is not among the documented ones. A 4xx the destination answers with an empty body where the source accepted the same request is the shape of a request refused before or at the handler boundary, and the planner (worklist.request_rejection_advice) resolves THIS handler's signature through the structure model against these rows. `undocumented` holds the kinds a Spring handler commonly declares that the list does not name; each row cites where its replacement is documented. Rows are documentation, never an inference about what the compat layer does with such a parameter -- the loop finds that.",
+    "source": "https://quarkus.io/version/3.27/guides/spring-web#supported-spring-web-functionalities",
+    "supported_annotations": [
+      "org.springframework.web.bind.annotation.RequestParam",
+      "org.springframework.web.bind.annotation.RequestHeader",
+      "org.springframework.web.bind.annotation.MatrixVariable",
+      "org.springframework.web.bind.annotation.PathVariable",
+      "org.springframework.web.bind.annotation.CookieValue",
+      "org.springframework.web.bind.annotation.RequestBody"
+    ],
+    "supported_types": [
+      "jakarta.servlet.http.HttpServletRequest",
+      "jakarta.servlet.http.HttpServletResponse"
+    ],
+    "undocumented": {
+      "org.springframework.validation.BindingResult": {
+        "kind": "type",
+        "source": "https://quarkus.io/version/3.27/guides/spring-web#supported-spring-web-functionalities",
+        "note": "not among the parameter kinds the Spring Web guide lists. On the destination a constraint violation on a validated parameter is a jakarta.validation.ConstraintViolationException answered by the platform's built-in ExceptionMapper as 400 with a JSON violation report (https://quarkus.io/version/3.27/guides/validation#rest-end-point-validation); a handler that inspects the BindingResult to build its own error body does that through the platform's mechanism instead (references/rest-annotations.md rest-valid, references/exception-mapping.md exc-validation)."
+      },
+      "org.springframework.validation.Errors": {
+        "kind": "type",
+        "source": "https://quarkus.io/version/3.27/guides/spring-web#supported-spring-web-functionalities",
+        "note": "the supertype of BindingResult: the same row (https://quarkus.io/version/3.27/guides/validation#rest-end-point-validation)."
+      },
+      "org.springframework.web.util.UriComponentsBuilder": {
+        "kind": "type",
+        "source": "https://quarkus.io/version/3.27/guides/spring-web#supported-spring-web-functionalities",
+        "note": "not among the parameter kinds the Spring Web guide lists; symbol_renames maps it to jakarta.ws.rs.core.UriBuilder reached from an injected jakarta.ws.rs.core.UriInfo (uriInfo.getBaseUriBuilder(), references/rest-annotations.md rest-location-uri)."
+      },
+      "jakarta.validation.Valid": {
+        "kind": "annotation",
+        "source": "https://quarkus.io/version/3.27/guides/validation#rest-end-point-validation",
+        "note": "not in the Spring Web guide's annotation table. Quarkus's validation guide documents @Valid on a REST endpoint parameter (quarkus-hibernate-validator, the extension spring-boot-starter-validation maps to): a violation is answered 400 with a JSON violation report by a built-in jakarta.ws.rs.ext.ExceptionMapper."
+      },
+      "javax.validation.Valid": {
+        "kind": "annotation",
+        "source": "https://quarkus.io/version/3.27/guides/validation#rest-end-point-validation",
+        "note": "the pre-Jakarta spelling of jakarta.validation.Valid (package_renames javax.validation -> jakarta.validation); the same row."
+      }
     }
   }
 }

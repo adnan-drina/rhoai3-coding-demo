@@ -666,6 +666,13 @@ def parity_brief(items: list[dict], cluster: dict) -> dict:
         "server_errors": [dict((i.get("advice") or {}).get("server_error") or {}, obligation=str(i.get("id") or ""),
                                scenario=str(i.get("scenario") or ""))
                           for i in rows if (i.get("advice") or {}).get("server_error")],
+        # H6b: a 4xx with an empty (or platform) body where the source accepted
+        # the same body-carrying request is a refusal before or at the handler
+        # boundary -- the card gets the handler's parameter binding against the
+        # compat catalog and the handler and DTO files, not a stack it does not have
+        "request_rejections": [dict((i.get("advice") or {}).get("request_rejection") or {}, obligation=str(i.get("id") or ""),
+                                    scenario=str(i.get("scenario") or ""))
+                               for i in rows if (i.get("advice") or {}).get("request_rejection")],
         "scope": SCOPE_RULE,
         "measured_by": (
             "run-verify.sh --mode acceptance re-runs the scenario comparison for this card (run-parity.py, scoped to %s, "

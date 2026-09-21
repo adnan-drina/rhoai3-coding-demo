@@ -125,6 +125,39 @@ def contract(kind: str) -> dict[str, Any]:
                        "install-response-adapter.py --root . --adapter %s" % kind}
 
 
+# The responses the CORS repair PRODUCES for CORS reasons, and nothing else
+# (H6a). A cross-origin ACTUAL request's status is the adapter's obligation
+# only when it is one of these -- the adapter's own refusal (the template's
+# reject(): 403 with REJECTED_BODY, the source's shape) or the platform CORS
+# filter's refusal (403, the security-cors guide). Any other status on an
+# actual request is the operation's answer and routes as it would without an
+# Origin header. Listed here, beside the template, so the planner carries no
+# status literal of its own; install-response-adapter.test.py proves the
+# template still writes exactly these.
+CORS_REJECTIONS: tuple[dict[str, Any], ...] = (
+    {"status": 403, "body": "Invalid CORS request", "by": "the adapter's reject(): an origin, method or header the SOURCE policy refuses"},
+    {"status": 403, "body": "", "by": "the platform's CORS filter (quarkus.http.cors): an origin or method its configuration refuses (%s)" % _QUARKUS_CORS},
+)
+
+
+def cors_rejection(status: Any, body_sample: str = "") -> str:
+    """Why an observed (status, body) is a CORS-typed refusal -- the ``by`` of
+    the matching known response -- or "" when it is none of them. A row with
+    a body matches only that body; a row without one matches its status."""
+    try:
+        code = int(str(status).strip())
+    except (TypeError, ValueError):
+        return ""
+    sample = str(body_sample or "").strip()
+    for row in CORS_REJECTIONS:
+        if row["status"] != code:
+            continue
+        if row["body"] and sample != row["body"]:
+            continue
+        return str(row["by"])
+    return ""
+
+
 def kind_of_path(rel: str) -> str:
     for k in KINDS:
         if adapter_path(k) == rel:

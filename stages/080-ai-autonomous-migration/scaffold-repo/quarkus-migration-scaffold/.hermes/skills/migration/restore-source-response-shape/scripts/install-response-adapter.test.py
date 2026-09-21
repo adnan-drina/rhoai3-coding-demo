@@ -274,6 +274,15 @@ def main() -> int:
           "a same-origin request is hidden from the platform CORS filter and gets its Origin back before routing (ADR-020)")
     check(re.search(r'if \(origin == null\) \{\s*ctx\.next\(\);\s*return;', cors) is not None,
           "a request without Origin is passed through untouched")
+    # H6a: the statuses the planner treats as CORS-typed come from here, and
+    # the template must still write exactly them
+    own = [r for r in ra.CORS_REJECTIONS if r["body"]]
+    check(len(own) == 1 and 'REJECTED_BODY = "%s";' % own[0]["body"] in cors
+          and "response.setStatusCode(%d).end(REJECTED_BODY);" % own[0]["status"] in cors,
+          "the adapter's own refusal is the one CORS_REJECTIONS records (status and body)")
+    check(ra.cors_rejection(403, own[0]["body"]).startswith("the adapter") and ra.cors_rejection(403, "")
+          and ra.cors_rejection(400, "") == "" and ra.cors_rejection(403, '{"errors":[]}') != "" ,
+          "cors_rejection names the producer of a 403 and nothing for another status")
     for name, text in (("cors", cors), ("media", media)):
         check(ra.adapter_type(name if name == "cors" else ra.MEDIA_TYPE).rsplit(".", 1)[-1] in text
               and "package %s;" % ra.ADAPTER_PACKAGE in text, "%s template declares its contract type" % name)

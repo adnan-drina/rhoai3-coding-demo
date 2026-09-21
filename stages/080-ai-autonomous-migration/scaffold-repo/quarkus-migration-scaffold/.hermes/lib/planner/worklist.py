@@ -973,34 +973,87 @@ def cors_scenarios(root: Path | None) -> dict[str, dict[str, Any]]:
                               "probe": stype == SCENARIO_DIAGNOSTIC_PROBE,
                               "preflight": stype == SCENARIO_BROWSER_PREFLIGHT or (
                                   not stype and method == "OPTIONS" and "access-control-request-method" in hdrs),
-                              "same_origin": bool(sc.get("same_origin")) or str(sc.get("origin_kind") or "") == "same"}
+                              "same_origin": bool(sc.get("same_origin")) or str(sc.get("origin_kind") or "") == "same",
+                              "has_body": bool(sc.get("body_file"))}
     return out
 
 
+def corpus_requests(root: Path | None) -> dict[str, dict[str, Any]]:
+    """{scenario id: {method, has_body, cross_origin}} for EVERY corpus scenario
+    (the cross-origin ones and the controls alike). {} without a corpus."""
+    p = Path(root) / SCENARIO_CORPUS if root is not None else None
+    if p is None or not p.is_file():
+        return {}
+    try:
+        doc = load_json(p)
+    except (OSError, ValueError):
+        return {}
+    out: dict[str, dict[str, Any]] = {}
+    for sc in (doc.get("scenarios") or []) if isinstance(doc, dict) else []:
+        if not isinstance(sc, dict) or not sc.get("id"):
+            continue
+        out[_sid(str(sc["id"]))] = {"method": str(sc.get("method") or "").upper(), "has_body": bool(sc.get("body_file")),
+                                    "cross_origin": bool(sc.get("cors_policy"))}
+    return out
+
+
+def _doc_method(doc: dict[str, Any], row: dict[str, Any] | None) -> str:
+    req = doc.get("request") if isinstance(doc.get("request"), dict) else {}
+    return str(req.get("method") or (row or {}).get("method") or "").upper()
+
+
+def cors_typed_status(doc: dict[str, Any], diff: str) -> str:
+    """H6a: why this status difference on a cross-origin ACTUAL request is a
+    CORS-typed refusal -- the producer the capability's known responses name
+    (response_adapters.CORS_REJECTIONS: the adapter's 403 with its body, the
+    platform CORS filter's 403) -- or "" when the observed status is anything
+    else. The status is read from the diff and the body from the record's
+    own observation; nothing here is a literal of the planner's."""
+    p = parse_parity_diff(diff)
+    if p["kind"] != "status":
+        return ""
+    observed = doc.get("observed") if isinstance(doc.get("observed"), dict) else {}
+    return _adapters.cors_rejection(p["have"], str(observed.get("body_sample") or ""))
+
+
 def cors_scenario_split(scenario: str, doc: dict[str, Any], known: dict[str, dict[str, Any]],
-                        cors: list[str], other: list[str]) -> tuple[list[str], list[str]]:
-    """ADR-020: in a CROSS-ORIGIN scenario the adapter's scope owns more than the
-    Access-Control-* headers. Its status is the CORS decision (a platform 403
-    where the source routed, a 401 where the source's security ran first), and
-    for a preflight, a same-origin request, or an OPTIONS the source treated as
-    ordinary routing, the whole response is (status, body, Allow, challenge). "Stricter" never
-    waives a measured difference: those diffs become the PARITY_CORS
-    obligation instead of a controller card. A cross-origin ACTUAL request's
-    body and other headers stay the operation's own behaviour."""
+                        cors: list[str], other: list[str],
+                        controls: set[str] | None = None) -> tuple[list[str], list[str]]:
+    """ADR-020 and H6a: in a CROSS-ORIGIN scenario the adapter's scope owns
+    more than the Access-Control-* headers. For a preflight, a same-origin
+    request, or an OPTIONS the source treated as ordinary routing, the whole
+    response is (status, body, Allow, challenge): the platform answers a
+    preflight before any endpoint, and a same-origin rejection is the CORS
+    filter judging what the source never judged. "Stricter" never waives a
+    measured difference there: those diffs become the PARITY_CORS obligation.
+
+    A cross-origin ACTUAL request is answered by the operation itself once
+    the CORS decision let it through, so its status is the adapter's only
+    when it IS the CORS decision: a refusal the capability's known responses
+    name (cors_typed_status). Any other status -- a 400, a 404, a 500 --
+    routes exactly as it would without the Origin header, to the controller
+    with the body and the other headers (v9 sc:create-owners: a 400 with an
+    empty body where the source answered 201 was sent to the adapter, which
+    had nothing to change). ``controls`` are the status diffs a
+    NON-cross-origin scenario of the same entry point and method reported
+    identically in this comparison: a status the operation answers without
+    any Origin is never the CORS decision, whatever it is."""
     sid = str(scenario or "")
     row = known.get(sid) or known.get(sid[3:] if sid.startswith("sc:") else "sc:" + sid)
     if row is None and not _CORS_SCENARIO_RE.match(sid):
         return cors, other
-    method = str(((doc.get("request") or {}) if isinstance(doc.get("request"), dict) else {}).get("method") or
-                 (row or {}).get("method") or "").upper()
+    method = _doc_method(doc, row)
     whole = (bool((row or {}).get("preflight")) or bool((row or {}).get("same_origin")) or method == "OPTIONS"
              or _CORS_PREFLIGHT_RE.match(sid) is not None or _CORS_SAME_ORIGIN_RE.match(sid) is not None)
     status = [d for d in other if parse_parity_diff(d)["kind"] == "status"]
-    # the complete response follows only a CORS-shaped difference (a status or
-    # an Access-Control-* header): a body alone -- or a body and a Content-Type
-    # parameter -- is the operation's own and the representation obligation's,
-    # never the adapter's
-    moved = [d for d in other if whole] if (whole and (cors or status)) else status
+    if whole:
+        # the complete response follows only a CORS-shaped difference (a status
+        # or an Access-Control-* header): a body alone -- or a body and a
+        # Content-Type parameter -- is the operation's own and the
+        # representation obligation's, never the adapter's
+        moved = [d for d in other] if (cors or status) else []
+    else:
+        moved = [d for d in status if d not in (controls or set()) and cors_typed_status(doc, d)]
     return cors + moved, [d for d in other if d not in moved]
 
 
@@ -1504,11 +1557,48 @@ class ParitySplitter:
     probe. The work-list build and per-obligation acceptance (G1) use the
     same division, so an obligation is judged by exactly its own diffs."""
 
-    def __init__(self, root: Path | None, receipt: dict[str, Any] | None) -> None:
+    def __init__(self, root: Path | None, receipt: dict[str, Any] | None,
+                 docs: list[dict[str, Any]] | None = None) -> None:
+        self.root = Path(root) if root is not None else None
         self.cross_origin = cors_scenarios(root)
+        self.requests = corpus_requests(root)
         cors = (receipt or {}).get("cors") if isinstance(receipt, dict) else None
         outcomes = (cors or {}).get("outcomes") if isinstance(cors, dict) else None
         self.cors_outcomes = outcomes if isinstance(outcomes, dict) else {}
+        self._controls: dict[tuple[str, str], set[str]] | None = None
+        if docs is not None:
+            self._controls = self._index(docs)
+
+    def _index(self, docs: list[dict[str, Any]]) -> dict[tuple[str, str], set[str]]:
+        """{(entry point, method): the status diffs its NON-cross-origin FAIL
+        verdicts report} -- the controls of H6a's second rule."""
+        out: dict[tuple[str, str], set[str]] = defaultdict(set)
+        for doc in docs:
+            if not isinstance(doc, dict) or str(doc.get("verdict") or "") != "FAIL" or not doc.get("entry_point"):
+                continue
+            sid = str(doc.get("scenario") or "")
+            req = self.requests.get(_sid(sid)) or {}
+            if sid and (sid in self.cross_origin or _sid(sid) in self.cross_origin or "sc:" + _sid(sid) in self.cross_origin
+                        or req.get("cross_origin") or _CORS_SCENARIO_RE.match(sid)):
+                continue
+            method = _doc_method(doc, req)
+            for d in _split_diffs(str(doc.get("reason") or "")):
+                if parse_parity_diff(d)["kind"] == "status":
+                    out[(str(doc["entry_point"]), method)].add(d)
+        return out
+
+    def controls(self, ep: str, method: str) -> set[str]:
+        if self._controls is None:
+            docs: list[dict[str, Any]] = []
+            pdir = self.root / PARITY_DIR if self.root is not None else None
+            if pdir is not None and pdir.is_dir():
+                for p in sorted(pdir.glob("*.json")) + sorted((pdir / "scenarios").glob("*.json")):
+                    try:
+                        docs.append(load_json(p))
+                    except (OSError, ValueError):
+                        continue
+            self._controls = self._index(docs)
+        return set(self._controls.get((ep, method), set()))
 
     def split(self, scenario: str, ep: str, doc: dict[str, Any],
               notes: list[dict[str, Any]] | None = None) -> tuple[list[str], list[str], list[dict[str, Any]], bool] | None:
@@ -1525,7 +1615,8 @@ class ParitySplitter:
         withheld = False
         cors, other = classify_parity_diffs(reason)
         representation, other = representation_diffs(other)
-        cors, other = cors_scenario_split(scenario, doc, co, cors, other)
+        method = _doc_method(doc, row_info or self.requests.get(_sid(scenario)))
+        cors, other = cors_scenario_split(scenario, doc, co, cors, other, self.controls(ep, method))
         access = str(((self.cors_outcomes.get(scenario) or self.cors_outcomes.get(_sid(scenario)) or {}).get("browser_access") or ""))
         if access == "prevents" and cors:
             # the SOURCE prevents this exchange: a destination that grants no
@@ -1778,6 +1869,183 @@ def server_error_advice(root: Path | None, doc: dict[str, Any], item_id: str, di
     return out
 
 
+_EP_ID_RE = re.compile(r"^ep:(?P<type>[^#]+)#(?P<member>.*?)(?::(?P<kind>[a-z]+))?$")
+_REQUEST_BODY_ANN = "org.springframework.web.bind.annotation.RequestBody"
+_EMPTY_SHA256 = sha256_bytes(b"")
+
+
+def handler_parameters(root: Path | None) -> dict[str, Any]:
+    """compat-mapping.json `handler_parameters`: the controller-method
+    parameter kinds the Spring Web compatibility extension DOCUMENTS
+    (annotations and types) and the rows for kinds a Spring handler commonly
+    declares that the documentation does not list. Every row cites where it
+    is documented; {} without a catalog or the block."""
+    if root is None:
+        return {}
+    p = Path(root) / CATALOGS_DIR / "compat-mapping.json"
+    if not p.is_file():
+        return {}
+    try:
+        doc = load_json(p)
+    except (OSError, ValueError):
+        return {}
+    block = doc.get("handler_parameters") if isinstance(doc, dict) else None
+    if not isinstance(block, dict):
+        return {}
+    return {"note": str(block.get("note") or ""), "source": str(block.get("source") or ""),
+            "supported_annotations": [str(x) for x in (block.get("supported_annotations") or [])],
+            "supported_types": [str(x) for x in (block.get("supported_types") or [])],
+            "undocumented": {str(k): dict(v) for k, v in (block.get("undocumented") or {}).items()
+                             if k != "note" and isinstance(v, dict)}}
+
+
+def _ann_fqns(anns: Any) -> list[str]:
+    return [str(a.get("fqn") or a.get("name") or "") for a in (anns or []) if isinstance(a, dict)]
+
+
+def _same_symbol(a: str, b: str) -> bool:
+    """Equal qualified names, or a model's unqualified spelling of one."""
+    if not a or not b:
+        return False
+    return a == b or ("." not in a and a == b.rsplit(".", 1)[-1]) or ("." not in b and b == a.rsplit(".", 1)[-1])
+
+
+def entry_point_handler(root: Path | None, ep_row: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    """(the structure type, the method row) an entry point names, resolved
+    through M1's structural model by the type and the member the bundle row
+    carries (or the id spells: ep:<type>#<member>:<kind>); ({}, {}) when the
+    model does not hold them."""
+    type_fqn = str(ep_row.get("type") or "")
+    member = str(ep_row.get("member") or "")
+    if not type_fqn:
+        m = _EP_ID_RE.match(str(ep_row.get("id") or ""))
+        if m:
+            type_fqn, member = m.group("type"), member or m.group("member")
+    if not type_fqn:
+        return {}, {}
+    typ = next((t for t in structure_types(root) if str(t.get("fqn") or "") == type_fqn), None)
+    if typ is None:
+        return {}, {}
+    methods = [m for m in (typ.get("methods") or []) if isinstance(m, dict)]
+    name = member.split("(", 1)[0]
+    exact = [m for m in methods if member and str(m.get("signature") or "") == member]
+    named = [m for m in methods if str(m.get("name") or "") == name]
+    hit = exact or named
+    return typ, (hit[0] if len(hit) == 1 else {})
+
+
+def request_rejection_advice(root: Path | None, ep_row: dict[str, Any], doc: dict[str, Any], item_id: str,
+                             diffs: list[str], request_row: dict[str, Any] | None = None) -> dict[str, Any]:
+    """H6b: a 4xx the destination answered where the source answered 2xx/3xx,
+    on a request that CARRIED A BODY -- the shape of a request refused before
+    or at the handler boundary (v9 sc:create-owners and its control
+    sc:update-owners-1: 400, empty body, no content type, nothing in the log
+    at default level). The advice says what the evidence shows and where to
+    look: the handler's parameter binding against the compat catalog -- the
+    request body parameter, the validation annotations, every parameter kind
+    the documentation does not list (from the catalog, resolved through the
+    structure model for THIS handler's signature) and the content-type
+    negotiation. Locus hints: the handler's file and, when the model shows
+    it, the request body parameter's type. Nothing here for a 4xx the source
+    answered with a 4xx, for a request without a body, or for a 5xx (that is
+    server_error_advice's)."""
+    status = next((parse_parity_diff(d) for d in diffs if parse_parity_diff(d)["kind"] == "status"), None)
+    if status is None:
+        return {}
+    have, want = str(status["have"]), str(status["want"])
+    if not have.startswith("4") or want[:1] not in ("2", "3"):
+        return {}
+    req = doc.get("request") if isinstance(doc.get("request"), dict) else {}
+    if "body_absent" in req:
+        carried = not bool(req.get("body_absent"))
+    elif req.get("body_sha256"):
+        carried = True
+    else:
+        carried = bool((request_row or {}).get("has_body"))
+    if not carried:
+        return {}
+    observed = doc.get("observed") if isinstance(doc.get("observed"), dict) else {}
+    sample = str(observed.get("body_sample") or "")
+    sha = str(observed.get("body_sha256") or "")
+    empty = not sample.strip() and sha in ("", _EMPTY_SHA256)
+    ctype = ""
+    for k, v in ((observed.get("headers") or {}) if isinstance(observed.get("headers"), dict) else {}).items():
+        if str(k).lower() == "content-type":
+            ctype = str(v or "")
+    observed_body = "empty body" if empty else "%s body%s: %s" % (
+        str(observed.get("body_kind") or "a"), (" " + ctype) if ctype else "", sample[:120].replace("\n", " "))
+    catalog = handler_parameters(root)
+    typ, method = entry_point_handler(root, ep_row)
+    handler_path = str(ep_row.get("path") or "") or (structure_type_path(root, typ) if typ else "")
+    params: list[dict[str, Any]] = []
+    body_type = ""
+    for par in (method.get("params") or []) if method else []:
+        if not isinstance(par, dict):
+            continue
+        ptype, pname, anns = str(par.get("type") or ""), str(par.get("name") or ""), _ann_fqns(par.get("annotations"))
+        row = {"name": pname, "type": ptype, "annotations": anns}
+        cites: list[dict[str, str]] = []
+        for key, rowdoc in catalog.get("undocumented", {}).items():
+            if _same_symbol(ptype, key) or any(_same_symbol(a, key) for a in anns):
+                cites.append({"catalog": "compat-mapping.json", "block": "handler_parameters.undocumented", "key": key,
+                              "source": str(rowdoc.get("source") or ""), "note": str(rowdoc.get("note") or "")})
+        if any(_same_symbol(a, _REQUEST_BODY_ANN) for a in anns):
+            row["binding"] = "request body"
+            body_type = body_type or ptype
+        elif any(_same_symbol(a, k) for a in anns for k in catalog.get("supported_annotations", [])):
+            row["binding"] = "documented annotation"
+        elif any(_same_symbol(ptype, k) for k in catalog.get("supported_types", [])):
+            row["binding"] = "documented type"
+        elif cites:
+            row["binding"] = "not among the documented parameter kinds"
+        elif catalog:
+            row["binding"] = "not among the documented parameter kinds (no catalog row: read the guide the block cites)"
+        else:
+            row["binding"] = "unknown (no compat catalog in this tree)"
+        if cites:
+            row["catalog_rows"] = cites
+        params.append(row)
+    hints: list[dict[str, str]] = []
+    if handler_path:
+        hints.append({"path": handler_path, "type": str(typ.get("fqn") or ep_row.get("type") or ""),
+                      "member": str(method.get("signature") or method.get("name") or ep_row.get("member") or ""),
+                      "why": "the handler this entry point names; its parameter list is what the compat layer binds before the body of the method runs"})
+    dto = next((t for t in structure_types(root) if body_type and str(t.get("fqn") or "") == body_type), None) if body_type else None
+    if dto is not None:
+        dto_path = structure_type_path(root, dto)
+        if dto_path and all(h["path"] != dto_path for h in hints):
+            hints.append({"path": dto_path, "type": str(dto.get("fqn") or ""), "member": "",
+                          "why": "the request body parameter's type: its constraint annotations and its JSON shape decide whether the body binds and validates"})
+    unlisted = [p for p in params if p["binding"].startswith("not among")]
+    cited = [c for p in params for c in (p.get("catalog_rows") or [])]
+    text = (
+        "the destination refused the request before or at the handler boundary (status %s, %s) while the source accepted it "
+        "(status %s): compare the handler's parameter binding against the compat catalog -- the request body parameter%s, "
+        "its validation annotations, any parameter the platform's compat layer does not bind (%s), and the content-type "
+        "negotiation (the request's Content-Type against what the handler consumes). Nothing in the destination log at "
+        "default level explains a 4xx: the answer is in the handler signature, not in a stack."
+        % (have, observed_body, want,
+           (" (%s)" % body_type) if body_type else "",
+           ("this handler declares %s" % ", ".join("%s %s" % (p["type"], p["name"]) for p in unlisted)) if unlisted else
+           ("none in this handler's signature by the catalog" if params else
+            "the structure model does not show this handler's parameters: read the signature in the file")))
+    if cited:
+        text += " Catalog: " + "; ".join("%s -- %s (%s)" % (c["key"], c["note"], c["source"]) for c in cited[:4])
+    out: dict[str, Any] = {
+        "status": have, "expected_status": want, "observed_body": observed_body, "request_body": True,
+        "handler": {"type": str(typ.get("fqn") or ep_row.get("type") or ""),
+                    "member": str(method.get("signature") or method.get("name") or ep_row.get("member") or ""),
+                    "params": params},
+        "body_type": body_type, "catalog_rows": cited,
+        "catalog_source": catalog.get("source", ""),
+        "locus_hints": hints,
+        "locus": text + (" Amend the scope to any file outside the write set BEFORE editing it: python3 "
+                         ".hermes/skills/migration/fix-until-green/scripts/amend-scope.py --root . --cluster <this cluster> "
+                         "--card $HERMES_KANBAN_TASK --path <that file> --reason <what binds there> --evidence parity:%s" % item_id),
+    }
+    return out
+
+
 def parity_scenarios_of(receipt: dict[str, Any] | None, entry_point: str, scenario: str) -> list[str]:
     """The scenario ids one obligation is made of: its own when it has one, and
     otherwise the ones the receipt's row for its entry point declares."""
@@ -1894,12 +2162,13 @@ def parity_items(root: Path, bundle: dict[str, Any], notes: list[dict[str, Any]]
         return out
     source_policies = _source_cors_policies(root)
     receipt = judged_parity_receipt(root)[0] if receipt is None else receipt
-    splitter = ParitySplitter(root, receipt)
     notes = [] if notes is None else notes
     docs: list[tuple[Path, dict[str, Any]]] = [(p, load_json(p)) for p in sorted(pdir.glob("*.json"))]
     sdir = pdir / "scenarios"
     if sdir.is_dir():
         docs += [(p, load_json(p)) for p in sorted(sdir.glob("*.json"))]
+    splitter = ParitySplitter(root, receipt, [d for _p, d in docs])
+    ep_rows = {str(e.get("id") or ""): e for e in (bundle.get("entry_points") or []) if isinstance(e, dict)}
     for p, doc in docs:
         if not isinstance(doc, dict) or str(doc.get("verdict")) != "FAIL":
             continue
@@ -1946,6 +2215,13 @@ def parity_items(root: Path, bundle: dict[str, Any], notes: list[dict[str, Any]]
                     server_error["exception"] or "no exception block in the destination log",
                     (" in %s" % ", ".join("%s (%s.%s:%s)" % (h["path"], h["type"].rsplit(".", 1)[-1], h["member"], h["line"])
                                           for h in server_error["locus_hints"])) if server_error["locus_hints"] else "")
+            rejection = request_rejection_advice(root, ep_rows.get(ep) or {"id": ep, "path": locus}, doc, rid, other,
+                                                 splitter.requests.get(_sid(scenario)) if scenario else None)
+            if rejection:
+                advice["request_rejection"] = rejection
+                summary += " Refused at the handler boundary: status %s (%s) where the source answered %s; look at %s." % (
+                    rejection["status"], rejection["observed_body"], rejection["expected_status"],
+                    ", ".join(h["path"] for h in rejection["locus_hints"]) or "the handler")
             out.append(dict(base, id=rid, path=locus,
                             rule_id="PARITY", cause="response",
                             detail=("%s: %s" % (scenario or ep, "; ".join(other)))[:200],
@@ -1982,11 +2258,11 @@ def parity_items(root: Path, bundle: dict[str, Any], notes: list[dict[str, Any]]
     # likely one root cause: each names the others (they stay separate cards)
     by_locus: dict[str, list[str]] = defaultdict(list)
     for it in out:
-        for key in ("body_diff", "server_error"):
+        for key in ("body_diff", "server_error", "request_rejection"):
             for h in ((it.get("advice") or {}).get(key) or {}).get("locus_hints") or []:
                 by_locus[h["path"]].append(it["id"])
     for it in out:
-        for key in ("body_diff", "server_error"):
+        for key in ("body_diff", "server_error", "request_rejection"):
             bd = (it.get("advice") or {}).get(key) or {}
             same = sorted({o for h in bd.get("locus_hints") or [] for o in by_locus.get(h["path"], []) if o != it["id"]})
             if same:
