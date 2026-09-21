@@ -107,6 +107,27 @@ C="${TMP}/c"; mkroot "${C}"; boot_ok "${C}"; worklist "${C}"
 D="${TMP}/d"; mkroot "${D}"; boot_ok "${D}"; worklist "${D}"; issued "${D}" "parity" '["parity:aaaa","parity:bbbb"]'
 [[ "$(plan "${D}")" == "run:sc:a-first,sc:b-second" ]] || fail "the comparison must be scoped to this card's scenarios: $(plan "${D}")"
 
+# H3: the read oracles of the card's own entry points are re-run beside its
+# scenarios (dest v9 t_4d75569c: a read-oracle obligation names no scenario and
+# a scoped run that skipped every read oracle could never re-measure it). The
+# plan names them one per line after its head, for run-parity.py --read-oracle
+worklist_eps() {
+  cat >"$1/evidence/planning/worklist.json" <<'JSON'
+{"schema":"rhoai3.worklist/v1","items":[
+ {"id":"parity:aaaa","source":"parity","gate":"parity","entry_point":"ep:x.Owner#list():http","scenario":"sc:a-first","scenarios":["sc:a-first"]},
+ {"id":"parity:bbbb","source":"parity","gate":"parity","entry_point":"ep:x.Owner#list():http","scenario":"","scenarios":["sc:a-first"]},
+ {"id":"parity:cccc","source":"parity","gate":"parity","entry_point":"ep:x.Vet#list():http","scenario":"","scenarios":[]}],
+ "clusters":[]}
+JSON
+}
+RO="${TMP}/ro"; mkroot "${RO}"; boot_ok "${RO}"; worklist_eps "${RO}"; issued "${RO}" "parity" '["parity:aaaa","parity:bbbb"]'
+[[ "$(plan "${RO}")" == $'run:sc:a-first\noracle:ep:x.Owner#list():http' ]] \
+  || fail "the plan names the card's entry points, one per oracle line, and nobody else's: $(plan "${RO}")"
+grep -qF -- 'PARITY_ARGS+=(--read-oracle "${ep}")' "${SCRIPT}" || fail "the scoped comparison must pass the card's read oracles to the runner"
+grep -qF '"read_oracles_rerun": sorted(reruns)' "${SCRIPT}" || fail "run.json must carry the read oracles the runner re-ran"
+grep -qF 'rec_p = root / "verification" / "parity" / "_run.json"' "${SCRIPT}" \
+  || fail "what was re-run is read from the runner's own record, never from what was asked"
+
 # the startup gate did not pass in this verification: there is no started
 # destination to compare, and a stage that cannot measure says so rather than
 # leaving a stale receipt to be read as this candidate's
@@ -162,7 +183,7 @@ grep -qF 'PARITY_TRIGGER="issued-card"' "${SCRIPT}" || fail "a card's own compar
 grep -qF '"trigger": os.environ.get("PARITY_TRIGGER")' "${SCRIPT}" || fail "run.json must carry the parity trigger"
 
 echo "OK: run-verify parity stage (acceptance-only and after the runtime gates; not run for a compile or packaging card \
-or with no issued card; run for a parity card scoped to its own scenarios and bound to that issued card, so the work \
+or with no issued card; run for a parity card scoped to its own scenarios plus the read oracles of its own entry points (H3) and bound to that issued card, so the work \
 list this verification rebuilt on the candidate is not read as a stale seal; skipped by name when the startup gate did \
 not pass; forced unscoped by --parity) + the RUNTIME TRIGGER (compile-zero: known measure and no compile error, \
 whatever the incident and test slots say; an unrun compiler is not zero; recorded in run.json; diagnostic mode still \

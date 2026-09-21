@@ -646,10 +646,11 @@ def parity_brief(items: list[dict], cluster: dict) -> dict:
                             scenario=str(i.get("scenario") or ""))
                        for i in rows if (i.get("advice") or {}).get("body_diff")],
         "measured_by": (
-            "run-verify.sh --mode acceptance re-runs the scenario comparison for this card (run-parity.py, scoped to %s) "
-            "after the packaging and startup gates, and re-composes verification/parity/receipt.json. You run the same "
-            "command you always run; nothing extra." % (", ".join(scenarios) if scenarios else
-                                                        "this card's entry points, read oracles included")),
+            "run-verify.sh --mode acceptance re-runs the scenario comparison for this card (run-parity.py, scoped to %s, "
+            "and the read oracle of %s) after the packaging and startup gates, and re-composes "
+            "verification/parity/receipt.json. You run the same command you always run; nothing extra."
+            % (", ".join(scenarios) if scenarios else "this card's entry points, read oracles included",
+               ", ".join(entry_points) if entry_points else "its entry point(s)")),
         "discharged_when": (
             "the re-composed receipt records %s as PASS. Disappearing from the work list is not enough: a scenario that "
             "became INCONCLUSIVE disappears too, and that is not a repair." %

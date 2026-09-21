@@ -1408,28 +1408,39 @@ def _sid(s: Any) -> str:
 
 
 def parity_remeasured(run: dict[str, Any] | None) -> set[str] | None:
-    """The scenarios THIS verification's comparison re-ran, when it was scoped
-    (run.json runtime.parity: scoped, scenarios); None when it compared the
-    whole phase (or did not run), which leaves every row to be judged."""
+    """What THIS verification's comparison re-ran, when it was scoped
+    (run.json runtime.parity): the scenario ids (``scenarios``, without their
+    ``sc:`` prefix) and the ENTRY POINTS whose read oracle the scoped run
+    re-ran for the card (``read_oracles_rerun``, H3: their ``ep:`` ids, which
+    no scenario id shares). None when it compared the whole phase (or did not
+    run), which leaves every row to be judged.
+
+    A read-oracle obligation names no scenario, so the entry point is the only
+    identity a re-measurement of it can be counted under (dest v9 t_4d75569c:
+    with the read oracles skipped, the entry point's FAIL record stayed as the
+    baseline had it and the obligation could never be discharged)."""
     par = (((run or {}).get("runtime") or {}).get("parity") or {}) if isinstance(run, dict) else {}
     if not par.get("ran") or not par.get("scoped"):
         return None
-    return {_sid(x) for x in (par.get("scenarios") or []) if str(x)}
+    return ({_sid(x) for x in (par.get("scenarios") or []) if str(x)}
+            | {str(e) for e in (par.get("read_oracles_rerun") or []) if str(e)})
 
 
 def carry_unmeasured(before: dict[str, Any] | None, after: dict[str, Any] | None,
                      remeasured: set[str] | None) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     """(the receipt acceptance judges, the rows it CARRIED from before).
 
-    A scoped comparison re-runs only the card's own scenarios; the composer
-    then reports every other entry point INCONCLUSIVE, because its records are
-    bound to the receipt the run started from. That is not a regression and
-    not a measurement: such a row is CARRIED from the accepted baseline, marked
+    A scoped comparison re-runs only the card's own scenarios (and, H3, the
+    read oracles of the card's own entry points); the composer then reports
+    every other entry point INCONCLUSIVE, because its records are bound to the
+    receipt the run started from. That is not a regression and not a
+    measurement: such a row is CARRIED from the accepted baseline, marked
     ``carried_from``. Only a row that is INCONCLUSIVE, that names no scenario
-    this run re-measured, and that the baseline has is carried; a row the run
-    DID re-measure -- and every PASS or FAIL -- is judged exactly as composed,
-    so a carry can neither turn a FAIL into a PASS nor hide a regression in a
-    re-run scenario. A whole-phase comparison carries nothing."""
+    this run re-measured, whose entry point's read oracle this run did not
+    re-run, and that the baseline has is carried; a row the run DID re-measure
+    -- and every PASS or FAIL -- is judged exactly as composed, so a carry can
+    neither turn a FAIL into a PASS nor hide a regression in a re-run scenario
+    or read oracle. A whole-phase comparison carries nothing."""
     cur = dict(after or {})
     if remeasured is None or not cur or not isinstance(before, dict) or parity_unmeasured(before):
         return cur, []
@@ -1442,8 +1453,8 @@ def carry_unmeasured(before: dict[str, Any] | None, after: dict[str, Any] | None
         ep = str(r.get("entry_point") or "")
         names = {_sid(x) for x in (r.get("scenarios") or [])}
         old = prior.get(ep)
-        if (str(r.get("verdict") or "") == "INCONCLUSIVE" and not (names & remeasured) and old is not None
-                and str(old.get("verdict") or "") in ("PASS", "FAIL")):
+        if (str(r.get("verdict") or "") == "INCONCLUSIVE" and not (names & remeasured) and ep not in remeasured
+                and old is not None and str(old.get("verdict") or "") in ("PASS", "FAIL")):
             row = dict(old, carried_from={"receipt_sha256": str(before.get("receipt_sha256") or ""),
                                           "binding": dict(before.get("binding") or {}) if isinstance(before.get("binding"), dict) else {},
                                           "composed": {"verdict": r.get("verdict"), "reason": str(r.get("reason") or "")[:200]}})
@@ -1564,6 +1575,26 @@ def scenario_record(base: Path, scenario: str) -> dict[str, Any]:
     return hits[0] if len(hits) == 1 else {}
 
 
+def read_oracle_record(base: Path, entry_point: str) -> dict[str, Any]:
+    """The one READ-ORACLE verdict under ``base`` for ``entry_point`` (the
+    comparator writes it at <slug>.json beside the receipt, schema
+    rhoai3.parity/v1; the receipt itself names no entry point), or {}."""
+    d = Path(base)
+    if not d.is_dir():
+        return {}
+    hits = []
+    for p in sorted(d.glob("*.json")):
+        try:
+            doc = load_json(p)
+        except (OSError, ValueError):
+            continue
+        if (isinstance(doc, dict) and str(doc.get("entry_point") or "") == entry_point
+                and not str(doc.get("scenario") or "")
+                and str(doc.get("schema") or "") not in (PARITY_RECEIPT_SCHEMA, "rhoai3.scenario-parity/v1")):
+            hits.append(doc)
+    return hits[0] if len(hits) == 1 else {}
+
+
 def parity_obligation_discharged(root: Path, row: dict[str, Any], remeasured: set[str] | None,
                                  receipt: dict[str, Any] | None = None) -> tuple[bool, str]:
     """G1: one obligation of a scenario whose differences F3 split across
@@ -1573,19 +1604,39 @@ def parity_obligation_discharged(root: Path, row: dict[str, Any], remeasured: se
     must have been re-run in this comparison, and every difference it still
     reports must be one the accepted baseline already reported, character for
     character (a body digest that moved is a new difference, whichever
-    obligation it belongs to)."""
+    obligation it belongs to).
+
+    H3: a READ-ORACLE obligation (no scenario: the method-and-path replay of
+    the entry point) is judged by exactly the same rule over its own record --
+    the entry point's read oracle must have been re-run in this comparison
+    (``remeasured`` holds its ``ep:`` id), and its own kind of difference must
+    be gone from that record with no difference introduced or reworded. A
+    record that came back PASS is its own kind gone, for either shape; a
+    reworded or persisting difference is not a discharge."""
     sid, what, ep = str(row.get("scenario") or ""), str(row.get("what") or ""), str(row.get("entry_point") or "")
-    if not sid or what not in ("cors", "response", "representation"):
-        return False, "only a scenario verdict can discharge part of itself"
-    if remeasured is None or _sid(sid) not in remeasured:
-        return False, "%s was not re-run in this comparison" % sid
+    if what not in ("cors", "response", "representation"):
+        return False, "only a scenario or read-oracle verdict can discharge part of itself"
     root = Path(root)
-    cur = scenario_record(root / PARITY_DIR, sid)
-    prev = scenario_record(root / LOOP_ACCEPTED / "parity", sid)
+    if sid:
+        if remeasured is None or _sid(sid) not in remeasured:
+            return False, "%s was not re-run in this comparison" % sid
+        cur = scenario_record(root / PARITY_DIR, sid)
+        prev = scenario_record(root / LOOP_ACCEPTED / "parity", sid)
+        name = sid
+    else:
+        if not ep:
+            return False, "the obligation names no entry point"
+        if remeasured is None or ep not in remeasured:
+            return False, "the read oracle of %s was not re-run in this comparison" % ep
+        cur = read_oracle_record(root / PARITY_DIR, ep)
+        prev = read_oracle_record(root / LOOP_ACCEPTED / "parity", ep)
+        name = "the read oracle of %s" % ep
+    if str(cur.get("verdict") or "") == "PASS":
+        return True, "%s came back PASS in this comparison" % name
     if str(cur.get("verdict") or "") != "FAIL":
-        return False, "%s came back %s" % (sid, cur.get("verdict") or "with no single record")
+        return False, "%s came back %s" % (name, cur.get("verdict") or "with no single record")
     if str(prev.get("verdict") or "") not in ("FAIL", "PASS"):
-        return False, "the accepted baseline holds no single record of %s" % sid
+        return False, "the accepted baseline holds no single record of %s" % name
     splitter = ParitySplitter(root, receipt)
     own = splitter.own(what, sid, ep, cur)
     if own:
@@ -1594,9 +1645,9 @@ def parity_obligation_discharged(root: Path, row: dict[str, Any], remeasured: se
     was = set(_split_diffs(str(prev.get("reason") or ""))) if str(prev.get("verdict")) == "FAIL" else set()
     new = sorted(now - was)
     if new:
-        return False, "the candidate changed or introduced %s in %s" % ("; ".join(new)[:200], sid)
+        return False, "the candidate changed or introduced %s in %s" % ("; ".join(new)[:200], name)
     return True, ("its own difference(s) are gone from the re-run %s; what remains (%s) belongs to other obligations "
-                  "and is unchanged" % (sid, "; ".join(sorted(now))[:160]))
+                  "and is unchanged" % (name, "; ".join(sorted(now))[:160]))
 
 
 BODY_DIFF_SHOWN = 5
@@ -4021,8 +4072,13 @@ def progress(prev: dict[str, Any], cur: dict[str, Any], prev_ids: set[str], cur_
     it. The parity gate is the scenario comparison M4 runs (run-parity.py), and
     ``prev_parity`` / ``cur_parity`` are the composed receipts before and after;
     it discharges an obligation only POSITIVELY, by the receipt recording its
-    scenario as PASS, because an obligation also disappears when its scenario
-    became INCONCLUSIVE.
+    scenario as PASS -- or, per obligation, by its OWN re-run record
+    (``parity_discharged``: a scenario obligation's scenario, a read-oracle
+    obligation's read oracle) coming back PASS or losing its own kind of
+    difference with nothing introduced -- because an obligation also
+    disappears when its scenario became INCONCLUSIVE. A SCOPED comparison
+    (``parity_remeasured``: its scenarios and the entry points whose read
+    oracle it re-ran) carries what it did not re-run from ``prev_parity``.
 
     Compile-aware: javac reports one diagnostic at a time. When the issued
     compile failure disappears and the observed compile count does not

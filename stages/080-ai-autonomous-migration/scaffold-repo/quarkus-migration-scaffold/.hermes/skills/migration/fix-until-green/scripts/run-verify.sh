@@ -28,7 +28,8 @@
 #   6. the PARITY gate, for a card whose obligation is a parity mismatch
 #      (verification/loop/issued.json carries gate=parity, or --parity says
 #      so): run-parity.py scoped to the scenarios that card's obligations are
-#      made of, then a re-measure. And, under decisions.loop.runtime_feedback
+#      made of plus the read oracles of the entry points they belong to, then
+#      a re-measure. And, under decisions.loop.runtime_feedback
 #      v1, one UNSCOPED sweep on any card whose acceptance verification got the
 #      startup gate to pass, bound to that card's candidate: a behavioural
 #      failure then enters the next work-list rebuild as a parity obligation
@@ -357,11 +358,29 @@ if not booted:
     print("skip:the startup gate did not pass in this verification")
     raise SystemExit(0)
 wanted = {str(i) for i in (issued.get("items") or [])}
-sids = sorted({str(s) for it in (doc(WORKLIST).get("items") or [])
-               if str(it.get("id")) in wanted for s in (it.get("scenarios") or []) if str(s)})
+rows = [it for it in (doc(WORKLIST).get("items") or []) if str(it.get("id")) in wanted]
+sids = sorted({str(s) for it in rows for s in (it.get("scenarios") or []) if str(s)})
+# H3: the entry points the obligations of this card belong to. A scoped run
+# re-runs their READ ORACLES beside the scenarios, because a read-oracle
+# obligation (no scenario) is re-measured by nothing else (dest v9 t_4d75569c:
+# the scoped run left the entry point FAIL record as the baseline had it, and
+# the card could discharge its scenario obligation and never its read-oracle
+# one). One per line after the head: an entry point id may hold any character
+# but a newline. (No apostrophes in this block: see above.)
+eps = sorted({str(it.get("entry_point") or "") for it in rows if str(it.get("entry_point") or "")})
 print("run:" + ",".join(sids))
+for ep in (eps if sids else []):
+    print("oracle:" + ep)
 PYEOF
 )" || PARITY_PLAN="skip:the issued card could not be read"
+  # the plan's head is its first line; the lines after it name the read
+  # oracles a scoped run re-runs for the card (oracle:<entry point>)
+  PLAN_HEAD="${PARITY_PLAN%%$'\n'*}"
+  PLAN_ORACLES=()
+  while IFS= read -r plan_line; do
+    [[ "${plan_line}" == oracle:* ]] && PLAN_ORACLES+=("${plan_line#oracle:}")
+  done <<< "${PARITY_PLAN}"
+  PARITY_PLAN="${PLAN_HEAD}"
   if [[ "${PARITY_PLAN}" == skip:* ]]; then
     echo "WARN: parity comparison not run (${PARITY_PLAN#skip:}); this card's parity obligation stays UNKNOWN and advance.py cannot accept it" >&2
   fi
@@ -406,6 +425,12 @@ PYEOF
       for s in "${SID_ARR[@]}"; do
         [[ -n "${s}" ]] && PARITY_ARGS+=(--scenario "${s}")
       done
+      # ... and the read oracles of the card's own entry points, re-run beside
+      # them so a read-oracle obligation is re-measured too (H3)
+      for ep in ${PLAN_ORACLES[@]+"${PLAN_ORACLES[@]}"}; do
+        [[ -n "${ep}" ]] && PARITY_ARGS+=(--read-oracle "${ep}")
+      done
+      [[ ${#PLAN_ORACLES[@]} -gt 0 ]] && echo "parity: re-running the read oracle(s) of ${#PLAN_ORACLES[@]} entry point(s) of this card beside its scenarios"
     elif [[ "${PARITY_TRIGGER}" == "issued-card" ]]; then
       # a parity obligation whose entry point declares no scenario is a read
       # oracle: it is re-measured by the unscoped run, which compares those
@@ -437,6 +462,16 @@ if receipt.is_file():
     except ValueError:
         verdict = ""
 ms = int(os.environ.get("PARITY_MS") or 0)
+# which read oracles the runner's own record says it RE-RAN for the card (a
+# verdict recorded): read from _run.json rather than from what was asked, so
+# run.json says what was measured, never what was requested
+rec_p = root / "verification" / "parity" / "_run.json"
+reruns = []
+if rec_p.is_file():
+    try:
+        reruns = [str(e) for e in ((json.loads(rec_p.read_text(encoding="utf-8")) or {}).get("read_oracles") or {}).get("rerun") or []]
+    except ValueError:
+        reruns = []
 doc = json.load(open(run_p))
 doc.setdefault("runtime", {})["parity"] = {
     "ran": True,
@@ -447,6 +482,9 @@ doc.setdefault("runtime", {})["parity"] = {
     "trigger": os.environ.get("PARITY_TRIGGER") or "issued-card",
     "scoped": bool([s for s in (os.environ.get("PARITY_SIDS") or "").split(",") if s]),
     "scenarios": [s for s in (os.environ.get("PARITY_SIDS") or "").split(",") if s],
+    # H3: the entry points whose read oracle the scoped run re-ran for this
+    # card; the work list and acceptance count them as re-measured
+    "read_oracles_rerun": sorted(reruns),
     "receipt_verdict": verdict,
     "ms": ms,
 }

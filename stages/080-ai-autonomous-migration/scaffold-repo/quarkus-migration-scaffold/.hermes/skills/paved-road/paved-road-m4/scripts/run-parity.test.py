@@ -556,6 +556,58 @@ def main() -> int:
                 return _fail("the receipt a scoped run composes still states every entry point: %s"
                              % {k: receipt5.get(k) for k in ("verdict", "total", "not_passed")})
 
+            # --- H3: a scoped run re-runs the READ ORACLES it is asked to,
+            #     beside its scenarios, and no other --------------------------
+            # dest v9 t_4d75569c: a card held a scenario obligation and a
+            # read-oracle obligation on one entry point; the scoped acceptance
+            # run skipped every read oracle, so the entry point's FAIL record
+            # stayed exactly as the baseline had it and the card could never
+            # discharge it. Here the vets read drifts, the scoped run names
+            # that entry point, and the drift is measured -- while the other
+            # read-oracle records are not rewritten.
+            vet_ep = next(e for e in READ_EPS if "VetController" in e)
+            others = {e: (root / PARITY / (slug(e) + ".json")).read_bytes() for e in READ_EPS if e != vet_ep}
+            Service.drift = True
+            rc6, blob6, doc6 = _run(root, base, reset, scenarios=("sc:create-owner-second",), extra=("--read-oracle", vet_ep))
+            Service.drift = False
+            if rc6 != 0:
+                return _fail("a scoped run that re-runs one read oracle is a run, whatever the oracle says: %s" % blob6[-1200:])
+            reads6 = doc6["read_oracles"]
+            if reads6["ran"] or reads6.get("rerun") != [vet_ep] or reads6.get("requested") != [vet_ep]:
+                return _fail("the record says the whole phase did not run and WHICH read oracle was re-run: %s" % reads6)
+            if "except the read oracle(s) of %s" % vet_ep not in reads6["reason"]:
+                return _fail("the reason names the exception: %s" % reads6["reason"])
+            ep6 = doc6["entry_points"]
+            if [ep6["compared"], ep6["failed"], ep6["skipped"]] != [1, 1, 3] or [r["entry_point"] for r in ep6["results"]] != [vet_ep]:
+                return _fail("exactly the named read oracle is compared, and the drift is measured: %s" % ep6)
+            if sorted(r["entry_point"] for r in ep6["not_compared"]) != sorted(e for e in READ_EPS + (CREATE_EP,) if e != vet_ep):
+                return _fail("every other entry point is named as not compared: %s" % ep6["not_compared"])
+            if load_json(root / PARITY / (slug(vet_ep) + ".json")).get("verdict") != "FAIL":
+                return _fail("the re-run read oracle's record is this run's (FAIL under drift)")
+            if any((root / PARITY / (slug(e) + ".json")).read_bytes() != b for e, b in others.items()):
+                return _fail("a read oracle the scoped run was not asked for is never rewritten")
+            # (the composer exits 1 around a FAIL by design; the verdict is the measurement)
+            if not doc6["receipt"]["composed_by_this_run"] or doc6.get("receipt_verdict") != "FAIL" or not doc6.get("ok"):
+                return _fail("the receipt is composed over the re-run record and carries its FAIL: %s"
+                             % {k: doc6.get(k) for k in ("receipt", "receipt_verdict", "ok")})
+            if "read oracle(s) re-run for the card: %s" % vet_ep not in blob6:
+                return _fail("the summary says which read oracles were re-run: %s" % blob6[-600:])
+            # the drift repaired: the same scoped run brings the record back to PASS
+            rc7, blob7, doc7 = _run(root, base, reset, scenarios=("sc:create-owner-second",), extra=("--read-oracle", vet_ep))
+            if rc7 != 0 or doc7["read_oracles"].get("rerun") != [vet_ep] or doc7.get("receipt_verdict") != "PASS":
+                return _fail("the repaired read oracle comes back PASS through the same scoped run: %s %s" % (rc7, doc7.get("read_oracles")))
+            if load_json(root / PARITY / (slug(vet_ep) + ".json")).get("verdict") != "PASS":
+                return _fail("the re-run record is PASS again")
+            # an entry point nobody admitted is refused, not skipped in silence
+            rc8, blob8, doc8 = _run(root, base, reset, scenarios=("sc:create-owner-second",),
+                                    extra=("--read-oracle", "ep:org.acme.Nobody#none():http"))
+            if rc8 != 1 or not any("read-oracle filter" in f and "Nobody" in f for f in doc8.get("failures") or []):
+                return _fail("an unadmitted --read-oracle refuses by name: rc=%s %s" % (rc8, doc8.get("failures")))
+            # without a scenario filter the whole phase runs and the option adds nothing
+            rc9, blob9, doc9 = _run(root, base, reset, extra=("--read-oracle", vet_ep))
+            if rc9 != 0 or not doc9["read_oracles"]["ran"] or doc9["read_oracles"].get("rerun") != [] or doc9["entry_points"]["compared"] != 3:
+                return _fail("an unfiltered run compares every read oracle; --read-oracle is then redundant and recorded as requested only: %s" % doc9.get("read_oracles"))
+
             # --- the records a scoped run did not write, and the ones that
             #     belong to nothing --------------------------------------
             # Composing over the records on disk is what keeps a scoped run
@@ -1008,6 +1060,9 @@ def main() -> int:
     print("OK: run-parity selftest (every scenario in corpus order; every captured read oracle compared; the "
           "uncomparable named; receipt composed last; idempotent; --scenario replays only the scenarios it names, "
           "skips the read oracles by name and still composes the whole receipt, and refuses an undeclared id; "
+          "--read-oracle (H3) re-runs exactly the named entry points' read oracles inside a scoped run, records them "
+          "under read_oracles.rerun, names every other entry point as not compared and rewrites none of their records, "
+          "refuses an unadmitted entry point, and is redundant without a scenario filter; "
           "a record that belongs to no scenario of this corpus -- the v9 cors-<digest>.json names from an earlier "
           "naming scheme, and a declared scenario under a name that is not its slug -- is MOVED ASIDE before the "
           "composer reads the directory, never deleted, with an index naming where each came from and why, and the "

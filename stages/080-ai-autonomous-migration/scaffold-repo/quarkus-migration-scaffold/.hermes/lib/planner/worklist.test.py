@@ -2623,6 +2623,153 @@ def _split_discharge_case() -> int:
     return 0
 
 
+def _read_oracle_discharge_case() -> int:
+    """H3 (v9 t_4d75569c, cluster c:8397dd073219): a card holding a SCENARIO
+    obligation and a READ-ORACLE obligation on the same entry point. The
+    scoped comparison re-runs the scenario AND the entry point's read oracle
+    (run.json runtime.parity.read_oracles_rerun); a candidate that fixes the
+    body discharges both and is ACCEPTED; one that fixes the scenario while
+    the read oracle still differs is REVERTED naming the read-oracle
+    obligation; a read oracle outside the card's scope is carried from the
+    baseline, never re-run, and cannot regress the card unless it regressed;
+    and the control -- the read oracles skipped, as before H3 -- is the v9
+    revert."""
+    import json
+    import tempfile
+
+    from planner.paths import LOOP_ACCEPTED, PARITY_DIR, VERIFY_RUN
+    from planner.worklist import (judged_parity_receipt, parity_obligation_discharged, parity_obligation_id,
+                                  parity_remeasured, parity_state)
+
+    def slug(entry: str) -> str:
+        # the file name is not the identity: read_oracle_record matches the
+        # record's entry_point, wherever the comparator wrote it
+        return "ro-" + entry.split(".")[-1].split("#")[0].lower()
+
+    ep = "ep:com.acme.ledger.OwnerResource#list():http"          # the card's entry point
+    ep_b = "ep:com.acme.ledger.VetResource#list():http"           # read oracle only, outside the card
+    ep_c = "ep:com.acme.ledger.PetResource#list():http"           # read oracle only, re-run for a control
+    sid = "sc:cors-actual-owners"
+    ctl = "src/main/java/com/acme/ledger/OwnerResource.java"
+    bundle = {"entry_points": [{"id": ep, "path": ctl}, {"id": ep_b, "path": "src/main/java/com/acme/ledger/VetResource.java"},
+                               {"id": ep_c, "path": "src/main/java/com/acme/ledger/PetResource.java"}]}
+    scen_id = parity_obligation_id(ep, sid, "response")
+    ro_id = parity_obligation_id(ep, "", "response")
+    ro_b_id = parity_obligation_id(ep_b, "", "response")
+    body = "body 11aa vs 22bb"
+
+    def scen(reason, verdict="FAIL"):
+        return {"schema": "rhoai3.scenario-parity/v1", "entry_point": ep, "scenario": sid, "verdict": verdict, "reason": reason}
+
+    def oracle(entry, reason, verdict="FAIL"):
+        return {"schema": "rhoai3.parity/v1", "entry_point": entry, "verdict": verdict, "reason": reason}
+
+    def receipt(rows, sha):
+        return {"schema": "rhoai3.parity-receipt/v1", "receipt_sha256": sha, "verdict": "FAIL",
+                "entry_points": [{"entry_point": e, "verdict": v, "reason": r, "scenarios": sc} for e, v, r, sc in rows]}
+
+    with tempfile.TemporaryDirectory(prefix="read-oracle-discharge-") as td:
+        root = Path(td)
+        acc = root / LOOP_ACCEPTED / "parity"
+        live = root / PARITY_DIR
+        (acc / "scenarios").mkdir(parents=True)
+        (live / "scenarios").mkdir(parents=True)
+        (root / VERIFY_RUN).parent.mkdir(parents=True)
+        # the accepted baseline: the entry point fails on its scenario and on
+        # its read oracle (the same body difference, two obligations), B fails
+        # on its read oracle only, C passes
+        (acc / "receipt.json").write_text(json.dumps(receipt([(ep, "FAIL", body, [sid]), (ep_b, "FAIL", body, []), (ep_c, "PASS", "", [])], "base")))
+        (acc / "scenarios" / "sc.json").write_text(json.dumps(scen(body)))
+        (acc / (slug(ep) + ".json")).write_text(json.dumps(oracle(ep, body)))
+        (acc / (slug(ep_b) + ".json")).write_text(json.dumps(oracle(ep_b, body)))
+        (acc / (slug(ep_c) + ".json")).write_text(json.dumps(oracle(ep_c, "", "PASS")))
+        before = json.loads((acc / "receipt.json").read_text())
+        # B's record is never written by a scoped run: it stays the baseline's
+        (live / (slug(ep_b) + ".json")).write_text(json.dumps(oracle(ep_b, body)))
+        b_bytes = (live / (slug(ep_b) + ".json")).read_bytes()
+        m = {"known": True, "tuple": [0, 0, 0], "parity_mismatches": 2}
+        prev_gate = {scen_id, ro_id, ro_b_id}
+
+        def attempt(scen_reason, oracle_reason, *, rerun, c_verdict="PASS", issued=(scen_id, ro_id)):
+            """One acceptance pass: the candidate's records on disk, run.json's
+            record of what the scoped run re-ran, then exactly advance.py's path."""
+            (root / VERIFY_RUN).write_text(json.dumps({"runtime": {"parity": {
+                "ran": True, "scoped": True, "trigger": "issued-card", "scenarios": [sid], "read_oracles_rerun": list(rerun)}}}))
+            (live / "scenarios" / "sc.json").write_text(json.dumps(scen(scen_reason, "FAIL" if scen_reason else "PASS")))
+            if ep in rerun:
+                (live / (slug(ep) + ".json")).write_text(json.dumps(oracle(ep, oracle_reason, "FAIL" if oracle_reason else "PASS")))
+            else:
+                (live / (slug(ep) + ".json")).write_text(json.dumps(oracle(ep, body)))  # skipped: the baseline's record stays
+            (live / (slug(ep_c) + ".json")).write_text(json.dumps(oracle(ep_c, "" if c_verdict == "PASS" else "status 500 vs 200", c_verdict)))
+            (live / "receipt.json").write_text(json.dumps(receipt([
+                (ep, "FAIL" if scen_reason else "PASS", scen_reason, [sid]),
+                (ep_b, "INCONCLUSIVE", "verdict bound to another receipt", []),
+                (ep_c, c_verdict if ep_c in rerun else "INCONCLUSIVE", "" if ep_c in rerun else "verdict bound to another receipt", [])], "cand")))
+            run = json.loads((root / VERIFY_RUN).read_text())
+            remeasured = parity_remeasured(run)
+            judged, carried = judged_parity_receipt(root, run)
+            obl = parity_state(judged)["obligations"]
+            discharged = {o: parity_obligation_discharged(root, obl[o], remeasured, judged) for o in issued
+                          if obl.get(o) is not None and obl[o].get("verdict") == "FAIL"}
+            cur = {i["id"] for i in parity_items(root, bundle, receipt=judged)}
+            ok, why = progress(m, m, set(), set(), gate="parity", issued_items=list(issued), prev_gate_items=prev_gate,
+                               cur_gate_items=cur, prev_runtime={}, cur_runtime={}, prev_parity=before,
+                               cur_parity=json.loads((live / "receipt.json").read_text()),
+                               parity_remeasured=remeasured, parity_discharged=discharged)
+            return ok, why, cur, remeasured, carried
+
+        # the v9 shape, repaired: the body is fixed, the scenario and the read
+        # oracle come back PASS, both obligations are discharged
+        ok, why, cur, remeasured, carried = attempt("", "", rerun=[ep])
+        if remeasured != {"cors-actual-owners", ep}:
+            return _fail("the re-measured set holds the scenarios and the re-run entry points: %s" % remeasured)
+        if ok is not True:
+            return _fail("a candidate that fixes the body discharges the scenario AND the read-oracle obligation: %s" % why)
+        if scen_id in cur or ro_id in cur or ro_b_id not in cur:
+            return _fail("the rebuild reports neither of the card's obligations and still B's: %s" % sorted(cur))
+        if [c["entry_point"] for c in carried] != [ep_b, ep_c] or any(c["entry_point"] == ep for c in carried):
+            return _fail("B and C, outside the card, are carried from the baseline; the re-run entry point is judged: %s" % carried)
+        if (live / (slug(ep_b) + ".json")).read_bytes() != b_bytes:
+            return _fail("a read oracle outside the card's scope is never rewritten")
+        # the v9 verdict itself (the control): the read oracles skipped, the
+        # entry point's FAIL record left as the baseline had it -- REVERTED
+        # naming the read-oracle obligation, whatever the scenario says
+        ok, why, cur, remeasured, _ = attempt("", "", rerun=[])
+        if ok is not False or ro_id not in why or ro_id not in cur or remeasured != {"cors-actual-owners"}:
+            return _fail("with the read oracles skipped the read-oracle obligation can never be discharged (v9): %s %s" % (ok, why))
+        # the scenario is fixed and the read oracle still differs: REVERTED,
+        # naming the read-oracle obligation
+        ok, why, cur, _, _ = attempt("", body, rerun=[ep])
+        if ok is not False or ro_id not in why or scen_id in cur or ro_id not in cur:
+            return _fail("a repair that fixes the scenario but not the read oracle is reverted naming the read oracle: %s %s" % (ok, why))
+        # ... and a reworded difference in the re-run read oracle is not a discharge
+        ok, why, cur, _, _ = attempt("", "body 33cc vs 22bb", rerun=[ep])
+        if ok is not False or ro_id not in why:
+            return _fail("a reworded read-oracle difference is the same obligation, still reported: %s %s" % (ok, why))
+        row = {"entry_point": ep, "scenario": "", "what": "response", "verdict": "FAIL"}
+        d, dwhy = parity_obligation_discharged(root, row, {"cors-actual-owners", ep})
+        if d or "33cc" not in dwhy:
+            return _fail("the per-obligation judgement names the introduced difference: %s %s" % (d, dwhy))
+        if parity_obligation_discharged(root, row, {"cors-actual-owners"})[0] or parity_obligation_discharged(root, row, None)[0]:
+            return _fail("a read-oracle obligation whose entry point was not re-run is never discharged")
+        (live / (slug(ep) + ".json")).write_text(json.dumps(oracle(ep, "", "PASS")))
+        d, dwhy = parity_obligation_discharged(root, row, {ep})
+        if d is not True or "PASS" not in dwhy:
+            return _fail("a re-run read oracle that came back PASS discharges its obligation: %s %s" % (d, dwhy))
+        # a read oracle outside the card's scope cannot regress the card ...
+        (acc / "receipt.json").write_text(json.dumps(receipt([(ep, "FAIL", body, [sid]), (ep_b, "PASS", "", []), (ep_c, "PASS", "", [])], "base")))
+        before = json.loads((acc / "receipt.json").read_text())
+        ok, why, _, _, carried = attempt("", "", rerun=[ep], issued=(scen_id, ro_id))
+        if ok is not True or [c["entry_point"] for c in carried] != [ep_b, ep_c]:
+            return _fail("entry points the scoped run did not re-run are carried, PASS stays PASS: %s %s %s" % (ok, why, carried))
+        # ... while a read oracle the run DID re-run is judged as composed: one
+        # that came back INCONCLUSIVE after PASS is a regression, never carried
+        ok, why, _, _, carried = attempt("", "", rerun=[ep, ep_c], c_verdict="INCONCLUSIVE")
+        if ok is not False or ep_c not in why or any(c["entry_point"] == ep_c for c in carried):
+            return _fail("a re-run read oracle that became INCONCLUSIVE is a regression, never carried: %s %s %s" % (ok, why, carried))
+    return 0
+
+
 def _body_diff_case() -> int:
     """H1b (v9 t_a755c0a1): a body obligation carries the comparator's
     structured body difference, bounded, the locus rule and the amend-scope
@@ -2680,7 +2827,7 @@ def _body_diff_case() -> int:
 def main() -> int:
     if (_runtime_identity_case() or _gate_progress_case() or _batch_scope_case() or _checked_family_case()
             or _set_wide_case() or _config_value_case() or _parity_typing_case() or _parity_advice_case()
-            or _parity_navigation_case() or _owed_adapter_case() or _cors_scenario_case() or _scoped_carry_case() or _receipt_v2_case() or _split_discharge_case() or _body_diff_case() or _harness_owned_guard_case() or _parity_gate_case() or _unit_formation_case() or _unit_bound_case() or _unit_seal_case()
+            or _parity_navigation_case() or _owed_adapter_case() or _cors_scenario_case() or _scoped_carry_case() or _receipt_v2_case() or _split_discharge_case() or _read_oracle_discharge_case() or _body_diff_case() or _harness_owned_guard_case() or _parity_gate_case() or _unit_formation_case() or _unit_bound_case() or _unit_seal_case()
             or _unit_mode_case() or _unit_inert_case() or _unit_config_case()
             or _unit_experiment_table_case() or _unit_explained_case() or _unit_progress_case()
             or _unit_budget_case()):

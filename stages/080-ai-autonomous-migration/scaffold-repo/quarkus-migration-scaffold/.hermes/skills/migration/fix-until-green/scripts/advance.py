@@ -48,9 +48,13 @@ otherwise:
     what the partition above explained;
 
   * a card issued for the PARITY gate is judged by the comparison the
-    acceptance path re-ran for its scenarios (run-verify.sh → run-parity.py):
-    the composed receipt must record every issued obligation's scenario as
-    PASS, and no entry point it recorded PASS before may be anything else now.
+    acceptance path re-ran for its scenarios and for the READ ORACLES of its
+    own entry points (run-verify.sh → run-parity.py --scenario … --read-oracle
+    …; H3, dest v9 t_4d75569c: a read-oracle obligation names no scenario and
+    is re-measured by nothing else): the composed receipt must record every
+    issued obligation's scenario as PASS -- or, per obligation, its own
+    differences gone from its own re-run record (worklist.parity_obligation_discharged)
+    -- and no entry point it recorded PASS before may be anything else now.
     A receipt that was not composed, or a comparison that did not run, is an
     unmeasured slot: VERIFICATION_PENDING, no attempt spent. That receipt is
     composed against the CANDIDATE (the acceptance path rebuilt the work list
@@ -784,10 +788,13 @@ def main(argv: list[str] | None = None) -> int:
         row = judged_obl.get(str(oid))
         if row is not None and row.get("verdict") == "FAIL":
             parity_discharged[str(oid)] = parity_obligation_discharged(root, row, remeasured, judged_parity)
+    reran_oracles = sorted(str(e) for e in ((((run if isinstance(run, dict) else {}).get("runtime") or {}).get("parity") or {}).get("read_oracles_rerun") or []))
     if carried_rows:
         print("NOTE: the scoped comparison re-ran %s; %d entry point(s) carried from the accepted baseline %s: %s"
               % (", ".join(sorted(remeasured or [])), len(carried_rows), str((prev_parity or {}).get("receipt_sha256") or "")[:12],
                  ", ".join("%s %s" % (c["entry_point"], c["verdict"]) for c in carried_rows[:4])))
+    if reran_oracles:
+        print("NOTE: the scoped comparison re-ran the read oracle(s) of %s for this card" % ", ".join(reran_oracles))
     ok, reason = progress(prev["measure"], cur["measure"], prev_keys, cur_keys,
                           gate=gate,
                           unit_scope=scope_doc if unit else None,
@@ -836,7 +843,7 @@ def main(argv: list[str] | None = None) -> int:
         # the accepted baseline is what acceptance JUDGED: the scoped receipt
         # with its un-re-run rows carried, each marked carried_from
         write_canonical(root / LOOP_ACCEPTED / PARITY_SNAPSHOT / PARITY_RECEIPT.name, judged_parity)
-    steps["steps"].append({"cluster": args.cluster, "card": args.card, "attempt": issued.get("attempt"), "idempotency_key": issued.get("idempotency_key"), "commit": sha, "candidate_sha256": on_disk, "measure": cur["measure"], "item_ids": sorted(item_ids(cur)), "obligation_keys": sorted(obligation_keys(cur)), "worklist_sha256": digest(cur), "changed": changed, "verdict": "accepted", "reason": reason, "runtime": cur.get("runtime") or {}, "gate": str(issued.get("gate") or ""), "parity": ({"verdict": str((cur_parity or {}).get("verdict") or ""), "binding": dict((cur_parity or {}).get("binding") or {}), "scenarios": list((((run if isinstance(run, dict) else {}).get("runtime") or {}).get("parity") or {}).get("scenarios") or []), "carried": list(carried_rows)} if cur_parity else {}), "discharged": sorted(str(i) for i in (issued.get("items") or [])), "si1_inconclusive": si1_unknown, "batch_scope": ({"digest": str(scope_ref.get("digest") or ""), "assessed": len(scope_rows),
+    steps["steps"].append({"cluster": args.cluster, "card": args.card, "attempt": issued.get("attempt"), "idempotency_key": issued.get("idempotency_key"), "commit": sha, "candidate_sha256": on_disk, "measure": cur["measure"], "item_ids": sorted(item_ids(cur)), "obligation_keys": sorted(obligation_keys(cur)), "worklist_sha256": digest(cur), "changed": changed, "verdict": "accepted", "reason": reason, "runtime": cur.get("runtime") or {}, "gate": str(issued.get("gate") or ""), "parity": ({"verdict": str((cur_parity or {}).get("verdict") or ""), "binding": dict((cur_parity or {}).get("binding") or {}), "scenarios": list((((run if isinstance(run, dict) else {}).get("runtime") or {}).get("parity") or {}).get("scenarios") or []), "read_oracles_rerun": list(reran_oracles), "carried": list(carried_rows)} if cur_parity else {}), "discharged": sorted(str(i) for i in (issued.get("items") or [])), "si1_inconclusive": si1_unknown, "batch_scope": ({"digest": str(scope_ref.get("digest") or ""), "assessed": len(scope_rows),
                                                           "inconclusive": [r for r in scope_rows if r.get("verdict") == "inconclusive"]} if scope_ref else {}), "amendments": list(issued.get("amendments") or []), "verify": _verify_meta(run if isinstance(run, dict) else {}),
                            "unit": ({"unit_id": str(scope_doc.get("unit_id") or ""), "rule": str(scope_doc.get("rule") or ""),
                                      "family_key": str(scope_doc.get("family_key") or "")} if unit else {}),

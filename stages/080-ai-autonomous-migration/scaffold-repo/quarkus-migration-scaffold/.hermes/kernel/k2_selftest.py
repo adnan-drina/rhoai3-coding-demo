@@ -1281,6 +1281,64 @@ def main() -> int:
             fails += 1
         else:
             print("ok generated_root_read_allowed")
+        # H4 (dest v9 t_4d75569c): amend-scope.py widened the ISSUED card's write set on the record (Pet.java), the
+        # card body's files_writable stayed as minted, and K2 refused the file-tool write to the amended path --
+        # while a terminal `sed -i` on it went unseen. The file tool honours the issued record beside the body's
+        # list; terminal in-place editors and redirections name their operands and are checked against the same set.
+        (dest / "src" / "main" / "java").mkdir(parents=True, exist_ok=True)
+        for name in ("Ctl.java", "Pet.java", "Other.java"):
+            (dest / "src" / "main" / "java" / name).write_text("class X {}", encoding="utf-8")
+        (dest / "verification" / "loop" / "issued.json").write_text(json.dumps(
+            {"schema": "rhoai3.loop-issued/v1", "task_id": "t_loopcard", "cluster": "c:1",
+             "write_set": ["src/main/java/Ctl.java", "src/main/java/Pet.java"],
+             "amendments": [{"path": "src/main/java/Pet.java", "reason": "the order-only body difference is produced by Pet.getVisits()"}]}),
+            encoding="utf-8")
+        amended_env = dict(loop_card_env, K2_FILES_WRITABLE="src/main/java/Ctl.java")
+        r = run("", roots, cwd=cwd, tool="write_file", extra_input={"path": str(dest / "src/main/java/Pet.java"), "content": "x"}, extra_env=amended_env)
+        if r.get("action") == "block":
+            print("FAIL amended_path_file_write_allowed", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok amended_path_file_write_allowed")
+        r = run("", roots, cwd=cwd, tool="write_file", extra_input={"path": str(dest / "src/main/java/Other.java"), "content": "x"}, extra_env=amended_env)
+        if r.get("action") != "block" or "outside" not in (r.get("message") or ""):
+            print("FAIL unamended_path_file_write_refused", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok unamended_path_file_write_refused")
+        for cmdline in ("sed -i 's/naturalOrder/reverseOrder/' src/main/java/Other.java",
+                        "sed -i '' -e 's/a/b/' ./src/main/java/Other.java",
+                        "sed --in-place=.bak -e 's/a/b/' src/main/java/Other.java",
+                        "perl -pi -e 's/a/b/' src/main/java/Other.java",
+                        "cd %s && sed -i 's/a/b/' src/main/java/Other.java" % dest,
+                        "echo x > src/main/java/Other.java",
+                        "cat verification/x >> src/main/java/Other.java"):
+            r = run(cmdline, roots, cwd=cwd, extra_env=amended_env)
+            if r.get("action") != "block" or "outside" not in (r.get("message") or ""):
+                print("FAIL terminal_edit_outside_write_set_refused %r" % cmdline, r, file=sys.stderr)
+                fails += 1
+            else:
+                print("ok terminal_edit_outside_write_set_refused")
+        for cmdline in ("sed -i 's/naturalOrder/reverseOrder/' src/main/java/Pet.java",
+                        "perl -pi -e 's/a/b/' src/main/java/Ctl.java",
+                        "sed -n '1,5p' src/main/java/Other.java",
+                        "sed -e 's/a/b/' src/main/java/Other.java | head",
+                        "grep -n order src/main/java/Other.java",
+                        "mvn -q verify 2>/dev/null"):
+            r = run(cmdline, roots, cwd=cwd, extra_env=amended_env)
+            if r.get("action") == "block":
+                print("FAIL terminal_edit_in_write_set_or_read_allowed %r" % cmdline, r, file=sys.stderr)
+                fails += 1
+            else:
+                print("ok terminal_edit_in_write_set_or_read_allowed")
+        # without an issued record the body's list alone decides, as before
+        (dest / "verification" / "loop" / "issued.json").unlink()
+        r = run("", roots, cwd=cwd, tool="write_file", extra_input={"path": str(dest / "src/main/java/Pet.java"), "content": "x"}, extra_env=amended_env)
+        if r.get("action") != "block" or "files_writable" not in (r.get("message") or ""):
+            print("FAIL body_list_alone_without_issued_record", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok body_list_alone_without_issued_record")
         (dest / "verification" / "loop" / "issued.json").write_text(json.dumps({"schema": "rhoai3.loop-issued/v1", "task_id": "t_loopcard", "cluster": "c:1", "write_set": ["pom.xml"]}), encoding="utf-8")
         r = run("", roots, cwd=cwd, tool="write_file", extra_input={"path": str(dest / "tmp-deps/x.jar"), "content": "x"}, extra_env={"HERMES_PROFILE": "implementer", "HERMES_KANBAN_TASK": "t_notloop", "K2_BOUND_GATE_EXIT": "0"})
         if r.get("action") == "block" and "outside this card write set" in (r.get("message") or ""):

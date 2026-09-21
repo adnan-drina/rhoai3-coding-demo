@@ -650,8 +650,132 @@ def write_effect_paths(c):
         found.append(m.group(1))
     return found
 
+SHELL_SEPS = ("&&", "||", ";", "|", "|&")
+_PERL_INPLACE = re.compile(r"^-[pnlaw]*i(?:[.~][^\s]*)?$")
+
+def _command_segments(c):
+    """The command text split into simple commands, each a token list (shlex;
+    a quoting error falls back to whitespace), leading env assignments dropped."""
+    try:
+        import shlex
+        toks = shlex.split(c, posix=True)
+    except ValueError:
+        toks = c.split()
+    out, seg = [], []
+    for t in toks:
+        if t in SHELL_SEPS:
+            if seg:
+                out.append(seg)
+            seg = []
+        else:
+            seg.append(t)
+    if seg:
+        out.append(seg)
+    cleaned = []
+    for seg in out:
+        k = 0
+        while k < len(seg) and re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", seg[k]):
+            k += 1
+        if k < len(seg):
+            cleaned.append(seg[k:])
+    return cleaned
+
+def inplace_edit_targets(c):
+    """Files an IN-PLACE EDITOR in the command text would rewrite: sed -i /
+    --in-place (GNU, and BSD -i with an empty suffix) and perl -i / -pi / -ni[.bak].
+
+    dest v9 t_4d75569c: the file tool refused Pet.java (H4) and the worker fell
+    back to `sed -i` through the terminal, which nothing here looked at -- the
+    write set only ever saw the file tool, redirections, tee and cp/mv/rm. The
+    operands are named plainly in the command, so they are read from it, the
+    same command-text matching as write_effect_paths and with the same caveat:
+    a guardrail for a terminal-capable seat, not containment (AD-020)."""
+    found = []
+    if not c:
+        return found
+    for seg in _command_segments(c):
+        base = seg[0].rsplit("/", 1)[-1]
+        args = seg[1:]
+        if base == "sed":
+            inplace, script_seen, files = False, False, []
+            i = 0
+            while i < len(args):
+                a = args[i]
+                if a == "--":
+                    rest = args[i + 1:]
+                    if not script_seen and rest:
+                        rest = rest[1:]
+                    files.extend(rest)
+                    break
+                if a.startswith("-") and a != "-":
+                    if a.startswith("-i") or a.startswith("--in-place"):
+                        inplace = True
+                        if a == "-i" and i + 1 < len(args) and args[i + 1] == "":
+                            i += 2  # BSD: -i followed by an empty backup suffix
+                            continue
+                    if a in ("-e", "--expression", "-f", "--file"):
+                        script_seen = True
+                        i += 2
+                        continue
+                    if a in ("-l", "--line-length"):
+                        i += 2
+                        continue
+                    if a.startswith("--expression=") or a.startswith("--file=") or (a.startswith("-e") and len(a) > 2) or (a.startswith("-f") and len(a) > 2):
+                        script_seen = True
+                    i += 1
+                    continue
+                if not script_seen:
+                    script_seen = True
+                    i += 1
+                    continue
+                files.append(a)
+                i += 1
+            if inplace:
+                found.extend(f for f in files if f)
+        elif base == "perl":
+            if not any(_PERL_INPLACE.match(a) for a in args):
+                continue
+            files, i = [], 0
+            while i < len(args):
+                a = args[i]
+                if a == "--":
+                    files.extend(args[i + 1:])
+                    break
+                if a in ("-e", "-E", "-I", "-M", "-m"):
+                    i += 2
+                    continue
+                if a.startswith("-"):
+                    i += 1
+                    continue
+                files.append(a)
+                i += 1
+            found.extend(f for f in files if f)
+    return found
+
+def redirect_targets(c):
+    """Files a shell REDIRECTION in the command text would create or extend
+    (> and >>), by name. Relative operands were invisible before: the path
+    collector reads only absolute, ./ and ../ tokens, so `echo x > src/A.java`
+    was a write the write set never saw (H4). /dev/*, `>&n` and process
+    substitutions are not files."""
+    found = []
+    if not c:
+        return found
+    for m in re.finditer(r"(?<![<>])>>?\s*([^\s|;&<>()]+)", c):
+        target = m.group(1).strip(chr(34) + chr(39))
+        if not target or target.startswith("/dev/") or target.startswith("&"):
+            continue
+        found.append(target)
+    return found
+
 effect = write_effect_paths(cmd)
 for p in effect:
+    if p not in paths:
+        paths.append(p)
+# in-place edits and redirections name their operands in the command text:
+# they are paths of the command like any other (checked against the allow
+# root and, when the command is a write, against the write set)
+for p in inplace_edit_targets(cmd) + redirect_targets(cmd):
     if p not in paths:
         paths.append(p)
 
@@ -901,6 +1025,8 @@ WRITE_TOOLS = {
 def looks_like_write_cmd(c):
     if not c:
         return False
+    if inplace_edit_targets(c):
+        return True
     if re.search(r"(?:^|[^=])>(?!>)", c) and ">/dev/null" not in c.replace(" ", ""):
         if re.search(r">\s*/dev/null\b", c):
             pass
@@ -1199,6 +1325,17 @@ if tool in WRITE_TOOLS or looks_like_write_cmd(cmd) or effect:
             block("write pom.xml is outside the dest write sandbox (legacy is read-only)")
 
 writeset = load_writeset()
+# H4 (dest v9 t_4d75569c): the files_writable of the card body is the write
+# set as MINTED. amend-scope.py widens the write set of the ISSUED card on the
+# record (verification/loop/issued.json), and the body is never re-minted, so
+# a file-tool write to the amended path was refused here while the acceptance
+# of the loop itself (advance.py, which checks issued.json) would have taken
+# it -- and the worker fell back to sed -i through the terminal. The issued
+# record is the authority for the write set of a loop card; the list in the
+# body is honoured alongside it, never instead of it.
+_issued_ws = loop_write_set()
+if writeset is not None and _issued_ws:
+    writeset = list(writeset) + [w for w in _issued_ws if w not in writeset]
 phase = load_phase()
 if phase in {"M4", "VERDICT"}:
     if looks_like_write_cmd(cmd) and (
