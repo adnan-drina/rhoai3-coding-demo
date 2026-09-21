@@ -2824,10 +2824,84 @@ def _body_diff_case() -> int:
     return 0
 
 
+def _server_error_advice_case() -> int:
+    """H5b (v9 c:67bfc8d7483e): a parity obligation whose difference is a 5xx
+    carries the destination's exception and, as locus hints, the product files
+    its stack names -- each frame's class resolved to a file through the
+    model, never taken as a literal -- and its advice says the failure is in
+    that file: amend the scope and repair there. A 4xx difference gets no
+    server_error advice even when the record carries the key."""
+    import json
+    import tempfile
+
+    from planner.paths import PARITY_DIR, STRUCTURE
+
+    ep = "ep:com.acme.ledger.AccountResource#delete(int):http"
+    bundle = {"entry_points": [{"id": ep, "path": "src/main/java/com/acme/ledger/AccountResource.java"}]}
+    repo = "com.acme.ledger.persistence.LedgerRepositoryImpl"
+    svc = "com.acme.ledger.service.LedgerService"
+    with tempfile.TemporaryDirectory(prefix="server-error-advice-") as td:
+        root = Path(td)
+        (root / STRUCTURE).parent.mkdir(parents=True)
+        (root / STRUCTURE).write_text(json.dumps({"types": [
+            {"fqn": repo, "path": "src/main/java/com/acme/ledger/persistence/LedgerRepositoryImpl.java"},
+            {"fqn": svc, "path": "src/main/java/com/acme/ledger/service/LedgerService.java"}]}))
+        (root / PARITY_DIR / "scenarios").mkdir(parents=True)
+        # the runner's row: frames without a resolved file, so the planner has to derive it
+        se = {"status": 500, "expected_status": 204, "matched": "error_id", "error_id": "43525fec-1a2b-4c3d-9e8f-0123456789ab",
+              "exception": "jakarta.persistence.PersistenceException", "message": "org.hibernate.query.SemanticException: bad path",
+              "causes": [{"exception": "org.hibernate.query.SemanticException", "message": "bad path"}],
+              "frames": [{"class": repo, "method": "delete", "line": 42},
+                         {"class": repo + "_Subclass", "method": "delete$$superforward", "line": 0},
+                         {"class": svc, "method": "delete", "line": 31}],
+              "log": "verification/parity/logs/destination.log", "retained": "verification/parity/scenarios/_server-errors/a.log",
+              "stack_sha256": "ab" * 32, "excerpt": ["..."]}
+        (root / PARITY_DIR / "scenarios" / "a.json").write_text(json.dumps({
+            "schema": "rhoai3.scenario-parity/v1", "entry_point": ep, "scenario": "sc:delete-1", "verdict": "FAIL",
+            "reason": "status 500 vs 204; body 0701a0ba9586 vs e2326615f78b (2 difference(s): extra at line 1; length); effect eff:after: status 200 vs 404",
+            "server_error": se}))
+        (root / PARITY_DIR / "scenarios" / "b.json").write_text(json.dumps({
+            "schema": "rhoai3.scenario-parity/v1", "entry_point": ep, "scenario": "sc:read-1", "verdict": "FAIL",
+            "reason": "status 404 vs 200; body 11 vs 22", "server_error": se}))
+        (root / PARITY_DIR / "scenarios" / "c.json").write_text(json.dumps({
+            "schema": "rhoai3.scenario-parity/v1", "entry_point": ep, "scenario": "sc:delete-2", "verdict": "FAIL",
+            "reason": "status 500 vs 204", "server_error": dict(se, frames=[])}))
+        (root / PARITY_DIR / "scenarios" / "d.json").write_text(json.dumps({
+            "schema": "rhoai3.scenario-parity/v1", "entry_point": ep, "scenario": "sc:delete-3", "verdict": "FAIL",
+            "reason": "status 500 vs 204", "server_error": dict(se, frames=se["frames"][:1])}))
+        items = {i["scenario"]: i for i in parity_items(root, bundle)}
+        a = items["sc:delete-1"]["advice"].get("server_error") or {}
+        hints = a.get("locus_hints") or []
+        if [(h["path"], h["member"], h["line"]) for h in hints] != [
+                ("src/main/java/com/acme/ledger/persistence/LedgerRepositoryImpl.java", "delete", 42),
+                ("src/main/java/com/acme/ledger/service/LedgerService.java", "delete", 31)]:
+            return _fail("the locus hints are the product files the frames name, derived from the model, one per file: %s" % hints)
+        if (a.get("exception"), a.get("error_id"), a.get("matched")) != (se["exception"], se["error_id"], "error_id") or a.get("causes") != se["causes"]:
+            return _fail("the advice carries the exception, the id, how it was matched and the causes: %s" % a)
+        if (not str(a.get("locus", "")).startswith("the failure is in src/main/java/com/acme/ledger/persistence/LedgerRepositoryImpl.java")
+                or "amend-scope.py" not in a["locus"] or "--evidence parity:%s" % items["sc:delete-1"]["id"] not in a["locus"]
+                or "--path src/main/java/com/acme/ledger/persistence/LedgerRepositoryImpl.java" not in a["locus"]):
+            return _fail("the advice says the failure is in that file, amend the scope and repair there: %s" % a.get("locus"))
+        if "Server error: jakarta.persistence.PersistenceException in src/main/java/com/acme/ledger/persistence/LedgerRepositoryImpl.java (LedgerRepositoryImpl.delete:42)" not in items["sc:delete-1"]["message"]:
+            return _fail("the obligation's message names the exception and the file: %s" % items["sc:delete-1"]["message"])
+        if items["sc:read-1"]["advice"].get("server_error"):
+            return _fail("a 4xx difference gets no server_error advice")
+        c = items["sc:delete-2"]["advice"].get("server_error") or {}
+        if c.get("locus_hints") or "none of its frames resolves" not in c.get("locus", ""):
+            return _fail("a stack with no product frame says so and points at the retained block: %s" % c.get("locus"))
+        # two obligations thrown in the same file name each other; one with no frame names nobody
+        if (items["sc:delete-1"]["advice"]["server_error"].get("same_locus_obligations") != [items["sc:delete-3"]["id"]]
+                or items["sc:delete-3"]["advice"]["server_error"].get("same_locus_obligations") != [items["sc:delete-1"]["id"]]
+                or c.get("same_locus_obligations")):
+            return _fail("obligations thrown in one file name each other: %s / %s" % (
+                items["sc:delete-1"]["advice"]["server_error"].get("same_locus_obligations"), c.get("same_locus_obligations")))
+    return 0
+
+
 def main() -> int:
     if (_runtime_identity_case() or _gate_progress_case() or _batch_scope_case() or _checked_family_case()
             or _set_wide_case() or _config_value_case() or _parity_typing_case() or _parity_advice_case()
-            or _parity_navigation_case() or _owed_adapter_case() or _cors_scenario_case() or _scoped_carry_case() or _receipt_v2_case() or _split_discharge_case() or _read_oracle_discharge_case() or _body_diff_case() or _harness_owned_guard_case() or _parity_gate_case() or _unit_formation_case() or _unit_bound_case() or _unit_seal_case()
+            or _parity_navigation_case() or _owed_adapter_case() or _cors_scenario_case() or _scoped_carry_case() or _receipt_v2_case() or _split_discharge_case() or _read_oracle_discharge_case() or _body_diff_case() or _server_error_advice_case() or _harness_owned_guard_case() or _parity_gate_case() or _unit_formation_case() or _unit_bound_case() or _unit_seal_case()
             or _unit_mode_case() or _unit_inert_case() or _unit_config_case()
             or _unit_experiment_table_case() or _unit_explained_case() or _unit_progress_case()
             or _unit_budget_case()):

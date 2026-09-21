@@ -48,10 +48,13 @@ rule to `kanban_complete`.
    candidate changed) then `advance.py` for this card — do that and follow the
    verdict; do not block. A **body** parity item carries `advice.body_diff`
    (the differing paths, their kind -- `order`, `value`, `missing`, ... -- and
-   often `locus_hints`, the file that produces the value). The producing file
-   is often outside the controller (a model getter, a mapper): add it with
-   `amend-scope.py --path <file> --reason <why> --evidence parity:<item id>`
-   before editing it, rather than blocking. K2 treats `brief.py` `[exit 1]` as a
+   often `locus_hints`, the file that produces the value). A parity item whose
+   status difference is a **5xx** the source did not answer carries
+   `advice.server_error`: the exception the destination logged for that
+   request (matched by the error id its body carried), its message, and
+   `locus_hints` naming the product file(s) its stack frames pass through --
+   the body itself is only an error id. Both are handled by the scope rule in
+   step 3. K2 treats `brief.py` `[exit 1]` as a
    bound gate: re-run brief or `kanban_block` (run-verify and advance need not
    have run). **The brief is the plan.** Each item carries
    the rule's advice; pom items carry the element at the line, which
@@ -68,13 +71,23 @@ rule to `kanban_complete`.
    deleting the code or configuration it is about: an obligation on a
    Spring profile file is met by moving its keys into
    `application.properties` as `%<profile>.<key>` (advance.py vetoes a
-   deletion whose `quarkus.*` or catalog-mapped keys did not land). If the
-   documented fix needs a path outside the write set, `kanban_block`
-   kind=needs_input naming that path. Never a whole-file rewrite
+   deletion whose `quarkus.*` or catalog-mapped keys did not land).
+   **Scope rule** (for every parity item, and for any runtime obligation
+   whose producing file is outside the write set): find the producing file
+   -- the item's `locus_hints` name it: a `body_diff`'s producer, a
+   `server_error`'s first product frame -- record it BEFORE editing it with
+   `amend-scope.py --root . --cluster <id> --card $HERMES_KANBAN_TASK --path
+   <file> --reason <why> --evidence parity:<item id>` (bounded by the card's
+   own bounds: two amendments, a unit's four and never past its file bound),
+   then edit it. `kanban_block` kind=needs_input ONLY when amend-scope.py
+   REFUSES (quote its `REFUSE: SCOPE_AMENDMENT` line) or when the fix is in a
+   path the loop never grants: tests, `evidence/`, `decisions.yaml`, a plugin
+   or dependency the brief did not ask for. A path outside the amended write
+   set is reverted by advance.py. Never a whole-file rewrite
    (the model server buffers a tool call's arguments; a 12 KB rewrite is
    minutes of silence). Never tests, never `evidence/`, never
    `decisions.yaml`, never a plugin or dependency the brief did not ask
-   for, never a path outside the write set (advance.py reverts it).
+   for.
    No inline python (`python3 -c`, `python3 -`) on a loop card: K2 refuses
    it. Everything it would compute is already in the brief.
 4. `bash .hermes/skills/migration/fix-until-green/scripts/run-verify.sh --root .`

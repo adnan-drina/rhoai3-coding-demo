@@ -27,9 +27,24 @@ from planner.canonical import load_json, write_canonical  # noqa: E402
 from planner.paths import LOOP_DIR, LOOP_ISSUED, MTA_FINDINGS, MTA_RESCAN_FINDINGS, WORKLIST, BOM_MANAGED, TYPE_INVENTORY  # noqa: E402
 from planner.worklist import CHECKED_FAMILY_RULE, UNIT_KIND, UNIT_MAX_FILES, assess_unit, head_cluster, items_of  # noqa: E402
 
+# H5a: the ONE scope rule, stated once, the same words the M3 skill uses. It
+# replaces "never touch a path outside the write set" beside "add it with
+# amend-scope.py rather than blocking" -- two rules that sent v9 c:67bfc8d7483e
+# to the wrong file and then to a block.
+SCOPE_RULE = (
+    "Scope rule, for every parity item and for any runtime obligation whose producing file is outside the write set: "
+    "find the producing file (the item's locus_hints -- a body_diff's producer, a server_error's first product frame -- "
+    "name it), record it BEFORE editing it with amend-scope.py --root . --cluster <id> --card $HERMES_KANBAN_TASK "
+    "--path <file> --reason <why> --evidence parity:<item id> (bounded by the card's own bounds: two amendments, a "
+    "unit's four and never past its file bound), then edit it. kanban_block kind=needs_input ONLY when amend-scope.py "
+    "REFUSES (quote its REFUSE: SCOPE_AMENDMENT line) or when the fix is in a path the loop never grants: tests, "
+    "evidence/, decisions.yaml, a plugin or dependency the brief did not ask for. A path outside the amended write "
+    "set is reverted by advance.py."
+)
+
 PROCEDURE = (
-    "Patch the write set one item at a time (targeted edits; never rewrite a whole file, never touch a "
-    "path outside the write set, never tests). Each item names its rule, its advice (the rule's own guidance), "
+    "Patch the write set one item at a time (targeted edits; never rewrite a whole file, never tests). "
+    + SCOPE_RULE + " Each item names its rule, its advice (the rule's own guidance), "
     "and for pom.xml the exact element at the reported line. An item whose advice names an artifact that is "
     "already in the pom is marked advice_present: verify and move on, do not add it twice. A compile item "
     "with already_imported: true is a classpath/API replacement, not a missing import — follow do_not; do "
@@ -645,6 +660,13 @@ def parity_brief(items: list[dict], cluster: dict) -> dict:
         "body_diffs": [dict((i.get("advice") or {}).get("body_diff") or {}, obligation=str(i.get("id") or ""),
                             scenario=str(i.get("scenario") or ""))
                        for i in rows if (i.get("advice") or {}).get("body_diff")],
+        # H5b: a 5xx the source did not answer carries the destination's own
+        # exception and the product file its stack names -- the body was only
+        # an error id, and the exception lived only in the destination's log
+        "server_errors": [dict((i.get("advice") or {}).get("server_error") or {}, obligation=str(i.get("id") or ""),
+                               scenario=str(i.get("scenario") or ""))
+                          for i in rows if (i.get("advice") or {}).get("server_error")],
+        "scope": SCOPE_RULE,
         "measured_by": (
             "run-verify.sh --mode acceptance re-runs the scenario comparison for this card (run-parity.py, scoped to %s, "
             "and the read oracle of %s) after the packaging and startup gates, and re-composes "
@@ -816,7 +838,7 @@ def main(argv: list[str] | None = None) -> int:
         "attempts_left": _budget(steps, cluster["id"], rk, int(_max_attempts(root)))["left"],
         "measure": doc["measure"],
         "procedure": PROCEDURE,
-        "rule": "Edit only the write set. Do not edit tests. Do not touch pom.xml unless it is in the write set. Do not repeat a previous attempt (previous_attempts names the refused patch, before/after diagnostic loci, and the legal next action). A compile item with already_imported is not a missing import. Do not run extra mvn beside run-verify.sh. Then run run-verify.sh --mode acceptance and advance.py; the measure decides, not you.",
+        "rule": "Edit only the write set as amended on the record (" + SCOPE_RULE + ") Do not edit tests. Do not touch pom.xml unless it is in the write set. Do not repeat a previous attempt (previous_attempts names the refused patch, before/after diagnostic loci, and the legal next action). A compile item with already_imported is not a missing import. Do not run extra mvn beside run-verify.sh. Then run run-verify.sh --mode acceptance and advance.py; the measure decides, not you.",
     }
     if cluster.get("not_open"):
         brief["issued_not_open"] = dict(cluster["not_open"])

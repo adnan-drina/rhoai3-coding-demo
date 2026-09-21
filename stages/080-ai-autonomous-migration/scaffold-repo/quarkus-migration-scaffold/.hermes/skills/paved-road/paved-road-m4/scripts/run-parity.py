@@ -185,6 +185,7 @@ from _scenarios import (DEFAULT_SECURITY_MODE, PARITY_ORPHANS, SECURITY_MODES, C
 from planner.admission import verify_receipt  # noqa: E402
 from planner.canonical import load_json, sha256_file, write_canonical  # noqa: E402
 from planner.paths import VERIFY_PACKAGE  # noqa: E402
+from planner.server_error import annotate_record  # noqa: E402
 
 SCHEMA = "rhoai3.parity-run/v1"
 READ_METHODS = ("GET", "HEAD")
@@ -378,6 +379,15 @@ def _verdict_of(path: Path) -> tuple[str, str]:
     if not isinstance(doc, dict):
         return "", "record %s is not an object" % path.name
     return str(doc.get("verdict") or ""), str(doc.get("reason") or "")
+
+
+def _rel_or_empty(root: Path, p: Path | None) -> str:
+    if p is None:
+        return ""
+    try:
+        return p.resolve().relative_to(root.resolve()).as_posix()
+    except ValueError:
+        return p.as_posix()
 
 
 def json_compact(obj: Any) -> str:
@@ -865,6 +875,13 @@ def main(argv: list[str] | None = None) -> int:
                          "enabled mode, disabled_value for the disabled one). The default whenever an enabled-mode run has "
                          "to start the destination itself. A --dest-config the caller named for the same key wins")
     ap.add_argument("--port", type=int, default=8081, help="the port the destination this runner starts listens on")
+    ap.add_argument("--dest-log", default="",
+                    help="H5b: the log of a destination passed with --dest-url, so a 5xx verdict can carry the destination's "
+                         "exception (the destination this runner starts logs to verification/parity/logs/destination.log and "
+                         "needs nothing). For every FAIL whose status difference is a 5xx the source did not answer, the "
+                         "exception block is taken from the log -- by the error id the body carried, else the last "
+                         "ERROR/stack block appended while the request ran -- and recorded bounded on the verdict as "
+                         "server_error, with the first frames that belong to THIS product resolved to their files")
     ap.add_argument("--ready-timeout", type=int, default=180)
     ap.add_argument("--java", default=None,
                     help="the java that starts the destination; default the boot gate's own: $JAVA_HOME_21/bin/java, "
@@ -1100,16 +1117,45 @@ def main(argv: list[str] | None = None) -> int:
                 return 1
 
         dest_url = doc["dest_url"]
+        # H5b: the destination's log, and the byte span of it that each
+        # comparison appends -- the request's window. The runner is the one
+        # place that has the log and the window together, so a 5xx verdict is
+        # given its exception here, before the composer reads the record.
+        dest_log = dest.log if dest is not None else (Path(args.dest_log) if args.dest_log else None)
+        doc["dest_log"] = _rel_or_empty(root, dest_log)
+
+        def _log_mark() -> int:
+            try:
+                return dest_log.stat().st_size if dest_log is not None else 0
+            except OSError:
+                return 0
+
+        def _server_error(record: Path, mark: int, row: dict[str, Any], label: str) -> None:
+            if dest_log is None or row.get("verdict") != "FAIL":
+                return
+            se = annotate_record(root, record, dest_log, (mark, _log_mark()))
+            if se is None:
+                return
+            row["server_error"] = {"exception": se.get("exception") or "", "matched": se.get("matched") or "",
+                                   "files": [f["file"] for f in (se.get("frames") or [])]}
+            print("  server error on %s: %s%s (%s)" % (
+                label, se.get("exception") or "no exception block in the log",
+                (" in " + ", ".join(sorted({f["file"] for f in (se.get("frames") or [])}))) if se.get("frames") else "",
+                "matched by error id" if se.get("matched") == "error_id" else
+                "last ERROR block in the request window" if se.get("matched") == "window" else se.get("note") or "unmatched"))
 
         # 1. every scenario the corpus declares, in corpus order
         for sc in scenarios:
             sid = str(sc["id"])
             argv_sc = [sys.executable, str(COMPARE_SCENARIO), "--root", str(root), "--scenario", sid,
                        "--dest-url", dest_url, "--reset-cmd", reset_cmd, *mode_argv, *issued_argv]
+            mark = _log_mark()
             proc = _run_child(argv_sc, "scenario %s" % sid)
-            verdict, reason = _verdict_of(root / parity_dir / (scenario_slug(sid) + ".json"))
+            record = root / parity_dir / (scenario_slug(sid) + ".json")
+            verdict, reason = _verdict_of(record)
             row = {"id": sid, "entry_point": str(sc.get("entry_point") or ""), "rc": proc.returncode,
                    "verdict": verdict, "reason": reason[:300]}
+            _server_error(record, mark, row, "scenario %s" % sid)
             doc["scenarios"]["results"].append(row)
             if not verdict:
                 failures.append("scenario %s recorded no verdict (rc %d): %s"
@@ -1133,10 +1179,13 @@ def main(argv: list[str] | None = None) -> int:
                 continue
             argv_ep = [sys.executable, str(COMPARE_RUNTIME), "--root", str(root), "--entry-point", ep,
                        "--dest-url", dest_url, *issued_argv]
+            mark = _log_mark()
             proc = _run_child(argv_ep, "entry point %s" % ep)
-            verdict, reason = _verdict_of(root / PARITY / (slug(ep) + ".json"))
-            doc["entry_points"]["results"].append({"entry_point": ep, "rc": proc.returncode,
-                                                   "verdict": verdict, "reason": reason[:300]})
+            record = root / PARITY / (slug(ep) + ".json")
+            verdict, reason = _verdict_of(record)
+            row_ep = {"entry_point": ep, "rc": proc.returncode, "verdict": verdict, "reason": reason[:300]}
+            _server_error(record, mark, row_ep, "entry point %s" % ep)
+            doc["entry_points"]["results"].append(row_ep)
             if not verdict:
                 failures.append("entry point %s recorded no verdict (rc %d): %s"
                                 % (ep, proc.returncode, ((proc.stderr or proc.stdout or "").strip()[-200:])))

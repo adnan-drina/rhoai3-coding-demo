@@ -446,6 +446,62 @@ def _parity_body_case(root: Path) -> int:
     return 0
 
 
+def _parity_server_error_case(root: Path) -> int:
+    """H5a (v9 c:67bfc8d7483e): a 5xx is thrown in the service or persistence
+    layer behind the controller's interface. ONE rule for every parity item:
+    the repository IMPLEMENTATION is reached through the interface the
+    controller calls (an implementor is reached in the same step as its
+    interface), and the file a server_error's product frame names is the
+    hinted producer. A file the operation does not reach is still refused."""
+    files = {"src/main/java/p/web/LedgerCtl.java": "package p.web;\nimport p.svc.LedgerService;\npublic class LedgerCtl {\n    LedgerService svc;\n    public void delete(int id) { svc.delete(id); }\n}\n",
+             "src/main/java/p/svc/LedgerService.java": "package p.svc;\npublic interface LedgerService {\n    void delete(int id);\n}\n",
+             "src/main/java/p/svc/LedgerServiceImpl.java": "package p.svc;\nimport p.repo.LedgerRepo;\npublic class LedgerServiceImpl implements LedgerService {\n    LedgerRepo repo;\n    public void delete(int id) { repo.delete(id); }\n}\n",
+             "src/main/java/p/repo/LedgerRepo.java": "package p.repo;\npublic interface LedgerRepo {\n    void delete(int id);\n}\n",
+             "src/main/java/p/repo/LedgerRepoImpl.java": "package p.repo;\npublic class LedgerRepoImpl implements LedgerRepo {\n    public void delete(int id) { throw new IllegalStateException(\"hql\"); }\n}\n"}
+    for rel, text in files.items():
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / rel).write_text(text)
+    _git(root, "add", "-A")
+    _git(root, "commit", "-qm", "server error fixture")
+    ctl, repo_impl, svc_impl = "src/main/java/p/web/LedgerCtl.java", "src/main/java/p/repo/LedgerRepoImpl.java", "src/main/java/p/svc/LedgerServiceImpl.java"
+    item = {"id": "parity:err1", "source": "parity", "gate": "parity", "kind": "parity", "rule_id": "PARITY",
+            "path": ctl, "detail": "sc:delete-1: status 500 vs 204",
+            "advice": {"server_error": {"status": 500, "expected_status": 204, "exception": "java.lang.IllegalStateException", "locus_hints": []}}}
+    wl = root / "evidence/planning/worklist.json"
+    issued = root / "verification/loop/issued.json"
+
+    def reset() -> None:
+        wl.write_text(json.dumps({"schema": "rhoai3.worklist/v1", "clusters": [], "items": [item]}))
+        issued.write_text(json.dumps({"schema": "rhoai3.loop-issued/v1", "cluster": "c:err", "attempt": 1, "gate": "parity",
+                                      "items": ["parity:err1"], "write_set": [ctl]}))
+
+    reason = "the delete throws in the repository implementation"
+    reset()
+    # no body difference, no hint: the repository IMPLEMENTATION is reached through the interfaces the controller calls
+    rc, out = _run(root, "--path", repo_impl, "--reason", reason, "--evidence", "parity:parity:err1", cluster="c:err")
+    if rc != 0 or "reaches p.repo.LedgerRepoImpl in 2 step(s) as an implementor of p.repo.LedgerRepo" not in out:
+        return _fail("a 5xx parity item reaches the persistence implementation behind the service interface: %s" % out)
+    doc = json.loads(issued.read_text())
+    if repo_impl not in doc["write_set"] or doc["amendments"][-1]["evidence"] != {"kind": "parity", "ref": "parity:err1", "tool_named": True}:
+        return _fail("the amendment is recorded on the parity evidence: %s" % doc)
+    rc, out = _run(root, "--path", "src/main/java/p/SecurityConfig.java", "--reason", reason, "--evidence", "parity:parity:err1", cluster="c:err")
+    if rc == 0 or "does not reach" not in out or "implementors included" not in out:
+        return _fail("a file the operation does not reach is refused, implementors included: %s" % out)
+    # the runner's product frame is the hinted producer, whatever the reach says
+    reset()
+    item["advice"]["server_error"]["locus_hints"] = [{"path": svc_impl, "type": "p.svc.LedgerServiceImpl", "member": "delete", "line": 5}]
+    reset()
+    rc, out = _run(root, "--path", svc_impl, "--reason", reason, "--evidence", "parity:parity:err1", cluster="c:err")
+    if rc != 0 or "is where parity:err1's server error is thrown (p.svc.LedgerServiceImpl.delete line 5)" not in out:
+        return _fail("the server error's product frame is the hinted producer: %s" % out)
+    # a runtime obligation's evidence kind is not a parity card's route; bounds stay the card's
+    rc, out = _run(root, "--path", repo_impl, "--reason", reason, "--evidence", "parity:parity:err1", cluster="c:err")
+    rc, out = _run(root, "--path", "src/main/java/p/Vet.java", "--reason", reason, "--evidence", "parity:parity:err1", cluster="c:err")
+    if rc == 0 or "limit 2" not in out:
+        return _fail("a parity card is bounded like any card: %s" % out)
+    return 0
+
+
 def main() -> int:
     if not shutil.which("javac"):
         print("SKIP: amend-scope selftest needs a JDK on PATH")
@@ -570,6 +626,8 @@ def main() -> int:
             return 1
         if _parity_body_case(root):
             return 1
+        if _parity_server_error_case(root):
+            return 1
 
     print("OK: amend-scope (tests, the build file, unknown paths, unreasoned asks and files the failure does not reach "
           "all refuse; a reference the repair itself introduced authorizes nothing and an inventory with no sealed reachability refuses outright; a file that is already edited cannot be authorized after the fact; a justified amendment widens "
@@ -586,7 +644,10 @@ def main() -> int:
           "file exists the promised relationship is verified from the model (an adapter that does not implement "
           "the parent is named as such); and the file bound still governs it. AN OWED ADAPTER (ADR-019): its contract "
           "path is authorized before it exists on a parity obligation the work list carries, never the other "
-          "adapter's path, and once written it must declare the contract's type")
+          "adapter's path, and once written it must declare the contract's type. H5a: a 5xx parity item reaches the "
+          "persistence implementation behind the service interface the controller calls (implementors count as one "
+          "step) and the product frame the runner recorded is the hinted producer; a file the operation does not "
+          "reach stays refused")
     return 0
 
 

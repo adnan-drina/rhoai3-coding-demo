@@ -268,12 +268,17 @@ PARITY_REACH_DEPTH = 3
 
 
 def _parity_locus(root: Path, issued: dict, rel: str, evidence_ref: str) -> tuple[str, str]:
-    """H1b: a body difference is often PRODUCED outside the controller (a model
-    getter, a mapper, the serialization configuration). A parity card may reach
-    that file on its OWN parity obligation's evidence, when the file is either
-    the locus the planner hinted for that obligation, or declares a type the
-    obligation's controller reaches through the compiler's own references
-    (bounded depth). A request alone never does."""
+    """H1b/H5a: a parity difference is often PRODUCED outside the controller --
+    a body's value in a model getter or a mapper, a 5xx in the service or the
+    persistence layer the operation calls into. ONE rule for every parity item:
+    a parity card may reach that file on its OWN parity obligation's evidence,
+    when the file is either a locus the planner hinted for that obligation (a
+    body_diff's producer, a server_error's product frame), or declares a type
+    the obligation's controller reaches through the compiler's own references
+    within a bounded depth -- an interface and its implementors counting as
+    one step, because the call goes to the implementor (v9 c:67bfc8d7483e: the
+    500 was thrown in the repository implementation behind the service
+    interface). A request alone never does."""
     if evidence_ref not in {str(i) for i in (issued.get("items") or [])}:
         return "", "parity:%s is not an obligation this card was issued" % evidence_ref
     item = next((i for i in _worklist_items(root) if str(i.get("id") or "") == evidence_ref), None)
@@ -281,13 +286,16 @@ def _parity_locus(root: Path, issued: dict, rel: str, evidence_ref: str) -> tupl
         return "", "no parity obligation %r is in the current work list" % evidence_ref
     advice = item.get("advice") if isinstance(item.get("advice"), dict) else {}
     body = advice.get("body_diff") if isinstance(advice.get("body_diff"), dict) else {}
-    if not body and "body " not in str(item.get("detail") or item.get("message") or ""):
-        return "", "parity obligation %s records no body difference, so no other file produces it" % evidence_ref
+    server_error = advice.get("server_error") if isinstance(advice.get("server_error"), dict) else {}
     if not (rel.startswith("src/main/") and (root / rel).is_file()):
         return "", "%s is not a main source file of this tree" % rel
     for h in body.get("locus_hints") or []:
         if str(h.get("path") or "") == rel:
             return "parity: %s is the hinted producer of %s's body difference (%s)" % (rel, evidence_ref, h.get("member")), ""
+    for h in server_error.get("locus_hints") or []:
+        if str(h.get("path") or "") == rel:
+            return ("parity: %s is where %s's server error is thrown (%s.%s line %s)"
+                    % (rel, evidence_ref, h.get("type"), h.get("member"), h.get("line") or "?")), ""
     try:
         from planner.worklist import unit_bound_imports, unit_type_refs  # noqa: PLC0415
 
@@ -295,6 +303,23 @@ def _parity_locus(root: Path, issued: dict, rel: str, evidence_ref: str) -> tupl
     except DestModelUnavailable as exc:
         return "", "the destination model is unavailable, so %s cannot be related to the controller (%s)" % (rel, exc)
     by_fqn = {str(t.get("fqn") or ""): t for t in (model.get("types") or []) if isinstance(t, dict)}
+    # who implements or extends whom, from the model's own supertypes: a call
+    # on an interface runs in its implementor, so the implementor is reached
+    # in the same step as the interface
+    implementors: dict[str, set[str]] = {}
+    for fqn, typ in by_fqn.items():
+        for sup in (typ.get("supertypes") or []):
+            implementors.setdefault(str(sup).split("<", 1)[0], set()).add(fqn)
+
+    def _with_implementors(names: set[str]) -> set[str]:
+        out, todo = set(names), list(names)
+        while todo:
+            for impl in implementors.get(todo.pop(), ()):
+                if impl not in out:
+                    out.add(impl)
+                    todo.append(impl)
+        return out
+
     wanted = {str(t.get("fqn") or "") for t in types_of(model, rel)}
     frontier = {str(t.get("fqn") or "") for t in types_of(model, str(item.get("path") or ""))}
     seen = set(frontier)
@@ -311,13 +336,17 @@ def _parity_locus(root: Path, issued: dict, rel: str, evidence_ref: str) -> tupl
                     if cand and cand in by_fqn and cand not in seen:
                         nxt.add(cand)
                         break
+        nxt = _with_implementors(nxt) - seen
         hit = sorted(nxt & wanted)
         if hit:
-            return ("parity: %s (controller of %s) reaches %s in %d step(s)" % (item.get("path"), evidence_ref, hit[0], depth)), ""
+            via = next((s for s in sorted(implementors) if hit[0] in implementors[s] and s in nxt), "")
+            return ("parity: %s (controller of %s) reaches %s in %d step(s)%s"
+                    % (item.get("path"), evidence_ref, hit[0], depth, (" as an implementor of %s" % via) if via else "")), ""
         seen |= nxt
         frontier = nxt
-    return "", ("%s declares %s, which %s does not reach within %d reference step(s); name the file that produces the "
-                "differing value" % (rel, ", ".join(sorted(wanted)) or "no type", item.get("path"), PARITY_REACH_DEPTH))
+    return "", ("%s declares %s, which %s does not reach within %d reference step(s) (implementors included); name the "
+                "file that produces the differing value or throws the server error"
+                % (rel, ", ".join(sorted(wanted)) or "no type", item.get("path"), PARITY_REACH_DEPTH))
 
 
 def _parity_amend(root: Path, issued: dict, args: argparse.Namespace, ref: str) -> int:

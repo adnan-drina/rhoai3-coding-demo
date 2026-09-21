@@ -1709,6 +1709,75 @@ def body_diff_advice(root: Path | None, doc: dict[str, Any], item_id: str) -> di
     return out
 
 
+SERVER_ERROR_FRAMES_SHOWN = 5
+
+
+def server_error_advice(root: Path | None, doc: dict[str, Any], item_id: str, diffs: list[str]) -> dict[str, Any]:
+    """H5b: what the destination THREW behind a 5xx, and where.
+
+    The verdict's own status difference says only ``status 500 vs 204``; the
+    body the platform answers is an error id. The runner put the exception
+    block it found in the destination's log on the verdict (``server_error``,
+    bounded), and this turns it into the card's advice: the locus hints are
+    the product files the stack's own frames name -- each frame's class
+    resolved to a file through the destination model (never a literal) -- and
+    the text says the failure is in that file: amend the scope and repair
+    there. A verdict whose status difference is not a 5xx the source did not
+    answer gets nothing here, whatever the record carries."""
+    se = doc.get("server_error") if isinstance(doc.get("server_error"), dict) else None
+    if not se:
+        return {}
+    status = next((parse_parity_diff(d) for d in diffs if parse_parity_diff(d)["kind"] == "status"), None)
+    if status is None or not str(status["have"]).startswith("5") or str(status["want"]).startswith("5"):
+        return {}
+    from planner.server_error import product_file_resolver
+
+    resolve = product_file_resolver(root)
+    hints: list[dict[str, Any]] = []
+    for f in list(se.get("frames") or [])[:SERVER_ERROR_FRAMES_SHOWN]:
+        if not isinstance(f, dict):
+            continue
+        path = resolve(str(f.get("class") or "")) or str(f.get("file") or "")
+        if not path or any(h["path"] == path for h in hints):
+            continue
+        hints.append({"path": path, "type": str(f.get("class") or ""), "member": str(f.get("method") or ""),
+                      "line": int(f.get("line") or 0),
+                      "why": "the destination's stack for this request passes through %s.%s (line %s) in this file; the "
+                             "frames above it are the platform's" % (f.get("class"), f.get("method"), f.get("line") or "?")})
+    exc = str(se.get("exception") or "")
+    where = hints[0]["path"] if hints else ""
+    out: dict[str, Any] = {
+        "status": se.get("status"), "expected_status": se.get("expected_status"),
+        "error_id": str(se.get("error_id") or ""), "exception": exc, "message": str(se.get("message") or "")[:300],
+        "causes": [c for c in (se.get("causes") or []) if isinstance(c, dict)][:3],
+        "matched": str(se.get("matched") or ""), "log": str(se.get("log") or ""), "retained": str(se.get("retained") or ""),
+        "stack_sha256": str(se.get("stack_sha256") or ""), "locus_hints": hints,
+    }
+    if where:
+        out["locus"] = (
+            "the failure is in %s: the destination answered %s where the source answered %s because %s%s was thrown, and "
+            "the first product frame of that stack is %s.%s (line %s). Amend the scope and repair THERE, not in the "
+            "controller: python3 .hermes/skills/migration/fix-until-green/scripts/amend-scope.py --root . --cluster "
+            "<this cluster> --card $HERMES_KANBAN_TASK --path %s --reason <what throws there> --evidence parity:%s"
+            % (where, se.get("status"), se.get("expected_status"), exc or "an exception",
+               (": " + out["message"]) if out["message"] else "",
+               hints[0]["type"], hints[0]["member"], hints[0]["line"] or "?", where, item_id))
+    elif exc:
+        out["locus"] = (
+            "the destination answered %s where the source answered %s because %s%s was thrown, and none of its frames "
+            "resolves to a file of this tree (retained: %s). Read the retained block, name the product file that makes "
+            "the failing call, and amend the scope to it with --evidence parity:%s before editing."
+            % (se.get("status"), se.get("expected_status"), exc, (": " + out["message"]) if out["message"] else "",
+               out["retained"] or out["log"], item_id))
+    else:
+        out["locus"] = ("the destination answered %s where the source answered %s and its log (%s) holds no exception "
+                        "block for this request%s; the failing code is the operation's own path from the controller "
+                        "down -- amend the scope to the file that fails, with --evidence parity:%s, before editing it."
+                        % (se.get("status"), se.get("expected_status"), out["log"],
+                           (": " + str(se.get("note"))) if se.get("note") else "", item_id))
+    return out
+
+
 def parity_scenarios_of(receipt: dict[str, Any] | None, entry_point: str, scenario: str) -> list[str]:
     """The scenario ids one obligation is made of: its own when it has one, and
     otherwise the ones the receipt's row for its entry point declares."""
@@ -1870,6 +1939,13 @@ def parity_items(root: Path, bundle: dict[str, Any], notes: list[dict[str, Any]]
                     for d in body["differences"][:2]))
                 if body.get("locus_hints"):
                     summary += " Likely produced in %s." % ", ".join("%s (%s)" % (h["path"], h["member"]) for h in body["locus_hints"])
+            server_error = server_error_advice(root, doc, rid, other)
+            if server_error:
+                advice["server_error"] = server_error
+                summary += " Server error: %s%s." % (
+                    server_error["exception"] or "no exception block in the destination log",
+                    (" in %s" % ", ".join("%s (%s.%s:%s)" % (h["path"], h["type"].rsplit(".", 1)[-1], h["member"], h["line"])
+                                          for h in server_error["locus_hints"])) if server_error["locus_hints"] else "")
             out.append(dict(base, id=rid, path=locus,
                             rule_id="PARITY", cause="response",
                             detail=("%s: %s" % (scenario or ep, "; ".join(other)))[:200],
@@ -1906,13 +1982,15 @@ def parity_items(root: Path, bundle: dict[str, Any], notes: list[dict[str, Any]]
     # likely one root cause: each names the others (they stay separate cards)
     by_locus: dict[str, list[str]] = defaultdict(list)
     for it in out:
-        for h in ((it.get("advice") or {}).get("body_diff") or {}).get("locus_hints") or []:
-            by_locus[h["path"]].append(it["id"])
+        for key in ("body_diff", "server_error"):
+            for h in ((it.get("advice") or {}).get(key) or {}).get("locus_hints") or []:
+                by_locus[h["path"]].append(it["id"])
     for it in out:
-        bd = (it.get("advice") or {}).get("body_diff") or {}
-        same = sorted({o for h in bd.get("locus_hints") or [] for o in by_locus.get(h["path"], []) if o != it["id"]})
-        if same:
-            bd["same_locus_obligations"] = same
+        for key in ("body_diff", "server_error"):
+            bd = (it.get("advice") or {}).get(key) or {}
+            same = sorted({o for h in bd.get("locus_hints") or [] for o in by_locus.get(h["path"], []) if o != it["id"]})
+            if same:
+                bd["same_locus_obligations"] = same
     # The receipt's own navigation verdicts: a comparison that PASSed and a
     # redirect target that is dead, loops, or never settles within the bounded
     # walk (ADR-016). There is no FAILing verdict file for these -- the

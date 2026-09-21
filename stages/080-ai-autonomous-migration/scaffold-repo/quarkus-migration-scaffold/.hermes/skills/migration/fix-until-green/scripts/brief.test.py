@@ -305,7 +305,40 @@ def _body_diff_brief_case() -> int:
     return 0
 
 
+def _scope_rule_brief_case() -> int:
+    """H5a: ONE scope rule, stated once in the procedure the worker reads and
+    again on the parity brief -- no "never touch a path outside the write set"
+    beside "add it with amend-scope.py"; block only on a refusal or a path the
+    loop never grants. H5b: the parity brief shows each server error with the
+    product file its stack names."""
+    import brief as mod
+
+    proc, rule = mod.PROCEDURE, mod.SCOPE_RULE
+    if "never touch a path outside the write set" in proc or rule not in proc:
+        return _fail("the procedure states the single scope rule and no longer forbids the path it tells the worker to amend: %s" % proc[:300])
+    for must in ("for every parity item", "amend-scope.py", "--evidence parity:<item id>", "BEFORE editing",
+                 "ONLY when amend-scope.py REFUSES", "REFUSE: SCOPE_AMENDMENT", "tests, evidence/, decisions.yaml",
+                 "outside the amended write set is reverted"):
+        if must not in rule:
+            return _fail("the scope rule must say %r: %s" % (must, rule))
+    se = {"status": 500, "expected_status": 204, "exception": "jakarta.persistence.PersistenceException", "message": "bad path",
+          "locus": "the failure is in src/main/java/a/RepoImpl.java: ... --evidence parity:parity:e",
+          "locus_hints": [{"path": "src/main/java/a/RepoImpl.java", "type": "a.RepoImpl", "member": "delete", "line": 42}]}
+    rows = [{"id": "parity:e", "source": "parity", "gate": "parity", "scenario": "sc:delete", "entry_point": "ep:a", "advice": {"server_error": se}},
+            {"id": "parity:y", "source": "parity", "gate": "parity", "scenario": "sc:read", "entry_point": "ep:a", "advice": {}}]
+    out = mod.parity_brief(rows, {"gate": "parity"})
+    got = out.get("server_errors") or []
+    if (len(got) != 1 or got[0]["obligation"] != "parity:e" or got[0]["scenario"] != "sc:delete"
+            or got[0]["locus_hints"][0]["path"] != "src/main/java/a/RepoImpl.java" or not got[0]["locus"].startswith("the failure is in")):
+        return _fail("the parity brief shows the server error and the file its stack names: %s" % got)
+    if out.get("scope") != rule or out.get("body_diffs") != []:
+        return _fail("the parity brief carries the scope rule: %s" % out.get("scope"))
+    return 0
+
+
 def main() -> int:
+    if _scope_rule_brief_case():
+        return 1
     if _repository_inventory_case():
         return 1
     if _unit_brief_case():

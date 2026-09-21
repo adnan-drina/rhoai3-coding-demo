@@ -97,7 +97,9 @@ RUN_KEYS_BEFORE = {"schema", "producer", "at", "root", "dest_url", "started_by_r
                    "scenarios", "read_oracles", "entry_points", "navigation", "compose", "receipt", "receipt_verdict",
                    "failures", "ok"}
 RUN_KEYS_ADDED = {"security_mode", "dest_config", "dest_config_from_decisions", "dest_config_gap", "credential_refs",
-                  "artifact", "orphaned"}
+                  "artifact", "orphaned",
+                  # H5b: the destination log a 5xx verdict's exception is taken from ("" for a --dest-url run without --dest-log)
+                  "dest_log"}
 
 
 def _fail(msg: str) -> int:
@@ -406,7 +408,105 @@ def _run(root: Path, base: str, reset: Path, scenarios: tuple[str, ...] = (), is
     return proc.returncode, proc.stdout + proc.stderr, run_doc
 
 
+def _server_error_case() -> int:
+    """H5b: a 5xx verdict carries the destination's exception, taken from the
+    destination log by the body's error id (anywhere in the log) or, without
+    one, from the last ERROR/stack block appended in the request's window; the
+    frames kept are the product's, resolved to files through the structure
+    model; a 4xx difference gets nothing; the block is retained beside the
+    record and only a bounded excerpt enters it."""
+    from planner.paths import STRUCTURE
+    from planner.server_error import RETAINED_DIR, annotate_record, log_blocks, server_error_status
+
+    if [server_error_status(r) for r in ("status 500 vs 204; body a vs b", "status 404 vs 200", "status 503 vs 500",
+                                          "header X a vs b; status 502 vs 201", "body a vs b")] != [(500, 204), None, None, (502, 201), None]:
+        return _fail("only a 5xx the source did not answer is a server error")
+    eid = "43525fec-1a2b-4c3d-9e8f-0123456789ab"
+    product = ("com.acme.ledger.persistence.LedgerRepositoryImpl", "com.acme.ledger.service.LedgerService",
+               "com.acme.ledger.web.AccountResource")
+    with tempfile.TemporaryDirectory(prefix="server-error-") as td:
+        root = Path(td)
+        (root / STRUCTURE).parent.mkdir(parents=True)
+        (root / STRUCTURE).write_text(json.dumps({"types": [
+            {"fqn": fqn, "path": "src/main/java/%s.java" % fqn.replace(".", "/")} for fqn in product]}))
+        log = root / "verification" / "parity" / "logs" / "destination.log"
+        log.parent.mkdir(parents=True)
+        startup = ("2026-09-21 10:00:01,000 INFO  [io.quarkus] (main) app 1.0 started in 2.1s. Listening on: http://0.0.0.0:8081\n"
+                   "2026-09-21 10:00:02,000 WARN  [org.hib.orm.dep] (main) HHH90000025: a deprecation, not an error\n")
+        block = ("2026-09-21 10:00:05,000 ERROR [io.qua.ver.htt.run.QuarkusErrorHandler] (executor-thread-1) HTTP Request to "
+                 "/api/things/1 failed, error id: %s: jakarta.persistence.PersistenceException: org.hibernate.query.SemanticException: "
+                 "Could not interpret path expression 'thing.visits'\n"
+                 "\tat io.quarkus.arc.impl.AbstractSharedContext.get(AbstractSharedContext.java:50)\n"
+                 "\tat org.hibernate.internal.SessionImpl.createQuery(SessionImpl.java:820)\n"
+                 "\tat com.acme.ledger.persistence.LedgerRepositoryImpl.delete(LedgerRepositoryImpl.java:42)\n"
+                 "\tat com.acme.ledger.persistence.LedgerRepositoryImpl_Subclass.delete$$superforward(Unknown Source)\n"
+                 "\tat com.acme.ledger.service.LedgerService.delete(LedgerService.java:31)\n"
+                 "\tat com.acme.ledger.web.AccountResource$1.lambda$delete$0(AccountResource.java:77)\n"
+                 "\tat io.vertx.core.impl.ContextImpl.lambda$executeBlocking$0(ContextImpl.java:180)\n"
+                 "Caused by: org.hibernate.query.SemanticException: Could not interpret path expression 'thing.visits'\n"
+                 "\tat org.hibernate.query.hql.internal.BasicDotIdentifierConsumer.consume(BasicDotIdentifierConsumer.java:120)\n"
+                 "\t... 40 more\n" % eid)
+        after = "2026-09-21 10:00:06,000 INFO  [io.quarkus] (executor-thread-2) unrelated line after the request\n"
+        log.write_text(startup + block + after)
+        blocks = log_blocks(log.read_text())
+        if len(blocks) != 4 or not blocks[2].startswith("2026-09-21 10:00:05,000 ERROR") or "... 40 more" not in blocks[2]:
+            return _fail("the log is cut at header lines, frames and causes continuing the record: %d %r" % (len(blocks), [b[:40] for b in blocks]))
+        rec_dir = root / "verification" / "parity" / "scenarios"
+        rec_dir.mkdir(parents=True)
+        base = {"schema": "rhoai3.scenario-parity/v1", "entry_point": "ep:x", "verdict": "FAIL"}
+        # (a) error id in the body, the request window covering only the LATER lines: the id is still found in the whole log
+        rec = rec_dir / "sc-delete-1.json"
+        write_canonical(rec, dict(base, scenario="sc:delete-1", reason="status 500 vs 204; body aa vs bb (2 difference(s): extra at line 1; length)",
+                                  observed={"status": 500, "body_sample": '{"details":"Error id %s","stack":""}' % eid}))
+        window = (len(startup.encode()) + len(block.encode()), len((startup + block + after).encode()))
+        se = annotate_record(root, rec, log, window)
+        if not se or se.get("matched") != "error_id" or se.get("error_id") != eid:
+            return _fail("the block is matched by the body's error id even outside the window: %s" % se)
+        if se.get("exception") != "jakarta.persistence.PersistenceException" or "Could not interpret path expression" not in se.get("message", ""):
+            return _fail("the exception and its message are the block's own: %s" % {k: se.get(k) for k in ("exception", "message")})
+        files = [f["file"] for f in se["frames"]]
+        if files != ["src/main/java/com/acme/ledger/persistence/LedgerRepositoryImpl.java",
+                     "src/main/java/com/acme/ledger/service/LedgerService.java",
+                     "src/main/java/com/acme/ledger/web/AccountResource.java"]:
+            return _fail("only the product's frames are kept, in stack order -- a lambda in an inner class resolves to its outer "
+                         "file, a container-generated subclass is the platform's: %s" % files)
+        if se["frames"][0]["method"] != "delete" or se["frames"][0]["line"] != 42 or se.get("platform_frames_skipped") != 5:
+            return _fail("the first product frame names the member and the line, the platform frames are counted: %s" % se["frames"][0])
+        if se["causes"] != [{"exception": "org.hibernate.query.SemanticException", "message": "Could not interpret path expression 'thing.visits'"}]:
+            return _fail("the cause chain is carried, bounded: %s" % se["causes"])
+        doc = load_json(rec)
+        if doc.get("server_error", {}).get("stack_sha256") != se["stack_sha256"] or len(doc["server_error"]["excerpt"]) > 12:
+            return _fail("the record carries the digest and a bounded excerpt, never the whole block: %s" % doc.get("server_error"))
+        kept = root / se["retained"]
+        if kept.parent.name != RETAINED_DIR or kept.read_text() != block.rstrip("\n") or doc["server_error"]["log"] != "verification/parity/logs/destination.log":
+            return _fail("the block is retained beside the record and the log is named: %s %s" % (se.get("retained"), se.get("log")))
+        # (b) no error id in the body: the last ERROR/stack block appended in the request's window
+        rec2 = rec_dir / "sc-delete-2.json"
+        write_canonical(rec2, dict(base, scenario="sc:delete-2", reason="status 500 vs 204",
+                                   observed={"status": 500, "body_sample": "Internal Server Error"}))
+        se2 = annotate_record(root, rec2, log, (len(startup.encode()), window[1]))
+        if not se2 or se2.get("matched") != "window" or se2.get("exception") != "jakarta.persistence.PersistenceException" or se2.get("error_id") != eid:
+            return _fail("without an id the last ERROR block in the window is taken (and the id it carries is read from it): %s" % se2)
+        # ... and a window with nothing at ERROR in it records the search, not an exception
+        rec3 = rec_dir / "sc-delete-3.json"
+        write_canonical(rec3, dict(base, scenario="sc:delete-3", reason="status 500 vs 204", observed={"status": 500, "body_sample": ""}))
+        se3 = annotate_record(root, rec3, log, (window[0], window[1]))
+        if not se3 or se3.get("matched") != "" or se3.get("exception") or "no exception block" not in se3.get("note", "") or se3.get("retained"):
+            return _fail("a window holding nothing at ERROR records that the log has no block for the request: %s" % se3)
+        # (c) a 4xx difference is not a server error, whatever is in the log
+        rec4 = rec_dir / "sc-read-1.json"
+        write_canonical(rec4, dict(base, scenario="sc:read-1", reason="status 404 vs 200; body aa vs bb",
+                                   observed={"status": 404, "body_sample": '{"details":"Error id %s"}' % eid}))
+        if annotate_record(root, rec4, log, (0, window[1])) is not None or "server_error" in load_json(rec4):
+            return _fail("a 4xx difference gets no server_error")
+        if annotate_record(root, rec_dir / "absent.json", log, (0, 1)) is not None:
+            return _fail("no record, nothing to annotate")
+    return 0
+
+
 def main() -> int:
+    if _server_error_case():
+        return 1
     Service.owners = {}
     Service.drift = False
     Service.root_mode = "ok"
@@ -1057,7 +1157,7 @@ def main() -> int:
             jar.unlink()
     finally:
         srv.shutdown()
-    print("OK: run-parity selftest (every scenario in corpus order; every captured read oracle compared; the "
+    print("OK: run-parity selftest (H5b: a 5xx verdict carries the destination exception from its log -- by error id, else the last ERROR block in the request window -- with the product frames resolved to files, retained beside the record and digested on it; a 4xx gets nothing; every scenario in corpus order; every captured read oracle compared; the "
           "uncomparable named; receipt composed last; idempotent; --scenario replays only the scenarios it names, "
           "skips the read oracles by name and still composes the whole receipt, and refuses an undeclared id; "
           "--read-oracle (H3) re-runs exactly the named entry points' read oracles inside a scoped run, records them "
