@@ -20,10 +20,13 @@
 - The next v10 unit exposed the package form of that deadlock: removing
   `org.springframework.validation` left seven controllers unresolved on the
   separately scoped `@CrossOrigin`. Package retirement now uses javac's complete
-  qualified-name inventory, with namespace boundaries preserved. Inheritance,
-  anonymous types and static imports still require attribution; missing parse
-  evidence never passes. Real-JDK controls include wildcard imports, qualified
-  references, nested references, lookalike namespaces and unrelated errors.
+  qualified-name inventory, with namespace boundaries preserved. The sorting
+  unit exposed the inherited-type variant (Pet/Owner partial, Vet resolved):
+  the compiler now resolves ancestor/member-type namespaces independently of
+  unrelated field errors. Unknown ancestors, anonymous types, static imports
+  and missing evidence still refuse. Real-JDK controls include wildcard imports,
+  qualified/nested references, lookalike namespaces, inherited retired names
+  and unrelated errors. This does not mark general inheritance/calls resolved.
   This changes only assessment of retirement, not the write set or other vetoes.
 - Luna observed a later compile retry spending over 12 minutes investigating
   adjacent runtime behavior without a patch or verification, with no gate

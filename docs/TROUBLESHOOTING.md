@@ -2077,6 +2077,8 @@ On v10 the Profile unit reduced 233 compiler errors to 203; unrelated errors in
 two files made four inventory rows inconclusive.
 The validation-package unit then hit the same boundary in seven controllers
 whose separate `@CrossOrigin` references were unresolved.
+The sorting unit exposed the inherited-type case in Pet/Owner: resolved ancestor
+names can prove namespace absence even while unrelated field errors remain.
 
 **Check:** inspect the pending row in `verification/loop/steps.json`, its sealed
 scope and `scope_assessment` (new receipts). Older receipts contain only the first
@@ -2085,7 +2087,8 @@ three failures in `reason`. A lower count alone is insufficient to accept.
 **Recover:** the assessor now accepts a diagnostic-family absence proof from a
 complete javac syntax scan. A parse error, missing scan or remaining retired name
 still refuses. Packages require qualified names, not the package's last segment;
-implicit inherited/static type scopes still need attribution. Install the tested
+inherited type names require their own resolved ancestor chain, and unknown
+ancestry/static imports still refuse. Install the tested
 repair only while the worker is stopped,
 restore the retained candidate through `restore-pending.py`, then unblock that
 same card for verification and advance. Do not broaden its write set, mint a new

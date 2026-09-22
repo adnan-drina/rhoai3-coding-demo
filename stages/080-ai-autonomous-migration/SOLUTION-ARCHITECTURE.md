@@ -153,9 +153,12 @@ is absent; sealed declarations must survive and all other acceptance checks stil
 apply. Parse errors, absent inventory and remaining names stay inconclusive.
 For a package, the complete qualified-name inventory must exclude that exact
 namespace and its children, including imports and inline references. This
-fallback does not apply to implicit type scopes (inheritance, anonymous types
-or static imports), or the implicitly imported `java.lang` package. A matching
-suffix in another namespace is not a reference to the retired package.
+fallback resolves inherited member-type namespaces separately from unrelated
+field/annotation errors: every ancestor must resolve, and none of those names
+may belong to the retired package. Unknown ancestry, anonymous/local types,
+static imports and the implicitly imported `java.lang` package still refuse.
+A matching suffix in another namespace is not a reference to the retired package.
+The narrow proof does not mark the file or its general inheritance/calls resolved.
 Declaration/inheritance/caller closures still require resolved evidence. Pending
 receipts retain the complete scope assessment for diagnosis.
 

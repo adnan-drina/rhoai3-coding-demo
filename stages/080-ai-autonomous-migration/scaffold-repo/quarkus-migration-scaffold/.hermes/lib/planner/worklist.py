@@ -4809,13 +4809,19 @@ def assess_unit(root: Path, scope: dict[str, Any]) -> list[dict[str, Any]]:
             if kind == "package":
                 # Package diagnostics seal the namespace, not one type. javac
                 # preserves qualification in imports, package declarations and
-                # inline/nested references before attribution. Do not use a
-                # simple suffix (jakarta.validation is not Spring validation),
-                # or claim absence across implicit inherited/static imports.
+                # inline/nested references before attribution. Inherited type
+                # names need their own complete compiler-resolved hierarchy;
+                # unrelated field/annotation errors do not invalidate it.
+                implicit = typ.get("implicit_type_names")
+                implicit_known = (typ.get("syntax_implicit_types") is False
+                                  or (typ.get("syntax_implicit_types") is True
+                                      and typ.get("implicit_type_scope_complete") is True
+                                      and isinstance(implicit, list)))
                 return (isinstance(qualified, list)
-                        and typ.get("syntax_implicit_types") is False
+                        and implicit_known
                         and fqn != "java.lang"
-                        and not _names_retired(set(qualified), fqn, kind))
+                        and not _names_retired(set(qualified), fqn, kind)
+                        and not _names_retired(set(implicit or []), fqn, kind))
             return False
         parsed_absence = (rule == RULE_DIAGNOSTIC_FAMILY and bool(retired)
                           and typ.get("syntax_complete") is True and isinstance(syntax, list)

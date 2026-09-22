@@ -193,9 +193,25 @@ public final class DestModel {
             // to its type even in a tree that cannot yet be compiled against
             // its dependencies (the bootstrap runs before the first build).
             List<String> imports = new ArrayList<>();
+            boolean[] implicitComplete = {true};
             for (com.sun.source.tree.ImportTree imp : unit.getImports()) {
                 imports.add(imp.getQualifiedIdentifier().toString());
+                if (imp.isStatic()) { implicitComplete[0] = false; }
             }
+            // A broken field or annotation need not make the hierarchy of
+            // member TYPE names unknowable. Resolve that narrower question
+            // independently; do not promote method/call/inheritance evidence
+            // below to full resolution. Include every nested class's scope.
+            TreeSet<String> implicitNames = new TreeSet<>();
+            TreeSet<String> implicitResolved = new TreeSet<>();
+            new TreePathScanner<Void, Void>() {
+                @Override public Void visitClass(ClassTree node, Void unused) {
+                    Element el = trees.getElement(getCurrentPath());
+                    if (!(el instanceof TypeElement) || !collectImplicitTypeNames(task, el.asType(),
+                            implicitNames, new TreeSet<>(), implicitResolved)) { implicitComplete[0] = false; }
+                    return super.visitClass(node, unused);
+                }
+            }.scan(unit, null);
             new TreePathScanner<Void, Void>() {
                 @Override public Void visitClass(ClassTree node, Void unused) {
                     TreePath path = getCurrentPath();
@@ -211,6 +227,8 @@ public final class DestModel {
                     row.put("syntax_names", syntaxNames.get(relPath));
                     row.put("syntax_qualified_names", syntaxQualifiedNames.get(relPath));
                     row.put("syntax_implicit_types", syntaxImplicitTypes.get(relPath));
+                    row.put("implicit_type_scope_complete", implicitComplete[0]);
+                    row.put("implicit_type_names", new ArrayList<>(implicitNames));
                     row.put("imports", imports);
                     List<String> supers = new ArrayList<>();
                     if (type.getSuperclass() != null && type.getSuperclass().getKind().name().equals("DECLARED")) {
@@ -627,6 +645,34 @@ public final class DestModel {
                 sites.add(row);
             }
         }.scan(start, null);
+    }
+
+    private static boolean collectImplicitTypeNames(JavacTask task, TypeMirror start,
+                                                    java.util.Set<String> names, java.util.Set<String> visiting,
+                                                    java.util.Set<String> resolved) {
+        if (start == null || start.getKind() != TypeKind.DECLARED) { return false; }
+        Element el = task.getTypes().asElement(start);
+        if (!(el instanceof TypeElement)) { return false; }
+        TypeElement type = (TypeElement) el;
+        String fqn = type.getQualifiedName().toString();
+        // Local/anonymous types and erroneous/cyclic ancestry stay unknown.
+        if (fqn.isEmpty()) { return false; }
+        if (resolved.contains(fqn)) { return true; }
+        if (!visiting.add(fqn)) { return false; }
+        names.add(fqn);
+        for (Element member : type.getEnclosedElements()) {
+            if (member instanceof TypeElement) {
+                names.add(((TypeElement) member).getQualifiedName().toString());
+            }
+        }
+        try {
+            for (TypeMirror parent : task.getTypes().directSupertypes(start)) {
+                if (!collectImplicitTypeNames(task, parent, names, visiting, resolved)) { return false; }
+            }
+        } catch (RuntimeException unresolved) { return false; }
+        visiting.remove(fqn);
+        resolved.add(fqn);
+        return true;
     }
 
     private static void collectSupertypeMethods(JavacTask task, TypeMirror start, TypeElement self,

@@ -3601,6 +3601,11 @@ def _partial_package_scope_case():
         "src/main/java/modern/validation/Errors.java": "package modern.validation; public class Errors {}",
         "src/main/java/legacy/validationextra/Errors.java": "package legacy.validationextra; public class Errors {}",
         "src/main/java/other/Base.java": "package other; public class Base {}",
+        "src/main/java/other/PartialBase.java": "package other; public class PartialBase { Missing value; }",
+        "src/main/java/other/Contract.java": "package other; public interface Contract {}",
+        "src/main/java/other/BrokenBase.java": "package other; public class BrokenBase extends Missing {}",
+        "src/main/java/legacy/validation/Ancestor.java": "package legacy.validation; public class Ancestor { public static class Inherited {} }",
+        "src/main/java/other/Bridge.java": "package other; public class Bridge extends legacy.validation.Ancestor {}",
     }
     cases = [
         ("unrelated-wildcard", "import missing.web.*; import modern.validation.Errors; @CrossOrigin public class Store { public Errors read() { return null; } }", True),
@@ -3611,7 +3616,13 @@ def _partial_package_scope_case():
         ("retired-qualified", "public class Store { public legacy.validation.Errors read() { Missing x; return null; } }", False),
         ("retired-qualified-spaced", "public class Store { public legacy . validation . Errors read() { Missing x; return null; } }", False),
         ("retired-nested", "public class Store { public Missing read() { return null; } class Nested { legacy.validation.Errors value; } }", False),
-        ("implicit-inherited", "public class Store extends other.Base { public Missing read() { return null; } }", False),
+        ("implicit-inherited", "public class Store extends other.Base { public Missing read() { return null; } }", True),
+        ("parent-field-unresolved", "public class Store extends other.PartialBase { public Missing read() { return null; } }", True),
+        ("interface-resolved", "public class Store implements other.Contract { public Missing read() { return null; } }", True),
+        ("parent-unresolved", "public class Store extends Missing { public Missing read() { return null; } }", False),
+        ("ancestor-unresolved", "public class Store extends other.BrokenBase { public Missing read() { return null; } }", False),
+        ("inherited-retired", "public class Store extends other.Bridge { public Inherited read() { Missing x; return null; } }", False),
+        ("nested-parent-unresolved", "public class Store { public Missing read() { return null; } class Nested extends Missing {} }", False),
         ("implicit-anonymous", "public class Store { Object value = new Object() {}; public Missing read() { return null; } }", False),
         ("implicit-static-import", "import static other.Base.*; public class Store { public Missing read() { return null; } }", False),
         ("parse-error", "public class Store { public Missing read( { return null; } }", False),
@@ -3629,7 +3640,12 @@ def _partial_package_scope_case():
                 typ = next(t for t in model["types"] if t["fqn"] == "example.Store")
                 if typ["resolution"] != "partial" or rows[0].get("proof") != "parsed-symbol-absence":
                     return _fail("%s must prove namespace absence despite partial attribution" % label)
-                for key in ("syntax_qualified_names", "syntax_implicit_types", "syntax_complete"):
+                if typ.get("inherited_known"):
+                    return _fail("partial package proof must not promote general inheritance evidence")
+                required = ["syntax_qualified_names", "syntax_implicit_types", "syntax_complete"]
+                if typ["syntax_implicit_types"]:
+                    required += ["implicit_type_scope_complete", "implicit_type_names"]
+                for key in required:
                     value = typ.pop(key)
                     with patch("planner.worklist.dest_model", return_value=model):
                         if not any(r["verdict"] == "inconclusive" for r in assess_unit(root, scope)):
