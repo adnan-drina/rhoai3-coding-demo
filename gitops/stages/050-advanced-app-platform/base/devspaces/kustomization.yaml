@@ -22,6 +22,7 @@ resources:
   - workspace-git-credentials.yaml
   - workspace-sonar-credentials.yaml
   - migration-parity-database.yaml
+  - petclinic-parity-credentials.yaml
   - vscode-editor-configurations.yaml
   - workspaces.yaml
   - agentic-workspace.yaml
