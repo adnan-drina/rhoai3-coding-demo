@@ -39,6 +39,29 @@ Operator ack gates or run `kanban daemon --force`. Factory isolation: Stage 080
 [SOLUTION-ARCHITECTURE.md](../stages/080-ai-autonomous-migration/SOLUTION-ARCHITECTURE.md)
 §8.
 
+### Continuing M1 and recovering a pending unit
+
+`AUTO_START_MIGRATION=false` suppresses workspace startup. Once M1 has been
+started, its final step uses `autostart-migration.sh --root /projects/modernized
+--after-m1 "$HERMES_KANBAN_TASK"` to continue that native task. The script verifies
+its phase and workspace; planner authorization still gates M2. Review checks
+M2's actual parent and workspace, so a skipped launcher cannot pass as a handoff.
+An explicitly inactive planner still permits analysis-only M1.
+
+`build-worklist.sh` reports verification and baseline as separate phases, retaining
+the failing exit code. Use one foreground invocation with timeout 600; diagnose
+its recorded failure before retrying. Do not run a second Maven build to find
+which wrapper phase failed.
+
+For a `VERIFICATION_PENDING` unit, preserve its candidate and issued seal. A
+harness repair belongs at the blocked task boundary with backups, exact file
+hashes and regression results. For symbol retirement, the compiler's complete
+syntax inventory can prove the retired name absent despite unrelated attribution
+errors; it cannot prove inheritance or call relationships. Restore the retained
+candidate with `restore-pending.py`, unblock the same native card, and re-run real
+verification and `advance.py`. This spends no new attempt and does not approve the
+candidate. Keep the original run deadline and append the intervention record.
+
 ### Stage 080 run isolation and v10 qualification
 
 Use [V10-PLAN.md](../stages/080-ai-autonomous-migration/V10-PLAN.md) and

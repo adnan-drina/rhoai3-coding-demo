@@ -24,6 +24,7 @@ import json
 import os
 import re
 import shlex
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -517,6 +518,54 @@ def loop_verdict_for(root: Path, task_id: str) -> str:
     return ""
 
 
+def phase_card_gaps(root: Path, task_id: str, phase: str, parent: str = "") -> list[str]:
+    """Read the native task, including edges beside task in Hermes show JSON."""
+    from planner.live_board import enrich_card, _card_parents
+    try:
+        result = subprocess.run(["hermes", "kanban", "show", task_id, "--json"],
+                                capture_output=True, text=True, timeout=30, check=True)
+        card = enrich_card({}, json.loads(result.stdout))
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return ["PHASE_HANDOFF: cannot read native %s task %s" % (phase, task_id)]
+    expected = {"id": task_id, "title": phase, "workspace_kind": "dir"}
+    gaps = ["PHASE_HANDOFF: %s %s mismatch" % (task_id, key)
+            for key, value in expected.items() if card.get(key) != value]
+    workspace = card.get("workspace_path")
+    if (not isinstance(workspace, str) or not Path(workspace).is_absolute()
+            or Path(workspace).resolve() != root.resolve()):
+        gaps.append("PHASE_HANDOFF: %s workspace_path mismatch" % task_id)
+    if parent and _card_parents(card) != [parent]:
+        gaps.append("PHASE_HANDOFF: %s must depend on %s" % (task_id, parent))
+    return gaps
+
+
+def m1_handoff_gaps(root: Path, task_id: str) -> list[str]:
+    """Exit zero from a skipped launcher is not an M1 handoff."""
+    try:
+        status = load_json(root / ".hermes" / "AUTOSTART-STATUS")
+        pins = load_json(root / ".hermes" / "pins.json")["pins"]
+        mode = (pins.get("planner") or {}).get("activation", "not-activated")
+        if (not task_id or status.get("state") != "minted"
+                or status.get("m1_id") != task_id or status.get("after_m1") != task_id):
+            return ["PHASE_HANDOFF: M1 continuation missing, skipped or bound to another task"]
+        if mode not in ("activated", "pilot"):
+            if status.get("m2_id") or status.get("planner_activation") != "not-activated":
+                return ["PHASE_HANDOFF: M2 recorded without planner activation"]
+            return []  # An explicitly inactive planner still allows analysis-only M1.
+        from planner.canonical import digest
+        from planner.pins import activation_gaps
+        bundle = load_json(root / "evidence/planning/evidence-bundle.json")
+        gaps = activation_gaps(pins, digest(bundle))
+        if gaps:
+            return ["PHASE_HANDOFF: " + str(gap) for gap in gaps]
+        child = status.get("m2_id")
+        if not child or status.get("planner_activation") != mode:
+            return ["PHASE_HANDOFF: activated M1 has no M2 child"]
+        return phase_card_gaps(root, str(child), "M2 PLAN", task_id)
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return ["PHASE_HANDOFF: unreadable continuation status or activation evidence"]
+
+
 def evaluate_audit(text: str, doc: dict[str, Any], root: Path) -> int:
     failures: list[str] = []
     task_id = log_task_id(text)
@@ -571,6 +620,8 @@ def evaluate_audit(text: str, doc: dict[str, Any], root: Path) -> int:
         if missing:
             failures.append("missing KEEP %s (step %s)" % (",".join(missing), sid))
 
+    if doc.get("kind") == "m1-analyze":
+        failures.extend(m1_handoff_gaps(root, task_id))
     if failures:
         return _fail("; ".join(failures))
 

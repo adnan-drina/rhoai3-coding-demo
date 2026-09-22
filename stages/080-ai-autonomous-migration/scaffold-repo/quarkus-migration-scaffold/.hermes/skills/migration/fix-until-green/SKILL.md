@@ -44,8 +44,9 @@ python3 "${HERMES_SKILL_DIR}/scripts/brief.py" --root /projects/modernized --clu
 bash "${HERMES_SKILL_DIR}/scripts/run-verify.sh" --root /projects/modernized --mode acceptance  # 3. tools recompute the work list
 python3 "${HERMES_SKILL_DIR}/scripts/advance.py" --root /projects/modernized \
   --cluster <cluster id from the brief> --card "$HERMES_KANBAN_TASK"               # 4. accept / revert / pending / defer, then mint or block
-#   (terminal tool `timeout: 600`; run ONCE; killed or non-zero -> run again: idempotent, answers "ACCEPTED already" /
-#    "REVERTED already"; never kanban_block a card whose step is recorded accepted)
+#   (terminal tool `timeout: 600` for verify and advance; foreground only.
+#    Retry an interrupted advance once with the SAME arguments; it answers "ACCEPTED already" /
+#    "REVERTED already". A recorded verdict is final; nonzero alone is not a retry instruction.)
 ```
 
 Optional cheap pass before acceptance (classpath + JDK diagnostics only; cannot feed `advance.py`):
@@ -53,6 +54,13 @@ Optional cheap pass before acceptance (classpath + JDK diagnostics only; cannot 
 ```bash
 bash "${HERMES_SKILL_DIR}/scripts/run-verify.sh" --root /projects/modernized --mode diagnostic
 ```
+
+On a verifier process failure, read that invocation's output and
+`verification/build/run.json` if present; name the failed phase and exact
+error. Retry once only after correcting an identified invocation problem.
+If it persists, block with that evidence. Do not add a separate Maven run,
+background verification, or try shell/path variants without a diagnosed
+cause. Normal compiler errors are measurements, not verifier failures.
 
 - Evidence: the measured artifact is the packaged application run-verify.sh
   builds under the declared build profiles (`decisions.yaml build_profiles`)

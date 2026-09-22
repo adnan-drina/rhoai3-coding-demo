@@ -32,12 +32,16 @@ store.mkdir(parents=True, exist_ok=True)
 args = sys.argv[1:]
 with (store / "argv.jsonl").open("a", encoding="utf-8") as fh:
     fh.write(json.dumps(args) + "\\n")
+if args[:2] == ["kanban", "show"]:
+    path = store / (args[2] + ".json")
+    if not path.is_file(): sys.exit(1)
+    print(path.read_text()); sys.exit(0)
 if args[:2] != ["kanban", "create"]:
     print("unexpected", args, file=sys.stderr); sys.exit(2)
 rest = args[2:]
 if "--json" not in rest or "--goal" in rest or "daemon" in rest or "--force" in rest or "--triage" in rest:
     print("OBJECT flag", rest, file=sys.stderr); sys.exit(2)
-title = None; key = None; body = ""; parents = []
+title = None; key = None; body = ""; parents = []; workspace = ""
 i = 0
 while i < len(rest):
     tok = rest[i]
@@ -45,6 +49,7 @@ while i < len(rest):
     if tok == "--idempotency-key": key = rest[i + 1]; i += 2; continue
     if tok == "--body": body = rest[i + 1]; i += 2; continue
     if tok == "--parent": parents.append(rest[i + 1]); i += 2; continue
+    if tok == "--workspace": workspace = rest[i + 1]; i += 2; continue
     if tok.startswith("--"):
         i += 2 if i + 1 < len(rest) and not rest[i + 1].startswith("--") else 1
         continue
@@ -70,6 +75,7 @@ else:
     print("unexpected idempotency key", key, file=sys.stderr); sys.exit(2)
 known[key] = tid
 keys.write_text(json.dumps(known), encoding="utf-8")
+(store / (tid + ".json")).write_text(json.dumps({"task": {"id": tid, "title": title, "workspace_kind": "dir", "workspace_path": workspace.removeprefix("dir:")}, "parents": parents}))
 print(json.dumps({"id": tid}))
 """.replace("__STORE__", repr(str(store))),
         encoding="utf-8",
@@ -77,13 +83,16 @@ print(json.dumps({"id": tid}))
     path.chmod(path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
 
-def run_autostart(root: Path, fake_bin: Path, extra_env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+def run_autostart(root: Path, fake_bin: Path, extra_env: dict[str, str] | None = None, after_m1: str = "") -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     env["PATH"] = str(fake_bin) + os.pathsep + env.get("PATH", "")
     env.pop("HERMES_HOME", None)
     if extra_env:
         env.update(extra_env)
-    return subprocess.run(["bash", str(SCRIPT), "--root", str(root)], text=True, capture_output=True, env=env)
+    args = ["bash", str(SCRIPT), "--root", str(root)]
+    if after_m1:
+        args += ["--after-m1", after_m1]
+    return subprocess.run(args, text=True, capture_output=True, env=env)
 
 
 def _pins(root: Path, activation: str | None) -> None:
@@ -188,6 +197,33 @@ def main() -> int:
         run_autostart(root_a, bin_a)
         if set(json.loads((store_a / "keys.json").read_text())) != {"m1-analyze", "m2-plan"}:
             return _fail("activated rerun must reuse keys")
+        # A manually started native M1 continues even with startup disabled.
+        os.symlink(GOLDEN / ".hermes/lib", root_a / ".hermes/lib")
+        before = len(_argv_log(store_a))
+        proc = run_autostart(root_a, bin_a, {"AUTO_START_MIGRATION": "false"}, after_m1="t_m1")
+        status = json.loads((root_a / ".hermes/AUTOSTART-STATUS").read_text())
+        if proc.returncode or status.get("m2_id") != "t_m2" or status.get("after_m1") != "t_m1":
+            return _fail("explicit M1 continuation must survive startup off: %s%s" % (proc.stdout, proc.stderr))
+        calls = _argv_log(store_a)[before:]
+        if len(calls) != 2 or calls[0][:3] != ["kanban", "show", "t_m1"] or "M1 ANALYZE" in calls[1]:
+            return _fail("continuation must show M1 and create/reuse only M2: %s" % calls)
+        task_path = store_a / "t_m1.json"
+        task = json.loads(task_path.read_text())
+        for key, value in (("workspace_path", "/another-run"), ("title", "M3 FIX")):
+            original = task["task"][key]
+            task["task"][key] = value
+            task_path.write_text(json.dumps(task))
+            before = len(_argv_log(store_a))
+            bad = run_autostart(root_a, bin_a, after_m1="t_m1")
+            if bad.returncode == 0 or len(_argv_log(store_a)) != before + 1:
+                return _fail("wrong native M1 %s must refuse before any mint" % key)
+            task["task"][key] = original
+        task_path.write_text(json.dumps(task))
+        # Continuation is not a grant of planner activation.
+        os.symlink(GOLDEN / ".hermes/lib", root / ".hermes/lib")
+        proc = run_autostart(root, fake_bin, {"AUTO_START_MIGRATION": "false"}, after_m1="t_m1")
+        if proc.returncode or json.loads((root / ".hermes/AUTOSTART-STATUS").read_text()).get("m2_id"):
+            return _fail("continuation must preserve inactive planner")
         # pilot: at dest-init (no bundle yet) M1 only; after the Operator seals the bundle on disk, a re-run mints M2; a seal for another bundle never mints M2
         sys.path.insert(0, str(GOLDEN / ".hermes" / "lib"))
         from planner.canonical import digest  # noqa: E402

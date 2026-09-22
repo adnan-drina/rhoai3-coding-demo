@@ -63,13 +63,22 @@ the new type and file the naming contract fixes for it, which is what lets
 ## Procedure
 
 ```bash
-bash "${HERMES_SKILL_DIR}/scripts/build-worklist.sh" --root /projects/modernized
+bash /projects/modernized/.hermes/skills/planning/build-worklist/scripts/build-worklist.sh --root /projects/modernized
 ```
 
 Runs `fix-until-green/scripts/run-verify.sh` (the real tools) and then
 `advance.py --baseline` (commits the bootstrapped tree as step 0 and
 re-seals admission). A measure that is not fully known is admission
 BLOCK `MEASURE_UNKNOWN`.
+
+Run once in the foreground with terminal `timeout: 600`. The wrapper
+prints `WORKLIST_PHASE` for verification and baseline. On nonzero exit,
+report the failing phase and read that invocation's output plus
+`verification/build/run.json` if present. Correct one identified invocation
+error and retry once; if the same failure remains, block with its exact
+error and phase. Do not background the command, guess alternative paths,
+repeat Maven separately, or write the missing receipt yourself. Compiler
+diagnostics are measurements; a failed verifier process is a tool failure.
 
 ## Verification
 

@@ -2,6 +2,22 @@
 
 ## Stage 080 v10 readiness — 2026-09-22
 
+- Luna's v10 observations reproduced two more harness defects. M1's last
+  dispatch step could exit zero after skipping M2 because startup was off;
+  explicit `--after-m1` now continues a verified native M1, and review checks
+  its recorded continuation plus M2's native parent/workspace. Planner
+  activation remains mandatory. Work-list failures now name the failed phase;
+  worker skills require one foreground invocation and an evidence-based retry.
+- v10's first diagnostic-family unit removed 30 compiler errors (233 → 203)
+  but parked because unrelated errors made four sealed rows partially resolved.
+  A complete javac parse now proves absence of a retired type/annotation for
+  diagnostic-family assessment without claiming the file fully resolves.
+  Parse errors, missing inventory, remaining names and unresolved declaration
+  closures still refuse. The sealed type and members must remain. Pending
+  receipts retain all assessment rows, beyond the short log excerpt. Real-JDK
+  regression cases cover the failure and negative controls; live recovery is
+  recorded separately with the same card, candidate and original deadline.
+
 - v10 M2 exposed a fresh-run verifier defect: hashing the admission receipt
   before first admission aborted under `set -euo pipefail`. The verifier now
   treats absence as a valid snapshot, records creation/change/deletion during

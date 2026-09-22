@@ -4792,13 +4792,28 @@ def assess_unit(root: Path, scope: dict[str, Any]) -> list[dict[str, Any]]:
         if not here:
             out.append(dict(base, verdict="inconclusive", detail="the model has no type for %s" % path))
             continue
-        typ = types.get((path, fqn)) or here[0]
-        if str(typ.get("resolution") or "") != "full":
+        typ = types.get((path, fqn)) if fqn else here[0]
+        if typ is None:
+            out.append(dict(base, verdict="violates", detail="the sealed type %s is gone" % fqn))
+            continue
+        # Full attribution of an entire file is unnecessary to prove that a
+        # retired type/annotation no longer occurs in its parsed syntax. This
+        # is an absence proof, not a guess about unresolved relationships. A
+        # syntax error, missing inventory, package symbol or remaining simple
+        # name cannot use this proof (even a same-spelled different type).
+        syntax = typ.get("syntax_names")
+        parsed_absence = (rule == RULE_DIAGNOSTIC_FAMILY and bool(retired)
+                          and typ.get("syntax_complete") is True and isinstance(syntax, list)
+                          and all(kind in ("type", "annotation") and fqn.rsplit(".", 1)[-1] not in syntax
+                                  for fqn, kind in retired))
+        if str(typ.get("resolution") or "") != "full" and not parsed_absence:
             out.append(dict(base, verdict="inconclusive", detail="the compiler could not fully resolve %s" % path))
             continue
         names: set[str] = set()
         for t in here:
             names |= unit_type_refs(t)
+            for declaration in [t] + list(t.get("declared") or []) + list(t.get("fields") or []):
+                names.update(str(a.get("fqn") or "") for a in declaration.get("annotations") or [])
         still = sorted(s for s, kind in retired if _names_retired(names, s, kind))
         if mid:
             ids = member_ids(typ)
@@ -4821,7 +4836,8 @@ def assess_unit(root: Path, scope: dict[str, Any]) -> list[dict[str, Any]]:
         if still:
             out.append(dict(base, verdict="violates", detail="%s still names the retired symbol(s) %s" % (path, ", ".join(still))))
             continue
-        out.append(dict(base, verdict="ok", detail="%s no longer names the unit's retired symbols and still declares what it declared" % path))
+        out.append(dict(base, verdict="ok", proof="parsed-symbol-absence" if parsed_absence else "resolved-model",
+                        detail="%s no longer names the unit's retired symbols and still declares what it declared" % path))
     out.extend(_assess_implementations(Path(root), scope, model, by_path, rule))
     return out
 

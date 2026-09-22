@@ -375,7 +375,7 @@ def _reject(root: Path, steps: dict, cluster: str, card: str, cur: dict, reason:
     return 1
 
 
-def _pending(root: Path, steps: dict, cluster: str, card: str, cur: dict, reason: str, changed: list[str], on_disk: str, cause: str = "") -> int:
+def _pending(root: Path, steps: dict, cluster: str, card: str, cur: dict, reason: str, changed: list[str], on_disk: str, cause: str = "", scope_assessment: list[dict] | None = None) -> int:
     """Retain an unaccepted candidate when verification cannot conclude.
 
     Does not count an implementation attempt. Restores the accepted tree so
@@ -398,6 +398,8 @@ def _pending(root: Path, steps: dict, cluster: str, card: str, cur: dict, reason
         run=run if isinstance(run, dict) else {},
         issued=issued if isinstance(issued, dict) else {},
     )
+    if scope_assessment is not None:
+        row["scope_assessment"] = scope_assessment
     revert_paths(root, changed)
     restore_reports(root)
     steps.setdefault("pending", []).append(row)
@@ -771,13 +773,13 @@ def main(argv: list[str] | None = None) -> int:
                             "%s sealed member(s) of %s could not be assessed against %s: %s" % (
                                 len(unknown), scope_doc.get("unit_id") or args.cluster, scope_doc.get("rule"),
                                 "; ".join("%s (%s)" % (r["member"], r["detail"]) for r in unknown[:3])),
-                            changed, on_disk, cause="unassessable-scope")
+                            changed, on_disk, cause="unassessable-scope", scope_assessment=scope_rows)
         if unknown:
             return _pending(root, steps, args.cluster, args.card, cur,
                             "%s member(s) of %s could not be assessed against %s: %s" % (
                                 len(unknown), scope_doc.get("repository"), scope_doc.get("rule"),
                                 "; ".join("%s (%s)" % (r["member"], r["detail"]) for r in unknown[:3])),
-                            changed, on_disk, cause="unassessable-scope")
+                            changed, on_disk, cause="unassessable-scope", scope_assessment=scope_rows)
     # An ATTRIBUTION diagnostic the accepted tree did not report was introduced
     # by this candidate, in whatever file it stands: javac reports every one of
     # them in one compilation (only FLOW_CODES come one at a time), and a

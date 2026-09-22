@@ -3544,6 +3544,50 @@ def _server_error_advice_case() -> int:
     return 0
 
 
+def _partial_diagnostic_scope_case():
+    """Real javac: retiring one symbol must not require unrelated types to resolve."""
+    import tempfile
+    from unittest.mock import patch
+    path = "src/main/java/example/Store.java"
+    scope = {"rule": RULE_DIAGNOSTIC_FAMILY,
+             "symbols": [{"kind": "annotation", "fqn": "legacy.Flag"}],
+             "members": [{"path": path, "type": "example.Store", "member_id": "read", "state": "reported"}]}
+    support = {"src/main/java/legacy/Flag.java": "package legacy; public @interface Flag {}",
+               "src/main/java/modern/Replacement.java": "package modern; public @interface Replacement {}"}
+    cases = [
+        ("unrelated-unresolved", "@modern.Replacement public class Store { public Missing read() { return null; } }", True),
+        ("literal-comment", '@modern.Replacement public class Store { /* Flag */ String text = "Flag"; public Missing read() { return null; } }', True),
+        ("retired-qualified", "@legacy.Flag public class Store { public Missing read() { return null; } }", False),
+        ("retired-qualified-resolved", "@legacy.Flag public class Store { public String read() { return null; } }", False),
+        ("retired-import", "import legacy.Flag; @modern.Replacement public class Store { public Missing read() { return null; } }", False),
+        ("parse-error", "@modern.Replacement public class Store { public Missing read( { return null; } }", False),
+        ("deleted-member", "@modern.Replacement public class Store { Missing value; }", False),
+        ("renamed-type", "@modern.Replacement class Other { public Missing read() { return null; } }", False),
+        ("nested-retired", "@modern.Replacement public class Store { public Missing read() { return null; } @legacy.Flag class Nested {} }", False),
+    ]
+    for label, text, allowed in cases:
+        with tempfile.TemporaryDirectory(prefix="wl-partial-scope-") as d:
+            root = _jdk_root(d, {**support, path: "package example; " + text})
+            model = dest_model(root)
+            rows = assess_unit(root, scope)
+            if (all(r["verdict"] == "ok" for r in rows)) != allowed:
+                return _fail("%s: partial diagnostic scope assessment %s" % (label, rows))
+            if allowed:
+                typ = next(t for t in model["types"] if t["fqn"] == "example.Store")
+                if typ["resolution"] != "partial" or rows[0].get("proof") != "parsed-symbol-absence":
+                    return _fail("%s must exercise partial attribution and parsed absence" % label)
+                # Old/missing parse inventory cannot silently become proof.
+                typ.pop("syntax_names")
+                with patch("planner.worklist.dest_model", return_value=model):
+                    if not any(r["verdict"] == "inconclusive" for r in assess_unit(root, scope)):
+                        return _fail("missing syntax inventory must remain inconclusive")
+                # The relaxation is not authority for inheritance/call closure.
+                closure = dict(scope, rule=RULE_DECLARATION_CLOSURE)
+                if not any(r["verdict"] == "inconclusive" for r in assess_unit(root, closure)):
+                    return _fail("partial declaration closure must remain inconclusive")
+    return 0
+
+
 def main() -> int:
     if (_runtime_identity_case() or _gate_progress_case() or _batch_scope_case() or _checked_family_case()
             or _set_wide_case() or _config_value_case() or _parity_typing_case() or _parity_advice_case()
@@ -3554,7 +3598,7 @@ def main() -> int:
         return 1
     # the same questions with nothing simulated: the JDK extractor's own model
     if shutil.which("javac"):
-        if _real_leaf_case() or _real_fragment_case() or _real_explained_case():
+        if _partial_diagnostic_scope_case() or _real_leaf_case() or _real_fragment_case() or _real_explained_case():
             return 1
     else:
         print("SKIP: the real-model cases need a JDK on PATH", file=sys.stderr)

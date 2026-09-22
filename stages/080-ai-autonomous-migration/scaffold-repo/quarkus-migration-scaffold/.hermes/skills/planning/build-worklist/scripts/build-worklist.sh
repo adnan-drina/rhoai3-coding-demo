@@ -15,5 +15,17 @@ ROOT="$(cd "${ROOT}" && pwd)"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOOP="${SCRIPT_DIR}/../../../migration/fix-until-green/scripts"
 [[ -f "${ROOT}/evidence/producers/bootstrap.json" ]] || { echo "FAIL: WORKLIST_NO_BOOTSTRAP run bootstrap-destination first" >&2; exit 1; }
-bash "${LOOP}/run-verify.sh" --root "${ROOT}"
-python3 "${LOOP}/advance.py" --root "${ROOT}" --baseline --no-mint
+run_phase() {
+  local phase="$1" rc
+  shift
+  echo "WORKLIST_PHASE: ${phase} started"
+  if "$@"; then
+    echo "WORKLIST_PHASE: ${phase} passed"
+  else
+    rc=$?
+    echo "FAIL: WORKLIST_PHASE phase=${phase} exit=${rc}; later phases did not run. Inspect this invocation's output and ${ROOT}/verification; do not run a second Maven build to diagnose the wrapper." >&2
+    return "${rc}"
+  fi
+}
+run_phase verify bash "${LOOP}/run-verify.sh" --root "${ROOT}"
+run_phase baseline python3 "${LOOP}/advance.py" --root "${ROOT}" --baseline --no-mint

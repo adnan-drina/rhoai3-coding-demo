@@ -120,7 +120,9 @@
     {
       "backing": "native",
       "id": "dispatch-next-phase",
-      "keep": [],
+      "keep": [
+        ".hermes/AUTOSTART-STATUS"
+      ],
       "needle": "autostart-migration.sh"
     }
   ],

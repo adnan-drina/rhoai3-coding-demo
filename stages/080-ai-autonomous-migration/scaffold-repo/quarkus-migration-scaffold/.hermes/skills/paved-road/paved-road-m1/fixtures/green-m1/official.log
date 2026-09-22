@@ -1,3 +1,4 @@
+Query: work kanban task t_m1
   ┊ 📚 skill  freeze-migration-input
   ┊ 📚 skill  capture-build-evidence
   ┊ 📚 skill  inventory-legacy-surface
@@ -7,4 +8,4 @@
   ┊ 💻 $         python3 .hermes/skills/gates/capture-source-oracles/scripts/capture-source-scenarios.py --root /projects/modernized  8.4s
   ┊ 💻 $         python3 .hermes/kernel/kanban_attach.py --task t_m1 --exec  0.3s
   ┊ 📋 preparing kanban_request_review…
-  ┊ 💻 $         bash /projects/modernized/.hermes/skills/harness/dispatch-phase/scripts/autostart-migration.sh --root /projects/modernized  1.2s
+  ┊ 💻 $         bash /projects/modernized/.hermes/skills/harness/dispatch-phase/scripts/autostart-migration.sh --root /projects/modernized --after-m1 t_m1  1.2s

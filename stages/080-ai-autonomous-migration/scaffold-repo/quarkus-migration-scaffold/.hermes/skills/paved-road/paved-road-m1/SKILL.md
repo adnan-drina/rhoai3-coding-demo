@@ -65,13 +65,16 @@ the root of the planner digest chain (SAD §6).
    idle` and the reason and exits 0. That is a **recorded blocker**
    (ADR-014), not a red step and not silence. The reason names the missing
    environment **variable**, never a credential.
-4. `bash .hermes/skills/harness/dispatch-phase/scripts/autostart-migration.sh --root /projects/modernized`
+4. `bash .hermes/skills/harness/dispatch-phase/scripts/autostart-migration.sh --root /projects/modernized --after-m1 "$HERMES_KANBAN_TASK"`
    — binds the platform-recorded pilot authorization (dest-init wrote who
    authorized this run from the DevWorkspace its creator started) to the
    bundle you just produced, and mints M2. It decides nothing: an unbound
    seal with no named authorizer, one already bound, one not recorded by the
    platform, or an unfit bundle are all refused, and admission still gates
    the plan. Mints nothing under a not-activated planner; idempotent.
+   `--after-m1` validates this existing native M1; the workspace startup
+   preference cannot silently skip its continuation. The reviewer checks
+   the M2 task, workspace and parent edge, not just the command exit code.
 5. Happy-path terminator: `kanban_request_review` (reviewer `reviewer`), then end the turn. A later nudge to finish is already satisfied by the review handoff; do not answer it with `kanban_complete` (K2 refuses it for the implementer) or `kanban_block`.
 6. `kanban_block` for external/platform (MaaS 500, missing key, GPU).
 7. Reviewer runs `python3 .hermes/skills/paved-road/paved-road-m1/scripts/assert-paved-road-audit.py --root /projects/modernized "$HERMES_KANBAN_TASK"`.

@@ -593,6 +593,9 @@ check "080 autostart does not pin scan-with-mta on the card" \
 check "080 autostart-migration selftest passes" \
   "python3 '${SCAFFOLD_AUTOSTART}/autostart-migration.selftest.py' >/dev/null && echo 1 || echo 0" \
   "1"
+check "080 build-worklist reports failures without repeating verification" \
+  "python3 '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/skills/planning/build-worklist/scripts/build-worklist.test.py' >/dev/null && echo 1 || echo 0" \
+  "1"
 check "080 derive default DERIVED_ROOT is inside dest tree" \
   "grep -c '\${MODERNIZED_ROOT}/.derived/legacy-at-3' '${SCRIPT_DIR}/scaffold-repo/quarkus-migration-scaffold/.hermes/skills/migration/derive-legacy-boot3/scripts/derive-legacy-boot3.sh' || echo 0" \
   "1"

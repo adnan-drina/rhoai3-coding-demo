@@ -7,18 +7,23 @@
 set -euo pipefail
 
 ROOT=""
+AFTER_M1=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --root)
       ROOT="${2:-}"
       shift 2
       ;;
+    --after-m1)
+      AFTER_M1="${2:?--after-m1 requires the existing M1 task id}"
+      shift 2
+      ;;
     -h|--help)
-      echo "usage: autostart-migration.sh --root <project>" >&2
+      echo "usage: autostart-migration.sh --root <project> [--after-m1 <task-id>]" >&2
       exit 2
       ;;
     *)
-      echo "usage: autostart-migration.sh --root <project>" >&2
+      echo "usage: autostart-migration.sh --root <project> [--after-m1 <task-id>]" >&2
       exit 2
       ;;
   esac
@@ -57,6 +62,10 @@ fail_status() {
   exit 1
 }
 
+# The startup preference controls starting a run, not continuing a native M1
+# already started by the Operator. Continuation validates that task below;
+# it does not grant planner activation or release M2 before M1 review.
+if [[ -z "${AFTER_M1}" ]]; then
 case "${AUTO_START_MIGRATION:-true}" in
   false|False|FALSE|0|off|OFF|no|NO)
     export AUTOSTART_JSON
@@ -66,9 +75,24 @@ case "${AUTO_START_MIGRATION:-true}" in
     exit 0
     ;;
 esac
+fi
 
 if [[ -z "${HERMES}" ]]; then
   fail_status "hermes not on PATH"
+fi
+
+if [[ -n "${AFTER_M1}" ]]; then
+  python3 - "${ROOT}" "${AFTER_M1}" <<'PYCONTINUE' || fail_status "M1 continuation task mismatch"
+import sys
+from pathlib import Path
+root = Path(sys.argv[1])
+sys.path.insert(0, str(root / ".hermes/lib"))
+from paved_road import phase_card_gaps
+gaps = phase_card_gaps(root, sys.argv[2], "M1 ANALYZE")
+if gaps:
+    print("FAIL: " + "; ".join(gaps), file=sys.stderr)
+    raise SystemExit(1)
+PYCONTINUE
 fi
 
 # Bind a platform-authorized pilot seal to the bundle on disk (SAD section 12).
@@ -155,7 +179,7 @@ else:
 PY
 )"
 
-M1_BODY='Follow paved-road-m1. skill_view subskills from steps.json in order: freeze-migration-input, capture-build-evidence, inventory-legacy-surface, scan-with-mta, assemble-evidence-bundle. Attach the KEEP artifacts by running .hermes/kernel/kanban_attach.py via terminal (python3 .hermes/kernel/kanban_attach.py --task "$HERMES_KANBAN_TASK" --exec). That script fixes the file set and the 25 MiB cap, so the set is not your decision. The kanban_attach tool does not satisfy the paved-road audit. The original frozen legacy source is the only baseline; do not derive or upgrade it first. A producer that records status unpinned is evidence, not a defect to repair: kanban_block kind=needs_input naming the pin. Happy-path terminator is kanban_request_review with reviewer set to reviewer (pass the reviewer parameter; without it the task is dispatched back to you and the paved-road audit never runs), not kanban_complete. kanban_block for external/platform (MaaS 500, missing key, GPU). Do not invent HTTP routes.'
+M1_BODY='Follow paved-road-m1. skill_view subskills from steps.json in order: freeze-migration-input, capture-build-evidence, inventory-legacy-surface, scan-with-mta, assemble-evidence-bundle. Attach the KEEP artifacts by running .hermes/kernel/kanban_attach.py via terminal (python3 .hermes/kernel/kanban_attach.py --task "$HERMES_KANBAN_TASK" --exec). That script fixes the file set and the 25 MiB cap, so the set is not your decision. The kanban_attach tool does not satisfy the paved-road audit. The original frozen legacy source is the only baseline; do not derive or upgrade it first. A producer that records status unpinned is evidence, not a defect to repair: kanban_block kind=needs_input naming the pin. Then run bash .hermes/skills/harness/dispatch-phase/scripts/autostart-migration.sh --root /projects/modernized --after-m1 "$HERMES_KANBAN_TASK" to continue this M1. Happy-path terminator is kanban_request_review with reviewer set to reviewer (pass the reviewer parameter; without it the task is dispatched back to you and the paved-road audit never runs), not kanban_complete. kanban_block for external/platform (MaaS 500, missing key, GPU). Do not invent HTTP routes.'
 
 M2_BODY='Follow paved-road-m2. First step is the activation gate (python3 .hermes/skills/planning/admit-migration-plan/scripts/assert-planner-activated.py --root /projects/modernized); then skill_view bootstrap-destination, build-worklist and admit-migration-plan in that order, then python3 .hermes/kernel/k4_mint.py --root /projects/modernized --exec --verify-board, then skill_view verify-live-kanban-loop. The plan is the work list the tools compute; you never author it. An INCONCLUSIVE admission is a legal stop: kanban_block kind=needs_input naming the BLOCK classes; do not hand-author anything under evidence/planning or verification/, and never edit decisions.yaml. K4 mints exactly one card (the head cluster) and zero unless the receipt is ADMITTED. Happy-path terminator is kanban_request_review with reviewer set to reviewer and created_cards equal to the native t_* list from mint. Never kanban swarm, decompose, link, triage, or daemon --force.'
 
@@ -176,6 +200,9 @@ print(tid)
 '
 }
 
+if [[ -n "${AFTER_M1}" ]]; then
+  M1_ID="${AFTER_M1}"
+else
 M1_JSON="$(
   create_card "M1 ANALYZE" \
     --assignee implementer \
@@ -187,6 +214,7 @@ M1_JSON="$(
     --body "${M1_BODY}"
 )" || fail_status "M1 create failed"
 M1_ID="$(parse_id <<<"${M1_JSON}")" || fail_status "M1 create JSON missing t_* id"
+fi
 
 M2_ID=""
 if [[ "${PLANNER_ACTIVATION}" == "activated" || "${PLANNER_ACTIVATION}" == "pilot" ]]; then
@@ -219,7 +247,10 @@ export AUTOSTART_JSON
 AUTOSTART_JSON="$(python3 -c '
 import json, sys
 m1, m2, planner, reused = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4] == "1"
-if reused and m2:
+after_m1 = sys.argv[5]
+if after_m1:
+    reason = "Existing M1 continued; %s (planner %s)" % ("M2 ensured as child" if m2 else "M2 not minted", planner)
+elif reused and m2:
     reason = "M1 reused; M2 reused as child (planner %s)" % planner
 elif reused:
     reason = "M1 reused; M2 not minted (planner %s)" % planner
@@ -233,13 +264,16 @@ print(json.dumps({
   "planner_activation": planner,
   "m1_id": m1,
   "m2_id": m2,
+  "after_m1": after_m1,
   "reused": reused,
-  "argv_m1": ["hermes","kanban","create","--json","M1 ANALYZE","--idempotency-key","m1-analyze"],
+  "argv_m1": ([] if after_m1 else ["hermes","kanban","create","--json","M1 ANALYZE","--idempotency-key","m1-analyze"]),
   "argv_m2": (["hermes","kanban","create","--json","M2 PLAN","--parent",m1,"--idempotency-key","m2-plan"] if m2 else []),
 }))
-' "${M1_ID}" "${M2_ID}" "${PLANNER_ACTIVATION}" "${REUSED}")"
+' "${M1_ID}" "${M2_ID}" "${PLANNER_ACTIVATION}" "${REUSED}" "${AFTER_M1}")"
 write_status
-if [[ "${REUSED}" == "1" && -n "${M2_ID}" ]]; then
+if [[ -n "${AFTER_M1}" ]]; then
+  echo "OK: autostart continued M1=${M1_ID} M2=${M2_ID:-not-minted} (planner ${PLANNER_ACTIVATION})"
+elif [[ "${REUSED}" == "1" && -n "${M2_ID}" ]]; then
   echo "OK: autostart reused M1=${M1_ID} M2=${M2_ID} (planner ${PLANNER_ACTIVATION}; dest-init idempotent, not a new mint)"
 elif [[ "${REUSED}" == "1" ]]; then
   echo "OK: autostart reused M1=${M1_ID} (planner ${PLANNER_ACTIVATION}; dest-init idempotent, not a new mint)"

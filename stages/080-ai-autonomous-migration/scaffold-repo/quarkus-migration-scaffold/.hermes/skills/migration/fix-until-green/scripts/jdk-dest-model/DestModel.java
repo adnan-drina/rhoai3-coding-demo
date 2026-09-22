@@ -115,7 +115,37 @@ public final class DestModel {
         }
         JavacTask task = (JavacTask) compiler.getTask(null, fm, diags,
                 options, null, fm.getJavaFileObjectsFromPaths(files));
-        Iterable<? extends CompilationUnitTree> units = task.parse();
+        List<CompilationUnitTree> units = new ArrayList<>();
+        task.parse().forEach(units::add);
+        // Parse evidence is independent of attribution. A migration unit can
+        // retire an annotation while unrelated unresolved types remain. Save
+        // every identifier BEFORE analyze mutates the AST; a parse error never
+        // supplies evidence that a name is absent.
+        TreeSet<String> parseBroken = new TreeSet<>();
+        for (Diagnostic<? extends JavaFileObject> d : diags.getDiagnostics()) {
+            if (d.getKind() == Diagnostic.Kind.ERROR && d.getSource() != null) {
+                parseBroken.add(rel(source, Paths.get(d.getSource().toUri())));
+            }
+        }
+        Map<String, List<String>> syntaxNames = new LinkedHashMap<>();
+        for (CompilationUnitTree unit : units) {
+            TreeSet<String> names = new TreeSet<>();
+            new com.sun.source.util.TreeScanner<Void, Void>() {
+                @Override public Void visitClass(ClassTree n, Void v) {
+                    names.add(n.getSimpleName().toString());
+                    return super.visitClass(n, v);
+                }
+                @Override public Void visitIdentifier(com.sun.source.tree.IdentifierTree n, Void v) {
+                    names.add(n.getName().toString());
+                    return super.visitIdentifier(n, v);
+                }
+                @Override public Void visitMemberSelect(com.sun.source.tree.MemberSelectTree n, Void v) {
+                    names.add(n.getIdentifier().toString());
+                    return super.visitMemberSelect(n, v);
+                }
+            }.scan(unit, null);
+            syntaxNames.put(rel(source, Paths.get(unit.getSourceFile().toUri())), new ArrayList<>(names));
+        }
         task.analyze();
         Trees trees = Trees.instance(task);
         Elements elements = task.getElements();
@@ -161,6 +191,8 @@ public final class DestModel {
                     row.put("fqn", type.getQualifiedName().toString());
                     row.put("kind", type.getKind().toString().toLowerCase());
                     row.put("resolution", ok ? "full" : "partial");
+                    row.put("syntax_complete", !parseBroken.contains(relPath));
+                    row.put("syntax_names", syntaxNames.get(relPath));
                     row.put("imports", imports);
                     List<String> supers = new ArrayList<>();
                     if (type.getSuperclass() != null && type.getSuperclass().getKind().name().equals("DECLARED")) {

@@ -2068,3 +2068,21 @@ now requests 256Mi and has a 1Gi limit; this is separate from database sizing.
 Preserve the failed TaskRun. If its per-run lock exists, prove the holder TaskRun
 and pod are stopped before releasing it. A failed task is not a provisioning
 receipt and must not be bypassed with manually created database resources.
+
+### Stage 080: a diagnostic-family repair is pending despite lower compile errors
+
+**Symptom:** `VERIFICATION_PENDING cause=unassessable-scope` says a sealed file
+could not fully resolve, although the retired symbol's diagnostics disappeared.
+On v10 the Profile unit reduced 233 compiler errors to 203; unrelated errors in
+two files made four inventory rows inconclusive.
+
+**Check:** inspect the pending row in `verification/loop/steps.json`, its sealed
+scope and `scope_assessment` (new receipts). Older receipts contain only the first
+three failures in `reason`. A lower count alone is insufficient to accept.
+
+**Recover:** the assessor now accepts a diagnostic-family absence proof from a
+complete javac syntax scan. A parse error, missing scan or remaining retired name
+still refuses. Install the tested repair only while the worker is stopped,
+restore the retained candidate through `restore-pending.py`, then unblock that
+same card for verification and advance. Do not broaden its write set, mint a new
+budget, waive the assessment, or repeat the product edits.

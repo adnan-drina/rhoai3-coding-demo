@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import io
+import json
 import os
 import subprocess
 import sys
 import tempfile
 import unittest
 from contextlib import redirect_stderr
+from unittest.mock import patch
 from pathlib import Path
 
 from paved_road import (
@@ -22,6 +24,7 @@ from paved_road import (
     is_allowed_audit_log,
     load_steps,
     matching_terminal_lines,
+    m1_handoff_gaps,
     resolve_log,
     run_executables,
     sync_audit,
@@ -43,6 +46,75 @@ def _eval_msg(text: str, doc: dict, root: Path) -> tuple[int, str]:
     with redirect_stderr(buf):
         rc = evaluate_audit(text, doc, root)
     return rc, buf.getvalue()
+
+
+class TestM1Handoff(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        (self.root / ".hermes").mkdir()
+        (self.root / "evidence/planning").mkdir(parents=True)
+        (self.root / "evidence/planning/evidence-bundle.json").write_text("{}")
+        self.status = {"state": "minted", "m1_id": "t_m1", "after_m1": "t_m1",
+                       "m2_id": "t_m2", "planner_activation": "activated"}
+        self.pins = {"pins": {"planner": {"activation": "activated"}}}
+        self.card = {"task": {"id": "t_m2", "title": "M2 PLAN", "workspace_kind": "dir", "workspace_path": str(self.root)},
+                     "parents": [{"id": "t_m1"}]}
+
+    def check_handoff(self):
+        (self.root / ".hermes/AUTOSTART-STATUS").write_text(json.dumps(self.status))
+        (self.root / ".hermes/pins.json").write_text(json.dumps(self.pins))
+        result = subprocess.CompletedProcess([], 0, json.dumps(self.card), "")
+        with patch("paved_road.subprocess.run", return_value=result) as run:
+            gaps = m1_handoff_gaps(self.root, "t_m1")
+        return gaps, run
+
+    def test_skipped_exit_zero_does_not_pass_m1_audit(self):
+        self.status = {"state": "skipped", "reason": "AUTO_START_MIGRATION off"}
+        self.check_handoff()
+        # Reproduce v10: the mandated command ran and returned zero.
+        doc = {"kind": "m1-analyze", "steps": [{"id": "dispatch-next-phase", "backing": "native",
+                                                    "native": "autostart-migration.sh"}]}
+        text = "Query: work kanban task t_m1\n  ┊ 💻 $ bash .hermes/autostart-migration.sh --root .  0.1s\n"
+        rc, msg = _eval_msg(text, doc, self.root)
+        self.assertEqual(rc, 1)
+        self.assertIn("PHASE_HANDOFF", msg)
+
+    def test_native_parent_beside_task_passes(self):
+        gaps, run = self.check_handoff()
+        self.assertEqual(gaps, [])
+        self.assertEqual(run.call_args.args[0], ["hermes", "kanban", "show", "t_m2", "--json"])
+
+    def test_wrong_parent_or_workspace_refuses(self):
+        for field in ("parent", "workspace"):
+            with self.subTest(field=field):
+                if field == "parent":
+                    self.card["parents"] = [{"id": "t_other"}]
+                else:
+                    self.card["parents"] = [{"id": "t_m1"}]
+                    self.card["task"]["workspace_path"] = "/another-run"
+                self.assertTrue(self.check_handoff()[0])
+
+    def test_stale_continuation_refuses(self):
+        self.status["after_m1"] = "t_old"
+        self.assertTrue(self.check_handoff()[0])
+
+    def test_missing_child_refuses(self):
+        self.status["m2_id"] = ""
+        self.assertTrue(self.check_handoff()[0])
+
+    def test_explicit_analysis_only_does_not_require_m2(self):
+        self.pins["pins"]["planner"]["activation"] = "not-activated"
+        self.status.update(m2_id="", planner_activation="not-activated")
+        gaps, run = self.check_handoff()
+        self.assertEqual(gaps, [])
+        run.assert_not_called()
+
+    def test_unbound_pilot_cannot_claim_analysis_only(self):
+        self.pins["pins"]["planner"]["activation"] = "pilot"
+        self.status.update(m2_id="", planner_activation="not-activated")
+        self.assertTrue(self.check_handoff()[0])
 
 
 class TestStepsContract(unittest.TestCase):
