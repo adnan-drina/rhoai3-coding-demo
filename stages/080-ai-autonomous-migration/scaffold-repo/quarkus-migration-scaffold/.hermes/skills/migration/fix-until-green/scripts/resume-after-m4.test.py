@@ -35,6 +35,12 @@ Cases:
       receipt, so the CORS repair is minted; the refused reads are ADR-014's
       Operator step and are withheld from the mint; and the same receipt
       without the CORS row resumes nothing (exit 2). Renamed specimen: (e).
+  (j) v9 t_7740ad21: a CLEAN ACCEPTANCE -- PROVISIONAL_ACCEPT, bound, no
+      failed floor, ship false, nothing a card repairs -- CLOSES the run
+      instead of refusing: the close row is on the record, issued.json is
+      cleared, and a release-blockers.json left by a SUPERSEDED REFUSE is
+      rewritten from this verdict, with what is still outstanding named. A
+      second close-out refuses; a clean verdict over a dirty tree refuses.
   (f) the whole v9 sequence, in the order it happened: a parity card accepted
       under a SCOPED comparison snapshotted that receipt as the loop's parity
       baseline, the M4 road then composed the FULL receipt, the resume minted
@@ -199,7 +205,8 @@ def _parity_v9(root: Path, eps: list, *, cors: bool = True) -> list:
     return refused
 
 
-def _verdict(root: Path, floors: list, *, card: str = CLOSE_CARD, receipt: str = "", parity: str = "") -> None:
+def _verdict(root: Path, floors: list, *, card: str = CLOSE_CARD, receipt: str = "", parity: str = "",
+             token: str = "REFUSE", reason: str = "", coverage: dict | None = None) -> None:
     """The composed verdict, bound the way compose-m4-verdict's binder binds it:
     the issued close card, the admission receipt that card was minted under, and
     the digest of the parity receipt this verdict judged. The three are what
@@ -208,12 +215,12 @@ def _verdict(root: Path, floors: list, *, card: str = CLOSE_CARD, receipt: str =
     issued = load_json(root / LOOP_ISSUED)
     write_canonical(root / "evidence" / "verdicts" / "m4-verdict.json", {
         "schema": "rhoai3.m4-verdict/v1", "gate": "M4_VERDICT", "phase": "M4", "ran": True,
-        "card_id": card, "verdict": "REFUSE", "ship": False, "failed_floors": sorted(floors),
+        "card_id": card, "verdict": token, "ship": False, "failed_floors": sorted(floors), "reason": reason,
         "receipt_sha256": receipt or str(issued.get("receipt_sha256") or ""),
         "parity_receipt_sha256": parity or sha256_file(root / "verification" / "parity" / "receipt.json"),
         "floors": [{"name": n, "rc": 1, "idle": False} for n in sorted(floors)]
                   + [{"name": "check-runnable-db-config", "rc": 0, "idle": False}],
-        "coverage_account": {"retired": 0, "remaining_gaps": 0}})
+        "coverage_account": dict(coverage or {"retired": 0, "remaining_gaps": 0})})
     _record_binding(root)
 
 
@@ -622,6 +629,215 @@ def case_v9_head_is_a_decision() -> int:
         return 0
 
 
+# --- (j) the clean acceptance: the run's success path ------------------------
+
+# what v9's SUPERSEDED REFUSE left on disk, and the run report kept reading as
+# current after the next verdict cleared it
+SUPERSEDED_FLOOR = "assert-mta-rescan"
+
+
+def _stale_blockers(root: Path) -> None:
+    """release-blockers.json as a previous, now superseded, REFUSE verdict left
+    it: a release floor the CURRENT verdict measured rc 0."""
+    write_canonical(root / BLOCKERS, {
+        "schema": "rhoai3.release-blockers/v1", "at": "2026-09-21T00:00:00Z", "operator": "operator:earlier",
+        "verdict_card": "t_supersededcard", "verdict": "REFUSE", "verdict_file": "evidence/verdicts/m4-verdict.json",
+        "failed_floors": [SUPERSEDED_FLOOR], "receipt_sha256": "0" * 64, "corpus_sha256": "0" * 64,
+        "floors": [{"floor": SUPERSEDED_FLOOR, "class": "decision", "adr": "", "owner": "Operator",
+                    "detail": "release floor %s is not a card" % SUPERSEDED_FLOOR}],
+        "entry_points": [], "owners": [], "resumed": False,
+        "parity_obligations": [], "withheld_obligations": []})
+
+
+def _parity_clean(root: Path, eps: list) -> None:
+    """The receipt v9's clean M4 composed: no FAIL row anywhere, so no
+    obligation a card can carry -- and still not a PASS, because entry points
+    nothing compared are INCONCLUSIVE and the coverage account has gaps.
+
+    That combination is exactly what had no terminator: nothing to repair,
+    nothing a decision owns, and a run that must not stay open."""
+    digest = load_json(root / ADMISSION_RECEIPT)["receipt_digest"]
+    pdir = root / "verification" / "parity"
+    pdir.mkdir(parents=True, exist_ok=True)
+    rows = []
+    for ep in eps[:2]:
+        write_canonical(pdir / (_slug(ep) + ".json"), {
+            "schema": "rhoai3.parity/v1", "entry_point": ep, "verdict": "PASS",
+            "reason": "", "receipt_sha256": digest})
+        rows.append({"entry_point": ep, "verdict": "PASS", "reason": "compared", "scenarios": [],
+                     "coverage_kind": "oracle", "covered_by": {"oracle": True, "scenarios": []}})
+    for ep in eps[2:]:
+        rows.append({"entry_point": ep, "verdict": "INCONCLUSIVE", "scenarios": [],
+                     "reason": "no parity record: no read-oracle replay on disk, and no scenario in this corpus binds this entry point",
+                     "coverage_kind": "none", "covered_by": {"oracle": False, "scenarios": []}})
+    write_canonical(pdir / "receipt.json", {
+        "schema": "rhoai3.parity-receipt/v1", "receipt_sha256": digest,
+        "producer": "compose-parity-receipt.py", "corpus_sha256": "c" * 64, "corpus_error": "",
+        "entry_points": rows, "total": len(rows),
+        "not_passed": sum(1 for r in rows if r["verdict"] != "PASS"),
+        "coverage_summary": {"entry_points": len(rows), "by_oracle": 2, "by_scenario": 0,
+                             "uncovered": len(rows) - 2},
+        "cors": {"source_policies": [], "gaps": []},
+        "qualification": {"present": True, "derived_corpus": False, "gap": "", "not_passed": [], "stale": []},
+        "coverage_gaps": [], "verdict": "INCONCLUSIVE"})
+
+
+CLEAN_COVERAGE = {"retired": 41, "remaining_gaps": 41}
+CLEAN_REASON = ("the parity receipt is INCONCLUSIVE: 20 of 34 entry points were not compared (a non-idempotent "
+                "method or a wildcard path with no captured single-request oracle)")
+
+
+def case_clean_acceptance_closes() -> int:
+    """(j) v9 t_7740ad21: PROVISIONAL_ACCEPT, bound, no failed floor, ship
+    false, and nothing a card repairs — the run CLOSES.
+
+    Before H16 this refused ("there is nothing to resume"), and the run was
+    left with an issued card the board had already closed and a blockers file
+    from a superseded REFUSE that the run report read as current. The close-out
+    has to answer both, and to say what is still outstanding: a closed run with
+    coverage gaps is not a shipped run."""
+    with tempfile.TemporaryDirectory(prefix="resume-m4-clean-") as td:
+        root, eps = _at_m4(Path(td))
+        _parity_clean(root, eps)
+        _stale_blockers(root)
+        _verdict(root, [], token="PROVISIONAL_ACCEPT", reason=CLEAN_REASON, coverage=CLEAN_COVERAGE)
+        rc, out, err = _run(root)
+        blob = out + err
+        if rc != 0:
+            return _fail("a clean acceptance must close the run, not refuse: rc=%d %s" % (rc, blob[-900:]))
+        if "MINT" in out:
+            return _fail("a closed run mints nothing: %s" % out[-400:])
+        if "CLOSED %s" % CLOSE_CARD not in out:
+            return _fail("the terminal line must name the state and the card: %s" % out[-600:])
+
+        # the issued card is cleared: the loop no longer believes a card is open
+        if (root / LOOP_ISSUED).is_file():
+            return _fail("the close-out must clear the issued card; %s is still on disk" % LOOP_ISSUED)
+
+        # the close is on the record, with the verdict and its bindings
+        steps = load_json(root / LOOP_STEPS)
+        closes = [r for r in steps.get("rejected") or [] if r.get("kind") == "close"]
+        if len(closes) != 1:
+            return _fail("the close must be recorded exactly once: %s" % closes)
+        row = closes[0]
+        if row["card"] != CLOSE_CARD or row["verdict"] != "PROVISIONAL_ACCEPT" or not row.get("closed") or row.get("resumed"):
+            return _fail("the close row must say the run was CLOSED on this verdict, not resumed: %s" % row)
+        if row["failed_floors"] != [] or row["parity_obligations"] or row["withheld_obligations"]:
+            return _fail("a clean close names no failed floor and no obligation: %s" % row)
+        if row["receipt_sha256"] != load_json(root / ADMISSION_RECEIPT)["receipt_digest"]:
+            return _fail("the close row must bind to the admission receipt that seals this tree: %s" % row)
+        if row["parity_receipt_sha256"] != sha256_file(root / "verification" / "parity" / "receipt.json"):
+            return _fail("the close row must bind to the parity receipt the verdict judged: %s" % row)
+        if (steps.get("attempts") or {}).get("M4_VERIFY"):
+            return _fail("closing M4 must not spend an attempt: %s" % steps.get("attempts"))
+
+        # the blockers file is rewritten FROM THIS VERDICT: the superseded
+        # floor is gone, and the file says which verdict cleared it and when
+        doc = load_json(root / BLOCKERS)
+        if doc["verdict_card"] != CLOSE_CARD or doc["verdict"] != "PROVISIONAL_ACCEPT":
+            return _fail("the blockers file must be this verdict's: %s" % doc)
+        if doc["floors"] or doc["entry_points"] or doc["owners"] or doc["failed_floors"]:
+            return _fail("a verdict that names no blocker leaves an EMPTY record, not a superseded one: %s" % doc)
+        if SUPERSEDED_FLOOR in json.dumps(doc):
+            return _fail("a floor the current verdict cleared must not survive in the record: %s" % doc)
+        cleared = doc.get("cleared_by") or {}
+        if cleared.get("verdict") != "PROVISIONAL_ACCEPT" or cleared.get("card") != CLOSE_CARD or not cleared.get("at"):
+            return _fail("the empty record must name the verdict that cleared it and when: %s" % cleared)
+        if doc.get("closed") is not True or doc.get("resumed") is not False:
+            return _fail("the record must say the run closed and nothing resumed: %s" % doc)
+
+        # and what is still outstanding stays visible: closed is not shipped
+        kinds = {r["kind"] for r in doc.get("outstanding") or []}
+        for want in ("parity-receipt", "coverage-account", "verdict-reason", "not-shipped"):
+            if want not in kinds:
+                return _fail("the close-out must name what remains before ship (%s): %s" % (want, doc.get("outstanding")))
+        text = json.dumps(doc["outstanding"])
+        if "41" not in text or "INCONCLUSIVE" not in text or "not compared" not in text:
+            return _fail("the outstanding items must be read from the verdict's own reason and account: %s" % text)
+        if "closed is not shipped" not in out:
+            return _fail("the terminal line must distinguish closed from shipped: %s" % out[-600:])
+
+        # the comparison the close was made on is the accepted parity baseline
+        snap = root / "verification" / "loop" / "accepted" / "parity" / "receipt.json"
+        src = root / "verification" / "loop" / "accepted" / "parity-source.json"
+        if not snap.is_file() or not src.is_file() or load_json(src).get("card") != CLOSE_CARD:
+            return _fail("the close must snapshot the comparison it closed on: %s" % (load_json(src) if src.is_file() else "absent"))
+
+        # a second close-out refuses: the close is on the record
+        rc2, out2, err2 = _run(root)
+        if rc2 != 1 or "already closed for verdict %s" % CLOSE_CARD not in err2:
+            return _fail("a second close-out must refuse: rc=%d %s" % (rc2, (out2 + err2)[-400:]))
+        return 0
+
+
+def case_clean_acceptance_dirty_tree() -> int:
+    """(j2) the control: the same clean verdict over a tree a worker still holds.
+
+    A close-out writes to the tree (the record, the baseline snapshot, the
+    blockers file), so every refusal that guarded the resume guards it too. The
+    stale blockers file is left exactly as it was: a refused run changes
+    nothing, including a record it would otherwise have corrected."""
+    with tempfile.TemporaryDirectory(prefix="resume-m4-clean-dirty-") as td:
+        root, eps = _at_m4(Path(td))
+        _parity_clean(root, eps)
+        _stale_blockers(root)
+        stale = (root / BLOCKERS).read_bytes()
+        _verdict(root, [], token="PROVISIONAL_ACCEPT", reason=CLEAN_REASON, coverage=CLEAN_COVERAGE)
+        issued_before = (root / LOOP_ISSUED).read_bytes()
+        src = sorted((root / "src").rglob("*.java"))
+        if not src:
+            return _fail("the fixture must carry a product source to change")
+        src[0].write_text(src[0].read_text(encoding="utf-8") + "\n// a worker's edit\n", encoding="utf-8")
+        rc, out, err = _run(root)
+        if rc != 1 or "the product tree is not clean" not in err:
+            return _fail("a clean verdict over a dirty tree must still refuse: rc=%d %s" % (rc, (out + err)[-600:]))
+        if (root / BLOCKERS).read_bytes() != stale:
+            return _fail("a refused close-out must rewrite nothing, not even a superseded record")
+        if (root / LOOP_ISSUED).read_bytes() != issued_before:
+            return _fail("a refused close-out must leave the issued card alone")
+        if [r for r in load_json(root / LOOP_STEPS).get("rejected") or [] if r.get("kind") == "close"]:
+            return _fail("a refused close-out must record no close")
+
+        # and the same clean verdict for ANOTHER card binds to nothing here
+        with tempfile.TemporaryDirectory(prefix="resume-m4-clean-foreign-") as td2:
+            root2, eps2 = _at_m4(Path(td2))
+            _parity_clean(root2, eps2)
+            _verdict(root2, [], token="PROVISIONAL_ACCEPT", card="t_somebodyelse", coverage=CLEAN_COVERAGE)
+            rc2, out2, err2 = _run(root2)
+            if rc2 != 1 or "t_somebodyelse" not in err2:
+                return _fail("a clean verdict for another card must be refused by name: rc=%d %s" % (rc2, (out2 + err2)[-400:]))
+            if (root2 / BLOCKERS).is_file():
+                return _fail("a refused close-out must write nothing")
+        return 0
+
+
+def case_accept_vocabulary_is_the_roads() -> int:
+    """(j3) the accepting tokens are READ from the road, never invented here.
+
+    compose-m4-verdict's lint owns the vocabulary (`ACCEPT_TOKENS`) and refuses
+    any of them beside a failed floor. If the road adds or renames one, this
+    equality fails rather than the close-out silently refusing a verdict the
+    road accepts."""
+    import importlib.util
+
+    def _load(path: Path, name: str):
+        spec = importlib.util.spec_from_file_location(name, path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+
+    lint = _load(GOLDEN / ".hermes" / "skills" / "gates" / "compose-m4-verdict" / "scripts" / "assert-m4-verdict-schema.py",
+                 "assert_m4_verdict_schema")
+    resume = _load(SCRIPT, "resume_after_m4")
+    if set(resume.ACCEPT_TOKENS) != set(lint.ACCEPT_TOKENS):
+        return _fail("the close-out must treat exactly the road's accepting tokens: %s vs %s"
+                     % (sorted(resume.ACCEPT_TOKENS), sorted(lint.ACCEPT_TOKENS)))
+    if (GOLDEN / resume.M4_VERDICT_LINT).resolve() != (GOLDEN / ".hermes" / "skills" / "gates" / "compose-m4-verdict"
+                                                       / "scripts" / "assert-m4-verdict-schema.py").resolve():
+        return _fail("the recorded source of the vocabulary must be the lint that owns it: %s" % resume.M4_VERDICT_LINT)
+    return 0
+
+
 def _install_harness_generation(root: Path) -> None:
     """What a harness install does to a sealed contract: the file's bytes move.
 
@@ -855,7 +1071,8 @@ def main() -> int:
                  case_worklist_rebuilt_refuses, case_v9_receipt_shape,
                  case_v9_without_the_repairable_row, case_v9_head_is_a_decision,
                  case_v9_renamed_specimen, case_reverted_candidate_keeps_the_m4_baseline,
-                 case_reverted_baseline_renamed_specimen):
+                 case_reverted_baseline_renamed_specimen, case_clean_acceptance_closes,
+                 case_clean_acceptance_dirty_tree, case_accept_vocabulary_is_the_roads):
         rc = case()
         if rc:
             return rc
@@ -868,7 +1085,7 @@ def main() -> int:
           "product change or a rebuilt work list still refuses and re-seals nothing; and on v9's own shape -- a "
           "verdict naming check-empty-security and check-product-tests and NOT the parity floor, over a FAIL receipt "
           "with one CORS preflight and twelve refused reads -- the CORS card is minted from the receipt, the refused "
-          "reads are withheld to ADR-014 and recorded, and the same receipt without the CORS row blocks at exit 2; and the close makes the comparison it closed on the ACCEPTED parity baseline, so a candidate REVERTED off the card it minted restores THAT receipt and not the older scoped one an earlier accepted step left -- the obligations survive the revert, under a renamed specimen too)")
+          "reads are withheld to ADR-014 and recorded, and the same receipt without the CORS row blocks at exit 2; and the close makes the comparison it closed on the ACCEPTED parity baseline, so a candidate REVERTED off the card it minted restores THAT receipt and not the older scoped one an earlier accepted step left -- the obligations survive the revert, under a renamed specimen too; and a CLEAN ACCEPTANCE -- an accepting token the road defines, no failed floor, nothing a card repairs and no floor a decision owns -- CLOSES the run instead of refusing: the close row goes on the record with its bindings, issued.json is cleared, a superseded REFUSE's release-blockers.json is rewritten as an empty record naming the verdict that cleared it and what is still outstanding, a second close-out refuses, and a dirty tree or a foreign card refuses and rewrites nothing)")
     return 0
 
 

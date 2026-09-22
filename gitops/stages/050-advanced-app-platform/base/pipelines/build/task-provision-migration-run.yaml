@@ -1,0 +1,406 @@
+# The ONLY thing that creates or removes a Stage 080 migration run's resources.
+#
+# A run needs a parity database and fixture identities that belong to it alone,
+# created before its workspace starts and removed when the run retires. An
+# earlier design put those manifests in the run's own destination repository
+# and pointed an Argo CD Application at them. The architect refused it
+# (2026-09-22): a repository a migration agent writes to all run long is not an
+# authority, an AppProject is not a per-run security boundary, and a permitted
+# repository Job could have selected a namespace-wide secret-management
+# identity. Creating a workload needs no permission to create RBAC.
+# Ref: https://kubernetes.io/docs/concepts/security/rbac-good-practices/#workload-creation
+#
+# So the manifests are HERE, in the platform repository, rendered by platform
+# code from a VALIDATED RUN IDENTITY and nothing else. The destination
+# repository contributes a name, and the name arrives through an HMAC-verified
+# GitHub webhook that the dispatcher has already established is the scaffolding
+# event (branch creation, zero `before`, the migration-run topic). Repository
+# CONTENT never reaches this task. Editing k8s manifests into a destination
+# repository now changes nothing at all, because nothing reads them.
+#
+# WHAT THE RUN GETS (every object labelled rhoai3.io/migration-run=<run>, which
+# is what `retire` enumerates, so retirement can account for all of them):
+#   Secret     <run>-parity-postgres      the server's own credentials
+#   Deployment <run>-parity-postgres      PostgreSQL 16, emptyDir (ADR-009)
+#   Service    <run>-parity-postgres
+#   Secret     <run>-parity-db            PETCLINIC_DB_* + PARITY_RUN_RECEIPT,
+#                                         automounted into THIS workspace only
+#   Secret     <run>-parity-credentials   the specimen's fixture identities,
+#                                         copied from the platform-owned source
+#                                         secret, same automount binding
+#   ConfigMap  migration-run-<run>        the provisioning receipt, and after
+#                                         retirement the tombstone that stops
+#                                         a later event resurrecting the run
+#
+# THE AUTOMOUNT CONTRACT, and why it is written as ONE object each. DevWorkspace
+# Operator 0.43 keeps secrets in an informer cache that SELECTS on
+# controller.devfile.io/watch-secret=true: a secret without that label is never
+# in the cache, so the automount provisioner never sees it and nothing is
+# mounted. Both labels are required, and they are published together with the
+# annotations in a single apply so a workspace can never observe an
+# intermediate state where mount-to-devworkspace is set and the targeting is
+# not. mount-on-start=true keeps a newly written secret from restarting a
+# workspace that is already running.
+# Ref: https://github.com/devfile/devworkspace-operator/blob/v0.43.0/pkg/cache/cache.go#L43
+# Ref: https://docs.redhat.com/en/documentation/red_hat_openshift_dev_spaces/3.28/html/user_guide/assembly_credentials-and-configurations_user_guide
+#
+# TARGETING IS EXACT. mount-to-devworkspace-include carries the workspace name
+# and nothing else. The suffix form "<run>,<run>-*" that this replaces also
+# matched a different, equally valid run: demo-v10-retry received demo-v10's
+# database. A workspace whose name does not match receives nothing, and the
+# harness ownership check then refuses every database operation -- which is the
+# correct outcome for a name this run was not assigned, and far better than
+# silently attaching a second workspace to one database.
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: provision-migration-run
+  namespace: app-platform-build
+  labels:
+    app.kubernetes.io/part-of: developer-hub
+    app.kubernetes.io/component: migration-run-provisioner
+  annotations:
+    argocd.argoproj.io/sync-wave: "12"
+spec:
+  description: >-
+    Render and apply one Stage 080 migration run's own parity database, fixture
+    credentials and provisioning receipt from a validated run identity, or
+    retire them and leave a tombstone.
+  params:
+    - name: run-name
+      type: string
+      description: The run, which is the scaffolded repository name and the DevWorkspace name.
+    - name: scaffold-commit
+      type: string
+      description: >-
+        The commit of the scaffolding push, recorded in the receipt. Provisioning
+        for a run that already has a receipt from a DIFFERENT commit is refused:
+        that is a replayed, reordered or post-retirement event, not this run.
+    - name: workspace-namespace
+      type: string
+      default: wksp-ai-developer
+      description: Where the workspaces run, and therefore the only place a workspace can read a Secret.
+    - name: mode
+      type: string
+      default: provision
+      description: provision or retire. Both are idempotent.
+    - name: fixture-source-secret
+      type: string
+      default: migration-fixture-credentials
+      description: >-
+        The platform-owned Secret holding the specimen's fixture identities.
+        Every key in it is copied into the run's own bound secret. This task
+        carries no specimen literal; the values are data in one platform file.
+    - name: database-image
+      type: string
+      default: registry.redhat.io/rhel9/postgresql-16:latest
+      description: ADR-009's engine. Recorded in the receipt as provisioned.
+    - name: cli-image
+      type: string
+      default: registry.redhat.io/openshift4/ose-cli:latest
+      description: >-
+        The image this task runs. It is a parameter so the Operator can pin a
+        digest; the receipt records whatever was used, so a run's provisioning
+        is always attributable to an image reference.
+  results:
+    - name: receipt
+      description: The provisioning receipt this run's workspace secret carries.
+    - name: outcome
+      description: provisioned, reprovisioned, refused or retired.
+  steps:
+    - name: provision
+      image: $(params.cli-image)
+      env:
+        - name: RUN
+          value: $(params.run-name)
+        - name: SCAFFOLD
+          value: $(params.scaffold-commit)
+        - name: WSNS
+          value: $(params.workspace-namespace)
+        - name: MODE
+          value: $(params.mode)
+        - name: FIXTURE_SRC
+          value: $(params.fixture-source-secret)
+        - name: DB_IMAGE
+          value: $(params.database-image)
+        - name: CLI_IMAGE
+          value: $(params.cli-image)
+      script: |
+        #!/bin/bash
+        set -euo pipefail
+
+        # A run name becomes object names, a DNS label and a receipt key. Anything
+        # that is not an RFC 1123 label is rejected here rather than producing a
+        # half-created run: the dispatcher's filter decides WHICH events reach this
+        # task, and this decides whether the identity in one is usable at all.
+        if ! printf '%s' "${RUN}" | grep -qE '^[a-z0-9]([-a-z0-9]*[a-z0-9])?$' || [ "${#RUN}" -gt 47 ]; then
+          echo "REFUSED: run name ${RUN} is not a usable RFC 1123 label of at most 47 characters" >&2
+          exit 1
+        fi
+        RECEIPT_CM="migration-run-${RUN}"
+        SERVER_SECRET="${RUN}-parity-postgres"
+        WORKSPACE_SECRET="${RUN}-parity-db"
+        FIXTURE_SECRET="${RUN}-parity-credentials"
+        DB_NAME="parity"
+        DB_USER="parity"
+        HOST="${RUN}-parity-postgres.${WSNS}.svc"
+        PORT="5432"
+
+        phase="$(oc get configmap "${RECEIPT_CM}" -n "${WSNS}" -o jsonpath='{.data.phase}' 2>/dev/null || true)"
+        recorded="$(oc get configmap "${RECEIPT_CM}" -n "${WSNS}" -o jsonpath='{.data.scaffoldCommit}' 2>/dev/null || true)"
+
+        if [ "${MODE}" = "retire" ]; then
+          # Every generated object carries the run label, so retirement
+          # enumerates rather than remembers. The receipt ConfigMap deliberately
+          # does NOT carry it: it survives as the tombstone.
+          for kind in deployment service secret; do
+            oc delete "${kind}" -n "${WSNS}" -l "rhoai3.io/migration-run=${RUN}" --ignore-not-found --wait=true
+          done
+          left="$(oc get secret,deployment,service -n "${WSNS}" -l "rhoai3.io/migration-run=${RUN}" \
+                    -o name 2>/dev/null | wc -l | tr -d ' ')"
+          if [ "${left}" != "0" ]; then
+            echo "REFUSED: ${left} generated object(s) for ${RUN} still exist after retirement" >&2
+            exit 1
+          fi
+          oc create configmap "${RECEIPT_CM}" -n "${WSNS}" --dry-run=client -o yaml \
+            --from-literal=run="${RUN}" \
+            --from-literal=phase=retired \
+            --from-literal=scaffoldCommit="${recorded:-${SCAFFOLD}}" \
+            --from-literal=retiredAt="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            | oc apply -f -
+          oc label configmap "${RECEIPT_CM}" -n "${WSNS}" \
+            rhoai3.io/purpose=stage-080-parity "rhoai3.io/migration-run-receipt=${RUN}" --overwrite
+          echo "retired ${RUN}: no generated secret, deployment or service remains; the receipt is a tombstone"
+          printf 'retired' | tee "$(results.outcome.path)" >/dev/null
+          printf 'retired' > "$(results.receipt.path)"
+          exit 0
+        fi
+
+        # Resurrection and replay. A retired run never provisions again from any
+        # later event; a run whose receipt names a different scaffolding commit is
+        # a different push claiming this run's identity. Neither is an error to
+        # retry -- both are refusals with a reason.
+        if [ "${phase}" = "retired" ]; then
+          echo "REFUSED: ${RUN} was retired (${RECEIPT_CM} is its tombstone); a later push does not bring a run back" >&2
+          exit 1
+        fi
+        if [ -n "${recorded}" ] && [ "${recorded}" != "${SCAFFOLD}" ]; then
+          echo "REFUSED: ${RUN} was provisioned from ${recorded} and this event carries ${SCAFFOLD}; one of them is not the scaffolding push" >&2
+          exit 1
+        fi
+        OUTCOME="provisioned"
+        [ -z "${recorded}" ] || OUTCOME="reprovisioned"
+
+        # Keep an existing password: regenerating it would orphan the data the run
+        # is in the middle of comparing against. Re-running is therefore a no-op.
+        PASSWORD="$(oc get secret "${SERVER_SECRET}" -n "${WSNS}" -o jsonpath='{.data.database-password}' 2>/dev/null | base64 -d || true)"
+        if [ -z "${PASSWORD}" ]; then
+          PASSWORD="$(head -c 24 /dev/urandom | base64 | tr -d '/+=' | head -c 24)"
+        fi
+        RECEIPT="run=${RUN};namespace=${WSNS};workspace=${RUN};host=${RUN}-parity-postgres;port=${PORT};database=${DB_NAME};scaffold=${SCAFFOLD}"
+
+        # The server's own credentials. Never automounted: no workspace has any
+        # use for the superuser-side names, and a secret nothing mounts is a
+        # secret no workspace can read.
+        oc apply -f - <<YAML
+        apiVersion: v1
+        kind: Secret
+        metadata:
+          name: ${SERVER_SECRET}
+          namespace: ${WSNS}
+          labels:
+            app.kubernetes.io/part-of: ${RUN}
+            app.kubernetes.io/component: parity-database-server
+            rhoai3.io/purpose: stage-080-parity
+            rhoai3.io/migration-run: ${RUN}
+        type: Opaque
+        stringData:
+          database-name: ${DB_NAME}
+          database-user: ${DB_USER}
+          database-password: ${PASSWORD}
+        YAML
+
+        # The workspace's secret: labels AND annotations in one object, so the
+        # watch label, the mount label and the exact targeting become visible
+        # together or not at all.
+        oc apply -f - <<YAML
+        apiVersion: v1
+        kind: Secret
+        metadata:
+          name: ${WORKSPACE_SECRET}
+          namespace: ${WSNS}
+          labels:
+            app.kubernetes.io/part-of: ${RUN}
+            app.kubernetes.io/component: parity-database-binding
+            controller.devfile.io/mount-to-devworkspace: "true"
+            controller.devfile.io/watch-secret: "true"
+            rhoai3.io/purpose: stage-080-parity
+            rhoai3.io/migration-run: ${RUN}
+          annotations:
+            controller.devfile.io/mount-as: env
+            controller.devfile.io/mount-on-start: "true"
+            controller.devfile.io/mount-to-devworkspace-include: "${RUN}"
+        type: Opaque
+        stringData:
+          PETCLINIC_DB_URL: jdbc:postgresql://${HOST}:${PORT}/${DB_NAME}
+          PETCLINIC_DB_USER: ${DB_USER}
+          PETCLINIC_DB_PASSWORD: ${PASSWORD}
+          PARITY_RUN_RECEIPT: ${RECEIPT}
+        YAML
+
+        # The specimen's fixture identities (ADR-014), copied key by key from the
+        # platform-owned source. This task names no fixture value: which keys
+        # exist is the specimen's business and lives in one platform file.
+        FIXTURE_KEYS="$(oc get secret "${FIXTURE_SRC}" -n "${WSNS}" \
+                          -o go-template='{{range $k,$v := .data}}{{$k}}{{"\n"}}{{end}}' 2>/dev/null || true)"
+        if [ -z "${FIXTURE_KEYS}" ]; then
+          echo "REFUSED: the fixture source secret ${FIXTURE_SRC} in ${WSNS} has no keys; a run cannot be given fixture identities that do not exist" >&2
+          exit 1
+        fi
+        {
+          cat <<YAML
+        apiVersion: v1
+        kind: Secret
+        metadata:
+          name: ${FIXTURE_SECRET}
+          namespace: ${WSNS}
+          labels:
+            app.kubernetes.io/part-of: ${RUN}
+            app.kubernetes.io/component: fixture-credentials
+            controller.devfile.io/mount-to-devworkspace: "true"
+            controller.devfile.io/watch-secret: "true"
+            rhoai3.io/purpose: stage-080-parity
+            rhoai3.io/migration-run: ${RUN}
+          annotations:
+            controller.devfile.io/mount-as: env
+            controller.devfile.io/mount-on-start: "true"
+            controller.devfile.io/mount-to-devworkspace-include: "${RUN}"
+        type: Opaque
+        data:
+        YAML
+          for key in ${FIXTURE_KEYS}; do
+            # go-template, not jsonpath: a Secret key may contain a dot, and
+            # {.data.<key>} would read that as a path segment.
+            printf '  %s: %s\n' "${key}" \
+              "$(oc get secret "${FIXTURE_SRC}" -n "${WSNS}" -o go-template="{{index .data \"${key}\"}}")"
+          done
+        } | oc apply -f -
+
+        oc apply -f - <<YAML
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: ${RUN}-parity-postgres
+          namespace: ${WSNS}
+          labels:
+            app: ${RUN}-parity-postgres
+            app.kubernetes.io/part-of: ${RUN}
+            rhoai3.io/purpose: stage-080-parity
+            rhoai3.io/migration-run: ${RUN}
+        spec:
+          replicas: 1
+          selector:
+            matchLabels:
+              app: ${RUN}-parity-postgres
+          template:
+            metadata:
+              labels:
+                app: ${RUN}-parity-postgres
+                rhoai3.io/migration-run: ${RUN}
+            spec:
+              containers:
+                - name: postgresql
+                  image: ${DB_IMAGE}
+                  ports:
+                    - containerPort: ${PORT}
+                  env:
+                    - name: POSTGRESQL_DATABASE
+                      valueFrom:
+                        secretKeyRef:
+                          name: ${SERVER_SECRET}
+                          key: database-name
+                    - name: POSTGRESQL_USER
+                      valueFrom:
+                        secretKeyRef:
+                          name: ${SERVER_SECRET}
+                          key: database-user
+                    - name: POSTGRESQL_PASSWORD
+                      valueFrom:
+                        secretKeyRef:
+                          name: ${SERVER_SECRET}
+                          key: database-password
+                  resources:
+                    requests:
+                      cpu: 100m
+                      memory: 256Mi
+                    limits:
+                      cpu: "1"
+                      memory: 512Mi
+                  readinessProbe:
+                    exec:
+                      command: ["/usr/libexec/check-container"]
+                    initialDelaySeconds: 10
+                    periodSeconds: 10
+                  volumeMounts:
+                    - name: data
+                      mountPath: /var/lib/pgsql/data
+              volumes:
+                # Deliberately ephemeral: every scenario run restores the schema
+                # and the derived baseline the decision names, so durable storage
+                # would preserve exactly the state parity must not depend on.
+                - name: data
+                  emptyDir: {}
+        YAML
+
+        oc apply -f - <<YAML
+        apiVersion: v1
+        kind: Service
+        metadata:
+          name: ${RUN}-parity-postgres
+          namespace: ${WSNS}
+          labels:
+            app: ${RUN}-parity-postgres
+            app.kubernetes.io/part-of: ${RUN}
+            rhoai3.io/purpose: stage-080-parity
+            rhoai3.io/migration-run: ${RUN}
+        spec:
+          selector:
+            app: ${RUN}-parity-postgres
+          ports:
+            - port: ${PORT}
+              targetPort: ${PORT}
+        YAML
+
+        # The receipt. It is the run's evidence (what was created, from which
+        # scaffolding commit, by which image) AND the state that makes a second
+        # provisioning event idempotent instead of destructive.
+        oc create configmap "${RECEIPT_CM}" -n "${WSNS}" --dry-run=client -o yaml \
+          --from-literal=run="${RUN}" \
+          --from-literal=phase=provisioned \
+          --from-literal=scaffoldCommit="${SCAFFOLD}" \
+          --from-literal=workspace="${RUN}" \
+          --from-literal=namespace="${WSNS}" \
+          --from-literal=host="${RUN}-parity-postgres" \
+          --from-literal=port="${PORT}" \
+          --from-literal=database="${DB_NAME}" \
+          --from-literal=serverSecret="${SERVER_SECRET}" \
+          --from-literal=workspaceSecret="${WORKSPACE_SECRET}" \
+          --from-literal=fixtureSecret="${FIXTURE_SECRET}" \
+          --from-literal=mountInclude="${RUN}" \
+          --from-literal=databaseImage="${DB_IMAGE}" \
+          --from-literal=provisionerImage="${CLI_IMAGE}" \
+          --from-literal=receipt="${RECEIPT}" \
+          --from-literal=provisionedAt="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+          | oc apply -f -
+        oc label configmap "${RECEIPT_CM}" -n "${WSNS}" \
+          rhoai3.io/purpose=stage-080-parity "rhoai3.io/migration-run-receipt=${RUN}" --overwrite
+
+        echo "${OUTCOME} ${RUN}: database ${DB_NAME} on ${HOST}:${PORT}, secrets bound to workspace ${RUN} exactly"
+        printf '%s' "${OUTCOME}" > "$(results.outcome.path)"
+        printf '%s' "${RECEIPT}" > "$(results.receipt.path)"
+      resources:
+        requests:
+          cpu: 50m
+          memory: 128Mi
+        limits:
+          memory: 256Mi

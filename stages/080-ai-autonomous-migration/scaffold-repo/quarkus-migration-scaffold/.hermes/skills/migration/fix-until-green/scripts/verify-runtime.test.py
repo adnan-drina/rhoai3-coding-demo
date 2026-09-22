@@ -26,8 +26,52 @@ mod = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(mod)  # type: ignore[union-attr]
 
 DS = {"db_kind": "postgresql", "db_version": "16", "jdbc_extension": "io.quarkus:quarkus-jdbc-postgresql",
-      "profile": "prod", "instance": "fixture", "jdbc_url_env": "FX_URL", "username_env": "FX_USER",
-      "password_env": "FX_PASSWORD"}
+      "profile": "prod", "instance": "fx-parity-postgres.fx-ns", "jdbc_url_env": "FX_URL",
+      "username_env": "FX_USER", "password_env": "FX_PASSWORD"}
+
+# The gate starts an application that writes to a database, so it establishes
+# ownership before launching anything. The synthetic tree therefore carries a
+# run assignment, and the environment carries the platform receipt that the
+# assignment must agree with.
+FX_URL = "jdbc:postgresql://fx-parity-postgres.fx-ns.svc:5432/parity"
+FX_RECEIPT = ("run=fx-run;namespace=fx-ns;workspace=fx-run;host=fx-parity-postgres;"
+              "port=5432;database=parity;scaffold=fx")
+DECISIONS_YAML = """adrs:
+  - id: ADR-009
+    status: accepted
+    title: the effective database is a decision
+
+datasource:
+  adr: ADR-009
+  db_kind: postgresql
+  db_version: "16"
+  profile: prod
+  instance: fx-parity-postgres.fx-ns
+  jdbc_url_env: FX_URL
+  username_env: FX_USER
+  password_env: FX_PASSWORD
+"""
+MIGRATION_YAML = """migration:
+  target: quarkus
+resources:
+  run: fx-run
+  namespace: fx-ns
+  receipt_env: PARITY_RUN_RECEIPT
+  parity_database:
+    instance: fx-parity-postgres.fx-ns
+    database: parity
+    port: 5432
+    server_secret: fx-parity-postgres
+    workspace_secret: fx-parity-db
+    jdbc_url_env: FX_URL
+    username_env: FX_USER
+    password_env: FX_PASSWORD
+"""
+
+
+def _assign(root: Path) -> None:
+    (root / "decisions.yaml").write_text(DECISIONS_YAML, encoding="utf-8")
+    (root / "migration.yaml").write_text(MIGRATION_YAML, encoding="utf-8")
 
 
 def _fail(msg: str) -> int:
@@ -54,9 +98,11 @@ def _app(root: Path, files: dict[str, str]) -> None:
 
 
 def main() -> int:
-    os.environ.update({"FX_URL": "jdbc:postgresql://db:5432/x", "FX_USER": "u", "FX_PASSWORD": "p"})
+    os.environ.update({"FX_URL": FX_URL, "FX_USER": "u", "FX_PASSWORD": "p",
+                       "PARITY_RUN_RECEIPT": FX_RECEIPT})
     with tempfile.TemporaryDirectory(prefix="rt-") as td:
         root = Path(td)
+        _assign(root)
         _app(root, {"quarkus-run.jar": "launcher", "lib/main/pg.jar": "driver", "app/app.jar": "code"})
         files, manifest = mod.artifact_manifest(root)
         if len(files) != 3 or not manifest:
@@ -85,6 +131,29 @@ def main() -> int:
         srv.shutdown()
         if b["ready"] or "already answering" not in b["detail"]:
             return _fail("a port that answers before anything is started must refuse: %s" % b)
+
+        # Whose database would this application write to? Asked before anything
+        # is launched: an application started against another run's database
+        # writes to it, and the startup evidence would be about that run's data.
+        # Four wrong endpoints, none of which differs from this run's by a
+        # substring the old check looked at.
+        for wrong, why in (
+            ("jdbc:postgresql://fx-parity-postgres.other-ns.svc:5432/parity", "another namespace"),
+            ("jdbc:postgresql://fx-parity-postgres.fx-ns.svc:5432/other-db", "another database"),
+            ("jdbc:postgresql://fx-parity-postgres-old.fx-ns.svc:5432/parity", "a host sharing the prefix"),
+            ("jdbc:postgresql://elsewhere.fx-ns.svc:5432/parity?ApplicationName=fx-parity-postgres",
+             "the name only in a query parameter"),
+        ):
+            os.environ["FX_URL"] = wrong
+            b = mod.boot(root, DS, ["prod"], pkg, 18099, "/", 5, "java", "cand")
+            if b["ran"] or "RUN_RESOURCES_MISMATCH" not in str(b.get("blocker")):
+                return _fail("starting against %s must refuse before launching: %s" % (why, b))
+        os.environ["FX_URL"] = FX_URL
+        del os.environ["PARITY_RUN_RECEIPT"]
+        b = mod.boot(root, DS, ["prod"], pkg, 18099, "/", 5, "java", "cand")
+        if b["ran"] or "RUN_RESOURCES_RECEIPT_MISSING" not in str(b.get("blocker")):
+            return _fail("starting with no platform receipt must refuse: %s" % b)
+        os.environ["PARITY_RUN_RECEIPT"] = FX_RECEIPT
 
         # the error lines, not the closing summary: a failure named halfway
         # through a Maven log must reach the receipt

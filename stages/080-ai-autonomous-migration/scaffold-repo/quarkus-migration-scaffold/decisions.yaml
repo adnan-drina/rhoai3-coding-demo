@@ -67,6 +67,13 @@ adrs:
     status: accepted
     title: The architect's fifth review of 2026-09-17 - (1) a scenario typed diagnostic-probe creates no mandatory worker obligation, consumes no attempt, changes no required parity or browser coverage and cannot block completion, while its result stays visible in the receipt and report; the receipt composer excludes diagnostics from mandatory aggregation exactly as the planner does; the classification is bound before replay and cannot change after a failure; a client or security contract that needs authenticated OPTIONS behaviour is a separate contract scenario with source evidence and ordinary acceptance; (2) a refused-write no-effect claim requires a verified before/after database comparison within the declared effect scope - the state observed after fixture initialisation immediately before the refused request and again after the request transaction completes, before the fixture revert, both observations with digests, the comparison definition and its result retained; HTTP read-backs and the checked column-only revert stay, and where HTTP data disagrees with the database evidence both are kept and unchanged is not qualified from HTTP; a counterexample (401, a changed row, a warmed cache returning the old body) must be detected; the database comparison suffices for the scoped claim whether caching is active or not and does not replace HTTP parity; runtime caching inspection is required only when HTTP read-backs are the sole state evidence, and static annotation search is supporting evidence only; affected v9 refused-write claims are requalified with this evidence and historical results preserved; refused - promoting a probe because browser scenarios pass, browser-coverage credit for a probe, relabelling a required scenario after failure, a no-effect claim from a 4xx, a single snapshot digest, row counts alone, or a restart from the original seed
 
+  - id: ADR-022
+    status: accepted
+    title: Per-run resource isolation (amends ADR-009; architect ruling 2026-09-22 on the isolation review of 39792496) - the engine decision is unchanged (PostgreSQL 16, io.quarkus:quarkus-jdbc-postgresql, profile prod, credentials by environment reference under the existing names PETCLINIC_DB_URL / PETCLINIC_DB_USER / PETCLINIC_DB_PASSWORD, schema and seed owned by the source assets, hibernate_generation none, source baseline HSQLDB); what changes is the identity and lifetime of the isolated instance. Each run gets ONE SERVER AND GENERATED DATABASE CREDENTIALS OF ITS OWN, created at template initiation by trusted pinned platform code from a PLATFORM-ISSUED RUN ASSIGNMENT, and the golden names no concrete instance: datasource.instance ships UNSTAMPED and is stamped per run from migration.yaml resources.parity_database, after ownership is established and never before. A STAMPED STRING IS NOT PROOF OF OWNERSHIP: every reset, fixture mutation, destination startup and parity run first PARSES the endpoint into engine, host, port and database and compares each field, plus the namespace, with the assignment and with the platform's provisioning receipt, admitting only explicitly equivalent DNS forms of the same Service; missing resources BLOCK resource-dependent work with a typed blocker while static source analysis may continue, and the absence of a resources declaration is a compatibility exception bound to runs that already exist, never a bypass for a fresh one. Exits - two concurrent runs receive different servers and different secrets; resetting, restarting or retiring either leaves the other's data, credentials and workspace unchanged; a wrong or missing target is refused BEFORE any connection is opened, including before M2; retirement accounts for every generated resource. A database pod loss makes the affected measurements inconclusive and requires a fresh verified reset, never stale acceptance. Cost, stated correctly - 100m CPU and 256Mi are REQUESTS, the configured limits are 1 CPU and 512Mi, storage is an emptyDir with no PVC and no GPU; separate servers isolate database-PROCESS failures (OOM, connection exhaustion, restart windows, image pull) and do NOT isolate shared-node or control-plane outages. Refused - shared database servers, manually provisioned run resources, namespace-wide run credential mounts, per-run renaming of the credential variables, a golden that names any instance, and treating a stamped string or the presence of an environment variable as proof of ownership (spring-petclinic-rest, decided 2026-09-22)
+  - id: ADR-023
+    status: accepted
+    title: Per-run fixture identities (amends ADR-014; architect ruling 2026-09-22) - the PetClinic fixture identities keep their names and values and remain specimen-specific inputs, and move from a namespace-wide Secret into an EXACTLY BOUND per-run Secret; exits - each workspace receives only its assigned fixture Secret, a missing or mismatched binding blocks the relevant captures, and changing or retiring one run does not affect another; refused - overlapping wildcard targeting, namespace-wide fallback, and credential values in the evidence (spring-petclinic-rest, decided 2026-09-22)
+
 destination_platform:
   id: quarkus-rhbq-3.27   # key of .hermes/planning/catalogs/destination-platforms.json
   adr: ADR-001
@@ -141,11 +148,17 @@ datasource:
   profile: prod
   # Stamped PER RUN at dest-init and again at M2 by
   # .hermes/skills/migration/bootstrap-destination/scripts/stamp-run-resources.py,
-  # from migration.yaml resources.parity_database -- the same value the run's
-  # own k8s-run/ manifests were stamped with. The golden names no database on
-  # purpose: a hardcoded instance is the one object two runs would share, and
-  # the first thing a second run's reset would destroy. UNSTAMPED is refused by
+  # from migration.yaml resources.parity_database -- the assignment the platform
+  # issued for this run (ADR-022). The golden names no database on purpose: a
+  # hardcoded instance is the one object two runs would share, and the first
+  # thing a second run's reset would destroy. UNSTAMPED is refused by
   # check-datasource-decision.py, so nothing plans against nobody's database.
+  #
+  # And the stamp is not the guarantee. Ownership is established by PARSING the
+  # endpoint the workspace holds -- engine, host, port, database, namespace --
+  # against that assignment and the platform's provisioning receipt
+  # (.hermes/lib/planner/run_identity.py), before the reset, the fixture
+  # mutation, the destination startup and the parity run each connect.
   instance: UNSTAMPED
   jdbc_url_env: PETCLINIC_DB_URL
   username_env: PETCLINIC_DB_USER

@@ -146,9 +146,10 @@ Each floor is recorded **once** however many receipt rows explain it
 
 | Outcome | What it means | What it does |
 |---|---|---|
+| `CLOSED` (exit 0) | the verdict is an accepting token the road defines (`ACCEPT_TOKENS`), `failed_floors` is empty, and the receipt names no obligation a card repairs and no floor a decision owns | records the close (`closed: true`), clears `verification/loop/issued.json`, and rewrites `release-blockers.json` from THIS verdict — an empty record naming the verdict that cleared it and when, with what is still `outstanding` (the parity receipt's verdict and entry-point coverage, the coverage account's remaining gaps, the verdict's own reason). Closed is not shipped |
 | `RESUMED` (exit 0) | the receipt yields at least one obligation that is not ADR-014's | closes the M4 card on the record, rebuilds the work list, re-seals admission and mints the head cluster — the same transaction an accepted step runs. The loop is running again |
 | `BLOCKED` (exit 2) | nothing a card may carry is left once the refused rows are withheld — including a head cluster made of nothing but them, since the mint takes the head and nothing chooses it | mints nothing, keeps the close card issued, and writes `verification/loop/release-blockers.json` naming each floor, each refused entry point, the seat that owns it, and the `withheld_obligations` by id |
-| `REFUSE: LOOP_RESUME` (exit 1) | the verdict is not this run's, a worker still holds the tree, or this verdict was already resumed | nothing changed |
+| `REFUSE: LOOP_RESUME` (exit 1) | the verdict is not this run's, a worker still holds the tree, or this verdict was already resumed or already closed | nothing changed |
 
 Both at once — v9's first M4 verdict — is the normal case: the parity card is
 minted **and** the blockers file is written, one printed line per class. The

@@ -2,16 +2,15 @@
 """Bind the decided datasource to THIS RUN's own database (dest-init, then M2).
 
 Every migration run gets its own parity database, its own credentials secret
-and its own fixture identities, created from `k8s-run/` in the destination
-repository when the workspace is initiated. The golden therefore cannot name
-a database: a hardcoded `instance` is the single object two runs would share,
-and the first thing a second run's reset would destroy.
+and its own fixture identities, created by trusted platform code when the
+workspace is initiated. The golden therefore cannot name a database: a
+hardcoded `instance` is the single object two runs would share, and the first
+thing a second run's reset would destroy.
 
 So the golden ships `instance: UNSTAMPED` and this script writes the real one,
 from the only file that knows it -- `migration.yaml` `resources`, stamped by
-the RHDH app-migration skeleton from the run's name, the same value the
-`k8s-run/` manifests were stamped with. One producer, two consumers, no
-inference.
+the RHDH app-migration skeleton from the run's name: the assignment the
+platform issued for this run. One producer, two consumers, no inference.
 
 What it does NOT change is the ADR-009 contract. The keys stay the keys, the
 credentials stay environment references by NAME, and no value is read, printed
@@ -25,18 +24,25 @@ no `resources` block predates per-run resources (v9 and earlier), and its
 decisions.yaml already names the shared instance it was bootstrapped against:
 nothing is touched and the reason is printed.
 
-`--verify` additionally measures what the workspace actually received. The
-devfile names this run's two secrets, and DevWorkspace Operator 0.41 injects
-them into this workspace only (`mount-to-devworkspace-include`). Three
-outcomes, and they are not the same finding:
+`--verify` additionally measures what the workspace actually received, through
+the one ownership check every destructive entry point uses
+(`.hermes/lib/planner/run_identity.py`): the endpoint is PARSED into host, port
+and database and compared field by field with the assignment and the platform
+receipt. It is never a substring test — the architect demonstrated on
+2026-09-22 that a substring test passes a wrong namespace, a wrong database, a
+different host with the expected prefix, and another host entirely carrying the
+expected name only in a query parameter.
 
-  * the variables are set and the URL names this run's instance -> OK;
-  * the variables are absent -> WARN. Argo CD may not have finished creating
-    the run's resources when the workspace started, or this is a pre-per-run
-    destination. The run can still analyze; it cannot capture oracles;
-  * the variables are set and the URL names a DIFFERENT instance -> REFUSE.
-    That is another run's database, and every parity result taken against it
-    would be evidence about the wrong data.
+VERIFICATION RUNS FIRST, and a refusal writes nothing. The reviewed version
+stamped the decision and then verified, so a workspace holding another run's
+database ended the step with a stamped decision that a later M2 stamp happily
+confirmed. Ownership is established before the decision records an instance.
+
+Outcomes, and they are not the same finding: the run's own database -> stamp
+and proceed; the variables absent -> WARN, static analysis may continue and
+oracle capture may not; anything else (another run's database, an unparseable
+endpoint, a missing or disagreeing platform receipt) -> REFUSE, nothing is
+written, and the workspace's postStart does not start the migration.
 
 The verdict is written to `.hermes/RUN-RESOURCES-STATUS` so the Operator reads
 it without re-running anything.
@@ -70,6 +76,7 @@ def _ensure_hermes_lib() -> None:
 
 
 _ensure_hermes_lib()
+from planner import run_identity  # noqa: E402
 from planner.paths import DECISIONS, MIGRATION  # noqa: E402
 from planner.yamlite import load_yaml  # noqa: E402
 
@@ -168,10 +175,13 @@ def stamp(root: Path, check_only: bool = False) -> tuple[int, list[str]]:
     if current == want:
         out.append("OK: %s datasource.instance already names this run's database (%s)" % (DECISIONS, want))
         return 0, out
-    if current not in (UNSTAMPED, "") and not current.startswith(want.split(".", 1)[0]):
+    if current not in (UNSTAMPED, ""):
         # An already-stamped destination naming somebody else's instance is the
-        # defect this whole design exists to prevent; say which, and stamp it.
-        out.append("NOTE: %s datasource.instance named %s, which is not this run's database" % (DECISIONS, current))
+        # defect this whole design exists to prevent. Equality, not a prefix:
+        # `<run>-parity-postgres.ns` and `<run>-parity-postgres-old.ns` share a
+        # prefix and are two different servers.
+        out.append("NOTE: %s datasource.instance named %s, which is not this run's database (%s)"
+                   % (DECISIONS, current, want))
     if check_only:
         return 1, out + ["REFUSE: RUN_RESOURCES %s datasource.instance is %r; this run's database is %s"
                          % (DECISIONS, current, want)]
@@ -184,43 +194,46 @@ def stamp(root: Path, check_only: bool = False) -> tuple[int, list[str]]:
 
 
 def verify_environment(root: Path) -> tuple[int, list[str]]:
-    """What this workspace actually received, measured against this run's names."""
+    """Whose database is this workspace holding? Parsed, not matched.
+
+    One decision, made by the module every reset, fixture mutation, startup and
+    parity run also calls, so the answer cannot differ between the step that
+    checks and the step that connects."""
     out: list[str] = []
     resources = run_resources(root)
-    db = parity_database(resources)
-    if not db:
-        return 0, ["WARN: no resources block in %s; nothing to verify" % MIGRATION]
-    instance = str(db.get("instance") or "")
-    host = instance.split(".", 1)[0]
-    names = [str(db.get(f) or "") for f in ENV_FIELDS if db.get(f)]
-    fixtures = resources.get("fixture_credentials")
-    fixtures = dict(fixtures) if isinstance(fixtures, dict) else {}
-    fixture_env = [str(x) for x in (fixtures.get("env") or [])]
-
-    missing = [n for n in names if not os.environ.get(n)]
-    url_var = str(db.get("jdbc_url_env") or "")
-    url = os.environ.get(url_var, "") if url_var else ""
-    if url and host and host not in url:
+    verdict = run_identity.check(root)
+    if not resources:
+        # A pre-per-run destination has no assignment to verify against, but it
+        # still has an instance the decision names, and pointing it at somebody
+        # else's server is the same defect. The reduced check applies. A
+        # destination that names nothing at all is stamp()'s refusal, which
+        # says what to do about it, so it is not pre-empted here; and absent
+        # variables are a WARN at dest-init, not a stop.
+        if verdict.code == run_identity.UNASSIGNED:
+            return 0, []
+        if verdict.blocking_for("analysis"):
+            return 1, ["REFUSE: %s %s" % (verdict.code, verdict.detail)]
+        return 0, ["NOTE: no resources block in %s; %s" % (MIGRATION, verdict.detail)]
+    if verdict.code == run_identity.MISSING:
+        out.append("WARN: %s The run's resources may not exist yet (the platform "
+                   "provision-migration-run Pipeline) or this workspace started before they did."
+                   % verdict.detail)
+    elif verdict.blocking_for("reset"):
         # Never print the URL: it is not a secret, but it is one substitution
-        # away from being read as one. Name the instance, not the string.
-        return 1, ["REFUSE: RUN_RESOURCES %s is set but does not name this run's database (%s). "
-                   "This workspace received another run's parity database; stop before capturing "
-                   "anything against it." % (url_var, instance)]
-    if missing:
-        out.append("WARN: %s not set in this workspace (secret %s). The run's resources may not be "
-                   "created yet (Argo CD Application run-%s-resources) or the workspace started "
-                   "before they were; analysis can proceed, oracle capture cannot."
-                   % (", ".join(missing), db.get("workspace_secret") or "<workspace secret>",
-                      resources.get("run") or "<run>"))
-    elif url:
-        out.append("OK: the datasource variables are set and name this run's database (%s)" % instance)
-    missing_fixtures = [n for n in fixture_env if not os.environ.get(n)]
+        # away from being read as one. Name the finding, not the string.
+        return 1, ["REFUSE: %s %s Stop before capturing anything against it."
+                   % (verdict.code, verdict.detail)]
+    else:
+        out.append("OK: %s" % verdict.detail)
+    missing_fixtures = run_identity.fixture_gaps(root)
+    fixtures = dict(resources.get("fixture_credentials") or {}) \
+        if isinstance(resources.get("fixture_credentials"), dict) else {}
     if missing_fixtures:
         out.append("WARN: %s not set (secret %s); ADR-014 fixture scenarios cannot authenticate."
                    % (", ".join(missing_fixtures), fixtures.get("secret") or "<fixture secret>"))
-    elif fixture_env:
+    elif fixtures.get("env"):
         out.append("OK: the fixture identity variables are set (%d, from %s)"
-                   % (len(fixture_env), fixtures.get("secret")))
+                   % (len(fixtures.get("env") or []), fixtures.get("secret")))
     return 0, out
 
 
@@ -237,11 +250,19 @@ def main(argv: list[str] | None = None) -> int:
         print("FAIL: --root must be an existing directory", file=sys.stderr)
         return 2
 
-    rc, report = stamp(root, check_only=args.check_only)
-    if args.verify and rc == 0:
-        vrc, vreport = verify_environment(root)
-        report += vreport
-        rc = rc or vrc
+    # Ownership FIRST, and ALWAYS -- `--verify` decides how much is REPORTED,
+    # never whether the question is asked. A refused verification leaves
+    # decisions.yaml exactly as it was, because a stamped decision is what a
+    # later step reads as settled: the reviewed version stamped first, so the
+    # M2 call (which passes no --verify) found the wrong instance already
+    # written and agreed with it.
+    rc, report = verify_environment(root)
+    if not args.verify and rc == 0:
+        report = []
+    if rc == 0:
+        src, sreport = stamp(root, check_only=args.check_only)
+        report += sreport
+        rc = src
     for line in report:
         print(line, file=sys.stderr if line.startswith("REFUSE") else sys.stdout)
     status = root / STATUS_REL

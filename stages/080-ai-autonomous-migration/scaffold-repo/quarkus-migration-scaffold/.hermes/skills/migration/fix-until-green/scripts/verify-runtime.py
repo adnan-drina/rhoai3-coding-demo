@@ -51,6 +51,7 @@ def _ensure_hermes_lib() -> None:
 
 
 _ensure_hermes_lib()
+from planner import run_identity  # noqa: E402
 from planner.canonical import canonical_bytes, write_canonical  # noqa: E402
 from planner.decisions import DecisionsError, build_profiles, datasource, load_decisions  # noqa: E402
 from planner.paths import VERIFY_BOOT, VERIFY_PACKAGE  # noqa: E402
@@ -276,12 +277,17 @@ def boot(root: Path, ds: dict, profiles: list[str], package_doc: dict, port: int
         doc["detail"] = ("packaging verified candidate %s and the tree is now %s; startup evidence would be about another tree"
                          % (str(package_doc.get("candidate_sha256"))[:12], candidate[:12]))
         return doc
-    missing = [str(ds[k]) for k in ("jdbc_url_env", "username_env", "password_env") if not os.environ.get(str(ds[k]))]
-    if missing:
-        doc["blocker"] = "environment: %s not set; the decided datasource (%s %s, instance %s) is not reachable from here" % (
-            ", ".join(missing), ds.get("db_kind"), ds.get("db_version"), ds.get("instance"))
+    # Whose database is this? Startup writes to it through Hibernate and the
+    # application's own code, so the same ownership check the reset uses runs
+    # here too, before the artifact is launched. Absence and wrongness are
+    # different findings and the blocker says which.
+    verdict = run_identity.check(root)
+    if verdict.blocking_for("startup"):
+        doc["blocker"] = "%s %s" % (verdict.code, verdict.detail)
         doc["detail"] = doc["blocker"]
+        doc["run_resources"] = verdict.code
         return doc
+    doc["run_resources"] = verdict.code
     url = "http://127.0.0.1:%d%s" % (port, root_path if root_path.startswith("/") else "/" + root_path)
     doc["probe"] = url
     status, _ = _probe(url)

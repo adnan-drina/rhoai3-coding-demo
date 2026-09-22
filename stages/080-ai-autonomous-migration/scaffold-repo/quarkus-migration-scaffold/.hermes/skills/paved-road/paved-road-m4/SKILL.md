@@ -242,8 +242,21 @@ python3 .hermes/skills/migration/fix-until-green/scripts/resume-after-m4.py --ro
    that card was minted under, `parity_receipt_sha256` = the digest of the
    parity receipt on disk) all hold, the parity receipt is itself bound to the
    admission receipt that seals the tree, no candidate is retained for the
-   close card, and the product tree is clean. Three outcomes:
+   close card, and the product tree is clean. Four outcomes:
 
+   - `CLOSED` (exit 0): the verdict is an accepting one (`PROVISIONAL_ACCEPT`,
+     or another token `assert-m4-verdict-schema.py` lists as accepting),
+     `failed_floors` is empty, and the receipt names no obligation a card
+     repairs. That is the run's SUCCESS path, and it is a terminator: the close
+     row goes on the loop record, `verification/loop/issued.json` is cleared,
+     and `release-blockers.json` is rewritten from THIS verdict — an explicit
+     empty record naming the verdict that cleared it and when, so a floor a
+     superseded REFUSE listed cannot go on being read as current. CLOSED is not
+     SHIPPED: `ship: false` at M4 means the floors were met, and what is still
+     outstanding (the parity receipt's verdict and its entry-point coverage,
+     the coverage account's remaining gaps, the verdict's own reason) is
+     printed and kept under `outstanding` in the same file. A run with coverage
+     gaps is closed, not released.
    - `RESUMED` (exit 0): the parity floor's FAIL verdicts are mandatory
      obligations whose loci are files of this tree. The close card goes on the
      loop record, the work list is rebuilt, admission is re-sealed and K4
@@ -297,6 +310,17 @@ ADR-015, a bounded security step under ADR-014, an ADR in `decisions.yaml`),
 and then either resumes again or re-opens earlier work with
 `fix-until-green/scripts/rewind.py`. Do not re-run M4 hoping for a different
 answer: the same measurement on the same tree returns the same verdict.
+
+A clean acceptance is consumed by the SAME command, and it is the one the run
+ends on. v9 (t_7740ad21, 2026-09-22) is why it is written down: the card
+composed `PROVISIONAL_ACCEPT` with no failed floor, the board closed it, and
+the resume refused — leaving `issued.json` naming a card the loop believed was
+open, so nothing could be minted or recorded beside it, and a superseded
+REFUSE's `release-blockers.json` still naming a floor the new verdict had
+cleared. Run the resume on an accepting verdict exactly as on a REFUSE; it
+prints `CLOSED`, clears the issued card and rewrites the blockers file from the
+verdict on disk. Then read the `outstanding` rows: they are what stands between
+a closed run and a shipped one, and closing does not discharge them.
 
 ## Self-test
 

@@ -105,18 +105,23 @@ components:
         - name: AUTO_START_MIGRATION
           value: "${{ values.autoStartMigration }}"
         # THIS RUN'S OWN resources, named here so the workspace depends on
-        # nothing namespace-wide. k8s-run/ in this repository creates them at
-        # initiation; the two secrets carry
-        # controller.devfile.io/mount-to-devworkspace-include set to this
-        # workspace's name, so DevWorkspace Operator 0.41 injects them into
-        # this workspace and no other (Dev Spaces 3.28 targeted automount).
+        # nothing namespace-wide. Platform code creates them at initiation
+        # (provision-migration-run, started by the dispatcher from the
+        # scaffolding push), and both secrets carry
+        # controller.devfile.io/mount-to-devworkspace-include set to EXACTLY
+        # this workspace's name — no suffix wildcard, because "<name>,<name>-*"
+        # also matched a different valid run (demo-v10-retry received
+        # demo-v10's database). They also carry watch-secret, without which
+        # DevWorkspace Operator's informer cache never holds them and nothing
+        # is mounted at all.
         #
         # The devfile cannot express secretKeyRef or envFrom itself: devfile
         # 2.2.2 container env is name/value only, and DWO's container-overrides
         # does not accept env. Naming the secrets here and VERIFYING the
-        # injection in postStart (stamp-run-resources.py --verify) is the
-        # explicit reference: a workspace that received another run's values,
-        # or none, says so instead of migrating against the wrong database.
+        # injection in postStart (stamp-run-resources.py --verify, which parses
+        # the endpoint rather than matching a string) is the explicit
+        # reference: a workspace that received another run's values, or none,
+        # refuses instead of migrating against the wrong database.
         - name: MIGRATION_RUN_NAME
           value: "${{ values.name }}"
         - name: PARITY_DB_SECRET
@@ -302,24 +307,35 @@ commands:
           python3 "${STAMP_REV}" --root "${PROJECT_DIR}" \
             || echo "WARN: HARNESS_REV stamp failed"
         fi
-        # Per-run resources: write decisions.yaml datasource.instance from
+        # Per-run resources: VERIFY that this workspace received its own
+        # database, and only then write decisions.yaml datasource.instance from
         # migration.yaml resources.parity_database (the golden names no
-        # database), then verify this workspace received ITS OWN secrets.
-        # Must run BEFORE autostart-migration: M2 plans against the decision,
-        # and a run that never stamped it refuses admission rather than
-        # planning against somebody else's instance.
+        # database). Must run BEFORE autostart-migration: M2 plans against the
+        # decision, and a run that never stamped it refuses admission rather
+        # than planning against somebody else's instance.
+        #
+        # A refusal here STOPS the run. The architect's 2026-09-22 review found
+        # this line reading `|| echo WARN` and continuing: a workspace holding
+        # another run's database went on to autostart, and the decision was
+        # already stamped, so a later M2 stamp then succeeded. A refusal is not
+        # a warning — it means this workspace is pointed at resources that are
+        # not its own, and nothing that captures, resets or compares may run.
         STAMP_RUN="${PROJECT_DIR}/.hermes/skills/migration/bootstrap-destination/scripts/stamp-run-resources.py"
+        RUN_RESOURCES_RC=0
         if [ -f "${STAMP_RUN}" ]; then
-          python3 "${STAMP_RUN}" --root "${PROJECT_DIR}" --verify \
-            || echo "WARN: per-run resource stamp/verify exited nonzero (see ${PROJECT_DIR}/.hermes/RUN-RESOURCES-STATUS)"
+          python3 "${STAMP_RUN}" --root "${PROJECT_DIR}" --verify || RUN_RESOURCES_RC=$?
         else
-          echo "WARN: missing ${STAMP_RUN} — decisions.yaml datasource.instance not stamped for this run"
+          RUN_RESOURCES_RC=1
+          echo "REFUSE: missing ${STAMP_RUN} — this run's resource ownership cannot be established"
         fi
         # dest-init consumer: mint M1 ANALYZE; M2 PLAN (child of M1) only
         # when .hermes/pins.json pins.planner.activation is "activated".
         # Never M3/M4 here (K4 mints those from an ADMITTED receipt).
         AUTO_M1="${PROJECT_DIR}/.hermes/skills/harness/dispatch-phase/scripts/autostart-migration.sh"
-        if [ -f "${AUTO_M1}" ]; then
+        if [ "${RUN_RESOURCES_RC}" != "0" ]; then
+          echo "REFUSE: RUN_RESOURCES this workspace is not bound to its own migration resources;"
+          echo "        autostart is NOT started. Read ${PROJECT_DIR}/.hermes/RUN-RESOURCES-STATUS."
+        elif [ -f "${AUTO_M1}" ]; then
           bash "${AUTO_M1}" --root "${PROJECT_DIR}" \
             || echo "WARN: autostart-migration exited nonzero (see .hermes/AUTOSTART-STATUS)"
         fi

@@ -21,11 +21,14 @@ against the decision, at M2, before any worker reaches runtime verification:
     bootstrap is what must not leave it behind;
   * credentials must be environment references, never literals in the tree;
   * the isolated instance must be THIS RUN's. Every run gets its own parity
-    database, created from the destination repository's `k8s-run/` when the
-    workspace is initiated, and stamp-run-resources.py writes its name here
-    from migration.yaml. An UNSTAMPED instance means that never happened, and
-    a run that plans against nobody's database would capture its oracles
-    against whatever the namespace happens to hold;
+    database, created by trusted platform code when the workspace is
+    initiated, and stamp-run-resources.py writes its name here from
+    migration.yaml. An UNSTAMPED instance means that never happened, and a run
+    that plans against nobody's database would capture its oracles against
+    whatever the namespace happens to hold. A stamped name is not enough
+    either: the endpoint the workspace holds is parsed and compared with the
+    assignment and the platform receipt (planner.run_identity), here as well as
+    at every operation that connects;
   * when the decision says the source assets own schema and seed, those files
     must exist in the destination.
 
@@ -54,6 +57,7 @@ def _ensure_hermes_lib() -> None:
 
 
 _ensure_hermes_lib()
+from planner import run_identity  # noqa: E402
 from planner.canonical import load_json  # noqa: E402
 from planner.decisions import DecisionsError, datasource, load_decisions, missing_decisions  # noqa: E402
 from planner.paths import CATALOGS_DIR, DECISIONS  # noqa: E402
@@ -186,6 +190,15 @@ def check(root: Path) -> list[str]:
                    "--root . (dest-init does this at workspace start from migration.yaml "
                    "resources.parity_database); a destination that names no instance would capture its oracles "
                    "against whatever database the namespace happens to hold" % instance)
+    else:
+        # A stamped string is not proof of ownership. The same check every
+        # reset, fixture mutation, startup and parity run makes is made here
+        # too, so a destination whose endpoint belongs to another run is
+        # refused at admission as well as at the operation that connects.
+        # Absence alone is not refused here: M2 plans, it does not connect.
+        verdict = run_identity.check(root)
+        if verdict.blocking_for("analysis"):
+            out.append("%s %s" % (verdict.code, verdict.detail))
     if str(ds.get("schema_owner")) == "source-assets":
         for field in ("schema_sql", "seed_sql"):
             rel = str(ds.get(field) or "")

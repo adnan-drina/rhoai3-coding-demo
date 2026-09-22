@@ -80,8 +80,35 @@ parity receipt's digest to the seal it was measured under, which is why that
 binding accepts the superseded receipt as well as the new one. Any other gap
 refuses as before.
 
-Exit 0 resumed (a card was minted); 1 refused; 2 blocked (nothing a card may
-repair once the ADR-014 rows are withheld).
+A CLEAN ACCEPTANCE is the fourth answer, and until H16 it had no terminator.
+Measured on v9 (t_7740ad21, 2026-09-22): the M4 close card composed
+PROVISIONAL_ACCEPT, bound, with `failed_floors: []`, eleven floors at rc 0 and
+`ship: false`; the board card went `done`; and this tool REFUSED it -- "the
+parity receipt names no obligation ... there is nothing to resume". Nothing was
+wrong with the verdict. The consequences were: `verification/loop/issued.json`
+still named the close card, so the loop believed a card was open and nothing
+could be minted beside it; and `release-blockers.json` still listed a floor
+from the PREVIOUS, superseded REFUSE verdict, which the run report reads as
+current. A run's success path has to close, or its record keeps describing a
+question the run has answered.
+
+So a verdict the road treats as ACCEPTING (`ACCEPT_TOKENS`, read from
+compose-m4-verdict's own lint) with an empty `failed_floors`, no obligation a
+card may repair and no floor a decision owns CLOSES the run: the close row goes
+on the record, the issued card is cleared, and release-blockers.json is
+rewritten FROM THIS VERDICT -- an explicit empty record naming the verdict that
+cleared it and when, never a superseded file left in place.
+
+Closed is not shipped, and the close-out says so from the evidence rather than
+from a claim: `ship: false` at M4 means the floors were met. What is still
+outstanding -- the parity receipt's verdict and its entry-point coverage, the
+capability gaps it recorded, the coverage account's remaining gaps, the
+verdict's own reason -- is read off those artifacts and printed, and kept in
+the blockers file under `outstanding`. A closed run with coverage gaps is not a
+shipped run.
+
+Exit 0 resumed (a card was minted) or closed (a clean acceptance); 1 refused;
+2 blocked (nothing a card may repair once the ADR-014 rows are withheld).
 """
 from __future__ import annotations
 
@@ -115,6 +142,15 @@ PARITY_RECEIPT = PARITY_DIR / "receipt.json"
 RELEASE_BLOCKERS = LOOP_DIR / "release-blockers.json"
 BLOCKERS_SCHEMA = "rhoai3.release-blockers/v1"
 PARITY_RECEIPT_SCHEMA = "rhoai3.parity-receipt/v1"
+
+# The verdict tokens the ROAD treats as accepting. They are not invented here:
+# compose-m4-verdict's `assert-m4-verdict-schema.py` owns the vocabulary
+# (`ACCEPT_TOKENS`) and its ACCEPT_WITH_FAILED_FLOOR code refuses any of them
+# beside a failed floor. resume-after-m4.test.py asserts this set IS that one,
+# so a token the road adds arrives here rather than being guessed at.
+M4_VERDICT_LINT = (Path(".hermes") / "skills" / "gates" / "compose-m4-verdict" / "scripts"
+                   / "assert-m4-verdict-schema.py")
+ACCEPT_TOKENS = frozenset({"PROVISIONAL_ACCEPT", "ACCEPT", "SCOPED_ACCEPT"})
 
 # `planner.admission.verify_receipt` reports one gap per sealed contract whose
 # file no longer hashes to its seal, in exactly this shape. It is reconstructed
@@ -181,6 +217,60 @@ def close_rows(steps: dict) -> list:
 
 def already_resumed(steps: dict, card: str) -> bool:
     return any(str(r.get("card") or "") == card and r.get("resumed") for r in close_rows(steps))
+
+
+def already_closed(steps: dict, card: str) -> bool:
+    """A clean acceptance closes the run once. The close row is the record of
+    it, and a second close-out would rewrite a blockers file this run has
+    already answered."""
+    return any(str(r.get("card") or "") == card and r.get("closed") for r in close_rows(steps))
+
+
+def outstanding_rows(verdict: dict, preceipt: dict) -> list:
+    """What a CLOSED run still owes before it could ship.
+
+    `ship: false` on a PROVISIONAL_ACCEPT says the floors were met, not that
+    the run is released, and this is where the difference is stated honestly.
+    Every row is READ off an artifact -- the parity receipt's own verdict and
+    coverage summary, the capability gaps it recorded, the coverage account the
+    verdict carries, the verdict's own reason -- so nothing here asserts a
+    completeness the evidence does not hold."""
+    out: list = []
+    rows = [r for r in (preceipt.get("entry_points") or []) if isinstance(r, dict)]
+    rv = str(preceipt.get("verdict") or "")
+    if rv and rv != "PASS":
+        not_passed = sum(1 for r in rows if str(r.get("verdict") or "") != "PASS")
+        cov = preceipt.get("coverage_summary") if isinstance(preceipt.get("coverage_summary"), dict) else {}
+        detail = "the parity receipt is %s: %d of %d entry point(s) did not pass" % (rv, not_passed, len(rows))
+        if cov:
+            detail += (" (%d covered by read oracle, %d by qualified scenario, %d not compared at all)"
+                       % (int(cov.get("by_oracle") or 0), int(cov.get("by_scenario") or 0), int(cov.get("uncovered") or 0)))
+        out.append({"kind": "parity-receipt", "count": not_passed, "detail": detail})
+    gaps = [g for g in (preceipt.get("coverage_gaps") or []) if isinstance(g, dict)]
+    if gaps:
+        out.append({"kind": "capability-gap", "count": len(gaps),
+                    "detail": "%d capability gap(s) the source never demonstrated: %s"
+                              % (len(gaps), ", ".join(sorted({str(g.get("scenario") or "") for g in gaps}))[:200])})
+    cors = [str(g) for g in ((preceipt.get("cors") or {}).get("gaps") or []) if str(g)]
+    if cors:
+        out.append({"kind": "cors-gap", "count": len(cors), "detail": "; ".join(cors)[:300]})
+    acct = verdict.get("coverage_account") if isinstance(verdict.get("coverage_account"), dict) else {}
+    try:
+        remaining, retired = int(acct.get("remaining_gaps") or 0), int(acct.get("retired") or 0)
+    except (TypeError, ValueError):
+        remaining, retired = 0, 0
+    if remaining:
+        out.append({"kind": "coverage-account", "count": remaining,
+                    "detail": "%d of %d retired source(s) still have a remaining gap (evidence/verdicts/coverage-account.json)"
+                              % (remaining, retired)})
+    reason = str(verdict.get("reason") or "").strip()
+    if reason:
+        out.append({"kind": "verdict-reason", "count": 0, "detail": reason[:400]})
+    if not verdict.get("ship"):
+        out.append({"kind": "not-shipped", "count": 0,
+                    "detail": "the verdict does not ship (M4 never does): the floors are met and the run is closed, "
+                              "and a release is M5's answer, not this one"})
+    return out
 
 
 def moved_contracts(root: Path, receipt: dict, gaps: list) -> list:
@@ -348,6 +438,93 @@ def mint(root: Path, hermes: str, execute: bool) -> int:
     return 0
 
 
+def close_out(root: Path, args: Any, verdict: dict, preceipt: dict, steps: dict, *, card_id: str, token: str,
+              receipt: dict, corpus_sha: str, parity_on_disk: str, reseal: dict | None) -> int:
+    """Close the run on a clean acceptance. Exit 0.
+
+    Four things, in the order that keeps the record readable if any of them is
+    the last to run:
+
+      1. the close row on the loop record (`kind: close`, `closed: true`,
+         `resumed: false`), carrying the verdict and its three bindings. It is
+         what `already_closed` reads, and what `live_board.expected_from_loop`
+         needs to stop calling the M4 card foreign;
+      2. the comparison this verdict closed on becomes the accepted parity
+         baseline, exactly as the resume path does it -- the close is what
+         decides what the baseline IS;
+      3. `verification/loop/issued.json` is cleared. On v9 it still named
+         t_7740ad21 after the board closed the card, so the loop believed a
+         card was open and nothing could be minted or recorded beside it;
+      4. release-blockers.json is rewritten FROM THIS VERDICT. v9's copy still
+         listed `assert-mta-rescan` from a superseded REFUSE, and the run
+         report reads that file: a cleared floor left on disk is a false
+         record. This verdict names no blocker, so the file becomes an
+         explicit empty record saying which verdict cleared it and when -- and
+         what is still outstanding, which is not the same thing."""
+    now = _now()
+    left = outstanding_rows(verdict, preceipt)
+    blockers = {
+        "schema": BLOCKERS_SCHEMA,
+        "at": now,
+        "operator": args.operator,
+        "verdict_card": card_id,
+        "verdict": token,
+        "verdict_file": M4_VERDICT.as_posix(),
+        "failed_floors": [],
+        "receipt_sha256": str(receipt.get("receipt_digest") or ""),
+        "corpus_sha256": corpus_sha,
+        "floors": [],
+        "entry_points": [],
+        "owners": [],
+        "resumed": False,
+        "closed": True,
+        "parity_obligations": [],
+        "withheld_obligations": [],
+        # WHICH verdict cleared this file, and when: an empty blockers file
+        # with no such record is indistinguishable from one nobody wrote
+        "cleared_by": {"verdict": token, "card": card_id, "at": now,
+                       "detail": "every release floor this verdict measured returned rc 0 and it names no blocker; any "
+                                 "floor a superseded verdict listed is cleared by this one"},
+        # closed is not shipped, and this is the difference
+        "outstanding": left,
+    }
+    if reseal:
+        blockers["contract_reseal"] = reseal
+    close_row = {
+        "kind": "close", "cluster": CLOSE_ID, "card": card_id, "verdict": token,
+        "failed_floors": [], "resumed": False, "closed": True, "operator": args.operator, "at": now,
+        "receipt_sha256": str(receipt.get("receipt_digest") or ""), "corpus_sha256": corpus_sha,
+        "parity_receipt_sha256": parity_on_disk,
+        "parity_obligations": [], "withheld_obligations": [], "release_blockers": [],
+        "outstanding": [r["kind"] for r in left],
+        "measure": None, "changed": [],
+        "reason": "M4 %s: every floor measured rc 0, the receipt names no obligation a card repairs and no floor a "
+                  "decision owns; the run is CLOSED (ship %s) with %d outstanding item(s)"
+                  % (token, bool(verdict.get("ship")), len(left)),
+    }
+    if reseal:
+        close_row["contract_reseal"] = reseal
+    steps.setdefault("rejected", []).append(close_row)
+    save_steps(root, steps)
+    snapshot_parity(root, {
+        "schema": PARITY_SOURCE_SCHEMA, "at": now, "card": card_id, "verdict": token,
+        "binding": {"mode": "sealed", "card": card_id},
+        "receipt_sha256": parity_on_disk, "corpus_sha256": corpus_sha,
+        "reason": "the M4 verdict for %s closed the run on this comparison" % card_id,
+    })
+    if (root / LOOP_ISSUED).is_file():
+        (root / LOOP_ISSUED).unlink()
+    publish_loop_state(root)
+    path = write_blockers(root, blockers)
+    print("CLOSED %s: M4 %s, %d floor(s) measured, none failed; the issued card is cleared and %s is rewritten from "
+          "this verdict" % (card_id, token, len(verdict.get("floors") or []), RELEASE_BLOCKERS))
+    for row in left:
+        print("  - outstanding (%s): %s" % (row["kind"], row["detail"]))
+    print("OK: run CLOSED on %s for card %s — closed is not shipped: %d item(s) remain before a release → %s"
+          % (token, card_id, len(left), path))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--root", required=True)
@@ -376,6 +553,8 @@ def main(argv: list[str] | None = None) -> int:
     # is where the close is, and the record is what binds.
     if card_id and already_resumed(steps, card_id):
         return _refuse("already resumed for verdict %s; the close is on the record and the next card was minted from it" % card_id)
+    if card_id and already_closed(steps, card_id):
+        return _refuse("already closed for verdict %s; the run was closed on this verdict and its record is written" % card_id)
 
     issued = load_issued(root)
     if issued is None:
@@ -539,6 +718,18 @@ def main(argv: list[str] | None = None) -> int:
             obligations = []
     parity_unrepairable = parity_floors if (parity_floors and not obligations) else []
     rows = floor_rows(decision_floors, parity_unrepairable, unauthorized)
+
+    # --- a clean acceptance: the run's success path, and its terminator -------
+    # Every floor measured rc 0, the verdict token is one the road accepts, and
+    # there is neither an obligation a card repairs nor a floor a decision
+    # owns. That is not "nothing to resume": it is the run's answer, and until
+    # H16 it was refused (v9 t_7740ad21), leaving the close card issued and a
+    # superseded REFUSE's blockers file on disk as if it were current.
+    clean = (token in ACCEPT_TOKENS and not failed and not obligations
+             and not withheld and not rows and not unauthorized)
+    if clean:
+        return close_out(root, args, verdict, preceipt, steps, card_id=card_id, token=token,
+                         receipt=receipt, corpus_sha=corpus_sha, parity_on_disk=parity_on_disk, reseal=reseal)
 
     if not obligations and not rows and not unauthorized:
         return _refuse("verdict %s for card %s: the parity receipt names no obligation whose locus is a file of this "

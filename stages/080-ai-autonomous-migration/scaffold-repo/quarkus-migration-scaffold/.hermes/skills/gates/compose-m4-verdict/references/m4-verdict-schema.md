@@ -101,6 +101,15 @@ A retired **test** source counts as replaced only beside fresh executed-test
 evidence. Do not hand-write this file; the lint recomputes it from the same
 inputs and refuses a copy that disagrees.
 
+Each `replacement_measured` row also carries `coverage` — how the parity
+receipt covered that entry point: `oracle` (the single-request replay of a
+method and a path), `scenario` (a qualified scenario that explicitly binds it,
+whose destination replay passed; the ids are in `covered_by_scenarios`), or
+empty for neither. `entry_point_coverage` mirrors the receipt's own three-way
+count. Coverage is not credit: a replacement claim still needs the entry point
+measured PASS, and an entry point no scenario binds stays a gap however many
+other scenarios pass (architect ruling, 2026-09-22).
+
 ## After authoring
 
 ```bash

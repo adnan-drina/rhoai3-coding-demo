@@ -2,10 +2,11 @@
 # from before per-run resources: one database, one workspace secret, and a
 # `mount-to-devworkspace` label with no include annotation, which injects
 # PETCLINIC_DB_* into EVERY workspace in this namespace. That is precisely why
-# two runs could not each have their own, and why the v10 design moved the
-# parity database, its credentials and the fixture identities into each run's
-# destination repository (`k8s-run/`, rendered by Argo CD at workspace
-# initiation). See tmp/080-operator/PER-RUN-RESOURCES.md.
+# two runs could not each have their own, and why the v10 design gives each run
+# its own database, credentials and fixture identities, rendered at workspace
+# initiation by trusted platform code
+# (pipelines/build/task-provision-migration-run.yaml).
+# See tmp/080-operator/PER-RUN-RESOURCES.md.
 #
 # It stays only because the RUNNING v9 destination reads
 # petclinic-parity-postgres / petclinic-parity-db right now. Adding an include
@@ -22,7 +23,8 @@
 #      sources for the same PETCLINIC_DB_* names.
 #
 # migration-parity-db-provisioner here is superseded by
-# migration-run-provisioner (migration-run-resources-rbac.yaml).
+# migration-run-provisioner, which deliberately lives in app-platform-build
+# rather than here (migration-run-resources-rbac.yaml).
 #
 # The isolated database a migration run compares against (Stage 080, ADR-009).
 #

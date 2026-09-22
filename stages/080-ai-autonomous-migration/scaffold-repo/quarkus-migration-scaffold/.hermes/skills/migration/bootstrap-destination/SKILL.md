@@ -35,7 +35,7 @@ and the MTA rescan produce the real plan: the work list.
 ## Procedure
 
 ```bash
-python3 "${HERMES_SKILL_DIR}/scripts/stamp-run-resources.py" --root /projects/modernized
+python3 "${HERMES_SKILL_DIR}/scripts/stamp-run-resources.py" --root /projects/modernized --verify
 python3 "${HERMES_SKILL_DIR}/scripts/probe-bom-managed.py" --root /projects/modernized
 python3 "${HERMES_SKILL_DIR}/scripts/bootstrap-destination.py" --root /projects/modernized
 python3 "${HERMES_SKILL_DIR}/scripts/check-datasource-decision.py" /projects/modernized
@@ -45,17 +45,21 @@ The probe measures, with Maven's own `help:effective-pom`, which artifacts
 the pinned BOM manages (`evidence/build/bom-managed.json`); network once.
 
 0a. **run resources** — every run owns its parity database, its credentials
-   secret and its fixture identities; they are created from the destination
-   repository's own `k8s-run/` when the workspace is initiated, never by hand
-   and never shared. The golden therefore names no database:
-   `stamp-run-resources.py` writes `decisions.yaml` `datasource.instance` from
-   `migration.yaml` `resources.parity_database`, the same value those manifests
-   were stamped with. It is idempotent, it rewrites exactly that one line, and
-   it compares rather than rewrites the credential variable NAMES (a
-   disagreement between the run's resources and the decision refuses). A
-   destination with no `resources` block predates per-run resources and is left
-   alone. dest-init already ran this at workspace start with `--verify`; it is
-   repeated here because M2 plans against the decision.
+   secret and its fixture identities; trusted platform code creates them when
+   the workspace is initiated, never by hand and never shared, and writes a
+   receipt into the run's own workspace secret. The golden therefore names no
+   database: `stamp-run-resources.py` writes `decisions.yaml`
+   `datasource.instance` from `migration.yaml` `resources.parity_database`. It
+   is idempotent, it rewrites exactly that one line, and it compares rather
+   than rewrites the credential variable NAMES (a disagreement between the
+   run's resources and the decision refuses).
+   `--verify` is not optional here. It establishes OWNERSHIP first — the
+   endpoint is parsed into host, port and database and compared with the
+   assignment and the receipt — and a refusal writes nothing, so a wrong target
+   can never end this step with a stamped decision that a later run reads as
+   settled. A destination with no `resources` block predates per-run resources
+   and is left alone under the legacy exception. dest-init already ran this at
+   workspace start; it is repeated here because M2 plans against the decision.
 
 0. **settings** — refuses `MAVEN_SETTINGS_MISSING` unless `.mvn/maven.config`
    wires `-s .mvn/settings.xml` and that file declares the catalog's

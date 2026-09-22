@@ -1,52 +1,72 @@
-# The one platform-owned identity that a migration run's own manifests use.
+# The identity that provisions and retires a migration run's resources, and the
+# reason it does not live in this namespace.
 #
-# Stage 080 gives every run its own parity database and its own credentials
-# (RHDH app-migration skeleton `k8s-run/`, rendered into this namespace by the
-# dispatcher's migration-run bootstrap trigger). Those manifests carry a Job
-# that generates a password and writes two secrets — and a self-service
-# repository must not be able to mint the RBAC that lets it do so. The
-# identity, and the exact verbs it has, are declared here instead, once, by
-# the platform: create/get/patch/update on Secrets in this namespace and
-# nothing else. The Argo CD AppProject that renders `k8s-run/`
-# (appproject-migration-run.yaml) whitelists no RBAC kinds, so a run cannot
-# widen this.
+# The architect's 2026-09-22 review refused the previous shape. A ServiceAccount
+# in wksp-ai-developer with get/create/patch/update on every Secret there is
+# selectable by ANY workload created in that namespace, and creating a workload
+# needs no permission to create RBAC. So a Job rendered from a run's own
+# repository could have taken this identity and read every other run's
+# credentials, whatever the Argo CD AppProject allowed.
+# Ref: https://kubernetes.io/docs/concepts/security/rbac-good-practices/#workload-creation
 #
-# This supersedes migration-parity-db-provisioner in
-# migration-parity-database.yaml, which is scoped to the single shared
-# petclinic instance and retires with it.
+# The ServiceAccount therefore lives in app-platform-build, where only platform
+# Tekton resources run, and only the platform's own Task
+# (pipelines/build/task-provision-migration-run.yaml) uses it. A pod in
+# wksp-ai-developer CANNOT reference it: a pod's serviceAccountName resolves in
+# the pod's OWN namespace. The Role and its binding stay here because that is
+# where the objects are; the subject is deliberately somewhere else.
+#
+# Nothing in wksp-ai-developer, and nothing carrying repository content
+# anywhere, can obtain these verbs.
 ---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: migration-run-provisioner
-  namespace: wksp-ai-developer
+  namespace: app-platform-build
+  labels:
+    app.kubernetes.io/part-of: developer-hub
+    app.kubernetes.io/component: migration-run-provisioner
   annotations:
     argocd.argoproj.io/sync-wave: "17"
 ---
+# Delete and list are the retirement half: a run's resources are removed by the
+# same identity that created them, by label, and the absence is then verified.
+# Without list/delete, retirement would be manual, which is what left the
+# previous design's generated secrets behind.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: migration-run-secret-manager
+  name: migration-run-resource-manager
   namespace: wksp-ai-developer
+  labels:
+    app.kubernetes.io/part-of: devspaces
+    app.kubernetes.io/component: migration-run-provisioner
   annotations:
     argocd.argoproj.io/sync-wave: "17"
 rules:
   - apiGroups: [""]
-    resources: ["secrets"]
-    verbs: ["create", "get", "patch", "update"]
+    resources: ["secrets", "configmaps", "services"]
+    verbs: ["get", "list", "create", "patch", "update", "delete"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "create", "patch", "update", "delete"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: migration-run-provisioner-secret-manager
+  name: migration-run-provisioner-resource-manager
   namespace: wksp-ai-developer
+  labels:
+    app.kubernetes.io/part-of: devspaces
+    app.kubernetes.io/component: migration-run-provisioner
   annotations:
     argocd.argoproj.io/sync-wave: "17"
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
-  name: migration-run-secret-manager
+  name: migration-run-resource-manager
 subjects:
   - kind: ServiceAccount
     name: migration-run-provisioner
-    namespace: wksp-ai-developer
+    namespace: app-platform-build

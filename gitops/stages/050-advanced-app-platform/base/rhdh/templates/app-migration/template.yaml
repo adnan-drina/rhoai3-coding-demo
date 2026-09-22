@@ -127,12 +127,15 @@ spec:
           # the per-project stack (namespace + pipeline) and run app-push in
           # <name>-dev. See pipelines/build/triggers.yaml.
           - rhoai3-scaffolded
-          # Stage 080 only: the same first push also bootstraps the RUN's own
-          # resources (dedicated parity database + fixture credentials) from
-          # this repo's k8s-run/ into the Dev Spaces namespace, through an Argo
-          # CD Application pinned to the scaffolding commit. Nothing a
-          # migration run needs is shared, and nothing is created by hand.
-          # See pipelines/build/triggers.yaml (migration-run-resources-template).
+          # Stage 080 only: this repository's SCAFFOLDING push — the one that
+          # creates main — also starts the platform's provision-migration-run
+          # Pipeline, which renders this run's own parity database and fixture
+          # credentials into the Dev Spaces namespace before the workspace is
+          # opened. No manifest from this repository is applied: the repository
+          # contributes a validated name. Nothing a migration run needs is
+          # shared, and nothing is created by hand.
+          # See pipelines/build/triggers.yaml (migration-run-resources-template)
+          # and pipelines/build/task-provision-migration-run.yaml.
           - rhoai3-migration-run
 
     - id: register

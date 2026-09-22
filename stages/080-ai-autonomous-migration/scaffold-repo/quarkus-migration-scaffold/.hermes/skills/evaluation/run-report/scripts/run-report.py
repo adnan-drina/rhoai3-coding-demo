@@ -1413,7 +1413,13 @@ def final_state(tree: Tree, m4: Dict[str, Any]) -> Dict[str, Any]:
         e.update({"verdict_card": rb.get("verdict_card"), "at": rb.get("at"), "owners": as_list(rb.get("owners")),
                   "floors": [{"floor": f.get("floor"), "adr": f.get("adr") or None, "owner": f.get("owner"), "explained_by": f.get("explained_by")} for f in as_list(rb.get("floors")) if isinstance(f, dict)],
                   "entry_points": [{"entry_point": x.get("entry_point"), "verdict": x.get("verdict"), "adr": x.get("adr") or None, "owner": x.get("owner"), "reason_head": reason_of(x)} for x in as_list(rb.get("entry_points")) if isinstance(x, dict)],
-                  "withheld_obligations": len(as_list(rb.get("withheld_obligations"))), "parity_obligations_resumed": len(as_list(rb.get("parity_obligations")))})
+                  "withheld_obligations": len(as_list(rb.get("withheld_obligations"))), "parity_obligations_resumed": len(as_list(rb.get("parity_obligations"))),
+                  # a CLEAN M4 close-out (resume-after-m4.py) rewrites this file
+                  # as an EMPTY record: no floor, because the verdict cleared
+                  # them, plus what still stands between closed and shipped
+                  "closed": bool(rb.get("closed")), "cleared_by": as_dict(rb.get("cleared_by")),
+                  "outstanding": [{"kind": x.get("kind"), "count": x.get("count"), "detail": x.get("detail")}
+                                  for x in as_list(rb.get("outstanding")) if isinstance(x, dict)]})
         out["release_blockers"] = e
     else:
         out["release_blockers"] = U(w, BLOCKERS)
@@ -1862,7 +1868,16 @@ def render(rep: Dict[str, Any]) -> str:
     mv = as_dict(f.get("m4_verdict"))
     L.append("- M4 verdict: %s (card %s, failed floors %s)" % (val(mv), mv.get("card"), ",".join(mv.get("failed_floors") or []) or "-"))
     rb = as_dict(f.get("release_blockers"))
-    if rb.get("value") is not None:
+    if rb.get("value") is not None and rb.get("closed"):
+        # a CLEAN M4 rewrote this file as an empty record (resume-after-m4.py's
+        # close-out). It names no blocker BECAUSE the verdict cleared them, and
+        # what it does name is what stands between closed and shipped
+        cleared = as_dict(rb.get("cleared_by"))
+        L.append("- release blockers (%s): none — cleared by %s at %s; the run is CLOSED, not shipped" % (
+            rb.get("verdict_card"), cleared.get("verdict") or rb.get("verdict"), cleared.get("at") or rb.get("at")))
+        for x in as_list(rb.get("outstanding")):
+            L.append("  - outstanding (%s): %s" % (as_dict(x).get("kind"), str(as_dict(x).get("detail"))[:200]))
+    elif rb.get("value") is not None:
         L.append("- release blockers (%s): floors %s; %d entry point(s) owned by %s; %s obligation(s) withheld" % (
             rb.get("verdict_card"), ", ".join("%s→%s" % (x["floor"], x.get("adr") or x.get("owner")) for x in rb.get("floors") or []),
             len(rb.get("entry_points") or []), ",".join(rb.get("owners") or []), rb.get("withheld_obligations")))

@@ -2115,7 +2115,133 @@ def _variant_revert_then_read_case() -> int:
     return 0
 
 
+def _scenario_coverage_case() -> int:
+    """ARCHITECT RULING 2026-09-22: scenario coverage COUNTS, and only when it
+    is evidence.
+
+    v9's receipt reported 20 of 34 entry points "not compared" because the
+    older single-request read oracle was absent -- a non-idempotent method or
+    a wildcard path that cannot be replayed by a method and a path. The ruling:
+    a QUALIFIED scenario that explicitly binds the entry point, whose
+    destination replay PASSED with the required assertions in this mode, is
+    comparable evidence, and the absence of a read oracle is not itself
+    disqualifying. What it does NOT do is weaken anything: a scenario that
+    never ran, one that ran and failed, and one the qualification did not pass
+    all cover nothing, and an entry point no scenario binds stays a gap
+    however many other scenarios pass.
+
+    Four entry points, one of each shape, and the receipt's three-way count."""
+    with tempfile.TemporaryDirectory(prefix="coverage-") as td:
+        root = specimens.build_dest(Path(td) / "dest", specimens.specimen("http"), decisions=specimens.admitted_decisions())
+        specimens.prepare_loop(root)
+        if pipeline.admit(root)["status"] != "ADMITTED":
+            return _fail("the coverage fixture must be admitted")
+        digest = load_json(root / "evidence" / "planning" / "admission-receipt.json")["receipt_digest"]
+        eps = sorted(str(e["id"]) for e in load_json(root / "evidence" / "planning" / "evidence-bundle.json")["entry_points"])
+        if len(eps) < 4:
+            return _fail("the coverage fixture needs four admitted entry points, got %d" % len(eps))
+        by_oracle, by_scenario, replay_failed, never_ran = eps[:4]
+        uncovered_eps = eps[4:]
+
+        # the corpus binds three entry points, each by exactly one scenario;
+        # `by_oracle` is bound by none, and is compared by its read oracle
+        bound = {"sc:covered": by_scenario, "sc:replay-failed": replay_failed,
+                 "sc:never-ran": never_ran}
+        corpus = {"schema": "rhoai3.scenario-corpus/v1", "approved_by": "operator:test",
+                  "initial_state": {"reset": "restart the service", "dataset": "empty"},
+                  "scenarios": [{"id": sid, "entry_point": ep, "method": "POST", "path": "/api/owners",
+                                 "headers": {"Content-Type": "application/json"}, "body_absent": True,
+                                 "reset_before": True, "effects": [], "normalization": []}
+                                for sid, ep in sorted(bound.items())]}
+        write_canonical(root / "verification" / "scenarios" / "corpus.json", corpus)
+        corpus_sha = corpus_digest(load_json(root / "verification" / "scenarios" / "corpus.json"))
+
+        # the qualification: the source demonstrated every one of them
+        def _qualify(inconclusive: str = "") -> None:
+            write_canonical(root / qualification_path("disabled"), {
+                "schema": "rhoai3.scenario-qualification/v1", "security_mode": "disabled",
+                "corpus_sha256": corpus_sha,
+                "scenarios": {sid: {"capability": "INCONCLUSIVE" if sid == inconclusive else "PASS",
+                                    "intent": "positive",
+                                    "reason": "the capture does not say whether the source created anything" if sid == inconclusive else ""}
+                              for sid in bound}})
+
+        _qualify()
+
+        # the destination replays: covered PASSes, replay-failed FAILs,
+        # never-ran has no record at all
+        for sid, verdict in (("sc:covered", "PASS"), ("sc:replay-failed", "FAIL")):
+            write_canonical(root / scenario_parity_dir("disabled") / (scenario_slug(sid) + ".json"), {
+                "schema": "rhoai3.scenario-parity/v1", "scenario": sid, "entry_point": bound[sid],
+                "verdict": verdict, "reason": "" if verdict == "PASS" else "status 500 vs 201",
+                "receipt_sha256": digest, "corpus_sha256": corpus_sha})
+
+        # the read oracle: the single-request replay of an entry point the
+        # corpus binds no scenario to
+        from _oracle_common import PARITY, slug
+        write_canonical(root / PARITY / (slug(by_oracle) + ".json"), {
+            "schema": "rhoai3.parity/v1", "entry_point": by_oracle, "verdict": "PASS",
+            "reason": "", "receipt_sha256": digest})
+
+        subprocess.run([sys.executable, str(RECEIPT), "--root", str(root)], text=True, capture_output=True)
+        doc = load_json(root / parity_receipt_path("disabled"))
+        rows = {str(r["entry_point"]): r for r in doc["entry_points"]}
+
+        want = {by_oracle: ("oracle", []), by_scenario: ("scenario", ["sc:covered"]),
+                replay_failed: ("none", []), never_ran: ("none", [])}
+        for ep, (kind, scenarios) in sorted(want.items()):
+            row = rows.get(ep) or {}
+            if str(row.get("coverage_kind") or "") != kind:
+                return _fail("%s must be covered %r, the receipt says %r (%s)" % (ep, kind, row.get("coverage_kind"), row.get("reason")))
+            if [str(s) for s in ((row.get("covered_by") or {}).get("scenarios") or [])] != scenarios:
+                return _fail("%s must name the scenarios that cover it (%s): %s" % (ep, scenarios, row.get("covered_by")))
+        if rows[by_scenario]["verdict"] != "PASS":
+            return _fail("an entry point a qualified passing scenario binds is compared: %s" % rows[by_scenario])
+        if rows[never_ran]["verdict"] != "INCONCLUSIVE" or "no result" not in rows[never_ran]["reason"]:
+            return _fail("a scenario that never ran leaves its entry point INCONCLUSIVE: %s" % rows[never_ran])
+        if rows[replay_failed]["verdict"] != "FAIL":
+            return _fail("a scenario whose replay failed is a FAIL, never coverage: %s" % rows[replay_failed])
+        for ep in uncovered_eps:
+            if (rows.get(ep) or {}).get("coverage_kind") != "none":
+                return _fail("an entry point no scenario binds and no oracle replayed is uncovered: %s" % rows.get(ep))
+
+        cs = doc["coverage_summary"]
+        want_summary = {"entry_points": len(eps), "by_oracle": 1, "by_scenario": 1,
+                        "uncovered": len(eps) - 2}
+        if cs != want_summary:
+            return _fail("the receipt must count the three kinds: %s (want %s)" % (cs, want_summary))
+        if cs["by_oracle"] + cs["by_scenario"] + cs["uncovered"] != cs["entry_points"]:
+            return _fail("the three counts must be disjoint and total: %s" % cs)
+
+        # a scenario the QUALIFICATION did not pass covers nothing, however
+        # well its destination replay went: the source never demonstrated the
+        # capability, so there is nothing to have reproduced
+        _qualify(inconclusive="sc:covered")
+        subprocess.run([sys.executable, str(RECEIPT), "--root", str(root)], text=True, capture_output=True)
+        unq = load_json(root / parity_receipt_path("disabled"))
+        urow = next(r for r in unq["entry_points"] if r["entry_point"] == by_scenario)
+        if urow["coverage_kind"] != "none" or urow["verdict"] != "INCONCLUSIVE":
+            return _fail("an unqualified scenario covers nothing whatever its replay says: %s" % urow)
+        if unq["coverage_summary"]["by_scenario"] != 0:
+            return _fail("the count must drop with it: %s" % unq["coverage_summary"])
+        _qualify()
+
+        # the control for "passing all existing scenarios cannot fill a gap":
+        # every scenario on disk now PASSes, and the entry points none of them
+        # binds are covered by exactly as much as before
+        write_canonical(root / scenario_parity_dir("disabled") / (scenario_slug("sc:replay-failed") + ".json"), {
+            "schema": "rhoai3.scenario-parity/v1", "scenario": "sc:replay-failed", "entry_point": replay_failed,
+            "verdict": "PASS", "reason": "", "receipt_sha256": digest, "corpus_sha256": corpus_sha})
+        subprocess.run([sys.executable, str(RECEIPT), "--root", str(root)], text=True, capture_output=True)
+        after = load_json(root / parity_receipt_path("disabled"))["coverage_summary"]
+        if after != dict(want_summary, by_scenario=2, uncovered=len(eps) - 3):
+            return _fail("a scenario that now passes covers its OWN entry point and no other: %s" % after)
+        return 0
+
+
 def main() -> int:
+    if _scenario_coverage_case():
+        return 1
     if _no_corpus_case() or _missing_exposed_model_case() or _stale_receipt_case() or _security_mode_case():
         return 1
     if (_fixture_variant_case() or _variant_refused_write_case() or _variant_revert_then_read_case() or _diagnostic_probe_case()
@@ -2349,7 +2475,7 @@ def main() -> int:
  "baseline, the variant and its revert visited in that order through the reset script, the post-revert reads judged against the "
  "source's baseline reads -- an identical destination PASSes, one that writes despite the 401 FAILs, a revert that finds "
  "unexpected state is INCONCLUSIVE naming it, and --no-reset is refused; the variant is re-applied after the after-reads, so a "
- "following variant read that declares no reset is still judged on the variant state; a body mismatch carries body_diff -- "
+ "following variant read that declares no reset is still judged on the variant state; an entry point is covered by its READ ORACLE or by a QUALIFIED scenario that explicitly binds it and whose destination replay passed -- the two recorded as distinct kinds with the scenario ids, counted three ways on the receipt (oracle / scenario / not at all) -- while a scenario that never ran, one that failed and one the qualification did not pass cover nothing, and passing every scenario on disk fills no gap at an entry point none of them binds; a body mismatch carries body_diff -- "
  "order-only lists once per path with [*] in the summary, values, missing fields, types and non-JSON lines named, the destination "
  "body retained beside the verdict and pointed at from the receipt row -- for scenario and read-oracle verdicts alike)")
     return 0

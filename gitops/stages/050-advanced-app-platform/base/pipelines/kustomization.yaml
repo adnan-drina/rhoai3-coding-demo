@@ -29,8 +29,11 @@ resources:
   - build/tektonconfig-affinity.yaml
   # Governance boundary for scaffolded-project Applications (wave 12)
   - build/appproject-scaffolded.yaml
-  # Governance boundary for per-run stage 080 migration resources (wave 12)
-  - build/appproject-migration-run.yaml
+  # Stage 080 per-run migration resources: PLATFORM code, rendered from a
+  # validated run identity (wave 12). Not an Argo CD source over a
+  # self-service repository — the architect refused that seam on 2026-09-22.
+  - build/task-provision-migration-run.yaml
+  - build/pipeline-provision-migration-run.yaml
   # Webhook dispatcher (wave 13) + Route (wave 14)
   - build/triggers.yaml
   # Per-project credential reconciler (wave 13)

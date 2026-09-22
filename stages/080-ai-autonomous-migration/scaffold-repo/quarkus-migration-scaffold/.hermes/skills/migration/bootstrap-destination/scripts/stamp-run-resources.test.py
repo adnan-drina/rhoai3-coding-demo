@@ -17,6 +17,13 @@ Exits proven here:
   - --verify: absent variables WARN, variables naming ANOTHER run's database
     REFUSE, variables naming this run's database pass; no credential value is
     ever read or printed
+  - a REFUSED verification writes NOTHING -- not decisions.yaml, and therefore
+    not a stamped instance a later step would read as settled. This is the
+    architect's 2026-09-22 finding: the reviewed version stamped first and
+    verified second, so a workspace holding another run's database ended
+    dest-init with a stamped decision and a subsequent M2 stamp returned 0
+  - a run whose endpoint is right but whose platform receipt is absent or
+    describes another run is refused: a name is not a receipt
 """
 from __future__ import annotations
 
@@ -59,7 +66,7 @@ MIGRATION_WITH_RESOURCES = """migration:
 resources:
   run: demo-run-v2
   namespace: wksp-ai-developer
-  manifests: k8s-run
+  receipt_env: PARITY_RUN_RECEIPT
   parity_database:
     instance: demo-run-v2-parity-postgres.wksp-ai-developer
     database: parity
@@ -79,6 +86,10 @@ MIGRATION_NO_RESOURCES = """migration:
   target: quarkus
 """
 
+GOOD_URL = "jdbc:postgresql://demo-run-v2-parity-postgres.wksp-ai-developer.svc:5432/parity"
+RECEIPT = ("run=demo-run-v2;namespace=wksp-ai-developer;workspace=demo-run-v2;"
+           "host=demo-run-v2-parity-postgres;port=5432;database=parity;scaffold=abc123")
+
 
 def _tree(tmp: Path, migration: str, instance: str, url_env: str = "DEMO_DB_URL") -> Path:
     root = Path(tempfile.mkdtemp(dir=tmp))
@@ -90,7 +101,7 @@ def _tree(tmp: Path, migration: str, instance: str, url_env: str = "DEMO_DB_URL"
 def _run(root: Path, *args: str, env: dict | None = None) -> subprocess.CompletedProcess:
     e = dict(os.environ)
     for k in ("DEMO_DB_URL", "DEMO_DB_USER", "DEMO_DB_PASSWORD",
-              "DEMO_ADMIN_CREDENTIAL", "DEMO_INVALID_CREDENTIAL"):
+              "DEMO_ADMIN_CREDENTIAL", "DEMO_INVALID_CREDENTIAL", "PARITY_RUN_RECEIPT"):
         e.pop(k, None)
     e.update(env or {})
     return subprocess.run([sys.executable, str(SCRIPT), "--root", str(root), *args],
@@ -161,24 +172,55 @@ def main() -> int:
         root = _tree(tmp, MIGRATION_WITH_RESOURCES % "DEMO_DB_URL", "UNSTAMPED")
         r = _run(root, "--verify")
         ok(r.returncode == 0 and "WARN" in r.stdout, "absent variables were not a WARN: %s%s" % (r.stdout, r.stderr))
-        ok("oracle capture cannot" in r.stdout, "the WARN did not say what it costs")
+        ok("static analysis may continue" in r.stdout, "the WARN did not say what it costs")
 
         root = _tree(tmp, MIGRATION_WITH_RESOURCES % "DEMO_DB_URL", "UNSTAMPED")
+        before = (root / "decisions.yaml").read_text(encoding="utf-8")
         r = _run(root, "--verify", env={
             "DEMO_DB_URL": "jdbc:postgresql://some-other-run-parity-postgres.wksp-ai-developer.svc:5432/parity",
-            "DEMO_DB_USER": "parity", "DEMO_DB_PASSWORD": "not-read"})
+            "DEMO_DB_USER": "parity", "DEMO_DB_PASSWORD": "not-read",
+            "PARITY_RUN_RECEIPT": RECEIPT})
         ok(r.returncode == 1, "another run's database was accepted")
-        ok("another run's parity database" in r.stderr, "cross-run refusal not named: %s" % r.stderr)
+        ok("RUN_RESOURCES_MISMATCH" in r.stderr, "cross-run refusal not typed: %s" % r.stderr)
         ok("not-read" not in (r.stdout + r.stderr), "a credential value reached the output")
+        # THE DEFECT: a refused verification must leave the decision unstamped,
+        # or the next stamp -- M2's, without --verify -- finds it already
+        # settled and agrees.
+        ok((root / "decisions.yaml").read_text(encoding="utf-8") == before,
+           "a REFUSED verification still stamped decisions.yaml")
+        ok((root / ".hermes" / "RUN-RESOURCES-STATUS").read_text(encoding="utf-8").startswith("result=refused"),
+           "the status file did not record the refusal")
+        # ... and the M2-style call, which passes no --verify, must not be the
+        # way around it: the ownership question is asked whether or not the
+        # answer is reported.
+        r2 = _run(root, env={
+            "DEMO_DB_URL": "jdbc:postgresql://some-other-run-parity-postgres.wksp-ai-developer.svc:5432/parity",
+            "DEMO_DB_USER": "parity", "DEMO_DB_PASSWORD": "not-read",
+            "PARITY_RUN_RECEIPT": RECEIPT})
+        ok(r2.returncode == 1 and "RUN_RESOURCES_MISMATCH" in r2.stderr,
+           "a stamp without --verify accepted another run's database: %s%s" % (r2.stdout, r2.stderr))
+        ok((root / "decisions.yaml").read_text(encoding="utf-8") == before,
+           "a stamp without --verify wrote the wrong instance")
+
+        # a right endpoint with no platform receipt: a name is not a receipt
+        root = _tree(tmp, MIGRATION_WITH_RESOURCES % "DEMO_DB_URL", "UNSTAMPED")
+        before = (root / "decisions.yaml").read_text(encoding="utf-8")
+        r = _run(root, "--verify", env={
+            "DEMO_DB_URL": GOOD_URL, "DEMO_DB_USER": "parity", "DEMO_DB_PASSWORD": "not-read"})
+        ok(r.returncode == 1 and "RUN_RESOURCES_RECEIPT_MISSING" in r.stderr,
+           "an unprovable endpoint was accepted: %s%s" % (r.stdout, r.stderr))
+        ok((root / "decisions.yaml").read_text(encoding="utf-8") == before,
+           "an unprovable endpoint still stamped decisions.yaml")
 
         root = _tree(tmp, MIGRATION_WITH_RESOURCES % "DEMO_DB_URL", "UNSTAMPED")
         r = _run(root, "--verify", env={
-            "DEMO_DB_URL": "jdbc:postgresql://demo-run-v2-parity-postgres.wksp-ai-developer.svc:5432/parity",
-            "DEMO_DB_USER": "parity", "DEMO_DB_PASSWORD": "not-read",
+            "DEMO_DB_URL": GOOD_URL, "DEMO_DB_USER": "parity", "DEMO_DB_PASSWORD": "not-read",
+            "PARITY_RUN_RECEIPT": RECEIPT,
             "DEMO_ADMIN_CREDENTIAL": "a:b", "DEMO_INVALID_CREDENTIAL": "c:d"})
-        ok(r.returncode == 0, "this run's own database was refused: %s" % r.stderr)
-        ok("name this run's database" in r.stdout, "verify did not confirm the binding: %s" % r.stdout)
+        ok(r.returncode == 0, "this run's own database was refused: %s%s" % (r.stdout, r.stderr))
+        ok("names this run's own database" in r.stdout, "verify did not confirm the binding: %s" % r.stdout)
         ok("fixture identity variables are set" in r.stdout, "fixture identities not verified")
+        ok("STAMPED" in r.stdout, "a verified run did not stamp its decision")
         ok("not-read" not in (r.stdout + r.stderr) and "a:b" not in (r.stdout + r.stderr),
            "a credential value reached the output")
         ok((root / ".hermes" / "RUN-RESOURCES-STATUS").is_file(), "no status file written")

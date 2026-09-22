@@ -84,6 +84,31 @@ ROOT="$(cd "${ROOT}" && pwd)"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BASELINE_TOOL="${HERE}/../../../migration/bootstrap-destination/scripts/_baseline_data.py"
 
+# WHOSE DATABASE IS THIS? Asked here, before a driver is found, before a
+# credential is read and long before a connection is opened.
+#
+# The architect drove this script on 2026-09-22 with an UNSTAMPED destination
+# and with another run's URL. Both reached the Java reset runner, which drops
+# and recreates the public schema without any run binding: the only reason no
+# data was lost is that java was stubbed for the experiment. A refusal that
+# happens at M2 admission is not a refusal at the operation that connects.
+#
+# planner.run_identity PARSES the endpoint -- engine, host, port, database --
+# and compares each field with the assignment the platform issued for this run
+# and with the receipt the platform wrote into this workspace. A wrong
+# namespace, a wrong database, a host that merely starts with the right name
+# and a host carrying the right name only in a query parameter are four
+# different endpoints and all four are refused. --print-plan reads decisions
+# and touches nothing, so it is judged as analysis: it still refuses a wrong
+# target and still prints against a target that does not exist yet.
+OWNERSHIP_OP="reset"
+[[ -z "${VARIANT}" ]] || OWNERSHIP_OP="fixture"
+[[ -z "${REVERT}" ]] || OWNERSHIP_OP="revert"
+[[ "${PRINT_PLAN}" != "yes" ]] || OWNERSHIP_OP="analysis"
+PYTHONPATH="${ROOT}/.hermes/lib${PYTHONPATH:+:${PYTHONPATH}}" \
+  python3 -m planner.run_identity --root "${ROOT}" --operation "${OWNERSHIP_OP}" \
+  || { echo "FAIL: RESET refused before connecting: this destination is not bound to its own parity database (above)" >&2; exit 1; }
+
 WORK="$(mktemp -d)"
 trap 'rm -rf "${WORK}"' EXIT
 

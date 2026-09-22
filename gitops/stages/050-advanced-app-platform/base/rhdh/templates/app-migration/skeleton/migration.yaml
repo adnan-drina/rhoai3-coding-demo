@@ -88,25 +88,29 @@ acceptance:
   path: ""
 {%- endif %}
 
-# The resources THIS RUN owns. Every one of them is created at workspace
-# initiation from k8s-run/ in this same repository (Argo CD Application
-# run-<name>-resources, pinned to the scaffolding commit), never by hand and
-# never shared with another run. Specimen-layering applies here too: the
-# environment variable NAMES below are the contract decisions.yaml references
-# (ADR-009 datasource, ADR-014 fixture identities), and no value is ever
-# written here or into the evidence.
+# The resources THIS RUN was ASSIGNED. Every one of them is created at
+# workspace initiation by PLATFORM code (the provision-migration-run Pipeline,
+# started by the dispatcher from the scaffolding push), never by hand and never
+# shared with another run. Nothing in this repository is applied to the cluster:
+# this block is the run's copy of the assignment, and the platform writes its
+# own receipt into the run's workspace secret as PARITY_RUN_RECEIPT.
 #
-# bootstrap-destination's stamp-run-resources.py reads this block and writes
-# decisions.yaml datasource.instance, which is why the golden names no
-# database at all. A destination without this block keeps whatever its
-# decisions.yaml already says (the shared pre-per-run instances).
+# Ownership is the AGREEMENT of the two, checked against the endpoint the
+# workspace actually holds (.hermes/lib/planner/run_identity.py). Editing this
+# block cannot move the run onto another database — it can only make the
+# assignment and the receipt disagree, which refuses every database operation.
+#
+# Specimen-layering applies here too: the environment variable NAMES below are
+# the contract decisions.yaml references (ADR-009 datasource, ADR-014 fixture
+# identities), and no value is ever written here or into the evidence.
 resources:
   run: ${{ values.name }}
   namespace: wksp-ai-developer
-  manifests: k8s-run
+  receipt_env: PARITY_RUN_RECEIPT
   parity_database:
     instance: ${{ values.name }}-parity-postgres.wksp-ai-developer
     database: parity
+    port: 5432
     server_secret: ${{ values.name }}-parity-postgres
     workspace_secret: ${{ values.name }}-parity-db
     jdbc_url_env: PETCLINIC_DB_URL
@@ -117,6 +121,7 @@ resources:
     env:
       - PETCLINIC_ADMIN_CREDENTIAL
       - PETCLINIC_INVALID_CREDENTIAL
+
 
 analysis:
   # AD-003A: --target only, never --source. openjdk21 kept (O-OPENJDK21TARGET).

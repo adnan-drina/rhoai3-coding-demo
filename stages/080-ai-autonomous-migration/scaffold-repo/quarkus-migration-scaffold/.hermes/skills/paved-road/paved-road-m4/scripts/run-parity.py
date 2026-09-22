@@ -551,11 +551,16 @@ class Destination:
         self.java_record, refusal = self.gate.runtime_check(self.root, self.gate.APP_DIR, self.java, self.java_source)
         if refusal:
             return refusal
-        missing = [str(self.ds[k]) for k in ("jdbc_url_env", "username_env", "password_env")
-                   if self.ds.get(k) and not os.environ.get(str(self.ds[k]))]
-        if missing:
-            return ("environment: %s not set; the decided datasource (%s, instance %s) is not reachable from here"
-                    % (", ".join(missing), self.ds.get("db_kind"), self.ds.get("instance")))
+        # Whose database is this? A parity result taken against another run's
+        # data is evidence about the wrong data, so the endpoint is parsed and
+        # compared with this run's assignment and receipt before the
+        # destination is started -- the same check the reset and the startup
+        # gate make, from the same module, so they cannot disagree.
+        from planner import run_identity
+
+        verdict = run_identity.check(self.root)
+        if verdict.blocking_for("parity"):
+            return "%s %s" % (verdict.code, verdict.detail)
         ok, _ = _wait_ready(self.base_url, 1, None)
         if ok:
             return ("port %d is already answering before anything was started; a parity reading there would not be "

@@ -43,6 +43,19 @@ records. First-response parity and target reachability are SEPARATE results
 ``navigation_obligations`` (``kind: navigation``, verdict FAIL) -- which fails
 the receipt without re-typing the redirect as a response diff. A PASS
 navigation is recorded on the row as ``navigation: ok``.
+
+Every row also says HOW the entry point is covered (ARCHITECT RULING,
+2026-09-22). ``coverage_kind`` is ``oracle`` when the older single-request
+replay (method and path) is on disk, bound to this receipt and PASS;
+``scenario`` when a QUALIFIED scenario explicitly binds this entry point and
+its destination replay passed the required assertions in this mode -- the
+absence of a read oracle is not itself disqualifying, and the scenario ids are
+on the row under ``covered_by``; and ``none`` when neither. Absence of
+comparable scenario evidence stays a gap: passing every scenario the corpus
+declares cannot cover an entry point none of them binds, and a scenario that
+did not run, or ran and failed, covers nothing. ``coverage_summary`` counts the
+three, so a reader of the receipt cannot mistake a closed run with uncovered
+entry points for a shipped one.
 """
 from __future__ import annotations
 
@@ -142,6 +155,55 @@ def _cors_outcomes(corpus: Any, qualified: dict[str, dict[str, Any]],
                     "verdict": str(found[0].get("verdict") or "") if len(found) == 1 else "no single result",
                     "discharges_browser_coverage": stype != SCENARIO_DIAGNOSTIC_PROBE}
     return out
+
+
+def oracle_covered(root: Path, ep: str, receipt_sha: str, binding: dict[str, Any], candidate_mode: bool) -> bool:
+    """Is this entry point covered by its READ ORACLE -- the older
+    single-request replay (method and path) compare-runtime-parity.py writes?
+
+    Coverage, not merely a file: the record must be on disk, bound to THIS
+    receipt (and, in candidate mode, to this verification), and PASS. A record
+    bound to another receipt measured another tree, and a FAIL or INCONCLUSIVE
+    one compared something without demonstrating equivalence."""
+    p = Path(root) / PARITY / (slug(ep) + ".json")
+    if not p.is_file():
+        return False
+    try:
+        v = load_json(p)
+    except (OSError, ValueError):
+        return False
+    if not isinstance(v, dict) or str(v.get("verdict") or "") != "PASS":
+        return False
+    if str(v.get("receipt_sha256") or "") != receipt_sha:
+        return False
+    return not (binding_mismatch(v, binding) if candidate_mode else "")
+
+
+def coverage_of(oracle: bool, scenarios: list[str]) -> str:
+    """ARCHITECT RULING 2026-09-22: scenario coverage COUNTS.
+
+    An entry point whose comparable evidence is a qualified scenario that
+    explicitly binds it, and whose destination replay passed the required
+    assertions in this mode, is covered -- the absence of the older
+    single-request oracle is not itself disqualifying. It is recorded as a
+    DISTINCT kind, ``scenario``, with the scenario ids on the row, so nothing
+    reads a scenario-covered entry point as if a read oracle had replayed it.
+    An entry point with neither is ``none``: a gap, and passing every scenario
+    the corpus happens to declare cannot fill it, because none of them binds
+    this entry point."""
+    if oracle:
+        return "oracle"
+    return "scenario" if scenarios else "none"
+
+
+def coverage_summary(rows: list[dict[str, Any]]) -> dict[str, int]:
+    """How many entry points are covered by oracle, by scenario, and not at
+    all. The three are disjoint and sum to the entry points measured."""
+    kinds = [str(r.get("coverage_kind") or "none") for r in rows]
+    return {"entry_points": len(rows),
+            "by_oracle": sum(1 for k in kinds if k == "oracle"),
+            "by_scenario": sum(1 for k in kinds if k == "scenario"),
+            "uncovered": sum(1 for k in kinds if k == "none")}
 
 
 def load_navigation(root: Path) -> dict[str, dict[str, Any]]:
@@ -346,6 +408,10 @@ def main(argv: list[str] | None = None) -> int:
             failures: list[str] = []
             positive: list[str] = []
             negative: list[str] = []
+            # the scenarios whose DESTINATION replay passed, bound to this
+            # receipt, this corpus and this verification: the evidence the
+            # coverage ruling counts (with the qualification below it)
+            replayed: list[str] = []
             for sid in names:
                 if sid in relabelled:
                     problems.append(relabelled[sid])
@@ -418,6 +484,8 @@ def main(argv: list[str] | None = None) -> int:
                                                             / (scenario_slug(sid) + ".json")).as_posix()})
                 elif doc.get("verdict") != "PASS":
                     problems.append("%s: %s" % (sid, doc.get("reason") or doc.get("verdict")))
+                else:
+                    replayed.append(sid)
             foreign = sorted(sid for sid in results if sid not in set(names) and sid not in diagnostic_ids
                              and any(str(d.get("entry_point") or "") == ep for d in results[sid]))
             if foreign:
@@ -446,8 +514,21 @@ def main(argv: list[str] | None = None) -> int:
                        or (navigation.get(sid) or {}).get("final_differs")]
             nav_ok = [sid for sid in names if str((navigation.get(sid) or {}).get("terminal") or "") == "ok"
                       and not (navigation.get(sid) or {}).get("final_differs")]
+            # A scenario counts as coverage only when it is QUALIFIED and its
+            # destination replay PASSED. `positive`/`negative` are the ids the
+            # qualification judged PASS (and not stale) in this mode; where no
+            # qualification document is required at all -- a hand-authored
+            # corpus with no gate run and no gap -- the Operator's own review
+            # stands, and the scenarios are qualified by it. A scenario that
+            # did not run, or ran and failed, is in neither list and covers
+            # nothing.
+            judged = (set(positive) | set(negative)) if qualification_loaded else (set(names) if not qualification_gap else set())
+            covered_by_scenarios = sorted(set(replayed) & judged)
+            oracle = oracle_covered(root, ep, receipt_sha, binding, candidate_mode)
             row = {"entry_point": ep, "verdict": verdict, "reason": reason, "scenarios": names,
-                   "coverage": {"positive": positive, "negative": negative}}
+                   "coverage": {"positive": positive, "negative": negative},
+                   "coverage_kind": coverage_of(oracle, covered_by_scenarios),
+                   "covered_by": {"oracle": oracle, "scenarios": covered_by_scenarios}}
             if body_diffs:
                 row["body_diffs"] = body_diffs
             refusals = [relabelled[sid] for sid in names if sid in relabelled]
@@ -479,12 +560,17 @@ def main(argv: list[str] | None = None) -> int:
             rows.append(row)
             failed += 0 if row["verdict"] == "PASS" else 1
             continue
+        # No corpus scenario binds this entry point, so the only evidence that
+        # could cover it is its read oracle. Nothing here is scenario coverage
+        # (the ruling counts a scenario that EXPLICITLY binds the entry point,
+        # and none does), so the kind is oracle or none.
         p = root / PARITY / (slug(ep) + ".json")
         if p.is_file():
             v = load_json(p)
             bound = v.get("receipt_sha256") == receipt_sha and not (binding_mismatch(v, binding) if candidate_mode else "")
             ok = v.get("verdict") == "PASS" and bound
-            row = {"entry_point": ep, "verdict": v.get("verdict") if bound else "INCONCLUSIVE", "reason": v.get("reason", "") if bound else "verdict bound to another receipt", "scenarios": []}
+            row = {"entry_point": ep, "verdict": v.get("verdict") if bound else "INCONCLUSIVE", "reason": v.get("reason", "") if bound else "verdict bound to another receipt", "scenarios": [],
+                   "coverage_kind": coverage_of(bool(ok), []), "covered_by": {"oracle": bool(ok), "scenarios": []}}
             if bound and isinstance(v.get("body_diff"), dict):
                 row["body_diffs"] = [{"scenario": "", "summary": str(v["body_diff"].get("summary") or ""),
                                       "order_only": bool(v["body_diff"].get("order_only")),
@@ -493,7 +579,9 @@ def main(argv: list[str] | None = None) -> int:
             rows.append(row)
         else:
             ok = False
-            rows.append({"entry_point": ep, "verdict": "INCONCLUSIVE", "reason": "no parity record", "scenarios": []})
+            rows.append({"entry_point": ep, "verdict": "INCONCLUSIVE", "scenarios": [],
+                         "reason": "no parity record: no read-oracle replay on disk, and no scenario in this corpus binds this entry point",
+                         "coverage_kind": "none", "covered_by": {"oracle": False, "scenarios": []}})
         failed += 0 if ok else 1
     # CORS is judged per policy, not per entry point: every policy the corpus
     # declares, and every one the frozen source declares, needs an actual
@@ -522,6 +610,11 @@ def main(argv: list[str] | None = None) -> int:
         verdict = "FAIL"
     doc = {"schema": "rhoai3.parity-receipt/v1", "receipt_sha256": receipt_sha, "binding": dict(binding), "producer": "compose-parity-receipt.py",
            "corpus_sha256": corpus_sha, "corpus_error": corpus_error, "entry_points": rows, "total": len(rows), "not_passed": failed,
+           # how each entry point IS covered, counted three ways: by its read
+           # oracle, by a qualified scenario whose destination replay passed,
+           # or not at all. A closed run with an uncovered entry point is not
+           # a shipped run, so the count is on the receipt and not inferred.
+           "coverage_summary": coverage_summary(rows),
            "security_mode": security_mode, "security_mode_recorded": recorded_mode, "security_mode_note": "" if recorded_mode else mode_why,
            "security_variant": variant, "security_variant_recorded": recorded_variant, "security_variant_note": variant_why,
            "cors": {"source_policies": source_policies, "gaps": cors_gaps, "outcomes": cors_outcomes},
@@ -541,6 +634,9 @@ def main(argv: list[str] | None = None) -> int:
            "verdict": verdict}
     out = root / parity_receipt_path(security_mode, variant)
     write_canonical(out, doc)
+    cs = doc["coverage_summary"]
+    print("  - coverage: %d entry point(s): %d by read oracle, %d by qualified scenario, %d not compared at all"
+          % (cs["entry_points"], cs["by_oracle"], cs["by_scenario"], cs["uncovered"]))
     for g in coverage_gaps:
         print("  - coverage gap %s (%s): %s" % (g["scenario"], g["entry_point"], g["reason"]))
     for o in orphaned:

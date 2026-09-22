@@ -62,6 +62,30 @@ def parity_verdicts(root: Path) -> tuple[str, dict[str, str]]:
     return str(doc.get("verdict") or ""), rows
 
 
+def parity_coverage(root: Path) -> tuple[dict[str, dict], dict[str, int]]:
+    """How each entry point is covered, and the receipt's own three-way count.
+
+    ARCHITECT RULING 2026-09-22: a qualified scenario that explicitly binds an
+    entry point, and whose destination replay passed, is coverage -- recorded
+    by compose-parity-receipt.py as ``coverage_kind: scenario`` with the
+    scenario ids, distinct from ``oracle``. It is carried through to the
+    account so a replacement claim says HOW it was measured, never only that
+    it passed. It grants no credit on its own: the row still has to be PASS."""
+    p = root / PARITY_DIR / "receipt.json"
+    if not p.is_file():
+        return {}, {}
+    doc = load_json(p)
+    per = {}
+    for r in (doc.get("entry_points") or []):
+        if not isinstance(r, dict):
+            continue
+        by = r.get("covered_by") if isinstance(r.get("covered_by"), dict) else {}
+        per[str(r.get("entry_point"))] = {"kind": str(r.get("coverage_kind") or ""),
+                                          "scenarios": [str(s) for s in (by.get("scenarios") or [])]}
+    summary = doc.get("coverage_summary") if isinstance(doc.get("coverage_summary"), dict) else {}
+    return per, {str(k): int(v) for k, v in summary.items()}
+
+
 def uncovered_capabilities(root: Path) -> list[dict]:
     """The parity receipt's ``coverage_gaps``: scenarios whose capture did
     not demonstrate the operation the scenario intends (``fixture-failed``:
@@ -100,6 +124,7 @@ def retired_thresholds(root: Path) -> list[dict]:
 def rows_of(doc: dict, root: Path) -> list[dict]:
     ok = accepted_adrs(doc)
     parity_verdict, per_ep = parity_verdicts(root)
+    per_cov, _ = parity_coverage(root)
     uncovered = uncovered_capabilities(root)
     surefire = load_json(root / SUREFIRE_RECEIPT) if (root / SUREFIRE_RECEIPT).is_file() else None
     tests_executed = bool(surefire) and int(surefire.get("rc", 1)) == 0
@@ -131,7 +156,10 @@ def rows_of(doc: dict, root: Path) -> list[dict]:
             "path": path, "adr": adr, "kind": kind,
             "retired_because": str(raw.get("reason") or ""),
             "replaced_by": named,
-            "replacement_measured": [{"entry_point": ep, "verdict": per_ep.get(ep, "")} for ep in named],
+            "replacement_measured": [{"entry_point": ep, "verdict": per_ep.get(ep, ""),
+                                      "coverage": str((per_cov.get(ep) or {}).get("kind") or ""),
+                                      "covered_by_scenarios": list((per_cov.get(ep) or {}).get("scenarios") or [])}
+                                     for ep in named],
             "remaining_gap": bool(gaps),
             "gap_reasons": gaps,
         })
@@ -154,6 +182,7 @@ def main(argv: list[str] | None = None) -> int:
     rows = rows_of(doc, root)
     gaps = [r["path"] for r in rows if r["remaining_gap"]]
     uncovered = uncovered_capabilities(root)
+    _, cov_summary = parity_coverage(root)
     account = {
         "schema": "rhoai3.coverage-account/v1",
         "producer": "compose-coverage-account.py",
@@ -169,6 +198,12 @@ def main(argv: list[str] | None = None) -> int:
             "uncovered_capabilities": len(uncovered),
         },
         "remaining_gaps": sorted(gaps),
+        # the receipt's own three-way count: entry points covered by their
+        # read oracle, by a qualified passing scenario (the 2026-09-22
+        # ruling), and not at all. Kept out of `summary`, which the M4 verdict
+        # carries verbatim, and reported beside it: a run with uncovered entry
+        # points can be CLOSED, and is still not shipped.
+        "entry_point_coverage": dict(cov_summary),
         # capabilities the source never demonstrated (the parity receipt's
         # coverage_gaps): uncovered, never silently covered by a passing
         # entry point
