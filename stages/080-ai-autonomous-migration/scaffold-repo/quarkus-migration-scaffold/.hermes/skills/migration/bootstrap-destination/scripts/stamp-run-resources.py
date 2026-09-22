@@ -19,10 +19,10 @@ compared rather than overwritten: if the manifests and the decision disagree
 about which variable carries the URL, that is a defect in the run's own
 resources and this refuses instead of papering over it.
 
-Backward compatible by construction. A destination whose `migration.yaml` has
-no `resources` block predates per-run resources (v9 and earlier), and its
-decisions.yaml already names the shared instance it was bootstrapped against:
-nothing is touched and the reason is printed.
+A missing resource block refuses unless the platform explicitly assigned this
+existing workspace a legacy endpoint in /etc/hermes/migration-legacy-assignments.json.
+A stamped instance alone never authorizes legacy access. Fresh runs cannot
+remove their resource block to bypass receipt verification.
 
 `--verify` additionally measures what the workspace actually received, through
 the one ownership check every destructive entry point uses
@@ -141,16 +141,10 @@ def stamp(root: Path, check_only: bool = False) -> tuple[int, list[str]]:
         return 1, ["REFUSE: RUN_RESOURCES %s datasource names no instance key" % DECISIONS]
 
     if not db:
-        if current == UNSTAMPED or not current:
-            return 1, [
-                "REFUSE: RUN_RESOURCES %s datasource.instance is %r and %s carries no "
-                "resources.parity_database to stamp it from. This destination was scaffolded "
-                "without per-run resources; re-create it from the app-migration template."
-                % (DECISIONS, current or "", MIGRATION)
-            ]
-        out.append("NOTE: %s carries no resources block (pre-per-run destination); "
-                   "datasource.instance stays %s" % (MIGRATION, current))
-        return 0, out
+        if not run_identity.assignment(root).get("legacy"):
+            return 1, ["REFUSE: RUN_RESOURCES_UNASSIGNED migration.yaml carries no resources.parity_database "
+                       "and this workspace has no platform-authorized legacy assignment"]
+        return 0, ["NOTE: explicit platform legacy assignment; datasource.instance stays %s" % current]
 
     want = str(db.get("instance") or "")
     if not want:

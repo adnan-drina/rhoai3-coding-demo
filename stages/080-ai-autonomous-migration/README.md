@@ -271,3 +271,13 @@ actually shipped.
 | MTA 8.2 documentation                         | [https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.2/](https://docs.redhat.com/en/documentation/migration_toolkit_for_applications/8.2/) |
 | OpenRewrite documentation                     | [https://docs.openrewrite.org/](https://docs.openrewrite.org/)                                                                                                       |
 | MaaS code assistant quickstart                | [https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant](https://docs.redhat.com/en/learn/ai-quickstarts/rh-maas-code-assistant)                     |
+
+
+## v10 validation preparation
+
+The [versioned execution plan](V10-PLAN.md), [isolation demonstration](ISOLATION-DEMO.md)
+and read-only `v10-preflight.sh` define the launch sequence. A local green suite
+does not qualify live isolation. Resource ownership now requires the platform
+receipt, actual workspace and original scaffolding assignment; provision/retire
+operations serialize per run. v9-to-v10 comparisons describe all changed pins
+and preserve unknowns, coverage gaps and prior authored repairs.

@@ -485,7 +485,7 @@ class RunReportTest(unittest.TestCase):
         the comparison must say so and must not let the delta read as a harness
         result."""
         def rep(model, golden, run_id):
-            return {"pinned_inputs": {"pilot_run_id": rr.V(run_id, "x"), "golden": rr.V(golden, "x"),
+            return {"pinned_inputs": {"pilot_run_id": rr.V(run_id, "x"), "installed_goldens": rr.V([{"golden": golden}], "x"),
                                       "unit_formation": rr.V("v1", "x"), "bootstrap_repairs": rr.U("no receipt")},
                     "pinned_environment": {"model_provider": rr.V({"cfg#model.default": model}, "x"),
                                            "toolchain": rr.V({"jdk": "21"}, "x")},
@@ -499,15 +499,31 @@ class RunReportTest(unittest.TestCase):
         self.assertIn("model_provider", d["differs"])
         self.assertEqual(d["differs"]["model_provider"]["v9"], {"cfg#model.default": "qwen3-6-27b"})
         self.assertEqual(d["differs"]["model_provider"]["v10"], {"cfg#model.default": "qwen3-8-27b-int4"})
-        self.assertIn("golden", d["differs"])
+        self.assertIn("installed_goldens", d["differs"])
         # a pin that is the SAME is not reported as differing, or the caveat means nothing
         self.assertNotIn("toolchain", d["differs"])
         self.assertNotIn("unit_formation", d["differs"])
         # a pin no run could read is neither same nor different
-        self.assertEqual(d["unknown"].get("bootstrap_repairs"), ["v10", "v9"])
+        self.assertEqual(d["unknown"].get("bootstrap_repairs.decided"), ["v10", "v9"])
         # and two runs on identical pins produce no caveat at all
         same = rr.compare(rep("qwen3-6-27b", "g1", "v9"), [("v10", rep("qwen3-6-27b", "g1", "v10"))])
         self.assertEqual(same["differing_pins"]["differs"], {})
+
+    def test_comparison_uses_emitted_nested_pins(self):
+        import copy
+        fx = Fixture(Ids("pins"))
+        proc, baseline, _ = _run(fx.root, *fx.all_inputs())
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        candidate = copy.deepcopy(baseline)
+        candidate["pinned_environment"]["toolchain"]["legacy_build"] = rr.V({"jdk": "changed"}, "test")
+        candidate["pinned_environment"]["database"]["datasource"]["value"]["db_version"] = "changed"
+        candidate["pinned_environment"]["corpus_and_captures"]["corpus"]["value"] = {"digest": "changed"}
+        candidate["pinned_environment"].pop("model_provider")
+        pins = rr.differing_pins([("v9", baseline), ("v10", candidate)])
+        for key in ("toolchain.legacy_build", "database.datasource", "corpus_and_captures.corpus"):
+            self.assertIn(key, pins["differs"])
+        self.assertEqual(pins["unknown"]["model_provider"], ["v10"])
+        self.assertEqual(rr.differing_pins([("a", baseline), ("b", baseline)])["differs"], {})
 
     def test_classifications(self):
         ids = Ids("b")

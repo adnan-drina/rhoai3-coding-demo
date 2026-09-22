@@ -88,13 +88,16 @@ MIGRATION_NO_RESOURCES = """migration:
 
 GOOD_URL = "jdbc:postgresql://demo-run-v2-parity-postgres.wksp-ai-developer.svc:5432/parity"
 RECEIPT = ("run=demo-run-v2;namespace=wksp-ai-developer;workspace=demo-run-v2;"
-           "host=demo-run-v2-parity-postgres;port=5432;database=parity;scaffold=abc123")
+           "host=demo-run-v2-parity-postgres;port=5432;database=parity;engine=postgresql;scaffold=abc123")
 
 
 def _tree(tmp: Path, migration: str, instance: str, url_env: str = "DEMO_DB_URL") -> Path:
     root = Path(tempfile.mkdtemp(dir=tmp))
     (root / "decisions.yaml").write_text(DECISIONS_TEMPLATE % (instance, url_env), encoding="utf-8")
     (root / "migration.yaml").write_text(migration, encoding="utf-8")
+    subprocess.run(['git', 'init', '-q', str(root)], check=True)
+    subprocess.run(['git', '-C', str(root), 'add', '.'], check=True)
+    subprocess.run(['git', '-C', str(root), '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test', 'commit', '-qm', 'scaffold'], check=True)
     return root
 
 
@@ -104,6 +107,10 @@ def _run(root: Path, *args: str, env: dict | None = None) -> subprocess.Complete
               "DEMO_ADMIN_CREDENTIAL", "DEMO_INVALID_CREDENTIAL", "PARITY_RUN_RECEIPT"):
         e.pop(k, None)
     e.update(env or {})
+    e['DEVWORKSPACE_NAME'] = e['MIGRATION_RUN_NAME'] = 'demo-run-v2'
+    if e.get('PARITY_RUN_RECEIPT') == RECEIPT:
+        sha = subprocess.check_output(['git', '-C', str(root), 'rev-parse', 'HEAD'], text=True).strip()
+        e['PARITY_RUN_RECEIPT'] = RECEIPT.replace('scaffold=abc123', 'scaffold=' + sha)
     return subprocess.run([sys.executable, str(SCRIPT), "--root", str(root), *args],
                           capture_output=True, text=True, env=e)
 
@@ -150,8 +157,8 @@ def main() -> int:
         root = _tree(tmp, MIGRATION_NO_RESOURCES, "shared-parity-postgres.wksp-ai-developer")
         before = (root / "decisions.yaml").read_text(encoding="utf-8")
         r = _run(root)
-        ok(r.returncode == 0, "a pre-per-run destination was refused: %s" % r.stderr)
-        ok("no resources block" in r.stdout, "pre-per-run destination not explained: %s" % r.stdout)
+        ok(r.returncode == 1, "unmarked legacy shape was accepted")
+        ok("UNASSIGNED" in r.stderr, "missing legacy authorization not explained")
         ok((root / "decisions.yaml").read_text(encoding="utf-8") == before,
            "a pre-per-run destination was rewritten")
 

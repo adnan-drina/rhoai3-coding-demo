@@ -1971,3 +1971,18 @@ The next crash-loop restart acquires leadership, completes the migrations
 schema reset needed — the catalog database is derived data, but archived
 registry records live in the separate demo-registry database, so prefer
 this surgical recovery over drops.
+
+
+## Stage 080 run-resource refusal
+
+`RUN_RESOURCES_UNASSIGNED` after stamping means the resource declaration is
+missing; restore the assigned declaration, never downgrade the run to legacy.
+`RUN_RESOURCES_RECEIPT_MISMATCH` also checks the actual workspace, receipt port
+and engine, and the original scaffolding commit. Missing/shallow Git history
+must be retrieved before that binding can be verified; do not replace the receipt.
+
+`RUN_RESOURCES_BUSY` names the holder TaskRun in `migration-run-<run>-lock`.
+Wait for the owner to finish. A killed task may leave the lock: prove the holder
+and its pod are stopped before platform cleanup. A `retiring` receipt permits
+only retirement recovery; a `retired` identity is never provisioned again.
+See the versioned Stage 080 isolation demonstration for the live qualification.

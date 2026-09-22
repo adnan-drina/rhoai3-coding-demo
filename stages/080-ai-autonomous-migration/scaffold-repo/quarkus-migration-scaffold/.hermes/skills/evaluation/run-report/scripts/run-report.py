@@ -706,14 +706,15 @@ def bootstrap_repairs(tree: Tree, decisions: Any) -> Dict[str, Any]:
         else U("decisions.yaml decides no repair for bootstrap" if isinstance(decisions, dict) else "decisions.yaml unreadable", DECISIONS)
     rec, rwhy = tree.json(DECIDED_REPAIRS)
     binding = as_dict(as_dict(bs).get("decided_repairs"))
+    no_binding = "decided_repairs" not in as_dict(bs) or binding == {"declared": False}
     if not isinstance(rec, dict):
-        if isinstance(bs, dict) and isinstance(decisions, dict) and not sec and "decided_repairs" not in bs and rec is None:
+        if isinstance(bs, dict) and isinstance(decisions, dict) and not sec and no_binding and rec is None:
             # nothing was decided for bootstrap and the bootstrap recorded
             # nothing: zero is READ here, from the decision and the receipt
             e = V([], DECISIONS + "#decided_repairs + " + BOOTSTRAP, "decisions.yaml decides no repair for bootstrap and the bootstrap receipt binds none")
             e.update({"applied": 0, "refused": 0, "adrs": []})
             out["decided"] = e
-        elif isinstance(bs, dict) and "decided_repairs" not in bs:
+        elif isinstance(bs, dict) and no_binding:
             out["decided"] = U("no bootstrap receipt: %s, and %s carries no decided_repairs binding (bootstrapped before decided repairs existed)" % (rwhy, BOOTSTRAP), DECIDED_REPAIRS)
         else:
             out["decided"] = U("no bootstrap receipt: %s" % (rwhy if isinstance(bs, dict) else "%s; %s" % (bwhy, rwhy)), DECIDED_REPAIRS)
@@ -1682,34 +1683,42 @@ def compare(rep: Dict[str, Any], others: List[Tuple[str, Dict[str, Any]]]) -> Di
 
 # ADR-019 §4 refuses attributing a difference to one change when others moved
 # too. A comparison therefore names every pinned input that is NOT the same
-# across the runs it compares: the reader owes any headline delta to all of
-# them together. It reports what the reports say -- a pin a report could not
+# across the runs it compares. Deltas are descriptive: the contribution of
+# any individual changed input is unknown. It reports what the reports say -- a pin a report could not
 # read is "unknown", which is neither "same" nor "differs".
-PIN_FIELDS = (("pinned_environment", ("model_provider", "inference", "concurrency", "toolchain", "database", "corpus", "comparators")),
-              ("pinned_inputs", ("golden", "decisions_digest", "unit_formation", "runtime_feedback", "frozen_source_digest",
-                                 "bootstrap_repairs", "created_from_golden")))
+PIN_FIELDS = (("pinned_environment", ("model_provider", "inference", "concurrency", "toolchain", "database", "corpus_and_captures", "comparators", "tool_pins", "hermes_agent", "card_model_overrides")),
+              ("pinned_inputs", ("installed_goldens", "project_commits", "pins_digest", "bundle_digest", "accepted_adrs", "decisions_digest", "unit_formation", "runtime_feedback", "frozen_source_digest",
+                                 "created_from_golden")),
+              ("bootstrap_repairs", ("decided", "decision")))
 
 
 def differing_pins(runs: List[Tuple[str, Dict[str, Any]]]) -> Dict[str, Any]:
-    differs: Dict[str, Any] = {}
-    unknown: Dict[str, List[str]] = {}
-    for section, fields in PIN_FIELDS:
-        for field in fields:
-            seen: Dict[str, Any] = {}
-            blind: List[str] = []
-            for label, rep in runs:
-                entry = as_dict(as_dict(rep.get(section)).get(field))
-                if not entry:
-                    continue
-                if entry.get("value") is None:
-                    blind.append(label)
-                else:
-                    seen[label] = entry["value"]
-            if blind:
-                unknown.setdefault(field, []).extend(blind)
-            if len(seen) > 1 and len({json.dumps(v, sort_keys=True) for v in seen.values()}) > 1:
-                differs[field] = seen
-    return {"differs": differs, "unknown": {k: sorted(set(v)) for k, v in unknown.items()}}
+    def leaves(value: Any, prefix: str) -> Dict[str, Any]:
+        if not isinstance(value, dict) or not value or "value" in value:
+            return {prefix: as_dict(value).get("value")}
+        out = {}
+        for key, child in value.items():
+            out.update(leaves(child, prefix + "." + key))
+        return out
+
+    flattened = {}
+    for label, rep in runs:
+        pins = {}
+        for section, fields in PIN_FIELDS:
+            for field in fields:
+                name = section + "." + field if section == "bootstrap_repairs" else field
+                pins.update(leaves(as_dict(rep.get(section)).get(field), name))
+        flattened[label] = pins
+    differs, unknown = {}, {}
+    for key in sorted({k for pins in flattened.values() for k in pins}):
+        seen = {label: pins[key] for label, pins in flattened.items() if pins.get(key) is not None}
+        blind = sorted(label for label, pins in flattened.items() if pins.get(key) is None)
+        if blind:
+            unknown[key] = blind
+        if len({json.dumps(v, sort_keys=True) for v in seen.values()}) > 1:
+            differs[key] = seen
+    return {"differs": differs, "unknown": unknown}
+
 
 
 def val(e: Any) -> str:
@@ -1959,7 +1968,7 @@ def render(rep: Dict[str, Any]) -> str:
             L.append("- pinned inputs that DIFFER across these runs: %s" % ", ".join(sorted(dp["differs"])))
             for field, per in sorted(dp["differs"].items()):
                 L.append("  - %s: %s" % (field, json.dumps(per, sort_keys=True)))
-            L.append("  - a difference below is owed to ALL of these together, not to any one of them")
+            L.append("  - deltas describe configurations that differ in these inputs; their individual causal contributions are unknown")
         elif dp:
             L.append("- pinned inputs: none of the compared fields differ across these runs")
         if dp.get("unknown"):
