@@ -71,9 +71,22 @@ READS_RULE = (
     "per edit cycle. Do not read receipt.json, _run.json or verdict files: the brief is their digest."
 )
 
+# H9b (v9 t_2da2458b): the terminal tool's default timeout (180 s) killed a
+# 30 s advance.py after it had accepted; a second call refused; the worker
+# blocked an ACCEPTED card.
+ADVANCE_RULE = (
+    "advance.py rule: run it ONCE per verify, through the terminal tool with its `timeout` parameter set to 600 (the "
+    "tool's foreground maximum; the default 180 is not enough for a rebuild and a mint). It prints one `advance: ...` "
+    "progress line per phase, and the verdict line (OK: ACCEPTED / REVERTED / CONTINUE / VERIFICATION_PENDING / "
+    "DEFERRED) is on the record the moment it is printed. After ANY non-zero, killed or truncated advance.py, do not "
+    "decide from the exit code: run advance.py again -- it is idempotent and answers `OK: ACCEPTED already (step N, "
+    "commit X)` or `REVERTED already` -- or read verification/loop/steps.json. Never kanban_block a card whose step is "
+    "recorded accepted (K2 refuses it): kanban_complete is its terminator."
+)
+
 PROCEDURE = (
     "Patch the write set one item at a time (targeted edits; never rewrite a whole file, never tests). "
-    + SCOPE_RULE + " " + EVIDENCE_RULE + " " + STOP_RULE + " " + READS_RULE
+    + SCOPE_RULE + " " + EVIDENCE_RULE + " " + STOP_RULE + " " + READS_RULE + " " + ADVANCE_RULE
     + " Each item names its rule, its advice (the rule's own guidance), "
     "and for pom.xml the exact element at the reported line. An item whose advice names an artifact that is "
     "already in the pom is marked advice_present: verify and move on, do not add it twice. A compile item "

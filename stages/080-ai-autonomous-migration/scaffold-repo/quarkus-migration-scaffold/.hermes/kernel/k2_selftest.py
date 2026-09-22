@@ -1238,6 +1238,84 @@ def main() -> int:
             fails += 1
         else:
             print("ok non_loop_card_app_start_allowed")
+        # H9b: advance.py under the terminal tool's own timeout, or a coreutils
+        # `timeout 600` prefix, is the road step it always was
+        for cmdline in ("timeout 600 python3 .hermes/skills/migration/fix-until-green/scripts/advance.py --root . --cluster c:1 --card t_loopcard",
+                        "python3 .hermes/skills/migration/fix-until-green/scripts/advance.py --root . --cluster c:1 --card t_loopcard"):
+            r = run(cmdline, roots, cwd=cwd, extra_env=loop_card_env)
+            if r.get("action") == "block":
+                print("FAIL loop_card_advance_timeout_prefix_allowed %r" % cmdline, r, file=sys.stderr)
+                fails += 1
+            else:
+                print("ok loop_card_advance_timeout_prefix_allowed")
+        # H9a (dest v9 t_2da2458b): the REAL hook payload -- tool_input, the Hermes PROCESS cwd (not the
+        # session's), extra.task_id -- with the process cwd a directory that is NOT the dest root. The
+        # file tools resolve a relative path against the session cwd (the dest root for a loop card), so
+        # K2 must too: write_file / patch (mode replace, and mode patch with the path inside the V4A
+        # text) on the AMENDED file pass, on a third file are refused, and sed on the third file is refused.
+        (dest / "src" / "main" / "java").mkdir(parents=True, exist_ok=True)
+        for name in ("Ctl.java", "Impl.java", "Other.java"):
+            (dest / "src" / "main" / "java" / name).write_text("class X {}", encoding="utf-8")
+        (dest / "verification" / "loop" / "issued.json").write_text(json.dumps(
+            {"schema": "rhoai3.loop-issued/v1", "task_id": "t_loopcard", "cluster": "c:1",
+             "write_set": ["src/main/java/Ctl.java", "src/main/java/Impl.java"],
+             "amendments": [{"path": "src/main/java/Impl.java", "reason": "the 5xx stack's first product frame"}]}), encoding="utf-8")
+        real_env = dict(loop_card_env, K2_FILES_WRITABLE="src/main/java/Ctl.java", HERMES_WRITE_SAFE_ROOT=str(dest))
+        real_extra = {"hook_event_name": "pre_tool_call", "session_id": "s1", "extra": {"task_id": "t_loopcard", "tool_call_id": "call-1"}}
+        parent_cwd = str(dest.parent)
+        v4a = "*** Begin Patch\n*** Update File: %s\n@@ class @@\n-class X {}\n+class Y {}\n*** End Patch\n"
+        impl_rel, impl_abs, other_rel = "src/main/java/Impl.java", str(dest / "src/main/java/Impl.java"), "src/main/java/Other.java"
+        for label, tl, ti in (("write_file rel", "write_file", {"path": impl_rel, "content": "x"}),
+                              ("write_file abs", "write_file", {"path": impl_abs, "content": "x"}),
+                              ("patch replace rel", "patch", {"mode": "replace", "path": impl_rel, "old_string": "X", "new_string": "Y"}),
+                              ("patch replace abs", "patch", {"mode": "replace", "path": impl_abs, "old_string": "X", "new_string": "Y"}),
+                              ("patch v4a rel", "patch", {"mode": "patch", "patch": v4a % impl_rel}),
+                              ("patch v4a abs", "patch", {"mode": "patch", "patch": v4a % impl_abs})):
+            r = run("", roots, cwd=parent_cwd, tool=tl, extra_input=ti, extra_payload=real_extra, extra_env=real_env)
+            if r.get("action") == "block":
+                print("FAIL amended_path_real_payload_allowed %s" % label, r, file=sys.stderr)
+                fails += 1
+            else:
+                print("ok amended_path_real_payload_allowed")
+        for label, tl, ti in (("write_file rel", "write_file", {"path": other_rel, "content": "x"}),
+                              ("patch replace rel", "patch", {"mode": "replace", "path": other_rel, "old_string": "X", "new_string": "Y"}),
+                              ("patch v4a rel", "patch", {"mode": "patch", "patch": v4a % other_rel}),
+                              ("patch v4a abs", "patch", {"mode": "patch", "patch": v4a % str(dest / other_rel)}),
+                              ("sed rel", "terminal", {"command": "sed -i 's/X/Y/' src/main/java/Other.java"}),
+                              ("sed abs", "terminal", {"command": "sed -i 's/X/Y/' %s" % (dest / other_rel)})):
+            r = run(ti.get("command", ""), roots, cwd=parent_cwd, tool=tl, extra_input={k: v for k, v in ti.items() if k != "command"},
+                    extra_payload=real_extra, extra_env=real_env)
+            if r.get("action") != "block" or "outside" not in (r.get("message") or ""):
+                print("FAIL third_file_real_payload_refused %s" % label, r, file=sys.stderr)
+                fails += 1
+            else:
+                print("ok third_file_real_payload_refused")
+        # H9b: a card whose step is recorded ACCEPTED has one terminator; kanban_block on it is refused
+        (dest / "verification" / "loop" / "steps.json").write_text(json.dumps({"steps": [
+            {"cluster": "", "card": "", "verdict": "accepted", "commit": "0000000000"},
+            {"cluster": "c:1", "card": "t_loopcard", "verdict": "accepted", "commit": "825dd0cabc123456"}]}), encoding="utf-8")
+        (dest / "verification" / "loop" / "issued.json").unlink()
+        r = run("", roots, cwd=cwd, tool="kanban_block", extra_input={"task_id": "t_loopcard", "kind": "needs_input", "reason": "LOOP_STALE_STATE"}, extra_env=loop_card_env)
+        if r.get("action") != "block" or "acceptance of this card is recorded" not in (r.get("message") or "") or "825dd0cabc12" not in (r.get("message") or ""):
+            print("FAIL accepted_card_block_refused", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok accepted_card_block_refused")
+        r = run("", roots, cwd=cwd, tool="kanban_complete", extra_input={"task_id": "t_loopcard"}, extra_env=dict(loop_card_env, K2_LOOP_ROAD="1", K2_LOOP_VERDICT="ACCEPTED"))
+        if r.get("action") == "block" and "acceptance of this card is recorded" in (r.get("message") or ""):
+            print("FAIL accepted_card_complete_allowed", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok accepted_card_complete_allowed")
+        r = run("", roots, cwd=cwd, tool="kanban_block", extra_input={"task_id": "t_other", "kind": "needs_input", "reason": "x"},
+                extra_env=dict(loop_card_env, HERMES_KANBAN_TASK="t_other"))
+        if r.get("action") == "block" and "acceptance of this card is recorded" in (r.get("message") or ""):
+            print("FAIL unaccepted_card_block_allowed", r, file=sys.stderr)
+            fails += 1
+        else:
+            print("ok unaccepted_card_block_allowed")
+        (dest / "verification" / "loop" / "steps.json").unlink()
+        (dest / "verification" / "loop" / "issued.json").write_text(json.dumps({"schema": "rhoai3.loop-issued/v1", "task_id": "t_loopcard", "cluster": "c:1"}), encoding="utf-8")
         # a loop card may not write a product path outside its write set: advance reverts the whole candidate over one
         (dest / "verification" / "loop" / "issued.json").write_text(json.dumps({"schema": "rhoai3.loop-issued/v1", "task_id": "t_loopcard", "cluster": "c:1", "write_set": ["pom.xml"]}), encoding="utf-8")
         for target in ("tmp-deps/x.jar", "src/main/java/A.java"):

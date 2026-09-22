@@ -406,7 +406,7 @@ def product_tree_digest(root: Path) -> str:
 
 
 def candidate_binding(root: Path, *, issued_path: Any = "", candidate_sha256: str = "",
-                      issued_receipt_sha256: str = "") -> tuple[dict[str, Any], list[str]]:
+                      issued_receipt_sha256: str = "", notes: list[str] | None = None) -> tuple[dict[str, Any], list[str]]:
     """(the candidate binding, why it cannot be made).
 
     ``issued_path`` defaults to the issued card of this tree; a relative path
@@ -414,10 +414,11 @@ def candidate_binding(root: Path, *, issued_path: Any = "", candidate_sha256: st
     are the caller stating what it believes; they are CHECKED, never trusted.
 
     It refuses -- with the subject named -- only when the binding cannot be
-    made at all: no issued card, an admission receipt that is not the one the
-    card was minted under, or a candidate digest that is not the tree being
-    compared. Everything else (a work list rebuilt on the candidate, a seal
-    that no longer covers it) is exactly what this mode exists for."""
+    made at all: no issued card, or a candidate digest that is not the tree
+    being compared. Everything else (a work list rebuilt on the candidate, a
+    seal that no longer covers it, an admission receipt on disk that is not
+    the one the card was minted under -- appended to ``notes``) is exactly
+    what this mode exists for: the binding is to the ISSUED receipt (H10)."""
     root = Path(root)
     issued_p = Path(issued_path) if issued_path else Path(LOOP_ISSUED)
     if not issued_p.is_absolute():
@@ -448,12 +449,21 @@ def candidate_binding(root: Path, *, issued_path: Any = "", candidate_sha256: st
             on_disk = str((load_json(rp) or {}).get("receipt_digest") or "")
         except (OSError, ValueError):
             on_disk = ""
+    # H10 (dest v9 t_56adcd76): the binding is to the receipt the card was
+    # MINTED under -- issued.json says which -- never to whatever
+    # admission-receipt.json says now. A mid-card verification never re-seals
+    # admission, but a concurrent writer can (a previous card's advance.py
+    # outliving its terminal timeout), and a correct repair was parked as
+    # unproven for it. A mismatch is said out loud, and the binding is made.
     if not on_disk:
-        gaps.append("no admission receipt on disk (%s); the card's receipt cannot be confirmed"
-                    % ADMISSION_RECEIPT.as_posix())
+        (notes if notes is not None else []).append(
+            "no admission receipt on disk (%s); the binding is the receipt the card was minted under (%s)"
+            % (ADMISSION_RECEIPT.as_posix(), minted[:12]))
     elif minted and on_disk != minted:
-        gaps.append("%s names another receipt (%s) than the one the card was minted under (%s)"
-                    % (ADMISSION_RECEIPT.as_posix(), on_disk[:12], minted[:12]))
+        (notes if notes is not None else []).append(
+            "%s names another receipt (%s) than the one the card was minted under (%s): admission was re-sealed after the "
+            "mint -- a mid-card verification never does that (advance, rewind, operator-step, refresh and resume do); the "
+            "binding is to the issued receipt" % (ADMISSION_RECEIPT.as_posix(), on_disk[:12], minted[:12]))
     recorded = ""
     runp = root / VERIFY_RUN
     if not runp.is_file():

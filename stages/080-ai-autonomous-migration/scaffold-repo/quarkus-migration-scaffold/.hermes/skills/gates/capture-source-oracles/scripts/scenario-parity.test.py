@@ -1006,13 +1006,15 @@ def _acceptance_binding_case() -> int:
                 if p.returncode != 1 or v["verdict"] != "INCONCLUSIVE" or needle not in v["reason"]:
                     return _fail("the binding refuses %r by name: rc=%s %s" % (needle, p.returncode, v.get("reason")))
 
-            # the receipt the card was minted under is the one on disk: an
-            # issued card naming another one is not this tree's card
+            # H10 (dest v9 t_56adcd76): the binding is to the receipt the card
+            # was MINTED under (issued.json), never to whatever
+            # admission-receipt.json says now -- a concurrent re-seal after the
+            # mint is a NOTE, and the binding is still made
             write_canonical(root / LOOP_ISSUED, dict(issued, receipt_sha256="0" * 64))
-            p = subprocess.run(base + ["--issued", issued_p], text=True, capture_output=True)
-            v = load_json(root / SCENARIO_PARITY / slugged)
-            if p.returncode != 1 or "names another receipt" not in v["reason"]:
-                return _fail("an issued card minted under another receipt refuses by name: rc=%s %s" % (p.returncode, v.get("reason")))
+            notes: list = []
+            made, gaps = candidate_binding(root, issued_path=issued_p, notes=notes)
+            if gaps or made.get("issued_receipt_sha256") != "0" * 64 or not any("names another receipt" in n and "minted under" in n for n in notes):
+                return _fail("an issued card minted under another receipt binds to THAT receipt and notes the mismatch: %s %s %s" % (made, gaps, notes))
             write_canonical(root / LOOP_ISSUED, issued)
 
             # the candidate in run.json must be the tree being compared: an

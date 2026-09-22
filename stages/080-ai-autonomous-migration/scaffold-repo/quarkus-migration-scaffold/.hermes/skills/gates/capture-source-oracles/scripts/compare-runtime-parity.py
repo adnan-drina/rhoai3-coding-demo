@@ -74,7 +74,7 @@ def main(argv: list[str] | None = None) -> int:
     receipt, gaps = verify_receipt(root, require_admitted=True)
     candidate_mode = str(binding.get("mode") or "") == BINDING_CANDIDATE
     # A candidate-bound verdict still names a receipt: the one the issued card
-    # was minted under, which candidate_binding proved is the receipt on disk.
+    # was minted under (issued.json) -- never whatever admission-receipt.json says now (H10).
     receipt_sha = str(binding.get("issued_receipt_sha256") or "") if candidate_mode else (receipt["receipt_digest"] if receipt else "")
     verdict = {"schema": "rhoai3.parity/v1", "entry_point": args.entry_point, "receipt_sha256": receipt_sha,
                "binding": dict(binding) if binding else {"mode": BINDING_CANDIDATE, "gaps": list(binding_gaps)},

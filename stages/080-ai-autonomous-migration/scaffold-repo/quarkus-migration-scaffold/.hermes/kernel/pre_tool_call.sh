@@ -85,12 +85,37 @@ def resolve_rp(p):
     s = (p or "").strip()
     if s.startswith("~"):
         s = os.path.expanduser(s)
-    if hook_cwd and not os.path.isabs(s):
+    rel = not os.path.isabs(s)
+    if hook_cwd and rel:
         s = os.path.join(hook_cwd, s)
     try:
-        return os.path.realpath(s)
+        rp = os.path.realpath(s)
     except OSError:
         return s
+    if rel:
+        # H9a (dest v9 t_2da2458b): the hook payload cwd is the Hermes
+        # PROCESS cwd (shell_hooks._serialize_payload: Path.cwd()), while the
+        # file tools and the terminal resolve a relative path against the
+        # SESSION cwd (file_tools._resolve_path -> terminal_tool.get_session_cwd),
+        # which this hook cannot read (in-process). A relative path that lands
+        # outside every allow root when joined with the process cwd is taken
+        # relative to the dest root -- the session cwd of every loop card --
+        # when it exists there. It is then checked against the write set like
+        # any other path; nothing is widened, only the base is corrected.
+        try:
+            allowed = [os.path.realpath(x) for x in allow.split(os.pathsep) if x.strip()]
+        except OSError:
+            allowed = []
+        inside_any = any(rp == a or rp.startswith(a + os.sep) for a in allowed)
+        base = (os.environ.get("HERMES_WRITE_SAFE_ROOT") or "").strip() or (allowed[0] if allowed else "")
+        if not inside_any and base:
+            try:
+                alt = os.path.realpath(os.path.join(base, (p or "").strip().lstrip("./") or "."))
+            except OSError:
+                alt = ""
+            if alt and (alt == base or alt.startswith(os.path.realpath(base) + os.sep)) and os.path.exists(os.path.dirname(alt) or alt):
+                return alt
+    return rp
 
 ORCH_DISABLED = {
     "file", "terminal", "code_execution", "delegation", "web", "browser", "skills",
@@ -457,6 +482,36 @@ if profile == "implementer" and ((tool in {"terminal", "bash", "shell"} and cmd 
           "and previous_attempts. Read it with cat, patch the write set, then run "
           "run-verify.sh and advance.py.")
 
+# H9b (dest v9 t_2da2458b): the terminal call of the worker to advance.py was
+# killed at ~30 s AFTER the acceptance had committed and recorded its step; a
+# second advance.py answered LOOP_STALE_STATE and the worker kanban_blocked an
+# ACCEPTED card, whose child then sat in todo. A card whose step is recorded
+# accepted has exactly one terminator.
+def loop_step_accepted():
+    """(step index, commit) when verification/loop/steps.json under an allow
+    root records the card of this task as accepted; None otherwise."""
+    task = hook_task_id()
+    if not task:
+        return None
+    roots_ = [x for x in allow.split(os.pathsep) if x] + [os.environ.get("HERMES_WRITE_SAFE_ROOT") or ""]
+    for r in roots_:
+        if not r:
+            continue
+        try:
+            doc = json.load(open(os.path.join(r, "verification", "loop", "steps.json"), encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        for n, row in enumerate(doc.get("steps") or [] if isinstance(doc, dict) else []):
+            if isinstance(row, dict) and str(row.get("card") or "") == task and str(row.get("verdict") or "") == "accepted":
+                return n, str(row.get("commit") or "")
+    return None
+
+if profile == "implementer" and is_block() and is_loop_card() is False and loop_step_accepted() is not None:
+    _n, _c = loop_step_accepted()
+    block("kanban_block refused: the acceptance of this card is recorded (verification/loop/steps.json step %d, commit %s); "
+          "kanban_complete is the terminator. A killed or repeated advance.py does not undo an acceptance: run "
+          "advance.py again (it answers OK: ACCEPTED already) or read steps.json." % (_n, _c[:12]))
+
 # The evidence rule (paved-road-m3): the measured artifact is the packaged
 # build run-verify.sh makes under decisions.yaml build_profiles and starts as
 # the parity phase does. v9 t_d280284d spent the last third of its hour on
@@ -594,6 +649,14 @@ def looks_like_http_route(p):
 
 paths = []
 collect(inp, paths)
+# H9a: the `patch` tool in mode patch names its files INSIDE the V4A text
+# (`*** Update File: path`), not in a path argument; without this the write
+# was invisible to every check below
+if tool == "patch" and isinstance(inp.get("patch"), str):
+    for _m in re.finditer(r"^\*\*\*\s+(?:Update|Add|Delete)\s+File:\s*(.+?)\s*$|^\*\*\*\s+Move\s+to:\s*(.+?)\s*$", inp["patch"], re.M):
+        _pth = _m.group(1) or _m.group(2)
+        if _pth and _pth not in paths:
+            paths.append(_pth)
 cmd_for_paths = strip_env_assignments(cmd) if cmd else ""
 if cmd_for_paths:
     for tok in cmd_for_paths.split():

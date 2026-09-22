@@ -29,6 +29,12 @@ grep -qF 'if [[ "${MODE}" == "acceptance" && "${RUNTIME}" -eq 1 && "${VERIFY_RC}
 grep -qF 'runtime' "${SCRIPT}" || fail "run.json must carry the parity stage's outcome"
 grep -qF 'parity-before.json' "${SCRIPT}" || fail "the receipt the comparison started from must be kept"
 grep -qF -- '--scenario' "${SCRIPT}" || fail "the comparison must be scoped to the card's scenarios"
+# H10 (dest v9 t_56adcd76): a verification never re-seals admission; a change
+# of the receipt while it ran is recorded and said out loud
+grep -qF 'ADMISSION_BEFORE="$(sha256sum "${ROOT}/evidence/planning/admission-receipt.json"' "${SCRIPT}" \
+  || fail "the admission receipt digest must be taken before anything runs"
+grep -qF 'ADMISSION_RESEALED_DURING_VERIFY' "${SCRIPT}" || fail "a re-seal during the verification must be named"
+grep -qF '"resealed_during_verify"' "${SCRIPT}" || fail "run.json must record whether admission was re-sealed during the verification"
 # the verdicts this stage produces are of the CANDIDATE: step 4 above rebuilt
 # the work list on it, so the live seal cannot match, and the issued card is
 # what they bind to instead (v9 card t_222c582a, where every parity card

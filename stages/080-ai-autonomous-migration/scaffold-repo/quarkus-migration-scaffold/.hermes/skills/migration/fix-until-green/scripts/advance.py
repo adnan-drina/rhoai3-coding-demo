@@ -446,6 +446,74 @@ def _continue(root: Path, steps: dict, cluster: str, card: str, cur: dict, reaso
     return 3
 
 
+_T0 = time.monotonic()
+
+
+def _phase(label: str) -> None:
+    """One progress line per slow phase (stderr, with the elapsed time), so a
+    terminal call killed mid-transaction shows WHERE it was killed. Dest v9
+    t_2da2458b: advance.py ran 30.3 s, the worker's terminal timeout cut it at
+    ~30 s with no line after 'OK: ACCEPTED', and nothing said whether the
+    rebuild, the re-seal or the mint had happened."""
+    print("advance: %s (t+%.1fs)" % (label, time.monotonic() - _T0), file=sys.stderr)
+
+
+def _recorded_verdict(root: Path, steps: dict, card: str, on_disk: str, *, mint: bool, hermes: str) -> int | None:
+    """H9b: advance.py is IDEMPOTENT on a card whose verdict is already on the
+    record. A worker whose terminal call was killed after the acceptance had
+    committed (dest v9 t_2da2458b: exit 124 at 30 s, then LOOP_STALE_STATE
+    from a second call, then kanban_block on an ACCEPTED card) gets the
+    verdict back, not a refusal: `OK: ACCEPTED already (step N, commit X)`
+    exit 0 -- and the acceptance's tail (rebuild, re-seal, publish, mint) is
+    completed if the kill interrupted it -- or `REVERTED already` /
+    `DEFERRED already` exit 1, each naming its terminator. None when the card
+    has no recorded verdict (the normal path)."""
+    for n, row in enumerate(steps.get("steps") or []):
+        if not isinstance(row, dict) or str(row.get("card") or "") != card or str(row.get("verdict") or "") != "accepted":
+            continue
+        commit = str(row.get("commit") or "")
+        same = str(row.get("candidate_sha256") or "") == on_disk
+        print("OK: ACCEPTED already (step %d, commit %s) -- call kanban_complete; this invocation changes nothing about the verdict%s"
+              % (n, commit[:12], "" if same else " (the tree on disk is no longer that candidate: %s vs %s)" % (on_disk[:12], str(row.get("candidate_sha256") or "")[:12])))
+        if not same:
+            return 0
+        # the tail the kill may have interrupted, each step idempotent: the
+        # rebuilt work list, the admission seal and the published state
+        # describe the accepted tree either way, and the mint runs only when
+        # nothing is issued (K4 wrote issued.json if it ran)
+        _phase("completing the acceptance's tail: rebuilding the work list")
+        rebuild = build_worklist(root)
+        _phase("re-sealing admission")
+        rec = pipeline.admit(root)
+        publish_loop_state(root, rebuild)
+        if rec["status"] != "ADMITTED":
+            print("REFUSE: LOOP_ADMISSION %s: %s" % (rec["status"], "; ".join(rec["reasons"][:3])), file=sys.stderr)
+            return 1
+        if mint and not (root / LOOP_ISSUED).is_file():
+            _phase("minting the next card (K4): nothing was issued after the acceptance")
+            return _mint(root, hermes)
+        _phase("done" + ("" if not mint else "; the next card is already issued"))
+        return 0
+    # a rejection is "already answered" only while the tree carries no new
+    # candidate: a rejected card is restored to the accepted tree, so a repeat
+    # call on a clean tree is the killed-terminal case, while a fresh edit is
+    # a new candidate and takes the normal path (and its own refusals)
+    if product_paths_changed(root):
+        return None
+    for row in reversed(steps.get("rejected") or []):
+        if isinstance(row, dict) and str(row.get("card") or "") == card and not row.get("rewound"):
+            deferred = load_deferred(root)
+            cluster = str(row.get("cluster") or "")
+            if cluster in set(deferred.get("clusters") or []):
+                print("DEFERRED already (%s: %s) -- the loop is stopped; kanban_block kind=needs_input naming the cluster"
+                      % (cluster, str(deferred.get("reasons", {}).get(cluster) or "")[:160]), file=sys.stderr)
+                return 1
+            print("REVERTED already (%s attempt on card %s: %s) -- the retry is the next K4 card; call kanban_complete"
+                  % (cluster, card, str(row.get("reason") or "")[:160]), file=sys.stderr)
+            return 1
+    return None
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--root", required=True)
@@ -461,7 +529,13 @@ def main(argv: list[str] | None = None) -> int:
         print("FAIL: LOOP_NOT_VERIFIED run run-verify.sh first", file=sys.stderr)
         return 2
     steps = load_steps(root)
+    _phase("state loaded")
     on_disk = candidate_sha256(root)
+    _phase("candidate digest computed")
+    if not args.baseline and args.card:
+        done = _recorded_verdict(root, steps, args.card, on_disk, mint=not args.no_mint, hermes=args.hermes)
+        if done is not None:
+            return done
     pending_row = pending_for(steps, args.cluster) if (not args.baseline and args.cluster) else None
     last_sha = str((steps["steps"][-1].get("candidate_sha256") if steps.get("steps") else "") or "")
     if pending_row and last_sha and on_disk == last_sha:
@@ -472,6 +546,12 @@ def main(argv: list[str] | None = None) -> int:
         print("FAIL: LOOP_STALE_STATE work list changed after verify", file=sys.stderr)
         return 2
     run = load_json(root / VERIFY_RUN) if (root / VERIFY_RUN).is_file() else {}
+    if isinstance(run, dict) and ((run.get("admission") or {}) if isinstance(run.get("admission"), dict) else {}).get("resealed_during_verify"):
+        adm = run["admission"]
+        print("NOTE: admission-receipt.json was re-sealed while run-verify.sh ran (file %s -> %s): a verification never does "
+              "that; another process did. The parity comparison of this candidate is bound to the receipt the issued card was "
+              "minted under (issued.json), so the verdict below is on this card's own evidence."
+              % (str(adm.get("file_sha256_before") or "")[:12], str(adm.get("file_sha256_after") or "")[:12]), file=sys.stderr)
     if not args.baseline and isinstance(run, dict) and str(run.get("mode") or "acceptance") == "diagnostic":
         print("REFUSE: LOOP_DIAGNOSTIC_NOT_ACCEPTANCE diagnostic mode cannot promote or reject; run run-verify.sh --mode acceptance on this candidate", file=sys.stderr)
         return 1
@@ -799,6 +879,7 @@ def main(argv: list[str] | None = None) -> int:
                  ", ".join("%s %s" % (c["entry_point"], c["verdict"]) for c in carried_rows[:4])))
     if reran_oracles:
         print("NOTE: the scoped comparison re-ran the read oracle(s) of %s for this card" % ", ".join(reran_oracles))
+    _phase("judging the candidate (measure, gates, parity, unit checkpoint)")
     ok, reason = progress(prev["measure"], cur["measure"], prev_keys, cur_keys,
                           gate=gate,
                           unit_scope=scope_doc if unit else None,
@@ -841,7 +922,9 @@ def main(argv: list[str] | None = None) -> int:
         # declared, or its operation deleted): that is not a repair
         return _reject(root, steps, args.cluster, args.card, cur, family_detail, changed, mint=not args.no_mint, hermes=args.hermes)
     clear_pending(steps, args.cluster, why="accepted")
+    _phase("verdict: accepted; committing the candidate")
     sha = _commit(root, changed, "fix-until-green: %s attempt %s %s" % (args.cluster, issued.get("attempt"), cur["measure"]["tuple"]))
+    _phase("snapshotting the tool reports")
     snapshot_reports(root)
     if carried_rows:
         # the accepted baseline is what acceptance JUDGED: the scoped receipt
@@ -864,7 +947,9 @@ def main(argv: list[str] | None = None) -> int:
     save_steps(root, steps)
     (root / LOOP_ISSUED).unlink()
     print("OK: ACCEPTED %s (%s) commit %s" % (args.cluster, reason, sha[:12]))
+    _phase("the verdict is on the record (steps.json); rebuilding the work list on the accepted tree")
     rebuild = build_worklist(root)
+    _phase("re-sealing admission")
     rec = pipeline.admit(root)
     # published either way: the accepted step is on record whether or not the
     # next card can be admitted, and the state must describe it
@@ -873,8 +958,12 @@ def main(argv: list[str] | None = None) -> int:
         print("REFUSE: LOOP_ADMISSION %s: %s" % (rec["status"], "; ".join(rec["reasons"][:3])), file=sys.stderr)
         return 1
     if args.no_mint:
+        _phase("done (no mint)")
         return 0
-    return _mint(root, args.hermes)
+    _phase("minting the next card (K4)")
+    rc = _mint(root, args.hermes)
+    _phase("done")
+    return rc
 
 
 def _mint(root: Path, hermes: str) -> int:

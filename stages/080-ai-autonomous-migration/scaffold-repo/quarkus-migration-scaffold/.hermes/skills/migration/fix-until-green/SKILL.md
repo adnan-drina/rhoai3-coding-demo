@@ -44,6 +44,8 @@ python3 "${HERMES_SKILL_DIR}/scripts/brief.py" --root /projects/modernized --clu
 bash "${HERMES_SKILL_DIR}/scripts/run-verify.sh" --root /projects/modernized --mode acceptance  # 3. tools recompute the work list
 python3 "${HERMES_SKILL_DIR}/scripts/advance.py" --root /projects/modernized \
   --cluster <cluster id from the brief> --card "$HERMES_KANBAN_TASK"               # 4. accept / revert / pending / defer, then mint or block
+#   (terminal tool `timeout: 600`; run ONCE; killed or non-zero -> run again: idempotent, answers "ACCEPTED already" /
+#    "REVERTED already"; never kanban_block a card whose step is recorded accepted)
 ```
 
 Optional cheap pass before acceptance (classpath + JDK diagnostics only; cannot feed `advance.py`):

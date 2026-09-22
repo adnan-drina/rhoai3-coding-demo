@@ -78,6 +78,13 @@ export JAVA_HOME="${JAVA_HOME_21:-${JAVA_HOME:-}}"
 [[ -n "${JAVA_HOME}" ]] && export PATH="${JAVA_HOME}/bin:${PATH}"
 RELEASE="$(python3 -c 'import json,sys; p=json.load(open(sys.argv[1]))["pins"]; print(p.get("quarkus_platform",{}).get("java_release") or 21)' "${ROOT}/.hermes/pins.json")"
 javac -d "${WORK}/classes" "${SCRIPT_DIR}/jdk-diagnostics/JdkDiagnostics.java" >"${WORK}/javac.log" 2>&1 || { echo "FAIL: VERIFY_TOOL_COMPILE" >&2; exit 1; }
+# H10 (dest v9 t_56adcd76): a mid-card verification NEVER re-seals admission
+# (only advance, rewind, operator-step, refresh and resume do). The receipt's
+# digest is taken here and compared at the end: a change means another
+# process wrote it while this verification ran, and that is recorded in
+# run.json (admission.resealed_during_verify) and said out loud rather than
+# discovered as a parked card three minutes later.
+ADMISSION_BEFORE="$(sha256sum "${ROOT}/evidence/planning/admission-receipt.json" 2>/dev/null | cut -c1-64)"
 
 now_ms() { python3 -c 'import time; print(int(time.time() * 1000))'; }
 T_ALL="$(now_ms)"
@@ -514,4 +521,25 @@ if line:
     print(line)
 PYEOF
 fi
+ADMISSION_AFTER="$(sha256sum "${ROOT}/evidence/planning/admission-receipt.json" 2>/dev/null | cut -c1-64)"
+export ADMISSION_BEFORE ADMISSION_AFTER
+python3 - "${ROOT}" <<'PYEOF' || true
+import json, os, sys
+from pathlib import Path
+before, after = os.environ.get("ADMISSION_BEFORE") or "", os.environ.get("ADMISSION_AFTER") or ""
+p = Path(sys.argv[1]) / "verification" / "build" / "run.json"
+if p.is_file():
+    try:
+        doc = json.loads(p.read_text(encoding="utf-8"))
+    except ValueError:
+        doc = None
+    if isinstance(doc, dict):
+        doc["admission"] = {"file_sha256_before": before, "file_sha256_after": after, "resealed_during_verify": bool(before) and before != after}
+        p.write_text(json.dumps(doc, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+if before and before != after:
+    print("WARN: ADMISSION_RESEALED_DURING_VERIFY evidence/planning/admission-receipt.json changed while this verification ran "
+          "(file %s -> %s). A verification never re-seals admission; another process did (a previous card's advance.py "
+          "outliving its terminal timeout, an Operator step). The parity comparison binds to the receipt the issued card was "
+          "minted under, so this card is still judged on its own evidence." % (before[:12], after[:12]), file=sys.stderr)
+PYEOF
 exit "${VERIFY_RC}"

@@ -227,6 +227,15 @@ def _checked_veto_case() -> int:
             return _fail("the vetoed candidate is reverted")
         if not (load_json(root / LOOP_STEPS).get("attempts") or {}):
             return _fail("a veto is a genuine rejection and spends an attempt")
+        # H9b: advance.py again on the REVERTED card is idempotent -- the
+        # rejection comes back by name, exit 1, no second attempt is spent
+        spent = dict(load_json(root / LOOP_STEPS).get("attempts") or {})
+        p = _advance(root, cluster["id"], "t_veto")
+        blob = p.stdout + p.stderr
+        if p.returncode != 1 or "REVERTED already" not in blob or "call kanban_complete" not in blob or "unhandled checked exception" not in blob:
+            return _fail("advance.py on a reverted card answers REVERTED already, exit 1: %s" % blob[-400:])
+        if (load_json(root / LOOP_STEPS).get("attempts") or {}) != spent:
+            return _fail("the idempotent answer spends no attempt")
     return 0
 
 
@@ -543,15 +552,35 @@ def _parity_card_case() -> int:
         rp = _run([sys.executable, str(SCRIPTS / "restore-pending.py"), "--root", str(root), "--cluster", cluster["id"]])
         if rp.returncode != 0 or "restored" not in rp.stdout:
             return _fail("restore-pending must put the retained candidate back: %s%s" % (rp.stdout, rp.stderr))
+        # H10 (v9 t_56adcd76): a MID-CARD verification never re-seals admission
+        # -- the receipt is byte-identical across the whole acceptance pass --
+        # and even when another process re-sealed it after the mint, the
+        # comparison binds to the receipt the card was MINTED under
+        # (issued.json), and the card is ACCEPTED on its own evidence.
+        from planner.paths import ADMISSION_RECEIPT as _ADM  # noqa: E402
+        adm_before = (root / _ADM).read_bytes()
         _parity_records(root, "PASS")
         _parity_verified(root, findings, verdict="PASS")
+        if (root / _ADM).read_bytes() != adm_before:
+            return _fail("a mid-card verification must leave admission-receipt.json byte-identical")
         binding = _candidate_binding(root, "t_par2")
         _parity_records(root, "PASS", binding=binding)
         _parity_run_record(root, binding)
+        # ... another writer re-seals admission mid-card (the v9 shape: a
+        # different receipt_digest on disk than the one issued.json names)
+        adm_doc = load_json(root / _ADM)
+        adm_doc["receipt_digest"] = "3277" + "0" * 60
+        write_canonical(root / _ADM, adm_doc)
+        sys.path.insert(0, str(HERE.parents[2] / "gates" / "capture-source-oracles" / "scripts"))
+        from _scenarios import candidate_binding as _cb  # noqa: E402
+        notes: list = []
+        made, gaps = _cb(root, issued_path=root / LOOP_ISSUED, notes=notes)
+        if gaps or made.get("issued_receipt_sha256") != binding["issued_receipt_sha256"] or not any("minted under" in n for n in notes):
+            return _fail("the candidate binding is to the ISSUED receipt, and the on-disk mismatch is a note, not a refusal: %s %s %s" % (made, gaps, notes))
         p = _advance(root, cluster["id"], "t_par2")
         if p.returncode != 0 or "ACCEPTED" not in p.stdout or "discharges" not in p.stdout:
-            return _fail("a parity repair the comparison confirms must be accepted with the tuple unchanged: %s%s"
-                         % (p.stdout[-600:], p.stderr[-600:]))
+            return _fail("a parity repair the comparison confirms must be accepted with the tuple unchanged, whatever "
+                         "admission-receipt.json says now: %s%s" % (p.stdout[-600:], p.stderr[-600:]))
         step = load_json(root / LOOP_STEPS)["steps"][-1]
         if step.get("gate") != "parity" or (step.get("parity") or {}).get("verdict") != "PASS":
             return _fail("the accepted step must record the gate and the receipt it was accepted on: %s" % step)
@@ -562,6 +591,22 @@ def _parity_card_case() -> int:
         snap = root / "verification" / "loop" / "accepted" / "parity" / "receipt.json"
         if not snap.is_file() or load_json(snap)["verdict"] != "PASS":
             return _fail("the accepted state's parity receipt must be snapshotted like the other reports: %s" % snap)
+        # H9b (v9 t_2da2458b): advance.py again on the ACCEPTED card -- the
+        # killed-terminal case -- is idempotent: the verdict comes back, no
+        # step, no commit, no attempt is added, exit 0; and its progress lines
+        # name the phases
+        before_steps, before_head = load_json(root / LOOP_STEPS), _git(root, "rev-parse", "HEAD").strip()
+        p = _advance(root, cluster["id"], "t_par2")
+        if (p.returncode != 0 or "OK: ACCEPTED already (step %d, commit %s)" % (len(before_steps["steps"]) - 1, step["commit"][:12]) not in p.stdout
+                or "call kanban_complete" not in p.stdout):
+            return _fail("advance.py on an accepted card answers ACCEPTED already, exit 0: %s%s" % (p.stdout[-400:], p.stderr[-400:]))
+        if load_json(root / LOOP_STEPS) != before_steps or _git(root, "rev-parse", "HEAD").strip() != before_head:
+            return _fail("the idempotent answer records nothing and commits nothing")
+        if "advance: state loaded" not in p.stderr or "advance: re-sealing admission" not in p.stderr:
+            return _fail("advance.py prints its phases: %s" % p.stderr[-400:])
+        p = _advance(root, cluster["id"], "t_par2")
+        if p.returncode != 0 or "ACCEPTED already" not in p.stdout:
+            return _fail("and again: %s" % (p.stdout[-200:] + p.stderr[-200:]))
     return 0
 
 

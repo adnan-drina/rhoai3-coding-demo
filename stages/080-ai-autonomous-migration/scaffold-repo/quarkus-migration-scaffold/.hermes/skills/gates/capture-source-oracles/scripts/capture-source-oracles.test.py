@@ -614,15 +614,18 @@ def _candidate_binding_case(root: Path, entry_point: str, dest_url: str) -> int:
         if p.returncode != 0 or v["verdict"] != "PASS" or v.get("binding") != want or v["receipt_sha256"] != receipt_digest:
             return _fail("a candidate-bound read comparison must compose a verdict over the stale seal and record what "
                          "it is OF: rc=%s %s %s" % (p.returncode, {k: v.get(k) for k in ("verdict", "binding", "receipt_sha256", "reason")}, p.stderr[-300:]))
-        # a card minted under another receipt than the one on disk: the binding
-        # cannot be made, and the refusal names the subject
+        # H10 (dest v9 t_56adcd76): a card minted under another receipt than
+        # the one on disk -- admission re-sealed after the mint by a concurrent
+        # writer -- is bound to the receipt it was MINTED under; the verdict
+        # composes and names that receipt, and the mismatch is noted
         write_canonical(root / LOOP_ISSUED, dict(load_json(root / LOOP_ISSUED), receipt_sha256="0" * 64))
         p = _run([sys.executable, str(COMPARE), "--root", str(root), "--entry-point", entry_point,
                   "--dest-url", dest_url, "--issued", str(root / LOOP_ISSUED)])
         v = load_json(out)
-        if p.returncode != 1 or v["verdict"] != "INCONCLUSIVE" or "another receipt" not in v["reason"]:
-            return _fail("a card minted under another receipt must be refused by name: rc=%s %s"
-                         % (p.returncode, {k: v.get(k) for k in ("verdict", "reason")}))
+        if (p.returncode != 0 or v["verdict"] != "PASS" or v.get("receipt_sha256") != "0" * 64
+                or (v.get("binding") or {}).get("issued_receipt_sha256") != "0" * 64):
+            return _fail("a card minted under another receipt is bound to THAT receipt and composes: rc=%s %s"
+                         % (p.returncode, {k: v.get(k) for k in ("verdict", "reason", "receipt_sha256", "binding")}))
         # and the sealed road is untouched: no flags, no binding to make, the
         # seal is asked again
         (root / LOOP_ISSUED).unlink()
@@ -1362,7 +1365,7 @@ def main() -> int:
                 s.shutdown()
     print("OK: capture-source-oracles (HTTP capture/parity PASS+FAIL; non-idempotent INCONCLUSIVE; non-HTTP observations; bundle binding: an oracle from another bundle or with no bundle digest is INCONCLUSIVE, a capture under a stale receipt is CAPTURED and usable, the verdict stays receipt-bound; parity receipt refuses; "
           "the READ comparator takes the acceptance path's binding too (--issued): over a work list rebuilt on the candidate the sealed road still refuses, the candidate-bound "
-          "comparison measures and records the candidate, the receipt the card was minted under and the card, a card minted under another receipt is refused by name, and with "
+          "comparison measures and records the candidate, the receipt the card was minted under and the card, a card minted under another receipt is bound to the receipt it was minted under (H10), and with "
           "the seal restored the unflagged comparison is the sealed M4 road again; "
           "an enabled-mode scenario capture authenticates from a declared credential REFERENCE, records the reference and the mode and "
           "never the password, the Authorization value or the account, writes into its own directory, refuses a --source-config value "

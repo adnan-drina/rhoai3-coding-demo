@@ -82,7 +82,8 @@ rule to `kanban_complete`.
    `amend-scope.py --root . --cluster <id> --card $HERMES_KANBAN_TASK --path
    <file> --reason <why> --evidence parity:<item id>` (bounded by the card's
    own bounds: two amendments, a unit's four and never past its file bound),
-   then edit it. `kanban_block` kind=needs_input ONLY when amend-scope.py
+   then edit it — with the file tools (`patch`, `write_file`) on that path;
+   they honour the amended set (K2 reads `issued.json`). `kanban_block` kind=needs_input ONLY when amend-scope.py
    REFUSES (quote its `REFUSE: SCOPE_AMENDMENT` line) or when the fix is in a
    path the loop never grants: tests, `evidence/`, `decisions.yaml`, a plugin
    or dependency the brief did not ask for. A path outside the amended write
@@ -100,7 +101,15 @@ rule to `kanban_complete`.
    red, `kanban_block` kind=needs_input naming the tool. Do not run extra
    `mvn compile`/`test`/`verify` beside this script.
 5. `python3 .hermes/skills/migration/fix-until-green/scripts/advance.py --root . --cluster <id> --card $HERMES_KANBAN_TASK`
-   — the transaction decides. `OK: ACCEPTED` committed and minted the next
+   — the transaction decides. Run it ONCE per verify, through the terminal
+   tool with its `timeout` parameter set to `600` (its foreground maximum;
+   the default 180 s killed a 30 s acceptance on v9 `t_2da2458b`). It prints
+   `advance: <phase>` lines; the verdict is on the record when printed.
+   After any non-zero, killed (`[exit 124]`) or truncated advance: run it
+   again — it is idempotent and answers `OK: ACCEPTED already (step N,
+   commit X)` / `REVERTED already` — or read `verification/loop/steps.json`.
+   Never `kanban_block` a card whose step is recorded accepted (K2 refuses
+   it): `kanban_complete` is its terminator. `OK: ACCEPTED` committed and minted the next
    card. `REVERTED` (exit 1) discarded the candidate and re-minted this
    cluster as its own next card. `CONTINUE` (exit 3, repair-family cards)
    kept the candidate on the tree without counting an attempt: the compiler

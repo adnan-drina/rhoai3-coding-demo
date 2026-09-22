@@ -913,8 +913,13 @@ def main(argv: list[str] | None = None) -> int:
     # thing, so the runner, the comparator and the composer cannot disagree
     # about which tree the verdicts are of.
     binding, binding_gaps = ({}, [])
+    binding_notes: list[str] = []
     if args.issued:
-        binding, binding_gaps = candidate_binding(root, issued_path=args.issued)
+        binding, binding_gaps = candidate_binding(root, issued_path=args.issued, notes=binding_notes)
+        for note in binding_notes:
+            # H10: said out loud, never a refusal -- the binding is to the
+            # receipt the card was minted under
+            print("parity: NOTE %s" % note, file=sys.stderr)
     else:
         binding = sealed_binding()
     issued_argv = ["--issued", str(args.issued)] if args.issued else []
