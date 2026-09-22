@@ -37,6 +37,13 @@ one loop. The model proposes; the tools decide.
 
 ## Procedure
 
+Resuming a `VERIFICATION_PENDING` card: keep its retained edit. Once the named
+prerequisite changes, restore it with `restore-pending.py` unless the Operator
+already restored it, then run acceptance verification **before** `advance.py`.
+Restoration does not restore candidate verification; current reports describe
+the accepted tree. A premature `LOOP_CANDIDATE_CHANGED` on this pending card
+means reverify, not reimplement or mint another attempt.
+
 ```bash
 python3 "${HERMES_SKILL_DIR}/scripts/brief.py" --root /projects/modernized --cluster <id>   # 1. THIS card (issued.json if --cluster omitted and $HERMES_KANBAN_TASK matches; never the work-list head after a bounce)
 #   … patch the write set one item at a time (the brief lists each item with its advice and,
