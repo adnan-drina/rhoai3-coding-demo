@@ -2,6 +2,12 @@
 
 ## Stage 080 v10 readiness — 2026-09-22
 
+- During live-isolation preparation, the ownership CLI was found to omit its
+  typed reason on refusal, although the operation correctly exited nonzero.
+  It now retains `RUN_RESOURCES_MISMATCH` / `RUN_RESOURCES_MISSING` in the
+  command-line result. A subprocess regression reproduced both missing codes
+  before the fix and checks blocked reset, allowed analysis and an owned target.
+
 - Implemented the second isolation review fixes: explicit legacy authorization,
   complete receipt/workspace/scaffold binding, serialized provisioning and
   retirement, durable retiring state, refusal on API errors, and image digests.

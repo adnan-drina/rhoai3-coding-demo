@@ -31,6 +31,7 @@ from __future__ import annotations
 import sys
 import subprocess
 import json
+import os
 import tempfile
 from pathlib import Path
 
@@ -132,6 +133,25 @@ def main() -> int:
         tmp = Path(td)
         mig = MIGRATION % (RUN, NS, INSTANCE, RUN, RUN, RUN)
         root = _tree(tmp, mig, "UNSTAMPED")
+
+        # The shell reset entry point consumes this CLI, not require(). A
+        # refused exit without its typed code loses the diagnosis in live logs.
+        for env, operation, code, expected_rc in (
+            (_env("jdbc:postgresql://%s.other-namespace.svc:5432/parity" % HOST), "reset", ri.MISMATCH, 1),
+            ({}, "reset", ri.MISSING, 1),
+            ({}, "analysis", ri.MISSING, 0),
+            (_env(GOOD_URL), "reset", ri.OK, 0),
+        ):
+            cli_env = {k: v for k, v in os.environ.items()
+                       if not k.startswith(("PETCLINIC_", "PARITY_", "MIGRATION_RUN_", "DEVWORKSPACE_"))}
+            cli_env.update(env)
+            cli_env["PYTHONPATH"] = str(HERE.parent)
+            cli = subprocess.run([sys.executable, "-m", "planner.run_identity", "--root", str(root),
+                                  "--operation", operation], env=cli_env, capture_output=True, text=True)
+            output = cli.stderr if expected_rc else cli.stdout
+            ok(cli.returncode == expected_rc and code in output,
+               "CLI %s/%s lost its typed result or exit: %r" % (operation, code, output))
+            ok(SECRET not in cli.stdout + cli.stderr, "CLI printed a credential value")
 
         # --- the four counterexamples ------------------------------------
         refuses(root, "jdbc:postgresql://%s.other-namespace.svc:5432/parity" % HOST,

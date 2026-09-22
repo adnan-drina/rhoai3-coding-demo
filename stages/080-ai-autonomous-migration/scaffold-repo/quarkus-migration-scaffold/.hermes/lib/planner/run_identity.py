@@ -471,7 +471,8 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     verdict = check(root)
     blocked = verdict.blocking_for(args.operation)
-    line = "%s: %s %s" % ("REFUSE" if blocked else verdict.code, args.operation, verdict.detail)
+    result = "REFUSE: " + verdict.code if blocked else verdict.code + ":"
+    line = "%s %s %s" % (result, args.operation, verdict.detail)
     print(line, file=__import__("sys").stderr if blocked else None)
     return 1 if blocked else 0
 
