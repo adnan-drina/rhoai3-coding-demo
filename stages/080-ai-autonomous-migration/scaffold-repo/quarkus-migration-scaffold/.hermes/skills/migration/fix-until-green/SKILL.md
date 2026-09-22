@@ -69,6 +69,12 @@ If it persists, block with that evidence. Do not add a separate Maven run,
 background verification, or try shell/path variants without a diagnosed
 cause. Normal compiler errors are measurements, not verifier failures.
 
+For dependency inspection, reuse `verification/build/.work/classpath.txt`
+when `verification/build/run.json` records a successful classpath phase and
+the POM, Maven configuration and build profiles are unchanged. Filter that
+file for the libraries you need; do not rebuild the same classpath for each
+filter. If it is missing or stale, obtain fresh evidence through the verifier.
+
 - Evidence: the measured artifact is the packaged application run-verify.sh
   builds under the declared build profiles (`decisions.yaml build_profiles`)
   and starts as the parity phase starts it. `mvn quarkus:dev`, a dev-profile
