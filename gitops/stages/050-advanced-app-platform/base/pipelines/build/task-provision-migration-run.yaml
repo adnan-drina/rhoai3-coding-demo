@@ -104,8 +104,10 @@ spec:
         is always attributable to an image reference.
   results:
     - name: receipt
+      type: string
       description: The provisioning receipt this run's workspace secret carries.
     - name: outcome
+      type: string
       description: provisioned, reprovisioned, refused or retired.
   steps:
     - name: provision
@@ -398,7 +400,10 @@ spec:
         echo "${OUTCOME} ${RUN}: database ${DB_NAME} on ${HOST}:${PORT}, secrets bound to workspace ${RUN} exactly"
         printf '%s' "${OUTCOME}" > "$(results.outcome.path)"
         printf '%s' "${RECEIPT}" > "$(results.receipt.path)"
-      resources:
+      # tekton.dev/v1 renamed the step field: a block called `resources` here is
+      # accepted, dropped in silence, and the step then runs with no requests at
+      # all. Argo CD reported it as permanent drift, which is how it was found.
+      computeResources:
         requests:
           cpu: 50m
           memory: 128Mi
