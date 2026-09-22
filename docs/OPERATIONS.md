@@ -94,6 +94,14 @@ away and no worker is active; commit only the prerequisite paths. Then restore
 the candidate and unblock the same card for verification. Neither its scope
 seal nor attempt history changes.
 
+After `block_loop_detected`, check the native status: `unblock` does not
+resume `triage`. Resolve the new diagnosis first. For an already specified,
+sealed card, the shipped native `specify_triage_task` API supports a status-only
+transition with title/body/assignee omitted; it retains recurrence counters
+and runs normal parent gating. Record the diagnosis in a native comment and
+verify those fields and the issued seal remain unchanged. Do not rerun an LLM
+specifier or decomposer over the sealed card, or edit its database directly.
+
 ### Stage 080 run isolation and v10 qualification
 
 Use [V10-PLAN.md](../stages/080-ai-autonomous-migration/V10-PLAN.md) and

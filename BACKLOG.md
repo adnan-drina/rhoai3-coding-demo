@@ -33,7 +33,10 @@
   workers to the retained gate log and distinguishes a consumer named by
   the error from the in-scope delegate that caused it. Fragment guidance
   describes a concrete-class `@Typed` restriction, grounded in the versioned
-  generator and CDI contract. Live acceptance of that repair remains pending.
+  generator and CDI contract. Guidance `4da42ff3` is installed and the same
+  card resumed as native run 28 after status-only triage resolution; its
+  specification, issued seal, recurrence count and loop budget are preserved.
+  Live acceptance of that repair remains pending.
 - Luna's v10 observations reproduced two more harness defects. M1's last
   dispatch step could exit zero after skipping M2 because startup was off;
   explicit `--after-m1` now continues a verified native M1, and review checks
