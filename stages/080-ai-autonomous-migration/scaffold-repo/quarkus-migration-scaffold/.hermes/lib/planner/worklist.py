@@ -4799,13 +4799,27 @@ def assess_unit(root: Path, scope: dict[str, Any]) -> list[dict[str, Any]]:
         # Full attribution of an entire file is unnecessary to prove that a
         # retired type/annotation no longer occurs in its parsed syntax. This
         # is an absence proof, not a guess about unresolved relationships. A
-        # syntax error, missing inventory, package symbol or remaining simple
+        # syntax error, missing inventory or remaining simple
         # name cannot use this proof (even a same-spelled different type).
         syntax = typ.get("syntax_names")
+        qualified = typ.get("syntax_qualified_names")
+        def parsed_retirement(fqn: str, kind: str) -> bool:
+            if kind in ("type", "annotation"):
+                return fqn.rsplit(".", 1)[-1] not in syntax
+            if kind == "package":
+                # Package diagnostics seal the namespace, not one type. javac
+                # preserves qualification in imports, package declarations and
+                # inline/nested references before attribution. Do not use a
+                # simple suffix (jakarta.validation is not Spring validation),
+                # or claim absence across implicit inherited/static imports.
+                return (isinstance(qualified, list)
+                        and typ.get("syntax_implicit_types") is False
+                        and fqn != "java.lang"
+                        and not _names_retired(set(qualified), fqn, kind))
+            return False
         parsed_absence = (rule == RULE_DIAGNOSTIC_FAMILY and bool(retired)
                           and typ.get("syntax_complete") is True and isinstance(syntax, list)
-                          and all(kind in ("type", "annotation") and fqn.rsplit(".", 1)[-1] not in syntax
-                                  for fqn, kind in retired))
+                          and all(parsed_retirement(fqn, kind) for fqn, kind in retired))
         if str(typ.get("resolution") or "") != "full" and not parsed_absence:
             out.append(dict(base, verdict="inconclusive", detail="the compiler could not fully resolve %s" % path))
             continue

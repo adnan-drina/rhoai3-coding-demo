@@ -3588,6 +3588,59 @@ def _partial_diagnostic_scope_case():
     return 0
 
 
+def _partial_package_scope_case():
+    """Real javac: a removed namespace is assessable beside another broken import."""
+    import tempfile
+    from unittest.mock import patch
+    path = "src/main/java/example/Store.java"
+    scope = {"rule": RULE_DIAGNOSTIC_FAMILY,
+             "symbols": [{"kind": "package", "fqn": "legacy.validation"}],
+             "members": [{"path": path, "type": "example.Store", "member_id": "read", "state": "reported"}]}
+    support = {
+        "src/main/java/legacy/validation/Errors.java": "package legacy.validation; public class Errors {}",
+        "src/main/java/modern/validation/Errors.java": "package modern.validation; public class Errors {}",
+        "src/main/java/legacy/validationextra/Errors.java": "package legacy.validationextra; public class Errors {}",
+        "src/main/java/other/Base.java": "package other; public class Base {}",
+    }
+    cases = [
+        ("unrelated-wildcard", "import missing.web.*; import modern.validation.Errors; @CrossOrigin public class Store { public Errors read() { return null; } }", True),
+        ("literal-comment", 'public class Store { /* legacy.validation.Errors */ String text = "legacy.validation.Errors"; public Missing read() { return null; } }', True),
+        ("prefix-boundary", "import legacy.validationextra.Errors; public class Store { public Errors read() { Missing x; return null; } }", True),
+        ("retired-import", "import legacy.validation.Errors; public class Store { public Missing read() { return null; } }", False),
+        ("retired-wildcard", "import legacy.validation.*; public class Store { public Missing read() { return null; } }", False),
+        ("retired-qualified", "public class Store { public legacy.validation.Errors read() { Missing x; return null; } }", False),
+        ("retired-qualified-spaced", "public class Store { public legacy . validation . Errors read() { Missing x; return null; } }", False),
+        ("retired-nested", "public class Store { public Missing read() { return null; } class Nested { legacy.validation.Errors value; } }", False),
+        ("implicit-inherited", "public class Store extends other.Base { public Missing read() { return null; } }", False),
+        ("implicit-anonymous", "public class Store { Object value = new Object() {}; public Missing read() { return null; } }", False),
+        ("implicit-static-import", "import static other.Base.*; public class Store { public Missing read() { return null; } }", False),
+        ("parse-error", "public class Store { public Missing read( { return null; } }", False),
+        ("deleted-member", "public class Store { Missing value; }", False),
+        ("renamed-type", "class Other { public Missing read() { return null; } }", False),
+    ]
+    for label, text, allowed in cases:
+        with tempfile.TemporaryDirectory(prefix="wl-package-scope-") as d:
+            root = _jdk_root(d, {**support, path: "package example; " + text})
+            model = dest_model(root)
+            rows = assess_unit(root, scope)
+            if all(r["verdict"] == "ok" for r in rows) != allowed:
+                return _fail("%s: partial package assessment %s" % (label, rows))
+            if allowed:
+                typ = next(t for t in model["types"] if t["fqn"] == "example.Store")
+                if typ["resolution"] != "partial" or rows[0].get("proof") != "parsed-symbol-absence":
+                    return _fail("%s must prove namespace absence despite partial attribution" % label)
+                for key in ("syntax_qualified_names", "syntax_implicit_types", "syntax_complete"):
+                    value = typ.pop(key)
+                    with patch("planner.worklist.dest_model", return_value=model):
+                        if not any(r["verdict"] == "inconclusive" for r in assess_unit(root, scope)):
+                            return _fail("missing %s must not prove package absence" % key)
+                    typ[key] = value
+                closure = dict(scope, rule=RULE_DECLARATION_CLOSURE)
+                if not any(r["verdict"] == "inconclusive" for r in assess_unit(root, closure)):
+                    return _fail("package absence cannot prove declaration closure")
+    return 0
+
+
 def main() -> int:
     if (_runtime_identity_case() or _gate_progress_case() or _batch_scope_case() or _checked_family_case()
             or _set_wide_case() or _config_value_case() or _parity_typing_case() or _parity_advice_case()
@@ -3598,7 +3651,7 @@ def main() -> int:
         return 1
     # the same questions with nothing simulated: the JDK extractor's own model
     if shutil.which("javac"):
-        if _partial_diagnostic_scope_case() or _real_leaf_case() or _real_fragment_case() or _real_explained_case():
+        if _partial_diagnostic_scope_case() or _partial_package_scope_case() or _real_leaf_case() or _real_fragment_case() or _real_explained_case():
             return 1
     else:
         print("SKIP: the real-model cases need a JDK on PATH", file=sys.stderr)

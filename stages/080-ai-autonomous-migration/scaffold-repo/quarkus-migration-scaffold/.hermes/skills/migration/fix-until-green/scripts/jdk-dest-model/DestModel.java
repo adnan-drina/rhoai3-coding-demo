@@ -128,11 +128,24 @@ public final class DestModel {
             }
         }
         Map<String, List<String>> syntaxNames = new LinkedHashMap<>();
+        Map<String, List<String>> syntaxQualifiedNames = new LinkedHashMap<>();
+        Map<String, Boolean> syntaxImplicitTypes = new LinkedHashMap<>();
         for (CompilationUnitTree unit : units) {
             TreeSet<String> names = new TreeSet<>();
+            TreeSet<String> qualified = new TreeSet<>();
+            if (unit.getPackageName() != null) { qualified.add(unit.getPackageName().toString()); }
+            boolean[] implicitTypes = {false};
+            for (com.sun.source.tree.ImportTree imp : unit.getImports()) {
+                if (imp.isStatic()) { implicitTypes[0] = true; }
+            }
             new com.sun.source.util.TreeScanner<Void, Void>() {
                 @Override public Void visitClass(ClassTree n, Void v) {
                     names.add(n.getSimpleName().toString());
+                    // Inherited/anonymous member types and static imports can
+                    // name a foreign type without naming its package. A
+                    // package-absence proof must not guess their attribution.
+                    if (n.getExtendsClause() != null || !n.getImplementsClause().isEmpty()
+                            || n.getSimpleName().length() == 0) { implicitTypes[0] = true; }
                     return super.visitClass(n, v);
                 }
                 @Override public Void visitIdentifier(com.sun.source.tree.IdentifierTree n, Void v) {
@@ -141,10 +154,13 @@ public final class DestModel {
                 }
                 @Override public Void visitMemberSelect(com.sun.source.tree.MemberSelectTree n, Void v) {
                     names.add(n.getIdentifier().toString());
+                    qualified.add(n.toString());
                     return super.visitMemberSelect(n, v);
                 }
             }.scan(unit, null);
             syntaxNames.put(rel(source, Paths.get(unit.getSourceFile().toUri())), new ArrayList<>(names));
+            syntaxQualifiedNames.put(rel(source, Paths.get(unit.getSourceFile().toUri())), new ArrayList<>(qualified));
+            syntaxImplicitTypes.put(rel(source, Paths.get(unit.getSourceFile().toUri())), implicitTypes[0]);
         }
         task.analyze();
         Trees trees = Trees.instance(task);
@@ -193,6 +209,8 @@ public final class DestModel {
                     row.put("resolution", ok ? "full" : "partial");
                     row.put("syntax_complete", !parseBroken.contains(relPath));
                     row.put("syntax_names", syntaxNames.get(relPath));
+                    row.put("syntax_qualified_names", syntaxQualifiedNames.get(relPath));
+                    row.put("syntax_implicit_types", syntaxImplicitTypes.get(relPath));
                     row.put("imports", imports);
                     List<String> supers = new ArrayList<>();
                     if (type.getSuperclass() != null && type.getSuperclass().getKind().name().equals("DECLARED")) {

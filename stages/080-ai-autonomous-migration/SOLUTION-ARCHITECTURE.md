@@ -151,6 +151,11 @@ javac's complete parsed identifier inventory, even when unrelated attribution
 errors leave the file partially resolved. This proves only that the retired name
 is absent; sealed declarations must survive and all other acceptance checks still
 apply. Parse errors, absent inventory and remaining names stay inconclusive.
+For a package, the complete qualified-name inventory must exclude that exact
+namespace and its children, including imports and inline references. This
+fallback does not apply to implicit type scopes (inheritance, anonymous types
+or static imports), or the implicitly imported `java.lang` package. A matching
+suffix in another namespace is not a reference to the retired package.
 Declaration/inheritance/caller closures still require resolved evidence. Pending
 receipts retain the complete scope assessment for diagnosis.
 

@@ -17,6 +17,14 @@
   receipts retain all assessment rows, beyond the short log excerpt. Real-JDK
   regression cases cover the failure and negative controls; live recovery is
   recorded separately with the same card, candidate and original deadline.
+- The next v10 unit exposed the package form of that deadlock: removing
+  `org.springframework.validation` left seven controllers unresolved on the
+  separately scoped `@CrossOrigin`. Package retirement now uses javac's complete
+  qualified-name inventory, with namespace boundaries preserved. Inheritance,
+  anonymous types and static imports still require attribution; missing parse
+  evidence never passes. Real-JDK controls include wildcard imports, qualified
+  references, nested references, lookalike namespaces and unrelated errors.
+  This changes only assessment of retirement, not the write set or other vetoes.
 
 - v10 M2 exposed a fresh-run verifier defect: hashing the admission receipt
   before first admission aborted under `set -euo pipefail`. The verifier now

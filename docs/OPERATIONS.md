@@ -57,7 +57,9 @@ For a `VERIFICATION_PENDING` unit, preserve its candidate and issued seal. A
 harness repair belongs at the blocked task boundary with backups, exact file
 hashes and regression results. For symbol retirement, the compiler's complete
 syntax inventory can prove the retired name absent despite unrelated attribution
-errors; it cannot prove inheritance or call relationships. Restore the retained
+errors. Package retirement requires a complete qualified-name scan with no
+references under the retired namespace and no implicit inherited/static type
+scope. This cannot prove inheritance or call relationships. Restore the retained
 candidate with `restore-pending.py`, unblock the same native card, and re-run real
 verification and `advance.py`. This spends no new attempt and does not approve the
 candidate. Keep the original run deadline and append the intervention record.
